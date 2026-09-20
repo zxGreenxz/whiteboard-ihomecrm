@@ -109,3 +109,13 @@ Ba phiếu hoàn NON_CASH trong spec chỉ là ca rà soát lịch sử. Không 
 - Mutation `scripts/dot-bien.mjs`: bỏ DEMO assert, SHA `2364f11d1576` → `2a3e0e3712f1`; suite đỏ Missing expected exception; helper khôi phục digest đúng, exit 0.
 - `node scripts/check-test-matrix.mjs`: 729 tests / 11 suites, không mồ côi. Offline suite đăng ký CI quality-gates; không chạy live harness trên CI.
 - Chưa chạy role/PostgREST writers, reconcile v1/v2, concurrency hoặc browser E2E; không thay UI nên không cần E2E cho commit harness này. Gate trước push/review độc lập do controller tiếp tục.
+
+## T0 — sửa sau review (21/09/2026)
+
+Đã sửa hai finding Important của `task-0-review.md`. Manifest bây giờ bắt đúng 5 case: broker NULL-account CREATE_ONLY + broker real-account LEGACY_AUTOPAY cùng amount; sale_contract, sale_deposit và refund CREATE_ONLY. Ba case sau dùng đúng sổ của positive control, toàn bộ source cùng tòa DEMO. Không có partial mode có thể báo pass.
+
+Orchestrator `runMatrix` hoàn tất mọi preflight trước writer đầu tiên. Trước ghi, account phải có active CUSTODIAN từ `list_my_cashbook_access_v2` (OPERATOR riêng không đủ đọc ledger), real/nondeleted và DEMO; source kiểm `can_access_building`, room/building linkage, Sale contract kiểm `sale_bonus_status_v1`, refund kiểm termination APPROVED/COMPLETED và obligation OK. Reader chưa expose đầy đủ source-specific creation eligibility vẫn là phần chưa xác minh, writer phải tự kiểm lại; không tự gọi private checker bằng JWT.
+
+Control broker real-account luôn đo đầu tiên và phải có ledger đúng account, net delta âm bằng amount, APPROVED/POSTED. Mảng ledger rỗng hoặc RLS che control khiến dừng trước tất cả CREATE_ONLY; không có zero-ledger pass nếu positive control chưa đạt. Đây là quy trình hẹp theo một tòa/sổ để bằng chứng visibility không bị dùng chéo sổ.
+
+Kiểm chứng: 3 test mới quan sát RED rồi GREEN; tổng 8/8 offline tests, syntax và dry-run đạt. Mutation bắt bỏ custody (`4b133f6d7a4d` → `923bd4f55ea3`) và bỏ control-first (`4b133f6d7a4d` → `c9c1a951815d`), suite đỏ và digest khôi phục đúng. Mutation bỏ required-control ban đầu chưa bị bắt do case thiếu control đồng thời vi phạm số lượng; bổ sung case đủ 5 nhưng không có control, chạy lại mutation (`4b133f6d7a4d` → `aa6d0b046d1c`) suite đỏ đúng và khôi phục. Chưa chạy writer live, chưa setup/cleanup fixture; các release gate T6/T11 giữ nguyên.

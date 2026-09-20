@@ -1,14 +1,40 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { validatePlan, assertExecution, assertCreateOnly, assertOutcome, readAll } from './test-contract-settlement-money.mjs';
+import { validatePlan, assertExecution, assertCreateOnly, assertOutcome, readAll, runMatrix, assertCustody } from './test-contract-settlement-money.mjs';
 
 const plan = () => ({
   organizationId: 'dddd0000-0000-4000-8000-000000000001',
   projectRef: 'tryymsxyyckgbrmmvozx',
   fixtureLabel: 'contract-settlement-money-20260921',
   cleanupOwner: 'fixture operator',
-  cases: [{ kind: 'broker', sourceId: '11111111-1111-4111-8111-111111111111', amount: 500000, accountId: null, voucherDate: '2026-09-21', expected: 'CREATE_ONLY' }],
+  cases: ['broker', 'broker', 'sale_contract', 'sale_deposit', 'refund'].map((kind, i) => ({ kind, sourceId: `${i + 1}1111111-1111-4111-8111-111111111111`, amount: 500000, accountId: i === 0 ? null : 'aaaaaaaa-1111-4111-8111-111111111111', voucherDate: '2026-09-21', expected: i === 1 ? 'LEGACY_AUTOPAY' : 'CREATE_ONLY' })),
+});
+test('partial matrix or broker control without real account is rejected', () => {
+  assert.doesNotThrow(() => validatePlan(plan()));
+  assert.throws(() => validatePlan({ ...plan(), cases: plan().cases.filter(c => c.expected !== 'LEGACY_AUTOPAY') }), /matrix|control/);
+  const noControl = plan(); noControl.cases[1].expected = 'CREATE_ONLY';
+  assert.throws(() => validatePlan(noControl), /positive control/);
+  const p = plan(); p.cases[1].accountId = null;
+  assert.throws(() => validatePlan(p), /account/);
+  const missingSale = plan(); missingSale.cases = missingSale.cases.filter(c => c.kind !== 'sale_deposit');
+  assert.throws(() => validatePlan(missingSale), /matrix/);
+});
+test('late denied account blocks every writer before the first measurement', async () => {
+  let writes = 0;
+  await assert.rejects(() => runMatrix(plan(), {
+    preflight: async c => { if (c.kind === 'refund') assertCustody(c.accountId, []); },
+    measure: async () => { writes++; return {}; },
+  }), /CUSTODIAN/);
+  assert.equal(writes, 0);
+});
+test('hidden ledger in positive control cannot allow empty-ledger create-only success', async () => {
+  const measured = [];
+  await assert.rejects(() => runMatrix(plan(), {
+    preflight: async () => {},
+    measure: async c => { measured.push(c.expected); return { row: { approval_status: 'APPROVED', posting_status: 'POSTED', total_amount: 500000 }, ledger: [] }; },
+  }), /ledger/);
+  assert.deepEqual(measured, ['LEGACY_AUTOPAY']);
 });
 test('refuses real organization and unreviewed fixture changes before writes', () => {
   assert.throws(() => validatePlan({ ...plan(), organizationId: 'aaaa0000-0000-4000-8000-000000000001' }), /DEMO/);

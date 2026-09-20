@@ -11,6 +11,23 @@ const DEMO = 'dddd0000-0000-4000-8000-000000000001';
 const PROJECT = 'tryymsxyyckgbrmmvozx';
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const kinds = new Set(['broker', 'sale_contract', 'sale_deposit', 'refund']);
+export function assertCustody(accountId, access) {
+  assert.ok(Array.isArray(access), 'Cashbook access reader failed');
+  assert.ok(access.some(row => row.cashbook_id === accountId && row.possession_kind === 'CUSTODIAN'), 'Account requires active CUSTODIAN for writer and ledger visibility');
+}
+export async function runMatrix(plan, { preflight, measure }) {
+  validatePlan(plan);
+  for (const c of plan.cases) await preflight(c);
+  const control = plan.cases.find(c => c.expected === 'LEGACY_AUTOPAY');
+  const ordered = [control, ...plan.cases.filter(c => c !== control)];
+  for (const c of ordered) {
+    const { row, ledger } = await measure(c);
+    assertOutcome(row, ledger, c);
+    if (c === control) {
+      assert.ok(ledger.every(p => p.account_id === control.accountId), 'Positive control ledger must belong to the reviewed account');
+    }
+  }
+}
 export function assertOutcome(row, postings, c) {
   if (c.expected === 'CREATE_ONLY') return assertCreateOnly(row, postings, c.amount);
   assert.equal(c.expected, 'LEGACY_AUTOPAY');
@@ -38,6 +55,18 @@ export function validatePlan(plan) {
     assert.match(c.voucherDate, /^\d{4}-\d{2}-\d{2}$/);
     assert.ok(['CREATE_ONLY', 'LEGACY_AUTOPAY'].includes(c.expected), 'Explicit expected outcome required');
     if (c.expected === 'LEGACY_AUTOPAY') assert.ok(c.kind === 'broker' && c.accountId !== null, 'Only broker with account is an autopay control');
+  }
+  const controls = plan.cases.filter(c => c.expected === 'LEGACY_AUTOPAY');
+  assert.equal(controls.length, 1, 'Full matrix requires one broker positive control');
+  assert.equal(plan.cases.length, 5, 'Full matrix requires exactly five cases');
+  const control = controls[0];
+  const broker = plan.cases.filter(c => c.kind === 'broker' && c.expected === 'CREATE_ONLY' && c.accountId === null);
+  assert.equal(broker.length, 1, 'Full matrix requires paired broker NULL-account case');
+  assert.equal(broker[0].amount, control.amount, 'Paired broker amounts must match');
+  for (const kind of ['sale_contract', 'sale_deposit', 'refund']) {
+    const matches = plan.cases.filter(c => c.kind === kind && c.expected === 'CREATE_ONLY');
+    assert.equal(matches.length, 1, `Full matrix requires ${kind}`);
+    assert.equal(matches[0].accountId, control.accountId, 'All real accounts must match the ledger positive control');
   }
   return plan;
 }
@@ -74,7 +103,7 @@ async function main() {
   if (!args.includes('--fixture')) {
     console.log('DRY RUN — no network or writes. Usage: --fixture <prepared-DEMO-plan.json> [--execute --reviewed-sha256 <digest>].');
     console.log('Plan requires organizationId, projectRef, fixtureLabel, cleanupOwner, cases[{kind,sourceId,amount,accountId,voucherDate,expected}]. expected=CREATE_ONLY|LEGACY_AUTOPAY.');
-    console.log('Kinds: broker, sale_contract, sale_deposit, refund. Prepare separate labelled sources; broker must be autopay-eligible, tested both with null and real account. Review harness and cleanup before execution.');
+    console.log('Required five cases: broker NULL CREATE_ONLY + broker real-account LEGACY_AUTOPAY + sale_contract/sale_deposit/refund CREATE_ONLY. All share one building and real account with active CUSTODIAN. No partial pass. Review harness and cleanup before execution.');
     return;
   }
   const bytes = readFileSync(value('--fixture'), 'utf8');
@@ -106,9 +135,11 @@ async function main() {
     return rows[0];
   };
   const vouchers = () => readAll((offset, limit) => request(`/rest/v1/income_expenses?organization_id=eq.${DEMO}&select=id&order=id&offset=${offset}&limit=${limit}`));
-  const postings = id => readAll((offset, limit) => request(`/rest/v1/income_expense_postings?organization_id=eq.${DEMO}&voucher_id=eq.${id}&select=id,net_cash_effect&order=id&offset=${offset}&limit=${limit}`));
+  const postings = id => readAll((offset, limit) => request(`/rest/v1/income_expense_postings?organization_id=eq.${DEMO}&voucher_id=eq.${id}&select=id,account_id,net_cash_effect&order=id&offset=${offset}&limit=${limit}`));
+  const access = await request('/rest/v1/rpc/list_my_cashbook_access_v2', {});
+  let fixtureBuildingId;
   // Validate every source before the first writer, including labels and all account scopes.
-  for (const c of plan.cases) {
+  const preflight = async c => {
     const source = await single(c.kind === 'refund' ? 'termination_refund_obligations' : c.kind === 'sale_deposit' ? 'income_expenses' : 'contracts', c.sourceId);
     const labelSource = c.kind === 'refund' ? await single('contracts', source.contract_id) : source;
     assert.ok(String(labelSource.contract_number ?? labelSource.name ?? '').includes(plan.fixtureLabel), 'Source is not explicitly labelled disposable fixture');
@@ -117,22 +148,33 @@ async function main() {
     const building = await single('buildings', room.building_id);
     assert.equal(room.deleted_at, null);
     assert.equal(building.deleted_at, null);
+    fixtureBuildingId ??= building.id;
+    assert.equal(building.id, fixtureBuildingId, 'All fixtures must share the positive-control building scope');
+    assert.equal(await request('/rest/v1/rpc/can_access_building', { _building_id: building.id }), true, 'Actor cannot access fixture building');
     if (labelSource.building_id) assert.equal(labelSource.building_id, building.id);
     if (c.kind === 'refund') {
       assert.equal(source.voucher_id, null, 'Refund fixture already has a voucher');
       assert.equal(Number(source.requested_amount), c.amount);
+      const termination = await single('contract_terminations', source.termination_id);
+      assert.ok(['APPROVED', 'COMPLETED'].includes(termination.status), 'Termination is not approved');
+      assert.equal(source.obligation_status, 'OK', 'Harness does not force refund obligations');
+    }
+    if (c.kind === 'sale_contract') {
+      const status = await request('/rest/v1/rpc/sale_bonus_status_v1', { p_contract_id: c.sourceId });
+      assert.equal(status.alreadyPaid, false, 'Sale fixture already has a live bonus');
     }
     if (c.accountId) {
+      assertCustody(c.accountId, access);
       const account = await single('accounts', c.accountId);
       assert.equal(account.deleted_at, null);
       assert.equal(account.is_virtual, false);
     }
-  }
+  };
   const flags = await request('/rest/v1/rpc/get_finance_v2_client_flags_v1', {});
   const route = flags.find(row => row.organization_id === DEMO);
   assert.equal(route?.workflow_route, 'CANONICAL');
   assert.equal(route?.posting_route, 'CANONICAL');
-  for (const c of plan.cases) {
+  const measure = async c => {
     const before = new Set((await vouchers()).map(row => row.id));
     const rpc = c.kind === 'refund' ? 'create_termination_refund_voucher_v1' : c.kind === 'sale_deposit' ? 'create_sale_bonus_from_deposit_v1' : 'create_commission_voucher';
     const payload = c.kind === 'refund' ? { p_obligation_id: c.sourceId, p_account_id: c.accountId, p_force: false, p_force_reason: null }
@@ -148,8 +190,9 @@ async function main() {
     const row = await single('income_expenses', id);
     const ledger = await postings(id);
     console.log(JSON.stringify({ kind: c.kind, approval: row.approval_status, review: row.review_state, posting: row.posting_status, ledgerEntries: ledger.length }));
-    assertOutcome(row, ledger, c);
-  }
+    return { row, ledger };
+  };
+  await runMatrix(plan, { preflight, measure });
   console.log('Declared outcomes passed for executed cases. LEGACY_AUTOPAY is an unsafe-for-create-only control. This does not prove concurrency, ACL denial, cleanup, or browser integration.');
 }
 
