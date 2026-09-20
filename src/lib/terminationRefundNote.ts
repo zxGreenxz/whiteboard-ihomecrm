@@ -145,12 +145,12 @@ export function parseTerminationRefundFacts(raw: Json | null | undefined): Termi
   };
 }
 
-/** Dòng đầu: nhắc chọn sổ quỹ CHỈ khi phiếu còn chờ duyệt và chưa gán sổ. */
+/** Nhắc chọn sổ ở bước chi, không hướng người dùng sửa phiếu để có quyền duyệt. */
 export function dongDauHoanKhach(f: TerminationRefundFacts): string {
   const canChonSo = f.voucher.approval_status === "UNAPPROVED" && !f.voucher.account_id;
   return (
     "[HOÀN KHÁCH THANH LÝ] Phiếu chi hoàn khách (tiền thật)." +
-    (canChonSo ? " CHỌN SỔ QUỸ chi tiền (Sửa phiếu) rồi mới duyệt được." : "")
+    (canChonSo ? " Chọn sổ quỹ khi thực hiện chi hoàn khách." : "")
   );
 }
 
@@ -158,7 +158,7 @@ export function dongDauHoanKhach(f: TerminationRefundFacts): string {
 export function buildTerminationHeaderLines(f: TerminationRefundFacts): string[] {
   const c = f.contract;
   const maHD = c?.contract_number ?? "—";
-  const ngayTL = fmtNgay(f.termination?.actual_move_out_date ?? f.end_date);
+  const ngayTL = fmtNgay(f.termination?.termination_date);
   const lines: string[] = [];
   lines.push(dongDauHoanKhach(f));
   lines.push(`QUYẾT TOÁN THANH LÝ ${ngayTL} — HĐ ${maHD}`);
@@ -170,14 +170,16 @@ export function buildTerminationHeaderLines(f: TerminationRefundFacts): string[]
   // Sau thanh lý, contracts.deposit_paid đã bị trừ bởi chính phiếu "Cấn cọc →
   // doanh thu" (chi nội bộ, is_deposit) nên KHÔNG dùng; và chỉ liệt kê phiếu THU —
   // phiếu CHI trong danh sách là kết quả của quyết toán này, không phải nguồn cọc.
-  const daThu = f.termination?.deposit_used ?? c?.deposit_paid ?? 0;
+  const daThu = f.termination?.deposit_used ?? c?.deposit_paid ?? null;
   const vouchers = (c?.deposit_vouchers ?? []).filter((v) => v.type === "INCOME");
-  if (vouchers.length === 0) {
+  if (daThu === null) {
+    lines.push("Cọc đã thu: chưa xác minh");
+  } else if (vouchers.length === 0) {
     lines.push(`Cọc đã thu: ${formatVND(daThu)} (chưa có phiếu thu cọc)`);
   } else {
     lines.push(`Cọc đã thu: ${formatVND(daThu)}`);
-    for (const v of vouchers) lines.push(dongPhieuCoc(v));
   }
+  for (const v of vouchers) lines.push(dongPhieuCoc(v));
   lines.push("-");
   return lines;
 }
