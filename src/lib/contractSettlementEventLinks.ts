@@ -34,6 +34,8 @@ export function buildSettlementEventLinks(event: SettlementBusinessEvent, paymen
 }
 export function settlementEventView(event: SettlementBusinessEvent, payments: readonly SettlementRow[], paymentsComplete: boolean) {
   const links = buildSettlementEventLinks(event, payments, paymentsComplete);
-  return { ...event, links: links.complete ? { state: 'ready' as const, values: links.values }
+  return { id: event.id, type: event.type, buildingId: event.buildingId, roomName: event.roomName,
+    customerName: event.customerName, sourceCode: event.sourceCode, businessDate: event.businessDate,
+    origin: event.origin, staffName: event.staffName, links: links.complete ? { state: 'ready' as const, values: links.values }
     : { state: 'unavailable' as const, reason: 'Chưa đọc đủ khoản chi liên kết' } };
 }
