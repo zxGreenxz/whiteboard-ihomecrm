@@ -1,9 +1,9 @@
-import { calculateSettlementTotals, filterSettlementRows, parseSettlementRow, type SettlementFilters, type SettlementRow, type SettlementTotals, type SettlementSourceRef, type SettlementSelection } from './contractSettlement';
-export type SettlementReadScope = { organizationId: string; actorId: string; scopeRevision: string; buildingIds: string[]; period: string; mode: 'all' | 'period' | 'backlog'; filters: SettlementFilters };
+import { calculateSettlementTotals, filterSettlementRows, getSettlementDisplayState, parseSettlementRow, type SettlementFilters, type SettlementRow, type SettlementTotals, type SettlementSourceRef, type SettlementSelection } from './contractSettlement';
+export type SettlementReadScope = { organizationId: string; actorId: string; scopeRevision: string; buildingIds: string[]; period: string; mode: 'all' | 'period' | 'backlog'; dateBasis: 'business' | 'posting'; filters: SettlementFilters };
 export type SettlementPage = { rows: SettlementRow[]; nextCursor: string | null; revision: string; asOf: string };
 export type SettlementReadResult = { rows: SettlementRow[]; totals: SettlementTotals | null; partial: boolean; error: string | null; revision: string | null; asOf: string | null; pagination: { complete: boolean; pages: number; nextCursor: string | null }; capabilities: { automaticSaleCandidates: false } };
 export type SettlementPageReader = (scope: SettlementReadScope, cursor: string | null, revision: string | null) => Promise<unknown>;
-export const settlementQueryKey = (scope: SettlementReadScope) => ['contract-settlement', scope.organizationId, scope.actorId, scope.scopeRevision, [...new Set(scope.buildingIds)].sort(), scope.period, scope.mode, scope.filters] as const;
+export const settlementQueryKey = (scope: SettlementReadScope) => ['contract-settlement', scope.organizationId, scope.actorId, scope.scopeRevision, [...new Set(scope.buildingIds)].sort(), scope.period, scope.mode, scope.dateBasis, scope.filters] as const;
 export function settlementSourceIdentity(source: SettlementSourceRef): string {
  const id = source.kind === 'broker' || source.kind === 'sale_contract' ? source.contractId : source.kind === 'termination_refund' ? source.terminationId : source.kind === 'reservation_refund' ? source.sourceVoucherId : source.depositVoucherId;
  return `${source.kind}:${source.organizationId}:${id}`;
@@ -43,15 +43,28 @@ export async function readContractSettlement(scope: SettlementReadScope, readPag
    cursor = page.nextCursor;
   } while (cursor !== null);
  } catch (cause) { if (signal?.aborted) throw cause; error = cause instanceof Error ? cause.message : 'SETTLEMENT_READ_FAILED'; }
+ const unknownPostingDates = new Set<string>();
  const inPeriod = collected.filter(row => {
-  if (scope.mode === 'all') return true;
-  const date = row.rowType === 'source' ? row.eventDate : row.snapshot.state === 'ready' ? row.snapshot.value.sourceEventDate ?? row.snapshot.value.voucherDate : null;
+  let date: string | null;
+  if (scope.dateBasis === 'posting') {
+   if (row.rowType === 'source') return false;
+   if (row.snapshot.state === 'unavailable') { unknownPostingDates.add(row.rowKey); return true; }
+   const snapshot = row.snapshot.value;
+   if (snapshot.postingMode !== 'CASHBOOK' || snapshot.postingStatus !== 'POSTED') return false;
+   // A header date alone is not evidence of cash payment in that period.
+   if (getSettlementDisplayState(row).code !== 'PAID') { unknownPostingDates.add(row.rowKey); return true; }
+   date = snapshot.postedOn;
+  } else {
+   date = row.rowType === 'source' ? row.eventDate : row.snapshot.state === 'ready' ? row.snapshot.value.sourceEventDate ?? row.snapshot.value.voucherDate : null;
+  }
+  // Backlog spans every arisen period; header month is only an old-period marker.
+  if (scope.mode !== 'period') return true;
   // Unknown dates stay visible; absence is not proof that a row is out of scope.
   if (date === null) return true;
-  return scope.mode === 'period' ? date.slice(0,7) === scope.period : date.slice(0,7) <= scope.period;
+  return date.slice(0,7) === scope.period;
  });
  const rows = filterSettlementRows(inPeriod, scope.filters);
- const unavailable = rows.some(row => row.rowType === 'voucher' && row.snapshot.state !== 'ready');
+ const unavailable = rows.some(row => (row.rowType === 'voucher' && row.snapshot.state !== 'ready') || unknownPostingDates.has(row.rowKey));
  const partial = error !== null || unavailable;
  const totals = partial ? null : calculateSettlementTotals(rows);
  if (totals && Object.values(totals).some(value => value !== null && !Number.isSafeInteger(value))) throw Error('SETTLEMENT_TOTAL_OVERFLOW');

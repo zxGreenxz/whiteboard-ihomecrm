@@ -74,3 +74,19 @@ Local publication contains income_expenses/invoices/buildings/items/contracts/te
 - .superpowers/sdd/2026-09-20-hop-dong-quyet-toan/task-2-report.md
 
 No edits to generated types, root-owned plan, Payments UI/CSS, or existing review fixtures.
+
+## T2 — fix round1 (base07979e21)
+
+Hai finding Important của task-2-review.md đã sửa trong reader/client contract, không đổi SQL/hook hoặc schema:
+
+- `mode=backlog` không cắt theo tháng header; phiếu pending phát sinh01/09 vẫn hiện khi header08 và vào tổng pending. Header chỉ dùng đánh dấu tồn cũ qua filter nghiệp vụ.
+- `SettlementReadScope.dateBasis` bắt buộc `business | posting`, là thành phần riêng trong query key. Business dùng sourceEventDate/voucherDate (nguồn dùng eventDate). Posting chỉ dùng postedOn khi cash POSTED và getSettlementDisplayState xác minh active posting ID/net/date. Period predicate chạy trước cùng list+totals. Ngày là calendar date từ backend, không chuyển bằng Date/UTC ở client.
+- Posting cohort loại source chưa có cash posting và phiếu biết chắc unposted/noncash/reversed. Unknown snapshot hoặc cash POSTED thiếu/mâu thuẫn bằng chứng vẫn giữ dòng, partial=true/totals=null. Không lấy ngày nguồn để giả định tháng đã chi.
+
+TDD: thêm4 test và mở rộng key test trước sửa; `npx vitest run src/lib/__tests__/contractSettlementReader.test.ts` RED4/13 (backlog mất phiếu, posting kỳ sai, unverified detail mất dòng, key không phân biệt basis). GREEN13/13 sau sửa. Test boundary: nguồn31/08, postedOn01/09; chạy cả basis và cả tháng08/09, kiểm list và effectiveNetPaid; source/unposted/noncash có ngày nghiệp vụ01/09 vẫn bị loại khỏi posting filter; denied/loading/mismatched posting evidence vẫn hiện/no totals.
+
+Mutation `scripts/dot-bien.mjs`: đổi postedOn về sourceEventDate/voucherDate, dadc9d4bcd84→3a6054e1f101, suite đỏ đúng test posting boundary; đổi backlog exemption về chỉ all, dadc9d4bcd84→a05b6f55cb51, suite đỏ đúng test backlog. Cả hai exit0 và khôi phục digest dadc9d4bcd84. Không rerun SQL harness hay broad suite vì không đổi SQL.
+
+Files round1: src/lib/contractSettlementReader.ts, src/lib/__tests__/contractSettlementReader.test.ts, report này. Các gate tích hợp/release đã nêu ở trên giữ nguyên.
+
+Round1 typecheck: npx tsc --noEmit -p tsconfig.app.json exit1 vì lỗi T8A ngoài scope tại ContractSettlementPayments.test.tsx:48 (TS2769: exact không thuộc ByRoleOptions). Không có diagnostic ở reader/test đã sửa. Đã báo controller, không sửa file root-owned. git diff --check đạt.
