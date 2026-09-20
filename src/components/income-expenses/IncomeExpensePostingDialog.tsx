@@ -703,11 +703,13 @@ export default function IncomeExpensePostingDialog({
               </p>
             )}
 
+            </fieldset>
             <DialogFooter>
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => onOpenChange(false)}
+                disabled={isSubmitting || uploading || adopting}
+                onClick={() => { if (!isSubmitting && !uploading && !adopting) onOpenChange(false); }}
               >
                 Huỷ bỏ
               </Button>
@@ -715,7 +717,6 @@ export default function IncomeExpensePostingDialog({
                 {isSubmitting ? 'Đang xử lý...' : title}
               </Button>
             </DialogFooter>
-            </fieldset>
           </form>
         </Form>
       </DialogContent>

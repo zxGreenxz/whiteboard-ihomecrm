@@ -19,6 +19,8 @@ it.each([false, true])('locks dismissal only for an in-flight operation: busy=%s
   />);
   const button = screen.getByRole('button', { name: busy ? 'Đang xử lý...' : 'Chi' }) as HTMLButtonElement;
   expect(button.disabled).toBe(true);
+  const cancel = screen.getByRole('button', { name: 'Huỷ bỏ' }) as HTMLButtonElement;
+  expect(cancel.matches(':disabled')).toBe(busy);
   fireEvent.submit(button.closest('form')!);
   fireEvent.click(screen.getByRole('button', { name: 'Close' }));
   await waitFor(() => expect(close).toHaveBeenCalledTimes(busy ? 0 : 1));
