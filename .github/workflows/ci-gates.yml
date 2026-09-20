@@ -272,6 +272,9 @@ jobs:
         if: ${{ !cancelled() && steps.build.conclusion == 'success' }}
         run: node scripts/generate-bundle-inventory.mjs
 
+      - name: Contract settlement harness safety (no credentials)
+        run: node --test scripts/test-contract-settlement-money.test.mjs
+
       - name: node --test (script test dùng node:test)
         if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
         run: |

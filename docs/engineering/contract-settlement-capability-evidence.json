@@ -1,0 +1,932 @@
+{
+  "capturedAt": "2026-09-20T17:15:23.589Z",
+  "scopeReadAt": "2026-09-20T17:21:17.783Z",
+  "projectRef": "tryymsxyyckgbrmmvozx",
+  "sourceSha": "e663afdb92d63a79a4ef6db76e7d9b4c7f2492f0",
+  "baseSha": "beca6ee8",
+  "method": "Management API SELECT only; pg_get_functiondef + ACL/volatility/search_path + source aggregate. Not authenticated writer execution.",
+  "routes": [
+    {
+      "organization_id": "aaaa0000-0000-4000-8000-000000000001",
+      "workflow": "CANONICAL",
+      "posting": "CANONICAL"
+    },
+    {
+      "organization_id": "dddd0000-0000-4000-8000-000000000001",
+      "workflow": "CANONICAL",
+      "posting": "CANONICAL"
+    }
+  ],
+  "ownership": [
+    {
+      "organization_id": "aaaa0000-0000-4000-8000-000000000001",
+      "source": "broker",
+      "flow_kind": null,
+      "vouchers": 150,
+      "maker_null": 147
+    },
+    {
+      "organization_id": "aaaa0000-0000-4000-8000-000000000001",
+      "source": "reservation.refund",
+      "flow_kind": null,
+      "vouchers": 1,
+      "maker_null": 1
+    },
+    {
+      "organization_id": "aaaa0000-0000-4000-8000-000000000001",
+      "source": "sale",
+      "flow_kind": null,
+      "vouchers": 28,
+      "maker_null": 22
+    },
+    {
+      "organization_id": "aaaa0000-0000-4000-8000-000000000001",
+      "source": "termination.refund",
+      "flow_kind": null,
+      "vouchers": 87,
+      "maker_null": 87
+    },
+    {
+      "organization_id": "dddd0000-0000-4000-8000-000000000001",
+      "source": "termination.refund",
+      "flow_kind": null,
+      "vouchers": 3,
+      "maker_null": 3
+    }
+  ],
+  "functions": [
+    {
+      "schema": "app_private",
+      "name": "assert_income_expense_flow_owner_v2",
+      "args": "p_voucher uuid, p_expected_owner text",
+      "provolatile": "v",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=pg_catalog, app_private, public"
+      ],
+      "proacl": "{postgres=X/postgres}",
+      "definitionSha256": "298dcdfb65b39dcdc12dc51d4145ea27e06de5a08e3def90c57be6dccfc5bf70",
+      "errorCodes": [
+        "42501"
+      ]
+    },
+    {
+      "schema": "app_private",
+      "name": "is_income_expense_flow_owned",
+      "args": "p_id uuid",
+      "provolatile": "s",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=pg_catalog, app_private"
+      ],
+      "proacl": "{postgres=X/postgres}",
+      "definitionSha256": "ac3e6d3571dc446025d4e90c866817f434afec5e5d5170b5f33447a06de986cb",
+      "errorCodes": []
+    },
+    {
+      "schema": "app_private",
+      "name": "reservation_pay_refund_v1",
+      "args": "p_settlement uuid, p_account uuid, p_day date",
+      "provolatile": "v",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "proacl": "{postgres=X/postgres}",
+      "definitionSha256": "8ca645292a2ebc39d6157319936f7f8372fec68d3a842ed02e4063e6f8f7e540",
+      "errorCodes": [
+        "42501",
+        "22023",
+        "55000",
+        "23514"
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "annotate_income_expense_v1",
+      "args": "p_voucher uuid, p_add_attachments jsonb, p_remove_attachments jsonb, p_notes text, p_note_mode text, p_idempotency_key text",
+      "provolatile": "v",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=pg_catalog, app_private, public"
+      ],
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "definitionSha256": "65d5c91883f6146622b08b9f081fcb323e19f49f4f37a6c4376a0ee3a6f00afe",
+      "errorCodes": [
+        "42501",
+        "22023",
+        "P0002",
+        "55000"
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "append_income_expense_supplement_v1",
+      "args": "p_voucher uuid, p_note text, p_attachments jsonb, p_idempotency_key text",
+      "provolatile": "v",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "definitionSha256": "561b9c1dd2fc15f565275bbd3f9cd4e61387884f9e6561cf106b9321ff8addce",
+      "errorCodes": [
+        "42501",
+        "22023",
+        "23505"
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "approve_and_post_income_expense_v2",
+      "args": "input jsonb",
+      "provolatile": "v",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "definitionSha256": "4e7dc49b40c7599a38beca8f55546c4c4dd9d9c25e8fde340061dca737c118b0",
+      "errorCodes": [
+        "22023",
+        "P0002",
+        "42501",
+        "55000"
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "approve_income_expense_v2",
+      "args": "p_voucher uuid, p_expected_approval_version bigint, p_idempotency_key text",
+      "provolatile": "v",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "definitionSha256": "1b095904409c5d81832b83a6a150c371298e281348b70db4aa2cd9996e358183",
+      "errorCodes": [
+        "22023",
+        "P0002",
+        "42501",
+        "55000"
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "approve_voucher",
+      "args": "voucher_id uuid",
+      "provolatile": "v",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=public, app_private"
+      ],
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "definitionSha256": "6107c5728d7a969db35a6d953c017fbb7499a2dd2423a1c930d2fc654228a51a",
+      "errorCodes": [
+        "P0001",
+        "42501"
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "cancel_income_expense_flex_v1",
+      "args": "p_voucher uuid, p_reason text, p_expected_approval_version bigint, p_expected_posting_version bigint",
+      "provolatile": "v",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=pg_catalog, app_private, public"
+      ],
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "definitionSha256": "d311821edb9b9c35ef3eb9859579839c5aa7d564dc3fe5e6093060b20fb8702f",
+      "errorCodes": [
+        "42501",
+        "22023",
+        "P0002",
+        "55000",
+        "40001"
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "cancel_unposted_income_expense_v2",
+      "args": "p_voucher uuid, p_expected_review_version bigint, p_expected_approval_version bigint, p_reason text, p_idempotency_key text",
+      "provolatile": "v",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "definitionSha256": "c73e690cfba51c981cf2ef91403020dfad1eaf4407882c7046cff788b2098e2f",
+      "errorCodes": [
+        "22023",
+        "P0002",
+        "42501",
+        "55000"
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "create_commission_voucher",
+      "args": "p_contract_id uuid, p_kind text, p_amount numeric, p_voucher_date date, p_account_id uuid, p_payer_name text, p_recipient_name text, p_recipient_bank text, p_recipient_account text, p_item_description text, p_attachments jsonb",
+      "provolatile": "v",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=pg_catalog, app_private, public"
+      ],
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "definitionSha256": "29e18bfef87f31515a39c524b622ede3a0e7df3e306247924ef498455f3310a9",
+      "errorCodes": [
+        "42501",
+        "23514",
+        "23502",
+        "P0002",
+        "P0001"
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "create_sale_bonus_from_deposit_v1",
+      "args": "p_deposit_voucher_id uuid, p_amount numeric, p_recipient text, p_account_number text, p_bank text, p_voucher_date date, p_account_id uuid, p_attachments jsonb",
+      "provolatile": "v",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "definitionSha256": "c8785a50259b8111fd075ee69a9262974f528829c82a6eedc1ef45e7112be601",
+      "errorCodes": [
+        "42501",
+        "22023",
+        "23514",
+        "P0002",
+        "55000",
+        "P0001"
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "create_termination_refund_voucher_v1",
+      "args": "p_obligation_id uuid, p_account_id uuid, p_force boolean, p_force_reason text",
+      "provolatile": "v",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=public, app_private"
+      ],
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "definitionSha256": "416d86b3c93c10e45dfc49ffd70160b4dbf8634fe93af162382221a21dfd6f58",
+      "errorCodes": [
+        "42501",
+        "P0002",
+        "55000",
+        "22023"
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "decide_owned_income_expense_v2",
+      "args": "p_voucher uuid, p_decision text, p_reason text, p_idempotency_key text",
+      "provolatile": "v",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "definitionSha256": "96355e4015a5a49bd1d3f3ef3e9828ff6797e52f51ae4289314d60f08729da3c",
+      "errorCodes": [
+        "22023",
+        "P0002",
+        "42501",
+        "55000"
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "get_commission_voucher_facts_v1",
+      "args": "p_voucher_ids uuid[]",
+      "provolatile": "s",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=pg_catalog, app_private, public"
+      ],
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "definitionSha256": "3a3872b427d02080b55cbb090b552fa8095c6dfe0aab2981418a5282b2ba4bb3",
+      "errorCodes": [
+        "42501",
+        "22023"
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "get_income_expense_detail_v2",
+      "args": "p_id uuid",
+      "provolatile": "s",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=pg_catalog, app_private, public"
+      ],
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "definitionSha256": "6a5ff88254b4b40d68a3dc6fc058eebaf87ac8704afb3b0885be5300397fd381",
+      "errorCodes": []
+    },
+    {
+      "schema": "public",
+      "name": "get_income_expense_stats_v2",
+      "args": "p_filters jsonb",
+      "provolatile": "s",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=pg_catalog, app_private, public"
+      ],
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "definitionSha256": "334df3e353e2f2bf47ef74f60128f8abfd265961e87f295d82529d00ba770185",
+      "errorCodes": []
+    },
+    {
+      "schema": "public",
+      "name": "get_reservation_settlement_summary_v1",
+      "args": "p_building_ids uuid[]",
+      "provolatile": "s",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "definitionSha256": "7ec80b83f219bfb53645128638e3c5cc9741c6a224ac79c24dc88899c8039ecc",
+      "errorCodes": []
+    },
+    {
+      "schema": "public",
+      "name": "get_reservation_settlements_v1",
+      "args": "p_building_ids uuid[], p_refund_state text, p_cursor jsonb, p_limit integer, p_source_voucher_id uuid",
+      "provolatile": "s",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "definitionSha256": "e840c4e33c88b5028bffa8df2fc3514d48a6a77540729053a378cde8234979bb",
+      "errorCodes": [
+        "22023"
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "get_termination_refund_facts_v1",
+      "args": "p_voucher_ids uuid[]",
+      "provolatile": "s",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=pg_catalog, app_private, public"
+      ],
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "definitionSha256": "d931d28f5c5bdbb9d25008788f4e1ccf578d53cd4e4d4b01a54dfff7aee1b1b4",
+      "errorCodes": [
+        "42501",
+        "22023"
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "list_cashbook_visibility_v2",
+      "args": "",
+      "provolatile": "s",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=pg_catalog, app_private, public"
+      ],
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "definitionSha256": "adb41f753b287d52212bd9411764a02f03c40c6ff43bd42d2f19cfd6c2759d28",
+      "errorCodes": []
+    },
+    {
+      "schema": "public",
+      "name": "list_cashbooks_for_expense_v2",
+      "args": "",
+      "provolatile": "s",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=pg_catalog, app_private, public"
+      ],
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "definitionSha256": "e0f3fdb7d3ff1a8840ab3c206bf7709f792adec7b02d64c6de89228ca0a62af6",
+      "errorCodes": []
+    },
+    {
+      "schema": "public",
+      "name": "list_income_expenses_v2",
+      "args": "p_filters jsonb",
+      "provolatile": "s",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=pg_catalog, app_private, public"
+      ],
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "definitionSha256": "37261b2fb9821c1c96842f65d247a02d4a46783f9024b32b04a123d89448f3b9",
+      "errorCodes": []
+    },
+    {
+      "schema": "public",
+      "name": "list_my_cashbook_access_v2",
+      "args": "",
+      "provolatile": "s",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=pg_catalog, app_private, public"
+      ],
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "definitionSha256": "aa4b2985088a522a515efd2f02707b31b0dc52944dc6fa00e74d35d5b27c0685",
+      "errorCodes": []
+    },
+    {
+      "schema": "public",
+      "name": "pay_reservation_refund_v1",
+      "args": "p_input jsonb",
+      "provolatile": "v",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "definitionSha256": "0a1cd3a7517b8f0aa4e3e44bfc255d19bcdc841f3aaae851813c8e7bd79e3c94",
+      "errorCodes": [
+        "42501",
+        "22023"
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "post_approved_income_expense_v2",
+      "args": "input jsonb",
+      "provolatile": "v",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "definitionSha256": "6284c4802c8c1e6e6e5e2e63c0f760abc1ea444500e3717213022ab583aca571",
+      "errorCodes": [
+        "22023",
+        "P0002",
+        "42501",
+        "55000"
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "preview_reservation_settlement_v1",
+      "args": "p_voucher_id uuid",
+      "provolatile": "v",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "definitionSha256": "33067f0b929892d90c0b7d37360f0c6c7de2b3675b189b7378190b555e557eac",
+      "errorCodes": []
+    },
+    {
+      "schema": "public",
+      "name": "preview_termination_refund_v1",
+      "args": "p_termination_id uuid",
+      "provolatile": "v",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=public, app_private"
+      ],
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "definitionSha256": "ef92b455422c0e4f3fb2fa4e6624c08ff2d1d516f7f2924f80731dc71830c540",
+      "errorCodes": [
+        "P0002",
+        "42501"
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "record_termination_refund_obligation_v1",
+      "args": "p_termination_id uuid",
+      "provolatile": "v",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=public, app_private"
+      ],
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "definitionSha256": "e45191f8236cfb47c1752dce1d97824afd8849d16ad443045a1626253d7465a4",
+      "errorCodes": [
+        "42501",
+        "P0002"
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "request_income_expense_changes_v2",
+      "args": "p_voucher uuid, p_expected_review_version bigint, p_reason text, p_field_mask jsonb, p_idempotency_key text",
+      "provolatile": "v",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "definitionSha256": "204b60780e150cbc5ca1c7c833ab9cd1e65c5345dfe0d20e07b8e19ad4b658c2",
+      "errorCodes": [
+        "22023",
+        "P0002",
+        "42501",
+        "55000"
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "resubmit_income_expense_v2",
+      "args": "p_voucher uuid, p_expected_review_version bigint, p_patch jsonb, p_idempotency_key text",
+      "provolatile": "v",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "definitionSha256": "b3968ff452c2496c0d386bfd476d02268223ef8997fc56812d6f5b8b0c348e81",
+      "errorCodes": [
+        "22023",
+        "P0002",
+        "42501",
+        "55000"
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "reverse_posted_income_expense_v2",
+      "args": "p_voucher uuid, p_cashbook uuid, p_posted_on date, p_reason text, p_idempotency_key text",
+      "provolatile": "v",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "definitionSha256": "db078a1b9dfacca95efa252227522e8461ba8fe619e0455347df1efd4b837a4f",
+      "errorCodes": [
+        "22023",
+        "P0002",
+        "42501",
+        "55000"
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "sale_bonus_status_v1",
+      "args": "p_contract_id uuid",
+      "provolatile": "v",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "definitionSha256": "6e8a81a46c8deadf99c57d5a0500791f9ac035bbd2c2f7b6c024854312552bfd",
+      "errorCodes": [
+        "42501",
+        "P0002"
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "unapprove_voucher",
+      "args": "voucher_id uuid, p_expected_approval_version bigint",
+      "provolatile": "v",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=public, app_private"
+      ],
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "definitionSha256": "cb83d2a3390b595cc73ac3507d1ce2cdc5e284c78834aa4d8224f3c960454b47",
+      "errorCodes": [
+        "42501",
+        "55000"
+      ]
+    },
+    {
+      "schema": "app_private",
+      "name": "commission_autopay_check_v1",
+      "args": "p_contract_id uuid, p_amount numeric",
+      "provolatile": "v",
+      "prosecdef": false,
+      "proconfig": [
+        "search_path=pg_catalog, app_private, public"
+      ],
+      "proacl": "{postgres=X/postgres}",
+      "definitionSha256": "7d9c338e683486ca858ef783d57f6baaf30639207d82b864d7b0a1e36c04da21",
+      "errorCodes": []
+    },
+    {
+      "schema": "public",
+      "name": "can_cancel_income_voucher_v1",
+      "args": "p_ids uuid[]",
+      "provolatile": "s",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=pg_catalog, app_private, public"
+      ],
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "definitionSha256": "cdc90339f27e8b8137631e6bcd9d4b8ad4ddadf237837c4da309a0fc36bbcd7d",
+      "errorCodes": []
+    },
+    {
+      "schema": "public",
+      "name": "can_flex_cancel_v1",
+      "args": "p_ids uuid[]",
+      "provolatile": "v",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=pg_catalog, app_private, public"
+      ],
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "definitionSha256": "2a90b415e7d467146a763e3369aed922a01ffb13f2327e76adf7830a6ac7f245",
+      "errorCodes": [
+        "42501"
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "cancel_income_voucher_v1",
+      "args": "p_voucher uuid, p_reason text",
+      "provolatile": "v",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=pg_catalog, app_private, public"
+      ],
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "definitionSha256": "5732cd4869df7baeb8bc75499e757c28e958f8d343ed40bb846cf46b9ebf268e",
+      "errorCodes": [
+        "42501",
+        "22023",
+        "P0002",
+        "P0001"
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "get_finance_v2_client_flags_v1",
+      "args": "",
+      "provolatile": "s",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=pg_catalog, app_private, public"
+      ],
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "definitionSha256": "b8ed5688a602643f8969c2533fad286d3df7295d1ea9ccb4934eaa0155fc2dc6",
+      "errorCodes": []
+    },
+    {
+      "schema": "public",
+      "name": "settle_reservation_deposit_v1",
+      "args": "p_input jsonb",
+      "provolatile": "v",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "definitionSha256": "fe97b1d599798ffe438eae9155613c9cd7f5eaf83460b660393ff5afbafc5312",
+      "errorCodes": [
+        "22023",
+        "42501",
+        "55000",
+        "40001"
+      ]
+    },
+    {
+      "schema": "app_private",
+      "name": "is_income_expense_flow_owned",
+      "args": "p_id uuid",
+      "provolatile": "s",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=pg_catalog, app_private"
+      ],
+      "proacl": "{postgres=X/postgres}",
+      "definitionSha256": "ac3e6d3571dc446025d4e90c866817f434afec5e5d5170b5f33447a06de986cb",
+      "errorCodes": []
+    }
+  ],
+  "triggers": [
+    {
+      "name": "a000_ie_defaults_fill",
+      "definition": "CREATE TRIGGER a000_ie_defaults_fill BEFORE INSERT ON public.income_expenses FOR EACH ROW EXECUTE FUNCTION app_private.ie_fill_not_null_defaults()",
+      "functionSha256": "f1863d68f1f19f273c0b5d3adf1482d9e788398ef22a0fe8bb089aa0c7727ed1"
+    },
+    {
+      "name": "a001_ie_lifecycle_normalize",
+      "definition": "CREATE TRIGGER a001_ie_lifecycle_normalize BEFORE INSERT ON public.income_expenses FOR EACH ROW EXECUTE FUNCTION app_private.ie_normalize_lifecycle_columns()",
+      "functionSha256": "e8577e779298eefb093ea669d7c400be21bd86d36186a0850e79740e0ada247b"
+    },
+    {
+      "name": "a00_00_profit_payout_account_guard",
+      "definition": "CREATE TRIGGER a00_00_profit_payout_account_guard BEFORE INSERT OR UPDATE OF shareholder_id, profit_manager_id, account_id, organization_id, system_source ON public.income_expenses FOR EACH ROW EXECUTE FUNCTION app_private.guard_profit_payout_scope_compat_v1()",
+      "functionSha256": "e46afc8e63e7ec81da4d26101fc24ddadd30e583869ee21edd6d0a9beb2ba79f"
+    },
+    {
+      "name": "a00_ie_owned_payload_freeze",
+      "definition": "CREATE TRIGGER a00_ie_owned_payload_freeze BEFORE DELETE OR UPDATE ON public.income_expenses FOR EACH ROW EXECUTE FUNCTION app_private.guard_income_expense_owned_payload()",
+      "functionSha256": "597e3b8bdbbec7bd24ae7778b4690dc88c08c2c05339c7255e988128d73e72c4"
+    },
+    {
+      "name": "a00_ie_truncate_freeze",
+      "definition": "CREATE TRIGGER a00_ie_truncate_freeze BEFORE TRUNCATE ON public.income_expenses FOR EACH STATEMENT EXECUTE FUNCTION app_private.guard_income_expense_truncate()",
+      "functionSha256": "5ba66e0d8cc963d2bb9fa3c1fdaa461ec267d1994f2cce77b29704ea47cd33b3"
+    },
+    {
+      "name": "a00_income_expense_accounting_links_guard",
+      "definition": "CREATE TRIGGER a00_income_expense_accounting_links_guard BEFORE INSERT OR UPDATE ON public.income_expenses FOR EACH ROW EXECUTE FUNCTION app_private.guard_income_expense_accounting_links_v1()",
+      "functionSha256": "1843787fbd0689af3d10fb2af02ff4f7662e3e5f3988fc8d0e70958e31e93d71"
+    },
+    {
+      "name": "a01_ie_annotate_scope_delta",
+      "definition": "CREATE TRIGGER a01_ie_annotate_scope_delta BEFORE UPDATE ON public.income_expenses FOR EACH ROW EXECUTE FUNCTION ie_annotate_scope_delta_guard()",
+      "functionSha256": "18080557be96ce7559f3d96a3926ac11d9ef47fdbf98bca73a73138186c38a0c"
+    },
+    {
+      "name": "a01_reservation_voucher_guard",
+      "definition": "CREATE TRIGGER a01_reservation_voucher_guard BEFORE INSERT OR DELETE OR UPDATE ON public.income_expenses FOR EACH ROW EXECUTE FUNCTION app_private.guard_reservation_voucher_v1()",
+      "functionSha256": "f8f40e8e184d7875ea098379bfa85d72a096e885be4c6bba048ae953a65633ba"
+    },
+    {
+      "name": "a02_ie_profit_lock_del",
+      "definition": "CREATE TRIGGER a02_ie_profit_lock_del BEFORE DELETE ON public.income_expenses FOR EACH ROW EXECUTE FUNCTION income_expenses_check_profit_lock()",
+      "functionSha256": "2c9970c15033456e87ca77c173e0183e3d60283427fd2e20eafc9178f2c49883"
+    },
+    {
+      "name": "a02_ie_profit_lock_ins",
+      "definition": "CREATE TRIGGER a02_ie_profit_lock_ins BEFORE INSERT ON public.income_expenses FOR EACH ROW EXECUTE FUNCTION income_expenses_check_profit_lock()",
+      "functionSha256": "2c9970c15033456e87ca77c173e0183e3d60283427fd2e20eafc9178f2c49883"
+    },
+    {
+      "name": "a02_ie_profit_lock_upd",
+      "definition": "CREATE TRIGGER a02_ie_profit_lock_upd BEFORE UPDATE ON public.income_expenses FOR EACH ROW EXECUTE FUNCTION income_expenses_check_profit_lock()",
+      "functionSha256": "2c9970c15033456e87ca77c173e0183e3d60283427fd2e20eafc9178f2c49883"
+    },
+    {
+      "name": "a05_profit_payout_linked_guard",
+      "definition": "CREATE TRIGGER a05_profit_payout_linked_guard BEFORE DELETE OR UPDATE ON public.income_expenses FOR EACH ROW EXECUTE FUNCTION app_private.guard_profit_payout_linked_v2()",
+      "functionSha256": "0e0f5a590ec96514131e2d6aade5f0df081b43b00025cdd4ad17a0d369b3c151"
+    },
+    {
+      "name": "a05_register_termination_forfeit",
+      "definition": "CREATE TRIGGER a05_register_termination_forfeit AFTER INSERT ON public.income_expenses FOR EACH ROW EXECUTE FUNCTION app_private.register_termination_forfeit_v1()",
+      "functionSha256": "c702e049f416707cd089daa407a0013e7c1c596e5925afee6c1004b4b9b14e78"
+    },
+    {
+      "name": "a05_termination_forfeit_voucher_guard",
+      "definition": "CREATE TRIGGER a05_termination_forfeit_voucher_guard BEFORE INSERT OR UPDATE ON public.income_expenses FOR EACH ROW EXECUTE FUNCTION app_private.guard_termination_forfeit_voucher_v1()",
+      "functionSha256": "7d51101ee8c8b3e8b379cd6529e55512b4b85fb7fbfacb71723c31505921ef97"
+    },
+    {
+      "name": "a70_salary_paid_accrual",
+      "definition": "CREATE TRIGGER a70_salary_paid_accrual AFTER UPDATE ON public.income_expenses FOR EACH ROW WHEN ((new.salary_staff_id IS NOT NULL)) EXECUTE FUNCTION app_private.accrue_salary_paid_on_approve()",
+      "functionSha256": "6a7580423021b9a958458f85028bbb52cbcf734e46b46ddcb331baa605141872"
+    },
+    {
+      "name": "a75_ie_cancel_close_request",
+      "definition": "CREATE TRIGGER a75_ie_cancel_close_request AFTER UPDATE OF approval_status ON public.income_expenses FOR EACH ROW WHEN (((new.approval_status = 'CANCELLED'::text) AND (old.approval_status IS DISTINCT FROM 'CANCELLED'::text))) EXECUTE FUNCTION app_private.ie_cancel_close_request_v1()",
+      "functionSha256": "f3ebfbd338d085f7fd8c7f383c7728d18318656aef42f79c557df0dc7243f74d"
+    },
+    {
+      "name": "a85_finance_v2_auto_posting_bridge",
+      "definition": "CREATE TRIGGER a85_finance_v2_auto_posting_bridge BEFORE INSERT OR UPDATE OF approval_status, account_id, total_amount, deleted_at ON public.income_expenses FOR EACH ROW EXECUTE FUNCTION app_private.finance_v2_auto_posting_bridge()",
+      "functionSha256": "b81bb9be71676976ecfa9417c36d9b4f80b5da640442b6501cb22620eb63f2cc"
+    },
+    {
+      "name": "a85b_finance_v2_auto_posting_bridge_ins",
+      "definition": "CREATE TRIGGER a85b_finance_v2_auto_posting_bridge_ins AFTER INSERT ON public.income_expenses FOR EACH ROW EXECUTE FUNCTION app_private.finance_v2_auto_posting_bridge_insert()",
+      "functionSha256": "3f20672259b13cbf31b3e4748ed699f20fe26e76435493a043254f8ef9879ee7"
+    },
+    {
+      "name": "a86_finance_v2_birth_provenance",
+      "definition": "CREATE TRIGGER a86_finance_v2_birth_provenance BEFORE INSERT OR UPDATE ON public.income_expenses FOR EACH ROW WHEN (((new.approval_status = 'UNAPPROVED'::text) AND (new.birth_operation_id IS NULL))) EXECUTE FUNCTION app_private.finance_v2_birth_provenance_bridge()",
+      "functionSha256": "b16602ddb98012fb0d9cc6c615d704658f977a82aadb8f964c833d515af803b8"
+    },
+    {
+      "name": "a87_finance_v2_request_close_sync",
+      "definition": "CREATE TRIGGER a87_finance_v2_request_close_sync AFTER UPDATE OF approval_status, posting_status ON public.income_expenses FOR EACH ROW EXECUTE FUNCTION app_private.finance_v2_close_request_on_voucher_change()",
+      "functionSha256": "3078f0667332d4d93bda96461bf8590b3182362ea73bec00b2110bd79efee2eb"
+    },
+    {
+      "name": "a90_finance_v2_capture",
+      "definition": "CREATE TRIGGER a90_finance_v2_capture AFTER INSERT OR DELETE OR UPDATE ON public.income_expenses FOR EACH ROW EXECUTE FUNCTION app_private.finance_v2_capture_change()",
+      "functionSha256": "a4200e63a2edc41bc2f73d61be1cd7570e89ce00aba7b8010e021862a0b655fd"
+    },
+    {
+      "name": "ie_business_result",
+      "definition": "CREATE TRIGGER ie_business_result AFTER INSERT OR UPDATE OF business_result_accounting, total_amount ON public.income_expenses FOR EACH ROW EXECUTE FUNCTION trg_ie_recompute_business_result()",
+      "functionSha256": "9cc90037d27cebe8410db11204afa55cab99d654264f29d1e0b0335e013281c5"
+    },
+    {
+      "name": "income_expenses_invoice_audit_trigger",
+      "definition": "CREATE TRIGGER income_expenses_invoice_audit_trigger AFTER INSERT OR DELETE OR UPDATE ON public.income_expenses FOR EACH ROW EXECUTE FUNCTION _invoice_audit_income_expenses()",
+      "functionSha256": "f010005a33e63e87abcd506e50a6c14fa97249c232c8e881c38e1d8407cea157"
+    },
+    {
+      "name": "income_expenses_set_user_id_audit",
+      "definition": "CREATE TRIGGER income_expenses_set_user_id_audit BEFORE INSERT ON public.income_expenses FOR EACH ROW EXECUTE FUNCTION set_user_id_from_auth()",
+      "functionSha256": "1ff65a58c5073cdabc1507102dad41bd61835a6299f494891b09bf5b595967cd"
+    },
+    {
+      "name": "set_income_expenses_updated_at",
+      "definition": "CREATE TRIGGER set_income_expenses_updated_at BEFORE UPDATE ON public.income_expenses FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()",
+      "functionSha256": "98da83778b25933113f3f53feb884320f11bb72129ad84f7872e0a4fb2d038c9"
+    },
+    {
+      "name": "trg_autofill_org",
+      "definition": "CREATE TRIGGER trg_autofill_org BEFORE INSERT ON public.income_expenses FOR EACH ROW EXECUTE FUNCTION app_private.autofill_org_strict()",
+      "functionSha256": "4d759a549059286b71318461e5e546423813c0b7ee8e32091527e58ee3beb9ba"
+    },
+    {
+      "name": "trg_forfeit_settle_on_approve",
+      "definition": "CREATE TRIGGER trg_forfeit_settle_on_approve AFTER UPDATE OF approval_status ON public.income_expenses FOR EACH ROW EXECUTE FUNCTION trg_forfeit_settle_on_approve()",
+      "functionSha256": "e40c9435f2af2ab41f237de8e7fd6e713913cb6736ca2d61a86e0c6f9a63e374"
+    },
+    {
+      "name": "trg_guard_ie_financial",
+      "definition": "CREATE TRIGGER trg_guard_ie_financial BEFORE INSERT OR UPDATE ON public.income_expenses FOR EACH ROW EXECUTE FUNCTION _guard_ie_financial_columns()",
+      "functionSha256": "c9b949ea819f39681f8e09cddcc53787b1998505c3c5dc68e0e5b5914cb21b00"
+    },
+    {
+      "name": "trg_ie_check_lock_del",
+      "definition": "CREATE TRIGGER trg_ie_check_lock_del BEFORE DELETE ON public.income_expenses FOR EACH ROW EXECUTE FUNCTION income_expenses_check_lock()",
+      "functionSha256": "221d05a842fe81d2cbeb9d541bfc75df0299543f3fbc0ebd8d72a594e17abe0b"
+    },
+    {
+      "name": "trg_ie_check_lock_ins",
+      "definition": "CREATE TRIGGER trg_ie_check_lock_ins BEFORE INSERT ON public.income_expenses FOR EACH ROW EXECUTE FUNCTION income_expenses_check_lock()",
+      "functionSha256": "221d05a842fe81d2cbeb9d541bfc75df0299543f3fbc0ebd8d72a594e17abe0b"
+    },
+    {
+      "name": "trg_ie_check_lock_upd",
+      "definition": "CREATE TRIGGER trg_ie_check_lock_upd BEFORE UPDATE ON public.income_expenses FOR EACH ROW EXECUTE FUNCTION income_expenses_check_lock()",
+      "functionSha256": "221d05a842fe81d2cbeb9d541bfc75df0299543f3fbc0ebd8d72a594e17abe0b"
+    },
+    {
+      "name": "trg_ie_handover_guard",
+      "definition": "CREATE TRIGGER trg_ie_handover_guard BEFORE DELETE OR UPDATE ON public.income_expenses FOR EACH ROW EXECUTE FUNCTION ie_handover_guard()",
+      "functionSha256": "f77ca38048a64fece717422c3cfbc08cb3388aa5324f7d132ed16d6ba5f0a40a"
+    },
+    {
+      "name": "trg_ie_recompute_contract_deposit_del",
+      "definition": "CREATE TRIGGER trg_ie_recompute_contract_deposit_del AFTER DELETE ON public.income_expenses FOR EACH ROW EXECUTE FUNCTION trg_ie_recompute_contract_deposit()",
+      "functionSha256": "5986fe107870f7984f33559cee1fa4414341a4038fad38f73dec31cb0e4cabfa"
+    },
+    {
+      "name": "trg_ie_recompute_contract_deposit_ins",
+      "definition": "CREATE TRIGGER trg_ie_recompute_contract_deposit_ins AFTER INSERT ON public.income_expenses FOR EACH ROW EXECUTE FUNCTION trg_ie_recompute_contract_deposit()",
+      "functionSha256": "5986fe107870f7984f33559cee1fa4414341a4038fad38f73dec31cb0e4cabfa"
+    },
+    {
+      "name": "trg_ie_recompute_contract_deposit_upd",
+      "definition": "CREATE TRIGGER trg_ie_recompute_contract_deposit_upd AFTER UPDATE OF contract_id, approval_status, deleted_at, type, total_amount ON public.income_expenses FOR EACH ROW EXECUTE FUNCTION trg_ie_recompute_contract_deposit()",
+      "functionSha256": "5986fe107870f7984f33559cee1fa4414341a4038fad38f73dec31cb0e4cabfa"
+    },
+    {
+      "name": "trg_ie_reconcile_room_del",
+      "definition": "CREATE TRIGGER trg_ie_reconcile_room_del AFTER DELETE ON public.income_expenses FOR EACH ROW EXECUTE FUNCTION trg_ie_reconcile_room()",
+      "functionSha256": "bf36d1acf6a549c97c69a06b1d72cbdbae9d414bce7947dd92c2be3f29b7498d"
+    },
+    {
+      "name": "trg_ie_reconcile_room_ins",
+      "definition": "CREATE TRIGGER trg_ie_reconcile_room_ins AFTER INSERT ON public.income_expenses FOR EACH ROW EXECUTE FUNCTION trg_ie_reconcile_room()",
+      "functionSha256": "bf36d1acf6a549c97c69a06b1d72cbdbae9d414bce7947dd92c2be3f29b7498d"
+    },
+    {
+      "name": "trg_ie_reconcile_room_upd",
+      "definition": "CREATE TRIGGER trg_ie_reconcile_room_upd AFTER UPDATE OF room_id, contract_id, approval_status, deleted_at, type ON public.income_expenses FOR EACH ROW EXECUTE FUNCTION trg_ie_reconcile_room()",
+      "functionSha256": "bf36d1acf6a549c97c69a06b1d72cbdbae9d414bce7947dd92c2be3f29b7498d"
+    },
+    {
+      "name": "trg_voucher_recompute_invoice",
+      "definition": "CREATE TRIGGER trg_voucher_recompute_invoice AFTER INSERT OR DELETE OR UPDATE ON public.income_expenses FOR EACH ROW EXECUTE FUNCTION recompute_invoice_after_voucher_change()",
+      "functionSha256": "bf182191dbc8d5c4c61de73332666933d62a70011b89db17c86678db62c42adf"
+    },
+    {
+      "name": "trigger_auto_generate_voucher_code",
+      "definition": "CREATE TRIGGER trigger_auto_generate_voucher_code BEFORE INSERT ON public.income_expenses FOR EACH ROW EXECUTE FUNCTION auto_generate_voucher_code()",
+      "functionSha256": "79769e32badc8b8fd937412c0b1aaabba4c390909c1a439353254a2ec87ae064"
+    },
+    {
+      "name": "trigger_ie_commission_guard",
+      "definition": "CREATE TRIGGER trigger_ie_commission_guard BEFORE INSERT OR UPDATE ON public.income_expenses FOR EACH ROW EXECUTE FUNCTION trg_ie_commission_guard()",
+      "functionSha256": "1a26f04f18d45a72206079d8ba55f869677c5aaae2271ed613484486ad209d18"
+    },
+    {
+      "name": "z95_notify_ie_ins",
+      "definition": "CREATE TRIGGER z95_notify_ie_ins AFTER INSERT ON public.income_expenses FOR EACH ROW WHEN (((new.deleted_at IS NULL) AND (new.approval_status = 'UNAPPROVED'::text))) EXECUTE FUNCTION app_private.notify_ie_lifecycle_v1()",
+      "functionSha256": "de94c5f70d1aa1b8fc49e85018687eea5df9ded3d37fb3cb73f1bbe9642c6f2f"
+    },
+    {
+      "name": "z95_notify_ie_upd",
+      "definition": "CREATE TRIGGER z95_notify_ie_upd AFTER UPDATE OF approval_status, deleted_at ON public.income_expenses FOR EACH ROW WHEN ((((new.approval_status IS DISTINCT FROM old.approval_status) AND ((new.approval_status = 'UNAPPROVED'::text) OR ((new.approval_status = 'APPROVED'::text) AND (old.approval_status = 'UNAPPROVED'::text)) OR ((new.approval_status = 'CANCELLED'::text) AND (old.approval_status = 'UNAPPROVED'::text)))) OR ((new.deleted_at IS NOT NULL) AND (old.deleted_at IS NULL) AND (new.approval_status = 'UNAPPROVED'::text)))) EXECUTE FUNCTION app_private.notify_ie_lifecycle_v1()",
+      "functionSha256": "de94c5f70d1aa1b8fc49e85018687eea5df9ded3d37fb3cb73f1bbe9642c6f2f"
+    },
+    {
+      "name": "z99_ie_change_log",
+      "definition": "CREATE TRIGGER z99_ie_change_log AFTER DELETE OR UPDATE ON public.income_expenses FOR EACH ROW EXECUTE FUNCTION app_private.log_income_expense_change()",
+      "functionSha256": "57ab1ba42a4a91553ce0db22800494bf73ad99559eab599ca8bae7cf251470d1"
+    }
+  ]
+}

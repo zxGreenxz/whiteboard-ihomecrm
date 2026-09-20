@@ -7,6 +7,19 @@
   ],
   "suites": [
     {
+      "id": "contract-settlement-harness-safety",
+      "runner": "node --test",
+      "ciJob": "quality-gates",
+      "command": "node --test scripts/test-contract-settlement-money.test.mjs",
+      "risk": "money",
+      "includes": ["scripts/test-contract-settlement-money.test.mjs"],
+      "ciJobs": [{"workflow": ".github/workflows/ci-gates.yml", "job": "quality-gates"}],
+      "ciCommandStep": "Contract settlement harness safety (no credentials)",
+      "environment": "ci",
+      "timeoutMinutes": 5,
+      "note": "Offline safety/outcome tests only. Does not execute the guarded DEMO writer harness or prove money reconciliation."
+    },
+    {
       "id": "organization-backup-envelope",
       "runner": "node --test",
       "ciJob": "quality-gates",
