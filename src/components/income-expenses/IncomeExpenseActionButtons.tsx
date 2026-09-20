@@ -31,17 +31,21 @@ export function IncomeExpenseActionButtons({
   onChoose,
   moneyAllowed = true,
   refundReverseAllowed = false,
+  layout = "icons",
+  disabled = false,
 }: {
   controller: IncomeExpenseActionsController;
   id: string;
   onChoose?: () => void;
   moneyAllowed?: boolean;
   refundReverseAllowed?: boolean;
+  layout?: "icons" | "labeled";
+  disabled?: boolean;
 }) {
   const availability = controller.availability(id);
   return (
     <div
-      className="flex flex-wrap items-center gap-1.5"
+      className={layout === "labeled" ? "flex flex-col gap-2" : "flex flex-wrap items-center gap-1.5"}
       aria-label="Thao tác phiếu"
     >
       {definitions.map(([action, label, Icon]) => {
@@ -53,14 +57,15 @@ export function IncomeExpenseActionButtons({
             action === "supplement" ||
             moneyAllowed ||
             (action === "reverse" && refundReverseAllowed),
-          enabled = a.enabled && sourceAllowed && !controller.dismissalBlocked;
+          enabled = a.enabled && sourceAllowed && !controller.dismissalBlocked && !disabled;
         return (
           <Button
             key={action}
             type="button"
             variant="outline"
-            size="icon"
-            className="h-8 w-8"
+            size={layout === "labeled" ? "default" : "icon"}
+            className={layout === "labeled" ? "cs-action-button w-full whitespace-normal" : "h-8 w-8"}
+            data-primary={["resubmitReview", "approveAndPost", "post"].includes(action)}
             aria-label={label}
             disabled={!enabled}
             title={
@@ -75,6 +80,7 @@ export function IncomeExpenseActionButtons({
             }}
           >
             <Icon className="h-4 w-4" />
+            {layout === "labeled" && <span>{label}</span>}
           </Button>
         );
       })}

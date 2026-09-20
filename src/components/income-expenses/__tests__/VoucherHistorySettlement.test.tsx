@@ -22,6 +22,15 @@ vi.mock("@/components/deposits/ReservationSettlementStatus", () => ({ Reservatio
 
 afterEach(cleanup);
 describe("VoucherHistoryDialog settlement history", () => {
+  it.each([
+    ['APPROVED', 'Đã duyệt · chưa xác minh thời điểm'],
+    ['UNAPPROVED', 'Chưa duyệt'],
+    [undefined, 'Chưa xác minh trạng thái duyệt'],
+  ] as const)('does not infer approval from an absent timestamp (%s)', (approval_status, expected) => {
+    render(<MemoryRouter><VoucherHistoryDialog open onOpenChange={() => {}} voucher={{ id: 'voucher', approval_status }} /></MemoryRouter>);
+    expect(screen.getByText(expected)).toBeTruthy();
+    if (approval_status !== 'UNAPPROVED') expect(screen.queryByText('Chưa duyệt')).toBeNull();
+  });
   it("shows actor, reason, and navigable source and generated vouchers", () => {
     render(<MemoryRouter><VoucherHistoryDialog open onOpenChange={() => {}} voucher={{ id: "10000000-0000-4000-8000-000000000002", code: "PT-01" }} /></MemoryRouter>);
     expect(screen.getByText(/Nguyễn Quản lý/)).toBeTruthy();

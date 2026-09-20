@@ -13,6 +13,7 @@ export interface SettlementDetailContext {
   selection: SettlementSectionSelection;
   row: SettlementRow | undefined;
   event: SettlementBusinessEvent | undefined;
+  events: readonly SettlementBusinessEvent[];
   rows: readonly SettlementRow[];
   paymentsComplete: boolean;
   eventsComplete: boolean;
@@ -85,7 +86,7 @@ function SettlementSectionContent({ scope, period, onPeriodChange, buildings, re
     </div>
     {selection && renderDetail({ selection, row: selection.kind === 'event' ? undefined : findSettlementSelection(payments.rows, selection),
       event: selection.kind === 'event' ? events.rows.find(event => event.id === selection.eventId) : undefined,
-      rows: payments.rows, paymentsComplete, eventsComplete: events.complete, error: payments.error || events.error,
+      rows: payments.rows, events: events.rows, paymentsComplete, eventsComplete: events.complete, error: payments.error || events.error,
       refreshing: payments.fetching || events.fetching,
       fallbackFocusRef, onSelect: setSelection, onClose: () => setSelection(null), refreshRequired })}
   </div>;

@@ -99,6 +99,17 @@
 .contract-settlement .cs-block-title { padding: 11px 13px; border-bottom: 1px solid var(--cs-line); font-size: 12.5px; font-weight: 700; }
 .contract-settlement .cs-block-content { padding: 12px 13px; }
 .contract-settlement .cs-note { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-family: inherit; font-size: 12px; line-height: 1.65; }
+.contract-settlement .cs-detail-stack { display: flex; flex-direction: column; gap: 14px; }
+.contract-settlement .cs-detail-fields { display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: 9px 12px; margin: 0; }
+.contract-settlement .cs-detail-fields dt { color: var(--cs-muted); font-size: 11px; }
+.contract-settlement .cs-detail-fields dd { margin: 0; overflow-wrap: anywhere; }
+.contract-settlement .cs-action-button { border-radius: 9px; font-size: 12px; }
+.contract-settlement .cs-action-button[data-primary="true"] { background: var(--cs-green); color: #fff; border-color: var(--cs-green); }
+.contract-settlement .cs-detail-attachments { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.contract-settlement .cs-detail-attachments button { width: 72px; height: 72px; overflow: hidden; border: 1px solid var(--cs-line); border-radius: 8px; }
+.contract-settlement .cs-detail-attachments img { width: 100%; height: 100%; object-fit: cover; }
+.contract-settlement .cs-linked-payment { display: flex; flex-direction: column; gap: 4px; width: 100%; padding: 10px 0; text-align: left; border: 0; border-bottom: 1px solid var(--cs-line); background: transparent; }
+.contract-settlement .cs-linked-payment span { font-size: 11px; color: var(--cs-muted); }
 .contract-settlement .cs-actions { display: flex; flex-direction: column; gap: 8px; }
 .contract-settlement .cs-actions .cs-button { width: 100%; padding: 10px 12px; }
 .contract-settlement.cs-modal { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 50; width: calc(100% - 40px); max-width: 1040px; max-height: calc(100dvh - 40px); display: flex; flex-direction: column; background: #fff; border-radius: 16px; box-shadow: 0 24px 70px #1b181359; overflow: hidden; font-size: 13px; }

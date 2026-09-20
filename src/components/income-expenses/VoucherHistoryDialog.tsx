@@ -37,6 +37,7 @@ export interface VoucherHistoryTarget {
   /** Mốc lập lấy từ dòng danh sách khi phiếu CHƯA huỷ (bảng dấu vết chưa có dòng). */
   created_at?: string | null;
   approved_at?: string | null;
+  approval_status?: string | null;
   total_amount?: number | null;
 }
 
@@ -130,7 +131,10 @@ const VoucherHistoryDialog = ({ open, onOpenChange, voucher }: Props) => {
                 icon={<Stamp className="h-4 w-4" />}
                 label="Duyệt"
                 tone="bg-emerald-100 text-emerald-700"
-                value={approvedAt ? formatLogMoment(approvedAt) : "Chưa duyệt"}
+                value={approvedAt ? formatLogMoment(approvedAt)
+                  : voucher?.approval_status === "APPROVED" ? "Đã duyệt · chưa xác minh thời điểm"
+                    : voucher?.approval_status === "UNAPPROVED" ? "Chưa duyệt"
+                      : "Chưa xác minh trạng thái duyệt"}
               />
               {cancellation?.cancelled_at ? (
                 <Milestone
