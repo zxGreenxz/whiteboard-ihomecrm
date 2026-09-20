@@ -62,6 +62,13 @@ export interface AccountingPreflight {
   fixture: AccountingFixture | null;
 }
 
+export interface AccountingAccessScope {
+  marker: string;
+  actorId: string;
+  buildingId: string;
+  receivingAccountId: string;
+}
+
 export interface AccountingState {
   invoiceTotal: number;
   invoicePaid: number;
@@ -76,6 +83,10 @@ export interface AccountingState {
   sourceDeposit: number;
   reversalPnl: number;
   reversalDeposit: number;
+  cancelledPnl: number;
+  cancelledDeposit: number;
+  cancelledVoucherCount: number;
+  postingNetByAccount: { accountId: string; amount: number }[];
   activeReceiptCount: number;
   reversedPaymentCount: number;
   invalidReversalCount: number;
@@ -176,6 +187,120 @@ function uuidLiteral(value: string): string {
 
 function number(value: number | string | null | undefined): number {
   return Number(value) || 0;
+}
+
+function validateAccountingAccessScope(scope: AccountingAccessScope): void {
+  if (!/^\[E2E-ACCOUNTING:[A-Za-z0-9-]+\]$/.test(scope.marker)) {
+    throw new Error('Accounting access marker không hợp lệ.');
+  }
+  for (const id of [scope.actorId, scope.buildingId, scope.receivingAccountId]) uuidLiteral(id);
+}
+
+/**
+ * Permission to collect at a building does not imply possession of its cashbook.
+ * Keep production RLS/UI intact; give this DEMO run its own expiring KNOWER grant.
+ * Never borrow another run's temporary grant: its teardown could revoke our access.
+ */
+export async function prepareAccountingFixtureAccess(scope: AccountingAccessScope): Promise<string[]> {
+  validateAccountingAccessScope(scope);
+  const rows = await runSql<{ has_access: boolean; owned_binding_ids: string[] }>(`
+BEGIN;
+SET LOCAL statement_timeout = '30s';
+SELECT pg_advisory_xact_lock(hashtextextended(${sqlLiteral(scope.marker)}, 0));
+DO $access$
+DECLARE
+  v_membership uuid;
+BEGIN
+  SELECT membership.id INTO v_membership
+  FROM public.organization_memberships membership
+  JOIN auth.users actor ON actor.id = membership.user_id
+  WHERE membership.organization_id = ${uuidLiteral(DEMO_ORG_ID)}
+    AND membership.status = 'ACTIVE'
+    AND actor.id = ${uuidLiteral(scope.actorId)}
+    AND actor.email = ${sqlLiteral(DEMO_OWNER_EMAIL)};
+  IF v_membership IS NULL OR NOT EXISTS (
+    SELECT 1 FROM public.buildings building
+    JOIN public.accounts account ON account.id = building.default_account_id_tt
+    WHERE building.id = ${uuidLiteral(scope.buildingId)}
+      AND building.organization_id = ${uuidLiteral(DEMO_ORG_ID)}
+      AND building.deleted_at IS NULL AND building.is_virtual = false
+      AND account.id = ${uuidLiteral(scope.receivingAccountId)}
+      AND account.organization_id = ${uuidLiteral(DEMO_ORG_ID)}
+      AND account.deleted_at IS NULL AND account.is_virtual = false
+  ) THEN
+    RAISE EXCEPTION 'Accounting access scope is not the expected DEMO fixture';
+  END IF;
+  IF NOT COALESCE((SELECT allowed FROM app_private.authorize_tenant_action_v3(
+    ${uuidLiteral(scope.actorId)}, ${uuidLiteral(DEMO_ORG_ID)}, 'thu_tien.collect',
+    ${uuidLiteral(scope.buildingId)}, ${uuidLiteral(scope.receivingAccountId)}
+  )), false) THEN
+    RAISE EXCEPTION 'Accounting DEMO actor lacks collection permission';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.cashbook_possession_bindings binding
+    WHERE binding.organization_id = ${uuidLiteral(DEMO_ORG_ID)}
+      AND binding.cashbook_id = ${uuidLiteral(scope.receivingAccountId)}
+      AND binding.membership_id = v_membership
+      AND binding.possession_kind IN ('CUSTODIAN', 'KNOWER')
+      AND binding.valid_from <= now()
+      AND (binding.valid_to IS NULL OR binding.valid_to > now())
+      AND (COALESCE(binding.reason, '') NOT LIKE '[E2E-ACCOUNTING:%'
+           OR binding.reason = ${sqlLiteral(scope.marker)})
+  ) THEN
+    INSERT INTO public.cashbook_possession_bindings
+      (organization_id, cashbook_id, membership_id, possession_kind, valid_from, valid_to, reason)
+    VALUES (${uuidLiteral(DEMO_ORG_ID)}, ${uuidLiteral(scope.receivingAccountId)},
+      v_membership, 'KNOWER', now(), now() + interval '15 minutes', ${sqlLiteral(scope.marker)});
+  END IF;
+END;
+$access$;
+SELECT app_private.ie_has_cashbook_possession_v1(
+  ${uuidLiteral(DEMO_ORG_ID)}, ${uuidLiteral(scope.receivingAccountId)}, membership.id
+) AS has_access,
+COALESCE((SELECT jsonb_agg(binding.id ORDER BY binding.id)
+  FROM public.cashbook_possession_bindings binding
+  WHERE binding.organization_id = ${uuidLiteral(DEMO_ORG_ID)}
+    AND binding.cashbook_id = ${uuidLiteral(scope.receivingAccountId)}
+    AND binding.membership_id = membership.id
+    AND binding.reason = ${sqlLiteral(scope.marker)}
+), '[]'::jsonb) AS owned_binding_ids
+FROM public.organization_memberships membership
+WHERE membership.organization_id = ${uuidLiteral(DEMO_ORG_ID)}
+  AND membership.user_id = ${uuidLiteral(scope.actorId)} AND membership.status = 'ACTIVE';
+COMMIT;
+`);
+  const result = rows.find(row => row.has_access === true && Array.isArray(row.owned_binding_ids));
+  if (!result) throw new Error('Không xác minh được quyền sổ TT sau khi chuẩn bị fixture.');
+  return result.owned_binding_ids;
+}
+
+/** Scope exists before setup, so cleanup also covers a lost setup response. */
+export async function cleanupAccountingFixtureAccess(scope: AccountingAccessScope): Promise<void> {
+  validateAccountingAccessScope(scope);
+  const rows = await runSql<{ remaining: number }>(`
+BEGIN;
+SET LOCAL statement_timeout = '30s';
+SELECT pg_advisory_xact_lock(hashtextextended(${sqlLiteral(scope.marker)}, 0));
+DELETE FROM public.cashbook_possession_bindings binding
+USING public.organization_memberships membership
+WHERE binding.organization_id = ${uuidLiteral(DEMO_ORG_ID)}
+  AND binding.cashbook_id = ${uuidLiteral(scope.receivingAccountId)}
+  AND binding.membership_id = membership.id
+  AND membership.organization_id = ${uuidLiteral(DEMO_ORG_ID)}
+  AND membership.user_id = ${uuidLiteral(scope.actorId)}
+  AND binding.possession_kind = 'KNOWER'
+  AND binding.reason = ${sqlLiteral(scope.marker)};
+SELECT count(*)::int AS remaining
+FROM public.cashbook_possession_bindings binding
+JOIN public.organization_memberships membership ON membership.id = binding.membership_id
+WHERE binding.organization_id = ${uuidLiteral(DEMO_ORG_ID)}
+  AND binding.cashbook_id = ${uuidLiteral(scope.receivingAccountId)}
+  AND membership.organization_id = ${uuidLiteral(DEMO_ORG_ID)}
+  AND membership.user_id = ${uuidLiteral(scope.actorId)}
+  AND binding.reason = ${sqlLiteral(scope.marker)};
+COMMIT;
+`);
+  if (!rows.some(row => row.remaining === 0)) throw new Error('Không xác minh được việc dọn quyền fixture TT.');
 }
 
 /**
@@ -508,11 +633,25 @@ WITH target_payments AS (
   FROM public.invoice_payment_allocations allocation
   WHERE allocation.collection_id = ${uuidLiteral(collectionId)}
 ), source_items AS (
-  SELECT item.accounting_class, item.amount
+  SELECT item.accounting_class, item.amount, voucher.id AS voucher_id,
+    voucher.approval_status, voucher.posting_status
   FROM public.income_expense_items item
   JOIN public.income_expenses voucher ON voucher.id = item.income_expense_id
   WHERE voucher.payment_collection_id = ${uuidLiteral(collectionId)}
     AND voucher.type = 'INCOME'
+), cancelled_vouchers AS (
+  SELECT DISTINCT item.voucher_id
+  FROM source_items item
+  JOIN app_private.income_expense_cancellations cancellation
+    ON cancellation.income_expense_id = item.voucher_id
+   AND cancellation.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+  WHERE item.approval_status = 'CANCELLED' AND item.posting_status = 'REVERSED'
+), posting_totals AS (
+  SELECT line.account_id, sum(line.signed_amount) AS amount
+  FROM public.income_expense_posting_lines line
+  JOIN public.income_expense_postings posting ON posting.id = line.posting_id
+  WHERE posting.voucher_id IN (SELECT voucher_id FROM source_items)
+  GROUP BY line.account_id
 ), reversal_items AS (
   SELECT item.accounting_class, item.amount
   FROM public.income_expense_items item
@@ -541,6 +680,13 @@ SELECT
   COALESCE((SELECT sum(amount) FROM source_items WHERE accounting_class = 'DEPOSIT'), 0) AS source_deposit,
   COALESCE((SELECT sum(amount) FROM reversal_items WHERE accounting_class = 'PNL'), 0) AS reversal_pnl,
   COALESCE((SELECT sum(amount) FROM reversal_items WHERE accounting_class = 'DEPOSIT'), 0) AS reversal_deposit,
+  COALESCE((SELECT sum(amount) FROM source_items WHERE accounting_class = 'PNL'
+    AND voucher_id IN (SELECT voucher_id FROM cancelled_vouchers)), 0) AS cancelled_pnl,
+  COALESCE((SELECT sum(amount) FROM source_items WHERE accounting_class = 'DEPOSIT'
+    AND voucher_id IN (SELECT voucher_id FROM cancelled_vouchers)), 0) AS cancelled_deposit,
+  (SELECT count(*) FROM cancelled_vouchers) AS cancelled_voucher_count,
+  COALESCE((SELECT jsonb_agg(jsonb_build_object('accountId', account_id, 'amount', amount)
+    ORDER BY account_id) FROM posting_totals), '[]'::jsonb) AS posting_net_by_account,
   (SELECT count(*) FROM public.active_payment_receipts receipt WHERE receipt.invoice_id = invoice.id) AS active_receipt_count,
   (SELECT count(*) FROM target_payments WHERE reversed_at IS NOT NULL) AS reversed_payment_count,
   COALESCE((
@@ -570,6 +716,10 @@ WHERE invoice.id = ${uuidLiteral(invoiceId)}
     sourceDeposit: number(row.source_deposit as string),
     reversalPnl: number(row.reversal_pnl as string),
     reversalDeposit: number(row.reversal_deposit as string),
+    cancelledPnl: number(row.cancelled_pnl as string),
+    cancelledDeposit: number(row.cancelled_deposit as string),
+    cancelledVoucherCount: number(row.cancelled_voucher_count as string),
+    postingNetByAccount: row.posting_net_by_account as AccountingState['postingNetByAccount'],
     activeReceiptCount: number(row.active_receipt_count as string),
     reversedPaymentCount: number(row.reversed_payment_count as string),
     invalidReversalCount: number(row.invalid_reversal_count as string),
@@ -879,6 +1029,13 @@ WHERE link.contract_id IN (SELECT id FROM _e2e_contracts)
 DELETE FROM app_private.payment_reversals reversal
 WHERE reversal.original_payment_id IN (SELECT id FROM _e2e_payments)
    OR reversal.reversal_voucher_id IN (SELECT id FROM _e2e_vouchers);
+-- Reversal leaves an append-only cancellation row whose FK cascades on voucher
+-- deletion. Remove only this DEMO fixture's rows, then restore the guard at once.
+ALTER TABLE app_private.income_expense_cancellations DISABLE TRIGGER a00_ie_cancellations_append_only;
+DELETE FROM app_private.income_expense_cancellations cancellation
+WHERE cancellation.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+  AND cancellation.income_expense_id IN (SELECT id FROM _e2e_vouchers);
+ALTER TABLE app_private.income_expense_cancellations ENABLE TRIGGER a00_ie_cancellations_append_only;
 DELETE FROM public.income_expense_posting_evidence link
 WHERE link.posting_id IN (SELECT id FROM _e2e_postings)
    OR link.evidence_id IN (SELECT id FROM _e2e_evidence);
@@ -906,10 +1063,6 @@ ALTER TABLE public.finance_invoice_components DISABLE TRIGGER USER;
 DELETE FROM public.finance_invoice_components component
 WHERE component.invoice_id IN (SELECT id FROM _e2e_invoices);
 ALTER TABLE public.finance_invoice_components ENABLE TRIGGER USER;
-ALTER TABLE public.finance_invoice_component_manifests DISABLE TRIGGER USER;
-DELETE FROM public.finance_invoice_component_manifests manifest
-WHERE manifest.invoice_id IN (SELECT id FROM _e2e_invoices);
-ALTER TABLE public.finance_invoice_component_manifests ENABLE TRIGGER USER;
 DELETE FROM public.customer_credit_lots lot
 WHERE lot.id IN (SELECT id FROM _e2e_credit_lots);
 DELETE FROM public.excess_amounts excess
@@ -924,6 +1077,12 @@ DELETE FROM public.payments payment
 WHERE payment.id IN (SELECT id FROM _e2e_payments);
 DELETE FROM public.invoice_payment_collections collection
 WHERE collection.id IN (SELECT id FROM _e2e_collections);
+-- Collections retain their manifest identity via an ON DELETE RESTRICT FK.
+-- Delete the fixture collections before their manifests, inside the same transaction.
+ALTER TABLE public.finance_invoice_component_manifests DISABLE TRIGGER USER;
+DELETE FROM public.finance_invoice_component_manifests manifest
+WHERE manifest.invoice_id IN (SELECT id FROM _e2e_invoices);
+ALTER TABLE public.finance_invoice_component_manifests ENABLE TRIGGER USER;
 
 -- Finance V2 (24/07): canonical_write_operations là ledger APPEND-ONLY —
 -- guard_canonical_write_operation() chặn DELETE (55000) kể cả replica role.
@@ -960,6 +1119,24 @@ WHERE room.id IN (SELECT room_id FROM _e2e_contracts)
 
 DO $verify$
 BEGIN
+  -- Append-only audit ledgers are intentionally retained; fixture financial
+  -- rows must not survive teardown. Possession has its own cleanup/readback.
+  IF EXISTS (SELECT 1 FROM public.invoices WHERE id IN (SELECT id FROM _e2e_invoices))
+    OR EXISTS (SELECT 1 FROM public.invoice_payment_collections WHERE id IN (SELECT id FROM _e2e_collections))
+    OR EXISTS (SELECT 1 FROM public.invoice_payment_tenders WHERE id IN (SELECT id FROM _e2e_tenders))
+    OR EXISTS (SELECT 1 FROM public.payments WHERE id IN (SELECT id FROM _e2e_payments))
+    OR EXISTS (SELECT 1 FROM public.income_expenses WHERE id IN (SELECT id FROM _e2e_vouchers))
+    OR EXISTS (SELECT 1 FROM public.income_expense_postings WHERE id IN (SELECT id FROM _e2e_postings))
+    OR EXISTS (SELECT 1 FROM public.income_expense_posting_lines WHERE posting_id IN (SELECT id FROM _e2e_postings))
+    OR EXISTS (SELECT 1 FROM app_private.income_expense_cancellations WHERE income_expense_id IN (SELECT id FROM _e2e_vouchers))
+    OR EXISTS (SELECT 1 FROM public.finance_invoice_component_manifests WHERE invoice_id IN (SELECT id FROM _e2e_invoices))
+    OR EXISTS (SELECT 1 FROM public.finance_evidence_objects WHERE id IN (SELECT id FROM _e2e_evidence))
+    OR EXISTS (SELECT 1 FROM public.customer_credit_lots WHERE id IN (SELECT id FROM _e2e_credit_lots))
+    OR EXISTS (SELECT 1 FROM public.excess_amounts WHERE id IN (SELECT id FROM _e2e_excess))
+  THEN
+    RAISE EXCEPTION 'Accounting E2E cleanup left fixture financial data behind';
+  END IF;
+
   IF EXISTS (
     SELECT 1 FROM public.contracts contract
     WHERE contract.id = (SELECT contract_id FROM _e2e_cleanup_input)

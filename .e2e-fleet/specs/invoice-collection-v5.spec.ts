@@ -1,10 +1,14 @@
 import { expect, test, type Locator, type Page, type Response } from '@playwright/test';
 import { credentials, login, trackConsoleErrors } from './auth';
+import { trackAccountingBrowserAccess } from './accounting-browser-access';
+import { chanChayTrenProduction, xacMinhBanBuild } from './buildAttestation';
 import {
   cleanupAccountingFixture,
+  cleanupAccountingFixtureAccess,
   getAccountingPreflight,
   inspectAccountingState,
   inspectCustomerCreditState,
+  prepareAccountingFixtureAccess,
   type AccountingFixture,
   type AccountingPreflight,
   type AccountingState,
@@ -174,6 +178,10 @@ function assertCollectedState(state: AccountingState) {
   expect(state.sourceDeposit).toBe(state.depositAllocated);
   expect(state.reversalPnl).toBe(0);
   expect(state.reversalDeposit).toBe(0);
+  expect(state.cancelledVoucherCount).toBe(0);
+  expect(state.cancelledPnl + state.cancelledDeposit).toBe(0);
+  expect(state.postingNetByAccount.length).toBeGreaterThan(0);
+  expect(state.postingNetByAccount.reduce((sum, line) => sum + line.amount, 0)).toBe(state.invoiceTotal);
   expect(state.activeReceiptCount).toBe(2);
   expect(state.reversedPaymentCount).toBe(0);
   expect(state.invalidReversalCount).toBe(0);
@@ -185,8 +193,15 @@ function assertReversedState(state: AccountingState) {
   expect(state.collectionStatus).toBe('REVERSED');
   expect(state.activeReceiptCount).toBe(0);
   expect(state.reversedPaymentCount).toBe(2);
-  expect(state.reversalPnl).toBe(state.pnlAllocated);
-  expect(state.reversalDeposit).toBe(state.depositAllocated);
+  // DEMO uses flexible accounting: cancel the originals and mirror their postings,
+  // as required by 20260730150000_invoice_collection_inplace_cancel.sql.
+  expect(state.reversalPnl).toBe(0);
+  expect(state.reversalDeposit).toBe(0);
+  expect(state.cancelledPnl).toBe(state.pnlAllocated);
+  expect(state.cancelledDeposit).toBe(state.depositAllocated);
+  expect(state.cancelledVoucherCount).toBe(state.tenderCount);
+  expect(state.postingNetByAccount.length).toBeGreaterThan(0);
+  for (const account of state.postingNetByAccount) expect(account.amount).toBe(0);
   expect(state.invalidReversalCount).toBe(0);
 }
 
@@ -235,8 +250,12 @@ async function createContractThroughUi(
 
   const rentInput = dialog.locator('input[name="rent_price"]');
   const depositInput = dialog.locator('input[name="total_deposit"]');
+  await dialog.getByRole('button', { name: 'Sửa tiền thuê', exact: true }).click();
+  await expect(rentInput).toBeEditable();
   await rentInput.fill(String(RENT_AMOUNT));
   await rentInput.press('Tab');
+  await dialog.getByRole('button', { name: 'Sửa tiền cọc', exact: true }).click();
+  await expect(depositInput).toBeEditable();
   await expect(depositInput).toHaveValue('113.000');
   await depositInput.fill(String(DEPOSIT_AMOUNT));
   await depositInput.press('Tab');
@@ -424,12 +443,15 @@ async function reverseCollectionThroughUi(page: Page, fixture: AccountingFixture
 
 test('V5 UI: contract -> first invoice -> multi-tender collection -> reversal', async ({ page }) => {
   test.setTimeout(240_000);
+  chanChayTrenProduction();
   credentials('chunha');
 
   const dates = accountingDates();
   const preflight = await requiredPreflight();
   const fixture = preflight.fixture;
   const marker = `[E2E-ACCOUNTING:${Date.now()}-${Math.random().toString(16).slice(2)}]`;
+  const accessScope = { marker, actorId: preflight.actorId, buildingId: fixture.buildingId, receivingAccountId: fixture.receivingAccountId };
+  const verifyReceivingAccount = trackAccountingBrowserAccess(page, preflight.managementProjectRef, preflight.actorId);
   const consoleErrors = trackConsoleErrors(page);
   const browserProjectRefs = trackBrowserSupabaseProjectRefs(page);
   let committedContractId: string | null = null;
@@ -437,6 +459,9 @@ test('V5 UI: contract -> first invoice -> multi-tender collection -> reversal', 
   try {
     await login(page, 'chunha');
     await expectBrowserProject(page, browserProjectRefs, preflight.managementProjectRef);
+    await xacMinhBanBuild(page);
+    await prepareAccountingFixtureAccess(accessScope);
+    await verifyReceivingAccount(fixture.receivingAccountId);
     await page.evaluate(() => {
       for (const key of Object.keys(localStorage)) {
         if (key.startsWith('flt:')) localStorage.removeItem(key);
@@ -467,18 +492,25 @@ test('V5 UI: contract -> first invoice -> multi-tender collection -> reversal', 
     });
     expect(consoleErrors, `console cuối chuỗi: ${consoleErrors.join(' | ')}`).toEqual([]);
   } finally {
-    await cleanupAccountingFixture(marker, committedContractId);
+    try {
+      await cleanupAccountingFixture(marker, committedContractId);
+    } finally {
+      await cleanupAccountingFixtureAccess(accessScope);
+    }
   }
 });
 
 test('V5 UI: TT overpay is forced into customer credit for the next period', async ({ page }) => {
   test.setTimeout(240_000);
+  chanChayTrenProduction();
   credentials('chunha');
 
   const dates = accountingDates();
   const preflight = await requiredPreflight();
   const fixture = preflight.fixture;
   const marker = `[E2E-ACCOUNTING:${Date.now()}-${Math.random().toString(16).slice(2)}]`;
+  const accessScope = { marker, actorId: preflight.actorId, buildingId: fixture.buildingId, receivingAccountId: fixture.receivingAccountId };
+  const verifyReceivingAccount = trackAccountingBrowserAccess(page, preflight.managementProjectRef, preflight.actorId);
   const consoleErrors = trackConsoleErrors(page);
   const browserProjectRefs = trackBrowserSupabaseProjectRefs(page);
   let committedContractId: string | null = null;
@@ -486,6 +518,9 @@ test('V5 UI: TT overpay is forced into customer credit for the next period', asy
   try {
     await login(page, 'chunha');
     await expectBrowserProject(page, browserProjectRefs, preflight.managementProjectRef);
+    await xacMinhBanBuild(page);
+    await prepareAccountingFixtureAccess(accessScope);
+    await verifyReceivingAccount(fixture.receivingAccountId);
 
     const created = await createContractThroughUi(page, fixture, marker, dates, (contractId) => {
       committedContractId = contractId;
@@ -511,6 +546,10 @@ test('V5 UI: TT overpay is forced into customer credit for the next period', asy
     });
     expect(consoleErrors, `console sau thu dư TT: ${consoleErrors.join(' | ')}`).toEqual([]);
   } finally {
-    await cleanupAccountingFixture(marker, committedContractId);
+    try {
+      await cleanupAccountingFixture(marker, committedContractId);
+    } finally {
+      await cleanupAccountingFixtureAccess(accessScope);
+    }
   }
 });

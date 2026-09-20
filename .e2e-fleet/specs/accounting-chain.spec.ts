@@ -1,9 +1,13 @@
 import { expect, test, type Locator, type Page, type Response } from '@playwright/test';
 import { credentials, login, trackConsoleErrors } from './auth';
+import { trackAccountingBrowserAccess } from './accounting-browser-access';
+import { chanChayTrenProduction, xacMinhBanBuild } from './buildAttestation';
 import {
   cleanupAccountingFixture,
+  cleanupAccountingFixtureAccess,
   getAccountingPreflight,
   inspectAccountingState,
+  prepareAccountingFixtureAccess,
   type AccountingFixture,
   type AccountingPreflight,
   type AccountingState,
@@ -180,21 +184,29 @@ function paymentCard(dialog: Locator, index: number): Locator {
 
 function reportRevenueRow(page: Page, roomName: string): Locator {
   return page
-    .locator('tbody tr')
+    .locator('.ph-panel--income .ph-panel__scroll > .ph-row')
     .filter({ hasText: roomName })
-    .filter({ has: page.locator('td:last-child button') })
+    .filter({ has: page.locator('.ph-row__amt button') })
     .first();
 }
 
 async function reversalRowsTotal(page: Page, roomName: string): Promise<number> {
   const rows = page
-    .locator('tbody tr')
+    .locator('.ph-panel__scroll > .ph-row')
     .filter({ hasText: roomName })
     .filter({ hasText: /Hoàn tác thu tiền/i });
   let total = 0;
   for (let index = 0; index < (await rows.count()); index += 1) {
-    total += parseVnd(await rows.nth(index).locator('td').last().textContent());
+    total += parseVnd(await rows.nth(index).locator('.ph-row__amt').textContent());
   }
+  return total;
+}
+
+async function roomRevenueTotal(page: Page, roomName: string): Promise<number> {
+  const amounts = page.locator('.ph-panel--income .ph-panel__scroll > .ph-row')
+    .filter({ hasText: roomName }).locator('.ph-row__amt button');
+  let total = 0;
+  for (const amount of await amounts.allTextContents()) total += parseVnd(amount);
   return total;
 }
 
@@ -221,6 +233,10 @@ function assertCollectedState(state: AccountingState) {
   expect(state.sourceDeposit).toBe(state.depositAllocated);
   expect(state.reversalPnl).toBe(0);
   expect(state.reversalDeposit).toBe(0);
+  expect(state.cancelledVoucherCount).toBe(0);
+  expect(state.cancelledPnl + state.cancelledDeposit).toBe(0);
+  expect(state.postingNetByAccount.length).toBeGreaterThan(0);
+  expect(state.postingNetByAccount.reduce((sum, line) => sum + line.amount, 0)).toBe(state.invoiceTotal);
   expect(state.activeReceiptCount).toBe(2);
   expect(state.reversedPaymentCount).toBe(0);
   expect(state.invalidReversalCount).toBe(0);
@@ -232,8 +248,15 @@ function assertReversedState(state: AccountingState) {
   expect(state.collectionStatus).toBe('REVERSED');
   expect(state.activeReceiptCount).toBe(0);
   expect(state.reversedPaymentCount).toBe(2);
-  expect(state.reversalPnl).toBe(state.pnlAllocated);
-  expect(state.reversalDeposit).toBe(state.depositAllocated);
+  // DEMO uses flexible accounting: cancel the originals and mirror their postings,
+  // as required by 20260730150000_invoice_collection_inplace_cancel.sql.
+  expect(state.reversalPnl).toBe(0);
+  expect(state.reversalDeposit).toBe(0);
+  expect(state.cancelledPnl).toBe(state.pnlAllocated);
+  expect(state.cancelledDeposit).toBe(state.depositAllocated);
+  expect(state.cancelledVoucherCount).toBe(state.tenderCount);
+  expect(state.postingNetByAccount.length).toBeGreaterThan(0);
+  for (const account of state.postingNetByAccount) expect(account.amount).toBe(0);
   expect(state.invalidReversalCount).toBe(0);
 }
 
@@ -406,12 +429,15 @@ async function collectInvoiceThroughUi(
 
 test('contract -> first invoice -> multi-tender collection -> profit -> reversal', async ({ page }) => {
   test.setTimeout(240_000);
+  chanChayTrenProduction();
   credentials('chunha');
 
   const dates = accountingDates();
   const preflight = await requiredAccountingPreflight();
   const fixture = preflight.fixture;
   const marker = `[E2E-ACCOUNTING:${Date.now()}-${Math.random().toString(16).slice(2)}]`;
+  const accessScope = { marker, actorId: preflight.actorId, buildingId: fixture.buildingId, receivingAccountId: fixture.receivingAccountId };
+  const verifyReceivingAccount = trackAccountingBrowserAccess(page, preflight.managementProjectRef, preflight.actorId);
   const consoleErrors = trackConsoleErrors(page);
   const browserProjectRefs = trackBrowserSupabaseProjectRefs(page);
   let committedContractId: string | null = null;
@@ -419,6 +445,9 @@ test('contract -> first invoice -> multi-tender collection -> profit -> reversal
   try {
     await login(page, 'chunha');
     await expectBrowserProject(page, browserProjectRefs, preflight.managementProjectRef);
+    await xacMinhBanBuild(page);
+    await prepareAccountingFixtureAccess(accessScope);
+    await verifyReceivingAccount(fixture.receivingAccountId);
     await page.evaluate(() => {
       for (const key of Object.keys(localStorage)) {
         if (key.startsWith('flt:')) localStorage.removeItem(key);
@@ -457,16 +486,14 @@ test('contract -> first invoice -> multi-tender collection -> profit -> reversal
       }
     });
     await page.goto('/reports/finance/profit-distribution');
-    await expect(page.getByRole('heading', { name: 'Báo cáo Lợi Nhuận' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Báo cáo Lợi Nhuận', exact: true })).toBeVisible();
     await page.getByRole('tab', { name: 'BC Doanh Thu Chi Phí' }).click();
 
-    const monthCombobox = page
-      .locator('button[role="combobox"]')
-      .filter({ hasText: /^\d{2}-\d{4}$/ })
-      .first();
+    const monthCombobox = page.getByRole('combobox', { name: 'Chọn tháng', exact: true });
     await expect(monthCombobox).toBeVisible();
-    if ((await monthCombobox.textContent())?.trim() !== dates.monthSelect) {
-      await selectOption(page, monthCombobox, dates.monthSelect);
+    const monthOption = `Tháng ${dates.monthLabel}`;
+    if ((await monthCombobox.textContent())?.trim() !== monthOption) {
+      await selectOption(page, monthCombobox, monthOption);
     }
     await selectOption(
       page,
@@ -476,16 +503,16 @@ test('contract -> first invoice -> multi-tender collection -> profit -> reversal
 
     const revenueRow = reportRevenueRow(page, fixture.roomName);
     await expect(revenueRow).toBeVisible({ timeout: 30_000 });
-    await expect(revenueRow).toContainText('Tiền Phòng + Dịch Vụ:');
+    await expect(revenueRow).toContainText('Tiền Phòng + DV:');
     await expect(revenueRow).toContainText('Cọc:');
     const reportPnl = parseVnd(
-      await revenueRow.locator('td').last().getByRole('button').textContent(),
+      await revenueRow.locator('.ph-row__amt').getByRole('button').textContent(),
     );
     expect(reportPnl).toBe(collected.pnlAllocated);
     expect(created.invoiceTotal - reportPnl).toBe(DEPOSIT_AMOUNT);
     await expectHealthyVerification(page, dates.monthLabel);
 
-    await revenueRow.locator('td').last().getByRole('button').click();
+    await revenueRow.locator('.ph-row__amt').getByRole('button').click();
     const paymentsDialog = page.getByRole('dialog').filter({
       has: page.getByRole('heading', { name: 'Các lần thanh toán' }),
     });
@@ -527,14 +554,19 @@ test('contract -> first invoice -> multi-tender collection -> profit -> reversal
       contentType: 'application/json',
     });
 
-    await page.keyboard.press('Escape');
+    await paymentsDialog.getByRole('button', { name: 'Close', exact: true }).click();
     await expect(paymentsDialog).toBeHidden();
+    await expect.poll(() => roomRevenueTotal(page, fixture.roomName), { timeout: 30_000 }).toBe(0);
     await expect
       .poll(() => reversalRowsTotal(page, fixture.roomName), { timeout: 30_000 })
       .toBe(reversed.reversalPnl);
     await expectHealthyVerification(page, dates.monthLabel);
     expect(consoleErrors, `console cuối chuỗi: ${consoleErrors.join(' | ')}`).toEqual([]);
   } finally {
-    await cleanupAccountingFixture(marker, committedContractId);
+    try {
+      await cleanupAccountingFixture(marker, committedContractId);
+    } finally {
+      await cleanupAccountingFixtureAccess(accessScope);
+    }
   }
 });
