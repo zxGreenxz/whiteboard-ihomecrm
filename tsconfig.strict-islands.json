@@ -16,6 +16,10 @@
   },
   "include": [],
   "files": [
+    "src/lib/contractSettlementFinancialFacts.ts",
+    "src/lib/contractSettlementFinancialContext.ts",
+    "src/hooks/useContractSettlementFinancialFacts.ts",
+    "src/components/income-expenses/SettlementFinancialNote.tsx",
     "src/lib/buildingLegalOwner.ts",
     "src/hooks/useBuildingLegalOwnerForm.ts",
     "src/components/buildings/BuildingLegalOwnerFields.tsx",

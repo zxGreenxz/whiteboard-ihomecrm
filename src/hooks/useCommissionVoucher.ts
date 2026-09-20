@@ -1,3 +1,4 @@
+import { useContractSettlementFinancialFacts } from './useContractSettlementFinancialFacts';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { differenceInMonths } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
@@ -5,40 +6,13 @@ import { toast } from "sonner";
 import type { CommissionTier } from "@/types/building";
 import { isJsonObject, jsonArray } from "@/lib/jsonValue";
 import { batBuoc } from "@/lib/queryGuard";
-import {
-  parseCommissionVoucherFacts,
-  type CommissionVoucherFacts,
-} from "@/lib/commissionVoucherNote";
-
 // =============================================
 // Facts HĐ của một phiếu hoa hồng — dựng ghi chú LÚC XEM
 // =============================================
 
-/**
- * Gọi RPC get_commission_voucher_facts_v1 cho MỘT phiếu. RPC gate quyền theo
- * toà và bỏ qua im lặng phiếu không quyền / khác org ⇒ mảng rỗng là "không có
- * gì để hiện", không phải lỗi. `supabase.rpc` không bao giờ ném — lỗi nằm ở
- * `error`.
- */
-export const useCommissionVoucherFacts = (
-  voucherId: string | null | undefined,
-  enabled = true
-) => {
-  return useQuery({
-    queryKey: ["commission-voucher-facts", voucherId ?? null],
-    enabled: enabled && !!voucherId,
-    staleTime: 30_000,
-    queryFn: async (): Promise<CommissionVoucherFacts | null> => {
-      const { data, error } = await supabase.rpc(
-        "get_commission_voucher_facts_v1",
-        { p_voucher_ids: [batBuoc(voucherId, "voucherId")] }
-      );
-      if (error) throw error;
-      const row = (data ?? [])[0];
-      return row ? parseCommissionVoucherFacts(row.facts) : null;
-    },
-  });
-};
+/** Shared authenticated financial context; unavailable facts are never inferred from empty RPC rows. */
+export const useCommissionVoucherFacts = (voucherId: string | null | undefined, enabled = true) =>
+  useContractSettlementFinancialFacts({ roomId: null, contractId: null, voucherId: voucherId ?? null }, enabled);
 
 // =============================================
 // Utils

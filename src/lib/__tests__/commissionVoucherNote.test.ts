@@ -149,3 +149,7 @@ describe("parseCommissionVoucherFacts — không tin cấu trúc jsonb", () => {
     expect(parseCommissionVoucherFacts({ commission_kind: "khac" })!.commission_kind).toBeNull();
   });
 });
+it('does not turn missing deposit, rent or day facts into negative business claims',()=>{
+ const lines=buildCommissionNoteLines(goc({deposit_paid:null,total_deposit:null,deposit_vouchers:[],deposit_enough:null,seven_days_ok:null,rent_price:null})).join('\n');
+ expect(lines).toContain('Cọc: chưa xác minh');expect(lines).toContain('Giá phòng chưa xác minh');expect(lines).toContain('Mốc 7 ngày: chưa xác minh');expect(lines).not.toContain('Chưa cọc:');
+});

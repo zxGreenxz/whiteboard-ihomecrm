@@ -8,7 +8,7 @@
 // =============================================================================
 
 import { useCommissionVoucherFacts } from "@/hooks/useCommissionVoucher";
-import { buildCommissionNoteLines } from "@/lib/commissionVoucherNote";
+import { SettlementFinancialNote } from './SettlementFinancialNote';
 
 export interface CommissionVoucherRef {
   id: string;
@@ -35,7 +35,7 @@ export function CommissionVoucherNote({ voucher, fallbackNotes, enabled = true }
     enabled
   );
 
-  const lines = facts ? buildCommissionNoteLines(facts) : null;
+
   const notes = fallbackNotes?.trim() || null;
 
   if (!isCommission) {
@@ -48,9 +48,9 @@ export function CommissionVoucherNote({ voucher, fallbackNotes, enabled = true }
         <div className="text-muted-foreground">Đang tính thông tin hợp đồng…</div>
       ) : isError ? (
         <div className="text-muted-foreground">Không đọc được thông tin hợp đồng.</div>
-      ) : lines ? (
+      ) : facts ? (
         <div className="whitespace-pre-line" data-testid="commission-voucher-note">
-          {lines.join("\n")}
+          <SettlementFinancialNote context={facts} />
         </div>
       ) : null}
       {notes ? (
