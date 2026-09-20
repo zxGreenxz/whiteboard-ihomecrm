@@ -90,6 +90,16 @@ beforeEach(() => {
   m.upload.mockResolvedValue("evidence");
 });
 afterEach(cleanup);
+it("allows dismissing an idle posting draft whose capability changed, while blocking submit", () => {
+  const c = controller("post");
+  c.selectedAvailability!.post = { ...c.selectedAvailability!.post, visible: true, enabled: false, reason: "Quyền đã thay đổi" };
+  render(<IncomeExpenseActionDialogs controller={c} />);
+  expect(posting().isSubmitting).toBe(false);
+  expect(posting()).toHaveProperty("submitDisabled", true);
+  act(() => posting().onOpenChange(false));
+  expect(c.close).toHaveBeenCalledTimes(1);
+  expect(c.commands.confirm).not.toHaveBeenCalled();
+});
 it("wires the complete voucher posting contract and all four evidence callbacks", async () => {
   const c = controller("post");
   render(<IncomeExpenseActionDialogs controller={c} />);

@@ -221,7 +221,8 @@ export function IncomeExpenseActionDialogs({
             /* Controller keeps the draft and classified outcome. */
           }
         }}
-        isSubmitting={blocked || !decision?.enabled}
+        isSubmitting={blocked}
+        submitDisabled={!decision?.enabled}
         feedback={feedback}
       />
     );

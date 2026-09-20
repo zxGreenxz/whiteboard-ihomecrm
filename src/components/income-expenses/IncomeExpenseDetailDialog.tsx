@@ -210,7 +210,7 @@ export function IncomeExpenseDetailDialog({
           <div className="flex items-center justify-between mt-1">
             <SectionTitle>Thông tin chung</SectionTitle>
             <div className="flex items-center gap-1.5">
-              {actions ? <IncomeExpenseActionButtons controller={actions} id={voucher.id} moneyAllowed={monetaryActionsAllowed} refundReverseAllowed={false} onChoose={() => { onBeforeAction?.(voucher); onOpenChange(false); }} /> : <>{showFullEdit && (
+              {actions ? <IncomeExpenseActionButtons controller={actions} id={voucher.id} moneyAllowed={monetaryActionsAllowed} refundReverseAllowed={actions.availability(voucher.id).reverse.enabled} onChoose={() => { onBeforeAction?.(voucher); onOpenChange(false); }} /> : <>{showFullEdit && (
                 <Button
                   size="icon"
                   variant="default"

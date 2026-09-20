@@ -115,6 +115,8 @@ export interface IncomeExpensePostingDialogProps {
   /** Không gọi API trực tiếp — assemble input rồi trả về caller. */
   onSubmit: (input: PostFinanceExecutionInput) => void | Promise<void>;
   isSubmitting?: boolean;
+  /** A changed decision prevents submission without trapping an idle draft. */
+  submitDisabled?: boolean;
   feedback?: React.ReactNode;
   /**
    * 7ai: biến ảnh ĐÃ đính kèm trên phiếu thành chứng từ hợp lệ (không tải lại).
@@ -330,6 +332,7 @@ export default function IncomeExpensePostingDialog({
   onUploadEvidence,
   onSubmit,
   isSubmitting = false,
+  submitDisabled = false,
   feedback,
   onAdoptAttachments,
   onAttachEvidence,
@@ -537,6 +540,7 @@ export default function IncomeExpensePostingDialog({
   );
 
   const submit = form.handleSubmit(async (values) => {
+    if (submitDisabled || isSubmitting || uploading || adopting || !capabilityOk) return;
     const input: PostFinanceExecutionInput = {
       subjectKind: voucher.subjectKind,
       subjectId: voucher.subjectId,
@@ -569,7 +573,7 @@ export default function IncomeExpensePostingDialog({
         {feedback}
         <Form {...form}>
           <form onSubmit={submit} className="space-y-4">
-            <fieldset disabled={isSubmitting || uploading || adopting} className="space-y-4">
+            <fieldset disabled={submitDisabled || isSubmitting || uploading || adopting} className="space-y-4">
             {/* Ngày Thu/Chi */}
             <FormField
               control={form.control}
@@ -707,7 +711,7 @@ export default function IncomeExpensePostingDialog({
               >
                 Huỷ bỏ
               </Button>
-              <Button type="submit" disabled={isSubmitting || uploading || adopting || !capabilityOk}>
+              <Button type="submit" disabled={submitDisabled || isSubmitting || uploading || adopting || !capabilityOk}>
                 {isSubmitting ? 'Đang xử lý...' : title}
               </Button>
             </DialogFooter>
