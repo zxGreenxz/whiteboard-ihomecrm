@@ -1,6 +1,6 @@
 # Hợp đồng & quyết toán — Kế hoạch thi hành sau audit
 
-> **Trạng thái:** thiết kế và kế hoạch, **chưa thi hành mã ứng dụng hoặc migration**; HTML prototype đã đổi một nhãn nút theo yêu cầu tại §0.
+> **Trạng thái:** đang triển khai trên nhánh `codex/hop-dong-quyet-toan` từ `origin/main` (`beca6ee8`); chưa phát hành. Prototype đã sửa thao tác gửi lại phiếu theo xác nhận ngày 21/09/2026.
 > Bản này thay toàn bộ bản plan trước; các đoạn mã mẫu và kết luận của bản cũ không còn là chỉ dẫn triển khai.
 > Agent thi hành dùng `superpowers:executing-plans` hoặc `superpowers:subagent-driven-development`, đọc Project Contract trước khi sửa và thực hiện các checkbox theo phụ thuộc.
 
@@ -25,7 +25,9 @@ Nguồn chính: [HTML Claude Design — Bản thiết kế 03](<../../../thi-t-k
 
 Đã đọc HTML và mở bản chạy trong trình duyệt. SHA-256 bản bàn giao trước chỉnh nhãn: `59ea489e674a2cb80384797d76d614464b99b75dade079fb82fd85102494bf9a`. SHA-256 sau thay đổi nhãn do người dùng yêu cầu: `323634a1af7eee76730f6f2d864b071b1e6ebb60462f8749ce434ae427a9f875`.
 
-**Thay đổi đã chốt so với bản export:** nút trong hồ sơ Cần rà soát có nhãn chính xác **“Chuyển chờ duyệt”**, thay “Lập phiếu · chuyển chờ duyệt”. Đã sửa một nhãn trong HTML và kiểm trên trình duyệt. Đây là tên action hiển thị, không phải chỉ dẫn bỏ kiểm nguồn hoặc tạo phiếu lần nữa.
+**Chốt nghĩa thao tác ngày 21/09/2026:** **“Chuyển chờ duyệt”** đưa chính phiếu đang **Cần rà soát** trở lại **Chờ duyệt**. Giữ nguyên voucherId, mã phiếu, số tiền, nguồn và liên kết hợp đồng; không tạo phiếu mới, không duyệt và không ghi chi. Đây là chuyển trạng thái review thật qua máy Thu chi dùng chung, không chỉ đổi nhãn giao diện. Nguồn nghiệp vụ thực sự chưa có phiếu là trường hợp riêng, dùng action **“Lập phiếu chờ duyệt”** có khóa chống trùng; không trộn vào thao tác gửi lại phiếu. Chỉ dẫn này thay mọi mô tả nguồn → Chuyển chờ duyệt trong các task bên dưới.
+
+Bản prototype sau sửa nghĩa Chuyển chờ duyệt có SHA-256 `6987f9c2c6a92d505aef53978e0837f30dd668dd4075c815337265561f230d79`. Kiểm hành vi: giữ mã/ID, số tiền, nguồn, người nhận, sổ và ngày chi; chỉ chuyển review → pending và thêm lịch sử. Đây là mô phỏng, chưa phải RPC production.
 
 ### 0.1 Hợp đồng hình thức và tương tác
 
@@ -52,7 +54,7 @@ Các tài khoản, số liệu, mốc ngày, bậc, CSV/nhãn nhóm nếu chỉ 
 HTML dùng `seed`, `events`, `C`, `cycles` và `setState`; không có API, auth, CAS hay posting thật. `support.js` là runtime xem prototype, không đưa runtime/Babel/CDN đó vào app production. Dùng component React hiện hữu với CSS/token theo mẫu.
 
 - Chữ “Duyệt & Chi” trong HTML hiện đổi approval trước khi mở form; implementation phải gọi command thật đúng thời điểm xác nhận, giữ atomicity/guard của Thu chi.
-- “Cần bổ sung” trong mẫu đưa phiếu về review rồi có thể lập lại; implementation giữ nhãn/vị trí nhưng dùng supplement đã chọn trong phạm vi, giữ voucherId và không tạo lại. Nếu cần review-state workflow chính thức phải bổ sung vào máy chung với maker/permission thật, không copy state mẫu.
+- “Cần bổ sung” yêu cầu rà soát phiếu bằng review-state workflow dùng chung; “Chuyển chờ duyệt” gửi lại chính phiếu đó. Supplement chỉ bổ sung ghi chú/chứng từ, không tự chuyển trạng thái. Kiểm maker/permission/version thật; nếu RPC hiện có không phục vụ vai trò hợp lệ thì bổ sung capability dùng chung có kiểm quyền và audit, không giả maker hoặc bỏ guard.
 - Checkbox rà soát không được tự sửa tiền hoa hồng về giá phòng × bậc như `submitReview` mẫu. Số tiền thay đổi phải được thể hiện, xác nhận và ghi qua capability đúng quyền.
 - QR pattern, tên file ảnh và fallback dán ảnh mẫu không chứng minh có chứng từ thật. Giao diện khớp mẫu, chứng từ thực dùng pipeline Thu chi.
 - Dữ liệu động, số đếm và trạng thái lấy backend; không sao chép “đã có phiếu duyệt” thành đã chi hoặc lời hứa khớp PNL khi chưa cùng cơ sở. Điều chỉnh phần dữ liệu/chú giải nghiệp vụ cần thiết trong đúng vùng mẫu.
@@ -117,7 +119,7 @@ Các số 92 phiếu, 86 thiếu STK, 90 maker NULL trong spec là snapshot củ
 - Khu mới chỉ desktop. Sheet bỏ ba điểm vào cũ, chưa có bản mobile của khu mới; vẫn dùng Thu chi hiện có để xử lý trên mobile.
 - Tab **Biến động** thuộc release này theo yêu cầu mới; làm đủ ký mới, gia hạn, thanh lý, bỏ cọc và giữ chỗ. Không mở rộng thiết kế các hạng mục điện/nước/tiền nhà/bảo trì ngoài phần mẫu bàn giao.
 - Không thêm hàng loạt thao tác tiền; thao tác từng phiếu với bằng chứng và xác nhận theo Thu chi.
-- Không thêm UI `request_changes/resubmit` trong đợt này. Hiển thị trung thực các review state có sẵn, lý do và lịch sử; supplement không đóng vai yêu cầu gửi lại.
+- Có UI yêu cầu rà soát/gửi lại theo xác nhận mới của người dùng. Tái dùng `request_changes/resubmit` nếu đo lại thấy đủ, hoặc bổ sung command chung cho Thu chi. `p_patch` của RPC resubmit hiện tại không phải capability sửa tiền; yêu cầu giữ nguyên phiếu và số tiền. Kiểm CAS, quyền, idempotency và lịch sử chuyển trạng thái.
 - Không đổi công thức hoa hồng, trần thưởng hoặc cách đối chiếu hoàn chỉ để giao diện dễ làm. Dự kiến khác số phiếu thì hiển thị lệch.
 - Không tự sửa dữ liệu lịch sử, backfill maker, chuyển phiếu sổ ảo sang đã chi hoặc tạo phiếu thay thế để né guard.
 - Không xóa `coc_da_thu`/`DepositLedgerSection`, không đổi các flow EN/GRID/bảo trì không thuộc yêu cầu.
@@ -198,7 +200,8 @@ Không viết một map chỉ xét `approval_status`.
 | Điều kiện đã xác minh | Nhãn chính | Cách tính tiền/cảnh báo |
 |---|---|---|
 | Nguồn chưa có phiếu | Chưa lập phiếu | Đếm hồ sơ; tiền dự kiến/căn cứ riêng |
-| UNAPPROVED và bộ state hợp lệ | Chờ duyệt | Review badge riêng: PENDING/CHANGES_REQUESTED |
+| UNAPPROVED + CHANGES_REQUESTED và bộ state hợp lệ | Cần rà soát | Phiếu thật đang được yêu cầu bổ sung/rà soát; gửi lại cùng phiếu bằng Chuyển chờ duyệt |
+| UNAPPROVED + PENDING và bộ state hợp lệ | Chờ duyệt | Chờ người có quyền duyệt; chưa ghi chi |
 | APPROVED + CASHBOOK + UNPOSTED, không active posting | Chờ chi | Không cộng đã chi |
 | APPROVED + CASHBOOK + POSTED, posting hiện hành được đối chiếu | Đã chi | Theo số posting thực, cùng cơ sở kỳ |
 | APPROVED + NON_CASH + NOT_APPLICABLE | Không ghi quỹ | Tách khỏi thực chi; hoàn khách có thể vẫn cần đối chiếu nghĩa vụ |
@@ -206,7 +209,7 @@ Không viết một map chỉ xét `approval_status`.
 | REVERSED | Đã hoàn tác | Tách khỏi chi còn hiệu lực; action tiếp theo theo máy chung |
 | Tổ hợp lạ/thiếu dữ liệu/mâu thuẫn active posting | Cần đối chiếu / Chưa đọc được | Hiện nguyên trạng có giải thích; khóa lệnh phụ thuộc |
 
-Đây là các nhóm tối thiểu, không ép thành “năm” hay “sáu” trạng thái để bỏ ngoại lệ. `CHANGES_REQUESTED` là review badge, không tự đổi thành chờ chi/đã huỷ. Không coi NULL posting như UNPOSTED.
+Đây là các nhóm tối thiểu, không ép thành “năm” hay “sáu” trạng thái để bỏ ngoại lệ. `CHANGES_REQUESTED` nằm trong nhóm Cần rà soát của UI, nhưng vẫn giữ nguyên approval/posting state backend; không đổi thành chờ chi/đã huỷ. Không coi NULL posting như UNPOSTED. Nguồn chưa lập phiếu và phiếu đã có yêu cầu rà soát phải được phân biệt trong nhãn/action/tổng.
 
 Các cờ rà soát như thiếu STK, lệch căn cứ, tồn kỳ cũ và thiếu chứng từ không tự sinh quyền hay review state. “Thiếu STK” không mặc nhiên cấm mọi hình thức chi nếu Thu chi có đường tiền mặt hợp lệ.
 
@@ -546,7 +549,7 @@ Cách hiểu nghiệp vụ: hồ sơ thanh lý nói “công ty còn phải hoà
 - [ ] Header: phòng, hợp đồng nguồn, loại khoản, mã phiếu, state thật. Mốc “đang xử lý phiếu …” luôn nhìn thấy khi cuộn timeline.
 - [ ] Timeline ở trên; đối chiếu và ghi chú nghiệp vụ bên dưới; người nhận, chứng từ, supplement và history bố trí theo thứ tự ra quyết định.
 - [ ] Footer lấy `availability` từ cùng policy, gọi `commands` từ controller. Không switch loại khoản để tự chọn approve/post RPC.
-- [ ] Action nguồn dùng nhãn **“Chuyển chờ duyệt”** theo yêu cầu mới. Form/checkbox đúng mẫu; kết quả created/existing chuyển selection theo ID trả về và refresh thật. Phiếu đã tồn tại giữ ID, không lập lại khi supplement.
+- [ ] **“Chuyển chờ duyệt”** chỉ gửi lại phiếu Cần rà soát đang tồn tại, giữ ID/mã/số tiền/nguồn và không tạo, duyệt hoặc chi. Action nguồn chưa có phiếu dùng **“Lập phiếu chờ duyệt”** riêng; kết quả created/existing chọn đúng ID trả về. Kiểm cả hai đường và refresh từ dữ liệu thật.
 - [ ] Duyệt/Chi dùng action dialogs chung và đầy đủ evidence callbacks. Người chỉ có quyền chi không bị yêu cầu quyền duyệt.
 - [ ] STK/supplement hiển thị đúng capability; form lỗi giữ dữ liệu. Không đóng modal và báo thành công nếu mutation trả `error`.
 - [ ] Khi huỷ/đảo thành công, vẫn xem phiếu và lịch sử vừa xử lý; danh sách thay đổi theo filter nhưng không biến selection thành một source khác.
