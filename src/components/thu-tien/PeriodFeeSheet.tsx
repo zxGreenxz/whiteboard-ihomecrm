@@ -36,6 +36,7 @@ import {
 import { BookIcon } from './utilityIcons';
 import { AttachmentLightbox } from '@/components/ui/attachment-lightbox';
 import { usePersistedState } from '@/hooks/usePersistedState';
+import { calculatePeriodFeeOverview } from '@/lib/periodFeeOverview';
 
 interface Props {
   show: boolean;
@@ -126,23 +127,13 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
   };
 
   const overview = useMemo(() => {
-    let dueCount = 0, dueSum = 0, draftCount = 0; const nameOf = (id: string) => buildings.find((b) => b.id === id)?.name ?? id;
-    const rows = visibleCats.filter((c) => !LEDGER_FAMILIES.has(c.family)).map((c) => {
-      let total = 0, paidN = 0, rowDue = 0, rowDraftN = 0; const dueList: string[] = [];
-      if (c.family === 'EN') { for (const b of buildingIds) for (const k of ['dien', 'nuoc'] as const) { const st = feeStatus.statusOf(b, k); if (st?.notApplicable) continue; total++; if (st && st.paidAmount > 0) paidN++; else { rowDue += st?.expectedAmount ?? 0; if (!dueList.includes(nameOf(b))) dueList.push(nameOf(b)); } } }
-      else if (c.family === 'GRID') { for (const b of activeIdsFor(c)) { const st = feeStatus.statusOf(b, c.serverKey); total++; if (st && st.paidAmount > 0) paidN++; else { if (st && st.draftAmount > 0) { rowDraftN++; rowDue += st.draftAmount; } else rowDue += st?.expectedAmount ?? 0; dueList.push(nameOf(b)); } } }
-      else if (c.family === 'COMMISSION') { for (const r of commissions.data ?? []) { total++; if (r.status === 'paid') paidN++; else { if (r.status === 'draft') rowDraftN++; rowDue += r.status === 'draft' ? (r.voucherAmount ?? r.expectedAmount) : r.expectedAmount; if (!dueList.includes(r.buildingName)) dueList.push(r.buildingName); } } }
-      // A3a: phiếu bảo trì CHỜ DUYỆT đã có phiếu nhưng chưa chi → không tính là paid.
-      else if (c.family === 'MAINTENANCE_BATCH') {
-        const l = maintenance.data ?? [];
-        total = l.length;
-        paidN = l.filter((x) => !x.pending).length;
-        for (const x of l) if (x.pending) { rowDraftN++; rowDue += x.amount; }
-      }
-      const dueN = total - paidN; dueCount += dueN; dueSum += rowDue; draftCount += rowDraftN;
-      return { cat: c, total, paidN, dueN, draftN: rowDraftN, dueList, dueSum: rowDue, pct: total ? Math.round((paidN / total) * 100) : 100, allPaid: dueN === 0 && total > 0 };
+    const nameOf = (id: string) => buildings.find((b) => b.id === id)?.name ?? id;
+    const result = calculatePeriodFeeOverview({
+      categories: visibleCats, excludedFamilies: LEDGER_FAMILIES, buildingIds, buildingName: nameOf,
+      activeBuildingIds: activeIdsFor, statusOf: feeStatus.statusOf,
+      commissions: commissions.data ?? [], maintenance: maintenance.data ?? [],
     });
-    return { rows, dueCount, dueSum, draftCount };
+    return { ...result, rows: result.rows.map(({ category: cat, ...row }) => ({ cat, ...row })) };
   }, [buildingIds, feeStatus.byKey, commissions.data, maintenance.data, elevatorIds, buildings, visibleCats]);
 
   const pick = (k: string) => { setCategory(k); setPickerOpen(false); setOnlyDue(false); setGridTab('pay'); setNaOpen(false); setExpectedEdit(null); };

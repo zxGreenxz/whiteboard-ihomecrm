@@ -40,6 +40,7 @@ import { UtilityEnContent } from './UtilityEnContent';
 import { AttachmentLightbox } from '@/components/ui/attachment-lightbox';
 import { BookIcon } from './utilityIcons';
 import { usePersistedState } from '@/hooks/usePersistedState';
+import { calculatePeriodFeeOverview } from '@/lib/periodFeeOverview';
 
 interface Props {
   billingMonth: string;
@@ -145,65 +146,13 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
 
   // ── Tổng quan ──
   const overview = useMemo(() => {
-    let dueCount = 0, slots = 0, dueSum = 0, paidSum = 0, paidCount = 0, draftCount = 0;
-    const dueBld = new Set<string>();
     const nameOf = (id: string) => buildings.find((b) => b.id === id)?.name ?? id;
-    // Ba family "sổ theo dõi" nằm ngoài Tổng quan: Tổng quan cam kết khớp Báo
-    // cáo Lợi Nhuận, còn cọc/hoàn cọc/thưởng không thuộc lãi lỗ.
-    const rows = visibleCats.filter((c) => !LEDGER_FAMILIES.has(c.family)).map((c) => {
-      let total = 0, paidN = 0, rowDueSum = 0, rowPaidSum = 0, rowDraftN = 0; const dueList: string[] = [];
-      if (c.family === 'EN') {
-        for (const b of buildingIds) {
-          for (const kind of ['dien', 'nuoc'] as const) {
-            const st = feeStatus.statusOf(b, kind);
-            if (st?.notApplicable) continue;
-            total++;
-            if (st && st.paidAmount > 0) { paidN++; rowPaidSum += st.paidAmount; }
-            else { rowDueSum += st?.expectedAmount ?? 0; if (!dueList.includes(nameOf(b))) dueList.push(nameOf(b)); dueBld.add(b); }
-          }
-        }
-      } else if (c.family === 'GRID') {
-        for (const b of activeIdsFor(c)) {
-          const st = feeStatus.statusOf(b, c.serverKey);
-          total++;
-          if (st && st.paidAmount > 0) { paidN++; rowPaidSum += st.paidAmount; }
-          else {
-            if (st && st.draftAmount > 0) { rowDraftN++; rowDueSum += st.draftAmount; }
-            else rowDueSum += st?.expectedAmount ?? 0;
-            dueList.push(nameOf(b)); dueBld.add(b);
-          }
-        }
-      } else if (c.family === 'COMMISSION') {
-        for (const r of commissions.data ?? []) {
-          total++;
-          if (r.status === 'paid') { paidN++; rowPaidSum += r.voucherAmount ?? r.expectedAmount; }
-          else {
-            if (r.status === 'draft') rowDraftN++;
-            rowDueSum += r.status === 'draft' ? (r.voucherAmount ?? r.expectedAmount) : r.expectedAmount;
-            if (!dueList.includes(r.buildingName)) dueList.push(r.buildingName);
-          }
-        }
-      } else if (c.family === 'MAINTENANCE_BATCH') {
-        // Slice −1 A3a: reader nay trả CẢ phiếu CHỜ DUYỆT. Chúng là "đã có phiếu"
-        // nhưng KHÔNG phải "đã chi" — cộng vào rowPaidSum là đếm tiền chưa duyệt
-        // như đã tiêu.
-        const lines = maintenance.data ?? [];
-        total = lines.length;
-        paidN = lines.filter((l) => !l.pending).length;
-        for (const l of lines) {
-          if (l.pending) { rowDraftN++; rowDueSum += l.amount; }
-          else rowPaidSum += l.amount;
-        }
-      }
-      const dueN = total - paidN;
-      dueCount += dueN; slots += total; dueSum += rowDueSum; paidSum += rowPaidSum; paidCount += paidN; draftCount += rowDraftN;
-      return {
-        cat: c, total, paidN, dueN, draftN: rowDraftN, dueList, dueSum: rowDueSum,
-        pct: total ? Math.round((paidN / total) * 100) : 100,
-        allPaid: dueN === 0 && total > 0, empty: total === 0,
-      };
+    const result = calculatePeriodFeeOverview({
+      categories: visibleCats, excludedFamilies: LEDGER_FAMILIES, buildingIds, buildingName: nameOf,
+      activeBuildingIds: activeIdsFor, statusOf: feeStatus.statusOf,
+      commissions: commissions.data ?? [], maintenance: maintenance.data ?? [],
     });
-    return { rows, dueCount, slots, dueSum, paidSum, paidCount, draftCount, dueBldCount: dueBld.size };
+    return { ...result, rows: result.rows.map(({ category: cat, ...row }) => ({ cat, ...row })) };
   }, [buildingIds, feeStatus.byKey, commissions.data, maintenance.data, elevatorIds, buildings, visibleCats]);
 
   const pickCategory = (k: string) => { setCategory(k); setMenuOpen(false); setBldFilter('all'); setOnlyDue(false); setGridTab('pay'); setNaOpen(false); setExpectedEdit(null); };

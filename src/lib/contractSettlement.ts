@@ -33,8 +33,11 @@ export type VoucherSnapshot = {
   organizationId: string;
   buildingId: string;
   roomId: string | null;
+  roomName: string | null;
   contractId: string | null;
+  contractNumber: string | null;
   tenantId: string | null;
+  customerName: string | null;
   totalAmount: number;
   type: "INCOME" | "EXPENSE";
   payerName: string | null;
@@ -75,7 +78,10 @@ export type SettlementSourceRow = {
   organizationId: string;
   buildingId: string;
   roomId: string | null;
+  roomName: string | null;
   contractId: string | null;
+  contractNumber: string | null;
+  customerName: string | null;
   eventDate: string | null;
   recipient: { name: string | null; bankName: string | null; bankAccount: string | null };
   basis: SettlementBasis;
@@ -117,7 +123,7 @@ const versionValue = (value: unknown): number => { if (!Number.isSafeInteger(val
 const nullableVersion = (value: unknown): number | null => value === null ? null : versionValue(value);
 const vndValue = (value: unknown): number => {
   if (typeof value === "number" && Number.isSafeInteger(value)) return value;
-  if (typeof value === "string" && /^-?(0|[1-9]\d*)$/.test(value)) {
+  if (typeof value === "string" && /^-?(0|[1-9]\d*)(?:\.0+)?$/.test(value)) {
     const parsed = Number(value);
     if (Number.isSafeInteger(parsed)) return parsed;
   }
@@ -136,6 +142,12 @@ const parseSourceRef = (input: unknown): SettlementSourceRef => {
     case "sale_deposit": return { kind: input.kind, organizationId, depositVoucherId: stringValue(input.depositVoucherId) };
     default: throw new Error("Unknown source kind");
   }
+};
+
+const sourceMatchesKind = (settlementKind: SettlementKind, sourceRef: SettlementSourceRef): boolean => {
+  if (settlementKind === "commission") return sourceRef.kind === "broker";
+  if (settlementKind === "refund") return sourceRef.kind === "termination_refund" || sourceRef.kind === "reservation_refund";
+  return sourceRef.kind === "sale_contract" || sourceRef.kind === "sale_deposit";
 };
 
 const parseBasis = (input: unknown): SettlementBasis => {
@@ -180,7 +192,7 @@ const parseSnapshot = (input: unknown): VoucherSnapshot => {
   if (!Array.isArray(attachments) || !attachments.every((item) => typeof item === "string")) throw new Error("Invalid attachments");
   return {
     id: stringValue(input.id), code: stringValue(input.code), organizationId: stringValue(input.organizationId), buildingId: stringValue(input.buildingId),
-    roomId: nullableString(input.roomId), contractId: nullableString(input.contractId), tenantId: nullableString(input.tenantId), totalAmount: vndValue(input.totalAmount), type: input.type,
+    roomId: nullableString(input.roomId), roomName: nullableString(input.roomName), contractId: nullableString(input.contractId), contractNumber: nullableString(input.contractNumber), tenantId: nullableString(input.tenantId), customerName: nullableString(input.customerName), totalAmount: vndValue(input.totalAmount), type: input.type,
     payerName: nullableString(input.payerName), receiveBankName: nullableString(input.receiveBankName), receiveBankAccount: nullableString(input.receiveBankAccount), accountId: nullableString(input.accountId),
     approvalStatus: input.approvalStatus, postingStatus: input.postingStatus, postingMode: input.postingMode, reviewState: input.reviewState, reviewReason: nullableString(input.reviewReason),
     approvalVersion: versionValue(input.approvalVersion), postingVersion: versionValue(input.postingVersion), reviewVersion: versionValue(input.reviewVersion),
@@ -199,9 +211,12 @@ export function parseSettlementRow(input: unknown): SettlementRow {
     if (eligibility.state !== "ready" && eligibility.state !== "unavailable") throw new Error("Invalid create eligibility");
     if (!Array.isArray(eligibility.reasonCodes) || !eligibility.reasonCodes.every((item) => typeof item === "string")) throw new Error("Invalid create reason codes");
     if (eligibility.state === "ready" && typeof eligibility.allowed !== "boolean") throw new Error("Invalid create eligibility");
+    const sourceRef = parseSourceRef(input.sourceRef);
+    const organizationId = stringValue(input.organizationId);
+    if (sourceRef.organizationId !== organizationId || !sourceMatchesKind(input.settlementKind, sourceRef)) throw new Error("Inconsistent source row");
     return {
-      rowType: "source", rowKey: stringValue(input.rowKey), settlementKind: input.settlementKind, sourceRef: parseSourceRef(input.sourceRef), organizationId: stringValue(input.organizationId),
-      buildingId: stringValue(input.buildingId), roomId: nullableString(input.roomId), contractId: nullableString(input.contractId), eventDate: nullableString(input.eventDate),
+      rowType: "source", rowKey: stringValue(input.rowKey), settlementKind: input.settlementKind, sourceRef, organizationId,
+      buildingId: stringValue(input.buildingId), roomId: nullableString(input.roomId), roomName: nullableString(input.roomName), contractId: nullableString(input.contractId), contractNumber: nullableString(input.contractNumber), customerName: nullableString(input.customerName), eventDate: nullableString(input.eventDate),
       recipient: { name: nullableString(input.recipient.name), bankName: nullableString(input.recipient.bankName), bankAccount: nullableString(input.recipient.bankAccount) },
       basis: parseBasis(input.basis), createEligibility: eligibility.state === "ready" ? { state: "ready", allowed: eligibility.allowed as boolean, reasonCodes: [...eligibility.reasonCodes] } : { state: "unavailable", reasonCodes: [...eligibility.reasonCodes] },
     };
@@ -209,7 +224,7 @@ export function parseSettlementRow(input: unknown): SettlementRow {
   if (input.rowType !== "voucher" || !isRecord(input.sourceLink) || !isRecord(input.snapshot)) throw new Error("Invalid voucher row");
   const voucherId = stringValue(input.voucherId);
   const voucherCode = stringValue(input.voucherCode);
-  const sourceLink: SourceLink = input.sourceLink.state === "verified"
+  let sourceLink: SourceLink = input.sourceLink.state === "verified"
     ? { state: "verified", sourceRef: parseSourceRef(input.sourceLink.sourceRef) }
     : input.sourceLink.state === "unverified" ? { state: "unverified", reason: stringValue(input.sourceLink.reason) } : (() => { throw new Error("Invalid source link"); })();
   let snapshot: SettlementVoucherRow["snapshot"];
@@ -217,9 +232,12 @@ export function parseSettlementRow(input: unknown): SettlementRow {
   else if (input.snapshot.state === "ready") {
     try {
       const value = parseSnapshot(input.snapshot.value);
-      snapshot = value.id === voucherId && value.code === voucherCode ? { state: "ready", value } : { state: "unavailable", reason: "INVALID_VOUCHER_SNAPSHOT" };
+      const sourceOrganizationId = sourceLink.state === "verified" ? sourceLink.sourceRef.organizationId : value.organizationId;
+      snapshot = value.id === voucherId && value.code === voucherCode && value.organizationId === sourceOrganizationId
+        ? { state: "ready", value } : { state: "unavailable", reason: "INVALID_VOUCHER_SNAPSHOT" };
     } catch { snapshot = { state: "unavailable", reason: "INVALID_VOUCHER_SNAPSHOT" }; }
   } else throw new Error("Invalid snapshot readiness");
+  if (sourceLink.state === "verified" && !sourceMatchesKind(input.settlementKind, sourceLink.sourceRef)) sourceLink = { state: "unverified", reason: "INCONSISTENT_SOURCE_LINK" };
   return { rowType: "voucher", rowKey: stringValue(input.rowKey), settlementKind: input.settlementKind, voucherId, voucherCode, sourceLink, snapshot, basis: parseBasis(input.basis) };
 }
 
@@ -319,7 +337,7 @@ export function calculateSettlementTotals(rows: readonly SettlementRow[]): Settl
   return totals;
 }
 
-export type SettlementFilters = { buildingId?: string; kinds?: SettlementKind[]; states?: SettlementDisplayCode[]; issues?: SettlementIssue[]; search?: string };
+export type SettlementFilters = { period: string; buildingId?: string; kinds?: SettlementKind[]; states?: SettlementDisplayCode[]; issues?: SettlementIssue[]; search?: string };
 
 export function filterSettlementRows(rows: readonly SettlementRow[], filters: SettlementFilters): SettlementRow[] {
   const query = filters.search?.trim().toLocaleLowerCase("vi") ?? "";
@@ -328,9 +346,13 @@ export function filterSettlementRows(rows: readonly SettlementRow[], filters: Se
     if (filters.buildingId && buildingId !== filters.buildingId) return false;
     if (filters.kinds?.length && !filters.kinds.includes(row.settlementKind)) return false;
     if (filters.states?.length && !filters.states.includes(getSettlementDisplayState(row).code)) return false;
-    if (filters.issues?.length && !filters.issues.every((issue) => detectSettlementIssues(row, "9999-12").includes(issue))) return false;
+    if (filters.issues?.length && !filters.issues.every((issue) => detectSettlementIssues(row, filters.period).includes(issue))) return false;
     if (query) {
-      const identity = row.rowType === "source" ? `${row.rowKey} ${row.contractId ?? ""} ${row.recipient.name ?? ""}` : `${row.rowKey} ${row.voucherId} ${row.voucherCode}`;
+      const identity = row.rowType === "source"
+        ? `${row.rowKey} ${row.contractId ?? ""} ${row.contractNumber ?? ""} ${row.roomId ?? ""} ${row.roomName ?? ""} ${row.customerName ?? ""} ${row.recipient.name ?? ""}`
+        : row.snapshot.state === "ready"
+          ? `${row.rowKey} ${row.voucherId} ${row.voucherCode} ${row.snapshot.value.contractId ?? ""} ${row.snapshot.value.contractNumber ?? ""} ${row.snapshot.value.roomId ?? ""} ${row.snapshot.value.roomName ?? ""} ${row.snapshot.value.customerName ?? ""} ${row.snapshot.value.payerName ?? ""}`
+          : `${row.rowKey} ${row.voucherId} ${row.voucherCode}`;
       if (!identity.toLocaleLowerCase("vi").includes(query)) return false;
     }
     return true;

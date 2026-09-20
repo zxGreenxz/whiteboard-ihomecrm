@@ -80,3 +80,45 @@ Result: exit 0; SHA đổi thật, suite đỏ đúng kỳ vọng, file được
 - Không chạy browser E2E vì T1 không sửa UI.
 - Writer proof, role/PostgREST, reader pagination/aggregate và backend capability vẫn là gate T6/T11 theo preflight.
 - Các suite characterization hiện hữu khóa action Thu chi và mobile. Fixture render riêng cho dueSum/draftCount/paidSum của cả Panel/Sheet chưa được thêm vì helper tính overview hiện nằm private trong hai component; trích helper/chạm UI nằm ngoài scope file production T1 được giao. Totals domain mới có fixture riêng cho source/pending/unposted/paid/noncash/reversed/cancelled.
+
+## Fix round 1 — review findings
+
+### Nội dung sửa
+
+- `SettlementFilters.period` nay bắt buộc và `OLD_PERIOD` dùng đúng kỳ được chọn. Search giữ metadata mã phiếu, hợp đồng, phòng, khách và người nhận trên cả source/voucher.
+- Parser kiểm organization và settlement kind xuyên source row/source link/snapshot. Source row mâu thuẫn bị từ chối; voucher vẫn giữ ID/code, hạ snapshot hoặc source link về unavailable/unverified tương ứng.
+- Boundary VND nhận decimal string có phần lẻ toàn số 0 như `2640000.00`, vẫn từ chối `2640000.01` và số vượt safe integer.
+- Trích nguyên phép tính Tổng quan hiện hành vào `periodFeeOverview.ts`; cả `PeriodFeePanel` và `PeriodFeeSheet` cùng dùng helper. Fixture cố định khóa `dueSum=1.170.000`, `draftCount=3`, `paidSum=850.000` và việc loại family sổ theo dõi. Semantics due-list giữ nguyên: EN/commission khử trùng tên như trước; GRID một dòng cho mỗi building/category; commission không được tính vào `dueBldCount`, đúng hành vi Panel cũ.
+- Bổ sung characterization hành vi thật của Finance V2: approve-only, owned dispatcher, post-only và reverse.
+
+### RED/GREEN
+
+RED command:
+
+`npx --yes --package=node@24.18.0 node node_modules/vitest/vitest.mjs run src/lib/__tests__/contractSettlement.test.ts src/lib/__tests__/periodFeeOverview.test.ts`
+
+Result: exit 1; 12 assertion fail đúng filter/search/consistency và module overview chưa tồn tại. RED decimal boundary chạy riêng: 1 fail vì `2640000.00` bị hạ unavailable.
+
+GREEN focused:
+
+`npx --yes --package=node@24.18.0 node node_modules/vitest/vitest.mjs run src/lib/__tests__/contractSettlement.test.ts src/lib/__tests__/periodFeeOverview.test.ts src/hooks/income-expenses/financeV2Mutations.characterization.test.ts`
+
+Result: exit 0; 3 files, 45 tests passed.
+
+GREEN regression:
+
+`npx --yes --package=node@24.18.0 node node_modules/vitest/vitest.mjs run src/lib/__tests__/contractSettlement.test.ts src/lib/__tests__/periodFeeOverview.test.ts src/hooks/income-expenses/financeV2Mutations.characterization.test.ts src/lib/__tests__/financeV2Characterization.test.ts src/hooks/income-expenses/statusMutations.test.ts src/hooks/income-expenses/__tests__/flexCancelGate.test.ts src/hooks/income-expenses/__tests__/incomeCancelGate.test.ts src/hooks/income-expenses/__tests__/supplements.test.tsx src/components/income-expenses/__tests__/reservationDetailActions.test.tsx`
+
+Result: exit 0; 9 files, 118 tests passed. Stderr chỉ gồm warning React Router/Dialog và log fixture lỗi có chủ đích đã có.
+
+- `npx --yes --package=node@24.18.0 node node_modules/typescript/bin/tsc --noEmit -p tsconfig.app.json`: exit 0.
+- `npm run typecheck:baseline`: exit 0, 0 fingerprint.
+- Mutation thay kỳ chọn bằng `9999-12`: SHA đổi thật, contract suite đỏ đúng kỳ vọng và digest được khôi phục; helper exit 0.
+
+### Ma trận characterization hiện có và gap giao T4
+
+- Canonical approve-only: `financeV2Mutations.characterization.test.ts:29`; owned dispatcher: dòng 37; post-only: dòng 46; reverse: dòng 55.
+- Legacy/canonical approve fallback: `statusMutations.test.ts:97-260`, ordinary legacy path tại dòng 212; unapprove/CAS: dòng 264-350.
+- Cancel income/expense và fallback: `incomeCancelGate.test.ts:78-157`, cửa INCOME dòng 112, cửa EXPENSE dòng 135; flex cancellation compatibility ở `flexCancelGate.test.ts:51-106`.
+- Supplement phiếu không sửa field tiền: `supplements.test.tsx:26-45`, writer additions-only dòng 41; UI add-document riêng và phiếu đã huỷ/nguồn reservation không lộ money action được khóa tại `reservationDetailActions.test.tsx:37-63`.
+- Gap còn lại: chưa có integration characterization cho wiring đầy đủ của `IncomeExpenseMobilePage` và command approve-and-post atomic trên shared controller vì controller T4 chưa tồn tại. T4 phải thêm parity desktop/mobile trên controller dùng chung; T1 không dựng controller trước phụ thuộc.

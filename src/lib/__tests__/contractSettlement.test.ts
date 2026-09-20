@@ -36,7 +36,10 @@ const sourceRow: SettlementRow = {
   organizationId: "org-1",
   buildingId: "building-1",
   roomId: "room-1",
+  roomName: "P.101",
   contractId: "contract-1",
+  contractNumber: "HD-001",
+  customerName: "Khách A",
   eventDate: "2026-09-01",
   recipient: { name: "Môi giới A", bankName: null, bankAccount: null },
   basis,
@@ -58,8 +61,11 @@ const rawVoucher = (overrides: Record<string, unknown> = {}) => ({
       organizationId: "org-1",
       buildingId: "building-1",
       roomId: "room-1",
+      roomName: "P.101",
       contractId: "contract-1",
+      contractNumber: "HD-001",
       tenantId: null,
+      customerName: "Khách A",
       totalAmount: "2500000",
       type: "EXPENSE",
       payerName: "Môi giới A",
@@ -122,6 +128,21 @@ describe("parseSettlementRow", () => {
     expect(getSettlementDisplayState(row)).toEqual({ code: "UNAVAILABLE", label: "Chưa đọc được" });
   });
 
+  it("rejects a source whose organization or settlement kind conflicts with its source ref", () => {
+    expect(() => parseSettlementRow({ ...sourceRow, organizationId: "org-other" })).toThrow("Inconsistent source row");
+    expect(() => parseSettlementRow({ ...sourceRow, settlementKind: "refund" })).toThrow("Inconsistent source row");
+  });
+
+  it("fails voucher detail closed when verified source scope conflicts with snapshot", () => {
+    const row = parseSettlementRow(rawVoucher({ organizationId: "org-other" }));
+    expect(row).toMatchObject({ rowType: "voucher", voucherId: "voucher-1", snapshot: { state: "unavailable", reason: "INVALID_VOUCHER_SNAPSHOT" } });
+  });
+
+  it("drops a contradictory verified source link while keeping a valid voucher snapshot", () => {
+    const row = parseSettlementRow({ ...rawVoucher(), settlementKind: "refund" });
+    expect(row).toMatchObject({ rowType: "voucher", snapshot: { state: "ready" }, sourceLink: { state: "unverified", reason: "INCONSISTENT_SOURCE_LINK" } });
+  });
+
   it.each([
     ["unknown approval state", { approvalStatus: "DRAFT" }],
     ["unknown review state", { reviewState: "REVIEWING" }],
@@ -137,6 +158,13 @@ describe("parseSettlementRow", () => {
       voucherId: "voucher-1",
       snapshot: { state: "unavailable", reason: "INVALID_VOUCHER_SNAPSHOT" },
     });
+  });
+
+  it("accepts exact decimal-string VND transport but rejects non-zero fractional VND", () => {
+    const exact = parseSettlementRow(rawVoucher({ totalAmount: "2640000.00" }));
+    const fractional = parseSettlementRow(rawVoucher({ totalAmount: "2640000.01" }));
+    expect(exact).toMatchObject({ snapshot: { state: "ready", value: { totalAmount: 2_640_000 } } });
+    expect(fractional).toMatchObject({ snapshot: { state: "unavailable", reason: "INVALID_VOUCHER_SNAPSHOT" } });
   });
 });
 
@@ -284,6 +312,20 @@ describe("filterSettlementRows", () => {
       parseSettlementRow(rawVoucher({ approvalStatus: "APPROVED" })),
       { ...sourceRow, buildingId: "building-2" },
     ];
-    expect(filterSettlementRows(rows, { buildingId: "building-1", states: ["PENDING_APPROVAL", "WAITING_PAYMENT"] })).toHaveLength(2);
+    expect(filterSettlementRows(rows, { period: "2026-09", buildingId: "building-1", states: ["PENDING_APPROVAL", "WAITING_PAYMENT"] })).toHaveLength(2);
+  });
+
+  it("evaluates OLD_PERIOD against the selected period", () => {
+    const august = parseSettlementRow(rawVoucher({ voucherDate: "2026-08-31", sourceEventDate: null }));
+    const september = parseSettlementRow({ ...rawVoucher({ voucherDate: "2026-09-01" }), rowKey: "voucher:voucher-2", voucherId: "voucher-2", voucherCode: "PC-002", snapshot: { ...(rawVoucher({ voucherDate: "2026-09-01" }).snapshot as object), value: { ...((rawVoucher({ voucherDate: "2026-09-01" }).snapshot as { value: object }).value), id: "voucher-2", code: "PC-002" } } });
+    expect(filterSettlementRows([august, september], { period: "2026-09", issues: ["OLD_PERIOD"] })).toEqual([august]);
+  });
+
+  it.each(["PC-001", "HD-001", "P.101", "Khách A", "Môi giới A"])("searches voucher metadata: %s", (search) => {
+    expect(filterSettlementRows([parseSettlementRow(rawVoucher())], { period: "2026-09", search })).toHaveLength(1);
+  });
+
+  it.each(["HD-001", "P.101", "Khách A", "Môi giới A"])("searches source metadata: %s", (search) => {
+    expect(filterSettlementRows([sourceRow], { period: "2026-09", search })).toHaveLength(1);
   });
 });
