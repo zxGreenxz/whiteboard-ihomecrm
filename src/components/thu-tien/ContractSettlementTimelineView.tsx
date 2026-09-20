@@ -23,14 +23,18 @@ interface Props {
   error?: string | null;
   warning?: string | null;
   onRetry?: () => void;
+  expanded?: boolean;
+  onExpandedChange?: (expanded: boolean) => void;
 }
 const roleLabels: Record<SettlementTimelineLaneView["role"], string> = {
   previous: "Liền trước", target: "Đang xử lý", following: "Kế tiếp", current: "Hiện tại", reservation: "Nguồn giữ chỗ",
 };
 
 /** Read-only timeline: no contract/voucher selection or financial calculations in this view. */
-export function ContractSettlementTimelineView({ lanes, hint, loading = false, error, warning, onRetry }: Props) {
-  const [expanded, setExpanded] = useState(false);
+export function ContractSettlementTimelineView({ lanes, hint, loading = false, error, warning, onRetry, expanded: controlledExpanded, onExpandedChange }: Props) {
+  const [localExpanded, setLocalExpanded] = useState(false);
+  const expanded = controlledExpanded ?? localExpanded;
+  const setExpanded = (value: boolean) => { setLocalExpanded(value); onExpandedChange?.(value); };
   const compact = lanes.filter((lane, index) => lane.role !== "following" || index === lanes.length - 1);
   const hiddenCount = lanes.length - compact.length;
   const visible = expanded ? lanes : compact;

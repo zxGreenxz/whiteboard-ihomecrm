@@ -57,6 +57,7 @@ export const incomeExpenseActionRefreshKeys = [
   "contract-settlement",
   "contract-settlement-events",
   "room-cash-lifecycle",
+  "settlement-financial-context",
   "accounts-with-balance",
   "cash-book",
   "cash-book-summary",

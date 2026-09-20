@@ -357,6 +357,19 @@ describe("command uncertainty and independent readiness", () => {
 });
 
 describe("shared dispatcher coverage", () => {
+  it("awaits financial timeline facts before marking a successful action complete", async () => {
+    let release!: () => void;
+    m.invalidate.mockImplementation(({ predicate }: { predicate: (query: { queryKey: string[] }) => boolean }) => predicate({ queryKey: ['settlement-financial-context', 'actor', 'org'] })
+      ? new Promise<void>(resolve => { release = resolve; }) : Promise.resolve());
+    const h = setup();
+    await open(h, 'approveOnly');
+    let pending!: Promise<void>;
+    act(() => { pending = h.result.current.commands.confirm(); });
+    await waitFor(() => expect(release).toBeTypeOf('function'));
+    expect(h.result.current.busy).toBe(true);
+    await act(async () => { release(); await pending; });
+    expect(h.result.current.busy).toBe(false);
+  });
   const book = "40000000-0000-4000-8000-000000000001",
     evidenceId = "50000000-0000-4000-8000-000000000001";
   it.each(["post", "approveAndPost"] as const)(
