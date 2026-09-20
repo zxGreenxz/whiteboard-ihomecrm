@@ -73,3 +73,13 @@ Birth readiness remains a T4 context extension/gap: the review fixture proves mi
 - `scripts/dot-bien.mjs`: auth removal changed SHA256 `a568fa7acb36→796c8328d5cf`, caught by revoked-authority replay denial; money mutation `a568fa7acb36→180a5084171a`, caught by review freeze. Both helper exit0, source digest restored, audited public definitions and final migration reapplied locally, final JWT suite PASS.
 
 No shared Supabase schema/data apply, no THẬT writes, no deployment or PR. No browser/E2E claim. Controller owns generated types, staged migration provenance generation, source/ACL/sandbox/reconcile gates, full build/regression, independent reviews and release checks after schema tasks. Source dispatcher gaps and T4 simultaneous wiring remain release blockers.
+
+## T3 review fix round 1
+
+Đã sửa đúng ba Important trong `task-3-review.md`, bắt đầu từ `b4483a24`. Root commit Events UI độc lập `d14ac0f4` trong lúc kiểm thử; diff sửa T3 chỉ có policy, hai file covering tests và báo cáo này.
+
+- Context bắt buộc có `permissions.reverse` theo scope tòa nhà. Reverse kiểm permission readiness và quyền `income_expenses.reverse` riêng trước custody; thiếu quyền trả PERMISSION, đang tải/lỗi giữ LOADING/READ_ERROR. T4 snapshot builder phải cấp thêm field này.
+- Reverse chỉ hỗ trợ owner NULL hoặc CANONICAL_INCOME_EXPENSE như writer hiện tại; INVOICE_REFUND/TERMINATION_REFUND POSTED bị chặn với SOURCE_WRITER_UNSUPPORTED. Không thêm dispatcher.
+- Approve-and-post chỉ nhận UNPOSTED; post-only vẫn nhận APPROVED + REVERSED khi đủ custody và không cần quyền approve/reverse.
+
+Kiểm chứng: đối chiếu guard nguồn ở `20260723050000_finance_v2_writers.sql` (reverse owner/quyền tại 1710–1715; approve-and-post UNPOSTED tại 1132) và bằng chứng catalog read-only của reviewer. Thêm 10 ca covering tests: lần RED chạy `npx --yes --package=node@24.18.0 node node_modules/vitest/vitest.mjs run src/lib/__tests__/incomeExpenseActionPolicy.test.ts` có 6 failures đúng ba finding, 27 pass. Sau sửa chạy `npx --yes --package=node@24.18.0 node node_modules/vitest/vitest.mjs run src/lib/__tests__/incomeExpenseActionPolicy.test.ts src/components/income-expenses/__tests__/IncomeExpenseListActions.test.tsx`: **35/35 pass**. `npx --yes --package=node@24.18.0 node node_modules/typescript/bin/tsc --noEmit -p tsconfig.app.json`: exit0. `git diff --check`: sạch. SQL và local JWT harness không đổi, không chạy lại theo phạm vi vòng sửa; các giới hạn tích hợp T4/T6 đã ghi ở trên vẫn còn.

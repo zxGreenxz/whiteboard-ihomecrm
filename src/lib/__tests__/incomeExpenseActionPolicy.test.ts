@@ -7,7 +7,7 @@ const context = (): IncomeExpenseActionContext => ({
     approvalStatus: 'UNAPPROVED', postingStatus: 'UNPOSTED', postingMode: 'CASHBOOK', reviewState: 'PENDING',
     activePostingId: null, accountId: null, approvalVersion: 3, postingVersion: 4, reviewVersion: 5 }),
   actor: ready({ id: 'maker', organizationId: 'org', isAdmin: false }),
-  permissions: ready({ approve: true, edit: true, cancel: true }),
+  permissions: ready({ approve: true, edit: true, cancel: true, reverse: true }),
   routes: ready({ readSemantics: 'CANONICAL', workflow: 'CANONICAL', posting: 'CANONICAL', access: 'CANONICAL', accountingStandardStrict: false }),
   ownership: ready({ flowKind: null, sourceReviewSupported: true, moneyEditAllowed: true }),
   custody: ready({ hasUsableCashbook: true, holdsVoucherCashbook: true }),
@@ -43,7 +43,7 @@ describe('shared income expense action policy', () => {
     expect(a.legacyApprove.enabled).toBe(false); expect(a.approveOnly.enabled).toBe(false); expect(a.approveAndPost.enabled).toBe(false);
   });
   it('custodian can post approved/reversed vouchers without approve permission', () => {
-    const c = context(); c.permissions = ready({ approve: false, edit: false, cancel: false });
+    const c = context(); c.permissions = ready({ approve: false, edit: false, cancel: false, reverse: false });
     Object.assign(voucher(c), { approvalStatus: 'APPROVED', reviewState: 'RESOLVED', postingStatus: 'REVERSED' });
     expect(decideIncomeExpenseActions(c).post.enabled).toBe(true);
     c.custody = ready({ hasUsableCashbook: false, holdsVoucherCashbook: false });
@@ -65,6 +65,40 @@ describe('shared income expense action policy', () => {
     expect(decideIncomeExpenseActions(c).reverse.enabled).toBe(true); expect(decideIncomeExpenseActions(c).unapprove.enabled).toBe(false);
     c.custody = ready({ hasUsableCashbook: true, holdsVoucherCashbook: false }); expect(decideIncomeExpenseActions(c).reverse.enabled).toBe(false);
   });
+  it('custody does not replace scoped reverse permission', () => {
+    const c = context(); Object.assign(voucher(c), { approvalStatus: 'APPROVED', postingStatus: 'POSTED', activePostingId: 'p', accountId: 'book' });
+    c.permissions = ready({ approve: true, edit: true, cancel: true, reverse: false });
+    expect(decideIncomeExpenseActions(c).reverse).toMatchObject({ visible: true, enabled: false, loading: false, reasonCode: 'PERMISSION' });
+    expect(decideIncomeExpenseActions(c).reverse.reason).toContain('hoàn tác');
+  });
+  it.each(['loading', 'error'] as const)('reverse waits for %s permission readiness even with custody', state => {
+    const c = context(); Object.assign(voucher(c), { approvalStatus: 'APPROVED', postingStatus: 'POSTED', activePostingId: 'p', accountId: 'book' });
+    c.permissions = state === 'loading' ? { state } : { state, reason: 'Không tải được quyền hoàn tác' };
+    expect(decideIncomeExpenseActions(c).reverse).toMatchObject({ visible: true, enabled: false, loading: state === 'loading', reasonCode: state === 'loading' ? 'LOADING' : 'READ_ERROR' });
+    expect(decideIncomeExpenseActions(c).reverse.reason).toBeTruthy();
+  });
+  it.each(['INVOICE_REFUND', 'TERMINATION_REFUND'])('does not reverse posted %s through a canonical-only writer', flowKind => {
+    const c = context(); Object.assign(voucher(c), { approvalStatus: 'APPROVED', postingStatus: 'POSTED', activePostingId: 'p', accountId: 'book' });
+    c.ownership = ready({ flowKind, sourceReviewSupported: false, moneyEditAllowed: false });
+    expect(decideIncomeExpenseActions(c).reverse).toMatchObject({ visible: true, enabled: false, reasonCode: 'SOURCE_WRITER_UNSUPPORTED' });
+  });
+  it.each([null, 'CANONICAL_INCOME_EXPENSE'])('keeps reverse for supported owner %s with scoped reverse permission', flowKind => {
+    const c = context(); Object.assign(voucher(c), { approvalStatus: 'APPROVED', postingStatus: 'POSTED', activePostingId: 'p', accountId: 'book' });
+    c.ownership = ready({ flowKind, sourceReviewSupported: true, moneyEditAllowed: false });
+    c.permissions = ready({ approve: false, edit: false, cancel: false, reverse: true });
+    expect(decideIncomeExpenseActions(c).reverse.enabled).toBe(true);
+  });
+  it('approve-and-post requires UNPOSTED while post-only can use REVERSED', () => {
+    const c = context(); voucher(c).postingStatus = 'REVERSED';
+    expect(decideIncomeExpenseActions(c).approveAndPost).toMatchObject({ visible: true, enabled: false, reasonCode: 'POSTING_STATE' });
+    Object.assign(voucher(c), { approvalStatus: 'APPROVED', reviewState: 'RESOLVED' });
+    expect(decideIncomeExpenseActions(c).post.enabled).toBe(true);
+  });
+  it.each(['loading', 'error'] as const)('post-only remains custody-based when approval/reverse permissions are %s', state => {
+    const c = context(); Object.assign(voucher(c), { approvalStatus: 'APPROVED', reviewState: 'RESOLVED', postingStatus: 'REVERSED' });
+    c.permissions = state === 'loading' ? { state } : { state, reason: 'Không tải được quyền duyệt' };
+    expect(decideIncomeExpenseActions(c).post.enabled).toBe(true);
+  });
   it('keeps server cancel denial and writer selection; missing eligibility disables', () => {
     const c = context(); c.cancellation = ready({ canCancel: false, reason: 'Sổ đã khoá', useIncomeDoor: false, useFlexWriter: false, mode: null });
     expect(decideIncomeExpenseActions(c).cancel).toMatchObject({ enabled: false, reason: 'Sổ đã khoá' });
@@ -74,7 +108,7 @@ describe('shared income expense action policy', () => {
   });
   it('supplement is independent of cancelled status and requires existing annotate rights', () => {
     const c = context(); voucher(c).approvalStatus = 'CANCELLED'; expect(decideIncomeExpenseActions(c).supplement.enabled).toBe(true);
-    c.actor = ready({ id: 'outsider', organizationId: 'org', isAdmin: false }); c.permissions = ready({ approve: false, edit: false, cancel: false });
+    c.actor = ready({ id: 'outsider', organizationId: 'org', isAdmin: false }); c.permissions = ready({ approve: false, edit: false, cancel: false, reverse: false });
     expect(decideIncomeExpenseActions(c).supplement.enabled).toBe(false);
   });
   it('does not infer bank edit from lack of system ownership', () => {
@@ -88,7 +122,7 @@ describe('shared income expense action policy', () => {
     c.actor = ready({ id: 'editor', organizationId: 'org', isAdmin: false });
     expect(decideIncomeExpenseActions(c).resubmitReview.enabled).toBe(false);
     voucher(c).makerUserId = null; expect(decideIncomeExpenseActions(c).resubmitReview.enabled).toBe(true);
-    c.permissions = ready({ approve: true, edit: false, cancel: false }); expect(decideIncomeExpenseActions(c).resubmitReview.enabled).toBe(false);
+    c.permissions = ready({ approve: true, edit: false, cancel: false, reverse: false }); expect(decideIncomeExpenseActions(c).resubmitReview.enabled).toBe(false);
   });
   it.each(['INVOICE_REFUND', 'TERMINATION_REFUND', 'ANOTHER_DOMAIN'])('blocks unsupported owned review %s with a reason, not a kind-specific bypass', flowKind => {
     const c = context(); voucher(c).reviewState = 'CHANGES_REQUESTED'; c.ownership = ready({ flowKind, sourceReviewSupported: true, moneyEditAllowed: false });

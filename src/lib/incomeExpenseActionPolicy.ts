@@ -17,7 +17,7 @@ export interface IncomeExpenseActionContext {
   voucher: ActionReadiness<ActionVoucher>;
   actor: ActionReadiness<{ id: string; organizationId: string; isAdmin: boolean }>;
   /** Already resolved for this voucher's building, never a global permission guess. */
-  permissions: ActionReadiness<{ approve: boolean; edit: boolean; cancel: boolean }>;
+  permissions: ActionReadiness<{ approve: boolean; edit: boolean; cancel: boolean; reverse: boolean }>;
   routes: ActionReadiness<FinanceV2OrgRoutes>;
   ownership: ActionReadiness<{ flowKind: string | null; sourceReviewSupported: boolean; moneyEditAllowed: boolean }>;
   custody: ActionReadiness<{ hasUsableCashbook: boolean; holdsVoucherCashbook: boolean }>;
@@ -92,10 +92,11 @@ export function decideIncomeExpenseActions(c: IncomeExpenseActionContext): Incom
       a.writer = 'canonical';
       if (route !== 'CANONICAL' || (name === 'approveAndPost' && routes.posting !== 'CANONICAL')) { deny(a, 'CANONICAL_REQUIRED', 'Thao tác cần quy trình thu chi chuẩn'); continue; }
     }
-    if (name !== 'post' && name !== 'reverse') {
+    if (name !== 'post') {
       if (!requireReady(a, c.permissions)) continue;
       const p = c.permissions.value;
       if ((approvalAction || name === 'requestChanges') && !p.approve) { deny(a, 'PERMISSION', 'Cần quyền duyệt thu chi tại tòa nhà'); continue; }
+      if (name === 'reverse' && !p.reverse) { deny(a, 'PERMISSION', 'Cần quyền hoàn tác thu chi tại tòa nhà'); continue; }
       if ((name === 'edit' && !p.edit) || (name === 'cancel' && !p.cancel) || (name === 'unapprove' && !actor.isAdmin)) { deny(a, 'PERMISSION', 'Không có quyền thực hiện thao tác'); continue; }
       if (name === 'resubmitReview' && (v.makerUserId ? v.makerUserId !== actor.id : !p.edit)) { deny(a, 'MAKER', 'Cần người lập gốc; phiếu cũ chưa có người lập cần quyền sửa tại tòa nhà'); continue; }
     }
@@ -109,7 +110,9 @@ export function decideIncomeExpenseActions(c: IncomeExpenseActionContext): Incom
     if (name === 'edit' || isReview || approvalAction || name === 'post' || name === 'reverse' || name === 'unapprove') {
       if (!requireReady(a, c.ownership)) continue;
       const owner = c.ownership.value;
-      if (name === 'post' && owner.flowKind !== null && owner.flowKind !== 'CANONICAL_INCOME_EXPENSE') { deny(a, 'SOURCE_WRITER_UNSUPPORTED', 'Nguồn phiếu chưa có cửa ghi sổ dùng chung'); continue; }
+      if ((name === 'post' || name === 'reverse') && owner.flowKind !== null && owner.flowKind !== 'CANONICAL_INCOME_EXPENSE') {
+        deny(a, 'SOURCE_WRITER_UNSUPPORTED', name === 'reverse' ? 'Nguồn phiếu chưa có cửa hoàn tác dùng chung' : 'Nguồn phiếu chưa có cửa ghi sổ dùng chung'); continue;
+      }
       if (isReview && (!owner.sourceReviewSupported || (owner.flowKind !== null && owner.flowKind !== 'CANONICAL_INCOME_EXPENSE'))) { deny(a, 'SOURCE_REVIEW_UNSUPPORTED', 'Nguồn phiếu chưa có cửa yêu cầu sửa/chuyển chờ duyệt an toàn'); continue; }
       if (name === 'edit' && !owner.moneyEditAllowed) { deny(a, 'PAYLOAD_FROZEN', 'Phiếu khóa nội dung tài chính; có thể bổ sung chứng từ'); continue; }
       if (approvalAction && owner.flowKind !== null && owner.flowKind !== 'CANONICAL_INCOME_EXPENSE') {
@@ -128,7 +131,8 @@ export function decideIncomeExpenseActions(c: IncomeExpenseActionContext): Incom
     if (name === 'approveAndPost' || name === 'post' || name === 'reverse') {
       if (!cash || !validVersion(v.postingVersion) || !validVersion(v.approvalVersion)) { deny(a, 'CASH_STATE', 'Cần phiếu ghi sổ và phiên bản hiện tại'); continue; }
       const posted = name === 'reverse';
-      if (posted ? !v.activePostingId || !v.accountId : v.activePostingId !== null || !['UNPOSTED', 'REVERSED'].includes(v.postingStatus || '')) { deny(a, 'POSTING_STATE', 'Trạng thái bút toán chưa đủ điều kiện'); continue; }
+      const canPostState = v.postingStatus === 'UNPOSTED' || (name === 'post' && v.postingStatus === 'REVERSED');
+      if (posted ? !v.activePostingId || !v.accountId : v.activePostingId !== null || !canPostState) { deny(a, 'POSTING_STATE', 'Trạng thái bút toán chưa đủ điều kiện'); continue; }
       if (!requireReady(a, c.custody)) continue;
       if (posted ? !c.custody.value.holdsVoucherCashbook : !c.custody.value.hasUsableCashbook) { deny(a, 'CUSTODY', posted ? 'Cần giữ đúng sổ quỹ của phiếu' : 'Cần sổ quỹ có thể thu/chi'); continue; }
     }
