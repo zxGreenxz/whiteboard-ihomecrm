@@ -39,7 +39,7 @@ const dateLabel = (date: string | null) => date ? date.slice(0, 10).split("-").r
 export function ContractSettlementEvents({ rows, period, buildings, complete, loading, fetching, error, navigation, onSelect, onRefresh, onPeriodChange }: ContractSettlementEventsProps) {
   const [search, setSearch] = useState("");
   const [building, setBuilding] = useState("all");
-  const [withinPeriod, setWithinPeriod] = useState(false);
+  const [withinPeriod, setWithinPeriod] = useState(true);
   const [advanced, setAdvanced] = useState(false);
   const [origin, setOrigin] = useState("all");
   const [person, setPerson] = useState("all");
@@ -56,12 +56,24 @@ export function ContractSettlementEvents({ rows, period, buildings, complete, lo
     return !search.trim() || normalizeVietnamese(haystack).includes(normalizeVietnamese(search.trim()));
   }), [rows, building, origin, person, withinPeriod, period, search, buildingNames]);
   const shown = base.filter(row => kind === "all" || row.type === kind);
+  const scopeUnknownDates = base.filter(row => row.businessDate === null).length;
   const unknownDates = shown.filter(row => row.businessDate === null).length;
+  const resultLabel = withinPeriod && unknownDates > 0
+    ? `${shown.length - unknownDates} lượt trong kỳ · ${unknownDates} lượt chưa rõ ngày`
+    : `${shown.length} lượt biến động`;
+  const footerLabel = complete
+    ? withinPeriod && unknownDates > 0 ? resultLabel : `${shown.length} lượt trong phạm vi đang xem`
+    : `Tạm tính trên ${shown.length} lượt đã tải${withinPeriod && unknownDates > 0 ? ` · ${resultLabel}` : ""}`;
+  const countsFor = (type: EventType | "all") => {
+    const matching = base.filter(row => type === "all" || row.type === type);
+    const unassigned = withinPeriod ? matching.filter(row => row.businessDate === null).length : 0;
+    return { count: matching.length - unassigned, unassigned };
+  };
   const pageCount = Math.max(1, Math.ceil(shown.length / 50));
   const currentPage = Math.min(page, pageCount - 1);
   const pageRows = shown.slice(currentPage * 50, (currentPage + 1) * 50);
   const selectKind = (value: EventType | "all") => { setKind(value); setPage(0); };
-  function clearFilters() { setSearch(""); setBuilding("all"); setWithinPeriod(false); setOrigin("all"); setPerson("all"); selectKind("all"); }
+  function clearFilters() { setSearch(""); setBuilding("all"); setWithinPeriod(true); setOrigin("all"); setPerson("all"); selectKind("all"); }
   const [year, month] = period.split("-").map(Number);
   const priorPeriod = `${month === 1 ? year - 1 : year}-${String(month === 1 ? 12 : month - 1).padStart(2, "0")}`;
 
@@ -69,9 +81,13 @@ export function ContractSettlementEvents({ rows, period, buildings, complete, lo
     <div className="cs-viewbar">{navigation ?? <span className="cs-secondary">Biến động · theo ngày phát sinh nghiệp vụ</span>}</div>
     {loading && rows.length === 0 ? <div role="status" className="cs-surface cs-loading"><LoaderCircle className="animate-spin" size={22} aria-hidden="true" />Đang tải biến động…</div> : <>
       <div className="cs-stats" data-columns="5" aria-label="Lượt biến động theo loại, trước khi lọc loại">
-        {(Object.keys(eventLabels) as EventType[]).map(type => <button type="button" key={type} data-testid="event-stat" className="cs-stat cs-event-stat" aria-pressed={kind === type} onClick={() => selectKind(kind === type ? "all" : type)}>
-          <span className="cs-stat-label">{eventLabels[type]}</span><div className="cs-stat-value">{base.filter(row => row.type === type).length}</div><div className="cs-stat-meta">{complete ? "" : "Tạm tính · "}lượt biến động</div>
-        </button>)}
+        {(Object.keys(eventLabels) as EventType[]).map(type => {
+          const counts = countsFor(type);
+          return <button type="button" key={type} data-testid="event-stat" className="cs-stat cs-event-stat" aria-pressed={kind === type} onClick={() => selectKind(kind === type ? "all" : type)}>
+            <span className="cs-stat-label">{eventLabels[type]}</span><div className="cs-stat-value">{counts.count}</div><div className="cs-stat-meta">{complete ? "" : "Tạm tính · "}lượt biến động</div>
+            {counts.unassigned > 0 && <div className="cs-stat-meta">{counts.unassigned} chưa rõ ngày · chưa tính vào kỳ</div>}
+          </button>;
+        })}
       </div>
       {error && <div className="cs-error" role="alert"><strong>{error}</strong><span>Bộ lọc và dữ liệu đã tải vẫn được giữ.</span><button className="cs-button" onClick={onRefresh}>Thử lại</button></div>}
       <section className="cs-surface" aria-busy={fetching}>
@@ -86,10 +102,13 @@ export function ContractSettlementEvents({ rows, period, buildings, complete, lo
           <label>Người phụ trách<select className="cs-select" value={person} onChange={e => { setPerson(e.target.value); setPage(0); }}><option value="all">Tất cả</option>{people.map(name => <option key={name} value={name}>{name}</option>)}</select></label>
           <button className="cs-clear" onClick={clearFilters}>Bỏ bộ lọc</button>
         </div>}
-        <div className="cs-chips">{(["all", ...Object.keys(eventLabels)] as (EventType | "all")[]).map(type => <button className="cs-chip" key={type} aria-pressed={kind === type} onClick={() => selectKind(type)}>{type === "all" ? "Tất cả" : eventLabels[type]}<span className="cs-chip-count">{base.filter(row => type === "all" || row.type === type).length}</span></button>)}</div>
+        <div className="cs-chips">{(["all", ...Object.keys(eventLabels)] as (EventType | "all")[]).map(type => {
+          const counts = countsFor(type);
+          return <button className="cs-chip" key={type} aria-pressed={kind === type} onClick={() => selectKind(type)}>{type === "all" ? "Tất cả" : eventLabels[type]}<span className="cs-chip-count">{counts.count}</span>{counts.unassigned > 0 && <span className="cs-secondary"> + {counts.unassigned} chưa rõ ngày</span>}</button>;
+        })}</div>
         <div className="cs-event-notice">Đếm theo lượt biến động, theo ngày phát sinh nghiệp vụ. Khoản chi liên kết dùng chung, không cộng lặp giữa giữ chỗ và ký hợp đồng.</div>
-        {unknownDates > 0 && <div className="cs-notice">{unknownDates} biến động chưa rõ ngày; được giữ lại để đối chiếu{withinPeriod ? ", chưa xác định thuộc kỳ đang xem" : ""}.</div>}
-        <div className="cs-results"><span>{shown.length} lượt biến động{fetching ? " · Đang cập nhật" : ""}</span><span className="cs-mono">{complete ? "Theo ngày nghiệp vụ" : "Chưa tải đủ dữ liệu"}</span></div>
+        {scopeUnknownDates > 0 && <div className="cs-notice">{scopeUnknownDates} biến động chưa rõ ngày; {withinPeriod ? "chưa tính vào số lượt trong kỳ. Chọn loại biến động tương ứng để đối chiếu." : "vẫn được giữ trong danh sách để đối chiếu."}</div>}
+        <div className="cs-results"><span>{resultLabel}{fetching ? " · Đang cập nhật" : ""}</span><span className="cs-mono">{complete ? "Theo ngày nghiệp vụ" : "Chưa tải đủ dữ liệu"}</span></div>
         <div className="cs-table-scroll"><div role="table" aria-label="Danh sách biến động" className="cs-event-table">
           <div role="row" className="cs-grid-row cs-grid-head">{["Phòng · Khách", "Biến động", "Ngày phát sinh", "Khoản chi liên quan", ""].map((label, index) => <div role="columnheader" key={index}>{label}</div>)}</div>
           {pageRows.map(row => <div role="row" className="cs-grid-row" key={row.id}>
@@ -101,8 +120,8 @@ export function ContractSettlementEvents({ rows, period, buildings, complete, lo
           </div>)}
         </div></div>
         {shown.length === 0 && <div className="cs-empty"><strong>{complete ? "Không có biến động phù hợp" : "Chưa có dữ liệu để hiển thị"}</strong><p>{complete ? "Thử thay đổi kỳ hoặc bỏ bớt bộ lọc." : "Tải lại để xác định đầy đủ biến động."}</p><button className="cs-button" onClick={complete ? clearFilters : onRefresh}>{complete ? "Bỏ bộ lọc" : "Tải lại"}</button></div>}
-        <div className="cs-footer"><span>{complete ? `${shown.length} lượt trong phạm vi đang xem` : `Tạm tính trên ${shown.length} lượt đã tải`}</span><span>Không cộng số tiền theo lượt biến động</span></div>
-        {pageCount > 1 && <div className="cs-footer"><button className="cs-button" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>Trước</button><span>Trang {currentPage + 1}/{pageCount} · Đếm trên toàn bộ {shown.length} lượt</span><button className="cs-button" disabled={currentPage + 1 >= pageCount} onClick={() => setPage(currentPage + 1)}>Sau</button></div>}
+        <div className="cs-footer"><span>{footerLabel}</span><span>Không cộng số tiền theo lượt biến động</span></div>
+        {pageCount > 1 && <div className="cs-footer"><button className="cs-button" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>Trước</button><span>Trang {currentPage + 1}/{pageCount} · Hiển thị toàn bộ {shown.length} dòng</span><button className="cs-button" disabled={currentPage + 1 >= pageCount} onClick={() => setPage(currentPage + 1)}>Sau</button></div>}
       </section>
     </>}
   </div>;
