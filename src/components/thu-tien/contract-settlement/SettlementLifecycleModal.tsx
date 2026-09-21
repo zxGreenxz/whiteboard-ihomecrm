@@ -10,6 +10,7 @@
 // =============================================================================
 
 import { useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
 import IncomeExpensePostingDialog from '@/components/income-expenses/IncomeExpensePostingDialog';
 import type { PostFinanceExecutionInput } from '@/lib/incomeExpensePostingValidation';
@@ -80,7 +81,17 @@ export function SettlementLifecycleModal({ row, actions, onClose }: Props) {
     await supplements.refetch();
   });
 
-  return (
+  // ⚠ PHẢI dựng qua portal ra document.body.
+  //
+  // `.tt-stage` của trang Thanh toán là `position: fixed; z-index: 0` — tức một
+  // STACKING CONTEXT. Modal nằm trong đó thì z-index bao nhiêu cũng chỉ có tác
+  // dụng BÊN TRONG context ấy, không vượt nổi khung điện thoại `.tt-phone-col`
+  // vốn mount song song trên desktop. Đã dính thật khi thử tay: bấm nút trong
+  // modal bị `.ptt-m-ovrow` của khung điện thoại chắn pointer event.
+  //
+  // Cùng lớp lỗi với `.cm-stage` của nút Copilot — đừng chữa bằng cách nâng
+  // z-index, nâng bao nhiêu cũng vô ích.
+  return createPortal(
     <div className="cs-modal-scrim" onClick={onClose}>
       <div className="cs-modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
         <div className="cs-modal-head">
@@ -300,6 +311,7 @@ export function SettlementLifecycleModal({ row, actions, onClose }: Props) {
           })}
         />
       )}
-    </div>
+    </div>,
+    document.body,
   );
 }
