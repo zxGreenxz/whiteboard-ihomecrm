@@ -15,6 +15,7 @@ const m = vi.hoisted(() => ({
   resubmit: vi.fn(),
   supplement: vi.fn(),
   quick: vi.fn(),
+  recipient: vi.fn(),
   bookRefresh: vi.fn(),
   cancelRead: vi.fn(),
   refresh: vi.fn(),
@@ -73,6 +74,7 @@ vi.mock("./supplements", () => ({
 vi.mock("./mutations", () => ({
   useQuickUpdateIncomeExpense: () => ({ mutateAsync: m.quick }),
 }));
+vi.mock('./recipientMutations', () => ({ useUpdateIncomeExpenseRecipient: () => ({ mutateAsync: m.recipient }) }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 import { useIncomeExpenseActions } from "./useIncomeExpenseActions";
 import type {
@@ -170,6 +172,31 @@ async function open(
   await waitFor(() => expect(h.result.current.selected?.snapshot).toBeTruthy());
 }
 describe("shared controller executes reviewed snapshots", () => {
+  it('saves only changed recipient fields against the reviewed versions and refreshes both surfaces', async () => {
+    row.flowKind = null; row.systemSource = null; row.capabilities.manual = true;
+    row.payerName = 'Original'; row.receiveBankName = 'ACB'; row.receiveBankAccount = '00123';
+    m.recipient.mockResolvedValue({});
+    const h = setup(); await open(h, 'editRecipient');
+    await act(async () => { await h.result.current.commands.confirm({ recipient: { payerName: 'New name', bankName: 'ACB', bankAccount: '00123' } }); });
+    expect(m.recipient).toHaveBeenCalledExactlyOnceWith({ voucherId: id, organizationId: org,
+      expected: { payerName: 'Original', bankName: 'ACB', bankAccount: '00123', approvalVersion: 3, postingVersion: 4, reviewVersion: 5 }, patch: { payerName: 'New name' } });
+    expect(m.refresh).toHaveBeenCalled(); expect(h.result.current.selected).toBeNull();
+    expect(m.approve).not.toHaveBeenCalled(); expect(m.post).not.toHaveBeenCalled(); expect(m.resubmit).not.toHaveBeenCalled();
+  });
+  it('does not retry an uncertain recipient update and reconciles only the matching current recipient', async () => {
+    row.flowKind = null; row.systemSource = null; row.capabilities.manual = true;
+    m.recipient.mockRejectedValue({ kind: 'unconfirmed', message: 'unknown' });
+    const h = setup(); await open(h, 'editRecipient');
+    await act(async () => { await expect(h.result.current.commands.confirm({ recipient: { payerName: 'New', bankName: null, bankAccount: null } })).rejects.toBeTruthy(); });
+    expect(h.result.current.retryable).toBe(false);
+    expect(h.result.current.dismissalBlocked).toBe(true);
+    await act(async () => { await h.result.current.commands.reconcile(); });
+    expect(h.result.current.outcome.kind).toBe('unknown');
+    row.payerName = 'New';
+    await act(async () => { await h.result.current.commands.reconcile(); });
+    expect(h.result.current.outcome.kind).toBe('success');
+    expect(m.recipient).toHaveBeenCalledTimes(1);
+  });
   it("pins canonical CAS/key and keeps busy through refresh, synchronously rejects double submit", async () => {
     let resolve!: () => void;
     m.invalidate.mockImplementation(

@@ -20,6 +20,24 @@ const context = (): IncomeExpenseActionContext => ({
 function voucher(c: IncomeExpenseActionContext) { if (c.voucher.state !== 'ready') throw new Error('fixture'); return c.voucher.value; }
 
 describe('shared income expense action policy', () => {
+  it('allows recipient-only editing for an eligible manual pending voucher without approval or custody', () => {
+    const c = context(); c.handlers.editRecipient = true;
+    c.permissions = ready({ approve: false, edit: true, cancel: false, reverse: false });
+    c.custody = ready({ hasUsableCashbook: false, holdsVoucherCashbook: false });
+    expect(decideIncomeExpenseActions(c).editRecipient.enabled).toBe(true);
+    c.permissions = ready({ approve: true, edit: false, cancel: false, reverse: false });
+    expect(decideIncomeExpenseActions(c).editRecipient.enabled).toBe(false);
+  });
+  it('keeps recipient editing blocked for frozen ownership and unknown or posted money state', () => {
+    const c = context(); c.handlers.editRecipient = true;
+    c.ownership = ready({ flowKind: 'CANONICAL_INCOME_EXPENSE', moneyEditAllowed: false, sourceReviewSupported: true });
+    expect(decideIncomeExpenseActions(c).editRecipient.reasonCode).toBe('PAYLOAD_FROZEN');
+    c.ownership = ready({ flowKind: null, moneyEditAllowed: true, sourceReviewSupported: true });
+    for (const status of [null, 'POSTED', 'REVERSED']) {
+      voucher(c).postingStatus = status;
+      expect(decideIncomeExpenseActions(c).editRecipient.enabled).toBe(false);
+    }
+  });
   it('separates canonical approval from legacy and post-only commands', () => {
     const a = decideIncomeExpenseActions(context());
     expect(a.approveOnly.enabled).toBe(true); expect(a.approveAndPost.enabled).toBe(true);

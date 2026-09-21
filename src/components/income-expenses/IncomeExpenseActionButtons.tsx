@@ -14,6 +14,7 @@ import type { IncomeExpenseAction } from "@/lib/incomeExpenseActionPolicy";
 import type { IncomeExpenseActionsController } from "@/hooks/income-expenses/useIncomeExpenseActions";
 const definitions: [IncomeExpenseAction, string, typeof Banknote][] = [
   ["edit", "Sửa phiếu", Pencil],
+  ['editRecipient', 'Sửa người nhận', Pencil],
   ["supplement", "Bổ sung chứng từ / ghi chú", FilePlus2],
   ["approveOnly", "Chỉ duyệt", CheckCircle2],
   ["legacyApprove", "Duyệt phiếu", CheckCircle2],

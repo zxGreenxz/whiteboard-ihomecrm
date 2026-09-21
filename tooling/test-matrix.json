@@ -2,6 +2,7 @@
   "$comment": "Bản đồ: file test nào do suite nào chạy, bằng runner gì. Vấn đề nó giải: một file test viết ra nhưng KHÔNG nằm trong lệnh nào sẽ im lặng không bao giờ chạy — nhìn vào repo thì thấy 'đã có test', nhìn vào CI thì thấy xanh, mà thực tế không ai kiểm gì. Đó cũng là lý do repo đã có verify-network-center-test-completeness.mjs: test bị SKIP cũng báo pass. File này mở rộng ý đó ra toàn repo. Kiểm: npm run gate:test-matrix",
   "schemaVersion": 1,
   "notes": [
+    "Harness operator T5 recipient: node scripts/test-income-expense-recipient-local.mjs and node scripts/test-income-expense-recipient-schema-local.mjs; disposable settlement_t7 PostgreSQL17 loopback55488 / PostgREST16 loopback55490 only. Authenticated JWT writer/denial/concurrency tests self-clean; schema checks rollback. Not a CI-provisioned database suite. UI/service tests belong to app-unit.",
     "Runner gán theo includes/command/ciJobs của từng suite, không suy từ thư mục supabase/functions/.",
     "Suite nào đòi runtime khác Node mặc định thì ghi ở trường `runtime` — tra chi tiết ở tooling/runtime-matrix.json.",
     "Harness operator T2: node scripts/test-contract-settlement-reader-local.mjs, chỉ disposable PostgreSQL17 loopback55488 + PostgREST16 loopback55489; tự setup/cleanup fixture, JWT authenticated. Không phải CI suite; CI chưa provision baseline+forward/runtime này. Unit reader nằm trong app-unit.",

@@ -3,7 +3,7 @@ import type { FinanceV2OrgRoutes } from './financeV2Route';
 /** A missing snapshot is not a negative permission or a LEGACY route. */
 export type ActionReadiness<T> = { state: 'ready'; value: T } | { state: 'loading' } | { state: 'error'; reason: string };
 export type IncomeExpenseAction = 'approveOnly' | 'legacyApprove' | 'approveAndPost' | 'post' | 'reverse' | 'unapprove'
-  | 'cancel' | 'edit' | 'supplement' | 'requestChanges' | 'resubmitReview';
+  | 'cancel' | 'edit' | 'editRecipient' | 'supplement' | 'requestChanges' | 'resubmitReview';
 export interface ActionVoucher {
   id: string; organizationId: string | null; buildingId: string | null; type: string;
   userId: string | null; makerUserId: string | null;
@@ -32,7 +32,7 @@ export interface IncomeExpenseActionAvailability {
 }
 export type IncomeExpenseActionAvailabilityMap = Record<IncomeExpenseAction, IncomeExpenseActionAvailability>;
 const actionNames: IncomeExpenseAction[] = ['approveOnly', 'legacyApprove', 'approveAndPost', 'post', 'reverse', 'unapprove',
-  'cancel', 'edit', 'supplement', 'requestChanges', 'resubmitReview'];
+  'cancel', 'edit', 'editRecipient', 'supplement', 'requestChanges', 'resubmitReview'];
 const validVersion = (value: number | null) => value !== null && Number.isSafeInteger(value) && value >= 0;
 
 export function pendingIncomeExpenseActionContext(
@@ -86,7 +86,7 @@ export function decideIncomeExpenseActions(c: IncomeExpenseActionContext): Incom
     if (!requireReady(a, c.routes)) continue;
     const routes = c.routes.value;
     const route = name === 'post' || name === 'reverse' ? routes.posting : routes.workflow;
-    if (route === 'FROZEN' || ((name === 'approveAndPost' || name === 'cancel' || name === 'unapprove' || name === 'edit') && routes.posting === 'FROZEN')) {
+    if (route === 'FROZEN' || ((name === 'approveAndPost' || name === 'cancel' || name === 'unapprove' || name === 'edit' || name === 'editRecipient') && routes.posting === 'FROZEN')) {
       deny(a, 'FROZEN', 'Tổ chức đang tạm khóa thao tác thu chi'); continue;
     }
     if (name === 'legacyApprove') {
@@ -101,7 +101,7 @@ export function decideIncomeExpenseActions(c: IncomeExpenseActionContext): Incom
       const p = c.permissions.value;
       if ((approvalAction || name === 'requestChanges') && !p.approve && !((name === 'approveOnly' || name === 'legacyApprove') && c.lifecycle.state === 'ready' && c.lifecycle.value.forfeitPair && c.lifecycle.value.forfeitAllowed)) { deny(a, 'PERMISSION', 'Cần quyền duyệt thu chi tại tòa nhà'); continue; }
       if (name === 'reverse' && !p.reverse) { deny(a, 'PERMISSION', 'Cần quyền hoàn tác thu chi tại tòa nhà'); continue; }
-      if ((name === 'edit' && !p.edit) || (name === 'unapprove' && !actor.isAdmin)) { deny(a, 'PERMISSION', 'Không có quyền thực hiện thao tác'); continue; }
+      if (((name === 'edit' || name === 'editRecipient') && !p.edit) || (name === 'unapprove' && !actor.isAdmin)) { deny(a, 'PERMISSION', 'Không có quyền thực hiện thao tác'); continue; }
       if (name === 'resubmitReview' && (v.makerUserId ? v.makerUserId !== actor.id : !p.edit)) { deny(a, 'MAKER', 'Cần người lập gốc; phiếu cũ chưa có người lập cần quyền sửa tại tòa nhà'); continue; }
     }
     if (approvalAction || name === 'unapprove') {
@@ -119,19 +119,22 @@ export function decideIncomeExpenseActions(c: IncomeExpenseActionContext): Incom
       if (!cancel.canCancel) { deny(a, 'CANCEL_DENIED', cancel.reason || 'Phiếu chưa đủ điều kiện hủy'); continue; }
       if (!cancel.useIncomeDoor && (!validVersion(v.approvalVersion) || !validVersion(v.postingVersion))) { deny(a, 'CAS_REQUIRED', 'Chưa tải phiên bản phiếu để hủy'); continue; }
     }
-    if (name === 'edit' || isReview || approvalAction || name === 'post' || name === 'reverse' || name === 'unapprove') {
+    if (name === 'edit' || name === 'editRecipient' || isReview || approvalAction || name === 'post' || name === 'reverse' || name === 'unapprove') {
       if (!requireReady(a, c.ownership)) continue;
       const owner = c.ownership.value;
       if ((name === 'post' || name === 'reverse') && owner.flowKind !== null && owner.flowKind !== 'CANONICAL_INCOME_EXPENSE') {
         deny(a, 'SOURCE_WRITER_UNSUPPORTED', name === 'reverse' ? 'Nguồn phiếu chưa có cửa hoàn tác dùng chung' : 'Nguồn phiếu chưa có cửa ghi sổ dùng chung'); continue;
       }
       if (isReview && (!owner.sourceReviewSupported || (owner.flowKind !== null && owner.flowKind !== 'CANONICAL_INCOME_EXPENSE'))) { deny(a, 'SOURCE_REVIEW_UNSUPPORTED', 'Nguồn phiếu chưa có cửa yêu cầu sửa/chuyển chờ duyệt an toàn'); continue; }
-      if (name === 'edit' && !owner.moneyEditAllowed) { deny(a, 'PAYLOAD_FROZEN', 'Phiếu khóa nội dung tài chính; có thể bổ sung chứng từ'); continue; }
+      if ((name === 'edit' || name === 'editRecipient') && !owner.moneyEditAllowed) { deny(a, 'PAYLOAD_FROZEN', 'Phiếu khóa nội dung tài chính; có thể bổ sung chứng từ'); continue; }
       if (approvalAction && owner.flowKind !== null && owner.flowKind !== 'CANONICAL_INCOME_EXPENSE') {
         if ((name === 'approveOnly' && ['INVOICE_REFUND', 'TERMINATION_REFUND'].includes(owner.flowKind))
           || ((name === 'approveOnly' || name === 'legacyApprove') && c.lifecycle.state === 'ready' && c.lifecycle.value.forfeitPair && c.lifecycle.value.forfeitAllowed)) a.writer = 'owned';
         else { deny(a, 'SOURCE_WRITER_UNSUPPORTED', 'Nguồn phiếu cần cửa duyệt riêng'); continue; }
       }
+    }
+    if (name === 'editRecipient' && (!pending || v.activePostingId !== null || !(cash && v.postingStatus === 'UNPOSTED' || v.postingMode === 'NON_CASH' && v.postingStatus === 'NOT_APPLICABLE'))) {
+      deny(a, 'STATE', 'Chỉ sửa người nhận khi phiếu chưa duyệt và chưa ghi sổ'); continue;
     }
     if (isReview) {
       if (v.activePostingId !== null || !(cash && v.postingStatus === 'UNPOSTED' || v.postingMode === 'NON_CASH' && v.postingStatus === 'NOT_APPLICABLE')) { deny(a, 'STATE', 'Phiếu cần chưa duyệt và chưa ghi sổ'); continue; }

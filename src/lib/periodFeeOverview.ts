@@ -1,7 +1,7 @@
 export type PeriodFeeOverviewStatus = {
   paidAmount: number;
   draftAmount: number;
-  expectedAmount: number;
+  expectedAmount: number | null;
   notApplicable?: boolean;
 };
 

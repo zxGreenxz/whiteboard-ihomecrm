@@ -29,6 +29,7 @@ import {
 import IncomeExpensePostingDialog from "./IncomeExpensePostingDialog";
 import IncomeExpenseQuickEditDialog from "./IncomeExpenseQuickEditDialog";
 import AttachmentUpload from "./AttachmentUpload";
+import { IncomeExpenseRecipientDialog } from './IncomeExpenseRecipientDialog';
 const labels = {
   approveOnly: "Chỉ duyệt",
   legacyApprove: "Duyệt phiếu",
@@ -38,6 +39,7 @@ const labels = {
   unapprove: "Huỷ duyệt",
   cancel: "Huỷ phiếu",
   edit: "Sửa phiếu",
+  editRecipient: 'Sửa người nhận',
   supplement: "Bổ sung chứng từ / ghi chú",
   requestChanges: "Yêu cầu rà soát",
   resubmitReview: "Chuyển chờ duyệt",
@@ -157,6 +159,10 @@ export function IncomeExpenseActionDialogs({
       )}
     </div>
   ) : null;
+  if (v && action === 'editRecipient') return <IncomeExpenseRecipientDialog key={selected.key} code={v.code}
+    original={{ payerName: v.payerName, bankName: v.receiveBankName, bankAccount: v.receiveBankAccount }}
+    busy={blocked} enabled={!!decision?.enabled} reason={decision?.reason} feedback={feedback} onClose={close}
+    onSubmit={recipient => c.commands.confirm({ recipient })} />;
   if (v && action === "supplement")
     return (
       <IncomeExpenseQuickEditDialog

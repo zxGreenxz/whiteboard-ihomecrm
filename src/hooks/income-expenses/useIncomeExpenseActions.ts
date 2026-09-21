@@ -47,6 +47,8 @@ import {
 } from "./reviewMutations";
 import { useAppendIncomeExpenseSupplement } from "./supplements";
 import { useQuickUpdateIncomeExpense } from "./mutations";
+import { useUpdateIncomeExpenseRecipient } from './recipientMutations';
+import { buildRecipientPatch, type VoucherRecipient } from '@/lib/incomeExpenseRecipient';
 
 export const incomeExpenseActionRefreshKeys = [
   "income-expenses",
@@ -109,6 +111,7 @@ export interface IncomeExpenseActionPayload {
   posting?: PostFinanceExecutionInput;
   legacy?: { accountId: string | null; attachments: string[] };
   supplement?: { note: string; attachments: string[] };
+  recipient?: VoucherRecipient;
 }
 export type ActionOutcome = {
   kind: "idle" | "error" | "unknown" | "processed-refresh-failed" | "success";
@@ -187,6 +190,7 @@ const allHandlers: IncomeExpenseActionContext["handlers"] = {
   supplement: true,
   requestChanges: true,
   resubmitReview: true,
+  editRecipient: true,
 };
 /** The same controller owns every shared surface. Display rows never supply versions or route fallbacks. */
 export function useIncomeExpenseActions(args: {
@@ -252,7 +256,8 @@ export function useIncomeExpenseActions(args: {
   const request = useRequestIncomeExpenseChanges(),
     resubmit = useResubmitIncomeExpenseReview(),
     supplement = useAppendIncomeExpenseSupplement({ managed: true }),
-    quick = useQuickUpdateIncomeExpense({ managed: true });
+    quick = useQuickUpdateIncomeExpense({ managed: true }),
+    recipient = useUpdateIncomeExpenseRecipient();
   useEffect(() => {
     if (
       selected &&
@@ -483,6 +488,13 @@ export function useIncomeExpenseActions(args: {
       case "edit":
         current.current.onEdit?.(v.id);
         return;
+      case 'editRecipient': {
+        if (!p.recipient) throw Object.assign(new Error('Chưa nhập thông tin người nhận.'), { code: '22023' });
+        const original = { payerName: v.payerName, bankName: v.receiveBankName, bankAccount: v.receiveBankAccount };
+        return recipient.mutateAsync({ voucherId: v.id, organizationId: op.scope.organizationId,
+          expected: { ...original, approvalVersion: v.approvalVersion, postingVersion: v.postingVersion, reviewVersion: v.reviewVersion },
+          patch: buildRecipientPatch(original, p.recipient) });
+      }
     }
   }
   async function confirm(payload: IncomeExpenseActionPayload = {}) {
@@ -497,7 +509,7 @@ export function useIncomeExpenseActions(args: {
     const wasUnknown = outcomeRef.current.kind === "unknown";
     if (
       wasUnknown &&
-      (["legacyApprove", "unapprove", "cancel", "edit"].includes(
+      (["legacyApprove", "unapprove", "cancel", "edit", "editRecipient"].includes(
         selectedNow.action,
       ) ||
         selectedNow.snapshot.capabilities.forfeitPair)
@@ -628,6 +640,13 @@ export function useIncomeExpenseActions(args: {
                           op.action === "legacyApprove"
                         ? v.approvalStatus === "APPROVED"
                         : false;
+        if (op.action === 'editRecipient' && op.payload?.recipient) {
+          const original = { payerName: op.snapshot.payerName, bankName: op.snapshot.receiveBankName, bankAccount: op.snapshot.receiveBankAccount };
+          const wanted = { ...original, ...buildRecipientPatch(original, op.payload.recipient) };
+          observed = v.payerName === wanted.payerName && v.receiveBankName === wanted.bankName && v.receiveBankAccount === wanted.bankAccount
+            && v.accountId === op.snapshot.accountId && v.contractId === op.snapshot.contractId && v.roomId === op.snapshot.roomId
+            && v.approvalStatus === op.snapshot.approvalStatus && v.postingStatus === op.snapshot.postingStatus && v.reviewState === op.snapshot.reviewState;
+        }
       }
       if (outcome.kind === "processed-refresh-failed" || observed) {
         setSelected(null);
@@ -645,7 +664,7 @@ export function useIncomeExpenseActions(args: {
   }
   const retryable =
     selected &&
-    !["legacyApprove", "unapprove", "cancel", "edit"].includes(
+    !["legacyApprove", "unapprove", "cancel", "edit", "editRecipient"].includes(
       selected.action,
     ) &&
     !selected.snapshot?.capabilities.forfeitPair;
