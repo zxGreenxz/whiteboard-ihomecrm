@@ -72,17 +72,19 @@ function SettlementSectionContent({ scope, period, onPeriodChange, buildings, re
   </div>;
   if (!active) return <div className="contract-settlement cs-empty" role="status">Chọn tổ chức và phạm vi tòa nhà để xem hợp đồng và quyết toán.</div>;
   return <div className="contract-settlement" ref={fallbackFocusRef} tabIndex={-1} aria-label="Hợp đồng và quyết toán">
-    {refreshError && <div className="cs-warning" role="alert">{refreshError}</div>}
-    <div hidden={tab !== 'payments'} role="tabpanel" id={`${id}-payments-panel`} aria-labelledby={`${id}-payments-payments-tab`}>
-      <ContractSettlementPayments rows={payments.rows} period={period} buildings={buildings} complete={paymentsComplete}
-        loading={payments.loading} fetching={payments.fetching} error={payments.error} navigation={navigation('payments')}
-        onSelect={setSelection} onRefresh={refresh} onPeriodChange={onPeriodChange} />
-    </div>
-    <div hidden={tab !== 'events'} role="tabpanel" id={`${id}-events-panel`} aria-labelledby={`${id}-events-events-tab`}>
-      <ContractSettlementEvents rows={events.rows.map(event => settlementEventView(event, payments.rows, paymentsComplete))}
-        period={period} buildings={buildings} complete={events.complete} loading={events.loading} fetching={events.fetching}
-        error={events.error} navigation={navigation('events')} onSelect={eventId => setSelection({ kind: 'event', eventId })}
-        onRefresh={refresh} onPeriodChange={onPeriodChange} />
+    <div className="cs-body">
+      {refreshError && <div className="cs-warning" role="alert">{refreshError}</div>}
+      <div hidden={tab !== 'payments'} role="tabpanel" id={`${id}-payments-panel`} aria-labelledby={`${id}-payments-payments-tab`}>
+        <ContractSettlementPayments rows={payments.rows} period={period} buildings={buildings} complete={paymentsComplete}
+          loading={payments.loading} fetching={payments.fetching} error={payments.error} navigation={navigation('payments')}
+          onSelect={setSelection} onRefresh={refresh} onPeriodChange={onPeriodChange} />
+      </div>
+      <div hidden={tab !== 'events'} role="tabpanel" id={`${id}-events-panel`} aria-labelledby={`${id}-events-events-tab`}>
+        <ContractSettlementEvents rows={events.rows.map(event => settlementEventView(event, payments.rows, paymentsComplete))}
+          period={period} buildings={buildings} complete={events.complete} loading={events.loading} fetching={events.fetching}
+          error={events.error} navigation={navigation('events')} onSelect={eventId => setSelection({ kind: 'event', eventId })}
+          onRefresh={refresh} onPeriodChange={onPeriodChange} />
+      </div>
     </div>
     {selection && renderDetail({ selection, row: selection.kind === 'event' ? undefined : findSettlementSelection(payments.rows, selection),
       event: selection.kind === 'event' ? events.rows.find(event => event.id === selection.eventId) : undefined,
