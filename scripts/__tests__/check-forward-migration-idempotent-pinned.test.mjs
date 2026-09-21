@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createHash } from "node:crypto";
 
 import { danhGiaMienTruPinned, docLoiSql, kiemMienTruPinned } from "../check-forward-migration-idempotent.mjs";
 
@@ -53,6 +54,51 @@ describe("ngoại lệ idempotency pinned", () => {
     expect(kiemMienTruPinned({ entry, file, digest, failureText, actualProjectRef: "project-khac", root: "C:/repo", read })).toMatchObject({ ok: false, vi: expect.stringMatching(/dấu mốc apply thật/) });
   });
 
+  it("ghim migration thay thế và biên nhận apply khi ngoại lệ do trạng thái mới hơn", () => {
+    const successorFile = "20260921014754_sale_bonus_resolved_source_consistency.sql";
+    const successorSql = "successor sql";
+    const successorDigest = createHash("sha256").update(successorSql).digest("hex");
+    const successorEvidencePath = "docs/generated/schema-change-evidence/successor.json";
+    const successorEvidence = {
+      ...evidence,
+      file: `supabase/migrations/${successorFile}`,
+      sha256: successorDigest,
+      appliedAt: "2026-09-21T03:59:35.000Z",
+    };
+    const supersededEntry = {
+      ...entry,
+      supersededBy: {
+        file: successorFile,
+        sha256: successorDigest,
+        appliedEvidencePath: successorEvidencePath,
+      },
+    };
+    const readSupersession = (path) => path.endsWith("successor.json")
+      ? JSON.stringify(successorEvidence)
+      : path.endsWith(successorFile)
+        ? successorSql
+        : JSON.stringify(evidence);
+
+    expect(kiemMienTruPinned({
+      entry: supersededEntry,
+      file,
+      digest,
+      failureText,
+      actualProjectRef,
+      root: "C:/repo",
+      read: readSupersession,
+    })).toMatchObject({ ok: true });
+    expect(kiemMienTruPinned({
+      entry: { ...supersededEntry, supersededBy: { ...supersededEntry.supersededBy, sha256: "sai" } },
+      file,
+      digest,
+      failureText,
+      actualProjectRef,
+      root: "C:/repo",
+      read: readSupersession,
+    })).toMatchObject({ ok: false, vi: expect.stringMatching(/sha256 migration thay thế/) });
+  });
+
   it("đọc đúng lỗi JSON của Management API", () => {
     expect(docLoiSql(failureText)).toEqual({ sqlState: "42P07", message: entry.expectedMessage });
   });
@@ -60,6 +106,8 @@ describe("ngoại lệ idempotency pinned", () => {
   it("đọc đúng wrapper lỗi một dòng thực tế và không nuốt DETAIL", () => {
     const actual = JSON.stringify({ message: `Failed to run sql query: ERROR:  42P07: ${entry.expectedMessage}\n` });
     expect(docLoiSql(actual)).toEqual({ sqlState: "42P07", message: entry.expectedMessage });
+    const withContext = JSON.stringify({ message: `Failed to run sql query: ERROR:  42P07: ${entry.expectedMessage}\nCONTEXT:  PL/pgSQL function inline_code_block line 5 at RAISE\n` });
+    expect(docLoiSql(withContext)).toEqual({ sqlState: "42P07", message: entry.expectedMessage });
     const withDetail = JSON.stringify({ message: `Failed to run sql query: ERROR:  42P07: ${entry.expectedMessage}\nDETAIL: extra\n` });
     expect(docLoiSql(withDetail).sqlState).toBe("");
   });
