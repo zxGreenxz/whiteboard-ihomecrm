@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { CAC_PROOF_BAT_BUOC, danhGiaBaoCao, timBaoCaoMoiNhat } from '../check-copilot-negative-proofs.mjs';
+import {
+  CAC_PROOF_BAT_BUOC,
+  danhGiaBaoCao,
+  danhGiaVoiTrangThaiRuntime,
+  docTrangThaiExecutionPlanDemo,
+  timBaoCaoMoiNhat,
+} from '../check-copilot-negative-proofs.mjs';
 
 const SHA = '939fb75d59e5a1e6414b799e5ac9911f34e44f10';
 
@@ -87,4 +93,54 @@ test('timBaoCaoMoiNhat: chon file co ranAt moi nhat, bo qua ten khong khop 40 he
 test('timBaoCaoMoiNhat: thu muc rong -> loi ro rang', () => {
   const ket = timBaoCaoMoiNhat('gia-lap', () => '{}', () => []);
   assert.match(ket.loi, /không có file báo cáo nào/);
+});
+
+test('báo cáo chỉ quá hạn và execution plan đang tắt trên DEMO -> đạt có điều kiện', () => {
+  const cu = new Date(Date.now() - 20 * 86_400_000).toISOString();
+  const ket = danhGiaVoiTrangThaiRuntime(baoCaoDatChuan(cu), false, 14);
+  assert.deepEqual(ket.loi, []);
+  assert.equal(ket.boQuaTuoiViDaTat, true);
+});
+
+test('execution plan đang bật trên DEMO -> báo cáo quá hạn vẫn đỏ', () => {
+  const cu = new Date(Date.now() - 20 * 86_400_000).toISOString();
+  const ket = danhGiaVoiTrangThaiRuntime(baoCaoDatChuan(cu), true, 14);
+  assert.equal(ket.boQuaTuoiViDaTat, false);
+  assert.ok(ket.loi.some((l) => l.includes('vượt hạn 14 ngày')));
+});
+
+test('execution plan tắt không được che lỗi nội dung bằng chứng', () => {
+  const cu = new Date(Date.now() - 20 * 86_400_000).toISOString();
+  const baoCao = baoCaoDatChuan(cu);
+  baoCao.cases[0] = { ...baoCao.cases[0], pass: false, detail: 'hàng rào không chặn' };
+  baoCao.verdict = 'blocked';
+  const ket = danhGiaVoiTrangThaiRuntime(baoCao, false, 14);
+  assert.equal(ket.boQuaTuoiViDaTat, false);
+  assert.ok(ket.loi.some((l) => l.includes('hàng rào không chặn')));
+});
+
+test('đọc runtime dùng đúng helper production và chỉ chấp nhận một boolean', async () => {
+  let body;
+  const enabled = await docTrangThaiExecutionPlanDemo({
+    token: 'sbp_test',
+    projectRef: 'project-test',
+    fetchImpl: async (_url, init) => {
+      body = JSON.parse(init.body);
+      return { ok: true, json: async () => [{ demo_enabled: false }] };
+    },
+  });
+  assert.equal(enabled, false);
+  assert.match(body.query, /copilot_action_flag_allows_v1\('copilot\.execution_plan'/);
+  assert.match(body.query, /dddd0000-0000-4000-8000-000000000001/);
+});
+
+test('runtime trả hình dạng mơ hồ -> không được suy thành disabled', async () => {
+  await assert.rejects(
+    () => docTrangThaiExecutionPlanDemo({
+      token: 'sbp_test',
+      projectRef: 'project-test',
+      fetchImpl: async () => ({ ok: true, json: async () => [] }),
+    }),
+    /không xác định/,
+  );
 });

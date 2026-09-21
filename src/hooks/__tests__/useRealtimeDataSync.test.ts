@@ -271,21 +271,16 @@ describe("useRealtimeDataSync report invalidation", () => {
     expect(invalidatedReportRoots()).toEqual(expectedRoots);
   });
 
-  // 31/08 (audit /thanh-toan P2-01): C-INFRA-7 vá 4 khoá lưới phí nhưng bỏ quên
-  // 3 sổ theo dõi (SettlementPanels) + biểu đồ Điện & Nước. Chốt cả cụm ở đây
-  // để lần "vá thiếu khoá" sau không tái diễn im lặng.
-  it("income_expenses invalidates 4 khoá lưới phí (C-INFRA-7) + 3 sổ tt-* + utility-chart (P2-01)", () => {
+  it("income_expenses invalidates fixed-fee readers, cọc đã thu, settlement workbench and utility chart", () => {
     useRealtimeDataSync();
     triggerTable("income_expenses");
     const roots = invalidatedRoots();
     for (const root of [
       "period-fee-status",
-      "period-commissions",
       "period-maintenance",
       "fee-accounts",
-      "tt-termination-queue",
-      "tt-sale-bonus",
       "tt-deposit-ledger",
+      "contract-settlement",
       "utility-chart",
     ]) {
       expect(roots, `thiếu invalidation cho ['${root}']`).toContain(root);
@@ -590,6 +585,11 @@ describe("useRealtimeDataSync report invalidation", () => {
     vi.advanceTimersByTime(400);
 
     expect(invalidatedRoots()).toEqual([
+      "income-expense-action-snapshots",
+      "income-expense-action-cancellation",
+      "contract-settlement",
+      "contract-settlement-events",
+      "room-cash-lifecycle",
       "contracts",
       "contracts-legacy",
       "deposit-dashboard",
@@ -608,7 +608,7 @@ describe("useRealtimeDataSync report invalidation", () => {
     vi.advanceTimersByTime(800);
 
     expect(invalidatedRoots()).not.toContain("business-performance");
-    expect(harness.invalidateQueries).toHaveBeenCalledTimes(8);
+    expect(harness.invalidateQueries).toHaveBeenCalledTimes(13);
     expect(harness.removeChannel).toHaveBeenCalledTimes(1);
   });
 
@@ -623,8 +623,8 @@ describe("useRealtimeDataSync report invalidation", () => {
     expect(harness.invalidateQueries).not.toHaveBeenCalled();
 
     vi.advanceTimersByTime(1);
-    expect(harness.invalidateQueries).toHaveBeenCalledTimes(1);
-    expect(invalidatedRoots()).toEqual(["business-performance"]);
+    expect(harness.invalidateQueries).toHaveBeenCalledTimes(6);
+    expect(invalidatedRoots()).toEqual(["business-performance", "income-expense-action-snapshots", "income-expense-action-cancellation", "contract-settlement", "contract-settlement-events", "room-cash-lifecycle"]);
   });
 
   // ── TRẦN CHỜ (MAX_WAIT_MS) ────────────────────────────────────────────────
@@ -658,10 +658,10 @@ describe("useRealtimeDataSync report invalidation", () => {
     }
     vi.advanceTimersByTime(800);
 
-    // Entry "customers" có 2 key (["customers"], ["customer-stats"]) ⇒ một lần
-    // flush là đúng 2 lời gọi invalidateQueries. Nhiều hơn nghĩa là đã flush
+    // Hai reader khách hàng và năm reader thao tác/quyết toán: một lần
+    // flush là đúng 7 lời gọi invalidateQueries. Nhiều hơn nghĩa là đã flush
     // nhiều lần, tức trần chờ đã ăn mất tác dụng gộp.
-    expect(harness.invalidateQueries).toHaveBeenCalledTimes(2);
+    expect(harness.invalidateQueries).toHaveBeenCalledTimes(7);
   });
 
   it("starts a fresh ceiling for the next burst after a flush", () => {
@@ -670,16 +670,16 @@ describe("useRealtimeDataSync report invalidation", () => {
 
     handler();
     vi.advanceTimersByTime(800);
-    expect(harness.invalidateQueries).toHaveBeenCalledTimes(2);
+    expect(harness.invalidateQueries).toHaveBeenCalledTimes(7);
 
     // Cụm thứ hai phải được hưởng trọn 800ms debounce của riêng nó. Nếu mốc
     // đầu cụm không được đặt lại, cụm này sẽ bị tính là đã quá hạn và flush
     // ngay lập tức — gộp bão hỏng từ cụm thứ hai trở đi.
     handler();
     vi.advanceTimersByTime(799);
-    expect(harness.invalidateQueries).toHaveBeenCalledTimes(2);
+    expect(harness.invalidateQueries).toHaveBeenCalledTimes(7);
     vi.advanceTimersByTime(1);
-    expect(harness.invalidateQueries).toHaveBeenCalledTimes(4);
+    expect(harness.invalidateQueries).toHaveBeenCalledTimes(14);
   });
 
   it("cancels pending invalidation during cleanup", () => {
@@ -698,12 +698,12 @@ describe("useRealtimeDataSync report invalidation", () => {
   });
 
   it.each(["rooms", "buildings"])(
-    "invalidates only the Business Performance root for %s",
+    "invalidates Business Performance and shared action/source readers for %s",
     (table) => {
       useRealtimeDataSync();
       triggerTable(table);
 
-      expect(invalidatedRoots()).toEqual(["business-performance"]);
+      expect(invalidatedRoots()).toEqual(["business-performance", "income-expense-action-snapshots", "income-expense-action-cancellation", "contract-settlement", "contract-settlement-events", "room-cash-lifecycle"]);
     },
   );
 
@@ -751,8 +751,8 @@ describe("useRealtimeDataSync report invalidation", () => {
     markLocalWrite(["contracts"]);
     triggerTable("customers");
 
-    expect(harness.invalidateQueries).toHaveBeenCalledTimes(2);
-    expect(invalidatedRoots()).toEqual(["customers", "customer-stats"]);
+    expect(harness.invalidateQueries).toHaveBeenCalledTimes(7);
+    expect(invalidatedRoots()).toEqual(["income-expense-action-snapshots", "income-expense-action-cancellation", "contract-settlement", "contract-settlement-events", "room-cash-lifecycle", "customers", "customer-stats"]);
   });
 
   it("quá 3 giây thì trở lại đường đầy đủ — cửa sổ không dính vĩnh viễn", () => {
@@ -761,7 +761,7 @@ describe("useRealtimeDataSync report invalidation", () => {
     vi.advanceTimersByTime(3001);
     triggerTable("customers");
 
-    expect(harness.invalidateQueries).toHaveBeenCalledTimes(2);
+    expect(harness.invalidateQueries).toHaveBeenCalledTimes(7);
   });
 
   it("một event ngoài cửa sổ trong cùng cụm kéo cả cụm về đường đầy đủ", () => {
@@ -774,7 +774,7 @@ describe("useRealtimeDataSync report invalidation", () => {
     handler(); // đã ngoài cửa sổ ⇒ có thể là thay đổi của MÁY KHÁC
     vi.advanceTimersByTime(800);
 
-    expect(harness.invalidateQueries).toHaveBeenCalledTimes(2);
+    expect(harness.invalidateQueries).toHaveBeenCalledTimes(7);
   });
 
   // ── CỬA CHẶN PREFETCH (plan con B, mục 2) ────────────────────────────────

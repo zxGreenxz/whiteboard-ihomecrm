@@ -135,6 +135,14 @@ describe("trạng thái thật của repo", () => {
     },
   );
 
+  it("copilot negative-proofs có PAT để đo kill switch production khi artifact quá hạn", () => {
+    const job = wf(".github/workflows/ci-gates.yml").jobs["quality-gates"];
+    const step = job.steps.find((item) => String(item.name).startsWith("copilot-gates"));
+    expect(step, "phải tìm thấy bước copilot-gates").toBeDefined();
+    expect(step.env?.SUPABASE_PAT).toBe("${{ secrets.SUPABASE_PAT }}");
+    expect(step.run).toContain("node scripts/check-copilot-negative-proofs.mjs");
+  });
+
   it("supabase-migrate: mọi script job chạy đều được CẢ push phủ", () => {
     const doc = wf(".github/workflows/supabase-migrate.yml");
     const paths = layOn(doc).push.paths;

@@ -16,21 +16,18 @@ import { toast } from 'sonner';
 import { fmtFull, fmtBillingMonth, todayISO } from '@/lib/collect';
 import { useIncomeExpenseFormBuildings } from '@/hooks/useIncomeExpenseFormScope';
 import { useBuildings } from '@/hooks/useBuildings';
-import {
-  TerminationRefundQueueSection, SaleBonusSection, DepositLedgerSection,
-} from './SettlementPanels';
+import { DepositLedgerSection } from './SettlementPanels';
 import { useIsAdmin, useIsSuperAdmin } from '@/hooks/useIsAdmin';
 import { useIsOrgOwner } from '@/hooks/useIsOrgOwner';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
 import {
-  usePeriodFeeStatus, useFeeAccounts, usePeriodCommissions, usePeriodMaintenance,
-  type PeriodCommissionRow, type PeriodFeeVoucher,
+  usePeriodFeeStatus, useFeeAccounts, usePeriodCommissionOverview, usePeriodMaintenance, type PeriodFeeVoucher,
 } from '@/hooks/usePeriodFees';
 import { usePeriodFeeState, addMonths, rangeLabel } from '@/hooks/usePeriodFeeState';
 import { useCreateMaintenanceBatch, type MaintenanceBatchLine } from '@/hooks/useMaintenanceBatch';
 import { uploadReceiptToStorage, validateReceiptFile } from '@/lib/receiptUpload';
-import { FEE_CATEGORIES, FEE_GROUPS, feeCategoryOf, gridKeysFor, type FeeCategory, LEDGER_FAMILIES } from '@/lib/feeCategories';
+import { FEE_CATEGORIES, FEE_GROUPS, effectiveDesktopFeeCategory, feeCategoryOf, feeOverviewActionKey, feeOverviewCategories, gridKeysFor, type FeeCategory, LEDGER_FAMILIES } from '@/lib/feeCategories';
 import { FeeIcon } from './feeIcons';
 import { UtilityBookMenu } from './UtilityBookMenu';
 import { UtilityCancelModal } from './UtilityCancelModal';
@@ -39,13 +36,16 @@ import { PeriodFeeSharedModals } from './PeriodFeeSharedModals';
 import { UtilityEnContent } from './UtilityEnContent';
 import { AttachmentLightbox } from '@/components/ui/attachment-lightbox';
 import { BookIcon } from './utilityIcons';
-import { usePersistedState } from '@/hooks/usePersistedState';
+import { calculatePeriodFeeOverview } from '@/lib/periodFeeOverview';
+import { ContractSettlementWorkspace } from './ContractSettlementWorkspace';
 
 interface Props {
   billingMonth: string;
   onBillingMonthChange: (m: string) => void;
   onClose: () => void;
   canRecordPayment: boolean;
+  feeCategory: string;
+  onFeeCategoryChange: (category: string) => void;
 }
 
 const formatVN = (n: number) => (n > 0 ? n.toLocaleString('vi-VN') : '');
@@ -53,7 +53,7 @@ const parseVN = (s: string) => { const d = s.replace(/\D/g, ''); return d ? pars
 const fmtDate = (d?: string | null) => (d ? d.slice(0, 10).split('-').reverse().join('/') : '');
 const N_OPTIONS = [1, 3, 6, 12];
 
-export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, canRecordPayment }: Props) {
+export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, canRecordPayment, feeCategory, onFeeCategoryChange }: Props) {
   const period = billingMonth;
   const { data: allBuildings = [], isLoading: loadingBld } = useIncomeExpenseFormBuildings();
   const buildings = useMemo(() => allBuildings.filter((b) => !b.is_virtual).map((b) => ({ id: b.id, name: b.name })), [allBuildings]);
@@ -76,7 +76,7 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
   const visibleCats = useMemo(() => FEE_CATEGORIES.filter((c) => !c.restricted || canRestricted), [canRestricted]);
   const gridKeys = useMemo(() => gridKeysFor(canRestricted), [canRestricted]);
 
-  const [category, setCategory] = usePersistedState<string>('flt:thu-tien:fee-cat', 'overview');
+  const category = effectiveDesktopFeeCategory(feeCategory);
   const [menuOpen, setMenuOpen] = useState(false);
   const [bldFilter, setBldFilter] = useState('all');
   const [onlyDue, setOnlyDue] = useState(false);
@@ -84,7 +84,6 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
   const [naOpen, setNaOpen] = useState(false);
   const [expectedEdit, setExpectedEdit] = useState<{ bId: string; value: number } | null>(null);
   const [vlistFor, setVlistFor] = useState<string | null>(null);   // buildingId đang mở danh sách phiếu
-  const [commRow, setCommRow] = useState<PeriodCommissionRow | null>(null);
   const [viewer, setViewer] = useState<{ attachments: string[]; index: number | null }>({ attachments: [], index: null });
   const onView = (atts: string[]) => { if (atts.length) setViewer({ attachments: atts, index: 0 }); };
 
@@ -93,18 +92,14 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
   const isOverview = category === 'overview' || !catVisible;
   const isEN = catVisible && cat!.family === 'EN';
   const isGrid = catVisible && cat!.family === 'GRID';
-  const isComm = catVisible && cat!.family === 'COMMISSION';
   const isBatch = catVisible && cat!.family === 'MAINTENANCE_BATCH';
-  const isTermQ = catVisible && cat!.family === 'TERMINATION_REFUND';
-  const isSaleB = catVisible && cat!.family === 'SALE_BONUS';
+  const isSettlement = catVisible && cat!.family === 'CONTRACT_SETTLEMENT';
   const isDepL  = catVisible && cat!.family === 'DEPOSIT_LEDGER';
 
   // ── Data ──
   const feeStatus = usePeriodFeeStatus(period, gridKeys, buildingIds, { enabled: buildingIds.length > 0 });
   const feeAccounts = useFeeAccounts();
-  const commissions = usePeriodCommissions(period, buildingIds, { enabled: buildingIds.length > 0 && (isOverview || isComm) });
-  const prevPeriod = addMonths(period, -1);
-  const prevCommissions = usePeriodCommissions(prevPeriod, buildingIds, { enabled: buildingIds.length > 0 && isComm });
+  const overviewCommissions = usePeriodCommissionOverview(period, buildingIds, { enabled: buildingIds.length > 0 && isOverview });
   const maintenance = usePeriodMaintenance(period, buildingIds, { enabled: buildingIds.length > 0 && (isOverview || isBatch) });
 
   const gridCat = isGrid ? cat! : FEE_CATEGORIES.find((c) => c.family === 'GRID')!;
@@ -139,74 +134,21 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
       return n;
     }
     if (c.family === 'GRID') return activeIdsFor(c).filter((id) => !(feeStatus.statusOf(id, c.serverKey)?.paidAmount)).length;
-    if (c.family === 'COMMISSION') return (commissions.data ?? []).filter((r) => r.status !== 'paid').length;
     return 0;
   };
 
   // ── Tổng quan ──
   const overview = useMemo(() => {
-    let dueCount = 0, slots = 0, dueSum = 0, paidSum = 0, paidCount = 0, draftCount = 0;
-    const dueBld = new Set<string>();
     const nameOf = (id: string) => buildings.find((b) => b.id === id)?.name ?? id;
-    // Ba family "sổ theo dõi" nằm ngoài Tổng quan: Tổng quan cam kết khớp Báo
-    // cáo Lợi Nhuận, còn cọc/hoàn cọc/thưởng không thuộc lãi lỗ.
-    const rows = visibleCats.filter((c) => !LEDGER_FAMILIES.has(c.family)).map((c) => {
-      let total = 0, paidN = 0, rowDueSum = 0, rowPaidSum = 0, rowDraftN = 0; const dueList: string[] = [];
-      if (c.family === 'EN') {
-        for (const b of buildingIds) {
-          for (const kind of ['dien', 'nuoc'] as const) {
-            const st = feeStatus.statusOf(b, kind);
-            if (st?.notApplicable) continue;
-            total++;
-            if (st && st.paidAmount > 0) { paidN++; rowPaidSum += st.paidAmount; }
-            else { rowDueSum += st?.expectedAmount ?? 0; if (!dueList.includes(nameOf(b))) dueList.push(nameOf(b)); dueBld.add(b); }
-          }
-        }
-      } else if (c.family === 'GRID') {
-        for (const b of activeIdsFor(c)) {
-          const st = feeStatus.statusOf(b, c.serverKey);
-          total++;
-          if (st && st.paidAmount > 0) { paidN++; rowPaidSum += st.paidAmount; }
-          else {
-            if (st && st.draftAmount > 0) { rowDraftN++; rowDueSum += st.draftAmount; }
-            else rowDueSum += st?.expectedAmount ?? 0;
-            dueList.push(nameOf(b)); dueBld.add(b);
-          }
-        }
-      } else if (c.family === 'COMMISSION') {
-        for (const r of commissions.data ?? []) {
-          total++;
-          if (r.status === 'paid') { paidN++; rowPaidSum += r.voucherAmount ?? r.expectedAmount; }
-          else {
-            if (r.status === 'draft') rowDraftN++;
-            rowDueSum += r.status === 'draft' ? (r.voucherAmount ?? r.expectedAmount) : r.expectedAmount;
-            if (!dueList.includes(r.buildingName)) dueList.push(r.buildingName);
-          }
-        }
-      } else if (c.family === 'MAINTENANCE_BATCH') {
-        // Slice −1 A3a: reader nay trả CẢ phiếu CHỜ DUYỆT. Chúng là "đã có phiếu"
-        // nhưng KHÔNG phải "đã chi" — cộng vào rowPaidSum là đếm tiền chưa duyệt
-        // như đã tiêu.
-        const lines = maintenance.data ?? [];
-        total = lines.length;
-        paidN = lines.filter((l) => !l.pending).length;
-        for (const l of lines) {
-          if (l.pending) { rowDraftN++; rowDueSum += l.amount; }
-          else rowPaidSum += l.amount;
-        }
-      }
-      const dueN = total - paidN;
-      dueCount += dueN; slots += total; dueSum += rowDueSum; paidSum += rowPaidSum; paidCount += paidN; draftCount += rowDraftN;
-      return {
-        cat: c, total, paidN, dueN, draftN: rowDraftN, dueList, dueSum: rowDueSum,
-        pct: total ? Math.round((paidN / total) * 100) : 100,
-        allPaid: dueN === 0 && total > 0, empty: total === 0,
-      };
+    const result = calculatePeriodFeeOverview({
+      categories: feeOverviewCategories(visibleCats), excludedFamilies: LEDGER_FAMILIES, buildingIds, buildingName: nameOf,
+      activeBuildingIds: activeIdsFor, statusOf: feeStatus.statusOf,
+      commissions: overviewCommissions.data ?? [], maintenance: maintenance.data ?? [],
     });
-    return { rows, dueCount, slots, dueSum, paidSum, paidCount, draftCount, dueBldCount: dueBld.size };
-  }, [buildingIds, feeStatus.byKey, commissions.data, maintenance.data, elevatorIds, buildings, visibleCats]);
+    return { ...result, rows: result.rows.map(({ category: cat, ...row }) => ({ cat, ...row })) };
+  }, [buildingIds, feeStatus.byKey, overviewCommissions.data, maintenance.data, elevatorIds, buildings, visibleCats]);
 
-  const pickCategory = (k: string) => { setCategory(k); setMenuOpen(false); setBldFilter('all'); setOnlyDue(false); setGridTab('pay'); setNaOpen(false); setExpectedEdit(null); };
+  const pickCategory = (k: string) => { onFeeCategoryChange(k); setMenuOpen(false); setBldFilter('all'); setOnlyDue(false); setGridTab('pay'); setNaOpen(false); setExpectedEdit(null); };
   const headerCat = (isOverview ? undefined : cat) ?? { label: 'Tổng quan kỳ', sub: 'Còn thiếu phiếu · khớp Báo cáo Lợi Nhuận', icon: 'overview', accent: '#514c42' } as any;
 
   // ── GRID (tính thẳng mỗi render — rẻ, tránh memo dep theo array identity) ──
@@ -288,7 +230,6 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
   };
 
   const mText = (m: 'ml' | 'mg') => (m === 'ml' ? 'Máy lạnh' : 'Máy giặt');
-  const prevUnpaidComm = (prevCommissions.data ?? []).filter((r) => r.status !== 'paid').length;
 
   // ── Render 1 dòng GRID ──
   const renderGridRow = (b: { id: string; name: string }) => {
@@ -429,7 +370,7 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
   };
 
   return (
-    <div className="tt-udesk ptt-panel">
+    <div className={`tt-udesk ptt-panel${isSettlement ? ' ptt-settlement-panel' : ''}`}>
       <input ref={S.fileRef} type="file" accept="image/*" hidden onChange={S.onFileChange} />
       <input ref={batchFileRef} type="file" accept="image/*" hidden onChange={onBatchFile} />
 
@@ -526,7 +467,7 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
                     <td className="num"><span className={'ptt-ov-duesum' + (r.dueN === 0 ? ' muted' : '')}>{r.dueN === 0 ? '—' : fmtFull(r.dueSum)}</span></td>
                     <td className="ctr">
                       {r.dueN > 0 ? (
-                        <button type="button" className="ptt-go" onClick={() => pickCategory(r.cat.key)}>Đóng<ArrowRight /></button>
+                        <button type="button" className="ptt-go" onClick={() => pickCategory(feeOverviewActionKey(r.cat))}>Đóng<ArrowRight /></button>
                       ) : r.empty ? <span className="ptt-ov-none">—</span> : (
                         <span className="ptt-ov-check"><Check /></span>
                       )}
@@ -653,76 +594,9 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
         </div>
       )}
 
-      {/* ===== SỔ THEO DÕI: chi thanh lý · thưởng Sale · cọc đã thu ===== */}
-      {isTermQ && <TerminationRefundQueueSection period={period} />}
-      {isSaleB && <SaleBonusSection period={period} />}
+      {/* ===== HỢP ĐỒNG & QUYẾT TOÁN dùng cùng máy phiếu với Thu chi ===== */}
+      {isSettlement && <ContractSettlementWorkspace period={period} onPeriodChange={onBillingMonthChange} buildings={buildings} />}
       {isDepL && <DepositLedgerSection period={period} />}
-
-      {/* ===== COMMISSION ===== */}
-      {isComm && (
-        <div className="ptt-scroll">
-          {(() => {
-            const rows = commissions.data ?? [];
-            const paidSum = rows.filter((r) => r.status === 'paid').reduce((s, r) => s + (r.voucherAmount ?? r.expectedAmount), 0);
-            const draftSum = rows.filter((r) => r.status === 'draft').reduce((s, r) => s + (r.voucherAmount ?? r.expectedAmount), 0);
-            const dueSum = rows.filter((r) => r.status === 'unpaid').reduce((s, r) => s + r.expectedAmount, 0);
-            const paidN = rows.filter((r) => r.status === 'paid').length;
-            const draftN = rows.filter((r) => r.status === 'draft').length;
-            return (
-              <>
-                {prevUnpaidComm > 0 && (
-                  <div className="ptt-note warn mx">
-                    <Info />
-                    <span>Kỳ trước ({fmtBillingMonth(prevPeriod)}) còn <b>{prevUnpaidComm} HĐ chưa chi/duyệt HH</b>.</span>
-                    <button type="button" className="ptt-btn ghost sm" onClick={() => onBillingMonthChange(prevPeriod)}>Xem kỳ trước</button>
-                  </div>
-                )}
-                <div className="ptt-comm-stats">
-                  <div className="ptt-comm-card"><div className="ptt-ov-lbl">HH dự kiến kỳ này</div><div className="ptt-comm-num">{fmtFull(rows.reduce((s, r) => s + r.expectedAmount, 0))}</div><div className="ptt-ov-sub">{rows.length} hợp đồng ký trong kỳ</div></div>
-                  <div className="ptt-comm-card green"><div className="ptt-ov-lbl">Đã chi (phiếu duyệt)</div><div className="ptt-comm-num green">{fmtFull(paidSum)}</div><div className="ptt-ov-sub">{paidN} phiếu · số THẬT trên phiếu</div></div>
-                  <div className="ptt-comm-card amber"><div className="ptt-ov-lbl">Chờ duyệt chờ duyệt</div><div className="ptt-comm-num amber">{fmtFull(draftSum)}</div><div className="ptt-ov-sub">{draftN} phiếu chờ duyệt</div></div>
-                  <div className="ptt-comm-card red"><div className="ptt-ov-lbl">Chưa chi</div><div className="ptt-comm-num red">{fmtFull(dueSum)}</div><div className="ptt-ov-sub">{rows.length - paidN - draftN} hợp đồng</div></div>
-                </div>
-                <div className="ud-body">
-                  {commissions.isLoading ? <div className="ud-empty">⏳ Đang tải…</div> : rows.length === 0 ? <div className="ud-empty">📄 Không có hợp đồng nào ký trong kỳ.</div> : (
-                    <div className="ud-tablewrap">
-                      <table className="ud-table">
-                        <thead><tr><th>Hợp đồng</th><th>Phòng · Khách thuê</th><th>Ngày ký</th><th className="ctr">Số tháng</th><th className="ctr">Bậc HH</th><th className="num">HH dự kiến</th><th className="num">Phiếu thật</th><th className="act">Thao tác</th></tr></thead>
-                        <tbody>
-                          {rows.map((r) => (
-                            <tr key={r.contractId}>
-                              <td className="ud-mono2">{r.contractNumber ?? '—'}</td>
-                              <td><div className="ptt-comm-room"><span className="ptt-comm-roomn">{r.buildingName} · {r.roomName ?? ''}</span><span className="ptt-comm-tenant">{r.tenantName}</span></div></td>
-                              <td className="ud-mono2">{fmtDate(r.signedDate)}</td>
-                              <td className="ctr ud-mono2">{r.months} th</td>
-                              <td className="ctr"><span className="ptt-tier">{r.tierPercent != null ? r.tierPercent + '%' : '—'}</span></td>
-                              <td className="num"><span className="ud-mono">{fmtFull(r.expectedAmount)}</span></td>
-                              <td className="num"><span className={'ud-mono' + (r.status === 'paid' ? ' paid' : '')}>{r.voucherAmount != null ? fmtFull(r.voucherAmount) : '—'}</span></td>
-                              <td className="act">
-                                {r.status === 'unpaid' && (
-                                  <button type="button" className="ptt-comm-pay" disabled={!canRecordPayment} onClick={() => setCommRow(r)}><HandCoins />Chi HH</button>
-                                )}
-                                {r.status === 'draft' && (
-                                  <span className="ud-acts">
-                                    <span className="ptt-badge-draft">CHỜ DUYỆT</span>
-                                    <button type="button" className="ptt-paydraft" disabled={!canRecordPayment} onClick={() => setCommRow(r)}><Check />Duyệt</button>
-                                  </span>
-                                )}
-                                {r.status === 'paid' && <span className="ptt-comm-paid">Đã chi</span>}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                      <div className="ptt-comm-note">HH dự kiến = <b>bậc hoa hồng</b> của tòa × tiền phòng theo số tháng HĐ. <b>Lưu chờ duyệt</b> chờ duyệt · <b>Chi &amp; duyệt</b> vào sổ ngay. Mỗi HĐ chỉ chi 1 lần (khoá ở DB).</div>
-                    </div>
-                  )}
-                </div>
-              </>
-            );
-          })()}
-        </div>
-      )}
 
       {/* ===== MAINTENANCE BATCH ===== */}
       {isBatch && (
@@ -832,7 +706,6 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
         S={S} isAdmin={isAdmin} canRecordPayment={canRecordPayment}
         cat={cat} buildings={buildings}
         vlistFor={vlistFor} setVlistFor={setVlistFor}
-        commRow={commRow} setCommRow={setCommRow}
         onView={onView}
       />
       <UtilityCancelModal target={S.cancelTarget} busy={S.cancelling} onClose={S.closeCancel} onConfirm={S.confirmCancel} />

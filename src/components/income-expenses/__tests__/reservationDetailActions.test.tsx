@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import type { IncomeExpenseActionsController } from '@/hooks/income-expenses/useIncomeExpenseActions';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
@@ -35,6 +36,23 @@ function fixture(voucher: IncomeExpenseWithRelations | null, client: QueryClient
 afterEach(() => { cleanup(); state.data = null; state.error = null; state.isSuccess = true; state.isLoading = false; });
 
 describe('reservation voucher detail lifecycle', () => {
+  it.each([true, false])('uses the shared refund reversal decision in desktop detail: enabled=%s', enabled => {
+    const decision = { visible: true, enabled, reason: enabled ? null : 'Không có quyền hoàn tác' };
+    const actions = {
+      availability: () => new Proxy({}, { get: (_target, key) => key === 'reverse' ? decision : { visible: false, enabled: false, reason: null } }),
+      dismissalBlocked: false,
+      open: vi.fn(),
+    } as unknown as IncomeExpenseActionsController;
+    render(<QueryClientProvider client={new QueryClient()}><MemoryRouter><IncomeExpenseDetailDialog
+      open voucher={{ ...source, type: 'EXPENSE', system_source: 'reservation.refund', items: [] }}
+      onOpenChange={() => {}} actions={actions}
+    /></MemoryRouter></QueryClientProvider>);
+    const reverse = screen.getByRole('button', { name: 'Hoàn tác' }) as HTMLButtonElement;
+    expect(reverse.disabled).toBe(!enabled);
+    fireEvent.click(reverse);
+    expect(actions.open).toHaveBeenCalledTimes(enabled ? 1 : 0);
+    if (enabled) expect(actions.open).toHaveBeenCalledWith('reverse', source.id);
+  });
   it('admin sees separate edit and add-document actions', () => {
     render(fixture(source, new QueryClient()));
     const supplement = screen.getByRole('button', { name: 'Bổ sung chứng từ / ghi chú' });

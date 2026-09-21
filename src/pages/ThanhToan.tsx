@@ -1,5 +1,5 @@
 // =============================================================================
-// Trang "Thanh toán" (/thanh-toan) — Đóng tiền Tập trung theo Kỳ.
+// Trang "Thanh toán" (/thanh-toan) — thanh toán theo kỳ và Hợp đồng & quyết toán.
 //
 // Trước đây UI này chỉ sống dạng OVERLAY trong /thu-tien (state `utility`):
 // desktop thay chỗ ManagePanel, mobile là sheet trượt lên đè khung điện thoại.
@@ -7,13 +7,13 @@
 // theo từng phòng; Thanh toán = CHI cho nhà cung cấp theo từng hạng mục/tòa.
 //
 // Layout dùng lại nguyên bộ style của thu-tien.css (scope .tt-stage):
-//   ≥1024px  → grid 2 cột: PeriodFeePanel (.tt-udesk) | khung điện thoại
-//   <1024px  → .tt-udesk display:none, chỉ còn khung điện thoại + PeriodFeeSheet
+//   ≥1024px  → phí thường là grid hai cột; Hợp đồng & quyết toán dùng toàn chiều rộng
+//   <1024px  → chỉ còn khung điện thoại + PeriodFeeSheet; workbench rộng không hỗ trợ
 //
 // ⚠ HAI BỀ MẶT CÙNG MOUNT LÀ CHỦ Ý — ĐỪNG "sửa" bằng cách unmount theo breakpoint.
-// `.e2e-fleet/specs/thanh-toan-page.spec.ts:27/:32` assert cả panel desktop lẫn
-// sheet cùng render ở 1280px, và `:143` dùng `toBeHidden()` (chứ không phải
-// `toHaveCount(0)`) ở 390px — tức panel chỉ bị CSS ẩn, vẫn nằm trong DOM. Spec
+// `.e2e-fleet/specs/thanh-toan-page.spec.ts` giữ hai breakpoint: desktop hiện
+// workbench và ẩn cột điện thoại khi chọn khu mới; mobile ẩn panel desktop và
+// rơi về Tổng quan an toàn. Spec
 // `utility-paste-receipt.spec.ts` còn dán ảnh lần lượt vào bảng desktop rồi vào
 // thẻ trong khung điện thoại trong CÙNG một lần tải trang.
 // Rủi ro thật của thiết kế này là hai bề mặt ghi hai phiếu cho cùng một ô. Chỗ
@@ -42,6 +42,7 @@ import { SpecialFeeBatchDialog } from '@/components/thu-tien/SpecialFeeBatchDial
 import { Button } from '@/components/ui/button';
 import { Sparkles } from 'lucide-react';
 import { useState } from 'react';
+import { effectiveDesktopFeeCategory } from '@/lib/feeCategories';
 
 // Kỳ mặc định GHIM giờ Việt Nam (audit 31/08 P2-04) — máy lệch múi giờ mở trang
 // đêm giao tháng không còn được chọn sẵn kỳ sai. Server đã org_today từ trước.
@@ -61,6 +62,10 @@ const ThanhToan = () => {
 
   // Dùng CHUNG key kỳ với /thu-tien: đi qua lại 2 trang giữ nguyên tháng đang xem.
   const [billingMonth, setBillingMonth] = usePersistedState('flt:thu-tien:month', currentMonth);
+  // Một nguồn state cho cả desktop + Sheet (hai bề mặt luôn cùng mount). Sheet chỉ
+  // tính category hiệu lực an toàn; không ghi đè lựa chọn desktop khi resize.
+  const [feeCategory, setFeeCategory] = usePersistedState('flt:thu-tien:fee-cat', 'overview');
+  const settlementMode = effectiveDesktopFeeCategory(feeCategory) === 'hop_dong';
 
   // Nút back/X. Vào từ trong app (nút Plug bên Thu tiền, ô Thanh toán ở Home)
   // thì lui đúng 1 bước cho tự nhiên. Vào THẲNG bằng deep-link/F5 thì history
@@ -77,8 +82,8 @@ const ThanhToan = () => {
   };
 
   return (
-    <div className="tt-stage">
-      {canRecordPayment && (
+    <div className={`tt-stage${settlementMode ? ' settlement-mode' : ''}`}>
+      {canRecordPayment && !settlementMode && (
         <div className="tt-batch-bar">
           <Button size="sm" variant="outline" onClick={() => setBatchOpen(true)}>
             <Sparkles className="h-4 w-4 mr-1" />
@@ -96,6 +101,8 @@ const ThanhToan = () => {
         onBillingMonthChange={setBillingMonth}
         onClose={goBack}
         canRecordPayment={canRecordPayment}
+        feeCategory={feeCategory}
+        onFeeCategoryChange={setFeeCategory}
       />
       <div className="tt-phone-col">
         <div className="tt-page">
@@ -108,6 +115,8 @@ const ThanhToan = () => {
             billingMonth={billingMonth}
             onBillingMonthChange={setBillingMonth}
             canRecordPayment={canRecordPayment}
+            feeCategory={feeCategory}
+            onFeeCategoryChange={setFeeCategory}
           />
         </div>
       </div>

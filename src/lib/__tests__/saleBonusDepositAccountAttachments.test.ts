@@ -107,18 +107,26 @@ describe("create_sale_bonus_from_deposit_v1 — sổ quỹ + ảnh chứng từ"
   });
 
   it("DROP chữ ký 6 tham số để không sinh overload cho PostgREST", () => {
-    const { file, sql } = live();
-    expect(
-      /DROP\s+FUNCTION\s+IF\s+EXISTS\s+public\.create_sale_bonus_from_deposit_v1\s*\(\s*uuid\s*,\s*numeric\s*,\s*text\s*,\s*text\s*,\s*text\s*,\s*date\s*\)/i.test(
-        sql,
-      ),
-      `${file}: còn cả hai chữ ký ⇒ PostgREST báo "function is not unique"`,
-    ).toBe(true);
+    const oldDrop = /DROP\s+FUNCTION\s+IF\s+EXISTS\s+public\.create_sale_bonus_from_deposit_v1\s*\(\s*uuid\s*,\s*numeric\s*,\s*text\s*,\s*text\s*,\s*text\s*,\s*date\s*\)/i;
+    let lastCreate = -1;
+    let lastDrop = -1;
+    migrationCorpus().forEach(({ sql }, index) => {
+      const create = /CREATE\s+(OR\s+REPLACE\s+)?FUNCTION\s+public\.create_sale_bonus_from_deposit_v1\s*\(/gi;
+      for (const match of sql.matchAll(create)) {
+        const end = sql.indexOf(")\nRETURNS", match.index);
+        const header = end < 0 ? "" : sql.slice(match.index, end);
+        if (header && !/p_account_id\s+uuid/i.test(header)) lastCreate = index;
+      }
+      if (oldDrop.test(sql)) lastDrop = index;
+    });
+    expect(lastCreate, "không tìm thấy chữ ký 6 tham số lịch sử").toBeGreaterThanOrEqual(0);
+    expect(lastDrop, "chữ ký 6 tham số chưa bị DROP sau lần CREATE cuối").toBeGreaterThan(lastCreate);
   });
 
   it("chỉ cấp quyền cho authenticated/service_role, thu của anon", () => {
     const { sql } = live();
-    expect(sql).toMatch(/REVOKE\s+ALL\s+ON\s+FUNCTION\s+public\.create_sale_bonus_from_deposit_v1[\s\S]*?anon/i);
-    expect(sql).toMatch(/GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+public\.create_sale_bonus_from_deposit_v1[\s\S]*?authenticated/i);
+    expect(sql).toMatch(
+      /\('public\.create_sale_bonus_from_deposit_v1\(uuid,numeric,text,text,text,date,uuid,jsonb\)',ARRAY\['postgres','authenticated','service_role'\]::text\[\]\)/,
+    );
   });
 });

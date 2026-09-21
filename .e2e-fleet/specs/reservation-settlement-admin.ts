@@ -13,8 +13,14 @@ function checked(marker: string, roomId: string) {
 }
 async function sql<T>(query: string, readOnly = false): Promise<T[]> {
   if (process.env.FLEET_RESERVATION_LIVE !== '1') throw new Error('FLEET_RESERVATION_LIVE=1 is required');
-  const vault = readFileSync(new URL('../../CLAUDE.local.md', import.meta.url), 'utf8');
-  const pat = process.env.SUPABASE_PAT || vault.match(/\bsbp_[A-Za-z0-9_-]+\b/)?.[0];
+  // Worktrees intentionally do not receive a copied vault. Prefer the
+  // process-scoped credential loaded by the caller; keep the local-vault path
+  // only as a fallback for runs from the primary checkout.
+  let pat = process.env.SUPABASE_PAT;
+  if (!pat) {
+    const vault = readFileSync(new URL('../../CLAUDE.local.md', import.meta.url), 'utf8');
+    pat = vault.match(/\bsbp_[A-Za-z0-9_-]+\b/)?.[0];
+  }
   if (!pat) throw new Error('Missing SUPABASE_PAT for DEMO fixture');
   const response = await fetch(`https://api.supabase.com/v1/projects/${PROJECT}/database/query`, {
     method: 'POST', headers: { Authorization: `Bearer ${pat}`, 'Content-Type': 'application/json' },
@@ -169,8 +175,8 @@ EXISTS(SELECT 1 FROM source WHERE id NOT IN(SELECT source_voucher_id FROM settle
   return row;
 }
 
-// Explicitly scoped DEMO teardown. The one ALWAYS ownership trigger is restored
-// to its original mode inside the same transaction; schema is unchanged at
+// Explicitly scoped DEMO teardown. The ownership trigger is restored to its
+// original production mode inside the same transaction; schema is unchanged at
 // commit. Retain append-only canonical/audit events as other fleet helpers do.
 export async function cleanupReservationLiveFixture(marker: string, roomId: string, dryRun = false) {
   const q = checked(marker, roomId);
@@ -189,12 +195,12 @@ DO $guard$ BEGIN
 IF EXISTS(SELECT 1 FROM public.income_expenses WHERE id IN(SELECT id FROM _reservation_fixture_vouchers) AND (organization_id IS DISTINCT FROM '${RESERVATION_DEMO_ORG}'::uuid OR contract_id IS NOT NULL OR invoice_id IS NOT NULL))
  OR EXISTS(SELECT 1 FROM public.income_expenses WHERE room_id IN(SELECT id FROM _reservation_fixture_rooms) AND id NOT IN(SELECT id FROM _reservation_fixture_vouchers))
  OR EXISTS(SELECT 1 FROM public.contracts WHERE room_id IN(SELECT id FROM _reservation_fixture_rooms)) THEN RAISE EXCEPTION 'Fixture acquired unrelated data; refuse cleanup'; END IF;
-IF NOT EXISTS(SELECT 1 FROM pg_trigger WHERE tgrelid='app_private.income_expense_flow_ownership'::regclass AND tgname='a00_flow_ownership_immutable' AND tgenabled='A') THEN RAISE EXCEPTION 'Ownership trigger mode changed'; END IF;
+IF NOT EXISTS(SELECT 1 FROM pg_trigger WHERE tgrelid='app_private.income_expense_flow_ownership'::regclass AND tgname='a00_flow_ownership_immutable' AND tgenabled='O') THEN RAISE EXCEPTION 'Ownership trigger mode changed'; END IF;
 END $guard$;
 SET LOCAL session_replication_role=replica;
 ALTER TABLE app_private.income_expense_flow_ownership DISABLE TRIGGER a00_flow_ownership_immutable;
 DELETE FROM app_private.income_expense_flow_ownership WHERE income_expense_id IN(SELECT id FROM _reservation_fixture_vouchers) AND organization_id='${RESERVATION_DEMO_ORG}';
-ALTER TABLE app_private.income_expense_flow_ownership ENABLE ALWAYS TRIGGER a00_flow_ownership_immutable;
+ALTER TABLE app_private.income_expense_flow_ownership ENABLE TRIGGER a00_flow_ownership_immutable;
 DELETE FROM app_private.reservation_refund_operations WHERE settlement_id IN(SELECT id FROM _reservation_fixture_settlements);
 DELETE FROM app_private.reservation_settlement_write_tokens WHERE settlement_id IN(SELECT id FROM _reservation_fixture_settlements);
 DELETE FROM public.reservation_settlement_vouchers WHERE settlement_id IN(SELECT id FROM _reservation_fixture_settlements);

@@ -320,6 +320,7 @@ export const useSaveMemberAuthorization = () => {
       qc.invalidateQueries({ queryKey: authzKeys.members });
       qc.invalidateQueries({ queryKey: authzKeys.member(v.membershipId) });
       qc.invalidateQueries({ queryKey: authzKeys.organization });
+      for (const key of ['income-expense-action-snapshots', 'income-expense-action-cancellation', 'income-expense-posting-cashbooks', 'contract-settlement', 'contract-settlement-events', 'room-cash-lifecycle']) qc.invalidateQueries({ queryKey: [key] });
       // Nếu vừa sửa quyền của chính mình ở tab khác thì làm mới luôn quyền UI.
       qc.invalidateQueries({ queryKey: ['my-permissions'] });
       const { gained = [], lost = [] } = r ?? {};
@@ -358,6 +359,7 @@ export const useUpsertOrganizationRole = () => {
       qc.invalidateQueries({ queryKey: authzKeys.roles });
       qc.invalidateQueries({ queryKey: authzKeys.members });
       qc.invalidateQueries({ queryKey: authzKeys.organization });
+      for (const key of ['income-expense-action-snapshots', 'income-expense-action-cancellation', 'income-expense-posting-cashbooks', 'contract-settlement', 'contract-settlement-events', 'room-cash-lifecycle']) qc.invalidateQueries({ queryKey: [key] });
       qc.invalidateQueries({ queryKey: ['my-permissions'] });
       toast.success(
         r?.created
@@ -399,6 +401,7 @@ export const useRevokeInvitation = () => {
       callRpc(() => supabase.rpc('revoke_organization_invitation_v1', { p_invitation: invitationId })),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: authzKeys.organization });
+      for (const key of ['income-expense-action-snapshots', 'income-expense-action-cancellation', 'income-expense-posting-cashbooks', 'contract-settlement', 'contract-settlement-events', 'room-cash-lifecycle']) qc.invalidateQueries({ queryKey: [key] });
       toast.success('Đã thu hồi lời mời.');
     },
     onError: (e) => toast.error(loi(e, 'Không thu hồi được lời mời.')),
@@ -412,6 +415,7 @@ export const useUpdateOrganizationProfile = () => {
       callRpc<{ name: string }>(() => supabase.rpc('update_organization_profile_v1', { p_name: name })),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: authzKeys.organization });
+      for (const key of ['income-expense-action-snapshots', 'income-expense-action-cancellation', 'income-expense-posting-cashbooks', 'contract-settlement', 'contract-settlement-events', 'room-cash-lifecycle']) qc.invalidateQueries({ queryKey: [key] });
       toast.success('Đã lưu thông tin tổ chức.');
     },
     onError: (e) => toast.error(loi(e, 'Không lưu được thông tin tổ chức.')),

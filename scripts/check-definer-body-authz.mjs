@@ -129,6 +129,13 @@ export const PRIMITIVE_PHAM_VI = [
   'copilot_org_scope_buildings_v1', //      → lọc theo toà người gọi được phép
   'is_admin', //                            → is_super_admin
   'resolve_finance_actor_v2', //            → current_uid_v1 + membership ACTIVE, RAISE 42501
+  // Hai helper tài chính dưới đây được audit khi dựng Hợp đồng & quyết toán:
+  // - review: resolve actor, scope tòa nhà, quyền theo hành động, source owner;
+  // - snapshot: auth.uid, membership ACTIVE trong đúng org, scoped permission.
+  // Cả hai bị thu hồi khỏi authenticated và được pin definition/ACL ở migration
+  // 20260921015956; public wrappers chỉ gọi chúng, không tự cấp thêm phạm vi.
+  'authorize_income_expense_review_v1',
+  'income_expense_action_scope_v1',
 ];
 
 /**

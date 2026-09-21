@@ -1,0 +1,35 @@
+# T6R implementation boundary (2026-09-21)
+
+Existing LATER settlement is an obligation, not a pending voucher. The new entry creates only a pending REFUND leg and never reruns settlement or chooses retained/refund amounts. CHANGES_REQUESTED always uses shared resubmit on the existing ID. No termination source is fabricated.
+
+## Proposed smallest shared capability
+
+1. Factor pending REFUND birth from reservation_create_leg_v1 into a private core, leaving the existing six-argument immediate NOW/pay signature and its approve/post behavior intact. Pending birth uses the same source/settlement/leg/type/item identity but NULL account, UNAPPROVED/PENDING/UNPOSTED, committed birth metadata, source payer and explicitly captured recipient fields. No ledger line, approval or balance update occurs. No flow owner is relabeled; actual ownership must be read and preserved.
+2. Authenticated create_reservation_refund_pending_v1(jsonb): require exact organization/source/settlement identity, basis fingerprint and expected full remaining, caller key; room -> org decision -> source -> settlement -> existing refund voucher lock order. Recheck original received-proof/basis (source is already immutable), source not consumed by contract, positive integer remaining, active org/member/building source access and actual deposits.refund capability. Source claim is authoritative under org lock, so concurrent windows get one ID. Existing live refund returns the exact existing ID/state; hidden existing is blocked without exposing identity. No money input override or account accepted.
+3. Authenticated reservation refund action dispatcher: validate source/REFUND leg/organization/latest obligation and actual flow ownership, authorize operation before replay, take source locks, then open only the existing private settlement write token and call shared approve/post/request-changes/resubmit/reverse functions. Generic calls without a source dispatcher remain rejected by reservation guards. A narrowly scoped review-authority exception recognizes the exact REFUND + current transaction token; normal maker/edit/approver review checks remain intact. Owned guard is not weakened.
+4. Preserve source_kind=RESERVATION_REFUND when the existing shared posting core is invoked inside that validated reservation dispatch; evidence remains the shared FINALIZED evidence/attachment protocol. Full voucher amount must equal the current remaining, with no other live posting. Shared approval/posting/review CAS and period/custody guards stay authoritative; dispatcher adds source identity/remaining and permission checks before cached replay. Reverse keeps ledger-derived obligation state; old keys cannot create another payout.
+5. Existing NOW/pay keeps working when it owns an uncreated obligation. Add a conflict guard before creating another leg if an existing pending/approved-unposted leg must be processed by the shared review machine. A conflict directs the client to the existing voucher instead of issuing a new one. Reversed legacy legs keep existing old-key/no-repay and new-key/full-remaining semantics; a new shared post checks latest leg/source remaining under the same org lock.
+6. Read-only authenticated selected-source reader exposes the frozen settlement decision, received-proof/basis validity, actual remaining, recipient defaults, existing visible voucher or hidden block, and create authority. RLS source/settlement/leg visibility precedes private enrichment; no private tables granted to authenticated. Extend shared action snapshots with a strict reservation capability object only for supported REFUND legs; source receipt and retained OFFSET/REVENUE remain blocked for generic commands.
+
+## Permission split to verify with parent/current writers
+
+Existing settle/pay requires deposits.refund + income_expenses.approve because it approves immediately. Proposed pending-create requires deposits.refund without approve. Approve/request-changes requires source access + income_expenses.approve; resubmit preserves existing maker or legacy edit authority. Post-only requires source access/current real-cashbook custody without approve or deposits.refund, per the binding parent clarification. Reverse retains existing income_expenses.reverse + custody, not a new approve requirement. No permission is inferred from collect page visibility. Permissions are checked before replay even after revocation.
+
+## TS/API boundary
+
+- ReservationRefundCreateForm({ sourceRef: reservation_refund, onCreated({outcome,voucherId}), refreshRequired, onBusyChange? }) with RHF+Zod; no money amount editing. New selected reader/hook uses org/actor/source keys and fail-closed parsing, synchronous submit lock and unknown-result reconciliation.
+- Shared useIncomeExpenseActions chooses reservation dispatcher from the authoritative snapshot, not the component or label. Existing Thu chi desktop/mobile/List and settlement hosts inherit this capability. Keep same posting/evidence/review dialogs and mandatory refresh/unknown reconciliation.
+- Root integrates form into Modal/page; do not edit PeriodFee, T10 or ContractSettlementModal initially. Report props when stable. Root owns strict/test registry/generated types/provenance.
+
+## Verification sequence
+
+Write RED first for true LATER pending creation, source/hidden/role/CAS denial and no money side effect. Actual authenticated JWT on original disposable postgres55488/PostgREST55489 with random fixtures/cleanup; never shared writes or service_role writer tests. Cover create two windows, approval-only, atomic approve+post, post-only, request/resubmit same ID/code/amount/source, revoked-permission replay, custody/period/evidence rejection, full remaining, source-signing concurrency, reverse then old/new retry keys, multiple historic legs, source freeze and unauthorized token/SQL mutations. New generated migration only, hash/owner/ACL/role checks, first/reapply under measured non-superuser role, STABLE gate and mutation tests. Focused Vitest/controller/form tests, strict/app TS/lint. Live DEMO/browser/reconcile/release remain separate unverified gates until explicitly run.
+
+## Audited dependencies / known facts
+
+- Existing create_leg inserts UNAPPROVED first but approves and posts in the same function; it cannot be used as pending creation as-is.
+- Existing public pay checks source/custody before idempotency, and old retry returns current settlement JSON even after reversal.
+- Existing generic review rejects all reservation source/legs; changing only frontend policy would not work.
+- Existing reservation guard permits leg writes only with its private settlement token (plus a narrow reverse path). This capability must be opened only by the specialized dispatcher after source validation.
+- Existing generic post core labels postings MANUAL and requires FINALIZED evidence; preserve shared evidence semantics while recording the reservation domain source truthfully.
+- Local baseline and current definition hashes are captured in local-t6r-definitions.json, local-t6r-shared.json and t6r-core-current.json; refresh exact catalog before migration preflight construction.

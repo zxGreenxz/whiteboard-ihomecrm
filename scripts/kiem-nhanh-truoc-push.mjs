@@ -96,12 +96,10 @@ export const GATE_NHANH = [
   "check-doc-freshness",
   ["generate-docs-views", "--check"],
   // copilot-gates — bảy cổng nối vào CI (ci-gates.yml, bước "copilot-gates").
-  // Đủ điều kiện của danh sách này: tĩnh, không mạng, không credential, cả bảy
-  // chạy hết chưa tới 2 giây. `check-copilot-negative-proofs` (G4, 03/09/2026)
-  // KHÔNG tự chạy live-proofs — nó chỉ đọc artifact JSON đã có sẵn trong repo
-  // (docs/generated/copilot-negative-proofs/<sha>.json) và đòi artifact đó
-  // còn tươi (≤14 ngày) + mọi ca pass; sinh lại artifact là việc chạy tay
-  // `scripts/copilot-live-negative-proofs.mjs` với JWT thật.
+  // Sáu cổng đầu tĩnh, không mạng. `check-copilot-negative-proofs` (G4,
+  // 03/09/2026) bình thường cũng chỉ đọc artifact JSON. Khi artifact hợp lệ chỉ
+  // bị quá tuổi, nó cần SUPABASE_PAT để hỏi helper production; chỉ hoãn làm tươi
+  // khi execution_plan trên DEMO đang tắt. Nó KHÔNG tự chạy live-proofs.
   "check-copilot-page-contracts",
   "check-copilot-safe-control-markers",
   "check-copilot-provider-policy",
