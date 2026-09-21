@@ -186,6 +186,11 @@ jobs:
 
       - name: copilot-gates (ranh giới L5/L6 · hợp đồng trang · điều khiển an toàn · provider · E2E · golden eval · negative-proofs)
         if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
+        env:
+          # Artifact negative-proofs bình thường vẫn được kiểm offline. PAT chỉ
+          # được dùng khi artifact quá hạn, để hỏi đúng helper production xem
+          # execution_plan trên DEMO có đang tắt hay không; thiếu/401 ⇒ exit 3.
+          SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
         run: |
           loi=0
           # Copilot chỉ được nói về trang mà nó thật sự biết đường tới.
@@ -207,9 +212,9 @@ jobs:
           node scripts/generate-copilot-guide-corpus.mjs --check || loi=1
           # G4 (03/09/2026): artifact live negative-proofs (wrong-org, cờ bị thu
           # hồi giữa preview/execute, nonce replay, digest sai, 2 execute đồng
-          # thời, plan cancel) còn tươi (≤14 ngày) và mọi ca pass. Gate CHỈ đọc
-          # docs/generated/copilot-negative-proofs/<sha>.json đã commit — không
-          # tự chạy scripts/copilot-live-negative-proofs.mjs (cần JWT thật).
+          # thời, plan cancel) còn tươi (≤14 ngày) và mọi ca pass. Gate không tự
+          # chạy live-proofs. Nếu artifact hợp lệ chỉ bị quá tuổi, nó đo helper
+          # production và chỉ hoãn làm tươi khi execution_plan trên DEMO đang tắt.
           node scripts/check-copilot-negative-proofs.mjs || loi=1
           exit $loi
 

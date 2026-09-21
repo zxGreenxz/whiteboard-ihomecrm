@@ -12,14 +12,17 @@
  *     "còn lại toàn pass".
  *
  * KHÔNG chạy live-proofs thay bạn — script đó cần JWT thật + ghi/đọc production
- * DEMO, không hợp với một gate chạy trong mọi lượt push. Gate này chỉ kiểm
- * ARTIFACT đã sinh ra từ một lượt chạy tay trước đó còn đủ mới và đủ xanh.
+ * DEMO, không hợp với một gate chạy trong mọi lượt push. Gate này kiểm artifact
+ * đã sinh ra. Khi artifact chỉ vướng tuổi, gate hỏi CHÍNH helper production xem
+ * `copilot.execution_plan` có đang bị tắt trên DEMO không. Chỉ khi helper trả
+ * đúng boolean false mới được hoãn yêu cầu làm tươi; thiếu PAT, API lỗi hoặc dữ
+ * liệu mơ hồ đều là KHÔNG KIỂM ĐƯỢC, không phải pass.
  *
  * DÙNG
  *   node scripts/check-copilot-negative-proofs.mjs [--dir <thư mục>] [--han-ngay N]
  *
- * Không cần mạng, không cần credential — chỉ đọc file JSON đã có sẵn trong repo.
- * Thoát 0 (xanh) · 1 (đỏ — thiếu/cũ/có ca fail) · 2 (tham số sai).
+ * Bình thường không cần mạng. Artifact quá hạn cần SUPABASE_PAT để xác nhận cờ
+ * production. Thoát 0 (xanh) · 1 (đỏ) · 2 (tham số sai) · 3 (không kiểm được).
  */
 import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -29,6 +32,8 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 export const THU_MUC_MAC_DINH = 'docs/generated/copilot-negative-proofs';
 export const HAN_NGAY_MAC_DINH = 14;
+export const ORG_DEMO = 'dddd0000-0000-4000-8000-000000000001';
+export const CONTRACT_KE_HOACH = 'copilot.execution_plan';
 
 /** Bảy proof bắt buộc — khớp đúng tên `name` mà từng hàm `proof*` ghi trong script live. */
 export const CAC_PROOF_BAT_BUOC = Object.freeze([
@@ -129,7 +134,69 @@ export function danhGiaBaoCao(baoCao, hanNgay = HAN_NGAY_MAC_DINH, now = Date.no
   return { loi };
 }
 
-function main() {
+function laLoiQuaHan(loi) {
+  return /^báo cáo đã .*vượt hạn \d+ ngày/u.test(loi);
+}
+
+/**
+ * Chỉ tuổi của một artifact vốn hợp lệ mới được hoãn khi đường thực thi trên
+ * DEMO đang tắt. Một case fail, thiếu case, sai SHA/verdict hay thời gian tương
+ * lai vẫn đỏ dù kill switch đang tắt.
+ */
+export function danhGiaVoiTrangThaiRuntime(
+  baoCao,
+  demoExecutionAllowed,
+  hanNgay = HAN_NGAY_MAC_DINH,
+  now = Date.now(),
+) {
+  const { loi } = danhGiaBaoCao(baoCao, hanNgay, now);
+  const chiQuaHan = loi.length > 0 && loi.every(laLoiQuaHan);
+  if (chiQuaHan && demoExecutionAllowed === false) {
+    return { loi: [], boQuaTuoiViDaTat: true };
+  }
+  return { loi, boQuaTuoiViDaTat: false };
+}
+
+/** Đọc đúng helper được các RPC create/approve/execute dùng trên production. */
+export async function docTrangThaiExecutionPlanDemo({ token, projectRef, fetchImpl = fetch }) {
+  if (!token || !projectRef) throw new Error('thiếu SUPABASE_PAT hoặc project ref');
+  const res = await fetchImpl(`https://api.supabase.com/v1/projects/${projectRef}/database/query`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      query: `select app_private.copilot_action_flag_allows_v1('${CONTRACT_KE_HOACH}', '${ORG_DEMO}'::uuid) as demo_enabled`,
+    }),
+  });
+  if (!res.ok) {
+    const detail = typeof res.text === 'function' ? await res.text() : '';
+    throw new Error(`Management API ${res.status ?? 'không rõ'} ${String(detail).slice(0, 160)}`.trim());
+  }
+  const rows = await res.json();
+  if (!Array.isArray(rows) || rows.length !== 1 || typeof rows[0]?.demo_enabled !== 'boolean') {
+    throw new Error('trạng thái copilot.execution_plan trên DEMO không xác định');
+  }
+  return rows[0].demo_enabled;
+}
+
+function docPat() {
+  if (process.env.SUPABASE_PAT?.trim()) return process.env.SUPABASE_PAT.trim();
+  try {
+    return readFileSync(join(repoRoot, 'CLAUDE.local.md'), 'utf8').match(/\bsbp_[A-Za-z0-9_-]+\b/)?.[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function docProjectRef() {
+  try {
+    return readFileSync(join(repoRoot, 'supabase', 'config.toml'), 'utf8')
+      .match(/project_id\s*=\s*"([^"]+)"/)?.[1] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function main() {
   const args = parseArgs(process.argv);
   const thuMuc = join(repoRoot, args.dir || THU_MUC_MAC_DINH);
   const hanNgay = Number.isFinite(args.hanNgay) ? args.hanNgay : HAN_NGAY_MAC_DINH;
@@ -141,16 +208,42 @@ function main() {
     return;
   }
 
-  const { loi } = danhGiaBaoCao(tim.baoCao, hanNgay);
-  if (loi.length) {
+  const lanDau = danhGiaBaoCao(tim.baoCao, hanNgay);
+  let ket = { ...lanDau, boQuaTuoiViDaTat: false };
+  if (lanDau.loi.length > 0 && lanDau.loi.every(laLoiQuaHan)) {
+    try {
+      const demoEnabled = await docTrangThaiExecutionPlanDemo({
+        token: docPat(),
+        projectRef: docProjectRef(),
+      });
+      ket = danhGiaVoiTrangThaiRuntime(tim.baoCao, demoEnabled, hanNgay);
+    } catch (error) {
+      console.error(`Copilot negative-proofs: KHÔNG KIỂM ĐƯỢC trạng thái runtime — ${error.message}`);
+      process.exitCode = 3;
+      return;
+    }
+  }
+  if (ket.loi.length) {
     console.error(`Copilot negative-proofs (${tim.sha}) ĐỎ:`);
-    for (const l of loi) console.error(`  - ${l}`);
+    for (const l of ket.loi) console.error(`  - ${l}`);
     process.exitCode = 1;
     return;
   }
 
   const soPass = tim.baoCao.cases.filter((c) => c.pass).length;
-  console.log(`Copilot negative-proofs: ${tim.sha} — ${soPass}/${tim.baoCao.cases.length} pass, ranAt=${tim.baoCao.ranAt}.`);
+  if (ket.boQuaTuoiViDaTat) {
+    console.log(
+      `Copilot negative-proofs: ${tim.sha} — artifact ${soPass}/${tim.baoCao.cases.length} pass đã quá hạn, ` +
+      `nhưng helper production xác nhận ${CONTRACT_KE_HOACH} đang tắt trên DEMO; yêu cầu làm tươi sẽ bật lại ngay khi đường thực thi được mở.`,
+    );
+  } else {
+    console.log(`Copilot negative-proofs: ${tim.sha} — ${soPass}/${tim.baoCao.cases.length} pass, ranAt=${tim.baoCao.ranAt}.`);
+  }
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) main();
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  main().catch((error) => {
+    console.error(`Copilot negative-proofs: KHÔNG KIỂM ĐƯỢC — ${error.message}`);
+    process.exitCode = 3;
+  });
+}
