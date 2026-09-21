@@ -29,6 +29,14 @@ Lượt lane đầu đã tạo full backup `ihomecrm-full-2026-09-21T09-38-06-79
 
 Headless đăng nhập DEMO trên production sau phục hồi catalog: desktop/mobile có lại Thanh toán cũ và Thu chi cũ; mở chi tiết phiếu chỉ đọc thành công. Không có console/page error, toast quá khổ hoặc RPC settlement mới. Đọc lại RPC ghi chú cho hai phiếu THẬT nêu trên vẫn đạt. Tab IAB hiện tại trắng root dù reload; trình duyệt độc lập cùng deployment hoạt động bình thường. Chưa coi IAB là đạt và không thay mã ứng dụng để che vấn đề trạng thái trình duyệt này.
 
-Trình tự còn lại: hoàn tất receipt/catalog/gate → main CI đúng SHA → production → xác minh deployment cuối. Không phục hồi dump cũ đè dữ liệu hiện tại.
+Lane hoàn tất lại lúc `2026-09-21T10:01:34.686Z`, trên commit đã review `d9226791c63bcb86e2cd781b731339ee78f48724`, cùng SQL SHA256 đã pin. [Receipt thật](../../generated/schema-change-evidence/20260921085952_restore_before_contract_settlement.json) xác nhận backup mới đủ 535 mục TABLE DATA; apply 18 giây. Catalog trước/sau lượt idempotent cùng `d432e7227b14e6e3…`, đúng vì trạng thái đã phục hồi từ lượt trước. Witness dữ liệu trong transaction không phát hiện thay đổi. Không có restore dump đè production.
+
+Gate lịch sử đọc receipt thật và catalog sống trả RETIRED đúng 15 migration; yêu cầu kiểm file lịch sử được nhận diện và không replay, không ghi PASS giả. [Catalog kiểm sau phục hồi](production-catalog-verification.json) ghi đủ 44 vị trí hàm, 5 vị trí trigger và role vắng.
+
+Đã sửa ba assertion cũ bằng trạng thái chữ ký và quyền tích lũy, vẫn bắt cấp quyền anon hoặc tái tạo overload. 22 test và hai đột biến đạt. Review độc lập của agent chính xác nhận thay đổi chỉ trong test; runtime ứng dụng và generated types vẫn khớp mốc cũ.
+
+Diễn tập baseline có fixture ACL cục bộ: baseline gốc cố ý `--no-acl`, nên phải tái lập quyền lịch sử đã đo trước khi replay 15 SQL immutable. Fixture pin 22 function hash/owner/ACL và đổi đúng 15 ACL, không thay body hoặc dữ liệu; chỉ cho phép database localhost. Toàn bộ 256 file: 220 sạch, 36 dừng đúng kỳ vọng, không lệch. Hai ngoại lệ cascade đã hết nguyên nhân được gỡ khỏi sổ kỳ vọng. Kiểm đầy đủ witness trước/sau, compensation hai lượt, 16 test harness và sáu ca database sai đều đạt; security drill cũng đạt. SQL phục hồi production không thay byte nào để né lỗi baseline.
+
+Lượt Vitest cuối dùng đúng lựa chọn file của workflow CI (tách các suite Node test theo manifest): **556 file, 8.210 test đạt**. Phát hành nhánh production phải đi qua CI của đúng SHA và công cụ promote; trạng thái CI/deployment cuối được ghi tại PR #74. Không phục hồi dump cũ đè dữ liệu hiện tại.
 
 Backup riêng trước phát hành đã restore thử thành công vào database cục bộ. Lane vẫn phải tạo backup mới ngay trước apply. GitHub Free chưa có branch protection là khoảng trống đã biết, không được gọi là kiểm soát đã đạt.

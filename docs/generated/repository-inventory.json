@@ -1,9 +1,9 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 729,
-  "soFileDocBangFs": 229,
-  "tongLoiGoi": 500,
+  "tongSoFileTest": 730,
+  "soFileDocBangFs": 230,
+  "tongLoiGoi": 502,
   "khongPhanLoaiDuoc": 252,
   "theoLoai": {
     "ma-nguon": {
@@ -11,7 +11,7 @@
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
-      "soFile": 31,
+      "soFile": 32,
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
@@ -593,6 +593,14 @@
         "ma-nguon": 1
       },
       "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "scripts/__tests__/restore-settlement-drill.test.mjs",
+      "soGoi": 2,
+      "loai": {
+        "manifest": 2
+      },
+      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "src/components/__tests__/dialogGateFetchKhiDong.test.ts",
