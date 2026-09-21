@@ -1,3 +1,4 @@
+import type { ReservationRefundActionCapability } from './incomeExpenseActionSnapshot';
 import type { FinanceV2OrgRoutes } from './financeV2Route';
 
 /** A missing snapshot is not a negative permission or a LEGACY route. */
@@ -20,7 +21,7 @@ export interface IncomeExpenseActionContext {
   permissions: ActionReadiness<{ approve: boolean; edit: boolean; cancel: boolean; reverse: boolean }>;
   routes: ActionReadiness<FinanceV2OrgRoutes>;
   ownership: ActionReadiness<{ flowKind: string | null; sourceReviewSupported: boolean; moneyEditAllowed: boolean }>;
-  source: ActionReadiness<{moneyActionsAllowed:boolean;refundReverseAllowed:boolean}>;
+  source: ActionReadiness<{moneyActionsAllowed:boolean;refundReverseAllowed:boolean;reservationRefund?:ReservationRefundActionCapability|null}>;
   lifecycle: ActionReadiness<{ approveBirthReady: boolean; forfeitPair: boolean; forfeitAllowed: boolean; unapproveSupported: boolean }>;
   custody: ActionReadiness<{ hasUsableCashbook: boolean; holdsVoucherCashbook: boolean }>;
   cancellation: ActionReadiness<{ canCancel: boolean; reason: string | null; useIncomeDoor: boolean; useFlexWriter: boolean; mode: string | null }>;
@@ -82,9 +83,16 @@ export function decideIncomeExpenseActions(c: IncomeExpenseActionContext): Incom
       a.enabled = c.permissions.value.edit || deny(a, 'PERMISSION', 'Cần quyền bổ sung chứng từ hoặc sửa thu chi'); continue;
     }
     if (!requireReady(a, c.source)) continue;
-    if (!c.source.value.moneyActionsAllowed && !(name === 'reverse' && c.source.value.refundReverseAllowed)) { deny(a, 'SOURCE_GUARD', 'Phiếu thuộc quyết toán giữ chỗ; xử lý tại luồng nguồn'); continue; }
+    const reservation = c.source.value.reservationRefund;
+    const reservationAction = !!reservation && ['approveOnly','approveAndPost','post','requestChanges','resubmitReview','reverse'].includes(name) && reservation.basisValid && reservation.current && (name === 'reverse' || reservation.fullRemaining);
+    if (!c.source.value.moneyActionsAllowed && !reservationAction && !(name === 'reverse' && c.source.value.refundReverseAllowed)) { deny(a, 'SOURCE_GUARD', 'Phiếu thuộc quyết toán giữ chỗ; xử lý tại luồng nguồn'); continue; }
     if (!requireReady(a, c.routes)) continue;
     const routes = c.routes.value;
+    if (reservationAction) {
+      if (routes.workflow !== 'CANONICAL' || (['post','approveAndPost','reverse'].includes(name) && routes.posting !== 'CANONICAL')) { deny(a, 'CANONICAL_REQUIRED', 'Thao tác cần quy trình thu chi chuẩn'); continue; }
+      if (![v.approvalVersion,v.postingVersion,v.reviewVersion].every(validVersion)) { deny(a, 'CAS_REQUIRED', 'Chưa tải đủ phiên bản phiếu hoàn'); continue; }
+      if (approvalAction && v.reviewState !== 'PENDING') { deny(a, 'STATE', 'Cần chuyển phiếu về chờ duyệt trước khi duyệt'); continue; }
+    }
     const route = name === 'post' || name === 'reverse' ? routes.posting : routes.workflow;
     if (route === 'FROZEN' || ((name === 'approveAndPost' || name === 'cancel' || name === 'unapprove' || name === 'edit' || name === 'editRecipient') && routes.posting === 'FROZEN')) {
       deny(a, 'FROZEN', 'Tổ chức đang tạm khóa thao tác thu chi'); continue;

@@ -150,3 +150,30 @@ describe("strict shared action context", () => {
     ).toThrow();
   });
 });
+
+describe('reservation refund specialized context', () => {
+ const cap={settlementId:'s',sourceVoucherId:'source',basisFingerprint:'basis',remaining:123,basisValid:true,current:true,fullRemaining:true};
+ function actions(patch:Partial<IncomeExpenseActionSnapshot>={}, capability:unknown=cap,routes=batch.routes){
+  const v={...row,systemSource:'reservation.refund',...patch,capabilities:{...row.capabilities,manual:false,reservationMoneyBlocked:true,reservationRefundReverseAllowed:true,reservationRefund:capability,...patch.capabilities}};
+  return decideIncomeExpenseActions(buildIncomeExpenseActionContext({id:'v',snapshot:ready({...batch,routes,rows:{v}}) as never,cashbooks:ready([{id:'book',organizationId:'o',name:'Cash',isVirtual:false}]),cancellation:ready({income:{},flex:{}}),handlers:{...handlers,approveAndPost:true,post:true,reverse:true,resubmitReview:true,legacyApprove:true,editRecipient:true}}));
+ }
+ it('permits only the validated refund pending review/approval actions',()=>{
+  const a=actions();expect(a.approveOnly.enabled).toBe(true);expect(a.approveAndPost.enabled).toBe(true);expect(a.requestChanges.enabled).toBe(true);
+  for(const key of ['cancel','edit','editRecipient','legacyApprove','unapprove'] as const) expect(a[key].enabled).toBe(false);
+ });
+ it.each([undefined,null,{...cap,basisValid:false},{...cap,current:false},{...cap,fullRemaining:false}])('fails closed without a current full source proof %j',(c)=>{const a=actions({},c===undefined?null:c);expect(a.approveOnly.enabled).toBe(false);expect(a.requestChanges.enabled).toBe(false)});
+ it('resubmits same voucher and never approves changes requested',()=>{const a=actions({reviewState:'CHANGES_REQUESTED'});expect(a.resubmitReview.enabled).toBe(true);expect(a.approveOnly.enabled).toBe(false);expect(a.approveAndPost.enabled).toBe(false)});
+ it('requires all CAS and both routes for specialized money actions',()=>{
+  expect(actions({reviewVersion:null}).approveOnly.enabled).toBe(false);
+  expect(actions({approvalStatus:'APPROVED'},cap,{...batch.routes,workflow:'LEGACY'}).post.enabled).toBe(false);
+ });
+ it('post only needs custody, reverse needs its permission and exact custody',()=>{
+  expect(actions({approvalStatus:'APPROVED',permissions:{approve:false,edit:false,cancel:false,reverse:false}}).post.enabled).toBe(true);
+  expect(actions({approvalStatus:'APPROVED',postingStatus:'POSTED',accountId:'book',activePostingId:'p',permissions:{...row.permissions,reverse:true}},{...cap,remaining:0,fullRemaining:false}).reverse.enabled).toBe(true);
+  expect(actions({approvalStatus:'APPROVED',postingStatus:'POSTED',accountId:'book',activePostingId:'p'},null).reverse.enabled).toBe(false);
+ });
+ it('does not grant OFFSET/REVENUE or owned source access',()=>{
+  expect(actions({systemSource:'reservation.offset'}).approveOnly.enabled).toBe(false);
+  expect(actions({flowKind:'RESERVATION'}).requestChanges.enabled).toBe(false);
+ });
+});

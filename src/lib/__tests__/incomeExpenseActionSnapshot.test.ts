@@ -62,3 +62,11 @@ describe('strict common voucher action snapshot', () => {
     expect(queryActionReadiness({ data: 42, isFetching: false, isError: false }, true)).toEqual({ state: 'ready', value: 42 });
   });
 });
+
+it('parses only exact REFUND source capabilities and fails closed on malformed facts',()=>{
+ const cap={settlementId:'s',sourceVoucherId:'d',basisFingerprint:'basis',remaining:2640000,basisValid:true,current:true,fullRemaining:true};
+ const base={...row(),systemSource:'reservation.refund',capabilities:{...row().capabilities,reservationRefund:cap}};
+ expect(parseActionSnapshotBatch(batch([base]),scope,['v']).rows.v.capabilities.reservationRefund).toEqual(cap);
+ for(const change of [{remaining:null},{remaining:-1},{remaining:1},{basisValid:'yes'},{current:null},{settlementId:''}])expect(parseActionSnapshotBatch(batch([{...base,capabilities:{...base.capabilities,reservationRefund:{...cap,...change}}}]),scope,['v']).unavailable.v).toBe('INVALID_SNAPSHOT');
+ expect(parseActionSnapshotBatch(batch([{...base,systemSource:'reservation.forfeit_offset'}]),scope,['v']).unavailable.v).toBe('INVALID_SNAPSHOT');
+});

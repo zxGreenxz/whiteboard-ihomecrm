@@ -2,6 +2,7 @@
 import { act, renderHook, waitFor, cleanup } from "@testing-library/react";
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 const m = vi.hoisted(() => ({
+  reservation: vi.fn(),
   approve: vi.fn(),
   legacy: vi.fn(),
   unapprove: vi.fn(),
@@ -75,6 +76,7 @@ vi.mock("./mutations", () => ({
   useQuickUpdateIncomeExpense: () => ({ mutateAsync: m.quick }),
 }));
 vi.mock('./recipientMutations', () => ({ useUpdateIncomeExpenseRecipient: () => ({ mutateAsync: m.recipient }) }));
+vi.mock('@/lib/reservationRefundRepository',()=>({executeReservationRefundAction:m.reservation}));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 import { useIncomeExpenseActions } from "./useIncomeExpenseActions";
 import type {
@@ -605,4 +607,23 @@ describe("shared dispatcher coverage", () => {
     expect(h.result.current.outcome.kind).toBe("idle");
     expect(m.approve).not.toHaveBeenCalled();
   });
+});
+
+describe('reservation refund shared dispatch',()=>{
+ function reservation(){row.systemSource='reservation.refund';row.capabilities.reservationMoneyBlocked=true;row.capabilities.reservationRefund={settlementId:id,sourceVoucherId:id,basisFingerprint:'basis',remaining:row.totalAmount,basisValid:true,current:true,fullRemaining:true};m.reservation.mockResolvedValue({});}
+ it.each(['approveOnly','requestChanges','resubmitReview'] as const)('uses specialized %s with stable key and all CAS, without generic fallback',async action=>{
+  reservation();if(action==='resubmitReview')row.reviewState='CHANGES_REQUESTED';const h=setup();await open(h,action);const key=h.result.current.selected!.key;
+  await act(async()=>{await h.result.current.commands.confirm({reason:'Cần xác minh người nhận'});});
+  expect(m.reservation).toHaveBeenCalledOnce();expect(m.reservation.mock.calls[0][0]).toMatchObject({voucherId:id,settlementId:id,sourceVoucherId:id,expectedApprovalVersion:3,expectedPostingVersion:4,expectedReviewVersion:5,basisFingerprint:'basis',idempotencyKey:key});
+  for(const fn of [m.approve,m.review,m.resubmit,m.post,m.atomic,m.reverse])expect(fn).not.toHaveBeenCalled();
+ });
+ it('does not fall back after specialized authorization error',async()=>{reservation();m.reservation.mockRejectedValueOnce(Object.assign(new Error('denied'),{code:'42501'}));const h=setup();await open(h,'approveOnly');await act(async()=>{await expect(h.result.current.commands.confirm()).rejects.toThrow('denied')});expect(m.approve).not.toHaveBeenCalled();expect(m.legacy).not.toHaveBeenCalled()});
+ it.each(['post','approveAndPost'] as const)('dispatches specialized %s with FINALIZED evidence inputs and no generic money write',async action=>{
+  reservation();const book='40000000-0000-4000-8000-000000000001',ev='50000000-0000-4000-8000-000000000001';m.books=[{id:book,name:'Cash',organizationId:org}];if(action==='post'){row.approvalStatus='APPROVED';row.permissions.approve=false;}
+  const h=setup();await open(h,action);const key=h.result.current.selected!.key;
+  await act(async()=>{await h.result.current.commands.confirm({posting:{subjectKind:'VOUCHER',subjectId:id,cashbookId:book,postedOn:'2026-09-21',evidenceIds:[ev],expectedExecutionRevision:0,expectedApprovalVersion:3,expectedPostingVersion:4,idempotencyKey:key}});});
+  expect(m.reservation).toHaveBeenCalledWith(expect.objectContaining({action:action==='post'?'post':'approve_and_post',cashbookId:book,evidenceIds:[ev],expectedRemaining:2640000,idempotencyKey:key}));expect(m.post).not.toHaveBeenCalled();expect(m.atomic).not.toHaveBeenCalled();
+ });
+ it('reverses the specialized source through its exact original cashbook',async()=>{reservation();row.approvalStatus='APPROVED';row.postingStatus='POSTED';row.accountId=id;row.activePostingId=id;row.capabilities.reservationRefund!.remaining=0;row.capabilities.reservationRefund!.fullRemaining=false;m.books=[{id,name:'Cash',organizationId:org}];const h=setup();await open(h,'reverse');await act(async()=>{await h.result.current.commands.confirm({reason:'Hoàn tác để đối chiếu'});});expect(m.reservation).toHaveBeenCalledWith(expect.objectContaining({action:'reverse',cashbookId:id,expectedRemaining:0}));expect(m.reverse).not.toHaveBeenCalled();});
+
 });

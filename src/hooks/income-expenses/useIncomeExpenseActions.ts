@@ -1,3 +1,4 @@
+import { executeReservationRefundAction, type ReservationRefundActionInput } from '@/lib/reservationRefundRepository';
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -99,6 +100,8 @@ export const incomeExpenseActionRefreshKeys = [
   "contracts",
   "contract-termination-info",
   "termination-refund-preview",
+  "reservation-settlements", "reservation-settlement-summary", "reservation-settlement-audit", "reservation-deposits", "orphan-deposit-vouchers",
+  "reservation-refund-workflow",
   "reservation-settlement-by-voucher",
   "reservation-settlement-preview",
   "reservation-refund-evidence",
@@ -366,8 +369,17 @@ export function useIncomeExpenseActions(args: {
     if (!v) throw new Error("Chưa tải phiếu.");
     const p = op.payload || {},
       reason = p.reason?.trim() || "";
+    const refund = v.systemSource === 'reservation.refund' ? v.capabilities.reservationRefund : null;
+    const refundAction = (action: ReservationRefundActionInput['action'], extra: Partial<ReservationRefundActionInput> = {}) => {
+      if (!refund || !v.organizationId) throw Object.assign(new Error('Chưa tải đủ nguồn hoàn giữ chỗ.'), { code: '22023' });
+      return executeReservationRefundAction({ ...extra, action, organizationId: v.organizationId, voucherId: v.id,
+        sourceVoucherId: refund.sourceVoucherId, settlementId: refund.settlementId, basisFingerprint: refund.basisFingerprint,
+        expectedRemaining: refund.remaining, expectedApprovalVersion: cas(v.approvalVersion), expectedPostingVersion: cas(v.postingVersion),
+        expectedReviewVersion: cas(v.reviewVersion), idempotencyKey: op.key });
+    };
     switch (op.action) {
       case "approveOnly":
+        if (refund) return refundAction("approve");
         return approve.mutateAsync({
           voucherId: v.id,
           expectedApprovalVersion: cas(v.approvalVersion),
@@ -415,6 +427,7 @@ export function useIncomeExpenseActions(args: {
             new Error("Thông tin ghi sổ không khớp phiếu đang rà soát."),
             { code: "22023" },
           );
+        if (refund) return refundAction(op.action === 'post' ? 'post' : 'approve_and_post', { cashbookId: input.cashbookId, postedOn: input.postedOn, evidenceIds: input.evidenceIds });
         return op.action === "post"
           ? post.mutateAsync(input)
           : atomic.mutateAsync(input);
@@ -425,6 +438,7 @@ export function useIncomeExpenseActions(args: {
             new Error("Nhập lý do hoàn tác ít nhất 8 ký tự."),
             { code: "22023" },
           );
+        if (refund) return refundAction('reverse', { cashbookId: v.accountId, reason, postedOn: op.postedOn });
         return reverse.mutateAsync({
           voucherId: v.id,
           cashbookId: v.accountId,
@@ -462,6 +476,7 @@ export function useIncomeExpenseActions(args: {
         });
       }
       case "requestChanges":
+        if (refund) return refundAction('request_changes', {reason});
         return request.mutateAsync({
           voucherId: v.id,
           reason,
@@ -469,6 +484,7 @@ export function useIncomeExpenseActions(args: {
           idempotencyKey: op.key,
         });
       case "resubmitReview":
+        if (refund) return refundAction('resubmit');
         return resubmit.mutateAsync({
           voucherId: v.id,
           expectedReviewVersion: cas(v.reviewVersion),

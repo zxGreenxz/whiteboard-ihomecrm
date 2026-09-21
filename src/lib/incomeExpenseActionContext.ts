@@ -166,12 +166,13 @@ export function buildIncomeExpenseActionContext(args: {
   c.permissions = ready(v.permissions);
   c.source = ready({
     moneyActionsAllowed: !cap.reservationMoneyBlocked,
-    refundReverseAllowed: cap.reservationRefundReverseAllowed,
+    refundReverseAllowed: v.systemSource === 'reservation.refund' ? false : cap.reservationRefundReverseAllowed,
+    reservationRefund: v.systemSource === 'reservation.refund' ? cap.reservationRefund ?? null : null,
   });
   c.ownership = ready({
     flowKind: v.flowKind,
     sourceReviewSupported:
-      canonical && !v.systemSource?.startsWith("reservation."),
+      canonical && (!v.systemSource?.startsWith("reservation.") || (v.systemSource === 'reservation.refund' && !!cap.reservationRefund?.basisValid && cap.reservationRefund.current && cap.reservationRefund.fullRemaining)),
     moneyEditAllowed: v.flowKind === null && cap.manual,
   });
   c.lifecycle = ready({

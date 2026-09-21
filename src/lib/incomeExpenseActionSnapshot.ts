@@ -2,6 +2,7 @@ import type { ActionReadiness, ActionVoucher } from './incomeExpenseActionPolicy
 import type { FinanceRoute, FinanceV2OrgRoutes } from './financeV2Route';
 
 export interface ActionSnapshotScope { actorId: string; organizationId: string }
+export interface ReservationRefundActionCapability { settlementId: string; sourceVoucherId: string; basisFingerprint: string; remaining: number; basisValid: boolean; current: boolean; fullRemaining: boolean }
 export interface IncomeExpenseActionSnapshot extends ActionVoucher {
   code: string; name: string; totalAmount: number; roomId: string | null; contractId: string | null; tenantId: string | null;
   payerName: string | null; receiveBankName: string | null; receiveBankAccount: string | null;
@@ -10,7 +11,7 @@ export interface IncomeExpenseActionSnapshot extends ActionVoucher {
   flowKind: string | null;
   /** Owned source chains are not the canonical create chain; UNVERIFIED is not a denial. */
   birthState: 'MISSING' | 'COMMITTED' | 'INVALID' | 'UNVERIFIED';
-  capabilities: { forfeitPair: boolean; forfeitAllowed: boolean; engineBlocked: boolean; manual: boolean; legacyCancelAllowed: boolean; compatCancelOwner: boolean; birthPrior: boolean; requiresRealAccount: boolean; reservationMoneyBlocked: boolean; reservationRefundReverseAllowed: boolean };
+  capabilities: { reservationRefund?: ReservationRefundActionCapability | null; forfeitPair: boolean; forfeitAllowed: boolean; engineBlocked: boolean; manual: boolean; legacyCancelAllowed: boolean; compatCancelOwner: boolean; birthPrior: boolean; requiresRealAccount: boolean; reservationMoneyBlocked: boolean; reservationRefundReverseAllowed: boolean };
   permissions: { approve: boolean; edit: boolean; cancel: boolean; reverse: boolean };
 }
 export interface ActionSnapshotBatch extends ActionSnapshotScope {
@@ -37,6 +38,12 @@ const money = (value: unknown): number => {
 };
 const route = (value: unknown): FinanceRoute => enumValue(value, ['LEGACY', 'SHADOW', 'CANONICAL', 'FROZEN']);
 
+function reservationCapability(raw: unknown, row: Record<string, unknown>): ReservationRefundActionCapability | null {
+  if (raw === undefined || raw === null) return null;
+  const r = object(raw), remaining = money(r.remaining), fullRemaining = bool(r.fullRemaining);
+  if (row.type !== 'EXPENSE' || row.systemSource !== 'reservation.refund' || remaining < 0 || (fullRemaining && (remaining <= 0 || remaining !== money(row.totalAmount)))) throw new Error('INVALID_SNAPSHOT');
+  return { settlementId: text(r.settlementId), sourceVoucherId: text(r.sourceVoucherId), basisFingerprint: text(r.basisFingerprint), remaining, fullRemaining, basisValid: bool(r.basisValid), current: bool(r.current) };
+}
 function parseRow(value: Record<string, unknown>): IncomeExpenseActionSnapshot {
   const p = object(value.permissions), cap = object(value.capabilities);
   if (!Array.isArray(value.attachments) || !value.attachments.every(item => typeof item === 'string')) throw new Error('INVALID_SNAPSHOT');
@@ -56,7 +63,7 @@ function parseRow(value: Record<string, unknown>): IncomeExpenseActionSnapshot {
     postingVersion: nullableVersion(value.postingVersion), reviewVersion: nullableVersion(value.reviewVersion),
     systemSource: nullableText(value.systemSource), flowKind: nullableText(value.flowKind),
     birthState: enumValue(value.birthState, ['MISSING', 'COMMITTED', 'INVALID', 'UNVERIFIED']),
-    capabilities: { forfeitPair: bool(cap.forfeitPair), forfeitAllowed: bool(cap.forfeitAllowed), engineBlocked: bool(cap.engineBlocked),
+    capabilities: { reservationRefund: reservationCapability(cap.reservationRefund, value), forfeitPair: bool(cap.forfeitPair), forfeitAllowed: bool(cap.forfeitAllowed), engineBlocked: bool(cap.engineBlocked),
       manual: bool(cap.manual), legacyCancelAllowed: bool(cap.legacyCancelAllowed), compatCancelOwner: bool(cap.compatCancelOwner), birthPrior: bool(cap.birthPrior), requiresRealAccount: bool(cap.requiresRealAccount), reservationMoneyBlocked: bool(cap.reservationMoneyBlocked), reservationRefundReverseAllowed: bool(cap.reservationRefundReverseAllowed) },
     permissions: { approve: bool(p.approve), edit: bool(p.edit), cancel: bool(p.cancel), reverse: bool(p.reverse) },
   };
