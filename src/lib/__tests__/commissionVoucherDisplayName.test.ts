@@ -2,6 +2,8 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
+import { assertPublicRpcContract } from "./functionMigrationContract";
+import { boChuThichSql } from "../../../scripts/lib/bo-chu-thich.mjs";
 
 /**
  * Tên phiếu hoa hồng theo PHÒNG + facts HĐ để dựng ghi chú lúc xem (02/09/2026).
@@ -19,7 +21,7 @@ import { describe, expect, it } from "vitest";
  * scripts/check-migration-test-liveness.mjs.
  */
 const MIG_DIR = resolve(process.cwd(), "supabase/migrations");
-const stripComments = (sql: string) => sql.replace(/--[^\n]*/g, "");
+const stripComments = boChuThichSql;
 
 let corpusCache: { file: string; sql: string }[] | null = null;
 function migrationCorpus(): { file: string; sql: string }[] {
@@ -94,14 +96,23 @@ describe("create_commission_voucher — tên theo phòng, không rơi chốt nà
   });
 
   it("chữ ký 11 tham số KHÔNG đổi (không sinh overload cho PostgREST)", () => {
-    const { sql } = live();
-    expect(sql).toMatch(
-      /REVOKE ALL ON FUNCTION public\.create_commission_voucher\(uuid,text,numeric,date,uuid,text,text,text,text,text,jsonb\)\s+FROM PUBLIC,\s*anon/,
-    );
-    expect(sql).toMatch(
-      /GRANT EXECUTE ON FUNCTION public\.create_commission_voucher\(uuid,text,numeric,date,uuid,text,text,text,text,text,jsonb\)\s+TO authenticated/,
-    );
+    assertPublicRpcContract(migrationCorpus(), "create_commission_voucher", "uuid,text,numeric,date,uuid,text,text,text,text,text,jsonb");
   });
+
+  it("bắt đột biến cấp EXECUTE anon sau định nghĩa sống", () => {
+    const drift = [...migrationCorpus(), { file: "future-anon-drift.sql", sql:
+      "GRANT EXECUTE ON FUNCTION public.create_commission_voucher(uuid,text,numeric,date,uuid,text,text,text,text,text,jsonb) TO anon;" }];
+    expect(() => assertPublicRpcContract(drift, "create_commission_voucher", "uuid,text,numeric,date,uuid,text,text,text,text,text,jsonb")).toThrow("unsafe EXECUTE ACL");
+  });
+
+  it("catalog guard phải thực thi so ACL, không chỉ chứa expected row", () => {
+    const broken = migrationCorpus().map(m => ({ ...m, sql: m.sql.replace(
+      "OR p.acl IS DISTINCT FROM f.acl THEN RAISE EXCEPTION 'Restore: final owner/ACL mismatch:",
+      "THEN RAISE EXCEPTION 'Restore: final owner/ACL mismatch:",
+    ) }));
+    expect(() => assertPublicRpcContract(broken, "create_commission_voucher", "uuid,text,numeric,date,uuid,text,text,text,text,text,jsonb")).toThrow("catalog ACL guard is not enforced");
+  });
+
 });
 
 describe("commission_contract_facts_v1 — luật STT trong năm, cọc, 7 ngày", () => {

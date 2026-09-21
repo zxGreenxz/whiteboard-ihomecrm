@@ -2,6 +2,8 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
+import { assertPublicRpcContract, functionMigrationContract } from "./functionMigrationContract";
+import { boChuThichSql } from "../../../scripts/lib/bo-chu-thich.mjs";
 
 /**
  * Thưởng nóng Sale tạo từ PHIẾU CỌC nhận thêm SỔ QUỸ và ẢNH CHỨNG TỪ (20/08/2026).
@@ -20,7 +22,7 @@ import { describe, expect, it } from "vitest";
  * cả khi hàm thật đã đổi. Xem scripts/check-migration-test-liveness.mjs.
  */
 const MIG_DIR = resolve(process.cwd(), "supabase/migrations");
-const stripComments = (sql: string) => sql.replace(/--[^\n]*/g, "");
+const stripComments = boChuThichSql;
 
 let corpusCache: { file: string; sql: string }[] | null = null;
 function migrationCorpus(): { file: string; sql: string }[] {
@@ -106,19 +108,30 @@ describe("create_sale_bonus_from_deposit_v1 — sổ quỹ + ảnh chứng từ"
     }
   });
 
-  it("DROP chữ ký 6 tham số để không sinh overload cho PostgREST", () => {
-    const { file, sql } = live();
-    expect(
-      /DROP\s+FUNCTION\s+IF\s+EXISTS\s+public\.create_sale_bonus_from_deposit_v1\s*\(\s*uuid\s*,\s*numeric\s*,\s*text\s*,\s*text\s*,\s*text\s*,\s*date\s*\)/i.test(
-        sql,
-      ),
-      `${file}: còn cả hai chữ ký ⇒ PostgREST báo "function is not unique"`,
-    ).toBe(true);
+  it("schema tích lũy chỉ còn chữ ký 8 tham số, không tái sinh overload cũ", () => {
+    const state = functionMigrationContract(migrationCorpus(), "create_sale_bonus_from_deposit_v1");
+    expect([...state.keys()]).toEqual(["public.create_sale_bonus_from_deposit_v1(uuid,numeric,text,text,text,date,uuid,jsonb)"]);
   });
 
-  it("chỉ cấp quyền cho authenticated/service_role, thu của anon", () => {
-    const { sql } = live();
-    expect(sql).toMatch(/REVOKE\s+ALL\s+ON\s+FUNCTION\s+public\.create_sale_bonus_from_deposit_v1[\s\S]*?anon/i);
-    expect(sql).toMatch(/GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+public\.create_sale_bonus_from_deposit_v1[\s\S]*?authenticated/i);
+  it("giữ EXECUTE authenticated và chặn PUBLIC/anon qua DDL hoặc catalog guard", () => {
+    assertPublicRpcContract(migrationCorpus(), "create_sale_bonus_from_deposit_v1", "uuid,numeric,text,text,text,date,uuid,jsonb");
   });
+
+  it("bắt chữ ký 6 tham số được tạo lại sau DROP lịch sử", () => {
+    const drift = [...migrationCorpus(), { file: "future-overload-drift.sql", sql:
+      "CREATE FUNCTION public.create_sale_bonus_from_deposit_v1(p_id uuid,p_amount numeric,p_recipient text,p_account text,p_bank text,p_day date) RETURNS jsonb LANGUAGE sql AS $$ SELECT '{}'::jsonb $$;" }];
+    expect(() => assertPublicRpcContract(drift, "create_sale_bonus_from_deposit_v1", "uuid,numeric,text,text,text,date,uuid,jsonb")).toThrow("unexpected overload/signature");
+  });
+
+  it("DROP và REVOKE trong comment không xoá overload hay quyền anon", () => {
+    const drift = [...migrationCorpus(), { file: "comment-is-not-security.sql", sql:
+      `GRANT EXECUTE ON FUNCTION public.create_sale_bonus_from_deposit_v1(uuid,numeric,text,text,text,date,uuid,jsonb) TO anon;
+       /* REVOKE ALL ON FUNCTION public.create_sale_bonus_from_deposit_v1(uuid,numeric,text,text,text,date,uuid,jsonb) FROM anon; */` }];
+    expect(() => assertPublicRpcContract(drift, "create_sale_bonus_from_deposit_v1", "uuid,numeric,text,text,text,date,uuid,jsonb")).toThrow("unsafe EXECUTE ACL");
+    const overload = [...migrationCorpus(), { file: "comment-is-not-drop.sql", sql:
+      `CREATE FUNCTION public.create_sale_bonus_from_deposit_v1(p_id uuid,p_amount numeric,p_recipient text,p_account text,p_bank text,p_day date) RETURNS jsonb LANGUAGE sql AS $$ SELECT '{}'::jsonb $$;
+       -- DROP FUNCTION public.create_sale_bonus_from_deposit_v1(uuid,numeric,text,text,text,date);` }];
+    expect(() => assertPublicRpcContract(overload, "create_sale_bonus_from_deposit_v1", "uuid,numeric,text,text,text,date,uuid,jsonb")).toThrow("unexpected overload/signature");
+  });
+
 });
