@@ -18,7 +18,7 @@ const org = randomUUID(),
   building = randomUUID(),
   room = randomUUID(),
   customer = randomUUID();
-const contracts = Array.from({ length: 9 }, randomUUID),
+const contracts = Array.from({ length: 13 }, randomUUID),
   deposit = randomUUID(),
   termination = randomUUID();
 const key = "T6-" + randomUUID(),
@@ -373,7 +373,7 @@ try {
   );
   // Review I1: preserve NULL legacy contract fields while bridging the exact source claim.
   const extraDeposits = [];
-  for (let n = 0; n < 5; n++) {
+  for (let n = 0; n < 8; n++) {
     const id = randomUUID();
     extraDeposits.push(id);
     await fixture(async () => {
@@ -507,6 +507,157 @@ try {
   );
   console.log(
     "PASS I1 explicit-link visible/hidden source claim, both creation directions, mixed-writer race and conflicting link guard.",
+  );
+  // Review round 2: a direct C2 and explicit C1 cannot both describe one deposit.
+  const mismatchDeposit = extraDeposits[5],
+    directContract = contracts[10],
+    explicitContract = contracts[9];
+  await fixture(() =>
+    db.query("UPDATE public.income_expenses SET contract_id=$2 WHERE id=$1", [
+      mismatchDeposit,
+      directContract,
+    ]),
+  );
+  const directBonus = ok(await commission(directContract, "sale")).id;
+  await fixture(() => link(explicitContract, mismatchDeposit)); // Historical inconsistency, not an authorized repair.
+  const mismatchRead = await read("sale_contract", explicitContract);
+  const mismatchWrite = await commission(explicitContract, "sale");
+  const mismatchDepositWrite = await depositBonus(mismatchDeposit);
+  assert.notEqual(
+    mismatchDepositWrite.status,
+    200,
+    "deposit writer must reject conflicting direct/explicit source",
+  );
+  console.log(
+    "Mismatch preflight HTTP statuses:",
+    mismatchRead.status,
+    mismatchWrite.status,
+  );
+  assert.notEqual(
+    mismatchRead.status,
+    200,
+    "reader must fail closed for a conflicting direct and explicit contract",
+  );
+  assert.notEqual(
+    mismatchWrite.status,
+    200,
+    "writer must fail closed for a conflicting direct and explicit contract",
+  );
+  await assert.rejects(
+    adapterCreate("sale_contract", explicitContract),
+    "adapter must not create from an inconsistent source",
+  );
+  for (const [kind, id] of [
+    ["sale_contract", directContract],
+    ["sale_deposit", mismatchDeposit],
+  ])
+    assert.notEqual((await read(kind, id)).status, 200);
+  await fixture(() =>
+    db.query(
+      "UPDATE public.income_expenses SET has_restricted_item=true,user_id=$2 WHERE id=$1",
+      [directBonus, outsider],
+    ),
+  );
+  const hiddenMismatch = await read("sale_contract", explicitContract);
+  assert.notEqual(hiddenMismatch.status, 200);
+  assert.equal(JSON.stringify(hiddenMismatch).includes(directBonus), false);
+  assert.equal(JSON.stringify(hiddenMismatch).includes(directContract), false);
+  await fixture(() =>
+    db.query(
+      "DELETE FROM public.contract_deposit_links WHERE income_expense_id=$1",
+      [mismatchDeposit],
+    ),
+  );
+  await assert.rejects(
+    link(explicitContract, mismatchDeposit),
+    (e) => e.code === "23514",
+    "link insert must reject conflicting direct contract",
+  );
+  await assert.rejects(
+    db.query(
+      "INSERT INTO public.contract_deposit_links(organization_id,contract_id,income_expense_id,link_source,linked_by) VALUES($1,$2,$3,'BACKFILL_REVIEWED',$4)",
+      [org, explicitContract, mismatchDeposit, actor],
+    ),
+    (e) => e.code === "23514",
+    "reviewed backfill link must reject conflicting direct contract",
+  );
+  await link(directContract, mismatchDeposit);
+  await assert.rejects(
+    db.query(
+      "UPDATE public.contract_deposit_links SET contract_id=$2,link_source='BACKFILL_REVIEWED' WHERE income_expense_id=$1",
+      [mismatchDeposit, explicitContract],
+    ),
+    (e) => e.code === "23514",
+    "link update must reject conflicting direct contract",
+  );
+  await link(contracts[11], extraDeposits[6]);
+  await assert.rejects(
+    db.query("UPDATE public.income_expenses SET contract_id=$2 WHERE id=$1", [
+      extraDeposits[6],
+      contracts[12],
+    ]),
+    (e) => e.code === "23514",
+    "source contract mutation must reject conflicting explicit link",
+  );
+  assert.equal(
+    (
+      await db.query(
+        "SELECT contract_id FROM public.income_expenses WHERE id=$1",
+        [extraDeposits[6]],
+      )
+    ).rows[0].contract_id,
+    null,
+  );
+  for (const query of [
+    "UPDATE public.income_expenses SET type='EXPENSE' WHERE id=$1",
+    "UPDATE public.income_expenses SET organization_id=$2 WHERE id=$1",
+  ])
+    await assert.rejects(
+      db.query(
+        query,
+        query.includes("$2")
+          ? [extraDeposits[6], otherOrg]
+          : [extraDeposits[6]],
+      ),
+      (e) =>
+        e.code === "23514" && e.message.includes("liên kết hợp đồng mâu thuẫn"),
+      "linked source type/org identity must not be mutated",
+    );
+  // Exact concurrency: a new link holds org lock while the source mutation begins.
+  const mutationDb = new pg.Client({
+    connectionString: "postgresql://postgres@127.0.0.1:55488/postgres",
+  });
+  await mutationDb.connect();
+  await db.query("BEGIN");
+  let mutationResult;
+  try {
+    await link(contracts[11], extraDeposits[7]);
+    mutationResult = mutationDb
+      .query("UPDATE public.income_expenses SET contract_id=$2 WHERE id=$1", [
+        extraDeposits[7],
+        contracts[12],
+      ])
+      .then(
+        () => null,
+        (e) => e,
+      );
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    await db.query("COMMIT");
+    const rejection = await mutationResult;
+    assert.equal(
+      rejection?.code,
+      "23514",
+      "waiting source mutation must see the committed explicit link",
+    );
+  } catch (error) {
+    await db.query("ROLLBACK");
+    if (mutationResult) await mutationResult;
+    throw error;
+  } finally {
+    await mutationDb.end();
+  }
+  console.log(
+    "PASS conflicting direct/explicit contracts: reader/adapter/writers fail closed, hidden IDs absent, insert/update/source triggers and lock race reject.",
   );
   const duplicate = await commission(contracts[0], "broker");
   assert.notEqual(duplicate.status, 200);

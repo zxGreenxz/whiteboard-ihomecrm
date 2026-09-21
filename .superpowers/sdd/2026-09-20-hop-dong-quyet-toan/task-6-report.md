@@ -68,3 +68,22 @@ Kiểm chứng exact Node24.18.0:
 - App TS33192 exit0; strict config cho hai module sửa và dependencies exit0; ESLint hai module exit0; git diff --check scoped PASS.
 
 T6R monetary implementation vẫn chưa bắt đầu. Còn independent rereview I1/I2, fresh shared preflight/provenance/generated types/forward apply, live DEMO matrix và broker VALID positive control, browser desktop/mobile, build/bundle/reconcile/release như phần pending trước. Lượt sửa này không có shared schema/business write; không coi local code approval là T6 release complete.
+
+
+## Review round 2 — conflicting direct/explicit contract identity
+
+Base b05ac9a4; chỉ T6 followup/harness/test/report, không T7/cutover/T6R. Tái tạo RED trước sửa bằng authenticated JWT trên local disposable DB: D.contract_id=C2, EXPLICIT link D→C1, C2 đã có bonus B2; reader C1 và create_commission_voucher C1 đều trả HTTP200. Không dùng quyền service_role cho RPC. Fixture lịch sử mâu thuẫn được seed riêng và cleanup trong finally.
+
+20260921012821_sale_bonus_source_link_consistency.sql được generator cấp tên, là followup mới, không sửa 20260921004515. Chỉ thay 2 private functions đã có:
+- Lookup giữ STABLE, phát hiện direct contract khác explicit contract (và endpoint org/type không khớp) trước trả claim. Trả SQLSTATE23514 với thông báo chung không chứa ID/code/amount; selected reader và cả hai source writer đều dùng lookup này. Adapter hiện hữu đã dừng ngay khi readSource lỗi; thêm regression chứng minh không dùng stale source hoặc fallback tạo phiếu.
+- Trigger link kiểm NEW identity sau org lock cho INSERT và UPDATE. Trigger source kiểm NEW organization/type/contract trước nhánh bỏ qua cancelled/deleted; UPDATE lấy OLD organization lock trước khi đọc link, kể cả lúc chưa nhìn thấy link, nên thấy link được transaction cạnh tranh commit. Không rewrite contract_id, không duyệt/ghi sổ, không thêm owner/token bypass.
+- RLS entry, role attrs, public signatures, ACL, trigger definitions và permission/money guards giữ nguyên. Followup kiểm before/after hashes, dependencies/owners/ACL, role và enabled-trigger drift. After lookup hash232e870a444b79dfbe32c2dfd42231b8; trigger hashf804cf51e0aa37c7e7d03bd5d0760ffb. Existing ambiguous sources bị chặn để đối chiếu; migration không tự sửa lịch sử.
+
+Kiểm chứng exact Node24.18.0:
+- 4 scoped Vitest suites: 56 PASS (29 domain,13 parser,4 hook,10 form).
+- test-contract-settlement-create-local.mjs: PASS 4 adapters + toàn bộ round1; round2 reader/contract writer/deposit writer đều từ chối; adapter không tạo; hidden B2/C2 không lộ trong error. SQL trigger kiểm EXPLICIT và BACKFILL_REVIEWED insert/update, source contract/type/org mutation, và source mutation đợi transaction gắn link. Các ca đúng nguồn NULL legacy contract + explicit link vẫn PASS. Final session92058 exit0, fixture cleanup thành công.
+- test-contract-settlement-create-schema-local.mjs: session37166 exit0, first+reapply followup trong non-superuser rehearsal; definition/owner/ACL/role/trigger drift và STABLE gate PASS. Rehearsal các predecessor khôi phục đúng definitions từ file đã commit bên trong ROLLBACK, không sửa lịch sử deploy hoặc replay baseline.
+- dot-bien.mjs: tắt lookup consistency → RED đúng 'reader must fail closed for a conflicting direct and explicit contract'; bỏ NEW-link match → RED đúng 'link insert must reject conflicting direct contract'; tắt NEW-source check → RED đúng 'source contract mutation must reject conflicting explicit link'. Cả ba exit0; file digest ef9781d132cc được khôi phục, DB definitions khôi phục trong finally. Mutation runner local giữ ở .superpowers/sdd/2026-09-20-hop-dong-quyet-toan/t6-claim-mutation-runner.mjs.
+- App TS26785 exit0; ESLint domain/form/regression test exit0; scoped git diff --check PASS. Không đổi TS production trong round2.
+
+Chưa shared schema/business write. T6R chưa triển khai. Independent rereview, shared preflight/provenance/forward lane, live DEMO/broker VALID positive control, browser/build/reconcile/release vẫn pending như phần trên; các phép thử local không thay thế các gate đó.

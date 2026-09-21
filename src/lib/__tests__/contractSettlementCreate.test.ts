@@ -391,3 +391,24 @@ it("rejects an unrelated voucher despite a selected Sale claim", async () => {
   ).rejects.toMatchObject({ kind: "unconfirmed" });
   expect(ports.createCommission).not.toHaveBeenCalled();
 });
+
+it("fails closed on the authoritative source-link conflict without a stale-source or creation fallback", async () => {
+  current.kind = "sale_contract";
+  request.sourceRef = {
+    kind: "sale_contract",
+    organizationId: org,
+    contractId: source,
+  };
+  vi.mocked(ports.readSource).mockRejectedValue(
+    Object.assign(new Error("Nguồn cọc có liên kết hợp đồng mâu thuẫn."), {
+      code: "23514",
+    }),
+  );
+  await expect(
+    createContractSettlementVoucher(request, ports),
+  ).rejects.toMatchObject({ code: "23514" });
+  expect(ports.readVoucher).not.toHaveBeenCalled();
+  expect(ports.createCommission).not.toHaveBeenCalled();
+  expect(ports.createDeposit).not.toHaveBeenCalled();
+  expect(ports.createRefund).not.toHaveBeenCalled();
+});

@@ -25,6 +25,29 @@ const claimBody = fs
   )
   .replace(/^BEGIN;$/m, "")
   .replace(/^COMMIT;$/m, "");
+const consistencyBody = fs
+  .readFileSync(
+    "supabase/migrations/20260921012821_sale_bonus_source_link_consistency.sql",
+    "utf8",
+  )
+  .replace(/^BEGIN;$/m, "")
+  .replace(/^COMMIT;$/m, "");
+async function rollbackPreConsistency(fn) {
+  await rollback(async () => {
+    for (const [name, delimiter] of [
+      ["app_private.sale_bonus_source_claims_v1", "$claims$"],
+      ["app_private.guard_sale_bonus_source_claim_v1", "$guard_claim$"],
+    ])
+      await db.query(
+        definition(
+          "supabase/migrations/20260921004515_sale_bonus_explicit_source_claim_guard.sql",
+          name,
+          delimiter,
+        ),
+      );
+    await fn();
+  });
+}
 const claimLookup = "app_private.sale_bonus_source_claims_v1(uuid,uuid,uuid)",
   claimGuard = "app_private.guard_sale_bonus_source_claim_v1()",
   commission =
@@ -138,7 +161,7 @@ try {
     await db.query("ALTER ROLE ie_action_snapshot_reader BYPASSRLS");
     await assert.rejects(db.query(bodies[0]), /role drift/i);
   });
-  await rollback(async () => {
+  await rollbackPreConsistency(async () => {
     await db.query(claimBody);
     await db.query(claimBody);
   });
@@ -149,7 +172,7 @@ try {
     claimLookup,
     claimGuard,
   ])
-    await rollback(async () => {
+    await rollbackPreConsistency(async () => {
       await db.query("ALTER FUNCTION " + signature + " SET search_path=public");
       await assert.rejects(db.query(claimBody), /definition drift/i);
     });
@@ -160,7 +183,7 @@ try {
     [claimLookup, "authenticated"],
     [claimGuard, "authenticated"],
   ])
-    await rollback(async () => {
+    await rollbackPreConsistency(async () => {
       await db.query("GRANT EXECUTE ON FUNCTION " + signature + " TO " + role);
       await assert.rejects(db.query(claimBody), /ACL drift/i);
     });
@@ -169,12 +192,12 @@ try {
     ["app_private.sale_bonus_claims", "guard_sale_bonus_deposit_claim"],
     ["public.income_expenses", "guard_sale_bonus_voucher_claim"],
   ])
-    await rollback(async () => {
+    await rollbackPreConsistency(async () => {
       await db.query("ALTER TABLE " + relation + " DISABLE TRIGGER " + name);
       await assert.rejects(db.query(claimBody), /trigger drift/i);
     });
   for (const signature of [claimLookup, claimGuard])
-    await rollback(async () => {
+    await rollbackPreConsistency(async () => {
       await db.query(
         "ALTER FUNCTION " + signature + " OWNER TO ie_action_snapshot_reader",
       );
@@ -189,6 +212,47 @@ try {
     ).rows[0],
     { allowed: false, reader_allowed: false },
   );
+  await rollback(async () => {
+    await db.query(consistencyBody);
+    await db.query(consistencyBody);
+  });
+  for (const signature of [
+    claimLookup,
+    claimGuard,
+    commission,
+    depositWriter,
+    facts,
+  ])
+    await rollback(async () => {
+      await db.query("ALTER FUNCTION " + signature + " SET search_path=public");
+      await assert.rejects(
+        db.query(consistencyBody),
+        /definition drift|dependency drift/i,
+      );
+    });
+  for (const signature of [claimLookup, claimGuard]) {
+    await rollback(async () => {
+      await db.query(
+        "GRANT EXECUTE ON FUNCTION " + signature + " TO authenticated",
+      );
+      await assert.rejects(db.query(consistencyBody), /ACL drift/i);
+    });
+    await rollback(async () => {
+      await db.query(
+        "ALTER FUNCTION " + signature + " OWNER TO ie_action_snapshot_reader",
+      );
+      await assert.rejects(db.query(consistencyBody), /owner\/ACL drift/i);
+    });
+  }
+  for (const [relation, name] of [
+    ["public.contract_deposit_links", "guard_sale_bonus_link_claim"],
+    ["app_private.sale_bonus_claims", "guard_sale_bonus_deposit_claim"],
+    ["public.income_expenses", "guard_sale_bonus_voucher_claim"],
+  ])
+    await rollback(async () => {
+      await db.query("ALTER TABLE " + relation + " DISABLE TRIGGER " + name);
+      await assert.rejects(db.query(consistencyBody), /trigger drift/i);
+    });
   const acl = (
     await db.query(
       `SELECT has_function_privilege('authenticated',$1,'EXECUTE') reader,has_function_privilege('authenticated',$2,'EXECUTE') facts,has_function_privilege('ie_action_snapshot_reader',$2,'EXECUTE') reader_facts,has_function_privilege('authenticated',$3,'EXECUTE') core,has_function_privilege('ie_action_snapshot_reader',$3,'EXECUTE') reader_core,has_function_privilege('authenticated',$4,'EXECUTE') recipient,has_function_privilege('anon',$4,'EXECUTE') anon_recipient,has_function_privilege('service_role',$4,'EXECUTE') service_recipient,pg_has_role('authenticated','ie_action_snapshot_reader','SET') client_set`,
@@ -256,12 +320,14 @@ try {
       for (const b of bodies) await db.query(b);
       await db.query(claimBody);
       await db.query(claimBody);
+      await db.query(consistencyBody);
+      await db.query(consistencyBody);
     });
   } finally {
     await db.query(`DROP ROLE IF EXISTS ${deploy}`);
   }
   console.log(
-    "PASS T6 reader/refund migration first apply + reapply under non-superuser, definition/owner/ACL/role/claim-trigger drift, explicit Sale bridge first/reapply, private core isolation, transitive STABLE gate; mutations rolled back.",
+    "PASS T6 reader/refund migration first apply + reapply under non-superuser, definition/owner/ACL/role/claim-trigger drift, explicit Sale bridge + source consistency first/reapply, private core isolation, transitive STABLE gate; mutations rolled back.",
   );
 } finally {
   await db.end();
