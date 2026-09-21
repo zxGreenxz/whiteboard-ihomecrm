@@ -19,7 +19,7 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 |---|---|
 | RPC được gọi từ mã nguồn | 292 |
 | Hàm trong catalog (public + api) | 1166 |
-| File mã nguồn đã quét | 1678 |
+| File mã nguồn đã quét | 1687 |
 | SECURITY DEFINER | 276 |
 | **Gọi mà server KHÔNG CÓ** | **0** |
 
@@ -77,7 +77,7 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 | `get_voucher_cancellation_v1` | ✔ | hooks/income-expenses/flexMutations.ts |
 | `get_voucher_change_log_v1` | ✔ | hooks/income-expenses/flexMutations.ts |
 | `get_voucher_slot_warning_v1` | ✔ | hooks/useVoucherSlotWarning.ts |
-| `ie_compat_update_pending_v2` | ✔ | hooks/useUpdatePaymentMethod.ts, hooks/useUploadPaymentReceipt.ts |
+| `ie_compat_update_pending_v2` | ✔ | hooks/useSettlementActions.ts, hooks/useUpdatePaymentMethod.ts, hooks/useUploadPaymentReceipt.ts |
 | `ie_stop_recurring_v1` | ✔ | hooks/income-expenses/recurring.ts |
 | `invoice_active_payment_methods` |  | hooks/useInvoices.ts |
 | `invoice_payment_method_drilldown` |  | hooks/useInvoices.ts |
