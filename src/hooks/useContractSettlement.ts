@@ -115,9 +115,26 @@ const useSettlementTypeMap = (organizationId: string | null | undefined, enabled
     },
   });
 
+/**
+ * Chỉ những phương thức của PostgREST builder mà file này thật sự gọi.
+ * Khai tối thiểu thay vì `any`: sai tên phương thức vẫn bị bắt lúc biên dịch.
+ */
+interface LocBuilder {
+  eq(col: string, v: unknown): LocBuilder;
+  neq(col: string, v: unknown): LocBuilder;
+  is(col: string, v: null): LocBuilder;
+  in(col: string, v: readonly unknown[]): LocBuilder;
+  or(filter: string): LocBuilder;
+  gte(col: string, v: unknown): LocBuilder;
+  lt(col: string, v: unknown): LocBuilder;
+  like(col: string, v: string): LocBuilder;
+  order(col: string, o: { ascending: boolean }): LocBuilder;
+  range(from: number, to: number): unknown;
+}
+
 /** Áp bộ lọc chung cho mọi truy vấn phiếu. */
 const apDieuKienChung = (
-  q: any,
+  q: LocBuilder,
   a: { organizationId: string; buildingIds: string[]; scope: SettlementScope; period: string },
 ) => {
   let r = q
@@ -153,11 +170,11 @@ export function useContractSettlement(a: UseContractSettlementArgs) {
       const chung = {
         organizationId: a.organizationId!, buildingIds: a.buildingIds, scope, period: a.period,
       };
-      const goi = (build: (q: any) => any, label: string) =>
+      const goi = (build: (q: LocBuilder) => LocBuilder, label: string) =>
         fetchAllRows<VoucherRow>(
           (f, t) => build(apDieuKienChung(
-            supabase.from('income_expenses').select(COT), chung,
-          )).range(f, t),
+            supabase.from('income_expenses').select(COT) as unknown as LocBuilder, chung,
+          )).range(f, t) as never,
           { label },
         );
 
@@ -224,7 +241,8 @@ export function useContractSettlement(a: UseContractSettlementArgs) {
           p_period_month: ky, p_building_ids: a.buildingIds,
         });
         if (error) throw new Error(error.message);
-        for (const r of (data ?? []) as any[]) {
+        const dong = (data ?? []) as { contract_id?: string | null; expected_amount?: number | string | null }[];
+        for (const r of dong) {
           if (r.contract_id) m.set(r.contract_id, Number(r.expected_amount) || 0);
         }
       }

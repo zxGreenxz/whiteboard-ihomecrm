@@ -177,16 +177,6 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
             dueList.push(nameOf(b)); dueBld.add(b);
           }
         }
-      } else if (false) {
-        for (const r of commissions.data ?? []) {
-          total++;
-          if (r.status === 'paid') { paidN++; rowPaidSum += r.voucherAmount ?? r.expectedAmount; }
-          else {
-            if (r.status === 'draft') rowDraftN++;
-            rowDueSum += r.status === 'draft' ? (r.voucherAmount ?? r.expectedAmount) : r.expectedAmount;
-            if (!dueList.includes(r.buildingName)) dueList.push(r.buildingName);
-          }
-        }
       } else if (c.family === 'MAINTENANCE_BATCH') {
         // Slice −1 A3a: reader nay trả CẢ phiếu CHỜ DUYỆT. Chúng là "đã có phiếu"
         // nhưng KHÔNG phải "đã chi" — cộng vào rowPaidSum là đếm tiền chưa duyệt

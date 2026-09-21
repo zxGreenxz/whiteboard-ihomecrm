@@ -131,7 +131,6 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
       let total = 0, paidN = 0, rowDue = 0, rowDraftN = 0; const dueList: string[] = [];
       if (c.family === 'EN') { for (const b of buildingIds) for (const k of ['dien', 'nuoc'] as const) { const st = feeStatus.statusOf(b, k); if (st?.notApplicable) continue; total++; if (st && st.paidAmount > 0) paidN++; else { rowDue += st?.expectedAmount ?? 0; if (!dueList.includes(nameOf(b))) dueList.push(nameOf(b)); } } }
       else if (c.family === 'GRID') { for (const b of activeIdsFor(c)) { const st = feeStatus.statusOf(b, c.serverKey); total++; if (st && st.paidAmount > 0) paidN++; else { if (st && st.draftAmount > 0) { rowDraftN++; rowDue += st.draftAmount; } else rowDue += st?.expectedAmount ?? 0; dueList.push(nameOf(b)); } } }
-      else if (false) { for (const r of commissions.data ?? []) { total++; if (r.status === 'paid') paidN++; else { if (r.status === 'draft') rowDraftN++; rowDue += r.status === 'draft' ? (r.voucherAmount ?? r.expectedAmount) : r.expectedAmount; if (!dueList.includes(r.buildingName)) dueList.push(r.buildingName); } } }
       // A3a: phiếu bảo trì CHỜ DUYỆT đã có phiếu nhưng chưa chi → không tính là paid.
       else if (c.family === 'MAINTENANCE_BATCH') {
         const l = maintenance.data ?? [];
@@ -492,35 +491,6 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
             </div>
           )}
 
-          {/* COMMISSION */}
-          {false && (() => {
-            const rows = commissions.data ?? [];
-            const paidSum = rows.filter((r) => r.status === 'paid').reduce((s, r) => s + (r.voucherAmount ?? r.expectedAmount), 0);
-            const draftN = rows.filter((r) => r.status === 'draft').length;
-            const dueSum = rows.filter((r) => r.status === 'unpaid').reduce((s, r) => s + r.expectedAmount, 0);
-            return (
-              <div className="ptt-m-comm">
-                {prevUnpaidComm > 0 && (
-                  <div className="ptt-note warn"><Info /><span>Kỳ trước ({fmtBillingMonth(prevPeriod)}) còn <b>{prevUnpaidComm} HĐ</b> chưa chi HH.</span>{onBillingMonthChange && <button type="button" className="ptt-btn ghost sm" onClick={() => onBillingMonthChange(prevPeriod)}>Xem</button>}</div>
-                )}
-                <div className="ptt-m-commstats">
-                  <div className="ptt-m-commcard green"><div className="ptt-ov-lbl">Đã chi</div><div className="ptt-m-commnum green">{fmtFull(paidSum)}</div></div>
-                  <div className="ptt-m-commcard amber"><div className="ptt-ov-lbl">Chờ duyệt</div><div className="ptt-m-commnum amber">{draftN}</div></div>
-                  <div className="ptt-m-commcard red"><div className="ptt-ov-lbl">Chưa chi</div><div className="ptt-m-commnum red">{fmtFull(dueSum)}</div></div>
-                </div>
-                {rows.length === 0 ? <div className="c-empty"><div className="e-ic">📄</div><p>Không có HĐ ký trong kỳ.</p></div> : rows.map((r) => (
-                  <div className="ptt-m-commrow" key={r.contractId}>
-                    <div className="ptt-m-commr1"><span className="ud-mono2">{r.contractNumber ?? '—'}</span><span className="ptt-m-commroom">{r.buildingName} · {r.roomName ?? ''}</span>{r.status === 'paid' && <span className="ptt-comm-paid sm">Đã chi</span>}{r.status === 'draft' && <span className="ptt-badge-draft">CHỜ DUYỆT</span>}</div>
-                    <div className="ptt-m-commr2"><div className="ptt-m-commtenant"><div>{r.tenantName}</div><div className="ptt-m-commmeta">Ký {fmtDate(r.signedDate)} · {r.months} th · bậc {r.tierPercent != null ? r.tierPercent + '%' : '—'}</div></div><span className={'ud-mono' + (r.status === 'paid' ? ' paid' : '')}>{fmtFull(r.voucherAmount ?? r.expectedAmount)}</span></div>
-                    {r.status === 'unpaid' && <button type="button" className="ptt-m-commbtn" disabled={!canRecordPayment} onClick={() => setCommRow(r)}><HandCoins />Chi hoa hồng</button>}
-                    {r.status === 'draft' && <button type="button" className="ptt-m-commbtn draft" disabled={!canRecordPayment} onClick={() => setCommRow(r)}><Check />Duyệt phiếu chờ duyệt</button>}
-                  </div>
-                ))}
-              </div>
-            );
-          })()}
-
-          {/* MAINTENANCE */}
           {fam === 'DEPOSIT_LEDGER' && <DepositLedgerSection period={period} />}
           {fam === 'MAINTENANCE_BATCH' && (
             <div className="ptt-m-batch">

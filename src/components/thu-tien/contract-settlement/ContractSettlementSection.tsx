@@ -161,7 +161,11 @@ export function ContractSettlementSection({ buildingIds, period }: Props) {
                     modal để xử lý vướng mắc. */}
                 {choPhepChi && kha.approve && (
                   <button type="button" className="cs-btn primary" disabled={actions.isBusy}
-                    onClick={() => { void actions.approve(r).catch(() => {}); }}>
+                    onClick={() => {
+                      // Hook duyệt đã toast lỗi và giữ nguyên trạng thái; ở đây
+                      // chỉ chặn unhandled rejection. KHÔNG nuốt thêm gì.
+                      void actions.approve(r).catch(() => { /* đã báo ở hook */ });
+                    }}>
                     Duyệt
                   </button>
                 )}
