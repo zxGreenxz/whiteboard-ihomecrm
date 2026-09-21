@@ -36,15 +36,45 @@ assert.deepEqual(
   ["authenticated", "postgres"],
   "route resolver retains its production authenticated-only ACL",
 );
+for (const signature of [
+  "app_private.assert_cashbook_access_v2(uuid,uuid,text,uuid)",
+  "app_private.assert_income_expense_flow_owner_v2(uuid,text)",
+  "app_private.finance_v2_post_manual_voucher(income_expenses,uuid,uuid,uuid,date,uuid[],text)",
+  "app_private.guard_income_expense_owned_payload()",
+  "app_private.lock_org_for_decision_v1(uuid)",
+  "app_private.resolve_finance_actor_v2()",
+  "app_private.resolve_finance_actor_v2(uuid)",
+]) {
+  assert.deepEqual(
+    pins.find((pin) => pin.signature === signature)?.roles,
+    ["postgres"],
+    `${signature} remains private to its owner`,
+  );
+}
+for (const signature of [
+  "approve_and_post_income_expense_v2(jsonb)",
+  "post_approved_income_expense_v2(jsonb)",
+  "reverse_posted_income_expense_v2(uuid,uuid,date,text,text)",
+]) {
+  assert.deepEqual(
+    pins.find((pin) => pin.signature === signature)?.roles,
+    ["authenticated", "postgres", "service_role"],
+    `${signature} does not reopen anonymous or PUBLIC execution`,
+  );
+}
 async function rollback(fn) {
   await db.query("BEGIN");
   try {
-    await db.query(
-      "REVOKE ALL ON FUNCTION app_private.finance_v2_route_pure_v1(text,uuid) FROM PUBLIC,anon,authenticated,service_role",
-    );
-    await db.query(
-      "GRANT EXECUTE ON FUNCTION app_private.finance_v2_route_pure_v1(text,uuid) TO authenticated",
-    );
+    for (const pin of pins.filter((candidate) => candidate.required)) {
+      await db.query(
+        `REVOKE ALL ON FUNCTION ${pin.signature} FROM PUBLIC,anon,authenticated,service_role,ie_action_snapshot_reader`,
+      );
+      for (const role of pin.roles.filter((candidate) => candidate !== pin.owner)) {
+        await db.query(
+          `GRANT EXECUTE ON FUNCTION ${pin.signature} TO ${role}`,
+        );
+      }
+    }
     await fn();
   } finally {
     await db.query("ROLLBACK");

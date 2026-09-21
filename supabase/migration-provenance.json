@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-09-21T04:03:40.800Z",
+  "generatedAt": "2026-09-21T04:07:35.494Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
@@ -10404,7 +10404,7 @@
       "version": "20260921015956",
       "name": "reservation_refund_pending_workflow",
       "scheme": "timestamp14",
-      "sha256": "0a1c7b16187f69575575749a9f3cef580255d5e85c239e29942b0337321c99b7",
+      "sha256": "ba25feb9c0f3d7f138d14012bcd090b4a8cb314ab5668976eda2cc83aaed0e20",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [
