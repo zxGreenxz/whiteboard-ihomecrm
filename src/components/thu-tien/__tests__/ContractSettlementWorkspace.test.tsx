@@ -6,12 +6,13 @@ const state = vi.hoisted(() => ({
   actorId: 'aaaaaaaa-0000-4000-8000-000000000001',
   organizationId: 'aaaaaaaa-0000-4000-8000-000000000002',
   sectionProps: null as Record<string, unknown> | null,
+  canonical: true,
 }));
 
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ data: { id: state.actorId } }) }));
 vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ selectedOrganizationId: state.organizationId }) }));
 vi.mock('@/hooks/useMyPermissions', () => ({ useMyPermissions: () => ({ data: { income_expenses: ['view'] } }) }));
-vi.mock('@/lib/financeV2Route', () => ({ useFinanceV2Routes: () => ({ isSuccess: true, getOrg: () => ({ workflow: 'CANONICAL', posting: 'CANONICAL' }) }) }));
+vi.mock('@/lib/financeV2Route', () => ({ useFinanceV2Routes: () => ({ isSuccess: true, getOrg: () => state.canonical ? ({ workflow: 'CANONICAL', posting: 'CANONICAL' }) : ({ workflow: 'LEGACY', posting: 'LEGACY' }) }) }));
 vi.mock('../ContractSettlementSection', () => ({
   ContractSettlementSection: (props: Record<string, unknown>) => {
     state.sectionProps = props;
@@ -23,12 +24,12 @@ vi.mock('../ContractSettlementModal', () => ({ ContractSettlementModal: ({ rende
   {renderCreate({ sourceRef: { kind: 'reservation_refund', organizationId: state.organizationId, sourceVoucherId: 'source', settlementId: 'settlement', refundVoucherId: null }, onCreated: vi.fn(), refreshRequired: vi.fn() })}
 </div> }));
 vi.mock('../ContractSettlementCreateForm', () => ({ ContractSettlementCreateForm: () => <div>create-form</div> }));
-vi.mock('../ReservationRefundCreateForm', () => ({ ReservationRefundCreateForm: () => <div>reservation-refund-form</div> }));
+vi.mock('../ReservationRefundCreateForm', () => ({ ReservationRefundCreateForm: () => <button>reservation-refund-form</button> }));
 vi.mock('../ContractSettlementSaleProposalDialog', () => ({ ContractSettlementSaleProposalDialog: () => <div>sale-proposal</div> }));
 
 import { ContractSettlementWorkspace } from '../ContractSettlementWorkspace';
 
-afterEach(cleanup);
+afterEach(() => { cleanup(); state.canonical = true; });
 
 it('binds the selected organization, actor, exact building scope and period to the shared workbench', () => {
   const onPeriodChange = vi.fn();
@@ -55,4 +56,13 @@ it('binds the selected organization, actor, exact building scope and period to t
   });
   render(action);
   expect(screen.getByText('sale-proposal')).toBeTruthy();
+});
+
+it('keeps the create form mounted but disables it when the canonical route is unavailable', () => {
+  state.canonical = false;
+  render(<ContractSettlementWorkspace period="2026-09" onPeriodChange={vi.fn()} buildings={[]} />);
+  const detail = (state.sectionProps!.renderDetail as (context: Record<string, unknown>) => JSX.Element)({});
+  render(detail);
+  expect(screen.getByRole('alert').textContent).toMatch(/cần quy trình thu chi chuẩn/);
+  expect(screen.getByRole('button', { name: 'reservation-refund-form' }).matches(':disabled')).toBe(true);
 });

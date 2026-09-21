@@ -136,6 +136,10 @@ export const OVERVIEW_ONLY_FEE_CATEGORIES: readonly FeeCategory[] = [{
 export const feeOverviewCategories = (visibleCategories: readonly FeeCategory[]): FeeCategory[] =>
   [...visibleCategories, ...OVERVIEW_ONLY_FEE_CATEGORIES];
 
+/** Overview-only commission keeps its totals but opens the replacement workbench. */
+export const feeOverviewActionKey = (category: FeeCategory): string =>
+  category.key === 'hoa_hong_overview' ? 'hop_dong' : category.key;
+
 /**
  * Ba family "sổ theo dõi" — nơi nào dựng bảng Tổng quan-khớp-Lợi-Nhuận hay đếm
  * "còn thiếu phiếu theo toà" thì phải LOẠI các family này ra (tiền cọc/hoàn

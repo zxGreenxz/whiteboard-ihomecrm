@@ -6,6 +6,7 @@ import {
   SHEET_FEE_CATEGORY_KEYS,
   effectiveDesktopFeeCategory,
   effectiveSheetFeeCategory,
+  feeOverviewActionKey,
   feeOverviewCategories,
   feeTypeMatches,
   feeCategoryOf,
@@ -24,6 +25,7 @@ describe('FEE_CATEGORIES registry', () => {
   it('giữ hoa hồng trong Tổng quan nhưng không đưa cửa cũ trở lại picker', () => {
     expect(FEE_CATEGORIES.map((category) => category.key)).not.toContain('hoa_hong_overview');
     expect(feeOverviewCategories(FEE_CATEGORIES).map((category) => category.key)).toContain('hoa_hong_overview');
+    expect(feeOverviewActionKey(feeOverviewCategories(FEE_CATEGORIES).find((category) => category.key === 'hoa_hong_overview')!)).toBe('hop_dong');
   });
 
   it('đúng ĐÚNG 4 hạng mục multiPeriod (Internet/Công An/Rác/Thang máy)', () => {

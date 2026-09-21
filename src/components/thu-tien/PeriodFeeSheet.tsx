@@ -23,7 +23,7 @@ import {
 import { usePeriodFeeState, addMonths, rangeLabel } from '@/hooks/usePeriodFeeState';
 import { useCreateMaintenanceBatch, type MaintenanceBatchLine } from '@/hooks/useMaintenanceBatch';
 import { uploadReceiptToStorage, validateReceiptFile } from '@/lib/receiptUpload';
-import { FEE_CATEGORIES, FEE_GROUPS, SHEET_FEE_CATEGORY_KEYS, effectiveSheetFeeCategory, feeCategoryOf, feeOverviewCategories, gridKeysFor, type FeeCategory, LEDGER_FAMILIES } from '@/lib/feeCategories';
+import { FEE_CATEGORIES, FEE_GROUPS, SHEET_FEE_CATEGORY_KEYS, effectiveSheetFeeCategory, feeCategoryOf, feeOverviewActionKey, feeOverviewCategories, gridKeysFor, type FeeCategory, LEDGER_FAMILIES } from '@/lib/feeCategories';
 import { FeeIcon } from './feeIcons';
 import { UtilityBookMenu } from './UtilityBookMenu';
 import { UtilityCancelModal } from './UtilityCancelModal';
@@ -383,7 +383,7 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
                     <span className="ptt-ov-hm-ic" style={{ background: r.cat.accent + '18', color: r.cat.accent }}><FeeIcon name={r.cat.icon} style={{ width: 15, height: 15 }} /></span>
                     <span className="ptt-m-ovrow-lbl">{r.cat.label}{r.draftN > 0 && <span className="ptt-badge-draft">{r.draftN} chờ duyệt</span>}</span>
                     <span className="ptt-m-ovrow-prog">{r.paidN}/{r.total}</span>
-                    {r.dueN > 0 ? <button type="button" className="ptt-go sm" onClick={() => pick(r.cat.key)}>Đóng<ArrowRight /></button> : r.allPaid ? <span className="ptt-ov-check sm"><Check /></span> : null}
+                    {r.dueN > 0 ? <button type="button" className="ptt-go sm" onClick={() => pick(feeOverviewActionKey(r.cat))}>Đóng<ArrowRight /></button> : r.allPaid ? <span className="ptt-ov-check sm"><Check /></span> : null}
                   </div>
                   {r.dueN > 0 && (
                     <>

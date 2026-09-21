@@ -19,6 +19,9 @@ import { formatVND } from '@/lib/utils';
 import type { SettlementDetailContext } from './ContractSettlementSection';
 import { ContractSettlementModalLayout } from './ContractSettlementModalLayout';
 import { ContractSettlementTimeline } from './ContractSettlementTimeline';
+import { ContractSettlementTimelineView } from './ContractSettlementTimelineView';
+import { useReservationRefundSource } from '@/hooks/useReservationRefundSource';
+import type { ReservationRefundSourceRef } from '@/lib/reservationRefundWorkflow';
 
 export interface SettlementCreateFormProps {
   sourceRef: SettlementSourceRef;
@@ -42,15 +45,53 @@ function sourceFields(source: SettlementSourceRef | null) {
 function Block({ title, children }: { title: string; children: ReactNode }) {
   return <section className="cs-block"><h3 className="cs-block-title">{title}</h3><div className="cs-block-content">{children}</div></section>;
 }
-function FinancialBody({ target }: { target: SettlementFinancialTarget }) {
+function ReservationRefundSummary({ sourceRef }: { sourceRef: ReservationRefundSourceRef }) {
+  const source = useReservationRefundSource(sourceRef);
+  if (source.isPending) return <p role="status">Đang đối chiếu quyết toán giữ chỗ…</p>;
+  if (source.isError || !source.data) return <p role="alert">Chưa đọc được quyết toán giữ chỗ. Vui lòng tải lại hồ sơ.</p>;
+  const s = source.data;
+  return <section aria-label="Đối chiếu hoàn giữ chỗ" className="rounded-lg border p-3 space-y-1">
+    <div className="flex justify-between gap-3"><span>Cọc thực nhận</span><strong>{formatVND(s.depositAmount)}</strong></div>
+    <div className="flex justify-between gap-3"><span>Giữ lại / khấu trừ</span><strong>{formatVND(s.retainedAmount)}</strong></div>
+    <div className="flex justify-between gap-3"><span>Nghĩa vụ hoàn</span><strong>{formatVND(s.refundAmount)}</strong></div>
+    <div className="flex justify-between gap-3"><span>Đã hoàn</span><strong>{formatVND(s.paid)}</strong></div>
+    <div className="flex justify-between gap-3 border-t pt-2 text-emerald-800"><span>Còn phải hoàn</span><strong>{formatVND(s.remaining)}</strong></div>
+  </section>;
+}
+function FinancialBody({ target, source }: { target: SettlementFinancialTarget; source?: SettlementSourceRef | null }) {
   const facts = useContractSettlementFinancialFacts(target);
   return <Block title="Đối chiếu hợp đồng & dòng tiền">
     {facts.isPending ? <p role="status">Đang đối chiếu số liệu…</p> : facts.isError ? <p role="alert">Chưa đọc được thông tin đối chiếu. Vui lòng tải lại hồ sơ.</p>
       : facts.data ? <SettlementFinancialNote context={facts.data} /> : <p>Chưa có số liệu đã xác minh cho nguồn này.</p>}
+    {source?.kind === 'reservation_refund' && <ReservationRefundSummary sourceRef={source} />}
   </Block>;
 }
-function Timeline({ target, context }: { target: SettlementFinancialTarget; context: SettlementDetailContext }) {
+function ReservationRefundTimeline({ sourceRef }: { sourceRef: ReservationRefundSourceRef }) {
+  const source = useReservationRefundSource(sourceRef);
+  const s = source.data;
+  return <ContractSettlementTimelineView
+    lanes={s ? [{
+      id: s.settlementId,
+      role: 'reservation',
+      code: s.sourceCode ?? 'Phiếu giữ chỗ',
+      customer: s.payerName ?? 'Chưa có tên khách',
+      status: s.remaining === 0 ? 'Đã hoàn đủ' : s.existingVoucherId ? 'Đã lập phiếu hoàn' : 'Chờ lập phiếu hoàn',
+      steps: [
+        { label: 'Giữ chỗ', value: day(s.sourceDate), detail: s.sourceCode ?? 'Phiếu cọc gốc' },
+        { label: 'Cọc thực nhận', value: formatVND(s.depositAmount), detail: `Giữ lại / khấu trừ: ${formatVND(s.retainedAmount)}` },
+        { label: 'Quyết toán giữ chỗ', value: day(s.settlementDate), detail: `Nghĩa vụ hoàn: ${formatVND(s.refundAmount)}` },
+        { label: 'Hoàn khách', value: formatVND(s.paid), detail: `Còn phải hoàn: ${formatVND(s.remaining)}` },
+      ],
+    }] : []}
+    hint="Giữ chỗ → quyết toán → hoàn khách"
+    loading={source.isPending}
+    error={source.isError || !source.enabled ? 'Chưa đọc được vòng đời hoàn giữ chỗ trong phạm vi hiện tại.' : null}
+    onRetry={() => { void source.refetch(); }}
+  />;
+}
+function Timeline({ target, context, source }: { target: SettlementFinancialTarget; context: SettlementDetailContext; source?: SettlementSourceRef | null }) {
   return target.contractId && target.roomId ? <ContractSettlementTimeline target={{ ...target, contractId: target.contractId, roomId: target.roomId }} events={context.events} eventsComplete={context.eventsComplete} />
+    : source?.kind === 'reservation_refund' ? <ReservationRefundTimeline sourceRef={source} />
     : <p className="cs-secondary">Nguồn giữ chỗ chưa gắn hợp đồng. Đối chiếu theo phiếu cọc gốc; hợp đồng khác của phòng không thay thế nguồn này.</p>;
 }
 function Recipient({ name, bank, account }: { name: string | null; bank: string | null; account: string | null }) {
@@ -98,14 +139,14 @@ function SourceDetail({ context, row, renderCreate, onBusyChange }: Props & { ro
     kindLabel={names[row.settlementKind]} roomLabel={row.roomName ?? 'Chưa xác minh phòng'} codeLine={row.contractNumber ?? 'Nguồn chưa có hợp đồng'}
     subjectLabel={`Đang xử lý nguồn ${row.contractNumber ?? row.rowKey} · Chưa lập phiếu`} metadata={<><span>{row.customerName ?? 'Chưa có tên khách'}</span><span>{day(row.eventDate)}</span><span className="cs-badge">Chưa lập phiếu</span></>}
     amountSummary={<><small>Căn cứ đề xuất</small><div className="cs-mono">{row.basis.amount === null ? 'Chưa xác minh' : formatVND(row.basis.amount)}</div></>}
-    timeline={<Timeline target={target} context={context} />} aside={<div className="cs-detail-stack">
+    timeline={<Timeline target={target} context={context} source={row.sourceRef} />} aside={<div className="cs-detail-stack">
       <Recipient name={row.recipient.name} bank={row.recipient.bankName} account={row.recipient.bankAccount} />
       <Block title="Lập phiếu chờ duyệt"><fieldset disabled={context.refreshing || !context.paymentsComplete}>
         {renderCreate({ sourceRef: row.sourceRef, refreshRequired: context.refreshRequired, onBusyChange: next => { setBlocked(next); onBusyChange?.(next); },
           onCreated: result => context.onSelect({ kind: 'voucher', voucherId: result.voucherId }) })}
       </fieldset></Block>
     </div>}>
-    <div className="cs-detail-stack"><FinancialBody target={target} />{row.basis.warning && <Block title="Lưu ý cần rà soát"><p>{row.basis.warning}</p></Block>}</div>
+    <div className="cs-detail-stack"><FinancialBody target={target} source={row.sourceRef} />{row.basis.warning && <Block title="Lưu ý cần rà soát"><p>{row.basis.warning}</p></Block>}</div>
   </ContractSettlementModalLayout>;
 }
 function VoucherDetail({ context, row, snapshot: v, onEditVoucher, onBusyChange }: Props & { row: SettlementVoucherRow; snapshot: VoucherSnapshot }) {
@@ -127,7 +168,7 @@ function VoucherDetail({ context, row, snapshot: v, onEditVoucher, onBusyChange 
       kindLabel={names[row.settlementKind]} roomLabel={v.roomName ?? 'Chưa xác minh phòng'} codeLine={`${v.code} · ${v.contractNumber ?? 'Nguồn chưa có hợp đồng'}`}
       subjectLabel={`Đang xử lý phiếu ${v.code} · ${v.contractNumber ?? 'Nguồn giữ chỗ'}`} metadata={<><span>{v.customerName ?? 'Chưa có tên khách'}</span><span>{day(v.voucherDate)}</span><span className="cs-badge">{display.label}</span></>}
       amountSummary={<><small>Số trên phiếu</small><div className="cs-mono">{formatVND(v.totalAmount)}</div></>}
-      timeline={<Timeline target={target} context={context} />} aside={<div className="cs-detail-stack">
+      timeline={<Timeline target={target} context={context} source={source} />} aside={<div className="cs-detail-stack">
         <Recipient name={v.payerName} bank={v.receiveBankName} account={v.receiveBankAccount} />
         <Block title="Xử lý phiếu">{context.refreshing && <p role="status">Đang cập nhật điều kiện xử lý…</p>}
           <IncomeExpenseActionButtons controller={actions} id={v.id} layout="labeled" disabled={sessionBlocked || context.refreshing || !context.paymentsComplete} />
@@ -135,7 +176,7 @@ function VoucherDetail({ context, row, snapshot: v, onEditVoucher, onBusyChange 
         </Block>
         <button className="cs-button" onClick={() => setHistory(true)}>Lịch sử phiếu</button>
       </div>}>
-      <div className="cs-detail-stack"><FinancialBody target={target} />
+      <div className="cs-detail-stack"><FinancialBody target={target} source={source} />
         <Block title="Ghi chú gốc của phiếu"><p className="cs-note">{v.notes || 'Chưa có ghi chú.'}</p></Block>
         <Block title="Chứng từ & bổ sung">
           {supplements.isError ? <p role="alert">Chưa tải được ghi chú và chứng từ bổ sung.</p> : <VoucherSupplementNotes supplements={verifiedSupplements} />}

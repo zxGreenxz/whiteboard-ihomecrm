@@ -23,6 +23,7 @@ const pins = [
   before: m[2],
   after: m[3],
   owner: m[4],
+  roles: [...m[5].matchAll(/'([^']+)'/g)].map((role) => role[1]),
   required: m[6] === "true",
 }));
 assert.ok(pins.length > 30, "actual SQL preflight pins parsed");
@@ -76,6 +77,23 @@ async function original() {
     "CASE WHEN app_private.reservation_refund_dispatch_authorized_v1(p_ie.organization_id,p_ie.id,NULL) THEN 'RESERVATION_REFUND' ELSE 'MANUAL' END";
   assert.ok(current.includes(expr));
   await db.query(current.replace(expr, "'MANUAL'"));
+  const reverseSig =
+    "public.reverse_posted_income_expense_v2(uuid,uuid,date,text,text)";
+  const reverse = (
+    await db.query("select pg_get_functiondef($1::regprocedure) def", [reverseSig])
+  ).rows[0].def;
+  const auth =
+      "PERFORM app_private.reservation_authorize_reversal_v1(p_voucher,p_cashbook);",
+    voucher =
+      "SELECT * INTO v_ie FROM public.income_expenses ie WHERE ie.id = p_voucher FOR UPDATE;",
+    begin = "v_op := app_private.finance_v2_begin_canonical_op(";
+  if (reverse.indexOf(auth) < reverse.indexOf(voucher)) {
+    await db.query(
+      reverse
+        .replace(auth + "\n  " + voucher, voucher)
+        .replace(begin, auth + "\n  " + begin),
+    );
+  }
   for (const p of pins.filter((x) => x.required && x.before !== x.after))
     assert.equal(
       (
@@ -95,6 +113,16 @@ try {
   await rollback(async () => {
     await db.query(sql);
     await db.query(sql);
+    const reverse = (
+      await db.query(
+        "select pg_get_functiondef('public.reverse_posted_income_expense_v2(uuid,uuid,date,text,text)'::regprocedure) def",
+      )
+    ).rows[0].def;
+    assert.ok(
+      reverse.indexOf("reservation_authorize_reversal_v1") <
+        reverse.indexOf("SELECT * INTO v_ie"),
+      "reservation authorization/organization lock precedes voucher lock",
+    );
   });
   await rollback(async () => {
     await original();
@@ -114,7 +142,9 @@ try {
   }
   for (const p of pins.filter((x) => !x.required || x.before !== x.after)) {
     await rollback(async () => {
-      await db.query("GRANT EXECUTE ON FUNCTION " + p.signature + " TO anon");
+      const rogue = !p.roles?.includes('anon') ? 'anon'
+        : !p.roles?.includes('service_role') ? 'service_role' : 'ie_action_snapshot_reader';
+      await db.query("GRANT EXECUTE ON FUNCTION " + p.signature + " TO " + rogue);
       await assert.rejects(db.query(sql), /ACL drift/i);
     });
   }

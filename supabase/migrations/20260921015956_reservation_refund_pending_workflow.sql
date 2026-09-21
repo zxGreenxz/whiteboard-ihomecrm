@@ -33,7 +33,7 @@ BEGIN
   ('read_reservation_refund_workflow_v1(uuid,uuid,uuid)','44bf80a2acb361d41d18a3956d86eb06','44bf80a2acb361d41d18a3956d86eb06','ie_action_snapshot_reader',ARRAY['authenticated','ie_action_snapshot_reader']::text[],false),
   ('app_private.reservation_refund_capability_v1(uuid,uuid)','7ea652670f4bc4a5e59387257113d40d','7ea652670f4bc4a5e59387257113d40d','postgres',ARRAY['postgres']::text[],false),
   ('app_private.reservation_settlement_refunded_v1(uuid)','02d1075cb9dfe5c818df4df1e337b844','02d1075cb9dfe5c818df4df1e337b844','postgres',ARRAY['postgres']::text[],true),
-  ('reverse_posted_income_expense_v2(uuid,uuid,date,text,text)','9fcc9d100dd7fd3a858038a10dc6e701','9fcc9d100dd7fd3a858038a10dc6e701','postgres',ARRAY['PUBLIC','anon','authenticated','postgres','service_role']::text[],true),
+  ('reverse_posted_income_expense_v2(uuid,uuid,date,text,text)','9fcc9d100dd7fd3a858038a10dc6e701','50cd5cb62b41700f0d2130ccdad44419','postgres',ARRAY['PUBLIC','anon','authenticated','postgres','service_role']::text[],true),
   ('app_private.guard_reservation_settlement_record_v1()','ff65f4132becbb3a8f539ef6ccc93aba','ff65f4132becbb3a8f539ef6ccc93aba','postgres',ARRAY['postgres']::text[],true),
   ('app_private.guard_reservation_voucher_v1()','a8553c7d23a1d692a516770d4c9a6e89','a8553c7d23a1d692a516770d4c9a6e89','postgres',ARRAY['postgres']::text[],true),
   ('app_private.reservation_settlement_assert_v1(uuid)','08e07be756a8191c656e2de10f3e8cb8','08e07be756a8191c656e2de10f3e8cb8','postgres',ARRAY['postgres']::text[],true),
@@ -583,6 +583,29 @@ BEGIN
 END
 $function$
 ;
+
+-- The compatibility reverse entrypoint must take the reservation organization
+-- decision lock before it locks the voucher. The dispatcher already holds that
+-- organization lock when it calls this function. Keeping one order prevents a
+-- direct Thu-chi reverse and a source-owned reverse from waiting on each other.
+DO $lock_order$
+DECLARE def text; old_auth text; voucher_anchor text; begin_anchor text;
+BEGIN
+ def:=pg_get_functiondef('public.reverse_posted_income_expense_v2(uuid,uuid,date,text,text)'::regprocedure);
+ old_auth:='PERFORM app_private.reservation_authorize_reversal_v1(p_voucher,p_cashbook);';
+ voucher_anchor:='SELECT * INTO v_ie FROM public.income_expenses ie WHERE ie.id = p_voucher FOR UPDATE;';
+ begin_anchor:='v_op := app_private.finance_v2_begin_canonical_op(';
+ IF strpos(def,old_auth)=0 OR strpos(def,voucher_anchor)=0 OR strpos(def,begin_anchor)=0 THEN
+  RAISE EXCEPTION 'Reservation reverse lock-order definition drift';
+ END IF;
+ IF strpos(def,old_auth)>strpos(def,voucher_anchor) THEN
+  def:=replace(def,old_auth||E'\n  '||begin_anchor,begin_anchor);
+  IF strpos(def,old_auth)>0 THEN RAISE EXCEPTION 'Reservation reverse lock-order duplicate authorization'; END IF;
+  def:=replace(def,voucher_anchor,old_auth||E'\n  '||voucher_anchor);
+  EXECUTE def;
+ END IF;
+END $lock_order$;
+
 NOTIFY pgrst,'reload schema';
 -- Keep stable ownership when the deployment principal inherits postgres privileges.
 ALTER FUNCTION app_private.reservation_refund_lock_v1(uuid,uuid,uuid) OWNER TO postgres;

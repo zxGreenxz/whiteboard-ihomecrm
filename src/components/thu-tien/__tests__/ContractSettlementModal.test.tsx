@@ -5,13 +5,14 @@ import { createRef } from 'react';
 import type { SettlementDetailContext } from '../ContractSettlementSection';
 import type { SettlementVoucherRow } from '@/lib/contractSettlement';
 const m = vi.hoisted(() => ({ open: vi.fn(), input: null as unknown, busy: false, dialogOpen: false,
-  supplements: { data: [] as { attachments: string[] }[], isError: false, isPending: false } }));
+  supplements: { data: [] as { attachments: string[] }[], isError: false, isPending: false }, reservation: null as unknown }));
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ data: { id: 'actor' } }) }));
 vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ selectedOrganizationId: 'org' }) }));
 vi.mock('@/hooks/income-expenses/useIncomeExpenseActions', () => ({ useIncomeExpenseActions: (input: unknown) => {
   m.input = input; return { selected: m.dialogOpen ? { key: 'draft' } : null, dismissalBlocked: m.busy, availability: () => new Proxy({}, { get: (_target, key) => key === 'resubmitReview' ? { visible: true, enabled: true, reason: null } : { visible: false, enabled: false, reason: null } }), open: m.open };
 } }));
 vi.mock('@/hooks/useContractSettlementFinancialFacts', () => ({ useContractSettlementFinancialFacts: () => ({ data: undefined, isPending: false, isError: false }) }));
+vi.mock('@/hooks/useReservationRefundSource', () => ({ useReservationRefundSource: () => ({ data: m.reservation, isPending: false, isError: !m.reservation, enabled: true, refetch: vi.fn() }) }));
 vi.mock('@/hooks/income-expenses/supplements', () => ({ useIncomeExpenseSupplements: () => m.supplements }));
 vi.mock('../ContractSettlementTimeline', () => ({ ContractSettlementTimeline: ({ target }: { target: { contractId: string } }) => <div>timeline:{target.contractId}</div> }));
 vi.mock('@/components/income-expenses/IncomeExpenseActionDialogs', () => ({ IncomeExpenseActionDialogs: () => null }));
@@ -37,7 +38,7 @@ const reviewVoucher = (): SettlementVoucherRow => ({
     notes: 'Ghi chú phiếu cũ', attachments: [], actionReadiness: { state: 'loading' },
   } },
 });
-afterEach(() => { cleanup(); vi.clearAllMocks(); m.busy = false; m.dialogOpen = false; m.supplements = { data: [], isError: false, isPending: false }; });
+afterEach(() => { cleanup(); vi.clearAllMocks(); m.busy = false; m.dialogOpen = false; m.reservation = null; m.supplements = { data: [], isError: false, isPending: false }; });
 it('shows pending evidence explicitly instead of claiming that no attachments exist', () => {
   m.supplements.isPending = true;
   render(<ContractSettlementModal context={{ ...base(), row: reviewVoucher() }} renderCreate={() => null} />);
@@ -129,4 +130,25 @@ it.each(['missing', 'linked-voucher'] as const)('retains an in-flight source ses
   expect(onBusyChange).toHaveBeenLastCalledWith(false);
   if (replacement === 'missing') expect(screen.getByText(/Không đọc được hồ sơ đang chọn/)).toBeTruthy();
   else expect(screen.getByText('Ghi chú phiếu cũ')).toBeTruthy();
+});
+
+it('keeps the verified reservation lifecycle and balance visible after its refund voucher exists', () => {
+  const row = reviewVoucher();
+  row.settlementKind = 'refund';
+  row.sourceLink = { state: 'verified', sourceRef: {
+    kind: 'reservation_refund', organizationId: 'org', sourceVoucherId: 'source', settlementId: 'settlement', refundVoucherId: 'v',
+  } };
+  if (row.snapshot.state !== 'ready') throw new Error('fixture must be ready');
+  row.snapshot.value.contractId = null;
+  row.snapshot.value.roomId = null;
+  row.snapshot.value.contractNumber = null;
+  m.reservation = {
+    settlementId: 'settlement', sourceCode: 'GC-01', payerName: 'Khách giữ chỗ', sourceDate: '2026-09-01', settlementDate: '2026-09-10',
+    depositAmount: 4_200_000, retainedAmount: 1_162_500, refundAmount: 3_037_500, paid: 0, remaining: 3_037_500, existingVoucherId: 'v',
+  };
+  render(<ContractSettlementModal context={{ ...base(), row }} renderCreate={() => null} />);
+  expect(screen.getByLabelText(/Nguồn giữ chỗ · GC-01/)).toBeTruthy();
+  expect(screen.getByText('Giữ chỗ → quyết toán → hoàn khách')).toBeTruthy();
+  expect(screen.getByLabelText('Đối chiếu hoàn giữ chỗ').textContent).toContain('3.037.500');
+  expect(screen.getAllByText(/Còn phải hoàn/).length).toBeGreaterThan(0);
 });

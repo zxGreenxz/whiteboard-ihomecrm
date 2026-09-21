@@ -27,7 +27,7 @@ import {
 import { usePeriodFeeState, addMonths, rangeLabel } from '@/hooks/usePeriodFeeState';
 import { useCreateMaintenanceBatch, type MaintenanceBatchLine } from '@/hooks/useMaintenanceBatch';
 import { uploadReceiptToStorage, validateReceiptFile } from '@/lib/receiptUpload';
-import { FEE_CATEGORIES, FEE_GROUPS, effectiveDesktopFeeCategory, feeCategoryOf, feeOverviewCategories, gridKeysFor, type FeeCategory, LEDGER_FAMILIES } from '@/lib/feeCategories';
+import { FEE_CATEGORIES, FEE_GROUPS, effectiveDesktopFeeCategory, feeCategoryOf, feeOverviewActionKey, feeOverviewCategories, gridKeysFor, type FeeCategory, LEDGER_FAMILIES } from '@/lib/feeCategories';
 import { FeeIcon } from './feeIcons';
 import { UtilityBookMenu } from './UtilityBookMenu';
 import { UtilityCancelModal } from './UtilityCancelModal';
@@ -467,7 +467,7 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
                     <td className="num"><span className={'ptt-ov-duesum' + (r.dueN === 0 ? ' muted' : '')}>{r.dueN === 0 ? '—' : fmtFull(r.dueSum)}</span></td>
                     <td className="ctr">
                       {r.dueN > 0 ? (
-                        <button type="button" className="ptt-go" onClick={() => pickCategory(r.cat.key)}>Đóng<ArrowRight /></button>
+                        <button type="button" className="ptt-go" onClick={() => pickCategory(feeOverviewActionKey(r.cat))}>Đóng<ArrowRight /></button>
                       ) : r.empty ? <span className="ptt-ov-none">—</span> : (
                         <span className="ptt-ov-check"><Check /></span>
                       )}

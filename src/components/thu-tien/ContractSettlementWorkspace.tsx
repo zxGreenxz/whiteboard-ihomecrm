@@ -43,11 +43,14 @@ export function ContractSettlementWorkspace({ period, onPeriodChange, buildings 
       onSelect={context.onSelect}
     />}
     renderDetail={context => <ContractSettlementModal context={context}
-      renderCreate={props => !canonicalReady
-        ? <p role="alert">Khu Hợp đồng & quyết toán cần quy trình thu chi chuẩn trước khi lập phiếu.</p>
-        : props.sourceRef.kind === 'reservation_refund'
-        ? <ReservationRefundCreateForm {...props} sourceRef={props.sourceRef} />
-        : <ContractSettlementCreateForm {...props} />} />}
+      renderCreate={props => <div aria-disabled={!canonicalReady}>
+        {!canonicalReady && <p role="alert">Khu Hợp đồng & quyết toán cần quy trình thu chi chuẩn trước khi lập phiếu.</p>}
+        <fieldset disabled={!canonicalReady} className="m-0 min-w-0 border-0 p-0">
+          {props.sourceRef.kind === 'reservation_refund'
+            ? <ReservationRefundCreateForm {...props} sourceRef={props.sourceRef} />
+            : <ContractSettlementCreateForm {...props} />}
+        </fieldset>
+      </div>} />}
   />;
 }
 

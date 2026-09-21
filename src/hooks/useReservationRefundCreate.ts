@@ -14,6 +14,7 @@ import {
   type ReservationRefundSourceRef,
 } from "@/lib/reservationRefundWorkflow";
 import { reservationRefundRepository } from "@/lib/reservationRefundRepository";
+import { fetchFinanceV2ClientFlags } from "@/lib/financeV2Route";
 const refreshRoots = [
   "reservation-settlements",
   "reservation-settlement-summary",
@@ -144,6 +145,13 @@ export function useReservationRefundCreate(args: {
     setPhase("writing");
     setMessage(null);
     try {
+      const route = (await fetchFinanceV2ClientFlags()).get(organizationId);
+      assertIdentity(start);
+      if (route?.workflow !== "CANONICAL" || route?.posting !== "CANONICAL")
+        throw new SettlementCreateError(
+          "blocked",
+          "Quy trình thu chi chuẩn hiện không sẵn sàng. Tải lại trước khi lập phiếu.",
+        );
       const guard =
         <A extends unknown[], R>(fn: (...input: A) => Promise<R>) =>
         async (...input: A) => {

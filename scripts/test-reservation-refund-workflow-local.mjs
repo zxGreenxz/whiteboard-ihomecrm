@@ -726,8 +726,39 @@ try {
     ),
     100,
   );
+  const reverseVersions = await versions();
+  const reverseRace = await Promise.all([
+    action({
+      ...baseAction,
+      ...reverseVersions,
+      expectedRemaining: 0,
+      action: "reverse",
+      cashbookId: account,
+      postedOn: today,
+      reason: "Hoàn tác qua nguồn",
+      idempotencyKey: key + "-source-reverse-race",
+    }),
+    rpc("reverse_posted_income_expense_v2", {
+      p_voucher: v.id,
+      p_cashbook: account,
+      p_posted_on: today,
+      p_reason: "Hoàn tác tương thích đồng thời",
+      p_idempotency_key: key + "-compat-reverse-race",
+    }),
+  ]);
+  assert.equal(
+    reverseRace.filter((result) => result.status === 200).length,
+    1,
+    "source and compatibility reverse serialize to one winner",
+  );
+  assert.equal(
+    reverseRace.some((result) => result.data?.code === "40P01"),
+    false,
+    "source and compatibility reverse must not deadlock",
+  );
+  assert.equal((await voucher()).posting_status, "REVERSED");
   console.log(
-    "PASS approve-only, custody-only post, source-labelled evidence posting, CAS, revoked authority replay, reverse/old-key/new-key and two payout windows.",
+    "PASS approve-only, custody-only post, source-labelled evidence posting, CAS, revoked authority replay, reverse/old-key/new-key, two payout windows and compatibility reverse lock order.",
   );
   const freshSource = async () => {
     const id = randomUUID(),
