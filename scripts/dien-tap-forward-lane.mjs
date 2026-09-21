@@ -32,11 +32,12 @@
 // Thoát: 0 = khớp sổ kỳ vọng · 1 = lệch · 3 = không kiểm được.
 
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { giaiMoc } from "./check-forward-migration-idempotent.mjs";
+import { giaiMoc, taoTruyVanRetirement } from "./check-forward-migration-idempotent.mjs";
 import { chanProduction, coPsql, goiPsql } from "./lib/goi-psql-dich.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -44,6 +45,66 @@ const MIGRATIONS = join(repoRoot, "supabase", "migrations");
 const POLICY = join(repoRoot, "supabase", "migration-policy.json");
 const KY_VONG = join(repoRoot, "supabase", "baseline", "forward-lane-expectations.json");
 const MANIFEST = join(repoRoot, "supabase", "baseline", "manifest.json");
+const ACL_FIXTURE = join(repoRoot, "supabase", "baseline", "restore-settlement-acl-fixture.json");
+const ACL_FIXTURE_SHA256 = "d2cf8ca8a71190720627e5804feb47c1e478b29d399a13a17e83ae1b36d89b41";
+const RESTORE_GROUP = "restore-before-contract-settlement-2026-09-21";
+const sha256 = (s) => createHash("sha256").update(s).digest("hex");
+const literal = (s) => s === null ? "NULL" : "'" + s.replaceAll("'", "''") + "'";
+
+// Baseline explicitly discarded ACL. Reconstruct ONLY the measured missing
+// privileges, before the feature's original SQL; never replace function bodies.
+// Both ends are catalog assertions, so a different raw baseline fails closed.
+export function taoFixtureAcl(text, digest, group) {
+  // JSON checkout may use CRLF on Windows; pin its canonical LF text.
+  if (sha256(text.replaceAll("\r\n", "\n")) !== digest) throw Error("drill ACL fixture digest mismatch");
+  const fixture = JSON.parse(text);
+  if (!group || fixture.groupId !== group.id || fixture.firstMigration !== group.migrations[0].file
+    || fixture.functions?.length !== 22 || new Set(fixture.functions.map(f => f.signature)).size !== 22) throw Error("drill ACL fixture shape mismatch");
+  const roleList = (acl, owner) => {
+    if (acl === null) return ["PUBLIC", owner];
+    if (!/^\{[a-z_=X/,]+\}$/.test(acl)) throw Error("drill ACL fixture invalid ACL");
+    return acl.slice(1, -1).split(",").map(item => {
+      const [role, privilege] = item.split("=");
+      if (privilege !== `X/${owner}` || (role && !/^[a-z_]+$/.test(role))) throw Error("drill ACL fixture invalid grant");
+      return role || "PUBLIC";
+    });
+  };
+  for (const f of fixture.functions) {
+    if (!/^(public|app_private)\.[a-z_0-9]+\([a-z_0-9,\[\]]*\)$/.test(f.signature)
+      || !/^[a-f0-9]{32}$/.test(f.before?.md5) || f.before.md5 !== f.after?.md5
+      || f.before.owner !== "postgres" || f.after.owner !== "postgres") throw Error("drill ACL fixture changes definition/owner");
+    roleList(f.before.acl, f.before.owner); roleList(f.after.acl, f.after.owner);
+    const target = group.witness.functions.find(t => t.signature === f.signature);
+    if (target && ["md5", "owner", "acl"].some(k => f.after[k] !== target.after[k])) throw Error("drill ACL fixture disagrees with retirement witness");
+  }
+  if (!group.witness.functions.every(f => fixture.functions.some(t => t.signature === f.signature))) throw Error("drill ACL fixture missing restored target");
+  const guard = (state) => `DO $drill_acl$ DECLARE f record; p record; BEGIN
+ FOR f IN SELECT * FROM (VALUES ${fixture.functions.map(f => `(${[f.signature, f[state].md5, f[state].owner, f[state].acl].map(literal).join(",")})`).join(",\n")}) e(signature,md5,owner,acl) LOOP
+ SELECT md5(pg_get_functiondef(oid)) AS md5,proowner::regrole::text AS owner,proacl::text AS acl INTO p FROM pg_proc WHERE oid=to_regprocedure(f.signature);
+ IF NOT FOUND OR p.md5 IS DISTINCT FROM f.md5 OR p.owner IS DISTINCT FROM f.owner OR p.acl IS DISTINCT FROM f.acl THEN RAISE EXCEPTION 'drill ACL ${state} drift: %',f.signature; END IF;
+ END LOOP; END $drill_acl$;`;
+  const changes = fixture.functions.filter(f => f.before.acl !== f.after.acl).map(f => {
+    if (f.after.acl === null) throw Error("drill ACL fixture cannot reconstruct NULL ACL");
+    return `REVOKE ALL ON FUNCTION ${f.signature} FROM ${roleList(f.before.acl, f.before.owner).join(",")};\n` +
+      roleList(f.after.acl, f.after.owner).map(role => `GRANT EXECUTE ON FUNCTION ${f.signature} TO ${role};`).join("\n");
+  });
+  return `BEGIN;\nSET LOCAL search_path=public,pg_catalog;\nDO $role$ BEGIN IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname=${literal(group.witness.role)}) THEN RAISE EXCEPTION 'drill ACL reader role exists before feature'; END IF; END $role$;\n${guard("before")}\n${changes.join("\n")}\n${guard("after")}\nCOMMIT;`;
+}
+
+export function kiemCatalogPhucHoi(group, catalog, restored) {
+  const w = group.witness;
+  if (!catalog || catalog.functions?.length !== 44 || catalog.triggers?.length !== 5 || catalog.rolePresent !== !restored) throw Error("drill restore catalog size/role drift");
+  const fn = new Map(catalog.functions.map(f => [f.signature, f]));
+  const tr = new Map(catalog.triggers.map(t => [`${t.relation}:${t.name}`, t]));
+  if (fn.size !== 44 || tr.size !== 5 || w.functions.length !== 14 || w.removedFunctions.length !== 30 || w.removedTriggers.length !== 3 || w.retainedTriggers.length !== 2) throw Error("drill restore catalog duplicates/manifest drift");
+  for (const f of [...w.functions.map(f => ({ signature: f.signature, ...f[restored ? "after" : "before"] })), ...w.removedFunctions.map(f => restored ? { signature: f.signature, md5: null, owner: null, acl: null } : f)]) {
+    if (!fn.has(f.signature) || ["md5", "owner", "acl"].some(k => fn.get(f.signature)[k] !== f[k])) throw Error(`drill restore catalog function drift: ${f.signature}`);
+  }
+  for (const t of [...w.removedTriggers.map(t => restored ? { ...t, md5: null, enabled: null } : t), ...w.retainedTriggers]) {
+    const actual = tr.get(`${t.relation}:${t.name}`);
+    if (!actual || ["md5", "enabled"].some(k => actual[k] !== t[k])) throw Error(`drill restore catalog trigger drift: ${t.name}`);
+  }
+}
 
 /** Sàn chống rỗng: forward lane hiện 39 file — quét ra dưới mức này nghĩa là
  *  cutoff/glob hỏng chứ không phải lane teo lại, và "0 lệch" khi đó vô nghĩa. */
@@ -162,6 +223,21 @@ function main(argv) {
   }
 
   const kyVong = JSON.parse(readFileSync(KY_VONG, "utf8")).expectations ?? {};
+  let restoreGroup; let fixtureSql;
+  try {
+    const groups = JSON.parse(readFileSync(POLICY, "utf8")).idempotencyRetirements?.filter(g => g.id === RESTORE_GROUP);
+    if (groups?.length !== 1) throw Error("drill restore retirement group missing/duplicate");
+    restoreGroup = groups[0];
+    // This fixture is for a disposable, local drill only, never a remote DB.
+    if (!["localhost", "127.0.0.1", "[::1]"].includes(new URL(dich).hostname)) throw Error("drill ACL fixture requires a local disposable database");
+    fixtureSql = taoFixtureAcl(readFileSync(ACL_FIXTURE, "utf8"), ACL_FIXTURE_SHA256, restoreGroup);
+    for (const f of [...restoreGroup.migrations, restoreGroup.compensation]) {
+      if (!files.includes(f.file) || sha256(readFileSync(join(MIGRATIONS, f.file), "utf8")) !== f.sha256) throw Error(`drill immutable migration digest mismatch: ${f.file}`);
+    }
+  } catch (error) {
+    console.error(`❌ Không dựng được scenario phục hồi: ${error.message}`);
+    return 3;
+  }
 
   // --moc <ref>: đối chiếu CỨNG chỉ cho file thuộc diff moc..HEAD (28/08/2026)
   // — xem chú thích doiChieuKyVong. Replay vẫn tuần tự đủ. Dùng diff ĐẦY ĐỦ
@@ -196,12 +272,47 @@ function main(argv) {
 
   const t0 = Date.now();
   const ketQua = [];
+  const psqlOptions = { encoding: "utf8", timeout: 5 * 60 * 1000, maxBuffer: 64 * 1024 * 1024 };
+  const checkCatalog = (restored) => {
+    const r = goiPsql(["-d", dich, "-t", "-A", "-v", "ON_ERROR_STOP=1", "-c", taoTruyVanRetirement(restoreGroup)], psqlOptions);
+    if (r.status !== 0) throw Error(`drill catalog query failed: ${dauLoi(r.stderr)}`);
+    kiemCatalogPhucHoi(restoreGroup, JSON.parse(String(r.stdout).trim()), restored);
+  };
   for (const ten of files) {
+    if (ten === restoreGroup.migrations[0].file) {
+      console.log("→ RAW baseline --no-acl không giữ ACL production: fixture cục bộ kiểm 22 hash/owner/ACL, khôi phục đúng 15 ACL; không đổi body hay dữ liệu.");
+      const r = goiPsql(["-d", dich, "-q", "-v", "ON_ERROR_STOP=1", "-f", "-"], { ...psqlOptions, input: fixtureSql });
+      if (r.status !== 0) {
+        console.error(`❌ Fixture ACL lệch trạng thái baseline đã đo: ${dauLoi(r.stderr)}`);
+        return 1;
+      }
+    }
+    if (ten === restoreGroup.compensation.file) {
+      try {
+        checkCatalog(false);
+        for (let replay = 1; replay <= 2; replay++) {
+          const r = goiPsql(["-d", dich, "-q", "-v", "ON_ERROR_STOP=1", "-f", join(MIGRATIONS, ten)], psqlOptions);
+          if (r.status !== 0) throw Error(`compensation replay ${replay}: ${dauLoi(r.stderr)}`);
+          checkCatalog(true);
+        }
+        console.log("→ Scenario phục hồi PASS: 15 SQL gốc dựng đủ witness 44 hàm/5 trigger/role; compensation nguyên digest chạy 2 lượt và witness sau mỗi lượt khớp.");
+        ketQua.push({ ten, ok: true, stderr: "" });
+      } catch (error) {
+        // This gate is mandatory even outside --moc scope; no expected failure.
+        console.error(`❌ Scenario phục hồi thất bại: ${error.message}`);
+        return 1;
+      }
+      continue;
+    }
     const r = goiPsql(["-d", dich, "-q", "-v", "ON_ERROR_STOP=1", "-f", join(MIGRATIONS, ten)], {
       encoding: "utf8",
       timeout: 5 * 60 * 1000,
       maxBuffer: 64 * 1024 * 1024,
     });
+    if (r.status !== 0 && restoreGroup.migrations.some(m => m.file === ten)) {
+      console.error(`❌ Migration dựng đầu vào scenario phải chạy sạch, kể cả ngoài --moc: ${ten}: ${dauLoi(r.stderr)}`);
+      return 1;
+    }
     ketQua.push({ ten, ok: r.status === 0, stderr: String(r.stderr || "") });
   }
 
@@ -221,7 +332,7 @@ function main(argv) {
     console.error("\n❌ Forward lane LỆCH sổ kỳ vọng — xem từng dòng ✗ ở trên.");
     return 1;
   }
-  console.log("✅ Forward lane khớp sổ kỳ vọng — 0 lỗi schema thật trên bản dựng lại từ baseline.");
+  console.log("✅ Forward lane khớp sổ kỳ vọng trên baseline có fixture ACL lịch sử; scenario phục hồi đã kiểm 2 lượt. Baseline RAW tự nó không bảo toàn ACL.");
   return 0;
 }
 

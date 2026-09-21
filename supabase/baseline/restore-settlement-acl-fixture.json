@@ -1,0 +1,294 @@
+{
+  "purpose": "LOCAL restore drill only. Baseline --no-acl plus platform defaults loses historical ACL. Captured production ACL is reconstructed before the 15 immutable settlement migrations; no function body, ownership, role or business data changes.",
+  "source": "production catalog captured 2026-09-21 before restoration; hashes cross-checked against immutable migration guards and retirement witness",
+  "groupId": "restore-before-contract-settlement-2026-09-21",
+  "firstMigration": "20260920175511_contract_settlement_authenticated_reader.sql",
+  "functions": [
+    {
+      "signature": "app_private.guard_income_expense_owned_payload()",
+      "before": {
+        "md5": "fb01ae8c9de7b283d19ade8195eba726",
+        "owner": "postgres",
+        "acl": null
+      },
+      "after": {
+        "md5": "fb01ae8c9de7b283d19ade8195eba726",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres}"
+      }
+    },
+    {
+      "signature": "public.reverse_posted_income_expense_v2(uuid,uuid,date,text,text)",
+      "before": {
+        "md5": "9fcc9d100dd7fd3a858038a10dc6e701",
+        "owner": "postgres",
+        "acl": "{=X/postgres,postgres=X/postgres,authenticated=X/postgres,anon=X/postgres,service_role=X/postgres}"
+      },
+      "after": {
+        "md5": "9fcc9d100dd7fd3a858038a10dc6e701",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+      }
+    },
+    {
+      "signature": "app_private.finance_v2_post_manual_voucher(income_expenses,uuid,uuid,uuid,date,uuid[],text)",
+      "before": {
+        "md5": "c2d88ccaae0d8c8a0d425ac4d6cd7f7f",
+        "owner": "postgres",
+        "acl": null
+      },
+      "after": {
+        "md5": "c2d88ccaae0d8c8a0d425ac4d6cd7f7f",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres}"
+      }
+    },
+    {
+      "signature": "public.get_room_cash_lifecycle_v1(uuid,date,date)",
+      "before": {
+        "md5": "2c5c0f54d345ca35c3cac80232c3d837",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+      },
+      "after": {
+        "md5": "2c5c0f54d345ca35c3cac80232c3d837",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+      }
+    },
+    {
+      "signature": "app_private.reservation_create_leg_v1(uuid,text,uuid,uuid,date,numeric)",
+      "before": {
+        "md5": "61e14ad271c7b79e5931f09ab6d0bed2",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres}"
+      },
+      "after": {
+        "md5": "61e14ad271c7b79e5931f09ab6d0bed2",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres}"
+      }
+    },
+    {
+      "signature": "public.request_income_expense_changes_v2(uuid,bigint,text,jsonb,text)",
+      "before": {
+        "md5": "c3769605c5ac35134935d49a32a5d1d9",
+        "owner": "postgres",
+        "acl": "{=X/postgres,postgres=X/postgres,authenticated=X/postgres,anon=X/postgres,service_role=X/postgres}"
+      },
+      "after": {
+        "md5": "c3769605c5ac35134935d49a32a5d1d9",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+      }
+    },
+    {
+      "signature": "public.create_termination_refund_voucher_v1(uuid,uuid,boolean,text)",
+      "before": {
+        "md5": "cdc2896ff50e836cb782219683ba5474",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+      },
+      "after": {
+        "md5": "cdc2896ff50e836cb782219683ba5474",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+      }
+    },
+    {
+      "signature": "public.create_sale_bonus_from_deposit_v1(uuid,numeric,text,text,text,date,uuid,jsonb)",
+      "before": {
+        "md5": "fbaed9b582feab422372165eb55a8288",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+      },
+      "after": {
+        "md5": "fbaed9b582feab422372165eb55a8288",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+      }
+    },
+    {
+      "signature": "public.create_commission_voucher(uuid,text,numeric,date,uuid,text,text,text,text,text,jsonb)",
+      "before": {
+        "md5": "c134aa5857144c2b8f66145f0e9feab5",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+      },
+      "after": {
+        "md5": "c134aa5857144c2b8f66145f0e9feab5",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+      }
+    },
+    {
+      "signature": "app_private.finance_v2_birth_provenance_bridge()",
+      "before": {
+        "md5": "a8e8c8c66676f566e52edf888bc43579",
+        "owner": "postgres",
+        "acl": null
+      },
+      "after": {
+        "md5": "a8e8c8c66676f566e52edf888bc43579",
+        "owner": "postgres",
+        "acl": null
+      }
+    },
+    {
+      "signature": "public.resubmit_income_expense_v2(uuid,bigint,jsonb,text)",
+      "before": {
+        "md5": "722dcc99bec52a059f7c45c08d085f80",
+        "owner": "postgres",
+        "acl": "{=X/postgres,postgres=X/postgres,authenticated=X/postgres,anon=X/postgres,service_role=X/postgres}"
+      },
+      "after": {
+        "md5": "722dcc99bec52a059f7c45c08d085f80",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+      }
+    },
+    {
+      "signature": "public.list_cashbooks_for_expense_v2()",
+      "before": {
+        "md5": "d3e69a10cf4e1cb6c99698df62d0602a",
+        "owner": "postgres",
+        "acl": "{=X/postgres,postgres=X/postgres,authenticated=X/postgres,anon=X/postgres,service_role=X/postgres}"
+      },
+      "after": {
+        "md5": "d3e69a10cf4e1cb6c99698df62d0602a",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres,authenticated=X/postgres}"
+      }
+    },
+    {
+      "signature": "public.get_room_residence_segments_v1(uuid[])",
+      "before": {
+        "md5": "8ee45965dbcac4333dfac3a25d662f29",
+        "owner": "postgres",
+        "acl": "{=X/postgres,postgres=X/postgres,authenticated=X/postgres,anon=X/postgres,service_role=X/postgres}"
+      },
+      "after": {
+        "md5": "8ee45965dbcac4333dfac3a25d662f29",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+      }
+    },
+    {
+      "signature": "app_private.reservation_pay_refund_v1(uuid,uuid,date)",
+      "before": {
+        "md5": "94b846b86cf718a8b7a43e7bb2fbe0b9",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres}"
+      },
+      "after": {
+        "md5": "94b846b86cf718a8b7a43e7bb2fbe0b9",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres}"
+      }
+    },
+    {
+      "signature": "app_private.finance_v2_route_pure_v1(text,uuid)",
+      "before": {
+        "md5": "a9065c83fc736836b440f4118bd5a05d",
+        "owner": "postgres",
+        "acl": null
+      },
+      "after": {
+        "md5": "a9065c83fc736836b440f4118bd5a05d",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres,authenticated=X/postgres}"
+      }
+    },
+    {
+      "signature": "app_private.assert_cashbook_access_v2(uuid,uuid,text,uuid)",
+      "before": {
+        "md5": "7c4b1df92d33caf68b2b41947e812ca4",
+        "owner": "postgres",
+        "acl": null
+      },
+      "after": {
+        "md5": "7c4b1df92d33caf68b2b41947e812ca4",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres}"
+      }
+    },
+    {
+      "signature": "app_private.assert_income_expense_flow_owner_v2(uuid,text)",
+      "before": {
+        "md5": "24b19401c868aed0a266760dd675f268",
+        "owner": "postgres",
+        "acl": null
+      },
+      "after": {
+        "md5": "24b19401c868aed0a266760dd675f268",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres}"
+      }
+    },
+    {
+      "signature": "app_private.lock_org_for_decision_v1(uuid)",
+      "before": {
+        "md5": "6130719b1956a291878bed6c58800e5a",
+        "owner": "postgres",
+        "acl": null
+      },
+      "after": {
+        "md5": "6130719b1956a291878bed6c58800e5a",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres}"
+      }
+    },
+    {
+      "signature": "app_private.resolve_finance_actor_v2()",
+      "before": {
+        "md5": "b95ceecadba70fe6c24304ce8e5a7e4f",
+        "owner": "postgres",
+        "acl": null
+      },
+      "after": {
+        "md5": "b95ceecadba70fe6c24304ce8e5a7e4f",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres}"
+      }
+    },
+    {
+      "signature": "app_private.resolve_finance_actor_v2(uuid)",
+      "before": {
+        "md5": "840896c6babad119cd41462d8804f4a8",
+        "owner": "postgres",
+        "acl": null
+      },
+      "after": {
+        "md5": "840896c6babad119cd41462d8804f4a8",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres}"
+      }
+    },
+    {
+      "signature": "public.approve_and_post_income_expense_v2(jsonb)",
+      "before": {
+        "md5": "a6f22730d4c8eb574c62ab2d5abadb67",
+        "owner": "postgres",
+        "acl": "{=X/postgres,postgres=X/postgres,authenticated=X/postgres,anon=X/postgres,service_role=X/postgres}"
+      },
+      "after": {
+        "md5": "a6f22730d4c8eb574c62ab2d5abadb67",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+      }
+    },
+    {
+      "signature": "public.post_approved_income_expense_v2(jsonb)",
+      "before": {
+        "md5": "e52de7af90d025785411d7f094d7d7c4",
+        "owner": "postgres",
+        "acl": "{=X/postgres,postgres=X/postgres,authenticated=X/postgres,anon=X/postgres,service_role=X/postgres}"
+      },
+      "after": {
+        "md5": "e52de7af90d025785411d7f094d7d7c4",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+      }
+    }
+  ]
+}

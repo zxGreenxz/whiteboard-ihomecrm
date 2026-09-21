@@ -192,18 +192,6 @@
       "kyVong": "dung-vi-du-lieu",
       "thongDiep": "schema \"cron\" does not exist",
       "why": "Đăng ký cron retention cần extension pg_cron của nền tảng Supabase — baseline CỐ Ý không chụp (giống schema storage). Trên project thật schema này luôn có. Vì lời gọi cron nằm giữa file nên cả file cuộn lại trên DB diễn tập; phần schema (bảng ngân sách + logger có budget + hàm prune) được dựng lại bởi 20260902092508, file đó bọc phần cron trong to_regnamespace('cron') nên chạy SẠCH ở cả hai môi trường."
-    },
-    "20260920194951_shared_room_lifecycle_rls.sql": {
-      "kyVong": "cascade",
-      "tu": "supabase/baseline/platform-shim.sql (ALTER DEFAULT PRIVILEGES grant anon) + manifest chụp --no-acl",
-      "thongDiep": "Room lifecycle ACL/owner drift",
-      "why": "Đo trên restore drill run 35563255338 ngày 21/09/2026. get_room_residence_segments_v1 ra đời trước cutoff; baseline schema-only cố ý bỏ ACL rồi platform shim tái lập default privilege của Supabase, nên bản dựng lại có EXECUTE cho anon trong khi preflight chỉ chấp nhận ACL production đã REVOKE anon từ migration gốc 20260731051000 (nằm trước cutoff, không replay). Production có ACL đúng và file đã apply sạch với biên nhận schema-change evidence c7d58878…; đây là artifact đã đo của baseline --no-acl, cùng loại với entry 20260831162000, không phải cho phép ACL đó ở production."
-    },
-    "20260921015956_reservation_refund_pending_workflow.sql": {
-      "kyVong": "cascade",
-      "tu": "supabase/baseline/platform-shim.sql + manifest chụp --no-acl",
-      "thongDiep": "Reservation workflow owner/ACL drift: app_private.finance_v2_route_pure_v1(text,uuid)",
-      "why": "Đo trên restore drill run 35563255338 ngày 21/09/2026. finance_v2_route_pure_v1 ra đời và được REVOKE/GRANT tường minh ở 20260723170000, trước cutoff; baseline --no-acl không giữ ACL đó nên hàm được khôi phục với EXECUTE mặc định của PUBLIC thay vì đúng tập authenticated + owner mà preflight khóa. Production có ACL đúng và file đã apply sạch với biên nhận schema-change evidence ba25feb9…; lỗi chỉ thuộc môi trường diễn tập không mang ACL lịch sử."
     }
   }
 }
