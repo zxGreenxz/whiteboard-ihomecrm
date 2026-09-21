@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-09-21T03:13:48.271Z",
+  "generatedAt": "2026-09-21T04:03:40.800Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 581,
-    "unknown": 88,
+    "ledger-applied": 595,
+    "unknown": 74,
     "catalog-proven": 212,
     "superseded": 15
   },
@@ -10251,10 +10251,9 @@
       "name": "contract_settlement_authenticated_reader",
       "scheme": "timestamp14",
       "sha256": "f554dff4bebea661dfdd5e0a1a86f3593dcefdec63506cbd352aefe6b00e22c0",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:public.read_contract_settlement_page_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-21T03:25:40.855Z|bien-nhan-backup"
       ]
     },
     {
@@ -10263,11 +10262,9 @@
       "name": "shared_income_expense_review_transitions",
       "scheme": "timestamp14",
       "sha256": "a568fa7acb36c221d4cf4018194926faf33e4993828970b1844a1be3d5be6953",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.authorize_income_expense_review_v1",
-        "function:app_private.is_income_expense_review_operation_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-21T03:28:34.874Z|bien-nhan-backup"
       ]
     },
     {
@@ -10276,11 +10273,9 @@
       "name": "shared_income_expense_action_snapshot",
       "scheme": "timestamp14",
       "sha256": "7223a7248124f5f2b747e4eb2c95c7328c6672d739b00b3ebc8d79b8f3ab10fc",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.income_expense_action_scope_v1",
-        "function:public.read_income_expense_action_snapshots_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-21T03:30:58.124Z|bien-nhan-backup"
       ]
     },
     {
@@ -10289,10 +10284,9 @@
       "name": "shared_room_lifecycle_rls",
       "scheme": "timestamp14",
       "sha256": "c7d58878bee19356207ed8ee60e616b0913856f3f0f7d8586914e2158507274f",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.room_lifecycle_org_visible_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-21T03:33:26.394Z|bien-nhan-backup"
       ]
     },
     {
@@ -10301,11 +10295,9 @@
       "name": "shared_income_expense_action_capabilities",
       "scheme": "timestamp14",
       "sha256": "bc8ce3b7dac85e71385151861e95bb535425a017afa81ab6748faf433358b801",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.income_expense_action_capabilities_v1",
-        "function:public.read_income_expense_action_snapshots_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-21T03:36:09.968Z|bien-nhan-backup"
       ]
     },
     {
@@ -10314,11 +10306,9 @@
       "name": "contract_settlement_event_reader",
       "scheme": "timestamp14",
       "sha256": "e01a476063b3c585dbd1575ddb217e0d16016457a5d841de1946aa1fa9f06a4c",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.settlement_event_expense_ids_v1",
-        "function:public.read_contract_settlement_events_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-21T03:38:54.419Z|bien-nhan-backup"
       ]
     },
     {
@@ -10327,12 +10317,9 @@
       "name": "contract_settlement_financial_context",
       "scheme": "timestamp14",
       "sha256": "c76ee7aa50c69be3a7c2aafb91255e6452310f4c14469a535ac5269a7d74db1f",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.settlement_financial_source_ids_v1",
-        "function:app_private.settlement_financial_evidence_v1",
-        "function:public.read_contract_settlement_financial_facts_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-21T03:41:14.421Z|bien-nhan-backup"
       ]
     },
     {
@@ -10341,11 +10328,9 @@
       "name": "contract_settlement_source_creation_reader",
       "scheme": "timestamp14",
       "sha256": "559fc57a18c2e3ef2343e738e097bc922370d0ee9e2c350aba1028b597cec38c",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.contract_settlement_create_facts_v1",
-        "function:public.read_contract_settlement_create_source_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-21T03:44:13.899Z|bien-nhan-backup"
       ]
     },
     {
@@ -10354,10 +10339,9 @@
       "name": "shared_voucher_recipient_sparse_update",
       "scheme": "timestamp14",
       "sha256": "edc8c06835fbb6cf21c89e214a3bdbe1be97d1d92c9d5f8223d308e427de1f75",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:public.update_income_expense_recipient_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-21T03:47:18.124Z|bien-nhan-backup"
       ]
     },
     {
@@ -10366,10 +10350,9 @@
       "name": "termination_refund_creation_recipient",
       "scheme": "timestamp14",
       "sha256": "6b336c088e2fd7d8f186a196e9d73c6bb238368b897ee956f1c08ed4d03a5776",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.create_termination_refund_voucher_with_recipient_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-21T03:49:55.020Z|bien-nhan-backup"
       ]
     },
     {
@@ -10378,12 +10361,9 @@
       "name": "contract_settlement_termination_breakdown",
       "scheme": "timestamp14",
       "sha256": "7e937720e6125f6f520f9fd0cb06ee07848ab8ca9f3711d1260569ebf05b7b19",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.settlement_termination_voucher_link_v1",
-        "function:app_private.settlement_termination_breakdown_v1",
-        "function:public.read_contract_settlement_financial_facts_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-21T03:53:07.481Z|bien-nhan-backup"
       ]
     },
     {
@@ -10392,14 +10372,9 @@
       "name": "sale_bonus_explicit_source_claim_guard",
       "scheme": "timestamp14",
       "sha256": "efb6d16d0fb02ac84efd90369548dea2609cbab9a5a7cea24af949449c47b759",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.sale_bonus_source_claims_v1",
-        "function:app_private.guard_sale_bonus_source_claim_v1",
-        "function:app_private.contract_settlement_create_facts_v1",
-        "trigger:public.contract_deposit_links.guard_sale_bonus_link_claim",
-        "trigger:app_private.sale_bonus_claims.guard_sale_bonus_deposit_claim"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-21T03:56:04.712Z|bien-nhan-backup"
       ]
     },
     {
@@ -10408,11 +10383,9 @@
       "name": "sale_bonus_source_link_consistency",
       "scheme": "timestamp14",
       "sha256": "ef9781d132cce8306a1ef292338fd96720f23a7413613b82fbc350a050e462ca",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.sale_bonus_source_claims_v1",
-        "function:app_private.guard_sale_bonus_source_claim_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-21T03:58:54.692Z|bien-nhan-backup"
       ]
     },
     {
@@ -10421,10 +10394,9 @@
       "name": "sale_bonus_resolved_source_consistency",
       "scheme": "timestamp14",
       "sha256": "23008b3999e079b276c39a9eade9dc93681f313e7ecac3efb341b47e52ba757c",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.sale_bonus_source_claims_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-21T04:01:40.110Z|bien-nhan-backup"
       ]
     },
     {
@@ -10432,7 +10404,7 @@
       "version": "20260921015956",
       "name": "reservation_refund_pending_workflow",
       "scheme": "timestamp14",
-      "sha256": "df2927daa929293c2dab21db5d1364acdbe84208790a3e3462fb8ab1e03742c4",
+      "sha256": "0a1c7b16187f69575575749a9f3cef580255d5e85c239e29942b0337321c99b7",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [

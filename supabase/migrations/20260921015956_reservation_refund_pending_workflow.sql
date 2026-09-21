@@ -9,7 +9,7 @@ BEGIN
   ('request_income_expense_changes_v2(uuid,bigint,text,jsonb,text)','a7b885abecda8b1b8a5a6545f3c76975','a7b885abecda8b1b8a5a6545f3c76975','postgres',ARRAY['authenticated','postgres']::text[],true),
   ('resubmit_income_expense_v2(uuid,bigint,jsonb,text)','d3a9226f0b75940c354e5c81497097b4','d3a9226f0b75940c354e5c81497097b4','postgres',ARRAY['authenticated','postgres']::text[],true),
   ('app_private.authorize_income_expense_review_v1(income_expenses,text)','251d09422281d3c1febfee1a209164b7','513ac209277c5b6ffb3b13a8c25217c2','postgres',ARRAY['postgres']::text[],true),
-  ('app_private.finance_v2_route_pure_v1(text,uuid)','a9065c83fc736836b440f4118bd5a05d','a9065c83fc736836b440f4118bd5a05d','postgres',ARRAY['PUBLIC','postgres']::text[],true),
+  ('app_private.finance_v2_route_pure_v1(text,uuid)','a9065c83fc736836b440f4118bd5a05d','a9065c83fc736836b440f4118bd5a05d','postgres',ARRAY['authenticated','postgres']::text[],true),
   ('app_private.assert_cashbook_access_v2(uuid,uuid,text,uuid)','7c4b1df92d33caf68b2b41947e812ca4','7c4b1df92d33caf68b2b41947e812ca4','postgres',ARRAY['PUBLIC','postgres']::text[],true),
   ('app_private.assert_income_expense_flow_owner_v2(uuid,text)','24b19401c868aed0a266760dd675f268','24b19401c868aed0a266760dd675f268','postgres',ARRAY['PUBLIC','postgres']::text[],true),
   ('app_private.lock_org_for_decision_v1(uuid)','6130719b1956a291878bed6c58800e5a','6130719b1956a291878bed6c58800e5a','postgres',ARRAY['PUBLIC','postgres']::text[],true),

@@ -27,9 +27,24 @@ const pins = [
   required: m[6] === "true",
 }));
 assert.ok(pins.length > 30, "actual SQL preflight pins parsed");
+assert.deepEqual(
+  pins.find(
+    (pin) =>
+      pin.signature ===
+      "app_private.finance_v2_route_pure_v1(text,uuid)",
+  )?.roles,
+  ["authenticated", "postgres"],
+  "route resolver retains its production authenticated-only ACL",
+);
 async function rollback(fn) {
   await db.query("BEGIN");
   try {
+    await db.query(
+      "REVOKE ALL ON FUNCTION app_private.finance_v2_route_pure_v1(text,uuid) FROM PUBLIC,anon,authenticated,service_role",
+    );
+    await db.query(
+      "GRANT EXECUTE ON FUNCTION app_private.finance_v2_route_pure_v1(text,uuid) TO authenticated",
+    );
     await fn();
   } finally {
     await db.query("ROLLBACK");
