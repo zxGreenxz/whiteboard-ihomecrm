@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { actionSnapshotQueryKey, queryActionReadiness, readActionSnapshotBatches, type ActionSnapshotReader, type ActionSnapshotScope } from '@/lib/incomeExpenseActionSnapshot';
+import { queryActionReadiness, readActionSnapshotBatches, type ActionSnapshotReader, type ActionSnapshotScope } from '@/lib/incomeExpenseActionSnapshot';
 
 type SnapshotRpc = (name: 'read_income_expense_action_snapshots_v1', args: { p_organization_id: string; p_voucher_ids: string[] }) => PromiseLike<{ data: unknown; error: { code?: string; message: string } | null }>;
 export const readIncomeExpenseActionSnapshotPage: ActionSnapshotReader = async (scope, ids, signal) => {
@@ -14,7 +14,8 @@ export const readIncomeExpenseActionSnapshotPage: ActionSnapshotReader = async (
 /** One selected voucher or a whole visible page, in bounded batches; both surfaces share this key. */
 export function useIncomeExpenseActionSnapshots(scope: ActionSnapshotScope, voucherIds: readonly string[], enabled = true) {
   const active = enabled && !!scope.actorId && !!scope.organizationId;
-  const query = useQuery({ queryKey: actionSnapshotQueryKey(scope, voucherIds), enabled: active,
+  const queryKey = ['income-expense-action-snapshots', scope.organizationId, scope.actorId, [...new Set(voucherIds)].sort()] as const;
+  const query = useQuery({ queryKey, enabled: active,
     queryFn: ({ signal }) => readActionSnapshotBatches(scope, voucherIds, readIncomeExpenseActionSnapshotPage, signal),
     staleTime: 0, refetchOnWindowFocus: 'always', refetchInterval: 30_000, retry: false });
   return { ...query, readiness: queryActionReadiness(query, active),

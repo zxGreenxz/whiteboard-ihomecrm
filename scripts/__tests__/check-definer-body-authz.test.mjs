@@ -79,6 +79,18 @@ describe('luật cốt lõi', () => {
     expect(chay(sql).dat).toBe(true);
   });
 
+  it.each([
+    'authorize_income_expense_review_v1',
+    'income_expense_action_scope_v1',
+  ])('nhận helper phạm vi tài chính đã audit: %s', (helper) => {
+    const sql =
+      dinhNghia(
+        'public.doc_luong',
+        `begin perform app_private.${helper}(null); select * from income_expenses; end`,
+      ) + cap('public.doc_luong');
+    expect(chay(sql).dat).toBe(true);
+  });
+
   it('KHÔNG grant authenticated ⇒ ngoài phạm vi gate', () => {
     const sql = dinhNghia('public.doc_luong', 'begin select * from salary_monthly; end');
     expect(chay(sql).dat).toBe(true);

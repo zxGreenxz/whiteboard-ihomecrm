@@ -3,8 +3,6 @@ import { supabase } from '@/integrations/supabase/client';
 import { queryActionReadiness, type ActionSnapshotScope } from '@/lib/incomeExpenseActionSnapshot';
 import { readPostingCashbooks } from '@/lib/postingCashbooks';
 
-export const postingCashbooksQueryKey = (scope: ActionSnapshotScope) => ['income-expense-posting-cashbooks', scope.organizationId, scope.actorId] as const;
-
 async function readCustodyPages(signal?: AbortSignal): Promise<unknown[]> {
   const rows: unknown[] = [];
   for (let offset = 0; ; offset += 200) {
@@ -19,7 +17,8 @@ async function readCustodyPages(signal?: AbortSignal): Promise<unknown[]> {
 
 export function usePostingCashbooks(scope: ActionSnapshotScope, enabled = true) {
   const active = enabled && !!scope.organizationId && !!scope.actorId;
-  const query = useQuery({ queryKey: postingCashbooksQueryKey(scope), enabled: active,
+  const queryKey = ['income-expense-posting-cashbooks', scope.organizationId, scope.actorId] as const;
+  const query = useQuery({ queryKey, enabled: active,
     queryFn: async ({ signal }) => {
       const actor = await supabase.auth.getUser();
       if (actor.error || actor.data.user?.id !== scope.actorId) throw new Error('CASHBOOK_ACTOR_CHANGED');
