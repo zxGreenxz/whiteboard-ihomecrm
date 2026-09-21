@@ -42,6 +42,7 @@ import { SpecialFeeBatchDialog } from '@/components/thu-tien/SpecialFeeBatchDial
 import { Button } from '@/components/ui/button';
 import { Sparkles } from 'lucide-react';
 import { useState } from 'react';
+import { effectiveDesktopFeeCategory } from '@/lib/feeCategories';
 
 // Kỳ mặc định GHIM giờ Việt Nam (audit 31/08 P2-04) — máy lệch múi giờ mở trang
 // đêm giao tháng không còn được chọn sẵn kỳ sai. Server đã org_today từ trước.
@@ -64,6 +65,7 @@ const ThanhToan = () => {
   // Một nguồn state cho cả desktop + Sheet (hai bề mặt luôn cùng mount). Sheet chỉ
   // tính category hiệu lực an toàn; không ghi đè lựa chọn desktop khi resize.
   const [feeCategory, setFeeCategory] = usePersistedState('flt:thu-tien:fee-cat', 'overview');
+  const settlementMode = effectiveDesktopFeeCategory(feeCategory) === 'hop_dong';
 
   // Nút back/X. Vào từ trong app (nút Plug bên Thu tiền, ô Thanh toán ở Home)
   // thì lui đúng 1 bước cho tự nhiên. Vào THẲNG bằng deep-link/F5 thì history
@@ -80,8 +82,8 @@ const ThanhToan = () => {
   };
 
   return (
-    <div className="tt-stage">
-      {canRecordPayment && (
+    <div className={`tt-stage${settlementMode ? ' settlement-mode' : ''}`}>
+      {canRecordPayment && !settlementMode && (
         <div className="tt-batch-bar">
           <Button size="sm" variant="outline" onClick={() => setBatchOpen(true)}>
             <Sparkles className="h-4 w-4 mr-1" />
