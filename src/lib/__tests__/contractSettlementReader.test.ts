@@ -24,15 +24,17 @@ describe('complete settlement reader', () => {
  });
  it('posting filter excludes sources and known unposted/noncash vouchers',async()=>{
   const noCash={activePostingId:null,postedOn:null,effectiveNetPaid:0,postingEvidence:{state:'ready' as const,value:{activePostingId:null,postedOn:null,effectiveNetPaid:0}}};
-  for(const item of [{...row(1),eventDate:'2026-09-01'},voucher({sourceEventDate:'2026-09-01',postingStatus:'UNPOSTED',...noCash}),voucher({sourceEventDate:'2026-09-01',postingMode:'NON_CASH',postingStatus:'NOT_APPLICABLE',...noCash})]){
+  for(const item of [{...row(1),eventDate:'2026-09-01'},voucher({sourceEventDate:'2026-09-01',approvalStatus:'UNAPPROVED',postingStatus:'UNPOSTED',...noCash}),voucher({sourceEventDate:'2026-09-01',postingMode:'NON_CASH',postingStatus:'NOT_APPLICABLE',...noCash})]){
    const result=await readContractSettlement({...scope,mode:'period',dateBasis:'posting'},async()=>page([item]));expect(result.rows).toHaveLength(0);expect(result.totals?.effectiveNetPaid).toBe(0);
   }
  });
- it('classifies only consistent posting evidence as known absence',()=>{
+ it('classifies only pending cashless and verified non-cash evidence as known absence',()=>{
   expect(classifySettlementPostingDate(row(1))).toEqual({state:'known_none'});
   expect(classifySettlementPostingDate(voucher())).toEqual({state:'known_paid',postedOn:'2026-09-01'});
   const noCash={activePostingId:null,postedOn:null,effectiveNetPaid:0,postingEvidence:{state:'ready' as const,value:{activePostingId:null,postedOn:null,effectiveNetPaid:0}}};
-  for(const patch of [{postingStatus:'UNPOSTED' as const},{postingStatus:'REVERSED' as const},{approvalStatus:'CANCELLED' as const,postingStatus:'UNPOSTED' as const},{postingMode:'NON_CASH' as const,postingStatus:'NOT_APPLICABLE' as const}])expect(classifySettlementPostingDate(voucher({...noCash,...patch}))).toEqual({state:'known_none'});
+  expect(classifySettlementPostingDate(voucher({...noCash,approvalStatus:'UNAPPROVED',postingStatus:'UNPOSTED'}))).toEqual({state:'known_none'});
+  expect(classifySettlementPostingDate(voucher({...noCash,postingMode:'NON_CASH',postingStatus:'NOT_APPLICABLE'}))).toEqual({state:'known_none'});
+  for(const patch of [{postingStatus:'UNPOSTED' as const},{postingStatus:'REVERSED' as const},{approvalStatus:'CANCELLED' as const,postingStatus:'UNPOSTED' as const}])expect(classifySettlementPostingDate(voucher({...noCash,...patch}))).toEqual({state:'unverified'});
  });
  it('keeps NULL status and contradictory nonpaid headers visible without totals',async()=>{
   const patches:Partial<VoucherSnapshot>[]=[{postingStatus:'UNPOSTED'},{approvalStatus:'CANCELLED'},{approvalStatus:'CANCELLED',postingStatus:'UNPOSTED'},{postingMode:'NON_CASH',postingStatus:'NOT_APPLICABLE'},{postingStatus:'REVERSED'},

@@ -13,12 +13,15 @@ export function classifySettlementPostingDate(row: SettlementRow): SettlementPos
  const display = getSettlementDisplayState(row).code;
  if (display === 'PAID' && snapshot.postedOn !== null) return { state: 'known_paid', postedOn: snapshot.postedOn };
  const evidence = snapshot.postingEvidence;
- const consistentNonpaidState = ['PENDING_APPROVAL', 'NEEDS_REVIEW', 'WAITING_PAYMENT', 'NON_CASH', 'REVERSED', 'CANCELLED'].includes(display)
-  && ((snapshot.postingMode === 'CASHBOOK' && (snapshot.postingStatus === 'UNPOSTED' || snapshot.postingStatus === 'REVERSED'))
-   || (snapshot.postingMode === 'NON_CASH' && snapshot.postingStatus === 'NOT_APPLICABLE'));
  const verifiedNoCash = snapshot.activePostingId === null && snapshot.effectiveNetPaid === 0 && snapshot.postedOn === null
   && evidence.state === 'ready' && evidence.value.activePostingId === null && evidence.value.effectiveNetPaid === 0 && evidence.value.postedOn === null;
- return consistentNonpaidState && verifiedNoCash ? { state: 'known_none' } : { state: 'unverified' };
+ if (!verifiedNoCash) return { state: 'unverified' };
+ if (snapshot.postingMode === 'NON_CASH' && snapshot.postingStatus === 'NOT_APPLICABLE') return { state: 'known_none' };
+ if (snapshot.postingMode === 'CASHBOOK' && snapshot.postingStatus === 'UNPOSTED' && snapshot.approvalStatus === 'UNAPPROVED'
+  && ['PENDING_APPROVAL', 'NEEDS_REVIEW'].includes(display)) return { state: 'known_none' };
+ // An approved gap or a REVERSED header needs provenance for the missing cash
+ // or the complete reversal chain. Zero ledger facts alone do not prove either.
+ return { state: 'unverified' };
 }
 export function settlementSourceIdentity(source: SettlementSourceRef): string {
  const id = source.kind === 'broker' || source.kind === 'sale_contract' ? source.contractId : source.kind === 'termination_refund' ? source.terminationId : source.kind === 'reservation_refund' ? source.sourceVoucherId : source.depositVoucherId;
