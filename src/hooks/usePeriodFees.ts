@@ -95,6 +95,15 @@ export interface FeeAccount {
   notApplicable: boolean;
 }
 
+export type PeriodCommissionOverviewStatus = 'unpaid' | 'draft' | 'paid';
+
+export interface PeriodCommissionOverviewRow {
+  expectedAmount: number;
+  voucherAmount: number | null;
+  buildingName: string;
+  status: PeriodCommissionOverviewStatus;
+}
+
 export type MaintenanceState = 'PENDING_APPROVAL' | 'APPROVED_UNPOSTED' | 'POSTED';
 
 export interface MaintenanceRow {
@@ -152,12 +161,42 @@ export type PayPeriodFeeResult =
 const invalidateFees = (qc: ReturnType<typeof useQueryClient>) => {
   qc.invalidateQueries({ queryKey: ['period-fee-status'] });
   qc.invalidateQueries({ queryKey: ['period-maintenance'] });
+  qc.invalidateQueries({ queryKey: ['period-commission-overview'] });
   qc.invalidateQueries({ queryKey: ['fee-accounts'] });
   qc.invalidateQueries({ queryKey: ['income-expenses'] });
   qc.invalidateQueries({ queryKey: ['income-expense-batches'] });
   qc.invalidateQueries({ queryKey: ['accounts-with-balance'] });
   qc.invalidateQueries({ queryKey: ['utility-payments'] });
 };
+
+/**
+ * Reader tương thích chỉ dành cho phép cộng Tổng quan/Lợi Nhuận. Không trả
+ * voucherId, không có mutation và không khôi phục màn hình hoa hồng cũ.
+ */
+export const usePeriodCommissionOverview = (
+  period: string,
+  buildingIds: string[],
+  opts?: { enabled?: boolean },
+) => useQuery({
+  queryKey: ['period-commission-overview', period, [...buildingIds].sort()],
+  enabled: (opts?.enabled ?? true) && !!period && buildingIds.length > 0,
+  staleTime: 0,
+  refetchInterval: 30_000,
+  refetchOnWindowFocus: 'always',
+  queryFn: async (): Promise<PeriodCommissionOverviewRow[]> => {
+    const { data, error } = await supabase.rpc('get_period_commissions', {
+      p_period_month: period,
+      p_building_ids: buildingIds,
+    });
+    if (error) throw new Error(error.message);
+    return ((data ?? []) as any[]).map((row) => ({
+      expectedAmount: Number(row.expected_amount) || 0,
+      voucherAmount: row.voucher_amount == null ? null : Number(row.voucher_amount),
+      buildingName: row.building_name ?? '',
+      status: (row.status === 'paid' ? 'paid' : row.status === 'draft' ? 'draft' : 'unpaid') as PeriodCommissionOverviewStatus,
+    }));
+  },
+});
 
 const mapVoucher = (v: any): PeriodFeeVoucher => ({
   id: v.id,

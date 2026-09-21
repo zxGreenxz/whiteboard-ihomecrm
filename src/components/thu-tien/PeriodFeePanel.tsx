@@ -22,12 +22,12 @@ import { useIsOrgOwner } from '@/hooks/useIsOrgOwner';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
 import {
-  usePeriodFeeStatus, useFeeAccounts, usePeriodMaintenance, type PeriodFeeVoucher,
+  usePeriodFeeStatus, useFeeAccounts, usePeriodCommissionOverview, usePeriodMaintenance, type PeriodFeeVoucher,
 } from '@/hooks/usePeriodFees';
 import { usePeriodFeeState, addMonths, rangeLabel } from '@/hooks/usePeriodFeeState';
 import { useCreateMaintenanceBatch, type MaintenanceBatchLine } from '@/hooks/useMaintenanceBatch';
 import { uploadReceiptToStorage, validateReceiptFile } from '@/lib/receiptUpload';
-import { FEE_CATEGORIES, FEE_GROUPS, effectiveDesktopFeeCategory, feeCategoryOf, gridKeysFor, type FeeCategory, LEDGER_FAMILIES } from '@/lib/feeCategories';
+import { FEE_CATEGORIES, FEE_GROUPS, effectiveDesktopFeeCategory, feeCategoryOf, feeOverviewCategories, gridKeysFor, type FeeCategory, LEDGER_FAMILIES } from '@/lib/feeCategories';
 import { FeeIcon } from './feeIcons';
 import { UtilityBookMenu } from './UtilityBookMenu';
 import { UtilityCancelModal } from './UtilityCancelModal';
@@ -99,6 +99,7 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
   // ── Data ──
   const feeStatus = usePeriodFeeStatus(period, gridKeys, buildingIds, { enabled: buildingIds.length > 0 });
   const feeAccounts = useFeeAccounts();
+  const overviewCommissions = usePeriodCommissionOverview(period, buildingIds, { enabled: buildingIds.length > 0 && isOverview });
   const maintenance = usePeriodMaintenance(period, buildingIds, { enabled: buildingIds.length > 0 && (isOverview || isBatch) });
 
   const gridCat = isGrid ? cat! : FEE_CATEGORIES.find((c) => c.family === 'GRID')!;
@@ -140,12 +141,12 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
   const overview = useMemo(() => {
     const nameOf = (id: string) => buildings.find((b) => b.id === id)?.name ?? id;
     const result = calculatePeriodFeeOverview({
-      categories: visibleCats, excludedFamilies: LEDGER_FAMILIES, buildingIds, buildingName: nameOf,
+      categories: feeOverviewCategories(visibleCats), excludedFamilies: LEDGER_FAMILIES, buildingIds, buildingName: nameOf,
       activeBuildingIds: activeIdsFor, statusOf: feeStatus.statusOf,
-      commissions: [], maintenance: maintenance.data ?? [],
+      commissions: overviewCommissions.data ?? [], maintenance: maintenance.data ?? [],
     });
     return { ...result, rows: result.rows.map(({ category: cat, ...row }) => ({ cat, ...row })) };
-  }, [buildingIds, feeStatus.byKey, maintenance.data, elevatorIds, buildings, visibleCats]);
+  }, [buildingIds, feeStatus.byKey, overviewCommissions.data, maintenance.data, elevatorIds, buildings, visibleCats]);
 
   const pickCategory = (k: string) => { onFeeCategoryChange(k); setMenuOpen(false); setBldFilter('all'); setOnlyDue(false); setGridTab('pay'); setNaOpen(false); setExpectedEdit(null); };
   const headerCat = (isOverview ? undefined : cat) ?? { label: 'Tổng quan kỳ', sub: 'Còn thiếu phiếu · khớp Báo cáo Lợi Nhuận', icon: 'overview', accent: '#514c42' } as any;

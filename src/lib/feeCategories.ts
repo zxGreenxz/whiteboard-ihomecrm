@@ -125,6 +125,17 @@ export const FEE_CATEGORIES: FeeCategory[] = [
   },
 ];
 
+/** Chỉ dùng trong Tổng quan; không đưa cửa hoa hồng cũ trở lại picker. */
+export const OVERVIEW_ONLY_FEE_CATEGORIES: readonly FeeCategory[] = [{
+  key: 'hoa_hong_overview', label: 'Hoa hồng môi giới', group: 'Thanh lý & Cọc',
+  sub: 'chỉ tổng hợp theo kỳ', family: 'COMMISSION', icon: 'percent', accent: '#d98c1f',
+  multiPeriod: false, providerConfig: false, restricted: false, elevatorGated: false,
+  serverKey: 'hoa_hong', canonicalTypeName: 'Hoa hồng môi giới', canonicalCategory: 'Hoa hồng',
+}];
+
+export const feeOverviewCategories = (visibleCategories: readonly FeeCategory[]): FeeCategory[] =>
+  [...visibleCategories, ...OVERVIEW_ONLY_FEE_CATEGORIES];
+
 /**
  * Ba family "sổ theo dõi" — nơi nào dựng bảng Tổng quan-khớp-Lợi-Nhuận hay đếm
  * "còn thiếu phiếu theo toà" thì phải LOẠI các family này ra (tiền cọc/hoàn

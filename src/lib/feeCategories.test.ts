@@ -6,6 +6,7 @@ import {
   SHEET_FEE_CATEGORY_KEYS,
   effectiveDesktopFeeCategory,
   effectiveSheetFeeCategory,
+  feeOverviewCategories,
   feeTypeMatches,
   feeCategoryOf,
 } from './feeCategories';
@@ -18,6 +19,11 @@ describe('FEE_CATEGORIES registry', () => {
     expect(FEE_CATEGORIES.every((c) => FEE_GROUPS.includes(c.group))).toBe(true);
     expect(FEE_CATEGORIES.map((c) => c.key)).toContain('hop_dong');
     expect(FEE_CATEGORIES.map((c) => c.key)).not.toEqual(expect.arrayContaining(['hoa_hong', 'chi_thanh_ly', 'thuong_sale']));
+  });
+
+  it('giữ hoa hồng trong Tổng quan nhưng không đưa cửa cũ trở lại picker', () => {
+    expect(FEE_CATEGORIES.map((category) => category.key)).not.toContain('hoa_hong_overview');
+    expect(feeOverviewCategories(FEE_CATEGORIES).map((category) => category.key)).toContain('hoa_hong_overview');
   });
 
   it('đúng ĐÚNG 4 hạng mục multiPeriod (Internet/Công An/Rác/Thang máy)', () => {

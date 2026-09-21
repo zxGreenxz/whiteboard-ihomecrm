@@ -58,6 +58,7 @@ export const incomeExpenseActionRefreshKeys = [
   "voucher-with-batch",
   "contract-settlement",
   "contract-settlement-events",
+  "period-commission-overview",
   "room-cash-lifecycle",
   "settlement-financial-context",
   "accounts-with-balance",
