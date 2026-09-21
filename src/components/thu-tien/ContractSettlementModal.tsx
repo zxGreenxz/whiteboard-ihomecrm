@@ -51,11 +51,12 @@ function ReservationRefundSummary({ sourceRef }: { sourceRef: ReservationRefundS
   if (source.isError || !source.data) return <p role="alert">Chưa đọc được quyết toán giữ chỗ. Vui lòng tải lại hồ sơ.</p>;
   const s = source.data;
   return <section aria-label="Đối chiếu hoàn giữ chỗ" className="rounded-lg border p-3 space-y-1">
-    <div className="flex justify-between gap-3"><span>Cọc thực nhận</span><strong>{formatVND(s.depositAmount)}</strong></div>
+    {!s.basisValid && <p role="alert" className="text-amber-700">{s.blockedReason || 'Căn cứ tiền cọc đã thay đổi; các số dưới đây là ảnh chụp hồ sơ cũ và cần đối chiếu lại.'}</p>}
+    <div className="flex justify-between gap-3"><span>{s.basisValid ? 'Cọc thực nhận' : 'Cọc theo hồ sơ cũ'}</span><strong>{formatVND(s.depositAmount)}</strong></div>
     <div className="flex justify-between gap-3"><span>Giữ lại / khấu trừ</span><strong>{formatVND(s.retainedAmount)}</strong></div>
     <div className="flex justify-between gap-3"><span>Nghĩa vụ hoàn</span><strong>{formatVND(s.refundAmount)}</strong></div>
     <div className="flex justify-between gap-3"><span>Đã hoàn</span><strong>{formatVND(s.paid)}</strong></div>
-    <div className="flex justify-between gap-3 border-t pt-2 text-emerald-800"><span>Còn phải hoàn</span><strong>{formatVND(s.remaining)}</strong></div>
+    <div className="flex justify-between gap-3 border-t pt-2 text-emerald-800"><span>{s.basisValid ? 'Còn phải hoàn' : 'Còn hoàn theo hồ sơ cũ'}</span><strong>{formatVND(s.remaining)}</strong></div>
   </section>;
 }
 function FinancialBody({ target, source }: { target: SettlementFinancialTarget; source?: SettlementSourceRef | null }) {
@@ -75,12 +76,12 @@ function ReservationRefundTimeline({ sourceRef }: { sourceRef: ReservationRefund
       role: 'reservation',
       code: s.sourceCode ?? 'Phiếu giữ chỗ',
       customer: s.payerName ?? 'Chưa có tên khách',
-      status: s.remaining === 0 ? 'Đã hoàn đủ' : s.existingVoucherId ? 'Đã lập phiếu hoàn' : 'Chờ lập phiếu hoàn',
+      status: !s.basisValid ? 'Cần đối chiếu căn cứ' : s.remaining === 0 ? 'Đã hoàn đủ' : s.existingVoucherId ? 'Đã lập phiếu hoàn' : 'Chờ lập phiếu hoàn',
       steps: [
         { label: 'Giữ chỗ', value: day(s.sourceDate), detail: s.sourceCode ?? 'Phiếu cọc gốc' },
-        { label: 'Cọc thực nhận', value: formatVND(s.depositAmount), detail: `Giữ lại / khấu trừ: ${formatVND(s.retainedAmount)}` },
+        { label: s.basisValid ? 'Cọc thực nhận' : 'Cọc theo hồ sơ cũ', value: formatVND(s.depositAmount), detail: `Giữ lại / khấu trừ: ${formatVND(s.retainedAmount)}`, warning: !s.basisValid ? s.blockedReason || 'Căn cứ đã thay đổi; cần đối chiếu lại.' : undefined },
         { label: 'Quyết toán giữ chỗ', value: day(s.settlementDate), detail: `Nghĩa vụ hoàn: ${formatVND(s.refundAmount)}` },
-        { label: 'Hoàn khách', value: formatVND(s.paid), detail: `Còn phải hoàn: ${formatVND(s.remaining)}` },
+        { label: 'Hoàn khách', value: formatVND(s.paid), detail: `${s.basisValid ? 'Còn phải hoàn' : 'Còn hoàn theo hồ sơ cũ'}: ${formatVND(s.remaining)}` },
       ],
     }] : []}
     hint="Giữ chỗ → quyết toán → hoàn khách"

@@ -20,6 +20,7 @@ export interface ContractSettlementCreateFormProps {
   onCreated: (result: SettlementCreateResult) => void;
   refreshRequired: () => Promise<void>;
   onBusyChange?: (blocked: boolean) => void;
+  creationDisabled?: boolean;
 }
 const empty: SettlementCreateDraft = {
   amount: 0,
@@ -157,7 +158,7 @@ export function ContractSettlementCreateForm(
       aria-label="Lập phiếu từ nguồn"
       noValidate
       onSubmit={handleSubmit(async (values) => {
-        if (c.blocked || !s.canCreate || s.existingVoucherId) return;
+        if (props.creationDisabled || c.blocked || !s.canCreate || s.existingVoucherId) return;
         await c.createFromSource(values).catch(() => {});
       })}
     >
@@ -198,7 +199,7 @@ export function ContractSettlementCreateForm(
         </div>
       ) : (
         <>
-          <fieldset disabled={c.blocked} className="space-y-3">
+          <fieldset disabled={props.creationDisabled || c.blocked} className="space-y-3">
             <div className="space-y-1">
               <Label htmlFor="source-create-amount">
                 Số tiền {refund ? "theo nghĩa vụ" : "đề xuất"} (đ)
@@ -359,6 +360,7 @@ export function ContractSettlementCreateForm(
             type="submit"
             disabled={
               c.blocked ||
+              props.creationDisabled ||
               !s.canCreate ||
               draft.amount <= 0 ||
               (warning &&

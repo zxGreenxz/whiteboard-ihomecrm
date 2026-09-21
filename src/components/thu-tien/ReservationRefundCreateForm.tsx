@@ -17,6 +17,7 @@ export interface ReservationRefundCreateFormProps {
   onCreated: (result: SettlementCreateResult) => void;
   refreshRequired: () => Promise<void>;
   onBusyChange?: (blocked: boolean) => void;
+  creationDisabled?: boolean;
 }
 export function ReservationRefundCreateForm(
   props: ReservationRefundCreateFormProps,
@@ -55,7 +56,7 @@ export function ReservationRefundCreateForm(
       noValidate
       className="space-y-4 text-sm"
       onSubmit={handleSubmit(async (values) => {
-        if (!c.blocked && s.canCreate && !s.existingVoucherId)
+        if (!props.creationDisabled && !c.blocked && s.canCreate && !s.existingVoucherId)
           await c.createFromSource(values).catch(() => {});
       })}
     >
@@ -74,7 +75,7 @@ export function ReservationRefundCreateForm(
         </p>
       </div>
       {!s.existingVoucherId && (
-        <fieldset disabled={c.blocked || !s.canCreate} className="space-y-3">
+        <fieldset disabled={props.creationDisabled || c.blocked || !s.canCreate} className="space-y-3">
           <p className="text-muted-foreground">
             Tên người nhận được gợi ý từ phiếu cọc để đối chiếu. Kiểm tra thông
             tin nhận tiền trước khi lập phiếu.
@@ -112,7 +113,7 @@ export function ReservationRefundCreateForm(
             Mở phiếu đã có
           </Button>
         ) : (
-          <Button type="submit" disabled={c.blocked || !s.canCreate}>
+          <Button type="submit" disabled={props.creationDisabled || c.blocked || !s.canCreate}>
             Lập phiếu chờ duyệt
           </Button>
         )}

@@ -144,11 +144,25 @@ it('keeps the verified reservation lifecycle and balance visible after its refun
   row.snapshot.value.contractNumber = null;
   m.reservation = {
     settlementId: 'settlement', sourceCode: 'GC-01', payerName: 'Khách giữ chỗ', sourceDate: '2026-09-01', settlementDate: '2026-09-10',
-    depositAmount: 4_200_000, retainedAmount: 1_162_500, refundAmount: 3_037_500, paid: 0, remaining: 3_037_500, existingVoucherId: 'v',
+    depositAmount: 4_200_000, retainedAmount: 1_162_500, refundAmount: 3_037_500, paid: 0, remaining: 3_037_500, existingVoucherId: 'v', basisValid: true, blockedReason: null,
   };
   render(<ContractSettlementModal context={{ ...base(), row }} renderCreate={() => null} />);
   expect(screen.getByLabelText(/Nguồn giữ chỗ · GC-01/)).toBeTruthy();
   expect(screen.getByText('Giữ chỗ → quyết toán → hoàn khách')).toBeTruthy();
   expect(screen.getByLabelText('Đối chiếu hoàn giữ chỗ').textContent).toContain('3.037.500');
   expect(screen.getAllByText(/Còn phải hoàn/).length).toBeGreaterThan(0);
+});
+
+it('marks reservation amounts as an old snapshot when the source basis changed', () => {
+  const row = reviewVoucher();
+  row.settlementKind = 'refund';
+  row.sourceLink = { state: 'verified', sourceRef: { kind: 'reservation_refund', organizationId: 'org', sourceVoucherId: 'source', settlementId: 'settlement', refundVoucherId: 'v' } };
+  if (row.snapshot.state !== 'ready') throw new Error('fixture must be ready');
+  row.snapshot.value.contractId = null;
+  row.snapshot.value.roomId = null;
+  m.reservation = { settlementId: 'settlement', sourceCode: 'GC-01', payerName: null, sourceDate: '2026-09-01', settlementDate: '2026-09-10', depositAmount: 100, retainedAmount: 20, refundAmount: 80, paid: 0, remaining: 80, existingVoucherId: 'v', basisValid: false, blockedReason: 'Căn cứ tiền cọc đã thay đổi' };
+  render(<ContractSettlementModal context={{ ...base(), row }} renderCreate={() => null} />);
+  expect(screen.getAllByRole('alert').some(alert => alert.textContent?.includes('Căn cứ tiền cọc đã thay đổi'))).toBe(true);
+  expect(screen.getAllByText('Cọc theo hồ sơ cũ').length).toBeGreaterThan(0);
+  expect(screen.getAllByText(/Còn hoàn theo hồ sơ cũ/).length).toBeGreaterThan(0);
 });

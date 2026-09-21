@@ -24,7 +24,7 @@ vi.mock('../ContractSettlementModal', () => ({ ContractSettlementModal: ({ rende
   {renderCreate({ sourceRef: { kind: 'reservation_refund', organizationId: state.organizationId, sourceVoucherId: 'source', settlementId: 'settlement', refundVoucherId: null }, onCreated: vi.fn(), refreshRequired: vi.fn() })}
 </div> }));
 vi.mock('../ContractSettlementCreateForm', () => ({ ContractSettlementCreateForm: () => <div>create-form</div> }));
-vi.mock('../ReservationRefundCreateForm', () => ({ ReservationRefundCreateForm: () => <button>reservation-refund-form</button> }));
+vi.mock('../ReservationRefundCreateForm', () => ({ ReservationRefundCreateForm: ({ creationDisabled }: { creationDisabled?: boolean }) => <><button disabled={creationDisabled}>reservation-refund-form</button><button>reservation-reconcile</button></> }));
 vi.mock('../ContractSettlementSaleProposalDialog', () => ({ ContractSettlementSaleProposalDialog: () => <div>sale-proposal</div> }));
 
 import { ContractSettlementWorkspace } from '../ContractSettlementWorkspace';
@@ -65,4 +65,5 @@ it('keeps the create form mounted but disables it when the canonical route is un
   render(detail);
   expect(screen.getByRole('alert').textContent).toMatch(/cần quy trình thu chi chuẩn/);
   expect(screen.getByRole('button', { name: 'reservation-refund-form' }).matches(':disabled')).toBe(true);
+  expect(screen.getByRole('button', { name: 'reservation-reconcile' }).matches(':disabled')).toBe(false);
 });

@@ -219,6 +219,22 @@ it("does not dispatch a programmatic submit when the shared hook is locked", asy
   expect(m.create).not.toHaveBeenCalled();
 });
 
+it("keeps existing-voucher reconciliation available when new creation is route-disabled", () => {
+  m.source!.existingVoucherId = id;
+  render(
+    <ContractSettlementCreateForm
+      sourceRef={{ kind: "termination_refund", organizationId: org, terminationId: id, obligationId: null, obligationVersion: null }}
+      onCreated={() => {}}
+      refreshRequired={async () => {}}
+      creationDisabled
+    />,
+  );
+  const open = screen.getByRole("button", { name: "Mở phiếu hiện có" }) as HTMLButtonElement;
+  expect(open.disabled).toBe(false);
+  fireEvent.click(open);
+  expect(m.reconcile).toHaveBeenCalledOnce();
+});
+
 it("preserves a reviewed recipient draft when a failed request unlocks the same source", () => {
   const view = show();
   fireEvent.change(screen.getByLabelText("Người nhận"), {

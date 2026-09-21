@@ -115,3 +115,14 @@ it("does not fabricate zero or offer a write while source is missing", () => {
   ).toBeNull();
   expect(m.create).not.toHaveBeenCalled();
 });
+
+it("disables creation without blocking reconciliation when the route gate closes", () => {
+  m.blocked = true;
+  m.message = "Cần đối chiếu yêu cầu trước";
+  render(<ReservationRefundCreateForm {...props} creationDisabled />);
+  expect((screen.getByRole("button", { name: "Lập phiếu chờ duyệt" }) as HTMLButtonElement).disabled).toBe(true);
+  const reconcile = screen.getByRole("button", { name: "Tải lại để đối chiếu" }) as HTMLButtonElement;
+  expect(reconcile.disabled).toBe(false);
+  fireEvent.click(reconcile);
+  expect(m.reconcile).toHaveBeenCalledOnce();
+});
