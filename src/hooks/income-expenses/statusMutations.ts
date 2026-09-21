@@ -8,6 +8,16 @@ import { rpcNullable } from "@/lib/rpcNullable";
 
 export interface ManagedStatusOptions { managed?: boolean }
 export interface ManagedCancelInput { id: string; reason?: string | null; expectedApprovalVersion?: number; expectedPostingVersion?: number; idempotencyKey?: string; postedOn?: string }
+export class IncomeExpensePartialCommitError extends Error {
+  readonly writeCommitted = true;
+  constructor(message: string, readonly original: unknown) {
+    super(message);
+    this.name = "IncomeExpensePartialCommitError";
+  }
+}
+export const isIncomeExpensePartialCommitError = (error: unknown): error is IncomeExpensePartialCommitError =>
+  error instanceof IncomeExpensePartialCommitError ||
+  (typeof error === "object" && error !== null && (error as { writeCommitted?: unknown }).writeCommitted === true);
 const requireCAS = (value: unknown) => { if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) throw new Error('CAS_REQUIRED'); };
 type RpcError = { code?: string | null; message?: string | null };
 type RpcResult = { error: RpcError | null };
@@ -28,6 +38,13 @@ const errorMessage = (error: unknown, fallback: string) => {
     return String((error as { message?: unknown }).message || fallback);
   }
   return fallback;
+};
+const throwAfterPossibleCommit = (error: unknown, writeCommitted: boolean): never => {
+  if (writeCommitted) throw new IncomeExpensePartialCommitError(
+    "Đã hoàn tác tiền nhưng chưa hoàn tất huỷ phiếu. Cần tải lại để đối chiếu.",
+    error,
+  );
+  throw error;
 };
 
 const isTerminationForfeitRpcUnavailable = (error: RpcError) => {
@@ -276,6 +293,7 @@ export const useCancelIncomeExpense = (options: ManagedStatusOptions = {}) => {
     mutationFn: async (input: string | ManagedCancelInput) => {
       const id = typeof input === "string" ? input : input.id;
       const reason = typeof input === "string" ? null : (input.reason ?? null);
+      let reversalCommitted = false;
       if (options.managed) {
         if (typeof input === 'string' || !input.idempotencyKey) throw new Error('COMMAND_IDENTITY_REQUIRED');
         requireCAS(input.expectedApprovalVersion); requireCAS(input.expectedPostingVersion);
@@ -346,6 +364,7 @@ export const useCancelIncomeExpense = (options: ManagedStatusOptions = {}) => {
           );
           throw rev.error;
         }
+        reversalCommitted = true;
       }
 
       // Canonical cancel (phiếu flow-owned): transition + audit hash-chain
@@ -375,7 +394,7 @@ export const useCancelIncomeExpense = (options: ManagedStatusOptions = {}) => {
         );
         if (owned.error) {
           feedback.error(owned.error.message || "Không thể huỷ phiếu thu/chi");
-          throw owned.error;
+          throwAfterPossibleCommit(owned.error, reversalCommitted);
         }
         return false;
       }
@@ -387,7 +406,7 @@ export const useCancelIncomeExpense = (options: ManagedStatusOptions = {}) => {
         postingStatus === "REVERSED";
       if (!isIeLifecycleFallbackSignal(canonical.error) && !approvedShape) {
         feedback.error(canonical.error.message || "Không thể huỷ phiếu thu/chi");
-        throw canonical.error;
+        throwAfterPossibleCommit(canonical.error, reversalCommitted);
       }
 
       // Stage-7 drain: huỷ phiếu legacy qua RPC ie_compat_cancel_v2 (client hết
@@ -413,12 +432,12 @@ export const useCancelIncomeExpense = (options: ManagedStatusOptions = {}) => {
           );
           if (owned.error) {
             feedback.error(owned.error.message || "Không thể huỷ phiếu thu/chi");
-            throw owned.error;
+            throwAfterPossibleCommit(owned.error, reversalCommitted);
           }
           return false;
         }
         feedback.error(error.message || "Không thể huỷ phiếu thu/chi");
-        throw error;
+        throwAfterPossibleCommit(error, reversalCommitted);
       }
 
       if (voucher?.type === "INCOME" && voucher?.payment_id) {
@@ -428,7 +447,7 @@ export const useCancelIncomeExpense = (options: ManagedStatusOptions = {}) => {
           .eq("id", voucher.payment_id);
         if (payErr) {
           feedback.error(payErr.message || "Không thể rollback thanh toán hoá đơn");
-          throw payErr;
+          throwAfterPossibleCommit(payErr, reversalCommitted);
         }
       }
 

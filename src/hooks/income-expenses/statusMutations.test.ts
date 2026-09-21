@@ -29,6 +29,7 @@ vi.mock("sonner", () => ({
 }));
 
 import {
+  isIncomeExpensePartialCommitError,
   useApproveVoucher,
   useCancelIncomeExpense,
   useUnapproveVoucher,
@@ -400,5 +401,22 @@ describe('shared managed status commands', () => {
     const m = useCancelIncomeExpense({managed:true}) as unknown as {mutationFn(input:unknown):Promise<boolean>};
     await m.mutationFn({id:'voucher-cas',reason:'Lý do đủ dài',expectedApprovalVersion:7,expectedPostingVersion:9,idempotencyKey:'fixed-key',postedOn:'2026-09-21'});
     expect(mocks.rpc).toHaveBeenLastCalledWith('cancel_income_expense_flex_v1',{p_voucher:'voucher-cas',p_reason:'Lý do đủ dài',p_expected_approval_version:7,p_expected_posting_version:9});
+  });
+  it('reports a committed reversal when the later cancel transition fails', async () => {
+    mocks.rpc
+      .mockResolvedValueOnce({error:{code:'55000',message:'not a termination forfeit pair'}})
+      .mockResolvedValueOnce({error:{code:'55000',message:'[STRICT_MODE]'}})
+      .mockResolvedValueOnce({error:null})
+      .mockResolvedValueOnce({error:{code:'55000',message:'owned by system flow'}})
+      .mockResolvedValueOnce({error:{code:'42501',message:'permission revoked'}});
+    mockVoucherRead({data:{id:'voucher-posted',type:'EXPENSE',payment_id:null,approval_status:'APPROVED',account_id:'cashbook',posting_status:'POSTED'},error:null});
+    const m = useCancelIncomeExpense({managed:true}) as unknown as {mutationFn(input:unknown):Promise<boolean>};
+    let caught: unknown;
+    try {
+      await m.mutationFn({id:'voucher-posted',reason:'Lý do đủ dài',expectedApprovalVersion:7,expectedPostingVersion:9,idempotencyKey:'fixed-key',postedOn:'2026-09-21'});
+    } catch (error) { caught = error; }
+    expect(isIncomeExpensePartialCommitError(caught)).toBe(true);
+    expect((caught as Error).message).toContain('Đã hoàn tác tiền');
+    expect(mocks.rpc).toHaveBeenCalledWith('reverse_posted_income_expense_v2', expect.objectContaining({p_idempotency_key:'fixed-key:reverse'}));
   });
 });
