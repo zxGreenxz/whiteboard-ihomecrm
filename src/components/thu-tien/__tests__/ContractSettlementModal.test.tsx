@@ -4,14 +4,15 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { createRef } from 'react';
 import type { SettlementDetailContext } from '../ContractSettlementSection';
 import type { SettlementVoucherRow } from '@/lib/contractSettlement';
-const m = vi.hoisted(() => ({ open: vi.fn(), input: null as unknown, busy: false, dialogOpen: false }));
+const m = vi.hoisted(() => ({ open: vi.fn(), input: null as unknown, busy: false, dialogOpen: false,
+  supplements: { data: [] as { attachments: string[] }[], isError: false, isPending: false } }));
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ data: { id: 'actor' } }) }));
 vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ selectedOrganizationId: 'org' }) }));
 vi.mock('@/hooks/income-expenses/useIncomeExpenseActions', () => ({ useIncomeExpenseActions: (input: unknown) => {
   m.input = input; return { selected: m.dialogOpen ? { key: 'draft' } : null, dismissalBlocked: m.busy, availability: () => new Proxy({}, { get: (_target, key) => key === 'resubmitReview' ? { visible: true, enabled: true, reason: null } : { visible: false, enabled: false, reason: null } }), open: m.open };
 } }));
 vi.mock('@/hooks/useContractSettlementFinancialFacts', () => ({ useContractSettlementFinancialFacts: () => ({ data: undefined, isPending: false, isError: false }) }));
-vi.mock('@/hooks/income-expenses/supplements', () => ({ useIncomeExpenseSupplements: () => ({ data: [], isPending: false, isError: false }) }));
+vi.mock('@/hooks/income-expenses/supplements', () => ({ useIncomeExpenseSupplements: () => m.supplements }));
 vi.mock('../ContractSettlementTimeline', () => ({ ContractSettlementTimeline: ({ target }: { target: { contractId: string } }) => <div>timeline:{target.contractId}</div> }));
 vi.mock('@/components/income-expenses/IncomeExpenseActionDialogs', () => ({ IncomeExpenseActionDialogs: () => null }));
 vi.mock('@/components/income-expenses/VoucherHistoryDialog', () => ({ default: () => null }));
@@ -36,7 +37,19 @@ const reviewVoucher = (): SettlementVoucherRow => ({
     notes: 'Ghi chú phiếu cũ', attachments: [], actionReadiness: { state: 'loading' },
   } },
 });
-afterEach(() => { cleanup(); vi.clearAllMocks(); m.busy = false; m.dialogOpen = false; });
+afterEach(() => { cleanup(); vi.clearAllMocks(); m.busy = false; m.dialogOpen = false; m.supplements = { data: [], isError: false, isPending: false }; });
+it('shows pending evidence explicitly instead of claiming that no attachments exist', () => {
+  m.supplements.isPending = true;
+  render(<ContractSettlementModal context={{ ...base(), row: reviewVoucher() }} renderCreate={() => null} />);
+  expect(screen.queryByText('Chưa có chứng từ đính kèm.')).toBeNull();
+  expect(screen.getByText('Đang tải ghi chú và chứng từ bổ sung…')).toBeTruthy();
+});
+it('withholds cached supplement attachments when revalidation failed', () => {
+  m.supplements = { data: [{ attachments: ['cached-evidence.jpg'] }], isError: true, isPending: false };
+  render(<ContractSettlementModal context={{ ...base(), row: reviewVoucher() }} renderCreate={() => null} />);
+  expect(screen.getByText('Chưa tải được ghi chú và chứng từ bổ sung.')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Xem chứng từ 1' })).toBeNull();
+});
 it('resubmits the selected review voucher through the shared machine, never through source creation', () => {
   const context = { ...base(), row: reviewVoucher() }, create = vi.fn();
   render(<ContractSettlementModal context={context} renderCreate={create} />);

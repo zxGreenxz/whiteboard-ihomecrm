@@ -119,7 +119,8 @@ function VoucherDetail({ context, row, snapshot: v, onEditVoucher, onBusyChange 
   const [imageIndex, setImageIndex] = useState<number | null>(null);
   const source = row.sourceLink.state === 'verified' ? row.sourceLink.sourceRef : null;
   const target: SettlementFinancialTarget = { roomId: v.roomId, contractId: v.contractId, voucherId: v.id, ...sourceFields(source) };
-  const attachments = [...new Set([...v.attachments, ...(supplements.data ?? []).flatMap(s => s.attachments)])];
+  const verifiedSupplements = supplements.isError ? [] : supplements.data ?? [];
+  const attachments = [...new Set([...v.attachments, ...verifiedSupplements.flatMap(s => s.attachments)])];
   const display = getSettlementDisplayState(row);
   return <>
     <ContractSettlementModalLayout open onClose={context.onClose} dismissalBlocked={sessionBlocked} fallbackFocusRef={context.fallbackFocusRef}
@@ -137,9 +138,10 @@ function VoucherDetail({ context, row, snapshot: v, onEditVoucher, onBusyChange 
       <div className="cs-detail-stack"><FinancialBody target={target} />
         <Block title="Ghi chú gốc của phiếu"><p className="cs-note">{v.notes || 'Chưa có ghi chú.'}</p></Block>
         <Block title="Chứng từ & bổ sung">
-          {supplements.isError ? <p role="alert">Chưa tải được ghi chú và chứng từ bổ sung.</p> : <VoucherSupplementNotes supplements={supplements.data ?? []} />}
+          {supplements.isError ? <p role="alert">Chưa tải được ghi chú và chứng từ bổ sung.</p> : <VoucherSupplementNotes supplements={verifiedSupplements} />}
           <div className="cs-detail-attachments">{attachments.map((url, index) => <button key={url} type="button" onClick={() => setImageIndex(index)} aria-label={`Xem chứng từ ${index + 1}`}><StorageImage value={url} alt={`Chứng từ ${index + 1}`} /></button>)}</div>
-          {attachments.length === 0 && !supplements.isError && <p className="cs-secondary">Chưa có chứng từ đính kèm.</p>}
+          {supplements.isPending && <p role="status" className="cs-secondary">Đang tải ghi chú và chứng từ bổ sung…</p>}
+          {attachments.length === 0 && !supplements.isError && !supplements.isPending && <p className="cs-secondary">Chưa có chứng từ đính kèm.</p>}
         </Block>
       </div>
     </ContractSettlementModalLayout>
