@@ -369,7 +369,7 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
   };
 
   return (
-    <div className="tt-udesk ptt-panel">
+    <div className={`tt-udesk ptt-panel${isSettlement ? ' ptt-settlement-panel' : ''}`}>
       <input ref={S.fileRef} type="file" accept="image/*" hidden onChange={S.onFileChange} />
       <input ref={batchFileRef} type="file" accept="image/*" hidden onChange={onBatchFile} />
 

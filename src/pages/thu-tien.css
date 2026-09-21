@@ -925,6 +925,7 @@
 .tt-udesk .ptt-title { display: inline-flex; align-items: center; gap: 8px; font-size: 20px; font-weight: 800; letter-spacing: -.3px; color: var(--ink); line-height: 1.15; }
 .tt-udesk .ptt-title svg { width: 17px; height: 17px; color: var(--ink-3); flex-shrink: 0; }
 .tt-udesk .ptt-sub { font-size: 12px; font-weight: 600; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 420px; }
+.tt-udesk .ptt-settlement-panel .ptt-sub { max-width: min(680px, calc(100vw - 430px)); }
 
 .tt-stage .ptt-menu-scrim { position: fixed; inset: 0; z-index: 40; }
 .tt-stage .ptt-menu { position: absolute; top: calc(100% + 8px); left: 0; z-index: 60; width: 340px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--sh-3); padding: 7px; max-height: 560px; overflow-y: auto; }

@@ -111,7 +111,7 @@ export const FEE_CATEGORIES: FeeCategory[] = [
   },
   {
     key: 'hop_dong', label: 'Hợp đồng & quyết toán', group: 'Thanh lý & Cọc',
-    sub: 'biến động hợp đồng · hoàn khách · hoa hồng · thưởng Sale', family: 'CONTRACT_SETTLEMENT',
+    sub: 'hoa hồng môi giới · thanh lý hoàn khách · thưởng sale', family: 'CONTRACT_SETTLEMENT',
     icon: 'handcoins', accent: '#1f7a52',
     multiPeriod: false, providerConfig: false, restricted: false, elevatorGated: false,
     serverKey: 'hop_dong', canonicalTypeName: 'Hợp đồng & quyết toán', canonicalCategory: 'Quyết toán',
