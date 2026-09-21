@@ -151,7 +151,7 @@ export function docLoiSql(text) {
     if (body.code || body.sqlState) {
       return { sqlState: String(body.code ?? body.sqlState), message: String(body.message ?? "") };
     }
-    const wrapped = /^Failed to run sql query: ERROR:  +([0-9A-Z]{5}): ([^\r\n]+)\r?\n?$/.exec(String(body.message ?? ""));
+    const wrapped = /^Failed to run sql query: ERROR:  +([0-9A-Z]{5}): ([^\r\n]+)(?:\r?\nCONTEXT:[^\r\n]*)*\r?\n?$/.exec(String(body.message ?? ""));
     if (wrapped) return { sqlState: wrapped[1], message: wrapped[2] };
     return { sqlState: "", message: String(body.message ?? "") };
   } catch {
@@ -188,6 +188,44 @@ export function kiemMienTruPinned({ entry, file, digest, failureText, actualProj
   const failure = docLoiSql(failureText);
   if (failure.sqlState !== entry.expectedSqlState || failure.message !== entry.expectedMessage) {
     return { ok: false, vi: `lỗi thực tế không khớp pin (nhận ${failure.sqlState}: ${failure.message})` };
+  }
+  if (entry.supersededBy !== undefined) {
+    const successor = entry.supersededBy;
+    const successorRequired = ["file", "sha256", "appliedEvidencePath"];
+    const successorMissing = successorRequired.filter((field) => typeof successor?.[field] !== "string" || successor[field].length === 0);
+    if (successorMissing.length) return { ok: false, vi: `migration thay thế thiếu ${successorMissing.join(", ")}` };
+    if (!/^\d{14}_[^/\\]+\.sql$/.test(successor.file) || successor.file.slice(0, 14) <= file.slice(0, 14)) {
+      return { ok: false, vi: "migration thay thế không hợp lệ hoặc không nằm sau migration gốc" };
+    }
+    let successorDigest;
+    try { successorDigest = bam(read(join(root, "supabase", "migrations", successor.file), "utf8")); }
+    catch (error) { return { ok: false, vi: `không đọc được migration thay thế: ${error.message}` }; }
+    if (successorDigest !== successor.sha256) return { ok: false, vi: "sha256 migration thay thế không khớp" };
+
+    const successorEvidencePath = successor.appliedEvidencePath;
+    const successorEvidenceNormalized = normalize(successorEvidencePath);
+    if (
+      isAbsolute(successorEvidencePath) || successorEvidencePath.includes("\\")
+      || successorEvidenceNormalized.startsWith(`..${sep}`) || !successorEvidenceNormalized.startsWith(safePrefix)
+    ) {
+      return { ok: false, vi: "appliedEvidencePath migration thay thế không an toàn hoặc ngoài thư mục evidence" };
+    }
+    let successorEvidence;
+    try { successorEvidence = JSON.parse(read(join(root, successorEvidenceNormalized), "utf8")); }
+    catch (error) { return { ok: false, vi: `không đọc được evidence migration thay thế: ${error.message}` }; }
+    if (successorEvidence.file !== `supabase/migrations/${successor.file}` || successorEvidence.sha256 !== successor.sha256) {
+      return { ok: false, vi: "evidence migration thay thế không khớp file/digest" };
+    }
+    const successorAuthorization = successorEvidence.authorization?.loai;
+    if (
+      !Number.isFinite(Date.parse(successorEvidence.appliedAt))
+      || Date.parse(successorEvidence.appliedAt) <= Date.parse(evidence.appliedAt)
+      || successorEvidence.projectRef !== actualProjectRef
+      || !["bien-nhan-backup", "token-nguoi"].includes(successorAuthorization)
+      || typeof successorEvidence.authorization?.chiTiet !== "string" || successorEvidence.authorization.chiTiet.length === 0
+    ) {
+      return { ok: false, vi: "evidence migration thay thế thiếu dấu mốc apply thật hoặc không nằm sau migration gốc" };
+    }
   }
   return { ok: true, evidence };
 }

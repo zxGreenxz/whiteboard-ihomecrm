@@ -133,6 +133,108 @@
       "exitCondition": "Biến mất khi gate chuyển từ dán lại migration lịch sử trên trạng thái mới sang dựng baseline rồi replay theo thứ tự, hoặc khi lịch sử ledger-applied được lưu dưới dạng snapshot không reapply đơn lẻ. Không được gỡ chỉ vì file tạm xanh: gate bắt buộc file còn ném đúng lỗi này."
     },
     {
+      "file": "20260920192452_shared_income_expense_action_snapshot.sql",
+      "sha256": "7223a7248124f5f2b747e4eb2c95c7328c6672d739b00b3ebc8d79b8f3ab10fc",
+      "expectedSqlState": "P0001",
+      "expectedMessage": "read_income_expense_action_snapshots_v1 definition drift",
+      "appliedEvidencePath": "docs/generated/schema-change-evidence/20260920192452_shared_income_expense_action_snapshot.json",
+      "supersededBy": {
+        "file": "20260920200252_shared_income_expense_action_capabilities.sql",
+        "sha256": "bc8ce3b7dac85e71385151861e95bb535425a017afa81ab6748faf433358b801",
+        "appliedEvidencePath": "docs/generated/schema-change-evidence/20260920200252_shared_income_expense_action_capabilities.json"
+      },
+      "ciEvidence": "https://github.com/zxGreenxz/whiteboard-ihomecrm/actions/runs/35565893012/job/106227548355",
+      "lop": "phép đo replay đơn lẻ gặp định nghĩa đã được migration sau thay thế",
+      "why": "File 19:24 tạo snapshot reader bản đầu và tự chặn mọi định nghĩa lạ. File 20:02 đã được review và áp sau đó để bổ sung capability vào chính reader này. Phát lại riêng file 19:24 trên catalog cuối vì vậy phải ném definition drift; chuỗi baseline + forward theo thứ tự không gặp lỗi này.",
+      "heQua": "Không sửa migration đã áp. Gate vẫn gọi production mỗi lượt, chỉ chấp nhận đúng digest file gốc, đúng P0001/message và đúng biên nhận của cả file gốc lẫn file thay thế.",
+      "exitCondition": "Gỡ khi gate kiểm replay theo đúng thứ tự trên database dùng một lần; không được đổi mục này thành idempotent PASS."
+    },
+    {
+      "file": "20260920200252_shared_income_expense_action_capabilities.sql",
+      "sha256": "bc8ce3b7dac85e71385151861e95bb535425a017afa81ab6748faf433358b801",
+      "expectedSqlState": "P0001",
+      "expectedMessage": "Capability definition drift",
+      "appliedEvidencePath": "docs/generated/schema-change-evidence/20260920200252_shared_income_expense_action_capabilities.json",
+      "supersededBy": {
+        "file": "20260921015956_reservation_refund_pending_workflow.sql",
+        "sha256": "ba25feb9c0f3d7f138d14012bcd090b4a8cb314ab5668976eda2cc83aaed0e20",
+        "appliedEvidencePath": "docs/generated/schema-change-evidence/20260921015956_reservation_refund_pending_workflow.json"
+      },
+      "ciEvidence": "https://github.com/zxGreenxz/whiteboard-ihomecrm/actions/runs/35565893012/job/106227548355",
+      "lop": "phép đo replay đơn lẻ gặp capability đã được workflow sau thay thế",
+      "why": "File 20:02 tạo capability dùng chung. File 01:59 ngày 21/09 áp sau để bổ sung nhánh hoàn cọc giữ chỗ vào cùng capability. Self-check cũ chỉ nhận phiên bản trước nên replay riêng trên catalog cuối ném Capability definition drift, dù forward lane đúng thứ tự đã áp cả hai.",
+      "heQua": "Ngoại lệ chỉ khớp đúng lỗi và hai biên nhận apply; thay đổi byte, project, thứ tự apply hoặc lỗi khác đều làm gate đỏ.",
+      "exitCondition": "Gỡ khi gate replay chuỗi forward theo thứ tự trên database dùng một lần; không dùng ngoại lệ này để apply lại file cũ."
+    },
+    {
+      "file": "20260920205323_contract_settlement_financial_context.sql",
+      "sha256": "c76ee7aa50c69be3a7c2aafb91255e6452310f4c14469a535ac5269a7d74db1f",
+      "expectedSqlState": "P0001",
+      "expectedMessage": "Financial function definition/owner drift",
+      "appliedEvidencePath": "docs/generated/schema-change-evidence/20260920205323_contract_settlement_financial_context.json",
+      "supersededBy": {
+        "file": "20260921004455_contract_settlement_termination_breakdown.sql",
+        "sha256": "7e937720e6125f6f520f9fd0cb06ee07848ab8ca9f3711d1260569ebf05b7b19",
+        "appliedEvidencePath": "docs/generated/schema-change-evidence/20260921004455_contract_settlement_termination_breakdown.json"
+      },
+      "ciEvidence": "https://github.com/zxGreenxz/whiteboard-ihomecrm/actions/runs/35565893012/job/106227548355",
+      "lop": "phép đo replay đơn lẻ gặp financial reader đã được migration sau mở rộng",
+      "why": "File 20:53 tạo financial facts reader. File 00:44 ngày 21/09 áp sau để bổ sung breakdown thanh lý vào cùng reader, giữ owner/ACL và chấp nhận hash trước/sau. Self-check của file cũ chỉ nhận hash ban đầu nên replay trên trạng thái cuối ném drift.",
+      "heQua": "Chỉ ghi nhận giới hạn của phép đo từng file trên catalog mới; không tuyên bố raw migration idempotent và không thay đổi schema production.",
+      "exitCondition": "Gỡ khi có replay tuần tự trên database dùng một lần; digest và biên nhận của file thay thế phải tiếp tục khớp trong thời gian ngoại lệ tồn tại."
+    },
+    {
+      "file": "20260920212716_contract_settlement_source_creation_reader.sql",
+      "sha256": "559fc57a18c2e3ef2343e738e097bc922370d0ee9e2c350aba1028b597cec38c",
+      "expectedSqlState": "P0001",
+      "expectedMessage": "Source writer definition drift",
+      "appliedEvidencePath": "docs/generated/schema-change-evidence/20260920212716_contract_settlement_source_creation_reader.json",
+      "supersededBy": {
+        "file": "20260921004515_sale_bonus_explicit_source_claim_guard.sql",
+        "sha256": "efb6d16d0fb02ac84efd90369548dea2609cbab9a5a7cea24af949449c47b759",
+        "appliedEvidencePath": "docs/generated/schema-change-evidence/20260921004515_sale_bonus_explicit_source_claim_guard.json"
+      },
+      "ciEvidence": "https://github.com/zxGreenxz/whiteboard-ihomecrm/actions/runs/35565893012/job/106227548355",
+      "lop": "phép đo replay đơn lẻ gặp writer đã được claim guard sau thay thế",
+      "why": "Reader nguồn ở file 21:27 ghim hash các writer hoa hồng/thưởng đang tồn tại lúc áp. File 00:45 ngày 21/09 áp sau để thêm khóa claim nguồn chống tạo phiếu trùng và chủ động thay chính các writer đó. Vì vậy self-check cũ ném Source writer definition drift trên catalog cuối.",
+      "heQua": "Ngoại lệ không bỏ qua mọi drift: nó chỉ chấp nhận đúng P0001/message hiện tại và ghim migration claim guard cùng biên nhận apply production.",
+      "exitCondition": "Gỡ khi gate chạy toàn chuỗi theo thứ tự trên database dùng một lần; không dùng mục này để phát lại writer cũ."
+    },
+    {
+      "file": "20260921004515_sale_bonus_explicit_source_claim_guard.sql",
+      "sha256": "efb6d16d0fb02ac84efd90369548dea2609cbab9a5a7cea24af949449c47b759",
+      "expectedSqlState": "P0001",
+      "expectedMessage": "Sale claim helper definition drift: app_private.sale_bonus_source_claims_v1(uuid,uuid,uuid)",
+      "appliedEvidencePath": "docs/generated/schema-change-evidence/20260921004515_sale_bonus_explicit_source_claim_guard.json",
+      "supersededBy": {
+        "file": "20260921012821_sale_bonus_source_link_consistency.sql",
+        "sha256": "ef9781d132cce8306a1ef292338fd96720f23a7413613b82fbc350a050e462ca",
+        "appliedEvidencePath": "docs/generated/schema-change-evidence/20260921012821_sale_bonus_source_link_consistency.json"
+      },
+      "ciEvidence": "https://github.com/zxGreenxz/whiteboard-ihomecrm/actions/runs/35565893012/job/106227548355",
+      "lop": "phép đo replay đơn lẻ gặp helper claim đã được migration kế tiếp siết chặt",
+      "why": "File 00:45 tạo claim helper bản đầu. File 01:28 áp ngay sau để bắt buộc liên kết nguồn nhất quán và thay helper bằng phiên bản mới. Self-check file cũ chỉ nhận hash bản đầu nên replay riêng trên catalog cuối phải ném helper definition drift.",
+      "heQua": "Gate đo lại đúng lỗi trên production mỗi lượt; digest hoặc evidence của một trong hai migration lệch sẽ không được EXEMPT.",
+      "exitCondition": "Gỡ khi gate replay tuần tự trên database dùng một lần; không coi file 00:45 tự thân chạy lại được trên catalog cuối."
+    },
+    {
+      "file": "20260921012821_sale_bonus_source_link_consistency.sql",
+      "sha256": "ef9781d132cce8306a1ef292338fd96720f23a7413613b82fbc350a050e462ca",
+      "expectedSqlState": "P0001",
+      "expectedMessage": "Sale consistency definition drift: app_private.sale_bonus_source_claims_v1(uuid,uuid,uuid)",
+      "appliedEvidencePath": "docs/generated/schema-change-evidence/20260921012821_sale_bonus_source_link_consistency.json",
+      "supersededBy": {
+        "file": "20260921014754_sale_bonus_resolved_source_consistency.sql",
+        "sha256": "23008b3999e079b276c39a9eade9dc93681f313e7ecac3efb341b47e52ba757c",
+        "appliedEvidencePath": "docs/generated/schema-change-evidence/20260921014754_sale_bonus_resolved_source_consistency.json"
+      },
+      "ciEvidence": "https://github.com/zxGreenxz/whiteboard-ihomecrm/actions/runs/35565893012/job/106227548355",
+      "lop": "phép đo replay đơn lẻ gặp helper claim đã được migration cuối thay thế",
+      "why": "File 01:28 tạo helper nhất quán theo liên kết trực tiếp. File 01:47 áp sau để giải quyết nguồn qua liên kết chuẩn hoá và thay helper lần cuối. Self-check 01:28 chỉ chấp nhận hash trước/sau của chính nó nên catalog 01:47 gây đúng drift đã quan sát.",
+      "heQua": "Mục này ghim cả file 01:28 và migration 01:47 đã áp; lỗi khác, digest khác hoặc evidence khác đều tiếp tục làm gate đỏ.",
+      "exitCondition": "Gỡ khi phép đo có database dùng một lần và replay đúng thứ tự; không dùng ngoại lệ để bỏ qua thay đổi helper ngoài chuỗi đã ghim."
+    },
+    {
       "file": "20260909172332_reservation_deposit_settlement_v1.sql",
       "sha256": "32008e7d10b730ceef4840fb307288e033be5d868842597ed30f27136e6da2e6",
       "expectedSqlState": "42P07",
