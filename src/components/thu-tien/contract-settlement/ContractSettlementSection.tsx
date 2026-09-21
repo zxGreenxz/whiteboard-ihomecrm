@@ -11,6 +11,8 @@
 // =============================================================================
 
 import { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 import { laneOf, sumOnVoucher, type SettlementIssue, type SettlementRow } from '@/lib/contractSettlement';
 import { useContractSettlement, type SettlementScope } from '@/hooks/useContractSettlement';
 import { useSettlementActions } from '@/hooks/useSettlementActions';
@@ -20,17 +22,41 @@ import { NHAN_TRANG_THAI, NHAN_VUONG_MAC } from './nhan';
 import './contract-settlement.css';
 
 interface Props {
-  organizationId: string | null | undefined;
   buildingIds: string[];
   period: string;
 }
+
+/**
+ * Tổ chức của phạm vi đang xem, suy từ chính các toà đang hiển thị.
+ *
+ * `ie_form_buildings` không trả `organization_id`, và khu này cần nó để lọc
+ * truy vấn + lọc sổ quỹ theo đúng org của phiếu. Tra một lần, cache theo danh
+ * sách toà — rẻ hơn nhiều so với bắt PeriodFeePanel đổi luồng dữ liệu sẵn có.
+ */
+const useOrgCuaToa = (buildingIds: string[]) =>
+  useQuery({
+    queryKey: ['contract-settlement', 'org-of-buildings', [...buildingIds].sort()],
+    enabled: buildingIds.length > 0,
+    staleTime: 10 * 60_000,
+    queryFn: async (): Promise<string | null> => {
+      const { data, error } = await supabase
+        .from('buildings')
+        .select('organization_id')
+        .in('id', buildingIds)
+        .limit(1)
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      return data?.organization_id ?? null;
+    },
+  });
 
 const CHIP_VUONG: SettlementIssue[] = [
   'MISSING_RECIPIENT', 'MISSING_BANK', 'AMOUNT_MISMATCH',
   'BASIS_UNAVAILABLE', 'SUPPLEMENT_PENDING', 'OLD_PERIOD',
 ];
 
-export function ContractSettlementSection({ organizationId, buildingIds, period }: Props) {
+export function ContractSettlementSection({ buildingIds, period }: Props) {
+  const { data: organizationId } = useOrgCuaToa(buildingIds);
   const [scope, setScope] = useState<SettlementScope>('open');
   const [locVuong, setLocVuong] = useState<SettlementIssue[]>([]);
   const [dangMo, setDangMo] = useState<string | null>(null);

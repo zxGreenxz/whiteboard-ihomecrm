@@ -16,9 +16,8 @@ import { toast } from 'sonner';
 import { fmtFull, fmtBillingMonth, todayISO } from '@/lib/collect';
 import { useIncomeExpenseFormBuildings } from '@/hooks/useIncomeExpenseFormScope';
 import { useBuildings } from '@/hooks/useBuildings';
-import {
-  TerminationRefundQueueSection, SaleBonusSection, DepositLedgerSection,
-} from './SettlementPanels';
+import { DepositLedgerSection } from './SettlementPanels';
+import { ContractSettlementSection } from './contract-settlement/ContractSettlementSection';
 import { useIsAdmin, useIsSuperAdmin } from '@/hooks/useIsAdmin';
 import { useIsOrgOwner } from '@/hooks/useIsOrgOwner';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
@@ -30,7 +29,7 @@ import {
 import { usePeriodFeeState, addMonths, rangeLabel } from '@/hooks/usePeriodFeeState';
 import { useCreateMaintenanceBatch, type MaintenanceBatchLine } from '@/hooks/useMaintenanceBatch';
 import { uploadReceiptToStorage, validateReceiptFile } from '@/lib/receiptUpload';
-import { FEE_CATEGORIES, FEE_GROUPS, feeCategoryOf, gridKeysFor, type FeeCategory, LEDGER_FAMILIES } from '@/lib/feeCategories';
+import { FEE_CATEGORIES, FEE_GROUPS, feeCategoryOf, normalizeFeeCategoryKey, gridKeysFor, type FeeCategory, LEDGER_FAMILIES } from '@/lib/feeCategories';
 import { FeeIcon } from './feeIcons';
 import { UtilityBookMenu } from './UtilityBookMenu';
 import { UtilityCancelModal } from './UtilityCancelModal';
@@ -76,7 +75,9 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
   const visibleCats = useMemo(() => FEE_CATEGORIES.filter((c) => !c.restricted || canRestricted), [canRestricted]);
   const gridKeys = useMemo(() => gridKeysFor(canRestricted), [canRestricted]);
 
-  const [category, setCategory] = usePersistedState<string>('flt:thu-tien:fee-cat', 'overview');
+  const [categoryLuu, setCategory] = usePersistedState<string>('flt:thu-tien:fee-cat', 'overview');
+  // Key cũ trong sessionStorage vẫn dẫn đúng chỗ sau khi gộp ba mục.
+  const category = normalizeFeeCategoryKey(categoryLuu);
   const [menuOpen, setMenuOpen] = useState(false);
   const [bldFilter, setBldFilter] = useState('all');
   const [onlyDue, setOnlyDue] = useState(false);
@@ -93,18 +94,18 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
   const isOverview = category === 'overview' || !catVisible;
   const isEN = catVisible && cat!.family === 'EN';
   const isGrid = catVisible && cat!.family === 'GRID';
-  const isComm = catVisible && cat!.family === 'COMMISSION';
+  // 21/09/2026: ba mục hoa_hong / chi_thanh_ly / thuong_sale gộp thành khu
+  // "Hợp đồng & quyết toán". Khu đó tự đọc dữ liệu và tự nối hành động qua
+  // adapter riêng — Panel chỉ mở chỗ cho nó.
+  const isHopDong = catVisible && cat!.family === 'CONTRACT_SETTLEMENT';
   const isBatch = catVisible && cat!.family === 'MAINTENANCE_BATCH';
-  const isTermQ = catVisible && cat!.family === 'TERMINATION_REFUND';
-  const isSaleB = catVisible && cat!.family === 'SALE_BONUS';
   const isDepL  = catVisible && cat!.family === 'DEPOSIT_LEDGER';
 
   // ── Data ──
   const feeStatus = usePeriodFeeStatus(period, gridKeys, buildingIds, { enabled: buildingIds.length > 0 });
   const feeAccounts = useFeeAccounts();
-  const commissions = usePeriodCommissions(period, buildingIds, { enabled: buildingIds.length > 0 && (isOverview || isComm) });
+  const commissions = usePeriodCommissions(period, buildingIds, { enabled: buildingIds.length > 0 && isOverview });
   const prevPeriod = addMonths(period, -1);
-  const prevCommissions = usePeriodCommissions(prevPeriod, buildingIds, { enabled: buildingIds.length > 0 && isComm });
   const maintenance = usePeriodMaintenance(period, buildingIds, { enabled: buildingIds.length > 0 && (isOverview || isBatch) });
 
   const gridCat = isGrid ? cat! : FEE_CATEGORIES.find((c) => c.family === 'GRID')!;
@@ -139,7 +140,10 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
       return n;
     }
     if (c.family === 'GRID') return activeIdsFor(c).filter((id) => !(feeStatus.statusOf(id, c.serverKey)?.paidAmount)).length;
-    if (c.family === 'COMMISSION') return (commissions.data ?? []).filter((r) => r.status !== 'paid').length;
+    // Khu Hợp đồng & quyết toán tự đếm việc còn tồn bên trong nó. Trả -1 làm
+    // dấu "không đếm được ở đây" để chỗ vẽ badge biết mà ẩn nhãn xanh "đủ" —
+    // gắn "đủ" cho hạng mục còn hàng chục phiếu chưa xử lý là nói dối.
+    if (c.family === 'CONTRACT_SETTLEMENT') return -1;
     return 0;
   };
 
@@ -173,7 +177,7 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
             dueList.push(nameOf(b)); dueBld.add(b);
           }
         }
-      } else if (c.family === 'COMMISSION') {
+      } else if (false) {
         for (const r of commissions.data ?? []) {
           total++;
           if (r.status === 'paid') { paidN++; rowPaidSum += r.voucherAmount ?? r.expectedAmount; }
@@ -288,7 +292,6 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
   };
 
   const mText = (m: 'ml' | 'mg') => (m === 'ml' ? 'Máy lạnh' : 'Máy giặt');
-  const prevUnpaidComm = (prevCommissions.data ?? []).filter((r) => r.status !== 'paid').length;
 
   // ── Render 1 dòng GRID ──
   const renderGridRow = (b: { id: string; name: string }) => {
@@ -463,7 +466,7 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
                         <span className="ptt-menu-ic" style={{ background: active ? '#1b1813' : c.accent + '18', color: active ? '#fff' : c.accent }}><FeeIcon name={c.icon} style={{ width: 15, height: 15 }} /></span>
                         <span className="ptt-menu-lbl grow">{c.label}{c.restricted && <span className="ptt-tag-restricted">hạn chế</span>}</span>
                         {due > 0 && c.family !== 'MAINTENANCE_BATCH' && !LEDGER_FAMILIES.has(c.family) && <span className="ptt-badge">{due}</span>}
-                        {due === 0 && c.family !== 'MAINTENANCE_BATCH' && c.family !== 'COMMISSION' && !LEDGER_FAMILIES.has(c.family) && <span className="ptt-badge done">đủ</span>}
+                        {due === 0 && c.family !== 'MAINTENANCE_BATCH' && c.family !== 'CONTRACT_SETTLEMENT' && !LEDGER_FAMILIES.has(c.family) && <span className="ptt-badge done">đủ</span>}
                         {active && <Check className="ptt-menu-check" />}
                       </button>
                     );
@@ -653,76 +656,13 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
         </div>
       )}
 
-      {/* ===== SỔ THEO DÕI: chi thanh lý · thưởng Sale · cọc đã thu ===== */}
-      {isTermQ && <TerminationRefundQueueSection period={period} />}
-      {isSaleB && <SaleBonusSection period={period} />}
-      {isDepL && <DepositLedgerSection period={period} />}
+      {/* ===== HỢP ĐỒNG & QUYẾT TOÁN =====
+          Gộp ba mục cũ (hoa hồng · chi thanh lý · thưởng Sale). Khu này tự đọc
+          dữ liệu và tự nối hành động qua adapter riêng — KHÔNG sửa Thu chi. */}
+      {isHopDong && <ContractSettlementSection buildingIds={buildingIds} period={period} />}
 
-      {/* ===== COMMISSION ===== */}
-      {isComm && (
-        <div className="ptt-scroll">
-          {(() => {
-            const rows = commissions.data ?? [];
-            const paidSum = rows.filter((r) => r.status === 'paid').reduce((s, r) => s + (r.voucherAmount ?? r.expectedAmount), 0);
-            const draftSum = rows.filter((r) => r.status === 'draft').reduce((s, r) => s + (r.voucherAmount ?? r.expectedAmount), 0);
-            const dueSum = rows.filter((r) => r.status === 'unpaid').reduce((s, r) => s + r.expectedAmount, 0);
-            const paidN = rows.filter((r) => r.status === 'paid').length;
-            const draftN = rows.filter((r) => r.status === 'draft').length;
-            return (
-              <>
-                {prevUnpaidComm > 0 && (
-                  <div className="ptt-note warn mx">
-                    <Info />
-                    <span>Kỳ trước ({fmtBillingMonth(prevPeriod)}) còn <b>{prevUnpaidComm} HĐ chưa chi/duyệt HH</b>.</span>
-                    <button type="button" className="ptt-btn ghost sm" onClick={() => onBillingMonthChange(prevPeriod)}>Xem kỳ trước</button>
-                  </div>
-                )}
-                <div className="ptt-comm-stats">
-                  <div className="ptt-comm-card"><div className="ptt-ov-lbl">HH dự kiến kỳ này</div><div className="ptt-comm-num">{fmtFull(rows.reduce((s, r) => s + r.expectedAmount, 0))}</div><div className="ptt-ov-sub">{rows.length} hợp đồng ký trong kỳ</div></div>
-                  <div className="ptt-comm-card green"><div className="ptt-ov-lbl">Đã chi (phiếu duyệt)</div><div className="ptt-comm-num green">{fmtFull(paidSum)}</div><div className="ptt-ov-sub">{paidN} phiếu · số THẬT trên phiếu</div></div>
-                  <div className="ptt-comm-card amber"><div className="ptt-ov-lbl">Chờ duyệt chờ duyệt</div><div className="ptt-comm-num amber">{fmtFull(draftSum)}</div><div className="ptt-ov-sub">{draftN} phiếu chờ duyệt</div></div>
-                  <div className="ptt-comm-card red"><div className="ptt-ov-lbl">Chưa chi</div><div className="ptt-comm-num red">{fmtFull(dueSum)}</div><div className="ptt-ov-sub">{rows.length - paidN - draftN} hợp đồng</div></div>
-                </div>
-                <div className="ud-body">
-                  {commissions.isLoading ? <div className="ud-empty">⏳ Đang tải…</div> : rows.length === 0 ? <div className="ud-empty">📄 Không có hợp đồng nào ký trong kỳ.</div> : (
-                    <div className="ud-tablewrap">
-                      <table className="ud-table">
-                        <thead><tr><th>Hợp đồng</th><th>Phòng · Khách thuê</th><th>Ngày ký</th><th className="ctr">Số tháng</th><th className="ctr">Bậc HH</th><th className="num">HH dự kiến</th><th className="num">Phiếu thật</th><th className="act">Thao tác</th></tr></thead>
-                        <tbody>
-                          {rows.map((r) => (
-                            <tr key={r.contractId}>
-                              <td className="ud-mono2">{r.contractNumber ?? '—'}</td>
-                              <td><div className="ptt-comm-room"><span className="ptt-comm-roomn">{r.buildingName} · {r.roomName ?? ''}</span><span className="ptt-comm-tenant">{r.tenantName}</span></div></td>
-                              <td className="ud-mono2">{fmtDate(r.signedDate)}</td>
-                              <td className="ctr ud-mono2">{r.months} th</td>
-                              <td className="ctr"><span className="ptt-tier">{r.tierPercent != null ? r.tierPercent + '%' : '—'}</span></td>
-                              <td className="num"><span className="ud-mono">{fmtFull(r.expectedAmount)}</span></td>
-                              <td className="num"><span className={'ud-mono' + (r.status === 'paid' ? ' paid' : '')}>{r.voucherAmount != null ? fmtFull(r.voucherAmount) : '—'}</span></td>
-                              <td className="act">
-                                {r.status === 'unpaid' && (
-                                  <button type="button" className="ptt-comm-pay" disabled={!canRecordPayment} onClick={() => setCommRow(r)}><HandCoins />Chi HH</button>
-                                )}
-                                {r.status === 'draft' && (
-                                  <span className="ud-acts">
-                                    <span className="ptt-badge-draft">CHỜ DUYỆT</span>
-                                    <button type="button" className="ptt-paydraft" disabled={!canRecordPayment} onClick={() => setCommRow(r)}><Check />Duyệt</button>
-                                  </span>
-                                )}
-                                {r.status === 'paid' && <span className="ptt-comm-paid">Đã chi</span>}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                      <div className="ptt-comm-note">HH dự kiến = <b>bậc hoa hồng</b> của tòa × tiền phòng theo số tháng HĐ. <b>Lưu chờ duyệt</b> chờ duyệt · <b>Chi &amp; duyệt</b> vào sổ ngay. Mỗi HĐ chỉ chi 1 lần (khoá ở DB).</div>
-                    </div>
-                  )}
-                </div>
-              </>
-            );
-          })()}
-        </div>
-      )}
+      {/* ===== SỔ THEO DÕI: cọc đã thu ===== */}
+      {isDepL && <DepositLedgerSection period={period} />}
 
       {/* ===== MAINTENANCE BATCH ===== */}
       {isBatch && (

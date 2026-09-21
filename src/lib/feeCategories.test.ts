@@ -3,11 +3,12 @@ import { FEE_CATEGORIES, FEE_GROUPS, feeTypeMatches, feeCategoryOf } from './fee
 import { FIXED_EXPENSE_CATEGORIES, nrm } from './fixedExpenseCategories';
 
 describe('FEE_CATEGORIES registry', () => {
-  it('đủ 13 hạng mục + 4 nhóm', () => {
-    // 01/08/2026: thêm nhóm "Thanh lý & Cọc" — ba SỔ THEO DÕI (chi thanh lý,
-    // thưởng Sale, cọc đã thu). Chúng không phải nút chi theo kỳ.
-    expect(FEE_CATEGORIES).toHaveLength(13);
-    expect(FEE_GROUPS).toEqual(['Phí theo tòa', 'Hoa hồng', 'Bảo trì', 'Thanh lý & Cọc']);
+  it('đủ 11 hạng mục + 4 nhóm', () => {
+    // 21/09/2026: gộp ba mục hoa_hong / chi_thanh_ly / thuong_sale thành MỘT mục
+    // `hop_dong` (khu "Hợp đồng & quyết toán"). 13 → 11. Nhóm "Hoa hồng" biến
+    // mất, nhóm "Thanh lý & Cọc" thu về đúng `coc_da_thu`.
+    expect(FEE_CATEGORIES).toHaveLength(11);
+    expect(FEE_GROUPS).toEqual(['Hợp đồng & quyết toán', 'Phí theo tòa', 'Bảo trì', 'Cọc']);
     expect(FEE_CATEGORIES.every((c) => FEE_GROUPS.includes(c.group))).toBe(true);
   });
 
@@ -22,9 +23,13 @@ describe('FEE_CATEGORIES registry', () => {
     expect(FEE_CATEGORIES.filter((c) => c.elevatorGated).map((c) => c.key)).toEqual(['thang_may']);
   });
 
-  it('families đúng: dien_nuoc=EN, hoa_hong=COMMISSION, bao_tri=MAINTENANCE_BATCH', () => {
+  it('families đúng: dien_nuoc=EN, hop_dong=CONTRACT_SETTLEMENT, bao_tri=MAINTENANCE_BATCH', () => {
     expect(feeCategoryOf('dien_nuoc')?.family).toBe('EN');
-    expect(feeCategoryOf('hoa_hong')?.family).toBe('COMMISSION');
+    expect(feeCategoryOf('hop_dong')?.family).toBe('CONTRACT_SETTLEMENT');
+    // Ba key cũ đã bị gộp — không còn tồn tại.
+    expect(feeCategoryOf('hoa_hong')).toBeUndefined();
+    expect(feeCategoryOf('chi_thanh_ly')).toBeUndefined();
+    expect(feeCategoryOf('thuong_sale')).toBeUndefined();
     expect(feeCategoryOf('bao_tri')?.family).toBe('MAINTENANCE_BATCH');
     expect(feeCategoryOf('bao_tri')?.subtypes?.map((s) => s.key)).toEqual(['ml', 'mg']);
   });
