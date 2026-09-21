@@ -1,0 +1,96 @@
+/* =============================================================================
+   CSS RIÊNG của khu "Hợp đồng & quyết toán".
+
+   Mọi class ở đây có tiền tố `cs-`. KHÔNG sửa class dùng chung (.ptt-*, .ud-*)
+   và không đụng global — đợt trước tính năng này bị gỡ vì lan sang trang khác.
+   File này chỉ được import bởi ContractSettlementSection.
+   ============================================================================= */
+
+.cs-wrap { display: flex; flex-direction: column; gap: 14px; padding: 14px; }
+
+.cs-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.cs-stat {
+  text-align: left; background: #fff; border: 1px solid #e7e3da;
+  border-radius: 11px; padding: 11px 13px; min-width: 0; cursor: pointer;
+}
+.cs-stat.on { border-color: #1f7a52; box-shadow: inset 0 0 0 1px #1f7a52; }
+.cs-stat-lbl { font-size: 12px; color: #514c42; }
+.cs-stat-num {
+  font-family: 'Space Mono', ui-monospace, monospace;
+  font-size: 21px; font-weight: 700; margin: 4px 0 2px; line-height: 1.2;
+}
+.cs-stat-sub { font-size: 11px; color: #8d8678; }
+
+.cs-filters { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.cs-chip {
+  border: 1px solid #e7e3da; background: #fff; border-radius: 999px;
+  padding: 5px 11px; font-size: 12px; font-weight: 500; color: #514c42; cursor: pointer;
+}
+.cs-chip.on { background: #e8f3ec; border-color: #1f7a52; color: #1f7a52; font-weight: 700; }
+.cs-chip-n { font-family: 'Space Mono', ui-monospace, monospace; font-size: 10.5px; margin-left: 6px; opacity: .7; }
+
+.cs-block { background: #fff; border: 1px solid #e7e3da; border-radius: 12px; overflow: clip; }
+.cs-block-head {
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  padding: 10px 13px; border-bottom: 1px solid #e7e3da; background: #faf8f4;
+}
+.cs-block-title { font-size: 13px; font-weight: 700; }
+.cs-block-sub { font-size: 11.5px; color: #8d8678; }
+
+.cs-row {
+  display: grid; grid-template-columns: minmax(150px, 1.2fr) minmax(110px, .9fr)
+    minmax(120px, 1fr) minmax(110px, .8fr) minmax(120px, .9fr) auto;
+  gap: 0 12px; align-items: center; padding: 10px 13px; border-bottom: 1px solid #efece4;
+}
+.cs-row:last-child { border-bottom: 0; }
+.cs-room { font-family: 'Space Mono', ui-monospace, monospace; font-weight: 700; font-size: 13px; }
+.cs-sub { font-size: 11.5px; color: #8d8678; margin-top: 2px; }
+.cs-amount { text-align: right; font-family: 'Space Mono', ui-monospace, monospace; font-weight: 700; font-size: 13px; white-space: nowrap; }
+
+.cs-tag { display: inline-block; padding: 2px 7px; border-radius: 6px; font-size: 10.5px; font-weight: 600; white-space: nowrap; }
+.cs-tag.red { background: #fcebe9; color: #d6453f; }
+.cs-tag.amber { background: #fbf1da; color: #8a6111; }
+.cs-tag.green { background: #e6f5ec; color: #1f9d57; }
+.cs-tag.violet { background: #f1ecfa; color: #7c5cc4; }
+.cs-tag.grey { background: #f0ede6; color: #514c42; }
+.cs-tags { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+
+.cs-btn {
+  border: 1px solid #e7e3da; background: #fff; border-radius: 8px;
+  padding: 6px 10px; font-size: 12px; font-weight: 600; color: #1f7a52;
+  white-space: nowrap; cursor: pointer;
+}
+.cs-btn.primary { background: #1f7a52; border-color: #1f7a52; color: #fff; }
+.cs-btn.danger { color: #d6453f; }
+.cs-btn:disabled { opacity: .45; cursor: not-allowed; }
+.cs-acts { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
+
+.cs-empty { text-align: center; padding: 26px 14px; color: #8d8678; font-size: 12.5px; }
+.cs-note { font-size: 11.5px; color: #8d8678; line-height: 1.6; }
+.cs-warn { padding: 9px 11px; background: #fbf1da; color: #8a6111; border-radius: 8px; font-size: 12px; line-height: 1.6; }
+
+/* ── Modal ───────────────────────────────────────────────────────────────── */
+.cs-modal-scrim {
+  position: fixed; inset: 0; background: rgba(27, 24, 19, .55); z-index: 60;
+  display: flex; align-items: flex-start; justify-content: center; padding: 20px; overflow: auto;
+}
+.cs-modal {
+  width: 100%; max-width: 940px; background: #fff; border-radius: 14px;
+  box-shadow: 0 24px 70px rgba(27, 24, 19, .35); overflow: clip; font-size: 13px;
+}
+.cs-modal-head { padding: 15px 18px; border-bottom: 1px solid #e7e3da; display: flex; justify-content: space-between; gap: 14px; align-items: flex-start; }
+.cs-modal-body { display: grid; grid-template-columns: minmax(0, 1fr) 320px; align-items: start; }
+.cs-modal-left { padding: 15px 18px; min-width: 0; }
+.cs-modal-right { border-left: 1px solid #e7e3da; padding: 15px 16px; display: flex; flex-direction: column; gap: 13px; min-width: 0; }
+.cs-kv { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; padding: 5px 0; border-bottom: 1px solid #efece4; }
+.cs-kv span:first-child { color: #8d8678; }
+.cs-field { display: flex; flex-direction: column; gap: 4px; font-size: 11.5px; color: #8d8678; }
+.cs-input { border: 1px solid #e7e3da; border-radius: 7px; padding: 7px 9px; font-size: 12.5px; background: #fff; font-family: inherit; }
+.cs-textarea { border: 1px solid #e7e3da; border-radius: 8px; padding: 8px 9px; font-size: 12.5px; resize: vertical; font-family: inherit; }
+.cs-actions { border-top: 1px solid #e7e3da; padding-top: 12px; display: grid; gap: 7px; }
+
+@media (max-width: 1100px) {
+  .cs-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cs-modal-body { grid-template-columns: minmax(0, 1fr); }
+  .cs-modal-right { border-left: 0; border-top: 1px solid #e7e3da; }
+}
