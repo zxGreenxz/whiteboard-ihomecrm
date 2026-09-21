@@ -271,11 +271,10 @@ export const useUpdateIncomeExpense = () => {
   });
 };
 
-export const useQuickUpdateIncomeExpense = (options: {managed?: boolean} = {}) => {
+export const useQuickUpdateIncomeExpense = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    retry: false,
     mutationFn: async (input: QuickUpdateIncomeExpenseInput) => {
       const { error } = await supabase.rpc(
         "update_income_expense_quick",
@@ -287,12 +286,11 @@ export const useQuickUpdateIncomeExpense = (options: {managed?: boolean} = {}) =
         }
       );
       if (error) {
-        if (!options.managed) toast.error(error.message || "Không thể cập nhật phiếu");
+        toast.error(error.message || "Không thể cập nhật phiếu");
         throw error;
       }
     },
     onSuccess: () => {
-      if (options.managed) return;
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
       queryClient.invalidateQueries({ queryKey: ["income-expense-batches"] });
       queryClient.invalidateQueries({ queryKey: ["accounts-with-balance"] });

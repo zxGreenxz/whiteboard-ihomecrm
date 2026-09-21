@@ -122,11 +122,10 @@ export interface FlexCancelInput {
   expectedPostingVersion?: number | null;
 }
 
-export const useCancelVoucherFlex = (options: {managed?: boolean} = {}) => {
+export const useCancelVoucherFlex = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    retry: false,
     mutationFn: async (input: FlexCancelInput) => {
       const { data, error } = await supabase.rpc(
         "cancel_income_expense_flex_v1",
@@ -151,13 +150,12 @@ export const useCancelVoucherFlex = (options: {managed?: boolean} = {}) => {
           queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
           queryClient.invalidateQueries({ queryKey: ["flex-cancel-eligibility"] });
         }
-        if (!options.managed) toast.error(periodBlockMessage(msg) ?? msg ?? "Không huỷ được phiếu");
+        toast.error(periodBlockMessage(msg) ?? msg ?? "Không huỷ được phiếu");
         throw error;
       }
       return data as { id: string; changed: boolean; cancellation_kind: string };
     },
     onSuccess: (data) => {
-      if (options.managed) return;
       for (const key of [
         ["income-expenses"],
         ["income-expense-batches"],

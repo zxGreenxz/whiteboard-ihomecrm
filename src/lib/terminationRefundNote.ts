@@ -145,12 +145,12 @@ export function parseTerminationRefundFacts(raw: Json | null | undefined): Termi
   };
 }
 
-/** Nhắc chọn sổ ở bước chi, không hướng người dùng sửa phiếu để có quyền duyệt. */
+/** Dòng đầu: nhắc chọn sổ quỹ CHỈ khi phiếu còn chờ duyệt và chưa gán sổ. */
 export function dongDauHoanKhach(f: TerminationRefundFacts): string {
   const canChonSo = f.voucher.approval_status === "UNAPPROVED" && !f.voucher.account_id;
   return (
     "[HOÀN KHÁCH THANH LÝ] Phiếu chi hoàn khách (tiền thật)." +
-    (canChonSo ? " Chọn sổ quỹ khi thực hiện chi hoàn khách." : "")
+    (canChonSo ? " CHỌN SỔ QUỸ chi tiền (Sửa phiếu) rồi mới duyệt được." : "")
   );
 }
 
@@ -158,7 +158,7 @@ export function dongDauHoanKhach(f: TerminationRefundFacts): string {
 export function buildTerminationHeaderLines(f: TerminationRefundFacts): string[] {
   const c = f.contract;
   const maHD = c?.contract_number ?? "—";
-  const ngayTL = fmtNgay(f.termination?.termination_date);
+  const ngayTL = fmtNgay(f.termination?.actual_move_out_date ?? f.end_date);
   const lines: string[] = [];
   lines.push(dongDauHoanKhach(f));
   lines.push(`QUYẾT TOÁN THANH LÝ ${ngayTL} — HĐ ${maHD}`);
@@ -170,16 +170,14 @@ export function buildTerminationHeaderLines(f: TerminationRefundFacts): string[]
   // Sau thanh lý, contracts.deposit_paid đã bị trừ bởi chính phiếu "Cấn cọc →
   // doanh thu" (chi nội bộ, is_deposit) nên KHÔNG dùng; và chỉ liệt kê phiếu THU —
   // phiếu CHI trong danh sách là kết quả của quyết toán này, không phải nguồn cọc.
-  const daThu = f.termination?.deposit_used ?? c?.deposit_paid ?? null;
+  const daThu = f.termination?.deposit_used ?? c?.deposit_paid ?? 0;
   const vouchers = (c?.deposit_vouchers ?? []).filter((v) => v.type === "INCOME");
-  if (daThu === null) {
-    lines.push("Cọc đã thu: chưa xác minh");
-  } else if (vouchers.length === 0) {
+  if (vouchers.length === 0) {
     lines.push(`Cọc đã thu: ${formatVND(daThu)} (chưa có phiếu thu cọc)`);
   } else {
     lines.push(`Cọc đã thu: ${formatVND(daThu)}`);
+    for (const v of vouchers) lines.push(dongPhieuCoc(v));
   }
-  for (const v of vouchers) lines.push(dongPhieuCoc(v));
   lines.push("-");
   return lines;
 }
@@ -203,53 +201,6 @@ export interface TerminationCard {
   warning: string | null;
 }
 
-export interface VerifiedTerminationBreakdown {
-  actualMoveOutDate: string | null;
-  depositUsed: number;
-  outstandingDebt: number;
-  earlyTerminationFee: number;
-  rentRefundAmount: number;
-  totalDeductions: number | null;
-  refundAmount: number | null;
-  excessRent: number;
-  shortfallMode: "PAID" | "DEBT" | null;
-  settlementItems: { description: string; amount: number; type: string | null }[];
-  refundItems: { description: string; amount: number; typeName: string | null; isDeposit: boolean }[];
-}
-
-/** Adapts the authenticated financial reader to the existing settlement math/card. */
-export function buildTerminationCardFromBreakdown(
-  detail: VerifiedTerminationBreakdown,
-  voucherTotal: number | null,
-): TerminationCard {
-  const facts = {
-    voucher: { id: '', code: null, total_amount: voucherTotal ?? 0, voucher_date: null, approval_status: null, account_id: null, notes: null },
-    contract: null,
-    end_date: detail.actualMoveOutDate,
-    termination: {
-      termination_date: null,
-      actual_move_out_date: detail.actualMoveOutDate,
-      outstanding_debt: detail.outstandingDebt,
-      early_termination_fee: detail.earlyTerminationFee,
-      deposit_used: detail.depositUsed,
-      rent_refund_amount: detail.rentRefundAmount,
-      total_deductions: detail.totalDeductions,
-      refund_amount: detail.refundAmount,
-      status: null,
-      notes: null,
-    },
-    excess_rent: detail.excessRent,
-    shortfall_mode: detail.shortfallMode,
-    settlement_items: detail.settlementItems,
-    refund_items: detail.refundItems.map(item => ({ ...item, type_name: item.typeName, is_deposit: item.isDeposit })),
-  } satisfies TerminationRefundFacts;
-  const card = buildTerminationCard(facts);
-  if (!card) throw Error('Verified termination breakdown is missing its record');
-  if (voucherTotal !== null) return card;
-  const warning=card.warning?.split('\n').filter(line=>!line.startsWith('Số phiếu chi ')).join('\n')||null;
-  return { ...card, warning };
-}
-
 /** Khung TỔNG HỢP y như TerminateDialog §4, tính lại từ hồ sơ đã lưu. */
 export function buildTerminationCard(f: TerminationRefundFacts): TerminationCard | null {
   const t = f.termination;
@@ -260,9 +211,9 @@ export function buildTerminationCard(f: TerminationRefundFacts): TerminationCard
     .reduce((s, it) => s + it.amount, 0);
   const extraItems = f.settlement_items.filter((it) => it.type !== "PENALTY");
   const extraFromItems = extraItems.reduce((s, it) => s + it.amount, 0);
-  // early_termination_fee is the stored money authority. Items explain that
-  // amount, but a mismatched item list must never silently replace it.
-  const extra = Math.max(t.early_termination_fee - penalty, 0);
+  // early_termination_fee = phạt + thu thêm (writer ghi gộp). Ưu tiên hồ sơ; item
+  // chỉ để liệt kê. Hồ sơ = 0 mà item có tiền ⇒ tin item (hồ sơ cũ thiếu cột).
+  const extra = Math.max(t.early_termination_fee - penalty, 0) || extraFromItems;
 
   const s = computeTerminationSettlement({
     depositPaid: t.deposit_used,
@@ -295,16 +246,9 @@ export function buildTerminationCard(f: TerminationRefundFacts): TerminationCard
     rows.push({ label: "Cọc cấn vào khấu trừ (bút toán nội bộ)", amount: s.appliedDeposit, tone: "muted" });
   }
 
-  const warnings: string[] = [];
-  const settlementItemTotal = penalty + extraFromItems;
-  if (Math.abs(t.early_termination_fee - settlementItemTotal) > 1) {
-    warnings.push(`Chi tiết khoản thu thêm ${formatVND(settlementItemTotal)} khác số trên hồ sơ ${formatVND(t.early_termination_fee)}.`);
-  }
-  if (t.total_deductions !== null && Math.abs(t.total_deductions - s.charges) > 1) {
-    warnings.push(`Tổng khấu trừ trên hồ sơ ${formatVND(t.total_deductions)} khác số tính từ chi tiết ${formatVND(s.charges)}.`);
-  }
+  let warning: string | null = null;
   if (Math.abs(s.totalRefund - f.voucher.total_amount) > 1) {
-    warnings.push(`Số phiếu chi ${formatVND(f.voucher.total_amount)} khác số tính lại ${formatVND(s.totalRefund)} — hồ sơ quyết toán có thể đã chỉnh tay, đối chiếu ghi chú gốc.`);
+    warning = `Số phiếu chi ${formatVND(f.voucher.total_amount)} khác số tính lại ${formatVND(s.totalRefund)} — hồ sơ quyết toán có thể đã chỉnh tay, đối chiếu ghi chú gốc.`;
   }
 
   const netLabel =
@@ -312,5 +256,5 @@ export function buildTerminationCard(f: TerminationRefundFacts): TerminationCard
       ? "Chủ nhà trả lại khách"
       : `Khách còn phải trả${f.shortfall_mode === "DEBT" ? " (ghi nợ — chờ thu)" : f.shortfall_mode === "PAID" ? " (đã thu khi thanh lý)" : ""}`;
 
-  return { rows, totalDeductions: s.charges, net: s.net, netLabel, settlement: s, warning: warnings.length ? warnings.join('\n') : null };
+  return { rows, totalDeductions: s.charges, net: s.net, netLabel, settlement: s, warning };
 }

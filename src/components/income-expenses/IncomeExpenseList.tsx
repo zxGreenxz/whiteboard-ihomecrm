@@ -22,8 +22,11 @@ import {
   type PaginationState,
 } from '@/hooks/usePagination';
 import type { IncomeExpenseWithRelations } from '@/hooks/useIncomeExpenses';
-import { useIsSuperAdmin } from '@/hooks/useIsAdmin';
-import { decideIncomeExpenseActions, pendingIncomeExpenseActionContext, type IncomeExpenseActionContext, type IncomeExpenseAction } from '@/lib/incomeExpenseActionPolicy';
+import { useIsAdmin, useIsSuperAdmin } from '@/hooks/useIsAdmin';
+import { useAuth } from '@/hooks/useAuth';
+import { useMyPermissions } from '@/hooks/useMyPermissions';
+import { canUse } from '@/lib/permissionPages';
+import { canShowAnnotateAction } from '@/lib/voucherAnnotate';
 import { getVoucherDisplayAttachments } from '@/lib/incomeExpenseSupplement';
 import { useFinanceV2Routes, isCanonicalRead } from '@/lib/financeV2Route';
 import {
@@ -46,11 +49,13 @@ import {
   ChevronRight,
   CornerDownRight,
 } from 'lucide-react';
-import type {
-  FlexCancelEligibility,
+import {
+  flexCancelGate,
+  type FlexCancelEligibility,
 } from '@/hooks/income-expenses/flexMutations';
-import type {
-  IncomeCancelEligibility,
+import {
+  voucherCancelDecision,
+  type IncomeCancelEligibility,
 } from '@/hooks/income-expenses/incomeVoucherCancel';
 import {
   groupReversalVouchers,
@@ -77,14 +82,7 @@ interface IncomeExpenseListProps {
   onEdit?: (voucher: IncomeExpenseWithRelations) => void;
   /** Append-only narrative/evidence; available independently of financial edits. */
   onQuickEdit?: (voucher: IncomeExpenseWithRelations) => void;
-  /** Legacy approval may also change cash; never relabel it approve-only. */
   onApprove?: (voucher: IncomeExpenseWithRelations) => void;
-  onApproveOnly?: (voucher: IncomeExpenseWithRelations) => void;
-  onApproveAndPost?: (voucher: IncomeExpenseWithRelations) => void;
-  onRequestChanges?: (voucher: IncomeExpenseWithRelations) => void;
-  onResubmitReview?: (voucher: IncomeExpenseWithRelations) => void;
-  /** Same trusted snapshot/policy context as the shared host controller. Missing rows stay disabled. */
-  actionContexts?: Record<string, IncomeExpenseActionContext>;
   /** Finance V2 §12.3: CUSTODIAN Thu/Chi phiếu ĐÃ DUYỆT-CHƯA GHI SỔ (không cần
    *  quyền duyệt). Chỉ hiện khi org CANONICAL read + phiếu APPROVED+UNPOSTED,
    *  và cả phiếu ĐÃ HOÀN TÁC (chi lại — thế hệ bút toán mới). */
@@ -98,9 +96,10 @@ interface IncomeExpenseListProps {
   onCopy?: (voucher: IncomeExpenseWithRelations) => void;
   /** Đợt 4: mở màn lịch sử (mốc lập/duyệt/huỷ + nhật ký trước/sau). */
   onHistory?: (voucher: IncomeExpenseWithRelations) => void;
-  /** @deprecated Compatibility prop. Supply strict cancellation readiness in actionContexts. */
+  /** Đợt 4: kết quả can_flex_cancel_v1 theo id — mờ nút Huỷ kèm lý do thay vì
+   *  bày nút rồi mới bắn toast lỗi. Thiếu (undefined) = chưa biết, giữ nút bật. */
   cancelEligibility?: Record<string, FlexCancelEligibility>;
-  /** @deprecated Compatibility prop. Supply strict cancellation readiness in actionContexts. */
+  /** ĐỢT A: kết quả can_cancel_income_voucher_v1 — chỉ dùng cho phiếu THU. */
   incomeCancelEligibility?: Record<string, IncomeCancelEligibility>;
   pagination: PaginationState;
   totalCount: number;
@@ -203,17 +202,14 @@ const IncomeExpenseList = ({
   onEdit,
   onQuickEdit,
   onApprove,
-  onApproveOnly,
-  onApproveAndPost,
-  onRequestChanges,
-  onResubmitReview,
-  actionContexts,
   onPostApproved,
   onReversePosting,
   onUnapprove,
   onVerify,
   onCopy,
   onHistory,
+  cancelEligibility,
+  incomeCancelEligibility,
   pagination,
   totalCount,
 }: IncomeExpenseListProps) => {
@@ -221,10 +217,20 @@ const IncomeExpenseList = ({
     () => calculatePaginationInfo(pagination.page, pagination.pageSize, totalCount),
     [pagination.page, pagination.pageSize, totalCount],
   );
+  const { data: isAdmin = false } = useIsAdmin();
   const { data: isSuperAdmin = false } = useIsSuperAdmin();
+  const { data: authUser } = useAuth();
+  const { data: perms } = useMyPermissions();
+  const currentUserId = authUser?.id ?? null;
   // Finance V2 §12.1: org CANONICAL read → badge composite 4 trục (Đã Duyệt -
   // Chưa Chi / Đã Chi / Đã hoàn tác…); org LEGACY giữ nhãn cũ.
   const v2Routes = useFinanceV2Routes();
+  // Quyền chi tiết: duyệt / huỷ phiếu thu chi (fallback legacy: approve cũ,
+  // cancel rơi về edit).
+  const canApproveVoucher = canUse(perms, 'income_expenses', 'approve');
+  const canCancelVoucher = canUse(perms, 'income_expenses', 'cancel');
+  const canEditVoucher = canUse(perms, 'income_expenses', 'edit');
+
   // --- Gộp ẩn phiếu đối ứng DI SẢN vào dòng phiếu gốc (plan Đợt 5) ---
   // Trước Đợt 5 mỗi lần hoàn tác khoản thu là sinh thêm một phiếu chi riêng, nên
   // lịch sử cũ có hai dòng rời rạc cho cùng một nghiệp vụ. Phiếu đã sinh thì
@@ -301,30 +307,16 @@ const IncomeExpenseList = ({
           {displayRows.map(({ voucher, reversalCount, netAmount, nested }) => {
             const isCancelled = voucher.approval_status === 'CANCELLED';
             const isUnapproved = voucher.approval_status === 'UNAPPROVED';
+            const isCreator =
+              !!currentUserId && voucher.user_id === currentUserId;
             const isVerified = !!voucher.verified_at;
-            const handlers: IncomeExpenseActionContext['handlers'] = {
-              approveOnly: !!onApproveOnly, legacyApprove: !!onApprove, approveAndPost: !!onApproveAndPost,
-              post: !!onPostApproved, reverse: !!onReversePosting, unapprove: !!onUnapprove, cancel: !!onCancel,
-              edit: !!onEdit, supplement: !!onQuickEdit, requestChanges: !!onRequestChanges, resubmitReview: !!onResubmitReview,
-            };
-            const supplied = actionContexts?.[voucher.id];
-            const context = supplied && (supplied.voucher.state !== 'ready' || supplied.voucher.value.id === voucher.id)
-              ? { ...supplied, handlers: Object.fromEntries(Object.entries(handlers).map(([name, present]) => [name, present && supplied.handlers[name as IncomeExpenseAction]])) }
-              : pendingIncomeExpenseActionContext(handlers, { approvalStatus: voucher.approval_status, postingStatus: voucher.posting_status, reviewState: voucher.review_state });
-            const availability = decideIncomeExpenseActions(context);
-            const actionButtons = [
-              { name: 'edit', label: isUnapproved ? 'Sửa phiếu chờ duyệt' : 'Sửa phiếu (Super Admin)', Icon: Pencil, run: () => onEdit?.(voucher) },
-              { name: 'supplement', label: 'Bổ sung chứng từ / ghi chú', Icon: FilePlus2, run: () => onQuickEdit?.(voucher) },
-              { name: 'approveOnly', label: 'Duyệt phiếu', Icon: CheckCircle2, run: () => onApproveOnly?.(voucher) },
-              { name: 'legacyApprove', label: 'Duyệt phiếu (đã thanh toán)', Icon: CheckCircle2, run: () => onApprove?.(voucher) },
-              { name: 'approveAndPost', label: voucher.type === 'INCOME' ? 'Duyệt và thu' : 'Duyệt và chi', Icon: Banknote, run: () => onApproveAndPost?.(voucher) },
-              { name: 'post', label: voucher.type === 'INCOME' ? 'Thu tiền vào sổ (phiếu đã duyệt)' : 'Chi tiền từ sổ (phiếu đã duyệt)', Icon: Banknote, run: () => onPostApproved?.(voucher) },
-              { name: 'reverse', label: voucher.type === 'INCOME' ? 'Mở lại (tiền rời sổ, sửa được rồi thu lại)' : 'Mở lại (tiền về sổ, sửa được rồi chi lại)', Icon: RotateCcw, run: () => onReversePosting?.(voucher) },
-              { name: 'unapprove', label: 'Huỷ duyệt (chuyển về Chờ duyệt) — Super Admin', Icon: Undo2, run: () => onUnapprove?.(voucher.id) },
-              { name: 'cancel', label: 'Huỷ phiếu', Icon: Ban, run: () => onCancel(voucher.id, voucher.type) },
-              { name: 'requestChanges', label: 'Yêu cầu sửa', Icon: Pencil, run: () => onRequestChanges?.(voucher) },
-              { name: 'resubmitReview', label: 'Chuyển chờ duyệt', Icon: Undo2, run: () => onResubmitReview?.(voucher) },
-            ] as const;
+            // Đợt 4 / ĐỢT A: server đã nói trước phiếu này huỷ được hay không.
+            // Phiếu THU hỏi reader riêng (biết LIFO + tiền thừa đã cấn đi đâu).
+            const cancelGate = voucherCancelDecision({
+              type: voucher.type,
+              income: incomeCancelEligibility?.[voucher.id],
+              flexGate: flexCancelGate(cancelEligibility?.[voucher.id]),
+            });
             // B4: lớp phiếu — Nội bộ (bút toán) hiển thị trung tính.
             const layer = voucherLayer({
               approval_status: voucher.approval_status,
@@ -333,6 +325,19 @@ const IncomeExpenseList = ({
               account_is_virtual: (voucher as any).account_is_virtual,
             });
             const isInternal = layer === 'INTERNAL';
+            // Nháp: cây bút mở full form (giữ nguyên flow cũ).
+            // Bổ sung chứng từ dùng thao tác riêng cho mọi trạng thái.
+            const showFullEdit = !!onEdit && (isUnapproved || isAdmin);
+            // Đợt 2: không còn giới hạn ở NGƯỜI TẠO — kế toán/quản lý có quyền
+            // sửa thu chi cũng đính hộ được chứng từ (server là nơi chốt).
+            const showQuickEdit = canShowAnnotateAction({
+              hasHandler: !!onQuickEdit,
+              isUnapproved,
+              isAdmin,
+              isCreator,
+              canEdit: canEditVoucher,
+            });
+
             const rowClass = [
               isCancelled ? 'opacity-60' : '',
               isInternal && !isCancelled ? 'bg-muted/40' : '',
@@ -380,14 +385,141 @@ const IncomeExpenseList = ({
                       </Button>
                     )}
 
-                    {actionButtons.map(({ name, label, Icon, run }) => {
-                      const action = availability[name];
-                      return action.visible && <Button key={name} variant="ghost" size="icon"
-                        className="h-8 w-8 text-slate-600 hover:text-slate-800"
-                        disabled={!action.enabled} aria-label={label} aria-busy={action.loading}
-                        title={action.reason ? label + ' — ' + action.reason : label}
-                        onClick={run}><Icon className="h-4 w-4" /></Button>;
-                    })}
+                    {/* Sửa: nháp -> mọi nhân viên; đã ghi nhận/đã huỷ -> chỉ super admin */}
+                    {showFullEdit && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                        onClick={() => onEdit!(voucher)}
+                        title={isUnapproved ? 'Sửa phiếu chờ duyệt' : 'Sửa phiếu (Super Admin)'}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    )}
+
+                    {/* Bổ sung độc lập với quyền/trạng thái sửa phiếu. */}
+                    {showQuickEdit && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-sky-600 hover:text-sky-700 hover:bg-sky-50"
+                        onClick={() => onQuickEdit!(voucher)}
+                        title="Bổ sung chứng từ / ghi chú"
+                        aria-label="Bổ sung chứng từ / ghi chú"
+                      >
+                        <FilePlus2 className="h-4 w-4" />
+                      </Button>
+                    )}
+
+                    {/* Duyệt (chỉ khi nháp) */}
+                    {canApproveVoucher && isUnapproved && onApprove && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50"
+                        onClick={() => onApprove(voucher)}
+                        title="Duyệt phiếu (đã thanh toán)"
+                      >
+                        <CheckCircle2 className="h-4 w-4" />
+                      </Button>
+                    )}
+
+                    {/* Finance V2 §12.3: Thu/Chi phiếu ĐÃ DUYỆT - CHƯA GHI SỔ
+                        (CUSTODIAN, không cần quyền duyệt) — chỉ org CANONICAL.
+                        Phiếu ĐÃ HOÀN TÁC cũng chi lại được (thế hệ mới, 7x). */}
+                    {onPostApproved &&
+                      !isCancelled &&
+                      voucher.approval_status === 'APPROVED' &&
+                      voucher.posting_status !== 'POSTED' &&
+                      voucher.posting_status !== 'NOT_APPLICABLE' &&
+                      isCanonicalRead(v2Routes.getOrg(voucher.organization_id ?? null)) && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                          onClick={() => onPostApproved(voucher)}
+                          title={
+                            voucher.posting_status === 'REVERSED'
+                              ? (voucher.type === 'INCOME'
+                                  ? 'Thu LẠI vào sổ (bút toán mới sau hoàn tác)'
+                                  : 'Chi LẠI từ sổ (bút toán mới sau hoàn tác)')
+                              : voucher.type === 'INCOME'
+                                ? 'Thu tiền vào sổ (phiếu đã duyệt)'
+                                : 'Chi tiền từ sổ (phiếu đã duyệt)'
+                          }
+                        >
+                          <Banknote className="h-4 w-4" />
+                        </Button>
+                      )}
+
+                    {/* Mô hình 2 nút: HOÀN TÁC phiếu ĐÃ GHI SỔ (tiền về sổ,
+                        phiếu nằm chờ Chi lại hoặc Huỷ). CUSTODIAN đúng sổ. */}
+                    {onReversePosting &&
+                      !isCancelled &&
+                      voucher.posting_status === 'POSTED' &&
+                      isCanonicalRead(v2Routes.getOrg(voucher.organization_id ?? null)) && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-violet-600 hover:text-violet-700 hover:bg-violet-50"
+                          onClick={() => onReversePosting(voucher)}
+                          title={
+                            // Đợt 4: đây CHÍNH LÀ nút "Mở lại" của chủ. Nó gọi
+                            // reverse_posted_income_expense_v2 sẵn có: tiền quay
+                            // về sổ, phiếu ở trạng thái Đã duyệt - chưa chi nên
+                            // sửa được và chi lại được.
+                            //
+                            // CỐ Ý KHÔNG đưa phiếu về "Chờ duyệt":
+                            // unapprove_voucher không reset review_state, mà cả
+                            // hai writer duyệt đều đòi review_state PENDING/
+                            // CHANGES_REQUESTED ⇒ tiền ra khỏi sổ rồi kẹt ở đó
+                            // vĩnh viễn, không ai duyệt lại được.
+                            voucher.type === 'INCOME'
+                              ? 'Mở lại (tiền rời sổ, sửa được rồi thu lại)'
+                              : 'Mở lại (tiền về sổ, sửa được rồi chi lại)'
+                          }
+                        >
+                          <RotateCcw className="h-4 w-4" />
+                        </Button>
+                      )}
+
+                    {/* Huỷ duyệt: phiếu đã ghi nhận -> Nháp (chỉ super admin) */}
+                    {isAdmin && !isUnapproved && !isCancelled && onUnapprove && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                        onClick={() => onUnapprove(voucher.id)}
+                        title="Huỷ duyệt (chuyển về Chờ duyệt) — Super Admin"
+                      >
+                        <Undo2 className="h-4 w-4" />
+                      </Button>
+                    )}
+
+                    {/* Huỷ phiếu (chỉ khi chưa huỷ). Đợt 4: can_flex_cancel_v1
+                        đã trả lời trước — không bấm được thì mờ nút và NÓI RÕ
+                        vì sao, thay vì để người dùng bấm rồi ăn toast lỗi. */}
+                    {canCancelVoucher && !isCancelled && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        disabled={!cancelGate.canCancel}
+                        className={
+                          cancelGate.canCancel
+                            ? 'h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50'
+                            : 'h-8 w-8 text-zinc-300'
+                        }
+                        onClick={() => onCancel(voucher.id, voucher.type)}
+                        title={
+                          cancelGate.reason
+                            ? `Huỷ phiếu — ${cancelGate.reason}`
+                            : 'Huỷ phiếu'
+                        }
+                      >
+                        <Ban className="h-4 w-4" />
+                      </Button>
+                    )}
 
                     {/* Lịch sử phiếu: mốc lập/duyệt/huỷ + lý do + nhật ký
                         trước/sau. Với phiếu đã huỷ đây là chỗ đối soát duy nhất

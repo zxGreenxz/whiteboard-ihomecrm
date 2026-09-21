@@ -1,31 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import {
-  DESKTOP_FEE_CATEGORY_KEYS,
-  FEE_CATEGORIES,
-  FEE_GROUPS,
-  SHEET_FEE_CATEGORY_KEYS,
-  effectiveDesktopFeeCategory,
-  effectiveSheetFeeCategory,
-  feeOverviewActionKey,
-  feeOverviewCategories,
-  feeTypeMatches,
-  feeCategoryOf,
-} from './feeCategories';
+import { FEE_CATEGORIES, FEE_GROUPS, feeTypeMatches, feeCategoryOf } from './feeCategories';
 import { FIXED_EXPENSE_CATEGORIES, nrm } from './fixedExpenseCategories';
 
 describe('FEE_CATEGORIES registry', () => {
-  it('thay ba cửa thanh toán cũ bằng đúng một khu Hợp đồng & quyết toán', () => {
-    expect(FEE_CATEGORIES).toHaveLength(11);
-    expect(FEE_GROUPS).toEqual(['Phí theo tòa', 'Bảo trì', 'Thanh lý & Cọc']);
+  it('đủ 13 hạng mục + 4 nhóm', () => {
+    // 01/08/2026: thêm nhóm "Thanh lý & Cọc" — ba SỔ THEO DÕI (chi thanh lý,
+    // thưởng Sale, cọc đã thu). Chúng không phải nút chi theo kỳ.
+    expect(FEE_CATEGORIES).toHaveLength(13);
+    expect(FEE_GROUPS).toEqual(['Phí theo tòa', 'Hoa hồng', 'Bảo trì', 'Thanh lý & Cọc']);
     expect(FEE_CATEGORIES.every((c) => FEE_GROUPS.includes(c.group))).toBe(true);
-    expect(FEE_CATEGORIES.map((c) => c.key)).toContain('hop_dong');
-    expect(FEE_CATEGORIES.map((c) => c.key)).not.toEqual(expect.arrayContaining(['hoa_hong', 'chi_thanh_ly', 'thuong_sale']));
-  });
-
-  it('giữ hoa hồng trong Tổng quan nhưng không đưa cửa cũ trở lại picker', () => {
-    expect(FEE_CATEGORIES.map((category) => category.key)).not.toContain('hoa_hong_overview');
-    expect(feeOverviewCategories(FEE_CATEGORIES).map((category) => category.key)).toContain('hoa_hong_overview');
-    expect(feeOverviewActionKey(feeOverviewCategories(FEE_CATEGORIES).find((category) => category.key === 'hoa_hong_overview')!)).toBe('hop_dong');
   });
 
   it('đúng ĐÚNG 4 hạng mục multiPeriod (Internet/Công An/Rác/Thang máy)', () => {
@@ -39,23 +22,11 @@ describe('FEE_CATEGORIES registry', () => {
     expect(FEE_CATEGORIES.filter((c) => c.elevatorGated).map((c) => c.key)).toEqual(['thang_may']);
   });
 
-  it('families đúng cho các khu còn lại và khu quyết toán mới', () => {
+  it('families đúng: dien_nuoc=EN, hoa_hong=COMMISSION, bao_tri=MAINTENANCE_BATCH', () => {
     expect(feeCategoryOf('dien_nuoc')?.family).toBe('EN');
-    expect(feeCategoryOf('hop_dong')?.family).toBe('CONTRACT_SETTLEMENT');
+    expect(feeCategoryOf('hoa_hong')?.family).toBe('COMMISSION');
     expect(feeCategoryOf('bao_tri')?.family).toBe('MAINTENANCE_BATCH');
     expect(feeCategoryOf('bao_tri')?.subtypes?.map((s) => s.key)).toEqual(['ml', 'mg']);
-  });
-
-  it('desktop nhận key cũ vào khu mới còn Sheet luôn rơi về Tổng quan mà không đổi key đã lưu', () => {
-    expect(DESKTOP_FEE_CATEGORY_KEYS).toContain('hop_dong');
-    expect(SHEET_FEE_CATEGORY_KEYS).not.toContain('hop_dong');
-    for (const key of ['hoa_hong', 'chi_thanh_ly', 'thuong_sale']) {
-      expect(effectiveDesktopFeeCategory(key)).toBe('hop_dong');
-      expect(effectiveSheetFeeCategory(key)).toBe('overview');
-    }
-    expect(effectiveSheetFeeCategory('hop_dong')).toBe('overview');
-    expect(effectiveDesktopFeeCategory('unknown')).toBe('overview');
-    expect(effectiveSheetFeeCategory('coc_da_thu')).toBe('coc_da_thu');
   });
 });
 

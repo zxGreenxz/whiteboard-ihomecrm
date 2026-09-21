@@ -49,7 +49,7 @@ const goc = (over: Partial<TerminationRefundFacts> = {}): TerminationRefundFacts
 describe("buildTerminationHeaderLines — từng dòng, không gộp cụm", () => {
   it("5 dòng đầu + phiếu cọc gộp hoá đơn ghi rõ phần cọc / tổng phiếu, kết bằng dấu -", () => {
     expect(buildTerminationHeaderLines(goc())).toEqual([
-      "[HOÀN KHÁCH THANH LÝ] Phiếu chi hoàn khách (tiền thật). Chọn sổ quỹ khi thực hiện chi hoàn khách.",
+      "[HOÀN KHÁCH THANH LÝ] Phiếu chi hoàn khách (tiền thật). CHỌN SỔ QUỸ chi tiền (Sửa phiếu) rồi mới duyệt được.",
       "QUYẾT TOÁN THANH LÝ 01/08/2026 — HĐ HĐT-056021/01042025",
       "104/405PVB · bắt đầu 01/04/2025 · kết thúc 01/08/2026 (HĐT-056021/01042025 - 1)",
       "Cọc đã thu: 4.200.000 đ",
@@ -58,7 +58,7 @@ describe("buildTerminationHeaderLines — từng dòng, không gộp cụm", () 
     ]);
   });
 
-  it("phiếu đã duyệt / đã gán sổ ⇒ không còn nhắc chọn sổ quỹ", () => {
+  it("phiếu đã duyệt / đã gán sổ ⇒ không còn nhắc CHỌN SỔ QUỸ", () => {
     const lines = buildTerminationHeaderLines(
       goc({ voucher: { ...goc().voucher, approval_status: "APPROVED", account_id: "a1" } }),
     );
@@ -91,15 +91,10 @@ describe("buildTerminationHeaderLines — từng dòng, không gộp cụm", () 
     expect(lines[3]).toBe("Cọc đã thu: 4.200.000 đ (chưa có phiếu thu cọc)");
   });
 
-  it("không có cả hợp đồng lẫn hồ sơ thanh lý ⇒ chưa xác minh cọc, không gán 0", () => {
+  it("không có cả hợp đồng lẫn hồ sơ thanh lý ⇒ 0 đ, không ném", () => {
     const lines = buildTerminationHeaderLines(goc({ contract: null, termination: null }));
-    expect(lines[1]).toBe("QUYẾT TOÁN THANH LÝ — — HĐ —");
-    expect(lines[3]).toBe("Cọc đã thu: chưa xác minh");
-  });
-
-  it("ngày quyết toán lấy ngày thanh lý nghiệp vụ, không thay bằng ngày ra ở hay ngày kết thúc", () => {
-    const lines = buildTerminationHeaderLines(goc({ termination: { ...goc().termination!, termination_date: '2026-08-03', actual_move_out_date: '2026-08-01' } }));
-    expect(lines[1]).toBe('QUYẾT TOÁN THANH LÝ 03/08/2026 — HĐ HĐT-056021/01042025');
+    expect(lines[1]).toBe("QUYẾT TOÁN THANH LÝ 01/08/2026 — HĐ —");
+    expect(lines[3]).toBe("Cọc đã thu: 0 đ (chưa có phiếu thu cọc)");
   });
 });
 
@@ -156,22 +151,6 @@ describe("buildTerminationCard — khung tổng hợp khớp màn thanh lý", ()
 
   it("không có hồ sơ thanh lý ⇒ null (không dựng khung giả)", () => {
     expect(buildTerminationCard(goc({ termination: null }))).toBeNull();
-  });
-
-  it("cảnh báo khi tổng khấu trừ lưu trên hồ sơ lệch phép tính từ các dòng chi tiết", () => {
-    const card = buildTerminationCard(goc({ termination: { ...goc().termination!, total_deductions: 1 } }))!;
-    expect(card.warning).toMatch(/Tổng khấu trừ trên hồ sơ/);
-    expect(card.warning).toMatch(/1 đ/);
-    expect(card.warning).toMatch(/1\.912\.400 đ/);
-  });
-
-  it("cảnh báo khi tổng item không khớp phí trên hồ sơ dù header và phiếu vẫn tự khớp", () => {
-    const card = buildTerminationCard(goc({
-      settlement_items: [{ description: "Tiền vệ sinh", amount: 900_000, type: "OTHER" }],
-    }))!;
-    expect(card.warning).toMatch(/Chi tiết khoản thu thêm/);
-    expect(card.warning).toMatch(/900\.000 đ/);
-    expect(card.warning).toMatch(/1\.912\.400 đ/);
   });
 });
 

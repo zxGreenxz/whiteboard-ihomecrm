@@ -1,5 +1,3 @@
-import type { IncomeExpenseActionsController } from '@/hooks/income-expenses/useIncomeExpenseActions';
-import { IncomeExpenseActionButtons } from './IncomeExpenseActionButtons';
 import { useNavigate } from "react-router-dom";
 import { ReservationSettlementDetails } from "@/components/deposits/ReservationSettlementDetails";
 import { useQuery } from "@tanstack/react-query";
@@ -47,8 +45,6 @@ import {
 import { ReservationSettlementDialog } from "@/components/deposits/ReservationSettlementDialog";
 
 interface Props {
-  actions?: IncomeExpenseActionsController;
-  onBeforeAction?: (voucher: IncomeExpenseWithRelations) => void;
   voucher: IncomeExpenseWithRelations;
   onClose: () => void;
   onEdit?: (v: IncomeExpenseWithRelations) => void;
@@ -86,7 +82,6 @@ const REPEAT_LABEL: Record<string, string> = {
  * (sửa đầy đủ / sửa nhanh / duyệt / huỷ / in). Hiển thị trong khung .cm-app.
  */
 export function IncomeExpenseDetailMobile({
-  actions, onBeforeAction,
   voucher: v,
   onClose,
   onEdit,
@@ -198,7 +193,7 @@ export function IncomeExpenseDetailMobile({
         <div className="vd-sec">
           <span className="vd-sec-t">Thông tin chung</span>
           <div className="vd-acts">
-            {actions ? <IncomeExpenseActionButtons controller={actions} id={v.id} moneyAllowed={monetaryActionsAllowed} refundReverseAllowed={canReverseSettlementRefund} onChoose={() => { onBeforeAction?.(v); onClose(); }} /> : <>{showFullEdit && (
+            {showFullEdit && (
               <button
                 className="vd-act"
                 style={{ background: "#f59e0b" }}
@@ -288,8 +283,7 @@ export function IncomeExpenseDetailMobile({
                 <Ban size={15} />
               </button>
             )}
-            </>}
-              {isCancelled && isSuperAdmin && onRestore && (
+            {isCancelled && isSuperAdmin && onRestore && (
               <button
                 className="vd-act"
                 style={{ background: "#16a34a" }}

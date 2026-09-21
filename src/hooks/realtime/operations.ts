@@ -8,11 +8,11 @@ import type { SyncEntry } from "./types";
  * phản ứng ngay là số liệu hiệu quả kinh doanh tính TỪ chúng.
  */
 export const OPERATIONS_SYNC_ENTRIES: readonly SyncEntry[] = [
-  { table: "rooms", keys: [['income-expense-action-snapshots'], ['income-expense-action-cancellation'], ['contract-settlement'], ['contract-settlement-events'], ['room-cash-lifecycle'], ["business-performance"]] },
+  { table: "rooms", keys: [["business-performance"]] },
   {
     table: "buildings",
-    keys: [['income-expense-action-snapshots'], ['income-expense-action-cancellation'], ['contract-settlement'], ['contract-settlement-events'], ['room-cash-lifecycle'], ["business-performance"]],
+    keys: [["business-performance"]],
   },
   { table: "jobs", keys: [["jobs"]], domain: "jobs" },
-  { table: "customers", keys: [['income-expense-action-snapshots'], ['income-expense-action-cancellation'], ['contract-settlement'], ['contract-settlement-events'], ['room-cash-lifecycle'], ["customers"], ["customer-stats"]] },
+  { table: "customers", keys: [["customers"], ["customer-stats"]] },
 ];

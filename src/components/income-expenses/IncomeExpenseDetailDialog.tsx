@@ -1,5 +1,3 @@
-import type { IncomeExpenseActionsController } from '@/hooks/income-expenses/useIncomeExpenseActions';
-import { IncomeExpenseActionButtons } from './IncomeExpenseActionButtons';
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -51,8 +49,6 @@ import { formatVND } from "@/lib/utils";
 import { ReservationSettlementDialog } from "@/components/deposits/ReservationSettlementDialog";
 
 interface Props {
-  actions?: IncomeExpenseActionsController;
-  onBeforeAction?: (voucher: IncomeExpenseWithRelations) => void;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   voucher: IncomeExpenseWithRelations | null;
@@ -93,7 +89,6 @@ const SectionTitle = ({ children }: { children: React.ReactNode }) => (
 );
 
 export function IncomeExpenseDetailDialog({
-  actions, onBeforeAction,
   open,
   onOpenChange,
   voucher,
@@ -210,7 +205,7 @@ export function IncomeExpenseDetailDialog({
           <div className="flex items-center justify-between mt-1">
             <SectionTitle>Thông tin chung</SectionTitle>
             <div className="flex items-center gap-1.5">
-              {actions ? <IncomeExpenseActionButtons controller={actions} id={voucher.id} moneyAllowed={monetaryActionsAllowed} refundReverseAllowed={actions.availability(voucher.id).reverse.enabled} onChoose={() => { onBeforeAction?.(voucher); onOpenChange(false); }} /> : <>{showFullEdit && (
+              {showFullEdit && (
                 <Button
                   size="icon"
                   variant="default"
@@ -281,7 +276,6 @@ export function IncomeExpenseDetailDialog({
                   <Ban className="h-4 w-4 text-white" />
                 </Button>
               )}
-              </>}
               {isCancelled && isSuperAdmin && onRestore && (
                 <Button
                   size="icon"

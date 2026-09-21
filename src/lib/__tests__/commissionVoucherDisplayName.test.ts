@@ -96,7 +96,10 @@ describe("create_commission_voucher — tên theo phòng, không rơi chốt nà
   it("chữ ký 11 tham số KHÔNG đổi (không sinh overload cho PostgREST)", () => {
     const { sql } = live();
     expect(sql).toMatch(
-      /\('public\.create_commission_voucher\(uuid,text,numeric,date,uuid,text,text,text,text,text,jsonb\)',ARRAY\['postgres','authenticated','service_role'\]::text\[\]\)/,
+      /REVOKE ALL ON FUNCTION public\.create_commission_voucher\(uuid,text,numeric,date,uuid,text,text,text,text,text,jsonb\)\s+FROM PUBLIC,\s*anon/,
+    );
+    expect(sql).toMatch(
+      /GRANT EXECUTE ON FUNCTION public\.create_commission_voucher\(uuid,text,numeric,date,uuid,text,text,text,text,text,jsonb\)\s+TO authenticated/,
     );
   });
 });

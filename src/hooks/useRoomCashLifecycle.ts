@@ -1,41 +1,23 @@
-import { useEffect } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { parseSettlementRoomLifecycle } from '@/lib/contractSettlementTimeline';
-import { useAuth } from '@/hooks/useAuth';
-import { useOrganization } from '@/contexts/OrganizationContext';
+import type { LifecyclePayload } from '@/lib/roomLifecycle';
 
-/** Private/unpublished dependencies are covered by polling; public realtime accelerates refresh. */
-export const roomLifecycleDependencies = ['contracts', 'contract_extensions', 'contract_transfers', 'contract_terminations',
-  'rooms', 'buildings', 'contract_customers', 'tenants', 'invoices', 'income_expenses', 'income_expense_items',
-  'income_expense_postings', 'organization_memberships'] as const;
-
-/** Same authenticated reader for the room sheet and settlement modal; legacy event amounts are not cash facts. */
+/**
+ * Chu trình phòng (Plan 2 Task 6A) — đọc `get_room_cash_lifecycle_v1`.
+ *
+ * RPC fail-closed theo toà (42501 khi không có quyền xem) — lỗi đó phải hiện
+ * nguyên văn cho người dùng, không nuốt thành "phòng chưa có dữ liệu".
+ */
 export function useRoomCashLifecycle(roomId: string | null) {
-  const { data: actor } = useAuth();
-  const { selectedOrganizationId } = useOrganization();
-  const client = useQueryClient();
-  const enabled = !!roomId && !!actor?.id && !!selectedOrganizationId;
-  const query = useQuery({
-    queryKey: ['room-cash-lifecycle', selectedOrganizationId, actor?.id, roomId],
-    enabled, staleTime: 0, refetchOnWindowFocus: 'always', refetchInterval: 30_000, retry: false,
-    queryFn: async ({ signal }) => {
-      if (!roomId || !actor?.id || !selectedOrganizationId) throw new Error('Chưa chọn đủ phạm vi xem lịch sử phòng.');
+  return useQuery({
+    queryKey: ['room-cash-lifecycle', roomId],
+    enabled: !!roomId,
+    queryFn: async (): Promise<LifecyclePayload> => {
       const { data, error } = await supabase.rpc('get_room_cash_lifecycle_v1', {
-        p_room_id: roomId,
-      }).abortSignal(signal);
-      if (error) throw new Error(error.code === '42501' ? 'Bạn không có quyền xem lịch sử phòng trong phạm vi này.' : 'Chưa tải được lịch sử phòng. Vui lòng thử lại.');
-      try { return parseSettlementRoomLifecycle(data, roomId, selectedOrganizationId); }
-      catch { throw new Error('Dữ liệu lịch sử phòng chưa được xác minh. Vui lòng tải lại.'); }
+        p_room_id: roomId!,
+      });
+      if (error) throw new Error(error.message);
+      return data as unknown as LifecyclePayload;
     },
   });
-  useEffect(() => {
-    if (!enabled || !actor?.id) return;
-    const key = ['room-cash-lifecycle', selectedOrganizationId, actor.id, roomId];
-    const channel = supabase.channel(`room-lifecycle:${selectedOrganizationId}:${actor.id}:${roomId}`);
-    for (const table of roomLifecycleDependencies) channel.on('postgres_changes', { event: '*', schema: 'public', table }, () => { void client.invalidateQueries({ queryKey: key }); });
-    channel.subscribe();
-    return () => { void supabase.removeChannel(channel); };
-  }, [enabled, selectedOrganizationId, actor?.id, roomId, client]);
-  return { ...query, data: enabled && !query.isError ? query.data : undefined };
 }

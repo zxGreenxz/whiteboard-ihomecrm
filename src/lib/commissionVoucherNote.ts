@@ -187,15 +187,13 @@ export function buildCommissionNoteLines(f: CommissionVoucherFacts): string[] {
   const thang = f.months != null ? `${f.months} tháng` : "? tháng";
   const ngoac = f.rate_percent != null ? `${fmtPhanTram(f.rate_percent)} - ${thang}` : thang;
   lines.push(
-    `Giá phòng ${f.rent_price === null ? 'chưa xác minh' : formatVND(f.rent_price)} · ${fmtNgay(f.start_date)} - ${fmtNgay(f.end_date)} (${ngoac})`,
+    `Giá phòng ${formatVND(f.rent_price)} · ${fmtNgay(f.start_date)} - ${fmtNgay(f.end_date)} (${ngoac})`,
   );
 
   // 3. Cọc
   const phai = f.total_deposit ?? 0;
   const da = f.deposit_paid ?? 0;
-  if (f.total_deposit === null || f.deposit_paid === null) {
-    lines.push('Cọc: chưa xác minh');
-  } else if (f.deposit_vouchers.length === 0) {
+  if (f.deposit_vouchers.length === 0) {
     lines.push(`Chưa cọc: ${formatVND(0)} / ${formatVND(phai)} (chưa có phiếu thu cọc)`);
   } else if (f.deposit_enough ?? da >= phai) {
     lines.push(`Đã cọc đủ: ${formatVND(da)}`);
@@ -205,9 +203,7 @@ export function buildCommissionNoteLines(f: CommissionVoucherFacts): string[] {
   for (const v of f.deposit_vouchers) lines.push(dongPhieuCoc(v));
 
   // 4. 7 ngày từ ngày vào ở (= ngày bắt đầu HĐ)
-  if (f.seven_days_ok === null) {
-    lines.push('Mốc 7 ngày: chưa xác minh');
-  } else if (f.seven_days_ok) {
+  if (f.seven_days_ok) {
     lines.push(`Đã đủ 7 ngày tính từ ngày vào ở ${fmtNgay(f.start_date)}`);
   } else {
     lines.push(

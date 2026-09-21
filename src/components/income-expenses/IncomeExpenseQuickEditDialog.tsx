@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -15,10 +15,10 @@ import { useAppendIncomeExpenseSupplement, useIncomeExpenseSupplements } from '@
 import { getVoucherDisplayAttachments, supplementFormSchema, type SupplementFormValues } from '@/lib/incomeExpenseSupplement';
 import { useAuth } from '@/hooks/useAuth';
 
-interface Props { open: boolean; onOpenChange: (open: boolean) => void; voucher: (Pick<IncomeExpenseWithRelations, "id" | "code" | "notes" | "attachments" | "supplements"> & Partial<IncomeExpenseWithRelations>) | null; onSubmit?: (values: SupplementFormValues) => Promise<void>; busy?: boolean; feedback?: ReactNode; }
+interface Props { open: boolean; onOpenChange: (open: boolean) => void; voucher: IncomeExpenseWithRelations | null; }
 
 /** Only additional narrative/evidence; original financial data is never submitted. */
-export function IncomeExpenseQuickEditDialog({ open, onOpenChange, voucher, onSubmit, busy: externalBusy = false, feedback }: Props) {
+export function IncomeExpenseQuickEditDialog({ open, onOpenChange, voucher }: Props) {
   const { data: user } = useAuth();
   const append = useAppendIncomeExpenseSupplement();
   const previous = useIncomeExpenseSupplements(voucher?.id, open);
@@ -34,7 +34,7 @@ export function IncomeExpenseQuickEditDialog({ open, onOpenChange, voucher, onSu
   }, [open, voucher?.id, reset]);
   const attachments = form.watch('attachments');
   const note = form.watch('note');
-  const busy = externalBusy || uploading || append.isPending;
+  const busy = uploading || append.isPending;
   const oldSupplements = previous.data ?? voucher?.supplements ?? [];
   const oldAttachments = getVoucherDisplayAttachments({ attachments: voucher?.attachments, supplements: oldSupplements });
   const changeOpen = (next: boolean) => { if (!busy && !saving.current) onOpenChange(next); };
@@ -44,8 +44,7 @@ export function IncomeExpenseQuickEditDialog({ open, onOpenChange, voucher, onSu
     const payload = JSON.stringify({ voucherId: voucher.id, ...values });
     if (operation.current?.payload !== payload) operation.current = { payload, key: crypto.randomUUID() };
     try {
-      if (onSubmit) await onSubmit(values);
-      else await append.mutateAsync({ voucherId: voucher.id, ...values, idempotencyKey: operation.current.key });
+      await append.mutateAsync({ voucherId: voucher.id, ...values, idempotencyKey: operation.current.key });
       onOpenChange(false);
     } catch {
       // The mutation shows a classified error; keep additions and retry key intact.
@@ -60,7 +59,6 @@ export function IncomeExpenseQuickEditDialog({ open, onOpenChange, voucher, onSu
       <DialogHeader><DialogTitle>BỔ SUNG CHỨNG TỪ / GHI CHÚ</DialogTitle>
         <DialogDescription>Bổ sung cho phiếu <b>{voucher.code}</b>. Nội dung cũ được giữ nguyên. Mỗi lần bổ sung sẽ ghi rõ người thực hiện và thời gian.</DialogDescription>
       </DialogHeader>
-      {feedback}
       <form onSubmit={save} className="space-y-4">
         <section aria-label="Nội dung đã có" className="space-y-3 rounded-lg border bg-muted/20 p-3">
           <Label>Ghi chú đã có</Label>

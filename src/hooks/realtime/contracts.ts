@@ -5,7 +5,7 @@ export const CONTRACT_SYNC_ENTRIES: readonly SyncEntry[] = [
   {
     // Prefix ["contracts"] phủ luôn "paged"/"stats"/"dashboard-counts".
     table: "contracts",
-    keys: [['income-expense-action-snapshots'], ['income-expense-action-cancellation'], ['contract-settlement'], ['contract-settlement-events'], ['room-cash-lifecycle'],
+    keys: [
       ["contracts"],
       ["contracts-legacy"],
       // deposit-dashboard đọc contracts + contract_terminations (KHÔNG phải
@@ -35,7 +35,7 @@ export const CONTRACT_SYNC_ENTRIES: readonly SyncEntry[] = [
   // cái sửa nó cũng vậy. Gate `check-realtime-query-keys.mjs` sinh ra từ đây.
   {
     table: "contract_terminations",
-    keys: [['income-expense-action-snapshots'], ['income-expense-action-cancellation'], ['contract-settlement'], ['contract-settlement-events'], ['room-cash-lifecycle'],
+    keys: [
       ["deposit-dashboard"],
       // Ba key THẬT mà màn thanh lý dùng, thay cho ["contract-terminations"] chết:
       ["contract-termination-info"], // useContractDetailData
@@ -60,7 +60,7 @@ export const CONTRACT_SYNC_ENTRIES: readonly SyncEntry[] = [
   // thêm key thật của màn đó.
   {
     table: "contract_transfers",
-    keys: [['income-expense-action-snapshots'], ['income-expense-action-cancellation'], ['contract-settlement'], ['contract-settlement-events'], ['room-cash-lifecycle'],
+    keys: [
       ["contract-history"], // useContractHistory đọc thẳng contract_transfers
       ["reports"], // báo cáo gia hạn/chuyển nhượng: ["reports","renewals-transfers",…]
       ["contracts"],

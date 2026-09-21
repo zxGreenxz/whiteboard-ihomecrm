@@ -26,16 +26,6 @@ type RpcResult = { data: unknown; error: { code?: string; message?: string } | n
 const rpc = (fn: string, args?: Record<string, unknown>): PromiseLike<RpcResult> =>
   (supabase.rpc as unknown as (f: string, a?: Record<string, unknown>) => PromiseLike<RpcResult>)(fn, args);
 
-/** Shared controller owns feedback and awaited refresh; other callers retain existing behavior. */
-export interface ManagedFinanceMutationOptions { managed?: boolean }
-const financeMutationError = (error: NonNullable<RpcResult['error']>, fallback: string) =>
-  Object.assign(new Error(error.message || fallback), { code: error.code });
-const requireManagedIdentity = (id: string, key: string | undefined, version?: number) => {
-  if (!id || !key?.trim() || (version !== undefined && (!Number.isSafeInteger(version) || version < 0))) {
-    throw new Error('Chưa đủ thông tin phiên bản hoặc mã yêu cầu. Vui lòng tải lại phiếu.');
-  }
-};
-
 function genIdempotencyKey(): string {
   return typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
     ? crypto.randomUUID()
@@ -63,20 +53,14 @@ export function isOwnedBySystemFlow(message: string | null | undefined): boolean
 }
 
 /** Duyệt-only V2: balance KHÔNG đổi (khác legacy). */
-export function useApproveIncomeExpenseV2(options?: ManagedFinanceMutationOptions) {
+export function useApproveIncomeExpenseV2() {
   const invalidate = useInvalidateMoney();
   return useMutation({
-    retry: false,
-    mutationFn: async (args: { voucherId: string; expectedApprovalVersion?: number; idempotencyKey?: string }) => {
-      if (options?.managed) {
-        requireManagedIdentity(args.voucherId, args.idempotencyKey, args.expectedApprovalVersion);
-        if (args.expectedApprovalVersion === undefined) throw new Error('Chưa tải phiên bản duyệt của phiếu.');
-      }
-      const key = args.idempotencyKey ?? genIdempotencyKey();
+    mutationFn: async (args: { voucherId: string; expectedApprovalVersion?: number }) => {
       const { data, error } = await rpc("approve_income_expense_v2", {
         p_voucher: args.voucherId,
         p_expected_approval_version: args.expectedApprovalVersion ?? 1,
-        p_idempotency_key: key,
+        p_idempotency_key: genIdempotencyKey(),
       });
       if (error && isOwnedBySystemFlow(error.message)) {
         // 7ac: phiếu flow-owned (INVOICE_REFUND/TERMINATION_REFUND) duyệt qua
@@ -85,91 +69,81 @@ export function useApproveIncomeExpenseV2(options?: ManagedFinanceMutationOption
           p_voucher: args.voucherId,
           p_decision: "approve",
           p_reason: null,
-          p_idempotency_key: key,
+          p_idempotency_key: genIdempotencyKey(),
         });
-        if (owned.error) throw financeMutationError(owned.error, "Duyệt phiếu thất bại");
+        if (owned.error) throw new Error(owned.error.message || "Duyệt phiếu thất bại");
         return owned.data;
       }
-      if (error) throw financeMutationError(error, "Duyệt phiếu thất bại");
+      if (error) throw new Error(error.message || "Duyệt phiếu thất bại");
       return data;
     },
     onSuccess: () => {
-      if (options?.managed) return;
       invalidate();
       toast.success("Đã duyệt phiếu — chưa ghi sổ (Đã Duyệt - Chưa Thu/Chi)");
     },
-    onError: (e: Error) => { if (!options?.managed) toast.error(e.message); },
+    onError: (e: Error) => toast.error(e.message),
   });
 }
 
 /** Thu/Chi phiếu ĐÃ duyệt (CUSTODIAN, không cần quyền duyệt). */
-export function usePostApprovedIncomeExpenseV2(options?: ManagedFinanceMutationOptions) {
+export function usePostApprovedIncomeExpenseV2() {
   const invalidate = useInvalidateMoney();
   return useMutation({
-    retry: false,
     mutationFn: async (input: PostFinanceExecutionInput) => {
       const { data, error } = await rpc("post_approved_income_expense_v2", { input });
-      if (error) throw financeMutationError(error, "Ghi sổ thất bại");
+      if (error) throw new Error(error.message || "Ghi sổ thất bại");
       return data;
     },
     onSuccess: () => {
-      if (options?.managed) return;
       invalidate();
       toast.success("Đã ghi sổ (posting) thành công");
     },
-    onError: (e: Error) => { if (!options?.managed) toast.error(e.message); },
+    onError: (e: Error) => toast.error(e.message),
   });
 }
 
 /** Duyệt và Thu/Chi atomic (actor vừa approver vừa CUSTODIAN). */
-export function useApproveAndPostIncomeExpenseV2(options?: ManagedFinanceMutationOptions) {
+export function useApproveAndPostIncomeExpenseV2() {
   const invalidate = useInvalidateMoney();
   return useMutation({
-    retry: false,
     mutationFn: async (input: PostFinanceExecutionInput) => {
       const { data, error } = await rpc("approve_and_post_income_expense_v2", { input });
-      if (error) throw financeMutationError(error, "Duyệt và ghi sổ thất bại");
+      if (error) throw new Error(error.message || "Duyệt và ghi sổ thất bại");
       return data;
     },
     onSuccess: () => {
-      if (options?.managed) return;
       invalidate();
       toast.success("Đã duyệt và ghi sổ atomic");
     },
-    onError: (e: Error) => { if (!options?.managed) toast.error(e.message); },
+    onError: (e: Error) => toast.error(e.message),
   });
 }
 
 /** Hoàn tác phiếu ĐÃ GHI SỔ (mô hình 2 nút): tiền trả về sổ bằng bút toán đối
  *  dấu, phiếu về "Đã hoàn tác" — nằm chờ Chi lại hoặc Huỷ. CUSTODIAN đúng sổ. */
-export function useReversePostingV2(options?: ManagedFinanceMutationOptions) {
+export function useReversePostingV2() {
   const invalidate = useInvalidateMoney();
   return useMutation({
-    retry: false,
     mutationFn: async (args: {
       voucherId: string;
       cashbookId: string;
       reason?: string | null;
-      idempotencyKey?: string;
-      postedOn?: string;
     }) => {
-      if (options?.managed) requireManagedIdentity(args.voucherId, args.idempotencyKey);
       const { data, error } = await rpc("reverse_posted_income_expense_v2", {
         p_voucher: args.voucherId,
         p_cashbook: args.cashbookId,
-        p_posted_on: args.postedOn ?? todayISO(),
+        p_posted_on: todayISO(),
         p_reason: args.reason || "Hoàn tác thủ công",
-        p_idempotency_key: args.idempotencyKey ?? `rev-${args.voucherId}-${Date.now()}`,
+        p_idempotency_key: `rev-${args.voucherId}-${Date.now()}`,
       });
-      if (error) throw financeMutationError(error, "Hoàn tác thất bại");
+      if (error) throw new Error(error.message || "Hoàn tác thất bại");
       return data;
     },
     onSuccess: () => {
-      if (options?.managed) return;
       invalidate();
       toast.success("Đã hoàn tác — tiền trả về sổ, phiếu chờ Chi lại hoặc Huỷ");
     },
-    onError: (e: Error) => { if (!options?.managed) toast.error(e.message); },
+    onError: (e: Error) => toast.error(e.message),
   });
 }
 

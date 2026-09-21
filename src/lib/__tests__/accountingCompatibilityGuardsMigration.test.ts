@@ -13,8 +13,8 @@ const payoutDialog = readFileSync(
   "src/components/shareholders/ProfitDistributeDialog.tsx",
   "utf8",
 );
-const sharedActionDialogs = readFileSync(
-  "src/components/income-expenses/IncomeExpenseActionDialogs.tsx",
+const approvalPage = readFileSync(
+  "src/pages/payments/IncomeExpensePage.tsx",
   "utf8",
 );
 
@@ -93,10 +93,10 @@ describe("accounting compatibility migration guards", () => {
       "accounts.filter((account) => !account.is_virtual)",
     );
     expect(payoutDialog).toContain("options={payoutAccounts.map");
-    expect(sharedActionDialogs).toContain("v.capabilities.requiresRealAccount");
-    expect(sharedActionDialogs).toContain("!a.is_virtual");
-    expect(sharedActionDialogs).toContain(
-      "a.organization_id === selected.scope.organizationId",
+    expect(approvalPage).toContain("!!approveTarget?.shareholder_id");
+    expect(approvalPage).toContain(
+      "accounts.filter((account) => !account.is_virtual)",
     );
+    expect(approvalPage).toContain("approvalAccounts.map");
   });
 });
