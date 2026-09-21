@@ -9,6 +9,7 @@
     "src/components/thu-tien/ContractSettlementModalLayout.tsx",
     "src/components/thu-tien/ContractSettlementPayments.tsx",
     "src/components/thu-tien/ContractSettlementSection.tsx",
+    "src/components/thu-tien/ContractSettlementWorkspace.tsx",
     "src/components/thu-tien/ContractSettlementTimeline.tsx",
     "src/components/thu-tien/ContractSettlementTimelineView.tsx",
     "src/components/thu-tien/settlementTimelinePresentation.ts",

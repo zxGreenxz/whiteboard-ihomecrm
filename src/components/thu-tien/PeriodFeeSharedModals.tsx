@@ -15,10 +15,8 @@
 
 import type { usePeriodFeeState } from '@/hooks/usePeriodFeeState';
 import type { FeeCategory } from '@/lib/feeCategories';
-import type { PeriodCommissionRow } from '@/hooks/usePeriodFees';
 import { PeriodFeeEditModal } from './PeriodFeeEditModal';
 import { PeriodFeeVoucherList, PeriodFeePayDraftModal, PeriodFeeDupConfirmModal } from './PeriodFeeVoucherList';
-import { PeriodCommissionModal } from './PeriodCommissionModal';
 
 interface Props {
   S: ReturnType<typeof usePeriodFeeState>;
@@ -29,15 +27,12 @@ interface Props {
   /** Toà đang mở danh sách phiếu (tab Lịch sử) — state của TỪNG bề mặt. */
   vlistFor: string | null;
   setVlistFor: (id: string | null) => void;
-  /** Dòng hoa hồng đang mở modal trả — state của TỪNG bề mặt. */
-  commRow: PeriodCommissionRow | null;
-  setCommRow: (row: PeriodCommissionRow | null) => void;
   onView: (attachments: string[], index?: number) => void;
 }
 
 export function PeriodFeeSharedModals({
   S, isAdmin, canRecordPayment, cat, buildings,
-  vlistFor, setVlistFor, commRow, setCommRow, onView,
+  vlistFor, setVlistFor, onView,
 }: Props) {
   return (
     <>
@@ -80,12 +75,6 @@ export function PeriodFeeSharedModals({
         busy={S.payingKey != null}
         onClose={S.closeDupConfirm}
         onConfirm={S.confirmPayDup}
-      />
-      <PeriodCommissionModal
-        row={commRow}
-        myBooks={S.myBooks}
-        defaultBookId={S.defaultBookId}
-        onClose={() => setCommRow(null)}
       />
     </>
   );

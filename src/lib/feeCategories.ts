@@ -19,14 +19,14 @@
 import { nrm } from '@/lib/fixedExpenseCategories';
 
 export type FeeFamily =
-  | 'EN' | 'GRID' | 'COMMISSION' | 'MAINTENANCE_BATCH'
+  | 'EN' | 'GRID' | 'COMMISSION' | 'MAINTENANCE_BATCH' | 'CONTRACT_SETTLEMENT'
   // Ba mảng SỔ theo dõi (01/08/2026): không phải nút chi theo kỳ mà là nơi
   // QUẢN LÝ phiếu đã/sắp phát sinh — hàng đợi chi thanh lý, phiếu thưởng
   // Sale, và cọc đã thu. Chúng bị LOẠI khỏi bảng Tổng quan vì Tổng quan cam
   // kết khớp Báo cáo Lợi Nhuận, còn ba mảng này là tiền cọc/hoàn — không
   // thuộc lãi lỗ.
   | 'TERMINATION_REFUND' | 'SALE_BONUS' | 'DEPOSIT_LEDGER';
-export type FeeGroup = 'Phí theo tòa' | 'Hoa hồng' | 'Bảo trì' | 'Thanh lý & Cọc';
+export type FeeGroup = 'Phí theo tòa' | 'Bảo trì' | 'Thanh lý & Cọc';
 
 export interface FeeCategory {
   key: string;                 // registry key ('dien_nuoc','internet',…)
@@ -100,12 +100,6 @@ export const FEE_CATEGORIES: FeeCategory[] = [
     serverKey: 'thang_may', canonicalTypeName: 'Bảo trì thang máy', canonicalCategory: 'Bảo Trì Thang Máy',
   },
   {
-    key: 'hoa_hong', label: 'Hoa hồng môi giới', group: 'Hoa hồng',
-    sub: 'theo hợp đồng ký trong kỳ', family: 'COMMISSION', icon: 'percent', accent: '#c97a10',
-    multiPeriod: false, providerConfig: false, restricted: false, elevatorGated: false,
-    serverKey: 'hoa_hong', canonicalTypeName: 'Hoa hồng môi giới', canonicalCategory: 'Hoa hồng',
-  },
-  {
     key: 'bao_tri', label: 'Bảo trì máy lạnh / máy giặt', group: 'Bảo trì',
     sub: 'phiếu tổng theo nhà cung cấp', family: 'MAINTENANCE_BATCH', icon: 'wrench', accent: '#1a6645',
     multiPeriod: false, providerConfig: false, restricted: false, elevatorGated: false,
@@ -116,18 +110,11 @@ export const FEE_CATEGORIES: FeeCategory[] = [
     ],
   },
   {
-    key: 'chi_thanh_ly', label: 'Chi thanh lý (hoàn cọc)', group: 'Thanh lý & Cọc',
-    sub: 'hồ sơ trả phòng · đối chiếu cọc thật rồi mới chi', family: 'TERMINATION_REFUND',
-    icon: 'wallet', accent: '#b3541e',
+    key: 'hop_dong', label: 'Hợp đồng & quyết toán', group: 'Thanh lý & Cọc',
+    sub: 'biến động hợp đồng · hoàn khách · hoa hồng · thưởng Sale', family: 'CONTRACT_SETTLEMENT',
+    icon: 'handcoins', accent: '#1f7a52',
     multiPeriod: false, providerConfig: false, restricted: false, elevatorGated: false,
-    serverKey: 'chi_thanh_ly', canonicalTypeName: 'Hoàn tiền cọc', canonicalCategory: 'Hoàn cọc',
-  },
-  {
-    key: 'thuong_sale', label: 'Thưởng Sale', group: 'Thanh lý & Cọc',
-    sub: 'phiếu thưởng nóng theo phiếu cọc / hợp đồng', family: 'SALE_BONUS',
-    icon: 'handcoins', accent: '#9c27b0',
-    multiPeriod: false, providerConfig: false, restricted: false, elevatorGated: false,
-    serverKey: 'thuong_sale', canonicalTypeName: 'Thưởng nóng Sale', canonicalCategory: 'Hoa hồng',
+    serverKey: 'hop_dong', canonicalTypeName: 'Hợp đồng & quyết toán', canonicalCategory: 'Quyết toán',
   },
   {
     key: 'coc_da_thu', label: 'Cọc đã thu', group: 'Thanh lý & Cọc',
@@ -144,9 +131,25 @@ export const FEE_CATEGORIES: FeeCategory[] = [
  * không thuộc lãi lỗ; đếm chúng vào là lệch số với Báo cáo Lợi Nhuận).
  */
 export const LEDGER_FAMILIES: ReadonlySet<FeeFamily> =
-  new Set(['TERMINATION_REFUND', 'SALE_BONUS', 'DEPOSIT_LEDGER']);
+  new Set(['TERMINATION_REFUND', 'SALE_BONUS', 'CONTRACT_SETTLEMENT', 'DEPOSIT_LEDGER']);
 
-export const FEE_GROUPS: FeeGroup[] = ['Phí theo tòa', 'Hoa hồng', 'Bảo trì', 'Thanh lý & Cọc'];
+export const FEE_GROUPS: FeeGroup[] = ['Phí theo tòa', 'Bảo trì', 'Thanh lý & Cọc'];
+
+const LEGACY_SETTLEMENT_KEYS = new Set(['hoa_hong', 'chi_thanh_ly', 'thuong_sale']);
+export const DESKTOP_FEE_CATEGORY_KEYS = ['overview', ...FEE_CATEGORIES.map(category => category.key)] as const;
+export const SHEET_FEE_CATEGORY_KEYS = ['overview', ...FEE_CATEGORIES
+  .filter(category => category.family !== 'CONTRACT_SETTLEMENT')
+  .map(category => category.key)] as const;
+
+/** Persisted desktop keys from the three retired payment screens open the replacement workbench. */
+export const effectiveDesktopFeeCategory = (persisted: string): string => {
+  if (LEGACY_SETTLEMENT_KEYS.has(persisted)) return 'hop_dong';
+  return DESKTOP_FEE_CATEGORY_KEYS.includes(persisted as never) ? persisted : 'overview';
+};
+
+/** Mobile does not render the wide workbench; keep the persisted desktop key untouched and show a safe overview. */
+export const effectiveSheetFeeCategory = (persisted: string): string =>
+  SHEET_FEE_CATEGORY_KEYS.includes(persisted as never) ? persisted : 'overview';
 
 export const feeCategoryOf = (key: string): FeeCategory | undefined =>
   FEE_CATEGORIES.find((c) => c.key === key);
