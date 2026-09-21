@@ -19,6 +19,7 @@ vi.mock('../ContractSettlementSection', () => ({
 }));
 vi.mock('../ContractSettlementModal', () => ({ ContractSettlementModal: () => <div>settlement-modal</div> }));
 vi.mock('../ContractSettlementCreateForm', () => ({ ContractSettlementCreateForm: () => <div>create-form</div> }));
+vi.mock('../ContractSettlementSaleProposalDialog', () => ({ ContractSettlementSaleProposalDialog: () => <div>sale-proposal</div> }));
 
 import { ContractSettlementWorkspace } from '../ContractSettlementWorkspace';
 
@@ -40,4 +41,10 @@ it('binds the selected organization, actor, exact building scope and period to t
   });
   expect((state.sectionProps!.scope as { scopeRevision: string }).scopeRevision).toContain('income_expenses');
   expect(typeof state.sectionProps!.renderDetail).toBe('function');
+  expect(typeof state.sectionProps!.renderPaymentAction).toBe('function');
+  const action = (state.sectionProps!.renderPaymentAction as (context: Record<string, unknown>) => JSX.Element)({
+    onSelect: vi.fn(), refreshRequired: vi.fn(), refreshing: false, paymentsComplete: true,
+  });
+  render(action);
+  expect(screen.getByText('sale-proposal')).toBeTruthy();
 });

@@ -4,6 +4,7 @@ import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { ContractSettlementCreateForm } from './ContractSettlementCreateForm';
 import { ContractSettlementModal } from './ContractSettlementModal';
+import { ContractSettlementSaleProposalDialog } from './ContractSettlementSaleProposalDialog';
 import { ContractSettlementSection } from './ContractSettlementSection';
 
 interface Props {
@@ -30,6 +31,12 @@ export function ContractSettlementWorkspace({ period, onPeriodChange, buildings 
       buildingIds,
       scopeRevision,
     }}
+    renderPaymentAction={context => <ContractSettlementSaleProposalDialog
+      organizationId={selectedOrganizationId ?? ''}
+      disabled={context.refreshing || !context.paymentsComplete}
+      refreshRequired={context.refreshRequired}
+      onSelect={context.onSelect}
+    />}
     renderDetail={context => <ContractSettlementModal context={context}
       renderCreate={props => <ContractSettlementCreateForm {...props} />} />}
   />;

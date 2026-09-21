@@ -18,6 +18,7 @@ export interface ContractSettlementPaymentsProps {
   fetching?: boolean;
   error?: string | null;
   navigation?: ReactNode;
+  headerAction?: ReactNode;
   onSelect: (selection: SettlementSelection) => void;
   onRefresh: () => void;
   onPeriodChange: (period: string) => void;
@@ -63,7 +64,7 @@ function previousPeriod(period: string) {
 }
 
 /** Presentation only. Every row action opens a stable target; no money command lives here. */
-export function ContractSettlementPayments({ rows, period, buildings, complete, loading = false, fetching = false, error, navigation, onSelect, onRefresh, onPeriodChange }: ContractSettlementPaymentsProps) {
+export function ContractSettlementPayments({ rows, period, buildings, complete, loading = false, fetching = false, error, navigation, headerAction, onSelect, onRefresh, onPeriodChange }: ContractSettlementPaymentsProps) {
   const [merged, setMerged] = useState(true);
   const [advanced, setAdvanced] = useState(false);
   const [search, setSearch] = useState("");
@@ -131,7 +132,7 @@ export function ContractSettlementPayments({ rows, period, buildings, complete, 
   return <div className="contract-settlement cs-payments">
     <div className="cs-viewbar cs-payments-viewbar">
       {navigation ?? <span className="cs-secondary">{withinPeriod ? `Kỳ ${period} · ${dateBasis === "posting" ? "theo ngày ghi chi" : "theo ngày nghiệp vụ"}` : "Mọi kỳ · gồm tồn cũ"}</span>}
-      <label className="cs-merge"><input type="checkbox" checked={merged} onChange={() => { setMerged(!merged); if (["pending", "payment", "pending_payment"].includes(status)) selectStatus("open"); }} />Gộp Chờ duyệt và Chi</label>
+      <div className="cs-view-actions">{headerAction}<label className="cs-merge"><input type="checkbox" checked={merged} onChange={() => { setMerged(!merged); if (["pending", "payment", "pending_payment"].includes(status)) selectStatus("open"); }} />Gộp Chờ duyệt và Chi</label></div>
     </div>
     {loading && rows.length === 0 ? <div role="status" aria-live="polite">
       <div className="cs-stats" data-columns={merged ? "3" : "4"} aria-hidden="true">{Array.from({ length: merged ? 3 : 4 }, (_, index) => <div className="cs-stat cs-skeleton" key={index}><div /><div /><div /></div>)}</div>

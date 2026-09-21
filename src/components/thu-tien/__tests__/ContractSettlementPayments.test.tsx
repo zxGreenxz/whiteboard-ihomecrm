@@ -38,18 +38,25 @@ const props = { rows, period: "2026-09", buildings: [{ id: "building", name: "41
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 describe("Khoản chi settlement workbench", () => {
-  it("retains contradictory posting evidence when filtering by posting date and withholds unverified totals", () => {
+  it("retains approved cash gaps when filtering by posting date and withholds unverified totals", () => {
     render(<ContractSettlementPayments {...props} rows={[voucher("contradictory", {
       activePostingId: "unexpected-posting", effectiveNetPaid: 1_000_000,
       postingEvidence: { state: "ready", value: { activePostingId: "unexpected-posting", effectiveNetPaid: 1_000_000, postedOn: "2026-09-05" } },
-    }), voucher("known-unposted")]} />);
+    }), voucher("approved-gap", { approvalStatus: "APPROVED" }), voucher("known-unposted")]} />);
     fireEvent.click(screen.getByRole("button", { name: "Bộ lọc" }));
     fireEvent.change(screen.getByRole("combobox", { name: "Theo ngày" }), { target: { value: "posting" } });
     expect(screen.getByRole("button", { name: "Xử lý PC-contradictory" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Xử lý PC-approved-gap" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Xử lý PC-known-unposted" })).toBeNull();
-    expect(screen.getByText(/1 phiếu chưa xác minh được ngày ghi chi/)).toBeTruthy();
+    expect(screen.getByText(/2 phiếu chưa xác minh được ngày ghi chi/)).toBeTruthy();
     expect(screen.getByText("Tổng trên phiếu: Chưa xác định")).toBeTruthy();
     expect(screen.getAllByTestId("settlement-stat").every(card => !card.textContent?.includes("0đ"))).toBe(true);
+  });
+
+  it("renders an explicit sale proposal entry without turning it into a settlement row", () => {
+    render(<ContractSettlementPayments {...props} headerAction={<button>Đề xuất thưởng sale</button>} />);
+    expect(screen.getByRole("button", { name: "Đề xuất thưởng sale" })).toBeTruthy();
+    expect(screen.getByText(/1 hồ sơ chưa lập phiếu/)).toBeTruthy();
   });
   it("labels voucher amount separately from verified cash paid when they differ", () => {
     const paid = voucher("different-paid", {

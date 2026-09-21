@@ -22,6 +22,7 @@
 .contract-settlement .cs-muted { color: var(--cs-muted); }
 .contract-settlement .cs-body { width: min(1180px, 100%); margin: 0 auto; padding: 20px 24px 24px; display: flex; flex-direction: column; gap: 16px; background: var(--cs-bg); }
 .contract-settlement .cs-viewbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+.contract-settlement .cs-view-actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .contract-settlement .cs-tabs { display: flex; gap: 3px; padding: 4px; border: 1px solid var(--cs-line); border-radius: 10px; background: #fff; }
 .contract-settlement .cs-tabs button { border: 0; border-radius: 7px; padding: 7px 15px; font-size: 13px; font-weight: 600; background: transparent; color: #514c42; }
 .contract-settlement .cs-tabs button[aria-selected="true"] { background: #e8f3ec; color: var(--cs-green); }

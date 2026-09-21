@@ -31,6 +31,7 @@ export interface ContractSettlementSectionProps {
   onPeriodChange: (period: string) => void;
   buildings: readonly { id: string; name: string }[];
   renderDetail: (context: SettlementDetailContext) => ReactNode;
+  renderPaymentAction?: (context: Pick<SettlementDetailContext, 'onSelect' | 'refreshRequired' | 'refreshing' | 'paymentsComplete'>) => ReactNode;
 }
 
 /** Authority changes remount local state; period and realtime updates retain exact selected IDs. */
@@ -40,7 +41,7 @@ export function ContractSettlementSection(props: ContractSettlementSectionProps)
   return <SettlementSectionContent key={key} {...props} />;
 }
 
-function SettlementSectionContent({ scope, period, onPeriodChange, buildings, renderDetail }: ContractSettlementSectionProps) {
+function SettlementSectionContent({ scope, period, onPeriodChange, buildings, renderDetail, renderPaymentAction }: ContractSettlementSectionProps) {
   const [tab, setTab] = useState<'payments' | 'events'>('payments');
   const [selection, setSelection] = useState<SettlementSectionSelection | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
@@ -77,6 +78,7 @@ function SettlementSectionContent({ scope, period, onPeriodChange, buildings, re
       <div hidden={tab !== 'payments'} role="tabpanel" id={`${id}-payments-panel`} aria-labelledby={`${id}-payments-payments-tab`}>
         <ContractSettlementPayments rows={payments.rows} period={period} buildings={buildings} complete={paymentsComplete}
           loading={payments.loading} fetching={payments.fetching} error={payments.error} navigation={navigation('payments')}
+          headerAction={renderPaymentAction?.({ onSelect: setSelection, refreshRequired, refreshing: payments.fetching || events.fetching, paymentsComplete })}
           onSelect={setSelection} onRefresh={refresh} onPeriodChange={onPeriodChange} />
       </div>
       <div hidden={tab !== 'events'} role="tabpanel" id={`${id}-events-panel`} aria-labelledby={`${id}-events-events-tab`}>
