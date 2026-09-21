@@ -357,3 +357,37 @@ describe("source creation boundary", () => {
     expect(ports.createCommission).not.toHaveBeenCalled();
   });
 });
+
+it("opens the exact verified contract-linked deposit Sale claim with a NULL contract without creating", async () => {
+  current.kind = "sale_contract";
+  current.existingVoucherId = voucherId;
+  request.sourceRef = {
+    kind: "sale_contract",
+    organizationId: org,
+    contractId: source,
+  };
+  voucher.contractId = null;
+  voucher.totalAmount = 37;
+  voucher.reviewState = "CHANGES_REQUESTED";
+  expect(await createContractSettlementVoucher(request, ports)).toEqual({
+    outcome: "existing",
+    voucherId,
+  });
+  expect(ports.createCommission).not.toHaveBeenCalled();
+  expect(ports.createDeposit).not.toHaveBeenCalled();
+});
+it("rejects an unrelated voucher despite a selected Sale claim", async () => {
+  current.kind = "sale_contract";
+  current.existingVoucherId = voucherId;
+  request.sourceRef = {
+    kind: "sale_contract",
+    organizationId: org,
+    contractId: source,
+  };
+  voucher.id = obligationId;
+  voucher.contractId = null;
+  await expect(
+    createContractSettlementVoucher(request, ports),
+  ).rejects.toMatchObject({ kind: "unconfirmed" });
+  expect(ports.createCommission).not.toHaveBeenCalled();
+});

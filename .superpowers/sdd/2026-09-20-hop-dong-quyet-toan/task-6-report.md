@@ -43,3 +43,28 @@ Exact Node 24.18.0 cho các lệnh dưới đây; localhost PG17 `postgres`/5548
 4. Root tích hợp hai component vào T8/T9, T6R và cutover Page còn riêng. Browser E2E desktop/mobile theo actor thực, app build/bundle và gates money/sandbox/release còn thuộc lượt tích hợp, chưa được xác minh bởi component tests/local JWT.
 
 Không có shared business/schema writes, live fixture hay tiền DEMO nào phát sinh trong lượt này. Không claim production-ready hoặc T6 release-complete.
+
+
+## Review round 1 — I1/I2 (2026-09-21)
+
+Phạm vi sửa 8 file, base dbe4acce; root financial breakdown/registry/design WIP không nằm trong commit. Đã đọc task-6-review.md; ứng viên signed_date NULL được reviewer rút sau xác minh đúng public schema nên không sửa selector.
+
+I1 được tái tạo bằng JWT trước sửa trên DB dùng một lần: phiếu cọc D và bonus B đều contract_id NULL, gắn EXPLICIT_V2 C↔D; source reader trả claim NULL, và raw create_commission_voucher(C,'sale',account NULL) trả HTTP200 tạo bonus thứ hai. Harness RED ghi đúng assertion, fixture được cleanup.
+
+Migration mới 20260921004515_sale_bonus_explicit_source_claim_guard.sql do generator cấp tên:
+- Shared private sale_bonus_source_claims_v1 dùng direct contract và EXPLICIT_V2/BACKFILL_REVIEWED có org/source khớp; selected-source facts và hai writer đều dùng cùng lookup. Không gán/sửa contract_id của nguồn hoặc phiếu thưởng.
+- Hai writer Sale lấy lock_org_for_decision_v1 trước claim witness; deposit writer lấy org trước source row, cùng thứ tự với create_contract_v2. Broker/autopay, amount/cap/account/permission guards, public signatures và ACL cũ giữ nguyên.
+- Trigger shared trên link, private claim và voucher activation/đổi nguồn ngăn hợp nhất thành hai live bonuses. Link được phép nối một bonus đã có; nếu hai nguồn đã được thưởng độc lập thì báo conflict chung, không lộ hidden ID/code. Chốt áp dụng ở backend, không dựa trên reader preflight.
+- Reader vẫn xác minh actual source RLS trước private enrichment, và chỉ trả existingVoucherId khi voucher RLS cho xem. Adapter nhận Sale bonus NULL-contract chỉ khi ID chính là exact existing claim của selected sale_contract; ID khác, source khác hoặc contract khác không được nới.
+- Helper/trigger postgres-owned và không có authenticated/service_role/reader EXECUTE. Hàm đọc STABLE không gọi lock; writer/trigger VOLATILE. Pin org-lock definition 6130719b1956a291878bed6c58800e5a, nguồn writer c134aa5857144c2b8f66145f0e9feab5/fbaed9b582feab422372165eb55a8288, T6 facts 330d0c496245baa2daba55bed7fbc619; reapply kiểm exact after-hash/owner/ACL/role/trigger definition/enabled, không tự sửa drift.
+
+I2: form dùng React Hook Form + Zod, giữ adapter validation độc lập. Số nguyên dương/ngày thực/trần Sale/amount nghĩa vụ/force confirmation+reason được validate trước dispatch, có field errors. Refund amount vẫn readonly, recipient vẫn editable trước birth. Submit có shared blocked guard; source identity ref ngăn reset mất draft khi request thất bại rồi unlock cùng nguồn. Không thay unknown/reconciliation hook.
+
+Kiểm chứng exact Node24.18.0:
+- Scoped 4 Vitest suites: 55 PASS (28 domain,13 parser,4 hook,10 form). I1 NULL-contract existing + unrelated ID, I2 invalid amounts/date/forced-submit/shared lock/preserve draft đều được kiểm; đã thấy RED trước sửa.
+- test-contract-settlement-create-local.mjs PASS: actual TS adapter qua authenticated JWT cả 4 nguồn NULL-account/no postings; I1 visible/hidden bridge, cả hai thứ tự tạo, contract/deposit race chỉ một thành công, link hai nguồn đã thưởng bị chặn, writer bắt đầu khi transaction gắn link đang giữ org lock đọc claim sau commit. Claim-link transaction trong ca lock là SQL fixture có trigger thật, không tuyên bố đã chạy toàn bộ UI ký hợp đồng.
+- test-contract-settlement-create-schema-local.mjs PASS: original T6 first/reapply và followup first/reapply với non-superuser; hash/owner/ACL/role/trigger-disable mutations bị từ chối, helper ACL không public, STABLE không lock. Kiểm predecessor bằng restore definitions có nguồn trong repo trong ROLLBACK, không replay baseline/history. Sau followup, reapply migration T6 cũ riêng lẻ cố ý báo dependency drift; forward lane chạy đúng thứ tự, không sửa lại file cũ.
+- dot-bien.mjs: bỏ bridge predicate làm JWT suite RED đúng 'contract writer must reject the existing deposit claim'; nới link threshold làm RED đúng 'link must refuse joining two independently awarded trades'. Cả hai exit0, file digest khôi phục (dfabad315738 tại lần đo), DB helper definitions khôi phục trong finally. SQL schema mutations cũng rollback.
+- App TS33192 exit0; strict config cho hai module sửa và dependencies exit0; ESLint hai module exit0; git diff --check scoped PASS.
+
+T6R monetary implementation vẫn chưa bắt đầu. Còn independent rereview I1/I2, fresh shared preflight/provenance/generated types/forward apply, live DEMO matrix và broker VALID positive control, browser desktop/mobile, build/bundle/reconcile/release như phần pending trước. Lượt sửa này không có shared schema/business write; không coi local code approval là T6 release complete.

@@ -1,4 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,6 +12,7 @@ import type { SettlementSourceRef } from "@/lib/contractSettlement";
 import type {
   SettlementCreateDraft,
   SettlementCreateResult,
+  SettlementCreateSource,
 } from "@/lib/contractSettlementCreate";
 import { useContractSettlementCreate } from "@/hooks/useContractSettlementCreate";
 export interface ContractSettlementCreateFormProps {
@@ -30,15 +34,88 @@ const empty: SettlementCreateDraft = {
   forceReason: "",
   forceConfirmed: false,
 };
+function draftSchema(source: SettlementCreateSource | null) {
+  return z
+    .object({
+      amount: z
+        .number({ invalid_type_error: "Nhập số tiền nguyên lớn hơn 0." })
+        .finite()
+        .int("Nhập số tiền nguyên lớn hơn 0.")
+        .positive("Nhập số tiền nguyên lớn hơn 0.")
+        .max(Number.MAX_SAFE_INTEGER),
+      voucherDate: z.string(),
+      payerName: z.string(),
+      recipientName: z.string(),
+      bank: z.string(),
+      accountNumber: z.string(),
+      itemDescription: z.string(),
+      attachments: z.array(z.string().trim().min(1)),
+      force: z.boolean(),
+      forceReason: z.string(),
+      forceConfirmed: z.boolean(),
+    })
+    .superRefine((value, context) => {
+      const issue = (field: keyof SettlementCreateDraft, message: string) =>
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [field],
+          message,
+        });
+      if (source?.kind !== "termination_refund") {
+        const date = new Date(value.voucherDate + "T00:00:00Z");
+        if (
+          !/^\d{4}-\d{2}-\d{2}$/.test(value.voucherDate) ||
+          Number.isNaN(date.valueOf()) ||
+          date.toISOString().slice(0, 10) !== value.voucherDate
+        )
+          issue("voucherDate", "Ngày lập phiếu không hợp lệ.");
+      }
+      if (
+        source?.kind.startsWith("sale_") &&
+        source.capAmount !== null &&
+        value.amount > source.capAmount
+      )
+        issue("amount", "Số tiền đề xuất vượt trần thưởng đã công bố.");
+      if (source?.kind === "termination_refund") {
+        if (!source.refund || value.amount !== source.refund.requestedAmount)
+          issue("amount", "Số tiền phải khớp nghĩa vụ hoàn đã được duyệt.");
+        if (source.refund?.obligationStatus !== "OK") {
+          if (!source.canForce || !value.forceConfirmed || !value.force)
+            issue(
+              "forceConfirmed",
+              "Cần chủ tổ chức xác nhận khoản hoàn có cảnh báo.",
+            );
+          if (value.forceReason.trim().length < 8)
+            issue("forceReason", "Ghi lý do vẫn hoàn ít nhất 8 ký tự.");
+        }
+      }
+    });
+}
 export function ContractSettlementCreateForm(
   props: ContractSettlementCreateFormProps,
 ) {
   const c = useContractSettlementCreate(props),
     s = c.source,
-    [draft, setDraft] = useState(empty);
+    schema = useMemo(() => draftSchema(s), [s]),
+    form = useForm<SettlementCreateDraft>({
+      defaultValues: empty,
+      resolver: zodResolver(schema),
+      mode: "onSubmit",
+    }),
+    {
+      register,
+      reset,
+      setValue,
+      watch,
+      handleSubmit,
+      formState: { errors },
+    } = form,
+    draft = watch(),
+    initializedSource = useRef<SettlementCreateSource | null>(null);
   useEffect(() => {
-    if (s)
-      setDraft({
+    if (s && !c.blocked && initializedSource.current !== s) {
+      initializedSource.current = s;
+      reset({
         ...empty,
         amount: s.suggestedAmount ?? 0,
         voucherDate: s.today,
@@ -52,11 +129,8 @@ export function ContractSettlementCreateForm(
               ? "Hoàn tiền cọc theo hồ sơ thanh lý"
               : "Đề xuất thưởng Sale",
       });
-  }, [s]);
-  const set = <K extends keyof SettlementCreateDraft>(
-    key: K,
-    value: SettlementCreateDraft[K],
-  ) => setDraft((v) => ({ ...v, [key]: value }));
+    }
+  }, [s, reset, c.blocked]);
   if (c.loading)
     return <p role="status">Đang tải nguồn và căn cứ lập phiếu…</p>;
   if (c.error || !s)
@@ -81,10 +155,11 @@ export function ContractSettlementCreateForm(
     <form
       className="space-y-4 text-sm"
       aria-label="Lập phiếu từ nguồn"
-      onSubmit={(e) => {
-        e.preventDefault();
-        void c.createFromSource(draft).catch(() => {});
-      }}
+      noValidate
+      onSubmit={handleSubmit(async (values) => {
+        if (c.blocked || !s.canCreate || s.existingVoucherId) return;
+        await c.createFromSource(values).catch(() => {});
+      })}
     >
       <p className="text-muted-foreground">
         Lập phiếu chờ duyệt cho nguồn này. Chọn sổ quỹ và ghi nhận chi ở bước xử
@@ -134,10 +209,18 @@ export function ContractSettlementCreateForm(
                 type="number"
                 min={1}
                 step={1}
-                value={draft.amount || ""}
-                onChange={(e) => set("amount", Number(e.target.value))}
+                {...register("amount", { valueAsNumber: true })}
+                aria-invalid={!!errors.amount}
+                aria-describedby={
+                  errors.amount ? "source-create-amount-error" : undefined
+                }
                 readOnly={refund}
               />
+              {errors.amount && (
+                <p id="source-create-amount-error" role="alert">
+                  {errors.amount.message}
+                </p>
+              )}
             </div>
             {refund ? (
               <>
@@ -177,21 +260,32 @@ export function ContractSettlementCreateForm(
                       <>
                         <Textarea
                           aria-label="Lý do vẫn hoàn"
-                          value={draft.forceReason}
-                          onChange={(e) => set("forceReason", e.target.value)}
+                          {...register("forceReason")}
                           placeholder="Lý do ít nhất 8 ký tự"
                         />
+                        {errors.forceReason && (
+                          <p role="alert">{errors.forceReason.message}</p>
+                        )}
                         <label className="flex gap-2">
                           <Checkbox
                             checked={draft.forceConfirmed}
                             onCheckedChange={(v) => {
-                              set("forceConfirmed", v === true);
-                              set("force", v === true);
+                              setValue("forceConfirmed", v === true, {
+                                shouldValidate: true,
+                                shouldDirty: true,
+                              });
+                              setValue("force", v === true, {
+                                shouldValidate: true,
+                                shouldDirty: true,
+                              });
                             }}
                           />
                           Tôi đã đối chiếu cọc thực và xác nhận khoản hoàn có
                           cảnh báo.
                         </label>
+                        {errors.forceConfirmed && (
+                          <p role="alert">{errors.forceConfirmed.message}</p>
+                        )}
                       </>
                     )}
                   </div>
@@ -204,9 +298,11 @@ export function ContractSettlementCreateForm(
                   <Input
                     id="source-create-date"
                     type="date"
-                    value={draft.voucherDate}
-                    onChange={(e) => set("voucherDate", e.target.value)}
+                    {...register("voucherDate")}
                   />
+                  {errors.voucherDate && (
+                    <p role="alert">{errors.voucherDate.message}</p>
+                  )}
                 </div>
                 {s.kind !== "sale_deposit" && (
                   <div className="space-y-1">
@@ -215,8 +311,7 @@ export function ContractSettlementCreateForm(
                     </Label>
                     <Input
                       id="source-create-payer"
-                      value={draft.payerName}
-                      onChange={(e) => set("payerName", e.target.value)}
+                      {...register("payerName")}
                     />
                   </div>
                 )}
@@ -225,8 +320,7 @@ export function ContractSettlementCreateForm(
                     <Label htmlFor="source-create-basis">Căn cứ đề xuất</Label>
                     <Textarea
                       id="source-create-basis"
-                      value={draft.itemDescription}
-                      onChange={(e) => set("itemDescription", e.target.value)}
+                      {...register("itemDescription")}
                     />
                   </div>
                 )}
@@ -236,19 +330,14 @@ export function ContractSettlementCreateForm(
               <Label htmlFor="source-create-recipient">Người nhận</Label>
               <Input
                 id="source-create-recipient"
-                value={draft.recipientName}
-                onChange={(e) => set("recipientName", e.target.value)}
+                {...register("recipientName")}
                 placeholder="Nhập tên người nhận"
               />
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <Label htmlFor="source-create-bank">Ngân hàng</Label>
-                <Input
-                  id="source-create-bank"
-                  value={draft.bank}
-                  onChange={(e) => set("bank", e.target.value)}
-                />
+                <Input id="source-create-bank" {...register("bank")} />
               </div>
               <div>
                 <Label htmlFor="source-create-account">
@@ -256,8 +345,7 @@ export function ContractSettlementCreateForm(
                 </Label>
                 <Input
                   id="source-create-account"
-                  value={draft.accountNumber}
-                  onChange={(e) => set("accountNumber", e.target.value)}
+                  {...register("accountNumber")}
                 />
               </div>
             </div>

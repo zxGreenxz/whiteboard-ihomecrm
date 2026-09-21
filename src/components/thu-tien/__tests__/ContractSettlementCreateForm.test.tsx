@@ -30,6 +30,14 @@ import { ContractSettlementCreateForm } from "../ContractSettlementCreateForm";
 const org = "10000000-0000-4000-8000-000000000001",
   id = "20000000-0000-4000-8000-000000000001";
 beforeEach(() => {
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
   m.source = {
     actorId: id,
     organizationId: org,
@@ -81,9 +89,10 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.resetAllMocks();
+  vi.unstubAllGlobals();
 });
 function show() {
-  render(
+  return render(
     <ContractSettlementCreateForm
       sourceRef={{
         kind: "termination_refund",
@@ -149,4 +158,91 @@ it("requires permitted force confirmation and a meaningful reason for warning re
     ).disabled,
   ).toBe(true);
   expect(screen.queryByRole("checkbox")).toBeNull();
+});
+
+it.each([
+  [1.5, "Nhập số tiền nguyên lớn hơn 0."],
+  [101, "Số tiền đề xuất vượt trần thưởng đã công bố."],
+])(
+  "validates amount %s before dispatch and shows a field error",
+  async (amount, message) => {
+    m.source!.kind = "sale_contract";
+    m.source!.capAmount = 100;
+    m.source!.refund = null;
+    show();
+    fireEvent.change(screen.getByLabelText("Số tiền đề xuất (đ)"), {
+      target: { value: amount },
+    });
+    fireEvent.submit(screen.getByRole("form", { name: "Lập phiếu từ nguồn" }));
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toContain(message),
+    );
+    expect(m.create).not.toHaveBeenCalled();
+  },
+);
+it("rejects a missing voucher date before dispatch and preserves the recipient draft", async () => {
+  m.source!.kind = "sale_contract";
+  m.source!.refund = null;
+  show();
+  fireEvent.change(screen.getByLabelText("Người nhận"), {
+    target: { value: "Đang đối chiếu" },
+  });
+  fireEvent.change(screen.getByLabelText("Ngày lập phiếu"), {
+    target: { value: "" },
+  });
+  fireEvent.submit(screen.getByRole("form", { name: "Lập phiếu từ nguồn" }));
+  await waitFor(() =>
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Ngày lập phiếu không hợp lệ.",
+    ),
+  );
+  expect((screen.getByLabelText("Người nhận") as HTMLInputElement).value).toBe(
+    "Đang đối chiếu",
+  );
+  expect(m.create).not.toHaveBeenCalled();
+});
+it("blocks forced submit of an unconfirmed warning and keeps the unknown-result lock", async () => {
+  m.source!.canForce = true;
+  m.source!.refund!.obligationStatus = "VUOT_COC_THAT";
+  show();
+  fireEvent.submit(screen.getByRole("form", { name: "Lập phiếu từ nguồn" }));
+  await waitFor(() =>
+    expect(screen.getAllByRole("alert").length).toBeGreaterThan(0),
+  );
+  expect(m.create).not.toHaveBeenCalled();
+});
+it("does not dispatch a programmatic submit when the shared hook is locked", async () => {
+  m.blocked = true;
+  show();
+  fireEvent.submit(screen.getByRole("form", { name: "Lập phiếu từ nguồn" }));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(m.create).not.toHaveBeenCalled();
+});
+
+it("preserves a reviewed recipient draft when a failed request unlocks the same source", () => {
+  const view = show();
+  fireEvent.change(screen.getByLabelText("Người nhận"), {
+    target: { value: "Giữ bản nhập" },
+  });
+  const rerender = () =>
+    view.rerender(
+      <ContractSettlementCreateForm
+        sourceRef={{
+          kind: "termination_refund",
+          organizationId: org,
+          terminationId: id,
+          obligationId: null,
+          obligationVersion: null,
+        }}
+        onCreated={() => {}}
+        refreshRequired={async () => {}}
+      />,
+    );
+  m.blocked = true;
+  rerender();
+  m.blocked = false;
+  rerender();
+  expect((screen.getByLabelText("Người nhận") as HTMLInputElement).value).toBe(
+    "Giữ bản nhập",
+  );
 });

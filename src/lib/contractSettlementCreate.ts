@@ -267,7 +267,13 @@ async function readVoucherForSource(
     row.organizationId !== source.organizationId ||
     row.type !== "EXPENSE" ||
     row.systemSource !== expectedSystem ||
-    (source.kind !== "sale_deposit" && row.contractId !== source.contractId)
+    (source.kind !== "sale_deposit" &&
+      row.contractId !== source.contractId &&
+      !(
+        source.kind === "sale_contract" &&
+        row.contractId === null &&
+        source.existingVoucherId === id
+      ))
   )
     throw new SettlementCreateError(
       "unconfirmed",

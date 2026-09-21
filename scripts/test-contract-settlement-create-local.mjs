@@ -18,7 +18,7 @@ const org = randomUUID(),
   building = randomUUID(),
   room = randomUUID(),
   customer = randomUUID();
-const contracts = Array.from({ length: 4 }, randomUUID),
+const contracts = Array.from({ length: 9 }, randomUUID),
   deposit = randomUUID(),
   termination = randomUUID();
 const key = "T6-" + randomUUID(),
@@ -371,6 +371,143 @@ try {
     "sale_deposit",
     deposit,
   );
+  // Review I1: preserve NULL legacy contract fields while bridging the exact source claim.
+  const extraDeposits = [];
+  for (let n = 0; n < 5; n++) {
+    const id = randomUUID();
+    extraDeposits.push(id);
+    await fixture(async () => {
+      await db.query(
+        "INSERT INTO public.income_expenses(id,user_id,organization_id,building_id,room_id,type,name,code,voucher_date,total_amount,approval_status,posting_status,review_state,review_version,approval_version,posting_version) SELECT $1,user_id,organization_id,building_id,room_id,type,name,$2,voucher_date,total_amount,approval_status,posting_status,review_state,review_version,approval_version,posting_version FROM public.income_expenses WHERE id=$3",
+        [id, key + id, deposit],
+      );
+      await db.query(
+        "INSERT INTO public.income_expense_items(income_expense_id,income_expense_type_id,organization_id,description,quantity,unit_price,amount,accounting_class) SELECT $1,income_expense_type_id,organization_id,description,quantity,unit_price,amount,accounting_class FROM public.income_expense_items WHERE income_expense_id=$2",
+        [id, deposit],
+      );
+    });
+  }
+  const link = (contractId, depositId) =>
+    db.query(
+      "INSERT INTO public.contract_deposit_links(organization_id,contract_id,income_expense_id,link_source,linked_by) VALUES($1,$2,$3,'EXPLICIT_V2',$4)",
+      [org, contractId, depositId, actor],
+    );
+  const depositBonus = (id) =>
+    rpc("create_sale_bonus_from_deposit_v1", {
+      p_deposit_voucher_id: id,
+      p_amount: 100,
+      p_account_id: null,
+    });
+  const firstBonus = await creation(
+    () => adapterCreate("sale_deposit", extraDeposits[0]),
+    "sale_deposit",
+    extraDeposits[0],
+  );
+  await link(contracts[4], extraDeposits[0]);
+  assert.notEqual(
+    (await commission(contracts[4], "sale")).status,
+    200,
+    "contract writer must reject the existing deposit claim",
+  );
+  const linked = ok(await read("sale_contract", contracts[4]));
+  assert.equal(
+    linked.existingVoucherId,
+    firstBonus,
+    "explicit link must expose the exact live deposit bonus claim",
+  );
+  assert.equal(
+    ok(await adapterCreate("sale_contract", contracts[4])).outcome,
+    "existing",
+  );
+  assert.deepEqual(
+    (
+      await db.query(
+        "SELECT DISTINCT contract_id FROM public.income_expenses WHERE id=ANY($1::uuid[])",
+        [[extraDeposits[0], firstBonus]],
+      )
+    ).rows,
+    [{ contract_id: null }],
+  );
+  await fixture(() =>
+    db.query(
+      "UPDATE public.income_expenses SET has_restricted_item=true,user_id=$2 WHERE id=$1",
+      [firstBonus, outsider],
+    ),
+  );
+  const hiddenLinked = ok(await read("sale_contract", contracts[4]));
+  assert.equal(hiddenLinked.hiddenExisting, true);
+  assert.equal(hiddenLinked.existingVoucherId, null);
+  assert.equal(JSON.stringify(hiddenLinked).includes(firstBonus), false);
+  const hiddenConflict = await commission(contracts[4], "sale");
+  assert.notEqual(hiddenConflict.status, 200);
+  assert.equal(JSON.stringify(hiddenConflict).includes(firstBonus), false);
+  await link(contracts[5], extraDeposits[1]);
+  const contractBonus = ok(await commission(contracts[5], "sale")).id;
+  assert.equal(
+    ok(await read("sale_deposit", extraDeposits[1])).existingVoucherId,
+    contractBonus,
+  );
+  assert.notEqual(
+    (await depositBonus(extraDeposits[1])).status,
+    200,
+    "deposit writer must reject the existing linked contract claim",
+  );
+  await link(contracts[6], extraDeposits[2]);
+  const mixedRace = await Promise.all([
+    commission(contracts[6], "sale"),
+    depositBonus(extraDeposits[2]),
+  ]);
+  assert.equal(
+    mixedRace.filter((r) => r.status === 200).length,
+    1,
+    "linked contract/deposit writer race creates one live bonus",
+  );
+  assert.equal(
+    ok(await read("sale_contract", contracts[6])).hiddenExisting,
+    false,
+  );
+  ok(await commission(contracts[7], "sale"));
+  ok(await depositBonus(extraDeposits[3]));
+  await assert.rejects(
+    link(contracts[7], extraDeposits[3]),
+    (e) => e.code === "23505",
+    "link must refuse joining two independently awarded trades",
+  );
+  assert.equal(
+    (
+      await db.query(
+        "SELECT count(*)::int n FROM public.contract_deposit_links WHERE income_expense_id=$1",
+        [extraDeposits[3]],
+      )
+    ).rows[0].n,
+    0,
+  );
+  await creation(
+    () => adapterCreate("sale_deposit", extraDeposits[4]),
+    "sale_deposit",
+    extraDeposits[4],
+  );
+  await db.query("BEGIN");
+  let waitingContract;
+  try {
+    await link(contracts[8], extraDeposits[4]);
+    // Link transaction holds the exact shared org lock while the authenticated writer starts.
+    waitingContract = commission(contracts[8], "sale");
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    await db.query("COMMIT");
+  } catch (error) {
+    await db.query("ROLLBACK");
+    if (waitingContract) await waitingContract;
+    throw error;
+  }
+  assert.notEqual(
+    (await waitingContract).status,
+    200,
+    "writer waiting for an in-flight explicit link must see its committed claim",
+  );
+  console.log(
+    "PASS I1 explicit-link visible/hidden source claim, both creation directions, mixed-writer race and conflicting link guard.",
+  );
   const duplicate = await commission(contracts[0], "broker");
   assert.notEqual(duplicate.status, 200);
   assert.equal(
@@ -574,6 +711,10 @@ try {
     );
     await db.query(
       "DELETE FROM public.income_expense_postings WHERE organization_id=$1",
+      [org],
+    );
+    await db.query(
+      "DELETE FROM public.contract_deposit_links WHERE organization_id=$1",
       [org],
     );
     await db.query(
