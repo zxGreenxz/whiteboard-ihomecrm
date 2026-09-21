@@ -6,7 +6,7 @@
     "Runner gán theo includes/command/ciJobs của từng suite, không suy từ thư mục supabase/functions/.",
     "Suite nào đòi runtime khác Node mặc định thì ghi ở trường `runtime` — tra chi tiết ở tooling/runtime-matrix.json.",
     "Harness operator T2: node scripts/test-contract-settlement-reader-local.mjs, chỉ disposable PostgreSQL17 loopback55488 + PostgREST16 loopback55489; tự setup/cleanup fixture, JWT authenticated. Không phải CI suite; CI chưa provision baseline+forward/runtime này. Unit reader nằm trong app-unit.",
-    "Harness operator T7 financial: node scripts/test-settlement-financial-reader-local.mjs and node scripts/test-settlement-financial-schema-local.mjs; disposable settlement_t7 PostgreSQL17 loopback55488 / PostgREST16 loopback55490 only. JWT fixtures cleaned; schema rehearsals rollback. Not a CI-provisioned database suite."
+    "Harness operator T7 financial: node scripts/test-settlement-financial-reader-local.mjs, node scripts/test-settlement-financial-schema-local.mjs, node scripts/test-settlement-termination-breakdown-schema-local.mjs and node scripts/test-settlement-termination-breakdown-mutation-local.mjs; disposable settlement_t7 PostgreSQL17 loopback55488 / PostgREST16 loopback55490 only. JWT fixtures cleaned; schema rehearsals rollback; mutation restores source and database definitions. Not a CI-provisioned database suite."
   ],
   "suites": [
     {

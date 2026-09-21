@@ -157,6 +157,22 @@ describe("buildTerminationCard — khung tổng hợp khớp màn thanh lý", ()
   it("không có hồ sơ thanh lý ⇒ null (không dựng khung giả)", () => {
     expect(buildTerminationCard(goc({ termination: null }))).toBeNull();
   });
+
+  it("cảnh báo khi tổng khấu trừ lưu trên hồ sơ lệch phép tính từ các dòng chi tiết", () => {
+    const card = buildTerminationCard(goc({ termination: { ...goc().termination!, total_deductions: 1 } }))!;
+    expect(card.warning).toMatch(/Tổng khấu trừ trên hồ sơ/);
+    expect(card.warning).toMatch(/1 đ/);
+    expect(card.warning).toMatch(/1\.912\.400 đ/);
+  });
+
+  it("cảnh báo khi tổng item không khớp phí trên hồ sơ dù header và phiếu vẫn tự khớp", () => {
+    const card = buildTerminationCard(goc({
+      settlement_items: [{ description: "Tiền vệ sinh", amount: 900_000, type: "OTHER" }],
+    }))!;
+    expect(card.warning).toMatch(/Chi tiết khoản thu thêm/);
+    expect(card.warning).toMatch(/900\.000 đ/);
+    expect(card.warning).toMatch(/1\.912\.400 đ/);
+  });
 });
 
 describe("parseTerminationRefundFacts", () => {
