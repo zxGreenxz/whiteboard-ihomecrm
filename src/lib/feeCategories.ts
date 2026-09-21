@@ -19,14 +19,16 @@
 import { nrm } from '@/lib/fixedExpenseCategories';
 
 export type FeeFamily =
-  | 'EN' | 'GRID' | 'COMMISSION' | 'MAINTENANCE_BATCH'
-  // Ba mảng SỔ theo dõi (01/08/2026): không phải nút chi theo kỳ mà là nơi
-  // QUẢN LÝ phiếu đã/sắp phát sinh — hàng đợi chi thanh lý, phiếu thưởng
-  // Sale, và cọc đã thu. Chúng bị LOẠI khỏi bảng Tổng quan vì Tổng quan cam
-  // kết khớp Báo cáo Lợi Nhuận, còn ba mảng này là tiền cọc/hoàn — không
-  // thuộc lãi lỗ.
-  | 'TERMINATION_REFUND' | 'SALE_BONUS' | 'DEPOSIT_LEDGER';
-export type FeeGroup = 'Phí theo tòa' | 'Hoa hồng' | 'Bảo trì' | 'Thanh lý & Cọc';
+  | 'EN' | 'GRID' | 'MAINTENANCE_BATCH'
+  // 21/09/2026: ba family cũ COMMISSION / TERMINATION_REFUND / SALE_BONUS gộp
+  // thành MỘT — khu "Hợp đồng & quyết toán". Ba loại khoản đó cùng phát sinh từ
+  // hợp đồng và cùng đi một luồng rà soát → duyệt → chi, nên tách ba chỗ chỉ
+  // bắt người giữ sổ phải đi ba nơi để biết còn nợ ai bao nhiêu.
+  | 'CONTRACT_SETTLEMENT'
+  // Sổ theo dõi cọc đã thu: không phải nút chi theo kỳ. Bị LOẠI khỏi bảng Tổng
+  // quan vì Tổng quan cam kết khớp Báo cáo Lợi Nhuận, còn cọc không thuộc lãi lỗ.
+  | 'DEPOSIT_LEDGER';
+export type FeeGroup = 'Hợp đồng & quyết toán' | 'Phí theo tòa' | 'Bảo trì' | 'Cọc';
 
 export interface FeeCategory {
   key: string;                 // registry key ('dien_nuoc','internet',…)
@@ -100,10 +102,13 @@ export const FEE_CATEGORIES: FeeCategory[] = [
     serverKey: 'thang_may', canonicalTypeName: 'Bảo trì thang máy', canonicalCategory: 'Bảo Trì Thang Máy',
   },
   {
-    key: 'hoa_hong', label: 'Hoa hồng môi giới', group: 'Hoa hồng',
-    sub: 'theo hợp đồng ký trong kỳ', family: 'COMMISSION', icon: 'percent', accent: '#c97a10',
+    // 21/09/2026: gộp hoa_hong + chi_thanh_ly + thuong_sale. Khu này KHÔNG tạo
+    // phiếu — phiếu vào từ trang Thu chi, ở đây chỉ rà soát → duyệt → chi.
+    key: 'hop_dong', label: 'Hợp đồng & quyết toán', group: 'Hợp đồng & quyết toán',
+    sub: 'hoa hồng môi giới · hoàn khách thanh lý · thưởng sale',
+    family: 'CONTRACT_SETTLEMENT', icon: 'percent', accent: '#1f7a52',
     multiPeriod: false, providerConfig: false, restricted: false, elevatorGated: false,
-    serverKey: 'hoa_hong', canonicalTypeName: 'Hoa hồng môi giới', canonicalCategory: 'Hoa hồng',
+    serverKey: 'hop_dong', canonicalTypeName: '—', canonicalCategory: '—',
   },
   {
     key: 'bao_tri', label: 'Bảo trì máy lạnh / máy giặt', group: 'Bảo trì',
@@ -116,21 +121,7 @@ export const FEE_CATEGORIES: FeeCategory[] = [
     ],
   },
   {
-    key: 'chi_thanh_ly', label: 'Chi thanh lý (hoàn cọc)', group: 'Thanh lý & Cọc',
-    sub: 'hồ sơ trả phòng · đối chiếu cọc thật rồi mới chi', family: 'TERMINATION_REFUND',
-    icon: 'wallet', accent: '#b3541e',
-    multiPeriod: false, providerConfig: false, restricted: false, elevatorGated: false,
-    serverKey: 'chi_thanh_ly', canonicalTypeName: 'Hoàn tiền cọc', canonicalCategory: 'Hoàn cọc',
-  },
-  {
-    key: 'thuong_sale', label: 'Thưởng Sale', group: 'Thanh lý & Cọc',
-    sub: 'phiếu thưởng nóng theo phiếu cọc / hợp đồng', family: 'SALE_BONUS',
-    icon: 'handcoins', accent: '#9c27b0',
-    multiPeriod: false, providerConfig: false, restricted: false, elevatorGated: false,
-    serverKey: 'thuong_sale', canonicalTypeName: 'Thưởng nóng Sale', canonicalCategory: 'Hoa hồng',
-  },
-  {
-    key: 'coc_da_thu', label: 'Cọc đã thu', group: 'Thanh lý & Cọc',
+    key: 'coc_da_thu', label: 'Cọc đã thu', group: 'Cọc',
     sub: 'phiếu thu cọc trong kỳ · két thật vs sổ ảo', family: 'DEPOSIT_LEDGER',
     icon: 'piggybank', accent: '#00695c',
     multiPeriod: false, providerConfig: false, restricted: false, elevatorGated: false,
@@ -143,10 +134,25 @@ export const FEE_CATEGORIES: FeeCategory[] = [
  * "còn thiếu phiếu theo toà" thì phải LOẠI các family này ra (tiền cọc/hoàn
  * không thuộc lãi lỗ; đếm chúng vào là lệch số với Báo cáo Lợi Nhuận).
  */
-export const LEDGER_FAMILIES: ReadonlySet<FeeFamily> =
-  new Set(['TERMINATION_REFUND', 'SALE_BONUS', 'DEPOSIT_LEDGER']);
+export const LEDGER_FAMILIES: ReadonlySet<FeeFamily> = new Set(['DEPOSIT_LEDGER']);
 
-export const FEE_GROUPS: FeeGroup[] = ['Phí theo tòa', 'Hoa hồng', 'Bảo trì', 'Thanh lý & Cọc'];
+export const FEE_GROUPS: FeeGroup[] = ['Hợp đồng & quyết toán', 'Phí theo tòa', 'Bảo trì', 'Cọc'];
+
+/**
+ * Ánh xạ key hạng mục CŨ sang key hiện hành.
+ *
+ * `flt:thu-tien:fee-cat` lưu trong sessionStorage, nên người đang mở trang lúc
+ * phát hành vẫn giữ giá trị cũ. Cả Panel lẫn Sheet đều fallback về Tổng quan khi
+ * key không còn — không trắng trang — nhưng ánh xạ giữ đúng chỗ họ đang đứng.
+ */
+const KEY_CU_SANG_MOI: Record<string, string> = {
+  hoa_hong: 'hop_dong',
+  chi_thanh_ly: 'hop_dong',
+  thuong_sale: 'hop_dong',
+};
+
+export const normalizeFeeCategoryKey = (key: string): string =>
+  KEY_CU_SANG_MOI[key] ?? key;
 
 export const feeCategoryOf = (key: string): FeeCategory | undefined =>
   FEE_CATEGORIES.find((c) => c.key === key);
