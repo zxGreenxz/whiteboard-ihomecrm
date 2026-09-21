@@ -13,6 +13,7 @@ import {
   type SettlementCreateSource,
 } from "@/lib/contractSettlementCreate";
 import { settlementCreateRepository } from "@/lib/contractSettlementCreateRepository";
+import { fetchFinanceV2ClientFlags } from "@/lib/financeV2Route";
 const refreshRoots = [
   "contract-settlement",
   "contract-settlement-events",
@@ -139,6 +140,13 @@ export function useContractSettlementCreate(args: {
     setPhase("writing");
     setMessage(null);
     try {
+      const route = (await fetchFinanceV2ClientFlags()).get(organizationId);
+      assertIdentity(start);
+      if (!route || route.workflow !== "CANONICAL" || route.posting !== "CANONICAL")
+        throw new SettlementCreateError(
+          "blocked",
+          "Khu Hợp đồng & quyết toán cần quy trình thu chi chuẩn.",
+        );
       const guard =
         <A extends unknown[], R>(fn: (...input: A) => Promise<R>) =>
         async (...input: A) => {

@@ -13,6 +13,8 @@ export interface ActionVoucher {
   approvalVersion: number | null; postingVersion: number | null; reviewVersion: number | null;
 }
 export interface IncomeExpenseActionContext {
+  /** A host may require the complete canonical route without changing legacy Thu chi behavior. */
+  canonicalOnly?: boolean;
   /** Display hints never authorize writes; useful while a selected row's full snapshot loads. */
   display?: Pick<ActionVoucher, 'approvalStatus' | 'postingStatus' | 'reviewState'>;
   voucher: ActionReadiness<ActionVoucher>;
@@ -37,9 +39,9 @@ const actionNames: IncomeExpenseAction[] = ['approveOnly', 'legacyApprove', 'app
 const validVersion = (value: number | null) => value !== null && Number.isSafeInteger(value) && value >= 0;
 
 export function pendingIncomeExpenseActionContext(
-  handlers: IncomeExpenseActionContext['handlers'], display?: IncomeExpenseActionContext['display'],
+  handlers: IncomeExpenseActionContext['handlers'], display?: IncomeExpenseActionContext['display'], canonicalOnly = false,
 ): IncomeExpenseActionContext {
-  return { handlers, display, voucher: { state: 'loading' }, actor: { state: 'loading' }, permissions: { state: 'loading' },
+  return { handlers, display, canonicalOnly, voucher: { state: 'loading' }, actor: { state: 'loading' }, permissions: { state: 'loading' },
     routes: { state: 'loading' }, ownership: { state: 'loading' }, custody: { state: 'loading' }, lifecycle: { state: 'loading' }, source: { state: 'loading' }, cancellation: { state: 'loading' } };
 }
 
@@ -76,6 +78,15 @@ export function decideIncomeExpenseActions(c: IncomeExpenseActionContext): Incom
       : name === 'requestChanges' ? pending && (v.reviewState === 'PENDING' || v.reviewState === 'DISPUTED' || v.reviewState === null)
       : name === 'resubmitReview' ? pending && (v.reviewState === 'CHANGES_REQUESTED' || v.reviewState === null) : true;
     if (!visible) { a.visible = false; deny(a, 'STATE', 'Trạng thái phiếu không hỗ trợ thao tác'); continue; }
+    if (c.canonicalOnly) {
+      if (!requireReady(a, c.routes)) continue;
+      const routes = c.routes.value;
+      if (routes.workflow !== 'CANONICAL' || routes.posting !== 'CANONICAL') {
+        if (name === 'legacyApprove') a.visible = false;
+        deny(a, 'CANONICAL_REQUIRED', 'Khu Hợp đồng & quyết toán cần quy trình thu chi chuẩn');
+        continue;
+      }
+    }
     // Route-independent append-only evidence retains its existing UI authority (including cancelled vouchers).
     if (name === 'supplement') {
       if (actor.isAdmin || v.userId === actor.id) { a.enabled = true; continue; }

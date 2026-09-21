@@ -55,6 +55,7 @@ vi.mock("./financeV2Mutations", () => ({
   useReversePostingV2: () => ({ mutateAsync: m.reverse }),
 }));
 vi.mock("./statusMutations", () => ({
+  isIncomeExpensePartialCommitError: (error: unknown) => typeof error === 'object' && error !== null && (error as { writeCommitted?: boolean }).writeCommitted === true,
   useApproveVoucher: () => ({ mutateAsync: m.legacy }),
   useUnapproveVoucher: () => ({ mutateAsync: m.unapprove }),
   useCancelIncomeExpense: () => ({ mutateAsync: m.cancel }),
@@ -159,10 +160,11 @@ beforeEach(() => {
   m.invalidate.mockResolvedValue(undefined);
   m.approve.mockResolvedValue({});
   m.resubmit.mockResolvedValue({});
+  m.cancel.mockReset().mockResolvedValue({});
 });
 afterEach(cleanup);
-function setup() {
-  return renderHook(() => useIncomeExpenseActions({ scope, voucherIds: [id] }));
+function setup(options: { canonicalOnly?: boolean } = {}) {
+  return renderHook(() => useIncomeExpenseActions({ scope, voucherIds: [id], ...options }));
 }
 async function open(
   h: ReturnType<typeof setup>,
@@ -285,8 +287,20 @@ describe("shared controller executes reviewed snapshots", () => {
     expect(m.legacy).toHaveBeenCalledWith(id);
     expect(m.approve).not.toHaveBeenCalled();
   });
+  it("blocks a legacy route at availability and open on a canonical-only host", () => {
+    batch.routes.workflow = "LEGACY";
+    batch.routes.posting = "LEGACY";
+    row.flowKind = null;
+    row.capabilities.manual = true;
+    const h = setup({ canonicalOnly: true });
+    expect(h.result.current.availability(id).legacyApprove.visible).toBe(false);
+    expect(h.result.current.availability(id).approveOnly.reasonCode).toBe("CANONICAL_REQUIRED");
+    act(() => h.result.current.openApproval(id));
+    expect(h.result.current.selected).toBeNull();
+    expect(m.legacy).not.toHaveBeenCalled();
+  });
   it("does not write after canonical route changed to legacy", async () => {
-    const h = setup();
+    const h = setup({ canonicalOnly: true });
     await open(h, "approveOnly");
     m.read.mockResolvedValue({
       ...batch,
@@ -298,6 +312,24 @@ describe("shared controller executes reviewed snapshots", () => {
     });
     expect(m.approve).not.toHaveBeenCalled();
     expect(m.legacy).not.toHaveBeenCalled();
+  });
+  it("keeps a partial cancel locked when reversal committed and refresh fails", async () => {
+    row.flowKind = null;
+    row.capabilities.manual = true;
+    batch.rows[id] = row;
+    m.cancelRead.mockResolvedValue({ income: {}, flex: { [id]: { id, eligible: false, reason_code: "STRICT_MODE" } } });
+    m.cancel.mockRejectedValue(Object.assign(new Error("Đã hoàn tác tiền nhưng chưa hoàn tất huỷ phiếu."), { writeCommitted: true }));
+    m.invalidate.mockRejectedValue(new Error("refresh failed"));
+    const h = setup();
+    await open(h, "cancel");
+    await act(async () => {
+      await expect(h.result.current.commands.confirm({ reason: "Lý do huỷ đủ dài" })).rejects.toThrow();
+    });
+    expect(h.result.current.outcome.kind).toBe("partial-committed");
+    expect(h.result.current.dismissalBlocked).toBe(true);
+    const selected = h.result.current.selected;
+    act(() => h.result.current.close());
+    expect(h.result.current.selected).toEqual(selected);
   });
 });
 

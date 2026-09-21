@@ -136,6 +136,7 @@ export function IncomeExpenseActionDialogs({
     <div role="status" className="space-y-2 rounded border p-3 text-sm">
       <p>{c.outcome.message}</p>
       {(c.outcome.kind === "unknown" ||
+        c.outcome.kind === "partial-committed" ||
         c.outcome.kind === "processed-refresh-failed") && (
         <div className="flex flex-wrap gap-2">
           <Button

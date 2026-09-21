@@ -130,8 +130,9 @@ export function buildIncomeExpenseActionContext(args: {
   cancellation: ActionReadiness<CancellationEligibility>;
   handlers: IncomeExpenseActionContext["handlers"];
   display?: IncomeExpenseActionContext["display"];
+  canonicalOnly?: boolean;
 }): IncomeExpenseActionContext {
-  const c = pendingIncomeExpenseActionContext(args.handlers, args.display),
+  const c = pendingIncomeExpenseActionContext(args.handlers, args.display, args.canonicalOnly),
     batch = args.snapshot;
   if (batch.state !== "ready") {
     if (batch.state === "error")

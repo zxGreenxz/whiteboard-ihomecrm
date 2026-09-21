@@ -51,6 +51,17 @@ describe('shared income expense action policy', () => {
     expect(a.approveAndPost.enabled).toBe(false); expect(a.requestChanges.enabled).toBe(false);
     voucher(c).approvalVersion = null; expect(decideIncomeExpenseActions(c).legacyApprove.enabled).toBe(false);
   });
+  it('keeps legacy behavior in Thu chi but blocks every write on a canonical-only host', () => {
+    const c = context();
+    c.routes = ready({ ...(c.routes as { state: 'ready'; value: import('../financeV2Route').FinanceV2OrgRoutes }).value, workflow: 'LEGACY', posting: 'LEGACY', readSemantics: 'LEGACY' });
+    expect(decideIncomeExpenseActions(c).legacyApprove.enabled).toBe(true);
+    c.canonicalOnly = true;
+    const a = decideIncomeExpenseActions(c);
+    expect(a.legacyApprove.visible).toBe(false);
+    for (const action of Object.values(a)) expect(action.enabled).toBe(false);
+    expect(a.approveOnly.reasonCode).toBe('CANONICAL_REQUIRED');
+    expect(a.supplement.reasonCode).toBe('CANONICAL_REQUIRED');
+  });
   it.each(['loading', 'error'] as const)('does not interpret %s route as legacy authorization', state => {
     const c = context(); c.routes = state === 'loading' ? { state } : { state, reason: 'network' };
     const a = decideIncomeExpenseActions(c);

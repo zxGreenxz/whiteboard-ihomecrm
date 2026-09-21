@@ -14,6 +14,7 @@ const m = vi.hoisted(() => ({
   create: vi.fn(),
   read: vi.fn(),
   voucher: vi.fn(),
+  routes: vi.fn(),
 }));
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({ data: { id: m.actor } }),
@@ -31,6 +32,7 @@ vi.mock("@/lib/contractSettlementCreate", async (load) => ({
   ...(await load<typeof import("@/lib/contractSettlementCreate")>()),
   createContractSettlementVoucher: m.create,
 }));
+vi.mock("@/lib/financeV2Route", () => ({ fetchFinanceV2ClientFlags: m.routes }));
 import { SettlementCreateError } from "@/lib/contractSettlementCreate";
 import { useContractSettlementCreate } from "../useContractSettlementCreate";
 const sourceId = "30000000-0000-4000-8000-000000000001",
@@ -51,6 +53,7 @@ beforeEach(() => {
   m.read.mockImplementation(async () => m.source);
   m.voucher.mockResolvedValue({ id: voucherId });
   m.create.mockResolvedValue({ outcome: "created", voucherId });
+  m.routes.mockResolvedValue(new Map([[m.org, { workflow: "CANONICAL", posting: "CANONICAL" }]]));
 });
 afterEach(() => {
   cleanup();
@@ -163,6 +166,7 @@ it("does not open an old result after organization changes during the write", as
   act(() => {
     first = hook.result.current.createFromSource(draft);
   });
+  await waitFor(() => expect(m.create).toHaveBeenCalledTimes(1));
   m.org = "90000000-0000-4000-8000-000000000001";
   hook.rerender();
   await act(async () => {
@@ -172,4 +176,12 @@ it("does not open an old result after organization changes during the write", as
   expect(props.onCreated).not.toHaveBeenCalled();
   expect(hook.result.current.source).toBeNull();
   expect(hook.result.current.blocked).toBe(true);
+});
+it("rechecks canonical routes immediately before create and never calls a legacy writer", async () => {
+  m.routes.mockResolvedValue(new Map([[m.org, { workflow: "LEGACY", posting: "LEGACY" }]]));
+  const { hook } = await setup();
+  await act(async () => {
+    await expect(hook.result.current.createFromSource(draft)).rejects.toMatchObject({ kind: "blocked" });
+  });
+  expect(m.create).not.toHaveBeenCalled();
 });

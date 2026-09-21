@@ -111,7 +111,7 @@ function SourceDetail({ context, row, renderCreate, onBusyChange }: Props & { ro
 function VoucherDetail({ context, row, snapshot: v, onEditVoucher, onBusyChange }: Props & { row: SettlementVoucherRow; snapshot: VoucherSnapshot }) {
   const { data: actor } = useAuth();
   const { selectedOrganizationId } = useOrganization();
-  const actions = useIncomeExpenseActions({ scope: { actorId: actor?.id ?? '', organizationId: selectedOrganizationId ?? '' }, voucherIds: [v.id], onEdit: onEditVoucher, refreshRequired: context.refreshRequired });
+  const actions = useIncomeExpenseActions({ scope: { actorId: actor?.id ?? '', organizationId: selectedOrganizationId ?? '' }, voucherIds: [v.id], onEdit: onEditVoucher, refreshRequired: context.refreshRequired, canonicalOnly: true });
   const sessionBlocked = actions.dismissalBlocked || actions.selected !== null;
   useEffect(() => { onBusyChange?.(sessionBlocked); }, [sessionBlocked, onBusyChange]);
   const supplements = useIncomeExpenseSupplements(v.id);

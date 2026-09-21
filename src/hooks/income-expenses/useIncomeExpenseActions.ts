@@ -36,6 +36,7 @@ import {
   useReversePostingV2,
 } from "./financeV2Mutations";
 import {
+  isIncomeExpensePartialCommitError,
   useApproveVoucher,
   useUnapproveVoucher,
   useCancelIncomeExpense,
@@ -116,7 +117,7 @@ export interface IncomeExpenseActionPayload {
   recipient?: VoucherRecipient;
 }
 export type ActionOutcome = {
-  kind: "idle" | "error" | "unknown" | "processed-refresh-failed" | "success";
+  kind: "idle" | "error" | "unknown" | "partial-committed" | "processed-refresh-failed" | "success";
   message: string | null;
 };
 export interface SelectedIncomeExpenseAction {
@@ -200,6 +201,7 @@ export function useIncomeExpenseActions(args: {
   voucherIds: readonly string[];
   onEdit?: (id: string) => void;
   refreshRequired?: () => Promise<void>;
+  canonicalOnly?: boolean;
 }) {
   const client = useQueryClient(),
     [selected, setSelected] = useState<SelectedIncomeExpenseAction | null>(
@@ -245,6 +247,7 @@ export function useIncomeExpenseActions(args: {
       cashbooks: books.readiness,
       cancellation: cancelEligibility.readiness,
       handlers,
+      canonicalOnly: args.canonicalOnly,
     });
   const approve = useApproveIncomeExpenseV2({ managed: true }),
     atomic = useApproveAndPostIncomeExpenseV2({ managed: true }),
@@ -266,6 +269,11 @@ export function useIncomeExpenseActions(args: {
       !selected.snapshot &&
       snapshots.readiness.state === "ready"
     ) {
+      if (current.current.canonicalOnly && (snapshots.readiness.value.routes.workflow !== "CANONICAL" || snapshots.readiness.value.routes.posting !== "CANONICAL")) {
+        setOutcome({ kind: "error", message: "Khu Hợp đồng & quyết toán cần quy trình thu chi chuẩn." });
+        setSelected(null);
+        return;
+      }
       const v = snapshots.readiness.value.rows[selected.id];
       if (v)
         setSelected({
@@ -285,6 +293,7 @@ export function useIncomeExpenseActions(args: {
     dismissalBlocked =
       busy ||
       outcome.kind === "unknown" ||
+      outcome.kind === "partial-committed" ||
       outcome.kind === "processed-refresh-failed";
   function open(
     action: IncomeExpenseAction,
@@ -293,11 +302,15 @@ export function useIncomeExpenseActions(args: {
   ) {
     if (
       inFlight.current ||
-      ["unknown", "processed-refresh-failed"].includes(outcomeRef.current.kind)
+      ["unknown", "partial-committed", "processed-refresh-failed"].includes(outcomeRef.current.kind)
     )
       return;
     const b =
       snapshots.readiness.state === "ready" ? snapshots.readiness.value : null;
+    if (args.canonicalOnly && b && (b.routes.workflow !== "CANONICAL" || b.routes.posting !== "CANONICAL")) {
+      setOutcome({ kind: "error", message: "Khu Hợp đồng & quyết toán cần quy trình thu chi chuẩn." });
+      return;
+    }
     setOutcome({ kind: "idle", message: null });
     setSelected({
       id,
@@ -313,7 +326,7 @@ export function useIncomeExpenseActions(args: {
   function close() {
     if (
       !inFlight.current &&
-      !["unknown", "processed-refresh-failed"].includes(outcomeRef.current.kind)
+      !["unknown", "partial-committed", "processed-refresh-failed"].includes(outcomeRef.current.kind)
     )
       setSelected(null);
   }
@@ -354,6 +367,7 @@ export function useIncomeExpenseActions(args: {
       cashbooks,
       cancellation,
       handlers,
+      canonicalOnly: current.current.canonicalOnly,
     });
     return {
       batch,
@@ -517,7 +531,7 @@ export function useIncomeExpenseActions(args: {
     const selectedNow = selection.current;
     if (!selectedNow?.snapshot || !selectedNow.routes)
       throw new Error("Chưa tải đủ phiếu.");
-    if (outcomeRef.current.kind === "processed-refresh-failed")
+    if (["partial-committed", "processed-refresh-failed"].includes(outcomeRef.current.kind))
       throw new Error("Phiếu đã được xử lý. Hãy tải lại dữ liệu.");
     if (outcomeRef.current.kind === "unknown" && !selectedNow.payload)
       throw new Error("Chưa xác định được yêu cầu trước.");
@@ -581,7 +595,27 @@ export function useIncomeExpenseActions(args: {
       setSelected(null);
       toast.success("Đã xử lý phiếu và tải lại dữ liệu.");
     } catch (error) {
-      if (writeConfirmed) {
+      const partialCommit = isIncomeExpensePartialCommitError(error);
+      if (partialCommit) {
+        setPhase("refreshing");
+        try {
+          const refreshed = await refreshAll();
+          const latest = refreshed.rows[op.id];
+          if (latest && (latest.approvalStatus === "CANCELLED" || latest.postingStatus === "REVERSED")) {
+            setSelected(null);
+            setOutcome({
+              kind: latest.approvalStatus === "CANCELLED" ? "success" : "error",
+              message: latest.approvalStatus === "CANCELLED"
+                ? "Đã hoàn tác tiền và hủy phiếu."
+                : "Đã hoàn tác tiền; phiếu chưa hủy. Trạng thái mới đã được tải lại để tiếp tục xử lý.",
+            });
+          } else {
+            setOutcome({ kind: "partial-committed", message: errorText(error) });
+          }
+        } catch {
+          setOutcome({ kind: "partial-committed", message: errorText(error) });
+        }
+      } else if (writeConfirmed) {
         setOutcome({
           kind: "processed-refresh-failed",
           message:
@@ -606,7 +640,7 @@ export function useIncomeExpenseActions(args: {
         }
       }
       toast.error(
-        writeConfirmed ? "Đã xử lý, chưa tải lại được." : errorText(error),
+        partialCommit ? "Đã ghi nhận một phần, cần đối chiếu." : writeConfirmed ? "Đã xử lý, chưa tải lại được." : errorText(error),
       );
       throw error;
     } finally {
@@ -663,7 +697,17 @@ export function useIncomeExpenseActions(args: {
             && v.approvalStatus === op.snapshot.approvalStatus && v.postingStatus === op.snapshot.postingStatus && v.reviewState === op.snapshot.reviewState;
         }
       }
-      if (outcome.kind === "processed-refresh-failed" || observed) {
+      if (outcome.kind === "partial-committed") {
+        if (v && (v.approvalStatus === "CANCELLED" || v.postingStatus === "REVERSED")) {
+          setSelected(null);
+          setOutcome({
+            kind: v.approvalStatus === "CANCELLED" ? "success" : "error",
+            message: v.approvalStatus === "CANCELLED"
+              ? "Đã hoàn tác tiền và hủy phiếu."
+              : "Đã hoàn tác tiền; phiếu chưa hủy. Trạng thái mới đã được tải lại để tiếp tục xử lý.",
+          });
+        }
+      } else if (outcome.kind === "processed-refresh-failed" || observed) {
         setSelected(null);
         setOutcome({
           kind: "success",
@@ -694,6 +738,7 @@ export function useIncomeExpenseActions(args: {
             cashbooks: books.readiness,
             cancellation: cancelEligibility.readiness,
             handlers,
+            canonicalOnly: args.canonicalOnly,
           }),
       ),
     selected,
@@ -704,7 +749,7 @@ export function useIncomeExpenseActions(args: {
           ? snapshots.readiness.value
           : null;
       open(
-        b && b.rows[id] && b.routes.workflow !== "CANONICAL"
+        !args.canonicalOnly && b && b.rows[id] && b.routes.workflow !== "CANONICAL"
           ? "legacyApprove"
           : "approveOnly",
         id,
