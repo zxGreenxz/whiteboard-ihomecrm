@@ -246,7 +246,6 @@ export const useCreateCommissionVoucher = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
       queryClient.invalidateQueries({ queryKey: ["accounts-with-balance"] });
-      queryClient.invalidateQueries({ queryKey: ["period-commissions"] });
       queryClient.invalidateQueries({
         queryKey: ["existing-commission-vouchers"],
       });

@@ -87,15 +87,10 @@ export const FINANCE_SYNC_ENTRIES: readonly SyncEntry[] = [
       // phiếu do MÁY KHÁC tạo/duyệt thì chỉ đường realtime này gọi tới —
       // thiếu chúng là ô phí kẹt "chưa đóng" tới khi F5.
       ["period-fee-status"],
-      ["period-commissions"],
       ["period-maintenance"],
       ["fee-accounts"],
-      // --- 31/08 (audit P2-01): đợt C-INFRA-7 vá 4 khoá lưới phí nhưng bỏ quên
-      // 3 sổ theo dõi của SettlementPanels (useThanhToanLedgers) + biểu đồ
-      // Điện & Nước — máy khác tạo/duyệt/huỷ phiếu thì các màn này giữ số cũ
-      // tới khi đổi kỳ hoặc F5.
-      ["tt-termination-queue"],
-      ["tt-sale-bonus"],
+      // Sổ Cọc đã thu còn dùng reader cũ; ba khoản quyết toán đã dùng các key
+      // contract-settlement ở đầu descriptor.
       ["tt-deposit-ledger"],
       ["utility-chart"],
     ],

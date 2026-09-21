@@ -11,7 +11,6 @@
 //   • usePayDraftFeeVoucher → RPC pay_draft_fee_voucher (thanh toán phiếu NHÁP:
 //     sổ + ảnh + duyệt nguyên tử — flow recurring draft-mode).
 //   • useFeeAccounts / useUpsertFeeAccount → mã NCC + dự kiến + Không-áp-dụng.
-// COMMISSION: usePeriodCommissions v2 → 3 trạng thái unpaid|draft|paid + số phiếu thật.
 // MAINTENANCE: usePeriodMaintenance → gom batch.
 //
 // supabase.rpc gọi như METHOD + cast any (types.ts chưa regen) — y hệt useUtilityBills.
@@ -96,27 +95,6 @@ export interface FeeAccount {
   notApplicable: boolean;
 }
 
-export type CommissionStatus = 'unpaid' | 'draft' | 'paid';
-
-export interface PeriodCommissionRow {
-  contractId: string;
-  contractNumber: string | null;
-  buildingId: string;
-  buildingName: string;
-  roomId: string | null;
-  roomName: string | null;
-  tenantName: string;
-  signedDate: string;
-  months: number;
-  tierPercent: number | null;
-  expectedAmount: number;
-  voucherId: string | null;
-  voucherAmount: number | null;   // số tiền phiếu THẬT
-  voucherAccountName: string | null;
-  accountIsEmpty: boolean;
-  status: CommissionStatus;
-}
-
 export type MaintenanceState = 'PENDING_APPROVAL' | 'APPROVED_UNPOSTED' | 'POSTED';
 
 export interface MaintenanceRow {
@@ -173,7 +151,6 @@ export type PayPeriodFeeResult =
 // ── Invalidate helper ──────────────────────────────────────────────────────
 const invalidateFees = (qc: ReturnType<typeof useQueryClient>) => {
   qc.invalidateQueries({ queryKey: ['period-fee-status'] });
-  qc.invalidateQueries({ queryKey: ['period-commissions'] });
   qc.invalidateQueries({ queryKey: ['period-maintenance'] });
   qc.invalidateQueries({ queryKey: ['fee-accounts'] });
   qc.invalidateQueries({ queryKey: ['income-expenses'] });
@@ -474,42 +451,6 @@ export const useUpsertFeeAccount = () => {
     },
   });
 };
-
-// ── COMMISSION (v2: 3 trạng thái) ────────────────────────────────────────────
-export const usePeriodCommissions = (
-  period: string,
-  buildingIds: string[],
-  opts?: { enabled?: boolean },
-) =>
-  useQuery({
-    queryKey: ['period-commissions', period, [...buildingIds].sort()],
-    enabled: (opts?.enabled ?? true) && !!period && buildingIds.length > 0,
-    queryFn: async (): Promise<PeriodCommissionRow[]> => {
-      const { data, error } = await supabase.rpc('get_period_commissions', {
-        p_period_month: period,
-        p_building_ids: buildingIds,
-      });
-      if (error) throw new Error(error.message);
-      return ((data ?? []) as any[]).map((r) => ({
-        contractId: r.contract_id,
-        contractNumber: r.contract_number ?? null,
-        buildingId: r.building_id,
-        buildingName: r.building_name ?? '',
-        roomId: r.room_id ?? null,
-        roomName: r.room_name ?? null,
-        tenantName: r.tenant_name ?? '',
-        signedDate: r.signed_date,
-        months: Number(r.months) || 0,
-        tierPercent: r.tier_percent == null ? null : Number(r.tier_percent),
-        expectedAmount: Number(r.expected_amount) || 0,
-        voucherId: r.voucher_id ?? null,
-        voucherAmount: r.voucher_amount == null ? null : Number(r.voucher_amount),
-        voucherAccountName: r.voucher_account_name ?? null,
-        accountIsEmpty: !!r.account_is_empty,
-        status: (r.status === 'paid' ? 'paid' : r.status === 'draft' ? 'draft' : 'unpaid') as CommissionStatus,
-      }));
-    },
-  });
 
 // ── MAINTENANCE (gom batch) ──────────────────────────────────────────────────
 export const usePeriodMaintenance = (

@@ -24,7 +24,6 @@ const refreshRoots = [
   "termination-refund-preview",
   "sale-bonus-status",
   "existing-commission-vouchers",
-  "period-commissions",
   "deposits",
 ];
 export function useContractSettlementCreate(args: {

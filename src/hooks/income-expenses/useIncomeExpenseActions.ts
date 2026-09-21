@@ -101,8 +101,6 @@ export const incomeExpenseActionRefreshKeys = [
   "reservation-settlement-by-voucher",
   "reservation-settlement-preview",
   "reservation-refund-evidence",
-  "tt-termination-queue",
-  "tt-sale-bonus",
   "tt-deposit-ledger",
   "finance-v2-routes",
 ] as const;
