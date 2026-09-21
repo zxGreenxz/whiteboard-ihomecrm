@@ -28,7 +28,9 @@ export function IncomeExpenseRecipientDialog({ code, original, busy, enabled, re
         <DialogDescription>Cập nhật người nhận và ngân hàng. Phiếu giữ nguyên số tiền và trạng thái duyệt.</DialogDescription></DialogHeader>
       <form onSubmit={handleSubmit(async values => {
         if (blocked || !enabled || !changed) return;
-        await onSubmit({ payerName: values.payerName, bankName: values.bankName, bankAccount: values.bankAccount }).catch(() => {});
+        await onSubmit({ payerName: values.payerName, bankName: values.bankName, bankAccount: values.bankAccount }).catch(() => {
+          /* Mutation owns the error state; keep the dialog open for correction. */
+        });
       })} className="space-y-4">
         <fieldset disabled={blocked || !enabled} className="space-y-3">
           <div className="space-y-1"><Label htmlFor="recipient-name">Người nhận</Label><Input id="recipient-name" {...register('payerName')} disabled={blocked || !enabled} /></div>

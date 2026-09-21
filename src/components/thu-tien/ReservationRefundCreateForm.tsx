@@ -57,7 +57,9 @@ export function ReservationRefundCreateForm(
       className="space-y-4 text-sm"
       onSubmit={handleSubmit(async (values) => {
         if (!props.creationDisabled && !c.blocked && s.canCreate && !s.existingVoucherId)
-          await c.createFromSource(values).catch(() => {});
+          await c.createFromSource(values).catch(() => {
+            /* Controller keeps the form open and exposes the classified outcome. */
+          });
       })}
     >
       <p>

@@ -151,7 +151,9 @@ export function IncomeExpenseActionDialogs({
             <Button
               type="button"
               disabled={c.busy}
-              onClick={() => void c.commands.retry().catch(() => {})}
+              onClick={() => void c.commands.retry().catch(() => {
+                /* Controller retains the retry outcome and renders it in this dialog. */
+              })}
             >
               Gửi lại cùng yêu cầu
             </Button>
@@ -394,7 +396,9 @@ export function IncomeExpenseActionDialogs({
                     ? { legacy: { accountId: accountId || null, attachments } }
                     : {}),
                 })
-                .catch(() => {})
+                .catch(() => {
+                  /* Controller classifies and renders the failed or uncertain outcome. */
+                })
             }
           >
             {c.busy ? "Đang xử lý…" : labels[action]}

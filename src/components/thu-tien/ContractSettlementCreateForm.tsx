@@ -159,7 +159,9 @@ export function ContractSettlementCreateForm(
       noValidate
       onSubmit={handleSubmit(async (values) => {
         if (props.creationDisabled || c.blocked || !s.canCreate || s.existingVoucherId) return;
-        await c.createFromSource(values).catch(() => {});
+        await c.createFromSource(values).catch(() => {
+          /* Controller keeps the form open and exposes the classified outcome. */
+        });
       })}
     >
       <p className="text-muted-foreground">
