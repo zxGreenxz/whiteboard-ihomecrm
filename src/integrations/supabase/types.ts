@@ -20668,10 +20668,6 @@ export type Database = {
         Args: { p_amount: number; p_idempotency_key: string; p_room_id: string }
         Returns: Json
       }
-      create_reservation_refund_pending_v1: {
-        Args: { p_input: Json }
-        Returns: Json
-      }
       create_sale_bonus_from_deposit_v1: {
         Args: {
           p_account_id?: string
@@ -20694,28 +20690,15 @@ export type Database = {
         }
         Returns: string
       }
-      create_termination_refund_voucher_v1:
-        | {
-            Args: {
-              p_account_id?: string
-              p_force?: boolean
-              p_force_reason?: string
-              p_obligation_id: string
-            }
-            Returns: Json
-          }
-        | {
-            Args: {
-              p_account_id: string
-              p_force: boolean
-              p_force_reason: string
-              p_obligation_id: string
-              p_recipient_account: string
-              p_recipient_bank: string
-              p_recipient_name: string
-            }
-            Returns: Json
-          }
+      create_termination_refund_voucher_v1: {
+        Args: {
+          p_account_id?: string
+          p_force?: boolean
+          p_force_reason?: string
+          p_obligation_id: string
+        }
+        Returns: Json
+      }
       current_profit_manager_id: { Args: never; Returns: string }
       current_shareholder_id: { Args: never; Returns: string }
       current_visible_owner_ids: { Args: never; Returns: string[] }
@@ -20792,10 +20775,6 @@ export type Database = {
           total_deposit: number
           total_fees: number
         }[]
-      }
-      execute_reservation_refund_action_v1: {
-        Args: { p_input: Json }
-        Returns: Json
       }
       explain_authorization_v1: {
         Args: {
@@ -22756,58 +22735,6 @@ export type Database = {
         Args: { p_deltas: Json; p_miles: Json; p_n: number }
         Returns: Json
       }
-      read_contract_settlement_create_source_v1: {
-        Args: {
-          p_kind: string
-          p_organization_id: string
-          p_proposed_amount?: number
-          p_source_id: string
-        }
-        Returns: Json
-      }
-      read_contract_settlement_events_v1: {
-        Args: {
-          p_building_ids: string[]
-          p_cursor?: string
-          p_limit?: number
-          p_organization_id: string
-          p_revision?: string
-        }
-        Returns: Json
-      }
-      read_contract_settlement_financial_facts_v1: {
-        Args: {
-          p_contract_id?: string
-          p_organization_id: string
-          p_room_id?: string
-          p_source_receipt_id?: string
-          p_termination_id?: string
-          p_voucher_id?: string
-        }
-        Returns: Json
-      }
-      read_contract_settlement_page_v1: {
-        Args: {
-          p_building_ids: string[]
-          p_cursor?: string
-          p_limit?: number
-          p_organization_id: string
-          p_revision?: string
-        }
-        Returns: Json
-      }
-      read_income_expense_action_snapshots_v1: {
-        Args: { p_organization_id: string; p_voucher_ids: string[] }
-        Returns: Json
-      }
-      read_reservation_refund_workflow_v1: {
-        Args: {
-          p_organization_id: string
-          p_settlement_id?: string
-          p_source_voucher_id: string
-        }
-        Returns: Json
-      }
       recompute_contract_deposit_paid: {
         Args: { p_contract_id: string }
         Returns: undefined
@@ -23788,15 +23715,6 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
-      }
-      update_income_expense_recipient_v1: {
-        Args: {
-          p_expected: Json
-          p_organization_id: string
-          p_patch: Json
-          p_voucher_id: string
-        }
-        Returns: Json
       }
       update_invoice_payment_method_v1: {
         Args: {

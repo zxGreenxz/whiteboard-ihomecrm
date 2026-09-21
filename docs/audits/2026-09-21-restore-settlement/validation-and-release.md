@@ -21,6 +21,14 @@ Review độc lập của agent chính xác nhận compensation vẫn phải ki�
 
 ## Trạng thái phát hành
 
-Chưa áp dụng production tại thời điểm ghi báo cáo này. Thứ tự: draft PR/review → rollback ứng dụng về deployment cũ đã xác minh → lane backup/apply migration bù → receipt/catalog/types/gate → main CI đúng SHA → production → kiểm trình duyệt và tiền sau phục hồi. Không phục hồi dump cũ đè dữ liệu hiện tại.
+PR phục hồi: https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/74. Đã rollback ứng dụng về deployment `dpl_AgeR6A28wvNV9mP4hqCP2ce6vdGM`, SHA `d3a83c6452330d281690948a9ee12de363480f50`. API trả success với body rỗng làm helper báo lỗi parse JSON; không retry mutation. Lần GET độc lập xác nhận target và build meta đã đổi đúng.
+
+Lượt lane đầu đã tạo full backup `ihomecrm-full-2026-09-21T09-38-06-795Z.dump` (535 mục TABLE DATA), kiểm digest và double replay đạt. Trong lúc lane chạy, CI phát hiện ba assertion văn bản SQL cũ đòi lặp lại DROP/GRANT và baseline drill thiếu ACL của production. Tiến trình được dừng để xử lý; kiểm catalog sau khi dừng cho thấy transaction DDL đã kịp commit, nhưng runner chưa ghi receipt. Không suy từ việc dừng tiến trình rằng database đã rollback; không tự viết receipt giả. Cần hoàn tất lại lane idempotent nguyên SQL, backup mới, để nhận receipt thật.
+
+Đọc production độc lập sau đó: 14/14 definition/owner/ACL khớp đích, 30/30 hàm mới vắng, role mới vắng. Generated types sinh từ production khớp hoàn toàn mốc ứng dụng cũ. Hai gate tiền sau phục hồi tiếp tục đúng các tổng nêu trên, không đổi số dòng tiền.
+
+Headless đăng nhập DEMO trên production sau phục hồi catalog: desktop/mobile có lại Thanh toán cũ và Thu chi cũ; mở chi tiết phiếu chỉ đọc thành công. Không có console/page error, toast quá khổ hoặc RPC settlement mới. Đọc lại RPC ghi chú cho hai phiếu THẬT nêu trên vẫn đạt. Tab IAB hiện tại trắng root dù reload; trình duyệt độc lập cùng deployment hoạt động bình thường. Chưa coi IAB là đạt và không thay mã ứng dụng để che vấn đề trạng thái trình duyệt này.
+
+Trình tự còn lại: hoàn tất receipt/catalog/gate → main CI đúng SHA → production → xác minh deployment cuối. Không phục hồi dump cũ đè dữ liệu hiện tại.
 
 Backup riêng trước phát hành đã restore thử thành công vào database cục bộ. Lane vẫn phải tạo backup mới ngay trước apply. GitHub Free chưa có branch protection là khoảng trống đã biết, không được gọi là kiểm soát đã đạt.

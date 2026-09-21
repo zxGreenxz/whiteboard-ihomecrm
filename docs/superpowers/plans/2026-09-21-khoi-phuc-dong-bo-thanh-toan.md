@@ -29,14 +29,14 @@ Comment lịch sử của list_cashbooks_for_expense_v2 không có trong snapsho
 
 1. Tạo worktree riêng từ main hiện hành; giữ nguyên checkout chính và nhánh vá dở. Đã xong.
 2. Phục hồi src về mốc cũ, sửa đăng ký strict/E2E/tooling để không trỏ module đã gỡ. Đã xong; không hạ baseline để bỏ qua lỗi.
-3. Dựng migration bù; so đủ 14 hash, quyền và phụ thuộc. Đã xong; chưa áp production tại thời điểm viết tài liệu này.
+3. Dựng migration bù; so đủ 14 hash, quyền và phụ thuộc. Đã xong; production đã được đọc lại và khớp cả 14 hash/owner/ACL đích, 30 hàm mới và role mới đã vắng.
 4. Tạo backup đầy đủ mới ngoài Git và diễn tập trên database dùng riêng. Đã xong; dữ liệu sao chép chỉ phục vụ kiểm thử, không restore đè production.
 5. Chạy hai lượt migration trên database rỗng, database có dữ liệu và principal không superuser. Đã đạt. Sau local commit, số phiếu/hợp đồng/bút toán, tổng tiền và dấu kiểm ghi chú không đổi.
 6. Thử tình huống sai hash, sai ACL, trigger bị đổi và giao dịch commit trong lúc migration đợi khóa. Đã bị chặn. Thử chèn DML làm đổi dữ liệu vào migration bằng công cụ đột biến; suite đỏ đúng lỗi và file gốc được khôi phục.
-7. Kiểm headless desktop/mobile, ghi chú thực tế, PostgREST theo vai trò, các luồng tiền và ranh giới tổ chức. Đang hoàn tất.
-8. Mở draft PR và review độc lập; chạy gate trước push. Phát hành phải ghi đúng SHA và kết quả kiểm.
-9. Chuyển app về artifact cũ đã xác minh, sau khi chứng minh nó đọc/hoạt động tương thích với schema trong khoảng chuyển. Áp migration bù qua migrate:forward; lane tạo backup mới và tự kiểm digest/idempotency.
-10. Chụp catalog, đối chiếu số liệu, kiểm production chỉ đọc, đồng bộ main/production và biên nhận. Kiểm cả các gate migration đã bị thay thế để không để CI dựa trên giả định schema đã gỡ.
+7. Đã kiểm headless desktop/mobile, ghi chú thực tế, 59 lượt PostgREST cục bộ theo vai trò, các luồng tiền và ranh giới tổ chức. Chưa thử ca dương tạo hoàn thanh lý/giữ chỗ do DEMO thiếu nguồn nghiệp vụ phù hợp; không nới guard để giả lập.
+8. Đã mở draft PR #74 và review độc lập; 43 gate trước push đạt. Ba unit assertion SQL cũ và môi trường baseline thiếu ACL đang được sửa bằng phép kiểm trạng thái đầy đủ, không sửa SQL phục hồi để né gate.
+9. App đã về artifact cũ xác minh SHA d3a83c64; headless đăng nhập production desktop/mobile đạt, RPC ghi chú cũ đạt. Lượt lane đầu đã tạo backup và commit DDL trước khi tiến trình dừng, nhưng chưa ghi receipt; cần hoàn tất lại lane idempotent với backup mới và receipt thật. Xem audit để phân biệt trạng thái database thực tế và trạng thái runner.
+10. Đã chụp catalog sau phục hồi, đối chiếu cả hai tổng tiền không đổi, kiểm sandbox lại 0/151 bảng đọc được rò TEST. Còn chốt receipt và đồng bộ main/production theo CI đúng SHA. Tab IAB hiện tại trắng root, chưa được coi là đạt dù trình duyệt headless độc lập cùng deployment hoạt động bình thường.
 
 ## Bảo vệ dữ liệu khi áp dụng
 
