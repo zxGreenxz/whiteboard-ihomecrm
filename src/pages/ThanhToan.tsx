@@ -1,5 +1,5 @@
 // =============================================================================
-// Trang "Thanh toán" (/thanh-toan) — Đóng tiền Tập trung theo Kỳ.
+// Trang "Thanh toán" (/thanh-toan) — thanh toán theo kỳ và Hợp đồng & quyết toán.
 //
 // Trước đây UI này chỉ sống dạng OVERLAY trong /thu-tien (state `utility`):
 // desktop thay chỗ ManagePanel, mobile là sheet trượt lên đè khung điện thoại.
@@ -7,13 +7,13 @@
 // theo từng phòng; Thanh toán = CHI cho nhà cung cấp theo từng hạng mục/tòa.
 //
 // Layout dùng lại nguyên bộ style của thu-tien.css (scope .tt-stage):
-//   ≥1024px  → grid 2 cột: PeriodFeePanel (.tt-udesk) | khung điện thoại
-//   <1024px  → .tt-udesk display:none, chỉ còn khung điện thoại + PeriodFeeSheet
+//   ≥1024px  → phí thường là grid hai cột; Hợp đồng & quyết toán dùng toàn chiều rộng
+//   <1024px  → chỉ còn khung điện thoại + PeriodFeeSheet; workbench rộng không hỗ trợ
 //
 // ⚠ HAI BỀ MẶT CÙNG MOUNT LÀ CHỦ Ý — ĐỪNG "sửa" bằng cách unmount theo breakpoint.
-// `.e2e-fleet/specs/thanh-toan-page.spec.ts:27/:32` assert cả panel desktop lẫn
-// sheet cùng render ở 1280px, và `:143` dùng `toBeHidden()` (chứ không phải
-// `toHaveCount(0)`) ở 390px — tức panel chỉ bị CSS ẩn, vẫn nằm trong DOM. Spec
+// `.e2e-fleet/specs/thanh-toan-page.spec.ts` giữ hai breakpoint: desktop hiện
+// workbench và ẩn cột điện thoại khi chọn khu mới; mobile ẩn panel desktop và
+// rơi về Tổng quan an toàn. Spec
 // `utility-paste-receipt.spec.ts` còn dán ảnh lần lượt vào bảng desktop rồi vào
 // thẻ trong khung điện thoại trong CÙNG một lần tải trang.
 // Rủi ro thật của thiết kế này là hai bề mặt ghi hai phiếu cho cùng một ô. Chỗ
