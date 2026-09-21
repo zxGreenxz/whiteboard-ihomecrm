@@ -45,6 +45,8 @@ export interface MovementRow {
   origin: 'contract' | 'reservation';
   contractId: string | null;
   description: string;
+  /** Người tạo hợp đồng / bản ghi. Null khi không tra được tên. */
+  staffName: string | null;
 }
 
 const dong = (n: unknown) => `${new Intl.NumberFormat('vi-VN').format(Math.round(Number(n) || 0))} đ`;
@@ -60,12 +62,13 @@ const tenKhach = (ds: KhachNoi[] | null | undefined): string => {
 interface HopDongNoi {
   id: string;
   contract_number: string | null;
+  user_id: string | null;
   rooms: { name: string | null; building_id: string | null; buildings: { name: string | null } | null } | null;
   contract_customers: KhachNoi[] | null;
 }
 
 const HD_NOI =
-  'id, contract_number, rooms!inner ( name, building_id, buildings ( name ) ), contract_customers ( customers ( full_name ) )';
+  'id, contract_number, user_id, rooms!inner ( name, building_id, buildings ( name ) ), contract_customers ( customers ( full_name ) )';
 
 const toaCua = (c: HopDongNoi | null) => ({
   buildingId: c?.rooms?.building_id ?? null,
@@ -185,17 +188,24 @@ export function useContractMovements(a: MovementArgs) {
       }
 
       const out: MovementRow[] = [];
+      /** Ghép dòng với user_id của nó, để tra tên một lượt ở cuối. */
+      const hoSo: { row: MovementRow; userId: string | null }[] = [];
+      const them = (row: MovementRow, userId: string | null) => {
+        out.push(row);
+        hoSo.push({ row, userId });
+      };
 
       for (const c of (ky.data ?? []) as (HopDongNoi & {
         signed_date: string | null; start_date: string | null; end_date: string | null;
         rent_price: number | null; total_deposit: number | null;
       })[]) {
-        out.push({
+        them({
           key: `sign:${c.id}`, type: 'sign', date: c.signed_date, ...toaCua(c),
           customer: tenKhach(c.contract_customers),
           source: c.contract_number ?? '—', origin: 'contract', contractId: c.id,
           description: `Thuê từ ${ngay(c.start_date)} đến ${ngay(c.end_date)} · giá ${dong(c.rent_price)}/tháng · cọc ${dong(c.total_deposit)}`,
-        });
+          staffName: null,
+        }, c.user_id);
       }
 
       for (const e of (giaHan.data ?? []) as {
@@ -205,13 +215,14 @@ export function useContractMovements(a: MovementArgs) {
         contracts: HopDongNoi | null;
       }[]) {
         const c = e.contracts;
-        out.push({
+        them({
           key: `renew:${e.id}`, type: 'renew', date: e.extension_date, ...toaCua(c),
           customer: tenKhach(c?.contract_customers),
           source: c?.contract_number ?? '—', origin: 'contract', contractId: c?.id ?? null,
           description: `Gia hạn ${e.extension_months ?? '?'} tháng · ${ngay(e.old_end_date)} → ${ngay(e.new_end_date)}`
             + (e.rent_price_changed ? ` · giá mới ${dong(e.new_rent_price)}` : ' · giữ nguyên giá'),
-        });
+          staffName: null,
+        }, c?.user_id ?? null);
       }
 
       for (const t of (ketThuc.data ?? []) as {
@@ -222,7 +233,7 @@ export function useContractMovements(a: MovementArgs) {
       }[]) {
         const c = t.contracts;
         const boCoc = t.termination_type === 'FORFEIT';
-        out.push({
+        them({
           key: `${boCoc ? 'forfeit' : 'terminate'}:${t.id}`,
           type: boCoc ? 'forfeit' : 'terminate',
           date: t.termination_date, ...toaCua(c),
@@ -231,7 +242,8 @@ export function useContractMovements(a: MovementArgs) {
           description: `Trả phòng ${ngay(t.actual_move_out_date)} · khấu trừ ${dong(t.total_deductions)}`
             + ` · hoàn ${dong(t.refund_amount)}`
             + (Number(t.outstanding_debt) > 0 ? ` · còn nợ ${dong(t.outstanding_debt)}` : ''),
-        });
+          staffName: null,
+        }, c?.user_id ?? null);
       }
 
       for (const h of (giuCho.data ?? []) as {
@@ -239,14 +251,31 @@ export function useContractMovements(a: MovementArgs) {
         status: string | null; contract_id: string | null; building_id: string | null;
         buildings: { name: string | null } | null; rooms: { name: string | null } | null;
       }[]) {
-        out.push({
+        them({
           key: `reserve:${h.id}`, type: 'reserve', date: h.held_at,
           buildingId: h.building_id, buildingName: h.buildings?.name ?? '—',
           roomName: h.rooms?.name ?? null,
           customer: 'Khách giữ chỗ', source: `GC-${h.id.slice(0, 8)}`,
           origin: 'reservation', contractId: h.contract_id,
           description: `Cọc giữ chỗ ${dong(h.amount)} · hạn ${ngay(h.expires_at)} · ${h.status ?? '—'}`,
-        });
+          staffName: null,
+        }, null);
+      }
+
+      // ── Tên người phụ trách ─────────────────────────────────────────────
+      // Tra RIÊNG bằng một lượt `in(...)` thay vì embed: `contracts.user_id`
+      // trỏ sang `auth.users`, không có khoá ngoại tới `public.profiles` nên
+      // PostgREST không embed được. Lỗi tra tên KHÔNG làm hỏng cả bảng — tên
+      // chỉ là thông tin phụ, thiếu thì để trống.
+      const uid = [...new Set(hoSo.map((h) => h.userId).filter((x): x is string => !!x))];
+      if (uid.length > 0) {
+        const { data: ten } = await supabase
+          .from('profiles').select('id, full_name').in('id', uid);
+        const bang = new Map(
+          ((ten ?? []) as { id: string; full_name: string | null }[])
+            .map((p) => [p.id, (p.full_name ?? '').trim() || null]),
+        );
+        for (const h of hoSo) h.row.staffName = h.userId ? bang.get(h.userId) ?? null : null;
       }
 
       // Một danh sách duy nhất, mới nhất trước — bảng chỉ có một cột ngày.

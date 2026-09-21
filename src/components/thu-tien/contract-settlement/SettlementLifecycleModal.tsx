@@ -26,7 +26,7 @@ import { useCustodianCashbooksV2 } from '@/hooks/income-expenses/financeV2Mutati
 import { useAccounts } from '@/hooks/useAccounts';
 import { useIncomeExpenseSupplements } from '@/hooks/income-expenses/supplements';
 import { formatSupplementAuthor } from '@/lib/incomeExpenseSupplement';
-import { useContractLifecycle } from '@/hooks/useContractLifecycle';
+import { ContractLifecycleBand } from './ContractLifecycleBand';
 import {
   KIND_LABEL, STATUS_STYLE, fmtMoney, fmtNgay, isBlocker,
   type SettlementRow, type ViewStatus,
@@ -62,7 +62,6 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
   const [khoaGhiChu] = useState(khoaMoi);
 
   const supplements = useIncomeExpenseSupplements(row.voucherId, true);
-  const vongDoi = useContractLifecycle(row.contractId);
   const { data: soCustodian = [] } = useCustodianCashbooksV2(!!postingMode);
   const { data: moiSo = [] } = useAccounts({ enabled: !!postingMode });
 
@@ -129,42 +128,6 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
     await supplements.refetch();
   });
 
-  // ── Dòng thời gian ────────────────────────────────────────────────────────
-  const v = vongDoi.data;
-  const daThanhLy = !!v?.terminatedAt;
-  const buoc: { h: string; val: string; m: string; m2?: string; m2c?: string }[] = v ? [
-    {
-      h: 'Ký hợp đồng', val: fmtNgay(v.signedDate),
-      m: `Thời hạn: ${fmtNgay(v.startDate)} – ${fmtNgay(v.endDate)}`,
-    },
-    {
-      h: 'Cọc đã đóng · thực thu', val: fmtMoney(v.depositPaid),
-      // Hiện cả số cam kết khi hai số lệch — "đã ký nhưng chưa nộp đủ cọc" là
-      // thông tin phải thấy trước khi duyệt chi.
-      m: v.depositPaid === v.depositTotal
-        ? 'Đã nộp đủ theo hợp đồng'
-        : `Cam kết ${fmtMoney(v.depositTotal)} · còn thiếu ${fmtMoney(v.depositTotal - v.depositPaid)}`,
-      m2c: v.depositPaid < v.depositTotal ? 'var(--c-partial)' : undefined,
-    },
-    {
-      h: 'Tiền thuê / phí đã đóng', val: fmtMoney(v.invoicePaid),
-      m: `Không gồm cọc · giá thuê ${fmtMoney(v.rentPrice)}/tháng`,
-    },
-    daThanhLy
-      ? {
-          h: `${v.terminationType === 'FORFEIT' ? 'Bỏ cọc' : 'Thanh lý'} · ${fmtNgay(v.terminatedAt)}`,
-          val: `Quyết toán hoàn ${fmtMoney(v.refundAmount ?? 0)}`,
-          m: `Nợ sau quyết toán: ${fmtMoney(v.outstandingDebt ?? 0)}`,
-          m2: view === 'paid' ? `Đã hoàn: ${fmtMoney(row.amount)}` : `Còn hoàn: ${fmtMoney(row.amount)}`,
-          m2c: view === 'paid' ? 'var(--c-paid)' : 'var(--c-partial)',
-        }
-      : {
-          h: 'Đến hôm nay', val: 'Đang thuê', m: 'Chưa thanh lý',
-          m2: `Còn nợ: ${fmtMoney(v.outstandingDebt ?? 0)}`,
-          m2c: 'var(--c-paid)',
-        },
-  ] : [];
-
   // ⚠ PHẢI dựng qua portal ra document.body.
   //
   // `.tt-stage` của trang Thanh toán là `position: fixed; z-index: 0` — tức một
@@ -201,44 +164,13 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
           </div>
         </div>
 
-        {/* ── Vòng đời hợp đồng ──────────────────────────────────────────── */}
-        <div className="cs-life">
-          <div className="cs-life-top">
-            <b>Vòng đời hợp đồng của phòng</b>
-            <span>
-              {vongDoi.isLoading ? 'Đang tra hợp đồng…'
-                : vongDoi.isError ? 'Không đọc được hợp đồng — số liệu bên dưới chưa đầy đủ.'
-                : !row.contractId ? 'Phiếu chưa gắn hợp đồng nên không dựng được vòng đời.'
-                : 'Số liệu đọc thẳng từ hợp đồng và hoá đơn'}
-            </span>
-          </div>
-          {v && (
-            <div className="cs-lane target">
-              <div className="cs-lane-head">
-                <span className="cs-role">Hợp đồng của phiếu</span>
-                <b>{v.contractNumber ?? '—'}</b>
-                <span style={{ color: 'var(--ink-2)' }}>{v.customer}</span>
-                <span className="cs-lane-gap" />
-                <span className="cs-tag" style={{
-                  background: daThanhLy ? 'var(--line-2)' : 'var(--brand-50)',
-                  color: daThanhLy ? 'var(--ink-2)' : 'var(--brand)',
-                }}>
-                  {daThanhLy ? 'Đã thanh lý' : 'Đang thuê'}
-                </span>
-              </div>
-              <div className="cs-steps">
-                {buoc.map((b) => (
-                  <div className="cs-step" key={b.h}>
-                    <div className="cs-step-h">{b.h}</div>
-                    <div className="cs-step-v">{b.val}</div>
-                    <div className="cs-step-m">{b.m}</div>
-                    {b.m2 && <div className="cs-step-m2" style={{ color: b.m2c }}>{b.m2}</div>}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
+        <ContractLifecycleBand
+          contractId={row.contractId}
+          ghiChuHoan={{
+            text: view === 'paid' ? `Đã hoàn: ${fmtMoney(row.amount)}` : `Còn hoàn: ${fmtMoney(row.amount)}`,
+            mau: view === 'paid' ? 'var(--c-paid)' : 'var(--c-partial)',
+          }}
+        />
 
         {/* ── Hai cột ────────────────────────────────────────────────────── */}
         <div className="cs-body">

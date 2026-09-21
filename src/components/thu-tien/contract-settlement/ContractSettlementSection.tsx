@@ -25,9 +25,10 @@ import {
 } from '@/lib/contractSettlement';
 import type { SettlementKind } from '@/lib/settlementTypes';
 import { useContractSettlement } from '@/hooks/useContractSettlement';
-import { useContractMovements, MOVEMENT_LABEL, type MovementType } from '@/hooks/useContractMovements';
+import { useContractMovements, MOVEMENT_LABEL, type MovementType, type MovementRow } from '@/hooks/useContractMovements';
 import { useSettlementActions } from '@/hooks/useSettlementActions';
 import { SettlementLifecycleModal } from './SettlementLifecycleModal';
+import { MovementLifecycleModal } from './MovementLifecycleModal';
 import { NHAN_VUONG_MAC } from './nhan';
 import './contract-settlement.css';
 
@@ -74,7 +75,7 @@ const locMacDinh = (month: string): BoLoc => ({
 const cong = (rs: SettlementRow[]) => rs.reduce((s, r) => s + r.amount, 0);
 
 const COT_CHI = 'minmax(150px,1.3fr) minmax(110px,.9fr) minmax(120px,1fr) minmax(120px,.9fr) minmax(110px,.8fr) 108px';
-const COT_BD = 'minmax(150px,1.2fr) minmax(200px,1.5fr) 120px minmax(180px,1.1fr)';
+const COT_BD = 'minmax(150px,1.2fr) minmax(190px,1.4fr) 116px minmax(170px,1fr) 108px';
 
 export function ContractSettlementSection({ buildingIds, period }: Props) {
   const { data: organizationId } = useOrgCuaToa(buildingIds);
@@ -84,6 +85,7 @@ export function ContractSettlementSection({ buildingIds, period }: Props) {
   const [locChi, setLocChi] = useState<BoLoc>(() => locMacDinh('all'));
   const [locBd, setLocBd] = useState<BoLoc>(() => locMacDinh(period));
   const [dangMo, setDangMo] = useState<string | null>(null);
+  const [dangMoBd, setDangMoBd] = useState<string | null>(null);
 
   const mv = tab === 'movements';
   const f = mv ? locBd : locChi;
@@ -244,6 +246,8 @@ export function ContractSettlementSection({ buildingIds, period }: Props) {
     || f.person !== 'all' || f.issue !== 'all';
 
   const row = dangMo ? chi.rows.find((r) => r.voucherId === dangMo) ?? null : null;
+  const bdDangXem: MovementRow | null =
+    dangMoBd ? bd.rows.find((e) => e.key === dangMoBd) ?? null : null;
 
   const xoaLoc = () => (mv ? setLocBd : setLocChi)(
     { ...locMacDinh(mv ? period : 'all'), advanced: f.advanced },
@@ -499,12 +503,12 @@ export function ContractSettlementSection({ buildingIds, period }: Props) {
             <div style={{ ['--cs-cols' as string]: COT_BD }}>
               <div className="cs-head">
                 <span>Phòng · Khách</span><span>Biến động</span><span>Ngày phát sinh</span>
-                <span>Khoản chi liên quan</span>
+                <span>Khoản chi liên quan</span><span />
               </div>
               {hienBd.map((e) => {
                 const lienQuan = chi.rows.filter((r) => r.contractId && r.contractId === e.contractId);
                 return (
-                  <div className="cs-row" key={e.key}>
+                  <div className={`cs-row ${dangMoBd === e.key ? 'on' : ''}`} key={e.key}>
                     <div style={{ minWidth: 0 }}>
                       <div className="cs-room">{e.buildingName} · {e.roomName ?? '—'}</div>
                       <div className="cs-cust">{e.customer}</div>
@@ -534,6 +538,9 @@ export function ContractSettlementSection({ buildingIds, period }: Props) {
                             </button>
                           ))}
                     </div>
+                    <button type="button" className="cs-go" onClick={() => setDangMoBd(e.key)}>
+                      Xem hồ sơ
+                    </button>
                   </div>
                 );
               })}
@@ -563,6 +570,15 @@ export function ContractSettlementSection({ buildingIds, period }: Props) {
             <span>{mv ? '' : `Tổng đang xem: ${fmtMoney(tongTien)}`}</span>
           </div>
         </section>
+      )}
+
+      {bdDangXem && (
+        <MovementLifecycleModal
+          ev={bdDangXem}
+          lienQuan={chi.rows.filter((r) => r.contractId && r.contractId === bdDangXem.contractId)}
+          onMoPhieu={(id) => { setDangMoBd(null); setDangMo(id); }}
+          onClose={() => setDangMoBd(null)}
+        />
       )}
 
       {row && (
