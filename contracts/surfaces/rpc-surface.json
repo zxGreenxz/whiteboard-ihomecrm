@@ -1,7 +1,7 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 1771,
+    "sourceCallSites": 1677,
     "catalogFunctions": 1176,
     "schemas": [
       "public",
@@ -9,12 +9,12 @@
     ]
   },
   "counts": {
-    "calledRpcs": 293,
+    "calledRpcs": 292,
     "byRisk": {
-      "normal": 211,
-      "financial": 82
+      "normal": 212,
+      "financial": 80
     },
-    "securityDefiner": 277
+    "securityDefiner": 276
   },
   "missingOnServer": [],
   "rpcs": {
@@ -577,8 +577,7 @@
         }
       ],
       "callers": [
-        "src/hooks/income-expenses/incomeVoucherCancel.ts",
-        "src/hooks/income-expenses/useIncomeExpenseCancellation.ts"
+        "src/hooks/income-expenses/incomeVoucherCancel.ts"
       ],
       "risk": "financial"
     },
@@ -597,8 +596,7 @@
         }
       ],
       "callers": [
-        "src/hooks/income-expenses/flexMutations.ts",
-        "src/hooks/income-expenses/useIncomeExpenseCancellation.ts"
+        "src/hooks/income-expenses/flexMutations.ts"
       ],
       "risk": "financial"
     },
@@ -1605,8 +1603,7 @@
         }
       ],
       "callers": [
-        "src/hooks/useCommissionVoucher.ts",
-        "src/lib/contractSettlementCreateRepository.ts"
+        "src/hooks/useCommissionVoucher.ts"
       ],
       "risk": "financial"
     },
@@ -1703,8 +1700,7 @@
         }
       ],
       "callers": [
-        "src/hooks/useSaleBonus.ts",
-        "src/lib/contractSettlementCreateRepository.ts"
+        "src/hooks/useSaleBonus.ts"
       ],
       "risk": "normal"
     },
@@ -2120,6 +2116,25 @@
         "src/hooks/useStatBreakdowns.ts"
       ],
       "risk": "normal"
+    },
+    "get_commission_voucher_facts_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_voucher_ids uuid[]",
+          "returns": "TABLE(voucher_id uuid, facts jsonb)",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useCommissionVoucher.ts"
+      ],
+      "risk": "financial"
     },
     "get_contract_stats": {
       "definitions": [
@@ -2827,6 +2842,25 @@
       ],
       "risk": "normal"
     },
+    "get_termination_refund_facts_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_voucher_ids uuid[]",
+          "returns": "TABLE(voucher_id uuid, facts jsonb)",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useTerminationRefundFacts.ts"
+      ],
+      "risk": "normal"
+    },
     "get_voucher_cancellation_v1": {
       "definitions": [
         {
@@ -3162,25 +3196,6 @@
         "src/hooks/useAccounts.ts"
       ],
       "risk": "normal"
-    },
-    "list_cashbooks_for_expense_v2": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "",
-          "returns": "TABLE(id uuid, name text)",
-          "volatility": "STABLE",
-          "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, app_private, public",
-          "execRoles": [
-            "authenticated"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/income-expenses/usePostingCashbooks.ts"
-      ],
-      "risk": "financial"
     },
     "list_ie_accounting_standard_v1": {
       "definitions": [
@@ -3976,8 +3991,7 @@
         }
       ],
       "callers": [
-        "src/hooks/useTerminationRefund.ts",
-        "src/lib/contractSettlementCreateRepository.ts"
+        "src/hooks/useTerminationRefund.ts"
       ],
       "risk": "normal"
     },
@@ -4156,8 +4170,7 @@
         }
       ],
       "callers": [
-        "src/hooks/useTerminationRefund.ts",
-        "src/lib/contractSettlementCreateRepository.ts"
+        "src/hooks/useTerminationRefund.ts"
       ],
       "risk": "normal"
     },
@@ -4241,25 +4254,6 @@
       ],
       "risk": "normal"
     },
-    "request_income_expense_changes_v2": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_voucher uuid, p_expected_review_version bigint, p_reason text, p_field_mask jsonb, p_idempotency_key text",
-          "returns": "jsonb",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, public, app_private",
-          "execRoles": [
-            "authenticated"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/income-expenses/reviewMutations.ts"
-      ],
-      "risk": "financial"
-    },
     "reserve_ai_usage": {
       "definitions": [
         {
@@ -4296,25 +4290,6 @@
       ],
       "callers": [
         "src/hooks/income-expenses/statusMutations.ts"
-      ],
-      "risk": "financial"
-    },
-    "resubmit_income_expense_v2": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_voucher uuid, p_expected_review_version bigint, p_patch jsonb, p_idempotency_key text",
-          "returns": "jsonb",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, public, app_private",
-          "execRoles": [
-            "authenticated"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/income-expenses/reviewMutations.ts"
       ],
       "risk": "financial"
     },
