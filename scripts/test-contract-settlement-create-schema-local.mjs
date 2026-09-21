@@ -32,6 +32,25 @@ const consistencyBody = fs
   )
   .replace(/^BEGIN;$/m, "")
   .replace(/^COMMIT;$/m, "");
+const resolvedBody = fs
+  .readFileSync(
+    "supabase/migrations/20260921014754_sale_bonus_resolved_source_consistency.sql",
+    "utf8",
+  )
+  .replace(/^BEGIN;$/m, "")
+  .replace(/^COMMIT;$/m, "");
+async function rollbackPreResolved(fn) {
+  await rollback(async () => {
+    await db.query(
+      definition(
+        "supabase/migrations/20260921012821_sale_bonus_source_link_consistency.sql",
+        "app_private.sale_bonus_source_claims_v1",
+        "$function$",
+      ),
+    );
+    await fn();
+  });
+}
 async function rollbackPreConsistency(fn) {
   await rollback(async () => {
     for (const [name, delimiter] of [
@@ -59,11 +78,13 @@ function definition(file, name, delimiter) {
   const start = text.indexOf("CREATE OR REPLACE FUNCTION " + name + "(");
   assert.notEqual(start, -1, name);
   const end = text.indexOf(
-    delimiter + ";",
+    delimiter,
     text.indexOf(delimiter, start) + delimiter.length,
   );
   assert.notEqual(end, -1, name);
-  return text.slice(start, end + delimiter.length + 1);
+  const terminator = text.indexOf(";", end + delimiter.length);
+  assert.notEqual(terminator, -1, name);
+  return text.slice(start, terminator + 1);
 }
 async function restorePreClaim() {
   for (const [relation, name] of [
@@ -212,7 +233,7 @@ try {
     ).rows[0],
     { allowed: false, reader_allowed: false },
   );
-  await rollback(async () => {
+  await rollbackPreResolved(async () => {
     await db.query(consistencyBody);
     await db.query(consistencyBody);
   });
@@ -223,7 +244,7 @@ try {
     depositWriter,
     facts,
   ])
-    await rollback(async () => {
+    await rollbackPreResolved(async () => {
       await db.query("ALTER FUNCTION " + signature + " SET search_path=public");
       await assert.rejects(
         db.query(consistencyBody),
@@ -231,13 +252,13 @@ try {
       );
     });
   for (const signature of [claimLookup, claimGuard]) {
-    await rollback(async () => {
+    await rollbackPreResolved(async () => {
       await db.query(
         "GRANT EXECUTE ON FUNCTION " + signature + " TO authenticated",
       );
       await assert.rejects(db.query(consistencyBody), /ACL drift/i);
     });
-    await rollback(async () => {
+    await rollbackPreResolved(async () => {
       await db.query(
         "ALTER FUNCTION " + signature + " OWNER TO ie_action_snapshot_reader",
       );
@@ -249,10 +270,55 @@ try {
     ["app_private.sale_bonus_claims", "guard_sale_bonus_deposit_claim"],
     ["public.income_expenses", "guard_sale_bonus_voucher_claim"],
   ])
-    await rollback(async () => {
+    await rollbackPreResolved(async () => {
       await db.query("ALTER TABLE " + relation + " DISABLE TRIGGER " + name);
       await assert.rejects(db.query(consistencyBody), /trigger drift/i);
     });
+  await rollback(async () => {
+    await db.query(resolvedBody);
+    await db.query(resolvedBody);
+  });
+  for (const signature of [
+    claimLookup,
+    claimGuard,
+    commission,
+    depositWriter,
+    facts,
+  ])
+    await rollback(async () => {
+      await db.query("ALTER FUNCTION " + signature + " SET search_path=public");
+      await assert.rejects(
+        db.query(resolvedBody),
+        /definition drift|dependency drift/i,
+      );
+    });
+  for (const signature of [claimLookup, claimGuard]) {
+    await rollback(async () => {
+      await db.query(
+        "GRANT EXECUTE ON FUNCTION " + signature + " TO authenticated",
+      );
+      await assert.rejects(db.query(resolvedBody), /ACL drift/i);
+    });
+    await rollback(async () => {
+      await db.query(
+        "ALTER FUNCTION " + signature + " OWNER TO ie_action_snapshot_reader",
+      );
+      await assert.rejects(db.query(resolvedBody), /owner\/ACL drift/i);
+    });
+  }
+  for (const [relation, name] of [
+    ["public.contract_deposit_links", "guard_sale_bonus_link_claim"],
+    ["app_private.sale_bonus_claims", "guard_sale_bonus_deposit_claim"],
+    ["public.income_expenses", "guard_sale_bonus_voucher_claim"],
+  ])
+    await rollback(async () => {
+      await db.query("ALTER TABLE " + relation + " DISABLE TRIGGER " + name);
+      await assert.rejects(db.query(resolvedBody), /trigger drift/i);
+    });
+  await rollbackPreResolved(async () => {
+    await db.query(resolvedBody);
+    await db.query(resolvedBody);
+  });
   const acl = (
     await db.query(
       `SELECT has_function_privilege('authenticated',$1,'EXECUTE') reader,has_function_privilege('authenticated',$2,'EXECUTE') facts,has_function_privilege('ie_action_snapshot_reader',$2,'EXECUTE') reader_facts,has_function_privilege('authenticated',$3,'EXECUTE') core,has_function_privilege('ie_action_snapshot_reader',$3,'EXECUTE') reader_core,has_function_privilege('authenticated',$4,'EXECUTE') recipient,has_function_privilege('anon',$4,'EXECUTE') anon_recipient,has_function_privilege('service_role',$4,'EXECUTE') service_recipient,pg_has_role('authenticated','ie_action_snapshot_reader','SET') client_set`,
@@ -322,12 +388,14 @@ try {
       await db.query(claimBody);
       await db.query(consistencyBody);
       await db.query(consistencyBody);
+      await db.query(resolvedBody);
+      await db.query(resolvedBody);
     });
   } finally {
     await db.query(`DROP ROLE IF EXISTS ${deploy}`);
   }
   console.log(
-    "PASS T6 reader/refund migration first apply + reapply under non-superuser, definition/owner/ACL/role/claim-trigger drift, explicit Sale bridge + source consistency first/reapply, private core isolation, transitive STABLE gate; mutations rolled back.",
+    "PASS T6 reader/refund migration first apply + reapply under non-superuser, definition/owner/ACL/role/claim-trigger drift, explicit Sale bridge + source and resolved-sibling consistency first/reapply, private core isolation, transitive STABLE gate; mutations rolled back.",
   );
 } finally {
   await db.end();

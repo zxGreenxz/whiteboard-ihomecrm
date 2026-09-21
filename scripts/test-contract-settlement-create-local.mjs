@@ -373,7 +373,7 @@ try {
   );
   // Review I1: preserve NULL legacy contract fields while bridging the exact source claim.
   const extraDeposits = [];
-  for (let n = 0; n < 8; n++) {
+  for (let n = 0; n < 10; n++) {
     const id = randomUUID();
     extraDeposits.push(id);
     await fixture(async () => {
@@ -520,6 +520,97 @@ try {
   );
   const directBonus = ok(await commission(directContract, "sale")).id;
   await fixture(() => link(explicitContract, mismatchDeposit)); // Historical inconsistency, not an authorized repair.
+  // Review round 3: a locally consistent D2 must not conceal an inconsistent
+  // sibling D1 reached through C1. Do not traverse D1.direct=C2 as authority.
+  const siblingDeposit = extraDeposits[8];
+  await fixture(() => link(explicitContract, siblingDeposit));
+  const siblingRead = await read("sale_deposit", siblingDeposit);
+  const siblingWrite = await depositBonus(siblingDeposit);
+  console.log(
+    "Sibling source preflight HTTP statuses:",
+    siblingRead.status,
+    siblingWrite.status,
+  );
+  assert.notEqual(
+    siblingRead.status,
+    200,
+    "resolved sibling source reader must fail closed",
+  );
+  assert.notEqual(
+    siblingWrite.status,
+    200,
+    "resolved sibling source writer must fail closed",
+  );
+  await assert.rejects(
+    adapterCreate("sale_deposit", siblingDeposit),
+    "adapter must reject a conflicting resolved sibling source",
+  );
+  await assert.rejects(
+    db.query("SELECT app_private.sale_bonus_source_claims_v1($1,NULL,$2)", [
+      org,
+      siblingDeposit,
+    ]),
+    (e) => e.code === "23514",
+    "private lookup must reject the entire resolved source set",
+  );
+  await fixture(() =>
+    db.query(
+      "UPDATE public.income_expenses SET has_restricted_item=true,user_id=$2 WHERE id=ANY($1::uuid[])",
+      [[directBonus, mismatchDeposit], outsider],
+    ),
+  );
+  for (const result of [
+    await read("sale_deposit", siblingDeposit),
+    await depositBonus(siblingDeposit),
+  ]) {
+    assert.notEqual(result.status, 200);
+    for (const hiddenId of [directBonus, mismatchDeposit, directContract])
+      assert.equal(
+        JSON.stringify(result).includes(hiddenId),
+        false,
+        "conflicting sibling denial must not reveal hidden IDs",
+      );
+  }
+  await assert.rejects(
+    link(explicitContract, extraDeposits[9]),
+    (e) => e.code === "23514",
+    "a new consistent link must not join a conflicting source set",
+  );
+  await assert.rejects(
+    db.query("UPDATE public.income_expenses SET contract_id=$2 WHERE id=$1", [
+      extraDeposits[9],
+      explicitContract,
+    ]),
+    (e) => e.code === "23514",
+    "source reassignment must reject a conflicting resolved source set",
+  );
+  assert.equal(
+    (
+      await db.query(
+        "SELECT count(*)::int n FROM app_private.sale_bonus_claims WHERE organization_id=$1 AND deposit_voucher_id=$2",
+        [org, siblingDeposit],
+      )
+    ).rows[0].n,
+    0,
+  );
+  assert.equal(
+    (
+      await db.query(
+        "SELECT contract_id FROM public.income_expenses WHERE id=$1",
+        [siblingDeposit],
+      )
+    ).rows[0].contract_id,
+    null,
+  );
+  await fixture(() =>
+    db.query(
+      "DELETE FROM public.contract_deposit_links WHERE income_expense_id=$1",
+      [siblingDeposit],
+    ),
+  );
+  console.log(
+    "PASS resolved sibling consistency: actual JWT reader/adapter/writer and source mutations reject; hidden IDs absent and no source rewrite.",
+  );
   const mismatchRead = await read("sale_contract", explicitContract);
   const mismatchWrite = await commission(explicitContract, "sale");
   const mismatchDepositWrite = await depositBonus(mismatchDeposit);

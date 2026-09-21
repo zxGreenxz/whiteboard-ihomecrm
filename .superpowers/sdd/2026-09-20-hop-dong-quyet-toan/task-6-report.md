@@ -87,3 +87,20 @@ Kiểm chứng exact Node24.18.0:
 - App TS26785 exit0; ESLint domain/form/regression test exit0; scoped git diff --check PASS. Không đổi TS production trong round2.
 
 Chưa shared schema/business write. T6R chưa triển khai. Independent rereview, shared preflight/provenance/forward lane, live DEMO/broker VALID positive control, browser/build/reconcile/release vẫn pending như phần trên; các phép thử local không thay thế các gate đó.
+
+
+## Review round 3 — inconsistent sibling in resolved Sale sources
+
+Base 8e9d3171. Only the new followup migration, two local harnesses, and this report are in scope. T6R remained paused before schema or controller changes.
+
+RED before implementation: historical D1.direct=C2 plus D1 explicit link C1 and live contract bonus B2(C2), with D2.direct=NULL plus explicit link C1. Authenticated JWT reader(D2) and deposit writer(D2) both returned HTTP200; assertion "resolved sibling source reader must fail closed" failed. Fixtures were cleaned in finally. This proved the predecessor checked only the raw deposit before discovering its conflicting sibling.
+
+Generator allocated 20260921014754_sale_bonus_resolved_source_consistency.sql. It changes only app_private.sale_bonus_source_claims_v1: resolve the same selected contract/deposit sets as before, then validate every link touching either set before querying claims. A conflicting direct C2 is never traversed into new authority or used to silently merge trades. Reader, adapter, both writers and the existing trigger callers share this rejection. Generic SQLSTATE23514 error exposes no hidden IDs/code/amount; no contract_id rewrite, no data backfill, no money side effect. Existing NULL direct + consistent explicit link stays supported. Public signatures, RLS entry, postgres-only helper ACL and org-lock order are unchanged. Previous migrations are untouched; exact predecessor/current hash, dependency owner/ACL, reader role, and enabled-trigger guards remain enforced. New lookup hash: 85c05498f001dec9b6eb581b711682a3 (predecessor 232e870a444b79dfbe32c2dfd42231b8).
+
+Exact Node24.18.0 verification:
+- test-contract-settlement-create-local.mjs: PASS all four actual adapters and prior round1/2 cases; new D2 reader and writer return HTTP400, adapter and private SQL lookup reject, hidden D1/B2/C2 never appear, adding a locally consistent link into the conflicting set and source reassignment also reject. No D2 private bonus claim is inserted; its contract_id remains NULL. Existing mixed-writer/org-lock concurrency and source-link race cases remain passing. Session80115 exit0.
+- test-contract-settlement-create-schema-local.mjs: PASS first apply/reapply (including non-superuser deployment rehearsal), definition/owner/ACL/trigger drift denials, private helper isolation and transitive STABLE gate. Predecessor definition restoration stays inside ROLLBACK. Session14558 exit0.
+- dot-bien.mjs: remove the resolved-set predicate from the new lookup, run the actual JWT harness, assert expected RED "resolved sibling source reader must fail closed". Exit0; SHA256 prefix 23008b3999e0 restored after mutation 3ae326e36245. DB helper restored in finally. Local runner: .superpowers/sdd/2026-09-20-hop-dong-quyet-toan/t6-resolved-mutation-runner.mjs.
+- Four scoped Vitest suites: 56 PASS (29 domain,13 parser,4 hook,10 form). ESLint both changed harnesses exit0; scoped git diff --check PASS. App typecheck tsc --noEmit -p tsconfig.app.json session52334 exit0. No TS production changes in this fix.
+
+No shared schema/business write. Independent rereview, shared preflight/provenance/forward lane, live DEMO/broker VALID positive control, browser/build/reconcile/release remain unverified here. This fix does not claim T6 release complete or implement T6R.
