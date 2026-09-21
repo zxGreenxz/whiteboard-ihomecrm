@@ -16,6 +16,8 @@
   },
   "include": [],
   "files": [
+    "src/hooks/useContractMovements.ts",
+    "src/hooks/useContractLifecycle.ts",
     "src/app/capabilities/__tests__/capabilityContract.test.ts",
     "src/app/capabilities/__tests__/capabilityContractDisabled.test.ts",
     "src/app/capabilities/__tests__/navRoutesExist.test.ts",

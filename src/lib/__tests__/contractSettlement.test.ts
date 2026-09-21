@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   settlementStatusOf, detectIssues, laneOf, isBlocker, supplementPending,
   sumOnVoucher, DAU_CAN_BO_SUNG, DAU_DA_BO_SUNG,
+  viewStatusOf, matchStatus, fmtCompact, fmtMoney, fmtNgay, boDau,
   type SettlementRow,
 } from '@/lib/contractSettlement';
 
@@ -11,8 +12,9 @@ const goc = (p: Partial<SettlementRow> = {}): SettlementRow => ({
   buildingName: 'A', roomName: '101', customerName: 'Khách', recipientName: 'Môi giới X',
   amount: 1_000_000, basis: { kind: 'matched', amount: 1_000_000 },
   status: 'pending', approvalStatus: 'UNAPPROVED', postingStatus: 'UNPOSTED',
-  postingMode: null, bankRequired: true, bankAccount: '0123',
-  eventDate: '2026-09-10', issues: [], supplementPending: false,
+  postingMode: null, bankRequired: true, bankAccount: '0123', bankName: 'NH mẫu',
+  eventDate: '2026-09-10', origin: 'contract', eventLabel: 'Ký mới',
+  paidDate: null, bookName: null, issues: [], supplementPending: false,
   reviewState: 'PENDING', reviewVersion: 1, approvalVersion: 1, postingVersion: 1,
   organizationId: 'org1', buildingId: 'b1',
   ...p,
@@ -190,5 +192,69 @@ describe('sumOnVoucher', () => {
   });
   it('danh sách rỗng ra 0', () => {
     expect(sumOnVoucher([])).toBe(0);
+  });
+});
+
+// ── Từ vựng hiển thị (bản thiết kế 03) ─────────────────────────────────────
+
+describe('viewStatusOf', () => {
+  it('phiếu chờ duyệt còn BLOCKER thì hiện là Cần rà soát', () => {
+    expect(viewStatusOf(goc({ status: 'pending', issues: ['MISSING_RECIPIENT'] }))).toBe('review');
+  });
+  it('phiếu chờ duyệt chỉ có CẢNH BÁO thì vẫn là Chờ duyệt', () => {
+    // Đây chính là chỗ bản v1 sai: tồn kỳ cũ bị đẩy sang rà soát rồi kẹt.
+    expect(viewStatusOf(goc({ status: 'pending', issues: ['OLD_PERIOD'] }))).toBe('pending');
+    expect(viewStatusOf(goc({ status: 'pending', issues: ['BASIS_NOT_FOUND'] }))).toBe('pending');
+  });
+  it('thiếu STK chỉ chặn khi phiếu bắt buộc chuyển khoản', () => {
+    expect(viewStatusOf(goc({ status: 'pending', issues: ['MISSING_BANK'], bankRequired: false }))).toBe('pending');
+    expect(viewStatusOf(goc({ status: 'pending', issues: ['MISSING_BANK'], bankRequired: true }))).toBe('review');
+  });
+  it('trạng thái khác chờ duyệt thì giữ nguyên', () => {
+    expect(viewStatusOf(goc({ status: 'approved', issues: ['MISSING_RECIPIENT'] }))).toBe('approved');
+    expect(viewStatusOf(goc({ status: 'paid', issues: [] }))).toBe('paid');
+    expect(viewStatusOf(goc({ status: 'noncash', issues: [] }))).toBe('noncash');
+  });
+});
+
+describe('matchStatus', () => {
+  it('"Cần xử lý" gồm đúng ba làn còn việc', () => {
+    for (const v of ['review', 'pending', 'approved'] as const) {
+      expect(matchStatus(v, 'open')).toBe(true);
+    }
+    for (const v of ['paid', 'cancelled', 'noncash'] as const) {
+      expect(matchStatus(v, 'open')).toBe(false);
+    }
+  });
+  it('thẻ gộp "Chờ duyệt và Chi" KHÔNG nuốt Cần rà soát', () => {
+    expect(matchStatus('pending', 'pendpay')).toBe(true);
+    expect(matchStatus('approved', 'pendpay')).toBe(true);
+    expect(matchStatus('review', 'pendpay')).toBe(false);
+  });
+  it('"Đã chi" gom cả phiếu không ghi quỹ — chúng đã xong việc', () => {
+    expect(matchStatus('paid', 'paid')).toBe(true);
+    expect(matchStatus('noncash', 'paid')).toBe(true);
+  });
+  it('"Tất cả" nhận mọi trạng thái', () => {
+    expect(matchStatus('unknown', 'all')).toBe(true);
+    expect(matchStatus('cancelled', 'all')).toBe(true);
+  });
+});
+
+describe('định dạng', () => {
+  it('fmtCompact rút gọn từ 1 triệu trở lên', () => {
+    expect(fmtCompact(13_472_000)).toBe('13,47 tr');
+    expect(fmtCompact(999_000)).toBe('999.000 đ');
+  });
+  it('fmtMoney làm tròn, không để số lẻ lọt ra giao diện tiền', () => {
+    expect(fmtMoney(1_234_567.89)).toBe('1.234.568 đ');
+  });
+  it('fmtNgay đọc được cả chuỗi ISO có giờ', () => {
+    expect(fmtNgay('2026-09-13')).toBe('13/09/2026');
+    expect(fmtNgay('2026-09-13T17:00:00.000Z')).toBe('13/09/2026');
+    expect(fmtNgay(null)).toBe('—');
+  });
+  it('boDau cho phép gõ không dấu vẫn tìm ra', () => {
+    expect(boDau('Nguyễn Minh An')).toBe('nguyen minh an');
   });
 });

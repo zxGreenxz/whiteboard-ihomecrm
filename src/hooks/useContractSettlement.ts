@@ -73,10 +73,39 @@ interface VoucherRow {
   approval_version: number | string | null;
   posting_version: number | string | null;
   maker_user_id: string | null;
+  posted_at_v2: string | null;
   buildings: { name: string } | null;
   rooms: { name: string } | null;
-  contracts: { contract_number: string | null; signed_date: string | null } | null;
+  accounts: { name: string | null } | null;
+  contracts: {
+    contract_number: string | null;
+    signed_date: string | null;
+    contract_customers: { customers: { full_name: string | null } | null }[] | null;
+  } | null;
 }
+
+/**
+ * Tên khách của phiếu. Ưu tiên người đầu tiên trong bảng nối; hợp đồng nhiều
+ * người ở thì vẫn chỉ hiện một tên cho vừa dòng bảng.
+ *
+ * ⚠ Bản trước gán NHẦM `contract_number` vào đây, nên cột "Khách" hiện ra mã
+ * hợp đồng. Đừng quay lại cách đó.
+ */
+const tenKhach = (v: VoucherRow): string => {
+  const ten = v.contracts?.contract_customers?.find((x) => x.customers?.full_name)
+    ?.customers?.full_name;
+  return (ten ?? '').trim() || 'Chưa có tên khách';
+};
+
+const nguonCua = (v: VoucherRow): 'contract' | 'reservation' =>
+  (v.system_source ?? '').startsWith('reservation') ? 'reservation' : 'contract';
+
+/** Biến động nào đã đẻ ra khoản chi này. Suy ra, không có cột nào lưu sẵn. */
+const nhanBienDong = (kind: SettlementKind, origin: 'contract' | 'reservation'): string => {
+  if (kind === 'refund') return origin === 'reservation' ? 'Kết thúc giữ chỗ' : 'Thanh lý';
+  if (kind === 'bonus') return origin === 'reservation' ? 'Từ giữ chỗ' : 'Ký mới';
+  return 'Ký mới';
+};
 
 const COT = [
   'id', 'code', 'organization_id', 'building_id', 'room_id', 'contract_id',
@@ -84,10 +113,13 @@ const COT = [
   'payer_name', 'receive_bank_name', 'receive_bank_account', 'account_id',
   'posting_mode', 'approval_status', 'posting_status',
   'review_state', 'review_reason', 'review_version', 'approval_version',
-  'posting_version', 'maker_user_id',
+  'posting_version', 'maker_user_id', 'posted_at_v2',
   'buildings:building_id ( name )',
   'rooms:room_id ( name )',
-  'contracts:contract_id ( contract_number, signed_date )',
+  'accounts:account_id ( name )',
+  // Tên khách lấy qua bảng nối `contract_customers` — `contracts` KHÔNG có cột
+  // customer nào. Cột đại diện là `is_representative` (không phải `is_primary`).
+  'contracts:contract_id ( contract_number, signed_date, contract_customers ( customers ( full_name ) ) )',
 ].join(', ');
 
 /**
@@ -323,7 +355,7 @@ export function useContractSettlement(a: UseContractSettlementArgs) {
         roomId: v.room_id,
         buildingName: v.buildings?.name ?? '—',
         roomName: v.rooms?.name ?? null,
-        customerName: v.contracts?.contract_number ?? 'Chưa xác định liên kết',
+        customerName: tenKhach(v),
         recipientName: v.payer_name,
         amount: Number(v.total_amount) || 0,
         basis: basisOf(v, kind),
@@ -336,7 +368,14 @@ export function useContractSettlement(a: UseContractSettlementArgs) {
         // nhẹ còn hơn khoá nhầm một phiếu tiền mặt hợp lệ. [Plan §2.2]
         bankRequired: false,
         bankAccount: v.receive_bank_account,
+        bankName: v.receive_bank_name,
         eventDate: v.voucher_date,
+        origin: nguonCua(v),
+        eventLabel: nhanBienDong(kind, nguonCua(v)),
+        // posted_at_v2 chỉ có nghĩa khi đã ghi sổ; phiếu chưa chi có thể vẫn
+        // mang giá trị cũ nếu từng bị đảo, nên chốt theo posting_status.
+        paidDate: v.posting_status === 'POSTED' ? v.posted_at_v2 : null,
+        bookName: v.posting_status === 'POSTED' ? (v.accounts?.name ?? null) : null,
         supplementPending: treo?.get(v.id) ?? false,
         reviewState: v.review_state,
         reviewVersion: Number(v.review_version ?? 1),

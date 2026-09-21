@@ -97,7 +97,16 @@ export interface SettlementRow {
    */
   bankRequired: boolean;
   bankAccount: string | null;
+  bankName: string | null;
   eventDate: string | null;
+  /** 'reservation' = phát sinh từ phiếu giữ chỗ; còn lại là hợp đồng. */
+  origin: 'contract' | 'reservation';
+  /** Nhãn biến động sinh ra khoản chi này: "Thanh lý", "Ký mới", … */
+  eventLabel: string;
+  /** Ngày ghi sổ thật. Chỉ có khi đã POSTED. */
+  paidDate: string | null;
+  /** Tên sổ quỹ đã ghi. Null khi chưa chi. */
+  bookName: string | null;
   issues: SettlementIssue[];
   supplementPending: boolean;
   reviewState: string | null;
@@ -214,3 +223,108 @@ export function supplementPending(notes: { note: string | null }[]): boolean {
 export function sumOnVoucher(rows: Pick<SettlementRow, 'amount' | 'status'>[]): number {
   return rows.reduce((s, r) => (r.status === 'cancelled' ? s : s + r.amount), 0);
 }
+
+// =============================================================================
+// TỪ VỰNG HIỂN THỊ — bám đúng bản thiết kế 03 (design/Thanh toan - Hop dong &
+// quyet toan.dc.html). Đổi chữ ở đây là đổi giao diện, nên giữ nguyên văn.
+// =============================================================================
+
+/**
+ * Trạng thái NHÌN THẤY trên bảng. Khác `SettlementStatus` đúng một điểm:
+ * 'review' được TÁCH RA khỏi 'pending'.
+ *
+ * Với Thu chi, cả hai vẫn là UNAPPROVED — 'review' chỉ nghĩa là phiếu chờ duyệt
+ * còn vướng blocker. Xem khối "BLOCKER ≠ CẢNH BÁO" ở đầu file.
+ */
+export type ViewStatus =
+  | 'review' | 'pending' | 'approved' | 'noncash' | 'paid' | 'cancelled' | 'unknown';
+
+/** Bộ lọc trạng thái trên thanh công cụ. 'pendpay' chỉ dùng khi bật gộp. */
+export type StatusFilter =
+  | 'open' | 'all' | 'review' | 'pending' | 'approved' | 'pendpay'
+  | 'noncash' | 'paid' | 'cancelled';
+
+export const STATUS_STYLE: Record<ViewStatus, { nhan: string; bg: string; fg: string }> = {
+  review: { nhan: 'Cần rà soát', bg: '#fcebe9', fg: '#d6453f' },
+  pending: { nhan: 'Chờ duyệt', bg: '#fbf1da', fg: '#c97a10' },
+  approved: { nhan: 'Đã duyệt · chờ chi', bg: '#e8f3ec', fg: '#1f7a52' },
+  // KHÔNG gọi là "Đã chi": đây là phiếu duyệt xong nhưng ghi vào sổ ảo, tiền
+  // chưa hề rời két. Đo thật 21/09: 3 phiếu / 9.515.634đ trên sổ "CỌC (giữ hộ)".
+  noncash: { nhan: 'Không ghi quỹ', bg: '#eef2f7', fg: '#41607a' },
+  paid: { nhan: 'Đã chi', bg: '#e6f5ec', fg: '#1f9d57' },
+  cancelled: { nhan: 'Đã từ chối', bg: '#f0ede6', fg: '#8d8678' },
+  unknown: { nhan: 'Không xác định', bg: '#f0ede6', fg: '#8d8678' },
+};
+
+export const KIND_LABEL: Record<SettlementKind, string> = {
+  refund: 'Hoàn khách',
+  commission: 'Hoa hồng',
+  bonus: 'Thưởng sale',
+};
+
+/** Chữ trên nút cuối dòng, đổi theo trạng thái. */
+export const ACTION_LABEL: Record<ViewStatus, string> = {
+  review: 'Rà soát',
+  pending: 'Duyệt và Chi',
+  approved: 'Chi tiền',
+  noncash: 'Xem phiếu',
+  paid: 'Xem phiếu',
+  cancelled: 'Xem lý do',
+  unknown: 'Xem phiếu',
+};
+
+/** Trạng thái để HIỂN THỊ: tách 'review' ra khỏi 'pending' bằng làn. */
+export function viewStatusOf(
+  row: Pick<SettlementRow, 'status' | 'issues' | 'bankRequired'>,
+): ViewStatus {
+  if (row.status === 'pending') {
+    return laneOf(row) === 'can-ra-soat' ? 'review' : 'pending';
+  }
+  return row.status;
+}
+
+/**
+ * Phiếu có khớp bộ lọc trạng thái không.
+ *
+ * ⚠ 'noncash' nằm trong nhóm ĐÃ XONG chứ không phải "cần xử lý" — nó không còn
+ * việc gì để làm. Nhưng tiền của nó KHÔNG được cộng vào thẻ "Đã chi"; chỗ cộng
+ * tiền phải lọc riêng `paid`. Cộng gộp là nói dối về số tiền đã rời két.
+ */
+export function matchStatus(view: ViewStatus, f: StatusFilter): boolean {
+  switch (f) {
+    case 'all': return true;
+    case 'open': return view === 'review' || view === 'pending' || view === 'approved';
+    case 'pendpay': return view === 'pending' || view === 'approved';
+    case 'paid': return view === 'paid' || view === 'noncash';
+    default: return view === f;
+  }
+}
+
+export const STATUS_FILTER_LABEL: Record<StatusFilter, string> = {
+  open: 'Cần xử lý',
+  all: 'Tất cả trạng thái',
+  review: 'Cần rà soát',
+  pending: 'Chờ duyệt',
+  approved: 'Chờ chi',
+  pendpay: 'Chờ duyệt và chi',
+  noncash: 'Không ghi quỹ',
+  paid: 'Đã chi',
+  cancelled: 'Từ chối / hủy',
+};
+
+/** "13.472.000 đ" */
+export const fmtMoney = (n: number) => `${new Intl.NumberFormat('vi-VN').format(Math.round(n))} đ`;
+
+/** "13,47 tr" cho thẻ số lớn; dưới 1 triệu thì in đủ. */
+export const fmtCompact = (n: number) =>
+  Math.abs(n) >= 1e6
+    ? `${new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 2 }).format(n / 1e6)} tr`
+    : fmtMoney(n);
+
+/** '2026-09-13' → '13/09/2026'. Chấp nhận cả chuỗi ISO có giờ. */
+export const fmtNgay = (s: string | null | undefined) =>
+  s ? s.slice(0, 10).split('-').reverse().join('/') : '—';
+
+/** Bỏ dấu + thường hoá, để ô tìm kiếm gõ không dấu vẫn ra. */
+export const boDau = (s: unknown) =>
+  String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
