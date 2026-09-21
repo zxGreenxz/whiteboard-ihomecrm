@@ -61,6 +61,9 @@ const ThanhToan = () => {
 
   // Dùng CHUNG key kỳ với /thu-tien: đi qua lại 2 trang giữ nguyên tháng đang xem.
   const [billingMonth, setBillingMonth] = usePersistedState('flt:thu-tien:month', currentMonth);
+  // Một nguồn state cho cả desktop + Sheet (hai bề mặt luôn cùng mount). Sheet chỉ
+  // tính category hiệu lực an toàn; không ghi đè lựa chọn desktop khi resize.
+  const [feeCategory, setFeeCategory] = usePersistedState('flt:thu-tien:fee-cat', 'overview');
 
   // Nút back/X. Vào từ trong app (nút Plug bên Thu tiền, ô Thanh toán ở Home)
   // thì lui đúng 1 bước cho tự nhiên. Vào THẲNG bằng deep-link/F5 thì history
@@ -96,6 +99,8 @@ const ThanhToan = () => {
         onBillingMonthChange={setBillingMonth}
         onClose={goBack}
         canRecordPayment={canRecordPayment}
+        feeCategory={feeCategory}
+        onFeeCategoryChange={setFeeCategory}
       />
       <div className="tt-phone-col">
         <div className="tt-page">
@@ -108,6 +113,8 @@ const ThanhToan = () => {
             billingMonth={billingMonth}
             onBillingMonthChange={setBillingMonth}
             canRecordPayment={canRecordPayment}
+            feeCategory={feeCategory}
+            onFeeCategoryChange={setFeeCategory}
           />
         </div>
       </div>

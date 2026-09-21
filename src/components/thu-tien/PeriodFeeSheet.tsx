@@ -32,7 +32,6 @@ import { PeriodFeeSharedModals } from './PeriodFeeSharedModals';
 import { DepositLedgerSection } from './SettlementPanels';
 import { BookIcon } from './utilityIcons';
 import { AttachmentLightbox } from '@/components/ui/attachment-lightbox';
-import { usePersistedState } from '@/hooks/usePersistedState';
 import { calculatePeriodFeeOverview } from '@/lib/periodFeeOverview';
 
 interface Props {
@@ -41,6 +40,8 @@ interface Props {
   billingMonth: string;
   onBillingMonthChange?: (m: string) => void;
   canRecordPayment: boolean;
+  feeCategory: string;
+  onFeeCategoryChange: (category: string) => void;
   /**
    * Sheet LÀ nội dung của page (/thanh-toan) chứ không phải lớp phủ tạm.
    * Khi đó bỏ hẳn scrim: nó không có gì để làm mờ, mà lại là một vùng bấm
@@ -55,7 +56,7 @@ const parseVN = (s: string) => { const d = s.replace(/\D/g, ''); return d ? pars
 const fmtDate = (d?: string | null) => (d ? d.slice(0, 10).split('-').reverse().join('/') : '');
 const N_OPTIONS = [1, 3, 6, 12];
 
-export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChange, canRecordPayment, standalone }: Props) {
+export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChange, canRecordPayment, feeCategory, onFeeCategoryChange, standalone }: Props) {
   const period = billingMonth;
   const { data: allBuildings = [] } = useIncomeExpenseFormBuildings();
   const buildings = useMemo(() => allBuildings.filter((b) => !b.is_virtual).map((b) => ({ id: b.id, name: b.name })), [allBuildings]);
@@ -76,8 +77,7 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
     && (!c.restricted || canRestricted)), [canRestricted]);
   const gridKeys = useMemo(() => gridKeysFor(canRestricted), [canRestricted]);
 
-  const [persistedCategory, setCategory] = usePersistedState<string>('flt:thu-tien:fee-cat', 'overview');
-  const category = effectiveSheetFeeCategory(persistedCategory);
+  const category = effectiveSheetFeeCategory(feeCategory);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [enType, setEnType] = useState<'all' | 'electric' | 'water'>('all');
   const [onlyDue, setOnlyDue] = useState(false);
@@ -130,7 +130,7 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
     return { ...result, rows: result.rows.map(({ category: cat, ...row }) => ({ cat, ...row })) };
   }, [buildingIds, feeStatus.byKey, maintenance.data, elevatorIds, buildings, visibleCats]);
 
-  const pick = (k: string) => { setCategory(k); setPickerOpen(false); setOnlyDue(false); setGridTab('pay'); setNaOpen(false); setExpectedEdit(null); };
+  const pick = (k: string) => { onFeeCategoryChange(k); setPickerOpen(false); setOnlyDue(false); setGridTab('pay'); setNaOpen(false); setExpectedEdit(null); };
   const headerCat = (fam === 'over' ? undefined : cat) ?? { label: 'Tổng quan kỳ', sub: 'Còn thiếu phiếu · khớp Báo cáo Lợi Nhuận', icon: 'overview', accent: '#514c42' } as any;
 
   // ── Batch create (mobile) ──
