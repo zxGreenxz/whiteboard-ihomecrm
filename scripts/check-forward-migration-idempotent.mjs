@@ -237,6 +237,117 @@ export function danhGiaMienTruPinned(args) {
   return kiemMienTruPinned(args);
 }
 
+/** Retirement chỉ đổi phép đo lịch sử, không cấp quyền re-apply hay chứng nhận PASS. */
+export function loaiRetiredKhoiSo(entries, retired) {
+  return Object.fromEntries(Object.entries(entries).filter(([file]) => !retired.has(file)));
+}
+
+/** Retirement được kiểm trước khi xét cache/pinned/explicit, nên không có đường replay lại. */
+export function keHoachDoMigration({ files, digest, so, mienTru, retired, explicit = false }) {
+  const active = files.filter((file) => !retired.has(file));
+  const divided = chiaTheoSo(active, digest, loaiRetiredKhoiSo(so, retired));
+  const pinned = new Set(active.filter((file) => laMienTruPinned(mienTru.get(file))));
+  return {
+    active,
+    pinned,
+    dsChay: explicit ? active : [...new Set([...divided.phaiDo, ...pinned])],
+    daChung: explicit ? [] : divided.daChung.filter((file) => !pinned.has(file)),
+  };
+}
+
+const sqlLiteral = (value) => `'${String(value).replaceAll("'", "''")}'`;
+const triggerKey = (t) => `${t.relation}::${t.name}`;
+
+/** Query catalog thật, không đọc comment/marker trong SQL để suy ra đã phục hồi. */
+export function taoTruyVanRetirement(group) {
+  const w = group.witness;
+  const functions = [...w.functions, ...w.removedFunctions].map((f) => `(${sqlLiteral(f.signature)})`).join(',');
+  const triggers = [...w.removedTriggers, ...w.retainedTriggers].map((t) => `(${sqlLiteral(t.relation)},${sqlLiteral(t.name)})`).join(',');
+  return `SELECT jsonb_build_object(
+ 'functions',(SELECT jsonb_agg(jsonb_build_object('signature',wanted.signature,'md5',md5(pg_get_functiondef(p.oid)),'owner',pg_get_userbyid(p.proowner),'acl',p.proacl::text)) FROM (VALUES ${functions}) wanted(signature) LEFT JOIN pg_proc p ON p.oid=to_regprocedure(wanted.signature)),
+ 'triggers',(SELECT jsonb_agg(jsonb_build_object('relation',wanted.relation,'name',wanted.name,'md5',md5(pg_get_triggerdef(t.oid)),'enabled',t.tgenabled::text)) FROM (VALUES ${triggers}) wanted(relation,name) LEFT JOIN pg_trigger t ON t.tgrelid=to_regclass(wanted.relation) AND t.tgname=wanted.name),
+ 'rolePresent',EXISTS(SELECT 1 FROM pg_roles WHERE rolname=${sqlLiteral(w.role)})
+) AS catalog;`;
+}
+
+function retirementShape(group) {
+  if (!group?.id || !Array.isArray(group.migrations) || group.migrations.length === 0 || group.migrations.length !== group.expectedCounts?.migrations) return 'retirement thiếu/sai danh sách migration đã pin';
+  const w = group.witness;
+  if (!w || typeof w.role !== 'string' || !w.role) return 'retirement thiếu role witness';
+  for (const key of ['functions', 'removedFunctions', 'removedTriggers', 'retainedTriggers']) {
+    if (!Array.isArray(w[key]) || w[key].length === 0 || w[key].length !== group.expectedCounts?.[key]) return `retirement witness ${key} rỗng hoặc sai số lượng đã pin`;
+  }
+  const metaOk = (m) => m && /^[a-f0-9]{32}$/.test(m.md5) && typeof m.owner === 'string' && m.owner.length > 0 && (m.acl === null || typeof m.acl === 'string');
+  if (w.functions.some((f) => !metaOk(f.before) || !metaOk(f.after)) || w.removedFunctions.some((f) => !metaOk(f))) return 'retirement thiếu definition/owner/ACL witness';
+  const signatures = [...w.functions, ...w.removedFunctions].map((f) => f.signature);
+  if (signatures.some((s) => typeof s !== 'string' || !/^[a-z_]+\.[a-z_0-9]+\([^;]*\)$/.test(s)) || new Set(signatures).size !== signatures.length) return 'retirement signature sai hoặc trùng';
+  const triggers = [...w.removedTriggers, ...w.retainedTriggers];
+  if (triggers.some((t) => !/^[a-z_]+\.[a-z_0-9]+$/.test(t.relation) || !/^[a-z_0-9]+$/.test(t.name) || !/^[a-f0-9]{32}$/.test(t.md5) || !['O', 'A', 'R', 'D'].includes(t.enabled)) || new Set(triggers.map(triggerKey)).size !== triggers.length) return 'retirement trigger witness sai hoặc trùng';
+  const files = group.migrations.map((m) => m.file);
+  if (new Set(files).size !== files.length || files.includes(group.compensation?.file)) return 'retirement file trùng hoặc tự retire compensation';
+  return null;
+}
+
+function retirementReceipt(migration, { root, read, actualProjectRef, optional = false }) {
+  if (!/^\d{14}_[^/\\]+\.sql$/.test(migration?.file) || !/^[a-f0-9]{64}$/.test(migration?.sha256)) throw Error('retirement file/digest không hợp lệ');
+  if (bam(read(join(root, 'supabase', 'migrations', migration.file), 'utf8')) !== migration.sha256) throw Error(`retirement sha256 không khớp: ${migration.file}`);
+  const path = migration.appliedEvidencePath;
+  const prefix = ['docs', 'generated', 'schema-change-evidence'].join(sep) + sep;
+  if (typeof path !== 'string' || isAbsolute(path) || path.includes('\\') || !normalize(path).startsWith(prefix)) throw Error('retirement evidence path không an toàn');
+  let text;
+  try { text = read(join(root, normalize(path)), 'utf8'); }
+  catch (error) { if (optional && error.code === 'ENOENT') return null; throw error; }
+  const receipt = JSON.parse(text);
+  if (receipt.file !== `supabase/migrations/${migration.file}` || receipt.sha256 !== migration.sha256 || receipt.projectRef !== actualProjectRef
+    || !Number.isFinite(Date.parse(receipt.appliedAt)) || !['bien-nhan-backup', 'token-nguoi'].includes(receipt.authorization?.loai)
+    || typeof receipt.authorization?.chiTiet !== 'string' || !receipt.authorization.chiTiet) throw Error(`retirement evidence thiếu/sai dấu mốc apply: ${migration.file}`);
+  return receipt;
+}
+
+function retirementCatalogMatches(group, catalog, restored) {
+  const w = group.witness;
+  if (!catalog || !Array.isArray(catalog.functions) || !Array.isArray(catalog.triggers) || catalog.rolePresent !== !restored) return false;
+  const functions = new Map(catalog.functions.map((f) => [f.signature, f]));
+  const triggers = new Map(catalog.triggers.map((t) => [triggerKey(t), t]));
+  if (functions.size !== catalog.functions.length || functions.size !== w.functions.length + w.removedFunctions.length
+    || triggers.size !== catalog.triggers.length || triggers.size !== w.removedTriggers.length + w.retainedTriggers.length) return false;
+  const fnMatches = (signature, expected) => {
+    const actual = functions.get(signature);
+    return actual && ['md5', 'owner', 'acl'].every((k) => actual[k] === expected[k]);
+  };
+  const triggerMatches = (expected, absent = false) => {
+    const actual = triggers.get(triggerKey(expected));
+    return actual && actual.md5 === (absent ? null : expected.md5) && actual.enabled === (absent ? null : expected.enabled);
+  };
+  return w.functions.every((f) => fnMatches(f.signature, restored ? f.after : f.before))
+    && w.removedFunctions.every((f) => fnMatches(f.signature, restored ? { md5: null, owner: null, acl: null } : f))
+    && w.removedTriggers.every((t) => triggerMatches(t, restored))
+    && w.retainedTriggers.every((t) => triggerMatches(t));
+}
+
+/** Không có receipt mới chỉ hợp lệ khi catalog còn ĐÚNG trạng thái trước phục hồi. */
+export async function danhGiaRetirement({ group, actualProjectRef, query, root = repoRoot, read = readFileSync }) {
+  const shapeError = retirementShape(group);
+  if (shapeError) return { ok: false, vi: shapeError };
+  let receipts; let compensation;
+  try {
+    receipts = group.migrations.map((m) => retirementReceipt(m, { root, read, actualProjectRef }));
+    compensation = retirementReceipt(group.compensation, { root, read, actualProjectRef, optional: true });
+    if (group.migrations.some((m) => m.file.slice(0, 14) >= group.compensation.file.slice(0, 14))
+      || (compensation && receipts.some((r) => Date.parse(r.appliedAt) >= Date.parse(compensation.appliedAt)))) return { ok: false, vi: 'retirement compensation không nằm sau migration gốc' };
+  } catch (error) { return { ok: false, vi: error.message }; }
+  // Transport failures propagate as KHÔNG KIỂM ĐƯỢC, never fall back to replay.
+  const catalog = await query(taoTruyVanRetirement(group));
+  if (compensation) {
+    return retirementCatalogMatches(group, catalog, true)
+      ? { ok: true, state: 'retired', files: group.migrations.map((m) => m.file) }
+      : { ok: false, vi: 'retirement receipt có nhưng catalog phục hồi không khớp; không replay lịch sử' };
+  }
+  return retirementCatalogMatches(group, catalog, false)
+    ? { ok: true, state: 'active', files: [] }
+    : { ok: false, vi: 'retirement thiếu receipt và catalog không còn trạng thái active đầy đủ; không replay lịch sử' };
+}
+
 /** File .sql có version 14 chữ số LỚN HƠN cutoff. */
 export function timFileSauCutoff(danhSach, cutoff) {
   return danhSach
@@ -305,6 +416,32 @@ async function main() {
   const mienTru = docMienTru();
   const filesSauCutoff = [...files];
   const daKhop = new Set();
+  const retirements = JSON.parse(readFileSync(join(repoRoot, 'supabase', 'migration-policy.json'), 'utf8')).idempotencyRetirements ?? [];
+  const retired = new Set();
+  const retirementNames = new Set();
+  for (const group of retirements) {
+    for (const migration of group.migrations ?? []) {
+      if (retirementNames.has(migration.file) || migration.file.slice(0, 14) <= cutoff) throw Error('retirement trùng nhóm hoặc vượt cutoff');
+      retirementNames.add(migration.file);
+    }
+    const result = await danhGiaRetirement({ group, actualProjectRef: ref, query: async (sql) => {
+      const response = await chaySql(ref, token, sql);
+      if (!response.ok) throw Error(`KHÔNG KIỂM ĐƯỢC retirement catalog (HTTP ${response.status})`);
+      const rows = JSON.parse(response.text);
+      if (!Array.isArray(rows) || rows.length !== 1 || !rows[0].catalog) throw Error('KHÔNG KIỂM ĐƯỢC retirement catalog: response không hợp lệ');
+      return rows[0].catalog;
+    } });
+    if (!result.ok) {
+      console.error(`❌ Retirement ${group.id}: ${result.vi}`);
+      process.exit(1);
+    }
+    if (result.state === 'retired') {
+      result.files.forEach((file) => retired.add(file));
+      console.log(`RETIRED ${group.id}: ${result.files.length} migration đã được compensation thay thế; receipt + catalog sống khớp. KHÔNG replay, KHÔNG tính idempotent PASS.`);
+    } else {
+      console.log(`ACTIVE ${group.id}: chưa có receipt compensation, catalog cũ khớp; giữ phép đo idempotency/pin hiện hành.`);
+    }
+  }
 
   // ── --tu-moc: chỉ đo migration THÊM MỚI trong diff của push này (28/08/2026)
   // Trước đây gate đo TOÀN BỘ file sau cutoff chưa chứng nhận — migration của
@@ -331,12 +468,12 @@ async function main() {
         { cwd: repoRoot, encoding: "utf8" },
       ).split("\n").filter(Boolean);
       const added = locTheoMoc(files, diffAdded);
-      const pinnedExceptions = filesSauCutoff.filter((f) => laMienTruPinned(mienTru.get(f)));
-      files = themMienTruPinned(filesSauCutoff, added, mienTru);
+      const pinnedExceptions = filesSauCutoff.filter((f) => !retired.has(f) && laMienTruPinned(mienTru.get(f)));
+      files = themMienTruPinned(filesSauCutoff, added, mienTru).filter((f) => !retired.has(f));
       theoMoc = true;
       console.log(`Phạm vi --tu-moc ${moc.moc}..HEAD: ${added.length} migration THÊM MỚI · ${pinnedExceptions.length} ngoại lệ pinned bắt buộc đo lại.`);
       if (files.length === 0) {
-        console.log("✅ Diff không thêm migration mới — kết luận idempotent của các file cũ còn nguyên");
+        console.log("✅ Không có migration active mới/pinned cần đo trong diff này; RETIRED đã kiểm riêng nếu có.");
         console.log("   (sổ chứng nhận sha256 + luật immutable của policy che chúng). Không có gì để đo.");
         return;
       }
@@ -351,6 +488,11 @@ async function main() {
     console.error(`❌ Không có file nào sau cutoff ${cutoff} — "0 lỗi" là câu đúng mà vô nghĩa.`);
     process.exit(3);
   }
+  files = files.filter((f) => !retired.has(f));
+  if (!quetToanBo && files.length === 0) {
+    console.log('File được yêu cầu là RETIRED đã xác minh; không replay lịch sử và không cấp chứng nhận idempotent.');
+    return;
+  }
 
   // ── Sổ chứng nhận theo digest ───────────────────────────────────────────
   const boQuaSo = process.argv.includes("--bo-qua-so");
@@ -362,12 +504,9 @@ async function main() {
     process.exit(3);
   }
   const digest = new Map(files.map((f) => [f, bam(readFileSync(join(DIR, f), "utf8"))]));
-  const so = boQuaSo ? {} : docSo();
-  const daChia = chiaTheoSo(files, digest, so);
-  // Ngoại lệ pinned không được biến thành cache PASS: luôn đo lại lỗi thật.
-  const pinned = new Set(files.filter((f) => laMienTruPinned(mienTru.get(f))));
-  const phaiDo = [...new Set([...daChia.phaiDo, ...pinned])];
-  const daChung = daChia.daChung.filter((f) => !pinned.has(f));
+  const so = boQuaSo ? {} : loaiRetiredKhoiSo(docSo(), retired);
+  // Active pinned luôn đo lại lỗi thật; retired không trở thành cache PASS.
+  const { pinned, dsChay, daChung } = keHoachDoMigration({ files, digest, so, mienTru, retired, explicit: !quetToanBo });
 
   // Sổ có mục cho file KHÔNG còn trong tầm quét ⇒ sổ đang tả một thế giới khác.
   // Không chặn, nhưng phải nói ra: một cuốn sổ lệch trong im lặng là cửa tự mở.
@@ -377,7 +516,6 @@ async function main() {
     console.log(`⚠ ${racSo.length} mục trong tooling/idempotent-verified.json không còn file tương ứng — chạy --ghi-so để dọn.`);
   }
 
-  const dsChay = quetToanBo ? phaiDo : files;
   console.log(`Idempotency: ${files.length} migration sau cutoff ${cutoff} · mỗi file chạy HAI LẦN rồi ROLLBACK`);
   if (quetToanBo) {
     console.log(`  đo lần này: ${dsChay.length} · bỏ qua theo sha256 đã chứng nhận: ${daChung.length}`);
@@ -461,7 +599,7 @@ async function main() {
   // phần lớn file, đúng cái bẫy buộc-tội-sai mà chú thích trên đã cảnh báo.
   const doHet = quetToanBo && !theoMoc && dsChay.length === files.length;
   const thua = doHet
-    ? [...mienTru.keys()].filter((f) => !daKhop.has(f))
+    ? [...mienTru.keys()].filter((f) => !retired.has(f) && !daKhop.has(f))
     : [];
 
   if (hong.length > 0 || thua.length > 0) {
@@ -491,7 +629,7 @@ async function main() {
   // chứng nhận cho chính nó là cổng không còn canh gì. Sổ đi kèm commit của
   // người viết migration, cùng đường với `npm run provenance:generate`.
   if (ghiSo) {
-    const cu = boQuaSo ? {} : docSo();
+    const cu = boQuaSo ? {} : loaiRetiredKhoiSo(docSo(), retired);
     const moiSo = {};
     for (const f of files) {
       const da = chungMoi.find(([ten]) => ten === f);

@@ -247,5 +247,504 @@
       "baiHoc": "Kiểm idempotency đã bị bỏ sót trước apply; thêm kiểm hai lượt ROLLBACK bắt buộc vào lane trước các lần apply tiếp theo, không cho ngoại lệ lịch sử vượt chốt đó.",
       "exitCondition": "Giữ bản ghi lịch sử và digest. Chỉ thay cơ chế kiểm khi có quy trình phục hồi được review thay thế; không đổi cutoff, không di chuyển/xóa file và không báo raw migration đã idempotent."
     }
+  ],
+  "idempotencyRetirementRule": "Chỉ ngừng replay migration lịch sử đã được compensation áp thật thay thế: pin SQL và biên nhận của cả hai phía, kiểm catalog sống đầy đủ mỗi lượt. Chưa có receipt compensation chỉ giữ ACTIVE khi catalog cũ khớp. Receipt thiếu/sai hoặc catalog partial/drift phải đỏ, không replay feature để tự sửa. RETIRED không phải idempotent PASS, không ghi/giữ chứng nhận cache cho các file đó; lane apply không dùng retirement để bỏ kiểm hai lượt của migration mới.",
+  "idempotencyRetirements": [
+    {
+      "id": "restore-before-contract-settlement-2026-09-21",
+      "why": "Phục hồi chương trình về trước Hợp đồng & quyết toán bằng migration bù, giữ toàn bộ dữ liệu và byte lịch sử. Sáu lỗi pinned cũ thuộc catalog đã bị thay thế; không thể dùng chúng chứng minh trạng thái phục hồi.",
+      "compensation": {
+        "file": "20260921085952_restore_before_contract_settlement.sql",
+        "sha256": "0574aba685d341fd10140afa751f79b0b09f1b0e26a4919640bbf08e8fa8ab85",
+        "appliedEvidencePath": "docs/generated/schema-change-evidence/20260921085952_restore_before_contract_settlement.json"
+      },
+      "migrations": [
+        {
+          "file": "20260920175511_contract_settlement_authenticated_reader.sql",
+          "sha256": "f554dff4bebea661dfdd5e0a1a86f3593dcefdec63506cbd352aefe6b00e22c0",
+          "appliedEvidencePath": "docs/generated/schema-change-evidence/20260920175511_contract_settlement_authenticated_reader.json"
+        },
+        {
+          "file": "20260920182530_shared_income_expense_review_transitions.sql",
+          "sha256": "a568fa7acb36c221d4cf4018194926faf33e4993828970b1844a1be3d5be6953",
+          "appliedEvidencePath": "docs/generated/schema-change-evidence/20260920182530_shared_income_expense_review_transitions.json"
+        },
+        {
+          "file": "20260920192452_shared_income_expense_action_snapshot.sql",
+          "sha256": "7223a7248124f5f2b747e4eb2c95c7328c6672d739b00b3ebc8d79b8f3ab10fc",
+          "appliedEvidencePath": "docs/generated/schema-change-evidence/20260920192452_shared_income_expense_action_snapshot.json"
+        },
+        {
+          "file": "20260920194951_shared_room_lifecycle_rls.sql",
+          "sha256": "c7d58878bee19356207ed8ee60e616b0913856f3f0f7d8586914e2158507274f",
+          "appliedEvidencePath": "docs/generated/schema-change-evidence/20260920194951_shared_room_lifecycle_rls.json"
+        },
+        {
+          "file": "20260920200252_shared_income_expense_action_capabilities.sql",
+          "sha256": "bc8ce3b7dac85e71385151861e95bb535425a017afa81ab6748faf433358b801",
+          "appliedEvidencePath": "docs/generated/schema-change-evidence/20260920200252_shared_income_expense_action_capabilities.json"
+        },
+        {
+          "file": "20260920202321_contract_settlement_event_reader.sql",
+          "sha256": "e01a476063b3c585dbd1575ddb217e0d16016457a5d841de1946aa1fa9f06a4c",
+          "appliedEvidencePath": "docs/generated/schema-change-evidence/20260920202321_contract_settlement_event_reader.json"
+        },
+        {
+          "file": "20260920205323_contract_settlement_financial_context.sql",
+          "sha256": "c76ee7aa50c69be3a7c2aafb91255e6452310f4c14469a535ac5269a7d74db1f",
+          "appliedEvidencePath": "docs/generated/schema-change-evidence/20260920205323_contract_settlement_financial_context.json"
+        },
+        {
+          "file": "20260920212716_contract_settlement_source_creation_reader.sql",
+          "sha256": "559fc57a18c2e3ef2343e738e097bc922370d0ee9e2c350aba1028b597cec38c",
+          "appliedEvidencePath": "docs/generated/schema-change-evidence/20260920212716_contract_settlement_source_creation_reader.json"
+        },
+        {
+          "file": "20260920235823_shared_voucher_recipient_sparse_update.sql",
+          "sha256": "edc8c06835fbb6cf21c89e214a3bdbe1be97d1d92c9d5f8223d308e427de1f75",
+          "appliedEvidencePath": "docs/generated/schema-change-evidence/20260920235823_shared_voucher_recipient_sparse_update.json"
+        },
+        {
+          "file": "20260920235851_termination_refund_creation_recipient.sql",
+          "sha256": "6b336c088e2fd7d8f186a196e9d73c6bb238368b897ee956f1c08ed4d03a5776",
+          "appliedEvidencePath": "docs/generated/schema-change-evidence/20260920235851_termination_refund_creation_recipient.json"
+        },
+        {
+          "file": "20260921004455_contract_settlement_termination_breakdown.sql",
+          "sha256": "7e937720e6125f6f520f9fd0cb06ee07848ab8ca9f3711d1260569ebf05b7b19",
+          "appliedEvidencePath": "docs/generated/schema-change-evidence/20260921004455_contract_settlement_termination_breakdown.json"
+        },
+        {
+          "file": "20260921004515_sale_bonus_explicit_source_claim_guard.sql",
+          "sha256": "efb6d16d0fb02ac84efd90369548dea2609cbab9a5a7cea24af949449c47b759",
+          "appliedEvidencePath": "docs/generated/schema-change-evidence/20260921004515_sale_bonus_explicit_source_claim_guard.json"
+        },
+        {
+          "file": "20260921012821_sale_bonus_source_link_consistency.sql",
+          "sha256": "ef9781d132cce8306a1ef292338fd96720f23a7413613b82fbc350a050e462ca",
+          "appliedEvidencePath": "docs/generated/schema-change-evidence/20260921012821_sale_bonus_source_link_consistency.json"
+        },
+        {
+          "file": "20260921014754_sale_bonus_resolved_source_consistency.sql",
+          "sha256": "23008b3999e079b276c39a9eade9dc93681f313e7ecac3efb341b47e52ba757c",
+          "appliedEvidencePath": "docs/generated/schema-change-evidence/20260921014754_sale_bonus_resolved_source_consistency.json"
+        },
+        {
+          "file": "20260921015956_reservation_refund_pending_workflow.sql",
+          "sha256": "ba25feb9c0f3d7f138d14012bcd090b4a8cb314ab5668976eda2cc83aaed0e20",
+          "appliedEvidencePath": "docs/generated/schema-change-evidence/20260921015956_reservation_refund_pending_workflow.json"
+        }
+      ],
+      "expectedCounts": {
+        "migrations": 15,
+        "functions": 14,
+        "removedFunctions": 30,
+        "removedTriggers": 3,
+        "retainedTriggers": 2
+      },
+      "witness": {
+        "functions": [
+          {
+            "signature": "app_private.guard_income_expense_owned_payload()",
+            "before": {
+              "md5": "18b3e1c11f3e698f1daf2cd082313448",
+              "owner": "postgres",
+              "acl": "{postgres=X/postgres}"
+            },
+            "after": {
+              "md5": "fb01ae8c9de7b283d19ade8195eba726",
+              "owner": "postgres",
+              "acl": "{postgres=X/postgres}"
+            }
+          },
+          {
+            "signature": "public.reverse_posted_income_expense_v2(uuid,uuid,date,text,text)",
+            "before": {
+              "md5": "50cd5cb62b41700f0d2130ccdad44419",
+              "owner": "postgres",
+              "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+            },
+            "after": {
+              "md5": "9fcc9d100dd7fd3a858038a10dc6e701",
+              "owner": "postgres",
+              "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+            }
+          },
+          {
+            "signature": "app_private.finance_v2_post_manual_voucher(income_expenses,uuid,uuid,uuid,date,uuid[],text)",
+            "before": {
+              "md5": "528e457cc02ddcec3c0cd2c67044ae09",
+              "owner": "postgres",
+              "acl": "{postgres=X/postgres}"
+            },
+            "after": {
+              "md5": "c2d88ccaae0d8c8a0d425ac4d6cd7f7f",
+              "owner": "postgres",
+              "acl": "{postgres=X/postgres}"
+            }
+          },
+          {
+            "signature": "public.get_room_cash_lifecycle_v1(uuid,date,date)",
+            "before": {
+              "md5": "4219809847a848ab9439ba2eb1a78213",
+              "owner": "ie_action_snapshot_reader",
+              "acl": "{ie_action_snapshot_reader=X/ie_action_snapshot_reader,authenticated=X/ie_action_snapshot_reader}"
+            },
+            "after": {
+              "md5": "2c5c0f54d345ca35c3cac80232c3d837",
+              "owner": "postgres",
+              "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+            }
+          },
+          {
+            "signature": "app_private.reservation_create_leg_v1(uuid,text,uuid,uuid,date,numeric)",
+            "before": {
+              "md5": "b12a257d0820acdf10a625ae68126648",
+              "owner": "postgres",
+              "acl": "{postgres=X/postgres}"
+            },
+            "after": {
+              "md5": "61e14ad271c7b79e5931f09ab6d0bed2",
+              "owner": "postgres",
+              "acl": "{postgres=X/postgres}"
+            }
+          },
+          {
+            "signature": "public.request_income_expense_changes_v2(uuid,bigint,text,jsonb,text)",
+            "before": {
+              "md5": "a7b885abecda8b1b8a5a6545f3c76975",
+              "owner": "postgres",
+              "acl": "{postgres=X/postgres,authenticated=X/postgres}"
+            },
+            "after": {
+              "md5": "c3769605c5ac35134935d49a32a5d1d9",
+              "owner": "postgres",
+              "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+            }
+          },
+          {
+            "signature": "public.create_termination_refund_voucher_v1(uuid,uuid,boolean,text)",
+            "before": {
+              "md5": "79dda3e01cdcdee2d36d55dd7a7df670",
+              "owner": "postgres",
+              "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+            },
+            "after": {
+              "md5": "cdc2896ff50e836cb782219683ba5474",
+              "owner": "postgres",
+              "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+            }
+          },
+          {
+            "signature": "public.create_sale_bonus_from_deposit_v1(uuid,numeric,text,text,text,date,uuid,jsonb)",
+            "before": {
+              "md5": "3ed571ba5d2262ec5a125a4804ef9f4a",
+              "owner": "postgres",
+              "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+            },
+            "after": {
+              "md5": "fbaed9b582feab422372165eb55a8288",
+              "owner": "postgres",
+              "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+            }
+          },
+          {
+            "signature": "public.create_commission_voucher(uuid,text,numeric,date,uuid,text,text,text,text,text,jsonb)",
+            "before": {
+              "md5": "8e71112be4f8244298b347c47e15dd05",
+              "owner": "postgres",
+              "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+            },
+            "after": {
+              "md5": "c134aa5857144c2b8f66145f0e9feab5",
+              "owner": "postgres",
+              "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+            }
+          },
+          {
+            "signature": "app_private.finance_v2_birth_provenance_bridge()",
+            "before": {
+              "md5": "502b59b43551d64bf602da4b01f7d536",
+              "owner": "postgres",
+              "acl": null
+            },
+            "after": {
+              "md5": "a8e8c8c66676f566e52edf888bc43579",
+              "owner": "postgres",
+              "acl": null
+            }
+          },
+          {
+            "signature": "public.resubmit_income_expense_v2(uuid,bigint,jsonb,text)",
+            "before": {
+              "md5": "d3a9226f0b75940c354e5c81497097b4",
+              "owner": "postgres",
+              "acl": "{postgres=X/postgres,authenticated=X/postgres}"
+            },
+            "after": {
+              "md5": "722dcc99bec52a059f7c45c08d085f80",
+              "owner": "postgres",
+              "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+            }
+          },
+          {
+            "signature": "public.list_cashbooks_for_expense_v2()",
+            "before": {
+              "md5": "b8a05055824b9bcf2f3710a4f369b267",
+              "owner": "postgres",
+              "acl": "{postgres=X/postgres,authenticated=X/postgres}"
+            },
+            "after": {
+              "md5": "d3e69a10cf4e1cb6c99698df62d0602a",
+              "owner": "postgres",
+              "acl": "{postgres=X/postgres,authenticated=X/postgres}"
+            }
+          },
+          {
+            "signature": "public.get_room_residence_segments_v1(uuid[])",
+            "before": {
+              "md5": "83dd49ab595599c2b8bf5f37bd6cd993",
+              "owner": "ie_action_snapshot_reader",
+              "acl": "{ie_action_snapshot_reader=X/ie_action_snapshot_reader,authenticated=X/ie_action_snapshot_reader}"
+            },
+            "after": {
+              "md5": "8ee45965dbcac4333dfac3a25d662f29",
+              "owner": "postgres",
+              "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+            }
+          },
+          {
+            "signature": "app_private.reservation_pay_refund_v1(uuid,uuid,date)",
+            "before": {
+              "md5": "3e2484a389ff3ed00532f62f61afd6ee",
+              "owner": "postgres",
+              "acl": "{postgres=X/postgres}"
+            },
+            "after": {
+              "md5": "94b846b86cf718a8b7a43e7bb2fbe0b9",
+              "owner": "postgres",
+              "acl": "{postgres=X/postgres}"
+            }
+          }
+        ],
+        "removedFunctions": [
+          {
+            "signature": "public.read_contract_settlement_page_v1(uuid,uuid[],text,text,integer)",
+            "md5": "0fe9c230ab4675aadc814467c96ef89d",
+            "owner": "postgres",
+            "acl": "{postgres=X/postgres,authenticated=X/postgres}"
+          },
+          {
+            "signature": "app_private.is_income_expense_review_operation_v1(uuid,uuid)",
+            "md5": "e713cc86e14b588389034ec74750373e",
+            "owner": "postgres",
+            "acl": "{postgres=X/postgres}"
+          },
+          {
+            "signature": "app_private.authorize_income_expense_review_v1(income_expenses,text)",
+            "md5": "513ac209277c5b6ffb3b13a8c25217c2",
+            "owner": "postgres",
+            "acl": "{postgres=X/postgres}"
+          },
+          {
+            "signature": "app_private.income_expense_action_scope_v1(uuid)",
+            "md5": "38d6b30b15990db2c3ab043eb2161865",
+            "owner": "postgres",
+            "acl": "{postgres=X/postgres,ie_action_snapshot_reader=X/postgres}"
+          },
+          {
+            "signature": "public.read_income_expense_action_snapshots_v1(uuid,uuid[])",
+            "md5": "a9f0074e0fe76add7b52aec790fe56cf",
+            "owner": "ie_action_snapshot_reader",
+            "acl": "{ie_action_snapshot_reader=X/ie_action_snapshot_reader,authenticated=X/ie_action_snapshot_reader}"
+          },
+          {
+            "signature": "app_private.room_lifecycle_org_visible_v1(uuid)",
+            "md5": "bfe10acb39d5df5aa48995a2731532b1",
+            "owner": "postgres",
+            "acl": "{postgres=X/postgres,ie_action_snapshot_reader=X/postgres}"
+          },
+          {
+            "signature": "app_private.income_expense_action_capabilities_v1(uuid,uuid)",
+            "md5": "f9990586ef08a9a83fa225b186c60699",
+            "owner": "postgres",
+            "acl": "{postgres=X/postgres,ie_action_snapshot_reader=X/postgres}"
+          },
+          {
+            "signature": "app_private.settlement_event_expense_ids_v1(uuid,uuid,uuid[],uuid)",
+            "md5": "bb9f487c42e0b7e1ce6a4084c216f133",
+            "owner": "postgres",
+            "acl": "{postgres=X/postgres,ie_action_snapshot_reader=X/postgres}"
+          },
+          {
+            "signature": "public.read_contract_settlement_events_v1(uuid,uuid[],text,text,integer)",
+            "md5": "111961b0e0700535acfe0af478ed2ea4",
+            "owner": "ie_action_snapshot_reader",
+            "acl": "{ie_action_snapshot_reader=X/ie_action_snapshot_reader,authenticated=X/ie_action_snapshot_reader}"
+          },
+          {
+            "signature": "app_private.settlement_financial_source_ids_v1(uuid,uuid,uuid)",
+            "md5": "e2a106e767e060d7b9540673d6134cae",
+            "owner": "postgres",
+            "acl": "{postgres=X/postgres,ie_action_snapshot_reader=X/postgres}"
+          },
+          {
+            "signature": "app_private.settlement_financial_evidence_v1(uuid,uuid[],uuid)",
+            "md5": "9cadfa6a7a2c2864ed99c26fe2ab763e",
+            "owner": "postgres",
+            "acl": "{postgres=X/postgres,ie_action_snapshot_reader=X/postgres}"
+          },
+          {
+            "signature": "public.read_contract_settlement_financial_facts_v1(uuid,uuid,uuid,uuid,uuid,uuid)",
+            "md5": "37f886b6cf56450fa40c0e544999e2c4",
+            "owner": "ie_action_snapshot_reader",
+            "acl": "{ie_action_snapshot_reader=X/ie_action_snapshot_reader,authenticated=X/ie_action_snapshot_reader}"
+          },
+          {
+            "signature": "public.read_contract_settlement_create_source_v1(uuid,text,uuid,numeric)",
+            "md5": "f8acf6adaa1e8da590c373735fb4768c",
+            "owner": "ie_action_snapshot_reader",
+            "acl": "{ie_action_snapshot_reader=X/ie_action_snapshot_reader,authenticated=X/ie_action_snapshot_reader}"
+          },
+          {
+            "signature": "app_private.contract_settlement_create_facts_v1(uuid,text,uuid)",
+            "md5": "b97c2f4d3e9ff2fa3cefae1f32072c80",
+            "owner": "postgres",
+            "acl": "{postgres=X/postgres,ie_action_snapshot_reader=X/postgres}"
+          },
+          {
+            "signature": "public.update_income_expense_recipient_v1(uuid,uuid,jsonb,jsonb)",
+            "md5": "19d5834bed3c4fdbba5c14967a796ffe",
+            "owner": "postgres",
+            "acl": "{postgres=X/postgres,authenticated=X/postgres}"
+          },
+          {
+            "signature": "app_private.create_termination_refund_voucher_with_recipient_v1(uuid,uuid,boolean,text,text,text,text)",
+            "md5": "9d0ce57d4ccc0818bbdc5aa09e3b56ca",
+            "owner": "postgres",
+            "acl": "{postgres=X/postgres}"
+          },
+          {
+            "signature": "public.create_termination_refund_voucher_v1(uuid,uuid,boolean,text,text,text,text)",
+            "md5": "0409f151a3cf489c8977307892c6c6ad",
+            "owner": "postgres",
+            "acl": "{postgres=X/postgres,authenticated=X/postgres}"
+          },
+          {
+            "signature": "app_private.settlement_termination_voucher_link_v1(uuid,uuid,uuid,uuid)",
+            "md5": "c5305a2c11de314dc4eb4b04d8cdfdaa",
+            "owner": "postgres",
+            "acl": "{postgres=X/postgres,ie_action_snapshot_reader=X/postgres}"
+          },
+          {
+            "signature": "app_private.settlement_termination_breakdown_v1(uuid,uuid,uuid,uuid,boolean,boolean)",
+            "md5": "a7e62c0b18de2e41dad077dc71e0c3cf",
+            "owner": "ie_action_snapshot_reader",
+            "acl": "{ie_action_snapshot_reader=X/ie_action_snapshot_reader}"
+          },
+          {
+            "signature": "app_private.sale_bonus_source_claims_v1(uuid,uuid,uuid)",
+            "md5": "85c05498f001dec9b6eb581b711682a3",
+            "owner": "postgres",
+            "acl": "{postgres=X/postgres}"
+          },
+          {
+            "signature": "app_private.guard_sale_bonus_source_claim_v1()",
+            "md5": "f804cf51e0aa37c7e7d03bd5d0760ffb",
+            "owner": "postgres",
+            "acl": "{postgres=X/postgres}"
+          },
+          {
+            "signature": "app_private.reservation_refund_visible_v1(uuid,uuid,uuid)",
+            "md5": "a7ef392fa48e097862d27feda83ee31f",
+            "owner": "ie_action_snapshot_reader",
+            "acl": "{ie_action_snapshot_reader=X/ie_action_snapshot_reader,postgres=X/ie_action_snapshot_reader}"
+          },
+          {
+            "signature": "app_private.reservation_refund_lock_v1(uuid,uuid,uuid)",
+            "md5": "2bb353755f22d8c7e08702fec2c6ace0",
+            "owner": "postgres",
+            "acl": "{postgres=X/postgres}"
+          },
+          {
+            "signature": "app_private.reservation_create_refund_pending_leg_v1(uuid,uuid,date,numeric,text,text,text)",
+            "md5": "e59fb268a4f22bb6b08ad71feb8ece16",
+            "owner": "postgres",
+            "acl": "{postgres=X/postgres}"
+          },
+          {
+            "signature": "public.create_reservation_refund_pending_v1(jsonb)",
+            "md5": "278d496fba8a08d1d1e72e2bf1312e83",
+            "owner": "postgres",
+            "acl": "{postgres=X/postgres,authenticated=X/postgres}"
+          },
+          {
+            "signature": "app_private.reservation_refund_dispatch_authorized_v1(uuid,uuid,text)",
+            "md5": "f6d529ada90335ca5c0c8d613ec0cf3f",
+            "owner": "postgres",
+            "acl": "{postgres=X/postgres}"
+          },
+          {
+            "signature": "public.execute_reservation_refund_action_v1(jsonb)",
+            "md5": "11b01d7f0d76e2055b30d141665d1575",
+            "owner": "postgres",
+            "acl": "{postgres=X/postgres,authenticated=X/postgres}"
+          },
+          {
+            "signature": "app_private.reservation_refund_facts_v1(uuid,uuid)",
+            "md5": "0d77ad2123f48f4253d7df4babedf0c1",
+            "owner": "postgres",
+            "acl": "{postgres=X/postgres,ie_action_snapshot_reader=X/postgres}"
+          },
+          {
+            "signature": "public.read_reservation_refund_workflow_v1(uuid,uuid,uuid)",
+            "md5": "44bf80a2acb361d41d18a3956d86eb06",
+            "owner": "ie_action_snapshot_reader",
+            "acl": "{ie_action_snapshot_reader=X/ie_action_snapshot_reader,authenticated=X/ie_action_snapshot_reader}"
+          },
+          {
+            "signature": "app_private.reservation_refund_capability_v1(uuid,uuid)",
+            "md5": "7ea652670f4bc4a5e59387257113d40d",
+            "owner": "postgres",
+            "acl": "{postgres=X/postgres}"
+          }
+        ],
+        "removedTriggers": [
+          {
+            "relation": "public.contract_deposit_links",
+            "name": "guard_sale_bonus_link_claim",
+            "md5": "ab86554952e7a54a262dccb6c3a53e28",
+            "enabled": "O"
+          },
+          {
+            "relation": "app_private.sale_bonus_claims",
+            "name": "guard_sale_bonus_deposit_claim",
+            "md5": "46eb88e01d693101f616818ffe3f2a2f",
+            "enabled": "O"
+          },
+          {
+            "relation": "public.income_expenses",
+            "name": "guard_sale_bonus_voucher_claim",
+            "md5": "42753c904979bbe5a6d35a02b9c532c2",
+            "enabled": "O"
+          }
+        ],
+        "retainedTriggers": [
+          {
+            "relation": "public.income_expenses",
+            "name": "a00_ie_owned_payload_freeze",
+            "md5": "60a44e220ad36ec2ce8aa341340e0082",
+            "enabled": "O"
+          },
+          {
+            "relation": "public.income_expenses",
+            "name": "a86_finance_v2_birth_provenance",
+            "md5": "4c5534dcd0e8d7b822c2f26d974d646c",
+            "enabled": "O"
+          }
+        ],
+        "role": "ie_action_snapshot_reader"
+      }
+    }
   ]
 }
