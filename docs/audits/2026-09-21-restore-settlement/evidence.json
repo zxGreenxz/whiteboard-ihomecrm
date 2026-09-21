@@ -1,0 +1,248 @@
+{
+  "capturedAt": "2026-09-21T09:18:52.411Z",
+  "applicationTarget": "beca6ee8cd0628f2a210918657bdeec09dc45997",
+  "previousProductionDeployment": "dpl_AgeR6A28wvNV9mP4hqCP2ce6vdGM",
+  "migration": "supabase/migrations/20260921085952_restore_before_contract_settlement.sql",
+  "migrationSha256": "0574aba685d341fd10140afa751f79b0b09f1b0e26a4919640bbf08e8fa8ab85",
+  "productionApplied": false,
+  "definitions": [
+    {
+      "signature": "app_private.guard_income_expense_owned_payload()",
+      "currentMd5": "18b3e1c11f3e698f1daf2cd082313448",
+      "restoredMd5": "fb01ae8c9de7b283d19ade8195eba726",
+      "reconstruction": "inverse 20260920182530 freeze insertion",
+      "matched": true
+    },
+    {
+      "signature": "reverse_posted_income_expense_v2(uuid,uuid,date,text,text)",
+      "currentMd5": "50cd5cb62b41700f0d2130ccdad44419",
+      "restoredMd5": "9fcc9d100dd7fd3a858038a10dc6e701",
+      "reconstruction": "inverse 20260921015956 reversal lock movement",
+      "matched": true
+    },
+    {
+      "signature": "app_private.finance_v2_post_manual_voucher(income_expenses,uuid,uuid,uuid,date,uuid[],text)",
+      "currentMd5": "528e457cc02ddcec3c0cd2c67044ae09",
+      "restoredMd5": "c2d88ccaae0d8c8a0d425ac4d6cd7f7f",
+      "reconstruction": "inverse 20260921015956 posting source insertion",
+      "matched": true
+    },
+    {
+      "signature": "get_room_cash_lifecycle_v1(uuid,date,date)",
+      "currentMd5": "4219809847a848ab9439ba2eb1a78213",
+      "restoredMd5": "2c5c0f54d345ca35c3cac80232c3d837",
+      "reconstruction": "supabase/migrations/20260915145252_phieu_ngay_theo_org_thay_current_date.sql",
+      "matched": true
+    },
+    {
+      "signature": "app_private.reservation_create_leg_v1(uuid,text,uuid,uuid,date,numeric)",
+      "currentMd5": "b12a257d0820acdf10a625ae68126648",
+      "restoredMd5": "61e14ad271c7b79e5931f09ab6d0bed2",
+      "reconstruction": "supabase/migrations/20260910015750_reservation_refund_evidence_and_creator_v1.sql",
+      "matched": true
+    },
+    {
+      "signature": "request_income_expense_changes_v2(uuid,bigint,text,jsonb,text)",
+      "currentMd5": "a7b885abecda8b1b8a5a6545f3c76975",
+      "restoredMd5": "c3769605c5ac35134935d49a32a5d1d9",
+      "reconstruction": "supabase/migrations/20260723050000_finance_v2_writers.sql",
+      "matched": true
+    },
+    {
+      "signature": "create_termination_refund_voucher_v1(uuid,uuid,boolean,text)",
+      "currentMd5": "79dda3e01cdcdee2d36d55dd7a7df670",
+      "restoredMd5": "cdc2896ff50e836cb782219683ba5474",
+      "reconstruction": "supabase/migrations/20260828090000_termination_refund_writer_hardening.sql",
+      "matched": true
+    },
+    {
+      "signature": "create_sale_bonus_from_deposit_v1(uuid,numeric,text,text,text,date,uuid,jsonb)",
+      "currentMd5": "3ed571ba5d2262ec5a125a4804ef9f4a",
+      "restoredMd5": "fbaed9b582feab422372165eb55a8288",
+      "reconstruction": "supabase/migrations/20260820090000_sale_bonus_deposit_account_attachments.sql",
+      "matched": true
+    },
+    {
+      "signature": "create_commission_voucher(uuid,text,numeric,date,uuid,text,text,text,text,text,jsonb)",
+      "currentMd5": "8e71112be4f8244298b347c47e15dd05",
+      "restoredMd5": "c134aa5857144c2b8f66145f0e9feab5",
+      "reconstruction": "supabase/migrations/20260902100049_ten_phieu_hoa_hong_theo_phong_va_ghi_chu_luc_xem.sql",
+      "matched": true
+    },
+    {
+      "signature": "app_private.finance_v2_birth_provenance_bridge()",
+      "currentMd5": "502b59b43551d64bf602da4b01f7d536",
+      "restoredMd5": "a8e8c8c66676f566e52edf888bc43579",
+      "reconstruction": "inverse 20260920182530 birth insertion",
+      "matched": true
+    },
+    {
+      "signature": "resubmit_income_expense_v2(uuid,bigint,jsonb,text)",
+      "currentMd5": "d3a9226f0b75940c354e5c81497097b4",
+      "restoredMd5": "722dcc99bec52a059f7c45c08d085f80",
+      "reconstruction": "supabase/migrations/20260723050000_finance_v2_writers.sql",
+      "matched": true
+    },
+    {
+      "signature": "list_cashbooks_for_expense_v2()",
+      "currentMd5": "b8a05055824b9bcf2f3710a4f369b267",
+      "restoredMd5": "d3e69a10cf4e1cb6c99698df62d0602a",
+      "reconstruction": "supabase/migrations/20260723110000_finance_v2_rls_canary.sql",
+      "matched": true
+    },
+    {
+      "signature": "get_room_residence_segments_v1(uuid[])",
+      "currentMd5": "83dd49ab595599c2b8bf5f37bd6cd993",
+      "restoredMd5": "8ee45965dbcac4333dfac3a25d662f29",
+      "reconstruction": "supabase/migrations/20260731051000_room_residence_segments.sql",
+      "matched": true
+    },
+    {
+      "signature": "app_private.reservation_pay_refund_v1(uuid,uuid,date)",
+      "currentMd5": "3e2484a389ff3ed00532f62f61afd6ee",
+      "restoredMd5": "94b846b86cf718a8b7a43e7bb2fbe0b9",
+      "reconstruction": "supabase/migrations/20260909172332_reservation_deposit_settlement_v1.sql",
+      "matched": true
+    }
+  ],
+  "expectedRestored": [
+    {
+      "signature": "app_private.guard_income_expense_owned_payload()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "hash": "fb01ae8c9de7b283d19ade8195eba726"
+    },
+    {
+      "signature": "public.reverse_posted_income_expense_v2(uuid,uuid,date,text,text)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "hash": "9fcc9d100dd7fd3a858038a10dc6e701"
+    },
+    {
+      "signature": "app_private.finance_v2_post_manual_voucher(income_expenses,uuid,uuid,uuid,date,uuid[],text)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "hash": "c2d88ccaae0d8c8a0d425ac4d6cd7f7f"
+    },
+    {
+      "signature": "public.get_room_cash_lifecycle_v1(uuid,date,date)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "hash": "2c5c0f54d345ca35c3cac80232c3d837"
+    },
+    {
+      "signature": "app_private.reservation_create_leg_v1(uuid,text,uuid,uuid,date,numeric)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "hash": "61e14ad271c7b79e5931f09ab6d0bed2"
+    },
+    {
+      "signature": "public.request_income_expense_changes_v2(uuid,bigint,text,jsonb,text)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "hash": "c3769605c5ac35134935d49a32a5d1d9"
+    },
+    {
+      "signature": "public.create_termination_refund_voucher_v1(uuid,uuid,boolean,text)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "hash": "cdc2896ff50e836cb782219683ba5474"
+    },
+    {
+      "signature": "public.create_sale_bonus_from_deposit_v1(uuid,numeric,text,text,text,date,uuid,jsonb)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "hash": "fbaed9b582feab422372165eb55a8288"
+    },
+    {
+      "signature": "public.create_commission_voucher(uuid,text,numeric,date,uuid,text,text,text,text,text,jsonb)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "hash": "c134aa5857144c2b8f66145f0e9feab5"
+    },
+    {
+      "signature": "app_private.finance_v2_birth_provenance_bridge()",
+      "owner": "postgres",
+      "acl": null,
+      "hash": "a8e8c8c66676f566e52edf888bc43579"
+    },
+    {
+      "signature": "public.resubmit_income_expense_v2(uuid,bigint,jsonb,text)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "hash": "722dcc99bec52a059f7c45c08d085f80"
+    },
+    {
+      "signature": "public.list_cashbooks_for_expense_v2()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "hash": "d3e69a10cf4e1cb6c99698df62d0602a"
+    },
+    {
+      "signature": "public.get_room_residence_segments_v1(uuid[])",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "hash": "8ee45965dbcac4333dfac3a25d662f29"
+    },
+    {
+      "signature": "app_private.reservation_pay_refund_v1(uuid,uuid,date)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "hash": "94b846b86cf718a8b7a43e7bb2fbe0b9"
+    }
+  ],
+  "localDataWitness": {
+    "before": {
+      "postings": 3353,
+      "vouchers": 3892,
+      "contracts": 453,
+      "noteDigest": "6e49a8350c264b09f07edfca1b757b58",
+      "postingLines": 3681,
+      "postingAmount": 3162659559,
+      "voucherAmount": 18562931151
+    },
+    "after": {
+      "postings": 3353,
+      "vouchers": 3892,
+      "contracts": 453,
+      "noteDigest": "6e49a8350c264b09f07edfca1b757b58",
+      "postingLines": 3681,
+      "postingAmount": 3162659559,
+      "voucherAmount": 18562931151
+    },
+    "equal": true
+  },
+  "negativeTests": [
+    {
+      "name": "changed original definition",
+      "result": "PASS",
+      "reason": "Restore: function definition drift: public.resubmit_income_expense_v2(uuid,bigint,jsonb,text)"
+    },
+    {
+      "name": "changed current ACL",
+      "result": "PASS",
+      "reason": "Restore: current function ownership/ACL drift: public.resubmit_income_expense_v2(uuid,bigint,jsonb,text)"
+    },
+    {
+      "name": "changed added trigger mode",
+      "result": "PASS",
+      "reason": "Restore: added trigger drift: guard_sale_bonus_voucher_claim"
+    },
+    {
+      "name": "restored-state ACL drift",
+      "result": "PASS",
+      "reason": "Restore: final owner/ACL mismatch: public.resubmit_income_expense_v2(uuid,bigint,jsonb,text)"
+    },
+    {
+      "name": "writer commits while restoration waits",
+      "result": "PASS",
+      "reason": "Restore: newer workflow data requires compatibility review"
+    }
+  ],
+  "replays": {
+    "emptyDouble": true,
+    "populatedDouble": true,
+    "nonsuperuserDouble": true
+  },
+  "dataMutationCaught": true
+}

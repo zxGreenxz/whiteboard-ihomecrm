@@ -1,0 +1,296 @@
+{
+  "auditDate": "2026-09-21",
+  "scope": "14 pre-existing functions before settlement feature",
+  "sources": [
+    {
+      "path": "C:\\Users\\Nguyen Tam\\codex-worktrees\\hop-dong-quyet-toan\\.superpowers\\sdd\\2026-09-20-hop-dong-quyet-toan\\task-0-live-catalog.json",
+      "sha256": "11b045fff4c0ff97f2853e9a51c81a2daee63df7baa47c5ea943e89307301e21",
+      "capturedAt": "2026-09-20T17:15:23.589Z",
+      "projectRef": "tryymsxyyckgbrmmvozx",
+      "readOnly": true
+    },
+    {
+      "path": "C:\\Users\\Nguyen Tam\\codex-worktrees\\hop-dong-quyet-toan\\.superpowers\\sdd\\2026-09-20-hop-dong-quyet-toan\\live-room-reader-catalog.json",
+      "sha256": "1787039cfc1c5c3617d5b0a870288a79c6c5fe5e96f52237e99035d72170b901",
+      "capturedAt": "2026-09-20T19:43:24.681Z",
+      "projectRef": "tryymsxyyckgbrmmvozx (check-room-readonly.mjs:9)",
+      "readOnly": true
+    },
+    {
+      "path": "C:\\Users\\Nguyen Tam\\codex-worktrees\\hop-dong-quyet-toan\\docs\\engineering\\contract-settlement-capability-evidence.json",
+      "sha256": "8ab5b400e90d54a65a68002e98c6c10daa4f3f2208691f50eacec294a0b7582a",
+      "capturedAt": "2026-09-20T17:15:23.589Z",
+      "projectRef": "tryymsxyyckgbrmmvozx",
+      "readOnly": true
+    }
+  ],
+  "capturedFunctionCount": 11,
+  "important": "Uncaptured fields are unknown, not actual NULL. 9 T0 rows omit owner/comment; 2 room rows capture owner but omit comment. Remaining 3 have no pre-feature catalog row here.",
+  "functions": [
+    {
+      "qualifiedName": "app_private.finance_v2_birth_provenance_bridge",
+      "preFeatureCatalogFound": false,
+      "owner": null,
+      "ownerStatus": "not captured",
+      "proacl": null,
+      "proaclStatus": "not captured",
+      "comment": null,
+      "commentStatus": "not captured, not evidence of SQL NULL",
+      "proconfig": null
+    },
+    {
+      "qualifiedName": "app_private.finance_v2_post_manual_voucher",
+      "preFeatureCatalogFound": false,
+      "owner": null,
+      "ownerStatus": "not captured",
+      "proacl": null,
+      "proaclStatus": "not captured",
+      "comment": null,
+      "commentStatus": "not captured, not evidence of SQL NULL",
+      "proconfig": null
+    },
+    {
+      "qualifiedName": "app_private.guard_income_expense_owned_payload",
+      "preFeatureCatalogFound": true,
+      "owner": null,
+      "ownerStatus": "not captured",
+      "proacl": "{postgres=X/postgres}",
+      "proaclStatus": "captured",
+      "comment": null,
+      "commentStatus": "not captured, not evidence of SQL NULL",
+      "proconfig": [
+        "search_path=pg_catalog, app_private"
+      ],
+      "sourceIndex": 0,
+      "args": "",
+      "provolatile": "v",
+      "prosecdef": true,
+      "definitionSha256": "597e3b8bdbbec7bd24ae7778b4690dc88c08c2c05339c7255e988128d73e72c4",
+      "sourceNameLine": 139,
+      "sourceAclLine": 146
+    },
+    {
+      "qualifiedName": "public.create_commission_voucher",
+      "preFeatureCatalogFound": true,
+      "owner": null,
+      "ownerStatus": "not captured",
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "proaclStatus": "captured",
+      "comment": null,
+      "commentStatus": "not captured, not evidence of SQL NULL",
+      "proconfig": [
+        "search_path=pg_catalog, app_private, public"
+      ],
+      "sourceIndex": 0,
+      "args": "p_contract_id uuid, p_kind text, p_amount numeric, p_voucher_date date, p_account_id uuid, p_payer_name text, p_recipient_name text, p_recipient_bank text, p_recipient_account text, p_item_description text, p_attachments jsonb",
+      "provolatile": "v",
+      "prosecdef": true,
+      "definitionSha256": "29e18bfef87f31515a39c524b622ede3a0e7df3e306247924ef498455f3310a9",
+      "sourceNameLine": 607,
+      "sourceAclLine": 614,
+      "trackedEvidenceMatches": true
+    },
+    {
+      "qualifiedName": "public.create_sale_bonus_from_deposit_v1",
+      "preFeatureCatalogFound": true,
+      "owner": null,
+      "ownerStatus": "not captured",
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "proaclStatus": "captured",
+      "comment": null,
+      "commentStatus": "not captured, not evidence of SQL NULL",
+      "proconfig": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceIndex": 0,
+      "args": "p_deposit_voucher_id uuid, p_amount numeric, p_recipient text, p_account_number text, p_bank text, p_voucher_date date, p_account_id uuid, p_attachments jsonb",
+      "provolatile": "v",
+      "prosecdef": true,
+      "definitionSha256": "c8785a50259b8111fd075ee69a9262974f528829c82a6eedc1ef45e7112be601",
+      "sourceNameLine": 643,
+      "sourceAclLine": 650,
+      "trackedEvidenceMatches": true
+    },
+    {
+      "qualifiedName": "public.create_termination_refund_voucher_v1",
+      "preFeatureCatalogFound": true,
+      "owner": null,
+      "ownerStatus": "not captured",
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "proaclStatus": "captured",
+      "comment": null,
+      "commentStatus": "not captured, not evidence of SQL NULL",
+      "proconfig": [
+        "search_path=public, app_private"
+      ],
+      "sourceIndex": 0,
+      "args": "p_obligation_id uuid, p_account_id uuid, p_force boolean, p_force_reason text",
+      "provolatile": "v",
+      "prosecdef": true,
+      "definitionSha256": "416d86b3c93c10e45dfc49ffd70160b4dbf8634fe93af162382221a21dfd6f58",
+      "sourceNameLine": 655,
+      "sourceAclLine": 662,
+      "trackedEvidenceMatches": true,
+      "ownerAdditionalEvidence": {
+        "owner": "postgres",
+        "type": "applied migration preflight constraint, not captured in T0 catalog",
+        "source": "supabase/migrations/20260920235851_termination_refund_creation_recipient.sql:5",
+        "condition": "proowner must equal postgres before ALTER OWNER at line 178"
+      }
+    },
+    {
+      "qualifiedName": "public.get_room_residence_segments_v1",
+      "preFeatureCatalogFound": true,
+      "owner": "postgres",
+      "ownerStatus": "captured",
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "proaclStatus": "captured",
+      "comment": null,
+      "commentStatus": "not captured, not evidence of SQL NULL",
+      "proconfig": [
+        "search_path=pg_catalog, public"
+      ],
+      "sourceIndex": 1,
+      "signature": "get_room_residence_segments_v1(uuid[])",
+      "provolatile": "v",
+      "prosecdef": true,
+      "definitionMd5": "8ee45965dbcac4333dfac3a25d662f29",
+      "definitionSha256": "db0db4a62c9adbe8be11081346197a765694df6d7532e9ca58eb4fd8bbc36d5b"
+    },
+    {
+      "qualifiedName": "public.list_cashbooks_for_expense_v2",
+      "preFeatureCatalogFound": true,
+      "owner": null,
+      "ownerStatus": "not captured",
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "proaclStatus": "captured",
+      "comment": null,
+      "commentStatus": "not captured, not evidence of SQL NULL",
+      "proconfig": [
+        "search_path=pg_catalog, app_private, public"
+      ],
+      "sourceIndex": 0,
+      "args": "",
+      "provolatile": "s",
+      "prosecdef": true,
+      "definitionSha256": "e0f3fdb7d3ff1a8840ab3c206bf7709f792adec7b02d64c6de89228ca0a62af6",
+      "sourceNameLine": 871,
+      "sourceAclLine": 878,
+      "trackedEvidenceMatches": true
+    },
+    {
+      "qualifiedName": "public.request_income_expense_changes_v2",
+      "preFeatureCatalogFound": true,
+      "owner": null,
+      "ownerStatus": "not captured",
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "proaclStatus": "captured",
+      "comment": null,
+      "commentStatus": "not captured, not evidence of SQL NULL",
+      "proconfig": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceIndex": 0,
+      "args": "p_voucher uuid, p_expected_review_version bigint, p_reason text, p_field_mask jsonb, p_idempotency_key text",
+      "provolatile": "v",
+      "prosecdef": true,
+      "definitionSha256": "204b60780e150cbc5ca1c7c833ab9cd1e65c5345dfe0d20e07b8e19ad4b658c2",
+      "sourceNameLine": 1015,
+      "sourceAclLine": 1022,
+      "trackedEvidenceMatches": true
+    },
+    {
+      "qualifiedName": "public.resubmit_income_expense_v2",
+      "preFeatureCatalogFound": true,
+      "owner": null,
+      "ownerStatus": "not captured",
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "proaclStatus": "captured",
+      "comment": null,
+      "commentStatus": "not captured, not evidence of SQL NULL",
+      "proconfig": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceIndex": 0,
+      "args": "p_voucher uuid, p_expected_review_version bigint, p_patch jsonb, p_idempotency_key text",
+      "provolatile": "v",
+      "prosecdef": true,
+      "definitionSha256": "b3968ff452c2496c0d386bfd476d02268223ef8997fc56812d6f5b8b0c348e81",
+      "sourceNameLine": 1039,
+      "sourceAclLine": 1046,
+      "trackedEvidenceMatches": true
+    },
+    {
+      "qualifiedName": "public.reverse_posted_income_expense_v2",
+      "preFeatureCatalogFound": true,
+      "owner": null,
+      "ownerStatus": "not captured",
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "proaclStatus": "captured",
+      "comment": null,
+      "commentStatus": "not captured, not evidence of SQL NULL",
+      "proconfig": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceIndex": 0,
+      "args": "p_voucher uuid, p_cashbook uuid, p_posted_on date, p_reason text, p_idempotency_key text",
+      "provolatile": "v",
+      "prosecdef": true,
+      "definitionSha256": "db078a1b9dfacca95efa252227522e8461ba8fe619e0455347df1efd4b837a4f",
+      "sourceNameLine": 1051,
+      "sourceAclLine": 1058,
+      "trackedEvidenceMatches": true
+    },
+    {
+      "qualifiedName": "public.get_room_cash_lifecycle_v1",
+      "preFeatureCatalogFound": true,
+      "owner": "postgres",
+      "ownerStatus": "captured",
+      "proacl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "proaclStatus": "captured",
+      "comment": null,
+      "commentStatus": "not captured, not evidence of SQL NULL",
+      "proconfig": [
+        "search_path=public, app_private"
+      ],
+      "sourceIndex": 1,
+      "signature": "get_room_cash_lifecycle_v1(uuid,date,date)",
+      "provolatile": "v",
+      "prosecdef": true,
+      "definitionMd5": "2c5c0f54d345ca35c3cac80232c3d837",
+      "definitionSha256": "6893fec3d1c6dd50201fa73f1d580c0dbba738d44fdfea6a230385703f4c9a1e"
+    },
+    {
+      "qualifiedName": "app_private.reservation_create_leg_v1",
+      "preFeatureCatalogFound": false,
+      "owner": null,
+      "ownerStatus": "not captured",
+      "proacl": null,
+      "proaclStatus": "not captured",
+      "comment": null,
+      "commentStatus": "not captured, not evidence of SQL NULL",
+      "proconfig": null
+    },
+    {
+      "qualifiedName": "app_private.reservation_pay_refund_v1",
+      "preFeatureCatalogFound": true,
+      "owner": null,
+      "ownerStatus": "not captured",
+      "proacl": "{postgres=X/postgres}",
+      "proaclStatus": "captured",
+      "comment": null,
+      "commentStatus": "not captured, not evidence of SQL NULL",
+      "proconfig": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceIndex": 0,
+      "args": "p_settlement uuid, p_account uuid, p_day date",
+      "provolatile": "v",
+      "prosecdef": true,
+      "definitionSha256": "8ca645292a2ebc39d6157319936f7f8372fec68d3a842ed02e4063e6f8f7e540",
+      "sourceNameLine": 247,
+      "sourceAclLine": 254,
+      "trackedEvidenceMatches": true
+    }
+  ]
+}
