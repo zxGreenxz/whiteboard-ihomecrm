@@ -88,16 +88,21 @@ const res = await fetch(`https://api.supabase.com/v1/projects/${ref}/database/qu
   body: JSON.stringify({ query: sql }),
 });
 const body = await res.text();
-if (!res.ok) { console.error('FAILED', res.status, body.slice(0, 500)); process.exit(1); }
-const bad = JSON.parse(body);
-
-if (bad.length === 0) {
-  console.log('OK — không hàm đọc nào chạm khoá dòng.');
-  process.exit(0);
+// Let fetch and output handles drain naturally (forced exit can assert in
+// Windows libuv). Preserve the gate's nonzero result on every failure branch.
+if (!res.ok) {
+  console.error('FAILED', res.status, body.slice(0, 500));
+  process.exitCode = 1;
+} else {
+  const bad = JSON.parse(body);
+  if (bad.length === 0) {
+    console.log('OK — không hàm đọc nào chạm khoá dòng.');
+  } else {
+    console.error(`HỞ ${bad.length} hàm — sẽ ném 25006 khi gọi từ trình duyệt:\n`);
+    for (const r of bad) {
+      console.error(`  ${r.fn_name}  [${r.volatility}]  khoá đến từ: ${r.lock_from}`);
+    }
+    console.error('\nSửa bằng: ALTER FUNCTION public.<tên>(<đối số>) VOLATILE;');
+    process.exitCode = 1;
+  }
 }
-console.error(`HỞ ${bad.length} hàm — sẽ ném 25006 khi gọi từ trình duyệt:\n`);
-for (const r of bad) {
-  console.error(`  ${r.fn_name}  [${r.volatility}]  khoá đến từ: ${r.lock_from}`);
-}
-console.error('\nSửa bằng: ALTER FUNCTION public.<tên>(<đối số>) VOLATILE;');
-process.exit(1);
