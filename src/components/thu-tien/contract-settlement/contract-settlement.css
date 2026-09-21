@@ -121,8 +121,41 @@
 .cs-fail p { margin: 6px 0 14px; font-size: 12.5px; color: var(--ink-2); }
 
 /* ── Hộp thoại vòng đời ───────────────────────────────────────────────────── */
-.cs-scrim { position: fixed; inset: 0; background: rgba(27, 24, 19, .55); z-index: 50; display: flex; align-items: flex-start; justify-content: center; padding: 20px; overflow: auto; }
-.cs-modal { width: 100%; max-width: 1040px; background: var(--surface); border-radius: 16px; box-shadow: 0 24px 70px rgba(27, 24, 19, .35); overflow: clip; font-size: 13px; color: var(--ink); font-family: var(--font); }
+
+/* ⚠⚠ KHAI LẠI TOÀN BỘ TOKEN Ở ĐÂY — BẮT BUỘC, ĐỪNG XOÁ ⚠⚠
+ *
+ * Hai modal dựng bằng `createPortal` ra thẳng `document.body`, tức NẰM NGOÀI
+ * `.tt-stage` — nơi duy nhất khai đám biến này. Biến CSS kế thừa theo CÂY DOM,
+ * nên ra khỏi `.tt-stage` là chúng biến mất sạch.
+ *
+ * Hậu quả khi thiếu: `background: var(--surface)` không có giá trị dự phòng nên
+ * hộp thoại THÀNH TRONG SUỐT, bảng phía sau xuyên qua, chữ chồng lên nhau —
+ * đã dính thật trên production 21/09/2026. Bản đầu dùng màu cứng nên không sao;
+ * đúng lần đổi sang token đã làm hỏng.
+ *
+ * Bẫy phụ khiến nó lọt: ảnh chụp `fullPage` của Playwright dựng lại phần tử
+ * `position: fixed` nên nền hộp thoại trông mờ GIỐNG HỆT lỗi này. Muốn kiểm thì
+ * chụp ảnh VIEWPORT (fullPage: false), hoặc đo thẳng `getComputedStyle`.
+ *
+ * Giá trị phải khớp `.tt-stage` trong `src/pages/thu-tien.css`. */
+.cs-scrim {
+  --bg: #f5f3ee; --surface: #ffffff; --surface-2: #faf8f4;
+  --line: #e7e3da; --line-2: #efece4;
+  --ink: #1b1813; --ink-2: #514c42; --ink-3: #8d8678; --ink-faint: #b6b0a3;
+  --brand: #1f7a52; --brand-600: #1a6645; --brand-50: #e8f3ec; --brand-100: #d2e8da;
+  --st-soon-bg: #fbf1da; --st-soon-line: #f0dca8;
+  --c-unpaid: #d6453f; --c-unpaid-bg: #fcebe9; --c-unpaid-line: #f2c8c4;
+  --c-partial: #c97a10;
+  --c-paid: #1f9d57; --c-paid-d: #1a8a4c; --c-paid-bg: #e6f5ec; --c-paid-line: #bfe6cd;
+  --font: "Be Vietnam Pro", system-ui, -apple-system, sans-serif;
+  --mono: "Space Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --r: 13px;
+
+  position: fixed; inset: 0; background: rgba(27, 24, 19, .55); z-index: 50;
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 20px; overflow: auto;
+}
+.cs-modal { width: 100%; max-width: 1040px; background: var(--surface, #fff); border-radius: 16px; box-shadow: 0 24px 70px rgba(27, 24, 19, .35); overflow: clip; font-size: 13px; color: var(--ink); font-family: var(--font); }
 .cs-m-head { padding: 18px 22px 14px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }
 .cs-m-code { font-family: var(--mono); font-size: 11px; color: var(--ink-3); }
 .cs-m-title { margin: 4px 0 0; font-size: 21px; font-weight: 700; letter-spacing: -.4px; }
