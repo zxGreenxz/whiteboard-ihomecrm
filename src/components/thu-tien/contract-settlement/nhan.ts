@@ -1,33 +1,24 @@
-// Nhãn hiển thị của khu "Hợp đồng & quyết toán". Tách riêng để bảng và modal
-// dùng CHUNG một bộ chữ — hai chỗ gọi cùng một trạng thái mà ra hai chữ khác
-// nhau là lỗi người dùng nhìn thấy ngay.
+// Nhãn hiển thị dùng CHUNG giữa bảng và modal của khu "Hợp đồng & quyết toán".
+//
+// ⚠ PHẠM VI THẬT của file này: tên VƯỚNG MẮC và câu mô tả CĂN CỨ. Nhãn TRẠNG
+// THÁI **không** nằm ở đây — cả bảng lẫn modal đều lấy `STATUS_STYLE` của
+// `@/lib/contractSettlement`. Từng có một bảng `NHAN_TRANG_THAI` ở đây nhưng
+// KHÔNG ai gọi, và nó đã trôi lệch khỏi `STATUS_STYLE` lúc nào không biết
+// (noncash / cancelled / reversed mỗi bên một chữ). Giữ lại là đặt bẫy: người
+// sau sửa chữ ở đây rồi tưởng màn hình đã đổi. Đã xoá 22/09/2026, cùng với
+// `NHAN_VUONG_MAC.loai` (cũng không consumer nào).
+//
+// "Dùng chung" KHÔNG có nghĩa là một câu cho mọi chỗ. Hai NGỮ CẢNH khác nhau
+// thì được có hai câu khác nhau (xem `moTaCanCuTrongModal`); thứ phải tránh là
+// hai chữ khác nhau cho CÙNG MỘT trạng thái.
 
-import type { BasisState, SettlementIssue, SettlementStatus } from '@/lib/contractSettlement';
-import { KIND_LABEL } from '@/lib/contractSettlement';
+import type { BasisState, SettlementIssue } from '@/lib/contractSettlement';
+import { CAN_CU_HOAN_TRA_KHI_MO_PHIEU } from '@/lib/contractSettlement';
 import { fmtFull } from '@/lib/collect';
 
 type Mau = 'red' | 'amber' | 'green' | 'violet' | 'grey';
 
-export const NHAN_TRANG_THAI: Record<SettlementStatus, { nhan: string; mau: Mau }> = {
-  pending: { nhan: 'Chờ duyệt', mau: 'amber' },
-  approved: { nhan: 'Đã duyệt · chờ chi', mau: 'green' },
-  // ⚠ KHÔNG phải "chờ chi". Phiếu này ĐÃ ghi sổ rồi bị đảo bút toán; gọi nó là
-  // chờ chi là mời người ta chi lần hai cho cùng một khoản.
-  reversed: { nhan: 'Đã ghi sổ rồi hoàn tác', mau: 'violet' },
-  // ⚠ KHÔNG gộp vào "Đã chi". Đo thật 21/09: 3 phiếu tổng 9.515.634đ nằm trên
-  // sổ ảo "CỌC (giữ hộ khách)", không có dòng posting nào. Gọi chúng là đã chi
-  // là nói dối rằng khách đã nhận tiền.
-  noncash: { nhan: 'Đã duyệt · không ghi quỹ (sổ ảo)', mau: 'violet' },
-  paid: { nhan: 'Đã chi', mau: 'green' },
-  cancelled: { nhan: 'Đã huỷ', mau: 'grey' },
-  unknown: { nhan: 'Trạng thái không xác định', mau: 'grey' },
-};
-
 export const NHAN_VUONG_MAC = {
-  // Một nguồn chữ duy nhất cho tên loại — trước đây chép tay lần hai ở đây, và
-  // chép tay là cách chắc chắn để bảng và modal lệch nhau khi thêm loại mới.
-  loai: KIND_LABEL,
-
   vuong: {
     MISSING_PAYMENT_INFO: { nhan: 'Thiếu thông tin thanh toán', mau: 'red' as Mau },
     AMOUNT_MISMATCH: { nhan: 'Lệch căn cứ', mau: 'red' as Mau },
@@ -51,4 +42,24 @@ export function moTaCanCu(b: BasisState): string {
     case 'not-found': return b.reason;
     case 'not-applicable': return 'Loại này không có công thức đối chiếu';
   }
+}
+
+/**
+ * Câu căn cứ dành cho HỘP THOẠI ĐÃ MỞ. Lớp CHỮ, không đụng vào `basisOf` hay
+ * `AMOUNT_MISMATCH`.
+ *
+ * `basisOf` trả `CAN_CU_HOAN_TRA_KHI_MO_PHIEU` cho MỌI phiếu hoàn
+ * (`useContractSettlement.ts`) vì RPC quyết toán đắt, chỉ gọi khi mở phiếu. Ở
+ * DANH SÁCH đó là câu đúng. Trong hộp thoại thì nó SAI: việc tra đã làm xong
+ * rồi, số thật in ngay dưới ở "Bảng quyết toán · căn cứ". Đem nguyên câu hứa ấy
+ * vào khối "Số trên phiếu so với căn cứ" là nói với người sắp duyệt ba triệu
+ * rằng chưa ai tra căn cứ — hai TRẠNG THÁI khác nhau mà chung một câu.
+ *
+ * So bằng HẰNG SỐ (`===`), y hệt `SettlementVoucherDetails.tsx`: mọi lý do
+ * `not-found` khác vẫn hiện nguyên văn, đổi chữ ở `basisOf` không bị nuốt.
+ */
+export function moTaCanCuTrongModal(b: BasisState): string {
+  return b.kind === 'not-found' && b.reason === CAN_CU_HOAN_TRA_KHI_MO_PHIEU
+    ? 'Xem “Bảng quyết toán · căn cứ” bên dưới'
+    : moTaCanCu(b);
 }

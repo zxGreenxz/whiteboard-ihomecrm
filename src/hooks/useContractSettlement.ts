@@ -632,6 +632,19 @@ export function useContractSettlement(a: UseContractSettlementArgs) {
       (kyKyHopDong.length > 0 && canCuHoaHong.isLoading),
     isError: typeMap.isError || vouchers.isError || ghiChu.isError,
     error: typeMap.error ?? vouchers.error ?? ghiChu.error ?? null,
-    refetch: vouchers.refetch,
+    /**
+     * "Thử lại" phải chạm được MỌI truy vấn của màn này, không riêng `vouchers`.
+     *
+     * ⚠ Bẫy đã có thật: `isError` gộp cả `typeMap.isError`, mà `vouchers` lại
+     * `enabled: … && !!typeMap.data`. Bảng `income_expense_types` hỏng ⇒ màn
+     * báo lỗi, nhưng `vouchers.refetch()` không chạy được vì chính nó đang bị
+     * tắt ⇒ nút "Thử lại" bấm bao nhiêu lần cũng không đổi gì, người dùng kẹt
+     * cho tới khi tải lại trang.
+     */
+    refetch: async () => {
+      await Promise.all([
+        typeMap.refetch(), vouchers.refetch(), canCuHoaHong.refetch(), ghiChu.refetch(),
+      ]);
+    },
   };
 }

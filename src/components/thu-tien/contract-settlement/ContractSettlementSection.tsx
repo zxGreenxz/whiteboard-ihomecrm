@@ -90,7 +90,16 @@ const cong = (rs: SettlementRow[]) => rs.reduce((s, r) => s + r.amount, 0);
  */
 const soThe = (v: StatValue): string => {
   switch (v.kind) {
-    case 'number': case 'unverified': return fmtCompact(v.total);
+    case 'number': return fmtCompact(v.total);
+    /**
+     * ⚠ `count === 0` thì KHÔNG in "0 đ". Đây đúng là màn hình mặc định của
+     * chủ công ty: đo thật 22/09/2026 trên org THẬT — 1139 phiếu POSTED, 0
+     * dòng bút toán đọc được, nên phần chứng minh được đúng bằng 0 phiếu. In
+     * "0 đ" ở đó là nói "không có đồng nào đã chi", trong khi sự thật là "chưa
+     * chứng minh được đồng nào" (plan §3.4, và docblock của `StatValue`).
+     * Số phiếu chưa xác minh đi ra ở dòng meta ngay dưới thẻ.
+     */
+    case 'unverified': return v.count === 0 ? '—' : fmtCompact(v.total);
     case 'insufficient': return '—';
     case 'na': return '—';
   }
@@ -768,9 +777,13 @@ export function ContractSettlementSection({ buildingIds, period }: Props) {
                   : thucChi.kind === 'na' ? 'Không áp dụng cho tồn cũ'
                   // ⚠ Tiền chỉ là phần ĐỐI CHIẾU ĐƯỢC. Phần còn lại đi ra dưới
                   // dạng SỐ ĐẾM — gộp vào rồi treo nhãn là vẫn nói dối về tiền.
+                  // Và chứng minh được 0 phiếu thì in "—", KHÔNG in "0 đ": xem
+                  // chú thích của `soThe`. "0 đ" ở chân trang chỉ được dùng khi
+                  // thật sự có 0 phiếu đã chi (ca sổ ảo/huỷ), lúc đó `thucChi`
+                  // là `kind: 'number'` và rơi xuống nhánh cuối.
                   : thucChi.kind === 'unverified'
-                    ? `${fmtMoney(thucChi.total)} · ${thucChi.unverifiedCount} phiếu chưa xác minh `
-                      + '(không cộng tiền)'
+                    ? `${thucChi.count === 0 ? '—' : fmtMoney(thucChi.total)} · `
+                      + `${thucChi.unverifiedCount} phiếu chưa xác minh (không cộng tiền)`
                     : fmtMoney(thucChi.total)
               }`}
             </span>

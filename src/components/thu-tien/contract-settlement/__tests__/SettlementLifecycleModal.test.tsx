@@ -60,7 +60,10 @@ vi.mock('sonner', () => ({
 }));
 
 import { SettlementLifecycleModal } from '../SettlementLifecycleModal';
-import { fmtMoney, type SettlementRow, type ViewStatus } from '@/lib/contractSettlement';
+import {
+  CAN_CU_HOAN_TRA_KHI_MO_PHIEU, fmtMoney,
+  type SettlementRow, type ViewStatus,
+} from '@/lib/contractSettlement';
 import type { useSettlementActions } from '@/hooks/useSettlementActions';
 
 type Actions = ReturnType<typeof useSettlementActions>;
@@ -604,6 +607,40 @@ describe('T1a — ngày chi mặc định', () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Khối "SỐ TRÊN PHIẾU SO VỚI CĂN CỨ" — chỗ người duyệt đọc TRƯỚC khi thả tiền
+//
+// `basisOf` trả `CAN_CU_HOAN_TRA_KHI_MO_PHIEU` cho MỌI phiếu hoàn (danh sách
+// chưa gọi RPC quyết toán vì nó đắt). Đo thật trên màn 22/09/2026 với
+// PC2609119 (hoàn 3.076.000): khối này in "Số theo căn cứ: Căn cứ hoàn khách
+// tra khi mở phiếu" — tức nói CHƯA TRA — trong khi 56 dòng dưới,
+// `SettlementVoucherDetails` đã in số quyết toán thật. Một câu cho hai trạng
+// thái khác nhau, đúng thứ `nhan.ts` sinh ra để chặn.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('câu căn cứ trong hộp thoại ĐÃ MỞ', () => {
+  const dongCanCu = () => [...document.querySelectorAll('.cs-kv')]
+    .find((d) => d.querySelector('.k')?.textContent === 'Số theo căn cứ')
+    ?.querySelector('.v')?.textContent ?? '';
+
+  it('phiếu hoàn: KHÔNG hứa lại "tra khi mở phiếu", mà chỉ xuống bảng quyết toán', () => {
+    dungMan(phieu({ basis: { kind: 'not-found', reason: CAN_CU_HOAN_TRA_KHI_MO_PHIEU } }));
+    expect(dongCanCu()).not.toContain(CAN_CU_HOAN_TRA_KHI_MO_PHIEU);
+    expect(dongCanCu()).toContain('Bảng quyết toán · căn cứ');
+  });
+
+  it('lý do not-found KHÁC vẫn hiện NGUYÊN VĂN — so hằng số, không dò chuỗi', () => {
+    const ly = 'Toà chưa cấu hình bậc hoa hồng cho hợp đồng này';
+    dungMan(phieu({ kind: 'commission', basis: { kind: 'not-found', reason: ly } }));
+    expect(dongCanCu()).toBe(ly);
+  });
+
+  it('căn cứ tra được thì vẫn in SỐ, không bị câu chỉ đường nuốt mất', () => {
+    dungMan(phieu({ kind: 'commission', basis: { kind: 'mismatch', amount: 2_250_000 } }));
+    expect(dongCanCu()).toContain('2.250.000');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
 // T4 — ngân hàng có tìm kiếm, lưu nhất quán và QR
 //
 // Hai lỗi đang sửa:
@@ -640,6 +677,18 @@ const nutDuyetChi = () =>
   screen.queryByRole('button', { name: /^Duyệt & Chi/ }) as HTMLButtonElement | null;
 const nutDuyetChoChi = () =>
   screen.queryByRole('button', { name: 'Duyệt Chờ Chi' }) as HTMLButtonElement | null;
+
+/**
+ * BẢN ĐỌC LẠI CỦA SERVER sau một lần lưu — cha đẩy `row` mới xuống.
+ *
+ * ⚠ Phải gọi tay ở mọi bài lưu-thành-công, và đó là CHỦ Ý. `editRecipient` chỉ
+ * resolve SAU `await lamMoi()` (`useSettlementActions.ts`), nên ở đời thật lúc
+ * lời hứa đó về thì `row` đã là bản mới. Modal KHÔNG còn giữ ảnh chụp giá trị
+ * vừa gõ để lấp vào khoảng giữa: ảnh chụp ấy không sớm hơn được nhịp nào (vì
+ * refetch đã xong trước), nó chỉ CHE mất chuyện server ghi khác thứ client gửi.
+ * Bắt bài kiểm dựng đúng thứ tự thật là cách duy nhất để lệch đó lộ ra.
+ */
+const docLai = (man: Man, over: Partial<SettlementRow>) => man.doiPhieu(phieu(over));
 
 describe('T4 — chọn ngân hàng, lưu và QR', () => {
   // ── Prefill: chuẩn hoá qua danh mục chung, KHÔNG coi là đã sửa ────────────
@@ -704,7 +753,8 @@ describe('T4 — chọn ngân hàng, lưu và QR', () => {
     expect((man.actions.editRecipient as ReturnType<typeof vi.fn>).mock.calls[0][0])
       .toEqual({ voucherId: V_A, bankAccount: STK_MOI });
 
-    await waitFor(() => expect(nutLuu()).toBeNull());
+    docLai(man, { bankAccount: STK_MOI });
+    expect(nutLuu()).toBeNull();
     expect(nutDuyetChi()?.disabled).toBe(false);
   });
 
@@ -718,6 +768,7 @@ describe('T4 — chọn ngân hàng, lưu và QR', () => {
 
     fireEvent.click(nutLuu()!);
     await waitFor(() => expect(man.actions.editRecipient).toHaveBeenCalledTimes(1));
+    docLai(man, { bankAccount: STK_MOI });
     await waitFor(() => expect(anhQR()).not.toBeNull());
 
     // `sanitizeTransferText` của VietQR bỏ dấu + hạ chữ thường — giữ nguyên
@@ -728,10 +779,39 @@ describe('T4 — chọn ngân hàng, lưu và QR', () => {
     expect(moi).toContain('addInfo=pc2609095');
     expect(moi).toContain('accountName=nguyen+van+a');
 
-    // Refetch trả về phiếu đã cập nhật: QR giữ nguyên, không lại thành "đã sửa".
-    man.doiPhieu(phieu({ bankAccount: STK_MOI }));
+    // Một lượt refetch nữa với CÙNG dữ liệu: QR giữ nguyên, không lại thành "đã sửa".
+    docLai(man, { bankAccount: STK_MOI });
     expect(srcQR()).toBe(moi);
     expect(nutLuu()).toBeNull();
+  });
+
+  /**
+   * ⚠ BÀI GHIM VIỆC BỎ ẢNH CHỤP CLIENT.
+   *
+   * RPC/trigger có thể ghi KHÁC thứ gửi lên (chuẩn hoá, cắt bớt). Bản cũ giữ
+   * `daLuu` — ảnh chụp giá trị người dùng vừa gõ — và ưu tiên nó cho tới khi
+   * đổi phiếu hoặc đóng modal, nên QR và khối chỉ-đọc in con số CLIENT trong
+   * khi phiếu thật giữ con số khác, và màn hình không bao giờ tự sửa lại.
+   *
+   * Đây KHÔNG phải ca ghi đè liên phiên (plan §7 miễn ca đó) — chỉ có MỘT phiên,
+   * và lệch sinh ra ngay trong chính lượt ghi của phiên ấy.
+   */
+  it('server ghi KHÁC thứ vừa gõ: không dựng QR theo bản client, màn hình tự lộ ra là chưa khớp', async () => {
+    const man = dungMan(phieu(), 'pending', SUA_DUOC);
+    const GO_THUA = `${STK_MOI}0000`;
+
+    fireEvent.change(oStk(), { target: { value: GO_THUA } });
+    fireEvent.click(nutLuu()!);
+    await waitFor(() => expect(man.actions.editRecipient).toHaveBeenCalledTimes(1));
+
+    // Phiếu thật chỉ giữ 999888777. Màn phải theo con số ĐÓ.
+    docLai(man, { bankAccount: STK_MOI });
+
+    expect(anhQR()).toBeNull();                       // KHÔNG dựng QR theo bản client
+    expect(chuTrenMan()).toMatch(/chưa lưu/i);        // và nói thẳng là chưa khớp
+    expect(nutDuyetChi()?.disabled).toBe(true);
+    // Thứ người dùng gõ vẫn còn nguyên để họ đối chiếu rồi sửa — không bị nuốt.
+    expect(oStk().value).toBe(GO_THUA);
   });
 
   it('mở lại phiếu từ đầu vẫn ra đúng QR đã lưu', () => {
@@ -771,6 +851,37 @@ describe('T4 — chọn ngân hàng, lưu và QR', () => {
     expect(nutDuyetChi()?.disabled).toBe(true);
   });
 
+  /**
+   * Lưu hỏng rồi người dùng BỎ CUỘC, gõ lại đúng số cũ. Lúc đó draft = bản đã
+   * lưu ⇒ hàng rào tiền tự mở đúng (không có gì chưa lưu cả), QR cũ về.
+   *
+   * ⚠ Câu lỗi phải TẮT THEO. Nó chỉ bị dọn khi lưu lần nữa hoặc đổi phiếu, nên
+   * bản cũ để lại một dòng đỏ "Chưa lưu thì không duyệt/chi được" ngay cạnh
+   * những cái nút vừa mở khoá — câu đó khi ấy là sai, và người đọc phải chọn
+   * tin cái nút hay tin dòng chữ.
+   *
+   * Hàng rào tiền (`doiNguoiNhan`) KHÔNG đổi, chỉ đổi điều kiện hiện chữ.
+   */
+  it('lưu hỏng rồi gõ lại đúng số cũ: hết chặn thì câu lỗi cũng phải tắt theo', async () => {
+    const man = dungMan(phieu(), 'pending', SUA_DUOC);
+    (man.actions.editRecipient as ReturnType<typeof vi.fn>)
+      .mockRejectedValueOnce(new Error('permission denied for function'));
+
+    fireEvent.change(oStk(), { target: { value: STK_MOI } });
+    fireEvent.click(nutLuu()!);
+    await waitFor(() => expect(chuTrenMan()).toMatch(/permission denied for function/));
+    expect(chuTrenMan()).toMatch(/Chưa lưu thì không duyệt\/chi được/);
+
+    // Gõ lại nguyên số cũ của phiếu.
+    fireEvent.change(oStk(), { target: { value: '0123456789' } });
+
+    expect(nutLuu()).toBeNull();                      // không còn gì để lưu
+    expect(nutDuyetChi()?.disabled).toBe(false);      // hàng rào tiền mở đúng
+    expect(srcQR()).toContain('970436-0123456789');   // QR cũ về
+    expect(chuTrenMan()).not.toMatch(/Chưa lưu thì không duyệt\/chi được/);
+    expect(chuTrenMan()).not.toMatch(/permission denied for function/);
+  });
+
   it('bấm Lưu hai lần chỉ ghi MỘT lần', async () => {
     const man = dungMan(phieu(), 'pending', SUA_DUOC);
     let xong: () => void = () => {};
@@ -804,6 +915,10 @@ describe('T4 — chọn ngân hàng, lưu và QR', () => {
       .toEqual({ voucherId: V_A, bankAccount: STK_MOI });
     // Lưu xong là QR dựng được NGAY TRÊN LÀN NÀY — làn Cần rà soát không có
     // form chi, nên QR phải sống ở khối Người nhận tiền mới với tới được.
+    docLai(man, {
+      bankAccount: STK_MOI, issues: ['MISSING_PAYMENT_INFO'],
+      hasAttachment: false, attachments: [],
+    });
     await waitFor(() => expect(srcQR()).toContain(`970436-${STK_MOI}`));
   });
 
@@ -903,7 +1018,8 @@ describe('T4 — chọn ngân hàng, lưu và QR', () => {
     fireEvent.change(oStk(), { target: { value: STK_MOI } });
     fireEvent.click(nutLuu()!);
     await waitFor(() => expect(man.actions.editRecipient).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(nutLuu()).toBeNull());
+    docLai(man, { bankAccount: STK_MOI });
+    expect(nutLuu()).toBeNull();
 
     expect(oNgay().value).toBe('2026-09-18');
     chonSo();
@@ -963,6 +1079,7 @@ describe('T4 — chọn ngân hàng, lưu và QR', () => {
     await waitFor(() => expect(man.actions.editRecipient).toHaveBeenCalledTimes(1));
     expect((man.actions.editRecipient as ReturnType<typeof vi.fn>).mock.calls[0][0])
       .toEqual({ voucherId: V_A, bankName: 'VietinBank' });
+    docLai(man, { bankName: 'VietinBank' });
     await waitFor(() => expect(srcQR()).toContain('970415-0123456789'));
 
     // ── Lượt 2: bàn phím ─────────────────────────────────────────────────

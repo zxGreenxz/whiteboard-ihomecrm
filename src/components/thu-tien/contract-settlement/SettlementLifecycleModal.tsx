@@ -48,7 +48,7 @@ import {
   type SettlementRow, type ViewStatus,
 } from '@/lib/contractSettlement';
 import type { useSettlementActions } from '@/hooks/useSettlementActions';
-import { NHAN_VUONG_MAC, moTaCanCu } from './nhan';
+import { NHAN_VUONG_MAC, moTaCanCuTrongModal } from './nhan';
 
 type Actions = ReturnType<typeof useSettlementActions>;
 
@@ -78,18 +78,6 @@ function chuanHoaNganHang(tho: string | null | undefined): string {
   if (!s) return '';
   const code = matchRecipientBankCode(s);
   return RECIPIENT_BANKS.find((b) => b.code === code)?.shortName ?? s;
-}
-
-/**
- * Bản người-nhận ĐÃ LƯU THÀNH CÔNG trong phiên này. Neo theo `(UUID, org)` vì
- * production có nhiều phiếu TRÙNG MÃ — mã phiếu không phải định danh.
- */
-interface LuuNhanTien {
-  voucherId: string;
-  organizationId: string;
-  ten: string;
-  nganHang: string;
-  soTk: string;
 }
 
 /** Câu lỗi đọc được cho người dùng; RPC trả PostgrestError, không phải Error. */
@@ -123,8 +111,6 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
    */
   const [nganHang, setNganHang] = useState(() => chuanHoaNganHang(row.bankName));
   const [soTk, setSoTk] = useState(row.bankAccount ?? '');
-  /** Đặt SAU KHI lưu thành công — nguồn sự thật cho QR tới lượt refetch. */
-  const [daLuu, setDaLuu] = useState<LuuNhanTien | null>(null);
   const [loiLuu, setLoiLuu] = useState<string | null>(null);
   const [dangLuuNhan, setDangLuuNhan] = useState(false);
   /** URL ảnh QR tải hỏng; so theo URL nên đổi tài khoản là tự hết lỗi cũ. */
@@ -208,26 +194,25 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
   /**
    * THÔNG TIN NHẬN TIỀN ĐÃ LƯU — nguồn DUY NHẤT dựng QR và là mốc so "đã sửa".
    *
-   * Ưu tiên bản vừa lưu thành công của phiên này (nếu đúng phiếu, đúng tổ chức)
-   * rồi mới tới `row`. Hai bản này chỉ khác nhau trong khoảng từ lúc RPC trả về
-   * tới lúc `contract-settlement` refetch xong; giữ bản đã lưu ở đó để QR hiện
-   * ngay, thay vì để người dùng nhìn QR cũ thêm một nhịp mạng.
+   * ĐỌC THẲNG TỪ `row`, tức từ bản vừa đọc lại của server. KHÔNG có ảnh chụp
+   * client nào xen vào: `editRecipient` đã `await lamMoi()` trước khi resolve
+   * (`useSettlementActions.ts`), nên tới nhịp lưu-xong thì `row` đã là bản mới.
+   *
+   * ⚠ Bản trước giữ một ảnh chụp giá trị VỪA GÕ và ưu tiên nó cho tới khi đổi
+   * phiếu. Vì refetch đã xong từ trước, nó không còn tác dụng "hiện ngay" nào —
+   * chỉ còn tác dụng CHE: RPC/trigger chuẩn hoá hay cắt bớt thứ gửi lên thì QR
+   * và khối chỉ-đọc vẫn in con số của client, và màn hình không bao giờ tự sửa
+   * lại chừng nào hộp thoại còn mở. Bỏ ảnh chụp ⇒ lệch nào cũng lộ ra ngay dưới
+   * dạng "đang sửa, chưa lưu".
    *
    * ⚠ KHÔNG hứa chống ghi đè liên phiên (plan §7): `editRecipient` gọi RPC
-   * không có khoá phiên bản. Máy khác sửa cùng lúc thì bản đọc lại có thể khác,
-   * và ở đây chỉ bảo đảm draft của PHIÊN NÀY được lưu đúng phiếu.
+   * không có khoá phiên bản. Máy khác sửa cùng lúc thì bản đọc lại có thể khác.
    */
-  const nhanTien = useMemo(() => {
-    if (daLuu && daLuu.voucherId === row.voucherId
-      && daLuu.organizationId === row.organizationId) {
-      return { ten: daLuu.ten, nganHang: daLuu.nganHang, soTk: daLuu.soTk };
-    }
-    return {
-      ten: (row.recipientName ?? '').trim(),
-      nganHang: chuanHoaNganHang(row.bankName),
-      soTk: (row.bankAccount ?? '').trim(),
-    };
-  }, [daLuu, row.voucherId, row.organizationId, row.recipientName, row.bankName, row.bankAccount]);
+  const nhanTien = useMemo(() => ({
+    ten: (row.recipientName ?? '').trim(),
+    nganHang: chuanHoaNganHang(row.bankName),
+    soTk: (row.bankAccount ?? '').trim(),
+  }), [row.recipientName, row.bankName, row.bankAccount]);
 
   /**
    * "Đã sửa" = LỆCH SO VỚI BẢN ĐÃ LƯU ĐÃ CHUẨN HOÁ, không phải "ô ngân hàng
@@ -321,7 +306,6 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
     setNguoiNhan(row.recipientName ?? '');
     setNganHang(chuanHoaNganHang(row.bankName));
     setSoTk(row.bankAccount ?? '');
-    setDaLuu(null);
     setLoiLuu(null);
     setDangLuuNhan(false);
     setQrHong(null);
@@ -535,7 +519,6 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
     // vẫn lọt — ref chặn ngay, y như `dangGhiRef` của nút ghi chi.
     if (dangLuuRef.current) return false;
     const id = row.voucherId;
-    const org = row.organizationId;
     const ten = nguoiNhan.trim();
     const nh = nganHang.trim();
     const tk = soTk.trim();
@@ -550,11 +533,11 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
     setDangLuuNhan(true);
     setLoiLuu(null);
     try {
+      // `editRecipient` chỉ resolve SAU `lamMoi()`, nên khi tới đây `row` đã
+      // được đọc lại. Không chụp lại giá trị client ở đây — xem `nhanTien`.
       await actions.editRecipient(patch);
       // Phiếu đổi giữa chừng thì kết quả này KHÔNG được gắn sang phiếu mới.
-      if (!conDungPhieu(id)) return false;
-      setDaLuu({ voucherId: id, organizationId: org, ten, nganHang: nh, soTk: tk });
-      return true;
+      return conDungPhieu(id);
     } catch (e) {
       if (conDungPhieu(id)) setLoiLuu(moTaLoi(e));
       return false;
@@ -659,7 +642,11 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
             <div className="cs-sheet">
               <div className="cs-sheet-t">Số trên phiếu so với căn cứ</div>
               <div className="cs-kv"><span className="k">Số trên phiếu</span><span className="v">{fmtMoney(row.amount)}</span></div>
-              <div className="cs-kv"><span className="k">Số theo căn cứ</span><span className="v">{moTaCanCu(row.basis)}</span></div>
+              {/* ⚠ `moTaCanCuTrongModal`, KHÔNG phải `moTaCanCu`. Ở hộp thoại
+                  đã mở, câu "căn cứ hoàn khách tra khi mở phiếu" là lời hứa đã
+                  thực hiện xong — số thật in ngay dưới ở "Bảng quyết toán ·
+                  căn cứ". Xem chú thích của hàm đó trong `nhan.ts`. */}
+              <div className="cs-kv"><span className="k">Số theo căn cứ</span><span className="v">{moTaCanCuTrongModal(row.basis)}</span></div>
               {row.basis.kind === 'mismatch' && (
                 <div className="cs-kv strong top">
                   <span className="k">Chênh lệch</span>
@@ -765,7 +752,12 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
                       {dangLuuNhan ? 'Đang lưu…' : 'Lưu thông tin nhận tiền'}
                     </button>
                   )}
-                  {loiLuu && (
+                  {/* ⚠ Phải kèm `doiNguoiNhan`. `loiLuu` chỉ bị dọn khi lưu
+                      lần nữa hoặc đổi phiếu, nên sau một lần lưu hỏng mà người
+                      dùng gõ lại đúng giá trị cũ thì draft = bản đã lưu: QR về,
+                      nút duyệt/chi mở khoá, mà dòng đỏ vẫn đứng đó bảo "chưa
+                      lưu thì không duyệt/chi được". Câu đó khi ấy là sai. */}
+                  {loiLuu && doiNguoiNhan && (
                     <div className="cs-note-s" style={{ color: 'var(--c-unpaid)' }}>
                       Chưa lưu được thông tin người nhận: {loiLuu}. Thông tin vừa gõ vẫn còn đây —
                       sửa rồi lưu lần nữa. Chưa lưu thì không duyệt/chi được.

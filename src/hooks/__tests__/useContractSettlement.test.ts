@@ -20,7 +20,7 @@
 
 import { createElement, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useContractSettlement } from '@/hooks/useContractSettlement';
 import {
@@ -421,6 +421,33 @@ describe('useContractSettlement — D4 giữ income_expense_type_id', () => {
     nap([], []);
     const { result } = chay();
     await waitFor(() => expect(result.current.isError).toBe(true));
+  });
+
+  /**
+   * ⚠ "Thử lại" phải chạm được TRUY VẤN GÂY LỖI, không riêng truy vấn phiếu.
+   *
+   * Hook gộp bốn truy vấn nhưng `isError` có cả `typeMap.isError`, trong khi
+   * `vouchers` lại `enabled: … && !!typeMap.data`. Bảng loại thu chi hỏng ⇒ màn
+   * báo lỗi, mà `vouchers.refetch()` không chạy nổi vì chính nó đang bị tắt:
+   * nút "Thử lại" bấm bao nhiêu lần cũng vô ích, người dùng kẹt tới khi F5.
+   */
+  it('lỗi ở bảng loại thu chi: refetch phải gọi lại ĐÚNG truy vấn đó, không chỉ truy vấn phiếu', async () => {
+    H.loaiThuChi = { data: null, error: { message: 'permission denied' } };
+    nap([phieu({ id: V_HHMG_T6, system_source: 'termination.refund' })], []);
+    const { result } = chay();
+    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    const demLoai = () => H.chuoi.filter((c) => c.bang === 'income_expense_types').length;
+    const truoc = demLoai();
+
+    // Quyền được cấp lại (hoặc mạng hồi phục) rồi người dùng bấm Thử lại.
+    H.loaiThuChi = { data: LOAI_THAT, error: null };
+    await act(async () => { await result.current.refetch(); });
+
+    expect(demLoai()).toBeGreaterThan(truoc);
+    await waitFor(() => expect(result.current.isError).toBe(false));
+    // Và vì typeMap đã có dữ liệu, truy vấn phiếu tự bật lên và chạy tới nơi.
+    await waitFor(() => expect(result.current.rows).toHaveLength(1));
   });
 });
 

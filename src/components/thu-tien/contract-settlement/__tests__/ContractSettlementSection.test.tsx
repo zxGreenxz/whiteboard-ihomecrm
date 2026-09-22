@@ -329,17 +329,23 @@ describe('thẻ lịch sử khi đang ở Tồn Cũ', () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 5. Đọc được phiếu nhưng KHÔNG đọc được bút toán
+// 5. Phiếu ĐÃ CHI mà không đọc được ngày ghi sổ
+//
+// ⚠ Bốn bài dưới đây KHÔNG truyền `postingRead`, và đó là CHỦ Ý. Thứ điều
+// khiển chúng là `postedOn === null` (và `isError` ở bài cuối) — trước đây
+// fixture có gắn `postingRead` nhưng đặt giá trị nào cũng xanh, tức là nó nói
+// dối về nhân quả và người sau sẽ đi sửa nhầm chỗ. `postingRead` được kiểm
+// đúng nghĩa ở khối 12, nơi ba giá trị cho ba câu chữ khác nhau.
 // ═══════════════════════════════════════════════════════════════════════════
 
-describe('bút toán bị RLS giấu hoặc tải lỗi', () => {
+describe('phiếu đã chi mà thiếu ngày ghi sổ', () => {
   const tap = () => [
     daChi({ amount: 3_000_000, eventDate: '2026-09-02', postedOn: null }),
     dong({ amount: 1_000_000, eventDate: '2026-09-05' }),
   ];
 
   it('thẻ Đã chi nói "Chưa đủ dữ liệu" kèm nút thử lại, KHÔNG nói 0đ', () => {
-    ve(tap(), { postingRead: 'partial' });
+    ve(tap());
     expect(the('Đã chi')?.textContent).toContain('Chưa đủ dữ liệu');
     expect(the('Đã chi')?.textContent).not.toContain('0 đ');
     fireEvent.click(screen.getByRole('button', { name: 'Thử lại' }));
@@ -347,7 +353,7 @@ describe('bút toán bị RLS giấu hoặc tải lỗi', () => {
   });
 
   it('dòng vẫn là Đã chi, chỉ đánh dấu ngày chi chưa xác minh', () => {
-    ve(tap(), { postingRead: 'partial' });
+    ve(tap());
     moBoLoc();
     fireEvent.change(oTrangThai(), { target: { value: 'all' } });
     fireEvent.change(oKy(), { target: { value: 'all' } });
@@ -360,7 +366,7 @@ describe('bút toán bị RLS giấu hoặc tải lỗi', () => {
   });
 
   it('phiếu chưa xếp được kỳ được BÁO RA, không âm thầm biến mất', () => {
-    ve(tap(), { postingRead: 'partial' });
+    ve(tap());
     // Banner đếm TRONG trạng thái đang lọc, nên phải đứng ở bộ lọc thật sự chứa
     // phiếu đó — xem khối "banner chưa xác định kỳ" ở dưới cho cả hai chiều.
     fireEvent.click(the('Đã chi')!);
@@ -368,8 +374,10 @@ describe('bút toán bị RLS giấu hoặc tải lỗi', () => {
     expect(dongBang()).toHaveLength(0);   // và nó KHÔNG lặng lẽ nằm trong bảng
   });
 
-  it('lỗi đọc bút toán không làm hỏng cả bảng', () => {
-    ve(tap(), { postingRead: false });
+  // Thiếu ngày ghi sổ là chuyện của MỘT con số, không phải lỗi của cả bảng:
+  // `.cs-fail` chỉ dựng khi `isError`, và `isError` không hề đi theo `postedOn`.
+  it('thiếu ngày ghi sổ không làm hỏng cả bảng', () => {
+    ve(tap());
     expect(document.querySelector('.cs-fail')).toBeNull();
     expect(the('Đã chi')?.textContent).toContain('Chưa đủ dữ liệu');
   });
@@ -580,8 +588,18 @@ describe('tiền chứng minh được tách khỏi tiền chưa chứng minh đ
     expect(chanTrang()).toContain('1 phiếu chưa xác minh');
   });
 
-  // Ca của chủ công ty: 0 dòng bút toán đọc được.
-  it('không chứng minh được đồng nào: tiền 0 nhưng phải nói rõ còn bao nhiêu phiếu', () => {
+  /**
+   * CA CỦA CHỦ CÔNG TY — 0 dòng bút toán đọc được, và đây là màn hình MẶC ĐỊNH
+   * của người dùng chính (đo thật 22/09/2026: 1139 phiếu POSTED, 0 dòng
+   * posting, 154 phiếu đã chi trong kỳ đang xem).
+   *
+   * ⚠ "0 đ" ở đây là SAI và bài này từng ghim đúng cái sai đó. Chứng minh được
+   * 0 phiếu không phải "không có đồng nào đã chi" — nó là "chưa chứng minh
+   * được đồng nào". Hai câu khác hẳn nhau khi nói về tiền (plan §3.4, docblock
+   * `StatValue`). Ca "0 đ là sự thật" nằm ở bài 'không gọi tiền của sổ ảo/hủy
+   * là thực chi' — hai ca đó PHẢI phân biệt được với nhau.
+   */
+  it('không chứng minh được đồng nào: KHÔNG in 0 đ, và nói rõ còn bao nhiêu phiếu', () => {
     ve([
       daChi({ amount: 4_000_000, eventDate: '2026-09-01', postedOn: null }),
       daChi({ amount: 5_000_000, eventDate: '2026-09-02', postedOn: null }),
@@ -590,8 +608,11 @@ describe('tiền chứng minh được tách khỏi tiền chưa chứng minh đ
     fireEvent.change(oTrangThai(), { target: { value: 'all' } });
     fireEvent.change(oKy(), { target: { value: 'all' } });
 
-    expect(chanTrang()).toContain('Đã chi thực tế: 0 đ');
+    expect(chanTrang()).not.toContain('Đã chi thực tế: 0 đ');
+    expect(chanTrang()).toContain('Đã chi thực tế: —');
     expect(chanTrang()).toContain('2 phiếu chưa xác minh');
+    // Thẻ số cũng vậy: đầu thẻ là "—", không phải một con số 0 đọc như sự thật.
+    expect(the('Đã chi')?.querySelector('.cs-stat-num')?.textContent).toBe('—');
     // Mệnh giá của chúng vẫn được phép nằm ở "Tổng giá trị phiếu đang xem" —
     // đó là mệnh giá, không phải tiền đã rời két. Nhưng TUYỆT ĐỐI không được
     // nằm sau nhãn thực chi.
