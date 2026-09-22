@@ -21,6 +21,7 @@ const goc = (p: Partial<SettlementRow> = {}): SettlementRow => ({
   paidDate: null, bookName: null, issues: [], supplementPending: false,
   reviewState: 'PENDING', reviewVersion: 1, approvalVersion: 1, postingVersion: 1,
   organizationId: 'org1', buildingId: 'b1',
+  notes: null, systemSource: null, commissionKind: 'broker',
   ...p,
 });
 

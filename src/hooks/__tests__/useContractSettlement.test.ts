@@ -105,6 +105,7 @@ interface PhieuGia {
   voucher_date: string | null;
   system_source: string | null;
   commission_kind: string | null;
+  notes: string | null;
   payer_name: string | null;
   receive_bank_name: string | null;
   receive_bank_account: string | null;
@@ -133,7 +134,7 @@ interface PhieuGia {
 const phieu = (p: Partial<PhieuGia> & { id: string }): PhieuGia => ({
   code: 'PC-X', organization_id: ORG, building_id: TOA, room_id: null,
   contract_id: null, total_amount: 1_000_000, voucher_date: '2026-09-10',
-  system_source: null, commission_kind: null,
+  system_source: null, commission_kind: null, notes: null,
   // Đủ bộ thông tin nhận tiền để MISSING_PAYMENT_INFO không nhiễu vào ca kiểm.
   payer_name: 'Môi giới X', receive_bank_name: 'VCB', receive_bank_account: '0123',
   account_id: null, posting_mode: null,
@@ -547,5 +548,58 @@ describe('useContractSettlement — Hoàn khách và Thưởng sale không đổ
     expect(new Set(rows.map((r) => r.key)).size).toBe(2);
     expect(new Set(rows.map((r) => r.voucherId))).toEqual(new Set([a, b]));
     expect(rows.reduce((s, r) => s + r.amount, 0)).toBe(2_000_000);
+  });
+});
+
+// ── T3: read model phải mang ghi chú gốc + metadata component chung cần ─────
+//
+// Bản trước KHÔNG chọn cột `notes` và vứt luôn `system_source`/`commission_kind`
+// khi dựng dòng, nên modal không có gì để đưa cho `VoucherNote` — nó chỉ còn
+// một câu giữ chỗ. Bốn ca dưới ghim đúng ba cột đó, KHÔNG mở rộng thêm.
+
+describe('useContractSettlement — mang đủ nguồn cho ghi chú và bảng căn cứ', () => {
+  it('truy vấn phiếu đọc cột notes', async () => {
+    nap([phieu({ id: V_HHMG_T6, contract_id: HD_THANG6, contracts: hopDong('HD-1', '2026-06-12') })],
+      [{ income_expense_id: V_HHMG_T6, income_expense_type_id: T_HHMG }]);
+    const { result } = chay();
+    await waitFor(() => expect(result.current.rows).toHaveLength(1));
+    const q = H.chuoi.find((c) => c.bang === 'income_expenses');
+    const cot = String(q?.ops.find(([m]) => m === 'select')?.[1][0] ?? '');
+    expect(cot).toContain('notes');
+    expect(cot).toContain('system_source');
+    expect(cot).toContain('commission_kind');
+  });
+
+  it('dòng mang ghi chú gốc NGUYÊN VĂN, giữ xuống dòng', async () => {
+    const ghiChu = '[HOÀN KHÁCH THANH LÝ] Phiếu chi hoàn khách.\nDòng thứ hai.';
+    nap([phieu({ id: V_HHMG_T6, notes: ghiChu, contract_id: HD_THANG6,
+      contracts: hopDong('HD-1', '2026-06-12') })],
+      [{ income_expense_id: V_HHMG_T6, income_expense_type_id: T_HHMG }]);
+    const { result } = chay();
+    await waitFor(() => expect(result.current.rows).toHaveLength(1));
+    expect(result.current.rows[0].notes).toBe(ghiChu);
+  });
+
+  it('dòng mang system_source và commission_kind THÔ như DB, không suy diễn', async () => {
+    const id = '0f0f0f0f-0000-4000-8000-0000000000e1';
+    nap([phieu({ id, system_source: 'termination.refund', total_amount: 3_076_000 })], []);
+    const { result } = chay();
+    await waitFor(() => expect(result.current.rows).toHaveLength(1));
+    expect(result.current.rows[0].systemSource).toBe('termination.refund');
+    expect(result.current.rows[0].commissionKind).toBeNull();
+  });
+
+  it('phiếu HHMG thủ công KHÔNG được gán dấu nguồn suy ra', async () => {
+    nap([phieu({ id: V_HHMG_T6, code: 'PC2606169', notes: null, contract_id: HD_THANG6,
+      contracts: hopDong('HD-1', '2026-06-12') })],
+      [{ income_expense_id: V_HHMG_T6, income_expense_type_id: T_HHMG }]);
+    const { result } = chay();
+    await waitFor(() => expect(result.current.rows).toHaveLength(1));
+    const r = result.current.rows[0];
+    expect(r.kind).toBe('commission');
+    // Phân loại suy ra được, nhưng metadata thô vẫn PHẢI rỗng.
+    expect(r.commissionKind).toBeNull();
+    expect(r.systemSource).toBeNull();
+    expect(r.notes).toBeNull();
   });
 });

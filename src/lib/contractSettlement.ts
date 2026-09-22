@@ -110,6 +110,25 @@ export interface SettlementRow {
   recipientName: string | null;
   /** LUÔN là số trên phiếu. Không bao giờ là số căn cứ. */
   amount: number;
+  /**
+   * `income_expenses.notes` — GHI CHÚ GỐC người tạo phiếu đã gõ, NGUYÊN VĂN
+   * (giữ xuống dòng). Đây là thứ modal phải hiện dưới nhãn "Ghi chú gốc của
+   * phiếu"; KHÔNG được thay bằng lịch sử bổ sung, cũng không được phân tích
+   * chuỗi này để bịa ra khoản tiền — số liệu đã có nguồn cấu trúc riêng.
+   */
+  notes: string | null;
+  /**
+   * Hai dấu nguồn THÔ, giữ nguyên như DB. Có mặt ở đây vì các renderer dùng
+   * chung của Thu chi (`VoucherNote` → `TerminationRefundNote` /
+   * `CommissionVoucherNote`) nhận diện phiếu bằng đúng hai cột này.
+   *
+   * ⚠ `kind`/`kindSource` là kết quả SUY RA và KHÔNG thay thế được chúng: phiếu
+   * HHMG tạo tay có `kind === 'commission'` nhưng `commissionKind === null`, và
+   * điền một giá trị broker/sale vào đây để ép RPC ghi chú tự sinh chạy chính là
+   * điều plan §3.2 cấm. Hai trường này chỉ chép, không bao giờ đoán.
+   */
+  systemSource: string | null;
+  commissionKind: string | null;
   basis: BasisState;
   status: SettlementStatus;
   /** Hai cột THÔ, giữ nguyên như DB — writer và bảng nút phải đọc chúng, không

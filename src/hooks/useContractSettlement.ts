@@ -77,6 +77,8 @@ interface VoucherRow {
   voucher_date: string | null;
   system_source: string | null;
   commission_kind: string | null;
+  /** Ghi chú gốc — nguồn của khối "Ghi chú gốc của phiếu" trong modal. */
+  notes: string | null;
   payer_name: string | null;
   receive_bank_name: string | null;
   receive_bank_account: string | null;
@@ -138,7 +140,7 @@ const nhanBienDong = (kind: SettlementRowKind, origin: 'contract' | 'reservation
 
 const COT = [
   'id', 'code', 'organization_id', 'building_id', 'room_id', 'contract_id',
-  'total_amount', 'voucher_date', 'system_source', 'commission_kind',
+  'total_amount', 'voucher_date', 'system_source', 'commission_kind', 'notes',
   'payer_name', 'receive_bank_name', 'receive_bank_account', 'account_id',
   'posting_mode', 'approval_status', 'posting_status',
   'review_state', 'review_reason', 'review_version', 'approval_version',
@@ -485,6 +487,13 @@ export function useContractSettlement(a: UseContractSettlementArgs) {
         customerName: tenKhach(v),
         recipientName: v.payer_name,
         amount: Number(v.total_amount) || 0,
+        // Ba cột THÔ cho khối ghi chú/căn cứ của modal. Chép nguyên, KHÔNG suy
+        // ra từ `kind`: phiếu HHMG tạo tay phải giữ `commissionKind === null`
+        // thì `SettlementVoucherDetails` mới biết là không được gọi RPC ghi chú
+        // tự sinh (nó đòi broker/sale) và phải nói thẳng ra điều đó.
+        notes: v.notes ?? null,
+        systemSource: v.system_source ?? null,
+        commissionKind: v.commission_kind ?? null,
         basis: basisOf(v, kind),
         status: settlementStatusOf(v.approval_status, v.posting_status),
         approvalStatus: v.approval_status,

@@ -35,6 +35,7 @@ import { useAccounts } from '@/hooks/useAccounts';
 import { useIncomeExpenseSupplements } from '@/hooks/income-expenses/supplements';
 import { formatSupplementAuthor } from '@/lib/incomeExpenseSupplement';
 import { ContractLifecycleBand } from './ContractLifecycleBand';
+import { SettlementVoucherDetails } from './SettlementVoucherDetails';
 import { mocNgayNghiepVu, type LaneSubject } from '@/lib/contractLifecycle';
 import { vnTodayISO } from '@/lib/vnDate';
 import {
@@ -364,6 +365,11 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
                 </div>
               </>
             )}
+
+            {/* Bảng quyết toán/căn cứ theo LOẠI phiếu + ghi chú gốc — lấy đúng
+                nguồn Thu chi. Đặt TRƯỚC "Lịch sử bổ sung" theo plan §3.2, và
+                mục bổ sung ở dưới vẫn là nơi DUY NHẤT dựng lịch sử bổ sung. */}
+            <SettlementVoucherDetails row={row} />
 
             <h3 style={{ marginTop: 16 }}>Lịch sử bổ sung</h3>
             {supplements.isLoading ? (
