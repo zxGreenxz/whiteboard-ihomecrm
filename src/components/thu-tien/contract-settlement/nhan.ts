@@ -28,8 +28,7 @@ export const NHAN_VUONG_MAC = {
   } as Record<SettlementKind, string>,
 
   vuong: {
-    MISSING_RECIPIENT: { nhan: 'Thiếu tên người nhận', mau: 'red' as Mau },
-    MISSING_BANK: { nhan: 'Thiếu số tài khoản', mau: 'amber' as Mau },
+    MISSING_PAYMENT_INFO: { nhan: 'Thiếu thông tin thanh toán', mau: 'red' as Mau },
     AMOUNT_MISMATCH: { nhan: 'Lệch căn cứ', mau: 'red' as Mau },
     BASIS_UNAVAILABLE: { nhan: 'Không đọc được căn cứ', mau: 'red' as Mau },
     SUPPLEMENT_PENDING: { nhan: 'Có yêu cầu bổ sung', mau: 'violet' as Mau },

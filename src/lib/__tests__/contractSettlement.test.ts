@@ -12,7 +12,8 @@ const goc = (p: Partial<SettlementRow> = {}): SettlementRow => ({
   buildingName: 'A', roomName: '101', customerName: 'Khách', recipientName: 'Môi giới X',
   amount: 1_000_000, basis: { kind: 'matched', amount: 1_000_000 },
   status: 'pending', approvalStatus: 'UNAPPROVED', postingStatus: 'UNPOSTED',
-  postingMode: null, bankRequired: true, bankAccount: '0123', bankName: 'NH mẫu',
+  postingMode: null, bankAccount: '0123', bankName: 'NH mẫu',
+  attachments: [], hasAttachment: false,
   eventDate: '2026-09-10', origin: 'contract', eventLabel: 'Ký mới',
   paidDate: null, bookName: null, issues: [], supplementPending: false,
   reviewState: 'PENDING', reviewVersion: 1, approvalVersion: 1, postingVersion: 1,
@@ -47,13 +48,7 @@ describe('settlementStatusOf', () => {
 });
 
 describe('detectIssues — blocker', () => {
-  it('thiếu TÊN người nhận là vướng', () => {
-    expect(detectIssues(goc({ recipientName: null }), '2026-09')).toContain('MISSING_RECIPIENT');
-    expect(detectIssues(goc({ recipientName: '  ' }), '2026-09')).toContain('MISSING_RECIPIENT');
-  });
-  it('thiếu STK là vướng', () => {
-    expect(detectIssues(goc({ bankAccount: '' }), '2026-09')).toContain('MISSING_BANK');
-  });
+  // Chi tiết của nhãn gộp nằm ở khối "thông tin thanh toán gộp một nhãn".
   it('lệch căn cứ là vướng', () => {
     expect(detectIssues(goc({ basis: { kind: 'mismatch', amount: 900_000 } }), '2026-09'))
       .toContain('AMOUNT_MISMATCH');
@@ -72,22 +67,52 @@ describe('detectIssues — chỉ cảnh báo, KHÔNG chặn', () => {
   it('tồn kỳ cũ là cảnh báo', () => {
     const issues = detectIssues(goc({ eventDate: '2026-08-31' }), '2026-09');
     expect(issues).toContain('OLD_PERIOD');
-    expect(isBlocker('OLD_PERIOD', goc())).toBe(false);
+    expect(isBlocker('OLD_PERIOD')).toBe(false);
   });
   it('loại không có công thức căn cứ không bị chặn', () => {
     const r = goc({ kind: 'bonus', basis: { kind: 'not-applicable' } });
     expect(detectIssues(r, '2026-09')).toContain('BASIS_NOT_APPLICABLE');
-    expect(isBlocker('BASIS_NOT_APPLICABLE', r)).toBe(false);
+    expect(isBlocker('BASIS_NOT_APPLICABLE')).toBe(false);
   });
   it('chưa tra được căn cứ ở mức danh sách không chặn', () => {
     const r = goc({ basis: { kind: 'not-found', reason: 'chưa tra ở danh sách' } });
     expect(detectIssues(r, '2026-09')).toContain('BASIS_NOT_FOUND');
-    expect(isBlocker('BASIS_NOT_FOUND', r)).toBe(false);
+    expect(isBlocker('BASIS_NOT_FOUND')).toBe(false);
   });
-  it('phiếu chi tiền mặt không bị chặn vì thiếu STK', () => {
-    const r = goc({ bankAccount: '', bankRequired: false });
-    expect(detectIssues(r, '2026-09')).toContain('MISSING_BANK');
-    expect(isBlocker('MISSING_BANK', r)).toBe(false);
+});
+
+describe('detectIssues — thông tin thanh toán gộp một nhãn', () => {
+  const thieu = (p: Partial<SettlementRow>) => detectIssues(goc(p), '2026-09');
+
+  it('thiếu BẤT KỲ mảnh nào cũng ra đúng MỘT nhãn chung', () => {
+    for (const p of [
+      { recipientName: null }, { recipientName: '  ' },
+      { bankName: null }, { bankName: '' },
+      { bankAccount: null }, { bankAccount: '' },
+    ] as Partial<SettlementRow>[]) {
+      expect(thieu(p), JSON.stringify(p)).toContain('MISSING_PAYMENT_INFO');
+    }
+  });
+
+  it('thiếu cả ba vẫn chỉ MỘT nhãn, không phải ba', () => {
+    const is = thieu({ recipientName: null, bankName: null, bankAccount: null });
+    expect(is.filter((i) => i === 'MISSING_PAYMENT_INFO')).toHaveLength(1);
+  });
+
+  it('đủ cả ba thì không có nhãn nào', () => {
+    expect(thieu({})).not.toContain('MISSING_PAYMENT_INFO');
+  });
+
+  it('ẢNH ĐÍNH KÈM miễn hẳn điều kiện này — phiếu sang thẳng Chờ duyệt', () => {
+    const p = { recipientName: null, bankName: null, bankAccount: null };
+    expect(thieu(p)).toContain('MISSING_PAYMENT_INFO');
+    const coAnh = { ...p, attachments: ['anh.jpg'], hasAttachment: true };
+    expect(thieu(coAnh)).not.toContain('MISSING_PAYMENT_INFO');
+    expect(viewStatusOf(goc({ ...coAnh, status: 'pending', issues: thieu(coAnh) }))).toBe('pending');
+  });
+
+  it('thiếu thông tin thanh toán LÀ blocker', () => {
+    expect(isBlocker('MISSING_PAYMENT_INFO')).toBe(true);
   });
 });
 
@@ -96,8 +121,7 @@ describe('detectIssues — trạng thái đã đóng', () => {
     const issues = detectIssues(
       goc({ status: 'paid', bankAccount: '', recipientName: null, eventDate: '2026-01-01' }),
       '2026-09');
-    expect(issues).not.toContain('MISSING_BANK');
-    expect(issues).not.toContain('MISSING_RECIPIENT');
+    expect(issues).not.toContain('MISSING_PAYMENT_INFO');
     expect(issues).not.toContain('OLD_PERIOD');
   });
   it('dòng đã huỷ không mang vướng mắc nào', () => {
@@ -199,19 +223,22 @@ describe('sumOnVoucher', () => {
 
 describe('viewStatusOf', () => {
   it('phiếu chờ duyệt còn BLOCKER thì hiện là Cần rà soát', () => {
-    expect(viewStatusOf(goc({ status: 'pending', issues: ['MISSING_RECIPIENT'] }))).toBe('review');
+    expect(viewStatusOf(goc({ status: 'pending', issues: ['MISSING_PAYMENT_INFO'] }))).toBe('review');
   });
   it('phiếu chờ duyệt chỉ có CẢNH BÁO thì vẫn là Chờ duyệt', () => {
     // Đây chính là chỗ bản v1 sai: tồn kỳ cũ bị đẩy sang rà soát rồi kẹt.
     expect(viewStatusOf(goc({ status: 'pending', issues: ['OLD_PERIOD'] }))).toBe('pending');
     expect(viewStatusOf(goc({ status: 'pending', issues: ['BASIS_NOT_FOUND'] }))).toBe('pending');
   });
-  it('thiếu STK chỉ chặn khi phiếu bắt buộc chuyển khoản', () => {
-    expect(viewStatusOf(goc({ status: 'pending', issues: ['MISSING_BANK'], bankRequired: false }))).toBe('pending');
-    expect(viewStatusOf(goc({ status: 'pending', issues: ['MISSING_BANK'], bankRequired: true }))).toBe('review');
+  it('phiếu có ảnh đính kèm thì không còn vướng thông tin thanh toán', () => {
+    const r = goc({
+      status: 'pending', recipientName: null, bankName: null, bankAccount: null,
+      attachments: ['anh.jpg'], hasAttachment: true,
+    });
+    expect(viewStatusOf({ ...r, issues: detectIssues(r, '2026-09') })).toBe('pending');
   });
   it('trạng thái khác chờ duyệt thì giữ nguyên', () => {
-    expect(viewStatusOf(goc({ status: 'approved', issues: ['MISSING_RECIPIENT'] }))).toBe('approved');
+    expect(viewStatusOf(goc({ status: 'approved', issues: ['MISSING_PAYMENT_INFO'] }))).toBe('approved');
     expect(viewStatusOf(goc({ status: 'paid', issues: [] }))).toBe('paid');
     expect(viewStatusOf(goc({ status: 'noncash', issues: [] }))).toBe('noncash');
   });

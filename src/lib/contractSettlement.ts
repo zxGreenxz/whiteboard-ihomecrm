@@ -41,8 +41,13 @@ export type SettlementStatus =
 export type SettlementLane = 'can-ra-soat' | 'cho-duyet';
 
 export type SettlementIssue =
-  | 'MISSING_RECIPIENT'      // blocker: thiếu tên người nhận
-  | 'MISSING_BANK'           // blocker CÓ ĐIỀU KIỆN: chỉ khi chi chuyển khoản
+  // Blocker. GỘP ba thứ làm một theo yêu cầu chủ 22/09/2026: thiếu tên người
+  // nhận, thiếu ngân hàng hay thiếu số tài khoản đều là "thiếu thông tin thanh
+  // toán", hiện chung một nhãn thay vì ba nhãn rời.
+  //
+  // ⚠ MIỄN khi phiếu ĐÃ CÓ ẢNH ĐÍNH KÈM: ảnh chuyển khoản là bằng chứng việc
+  // trả tiền đã xử lý ngoài hệ thống, nên không bắt khai lại số tài khoản.
+  | 'MISSING_PAYMENT_INFO'
   | 'AMOUNT_MISMATCH'        // blocker: số phiếu ≠ số căn cứ
   | 'BASIS_UNAVAILABLE'      // blocker: tra căn cứ mà LỖI / không đủ quyền
   | 'SUPPLEMENT_PENDING'     // blocker: có yêu cầu bổ sung chưa xử lý
@@ -89,14 +94,11 @@ export interface SettlementRow {
   approvalStatus: string | null;
   postingStatus: string | null;
   postingMode: string | null;
-  /**
-   * Phiếu này có bắt buộc số tài khoản không (chi chuyển khoản), hay chi tiền
-   * mặt nên không cần. Reader suy từ `posting_mode` / loại sổ.
-   * Không chắc ⇒ để `false`, tức chỉ cảnh báo — thà nhắc nhẹ còn hơn khoá nhầm
-   * một phiếu tiền mặt hợp lệ.
-   */
-  bankRequired: boolean;
   bankAccount: string | null;
+  /** Ảnh/chứng từ đang đính trên phiếu (URL public cũ hoặc path Storage). */
+  attachments: string[];
+  /** Có ít nhất một ảnh đính kèm — miễn điều kiện thiếu thông tin thanh toán. */
+  hasAttachment: boolean;
   bankName: string | null;
   eventDate: string | null;
   /** 'reservation' = phát sinh từ phiếu giữ chỗ; còn lại là hợp đồng. */
@@ -138,18 +140,18 @@ export function settlementStatusOf(
   return 'unknown';
 }
 
-/** Vướng mắc này có đẩy phiếu sang làn rà soát không? */
-export function isBlocker(
-  issue: SettlementIssue,
-  row: Pick<SettlementRow, 'bankRequired'>,
-): boolean {
+/**
+ * Vướng mắc này có đẩy phiếu sang làn rà soát không?
+ *
+ * Thuần theo loại vướng mắc — không còn xét thuộc tính nào của dòng, vì điều
+ * kiện "thiếu thông tin thanh toán" đã tự cân nhắc ảnh đính kèm lúc phát hiện.
+ */
+export function isBlocker(issue: SettlementIssue): boolean {
   switch (issue) {
     case 'OLD_PERIOD':
     case 'BASIS_NOT_APPLICABLE':
     case 'BASIS_NOT_FOUND':
       return false;
-    case 'MISSING_BANK':
-      return row.bankRequired;
     default:
       return true;
   }
@@ -177,8 +179,13 @@ export function detectIssues(
   // Còn lại chỉ nhắc khi phiếu vẫn còn việc phải làm.
   if (DA_DONG.has(row.status)) return out;
 
-  if (!(row.recipientName ?? '').trim()) out.push('MISSING_RECIPIENT');
-  if (!(row.bankAccount ?? '').trim()) out.push('MISSING_BANK');
+  // Thiếu BẤT KỲ mảnh nào của bộ thông tin trả tiền ⇒ một nhãn chung.
+  // Ảnh đính kèm miễn hẳn điều kiện này (xem chú thích ở SettlementIssue).
+  const thieuThongTin =
+    !(row.recipientName ?? '').trim()
+    || !(row.bankName ?? '').trim()
+    || !(row.bankAccount ?? '').trim();
+  if (thieuThongTin && !row.hasAttachment) out.push('MISSING_PAYMENT_INFO');
   if (row.eventDate && row.eventDate.slice(0, 7) < period) out.push('OLD_PERIOD');
 
   return out;
@@ -192,10 +199,10 @@ export function detectIssues(
  * Đừng dùng hàm này làm điều kiện hiện nút Chi.
  */
 export function laneOf(
-  row: Pick<SettlementRow, 'status' | 'issues' | 'bankRequired'>,
+  row: Pick<SettlementRow, 'status' | 'issues'>,
 ): SettlementLane | null {
   if (row.status !== 'pending') return null;
-  return row.issues.some((i) => isBlocker(i, row)) ? 'can-ra-soat' : 'cho-duyet';
+  return row.issues.some(isBlocker) ? 'can-ra-soat' : 'cho-duyet';
 }
 
 /**
@@ -275,7 +282,7 @@ export const ACTION_LABEL: Record<ViewStatus, string> = {
 
 /** Trạng thái để HIỂN THỊ: tách 'review' ra khỏi 'pending' bằng làn. */
 export function viewStatusOf(
-  row: Pick<SettlementRow, 'status' | 'issues' | 'bankRequired'>,
+  row: Pick<SettlementRow, 'status' | 'issues'>,
 ): ViewStatus {
   if (row.status === 'pending') {
     return laneOf(row) === 'can-ra-soat' ? 'review' : 'pending';

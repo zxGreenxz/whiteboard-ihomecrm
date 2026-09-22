@@ -20,9 +20,17 @@
 import { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
-import IncomeExpensePostingDialog from '@/components/income-expenses/IncomeExpensePostingDialog';
-import type { PostFinanceExecutionInput } from '@/lib/incomeExpensePostingValidation';
-import { useCustodianCashbooksV2 } from '@/hooks/income-expenses/financeV2Mutations';
+import {
+  validatePostFinanceExecutionInput,
+  type PostFinanceExecutionInput,
+} from '@/lib/incomeExpensePostingValidation';
+import {
+  useCustodianCashbooksV2, useAttachPostingEvidence, adoptVoucherAttachmentsAsEvidence,
+} from '@/hooks/income-expenses/financeV2Mutations';
+import { AttachmentLightbox } from '@/components/ui/attachment-lightbox';
+import { useAuth } from '@/hooks/useAuth';
+import { buildVietQRImageUrl, matchRecipientBankCode, RECIPIENT_BANKS } from '@/lib/vietqrDeeplink';
+import { ChungTuThanhToan } from './ChungTuThanhToan';
 import { useAccounts } from '@/hooks/useAccounts';
 import { useIncomeExpenseSupplements } from '@/hooks/income-expenses/supplements';
 import { formatSupplementAuthor } from '@/lib/incomeExpenseSupplement';
@@ -57,13 +65,22 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
   const [nguoiNhan, setNguoiNhan] = useState(row.recipientName ?? '');
   const [nganHang, setNganHang] = useState('');
   const [soTk, setSoTk] = useState(row.bankAccount ?? '');
-  const [postingMode, setPostingMode] =
+  /** null = chưa mở form chi. Khác null = đang chi, và nhớ sẽ gọi hàm nào. */
+  const [dangChi, setDangChi] =
     useState<'APPROVE_AND_POST' | 'POST_APPROVED' | null>(null);
+  const [soQuy, setSoQuy] = useState('');
+  const [ngayChi, setNgayChi] = useState(() => new Date().toISOString().slice(0, 10));
+  const [chungTu, setChungTu] = useState<{ ids: string[]; ten: string } | null>(null);
+  const [dangTaiAnh, setDangTaiAnh] = useState(false);
   const [khoaGhiChu] = useState(khoaMoi);
+  /** Sinh MỘT LẦN mỗi lần mở form chi — thử lại không ghi sổ hai lần. */
+  const [khoaGhiSo, setKhoaGhiSo] = useState(khoaMoi);
 
+  const { data: authUser } = useAuth();
+  const dinhChungTu = useAttachPostingEvidence();
   const supplements = useIncomeExpenseSupplements(row.voucherId, true);
-  const { data: soCustodian = [] } = useCustodianCashbooksV2(!!postingMode);
-  const { data: moiSo = [] } = useAccounts({ enabled: !!postingMode });
+  const { data: soCustodian = [] } = useCustodianCashbooksV2(!!dangChi);
+  const { data: moiSo = [] } = useAccounts({ enabled: !!dangChi });
 
   /**
    * ⚠ `list_cashbooks_for_expense_v2()` KHÔNG nhận tham số tổ chức — nó trả mọi
@@ -80,20 +97,108 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
     return soCustodian.filter((b) => hopLe.has(b.id));
   }, [moiSo, soCustodian, row.organizationId]);
 
+  /**
+   * Ảnh VietQR THẬT, quét được — không phải ô mô phỏng như bản demo thiết kế.
+   * Hiện QR giả trên app thật là mời người ta quét nhầm, nên thiếu dữ kiện thì
+   * nói thẳng là chưa dựng được QR.
+   */
+  const qr = useMemo(() => {
+    const code = matchRecipientBankCode(row.bankName);
+    const bin = RECIPIENT_BANKS.find((b) => b.code === code)?.bin;
+    const stk = (row.bankAccount ?? '').trim();
+    if (!bin || !stk) return null;
+    return buildVietQRImageUrl({
+      bin, accountNumber: stk, amount: row.amount,
+      note: row.voucherCode ?? undefined, accountName: row.recipientName ?? undefined,
+    });
+  }, [row.bankName, row.bankAccount, row.amount, row.voucherCode, row.recipientName]);
+
+  const moFormChi = (mode: 'APPROVE_AND_POST' | 'POST_APPROVED') => {
+    setDangChi(mode);
+    setKhoaGhiSo(khoaMoi());
+    setChungTu(null);
+    setSoQuy('');
+  };
+
+  /** Tải ảnh lên rồi biến nó thành chứng từ đã finalize — ĐÚNG đường Thu chi. */
+  const themAnh = async (file: File) => {
+    setDangTaiAnh(true);
+    try {
+      const kq = await dinhChungTu(file, {
+        voucherId: row.voucherId,
+        userId: authUser?.id ?? '',
+        organizationId: row.organizationId,
+      });
+      // Hook đã toast lý do khi trả null — đừng toast đè lên nó.
+      if (kq) setChungTu({ ids: kq.evidenceIds, ten: file.name });
+    } finally {
+      setDangTaiAnh(false);
+    }
+  };
+
+  /** Nhận ảnh đã đính sẵn trên phiếu làm chứng từ, khỏi bắt tải lại. */
+  const dungAnhCoSan = async () => {
+    setDangTaiAnh(true);
+    try {
+      const kq = await adoptVoucherAttachmentsAsEvidence(row.voucherId);
+      if (kq.evidenceIds.length === 0) {
+        toast.error('Không dùng được ảnh có sẵn làm chứng từ. Tải ảnh mới lên.');
+        return;
+      }
+      setChungTu({ ids: kq.evidenceIds, ten: `${kq.evidenceIds.length} ảnh có sẵn trên phiếu` });
+    } finally {
+      setDangTaiAnh(false);
+    }
+  };
+
+  /**
+   * Dựng input y hệt hộp thoại Thu chi. Một chỗ duy nhất tạo ra nó, để form và
+   * nút "Xác nhận" không thể lệch nhau về luật.
+   */
+  const duLieuGhiChi = (): PostFinanceExecutionInput => ({
+    subjectKind: 'VOUCHER',
+    subjectId: row.voucherId,
+    cashbookId: soQuy,
+    postedOn: ngayChi,
+    evidenceIds: chungTu?.ids ?? [],
+    /* Thu chi truyền 0 và KHÔNG có cột DB nào tương ứng — giữ y hệt, không
+       bịa ra trường để đọc. */
+    expectedExecutionRevision: 0,
+    expectedApprovalVersion: row.approvalVersion,
+    expectedPostingVersion: row.postingVersion,
+    idempotencyKey: khoaGhiSo,
+  });
+
+  /**
+   * Luật hợp lệ lấy NGUYÊN của Thu chi (`validatePostFinanceExecutionInput`),
+   * không tự viết lại — viết lại là mời hai bề mặt lệch luật nhau.
+   */
+  const kiemTra = validatePostFinanceExecutionInput(duLieuGhiChi());
+  const loiDauTien = Object.values(kiemTra.errors)[0] ?? null;
+
+  const ghiChi = () => chay(async () => {
+    if (!dangChi || !kiemTra.ok) return;
+    const input = duLieuGhiChi();
+    if (dangChi === 'APPROVE_AND_POST') await actions.approveAndPost(input);
+    else await actions.post(input);
+    setDangChi(null);
+    onClose();
+  });
+
   const st = STATUS_STYLE[view];
   const chay = async (fn: () => Promise<void>) => {
     try { await fn(); } catch { /* hook đã toast */ }
   };
 
   // ── Vướng mắc còn chặn, sau khi trừ những thứ nút bên dưới gỡ được ────────
-  const blocker = row.issues.filter((i) => isBlocker(i, row));
+  const blocker = row.issues.filter(isBlocker);
   const doiNguoiNhan =
     nguoiNhan.trim() !== (row.recipientName ?? '').trim()
     || soTk.trim() !== (row.bankAccount ?? '').trim()
     || nganHang.trim() !== '';
   /** Blocker mà màn này KHÔNG gỡ được — phải sửa phiếu bên Thu chi. */
   const blockerNgoaiTam = blocker.filter(
-    (i) => i !== 'MISSING_RECIPIENT' && i !== 'MISSING_BANK' && i !== 'SUPPLEMENT_PENDING',
+    (i) => i !== 'MISSING_PAYMENT_INFO' && i !== 'SUPPLEMENT_PENDING',
   );
 
   const xacNhanChuyenLan = () => chay(async () => {
@@ -219,7 +324,7 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
                 <h3 style={{ marginTop: 16 }}>Vướng mắc</h3>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   {row.issues.map((i) => {
-                    const chan = isBlocker(i, row);
+                    const chan = isBlocker(i);
                     return (
                       <span key={i} className="cs-tag" style={{
                         background: chan ? 'var(--c-unpaid-bg)' : 'var(--line-2)',
@@ -289,23 +394,117 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
             </div>
 
             <div>
-              <h4>Chứng từ</h4>
-              {view === 'paid' ? (
-                <div className="cs-proof">
+              <h4>Chứng từ thanh toán</h4>
+              {!dangChi && view === 'paid' && (
+                <div className="cs-proof" style={{ marginBottom: 8 }}>
                   <div>{row.bookName ?? 'Sổ không rõ'}</div>
                   <div className="val">{fmtMoney(row.amount)}</div>
                   <div>Chi ngày {fmtNgay(row.paidDate)}</div>
                 </div>
-              ) : (
-                <div className="cs-note-s">
-                  Chưa có chứng từ chi. Bổ sung khi ghi nhận đã trả tiền.
+              )}
+              <ChungTuThanhToan attachments={row.attachments} />
+              {row.hasAttachment && view !== 'paid' && (
+                <div className="cs-note-s" style={{ marginTop: 6, color: 'var(--brand)' }}>
+                  Đã có ảnh nên phiếu không còn vướng thông tin thanh toán.
                 </div>
               )}
             </div>
 
             {/* ── Nút ──────────────────────────────────────────────────── */}
             <div className="cs-acts">
-              {view === 'review' && (
+              {/* ── Form ghi chi, DỰNG NGAY TẠI ĐÂY theo bản thiết kế 03 ────
+                  Không mở hộp thoại của Thu chi nữa. Hàm gọi xuống và hình dạng
+                  `PostFinanceExecutionInput` giữ NGUYÊN — chỉ đổi giao diện. */}
+              {dangChi && (
+                <>
+                  <div className="cs-form-t">
+                    {dangChi === 'APPROVE_AND_POST' ? 'Duyệt và ghi chi' : 'Ghi nhận chi'}
+                  </div>
+
+                  <label className="cs-lb">
+                    Sổ chi
+                    <select className="cs-in" value={soQuy} onChange={(e) => setSoQuy(e.target.value)}>
+                      <option value="">— Chọn sổ quỹ —</option>
+                      {soDungOrg.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    </select>
+                  </label>
+                  {soDungOrg.length === 0 && (
+                    <div className="cs-note-s" style={{ color: 'var(--c-unpaid)' }}>
+                      Bạn không giữ sổ quỹ nào của tổ chức này nên không ghi chi được.
+                    </div>
+                  )}
+
+                  <label className="cs-lb">
+                    Ngày chi
+                    <input type="date" className="cs-in mono" value={ngayChi}
+                      onChange={(e) => setNgayChi(e.target.value)} />
+                  </label>
+
+                  {qr ? (
+                    <div className="cs-qr">
+                      <img src={qr} alt={`VietQR chuyển khoản cho ${row.recipientName ?? 'người nhận'}`} />
+                      <div className="cs-note-s">
+                        QR chuyển khoản · {row.recipientName ?? '—'} · {row.bankName}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="cs-note-s">
+                      Chưa dựng được QR: cần cả tên ngân hàng nhận dạng được và số tài khoản.
+                    </div>
+                  )}
+
+                  <div>
+                    <div className="cs-lb-t">Ảnh chuyển khoản</div>
+                    {chungTu ? (
+                      <div className="cs-anh-ok">
+                        <span className="cs-anh-oknho" />
+                        <span style={{ minWidth: 0, flex: 1 }}>
+                          <span className="cs-anh-okten">{chungTu.ten}</span>
+                          <span className="cs-anh-oksub">Đã đính kèm chứng từ chuyển khoản</span>
+                        </span>
+                        <button type="button" className="cs-anh-okx" aria-label="Bỏ chứng từ"
+                          onClick={() => setChungTu(null)}>×</button>
+                      </div>
+                    ) : (
+                      <div className="cs-tai">
+                        <div className="cs-note-s">Tải ảnh hoặc dùng ảnh đã đính trên phiếu</div>
+                        <div className="pair">
+                          <label className={`cs-btn primary sm ${dangTaiAnh ? 'mo' : ''}`}
+                            style={{ textAlign: 'center', cursor: dangTaiAnh ? 'wait' : 'pointer' }}>
+                            {dangTaiAnh ? 'Đang tải…' : 'Tải ảnh lên'}
+                            <input type="file" accept="image/*" style={{ display: 'none' }}
+                              disabled={dangTaiAnh}
+                              onChange={(e) => {
+                                const f = e.target.files?.[0];
+                                // Xoá giá trị để chọn lại CÙNG một file vẫn kích hoạt onChange.
+                                e.target.value = '';
+                                if (f) void themAnh(f);
+                              }} />
+                          </label>
+                          <button type="button" className="cs-btn sm"
+                            disabled={dangTaiAnh || !row.hasAttachment}
+                            title={row.hasAttachment ? undefined : 'Phiếu chưa có ảnh nào'}
+                            onClick={() => void dungAnhCoSan()}>
+                            Dùng ảnh có sẵn
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <button type="button" className="cs-btn primary"
+                    disabled={actions.isBusy || dangTaiAnh || !kiemTra.ok}
+                    onClick={ghiChi}>
+                    Xác nhận đã chi đủ {fmtMoney(row.amount)}
+                  </button>
+                  {loiDauTien && <div className="cs-note-s">{loiDauTien}</div>}
+                  <button type="button" className="cs-btn sm" onClick={() => setDangChi(null)}>
+                    Chưa chi, quay lại
+                  </button>
+                </>
+              )}
+
+              {!dangChi && view === 'review' && (
                 <>
                   {blockerNgoaiTam.length > 0 && (
                     <div className="cs-warnbox">
@@ -335,11 +534,11 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
                 </>
               )}
 
-              {view === 'pending' && (
+              {!dangChi && view === 'pending' && (
                 <>
                   {kha.approveAndPost && (
                     <button type="button" className="cs-btn primary" disabled={actions.isBusy}
-                      onClick={() => setPostingMode('APPROVE_AND_POST')}>
+                      onClick={() => moFormChi('APPROVE_AND_POST')}>
                       Duyệt &amp; Chi {fmtMoney(row.amount)}
                     </button>
                   )}
@@ -368,11 +567,11 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
                 </>
               )}
 
-              {view === 'approved' && (
+              {!dangChi && view === 'approved' && (
                 <>
                   {kha.post ? (
                     <button type="button" className="cs-btn primary" disabled={actions.isBusy}
-                      onClick={() => setPostingMode('POST_APPROVED')}>
+                      onClick={() => moFormChi('POST_APPROVED')}>
                       Ghi nhận chi {fmtMoney(row.amount)}
                     </button>
                   ) : (
@@ -384,22 +583,22 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
                 </>
               )}
 
-              {view === 'paid' && (
+              {!dangChi && view === 'paid' && (
                 <div className="cs-donebox">
                   Đã chi đủ ngày {fmtNgay(row.paidDate)}. Không có nút chi lại.
                 </div>
               )}
-              {view === 'noncash' && (
+              {!dangChi && view === 'noncash' && (
                 <div className="cs-cancelbox">
                   <b>Đã duyệt nhưng không ghi quỹ.</b> Phiếu ghi trên sổ ảo, tiền chưa rời két —
                   đừng đọc thành đã trả cho khách.
                 </div>
               )}
-              {view === 'cancelled' && (
+              {!dangChi && view === 'cancelled' && (
                 <div className="cs-cancelbox"><b>Đã từ chối.</b> Phiếu không còn trong danh sách cần xử lý.</div>
               )}
 
-              {view !== 'paid' && view !== 'cancelled' && (
+              {!dangChi && view !== 'paid' && view !== 'cancelled' && (
                 !chuoiTuChoi ? (
                   <button type="button" className="cs-btn danger sm"
                     disabled={actions.isBusy || !kha.cancel}
@@ -440,35 +639,6 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
         </div>
       </div>
 
-      {postingMode && (
-        <IncomeExpensePostingDialog
-          open
-          onOpenChange={(o) => { if (!o) setPostingMode(null); }}
-          mode={postingMode}
-          voucher={{
-            subjectKind: 'VOUCHER',
-            subjectId: row.voucherId,
-            type: 'EXPENSE',
-            approvedTotal: row.amount,
-            name: row.voucherCode ?? undefined,
-            defaultCashbookId: null,
-          }}
-          capability={{ isCustodian: soDungOrg.length > 0, canApprove: kha.approve || kha.approveAndPost }}
-          cashbookOptions={soDungOrg}
-          /* Thu chi truyền 0 ở cả ba chỗ và KHÔNG có cột DB nào tương ứng —
-             giữ y hệt, không bịa ra trường để đọc. */
-          expectedExecutionRevision={0}
-          expectedApprovalVersion={row.approvalVersion}
-          expectedPostingVersion={row.postingVersion}
-          isSubmitting={actions.isBusy}
-          onSubmit={(input: PostFinanceExecutionInput) => chay(async () => {
-            if (postingMode === 'APPROVE_AND_POST') await actions.approveAndPost(input);
-            else await actions.post(input);
-            setPostingMode(null);
-            onClose();
-          })}
-        />
-      )}
     </div>,
     document.body,
   );

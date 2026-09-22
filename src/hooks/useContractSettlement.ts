@@ -74,6 +74,7 @@ interface VoucherRow {
   posting_version: number | string | null;
   maker_user_id: string | null;
   posted_at_v2: string | null;
+  attachments: unknown;
   buildings: { name: string } | null;
   rooms: { name: string } | null;
   accounts: { name: string | null } | null;
@@ -97,6 +98,14 @@ const tenKhach = (v: VoucherRow): string => {
   return (ten ?? '').trim() || 'Chưa có tên khách';
 };
 
+/**
+ * `attachments` là cột JSON nên hình dạng không được bảo đảm — lọc còn chuỗi
+ * không rỗng. Đọc hỏng phải ra MẢNG RỖNG chứ không được ném: thiếu ảnh chỉ làm
+ * phiếu ở lại làn rà soát, còn ném thì hỏng cả bảng.
+ */
+const docAnh = (v: unknown): string[] =>
+  Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string' && x.trim() !== '') : [];
+
 const nguonCua = (v: VoucherRow): 'contract' | 'reservation' =>
   (v.system_source ?? '').startsWith('reservation') ? 'reservation' : 'contract';
 
@@ -113,7 +122,7 @@ const COT = [
   'payer_name', 'receive_bank_name', 'receive_bank_account', 'account_id',
   'posting_mode', 'approval_status', 'posting_status',
   'review_state', 'review_reason', 'review_version', 'approval_version',
-  'posting_version', 'maker_user_id', 'posted_at_v2',
+  'posting_version', 'maker_user_id', 'posted_at_v2', 'attachments',
   'buildings:building_id ( name )',
   'rooms:room_id ( name )',
   'accounts:account_id ( name )',
@@ -363,12 +372,10 @@ export function useContractSettlement(a: UseContractSettlementArgs) {
         approvalStatus: v.approval_status,
         postingStatus: v.posting_status,
         postingMode: v.posting_mode,
-        // ⚠ Chưa phân biệt được phiếu chi tiền mặt với chuyển khoản từ dữ liệu
-        // hiện có, nên để `false`: thiếu STK chỉ CẢNH BÁO, không khoá. Thà nhắc
-        // nhẹ còn hơn khoá nhầm một phiếu tiền mặt hợp lệ. [Plan §2.2]
-        bankRequired: false,
         bankAccount: v.receive_bank_account,
         bankName: v.receive_bank_name,
+        attachments: docAnh(v.attachments),
+        hasAttachment: docAnh(v.attachments).length > 0,
         eventDate: v.voucher_date,
         origin: nguonCua(v),
         eventLabel: nhanBienDong(kind, nguonCua(v)),

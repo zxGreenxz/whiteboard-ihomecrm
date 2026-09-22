@@ -16,6 +16,7 @@
   },
   "include": [],
   "files": [
+    "src/components/thu-tien/contract-settlement/ChungTuThanhToan.tsx",
     "src/components/thu-tien/contract-settlement/ContractLifecycleBand.tsx",
     "src/components/thu-tien/contract-settlement/MovementLifecycleModal.tsx",
     "src/hooks/useContractMovements.ts",
