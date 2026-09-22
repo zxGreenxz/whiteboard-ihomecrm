@@ -112,8 +112,16 @@ export interface SettlementRow {
   key: string;
   kind: SettlementRowKind;
   /**
-   * Dấu hiệu nào đã quyết định `kind` — để modal giải thích được vì sao phiếu
-   * nằm ở nhóm này. Chỉ để HIỂN THỊ, không bao giờ ghi ngược vào phiếu thật.
+   * Dấu hiệu nào đã quyết định `kind`. Chỉ để HIỂN THỊ, không bao giờ ghi ngược
+   * vào phiếu thật.
+   *
+   * ⚠ HIỆN TẠI GHI MÀ KHÔNG AI ĐỌC. `useContractSettlement` điền trường này và
+   * `useContractSettlement.test.ts` ghim giá trị, nhưng KHÔNG có consumer
+   * production nào: modal giải thích nhóm phiếu bằng `commissionKind` /
+   * `systemSource` / `kind` chứ không qua đây. Nói thẳng ra để người sau không
+   * đi sửa trường này rồi chờ màn hình đổi. Muốn modal thật sự giải thích thì
+   * phải nối dây trước — đừng sửa câu này thành lời hứa lần nữa.
+   * (`kindConflict` thì KHÁC: nó có consumer thật, đừng gộp hai thứ.)
    */
   kindSource: SettlementKindSignal;
   /** Các dấu phân loại chỏi nhau ⇒ cần người đối chiếu. Không chặn duyệt. */

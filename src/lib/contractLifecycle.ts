@@ -409,7 +409,15 @@ export function summariseDeposit(
 
 export type PostingVerification = 'verified' | 'unverified' | 'reversed' | 'not-applicable';
 
-export interface PostingReadState { readable: boolean; reason?: string }
+/**
+ * Lượt ĐỌC bảng bút toán có tới nơi không, kèm lý do nếu không.
+ *
+ * ⚠ Tên phải KHÁC `PostingReadState` của `contractSettlement.ts` (`true |
+ * 'partial' | false`). Hai kiểu khác hình dạng hẳn nhau, cùng xuất ra từ
+ * `src/lib`, và hai component đang import cả hai module — trùng tên là mời
+ * người sau nhập nhầm rồi chỉ vỡ lúc chạy.
+ */
+export interface PostingFetchState { readable: boolean; reason?: string }
 
 export interface PostingSubject {
   id: string;
@@ -422,7 +430,7 @@ export interface PostingSubject {
 export function reconcilePostings(
   subjects: readonly PostingSubject[],
   postings: readonly PostingRow[],
-  read: PostingReadState,
+  read: PostingFetchState,
 ): Map<string, { verification: PostingVerification; reason: string | null }> {
   const out = new Map<string, { verification: PostingVerification; reason: string | null }>();
 
