@@ -270,6 +270,38 @@
 .cs-lb-t { font-size: 11.5px; color: var(--ink-3); margin-bottom: 6px; }
 .cs-qr { padding: 10px; background: var(--surface-2); border-radius: 8px; text-align: center; }
 .cs-qr img { width: 150px; height: 150px; display: block; margin: 0 auto 6px; border-radius: 6px; background: #fff; }
+
+/* ── Ô chọn ngân hàng (BankSelect dùng chung với Thu chi) ─────────────────── */
+
+/* Trigger của `BankSelect` mang lớp tiện ích Tailwind (h-10, text-sm) nên cao
+   và to chữ hơn `.cs-in` bên cạnh. Ghim lại cho khớp hàng ô nhập của hộp thoại
+   — KHÔNG sửa `BankSelect`, nó là component dùng chung với trang Thu chi.
+   Hai tầng lớp (`.cs-side .cs-bank`) để thắng lớp tiện ích một tầng của
+   Tailwind, bất kể thứ tự file CSS được gộp lúc build. */
+.cs-side .cs-bank {
+  height: auto; min-height: 34px; padding: 8px 9px;
+  font-size: 12.5px; font-family: inherit; color: var(--ink);
+}
+
+/* ⚠ DROPDOWN NGÂN HÀNG NẰM Ở PORTAL RIÊNG, NGOÀI `.cs-scrim`.
+ *
+ * Radix chép z-index TÍNH ĐƯỢC của content lên thẻ bọc `[data-radix-popper-…]`
+ * (xem react-popper: `setContentZIndex(getComputedStyle(content).zIndex)`).
+ * Content mang `z-50` của Tailwind ⇒ bọc ngoài cũng 50, ĐÚNG BẰNG `.cs-scrim`.
+ * Nghĩa là dropdown chỉ nổi lên trên nhờ thứ tự DOM — đổi z-index của scrim,
+ * hay một lần Tailwind không kịp áp (z-index rơi về `auto`), là nó chui xuống
+ * dưới nền mờ và không bấm được.
+ *
+ * `!important` là bắt buộc: Radix đặt z-index bằng style NỘI TUYẾN.
+ * Chỉ áp trong lúc hộp thoại của khu này đang mở (lớp `cs-modal-mo` do chính
+ * modal gắn/gỡ), nên không đụng tới popover của phần còn lại của app.
+ *
+ * ⚠ PHẢI là bộ chọn HẬU DUỆ, không phải con trực tiếp: `Portal` của Radix tự
+ * chèn thêm MỘT `<div>` vào `body` rồi mới dựng thẻ bọc popper bên trong đó
+ * (xem @radix-ui/react-portal). Viết `body.cs-modal-mo > [data-radix-…]` là
+ * luật không bao giờ khớp và không ai biết. Bộ chọn này được ghim bằng bài
+ * "dropdown thật" trong test của modal. */
+body.cs-modal-mo [data-radix-popper-content-wrapper] { z-index: 60 !important; }
 .cs-tai { display: grid; gap: 6px; padding: 12px; border: 1px dashed var(--brand-100); border-radius: 9px; background: #f7fbf8; text-align: center; }
 .cs-anh-ok { display: flex; align-items: center; gap: 9px; padding: 9px 10px; border: 1px solid var(--c-paid-line); border-radius: 9px; background: var(--c-paid-bg); }
 .cs-anh-oknho { width: 34px; height: 34px; border-radius: 6px; flex-shrink: 0; background: repeating-linear-gradient(45deg, #cfe7d8 0 4px, #fff 4px 8px); }

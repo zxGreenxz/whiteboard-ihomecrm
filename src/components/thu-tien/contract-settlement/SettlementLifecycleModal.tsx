@@ -34,6 +34,7 @@ import {
 import { useClipboardImagePaste } from '@/hooks/useClipboardImagePaste';
 import { useAuth } from '@/hooks/useAuth';
 import { buildVietQRImageUrl, matchRecipientBankCode, RECIPIENT_BANKS } from '@/lib/vietqrDeeplink';
+import BankSelect from '@/components/income-expenses/BankSelect';
 import { ChungTuThanhToan } from './ChungTuThanhToan';
 import { useAccounts } from '@/hooks/useAccounts';
 import { useIncomeExpenseSupplements } from '@/hooks/income-expenses/supplements';
@@ -64,6 +65,39 @@ const khoaMoi = () =>
     ? crypto.randomUUID()
     : `cs-${Math.random().toString(36).slice(2)}`;
 
+/**
+ * Tên ngân hàng ĐÃ CHUẨN HOÁ theo danh mục dùng chung (`RECIPIENT_BANKS`), tức
+ * `shortName` — y hệt giá trị form Thu chi lưu vào `receive_bank_name`.
+ *
+ * ⚠ Không nhận diện được thì TRẢ LẠI NGUYÊN CHUỖI CŨ, không trả rỗng. Dữ liệu
+ * nhiều năm có đủ kiểu ("NH TMCP SO 1 CN Q7"); xoá trắng nó là lặng lẽ làm mất
+ * thông tin duy nhất người dùng có để đối chiếu và chọn lại.
+ */
+function chuanHoaNganHang(tho: string | null | undefined): string {
+  const s = (tho ?? '').trim();
+  if (!s) return '';
+  const code = matchRecipientBankCode(s);
+  return RECIPIENT_BANKS.find((b) => b.code === code)?.shortName ?? s;
+}
+
+/**
+ * Bản người-nhận ĐÃ LƯU THÀNH CÔNG trong phiên này. Neo theo `(UUID, org)` vì
+ * production có nhiều phiếu TRÙNG MÃ — mã phiếu không phải định danh.
+ */
+interface LuuNhanTien {
+  voucherId: string;
+  organizationId: string;
+  ten: string;
+  nganHang: string;
+  soTk: string;
+}
+
+/** Câu lỗi đọc được cho người dùng; RPC trả PostgrestError, không phải Error. */
+const moTaLoi = (e: unknown): string => {
+  const m = (e as { message?: unknown } | null)?.message;
+  return typeof m === 'string' && m.trim() ? m.trim() : 'không rõ nguyên nhân';
+};
+
 export function SettlementLifecycleModal({ row, view, actions, onClose }: Props) {
   const kha = actions.availabilityOf(row);
   /**
@@ -82,8 +116,21 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
   const [chuoiTuChoi, setChuoiTuChoi] = useState(false);
   const [daDoiChieu, setDaDoiChieu] = useState(false);
   const [nguoiNhan, setNguoiNhan] = useState(row.recipientName ?? '');
-  const [nganHang, setNganHang] = useState('');
+  /**
+   * Ngân hàng lưu theo `shortName` như form Thu chi, prefill từ giá trị ĐANG CÓ
+   * đã chuẩn hoá. Bản cũ khởi tạo RỖNG rồi suy ra "đã sửa" từ `!== ''`, nên
+   * phiếu vốn đã có ngân hàng mở lên là lập tức bị coi như vừa sửa.
+   */
+  const [nganHang, setNganHang] = useState(() => chuanHoaNganHang(row.bankName));
   const [soTk, setSoTk] = useState(row.bankAccount ?? '');
+  /** Đặt SAU KHI lưu thành công — nguồn sự thật cho QR tới lượt refetch. */
+  const [daLuu, setDaLuu] = useState<LuuNhanTien | null>(null);
+  const [loiLuu, setLoiLuu] = useState<string | null>(null);
+  const [dangLuuNhan, setDangLuuNhan] = useState(false);
+  /** URL ảnh QR tải hỏng; so theo URL nên đổi tài khoản là tự hết lỗi cũ. */
+  const [qrHong, setQrHong] = useState<string | null>(null);
+  /** Đổi để React dựng lại <img> — thử lại mà KHÔNG bịa thêm tham số vào URL. */
+  const [lanQR, setLanQR] = useState(0);
   /** null = chưa mở form chi. Khác null = đang chi, và nhớ sẽ gọi hàm nào. */
   const [dangChi, setDangChi] =
     useState<'APPROVE_AND_POST' | 'POST_APPROVED' | null>(null);
@@ -159,20 +206,73 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
   }, [moiSo, soCustodian, row.organizationId]);
 
   /**
+   * THÔNG TIN NHẬN TIỀN ĐÃ LƯU — nguồn DUY NHẤT dựng QR và là mốc so "đã sửa".
+   *
+   * Ưu tiên bản vừa lưu thành công của phiên này (nếu đúng phiếu, đúng tổ chức)
+   * rồi mới tới `row`. Hai bản này chỉ khác nhau trong khoảng từ lúc RPC trả về
+   * tới lúc `contract-settlement` refetch xong; giữ bản đã lưu ở đó để QR hiện
+   * ngay, thay vì để người dùng nhìn QR cũ thêm một nhịp mạng.
+   *
+   * ⚠ KHÔNG hứa chống ghi đè liên phiên (plan §7): `editRecipient` gọi RPC
+   * không có khoá phiên bản. Máy khác sửa cùng lúc thì bản đọc lại có thể khác,
+   * và ở đây chỉ bảo đảm draft của PHIÊN NÀY được lưu đúng phiếu.
+   */
+  const nhanTien = useMemo(() => {
+    if (daLuu && daLuu.voucherId === row.voucherId
+      && daLuu.organizationId === row.organizationId) {
+      return { ten: daLuu.ten, nganHang: daLuu.nganHang, soTk: daLuu.soTk };
+    }
+    return {
+      ten: (row.recipientName ?? '').trim(),
+      nganHang: chuanHoaNganHang(row.bankName),
+      soTk: (row.bankAccount ?? '').trim(),
+    };
+  }, [daLuu, row.voucherId, row.organizationId, row.recipientName, row.bankName, row.bankAccount]);
+
+  /**
+   * "Đã sửa" = LỆCH SO VỚI BẢN ĐÃ LƯU ĐÃ CHUẨN HOÁ, không phải "ô ngân hàng
+   * khác rỗng". Nhờ vậy phiếu vốn có sẵn ngân hàng — kể cả viết là
+   * "VIETTINBANK" — mở lên không tự nhận là vừa bị sửa.
+   */
+  const doiNguoiNhan =
+    nguoiNhan.trim() !== nhanTien.ten
+    || nganHang.trim() !== nhanTien.nganHang
+    || soTk.trim() !== nhanTien.soTk;
+
+  /** Chuỗi ngân hàng đang giữ nhưng danh mục chung không nhận ra. */
+  const nganHangLa = nganHang.trim();
+  const nganHangCu = nganHangLa !== '' && !matchRecipientBankCode(nganHangLa);
+
+  /**
    * Ảnh VietQR THẬT, quét được — không phải ô mô phỏng như bản demo thiết kế.
    * Hiện QR giả trên app thật là mời người ta quét nhầm, nên thiếu dữ kiện thì
-   * nói thẳng là chưa dựng được QR.
+   * nói thẳng là chưa dựng được QR và thiếu ĐÚNG thứ gì.
    */
   const qr = useMemo(() => {
-    const code = matchRecipientBankCode(row.bankName);
+    const code = matchRecipientBankCode(nhanTien.nganHang);
     const bin = RECIPIENT_BANKS.find((b) => b.code === code)?.bin;
-    const stk = (row.bankAccount ?? '').trim();
-    if (!bin || !stk) return null;
+    if (!bin || !nhanTien.soTk) return null;
     return buildVietQRImageUrl({
-      bin, accountNumber: stk, amount: row.amount,
-      note: row.voucherCode ?? undefined, accountName: row.recipientName ?? undefined,
+      bin, accountNumber: nhanTien.soTk, amount: row.amount,
+      note: row.voucherCode ?? undefined, accountName: nhanTien.ten || undefined,
     });
-  }, [row.bankName, row.bankAccount, row.amount, row.voucherCode, row.recipientName]);
+  }, [nhanTien, row.amount, row.voucherCode]);
+
+  const thieuChoQR = useMemo(() => {
+    const thieu: string[] = [];
+    if (!nhanTien.nganHang) thieu.push('chưa có ngân hàng');
+    else if (!matchRecipientBankCode(nhanTien.nganHang)) {
+      thieu.push(`ngân hàng đang lưu là “${nhanTien.nganHang}” — không khớp danh mục, chọn lại ở ô Ngân hàng`);
+    }
+    if (!nhanTien.soTk) thieu.push('chưa có số tài khoản');
+    return thieu.join(' · ');
+  }, [nhanTien]);
+
+  /**
+   * Chỉ phiếu CÒN PHẢI CHI mới hiện QR. Phiếu đã chi / hoàn tác / huỷ / ghi sổ
+   * ảo mà vẫn treo QR là mời chuyển khoản lần hai cho một khoản đã xong.
+   */
+  const conPhaiChi = view === 'review' || view === 'pending' || view === 'approved';
 
   /**
    * Dọn sạch mọi thứ thuộc về MỘT lần ghi chi — kể cả cờ "đang tải".
@@ -214,7 +314,32 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
     setSoQuy('');
     setKhoaGhiSo(khoaMoi());
     xoaChungTu();
-  }, [row.voucherId, xoaChungTu]);
+    // Draft người nhận cũng thuộc về MỘT phiếu. Để nguyên là mở đường cho số
+    // tài khoản gõ cho phiếu A được lưu đè lên phiếu B. Cờ `dangLuuNhan` phải
+    // dọn ở đây vì lần lưu của phiếu cũ về muộn bị `conDungPhieu` chặn nên
+    // không tự tắt được — y hệt bẫy `dangTaiAnh` của T1.
+    setNguoiNhan(row.recipientName ?? '');
+    setNganHang(chuanHoaNganHang(row.bankName));
+    setSoTk(row.bankAccount ?? '');
+    setDaLuu(null);
+    setLoiLuu(null);
+    setDangLuuNhan(false);
+    setQrHong(null);
+    // `row.*` dưới đây chỉ được đọc SAU hàng rào đổi phiếu ở trên, nên phiếu
+    // cũ refetch đổi tên giữa chừng không giật mất thứ người dùng đang gõ.
+  }, [row.voucherId, row.recipientName, row.bankName, row.bankAccount, xoaChungTu]);
+
+  /**
+   * Dropdown ngân hàng đi portal RIÊNG của Radix, là ANH EM của `.cs-scrim`
+   * chứ không nằm trong nó. Radix chép z-index tính được của content lên bọc
+   * ngoài — cũng là 50, bằng đúng `.cs-scrim`, nên hiện tại nó chỉ nổi lên trên
+   * nhờ THỨ TỰ DOM. Lớp `cs-modal-mo` ghim việc đó thành luật (xem CSS), và chỉ
+   * sống đúng lúc hộp thoại này mở.
+   */
+  useEffect(() => {
+    document.body.classList.add('cs-modal-mo');
+    return () => { document.body.classList.remove('cs-modal-mo'); };
+  }, []);
 
   /**
    * MỞ BƯỚC GHI CHI LÀ TỰ NHẬN ẢNH CÓ SẴN LÀM CHỨNG TỪ (plan §3.1).
@@ -345,9 +470,15 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
   const kiemTra = validatePostFinanceExecutionInput(duLieuGhiChi());
   const loiDauTien = Object.values(kiemTra.errors)[0] ?? null;
 
-  /** Đang xử lý ảnh hoặc đang ghi sổ thì khoá xác nhận. */
+  /**
+   * Đang xử lý ảnh hoặc đang ghi sổ thì khoá xác nhận — VÀ khoá luôn khi thông
+   * tin người nhận còn sửa dở. Form chi nằm ngay dưới khối Người nhận tiền nên
+   * hoàn toàn có thể sửa ngân hàng khi form đã mở; chi theo một QR dựng từ số
+   * tài khoản CŨ trong lúc người dùng tin là đã đổi xong là cách mất tiền.
+   */
   const khoaXacNhan =
-    actions.isBusy || dangTaiAnh || dangNhanAnh || dangGhiSo || !kiemTra.ok;
+    actions.isBusy || dangTaiAnh || dangNhanAnh || dangGhiSo || !kiemTra.ok
+    || doiNguoiNhan || dangLuuNhan;
 
   /**
    * Chống bấm hai lần: `actions.isBusy` chỉ đổi sau một vòng render, còn hai cú
@@ -381,24 +512,61 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
 
   // ── Vướng mắc còn chặn, sau khi trừ những thứ nút bên dưới gỡ được ────────
   const blocker = row.issues.filter(isBlocker);
-  const doiNguoiNhan =
-    nguoiNhan.trim() !== (row.recipientName ?? '').trim()
-    || soTk.trim() !== (row.bankAccount ?? '').trim()
-    || nganHang.trim() !== '';
   /** Blocker mà màn này KHÔNG gỡ được — phải sửa phiếu bên Thu chi. */
   const blockerNgoaiTam = blocker.filter(
     (i) => i !== 'MISSING_PAYMENT_INFO' && i !== 'SUPPLEMENT_PENDING',
   );
 
-  const xacNhanChuyenLan = () => chay(async () => {
-    if (doiNguoiNhan) {
-      await actions.editRecipient({
-        voucherId: row.voucherId,
-        payerName: nguoiNhan.trim() || null,
-        ...(nganHang.trim() ? { bankName: nganHang.trim() } : {}),
-        bankAccount: soTk.trim() || null,
-      });
+  /**
+   * ĐƯỜNG LƯU DUY NHẤT của thông tin người nhận. Nút "Lưu thông tin nhận tiền"
+   * và nút "Xác nhận & Chuyển Chờ Duyệt" cùng gọi đây, để hai bề mặt không thể
+   * lệch nhau về patch hay về thứ được coi là "đã lưu".
+   *
+   * PATCH THƯA: chỉ gửi khoá ĐÃ ĐỔI, và không gửi `p_items` — server giữ nguyên
+   * các dòng hạng mục. Ngân hàng chỉ viết khi người dùng chọn cái khác: chữ cũ
+   * viết lệch chuẩn ("VIETTINBANK") vẫn ra đúng BIN nên không có lý do gì để
+   * lặng lẽ viết đè lên dữ liệu thật của phiếu.
+   *
+   * Trả về `true` khi đã lưu xong (hoặc không có gì để lưu).
+   */
+  const dangLuuRef = useRef(false);
+  const luuNhanTien = async (): Promise<boolean> => {
+    // `dangLuuNhan` chỉ đổi sau một vòng render nên hai cú bấm trong CÙNG vòng
+    // vẫn lọt — ref chặn ngay, y như `dangGhiRef` của nút ghi chi.
+    if (dangLuuRef.current) return false;
+    const id = row.voucherId;
+    const org = row.organizationId;
+    const ten = nguoiNhan.trim();
+    const nh = nganHang.trim();
+    const tk = soTk.trim();
+
+    const patch: Parameters<Actions['editRecipient']>[0] = { voucherId: id };
+    if (ten !== nhanTien.ten) patch.payerName = ten || null;
+    if (nh !== nhanTien.nganHang) patch.bankName = nh || null;
+    if (tk !== nhanTien.soTk) patch.bankAccount = tk || null;
+    if (Object.keys(patch).length === 1) return true;
+
+    dangLuuRef.current = true;
+    setDangLuuNhan(true);
+    setLoiLuu(null);
+    try {
+      await actions.editRecipient(patch);
+      // Phiếu đổi giữa chừng thì kết quả này KHÔNG được gắn sang phiếu mới.
+      if (!conDungPhieu(id)) return false;
+      setDaLuu({ voucherId: id, organizationId: org, ten, nganHang: nh, soTk: tk });
+      return true;
+    } catch (e) {
+      if (conDungPhieu(id)) setLoiLuu(moTaLoi(e));
+      return false;
+    } finally {
+      dangLuuRef.current = false;
+      if (conDungPhieu(id)) setDangLuuNhan(false);
     }
+  };
+
+  const xacNhanChuyenLan = () => chay(async () => {
+    // Lưu hỏng thì DỪNG: không đóng yêu cầu bổ sung, không báo thành công.
+    if (doiNguoiNhan && !(await luuNhanTien())) return;
     if (row.supplementPending && kha.markSupplementDone) {
       await actions.markSupplementDone({
         voucherId: row.voucherId,
@@ -446,7 +614,9 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
             <div className="cs-m-meta">
               <span className="cs-tag" style={{ background: st.bg, color: st.fg }}>{st.nhan}</span>
               <span>Khách: <b>{row.customerName}</b></span>
-              <span>Người nhận: <b>{row.recipientName ?? '—'}</b></span>
+              {/* `nhanTien` chứ không phải `row`: lưu tên mới xong mà đầu phiếu
+                  còn in tên cũ là hai chỗ trên CÙNG màn nói hai điều khác nhau. */}
+              <span>Người nhận: <b>{nhanTien.ten || '—'}</b></span>
             </div>
           </div>
           <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', flexShrink: 0 }}>
@@ -574,21 +744,44 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
                 <div style={{ display: 'grid', gap: 7 }}>
                   <input className="cs-in" value={nguoiNhan} placeholder="Tên người nhận"
                     onChange={(e) => setNguoiNhan(e.target.value)} />
-                  <input className="cs-in" value={nganHang} placeholder="Ngân hàng — để trống là giữ nguyên"
-                    onChange={(e) => setNganHang(e.target.value)} />
+                  {/* DÙNG NGUYÊN `BankSelect` của Thu chi: gõ-để-tìm theo tên,
+                      tên không dấu và alias trên CÙNG một danh mục VietQR. Không
+                      dựng danh mục thứ hai — hai danh mục là hai sự thật. */}
+                  <BankSelect className="cs-in cs-bank" value={nganHang} onChange={setNganHang} />
+                  {nganHangCu && (
+                    <div className="cs-note-s" style={{ color: 'var(--c-partial)' }}>
+                      Ngân hàng đang lưu: “{nganHangLa}” — không khớp danh mục, chọn lại trong ô
+                      trên để dựng được QR. Chưa chọn thì chuỗi cũ vẫn được giữ nguyên.
+                    </div>
+                  )}
                   <input className="cs-in mono" value={soTk} placeholder="Số tài khoản"
                     onChange={(e) => setSoTk(e.target.value)} />
+                  {/* Nút chỉ hiện khi CÓ THỨ ĐỂ LƯU — so với bản đã lưu đã chuẩn
+                      hoá, không phải "ô ngân hàng khác rỗng". */}
+                  {doiNguoiNhan && (
+                    <button type="button" className="cs-btn primary sm"
+                      disabled={actions.isBusy || dangLuuNhan}
+                      onClick={() => { void luuNhanTien(); }}>
+                      {dangLuuNhan ? 'Đang lưu…' : 'Lưu thông tin nhận tiền'}
+                    </button>
+                  )}
+                  {loiLuu && (
+                    <div className="cs-note-s" style={{ color: 'var(--c-unpaid)' }}>
+                      Chưa lưu được thông tin người nhận: {loiLuu}. Thông tin vừa gõ vẫn còn đây —
+                      sửa rồi lưu lần nữa. Chưa lưu thì không duyệt/chi được.
+                    </div>
+                  )}
                   <div className="cs-note-s">
                     Hai người cùng sửa sẽ ghi đè nhau — đường ghi này chưa có khoá phiên bản.
                   </div>
                 </div>
               ) : (
                 <>
-                  <div className="cs-side-kv"><span className="k">Tên</span><span>{row.recipientName ?? '—'}</span></div>
-                  <div className="cs-side-kv"><span className="k">Ngân hàng</span><span>{row.bankName || '—'}</span></div>
+                  <div className="cs-side-kv"><span className="k">Tên</span><span>{nhanTien.ten || '—'}</span></div>
+                  <div className="cs-side-kv"><span className="k">Ngân hàng</span><span>{nhanTien.nganHang || '—'}</span></div>
                   <div className="cs-side-kv">
                     <span className="k">Số tài khoản</span>
-                    <span style={{ fontFamily: 'var(--mono)' }}>{row.bankAccount || '—'}</span>
+                    <span style={{ fontFamily: 'var(--mono)' }}>{nhanTien.soTk || '—'}</span>
                   </div>
                   <div className="cs-note-s" style={{ marginTop: 6 }}>
                     {row.status === 'pending'
@@ -596,6 +789,47 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
                       : 'Phiếu đã duyệt — không sửa được trục tiền.'}
                   </div>
                 </>
+              )}
+
+              {/* ── QR chuyển khoản ──────────────────────────────────────────
+                  Ở ĐÂY chứ không nằm trong form chi: làn Cần rà soát không có
+                  form chi, mà vẫn phải quét được QR sau khi lưu tài khoản.
+                  Nguồn dữ kiện là `nhanTien` — bản ĐÃ LƯU, không phải draft. */}
+              {conPhaiChi && (
+                <div style={{ marginTop: 10 }}>
+                  {doiNguoiNhan ? (
+                    <div className="cs-note-s" style={{ color: 'var(--c-partial)' }}>
+                      Thông tin nhận tiền đang sửa và <b>chưa lưu</b>. QR cũ thuộc về tài khoản cũ
+                      nên đã tạm gỡ — lưu xong mới dựng lại QR đúng tài khoản.
+                    </div>
+                  ) : qr ? (
+                    qrHong === qr ? (
+                      <div className="cs-qr">
+                        <div className="cs-note-s" style={{ color: 'var(--c-unpaid)' }}>
+                          Không tải được ảnh QR. Mạng hoặc dịch vụ VietQR đang lỗi — số tài khoản
+                          bên trên vẫn dùng để chuyển tay được.
+                        </div>
+                        <button type="button" className="cs-btn sm" style={{ marginTop: 6 }}
+                          onClick={() => { setQrHong(null); setLanQR((n) => n + 1); }}>
+                          Thử lại ảnh QR
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="cs-qr">
+                        {/* `key` đổi là React dựng lại thẻ ảnh ⇒ tải lại, mà URL
+                            giữ NGUYÊN — không nhét tham số lạ vào một URL tiền. */}
+                        <img key={lanQR} src={qr} onError={() => setQrHong(qr)}
+                          alt={`VietQR chuyển khoản cho ${nhanTien.ten || 'người nhận'}`} />
+                        <div className="cs-note-s">
+                          QR chuyển khoản · {nhanTien.ten || '—'} · {nhanTien.nganHang}
+                          {' · '}<span style={{ fontFamily: 'var(--mono)' }}>{nhanTien.soTk}</span>
+                        </div>
+                      </div>
+                    )
+                  ) : (
+                    <div className="cs-note-s">Chưa dựng được QR: {thieuChoQR}.</div>
+                  )}
+                </div>
               )}
             </div>
 
@@ -628,6 +862,14 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
 
             {/* ── Nút ──────────────────────────────────────────────────── */}
             <div className="cs-acts">
+              {/* Một câu duy nhất giải thích vì sao mọi nút tiền đang khoá —
+                  nút xám không kèm lý do là thứ người dùng bấm mãi rồi bỏ. */}
+              {doiNguoiNhan && (
+                <div className="cs-warnbox">
+                  Thông tin nhận tiền đang sửa và chưa lưu. Bấm <b>Lưu thông tin nhận tiền</b> ở
+                  khối trên trước; duyệt/chi theo bản chưa lưu là chi vào tài khoản cũ.
+                </div>
+              )}
               {/* ── Form ghi chi, DỰNG NGAY TẠI ĐÂY theo bản thiết kế 03 ────
                   Không mở hộp thoại của Thu chi nữa. Hàm gọi xuống và hình dạng
                   `PostFinanceExecutionInput` giữ NGUYÊN — chỉ đổi giao diện. */}
@@ -656,18 +898,9 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
                       onChange={(e) => setNgayChi(e.target.value)} />
                   </label>
 
-                  {qr ? (
-                    <div className="cs-qr">
-                      <img src={qr} alt={`VietQR chuyển khoản cho ${row.recipientName ?? 'người nhận'}`} />
-                      <div className="cs-note-s">
-                        QR chuyển khoản · {row.recipientName ?? '—'} · {row.bankName}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="cs-note-s">
-                      Chưa dựng được QR: cần cả tên ngân hàng nhận dạng được và số tài khoản.
-                    </div>
-                  )}
+                  {/* QR đã chuyển lên khối "Người nhận tiền" — một chỗ duy nhất
+                      dựng QR, và làn Cần rà soát (không có form chi) cũng thấy
+                      được nó sau khi lưu tài khoản. */}
 
                   {/* ── Chứng từ ────────────────────────────────────────────
                       KHÔNG còn nút "Dùng ảnh có sẵn": ảnh trên phiếu đã được
@@ -765,8 +998,13 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
 
               {!dangChi && view === 'pending' && (
                 <>
+                  {/* ⚠ HAI NÚT DƯỚI ĐÂY LÀ CHỖ SAI CŨ: làn Chờ duyệt duyệt/chi
+                      thẳng, BỎ QUA thông tin người nhận vừa gõ. Người dùng sửa
+                      số tài khoản rồi bấm Duyệt & Chi là phiếu đi tiếp trên
+                      dữ liệu CŨ. Chặn bằng `doiNguoiNhan` cho tới khi lưu. */}
                   {kha.approveAndPost && (
-                    <button type="button" className="cs-btn primary" disabled={actions.isBusy}
+                    <button type="button" className="cs-btn primary"
+                      disabled={actions.isBusy || doiNguoiNhan || dangLuuNhan}
                       onClick={() => moFormChi('APPROVE_AND_POST')}>
                       Duyệt &amp; Chi {fmtMoney(row.amount)}
                     </button>
@@ -778,7 +1016,8 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
                       Cần bổ sung
                     </button>
                     {kha.approve && (
-                      <button type="button" className="cs-btn ghost sm" disabled={actions.isBusy}
+                      <button type="button" className="cs-btn ghost sm"
+                        disabled={actions.isBusy || doiNguoiNhan || dangLuuNhan}
                         onClick={() => chay(async () => { await actions.approve(row); onClose(); })}>
                         Duyệt Chờ Chi
                       </button>
@@ -799,7 +1038,8 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
               {!dangChi && view === 'approved' && (
                 <>
                   {kha.post ? (
-                    <button type="button" className="cs-btn primary" disabled={actions.isBusy}
+                    <button type="button" className="cs-btn primary"
+                      disabled={actions.isBusy || doiNguoiNhan || dangLuuNhan}
                       onClick={() => moFormChi('POST_APPROVED')}>
                       Ghi nhận chi {fmtMoney(row.amount)}
                     </button>
