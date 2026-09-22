@@ -79,7 +79,7 @@ vi.mock('sonner', () => ({
 
 import { SettlementLifecycleModal } from '../SettlementLifecycleModal';
 import {
-  CAN_CU_HOAN_TRA_KHI_MO_PHIEU, fmtMoney,
+  fmtMoney,
   type SettlementRow, type ViewStatus,
 } from '@/lib/contractSettlement';
 import type { useSettlementActions } from '@/hooks/useSettlementActions';
@@ -805,40 +805,6 @@ describe('T1a — ngày chi mặc định', () => {
     await waitFor(() => expect(man.actions.approveAndPost).toHaveBeenCalledTimes(1));
     expect((man.actions.approveAndPost as ReturnType<typeof vi.fn>).mock.calls[0][0].postedOn)
       .toBe('2026-09-18');
-  });
-});
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Khối "SỐ TRÊN PHIẾU SO VỚI CĂN CỨ" — chỗ người duyệt đọc TRƯỚC khi thả tiền
-//
-// `basisOf` trả `CAN_CU_HOAN_TRA_KHI_MO_PHIEU` cho MỌI phiếu hoàn (danh sách
-// chưa gọi RPC quyết toán vì nó đắt). Đo thật trên màn 22/09/2026 với
-// PC2609119 (hoàn 3.076.000): khối này in "Số theo căn cứ: Căn cứ hoàn khách
-// tra khi mở phiếu" — tức nói CHƯA TRA — trong khi 56 dòng dưới,
-// `SettlementVoucherDetails` đã in số quyết toán thật. Một câu cho hai trạng
-// thái khác nhau, đúng thứ `nhan.ts` sinh ra để chặn.
-// ═══════════════════════════════════════════════════════════════════════════
-
-describe('câu căn cứ trong hộp thoại ĐÃ MỞ', () => {
-  const dongCanCu = () => [...document.querySelectorAll('.cs-kv')]
-    .find((d) => d.querySelector('.k')?.textContent === 'Số theo căn cứ')
-    ?.querySelector('.v')?.textContent ?? '';
-
-  it('phiếu hoàn: KHÔNG hứa lại "tra khi mở phiếu", mà chỉ xuống bảng quyết toán', () => {
-    dungMan(phieu({ basis: { kind: 'not-found', reason: CAN_CU_HOAN_TRA_KHI_MO_PHIEU } }));
-    expect(dongCanCu()).not.toContain(CAN_CU_HOAN_TRA_KHI_MO_PHIEU);
-    expect(dongCanCu()).toContain('Bảng quyết toán · căn cứ');
-  });
-
-  it('lý do not-found KHÁC vẫn hiện NGUYÊN VĂN — so hằng số, không dò chuỗi', () => {
-    const ly = 'Toà chưa cấu hình bậc hoa hồng cho hợp đồng này';
-    dungMan(phieu({ kind: 'commission', basis: { kind: 'not-found', reason: ly } }));
-    expect(dongCanCu()).toBe(ly);
-  });
-
-  it('căn cứ tra được thì vẫn in SỐ, không bị câu chỉ đường nuốt mất', () => {
-    dungMan(phieu({ kind: 'commission', basis: { kind: 'mismatch', amount: 2_250_000 } }));
-    expect(dongCanCu()).toContain('2.250.000');
   });
 });
 

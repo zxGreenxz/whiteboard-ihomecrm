@@ -93,9 +93,11 @@ interface Props {
   /** income_expenses.notes — hiện bên dưới, đã xuống dòng. */
   fallbackNotes?: string | null;
   enabled?: boolean;
+  /** Modal quyết toán không cần dòng hướng dẫn chọn sổ quỹ của Thu chi. */
+  hideRefundInstruction?: boolean;
 }
 
-export function TerminationRefundNote({ voucher, fallbackNotes, enabled = true }: Props) {
+export function TerminationRefundNote({ voucher, fallbackNotes, enabled = true, hideRefundInstruction = false }: Props) {
   const ok = laPhieuTraKhachThanhLy(voucher);
   const { data: facts, isLoading, isError } = useTerminationRefundFacts(ok ? voucher.id : null, enabled);
   const notes = fallbackNotes?.trim() || null;
@@ -115,7 +117,7 @@ export function TerminationRefundNote({ voucher, fallbackNotes, enabled = true }
         <div className="text-muted-foreground">Không đọc được hồ sơ thanh lý.</div>
       ) : header ? (
         <div className="whitespace-pre-line" data-testid="termination-refund-note">
-          {header.join("\n")}
+          {(hideRefundInstruction ? header.slice(1) : header).join("\n")}
         </div>
       ) : null}
       {card ? <SettlementCard card={card} /> : null}
