@@ -88,7 +88,21 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
   const [dangChi, setDangChi] =
     useState<'APPROVE_AND_POST' | 'POST_APPROVED' | null>(null);
   const [soQuy, setSoQuy] = useState('');
-  const [ngayChi, setNgayChi] = useState(() => new Date().toISOString().slice(0, 10));
+  /**
+   * NGÀY CHI MẶC ĐỊNH THEO GIỜ VIỆT NAM (plan §3.5).
+   *
+   * Bản cũ dùng `new Date().toISOString().slice(0, 10)` — đó là ngày UTC, nên
+   * trong khoảng 00:00–06:59 giờ Việt Nam nó tự điền NGÀY HÔM QUA, và qua giao
+   * tháng/giao năm thì lệch hẳn kỳ. `vnTodayISO()` ghim `Asia/Ho_Chi_Minh` nên
+   * đúng cả trên máy/trình duyệt chạy UTC.
+   *
+   * KHÔNG thay bằng `todayISO()` của `collect.ts`: hàm đó còn đọc giờ MÁY.
+   *
+   * Khởi tạo MỘT LẦN: ngày người dùng tự chọn không bị refetch, tải ảnh hay
+   * lưu thông tin người nhận ghi đè, và đi thẳng vào `postedOn` dạng chuỗi —
+   * không vòng qua timestamp UTC.
+   */
+  const [ngayChi, setNgayChi] = useState(() => vnTodayISO());
   /** Chứng từ hợp lệ server nhận từ ẢNH TRÊN PHIẾU — luôn thay nguyên cụm. */
   const [idTuAnhPhieu, setIdTuAnhPhieu] = useState<string[]>([]);
   /** Chứng từ đi ĐƯỜNG LÙI: có trong kho chứng từ nhưng không đính được lên phiếu. */

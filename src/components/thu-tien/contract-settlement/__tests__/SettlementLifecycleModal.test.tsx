@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 // =============================================================================
-// SettlementLifecycleModal — BƯỚC GHI CHI: chứng từ.
+// SettlementLifecycleModal — BƯỚC GHI CHI: chứng từ và ngày chi.
 //
-// ── Hai lỗi đang sửa ────────────────────────────────────────────────────────
+// ── T1: hai lỗi đang sửa ────────────────────────────────────────────────────
 // 1. Mở form chi thì modal `setChungTu(null)` rồi ĐỢI người dùng bấm "Dùng ảnh
 //    có sẵn". Phiếu đã có ảnh chuyển khoản hợp lệ vẫn bắt bấm thêm một nút nữa
 //    mới chi được — trong khi hộp thoại Thu chi tự nhận ảnh từ 27/08/2026.
@@ -12,6 +12,10 @@
 // ⚠ RANH GIỚI PHẢI GIỮ: tự nhận ảnh CHỈ chuẩn bị chứng từ. Nó không duyệt,
 // không ghi tiền, và không thay điều kiện chọn sổ quỹ. Bài kiểm dưới đây đòi
 // đúng điều đó bằng cách soi `actions.approveAndPost` / `actions.post`.
+//
+// ── T1a: ngày chi mặc định ─────────────────────────────────────────────────
+// `new Date().toISOString().slice(0, 10)` là NGÀY UTC. 01:00 ngày 22/09 giờ
+// Việt Nam là 18:00 ngày 21/09 UTC ⇒ form tự điền 2026-09-21, sớm một ngày.
 //
 // Giả lập tới đâu: hai RPC chứng từ (`adopt…` / `useAttachPostingEvidence`),
 // sổ quỹ, quyền. Phần được kiểm là NỐI DÂY thật trong modal + hàm dựng danh
@@ -161,7 +165,7 @@ beforeEach(() => {
   H.soCustodian = [{ id: SO_A, name: 'Sổ tiền mặt 32PVC' }];
   H.moiSo = [{ id: SO_A, organization_id: ORG, is_virtual: false }];
 });
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 // ═══════════════════════════════════════════════════════════════════════════
 // T1 — tự nhận ảnh có sẵn, dán ảnh, và ranh giới "chuẩn bị ≠ ghi tiền"
@@ -447,5 +451,71 @@ describe('T1 — chứng từ của bước ghi chi', () => {
     fireEvent.click(anh[1]);
     await waitFor(() =>
       expect(screen.getByTestId('lightbox').getAttribute('data-mo')).toBe(ANH_2));
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// T1a — ngày chi mặc định theo giờ Việt Nam
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('T1a — ngày chi mặc định', () => {
+  const oNgay = () => document.querySelector('input[type="date"]') as HTMLInputElement;
+
+  it('01:00 ngày 22/09 giờ Việt Nam (18:00 21/09 UTC) phải điền 2026-09-22', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-09-21T18:00:00Z'));
+    dungMan(phieu());
+    moFormChi();
+    await waitFor(() => expect(H.adopt).toHaveBeenCalledTimes(1));
+
+    expect(oNgay().value).toBe('2026-09-22');
+  });
+
+  it('00:00 · 06:59 · 07:00 giờ VN và lúc giao tháng/giao năm đều đúng ngày nghiệp vụ', async () => {
+    for (const [moc, mong] of [
+      // 23:59 ngày 21/09 giờ VN — vẫn là hôm qua, không được nhảy sớm.
+      ['2026-09-21T16:59:00Z', '2026-09-21'],
+      ['2026-09-21T17:00:00Z', '2026-09-22'], // 00:00 giờ VN
+      ['2026-09-21T23:59:00Z', '2026-09-22'], // 06:59 giờ VN — vùng chết của bản UTC
+      ['2026-09-22T00:00:00Z', '2026-09-22'], // 07:00 giờ VN
+      ['2026-09-30T17:00:00Z', '2026-10-01'], // giao tháng
+      ['2026-12-31T17:00:00Z', '2027-01-01'], // giao năm
+    ] as const) {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date(moc));
+      dungMan(phieu());
+      moFormChi();
+      await waitFor(() => expect(H.adopt).toHaveBeenCalled());
+      expect(oNgay().value, `mốc ${moc}`).toBe(mong);
+      cleanup();
+      vi.useRealTimers();
+      H.adopt.mockClear();
+    }
+  });
+
+  it('ngày người dùng chọn giữ nguyên qua refetch và qua tải ảnh, và gửi đúng postedOn', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-09-21T18:00:00Z'));
+    const man = dungMan(phieu());
+    moFormChi();
+    await waitFor(() => expect(H.adopt).toHaveBeenCalledTimes(1));
+
+    fireEvent.change(oNgay(), { target: { value: '2026-09-18' } });
+    expect(oNgay().value).toBe('2026-09-18');
+
+    man.doiPhieu(phieu({ postingVersion: 0, bookName: null }));
+    expect(oNgay().value).toBe('2026-09-18');
+
+    const o = oTaiAnh().querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(o, { target: { files: [tepAnh()] } });
+    await waitFor(() => expect(H.attach).toHaveBeenCalledTimes(1));
+    expect(oNgay().value).toBe('2026-09-18');
+
+    chonSo();
+    await waitFor(() => expect(nutXacNhan().disabled).toBe(false));
+    fireEvent.click(nutXacNhan());
+    await waitFor(() => expect(man.actions.approveAndPost).toHaveBeenCalledTimes(1));
+    expect((man.actions.approveAndPost as ReturnType<typeof vi.fn>).mock.calls[0][0].postedOn)
+      .toBe('2026-09-18');
   });
 });
