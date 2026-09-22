@@ -321,20 +321,25 @@ describe('buildDepositSources — phản chiếu contract_deposit_sources_v1', (
   });
 });
 
+/**
+ * Một dòng bút toán hiệu lực. Ở MỨC MODULE vì hai khối dùng chung: khối
+ * `reconcilePostings` ngay dưới, và ca CUSTODIAN trong khối `buildLifecycleLanes`
+ * — ca duy nhất chạy hết mạch `reconcilePostings → summariseDeposit → status`.
+ */
+const posting = (p: Partial<PostingRow> & { id: string; posting_subject_id: string }): PostingRow => ({
+  organization_id: ORG,
+  posting_subject_kind: 'VOUCHER',
+  event_kind: 'POSTING',
+  posting_generation: 1,
+  reversal_of_id: null,
+  source_kind: 'MANUAL',
+  legacy_provenance: null,
+  account_id: SO_THAT,
+  ...p,
+});
+
 // ═══════════════════════════════════════════════════════════════════════════
 describe('reconcilePostings — bút toán KHÔNG đọc được là một trạng thái, không phải số 0', () => {
-  const posting = (p: Partial<PostingRow> & { id: string; posting_subject_id: string }): PostingRow => ({
-    organization_id: ORG,
-    posting_subject_kind: 'VOUCHER',
-    event_kind: 'POSTING',
-    posting_generation: 1,
-    reversal_of_id: null,
-    source_kind: 'MANUAL',
-    legacy_provenance: null,
-    account_id: SO_THAT,
-    ...p,
-  });
-
   it('không đọc được postings ⇒ MỌI phiếu là "chưa xác minh", giữ nguyên trạng thái phiếu', () => {
     const r = reconcilePostings(
       [{ id: PT_THU, postingStatus: 'POSTED', postingMode: 'CASH' }],
@@ -847,6 +852,64 @@ describe('buildLifecycleLanes — nhiều lane theo LỊCH SỬ PHÒNG', () => {
     expect(v.status.deposit.kind).not.toBe('error');
     expect((v.status.deposit as { reason: string }).reason).toContain('1/1');
     expect(v.lanes[0].steps[1].v).toBe('4.500.000 đ');
+  });
+
+  // ── MẠCH BÚT TOÁN ĐẦY ĐỦ: reconcilePostings → summariseDeposit → status ──
+  //
+  // ⚠ VÌ SAO HAI BÀI NÀY PHẢI ĐI THÀNH CẶP. Mọi lời gọi `summariseDeposit`
+  // khác trong file đều truyền `new Map()` rỗng, tức `hasUnverified` luôn
+  // `true` và mối nối `reconcilePostings → summariseDeposit` chưa từng chạy.
+  // Reviewer đã chứng minh bằng đột biến: ghim cứng `hasUnverified: true` ở
+  // `contractLifecycle.ts` thì 94/94 bài vẫn XANH. Bộ kiểm khi đó chỉ ghim
+  // chiều "không đọc được ⇒ cảnh báo", không ghim chiều ngược lại.
+  //
+  // Và vai CUSTODIAN không được phủ ở đâu khác: lượt kiểm trên trình duyệt chạy
+  // bằng tài khoản chủ công ty (0 dòng posting), nên "người giữ sổ quỹ thấy dải
+  // SẠCH cảnh báo" chưa từng được ai nhìn thấy — dù test hay màn hình.
+
+  const chuThe = (ns: readonly { voucherId: string }[]) =>
+    ns.map((s) => ({ id: s.voucherId, postingStatus: 'POSTED', postingMode: 'CASH' }));
+
+  it('VAI GIỮ SỔ QUỸ đọc được bút toán: cọc ĐÃ xác minh ⇒ dải KHÔNG treo cảnh báo', () => {
+    const nguon = buildDepositSources(CA_THAT_TRUOC_HOAN).get(HD) ?? [];
+    expect(nguon).toHaveLength(2);
+
+    const coc = summariseDeposit(nguon, reconcilePostings(
+      chuThe(nguon),
+      nguon.map((s, k) => posting({ id: `p${k}`, posting_subject_id: s.voucherId })),
+      DOC_DUOC,
+    ));
+    expect(coc.hasUnverified).toBe(false);
+    expect(coc.evidence.map((e) => e.verification)).toEqual(['verified', 'verified']);
+
+    const v = buildLifecycleLanes({
+      ...nen, targetContractId: HD, subject: { kind: 'voucher', voucherKind: 'refund' },
+      contracts: [hopDong({ id: HD })],
+      segments: [doan({ contract_id: HD })],
+      depositByContract: new Map([[HD, coc]]),
+    });
+    expect(v.status.postings.kind).toBe('sufficient');
+    expect(v.target?.deposit?.netHeld).toBe(3_076_000);
+  });
+
+  it('CHỦ CÔNG TY không đọc nổi bút toán: CÙNG bộ nguồn ⇒ dải treo cảnh báo cần quyền giữ sổ', () => {
+    const nguon = buildDepositSources(CA_THAT_TRUOC_HOAN).get(HD) ?? [];
+
+    const coc = summariseDeposit(nguon, reconcilePostings(
+      chuThe(nguon), [], { readable: false, reason: 'Không đủ quyền đọc bút toán' },
+    ));
+    expect(coc.hasUnverified).toBe(true);
+
+    const v = buildLifecycleLanes({
+      ...nen, targetContractId: HD, subject: { kind: 'voucher', voucherKind: 'refund' },
+      contracts: [hopDong({ id: HD })],
+      segments: [doan({ contract_id: HD })],
+      depositByContract: new Map([[HD, coc]]),
+    });
+    expect(v.status.postings.kind).toBe('insufficient');
+    expect((v.status.postings as { reason: string }).reason).toMatch(/sổ quỹ/);
+    // Và số tiền KHÔNG vì thế mà tụt về 0 — chưa xác minh khác không có đồng nào.
+    expect(v.target?.deposit?.netHeld).toBe(3_076_000);
   });
 
   // -- "Hom nay" khac "ngay nghiep vu" -------------------------------------
