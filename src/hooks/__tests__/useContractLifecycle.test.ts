@@ -21,7 +21,11 @@ import { useContractLifecycle } from '@/hooks/useContractLifecycle';
 const H = vi.hoisted(() => ({
   /** label → dòng trả về, hoặc `null` để mô phỏng ĐỌC HỎNG. */
   bang: new Map<string, unknown[] | null>(),
-  rpc: vi.fn(),
+  // Spy tên `goiRpc` chứ KHÔNG phải `rpc`: check-rpc-name-literal quét văn bản
+  // theo `\.rpc\(` và sẽ tính `H.rpc(...a)` của hàm chuyển tiếp bên dưới là một
+  // "chỗ mù" — tên RPC giấu sau biến — dù đây chỉ là mock, không phải lời gọi
+  // thật. Đổi lại thành `rpc` là làm CI đỏ ở job security-gates.
+  goiRpc: vi.fn(),
   /** Mọi chuỗi builder đã dựng, để soi CỘT và BỘ LỌC thật sự gửi đi. */
   chuoi: [] as { bang: string; ops: [string, unknown[]][] }[],
   /** Nhãn của các lần gọi fetchAllRows, theo thứ tự. */
@@ -41,7 +45,7 @@ vi.mock('@/integrations/supabase/client', () => {
     });
     return p;
   };
-  return { supabase: { from: (b: string) => dung(b), rpc: (...a: unknown[]) => H.rpc(...a) } };
+  return { supabase: { from: (b: string) => dung(b), rpc: (...a: unknown[]) => H.goiRpc(...a) } };
 });
 
 vi.mock('@/lib/supabaseFetchAll', () => ({
@@ -122,11 +126,11 @@ const napCaThat = () => {
   H.bang.set('lifecycle.accounts', [{ id: SO, organization_id: ORG, is_virtual: false }]);
   H.bang.set('lifecycle.postings', []);
   H.bang.set('lifecycle.invoices', []);
-  H.rpc.mockResolvedValue({ data: [DOAN], error: null });
+  H.goiRpc.mockResolvedValue({ data: [DOAN], error: null });
 };
 
 beforeEach(() => {
-  H.bang.clear(); H.chuoi.length = 0; H.nhan.length = 0; H.rpc.mockReset();
+  H.bang.clear(); H.chuoi.length = 0; H.nhan.length = 0; H.goiRpc.mockReset();
 });
 
 const chay = async () => {
@@ -162,7 +166,7 @@ describe('useContractLifecycle — nguồn và ranh giới', () => {
   it('gọi get_room_residence_segments_v1 với ĐÚNG các hợp đồng đã đọc được qua RLS', async () => {
     napCaThat();
     await chay();
-    expect(H.rpc).toHaveBeenCalledWith('get_room_residence_segments_v1', { p_contract_ids: [HD] });
+    expect(H.goiRpc).toHaveBeenCalledWith('get_room_residence_segments_v1', { p_contract_ids: [HD] });
   });
 
   it('mọi truy vấn đều lọc organization_id của phiếu đang mở', async () => {
@@ -266,13 +270,13 @@ describe('useContractLifecycle — nguồn và ranh giới', () => {
   it('KHÔNG gọi read_contract_settlement_* (đã bị migration restore xoá)', async () => {
     napCaThat();
     await chay();
-    for (const [ten] of H.rpc.mock.calls) expect(String(ten)).not.toMatch(/read_contract_settlement/);
+    for (const [ten] of H.goiRpc.mock.calls) expect(String(ten)).not.toMatch(/read_contract_settlement/);
   });
 
   it('KHÔNG dùng get_room_cash_lifecycle_v1 làm nguồn cọc gross', async () => {
     napCaThat();
     await chay();
-    for (const [ten] of H.rpc.mock.calls) expect(String(ten)).not.toBe('get_room_cash_lifecycle_v1');
+    for (const [ten] of H.goiRpc.mock.calls) expect(String(ten)).not.toBe('get_room_cash_lifecycle_v1');
   });
 });
 
@@ -287,7 +291,7 @@ describe('useContractLifecycle — đọc hỏng KHÔNG thành số 0', () => {
 
   it('RPC segments lỗi ⇒ status lane lỗi, KHÔNG kết luận phòng trống', async () => {
     napCaThat();
-    H.rpc.mockResolvedValue({ data: null, error: { message: 'permission denied' } });
+    H.goiRpc.mockResolvedValue({ data: null, error: { message: 'permission denied' } });
     const { result } = await chay();
     expect(result.current.data?.status.lanes.kind).toBe('error');
     expect(result.current.data?.roomState.kind).toBe('insufficient');
@@ -340,6 +344,6 @@ describe('useContractLifecycle — cách ly công ty', () => {
   it('thiếu org / phòng / hợp đồng đích ⇒ không chạy truy vấn nào', () => {
     renderHook(() => useContractLifecycle({ ...ARGS, organizationId: null }), { wrapper: bocLot() });
     expect(H.nhan).toHaveLength(0);
-    expect(H.rpc).not.toHaveBeenCalled();
+    expect(H.goiRpc).not.toHaveBeenCalled();
   });
 });

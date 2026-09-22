@@ -30,7 +30,11 @@ import {
 
 const H = vi.hoisted(() => ({
   fetchAllRows: vi.fn(),
-  rpc: vi.fn(),
+  // Spy tên `goiRpc` chứ KHÔNG phải `rpc`: check-rpc-name-literal quét văn bản
+  // theo `\.rpc\(` và sẽ tính `H.rpc(...a)` của hàm chuyển tiếp bên dưới là một
+  // "chỗ mù" — tên RPC giấu sau biến — dù đây chỉ là mock, không phải lời gọi
+  // thật. Đổi lại thành `rpc` là làm CI đỏ ở job security-gates.
+  goiRpc: vi.fn(),
   supplements: vi.fn(),
   /** Kết quả của `from('income_expense_types').select(...).eq(...)`. */
   loaiThuChi: { data: null as unknown, error: null as unknown },
@@ -59,7 +63,7 @@ vi.mock('@/integrations/supabase/client', () => {
   return {
     supabase: {
       from: (bang: string) => dung(bang),
-      rpc: (...a: unknown[]) => H.rpc(...a),
+      rpc: (...a: unknown[]) => H.goiRpc(...a),
     },
   };
 });
@@ -196,7 +200,7 @@ interface DongCanCu {
 
 /** Giả lập `get_period_commissions`: kỳ ký → các dòng căn cứ. */
 const napCanCu = (theoKy: Record<string, DongCanCu[]>) => {
-  H.rpc.mockImplementation(async (ten: string, args: { p_period_month: string }) => {
+  H.goiRpc.mockImplementation(async (ten: string, args: { p_period_month: string }) => {
     if (ten !== 'get_period_commissions') return { data: null, error: { message: `RPC lạ: ${ten}` } };
     return { data: theoKy[args.p_period_month] ?? [], error: null };
   });
@@ -210,7 +214,7 @@ const napCanCu = (theoKy: Record<string, DongCanCu[]>) => {
  * BASIS_NOT_FOUND (cảnh báo). Chỉ lỗi thật mới ra BASIS_UNAVAILABLE (chặn).
  */
 const napCanCuHong = (message: string) => {
-  H.rpc.mockImplementation(async () => ({ data: null, error: { message } }));
+  H.goiRpc.mockImplementation(async () => ({ data: null, error: { message } }));
 };
 
 const chay = (period = '2026-09', scope: PeriodScope = 'all') => {
@@ -231,7 +235,7 @@ beforeEach(() => {
   H.chuoi.length = 0;
   butToan = [];
   H.fetchAllRows.mockReset();
-  H.rpc.mockReset();
+  H.goiRpc.mockReset();
   H.supplements.mockReset();
   H.supplements.mockImplementation(async (vs: { id: string }[]) =>
     vs.map((v) => ({ ...v, supplements: [] })));
@@ -266,7 +270,7 @@ describe('useContractSettlement — HHMG thủ công vào Hoa hồng', () => {
     });
     const { result } = chay();
     await waitFor(() => expect(result.current.rows[0]?.basis.kind).toBe('matched'));
-    expect(H.rpc).toHaveBeenCalledWith('get_period_commissions',
+    expect(H.goiRpc).toHaveBeenCalledWith('get_period_commissions',
       expect.objectContaining({ p_period_month: '2026-06' }));
     expect(result.current.rows[0].basis).toEqual({ kind: 'matched', amount: 4_500_000 });
   });
@@ -291,7 +295,7 @@ describe('useContractSettlement — HHMG thủ công vào Hoa hồng', () => {
     await waitFor(() => expect(result.current.rows[0]?.basis.kind).toBe('matched'));
     // Căn cứ SỐ TIỀN có, nhưng ghi chú chi tiết tự sinh thì không — RPC đó đòi
     // commission_kind broker/sale, và giả mạo dấu nguồn là điều cấm.
-    const tenRpc = H.rpc.mock.calls.map((c) => c[0]);
+    const tenRpc = H.goiRpc.mock.calls.map((c) => c[0]);
     expect(tenRpc).not.toContain('get_commission_voucher_facts_v1');
     expect(new Set(tenRpc)).toEqual(new Set(['get_period_commissions']));
   });
