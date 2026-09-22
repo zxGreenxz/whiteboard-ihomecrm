@@ -22,25 +22,43 @@ import { createElement, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { useContractSettlement } from '@/hooks/useContractSettlement';
+import { useContractSettlement, type UseContractSettlementArgs } from '@/hooks/useContractSettlement';
 import {
   CAN_CU_HOAN_TRA_KHI_MO_PHIEU, isBlocker, laneOf, matchScope, viewStatusOf,
   type PeriodScope,
 } from '@/lib/contractSettlement';
 
+const defer = <T,>() => {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => { resolve = done; });
+  return { promise, resolve };
+};
+
+const hookCache = (extra: Partial<UseContractSettlementArgs> = {}, client = new QueryClient({
+  defaultOptions: { queries: { retry: false, staleTime: 60_000 } },
+})) => {
+  const wrapper = ({ children }: { children: ReactNode }) => createElement(QueryClientProvider, { client }, children);
+  const args: UseContractSettlementArgs = { organizationId: ORG, buildingIds: [TOA], period: '2026-09', scope: 'current', ...extra };
+  return { client, ...renderHook((a: UseContractSettlementArgs) => useContractSettlement(a), { wrapper, initialProps: args }) };
+};
+
 const H = vi.hoisted(() => ({
+  actor: 'actor-a' as string | null,
   fetchAllRows: vi.fn(),
   // Spy tên `goiRpc` chứ KHÔNG phải `rpc`: check-rpc-name-literal quét văn bản
   // theo `\.rpc\(` và sẽ tính `H.rpc(...a)` của hàm chuyển tiếp bên dưới là một
   // "chỗ mù" — tên RPC giấu sau biến — dù đây chỉ là mock, không phải lời gọi
   // thật. Đổi lại thành `rpc` là làm CI đỏ ở job security-gates.
   goiRpc: vi.fn(),
+  rpcSignals: [] as AbortSignal[],
   supplements: vi.fn(),
   /** Kết quả của `from('income_expense_types').select(...).eq(...)`. */
   loaiThuChi: { data: null as unknown, error: null as unknown },
   /** Mọi chuỗi builder đã dựng, để soi CỘT và BỘ LỌC thật sự gửi đi. */
   chuoi: [] as { bang: string; ops: [string, unknown[]][] }[],
 }));
+
+vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ data: H.actor ? { id: H.actor } : null }) }));
 
 vi.mock('@/integrations/supabase/client', () => {
   const dung = (bang: string) => {
@@ -63,7 +81,18 @@ vi.mock('@/integrations/supabase/client', () => {
   return {
     supabase: {
       from: (bang: string) => dung(bang),
-      rpc: (...a: unknown[]) => H.goiRpc(...a),
+      rpc: (...a: unknown[]) => {
+        const value = H.goiRpc(...a);
+        return Object.assign(Promise.resolve(value), { abortSignal: (signal: AbortSignal) => {
+          H.rpcSignals.push(signal);
+          return new Promise((resolve, reject) => {
+            const cancel = () => reject(new DOMException('aborted', 'AbortError'));
+            if (signal.aborted) { cancel(); return; }
+            signal.addEventListener('abort', cancel, { once: true });
+            Promise.resolve(value).then(resolve, reject).finally(() => signal.removeEventListener('abort', cancel));
+          });
+        } });
+      },
     },
   };
 });
@@ -180,11 +209,18 @@ const nap = (ps: PhieuGia[], items: ItemGia[]) => {
     const coHangMuc = new Set(
       items.filter((i) => TRONG_KHU.has(i.income_expense_type_id)).map((i) => i.income_expense_id),
     );
+    const ops = H.chuoi.at(-1)?.ops ?? [];
+    const filtered = ps.filter((v) => ops.every(([op, args]) => {
+      if (op === 'eq' && args[0] === 'contract_id') return v.contract_id === args[1];
+      if (op === 'eq' && args[0] === 'id') return v.id === args[1];
+      if (op === 'in' && args[0] === 'id') return (args[1] as string[]).includes(v.id);
+      return true;
+    }));
     switch (label) {
-      case 'cs.d1': return ps.filter((v) => (v.system_source ?? '').startsWith('termination.refund'));
-      case 'cs.d2': return ps.filter((v) => (v.system_source ?? '').startsWith('reservation.refund'));
-      case 'cs.d3': return ps.filter((v) => v.commission_kind === 'broker' || v.commission_kind === 'sale');
-      case 'cs.d4': return ps.filter((v) => coHangMuc.has(v.id));
+      case 'cs.d1': return filtered.filter((v) => (v.system_source ?? '').startsWith('termination.refund'));
+      case 'cs.d2': return filtered.filter((v) => (v.system_source ?? '').startsWith('reservation.refund'));
+      case 'cs.d3': return filtered.filter((v) => v.commission_kind === 'broker' || v.commission_kind === 'sale');
+      case 'cs.d4': return filtered.filter((v) => coHangMuc.has(v.id));
       default: return [];
     }
   });
@@ -232,10 +268,12 @@ const locPhieu = () =>
   H.chuoi.filter((c) => c.bang === 'income_expenses').flatMap((c) => c.ops);
 
 beforeEach(() => {
+  H.actor = 'actor-a';
   H.chuoi.length = 0;
   butToan = [];
   H.fetchAllRows.mockReset();
   H.goiRpc.mockReset();
+  H.rpcSignals.length = 0;
   H.supplements.mockReset();
   H.supplements.mockImplementation(async (vs: { id: string }[]) =>
     vs.map((v) => ({ ...v, supplements: [] })));
@@ -985,5 +1023,263 @@ describe('useContractSettlement — hai phiếu giống hệt trừ UUID và tr�
     expect(theo.get(a)?.postedOn).toBeNull();
     expect(theo.get(b)?.status).toBe('paid');
     expect(theo.get(b)?.postedOn).toBe('2026-09-04');
+  });
+});
+
+describe('read scheduling, validation and cache boundaries', () => {
+  const hh = (id: string, month = '2026-06') => phieu({
+    id, contract_id: `contract-${id}`, commission_kind: 'broker',
+    contracts: hopDong(`HD-${id}`, `${month}-10`),
+  });
+
+  it('starts metadata branches while accounting items are still loading', async () => {
+    const itemRead = defer<ItemGia[]>();
+    nap([hh('one')], []);
+    const original = H.fetchAllRows.getMockImplementation()!;
+    H.fetchAllRows.mockImplementation((build: unknown, opts: { label: string }) =>
+      opts.label === 'contract-settlement.items' ? itemRead.promise : original(build, opts));
+    const { result, unmount } = hookCache();
+    try {
+      await waitFor(() => expect(H.fetchAllRows.mock.calls.map(c => c[1].label)).toContain('cs.d3'));
+      expect(result.current.isLoading).toBe(true);
+    } finally {
+      itemRead.resolve([]);
+      unmount();
+    }
+  });
+
+  it('returns base rows while delayed basis is blocked from the approval lane', async () => {
+    nap([hh('one')], []);
+    const basis = defer<{ data: DongCanCu[]; error: null }>();
+    H.goiRpc.mockReturnValue(basis.promise);
+    const { result } = hookCache();
+    await waitFor(() => expect(result.current.rows).toHaveLength(1));
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.isEnriching).toBe(true);
+    expect(result.current.rows[0].validationState).toBe('loading');
+    expect(laneOf(result.current.rows[0])).toBe('can-ra-soat');
+    await act(async () => { basis.resolve({ data: [], error: null }); });
+    await waitFor(() => expect(result.current.rows[0].validationState).toBe('ready'));
+    expect(result.current.rows[0].basis.kind).toBe('not-found');
+    expect(laneOf(result.current.rows[0])).toBe('cho-duyet');
+  });
+
+  it('keeps rows visible and blocks only the rows whose supplement read failed', async () => {
+    nap([hh('one'), phieu({ id: 'refund', system_source: 'termination.refund', approval_status: 'APPROVED' })], []);
+    H.supplements.mockRejectedValue(new Error('supplement offline'));
+    const { result } = hookCache();
+    await waitFor(() => expect(result.current.enrichmentError).toBeInstanceOf(Error));
+    expect(result.current.isError).toBe(false);
+    expect(result.current.rows.find(r => r.voucherId === 'one')?.validationState).toBe('error');
+    expect(result.current.rows.find(r => r.voucherId === 'refund')?.validationState).toBe('ready');
+  });
+
+  it('isolates one failed commission period while retaining another period basis', async () => {
+    nap([hh('june'), hh('august', '2026-08')], []);
+    H.goiRpc.mockImplementation(async (_: string, a: { p_period_month: string }) => a.p_period_month === '2026-06'
+      ? { data: null, error: { message: 'offline' } }
+      : { data: [{ contract_id: 'contract-august', expected_amount: 1_000_000, tier_percent: 100 }], error: null });
+    const { result } = hookCache();
+    await waitFor(() => expect(result.current.enrichmentError).toBeInstanceOf(Error));
+    expect(result.current.rows.find(r => r.voucherId === 'june')?.validationState).toBe('error');
+    expect(result.current.rows.find(r => r.voucherId === 'august')?.basis.kind).toBe('matched');
+  });
+
+  it.each([null, '', ' ', 'bad-number'])('does not turn malformed expected_amount %s into a valid zero basis', async (amount) => {
+    nap([{ ...hh('one'), total_amount: 0 }], []);
+    napCanCu({ '2026-06': [{ contract_id: 'contract-one', expected_amount: amount, tier_percent: 0 }] });
+    const h = hookCache();
+    await waitFor(() => expect(h.result.current.rows[0]?.validationState).toBe('error'));
+    expect(h.result.current.rows[0].basis.kind).toBe('unavailable');
+    expect(laneOf(h.result.current.rows[0])).toBe('can-ra-soat');
+    expect(h.result.current.enrichmentError).toBeInstanceOf(Error);
+  });
+
+  it('shares raw history across current/all and period changes, but not prior cutoff', async () => {
+    nap([hh('one')], []);
+    const h = hookCache();
+    await waitFor(() => expect(h.result.current.rows[0]?.validationState).toBe('ready'));
+    const initial = H.fetchAllRows.mock.calls.length;
+    h.rerender({ organizationId: ORG, buildingIds: [TOA], period: '2026-10', scope: 'all' });
+    await waitFor(() => expect(h.result.current.rows[0]?.validationState).toBe('ready'));
+    expect(H.fetchAllRows.mock.calls.length).toBe(initial);
+    h.rerender({ organizationId: ORG, buildingIds: [TOA], period: '2026-10', scope: 'prior' });
+    await waitFor(() => expect(H.fetchAllRows.mock.calls.length).toBeGreaterThan(initial));
+    expect(locPhieu()).toContainEqual(['lt', ['voucher_date', '2026-10-01']]);
+  });
+
+  it('reuses commission periods for a separately targeted modal query', async () => {
+    nap([hh('one'), hh('two', '2026-08')], []);
+    const h = hookCache();
+    await waitFor(() => expect(h.result.current.rows.every(r => r.validationState === 'ready') && h.result.current.rows.length === 2).toBe(true));
+    const calls = H.goiRpc.mock.calls.length;
+    const modal = hookCache({ contractId: 'contract-one', scope: 'prior', period: '2026-01' }, h.client);
+    await waitFor(() => expect(modal.result.current.rows).toHaveLength(1));
+    expect(modal.result.current.rows[0].voucherId).toBe('one');
+    expect(H.goiRpc.mock.calls.length).toBe(calls);
+    const scoped = H.chuoi.filter(c => c.bang === 'income_expenses' && c.ops.some(([op, a]) => op === 'eq' && a[0] === 'contract_id'));
+    expect(scoped.length).toBeGreaterThan(0);
+    expect(scoped.flatMap(c => c.ops).some(([op]) => op === 'lt')).toBe(false);
+  });
+
+  it('filters a modal request by voucher UUID and never returns a different voucher', async () => {
+    nap([hh('one'), hh('two')], []);
+    const h = hookCache({ voucherId: 'two' });
+    await waitFor(() => expect(h.result.current.rows).toHaveLength(1));
+    expect(h.result.current.rows[0].voucherId).toBe('two');
+    expect(locPhieu()).toContainEqual(['eq', ['id', 'two']]);
+  });
+
+  it('does not reuse the prior actor cache after an account change', async () => {
+    nap([hh('one')], []);
+    const h = hookCache();
+    await waitFor(() => expect(h.result.current.rows[0]?.validationState).toBe('ready'));
+    const count = H.fetchAllRows.mock.calls.length;
+    H.actor = 'actor-b';
+    nap([], []);
+    h.rerender({ organizationId: ORG, buildingIds: [TOA], period: '2026-09', scope: 'current' });
+    expect(h.result.current.rows).toEqual([]);
+    await waitFor(() => expect(H.fetchAllRows.mock.calls.length).toBeGreaterThan(count));
+    expect(h.result.current.rows).toEqual([]);
+  });
+
+  it('does not reuse a period basis across organizations', async () => {
+    nap([hh('one')], []);
+    const h = hookCache();
+    await waitFor(() => expect(h.result.current.rows[0]?.validationState).toBe('ready'));
+    const initial = H.goiRpc.mock.calls.length;
+    napCanCu({ '2026-06': [{ contract_id: 'contract-one', expected_amount: 1_000_000, tier_percent: 100 }] });
+    h.rerender({ organizationId: 'another-org', buildingIds: [TOA], period: '2026-09', scope: 'all' });
+    await waitFor(() => expect(h.result.current.rows[0]?.basis.kind).toBe('matched'));
+    expect(H.goiRpc.mock.calls.length).toBe(initial + 1);
+  });
+
+  it('hides prior account rows and disables reads when auth disappears', async () => {
+    nap([hh('one')], []);
+    const h = hookCache();
+    await waitFor(() => expect(h.result.current.rows[0]?.validationState).toBe('ready'));
+    const initial = H.fetchAllRows.mock.calls.length;
+    H.actor = null;
+    h.rerender({ organizationId: ORG, buildingIds: [TOA], period: '2026-09', scope: 'all' });
+    expect(h.result.current.rows).toEqual([]);
+    expect(H.fetchAllRows.mock.calls.length).toBe(initial);
+  });
+
+  it('keeps pending rows in review until supplements resolve, without blocking approved refunds', async () => {
+    nap([phieu({ id: 'pending', system_source: 'termination.refund' }),
+      phieu({ id: 'approved', system_source: 'termination.refund', approval_status: 'APPROVED' })], []);
+    const notes = defer<{ id: string; supplements: [] }[]>();
+    H.supplements.mockReturnValue(notes.promise);
+    const h = hookCache();
+    await waitFor(() => expect(h.result.current.rows).toHaveLength(2));
+    expect(laneOf(h.result.current.rows.find(r => r.voucherId === 'pending')!)).toBe('can-ra-soat');
+    expect(h.result.current.rows.find(r => r.voucherId === 'approved')?.validationState).toBe('ready');
+    await act(async () => { notes.resolve([{ id: 'pending', supplements: [] }]); });
+    await waitFor(() => expect(h.result.current.rows.find(r => r.voucherId === 'pending')?.validationState).toBe('ready'));
+  });
+
+  it('retries failed enrichment sources without hiding the existing rows', async () => {
+    nap([hh('one')], []);
+    napCanCuHong('offline');
+    H.supplements.mockRejectedValue(new Error('offline'));
+    const h = hookCache();
+    await waitFor(() => expect(h.result.current.rows[0]?.validationState).toBe('error'));
+    napCanCu({ '2026-06': [{ contract_id: 'contract-one', expected_amount: 1_000_000, tier_percent: 100 }] });
+    H.supplements.mockResolvedValue([{ id: 'one', supplements: [] }]);
+    await act(async () => { await h.result.current.refetch(); });
+    await waitFor(() => expect(h.result.current.rows[0]?.validationState).toBe('ready'));
+    expect(h.result.current.rows[0].basis.kind).toBe('matched');
+    expect(h.result.current.enrichmentError).toBeNull();
+    expect(H.goiRpc).toHaveBeenCalledTimes(2);
+    expect(H.supplements).toHaveBeenCalledTimes(2);
+  });
+
+  it('blocks stale rows while the raw read refreshes and when that refresh fails', async () => {
+    nap([hh('one')], []);
+    const h = hookCache();
+    await waitFor(() => expect(h.result.current.rows[0]?.validationState).toBe('ready'));
+    const read = defer<null>();
+    const original = H.fetchAllRows.getMockImplementation()!;
+    H.fetchAllRows.mockImplementation((build: unknown, opts: { label: string }) =>
+      opts.label === 'cs.d1' ? read.promise : original(build, opts));
+    let refreshing!: Promise<void>;
+    act(() => { refreshing = h.client.invalidateQueries({ queryKey: ['contract-settlement', 'vouchers'] }); });
+    await waitFor(() => expect(h.result.current.rows[0]?.validationState).toBe('loading'));
+    expect(h.result.current.isLoading).toBe(false);
+    await act(async () => { read.resolve(null); await refreshing; });
+    await waitFor(() => expect(h.result.current.rows[0]?.validationState).toBe('error'));
+    expect(h.result.current.rows).toHaveLength(1);
+  });
+
+  it('opts every settlement source into focus refetch despite global opt-out', async () => {
+    nap([hh('one')], []);
+    const h = hookCache({}, new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } } }));
+    await waitFor(() => expect(h.result.current.rows[0]?.validationState).toBe('ready'));
+    const queries = h.client.getQueryCache().findAll({ queryKey: ['contract-settlement'] });
+    expect(new Set(queries.map(q => q.queryKey[1])).size).toBe(4);
+    expect(queries.every(q => (q.options as { refetchOnWindowFocus?: boolean }).refetchOnWindowFocus === true)).toBe(true);
+  });
+
+  it('narrows the accounting-items join for targeted reads without applying a period cutoff', async () => {
+    nap([hh('one')], []);
+    const h = hookCache({ contractId: 'contract-one', voucherId: 'one', scope: 'prior', period: '2025-01' });
+    await waitFor(() => expect(h.result.current.rows).toHaveLength(1));
+    const ops = H.chuoi.filter(c => c.bang === 'income_expense_items').flatMap(c => c.ops);
+    expect(ops).toContainEqual(['eq', ['income_expenses.organization_id', ORG]]);
+    expect(ops).toContainEqual(['in', ['income_expenses.building_id', [TOA]]]);
+    expect(ops).toContainEqual(['eq', ['income_expenses.contract_id', 'contract-one']]);
+    expect(ops).toContainEqual(['eq', ['income_expense_id', 'one']]);
+    expect(ops.some(([op]) => op === 'lt')).toBe(false);
+  });
+
+  it('aborts active RPCs and removes queued months when the last observer unmounts', async () => {
+    nap(Array.from({ length: 9 }, (_, i) => hh(`v${i}`, `2026-${String(i + 1).padStart(2, '0')}`)), []);
+    H.goiRpc.mockImplementation(() => new Promise(() => {}));
+    const h = hookCache();
+    await waitFor(() => expect(H.goiRpc).toHaveBeenCalledTimes(4));
+    await act(async () => { h.unmount(); });
+    expect(H.rpcSignals.every(signal => signal.aborted)).toBe(true);
+    expect(H.goiRpc).toHaveBeenCalledTimes(4);
+    // Same limiter must still accept later work; no abandoned queue occupying slots.
+    nap([hh('one')], []);
+    napCanCu({});
+    const reopened = hookCache({ contractId: 'contract-one' }, h.client);
+    await waitFor(() => expect(reopened.result.current.rows[0]?.validationState).toBe('ready'));
+    reopened.unmount();
+  });
+
+  it('deduplicates metadata vouchers before D4 hydration and bounds all ID filters', async () => {
+    const rows = Array.from({ length: 123 }, (_, i) => phieu({ id: `v-${i}`, ...(i === 0 ? { commission_kind: 'broker' } : {}) }));
+    nap(rows, rows.map(v => ({ income_expense_id: v.id, income_expense_type_id: T_HHMG })));
+    const { result } = hookCache();
+    await waitFor(() => expect(result.current.rows).toHaveLength(123));
+    const hydration = H.chuoi.filter(c => c.bang === 'income_expenses').flatMap(c => c.ops)
+      .filter(([op, a]) => op === 'in' && a[0] === 'id').map(([, a]) => a[1] as string[]);
+    expect(hydration.flat()).not.toContain('v-0');
+    expect(hydration.every(ids => ids.length <= 50)).toBe(true);
+    expect(new Set(hydration.flat()).size).toBe(122);
+  });
+
+  it('runs independent commission periods concurrently with a shared maximum of four', async () => {
+    nap(Array.from({ length: 9 }, (_, i) => hh(`v${i}`, `2026-${String(i + 1).padStart(2, '0')}`)), []);
+    const completions: (() => void)[] = [];
+    let active = 0, peak = 0;
+    H.goiRpc.mockImplementation(() => new Promise(resolve => {
+      active++; peak = Math.max(peak, active);
+      completions.push(() => { active--; resolve({ data: [], error: null }); });
+    }));
+    const h = hookCache();
+    try {
+      await waitFor(() => expect(active).toBe(4));
+      for (let i = 0; i < 9; i++) {
+        await waitFor(() => expect(completions[i]).toBeTypeOf('function'));
+        await act(async () => { completions[i](); });
+      }
+      await waitFor(() => expect(h.result.current.isEnriching).toBe(false));
+      expect(peak).toBe(4);
+    } finally {
+      completions.splice(0).forEach(done => done());
+      h.unmount();
+    }
   });
 });

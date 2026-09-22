@@ -28,6 +28,7 @@ export const useCommissionVoucherFacts = (
     queryKey: ["commission-voucher-facts", voucherId ?? null],
     enabled: enabled && !!voucherId,
     staleTime: 30_000,
+    refetchOnWindowFocus: true,
     queryFn: async (): Promise<CommissionVoucherFacts | null> => {
       const { data, error } = await supabase.rpc(
         "get_commission_voucher_facts_v1",

@@ -92,20 +92,22 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
   const cat = feeCategoryOf(category);
   const catVisible = cat && (!cat.restricted || canRestricted);
   const fam = category === 'overview' || !catVisible ? 'over' : cat!.family;
+  const loadFeeDetails = show && fam !== 'CONTRACT_SETTLEMENT';
 
+  // Reader status nuôi badge menu; reader phụ trợ chưa dùng được hoãn riêng.
   const feeStatus = usePeriodFeeStatus(period, gridKeys, buildingIds, { enabled: show && buildingIds.length > 0 });
-  const feeAccounts = useFeeAccounts();
+  const feeAccounts = useFeeAccounts({ enabled: loadFeeDetails });
   const commissions = usePeriodCommissions(period, buildingIds, { enabled: show && buildingIds.length > 0 && (fam === 'over') });
   const prevPeriod = addMonths(period, -1);
   const prevCommissions = usePeriodCommissions(prevPeriod, buildingIds, { enabled: show && buildingIds.length > 0 && false });
   const maintenance = usePeriodMaintenance(period, buildingIds, { enabled: show && buildingIds.length > 0 && (fam === 'over' || fam === 'MAINTENANCE_BATCH') });
 
-  const EN = useUtilityPayState(period, buildings);
+  const EN = useUtilityPayState(period, buildings, { enabled: loadFeeDetails });
   const gridCat = cat?.family === 'GRID' ? cat : FEE_CATEGORIES.find((c) => c.family === 'GRID')!;
   // canForce: xem chú thích cùng tên ở PeriodFeePanel — `p_force` chỉ dành cho
   // chủ tổ chức / superadmin. Hai bề mặt DÙNG CHUNG state nhập liệu qua kho
   // module trong usePeriodFeeState (V3 §−1.6), không còn 2 Record độc lập.
-  const S = usePeriodFeeState(period, gridCat, buildings, feeStatus.statusOf, feeAccounts.accountOf, { canForce: canForceFee });
+  const S = usePeriodFeeState(period, gridCat, buildings, feeStatus.statusOf, feeAccounts.accountOf, { canForce: canForceFee, enabled: loadFeeDetails });
 
   const visibleIdsFor = (c: FeeCategory): string[] => {
     if (!c.elevatorGated) return buildingIds;
@@ -422,7 +424,11 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
                 <button type="button" className={'ub-due' + (onlyDue ? ' on' : '')} onClick={() => setOnlyDue((v) => !v)}>{onlyDue ? <Check /> : <span className="ub-due-box" />}Chưa đóng</button>
               </div>
               <div className="ubc-list">
-                {buildings.map((b) => {
+                {EN.detailsError ? <div className="c-empty" role="status">
+                  Không đọc được dữ liệu điện nước.
+                  <button type="button" className="ptt-btn ghost sm" onClick={() => { void EN.refetchDetails(); }}>Thử lại dữ liệu điện nước</button>
+                </div> : EN.loadingAccts || EN.loadingPay || EN.detailsLoading
+                  ? <div className="c-empty" role="status">Đang tải dữ liệu điện nước…</div> : buildings.map((b) => {
                   // Ô đã có phiếu (duyệt HOẶC chờ duyệt) không còn là việc phải làm.
                   const done = (r: MeterRow) => !!EN.paidThisKy(r.accountId) || !!EN.pendingThisKy(r.accountId);
                   const rows = EN.metersOf(b.id).filter((r) => (enType === 'all' || r.type === enType) && !(onlyDue && done(r)));
@@ -456,6 +462,13 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
 
               {gridTab === 'pay' && (
                 <div className="ubc-list">
+                  {feeAccounts.isError || S.detailsError ? <div className="c-empty" role="status">
+                    Không đọc được dữ liệu phí.
+                    <button type="button" className="ptt-btn ghost sm" onClick={() => {
+                      void feeAccounts.refetch(); void S.refetchDetails();
+                    }}>Thử lại dữ liệu phí</button>
+                  </div> : feeAccounts.isLoading || S.detailsLoading || feeStatus.isLoading
+                    ? <div className="c-empty" role="status">Đang tải dữ liệu phí…</div> : <>
                   {gridBlds.map(renderGridCard)}
                   {naRows.length > 0 && (
                     <div className="ptt-nagroup">
@@ -468,6 +481,7 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
                       ))}
                     </div>
                   )}
+                  </>}
                 </div>
               )}
 

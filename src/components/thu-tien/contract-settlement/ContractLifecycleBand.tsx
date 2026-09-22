@@ -14,8 +14,10 @@
 // ⚠ Lỗi, thiếu quyền và số 0 là BA THỨ KHÁC NHAU và phải nhìn khác nhau.
 // =============================================================================
 
+import { useEffect } from 'react';
 import { useContractLifecycle } from '@/hooks/useContractLifecycle';
 import type { LaneSubject, SectionStatus } from '@/lib/contractLifecycle';
+import type { ModalReadState } from './modalReadState';
 
 interface Props {
   organizationId: string | null;
@@ -35,6 +37,7 @@ interface Props {
    */
   ghiChuHoan?: { text: string; mau: string } | null;
   hint?: string;
+  onReadStateChange?: (state: ModalReadState) => void;
 }
 
 const laPhieuHoan = (s: LaneSubject) => s.kind === 'voucher' && s.voucherKind === 'refund';
@@ -51,25 +54,39 @@ function DongTrangThai({ ten, st }: { ten: string; st: SectionStatus }) {
 
 export function ContractLifecycleBand({
   organizationId, roomId, contractId, subject, businessDate,
-  sourceLabel, sourceText, ghiChuHoan, hint,
+  sourceLabel, sourceText, ghiChuHoan, hint, onReadStateChange,
 }: Props) {
   const q = useContractLifecycle({
     organizationId, roomId, targetContractId: contractId, subject, businessDate,
   });
   const v = q.data;
+  // Các phần cọc/hoá đơn/bút toán có thể thiếu quyền riêng. Giữ cảnh báo ở
+  // từng phần, không biến giới hạn báo cáo đó thành quyền duyệt/chi mới.
+  const readState: ModalReadState = !organizationId || !contractId ? 'insufficient'
+    : q.isLoading || q.isFetching ? 'loading'
+      : q.isError ? 'error'
+        : !v || Object.values(v.status).some((s) => s.kind !== 'sufficient') ? 'insufficient'
+          : 'ready';
+  useEffect(() => { onReadStateChange?.(readState); }, [onReadStateChange, readState]);
 
   return (
     <div className="cs-life">
       <div className="cs-life-top">
         <b>Vòng đời hợp đồng của phòng</b>
         <span>
-          {q.isLoading ? 'Đang tra lịch sử phòng…'
+          {q.isLoading || q.isFetching ? 'Đang tra lịch sử phòng…'
             : q.isError ? 'Không đọc được lịch sử phòng — số liệu bên dưới chưa đầy đủ.'
             : !contractId ? 'Chưa gắn hợp đồng nên không dựng được vòng đời.'
             : !v ? 'Không tìm thấy hợp đồng.'
             : hint ?? 'Số liệu dựng từ chính các phiếu cọc, hoá đơn và bản ghi thanh lý'}
         </span>
       </div>
+
+      {q.isError && (
+        <button type="button" className="cs-btn sm" onClick={() => { void q.refetch(); }}>
+          Thử lại lịch sử hợp đồng
+        </button>
+      )}
 
       {v && v.lanes.map((lane) => (
         <div className={`cs-lane${lane.target ? ' target' : ''}`} key={lane.contractId}>

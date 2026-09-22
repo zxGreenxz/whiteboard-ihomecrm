@@ -16,7 +16,9 @@ import type { ReactElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const H = vi.hoisted(() => ({ ket: { data: null as unknown, isLoading: false, isError: false } }));
+const H = vi.hoisted(() => ({ ket: { data: null as unknown, isLoading: false, isError: false } as {
+  data: unknown; isLoading: boolean; isError: boolean; isFetching?: boolean;
+} }));
 
 vi.mock('@/hooks/useContractLifecycle', () => ({
   useContractLifecycle: () => H.ket,
@@ -88,7 +90,7 @@ const viewCaThat = () => buildLifecycleLanes({
   }],
   terminations: [{
     id: 't1', contract_id: HD, organization_id: ORG, termination_date: '2026-09-20',
-    termination_type: 'NORMAL', refund_amount: 3_076_000, outstanding_debt: 0,
+    status: 'COMPLETED', termination_type: 'NORMAL', refund_amount: 3_076_000, outstanding_debt: 0,
     total_deposit: 4_500_000,
   }],
   depositByContract: new Map([[HD, cocCaThat()]]),
@@ -134,7 +136,7 @@ describe('ContractLifecycleBand — mốc cọc', () => {
     H.ket = { data: viewCaThat(), isLoading: false, isError: false };
     const html = ve(<ContractLifecycleBand {...props} />);
     expect(html).toContain('Quyết toán hoàn 3.076.000 đ');
-    expect(html).toContain('Nợ sau quyết toán');
+    expect(html).toContain('Công nợ đưa vào quyết toán');
   });
 });
 
@@ -151,7 +153,7 @@ describe('ContractLifecycleBand — nhiều lane và chân dải', () => {
         { contract_id: HD, contract_number: 'HD-B', seg_index: 0, room_id: PHONG, room_name: '401', from_date: '2024-10-28', to_date: null, source_path: 'CONTRACT_START', transfer_id: null, trusted: true, diagnostic: null },
         { contract_id: HD_SAU, contract_number: 'HD-C', seg_index: 0, room_id: PHONG, room_name: '401', from_date: '2026-09-21', to_date: null, source_path: 'CONTRACT_START', transfer_id: null, trusted: true, diagnostic: null },
       ],
-      terminations: [{ id: 't1', contract_id: HD, organization_id: ORG, termination_date: '2026-09-20', termination_type: 'NORMAL', refund_amount: 3_076_000, outstanding_debt: 0, total_deposit: 4_500_000 }],
+      terminations: [{ id: 't1', contract_id: HD, organization_id: ORG, termination_date: '2026-09-20', status: 'COMPLETED', termination_type: 'NORMAL', refund_amount: 3_076_000, outstanding_debt: 0, total_deposit: 4_500_000 }],
       depositByContract: new Map([[HD, cocCaThat()]]),
       invoiceByContract: new Map(),
       reads: DOC_TOT,
@@ -182,6 +184,10 @@ describe('ContractLifecycleBand — nhiều lane và chân dải', () => {
 });
 
 describe('ContractLifecycleBand — lỗi và thiếu dữ liệu KHÁC số 0', () => {
+  it('cached lifecycle đang refetch vẫn hiện đang tra lịch sử', () => {
+    H.ket = { data: viewCaThat(), isLoading: false, isFetching: true, isError: false };
+    expect(ve(<ContractLifecycleBand {...props} />)).toContain('Đang tra lịch sử phòng');
+  });
   it('đang tải: không in số nào', () => {
     H.ket = { data: null, isLoading: true, isError: false };
     const html = ve(<ContractLifecycleBand {...props} />);

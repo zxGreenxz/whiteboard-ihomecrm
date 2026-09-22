@@ -51,6 +51,7 @@ import {
   type BusinessPerformanceInvalidationRule,
   type SyncEntry,
 } from "@/hooks/realtime";
+import { createSettlementInvalidationCollector, isSettlementQueryKey } from '@/hooks/realtime/settlementInvalidation';
 
 function matchesBusinessPerformanceRule(
   queryKey: readonly unknown[],
@@ -91,10 +92,10 @@ function flushEntry(qc: QueryClient, entry: SyncEntry, tiengVong: boolean) {
   // `tiengVong` = tiếng vọng của mutation vừa chạy trên CHÍNH máy này (xem
   // localWriteEcho.ts): gộp cả entry về một lượt chạm query active, bỏ hâm cache.
   if (tiengVong) {
-    qc.invalidateQueries(locTiengVongNoiBo(entry.keys));
+    qc.invalidateQueries(locTiengVongNoiBo(entry.keys.filter((key) => !isSettlementQueryKey(key))));
   } else {
     for (const key of entry.keys) {
-      if (key[0] === "business-performance") continue;
+      if (key[0] === "business-performance" || isSettlementQueryKey(key)) continue;
       qc.invalidateQueries({ queryKey: key as unknown[] });
     }
   }
@@ -174,6 +175,7 @@ function dungHub(qc: QueryClient, userId: string): () => void {
     const pendingBusinessPerformanceTables = new Set<SyncTable>();
     let businessPerformanceTimer: ReturnType<typeof setTimeout> | undefined;
     let businessPerformanceMocDauCum = 0;
+    const settlement = createSettlementInvalidationCollector(qc);
     let channel = supabase.channel(`crm-data-sync-${userId}`);
     for (const entry of SYNC_TABLES) {
       channel = channel.on(
@@ -181,6 +183,7 @@ function dungHub(qc: QueryClient, userId: string): () => void {
         { event: "*", schema: "public", table: entry.table },
         () => {
           const bayGio = Date.now();
+          settlement.enqueue(entry.table, bayGio);
 
           if (getBusinessPerformanceRules(entry.table)) {
             pendingBusinessPerformanceTables.add(entry.table);
@@ -198,10 +201,8 @@ function dungHub(qc: QueryClient, userId: string): () => void {
             }, delayConTrongTran(businessPerformanceMocDauCum, bayGio));
           }
 
-          const hasTableScopedWork =
-            entry.domain ||
-            entry.keys.some((key) => key[0] !== "business-performance");
-          if (!hasTableScopedWork) return;
+          if (!entry.domain && !entry.keys.some((key) =>
+            key[0] !== "business-performance" && !isSettlementQueryKey(key))) return;
 
           const prev = timers.get(entry.table);
           if (prev) clearTimeout(prev.timer);
@@ -243,6 +244,7 @@ function dungHub(qc: QueryClient, userId: string): () => void {
       dangTuDon = true;
       timers.forEach((t) => clearTimeout(t.timer));
       if (businessPerformanceTimer) clearTimeout(businessPerformanceTimer);
+      settlement.dispose();
       pendingBusinessPerformanceTables.clear();
       supabase.removeChannel(channel);
     };

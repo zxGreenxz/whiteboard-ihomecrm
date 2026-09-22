@@ -171,8 +171,14 @@ function invalidatedReportRoots() {
     .filter((queryKey) => NEW_REPORT_ROOTS.has(String(queryKey[0])));
 }
 
+// Existing domain budgets stay scoped to those domains; settlement has its own burst test.
+function originalInvalidations() {
+  return harness.invalidateQueries.mock.calls.filter(([filters]) =>
+    !['contract-settlement', 'termination-refund-facts', 'commission-voucher-facts'].includes(String(filters.queryKey?.[0])));
+}
+
 function invalidatedRoots() {
-  return harness.invalidateQueries.mock.calls.map(([filters]) =>
+  return originalInvalidations().map(([filters]) =>
     String((filters.queryKey as unknown[])[0]),
   );
 }
@@ -251,6 +257,58 @@ describe("useRealtimeDataSync report invalidation", () => {
     harness.queryClient.clear();
     vi.unstubAllGlobals();
     vi.useRealTimers();
+  });
+
+  it('refreshes an active settlement query once for a burst across money tables', async () => {
+    let starts = 0;
+    const observer = new QueryObserver(harness.queryClient, {
+      queryKey: ['contract-settlement', 'vouchers', 'org-a'],
+      initialData: ['old'], staleTime: Infinity,
+      queryFn: () => { starts += 1; return new Promise<string[]>(() => {}); },
+    });
+    const unsubscribe = observer.subscribe(() => {});
+    useRealtimeDataSync();
+    getRealtimeHandler('income_expenses')();
+    getRealtimeHandler('income_expense_items')();
+    getRealtimeHandler('accounts')();
+    await vi.advanceTimersByTimeAsync(800);
+    expect(starts).toBe(1);
+    unsubscribe();
+  });
+
+  it.each(['termination-refund-facts', 'commission-voucher-facts'])('refreshes open modal %s once per cross-table burst', async (root) => {
+    let starts = 0;
+    const observer = new QueryObserver(harness.queryClient, {
+      queryKey: [root, 'voucher-a'], initialData: { amount: 1 }, staleTime: Infinity,
+      queryFn: () => { starts++; return new Promise<{ amount: number }>(() => {}); },
+    });
+    const unsubscribe = observer.subscribe(() => {});
+    useRealtimeDataSync();
+    getRealtimeHandler('income_expenses')();
+    getRealtimeHandler('income_expense_items')();
+    getRealtimeHandler('contracts')();
+    await vi.advanceTimersByTimeAsync(800);
+    expect(starts).toBe(1);
+    unsubscribe();
+  });
+
+  it.each([
+    ['income_expense_supplements', 'supplements'],
+    ['invoices', 'lifecycle'],
+    ['contracts', 'movements'],
+    ['contract_terminations', 'lifecycle'],
+    ['contract_transfers', 'lifecycle'],
+    ['reservation_deposit_settlements', 'movements'],
+    ['customers', 'vouchers'],
+  ])('refreshes settlement %s dependency without invalidating unrelated type definitions', (table, subtype) => {
+    const key = ['contract-settlement', subtype, 'org-a'];
+    const typeKey = ['contract-settlement', 'types', 'org-a'];
+    harness.queryClient.setQueryData(key, []);
+    harness.queryClient.setQueryData(typeKey, []);
+    useRealtimeDataSync();
+    triggerTable(table);
+    expect(harness.queryClient.getQueryState(key)?.isInvalidated).toBe(true);
+    expect(harness.queryClient.getQueryState(typeKey)?.isInvalidated).toBe(false);
   });
 
   it.each([
@@ -608,7 +666,7 @@ describe("useRealtimeDataSync report invalidation", () => {
     vi.advanceTimersByTime(800);
 
     expect(invalidatedRoots()).not.toContain("business-performance");
-    expect(harness.invalidateQueries).toHaveBeenCalledTimes(8);
+    expect(originalInvalidations()).toHaveLength(8);
     expect(harness.removeChannel).toHaveBeenCalledTimes(1);
   });
 
@@ -623,7 +681,7 @@ describe("useRealtimeDataSync report invalidation", () => {
     expect(harness.invalidateQueries).not.toHaveBeenCalled();
 
     vi.advanceTimersByTime(1);
-    expect(harness.invalidateQueries).toHaveBeenCalledTimes(1);
+    expect(originalInvalidations()).toHaveLength(1);
     expect(invalidatedRoots()).toEqual(["business-performance"]);
   });
 
@@ -661,7 +719,7 @@ describe("useRealtimeDataSync report invalidation", () => {
     // Entry "customers" có 2 key (["customers"], ["customer-stats"]) ⇒ một lần
     // flush là đúng 2 lời gọi invalidateQueries. Nhiều hơn nghĩa là đã flush
     // nhiều lần, tức trần chờ đã ăn mất tác dụng gộp.
-    expect(harness.invalidateQueries).toHaveBeenCalledTimes(2);
+    expect(originalInvalidations()).toHaveLength(2);
   });
 
   it("starts a fresh ceiling for the next burst after a flush", () => {
@@ -670,16 +728,16 @@ describe("useRealtimeDataSync report invalidation", () => {
 
     handler();
     vi.advanceTimersByTime(800);
-    expect(harness.invalidateQueries).toHaveBeenCalledTimes(2);
+    expect(originalInvalidations()).toHaveLength(2);
 
     // Cụm thứ hai phải được hưởng trọn 800ms debounce của riêng nó. Nếu mốc
     // đầu cụm không được đặt lại, cụm này sẽ bị tính là đã quá hạn và flush
     // ngay lập tức — gộp bão hỏng từ cụm thứ hai trở đi.
     handler();
     vi.advanceTimersByTime(799);
-    expect(harness.invalidateQueries).toHaveBeenCalledTimes(2);
+    expect(originalInvalidations()).toHaveLength(2);
     vi.advanceTimersByTime(1);
-    expect(harness.invalidateQueries).toHaveBeenCalledTimes(4);
+    expect(originalInvalidations()).toHaveLength(4);
   });
 
   it("cancels pending invalidation during cleanup", () => {
@@ -722,8 +780,8 @@ describe("useRealtimeDataSync report invalidation", () => {
     triggerTable("customers");
 
     // Entry `customers` có 2 key ⇒ đường cũ là 2 lượt. Gộp còn 1.
-    expect(harness.invalidateQueries).toHaveBeenCalledTimes(1);
-    const [filters] = harness.invalidateQueries.mock.calls[0] as [
+    expect(originalInvalidations()).toHaveLength(1);
+    const [filters] = originalInvalidations()[0] as [
       {
         queryKey?: unknown;
         refetchType?: string;
@@ -743,7 +801,7 @@ describe("useRealtimeDataSync report invalidation", () => {
     triggerTable("contracts");
 
     // Đường cũ: 8 key ngoài business-performance + 1 lượt gom báo cáo = 9.
-    expect(harness.invalidateQueries).toHaveBeenCalledTimes(2);
+    expect(originalInvalidations()).toHaveLength(2);
   });
 
   it("chỉ bảng ĐƯỢC đánh dấu mới vào cửa sổ — bảng khác giữ nguyên đường đầy đủ", () => {
@@ -751,7 +809,7 @@ describe("useRealtimeDataSync report invalidation", () => {
     markLocalWrite(["contracts"]);
     triggerTable("customers");
 
-    expect(harness.invalidateQueries).toHaveBeenCalledTimes(2);
+    expect(originalInvalidations()).toHaveLength(2);
     expect(invalidatedRoots()).toEqual(["customers", "customer-stats"]);
   });
 
@@ -761,7 +819,7 @@ describe("useRealtimeDataSync report invalidation", () => {
     vi.advanceTimersByTime(3001);
     triggerTable("customers");
 
-    expect(harness.invalidateQueries).toHaveBeenCalledTimes(2);
+    expect(originalInvalidations()).toHaveLength(2);
   });
 
   it("một event ngoài cửa sổ trong cùng cụm kéo cả cụm về đường đầy đủ", () => {
@@ -774,7 +832,7 @@ describe("useRealtimeDataSync report invalidation", () => {
     handler(); // đã ngoài cửa sổ ⇒ có thể là thay đổi của MÁY KHÁC
     vi.advanceTimersByTime(800);
 
-    expect(harness.invalidateQueries).toHaveBeenCalledTimes(2);
+    expect(originalInvalidations()).toHaveLength(2);
   });
 
   // ── CỬA CHẶN PREFETCH (plan con B, mục 2) ────────────────────────────────

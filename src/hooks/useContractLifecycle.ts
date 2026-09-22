@@ -109,6 +109,7 @@ export function useContractLifecycle(a: ContractLifecycleArgs) {
     ],
     enabled,
     staleTime: 60_000,
+    refetchOnWindowFocus: true,
     queryFn: async (): Promise<LifecycleView> => {
       const org = a.organizationId!;
       const target = a.targetContractId!;
@@ -122,9 +123,8 @@ export function useContractLifecycle(a: ContractLifecycleArgs) {
       // ── 1. Hợp đồng ứng viên, LỌC QUA RLS theo org + phòng ───────────────
       // Phòng là trục, không phải cây hợp đồng: production không có liên kết
       // cha-con nào đáng tin (`parent_contract_id` 0/366, đo 27/08/2026).
-      let idsQuaTransfer: string[] = [];
-      if (roomId) {
-        const tr = await fetchAllRows<{ contract_id: string | null }>(
+      const transfersQuery = roomId
+        ? fetchAllRows<{ contract_id: string | null }>(
           (f, t) => (supabase
             .from('contract_transfers')
             .select('id, contract_id, old_room_id, new_room_id, status') as unknown as LocBuilder)
@@ -134,20 +134,16 @@ export function useContractLifecycle(a: ContractLifecycleArgs) {
             .order('id', { ascending: true })
             .range(f, t),
           { label: 'lifecycle.transfers' },
-        );
-        if (tr === null) {
-          reads.transfers = hong('Không đọc được lịch sử chuyển phòng');
-        } else {
-          idsQuaTransfer = [...new Set(tr.map((x) => x.contract_id).filter((x): x is string => !!x))];
-        }
-      } else {
+        )
+        : Promise.resolve([]);
+      if (!roomId) {
         // Không có phòng thì không có lịch sử phòng để dựng. Nói thẳng, đừng
         // vẽ một chuỗi chỉ gồm hợp đồng đích rồi để người đọc tưởng là đủ.
         reads.contracts = hong('Phiếu chưa gắn phòng nên không dựng được lịch sử phòng');
       }
 
-      const theoPhong = roomId
-        ? await fetchAllRows<LifecycleContractRow>(
+      const roomContractsQuery = roomId
+        ? fetchAllRows<LifecycleContractRow>(
             (f, t) => (supabase.from('contracts').select(HD_COT) as unknown as LocBuilder)
               .eq('organization_id', org)
               .eq('room_id', roomId)
@@ -157,7 +153,11 @@ export function useContractLifecycle(a: ContractLifecycleArgs) {
               .range(f, t),
             { label: 'lifecycle.contracts-room' },
           )
-        : [];
+        : Promise.resolve([]);
+      // Hai nguồn độc lập: không bắt hợp đồng phòng đợi lịch sử chuyển phòng.
+      const [tr, theoPhong] = await Promise.all([transfersQuery, roomContractsQuery]);
+      if (tr === null) reads.transfers = hong('Không đọc được lịch sử chuyển phòng');
+      const idsQuaTransfer = [...new Set((tr ?? []).map((x) => x.contract_id).filter((x): x is string => !!x))];
       if (theoPhong === null) throw new Error('Không đọc được hợp đồng của phòng — thử lại.');
 
       const daCo = new Set(theoPhong.map((c) => c.id));
@@ -183,32 +183,33 @@ export function useContractLifecycle(a: ContractLifecycleArgs) {
       // Truyền ĐÚNG các ID đã đọc được qua RLS. Gọi mở (NULL) rồi coi kết quả
       // là toàn bộ sự thật là sai — RPC vẫn lọc theo quyền, nên "không thấy"
       // không có nghĩa là "không có".
-      let segments: ResidenceSegmentRow[] = [];
-      if (hdIds.length > 0) {
+      const readSegments = async (): Promise<{ rows: ResidenceSegmentRow[]; read: LifecycleReads['segments'] }> => {
+        if (hdIds.length === 0) return { rows: [], read: { ok: true } };
         const { data, error } = await supabase.rpc('get_room_residence_segments_v1', {
           p_contract_ids: hdIds,
         });
         if (error) {
-          reads.segments = hong(`Không đọc được lịch sử cư trú: ${error.message}`);
+          return { rows: [], read: hong(`Không đọc được lịch sử cư trú: ${error.message}`) };
         } else {
           // Biên kiểm tra: `rpc` trả `Json`, ép thẳng là nhận một lời hứa chưa
           // ai kiểm. Dòng sai hình dạng bị loại VÀ đếm — thứ tự lane dựng trên
           // dữ liệu thiếu thì phải báo thiếu, không được vẽ như đã đủ.
           const ps = parseResidenceSegments(data);
-          segments = ps.rows;
-          if (ps.rejected > 0) {
-            reads.segments = hong(
+          return {
+            rows: ps.rows,
+            read: ps.rejected > 0 ? hong(
               `Lịch sử cư trú có ${ps.rejected} dòng sai hình dạng — thứ tự hợp đồng chưa chắc đúng`,
-            );
-          }
+            ) : { ok: true },
+          };
         }
-      }
+      };
 
       // ── 3. Thanh lý, nguồn cọc, hoá đơn ─────────────────────────────────
-      const [ketThuc, links, truc, hoaDon] = await Promise.all([
+      const [segmentResult, ketThuc, links, truc, hoaDon] = await Promise.all([
+        readSegments(),
         hdIds.length ? fetchAllRows<TerminationRow>(
           (f, t) => (supabase.from('contract_terminations').select(
-            'id, contract_id, organization_id, termination_date, termination_type, refund_amount, outstanding_debt, total_deposit',
+            'id, contract_id, organization_id, status, termination_date, termination_type, refund_amount, outstanding_debt, total_deposit',
           ) as unknown as LocBuilder)
             .eq('organization_id', org)
             .in('contract_id', hdIds)
@@ -253,6 +254,8 @@ export function useContractLifecycle(a: ContractLifecycleArgs) {
           { label: 'lifecycle.invoices' },
         ) : Promise.resolve([] as InvoiceRow[]),
       ]);
+      const segments = segmentResult.rows;
+      reads.segments = segmentResult.read;
 
       // Thanh lý quyết định nhãn "Đã thanh lý" và cả mốc 4. Đọc hỏng mà vẫn vẽ
       // thì một hợp đồng đã thanh lý có thể đội lốt "HĐ hiện tại" — fail-closed.

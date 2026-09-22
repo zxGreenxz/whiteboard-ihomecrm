@@ -39,10 +39,11 @@
 // nhất và KHÔNG bịa `commission_kind` để ép cái thứ hai chạy.
 // =============================================================================
 
-import { useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useCallback, useMemo } from 'react';
+import { useQueries, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
+import { useAuth } from '@/hooks/useAuth';
+import { fetchSettlementRows, settlementIdBatches, settlementReadLimiter, type SettlementReadLimiter } from '@/lib/contractSettlementReads';
 import { supabase } from '@/integrations/supabase/client';
-import { fetchAllRows } from '@/lib/supabaseFetchAll';
 import { hydrateIncomeExpenseSupplements } from '@/hooks/income-expenses/supplements';
 import {
   resolveSettlementKind, settlementTypeMatches,
@@ -70,6 +71,9 @@ export interface UseContractSettlementArgs {
    * cũng không phải mọi trạng thái.
    */
   scope?: PeriodScope;
+  /** Modal đọc riêng một hợp đồng/phiếu qua cùng RLS, không cắt kỳ. */
+  contractId?: string;
+  voucherId?: string;
   enabled?: boolean;
 }
 
@@ -179,16 +183,21 @@ const COT = [
  * Bảng nhỏ (đo thật: 209 dòng toàn hệ thống, 106 ở org THẬT) nên tải hết rồi
  * lọc bằng `settlementTypeMatches` ở client — không cần SQL khớp chuỗi.
  */
-const useSettlementTypeMap = (organizationId: string | null | undefined, enabled: boolean) =>
+const useSettlementTypeMap = (
+  organizationId: string | null | undefined, actorId: string | undefined,
+  enabled: boolean, limiter: SettlementReadLimiter,
+) =>
   useQuery({
-    queryKey: ['contract-settlement', 'types', organizationId],
+    queryKey: ['contract-settlement', 'types', actorId, organizationId],
     enabled: enabled && !!organizationId,
     staleTime: 5 * 60_000,
-    queryFn: async (): Promise<Map<string, SettlementKind>> => {
+    refetchOnWindowFocus: true,
+    queryFn: ({ signal }): Promise<Map<string, SettlementKind>> => limiter.run(signal, async () => {
       const { data, error } = await supabase
         .from('income_expense_types')
         .select('id, category, name')
-        .eq('organization_id', organizationId!);
+        .eq('organization_id', organizationId!)
+        .abortSignal(signal);
       if (error) throw new Error(error.message);
       const m = new Map<string, SettlementKind>();
       for (const t of data ?? []) {
@@ -196,7 +205,7 @@ const useSettlementTypeMap = (organizationId: string | null | undefined, enabled
         if (kind) m.set(t.id, kind);
       }
       return m;
-    },
+    }),
   });
 
 /**
@@ -213,7 +222,8 @@ interface LocBuilder {
   lt(col: string, v: unknown): LocBuilder;
   like(col: string, v: string): LocBuilder;
   order(col: string, o: { ascending: boolean }): LocBuilder;
-  range(from: number, to: number): unknown;
+  abortSignal(signal: AbortSignal): LocBuilder;
+  range(from: number, to: number): PromiseLike<{ data: unknown; error: unknown }>;
 }
 
 /**
@@ -235,14 +245,16 @@ interface LocBuilder {
  */
 const apDieuKienChung = (
   q: LocBuilder,
-  a: { organizationId: string; buildingIds: string[]; scope: PeriodScope; period: string },
+  a: { organizationId: string; buildingIds: string[]; cutoff: string | null; contractId?: string; voucherId?: string },
 ) => {
   let r = q
     .eq('organization_id', a.organizationId)
     .eq('type', 'EXPENSE')
     .is('deleted_at', null)
     .in('building_id', a.buildingIds);
-  if (a.scope === 'prior') r = r.lt('voucher_date', `${a.period}-01`);
+  if (a.cutoff) r = r.lt('voucher_date', a.cutoff);
+  if (a.contractId) r = r.eq('contract_id', a.contractId);
+  if (a.voucherId) r = r.eq('id', a.voucherId);
   return r.order('voucher_date', { ascending: false }).order('id', { ascending: true });
 };
 
@@ -278,6 +290,8 @@ interface NgayGhiSo {
 async function docNgayGhiSo(
   organizationId: string,
   list: readonly VoucherRow[],
+  signal: AbortSignal,
+  limiter: SettlementReadLimiter,
 ): Promise<NgayGhiSo> {
   const theoPhieu = new Map<string, string>();
   // Chỉ phiếu ĐÃ GHI SỔ mới có ngày chi. Phiếu hoàn tác/không ghi quỹ/chờ chi
@@ -286,18 +300,20 @@ async function docNgayGhiSo(
   const ids = [...new Set(canTra.map((v) => v.active_posting_id_v2!))];
   if (ids.length === 0) return { state: true, theoPhieu };
 
-  const dong = await fetchAllRows<{ id: string; posted_on: string | null }>(
+  const batches = await Promise.all(settlementIdBatches(ids).map(batch => limiter.run(signal, () => fetchSettlementRows<{ id: string; posted_on: string | null }>(
     (f, t) => (supabase.from('income_expense_postings')
       .select('id, organization_id, posted_on') as unknown as LocBuilder)
       .eq('organization_id', organizationId)
-      .in('id', ids)
+      .in('id', batch)
       .order('id', { ascending: true })
-      .range(f, t) as never,
-    { label: 'cs.postings' },
-  );
+      .abortSignal(signal)
+      .range(f, t),
+    { label: 'cs.postings', signal },
+  ))));
   // ⚠ null = đọc HỎNG. Không ném: mất bút toán chỉ làm ngày chi chưa xác minh,
   // còn ném thì cả bảng khoản chi biến mất vì một thứ phụ.
-  if (dong === null) return { state: false, theoPhieu };
+  if (batches.some(batch => batch === null)) return { state: false, theoPhieu };
+  const dong = batches.flatMap(batch => batch ?? []);
 
   const theoButToan = new Map<string, string>();
   for (const p of dong) if (p.posted_on) theoButToan.set(p.id, p.posted_on);
@@ -328,7 +344,8 @@ interface CanCuHoaHong {
  * `Number(null)` là 0 — dùng thẳng nó ở đây là xoá mất ca thiếu bậc.
  */
 const soHoacNull = (v: number | string | null | undefined): number | null => {
-  if (v === null || v === undefined || v === '') return null;
+  if (typeof v !== 'number' && typeof v !== 'string') return null;
+  if (typeof v === 'string' && v.trim() === '') return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
 };
@@ -348,87 +365,91 @@ interface KetQuaDocPhieu {
 }
 
 export function useContractSettlement(a: UseContractSettlementArgs) {
-  const enabled = (a.enabled ?? true) && !!a.organizationId && a.buildingIds.length > 0;
+  const client = useQueryClient();
+  const actorId = useAuth().data?.id;
+  const limiter = settlementReadLimiter(client);
+  const enabled = (a.enabled ?? true) && !!actorId && !!a.organizationId && a.buildingIds.length > 0;
   const scope: PeriodScope = a.scope ?? 'all';
-  const typeMap = useSettlementTypeMap(a.organizationId, enabled);
+  const buildingIds = [...new Set(a.buildingIds)].sort();
+  const cutoff = !a.contractId && !a.voucherId && scope === 'prior' ? `${a.period}-01` : null;
+  const typeMap = useSettlementTypeMap(a.organizationId, actorId, enabled, limiter);
 
   const vouchers = useQuery({
     queryKey: [
-      'contract-settlement', 'vouchers', a.organizationId, scope, a.period,
-      [...a.buildingIds].sort(), [...(typeMap.data?.keys() ?? [])].sort(),
+      'contract-settlement', 'vouchers', actorId, a.organizationId, buildingIds,
+      cutoff, a.contractId ?? null, a.voucherId ?? null,
+      [...(typeMap.data?.keys() ?? [])].sort(),
     ],
     enabled: enabled && !!typeMap.data,
-    queryFn: async (): Promise<KetQuaDocPhieu> => {
+    staleTime: 60_000,
+    refetchOnWindowFocus: true,
+    queryFn: async ({ signal }): Promise<KetQuaDocPhieu> => {
       const chung = {
-        organizationId: a.organizationId!, buildingIds: a.buildingIds, scope, period: a.period,
+        organizationId: a.organizationId!, buildingIds, cutoff, contractId: a.contractId, voucherId: a.voucherId,
       };
       const goi = (build: (q: LocBuilder) => LocBuilder, label: string) =>
-        fetchAllRows<VoucherRow>(
+        limiter.run(signal, () => fetchSettlementRows<VoucherRow>(
           (f, t) => build(apDieuKienChung(
             supabase.from('income_expenses').select(COT) as unknown as LocBuilder, chung,
-          )).range(f, t) as never,
-          { label },
-        );
+          )).abortSignal(signal).range(f, t),
+          { label, signal },
+        ));
 
-      // D4 trước: lấy id phiếu có hạng mục thuộc khu này, VÀ GIỮ LẠI hạng mục
-      // nào đã khớp — không có nó thì không phân loại được phiếu thủ công.
-      const typeIds = [...(typeMap.data?.keys() ?? [])];
-      let idsTheoHangMuc: string[] = [];
-      const itemKinds: Record<string, SettlementKind[]> = {};
-      if (typeIds.length > 0) {
-        const items = await fetchAllRows<{
-          income_expense_id: string; income_expense_type_id: string | null;
-        }>(
-          (f, t) => supabase
-            .from('income_expense_items')
-            .select('income_expense_id, income_expense_type_id')
-            // Tiebreaker `id` là bắt buộc để phân trang không sót/trùng ở ranh
-            // giới trang: một phiếu nhiều item ⇒ `income_expense_id` KHÔNG duy
-            // nhất, sắp một mình nó là thứ tự không ổn định.
-            .order('income_expense_id', { ascending: true })
-            .order('id', { ascending: true })
-            .in('income_expense_type_id', typeIds)
-            .range(f, t),
-          { label: 'contract-settlement.items' },
-        );
-        if (items === null) throw new Error('Không đọc được hạng mục của phiếu — thử lại.');
-        const gom = new Map<string, Set<SettlementKind>>();
-        for (const r of items) {
-          // Hạng mục ngoài khu này (typeMap không có) BỎ QUA — nó không đổi
-          // loại của phiếu. Bộ lọc `.in(...)` phía server đã chặn, đây là hàng
-          // rào thứ hai để map không bao giờ chứa loại lạ.
-          const kind = r.income_expense_type_id
-            ? typeMap.data?.get(r.income_expense_type_id) : undefined;
-          if (!kind) continue;
-          const s = gom.get(r.income_expense_id) ?? new Set<SettlementKind>();
-          s.add(kind);
-          gom.set(r.income_expense_id, s);
-        }
-        idsTheoHangMuc = [...gom.keys()];
-        for (const [id, s] of gom) itemKinds[id] = [...s];
-      }
-
-      const [d1, d2, d3, d4] = await Promise.all([
+      // Metadata và items độc lập: khởi chạy cùng lượt, tối đa bốn request.
+      const metadata = Promise.all([
         goi((q) => q.like('system_source', 'termination.refund%'), 'cs.d1'),
         goi((q) => q.like('system_source', 'reservation.refund%'), 'cs.d2'),
         goi((q) => q.in('commission_kind', ['broker', 'sale']), 'cs.d3'),
-        idsTheoHangMuc.length
-          ? goi((q) => q.in('id', idsTheoHangMuc), 'cs.d4')
-          : Promise.resolve([] as VoucherRow[]),
       ]);
-
-      // fetchAllRows trả null khi đọc hỏng — KHÔNG được coi là rỗng, vì rỗng
-      // nghĩa là "không còn việc" và người dùng sẽ tưởng đã làm hết.
-      if (d1 === null || d2 === null || d3 === null || d4 === null) {
+      const typeIds = [...(typeMap.data?.keys() ?? [])];
+      const itemRead = typeIds.length > 0 ? limiter.run(signal, () => fetchSettlementRows<{
+        income_expense_id: string; income_expense_type_id: string | null;
+      }>(
+        (f, t) => {
+          let q = supabase.from('income_expense_items')
+            .select('income_expense_id, income_expense_type_id, income_expenses!inner(id)')
+            .eq('income_expenses.organization_id', a.organizationId!)
+            .eq('income_expenses.type', 'EXPENSE')
+            .is('income_expenses.deleted_at', null)
+            .in('income_expenses.building_id', buildingIds)
+            .in('income_expense_type_id', typeIds);
+          if (cutoff) q = q.lt('income_expenses.voucher_date', cutoff);
+          if (a.contractId) q = q.eq('income_expenses.contract_id', a.contractId);
+          if (a.voucherId) q = q.eq('income_expense_id', a.voucherId);
+          // Một phiếu có nhiều items: luôn có id làm tiebreaker phân trang.
+          return q.order('income_expense_id', { ascending: true })
+            .order('id', { ascending: true }).abortSignal(signal).range(f, t);
+        },
+        { label: 'contract-settlement.items', signal },
+      )) : Promise.resolve([]);
+      const [[d1, d2, d3], items] = await Promise.all([metadata, itemRead]);
+      if (items === null) throw new Error('Không đọc được hạng mục của phiếu — thử lại.');
+      if (d1 === null || d2 === null || d3 === null) {
         throw new Error('Không tải được danh sách khoản chi — thử lại.');
       }
 
-      // Khử trùng theo id: một phiếu nhiều hạng mục chỉ ra MỘT dòng.
-      const theoId = new Map<string, VoucherRow>();
-      for (const r of [...d1, ...d2, ...d3, ...d4]) theoId.set(r.id, r);
+      // Giữ hạng mục của cả những UUID đã nhận qua metadata để phát hiện xung đột.
+      const itemKinds: Record<string, SettlementKind[]> = {};
+      const gom = new Map<string, Set<SettlementKind>>();
+      for (const r of items) {
+        const kind = r.income_expense_type_id ? typeMap.data?.get(r.income_expense_type_id) : undefined;
+        if (!kind) continue;
+        const s = gom.get(r.income_expense_id) ?? new Set<SettlementKind>();
+        s.add(kind);
+        gom.set(r.income_expense_id, s);
+      }
+      for (const [id, s] of gom) itemKinds[id] = [...s];
+      const theoId = new Map([...d1, ...d2, ...d3].map(r => [r.id, r]));
+      const missingIds = [...gom.keys()].filter(id => !theoId.has(id));
+      const d4 = await Promise.all(settlementIdBatches(missingIds)
+        .map(ids => goi((q) => q.in('id', ids), 'cs.d4')));
+      if (d4.some(batch => batch === null)) {
+        throw new Error('Không tải được danh sách khoản chi — thử lại.');
+      }
+      for (const r of d4.flatMap(batch => batch ?? [])) theoId.set(r.id, r);
       const list = [...theoId.values()];
 
-      const ngay = await docNgayGhiSo(a.organizationId!, list);
+      const ngay = await docNgayGhiSo(a.organizationId!, list, signal, limiter);
       return { list, itemKinds, postedOn: ngay.theoPhieu, postingRead: ngay.state };
     },
   });
@@ -467,39 +488,43 @@ export function useContractSettlement(a: UseContractSettlementArgs) {
     return [...s].sort();
   }, [vouchers.data, phanLoai]);
 
-  const canCuHoaHong = useQuery({
-    queryKey: ['contract-settlement', 'commission-basis', kyKyHopDong, [...a.buildingIds].sort()],
-    enabled: enabled && kyKyHopDong.length > 0,
-    queryFn: async (): Promise<Map<string, CanCuHoaHong>> => {
+  // Chỉ lấy các trường thật sự ảnh hưởng row. combine giữ reference khi nguồn
+  // không đổi, tránh dựng lại cả bảng chỉ vì query observer tạo wrapper mới.
+  const combineBasis = useCallback((results: UseQueryResult<Map<string, CanCuHoaHong>, Error>[]) =>
+    Object.fromEntries(kyKyHopDong.map((ky, index) => {
+      const q = results[index];
+      return [ky, q && { data: q.data, error: q.error, isError: q.isError, isFetching: q.isFetching }];
+    })), [kyKyHopDong]);
+  const canCuTheoKy = useQueries({ queries: kyKyHopDong.map(ky => ({
+    queryKey: ['contract-settlement', 'commission-basis', actorId, a.organizationId, buildingIds, ky],
+    enabled,
+    staleTime: 60_000,
+    refetchOnWindowFocus: true,
+    queryFn: ({ signal }: { signal: AbortSignal }): Promise<Map<string, CanCuHoaHong>> => limiter.run(signal, async () => {
       // ⚠ `get_period_commissions` lọc theo NGÀY KÝ hợp đồng, còn danh sách lọc
       // theo NGÀY PHIẾU. Hợp đồng ký tháng 8 mà phiếu lập tháng 9 thì gọi kỳ 9
       // không tìm thấy căn cứ. Nên gọi đúng các kỳ có mặt trong tập hợp đồng.
       const m = new Map<string, CanCuHoaHong>();
-      for (const ky of kyKyHopDong) {
-        const { data, error } = await supabase.rpc('get_period_commissions', {
-          p_period_month: ky, p_building_ids: a.buildingIds,
-        });
-        if (error) throw new Error(error.message);
-        const dong = (data ?? []) as {
-          contract_id?: string | null;
-          expected_amount?: number | string | null;
-          tier_percent?: number | string | null;
-        }[];
-        for (const r of dong) {
-          // CHỈ lấy theo HỢP ĐỒNG. `voucher_id`/`status` của reader này là một
-          // phiếu nào đó cùng hợp đồng nó tự chọn (ORDER BY … LIMIT 1) —
-          // KHÔNG được dùng thay UUID/trạng thái của phiếu đang xem.
-          if (r.contract_id) {
-            m.set(r.contract_id, {
-              expectedAmount: Number(r.expected_amount) || 0,
-              tierPercent: soHoacNull(r.tier_percent),
-            });
-          }
+      const { data, error } = await supabase.rpc('get_period_commissions', {
+        p_period_month: ky, p_building_ids: buildingIds,
+      }).abortSignal(signal);
+      if (error) throw new Error(error.message);
+      const dong = (data ?? []) as {
+        contract_id?: string | null;
+        expected_amount?: number | string | null;
+        tier_percent?: number | string | null;
+      }[];
+      for (const r of dong) {
+        // CHỈ lấy theo HỢP ĐỒNG; UUID/trạng thái phiếu luôn lấy từ bảng gốc.
+        if (r.contract_id) {
+          const expectedAmount = soHoacNull(r.expected_amount);
+          if (expectedAmount === null) throw new Error('Không đọc được số căn cứ hoa hồng');
+          m.set(r.contract_id, { expectedAmount, tierPercent: soHoacNull(r.tier_percent) });
         }
       }
       return m;
-    },
-  });
+    }),
+  })), combine: combineBasis });
 
   /** Ghi chú bổ sung — chỉ phiếu CHỜ DUYỆT mới cần biết có treo yêu cầu không. */
   const idsChoDuyet = useMemo(
@@ -508,21 +533,26 @@ export function useContractSettlement(a: UseContractSettlementArgs) {
   );
 
   const ghiChu = useQuery({
-    queryKey: ['contract-settlement', 'supplements', [...idsChoDuyet].sort()],
+    queryKey: ['contract-settlement', 'supplements', actorId, a.organizationId, [...idsChoDuyet].sort()],
     enabled: enabled && idsChoDuyet.length > 0,
-    queryFn: async (): Promise<Map<string, boolean>> => {
+    staleTime: 60_000,
+    refetchOnWindowFocus: true,
+    queryFn: ({ signal }): Promise<Map<string, boolean>> => limiter.run(signal, async () => {
       // Helper sẵn có: chia lô 50 id, sắp created_at rồi id, và NÉM khi một lô
       // hỏng thay vì trả rỗng — đúng thứ ta cần.
       const withNotes = await hydrateIncomeExpenseSupplements(idsChoDuyet.map((id) => ({ id })));
       return new Map(withNotes.map((v) => [v.id, supplementPending(v.supplements)]));
-    },
+    }),
   });
+  const sourceReadError = vouchers.isError || typeMap.isError;
+  const sourceRefreshing = vouchers.isFetching || typeMap.isFetching;
+  const supplementError = ghiChu.isError;
+  const supplementLoading = !ghiChu.data || ghiChu.isFetching;
 
   const rows = useMemo<SettlementRow[]>(() => {
     const vs = vouchers.data?.list;
     if (!vs) return [];
     const treo = ghiChu.data;
-    const basisHH = canCuHoaHong.data;
     const ngayGhiSo = vouchers.data?.postedOn ?? new Map<string, string>();
 
     const basisOf = (v: VoucherRow, kind: SettlementRowKind): BasisState => {
@@ -542,11 +572,14 @@ export function useContractSettlement(a: UseContractSettlementArgs) {
       // ⚠ PHẢI xét lỗi TRƯỚC `!basisHH`: query lỗi thì `data` cũng undefined,
       // đảo lại là biến "không ai biết số đúng" thành cảnh báo xám "Đang tra
       // căn cứ" rồi thả phiếu về làn chờ duyệt. Có ca ghim thứ tự này.
-      if (canCuHoaHong.isError) {
+      if (!v.contract_id) return { kind: 'not-found', reason: 'Phiếu chưa gắn hợp đồng' };
+      if (!v.contracts?.signed_date) return { kind: 'not-found', reason: 'Chưa có ngày ký hợp đồng để tra căn cứ' };
+      const result = canCuTheoKy[v.contracts.signed_date.slice(0, 7)];
+      if (result?.isError) {
         return { kind: 'unavailable', reason: 'Không đọc được bậc hoa hồng' };
       }
+      const basisHH = result?.data;
       if (!basisHH) return { kind: 'not-found', reason: 'Đang tra căn cứ' };
-      if (!v.contract_id) return { kind: 'not-found', reason: 'Phiếu chưa gắn hợp đồng' };
       const canCu = basisHH.get(v.contract_id);
       if (!canCu) {
         return { kind: 'not-found', reason: 'Không tìm thấy hợp đồng trong kỳ ký' };
@@ -568,6 +601,12 @@ export function useContractSettlement(a: UseContractSettlementArgs) {
     return vs.map((v) => {
       const pl = phanLoai.get(v.id);
       const kind: SettlementRowKind = pl?.kind ?? 'unknown';
+      const basisQuery = kind === 'commission' && v.contract_id && v.contracts?.signed_date
+        ? canCuTheoKy[v.contracts.signed_date.slice(0, 7)] : undefined;
+      const needsSupplement = v.approval_status === 'UNAPPROVED';
+      const validationState = sourceReadError || basisQuery?.isError || (needsSupplement && supplementError) ? 'error'
+        : sourceRefreshing || (basisQuery && (!basisQuery.data || basisQuery.isFetching)) || (needsSupplement && supplementLoading)
+          ? 'loading' : 'ready';
       const base: Omit<SettlementRow, 'issues'> = {
         key: `${kind}:${v.id}`,
         kind,
@@ -592,6 +631,7 @@ export function useContractSettlement(a: UseContractSettlementArgs) {
         systemSource: v.system_source ?? null,
         commissionKind: v.commission_kind ?? null,
         basis: basisOf(v, kind),
+        validationState,
         status: settlementStatusOf(v.approval_status, v.posting_status),
         approvalStatus: v.approval_status,
         postingStatus: v.posting_status,
@@ -617,7 +657,8 @@ export function useContractSettlement(a: UseContractSettlementArgs) {
       };
       return { ...base, issues: detectIssues(base, a.period) };
     });
-  }, [vouchers.data, phanLoai, ghiChu.data, canCuHoaHong.data, canCuHoaHong.isError, a.period]);
+  }, [vouchers.data, phanLoai, ghiChu.data, canCuTheoKy, a.period,
+    sourceReadError, sourceRefreshing, supplementError, supplementLoading]);
 
   return {
     rows,
@@ -626,12 +667,11 @@ export function useContractSettlement(a: UseContractSettlementArgs) {
      * chỉ những con số DỰA VÀO ngày chi mới phải nói "Chưa đủ dữ liệu".
      */
     postingRead: vouchers.data?.postingRead ?? true,
-    isLoading:
-      typeMap.isLoading || vouchers.isLoading ||
-      (idsChoDuyet.length > 0 && ghiChu.isLoading) ||
-      (kyKyHopDong.length > 0 && canCuHoaHong.isLoading),
-    isError: typeMap.isError || vouchers.isError || ghiChu.isError,
-    error: typeMap.error ?? vouchers.error ?? ghiChu.error ?? null,
+    isLoading: typeMap.isLoading || vouchers.isLoading,
+    isEnriching: rows.some(row => row.validationState === 'loading'),
+    enrichmentError: ghiChu.error ?? Object.values(canCuTheoKy).find(q => q?.error)?.error ?? null,
+    isError: typeMap.isError || vouchers.isError,
+    error: typeMap.error ?? vouchers.error ?? null,
     /**
      * "Thử lại" phải chạm được MỌI truy vấn của màn này, không riêng `vouchers`.
      *
@@ -642,8 +682,12 @@ export function useContractSettlement(a: UseContractSettlementArgs) {
      * cho tới khi tải lại trang.
      */
     refetch: async () => {
+      if (!enabled) return;
+      await typeMap.refetch();
+      await client.invalidateQueries({ queryKey: ['contract-settlement', 'vouchers', actorId, a.organizationId] });
       await Promise.all([
-        typeMap.refetch(), vouchers.refetch(), canCuHoaHong.refetch(), ghiChu.refetch(),
+        client.invalidateQueries({ queryKey: ['contract-settlement', 'commission-basis', actorId, a.organizationId] }),
+        client.invalidateQueries({ queryKey: ['contract-settlement', 'supplements', actorId, a.organizationId] }),
       ]);
     },
   };

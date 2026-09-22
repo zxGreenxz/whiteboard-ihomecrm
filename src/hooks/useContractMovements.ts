@@ -20,6 +20,8 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchAllRows } from '@/lib/supabaseFetchAll';
+import { isEffectiveTermination } from '@/lib/contractLifecycle';
 
 export type MovementType = 'sign' | 'renew' | 'terminate' | 'forfeit' | 'reserve';
 
@@ -90,6 +92,8 @@ export interface MovementArgs {
   buildingIds: string[];
   /** 'YYYY-MM', hoặc null để lấy mọi kỳ. */
   period: string | null;
+  /** Caller chỉ tải tab đang mở; mặc định true để giữ hành vi caller cũ. */
+  enabled?: boolean;
 }
 
 /**
@@ -117,10 +121,11 @@ interface KetQua { data: unknown[] | null; error: { message: string } | null }
 interface LocBuilder extends PromiseLike<KetQua> {
   gte(cot: string, v: string): LocBuilder;
   lt(cot: string, v: string): LocBuilder;
+  range(from: number, to: number): LocBuilder;
 }
 
 export function useContractMovements(a: MovementArgs) {
-  const bat = !!a.organizationId && a.buildingIds.length > 0;
+  const bat = (a.enabled ?? true) && !!a.organizationId && a.buildingIds.length > 0;
   const khoang = khoangKy(a.period);
 
   const q = useQuery({
@@ -130,13 +135,14 @@ export function useContractMovements(a: MovementArgs) {
     ],
     enabled: bat,
     staleTime: 60_000,
+    refetchOnWindowFocus: true,
     queryFn: async (): Promise<MovementRow[]> => {
       const org = a.organizationId!;
       const trongKy = (qb: LocBuilder, cot: string): LocBuilder =>
         (khoang ? qb.gte(cot, khoang[0]).lt(cot, khoang[1]) : qb);
 
       // ── Ký mới ───────────────────────────────────────────────────────────
-      const qKy = trongKy(
+      const qKy = fetchAllRows<unknown>((from, to) => trongKy(
         supabase
           .from('contracts')
           .select(`${HD_NOI}, signed_date, start_date, end_date, rent_price, total_deposit`)
@@ -145,12 +151,12 @@ export function useContractMovements(a: MovementArgs) {
           .is('deleted_at', null)
           .not('signed_date', 'is', null)
           .order('signed_date', { ascending: false })
-          .limit(400) as unknown as LocBuilder,
+          .order('id', { ascending: false }) as unknown as LocBuilder,
         'signed_date',
-      );
+      ).range(from, to), { label: 'movements.sign' });
 
       // ── Gia hạn ──────────────────────────────────────────────────────────
-      const qGiaHan = trongKy(
+      const qGiaHan = fetchAllRows<unknown>((from, to) => trongKy(
         supabase
           .from('contract_extensions')
           // ⚠ PHẢI nêu ĐÍCH DANH khoá ngoại: bảng này có HAI đường sang
@@ -160,40 +166,41 @@ export function useContractMovements(a: MovementArgs) {
           .eq('organization_id', org)
           .in('contracts.rooms.building_id', a.buildingIds)
           .order('extension_date', { ascending: false })
-          .limit(400) as unknown as LocBuilder,
+          .order('id', { ascending: false }) as unknown as LocBuilder,
         'extension_date',
-      );
+      ).range(from, to), { label: 'movements.renew' });
 
       // ── Thanh lý + Bỏ cọc (cùng một bảng, tách bằng termination_type) ────
-      const qKetThuc = trongKy(
+      const qKetThuc = fetchAllRows<unknown>((from, to) => trongKy(
         supabase
           .from('contract_terminations')
-          .select(`id, termination_date, termination_type, refund_amount, total_deductions, outstanding_debt, actual_move_out_date, contracts!inner ( ${HD_NOI} )`)
+          .select(`id, status, termination_date, termination_type, refund_amount, total_deductions, outstanding_debt, actual_move_out_date, contracts!inner ( ${HD_NOI} )`)
           .eq('organization_id', org)
           .in('contracts.rooms.building_id', a.buildingIds)
+          .in('status', ['APPROVED', 'COMPLETED'])
           .order('termination_date', { ascending: false })
-          .limit(400) as unknown as LocBuilder,
+          .order('id', { ascending: false }) as unknown as LocBuilder,
         'termination_date',
-      );
+      ).range(from, to), { label: 'movements.terminate' });
 
       // ── Giữ chỗ ──────────────────────────────────────────────────────────
-      const qGiuCho = trongKy(
+      const qGiuCho = fetchAllRows<unknown>((from, to) => trongKy(
         supabase
           .from('room_reservation_holds')
           .select('id, amount, held_at, expires_at, status, contract_id, building_id, room_id, buildings ( name ), rooms ( name )')
           .eq('organization_id', org)
           .in('building_id', a.buildingIds)
           .order('held_at', { ascending: false })
-          .limit(200) as unknown as LocBuilder,
+          .order('id', { ascending: false }) as unknown as LocBuilder,
         'held_at',
-      );
+      ).range(from, to), { label: 'movements.reserve' });
 
       const [ky, giaHan, ketThuc, giuCho] = await Promise.all([qKy, qGiaHan, qKetThuc, qGiuCho]);
 
       for (const r of [ky, giaHan, ketThuc, giuCho]) {
         // Fail-closed: một nhánh hỏng mà trả danh sách thiếu thì người dùng
         // tưởng kỳ này ít biến động. Thà báo lỗi.
-        if (r.error) throw new Error(r.error.message);
+        if (r === null) throw new Error('Không đọc đủ biến động hợp đồng — thử lại.');
       }
 
       const out: MovementRow[] = [];
@@ -204,7 +211,7 @@ export function useContractMovements(a: MovementArgs) {
         hoSo.push({ row, userId });
       };
 
-      for (const c of (ky.data ?? []) as (HopDongNoi & {
+      for (const c of ky as (HopDongNoi & {
         signed_date: string | null; start_date: string | null; end_date: string | null;
         rent_price: number | null; total_deposit: number | null;
       })[]) {
@@ -217,7 +224,7 @@ export function useContractMovements(a: MovementArgs) {
         }, c.user_id);
       }
 
-      for (const e of (giaHan.data ?? []) as {
+      for (const e of giaHan as {
         id: string; extension_date: string | null; extension_months: number | null;
         old_end_date: string | null; new_end_date: string | null;
         new_rent_price: number | null; rent_price_changed: boolean | null;
@@ -234,12 +241,13 @@ export function useContractMovements(a: MovementArgs) {
         }, c?.user_id ?? null);
       }
 
-      for (const t of (ketThuc.data ?? []) as {
-        id: string; termination_date: string | null; termination_type: string | null;
+      for (const t of ketThuc as {
+        id: string; status: string | null; termination_date: string | null; termination_type: string | null;
         refund_amount: number | null; total_deductions: number | null;
         outstanding_debt: number | null; actual_move_out_date: string | null;
         contracts: HopDongNoi | null;
       }[]) {
+        if (!isEffectiveTermination(t.status)) continue;
         const c = t.contracts;
         const boCoc = t.termination_type === 'FORFEIT';
         them({
@@ -250,12 +258,12 @@ export function useContractMovements(a: MovementArgs) {
           source: c?.contract_number ?? '—', origin: 'contract', contractId: c?.id ?? null,
           description: `Trả phòng ${ngay(t.actual_move_out_date)} · khấu trừ ${dong(t.total_deductions)}`
             + ` · hoàn ${dong(t.refund_amount)}`
-            + (Number(t.outstanding_debt) > 0 ? ` · còn nợ ${dong(t.outstanding_debt)}` : ''),
+            + (Number(t.outstanding_debt) > 0 ? ` · Công nợ đưa vào quyết toán ${dong(t.outstanding_debt)}` : ''),
           staffName: null,
         }, c?.user_id ?? null);
       }
 
-      for (const h of (giuCho.data ?? []) as {
+      for (const h of giuCho as {
         id: string; amount: number | null; held_at: string | null; expires_at: string | null;
         status: string | null; contract_id: string | null; building_id: string | null;
         room_id: string | null;
@@ -289,7 +297,7 @@ export function useContractMovements(a: MovementArgs) {
       }
 
       // Một danh sách duy nhất, mới nhất trước — bảng chỉ có một cột ngày.
-      return out.sort((x, y) => (y.date ?? '').localeCompare(x.date ?? ''));
+      return out.sort((x, y) => (y.date ?? '').localeCompare(x.date ?? '') || x.key.localeCompare(y.key));
     },
   });
 

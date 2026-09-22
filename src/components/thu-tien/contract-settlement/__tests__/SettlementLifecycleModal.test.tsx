@@ -33,14 +33,18 @@ const H = vi.hoisted(() => ({
   attach: vi.fn(),
   soCustodian: [] as { id: string; name: string }[],
   moiSo: [] as { id: string; organization_id?: string; is_virtual?: boolean }[],
+  custodianState: { isLoading: false, isFetching: false, isError: false, refetch: vi.fn() },
+  accountsState: { isLoading: false, isFetching: false, isError: false, refetch: vi.fn() },
+  lifecycleState: 'ready',
+  basisState: 'ready',
 }));
 
 vi.mock('@/hooks/income-expenses/financeV2Mutations', () => ({
-  useCustodianCashbooksV2: () => ({ data: H.soCustodian }),
+  useCustodianCashbooksV2: () => ({ data: H.soCustodian, ...H.custodianState }),
   useAttachPostingEvidence: () => H.attach,
   adoptVoucherAttachmentsAsEvidence: (...a: unknown[]) => H.adopt(...a),
 }));
-vi.mock('@/hooks/useAccounts', () => ({ useAccounts: () => ({ data: H.moiSo }) }));
+vi.mock('@/hooks/useAccounts', () => ({ useAccounts: () => ({ data: H.moiSo, ...H.accountsState }) }));
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ data: { id: USER } }) }));
 vi.mock('@/hooks/income-expenses/supplements', () => ({
   useIncomeExpenseSupplements: () => ({
@@ -53,8 +57,22 @@ vi.mock('@/components/ui/attachment-lightbox', () => ({
     <div data-testid="lightbox" data-mo={index === null ? '' : attachments[index] ?? ''} />
   ),
 }));
-vi.mock('../ContractLifecycleBand', () => ({ ContractLifecycleBand: () => <div data-testid="dai" /> }));
-vi.mock('../SettlementVoucherDetails', () => ({ SettlementVoucherDetails: () => <div data-testid="can-cu" /> }));
+vi.mock('../ContractLifecycleBand', async () => {
+  const { useEffect } = await import('react');
+  return { ContractLifecycleBand: ({ onReadStateChange }: { onReadStateChange?: (s: string) => void }) => {
+    const state = H.lifecycleState;
+    useEffect(() => { onReadStateChange?.(state); }, [onReadStateChange, state]);
+    return <div data-testid="dai" />;
+  } };
+});
+vi.mock('../SettlementVoucherDetails', async () => {
+  const { useEffect } = await import('react');
+  return { SettlementVoucherDetails: ({ onReadStateChange }: { onReadStateChange?: (s: string) => void }) => {
+    const state = H.basisState;
+    useEffect(() => { onReadStateChange?.(state); }, [onReadStateChange, state]);
+    return <div data-testid="can-cu" />;
+  } };
+});
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
 }));
@@ -190,8 +208,192 @@ beforeEach(() => {
   });
   H.soCustodian = [{ id: SO_A, name: 'Sổ tiền mặt 32PVC' }];
   H.moiSo = [{ id: SO_A, organization_id: ORG, is_virtual: false }];
+  H.custodianState = { isLoading: false, isFetching: false, isError: false, refetch: vi.fn() };
+  H.accountsState = { isLoading: false, isFetching: false, isError: false, refetch: vi.fn() };
+  H.lifecycleState = 'ready';
+  H.basisState = 'ready';
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); });
+
+describe('Task 3 — lệnh của đúng hồ sơ và trạng thái nguồn đọc', () => {
+  it.each(['custodian', 'accounts'] as const)('cached sổ %s đang refetch vẫn khóa ghi chi tới khi nguồn xong', async (source) => {
+    const state = H[source === 'custodian' ? 'custodianState' : 'accountsState'];
+    state.isFetching = true;
+    const man = dungMan(phieu());
+    moFormChi();
+    await waitFor(() => expect(H.adopt).toHaveBeenCalledTimes(1));
+    chonSo();
+    expect(nutXacNhan().disabled).toBe(true);
+    expect(chuTrenMan()).toContain('Đang tải sổ quỹ');
+    state.isFetching = false;
+    man.doiPhieu(phieu());
+    await waitFor(() => expect(nutXacNhan().disabled).toBe(false));
+  });
+  it.each(['lifecycle', 'basis'] as const)('nguồn đối chiếu %s đang tải hoặc lỗi chặn duyệt cho tới khi đọc thành công', (source) => {
+    const state = source === 'lifecycle' ? 'lifecycleState' : 'basisState';
+    H[state] = 'loading';
+    const man = dungMan(phieu());
+    const approve = () => screen.getByRole('button', { name: 'Duyệt Chờ Chi' }) as HTMLButtonElement;
+    expect(approve().disabled).toBe(true);
+    H[state] = 'error';
+    man.doiPhieu(phieu());
+    expect(approve().disabled).toBe(true);
+    fireEvent.click(approve());
+    expect(man.actions.approve).not.toHaveBeenCalled();
+    H[state] = 'ready';
+    man.doiPhieu(phieu());
+    expect(approve().disabled).toBe(false);
+  });
+
+  it('nguồn đối chiếu thiếu một phần giữ cảnh báo, không thay chính sách duyệt', () => {
+    H.lifecycleState = 'insufficient';
+    H.basisState = 'insufficient';
+    dungMan(phieu());
+    expect((screen.getByRole('button', { name: 'Duyệt Chờ Chi' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('yêu cầu bổ sung rồi đánh dấu xong trong cùng modal là hai lệnh có hai khoá', async () => {
+    const man = dungMan(phieu(), 'pending', { requestSupplement: true, markSupplementDone: true });
+    fireEvent.change(screen.getByPlaceholderText('Cần bổ sung gì…'), { target: { value: 'Bổ sung ảnh chuyển khoản' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Cần bổ sung' }));
+    await waitFor(() => expect(man.actions.requestSupplement).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect((screen.getByPlaceholderText('Cần bổ sung gì…') as HTMLTextAreaElement).value).toBe(''));
+    man.doiPhieu(phieu({ supplementPending: true, issues: ['SUPPLEMENT_PENDING'] }), 'review');
+    fireEvent.change(screen.getByPlaceholderText('Đã bổ sung gì…'), { target: { value: 'Đã đối chiếu ảnh' } });
+    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('button', { name: /Xác nhận & Chuyển Chờ Duyệt/ }));
+    await waitFor(() => expect(man.actions.markSupplementDone).toHaveBeenCalledTimes(1));
+    const request = vi.mocked(man.actions.requestSupplement).mock.calls[0][0];
+    const done = vi.mocked(man.actions.markSupplementDone).mock.calls[0][0];
+    expect(done.voucherId).toBe(V_A);
+    expect(done.idempotencyKey).not.toBe(request.idempotencyKey);
+  });
+
+  it('mất phản hồi giữ khoá khi thử lại cùng nội dung, đổi nội dung tạo lệnh mới', async () => {
+    const man = dungMan(phieu(), 'pending', { requestSupplement: true });
+    const request = vi.mocked(man.actions.requestSupplement);
+    request.mockRejectedValueOnce(new Error('timeout')).mockRejectedValueOnce(new Error('timeout'));
+    const input = screen.getByPlaceholderText('Cần bổ sung gì…');
+    fireEvent.change(input, { target: { value: 'Thiếu biên lai' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Cần bổ sung' }));
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(1));
+    await act(async () => { await Promise.resolve(); });
+    fireEvent.click(screen.getByRole('button', { name: 'Cần bổ sung' }));
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+    await act(async () => { await Promise.resolve(); });
+    expect(request.mock.calls[1][0]).toEqual(request.mock.calls[0][0]);
+    fireEvent.change(input, { target: { value: 'Thiếu số tài khoản' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Cần bổ sung' }));
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(3));
+    expect(request.mock.calls[2][0].idempotencyKey).not.toBe(request.mock.calls[1][0].idempotencyKey);
+  });
+
+  it('ghi chi phiếu A về muộn không đóng hoặc xoá form của phiếu B', async () => {
+    const man = dungMan(phieu());
+    let finish!: () => void;
+    vi.mocked(man.actions.approveAndPost).mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve; }));
+    moFormChi();
+    await waitFor(() => expect(H.adopt).toHaveBeenCalledTimes(1));
+    chonSo();
+    await waitFor(() => expect(nutXacNhan().disabled).toBe(false));
+    fireEvent.click(nutXacNhan());
+    await waitFor(() => expect(man.actions.approveAndPost).toHaveBeenCalledTimes(1));
+    man.doiPhieu(phieu({ voucherId: V_B, key: `refund:${V_B}` }));
+    moFormChi();
+    await waitFor(() => expect(H.adopt).toHaveBeenCalledTimes(2));
+    await act(async () => { finish(); });
+    expect(man.dong).not.toHaveBeenCalled();
+    expect(nutXacNhan()).toBeTruthy();
+    chonSo();
+    await waitFor(() => expect(nutXacNhan().disabled).toBe(false));
+  });
+
+  it('duyệt phiếu A về muộn không đóng modal đã chuyển sang phiếu B', async () => {
+    const man = dungMan(phieu());
+    let finish!: () => void;
+    vi.mocked(man.actions.approve).mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve; }));
+    fireEvent.click(screen.getByRole('button', { name: 'Duyệt Chờ Chi' }));
+    man.doiPhieu(phieu({ voucherId: V_B, key: `refund:${V_B}` }));
+    await act(async () => { finish(); });
+    expect(man.dong).not.toHaveBeenCalled();
+  });
+
+  it('từ chối phiếu A về muộn không đóng modal phiếu B', async () => {
+    const man = dungMan(phieu(), 'pending', { cancel: true });
+    let finish!: () => void;
+    vi.mocked(man.actions.cancel).mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve; }));
+    fireEvent.click(screen.getByRole('button', { name: 'Từ chối phiếu' }));
+    fireEvent.change(screen.getByPlaceholderText('Lý do từ chối (tối thiểu 8 ký tự)…'), { target: { value: 'Không đúng căn cứ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Xác nhận' }));
+    expect(man.actions.cancel).toHaveBeenCalledOnce();
+    man.doiPhieu(phieu({ voucherId: V_B, key: `refund:${V_B}` }));
+    await act(async () => { finish(); });
+    expect(man.dong).not.toHaveBeenCalled();
+  });
+
+  it('bổ sung phiếu A về muộn không xoá draft B; phiếu B có khoá lệnh mới', async () => {
+    const man = dungMan(phieu(), 'pending', { requestSupplement: true });
+    let finish!: () => void;
+    const request = vi.mocked(man.actions.requestSupplement);
+    request.mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve; }));
+    fireEvent.change(screen.getByPlaceholderText('Cần bổ sung gì…'), { target: { value: 'Thiếu biên lai' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Cần bổ sung' }));
+    man.doiPhieu(phieu({ voucherId: V_B, key: `refund:${V_B}` }));
+    fireEvent.change(screen.getByPlaceholderText('Cần bổ sung gì…'), { target: { value: 'Thiếu biên lai' } });
+    await act(async () => { finish(); });
+    expect((screen.getByPlaceholderText('Cần bổ sung gì…') as HTMLTextAreaElement).value).toBe('Thiếu biên lai');
+    fireEvent.click(screen.getByRole('button', { name: 'Cần bổ sung' }));
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+    expect(request.mock.calls[1][0].voucherId).toBe(V_B);
+    expect(request.mock.calls[1][0].idempotencyKey).not.toBe(request.mock.calls[0][0].idempotencyKey);
+  });
+
+  it('đổi phiếu dọn lý do và xác nhận đối chiếu của hồ sơ cũ', () => {
+    const man = dungMan(phieu({ supplementPending: true, issues: ['SUPPLEMENT_PENDING'] }), 'review', { markSupplementDone: true });
+    fireEvent.change(screen.getByPlaceholderText('Đã bổ sung gì…'), { target: { value: 'Chỉ đúng cho A' } });
+    fireEvent.click(screen.getByRole('checkbox'));
+    man.doiPhieu(phieu({ voucherId: V_B, key: `refund:${V_B}`, supplementPending: true, issues: ['SUPPLEMENT_PENDING'] }), 'review');
+    expect((screen.getByPlaceholderText('Đã bổ sung gì…') as HTMLTextAreaElement).value).toBe('');
+    expect((screen.getByRole('checkbox') as HTMLInputElement).checked).toBe(false);
+  });
+
+  it.each(['loading', 'error'] as const)('không duyệt hoặc mở chi khi xác minh phiếu %s', (validationState) => {
+    const man = dungMan(phieu({ validationState } as Partial<SettlementRow>));
+    const approve = screen.getByRole('button', { name: 'Duyệt Chờ Chi' }) as HTMLButtonElement;
+    const post = screen.getByRole('button', { name: /^Duyệt & Chi/ }) as HTMLButtonElement;
+    expect(approve.disabled).toBe(true);
+    expect(post.disabled).toBe(true);
+    fireEvent.click(approve);
+    fireEvent.click(post);
+    expect(man.actions.approve).not.toHaveBeenCalled();
+    expect(H.adopt).not.toHaveBeenCalled();
+  });
+
+  it.each(['custodian', 'accounts'] as const)('nguồn sổ %s đang tải không bị nói thành không giữ sổ', async (source) => {
+    H[source === 'custodian' ? 'custodianState' : 'accountsState'].isLoading = true;
+    dungMan(phieu());
+    moFormChi();
+    await waitFor(() => expect(H.adopt).toHaveBeenCalledTimes(1));
+    expect(chuTrenMan()).toContain('Đang tải sổ quỹ');
+    expect(chuTrenMan()).not.toContain('Bạn không giữ sổ quỹ nào');
+    chonSo();
+    expect(nutXacNhan().disabled).toBe(true);
+  });
+
+  it.each(['custodian', 'accounts'] as const)('nguồn sổ %s lỗi chặn ghi, cho thử lại cả hai nguồn', async (source) => {
+    H[source === 'custodian' ? 'custodianState' : 'accountsState'].isError = true;
+    dungMan(phieu());
+    moFormChi();
+    await waitFor(() => expect(H.adopt).toHaveBeenCalledTimes(1));
+    expect(chuTrenMan()).not.toContain('Bạn không giữ sổ quỹ nào');
+    fireEvent.click(screen.getByRole('button', { name: 'Thử lại sổ quỹ' }));
+    expect(H.custodianState.refetch).toHaveBeenCalledTimes(1);
+    expect(H.accountsState.refetch).toHaveBeenCalledTimes(1);
+    chonSo();
+    expect(nutXacNhan().disabled).toBe(true);
+  });
+});
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // T1 — tự nhận ảnh có sẵn, dán ảnh, và ranh giới "chuẩn bị ≠ ghi tiền"

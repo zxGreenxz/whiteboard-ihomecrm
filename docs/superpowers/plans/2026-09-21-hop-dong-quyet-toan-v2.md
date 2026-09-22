@@ -25,8 +25,8 @@ Biên bản phục hồi ở [`docs/audits/2026-09-21-restore-settlement/`](../.
 **Base:** `2a8b9998` · **Nhánh:** `feat/hop-dong-quyet-toan-v2` · **Nguồn:** bản vẽ
 `Thanh toan - Hop dong & quyet toan.dc.html` (design `3990b67f-b343-490a-acc7-05fead85c684`)
 
-**Audit plan v1:** [`docs/audits/2026-09-21-hop-dong-quyet-toan-plan-audit/README.md`](../../audits/2026-09-21-hop-dong-quyet-toan-plan-audit/README.md)
-— 18 phát hiện, plan này viết lại theo cấu trúc §6 của nó.
+**Audit plan v1 (artifact local, chưa lưu trong Git):** `docs/audits/2026-09-21-hop-dong-quyet-toan-plan-audit/README.md`
+— 18 phát hiện được ghi nhận ở phiên lập plan; plan này viết lại theo cấu trúc §6 của artifact đó. Checkout mới không có tệp để đối chiếu trực tiếp.
 
 ### Số dòng đã kiểm lại trên base `2a8b9998`
 

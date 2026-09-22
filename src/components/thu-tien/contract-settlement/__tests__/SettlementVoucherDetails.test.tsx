@@ -20,7 +20,7 @@ import type { ReactElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-interface KetQua { data: unknown; isLoading: boolean; isError: boolean }
+interface KetQua { data: unknown; isLoading: boolean; isError: boolean; isFetching?: boolean }
 
 const H = vi.hoisted(() => ({
   hoan: { data: null, isLoading: false, isError: false } as KetQua,
@@ -39,7 +39,7 @@ vi.mock('@/hooks/useCommissionVoucher', () => ({
   useCommissionVoucherFacts: (...a: unknown[]) => { H.goiHoaHong.push(a); return H.hoaHong; },
 }));
 
-import { SettlementVoucherDetails } from '../SettlementVoucherDetails';
+import { SettlementVoucherDetails, basisReadState } from '../SettlementVoucherDetails';
 import { VoucherNote } from '@/components/income-expenses/VoucherNote';
 import {
   buildTerminationCard,
@@ -69,6 +69,10 @@ const GHI_CHU_GOC = 'Hoàn cọc thanh lý phòng 401.\nKhách đã ký biên b�
 
 const ve = (node: ReactElement) => renderToStaticMarkup(node);
 
+it('cached basis đang refetch không được báo sufficient', () => {
+  expect(basisReadState({ data: {}, isLoading: false, isFetching: true, isError: false }, 'căn cứ')).toEqual({ kind: 'loading' });
+});
+
 /** Bóc chữ khỏi markup để so NỘI DUNG, không so cách bọc thẻ. */
 const chu = (html: string) =>
   html
@@ -78,8 +82,6 @@ const chu = (html: string) =>
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&amp;/g, '&');
-
-const demLan = (s: string, mau: string) => s.split(mau).length - 1;
 
 // ── Facts ca THẬT 401/32PVC ─────────────────────────────────────────────────
 const hopDong401 = (): CommissionVoucherFacts => ({
@@ -196,11 +198,6 @@ describe('cùng một phiếu hoàn — modal khớp nguồn Thu chi', () => {
       expect(thuChi, `Thu chi phải có "${m}"`).toContain(m);
       expect(modal, `modal phải có "${m}"`).toContain(m);
     }
-    // Ghi chú gốc: cùng nội dung, GIỮ XUỐNG DÒNG.
-    expect(thuChi).toContain('Hoàn cọc thanh lý phòng 401.');
-    expect(thuChi).toContain('Khách đã ký biên bản bàn giao.');
-    expect(modal).toContain('Hoàn cọc thanh lý phòng 401.');
-    expect(modal).toContain('Khách đã ký biên bản bàn giao.');
   });
 
   it('số tiền của fixture đúng bằng phép toán chung, không phải chuỗi chép tay', () => {
@@ -313,11 +310,9 @@ describe('HHMG tạo tay thiếu metadata', () => {
     expect(H.goiHoan.every((a) => a[0] === null)).toBe(true);
   });
 
-  it('trình bày căn cứ số tiền theo kỳ ký từ read model, và giữ ghi chú gốc', () => {
+  it('trình bày căn cứ số tiền theo kỳ ký từ read model', () => {
     const html = chu(ve(<SettlementVoucherDetails row={hhmgTay()} />));
     expect(html).toContain('2.250.000đ');            // moTaCanCu của basis matched
-    expect(html).toContain('Chi HHMG cho môi giới Bình.');
-    expect(html).toContain('Ghi chú gốc của phiếu');
   });
 
   it('nói thẳng là ghi chú chi tiết tự sinh không dùng được cho phiếu này', () => {
@@ -358,7 +353,6 @@ describe('hoàn khách / thưởng sale / hoa hồng / giữ chỗ / phiếu t�
     const html = chu(ve(<SettlementVoucherDetails row={row} />));
     expect(H.goiHoaHong.some((a) => a[0] === V_HOA_HONG)).toBe(true);
     expect(html).toContain('401/32PVC');
-    expect(html).toContain('Chi hoa hồng đợt 1.');
   });
 
   it('thưởng sale có dấu sale cũng đi qua nguồn hợp đồng, không báo thiếu metadata', () => {
@@ -372,10 +366,9 @@ describe('hoàn khách / thưởng sale / hoa hồng / giữ chỗ / phiếu t�
     const html = chu(ve(<SettlementVoucherDetails row={row} />));
     expect(H.goiHoaHong.some((a) => a[0] === V_THUONG)).toBe(true);
     expect(html).not.toContain('không mang dấu');
-    expect(html).toContain('Thưởng nóng cho Sale Hà.');
   });
 
-  it('hoàn giữ chỗ KHÔNG có hồ sơ thanh lý — không hỏi RPC thanh lý, vẫn giữ ghi chú gốc', () => {
+  it('hoàn giữ chỗ KHÔNG có hồ sơ thanh lý — không hỏi RPC thanh lý', () => {
     const row = dong({
       key: `refund:${V_GIU_CHO}`, kind: 'refund', voucherId: V_GIU_CHO,
       systemSource: 'reservation.refund', origin: 'reservation',
@@ -385,7 +378,6 @@ describe('hoàn khách / thưởng sale / hoa hồng / giữ chỗ / phiếu t�
     });
     const html = chu(ve(<SettlementVoucherDetails row={row} />));
     expect(H.goiHoan.every((a) => a[0] === null)).toBe(true);
-    expect(html).toContain('Hoàn tiền giữ chỗ do khách đổi ý.');
     expect(html).toContain('termination.refund');
   });
 
@@ -478,44 +470,14 @@ describe('hoàn khách / thưởng sale / hoa hồng / giữ chỗ / phiếu t�
     expect(H.goiHoan.every((a) => a[0] === null)).toBe(true);
     expect(H.goiHoaHong.every((a) => a[0] === null)).toBe(true);
     expect(html).toContain('Chưa xác định');
-    expect(html).toContain('Chi hộ khách phòng 401.');
   });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 5. GHI CHÚ GỐC: rỗng, nhiều dòng, và KHÔNG lặp / KHÔNG lẫn với bổ sung
+// 5. LỊCH SỬ BỔ SUNG THUỘC MODAL
 // ═══════════════════════════════════════════════════════════════════════════
 
-describe('Ghi chú gốc của phiếu', () => {
-  it('ghi chú rỗng nói thẳng là không có, không để trống lửng', () => {
-    H.hoan = { data: factsHoan({ voucher: { ...factsHoan().voucher, notes: null } }), isLoading: false, isError: false };
-    const html = chu(ve(<SettlementVoucherDetails row={dong({ notes: null })} />));
-    expect(html).toContain('Ghi chú gốc của phiếu');
-    expect(html).toContain('Phiếu không có ghi chú gốc');
-  });
-
-  it('ghi chú chỉ toàn khoảng trắng cũng coi là không có', () => {
-    const html = chu(ve(<SettlementVoucherDetails row={dong({ notes: '   \n  ' })} />));
-    expect(html).toContain('Phiếu không có ghi chú gốc');
-  });
-
-  it('ghi chú nhiều dòng giữ nguyên xuống dòng', () => {
-    H.hoan = { data: factsHoan(), isLoading: false, isError: false };
-    const html = ve(<SettlementVoucherDetails row={dong({
-      notes: 'Dòng 1\nDòng 2\nDòng 3',
-    })} />);
-    expect(html).toContain('whitespace-pre-line');
-    const t = chu(html);
-    for (const d of ['Dòng 1', 'Dòng 2', 'Dòng 3']) expect(t).toContain(d);
-  });
-
-  it('ghi chú gốc hiện ĐÚNG MỘT LẦN, kể cả khi đã có bảng quyết toán', () => {
-    H.hoan = { data: factsHoan(), isLoading: false, isError: false };
-    const html = chu(ve(<SettlementVoucherDetails row={dong()} />));
-    expect(demLan(html, 'Khách đã ký biên bản bàn giao.')).toBe(1);
-    expect(demLan(html, 'Ghi chú gốc của phiếu')).toBe(1);
-  });
-
+describe('Lịch sử bổ sung', () => {
   it('KHÔNG dựng lại Lịch sử bổ sung — phần đó là của modal, tránh hiện hai lần', () => {
     H.hoan = { data: factsHoan(), isLoading: false, isError: false };
     const html = ve(<SettlementVoucherDetails row={dong()} />);

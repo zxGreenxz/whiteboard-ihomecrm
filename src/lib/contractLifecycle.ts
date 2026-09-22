@@ -80,6 +80,7 @@ export interface TerminationRow {
   id: string;
   contract_id: string;
   organization_id: string | null;
+  status: string | null;
   termination_date: string | null;
   termination_type: string | null;
   refund_amount: number | null;
@@ -87,6 +88,10 @@ export interface TerminationRow {
   /** Cọc CHỐT tại quyết toán — snapshot riêng, không phải gross, không phải ròng. */
   total_deposit: number | null;
 }
+
+/** Cùng điều kiện hiệu lực với reader/RPC quyết toán; bản nháp chưa đóng HĐ. */
+export const isEffectiveTermination = (status: string | null | undefined): boolean =>
+  status === 'APPROVED' || status === 'COMPLETED';
 
 export interface DepositVoucherRow {
   id: string;
@@ -711,6 +716,8 @@ export interface Lane {
   deposit: DepositFigures | null;
   /** Cọc chốt tại quyết toán — snapshot riêng. */
   settlementDeposit: number | null;
+  /** Trạng thái độc lập với ngày/audit: dữ liệu cũ có thể thiếu ngày thanh lý. */
+  isTerminated: boolean;
   terminatedAt: string | null;
   /** Nhịp cư trú TRÊN PHÒNG NÀY (đã đóng), không phải kỳ hạn hợp đồng. */
   segment: { fromDate: string | null; toDate: string | null } | null;
@@ -828,10 +835,12 @@ export function buildLifecycleLanes(input: LaneInput): LifecycleView {
   const thanhLy = new Map<string, TerminationRow>();
   for (const t of input.terminations) {
     if (t.organization_id !== org) continue;
+    if (!isEffectiveTermination(t.status)) continue;
     if (!hdTheoId.has(t.contract_id)) continue;
     const cu = thanhLy.get(t.contract_id);
-    // Nhiều bản ghi thì lấy bản MỚI NHẤT, giống truy vấn đang chạy.
-    if (!cu || (t.termination_date ?? '') > (cu.termination_date ?? '')) {
+    // Bản hiệu lực mới nhất; id giữ kết quả ổn định khi cùng ngày.
+    if (!cu || (t.termination_date ?? '').localeCompare(cu.termination_date ?? '') > 0
+      || (t.termination_date === cu.termination_date && t.id > cu.id)) {
       thanhLy.set(t.contract_id, t);
     }
   }
@@ -899,7 +908,7 @@ export function buildLifecycleLanes(input: LaneInput): LifecycleView {
     const t = thanhLy.get(x.contractId) ?? null;
     const laDich = i === viTriDich;
     const cuoiChuoi = i === thuTu.length - 1;
-    const daThanhLy = !!t;
+    const daThanhLy = !!t || c.status === 'TERMINATED';
 
     const coc = input.depositByContract.get(x.contractId) ?? null;
     const hoaDon = input.invoiceByContract.get(x.contractId) ?? null;
@@ -915,11 +924,13 @@ export function buildLifecycleLanes(input: LaneInput): LifecycleView {
       target: laDich,
       steps: dungMoc({
         contract: c, termination: t, deposit: coc, invoice: hoaDon,
+        isTerminated: daThanhLy,
         todayISO: input.todayISO, isTarget: laDich, reads: input.reads,
       }),
       deposit: coc,
       settlementDeposit: t?.total_deposit ?? null,
-      terminatedAt: t?.termination_date ?? null,
+      isTerminated: daThanhLy,
+      terminatedAt: daThanhLy ? t?.termination_date ?? c.actual_end_date ?? null : null,
       segment: x.fromDate === null && x.toDate === null && x.diagnostics.includes('SEGMENT_MISSING_FOR_TARGET')
         ? null
         : { fromDate: x.fromDate, toDate: x.toDate },
@@ -986,7 +997,7 @@ export function buildLifecycleLanes(input: LaneInput): LifecycleView {
           kind: 'insufficient', contractId: null, contractNumber: null, customer: null,
           label: `${CHUA_DU_DU_LIEU} để kết luận tình trạng phòng`,
         }
-      : cuoi.terminatedAt
+      : cuoi.isTerminated
         ? {
             kind: 'vacant', contractId: null, contractNumber: null, customer: null,
             label: 'Trống · chưa có hợp đồng mới',
@@ -1016,6 +1027,7 @@ export function buildLifecycleLanes(input: LaneInput): LifecycleView {
 function dungMoc(a: {
   contract: LifecycleContractRow;
   termination: TerminationRow | null;
+  isTerminated: boolean;
   deposit: DepositFigures | null;
   invoice: InvoiceTotals | null;
   todayISO: string;
@@ -1073,15 +1085,26 @@ function dungMoc(a: {
         m: `Không gồm cọc · giá thuê ${fmtMoney(Number(c.rent_price) || 0)}/tháng`,
       };
 
-  const noSauQuyetToan = t?.outstanding_debt;
+  const noDuaVaoQuyetToan = t?.outstanding_debt;
+  // Thiếu/sai dữ liệu không phải số hoàn bằng 0. Numeric string từ boundary
+  // vẫn đọc được, nhưng chuỗi trắng, null và giá trị không hữu hạn thì chưa biết.
+  const soHoanTho: unknown = t?.refund_amount;
+  const soHoan = typeof soHoanTho === 'number' || (typeof soHoanTho === 'string' && soHoanTho.trim() !== '')
+    ? Number(soHoanTho) : NaN;
   const mocCuoi: LaneStep = t
     ? {
         h: `${t.termination_type === 'FORFEIT' ? 'Bỏ cọc' : 'Thanh lý'} · ${fmtNgay(t.termination_date)}`,
-        v: `Quyết toán hoàn ${fmtMoney(Number(t.refund_amount) || 0)}`,
-        m: noSauQuyetToan === null || noSauQuyetToan === undefined
-          ? `Nợ sau quyết toán: ${CHUA_DU_DU_LIEU}`
-          : `Nợ sau quyết toán: ${fmtMoney(Number(noSauQuyetToan))}`,
+        v: Number.isFinite(soHoan) ? `Quyết toán hoàn ${fmtMoney(soHoan)}` : CHUA_DU_DU_LIEU,
+        m: noDuaVaoQuyetToan === null || noDuaVaoQuyetToan === undefined
+          ? `Công nợ đưa vào quyết toán: ${CHUA_DU_DU_LIEU}`
+          : `Công nợ đưa vào quyết toán: ${fmtMoney(Number(noDuaVaoQuyetToan))}`,
       }
+    : a.isTerminated
+      ? {
+          h: `Thanh lý${c.actual_end_date ? ` · ${fmtNgay(c.actual_end_date)}` : ''}`,
+          v: CHUA_DU_DU_LIEU,
+          m: 'Hợp đồng đã thanh lý nhưng chưa đọc được bản ghi quyết toán có hiệu lực',
+        }
     : {
         // HÔM NAY, không phải ngày phiếu: dán ngày quá khứ lên tổng hiện tại
         // là đổi một nhãn sai lấy một nhãn sai khác.

@@ -517,6 +517,7 @@ describe('buildLifecycleLanes — nhiều lane theo LỊCH SỬ PHÒNG', () => {
     id: `t-${p.contract_id}`,
     organization_id: ORG,
     termination_date: '2026-09-20',
+    status: 'COMPLETED',
     termination_type: 'NORMAL',
     refund_amount: 3_076_000,
     outstanding_debt: 0,
@@ -762,17 +763,87 @@ describe('buildLifecycleLanes — nhiều lane theo LỊCH SỬ PHÒNG', () => {
     expect(v.status.deposit.kind).toBe('error');
   });
 
-  it('mốc 4 của lane ĐÍCH đã thanh lý: quyết toán hoàn + nợ sau quyết toán', () => {
+  it('mốc 4 giữ công nợ đưa vào quyết toán, không gọi đó là nợ còn lại sau cấn', () => {
     const v = buildLifecycleLanes({
       ...nen, targetContractId: HD, subject: { kind: 'voucher', voucherKind: 'refund' },
       contracts: [hopDong({ id: HD, status: 'TERMINATED', actual_end_date: '2026-09-20' })],
       segments: [doan({ contract_id: HD, to_date: '2026-09-20' })],
       terminations: [ketThuc({ contract_id: HD, outstanding_debt: 120_000 })],
+      invoiceByContract: new Map([[HD, { paid: 120_000, debt: 0 }]]),
     });
     const moc = v.lanes[0].steps[3];
     expect(moc.h).toBe('Thanh lý · 20/09/2026');
     expect(moc.v).toBe('Quyết toán hoàn 3.076.000 đ');
-    expect(moc.m).toBe('Nợ sau quyết toán: 120.000 đ');
+    expect(moc.m).toBe('Công nợ đưa vào quyết toán: 120.000 đ');
+  });
+
+  it.each([
+    ['DRAFT', false], ['PENDING_APPROVAL', false], ['APPROVED', true], ['COMPLETED', true], [null, false],
+  ] as const)('chỉ bản thanh lý hiệu lực đổi lane/phòng: %s', (status, effective) => {
+    const v = buildLifecycleLanes({
+      ...nen, targetContractId: HD, subject: { kind: 'movement' },
+      contracts: [hopDong({ id: HD, status: 'ACTIVE' })],
+      segments: [doan({ contract_id: HD })],
+      terminations: [ketThuc({ contract_id: HD, status })],
+    });
+    expect(v.target?.isTerminated).toBe(effective);
+    expect(v.target?.tag).toBe(effective ? LANE_TAG.terminated : LANE_TAG.current);
+    expect(v.roomState.kind).toBe(effective ? 'vacant' : 'occupied');
+    expect(v.target?.settlementDeposit).toBe(effective ? 4_500_000 : null);
+  });
+
+  it.each([null, undefined, NaN, Infinity, '', ' ', 'bad-number', false, {}])(
+    'refund_amount thiếu/hỏng %s không thành số hoàn 0', (refundAmount) => {
+      const v = buildLifecycleLanes({
+        ...nen, targetContractId: HD, subject: { kind: 'movement' },
+        contracts: [hopDong({ id: HD, status: 'TERMINATED' })],
+        segments: [doan({ contract_id: HD })],
+        // Boundary từ PostgREST chưa parse có thể sai kiểu runtime.
+        terminations: [ketThuc({ contract_id: HD, refund_amount: refundAmount as unknown as number | null })],
+      });
+      expect(v.target?.steps[3].v).toBe('Chưa đủ dữ liệu');
+      expect(v.target?.isTerminated).toBe(true);
+    },
+  );
+
+  it.each([0, '0'])('refund_amount 0 hợp lệ vẫn hiển thị đúng: %s', (refundAmount) => {
+    const v = buildLifecycleLanes({
+      ...nen, targetContractId: HD, subject: { kind: 'movement' },
+      contracts: [hopDong({ id: HD, status: 'TERMINATED' })],
+      segments: [doan({ contract_id: HD })],
+      terminations: [ketThuc({ contract_id: HD, refund_amount: refundAmount as unknown as number })],
+    });
+    expect(v.target?.steps[3].v).toBe('Quyết toán hoàn 0 đ');
+  });
+
+  it('bản nháp mới hơn không che bản thanh lý đã có hiệu lực', () => {
+    const v = buildLifecycleLanes({
+      ...nen, targetContractId: HD, subject: { kind: 'movement' },
+      contracts: [hopDong({ id: HD, status: 'TERMINATED' })],
+      segments: [doan({ contract_id: HD })],
+      terminations: [
+        ketThuc({ contract_id: HD, id: 'effective', status: 'APPROVED', refund_amount: 123 }),
+        ketThuc({ contract_id: HD, id: 'draft', status: 'DRAFT', termination_date: '2026-09-22', refund_amount: 999 }),
+      ],
+    });
+    expect(v.target?.terminatedAt).toBe('2026-09-20');
+    expect(v.target?.steps[3].v).toBe('Quyết toán hoàn 123 đ');
+  });
+
+  it.each([null, '2026-09-20'])('TERMINATED thiếu audit vẫn đã thanh lý, không bịa ngày/số quyết toán: %s', (actualEnd) => {
+    const v = buildLifecycleLanes({
+      ...nen, targetContractId: HD, subject: { kind: 'movement' },
+      contracts: [hopDong({ id: HD, status: 'TERMINATED', actual_end_date: actualEnd, end_date: '2026-09-19' })],
+      segments: [doan({ contract_id: HD })],
+    });
+    expect(v.target?.isTerminated).toBe(true);
+    expect(v.target?.tag).toBe(LANE_TAG.terminated);
+    expect(v.target?.terminatedAt).toBe(actualEnd);
+    expect(v.target?.settlementDeposit).toBeNull();
+    expect(v.target?.steps[3].h).toContain('Thanh lý');
+    expect(v.target?.steps[3].v).toBe('Chưa đủ dữ liệu');
+    expect(v.target?.steps[3].m).toContain('quyết toán');
+    expect(v.roomState.kind).not.toBe('occupied');
   });
 
   it('mốc 4 khi CHƯA thanh lý: "Đến hôm nay · <mốc nghiệp vụ>"', () => {

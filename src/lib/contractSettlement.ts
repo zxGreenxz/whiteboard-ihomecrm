@@ -158,6 +158,8 @@ export interface SettlementRow {
   systemSource: string | null;
   commissionKind: string | null;
   basis: BasisState;
+  /** Hook luôn gán; optional để giữ tương thích caller/fixture cũ. */
+  validationState?: 'loading' | 'ready' | 'error';
   status: SettlementStatus;
   /** Hai cột THÔ, giữ nguyên như DB — writer và bảng nút phải đọc chúng, không
    *  suy ngược từ `status` (REVERSED và UNPOSTED cùng ra 'approved'). */
@@ -291,9 +293,10 @@ export function detectIssues(
  * Đừng dùng hàm này làm điều kiện hiện nút Chi.
  */
 export function laneOf(
-  row: Pick<SettlementRow, 'status' | 'issues'>,
+  row: Pick<SettlementRow, 'status' | 'issues' | 'validationState'>,
 ): SettlementLane | null {
   if (row.status !== 'pending') return null;
+  if (row.validationState && row.validationState !== 'ready') return 'can-ra-soat';
   return row.issues.some(isBlocker) ? 'can-ra-soat' : 'cho-duyet';
 }
 
@@ -383,7 +386,7 @@ export const ACTION_LABEL: Record<ViewStatus, string> = {
 
 /** Trạng thái để HIỂN THỊ: tách 'review' ra khỏi 'pending' bằng làn. */
 export function viewStatusOf(
-  row: Pick<SettlementRow, 'status' | 'issues'>,
+  row: Pick<SettlementRow, 'status' | 'issues' | 'validationState'>,
 ): ViewStatus {
   if (row.status === 'pending') {
     return laneOf(row) === 'can-ra-soat' ? 'review' : 'pending';

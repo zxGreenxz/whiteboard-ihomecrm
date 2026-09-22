@@ -49,6 +49,7 @@ import {
 } from '@/lib/contractSettlement';
 import type { useSettlementActions } from '@/hooks/useSettlementActions';
 import { NHAN_VUONG_MAC, moTaCanCuTrongModal } from './nhan';
+import type { ModalReadState } from './modalReadState';
 
 type Actions = ReturnType<typeof useSettlementActions>;
 
@@ -57,9 +58,10 @@ interface Props {
   view: ViewStatus;
   actions: Actions;
   onClose: () => void;
+  onRetrySources?: () => void;
 }
 
-/** Khoá idempotency ổn định trong MỘT lần mở hộp thoại. */
+/** Khoá idempotency của một lệnh; giữ lại khi thử lại lệnh chưa rõ kết quả. */
 const khoaMoi = () =>
   typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
     ? crypto.randomUUID()
@@ -86,8 +88,23 @@ const moTaLoi = (e: unknown): string => {
   return typeof m === 'string' && m.trim() ? m.trim() : 'không rõ nguyên nhân';
 };
 
-export function SettlementLifecycleModal({ row, view, actions, onClose }: Props) {
+export function SettlementLifecycleModal(props: Props) {
+  // Draft, chứng từ và lệnh đang chạy chỉ thuộc một phiếu. Đổi phiếu tạo phiên
+  // mới; completion của phiên đã unmount không được đóng/cập nhật phiên mới.
+  return <SettlementLifecycleModalContent key={props.row.voucherId} {...props} />;
+}
+
+function SettlementLifecycleModalContent({ row, view, actions, onClose, onRetrySources }: Props) {
   const kha = actions.availabilityOf(row);
+  const [lifecycleReadState, setLifecycleReadState] = useState<ModalReadState>('loading');
+  const [basisReadState, setBasisReadState] = useState<ModalReadState>('loading');
+  const nguonDoiChieu = [
+    row.validationState ?? 'ready',
+    ...(row.organizationId && row.contractId ? [lifecycleReadState] : []),
+    basisReadState,
+  ];
+  const coNguonLoi = nguonDoiChieu.includes('error');
+  const daXacMinh = !coNguonLoi && !nguonDoiChieu.includes('loading');
   /**
    * Vai của lane đích lấy từ ĐÚNG loại phiếu. `row.kind` có thể là 'unknown'
    * (phiếu thủ công chưa nhận được loại) — khi đó lane mang nhãn trung tính,
@@ -149,7 +166,10 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
   const [nhanAnhHong, setNhanAnhHong] = useState(false);
   const [dangTaiAnh, setDangTaiAnh] = useState(false);
   const [dangGhiSo, setDangGhiSo] = useState(false);
-  const [khoaGhiChu] = useState(khoaMoi);
+  const lenhBoSung = useRef<{ command: string; idempotencyKey: string } | null>(null);
+  const [dangPhatLenh, setDangPhatLenh] = useState(false);
+  const dangPhatLenhRef = useRef(false);
+  const luotPhatLenh = useRef(0);
   /** Sinh MỘT LẦN mỗi lần mở form chi — thử lại không ghi sổ hai lần. */
   const [khoaGhiSo, setKhoaGhiSo] = useState(khoaMoi);
 
@@ -157,24 +177,28 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
   const dinhChungTu = useAttachPostingEvidence();
   const qc = useQueryClient();
 
-  /**
-   * ⚠ MODAL KHÔNG UNMOUNT KHI ĐỔI PHIẾU. Hồ sơ biến động bấm sang một phiếu
-   * khác thì cha chỉ truyền `row` mới vào ĐÚNG instance này. Nên mọi kết quả
-   * `await` phải so với phiếu đang mở TẠI LÚC NÓ VỀ; ref gán ngay trong render
-   * để không có khe nào giữa render và effect cho promise chen vào.
-   */
+  /** Mọi kết quả await phải còn thuộc phiên phiếu đang mở. */
   const phieuHienTai = useRef(row.voucherId);
   phieuHienTai.current = row.voucherId;
   const conSong = useRef(true);
-  useEffect(() => () => { conSong.current = false; }, []);
+  useEffect(() => {
+    conSong.current = true;
+    return () => { conSong.current = false; };
+  }, []);
   /** Kết quả về sau khi đóng modal hoặc đã đổi phiếu thì BỎ, không gắn lung tung. */
   const conDungPhieu = useCallback(
     (id: string) => conSong.current && phieuHienTai.current === id,
     [],
   );
   const supplements = useIncomeExpenseSupplements(row.voucherId, true);
-  const { data: soCustodian = [] } = useCustodianCashbooksV2(!!dangChi);
-  const { data: moiSo = [] } = useAccounts({ enabled: !!dangChi });
+  const nguonCustodian = useCustodianCashbooksV2(!!dangChi);
+  const nguonAccounts = useAccounts({ enabled: !!dangChi });
+  const soCustodian = nguonCustodian.data;
+  const moiSo = nguonAccounts.data;
+  const soDangTai = nguonCustodian.isLoading || nguonAccounts.isLoading
+    || nguonCustodian.isFetching || nguonAccounts.isFetching;
+  const soBiLoi = nguonCustodian.isError || nguonAccounts.isError;
+  const soSanSang = !soDangTai && !soBiLoi;
 
   /**
    * ⚠ `list_cashbooks_for_expense_v2()` KHÔNG nhận tham số tổ chức — nó trả mọi
@@ -184,11 +208,11 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
    */
   const soDungOrg = useMemo(() => {
     const hopLe = new Set(
-      (moiSo as { id: string; organization_id?: string; is_virtual?: boolean }[])
+      ((moiSo ?? []) as { id: string; organization_id?: string; is_virtual?: boolean }[])
         .filter((a) => a.organization_id === row.organizationId && !a.is_virtual)
         .map((a) => a.id),
     );
-    return soCustodian.filter((b) => hopLe.has(b.id));
+    return (soCustodian ?? []).filter((b) => hopLe.has(b.id));
   }, [moiSo, soCustodian, row.organizationId]);
 
   /**
@@ -279,39 +303,13 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
   const phieuCuaForm = useRef<string | null>(null);
 
   const moFormChi = (mode: 'APPROVE_AND_POST' | 'POST_APPROVED') => {
+    if (!daXacMinh || dangPhatLenhRef.current || actions.isBusy) return;
     phieuCuaForm.current = row.voucherId;
     setDangChi(mode);
     setKhoaGhiSo(khoaMoi());
     xoaChungTu();
     setSoQuy('');
   };
-
-  /**
-   * Đổi phiếu giữa chừng: đóng form chi và vứt chứng từ của phiếu cũ. Giữ lại
-   * là mở đường cho chứng từ phiếu A ký tên cho lần chi phiếu B.
-   */
-  const phieuTruoc = useRef(row.voucherId);
-  useEffect(() => {
-    if (phieuTruoc.current === row.voucherId) return;
-    phieuTruoc.current = row.voucherId;
-    phieuCuaForm.current = null;
-    setDangChi(null);
-    setSoQuy('');
-    setKhoaGhiSo(khoaMoi());
-    xoaChungTu();
-    // Draft người nhận cũng thuộc về MỘT phiếu. Để nguyên là mở đường cho số
-    // tài khoản gõ cho phiếu A được lưu đè lên phiếu B. Cờ `dangLuuNhan` phải
-    // dọn ở đây vì lần lưu của phiếu cũ về muộn bị `conDungPhieu` chặn nên
-    // không tự tắt được — y hệt bẫy `dangTaiAnh` của T1.
-    setNguoiNhan(row.recipientName ?? '');
-    setNganHang(chuanHoaNganHang(row.bankName));
-    setSoTk(row.bankAccount ?? '');
-    setLoiLuu(null);
-    setDangLuuNhan(false);
-    setQrHong(null);
-    // `row.*` dưới đây chỉ được đọc SAU hàng rào đổi phiếu ở trên, nên phiếu
-    // cũ refetch đổi tên giữa chừng không giật mất thứ người dùng đang gõ.
-  }, [row.voucherId, row.recipientName, row.bankName, row.bankAccount, xoaChungTu]);
 
   /**
    * Dropdown ngân hàng đi portal RIÊNG của Radix, là ANH EM của `.cs-scrim`
@@ -462,7 +460,8 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
    */
   const khoaXacNhan =
     actions.isBusy || dangTaiAnh || dangNhanAnh || dangGhiSo || !kiemTra.ok
-    || doiNguoiNhan || dangLuuNhan;
+    || doiNguoiNhan || dangLuuNhan || !daXacMinh || dangPhatLenh
+    || !soSanSang || !soDungOrg.some((s) => s.id === soQuy);
 
   /**
    * Chống bấm hai lần: `actions.isBusy` chỉ đổi sau một vòng render, còn hai cú
@@ -472,26 +471,44 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
    * nhận cùng idempotency key nên không ghi sổ lần hai.
    */
   const dangGhiRef = useRef(false);
+  const luotGhi = useRef(0);
   const ghiChi = () => {
     if (!dangChi || khoaXacNhan || dangGhiRef.current) return;
     dangGhiRef.current = true;
     setDangGhiSo(true);
     const input = duLieuGhiChi();
+    const luot = ++luotGhi.current;
+    const conDungLuot = () => conDungPhieu(input.subjectId) && luotGhi.current === luot;
     void chay(async () => {
       if (dangChi === 'APPROVE_AND_POST') await actions.approveAndPost(input);
       else await actions.post(input);
-      if (!conSong.current) return;
+      if (!conDungLuot()) return;
       setDangChi(null);
       onClose();
     }).finally(() => {
-      dangGhiRef.current = false;
-      if (conSong.current) setDangGhiSo(false);
+      if (conDungLuot()) {
+        dangGhiRef.current = false;
+        setDangGhiSo(false);
+      }
     });
   };
 
   const st = STATUS_STYLE[view];
   const chay = async (fn: () => Promise<void>) => {
     try { await fn(); } catch { /* hook đã toast */ }
+  };
+  const chayLenh = (fn: (conDungLuot: () => boolean) => Promise<void>) => {
+    if (!daXacMinh || actions.isBusy || dangPhatLenhRef.current || dangGhiRef.current) return;
+    const id = row.voucherId;
+    const luot = ++luotPhatLenh.current;
+    const conDungLuot = () => conDungPhieu(id) && luotPhatLenh.current === luot;
+    dangPhatLenhRef.current = true;
+    setDangPhatLenh(true);
+    void chay(() => fn(conDungLuot)).finally(() => {
+      if (!conDungLuot()) return;
+      dangPhatLenhRef.current = false;
+      setDangPhatLenh(false);
+    });
   };
 
   // ── Vướng mắc còn chặn, sau khi trừ những thứ nút bên dưới gỡ được ────────
@@ -517,7 +534,7 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
   const luuNhanTien = async (): Promise<boolean> => {
     // `dangLuuNhan` chỉ đổi sau một vòng render nên hai cú bấm trong CÙNG vòng
     // vẫn lọt — ref chặn ngay, y như `dangGhiRef` của nút ghi chi.
-    if (dangLuuRef.current) return false;
+    if (!daXacMinh || dangLuuRef.current) return false;
     const id = row.voucherId;
     const ten = nguoiNhan.trim();
     const nh = nganHang.trim();
@@ -547,30 +564,40 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
     }
   };
 
-  const xacNhanChuyenLan = () => chay(async () => {
+  const boSung = async (xong: boolean, noiDung: string, conDungLuot: () => boolean) => {
+    const command = JSON.stringify([row.voucherId, xong ? 'done' : 'request', noiDung]);
+    if (lenhBoSung.current?.command !== command) {
+      lenhBoSung.current = { command, idempotencyKey: khoaMoi() };
+    }
+    const lenh = lenhBoSung.current;
+    const f = xong ? actions.markSupplementDone : actions.requestSupplement;
+    await f({ voucherId: row.voucherId, noiDung, idempotencyKey: lenh.idempotencyKey });
+    if (!conDungLuot()) return;
+    // Thành công kết thúc logical command. Retry sau lỗi giữ nguyên khoá;
+    // loại lệnh hoặc nội dung khác luôn lấy khoá mới.
+    if (lenhBoSung.current === lenh) lenhBoSung.current = null;
+    await supplements.refetch();
+  };
+
+  const xacNhanChuyenLan = () => chayLenh(async (conDungLuot) => {
     // Lưu hỏng thì DỪNG: không đóng yêu cầu bổ sung, không báo thành công.
     if (doiNguoiNhan && !(await luuNhanTien())) return;
+    if (!conDungLuot()) return;
     if (row.supplementPending && kha.markSupplementDone) {
-      await actions.markSupplementDone({
-        voucherId: row.voucherId,
-        noiDung: lyDo.trim() || 'Đã đối chiếu, đủ dữ kiện',
-        idempotencyKey: khoaGhiChu,
-      });
-      await supplements.refetch();
+      await boSung(true, lyDo.trim() || 'Đã đối chiếu, đủ dữ kiện', conDungLuot);
     }
+    if (!conDungLuot()) return;
     toast.success(
       blockerNgoaiTam.length
         ? 'Đã lưu. Phiếu vẫn ở Cần rà soát vì còn vướng ngoài tầm màn này.'
         : 'Đã xác nhận. Phiếu chuyển sang Chờ duyệt.',
     );
-    setLyDo('');
+    setLyDo((hienTai) => hienTai === lyDo ? '' : hienTai);
   });
 
-  const ghiChuBoSung = (xong: boolean) => chay(async () => {
-    const f = xong ? actions.markSupplementDone : actions.requestSupplement;
-    await f({ voucherId: row.voucherId, noiDung: lyDo, idempotencyKey: khoaGhiChu });
-    setLyDo('');
-    await supplements.refetch();
+  const ghiChuBoSung = (xong: boolean) => chayLenh(async (conDungLuot) => {
+    await boSung(xong, lyDo.trim(), conDungLuot);
+    if (conDungLuot()) setLyDo((hienTai) => hienTai === lyDo ? '' : hienTai);
   });
 
   // ⚠ PHẢI dựng qua portal ra document.body.
@@ -616,6 +643,7 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
             hồng dán nhãn hoàn, đúng thứ plan §3.2 cấm. Dải tự bỏ qua nếu loại
             không phải hoàn, nhưng không truyền vẫn là rõ ràng hơn. */}
         <ContractLifecycleBand
+          onReadStateChange={setLifecycleReadState}
           organizationId={row.organizationId}
           roomId={row.roomId}
           contractId={row.contractId}
@@ -702,7 +730,7 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
             {/* Bảng quyết toán/căn cứ theo LOẠI phiếu + ghi chú gốc — lấy đúng
                 nguồn Thu chi. Đặt TRƯỚC "Lịch sử bổ sung" theo plan §3.2, và
                 mục bổ sung ở dưới vẫn là nơi DUY NHẤT dựng lịch sử bổ sung. */}
-            <SettlementVoucherDetails row={row} />
+            <SettlementVoucherDetails row={row} onReadStateChange={setBasisReadState} />
 
             <h3 style={{ marginTop: 16 }}>Lịch sử bổ sung</h3>
             {supplements.isLoading ? (
@@ -747,7 +775,7 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
                       hoá, không phải "ô ngân hàng khác rỗng". */}
                   {doiNguoiNhan && (
                     <button type="button" className="cs-btn primary sm"
-                      disabled={actions.isBusy || dangLuuNhan}
+                      disabled={!daXacMinh || actions.isBusy || dangPhatLenh || dangLuuNhan}
                       onClick={() => { void luuNhanTien(); }}>
                       {dangLuuNhan ? 'Đang lưu…' : 'Lưu thông tin nhận tiền'}
                     </button>
@@ -854,6 +882,16 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
 
             {/* ── Nút ──────────────────────────────────────────────────── */}
             <div className="cs-acts">
+              {!daXacMinh && (
+                <div className="cs-warnbox" role="status">
+                  {!coNguonLoi
+                    ? 'Đang xác minh dữ liệu phiếu. Chưa thể duyệt hoặc chi.'
+                    : 'Chưa xác minh được dữ liệu phiếu. Hãy thử lại nguồn bị lỗi trước khi duyệt hoặc chi.'}
+                  {row.validationState === 'error' && onRetrySources && (
+                    <button type="button" className="cs-btn sm" onClick={onRetrySources}>Thử lại dữ liệu phiếu</button>
+                  )}
+                </div>
+              )}
               {/* Một câu duy nhất giải thích vì sao mọi nút tiền đang khoá —
                   nút xám không kèm lý do là thứ người dùng bấm mãi rồi bỏ. */}
               {doiNguoiNhan && (
@@ -878,7 +916,17 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
                       {soDungOrg.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
                     </select>
                   </label>
-                  {soDungOrg.length === 0 && (
+                  {soBiLoi ? (
+                    <div className="cs-note-s" role="status">
+                      Không đọc được sổ quỹ. Chưa thể ghi chi.
+                      <button type="button" className="cs-btn sm" onClick={() => {
+                        void nguonCustodian.refetch();
+                        void nguonAccounts.refetch();
+                      }}>Thử lại sổ quỹ</button>
+                    </div>
+                  ) : soDangTai ? (
+                    <div className="cs-note-s" role="status">Đang tải sổ quỹ…</div>
+                  ) : soDungOrg.length === 0 && (
                     <div className="cs-note-s" style={{ color: 'var(--c-unpaid)' }}>
                       Bạn không giữ sổ quỹ nào của tổ chức này nên không ghi chi được.
                     </div>
@@ -952,6 +1000,7 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
                       ghi sổ, để lại trên màn khi không còn lần nào đang mở là
                       nói về một việc không tồn tại. */}
                   <button type="button" className="cs-btn sm"
+                    disabled={dangGhiSo}
                     onClick={() => { setDangChi(null); xoaChungTu(); }}>
                     Chưa chi, quay lại
                   </button>
@@ -977,7 +1026,7 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
                     Tôi đã đối chiếu thông tin người nhận và căn cứ của khoản chi này.
                   </label>
                   <button type="button" className="cs-btn primary"
-                    disabled={actions.isBusy || !daDoiChieu || (!doiNguoiNhan && !row.supplementPending)}
+                    disabled={!daXacMinh || actions.isBusy || dangPhatLenh || !daDoiChieu || (!doiNguoiNhan && !row.supplementPending)}
                     onClick={xacNhanChuyenLan}>
                     Xác nhận &amp; Chuyển Chờ Duyệt
                   </button>
@@ -996,21 +1045,24 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
                       dữ liệu CŨ. Chặn bằng `doiNguoiNhan` cho tới khi lưu. */}
                   {kha.approveAndPost && (
                     <button type="button" className="cs-btn primary"
-                      disabled={actions.isBusy || doiNguoiNhan || dangLuuNhan}
+                      disabled={!daXacMinh || actions.isBusy || dangPhatLenh || doiNguoiNhan || dangLuuNhan}
                       onClick={() => moFormChi('APPROVE_AND_POST')}>
                       Duyệt &amp; Chi {fmtMoney(row.amount)}
                     </button>
                   )}
                   <div className="pair">
                     <button type="button" className="cs-btn sm"
-                      disabled={actions.isBusy || !kha.requestSupplement || !lyDo.trim()}
+                      disabled={!daXacMinh || actions.isBusy || dangPhatLenh || !kha.requestSupplement || !lyDo.trim()}
                       onClick={() => ghiChuBoSung(false)}>
                       Cần bổ sung
                     </button>
                     {kha.approve && (
                       <button type="button" className="cs-btn ghost sm"
-                        disabled={actions.isBusy || doiNguoiNhan || dangLuuNhan}
-                        onClick={() => chay(async () => { await actions.approve(row); onClose(); })}>
+                        disabled={!daXacMinh || actions.isBusy || dangPhatLenh || doiNguoiNhan || dangLuuNhan}
+                        onClick={() => chayLenh(async (conDungLuot) => {
+                          await actions.approve(row);
+                          if (conDungLuot()) onClose();
+                        })}>
                         Duyệt Chờ Chi
                       </button>
                     )}
@@ -1031,7 +1083,7 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
                 <>
                   {kha.post ? (
                     <button type="button" className="cs-btn primary"
-                      disabled={actions.isBusy || doiNguoiNhan || dangLuuNhan}
+                      disabled={!daXacMinh || actions.isBusy || dangPhatLenh || doiNguoiNhan || dangLuuNhan}
                       onClick={() => moFormChi('POST_APPROVED')}>
                       Ghi nhận chi {fmtMoney(row.amount)}
                     </button>
@@ -1080,7 +1132,7 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
               {!dangChi && view !== 'paid' && view !== 'cancelled' && (
                 !chuoiTuChoi ? (
                   <button type="button" className="cs-btn danger sm"
-                    disabled={actions.isBusy || !kha.cancel}
+                    disabled={!daXacMinh || actions.isBusy || dangPhatLenh || !kha.cancel}
                     title={kha.cancelReason ?? undefined}
                     onClick={() => setChuoiTuChoi(true)}>
                     Từ chối phiếu
@@ -1096,9 +1148,10 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
                         Quay lại
                       </button>
                       <button type="button" className="cs-btn danger sm"
-                        disabled={actions.isBusy || lyDo.trim().length < 8}
-                        onClick={() => chay(async () => {
+                        disabled={!daXacMinh || actions.isBusy || dangPhatLenh || lyDo.trim().length < 8}
+                        onClick={() => chayLenh(async (conDungLuot) => {
                           await actions.cancel(row, lyDo.trim());
+                          if (!conDungLuot()) return;
                           toast.success('Đã từ chối phiếu.');
                           onClose();
                         })}>

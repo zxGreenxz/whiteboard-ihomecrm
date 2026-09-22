@@ -30,6 +30,7 @@ const H = vi.hoisted(() => ({
   chuoi: [] as { bang: string; ops: [string, unknown[]][] }[],
   /** Nhãn của các lần gọi fetchAllRows, theo thứ tự. */
   nhan: [] as string[],
+  cho: new Map<string, Promise<void>>(),
 }));
 
 vi.mock('@/integrations/supabase/client', () => {
@@ -54,6 +55,7 @@ vi.mock('@/lib/supabaseFetchAll', () => ({
     const label = opts.label ?? '';
     H.nhan.push(label);
     build(0, 999); // dựng chuỗi thật để test soi được cột/bộ lọc
+    await H.cho.get(label);
     return H.bang.has(label) ? H.bang.get(label) : [];
   },
 }));
@@ -112,6 +114,7 @@ const napCaThat = () => {
   H.bang.set('lifecycle.terminations', [{
     id: 't1', contract_id: HD, organization_id: ORG, termination_date: '2026-09-20',
     termination_type: 'NORMAL', refund_amount: 3_076_000, outstanding_debt: 0,
+    status: 'COMPLETED',
     total_deposit: 4_500_000,
   }]);
   H.bang.set('lifecycle.deposit-links', []);
@@ -131,6 +134,7 @@ const napCaThat = () => {
 
 beforeEach(() => {
   H.bang.clear(); H.chuoi.length = 0; H.nhan.length = 0; H.goiRpc.mockReset();
+  H.cho.clear();
 });
 
 const chay = async () => {
@@ -163,6 +167,43 @@ describe('useContractLifecycle — ca thật 401/32PVC', () => {
 });
 
 describe('useContractLifecycle — nguồn và ranh giới', () => {
+  it('đọc status thanh lý qua boundary trước khi dựng trạng thái', async () => {
+    napCaThat();
+    await chay();
+    const query = H.chuoi.find((c) => c.bang === 'contract_terminations');
+    expect(query?.ops.find(([op]) => op === 'select')?.[1][0]).toMatch(/\bstatus\b/);
+  });
+
+  it('đọc hợp đồng phòng trong khi lịch sử chuyển phòng còn chờ', async () => {
+    napCaThat();
+    let xong!: () => void;
+    H.cho.set('lifecycle.transfers', new Promise<void>((resolve) => { xong = resolve; }));
+    const hook = renderHook(() => useContractLifecycle(ARGS), { wrapper: bocLot() });
+    try {
+      await waitFor(() => expect(H.nhan).toContain('lifecycle.contracts-room'), { timeout: 200 });
+    } finally {
+      xong();
+      await waitFor(() => expect(hook.result.current.isLoading).toBe(false));
+      hook.unmount();
+    }
+  });
+
+  it('các nguồn thanh lý/cọc/hóa đơn bắt đầu khi projection cư trú còn chờ', async () => {
+    napCaThat();
+    let xong!: (value: unknown) => void;
+    H.goiRpc.mockReturnValue(new Promise((resolve) => { xong = resolve; }));
+    const hook = renderHook(() => useContractLifecycle(ARGS), { wrapper: bocLot() });
+    try {
+      await waitFor(() => expect(H.nhan).toEqual(expect.arrayContaining([
+        'lifecycle.terminations', 'lifecycle.deposit-links', 'lifecycle.deposit-direct', 'lifecycle.invoices',
+      ])), { timeout: 200 });
+    } finally {
+      xong({ data: [DOAN], error: null });
+      await waitFor(() => expect(hook.result.current.isLoading).toBe(false));
+      hook.unmount();
+    }
+  });
+
   it('gọi get_room_residence_segments_v1 với ĐÚNG các hợp đồng đã đọc được qua RLS', async () => {
     napCaThat();
     await chay();

@@ -165,9 +165,10 @@ const fetchUtilityTypeIds = async (): Promise<{ elecIds: Set<string>; waterIds: 
 };
 
 /** Danh sách đồng hồ điện/nước theo toà (1 toà có thể nhiều đồng hồ mỗi loại). */
-export const useUtilityAccounts = () => {
+export const useUtilityAccounts = (opts?: { enabled?: boolean }) => {
   const query = useQuery({
     queryKey: ['utility-accounts'],
+    enabled: opts?.enabled ?? true,
     queryFn: async (): Promise<UtilityMeter[]> => {
       const { data, error } = await supabase
         .from('building_utility_accounts')
@@ -307,10 +308,10 @@ export const useCancelUtilityBill = (billingMonth: string) => {
 };
 
 /** Phiếu CHI điện/nước trong 1 kỳ → trạng thái đã đóng + báo cáo theo ngày. */
-export const useUtilityPayments = (billingMonth: string) => {
+export const useUtilityPayments = (billingMonth: string, opts?: { enabled?: boolean }) => {
   const query = useQuery({
     queryKey: ['utility-payments', billingMonth],
-    enabled: !!billingMonth,
+    enabled: (opts?.enabled ?? true) && !!billingMonth,
     queryFn: async (): Promise<UtilityPaymentRow[]> => {
       const { elecIds, waterIds } = await fetchUtilityTypeIds();
       const allIds = [...elecIds, ...waterIds];
