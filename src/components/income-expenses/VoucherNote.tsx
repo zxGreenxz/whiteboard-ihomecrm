@@ -28,15 +28,16 @@ interface Props {
   voucher: VoucherNoteRef;
   fallbackNotes?: string | null;
   enabled?: boolean;
+  hideRefundInstruction?: boolean;
 }
 
-export function VoucherNote({ voucher, fallbackNotes, enabled = true }: Props) {
+export function VoucherNote({ voucher, fallbackNotes, enabled = true, hideRefundInstruction = false }: Props) {
   const original = () => {
   if (laPhieuHoaHong(voucher)) {
     return <CommissionVoucherNote voucher={voucher} fallbackNotes={fallbackNotes} enabled={enabled} />;
   }
   if (laPhieuTraKhachThanhLy(voucher)) {
-    return <TerminationRefundNote voucher={voucher} fallbackNotes={fallbackNotes} enabled={enabled} />;
+    return <TerminationRefundNote voucher={voucher} fallbackNotes={fallbackNotes} enabled={enabled} hideRefundInstruction={hideRefundInstruction} />;
   }
   const notes = fallbackNotes?.trim() || null;
   return notes ? <div className="whitespace-pre-line">{notes}</div> : null;

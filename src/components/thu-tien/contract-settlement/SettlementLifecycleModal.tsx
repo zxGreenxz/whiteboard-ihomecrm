@@ -48,7 +48,7 @@ import {
   type SettlementRow, type ViewStatus,
 } from '@/lib/contractSettlement';
 import type { useSettlementActions } from '@/hooks/useSettlementActions';
-import { NHAN_VUONG_MAC, moTaCanCuTrongModal } from './nhan';
+import { NHAN_VUONG_MAC } from './nhan';
 import type { ModalReadState } from './modalReadState';
 
 type Actions = ReturnType<typeof useSettlementActions>;
@@ -660,76 +660,6 @@ function SettlementLifecycleModalContent({ row, view, actions, onClose, onRetryS
         {/* ── Hai cột ────────────────────────────────────────────────────── */}
         <div className="cs-body">
           <div className="cs-notes">
-            <h3>Đối chiếu căn cứ</h3>
-            <div className="cs-headlines">
-              <div><span>Biến động</span> <b>{row.eventLabel}</b></div>
-              <div><span>Ngày phiếu</span> <b>{fmtNgay(row.eventDate)}</b></div>
-              <div><span>Nguồn</span> <b>{row.origin === 'reservation' ? 'Giữ chỗ' : 'Hợp đồng'}</b></div>
-            </div>
-
-            <div className="cs-sheet">
-              <div className="cs-sheet-t">Số trên phiếu so với căn cứ</div>
-              <div className="cs-kv"><span className="k">Số trên phiếu</span><span className="v">{fmtMoney(row.amount)}</span></div>
-              {/* ⚠ `moTaCanCuTrongModal`, KHÔNG phải `moTaCanCu`. Ở hộp thoại
-                  đã mở, câu "căn cứ hoàn khách tra khi mở phiếu" là lời hứa đã
-                  thực hiện xong — số thật in ngay dưới ở "Bảng quyết toán ·
-                  căn cứ". Xem chú thích của hàm đó trong `nhan.ts`. */}
-              <div className="cs-kv"><span className="k">Số theo căn cứ</span><span className="v">{moTaCanCuTrongModal(row.basis)}</span></div>
-              {row.basis.kind === 'mismatch' && (
-                <div className="cs-kv strong top">
-                  <span className="k">Chênh lệch</span>
-                  <span className="v" style={{ color: 'var(--c-unpaid)' }}>
-                    {fmtMoney(Math.abs(row.amount - row.basis.amount))}
-                  </span>
-                </div>
-              )}
-              <div className="cs-total">
-                <span>
-                  <b>{view === 'paid' ? 'Đã chi' : 'Còn phải chi'}</b>
-                  <span className="sub">
-                    {view === 'paid'
-                      ? `${row.postedOn ? fmtNgay(row.postedOn) : 'ngày chi chưa xác minh'} · `
-                        + `${row.bookName ?? 'sổ không rõ'}`
-                      : view === 'reversed' ? 'Đã ghi sổ rồi hoàn tác'
-                      : 'Chưa ghi sổ'}
-                  </span>
-                </span>
-                <b className="val">{fmtMoney(row.amount)}</b>
-              </div>
-            </div>
-
-            {row.basis.kind === 'mismatch' && (
-              <div className="cs-warnbox" style={{ marginTop: 12 }}>
-                Căn cứ hoa hồng đọc theo <b>bậc hiện hành</b>, không phải bậc tại ngày ký — đối
-                chiếu lại với sale trước khi duyệt. Muốn sửa số tiền thì phải sửa phiếu bên Thu chi.
-              </div>
-            )}
-
-            {row.issues.length > 0 && (
-              <>
-                <h3 style={{ marginTop: 16 }}>Vướng mắc</h3>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {row.issues.map((i) => {
-                    const chan = isBlocker(i);
-                    return (
-                      <span key={i} className="cs-tag" style={{
-                        background: chan ? 'var(--c-unpaid-bg)' : 'var(--line-2)',
-                        color: chan ? 'var(--c-unpaid)' : 'var(--ink-2)',
-                      }}>
-                        {NHAN_VUONG_MAC.vuong[i].nhan}{chan ? '' : ' · cảnh báo'}
-                      </span>
-                    );
-                  })}
-                </div>
-                <div className="cs-note-s" style={{ marginTop: 8 }}>
-                  Chỉ thẻ đỏ mới giữ phiếu ở làn Cần rà soát. Thẻ xám là ghi chú, không chặn duyệt.
-                </div>
-              </>
-            )}
-
-            {/* Bảng quyết toán/căn cứ theo LOẠI phiếu + ghi chú gốc — lấy đúng
-                nguồn Thu chi. Đặt TRƯỚC "Lịch sử bổ sung" theo plan §3.2, và
-                mục bổ sung ở dưới vẫn là nơi DUY NHẤT dựng lịch sử bổ sung. */}
             <SettlementVoucherDetails row={row} onReadStateChange={setBasisReadState} />
 
             <h3 style={{ marginTop: 16 }}>Lịch sử bổ sung</h3>

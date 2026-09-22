@@ -193,6 +193,9 @@ describe('cùng một phiếu hoàn — modal khớp nguồn Thu chi', () => {
       />,
     ));
     const modal = chu(ve(<SettlementVoucherDetails row={dong()} />));
+    expect(thuChi).toContain('[HOÀN KHÁCH THANH LÝ]');
+    expect(modal).not.toContain('[HOÀN KHÁCH THANH LÝ]');
+    expect(modal).not.toContain('CHỌN SỔ QUỸ chi tiền');
 
     for (const m of MOC) {
       expect(thuChi, `Thu chi phải có "${m}"`).toContain(m);

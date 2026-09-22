@@ -282,7 +282,7 @@ export function SettlementVoucherDetails({ row, enabled = true, onReadStateChang
           {trangThai.kind === 'sufficient' ? (
             <div className="cs-sheet" data-testid="settlement-basis">
               {/* Chỉ hiển thị bảng căn cứ, không kèm ghi chú gốc. */}
-              <VoucherNote voucher={phieu} enabled={enabled} />
+              <VoucherNote voucher={phieu} enabled={enabled} hideRefundInstruction />
             </div>
           ) : null}
         </>
