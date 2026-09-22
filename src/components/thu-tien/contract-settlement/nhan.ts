@@ -3,7 +3,7 @@
 // nhau là lỗi người dùng nhìn thấy ngay.
 
 import type { BasisState, SettlementIssue, SettlementStatus } from '@/lib/contractSettlement';
-import type { SettlementKind } from '@/lib/settlementTypes';
+import { KIND_LABEL } from '@/lib/contractSettlement';
 import { fmtFull } from '@/lib/collect';
 
 type Mau = 'red' | 'amber' | 'green' | 'violet' | 'grey';
@@ -21,11 +21,9 @@ export const NHAN_TRANG_THAI: Record<SettlementStatus, { nhan: string; mau: Mau 
 };
 
 export const NHAN_VUONG_MAC = {
-  loai: {
-    refund: 'Hoàn khách',
-    commission: 'Hoa hồng',
-    bonus: 'Thưởng sale',
-  } as Record<SettlementKind, string>,
+  // Một nguồn chữ duy nhất cho tên loại — trước đây chép tay lần hai ở đây, và
+  // chép tay là cách chắc chắn để bảng và modal lệch nhau khi thêm loại mới.
+  loai: KIND_LABEL,
 
   vuong: {
     MISSING_PAYMENT_INFO: { nhan: 'Thiếu thông tin thanh toán', mau: 'red' as Mau },
@@ -34,6 +32,9 @@ export const NHAN_VUONG_MAC = {
     SUPPLEMENT_PENDING: { nhan: 'Có yêu cầu bổ sung', mau: 'violet' as Mau },
     BASIS_NOT_FOUND: { nhan: 'Chưa có căn cứ', mau: 'grey' as Mau },
     BASIS_NOT_APPLICABLE: { nhan: 'Không có công thức căn cứ', mau: 'grey' as Mau },
+    // Cảnh báo, KHÔNG chặn duyệt (isBlocker trả false) — xem chú thích của
+    // 'CLASSIFICATION_REVIEW' trong contractSettlement.ts.
+    CLASSIFICATION_REVIEW: { nhan: 'Cần đối chiếu phân loại', mau: 'amber' as Mau },
     OLD_PERIOD: { nhan: 'Tồn kỳ trước', mau: 'amber' as Mau },
   } as Record<SettlementIssue, { nhan: string; mau: Mau }>,
 };

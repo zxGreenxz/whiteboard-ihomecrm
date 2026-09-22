@@ -17,9 +17,19 @@
 // Từ đây: chỉ BLOCKER mới đẩy phiếu sang làn rà soát. Cảnh báo chỉ hiện nhãn.
 // =============================================================================
 
-import type { SettlementKind } from '@/lib/settlementTypes';
+import type { SettlementKind, SettlementKindSignal } from '@/lib/settlementTypes';
 
-export type { SettlementKind };
+export type { SettlementKind, SettlementKindSignal };
+
+/**
+ * Loại của MỘT DÒNG trên bảng. Khác `SettlementKind` đúng một giá trị:
+ * 'unknown' = resolver chưa xác định được loại (xem `resolveSettlementKind`).
+ *
+ * ⚠ Bản trước không có giá trị này nên read model phải mặc định 'refund' —
+ * đó chính là lỗi xếp nhầm nhóm của phiếu HHMG thủ công. Đoán loại còn tệ hơn
+ * nói "chưa xác định": người duyệt sẽ đi đối chiếu nhầm căn cứ.
+ */
+export type SettlementRowKind = SettlementKind | 'unknown';
 
 /** Dấu nhận diện trong ghi chú bổ sung. Đặt ở ĐẦU nội dung, không đặt giữa. */
 export const DAU_CAN_BO_SUNG = '[CẦN BỔ SUNG]';
@@ -53,6 +63,12 @@ export type SettlementIssue =
   | 'SUPPLEMENT_PENDING'     // blocker: có yêu cầu bổ sung chưa xử lý
   | 'BASIS_NOT_FOUND'        // cảnh báo: chưa tra được căn cứ ở mức danh sách
   | 'BASIS_NOT_APPLICABLE'   // ghi chú: loại này không có công thức căn cứ
+  // Cảnh báo: các dấu phân loại chỏi nhau, hoặc không dấu nào xác định được
+  // loại. CỐ Ý KHÔNG phải blocker: phân loại là việc HIỂN THỊ của khu này, còn
+  // phiếu thì vẫn là phiếu hợp lệ bên Thu chi. Biến nó thành blocker là dựng
+  // lại đúng vòng kẹt mô tả ở đầu file — người duyệt không có cách nào "sửa
+  // phân loại" ngoài việc sửa hạng mục bên Thu chi.
+  | 'CLASSIFICATION_REVIEW'
   | 'OLD_PERIOD';            // cảnh báo: phiếu thuộc kỳ trước
 
 /**
@@ -74,7 +90,14 @@ export type BasisState =
 export interface SettlementRow {
   /** Ổn định qua refetch: `${kind}:${voucherId}`. Mọi dòng đều có phiếu. */
   key: string;
-  kind: SettlementKind;
+  kind: SettlementRowKind;
+  /**
+   * Dấu hiệu nào đã quyết định `kind` — để modal giải thích được vì sao phiếu
+   * nằm ở nhóm này. Chỉ để HIỂN THỊ, không bao giờ ghi ngược vào phiếu thật.
+   */
+  kindSource: SettlementKindSignal;
+  /** Các dấu phân loại chỏi nhau ⇒ cần người đối chiếu. Không chặn duyệt. */
+  kindConflict: boolean;
   voucherId: string;
   voucherCode: string | null;
   contractId: string | null;
@@ -151,6 +174,7 @@ export function isBlocker(issue: SettlementIssue): boolean {
     case 'OLD_PERIOD':
     case 'BASIS_NOT_APPLICABLE':
     case 'BASIS_NOT_FOUND':
+    case 'CLASSIFICATION_REVIEW':
       return false;
     default:
       return true;
@@ -163,6 +187,11 @@ export function detectIssues(
 ): SettlementIssue[] {
   if (row.status === 'cancelled') return [];
   const out: SettlementIssue[] = [];
+
+  // ĐẶT TRƯỚC căn cứ: bảng chỉ hiện `issues[0]`, mà khi chưa biết loại thì
+  // "Chưa có căn cứ" là hệ quả chứ không phải nguyên nhân — nói nguyên nhân
+  // trước thì người xem biết phải làm gì (mở phiếu bên Thu chi xem hạng mục).
+  if (row.kindConflict || row.kind === 'unknown') out.push('CLASSIFICATION_REVIEW');
 
   // Căn cứ: xét cả khi phiếu đã đóng, vì lệch căn cứ vẫn là thông tin đáng biết
   // khi soi lại lịch sử.
@@ -263,10 +292,13 @@ export const STATUS_STYLE: Record<ViewStatus, { nhan: string; bg: string; fg: st
   unknown: { nhan: 'Không xác định', bg: '#f0ede6', fg: '#8d8678' },
 };
 
-export const KIND_LABEL: Record<SettlementKind, string> = {
+export const KIND_LABEL: Record<SettlementRowKind, string> = {
   refund: 'Hoàn khách',
   commission: 'Hoa hồng',
   bonus: 'Thưởng sale',
+  // KHÔNG được thay bằng một trong ba nhãn trên. Đây là lời thú nhận "chưa
+  // biết", và nó phải nhìn thấy được thì người ta mới đi xem lại hạng mục.
+  unknown: 'Chưa xác định loại',
 };
 
 /** Chữ trên nút cuối dòng, đổi theo trạng thái. */

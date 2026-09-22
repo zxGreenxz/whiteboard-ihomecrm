@@ -81,3 +81,94 @@ export function settlementTypeMatches(
 
   return null;
 }
+
+// =============================================================================
+// PHÂN LOẠI MỘT PHIẾU — resolver thuần (plan §3.6)
+//
+// VÌ SAO CẦN: `settlementTypeMatches` chỉ trả lời cho MỘT hạng mục. Một PHIẾU
+// có thể mang nhiều dấu cùng lúc (`commission_kind`, `system_source`, và các
+// hạng mục của từng dòng item) và chúng có thể chỏi nhau. Bản trước gộp việc
+// này vào `useContractSettlement.kindOf` và kết thúc bằng `return 'refund'`
+// trần — nên hai phiếu THẬT PC2606169 / PC2608091 (hạng mục HHMG, không có
+// `commission_kind`, không có dấu nguồn) rơi vào Hoàn khách và không bao giờ
+// được tra căn cứ hoa hồng.
+//
+// BA ĐIỀU RÀNG BUỘC
+//   1. Thứ tự ưu tiên CỐ ĐỊNH: `commission_kind` → `system_source` → hạng mục.
+//      Không đọc tên/mã phiếu để đoán.
+//   2. Có kết quả CHƯA XÁC ĐỊNH (`kind: null`). Không bao giờ mặc định 'refund'
+//      — mặc định sai loại là mời người duyệt đối chiếu nhầm căn cứ.
+//   3. Kết quả suy ra KHÔNG được ghi ngược vào DB. Hàm này thuần, không I/O.
+// =============================================================================
+
+/** Dấu hiệu đã quyết định loại. 'none' = chưa xác định được. */
+export type SettlementKindSignal =
+  | 'commission_kind' | 'system_source' | 'accounting_item' | 'none';
+
+export interface SettlementKindResolution {
+  /** Loại đã xác định, hoặc `null` khi CHƯA XÁC ĐỊNH. */
+  kind: SettlementKind | null;
+  /** Dấu hiệu nào quyết định `kind`. */
+  signal: SettlementKindSignal;
+  /**
+   * Cần người đối chiếu phân loại: các dấu hiệu chỉ về nhiều loại khác nhau
+   * (metadata chỏi hạng mục, hai dấu metadata chỏi nhau, hoặc nhiều hạng mục
+   * khác loại trên cùng một phiếu).
+   */
+  conflict: boolean;
+  /** Các loại HẠNG MỤC thuộc khu này, đã khử trùng và sắp thứ tự ổn định. */
+  itemKinds: SettlementKind[];
+}
+
+export interface SettlementKindInput {
+  /** `income_expenses.commission_kind` — THÔ, giữ nguyên như DB. */
+  commissionKind: string | null | undefined;
+  /** `income_expenses.system_source` — THÔ, giữ nguyên như DB. */
+  systemSource: string | null | undefined;
+  /**
+   * Loại của từng hạng mục trên phiếu, đã map qua `settlementTypeMatches`.
+   * Phần tử `null`/`undefined` = hạng mục NGOÀI khu này ⇒ bị bỏ qua, không đổi
+   * loại của phiếu.
+   */
+  itemKinds: readonly (SettlementKind | null | undefined)[] | null | undefined;
+}
+
+/** Thứ tự in ra cho ổn định giữa các lần chạy (test so được bằng toEqual). */
+const THU_TU: readonly SettlementKind[] = ['refund', 'commission', 'bonus'];
+
+export function resolveSettlementKind(input: SettlementKindInput): SettlementKindResolution {
+  const itemKinds = [...new Set((input.itemKinds ?? []).filter(
+    (k): k is SettlementKind => k === 'refund' || k === 'commission' || k === 'bonus',
+  ))].sort((a, b) => THU_TU.indexOf(a) - THU_TU.indexOf(b));
+
+  const ck = (input.commissionKind ?? '').trim();
+  const ss = (input.systemSource ?? '').trim();
+
+  // Dấu metadata rõ. Giá trị lạ (vd 'staff') KHÔNG được coi là dấu rõ — nó
+  // không thuộc ba loại của khu này nên không nói lên điều gì.
+  const tuCommissionKind: SettlementKind | null =
+    ck === 'broker' ? 'commission' : ck === 'sale' ? 'bonus' : null;
+  const tuSystemSource: SettlementKind | null =
+    ss.startsWith('termination.refund') || ss.startsWith('reservation.refund') ? 'refund' : null;
+
+  let kind: SettlementKind | null = null;
+  let signal: SettlementKindSignal = 'none';
+  if (tuCommissionKind) {
+    kind = tuCommissionKind; signal = 'commission_kind';
+  } else if (tuSystemSource) {
+    kind = tuSystemSource; signal = 'system_source';
+  } else if (itemKinds.length === 1) {
+    // Chỉ nhận khi hạng mục chỉ về ĐÚNG MỘT loại. Nhiều loại mà không có dấu
+    // metadata thì KHÔNG tự chọn item đầu tiên — để chưa xác định và báo.
+    kind = itemKinds[0]; signal = 'accounting_item';
+  }
+
+  // Xung đột đo trên TOÀN BỘ dấu hiệu, không chỉ metadata-vs-hạng-mục: hai dấu
+  // metadata chỏi nhau cũng là thứ người ta phải nhìn lại. Nhãn này chỉ là
+  // CẢNH BÁO — xem isBlocker trong contractSettlement.ts.
+  const moiDauHieu = new Set<SettlementKind>(itemKinds);
+  if (tuCommissionKind) moiDauHieu.add(tuCommissionKind);
+  if (tuSystemSource) moiDauHieu.add(tuSystemSource);
+
+  return { kind, signal, conflict: moiDauHieu.size > 1, itemKinds };
+}

@@ -2,12 +2,15 @@ import { describe, it, expect } from 'vitest';
 import {
   settlementStatusOf, detectIssues, laneOf, isBlocker, supplementPending,
   sumOnVoucher, DAU_CAN_BO_SUNG, DAU_DA_BO_SUNG,
-  viewStatusOf, matchStatus, fmtCompact, fmtMoney, fmtNgay, boDau,
+  viewStatusOf, matchStatus, fmtCompact, fmtMoney, fmtNgay, boDau, KIND_LABEL,
   type SettlementRow,
 } from '@/lib/contractSettlement';
 
 const goc = (p: Partial<SettlementRow> = {}): SettlementRow => ({
   key: 'commission:v1', kind: 'commission', voucherId: 'v1', voucherCode: 'PC1',
+  // Mặc định: phân loại rõ ràng, không xung đột — các ca dưới đây nói về
+  // vướng mắc/làn chứ không về phân loại, nên đừng để nhiễu CLASSIFICATION_REVIEW.
+  kindSource: 'commission_kind', kindConflict: false,
   contractId: 'c1', contractNumber: 'HD-1', terminationId: null, roomId: 'r1',
   buildingName: 'A', roomName: '101', customerName: 'Khách', recipientName: 'Môi giới X',
   amount: 1_000_000, basis: { kind: 'matched', amount: 1_000_000 },
@@ -78,6 +81,43 @@ describe('detectIssues — chỉ cảnh báo, KHÔNG chặn', () => {
     const r = goc({ basis: { kind: 'not-found', reason: 'chưa tra ở danh sách' } });
     expect(detectIssues(r, '2026-09')).toContain('BASIS_NOT_FOUND');
     expect(isBlocker('BASIS_NOT_FOUND')).toBe(false);
+  });
+});
+
+// Phân loại là việc HIỂN THỊ của khu này; phiếu thì vẫn là phiếu hợp lệ bên Thu
+// chi. Biến nhãn này thành blocker là dựng lại vòng kẹt của bản v1 — người duyệt
+// không có cách nào "sửa phân loại" ở đây, hạng mục nằm bên Thu chi.
+describe('detectIssues — cần đối chiếu phân loại', () => {
+  it('xung đột dấu phân loại ra nhãn cảnh báo, KHÔNG chặn duyệt', () => {
+    const r = goc({ kindConflict: true });
+    expect(detectIssues(r, '2026-09')).toContain('CLASSIFICATION_REVIEW');
+    expect(isBlocker('CLASSIFICATION_REVIEW')).toBe(false);
+    expect(laneOf({ ...r, issues: detectIssues(r, '2026-09') })).toBe('cho-duyet');
+  });
+
+  it('chưa xác định loại cũng ra nhãn đó, không mặc định về Hoàn khách', () => {
+    const r = goc({
+      kind: 'unknown', kindSource: 'none',
+      basis: { kind: 'not-found', reason: 'Chưa xác định loại nên chưa tra được căn cứ' },
+    });
+    expect(detectIssues(r, '2026-09')).toContain('CLASSIFICATION_REVIEW');
+  });
+
+  it('phân loại rõ ràng thì KHÔNG gắn nhãn', () => {
+    expect(detectIssues(goc(), '2026-09')).not.toContain('CLASSIFICATION_REVIEW');
+  });
+
+  it('nhãn phân loại đứng TRƯỚC nhãn căn cứ — bảng chỉ hiện issues[0]', () => {
+    const r = goc({
+      kind: 'unknown', kindConflict: true,
+      basis: { kind: 'not-found', reason: 'chưa tra' },
+    });
+    expect(detectIssues(r, '2026-09')[0]).toBe('CLASSIFICATION_REVIEW');
+  });
+
+  it('tên loại "chưa xác định" là một nhãn riêng, không mượn nhãn của ba loại kia', () => {
+    expect(KIND_LABEL.unknown).toBe('Chưa xác định loại');
+    expect(new Set(Object.values(KIND_LABEL)).size).toBe(Object.keys(KIND_LABEL).length);
   });
 });
 

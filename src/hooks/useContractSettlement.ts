@@ -23,6 +23,20 @@
 // nên `system_source.like.termination.refund*` rất dễ parse sai. Bốn truy vấn
 // rời rồi gộp theo id ở client thì chậm hơn chút nhưng đúng và soi được.
 // Đây cũng là khuôn `useThanhToanLedgers` đang dùng.
+//
+// ── D4 PHẢI GIỮ LẠI HẠNG MỤC NÀO ĐÃ KHỚP ────────────────────────────────────
+// Bản trước chỉ lấy `income_expense_id` của D4 rồi vứt hạng mục, nên hàm phân
+// loại không còn gì để dựa vào và kết thúc bằng `return 'refund'` trần. Hai
+// phiếu THẬT PC2606169 / PC2608091 mang hạng mục HHMG nhưng thiếu
+// `commission_kind` vì thế bị xếp vào Hoàn khách và KHÔNG BAO GIỜ được tra căn
+// cứ hoa hồng. Giờ D4 đọc cả `income_expense_type_id`, dựng map
+// `voucherId → tập loại hạng mục`, rồi `resolveSettlementKind` quyết định.
+//
+// ── CĂN CỨ SỐ TIỀN ≠ GHI CHÚ TỰ SINH ────────────────────────────────────────
+// `get_period_commissions` (căn cứ SỐ TIỀN theo kỳ ký) chạy được cho phiếu
+// HHMG thủ công. `get_commission_voucher_facts_v1` (ghi chú chi tiết tự sinh)
+// thì KHÔNG — nó đòi `commission_kind` broker/sale. Hook này chỉ gọi cái thứ
+// nhất và KHÔNG bịa `commission_kind` để ép cái thứ hai chạy.
 // =============================================================================
 
 import { useMemo } from 'react';
@@ -30,10 +44,13 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { fetchAllRows } from '@/lib/supabaseFetchAll';
 import { hydrateIncomeExpenseSupplements } from '@/hooks/income-expenses/supplements';
-import { settlementTypeMatches, type SettlementKind } from '@/lib/settlementTypes';
+import {
+  resolveSettlementKind, settlementTypeMatches,
+  type SettlementKind, type SettlementKindResolution,
+} from '@/lib/settlementTypes';
 import {
   detectIssues, settlementStatusOf, supplementPending,
-  type BasisState, type SettlementRow,
+  type BasisState, type SettlementRow, type SettlementRowKind,
 } from '@/lib/contractSettlement';
 
 /** Chế độ phạm vi. Mặc định 'open' — xem [Plan §3]. */
@@ -110,7 +127,10 @@ const nguonCua = (v: VoucherRow): 'contract' | 'reservation' =>
   (v.system_source ?? '').startsWith('reservation') ? 'reservation' : 'contract';
 
 /** Biến động nào đã đẻ ra khoản chi này. Suy ra, không có cột nào lưu sẵn. */
-const nhanBienDong = (kind: SettlementKind, origin: 'contract' | 'reservation'): string => {
+const nhanBienDong = (kind: SettlementRowKind, origin: 'contract' | 'reservation'): string => {
+  // Chưa biết loại thì cũng chưa biết biến động — nói "Ký mới" cho đẹp bảng là
+  // bịa một sự kiện chưa hề xác nhận.
+  if (kind === 'unknown') return '—';
   if (kind === 'refund') return origin === 'reservation' ? 'Kết thúc giữ chỗ' : 'Thanh lý';
   if (kind === 'bonus') return origin === 'reservation' ? 'Từ giữ chỗ' : 'Ký mới';
   return 'Ký mới';
@@ -196,6 +216,42 @@ const apDieuKienChung = (
   return r.order('voucher_date', { ascending: false }).order('id', { ascending: true });
 };
 
+/**
+ * Một dòng căn cứ hoa hồng của `get_period_commissions`.
+ *
+ * ⚠ PHẢI giữ `tierPercent` cạnh `expectedAmount`. RPC tính
+ * `ROUND(rent_price * COALESCE(tier.rate, 0) / 100)`, nên TOÀ CHƯA CẤU HÌNH BẬC
+ * cũng ra `expected_amount = 0` — không phân biệt được với bậc 0% hợp lệ nếu
+ * chỉ nhìn số tiền. Mất phân biệt này là biến "thiếu cấu hình" thành "căn cứ
+ * hợp lệ bằng 0đ", tức báo khớp/lệch dựa trên một con số không có thật.
+ */
+interface CanCuHoaHong {
+  expectedAmount: number;
+  /** `null` = RPC không trả bậc nào ⇒ toà chưa cấu hình bậc cho hợp đồng này. */
+  tierPercent: number | null;
+}
+
+/**
+ * Số từ PostgREST, giữ được số 0 và phân biệt với "không có".
+ * `Number(null)` là 0 — dùng thẳng nó ở đây là xoá mất ca thiếu bậc.
+ */
+const soHoacNull = (v: number | string | null | undefined): number | null => {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+/** Kết quả một lượt đọc: danh sách phiếu + hạng mục kế toán của từng phiếu. */
+interface KetQuaDocPhieu {
+  list: VoucherRow[];
+  /**
+   * `voucherId → các loại hạng mục thuộc khu này` (đã khử trùng).
+   * Khoá là UUID phiếu; các phiếu trong `list` đều đã lọc theo
+   * `organization_id`, nên tra map này không bao giờ vượt ranh giới công ty.
+   */
+  itemKinds: Record<string, SettlementKind[]>;
+}
+
 export function useContractSettlement(a: UseContractSettlementArgs) {
   const enabled = (a.enabled ?? true) && !!a.organizationId && a.buildingIds.length > 0;
   const scope: SettlementScope = a.scope ?? 'open';
@@ -207,7 +263,7 @@ export function useContractSettlement(a: UseContractSettlementArgs) {
       [...a.buildingIds].sort(), [...(typeMap.data?.keys() ?? [])].sort(),
     ],
     enabled: enabled && !!typeMap.data,
-    queryFn: async (): Promise<VoucherRow[]> => {
+    queryFn: async (): Promise<KetQuaDocPhieu> => {
       const chung = {
         organizationId: a.organizationId!, buildingIds: a.buildingIds, scope, period: a.period,
       };
@@ -219,21 +275,42 @@ export function useContractSettlement(a: UseContractSettlementArgs) {
           { label },
         );
 
-      // D4 trước: lấy id phiếu có hạng mục thuộc khu này.
+      // D4 trước: lấy id phiếu có hạng mục thuộc khu này, VÀ GIỮ LẠI hạng mục
+      // nào đã khớp — không có nó thì không phân loại được phiếu thủ công.
       const typeIds = [...(typeMap.data?.keys() ?? [])];
       let idsTheoHangMuc: string[] = [];
+      const itemKinds: Record<string, SettlementKind[]> = {};
       if (typeIds.length > 0) {
-        const items = await fetchAllRows<{ income_expense_id: string }>(
+        const items = await fetchAllRows<{
+          income_expense_id: string; income_expense_type_id: string | null;
+        }>(
           (f, t) => supabase
             .from('income_expense_items')
-            .select('income_expense_id')
-            .in('income_expense_type_id', typeIds)
+            .select('income_expense_id, income_expense_type_id')
+            // Tiebreaker `id` là bắt buộc để phân trang không sót/trùng ở ranh
+            // giới trang: một phiếu nhiều item ⇒ `income_expense_id` KHÔNG duy
+            // nhất, sắp một mình nó là thứ tự không ổn định.
             .order('income_expense_id', { ascending: true })
+            .order('id', { ascending: true })
+            .in('income_expense_type_id', typeIds)
             .range(f, t),
           { label: 'contract-settlement.items' },
         );
         if (items === null) throw new Error('Không đọc được hạng mục của phiếu — thử lại.');
-        idsTheoHangMuc = [...new Set(items.map((r) => r.income_expense_id))];
+        const gom = new Map<string, Set<SettlementKind>>();
+        for (const r of items) {
+          // Hạng mục ngoài khu này (typeMap không có) BỎ QUA — nó không đổi
+          // loại của phiếu. Bộ lọc `.in(...)` phía server đã chặn, đây là hàng
+          // rào thứ hai để map không bao giờ chứa loại lạ.
+          const kind = r.income_expense_type_id
+            ? typeMap.data?.get(r.income_expense_type_id) : undefined;
+          if (!kind) continue;
+          const s = gom.get(r.income_expense_id) ?? new Set<SettlementKind>();
+          s.add(kind);
+          gom.set(r.income_expense_id, s);
+        }
+        idsTheoHangMuc = [...gom.keys()];
+        for (const [id, s] of gom) itemKinds[id] = [...s];
       }
 
       const [d1, d2, d3, d4] = await Promise.all([
@@ -254,37 +331,72 @@ export function useContractSettlement(a: UseContractSettlementArgs) {
       // Khử trùng theo id: một phiếu nhiều hạng mục chỉ ra MỘT dòng.
       const theoId = new Map<string, VoucherRow>();
       for (const r of [...d1, ...d2, ...d3, ...d4]) theoId.set(r.id, r);
-      return [...theoId.values()];
+      return { list: [...theoId.values()], itemKinds };
     },
   });
 
-  /** Căn cứ hoa hồng — tra theo KỲ CỦA NGÀY KÝ hợp đồng, không phải kỳ phiếu. */
+  /**
+   * Phân loại MỘT LẦN cho cả hook: tập kỳ ký cần tra căn cứ và các dòng hiển
+   * thị phải dùng cùng một kết quả, nếu không thì "phiếu ở nhóm Hoa hồng" và
+   * "phiếu được tra căn cứ hoa hồng" là hai tập khác nhau.
+   */
+  const phanLoai = useMemo(() => {
+    const m = new Map<string, SettlementKindResolution>();
+    const kinds = vouchers.data?.itemKinds ?? {};
+    for (const v of vouchers.data?.list ?? []) {
+      m.set(v.id, resolveSettlementKind({
+        commissionKind: v.commission_kind,
+        systemSource: v.system_source,
+        itemKinds: kinds[v.id] ?? [],
+      }));
+    }
+    return m;
+  }, [vouchers.data]);
+
+  /**
+   * Căn cứ hoa hồng — tra theo KỲ CỦA NGÀY KÝ hợp đồng, không phải kỳ phiếu.
+   *
+   * Tập đầu vào lấy theo KẾT QUẢ PHÂN LOẠI, không theo `commission_kind` thô:
+   * phiếu HHMG thủ công cũng phải được tra căn cứ như phiếu có dấu nguồn.
+   */
   const kyKyHopDong = useMemo(() => {
     const s = new Set<string>();
-    for (const v of vouchers.data ?? []) {
-      if (v.commission_kind === 'broker' && v.contracts?.signed_date) {
+    for (const v of vouchers.data?.list ?? []) {
+      if (phanLoai.get(v.id)?.kind === 'commission' && v.contracts?.signed_date) {
         s.add(v.contracts.signed_date.slice(0, 7));
       }
     }
     return [...s].sort();
-  }, [vouchers.data]);
+  }, [vouchers.data, phanLoai]);
 
   const canCuHoaHong = useQuery({
     queryKey: ['contract-settlement', 'commission-basis', kyKyHopDong, [...a.buildingIds].sort()],
     enabled: enabled && kyKyHopDong.length > 0,
-    queryFn: async (): Promise<Map<string, number>> => {
+    queryFn: async (): Promise<Map<string, CanCuHoaHong>> => {
       // ⚠ `get_period_commissions` lọc theo NGÀY KÝ hợp đồng, còn danh sách lọc
       // theo NGÀY PHIẾU. Hợp đồng ký tháng 8 mà phiếu lập tháng 9 thì gọi kỳ 9
       // không tìm thấy căn cứ. Nên gọi đúng các kỳ có mặt trong tập hợp đồng.
-      const m = new Map<string, number>();
+      const m = new Map<string, CanCuHoaHong>();
       for (const ky of kyKyHopDong) {
         const { data, error } = await supabase.rpc('get_period_commissions', {
           p_period_month: ky, p_building_ids: a.buildingIds,
         });
         if (error) throw new Error(error.message);
-        const dong = (data ?? []) as { contract_id?: string | null; expected_amount?: number | string | null }[];
+        const dong = (data ?? []) as {
+          contract_id?: string | null;
+          expected_amount?: number | string | null;
+          tier_percent?: number | string | null;
+        }[];
         for (const r of dong) {
-          if (r.contract_id) m.set(r.contract_id, Number(r.expected_amount) || 0);
+          // CHỈ lấy theo HỢP ĐỒNG. `voucher_id`/`status` của reader này là một
+          // phiếu nào đó cùng hợp đồng nó tự chọn (ORDER BY … LIMIT 1) —
+          // KHÔNG được dùng thay UUID/trạng thái của phiếu đang xem.
+          if (r.contract_id) {
+            m.set(r.contract_id, {
+              expectedAmount: Number(r.expected_amount) || 0,
+              tierPercent: soHoacNull(r.tier_percent),
+            });
+          }
         }
       }
       return m;
@@ -293,7 +405,7 @@ export function useContractSettlement(a: UseContractSettlementArgs) {
 
   /** Ghi chú bổ sung — chỉ phiếu CHỜ DUYỆT mới cần biết có treo yêu cầu không. */
   const idsChoDuyet = useMemo(
-    () => (vouchers.data ?? []).filter((v) => v.approval_status === 'UNAPPROVED').map((v) => v.id),
+    () => (vouchers.data?.list ?? []).filter((v) => v.approval_status === 'UNAPPROVED').map((v) => v.id),
     [vouchers.data],
   );
 
@@ -309,25 +421,17 @@ export function useContractSettlement(a: UseContractSettlementArgs) {
   });
 
   const rows = useMemo<SettlementRow[]>(() => {
-    const vs = vouchers.data;
+    const vs = vouchers.data?.list;
     if (!vs) return [];
-    const types = typeMap.data ?? new Map<string, SettlementKind>();
     const treo = ghiChu.data;
     const basisHH = canCuHoaHong.data;
 
-    const kindOf = (v: VoucherRow): SettlementKind => {
-      // Thứ tự ưu tiên khi một phiếu dính nhiều dấu: D3 → D1/D2 → D4.
-      if (v.commission_kind === 'broker') return 'commission';
-      if (v.commission_kind === 'sale') return 'bonus';
-      if ((v.system_source ?? '').startsWith('termination.refund')) return 'refund';
-      if ((v.system_source ?? '').startsWith('reservation.refund')) return 'refund';
-      // D4: không biết hạng mục nào của phiếu đã khớp nên suy theo dấu còn lại.
-      // Tra ngược bằng typeMap cần đọc items lần nữa — để đợt sau nếu cần độ
-      // chính xác cao hơn; hiện tại phiếu tạo tay đa số là hoàn khách.
-      return 'refund';
-    };
-
-    const basisOf = (v: VoucherRow, kind: SettlementKind): BasisState => {
+    const basisOf = (v: VoucherRow, kind: SettlementRowKind): BasisState => {
+      if (kind === 'unknown') {
+        // Chưa biết loại thì chưa biết phải đối chiếu với công thức nào. Nói
+        // "không áp dụng" là kết luận sớm; để 'not-found' (cảnh báo, không chặn).
+        return { kind: 'not-found', reason: 'Chưa xác định loại nên chưa tra được căn cứ' };
+      }
       if (kind === 'bonus') return { kind: 'not-applicable' };
       if (kind === 'refund') {
         // Số phải hoàn THẬT do `preview_termination_refund_v1` tính (đối chiếu
@@ -341,21 +445,32 @@ export function useContractSettlement(a: UseContractSettlementArgs) {
       }
       if (!basisHH) return { kind: 'not-found', reason: 'Đang tra căn cứ' };
       if (!v.contract_id) return { kind: 'not-found', reason: 'Phiếu chưa gắn hợp đồng' };
-      const expected = basisHH.get(v.contract_id);
-      if (expected == null) {
+      const canCu = basisHH.get(v.contract_id);
+      if (!canCu) {
         return { kind: 'not-found', reason: 'Không tìm thấy hợp đồng trong kỳ ký' };
       }
+      if (canCu.tierPercent === null) {
+        // RPC trả 0đ vì không khớp bậc nào (COALESCE(rate, 0)). Đó là THIẾU
+        // CẤU HÌNH, không phải căn cứ — đem 0đ đi so là báo lệch/khớp giả.
+        return {
+          kind: 'not-found',
+          reason: 'Toà chưa cấu hình bậc hoa hồng cho hợp đồng này',
+        };
+      }
       const amount = Number(v.total_amount) || 0;
-      return expected === amount
-        ? { kind: 'matched', amount: expected }
-        : { kind: 'mismatch', amount: expected };
+      return canCu.expectedAmount === amount
+        ? { kind: 'matched', amount: canCu.expectedAmount }
+        : { kind: 'mismatch', amount: canCu.expectedAmount };
     };
 
     return vs.map((v) => {
-      const kind = kindOf(v);
+      const pl = phanLoai.get(v.id);
+      const kind: SettlementRowKind = pl?.kind ?? 'unknown';
       const base: Omit<SettlementRow, 'issues'> = {
         key: `${kind}:${v.id}`,
         kind,
+        kindSource: pl?.signal ?? 'none',
+        kindConflict: pl?.conflict ?? false,
         voucherId: v.id,
         voucherCode: v.code,
         contractId: v.contract_id,
@@ -393,7 +508,7 @@ export function useContractSettlement(a: UseContractSettlementArgs) {
       };
       return { ...base, issues: detectIssues(base, a.period) };
     });
-  }, [vouchers.data, typeMap.data, ghiChu.data, canCuHoaHong.data, canCuHoaHong.isError, a.period]);
+  }, [vouchers.data, phanLoai, ghiChu.data, canCuHoaHong.data, canCuHoaHong.isError, a.period]);
 
   return {
     rows,
