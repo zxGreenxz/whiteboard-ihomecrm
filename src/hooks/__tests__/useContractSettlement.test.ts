@@ -23,6 +23,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useContractSettlement } from '@/hooks/useContractSettlement';
+import { isBlocker, laneOf } from '@/lib/contractSettlement';
 
 const H = vi.hoisted(() => ({
   fetchAllRows: vi.fn(),
@@ -188,6 +189,17 @@ const napCanCu = (theoKy: Record<string, DongCanCu[]>) => {
   });
 };
 
+/**
+ * Giả lập `get_period_commissions` HỎNG THẬT (mạng đứt, RPC nổ).
+ *
+ * ⚠ KHÁC HẲN "trả 0 dòng". Hàm này chỉ RAISE khi `auth.uid() IS NULL`; quyền
+ * theo toà là BỘ LỌC trong CTE `bld`, nên thiếu quyền toà ⇒ 0 dòng ⇒
+ * BASIS_NOT_FOUND (cảnh báo). Chỉ lỗi thật mới ra BASIS_UNAVAILABLE (chặn).
+ */
+const napCanCuHong = (message: string) => {
+  H.rpc.mockImplementation(async () => ({ data: null, error: { message } }));
+};
+
 const chay = (period = '2026-09') => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   const wrapper = ({ children }: { children: ReactNode }) =>
@@ -264,6 +276,41 @@ describe('useContractSettlement — HHMG thủ công vào Hoa hồng', () => {
     const tenRpc = H.rpc.mock.calls.map((c) => c[0]);
     expect(tenRpc).not.toContain('get_commission_voucher_facts_v1');
     expect(new Set(tenRpc)).toEqual(new Set(['get_period_commissions']));
+  });
+
+  // ĐÂY LÀ BLOCKER DUY NHẤT của khu này mà T5a mở rộng phạm vi tới. Trước đây
+  // phiếu HHMG thủ công nằm nhầm ở Hoàn khách nên không bao giờ đi qua nhánh
+  // căn cứ hoa hồng; giờ nó đi qua, nên nhánh "tra mà HỎNG" phải được ghim.
+  //
+  // ⚠ THỨ TỰ HAI CÂU `if` LÀ MỘT PHẦN CỦA LUẬT. `canCuHoaHong.isError` phải xét
+  // TRƯỚC `!basisHH`: khi query lỗi thì `data` cũng undefined, nên đảo hai câu
+  // này lại là biến một phiếu KHÔNG AI BIẾT SỐ ĐÚNG thành "Đang tra căn cứ" —
+  // một cảnh báo xám — rồi thả nó về làn chờ duyệt, sẵn sàng bấm Duyệt.
+  it('tra căn cứ mà HỎNG là chặn, KHÔNG phải "đang tra"', async () => {
+    nap([V()], [{ income_expense_id: V_HHMG_T6, income_expense_type_id: T_HHMG }]);
+    napCanCuHong('không kết nối được máy chủ');
+    const { result } = chay();
+    await waitFor(() => expect(result.current.rows[0]?.basis.kind).toBe('unavailable'));
+    const r = result.current.rows[0];
+    expect(r.basis).toEqual({ kind: 'unavailable', reason: 'Không đọc được bậc hoa hồng' });
+    expect(r.issues).toContain('BASIS_UNAVAILABLE');
+    expect(isBlocker('BASIS_UNAVAILABLE')).toBe(true);
+    // Số trên phiếu vẫn nguyên và phiếu bị giữ lại để người ta nhìn.
+    expect(r.amount).toBe(4_500_000);
+    expect(laneOf(r)).toBe('can-ra-soat');
+  });
+
+  it('thiếu quyền toà (RPC trả 0 dòng) chỉ là CẢNH BÁO, không phải lỗi đọc', async () => {
+    // `get_period_commissions` lọc toà trong CTE `bld` và GRANT cho
+    // `authenticated`; không có quyền toà thì ra rỗng chứ không ném. Ghim ca này
+    // cạnh ca trên để hai đường không bị gộp làm một.
+    nap([V()], [{ income_expense_id: V_HHMG_T6, income_expense_type_id: T_HHMG }]);
+    napCanCu({ '2026-06': [] });
+    const { result } = chay();
+    await waitFor(() => expect(result.current.rows[0]?.basis.kind).toBe('not-found'));
+    expect(result.current.rows[0].issues).toContain('BASIS_NOT_FOUND');
+    expect(result.current.rows[0].issues).not.toContain('BASIS_UNAVAILABLE');
+    expect(laneOf(result.current.rows[0])).toBe('cho-duyet');
   });
 
   it('ghi chú bổ sung vẫn chạy cho phiếu vừa đổi nhóm', async () => {
@@ -390,7 +437,6 @@ describe('useContractSettlement — xung đột và chưa xác định', () => {
   });
 
   it('nhãn cần đối chiếu là CẢNH BÁO, không chặn duyệt', async () => {
-    const { isBlocker, laneOf } = await import('@/lib/contractSettlement');
     expect(isBlocker('CLASSIFICATION_REVIEW')).toBe(false);
     nap([phieu({ id: V_HHMG_T6, total_amount: 2_000_000 })], [
       { income_expense_id: V_HHMG_T6, income_expense_type_id: T_HHMG },

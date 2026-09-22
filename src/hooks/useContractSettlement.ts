@@ -440,6 +440,9 @@ export function useContractSettlement(a: UseContractSettlementArgs) {
         return { kind: 'not-found', reason: 'Căn cứ hoàn khách tra khi mở phiếu' };
       }
       // commission
+      // ⚠ PHẢI xét lỗi TRƯỚC `!basisHH`: query lỗi thì `data` cũng undefined,
+      // đảo lại là biến "không ai biết số đúng" thành cảnh báo xám "Đang tra
+      // căn cứ" rồi thả phiếu về làn chờ duyệt. Có ca ghim thứ tự này.
       if (canCuHoaHong.isError) {
         return { kind: 'unavailable', reason: 'Không đọc được bậc hoa hồng' };
       }
