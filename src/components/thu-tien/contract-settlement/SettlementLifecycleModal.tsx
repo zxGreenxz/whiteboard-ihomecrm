@@ -35,7 +35,8 @@ import { useAccounts } from '@/hooks/useAccounts';
 import { useIncomeExpenseSupplements } from '@/hooks/income-expenses/supplements';
 import { formatSupplementAuthor } from '@/lib/incomeExpenseSupplement';
 import { ContractLifecycleBand } from './ContractLifecycleBand';
-import type { LaneSubject } from '@/lib/contractLifecycle';
+import { mocNgayNghiepVu, type LaneSubject } from '@/lib/contractLifecycle';
+import { vnTodayISO } from '@/lib/vnDate';
 import {
   KIND_LABEL, STATUS_STYLE, fmtMoney, fmtNgay, isBlocker,
   type SettlementRow, type ViewStatus,
@@ -66,9 +67,12 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
    * KHÔNG được mặc định thành "Hợp đồng của phiếu hoàn".
    */
   const vaiLane: LaneSubject = { kind: 'voucher', voucherKind: row.kind };
-  /** Mốc ngày NGHIỆP VỤ của hồ sơ: ngày phiếu, không phải đồng hồ máy. */
-  const businessDate = (row.eventDate ?? '').slice(0, 10)
-    || new Date().toISOString().slice(0, 10);
+  /**
+   * Mốc ngày NGHIỆP VỤ của hồ sơ: ngày phiếu. Bản lùi dùng `vnTodayISO`, KHÔNG
+   * dùng `new Date().toISOString()` — bản UTC trả HÔM QUA trong khoảng
+   * 00:00–07:00 giờ Việt Nam.
+   */
+  const businessDate = mocNgayNghiepVu(row.eventDate, vnTodayISO());
   const [lyDo, setLyDo] = useState('');
   const [chuoiTuChoi, setChuoiTuChoi] = useState(false);
   const [daDoiChieu, setDaDoiChieu] = useState(false);

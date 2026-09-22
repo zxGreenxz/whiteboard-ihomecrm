@@ -32,6 +32,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { fetchAllRows } from '@/lib/supabaseFetchAll';
+import { vnTodayISO } from '@/lib/vnDate';
 import {
   buildDepositSources, buildLifecycleLanes, parseResidenceSegments, reconcilePostings,
   summariseDeposit, sumEffectiveInvoices,
@@ -87,15 +88,24 @@ const PHIEU_COT = [
 /** Lỗi đọc một nguồn PHỤ: ghi lại trạng thái, không làm sập cả dải. */
 const hong = (reason: string) => ({ ok: false as const, reason });
 
+/** Đọc KHÔNG lỗi nhưng biết chắc còn nguồn chưa nhìn thấy. */
+const thieu = (reason: string) => ({ ok: 'partial' as const, reason });
+
 export function useContractLifecycle(a: ContractLifecycleArgs) {
   const enabled = !!a.organizationId && !!a.targetContractId;
+  /**
+   * HÔM NAY theo giờ VIỆT NAM, tách hẳn khỏi `businessDate`.
+   * `new Date().toISOString()` là UTC nên trước 07:00 giờ VN nó trả hôm qua.
+   * Nằm trong queryKey để qua nửa đêm là cache tự đổi mốc.
+   */
+  const homNay = vnTodayISO();
 
   return useQuery({
     queryKey: [
       'contract-settlement', 'lifecycle', a.organizationId, a.roomId,
       a.targetContractId,
       a.subject.kind === 'voucher' ? `voucher:${a.subject.voucherKind}` : 'movement',
-      a.businessDate,
+      a.businessDate, homNay,
     ],
     enabled,
     staleTime: 60_000,
@@ -279,6 +289,27 @@ export function useContractLifecycle(a: ContractLifecycleArgs) {
           reads.deposits = hong('Không đọc được phiếu cọc liên kết');
           chuaDoiChieu();
         } else {
+          // ⚠ ĐỐI CHIẾU SỐ DÒNG. `contract_deposit_links` mở theo
+          // `can_access_building` của phòng hợp đồng (20260721090000:31-42),
+          // còn `income_expenses` đi họ policy HẸP HƠN
+          // (`income_expenses_select_rbac` đòi `building_id IS NOT NULL AND
+          // can_access_building(building_id)` cộng các nhánh fund_member/
+          // profit_manager/shareholder/salary_staff của 20260703161000). Hai vị
+          // ngữ KHÔNG tương đương: link trả về phiếu mà phiếu trả về RỖNG, và
+          // rỗng ở đây KHÔNG kèm lỗi nào.
+          //
+          // Không đối chiếu thì một phiếu thu cọc bị giấu biến mất khỏi gross,
+          // mốc cọc in "0 đ" và trạng thái vẫn báo "đủ" — đúng câu nói dối T2
+          // sinh ra để diệt. Ta có sẵn bằng chứng: `chuaCo` là danh sách ĐÃ HỎI.
+          const daDoc = new Set(lienKet.map((v) => v.id));
+          const bienMat = chuaCo.filter((id) => !daDoc.has(id));
+          if (bienMat.length > 0) {
+            reads.deposits = thieu(
+              `Không đọc được ${bienMat.length}/${chuaCo.length} nguồn cọc liên kết`
+              + ' — tổng cọc bên dưới có thể còn thiếu',
+            );
+          }
+
           const vouchers: DepositVoucherRow[] = [...truc, ...lienKet];
           const voucherIds = [...new Set(vouchers.map((v) => v.id))];
 
@@ -385,6 +416,7 @@ export function useContractLifecycle(a: ContractLifecycleArgs) {
         targetContractId: target,
         subject: a.subject,
         businessDate: a.businessDate,
+        todayISO: homNay,
         contracts,
         segments,
         terminations: ketThuc,

@@ -201,6 +201,39 @@ describe('useContractLifecycle — nguồn và ranh giới', () => {
     expect(result.current.data?.target?.deposit?.grossCollected).toBe(4_500_000);
   });
 
+  it('nguồn LIÊN KẾT bị RLS giấu ⇒ báo THIẾU NGUỒN, KHÔNG im lặng cộng thiếu', async () => {
+    // `contract_deposit_links` mở theo `can_access_building` của phòng hợp đồng
+    // (20260721090000:31-42), còn `income_expenses` đi policy hẹp hơn
+    // (`income_expenses_select_rbac`). Hai vị ngữ KHÔNG tương đương, nên link
+    // trả 1 dòng mà phiếu trả 0 dòng — KHÔNG kèm lỗi nào.
+    napCaThat();
+    H.bang.set('lifecycle.deposit-links', [
+      { id: 'l1', organization_id: ORG, contract_id: HD, income_expense_id: 'v-bi-giau' },
+    ]);
+    H.bang.set('lifecycle.deposit-linked', []); // RLS giấu, không phải lỗi
+    const { result } = await chay();
+    expect(result.current.data?.status.deposit.kind).toBe('insufficient');
+    expect((result.current.data?.status.deposit as { reason: string }).reason).toContain('1/1');
+    // Số đọc được vẫn hiện, nhưng KHÔNG được coi là đã đủ.
+    expect(result.current.data?.target?.deposit?.grossCollected).toBe(4_500_000);
+  });
+
+  it('đọc đủ mọi nguồn liên kết ⇒ nguồn cọc ĐỦ, không báo thiếu giả', async () => {
+    napCaThat();
+    H.bang.set('lifecycle.deposit-links', [
+      { id: 'l1', organization_id: ORG, contract_id: HD, income_expense_id: 'v-link' },
+    ]);
+    H.bang.set('lifecycle.deposit-linked', [
+      { ...phieu('v-link', 'PT-GIU-CHO', 'INCOME', '2026-06-01'), contract_id: null },
+    ]);
+    H.bang.set('lifecycle.deposit-items', [
+      itemCoc('i1', PT, 4_500_000), itemCoc('i2', PC, 1_424_000), itemCoc('i3', 'v-link', 500_000),
+    ]);
+    const { result } = await chay();
+    expect(result.current.data?.status.deposit.kind).toBe('sufficient');
+    expect(result.current.data?.target?.deposit?.grossCollected).toBe(5_000_000);
+  });
+
   it('KHÔNG gọi read_contract_settlement_* (đã bị migration restore xoá)', async () => {
     napCaThat();
     await chay();

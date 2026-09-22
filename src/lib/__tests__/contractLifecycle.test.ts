@@ -26,7 +26,7 @@ import {
   LANE_ROLE, LANE_TAG,
   buildDepositSources, summariseDeposit, reconcilePostings,
   closeResidenceSegments, buildLifecycleLanes, sumEffectiveInvoices,
-  parseResidenceSegments,
+  parseResidenceSegments, mocNgayNghiepVu,
   type DepositItemRow, type DepositSourceInput, type DepositVoucherRow,
   type LifecycleContractRow, type PostingRow, type ResidenceSegmentRow,
   type TerminationRow, type InvoiceRow,
@@ -49,6 +49,14 @@ const PC_CAN = '0f0f0f0f-0000-4000-8000-000000000002';
 const PC_HOAN = '0f0f0f0f-0000-4000-8000-000000000003';
 
 const NGAY_NGHIEP_VU = '2026-09-22';
+/**
+ * HOM NAY la mot moc KHAC moc nghiep vu. Mo mot phieu cua nam ngoai thi "hom
+ * nay" van la hom nay - lan hai thu nay lam moi doan da dong sau ngay phieu bi
+ * doc thanh "ket thuc o tuong lai".
+ */
+const HOM_NAY = '2026-09-22';
+/** Mot ngay nghiep vu nam SAU trong qua khu, de tach bach hai moc. */
+const NGAY_CU = '2024-10-28';
 
 // ── Khuôn dựng nhanh ────────────────────────────────────────────────────────
 
@@ -443,7 +451,7 @@ describe('closeResidenceSegments — đóng đoạn cuối như adapter room cas
     const [s] = closeResidenceSegments(
       [doan({ contract_id: HD })],
       [hopDong({ id: HD, status: 'TERMINATED', actual_end_date: '2026-09-15', end_date: '2026-10-27' })],
-      NGAY_NGHIEP_VU,
+      HOM_NAY,
     );
     expect(s.toDate).toBe('2026-09-15');
   });
@@ -452,7 +460,7 @@ describe('closeResidenceSegments — đóng đoạn cuối như adapter room cas
     const [s] = closeResidenceSegments(
       [doan({ contract_id: HD })],
       [hopDong({ id: HD, status: 'EXPIRED', actual_end_date: null, end_date: '2026-08-31' })],
-      NGAY_NGHIEP_VU,
+      HOM_NAY,
     );
     expect(s.toDate).toBe('2026-08-31');
   });
@@ -461,7 +469,7 @@ describe('closeResidenceSegments — đóng đoạn cuối như adapter room cas
     const [s] = closeResidenceSegments(
       [doan({ contract_id: HD })],
       [hopDong({ id: HD, status: 'ACTIVE' })],
-      NGAY_NGHIEP_VU,
+      HOM_NAY,
     );
     expect(s.toDate).toBeNull();
   });
@@ -470,18 +478,18 @@ describe('closeResidenceSegments — đóng đoạn cuối như adapter room cas
     const [s] = closeResidenceSegments(
       [doan({ contract_id: HD, from_date: '2026-03-01' })],
       [hopDong({ id: HD, status: 'TERMINATED', actual_end_date: '2026-01-01' })],
-      NGAY_NGHIEP_VU,
+      HOM_NAY,
     );
     expect(s.toDate).toBe('2026-03-01');
     expect(s.trusted).toBe(false);
     expect(s.diagnostic).toBe('SEGMENT_END_BEFORE_START');
   });
 
-  it('ngày đóng ở TƯƠNG LAI so với mốc nghiệp vụ ⇒ diagnostic, không im lặng nhận', () => {
+  it('ngày đóng ở TƯƠNG LAI so với HÔM NAY ⇒ diagnostic, không im lặng nhận', () => {
     const [s] = closeResidenceSegments(
       [doan({ contract_id: HD })],
       [hopDong({ id: HD, status: 'TERMINATED', actual_end_date: '2027-01-01' })],
-      NGAY_NGHIEP_VU,
+      HOM_NAY,
     );
     expect(s.diagnostic).toBe('SEGMENT_END_IN_FUTURE');
     expect(s.trusted).toBe(false);
@@ -491,7 +499,7 @@ describe('closeResidenceSegments — đóng đoạn cuối như adapter room cas
     const [s] = closeResidenceSegments(
       [doan({ contract_id: HD, trusted: false, diagnostic: 'SEGMENT_HISTORY_AMBIGUOUS: x' })],
       [hopDong({ id: HD })],
-      NGAY_NGHIEP_VU,
+      HOM_NAY,
     );
     expect(s.trusted).toBe(false);
     expect(s.diagnostic).toContain('SEGMENT_HISTORY_AMBIGUOUS');
@@ -519,6 +527,7 @@ describe('buildLifecycleLanes — nhiều lane theo LỊCH SỬ PHÒNG', () => {
     organizationId: ORG,
     roomId: PHONG_401,
     businessDate: NGAY_NGHIEP_VU,
+    todayISO: HOM_NAY,
     terminations: [] as TerminationRow[],
     depositByContract: new Map(),
     invoiceByContract: new Map(),
@@ -773,6 +782,88 @@ describe('buildLifecycleLanes — nhiều lane theo LỊCH SỬ PHÒNG', () => {
     expect(moc.m).toBe('Chưa thanh lý');
   });
 
+  // -- Doc RONG ma thanh cong KHONG phai la "da chung minh bang 0" ---------
+  it('cam kết cọc > 0 mà KHÔNG có nguồn nào và KHÔNG có nguồn bị loại ⇒ CHƯA CHỨNG MINH', () => {
+    const v = buildLifecycleLanes({
+      ...nen, targetContractId: HD, subject: { kind: 'voucher', voucherKind: 'refund' },
+      contracts: [hopDong({ id: HD, total_deposit: 4_500_000 })],
+      segments: [doan({ contract_id: HD })],
+      depositByContract: new Map([[HD, summariseDeposit([], new Map())]]),
+    });
+    expect(v.lanes[0].steps[1].v).toBe('Chưa đủ dữ liệu');
+    expect(v.lanes[0].steps[1].v).not.toBe('0 đ');
+    expect(v.status.deposit.kind).toBe('insufficient');
+  });
+
+  it('hợp đồng KHÔNG cam kết cọc và không có nguồn ⇒ 0 đ là sự thật, không báo thiếu', () => {
+    const v = buildLifecycleLanes({
+      ...nen, targetContractId: HD, subject: { kind: 'voucher', voucherKind: 'refund' },
+      contracts: [hopDong({ id: HD, total_deposit: 0 })],
+      segments: [doan({ contract_id: HD })],
+      depositByContract: new Map([[HD, summariseDeposit([], new Map())]]),
+    });
+    expect(v.lanes[0].steps[1].v).toBe('0 đ');
+    expect(v.status.deposit.kind).toBe('sufficient');
+  });
+
+  it('cam kết > 0 nhưng MỌI nguồn bị loại (đã huỷ) ⇒ 0 đ, vì có lý do chứng minh', () => {
+    const nguon = buildDepositSources({
+      organizationId: ORG,
+      reaches: [{ contractId: HD, voucherId: PT_THU, via: 'direct' }],
+      vouchers: [phieu({ id: PT_THU, code: 'PT-HUY', approval_status: 'CANCELLED' })],
+      items: [item({ id: 'i1', income_expense_id: PT_THU, amount: 4_500_000 })],
+      virtualAccountIds: [],
+    }).get(HD) ?? [];
+    const v = buildLifecycleLanes({
+      ...nen, targetContractId: HD, subject: { kind: 'voucher', voucherKind: 'refund' },
+      contracts: [hopDong({ id: HD, total_deposit: 4_500_000 })],
+      segments: [doan({ contract_id: HD })],
+      depositByContract: new Map([[HD, summariseDeposit(nguon, new Map())]]),
+    });
+    expect(v.lanes[0].steps[1].v).toBe('0 đ');
+    expect(v.status.deposit.kind).toBe('sufficient');
+  });
+
+  it('nguồn cọc đọc được MỘT PHẦN ⇒ insufficient (không phải error), vẫn hiện số đã có', () => {
+    const nguon = buildDepositSources(CA_THAT_TRUOC_HOAN).get(HD) ?? [];
+    const v = buildLifecycleLanes({
+      ...nen, targetContractId: HD, subject: { kind: 'voucher', voucherKind: 'refund' },
+      contracts: [hopDong({ id: HD })],
+      segments: [doan({ contract_id: HD })],
+      depositByContract: new Map([[HD, summariseDeposit(nguon, new Map())]]),
+      reads: { ...nen.reads, deposits: { ok: 'partial', reason: 'Không đọc được 1/1 nguồn cọc liên kết' } },
+    });
+    expect(v.status.deposit.kind).toBe('insufficient');
+    expect(v.status.deposit.kind).not.toBe('error');
+    expect((v.status.deposit as { reason: string }).reason).toContain('1/1');
+    expect(v.lanes[0].steps[1].v).toBe('4.500.000 đ');
+  });
+
+  // -- "Hom nay" khac "ngay nghiep vu" -------------------------------------
+  it('mở phiếu CŨ: đoạn đóng sau ngày phiếu KHÔNG bị coi là "kết thúc ở tương lai"', () => {
+    const v = buildLifecycleLanes({
+      ...nen, businessDate: NGAY_CU, todayISO: HOM_NAY,
+      targetContractId: HD, subject: { kind: 'movement' },
+      contracts: [hopDong({ id: HD, contract_number: 'HD-B', status: 'TERMINATED', actual_end_date: '2026-03-01' })],
+      segments: [doan({ contract_id: HD })],
+      terminations: [ketThuc({ contract_id: HD, termination_date: '2026-03-01' })],
+    });
+    expect(v.lanes[0].diagnostics).toEqual([]);
+    expect(v.lanes[0].trusted).toBe(true);
+    expect(v.status.lanes.kind).toBe('sufficient');
+    expect(v.roomState.kind).not.toBe('insufficient');
+  });
+
+  it('mốc "Đến hôm nay" lấy HÔM NAY, không lấy ngày phiếu/biến động', () => {
+    const v = buildLifecycleLanes({
+      ...nen, businessDate: NGAY_CU, todayISO: HOM_NAY,
+      targetContractId: HD, subject: { kind: 'movement' },
+      contracts: [hopDong({ id: HD })], segments: [doan({ contract_id: HD })],
+    });
+    expect(v.lanes[0].steps[3].h).toBe('Đến hôm nay · 22/09/2026');
+    expect(v.lanes[0].steps[3].h).not.toContain('28/10/2024');
+  });
+
   it('CỌC QUYẾT TOÁN là snapshot RIÊNG, không phải gross và không phải ròng', () => {
     const nguon = buildDepositSources(CA_THAT_TRUOC_HOAN).get(HD) ?? [];
     const v = buildLifecycleLanes({
@@ -801,6 +892,16 @@ describe('sumEffectiveInvoices — tiền thuê/phí, loại hóa đơn không h
     expect(t.get(HD)?.paid).toBe(2_000_000);
   });
 
+  it('loại hóa đơn DRAFT — nháp kỳ sau KHÔNG phải nợ (như 20260920194951:283)', () => {
+    const t = sumEffectiveInvoices(
+      [hd({ id: 'a' }),
+       hd({ id: 'b', status: 'DRAFT', paid_amount: 0, total_amount: 3_000_000, remaining_amount: 3_000_000 })],
+      ORG,
+    );
+    expect(t.get(HD)?.paid).toBe(1_000_000);
+    expect(t.get(HD)?.debt).toBe(0);
+  });
+
   it('loại hóa đơn CANCELLED và đã xoá mềm', () => {
     const t = sumEffectiveInvoices(
       [hd({ id: 'a' }), hd({ id: 'b', status: 'CANCELLED' }), hd({ id: 'c', deleted_at: '2026-01-01' })],
@@ -821,5 +922,22 @@ describe('sumEffectiveInvoices — tiền thuê/phí, loại hóa đơn không h
   it('CÁCH LY CÔNG TY: hóa đơn org khác không cộng vào', () => {
     const t = sumEffectiveInvoices([hd({ id: 'a' }), hd({ id: 'b', organization_id: ORG_KHAC })], ORG);
     expect(t.get(HD)?.paid).toBe(1_000_000);
+  });
+});
+
+// ===========================================================================
+describe('mocNgayNghiepVu — mốc ngày của hồ sơ đang mở', () => {
+  it('lấy phần NGÀY của chuỗi ISO có giờ', () => {
+    expect(mocNgayNghiepVu('2026-07-06T02:00:00Z', HOM_NAY)).toBe('2026-07-06');
+  });
+
+  it('rỗng/null thì lùi về HÔM NAY được truyền vào', () => {
+    expect(mocNgayNghiepVu(null, HOM_NAY)).toBe(HOM_NAY);
+    expect(mocNgayNghiepVu(undefined, HOM_NAY)).toBe(HOM_NAY);
+    expect(mocNgayNghiepVu('', HOM_NAY)).toBe(HOM_NAY);
+  });
+
+  it('dùng NGUYÊN VẸN "hôm nay" được truyền vào, không để đồng hồ máy đè', () => {
+    expect(mocNgayNghiepVu(null, '2026-01-01')).toBe('2026-01-01');
   });
 });

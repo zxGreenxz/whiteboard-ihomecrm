@@ -10,7 +10,8 @@
 
 import { createPortal } from 'react-dom';
 import { useContractLifecycle } from '@/hooks/useContractLifecycle';
-import { CHUA_DU_DU_LIEU } from '@/lib/contractLifecycle';
+import { CHUA_DU_DU_LIEU, mocNgayNghiepVu } from '@/lib/contractLifecycle';
+import { vnTodayISO } from '@/lib/vnDate';
 import { ContractLifecycleBand } from './ContractLifecycleBand';
 import { MOVEMENT_LABEL, type MovementRow } from '@/hooks/useContractMovements';
 import {
@@ -26,11 +27,12 @@ interface Props {
   onClose: () => void;
 }
 
-/** Mốc ngày NGHIỆP VỤ của hồ sơ này: ngày biến động phát sinh. */
-const mocNgay = (ev: MovementRow) => (ev.date ?? '').slice(0, 10) || new Date().toISOString().slice(0, 10);
-
 export function MovementLifecycleModal({ ev, lienQuan, onMoPhieu, onClose }: Props) {
-  const businessDate = mocNgay(ev);
+  // `vnTodayISO` chứ KHÔNG phải `new Date().toISOString()`: bản UTC trả HÔM QUA
+  // trong khoảng 00:00–07:00 giờ Việt Nam.
+  const homNay = vnTodayISO();
+  /** Mốc ngày NGHIỆP VỤ của hồ sơ này: ngày biến động phát sinh. */
+  const businessDate = mocNgayNghiepVu(ev.date, homNay);
   const vd = useContractLifecycle({
     organizationId: ev.organizationId,
     roomId: ev.roomId,
@@ -99,9 +101,10 @@ export function MovementLifecycleModal({ ev, lienQuan, onMoPhieu, onClose }: Pro
 
             <div className="cs-sheet">
               {/* ⚠ Đây là số ĐỌC HÔM NAY, không phải ảnh chụp tại ngày biến
-                  động — đừng gắn nhãn "tại thời điểm biến động" cho tổng hiện
-                  tại (plan §3.2). Mốc thời gian của số nói ngay trên tiêu đề. */}
-              <div className="cs-sheet-t">Số liệu hợp đồng đọc tại {fmtNgay(businessDate)}</div>
+                  động: nguồn cọc không lọc theo `as_of` như SQL. Nhãn phải nói
+                  đúng mốc của số — dán ngày biến động lên tổng hiện tại cũng
+                  sai y như câu "tại thời điểm biến động" đã bỏ (plan §3.2). */}
+              <div className="cs-sheet-t">Số liệu hợp đồng đọc hôm nay {fmtNgay(homNay)}</div>
               {dich ? (
                 <>
                   <div className="cs-kv">

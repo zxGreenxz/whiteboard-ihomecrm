@@ -169,6 +169,18 @@ export const LANE_TAG = {
 /** Chữ dùng ở MỌI chỗ chưa chứng minh được. Không bao giờ thay bằng "0 đ". */
 export const CHUA_DU_DU_LIEU = 'Chưa đủ dữ liệu';
 
+/**
+ * Mốc ngày NGHIỆP VỤ của hồ sơ đang mở: ngày phiếu hoặc ngày biến động.
+ *
+ * `homNay` là THAM SỐ BẮT BUỘC, cố ý không có mặc định. Mặc định duy nhất hợp
+ * lý là "hôm nay", mà `new Date().toISOString()` là giờ UTC — trước 07:00 giờ
+ * Việt Nam nó trả về HÔM QUA. Bắt caller truyền vào buộc họ đi qua
+ * `vnTodayISO()`, và giữ file này thuần (không đọc đồng hồ).
+ */
+export function mocNgayNghiepVu(raw: string | null | undefined, homNay: string): string {
+  return (raw ?? '').slice(0, 10) || homNay;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // 2. Nguồn cọc — phản chiếu app_private.contract_deposit_sources_v1
 // ═══════════════════════════════════════════════════════════════════════════
@@ -528,10 +540,16 @@ export function parseResidenceSegments(raw: unknown): SegmentParse {
   return { rows, rejected };
 }
 
+/**
+ * @param todayISO HÔM NAY, KHÔNG phải mốc nghiệp vụ của hồ sơ đang mở. Một
+ * đoạn "kết thúc ở tương lai" là bất thường so với hôm nay; so với ngày của
+ * một phiếu cũ thì MỌI đoạn đóng sau ngày đó đều thành "tương lai" và cả dải
+ * bị bôi là không tin cậy trên dữ liệu hoàn toàn sạch.
+ */
 export function closeResidenceSegments(
   segments: readonly ResidenceSegmentRow[],
   contracts: readonly LifecycleContractRow[],
-  businessDate: string,
+  todayISO: string,
 ): ClosedSegment[] {
   const hd = new Map(contracts.map((c) => [c.id, c]));
   return segments.map((s) => {
@@ -544,7 +562,7 @@ export function closeResidenceSegments(
       ?? null;
 
     const truocNgayMo = !!s.from_date && !!dong && dong < s.from_date;
-    const tuongLai = !!dong && dong > businessDate;
+    const tuongLai = !!dong && dong > todayISO;
 
     return {
       contractId: s.contract_id,
@@ -573,6 +591,8 @@ export function closeResidenceSegments(
 
 export interface InvoiceTotals { paid: number; debt: number }
 
+const KHONG_HIEU_LUC: ReadonlySet<string> = new Set(['CANCELLED', 'DRAFT']);
+
 /**
  * Hoá đơn KHÔNG chứa cọc (bảng `invoice_items` chỉ có RENT/SERVICE/PENALTY/
  * DISCOUNT/OTHER — không có loại DEPOSIT), nên mốc "Tiền thuê / phí đã đóng"
@@ -586,7 +606,11 @@ export function sumEffectiveInvoices(
   for (const i of invoices) {
     if (i.organization_id !== organizationId) continue;
     if (i.deleted_at) continue;
-    if ((i.status ?? '').toUpperCase() === 'CANCELLED') continue;
+    // Loại CANCELLED **và** DRAFT, y như projection anh em mà lớp đóng đoạn
+    // của file này chép theo (20260920194951_shared_room_lifecycle_rls.sql:283).
+    // Hoá đơn nháp của kỳ sau chưa phải nghĩa vụ: tính nó vào nợ là bịa ra một
+    // khoản nợ cho hợp đồng không nợ đồng nào.
+    if (KHONG_HIEU_LUC.has((i.status ?? '').toUpperCase())) continue;
     if (!i.contract_id) continue;
     const t = out.get(i.contract_id) ?? { paid: 0, debt: 0 };
     const paid = Number(i.paid_amount) || 0;
@@ -619,7 +643,16 @@ export type LaneSubject =
  * `reason` ở cả hai nhánh làm thuộc tính luôn đọc được, mà vẫn CẤM truyền lý
  * do kèm trạng thái thành công (kiểu `undefined`).
  */
-export type ReadState = { ok: true; reason?: undefined } | { ok: false; reason: string };
+export type ReadState =
+  | { ok: true; reason?: undefined }
+  /**
+   * Đọc KHÔNG lỗi nhưng THIẾU: biết chắc còn nguồn chưa nhìn thấy (vd
+   * `contract_deposit_links` trỏ tới phiếu mà RLS của `income_expenses` giấu —
+   * hai vị ngữ không tương đương). Khác `false` ở chỗ số đã đọc vẫn dùng được;
+   * khác `true` ở chỗ KHÔNG được kết luận là đủ.
+   */
+  | { ok: 'partial'; reason: string }
+  | { ok: false; reason: string };
 
 export interface LifecycleReads {
   contracts: ReadState;
@@ -631,7 +664,19 @@ export interface LifecycleReads {
 }
 
 /** Lý do đọc hỏng, hoặc `null` khi đọc được. Tránh phụ thuộc narrowing lồng. */
-export const lyDoHong = (r: ReadState): string | null => (r.ok ? null : r.reason ?? null);
+export const lyDoHong = (r: ReadState): string | null =>
+  (r.ok === true ? null : r.reason ?? null);
+
+/**
+ * Trạng thái của một phần, suy từ trạng thái đọc nguồn.
+ * `false` ⇒ lỗi; `'partial'` ⇒ thiếu dữ liệu (số đã có vẫn hiện); `true` ⇒ null
+ * để caller xét tiếp các điều kiện riêng của phần đó.
+ */
+export const tuReadState = (r: ReadState): SectionStatus | null => {
+  const ly = lyDoHong(r);
+  if (ly === null) return null;
+  return r.ok === false ? { kind: 'error', reason: ly } : { kind: 'insufficient', reason: ly };
+};
 
 export type SectionStatus =
   | { kind: 'sufficient' }
@@ -681,6 +726,10 @@ export interface LifecycleStatus {
 }
 
 export interface LifecycleView {
+  /** Mốc ngày nghiệp vụ đã dựng dải này — để caller gắn nhãn cho khớp. */
+  businessDate: string;
+  /** Hôm nay đã dùng để tính mốc 4 và phép kiểm tương lai. */
+  todayISO: string;
   lanes: Lane[];
   target: Lane | null;
   roomState: RoomState;
@@ -693,14 +742,43 @@ export interface LaneInput {
   roomId: string | null;
   targetContractId: string;
   subject: LaneSubject;
-  /** Mốc ngày NGHIỆP VỤ. Không bao giờ đọc đồng hồ trong file này. */
+  /**
+   * Mốc ngày NGHIỆP VỤ của hồ sơ đang mở (ngày phiếu / ngày biến động). Chỉ để
+   * echo ra `LifecycleView` cho caller gắn nhãn — KHÔNG dùng làm "hôm nay".
+   */
   businessDate: string;
+  /**
+   * HÔM NAY theo giờ Việt Nam. Tách hẳn khỏi `businessDate`: mốc 4 "Đến hôm
+   * nay" và phép kiểm "đoạn kết thúc ở tương lai" đều đo theo mốc này.
+   * Không bao giờ đọc đồng hồ trong file này — caller truyền vào.
+   */
+  todayISO: string;
   contracts: readonly LifecycleContractRow[];
   segments: readonly ResidenceSegmentRow[];
   terminations: readonly TerminationRow[];
   depositByContract: ReadonlyMap<string, DepositFigures>;
   invoiceByContract: ReadonlyMap<string, InvoiceTotals>;
   reads: LifecycleReads;
+}
+
+/**
+ * Đọc THÀNH CÔNG mà RỖNG không phải là "đã chứng minh bằng 0".
+ *
+ * Hợp đồng CAM KẾT cọc > 0 mà không tìm ra nguồn nào — kể cả một nguồn bị loại
+ * để giải thích — thì thứ ta biết là "chưa thấy", không phải "không có". Có thể
+ * phiếu cọc nằm ngoài tầm RLS của người đang xem. Hiện "0 đ" ở đây là đúng
+ * loại nói dối mà T2 sinh ra để diệt.
+ *
+ * Ngược lại: cam kết 0 ⇒ 0 là sự thật; và khi CÓ nguồn bị loại thì màn hình đã
+ * nói được VÌ SAO bằng 0, nên 0 là một kết luận có căn cứ.
+ */
+export function cocChuaChungMinh(
+  c: LifecycleContractRow,
+  d: DepositFigures | null,
+): boolean {
+  if (!d) return true;
+  const camKet = Number(c.total_deposit) || 0;
+  return camKet > 0 && d.evidence.length === 0 && d.excluded.length === 0;
 }
 
 export function tenKhach(c: LifecycleContractRow): string {
@@ -744,7 +822,7 @@ export function buildLifecycleLanes(input: LaneInput): LifecycleView {
   const daDong = closeResidenceSegments(
     input.segments.filter((s) => hdTheoId.has(s.contract_id)),
     hopDong,
-    input.businessDate,
+    input.todayISO,
   ).filter((s) => !input.roomId || s.roomId === input.roomId);
 
   /** contractId → nhịp trên phòng này. Gia hạn giữ nguyên ID ⇒ vẫn MỘT mục. */
@@ -819,7 +897,7 @@ export function buildLifecycleLanes(input: LaneInput): LifecycleView {
       target: laDich,
       steps: dungMoc({
         contract: c, termination: t, deposit: coc, invoice: hoaDon,
-        businessDate: input.businessDate, isTarget: laDich, reads: input.reads,
+        todayISO: input.todayISO, isTarget: laDich, reads: input.reads,
       }),
       deposit: coc,
       settlementDeposit: t?.total_deposit ?? null,
@@ -836,13 +914,11 @@ export function buildLifecycleLanes(input: LaneInput): LifecycleView {
   const khongTinCay = lanes.filter((l) => !l.trusted);
   const thieuDich = viTriDich < 0;
 
-  const loiHopDong = lyDoHong(input.reads.contracts);
-  const loiDoan = lyDoHong(input.reads.segments);
   const loiChuyen = lyDoHong(input.reads.transfers);
   const trangThaiLane: SectionStatus =
-    loiHopDong ? { kind: 'error', reason: loiHopDong }
-    : loiDoan ? { kind: 'error', reason: loiDoan }
-    : loiChuyen
+    tuReadState(input.reads.contracts)
+    ?? tuReadState(input.reads.segments)
+    ?? (loiChuyen
       ? { kind: 'insufficient', reason: `${loiChuyen} — chuỗi hợp đồng có thể thiếu` }
     : thieuDich
       ? { kind: 'insufficient', reason: 'Chưa đọc được hợp đồng của phiếu đang mở' }
@@ -850,29 +926,38 @@ export function buildLifecycleLanes(input: LaneInput): LifecycleView {
       ? { kind: 'insufficient', reason: chanDoan[0] }
     : khongTinCay.length > 0
       ? { kind: 'insufficient', reason: 'Lịch sử cư trú của phòng chưa đủ tin cậy' }
-    : { kind: 'sufficient' };
+    : { kind: 'sufficient' });
 
   const thieuCoc = lanes.filter((l) => l.deposit === null);
-  const loiCoc = lyDoHong(input.reads.deposits);
+  // Cam kết cọc > 0 mà không thấy nguồn nào ⇒ CHƯA CHỨNG MINH, dù lượt đọc
+  // không hề lỗi. Đây là ca reviewer bắt được: đọc rỗng mà báo "đủ".
+  const chuaChungMinh = lanes.filter((l) => {
+    const c = hdTheoId.get(l.contractId);
+    return !!c && l.deposit !== null && cocChuaChungMinh(c, l.deposit);
+  });
   const trangThaiCoc: SectionStatus =
-    loiCoc ? { kind: 'error', reason: loiCoc }
-    : thieuCoc.length > 0
+    tuReadState(input.reads.deposits)
+    ?? (thieuCoc.length > 0
       ? { kind: 'insufficient', reason: 'Chưa đọc đủ nguồn cọc của mọi hợp đồng trong chuỗi' }
-    : { kind: 'sufficient' };
+    : chuaChungMinh.length > 0
+      ? {
+          kind: 'insufficient',
+          reason: `${chuaChungMinh.length} hợp đồng cam kết cọc nhưng không tìm thấy phiếu cọc nào`
+            + ' — có thể nằm ngoài quyền xem của bạn',
+        }
+    : { kind: 'sufficient' });
 
-  const loiHoaDon = lyDoHong(input.reads.invoices);
   const trangThaiThue: SectionStatus =
-    loiHoaDon ? { kind: 'error', reason: loiHoaDon }
-    : lanes.some((l) => !input.invoiceByContract.has(l.contractId))
+    tuReadState(input.reads.invoices)
+    ?? (lanes.some((l) => !input.invoiceByContract.has(l.contractId))
       ? { kind: 'insufficient', reason: 'Chưa đọc đủ hoá đơn của mọi hợp đồng trong chuỗi' }
-    : { kind: 'sufficient' };
+    : { kind: 'sufficient' });
 
-  const loiButToan = lyDoHong(input.reads.postings);
   const trangThaiButToan: SectionStatus =
-    loiButToan ? { kind: 'error', reason: loiButToan }
-    : lanes.some((l) => l.deposit?.hasUnverified)
+    tuReadState(input.reads.postings)
+    ?? (lanes.some((l) => l.deposit?.hasUnverified)
       ? { kind: 'insufficient', reason: 'Chưa đối chiếu được bút toán hiệu lực — cần quyền giữ sổ quỹ' }
-    : { kind: 'sufficient' };
+    : { kind: 'sufficient' });
 
   // ── Tình trạng phòng ────────────────────────────────────────────────────
   // Đọc rỗng hay đọc lỗi KHÔNG BAO GIỜ được đọc thành "phòng trống".
@@ -895,6 +980,8 @@ export function buildLifecycleLanes(input: LaneInput): LifecycleView {
           };
 
   return {
+    businessDate: input.businessDate,
+    todayISO: input.todayISO,
     lanes,
     target: lanes.find((l) => l.target) ?? null,
     roomState,
@@ -913,7 +1000,7 @@ function dungMoc(a: {
   termination: TerminationRow | null;
   deposit: DepositFigures | null;
   invoice: InvoiceTotals | null;
-  businessDate: string;
+  todayISO: string;
   isTarget: boolean;
   reads: LifecycleReads;
 }): LaneStep[] {
@@ -925,11 +1012,16 @@ function dungMoc(a: {
   // cũ ghi "Cam kết X · còn thiếu Y" suy từ `deposit_paid`, và `deposit_paid`
   // là SỐ RÒNG SAU CẤN nên câu "còn thiếu" là bịa.
   const thu = a.deposit?.evidence.filter((e) => e.direction === 'IN' && e.bucket === 'REAL_CASH') ?? [];
-  const mocCoc: LaneStep = a.deposit === null
+  const chuaChungMinh = cocChuaChungMinh(c, a.deposit);
+  const mocCoc: LaneStep = a.deposit === null || chuaChungMinh
     ? {
         h: 'Cọc đã đóng · thực thu',
         v: CHUA_DU_DU_LIEU,
-        m: lyDoHong(a.reads.deposits) ?? 'Chưa đọc được nguồn cọc của hợp đồng này',
+        m: a.deposit === null
+          ? lyDoHong(a.reads.deposits) ?? 'Chưa đọc được nguồn cọc của hợp đồng này'
+          // Cam kết có, nguồn không — nói đúng cái ta biết, đừng in "0 đ".
+          : `Hợp đồng cam kết ${fmtMoney(Number(c.total_deposit) || 0)} nhưng không tìm thấy`
+            + ' phiếu cọc nào — có thể nằm ngoài quyền xem của bạn',
       }
     : {
         h: 'Cọc đã đóng · thực thu',
@@ -972,7 +1064,9 @@ function dungMoc(a: {
           : `Nợ sau quyết toán: ${fmtMoney(Number(noSauQuyetToan))}`,
       }
     : {
-        h: `Đến hôm nay · ${fmtNgay(a.businessDate)}`,
+        // HÔM NAY, không phải ngày phiếu: dán ngày quá khứ lên tổng hiện tại
+        // là đổi một nhãn sai lấy một nhãn sai khác.
+        h: `Đến hôm nay · ${fmtNgay(a.todayISO)}`,
         v: 'Đang thuê',
         m: 'Chưa thanh lý',
         ...(a.isTarget

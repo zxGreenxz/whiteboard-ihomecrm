@@ -73,7 +73,7 @@ const DOC_TOT = {
 };
 
 const viewCaThat = () => buildLifecycleLanes({
-  organizationId: ORG, roomId: PHONG, targetContractId: HD, businessDate: NGAY,
+  organizationId: ORG, roomId: PHONG, targetContractId: HD, businessDate: NGAY, todayISO: NGAY,
   subject: { kind: 'voucher', voucherKind: 'refund' },
   contracts: [{
     id: HD, organization_id: ORG, contract_number: 'HĐT-046775/28102024',
@@ -97,7 +97,7 @@ const viewCaThat = () => buildLifecycleLanes({
 });
 
 const props = {
-  organizationId: ORG, roomId: PHONG, contractId: HD, businessDate: NGAY,
+  organizationId: ORG, roomId: PHONG, contractId: HD, businessDate: NGAY, todayISO: NGAY,
   subject: { kind: 'voucher' as const, voucherKind: 'refund' as const },
   sourceLabel: 'Phiếu đang xem', sourceText: 'PC2609095',
 };
@@ -141,7 +141,7 @@ describe('ContractLifecycleBand — mốc cọc', () => {
 describe('ContractLifecycleBand — nhiều lane và chân dải', () => {
   it('vẽ đủ chuỗi lane với vai của từng hợp đồng', () => {
     const v = buildLifecycleLanes({
-      organizationId: ORG, roomId: PHONG, targetContractId: HD, businessDate: NGAY,
+      organizationId: ORG, roomId: PHONG, targetContractId: HD, businessDate: NGAY, todayISO: NGAY,
       subject: { kind: 'voucher', voucherKind: 'refund' },
       contracts: [
         { id: HD, organization_id: ORG, contract_number: 'HD-B', room_id: PHONG, status: 'TERMINATED', signed_date: '2024-10-28', start_date: '2024-10-28', end_date: '2026-10-27', actual_end_date: '2026-09-20', total_deposit: 4_500_000, rent_price: 4_500_000, customer_name: 'Khách B' },
@@ -199,7 +199,7 @@ describe('ContractLifecycleBand — lỗi và thiếu dữ liệu KHÁC số 0',
 
   it('nguồn cọc không đọc được ⇒ mốc cọc ghi "Chưa đủ dữ liệu", không phải 0 đ', () => {
     const v = buildLifecycleLanes({
-      organizationId: ORG, roomId: PHONG, targetContractId: HD, businessDate: NGAY,
+      organizationId: ORG, roomId: PHONG, targetContractId: HD, businessDate: NGAY, todayISO: NGAY,
       subject: { kind: 'voucher', voucherKind: 'refund' },
       contracts: [{ id: HD, organization_id: ORG, contract_number: 'HD-B', room_id: PHONG, status: 'ACTIVE', signed_date: '2024-10-28', start_date: '2024-10-28', end_date: '2026-10-27', actual_end_date: null, total_deposit: 4_500_000, rent_price: 4_500_000, customer_name: 'Khách B' }],
       segments: [{ contract_id: HD, contract_number: 'HD-B', seg_index: 0, room_id: PHONG, room_name: '401', from_date: '2024-10-28', to_date: null, source_path: 'CONTRACT_START', transfer_id: null, trusted: true, diagnostic: null }],
