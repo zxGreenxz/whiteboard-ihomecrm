@@ -17,8 +17,9 @@
 // ra chứ không lưu ở đâu. Lệch căn cứ thì phải sửa phiếu bên Thu chi.
 // =============================================================================
 
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   validatePostFinanceExecutionInput,
@@ -27,7 +28,10 @@ import {
 import {
   useCustodianCashbooksV2, useAttachPostingEvidence, adoptVoucherAttachmentsAsEvidence,
 } from '@/hooks/income-expenses/financeV2Mutations';
-import { AttachmentLightbox } from '@/components/ui/attachment-lightbox';
+import {
+  describeEvidenceSkipReason, type PostingEvidenceSkip,
+} from '@/lib/postingEvidenceItems';
+import { useClipboardImagePaste } from '@/hooks/useClipboardImagePaste';
 import { useAuth } from '@/hooks/useAuth';
 import { buildVietQRImageUrl, matchRecipientBankCode, RECIPIENT_BANKS } from '@/lib/vietqrDeeplink';
 import { ChungTuThanhToan } from './ChungTuThanhToan';
@@ -85,14 +89,42 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
     useState<'APPROVE_AND_POST' | 'POST_APPROVED' | null>(null);
   const [soQuy, setSoQuy] = useState('');
   const [ngayChi, setNgayChi] = useState(() => new Date().toISOString().slice(0, 10));
-  const [chungTu, setChungTu] = useState<{ ids: string[]; ten: string } | null>(null);
+  /** Chứng từ hợp lệ server nhận từ ẢNH TRÊN PHIẾU — luôn thay nguyên cụm. */
+  const [idTuAnhPhieu, setIdTuAnhPhieu] = useState<string[]>([]);
+  /** Chứng từ đi ĐƯỜNG LÙI: có trong kho chứng từ nhưng không đính được lên phiếu. */
+  const [idDuongLui, setIdDuongLui] = useState<string[]>([]);
+  /** Ảnh server KHÔNG nhận cho lần ghi sổ này, kèm lý do thô. */
+  const [boQua, setBoQua] = useState<PostingEvidenceSkip[]>([]);
+  /** URL vừa tải/dán trong phiên — `row.attachments` là ảnh chụp lúc đọc. */
+  const [anhTrongPhien, setAnhTrongPhien] = useState<string[]>([]);
+  const [dangNhanAnh, setDangNhanAnh] = useState(false);
+  /** Adopt không trả về id nào VÀ cũng không nói ảnh nào bị loại ⇒ đọc hỏng. */
+  const [nhanAnhHong, setNhanAnhHong] = useState(false);
   const [dangTaiAnh, setDangTaiAnh] = useState(false);
+  const [dangGhiSo, setDangGhiSo] = useState(false);
   const [khoaGhiChu] = useState(khoaMoi);
   /** Sinh MỘT LẦN mỗi lần mở form chi — thử lại không ghi sổ hai lần. */
   const [khoaGhiSo, setKhoaGhiSo] = useState(khoaMoi);
 
   const { data: authUser } = useAuth();
   const dinhChungTu = useAttachPostingEvidence();
+  const qc = useQueryClient();
+
+  /**
+   * ⚠ MODAL KHÔNG UNMOUNT KHI ĐỔI PHIẾU. Hồ sơ biến động bấm sang một phiếu
+   * khác thì cha chỉ truyền `row` mới vào ĐÚNG instance này. Nên mọi kết quả
+   * `await` phải so với phiếu đang mở TẠI LÚC NÓ VỀ; ref gán ngay trong render
+   * để không có khe nào giữa render và effect cho promise chen vào.
+   */
+  const phieuHienTai = useRef(row.voucherId);
+  phieuHienTai.current = row.voucherId;
+  const conSong = useRef(true);
+  useEffect(() => () => { conSong.current = false; }, []);
+  /** Kết quả về sau khi đóng modal hoặc đã đổi phiếu thì BỎ, không gắn lung tung. */
+  const conDungPhieu = useCallback(
+    (id: string) => conSong.current && phieuHienTai.current === id,
+    [],
+  );
   const supplements = useIncomeExpenseSupplements(row.voucherId, true);
   const { data: soCustodian = [] } = useCustodianCashbooksV2(!!dangChi);
   const { data: moiSo = [] } = useAccounts({ enabled: !!dangChi });
@@ -128,43 +160,151 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
     });
   }, [row.bankName, row.bankAccount, row.amount, row.voucherCode, row.recipientName]);
 
+  /**
+   * Dọn sạch mọi thứ thuộc về MỘT lần ghi chi — kể cả cờ "đang tải".
+   *
+   * ⚠ Cờ `dangTaiAnh` PHẢI nằm ở đây: lần tải của phiếu cũ về muộn sẽ bị chặn
+   * ở `conDungPhieu` nên không tự tắt cờ được, và nếu không dọn thì form của
+   * phiếu mới mở lên đã kẹt sẵn ở "Đang tải…" với nút xác nhận khoá cứng.
+   */
+  const xoaChungTu = useCallback(() => {
+    setIdTuAnhPhieu([]);
+    setIdDuongLui([]);
+    setBoQua([]);
+    setAnhTrongPhien([]);
+    setNhanAnhHong(false);
+    setDangTaiAnh(false);
+  }, []);
+
+  /** Form chi đang mở cho ĐÚNG phiếu nào — chốt tại lúc bấm, không suy lại. */
+  const phieuCuaForm = useRef<string | null>(null);
+
   const moFormChi = (mode: 'APPROVE_AND_POST' | 'POST_APPROVED') => {
+    phieuCuaForm.current = row.voucherId;
     setDangChi(mode);
     setKhoaGhiSo(khoaMoi());
-    setChungTu(null);
+    xoaChungTu();
     setSoQuy('');
   };
 
-  /** Tải ảnh lên rồi biến nó thành chứng từ đã finalize — ĐÚNG đường Thu chi. */
-  const themAnh = async (file: File) => {
-    setDangTaiAnh(true);
-    try {
-      const kq = await dinhChungTu(file, {
-        voucherId: row.voucherId,
-        userId: authUser?.id ?? '',
-        organizationId: row.organizationId,
-      });
-      // Hook đã toast lý do khi trả null — đừng toast đè lên nó.
-      if (kq) setChungTu({ ids: kq.evidenceIds, ten: file.name });
-    } finally {
-      setDangTaiAnh(false);
-    }
-  };
+  /**
+   * Đổi phiếu giữa chừng: đóng form chi và vứt chứng từ của phiếu cũ. Giữ lại
+   * là mở đường cho chứng từ phiếu A ký tên cho lần chi phiếu B.
+   */
+  const phieuTruoc = useRef(row.voucherId);
+  useEffect(() => {
+    if (phieuTruoc.current === row.voucherId) return;
+    phieuTruoc.current = row.voucherId;
+    phieuCuaForm.current = null;
+    setDangChi(null);
+    setSoQuy('');
+    setKhoaGhiSo(khoaMoi());
+    xoaChungTu();
+  }, [row.voucherId, xoaChungTu]);
 
-  /** Nhận ảnh đã đính sẵn trên phiếu làm chứng từ, khỏi bắt tải lại. */
-  const dungAnhCoSan = async () => {
+  /**
+   * MỞ BƯỚC GHI CHI LÀ TỰ NHẬN ẢNH CÓ SẴN LÀM CHỨNG TỪ (plan §3.1).
+   *
+   * Giống hệt `IncomeExpensePostingDialog` từ 27/08/2026: phiếu đã có ảnh
+   * chuyển khoản thì mở lên là bấm chi được ngay, không bắt bấm thêm một nút
+   * "Dùng ảnh có sẵn" nữa.
+   *
+   * ⚠ RANH GIỚI: việc này CHỈ chuẩn bị chứng từ. Nó không duyệt, không ghi
+   * tiền, và KHÔNG thay điều kiện chọn sổ quỹ — tiền chỉ đi khi người dùng bấm
+   * "Xác nhận đã chi đủ".
+   */
+  const luotNhanAnh = useRef(0);
+  useEffect(() => {
+    // `phieuCuaForm` chốt tại lúc BẤM mở form. Nhờ nó, lần render ngay sau khi
+    // cha đổi `row` — form của phiếu cũ còn đang mở — không kéo theo một lượt
+    // adopt cho phiếu mới mà người dùng chưa hề mở.
+    if (!dangChi || phieuCuaForm.current !== row.voucherId) return;
+    if (row.attachments.length === 0) return;
+    const idPhieu = row.voucherId;
+    const luot = luotNhanAnh.current + 1;
+    luotNhanAnh.current = luot;
+    const conHieuLuc = () => luotNhanAnh.current === luot && conDungPhieu(idPhieu);
+
+    setDangNhanAnh(true);
+    setNhanAnhHong(false);
+    void adoptVoucherAttachmentsAsEvidence(idPhieu)
+      .then((kq) => {
+        if (!conHieuLuc()) return;
+        setIdTuAnhPhieu(kq.evidenceIds);
+        setBoQua(kq.skipped ?? []);
+        // Không id nào VÀ không lý do nào = RPC đọc hỏng, không phải "ảnh bị loại".
+        setNhanAnhHong(kq.evidenceIds.length === 0 && (kq.skipped ?? []).length === 0);
+      })
+      .finally(() => { if (conHieuLuc()) setDangNhanAnh(false); });
+
+    return () => { luotNhanAnh.current += 1; setDangNhanAnh(false); };
+    // `row.attachments` cố ý KHÔNG nằm trong deps: adopt một lần mỗi lần mở
+    // form; ảnh thêm sau đi đường `themAnh` và đã trả về danh sách mới.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dangChi, row.voucherId]);
+
+  /**
+   * Khu này có query riêng (`contract-settlement`); `useAttachPostingEvidence`
+   * chỉ làm mới các key của Thu chi. Làm mới tại ĐÂY — adapter của khu — thay
+   * vì sửa hook dùng chung.
+   */
+  const lamMoiHoSo = useCallback(() => {
+    void qc.invalidateQueries({ queryKey: ['contract-settlement'] });
+  }, [qc]);
+
+  /**
+   * Tải ảnh lên rồi biến chính nó thành chứng từ — ĐÚNG đường của Thu chi.
+   * Dán ảnh (Ctrl/Cmd+V) và chọn tệp đi CHUNG hàm này, không có đường thứ hai.
+   */
+  const themAnh = useCallback(async (files: File[]) => {
+    if (files.length === 0) return;
+    const idPhieu = phieuHienTai.current;
     setDangTaiAnh(true);
+    let coThem = false;
     try {
-      const kq = await adoptVoucherAttachmentsAsEvidence(row.voucherId);
-      if (kq.evidenceIds.length === 0) {
-        toast.error('Không dùng được ảnh có sẵn làm chứng từ. Tải ảnh mới lên.');
-        return;
+      for (const file of files) {
+        const kq = await dinhChungTu(file, {
+          voucherId: idPhieu,
+          userId: authUser?.id ?? '',
+          organizationId: row.organizationId,
+        });
+        if (!conDungPhieu(idPhieu)) return;
+        // Hook đã toast lý do khi trả null — đừng toast đè lên nó.
+        if (!kq) continue;
+        coThem = true;
+        const urlMoi = kq.url;
+        if (kq.attachedToVoucher) {
+          if (urlMoi) {
+            setAnhTrongPhien((p) => (p.includes(urlMoi) ? p : [...p, urlMoi]));
+          }
+          setIdTuAnhPhieu(kq.evidenceIds);
+          setBoQua(kq.skipped ?? []);
+        } else {
+          setIdDuongLui((p) => [...p, ...kq.evidenceIds]);
+        }
+        setNhanAnhHong(false);
       }
-      setChungTu({ ids: kq.evidenceIds, ten: `${kq.evidenceIds.length} ảnh có sẵn trên phiếu` });
     } finally {
-      setDangTaiAnh(false);
+      if (conDungPhieu(idPhieu)) setDangTaiAnh(false);
     }
-  };
+    if (coThem) lamMoiHoSo();
+  }, [dinhChungTu, authUser?.id, row.organizationId, conDungPhieu, lamMoiHoSo]);
+
+  const nhanTepDan = useCallback((files: File[]) => { void themAnh(files); }, [themAnh]);
+  const tayDan = useClipboardImagePaste({
+    onFiles: nhanTepDan,
+    enabled: !!dangChi && !dangTaiAnh,
+    multiple: true,
+  });
+
+  /** Chỉ id THẬT mới được gửi đi; trùng thì tính một lần. */
+  const chungTuHopLe = useMemo(() => {
+    const s = new Set<string>();
+    for (const id of [...idTuAnhPhieu, ...idDuongLui]) {
+      if (typeof id === 'string' && id.trim() !== '') s.add(id);
+    }
+    return [...s];
+  }, [idTuAnhPhieu, idDuongLui]);
 
   /**
    * Dựng input y hệt hộp thoại Thu chi. Một chỗ duy nhất tạo ra nó, để form và
@@ -175,7 +315,7 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
     subjectId: row.voucherId,
     cashbookId: soQuy,
     postedOn: ngayChi,
-    evidenceIds: chungTu?.ids ?? [],
+    evidenceIds: chungTuHopLe,
     /* Thu chi truyền 0 và KHÔNG có cột DB nào tương ứng — giữ y hệt, không
        bịa ra trường để đọc. */
     expectedExecutionRevision: 0,
@@ -191,14 +331,34 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
   const kiemTra = validatePostFinanceExecutionInput(duLieuGhiChi());
   const loiDauTien = Object.values(kiemTra.errors)[0] ?? null;
 
-  const ghiChi = () => chay(async () => {
-    if (!dangChi || !kiemTra.ok) return;
+  /** Đang xử lý ảnh hoặc đang ghi sổ thì khoá xác nhận. */
+  const khoaXacNhan =
+    actions.isBusy || dangTaiAnh || dangNhanAnh || dangGhiSo || !kiemTra.ok;
+
+  /**
+   * Chống bấm hai lần: `actions.isBusy` chỉ đổi sau một vòng render, còn hai cú
+   * bấm liên tiếp nằm trong CÙNG một vòng. Ref chặn ngay lập tức.
+   *
+   * Thử lại sau lỗi vẫn dùng NGUYÊN `khoaGhiSo` của lần mở form này — writer
+   * nhận cùng idempotency key nên không ghi sổ lần hai.
+   */
+  const dangGhiRef = useRef(false);
+  const ghiChi = () => {
+    if (!dangChi || khoaXacNhan || dangGhiRef.current) return;
+    dangGhiRef.current = true;
+    setDangGhiSo(true);
     const input = duLieuGhiChi();
-    if (dangChi === 'APPROVE_AND_POST') await actions.approveAndPost(input);
-    else await actions.post(input);
-    setDangChi(null);
-    onClose();
-  });
+    void chay(async () => {
+      if (dangChi === 'APPROVE_AND_POST') await actions.approveAndPost(input);
+      else await actions.post(input);
+      if (!conSong.current) return;
+      setDangChi(null);
+      onClose();
+    }).finally(() => {
+      dangGhiRef.current = false;
+      if (conSong.current) setDangGhiSo(false);
+    });
+  };
 
   const st = STATUS_STYLE[view];
   const chay = async (fn: () => Promise<void>) => {
@@ -440,7 +600,11 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
                   </div>
                 </div>
               )}
-              <ChungTuThanhToan attachments={row.attachments} />
+              <ChungTuThanhToan
+                attachments={row.attachments}
+                anhTrongPhien={anhTrongPhien}
+                boQua={boQua}
+              />
               {row.hasAttachment && view !== 'paid' && (
                 <div className="cs-note-s" style={{ marginTop: 6, color: 'var(--brand)' }}>
                   Đã có ảnh nên phiếu không còn vướng thông tin thanh toán.
@@ -491,47 +655,55 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
                     </div>
                   )}
 
+                  {/* ── Chứng từ ────────────────────────────────────────────
+                      KHÔNG còn nút "Dùng ảnh có sẵn": ảnh trên phiếu đã được
+                      nhận tự động lúc mở form. Ô này chỉ để BỔ SUNG. */}
                   <div>
                     <div className="cs-lb-t">Ảnh chuyển khoản</div>
-                    {chungTu ? (
-                      <div className="cs-anh-ok">
-                        <span className="cs-anh-oknho" />
-                        <span style={{ minWidth: 0, flex: 1 }}>
-                          <span className="cs-anh-okten">{chungTu.ten}</span>
-                          <span className="cs-anh-oksub">Đã đính kèm chứng từ chuyển khoản</span>
-                        </span>
-                        <button type="button" className="cs-anh-okx" aria-label="Bỏ chứng từ"
-                          onClick={() => setChungTu(null)}>×</button>
+                    {dangNhanAnh ? (
+                      <div className="cs-note-s">Đang nhận ảnh của phiếu làm chứng từ…</div>
+                    ) : chungTuHopLe.length > 0 ? (
+                      <div className="cs-note-s" style={{ color: 'var(--brand)' }}>
+                        {chungTuHopLe.length} ảnh dùng làm chứng từ cho lần chi này.
                       </div>
                     ) : (
-                      <div className="cs-tai">
-                        <div className="cs-note-s">Tải ảnh hoặc dùng ảnh đã đính trên phiếu</div>
-                        <div className="pair">
-                          <label className={`cs-btn primary sm ${dangTaiAnh ? 'mo' : ''}`}
-                            style={{ textAlign: 'center', cursor: dangTaiAnh ? 'wait' : 'pointer' }}>
-                            {dangTaiAnh ? 'Đang tải…' : 'Tải ảnh lên'}
-                            <input type="file" accept="image/*" style={{ display: 'none' }}
-                              disabled={dangTaiAnh}
-                              onChange={(e) => {
-                                const f = e.target.files?.[0];
-                                // Xoá giá trị để chọn lại CÙNG một file vẫn kích hoạt onChange.
-                                e.target.value = '';
-                                if (f) void themAnh(f);
-                              }} />
-                          </label>
-                          <button type="button" className="cs-btn sm"
-                            disabled={dangTaiAnh || !row.hasAttachment}
-                            title={row.hasAttachment ? undefined : 'Phiếu chưa có ảnh nào'}
-                            onClick={() => void dungAnhCoSan()}>
-                            Dùng ảnh có sẵn
-                          </button>
-                        </div>
+                      <div className="cs-note-s" style={{ color: 'var(--c-unpaid)' }}>
+                        {nhanAnhHong
+                          ? 'Không nhận được ảnh trên phiếu làm chứng từ. Tải hoặc dán ảnh mới để chi.'
+                          : 'Chưa có ảnh nào dùng được làm chứng từ cho lần chi này.'}
                       </div>
                     )}
+                    {/* Mỗi ảnh bị loại có CÂU RIÊNG. Một ảnh hỏng không phủ nhận
+                        ảnh còn lại — nói rõ để người dùng không tưởng mất hết. */}
+                    {boQua.map((s) => (
+                      <div key={s.url} className="cs-note-s" style={{ color: 'var(--c-partial)' }}>
+                        Một ảnh không dùng được: {describeEvidenceSkipReason(s.reason)}.
+                        {chungTuHopLe.length > 0
+                          ? ' Ảnh còn lại vẫn tính là chứng từ.'
+                          : ' Tải hoặc dán ảnh khác để chi.'}
+                      </div>
+                    ))}
+                    <div className="cs-tai" {...tayDan}>
+                      <div className="cs-note-s">
+                        Tải thêm ảnh, hoặc đưa chuột vào đây rồi bấm Ctrl/Cmd+V để dán ảnh.
+                      </div>
+                      <label className={`cs-btn primary sm ${dangTaiAnh ? 'mo' : ''}`}
+                        style={{ textAlign: 'center', cursor: dangTaiAnh ? 'wait' : 'pointer' }}>
+                        {dangTaiAnh ? 'Đang tải…' : 'Tải hoặc Dán Ảnh'}
+                        <input type="file" accept="image/*" multiple style={{ display: 'none' }}
+                          disabled={dangTaiAnh}
+                          onChange={(e) => {
+                            const fs = [...(e.target.files ?? [])];
+                            // Xoá giá trị để chọn lại CÙNG một file vẫn kích hoạt onChange.
+                            e.target.value = '';
+                            if (fs.length > 0) void themAnh(fs);
+                          }} />
+                      </label>
+                    </div>
                   </div>
 
                   <button type="button" className="cs-btn primary"
-                    disabled={actions.isBusy || dangTaiAnh || !kiemTra.ok}
+                    disabled={khoaXacNhan}
                     onClick={ghiChi}>
                     Xác nhận đã chi đủ {fmtMoney(row.amount)}
                   </button>
