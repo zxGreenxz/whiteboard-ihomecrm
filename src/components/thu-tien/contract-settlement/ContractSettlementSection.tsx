@@ -20,10 +20,11 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import {
   ACTION_LABEL, KIND_LABEL, STATUS_FILTER_LABEL, STATUS_STYLE,
-  boDau, fmtCompact, fmtMoney, fmtNgay, groupTotal, isOldPeriodWork, matchScope,
-  matchStatus, normalisePeriodFilter, periodScopeLabel, periodScopeOptions,
-  statValue, viewStatusOf,
-  type PeriodScope, type SettlementRow, type StatValue, type StatusFilter, type ViewStatus,
+  boDau, fmtCompact, fmtMoney, fmtNgay, groupTotal, isOldPeriodWork,
+  lyDoChuaXacMinhNgayChi, matchScope, matchStatus, normalisePeriodFilter,
+  periodScopeLabel, periodScopeOptions, statValue, viewStatusOf,
+  type PeriodScope, type PostingReadState, type SettlementRow, type StatValue,
+  type StatusFilter, type ViewStatus,
 } from '@/lib/contractSettlement';
 import type { SettlementKind } from '@/lib/settlementTypes';
 import { useContractSettlement } from '@/hooks/useContractSettlement';
@@ -95,11 +96,19 @@ const soThe = (v: StatValue): string => {
   }
 };
 
-const metaThe = (v: StatValue): string => {
+/**
+ * ⚠ `unverified` in HAI con số, KHÔNG in một con số có nhãn.
+ * Tiền là phần ĐỐI CHIẾU ĐƯỢC; phần còn lại là SỐ ĐẾM PHIẾU, không kèm tiền —
+ * xem chú thích của `StatValue.unverified`. Và luôn kèm LÝ DO, vì "thử lại
+ * được" / "phải đi xin quyền" / "thôi đừng chờ" là ba việc khác nhau.
+ */
+const metaThe = (v: StatValue, read: PostingReadState): string => {
   switch (v.kind) {
     case 'number': return `${v.count} phiếu · ${fmtMoney(v.total)}`;
-    case 'unverified': return `${v.count} phiếu · ${fmtMoney(v.total)} · chưa xác minh bút toán`;
-    case 'insufficient': return 'Chưa đủ dữ liệu — chưa đọc được ngày ghi sổ';
+    case 'unverified':
+      return `${v.count} phiếu đã đối chiếu · ${fmtMoney(v.total)} · `
+        + `${v.unverifiedCount} phiếu chưa xác minh (${lyDoChuaXacMinhNgayChi(read)})`;
+    case 'insufficient': return `Chưa đủ dữ liệu — ${lyDoChuaXacMinhNgayChi(read)}`;
     case 'na': return 'Không áp dụng cho tồn cũ';
   }
 };
@@ -157,6 +166,13 @@ export function ContractSettlementSection({ buildingIds, period }: Props) {
 
   const actions = useSettlementActions(chi.rows);
 
+  /**
+   * Đọc bảng bút toán tới đâu — `true` đủ, `'partial'` bị RLS giấu bớt, `false`
+   * lỗi tải. KHÔNG dùng để đổi trạng thái phiếu; chỉ để GIẢI THÍCH vì sao thiếu
+   * ngày chi, và ba lý do đó dẫn tới ba việc khác nhau cho người dùng.
+   */
+  const docButToan: PostingReadState = chi.postingRead ?? true;
+
   /** Trạng thái nhìn thấy, tính một lần cho mỗi dòng. */
   const viewOf = useMemo(() => {
     const m = new Map<string, ViewStatus>();
@@ -189,14 +205,6 @@ export function ContractSettlementSection({ buildingIds, period }: Props) {
   /** TẬP NỀN CHUNG: thẻ, chip, banner, bảng và chân trang đều bắt đầu từ đây. */
   const nenChi = useMemo(
     () => nenTruocKy.filter((r) => matchScope(r, f.scope, period) === 'in'),
-    [nenTruocKy, f.scope, period],
-  );
-
-  /** Thiếu nguồn để xếp kỳ — phải BÁO RA, không được lặng lẽ rơi khỏi bảng. */
-  const chuaXacDinhKy = useMemo(
-    () => (f.scope === 'all'
-      ? []
-      : nenTruocKy.filter((r) => matchScope(r, f.scope, period) === 'undetermined')),
     [nenTruocKy, f.scope, period],
   );
 
@@ -237,6 +245,22 @@ export function ContractSettlementSection({ buildingIds, period }: Props) {
     [nenTruocKy, f.kind],
   );
 
+  /**
+   * Thiếu nguồn để xếp kỳ — phải BÁO RA, không được lặng lẽ rơi khỏi bảng.
+   *
+   * ⚠ Đếm TRONG trạng thái và loại đang lọc. Đếm trên cả tập nền thì màn hình
+   * mặc định của chủ công ty (Cần xử lý · Kỳ hiện tại) sẽ treo suốt ngày câu
+   * "Có 1139 khoản chưa xác định kỳ" — đúng sự thật, nhưng nói về một tập không
+   * hề nằm trong bộ lọc người ta đang xem. Câu đúng sai ngữ cảnh vẫn là nhiễu.
+   */
+  const chuaXacDinhKy = useMemo(
+    () => (f.scope === 'all'
+      ? []
+      : nenThe.filter((r) => matchStatus(viewOf.get(r.key) ?? 'unknown', f.status)
+        && matchScope(r, f.scope, period) === 'undetermined')),
+    [nenThe, viewOf, f.status, f.scope, period],
+  );
+
   const the = useMemo(() => {
     if (mv) return [];
     const nhom = (vs: ViewStatus[]) => doThe.filter((r) => vs.includes(viewOf.get(r.key) ?? 'unknown'));
@@ -248,7 +272,7 @@ export function ContractSettlementSection({ buildingIds, period }: Props) {
       return {
         key, label, dot, gtri: v,
         so: soThe(v),
-        meta: meta && v.kind === 'number' ? meta(rs, cong(rs)) : metaThe(v),
+        meta: meta && v.kind === 'number' ? meta(rs, cong(rs)) : metaThe(v, docButToan),
       };
     };
     const raSoat = nhom(['review']);
@@ -272,7 +296,7 @@ export function ContractSettlementSection({ buildingIds, period }: Props) {
       mk('paid', 'Đã chi', ['paid'], STATUS_STYLE.paid.fg, true),
       mk('noncash', 'Không ghi quỹ', ['noncash'], STATUS_STYLE.noncash.fg),
     ];
-  }, [mv, doThe, nenThe, gop, viewOf, f.scope, period]);
+  }, [mv, doThe, nenThe, gop, viewOf, f.scope, period, docButToan]);
 
   const theBd = useMemo(() => {
     if (!mv) return [];
@@ -334,6 +358,21 @@ export function ContractSettlementSection({ buildingIds, period }: Props) {
     () => new Set(hienChi.map((r) => viewOf.get(r.key) ?? 'unknown')).size > 1,
     [hienChi, viewOf],
   );
+  /**
+   * Khi nào phải in con số thứ hai.
+   *
+   * Nhiều trạng thái ⇒ luôn in, kể cả khi bằng 0: đó là cách nói "tiền của sổ
+   * ảo/phiếu huỷ trong danh sách này KHÔNG phải tiền đã rời két".
+   * Toàn phiếu đã chi và đối chiếu đủ ⇒ hai con số trùng nhau, in lại là thừa.
+   * Toàn phiếu đã chi mà còn phiếu chưa xác minh ⇒ PHẢI in, vì lúc đó "tổng giá
+   * trị phiếu đang xem" khác hẳn số tiền chứng minh được.
+   */
+  const coDaChi = useMemo(
+    () => hienChi.some((r) => (viewOf.get(r.key) ?? 'unknown') === 'paid'),
+    [hienChi, viewOf],
+  );
+  const hienThucChi = nhieuTrangThai
+    || (coDaChi && (thucChi.kind !== 'number' || thucChi.total !== tongTien));
   const coLoc = f.q !== '' || f.building !== 'all' || f.kind !== 'all' || f.origin !== 'all'
     || f.person !== 'all' || f.issue !== 'all' || f.status !== 'open' || f.scope !== 'current';
 
@@ -723,10 +762,16 @@ export function ContractSettlementSection({ buildingIds, period }: Props) {
                 đang xem có cả sổ ảo/huỷ, còn thực chi chỉ là tiền đã rời két. */}
             <span>
               {mv ? '' : `Tổng giá trị phiếu đang xem: ${fmtMoney(tongTien)}`}
-              {!mv && nhieuTrangThai && ` · Đã chi thực tế: ${
-                thucChi.kind === 'insufficient' ? 'Chưa đủ dữ liệu'
+              {!mv && hienThucChi && ` · Đã chi thực tế: ${
+                thucChi.kind === 'insufficient'
+                  ? `Chưa đủ dữ liệu (${lyDoChuaXacMinhNgayChi(docButToan)})`
                   : thucChi.kind === 'na' ? 'Không áp dụng cho tồn cũ'
-                  : `${fmtMoney(thucChi.total)}${thucChi.kind === 'unverified' ? ' (chưa xác minh)' : ''}`
+                  // ⚠ Tiền chỉ là phần ĐỐI CHIẾU ĐƯỢC. Phần còn lại đi ra dưới
+                  // dạng SỐ ĐẾM — gộp vào rồi treo nhãn là vẫn nói dối về tiền.
+                  : thucChi.kind === 'unverified'
+                    ? `${fmtMoney(thucChi.total)} · ${thucChi.unverifiedCount} phiếu chưa xác minh `
+                      + '(không cộng tiền)'
+                    : fmtMoney(thucChi.total)
               }`}
             </span>
           </div>

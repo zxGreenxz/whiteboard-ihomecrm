@@ -652,11 +652,43 @@ describe('statValue', () => {
     })).toEqual({ kind: 'insufficient' });
   });
 
-  it('Tất Cả mà thiếu posted_on: có số nhưng đánh dấu CHƯA XÁC MINH', () => {
+  // ⚠ TÁCH CHỨNG MINH ĐƯỢC KHỎI CHƯA CHỨNG MINH ĐƯỢC — không gộp rồi dán nhãn.
+  //
+  // Bản trước cộng CẢ phiếu không đọc được ngày ghi sổ vào "Đã chi thực tế" rồi
+  // treo một chữ "(chưa xác minh)" lên tổng. Hai hệ quả, cái nào cũng tệ:
+  //   A. Tài khoản chủ công ty (đo thật: 1139 phiếu POSTED, 0 dòng bút toán) sẽ
+  //      thấy mệnh giá của cả 1139 phiếu hiện ra dưới nhãn tiền đã rời két,
+  //      trong khi KHÔNG một đồng nào chứng minh được.
+  //   B. 499/500 phiếu đọc được ngày, một phiếu không: cả 500 sập vào một con số
+  //      dưới một cái nhãn — mất luôn 499 phiếu lẽ ra đối chiếu được.
+  // Tiền chỉ cộng phần CHỨNG MINH ĐƯỢC; phần còn lại là một SỐ ĐẾM, không tiền.
+  it('Tất Cả: tiền chỉ cộng phần chứng minh được, phần còn lại là SỐ ĐẾM', () => {
     expect(statValue({
       rows: [daChi(null, 1_000_000, 'a'), daChi('2026-09-02', 2_000_000, 'b')],
       views: ['paid'], scope: 'all', period: '2026-09', needsPosting: true,
-    })).toEqual({ kind: 'unverified', count: 2, total: 3_000_000 });
+    })).toEqual({ kind: 'unverified', count: 1, total: 2_000_000, unverifiedCount: 1 });
+  });
+
+  it('499 phiếu đối chiếu được KHÔNG bị một phiếu thiếu ngày kéo sập', () => {
+    const ds = Array.from({ length: 499 }, (_, i) => daChi('2026-09-02', 1_000, `ok${i}`));
+    ds.push(daChi(null, 777_000, 'thieu'));
+    expect(statValue({
+      rows: ds, views: ['paid'], scope: 'all', period: '2026-09', needsPosting: true,
+    })).toEqual({ kind: 'unverified', count: 499, total: 499_000, unverifiedCount: 1 });
+  });
+
+  it('không chứng minh được phiếu nào: tiền là 0 NHƯNG số đếm nói rõ còn bao nhiêu', () => {
+    const ds = Array.from({ length: 3 }, (_, i) => daChi(null, 5_000_000, `x${i}`));
+    expect(statValue({
+      rows: ds, views: ['paid'], scope: 'all', period: '2026-09', needsPosting: true,
+    })).toEqual({ kind: 'unverified', count: 0, total: 0, unverifiedCount: 3 });
+  });
+
+  it('Tất Cả mà đọc đủ ngày thì là con số thật, không treo nhãn chưa xác minh', () => {
+    expect(statValue({
+      rows: [daChi('2026-05-02', 1_000_000, 'a'), daChi('2026-09-02', 2_000_000, 'b')],
+      views: ['paid'], scope: 'all', period: '2026-09', needsPosting: true,
+    })).toEqual({ kind: 'number', count: 2, total: 3_000_000 });
   });
 
   it('đọc đủ ngày chi thì là một con số thật', () => {

@@ -133,6 +133,12 @@ const the = (nhan: string) =>
     .find((el) => el.textContent?.includes(nhan));
 const dongKetQua = () => document.querySelector('.cs-resline')?.textContent ?? '';
 const chanTrang = () => document.querySelector('.cs-foot')?.textContent ?? '';
+/**
+ * Trạng thái ĐANG LỌC đọc từ dòng kết quả, không từ ô select — ô đó chỉ tồn tại
+ * khi mở vùng bộ lọc nâng cao, mà thẻ số và checkbox gộp đổi trạng thái được cả
+ * khi vùng đó đang đóng. Dòng kết quả là thứ người dùng thật sự nhìn.
+ */
+const nhanTrangThai = () => (dongKetQua().split(' · ')[1] ?? '');
 
 beforeEach(() => {
   // Kho này KHÔNG bật `globals` cho vitest, nên RTL không tự đăng ký afterEach
@@ -355,7 +361,11 @@ describe('bút toán bị RLS giấu hoặc tải lỗi', () => {
 
   it('phiếu chưa xếp được kỳ được BÁO RA, không âm thầm biến mất', () => {
     ve(tap(), { postingRead: 'partial' });
+    // Banner đếm TRONG trạng thái đang lọc, nên phải đứng ở bộ lọc thật sự chứa
+    // phiếu đó — xem khối "banner chưa xác định kỳ" ở dưới cho cả hai chiều.
+    fireEvent.click(the('Đã chi')!);
     expect(document.body.textContent).toContain('chưa xác định kỳ');
+    expect(dongBang()).toHaveLength(0);   // và nó KHÔNG lặng lẽ nằm trong bảng
   });
 
   it('lỗi đọc bút toán không làm hỏng cả bảng', () => {
@@ -545,5 +555,276 @@ describe('không có kết quả', () => {
     const t = document.querySelector('.cs-empty')?.textContent ?? '';
     expect(t).toContain('Không có khoản nào');
     expect(t).not.toContain('đã được chi hoặc từ chối');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 11. "Đã chi thực tế" KHÔNG gộp tiền chứng minh được với tiền không chứng
+//     minh được — bất kể có treo nhãn gì lên cái tổng đó.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('tiền chứng minh được tách khỏi tiền chưa chứng minh được', () => {
+  it('Tất Cả: chân trang cộng đúng phần có ngày ghi sổ, phần còn lại là số đếm', () => {
+    ve([
+      daChi({ amount: 2_000_000, eventDate: '2026-09-01', postedOn: '2026-09-03' }),
+      daChi({ amount: 1_000_000, eventDate: '2026-09-02', postedOn: null }),
+    ], { postingRead: 'partial' });
+    moBoLoc();
+    fireEvent.change(oTrangThai(), { target: { value: 'all' } });
+    fireEvent.change(oKy(), { target: { value: 'all' } });
+
+    // Tiền = 2.000.000 (phần chứng minh được), KHÔNG phải 3.000.000.
+    expect(chanTrang()).toContain('Đã chi thực tế: 2.000.000 đ');
+    expect(chanTrang()).not.toContain('Đã chi thực tế: 3.000.000 đ');
+    // Phiếu còn lại xuất hiện dưới dạng SỐ ĐẾM, không kèm tiền.
+    expect(chanTrang()).toContain('1 phiếu chưa xác minh');
+  });
+
+  // Ca của chủ công ty: 0 dòng bút toán đọc được.
+  it('không chứng minh được đồng nào: tiền 0 nhưng phải nói rõ còn bao nhiêu phiếu', () => {
+    ve([
+      daChi({ amount: 4_000_000, eventDate: '2026-09-01', postedOn: null }),
+      daChi({ amount: 5_000_000, eventDate: '2026-09-02', postedOn: null }),
+    ], { postingRead: 'partial' });
+    moBoLoc();
+    fireEvent.change(oTrangThai(), { target: { value: 'all' } });
+    fireEvent.change(oKy(), { target: { value: 'all' } });
+
+    expect(chanTrang()).toContain('Đã chi thực tế: 0 đ');
+    expect(chanTrang()).toContain('2 phiếu chưa xác minh');
+    // Mệnh giá của chúng vẫn được phép nằm ở "Tổng giá trị phiếu đang xem" —
+    // đó là mệnh giá, không phải tiền đã rời két. Nhưng TUYỆT ĐỐI không được
+    // nằm sau nhãn thực chi.
+    const sauNhan = chanTrang().split('Đã chi thực tế:')[1] ?? '';
+    expect(sauNhan).not.toContain('9.000.000');
+  });
+
+  it('thẻ Đã chi ở Tất Cả cũng tách hai con số, không gộp rồi dán nhãn', () => {
+    ve([
+      daChi({ amount: 2_000_000, eventDate: '2026-09-01', postedOn: '2026-09-03' }),
+      daChi({ amount: 1_000_000, eventDate: '2026-09-02', postedOn: null }),
+    ], { postingRead: 'partial' });
+    fireEvent.change(oKy(), { target: { value: 'all' } });
+
+    const t = the('Đã chi')?.textContent ?? '';
+    expect(t).toContain(fmtMoney(2_000_000));
+    expect(t).not.toContain(fmtMoney(3_000_000));
+    expect(t).toContain('1 phiếu chưa xác minh');
+  });
+
+  it('đọc đủ ngày thì không treo nhãn chưa xác minh lên gì cả', () => {
+    ve([
+      daChi({ amount: 2_000_000, eventDate: '2026-09-01', postedOn: '2026-09-03' }),
+      dong({ amount: 1_000_000, eventDate: '2026-09-05' }),
+    ]);
+    moBoLoc();
+    fireEvent.change(oTrangThai(), { target: { value: 'all' } });
+    fireEvent.change(oKy(), { target: { value: 'all' } });
+    expect(chanTrang()).toContain('Đã chi thực tế: 2.000.000 đ');
+    expect(chanTrang()).not.toContain('chưa xác minh');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 12. `postingRead` phải THẬT SỰ điều khiển một thứ gì đó
+//
+// Ba nguyên nhân khác hẳn nhau và người dùng làm việc khác nhau với từng cái:
+// thử lại được / phải đi xin quyền / thôi đừng chờ nữa. Nếu ba ca cùng ra một
+// câu chữ thì fixture nói dối về nhân quả — đặt `postingRead` kiểu gì cũng
+// xanh, và người sau sẽ đi sửa nhầm chỗ.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('postingRead điều khiển lời giải thích', () => {
+  const tap = () => [daChi({ amount: 3_000_000, eventDate: '2026-09-02', postedOn: null })];
+
+  it('lỗi tải thì nói là lỗi tải', () => {
+    ve(tap(), { postingRead: false });
+    expect(the('Đã chi')?.textContent).toContain('lỗi tải bút toán');
+  });
+
+  it('RLS giấu thì nói là cần quyền giữ sổ quỹ', () => {
+    ve(tap(), { postingRead: 'partial' });
+    expect(the('Đã chi')?.textContent).toContain('cần quyền giữ sổ quỹ');
+    expect(the('Đã chi')?.textContent).not.toContain('lỗi tải');
+  });
+
+  it('đọc đủ mà phiếu vẫn không có bút toán thì nói đúng như vậy', () => {
+    ve(tap(), { postingRead: true });
+    expect(the('Đã chi')?.textContent).toContain('không có bút toán hiệu lực');
+    expect(the('Đã chi')?.textContent).not.toContain('cần quyền');
+  });
+
+  it('ba ca đều là Chưa đủ dữ liệu và đều có nút thử lại', () => {
+    for (const st of [false, 'partial', true] as const) {
+      const { unmount } = ve(tap(), { postingRead: st });
+      expect(the('Đã chi')?.textContent, String(st)).toContain('Chưa đủ dữ liệu');
+      expect(screen.getByRole('button', { name: 'Thử lại' }), String(st)).toBeTruthy();
+      unmount();
+    }
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 13. Banner "chưa xác định kỳ" phải đếm TRONG trạng thái đang lọc
+//
+// Nếu không, màn hình mặc định của chủ công ty (Cần xử lý · Kỳ hiện tại) sẽ
+// treo suốt ngày câu "Có 1139 khoản chưa xác định kỳ" — đúng sự thật nhưng nói
+// về một tập không hề nằm trong bộ lọc đang xem.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('banner chưa xác định kỳ', () => {
+  const tap = () => [
+    daChi({ amount: 3_000_000, eventDate: '2026-09-02', postedOn: null }),
+    dong({ amount: 1_000_000, eventDate: '2026-09-05' }),
+  ];
+
+  it('KHÔNG hiện ở màn mặc định Cần xử lý vì phiếu đó là Đã chi', () => {
+    ve(tap(), { postingRead: 'partial' });
+    expect(document.body.textContent).not.toContain('chưa xác định kỳ');
+  });
+
+  it('hiện khi bộ lọc trạng thái thật sự chứa phiếu đó', () => {
+    ve(tap(), { postingRead: 'partial' });
+    fireEvent.click(the('Đã chi')!);
+    expect(document.body.textContent).toContain('1 khoản chưa xác định kỳ');
+  });
+
+  it('chip loại cũng cắt banner — không đếm loại đang bị lọc ra', () => {
+    ve([
+      daChi({ kind: 'refund', amount: 3_000_000, eventDate: '2026-09-02', postedOn: null }),
+      daChi({ kind: 'commission', amount: 2_000_000, eventDate: '2026-09-02', postedOn: null }),
+    ], { postingRead: 'partial' });
+    fireEvent.click(the('Đã chi')!);
+    expect(document.body.textContent).toContain('2 khoản chưa xác định kỳ');
+    const chip = [...document.querySelectorAll<HTMLElement>('.cs-chip')]
+      .find((c) => c.textContent?.startsWith('Hoa hồng'));
+    fireEvent.click(chip!);
+    expect(document.body.textContent).toContain('1 khoản chưa xác định kỳ');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 14. Gộp Chờ duyệt–Chi: LỐI THỨ BA vào normalizer
+//
+// Hai lối kia (dropdown, thẻ số) đã có bài. Lối này thì chưa, mà nó cũng ghi
+// thẳng vào `{scope, status}`. Ở Tồn Cũ + pendpay, bỏ tick ra `{prior, open}` —
+// đúng, nhưng chỉ vì `LOC_VIEC_CHUA_XONG` tình cờ có 'open'. Đổi một dòng trong
+// `normalisePeriodFilter` là rơi thẳng vào bẫy "prior nấp sau trạng thái lịch
+// sử ⇒ bảng rỗng" mà cả nhiệm vụ này sinh ra để diệt.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('bật/tắt gộp Chờ duyệt và Chi', () => {
+  const oGop = () => screen.getByLabelText('Gộp Chờ duyệt và Chi') as HTMLInputElement;
+  const tap = () => [
+    dong({ amount: 1_000_000, eventDate: '2026-09-05' }),
+    dong({ status: 'approved', approvalStatus: 'APPROVED', postingStatus: 'UNPOSTED',
+      amount: 2_000_000, eventDate: '2026-09-06' }),
+    dong({ amount: 3_000_000, eventDate: '2026-08-15' }),
+    daChi({ amount: 4_000_000, eventDate: '2026-09-01', postedOn: '2026-09-03' }),
+  ];
+
+  it('bật: một thẻ gộp; tắt: hai thẻ rời, số cộng lại bằng thẻ gộp', () => {
+    ve(tap());
+    expect(the('Chờ Duyệt và Chi')?.textContent).toContain(fmtMoney(3_000_000));
+    fireEvent.click(oGop());
+    expect(the('Chờ Duyệt và Chi')).toBeUndefined();
+    expect(the('Chờ duyệt')?.textContent).toContain(fmtMoney(1_000_000));
+    expect(the('Chờ chi')?.textContent).toContain(fmtMoney(2_000_000));
+  });
+
+  it('tắt gộp khi ĐANG lọc theo thẻ gộp: về Cần xử lý, GIỮ phạm vi hiện tại', () => {
+    ve(tap());
+    fireEvent.click(the('Chờ Duyệt và Chi')!);
+    expect(nhanTrangThai()).toBe('Chờ duyệt và chi');
+    fireEvent.click(oGop());
+    expect(nhanTrangThai()).toBe('Cần xử lý');
+    expect(oKy().value).toBe('current');
+    expect(dongBang()).toHaveLength(2);
+  });
+
+  // Ô THỨ TƯ của ma trận (gộp × phạm vi) — chỗ dễ vỡ nhất.
+  it('ở Tồn Cũ, tắt gộp KHÔNG được để lại phạm vi nấp sau trạng thái lịch sử', () => {
+    ve(tap());
+    fireEvent.change(oKy(), { target: { value: 'prior' } });
+    fireEvent.click(the('Chờ Duyệt và Chi')!);
+    expect(oKy().value).toBe('prior');
+    expect(dongBang()).toHaveLength(1);           // đúng một phiếu tồn tháng 8
+
+    fireEvent.click(oGop());
+    // Tổ hợp còn lại PHẢI hợp lệ: trạng thái mới vẫn phải cho phép phạm vi đang giữ.
+    expect(nhanTrangThai()).toBe('Cần xử lý');
+    expect(oKy().value).toBe('prior');
+    expect(optionKy()).toContain('prior');
+    expect(dongBang()).toHaveLength(1);           // và bảng KHÔNG rỗng
+  });
+
+  it('bật lại gộp ở Tồn Cũ cũng không sinh tổ hợp chết', () => {
+    ve(tap());
+    fireEvent.change(oKy(), { target: { value: 'prior' } });
+    fireEvent.click(oGop());                       // tắt
+    fireEvent.click(the('Chờ duyệt')!);
+    expect(nhanTrangThai()).toBe('Chờ duyệt');
+    fireEvent.click(oGop());                       // bật lại
+    expect(nhanTrangThai()).toBe('Cần xử lý');
+    expect(oKy().value).toBe('prior');
+    expect(dongBang()).toHaveLength(1);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 15. Tòa / nguồn / vướng mắc cũng phải cắt CẢ thẻ, chip, bảng lẫn chân trang
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('tòa, nguồn và vướng mắc cắt cùng một tập nền', () => {
+  const TOA_B = '0b0b0b0b-0000-4000-8000-000000000002';
+  const tap = () => [
+    dong({ amount: 1_000_000, eventDate: '2026-09-05' }),
+    dong({ amount: 2_000_000, eventDate: '2026-09-06', buildingId: TOA_B, buildingName: 'Toà B' }),
+    dong({ amount: 4_000_000, eventDate: '2026-09-07', origin: 'reservation',
+      systemSource: 'reservation.refund.v1' }),
+    dong({ amount: 8_000_000, eventDate: '2026-09-08',
+      recipientName: null, issues: ['MISSING_PAYMENT_INFO'] }),
+  ];
+
+  it('lọc tòa cắt thẻ, chip, bảng và chân trang cùng lúc', () => {
+    ve(tap());
+    expect(dongBang()).toHaveLength(4);
+    fireEvent.change(screen.getByLabelText('Tòa'), { target: { value: TOA_B } });
+
+    expect(dongBang()).toHaveLength(1);
+    expect(the('Chờ Duyệt và Chi')?.textContent).toContain(fmtMoney(2_000_000));
+    expect(the('Cần rà soát')?.textContent).toContain('0');
+    expect(chanTrang()).toContain(fmtMoney(2_000_000));
+    const chipTatCa = document.querySelector('.cs-chip')?.textContent ?? '';
+    expect(chipTatCa).toContain('1');
+  });
+
+  it('lọc nguồn Giữ chỗ cắt cùng một tập nền', () => {
+    ve(tap());
+    moBoLoc();
+    fireEvent.change(screen.getByLabelText('Nguồn'), { target: { value: 'reservation' } });
+
+    expect(dongBang()).toHaveLength(1);
+    expect(the('Chờ Duyệt và Chi')?.textContent).toContain(fmtMoney(4_000_000));
+    expect(chanTrang()).toContain(fmtMoney(4_000_000));
+  });
+
+  it('lọc vướng mắc giữ đúng phiếu còn blocker, thẻ đi theo', () => {
+    ve(tap());
+    moBoLoc();
+    fireEvent.change(screen.getByLabelText('Vướng mắc'), { target: { value: 'yes' } });
+
+    expect(dongBang()).toHaveLength(1);
+    expect(the('Cần rà soát')?.textContent).toContain('1');
+    expect(the('Chờ Duyệt và Chi')?.textContent).toContain('0 chờ duyệt');
+    expect(chanTrang()).toContain(fmtMoney(8_000_000));
+  });
+
+  it('lọc người nhận cũng đi qua cùng tập nền', () => {
+    ve(tap());
+    moBoLoc();
+    fireEvent.change(screen.getByLabelText('Người nhận'), { target: { value: 'Người nhận' } });
+    expect(dongBang()).toHaveLength(3);
+    expect(chanTrang()).toContain(fmtMoney(7_000_000));
   });
 });

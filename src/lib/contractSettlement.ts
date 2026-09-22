@@ -580,9 +580,52 @@ export function groupTotal(rows: SettlementRow[], views: ViewStatus[]): GroupTot
  */
 export type StatValue =
   | { kind: 'number'; count: number; total: number }
-  | { kind: 'unverified'; count: number; total: number }
+  /**
+   * `count`/`total` chỉ tính phần CHỨNG MINH ĐƯỢC. `unverifiedCount` là SỐ ĐẾM
+   * phiếu chưa chứng minh được — **không kèm tiền, và không bao giờ được cộng
+   * vào `total`**.
+   *
+   * ⚠ Bản trước gộp cả hai rồi treo một chữ "(chưa xác minh)" lên tổng. Hai hệ
+   * quả, cái nào cũng tệ:
+   *   A. Tài khoản chủ công ty (đo thật: 1139 phiếu POSTED, 0 dòng bút toán)
+   *      thấy mệnh giá của cả 1139 phiếu hiện dưới nhãn tiền đã rời két, trong
+   *      khi không một đồng nào chứng minh được.
+   *   B. 499/500 phiếu đọc được ngày, một phiếu không ⇒ cả 500 sập vào một con
+   *      số dưới một cái nhãn, mất luôn 499 phiếu lẽ ra đối chiếu được.
+   */
+  | { kind: 'unverified'; count: number; total: number; unverifiedCount: number }
   | { kind: 'insufficient' }
   | { kind: 'na' };
+
+/**
+ * Trạng thái đọc bảng bút toán — CÙNG TỪ VỰNG BA NGẢ với `ReadState` của T2
+ * (`src/lib/contractLifecycle.ts`): `true` đủ, `'partial'` đọc được nhưng THIẾU
+ * dòng, `false` lỗi. Đừng đẻ thêm từ vựng thứ hai cho cùng một khái niệm.
+ *
+ * Khai ở lớp thuần này (không ở hook) vì giao diện phải GIẢI THÍCH được trạng
+ * thái đó bằng chữ, và chữ thì thuộc về hàm thuần kiểm được.
+ */
+export type PostingReadState = true | 'partial' | false;
+
+/**
+ * Vì sao một phiếu đã chi lại không có ngày chi — ba nguyên nhân KHÁC HẲN nhau,
+ * và người dùng làm việc khác nhau với từng cái:
+ *
+ *  `false`     lỗi tải     → thử lại là có thể ra.
+ *  `'partial'` RLS giấu    → thử lại bao nhiêu cũng vậy; phải có binding
+ *                            CUSTODIAN trên đúng sổ quỹ mới đọc nổi.
+ *  `true`      đọc đủ rồi  → phiếu THẬT SỰ không có bút toán hiệu lực (dải dữ
+ *                            liệu legacy). Đây là thiếu bằng chứng, KHÔNG phải
+ *                            yêu cầu backfill posting.
+ *
+ * Gộp ba câu này làm một là lấy mất của người dùng cách duy nhất để biết nên
+ * bấm thử lại, đi xin quyền, hay thôi không chờ nữa.
+ */
+export function lyDoChuaXacMinhNgayChi(read: PostingReadState): string {
+  if (read === false) return 'lỗi tải bút toán';
+  if (read === 'partial') return 'cần quyền giữ sổ quỹ để đọc bút toán';
+  return 'phiếu không có bút toán hiệu lực';
+}
 
 export function statValue(args: {
   /**
@@ -610,10 +653,17 @@ export function statValue(args: {
   const trongKy = cua.filter((r) => matchScope(r, scope, period) === 'in');
 
   if (needsPosting && cua.some((r) => r.postedOn === null)) {
-    // Tất Cả: kỳ không còn quan trọng nên số đếm/tổng ĐÚNG, chỉ là chưa đối
-    // chiếu được bút toán ⇒ có số nhưng phải nói rõ là chưa xác minh.
+    // Tất Cả: kỳ không còn quan trọng, nên phần ĐỌC ĐƯỢC ngày ghi sổ là một con
+    // số thật và phải được giữ nguyên giá trị của nó. Phần còn lại KHÔNG được
+    // cộng vào tiền — nó đi ra ngoài dưới dạng SỐ ĐẾM.
     if (scope === 'all') {
-      return { kind: 'unverified', count: cua.length, total: cua.reduce((s, r) => s + r.amount, 0) };
+      const chungMinhDuoc = cua.filter((r) => r.postedOn !== null);
+      return {
+        kind: 'unverified',
+        count: chungMinhDuoc.length,
+        total: chungMinhDuoc.reduce((s, r) => s + r.amount, 0),
+        unverifiedCount: cua.length - chungMinhDuoc.length,
+      };
     }
     // Lọc kỳ: không có ngày thì không biết phiếu có thuộc kỳ này không ⇒ con số
     // sẽ THIẾU, mà số thiếu về tiền thì không được phép in ra.

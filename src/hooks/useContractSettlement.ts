@@ -51,7 +51,8 @@ import {
 import {
   CAN_CU_HOAN_TRA_KHI_MO_PHIEU,
   detectIssues, settlementStatusOf, supplementPending,
-  type BasisState, type PeriodScope, type SettlementRow, type SettlementRowKind,
+  type BasisState, type PeriodScope, type PostingReadState,
+  type SettlementRow, type SettlementRowKind,
 } from '@/lib/contractSettlement';
 
 export interface UseContractSettlementArgs {
@@ -72,12 +73,9 @@ export interface UseContractSettlementArgs {
   enabled?: boolean;
 }
 
-/**
- * Trạng thái đọc bút toán — CÙNG TỪ VỰNG BA NGẢ với `ReadState` của T2
- * (`src/lib/contractLifecycle.ts`): `true` đủ, `'partial'` đọc được nhưng
- * THIẾU dòng, `false` lỗi. Đừng đẻ thêm từ vựng thứ hai cho cùng một khái niệm.
- */
-export type PostingReadState = true | 'partial' | false;
+// Từ vựng ba ngả sống ở lớp thuần (`contractSettlement.ts`) vì giao diện phải
+// GIẢI THÍCH được nó bằng chữ — xem `lyDoChuaXacMinhNgayChi`.
+export type { PostingReadState };
 
 // ── Hình dạng dòng phiếu đọc về ─────────────────────────────────────────────
 interface VoucherRow {
