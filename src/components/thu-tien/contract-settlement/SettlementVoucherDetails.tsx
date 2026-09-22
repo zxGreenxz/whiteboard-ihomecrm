@@ -48,7 +48,10 @@ import {
 } from '@/components/income-expenses/TerminationRefundNote';
 import { useTerminationRefundFacts } from '@/hooks/useTerminationRefundFacts';
 import { useCommissionVoucherFacts } from '@/hooks/useCommissionVoucher';
-import type { SettlementRow, SettlementRowKind } from '@/lib/contractSettlement';
+import {
+  CAN_CU_HOAN_TRA_KHI_MO_PHIEU,
+  type SettlementRow, type SettlementRowKind,
+} from '@/lib/contractSettlement';
 import { moTaCanCu } from './nhan';
 
 /**
@@ -175,6 +178,21 @@ export function SettlementVoucherDetails({ row, enabled = true }: Props) {
   const laHoaHong = laPhieuHoaHong(phieu);
   const coBangTuSinh = laHoan || laHoaHong;
 
+  /**
+   * Renderer nào sẽ THẮNG bên trong `VoucherNote`.
+   *
+   * ⚠ PHẢI cùng thứ tự với VoucherNote.tsx: hoa hồng xét TRƯỚC hoàn thanh lý.
+   * Phiếu mang cả hai dấu là chuyện dữ liệu cho phép, và hai chỗ cùng quyết
+   * định một việc mà quyết khác nhau thì banner trạng thái sẽ nói về một truy
+   * vấn KHÁC với bảng đang vẽ. Tệ nhất: RPC thanh lý lỗi làm ẩn mất bảng hoa
+   * hồng vốn tải được bình thường.
+   *
+   * Cũng là lý do chỉ MỘT hook được truyền voucherId — cái thua không vẽ gì
+   * nên không được tốn một lượt gọi RPC.
+   */
+  const nguonBang: 'commission' | 'termination' | null =
+    laHoaHong ? 'commission' : laHoan ? 'termination' : null;
+
   /** Có dấu nguồn thật nhưng thiếu hợp đồng — xem `KHONG_CO_HOP_DONG`. */
   const coDauNguon =
     phieu.commission_kind !== null || row.systemSource === TERMINATION_REFUND_SOURCE;
@@ -192,24 +210,53 @@ export function SettlementVoucherDetails({ row, enabled = true }: Props) {
    * Hai hook này cũng được chính `VoucherNote` gọi bên dưới; React Query gộp
    * theo queryKey nên vẫn là MỘT request.
    */
-  const hoan = useTerminationRefundFacts(laHoan ? row.voucherId : null, enabled);
-  const hoaHong = useCommissionVoucherFacts(laHoaHong ? row.voucherId : null, enabled);
+  const hoan = useTerminationRefundFacts(nguonBang === 'termination' ? row.voucherId : null, enabled);
+  const hoaHong = useCommissionVoucherFacts(nguonBang === 'commission' ? row.voucherId : null, enabled);
 
-  const trangThai: BasisReadState = laHoan
-    ? basisReadState(hoan, NGUON_HOAN)
-    : laHoaHong
+  const trangThai: BasisReadState =
+    nguonBang === 'commission'
       ? basisReadState(hoaHong, NGUON_HOA_HONG)
-      : { kind: 'sufficient' };
+      : nguonBang === 'termination'
+        ? basisReadState(hoan, NGUON_HOAN)
+        : { kind: 'sufficient' };
 
   /**
-   * ĐỌC ĐƯỢC NHƯNG THIẾU — đúng nghĩa `ok: 'partial'` của `ReadState`.
-   * RPC trả facts nhưng KHÔNG kèm hồ sơ `contract_terminations`, nên
-   * `buildTerminationCard` trả null: không có khung tổng hợp, và mấy dòng đầu
-   * vẫn in "Cọc đã thu: 0 đ" khi hợp đồng cũng rỗng. Trang Thu chi im lặng ở
-   * ca này; ở màn duyệt chi thì im lặng là mời người ta đọc số 0 như sự thật.
+   * ĐỌC ĐƯỢC NHƯNG THIẾU — đúng nghĩa `ok: 'partial'` của `ReadState` (T2).
+   *
+   * RPC dựng `termination` và `contract` từ HAI nguồn RỜI: bảng
+   * `contract_terminations` và `app_private.commission_contract_facts_v1(contract_id)`
+   * (migration 20260902104355). Mỗi cái NULL được độc lập, và mỗi cái thiếu làm
+   * hỏng một phần KHÁC NHAU của bảng:
+   *   • thiếu `termination` ⇒ `buildTerminationCard` trả null ⇒ không có khung tổng hợp
+   *   • thiếu `contract`    ⇒ dòng đầu in "—/— · bắt đầu — · kết thúc —" và
+   *                           "Cọc đã thu: … (chưa có phiếu thu cọc)"
+   * Trang Thu chi im lặng ở cả hai; ở màn duyệt chi thì im lặng là mời người ta
+   * đọc mấy gạch ngang như một bản quyết toán đầy đủ.
    */
-  const thieuHoSoThanhLy =
-    laHoan && trangThai.kind === 'sufficient' && !hoan.data?.termination;
+  const thieuNguonThanhLy: string[] =
+    nguonBang === 'termination' && trangThai.kind === 'sufficient'
+      ? [
+          hoan.data?.termination ? null : 'hồ sơ quyết toán thanh lý (nên không dựng được khung tổng hợp)',
+          hoan.data?.contract ? null : 'thông tin hợp đồng (nên phòng/toà, ngày và phiếu thu cọc hiện thành gạch ngang)',
+        ].filter((x): x is string => x !== null)
+      : [];
+
+  /**
+   * Câu căn cứ cho nhánh KHÔNG có bảng tự sinh.
+   *
+   * ⚠ `basisOf` trả `CAN_CU_HOAN_TRA_KHI_MO_PHIEU` cho MỌI phiếu hoàn. Đó là
+   * câu đúng ở DANH SÁCH. Ở ĐÂY thì không: hộp thoại đang mở rồi, và chỗ "tra"
+   * duy nhất là hồ sơ quyết toán tự sinh — thứ mà nhánh này tồn tại chính vì
+   * phiếu KHÔNG có. In lại nó là hứa một việc không bao giờ xảy ra, lại còn lặp
+   * với khối "Số trên phiếu so với căn cứ" phía trên.
+   *
+   * So bằng HẰNG SỐ, không dò chuỗi: lý do `not-found` nào khác vẫn hiện nguyên
+   * văn qua `moTaCanCu`.
+   */
+  const cauCanCu =
+    row.basis.kind === 'not-found' && row.basis.reason === CAN_CU_HOAN_TRA_KHI_MO_PHIEU
+      ? 'Đã tra lúc mở phiếu: phiếu này không có hồ sơ quyết toán tự sinh để đối chiếu.'
+      : moTaCanCu(row.basis);
 
   const ghiChu = (row.notes ?? '').trim() || null;
 
@@ -220,11 +267,11 @@ export function SettlementVoucherDetails({ row, enabled = true }: Props) {
       {coBangTuSinh ? (
         <>
           <TrangThaiCanCu st={trangThai} />
-          {thieuHoSoThanhLy ? (
+          {thieuNguonThanhLy.length > 0 ? (
             <TrangThaiCanCu
               st={{
                 kind: 'insufficient',
-                reason: 'Đọc được phiếu nhưng KHÔNG thấy hồ sơ quyết toán thanh lý đi kèm, nên không dựng được khung tổng hợp.',
+                reason: `Đọc được phiếu nhưng KHÔNG thấy ${thieuNguonThanhLy.join(' và ')}.`,
               }}
             />
           ) : null}
@@ -242,11 +289,11 @@ export function SettlementVoucherDetails({ row, enabled = true }: Props) {
             {lyDoKhongCoBang}
           </div>
           {/* Căn cứ SỐ TIỀN vẫn có — nó đến từ read model (kỳ ký hợp đồng),
-              khác hẳn ghi chú chi tiết tự sinh. `moTaCanCu` tự nói "chưa tra"
+              khác hẳn ghi chú chi tiết tự sinh. `cauCanCu` tự nói "chưa tra"
               hay "tra mà hỏng", nên không có đường nào ra số 0 giả. */}
           <div className="cs-kv" style={{ marginTop: 4 }}>
             <span className="k">{NHAN_CAN_CU[row.kind]}</span>
-            <span className="v">{moTaCanCu(row.basis)}</span>
+            <span className="v">{cauCanCu}</span>
           </div>
         </div>
       )}

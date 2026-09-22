@@ -47,7 +47,10 @@ import {
   type TerminationRefundFacts,
 } from '@/lib/terminationRefundNote';
 import type { CommissionVoucherFacts } from '@/lib/commissionVoucherNote';
-import type { SettlementRow } from '@/lib/contractSettlement';
+import {
+  CAN_CU_HOAN_TRA_KHI_MO_PHIEU,
+  type SettlementRow,
+} from '@/lib/contractSettlement';
 
 // ── Định danh: UUID, KHÔNG BAO GIỜ mã phiếu ────────────────────────────────
 // Production có nhiều phiếu trùng mã hiển thị, nên khoá luôn là (UUID, org).
@@ -135,7 +138,7 @@ const dong = (over: Partial<SettlementRow> = {}): SettlementRow => ({
   contractNumber: 'HĐT-401/32PVC', terminationId: null, roomId: PHONG,
   buildingName: '32PVC', roomName: '401', customerName: 'Khách 401',
   recipientName: 'Khách 401', amount: 3_076_000,
-  basis: { kind: 'not-found', reason: 'Căn cứ hoàn khách tra khi mở phiếu' },
+  basis: { kind: 'not-found', reason: CAN_CU_HOAN_TRA_KHI_MO_PHIEU },
   status: 'approved', approvalStatus: 'APPROVED', postingStatus: 'UNPOSTED',
   postingMode: null, bankAccount: '0123456789', bankName: 'VCB',
   attachments: [], hasAttachment: false,
@@ -378,12 +381,68 @@ describe('hoàn khách / thưởng sale / hoa hồng / giữ chỗ / phiếu t�
       systemSource: 'reservation.refund', origin: 'reservation',
       eventLabel: 'Kết thúc giữ chỗ', contractId: null, contractNumber: null,
       notes: 'Hoàn tiền giữ chỗ do khách đổi ý.',
-      basis: { kind: 'not-found', reason: 'Căn cứ hoàn khách tra khi mở phiếu' },
+      basis: { kind: 'not-found', reason: CAN_CU_HOAN_TRA_KHI_MO_PHIEU },
     });
     const html = chu(ve(<SettlementVoucherDetails row={row} />));
     expect(H.goiHoan.every((a) => a[0] === null)).toBe(true);
     expect(html).toContain('Hoàn tiền giữ chỗ do khách đổi ý.');
     expect(html).toContain('termination.refund');
+  });
+
+  // ── Lời hứa "tra khi mở phiếu" KHÔNG được vọng vào modal đang mở ──────────
+  // `basisOf` trả câu đó cho MỌI phiếu hoàn, vô điều kiện. Ở danh sách nó đúng;
+  // trong hộp thoại đã mở thì chỗ tra duy nhất là hồ sơ tự sinh — thứ mà nhánh
+  // này tồn tại chính vì phiếu không có.
+  it('phiếu hoàn giữ chỗ: KHÔNG hứa lại "tra khi mở phiếu" bên trong modal đang mở', () => {
+    const row = dong({
+      key: `refund:${V_GIU_CHO}`, voucherId: V_GIU_CHO,
+      systemSource: 'reservation.refund', origin: 'reservation',
+      basis: { kind: 'not-found', reason: CAN_CU_HOAN_TRA_KHI_MO_PHIEU },
+    });
+    const html = chu(ve(<SettlementVoucherDetails row={row} />));
+    expect(html).not.toContain(CAN_CU_HOAN_TRA_KHI_MO_PHIEU);
+    expect(html).toContain('Đã tra lúc mở phiếu');
+    expect(html).toContain('không có hồ sơ quyết toán tự sinh');
+  });
+
+  it('phiếu hoàn tạo tay cũng vậy — không dựa vào system_source để quyết', () => {
+    const row = dong({
+      key: `refund:${V_TAY}`, voucherId: V_TAY, systemSource: null,
+      basis: { kind: 'not-found', reason: CAN_CU_HOAN_TRA_KHI_MO_PHIEU },
+    });
+    expect(chu(ve(<SettlementVoucherDetails row={row} />)))
+      .not.toContain(CAN_CU_HOAN_TRA_KHI_MO_PHIEU);
+  });
+
+  it('lý do not-found KHÁC vẫn hiện NGUYÊN VĂN — so hằng số, không dò chuỗi', () => {
+    const row = dong({
+      systemSource: null,
+      basis: { kind: 'not-found', reason: 'Toà chưa cấu hình bậc hoa hồng cho hợp đồng này' },
+    });
+    const html = chu(ve(<SettlementVoucherDetails row={row} />));
+    expect(html).toContain('Toà chưa cấu hình bậc hoa hồng cho hợp đồng này');
+    expect(html).not.toContain('Đã tra lúc mở phiếu');
+  });
+
+  // ── Phiếu mang CẢ HAI dấu ─────────────────────────────────────────────────
+  // `VoucherNote.tsx` xét hoa hồng TRƯỚC hoàn thanh lý. Hai chỗ cùng quyết một
+  // việc mà quyết khác nhau thì banner nói về truy vấn này còn bảng vẽ truy vấn
+  // kia — và một RPC lỗi sẽ ẩn mất bảng vốn tải được.
+  it('mang cả hai dấu: theo đúng thứ tự của VoucherNote, hoa hồng thắng', () => {
+    H.hoan = { data: null, isLoading: false, isError: true };
+    H.hoaHong = { data: factsHoaHong(), isLoading: false, isError: false };
+    const row = dong({
+      key: `commission:${V_HOA_HONG}`, kind: 'commission', voucherId: V_HOA_HONG,
+      systemSource: 'termination.refund', commissionKind: 'broker',
+      basis: { kind: 'matched', amount: 2_250_000 },
+    });
+    const html = ve(<SettlementVoucherDetails row={row} />);
+    // RPC thanh lý hỏng KHÔNG được ẩn bảng hoa hồng.
+    expect(html).not.toContain('data-state="error"');
+    expect(chu(html)).toContain('401/32PVC');
+    // …và phía thua không được tốn một lượt gọi RPC.
+    expect(H.goiHoan.every((a) => a[0] === null)).toBe(true);
+    expect(H.goiHoaHong.some((a) => a[0] === V_HOA_HONG)).toBe(true);
   });
 
   // Hai vị ngữ chung đòi CẢ dấu nguồn LẪN hợp đồng. Gộp hai nguyên nhân thành
@@ -497,8 +556,34 @@ describe('dữ liệu lệch', () => {
     H.hoan = { data: factsHoan({ termination: null }), isLoading: false, isError: false };
     const html = ve(<SettlementVoucherDetails row={dong()} />);
     expect(html).toContain('data-state="insufficient"');
-    expect(chu(html)).toContain('KHÔNG thấy hồ sơ quyết toán thanh lý đi kèm');
-    expect(chu(html)).toContain('Chưa kết luận được');
+    const t = chu(html);
+    expect(t).toContain('KHÔNG thấy hồ sơ quyết toán thanh lý');
+    expect(t).toContain('không dựng được khung tổng hợp');
+    expect(t).toContain('Chưa kết luận được');
+    // Chỉ thiếu hồ sơ thanh lý ⇒ KHÔNG được kể oan là thiếu cả hợp đồng.
+    expect(t).not.toContain('thông tin hợp đồng');
+  });
+
+  // `termination` và `contract` đến từ HAI nguồn rời trong RPC (bảng
+  // contract_terminations và commission_contract_facts_v1), NULL được độc lập.
+  it('đọc được phiếu nhưng thiếu THÔNG TIN HỢP ĐỒNG cũng phải báo thiếu', () => {
+    H.hoan = { data: factsHoan({ contract: null }), isLoading: false, isError: false };
+    const html = ve(<SettlementVoucherDetails row={dong()} />);
+    expect(html).toContain('data-state="insufficient"');
+    const t = chu(html);
+    expect(t).toContain('thông tin hợp đồng');
+    expect(t).toContain('Chưa kết luận được');
+    // Đúng cái triệu chứng mà người dùng sẽ nhìn thấy trên bảng.
+    expect(t).toContain('—/—');
+  });
+
+  it('thiếu CẢ HAI thì kể cả hai, không chỉ nói một cái', () => {
+    H.hoan = {
+      data: factsHoan({ termination: null, contract: null }), isLoading: false, isError: false,
+    };
+    const t = chu(ve(<SettlementVoucherDetails row={dong()} />));
+    expect(t).toContain('hồ sơ quyết toán thanh lý');
+    expect(t).toContain('thông tin hợp đồng');
   });
 
   it('hồ sơ đầy đủ thì KHÔNG treo cờ thiếu', () => {

@@ -49,6 +49,7 @@ import {
   type SettlementKind, type SettlementKindResolution,
 } from '@/lib/settlementTypes';
 import {
+  CAN_CU_HOAN_TRA_KHI_MO_PHIEU,
   detectIssues, settlementStatusOf, supplementPending,
   type BasisState, type SettlementRow, type SettlementRowKind,
 } from '@/lib/contractSettlement';
@@ -439,7 +440,7 @@ export function useContractSettlement(a: UseContractSettlementArgs) {
         // Số phải hoàn THẬT do `preview_termination_refund_v1` tính (đối chiếu
         // cọc thực thu). RPC đó đắt nên chỉ gọi khi mở modal — ở danh sách để
         // 'not-found', và 'not-found' KHÔNG chặn làn.
-        return { kind: 'not-found', reason: 'Căn cứ hoàn khách tra khi mở phiếu' };
+        return { kind: 'not-found', reason: CAN_CU_HOAN_TRA_KHI_MO_PHIEU };
       }
       // commission
       // ⚠ PHẢI xét lỗi TRƯỚC `!basisHH`: query lỗi thì `data` cũng undefined,

@@ -80,6 +80,20 @@ export type SettlementIssue =
  *                 vì RPC đó đắt) ⇒ chỉ cảnh báo, không chặn cả danh sách.
  *   unavailable = đã tra và HỎNG ⇒ chặn, vì không biết số đúng là bao nhiêu.
  */
+/**
+ * Lý do căn cứ của phiếu HOÀN ở mức DANH SÁCH.
+ *
+ * `preview_termination_refund_v1` đắt nên danh sách HOÃN việc tra tới lúc mở
+ * phiếu — ở đó câu này đúng và còn giữ được lời hứa.
+ *
+ * ⚠ Có TÊN vì MODAL phải nhận ra đúng câu này để KHÔNG in lại một lời hứa mà
+ * chính nó đang thực hiện dở: trong hộp thoại đã mở, "tra khi mở phiếu" là câu
+ * không bao giờ thành sự thật. So bằng hằng số chứ đừng dò chuỗi — đổi lý do ở
+ * `basisOf` thì câu mới phải hiện nguyên văn, không bị nuốt.
+ * Xem `SettlementVoucherDetails`.
+ */
+export const CAN_CU_HOAN_TRA_KHI_MO_PHIEU = 'Căn cứ hoàn khách tra khi mở phiếu';
+
 export type BasisState =
   | { kind: 'matched'; amount: number }
   | { kind: 'mismatch'; amount: number }
