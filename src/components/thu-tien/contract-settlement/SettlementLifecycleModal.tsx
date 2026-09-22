@@ -35,6 +35,7 @@ import { useAccounts } from '@/hooks/useAccounts';
 import { useIncomeExpenseSupplements } from '@/hooks/income-expenses/supplements';
 import { formatSupplementAuthor } from '@/lib/incomeExpenseSupplement';
 import { ContractLifecycleBand } from './ContractLifecycleBand';
+import type { LaneSubject } from '@/lib/contractLifecycle';
 import {
   KIND_LABEL, STATUS_STYLE, fmtMoney, fmtNgay, isBlocker,
   type SettlementRow, type ViewStatus,
@@ -59,6 +60,15 @@ const khoaMoi = () =>
 
 export function SettlementLifecycleModal({ row, view, actions, onClose }: Props) {
   const kha = actions.availabilityOf(row);
+  /**
+   * Vai của lane đích lấy từ ĐÚNG loại phiếu. `row.kind` có thể là 'unknown'
+   * (phiếu thủ công chưa nhận được loại) — khi đó lane mang nhãn trung tính,
+   * KHÔNG được mặc định thành "Hợp đồng của phiếu hoàn".
+   */
+  const vaiLane: LaneSubject = { kind: 'voucher', voucherKind: row.kind };
+  /** Mốc ngày NGHIỆP VỤ của hồ sơ: ngày phiếu, không phải đồng hồ máy. */
+  const businessDate = (row.eventDate ?? '').slice(0, 10)
+    || new Date().toISOString().slice(0, 10);
   const [lyDo, setLyDo] = useState('');
   const [chuoiTuChoi, setChuoiTuChoi] = useState(false);
   const [daDoiChieu, setDaDoiChieu] = useState(false);
@@ -269,12 +279,22 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
           </div>
         </div>
 
+        {/* ⚠ `ghiChuHoan` CHỈ dành cho phiếu hoàn. Bản cũ gắn nó cho mọi loại
+            nên phiếu hoa hồng cũng hiện "Còn hoàn: <số hoa hồng>" — lấy số hoa
+            hồng dán nhãn hoàn, đúng thứ plan §3.2 cấm. Dải tự bỏ qua nếu loại
+            không phải hoàn, nhưng không truyền vẫn là rõ ràng hơn. */}
         <ContractLifecycleBand
+          organizationId={row.organizationId}
+          roomId={row.roomId}
           contractId={row.contractId}
-          ghiChuHoan={{
+          subject={vaiLane}
+          businessDate={businessDate}
+          sourceLabel="Phiếu đang xem"
+          sourceText={`${row.voucherCode ?? 'Chưa có mã'} · ${KIND_LABEL[row.kind]}`}
+          ghiChuHoan={row.kind === 'refund' ? {
             text: view === 'paid' ? `Đã hoàn: ${fmtMoney(row.amount)}` : `Còn hoàn: ${fmtMoney(row.amount)}`,
             mau: view === 'paid' ? 'var(--c-paid)' : 'var(--c-partial)',
-          }}
+          } : null}
         />
 
         {/* ── Hai cột ────────────────────────────────────────────────────── */}

@@ -2,96 +2,126 @@
 // ContractLifecycleBand — dải "Vòng đời hợp đồng của phòng".
 //
 // Dùng CHUNG cho hồ sơ khoản chi và hồ sơ biến động. Tách ra vì hai màn phải
-// hiện y hệt một dòng thời gian; để hai bản sao là mời lệch số.
+// hiện y hệt một dòng thời gian; để hai bản sao là mời lệch số. ĐỪNG fork nó.
 //
-// Bốn mốc, theo bản thiết kế 03:
-//   Ký hợp đồng · Cọc đã đóng (THỰC THU) · Tiền thuê/phí đã đóng · Thanh lý
+// NHIỀU LANE theo lịch sử phòng: hợp đồng liền trước · hợp đồng của phiếu hoặc
+// của biến động · hợp đồng kế tiếp · hợp đồng hiện tại. Bốn mốc mỗi lane, chữ
+// lấy nguyên văn từ mẫu thiết kế (dòng 346–396 và 601–628).
+//
+// ⚠ Component này KHÔNG tính tiền. Mọi con số và mọi nhãn đã do
+// `src/lib/contractLifecycle.ts` quyết định và đã có unit test. Ở đây chỉ vẽ.
+//
+// ⚠ Lỗi, thiếu quyền và số 0 là BA THỨ KHÁC NHAU và phải nhìn khác nhau.
 // =============================================================================
 
 import { useContractLifecycle } from '@/hooks/useContractLifecycle';
-import { fmtMoney, fmtNgay } from '@/lib/contractSettlement';
+import type { LaneSubject, SectionStatus } from '@/lib/contractLifecycle';
 
 interface Props {
+  organizationId: string | null;
+  roomId: string | null;
+  /** Hợp đồng ĐÍCH — của phiếu đang mở hoặc của biến động đang xem. */
   contractId: string | null;
-  /** Dòng nhấn thêm ở mốc thanh lý — hồ sơ khoản chi dùng để nói còn/đã hoàn. */
+  subject: LaneSubject;
+  /** Mốc ngày nghiệp vụ ('YYYY-MM-DD') — không lấy đồng hồ trong component. */
+  businessDate: string;
+  /** Chữ bên trái chân dải: 'Phiếu đang xem' hoặc 'Nguồn'. */
+  sourceLabel: string;
+  sourceText: string;
+  /**
+   * Dòng nhấn ở mốc thanh lý của lane đích. CHỈ dùng cho PHIẾU HOÀN — bản cũ
+   * gắn nó cho mọi loại nên phiếu hoa hồng cũng hiện "Còn hoàn: <số hoa hồng>",
+   * tức lấy số hoa hồng dán nhãn hoàn (Plan §3.2 cấm).
+   */
   ghiChuHoan?: { text: string; mau: string } | null;
   hint?: string;
 }
 
-export function ContractLifecycleBand({ contractId, ghiChuHoan, hint }: Props) {
-  const q = useContractLifecycle(contractId);
-  const v = q.data;
-  const daThanhLy = !!v?.terminatedAt;
+const laPhieuHoan = (s: LaneSubject) => s.kind === 'voucher' && s.voucherKind === 'refund';
 
-  const buoc: { h: string; val: string; m: string; m2?: string; m2c?: string }[] = v ? [
-    {
-      h: 'Ký hợp đồng', val: fmtNgay(v.signedDate),
-      m: `Thời hạn: ${fmtNgay(v.startDate)} – ${fmtNgay(v.endDate)}`,
-    },
-    {
-      h: 'Cọc đã đóng · thực thu', val: fmtMoney(v.depositPaid),
-      // ⚠ `deposit_paid`, KHÔNG phải `total_deposit`. Đo thật 21/09/2026 có hợp
-      // đồng cam kết 4.000.000 mà thực thu 0 — hiện số cam kết là nói dối.
-      m: v.depositPaid === v.depositTotal
-        ? 'Đã nộp đủ theo hợp đồng'
-        : `Cam kết ${fmtMoney(v.depositTotal)} · còn thiếu ${fmtMoney(v.depositTotal - v.depositPaid)}`,
-      m2c: v.depositPaid < v.depositTotal ? 'var(--c-partial)' : undefined,
-    },
-    {
-      h: 'Tiền thuê / phí đã đóng', val: fmtMoney(v.invoicePaid),
-      m: `Không gồm cọc · giá thuê ${fmtMoney(v.rentPrice)}/tháng`,
-    },
-    daThanhLy
-      ? {
-          h: `${v.terminationType === 'FORFEIT' ? 'Bỏ cọc' : 'Thanh lý'} · ${fmtNgay(v.terminatedAt)}`,
-          val: `Quyết toán hoàn ${fmtMoney(v.refundAmount ?? 0)}`,
-          m: `Nợ sau quyết toán: ${fmtMoney(v.outstandingDebt ?? 0)}`,
-          m2: ghiChuHoan?.text, m2c: ghiChuHoan?.mau,
-        }
-      : {
-          h: 'Đến hôm nay', val: 'Đang thuê', m: 'Chưa thanh lý',
-          m2: `Còn nợ: ${fmtMoney(v.outstandingDebt ?? 0)}`,
-          m2c: Number(v.outstandingDebt) > 0 ? 'var(--c-unpaid)' : 'var(--c-paid)',
-        },
-  ] : [];
+/** Một dòng cảnh báo cho mỗi phần chưa chứng minh được. */
+function DongTrangThai({ ten, st }: { ten: string; st: SectionStatus }) {
+  if (st.kind === 'sufficient') return null;
+  return (
+    <div className="cs-life-warn" style={{ color: st.kind === 'error' ? 'var(--c-unpaid)' : 'var(--c-partial)' }}>
+      <b>{ten}:</b> {st.reason}
+    </div>
+  );
+}
+
+export function ContractLifecycleBand({
+  organizationId, roomId, contractId, subject, businessDate,
+  sourceLabel, sourceText, ghiChuHoan, hint,
+}: Props) {
+  const q = useContractLifecycle({
+    organizationId, roomId, targetContractId: contractId, subject, businessDate,
+  });
+  const v = q.data;
 
   return (
     <div className="cs-life">
       <div className="cs-life-top">
         <b>Vòng đời hợp đồng của phòng</b>
         <span>
-          {q.isLoading ? 'Đang tra hợp đồng…'
-            : q.isError ? 'Không đọc được hợp đồng — số liệu bên dưới chưa đầy đủ.'
+          {q.isLoading ? 'Đang tra lịch sử phòng…'
+            : q.isError ? 'Không đọc được lịch sử phòng — số liệu bên dưới chưa đầy đủ.'
             : !contractId ? 'Chưa gắn hợp đồng nên không dựng được vòng đời.'
             : !v ? 'Không tìm thấy hợp đồng.'
-            : hint ?? 'Số liệu đọc thẳng từ hợp đồng và hoá đơn'}
+            : hint ?? 'Số liệu dựng từ chính các phiếu cọc, hoá đơn và bản ghi thanh lý'}
         </span>
       </div>
-      {v && (
-        <div className="cs-lane target">
+
+      {v && v.lanes.map((lane) => (
+        <div className={`cs-lane${lane.target ? ' target' : ''}`} key={lane.contractId}>
           <div className="cs-lane-head">
-            <span className="cs-role">Hợp đồng liên quan</span>
-            <b>{v.contractNumber ?? '—'}</b>
-            <span style={{ color: 'var(--ink-2)' }}>{v.customer}</span>
+            <span className="cs-role">{lane.role}</span>
+            <b>{lane.contractNumber ?? '—'}</b>
+            <span style={{ color: 'var(--ink-2)' }}>{lane.customer}</span>
             <span className="cs-lane-gap" />
+            {!lane.trusted && (
+              <span className="cs-tag" style={{ background: 'var(--line-2)', color: 'var(--c-partial)' }}>
+                Lịch sử chưa tin cậy
+              </span>
+            )}
             <span className="cs-tag" style={{
-              background: daThanhLy ? 'var(--line-2)' : 'var(--brand-50)',
-              color: daThanhLy ? 'var(--ink-2)' : 'var(--brand)',
+              background: lane.tag === 'HĐ hiện tại' ? 'var(--brand-50)' : 'var(--line-2)',
+              color: lane.tag === 'HĐ hiện tại' ? 'var(--brand)' : 'var(--ink-2)',
             }}>
-              {daThanhLy ? 'Đã thanh lý' : 'Đang thuê'}
+              {lane.tag}
             </span>
           </div>
           <div className="cs-steps">
-            {buoc.map((b) => (
-              <div className="cs-step" key={b.h}>
-                <div className="cs-step-h">{b.h}</div>
-                <div className="cs-step-v">{b.val}</div>
-                <div className="cs-step-m">{b.m}</div>
-                {b.m2 && <div className="cs-step-m2" style={{ color: b.m2c }}>{b.m2}</div>}
-              </div>
-            ))}
+            {lane.steps.map((b, i) => {
+              // Dòng nhấn của mốc cuối trên lane ĐÍCH: chỉ phiếu hoàn mới được
+              // nói chuyện "đã hoàn / còn hoàn".
+              const m2 = i === lane.steps.length - 1 && lane.target && ghiChuHoan && laPhieuHoan(subject)
+                ? ghiChuHoan.text : b.m2;
+              const m2c = i === lane.steps.length - 1 && lane.target && ghiChuHoan && laPhieuHoan(subject)
+                ? ghiChuHoan.mau : b.m2c;
+              return (
+                <div className="cs-step" key={`${lane.contractId}:${i}`}>
+                  <div className="cs-step-h">{b.h}</div>
+                  <div className="cs-step-v">{b.v}</div>
+                  <div className="cs-step-m">{b.m}</div>
+                  {m2 && <div className="cs-step-m2" style={{ color: m2c }}>{m2}</div>}
+                </div>
+              );
+            })}
           </div>
         </div>
+      ))}
+
+      {v && (
+        <>
+          <DongTrangThai ten="Lịch sử phòng" st={v.status.lanes} />
+          <DongTrangThai ten="Nguồn cọc" st={v.status.deposit} />
+          <DongTrangThai ten="Tiền thuê / phí" st={v.status.rent} />
+          <DongTrangThai ten="Đối chiếu bút toán" st={v.status.postings} />
+          <div className="cs-life-foot">
+            <span>Phòng hiện tại: <b>{v.roomState.label}</b></span>
+            <span>{sourceLabel}: <b className="mono">{sourceText}</b></span>
+          </div>
+        </>
       )}
     </div>
   );

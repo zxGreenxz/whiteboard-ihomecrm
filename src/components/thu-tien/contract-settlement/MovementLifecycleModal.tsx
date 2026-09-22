@@ -10,6 +10,7 @@
 
 import { createPortal } from 'react-dom';
 import { useContractLifecycle } from '@/hooks/useContractLifecycle';
+import { CHUA_DU_DU_LIEU } from '@/lib/contractLifecycle';
 import { ContractLifecycleBand } from './ContractLifecycleBand';
 import { MOVEMENT_LABEL, type MovementRow } from '@/hooks/useContractMovements';
 import {
@@ -25,9 +26,20 @@ interface Props {
   onClose: () => void;
 }
 
+/** Mốc ngày NGHIỆP VỤ của hồ sơ này: ngày biến động phát sinh. */
+const mocNgay = (ev: MovementRow) => (ev.date ?? '').slice(0, 10) || new Date().toISOString().slice(0, 10);
+
 export function MovementLifecycleModal({ ev, lienQuan, onMoPhieu, onClose }: Props) {
-  const vd = useContractLifecycle(ev.contractId);
+  const businessDate = mocNgay(ev);
+  const vd = useContractLifecycle({
+    organizationId: ev.organizationId,
+    roomId: ev.roomId,
+    targetContractId: ev.contractId,
+    subject: { kind: 'movement' },
+    businessDate,
+  });
   const v = vd.data;
+  const dich = v?.target ?? null;
 
   const tong = lienQuan.reduce((s, r) => s + r.amount, 0);
   const daChi = lienQuan
@@ -64,7 +76,15 @@ export function MovementLifecycleModal({ ev, lienQuan, onMoPhieu, onClose }: Pro
           </div>
         </div>
 
-        <ContractLifecycleBand contractId={ev.contractId} />
+        <ContractLifecycleBand
+          organizationId={ev.organizationId}
+          roomId={ev.roomId}
+          contractId={ev.contractId}
+          subject={{ kind: 'movement' }}
+          businessDate={businessDate}
+          sourceLabel="Nguồn"
+          sourceText={`${ev.source} · ${ev.origin === 'reservation' ? 'Giữ chỗ' : 'Hợp đồng'}`}
+        />
 
         <div className="cs-body">
           <div className="cs-notes">
@@ -78,17 +98,34 @@ export function MovementLifecycleModal({ ev, lienQuan, onMoPhieu, onClose }: Pro
             </div>
 
             <div className="cs-sheet">
-              <div className="cs-sheet-t">Số liệu hợp đồng tại thời điểm biến động</div>
-              {v ? (
+              {/* ⚠ Đây là số ĐỌC HÔM NAY, không phải ảnh chụp tại ngày biến
+                  động — đừng gắn nhãn "tại thời điểm biến động" cho tổng hiện
+                  tại (plan §3.2). Mốc thời gian của số nói ngay trên tiêu đề. */}
+              <div className="cs-sheet-t">Số liệu hợp đồng đọc tại {fmtNgay(businessDate)}</div>
+              {dich ? (
                 <>
-                  <div className="cs-kv"><span className="k">Cọc thực thu</span><span className="v">{fmtMoney(v.depositPaid)}</span></div>
-                  <div className="cs-kv"><span className="k">Giá phòng</span><span className="v">{fmtMoney(v.rentPrice)}/tháng</span></div>
-                  <div className="cs-kv"><span className="k">Tiền thuê / phí đã thu</span><span className="v">{fmtMoney(v.invoicePaid)}</span></div>
-                  <div className="cs-kv"><span className="k">Nợ còn lại</span><span className="v">{fmtMoney(v.outstandingDebt ?? 0)}</span></div>
+                  <div className="cs-kv">
+                    <span className="k">Cọc đã thu (có chứng từ)</span>
+                    <span className="v">
+                      {dich.deposit ? fmtMoney(dich.deposit.grossCollected) : CHUA_DU_DU_LIEU}
+                    </span>
+                  </div>
+                  <div className="cs-kv">
+                    <span className="k">Cọc còn giữ</span>
+                    <span className="v">
+                      {dich.deposit ? fmtMoney(dich.deposit.netHeld) : CHUA_DU_DU_LIEU}
+                    </span>
+                  </div>
+                  {dich.settlementDeposit !== null && (
+                    <div className="cs-kv">
+                      <span className="k">Cọc chốt tại quyết toán</span>
+                      <span className="v">{fmtMoney(dich.settlementDeposit)}</span>
+                    </div>
+                  )}
                   <div className="cs-kv strong top">
                     <span className="k">Tình trạng</span>
                     <span className="v">
-                      {v.terminatedAt ? `Đã thanh lý ${fmtNgay(v.terminatedAt)}` : 'Đang hiệu lực'}
+                      {dich.terminatedAt ? `Đã thanh lý ${fmtNgay(dich.terminatedAt)}` : 'Đang hiệu lực'}
                     </span>
                   </div>
                 </>
@@ -96,6 +133,7 @@ export function MovementLifecycleModal({ ev, lienQuan, onMoPhieu, onClose }: Pro
                 <div className="cs-note-s">
                   {vd.isLoading ? 'Đang tra hợp đồng…'
                     : vd.isError ? 'Không đọc được hợp đồng.'
+                    : ev.contractId ? `${CHUA_DU_DU_LIEU} về hợp đồng của biến động này.`
                     : 'Biến động này chưa gắn hợp đồng.'}
                 </div>
               )}
@@ -177,7 +215,7 @@ export function MovementLifecycleModal({ ev, lienQuan, onMoPhieu, onClose }: Pro
         </div>
 
         <div className="cs-m-foot">
-          Số liệu đọc thẳng từ hợp đồng, hoá đơn và bản ghi thanh lý. Trang này không sửa gì.
+          Số liệu đọc thẳng từ phiếu cọc, hoá đơn và bản ghi thanh lý. Trang này không sửa gì.
         </div>
       </div>
     </div>,

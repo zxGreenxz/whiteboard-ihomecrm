@@ -38,7 +38,15 @@ export interface MovementRow {
   date: string | null;
   buildingId: string | null;
   buildingName: string;
+  /**
+   * Phòng của biến động. BẮT BUỘC để dựng dải vòng đời: lịch sử cư trú đi theo
+   * PHÒNG, không theo cây hợp đồng (`parent_contract_id` gần như trống trên
+   * production). Thiếu nó thì modal biến động không dựng nổi chuỗi lane.
+   */
+  roomId: string | null;
   roomName: string | null;
+  /** Công ty của biến động — mọi truy vấn phía sau phải kẹp theo nó. */
+  organizationId: string;
   customer: string;
   /** Mã hợp đồng, hoặc mã phiếu giữ chỗ. */
   source: string;
@@ -63,16 +71,17 @@ interface HopDongNoi {
   id: string;
   contract_number: string | null;
   user_id: string | null;
-  rooms: { name: string | null; building_id: string | null; buildings: { name: string | null } | null } | null;
+  rooms: { id: string | null; name: string | null; building_id: string | null; buildings: { name: string | null } | null } | null;
   contract_customers: KhachNoi[] | null;
 }
 
 const HD_NOI =
-  'id, contract_number, user_id, rooms!inner ( name, building_id, buildings ( name ) ), contract_customers ( customers ( full_name ) )';
+  'id, contract_number, user_id, rooms!inner ( id, name, building_id, buildings ( name ) ), contract_customers ( customers ( full_name ) )';
 
 const toaCua = (c: HopDongNoi | null) => ({
   buildingId: c?.rooms?.building_id ?? null,
   buildingName: c?.rooms?.buildings?.name ?? '—',
+  roomId: c?.rooms?.id ?? null,
   roomName: c?.rooms?.name ?? null,
 });
 
@@ -171,7 +180,7 @@ export function useContractMovements(a: MovementArgs) {
       const qGiuCho = trongKy(
         supabase
           .from('room_reservation_holds')
-          .select('id, amount, held_at, expires_at, status, contract_id, building_id, buildings ( name ), rooms ( name )')
+          .select('id, amount, held_at, expires_at, status, contract_id, building_id, room_id, buildings ( name ), rooms ( name )')
           .eq('organization_id', org)
           .in('building_id', a.buildingIds)
           .order('held_at', { ascending: false })
@@ -201,7 +210,7 @@ export function useContractMovements(a: MovementArgs) {
       })[]) {
         them({
           key: `sign:${c.id}`, type: 'sign', date: c.signed_date, ...toaCua(c),
-          customer: tenKhach(c.contract_customers),
+          customer: tenKhach(c.contract_customers), organizationId: org,
           source: c.contract_number ?? '—', origin: 'contract', contractId: c.id,
           description: `Thuê từ ${ngay(c.start_date)} đến ${ngay(c.end_date)} · giá ${dong(c.rent_price)}/tháng · cọc ${dong(c.total_deposit)}`,
           staffName: null,
@@ -217,7 +226,7 @@ export function useContractMovements(a: MovementArgs) {
         const c = e.contracts;
         them({
           key: `renew:${e.id}`, type: 'renew', date: e.extension_date, ...toaCua(c),
-          customer: tenKhach(c?.contract_customers),
+          customer: tenKhach(c?.contract_customers), organizationId: org,
           source: c?.contract_number ?? '—', origin: 'contract', contractId: c?.id ?? null,
           description: `Gia hạn ${e.extension_months ?? '?'} tháng · ${ngay(e.old_end_date)} → ${ngay(e.new_end_date)}`
             + (e.rent_price_changed ? ` · giá mới ${dong(e.new_rent_price)}` : ' · giữ nguyên giá'),
@@ -237,7 +246,7 @@ export function useContractMovements(a: MovementArgs) {
           key: `${boCoc ? 'forfeit' : 'terminate'}:${t.id}`,
           type: boCoc ? 'forfeit' : 'terminate',
           date: t.termination_date, ...toaCua(c),
-          customer: tenKhach(c?.contract_customers),
+          customer: tenKhach(c?.contract_customers), organizationId: org,
           source: c?.contract_number ?? '—', origin: 'contract', contractId: c?.id ?? null,
           description: `Trả phòng ${ngay(t.actual_move_out_date)} · khấu trừ ${dong(t.total_deductions)}`
             + ` · hoàn ${dong(t.refund_amount)}`
@@ -249,12 +258,13 @@ export function useContractMovements(a: MovementArgs) {
       for (const h of (giuCho.data ?? []) as {
         id: string; amount: number | null; held_at: string | null; expires_at: string | null;
         status: string | null; contract_id: string | null; building_id: string | null;
+        room_id: string | null;
         buildings: { name: string | null } | null; rooms: { name: string | null } | null;
       }[]) {
         them({
           key: `reserve:${h.id}`, type: 'reserve', date: h.held_at,
           buildingId: h.building_id, buildingName: h.buildings?.name ?? '—',
-          roomName: h.rooms?.name ?? null,
+          roomId: h.room_id, roomName: h.rooms?.name ?? null, organizationId: org,
           customer: 'Khách giữ chỗ', source: `GC-${h.id.slice(0, 8)}`,
           origin: 'reservation', contractId: h.contract_id,
           description: `Cọc giữ chỗ ${dong(h.amount)} · hạn ${ngay(h.expires_at)} · ${h.status ?? '—'}`,

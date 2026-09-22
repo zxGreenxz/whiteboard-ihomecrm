@@ -189,6 +189,12 @@
 .cs-step-m2 { font-size: 11px; margin-top: 2px; font-weight: 600; }
 .cs-life-foot { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-size: 11.5px; color: var(--ink-3); padding: 4px 2px 0; }
 .cs-life-foot b { color: var(--ink); font-weight: 600; }
+.cs-life-foot b.mono { font-family: var(--mono); }
+/* Một dòng cho mỗi phần chưa chứng minh được. Cố ý KHÁC hẳn số liệu bình
+   thường: lỗi đọc, thiếu quyền và số 0 phải nhìn khác nhau, nếu không người
+   duyệt sẽ đọc "chưa tra được" thành "không có gì". */
+.cs-life-warn { font-size: 11.5px; line-height: 1.6; padding: 2px 2px; }
+.cs-life-warn b { font-weight: 700; }
 
 .cs-body { display: grid; grid-template-columns: minmax(0, 1fr) 320px; align-items: start; }
 .cs-notes { padding: 18px 22px; min-width: 0; }
