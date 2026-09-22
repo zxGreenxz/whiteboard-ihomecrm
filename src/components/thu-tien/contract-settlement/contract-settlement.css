@@ -41,6 +41,11 @@
 .cs-stat-num { font-family: var(--mono); font-size: 24px; font-weight: 700; letter-spacing: -.5px; margin: 6px 0 2px; line-height: 1.2; }
 .cs-stat-meta { font-size: 12px; color: var(--ink-3); }
 .cs-stat-cta { position: absolute; right: 14px; top: 12px; font-size: 11px; font-weight: 600; color: var(--brand); }
+/* Thẻ + nút thử lại xếp chồng; nút chỉ hiện khi thiếu bút toán để đọc ngày chi. */
+.cs-stat-wrap { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.cs-stat-wrap > .cs-stat { flex: 1; }
+.cs-stat-retry { align-self: flex-start; background: none; border: 1px solid var(--line); border-radius: 8px; padding: 4px 10px; font-size: 11px; font-weight: 600; color: var(--brand); cursor: pointer; }
+.cs-linkbtn { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: var(--brand); cursor: pointer; text-decoration: underline; }
 .cs-stats.mov .cs-stat { padding: 12px 14px; }
 .cs-stats.mov .cs-stat-num { font-size: 22px; margin: 4px 0 0; }
 

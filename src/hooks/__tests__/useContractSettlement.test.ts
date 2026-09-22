@@ -23,7 +23,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useContractSettlement } from '@/hooks/useContractSettlement';
-import { isBlocker, laneOf } from '@/lib/contractSettlement';
+import {
+  CAN_CU_HOAN_TRA_KHI_MO_PHIEU, isBlocker, laneOf, matchScope, viewStatusOf,
+  type PeriodScope,
+} from '@/lib/contractSettlement';
 
 const H = vi.hoisted(() => ({
   fetchAllRows: vi.fn(),
@@ -120,6 +123,7 @@ interface PhieuGia {
   posting_version: number;
   maker_user_id: string | null;
   posted_at_v2: string | null;
+  active_posting_id_v2: string | null;
   attachments: unknown;
   buildings: { name: string } | null;
   rooms: { name: string } | null;
@@ -141,7 +145,7 @@ const phieu = (p: Partial<PhieuGia> & { id: string }): PhieuGia => ({
   approval_status: 'UNAPPROVED', posting_status: 'UNPOSTED',
   review_state: 'PENDING', review_reason: null,
   review_version: 1, approval_version: 1, posting_version: 1,
-  maker_user_id: null, posted_at_v2: null, attachments: [],
+  maker_user_id: null, posted_at_v2: null, active_posting_id_v2: null, attachments: [],
   buildings: { name: 'Toà A' }, rooms: { name: '101' }, accounts: null,
   contracts: null,
   ...p,
@@ -154,6 +158,13 @@ const hopDong = (so: string, ngayKy: string) => ({
 
 interface ItemGia { income_expense_id: string; income_expense_type_id: string }
 
+/**
+ * Bút toán hiệu lực đọc về được, theo `active_posting_id_v2`.
+ * `null` nghĩa là ĐỌC HỎNG (fetchAllRows trả null), khác hẳn mảng rỗng — rỗng
+ * là "RLS giấu hết", đúng cảnh của tài khoản chủ công ty trên org THẬT.
+ */
+let butToan: { id: string; posted_on: string }[] | null = [];
+
 /** Giả lập bốn truy vấn rời của hook từ MỘT tập phiếu + MỘT tập item. */
 const nap = (ps: PhieuGia[], items: ItemGia[]) => {
   H.fetchAllRows.mockImplementation(async (build: unknown, opt: unknown) => {
@@ -161,6 +172,7 @@ const nap = (ps: PhieuGia[], items: ItemGia[]) => {
     (build as (f: number, t: number) => unknown)(0, 999);
     const label = (opt as { label?: string })?.label;
     if (label === 'contract-settlement.items') return items;
+    if (label === 'cs.postings') return butToan;
     const coHangMuc = new Set(
       items.filter((i) => TRONG_KHU.has(i.income_expense_type_id)).map((i) => i.income_expense_id),
     );
@@ -201,18 +213,23 @@ const napCanCuHong = (message: string) => {
   H.rpc.mockImplementation(async () => ({ data: null, error: { message } }));
 };
 
-const chay = (period = '2026-09') => {
+const chay = (period = '2026-09', scope: PeriodScope = 'all') => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   const wrapper = ({ children }: { children: ReactNode }) =>
     createElement(QueryClientProvider, { client }, children);
   return renderHook(
-    () => useContractSettlement({ organizationId: ORG, buildingIds: [TOA], period, scope: 'open' }),
+    () => useContractSettlement({ organizationId: ORG, buildingIds: [TOA], period, scope }),
     { wrapper },
   );
 };
 
+/** Bộ lọc đã gửi cho truy vấn phiếu, dạng [tên phương thức, tham số]. */
+const locPhieu = () =>
+  H.chuoi.filter((c) => c.bang === 'income_expenses').flatMap((c) => c.ops);
+
 beforeEach(() => {
   H.chuoi.length = 0;
+  butToan = [];
   H.fetchAllRows.mockReset();
   H.rpc.mockReset();
   H.supplements.mockReset();
@@ -520,6 +537,12 @@ describe('useContractSettlement — Hoàn khách và Thưởng sale không đổ
     expect(r.kind).toBe('refund');
     expect(r.kindSource).toBe('system_source');
     expect(r.basis.kind).toBe('not-found');
+    // ⚠ Ghim LÝ DO bằng chính hằng số mà modal so `===` để nhận ra. Không có
+    // dòng này thì một sửa đổi sau làm `basisOf` đổi câu chữ vẫn xanh, và lời
+    // hứa "tra khi mở phiếu" lặng lẽ quay lại in trong hộp thoại ĐANG MỞ — nơi
+    // nó không bao giờ thành sự thật. Bài của modal dùng fixture chép cứng nên
+    // không bắt được ca này; đây là chỗ duy nhất đi qua `basisOf` THẬT.
+    expect(r.basis).toEqual({ kind: 'not-found', reason: CAN_CU_HOAN_TRA_KHI_MO_PHIEU });
   });
 
   it('thưởng sale vẫn là Thưởng sale, không có công thức căn cứ', async () => {
@@ -601,5 +624,335 @@ describe('useContractSettlement — mang đủ nguồn cho ghi chú và bảng c
     expect(r.commissionKind).toBeNull();
     expect(r.systemSource).toBeNull();
     expect(r.notes).toBeNull();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// T5 — NGÀY CHI THẬT, PHẠM VI KỲ VÀ TRẠNG THÁI KHÔNG BỊ CẮT TRƯỚC
+//
+// Bốn lỗi đang sửa:
+//  1. "Mọi kỳ" ánh xạ sang scope 'open', mà 'open' lại CẮT POSTED/CANCELLED
+//     ngay trong truy vấn — nên nó không phải mọi kỳ, cũng không phải mọi
+//     trạng thái, và bộ lọc trạng thái của giao diện lọc trên một tập đã thiếu.
+//  3. Chọn một tháng thì lọc `voucher_date`, nên phiếu lập tháng trước mà CHI
+//     trong kỳ này biến mất.
+//  4. Chân đế của "ngày chi" là `posted_at_v2` — dấu thời gian HỆ THỐNG GHI,
+//     không phải ngày tiền ra. Đo thật 22/09: 856/1000 phiếu chi đã ghi sổ có
+//     `posted_at_v2` NULL, 20/144 phiếu còn lại LỆCH với `posted_on`.
+//
+// Ranh giới đọc bút toán là RLS BÌNH THƯỜNG. Custodian đọc được thì có ngày
+// thật; người khác nhận 0 dòng, KHÔNG lỗi, và phải hiện "chưa xác minh".
+// ═══════════════════════════════════════════════════════════════════════════
+
+const BT_1 = '0a1a1a1a-0000-4000-8000-000000000001';
+const BT_2 = '0a1a1a1a-0000-4000-8000-000000000002';
+
+/** Phiếu ĐÃ GHI SỔ, trỏ tới một bút toán hiệu lực. */
+const daChi = (id: string, p: Partial<PhieuGia> = {}): PhieuGia => phieu({
+  id, approval_status: 'APPROVED', posting_status: 'POSTED',
+  account_id: 'so-quy-1', accounts: { name: 'Quỹ tiền mặt' },
+  active_posting_id_v2: BT_1, ...p,
+});
+
+describe('useContractSettlement — ngày chi lấy từ posted_on của bút toán hiệu lực', () => {
+  it('đọc bút toán theo active_posting_id_v2 và lấy posted_on làm ngày chi', async () => {
+    const id = '0f0f0f0f-0000-4000-8000-0000000000a1';
+    butToan = [{ id: BT_1, posted_on: '2026-09-03' }];
+    nap([daChi(id, {
+      system_source: 'termination.refund.v1', voucher_date: '2026-08-20',
+      posted_at_v2: '2026-07-01T10:00:00Z',
+    })], []);
+    const { result } = chay();
+    await waitFor(() => expect(result.current.rows).toHaveLength(1));
+    const r = result.current.rows[0];
+
+    expect(r.postedOn).toBe('2026-09-03');
+    expect(r.status).toBe('paid');
+    // Truy vấn phải đi qua bảng bút toán, kẹp theo org, lọc theo ID bút toán.
+    const q = H.chuoi.find((c) => c.bang === 'income_expense_postings');
+    expect(q, 'phải có truy vấn income_expense_postings').toBeTruthy();
+    const cot = String(q?.ops.find(([m]) => m === 'select')?.[1][0] ?? '');
+    expect(cot).toContain('posted_on');
+    expect(q?.ops.some(([m, a]) => m === 'eq' && a[0] === 'organization_id')).toBe(true);
+    expect(q?.ops.some(([m, a]) => m === 'in' && a[0] === 'id')).toBe(true);
+    // Và cột nguồn phải nằm trong SELECT của phiếu.
+    const cotPhieu = String(H.chuoi.find((c) => c.bang === 'income_expenses')
+      ?.ops.find(([m]) => m === 'select')?.[1][0] ?? '');
+    expect(cotPhieu).toContain('active_posting_id_v2');
+  });
+
+  // ĐÂY LÀ LÝ DO KHÔNG ĐƯỢC DÙNG `posted_at_v2` LÀM PHƯƠNG ÁN DỰ PHÒNG.
+  it('posted_on KHÁC posted_at_v2 thì lấy posted_on, không bao giờ lấy cột kia', async () => {
+    const id = '0f0f0f0f-0000-4000-8000-0000000000a2';
+    butToan = [{ id: BT_1, posted_on: '2026-09-02' }];
+    nap([daChi(id, {
+      system_source: 'termination.refund.v1',
+      posted_at_v2: '2026-07-14T03:00:00Z', voucher_date: '2026-07-10',
+    })], []);
+    const { result } = chay();
+    await waitFor(() => expect(result.current.rows).toHaveLength(1));
+    expect(result.current.rows[0].postedOn).toBe('2026-09-02');
+    expect(JSON.stringify(result.current.rows[0])).not.toContain('2026-07-14');
+  });
+
+  it('mỗi phiếu lấy đúng bút toán của mình, không dùng chung một ngày', async () => {
+    const a = '0f0f0f0f-0000-4000-8000-0000000000a3';
+    const b = '0f0f0f0f-0000-4000-8000-0000000000a4';
+    butToan = [{ id: BT_1, posted_on: '2026-09-03' }, { id: BT_2, posted_on: '2026-08-28' }];
+    nap([
+      daChi(a, { system_source: 'termination.refund.v1', active_posting_id_v2: BT_1 }),
+      daChi(b, { system_source: 'termination.refund.v1', active_posting_id_v2: BT_2 }),
+    ], []);
+    const { result } = chay();
+    await waitFor(() => expect(result.current.rows).toHaveLength(2));
+    const theo = new Map(result.current.rows.map((r) => [r.voucherId, r.postedOn]));
+    expect(theo.get(a)).toBe('2026-09-03');
+    expect(theo.get(b)).toBe('2026-08-28');
+  });
+
+  it('phiếu chưa ghi sổ KHÔNG có ngày chi, kể cả khi còn dấu posted_at_v2 cũ', async () => {
+    const id = '0f0f0f0f-0000-4000-8000-0000000000a5';
+    butToan = [{ id: BT_1, posted_on: '2026-09-03' }];
+    nap([phieu({
+      id, system_source: 'termination.refund.v1',
+      approval_status: 'APPROVED', posting_status: 'UNPOSTED',
+      posted_at_v2: '2026-07-01T10:00:00Z', active_posting_id_v2: BT_1,
+    })], []);
+    const { result } = chay();
+    await waitFor(() => expect(result.current.rows).toHaveLength(1));
+    expect(result.current.rows[0].status).toBe('approved');
+    expect(result.current.rows[0].postedOn).toBeNull();
+  });
+
+  // Ca của CHÍNH NGƯỜI DÙNG MÀN NÀY: chủ công ty thấy 1139 phiếu đã ghi sổ và
+  // 0 dòng bút toán, còn tài khoản hệ thống thấy 3324 dòng. Không được đổi
+  // trạng thái phiếu, không được báo 0, không được đi đường quyền cao hơn.
+  it('RLS giấu hết bút toán: giữ nguyên Đã chi, đánh dấu chưa xác minh, KHÔNG lỗi', async () => {
+    const id = '0f0f0f0f-0000-4000-8000-0000000000a6';
+    butToan = [];
+    nap([daChi(id, { system_source: 'termination.refund.v1', voucher_date: '2026-08-20' })], []);
+    const { result } = chay();
+    await waitFor(() => expect(result.current.rows).toHaveLength(1));
+    const r = result.current.rows[0];
+
+    expect(r.status).toBe('paid');
+    expect(viewStatusOf(r)).toBe('paid');
+    expect(r.postedOn).toBeNull();
+    expect(result.current.isError).toBe(false);
+    expect(result.current.postingRead).toBe('partial');
+    // Không đủ nguồn để xếp kỳ ⇒ 'undetermined', và tuyệt đối không thành tồn cũ.
+    expect(matchScope(r, 'current', '2026-09')).toBe('undetermined');
+    expect(matchScope(r, 'prior', '2026-09')).toBe('out');
+    // Và không có truy vấn nào đi đường khác để bù quyền.
+    const bang = new Set(H.chuoi.map((c) => c.bang));
+    expect(bang).toEqual(new Set([
+      'income_expense_types', 'income_expense_items', 'income_expenses', 'income_expense_postings',
+    ]));
+  });
+
+  it('đọc bút toán LỖI: vẫn ra bảng, đánh dấu chưa xác minh, không nuốt cả danh sách', async () => {
+    const id = '0f0f0f0f-0000-4000-8000-0000000000a7';
+    butToan = null;
+    nap([daChi(id, { system_source: 'termination.refund.v1' })], []);
+    const { result } = chay();
+    await waitFor(() => expect(result.current.rows).toHaveLength(1));
+    expect(result.current.isError).toBe(false);
+    expect(result.current.rows[0].status).toBe('paid');
+    expect(result.current.rows[0].postedOn).toBeNull();
+    expect(result.current.postingRead).toBe(false);
+  });
+
+  it('đọc đủ bút toán thì trạng thái đọc là ĐỦ', async () => {
+    const id = '0f0f0f0f-0000-4000-8000-0000000000a8';
+    butToan = [{ id: BT_1, posted_on: '2026-09-03' }];
+    nap([daChi(id, { system_source: 'termination.refund.v1' })], []);
+    const { result } = chay();
+    await waitFor(() => expect(result.current.rows).toHaveLength(1));
+    expect(result.current.postingRead).toBe(true);
+  });
+
+  it('không có phiếu đã ghi sổ nào thì KHÔNG gọi bảng bút toán', async () => {
+    nap([phieu({
+      id: '0f0f0f0f-0000-4000-8000-0000000000a9', system_source: 'termination.refund.v1',
+    })], []);
+    const { result } = chay();
+    await waitFor(() => expect(result.current.rows).toHaveLength(1));
+    expect(H.chuoi.some((c) => c.bang === 'income_expense_postings')).toBe(false);
+    expect(result.current.postingRead).toBe(true);
+  });
+
+  // Route legacy: APPROVED + POSTED nhưng KHÔNG có bút toán hiệu lực. Giữ nhãn
+  // theo cột thật, đánh dấu chưa xác minh — đây là cách hiển thị thiếu bằng
+  // chứng, KHÔNG phải yêu cầu backfill posting.
+  it('đã ghi sổ mà không có active posting: giữ Đã chi, ngày chi chưa xác minh', async () => {
+    const id = '0f0f0f0f-0000-4000-8000-0000000000aa';
+    butToan = [{ id: BT_1, posted_on: '2026-09-03' }];
+    nap([daChi(id, { system_source: 'termination.refund.v1', active_posting_id_v2: null })], []);
+    const { result } = chay();
+    await waitFor(() => expect(result.current.rows).toHaveLength(1));
+    expect(result.current.rows[0].status).toBe('paid');
+    expect(result.current.rows[0].postedOn).toBeNull();
+  });
+});
+
+describe('useContractSettlement — truy vấn theo phạm vi, ĐỘC LẬP trạng thái', () => {
+  const dat = () => nap([phieu({
+    id: '0f0f0f0f-0000-4000-8000-0000000000b1', system_source: 'termination.refund.v1',
+  })], []);
+
+  // Lỗi số 1: 'open' cắt CANCELLED và POSTED NGAY TRONG TRUY VẤN, nên bộ lọc
+  // trạng thái của giao diện lọc trên một tập đã bị xén mất hai nhóm.
+  it('KHÔNG cắt hủy/đã ghi sổ trong truy vấn ở mọi phạm vi', async () => {
+    for (const scope of ['current', 'all'] as PeriodScope[]) {
+      H.chuoi.length = 0;
+      dat();
+      const { result } = chay('2026-09', scope);
+      await waitFor(() => expect(result.current.rows).toHaveLength(1));
+      const ops = locPhieu();
+      expect(ops.some(([m, a]) => m === 'neq' && a[0] === 'approval_status'), scope).toBe(false);
+      expect(ops.some(([m, a]) => m === 'or' && String(a[0]).includes('posting_status')), scope)
+        .toBe(false);
+    }
+  });
+
+  it('Kỳ hiện tại KHÔNG kẹp voucher_date — phiếu tháng trước chi trong kỳ phải còn', async () => {
+    dat();
+    const { result } = chay('2026-09', 'current');
+    await waitFor(() => expect(result.current.rows).toHaveLength(1));
+    const ops = locPhieu();
+    expect(ops.some(([m, a]) => m === 'gte' && a[0] === 'voucher_date')).toBe(false);
+    expect(ops.some(([m, a]) => m === 'lt' && a[0] === 'voucher_date')).toBe(false);
+  });
+
+  it('Tồn Cũ kẹp đúng một mốc: ngày phiếu TRƯỚC đầu kỳ', async () => {
+    dat();
+    const { result } = chay('2026-09', 'prior');
+    await waitFor(() => expect(result.current.rows).toHaveLength(1));
+    const ops = locPhieu();
+    expect(ops.some(([m, a]) => m === 'lt' && a[0] === 'voucher_date' && a[1] === '2026-09-01'))
+      .toBe(true);
+    expect(ops.some(([m, a]) => m === 'gte' && a[0] === 'voucher_date')).toBe(false);
+    // Vẫn KHÔNG lọc trạng thái phía server — trạng thái là việc của lớp mặt.
+    expect(ops.some(([m, a]) => m === 'neq' && a[0] === 'approval_status')).toBe(false);
+  });
+
+  it('phiếu hủy và tổ hợp lạ về TỚI read model, không bị cắt trước bộ lọc', async () => {
+    const huy = '0f0f0f0f-0000-4000-8000-0000000000b2';
+    const la = '0f0f0f0f-0000-4000-8000-0000000000b3';
+    nap([
+      phieu({ id: huy, system_source: 'termination.refund.v1', approval_status: 'CANCELLED' }),
+      phieu({ id: la, system_source: 'termination.refund.v1', approval_status: 'SOMETHING_ELSE' }),
+    ], []);
+    const { result } = chay();
+    await waitFor(() => expect(result.current.rows).toHaveLength(2));
+    const theo = new Map(result.current.rows.map((r) => [r.voucherId, r.status]));
+    expect(theo.get(huy)).toBe('cancelled');
+    expect(theo.get(la)).toBe('unknown');
+  });
+
+  it('phiếu bị ĐẢO bút toán có trạng thái riêng, không quay về chờ chi', async () => {
+    const id = '0f0f0f0f-0000-4000-8000-0000000000b4';
+    nap([phieu({
+      id, system_source: 'termination.refund.v1',
+      approval_status: 'APPROVED', posting_status: 'REVERSED', active_posting_id_v2: null,
+    })], []);
+    const { result } = chay();
+    await waitFor(() => expect(result.current.rows).toHaveLength(1));
+    const r = result.current.rows[0];
+    expect(r.status).toBe('reversed');
+    expect(r.postedOn).toBeNull();
+    // Hai cột THÔ vẫn nguyên để writer và bảng nút đọc, không suy từ `status`.
+    expect(r.approvalStatus).toBe('APPROVED');
+    expect(r.postingStatus).toBe('REVERSED');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ĐỊNH DANH LÀ (UUID, org) — KHÔNG BAO GIỜ LÀ MÃ PHIẾU
+//
+// Trên production có nhiều phiếu chung mã hiển thị. Hai ca dưới mô phỏng HÌNH
+// DẠNG của PC2609095 (chờ duyệt, còn blocker) và PC2607070 (đã duyệt, ghi sổ
+// ảo) — CÙNG phòng, CÙNG số tiền — để chắc rằng không có chỗ nào ghép chúng
+// bằng mã, bằng phòng+tiền, hay bằng tiền tố mã.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('useContractSettlement — hai phiếu giống hệt trừ UUID và trạng thái', () => {
+  const PHONG = '0b0b0b0b-0000-4000-8000-000000000401';
+  const V_CHO_DUYET = '0f0f0f0f-0000-4000-8000-0000000000c1';
+  const V_SO_AO = '0f0f0f0f-0000-4000-8000-0000000000c2';
+
+  const doi = () => {
+    nap([
+      // Dạng PC2609095: chờ duyệt, thiếu thông tin nhận tiền ⇒ còn blocker.
+      phieu({
+        id: V_CHO_DUYET, code: 'PC2609095', room_id: PHONG, rooms: { name: '401' },
+        total_amount: 3_076_000, system_source: 'termination.refund.v1',
+        approval_status: 'UNAPPROVED', posting_status: 'UNPOSTED',
+        payer_name: null, receive_bank_name: null, receive_bank_account: null,
+      }),
+      // Dạng PC2607070: đã duyệt nhưng ghi SỔ ẢO — tiền chưa rời két.
+      phieu({
+        id: V_SO_AO, code: 'PC2607070', room_id: PHONG, rooms: { name: '401' },
+        total_amount: 3_076_000, system_source: 'termination.refund.v1',
+        approval_status: 'APPROVED', posting_status: 'NOT_APPLICABLE',
+        posting_mode: 'NON_CASH',
+      }),
+    ], []);
+  };
+
+  it('cùng phòng, cùng tiền, cùng loại — vẫn hai dòng, hai trạng thái, hai làn', async () => {
+    doi();
+    const { result } = chay();
+    await waitFor(() => expect(result.current.rows).toHaveLength(2));
+    const theo = new Map(result.current.rows.map((r) => [r.voucherId, r]));
+
+    const choDuyet = theo.get(V_CHO_DUYET);
+    const soAo = theo.get(V_SO_AO);
+    expect(choDuyet?.status).toBe('pending');
+    expect(viewStatusOf(choDuyet!)).toBe('review');
+    expect(choDuyet!.issues.some(isBlocker)).toBe(true);
+    expect(laneOf(choDuyet!)).toBe('can-ra-soat');
+
+    expect(soAo?.status).toBe('noncash');
+    expect(soAo?.postingMode).toBe('NON_CASH');
+    expect(soAo?.postedOn).toBeNull();
+    // Khoá dòng khác nhau dù mọi thứ nhìn thấy được đều giống nhau.
+    expect(choDuyet?.key).not.toBe(soAo?.key);
+    expect(choDuyet?.amount).toBe(soAo?.amount);
+    expect(choDuyet?.roomId).toBe(soAo?.roomId);
+  });
+
+  it('phiếu sổ ảo KHÔNG lọt vào tập Đã chi', async () => {
+    doi();
+    const { result } = chay();
+    await waitFor(() => expect(result.current.rows).toHaveLength(2));
+    const views = result.current.rows.map(viewStatusOf);
+    expect(views).not.toContain('paid');
+    expect(views).toContain('noncash');
+  });
+
+  it('hai phiếu TRÙNG MÃ nhưng khác UUID có thể khác hẳn trạng thái và ngày chi', async () => {
+    const a = '0f0f0f0f-0000-4000-8000-0000000000c3';
+    const b = '0f0f0f0f-0000-4000-8000-0000000000c4';
+    butToan = [{ id: BT_2, posted_on: '2026-09-04' }];
+    nap([
+      phieu({
+        id: a, code: 'PC2607070', room_id: PHONG, rooms: { name: '401' },
+        total_amount: 1_200_000, system_source: 'termination.refund.v1',
+        approval_status: 'UNAPPROVED', posting_status: 'UNPOSTED',
+      }),
+      phieu({
+        id: b, code: 'PC2607070', room_id: PHONG, rooms: { name: '401' },
+        total_amount: 1_200_000, system_source: 'termination.refund.v1',
+        approval_status: 'APPROVED', posting_status: 'POSTED', active_posting_id_v2: BT_2,
+      }),
+    ], []);
+    const { result } = chay();
+    await waitFor(() => expect(result.current.rows).toHaveLength(2));
+    const theo = new Map(result.current.rows.map((r) => [r.voucherId, r]));
+    expect(theo.get(a)?.status).toBe('pending');
+    expect(theo.get(a)?.postedOn).toBeNull();
+    expect(theo.get(b)?.status).toBe('paid');
+    expect(theo.get(b)?.postedOn).toBe('2026-09-04');
   });
 });

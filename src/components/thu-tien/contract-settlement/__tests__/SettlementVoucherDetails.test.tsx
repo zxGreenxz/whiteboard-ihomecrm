@@ -143,7 +143,7 @@ const dong = (over: Partial<SettlementRow> = {}): SettlementRow => ({
   postingMode: null, bankAccount: '0123456789', bankName: 'VCB',
   attachments: [], hasAttachment: false,
   eventDate: '2026-09-05', origin: 'contract', eventLabel: 'Thanh lý',
-  paidDate: null, bookName: null, issues: [], supplementPending: false,
+  postedOn: null, bookName: null, issues: [], supplementPending: false,
   reviewState: null, reviewVersion: 1, approvalVersion: 1, postingVersion: 1,
   organizationId: ORG, buildingId: TOA,
   notes: GHI_CHU_GOC,

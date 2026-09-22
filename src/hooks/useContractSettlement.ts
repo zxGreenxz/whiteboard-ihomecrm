@@ -51,20 +51,33 @@ import {
 import {
   CAN_CU_HOAN_TRA_KHI_MO_PHIEU,
   detectIssues, settlementStatusOf, supplementPending,
-  type BasisState, type SettlementRow, type SettlementRowKind,
+  type BasisState, type PeriodScope, type SettlementRow, type SettlementRowKind,
 } from '@/lib/contractSettlement';
-
-/** Chế độ phạm vi. Mặc định 'open' — xem [Plan §3]. */
-export type SettlementScope = 'open' | 'period';
 
 export interface UseContractSettlementArgs {
   organizationId: string | null | undefined;
   buildingIds: string[];
-  /** 'YYYY-MM'. Dùng cho nhãn OLD_PERIOD và cho chế độ 'period'. */
+  /** 'YYYY-MM'. Kỳ THAM CHIẾU duy nhất: nhãn OLD_PERIOD và mốc của 'prior'. */
   period: string;
-  scope?: SettlementScope;
+  /**
+   * Phạm vi kỳ. Mặc định 'all'.
+   *
+   * ⚠ Phạm vi CHỈ quyết định bộ lọc NGÀY, không bao giờ quyết định trạng thái.
+   * Bản trước ánh xạ "Mọi kỳ" sang một chế độ vừa bỏ lọc ngày vừa CẮT
+   * CANCELLED/POSTED ngay trong truy vấn — nên bộ lọc trạng thái của giao diện
+   * chạy trên một tập đã bị xén mất hai nhóm, và "Mọi kỳ" không phải mọi kỳ
+   * cũng không phải mọi trạng thái.
+   */
+  scope?: PeriodScope;
   enabled?: boolean;
 }
+
+/**
+ * Trạng thái đọc bút toán — CÙNG TỪ VỰNG BA NGẢ với `ReadState` của T2
+ * (`src/lib/contractLifecycle.ts`): `true` đủ, `'partial'` đọc được nhưng
+ * THIẾU dòng, `false` lỗi. Đừng đẻ thêm từ vựng thứ hai cho cùng một khái niệm.
+ */
+export type PostingReadState = true | 'partial' | false;
 
 // ── Hình dạng dòng phiếu đọc về ─────────────────────────────────────────────
 interface VoucherRow {
@@ -93,7 +106,15 @@ interface VoucherRow {
   approval_version: number | string | null;
   posting_version: number | string | null;
   maker_user_id: string | null;
+  /**
+   * ⚠ ĐỌC VỀ NHƯNG KHÔNG DÙNG LÀM NGÀY CHI. Đây là dấu thời gian HỆ THỐNG GHI.
+   * Đo thật 22/09/2026 trên 1000 phiếu chi đã ghi sổ có bút toán hiệu lực: 856
+   * phiếu cột này NULL, và 20 trong 144 phiếu còn lại LỆCH với `posted_on` (một
+   * phiếu lệch hai tháng). Ngày chi lấy ở `docNgayGhiSo`.
+   */
   posted_at_v2: string | null;
+  /** Bút toán HIỆU LỰC của phiếu. Nguồn duy nhất để tra `posted_on`. */
+  active_posting_id_v2: string | null;
   attachments: unknown;
   buildings: { name: string } | null;
   rooms: { name: string } | null;
@@ -145,7 +166,8 @@ const COT = [
   'payer_name', 'receive_bank_name', 'receive_bank_account', 'account_id',
   'posting_mode', 'approval_status', 'posting_status',
   'review_state', 'review_reason', 'review_version', 'approval_version',
-  'posting_version', 'maker_user_id', 'posted_at_v2', 'attachments',
+  'posting_version', 'maker_user_id', 'posted_at_v2', 'active_posting_id_v2',
+  'attachments',
   'buildings:building_id ( name )',
   'rooms:room_id ( name )',
   'accounts:account_id ( name )',
@@ -196,28 +218,97 @@ interface LocBuilder {
   range(from: number, to: number): unknown;
 }
 
-/** Áp bộ lọc chung cho mọi truy vấn phiếu. */
+/**
+ * Áp bộ lọc chung cho mọi truy vấn phiếu.
+ *
+ * ── LUẬT: TRUY VẤN LỌC NGÀY, KHÔNG LỌC TRẠNG THÁI ──────────────────────────
+ * Trạng thái là việc của lớp mặt; cắt nó ở đây làm mọi bộ lọc/thẻ số phía trên
+ * chạy trên một tập thiếu mà không ai nhìn thấy chỗ thiếu.
+ *
+ * ── VÌ SAO 'current' KHÔNG KẸP `voucher_date` ──────────────────────────────
+ * Kỳ của phiếu ĐÃ CHI xét theo `posted_on` của bút toán — một cột KHÔNG nằm
+ * trên bảng này. Kẹp `voucher_date` trước rồi mới đi tìm `posted_on` là đúng
+ * cái bẫy đang sửa: phiếu lập tháng 8 mà chi tháng 9 biến mất khỏi kỳ 9. Không
+ * có mốc nào an toàn, nên 'current' đọc cả tập rồi lọc bằng hàm thuần ở client.
+ *
+ * 'prior' thì kẹp được: Tồn Cũ theo định nghĩa chỉ gồm việc CHƯA XONG, mà việc
+ * chưa xong luôn xét theo `voucher_date` — nên `lt` là phép THU HẸP đúng nghĩa,
+ * không thể bỏ sót dòng nào thuộc phạm vi.
+ */
 const apDieuKienChung = (
   q: LocBuilder,
-  a: { organizationId: string; buildingIds: string[]; scope: SettlementScope; period: string },
+  a: { organizationId: string; buildingIds: string[]; scope: PeriodScope; period: string },
 ) => {
   let r = q
     .eq('organization_id', a.organizationId)
     .eq('type', 'EXPENSE')
     .is('deleted_at', null)
     .in('building_id', a.buildingIds);
-  if (a.scope === 'period') {
-    const [y, m] = a.period.split('-').map(Number);
-    const to = m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`;
-    r = r.gte('voucher_date', `${a.period}-01`).lt('voucher_date', to);
-  } else {
-    // 'open' = MỌI KỲ, chỉ việc chưa xong. Đo thật: 50/95 phiếu chờ duyệt nằm
-    // ngoài tháng hiện tại — lọc một tháng là giấu mất hơn nửa việc.
-    r = r.neq('approval_status', 'CANCELLED')
-      .or('posting_status.is.null,posting_status.neq.POSTED');
-  }
+  if (a.scope === 'prior') r = r.lt('voucher_date', `${a.period}-01`);
   return r.order('voucher_date', { ascending: false }).order('id', { ascending: true });
 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SEAM NGÀY GHI SỔ — ĐÚNG MỘT CHỖ TRONG CẢ KHU NÀY BIẾT NGÀY CHI TỪ ĐÂU RA
+//
+// Mọi thứ khác (read model, hàm thuần lọc kỳ, thẻ số, bảng, modal) chỉ thấy
+// `SettlementRow.postedOn`. Muốn đổi nguồn — ví dụ sau này có một RPC đọc
+// riêng cho người không giữ sổ — thì thay thân hàm này là xong, không đụng
+// tới bất cứ chỗ nào khác.
+//
+// Hôm nay nguồn là RLS BÌNH THƯỜNG: nối `income_expenses.active_posting_id_v2`
+// sang `income_expense_postings`. Bảng đó có ĐÚNG MỘT policy SELECT cho
+// `authenticated` (`finance_v2_postings_select_custodian`,
+// 20260723110000_finance_v2_rls_canary.sql:73-75) đòi route đọc CANONICAL và
+// binding CUSTODIAN đang hiệu lực trên ĐÚNG sổ quỹ đó.
+//
+// Đo thật 22/09/2026 trên org THẬT:
+//   chủ công ty (người dùng màn này): 1139 phiếu chi POSTED · 0 dòng bút toán
+//   tài khoản hệ thống              : 1139 phiếu chi POSTED · 3324 dòng
+//
+// Nên hàm này KHÔNG được ném khi đọc rỗng và KHÔNG được đi đường quyền cao hơn.
+// Nó trả về trạng thái đọc, còn lớp trên hiện "chưa xác minh" / "Chưa đủ dữ
+// liệu". Tuyệt đối không lùi về `posted_at_v2` (xem chú thích của cột đó).
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface NgayGhiSo {
+  state: PostingReadState;
+  /** `voucherId → posted_on`. Thiếu khoá = chưa xác minh được, KHÔNG phải 0. */
+  theoPhieu: Map<string, string>;
+}
+
+async function docNgayGhiSo(
+  organizationId: string,
+  list: readonly VoucherRow[],
+): Promise<NgayGhiSo> {
+  const theoPhieu = new Map<string, string>();
+  // Chỉ phiếu ĐÃ GHI SỔ mới có ngày chi. Phiếu hoàn tác/không ghi quỹ/chờ chi
+  // xét kỳ theo ngày phiếu và KHÔNG mang nhãn ngày chi.
+  const canTra = list.filter((v) => v.posting_status === 'POSTED' && !!v.active_posting_id_v2);
+  const ids = [...new Set(canTra.map((v) => v.active_posting_id_v2!))];
+  if (ids.length === 0) return { state: true, theoPhieu };
+
+  const dong = await fetchAllRows<{ id: string; posted_on: string | null }>(
+    (f, t) => (supabase.from('income_expense_postings')
+      .select('id, organization_id, posted_on') as unknown as LocBuilder)
+      .eq('organization_id', organizationId)
+      .in('id', ids)
+      .order('id', { ascending: true })
+      .range(f, t) as never,
+    { label: 'cs.postings' },
+  );
+  // ⚠ null = đọc HỎNG. Không ném: mất bút toán chỉ làm ngày chi chưa xác minh,
+  // còn ném thì cả bảng khoản chi biến mất vì một thứ phụ.
+  if (dong === null) return { state: false, theoPhieu };
+
+  const theoButToan = new Map<string, string>();
+  for (const p of dong) if (p.posted_on) theoButToan.set(p.id, p.posted_on);
+  for (const v of canTra) {
+    const d = theoButToan.get(v.active_posting_id_v2!);
+    if (d) theoPhieu.set(v.id, d);
+  }
+  return { state: theoButToan.size === ids.length ? true : 'partial', theoPhieu };
+}
 
 /**
  * Một dòng căn cứ hoa hồng của `get_period_commissions`.
@@ -253,11 +344,14 @@ interface KetQuaDocPhieu {
    * `organization_id`, nên tra map này không bao giờ vượt ranh giới công ty.
    */
   itemKinds: Record<string, SettlementKind[]>;
+  /** Ngày ghi sổ đọc qua seam `docNgayGhiSo`. */
+  postedOn: Map<string, string>;
+  postingRead: PostingReadState;
 }
 
 export function useContractSettlement(a: UseContractSettlementArgs) {
   const enabled = (a.enabled ?? true) && !!a.organizationId && a.buildingIds.length > 0;
-  const scope: SettlementScope = a.scope ?? 'open';
+  const scope: PeriodScope = a.scope ?? 'all';
   const typeMap = useSettlementTypeMap(a.organizationId, enabled);
 
   const vouchers = useQuery({
@@ -334,7 +428,10 @@ export function useContractSettlement(a: UseContractSettlementArgs) {
       // Khử trùng theo id: một phiếu nhiều hạng mục chỉ ra MỘT dòng.
       const theoId = new Map<string, VoucherRow>();
       for (const r of [...d1, ...d2, ...d3, ...d4]) theoId.set(r.id, r);
-      return { list: [...theoId.values()], itemKinds };
+      const list = [...theoId.values()];
+
+      const ngay = await docNgayGhiSo(a.organizationId!, list);
+      return { list, itemKinds, postedOn: ngay.theoPhieu, postingRead: ngay.state };
     },
   });
 
@@ -428,6 +525,7 @@ export function useContractSettlement(a: UseContractSettlementArgs) {
     if (!vs) return [];
     const treo = ghiChu.data;
     const basisHH = canCuHoaHong.data;
+    const ngayGhiSo = vouchers.data?.postedOn ?? new Map<string, string>();
 
     const basisOf = (v: VoucherRow, kind: SettlementRowKind): BasisState => {
       if (kind === 'unknown') {
@@ -507,9 +605,9 @@ export function useContractSettlement(a: UseContractSettlementArgs) {
         eventDate: v.voucher_date,
         origin: nguonCua(v),
         eventLabel: nhanBienDong(kind, nguonCua(v)),
-        // posted_at_v2 chỉ có nghĩa khi đã ghi sổ; phiếu chưa chi có thể vẫn
-        // mang giá trị cũ nếu từng bị đảo, nên chốt theo posting_status.
-        paidDate: v.posting_status === 'POSTED' ? v.posted_at_v2 : null,
+        // Ngày chi NGHIỆP VỤ, đọc qua seam `docNgayGhiSo`. Thiếu khoá ⇒ null ⇒
+        // "ngày chi chưa xác minh". KHÔNG lùi về `posted_at_v2`.
+        postedOn: v.posting_status === 'POSTED' ? (ngayGhiSo.get(v.id) ?? null) : null,
         bookName: v.posting_status === 'POSTED' ? (v.accounts?.name ?? null) : null,
         supplementPending: treo?.get(v.id) ?? false,
         reviewState: v.review_state,
@@ -525,6 +623,11 @@ export function useContractSettlement(a: UseContractSettlementArgs) {
 
   return {
     rows,
+    /**
+     * Đọc bút toán tới đâu. `'partial'`/`false` KHÔNG phải lỗi của cả bảng —
+     * chỉ những con số DỰA VÀO ngày chi mới phải nói "Chưa đủ dữ liệu".
+     */
+    postingRead: vouchers.data?.postingRead ?? true,
     isLoading:
       typeMap.isLoading || vouchers.isLoading ||
       (idsChoDuyet.length > 0 && ghiChu.isLoading) ||

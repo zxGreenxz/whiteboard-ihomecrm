@@ -20,8 +20,10 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import {
   ACTION_LABEL, KIND_LABEL, STATUS_FILTER_LABEL, STATUS_STYLE,
-  boDau, fmtCompact, fmtMoney, fmtNgay, matchStatus, viewStatusOf,
-  type SettlementRow, type StatusFilter, type ViewStatus,
+  boDau, fmtCompact, fmtMoney, fmtNgay, groupTotal, isOldPeriodWork, matchScope,
+  matchStatus, normalisePeriodFilter, periodScopeLabel, periodScopeOptions,
+  statValue, viewStatusOf,
+  type PeriodScope, type SettlementRow, type StatValue, type StatusFilter, type ViewStatus,
 } from '@/lib/contractSettlement';
 import type { SettlementKind } from '@/lib/settlementTypes';
 import { useContractSettlement } from '@/hooks/useContractSettlement';
@@ -55,9 +57,16 @@ type Tab = 'payments' | 'movements';
 interface BoLoc {
   q: string;
   building: string;
-  /** 'all' = mọi kỳ. Tab Khoản chi mặc định 'all' (giữ tồn cũ trong tầm mắt);
-   *  tab Biến động mặc định kỳ đang xem, vì báo cáo theo tháng mới có nghĩa. */
-  month: string;
+  /**
+   * Phạm vi kỳ — ENUM, KHÔNG phải chuỗi tháng.
+   *
+   * ⚠ Bản trước giữ một chuỗi `month` ở đây và ánh xạ 'all' → một chế độ truy
+   * vấn vừa bỏ lọc ngày vừa CẮT sẵn POSTED/CANCELLED. Hệ quả: "Mọi kỳ" không
+   * phải mọi kỳ cũng không phải mọi trạng thái, và mỗi lần đổi kỳ chung của
+   * trang lại còn một tháng cũ nằm khuất trong state. Kỳ tham chiếu duy nhất
+   * bây giờ là `period` của trang.
+   */
+  scope: PeriodScope;
   kind: string;
   status: StatusFilter;
   origin: string;
@@ -66,13 +75,34 @@ interface BoLoc {
   advanced: boolean;
 }
 
-const locMacDinh = (month: string): BoLoc => ({
-  q: '', building: 'all', month, kind: 'all', status: 'open',
+const locMacDinh = (): BoLoc => ({
+  q: '', building: 'all', scope: 'current', kind: 'all', status: 'open',
   origin: 'all', person: 'all', issue: 'all', advanced: false,
 });
 
 /** Tổng số tiền TRÊN PHIẾU. Thuần, không đóng bao biến nào. */
 const cong = (rs: SettlementRow[]) => rs.reduce((s, r) => s + r.amount, 0);
+
+/**
+ * Chữ trên thẻ số. Bốn ca tách bạch vì ba ca cuối KHÔNG được in ra số 0 —
+ * "không có đồng nào" và "không biết" là hai câu khác hẳn nhau khi nói về tiền.
+ */
+const soThe = (v: StatValue): string => {
+  switch (v.kind) {
+    case 'number': case 'unverified': return fmtCompact(v.total);
+    case 'insufficient': return '—';
+    case 'na': return '—';
+  }
+};
+
+const metaThe = (v: StatValue): string => {
+  switch (v.kind) {
+    case 'number': return `${v.count} phiếu · ${fmtMoney(v.total)}`;
+    case 'unverified': return `${v.count} phiếu · ${fmtMoney(v.total)} · chưa xác minh bút toán`;
+    case 'insufficient': return 'Chưa đủ dữ liệu — chưa đọc được ngày ghi sổ';
+    case 'na': return 'Không áp dụng cho tồn cũ';
+  }
+};
 
 const COT_CHI = 'minmax(150px,1.3fr) minmax(110px,.9fr) minmax(120px,1fr) minmax(120px,.9fr) minmax(110px,.8fr) 108px';
 const COT_BD = 'minmax(150px,1.2fr) minmax(190px,1.4fr) 116px minmax(170px,1fr) 108px';
@@ -82,15 +112,30 @@ export function ContractSettlementSection({ buildingIds, period }: Props) {
 
   const [tab, setTab] = useState<Tab>('payments');
   const [gop, setGop] = useState(true);
-  const [locChi, setLocChi] = useState<BoLoc>(() => locMacDinh('all'));
-  const [locBd, setLocBd] = useState<BoLoc>(() => locMacDinh(period));
+  const [locChi, setLocChi] = useState<BoLoc>(locMacDinh);
+  const [locBd, setLocBd] = useState<BoLoc>(locMacDinh);
   const [dangMo, setDangMo] = useState<string | null>(null);
   const [dangMoBd, setDangMoBd] = useState<string | null>(null);
 
   const mv = tab === 'movements';
   const f = mv ? locBd : locChi;
+
+  /**
+   * MỘT lối đổi bộ lọc duy nhất, và nó luôn đi qua `normalisePeriodFilter`.
+   *
+   * Thẻ số, dropdown kỳ, dropdown trạng thái, chip — tất cả gọi vào đây. Nếu
+   * mỗi chỗ tự chữa lấy thì sẽ có chỗ quên, và chỗ quên đó để lại phạm vi
+   * "Tồn Cũ" nằm ẩn sau một trạng thái lịch sử: bảng rỗng, không lời giải thích.
+   *
+   * Tab Biến động là BÁO CÁO LỊCH SỬ, không có khái niệm việc tồn — nó chỉ có
+   * hai phạm vi, nên 'prior' bị kéo về 'current'.
+   */
   const datLoc = (p: Partial<BoLoc>) =>
-    (mv ? setLocBd : setLocChi)((cu) => ({ ...cu, ...p }));
+    (mv ? setLocBd : setLocChi)((cu) => {
+      const sau = { ...cu, ...p };
+      if (mv) return { ...sau, scope: sau.scope === 'prior' ? 'current' : sau.scope };
+      return { ...sau, ...normalisePeriodFilter({ scope: sau.scope, status: sau.status }) };
+    });
 
   // ── Toàn trang: ẩn cột khung điện thoại khi đang xem khu này ──────────────
   // Khu này không có bản mobile (chủ chốt: làm sau), nên để khung điện thoại
@@ -102,13 +147,12 @@ export function ContractSettlementSection({ buildingIds, period }: Props) {
     return () => stage?.classList.remove('cs-full');
   }, []);
 
-  const chi = useContractSettlement({
-    organizationId, buildingIds, period,
-    scope: locChi.month === 'all' ? 'open' : 'period',
-  });
+  const chi = useContractSettlement({ organizationId, buildingIds, period, scope: locChi.scope });
   const bd = useContractMovements({
     organizationId, buildingIds,
-    period: locBd.month === 'all' ? null : locBd.month,
+    // Biến động lọc theo NGÀY NGHIỆP VỤ và chỉ có hai phạm vi. Kỳ tham chiếu
+    // lấy thẳng từ prop nên đổi kỳ chung không để lại tháng cũ trong state.
+    period: locBd.scope === 'all' ? null : period,
   });
 
   const actions = useSettlementActions(chi.rows);
@@ -123,11 +167,14 @@ export function ContractSettlementSection({ buildingIds, period }: Props) {
   // ── Nền lọc: mọi thứ TRỪ chip loại và chip trạng thái ─────────────────────
   // Tách ra vì số đếm trên chip phải tính trên nền này; nếu tính trên tập đã
   // lọc theo chính nó thì mọi chip đều hiện đúng số của nó và bằng tổng.
-  const nenChi = useMemo(() => {
+  //
+  // `nenTruocKy` = quyền/org/tòa/tìm kiếm/nguồn/người nhận/vướng mắc, CHƯA có kỳ.
+  // Giữ riêng vì hai thứ phải đếm trên nó: số tồn kỳ trước (để mời sang phạm vi
+  // Tồn Cũ) và số phiếu CHƯA XẾP ĐƯỢC KỲ (để không ai biến mất im lặng).
+  const nenTruocKy = useMemo(() => {
     const q = boDau(f.q);
     return chi.rows.filter((r) => {
       if (f.building !== 'all' && r.buildingId !== f.building) return false;
-      if (f.month !== 'all' && !(r.eventDate ?? '').startsWith(f.month)) return false;
       if (f.origin !== 'all' && r.origin !== f.origin) return false;
       if (f.person !== 'all' && (r.recipientName ?? '') !== f.person) return false;
       if (f.issue === 'yes' && r.issues.length === 0) return false;
@@ -137,7 +184,21 @@ export function ContractSettlementSection({ buildingIds, period }: Props) {
       ].join(' ')).includes(q)) return false;
       return true;
     });
-  }, [chi.rows, f.building, f.month, f.origin, f.person, f.issue, f.q]);
+  }, [chi.rows, f.building, f.origin, f.person, f.issue, f.q]);
+
+  /** TẬP NỀN CHUNG: thẻ, chip, banner, bảng và chân trang đều bắt đầu từ đây. */
+  const nenChi = useMemo(
+    () => nenTruocKy.filter((r) => matchScope(r, f.scope, period) === 'in'),
+    [nenTruocKy, f.scope, period],
+  );
+
+  /** Thiếu nguồn để xếp kỳ — phải BÁO RA, không được lặng lẽ rơi khỏi bảng. */
+  const chuaXacDinhKy = useMemo(
+    () => (f.scope === 'all'
+      ? []
+      : nenTruocKy.filter((r) => matchScope(r, f.scope, period) === 'undetermined')),
+    [nenTruocKy, f.scope, period],
+  );
 
   const nenBd = useMemo(() => {
     const q = boDau(f.q);
@@ -164,42 +225,54 @@ export function ContractSettlementSection({ buildingIds, period }: Props) {
   // Tính trên nền đã lọc theo loại (giống thiết kế), KHÔNG theo trạng thái —
   // nếu không thì bấm một thẻ sẽ làm các thẻ còn lại về 0.
   const doThe = useMemo(() => nenChi.filter((r) => f.kind === 'all' || r.kind === f.kind), [nenChi, f.kind]);
+  /**
+   * Nền của thẻ số: đã lọc loại nhưng CHƯA cắt kỳ — `statValue` tự cắt.
+   *
+   * ⚠ Đưa tập đã cắt kỳ vào đó là vô hiệu hoá chính điều thẻ phải nói: phiếu đã
+   * chi mà không đọc nổi ngày ghi sổ bị phép cắt kỳ loại ra, nên thẻ sẽ thấy
+   * một tập "sạch" rồi in 0đ — đúng câu nói dối đang phải sửa.
+   */
+  const nenThe = useMemo(
+    () => nenTruocKy.filter((r) => f.kind === 'all' || r.kind === f.kind),
+    [nenTruocKy, f.kind],
+  );
 
   const the = useMemo(() => {
     if (mv) return [];
     const nhom = (vs: ViewStatus[]) => doThe.filter((r) => vs.includes(viewOf.get(r.key) ?? 'unknown'));
     const mk = (key: StatusFilter, label: string, vs: ViewStatus[], dot: string,
+      needsPosting = false,
       meta?: (rs: SettlementRow[], n: number) => string) => {
+      const v = statValue({ rows: nenThe, views: vs, scope: f.scope, period, needsPosting });
       const rs = nhom(vs);
-      const n = cong(rs);
-      return { key, label, dot, so: fmtCompact(n), meta: meta ? meta(rs, n) : `${rs.length} phiếu · ${fmtMoney(n)}` };
+      return {
+        key, label, dot, gtri: v,
+        so: soThe(v),
+        meta: meta && v.kind === 'number' ? meta(rs, cong(rs)) : metaThe(v),
+      };
     };
     const raSoat = nhom(['review']);
-    const daChi = nhom(['paid']);
-    const khongQuy = nhom(['noncash']);
     return [
       {
         key: 'review' as StatusFilter, label: 'Cần rà soát', dot: STATUS_STYLE.review.fg,
+        gtri: { kind: 'number', count: raSoat.length, total: cong(raSoat) } as StatValue,
         so: String(raSoat.length), meta: 'hồ sơ cần kiểm tra',
       },
       ...(gop
-        ? [mk('pendpay', 'Chờ Duyệt và Chi', ['pending', 'approved'], STATUS_STYLE.pending.fg,
-            (rs, n) => `${rs.filter((r) => viewOf.get(r.key) === 'pending').length} chờ duyệt · `
-              + `${rs.filter((r) => viewOf.get(r.key) === 'approved').length} chờ chi · ${fmtMoney(n)}`)]
+        ? [mk('pendpay', 'Chờ Duyệt và Chi', ['pending', 'approved'], STATUS_STYLE.pending.fg, false,
+            (_rs, n) => `${groupTotal(doThe, ['pending']).count} chờ duyệt · `
+              + `${groupTotal(doThe, ['approved']).count} chờ chi · ${fmtMoney(n)}`)]
         : [
             mk('pending', 'Chờ duyệt', ['pending'], STATUS_STYLE.pending.fg),
             mk('approved', 'Chờ chi', ['approved'], STATUS_STYLE.approved.fg),
           ]),
-      {
-        key: 'paid' as StatusFilter, label: 'Đã chi', dot: STATUS_STYLE.paid.fg,
-        // ⚠ Số tiền CHỈ cộng phiếu đã ghi sổ thật. Phiếu "không ghi quỹ" được
-        // đếm riêng ở dòng dưới — cộng chung là nói dối về tiền đã rời két.
-        so: fmtCompact(cong(daChi)),
-        meta: `${daChi.length} phiếu · ${fmtMoney(cong(daChi))}`
-          + (khongQuy.length ? ` · ${khongQuy.length} không ghi quỹ` : ''),
-      },
+      // ⚠ HAI THẺ RIÊNG. "Đã chi" chỉ cộng phiếu đã ghi sổ THẬT; phiếu ghi trên
+      // sổ ảo có thẻ của nó. Gộp chung là nói dối về số tiền đã rời két — và
+      // chính chỗ gộp ấy từng làm thẻ hiện 0đ trên một bảng đang có ba dòng.
+      mk('paid', 'Đã chi', ['paid'], STATUS_STYLE.paid.fg, true),
+      mk('noncash', 'Không ghi quỹ', ['noncash'], STATUS_STYLE.noncash.fg),
     ];
-  }, [mv, doThe, gop, viewOf]);
+  }, [mv, doThe, nenThe, gop, viewOf, f.scope, period]);
 
   const theBd = useMemo(() => {
     if (!mv) return [];
@@ -233,25 +306,44 @@ export function ContractSettlementSection({ buildingIds, period }: Props) {
     return [...s].sort((a, b) => a.localeCompare(b, 'vi'));
   }, [chi.rows]);
 
-  const ton = mv ? [] : hienChi.filter((r) => {
-    const v = viewOf.get(r.key);
-    return (r.eventDate ?? '').slice(0, 7) < period && v !== 'paid' && v !== 'cancelled';
-  });
+  // Tồn kỳ trước đếm trên nền TRƯỚC KỲ: đứng ở Kỳ hiện tại vẫn phải biết ngoài
+  // kia còn bao nhiêu việc cũ. `isOldPeriodWork` chỉ nhận việc CHƯA XONG — nhãn
+  // tồn không bao giờ dán lên một phiếu đã chi/đã huỷ/đã hoàn tác.
+  const ton = mv || f.scope === 'prior'
+    ? []
+    : nenTruocKy.filter((r) => isOldPeriodWork(r, period));
 
   const dangTai = mv ? bd.isLoading : chi.isLoading;
   const hong = mv ? bd.isError : chi.isError;
   const soDong = mv ? hienBd.length : hienChi.length;
   const tongTien = mv ? 0 : hienChi.reduce((s, r) => s + r.amount, 0);
+  /**
+   * Tiền ĐÃ RỜI KÉT trong tập đang xem. Sổ ảo và phiếu huỷ không nằm ở đây.
+   * Dùng nền TRƯỚC KỲ (đã lọc loại + trạng thái) vì cùng lý do với thẻ số:
+   * phiếu đã chi mà chưa xác minh được ngày sẽ rơi khỏi tập đã cắt kỳ, và khi
+   * đó "0 đ" là câu sai — phải nói "Chưa đủ dữ liệu".
+   */
+  const thucChi = useMemo(
+    () => statValue({
+      rows: nenThe.filter((r) => matchStatus(viewOf.get(r.key) ?? 'unknown', f.status)),
+      views: ['paid'], scope: f.scope, period, needsPosting: true,
+    }),
+    [nenThe, viewOf, f.status, f.scope, period],
+  );
+  const nhieuTrangThai = useMemo(
+    () => new Set(hienChi.map((r) => viewOf.get(r.key) ?? 'unknown')).size > 1,
+    [hienChi, viewOf],
+  );
   const coLoc = f.q !== '' || f.building !== 'all' || f.kind !== 'all' || f.origin !== 'all'
-    || f.person !== 'all' || f.issue !== 'all';
+    || f.person !== 'all' || f.issue !== 'all' || f.status !== 'open' || f.scope !== 'current';
 
   const row = dangMo ? chi.rows.find((r) => r.voucherId === dangMo) ?? null : null;
   const bdDangXem: MovementRow | null =
     dangMoBd ? bd.rows.find((e) => e.key === dangMoBd) ?? null : null;
 
-  const xoaLoc = () => (mv ? setLocBd : setLocChi)(
-    { ...locMacDinh(mv ? period : 'all'), advanced: f.advanced },
-  );
+  // Bỏ lọc là về ĐÚNG mặc định, kể cả phạm vi kỳ. Không còn chuỗi tháng nào để
+  // sót lại, vì phạm vi là enum và kỳ tham chiếu lấy từ prop.
+  const xoaLoc = () => (mv ? setLocBd : setLocChi)({ ...locMacDinh(), advanced: f.advanced });
 
   return (
     <div className="cs-wrap">
@@ -272,9 +364,11 @@ export function ContractSettlementSection({ buildingIds, period }: Props) {
               onChange={() => {
                 setGop((g) => !g);
                 // Đang lọc theo một thẻ sắp biến mất thì thả về "Cần xử lý",
-                // kẻo bảng rỗng mà không ai hiểu vì sao.
+                // kẻo bảng rỗng mà không ai hiểu vì sao. Vẫn đi qua normalizer
+                // để phạm vi và trạng thái không bao giờ lệch nhau.
                 setLocChi((c) => (['pending', 'approved', 'pendpay'].includes(c.status)
-                  ? { ...c, status: 'open' } : c));
+                  ? { ...c, ...normalisePeriodFilter({ scope: c.scope, status: 'open' }) }
+                  : c));
               }}
             />
             Gộp Chờ duyệt và Chi
@@ -288,13 +382,23 @@ export function ContractSettlementSection({ buildingIds, period }: Props) {
           {the.map((t) => {
             const on = f.status === t.key;
             return (
-              <button type="button" key={t.key} className={`cs-stat ${on ? 'on' : ''}`}
-                onClick={() => datLoc({ status: on ? 'open' : t.key })}>
-                <div className="cs-stat-lbl"><span className="cs-dot" style={{ background: t.dot }} />{t.label}</div>
-                <div className="cs-stat-num">{t.so}</div>
-                <div className="cs-stat-meta">{t.meta}</div>
-                <span className="cs-stat-cta">{on ? 'Đang lọc' : 'Lọc'}</span>
-              </button>
+              <div className="cs-stat-wrap" key={t.key}>
+                <button type="button" className={`cs-stat ${on ? 'on' : ''}`}
+                  onClick={() => datLoc({ status: on ? 'open' : t.key })}>
+                  <div className="cs-stat-lbl"><span className="cs-dot" style={{ background: t.dot }} />{t.label}</div>
+                  <div className="cs-stat-num">{t.so}</div>
+                  <div className="cs-stat-meta">{t.meta}</div>
+                  <span className="cs-stat-cta">{on ? 'Đang lọc' : 'Lọc'}</span>
+                </button>
+                {/* Thiếu bút toán là thứ THỬ LẠI ĐƯỢC — mạng chập, hoặc vừa
+                    được cấp binding giữ sổ, thì lần đọc sau đã có số. Nút nằm
+                    NGOÀI thẻ vì lồng button trong button là HTML không hợp lệ. */}
+                {t.gtri.kind === 'insufficient' && (
+                  <button type="button" className="cs-stat-retry" onClick={() => chi.refetch?.()}>
+                    Thử lại
+                  </button>
+                )}
+              </div>
             );
           })}
         </div>
@@ -348,13 +452,20 @@ export function ContractSettlementSection({ buildingIds, period }: Props) {
                 placeholder="Tìm phòng, khách, hợp đồng, phiếu…"
               />
             </label>
-            <select className="cs-sel" value={f.building} onChange={(e) => datLoc({ building: e.target.value })}>
+            <select className="cs-sel" aria-label="Tòa"
+              value={f.building} onChange={(e) => datLoc({ building: e.target.value })}>
               <option value="all">Tất cả tòa</option>
               {toaCo.map(([id, ten]) => <option key={id} value={id}>{ten}</option>)}
             </select>
-            <select className="cs-sel" value={f.month} onChange={(e) => datLoc({ month: e.target.value })}>
-              <option value="all">{mv ? 'Mọi kỳ' : 'Mọi kỳ · gồm tồn cũ'}</option>
-              <option value={period}>Kỳ {period}</option>
+            {/* Ba phạm vi cho việc chưa xong, hai cho lịch sử. Danh sách option
+                đổi THEO trạng thái đang chọn, nên không có phạm vi nào tồn tại
+                trong state mà không hiện ra trên màn hình. */}
+            <select className="cs-sel" aria-label="Phạm vi kỳ"
+              value={f.scope} onChange={(e) => datLoc({ scope: e.target.value as PeriodScope })}>
+              {(mv ? (['current', 'all'] as PeriodScope[]) : periodScopeOptions(f.status))
+                .map((s) => (
+                  <option key={s} value={s}>{periodScopeLabel(s, period)}</option>
+                ))}
             </select>
             <button type="button" className={`cs-advbtn ${f.advanced ? 'on' : ''}`}
               onClick={() => datLoc({ advanced: !f.advanced })}>
@@ -383,8 +494,12 @@ export function ContractSettlementSection({ buildingIds, period }: Props) {
                   </label>
                   <label>
                     Trạng thái
-                    <select value={f.status} onChange={(e) => datLoc({ status: e.target.value as StatusFilter })}>
-                      {(['open', 'all', 'review', 'pending', 'approved', 'paid', 'noncash', 'cancelled'] as StatusFilter[])
+                    {/* 'reversed' và 'unknown' có mặt để KHÔNG GIẤU phiếu nào:
+                        phiếu hoàn tác và tổ hợp trạng thái lạ vẫn phải soi được. */}
+                    <select aria-label="Trạng thái" value={f.status}
+                      onChange={(e) => datLoc({ status: e.target.value as StatusFilter })}>
+                      {(['open', 'all', 'review', 'pending', 'approved', 'paid', 'noncash',
+                        'reversed', 'cancelled', 'unknown'] as StatusFilter[])
                         .map((k) => <option key={k} value={k}>{STATUS_FILTER_LABEL[k]}</option>)}
                     </select>
                   </label>
@@ -423,8 +538,27 @@ export function ContractSettlementSection({ buildingIds, period }: Props) {
               <span className="cs-tag-ton">TỒN</span>
               <span>
                 Có <b>{ton.length} khoản tồn kỳ trước</b> ·{' '}
-                <span style={{ fontFamily: 'var(--mono)' }}>{fmtMoney(ton.reduce((s, r) => s + r.amount, 0))}</span>.
-                {' '}Vẫn được giữ trong danh sách cần xử lý.
+                <span style={{ fontFamily: 'var(--mono)' }}>{fmtMoney(cong(ton))}</span>.
+                {' '}
+                <button type="button" className="cs-linkbtn"
+                  onClick={() => datLoc({ scope: 'prior', status: 'open' })}>
+                  Xem phạm vi Tồn Cũ
+                </button>
+              </span>
+            </div>
+          )}
+          {/* Phiếu THIẾU NGUỒN để xếp kỳ không được lặng lẽ rơi khỏi bảng. Hay
+              gặp nhất: phiếu đã ghi sổ mà người xem không đọc nổi bút toán nên
+              không có ngày chi. Nói ra và mời sang Tất Cả, đừng giấu. */}
+          {!mv && chuaXacDinhKy.length > 0 && (
+            <div className="cs-notice">
+              <span className="cs-tag-ton" style={{ background: 'var(--line-2)', color: 'var(--ink-2)' }}>?</span>
+              <span>
+                Có <b>{chuaXacDinhKy.length} khoản chưa xác định kỳ</b> — thiếu ngày phiếu hoặc
+                chưa đọc được ngày ghi sổ, nên không xếp vào phạm vi nào.{' '}
+                <button type="button" className="cs-linkbtn" onClick={() => datLoc({ scope: 'all' })}>
+                  Xem ở Tất Cả
+                </button>
               </span>
             </div>
           )}
@@ -436,7 +570,12 @@ export function ContractSettlementSection({ buildingIds, period }: Props) {
           )}
 
           <div className="cs-resline">
-            <span>{soDong}{mv ? ' lượt biến động' : ` khoản · ${STATUS_FILTER_LABEL[f.status]}`}</span>
+            <span>
+              {soDong}
+              {mv
+                ? ' lượt biến động'
+                : ` khoản · ${STATUS_FILTER_LABEL[f.status]} · ${periodScopeLabel(f.scope, period)}`}
+            </span>
             <span>{mv ? 'Mỗi dòng = một sự kiện' : 'Danh sách chi tiết'}</span>
           </div>
 
@@ -450,7 +589,7 @@ export function ContractSettlementSection({ buildingIds, period }: Props) {
               {hienChi.map((r) => {
                 const v = viewOf.get(r.key) ?? 'unknown';
                 const st = STATUS_STYLE[v];
-                const cu = (r.eventDate ?? '').slice(0, 7) < period && v !== 'paid' && v !== 'cancelled';
+                const cu = isOldPeriodWork(r, period);
                 return (
                   <div className={`cs-row ${dangMo === r.voucherId ? 'on' : ''}`} key={r.key}>
                     <button type="button" className="cs-cellbtn" onClick={() => setDangMo(r.voucherId)}>
@@ -476,7 +615,12 @@ export function ContractSettlementSection({ buildingIds, period }: Props) {
                     <div className="cs-amt">
                       <div className="cs-amt-v">{fmtMoney(r.amount)}</div>
                       <div className="cs-amt-s">
-                        {v === 'paid' ? `Chi ${fmtNgay(r.paidDate)}`
+                        {/* Không đọc được bút toán thì nói thẳng là CHƯA XÁC
+                            MINH. In "Chi —" là để người ta tưởng phiếu thiếu
+                            ngày, trong khi sự thật là mình không được phép đọc. */}
+                        {v === 'paid'
+                          ? (r.postedOn ? `Chi ${fmtNgay(r.postedOn)}` : 'Ngày chi chưa xác minh')
+                          : v === 'reversed' ? 'Đã ghi sổ rồi hoàn tác'
                           : v === 'approved' ? 'Đã duyệt'
                           : v === 'review' ? 'Đề nghị · chưa xác minh' : 'Đề nghị'}
                       </div>
@@ -549,11 +693,16 @@ export function ContractSettlementSection({ buildingIds, period }: Props) {
 
           {soDong === 0 && (
             <div className="cs-empty">
-              <b>{coLoc ? 'Không có hồ sơ phù hợp' : 'Không còn khoản cần xử lý'}</b>
+              {/* KHÔNG suy "mọi việc đã xong". Rỗng chỉ nói về PHẠM VI ĐANG XEM;
+                  kết luận rộng hơn thế là câu không có bằng chứng. */}
+              <b>
+                {mv ? 'Không có biến động nào' : 'Không có khoản nào khớp phạm vi đang xem'}
+              </b>
               <p>
-                {coLoc
-                  ? 'Đổi kỳ hoặc bỏ bớt bộ lọc để xem các hồ sơ khác.'
-                  : 'Mọi phiếu trong phạm vi đã được chi hoặc từ chối. Xem “Đã chi” để đối chiếu lịch sử.'}
+                {mv
+                  ? 'Đổi phạm vi kỳ hoặc bỏ bớt bộ lọc để xem các sự kiện khác.'
+                  : `Đang xem ${STATUS_FILTER_LABEL[f.status]} · ${periodScopeLabel(f.scope, period)}.`
+                    + ' Đổi phạm vi kỳ hoặc trạng thái để xem tiếp.'}
               </p>
               {coLoc && <button type="button" onClick={xoaLoc}>Bỏ bộ lọc</button>}
             </div>
@@ -564,10 +713,22 @@ export function ContractSettlementSection({ buildingIds, period }: Props) {
               {mv
                 ? 'Ngày ký · xác nhận gia hạn · thanh lý · xử lý cọc'
                 : f.status === 'paid'
-                  ? 'Lọc theo ngày chi thực tế'
-                  : 'Lọc theo kỳ phát sinh · đã chi được xem riêng trong lịch sử'}
+                  ? 'Lọc theo ngày ghi sổ của bút toán hiệu lực'
+                  : f.status === 'open' || f.status === 'review' || f.status === 'pending'
+                    || f.status === 'approved' || f.status === 'pendpay'
+                    ? 'Lọc theo ngày phiếu'
+                    : 'Lọc theo ngày phiếu · riêng Đã chi theo ngày ghi sổ'}
             </span>
-            <span>{mv ? '' : `Tổng đang xem: ${fmtMoney(tongTien)}`}</span>
+            {/* Hai con số KHÁC NHAU và phải nói rõ là khác: tổng giá trị phiếu
+                đang xem có cả sổ ảo/huỷ, còn thực chi chỉ là tiền đã rời két. */}
+            <span>
+              {mv ? '' : `Tổng giá trị phiếu đang xem: ${fmtMoney(tongTien)}`}
+              {!mv && nhieuTrangThai && ` · Đã chi thực tế: ${
+                thucChi.kind === 'insufficient' ? 'Chưa đủ dữ liệu'
+                  : thucChi.kind === 'na' ? 'Không áp dụng cho tồn cũ'
+                  : `${fmtMoney(thucChi.total)}${thucChi.kind === 'unverified' ? ' (chưa xác minh)' : ''}`
+              }`}
+            </span>
           </div>
         </section>
       )}

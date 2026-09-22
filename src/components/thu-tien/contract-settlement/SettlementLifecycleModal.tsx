@@ -329,7 +329,9 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
                   <b>{view === 'paid' ? 'Đã chi' : 'Còn phải chi'}</b>
                   <span className="sub">
                     {view === 'paid'
-                      ? `${fmtNgay(row.paidDate)} · ${row.bookName ?? 'sổ không rõ'}`
+                      ? `${row.postedOn ? fmtNgay(row.postedOn) : 'ngày chi chưa xác minh'} · `
+                        + `${row.bookName ?? 'sổ không rõ'}`
+                      : view === 'reversed' ? 'Đã ghi sổ rồi hoàn tác'
                       : 'Chưa ghi sổ'}
                   </span>
                 </span>
@@ -429,7 +431,13 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
                 <div className="cs-proof" style={{ marginBottom: 8 }}>
                   <div>{row.bookName ?? 'Sổ không rõ'}</div>
                   <div className="val">{fmtMoney(row.amount)}</div>
-                  <div>Chi ngày {fmtNgay(row.paidDate)}</div>
+                  {/* Không đọc được bút toán thì NÓI RA, đừng in "Chi ngày —"
+                      để người xem tưởng phiếu thiếu ngày. */}
+                  <div>
+                    {row.postedOn
+                      ? `Chi ngày ${fmtNgay(row.postedOn)}`
+                      : 'Ngày chi chưa xác minh — cần quyền giữ sổ quỹ để đối chiếu'}
+                  </div>
                 </div>
               )}
               <ChungTuThanhToan attachments={row.attachments} />
@@ -615,7 +623,22 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
 
               {!dangChi && view === 'paid' && (
                 <div className="cs-donebox">
-                  Đã chi đủ ngày {fmtNgay(row.paidDate)}. Không có nút chi lại.
+                  {row.postedOn
+                    ? `Đã chi đủ ngày ${fmtNgay(row.postedOn)}. Không có nút chi lại.`
+                    : 'Đã chi đủ. Ngày chi chưa xác minh được (cần quyền giữ sổ quỹ). '
+                      + 'Không có nút chi lại.'}
+                </div>
+              )}
+              {/* PHIẾU HOÀN TÁC — chỗ bản trước sai nặng nhất.
+                  REVERSED từng bị gộp vào 'approved', nên đúng cái nút "Ghi
+                  nhận chi" hiện ra cho một phiếu ĐÃ TỪNG CHI rồi bị đảo: lời
+                  mời chi lần hai. Ở đây không có nút nào; muốn chi lại thì làm
+                  bên Thu chi, nơi có writer và cổng quyền thật. */}
+              {!dangChi && view === 'reversed' && (
+                <div className="cs-cancelbox">
+                  <b>Bút toán đã bị hoàn tác.</b> Phiếu này từng được ghi sổ rồi bị đảo — không
+                  phải phiếu chưa chi. Cần chi lại thì xử lý bên Thu chi, khu này không mời chi
+                  lần hai.
                 </div>
               )}
               {!dangChi && view === 'noncash' && (
@@ -628,6 +651,9 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
                 <div className="cs-cancelbox"><b>Đã từ chối.</b> Phiếu không còn trong danh sách cần xử lý.</div>
               )}
 
+              {/* Từ chối VẪN mở cho phiếu hoàn tác: tiền đã quay về, huỷ phiếu
+                  là bước tiếp theo hợp lý. Chỉ lời mời CHI LẠI mới bị gỡ. Cổng
+                  quyền `kha.cancel` không đổi một dòng nào. */}
               {!dangChi && view !== 'paid' && view !== 'cancelled' && (
                 !chuoiTuChoi ? (
                   <button type="button" className="cs-btn danger sm"

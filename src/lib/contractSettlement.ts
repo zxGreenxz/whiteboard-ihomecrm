@@ -37,7 +37,13 @@ export const DAU_DA_BO_SUNG = '[ĐÃ BỔ SUNG]';
 
 /**
  * 'pending'   — UNAPPROVED (chờ duyệt). Chỉ trạng thái này mới có làn.
- * 'approved'  — APPROVED + chưa ghi sổ (chờ chi). REVERSED cũng về đây.
+ * 'approved'  — APPROVED + chưa ghi sổ (chờ chi).
+ * 'reversed'  — APPROVED + REVERSED: đã ghi sổ rồi bút toán bị ĐẢO.
+ *               ⚠ Bản trước gộp vào 'approved', và hệ quả nhìn thấy được là
+ *               modal hiện nút "Ghi nhận chi" cho một phiếu đã từng chi — tức
+ *               MỜI CHI LẦN HAI chỉ vì mapping hiển thị xếp nhầm chỗ. Hoàn tác
+ *               không phải "chưa từng chi", cũng không phải "còn phải chi";
+ *               muốn chi lại thì làm bên Thu chi, không phải ở lớp mặt này.
  * 'noncash'   — APPROVED + NOT_APPLICABLE: đã duyệt nhưng KHÔNG ghi quỹ (sổ ảo).
  *               KHÔNG phải "đã chi tiền cho khách". Đo thật: 3 phiếu, 9.515.634đ
  *               trên sổ ảo "CỌC (giữ hộ khách)", không có dòng posting nào.
@@ -46,7 +52,7 @@ export const DAU_DA_BO_SUNG = '[ĐÃ BỔ SUNG]';
  * 'unknown'   — tổ hợp lạ. KHÔNG được coi là pending thao tác được.
  */
 export type SettlementStatus =
-  | 'pending' | 'approved' | 'noncash' | 'paid' | 'cancelled' | 'unknown';
+  | 'pending' | 'approved' | 'reversed' | 'noncash' | 'paid' | 'cancelled' | 'unknown';
 
 export type SettlementLane = 'can-ra-soat' | 'cho-duyet';
 
@@ -161,8 +167,22 @@ export interface SettlementRow {
   origin: 'contract' | 'reservation';
   /** Nhãn biến động sinh ra khoản chi này: "Thanh lý", "Ký mới", … */
   eventLabel: string;
-  /** Ngày ghi sổ thật. Chỉ có khi đã POSTED. */
-  paidDate: string | null;
+  /**
+   * NGÀY CHI NGHIỆP VỤ = `posted_on` của bút toán hiệu lực
+   * (`income_expenses.active_posting_id_v2` → `income_expense_postings`).
+   *
+   * ⚠ KHÔNG PHẢI `posted_at_v2`. Cột đó là dấu thời gian HỆ THỐNG GHI, và trên
+   * dữ liệu thật nó không thay thế được: đo 22/09/2026 trên 1000 phiếu chi đã
+   * ghi sổ có bút toán hiệu lực, 856 phiếu `posted_at_v2` NULL, và 20 trong 144
+   * phiếu còn lại LỆCH với `posted_on` — một phiếu lệch tới hai tháng.
+   *
+   * `null` = CHƯA XÁC MINH ĐƯỢC, không phải "chưa chi". Đa số người dùng không
+   * đọc nổi bảng bút toán (policy đòi binding CUSTODIAN đúng sổ): đo thật, tài
+   * khoản chủ công ty thấy 1139 phiếu đã ghi sổ và 0 dòng posting. Gặp null thì
+   * ghi "ngày chi chưa xác minh" và để stat liên quan báo "Chưa đủ dữ liệu" —
+   * KHÔNG hạ phiếu xuống chờ chi, KHÔNG báo 0, KHÔNG đi tìm đường quyền cao hơn.
+   */
+  postedOn: string | null;
   /** Tên sổ quỹ đã ghi. Null khi chưa chi. */
   bookName: string | null;
   issues: SettlementIssue[];
@@ -177,7 +197,7 @@ export interface SettlementRow {
 
 /** Trạng thái không còn việc để nhắc. */
 const DA_DONG: ReadonlySet<SettlementStatus> =
-  new Set(['paid', 'cancelled', 'noncash', 'unknown']);
+  new Set(['paid', 'cancelled', 'noncash', 'reversed', 'unknown']);
 
 export function settlementStatusOf(
   approval: string | null | undefined,
@@ -188,7 +208,9 @@ export function settlementStatusOf(
   if (approval === 'APPROVED') {
     if (posting === 'POSTED') return 'paid';
     if (posting === 'NOT_APPLICABLE') return 'noncash';
-    // UNPOSTED, REVERSED, null đều là "đã duyệt, chưa ghi sổ".
+    // Bút toán bị ĐẢO có trạng thái riêng — xem chú thích của 'reversed'.
+    if (posting === 'REVERSED') return 'reversed';
+    // UNPOSTED và null là "đã duyệt, chưa ghi sổ".
     return 'approved';
   }
   // Giá trị lạ hoặc thiếu: KHÔNG đoán là pending. Đoán sai theo hướng đó là mời
@@ -306,17 +328,20 @@ export function sumOnVoucher(rows: Pick<SettlementRow, 'amount' | 'status'>[]): 
  * còn vướng blocker. Xem khối "BLOCKER ≠ CẢNH BÁO" ở đầu file.
  */
 export type ViewStatus =
-  | 'review' | 'pending' | 'approved' | 'noncash' | 'paid' | 'cancelled' | 'unknown';
+  | 'review' | 'pending' | 'approved' | 'reversed'
+  | 'noncash' | 'paid' | 'cancelled' | 'unknown';
 
 /** Bộ lọc trạng thái trên thanh công cụ. 'pendpay' chỉ dùng khi bật gộp. */
 export type StatusFilter =
   | 'open' | 'all' | 'review' | 'pending' | 'approved' | 'pendpay'
-  | 'noncash' | 'paid' | 'cancelled';
+  | 'noncash' | 'paid' | 'cancelled' | 'reversed' | 'unknown';
 
 export const STATUS_STYLE: Record<ViewStatus, { nhan: string; bg: string; fg: string }> = {
   review: { nhan: 'Cần rà soát', bg: '#fcebe9', fg: '#d6453f' },
   pending: { nhan: 'Chờ duyệt', bg: '#fbf1da', fg: '#c97a10' },
   approved: { nhan: 'Đã duyệt · chờ chi', bg: '#e8f3ec', fg: '#1f7a52' },
+  // Đã ghi sổ rồi bị đảo. KHÔNG phải "chưa từng chi" — xem 'reversed' ở trên.
+  reversed: { nhan: 'Đã hoàn tác', bg: '#f3ecf7', fg: '#6b4a86' },
   // KHÔNG gọi là "Đã chi": đây là phiếu duyệt xong nhưng ghi vào sổ ảo, tiền
   // chưa hề rời két. Đo thật 21/09: 3 phiếu / 9.515.634đ trên sổ "CỌC (giữ hộ)".
   noncash: { nhan: 'Không ghi quỹ', bg: '#eef2f7', fg: '#41607a' },
@@ -339,6 +364,9 @@ export const ACTION_LABEL: Record<ViewStatus, string> = {
   review: 'Rà soát',
   pending: 'Duyệt và Chi',
   approved: 'Chi tiền',
+  // ⚠ KHÔNG phải 'Chi tiền'. Phiếu hoàn tác đã từng ghi sổ; mời chi tiếp ở đây
+  // là dựng lại đúng cái bẫy mà bản trước tạo ra khi gộp REVERSED vào 'approved'.
+  reversed: 'Xem phiếu',
   noncash: 'Xem phiếu',
   paid: 'Xem phiếu',
   cancelled: 'Xem lý do',
@@ -356,18 +384,27 @@ export function viewStatusOf(
 }
 
 /**
+ * Ba làn CÒN VIỆC PHẢI LÀM. Mọi thứ ngoài tập này là lịch sử: đã chi, không ghi
+ * quỹ, hủy, hoàn tác, không xác định. Dùng chung cho bộ lọc "Cần xử lý", cho
+ * định nghĩa Tồn Cũ và cho nhãn tồn — ba chỗ đó lệch nhau là bảng nói một đằng,
+ * thẻ nói một nẻo.
+ */
+export const VIEC_CHUA_XONG: ReadonlySet<ViewStatus> =
+  new Set<ViewStatus>(['review', 'pending', 'approved']);
+
+/**
  * Phiếu có khớp bộ lọc trạng thái không.
  *
- * ⚠ 'noncash' nằm trong nhóm ĐÃ XONG chứ không phải "cần xử lý" — nó không còn
- * việc gì để làm. Nhưng tiền của nó KHÔNG được cộng vào thẻ "Đã chi"; chỗ cộng
- * tiền phải lọc riêng `paid`. Cộng gộp là nói dối về số tiền đã rời két.
+ * ⚠ 'noncash' KHÔNG nằm trong 'paid'. Bản trước cho nó lọt vào đây trong khi
+ * THẺ SỐ chỉ cộng 'paid' — nên thẻ hiện 0đ/0 phiếu ngay trên một cái bảng đang
+ * có ba dòng. Không ghi quỹ là bộ lọc RIÊNG và stat RIÊNG; gộp vào là nói dối
+ * về số tiền đã rời két.
  */
 export function matchStatus(view: ViewStatus, f: StatusFilter): boolean {
   switch (f) {
     case 'all': return true;
-    case 'open': return view === 'review' || view === 'pending' || view === 'approved';
+    case 'open': return VIEC_CHUA_XONG.has(view);
     case 'pendpay': return view === 'pending' || view === 'approved';
-    case 'paid': return view === 'paid' || view === 'noncash';
     default: return view === f;
   }
 }
@@ -382,7 +419,212 @@ export const STATUS_FILTER_LABEL: Record<StatusFilter, string> = {
   noncash: 'Không ghi quỹ',
   paid: 'Đã chi',
   cancelled: 'Từ chối / hủy',
+  reversed: 'Đã hoàn tác',
+  // Có mặt để KHÔNG GIẤU phiếu nào: tổ hợp trạng thái lạ vẫn phải soi được.
+  unknown: 'Không xác định',
 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BA PHẠM VI KỲ — plan §3.4, chủ chốt ngày 22/09/2026
+//
+// Phạm vi là ENUM, KHÔNG có bản sao chuỗi tháng nào trong state. Kỳ tham chiếu
+// duy nhất là `period` của trang. Nhờ vậy đổi kỳ chung hay bấm "Bỏ lọc" không
+// thể để lại một tháng cũ nằm khuất đâu đó rồi sinh ra bảng rỗng khó hiểu.
+//
+// ⚠ `Kỳ hiện tại + Tồn Cũ ≠ Tất Cả`. Tất Cả còn chứa lịch sử ĐÃ HOÀN THÀNH
+// (đã chi, không ghi quỹ, hủy, hoàn tác) mà hai phạm vi kia cố ý không chứa.
+// Đừng hiện thực Tất Cả bằng cách hợp hai tập kia.
+// ═══════════════════════════════════════════════════════════════════════════
+
+export type PeriodScope = 'current' | 'prior' | 'all';
+
+export interface PeriodFilterState {
+  scope: PeriodScope;
+  status: StatusFilter;
+}
+
+/** Bộ lọc trạng thái này có phải "việc chưa xong" không. */
+const LOC_VIEC_CHUA_XONG: ReadonlySet<StatusFilter> =
+  new Set<StatusFilter>(['open', 'review', 'pending', 'approved', 'pendpay']);
+
+/**
+ * Phạm vi kỳ được phép chọn cho một bộ lọc trạng thái.
+ *
+ * Việc chưa xong có đủ ba. Trạng thái LỊCH SỬ (đã chi, không ghi quỹ, hủy, hoàn
+ * tác, không xác định) chỉ có hai — "Tồn Cũ" theo định nghĩa là việc còn phải
+ * làm, nên ghép nó với một trạng thái đã xong luôn ra bảng rỗng.
+ *
+ * 'all' (Tất cả trạng thái) vẫn mở Tồn Cũ; chọn xong thì `normalisePeriodFilter`
+ * kéo trạng thái về "Cần xử lý" cho đúng nghĩa.
+ */
+export function periodScopeOptions(f: StatusFilter): PeriodScope[] {
+  return f === 'all' || LOC_VIEC_CHUA_XONG.has(f)
+    ? ['current', 'prior', 'all']
+    : ['current', 'all'];
+}
+
+/** "Kỳ hiện tại (09/2026)" · "Tồn Cũ" · "Tất Cả". */
+export function periodScopeLabel(scope: PeriodScope, period: string): string {
+  if (scope === 'prior') return 'Tồn Cũ';
+  if (scope === 'all') return 'Tất Cả';
+  const [y, m] = period.split('-');
+  return `Kỳ hiện tại (${m}/${y})`;
+}
+
+/**
+ * MỘT normalizer duy nhất cho thẻ số, dropdown trạng thái, dropdown kỳ và chip.
+ *
+ * Nếu mỗi chỗ tự chữa theo cách riêng thì sẽ có chỗ quên, và chỗ quên đó để lại
+ * `scope: 'prior'` nằm ẩn sau một trạng thái lịch sử — người dùng thấy bảng rỗng
+ * mà không có gì trên màn hình giải thích tại sao. Thuần và BẤT ĐỘNG (chạy hai
+ * lần bằng chạy một lần).
+ */
+export function normalisePeriodFilter(s: PeriodFilterState): PeriodFilterState {
+  if (s.scope !== 'prior') return s;
+  // Tồn Cũ + "Tất cả trạng thái" ⇒ về Cần xử lý, giữ phạm vi.
+  if (s.status === 'all') return { scope: 'prior', status: 'open' };
+  // Tồn Cũ + một trạng thái đã xong ⇒ về Kỳ hiện tại, giữ trạng thái.
+  if (!LOC_VIEC_CHUA_XONG.has(s.status)) return { scope: 'current', status: s.status };
+  return s;
+}
+
+/** Trục ngày dùng để xét kỳ. Chỉ "Đã chi" đi theo ngày ghi sổ. */
+export type PeriodAxis = 'voucher' | 'posted';
+
+export function periodAxisOf(view: ViewStatus): PeriodAxis {
+  return view === 'paid' ? 'posted' : 'voucher';
+}
+
+/**
+ * Ngày quyết định kỳ của một dòng. `null` = chưa xác định được.
+ *
+ * ⚠ Không ghi quỹ / hủy / hoàn tác / không xác định đi theo NGÀY PHIẾU và không
+ * mang nhãn ngày chi — kể cả khi tình cờ có `postedOn`.
+ */
+export function periodDateOf(
+  row: Pick<SettlementRow, 'eventDate' | 'postedOn'>,
+  view: ViewStatus,
+): string | null {
+  return periodAxisOf(view) === 'posted' ? row.postedOn : row.eventDate;
+}
+
+/**
+ * 'in'           — thuộc phạm vi đang xem.
+ * 'out'          — chắc chắn không thuộc.
+ * 'undetermined' — THIẾU NGUỒN để xếp kỳ (ngày null, hoặc đã chi mà không đọc
+ *                  được bút toán). Tách hẳn khỏi 'out': dòng này không được
+ *                  âm thầm biến mất, phải đếm được để báo lên giao diện.
+ */
+export type ScopeMatch = 'in' | 'out' | 'undetermined';
+
+export function matchScope(
+  row: Pick<SettlementRow, 'eventDate' | 'postedOn' | 'status' | 'issues'>,
+  scope: PeriodScope,
+  period: string,
+): ScopeMatch {
+  // Tất Cả: không giới hạn ngày và KHÔNG loại ngầm trạng thái nào.
+  if (scope === 'all') return 'in';
+
+  const view = viewStatusOf(row);
+
+  if (scope === 'prior') {
+    // Tồn Cũ = việc CÒN PHẢI LÀM của kỳ trước. Phiếu đã xong không phải tồn.
+    if (!VIEC_CHUA_XONG.has(view)) return 'out';
+    const d = row.eventDate;
+    if (!d) return 'undetermined';
+    return d.slice(0, 7) < period ? 'in' : 'out';
+  }
+
+  const d = periodDateOf(row, view);
+  // Ngày null / không đủ nguồn KHÔNG được suy thành kỳ cũ hay ngoài kỳ.
+  if (!d) return 'undetermined';
+  return d.slice(0, 7) === period ? 'in' : 'out';
+}
+
+/**
+ * Có đáng gắn nhãn "Tồn kỳ trước" không. Chỉ việc CHƯA XONG mới được gắn —
+ * dán nhãn tồn lên một phiếu đã chi là biến lịch sử thành việc phải làm.
+ */
+export function isOldPeriodWork(
+  row: Pick<SettlementRow, 'eventDate' | 'postedOn' | 'status' | 'issues'>,
+  period: string,
+): boolean {
+  return matchScope(row, 'prior', period) === 'in';
+}
+
+export interface GroupTotal { count: number; total: number }
+
+/** Đếm và cộng đúng tập dòng của MỘT nhóm trạng thái hiển thị. */
+export function groupTotal(rows: SettlementRow[], views: ViewStatus[]): GroupTotal {
+  const chon = new Set(views);
+  let count = 0;
+  let total = 0;
+  for (const r of rows) {
+    if (!chon.has(viewStatusOf(r))) continue;
+    count += 1;
+    total += r.amount;
+  }
+  return { count, total };
+}
+
+/**
+ * Giá trị của MỘT thẻ số.
+ *
+ * 'number'      — số thật, đối chiếu được.
+ * 'unverified'  — số đếm/tổng đúng nhưng CHƯA ĐỐI CHIẾU được bút toán.
+ * 'insufficient'— không tính nổi vì thiếu ngày ghi sổ ⇒ "Chưa đủ dữ liệu".
+ * 'na'          — thẻ lịch sử trên phạm vi Tồn Cũ ⇒ "Không áp dụng cho tồn cũ".
+ *
+ * ⚠ KHÔNG BAO GIỜ trả 0đ thay cho ba ca dưới. Số 0 đọc như "không có đồng nào",
+ * còn sự thật là "không biết" — hai câu khác hẳn nhau khi nói về tiền.
+ */
+export type StatValue =
+  | { kind: 'number'; count: number; total: number }
+  | { kind: 'unverified'; count: number; total: number }
+  | { kind: 'insufficient' }
+  | { kind: 'na' };
+
+export function statValue(args: {
+  /**
+   * Tập nền sau quyền/org/tòa/tìm kiếm/nguồn/loại, **CHƯA cắt theo kỳ và CHƯA
+   * cắt theo trạng thái**.
+   *
+   * ⚠ Hàm này TỰ cắt kỳ, và đó là điều kiện để nó trung thực: một phiếu đã chi
+   * mà không đọc được ngày ghi sổ sẽ bị phép cắt kỳ loại ra, nên nếu caller cắt
+   * trước rồi mới đưa vào thì ở đây chỉ còn một tập "sạch" và thẻ lại in ra 0đ —
+   * đúng cái nói dối đang phải sửa.
+   */
+  rows: SettlementRow[];
+  views: ViewStatus[];
+  scope: PeriodScope;
+  period: string;
+  /** Thẻ này có cần `posted_on` mới nói được điều nó định nói không. */
+  needsPosting: boolean;
+}): StatValue {
+  const { rows, views, scope, period, needsPosting } = args;
+  const lichSu = views.every((v) => !VIEC_CHUA_XONG.has(v));
+  if (scope === 'prior' && lichSu) return { kind: 'na' };
+
+  const chon = new Set(views);
+  const cua = rows.filter((r) => chon.has(viewStatusOf(r)));
+  const trongKy = cua.filter((r) => matchScope(r, scope, period) === 'in');
+
+  if (needsPosting && cua.some((r) => r.postedOn === null)) {
+    // Tất Cả: kỳ không còn quan trọng nên số đếm/tổng ĐÚNG, chỉ là chưa đối
+    // chiếu được bút toán ⇒ có số nhưng phải nói rõ là chưa xác minh.
+    if (scope === 'all') {
+      return { kind: 'unverified', count: cua.length, total: cua.reduce((s, r) => s + r.amount, 0) };
+    }
+    // Lọc kỳ: không có ngày thì không biết phiếu có thuộc kỳ này không ⇒ con số
+    // sẽ THIẾU, mà số thiếu về tiền thì không được phép in ra.
+    return { kind: 'insufficient' };
+  }
+  return {
+    kind: 'number',
+    count: trongKy.length,
+    total: trongKy.reduce((s, r) => s + r.amount, 0),
+  };
+}
 
 /** "13.472.000 đ" */
 export const fmtMoney = (n: number) => `${new Intl.NumberFormat('vi-VN').format(Math.round(n))} đ`;

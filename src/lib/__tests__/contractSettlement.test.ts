@@ -3,7 +3,11 @@ import {
   settlementStatusOf, detectIssues, laneOf, isBlocker, supplementPending,
   sumOnVoucher, DAU_CAN_BO_SUNG, DAU_DA_BO_SUNG,
   viewStatusOf, matchStatus, fmtCompact, fmtMoney, fmtNgay, boDau, KIND_LABEL,
-  type SettlementRow,
+  ACTION_LABEL, STATUS_FILTER_LABEL,
+  groupTotal, isOldPeriodWork, matchScope, normalisePeriodFilter,
+  periodAxisOf, periodDateOf, periodScopeLabel, periodScopeOptions, statValue,
+  VIEC_CHUA_XONG,
+  type PeriodScope, type SettlementRow, type StatusFilter, type ViewStatus,
 } from '@/lib/contractSettlement';
 
 const goc = (p: Partial<SettlementRow> = {}): SettlementRow => ({
@@ -18,7 +22,7 @@ const goc = (p: Partial<SettlementRow> = {}): SettlementRow => ({
   postingMode: null, bankAccount: '0123', bankName: 'NH mẫu',
   attachments: [], hasAttachment: false,
   eventDate: '2026-09-10', origin: 'contract', eventLabel: 'Ký mới',
-  paidDate: null, bookName: null, issues: [], supplementPending: false,
+  postedOn: null, bookName: null, issues: [], supplementPending: false,
   reviewState: 'PENDING', reviewVersion: 1, approvalVersion: 1, postingVersion: 1,
   organizationId: 'org1', buildingId: 'b1',
   notes: null, systemSource: null, commissionKind: 'broker',
@@ -35,8 +39,15 @@ describe('settlementStatusOf', () => {
   it('APPROVED + NOT_APPLICABLE là không ghi quỹ, tách riêng khỏi đã chi', () => {
     expect(settlementStatusOf('APPROVED', 'NOT_APPLICABLE')).toBe('noncash');
   });
-  it('APPROVED + REVERSED quay lại chờ chi', () => {
-    expect(settlementStatusOf('APPROVED', 'REVERSED')).toBe('approved');
+  // ⚠ ĐỔI CÓ CHỦ Ý (T5, plan §3.4). Bản trước gộp REVERSED vào 'approved' nên
+  // modal hiện đúng cái nút "Ghi nhận chi" cho một phiếu ĐÃ TỪNG CHI rồi bị đảo
+  // — tức mời chi lần hai chỉ vì mapping hiển thị xếp nhầm chỗ. Hoàn tác là một
+  // trạng thái RIÊNG: không phải "chưa từng chi", cũng không phải "còn phải chi".
+  it('APPROVED + REVERSED có trạng thái RIÊNG, KHÔNG phải chờ chi', () => {
+    expect(settlementStatusOf('APPROVED', 'REVERSED')).toBe('reversed');
+  });
+  it('phiếu hoàn tác không được mời chi lại bằng chữ trên nút', () => {
+    expect(ACTION_LABEL.reversed).toBe('Xem phiếu');
   });
   it('UNAPPROVED là chờ duyệt bất kể posting', () => {
     expect(settlementStatusOf('UNAPPROVED', 'UNPOSTED')).toBe('pending');
@@ -299,13 +310,379 @@ describe('matchStatus', () => {
     expect(matchStatus('approved', 'pendpay')).toBe(true);
     expect(matchStatus('review', 'pendpay')).toBe(false);
   });
-  it('"Đã chi" gom cả phiếu không ghi quỹ — chúng đã xong việc', () => {
+  // ⚠ ĐỔI CÓ CHỦ Ý (T5, plan §3.4). Bản trước cho 'noncash' lọt vào bộ lọc
+  // 'paid' trong khi THẺ SỐ chỉ cộng 'paid' — nên thẻ hiện 0đ/0 phiếu ngay trên
+  // một cái bảng đang có ba dòng. Không ghi quỹ là bộ lọc/stat RIÊNG.
+  it('"Đã chi" KHÔNG nuốt phiếu không ghi quỹ — hai bộ lọc tách hẳn', () => {
     expect(matchStatus('paid', 'paid')).toBe(true);
-    expect(matchStatus('noncash', 'paid')).toBe(true);
+    expect(matchStatus('noncash', 'paid')).toBe(false);
+    expect(matchStatus('noncash', 'noncash')).toBe(true);
+    expect(matchStatus('paid', 'noncash')).toBe(false);
   });
-  it('"Tất cả" nhận mọi trạng thái', () => {
-    expect(matchStatus('unknown', 'all')).toBe(true);
-    expect(matchStatus('cancelled', 'all')).toBe(true);
+  it('"Cần xử lý" không gồm phiếu hoàn tác — đó là lịch sử, không phải việc tồn', () => {
+    expect(matchStatus('reversed', 'open')).toBe(false);
+    expect(matchStatus('reversed', 'pendpay')).toBe(false);
+    expect(matchStatus('reversed', 'reversed')).toBe(true);
+  });
+  it('"Tất cả" nhận mọi trạng thái, KỂ CẢ không xác định và hoàn tác', () => {
+    for (const v of ['review', 'pending', 'approved', 'noncash', 'paid',
+      'cancelled', 'reversed', 'unknown'] as ViewStatus[]) {
+      expect(matchStatus(v, 'all'), v).toBe(true);
+    }
+  });
+  it('không xác định có bộ lọc riêng để soi, không bị giấu', () => {
+    expect(matchStatus('unknown', 'unknown')).toBe(true);
+    expect(matchStatus('paid', 'unknown')).toBe(false);
+    expect(STATUS_FILTER_LABEL.unknown).toBeTruthy();
+    expect(STATUS_FILTER_LABEL.reversed).toBeTruthy();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BA PHẠM VI KỲ (plan §3.4) — chủ đã chốt: việc chưa xong có ba lựa chọn, còn
+// Đã chi chỉ có hai. Phạm vi là ENUM; kỳ tham chiếu là `period` của trang. Không
+// có bản sao chuỗi tháng nào trong state, nên đổi kỳ chung không để lại rác.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('periodScopeOptions', () => {
+  const BA: PeriodScope[] = ['current', 'prior', 'all'];
+  const HAI: PeriodScope[] = ['current', 'all'];
+
+  it('việc chưa xong có đủ ba phạm vi', () => {
+    for (const f of ['open', 'review', 'pending', 'approved', 'pendpay'] as StatusFilter[]) {
+      expect(periodScopeOptions(f), f).toEqual(BA);
+    }
+  });
+
+  it('Đã chi chỉ có Kỳ hiện tại và Tất Cả — KHÔNG có Tồn Cũ', () => {
+    expect(periodScopeOptions('paid')).toEqual(HAI);
+    expect(periodScopeOptions('paid')).not.toContain('prior');
+  });
+
+  it('các trạng thái lịch sử khác cũng chỉ hai', () => {
+    for (const f of ['noncash', 'cancelled', 'reversed', 'unknown'] as StatusFilter[]) {
+      expect(periodScopeOptions(f), f).toEqual(HAI);
+    }
+  });
+
+  it('Tất cả trạng thái vẫn mở Tồn Cũ (chọn xong sẽ về Cần xử lý)', () => {
+    expect(periodScopeOptions('all')).toEqual(BA);
+  });
+});
+
+describe('periodScopeLabel', () => {
+  it('nhãn kỳ hiện tại mang đúng kỳ tham chiếu của trang', () => {
+    expect(periodScopeLabel('current', '2026-09')).toBe('Kỳ hiện tại (09/2026)');
+    expect(periodScopeLabel('current', '2026-12')).toBe('Kỳ hiện tại (12/2026)');
+    expect(periodScopeLabel('prior', '2026-09')).toBe('Tồn Cũ');
+    expect(periodScopeLabel('all', '2026-09')).toBe('Tất Cả');
+  });
+});
+
+// MỘT normalizer duy nhất cho thẻ số, dropdown trạng thái và chip — nếu mỗi chỗ
+// tự chữa theo cách riêng thì sẽ có chỗ quên, và chỗ quên đó để lại scope 'prior'
+// ẩn sau một trạng thái lịch sử ⇒ bảng rỗng mà không ai hiểu vì sao.
+describe('normalisePeriodFilter', () => {
+  it('Tồn Cũ + Đã chi: phạm vi tự về Kỳ hiện tại', () => {
+    expect(normalisePeriodFilter({ scope: 'prior', status: 'paid' }))
+      .toEqual({ scope: 'current', status: 'paid' });
+  });
+
+  it('cùng luật đó cho Không ghi quỹ / Hủy / Hoàn tác / Không xác định', () => {
+    for (const status of ['noncash', 'cancelled', 'reversed', 'unknown'] as StatusFilter[]) {
+      expect(normalisePeriodFilter({ scope: 'prior', status }), status)
+        .toEqual({ scope: 'current', status });
+    }
+  });
+
+  it('Tồn Cũ + Tất cả trạng thái: về Cần xử lý, GIỮ phạm vi Tồn Cũ', () => {
+    expect(normalisePeriodFilter({ scope: 'prior', status: 'all' }))
+      .toEqual({ scope: 'prior', status: 'open' });
+  });
+
+  it('việc chưa xong ở Tồn Cũ thì giữ nguyên', () => {
+    for (const status of ['open', 'review', 'pending', 'approved', 'pendpay'] as StatusFilter[]) {
+      expect(normalisePeriodFilter({ scope: 'prior', status }), status)
+        .toEqual({ scope: 'prior', status });
+    }
+  });
+
+  it('Kỳ hiện tại và Tất Cả không bị đụng vào', () => {
+    for (const scope of ['current', 'all'] as PeriodScope[]) {
+      for (const status of ['open', 'paid', 'noncash', 'all', 'reversed'] as StatusFilter[]) {
+        expect(normalisePeriodFilter({ scope, status }), `${scope}/${status}`)
+          .toEqual({ scope, status });
+      }
+    }
+  });
+
+  it('thuần và bất động: chạy hai lần bằng chạy một lần', () => {
+    for (const scope of ['current', 'prior', 'all'] as PeriodScope[]) {
+      for (const status of ['open', 'all', 'review', 'pending', 'approved', 'pendpay',
+        'paid', 'noncash', 'cancelled', 'reversed', 'unknown'] as StatusFilter[]) {
+        const mot = normalisePeriodFilter({ scope, status });
+        expect(normalisePeriodFilter(mot), `${scope}/${status}`).toEqual(mot);
+        // Và kết quả phải luôn là một tổ hợp HỢP LỆ theo bảng lựa chọn.
+        expect(periodScopeOptions(mot.status), `${scope}/${status}`).toContain(mot.scope);
+      }
+    }
+  });
+});
+
+describe('periodAxisOf — trục ngày xét kỳ theo trạng thái', () => {
+  it('Đã chi xét theo ngày GHI SỔ, không phải ngày phiếu', () => {
+    expect(periodAxisOf('paid')).toBe('posted');
+  });
+  it('mọi trạng thái còn lại xét theo ngày phiếu', () => {
+    for (const v of ['review', 'pending', 'approved', 'noncash',
+      'cancelled', 'reversed', 'unknown'] as ViewStatus[]) {
+      expect(periodAxisOf(v), v).toBe('voucher');
+    }
+  });
+  it('phiếu chưa chi không mang nhãn ngày chi', () => {
+    expect(periodDateOf(goc({ status: 'noncash', postedOn: '2026-09-09' }), 'noncash'))
+      .toBe('2026-09-10');
+  });
+});
+
+describe('matchScope', () => {
+  const choDuyet = (p: Partial<SettlementRow> = {}) => goc({ status: 'pending', ...p });
+  const daChi = (p: Partial<SettlementRow> = {}) =>
+    goc({ status: 'paid', approvalStatus: 'APPROVED', postingStatus: 'POSTED', ...p });
+
+  it('Tất Cả không loại ngầm thứ gì — kể cả hủy, không xác định, hoàn tác', () => {
+    for (const r of [
+      choDuyet(), daChi({ postedOn: '2020-01-01' }),
+      goc({ status: 'cancelled' }), goc({ status: 'unknown' }),
+      goc({ status: 'noncash' }), goc({ status: 'reversed' }),
+      choDuyet({ eventDate: null }), daChi({ postedOn: null }),
+    ]) {
+      expect(matchScope(r, 'all', '2026-09'), r.status).toBe('in');
+    }
+  });
+
+  it('Kỳ hiện tại: việc chưa xong xét theo ngày phiếu, chuẩn ở mốc 31/08–01/09', () => {
+    expect(matchScope(choDuyet({ eventDate: '2026-08-31' }), 'current', '2026-09')).toBe('out');
+    expect(matchScope(choDuyet({ eventDate: '2026-09-01' }), 'current', '2026-09')).toBe('in');
+    expect(matchScope(choDuyet({ eventDate: '2026-09-30' }), 'current', '2026-09')).toBe('in');
+    expect(matchScope(choDuyet({ eventDate: '2026-10-01' }), 'current', '2026-09')).toBe('out');
+  });
+
+  // Đây là cái sai số 3 trong bản cũ: chọn tháng thì query lọc `voucher_date`,
+  // nên phiếu lập tháng 8 mà CHI tháng 9 biến mất khỏi kỳ 9.
+  it('Đã chi xét theo posted_on: phiếu tháng 8 chi tháng 9 thuộc kỳ 9', () => {
+    const r = daChi({ eventDate: '2026-08-20', postedOn: '2026-09-03' });
+    expect(matchScope(r, 'current', '2026-09')).toBe('in');
+    expect(matchScope(r, 'current', '2026-08')).toBe('out');
+  });
+
+  it('Đã chi mà không đọc được posted_on là CHƯA XÁC ĐỊNH, không phải ngoài kỳ', () => {
+    const r = daChi({ eventDate: '2026-08-20', postedOn: null });
+    expect(matchScope(r, 'current', '2026-09')).toBe('undetermined');
+    // và tuyệt đối không bị đẩy thành tồn kỳ cũ theo ngày phiếu.
+    expect(matchScope(r, 'prior', '2026-09')).toBe('out');
+    expect(isOldPeriodWork(r, '2026-09')).toBe(false);
+  });
+
+  it('ngày phiếu null là CHƯA XÁC ĐỊNH ở cả hai phạm vi lọc kỳ', () => {
+    expect(matchScope(choDuyet({ eventDate: null }), 'current', '2026-09')).toBe('undetermined');
+    expect(matchScope(choDuyet({ eventDate: null }), 'prior', '2026-09')).toBe('undetermined');
+  });
+
+  it('ngày tương lai không bị nhét vào kỳ hiện tại, cũng không thành tồn cũ', () => {
+    const r = choDuyet({ eventDate: '2027-03-01' });
+    expect(matchScope(r, 'current', '2026-09')).toBe('out');
+    expect(matchScope(r, 'prior', '2026-09')).toBe('out');
+    expect(matchScope(r, 'all', '2026-09')).toBe('in');
+  });
+
+  it('Tồn Cũ: chỉ việc CHƯA XONG và ngày phiếu trước đầu kỳ', () => {
+    expect(matchScope(choDuyet({ eventDate: '2026-08-31' }), 'prior', '2026-09')).toBe('in');
+    expect(matchScope(choDuyet({ eventDate: '2026-09-01' }), 'prior', '2026-09')).toBe('out');
+    expect(matchScope(goc({ status: 'approved', eventDate: '2026-07-01' }), 'prior', '2026-09'))
+      .toBe('in');
+    // Cần rà soát vẫn là một phần của chờ duyệt ⇒ vẫn là việc chưa xong.
+    const raSoat = goc({ status: 'pending', eventDate: '2026-07-01', issues: ['MISSING_PAYMENT_INFO'] });
+    expect(viewStatusOf(raSoat)).toBe('review');
+    expect(matchScope(raSoat, 'prior', '2026-09')).toBe('in');
+  });
+
+  it('Tồn Cũ KHÔNG chứa đã chi / không ghi quỹ / hủy / hoàn tác / không xác định', () => {
+    for (const status of ['paid', 'noncash', 'cancelled', 'reversed', 'unknown'] as const) {
+      const r = goc({ status, eventDate: '2026-05-05', postedOn: '2026-05-06' });
+      expect(matchScope(r, 'prior', '2026-09'), status).toBe('out');
+    }
+  });
+
+  it('Kỳ hiện tại + Tồn Cũ KHÁC Tất Cả — Tất Cả còn chứa lịch sử đã xong', () => {
+    const daXong = daChi({ eventDate: '2026-05-01', postedOn: '2026-05-02' });
+    expect(matchScope(daXong, 'current', '2026-09')).toBe('out');
+    expect(matchScope(daXong, 'prior', '2026-09')).toBe('out');
+    expect(matchScope(daXong, 'all', '2026-09')).toBe('in');
+  });
+
+  it('hoàn tác rồi chi lại: phiếu chi lại là phiếu ĐÃ CHI của kỳ ghi sổ mới', () => {
+    const daDao = goc({ status: 'reversed', eventDate: '2026-08-10' });
+    const chiLai = daChi({ eventDate: '2026-08-10', postedOn: '2026-09-05' });
+    expect(matchScope(daDao, 'current', '2026-08')).toBe('in');
+    expect(matchScope(daDao, 'current', '2026-09')).toBe('out');
+    expect(matchScope(chiLai, 'current', '2026-09')).toBe('in');
+  });
+});
+
+// Ma trận mọi phạm vi × mọi trạng thái × mọi loại khoản. Bất biến cần ghim:
+// LOẠI KHOẢN KHÔNG BAO GIỜ đổi việc xếp kỳ. Hoàn khách, hoa hồng, thưởng sale
+// hay "chưa xác định loại" đều đi theo cùng một trục ngày của trạng thái.
+describe('ma trận phạm vi × trạng thái × loại khoản', () => {
+  const SCOPES: PeriodScope[] = ['current', 'prior', 'all'];
+  const TRANG_THAI = [
+    { status: 'pending', issues: [] as SettlementRow['issues'] },
+    { status: 'pending', issues: ['MISSING_PAYMENT_INFO'] as SettlementRow['issues'] },
+    { status: 'approved', issues: [] as SettlementRow['issues'] },
+    { status: 'paid', issues: [] as SettlementRow['issues'] },
+    { status: 'noncash', issues: [] as SettlementRow['issues'] },
+    { status: 'reversed', issues: [] as SettlementRow['issues'] },
+    { status: 'cancelled', issues: [] as SettlementRow['issues'] },
+    { status: 'unknown', issues: [] as SettlementRow['issues'] },
+  ] as const;
+  const LOAI = ['refund', 'commission', 'bonus', 'unknown'] as const;
+  const NGAY = [
+    { eventDate: '2026-08-31', postedOn: '2026-08-31' },
+    { eventDate: '2026-09-01', postedOn: '2026-09-01' },
+    { eventDate: '2026-08-20', postedOn: '2026-09-03' },
+    { eventDate: '2027-01-01', postedOn: '2027-01-01' },
+    { eventDate: null, postedOn: null },
+    { eventDate: '2026-09-05', postedOn: null },
+  ];
+
+  it('loại khoản không ảnh hưởng phép xếp kỳ ở bất kỳ ô nào', () => {
+    for (const scope of SCOPES) {
+      for (const tt of TRANG_THAI) {
+        for (const ngay of NGAY) {
+          const ket = LOAI.map((kind) =>
+            matchScope(goc({ ...tt, ...ngay, kind }), scope, '2026-09'));
+          expect(new Set(ket).size, `${scope}/${tt.status}/${JSON.stringify(ngay)}`).toBe(1);
+        }
+      }
+    }
+  });
+
+  it('mọi ô trả đúng một trong ba kết quả, và Tất Cả luôn là "in"', () => {
+    for (const scope of SCOPES) {
+      for (const tt of TRANG_THAI) {
+        for (const ngay of NGAY) {
+          const r = goc({ ...tt, ...ngay });
+          const k = matchScope(r, scope, '2026-09');
+          expect(['in', 'out', 'undetermined'], `${scope}/${tt.status}`).toContain(k);
+          if (scope === 'all') expect(k, `${scope}/${tt.status}`).toBe('in');
+          // Tồn Cũ chỉ chứa việc chưa xong — không ô nào phá luật này.
+          if (scope === 'prior' && k === 'in') {
+            expect(VIEC_CHUA_XONG.has(viewStatusOf(r)), tt.status).toBe(true);
+          }
+        }
+      }
+    }
+  });
+});
+
+describe('isOldPeriodWork — nhãn tồn chỉ gắn cho việc còn phải làm', () => {
+  it('việc chưa xong của kỳ trước là tồn', () => {
+    expect(isOldPeriodWork(goc({ status: 'pending', eventDate: '2026-08-31' }), '2026-09')).toBe(true);
+    expect(isOldPeriodWork(goc({ status: 'approved', eventDate: '2026-07-01' }), '2026-09')).toBe(true);
+  });
+  it('phiếu đã xong KHÔNG bị gắn nhãn tồn', () => {
+    for (const status of ['paid', 'noncash', 'cancelled', 'reversed', 'unknown'] as const) {
+      expect(isOldPeriodWork(goc({ status, eventDate: '2026-01-01' }), '2026-09'), status).toBe(false);
+    }
+  });
+  it('việc chưa xong của chính kỳ này không phải tồn', () => {
+    expect(isOldPeriodWork(goc({ status: 'pending', eventDate: '2026-09-01' }), '2026-09')).toBe(false);
+  });
+  it('ngày phiếu null không bị suy thành tồn kỳ cũ', () => {
+    expect(isOldPeriodWork(goc({ status: 'pending', eventDate: null }), '2026-09')).toBe(false);
+  });
+});
+
+describe('groupTotal — bấm thẻ nào thì count/tiền khớp đúng tập dòng thẻ đó', () => {
+  const ds = [
+    goc({ key: 'a', status: 'paid', postedOn: '2026-09-02', amount: 1_000_000 }),
+    goc({ key: 'b', status: 'paid', postedOn: '2026-09-03', amount: 2_000_000 }),
+    goc({ key: 'c', status: 'noncash', amount: 9_000_000 }),
+    goc({ key: 'd', status: 'pending', amount: 500_000 }),
+  ];
+  it('Đã chi không cộng tiền của phiếu không ghi quỹ', () => {
+    expect(groupTotal(ds, ['paid'])).toEqual({ count: 2, total: 3_000_000 });
+  });
+  it('Không ghi quỹ là nhóm riêng', () => {
+    expect(groupTotal(ds, ['noncash'])).toEqual({ count: 1, total: 9_000_000 });
+  });
+  it('nhóm rỗng ra 0/0', () => {
+    expect(groupTotal(ds, ['cancelled'])).toEqual({ count: 0, total: 0 });
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// THẺ SỐ KHI KHÔNG ĐỌC ĐƯỢC BÚT TOÁN
+//
+// Đo thật trên org THẬT: tài khoản chủ công ty thấy 1139 phiếu chi đã ghi sổ
+// nhưng 0 dòng `income_expense_postings` (policy đòi binding CUSTODIAN đúng sổ).
+// Nên "không đọc được ngày chi" phải là một TRẠNG THÁI của thẻ, không phải số 0.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('statValue', () => {
+  const daChi = (postedOn: string | null, amount = 1_000_000, key = 'k') =>
+    goc({ key, status: 'paid', postedOn, amount });
+
+  it('Tồn Cũ: thẻ lịch sử nói KHÔNG ÁP DỤNG, không nói 0đ', () => {
+    expect(statValue({
+      rows: [daChi('2026-09-02')], views: ['paid'], scope: 'prior', period: '2026-09', needsPosting: true,
+    })).toEqual({ kind: 'na' });
+  });
+
+  it('Tồn Cũ: thẻ VIỆC CHƯA XONG vẫn phải có số thật', () => {
+    expect(statValue({
+      rows: [goc({ status: 'pending', amount: 500_000, eventDate: '2026-08-15' })],
+      views: ['pending'], scope: 'prior', period: '2026-09', needsPosting: false,
+    })).toEqual({ kind: 'number', count: 1, total: 500_000 });
+  });
+
+  it('Kỳ hiện tại mà thiếu posted_on: CHƯA ĐỦ DỮ LIỆU, không phải 0đ', () => {
+    expect(statValue({
+      rows: [daChi(null)], views: ['paid'], scope: 'current', period: '2026-09', needsPosting: true,
+    })).toEqual({ kind: 'insufficient' });
+  });
+
+  it('Tất Cả mà thiếu posted_on: có số nhưng đánh dấu CHƯA XÁC MINH', () => {
+    expect(statValue({
+      rows: [daChi(null, 1_000_000, 'a'), daChi('2026-09-02', 2_000_000, 'b')],
+      views: ['paid'], scope: 'all', period: '2026-09', needsPosting: true,
+    })).toEqual({ kind: 'unverified', count: 2, total: 3_000_000 });
+  });
+
+  it('đọc đủ ngày chi thì là một con số thật', () => {
+    expect(statValue({
+      rows: [daChi('2026-09-02', 1_000_000, 'a'), daChi('2026-09-03', 2_000_000, 'b')],
+      views: ['paid'], scope: 'current', period: '2026-09', needsPosting: true,
+    })).toEqual({ kind: 'number', count: 2, total: 3_000_000 });
+  });
+
+  it('không có phiếu đã chi nào thì 0 là kết quả THẬT, không phải thiếu dữ liệu', () => {
+    expect(statValue({
+      rows: [goc({ status: 'pending' })], views: ['paid'], scope: 'current', period: '2026-09', needsPosting: true,
+    })).toEqual({ kind: 'number', count: 0, total: 0 });
+  });
+
+  it('thẻ không phụ thuộc bút toán thì không bao giờ báo thiếu dữ liệu', () => {
+    expect(statValue({
+      rows: [goc({ status: 'noncash', amount: 9_000_000 })],
+      views: ['noncash'], scope: 'all', period: '2026-09', needsPosting: false,
+    })).toEqual({ kind: 'number', count: 1, total: 9_000_000 });
+  });
+
+  it('phiếu đã chi KHÔNG bị hạ xuống chờ chi chỉ vì thiếu bút toán', () => {
+    const r = daChi(null);
+    expect(viewStatusOf(r)).toBe('paid');
+    expect(matchStatus(viewStatusOf(r), 'open')).toBe(false);
   });
 });
 

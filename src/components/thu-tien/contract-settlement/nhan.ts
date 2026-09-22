@@ -11,6 +11,9 @@ type Mau = 'red' | 'amber' | 'green' | 'violet' | 'grey';
 export const NHAN_TRANG_THAI: Record<SettlementStatus, { nhan: string; mau: Mau }> = {
   pending: { nhan: 'Chờ duyệt', mau: 'amber' },
   approved: { nhan: 'Đã duyệt · chờ chi', mau: 'green' },
+  // ⚠ KHÔNG phải "chờ chi". Phiếu này ĐÃ ghi sổ rồi bị đảo bút toán; gọi nó là
+  // chờ chi là mời người ta chi lần hai cho cùng một khoản.
+  reversed: { nhan: 'Đã ghi sổ rồi hoàn tác', mau: 'violet' },
   // ⚠ KHÔNG gộp vào "Đã chi". Đo thật 21/09: 3 phiếu tổng 9.515.634đ nằm trên
   // sổ ảo "CỌC (giữ hộ khách)", không có dòng posting nào. Gọi chúng là đã chi
   // là nói dối rằng khách đã nhận tiền.
