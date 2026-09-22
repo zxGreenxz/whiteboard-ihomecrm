@@ -389,6 +389,66 @@ describe('T1 — chứng từ của bước ghi chi', () => {
     expect(chuTrenMan()).toContain('cần ít nhất 1 chứng từ');
   });
 
+  /**
+   * ĐÂY LÀ CA NEO CỦA plan §3.1 "kết quả upload/adopt sau khi đổi phiếu không
+   * được gắn sang phiếu khác" — và nó phải đi ĐƯỜNG UPLOAD.
+   *
+   * Vì sao ca adopt ở trên KHÔNG chứng minh được điều đó: nó cho kết quả của
+   * phiếu A về TRƯỚC khi bấm mở form phiếu B, nên `xoaChungTu()` trong
+   * `moFormChi` dọn sạch dấu vết dù hàng rào định danh có tồn tại hay không;
+   * đường adopt lại còn được `luotNhanAnh` gác thêm một lớp. Đường upload thì
+   * KHÔNG có bộ đếm lượt nào — `conDungPhieu` là hàng rào DUY NHẤT.
+   *
+   * Nên thứ tự ở đây là: form phiếu B đã mở và đã chọn sổ RỒI, lần tải của
+   * phiếu A mới về. Bỏ hàng rào định danh là nút xác nhận của phiếu B sáng lên
+   * và ghi tiền phiếu B kèm chứng từ của phiếu A.
+   */
+  it('tải ảnh của phiếu A về khi form phiếu B ĐANG MỞ thì không gắn sang phiếu B', async () => {
+    let traKetQua: (v: unknown) => void = () => {};
+    H.attach.mockImplementation(() => new Promise((r) => { traKetQua = r; }));
+    const man = dungMan(phieu());
+    const lamMoi = vi.spyOn(man.qc, 'invalidateQueries');
+    moFormChi();
+    await waitFor(() => expect(H.adopt).toHaveBeenCalledTimes(1));
+    const o = oTaiAnh().querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(o, { target: { files: [tepAnh()] } });
+    await waitFor(() => expect(H.attach).toHaveBeenCalledTimes(1));
+
+    // Doi sang phieu KHONG co anh, roi mo form chi va chon so cho no.
+    man.doiPhieu(phieu({ key: `refund:${V_B}`, voucherId: V_B, voucherCode: 'PC2609096', attachments: [] }));
+    moFormChi();
+    await act(async () => { await Promise.resolve(); });
+    chonSo();
+    await waitFor(() => expect(nutXacNhan().disabled).toBe(true));
+    lamMoi.mockClear();
+
+    // GIO moi toi luot tai cua phieu A ve.
+    await act(async () => {
+      traKetQua({ url: ANH_2, evidenceIds: [EV_1], skipped: [], attachedToVoucher: true });
+    });
+
+    expect(nutXacNhan().disabled).toBe(true);
+    expect(chuTrenMan()).toContain('cần ít nhất 1 chứng từ');
+    expect(anhNho()).toHaveLength(0); // anh cua phieu A khong duoc moc tren phieu B
+    expect(lamMoi.mock.calls.some((c) => {
+      const k = (c[0] as { queryKey?: unknown[] } | undefined)?.queryKey;
+      return Array.isArray(k) && k[0] === 'contract-settlement';
+    })).toBe(false);
+  });
+
+  it('bấm "Chưa chi, quay lại" thì dọn luôn ảnh mờ của lần chi vừa bỏ dở', async () => {
+    H.adopt.mockResolvedValue({
+      evidenceIds: [], skipped: [{ url: ANH_1, reason: 'ATTACHED' }],
+    });
+    dungMan(phieu());
+    moFormChi();
+    await waitFor(() => expect(chuTrenMan()).toContain('Đã dùng cho lần ghi sổ trước'));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Chưa chi, quay lại' }));
+    expect(chuTrenMan()).not.toContain('ảnh mờ là ảnh không tính cho lần chi này');
+    expect(chuTrenMan()).not.toContain('Đã dùng cho lần ghi sổ trước');
+  });
+
   it('đóng modal giữa lúc tải ảnh: kết quả về sau không làm mới hồ sơ nữa, không nổ', async () => {
     let moKhoa: (v: unknown) => void = () => {};
     H.attach.mockImplementation(() => new Promise((r) => { moKhoa = r; }));

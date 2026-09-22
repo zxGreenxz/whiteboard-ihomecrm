@@ -722,7 +722,12 @@ export function SettlementLifecycleModal({ row, view, actions, onClose }: Props)
                     Xác nhận đã chi đủ {fmtMoney(row.amount)}
                   </button>
                   {loiDauTien && <div className="cs-note-s">{loiDauTien}</div>}
-                  <button type="button" className="cs-btn sm" onClick={() => setDangChi(null)}>
+                  {/* Bỏ dở lần chi thì dọn luôn chứng từ của lần đó: ảnh mờ và
+                      câu "không tính cho lần chi này" là trạng thái CỦA MỘT LẦN
+                      ghi sổ, để lại trên màn khi không còn lần nào đang mở là
+                      nói về một việc không tồn tại. */}
+                  <button type="button" className="cs-btn sm"
+                    onClick={() => { setDangChi(null); xoaChungTu(); }}>
                     Chưa chi, quay lại
                   </button>
                 </>
