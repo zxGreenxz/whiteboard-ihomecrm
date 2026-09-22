@@ -765,9 +765,19 @@ export interface LaneInput {
  * Đọc THÀNH CÔNG mà RỖNG không phải là "đã chứng minh bằng 0".
  *
  * Hợp đồng CAM KẾT cọc > 0 mà không tìm ra nguồn nào — kể cả một nguồn bị loại
- * để giải thích — thì thứ ta biết là "chưa thấy", không phải "không có". Có thể
- * phiếu cọc nằm ngoài tầm RLS của người đang xem. Hiện "0 đ" ở đây là đúng
- * loại nói dối mà T2 sinh ra để diệt.
+ * để giải thích — thì thứ ta biết là "chưa thấy", không phải "không có". Hiện
+ * "0 đ" ở đây là đúng loại nói dối mà T2 sinh ra để diệt.
+ *
+ * ⚠ VÀ CHỮ PHẢI DỪNG ĐÚNG Ở ĐÓ. Ca này KHÔNG phân biệt được "phiếu bị RLS
+ * giấu" với "chưa ai ghi nhận phiếu cọc". Đo production (service role, không
+ * RLS) 22/09/2026: 435 hợp đồng có `total_deposit > 0`, trong đó **30 hợp đồng
+ * không có nguồn DEPOSIT nào** — với 30 hợp đồng ấy phiếu không tồn tại với
+ * BẤT KỲ AI. Đổ cho quyền xem là chỉ người dùng đi xin một quyền không giải
+ * quyết được gì, còn câu trả lời thật (cọc chưa từng được ghi) thì bị che.
+ *
+ * Ca CÓ bằng chứng bị giữ lại là ca khác hẳn: `contract_deposit_links` trỏ tới
+ * N phiếu mà chỉ đọc về được ít hơn N. Ca đó do hook phát hiện và nói thẳng là
+ * do quyền — xem `useContractLifecycle`.
  *
  * Ngược lại: cam kết 0 ⇒ 0 là sự thật; và khi CÓ nguồn bị loại thì màn hình đã
  * nói được VÌ SAO bằng 0, nên 0 là một kết luận có căn cứ.
@@ -942,8 +952,8 @@ export function buildLifecycleLanes(input: LaneInput): LifecycleView {
     : chuaChungMinh.length > 0
       ? {
           kind: 'insufficient',
-          reason: `${chuaChungMinh.length} hợp đồng cam kết cọc nhưng không tìm thấy phiếu cọc nào`
-            + ' — có thể nằm ngoài quyền xem của bạn',
+          reason: `${chuaChungMinh.length} hợp đồng cam kết cọc nhưng không tìm thấy`
+            + ' phiếu thu cọc nào — chưa rõ do chưa ghi nhận hay do không đọc được',
         }
     : { kind: 'sufficient' });
 
@@ -1019,9 +1029,10 @@ function dungMoc(a: {
         v: CHUA_DU_DU_LIEU,
         m: a.deposit === null
           ? lyDoHong(a.reads.deposits) ?? 'Chưa đọc được nguồn cọc của hợp đồng này'
-          // Cam kết có, nguồn không — nói đúng cái ta biết, đừng in "0 đ".
+          // Cam kết có, nguồn không — nói đúng cái ta biết, đừng in "0 đ", và
+          // đừng đổ cho quyền: ở đây ta KHÔNG biết nguyên nhân.
           : `Hợp đồng cam kết ${fmtMoney(Number(c.total_deposit) || 0)} nhưng không tìm thấy`
-            + ' phiếu cọc nào — có thể nằm ngoài quyền xem của bạn',
+            + ' phiếu thu cọc nào — chưa rõ do chưa ghi nhận hay do không đọc được',
       }
     : {
         h: 'Cọc đã đóng · thực thu',

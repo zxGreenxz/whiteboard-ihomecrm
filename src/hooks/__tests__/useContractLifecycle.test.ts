@@ -213,9 +213,38 @@ describe('useContractLifecycle — nguồn và ranh giới', () => {
     H.bang.set('lifecycle.deposit-linked', []); // RLS giấu, không phải lỗi
     const { result } = await chay();
     expect(result.current.data?.status.deposit.kind).toBe('insufficient');
-    expect((result.current.data?.status.deposit as { reason: string }).reason).toContain('1/1');
+    const ly = (result.current.data?.status.deposit as { reason: string }).reason;
+    expect(ly).toContain('1/1');
+    // CÓ bằng chứng bị giữ lại (hỏi 1, nhận 0) ⇒ được phép nói là do quyền.
+    expect(ly).toMatch(/quyền/i);
     // Số đọc được vẫn hiện, nhưng KHÔNG được coi là đã đủ.
     expect(result.current.data?.target?.deposit?.grossCollected).toBe(4_500_000);
+  });
+
+  it('HAI ca thiếu cọc phải cho HAI lý do KHÁC nhau — giấu ≠ chưa ghi nhận', async () => {
+    // (a) CÓ bằng chứng bị giữ lại: link trỏ tới 1 phiếu, đọc về 0.
+    napCaThat();
+    H.bang.set('lifecycle.deposit-links', [
+      { id: 'l1', organization_id: ORG, contract_id: HD, income_expense_id: 'v-bi-giau' },
+    ]);
+    H.bang.set('lifecycle.deposit-linked', []);
+    const a = await chay();
+    const lyGiau = (a.result.current.data?.status.deposit as { reason: string }).reason;
+
+    // (b) KHÔNG có nguồn nào: hợp đồng cam kết 4.500.000 mà không phiếu nào.
+    H.chuoi.length = 0; H.nhan.length = 0;
+    napCaThat();
+    H.bang.set('lifecycle.deposit-direct', []);
+    H.bang.set('lifecycle.deposit-items', []);
+    const b = await chay();
+    const lyTrong = (b.result.current.data?.status.deposit as { reason: string }).reason;
+
+    expect(b.result.current.data?.status.deposit.kind).toBe('insufficient');
+    expect(lyTrong).not.toBe(lyGiau);
+    // Chỉ ca (a) được đổ cho quyền; ca (b) không chứng minh được nguyên nhân.
+    expect(lyGiau).toMatch(/quyền/i);
+    expect(lyTrong).not.toMatch(/quyền/i);
+    expect(lyTrong).toMatch(/chưa ghi nhận/);
   });
 
   it('đọc đủ mọi nguồn liên kết ⇒ nguồn cọc ĐỦ, không báo thiếu giả', async () => {

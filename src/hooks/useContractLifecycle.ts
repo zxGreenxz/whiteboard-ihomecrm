@@ -304,9 +304,14 @@ export function useContractLifecycle(a: ContractLifecycleArgs) {
           const daDoc = new Set(lienKet.map((v) => v.id));
           const bienMat = chuaCo.filter((id) => !daDoc.has(id));
           if (bienMat.length > 0) {
+            // Ở ĐÂY thì nói thẳng là do quyền, và nói được là vì CÓ BẰNG
+            // CHỨNG: link tồn tại nên phiếu tồn tại, ta hỏi N mà chỉ nhận về
+            // ít hơn N. Khác hẳn ca "không có nguồn nào" — ca đó không phân
+            // biệt được giấu với chưa ghi nhận, nên không được đổ cho quyền
+            // (xem `cocChuaChungMinh` trong lib).
             reads.deposits = thieu(
               `Không đọc được ${bienMat.length}/${chuaCo.length} nguồn cọc liên kết`
-              + ' — tổng cọc bên dưới có thể còn thiếu',
+              + ' — nhiều khả năng do quyền xem; tổng cọc bên dưới đang thiếu',
             );
           }
 

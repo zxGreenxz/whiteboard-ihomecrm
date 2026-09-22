@@ -793,6 +793,16 @@ describe('buildLifecycleLanes — nhiều lane theo LỊCH SỬ PHÒNG', () => {
     expect(v.lanes[0].steps[1].v).toBe('Chưa đủ dữ liệu');
     expect(v.lanes[0].steps[1].v).not.toBe('0 đ');
     expect(v.status.deposit.kind).toBe('insufficient');
+
+    // KHÔNG được đổ cho quyền xem. Đo production 22/09/2026: 435 hợp đồng cam
+    // kết cọc > 0, 30 trong số đó KHÔNG có nguồn DEPOSIT nào — phiếu không tồn
+    // tại với bất kỳ ai. Nói "ngoài quyền xem của bạn" là đẩy người ta đi xin
+    // một quyền vô ích và giấu mất câu trả lời thật.
+    const ly = (v.status.deposit as { reason: string }).reason;
+    expect(ly).not.toMatch(/quyền/i);
+    expect(ly).toMatch(/chưa ghi nhận/);
+    expect(v.lanes[0].steps[1].m).not.toMatch(/quyền/i);
+    expect(v.lanes[0].steps[1].m).toMatch(/chưa ghi nhận/);
   });
 
   it('hợp đồng KHÔNG cam kết cọc và không có nguồn ⇒ 0 đ là sự thật, không báo thiếu', () => {
