@@ -20,11 +20,52 @@ export type { BusinessPerformanceInvalidationRule, BusinessPerformanceSubtype, S
  *   đối chiếu với publication thật). Ba nguồn phải khớp: bảng được publish, bảng
  *   hub đăng ký, và bảng có descriptor.
  */
+/** Dependencies of the settlement read models; independent of the fee grids. */
+export const CONTRACT_SETTLEMENT_INVALIDATION_RULES: Partial<Record<SyncTable, readonly string[]>> = {
+  income_expenses: ['vouchers', 'lifecycle'],
+  income_expense_items: ['vouchers', 'lifecycle'],
+  income_expense_supplements: ['supplements'],
+  invoices: ['lifecycle'],
+  payments: ['lifecycle'],
+  accounts: ['vouchers', 'lifecycle'],
+  contracts: ['vouchers', 'movements', 'lifecycle', 'commission-basis'],
+  contract_terminations: ['vouchers', 'movements', 'lifecycle'],
+  contract_transfers: ['vouchers', 'movements', 'lifecycle'],
+  reservation_deposit_settlements: ['vouchers', 'movements', 'lifecycle'],
+  rooms: ['vouchers', 'movements', 'lifecycle', 'commission-basis'],
+  buildings: ['org-of-buildings', 'vouchers', 'movements', 'lifecycle', 'commission-basis'],
+  customers: ['vouchers', 'movements', 'lifecycle'],
+};
+
+/** Voucher detail RPCs are also mounted by the settlement modals. */
+export const SETTLEMENT_FACTS_INVALIDATION_RULES: Partial<Record<SyncTable, readonly string[]>> = {
+  income_expenses: ['termination-refund-facts', 'commission-voucher-facts'],
+  income_expense_items: ['termination-refund-facts', 'commission-voucher-facts'],
+  contracts: ['termination-refund-facts', 'commission-voucher-facts'],
+  contract_terminations: ['termination-refund-facts'],
+  contract_transfers: ['termination-refund-facts'],
+  reservation_deposit_settlements: ['termination-refund-facts'],
+  invoices: ['termination-refund-facts'],
+  payments: ['termination-refund-facts'],
+  accounts: ['termination-refund-facts', 'commission-voucher-facts'],
+  rooms: ['termination-refund-facts', 'commission-voucher-facts'],
+  buildings: ['termination-refund-facts', 'commission-voucher-facts'],
+  customers: ['termination-refund-facts', 'commission-voucher-facts'],
+};
+
 export const SYNC_ENTRIES: readonly SyncEntry[] = [
   ...FINANCE_SYNC_ENTRIES,
   ...CONTRACT_SYNC_ENTRIES,
   ...OPERATIONS_SYNC_ENTRIES,
-];
+].map((entry) => ({
+  ...entry,
+  keys: [
+    ...entry.keys,
+    ...(CONTRACT_SETTLEMENT_INVALIDATION_RULES[entry.table] ?? [])
+      .map((subtype) => ['contract-settlement', subtype]),
+    ...(SETTLEMENT_FACTS_INVALIDATION_RULES[entry.table] ?? []).map((root) => [root]),
+  ],
+}));
 
 /** Bảng có trong danh sách chuẩn mà KHÔNG miền nào khai descriptor. */
 export function tablesWithoutDescriptor(): SyncTable[] {

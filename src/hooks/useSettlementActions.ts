@@ -84,20 +84,20 @@ export function useSettlementActions(rows: SettlementRow[]) {
   const cancelLegacy = useCancelIncomeExpense();
   const supplement = useAppendIncomeExpenseSupplement();
   const [dangSua, setDangSua] = useState(false);
+  const canCancel = canUse(perms, 'income_expenses', 'cancel');
 
   // Cổng chặn server cho việc huỷ — ĐÚNG nguồn Thu chi dùng. Mảng id phải dựng
   // bằng useMemo: queryKey băm từ mảng đã sort, mảng mới mỗi render vẫn cùng key
   // nhưng effect của react-query thì chạy lại vô ích.
   const idsHuyDuoc = useMemo(
-    () => rows.filter((r) => r.approvalStatus !== 'CANCELLED').map((r) => r.voucherId),
-    [rows],
+    () => canCancel ? rows.filter((r) => r.approvalStatus !== 'CANCELLED').map((r) => r.voucherId) : [],
+    [rows, canCancel],
   );
   const { data: flexEligibility } = useFlexCancelEligibility(idsHuyDuoc);
 
   const permsLoaded = !!perms && !v2Routes.isLoading;
   const canApprove = canUse(perms, 'income_expenses', 'approve');
   const canEdit = canUse(perms, 'income_expenses', 'edit');
-  const canCancel = canUse(perms, 'income_expenses', 'cancel');
 
   const lamMoi = useCallback(async () => {
     await Promise.all(
@@ -124,6 +124,7 @@ export function useSettlementActions(rows: SettlementRow[]) {
     const approved = row.approvalStatus === 'APPROVED';
     const posted = row.postingStatus === 'POSTED';
     const notApplicable = row.postingStatus === 'NOT_APPLICABLE';
+    const sourceReady = row.validationState !== 'loading' && row.validationState !== 'error';
 
     const gate = voucherCancelDecision({
       type: 'EXPENSE',
@@ -139,13 +140,13 @@ export function useSettlementActions(rows: SettlementRow[]) {
 
     return {
       // Nút Duyệt của Thu chi KHÔNG phụ thuộc route (IncomeExpenseList.tsx:416).
-      approve: unapproved && canApprove,
+      approve: sourceReady && unapproved && canApprove,
       approveAndPost:
-        unapproved && canApprove && !nonCash &&
+        sourceReady && unapproved && canApprove && !nonCash &&
         canWriteWorkflow(org) && canWritePosting(org),
       // Nút Chi gác bằng isCanonicalRead, KHÔNG xét thủ quỹ — hộp thoại Chi tự
       // lọc sổ, người không giữ sổ nào sẽ thấy danh sách rỗng.
-      post: approved && !posted && !notApplicable && canonicalRead,
+      post: sourceReady && approved && !posted && !notApplicable && canonicalRead,
       cancel: canCancel && gate.canCancel,
       cancelReason: gate.canCancel ? null : gate.reason,
       // Trục tiền chỉ sửa được khi phiếu Chờ duyệt và chưa ghi sổ.
@@ -158,6 +159,7 @@ export function useSettlementActions(rows: SettlementRow[]) {
   // ── Lệnh ──────────────────────────────────────────────────────────────────
 
   const approve = useCallback(async (row: SettlementRow) => {
+    if (!availabilityOf(row).approve) throw new Error('Chưa đủ điều kiện duyệt phiếu. Hãy tải lại dữ liệu đối chiếu.');
     const org = v2Routes.getOrg(row.organizationId);
     if (canWriteWorkflow(org)) {
       await approveV2.mutateAsync({
@@ -169,17 +171,21 @@ export function useSettlementActions(rows: SettlementRow[]) {
       await approveLegacy.mutateAsync(row.voucherId);
     }
     await lamMoi();
-  }, [v2Routes, approveV2, approveLegacy, lamMoi]);
+  }, [v2Routes, approveV2, approveLegacy, lamMoi, availabilityOf]);
 
   const approveAndPost = useCallback(async (input: PostFinanceExecutionInput) => {
+    const row = rows.find((r) => r.voucherId === input.subjectId);
+    if (!row || !availabilityOf(row).approveAndPost) throw new Error('Chưa đủ điều kiện duyệt và chi phiếu. Hãy tải lại dữ liệu đối chiếu.');
     await approveAndPostV2.mutateAsync(input);
     await lamMoi();
-  }, [approveAndPostV2, lamMoi]);
+  }, [approveAndPostV2, lamMoi, rows, availabilityOf]);
 
   const post = useCallback(async (input: PostFinanceExecutionInput) => {
+    const row = rows.find((r) => r.voucherId === input.subjectId);
+    if (!row || !availabilityOf(row).post) throw new Error('Chưa đủ điều kiện chi phiếu. Hãy tải lại dữ liệu đối chiếu.');
     await postV2.mutateAsync(input);
     await lamMoi();
-  }, [postV2, lamMoi]);
+  }, [postV2, lamMoi, rows, availabilityOf]);
 
   /** Huỷ đi ĐÚNG ba nhánh như IncomeExpensePage.tsx:616. */
   const cancel = useCallback(async (row: SettlementRow, reason: string) => {

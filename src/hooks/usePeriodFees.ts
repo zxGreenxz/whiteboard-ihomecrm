@@ -388,9 +388,10 @@ export const useUpdatePeriodFee = () => {
  * 65NTG cong_an+ve_sinh, 405PVB nuoc, 1392QT nuoc). Đọc sai cột ⇒ giao diện hiện
  * "đang áp dụng" cho đúng những ô chủ đã tắt. Nên phải JOIN sang buildings.
  */
-export const useFeeAccounts = () => {
+export const useFeeAccounts = (opts?: { enabled?: boolean }) => {
   const query = useQuery({
     queryKey: ['fee-accounts'],
+    enabled: opts?.enabled ?? true,
     queryFn: async (): Promise<FeeAccount[]> => {
       const [cfgRes, bldRes] = await Promise.all([
         supabase

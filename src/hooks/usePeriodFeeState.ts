@@ -152,6 +152,8 @@ export function usePeriodFeeState(
   statusOf: (buildingId: string, categoryKey: string) => PeriodFeeStatus | undefined,
   accountOf: (buildingId: string, feeCategory: string) => FeeAccount | undefined,
   opts?: {
+    /** Hoãn các reader phụ trợ khi parent đang hiển thị khu phí khác. */
+    enabled?: boolean;
     /**
      * Được phép gửi `p_force=true` (đóng THÊM cho kỳ đã có phiếu). Chỉ chủ tổ
      * chức / superadmin — server cũng siết đúng lối này, cờ đây chỉ để không
@@ -160,8 +162,10 @@ export function usePeriodFeeState(
     canForce?: boolean;
   },
 ) {
-  const { data: accounts = [] } = useAccounts();
-  const { data: uiPrefs } = useUiPreferences();
+  const accountRead = useAccounts({ enabled: opts?.enabled });
+  const preferenceRead = useUiPreferences({ enabled: opts?.enabled });
+  const { data: accounts = [] } = accountRead;
+  const uiPrefs = preferenceRead.data;
   const setPref = useSetUiPreference();
   const payMut = usePayPeriodFee();
   const payDraftMut = usePayDraftFeeVoucher();
@@ -595,6 +599,9 @@ export function usePeriodFeeState(
   };
 
   return {
+    detailsLoading: accountRead.isLoading || preferenceRead.isLoading,
+    detailsError: accountRead.isError || preferenceRead.isError,
+    refetchDetails: () => Promise.all([accountRead.refetch(), preferenceRead.refetch()]),
     myBooks, defaultBookFor, defaultBookId: thuBookId,
     codeOf, holderOf, amountOf, defaultAmountOf, nOf, paidOf, vouchersOf, justPaidOf,
     setField, setAmount, setBook, setN, saveConfig, saveExpected, setNotApplicable,

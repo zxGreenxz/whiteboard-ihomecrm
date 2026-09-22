@@ -15,7 +15,7 @@ import { vnTodayISO } from '@/lib/vnDate';
 import { ContractLifecycleBand } from './ContractLifecycleBand';
 import { MOVEMENT_LABEL, type MovementRow } from '@/hooks/useContractMovements';
 import {
-  KIND_LABEL, STATUS_STYLE, fmtMoney, fmtNgay, viewStatusOf,
+  KIND_LABEL, STATUS_STYLE, VIEC_CHUA_XONG, fmtMoney, fmtNgay, viewStatusOf,
   type SettlementRow,
 } from '@/lib/contractSettlement';
 
@@ -23,11 +23,13 @@ interface Props {
   ev: MovementRow;
   /** Khoản chi cùng hợp đồng với biến động này. */
   lienQuan: SettlementRow[];
+  readState?: 'loading' | 'ready' | 'error';
+  onRetry?: () => void;
   onMoPhieu: (voucherId: string) => void;
   onClose: () => void;
 }
 
-export function MovementLifecycleModal({ ev, lienQuan, onMoPhieu, onClose }: Props) {
+export function MovementLifecycleModal({ ev, lienQuan, readState = 'ready', onRetry, onMoPhieu, onClose }: Props) {
   // `vnTodayISO` chứ KHÔNG phải `new Date().toISOString()`: bản UTC trả HÔM QUA
   // trong khoảng 00:00–07:00 giờ Việt Nam.
   const homNay = vnTodayISO();
@@ -47,6 +49,12 @@ export function MovementLifecycleModal({ ev, lienQuan, onMoPhieu, onClose }: Pro
   const daChi = lienQuan
     .filter((r) => viewStatusOf(r) === 'paid')
     .reduce((s, r) => s + r.amount, 0);
+  const conPhaiChi = lienQuan
+    .filter((r) => VIEC_CHUA_XONG.has(viewStatusOf(r)))
+    .reduce((s, r) => s + r.amount, 0);
+  const chuaXacMinh = readState !== 'ready' || lienQuan.some((r) => viewStatusOf(r) === 'unknown');
+  const nguonSanSang = readState === 'ready';
+  const trangThaiDoc = readState === 'loading' ? 'Đang tải khoản chi liên quan…' : 'Không đọc được khoản chi liên quan.';
 
   // Portal ra document.body vì `.tt-stage` là stacking context — xem chú thích
   // dài ở SettlementLifecycleModal, cùng một lý do.
@@ -71,8 +79,8 @@ export function MovementLifecycleModal({ ev, lienQuan, onMoPhieu, onClose }: Pro
           </div>
           <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', flexShrink: 0 }}>
             <div className="cs-m-amt">
-              <div className="cap">{lienQuan.length ? 'Chi phát sinh từ biến động' : 'Không phát sinh chi'}</div>
-              <div className="val">{fmtMoney(tong)}</div>
+              <div className="cap">{!nguonSanSang ? 'Khoản chi liên quan' : lienQuan.length ? 'Chi phát sinh từ biến động' : 'Không phát sinh chi'}</div>
+              <div className="val">{nguonSanSang ? fmtMoney(tong) : 'Chưa xác minh'}</div>
             </div>
             <button type="button" className="cs-x" onClick={onClose} aria-label="Đóng">×</button>
           </div>
@@ -128,7 +136,9 @@ export function MovementLifecycleModal({ ev, lienQuan, onMoPhieu, onClose }: Pro
                   <div className="cs-kv strong top">
                     <span className="k">Tình trạng</span>
                     <span className="v">
-                      {dich.terminatedAt ? `Đã thanh lý ${fmtNgay(dich.terminatedAt)}` : 'Đang hiệu lực'}
+                      {dich.isTerminated
+                        ? dich.terminatedAt ? `Đã thanh lý ${fmtNgay(dich.terminatedAt)}` : 'Đã thanh lý · chưa xác minh ngày'
+                        : 'Đang hiệu lực'}
                     </span>
                   </div>
                 </>
@@ -145,33 +155,40 @@ export function MovementLifecycleModal({ ev, lienQuan, onMoPhieu, onClose }: Pro
                 background: 'var(--surface-2)', borderColor: 'var(--line)', color: 'var(--ink-2)',
               }}>
                 <span>
-                  <b>{lienQuan.length ? 'Khoản chi phát sinh' : 'Không phát sinh khoản chi'}</b>
+                  <b>{!nguonSanSang ? 'Khoản chi liên quan' : lienQuan.length ? 'Khoản chi phát sinh' : 'Không phát sinh khoản chi'}</b>
                   <span className="sub">
-                    {lienQuan.length
+                    {!nguonSanSang ? trangThaiDoc : lienQuan.length
                       ? `${lienQuan.length} phiếu · đã chi ${fmtMoney(daChi)}`
                       : 'Biến động này không kéo theo phiếu chi nào'}
                   </span>
                 </span>
-                <b className="val">{fmtMoney(tong)}</b>
+                <b className="val">{nguonSanSang ? fmtMoney(tong) : 'Chưa xác minh'}</b>
               </div>
             </div>
 
             <div className="cs-payout">
-              <div><div className="k">Đã chi</div><b>{fmtMoney(daChi)}</b></div>
+              <div><div className="k">Đã chi</div><b>{nguonSanSang ? fmtMoney(daChi) : 'Chưa xác minh'}</b></div>
               <div>
                 <div className="k">Còn phải chi</div>
-                <b style={{ color: tong - daChi ? 'var(--c-partial)' : 'var(--c-paid)' }}>
-                  {fmtMoney(tong - daChi)}
+                <b style={{ color: chuaXacMinh || conPhaiChi ? 'var(--c-partial)' : 'var(--c-paid)' }}>
+                  {chuaXacMinh ? 'Chưa xác minh' : fmtMoney(conPhaiChi)}
                 </b>
               </div>
-              <div><div className="k">Số phiếu</div><b>{lienQuan.length}</b></div>
+              <div><div className="k">Số phiếu</div><b>{nguonSanSang ? lienQuan.length : 'Chưa xác minh'}</b></div>
             </div>
           </div>
 
           <div className="cs-side">
             <div>
               <h4>Khoản chi phát sinh</h4>
-              {lienQuan.length === 0 ? (
+              {!nguonSanSang ? (
+                <div className="cs-note-s" role="status">
+                  {trangThaiDoc}
+                  {readState === 'error' && onRetry && (
+                    <button type="button" className="cs-btn sm" onClick={onRetry}>Thử lại khoản chi liên quan</button>
+                  )}
+                </div>
+              ) : lienQuan.length === 0 ? (
                 <div className="cs-note-s">Biến động này không kéo theo phiếu chi nào.</div>
               ) : (
                 lienQuan.map((r) => {

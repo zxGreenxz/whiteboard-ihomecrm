@@ -265,8 +265,7 @@ export function useCustodianCashbooksV2(enabled: boolean) {
     queryFn: async () => {
       const { data, error } = await rpc("list_cashbooks_for_expense_v2");
       if (error) {
-        console.warn("[financeV2] list_cashbooks_for_expense_v2:", error.message);
-        return [] as { id: string; name: string }[];
+        throw new Error(error.message || "Không đọc được sổ quỹ");
       }
       return (data ?? []) as { id: string; name: string }[];
     },

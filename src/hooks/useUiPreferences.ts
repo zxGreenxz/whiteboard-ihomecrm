@@ -24,9 +24,10 @@ function getOptimisticOwners(queryClient: QueryClient): Map<string, symbol> {
 }
 
 /** Đọc toàn bộ tuỳ chọn UI của user hiện tại (rỗng nếu chưa đăng nhập). */
-export const useUiPreferences = () =>
+export const useUiPreferences = (opts?: { enabled?: boolean }) =>
   useQuery({
     queryKey: QK,
+    enabled: opts?.enabled ?? true,
     queryFn: async (): Promise<UiPreferences> => {
       const userId = await getSessionUserId();
       if (!userId) return {};

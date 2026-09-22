@@ -74,14 +74,17 @@ const getUtilityVersion = () => utilityVersion;
 export function useUtilityPayState(
   billingMonth: string,
   buildings: { id: string; name: string }[],
+  opts?: { enabled?: boolean },
 ) {
-  const { byBuilding, isLoading: loadingAccts } = useUtilityAccounts();
-  const payments = useUtilityPayments(billingMonth);
+  const meterRead = useUtilityAccounts(opts);
+  const { byBuilding, isLoading: loadingAccts } = meterRead;
+  const payments = useUtilityPayments(billingMonth, opts);
   const { paidThisKy, pendingThisKy, noMeterThisKy, byDay, isLoading: loadingPay } = payments;
   // Đăng ký nhận thay đổi của kho chống trùng (bề mặt kia đóng thì bên này cũng
   // đổi trạng thái ngay, không chờ refetch).
   useSyncExternalStore(subscribeUtility, getUtilityVersion, getUtilityVersion);
-  const { data: accounts = [] } = useAccounts();
+  const accountRead = useAccounts(opts);
+  const { data: accounts = [] } = accountRead;
   const payMut = usePayUtilityBill();
   const cancelMut = useCancelUtilityBill(billingMonth);
   const saveMeterMut = useSaveUtilityMeter();
@@ -328,6 +331,9 @@ export function useUtilityPayState(
   };
 
   return {
+    detailsLoading: accountRead.isLoading,
+    detailsError: meterRead.isError || payments.isError || accountRead.isError,
+    refetchDetails: () => Promise.all([meterRead.refetch(), payments.refetch(), accountRead.refetch()]),
     // data
     metersOf, paidThisKy, pendingThisKy, noMeterThisKy, justPaidThisKy, byDay, loadingPay, loadingAccts,
     myBooks, defaultBookId,

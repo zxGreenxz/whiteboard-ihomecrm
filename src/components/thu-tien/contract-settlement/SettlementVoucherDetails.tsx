@@ -1,5 +1,5 @@
 // =============================================================================
-// SettlementVoucherDetails — BẢNG QUYẾT TOÁN / CĂN CỨ + GHI CHÚ GỐC của một
+// SettlementVoucherDetails — BẢNG QUYẾT TOÁN / CĂN CỨ của một
 // phiếu, lấy ĐÚNG nguồn mà trang Thu chi đang dùng (plan §3.2).
 //
 // ── LỖI ĐANG SỬA ────────────────────────────────────────────────────────────
@@ -14,14 +14,8 @@
 // File này chỉ NỐI DÂY: đưa đúng phiếu vào, đọc trạng thái đọc ra, và bọc bằng
 // bố cục của khu. Không chép lại một phép toán nào.
 //
-// ── VÌ SAO KHỐI GHI CHÚ GỐC TÁCH RA KHỎI VOUCHERNOTE ────────────────────────
-// `VoucherNote` gộp ghi chú gốc VÀO trong nội dung tự sinh, và mỗi nhánh gắn
-// nhãn một kiểu (hoàn thanh lý bọc trong <details>, hoa hồng để trần không
-// nhãn). Plan §3.2 đòi một khối "Ghi chú gốc của phiếu" RIÊNG, hiện đúng MỘT
-// lần, giữ xuống dòng, và không bị lịch sử bổ sung thế chỗ. Nên ở đây gọi
-// `VoucherNote` KHÔNG kèm `fallbackNotes` (⇒ chỉ vẽ bảng), rồi khối ghi chú gốc
-// đứng riêng bên dưới. Ở nhánh phiếu thường — nơi `VoucherNote` chắc chắn rơi
-// vào nhánh ghi chú trần — vẫn để chính nó vẽ, để hai trang dùng chung một mã.
+// Chỉ vẽ bảng tự sinh, không hiển thị ghi chú gốc theo yêu cầu của màn này.
+// Không truyền fallbackNotes và không thay đổi notes đã lưu của phiếu.
 //
 // ── LỊCH SỬ BỔ SUNG KHÔNG THUỘC FILE NÀY ────────────────────────────────────
 // `SettlementLifecycleModal` đã có mục "Lịch sử bổ sung" riêng. Vì thế phiếu
@@ -37,6 +31,8 @@
 // KHÔNG GHI GÌ. Căn cứ và ghi chú không đụng tới số tiền hay trạng thái duyệt.
 // =============================================================================
 
+import { useEffect } from 'react';
+import type { ModalReadState } from './modalReadState';
 import {
   VoucherNote,
   type VoucherNoteRef,
@@ -67,10 +63,10 @@ export type BasisReadState =
 
 /** Thuần, không I/O, không đồng hồ — kiểm được bằng unit test. */
 export function basisReadState(
-  q: { isLoading: boolean; isError: boolean; data: unknown },
+  q: { isLoading: boolean; isFetching?: boolean; isError: boolean; data: unknown },
   nguon: string,
 ): BasisReadState {
-  if (q.isLoading) return { kind: 'loading' };
+  if (q.isLoading || q.isFetching) return { kind: 'loading' };
   if (q.isError) return { kind: 'error', reason: `Không đọc được ${nguon}.` };
   // `data == null` gồm cả `undefined` (query chưa chạy) lẫn `null` (RPC trả 0
   // dòng vì gate quyền toà). Cả hai đều là CHƯA CHỨNG MINH ĐƯỢC.
@@ -152,9 +148,10 @@ interface Props {
   row: SettlementRow;
   /** Chỉ hỏi RPC khi modal thật sự mở — giống `enabled` của Thu chi. */
   enabled?: boolean;
+  onReadStateChange?: (state: ModalReadState) => void;
 }
 
-export function SettlementVoucherDetails({ row, enabled = true }: Props) {
+export function SettlementVoucherDetails({ row, enabled = true, onReadStateChange }: Props) {
   /**
    * Phiếu đưa cho renderer chung. Ba trường đầu CHÉP THÔ từ read model.
    *
@@ -240,6 +237,10 @@ export function SettlementVoucherDetails({ row, enabled = true }: Props) {
           hoan.data?.contract ? null : 'thông tin hợp đồng (nên phòng/toà, ngày và phiếu thu cọc hiện thành gạch ngang)',
         ].filter((x): x is string => x !== null)
       : [];
+  const readState: ModalReadState = trangThai.kind === 'sufficient'
+    ? thieuNguonThanhLy.length > 0 ? 'insufficient' : 'ready'
+    : trangThai.kind;
+  useEffect(() => { onReadStateChange?.(readState); }, [onReadStateChange, readState]);
 
   /**
    * Câu căn cứ cho nhánh KHÔNG có bảng tự sinh.
@@ -258,8 +259,6 @@ export function SettlementVoucherDetails({ row, enabled = true }: Props) {
       ? 'Đã tra lúc mở phiếu: phiếu này không có hồ sơ quyết toán tự sinh để đối chiếu.'
       : moTaCanCu(row.basis);
 
-  const ghiChu = (row.notes ?? '').trim() || null;
-
   return (
     <div data-testid="settlement-voucher-details">
       <h3 style={{ marginTop: 16 }}>Bảng quyết toán · căn cứ</h3>
@@ -267,6 +266,11 @@ export function SettlementVoucherDetails({ row, enabled = true }: Props) {
       {coBangTuSinh ? (
         <>
           <TrangThaiCanCu st={trangThai} />
+          {trangThai.kind === 'error' && (
+            <button type="button" className="cs-btn sm" onClick={() => {
+              void (nguonBang === 'commission' ? hoaHong.refetch() : hoan.refetch());
+            }}>Thử lại căn cứ</button>
+          )}
           {thieuNguonThanhLy.length > 0 ? (
             <TrangThaiCanCu
               st={{
@@ -277,8 +281,7 @@ export function SettlementVoucherDetails({ row, enabled = true }: Props) {
           ) : null}
           {trangThai.kind === 'sufficient' ? (
             <div className="cs-sheet" data-testid="settlement-basis">
-              {/* KHÔNG truyền `fallbackNotes`: khối ghi chú gốc ở dưới là chủ
-                  sở hữu duy nhất của ghi chú, nếu không nó hiện hai lần. */}
+              {/* Chỉ hiển thị bảng căn cứ, không kèm ghi chú gốc. */}
               <VoucherNote voucher={phieu} enabled={enabled} />
             </div>
           ) : null}
@@ -298,23 +301,6 @@ export function SettlementVoucherDetails({ row, enabled = true }: Props) {
         </div>
       )}
 
-      <h3 style={{ marginTop: 16 }}>Ghi chú gốc của phiếu</h3>
-      {ghiChu ? (
-        <div data-testid="settlement-original-note">
-          {coBangTuSinh ? (
-            <div className="whitespace-pre-line">{ghiChu}</div>
-          ) : (
-            // Nhánh này `laPhieuHoaHong` và `laPhieuTraKhachThanhLy` đều false,
-            // nên `VoucherNote` chắc chắn rơi vào nhánh ghi chú trần: đúng một
-            // <div class="whitespace-pre-line"> như trên, do mã CHUNG vẽ.
-            <VoucherNote voucher={phieu} fallbackNotes={row.notes} enabled={enabled} />
-          )}
-        </div>
-      ) : (
-        <div className="cs-note-s" data-testid="settlement-original-note-empty">
-          Phiếu không có ghi chú gốc.
-        </div>
-      )}
     </div>
   );
 }

@@ -19,7 +19,7 @@
 
 import { createElement, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 interface KetQuaChi {
@@ -33,15 +33,27 @@ interface KetQuaChi {
 const H = vi.hoisted(() => ({
   chi: null as unknown,
   soLanRefetch: 0,
+  calls: [] as Record<string, unknown>[],
+  movementCalls: [] as Record<string, unknown>[],
+  movements: [] as unknown[],
+  targeted: null as unknown,
+  orgError: false,
+  modalError: false,
 }));
 
 vi.mock('@/hooks/useContractSettlement', () => ({
-  useContractSettlement: () => H.chi,
+  useContractSettlement: (args: Record<string, unknown>) => {
+    H.calls.push(args);
+    return (args.contractId || args.voucherId) && H.targeted ? H.targeted : H.chi;
+  },
 }));
 
 vi.mock('@/hooks/useContractMovements', async (goc) => ({
   ...(await goc<Record<string, unknown>>()),
-  useContractMovements: () => ({ rows: [], isLoading: false, isError: false, refetch: () => {} }),
+  useContractMovements: (args: Record<string, unknown>) => {
+    H.movementCalls.push(args);
+    return { rows: H.movements, isLoading: false, isError: false, refetch: () => {} };
+  },
 }));
 
 vi.mock('@/hooks/useSettlementActions', () => ({
@@ -54,7 +66,9 @@ vi.mock('@/integrations/supabase/client', () => ({
       const p: unknown = new Proxy({} as Record<string, unknown>, {
         get(_t, prop) {
           if (prop === 'then') {
-            return (ok: (v: unknown) => void) => ok({ data: { organization_id: ORG }, error: null });
+            return (ok: (v: unknown) => void) => ok(H.orgError
+              ? { data: null, error: { message: 'network down' } }
+              : { data: { organization_id: ORG }, error: null });
           }
           return () => p;
         },
@@ -65,10 +79,11 @@ vi.mock('@/integrations/supabase/client', () => ({
 }));
 
 vi.mock('../SettlementLifecycleModal', () => ({
-  SettlementLifecycleModal: () => createElement('div', { 'data-modal': 'chi' }),
+  SettlementLifecycleModal: () => { if (H.modalError) throw new Error('Failed to fetch dynamically imported module'); return createElement('div', { 'data-modal': 'chi' }); },
 }));
 vi.mock('../MovementLifecycleModal', () => ({
-  MovementLifecycleModal: () => createElement('div', { 'data-modal': 'bd' }),
+  MovementLifecycleModal: ({ lienQuan, readState }: { lienQuan: SettlementRow[]; readState: string }) =>
+    createElement('div', { role: 'dialog' }, `Related: ${lienQuan.map((r) => r.voucherCode).join(',')} / ${readState}`),
 }));
 
 import { ContractSettlementSection } from '../ContractSettlementSection';
@@ -107,17 +122,18 @@ const daChi = (p: Partial<SettlementRow> = {}) => dong({
   bookName: 'Quỹ tiền mặt', ...p,
 });
 
-const ve = (rows: SettlementRow[], opts: Partial<KetQuaChi> = {}, period = KY) => {
+const ve = (rows: SettlementRow[], opts: Partial<KetQuaChi> = {}, period = KY, props: Partial<React.ComponentProps<typeof ContractSettlementSection>> = {}) => {
   H.chi = {
     rows, postingRead: true, isLoading: false, isError: false,
     refetch: () => { H.soLanRefetch += 1; },
     ...opts,
   } satisfies KetQuaChi;
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+  if (!H.orgError) client.setQueryData(['contract-settlement', 'org-of-buildings', [TOA]], ORG);
   const wrapper = ({ children }: { children: ReactNode }) =>
     createElement(QueryClientProvider, { client }, children);
   return render(
-    createElement(ContractSettlementSection, { buildingIds: [TOA], period }),
+    createElement(ContractSettlementSection, { buildingIds: [TOA], period, ...props }),
     { wrapper },
   );
 };
@@ -147,6 +163,82 @@ beforeEach(() => {
   cleanup();
   dem = 0;
   H.soLanRefetch = 0;
+  H.calls = []; H.movementCalls = []; H.movements = []; H.targeted = null; H.orgError = false; H.modalError = false;
+});
+
+const bienDong = (n: number) => ({
+  key: `sign:${n}`, type: 'sign', date: '2026-09-01', buildingId: TOA,
+  buildingName: 'Toà A', roomId: 'r1', roomName: `Phòng ${n}`, customer: `Khách ${n}`,
+  organizationId: ORG, source: `HĐ${n}`, origin: 'contract', contractId: `contract-${n}`,
+  description: 'Ký mới', staffName: null,
+});
+
+describe('đường tải theo nhu cầu', () => {
+  it('nguồn tòa đang tải/lỗi không in số 0 và retry đúng nguồn', () => {
+    const retry = vi.fn();
+    ve([], {}, KY, { buildingsLoading: true });
+    expect(screen.getByText('Đang tải khoản chi…')).toBeTruthy();
+    expect(document.querySelector('.cs-stats .cs-stat')).toBeNull();
+    cleanup();
+    ve([], {}, KY, { buildingsError: true, onRetryBuildings: retry });
+    expect(screen.getByText('Không tải được danh sách tòa')).toBeTruthy();
+    expect(document.querySelector('.cs-empty')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Thử lại' }));
+    expect(retry).toHaveBeenCalledOnce();
+  });
+
+  it('modal lỗi vẫn đóng được mà không mất bộ lọc bảng', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    H.modalError = true;
+    ve([dong()]);
+    fireEvent.click(screen.getByRole('button', { name: 'Duyệt và Chi' }));
+    await waitFor(() => expect(screen.getByText('Không tải được hồ sơ phiếu')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: 'Đóng' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.querySelector('.cs-surface')).toBeTruthy();
+    log.mockRestore();
+  });
+
+  it('chỉ kích hoạt query của tab đang xem', () => {
+    ve([]);
+    expect(H.movementCalls.at(-1)?.enabled).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Biến động' }));
+    expect(H.movementCalls.at(-1)?.enabled).toBe(true);
+    expect(H.calls.filter((a) => !a.contractId && !a.voucherId && a.scope === 'current').at(-1)?.enabled).toBe(false);
+  });
+
+  it('giữ đủ tổng và tìm kiếm nhưng chỉ vẽ 50 biến động mỗi trang', () => {
+    H.movements = Array.from({ length: 101 }, (_, n) => bienDong(n + 1));
+    ve([]);
+    fireEvent.click(screen.getByRole('button', { name: 'Biến động' }));
+    expect(dongKetQua()).toContain('101 lượt biến động');
+    expect(dongBang()).toHaveLength(50);
+    fireEvent.click(screen.getByRole('button', { name: 'Trang sau' }));
+    expect(dongBang()).toHaveLength(50);
+    fireEvent.change(screen.getByPlaceholderText('Tìm phòng, khách, hợp đồng, phiếu…'), { target: { value: 'Khách 101' } });
+    expect(dongBang()).toHaveLength(1);
+    expect(dongBang()[0]?.textContent).toContain('Khách 101');
+  });
+
+  it('modal biến động đọc riêng mọi kỳ dù tab khoản chi đang chọn tồn cũ', async () => {
+    H.movements = [bienDong(1)];
+    const targeted = dong({ voucherCode: 'PHIEU-RIENG', contractId: 'contract-1' });
+    ve([]);
+    H.targeted = { ...H.chi as KetQuaChi, rows: [targeted] };
+    fireEvent.change(oKy(), { target: { value: 'prior' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Biến động' }));
+    fireEvent.click(screen.getByRole('button', { name: /Xem hồ sơ/ }));
+    await waitFor(() => expect(screen.getByRole('dialog')).toHaveProperty('textContent', 'Related: PHIEU-RIENG / ready'));
+    expect(H.calls.some((a) => a.contractId === 'contract-1' && a.scope === 'all' && a.enabled)).toBe(true);
+  });
+
+  it('lỗi xác định tổ chức hiện lỗi và cho thử lại', async () => {
+    H.orgError = true;
+    ve([]);
+    await waitFor(() => expect(screen.getByText('Không xác định được tổ chức của tòa')).toBeTruthy());
+    expect(screen.getByRole('button', { name: 'Thử lại' })).toBeTruthy();
+    expect(dongKetQua()).not.toContain('0 khoản');
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -490,6 +582,7 @@ describe('đổi kỳ chung và bỏ lọc', () => {
       rows: tap(), postingRead: true, isLoading: false, isError: false, refetch: () => {},
     } satisfies KetQuaChi;
     const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+    client.setQueryData(['contract-settlement', 'org-of-buildings', [TOA]], ORG);
     const wrapper = ({ children }: { children: ReactNode }) =>
       createElement(QueryClientProvider, { client }, children);
     const { rerender } = render(

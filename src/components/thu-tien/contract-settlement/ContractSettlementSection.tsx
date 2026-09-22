@@ -15,7 +15,9 @@
 // liệu, không ghi cột nào.
 // =============================================================================
 
-import { useEffect, useMemo, useState } from 'react';
+import { Component, Suspense, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { lazyWithRetry as lazy } from '@/lib/lazyWithRetry';
+import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import {
@@ -28,16 +30,19 @@ import {
 } from '@/lib/contractSettlement';
 import type { SettlementKind } from '@/lib/settlementTypes';
 import { useContractSettlement } from '@/hooks/useContractSettlement';
-import { useContractMovements, MOVEMENT_LABEL, type MovementType, type MovementRow } from '@/hooks/useContractMovements';
+import { useContractMovements, MOVEMENT_LABEL, type MovementType } from '@/hooks/useContractMovements';
 import { useSettlementActions } from '@/hooks/useSettlementActions';
-import { SettlementLifecycleModal } from './SettlementLifecycleModal';
-import { MovementLifecycleModal } from './MovementLifecycleModal';
+const SettlementLifecycleModal = lazy(() => import('./SettlementLifecycleModal').then((m) => ({ default: m.SettlementLifecycleModal })));
+const MovementLifecycleModal = lazy(() => import('./MovementLifecycleModal').then((m) => ({ default: m.MovementLifecycleModal })));
 import { NHAN_VUONG_MAC } from './nhan';
 import './contract-settlement.css';
 
 interface Props {
   buildingIds: string[];
   period: string;
+  buildingsLoading?: boolean;
+  buildingsError?: boolean;
+  onRetryBuildings?: () => void;
 }
 
 const useOrgCuaToa = (buildingIds: string[]) =>
@@ -49,7 +54,8 @@ const useOrgCuaToa = (buildingIds: string[]) =>
       const { data, error } = await supabase
         .from('buildings').select('organization_id').in('id', buildingIds).limit(1).maybeSingle();
       if (error) throw new Error(error.message);
-      return data?.organization_id ?? null;
+      if (!data?.organization_id) throw new Error('Không xác định được tổ chức của tòa');
+      return data.organization_id;
     },
   });
 
@@ -125,8 +131,33 @@ const metaThe = (v: StatValue, read: PostingReadState): string => {
 const COT_CHI = 'minmax(150px,1.3fr) minmax(110px,.9fr) minmax(120px,1fr) minmax(120px,.9fr) minmax(110px,.8fr) 108px';
 const COT_BD = 'minmax(150px,1.2fr) minmax(190px,1.4fr) 116px minmax(170px,1fr) 108px';
 
-export function ContractSettlementSection({ buildingIds, period }: Props) {
-  const { data: organizationId } = useOrgCuaToa(buildingIds);
+function ModalLoading({ onClose, error = false, onRetry }: {
+  onClose: () => void; error?: boolean; onRetry?: () => void;
+}) {
+  return createPortal(<div className="cs-scrim" onClick={onClose}>
+    <div className="cs-modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+      <div className="cs-m-head">
+        <span>{error ? 'Không tải được hồ sơ phiếu' : 'Đang tải hồ sơ…'}</span>
+        <button type="button" className="cs-x" aria-label="Đóng" onClick={onClose}>×</button>
+      </div>
+      {error && <button type="button" className="cs-btn" onClick={onRetry}>Thử lại</button>}
+    </div>
+  </div>, document.body);
+}
+
+class ModalBoundary extends Component<{ children: ReactNode; onClose: () => void }, { failed: boolean }> {
+  override state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  override render() {
+    return this.state.failed
+      ? <ModalLoading error onClose={this.props.onClose} onRetry={() => window.location.reload()} />
+      : this.props.children;
+  }
+}
+
+export function ContractSettlementSection({ buildingIds, period, buildingsLoading = false, buildingsError = false, onRetryBuildings }: Props) {
+  const org = useOrgCuaToa(buildingIds);
+  const organizationId = org.data;
 
   const [tab, setTab] = useState<Tab>('payments');
   const [gop, setGop] = useState(true);
@@ -134,6 +165,7 @@ export function ContractSettlementSection({ buildingIds, period }: Props) {
   const [locBd, setLocBd] = useState<BoLoc>(locMacDinh);
   const [dangMo, setDangMo] = useState<string | null>(null);
   const [dangMoBd, setDangMoBd] = useState<string | null>(null);
+  const [trangBd, setTrangBd] = useState(1);
 
   const mv = tab === 'movements';
   const f = mv ? locBd : locChi;
@@ -165,15 +197,25 @@ export function ContractSettlementSection({ buildingIds, period }: Props) {
     return () => stage?.classList.remove('cs-full');
   }, []);
 
-  const chi = useContractSettlement({ organizationId, buildingIds, period, scope: locChi.scope });
+  const chi = useContractSettlement({ organizationId, buildingIds, period, scope: locChi.scope, enabled: !mv });
   const bd = useContractMovements({
-    organizationId, buildingIds,
+    organizationId, buildingIds, enabled: mv,
     // Biến động lọc theo NGÀY NGHIỆP VỤ và chỉ có hai phạm vi. Kỳ tham chiếu
     // lấy thẳng từ prop nên đổi kỳ chung không để lại tháng cũ trong state.
     period: locBd.scope === 'all' ? null : period,
   });
 
-  const actions = useSettlementActions(chi.rows);
+  const bdDangXem = dangMoBd ? bd.rows.find((e) => e.key === dangMoBd) ?? null : null;
+  const lienQuan = useContractSettlement({
+    organizationId, buildingIds, period, scope: 'all',
+    contractId: bdDangXem?.contractId ?? undefined, enabled: !!bdDangXem?.contractId,
+  });
+  const phieu = useContractSettlement({
+    organizationId, buildingIds, period, scope: 'all',
+    voucherId: dangMo ?? undefined, enabled: !!dangMo,
+  });
+  const row = dangMo ? phieu.rows.find((r) => r.voucherId === dangMo) ?? null : null;
+  const actions = useSettlementActions(row ? [row] : []);
 
   /**
    * Đọc bảng bút toán tới đâu — `true` đủ, `'partial'` bị RLS giấu bớt, `false`
@@ -237,6 +279,11 @@ export function ContractSettlementSection({ buildingIds, period }: Props) {
     () => nenBd.filter((e) => f.kind === 'all' || e.type === f.kind),
     [nenBd, f.kind],
   );
+  const buildingKey = buildingIds.join(',');
+  useEffect(() => { setTrangBd(1); }, [locBd, period, buildingKey]);
+  const soTrangBd = Math.max(1, Math.ceil(hienBd.length / 50));
+  const trangBdHienTai = Math.min(trangBd, soTrangBd);
+  const trangBienDong = hienBd.slice((trangBdHienTai - 1) * 50, trangBdHienTai * 50);
 
   // ── Thẻ số ────────────────────────────────────────────────────────────────
   // Tính trên nền đã lọc theo loại (giống thiết kế), KHÔNG theo trạng thái —
@@ -346,8 +393,10 @@ export function ContractSettlementSection({ buildingIds, period }: Props) {
     ? []
     : nenTruocKy.filter((r) => isOldPeriodWork(r, period));
 
-  const dangTai = mv ? bd.isLoading : chi.isLoading;
-  const hong = mv ? bd.isError : chi.isError;
+  const dangTai = buildingsLoading || org.isLoading || (mv ? bd.isLoading : chi.isLoading);
+  const hong = buildingsError || org.isError || (mv ? bd.isError : chi.isError);
+  const dangDoiChieu = !mv && (chi.isEnriching || chi.rows.some((r) => r.validationState === 'loading'));
+  const loiDoiChieu = !mv && !!chi.enrichmentError;
   const soDong = mv ? hienBd.length : hienChi.length;
   const tongTien = mv ? 0 : hienChi.reduce((s, r) => s + r.amount, 0);
   /**
@@ -385,10 +434,6 @@ export function ContractSettlementSection({ buildingIds, period }: Props) {
   const coLoc = f.q !== '' || f.building !== 'all' || f.kind !== 'all' || f.origin !== 'all'
     || f.person !== 'all' || f.issue !== 'all' || f.status !== 'open' || f.scope !== 'current';
 
-  const row = dangMo ? chi.rows.find((r) => r.voucherId === dangMo) ?? null : null;
-  const bdDangXem: MovementRow | null =
-    dangMoBd ? bd.rows.find((e) => e.key === dangMoBd) ?? null : null;
-
   // Bỏ lọc là về ĐÚNG mặc định, kể cả phạm vi kỳ. Không còn chuỗi tháng nào để
   // sót lại, vì phạm vi là enum và kỳ tham chiếu lấy từ prop.
   const xoaLoc = () => (mv ? setLocBd : setLocChi)({ ...locMacDinh(), advanced: f.advanced });
@@ -425,7 +470,7 @@ export function ContractSettlementSection({ buildingIds, period }: Props) {
       </div>
 
       {/* ── Thẻ số ─────────────────────────────────────────────────────── */}
-      {!mv && !dangTai && !hong && (
+      {!mv && !dangTai && !hong && !dangDoiChieu && !loiDoiChieu && (
         <div className="cs-stats" style={{ gridTemplateColumns: `repeat(${the.length}, minmax(0,1fr))` }}>
           {the.map((t) => {
             const on = f.status === t.key;
@@ -478,12 +523,12 @@ export function ContractSettlementSection({ buildingIds, period }: Props) {
 
       {hong && (
         <div className="cs-fail">
-          <b>Không tải được danh sách {mv ? 'biến động' : 'khoản chi'}</b>
+          <b>{buildingsError ? 'Không tải được danh sách tòa' : org.isError ? 'Không xác định được tổ chức của tòa' : `Không tải được danh sách ${mv ? 'biến động' : 'khoản chi'}`}</b>
           <p>
             Bộ lọc vẫn được giữ. Đây là lỗi tải dữ liệu — <b style={{ color: 'inherit' }}>không</b> có
             nghĩa là không còn việc phải xử lý.
           </p>
-          <button type="button" className="cs-btn primary" onClick={() => (mv ? bd : chi).refetch?.()}>
+          <button type="button" className="cs-btn primary" onClick={() => buildingsError ? onRetryBuildings?.() : (org.isError ? org : mv ? bd : chi).refetch?.()}>
             Thử lại
           </button>
         </div>
@@ -491,6 +536,10 @@ export function ContractSettlementSection({ buildingIds, period }: Props) {
 
       {!dangTai && !hong && (
         <section className="cs-surface">
+          {(dangDoiChieu || loiDoiChieu) && <div className="cs-notice" role="status">
+            <span>{loiDoiChieu ? 'Chưa đọc đủ dữ liệu đối chiếu. Các khoản liên quan chưa thể duyệt hoặc chi.' : 'Đang đối chiếu căn cứ và yêu cầu bổ sung. Các khoản liên quan chưa thể duyệt hoặc chi.'}</span>
+            {loiDoiChieu && <button type="button" className="cs-btn" onClick={() => chi.refetch()}>Thử lại</button>}
+          </div>}
           {/* ── Thanh công cụ ────────────────────────────────────────────── */}
           <div className="cs-tools">
             <label className="cs-search">
@@ -674,7 +723,7 @@ export function ContractSettlementSection({ buildingIds, period }: Props) {
                       </div>
                     </div>
                     <div>
-                      <span className="cs-tag" style={{ background: st.bg, color: st.fg }}>{st.nhan}</span>
+                      <span className="cs-tag" style={{ background: st.bg, color: st.fg }}>{r.validationState === 'loading' ? 'Đang đối chiếu' : st.nhan}</span>
                       {r.issues.length > 0 && (
                         <div className="cs-issue">{NHAN_VUONG_MAC.vuong[r.issues[0]].nhan}
                           {r.issues.length > 1 ? ` +${r.issues.length - 1}` : ''}</div>
@@ -697,8 +746,7 @@ export function ContractSettlementSection({ buildingIds, period }: Props) {
                 <span>Phòng · Khách</span><span>Biến động</span><span>Ngày phát sinh</span>
                 <span>Khoản chi liên quan</span><span />
               </div>
-              {hienBd.map((e) => {
-                const lienQuan = chi.rows.filter((r) => r.contractId && r.contractId === e.contractId);
+              {trangBienDong.map((e) => {
                 return (
                   <div className={`cs-row ${dangMoBd === e.key ? 'on' : ''}`} key={e.key}>
                     <div style={{ minWidth: 0 }}>
@@ -716,19 +764,8 @@ export function ContractSettlementSection({ buildingIds, period }: Props) {
                     </div>
                     <div className="cs-date">{fmtNgay(e.date)}</div>
                     <div className="cs-links">
-                      {lienQuan.length === 0
-                        ? <span className="cs-sub">Không phát sinh chi</span>
-                        : lienQuan.map((r) => (
-                            <button type="button" key={r.key} className="cs-cellbtn"
-                              style={{ display: 'block', color: 'var(--brand)' }}
-                              onClick={() => setDangMo(r.voucherId)}>
-                              {KIND_LABEL[r.kind]}{' '}
-                              <span className="cs-sub">
-                                · <span style={{ fontFamily: 'var(--mono)' }}>{fmtMoney(r.amount)}</span>
-                                {' '}· {STATUS_STYLE[viewOf.get(r.key) ?? 'unknown'].nhan}
-                              </span>
-                            </button>
-                          ))}
+                      <button type="button" className="cs-cellbtn" style={{ color: 'var(--brand)' }}
+                        onClick={() => setDangMoBd(e.key)}>Tra trong hồ sơ</button>
                     </div>
                     <button type="button" className="cs-go" onClick={() => setDangMoBd(e.key)}>
                       Xem hồ sơ
@@ -791,21 +828,31 @@ export function ContractSettlementSection({ buildingIds, period }: Props) {
         </section>
       )}
 
-      {bdDangXem && (
+      {mv && !dangTai && !hong && soTrangBd > 1 && <div className="cs-foot">
+        <button type="button" className="cs-btn" disabled={trangBdHienTai === 1} onClick={() => setTrangBd(trangBdHienTai - 1)}>Trang trước</button>
+        <span>Trang {trangBdHienTai}/{soTrangBd} · {hienBd.length} lượt biến động</span>
+        <button type="button" className="cs-btn" disabled={trangBdHienTai === soTrangBd} onClick={() => setTrangBd(trangBdHienTai + 1)}>Trang sau</button>
+      </div>}
+
+      {bdDangXem && <ModalBoundary key={bdDangXem.key} onClose={() => setDangMoBd(null)}><Suspense fallback={<ModalLoading onClose={() => setDangMoBd(null)} />}>
         <MovementLifecycleModal
           ev={bdDangXem}
-          lienQuan={chi.rows.filter((r) => r.contractId && r.contractId === bdDangXem.contractId)}
+          lienQuan={bdDangXem.contractId ? lienQuan.rows : []}
+          readState={!bdDangXem.contractId ? 'ready' : lienQuan.isError || lienQuan.enrichmentError ? 'error' : lienQuan.isLoading || lienQuan.isEnriching ? 'loading' : 'ready'}
+          onRetry={() => lienQuan.refetch()}
           onMoPhieu={(id) => { setDangMoBd(null); setDangMo(id); }}
           onClose={() => setDangMoBd(null)}
         />
-      )}
+      </Suspense></ModalBoundary>}
 
-      {row && (
+      {dangMo && !row && <ModalLoading onClose={() => setDangMo(null)}
+        error={phieu.isError || !phieu.isLoading} onRetry={() => phieu.refetch()} />}
+      {row && <ModalBoundary key={row.voucherId} onClose={() => setDangMo(null)}><Suspense fallback={<ModalLoading onClose={() => setDangMo(null)} />}>
         <SettlementLifecycleModal
-          row={row} view={viewOf.get(row.key) ?? 'unknown'}
-          actions={actions} onClose={() => setDangMo(null)}
+          row={row} view={viewStatusOf(row)}
+          actions={actions} onRetrySources={() => phieu.refetch()} onClose={() => setDangMo(null)}
         />
-      )}
+      </Suspense></ModalBoundary>}
     </div>
   );
 }

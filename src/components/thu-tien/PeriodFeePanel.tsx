@@ -54,7 +54,8 @@ const N_OPTIONS = [1, 3, 6, 12];
 
 export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, canRecordPayment }: Props) {
   const period = billingMonth;
-  const { data: allBuildings = [], isLoading: loadingBld } = useIncomeExpenseFormBuildings();
+  const buildingSource = useIncomeExpenseFormBuildings({ failOnError: true });
+  const { data: allBuildings = [], isLoading: loadingBld } = buildingSource;
   const buildings = useMemo(() => allBuildings.filter((b) => !b.is_virtual).map((b) => ({ id: b.id, name: b.name })), [allBuildings]);
   const buildingIds = useMemo(() => buildings.map((b) => b.id), [buildings]);
 
@@ -102,8 +103,10 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
   const isDepL  = catVisible && cat!.family === 'DEPOSIT_LEDGER';
 
   // ── Data ──
+  // Status vẫn tải để menu có badge đúng. Cấu hình/sổ/tùy chọn phí chỉ cần
+  // khi dùng các mục phí cũ; khu hợp đồng có reader và sổ quỹ riêng.
   const feeStatus = usePeriodFeeStatus(period, gridKeys, buildingIds, { enabled: buildingIds.length > 0 });
-  const feeAccounts = useFeeAccounts();
+  const feeAccounts = useFeeAccounts({ enabled: !isHopDong });
   const commissions = usePeriodCommissions(period, buildingIds, { enabled: buildingIds.length > 0 && isOverview });
   const prevPeriod = addMonths(period, -1);
   const maintenance = usePeriodMaintenance(period, buildingIds, { enabled: buildingIds.length > 0 && (isOverview || isBatch) });
@@ -118,7 +121,7 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
   // cũ không trả. Trước Slice −1 nó truyền `isAdmin`, mà is_admin() =
   // is_super_admin() nên CHỦ TỔ CHỨC THẬT không phải super admin bị khoá khỏi
   // chính đặc quyền của mình.
-  const S = usePeriodFeeState(period, gridCat, buildings, feeStatus.statusOf, feeAccounts.accountOf, { canForce: canForceFee });
+  const S = usePeriodFeeState(period, gridCat, buildings, feeStatus.statusOf, feeAccounts.accountOf, { canForce: canForceFee, enabled: !isHopDong });
 
   // ── Helper: tòa hiển thị cho 1 hạng mục (thang máy = cờ ∪ tòa có phiếu kỳ này) ──
   const visibleIdsFor = (c: FeeCategory): string[] => {
@@ -578,7 +581,13 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
               </div>
 
               <div className="ud-body">
-                {loadingBld || feeStatus.isLoading ? <div className="ud-empty">⏳ Đang tải…</div> : gridRows.length === 0 && naRows.length === 0 ? <div className="ud-empty">🏢 Không có tòa nào cho hạng mục này.</div> : (
+                {feeAccounts.isError || S.detailsError ? <div className="ud-empty" role="status">
+                  Không đọc được dữ liệu phí.
+                  <button type="button" className="ptt-btn ghost sm" onClick={() => {
+                    void feeAccounts.refetch(); void S.refetchDetails();
+                  }}>Thử lại dữ liệu phí</button>
+                </div> : loadingBld || feeStatus.isLoading || feeAccounts.isLoading || S.detailsLoading
+                  ? <div className="ud-empty" role="status">Đang tải dữ liệu phí…</div> : gridRows.length === 0 && naRows.length === 0 ? <div className="ud-empty">🏢 Không có tòa nào cho hạng mục này.</div> : (
                   <div className="ud-tablewrap">
                     <table className="ud-table">
                       <thead><tr>
@@ -649,7 +658,8 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
       {/* ===== HỢP ĐỒNG & QUYẾT TOÁN =====
           Gộp ba mục cũ (hoa hồng · chi thanh lý · thưởng Sale). Khu này tự đọc
           dữ liệu và tự nối hành động qua adapter riêng — KHÔNG sửa Thu chi. */}
-      {isHopDong && <ContractSettlementSection buildingIds={buildingIds} period={period} />}
+      {isHopDong && <ContractSettlementSection buildingIds={buildingIds} period={period}
+        buildingsLoading={loadingBld} buildingsError={buildingSource.isError} onRetryBuildings={() => buildingSource.refetch()} />}
 
       {/* ===== SỔ THEO DÕI: cọc đã thu ===== */}
       {isDepL && <DepositLedgerSection period={period} />}

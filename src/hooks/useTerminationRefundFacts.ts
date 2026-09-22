@@ -22,6 +22,7 @@ export const useTerminationRefundFacts = (
     queryKey: [TERMINATION_REFUND_FACTS_KEY, voucherId ?? null],
     enabled: enabled && !!voucherId,
     staleTime: 30_000,
+    refetchOnWindowFocus: true,
     queryFn: async (): Promise<TerminationRefundFacts | null> => {
       const { data, error } = await supabase.rpc("get_termination_refund_facts_v1", {
         p_voucher_ids: [batBuoc(voucherId, "voucherId")],
