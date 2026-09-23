@@ -100,6 +100,29 @@ export function dungCronTest(test, cron) {
   ghiLog("hau-ky", `dựng ${giu.length} cron · bỏ qua ${cron.length - giu.length}: ${cron.filter((j) => j.ten in CRON_BO_QUA).map((j) => j.ten).join(", ")}`);
 }
 
+/**
+ * Chờ PostgREST của TEST nạp xong schema cache (~8.000 object). Ngay sau khôi phục, mọi
+ * request trả 503 PGRST002 "Could not query the database for the schema cache" trong
+ * vài chục giây (đo 23/09 trên compute Nano) — người mở web lúc đó chỉ thấy khung xương.
+ */
+export async function choApiSanSang(testUrl, key, { toiDaGiay = 180 } = {}) {
+  const t0 = Date.now();
+  const h = key.startsWith("sb_") ? { apikey: key } : { apikey: key, Authorization: `Bearer ${key}` };
+  for (;;) {
+    const r = await fetch(`${testUrl}/rest/v1/organizations?select=id&limit=1`, { headers: { ...h, "Accept-Profile": "public" } })
+      .catch(() => null);
+    if (r && r.status !== 503) {
+      ghiLog("hau-ky", `Data API sẵn sàng sau ${Math.round((Date.now() - t0) / 1000)}s (HTTP ${r.status})`);
+      return true;
+    }
+    if (Date.now() - t0 > toiDaGiay * 1000) {
+      ghiLog("hau-ky", `⚠ Data API vẫn 503 sau ${toiDaGiay}s — schema cache chưa nạp xong, web có thể chậm vài phút`);
+      return false;
+    }
+    await new Promise((ok) => setTimeout(ok, 5000));
+  }
+}
+
 export function ghiLichSu(test, ketQua) {
   psql(test, `CREATE TABLE IF NOT EXISTS ${TEST_ENV_SCHEMA}.lich_su (
   id bigserial PRIMARY KEY, bat_dau timestamptz NOT NULL, ket_thuc timestamptz NOT NULL DEFAULT now(),

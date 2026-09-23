@@ -17,7 +17,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { cauHinhProjectTest } from "./cau-hinh.mjs";
-import { dungCronTest, datMatKhauTest, ghiLichSu, thayRefTrongHam, xoaPush } from "./hau-ky.mjs";
+import { choApiSanSang, dungCronTest, datMatKhauTest, ghiLichSu, thayRefTrongHam, xoaPush } from "./hau-ky.mjs";
 import { chuanBi, dungCron, khoiPhucApp, taiLapNenTang, xoaSach, xoaVaNapAuth } from "./khoi-phuc.mjs";
 import { PROD_REF, PhienPsql, batBuocDichTest, credential, ghiLog, ketNoi, khiThoat, kiemCongCu, psqlJson } from "./lib.mjs";
 import { dungBucket, guongDongObject } from "./tep.mjs";
@@ -118,6 +118,7 @@ async function main(argv) {
       dungCronTest(test, x.meta.cron);
     });
     await buoc("cau-hinh", () => cauHinhProjectTest(cred));
+    await buoc("cho-api", () => choApiSanSang(testUrl, cred.testSecretKey));
 
     const ketQua = dat ? "DAT" : "LECH";
     ghiLichSu(test, {

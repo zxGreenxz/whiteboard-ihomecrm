@@ -51,7 +51,8 @@ môi trường riêng của nhánh này (URL/key TEST + `VITE_APP_ENV=test` ⇒ 
 7. **Hậu kỳ**: thay ref production trong thân hàm (chỉ `append_income_expense_supplement_v1` ghim
    host storage), xoá `push_subscriptions` (thiết bị thật), dựng lại cron (trừ
    `clone_org_sync_worker` và hai watchdog Network Center — không worker nào báo nhịp về TEST),
-   cấu hình Auth (tắt đăng ký tự do) và Data API giống production, ghi `test_env.lich_su`.
+   cấu hình Auth (tắt đăng ký tự do) và Data API giống production, chờ Data API nạp xong schema
+   cache (ngay sau khôi phục trả 503 PGRST002 vài chục giây), ghi `test_env.lich_su`.
 
 ## Chốt an toàn
 
