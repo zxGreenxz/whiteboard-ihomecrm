@@ -76,7 +76,9 @@ async function main(argv) {
       const vtTest = psqlJson(test, sqlVanTay());
       // Khác biệt ĐÃ BIẾT: khoá ngoại dựng NOT VALID vì prod có dòng mồ côi (xem khoi-phuc.mjs).
       const daBiet = new Set(kp.fkNotValid.map((f) => `con:${f.bang}.${f.ten}`));
-      const lechVt = soVanTay(x.vanTay, vtTest).filter((l) => !(l.loai === "khác" && daBiet.has(l.k)));
+      const tatCa = soVanTay(x.vanTay, vtTest);
+      const tuongDuong = tatCa.filter((l) => l.loai === "tương đương").map((l) => l.k);
+      const lechVt = tatCa.filter((l) => l.loai !== "tương đương" && !(l.loai === "khác" && daBiet.has(l.k)));
       const bangs = psqlJson(test, sqlDanhSachBang());
       const bamTest = {};
       for (let i = 0; i < bangs.length; i += 40) {
@@ -84,12 +86,13 @@ async function main(argv) {
         Object.assign(bamTest, r.j);
       }
       const lechBam = soBam(x.bam, bamTest);
-      return { lechVt, lechBam, soObject: x.vanTay.length, soBang: Object.keys(x.bam).length };
+      return { lechVt, lechBam, tuongDuong, soObject: x.vanTay.length, soBang: Object.keys(x.bam).length };
     });
     writeFileSync(join(thuMuc, "kiem.json"), JSON.stringify({ ...kiem, pgRestoreLoi: kp.loi, fkNotValid: kp.fkNotValid }, null, 2));
     ghiLog("kiem", `vân tay: ${kiem.soObject} object, lệch ${kiem.lechVt.length} · dữ liệu: ${kiem.soBang} bảng, lệch ${kiem.lechBam.length} · pg_restore ${kp.loi.length} lỗi`);
     for (const l of kiem.lechVt.slice(0, 25)) ghiLog("kiem", `  ✗ ${l.loai}: ${l.k}`);
     for (const l of kiem.lechBam.slice(0, 25)) ghiLog("kiem", `  ✗ dữ liệu ${l.k}: prod ${l.prod} · test ${l.test}`);
+    if (kiem.tuongDuong.length) ghiLog("kiem", `  ~ ${kiem.tuongDuong.length} ràng buộc CHECK tương đương (chỉ khác ngoặc do pg_dump làm phẳng AND)`);
     for (const f of kp.fkNotValid) ghiLog("kiem", `  ~ đã biết: ${f.bang}.${f.ten} NOT VALID — ${f.chiTiet.slice(0, 140)}`);
     const dat = kiem.lechVt.length === 0 && kiem.lechBam.length === 0 && kp.loi.length === 0;
 

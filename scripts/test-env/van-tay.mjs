@@ -61,7 +61,12 @@ select 'idx:' || ns.nspname || '.' || c.relname, md5(pg_get_indexdef(i.indexreli
  where c.oid not in (select objid from ext)
 union all
 select 'con:' || ns.nspname || '.' || coalesce(tc.relname, tt.typname) || '.' || co.conname,
+       -- Hai mã: nguyên văn, và bản BỎ NGOẶC/KHOẢNG TRẮNG. pg_dump in lại CHECK dạng
+       -- "(a AND b) AND c" (vd từ BETWEEN); restore phân tích lại và làm phẳng thành
+       -- "a AND b AND c" — cùng nghĩa, khác chữ. Chỉ mã thứ hai khớp ⇒ "tương đương".
        md5(pg_get_constraintdef(co.oid) || '|' || co.convalidated || '|' || co.condeferrable || '|' || co.condeferred)
+       || ':' || md5(regexp_replace(pg_get_constraintdef(co.oid), '[()[:space:]]', '', 'g')
+                     || '|' || co.convalidated || '|' || co.condeferrable || '|' || co.condeferred)
   from pg_constraint co join ns on ns.oid = co.connamespace
   left join pg_class tc on tc.oid = co.conrelid left join pg_type tt on tt.oid = co.contypid
 union all
@@ -149,7 +154,11 @@ export function soVanTay(prod, test) {
   const lech = [];
   for (const [k, v] of mp) {
     if (!mt.has(k)) lech.push({ k, loai: "thiếu trên TEST" });
-    else if (mt.get(k) !== v) lech.push({ k, loai: "khác" });
+    else if (mt.get(k) !== v) {
+      const [, chuanProd] = v.split(":");
+      const [, chuanTest] = mt.get(k).split(":");
+      lech.push({ k, loai: chuanProd && chuanProd === chuanTest ? "tương đương" : "khác" });
+    }
   }
   for (const k of mt.keys()) if (!mp.has(k)) lech.push({ k, loai: "thừa trên TEST" });
   return lech.sort((a, b) => a.k.localeCompare(b.k));

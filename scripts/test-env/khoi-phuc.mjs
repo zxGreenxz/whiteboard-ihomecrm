@@ -137,7 +137,10 @@ export function tachLoiPgRestore(err) {
   for (const phan of err.split(/^pg_restore: error: could not execute query: /m).slice(1)) {
     const loi = (/^ERROR:\s*(.*)$/m.exec(phan)?.[1] ?? "").trim();
     const chiTiet = (/^DETAIL:\s*(.*)$/m.exec(phan)?.[1] ?? "").trim();
-    const lenh = (/^Command was: ([\s\S]*?)(?:\n\s*\n|$)/m.exec(phan)?.[1] ?? "").trim();
+    // Câu lệnh kéo dài NHIỀU dòng tới dòng trống. Không dùng `$` với cờ m — nó dừng ở
+    // cuối dòng ĐẦU, cắt mất "ADD CONSTRAINT …" (lỗi thật 23/09: 16 khoá ngoại bị bỏ qua).
+    const sau = phan.split(/^Command was: /m)[1] ?? "";
+    const lenh = sau.split(/\r?\n[ \t]*\r?\n/)[0].trim();
     khoi.push({ loi, chiTiet, lenh });
   }
   return khoi;
@@ -186,13 +189,16 @@ export async function khoiPhucApp(test, fileApp, thuMuc) {
   // trên prod ràng buộc vẫn mang cờ "đã kiểm"). Dựng lại NOT VALID: vẫn chặn mọi dòng
   // GHI MỚI, chỉ không kiểm dữ liệu cũ. Trả về danh sách để báo cáo là khác biệt ĐÃ BIẾT.
   const fkNotValid = [];
-  for (const k of loi.filter((x) => /violates foreign key constraint/.test(x.loi) && /ADD CONSTRAINT/.test(x.lenh))) {
-    const m = /ALTER TABLE ONLY (\S+)\s+ADD CONSTRAINT (\S+)/.exec(k.lenh);
+  const daXuLy = new Set();
+  for (const k of loi.filter((x) => /violates foreign key constraint/.test(x.loi))) {
+    const m = /^ALTER TABLE ONLY (\S+)\s+ADD CONSTRAINT (\S+) FOREIGN KEY [\s\S]+;$/.exec(k.lenh);
+    if (!m) continue; // không nhận dạng được câu lệnh ⇒ để lại là LỖI, không nuốt
     psql(test, `${k.lenh.replace(/;\s*$/, "")} NOT VALID;`);
-    fkNotValid.push({ bang: m?.[1], ten: m?.[2], chiTiet: k.chiTiet });
+    fkNotValid.push({ bang: m[1], ten: m[2], chiTiet: k.chiTiet });
+    daXuLy.add(k);
   }
   // "schema public already exists": pg_dump -n public luôn phát CREATE SCHEMA public — vô hại.
-  const loiKhac = loi.filter((x) => !/violates foreign key constraint/.test(x.loi) && !/schema "public" already exists/.test(x.loi));
+  const loiKhac = loi.filter((x) => !daXuLy.has(x) && !/schema "public" already exists/.test(x.loi));
   ghiLog("khoi-phuc", `lượt chính ${r1.giay}s · ${fkNotValid.length} khoá ngoại dựng NOT VALID (dòng mồ côi trên prod) · ${loiKhac.length} lỗi khác`);
   for (const k of loiKhac.slice(0, 10)) ghiLog("khoi-phuc", `  ! ${k.loi.slice(0, 160)}`);
   return { loi: loiKhac, fkNotValid };

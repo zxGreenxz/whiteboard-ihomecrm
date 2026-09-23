@@ -20,6 +20,15 @@ describe('môi trường TEST — phép so vân tay', () => {
     ]);
   });
 
+  it('ràng buộc chỉ khác ngoặc là "tương đương", khác nghĩa vẫn là "khác"', () => {
+    const prod = [{ k: 'con:public.t.c1', v: 'A:N' }, { k: 'con:public.t.c2', v: 'B:M' }];
+    const test = [{ k: 'con:public.t.c1', v: 'X:N' }, { k: 'con:public.t.c2', v: 'Y:Z' }];
+    expect(soVanTay(prod, test)).toEqual([
+      { k: 'con:public.t.c1', loai: 'tương đương' },
+      { k: 'con:public.t.c2', loai: 'khác' },
+    ]);
+  });
+
   it('so mã băm từng bảng: bảng lệch dòng phải lộ ra', () => {
     expect(soBam({ 'public.a': 'h:3', 'public.b': 'h:1' }, { 'public.a': 'h:3', 'public.b': 'k:1' }))
       .toEqual([{ k: 'public.b', prod: 'h:1', test: 'k:1' }]);
