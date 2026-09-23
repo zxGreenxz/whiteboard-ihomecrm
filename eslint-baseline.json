@@ -876,7 +876,6 @@
     "src/hooks/useStatBreakdowns.ts|@typescript-eslint/no-explicit-any",
     "src/hooks/useStatBreakdowns.ts|@typescript-eslint/no-explicit-any",
     "src/hooks/useTenants.ts|@typescript-eslint/no-explicit-any",
-    "src/hooks/useTerminationRefund.ts|@typescript-eslint/no-explicit-any",
     "src/hooks/useThanhToanLedgers.ts|@typescript-eslint/no-explicit-any",
     "src/hooks/useThanhToanLedgers.ts|@typescript-eslint/no-explicit-any",
     "src/hooks/useThanhToanLedgers.ts|@typescript-eslint/no-explicit-any",

@@ -22,6 +22,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   ACTION_CATALOG,
+  hanhDongConDung,
   khoaQuyenHanhDong,
   khoaRolloutHanhDong,
   type ActionCatalogEntry,
@@ -193,6 +194,16 @@ describe('mirror ACTION_CATALOG khớp seed registry của migration G2-A', () =
     // Seed ở trạng thái `disabled`: một đường ghi mới KHÔNG được tự sống ngay
     // khi bản web lên — nó chờ một quyết định có tên người và có lý do.
     for (const dong of seedCo) expect(dong.state).toBe('disabled');
+  });
+
+  it('hanhDongConDung() lọc đúng hành động đã gỡ, không lọc gì khác', () => {
+    const conDung = hanhDongConDung().map((a) => a.actionId);
+    const daGo = (Object.values(ACTION_CATALOG) as ActionCatalogEntry[])
+      .filter((a) => a.daGo)
+      .map((a) => a.actionId);
+    expect(daGo).toEqual(['termination.hoan_coc']);
+    expect(conDung).not.toContain('termination.hoan_coc');
+    expect(conDung.length + daGo.length).toBe(Object.keys(ACTION_CATALOG).length);
   });
 
   it('khoá rollout của hành động luôn mang tiền tố `action:`', () => {

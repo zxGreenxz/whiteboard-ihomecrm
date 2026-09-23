@@ -26,6 +26,7 @@ import { chotToChuc, type DomainTool } from './registry';
 import { KHOA_ROLLOUT_KE_HOACH } from '../featureFlags';
 import {
   ACTION_CATALOG,
+  hanhDongConDung,
   NHAN_TRUONG_XEM_TRUOC,
   type ActionCatalogEntry,
   type ActionId,
@@ -57,8 +58,9 @@ type BuocDauVao = {
  * Mỗi nhánh lấy schema input ngay từ ACTION_CATALOG. JSON Schema vì thế gắn
  * đúng `du_lieu` với literal `hanh_dong`, để mô hình không phải đoán payload,
  * đồng thời runtime vẫn từ chối dữ liệu không thuộc action đã chọn.
+ * Hành động `daGo` (đã gỡ, registry tắt) không được mời vào kế hoạch.
  */
-const CAC_SCHEMA_BUOC = Object.values(ACTION_CATALOG).map((entry) =>
+const CAC_SCHEMA_BUOC = hanhDongConDung().map((entry) =>
   z.object({
     hanh_dong: z.literal(entry.actionId),
     du_lieu: entry.inputSchema,

@@ -5,8 +5,9 @@ import { login, trackConsoleErrors } from './auth';
  * Báo cáo Bỏ trả / thanh lý — trang CHỈ ĐỌC.
  *
  * 23/09/2026 chủ bỏ hẳn "đường hoàn khách thứ hai": nút "Kiểm tra" + hộp thoại
- * sinh phiếu hoàn trên trang này đã gỡ, và migration 20260923161122 thu luôn
- * quyền gọi hai RPC ghi của nó ở máy chủ. Phiếu hoàn khách thanh lý chỉ còn sinh
+ * sinh phiếu hoàn trên trang này đã gỡ, và migration 20260923161122 thu quyền gọi
+ * RPC ghi nghĩa vụ hoàn ở máy chủ (không có nghĩa vụ thì không sinh được phiếu
+ * theo đường này). Phiếu hoàn khách thanh lý chỉ còn sinh
  * từ luồng trả phòng. Spec canh để nút đó không quay lại và trang vẫn mở sạch lỗi.
  * Thay cho `termination-refund.spec.ts` + `termination-refund-full-cycle.spec.ts`
  * (cùng đợt gỡ).

@@ -75,7 +75,18 @@ export interface ActionCatalogEntry {
    * là xong. Vắng mặt (undefined) tương đương `false`.
    */
   externalEffect?: boolean;
+  /**
+   * `true` = hành động ĐÃ GỠ: hàng registry vẫn tồn tại ở trạng thái tắt
+   * (`enabled=false`, cờ `disabled`, RPC bị thu EXECUTE) nên entry phải ở lại để
+   * mirror khớp seed đóng băng — nhưng KHÔNG mời mô hình lập kế hoạch với nó và
+   * KHÔNG cho cấp uỷ quyền đứng. Vắng mặt (undefined) tương đương `false`.
+   */
+  daGo?: boolean;
 }
+
+/** Các hành động còn dùng được — lọc bỏ hành động `daGo`. */
+export const hanhDongConDung = (): ActionCatalogEntry[] =>
+  (Object.values(ACTION_CATALOG) as ActionCatalogEntry[]).filter((a) => !a.daGo);
 
 /**
  * Input của `tao_phieu_thu_chi_nhap` — MỘT bản, dùng chung giữa tool và catalog.
@@ -1051,13 +1062,15 @@ export const ACTION_CATALOG = {
   },
   // ĐÃ GỠ 23/09/2026 — chủ bỏ hẳn "đường hoàn khách thứ hai" (nút Kiểm tra ở Báo
   // cáo thanh lý + hành động này). Migration 20260923161122 tắt hàng đăng ký
-  // (enabled=false), đưa cờ về disabled và thu EXECUTE của cặp preview/execute lẫn
-  // RPC gốc create_termination_refund_voucher_v1. Entry còn ở đây CHỈ vì mirror phải
-  // khớp đúng các hàng seed của migration đã đóng băng (plan/__tests__/actionCatalog
-  // .test.ts) — hàng registry vẫn tồn tại, ở trạng thái tắt. Đừng bật lại cờ: RPC đã
-  // bị thu quyền nên hành động sẽ hỏng lúc chạy.
+  // (enabled=false), đưa cờ về disabled và thu EXECUTE của cặp preview/execute
+  // Copilot cùng record_termination_refund_obligation_v1 (không có nghĩa vụ thì RPC
+  // gốc create_termination_refund_voucher_v1 không sinh được phiếu). Entry còn ở đây
+  // CHỈ vì mirror phải khớp đúng các hàng seed của migration đã đóng băng
+  // (plan/__tests__/actionCatalog.test.ts); `daGo` lọc nó khỏi kế hoạch và uỷ quyền
+  // đứng. Đừng bật lại cờ: RPC đã bị thu quyền nên hành động sẽ hỏng lúc chạy.
   'termination.hoan_coc': {
     actionId: 'termination.hoan_coc',
+    daGo: true,
     version: 1,
     labelVi: 'Sinh phiếu hoàn cọc thanh lý',
     risk: 'L5',

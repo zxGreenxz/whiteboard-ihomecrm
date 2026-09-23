@@ -57,6 +57,7 @@ const {
   thucThiBuocTool,
 } = await import('../tools/planTools');
 const { buildRegistryDefinitions, toLlmTools, toPageAgentTools } = await import('../tools/registry');
+const { ACTION_CATALOG } = await import('../plan/actionCatalog');
 const { xoaXacNhanDangCho, layXacNhanDangCho } = await import('../confirmationStore');
 const { khoaYKeHoach } = await import('../plan/planClient');
 const { KHOA_ROLLOUT_KE_HOACH } = await import('../featureFlags');
@@ -321,6 +322,19 @@ describe('lap_ke_hoach', () => {
     expect(
       SCHEMA_LAP_KE_HOACH.safeParse({ muc_tieu: 'muc tieu', cac_buoc: [mot] }).success,
     ).toBe(true);
+  });
+
+  it('hành động đã gỡ (daGo) không được mời vào kế hoạch dù payload hợp lệ', () => {
+    // termination.hoan_coc: registry tắt + RPC thu EXECUTE 23/09/2026. Payload dưới
+    // khớp ĐÚNG inputSchema của nó — bị từ chối chỉ vì hành động đã gỡ.
+    const buoc = {
+      hanh_dong: 'termination.hoan_coc',
+      du_lieu: { obligation_id: 'bbbb0000-0000-4000-8000-000000000003' },
+    };
+    expect(ACTION_CATALOG['termination.hoan_coc'].inputSchema.safeParse(buoc.du_lieu).success).toBe(true);
+    expect(
+      SCHEMA_LAP_KE_HOACH.safeParse({ muc_tieu: 'muc tieu', cac_buoc: [buoc] }).success,
+    ).toBe(false);
   });
 
   it('hành động ngoài sổ đăng ký bị schema từ chối', () => {

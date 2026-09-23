@@ -346,9 +346,12 @@ flowchart TD
 > `create_termination_refund_voucher_v1` — đã gỡ theo quyết định của chủ: nó chỉ chống trùng qua bảng
 > `termination_refund_obligations` (0 dòng) nên sinh được phiếu hoàn thứ hai cho hồ sơ đã có phiếu.
 > Giao diện bỏ nút; migration [20260923161122](../../supabase/migrations/20260923161122_bo_duong_hoan_khach_thu_hai.sql)
-> thu EXECUTE hai RPC đó (cùng cặp preview/execute của Copilot) và tắt hành động Copilot.
-> `preview_termination_refund_v1` giữ nguyên — luồng rời phòng, `approve_contract_termination_v1`
-> và khu "Hợp đồng & quyết toán" ở `/thanh-toan` đọc nó để tính số phải hoàn.
+> thu EXECUTE `record_termination_refund_obligation_v1` và cặp preview/execute của Copilot, tắt
+> hành động Copilot. `create_termination_refund_voucher_v1` giữ quyền (bị ghim bởi đợt phục hồi
+> 21/09) nhưng không còn sinh được phiếu: nó chỉ chạy trên một nghĩa vụ có sẵn, mà nơi duy nhất ghi
+> nghĩa vụ là `record_…` (đã thu quyền; người dùng chỉ có SELECT trên bảng nghĩa vụ).
+> `preview_termination_refund_v1` chỉ đọc, giữ nguyên quyền — hiện không còn nơi gọi thật
+> (luồng rời phòng và `approve_contract_termination_v1` chỉ nhắc tên trong chú thích).
 
 ---
 

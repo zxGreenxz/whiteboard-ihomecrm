@@ -23,7 +23,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useIsSuperAdmin } from '@/hooks/useIsAdmin';
 
 import { dienGiaiLoiKeHoach } from '../chatErrors';
-import { ACTION_CATALOG } from '../plan/actionCatalog';
+import { hanhDongConDung } from '../plan/actionCatalog';
 import {
   baoCaoNgayGrant,
   dsGrant,
@@ -904,8 +904,7 @@ export default function HanhDongTab() {
   const [grantLyDoThuHoiTatCa, setGrantLyDoThuHoiTatCa] = useState('');
 
   const danhSachHanhDongGrant = useMemo(
-    () =>
-      Object.values(ACTION_CATALOG).map((a) => ({ actionId: a.actionId, labelVi: a.labelVi })),
+    () => hanhDongConDung().map((a) => ({ actionId: a.actionId, labelVi: a.labelVi })),
     [],
   );
 
