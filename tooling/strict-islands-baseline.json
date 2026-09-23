@@ -1306,6 +1306,9 @@
     "src/lib/invoiceAdjustmentEntry.ts",
     "src/lib/__tests__/invoiceAdjustmentEntry.test.ts",
     "src/lib/orgPayload.ts",
-    "src/lib/__tests__/orgPayload.test.ts"
+    "src/lib/__tests__/orgPayload.test.ts",
+    "src/components/layout/TestEnvironmentBanner.tsx",
+    "src/components/settings/TheMoiTruongTest.tsx",
+    "src/lib/appEnvironment.ts"
   ]
 }

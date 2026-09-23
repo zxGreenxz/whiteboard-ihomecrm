@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/check-external-controls.mjs. \"unverified\" KHÔNG phải pass — control có thể bị tắt về sau, nên bằng chứng phải chạy lại được, không phải ảnh chụp một lần.",
-  "checkedAt": "2026-09-09T18:02:30.832Z",
+  "checkedAt": "2026-09-23T14:32:33.991Z",
   "repo": "zxGreenxz/whiteboard-ihomecrm",
   "controls": {
     "githubBranchProtection": {
@@ -23,6 +23,12 @@
           "productionBranch": "production"
         },
         {
+          "name": "bao-cao-950nk",
+          "id": "prj_ClgXEY8AWHugO0tLPA4Mc7vq36pj",
+          "repo": null,
+          "productionBranch": null
+        },
+        {
           "name": "ihome-market",
           "id": "prj_jpltKeIq8XTqyQDJb3UeZdLFX4pj",
           "repo": "zxGreenxz/ihome-market",
@@ -35,11 +41,26 @@
           "productionBranch": "main"
         }
       ],
-      "note": "2 project của zxGreenxz/whiteboard-ihomecrm đều deploy production từ \"production\". NGOÀI PHẠM VI (repo khác, không tính vào kết luận): ihome-market[zxGreenxz/ihome-market]→main, n2store[zxGreenxz/github-html-starter]→main."
+      "note": "2 project của zxGreenxz/whiteboard-ihomecrm đều deploy production từ \"production\". NGOÀI PHẠM VI (repo khác, không tính vào kết luận): bao-cao-950nk[null]→main, ihome-market[zxGreenxz/ihome-market]→main, n2store[zxGreenxz/github-html-starter]→main."
     },
     "vercelEnvAndDeployment": {
       "status": "checked",
       "envVarNames": [
+        {
+          "key": "VITE_APP_ENV",
+          "target": "preview",
+          "type": "plain"
+        },
+        {
+          "key": "VITE_SUPABASE_URL",
+          "target": "preview",
+          "type": "plain"
+        },
+        {
+          "key": "VITE_SUPABASE_PUBLISHABLE_KEY",
+          "target": "preview",
+          "type": "plain"
+        },
         {
           "key": "VITE_SUPABASE_PUBLISHABLE_KEY",
           "target": "preview+production",
@@ -62,12 +83,12 @@
         }
       ],
       "productionDeployment": {
-        "sha": "5333340f2d66a1c2699aa0de573cf0e36b06a38c",
+        "sha": "1b77256d2eaef916c50441502fd94e6586218b70",
         "ref": "production",
         "state": "READY",
         "ancestorOfMain": true
       },
-      "note": "4 env var (CHỈ tên + target, không lấy giá trị). Production đang chạy 5333340f2d66 từ nhánh \"production\", state READY. SHA đó NẰM TRÊN origin/main — đúng hợp đồng."
+      "note": "7 env var (CHỈ tên + target, không lấy giá trị). Production đang chạy 1b77256d2eae từ nhánh \"production\", state READY. SHA đó NẰM TRÊN origin/main — đúng hợp đồng."
     },
     "productionBranchExists": {
       "status": "present",
@@ -75,8 +96,8 @@
     }
   },
   "localHead": {
-    "head": "6b3d6cb4c6012a50acc6f89ea814da22c6e9ab03",
-    "branch": "codex/reservation-deposit-settlement-plan-20260910",
+    "head": "1b77256d2eaef916c50441502fd94e6586218b70",
+    "branch": "codex/moi-truong-test",
     "hasProductionBranch": true
   }
 }

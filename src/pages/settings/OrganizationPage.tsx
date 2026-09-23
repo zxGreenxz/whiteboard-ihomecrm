@@ -21,6 +21,8 @@ import {
   X,
 } from 'lucide-react';
 import MainLayout from '@/components/layout/MainLayout';
+import TheMoiTruongTest from '@/components/settings/TheMoiTruongTest';
+import { IS_TEST_ENV } from '@/lib/appEnvironment';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -246,7 +248,7 @@ export default function OrganizationPage() {
           </CardContent>
         </Card>
 
-        <TheDongBoCongTyTest />
+        {IS_TEST_ENV ? <TheMoiTruongTest /> : <TheDongBoCongTyTest />}
       </div>
     </MainLayout>
   );

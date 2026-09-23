@@ -29,6 +29,12 @@
   ],
   "workflows": [
     {
+      "path": ".github/workflows/test-env-sync.yml",
+      "node": "24.18.0",
+      "deno": null,
+      "note": "Chạy tay: đồng bộ môi trường TEST (project Supabase riêng) từ production — chỉ đọc production, ghi TEST. PostgreSQL client 17 cài từ PGDG (production chạy 17.6)."
+    },
+    {
       "path": ".github/workflows/org-context-backup.yml",
       "node": "24.18.0",
       "deno": null,

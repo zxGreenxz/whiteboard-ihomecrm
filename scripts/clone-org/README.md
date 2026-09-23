@@ -1,5 +1,10 @@
 # Công ty TEST — bản sao dữ liệu công ty thật
 
+> **ĐÃ NGỪNG.** Org TEST `cccc…` bị xoá 08/08/2026 (migration `20260808080000`). Bản sao
+> để thử tính năng nay là project Supabase riêng — xem [test-env/README](../test-env/README.md).
+> Tài liệu dưới đây giữ để hiểu hạ tầng sandbox còn sót (`sandbox_org_ids()`, policy
+> `*_hide_sandbox_admin`, cron `clone_org_sync_worker`) cho tới khi dọn.
+
 Org thứ 3 trong chính project Supabase này, mang **đúng dữ liệu nghiệp vụ của công
 ty thật**, dùng để thử tính năng mới / kiểm thử plan mà không đụng sổ sách thật.
 

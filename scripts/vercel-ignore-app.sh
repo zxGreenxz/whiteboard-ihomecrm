@@ -25,6 +25,12 @@ if [ "$VERCEL_GIT_COMMIT_REF" = "production" ]; then
   exit 1  # nhánh phát hành → luôn build
 fi
 
+# Nhánh `test-env` (web của MÔI TRƯỜNG TEST) cũng nhận cả dải commit trong một cú
+# push — cùng cái bẫy như trên, nên cũng luôn build.
+if [ "$VERCEL_GIT_COMMIT_REF" = "test-env" ]; then
+  exit 1
+fi
+
 if git diff --name-only HEAD^ HEAD | grep -qvE '^(docs/|docs-site/)'; then
   exit 1  # có file ngoài docs → build app
 else

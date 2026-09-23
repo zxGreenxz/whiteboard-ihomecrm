@@ -1,7 +1,8 @@
 # Môi trường dữ liệu
 
 ID và quyền ghi của THẬT/DEMO/TEST nằm ở [Project Contract](PROJECT_CONTRACT.md) §2.
-Ba org dùng chung database; TEST có bản sao dữ liệu thật, cần bảo vệ như dữ liệu thật.
+Production có hai org (THẬT, DEMO) dùng chung database. Môi trường TEST là project Supabase
+riêng mang bản sao dữ liệu thật — bảo vệ như dữ liệu thật; xem [test-env/README](../../scripts/test-env/README.md).
 
 ## Cơ chế cách ly cần kiểm
 
@@ -17,7 +18,9 @@ Ba org dùng chung database; TEST có bản sao dữ liệu thật, cần bảo 
 
 ## Đồng bộ và xác minh
 
-Thực hiện theo [clone-org/README](../../scripts/clone-org/README.md); fixture E2E dùng DEMO.
+Môi trường TEST đồng bộ bằng `npm run test-env:sync` (tự đối chiếu vân tay catalog và từng bảng);
+fixture E2E dùng org DEMO. Cơ chế org TEST cũ ([clone-org/README](../../scripts/clone-org/README.md))
+đã ngừng từ 08/08/2026; phần dưới áp cho hạ tầng sandbox còn lại tới khi dọn.
 Không đổi tài khoản/owner email để lách giới hạn org.
 
 ```bash

@@ -1,0 +1,47 @@
+# Đồng bộ MÔI TRƯỜNG TEST (project Supabase `ihomecrm-test`) từ production.
+#
+# Nút "Đồng bộ dữ liệu mới nhất" trong app TEST (Cài đặt → Tổ chức) mở trang này để
+# bấm "Run workflow". Script: scripts/test-env/sync.mjs — CHỈ ĐỌC production (pg_dump
+# trong transaction READ ONLY), GHI vào project TEST sau ba lớp chốt (ref, tên project,
+# dấu `test_env.danh_dau` trong database TEST).
+#
+# Không npm ci: script chỉ dùng node core + pg_dump/pg_restore/psql 17.
+name: TEST environment sync
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: test-env-sync
+  cancel-in-progress: false
+jobs:
+  sync:
+    if: github.ref == 'refs/heads/main' && github.repository == 'zxGreenxz/whiteboard-ihomecrm'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+      - name: Cài PostgreSQL client 17 (PGDG) — production chạy 17.6
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17
+          /usr/lib/postgresql/17/bin/pg_dump --version
+      - name: Đồng bộ production → TEST
+        env:
+          SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          TEST_SUPABASE_REF: ${{ secrets.TEST_SUPABASE_REF }}
+          TEST_SUPABASE_DB_PASSWORD: ${{ secrets.TEST_SUPABASE_DB_PASSWORD }}
+          TEST_SUPABASE_SECRET_KEY: ${{ secrets.TEST_SUPABASE_SECRET_KEY }}
+          TEST_SUPABASE_POOLER_HOST: ${{ secrets.TEST_SUPABASE_POOLER_HOST }}
+          TEST_ENV_USER_PASSWORDS: ${{ secrets.TEST_ENV_USER_PASSWORDS }}
+          TEST_ENV_WORKDIR: ${{ runner.temp }}/test-env
+        run: node scripts/test-env/sync.mjs

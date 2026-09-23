@@ -289,7 +289,7 @@ export function useV5RunJob() {
       const { data: session } = await supabase.auth.getSession();
       const token = session.session?.access_token;
       const res = await fetch(
-        `https://tryymsxyyckgbrmmvozx.supabase.co/functions/v1/salary-v5-jobs?job=${job}`,
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/salary-v5-jobs?job=${job}`,
         { method: "POST", headers: { Authorization: `Bearer ${token}` } },
       );
       if (!res.ok) throw new Error(await res.text());

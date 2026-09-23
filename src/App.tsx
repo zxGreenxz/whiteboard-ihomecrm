@@ -1,6 +1,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { BrowserRouter } from "react-router-dom";
 import { AppProviders } from "@/app/providers/AppProviders";
+import TestEnvironmentBanner from "@/components/layout/TestEnvironmentBanner";
 import { AppRoutes } from "@/app/routes";
 import { CopilotLauncher } from "@/app/lazyPages";
 
@@ -57,6 +58,7 @@ const DeferredCopilotLauncher = () => {
 
 const App = () => (
   <AppProviders>
+    <TestEnvironmentBanner />
     <BrowserRouter>
       <Suspense fallback={<RouteFallback />}>
         <AppRoutes />

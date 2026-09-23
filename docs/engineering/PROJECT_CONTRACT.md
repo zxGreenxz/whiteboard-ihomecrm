@@ -23,21 +23,26 @@ Lịch sử nằm trong Git; số đo nằm trong manifest hoặc bằng chứng
 
 ## 2. Phạm vi dữ liệu
 
-Ba tổ chức dùng chung database; org TEST chứa bản sao dữ liệu thật.
+Production có hai tổ chức dùng chung database. Bản sao để thử tính năng là một
+**project Supabase riêng** (môi trường TEST), không phải một org trong production.
 
-| Org | ID | Quyền thao tác của agent |
+| Nơi | ID | Quyền thao tác của agent |
 |---|---|---|
-| THẬT | `aaaa0000-0000-4000-8000-000000000001` | Chỉ đọc dữ liệu nghiệp vụ |
-| DEMO | `dddd0000-0000-4000-8000-000000000001` | Đọc/ghi fixture, tự dọn |
-| TEST | `cccc0000-0000-4000-8000-000000000001` | Đọc/ghi để thử tính năng |
+| Org THẬT (production) | `aaaa0000-0000-4000-8000-000000000001` | Chỉ đọc dữ liệu nghiệp vụ |
+| Org DEMO (production) | `dddd0000-0000-4000-8000-000000000001` | Đọc/ghi fixture, tự dọn |
+| Môi trường TEST | project `ihomecrm-test` (ref trong vault) | Đọc/ghi để thử tính năng |
 
-- Bảng mới có `organization_id` và RLS phải có policy `<bảng>_hide_sandbox_admin`.
-  Bọc phép so sandbox bằng `COALESCE(…, false)` để xử lý đúng dòng NULL.
+- Môi trường TEST mang đủ dữ liệu, tài khoản, vai trò production (không có byte ảnh/file),
+  mật khẩu TEST riêng trong vault; web là Preview của nhánh `test-env`.
+  Đồng bộ bằng `npm run test-env:sync`; thử migration bằng `npm run test-env:thu-sql -- <file>`.
+  Xem [test-env/README](../../scripts/test-env/README.md).
+- Org TEST cũ `cccc0000-0000-4000-8000-000000000001` (chung database, cơ chế clone-org)
+  đã xoá 08/08/2026; `sandbox_org_ids()`, `gate:sandbox-leak` còn lại chờ dọn.
+  Tới khi dọn, bảng mới có `organization_id` và RLS vẫn có policy `<bảng>_hide_sandbox_admin`,
+  bọc phép so sandbox bằng `COALESCE(…, false)` để xử lý đúng dòng NULL.
 - SECURITY DEFINER cần tự kiểm quyền: lọc toà qua `can_access_building()` /
   `accessible_building_ids()`; không tự thêm lối tắt `is_super_admin() OR …`.
-- Kiểm rò bằng `npm run gate:sandbox-leak`: số bảng rò phải bằng 0; mẫu số theo lần đo.
-  Chạy tại checkout đã cấu hình vault và Supabase link; snapshot còn đọc trực tiếp file local.
-- E2E chỉ ghi DEMO. Đồng bộ TEST theo [clone-org/README](../../scripts/clone-org/README.md).
+- E2E chỉ ghi org DEMO hoặc môi trường TEST.
 - Thay schema production theo §4–5; quyền thử dữ liệu không thay thế quyền đổi schema.
 
 ## 3. Git, review và phát hành
