@@ -22,6 +22,12 @@ trước khi phát hành, mà không đụng sổ sách thật.
 (`git push origin <sha>:test-env`, thêm `--force` khi lùi về commit cũ hơn). Vercel tự build với biến
 môi trường riêng của nhánh này (URL/key TEST + `VITE_APP_ENV=test` ⇒ nhãn "MÔI TRƯỜNG TEST").
 
+**Edge function trên TEST**: `npm run test-env:edge` (cần `TEST_SUPABASE_PAT`, chạy tại máy) — deploy
+`admin-create-user`, `llm-proxy`, `salary-v5-jobs`, `demo-reset`, `send-push` từ mã repo với đúng cờ
+`verify_jwt` của production. Secret: `OPENROUTER_API_KEY` (Copilot), `CRON_SECRET`/`DEMO_RESET_SECRET`
+sinh riêng cho TEST; KHÔNG có VAPID nên không đẩy được thông báo tới thiết bị thật. Function sống
+ngoài database: đồng bộ không xoá, chỉ chạy lại khi mã function đổi.
+
 **Thử migration trước production**: `npm run test-env:thu-sql -- supabase/migrations/<file>.sql`
 (mặc định ROLLBACK; `--ghi` để COMMIT vào TEST). Đổi schema production vẫn chỉ đi
 `npm run migrate:forward` (Contract §4). Lần đồng bộ sau ghi đè mọi thay đổi chưa lên production.
@@ -94,3 +100,4 @@ trỏ production, edge function TEST không có khoá VAPID/Zalo.
 | `cau-hinh.mjs` | Auth + Data API qua Management API |
 | `sync.mjs` | điều phối |
 | `thu-sql.mjs` | chạy thử một file SQL lên TEST |
+| `edge.mjs` | deploy edge function + secret lên TEST |

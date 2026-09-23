@@ -81,6 +81,7 @@
     "backup:xem-lich": "node scripts/dang-ky-backup-dinh-ky.mjs --xem",
     "test-env:sync": "node scripts/test-env/sync.mjs",
     "test-env:thu-sql": "node scripts/test-env/thu-sql.mjs",
+    "test-env:edge": "node scripts/test-env/edge.mjs",
     "graph:analyze": "node scripts/run-pinned-gitnexus.mjs analyze",
     "graph:status": "node scripts/run-pinned-gitnexus.mjs status",
     "graph:impact": "node scripts/run-pinned-gitnexus.mjs impact",
