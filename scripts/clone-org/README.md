@@ -1,9 +1,13 @@
 # Công ty TEST — bản sao dữ liệu công ty thật
 
-> **ĐÃ NGỪNG.** Org TEST `cccc…` bị xoá 08/08/2026 (migration `20260808080000`). Bản sao
-> để thử tính năng nay là project Supabase riêng — xem [test-env/README](../test-env/README.md).
-> Tài liệu dưới đây giữ để hiểu hạ tầng sandbox còn sót (`sandbox_org_ids()`, policy
-> `*_hide_sandbox_admin`, cron `clone_org_sync_worker`) cho tới khi dọn.
+> **ĐÃ GỠ.** Org TEST `cccc…` bị xoá 08/08/2026 (`20260808080000`). Ngày 23/09/2026 đã dọn
+> nốt: 4.560 dòng `cccc` sót trong app_private + dòng mồ côi vi phạm khoá ngoại
+> (`20260923162145`), 2.832 file bản sao trong thư mục 4 tài khoản `test.*` (có bản lưu
+> ngoài repo trước khi xoá), schema `clone_org`, 2 RPC `clone_org_*`, cron
+> `clone_org_sync_worker`, 4 tài khoản `test.*` (`20260923163531`), thẻ "Công ty TEST" trên
+> trang Tổ chức. Các script trong thư mục này KHÔNG còn chạy được — giữ làm lịch sử.
+> Còn lại có chủ ý: `sandbox_org_ids()` và họ policy `*_hide_sandbox_admin` (Contract §2).
+> Bản sao để thử tính năng nay là project Supabase riêng — xem [test-env/README](../test-env/README.md).
 
 Org thứ 3 trong chính project Supabase này, mang **đúng dữ liệu nghiệp vụ của công
 ty thật**, dùng để thử tính năng mới / kiểm thử plan mà không đụng sổ sách thật.

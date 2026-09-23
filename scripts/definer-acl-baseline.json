@@ -22,8 +22,6 @@
     "can_do_on_building(text,text,uuid)",
     "can_ie_all_buildings(text,uuid)",
     "can_view_restricted_ie()",
-    "clone_org_request_sync_v1()",
-    "clone_org_sync_status_v1()",
     "current_profit_manager_id()",
     "current_shareholder_id()",
     "current_visible_owner_ids()",

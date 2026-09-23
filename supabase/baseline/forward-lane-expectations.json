@@ -192,6 +192,11 @@
       "kyVong": "dung-vi-du-lieu",
       "thongDiep": "schema \"cron\" does not exist",
       "why": "Đăng ký cron retention cần extension pg_cron của nền tảng Supabase — baseline CỐ Ý không chụp (giống schema storage). Trên project thật schema này luôn có. Vì lời gọi cron nằm giữa file nên cả file cuộn lại trên DB diễn tập; phần schema (bảng ngân sách + logger có budget + hàm prune) được dựng lại bởi 20260902092508, file đó bọc phần cron trong to_regnamespace('cron') nên chạy SẠCH ở cả hai môi trường."
+    },
+    "20260923162145_don_tan_du_org_test_cu_va_dong_mo_coi.sql": {
+      "kyVong": "dung-vi-du-lieu",
+      "thongDiep": "Không thấy org THẬT aaaa",
+      "why": "Migration dọn dữ liệu một-lần (tàn dư org TEST cccc + dòng mồ côi vi phạm khoá ngoại của cccc/dddd): bước 0 đòi org THẬT tồn tại để chắc đang ở đúng database; database rỗng không có org nào nên nó dừng trước mọi lệnh xoá — đúng việc. File không tạo object schema nào."
     }
   }
 }

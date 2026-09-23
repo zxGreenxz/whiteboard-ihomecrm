@@ -1,20 +1,20 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 1717,
-    "catalogFunctions": 1166,
+    "sourceCallSites": 1716,
+    "catalogFunctions": 1164,
     "schemas": [
       "public",
       "api"
     ]
   },
   "counts": {
-    "calledRpcs": 293,
+    "calledRpcs": 291,
     "byRisk": {
-      "normal": 213,
+      "normal": 211,
       "financial": 80
     },
-    "securityDefiner": 277
+    "securityDefiner": 275
   },
   "missingOnServer": [],
   "rpcs": {
@@ -912,48 +912,6 @@
         "src/hooks/useCashBook.ts"
       ],
       "risk": "financial"
-    },
-    "clone_org_request_sync_v1": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "",
-          "returns": "jsonb",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, public, clone_org",
-          "execRoles": [
-            "anon",
-            "authenticated",
-            "service_role"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/useCloneOrgSync.ts"
-      ],
-      "risk": "normal"
-    },
-    "clone_org_sync_status_v1": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "",
-          "returns": "jsonb",
-          "volatility": "STABLE",
-          "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, public, clone_org",
-          "execRoles": [
-            "anon",
-            "authenticated",
-            "service_role"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/useCloneOrgSync.ts"
-      ],
-      "risk": "normal"
     },
     "confirm_cancel_handover": {
       "definitions": [

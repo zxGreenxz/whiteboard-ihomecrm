@@ -19486,8 +19486,6 @@ export type Database = {
           reason_code: string
         }[]
       }
-      clone_org_request_sync_v1: { Args: never; Returns: Json }
-      clone_org_sync_status_v1: { Args: never; Returns: Json }
       complete_inspection: {
         Args: { p_condition_note?: string; p_session: string }
         Returns: Json

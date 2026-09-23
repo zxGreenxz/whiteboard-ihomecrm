@@ -669,7 +669,6 @@
     "src/hooks/useCashHandovers.ts",
     "src/hooks/useCashbookClosing.ts",
     "src/hooks/useClipboardImagePaste.ts",
-    "src/hooks/useCloneOrgSync.ts",
     "src/hooks/useCollectionCycleReport.ts",
     "src/hooks/useCollectionReport.ts",
     "src/hooks/useCommissionVoucher.ts",

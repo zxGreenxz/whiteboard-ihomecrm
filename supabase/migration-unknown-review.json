@@ -394,11 +394,23 @@
     "supabase/migrations/20260801060000_clone_org_sync_rpc.sql": {
       "sha256": "c2fbbe345e833e34552424c61b684f6d96305a3aeeb0a467d6eebe424a5c1378",
       "missingObjects": [
-        "function:public.clone_org_sync_v1"
+        "table:clone_org.user_map",
+        "table:clone_org.skip_table",
+        "table:clone_org.null_org_parent",
+        "table:clone_org.code_suffix_col",
+        "table:clone_org.idmap"
       ],
       "ketLuan": "da-chay-bi-thay-the",
-      "lyLe": "File 20260801060000 ĐÃ chạy trên production, sau đó hàm public.clone_org_sync_v1() bị chính migration kế tiếp cùng ngày — 20260801070000_clone_org_sync_queue.sql (07:00:00 > 06:00:00) — DROP có chủ đích ở dòng 195: \"DROP FUNCTION IF EXISTS public.clone_org_sync_v1();\" kèm lời giải thích \"Hàm cũ không dùng được từ trình duyệt (42501) — bỏ để không ai gọi nhầm.\"\n\nLý do kỹ thuật ghi ngay đầu file 070000: bộ chép bắt buộc chạy với session_replication_role='replica', mà supautils của Supabase chỉ nới quyền đặt tham số đó cho role postgres theo ROLE CỦA SESSION (SECURITY DEFINER không cứu được) ⇒ gọi RPC bằng authenticated/service_role đều nhận 42501. Nên kiến trúc đổi thành: thân hàm chuyển sang clone_org.do_sync(uuid), nút bấm chỉ đặt hàng qua public.clone_org_request_sync_v1(), job pg_cron 'clone_org_sync_worker' (15 giây/lần, chạy dưới username postgres) nhặt đơn và gọi clone_org.run_pending_sync() → do_sync().\n\nBA lớp bằng chứng file 060000 thực sự đã chạy (chứ không phải bị bỏ qua):\n\n1. Migration 070000 đã được chứng minh bằng catalog (provenance state='catalog-proven', evidence gồm clone_org.sync_request, clone_org.do_sync, public.clone_org_request_sync_v1) ⇒ lệnh DROP trong đó chắc chắn đã thực thi.\n\n2. File 070000 KHÔNG hề có \"CREATE SCHEMA clone_org\" — grep toàn bộ supabase/ chỉ thấy đúng một nơi tạo schema này là 060000 dòng 25. Nếu 060000 chưa chạy thì \"CREATE TABLE IF NOT EXISTS clone_org.sync_request\" trong 070000 đã nổ 3F000 schema does not exist. Bảng đó tồn tại trong catalog ⇒ 060000 đã chạy trước.\n\n3. Bản dump production supabase/baseline/schema.sql chứa ĐẦY ĐỦ mọi object phụ do riêng 060000 tạo: schema clone_org (dòng 58), các hàm clone_org.map/map_arr/map_strict/map_text/tables_to_clone, và các bảng clone_org.idmap, skip_table, sync_log, null_org_parent, code_suffix_col, user_map. Cùng dump đó KHÔNG có public.clone_org_sync_v1 (đúng như catalog production), nhưng CÓ public.clone_org_request_sync_v1 — đúng hình ảnh \"đã chạy rồi bị thay thế\".\n\nNói cách khác, 060000 vắng object chỉ vì bộ chứng minh trích mỗi một object đại diện là function public.clone_org_sync_v1 — object duy nhất của file bị migration sau xoá — trong khi ~11 object còn lại của cùng file vẫn sống nguyên trong production.",
+      "lyLe": "CẬP NHẬT 23/09/2026: file 20260801060000 ĐÃ chạy (xem bằng chứng cũ bên dưới — là nơi duy nhất tạo schema clone_org, mà 20260801070000 dùng lại). Toàn bộ object của nó nay vắng khỏi production vì migration 20260923163531_go_co_che_clone_org_va_tai_khoan_test_cu.sql DROP SCHEMA clone_org CASCADE có chủ ý: org TEST cccc mà bộ máy này phục vụ đã xoá 08/08, dữ liệu sót của nó dọn ở 20260923162145, và bản sao để thử tính năng chuyển sang project Supabase riêng (scripts/test-env/).\n\nTrước đó (01/08) hàm public.clone_org_sync_v1() của file này đã bị 20260801070000 DROP ở dòng 195 và thay bằng cặp clone_org_request_sync_v1 / clone_org.do_sync — cặp đó nay cũng đã gỡ cùng schema.\n\nFile 20260801060000 ĐÃ chạy trên production, sau đó hàm public.clone_org_sync_v1() bị chính migration kế tiếp cùng ngày — 20260801070000_clone_org_sync_queue.sql (07:00:00 > 06:00:00) — DROP có chủ đích ở dòng 195: \"DROP FUNCTION IF EXISTS public.clone_org_sync_v1();\" kèm lời giải thích \"Hàm cũ không dùng được từ trình duyệt (42501) — bỏ để không ai gọi nhầm.\"\n\nLý do kỹ thuật ghi ngay đầu file 070000: bộ chép bắt buộc chạy với session_replication_role='replica', mà supautils của Supabase chỉ nới quyền đặt tham số đó cho role postgres theo ROLE CỦA SESSION (SECURITY DEFINER không cứu được) ⇒ gọi RPC bằng authenticated/service_role đều nhận 42501. Nên kiến trúc đổi thành: thân hàm chuyển sang clone_org.do_sync(uuid), nút bấm chỉ đặt hàng qua public.clone_org_request_sync_v1(), job pg_cron 'clone_org_sync_worker' (15 giây/lần, chạy dưới username postgres) nhặt đơn và gọi clone_org.run_pending_sync() → do_sync().\n\nBA lớp bằng chứng file 060000 thực sự đã chạy (chứ không phải bị bỏ qua):\n\n1. Migration 070000 đã được chứng minh bằng catalog (provenance state='catalog-proven', evidence gồm clone_org.sync_request, clone_org.do_sync, public.clone_org_request_sync_v1) ⇒ lệnh DROP trong đó chắc chắn đã thực thi.\n\n2. File 070000 KHÔNG hề có \"CREATE SCHEMA clone_org\" — grep toàn bộ supabase/ chỉ thấy đúng một nơi tạo schema này là 060000 dòng 25. Nếu 060000 chưa chạy thì \"CREATE TABLE IF NOT EXISTS clone_org.sync_request\" trong 070000 đã nổ 3F000 schema does not exist. Bảng đó tồn tại trong catalog ⇒ 060000 đã chạy trước.\n\n3. Bản dump production supabase/baseline/schema.sql chứa ĐẦY ĐỦ mọi object phụ do riêng 060000 tạo: schema clone_org (dòng 58), các hàm clone_org.map/map_arr/map_strict/map_text/tables_to_clone, và các bảng clone_org.idmap, skip_table, sync_log, null_org_parent, code_suffix_col, user_map. Cùng dump đó KHÔNG có public.clone_org_sync_v1 (đúng như catalog production), nhưng CÓ public.clone_org_request_sync_v1 — đúng hình ảnh \"đã chạy rồi bị thay thế\".\n\nNói cách khác, 060000 vắng object chỉ vì bộ chứng minh trích mỗi một object đại diện là function public.clone_org_sync_v1 — object duy nhất của file bị migration sau xoá — trong khi ~11 object còn lại của cùng file vẫn sống nguyên trong production.",
       "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20260923163531_go_co_che_clone_org_va_tai_khoan_test_cu.sql:53-55",
+          "trich_doan": "DROP FUNCTION IF EXISTS public.clone_org_request_sync_v1();\nDROP FUNCTION IF EXISTS public.clone_org_sync_status_v1();\nDROP SCHEMA IF EXISTS clone_org CASCADE;"
+        },
+        {
+          "duong_dan": "docs/generated/schema-change-evidence/20260923163531_go_co_che_clone_org_va_tai_khoan_test_cu.json (apply 23/09/2026 qua lane, backup ihomecrm-full-2026-09-23T16-46-52-539Z)",
+          "trich_doan": "catalog d432e7227b14… → ff4f3e87d877… (ĐÃ ĐỔI) — kiểm sau apply: to_regnamespace('clone_org') IS NULL, 0 hàm public.clone_org_*"
+        },
         {
           "duong_dan": "supabase/migrations/20260801070000_clone_org_sync_queue.sql:194-195",
           "trich_doan": "-- Hàm cũ không dùng được từ trình duyệt (42501) — bỏ để không ai gọi nhầm.\nDROP FUNCTION IF EXISTS public.clone_org_sync_v1();"
@@ -432,7 +444,7 @@
           "trich_doan": "\"path\": \"supabase/migrations/20260801070000_clone_org_sync_queue.sql\",\n\"state\": \"catalog-proven\",\n\"evidence\": [\n  \"catalog:table:clone_org.sync_request\",\n  \"catalog:function:clone_org.do_sync\",\n  \"catalog:function:public.clone_org_request_sync_v1\",\n  \"catalog:index:clone_org.sync_request_one_open\"\n]"
         }
       ],
-      "anhHuongThat": "KHÔNG có code sản xuất nào gọi public.clone_org_sync_v1 — nút \"Cài đặt → Tổ chức → Đồng bộ dữ liệu mới nhất\" đã được chuyển sang cặp hàm mới và cả hai đều TỒN TẠI trong production.\n\nĐường đi thật của nút (đã kiểm từ UI xuống RPC):\n- src/pages/settings/OrganizationPage.tsx:50 import { useCloneOrgSync, useCloneOrgSyncStatus }; dòng 260-261 dùng hook; dòng 316 render nhãn nút 'Đồng bộ dữ liệu mới nhất'.\n- src/hooks/useCloneOrgSync.ts:52 — supabase.rpc('clone_org_request_sync_v1')  ⇒ hàm CÓ trong production (baseline/schema.sql:52301, provenance catalog-proven).\n- src/hooks/useCloneOrgSync.ts:34 — supabase.rpc('clone_org_sync_status_v1')  ⇒ hàm CÓ trong production (bản 070000 ghi đè bản 060000 bằng CREATE OR REPLACE, có trong scripts/definer-acl-baseline.json:21 và src/integrations/supabase/types.ts:24134).\n- Header hook (dòng 3-8) ghi rõ: \"Nút bấm KHÔNG chạy bộ chép trực tiếp... nút chỉ ĐẶT HÀNG (clone_org_request_sync_v1), còn job pg_cron 15 giây/lần nhặt đơn và chạy.\"\n⇒ Tính năng nút bấm KHÔNG hỏng.\n\nGrep src/, api/, supabase/functions/ không có bất kỳ lời gọi clone_org_sync_v1 nào. Toàn bộ tham chiếu còn lại nằm ngoài runtime production:\n\nMỘT VẤN ĐỀ NHỎ CẦN VÁ (không phải production runtime, nhưng là bug thật):\n- scripts/clone-org/clone.mjs:29 vẫn chạy \"SELECT public.clone_org_sync_v1() AS result;\" — hàm này đã bị DROP nên script CLI này sẽ chết với 42883 function public.clone_org_sync_v1() does not exist. Đây là công cụ dev chạy qua Management API + PAT (bước 3 trong quy trình dựng org TEST), không phải code chạy trên web. Nên sửa thành gọi clone_org.do_sync() sau khi SET session_replication_role = replica (như clone_org.run_pending_sync làm), hoặc đơn giản là insert vào clone_org.sync_request rồi chờ pg_cron.\n- Hai chỗ chỉ là COMMENT lỗi thời, vô hại: scripts/clone-org/create-users.mjs:87 và scripts/clone-org/mask.mjs:8 nhắc tên hàm cũ trong chú thích.\n- Ghi chú đầu file 060000 và scripts/clone-org/clone.mjs:7-9 mô tả kiến trúc cũ (RPC gọi thẳng), nay đã bị 070000 thay — nên cập nhật để người sau không làm lại đường cũ.\n\nKhuyến nghị provenance: đổi state của 20260801060000_clone_org_sync_rpc.sql thành 'catalog-proven' với evidence trỏ vào các object CÙNG FILE vẫn còn sống (schema clone_org, clone_org.tables_to_clone, clone_org.map_text, clone_org.user_map, clone_org.sync_log, clone_org.idmap) thay vì chấm 'unknown' chỉ vì một object duy nhất đã bị migration sau cố ý xoá."
+      "anhHuongThat": "KHÔNG có code sản xuất nào còn gọi object của file này: thẻ \"Công ty TEST\" (OrganizationPage.tsx) và hook src/hooks/useCloneOrgSync.ts đã gỡ cùng đợt 23/09/2026; types.ts sinh lại không còn clone_org_*. Các script scripts/clone-org/*.mjs không chạy được nữa — README của thư mục ghi ĐÃ GỠ, giữ làm lịch sử."
     },
     "supabase/migrations/20260807180000_openclaw_disconnect_recovery.sql": {
       "sha256": "b9763e7cf7614bdccd1117ccefe78945320d79aacba4225c3197ab2cdd575507",
@@ -674,6 +686,33 @@
           "trich_doan": "P1 profiles_select_super_admin USING (is_user_super_admin(id)) cho mọi user đọc profile super admin … can_access_building mất loại trừ demo-building so với buildings_for_v3 (D4) → đồng bộ"
         }
       ]
+    },
+    "supabase/migrations/20260801070000_clone_org_sync_queue.sql": {
+      "sha256": "f3c9402fc3a1374e25c5365539b9207c26e1b942e7f5869efbbdfb8e884ee01c",
+      "missingObjects": [
+        "table:clone_org.sync_request",
+        "function:clone_org.do_sync",
+        "function:public.clone_org_request_sync_v1",
+        "function:clone_org.run_pending_sync",
+        "function:public.clone_org_sync_status_v1"
+      ],
+      "ketLuan": "da-chay-bi-thay-the",
+      "lyLe": "File 20260801070000 ĐÃ chạy trên production — trước 23/09/2026 nó mang state catalog-proven với chính các object này (clone_org.sync_request, clone_org.do_sync, public.clone_org_request_sync_v1), job pg_cron clone_org_sync_worker nó đăng ký chạy tới 16:40 UTC 23/09 (cron.job_run_details). Object vắng mặt vì 20260923163531_go_co_che_clone_org_va_tai_khoan_test_cu.sql gỡ có chủ ý: DROP hai RPC public.clone_org_* và DROP SCHEMA clone_org CASCADE (kéo theo sync_request, do_sync, run_pending_sync); cron gỡ ở 20260923162145. Lý do: org TEST cccc đã xoá 08/08, bộ máy đồng bộ vô chủ, do_sync chạy dưới session_replication_role=replica (tắt mọi guard) — để sống là rủi ro; bản sao thay thế là project Supabase riêng (scripts/test-env/).",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20260923163531_go_co_che_clone_org_va_tai_khoan_test_cu.sql:53-55",
+          "trich_doan": "DROP FUNCTION IF EXISTS public.clone_org_request_sync_v1();\nDROP FUNCTION IF EXISTS public.clone_org_sync_status_v1();\nDROP SCHEMA IF EXISTS clone_org CASCADE;"
+        },
+        {
+          "duong_dan": "docs/generated/schema-change-evidence/20260923163531_go_co_che_clone_org_va_tai_khoan_test_cu.json (apply 23/09/2026 qua lane, backup ihomecrm-full-2026-09-23T16-46-52-539Z)",
+          "trich_doan": "catalog d432e7227b14… → ff4f3e87d877… (ĐÃ ĐỔI) — kiểm sau apply: to_regnamespace('clone_org') IS NULL, 0 hàm public.clone_org_*"
+        },
+        {
+          "duong_dan": "supabase/migrations/20260923162145_don_tan_du_org_test_cu_va_dong_mo_coi.sql:~260 (bước 6)",
+          "trich_doan": "IF to_regclass('cron.job') IS NOT NULL\n     AND EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'clone_org_sync_worker') THEN\n    PERFORM cron.unschedule('clone_org_sync_worker');"
+        }
+      ],
+      "anhHuongThat": "Không còn tính năng nào dùng: nút \"Đồng bộ dữ liệu mới nhất\" của org TEST cũ đã gỡ khỏi OrganizationPage.tsx cùng hook useCloneOrgSync.ts (23/09/2026). Nút đồng bộ mới trỏ tới workflow .github/workflows/test-env-sync.yml của môi trường TEST riêng."
     }
   }
 }

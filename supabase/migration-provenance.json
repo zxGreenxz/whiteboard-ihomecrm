@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-09-21T10:02:33.952Z",
+  "generatedAt": "2026-09-23T16:50:06.750Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 597,
-    "unknown": 73,
-    "catalog-proven": 212,
+    "ledger-applied": 599,
+    "unknown": 74,
+    "catalog-proven": 211,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -7309,7 +7309,11 @@
       "state": "unknown",
       "evidence": [],
       "missingObjects": [
-        "function:public.clone_org_sync_v1"
+        "table:clone_org.user_map",
+        "table:clone_org.skip_table",
+        "table:clone_org.null_org_parent",
+        "table:clone_org.code_suffix_col",
+        "table:clone_org.idmap"
       ]
     },
     {
@@ -7340,12 +7344,14 @@
       "name": "clone_org_sync_queue",
       "scheme": "timestamp14",
       "sha256": "f3c9402fc3a1374e25c5365539b9207c26e1b942e7f5869efbbdfb8e884ee01c",
-      "state": "catalog-proven",
-      "evidence": [
-        "catalog:table:clone_org.sync_request",
-        "catalog:function:clone_org.do_sync",
-        "catalog:function:public.clone_org_request_sync_v1",
-        "catalog:index:clone_org.sync_request_one_open"
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "table:clone_org.sync_request",
+        "function:clone_org.do_sync",
+        "function:public.clone_org_request_sync_v1",
+        "function:clone_org.run_pending_sync",
+        "function:public.clone_org_sync_status_v1"
       ]
     },
     {
@@ -10419,6 +10425,28 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-09-21T10:01:34.686Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260923162145_don_tan_du_org_test_cu_va_dong_mo_coi.sql",
+      "version": "20260923162145",
+      "name": "don_tan_du_org_test_cu_va_dong_mo_coi",
+      "scheme": "timestamp14",
+      "sha256": "4b0eb67f797e15fae2435593c36b962f83d9b080b0f424973de298a0c5f3d4b6",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-23T16:43:59.367Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260923163531_go_co_che_clone_org_va_tai_khoan_test_cu.sql",
+      "version": "20260923163531",
+      "name": "go_co_che_clone_org_va_tai_khoan_test_cu",
+      "scheme": "timestamp14",
+      "sha256": "5144a78424d8a0b33cfa58def5a266315d7c8b1885f52d1d0e7bd15433963211",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-23T16:49:10.200Z|bien-nhan-backup"
       ]
     },
     {
