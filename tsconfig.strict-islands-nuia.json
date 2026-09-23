@@ -304,7 +304,6 @@
     "src/hooks/useCashBook.ts",
     "src/hooks/useCashHandovers.ts",
     "src/hooks/useCashbookClosing.ts",
-    "src/hooks/useCloneOrgSync.ts",
     "src/hooks/useCollectionCycleReport.ts",
     "src/hooks/useCollectionReport.ts",
     "src/hooks/useContractOperations.ts",
