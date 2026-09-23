@@ -42,6 +42,6 @@ jobs:
           TEST_SUPABASE_DB_PASSWORD: ${{ secrets.TEST_SUPABASE_DB_PASSWORD }}
           TEST_SUPABASE_SECRET_KEY: ${{ secrets.TEST_SUPABASE_SECRET_KEY }}
           TEST_SUPABASE_POOLER_HOST: ${{ secrets.TEST_SUPABASE_POOLER_HOST }}
-          TEST_ENV_USER_PASSWORDS: ${{ secrets.TEST_ENV_USER_PASSWORDS }}
+          TEST_ENV_PASSWORD_SEED: ${{ secrets.TEST_ENV_PASSWORD_SEED }}
           TEST_ENV_WORKDIR: ${{ runner.temp }}/test-env
         run: node scripts/test-env/sync.mjs

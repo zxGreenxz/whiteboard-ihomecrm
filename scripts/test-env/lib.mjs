@@ -15,7 +15,8 @@
 //      không bao giờ lên dòng lệnh hay stdout.
 
 import { spawn, spawnSync, execFileSync } from "node:child_process";
-import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
+import { appendFileSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -91,16 +92,27 @@ export function credential() {
   const testSecretKey = process.env.TEST_SUPABASE_SECRET_KEY || tuVault(/^TEST_SUPABASE_SECRET_KEY=(\S+)\s*$/m) || null;
   const testPublishableKey = process.env.TEST_SUPABASE_PUBLISHABLE_KEY || tuVault(/^TEST_SUPABASE_PUBLISHABLE_KEY=(\S+)\s*$/m) || null;
   const testPoolerHost = process.env.TEST_SUPABASE_POOLER_HOST || tuVault(/^TEST_SUPABASE_POOLER_HOST=(\S+)\s*$/m) || null;
+  // Seed sinh MẬT KHẨU TEST TẤT ĐỊNH (HMAC(seed, email)): vault và CI ra cùng một mật
+  // khẩu mà không phải lưu từng mật khẩu làm secret. Chạy tại máy lần đầu thì tự sinh
+  // seed và ghi vault; trên CI thiếu seed thì dừng trước mọi lệnh ghi.
+  let passwordSeed = process.env.TEST_ENV_PASSWORD_SEED || tuVault(/^TEST_ENV_PASSWORD_SEED=(\S+)\s*$/m) || null;
+  const vaultPath = duongDanVault();
+  if (!passwordSeed && vaultPath && !process.env.CI) {
+    passwordSeed = randomBytes(32).toString("base64url");
+    appendFileSync(vaultPath, `\nTEST_ENV_PASSWORD_SEED=${passwordSeed}\n`);
+    _vault = undefined;
+  }
   const thieu = [];
   if (!pat) thieu.push("SUPABASE_PAT");
   if (!prodDbPassword) thieu.push("SUPABASE_DB_PASSWORD (pooler production)");
   if (!testRef) thieu.push("TEST_SUPABASE_REF");
   if (!testDbPassword) thieu.push("TEST_SUPABASE_DB_PASSWORD");
   if (!testSecretKey) thieu.push("TEST_SUPABASE_SECRET_KEY");
+  if (!passwordSeed) thieu.push("TEST_ENV_PASSWORD_SEED");
   if (thieu.length) {
     throw new Error(`Thiếu credential: ${thieu.join(", ")}. Đặt biến môi trường hoặc ghi vào vault CLAUDE.local.md.`);
   }
-  return { pat, prodDbPassword, testRef, testDbPassword, testPat, testSecretKey, testPublishableKey, testPoolerHost };
+  return { pat, prodDbPassword, testRef, testDbPassword, testPat, testSecretKey, testPublishableKey, testPoolerHost, passwordSeed };
 }
 
 // ---------------------------------------------------------------------------
@@ -192,25 +204,6 @@ export async function poolerHost(pat, ref) {
   return host;
 }
 
-let _keys = new Map();
-/** service_role key của một project (đọc qua Management API, không in ra). */
-export async function serviceKey(pat, ref) {
-  if (_keys.has(ref)) return _keys.get(ref);
-  const keys = await mgmt(pat, "GET", `/v1/projects/${ref}/api-keys?reveal=true`);
-  const k = keys.find((x) => x.name === "service_role")?.api_key
-    ?? keys.find((x) => x.type === "secret")?.api_key;
-  if (!k) throw new Error(`Không lấy được service key của ${ref}.`);
-  _keys.set(ref, k);
-  return k;
-}
-
-export async function anonKey(pat, ref) {
-  const keys = await mgmt(pat, "GET", `/v1/projects/${ref}/api-keys?reveal=true`);
-  const k = keys.find((x) => x.type === "publishable")?.api_key ?? keys.find((x) => x.name === "anon")?.api_key;
-  if (!k) throw new Error(`Không lấy được publishable key của ${ref}.`);
-  return k;
-}
-
 // ---------------------------------------------------------------------------
 // Kết nối PostgreSQL
 // ---------------------------------------------------------------------------
@@ -234,6 +227,12 @@ export function kiemCongCu() {
   }
 }
 
+const _donKhiThoat = [];
+/** Đăng ký việc dọn (đồng bộ) chạy khi tiến trình thoát — kể cả khi bị SIGINT/SIGTERM. */
+export function khiThoat(fn) {
+  _donKhiThoat.push(fn);
+}
+
 let _passFile = null;
 /**
  * Dựng MỘT PGPASSFILE tạm chứa mọi đích trong tiến trình này, gắn vào
@@ -244,7 +243,10 @@ export function dangKyMatKhau(entries) {
   const lines = entries.map((e) => pgPassLine(e.host, 5432, "postgres", e.user, e.password)).join("");
   if (!_passFile) {
     _passFile = join(tmpdir(), `.pgpass-test-env-${process.pid}`);
-    const don = () => { try { rmSync(_passFile, { force: true }); } catch { /* đã xoá */ } };
+    const don = () => {
+      for (const fn of _donKhiThoat) { try { fn(); } catch { /* dọn tiếp phần còn lại */ } }
+      try { rmSync(_passFile, { force: true }); } catch { /* đã xoá */ }
+    };
     process.on("exit", don);
     for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => { don(); process.exit(130); });
   }
@@ -271,14 +273,18 @@ export async function ketNoi(cred) {
   return { prod: uri(prodHost, PROD_REF), test: uri(testHost, cred.testRef) };
 }
 
-/** GUC giống nhau hai phía để `t::text` / pg_get_* in ra đúng một kiểu. */
+/**
+ * GUC giống nhau hai phía để `t::text` / pg_get_* in ra đúng một kiểu. SET LOCAL —
+ * chỉ sống trong transaction: kết nối pooler có thể được trả cho client khác, không
+ * được để GUC phiên (search_path = pg_catalog…) rò sang.
+ */
 export const SET_CHUAN = [
-  "SET TimeZone = 'UTC'",
-  "SET DateStyle = 'ISO, YMD'",
-  "SET IntervalStyle = 'postgres'",
-  "SET extra_float_digits = 1",
-  "SET bytea_output = 'hex'",
-  "SET search_path = pg_catalog",
+  "SET LOCAL TimeZone = 'UTC'",
+  "SET LOCAL DateStyle = 'ISO, YMD'",
+  "SET LOCAL IntervalStyle = 'postgres'",
+  "SET LOCAL extra_float_digits = 1",
+  "SET LOCAL bytea_output = 'hex'",
+  "SET LOCAL search_path = pg_catalog",
 ].join(";\n") + ";\n";
 
 /** Chạy một khối SQL bằng psql (stdin). Lỗi thì NÉM, không nuốt. */
@@ -297,9 +303,9 @@ export function psql(dich, sql, { dungKhiLoi = true, timeoutMs = 60 * 60 * 1000,
   return { stdout: String(r.stdout || ""), stderr: String(r.stderr || ""), status: r.status };
 }
 
-/** SELECT trả JSON. `sql` là câu SELECT; kết quả bọc json_agg. */
-export function psqlJson(dich, sql, { truoc = "" } = {}) {
-  const { stdout } = psql(dich, `${SET_CHUAN}${truoc}\\pset tuples_only on\n\\pset format unaligned\nSELECT COALESCE(json_agg(t), '[]'::json) FROM (${sql}\n) t;\n`);
+/** SELECT trả JSON, trong transaction READ ONLY. `sql` là câu SELECT; kết quả bọc json_agg. */
+export function psqlJson(dich, sql) {
+  const { stdout } = psql(dich, `BEGIN READ ONLY;\n${SET_CHUAN}\\pset tuples_only on\n\\pset format unaligned\nSELECT COALESCE(json_agg(t), '[]'::json) FROM (${sql}\n) t;\nCOMMIT;\n`);
   return JSON.parse(stdout.trim() || "[]");
 }
 
@@ -329,13 +335,15 @@ export class PhienPsql {
 
   _thu() {
     if (!this.cho) return;
-    const i = this.buf.indexOf(this.cho.dau);
-    if (i < 0) return;
-    const out = this.buf.slice(0, i);
-    this.buf = this.buf.slice(i + this.cho.dau.length);
+    // Dấu kết thúc mang luôn biến :ERROR của psql ("true" nếu lệnh cuối lỗi) — không
+    // dựa vào thứ tự đến của hai pipe stdout/stderr, vốn không được bảo đảm.
+    const m = new RegExp(`${this.cho.dau} (true|false)\\r?\\n`).exec(this.buf);
+    if (!m) return;
+    const out = this.buf.slice(0, m.index);
+    this.buf = this.buf.slice(m.index + m[0].length);
     const { resolve: ok, reject: hong } = this.cho;
     this.cho = null;
-    if (this.err.includes("ERROR")) {
+    if (m[1] === "true" || this.err.includes("ERROR")) {
       const e = this.err;
       this.err = "";
       hong(new Error(`psql: ${e.slice(0, 1500)}`));
@@ -350,7 +358,7 @@ export class PhienPsql {
     const dau = `__XONG_${this.dem}_${process.pid}__`;
     return new Promise((ok, hong) => {
       this.cho = { dau, resolve: ok, reject: hong };
-      this.p.stdin.write(`${sql}\n\\echo ${dau}\n`);
+      this.p.stdin.write(`${sql}\n\\echo ${dau} :ERROR\n`);
     });
   }
 

@@ -81,8 +81,8 @@ export async function xuatProduction({ prod, thuMuc }) {
 
   const phien = new PhienPsql(prod);
   try {
-    await phien.chay(SET_CHUAN);
     await phien.chay("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;");
+    await phien.chay(SET_CHUAN); // SET LOCAL — phải sau BEGIN
     const snap = (await phien.chay("SELECT pg_export_snapshot();")).trim();
     if (!/^[0-9A-F-]+$/i.test(snap)) throw new Error(`Không export được snapshot: "${snap}"`);
     ghiLog("xuat", `snapshot ${snap}`);

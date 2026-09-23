@@ -19,7 +19,7 @@ import { join } from "node:path";
 import { cauHinhProjectTest } from "./cau-hinh.mjs";
 import { dungCronTest, datMatKhauTest, ghiLichSu, thayRefTrongHam, xoaPush } from "./hau-ky.mjs";
 import { chuanBi, dungCron, khoiPhucApp, taiLapNenTang, xoaSach, xoaVaNapAuth } from "./khoi-phuc.mjs";
-import { PROD_REF, PhienPsql, batBuocDichTest, credential, ghiLog, ketNoi, kiemCongCu, psqlJson } from "./lib.mjs";
+import { PROD_REF, PhienPsql, batBuocDichTest, credential, ghiLog, ketNoi, khiThoat, kiemCongCu, psqlJson } from "./lib.mjs";
 import { dungBucket, guongDongObject } from "./tep.mjs";
 import { soBam, soVanTay, sqlBamLo, sqlDanhSachBang, sqlVanTay } from "./van-tay.mjs";
 import { xuatProduction } from "./xuat.mjs";
@@ -47,6 +47,14 @@ async function main(argv) {
 
   const thuMuc = join(process.env.TEST_ENV_WORKDIR || join(homedir(), "ihomecrm-backups", "test-env"), batDau.replace(/[:.]/g, "-"));
   mkdirSync(thuMuc, { recursive: true });
+  // Bản dump chứa dữ liệu cá nhân + hash mật khẩu thật: xoá cả khi tiến trình bị ngắt
+  // (SIGINT/SIGTERM gọi process.exit, khối finally không kịp chạy).
+  const xoaDump = () => {
+    if (giuDump) return;
+    rmSync(join(thuMuc, "app.dump"), { force: true });
+    rmSync(join(thuMuc, "auth.dump"), { force: true });
+  };
+  khiThoat(xoaDump);
   const moc = {};
   const buoc = async (ten, fn) => {
     const t0 = Date.now();
@@ -62,7 +70,15 @@ async function main(argv) {
 
     await buoc("dung-cron", () => dungCron(test));
     await buoc("xoa-sach", () => xoaSach(test));
-    await buoc("auth", () => xoaVaNapAuth(test, x.fileAuth));
+    await buoc("auth", () => {
+      xoaVaNapAuth(test, x.fileAuth);
+      const [dem] = psqlJson(test, "select count(*) as n from auth.users");
+      if (Number(dem.n) !== x.meta.user.length) {
+        throw new Error(`auth.users TEST có ${dem.n} dòng, production ${x.meta.user.length} — dừng.`);
+      }
+      // NGAY sau khi nạp: hash mật khẩu thật không được sống qua bất kỳ bước nào khác.
+      datMatKhauTest({ test, seed: cred.passwordSeed, users: x.meta.user });
+    });
     await buoc("storage", async () => {
       await dungBucket(testUrl, cred.testSecretKey, x.meta.bucket);
       guongDongObject(test, x.meta.object);
@@ -99,7 +115,6 @@ async function main(argv) {
     await buoc("hau-ky", async () => {
       thayRefTrongHam(test, cred.testRef);
       xoaPush(test);
-      await datMatKhauTest({ testUrl, testKey: cred.testSecretKey, users: x.meta.user });
       dungCronTest(test, x.meta.cron);
     });
     await buoc("cau-hinh", () => cauHinhProjectTest(cred));
@@ -112,9 +127,9 @@ async function main(argv) {
     ghiLog("xong", `${dat ? "✅ TEST khớp production tuyệt đối" : "❌ TEST LỆCH production — xem kiem.json"} · ${JSON.stringify(moc)}`);
     return dat ? 0 : 1;
   } finally {
+    try { await khoa.chay("SELECT pg_advisory_unlock(hashtext('test-env-sync'));"); } catch { /* đóng phiên cũng nhả */ }
     await khoa.dong();
-    if (!giuDump) rmSync(join(thuMuc, "app.dump"), { force: true });
-    if (!giuDump) rmSync(join(thuMuc, "auth.dump"), { force: true });
+    xoaDump();
   }
 }
 

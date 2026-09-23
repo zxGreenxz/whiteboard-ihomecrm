@@ -37,12 +37,13 @@ select 'nsp:' || n.nspname as k, md5(${acl("n.nspacl", "'n'", "n.nspowner")}) as
 union all
 select 'fn:' || ns.nspname || '.' || p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')',
        md5(case when p.prokind in ('f','p') then ${chuan("pg_get_functiondef(p.oid)")} else p.prokind::text end
-           || '|' || ${acl("p.proacl", "'f'", "p.proowner")})
+           || '|' || ${acl("p.proacl", "'f'", "p.proowner")} || '|' || p.proowner::regrole::text)
   from pg_proc p join ns on ns.oid = p.pronamespace
  where p.oid not in (select objid from ext)
 union all
 select 'rel:' || ns.nspname || '.' || c.relname,
        md5(c.relkind::text || '|' || c.relrowsecurity || '|' || c.relforcerowsecurity || '|' || c.relpersistence::text
+           || '|' || c.relowner::regrole::text || '|' || c.relreplident::text
            || '|' || coalesce(array_to_string(c.reloptions, ','), '')
            || '|' || ${acl("c.relacl", "case when c.relkind = 'S' then 's'::\"char\" else 'r'::\"char\" end", "c.relowner")}
            || '|' || coalesce((select string_agg(a.attname || ':' || format_type(a.atttypid, a.atttypmod) || ':' || a.attnotnull
@@ -61,12 +62,14 @@ select 'idx:' || ns.nspname || '.' || c.relname, md5(pg_get_indexdef(i.indexreli
  where c.oid not in (select objid from ext)
 union all
 select 'con:' || ns.nspname || '.' || coalesce(tc.relname, tt.typname) || '.' || co.conname,
-       -- Hai mã: nguyên văn, và bản BỎ NGOẶC/KHOẢNG TRẮNG. pg_dump in lại CHECK dạng
+       -- CHECK có thêm mã thứ hai: bản BỎ NGOẶC/KHOẢNG TRẮNG. pg_dump in lại CHECK dạng
        -- "(a AND b) AND c" (vd từ BETWEEN); restore phân tích lại và làm phẳng thành
        -- "a AND b AND c" — cùng nghĩa, khác chữ. Chỉ mã thứ hai khớp ⇒ "tương đương".
+       -- Loại ràng buộc khác (FK, UNIQUE…) chỉ có mã nguyên văn: bỏ ngoặc ở đó có thể
+       -- đánh đồng hai biểu thức khác nghĩa.
        md5(pg_get_constraintdef(co.oid) || '|' || co.convalidated || '|' || co.condeferrable || '|' || co.condeferred)
-       || ':' || md5(regexp_replace(pg_get_constraintdef(co.oid), '[()[:space:]]', '', 'g')
-                     || '|' || co.convalidated || '|' || co.condeferrable || '|' || co.condeferred)
+       || case when co.contype = 'c' then ':' || md5(regexp_replace(pg_get_constraintdef(co.oid), '[()[:space:]]', '', 'g')
+                     || '|' || co.convalidated || '|' || co.condeferrable || '|' || co.condeferred) else '' end
   from pg_constraint co join ns on ns.oid = co.connamespace
   left join pg_class tc on tc.oid = co.conrelid left join pg_type tt on tt.oid = co.contypid
 union all
@@ -118,7 +121,9 @@ select 'bucket:' || b.id, md5(b.public || '|' || coalesce(b.file_size_limit::tex
 }
 
 const COT_AUTH = {
-  "auth.users": ["id", "email", "encrypted_password", "email_confirmed_at", "raw_app_meta_data", "raw_user_meta_data", "created_at", "banned_until", "deleted_at"],
+  // KHÔNG có encrypted_password: TEST cố ý mang mật khẩu riêng (đặt ngay sau khi nạp auth).
+  "auth.users": ["id", "email", "role", "aud", "phone", "email_confirmed_at", "raw_app_meta_data", "raw_user_meta_data",
+    "created_at", "banned_until", "deleted_at", "is_anonymous", "is_sso_user"],
   "auth.identities": ["id", "user_id", "provider", "provider_id", "identity_data", "created_at"],
 };
 

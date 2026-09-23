@@ -1,11 +1,12 @@
 import { useEffect } from 'react';
-import { IS_TEST_ENV } from '@/lib/appEnvironment';
+import { IS_TEST_ENV, MOI_TRUONG_MAU_THUAN } from '@/lib/appEnvironment';
 
 const TIEN_TO = '[TEST] ';
 
 /**
  * Nhãn "MÔI TRƯỜNG TEST" cố định giữa mép trên màn hình, kèm tiền tố [TEST] trên
- * tiêu đề tab. Chỉ hiện ở bản build Preview (VITE_APP_ENV=test).
+ * tiêu đề tab. Chỉ hiện ở bản build TEST thật (xem appEnvironment.ts). Bản build khai
+ * TEST mà lại trỏ database production thì hiện dải ĐỎ cảnh báo thay vì nhãn TEST.
  *
  * `pointer-events-none`: nhãn đè lên mọi trang nhưng không được chặn cú bấm nào của
  * giao diện bên dưới — nó chỉ để nhìn.
@@ -23,6 +24,16 @@ export default function TestEnvironmentBanner() {
     return () => quanSat.disconnect();
   }, []);
 
+  if (MOI_TRUONG_MAU_THUAN) {
+    return (
+      <div
+        role="alert"
+        className="pointer-events-none fixed inset-x-0 top-0 z-[10000] bg-red-600 px-3 py-1 text-center text-xs font-semibold text-white shadow"
+      >
+        Cấu hình sai: bản build gắn nhãn TEST nhưng đang dùng database PRODUCTION — mọi thao tác ghi vào sổ thật
+      </div>
+    );
+  }
   if (!IS_TEST_ENV) return null;
   return (
     <div

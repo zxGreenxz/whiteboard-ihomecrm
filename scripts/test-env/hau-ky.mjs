@@ -6,13 +6,13 @@
 //      các cột) GIỮ NGUYÊN như production — TEST không có byte ảnh nào nên các URL đó
 //      không mở được dù trỏ đâu, còn bucket private chỉ ký được trên project đang dùng.
 //   2. Xoá push_subscriptions — endpoint là thiết bị THẬT của nhân viên.
-//   3. Đặt MẬT KHẨU TEST riêng cho mọi tài khoản (chủ chốt 23/09): mật khẩu thật không
-//      đăng nhập được TEST, và agent/chủ đăng nhập được đúng vai của bất kỳ ai.
+//   3. (datMatKhauTest — gọi NGAY sau khi nạp auth, xem hàm) mật khẩu TEST riêng cho mọi
+//      tài khoản: mật khẩu thật không đăng nhập được TEST.
 //   4. Dựng lại cron production (trừ CRON_BO_QUA).
 //   5. Ghi lịch sử đồng bộ vào test_env.lich_su.
 
-import { randomBytes } from "node:crypto";
-import { appendFileSync, readFileSync } from "node:fs";
+import { createHmac, randomBytes } from "node:crypto";
+import { readFileSync, writeFileSync } from "node:fs";
 
 import { CRON_BO_QUA, PROD_REF, TEST_ENV_SCHEMA, duongDanVault, ghiLog, lit, psql, psqlJson } from "./lib.mjs";
 
@@ -38,56 +38,58 @@ export function xoaPush(test) {
   ghiLog("hau-ky", `xoá ${r.n} đăng ký push (thiết bị thật)`);
 }
 
-/**
- * Mật khẩu TEST: vault (dòng `TEST_PASS <email> <mật khẩu>`) hoặc biến môi trường
- * TEST_ENV_USER_PASSWORDS (JSON {email: mật khẩu}) trên CI. Tài khoản mới chưa có mật
- * khẩu thì sinh ngẫu nhiên và — nếu chạy tại máy có vault — ghi thêm vào vault.
- */
-function docMatKhauTest() {
-  const map = {};
-  if (process.env.TEST_ENV_USER_PASSWORDS) Object.assign(map, JSON.parse(process.env.TEST_ENV_USER_PASSWORDS));
-  const p = duongDanVault();
-  if (p) {
-    for (const m of readFileSync(p, "utf8").matchAll(/^TEST_PASS (\S+) (\S+)\s*$/gm)) map[m[1].toLowerCase()] = m[2];
-  }
-  return map;
+/** Mật khẩu TEST của một email — TẤT ĐỊNH theo seed, nên vault và CI luôn ra cùng một giá trị. */
+export function matKhauTest(seed, email) {
+  return `Tt!${createHmac("sha256", seed).update(String(email).toLowerCase()).digest("base64url").slice(0, 16)}`;
 }
 
-const sinhMatKhau = () => `Tt!${randomBytes(12).toString("base64").replace(/[^A-Za-z0-9]/g, "").slice(0, 14)}`;
-
-export async function datMatKhauTest({ testUrl, testKey, users }) {
-  const map = docMatKhauTest();
-  const moi = [];
-  const h = { apikey: testKey, "Content-Type": "application/json" };
-  if (!testKey.startsWith("sb_")) h.Authorization = `Bearer ${testKey}`;
-  let dat = 0;
-  const loi = [];
+/**
+ * Đặt MẬT KHẨU TEST cho mọi tài khoản, NGAY sau khi nạp auth.users — trước mọi bước dễ
+ * lỗi, để lượt đồng bộ đứt giữa chừng cũng không để lại hash mật khẩu THẬT trên TEST
+ * (review 23/09, T1). Ghi thẳng hash bcrypt bằng pgcrypto, không qua API.
+ *
+ * - demo.* (fixture E2E, không phải người thật) giữ mật khẩu production: bộ E2E đăng
+ *   nhập bằng FLEET_PASS_* chạy y nguyên trên TEST.
+ * - Tài khoản không có email: mật khẩu ngẫu nhiên không ai biết (vẫn xoá hash thật).
+ *
+ * Kiểm: mọi tài khoản đã đặt phải khớp đúng mật khẩu TEST ⇒ mật khẩu thật hết hiệu lực.
+ */
+export function datMatKhauTest({ test, seed, users }) {
+  const dong = [];
+  const vault = [];
   for (const u of users) {
     const email = String(u.email ?? "").toLowerCase();
-    if (!email) continue;
-    // Tài khoản fixture demo.* (không phải người thật) GIỮ mật khẩu production: bộ E2E
-    // đăng nhập bằng FLEET_PASS_* và chạy được y nguyên trên TEST.
     if (/^demo\./.test(email)) continue;
-    let pw = map[email];
-    if (!pw) {
-      pw = sinhMatKhau();
-      moi.push([email, pw]);
-    }
-    const r = await fetch(`${testUrl}/auth/v1/admin/users/${u.id}`, { method: "PUT", headers: h, body: JSON.stringify({ password: pw }) });
-    if (r.ok) dat += 1;
-    else loi.push(`${email}: ${r.status}`);
+    const pw = email ? matKhauTest(seed, email) : randomBytes(24).toString("base64url");
+    dong.push({ i: u.id, p: pw });
+    if (email) vault.push([email, pw]);
   }
-  if (moi.length) {
-    const p = duongDanVault();
-    if (p) {
-      appendFileSync(p, `\n# Mật khẩu TEST (project ihomecrm-test) — sinh ${new Date().toISOString().slice(0, 10)}\n${moi.map(([e, pw]) => `TEST_PASS ${e} ${pw}`).join("\n")}\n`);
-      ghiLog("hau-ky", `sinh mật khẩu TEST mới cho ${moi.length} tài khoản — đã ghi vault`);
-    } else {
-      ghiLog("hau-ky", `⚠ ${moi.length} tài khoản chưa có mật khẩu TEST và không có vault để lưu — chạy lại tại máy có vault`);
-    }
+  const x = `json_to_recordset(${lit(JSON.stringify(dong))}::json) AS x(i uuid, p text)`;
+  psql(test, `UPDATE auth.users u SET encrypted_password = extensions.crypt(x.p, extensions.gen_salt('bf', 10))
+  FROM ${x} WHERE u.id = x.i;`);
+  const [dem] = psqlJson(test, `select count(*) as n from auth.users u join ${x} on u.id = x.i
+    where u.encrypted_password = extensions.crypt(x.p, u.encrypted_password)`);
+  if (Number(dem.n) !== dong.length) {
+    throw new Error(`Chỉ ${dem.n}/${dong.length} tài khoản mang đúng mật khẩu TEST — dừng.`);
   }
-  ghiLog("hau-ky", `đặt mật khẩu TEST ${dat}/${users.length} tài khoản`);
-  if (loi.length) throw new Error(`Đặt mật khẩu lỗi: ${loi.slice(0, 5).join(", ")}`);
+  ghiVaultMatKhau(vault);
+  ghiLog("auth", `mật khẩu TEST: ${dong.length} tài khoản (mật khẩu thật hết hiệu lực) · giữ ${users.length - dong.length} fixture demo.*`);
+}
+
+/** Làm mới danh sách mật khẩu TEST trong vault (chỉ tại máy có vault, không trên CI). */
+function ghiVaultMatKhau(ds) {
+  const p = duongDanVault();
+  if (!p || process.env.CI) return;
+  const cu = readFileSync(p, "utf8");
+  const bo = cu.split(/\r?\n/).filter((l) => !/^TEST_PASS /.test(l) && !/^# Mật khẩu TEST/.test(l));
+  while (bo.length && bo[bo.length - 1].trim() === "") bo.pop();
+  const khoi = [
+    "",
+    `# Mật khẩu TEST (tất định từ TEST_ENV_PASSWORD_SEED — project ihomecrm-test) — cập nhật ${new Date().toISOString().slice(0, 10)}`,
+    ...ds.sort((a, b) => a[0].localeCompare(b[0])).map(([e, pw]) => `TEST_PASS ${e} ${pw}`),
+    "",
+  ];
+  writeFileSync(p, `${bo.join("\n")}\n${khoi.join("\n")}`);
 }
 
 export function dungCronTest(test, cron) {

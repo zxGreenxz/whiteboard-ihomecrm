@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { sqlDefaultAcl } from '../test-env/khoi-phuc.mjs';
+import { matKhauTest } from '../test-env/hau-ky.mjs';
+import { sqlDefaultAcl, tachLoiPgRestore } from '../test-env/khoi-phuc.mjs';
 import { PROD_REF, batBuocDichTest } from '../test-env/lib.mjs';
 import { soBam, soVanTay, sqlBamLo } from '../test-env/van-tay.mjs';
 
@@ -37,7 +38,9 @@ describe('môi trường TEST — phép so vân tay', () => {
 
   it('bảng auth chỉ băm cột chung, bảng ứng dụng băm cả dòng', () => {
     const sql = sqlBamLo([{ sch: 'auth', bang: 'users' }, { sch: 'public', bang: 'invoices' }]);
-    expect(sql).toContain('row(x.id, x.email, x.encrypted_password');
+    expect(sql).toContain('row(x.id, x.email, x.role');
+    // mật khẩu TEST cố ý khác production ⇒ không băm cột hash mật khẩu
+    expect(sql).not.toContain('encrypted_password');
     expect(sql).toContain('md5(x::text) h from "public"."invoices"');
   });
 });
@@ -53,6 +56,37 @@ describe('môi trường TEST — tái lập default privileges', () => {
       'ALTER DEFAULT PRIVILEGES FOR ROLE postgres GRANT EXECUTE ON FUNCTIONS TO PUBLIC;',
       'ALTER DEFAULT PRIVILEGES FOR ROLE postgres GRANT EXECUTE ON FUNCTIONS TO "service_role";',
     ].join('\n'));
+  });
+});
+
+describe('môi trường TEST — mật khẩu tất định', () => {
+  it('cùng seed + email ⇒ cùng mật khẩu (vault và CI khớp nhau), khác seed ⇒ khác', () => {
+    const a = matKhauTest('seed-1', 'Nathan@username.ihomecrm.local');
+    expect(a).toBe(matKhauTest('seed-1', 'nathan@username.ihomecrm.local'));
+    expect(a).not.toBe(matKhauTest('seed-2', 'nathan@username.ihomecrm.local'));
+    expect(a).toMatch(/^Tt!.{16}$/);
+  });
+});
+
+describe('môi trường TEST — tách lỗi pg_restore', () => {
+  it('lấy ĐỦ câu lệnh nhiều dòng (án lệ 23/09: chỉ lấy dòng đầu ⇒ 16 khoá ngoại bị nuốt)', () => {
+    const err = [
+      'pg_restore: error: could not execute query: ERROR:  insert or update on table "t" violates foreign key constraint "t_fk"',
+      'DETAIL:  Key (x)=(1) is not present in table "p".',
+      'Command was: ALTER TABLE ONLY public.t',
+      '    ADD CONSTRAINT t_fk FOREIGN KEY (x) REFERENCES public.p(id);',
+      '',
+      '',
+      'pg_restore: error: could not execute query: ERROR:  deadlock detected',
+      'Command was: CREATE POLICY p ON public.t USING (true);',
+      '',
+    ].join('\r\n');
+    const k = tachLoiPgRestore(err);
+    expect(k).toHaveLength(2);
+    expect(k[0].lenh).toContain('ADD CONSTRAINT t_fk FOREIGN KEY');
+    expect(k[0].chiTiet).toContain('is not present');
+    expect(k[1].loi).toBe('deadlock detected');
+    expect(k[1].lenh).toBe('CREATE POLICY p ON public.t USING (true);');
   });
 });
 
