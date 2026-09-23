@@ -197,6 +197,11 @@
       "kyVong": "dung-vi-du-lieu",
       "thongDiep": "Không thấy org THẬT aaaa",
       "why": "Migration dọn dữ liệu một-lần (tàn dư org TEST cccc + dòng mồ côi vi phạm khoá ngoại của cccc/dddd): bước 0 đòi org THẬT tồn tại để chắc đang ở đúng database; database rỗng không có org nào nên nó dừng trước mọi lệnh xoá — đúng việc. File không tạo object schema nào."
+    },
+    "20260923163531_go_co_che_clone_org_va_tai_khoan_test_cu.sql": {
+      "kyVong": "dung-vi-du-lieu",
+      "thongDiep": "relation \"cron.job\" does not exist",
+      "why": "Bản dựng lại từ baseline KHÔNG có extension pg_cron (như 20260830165629). File gỡ cron clone_org_sync_worker trong khối DO có chặn to_regclass('cron.job') IS NOT NULL AND EXISTS (SELECT … FROM cron.job …) — nhưng plpgsql lập kế hoạch CẢ biểu thức trước khi đánh giá nên AND không chặn được tham chiếu tới bảng vắng mặt (muốn chặn phải lồng hai IF). File đã apply production 23/09/2026 (bất biến) nên khai kỳ vọng thay vì sửa. Trên project thật schema cron luôn có; cả file cuộn lại trên DB diễn tập, migration sau không phụ thuộc clone_org."
     }
   }
 }
