@@ -197,6 +197,26 @@ export async function khoiPhucApp(test, fileApp, thuMuc) {
     fkNotValid.push({ bang: m[1], ten: m[2], chiTiet: k.chiTiet });
     daXuLy.add(k);
   }
+  // CHẠY LẠI TUẦN TỰ: -j 4 dựng DDL song song và đôi khi deadlock (đo 23/09: hai CREATE
+  // POLICY khoá chéo nhau — không tất định). Phát lại mọi câu lỗi theo đúng thứ tự, tối
+  // đa 3 vòng tới khi hết tiến triển: nạn nhân deadlock lẫn object phụ thuộc vào nó
+  // (lỗi "does not exist") được dựng lại. COPY dữ liệu không phát lại được — để là lỗi.
+  const daThuLai = [];
+  for (let vong = 1; vong <= 3; vong += 1) {
+    const con = loi.filter((x) => !daXuLy.has(x) && x.lenh && !/^COPY /.test(x.lenh)
+      && !/schema "public" already exists/.test(x.loi));
+    let tien = 0;
+    for (const k of con) {
+      try {
+        psql(test, /;\s*$/.test(k.lenh) ? k.lenh : `${k.lenh};`);
+        daXuLy.add(k);
+        daThuLai.push(k.lenh.split("\n")[0].slice(0, 120));
+        tien += 1;
+      } catch { /* vòng sau thử lại, hoặc giữ là lỗi */ }
+    }
+    if (tien === 0) break;
+  }
+  if (daThuLai.length) ghiLog("khoi-phuc", `chạy lại tuần tự thành công ${daThuLai.length} câu: ${daThuLai.slice(0, 5).join(" | ")}`);
   // "schema public already exists": pg_dump -n public luôn phát CREATE SCHEMA public — vô hại.
   const loiKhac = loi.filter((x) => !daXuLy.has(x) && !/schema "public" already exists/.test(x.loi));
   ghiLog("khoi-phuc", `lượt chính ${r1.giay}s · ${fkNotValid.length} khoá ngoại dựng NOT VALID (dòng mồ côi trên prod) · ${loiKhac.length} lỗi khác`);
