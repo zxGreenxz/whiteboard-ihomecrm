@@ -180,7 +180,9 @@ export async function khoiPhucApp(test, fileApp, thuMuc) {
 
   const list1 = `${thuMuc}/app.list`;
   writeFileSync(list1, conLai.join("\n"), "utf8");
-  const r1 = await chayPgRestore(["-d", test, "--no-owner", "-j", "4", "-L", list1, fileApp], "lượt chính");
+  // Số luồng: 4 tại máy (đã kiểm); CI đặt cao hơn để bù độ trễ Mỹ ↔ Singapore mỗi câu lệnh.
+  const luong = String(Math.max(1, Math.min(16, Number(process.env.TEST_ENV_PG_RESTORE_JOBS) || 4)));
+  const r1 = await chayPgRestore(["-d", test, "--no-owner", "-j", luong, "-L", list1, fileApp], "lượt chính");
   writeFileSync(`${thuMuc}/pg_restore.stderr.txt`, r1.err, "utf8");
   const loi = tachLoiPgRestore(r1.err);
 
