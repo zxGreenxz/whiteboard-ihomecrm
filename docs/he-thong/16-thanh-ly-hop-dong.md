@@ -340,6 +340,16 @@ flowchart TD
 > Bước gạch nợ B2 **không còn dòng phiếu nào** — chỉ có `payments` method `TM` trên từng hoá đơn.
 > (Bản 19→27/06 từng kèm phiếu INCOME "Cấn trừ thanh lý" trên sổ ảo, ép ngoài KQKD — đã bỏ.)
 
+> **Chỉ còn MỘT đường sinh phiếu "Trả khách" (23/09/2026).** Phiếu hoàn khách thanh lý chỉ sinh từ
+> luồng rời phòng ở trên. Đường thứ hai — nút "Kiểm tra" ở Báo cáo thanh lý và hành động Copilot
+> `termination.hoan_coc`, đi `record_termination_refund_obligation_v1` →
+> `create_termination_refund_voucher_v1` — đã gỡ theo quyết định của chủ: nó chỉ chống trùng qua bảng
+> `termination_refund_obligations` (0 dòng) nên sinh được phiếu hoàn thứ hai cho hồ sơ đã có phiếu.
+> Giao diện bỏ nút; migration [20260923161122](../../supabase/migrations/20260923161122_bo_duong_hoan_khach_thu_hai.sql)
+> thu EXECUTE hai RPC đó (cùng cặp preview/execute của Copilot) và tắt hành động Copilot.
+> `preview_termination_refund_v1` giữ nguyên — luồng rời phòng, `approve_contract_termination_v1`
+> và khu "Hợp đồng & quyết toán" ở `/thanh-toan` đọc nó để tính số phải hoàn.
+
 ---
 
 ## 5. So sánh 2 trường hợp

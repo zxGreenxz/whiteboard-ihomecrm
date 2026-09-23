@@ -142,3 +142,44 @@ test('ô "Thanh toán" hiện ở mục Tài chính của Home launcher và tr�
   await expect(page.locator('.tt-phone-col .ptt-sheet')).toBeVisible();
   await expect(page.locator('.ptt-panel')).toBeHidden();
 });
+
+// 23/09/2026: khu "Hợp đồng & quyết toán" chỉ dựng cho màn rộng (PeriodFeePanel).
+// Trước đây menu điện thoại vẫn liệt kê nó và chọn vào thì thân sheet TRỐNG TRƠN.
+test('mobile: menu loại phí không liệt kê "Hợp đồng & quyết toán"', async ({ page }) => {
+  const errs = trackConsoleErrors(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await login(page, 'chunha');
+  await page.goto('/thanh-toan');
+
+  const sheet = page.locator('.tt-phone-col .ptt-sheet');
+  await expect(sheet).toBeVisible();
+  await sheet.locator('.ptt-m-trigger').click();
+
+  const picker = page.locator('.ptt-picker.show');
+  await expect(picker).toBeVisible();
+  // Chờ danh sách render thật rồi mới khẳng định vắng mặt (chống xanh rỗng).
+  await expect(picker.locator('.ptt-menu-item', { hasText: 'Cọc đã thu' })).toBeVisible();
+  await expect(picker.locator('.ptt-menu-item', { hasText: 'Hợp đồng & quyết toán' })).toHaveCount(0);
+  await expect(picker.locator('.ptt-menu-group', { hasText: 'Hợp đồng & quyết toán' })).toHaveCount(0);
+
+  expect(errs, 'console errors').toEqual([]);
+});
+
+// Lựa chọn loại phí LƯU CHUNG một khoá sessionStorage giữa bảng máy tính và khung
+// điện thoại (không đồng bộ tức thời). Chọn khu này ở bảng máy tính rồi tải lại
+// trang là khung điện thoại đứng ở family đó — phải có lời nhắc, không trống.
+test('chọn "Hợp đồng & quyết toán" ở bảng máy tính rồi tải lại: khung điện thoại hiện lời nhắc, không trống', async ({ page }) => {
+  const errs = trackConsoleErrors(page);
+  await login(page, 'chunha');
+  await page.goto('/thanh-toan');
+
+  await page.locator('.ptt-panel .ptt-trigger').click();
+  await page.locator('.ptt-panel .ptt-menu .ptt-menu-item', { hasText: 'Hợp đồng & quyết toán' }).click();
+  await expect(page.locator('.ptt-panel .ptt-title')).toContainText('Hợp đồng & quyết toán');
+
+  await page.reload();
+  await expect(page.locator('.ptt-panel .ptt-title')).toContainText('Hợp đồng & quyết toán');
+  await expect(page.locator('.tt-phone-col .ptt-sheet')).toContainText('chỉ làm trên màn hình máy tính');
+
+  expect(errs, 'console errors').toEqual([]);
+});

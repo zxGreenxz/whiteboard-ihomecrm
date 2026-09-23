@@ -37,10 +37,10 @@ export const CONTRACT_SYNC_ENTRIES: readonly SyncEntry[] = [
     table: "contract_terminations",
     keys: [
       ["deposit-dashboard"],
-      // Ba key THẬT mà màn thanh lý dùng, thay cho ["contract-terminations"] chết:
+      // Key THẬT mà màn thanh lý dùng, thay cho ["contract-terminations"] chết
+      // (23/09/2026 bỏ ["termination-refund-preview"] cùng hộp thoại Kiểm tra):
       ["contract-termination-info"], // useContractDetailData
       ["pending-terminations"], // useContracts — hàng chờ duyệt
-      ["termination-refund-preview"], // useTerminationRefund
       ["contract-history"], // lịch sử HĐ gộp extensions + transfers + terminations
       ["contracts"],
     ],

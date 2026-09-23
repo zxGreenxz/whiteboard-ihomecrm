@@ -1,10 +1,5 @@
-import { useState } from 'react';
-import { Wallet, HandCoins, PiggyBank, SearchCheck } from 'lucide-react';
-import { TerminationRefundDialog } from '@/components/contracts/TerminationRefundDialog';
-import {
-  useTerminationRefundQueue, useSaleBonusVouchers,
-  useDepositLedger, useDepositLedgerSummary,
-} from '@/hooks/useThanhToanLedgers';
+import { PiggyBank } from 'lucide-react';
+import { useDepositLedger, useDepositLedgerSummary } from '@/hooks/useThanhToanLedgers';
 
 /**
  * SỔ THEO DÕI của trang Thanh toán: cọc đã thu.
@@ -21,7 +16,7 @@ const fmtDate = (s: string | null) => {
   return `${d}/${m}/${y}`;
 };
 
-// ── 3. CỌC ĐÃ THU ────────────────────────────────────────────────────────────
+// ── CỌC ĐÃ THU ───────────────────────────────────────────────────────────────
 
 export function DepositLedgerSection({ period }: { period: string }) {
   const q = useDepositLedger(period);
@@ -70,8 +65,7 @@ export function DepositLedgerSection({ period }: { period: string }) {
           <PiggyBank />
           <span>
             <b>Két thật</b> = tiền đã vào sổ quỹ. <b>Sổ ảo</b> = mới ghi nhận trên giấy, chưa cầm
-            tiền — hoàn cọc cho nhóm này là chi một khoản chưa hề thu, nên nút Kiểm tra bên Chi
-            thanh lý sẽ chặn lại hỏi chủ.
+            tiền — hoàn cọc cho nhóm này là chi một khoản chưa hề thu.
           </span>
         </p>
       </div>

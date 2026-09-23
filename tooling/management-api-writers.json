@@ -189,12 +189,6 @@
       "file": "scripts/v5-calendar-parity.mjs",
       "loai": "read",
       "why": "chỉ đọc catalog"
-    },
-    {
-      "file": "scripts/seed-demo-hoan-coc.mjs",
-      "loai": "write",
-      "why": "Seed/don fixture DEMO cho E2E chu trinh hoan coc (termination-refund-full-cycle.spec.ts) — dieu kien §17.6 truoc khi khoa duong thanh ly cu. Chi DML du lieu test, khong dung schema; moi cau SQL neo cung org DEMO dddd…0001 va MARKER; khong bao gio xoa phieu POSTED. Khong di lane duoc vi lane la cho migration schema, con day la du lieu dung-roi-don cua mot bai test.",
-      "giayPhep": "chi-demo"
     }
   ]
 }

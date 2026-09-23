@@ -1,10 +1,10 @@
 // =============================================================================
 // PeriodFeePanel V2 — panel DESKTOP "Đóng tiền Tập trung theo Kỳ" (cột trái).
-// Ô chọn LOẠI PHÍ → family: Tổng quan · Điện & Nước (EN) · GRID · Hoa hồng ·
-// Bảo trì. V2 (10/07): 3 trạng thái ô (chưa đóng / CHỜ DUYỆT chờ thanh toán / đã
-// đóng), sửa/hủy/ảnh theo TỪNG phiếu, chống đóng trùng, cờ Không-áp-dụng,
-// thang máy hiện theo phiếu, ẩn Quản Lý theo quyền, tab Lịch sử, HH modal
-// Chờ duyệt|Chi&duyệt + nhắc kỳ trước, form bảo trì đủ sổ/ngày/ảnh.
+// Ô chọn LOẠI PHÍ → family: Tổng quan · Điện & Nước (EN) · GRID · Hợp đồng &
+// quyết toán · Bảo trì · Cọc đã thu. V2 (10/07): 3 trạng thái ô (chưa đóng / CHỜ
+// DUYỆT chờ thanh toán / đã đóng), sửa/hủy/ảnh theo TỪNG phiếu, chống đóng trùng,
+// cờ Không-áp-dụng, thang máy hiện theo phiếu, ẩn Quản Lý theo quyền, tab Lịch
+// sử, form bảo trì đủ sổ/ngày/ảnh.
 // =============================================================================
 
 import { useMemo, useRef, useState } from 'react';
@@ -23,8 +23,8 @@ import { useIsOrgOwner } from '@/hooks/useIsOrgOwner';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
 import {
-  usePeriodFeeStatus, useFeeAccounts, usePeriodCommissions, usePeriodMaintenance,
-  type PeriodCommissionRow, type PeriodFeeVoucher,
+  usePeriodFeeStatus, useFeeAccounts, usePeriodMaintenance,
+  type PeriodFeeVoucher,
 } from '@/hooks/usePeriodFees';
 import { usePeriodFeeState, addMonths, rangeLabel } from '@/hooks/usePeriodFeeState';
 import { useCreateMaintenanceBatch, type MaintenanceBatchLine } from '@/hooks/useMaintenanceBatch';
@@ -86,7 +86,6 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
   const [naOpen, setNaOpen] = useState(false);
   const [expectedEdit, setExpectedEdit] = useState<{ bId: string; value: number } | null>(null);
   const [vlistFor, setVlistFor] = useState<string | null>(null);   // buildingId đang mở danh sách phiếu
-  const [commRow, setCommRow] = useState<PeriodCommissionRow | null>(null);
   const [viewer, setViewer] = useState<{ attachments: string[]; index: number | null }>({ attachments: [], index: null });
   const onView = (atts: string[]) => { if (atts.length) setViewer({ attachments: atts, index: 0 }); };
 
@@ -107,8 +106,6 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
   // khi dùng các mục phí cũ; khu hợp đồng có reader và sổ quỹ riêng.
   const feeStatus = usePeriodFeeStatus(period, gridKeys, buildingIds, { enabled: buildingIds.length > 0 });
   const feeAccounts = useFeeAccounts({ enabled: !isHopDong });
-  const commissions = usePeriodCommissions(period, buildingIds, { enabled: buildingIds.length > 0 && isOverview });
-  const prevPeriod = addMonths(period, -1);
   const maintenance = usePeriodMaintenance(period, buildingIds, { enabled: buildingIds.length > 0 && (isOverview || isBatch) });
 
   const gridCat = isGrid ? cat! : FEE_CATEGORIES.find((c) => c.family === 'GRID')!;
@@ -201,7 +198,7 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
       };
     });
     return { rows, dueCount, slots, dueSum, paidSum, paidCount, draftCount, dueBldCount: dueBld.size };
-  }, [buildingIds, feeStatus.byKey, commissions.data, maintenance.data, elevatorIds, buildings, visibleCats]);
+  }, [buildingIds, feeStatus.byKey, maintenance.data, elevatorIds, buildings, visibleCats]);
 
   const pickCategory = (k: string) => { setCategory(k); setMenuOpen(false); setBldFilter('all'); setOnlyDue(false); setGridTab('pay'); setNaOpen(false); setExpectedEdit(null); };
   const headerCat = (isOverview ? undefined : cat) ?? { label: 'Tổng quan kỳ', sub: 'Còn thiếu phiếu · khớp Báo cáo Lợi Nhuận', icon: 'overview', accent: '#514c42' } as any;
@@ -766,13 +763,12 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
       )}
 
       {/* ===== Modals ===== */}
-      {/* 31/08 (P3-02): 5 modal wiring trùng với Sheet gom về PeriodFeeSharedModals
+      {/* 31/08 (P3-02): 4 modal wiring trùng với Sheet gom về PeriodFeeSharedModals
           — instance CỦA RIÊNG bề mặt này (modal local là chủ ý, xem comment hook). */}
       <PeriodFeeSharedModals
         S={S} isAdmin={isAdmin} canRecordPayment={canRecordPayment}
         cat={cat} buildings={buildings}
         vlistFor={vlistFor} setVlistFor={setVlistFor}
-        commRow={commRow} setCommRow={setCommRow}
         onView={onView}
       />
       <UtilityCancelModal target={S.cancelTarget} busy={S.cancelling} onClose={S.closeCancel} onConfirm={S.confirmCancel} />

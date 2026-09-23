@@ -1049,6 +1049,13 @@ export const ACTION_CATALOG = {
     previewRpc: 'copilot_preview_contract_chuyen_nhuong_v1',
     executeRpc: 'copilot_execute_contract_chuyen_nhuong_v1',
   },
+  // ĐÃ GỠ 23/09/2026 — chủ bỏ hẳn "đường hoàn khách thứ hai" (nút Kiểm tra ở Báo
+  // cáo thanh lý + hành động này). Migration 20260923161122 tắt hàng đăng ký
+  // (enabled=false), đưa cờ về disabled và thu EXECUTE của cặp preview/execute lẫn
+  // RPC gốc create_termination_refund_voucher_v1. Entry còn ở đây CHỈ vì mirror phải
+  // khớp đúng các hàng seed của migration đã đóng băng (plan/__tests__/actionCatalog
+  // .test.ts) — hàng registry vẫn tồn tại, ở trạng thái tắt. Đừng bật lại cờ: RPC đã
+  // bị thu quyền nên hành động sẽ hỏng lúc chạy.
   'termination.hoan_coc': {
     actionId: 'termination.hoan_coc',
     version: 1,

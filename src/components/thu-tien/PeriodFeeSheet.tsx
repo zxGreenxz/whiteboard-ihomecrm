@@ -2,8 +2,9 @@
 // PeriodFeeSheet V2 — sheet MOBILE "Đóng tiền Tập trung theo Kỳ".
 // Mirror đầy đủ desktop V2: 3 trạng thái ô (chưa/CHỜ DUYỆT/đã đóng), sửa-hủy-ảnh
 // theo TỪNG phiếu, chống trùng, Không-áp-dụng, thang máy theo phiếu, ẩn Quản Lý
-// theo quyền, tab Lịch sử, HH modal Chờ duyệt|Chi&duyệt + nhắc kỳ trước, form phiếu
-// tổng bảo trì (sổ+ngày+ảnh) NGAY TRÊN MOBILE.
+// theo quyền, tab Lịch sử, form phiếu tổng bảo trì (sổ+ngày+ảnh) NGAY TRÊN MOBILE.
+// Ngoại lệ duy nhất: khu "Hợp đồng & quyết toán" chỉ có ở PeriodFeePanel (màn
+// rộng) — xem `menuCats` bên dưới.
 // =============================================================================
 
 import { useMemo, useRef, useState } from 'react';
@@ -18,8 +19,8 @@ import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
 import { useUtilityPayState, type MeterRow } from '@/hooks/useUtilityPayState';
 import {
-  usePeriodFeeStatus, useFeeAccounts, usePeriodCommissions, usePeriodMaintenance,
-  type PeriodCommissionRow, type PeriodFeeVoucher,
+  usePeriodFeeStatus, useFeeAccounts, usePeriodMaintenance,
+  type PeriodFeeVoucher,
 } from '@/hooks/usePeriodFees';
 import { usePeriodFeeState, addMonths, rangeLabel } from '@/hooks/usePeriodFeeState';
 import { useCreateMaintenanceBatch, type MaintenanceBatchLine } from '@/hooks/useMaintenanceBatch';
@@ -73,6 +74,14 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
   const { data: perms } = useMyPermissions();
   const canRestricted = isAdmin || canUse(perms, 'income_expenses', 'restricted_view');
   const visibleCats = useMemo(() => FEE_CATEGORIES.filter((c) => !c.restricted || canRestricted), [canRestricted]);
+  // Khu "Hợp đồng & quyết toán" chỉ dựng cho màn rộng (bản thiết kế 20/09, chủ đồng
+  // ý "chỉ desktop") nên không liệt kê trong menu này. Nhưng lựa chọn loại phí LƯU
+  // CHUNG một khoá sessionStorage với PeriodFeePanel (hai bề mặt không đồng bộ tức
+  // thời): chọn khu này ở bảng máy tính rồi tải lại trang / thu hẹp cửa sổ là sheet
+  // đứng ở family đó — khi ấy hiện lời nhắc (khối CONTRACT_SETTLEMENT dưới thân
+  // sheet), không để trống.
+  const menuCats = useMemo(() => visibleCats.filter((c) => c.family !== 'CONTRACT_SETTLEMENT'), [visibleCats]);
+  const menuGroups = useMemo(() => FEE_GROUPS.filter((g) => menuCats.some((c) => c.group === g)), [menuCats]);
   const gridKeys = useMemo(() => gridKeysFor(canRestricted), [canRestricted]);
 
   const [categoryLuu, setCategory] = usePersistedState<string>('flt:thu-tien:fee-cat', 'overview');
@@ -85,7 +94,6 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
   const [naOpen, setNaOpen] = useState(false);
   const [expectedEdit, setExpectedEdit] = useState<{ bId: string; value: number } | null>(null);
   const [vlistFor, setVlistFor] = useState<string | null>(null);
-  const [commRow, setCommRow] = useState<PeriodCommissionRow | null>(null);
   const [viewer, setViewer] = useState<{ attachments: string[]; index: number | null }>({ attachments: [], index: null });
   const onView = (atts: string[]) => { if (atts.length) setViewer({ attachments: atts, index: 0 }); };
 
@@ -97,9 +105,6 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
   // Reader status nuôi badge menu; reader phụ trợ chưa dùng được hoãn riêng.
   const feeStatus = usePeriodFeeStatus(period, gridKeys, buildingIds, { enabled: show && buildingIds.length > 0 });
   const feeAccounts = useFeeAccounts({ enabled: loadFeeDetails });
-  const commissions = usePeriodCommissions(period, buildingIds, { enabled: show && buildingIds.length > 0 && (fam === 'over') });
-  const prevPeriod = addMonths(period, -1);
-  const prevCommissions = usePeriodCommissions(prevPeriod, buildingIds, { enabled: show && buildingIds.length > 0 && false });
   const maintenance = usePeriodMaintenance(period, buildingIds, { enabled: show && buildingIds.length > 0 && (fam === 'over' || fam === 'MAINTENANCE_BATCH') });
 
   const EN = useUtilityPayState(period, buildings, { enabled: loadFeeDetails });
@@ -144,7 +149,7 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
       return { cat: c, total, paidN, dueN, draftN: rowDraftN, dueList, dueSum: rowDue, pct: total ? Math.round((paidN / total) * 100) : 100, allPaid: dueN === 0 && total > 0 };
     });
     return { rows, dueCount, dueSum, draftCount };
-  }, [buildingIds, feeStatus.byKey, commissions.data, maintenance.data, elevatorIds, buildings, visibleCats]);
+  }, [buildingIds, feeStatus.byKey, maintenance.data, elevatorIds, buildings, visibleCats]);
 
   const pick = (k: string) => { setCategory(k); setPickerOpen(false); setOnlyDue(false); setGridTab('pay'); setNaOpen(false); setExpectedEdit(null); };
   const headerCat = (fam === 'over' ? undefined : cat) ?? { label: 'Tổng quan kỳ', sub: 'Còn thiếu phiếu · khớp Báo cáo Lợi Nhuận', icon: 'overview', accent: '#514c42' } as any;
@@ -184,7 +189,6 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
   };
 
   const mText = (m: 'ml' | 'mg') => (m === 'ml' ? 'Máy lạnh' : 'Máy giặt');
-  const prevUnpaidComm = (prevCommissions.data ?? []).filter((r) => r.status !== 'paid').length;
 
   // ── EN card render (3 trạng thái + dòng chưa khai công tơ — §−1.1/§−1.5) ──
   const renderEnRow = (row: MeterRow) => {
@@ -505,6 +509,15 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
             </div>
           )}
 
+          {fam === 'CONTRACT_SETTLEMENT' && (
+            <div className="ptt-note info mx" style={{ marginTop: 12 }}>
+              <Info />
+              <span>
+                <b>Hợp đồng &amp; quyết toán</b> (hoa hồng, hoàn khách thanh lý, thưởng Sale) chỉ
+                làm trên màn hình máy tính. Mở trang Thanh toán bằng máy tính để rà soát, duyệt và chi.
+              </span>
+            </div>
+          )}
           {fam === 'DEPOSIT_LEDGER' && <DepositLedgerSection period={period} />}
           {fam === 'MAINTENANCE_BATCH' && (
             <div className="ptt-m-batch">
@@ -576,10 +589,10 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
           <div className="ptt-picker-head"><span>Chọn loại phí</span><button type="button" className="rp-x" onClick={() => setPickerOpen(false)}><X /></button></div>
           <div className="ptt-picker-list">
             <button type="button" className={'ptt-menu-item ov' + (fam === 'over' ? ' on' : '')} onClick={() => pick('overview')}><span className="ptt-menu-ic ov"><FeeIcon name="overview" style={{ width: 15, height: 15 }} /></span><span className="ptt-menu-lbl grow">Tổng quan kỳ</span>{fam === 'over' && <Check className="ptt-menu-check" />}</button>
-            {FEE_GROUPS.map((g) => (
+            {menuGroups.map((g) => (
               <div key={g}>
                 <div className="ptt-menu-group">{g}</div>
-                {visibleCats.filter((c) => c.group === g).map((c) => {
+                {menuCats.filter((c) => c.group === g).map((c) => {
                   const active = c.key === category; const due = dueCountFor(c);
                   return (
                     <button key={c.key} type="button" className={'ptt-menu-item' + (active ? ' on' : '')} onClick={() => pick(c.key)}>
@@ -597,14 +610,13 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
       </div>
 
       {/* Modals dùng chung */}
-      {/* 31/08 (P3-02): 5 modal wiring trùng với Panel gom về PeriodFeeSharedModals
+      {/* 31/08 (P3-02): 4 modal wiring trùng với Panel gom về PeriodFeeSharedModals
           — instance CỦA RIÊNG bề mặt này. CancelModal ở dưới KHÔNG gom: Sheet trộn
           nguồn huỷ của cả Điện-Nước (EN), Panel thì không. */}
       <PeriodFeeSharedModals
         S={S} isAdmin={isAdmin} canRecordPayment={canRecordPayment}
         cat={cat} buildings={buildings}
         vlistFor={vlistFor} setVlistFor={setVlistFor}
-        commRow={commRow} setCommRow={setCommRow}
         onView={onView}
       />
       <UtilityCancelModal target={S.cancelTarget || EN.cancelTarget} busy={S.cancelling || EN.cancelling} onClose={() => { S.closeCancel(); EN.closeCancel(); }} onConfirm={S.cancelTarget ? S.confirmCancel : EN.confirmCancel} />

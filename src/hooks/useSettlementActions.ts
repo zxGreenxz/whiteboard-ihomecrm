@@ -66,7 +66,7 @@ const KHONG_CO_GI: SettlementAvailability = {
 
 const KEYS_LAM_MOI = [
   ['income-expenses'], ['income-expense-stats'], ['accounts-with-balance'],
-  ['contract-settlement'], ['period-commissions'], ['pending-approvals'],
+  ['contract-settlement'], ['pending-approvals'],
   ['income-expense-supplements'],
 ] as const;
 

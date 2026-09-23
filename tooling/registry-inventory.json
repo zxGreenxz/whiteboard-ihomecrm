@@ -1622,7 +1622,7 @@
       "permissionModule": null,
       "permissionAction": null,
       "systemDocDoan": "docs/he-thong/13-bao-cao-dashboard-thong-bao.md",
-      "e2eSpec": ".e2e-fleet/specs/termination-refund.spec.ts"
+      "e2eSpec": ".e2e-fleet/specs/terminations-report.spec.ts"
     },
     {
       "path": "/reports/real-estate/expense-ratio",

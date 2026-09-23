@@ -82,20 +82,18 @@ export const FINANCE_SYNC_ENTRIES: readonly SyncEntry[] = [
       ["ie-history"],
       ["flex-cancel-eligibility"],
       ["can-reverse-collection"],
-      // --- 28/08 (C-INFRA-7): bốn khoá của /thanh-toan đọc phiếu theo kỳ.
+      // --- 28/08 (C-INFRA-7): các khoá của /thanh-toan đọc phiếu theo kỳ.
       // usePeriodFees tự invalidate sau mutation CỦA MÌNH (:167-174), nhưng
       // phiếu do MÁY KHÁC tạo/duyệt thì chỉ đường realtime này gọi tới —
       // thiếu chúng là ô phí kẹt "chưa đóng" tới khi F5.
       ["period-fee-status"],
-      ["period-commissions"],
       ["period-maintenance"],
       ["fee-accounts"],
-      // --- 31/08 (audit P2-01): đợt C-INFRA-7 vá 4 khoá lưới phí nhưng bỏ quên
-      // 3 sổ theo dõi của SettlementPanels (useThanhToanLedgers) + biểu đồ
-      // Điện & Nước — máy khác tạo/duyệt/huỷ phiếu thì các màn này giữ số cũ
-      // tới khi đổi kỳ hoặc F5.
-      ["tt-termination-queue"],
-      ["tt-sale-bonus"],
+      // --- 31/08 (audit P2-01): sổ theo dõi của SettlementPanels
+      // (useThanhToanLedgers) + biểu đồ Điện & Nước — máy khác tạo/duyệt/huỷ
+      // phiếu thì các màn này giữ số cũ tới khi đổi kỳ hoặc F5.
+      // 23/09/2026: gỡ period-commissions, tt-termination-queue, tt-sale-bonus —
+      // ba query đó đã xoá cùng hoa hồng/chi thanh lý/thưởng Sale cũ của trang.
       ["tt-deposit-ledger"],
       ["utility-chart"],
     ],
