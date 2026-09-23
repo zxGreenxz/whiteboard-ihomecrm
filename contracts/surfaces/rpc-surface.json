@@ -1,7 +1,7 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 1716,
+    "sourceCallSites": 1713,
     "catalogFunctions": 1164,
     "schemas": [
       "public",
@@ -9,12 +9,12 @@
     ]
   },
   "counts": {
-    "calledRpcs": 291,
+    "calledRpcs": 288,
     "byRisk": {
-      "normal": 211,
+      "normal": 208,
       "financial": 80
     },
-    "securityDefiner": 275
+    "securityDefiner": 272
   },
   "missingOnServer": [],
   "rpcs": {
@@ -1662,26 +1662,6 @@
       ],
       "risk": "normal"
     },
-    "create_termination_refund_voucher_v1": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_obligation_id uuid, p_account_id uuid DEFAULT NULL::uuid, p_force boolean DEFAULT false, p_force_reason text DEFAULT NULL::text",
-          "returns": "jsonb",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=public, app_private",
-          "execRoles": [
-            "authenticated",
-            "service_role"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/useTerminationRefund.ts"
-      ],
-      "risk": "normal"
-    },
     "decide_financial_request_v2": {
       "definitions": [
         {
@@ -2624,8 +2604,7 @@
         }
       ],
       "callers": [
-        "src/hooks/useContractSettlement.ts",
-        "src/hooks/usePeriodFees.ts"
+        "src/hooks/useContractSettlement.ts"
       ],
       "risk": "normal"
     },
@@ -3945,26 +3924,6 @@
       ],
       "risk": "normal"
     },
-    "preview_termination_refund_v1": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_termination_id uuid",
-          "returns": "jsonb",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=public, app_private",
-          "execRoles": [
-            "authenticated",
-            "service_role"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/useTerminationRefund.ts"
-      ],
-      "risk": "normal"
-    },
     "profit_close_preview_v2": {
       "definitions": [
         {
@@ -4123,26 +4082,6 @@
         "src/lib/v5PaymentGps.ts"
       ],
       "risk": "financial"
-    },
-    "record_termination_refund_obligation_v1": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_termination_id uuid",
-          "returns": "jsonb",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=public, app_private",
-          "execRoles": [
-            "authenticated",
-            "service_role"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/useTerminationRefund.ts"
-      ],
-      "risk": "normal"
     },
     "reject_cancel_handover": {
       "definitions": [
