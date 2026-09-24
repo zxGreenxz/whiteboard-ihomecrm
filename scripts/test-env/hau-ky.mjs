@@ -38,6 +38,21 @@ export function xoaPush(test) {
   ghiLog("hau-ky", `xoá ${r.n} đăng ký push (thiết bị thật)`);
 }
 
+/**
+ * pg_restore KHÔNG chạy ANALYZE. Đo 24/09/2026 sau lần đồng bộ trước: 302/431 bảng chưa từng có
+ * thống kê (bảng nhỏ không bao giờ chạm ngưỡng autoanalyze), nên bộ lập kế hoạch đoán mò và TEST
+ * giật hơn production khi nhiều truy vấn chạy song song. ANALYZE cả database (~20 s trên gói Free),
+ * bọc transaction để SET LOCAL không rò qua pooler; cảnh báo thiếu quyền trên vài bảng catalog là bình thường.
+ */
+export function capNhatThongKe(test) {
+  const t0 = Date.now();
+  psql(test, "BEGIN;\nSET LOCAL statement_timeout = 0;\nANALYZE;\nCOMMIT;\n");
+  const [r] = psqlJson(test, `select count(*) filter (where last_analyze is null and last_autoanalyze is null) as chua,
+    count(*) as tong from pg_stat_user_tables where schemaname in ('public', 'app_private')`);
+  ghiLog("hau-ky", `ANALYZE xong sau ${Math.round((Date.now() - t0) / 1000)} s · bảng chưa có thống kê: ${r.chua}/${r.tong}`);
+  return r;
+}
+
 /** Mật khẩu TEST của một email — TẤT ĐỊNH theo seed, nên vault và CI luôn ra cùng một giá trị. */
 export function matKhauTest(seed, email) {
   return `Tt!${createHmac("sha256", seed).update(String(email).toLowerCase()).digest("base64url").slice(0, 16)}`;

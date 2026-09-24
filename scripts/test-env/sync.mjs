@@ -7,7 +7,7 @@
 // Luồng: xuất production trong MỘT snapshot → dừng cron TEST → xoá sạch schema ứng
 // dụng TEST → nạp auth → bucket + dòng thông tin file (không chép byte ảnh) →
 // pg_restore → tái lập phần cắm vào nền tảng → KIỂM vân tay + băm từng bảng khớp
-// production tuyệt đối → hậu kỳ (mật khẩu TEST, push, cron) → ghi lịch sử.
+// production tuyệt đối → hậu kỳ (mật khẩu TEST, push, cron) → ANALYZE → ghi lịch sử.
 //
 // Production CHỈ bị đọc. Mọi lệnh ghi đi qua batBuocDichTest() trước.
 // Bản dump chứa dữ liệu cá nhân thật: ghi NGOÀI repo và xoá khi xong.
@@ -17,7 +17,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { cauHinhProjectTest } from "./cau-hinh.mjs";
-import { choApiSanSang, dungCronTest, datMatKhauTest, ghiLichSu, thayRefTrongHam, xoaPush } from "./hau-ky.mjs";
+import { capNhatThongKe, choApiSanSang, dungCronTest, datMatKhauTest, ghiLichSu, thayRefTrongHam, xoaPush } from "./hau-ky.mjs";
 import { chuanBi, dungCron, khoiPhucApp, taiLapNenTang, xoaSach, xoaVaNapAuth } from "./khoi-phuc.mjs";
 import { PROD_REF, PhienPsql, batBuocDichTest, credential, ghiLog, ketNoi, khiThoat, kiemCongCu, psqlJson } from "./lib.mjs";
 import { dungBucket, guongDongObject } from "./tep.mjs";
@@ -117,6 +117,7 @@ async function main(argv) {
       xoaPush(test);
       dungCronTest(test, x.meta.cron);
     });
+    await buoc("thong-ke", () => capNhatThongKe(test));
     await buoc("cau-hinh", () => cauHinhProjectTest(cred));
     await buoc("cho-api", () => choApiSanSang(testUrl, cred.testSecretKey));
 

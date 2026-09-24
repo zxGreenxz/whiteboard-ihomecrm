@@ -59,6 +59,9 @@ ngoài database: đồng bộ không xoá, chỉ chạy lại khi mã function �
    `clone_org_sync_worker` và hai watchdog Network Center — không worker nào báo nhịp về TEST),
    cấu hình Auth (tắt đăng ký tự do) và Data API giống production, chờ Data API nạp xong schema
    cache (ngay sau khôi phục trả 503 PGRST002 vài chục giây), ghi `test_env.lich_su`.
+8. **`ANALYZE`** cả database (~20 s). `pg_restore` không tự làm: đo 24/09/2026 sau một lượt đồng bộ,
+   302/431 bảng chưa từng có thống kê (bảng nhỏ không bao giờ chạm ngưỡng autoanalyze) nên bộ lập
+   kế hoạch đoán mò.
 
 ## Chốt an toàn
 
@@ -77,10 +80,15 @@ trỏ production, edge function TEST không có khoá VAPID/Zalo.
   (vào dashboard bấm Restore rồi đồng bộ lại).
 - Upload ảnh phòng lên R2 (`room-sale-images`) xác thực bằng project production ⇒ báo lỗi trên TEST.
 - Extension tạm trú chỉ nhận tin từ `ptcrm.vercel.app`.
-- **Dòng mồ côi trên production**: 16 khoá ngoại (vd `income_expense_flow_ownership`,
-  `termination_forfeit_authorizations`, `payment_reversals`) mang cờ "đã kiểm" nhưng có dòng trỏ tới
-  bản ghi đã xoá — tàn dư lần xoá org TEST/DEMO 08/08 chạy `session_replication_role=replica`. Mọi lần
-  khôi phục thảm hoạ bằng pg_dump cũng sẽ vấp đúng chỗ này; TEST dựng chúng `NOT VALID`.
+- **Tốc độ** (đo 24/09/2026, cùng truy vấn danh sách Thu chi của chủ công ty): TEST ở máy Nano của gói
+  Free, production ở máy Micro. Một người dùng: ngang nhau (~0,6–0,8 s, TEST đôi khi giật tới ~2 s vì
+  CPU dùng chung); 3 truy vấn song song: 1,0 s so với 1,2 s; 8 song song: tới 2,8 s so với 5,7 s. Dùng
+  tay bình thường không thấy khác. Chỉ E2E mở nhiều trình duyệt cùng lúc (mỗi trang Thu chi bắn ~40
+  request) mới chạm `57014 statement timeout` ⇒ chạy E2E trên TEST với `FLEET_WORKERS=1`. Sau khi TEST
+  ngủ lâu, lượt đầu có thể gặp 503 PGRST002 hoặc chậm vì cache nguội — tải lại là hết.
+- **Dòng mồ côi**: production từng có 16 khoá ngoại vấp dòng mồ côi (tàn dư xoá org TEST/DEMO 08/08
+  chạy `session_replication_role=replica`); đã dọn 23/09/2026 (`20260923162145`), lượt đồng bộ sau đó
+  dựng 0 khoá `NOT VALID`. Nhánh `NOT VALID` trong `khoi-phuc.mjs` giữ lại phòng khi tái diễn.
 - Trên CI, workflow không mang PAT của TEST (PAT đó là của tài khoản chủ, thấy cả production) ⇒ bỏ
   lớp chốt "tên project qua API" và bước cấu hình Auth/Data API (đã áp một lần từ máy); lớp dấu trong
   database vẫn chặn. Secret đặt ở cấp repo như các secret production sẵn có.
@@ -96,7 +104,7 @@ trỏ production, edge function TEST không có khoá VAPID/Zalo.
 | `xuat.mjs` | xuất production trong một snapshot |
 | `khoi-phuc.mjs` | xoá sạch, nạp auth, trung hoà quyền, pg_restore, tái lập nền tảng |
 | `tep.mjs` | bucket + dòng `storage.objects` (không byte) |
-| `hau-ky.mjs` | thay ref, push, mật khẩu TEST, cron, lịch sử |
+| `hau-ky.mjs` | thay ref, push, mật khẩu TEST, cron, `ANALYZE`, lịch sử |
 | `cau-hinh.mjs` | Auth + Data API qua Management API |
 | `sync.mjs` | điều phối |
 | `thu-sql.mjs` | chạy thử một file SQL lên TEST |
