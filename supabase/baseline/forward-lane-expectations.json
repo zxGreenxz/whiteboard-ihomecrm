@@ -202,6 +202,11 @@
       "kyVong": "dung-vi-du-lieu",
       "thongDiep": "relation \"cron.job\" does not exist",
       "why": "Bản dựng lại từ baseline KHÔNG có extension pg_cron (như 20260830165629). File gỡ cron clone_org_sync_worker trong khối DO có chặn to_regclass('cron.job') IS NOT NULL AND EXISTS (SELECT … FROM cron.job …) — nhưng plpgsql lập kế hoạch CẢ biểu thức trước khi đánh giá nên AND không chặn được tham chiếu tới bảng vắng mặt (muốn chặn phải lồng hai IF). File đã apply production 23/09/2026 (bất biến) nên khai kỳ vọng thay vì sửa. Trên project thật schema cron luôn có; cả file cuộn lại trên DB diễn tập, migration sau không phụ thuộc clone_org."
+    },
+    "20260924012853_chu_cong_ty_doc_moi_so_quy.sql": {
+      "kyVong": "dung-vi-moi-truong",
+      "thongDiep": "nghiem_thu: ACL ie_visible_cashbook_ids_v1 bi doi",
+      "why": "File không tự bọc BEGIN/COMMIT: bước 0 chụp ACL của ie_visible_cashbook_ids_v1 bằng set_config(..., true) (sống tới hết transaction) để khối nghiệm thu cuối so lại. Lane production và test-env:thu-sql bọc cả file trong MỘT transaction nên phép so chạy thật (apply 24/09/2026, biên nhận 7c97edea7c6870a8, ACL giữ {postgres=X/postgres}). Diễn tập chạy `psql -f` tự commit từng câu nên giá trị chụp mất trước khi tới nghiệm thu ⇒ ném đúng câu này. Đã tái hiện trên môi trường TEST ở chế độ tự commit: ACL thật KHÔNG đổi. Vì tự commit, mọi object của file (my_company_owner_org_ids_v1, policy accounts_select_company_owner, nhánh chủ công ty trong ie_visible_cashbook_ids_v1) ĐÃ được tạo trên bản dựng lại trước khi khối cuối dừng — không mất object nào. File đã apply production (bất biến) nên khai kỳ vọng thay vì sửa."
     }
   }
 }
