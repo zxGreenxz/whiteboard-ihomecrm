@@ -260,9 +260,9 @@ test('nguoi-da-thu-huy-duoc-tren-giao-dien; nguoi-khac-bi-chan', async ({ browse
     }
 
     // ── Chủ tổ chức huỷ được chính phiếu đó ─────────────────────────
-    // ĐỎ ĐÚNG từ 24/09/2026: `nguyentam` thấy 0 sổ quỹ (RLS `accounts`, không giữ sổ nào)
-    // mà danh sách Thu chi nối `accounts!inner` ⇒ trang của chủ công ty trống trơn — đo cả
-    // trên production. Đừng đổi vai ở đây cho bài xanh; bài xanh lại khi lỗi được sửa.
+    // Bước này từng đỏ (24/09/2026): `nguyentam` không giữ sổ nào nên RLS `accounts` giấu
+    // mọi sổ, mà danh sách Thu chi nối `accounts!inner` ⇒ trang của chủ công ty trống trơn.
+    // Vá bằng 20260924012853_chu_cong_ty_doc_moi_so_quy.sql. Đừng đổi vai ở đây cho bài xanh.
     const rowChu = await findVoucherRow(chu.page, nameChu);
     const btnChu = rowChu.locator('button[title="Huỷ phiếu"]');
     await expect(btnChu, 'chủ tổ chức phải thấy nút Huỷ bật').toBeEnabled();
