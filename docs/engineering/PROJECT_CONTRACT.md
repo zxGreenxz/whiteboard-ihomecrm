@@ -37,7 +37,8 @@ Production có hai tổ chức dùng chung database. Bản sao để thử tính
   Đồng bộ bằng `npm run test-env:sync`; thử migration bằng `npm run test-env:thu-sql -- <file>`.
   Xem [test-env/README](../../scripts/test-env/README.md).
 - Org TEST cũ `cccc0000-0000-4000-8000-000000000001` (chung database, cơ chế clone-org)
-  đã xoá 08/08/2026; `sandbox_org_ids()`, `gate:sandbox-leak` còn lại chờ dọn.
+  đã xoá 08/08/2026; dữ liệu sót, schema `clone_org`, tài khoản `test.*` và script
+  `scripts/clone-org/` gỡ 23/09/2026. Còn lại chờ dọn: `sandbox_org_ids()` (vẫn trả id cccc).
   Tới khi dọn, bảng mới có `organization_id` và RLS vẫn có policy `<bảng>_hide_sandbox_admin`,
   bọc phép so sandbox bằng `COALESCE(…, false)` để xử lý đúng dòng NULL.
 - SECURITY DEFINER cần tự kiểm quyền: lọc toà qua `can_access_building()` /

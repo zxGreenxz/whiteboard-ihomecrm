@@ -17,7 +17,10 @@ export const PHASE_D_E2E_CASES = [
   { id: 'superadmin-org-a', user: 'chunha' as UserKey, expected: 'draft' as const },
   { id: 'manager-authorized-building', user: 'quanly' as UserKey, expected: 'draft' as const },
   { id: 'staff-missing-permission', user: 'ketoan' as UserKey, expected: 'rejected' as const },
-  { id: 'wrong-org-b', user: 'testchu' as UserKey, expected: 'rejected' as const },
+  // Không còn tài khoản fleet nào ở org thứ hai trên production (org TEST cccc gỡ
+  // 23/09/2026) ⇒ ca này là chủ DEMO nhắm org khác; bằng chứng sống ở
+  // scripts/copilot-live-negative-proofs.mjs (ORG_KHAC, cổng G4 trong ci-gates.yml).
+  { id: 'wrong-org-b', user: 'chunha' as UserKey, expected: 'rejected' as const },
   { id: 'permission-revoked-after-preview', user: 'quanly' as UserKey, expected: 'rejected' as const },
   { id: 'replayed-confirmation', user: 'chunha' as UserKey, expected: 'rejected' as const },
   { id: 'concurrent-double-execute', user: 'chunha' as UserKey, expected: 'rejected' as const },

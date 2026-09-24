@@ -1,8 +1,10 @@
 import { test, expect, type Page, type Browser } from '@playwright/test';
-import { login, trackConsoleErrors } from './auth';
+import { laWebTest, login, trackConsoleErrors } from './auth';
 
 /**
- * MA TRẬN QUYỀN TRÊN GIAO DIỆN — org TEST (bản sao dữ liệu công ty thật).
+ * MA TRẬN QUYỀN TRÊN GIAO DIỆN — môi trường TEST riêng (project `ihomecrm-test`,
+ * bản sao production đồng bộ bằng `npm run test-env:sync`). Chạy bằng tài khoản
+ * THẬT với mật khẩu TEST, nên chỉ chạy khi FLEET_BASE_URL là web nhánh `test-env`.
  *
  * Ma trận ở tầng RPC đã chạy 124 ca bằng SQL (4 người × 8 loại phiếu × 3 hành
  * động, cộng trang Thu tiền / tạo phiếu / phiếu chi / cách ly tổ chức). Bài này
@@ -11,18 +13,29 @@ import { login, trackConsoleErrors } from './auth';
  * bằng tiếng Việt.
  *
  * Hai vai đối lập trên CÙNG một phiếu do quản lý toà tạo:
- *   · test.joey            — QUẢN LÝ TOÀ, là NGƯỜI ĐÃ THU  → phải huỷ được.
- *   · test.nguyentamca165  — CHỦ TỔ CHỨC                    → cũng phải huỷ được.
- * và chiều ngược lại: phiếu do CHỦ tạo thì quản lý toà bị chặn NOT_OWNER.
+ *   · joey       (testquanly) — QUẢN LÝ TOÀ, là NGƯỜI ĐÃ THU  → phải huỷ được.
+ *   · nguyentam  (testchu)    — CHỦ CÔNG TY (không super admin) → cũng phải huỷ được.
+ * và chiều ngược lại: phiếu do NGƯỜI KHÁC thu (tài khoản hệ thống `testhethong`, người
+ * giữ sổ quỹ — chủ công ty không giữ sổ nào) trên CÙNG toà thì quản lý toà bị chặn
+ * NOT_OWNER, còn chủ công ty huỷ được.
+ * (Trước 23/09/2026 bài này chạy trên org TEST cccc…0001 chung database, nay đã gỡ.)
+ * Chạy với FLEET_WORKERS=1: TEST là gói Free, vài phiên song song đã làm truy vấn hết giờ.
  */
+
+test.skip(!laWebTest(), 'chỉ chạy khi FLEET_BASE_URL là web TEST (nhánh test-env)');
+
+/** Request ghi của bài này đi thẳng bằng fetch — chốt thêm một lớp: chỉ nhận project TEST. */
+const ORIGIN_TEST = 'https://hzulujxgonszuleqticb.supabase.co';
 
 const CANCEL_DOOR = /\/rest\/v1\/rpc\/cancel_income_voucher_v1\b/;
 
 async function captureSupabaseAuth(page: Page) {
   const req = await page.waitForRequest((r) => /\/rest\/v1\//.test(r.url()), { timeout: 30_000 });
   const h = req.headers();
+  const base = new URL(req.url()).origin;
+  if (base !== ORIGIN_TEST) throw new Error(`web đang gọi ${base}, không phải project TEST — dừng trước khi ghi`);
   return {
-    base: new URL(req.url()).origin,
+    base,
     apikey: h['apikey'] as string,
     auth: h['authorization'] as string,
   };
@@ -55,39 +68,59 @@ async function sbRpc(a: SbAuth, fn: string, body: unknown) {
 }
 
 /**
- * Tìm dòng phiếu theo tên. Org TEST là bản sao dữ liệu thật (hàng nghìn phiếu)
+ * Tìm dòng phiếu theo tên. TEST là bản sao dữ liệu thật (hàng nghìn phiếu)
  * nên phiếu vừa tạo KHÔNG nằm ở trang đầu — phải lọc qua ô tìm kiếm đúng như
  * người dùng thật.
  */
 async function findVoucherRow(page: Page, name: string) {
-  await page.goto('/income-expense');
-  const search = page.getByPlaceholder(/mã phi[ếe]u|mã phòng/i).first();
-  await expect(search).toBeVisible({ timeout: 30_000 });
-  await search.fill(name);
+  // Tối đa 3 lượt mở lại: trên TEST (gói Free) truy vấn danh sách đôi khi chết
+  // `57014 statement timeout` và trang hiện "Chưa có phiếu" dù phiếu có thật.
   const row = page.locator('tr', { hasText: name }).first();
-  await expect(row).toBeVisible({ timeout: 30_000 });
-  return row;
+  for (let luot = 1; ; luot++) {
+    await page.goto('/income-expense');
+    const search = page.getByPlaceholder(/mã phi[ếe]u|mã phòng/i).first();
+    await expect(search).toBeVisible({ timeout: 30_000 });
+    await search.fill(name);
+    try {
+      await expect(row).toBeVisible({ timeout: 20_000 });
+      return row;
+    } catch (e) {
+      if (luot >= 3) throw e;
+      test.info().annotations.push({ type: 'mo-lai-trang', description: `lượt ${luot} không thấy "${name}"` });
+    }
+  }
 }
 
-async function openAs(browser: Browser, who: 'testchu' | 'testketoan') {
+async function openAs(browser: Browser, who: 'testchu' | 'testquanly' | 'testhethong') {
   const ctx = await browser.newContext();
   const page = await ctx.newPage();
   const errs = trackConsoleErrors(page);
   await login(page, who);
-  const nav = page.goto('/income-expense');
+  // Lấy phiên ở trang NHẸ; trang Thu chi chỉ mở khi cần (findVoucherRow). Đo 24/09/2026
+  // trên TEST (gói Free): một truy vấn danh sách Thu chi của quản lý toà mất 1,8 s, tám
+  // truy vấn song song thì sáu cái chết `57014 statement timeout` — ba phiên cùng mở
+  // /income-expense là đủ làm trang hiện "0 đ" và "Chưa có phiếu".
+  const nav = page.goto('/account/profile');
   const auth = await captureSupabaseAuth(page);
   await nav;
   return { ctx, page, auth, errs };
 }
 
-/** Tạo phiếu THU bằng chính tài khoản đang mở; trả id (hoặc '' nếu bị chặn). */
-async function createIncomeAs(a: SbAuth, name: string, stamp: number): Promise<string> {
-  // Lấy toà + hạng mục trong TẦM NHÌN của chính tài khoản đó.
-  const seen = (await sbGet(
-    a,
-    `income_expenses?select=building_id,organization_id&type=eq.INCOME&deleted_at=is.null` +
-      `&building_id=not.is.null&order=voucher_date.desc&limit=1`,
-  )) as { building_id: string; organization_id: string }[];
+type ToaNha = { building_id: string; organization_id: string };
+
+/**
+ * Tạo phiếu THU bằng chính tài khoản đang mở; trả id (hoặc '' nếu bị chặn).
+ * `toa` ghim toà (để phiếu thứ hai nằm cùng toà với quản lý toà); bỏ trống thì
+ * lấy toà trong TẦM NHÌN của chính tài khoản đó.
+ */
+async function createIncomeAs(a: SbAuth, name: string, stamp: number, toa?: ToaNha): Promise<string> {
+  const seen: ToaNha[] = toa
+    ? [toa]
+    : ((await sbGet(
+        a,
+        `income_expenses?select=building_id,organization_id&type=eq.INCOME&deleted_at=is.null` +
+          `&building_id=not.is.null&order=voucher_date.desc&limit=1`,
+      )) as ToaNha[]);
   if (!seen.length) return '';
   const [t] = await sbGet(
     a,
@@ -138,10 +171,11 @@ test('nguoi-da-thu-huy-duoc-tren-giao-dien; nguoi-khac-bi-chan', async ({ browse
   test.setTimeout(240_000);
   const stamp = Date.now();
   const nameQl = `E2E matran QL ${stamp}`;
-  const nameChu = `E2E matran CHU ${stamp}`;
+  const nameChu = `E2E matran KHAC ${stamp}`;
 
-  const ql = await openAs(browser, 'testketoan');
+  const ql = await openAs(browser, 'testquanly');
   const chu = await openAs(browser, 'testchu');
+  const khac = await openAs(browser, 'testhethong');
   let idQl = '';
   let idChu = '';
 
@@ -183,10 +217,16 @@ test('nguoi-da-thu-huy-duoc-tren-giao-dien; nguoi-khac-bi-chan', async ({ browse
     expect(afterQl.posting_status, 'phiếu đã ghi sổ thì huỷ phải để lại bút toán đảo').toBe(
       'REVERSED',
     );
+    // Rời trang Thu chi để nó thôi tải lại song song với trang của chủ công ty bên dưới.
+    await ql.page.goto('/account/profile');
 
-    // ══ Fixture 2: phiếu do CHỦ TỔ CHỨC thu ══════════════════════════
-    idChu = await createIncomeAs(chu.auth, nameChu, stamp + 1);
-    expect(idChu, 'chủ tổ chức phải tạo được phiếu thu').toBeTruthy();
+    // ══ Fixture 2: phiếu do NGƯỜI KHÁC thu, cùng toà với quản lý toà ═══
+    const [toaQl] = (await sbGet(
+      ql.auth,
+      `income_expenses?select=building_id,organization_id&id=eq.${idQl}`,
+    )) as ToaNha[];
+    idChu = await createIncomeAs(khac.auth, nameChu, stamp + 1, toaQl);
+    expect(idChu, 'người giữ sổ quỹ phải tạo được phiếu thu ở toà của quản lý toà').toBeTruthy();
 
     // ── Chiều BỊ CHẶN: quản lý toà KHÔNG phải người thu ──────────────
     const gate = JSON.parse(
@@ -220,6 +260,9 @@ test('nguoi-da-thu-huy-duoc-tren-giao-dien; nguoi-khac-bi-chan', async ({ browse
     }
 
     // ── Chủ tổ chức huỷ được chính phiếu đó ─────────────────────────
+    // ĐỎ ĐÚNG từ 24/09/2026: `nguyentam` thấy 0 sổ quỹ (RLS `accounts`, không giữ sổ nào)
+    // mà danh sách Thu chi nối `accounts!inner` ⇒ trang của chủ công ty trống trơn — đo cả
+    // trên production. Đừng đổi vai ở đây cho bài xanh; bài xanh lại khi lỗi được sửa.
     const rowChu = await findVoucherRow(chu.page, nameChu);
     const btnChu = rowChu.locator('button[title="Huỷ phiếu"]');
     await expect(btnChu, 'chủ tổ chức phải thấy nút Huỷ bật').toBeEnabled();
@@ -246,5 +289,6 @@ test('nguoi-da-thu-huy-duoc-tren-giao-dien; nguoi-khac-bi-chan', async ({ browse
     }
     await ql.ctx.close().catch(() => {});
     await chu.ctx.close().catch(() => {});
+    await khac.ctx.close().catch(() => {});
   }
 });

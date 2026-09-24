@@ -10,9 +10,9 @@ source_paths:
   - scripts/apply-reviewed-migration.mjs
   - scripts/capture-schema-baseline.mjs
   - scripts/dien-tap-khoi-phuc-baseline.mjs
-  - scripts/clone-org/README.md
-  - scripts/clone-org/snapshot.mjs
-  - scripts/clone-org/rollback.mjs
+  - scripts/measure-org-leak.mjs
+  - scripts/test-cross-tenant.mjs
+  - docs/engineering/DATA_ENVIRONMENTS.md
   - scripts/vercel-ignore-app.sh
   - supabase/baseline/README.md
   - supabase/baseline/manifest.json
@@ -147,37 +147,37 @@ chuỗi kết nối trỏ vào project production.
 
 ## 2. Nghi RÒ RỈ DỮ LIỆU GIỮA CÁC TỔ CHỨC
 
-Bối cảnh bắt buộc: **`scripts/clone-org/README.md`**. Cùng một project Supabase chứa ba org — THẬT
-(`aaaa…`), DEMO (`dddd…`), TEST (`cccc…`, bản sao **mang đúng dữ liệu nghiệp vụ công ty thật**). App
-**không có nút chuyển công ty**: policy biên giới là `organization_id IN my_org_ids()`, và
-`is_super_admin()` có mặt trong hầu hết policy SELECT ⇒ một lỗi ở đây không chỉ là rò rỉ, nó làm
-**mọi báo cáo bị nhân đôi**.
+Bối cảnh: production có hai org chung một database — THẬT (`aaaa…`) và DEMO (`dddd…`); bảng đo và
+luật cách ly ở `docs/engineering/DATA_ENVIRONMENTS.md`. App **không có nút chuyển công ty**: policy
+biên giới là `organization_id IN my_org_ids()`, và `is_super_admin()` có mặt trong hầu hết policy
+SELECT ⇒ một lỗi ở đây không chỉ là rò rỉ, nó làm **mọi báo cáo bị cộng gộp**. (Org TEST cũ `cccc…` —
+bản sao dữ liệu thật trong cùng database — cùng script `scripts/clone-org/` và cổng
+`gate:sandbox-leak` đã gỡ 23/09/2026; bản sao để thử nay là project Supabase riêng, xem
+`scripts/test-env/README.md`.)
 
-**B1 — ĐO, đừng đoán.** `npm run gate:sandbox-leak` (= `node scripts/clone-org/snapshot.mjs after`).
-Phép đo chạy **qua PostgREST bằng JWT của tài khoản thật**, không chạy bằng SQL — vì SQL đi role
-`postgres` (bypassrls) thì không bao giờ thấy rò rỉ.
+**B1 — ĐO, đừng đoán.** `node scripts/measure-org-leak.mjs` (chỉ đọc, cần `SUPABASE_PAT`; cũng là
+Bước 3 của `npm run gate:truoc-push` và job `security-gates`). Nó giả lập vai `authenticated` trong
+`BEGIN … ROLLBACK`, kèm bốn chốt chống "nói dối theo hướng an toàn": thiếu chốt nào là exit 3 —
+**chưa kết luận**, không phải PASS; exit 1 = đo xong, có rò. SQL chạy thẳng bằng role `postgres`
+(bypassrls) thì không bao giờ thấy rò rỉ. Kiểm bổ sung qua PostgREST bằng tài khoản thật: chủ công ty
+`nguyentam` (chỉ thuộc org THẬT, không phải super admin) thấy bất kỳ dòng nào mang `organization_id`
+khác `aaaa…` là rò rỉ; tài khoản hệ thống `nguyentamca165` KHÔNG dùng để đo — nó thuộc cả DEMO và là
+super admin. Bảng trả `42501` là **khoá chặt**, không phải rò rỉ.
 
-Đọc **đúng mã thoát**, đây là chỗ đã cắn:
+> **Án lệ 07/08/2026 (commit `c228404f`):** cổng đo rò cũ exit 1 và in "✗ Có rò rỉ" trong khi rổ rò rỉ
+> **RỖNG** — 73 bảng bị `42501` (nhóm **khoá chặt nhất** hệ thống) bị đếm vào "có thể rò rỉ", cộng 2
+> bảng nối khoá phức chỉ vì probe hard-code `select=id`. Một cửa chặn kêu sai như vậy sẽ được người vận
+> hành học cách bỏ qua, và lần nó kêu đúng cũng chịu chung số phận.
 
-| Mã thoát | Nghĩa |
-|---|---|
-| `0` | Đã hỏi được N bảng, **0 bảng rò rỉ**. Kèm ghi chú số bảng `42501` (role `authenticated` không có `GRANT SELECT` ⇒ rò rỉ **bất khả** qua kênh này). |
-| `1` | **CÓ RÒ RỈ** thật — tài khoản thật nhìn thấy dòng mang `organization_id` của org TEST. |
-| `3` | **KHÔNG KẾT LUẬN ĐƯỢC** — có bảng không hỏi được, hoặc liệt kê được < 100 bảng. **Không phải PASS, cũng không phải rò rỉ.** |
-
-> **Án lệ 07/08/2026 (commit `c228404f`):** gate exit 1 và in "✗ Có rò rỉ" trong khi rổ rò rỉ **RỖNG**
-> — 73 bảng bị `42501` (nhóm **khoá chặt nhất** hệ thống) bị đếm vào "có thể rò rỉ", cộng 2 bảng nối
-> khoá phức chỉ vì probe hard-code `select=id`. Một cửa chặn kêu sai như vậy sẽ được người vận hành
-> học cách bỏ qua, và lần nó kêu đúng cũng chịu chung số phận.
-
-**B2 — Ba lớp lỗi đã xảy ra thật, kiểm đúng ba chỗ đó trước** (`clone-org/README.md` §2):
+**B2 — Ba lớp lỗi đã xảy ra thật, kiểm đúng ba chỗ đó trước:**
 
 - **`NULL = ANY(...)` ra NULL** ⇒ policy RESTRICTIVE giấu luôn dòng `organization_id IS NULL` của
   **công ty thật** (`inspection_photos` 477→254, `building_fee_accounts` 133→109, `settings` 8→6).
-  Đây là rò rỉ *ngược*: dữ liệu thật biến mất. `snapshot.mjs` có phép kiểm ngược riêng cho ca này.
+  Đây là rò rỉ *ngược*: dữ liệu thật biến mất. Vì thế policy `*_hide_sandbox_admin` bọc phép so bằng
+  `COALESCE(…, false)` (Contract §2).
 - **RPC `SECURITY DEFINER` không lọc org** — RLS **không** với tới hàm SECURITY DEFINER.
-  Bằng chứng sống: `fa_occupancy_monthly` trả **432 dòng thay vì 228**, thừa 12 toà của org TEST, do
-  `can_access_building()` có nhánh tắt `is_super_admin() OR …`.
+  Bằng chứng sống: `fa_occupancy_monthly` từng trả **432 dòng thay vì 228**, thừa 12 toà của org khác,
+  do `can_access_building()` có nhánh tắt `is_super_admin() OR …`.
 - **Đo bằng số đếm trước/sau là SAI** — cron 16:55 UTC (`finance_month_snapshot`) sinh vài trăm bút
   toán mỗi đêm, và phân trang PostgREST không `order` thì hai lần chụp ra hai tập dòng khác nhau.
 
@@ -187,13 +187,9 @@ Phép đo chạy **qua PostgREST bằng JWT của tài khoản thật**, không 
 `node scripts/test-cross-tenant.mjs` (ma trận âm bản, **cần `SUPABASE_PAT`**, mọi write giới hạn trong
 org DEMO và kết bằng `ROLLBACK`).
 
-**B4 — Nếu rò rỉ đến từ bản sao sandbox:** gỡ bằng
-`node scripts/clone-org/rollback.mjs --data` (chỉ dữ liệu) hoặc `--all` (kèm user/org/policy). Script
-có tripwire `TEST_ORG === REAL_ORG` và predicate xoá là hằng số.
-
-**CHƯA DIỄN TẬP:** không có runbook nào trong repo cho bước "đã xác nhận rò rỉ ra ngoài sandbox thì
-cắt đường đọc thế nào" (revoke/vô hiệu policy/khoá tài khoản), và tôi không tìm thấy bằng chứng việc
-đó từng được tập. Coi đây là khoảng trống, không phải là bước đã có.
+**CHƯA DIỄN TẬP:** không có runbook nào trong repo cho bước "đã xác nhận rò rỉ thì cắt đường đọc thế
+nào" (revoke/vô hiệu policy/khoá tài khoản), và tôi không tìm thấy bằng chứng việc đó từng được tập.
+Coi đây là khoảng trống, không phải là bước đã có.
 
 ---
 
@@ -236,7 +232,6 @@ Quy tắc phát hành đầy đủ ở Contract §3. Phần cơ học đã kiể
 | Nhật ký backup tự động | `%USERPROFILE%\ihomecrm-backups\nhat-ky.log` (`scripts/backup-hang-tuan.cmd`) |
 | Baseline schema + quy trình khôi phục | `supabase/baseline/README.md` (**không** phải `manifest.json`) |
 | Evidence apply schema lên production | `docs/generated/schema-change-evidence/` (`apply-reviewed-migration.mjs:34`) — thư mục **CHƯA TỒN TẠI**; `docs/generated/` chỉ có `database-inventory.json` + `external-controls.json` (khớp `program-status.json`: chưa apply migration thật nào) |
-| Ảnh chụp phép đo rò rỉ | `.clone-org-snapshots/` (gitignore dòng 112) |
 | Khoảng trống đã biết, có hạn | `tooling/known-gaps.yaml` — `npm run gate:known-gaps` |
 | Credential | Nằm ngoài repo, trong file local đã gitignore. **Không ghi ở đây, và không echo ra terminal.** |
 
@@ -253,21 +248,21 @@ Phần quan trọng nhất của trang này. "Có script" ≠ "đã chạy đư�
 | Khôi phục **baseline schema** lên Supabase project trắng (PG 17.6) | 07/08/2026 | 439/439 bảng · 14/14 view · 1193/1193 policy · 493/493 trigger. Lần chạy **đầu thất bại** (922/1193 policy) — đó mới là giá trị của diễn tập |
 | Khôi phục **bản dump đầy đủ** lên Postgres trần (PG 17.10) | 06/08/2026 | Dữ liệu vào đủ; RLS chỉ 323/1231. ~4200 lỗi role — bình thường |
 | Chạy backup + **đọc lại** bằng `pg_restore --list` | 07/08/2026 | 405 giây, 20.9 MB, 562 mục TABLE DATA (sàn 450) |
-| Đo rò rỉ sandbox qua JWT tài khoản thật | 07/08/2026 | Gate đã ĐỎ SAI rồi được sửa (`c228404f`) — nay phân biệt rõ rò rỉ / không hỏi được / khoá cứng |
+| Đo rò rỉ sandbox qua JWT tài khoản thật | 07/08/2026 | Gate đã ĐỎ SAI rồi được sửa (`c228404f`) — phân biệt rò rỉ / không hỏi được / khoá cứng (gate gỡ 23/09/2026 cùng org TEST) |
 | Đối chiếu tiền ba nguồn | 07/08/2026 | A=B=C=5.860.620.718 đ, cửa sổ 2026-05→2026-08, 1268 dòng |
 
 **CHƯA diễn tập — nói thẳng:**
 
 - **Khôi phục DỮ LIỆU (bản dump đầy đủ) lên một Supabase project thật.** Mới chỉ thử trên Postgres
   trần, nơi RLS không vào hết. Đúng kịch bản khẩn cấp thật thì đây là bước chưa ai đi qua.
-- **Cắt đường đọc khi đã xác nhận rò rỉ** (xem §2, B4 ghi chú).
+- **Cắt đường đọc khi đã xác nhận rò rỉ** (xem §2, ghi chú CHƯA DIỄN TẬP).
 - **Rollback deploy Vercel** — Contract khẳng định đã diễn tập; không có artefact trong repo để xác
   nhận (§3).
 - **Lịch backup tự động chưa chạy lần nào** (`Last Result = 267011`, xem §0).
-- **Khôi phục file Storage** (ảnh/biên lai — `clone-org/README.md` ghi 2.832 object / 1,3 GB). Tôi
-  **không tìm thấy script backup Storage nào**: `clone-org/copy-files.mjs` chép sang org TEST (không
-  phải backup), `scripts/migrate-bucket-to-r2.mjs` là di trú sang R2 và giữ nguyên bản Supabase. Mất
-  bucket thì hiện chưa có đường lùi nào được viết ra.
+- **Khôi phục file Storage** (ảnh/biên lai: 7.944 object đo 23/09/2026, trừ 2.832 bản sao org TEST đã xoá cùng ngày). Tôi
+  **không tìm thấy script backup Storage nào**: `scripts/migrate-bucket-to-r2.mjs` là di trú sang R2 và
+  giữ nguyên bản Supabase; môi trường TEST cố ý không chép byte file. Mất bucket thì hiện chưa có đường
+  lùi nào được viết ra.
 - **Apply migration thật lên production** — chủ dự án hoãn 07/08/2026 ("không gấp"); đường apply đã
   dry-run thật trên production với `ROLLBACK` nhưng chưa chạy `--apply` lần nào
   (`tooling/program-status.json`, và thư mục evidence chưa tồn tại).

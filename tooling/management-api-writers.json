@@ -90,12 +90,6 @@
       "giayPhep": "chi-doc"
     },
     {
-      "file": "scripts/clone-org/lib.mjs",
-      "loai": "write",
-      "why": "Bộ nhân bản org TEST. Ghi vào org TEST (cccc…), có cửa chặn rò rỉ riêng ở snapshot.mjs.",
-      "giayPhep": "chi-test"
-    },
-    {
       "file": "scripts/docs-demo/lib.mjs",
       "loai": "read",
       "why": "Dựng dữ liệu minh hoạ cho tài liệu, chỉ org DEMO."

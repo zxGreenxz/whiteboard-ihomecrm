@@ -41,7 +41,7 @@
       "gates": [
         "harness role thật",
         "cross-tenant",
-        "npm run gate:sandbox-leak"
+        "E2E vai thật trên môi trường TEST (.e2e-fleet/specs/moi-truong-test.spec.ts)"
       ],
       "paths": [
         "src/lib/permissions.ts",

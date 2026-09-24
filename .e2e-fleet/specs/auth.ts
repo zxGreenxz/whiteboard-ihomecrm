@@ -32,10 +32,18 @@ const EMAILS = {
   // `copilot-action-matrix.spec.ts` đỏ (xem chú thích ca 3/ca 3b ở đó). ĐỪNG
   // dùng tài khoản này làm vai "thiếu quyền" nữa.
   sysadmin: 'nguyentamca165@gmail.com',
-  // Công ty TEST (org cccc…0001) — bản sao dữ liệu công ty thật, xem
-  // scripts/clone-org/README.md. Dùng để thử tính năng mới trên dữ liệu thật.
-  testchu: 'test.nguyentamca165@username.ihomecrm.local',
-  testketoan: 'test.joey@username.ihomecrm.local',
+  // MÔI TRƯỜNG TEST RIÊNG (project Supabase `ihomecrm-test`, web Preview nhánh
+  // `test-env`) — bản sao production, xem scripts/test-env/README.md. Đây là tài
+  // khoản THẬT của công ty iHome, đăng nhập bằng MẬT KHẨU TEST (dòng `TEST_PASS`
+  // trong CLAUDE.local.md, khác mật khẩu production). credentials() chỉ cấp chúng
+  // khi FLEET_BASE_URL là web TEST — spec ghi dữ liệu không bao giờ chạm công ty
+  // thật trên production. Thay cho org TEST cũ cccc…0001 và 4 tài khoản `test.*`
+  // (gỡ 23/09/2026, migration 20260923163531).
+  testchu: 'nguyentam@username.ihomecrm.local', // Chủ công ty [TENANT_OWNER]
+  testquanly: 'joey@username.ihomecrm.local', // Quản Lý Tòa
+  // Tài khoản hệ thống trên TEST: super admin + TENANT_OWNER, và (tới 24/09/2026) là
+  // người GIỮ cả 23 sổ quỹ công ty — `nguyentam` giữ 0 sổ nên không tự lập phiếu thu được.
+  testhethong: 'nguyentamca165@gmail.com',
 } as const;
 
 const PASS_ENV = {
@@ -44,16 +52,33 @@ const PASS_ENV = {
   quanly: 'FLEET_PASS_QUANLY',
   quanly2: 'FLEET_PASS_QUANLY2',
   sysadmin: 'FLEET_PASS_SYSADMIN',
-  testchu: 'FLEET_PASS_TEST',
-  testketoan: 'FLEET_PASS_TEST',
+  testchu: 'FLEET_PASS_TEST_CHU',
+  testquanly: 'FLEET_PASS_TEST_QUANLY',
+  testhethong: 'FLEET_PASS_TEST_HETHONG',
 } as const;
 
 export type UserKey = keyof typeof EMAILS;
 /** Giữ tên cũ để spec đang có không phải sửa; chỉ còn email, không có mật khẩu. */
 export const USERS = EMAILS;
 
+/** Web Preview của nhánh `test-env` — đích DUY NHẤT nhận tài khoản thật. */
+const WEB_TEST = /^https:\/\/ihomecrm-git-test-env-[a-z0-9-]+\.vercel\.app\/?$/;
+const CHI_TREN_WEB_TEST: ReadonlySet<UserKey> = new Set(['testchu', 'testquanly', 'testhethong']);
+
+/** FLEET_BASE_URL đang trỏ web TEST — spec riêng của môi trường TEST dùng để `test.skip`. */
+export function laWebTest(): boolean {
+  return WEB_TEST.test(process.env.FLEET_BASE_URL ?? '');
+}
+
 /** Lấy credential từ env; báo lỗi rõ ràng thay vì fail mơ hồ ở bước điền form. */
 export function credentials(who: UserKey): { email: string; pass: string } {
+  if (CHI_TREN_WEB_TEST.has(who) && !laWebTest()) {
+    throw new Error(
+      `Tài khoản ${who} là tài khoản THẬT của công ty — chỉ dùng trên web TEST ` +
+        `(FLEET_BASE_URL=https://ihomecrm-git-test-env-….vercel.app), đang là ` +
+        `"${process.env.FLEET_BASE_URL ?? '(mặc định production)'}".`,
+    );
+  }
   const pass = process.env[PASS_ENV[who]];
   if (!pass) {
     throw new Error(

@@ -28,7 +28,6 @@
     "gate:ie-guard-gates": "node scripts/check-ie-guard-gates.mjs",
     "gate:permission-catalog": "node scripts/check-permission-catalog.mjs",
     "gate:salary-completion-date": "node scripts/check-salary-completion-date.mjs",
-    "gate:sandbox-leak": "node scripts/clone-org/snapshot.mjs after",
     "gate:copilot-docs": "node scripts/check-copilot-docs-manifest.mjs",
     "gate:no-auto-apply": "node scripts/check-no-auto-apply.mjs",
     "gate:agent-contract": "node scripts/check-agent-contract.mjs",
