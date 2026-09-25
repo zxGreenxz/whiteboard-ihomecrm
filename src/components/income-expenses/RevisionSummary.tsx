@@ -66,6 +66,17 @@ export function RevisionCountBadges({
   );
 }
 
+/** Màn chi tiết: tự đếm từ lịch sử của phiếu (dùng chung bộ nhớ với RevisionHistory). */
+export function VoucherRevisionBadges({ voucherId }: { voucherId: string }) {
+  const { data: revisions = [] } = useIncomeExpenseRevisions(voucherId);
+  return (
+    <RevisionCountBadges
+      editCount={revisions.filter((r) => r.kind === "EDIT_PENDING").length}
+      methodChangeCount={revisions.filter((r) => r.kind === "COLLECTION_METHOD").length}
+    />
+  );
+}
+
 function DiffTable({ rows, beforeTitle, afterTitle }: { rows: RevisionDiffRow[]; beforeTitle: string; afterTitle: string }) {
   if (rows.length === 0) {
     return <p className="text-xs text-muted-foreground">Không còn khác biệt so với lúc lập (đã sửa rồi sửa lại như cũ).</p>;

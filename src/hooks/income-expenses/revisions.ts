@@ -3,7 +3,7 @@
 //   revise_pending_income_expense_v1   — mọi lần sửa phiếu Chờ duyệt (form Sửa, hộp
 //                                        Duyệt đổi sổ/ảnh, đổi sổ cả đợt, sửa người nhận)
 //   approve_pending_income_expense_checked_v1 — nút Duyệt gửi kèm phiên bản đang xem;
-//                                        phiếu vừa bị sửa ⇒ 40001 "tải lại"
+//                                        phiếu vừa bị sửa ⇒ PT409 "tải lại"
 //   income_expense_revisions           — lịch sử sửa (RLS cùng tầm nhìn phiếu)
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -55,6 +55,51 @@ export function useIncomeExpenseRevisions(voucherId?: string | null, enabled = t
   });
 }
 
+export interface RevisionCounts {
+  /** Số lần sửa phiếu Chờ duyệt (kind EDIT_PENDING). */
+  edit: number;
+  /** Số lần đổi hình thức thu (kind COLLECTION_METHOD). */
+  method: number;
+}
+
+/** Đếm lịch sử theo phiếu; phiếu chưa có dòng nào thì không có khoá. */
+export function countRevisionsByVoucher(
+  rows: { income_expense_id: string; kind: string }[],
+): Record<string, RevisionCounts> {
+  const out: Record<string, RevisionCounts> = {};
+  for (const r of rows) {
+    const c = (out[r.income_expense_id] ??= { edit: 0, method: 0 });
+    if (r.kind === "EDIT_PENDING") c.edit += 1;
+    else if (r.kind === "COLLECTION_METHOD") c.method += 1;
+  }
+  return out;
+}
+
+/**
+ * Dấu "Đã sửa N lần" cho các phiếu đang hiện trên một trang danh sách.
+ *
+ * CỐ Ý là câu RIÊNG, không nhúng vào câu đọc danh sách: nhúng làm câu danh sách
+ * chậm thêm ~0,7–1 giây (đo trên TEST 25/09 — RLS của bảng lịch sử tính theo từng
+ * phiếu cha). Câu riêng chỉ đọc lịch sử của đúng các phiếu trên trang và không
+ * chặn bảng hiện ra; dấu hiện sau một nhịp.
+ */
+export function useRevisionCounts(voucherIds: readonly string[]) {
+  const ids = [...new Set(voucherIds)].sort();
+  return useQuery({
+    queryKey: ["income-expense-revisions", "counts", ids],
+    enabled: ids.length > 0,
+    staleTime: 30_000,
+    queryFn: async (): Promise<Record<string, RevisionCounts>> => {
+      const { data, error } = await supabase
+        .from("income_expense_revisions")
+        .select("income_expense_id,kind")
+        .in("income_expense_id", ids);
+      if (error) throw error;
+      return countRevisionsByVoucher(data ?? []);
+    },
+  });
+}
+
 export interface ReviseItemInput {
   income_expense_type_id: string;
   description?: string | null;
@@ -66,7 +111,7 @@ export interface ReviseItemInput {
 
 export interface ReviseIncomeExpenseInput {
   voucherId: string;
-  /** approval_version của phiếu lúc người dùng MỞ form — lệch ⇒ 40001. */
+  /** approval_version của phiếu lúc người dùng MỞ form — lệch ⇒ PT409. */
   expectedApprovalVersion: number;
   /** Chỉ các khoá máy chủ nhận (xem REVISION_FIELD_LABELS); không gửi khoá lạ. */
   patch: Record<string, unknown>;

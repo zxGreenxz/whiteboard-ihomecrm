@@ -517,7 +517,12 @@ const errorShape = z.object({ code: z.string().optional(), message: z.string().o
 export function isStaleVersionError(error: unknown): boolean {
   const e = errorShape.safeParse(error);
   if (!e.success) return false;
+  // PT409 (HTTP 409) là mã cửa sửa/duyệt đợt 1 trả khi phiên bản lệch. Không dùng
+  // 40001 phía máy chủ: PostgREST coi 40001 là xung đột tuần tự hoá và tự chạy lại
+  // giao dịch mãi (đo TEST 25/09: treo 125 giây rồi 504). Vẫn nhận 40001 cho các
+  // writer cũ còn dùng mã đó.
   return (
+    e.data.code === "PT409" ||
     e.data.code === "40001" ||
     /approval_version mismatch/i.test(e.data.message ?? "")
   );

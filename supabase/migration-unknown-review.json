@@ -756,7 +756,7 @@
       ]
     },
     "supabase/migrations/20260925080906_sua_phieu_cho_duyet.sql": {
-      "sha256": "fea2f67af03bdb01b2190a85f0c21b8585aa87c7e64a3026988b899d32de661a",
+      "sha256": "5ff7aac9cfd0ce48b12bc9d5f7769b06e33f6ff308837cd200000eb1eb86e171",
       "missingObjects": [
         "table:public.income_expense_revisions",
         "function:app_private.ie_revision_immutable_v1",

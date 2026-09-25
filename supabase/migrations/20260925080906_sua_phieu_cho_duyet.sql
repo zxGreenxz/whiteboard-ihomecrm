@@ -38,7 +38,7 @@
 --      Sửa xong vẫn Chờ duyệt; không tự duyệt.
 --   7. public.approve_pending_income_expense_checked_v1(p_voucher,
 --      p_expected_approval_version): nút Duyệt gửi kèm phiên bản đang xem; phiếu vừa
---      bị sửa ⇒ 40001 "tải lại". Duyệt vẫn đi approve_income_expense_v1 (phiếu
+--      bị sửa ⇒ PT409 (HTTP 409) "tải lại". Duyệt vẫn đi approve_income_expense_v1 (phiếu
 --      thuộc luồng) / approve_voucher (phiếu cũ) như hiện nay.
 --   8. approve_income_expense_v1: chỉ đổi câu báo "phiếu canonical không sửa được:
 --      Huỷ rồi Tạo bản sao" (hết đúng) thành "bấm Sửa phiếu, chọn sổ quỹ".
@@ -488,7 +488,7 @@ BEGIN
     RAISE EXCEPTION 'Phiếu đã ghi sổ — không sửa ở đây' USING ERRCODE = '55000';
   END IF;
   IF v_row.approval_version IS DISTINCT FROM p_expected_approval_version THEN
-    RAISE EXCEPTION 'Phiếu vừa được người khác sửa — tải lại để xem thay đổi.' USING ERRCODE = '40001';
+    RAISE EXCEPTION 'Phiếu vừa được người khác sửa — tải lại để xem thay đổi.' USING ERRCODE = 'PT409';
   END IF;
 
   -- ── 4. Loại phiếu sửa được ────────────────────────────────────────────────
@@ -1126,7 +1126,7 @@ BEGIN
     RAISE EXCEPTION 'Phiếu đã huỷ — không thể duyệt' USING ERRCODE = '55000';
   END IF;
   IF v_row.approval_version IS DISTINCT FROM p_expected_approval_version THEN
-    RAISE EXCEPTION 'Phiếu vừa được sửa — tải lại để xem thay đổi trước khi duyệt.' USING ERRCODE = '40001';
+    RAISE EXCEPTION 'Phiếu vừa được sửa — tải lại để xem thay đổi trước khi duyệt.' USING ERRCODE = 'PT409';
   END IF;
 
   -- Bậc 2 (phiếu thuộc luồng) / bậc 3 (phiếu cũ) — cùng phép phân loại mà

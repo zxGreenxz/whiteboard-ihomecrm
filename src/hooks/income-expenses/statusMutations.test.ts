@@ -420,8 +420,8 @@ describe("duyệt phiếu — luôn kèm phiên bản đang xem (đợt 1 sửa 
     );
   });
 
-  it("phiếu vừa bị sửa (40001) ⇒ báo tải lại, không duyệt", async () => {
-    const error = { code: "40001", message: "approval_version mismatch" };
+  it("phiếu vừa bị sửa (PT409) ⇒ báo tải lại, không duyệt", async () => {
+    const error = { code: "PT409", message: "Phiếu vừa được sửa" };
     mocks.rpc.mockResolvedValueOnce({ data: null, error });
     const mutation = useApproveVoucher() as unknown as ApproveMutation;
     await expect(

@@ -287,7 +287,8 @@ describe("voucherEditAction — cây bút trên mặt Thu chi", () => {
 });
 
 describe("dịch lỗi", () => {
-  it("40001 và 'approval_version mismatch' đều là phiên bản cũ", () => {
+  it("PT409, 40001 và approval_version mismatch đều là phiên bản cũ", () => {
+    expect(isStaleVersionError({ code: "PT409", message: "x" })).toBe(true);
     expect(isStaleVersionError({ code: "40001", message: "x" })).toBe(true);
     expect(isStaleVersionError({ code: "55000", message: "approve_income_expense_v2: approval_version mismatch (expected 1, found 2)" })).toBe(true);
     expect(isStaleVersionError({ code: "22023", message: "x" })).toBe(false);

@@ -30,6 +30,7 @@ import { canShowAnnotateAction } from '@/lib/voucherAnnotate';
 import { voucherEditAction } from '@/lib/incomeExpenseRevision';
 import { useIsCompanyOwner } from '@/hooks/useIsCompanyOwner';
 import { RevisionCountBadges } from '@/components/income-expenses/RevisionSummary';
+import { useRevisionCounts } from '@/hooks/income-expenses/revisions';
 import { getVoucherDisplayAttachments } from '@/lib/incomeExpenseSupplement';
 import { useFinanceV2Routes, isCanonicalRead } from '@/lib/financeV2Route';
 import {
@@ -240,6 +241,9 @@ const IncomeExpenseList = ({
   // lịch sử cũ có hai dòng rời rạc cho cùng một nghiệp vụ. Phiếu đã sinh thì
   // KHÔNG xoá được (flow-owned, bất biến), nên chỉ gom được ở đây.
   const [openReversals, setOpenReversals] = useState<Record<string, boolean>>({});
+  // Dấu "Đã sửa N lần": câu riêng, không làm chậm câu đọc danh sách.
+  const voucherIds = useMemo(() => vouchers.map((v) => v.id), [vouchers]);
+  const { data: revisionCounts } = useRevisionCounts(voucherIds);
   const displayRows = useMemo(() => {
     const rows: Array<{
       voucher: IncomeExpenseWithRelations;
@@ -687,8 +691,8 @@ const IncomeExpenseList = ({
                     )}
                     {/* Đợt 1 sửa phiếu: dấu cho người duyệt biết phiếu đã bị sửa */}
                     <RevisionCountBadges
-                      editCount={voucher.revision_count ?? 0}
-                      methodChangeCount={voucher.method_change_count ?? 0}
+                      editCount={revisionCounts?.[voucher.id]?.edit ?? 0}
+                      methodChangeCount={revisionCounts?.[voucher.id]?.method ?? 0}
                     />
                     {/* Phiếu gốc đang lặp */}
                     {voucher.repeat_cycle &&

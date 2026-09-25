@@ -169,7 +169,7 @@ export function useSettlementActions(rows: SettlementRow[]) {
       });
     } else {
       // Org LEGACY: thang ba bậc của Thu chi (bỏ cọc → canonical → legacy), kèm
-      // phiên bản đang xem — phiếu vừa bị sửa thì máy chủ trả 40001, không duyệt nhầm.
+      // phiên bản đang xem — phiếu vừa bị sửa thì máy chủ trả PT409, không duyệt nhầm.
       await approveLegacy.mutateAsync({
         id: row.voucherId,
         expectedApprovalVersion: row.approvalVersion,
@@ -221,7 +221,7 @@ export function useSettlementActions(rows: SettlementRow[]) {
    * Đi cửa sửa phiếu Chờ duyệt có lưu vết (revise_pending_income_expense_v1,
    * 25/09/2026). Patch THƯA: chỉ gửi khoá đã đổi, KHÔNG gửi hạng mục để máy chủ
    * giữ nguyên các dòng. Kèm phiên bản phiếu đang xem: người khác vừa sửa/duyệt
-   * thì máy chủ trả 40001 thay vì ghi đè im lặng như kênh cũ.
+   * thì máy chủ trả PT409 thay vì ghi đè im lặng như kênh cũ.
    */
   const editRecipient = useCallback(async (a: {
     voucherId: string;

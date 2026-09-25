@@ -30,7 +30,7 @@ import { canUse } from "@/lib/permissionPages";
 import { canShowAnnotateAction } from "@/lib/voucherAnnotate";
 import { AUDIT_TONE_CLASSES, auditActionLabel, voucherEditAction } from "@/lib/incomeExpenseRevision";
 import { useIsCompanyOwner } from "@/hooks/useIsCompanyOwner";
-import { RevisionCountBadges, RevisionHistory } from "@/components/income-expenses/RevisionSummary";
+import { RevisionHistory, VoucherRevisionBadges } from "@/components/income-expenses/RevisionSummary";
 import { CollectionMethodAction } from "@/components/income-expenses/CollectionMethodAction";
 import { getVoucherDisplayAttachments } from '@/lib/incomeExpenseSupplement';
 import { useAuth } from "@/hooks/useAuth";
@@ -357,10 +357,7 @@ export function IncomeExpenseDetailMobile({
                   Chờ duyệt
                 </span>
               )}
-              <RevisionCountBadges
-                editCount={v.revision_count ?? 0}
-                methodChangeCount={v.method_change_count ?? 0}
-              />
+              <VoucherRevisionBadges voucherId={v.id} />
             </div>
           </div>
           <Row label="Tên" value={v.name} />

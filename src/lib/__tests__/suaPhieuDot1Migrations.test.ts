@@ -306,7 +306,10 @@ describe("M3 sua_phieu_cho_duyet", () => {
     const khoaPhieu = fn.indexOf("FOR UPDATE");
     expect(khoaOrg).toBeGreaterThan(-1);
     expect(khoaPhieu).toBeGreaterThan(khoaOrg);
-    expect(fn).toMatch(/v_row\.approval_version IS DISTINCT FROM p_expected_approval_version THEN\s+RAISE EXCEPTION '[^']*' USING ERRCODE = '40001'/);
+    expect(fn).toMatch(/v_row\.approval_version IS DISTINCT FROM p_expected_approval_version THEN\s+RAISE EXCEPTION '[^']*' USING ERRCODE = 'PT409'/);
+    // KHÔNG dùng 40001: PostgREST coi 40001 là xung đột tuần tự hoá và TỰ CHẠY LẠI giao dịch mãi
+    // (đo trên TEST 25/09: lệnh sửa mang phiên bản cũ treo 125 giây rồi 504).
+    expect(fn).not.toContain("'40001'");
     expect(fn).toContain("app_private.begin_ie_flex_write_v1(p_voucher, 'REVISE')");
     expect(fn).toContain("app_private.end_ie_flex_write_v1(p_voucher)");
     expect(fn).toContain("app_private.assert_no_engine_request_v1(p_voucher)");
@@ -376,7 +379,8 @@ describe("M3 sua_phieu_cho_duyet", () => {
     const reCoc = fn.indexOf("public.set_termination_forfeit_status_v1(p_voucher, 'APPROVED')");
     const khoaOrg = fn.indexOf("app_private.lock_org_for_decision_v1(v_org)");
     const khoaPhieu = fn.indexOf("FOR UPDATE");
-    const cas = fn.indexOf("USING ERRCODE = '40001'");
+    const cas = fn.indexOf("USING ERRCODE = 'PT409'");
+    expect(fn).not.toContain("'40001'");
     expect(reCoc).toBeGreaterThan(-1);
     expect(khoaOrg).toBeGreaterThan(reCoc);
     expect(khoaPhieu).toBeGreaterThan(khoaOrg);

@@ -179,10 +179,6 @@ export interface IncomeExpenseWithRelations {
   items: IncomeExpenseItem[];
   created_at: string;
   updated_at: string;
-  /** Số lần SỬA phiếu Chờ duyệt (income_expense_revisions kind EDIT_PENDING). */
-  revision_count?: number;
-  /** Số lần ĐỔI HÌNH THỨC THU của khoản thu hoá đơn (kind COLLECTION_METHOD). */
-  method_change_count?: number;
 }
 
 // --- Mutation Input Types ---

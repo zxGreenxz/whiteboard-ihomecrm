@@ -56,7 +56,7 @@ import {
   type IncomeExpenseWithRelations,
   type IncomeExpenseFilters,
 } from "@/hooks/useIncomeExpenses";
-import { useReviseIncomeExpense } from "@/hooks/income-expenses/revisions";
+import { useReviseIncomeExpense, useRevisionCounts } from "@/hooks/income-expenses/revisions";
 import { RevisionComparison } from "@/components/income-expenses/RevisionSummary";
 import {
   accountChangeNeedsReason,
@@ -391,6 +391,8 @@ export default function IncomeExpenseMobilePage() {
     useIncomeExpenseStats(effectiveFilters, { keepPreviousData: true });
 
   const vouchers = listResult?.data ?? [];
+  // Dấu "Đã sửa N lần": câu riêng, không làm chậm câu đọc danh sách.
+  const { data: revisionCounts } = useRevisionCounts(vouchers.map((x) => x.id));
   const detailSupplements = useIncomeExpenseSupplements(detailVoucher?.id, !!detailVoucher);
   const totalCount = listResult?.totalCount ?? 0;
   const batches = batchResult?.data ?? [];
@@ -872,20 +874,20 @@ export default function IncomeExpenseMobilePage() {
                           )}
                           {/* Đợt 1 sửa phiếu: dấu đã sửa khi Chờ duyệt / đã đổi
                               hình thức thu — chạm phiếu để xem đổi gì. */}
-                          {(v.revision_count ?? 0) > 0 && (
+                          {(revisionCounts?.[v.id]?.edit ?? 0) > 0 && (
                             <span
                               className="vch-tag"
                               style={{ color: "#92400e", background: "#fef3c7" }}
                             >
-                              Đã sửa {v.revision_count} lần
+                              Đã sửa {revisionCounts?.[v.id]?.edit} lần
                             </span>
                           )}
-                          {(v.method_change_count ?? 0) > 0 && (
+                          {(revisionCounts?.[v.id]?.method ?? 0) > 0 && (
                             <span
                               className="vch-tag"
                               style={{ color: "#5b21b6", background: "#ede9fe" }}
                             >
-                              Đổi HT thu {v.method_change_count} lần
+                              Đổi HT thu {revisionCounts?.[v.id]?.method} lần
                             </span>
                           )}
                           <span

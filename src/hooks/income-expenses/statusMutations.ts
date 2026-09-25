@@ -157,7 +157,7 @@ const trySetTerminationForfeitStatus = async (
 // Luôn kèm phiên bản đang xem (đợt 1 sửa phiếu, 25/09/2026): một RPC
 // approve_pending_income_expense_checked_v1 làm đủ thang ba bậc (cặp bỏ cọc →
 // canonical → legacy) dưới khoá dòng và so approval_version — phiếu vừa bị sửa
-// ⇒ 40001 "tải lại", người duyệt không duyệt nhầm một nội dung chưa xem. Thang
+// ⇒ PT409 "tải lại", người duyệt không duyệt nhầm một nội dung chưa xem. Thang
 // ba bậc phía client (không kiểm phiên bản) đã gỡ cùng đợt.
 export type ApproveVoucherInput = { id: string; expectedApprovalVersion: number };
 

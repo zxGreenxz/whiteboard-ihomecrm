@@ -142,8 +142,8 @@ describe('Form sửa phiếu Chờ duyệt', () => {
     expect(h.revise.mock.calls[0][0].patch).toEqual({ name: 'Hoa hồng P101' });
   });
 
-  it('phiếu vừa bị người khác sửa (40001) ⇒ báo mở lại và khoá Lưu', async () => {
-    h.revise.mockRejectedValueOnce({ code: '40001', message: 'approval_version mismatch' });
+  it('phiếu vừa bị người khác sửa (PT409) ⇒ báo mở lại và khoá Lưu', async () => {
+    h.revise.mockRejectedValueOnce({ code: 'PT409', message: 'Phiếu vừa được người khác sửa' });
     moForm(phieu());
     fireEvent.change(screen.getByDisplayValue('Chi sửa ống nước'), { target: { value: 'Chi thay vòi nước' } });
     fireEvent.click(nutLuu());

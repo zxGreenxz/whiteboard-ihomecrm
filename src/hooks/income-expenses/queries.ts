@@ -18,12 +18,6 @@ import type {
 
 // --- Helpers ---
 
-/** Đếm dòng lịch sử sửa theo loại từ embed `income_expense_revisions ( kind )`. */
-function countRevisions(rows: unknown, kind: "EDIT_PENDING" | "COLLECTION_METHOD"): number {
-  if (!Array.isArray(rows)) return 0;
-  return rows.filter((r) => (r as { kind?: string } | null)?.kind === kind).length;
-}
-
 // Resolve filter hạng mục (income_type_id/expense_type_id) → tập type_id "sibling"
 // cùng (name, type). Trả null nếu không có filter hạng mục; [] nếu có filter
 // nhưng không type nào khớp (caller trả rỗng ngay).
@@ -311,8 +305,7 @@ export const incomeExpensesListQuery = (
           *,
           building:buildings!income_expenses_building_id_fkey ( id, name ),
           room:rooms!income_expenses_room_id_fkey ( id, name ),          tenant:tenants!income_expenses_tenant_id_fkey ( id, full_name ),
-          account:accounts!income_expenses_account_id_fkey ( id, name, is_virtual ),
-          income_expense_revisions ( kind )${itemFilterJoinSelect(itemPlan)}${layerJoinSelect(filters)}
+          account:accounts!income_expenses_account_id_fkey ( id, name, is_virtual )${itemFilterJoinSelect(itemPlan)}${layerJoinSelect(filters)}
         `,
           { count: "exact" }
         )
@@ -531,9 +524,6 @@ export const incomeExpensesListQuery = (
           items: itemsByVoucherId.get(v.id) ?? [],
           created_at: v.created_at,
           updated_at: v.updated_at,
-          // Đợt 1 sửa phiếu: dấu "Đã sửa N lần" / "Đổi hình thức thu" (RLS cùng tầm nhìn phiếu).
-          revision_count: countRevisions(v.income_expense_revisions, "EDIT_PENDING"),
-          method_change_count: countRevisions(v.income_expense_revisions, "COLLECTION_METHOD"),
           };
           // Phiếu ĐỐI ỨNG di sản (Đợt 5): FK trỏ về phiếu gốc, dùng để gộp ẩn
           // hai dòng rời rạc thành một dòng "đã hoàn tác" (voucherReversalGrouping).
