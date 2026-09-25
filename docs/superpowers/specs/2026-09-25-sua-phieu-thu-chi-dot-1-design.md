@@ -80,19 +80,24 @@ returns jsonb` — SECURITY DEFINER, VOLATILE, `REVOKE … FROM PUBLIC, anon, au
   `contract.commission`, `termination.refund`}; không gắn `payment_id`/`payment_collection_id`/`invoice_id`,
   `salary_staff_id`, `shareholder_id`/`profit_manager_id`, `handover_id`/`handover_transfer_id`,
   `reversal_of_income_expense_id`, giữ chỗ chi lợi nhuận, xử lý cọc giữ chỗ; `assert_no_engine_request_v1`.
-- Quyền: super admin; chủ tổ chức; người lập (`coalesce(ie.maker_user_id, flow_ownership.maker_user_id,
-  ie.user_id)`); hoặc `ie_can_edit_money_axis_v1` trên toà cũ. Đổi toà: không phải chủ thì cần
-  `income_expenses.edit` (hoặc người lập: `income_expenses.create`) trên toà mới. Đổi sổ:
-  `assert_cashbook_access_v2(…, 'CUSTODIAN', …)` cho sổ cũ (nếu có) và sổ mới (nếu có). Hạng mục hạn chế:
-  luật hiện hành; thêm hạng mục hạn chế mới cần `restricted_create`. Hạng mục `system_only` không được thêm
-  mới vào phiếu tay.
+- Quyền: super admin; người lập (`coalesce(ie.maker_user_id, flow_ownership.maker_user_id, ie.user_id)`)
+  còn quyền lập phiếu (`authorize_income_expense_on_building(…, 'create', …)`) hoặc sửa thu chi ở toà đích;
+  hoặc `ie_can_edit_money_axis_v1` (`income_expenses.edit`) trên toà cũ, và trên toà mới nếu đổi toà. Chủ
+  công ty đi bằng quyền của vai (đủ quyền mọi toà). Người sửa phải còn membership đang hoạt động.
+  Đổi sổ (thi hành 25/09): **cùng luật với lúc lập phiếu** — chủ sổ, người giữ/vận hành sổ
+  (CUSTODIAN/OPERATOR), người biết sổ (KNOWER) chỉ với phiếu thu; phiếu chưa ghi sổ nên sổ cũ không xét
+  (bản đầu ghi `assert_cashbook_access_v2(…,'CUSTODIAN',…)` cho cả hai đầu — chặt hơn cả lúc lập).
+  Hạng mục hạn chế: luật hiện hành; thêm hạng mục hạn chế mới cần `restricted_create`. Hạng mục
+  `system_only` không được thêm mới (giữ cái đang có thì được).
 - Kiểm dữ liệu: cùng giới hạn với `create_income_expense_v1` (tên ≤ 500, text ngắn ≤ 255, ảnh ≤ 20 URL
   https ≤ 2048, hạng mục 1..200, số lượng nguyên ≥ 1, đơn giá 0..9 999 999 999 999,99, kỳ hạng mục trong
   2000..2100 và ≤ 3660 ngày, loại hạng mục đúng tổ chức và đúng chiều thu/chi).
 - Chỉ ghi khi có thay đổi thật (so từng trường + danh sách hạng mục đã chuẩn hoá); không có gì đổi ⇒ trả
   `changed=false`, không tăng phiên bản, không ghi lịch sử.
-- Lý do: server tự tính; đổi `type`, `building_id`, `account_id` hoặc số/loại/đơn giá/kỳ của hạng mục mà
-  lý do < 8 ký tự ⇒ `22023`.
+- Lý do: server tự tính; đổi `type`, `building_id`, `account_id`, `business_result_accounting` hoặc
+  số/loại/đơn giá/kỳ của hạng mục mà lý do < 8 ký tự ⇒ `22023` (mô tả hạng mục đổi không tính).
+- Lặp lại: máy chủ tự tính `repeat_remaining`/`repeat_next_date` (phiếu gốc = kỳ #1); phiếu chờ duyệt chưa
+  có phiếu con vì bộ sinh chỉ chạy trên phiếu đã duyệt.
 - Ghi: `begin_ie_flex_write_v1(p_voucher, 'REVISE')`, UPDATE cột được phép + `approval_version + 1`, thay
   hạng mục nếu đổi, `end_ie_flex_write_v1`. Không đụng `birth_*`, `source_payload_hash`,
   `flow_ownership.payload_hash_value` (`assert_committed_birth_boundary_v2` so hash đã lưu, không tính lại —
@@ -106,20 +111,36 @@ returns jsonb` — SECURITY DEFINER, VOLATILE, `REVOKE … FROM PUBLIC, anon, au
   `append_income_expense_event_v1(…, 'REVISED', …)`.
 - Trả `{id, changed, revision_no, approval_version, changed_fields}`. Idempotency theo `(voucher, key)`.
 
-**A2. Guard.** `guard_income_expense_owned_payload`: nhánh scope `REVISE` (cạnh CASHBOOK_MOVE/ANNOTATE/
-LINK_CONTRACT/HANDOVER, trước kiểm flow-owned): OLD và NEW đều `UNAPPROVED`, OLD chưa `POSTED`; chỉ được đổi
-cột nội dung (type, name, building_id, room_id, tenant_id, contract_id, payer_name, receive_bank_account,
-receive_bank_name, account_id, attachments, voucher_date, business_result_accounting, repeat_*), cột suy ra
-do trigger (total_amount, kqkd_amount, counts_in_business_result, has_restricted_item, commission_kind),
-`approval_version`, `updated_at`. `guard_income_expense_owned_items`: cho INSERT/DELETE/UPDATE hạng mục khi
-scope `REVISE` của đúng phiếu. Thêm `'REVISE'` vào CHECK `ie_flex_writer_xids_scope_chk`.
+**A2. Guard (đổi khi thi hành 25/09 — KHÔNG sửa guard đã ghim).** `guard_income_expense_owned_payload` bị ghim
+trong `migration-policy.json › idempotencyRetirements[0].witness` (md5 `fb01ae8c…`); sửa nó là CI đỏ vĩnh viễn.
+Thay vào đó:
+- `app_private.is_income_expense_flow_owned(uuid)` trả `false` khi CHÍNH transaction (theo
+  `pg_current_xact_id_if_assigned()` + `pg_backend_pid()`) đang mở scope `REVISE` cho đúng phiếu đó ⇒ nhánh
+  early-return "phiếu không thuộc luồng" của hai guard niêm phong (phiếu + hạng mục) cho writer đi qua.
+  Người gọi hàm này chỉ là guard/writer (ACL `{postgres=X}`); ngoài cửa REVISE hành vi y như cũ.
+- Trigger mới `a01_ie_revise_scope_delta` (`app_private.ie_revise_scope_delta_guard`, BEFORE UPDATE): trong
+  scope REVISE, OLD và NEW đều `UNAPPROVED`, OLD chưa `POSTED`, không đổi `active_posting_id_v2`/`deleted_at`;
+  chỉ được đổi cột nội dung (type, name, building_id, room_id, tenant_id, contract_id, payer_name,
+  receive_bank_account, receive_bank_name, account_id, attachments, notes, voucher_date,
+  business_result_accounting, repeat_*), cột suy ra do trigger (total_amount, kqkd_amount,
+  counts_in_business_result, has_restricted_item, commission_kind), `approval_version`, `updated_at`.
+- Thêm `'REVISE'` vào CHECK `ie_flex_writer_xids_scope_chk`. Preflight ghim md5 cả hai guard niêm phong.
+- Đã thử trên TEST: UPDATE thẳng phiếu niêm phong ngoài cửa REVISE vẫn `55000 frozen`; mở cửa REVISE rồi đổi
+  `code` ⇒ `55000` từ trigger delta.
 
 **A3. Đóng kênh sửa cũ (sau khi web mới lên).** `ie_compat_update_pending_v2` chỉ còn đổi tên / ghi chú /
 ảnh; khoá tiền và `p_items` bị từ chối. Caller chuyển sang A1: form sửa (`useUpdateIncomeExpense`), "Đổi sổ
 quỹ cả đợt" (`hooks/income-expenses/batch.ts`), "sửa người nhận" (`hooks/useSettlementActions.ts`).
 
 **A4. Duyệt.** `approve_income_expense_v2` / `approve_and_post_income_expense_v2` đã CAS `approval_version`
-⇒ sửa chen giữa làm duyệt lỗi; UI dịch lỗi và tải lại. Danh sách nhúng `income_expense_revisions(revision_no)`
+(lệch ⇒ `55000 … approval_version mismatch`). Nhưng nút Duyệt chính (`useApproveVoucher`) đi thang ba bậc
+`set_termination_forfeit_status_v1` → `approve_income_expense_v1` → `approve_voucher`, cả ba **không nhận
+phiên bản** (phát hiện khi thi hành 25/09). Nên thêm `public.approve_pending_income_expense_checked_v1(p_voucher,
+p_expected_approval_version) → jsonb`: cặp bỏ cọc rẽ sang cửa chuyên trách trước mọi khoá; còn lại khoá org →
+khoá phiếu (cùng thứ tự với writer sửa) → so phiên bản (lệch ⇒ `40001` "Phiếu vừa được sửa — tải lại…") →
+đi đúng bậc 2/3 như cũ. UI gọi hàm này ở mọi nút Duyệt; dịch cả `40001` lẫn `55000 … mismatch` thành "tải
+lại". `approve_income_expense_v1` chỉ đổi câu "phiếu canonical không sửa được: Huỷ rồi Tạo bản sao" thành
+"bấm Sửa phiếu, chọn sổ quỹ rồi mới duyệt được". Danh sách nhúng `income_expense_revisions(revision_no)`
 qua khoá ngoại để hiện "Đã sửa N lần". Hộp Duyệt (desktop, mobile, "Duyệt và Chi") hiện bảng so sánh
 `before_snapshot` của lần sửa đầu → `after_snapshot` của lần cuối, kèm từng lần sửa (ai, lúc nào, lý do).
 

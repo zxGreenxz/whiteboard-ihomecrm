@@ -117,14 +117,26 @@ mở khoá có lý do đã có `profit_unlock_v2` ⇒ không sửa `lock_profit_
 - `public.revise_pending_income_expense_v1(p_voucher uuid, p_expected_approval_version bigint, p_patch jsonb,
   p_items jsonb DEFAULT NULL, p_reason text DEFAULT NULL, p_idempotency_key text DEFAULT NULL) → jsonb`
   `{id, changed, replayed?, revision_no, approval_version, changed_fields}`; mã lỗi: 42501 quyền/loại phiếu,
-  55000 trạng thái, 40001 phiên bản, 22023 dữ liệu/lý do, P0002 không có phiếu.
-- [ ] Test tĩnh: không có `CREATE OR REPLACE FUNCTION app_private.guard_income_expense_owned_payload`; helper có
-  `scope = 'REVISE'`; writer có `lock_org_for_decision_v1`, `FOR UPDATE`, `p_expected_approval_version`,
-  `begin_ie_flex_write_v1(p_voucher, 'REVISE')`, `end_ie_flex_write_v1`, `assert_no_engine_request_v1`, không có
-  `birth_operation_id =`/`source_payload_hash =`; REVOKE anon.
-- [ ] Thử trên TEST (ROLLBACK, JWT giả NATHAN = người lập): sửa một phiếu chi tay niêm phong chờ duyệt (đổi đơn giá,
-  có lý do) → OK, `approval_version+1`, 1 dòng lịch sử; thiếu lý do → 22023; version cũ → 40001; phiếu đã duyệt →
-  55000; phiếu hoa hồng đổi loại hạng mục → 42501; phiếu trả khách đổi số tiền + lý do → OK.
+  55000 trạng thái, 40001 phiên bản, 22023 dữ liệu/lý do, P0002 không có phiếu. Patch nhận đúng các khoá
+  `type, name, building_id, room_id, tenant_id, contract_id, payer_name, receive_bank_account, receive_bank_name,
+  account_id, attachments, notes, voucher_date, business_result_accounting, repeat_cycle, repeat_count,
+  repeat_infinity, repeat_auto_approve` (bỏ qua `repeat_remaining`, `repeat_next_date` — máy chủ tự tính; khoá lạ ⇒
+  22023). Hạng mục: `income_expense_type_id, description, quantity, unit_price, start_date, end_date` (bỏ qua
+  `accounting_class`, `id`, `amount`); kỳ hạng mục được để trống cả hai ngày.
+- `public.approve_pending_income_expense_checked_v1(p_voucher uuid, p_expected_approval_version bigint) → jsonb`
+  `{id, approved, already, mode: 'VOUCHER'|'FORFEIT_PAIR'}` (thêm khi thi hành: nút Duyệt không có CAS — spec A4).
+- `public.approve_income_expense_v1(uuid)` — chỉ đổi câu báo thiếu sổ quỹ.
+- [x] Test tĩnh (25 ca M1–M3): không định nghĩa lại guard/trigger đã ghim; preflight ghim md5 hai guard; scope CHECK
+  8 giá trị; helper chỉ nhường `REVISE` cùng xid/pid/phiếu; delta đúng 27 cột; writer khoá org → phiếu → CAS 40001,
+  mở/đóng REVISE, không ghi `birth_*`/hash/`approval_status`/`posting_status`; luật lý do; phiếu hệ thống khoá khung;
+  bảng lịch sử RLS + bất biến; duyệt-có-phiên-bản rẽ cặp bỏ cọc trước khoá.
+- [x] Thử trên TEST (ROLLBACK, hai lượt): phiếu niêm phong PC2609105 tăng đơn giá có lý do → OK (1.791.000 →
+  1.792.000, v2, còn Chờ duyệt, hash sinh không đổi); thiếu lý do 22023; phiên bản cũ 40001; chỉ đổi tên → OK; gửi y
+  nguyên → changed=false; gọi lại khoá cũ → replayed; phiếu đã duyệt 55000; hoa hồng đổi loại / đổi toà 42501, đổi
+  tiền có lý do OK; trả khách đổi tiền + người nhận OK; đổi Thu/Chi không gửi hạng mục 22023; phiếu tay cũ đổi ngày +
+  tên OK; UPDATE thẳng phiếu niêm phong vẫn frozen; cửa REVISE đổi `code` bị trigger delta chặn; sổ không giữ 42501;
+  người ngoài tổ chức 42501; RLS: người lập đọc được, anon bị từ chối; duyệt phiên bản cũ 40001, đúng phiên bản →
+  APPROVED + POSTED (cả phiếu niêm phong lẫn phiếu cũ), duyệt lại → already; cặp bỏ cọc đi cửa chuyên trách.
 - [ ] Commit `feat(sua-phieu): sua phieu cho duyet co luu vet (may chu)`.
 
 ### Task 4: M4 — sổ nhận tiền + đổi hình thức thu (máy chủ)
@@ -193,6 +205,11 @@ kiểu `RevisionSnapshot`, `RevisionRow`, `RevisionLine {field,label,before,afte
 (chế độ APPROVE_AND_POST), `ApprovalsPage.tsx`.
 - [ ] Bảng so sánh + từng lần sửa; cảnh báo lệch hoa hồng/trả khách; lỗi `approval_version mismatch` ⇒ "Phiếu vừa được
   người khác sửa — tải lại" + refetch.
+- [ ] `useApproveVoucher` (và mọi nút Duyệt / duyệt hàng loạt) gọi `approve_pending_income_expense_checked_v1(id,
+  approval_version đang hiển thị)` thay cho thang ba bậc phía client; dịch 40001 ⇒ "tải lại". Rà các chỗ duyệt khác
+  (`approve_and_post_income_expense_v2` đã CAS — chỉ cần dịch lỗi).
+- [ ] "Sửa nhanh" (`update_income_expense_quick`, đổi sổ/ảnh/ghi chú) trên phiếu Chờ duyệt: chuyển sang
+  `revise_pending_income_expense_v1` để có lịch sử; phiếu đã duyệt giữ đường cũ (ảnh chỉ nối thêm).
 
 ### Task 11: caller khác của compat (A3)
 **Files:** `hooks/income-expenses/batch.ts` + UI đổi sổ cả đợt (thêm ô lý do), `hooks/useSettlementActions.ts`.

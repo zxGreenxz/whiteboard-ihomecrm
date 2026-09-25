@@ -208,3 +208,155 @@ describe("M2 khoa_thang_loi_nhuan_tuyet_doi", () => {
     expect(code).not.toMatch(/guard_income_expense_owned_payload/);
   });
 });
+
+// ── M3: sửa phiếu Chờ duyệt ─────────────────────────────────────────────────
+
+describe("M3 sua_phieu_cho_duyet", () => {
+  const sql = docFile("sua_phieu_cho_duyet");
+  const code = boChuThich(sql);
+
+  it("khung file đúng khuôn, preflight md5 cả hai guard niêm phong đã ghim", () => {
+    kiemKhungFile(sql);
+    expect(sql).not.toMatch(/CHUA_DO_SAU/);
+    // Lối vòng dựa vào đúng bản guard đã ghim trong migration-policy.json.
+    expect(sql).toContain("'app_private.guard_income_expense_owned_payload()'");
+    expect(sql).toContain("ARRAY['fb01ae8c9de7b283d19ade8195eba726']");
+    expect(sql).toContain("'app_private.guard_income_expense_owned_items()'");
+    expect(sql).toContain("$nghiem_thu$");
+  });
+
+  it("không định nghĩa lại hàm/trigger đã ghim", () => {
+    expect(code).not.toMatch(/FUNCTION\s+app_private\.guard_income_expense_owned_payload\(/);
+    expect(code).not.toMatch(/FUNCTION\s+app_private\.guard_income_expense_owned_items\(/);
+    expect(code).not.toMatch(/FUNCTION\s+app_private\.finance_v2_birth_provenance_bridge\(/);
+    expect(code).not.toMatch(/TRIGGER\s+(a00_ie_owned_payload_freeze|a86_finance_v2_birth_provenance)\b/);
+  });
+
+  it("scope REVISE được thêm vào ràng buộc, giữ đủ 7 scope cũ", () => {
+    expect(code).toMatch(
+      /CHECK \(scope IN \('ANNOTATE', 'FLEX_EDIT', 'LINK_CONTRACT', 'SALE_BONUS_DEPOSIT',\s+'CASHBOOK_MOVE', 'HANDOVER', 'STOP_RECURRING', 'REVISE'\)\)/,
+    );
+  });
+
+  it("niêm phong chỉ nhường đúng cửa REVISE của chính transaction, đúng phiếu", () => {
+    const fn = thanHamDangChay("is_income_expense_flow_owned", "app_private");
+    expect(fn).toContain("w.scope = 'REVISE'");
+    expect(fn).toContain("w.transaction_id = pg_current_xact_id_if_assigned()");
+    expect(fn).toContain("w.backend_pid = pg_backend_pid()");
+    expect(fn).toContain("w.income_expense_id = p_id");
+  });
+
+  it("trigger delta REVISE chỉ cho đổi cột nội dung + cột suy ra + phiên bản", () => {
+    const fn = thanHamDangChay("ie_revise_scope_delta_guard", "app_private");
+    const ds = /v_cho_doi := ARRAY\[([\s\S]*?)\];/.exec(fn)?.[1] ?? "";
+    const cot = [...ds.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]).sort();
+    expect(cot).toEqual(
+      [
+        "type", "name", "building_id", "room_id", "tenant_id", "contract_id",
+        "payer_name", "receive_bank_account", "receive_bank_name", "account_id",
+        "attachments", "notes", "voucher_date", "business_result_accounting",
+        "repeat_cycle", "repeat_count", "repeat_infinity", "repeat_auto_approve",
+        "repeat_remaining", "repeat_next_date",
+        "total_amount", "kqkd_amount", "counts_in_business_result", "has_restricted_item", "commission_kind",
+        "approval_version", "updated_at",
+      ].sort(),
+    );
+    expect(cot).not.toContain("approval_status");
+    expect(cot).not.toContain("birth_operation_id");
+    expect(fn).toMatch(/NEW\.approval_status IS DISTINCT FROM 'UNAPPROVED'/);
+    expect(fn).toMatch(/COALESCE\(OLD\.posting_status, 'UNPOSTED'\) = 'POSTED'/);
+    expect(code).toMatch(/CREATE TRIGGER a01_ie_revise_scope_delta\s+BEFORE UPDATE ON public\.income_expenses/);
+  });
+
+  it("writer: khoá org rồi khoá phiếu, CAS phiên bản, mở/đóng cửa REVISE", () => {
+    const fn = thanHamDangChay("revise_pending_income_expense_v1");
+    const khoaOrg = fn.indexOf("app_private.lock_org_for_decision_v1(v_org)");
+    const khoaPhieu = fn.indexOf("FOR UPDATE");
+    expect(khoaOrg).toBeGreaterThan(-1);
+    expect(khoaPhieu).toBeGreaterThan(khoaOrg);
+    expect(fn).toMatch(/v_row\.approval_version IS DISTINCT FROM p_expected_approval_version THEN\s+RAISE EXCEPTION '[^']*' USING ERRCODE = '40001'/);
+    expect(fn).toContain("app_private.begin_ie_flex_write_v1(p_voucher, 'REVISE')");
+    expect(fn).toContain("app_private.end_ie_flex_write_v1(p_voucher)");
+    expect(fn).toContain("app_private.assert_no_engine_request_v1(p_voucher)");
+    expect(fn).toContain("app_private.ie_flow_system_owned_v2(p_voucher)");
+    expect(fn).toContain("app_private.assert_period_open_for_edit_v1(p_voucher, 'sửa')");
+    expect(fn).toContain("approval_version = ie.approval_version + 1");
+  });
+
+  it("writer không đụng dấu vết sinh phiếu", () => {
+    const fn = thanHamDangChay("revise_pending_income_expense_v1");
+    expect(fn).not.toMatch(/\b(birth_operation_id|birth_txid|source_payload_hash|payload_hash_value)\s*=/);
+    expect(fn).not.toMatch(/\bapproval_status\s*=\s*'/);
+    expect(fn).not.toMatch(/\bposting_status\s*=\s*'/);
+  });
+
+  it("chỉ phiếu tay, hoa hồng, trả khách thanh lý; không phiếu gắn hoá đơn/lương/lợi nhuận/bàn giao", () => {
+    const fn = thanHamDangChay("revise_pending_income_expense_v1");
+    expect(fn).toContain("v_row.system_source NOT IN ('contract.commission', 'termination.refund')");
+    for (const cot of [
+      "invoice_id", "payment_id", "payment_collection_id", "utility_account_id", "salary_staff_id",
+      "shareholder_id", "profit_manager_id", "handover_id", "handover_transfer_id", "reversal_of_income_expense_id",
+    ]) {
+      expect(fn).toContain(`v_row.${cot} IS NOT NULL`);
+    }
+    expect(fn).toContain("public.reservation_settlement_vouchers");
+    expect(fn).toContain("public.profit_payout_reservations");
+  });
+
+  it("luật lý do: trục tiền (Thu/Chi, toà, sổ, KQKD, tiền/loại/kỳ hạng mục) ≥ 8 ký tự", () => {
+    const fn = thanHamDangChay("revise_pending_income_expense_v1");
+    expect(fn).toMatch(
+      /v_money := v_changed && ARRAY\['type', 'building_id', 'account_id', 'business_result_accounting'\]\s+OR v_items_money_changed;/,
+    );
+    expect(fn).toMatch(/IF v_money AND \(v_reason IS NULL OR char_length\(v_reason\) < 8\)/);
+    // Mô tả hạng mục đổi không tính là đổi tiền.
+    expect(fn).toMatch(/jsonb_agg\(x\.o - 'd'/);
+  });
+
+  it("phiếu hệ thống không đổi khung, không đổi loại hạng mục", () => {
+    const fn = thanHamDangChay("revise_pending_income_expense_v1");
+    expect(fn).toMatch(/IF v_system AND v_new_type_ids IS DISTINCT FROM v_old_type_ids THEN/);
+    expect(fn).toMatch(/IF v_system AND \(\s+t_type IS DISTINCT FROM v_row\.type/);
+  });
+
+  it("bảng lịch sử: RLS theo tầm nhìn phiếu, chỉ SELECT, không sửa/xoá được", () => {
+    expect(code).toContain("ALTER TABLE public.income_expense_revisions ENABLE ROW LEVEL SECURITY;");
+    expect(code).toContain("REVOKE ALL ON public.income_expense_revisions FROM PUBLIC, anon, authenticated, service_role;");
+    expect(code).toContain("GRANT SELECT ON public.income_expense_revisions TO authenticated;");
+    expect(code).toMatch(/USING \(app_private\.ie_supplement_can_read_v1\(income_expense_id\)\)/);
+    expect(code).toMatch(/CREATE TRIGGER ie_revision_immutable\s+BEFORE UPDATE OR DELETE ON public\.income_expense_revisions/);
+    expect(code).toMatch(/CREATE TRIGGER ie_revision_no_truncate\s+BEFORE TRUNCATE ON public\.income_expense_revisions/);
+    expect(code).toMatch(/UNIQUE \(income_expense_id, revision_no\)/);
+  });
+
+  it("quyền gọi: writer + duyệt-có-phiên-bản cho authenticated, không cho anon", () => {
+    for (const chuKy of [
+      "public.revise_pending_income_expense_v1(uuid, bigint, jsonb, jsonb, text, text)",
+      "public.approve_pending_income_expense_checked_v1(uuid, bigint)",
+    ]) {
+      expect(code).toContain(`REVOKE ALL ON FUNCTION ${chuKy}\n  FROM PUBLIC, anon, authenticated, service_role;`);
+      expect(code).toContain(`GRANT EXECUTE ON FUNCTION ${chuKy}\n  TO authenticated;`);
+    }
+  });
+
+  it("duyệt có phiên bản: cặp bỏ cọc rẽ trước khoá, rồi khoá org → phiếu → CAS → thang duyệt cũ", () => {
+    const fn = thanHamDangChay("approve_pending_income_expense_checked_v1");
+    const reCoc = fn.indexOf("public.set_termination_forfeit_status_v1(p_voucher, 'APPROVED')");
+    const khoaOrg = fn.indexOf("app_private.lock_org_for_decision_v1(v_org)");
+    const khoaPhieu = fn.indexOf("FOR UPDATE");
+    const cas = fn.indexOf("USING ERRCODE = '40001'");
+    expect(reCoc).toBeGreaterThan(-1);
+    expect(khoaOrg).toBeGreaterThan(reCoc);
+    expect(khoaPhieu).toBeGreaterThan(khoaOrg);
+    expect(cas).toBeGreaterThan(khoaPhieu);
+    expect(fn).toContain("PERFORM public.approve_income_expense_v1(p_voucher);");
+    expect(fn).toContain("PERFORM public.approve_voucher(p_voucher);");
+  });
+
+  it("approve_income_expense_v1 giữ tín hiệu fallback, bỏ câu 'canonical không sửa được'", () => {
+    const fn = thanHamDangChay("approve_income_expense_v1");
+    expect(fn).toContain("Phiếu chưa thuộc luồng canonical — dùng đường legacy");
+    expect(fn).not.toContain("canonical không sửa được");
+    expect(fn).toContain("Phiếu chưa có sổ quỹ — bấm Sửa phiếu, chọn sổ quỹ rồi mới duyệt được.");
+  });
+});
