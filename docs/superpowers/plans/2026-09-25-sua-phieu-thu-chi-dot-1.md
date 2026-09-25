@@ -90,18 +90,19 @@ last_value int, updated_at timestamptz, PK(organization_id,prefix,yymm))`; trigg
 ### Task 2: M2 — khoá tháng lợi nhuận tuyệt đối
 **Produces:** `app_private.profit_month_locked_v1(uuid, date) → boolean` (STABLE);
 `app_private.assert_profit_month_open_v2(uuid, date, text) → void`; thân mới `public.income_expenses_check_profit_lock()`,
-`public.income_expense_items_check_profit_lock()`, `app_private.assert_period_open_for_edit_v1(uuid,text)`,
-`public.lock_profit_month_v1(text,jsonb)`; bảng `app_private.profit_month_unlock_log`;
-`public.unlock_profit_month_v1(p_period_month text, p_building_ids uuid[], p_reason text) → integer` (chữ ký cũ bị DROP).
-- [ ] Test tĩnh: hai trigger function không còn `is_super_admin`/`is_org_owner`/`business_result_accounting`/
-  `auth.uid() IS NULL THEN RETURN`; có tập miễn `repeat_remaining, repeat_next_date, handover_id, verified_at,
-  verified_by, verified_by_name, verified_note, updated_at` + nhánh `STOP_RECURRING`; `assert_period_open_for_edit_v1`
-  không còn `billing_month`/`item_row.start_date`; `lock_profit_month_v1` có đếm `approval_status = 'UNAPPROVED'`;
-  `DROP FUNCTION IF EXISTS public.unlock_profit_month_v1(text, uuid[])`; lý do 8..1000; GRANT authenticated chữ ký mới.
-- [ ] Thử trên TEST (ROLLBACK, chạy bằng vai postgres không JWT): UPDATE giả một phiếu tháng 07/2026 toà đã chốt
-  (vd 405PVB) đổi `name` → lỗi `[PROFIT_LOCKED]`; đổi chỉ `verified_note` → qua; `lock_profit_month_v1` cho tháng
-  08/2026 (còn phiếu chờ duyệt) → lỗi nêu số phiếu (gọi với `request.jwt.claims` giả chủ công ty).
-- [ ] Commit `feat(khoa-thang): khoa thang loi nhuan tuyet doi, chot chan phieu cho duyet, mo khoa co ly do`.
+`public.income_expense_items_check_profit_lock()`, `app_private.assert_period_open_for_edit_v1(uuid,text)`;
+`app_private.guard_profit_month_lock_pending_v1()` + trigger `a10_profit_month_lock_requires_no_pending` trên
+`public.profit_monthly`. (Đổi so với bản đầu, 25/09: màn Chốt lợi nhuận thật đi `profit_close_v2`/`profit_reclose_v2`,
+mở khoá có lý do đã có `profit_unlock_v2` ⇒ không sửa `lock_profit_month_v1`, không tạo hàm mở khoá/bảng log mới.)
+- [x] Test tĩnh: hai trigger function không còn `is_super_admin`/`is_org_owner`/`business_result_accounting`/
+  `auth.uid`; tập miễn đúng 9 cột + NULL→giá trị 3 cột vòng đời + nhánh `STOP_RECURRING` + `LINK_CONTRACT`;
+  `assert_period_open_for_edit_v1` không còn `billing_month`/`item_row`; trigger profit_monthly đếm
+  `approval_status = 'UNAPPROVED'`; không đụng hàm `profit_*`/`lock_profit_month_v1`/`unlock_profit_month_v1`.
+- [x] Thử trên TEST (ROLLBACK, hai lượt): sửa tên phiếu 07/2026 toà đã chốt → `[PROFIT_LOCKED]`; chỉ đánh dấu đã kiểm →
+  qua; lập phiếu lùi ngày, sửa hạng mục, xoá mềm, xoá hẳn, dời ngày vào tháng chốt → chặn; LINK_CONTRACT / tắt lặp /
+  cột miễn → qua; `profit_close_v2` tháng 08 toà 102LVT (21 phiếu chờ duyệt) → 55000; toà hết phiếu chờ duyệt → chốt
+  được; `profit_unlock_v2` lý do ngắn → 22023, đủ lý do → mở + ghi `profit_close_runs`, sau đó sửa phiếu được.
+- [ ] Commit `feat(khoa-thang): khoa thang loi nhuan tuyet doi, chan chot khi con phieu cho duyet`.
 
 ### Task 3: M3 — sửa phiếu chờ duyệt (máy chủ)
 **Produces:**
@@ -152,8 +153,9 @@ p_reason text DEFAULT NULL, p_idempotency_key text DEFAULT NULL) → jsonb`.
 **Produces:** `public.ie_compat_update_pending_v2` chỉ còn tên/ghi chú/ảnh (khoá tiền, `p_items` ⇒ 0A000);
 `public.record_invoice_collection_v5` thêm kiểm `receiving_cashbook_allowed_v1` sau chốt possession (dựng từ bản
 production bằng chèn đúng một chỗ, md5 ghim); DROP `public.update_invoice_payment_method_v1(uuid, payment_method)`,
-`public.move_income_voucher_cashbook_v1(uuid, uuid, text)`; REVOKE EXECUTE `record_invoice_payment_v4` khỏi
-authenticated (kiểm không hàm nào gọi).
+`public.move_income_voucher_cashbook_v1(uuid, uuid, text)`, `public.unlock_profit_month_v1(text, uuid[])`,
+`public.lock_profit_month_v1(text, jsonb)` (giao diện đã sang `profit_unlock_v2`; không hàm SQL nào gọi hai hàm này —
+đo lại trước khi viết); REVOKE EXECUTE `record_invoice_payment_v4` khỏi authenticated (kiểm không hàm nào gọi).
 - [ ] Test tĩnh + thử trên TEST (ROLLBACK): compat gửi `account_id` → 0A000; gửi `attachments` → OK; thu tiền TK vào
   sổ ngoài danh sách → 42501 câu tiếng Việt.
 - [ ] Commit `feat(sua-phieu): dong duong sua cu va bat luat so nhan tien khi thu`.
@@ -218,7 +220,12 @@ kiểu `RevisionSnapshot`, `RevisionRow`, `RevisionLine {field,label,before,afte
 **Files:** `ReceivingCashbookSettings.tsx`, trang Sổ quỹ (thêm mục), `BuildingFormDialog.tsx`.
 
 ### Task 17: mở khoá tháng có lý do (D5)
-**Files:** `useShareholderProfit.ts`, `ProfitLockTab.tsx`.
+**Files:** `useShareholderProfit.ts`, `ProfitLockTab.tsx`, `src/lib/cashbookClosing.ts` (+test).
+- `useUnlockProfitMonth` gọi `profit_unlock_v2(p_organization_id, p_period_month 'YYYY-MM-01', p_reason, p_idempotency_key,
+  p_building_ids, p_expected_source_hash null)`; hộp mở khoá bắt lý do 8..1000 ký tự; sửa comment "NỢ" cũ.
+- Câu `PERIOD_BLOCK_DETAIL.PROFIT_LOCKED` + các câu PROFIT_LOCKED ở `incomeVoucherCancel.ts`, `useDeletePayment.ts`:
+  "…mọi phiếu của tháng bị khoá, nhờ chủ công ty mở khoá tháng" (bỏ "lập phiếu điều chỉnh ở tháng hiện tại" cho khoá
+  lợi nhuận); `ANNOTATE_STILL_ALLOWED_NOTE` không hiện cho phiếu tháng đã chốt lợi nhuận (chỉ còn đúng với sổ quỹ đã chốt).
 
 ## Phase 3 — Kiểm chứng
 

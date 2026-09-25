@@ -53,7 +53,8 @@ Sửa phiếu chờ duyệt có dấu vết · đổi hình thức thu · mã ph
 13. Mã phiếu đếm chung cả công ty theo loại + tháng; giữ dạng `PT|PC + YYMM + số`; mã cũ giữ nguyên.
 14. Khoá tháng lợi nhuận tuyệt đối theo **ngày phiếu**, mọi người, mọi loại phiếu. Ngoại lệ không đổi tiền:
     Bổ sung (bảng riêng), phiếu lặp lại (máy dời lịch / dừng lặp), gắn/nhả phiếu khỏi phiên bàn giao tiền
-    mặt, đánh dấu đã kiểm. **Không có công tắc vượt khoá**; migration kỹ thuật buộc phải đụng tháng đã chốt
+    mặt, đánh dấu đã kiểm; thêm khi thi hành: tạo hợp đồng gắn phiếu cọc giữ chỗ, cờ hạng mục hạn chế (xem D2).
+    **Không có công tắc vượt khoá**; migration kỹ thuật buộc phải đụng tháng đã chốt
     thì tự `DISABLE TRIGGER` trong chính transaction của nó và phải qua review.
 15. Mở khoá tháng bắt lý do (lưu lại); không cho chốt khi còn phiếu Chờ duyệt trong tháng/toà (lúc đo: tháng
     08 còn 79 phiếu / ~619,6 triệu ở 16 toà).
@@ -188,13 +189,25 @@ chết), danh sách/chi tiết Thu chi (phiếu thu hoá đơn). Khoản thu ki�
 - **D2.** Viết lại `income_expenses_check_profit_lock` và `income_expense_items_check_profit_lock`: bỏ nhánh
   chủ/super admin, bỏ lọc KQKD/nguồn, bỏ `RETURN` sớm khi `auth.uid()` NULL; xét (toà, ngày) cũ và mới ở mọi
   INSERT/UPDATE/DELETE; ngoại lệ chỉ khi thay đổi nằm gọn trong {`repeat_remaining`, `repeat_next_date`,
-  `handover_id`, `verified_*`, `updated_at`} (+ chiều NULL→giá trị của posting_mode/posting_status/
-  review_state), hoặc scope `STOP_RECURRING` tắt lặp (`repeat_cycle='NONE'`). ANNOTATE không còn là ngoại lệ.
+  `handover_id`, `verified_*`, `has_restricted_item`, `updated_at`} (+ chiều NULL→giá trị của posting_mode/
+  posting_status/review_state), hoặc scope `STOP_RECURRING` tắt lặp (`repeat_cycle='NONE'`), hoặc scope
+  `LINK_CONTRACT` chỉ gắn `contract_id` từ NULL. ANNOTATE không còn là ngoại lệ.
+  - Hai ngoại lệ thêm khi thi hành (25/09), cùng loại "không đổi tiền": `LINK_CONTRACT` — tạo hợp đồng gắn
+    phiếu cọc giữ chỗ có ngày trong tháng đã chốt (`create_contract_v2`, `trg_contract_link_orphan_deposits`),
+    thiếu nó thì tạo hợp đồng bị chặn; `has_restricted_item` — cờ hiển thị do `ie_type_restricted_recompute`
+    tính lại khi đổi cờ hạn chế của một loại thu chi, thiếu nó thì không đổi được cờ của loại đã dùng ở tháng chốt.
+  - Đo prod 25/09 (chỉ đọc): ngoài máy dời lịch phiếu lặp, mọi lần ghi vào tháng đã chốt sau khi chốt đều là
+    chủ công ty đi cửa vượt (gần nhất PC2609124, 27/07, 15KV, sửa 25/09); 0 phiếu Chờ duyệt nằm trong tháng đã chốt.
 - **D3.** `assert_period_open_for_edit_v1`: bước lợi nhuận dùng hàm chung, bỏ lọc KQKD; **bỏ** bước 4 (tháng
   hoá đơn) và 5 (kỳ hạng mục).
-- **D4.** `lock_profit_month_v1`: từ chối khi còn phiếu `UNAPPROVED` trong tháng/toà, nêu số phiếu + mã.
-- **D5.** `unlock_profit_month_v1(p_period_month, p_building_ids, p_reason)` (DROP chữ ký cũ, giữ ACL):
-  lý do 8..1000 ký tự, ghi `app_private.profit_month_unlock_log`.
+- **D4.** Chặn chốt khi còn phiếu Chờ duyệt bằng trigger `a10_profit_month_lock_requires_no_pending` trên
+  `profit_monthly` (BEFORE INSERT OR UPDATE OF locked_at): mọi lần đặt `locked_at` mới bị từ chối khi toà còn
+  phiếu `UNAPPROVED` có ngày trong tháng, nêu số phiếu + mã. Gắn ở bảng vì màn Chốt lợi nhuận thật đi
+  `profit_close_v2` / `profit_reclose_v2` (bộ V2, không sửa); `lock_profit_month_v1` là đường cũ không ai gọi.
+- **D5.** Mở khoá có lý do: dùng `profit_unlock_v2` đã có (lý do 8..1000, idempotency key, lưu
+  `profit_close_runs` + `profit_close_revisions` kèm bản chụp phân bổ). Giao diện chuyển từ
+  `unlock_profit_month_v1` (không lý do, không vết) sang hàm đó; M5 gỡ `unlock_profit_month_v1(text, uuid[])` và
+  `lock_profit_month_v1(text, jsonb)` (không hàm SQL hay màn nào khác gọi — đo 25/09).
 - **D6. Hệ quả chấp nhận:** mọi việc ghi lùi ngày vào tháng đã chốt lỗi `[PROFIT_LOCKED]` với mọi người ⇒
   phải mở khoá trước. Job phiếu lặp lại bỏ qua (NOTICE) phiếu con rơi vào tháng đã chốt — vốn có
   `EXCEPTION WHEN OTHERS` từng phiếu.
