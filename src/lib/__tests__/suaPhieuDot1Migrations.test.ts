@@ -306,7 +306,7 @@ describe("M3 sua_phieu_cho_duyet", () => {
   it("luật lý do: trục tiền (Thu/Chi, toà, sổ, KQKD, tiền/loại/kỳ hạng mục) ≥ 8 ký tự", () => {
     const fn = thanHamDangChay("revise_pending_income_expense_v1");
     expect(fn).toMatch(
-      /v_money := v_changed && ARRAY\['type', 'building_id', 'account_id', 'business_result_accounting'\]\s+OR v_items_money_changed;/,
+      /v_money := v_changed && ARRAY\['type', 'building_id', 'business_result_accounting'\]\s+OR \('account_id' = ANY \(v_changed\) AND v_row\.account_id IS NOT NULL\)\s+OR v_items_money_changed;/,
     );
     expect(fn).toMatch(/IF v_money AND \(v_reason IS NULL OR char_length\(v_reason\) < 8\)/);
     // Mô tả hạng mục đổi không tính là đổi tiền.
@@ -450,7 +450,7 @@ describe("M4 so_nhan_tien", () => {
     );
   });
 
-  it("quyền gọi: 5 RPC cho authenticated, không anon", () => {
+  it("quyền gọi của M4: 5 RPC cho authenticated, không anon", () => {
     for (const chuKy of [
       "public.get_receiving_cashbooks_v1(uuid, uuid, uuid)",
       "public.list_receiving_cashbook_settings_v1(uuid)",
@@ -462,4 +462,63 @@ describe("M4 so_nhan_tien", () => {
       expect(code).toContain(`GRANT EXECUTE ON FUNCTION ${chuKy} TO authenticated;`);
     }
   });
+});
+
+// ── M5: đóng đường cũ (áp sau khi web mới lên) ──────────────────────────────
+
+describe("M5 dong_duong_cu_sua_phieu", () => {
+  const sql = docFile("dong_duong_cu_sua_phieu");
+  const code = boChuThich(sql);
+  const TEN_GO = [
+    "update_invoice_payment_method_v1",
+    "move_income_voucher_cashbook_v1",
+    "update_income_expense_quick",
+    "lock_profit_month_v1",
+    "unlock_profit_month_v1",
+  ];
+
+  it("khung file đúng khuôn, preflight md5 hai hàm bị thay, không còn chỗ trống md5", () => {
+    kiemKhungFile(sql);
+    expect(sql).not.toMatch(/CHUA_DO_SAU/);
+    expect(sql).toContain("ARRAY['f57ad822ca8def8a86ab5a5d5d06199b', '3889ab4d9e3b3f48f8f5c928b6ea314d']");
+    expect(sql).toContain("ARRAY['c6ed1d47823837349c92e8769932053a', 'ef1cf9abb7ae08a026b6bdf53b7840cf']");
+  });
+
+  it("thu tiền: chèn ĐÚNG MỘT chốt danh sách sổ, ngay sau chốt possession", () => {
+    const fn = thanHamDangChay("record_invoice_collection_v5");
+    const moc = "Bạn không được giao sổ quỹ này (cần là Người giữ sổ hoặc Người biết sổ). Chọn sổ khác.";
+    const chot = "app_private.assert_receiving_cashbook_v1(";
+    expect(fn.split(chot)).toHaveLength(2);
+    expect(fn.indexOf(chot)).toBeGreaterThan(fn.indexOf(moc));
+    expect(fn).toContain("v_org, v_invoice.building_id, v_method::text, v_collector_membership, v_account_id);");
+    const tro = thanHamDangChay("assert_receiving_cashbook_v1", "app_private");
+    expect(tro).toContain("app_private.receiving_cashbook_ids_v1(p_org, p_building, p_method, p_membership)");
+    expect(tro).toMatch(/IF p_method IS NULL OR p_method NOT IN \('TM', 'TK', 'TT'\) THEN\s+RETURN;/);
+  });
+
+  it("kênh sửa cũ chỉ còn tên/ghi chú/ảnh của phiếu đã duyệt", () => {
+    const fn = thanHamDangChay("ie_compat_update_pending_v2");
+    expect(fn).not.toContain("v_money_keys");
+    expect(fn).toContain("v_meta_keys text[] := ARRAY['name','notes','attachments']");
+    expect(fn).toMatch(/IF p_items IS NOT NULL THEN\s+RAISE EXCEPTION '[^']*'\s+USING ERRCODE = '0A000'/);
+    expect(fn).toMatch(/IF v_row\.approval_status = 'UNAPPROVED' THEN\s+RAISE EXCEPTION '[^']*'\s+USING ERRCODE = '0A000'/);
+    expect(fn).toContain("app_private.ie_attachments_union_v1(ie.attachments, v_clean->'attachments')");
+    expect(fn).not.toMatch(/account_id\s*=/);
+  });
+
+  it("gỡ 5 hàm không còn ai gọi, có khối chặn nếu còn hàm SQL gọi tới", () => {
+    for (const ten of TEN_GO) {
+      expect(code).toMatch(new RegExp(`DROP FUNCTION IF EXISTS public\\.${ten}\\(`));
+    }
+    expect(code).toContain("RAISE EXCEPTION 'Còn hàm gọi tới hàm sắp gỡ: %'");
+  });
+
+  it("thu quyền gọi thẳng record_invoice_payment_v4", () => {
+    expect(code).toMatch(
+      /REVOKE ALL ON FUNCTION public\.record_invoice_payment_v4\(uuid, numeric, public\.payment_method, date, text, uuid, text, text, jsonb, jsonb, text, uuid\)\s+FROM PUBLIC, anon, authenticated, service_role;/,
+    );
+  });
+
+  // Chỉ bật khi giao diện đã chuyển xong (Phase 2): M5 áp SAU khi web mới lên.
+  it.todo("giao diện không còn gọi 5 hàm đã gỡ (bật ở Phase 2)");
 });

@@ -94,8 +94,9 @@ returns jsonb` — SECURITY DEFINER, VOLATILE, `REVOKE … FROM PUBLIC, anon, au
   2000..2100 và ≤ 3660 ngày, loại hạng mục đúng tổ chức và đúng chiều thu/chi).
 - Chỉ ghi khi có thay đổi thật (so từng trường + danh sách hạng mục đã chuẩn hoá); không có gì đổi ⇒ trả
   `changed=false`, không tăng phiên bản, không ghi lịch sử.
-- Lý do: server tự tính; đổi `type`, `building_id`, `account_id`, `business_result_accounting` hoặc
-  số/loại/đơn giá/kỳ của hạng mục mà lý do < 8 ký tự ⇒ `22023` (mô tả hạng mục đổi không tính).
+- Lý do: server tự tính; đổi `type`, `building_id`, `business_result_accounting`, đổi sổ quỹ từ sổ này sang
+  sổ khác, hoặc số/loại/đơn giá/kỳ của hạng mục mà lý do < 8 ký tự ⇒ `22023` (mô tả hạng mục đổi không tính;
+  chọn sổ lần đầu cho phiếu chưa có sổ — việc hộp Duyệt đang làm — không tính).
 - Lặp lại: máy chủ tự tính `repeat_remaining`/`repeat_next_date` (phiếu gốc = kỳ #1); phiếu chờ duyệt chưa
   có phiếu con vì bộ sinh chỉ chạy trên phiếu đã duyệt.
 - Ghi: `begin_ie_flex_write_v1(p_voucher, 'REVISE')`, UPDATE cột được phép + `approval_version + 1`, thay

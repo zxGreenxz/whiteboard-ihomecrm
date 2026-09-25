@@ -29,7 +29,7 @@ function banDaCapture(): string {
 }
 
 const collectionLivePath =
-  'supabase/migrations/20260915074716_hoa_don_guard_huy_no_keo_subtotal_ngay.sql';
+  'supabase/migrations/20260925083655_dong_duong_cu_sua_phieu.sql';
 
 function dinhNghiaSong(ten: string, mongDoi: string): string {
   const dir = 'supabase/migrations';

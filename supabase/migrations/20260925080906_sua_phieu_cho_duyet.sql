@@ -956,7 +956,9 @@ BEGIN
   END IF;
 
   -- Trục tiền phải có lý do (chủ chốt 25/09: số tiền, hạng mục, loại, sổ quỹ, toà).
-  v_money := v_changed && ARRAY['type', 'building_id', 'account_id', 'business_result_accounting']
+  -- Chọn sổ quỹ LẦN ĐẦU cho phiếu chưa có sổ (hộp Duyệt vẫn làm) không phải đổi sổ.
+  v_money := v_changed && ARRAY['type', 'building_id', 'business_result_accounting']
+             OR ('account_id' = ANY (v_changed) AND v_row.account_id IS NOT NULL)
              OR v_items_money_changed;
   IF v_money AND (v_reason IS NULL OR char_length(v_reason) < 8) THEN
     RAISE EXCEPTION 'Đổi số tiền, hạng mục, loại, sổ quỹ hoặc toà phải ghi lý do (ít nhất 8 ký tự).'

@@ -175,8 +175,15 @@ production bằng chèn đúng một chỗ, md5 ghim); DROP `public.update_invoi
 `public.move_income_voucher_cashbook_v1(uuid, uuid, text)`, `public.unlock_profit_month_v1(text, uuid[])`,
 `public.lock_profit_month_v1(text, jsonb)` (giao diện đã sang `profit_unlock_v2`; không hàm SQL nào gọi hai hàm này —
 đo lại trước khi viết); REVOKE EXECUTE `record_invoice_payment_v4` khỏi authenticated (kiểm không hàm nào gọi).
-- [ ] Test tĩnh + thử trên TEST (ROLLBACK): compat gửi `account_id` → 0A000; gửi `attachments` → OK; thu tiền TK vào
-  sổ ngoài danh sách → 42501 câu tiếng Việt.
+Thêm khi thi hành: gỡ cả `update_income_expense_quick(uuid, uuid, jsonb, text)` (hộp Duyệt chuyển sang sửa phiếu có lưu
+vết — Task 10); compat từ chối cả phiếu Chờ duyệt (mọi sửa phiếu chờ duyệt phải có lịch sử); chốt thu tiền là
+`app_private.assert_receiving_cashbook_v1` (TM: "Thu tiền mặt phải vào sổ tiền mặt riêng của người thu (…)"). File sinh
+bằng script ghép từ `pg_get_functiondef` production (chèn đúng một khối), không gõ tay.
+- [x] Test tĩnh (5 ca + 1 todo bật ở Phase 2: giao diện không còn gọi hàm đã gỡ). `invoiceAdjustmentV2.test.ts` đổi
+  `collectionLivePath` sang file M5 (gate liveness bắt).
+- [x] Thử trên TEST (ROLLBACK): thu TK vào TKHIEP (sổ phụ) OK; TK vào TK939 42501; TM vào MBHIEP 42501 "phải vào sổ tiền mặt
+  riêng (Hiệp Thu)"; TM vào Hiệp Thu OK; TT ở toà chưa cài 42501; compat trên phiếu chờ duyệt / gửi account_id / gửi hạng
+  mục 0A000; ghi chú phiếu đã duyệt tháng mở OK; 5 hàm đã gỡ; v4 hết gọi thẳng. M1–M5 chạy hai lượt liên tiếp qua.
 - [ ] Commit `feat(sua-phieu): dong duong sua cu va bat luat so nhan tien khi thu`.
 
 ### Task 6: TEST env + types
