@@ -75,7 +75,8 @@ returns jsonb` — SECURITY DEFINER, VOLATILE, `REVOKE … FROM PUBLIC, anon, au
 
 - Khoá org (`lock_org_for_decision_v1`) rồi dòng phiếu `FOR UPDATE`. Điều kiện: `approval_status =
   'UNAPPROVED'`, `posting_status <> 'POSTED'`, `active_posting_id_v2 IS NULL`, `deleted_at IS NULL`; CAS
-  `approval_version = p_expected_approval_version` (lệch ⇒ `40001`).
+  `approval_version = p_expected_approval_version` (lệch ⇒ `PT409`/HTTP 409; bản đầu dùng `40001` nhưng
+  PostgREST tự chạy lại giao dịch 40001 mãi — đổi khi thi hành 25/09).
 - Loại nhận: `flow_kind` NULL hoặc `CANONICAL_INCOME_EXPENSE`; `system_source` ∈ {NULL,
   `contract.commission`, `termination.refund`}; không gắn `payment_id`/`payment_collection_id`/`invoice_id`,
   `salary_staff_id`, `shareholder_id`/`profit_manager_id`, `handover_id`/`handover_transfer_id`,
@@ -138,8 +139,8 @@ quỹ cả đợt" (`hooks/income-expenses/batch.ts`), "sửa người nhận" (
 `set_termination_forfeit_status_v1` → `approve_income_expense_v1` → `approve_voucher`, cả ba **không nhận
 phiên bản** (phát hiện khi thi hành 25/09). Nên thêm `public.approve_pending_income_expense_checked_v1(p_voucher,
 p_expected_approval_version) → jsonb`: cặp bỏ cọc rẽ sang cửa chuyên trách trước mọi khoá; còn lại khoá org →
-khoá phiếu (cùng thứ tự với writer sửa) → so phiên bản (lệch ⇒ `40001` "Phiếu vừa được sửa — tải lại…") →
-đi đúng bậc 2/3 như cũ. UI gọi hàm này ở mọi nút Duyệt; dịch cả `40001` lẫn `55000 … mismatch` thành "tải
+khoá phiếu (cùng thứ tự với writer sửa) → so phiên bản (lệch ⇒ `PT409` "Phiếu vừa được sửa — tải lại…") →
+đi đúng bậc 2/3 như cũ. UI gọi hàm này ở mọi nút Duyệt; dịch `PT409`, `40001` (writer cũ) lẫn `55000 … mismatch` thành "tải
 lại". `approve_income_expense_v1` chỉ đổi câu "phiếu canonical không sửa được: Huỷ rồi Tạo bản sao" thành
 "bấm Sửa phiếu, chọn sổ quỹ rồi mới duyệt được". Danh sách nhúng `income_expense_revisions(revision_no)`
 qua khoá ngoại để hiện "Đã sửa N lần". Hộp Duyệt (desktop, mobile, "Duyệt và Chi") hiện bảng so sánh

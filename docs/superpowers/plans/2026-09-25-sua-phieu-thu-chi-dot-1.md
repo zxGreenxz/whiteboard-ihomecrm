@@ -118,7 +118,8 @@ mở khoá có lý do đã có `profit_unlock_v2` ⇒ không sửa `lock_profit_
 - `public.revise_pending_income_expense_v1(p_voucher uuid, p_expected_approval_version bigint, p_patch jsonb,
   p_items jsonb DEFAULT NULL, p_reason text DEFAULT NULL, p_idempotency_key text DEFAULT NULL) → jsonb`
   `{id, changed, replayed?, revision_no, approval_version, changed_fields}`; mã lỗi: 42501 quyền/loại phiếu,
-  55000 trạng thái, 40001 phiên bản, 22023 dữ liệu/lý do, P0002 không có phiếu. Patch nhận đúng các khoá
+  55000 trạng thái, PT409 phiên bản (các dòng "40001" bên dưới là bản ghi lúc thi hành, trước khi đổi sang PT409 —
+  PostgREST tự chạy lại giao dịch 40001 mãi), 22023 dữ liệu/lý do, P0002 không có phiếu. Patch nhận đúng các khoá
   `type, name, building_id, room_id, tenant_id, contract_id, payer_name, receive_bank_account, receive_bank_name,
   account_id, attachments, notes, voucher_date, business_result_accounting, repeat_cycle, repeat_count,
   repeat_infinity, repeat_auto_approve` (bỏ qua `repeat_remaining`, `repeat_next_date` — máy chủ tự tính; khoá lạ ⇒

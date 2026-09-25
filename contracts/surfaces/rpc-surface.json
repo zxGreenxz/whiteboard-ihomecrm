@@ -1,20 +1,20 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 1714,
-    "catalogFunctions": 1164,
+    "sourceCallSites": 1740,
+    "catalogFunctions": 1171,
     "schemas": [
       "public",
       "api"
     ]
   },
   "counts": {
-    "calledRpcs": 288,
+    "calledRpcs": 290,
     "byRisk": {
       "normal": 208,
-      "financial": 80
+      "financial": 82
     },
-    "securityDefiner": 272
+    "securityDefiner": 274
   },
   "missingOnServer": [],
   "rpcs": {
@@ -135,26 +135,6 @@
       ],
       "risk": "normal"
     },
-    "approve_income_expense_v1": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_voucher_id uuid",
-          "returns": "void",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, public, app_private",
-          "execRoles": [
-            "authenticated",
-            "service_role"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/income-expenses/statusMutations.ts"
-      ],
-      "risk": "financial"
-    },
     "approve_invoice_v1": {
       "definitions": [
         {
@@ -195,23 +175,22 @@
       ],
       "risk": "normal"
     },
-    "approve_voucher": {
+    "approve_pending_income_expense_checked_v1": {
       "definitions": [
         {
           "schema": "public",
-          "args": "voucher_id uuid",
-          "returns": "void",
+          "args": "p_voucher uuid, p_expected_approval_version bigint",
+          "returns": "jsonb",
           "volatility": "VOLATILE",
           "securityDefiner": true,
-          "searchPath": "search_path=public, app_private",
+          "searchPath": "search_path=pg_catalog, public, app_private",
           "execRoles": [
-            "authenticated",
-            "service_role"
+            "authenticated"
           ]
         }
       ],
       "callers": [
-        "src/hooks/income-expenses/statusMutations.ts"
+        "src/hooks/income-expenses/revisions.ts"
       ],
       "risk": "financial"
     },
@@ -910,6 +889,25 @@
       ],
       "callers": [
         "src/hooks/useCashBook.ts"
+      ],
+      "risk": "financial"
+    },
+    "change_collection_tender_method_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_tender_id uuid, p_new_method text, p_new_account_id uuid DEFAULT NULL::uuid, p_reason text DEFAULT NULL::text, p_idempotency_key text DEFAULT NULL::text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useReceivingCashbooks.ts"
       ],
       "risk": "financial"
     },
@@ -2669,6 +2667,25 @@
       ],
       "risk": "normal"
     },
+    "get_receiving_cashbooks_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_building_id uuid DEFAULT NULL::uuid, p_collector_user_id uuid DEFAULT NULL::uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useReceivingCashbooks.ts"
+      ],
+      "risk": "financial"
+    },
     "get_refund_forfeit_summary": {
       "definitions": [
         {
@@ -2882,8 +2899,6 @@
         }
       ],
       "callers": [
-        "src/hooks/useSettlementActions.ts",
-        "src/hooks/useUpdatePaymentMethod.ts",
         "src/hooks/useUploadPaymentReceipt.ts"
       ],
       "risk": "financial"
@@ -3166,25 +3181,6 @@
       ],
       "risk": "normal"
     },
-    "list_my_cashbook_access_v2": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "",
-          "returns": "TABLE(cashbook_id uuid, cashbook_name text, possession_kind text, since timestamp with time zone)",
-          "volatility": "STABLE",
-          "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, app_private, public",
-          "execRoles": [
-            "authenticated"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/income-expenses/incomeVoucherCashbook.ts"
-      ],
-      "risk": "financial"
-    },
     "list_my_copilot_organizations_v1": {
       "definitions": [
         {
@@ -3264,6 +3260,25 @@
         "src/hooks/useOrganizationAuthorization.ts"
       ],
       "risk": "normal"
+    },
+    "list_receiving_cashbook_settings_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useReceivingCashbooks.ts"
+      ],
+      "risk": "financial"
     },
     "lock_salary_month_v1": {
       "definitions": [
@@ -3543,25 +3558,6 @@
       ],
       "callers": [
         "src/hooks/useInvoices.ts"
-      ],
-      "risk": "financial"
-    },
-    "move_income_voucher_cashbook_v1": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_voucher uuid, p_new_account uuid, p_reason text",
-          "returns": "jsonb",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, app_private, public",
-          "execRoles": [
-            "authenticated"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/income-expenses/incomeVoucherCashbook.ts"
       ],
       "risk": "financial"
     },
@@ -4024,6 +4020,26 @@
       ],
       "risk": "normal"
     },
+    "profit_unlock_v2": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_period_month date, p_reason text, p_idempotency_key text, p_building_ids uuid[] DEFAULT NULL::uuid[], p_expected_source_hash text DEFAULT NULL::text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useShareholderProfit.ts"
+      ],
+      "risk": "normal"
+    },
     "propose_cashbook_closing_v1": {
       "definitions": [
         {
@@ -4260,6 +4276,25 @@
       ],
       "risk": "financial"
     },
+    "revise_pending_income_expense_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_voucher uuid, p_expected_approval_version bigint, p_patch jsonb, p_items jsonb DEFAULT NULL::jsonb, p_reason text DEFAULT NULL::text, p_idempotency_key text DEFAULT NULL::text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/income-expenses/revisions.ts"
+      ],
+      "risk": "financial"
+    },
     "revoke_organization_invitation_v1": {
       "definitions": [
         {
@@ -4398,6 +4433,25 @@
         "src/hooks/useUtilityBills.ts"
       ],
       "risk": "normal"
+    },
+    "set_building_receiving_cashbooks_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_building_id uuid, p_method text, p_default_account_id uuid, p_extra_account_ids uuid[]",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useReceivingCashbooks.ts"
+      ],
+      "risk": "financial"
     },
     "set_copilot_action_policy_v1": {
       "definitions": [
@@ -4552,6 +4606,25 @@
         "src/hooks/useNotificationSettings.ts"
       ],
       "risk": "normal"
+    },
+    "set_personal_cash_book_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_membership_id uuid, p_account_id uuid",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useReceivingCashbooks.ts"
+      ],
+      "risk": "financial"
     },
     "set_reservation_hold_terms_v1": {
       "definitions": [
@@ -4753,25 +4826,6 @@
       ],
       "risk": "financial"
     },
-    "unlock_profit_month_v1": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_period_month text, p_building_ids uuid[]",
-          "returns": "integer",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, public, app_private",
-          "execRoles": [
-            "authenticated"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/useShareholderProfit.ts"
-      ],
-      "risk": "normal"
-    },
     "unlock_salary_month_v1": {
       "definitions": [
         {
@@ -4810,26 +4864,6 @@
         "src/hooks/useAccounts.ts"
       ],
       "risk": "normal"
-    },
-    "update_income_expense_quick": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_id uuid, p_account_id uuid, p_attachments jsonb, p_notes text",
-          "returns": "income_expenses",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, app_private, public",
-          "execRoles": [
-            "authenticated",
-            "service_role"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/income-expenses/mutations.ts"
-      ],
-      "risk": "financial"
     },
     "update_invoice_v1": {
       "definitions": [

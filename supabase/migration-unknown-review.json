@@ -714,50 +714,6 @@
       ],
       "anhHuongThat": "Không còn tính năng nào dùng: nút \"Đồng bộ dữ liệu mới nhất\" của org TEST cũ đã gỡ khỏi OrganizationPage.tsx cùng hook useCloneOrgSync.ts (23/09/2026). Nút đồng bộ mới trỏ tới workflow .github/workflows/test-env-sync.yml của môi trường TEST riêng."
     },
-    "supabase/migrations/20260925080906_sua_phieu_cho_duyet.sql": {
-      "sha256": "737cfdefad46b32fa1b27d18fd456e56be4a3084982cb6e10281f243dfa6207a",
-      "missingObjects": [
-        "table:public.income_expense_revisions",
-        "function:app_private.ie_revision_immutable_v1",
-        "function:app_private.ie_revision_snapshot_v1",
-        "function:app_private.ie_revise_scope_delta_guard",
-        "function:public.revise_pending_income_expense_v1"
-      ],
-      "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "File TẠO 25/09/2026 (đợt 1 sửa phiếu thu chi), CHƯA apply production — object vắng mặt vì migration chưa chạy. Đã chạy trên môi trường TEST (ihomecrm-test, bản sao production) hai lượt liên tiếp trong ROLLBACK rồi mới ghi; kiểm hành vi bằng kịch bản SQL trên TEST. Sửa phiếu Chờ duyệt có lưu vết (bảng income_expense_revisions, writer revise_pending_income_expense_v1, trigger kiểm cột a01_ie_revise_scope_delta) + duyệt có kiểm phiên bản.",
-      "bangChung": [
-        {
-          "duong_dan": "supabase/migrations/20260925080906_sua_phieu_cho_duyet.sql",
-          "trich_doan": "CREATE OR REPLACE FUNCTION public.revise_pending_income_expense_v1("
-        },
-        {
-          "duong_dan": "docs/superpowers/specs/2026-09-25-sua-phieu-thu-chi-dot-1-design.md",
-          "trich_doan": "Đợt 1 sửa phiếu thu chi — chủ chốt 25/09/2026; thứ tự triển khai: áp M1–M4, lên web mới, rồi áp M5."
-        }
-      ]
-    },
-    "supabase/migrations/20260925082815_so_nhan_tien.sql": {
-      "sha256": "f391f5dfe390a84dae803f8b5bca7fbcc552035d1b00925f7d6feb1abf6a3459",
-      "missingObjects": [
-        "table:app_private.personal_cash_books",
-        "table:app_private.building_receiving_cashbooks",
-        "function:app_private.receiving_cashbook_ids_v1",
-        "function:app_private.receiving_cashbook_allowed_v1",
-        "function:app_private.member_of_org_v1"
-      ],
-      "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "File TẠO 25/09/2026 (đợt 1 sửa phiếu thu chi), CHƯA apply production — object vắng mặt vì migration chưa chạy. Đã chạy trên môi trường TEST (ihomecrm-test, bản sao production) hai lượt liên tiếp trong ROLLBACK rồi mới ghi; kiểm hành vi bằng kịch bản SQL trên TEST. Sổ nhận tiền theo hình thức thu (sổ tiền mặt riêng người thu, danh sách sổ TK/TT theo toà) + đổi hình thức thu có lý do.",
-      "bangChung": [
-        {
-          "duong_dan": "supabase/migrations/20260925082815_so_nhan_tien.sql",
-          "trich_doan": "CREATE TABLE IF NOT EXISTS app_private.personal_cash_books"
-        },
-        {
-          "duong_dan": "docs/superpowers/specs/2026-09-25-sua-phieu-thu-chi-dot-1-design.md",
-          "trich_doan": "Đợt 1 sửa phiếu thu chi — chủ chốt 25/09/2026; thứ tự triển khai: áp M1–M4, lên web mới, rồi áp M5."
-        }
-      ]
-    },
     "supabase/migrations/20260925083655_dong_duong_cu_sua_phieu.sql": {
       "sha256": "5e88a6c9b9869b0b031de1a29270d07e6b0b045379091372abe79e250004086e",
       "missingObjects": [

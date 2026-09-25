@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-09-25T14:41:41.420Z",
+  "generatedAt": "2026-09-25T14:51:40.032Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 603,
-    "unknown": 77,
+    "ledger-applied": 605,
+    "unknown": 75,
     "catalog-proven": 211,
     "superseded": 15
   },
@@ -10499,14 +10499,9 @@
       "name": "sua_phieu_cho_duyet",
       "scheme": "timestamp14",
       "sha256": "737cfdefad46b32fa1b27d18fd456e56be4a3084982cb6e10281f243dfa6207a",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "table:public.income_expense_revisions",
-        "function:app_private.ie_revision_immutable_v1",
-        "function:app_private.ie_revision_snapshot_v1",
-        "function:app_private.ie_revise_scope_delta_guard",
-        "function:public.revise_pending_income_expense_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-25T14:48:10.422Z|bien-nhan-backup"
       ]
     },
     {
@@ -10515,14 +10510,9 @@
       "name": "so_nhan_tien",
       "scheme": "timestamp14",
       "sha256": "f391f5dfe390a84dae803f8b5bca7fbcc552035d1b00925f7d6feb1abf6a3459",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "table:app_private.personal_cash_books",
-        "table:app_private.building_receiving_cashbooks",
-        "function:app_private.receiving_cashbook_ids_v1",
-        "function:app_private.receiving_cashbook_allowed_v1",
-        "function:app_private.member_of_org_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-25T14:50:55.170Z|bien-nhan-backup"
       ]
     },
     {

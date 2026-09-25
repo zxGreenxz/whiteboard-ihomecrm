@@ -17,10 +17,10 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 
 | Chỉ số | Giá trị |
 |---|---|
-| RPC được gọi từ mã nguồn | 288 |
-| Hàm trong catalog (public + api) | 1164 |
-| File mã nguồn đã quét | 1714 |
-| SECURITY DEFINER | 272 |
+| RPC được gọi từ mã nguồn | 290 |
+| Hàm trong catalog (public + api) | 1171 |
+| File mã nguồn đã quét | 1740 |
+| SECURITY DEFINER | 274 |
 | **Gọi mà server KHÔNG CÓ** | **0** |
 
 ## Theo mức rủi ro
@@ -28,9 +28,9 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 | Mức | Số RPC | Nghĩa là |
 |---|---|---|
 | thường | 208 | còn lại |
-| tiền | 80 | có nơi gọi nằm trong màn tiền — sai là sai sổ sách |
+| tiền | 82 | có nơi gọi nằm trong màn tiền — sai là sai sổ sách |
 
-## 80 RPC chạm TIỀN
+## 82 RPC chạm TIỀN
 
 Đây là danh sách đáng đọc nhất trong trang này: mỗi dòng là một đường ghi hoặc
 đọc có thể làm lệch số trên sổ.
@@ -40,9 +40,8 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 | `adjust_invoice_v2` | ✔ | lib/invoiceAdjustmentRpc.ts |
 | `annotate_income_expense_v1` | ✔ | hooks/income-expenses/annotateMutations.ts |
 | `append_income_expense_supplement_v1` | ✔ | hooks/income-expenses/supplements.ts |
-| `approve_income_expense_v1` | ✔ | hooks/income-expenses/statusMutations.ts |
 | `approve_invoice_v1` | ✔ | hooks/useInvoices.ts |
-| `approve_voucher` | ✔ | hooks/income-expenses/statusMutations.ts |
+| `approve_pending_income_expense_checked_v1` | ✔ | hooks/income-expenses/revisions.ts |
 | `award_job_bonus` | ✔ | lib/salaryBonusNotify.ts |
 | `bulk_approve_invoices_v1` | ✔ | hooks/useInvoices.ts |
 | `can_cancel_income_voucher_v1` | ✔ | hooks/income-expenses/incomeVoucherCancel.ts |
@@ -59,6 +58,7 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 | `cashbook_opening_balance` | ✔ | hooks/useCashBook.ts |
 | `cashbook_period_totals` | ✔ | hooks/useCashBook.ts |
 | `cashflow_by_day` | ✔ | hooks/useCashBook.ts |
+| `change_collection_tender_method_v1` | ✔ | hooks/useReceivingCashbooks.ts |
 | `confirm_cashbook_closing_v1` | ✔ | hooks/useCashbookClosing.ts |
 | `create_commission_voucher` | ✔ | hooks/useCommissionVoucher.ts |
 | `create_income_expense_v1` | ✔ | hooks/income-expenses/mutations.ts |
@@ -73,22 +73,22 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 | `get_income_expense_layer_stats` |  | hooks/income-expenses/queries.ts, hooks/useProfitVerification.ts |
 | `get_invoice_statistics_v2` | ✔ | hooks/useInvoices.ts, hooks/useProfitVerification.ts, hooks/useUtilityBills.ts |
 | `get_overpayment_summary` |  | hooks/reports/financeReports.ts |
+| `get_receiving_cashbooks_v1` | ✔ | hooks/useReceivingCashbooks.ts |
 | `get_salary_v5_config` | ✔ | hooks/salary-v5/useSalaryV5Admin.ts, hooks/useSalaryV5Config.ts |
 | `get_voucher_cancellation_v1` | ✔ | hooks/income-expenses/flexMutations.ts |
 | `get_voucher_change_log_v1` | ✔ | hooks/income-expenses/flexMutations.ts |
 | `get_voucher_slot_warning_v1` | ✔ | hooks/useVoucherSlotWarning.ts |
-| `ie_compat_update_pending_v2` | ✔ | hooks/useSettlementActions.ts, hooks/useUpdatePaymentMethod.ts, hooks/useUploadPaymentReceipt.ts |
+| `ie_compat_update_pending_v2` | ✔ | hooks/useUploadPaymentReceipt.ts |
 | `ie_stop_recurring_v1` | ✔ | hooks/income-expenses/recurring.ts |
 | `invoice_active_payment_methods` |  | hooks/useInvoices.ts |
 | `invoice_payment_method_drilldown` |  | hooks/useInvoices.ts |
 | `is_admin` | ✔ | hooks/useIsAdmin.ts, supabase/functions/salary-v5-jobs/index.ts |
 | `list_cashbook_closings_v1` | ✔ | hooks/useCashbookClosing.ts |
-| `list_my_cashbook_access_v2` | ✔ | hooks/income-expenses/incomeVoucherCashbook.ts |
+| `list_receiving_cashbook_settings_v1` | ✔ | hooks/useReceivingCashbooks.ts |
 | `lock_salary_month_v1` | ✔ | hooks/useManagerSalary.ts |
 | `log_income_expense_action` | ✔ | hooks/income-expenses/statusMutations.ts |
 | `manager_salary_payout_v1` | ✔ | hooks/income-expenses/specialized.ts |
 | `mark_overdue_invoices_v1` | ✔ | hooks/useInvoices.ts |
-| `move_income_voucher_cashbook_v1` | ✔ | hooks/income-expenses/incomeVoucherCashbook.ts |
 | `notify_claim_push_batch_v1` | ✔ | supabase/functions/salary-v5-jobs/index.ts |
 | `notify_settle_push_batch_v1` | ✔ | supabase/functions/salary-v5-jobs/index.ts |
 | `propose_cashbook_closing_v1` | ✔ | hooks/useCashbookClosing.ts |
@@ -96,15 +96,17 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 | `restore_income_expense` | ✔ | hooks/income-expenses/statusMutations.ts |
 | `reverse_posted_income_expense_v2` | ✔ | hooks/income-expenses/statusMutations.ts |
 | `review_invoice_adjustment_v2` | ✔ | lib/invoiceAdjustmentRpc.ts |
+| `revise_pending_income_expense_v1` | ✔ | hooks/income-expenses/revisions.ts |
 | `salary_payout_v1` | ✔ | hooks/useManagerSalary.ts |
 | `salary_staff_months` | ✔ | hooks/useManagerSalary.ts |
 | `salary_work_ledger` | ✔ | hooks/useManagerSalary.ts |
+| `set_building_receiving_cashbooks_v1` | ✔ | hooks/useReceivingCashbooks.ts |
 | `set_forfeit_voucher_kqkd_v1` | ✔ | hooks/income-expenses/forfeitKqkd.ts |
+| `set_personal_cash_book_v1` | ✔ | hooks/useReceivingCashbooks.ts |
 | `set_salary_v5_config` | ✔ | hooks/salary-v5/useSalaryV5Admin.ts |
 | `unapprove_invoice_v1` | ✔ | hooks/useInvoices.ts |
 | `unapprove_voucher` | ✔ | hooks/income-expenses/statusMutations.ts |
 | `unlock_salary_month_v1` | ✔ | hooks/useManagerSalary.ts |
-| `update_income_expense_quick` | ✔ | hooks/income-expenses/mutations.ts |
 | `update_invoice_v1` | ✔ | hooks/useInvoices.ts |
 | `v5_apply_lock_adjustments` | ✔ | hooks/salary-v5/useSalaryV5Admin.ts |
 | `v5_cron_finish` | ✔ | supabase/functions/salary-v5-jobs/index.ts |

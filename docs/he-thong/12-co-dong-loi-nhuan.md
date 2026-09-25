@@ -105,6 +105,20 @@ Lý do lần chốt đầu có thể dùng mặc định; điều chỉnh khác 
 
 Không cần mở khoá/xoá allocation bằng nhiều DML client như flow cũ.
 
+**Tháng đã chốt khoá phiếu thế nào** (từ 25/09/2026, migration
+[20260925073251](../../supabase/migrations/20260925073251_khoa_thang_loi_nhuan_tuyet_doi.sql)):
+- Trigger `a02_ie_profit_lock_*` / `a02_ie_items_profit_lock` chặn lập, sửa, xoá phiếu và hạng mục có
+  **ngày phiếu** thuộc tháng đã chốt của toà, với **mọi người** (kể cả chủ công ty, super admin, job không
+  đăng nhập) và mọi loại phiếu (kể cả ngoài KQKD). Ngoại lệ không đổi tiền, trigger tự kiểm delta: dời lịch
+  phiếu lặp, gắn/nhả phiên bàn giao, đánh dấu đã kiểm, tắt lặp (`STOP_RECURRING`), gắn hợp đồng vào phiếu cọc
+  giữ chỗ (`LINK_CONTRACT`).
+- `app_private.assert_period_open_for_edit_v1` (cửa của mọi writer sửa/huỷ/đổi hình thức thu) chặn thêm
+  **phiếu thu của hoá đơn thuộc tháng đã chốt** dù ngày phiếu ở tháng sau. Thu mới nợ cũ và duyệt khoản thu đó
+  không đi qua cửa này nên vẫn làm được.
+- Không chốt được khi toà còn phiếu **Chờ duyệt** có ngày trong tháng (trigger
+  `a10_profit_month_lock_requires_no_pending` trên `profit_monthly`, phủ mọi đường đặt `locked_at`).
+- Mở khoá: `profit_unlock_v2` kèm lý do 8–1000 ký tự (lưu `profit_close_runs` + `profit_close_revisions`).
+
 ### 4.4. Đặt lại tháng
 
 Toà đã chốt xen toà chưa chốt KHÔNG còn là trạng thái hỏng — đó chính là thứ chốt-theo-từng-toà tạo ra. Chỉ khi tháng còn snapshot nằm trên toà ảo/đã xoá (`has_out_of_scope_snapshots`) hoặc không thể reclose an toàn thì UI mới dùng **Đặt lại**.
