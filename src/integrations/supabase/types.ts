@@ -21912,10 +21912,6 @@ export type Database = {
         Args: { p_cashbook_id: string; p_lock_date: string; p_unlock?: boolean }
         Returns: Json
       }
-      lock_profit_month_v1: {
-        Args: { p_period_month: string; p_rows: Json }
-        Returns: Json
-      }
       lock_salary_month_v1: {
         Args: {
           p_idempotency_key: string
@@ -22017,10 +22013,6 @@ export type Database = {
           total_expense: number
           total_income: number
         }[]
-      }
-      move_income_voucher_cashbook_v1: {
-        Args: { p_new_account: string; p_reason: string; p_voucher: string }
-        Returns: Json
       }
       my_org_ids: { Args: never; Returns: string[] }
       natural_sort_key: { Args: { p_name: string }; Returns: string }
@@ -23713,10 +23705,6 @@ export type Database = {
         }
         Returns: Json
       }
-      unlock_profit_month_v1: {
-        Args: { p_building_ids: string[]; p_period_month: string }
-        Returns: number
-      }
       unlock_salary_month_v1: {
         Args: {
           p_idempotency_key: string
@@ -23735,116 +23723,6 @@ export type Database = {
           p_name: string
           p_owner_user_id: string
           p_quick_default_building_id: string
-        }
-        Returns: Json
-      }
-      update_income_expense_quick: {
-        Args: {
-          p_account_id: string
-          p_attachments: Json
-          p_id: string
-          p_notes: string
-        }
-        Returns: {
-          account_id: string | null
-          active_posting_id_v2: string | null
-          approval_request_id: string | null
-          approval_status: string
-          approval_version: number
-          approved_at: string | null
-          approved_by: string | null
-          attachments: Json
-          birth_operation_id: string | null
-          birth_txid: unknown
-          building_id: string
-          business_result_accounting: boolean | null
-          cancellation_kind: string | null
-          change_account_id: string | null
-          change_amount: number
-          change_field_mask: Json | null
-          code: string | null
-          collect_distance_m: number | null
-          collect_geofence_status: string | null
-          collect_lat: number | null
-          collect_lng: number | null
-          commission_kind: string | null
-          commission_legacy_dup: boolean
-          contract_id: string | null
-          correlation_id: string | null
-          counts_in_business_result: boolean
-          created_at: string
-          creator_name: string | null
-          deleted_at: string | null
-          handover_id: string | null
-          handover_transfer_id: string | null
-          has_restricted_item: boolean
-          id: string
-          idempotency_key: string | null
-          invoice_id: string | null
-          kqkd_amount: number
-          maker_membership_id: string | null
-          maker_user_id: string | null
-          name: string
-          notes: string | null
-          organization_id: string
-          payer_name: string | null
-          payment_collection_id: string | null
-          payment_id: string | null
-          posted_at_v2: string | null
-          posting_id: string | null
-          posting_mode: string | null
-          posting_status: string | null
-          posting_version: number
-          profit_manager_id: string | null
-          receive_bank_account: string | null
-          receive_bank_name: string | null
-          recognition_date: string | null
-          recognition_source_mode: string | null
-          repeat_auto_approve: boolean
-          repeat_count: number
-          repeat_cycle: string | null
-          repeat_infinity: boolean
-          repeat_next_date: string | null
-          repeat_parent_id: string | null
-          repeat_remaining: number
-          reversal_of_income_expense_id: string | null
-          reversed_by_posting_id: string | null
-          review_deadline: string | null
-          review_owner_membership_id: string | null
-          review_reason: string | null
-          review_state: string | null
-          review_version: number
-          room_id: string | null
-          rounding_account_id: string | null
-          rounding_amount: number | null
-          salary_role: string | null
-          salary_staff_id: string | null
-          shareholder_id: string | null
-          source_payload_hash: string | null
-          system_source: string | null
-          tenant_id: string | null
-          total_amount: number
-          type: string
-          updated_at: string
-          user_id: string
-          utility_account_id: string | null
-          verified_at: string | null
-          verified_by: string | null
-          verified_by_name: string | null
-          verified_note: string | null
-          voucher_date: string
-        }
-        SetofOptions: {
-          from: "*"
-          to: "income_expenses"
-          isOneToOne: true
-          isSetofReturn: false
-        }
-      }
-      update_invoice_payment_method_v1: {
-        Args: {
-          p_new_method: Database["public"]["Enums"]["payment_method"]
-          p_payment_id: string
         }
         Returns: Json
       }

@@ -714,23 +714,119 @@
       ],
       "anhHuongThat": "Không còn tính năng nào dùng: nút \"Đồng bộ dữ liệu mới nhất\" của org TEST cũ đã gỡ khỏi OrganizationPage.tsx cùng hook useCloneOrgSync.ts (23/09/2026). Nút đồng bộ mới trỏ tới workflow .github/workflows/test-env-sync.yml của môi trường TEST riêng."
     },
-    "supabase/migrations/20260925083655_dong_duong_cu_sua_phieu.sql": {
-      "sha256": "5e88a6c9b9869b0b031de1a29270d07e6b0b045379091372abe79e250004086e",
+    "supabase/migrations/20260721150500_accounting_scope_narrowing.sql": {
+      "sha256": "8cd2d8927f7917c92572fc0e8419c59caf1b313bbf5da9652be9426408056e9d",
       "missingObjects": [
-        "function:app_private.assert_receiving_cashbook_v1"
+        "function:public.update_invoice_payment_method_v1"
       ],
-      "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "File TẠO 25/09/2026 (đợt 1 sửa phiếu thu chi), CHƯA apply production — object vắng mặt vì migration chưa chạy. Đã chạy trên môi trường TEST (ihomecrm-test, bản sao production) hai lượt liên tiếp trong ROLLBACK rồi mới ghi; kiểm hành vi bằng kịch bản SQL trên TEST. Đóng đường sửa cũ và chốt danh sách sổ khi thu tiền (assert_receiving_cashbook_v1); áp SAU khi web mới lên.",
+      "ketLuan": "da-go-khoi-production-25-09",
+      "lyLe": "Hàm public.update_invoice_payment_method_v1 do file này tạo đã CHẠY trên production (manifest provenance xếp file này catalog-proven tới trước lần áp M5), rồi bị GỠ CÓ CHỦ ĐÍCH ngày 25/09/2026 bởi 20260925083655_dong_duong_cu_sua_phieu.sql (đợt 1 sửa phiếu thu chi, áp qua migrate:forward sau khi web mới lên; khối kiểm đầu M5 chặn nếu còn hàm SQL nào gọi, bề mặt RPC sau khi áp: 0 lệnh gọi mà máy chủ không có). Lý do gỡ: đổi phương thức thu kiểu cũ (không còn đường gọi từ 28/07/2026); đổi hình thức thu nay đi change_collection_tender_method_v1 (có lý do, ghi lịch sử phiếu). KHÔNG được replay file này để \"trả\" hàm về.",
       "bangChung": [
         {
-          "duong_dan": "supabase/migrations/20260925083655_dong_duong_cu_sua_phieu.sql",
-          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.assert_receiving_cashbook_v1("
+          "duong_dan": "supabase/migrations/20260925083655_dong_duong_cu_sua_phieu.sql:1186",
+          "trich_doan": "DROP FUNCTION IF EXISTS public.update_invoice_payment_method_v1(uuid, public.payment_method);"
         },
         {
-          "duong_dan": "docs/superpowers/specs/2026-09-25-sua-phieu-thu-chi-dot-1-design.md",
-          "trich_doan": "Đợt 1 sửa phiếu thu chi — chủ chốt 25/09/2026; thứ tự triển khai: áp M1–M4, lên web mới, rồi áp M5."
+          "duong_dan": "docs/generated/schema-change-evidence/20260925083655_dong_duong_cu_sua_phieu.json",
+          "trich_doan": "bằng chứng lane migrate:forward áp M5 lên production 25/09/2026 (backup 532 bảng trước khi áp)"
         }
-      ]
+      ],
+      "raSoatBoi": "Claude Code — đợt 1 sửa phiếu 25/09/2026 (hồ sơ ghi khi regen provenance ngay sau khi áp M5)"
+    },
+    "supabase/migrations/20260730100000_ie_meta_write_hardening.sql": {
+      "sha256": "dd1824167e2e57a485474c6f246469fb83e2a232701a3be78c1beaad120744d9",
+      "missingObjects": [
+        "function:public.update_income_expense_quick"
+      ],
+      "ketLuan": "da-go-khoi-production-25-09",
+      "lyLe": "Hàm public.update_income_expense_quick do file này tạo đã CHẠY trên production (manifest provenance xếp file này catalog-proven tới trước lần áp M5), rồi bị GỠ CÓ CHỦ ĐÍCH ngày 25/09/2026 bởi 20260925083655_dong_duong_cu_sua_phieu.sql (đợt 1 sửa phiếu thu chi, áp qua migrate:forward sau khi web mới lên; khối kiểm đầu M5 chặn nếu còn hàm SQL nào gọi, bề mặt RPC sau khi áp: 0 lệnh gọi mà máy chủ không có). Lý do gỡ: hộp Duyệt chuyển sang sửa phiếu có lưu vết revise_pending_income_expense_v1. KHÔNG được replay file này để \"trả\" hàm về.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20260925083655_dong_duong_cu_sua_phieu.sql:1188",
+          "trich_doan": "DROP FUNCTION IF EXISTS public.update_income_expense_quick(uuid, uuid, jsonb, text);"
+        },
+        {
+          "duong_dan": "docs/generated/schema-change-evidence/20260925083655_dong_duong_cu_sua_phieu.json",
+          "trich_doan": "bằng chứng lane migrate:forward áp M5 lên production 25/09/2026 (backup 532 bảng trước khi áp)"
+        }
+      ],
+      "raSoatBoi": "Claude Code — đợt 1 sửa phiếu 25/09/2026 (hồ sơ ghi khi regen provenance ngay sau khi áp M5)"
+    },
+    "supabase/migrations/20260802120000_move_income_voucher_cashbook.sql": {
+      "sha256": "3c82e3cbc83ff13df2bf48af87f53ae6af327a273f1644c99db43c3bc744aba8",
+      "missingObjects": [
+        "function:public.move_income_voucher_cashbook_v1"
+      ],
+      "ketLuan": "da-go-khoi-production-25-09",
+      "lyLe": "Hàm public.move_income_voucher_cashbook_v1 do file này tạo đã CHẠY trên production (manifest provenance xếp file này catalog-proven tới trước lần áp M5), rồi bị GỠ CÓ CHỦ ĐÍCH ngày 25/09/2026 bởi 20260925083655_dong_duong_cu_sua_phieu.sql (đợt 1 sửa phiếu thu chi, áp qua migrate:forward sau khi web mới lên; khối kiểm đầu M5 chặn nếu còn hàm SQL nào gọi, bề mặt RPC sau khi áp: 0 lệnh gọi mà máy chủ không có). Lý do gỡ: không nút nào gọi; lõi dời sổ phiếu thu đã ghi sổ vẫn ở app_private.move_posted_income_cashbook_v1. KHÔNG được replay file này để \"trả\" hàm về.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20260925083655_dong_duong_cu_sua_phieu.sql:1187",
+          "trich_doan": "DROP FUNCTION IF EXISTS public.move_income_voucher_cashbook_v1(uuid, uuid, text);"
+        },
+        {
+          "duong_dan": "docs/generated/schema-change-evidence/20260925083655_dong_duong_cu_sua_phieu.json",
+          "trich_doan": "bằng chứng lane migrate:forward áp M5 lên production 25/09/2026 (backup 532 bảng trước khi áp)"
+        }
+      ],
+      "raSoatBoi": "Claude Code — đợt 1 sửa phiếu 25/09/2026 (hồ sơ ghi khi regen provenance ngay sau khi áp M5)"
+    },
+    "supabase/migrations/20260802130000_income_cashbook_move_capability.sql": {
+      "sha256": "33e2ba1c46113e1a947bfec667162085282549d34a1d333f7212dab89475761d",
+      "missingObjects": [
+        "function:public.move_income_voucher_cashbook_v1"
+      ],
+      "ketLuan": "da-go-khoi-production-25-09",
+      "lyLe": "Hàm public.move_income_voucher_cashbook_v1 do file này tạo đã CHẠY trên production (manifest provenance xếp file này catalog-proven tới trước lần áp M5), rồi bị GỠ CÓ CHỦ ĐÍCH ngày 25/09/2026 bởi 20260925083655_dong_duong_cu_sua_phieu.sql (đợt 1 sửa phiếu thu chi, áp qua migrate:forward sau khi web mới lên; khối kiểm đầu M5 chặn nếu còn hàm SQL nào gọi, bề mặt RPC sau khi áp: 0 lệnh gọi mà máy chủ không có). Lý do gỡ: không nút nào gọi; lõi dời sổ phiếu thu đã ghi sổ vẫn ở app_private.move_posted_income_cashbook_v1. KHÔNG được replay file này để \"trả\" hàm về.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20260925083655_dong_duong_cu_sua_phieu.sql:1187",
+          "trich_doan": "DROP FUNCTION IF EXISTS public.move_income_voucher_cashbook_v1(uuid, uuid, text);"
+        },
+        {
+          "duong_dan": "docs/generated/schema-change-evidence/20260925083655_dong_duong_cu_sua_phieu.json",
+          "trich_doan": "bằng chứng lane migrate:forward áp M5 lên production 25/09/2026 (backup 532 bảng trước khi áp)"
+        }
+      ],
+      "raSoatBoi": "Claude Code — đợt 1 sửa phiếu 25/09/2026 (hồ sơ ghi khi regen provenance ngay sau khi áp M5)"
+    },
+    "supabase/migrations/20260802160000_income_slice_audit_fixes.sql": {
+      "sha256": "42224a226fb4f6c239c38e5339c5f885126dfa8b15b2b3306d5c1eb38a740319",
+      "missingObjects": [
+        "function:public.move_income_voucher_cashbook_v1"
+      ],
+      "ketLuan": "da-go-khoi-production-25-09",
+      "lyLe": "Hàm public.move_income_voucher_cashbook_v1 do file này tạo đã CHẠY trên production (manifest provenance xếp file này catalog-proven tới trước lần áp M5), rồi bị GỠ CÓ CHỦ ĐÍCH ngày 25/09/2026 bởi 20260925083655_dong_duong_cu_sua_phieu.sql (đợt 1 sửa phiếu thu chi, áp qua migrate:forward sau khi web mới lên; khối kiểm đầu M5 chặn nếu còn hàm SQL nào gọi, bề mặt RPC sau khi áp: 0 lệnh gọi mà máy chủ không có). Lý do gỡ: không nút nào gọi; lõi dời sổ phiếu thu đã ghi sổ vẫn ở app_private.move_posted_income_cashbook_v1. KHÔNG được replay file này để \"trả\" hàm về.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20260925083655_dong_duong_cu_sua_phieu.sql:1187",
+          "trich_doan": "DROP FUNCTION IF EXISTS public.move_income_voucher_cashbook_v1(uuid, uuid, text);"
+        },
+        {
+          "duong_dan": "docs/generated/schema-change-evidence/20260925083655_dong_duong_cu_sua_phieu.json",
+          "trich_doan": "bằng chứng lane migrate:forward áp M5 lên production 25/09/2026 (backup 532 bảng trước khi áp)"
+        }
+      ],
+      "raSoatBoi": "Claude Code — đợt 1 sửa phiếu 25/09/2026 (hồ sơ ghi khi regen provenance ngay sau khi áp M5)"
+    },
+    "supabase/migrations/20260802170000_move_cashbook_allow_invoice_collection.sql": {
+      "sha256": "7cf1894932817dd617c19f54ca3d6914f5c52bf3c8b8e6332e9aefe4c725e436",
+      "missingObjects": [
+        "function:public.move_income_voucher_cashbook_v1"
+      ],
+      "ketLuan": "da-go-khoi-production-25-09",
+      "lyLe": "Hàm public.move_income_voucher_cashbook_v1 do file này tạo đã CHẠY trên production (manifest provenance xếp file này catalog-proven tới trước lần áp M5), rồi bị GỠ CÓ CHỦ ĐÍCH ngày 25/09/2026 bởi 20260925083655_dong_duong_cu_sua_phieu.sql (đợt 1 sửa phiếu thu chi, áp qua migrate:forward sau khi web mới lên; khối kiểm đầu M5 chặn nếu còn hàm SQL nào gọi, bề mặt RPC sau khi áp: 0 lệnh gọi mà máy chủ không có). Lý do gỡ: không nút nào gọi; lõi dời sổ phiếu thu đã ghi sổ vẫn ở app_private.move_posted_income_cashbook_v1. KHÔNG được replay file này để \"trả\" hàm về.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20260925083655_dong_duong_cu_sua_phieu.sql:1187",
+          "trich_doan": "DROP FUNCTION IF EXISTS public.move_income_voucher_cashbook_v1(uuid, uuid, text);"
+        },
+        {
+          "duong_dan": "docs/generated/schema-change-evidence/20260925083655_dong_duong_cu_sua_phieu.json",
+          "trich_doan": "bằng chứng lane migrate:forward áp M5 lên production 25/09/2026 (backup 532 bảng trước khi áp)"
+        }
+      ],
+      "raSoatBoi": "Claude Code — đợt 1 sửa phiếu 25/09/2026 (hồ sơ ghi khi regen provenance ngay sau khi áp M5)"
     }
   }
 }

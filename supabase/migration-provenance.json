@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-09-25T14:51:40.032Z",
+  "generatedAt": "2026-09-25T15:17:45.055Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 605,
-    "unknown": 75,
-    "catalog-proven": 211,
+    "ledger-applied": 606,
+    "unknown": 80,
+    "catalog-proven": 205,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -4661,11 +4661,10 @@
       "name": "accounting_scope_narrowing",
       "scheme": "timestamp14",
       "sha256": "8cd2d8927f7917c92572fc0e8419c59caf1b313bbf5da9652be9426408056e9d",
-      "state": "catalog-proven",
-      "evidence": [
-        "catalog:function:public.record_invoice_payment_v4",
-        "catalog:function:public.record_invoice_payment_v3",
-        "catalog:trigger:public.income_expenses.a00_00_profit_payout_account_guard"
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.update_invoice_payment_method_v1"
       ]
     },
     {
@@ -6453,10 +6452,10 @@
       "name": "ie_meta_write_hardening",
       "scheme": "timestamp14",
       "sha256": "dd1824167e2e57a485474c6f246469fb83e2a232701a3be78c1beaad120744d9",
-      "state": "catalog-proven",
-      "evidence": [
-        "catalog:function:app_private.ie_notes_money_markers_v1",
-        "catalog:function:app_private.assert_notes_markers_unchanged_v1"
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.update_income_expense_quick"
       ]
     },
     {
@@ -7431,9 +7430,10 @@
       "name": "move_income_voucher_cashbook",
       "scheme": "timestamp14",
       "sha256": "3c82e3cbc83ff13df2bf48af87f53ae6af327a273f1644c99db43c3bc744aba8",
-      "state": "catalog-proven",
-      "evidence": [
-        "catalog:function:public.move_income_voucher_cashbook_v1"
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.move_income_voucher_cashbook_v1"
       ]
     },
     {
@@ -7442,9 +7442,10 @@
       "name": "income_cashbook_move_capability",
       "scheme": "timestamp14",
       "sha256": "33e2ba1c46113e1a947bfec667162085282549d34a1d333f7212dab89475761d",
-      "state": "catalog-proven",
-      "evidence": [
-        "catalog:function:public.move_income_voucher_cashbook_v1"
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.move_income_voucher_cashbook_v1"
       ]
     },
     {
@@ -7476,10 +7477,10 @@
       "name": "income_slice_audit_fixes",
       "scheme": "timestamp14",
       "sha256": "42224a226fb4f6c239c38e5339c5f885126dfa8b15b2b3306d5c1eb38a740319",
-      "state": "catalog-proven",
-      "evidence": [
-        "catalog:function:public.cancel_income_voucher_v1",
-        "catalog:function:public.can_cancel_income_voucher_v1"
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.move_income_voucher_cashbook_v1"
       ]
     },
     {
@@ -7499,9 +7500,10 @@
       "name": "move_cashbook_allow_invoice_collection",
       "scheme": "timestamp14",
       "sha256": "7cf1894932817dd617c19f54ca3d6914f5c52bf3c8b8e6332e9aefe4c725e436",
-      "state": "catalog-proven",
-      "evidence": [
-        "catalog:function:public.move_income_voucher_cashbook_v1"
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.move_income_voucher_cashbook_v1"
       ]
     },
     {
@@ -10521,10 +10523,9 @@
       "name": "dong_duong_cu_sua_phieu",
       "scheme": "timestamp14",
       "sha256": "5e88a6c9b9869b0b031de1a29270d07e6b0b045379091372abe79e250004086e",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.assert_receiving_cashbook_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-25T15:17:15.067Z|bien-nhan-backup"
       ]
     },
     {
