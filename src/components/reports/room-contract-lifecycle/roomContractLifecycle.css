@@ -1,0 +1,234 @@
+/* ===== Panel "Vòng đời hợp đồng" — Báo cáo Lợi Nhuận =====
+   Dựng theo mock "Bao cao Loi Nhuan - Vong doi HD.dc.html" (Claude Design).
+   CSS riêng vì panel render qua PORTAL (Radix Dialog) — nằm NGOÀI scope .ph
+   của profitHub.css nên không kế thừa được token ở đó. Mọi class mang tiền tố
+   .rcl để không rò ra phần còn lại của app. */
+
+.rcl-scrim {
+  position: fixed; inset: 0; z-index: 50;
+  background: rgba(10, 47, 34, 0.38);
+}
+.rcl {
+  --rcl-ink: #14231c; --rcl-ink-2: #3f4f47; --rcl-ink-3: #6b7a73; --rcl-ink-4: #8a9992;
+  --rcl-line: #e3e9e5; --rcl-line-3: #eff4f1;
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 51;
+  width: min(760px, 96vw);
+  display: flex; flex-direction: column;
+  background: #f4f7f5; color: var(--rcl-ink);
+  box-shadow: -12px 0 40px rgba(10, 47, 34, 0.18);
+  font-family: "Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", sans-serif;
+  outline: none;
+}
+.rcl *, .rcl *::before, .rcl *::after { box-sizing: border-box; }
+.rcl button { font-family: inherit; }
+
+/* ---------- Hero ---------- */
+.rcl-hero { background: linear-gradient(135deg, #0c3b2a 0%, #0a2f22 100%); padding: 16px 20px; color: #fff; }
+.rcl-hero__top { display: flex; align-items: center; gap: 12px; }
+.rcl-hero__room {
+  width: 38px; height: 38px; border-radius: 10px; flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.1); color: #7fe0b4;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 800; font-size: 13px; overflow: hidden;
+}
+.rcl-hero__titles { flex: 1; min-width: 0; }
+.rcl-hero__title { font-size: 16px; font-weight: 800; letter-spacing: -0.01em; margin: 0; }
+.rcl-hero__sub { font-size: 11.5px; color: rgba(255, 255, 255, 0.55); margin-top: 1px; }
+.rcl-iconbtn {
+  width: 32px; height: 32px; border-radius: 9px; flex-shrink: 0;
+  border: 0; background: rgba(255, 255, 255, 0.1); color: #fff; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.rcl-iconbtn:hover { background: rgba(255, 255, 255, 0.18); }
+.rcl-iconbtn--ghost { background: transparent; border: 1px solid rgba(255, 255, 255, 0.2); }
+.rcl-iconbtn--ghost:hover { background: rgba(255, 255, 255, 0.08); }
+.rcl-iconbtn:focus-visible, .rcl-year button:focus-visible { outline: 2px solid #7fe0b4; outline-offset: 2px; }
+
+.rcl-year {
+  display: flex; align-items: center; flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 9px; overflow: hidden;
+}
+.rcl-year button {
+  padding: 6px 10px; background: transparent; border: 0; cursor: pointer;
+  color: rgba(255, 255, 255, 0.6); display: flex;
+}
+.rcl-year button:first-child { border-right: 1px solid rgba(255, 255, 255, 0.14); }
+.rcl-year button:last-child { border-left: 1px solid rgba(255, 255, 255, 0.14); }
+.rcl-year button:disabled { opacity: 0.35; cursor: default; }
+.rcl-year span { padding: 6px 12px; font-weight: 600; font-size: 12.5px; white-space: nowrap; }
+/* Màn hẹp: bước năm xuống hàng riêng để tiêu đề không bị ép thành cột chữ. */
+@media (max-width: 560px) {
+  .rcl-hero__top { flex-wrap: wrap; }
+  .rcl-year { order: 5; margin-left: 50px; }
+  .rcl-hero { padding: 14px 16px; }
+  .rcl-stack { padding: 14px 12px 24px; }
+}
+
+.rcl-kpis { display: flex; gap: 24px; margin-top: 16px; flex-wrap: wrap; }
+.rcl-kpi__label { font-size: 10.5px; font-weight: 700; letter-spacing: 0.1em; color: rgba(255, 255, 255, 0.55); }
+.rcl-kpi__value { font-size: 20px; font-weight: 800; margin-top: 3px; font-variant-numeric: tabular-nums; }
+.rcl-kpi__sub { font-size: 11px; color: rgba(255, 255, 255, 0.5); margin-top: 2px; white-space: nowrap; }
+
+/* ---------- Thân: cuộn là một khối thường, chồng thẻ bên trong tự cao theo nội dung
+   (thẻ overflow:hidden trong cột flex bị co về 0 — lỗi đã gặp ở mock) ---------- */
+.rcl-scroll { flex: 1 1 0; min-height: 0; overflow-y: auto; display: block; }
+.rcl-stack {
+  padding: 16px 20px 28px;
+  display: grid; grid-template-columns: minmax(0, 1fr); grid-auto-rows: max-content;
+  align-items: start; gap: 14px;
+}
+
+.rcl-card { background: #fff; border: 1px solid var(--rcl-line); border-radius: 12px; overflow: hidden; }
+.rcl-card--pad { padding: 16px 18px; overflow: visible; }
+.rcl-card__head {
+  display: flex; align-items: center; gap: 8px; padding: 12px 16px;
+  border-bottom: 1px solid var(--rcl-line-3);
+}
+.rcl-card__head--tl { padding: 12px 16px 4px; border-bottom: 0; flex-wrap: wrap; }
+.rcl-h { font-size: 13.5px; font-weight: 700; }
+.rcl-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rcl-pill {
+  font-size: 11px; font-weight: 600; border-radius: 999px; padding: 2px 8px;
+  color: #0e5c38; background: #dff3e9; white-space: nowrap; flex-shrink: 0;
+}
+.rcl-badge {
+  font-size: 10.5px; font-weight: 700; border-radius: 999px; padding: 2px 8px;
+  white-space: nowrap; flex-shrink: 0;
+}
+.rcl-code { font-size: 11px; color: var(--rcl-ink-4); font-family: ui-monospace, Menlo, Consolas, monospace; white-space: nowrap; flex-shrink: 0; }
+.rcl-cap { font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; color: var(--rcl-ink-4); }
+.rcl-muted { color: var(--rcl-ink-4); }
+.rcl-nowrap { white-space: nowrap; flex-shrink: 0; }
+
+.rcl-empty { font-size: 12.5px; color: var(--rcl-ink-4); padding: 28px; text-align: center; }
+.rcl-empty--card { background: #fff; border: 1px solid var(--rcl-line); border-radius: 12px; }
+.rcl-alert {
+  display: flex; align-items: center; gap: 10px; justify-content: space-between;
+  font-size: 12.5px; font-weight: 600; color: #b91c1c; background: #fdecec;
+  border: 1px solid #f5c8c8; border-radius: 10px; padding: 10px 12px;
+}
+.rcl-alert button {
+  border: 1px solid #f0b9b9; background: #fff; color: #b91c1c; border-radius: 7px;
+  padding: 4px 10px; font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.rcl-note {
+  font-size: 11.5px; color: #92400e; background: #fef6de; border: 1px solid #f0d79a;
+  border-radius: 8px; padding: 7px 10px;
+}
+
+/* ---------- Dòng thời gian năm ---------- */
+.rcl-legend {
+  margin-left: auto; display: flex; gap: 6px 12px; flex-wrap: wrap; justify-content: flex-end;
+  font-size: 11px; color: var(--rcl-ink-3);
+}
+.rcl-legend span { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+.rcl-legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.rcl-hatch { background: repeating-linear-gradient(45deg, #fdebc8 0 3px, #fef6de 3px 6px); }
+
+.rcl-tl { padding: 10px 16px 16px; }
+.rcl-tl__months {
+  display: grid; grid-template-columns: repeat(12, 1fr);
+  font-size: 10px; color: var(--rcl-ink-4); font-weight: 600;
+  border-bottom: 1px solid var(--rcl-line-3); padding-bottom: 5px;
+}
+.rcl-tl__months div { text-align: center; }
+.rcl-tl__area { position: relative; margin-top: 8px; }
+.rcl-tl__grid {
+  position: absolute; inset: 0; pointer-events: none;
+  display: grid; grid-template-columns: repeat(12, 1fr);
+}
+.rcl-tl__grid div { border-left: 1px dashed var(--rcl-line-3); }
+.rcl-tl__track { position: relative; height: 34px; border-radius: 6px; }
+.rcl-tl__bar {
+  position: absolute; top: 0; bottom: 0;
+  border: 2px solid #fff; border-radius: 6px; padding: 0 8px;
+  font-size: 11px; font-weight: 700; text-align: left;
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis; cursor: pointer;
+}
+.rcl-tl__bar:hover, .rcl-tl__bar:focus-visible { filter: brightness(0.95); box-shadow: 0 0 0 2px #0e5c38; outline: none; }
+.rcl-tl__today { position: absolute; top: -6px; bottom: -6px; width: 2px; background: #dc2626; pointer-events: none; }
+.rcl-tl__todaylbl { position: relative; height: 14px; }
+.rcl-tl__todaylbl span {
+  position: absolute; top: 4px; transform: translateX(-50%);
+  font-size: 9.5px; font-weight: 700; color: #dc2626; white-space: nowrap;
+}
+
+/* ---------- Danh sách hợp đồng ---------- */
+.rcl-listhead { display: flex; align-items: center; gap: 8px; }
+.rcl-listhead .rcl-h { white-space: nowrap; }
+.rcl-listhead__hint {
+  margin-left: auto; min-width: 0; font-size: 11px; color: var(--rcl-ink-4);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.rcl-gap { display: flex; align-items: center; gap: 10px; padding: 0 16px; font-size: 11.5px; color: #92400e; }
+.rcl-gap i { flex: 1; height: 1px; background: repeating-linear-gradient(90deg, #f0d79a 0 4px, transparent 4px 8px); }
+.rcl-gap span { background: #fef6de; border: 1px solid #f0d79a; border-radius: 999px; padding: 2px 10px; font-weight: 600; text-align: center; }
+
+.rcl-contract {
+  width: 100%; text-align: left; cursor: pointer;
+  background: #fff; border: 1px solid var(--rcl-line); border-radius: 12px; padding: 14px 16px;
+  display: grid; grid-template-columns: 4px minmax(0, 1fr) auto; gap: 14px; align-items: stretch;
+  color: inherit;
+}
+.rcl-contract:hover, .rcl-contract:focus-visible {
+  border-color: #9fd8bb; box-shadow: 0 2px 10px rgba(14, 92, 56, 0.08); outline: none;
+}
+.rcl-contract__bar { border-radius: 4px; }
+.rcl-contract__main { min-width: 0; }
+.rcl-contract__tenant { font-size: 13.5px; font-weight: 700; }
+.rcl-dates {
+  display: flex; align-items: center; gap: 8px; margin-top: 8px;
+  font-size: 12px; color: var(--rcl-ink-2); font-variant-numeric: tabular-nums;
+}
+.rcl-dates > span { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+.rcl-dates svg { flex-shrink: 0; }
+.rcl-dates__line { flex: 1; max-width: 120px; height: 2px; background: #dce3df; border-radius: 2px; }
+.rcl-reason { font-size: 11.5px; font-weight: 600; margin-top: 6px; }
+.rcl-meta { font-size: 11.5px; color: var(--rcl-ink-4); margin-top: 4px; }
+.rcl-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.rcl-chips span { font-size: 11px; font-weight: 600; border-radius: 6px; padding: 3px 8px; }
+.rcl-contract__side {
+  text-align: right; display: flex; flex-direction: column;
+  justify-content: space-between; align-items: flex-end; gap: 6px;
+}
+.rcl-contract__paid { font-size: 15px; font-weight: 800; color: #047857; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rcl-more { font-size: 11.5px; font-weight: 600; color: #198653; display: flex; align-items: center; gap: 3px; }
+
+/* ---------- Chi tiết ---------- */
+.rcl-progress-text { margin-left: auto; font-size: 11.5px; color: var(--rcl-ink-3); }
+.rcl-reasonbox { margin-top: 10px; font-size: 12px; font-weight: 600; border-radius: 8px; padding: 8px 11px; }
+.rcl-term { display: flex; justify-content: space-between; margin-top: 14px; }
+.rcl-term__v { font-size: 14px; font-weight: 700; margin-top: 2px; }
+.rcl-progress { position: relative; height: 10px; border-radius: 999px; background: #eff3f0; margin-top: 10px; overflow: hidden; }
+.rcl-progress div { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px; }
+.rcl-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 16px; }
+@media (max-width: 640px) { .rcl-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.rcl-tile { border: 1px solid var(--rcl-line); border-radius: 10px; padding: 10px 12px; min-width: 0; }
+.rcl-tile__l { font-size: 11px; color: var(--rcl-ink-4); }
+.rcl-tile__v { font-size: 13.5px; font-weight: 700; margin-top: 2px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.rcl-tile__s { font-size: 10.5px; color: var(--rcl-ink-4); margin-top: 1px; }
+
+.rcl-summary { margin: 12px 16px 0; font-size: 12px; font-weight: 600; border-radius: 8px; padding: 8px 11px; }
+.rcl-bal { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; padding: 12px 16px 16px; }
+.rcl-bal__box { border: 1px solid var(--rcl-line); border-radius: 10px; padding: 10px 12px; }
+.rcl-bal__row {
+  display: flex; justify-content: space-between; gap: 10px;
+  padding: 6px 0 0; margin-top: 4px; border-top: 1px solid transparent; font-size: 12px;
+}
+.rcl-bal__row span:first-child { color: var(--rcl-ink-2); }
+.rcl-bal__row span:last-child { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rcl-bal__row--strong { border-top-color: var(--rcl-line); }
+.rcl-bal__row--strong span:last-child { font-weight: 800; }
+
+.rcl-events { padding: 8px 16px 14px; }
+.rcl-ev { display: grid; grid-template-columns: 78px 22px minmax(0, 1fr) auto; gap: 10px; align-items: start; }
+.rcl-ev__date { font-size: 11.5px; color: var(--rcl-ink-3); padding-top: 10px; text-align: right; font-variant-numeric: tabular-nums; }
+.rcl-ev__rail { display: flex; flex-direction: column; align-items: center; align-self: stretch; }
+.rcl-ev__rail > div:not(.rcl-ev__dot) { width: 2px; }
+.rcl-ev__dot { width: 12px; height: 12px; border-radius: 50%; border: 2px solid #fff; flex-shrink: 0; }
+.rcl-ev__main { padding: 7px 0 10px; min-width: 0; }
+.rcl-ev__title { font-size: 13px; }
+.rcl-ev__sub { font-size: 11.5px; color: var(--rcl-ink-4); margin-top: 1px; }
+.rcl-ev__amt { padding-top: 7px; text-align: right; white-space: nowrap; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.rcl-ev__note { font-size: 11px; font-weight: 600; }
