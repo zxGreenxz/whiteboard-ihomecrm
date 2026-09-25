@@ -277,7 +277,7 @@ chết), danh sách/chi tiết Thu chi (phiếu thu hoá đơn). Khoản thu ki�
 | Sửa trục tiền thiếu lý do | "Đổi số tiền, hạng mục, loại, sổ quỹ hoặc toà phải ghi lý do (ít nhất 8 ký tự)." |
 | Sửa chen giữa | "Phiếu vừa được người khác sửa — tải lại để xem thay đổi." |
 | Tháng đã chốt | "[PROFIT_LOCKED] Tháng MM/YYYY của toà X đã chốt lợi nhuận — mọi phiếu của tháng này bị khoá, không … được. Nhờ chủ công ty mở khoá tháng." |
-| Chưa cài sổ | "Toà X chưa cài sổ nhận tiền cho hình thức Chuyển khoản." / "Người thu chưa có sổ tiền mặt riêng — nhờ chủ công ty cài ở Sổ nhận tiền." |
+| Không còn sổ để chọn | Giao diện: "Người thu chưa dùng được sổ nhận Chuyển khoản nào của toà X: toà chưa cài sổ, hoặc người thu chưa được giao giữ/biết sổ đó — nhờ chủ công ty kiểm ở Sổ quỹ → Sổ nhận tiền." (sửa 25/09 sau khi kiểm production: danh sách rỗng còn do người thu không giữ/biết sổ, "toà chưa cài" là đổ sai chỗ) / "Người thu chưa có sổ tiền mặt riêng — nhờ chủ công ty cài ở Sổ nhận tiền." Câu máy chủ vẫn là "Toà X chưa cài sổ nhận tiền cho hình thức …" (đợt 2 sửa cùng). |
 | Sổ ngoài danh sách | "Sổ … không nằm trong danh sách sổ nhận tiền <hình thức> của toà X." |
 | Có tiền thối | "Khoản thu có tiền thối nên không đổi hình thức được." |
 | Chốt còn phiếu chờ duyệt | "Còn N phiếu chờ duyệt trong tháng MM/YYYY: … — duyệt hoặc huỷ trước khi chốt." |
@@ -326,3 +326,11 @@ chết), danh sách/chi tiết Thu chi (phiếu thu hoá đơn). Khoản thu ki�
   phải người thu ⇒ nhân viên KHÔNG tự hoàn tác được khoản mình thu (chỉ chủ/super admin). Đo prod: 109 khoản thu
   còn hiệu lực có người thu khác `user_id` phiếu. Sửa đúng là so `invoice_payment_collections.actor_id` (như hàm
   đổi hình thức thu đã làm) — hàm tiền lớn, cần chủ chốt.
+- **Câu máy chủ khi không còn sổ nhận** (`change_collection_tender_method_v1`,
+  `app_private.assert_receiving_cashbook_v1`) vẫn nói "Toà X chưa cài sổ nhận tiền…" cả khi toà ĐÃ cài nhưng người
+  thu không giữ/biết sổ đó (kiểm production 25/09: tài khoản chủ công ty ở 102LVT). Giao diện đã chặn trước với
+  câu nêu đủ hai nguyên nhân; muốn máy chủ nói đúng thì `get_receiving_cashbooks_v1` trả thêm số sổ toà đã cài
+  (chưa lọc theo người thu) và hai hàm trên rẽ câu theo đó — cần migration mới.
+- Các writer cũ còn dùng SQLSTATE `40001` cho lỗi "phiên bản cũ" (vd bộ flex) — PostgREST tự chạy lại giao dịch
+  40001 mãi (treo tới 504, giữ khoá). Rà và đổi sang `PT409` như revise/duyệt.
+- Copilot duyệt phiếu chưa gửi `approval_version` (không so phiên bản như nút Duyệt trên web).

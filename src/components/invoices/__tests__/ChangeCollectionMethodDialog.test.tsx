@@ -159,7 +159,12 @@ describe('ChangeCollectionMethodDialog', () => {
   it('hình thức chưa có sổ: báo câu hướng dẫn, không cho đổi', () => {
     renderDialog();
     fireEvent.click(screen.getByRole('radio', { name: 'Thanh toán' }));
-    expect(screen.getByText('Toà 403PVB chưa cài sổ nhận tiền cho hình thức Thanh toán.')).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Người thu chưa dùng được sổ nhận Thanh toán nào của toà 403PVB: toà chưa cài sổ, ' +
+          'hoặc người thu chưa được giao giữ/biết sổ đó — nhờ chủ công ty kiểm ở Sổ quỹ → Sổ nhận tiền.',
+      ),
+    ).toBeTruthy();
     fireEvent.change(oLyDo(), { target: { value: 'Khách thanh toán qua cổng' } });
     expect(nutDoi().disabled).toBe(true);
   });

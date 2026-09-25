@@ -98,7 +98,10 @@ describe('useQuickCollect — sổ nhận theo hình thức (máy chủ quyết)
     const { result } = renderHook(() => useQuickCollect({ invoice }));
     await expect(
       result.current.collect({ invoice, lines: [{ method: 'TT', amount: 1_000_000 }] }),
-    ).rejects.toThrow('Toà 403PVB chưa cài sổ nhận tiền cho hình thức Thanh toán.');
+    ).rejects.toThrow(
+      'Người thu chưa dùng được sổ nhận Thanh toán nào của toà 403PVB: toà chưa cài sổ, ' +
+        'hoặc người thu chưa được giao giữ/biết sổ đó — nhờ chủ công ty kiểm ở Sổ quỹ → Sổ nhận tiền.',
+    );
     expect(mock.mutateAsync).not.toHaveBeenCalled();
   });
 

@@ -17,6 +17,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ImagePlus, Plus, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useClipboardImagePaste } from '@/hooks/useClipboardImagePaste';
+import { missingReceivingBookMessage } from '@/hooks/useReceivingCashbooks';
 import { validateReceiptFile } from '@/lib/receiptUpload';
 import { fmtFull, fmtShort, todayISO } from '@/lib/collect';
 import { deriveOverpayPolicy, planCollect, type CollectMethod } from '@/lib/collectPlan';
@@ -79,10 +80,7 @@ interface Props {
 
 const ALL: CollectMethod[] = ['TM', 'TK', 'TT'];
 
-const MAC_DINH_THIEU_SO = (method: CollectMethod) =>
-  method === 'TM'
-    ? 'Người thu chưa có sổ tiền mặt riêng — nhờ chủ công ty cài ở Sổ nhận tiền.'
-    : `Toà này chưa cài sổ nhận tiền cho hình thức ${method === 'TK' ? 'Chuyển khoản' : 'Thanh toán'}.`;
+const MAC_DINH_THIEU_SO = (method: CollectMethod) => missingReceivingBookMessage(method);
 
 export function CollectPayForm({
   remaining,

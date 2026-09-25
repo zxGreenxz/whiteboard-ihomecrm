@@ -86,7 +86,9 @@ it('chuyển khoản ở toà chưa cài sổ: chặn, báo câu hướng dẫn,
   fireEvent.click(screen.getByRole('button', { name: /Ghi nhận 1 thanh toán/ }));
   await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith(expect.objectContaining({
     title: 'Thiếu sổ nhận tiền',
-    description: 'Toà DEMO chưa cài sổ nhận tiền cho hình thức Chuyển khoản.',
+    description:
+      'Người thu chưa dùng được sổ nhận Chuyển khoản nào của toà DEMO: toà chưa cài sổ, ' +
+      'hoặc người thu chưa được giao giữ/biết sổ đó — nhờ chủ công ty kiểm ở Sổ quỹ → Sổ nhận tiền.',
   })));
   expect(mocks.ghi).not.toHaveBeenCalled();
 });

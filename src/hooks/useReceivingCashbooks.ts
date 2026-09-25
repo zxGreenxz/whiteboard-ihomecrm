@@ -39,11 +39,21 @@ export function defaultReceivingBookId(data: ReceivingCashbooks | undefined, met
   return receivingBooksFor(data, method)[0]?.id ?? null;
 }
 
-/** Câu báo khi hình thức chưa có sổ nào (máy chủ cũng chặn với câu tương tự). */
+/**
+ * Câu báo khi hình thức không còn sổ nào để chọn (máy chủ cũng chặn).
+ *
+ * TK/TT rỗng có HAI nguyên nhân mà danh sách máy chủ trả về không phân biệt được:
+ * toà chưa cài sổ, HOẶC người thu không giữ/biết sổ nào trong danh sách của toà
+ * (đo production 25/09: tài khoản chủ công ty không giữ sổ nào nên 102LVT đã cài
+ * MBHIEP vẫn ra rỗng). Câu phải nêu cả hai, đừng đổ cho "toà chưa cài".
+ */
 export function missingReceivingBookMessage(method: ReceivingMethod, buildingName?: string | null): string {
   if (method === "TM") return "Người thu chưa có sổ tiền mặt riêng — nhờ chủ công ty cài ở Sổ nhận tiền.";
   const ht = method === "TK" ? "Chuyển khoản" : "Thanh toán";
-  return `Toà ${buildingName || "này"} chưa cài sổ nhận tiền cho hình thức ${ht}.`;
+  return (
+    `Người thu chưa dùng được sổ nhận ${ht} nào của toà ${buildingName || "này"}: toà chưa cài sổ, ` +
+    `hoặc người thu chưa được giao giữ/biết sổ đó — nhờ chủ công ty kiểm ở Sổ quỹ → Sổ nhận tiền.`
+  );
 }
 
 export function useReceivingCashbooks(
