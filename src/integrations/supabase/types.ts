@@ -5952,6 +5952,83 @@ export type Database = {
           },
         ]
       }
+      income_expense_revisions: {
+        Row: {
+          actor_id: string
+          actor_name: string
+          after_snapshot: Json
+          before_snapshot: Json
+          changed_fields: string[]
+          created_at: string
+          id: string
+          idempotency_key: string | null
+          income_expense_id: string
+          kind: string
+          organization_id: string
+          reason: string | null
+          revision_no: number
+        }
+        Insert: {
+          actor_id: string
+          actor_name: string
+          after_snapshot: Json
+          before_snapshot: Json
+          changed_fields: string[]
+          created_at?: string
+          id?: string
+          idempotency_key?: string | null
+          income_expense_id: string
+          kind: string
+          organization_id: string
+          reason?: string | null
+          revision_no: number
+        }
+        Update: {
+          actor_id?: string
+          actor_name?: string
+          after_snapshot?: Json
+          before_snapshot?: Json
+          changed_fields?: string[]
+          created_at?: string
+          id?: string
+          idempotency_key?: string | null
+          income_expense_id?: string
+          kind?: string
+          organization_id?: string
+          reason?: string | null
+          revision_no?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "income_expense_revisions_income_expense_id_fkey"
+            columns: ["income_expense_id"]
+            isOneToOne: false
+            referencedRelation: "income_expenses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "income_expense_revisions_income_expense_id_fkey"
+            columns: ["income_expense_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_pnl_cash_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "income_expense_revisions_income_expense_id_fkey"
+            columns: ["income_expense_id"]
+            isOneToOne: false
+            referencedRelation: "legacy_payment_receipt_semantics"
+            referencedColumns: ["voucher_id"]
+          },
+          {
+            foreignKeyName: "income_expense_revisions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       income_expense_supplements: {
         Row: {
           actor_id: string
@@ -18886,6 +18963,10 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      approve_pending_income_expense_checked_v1: {
+        Args: { p_expected_approval_version: number; p_voucher: string }
+        Returns: Json
+      }
       approve_voucher: { Args: { voucher_id: string }; Returns: undefined }
       archive_cashbook_v1: { Args: { p_cashbook_id: string }; Returns: Json }
       attach_payment_receipt_v1: {
@@ -19477,6 +19558,16 @@ export type Database = {
           expense: number
           income: number
         }[]
+      }
+      change_collection_tender_method_v1: {
+        Args: {
+          p_idempotency_key?: string
+          p_new_account_id?: string
+          p_new_method: string
+          p_reason?: string
+          p_tender_id: string
+        }
+        Returns: Json
       }
       check_voucher_period_open_v1: {
         Args: { p_ids: string[] }
@@ -21415,6 +21506,14 @@ export type Database = {
         Args: { p_contract_id: string }
         Returns: Json
       }
+      get_receiving_cashbooks_v1: {
+        Args: {
+          p_building_id?: string
+          p_collector_user_id?: string
+          p_organization_id: string
+        }
+        Returns: Json
+      }
       get_refund_forfeit_summary: {
         Args: { p_building_ids?: string[] }
         Returns: Json
@@ -21805,6 +21904,10 @@ export type Database = {
       }
       list_organization_members_v1: { Args: never; Returns: Json }
       list_organization_roles_v1: { Args: never; Returns: Json }
+      list_receiving_cashbook_settings_v1: {
+        Args: { p_organization_id: string }
+        Returns: Json
+      }
       lock_cashbook_period_v1: {
         Args: { p_cashbook_id: string; p_lock_date: string; p_unlock?: boolean }
         Returns: Json
@@ -23057,6 +23160,17 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      revise_pending_income_expense_v1: {
+        Args: {
+          p_expected_approval_version: number
+          p_idempotency_key?: string
+          p_items?: Json
+          p_patch: Json
+          p_reason?: string
+          p_voucher: string
+        }
+        Returns: Json
+      }
       revoke_organization_invitation_v1: {
         Args: { p_invitation: string }
         Returns: Json
@@ -23127,6 +23241,15 @@ export type Database = {
         Returns: undefined
       }
       seed_default_settings: { Args: { p_user_id: string }; Returns: undefined }
+      set_building_receiving_cashbooks_v1: {
+        Args: {
+          p_building_id: string
+          p_default_account_id: string
+          p_extra_account_ids: string[]
+          p_method: string
+        }
+        Returns: Json
+      }
       set_cashbook_access_v2: {
         Args: {
           p_cashbook_id: string
@@ -23241,6 +23364,10 @@ export type Database = {
       }
       set_notification_org_config_v1: {
         Args: { p_events?: Json; p_quiet_end?: number; p_quiet_start?: number }
+        Returns: Json
+      }
+      set_personal_cash_book_v1: {
+        Args: { p_account_id: string; p_membership_id: string }
         Returns: Json
       }
       set_reservation_hold_deadline_v1: {
