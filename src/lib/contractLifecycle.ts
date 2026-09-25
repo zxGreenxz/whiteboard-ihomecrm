@@ -716,6 +716,13 @@ export interface Lane {
   deposit: DepositFigures | null;
   /** Cọc chốt tại quyết toán — snapshot riêng. */
   settlementDeposit: number | null;
+  /**
+   * Tiền thuê / phí theo hoá đơn hiệu lực (đã thu, còn nợ). `null` = chưa đọc
+   * được hoá đơn, KHÁC HẲN số 0. Cùng nguồn với mốc "Tiền thuê / phí đã đóng".
+   */
+  invoice: InvoiceTotals | null;
+  /** Bản ghi thanh lý HIỆU LỰC mới nhất (APPROVED/COMPLETED), hoặc null. */
+  termination: TerminationRow | null;
   /** Trạng thái độc lập với ngày/audit: dữ liệu cũ có thể thiếu ngày thanh lý. */
   isTerminated: boolean;
   terminatedAt: string | null;
@@ -929,6 +936,8 @@ export function buildLifecycleLanes(input: LaneInput): LifecycleView {
       }),
       deposit: coc,
       settlementDeposit: t?.total_deposit ?? null,
+      invoice: hoaDon,
+      termination: t,
       isTerminated: daThanhLy,
       terminatedAt: daThanhLy ? t?.termination_date ?? c.actual_end_date ?? null : null,
       segment: x.fromDate === null && x.toDate === null && x.diagnostics.includes('SEGMENT_MISSING_FOR_TARGET')

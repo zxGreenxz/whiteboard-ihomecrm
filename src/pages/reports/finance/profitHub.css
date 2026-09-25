@@ -267,6 +267,7 @@ button.ph-chip:hover { filter: brightness(1.12); }
 .ph-legend__title { font-weight: 600; }
 .ph-legend__item { display: flex; align-items: center; gap: 5px; }
 .ph-legend__sw { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.ph-legend__hint { margin-left: auto; color: var(--ph-green-d); font-weight: 600; }
 
 /* ---------- Thẻ trắng ---------- */
 .ph-card { background: #fff; border: 1px solid var(--ph-line); border-radius: 12px; overflow: hidden; }
@@ -353,6 +354,9 @@ button.ph-chip:hover { filter: brightness(1.12); }
 .is-missing-expense .ph-tag { background: #fef3c7; border-color: #f1d48a; color: var(--ph-amber-d); }
 .is-first-due .ph-tag { background: #fbe3e9; border-color: #f6cbd6; color: #9f1239; }
 .is-prorate .ph-tag { background: #e2f3e8; border-color: #c8e8d3; color: var(--ph-green-d); }
+/* Ô số phòng cột Thu là NÚT mở panel vòng đời hợp đồng. */
+.ph-tag--btn { padding: 0; font-family: inherit; cursor: pointer; }
+.ph-tag--btn:hover, .ph-tag--btn:focus-visible { box-shadow: 0 0 0 2px var(--ph-green); color: var(--ph-green-d); outline: none; }
 
 .ph-row__main { min-width: 0; }
 .ph-row__desc { font-size: 13px; font-weight: 600; color: var(--ph-ink); }

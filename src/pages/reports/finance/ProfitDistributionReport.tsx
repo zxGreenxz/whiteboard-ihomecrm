@@ -1,5 +1,5 @@
-import { useCallback, useState, useMemo, type ReactNode } from "react";
-import { ChevronLeft, ChevronRight, LayoutGrid, Plus, Settings2 } from "lucide-react";
+import { lazy, Suspense, useCallback, useState, useMemo, type ReactNode } from "react";
+import { ChevronLeft, ChevronRight, LayoutGrid, MousePointerClick, Plus, Settings2 } from "lucide-react";
 import { usePhoneViewport } from "@/hooks/use-mobile";
 import { ProfitHubSlot } from "@/pages/reports/finance/ProfitHubShell";
 import { useFaMonthlyPnl } from "@/hooks/useFinancialAnalysis";
@@ -48,6 +48,11 @@ import {
 } from "@/components/ui/popover";
 import { format, startOfMonth, endOfMonth, addMonths } from "date-fns";
 import { formatCurrency } from "@/lib/utils";
+
+// Panel "Vòng đời hợp đồng" (bấm số phòng cột Thu) — chỉ tải khi mở.
+const RoomContractLifecycleDrawer = lazy(
+  () => import("@/components/reports/room-contract-lifecycle/RoomContractLifecycleDrawer")
+);
 
 
 // Số tiền gọn cho dòng phụ "hoá đơn tháng đầu" (không ký hiệu ₫ rườm rà).
@@ -678,6 +683,8 @@ function ProfitDistributionDesktop() {
   const [expensePrefill, setExpensePrefill] = useState<IncomeExpensePrefill | undefined>();
   // Dialog cài đặt cảnh báo thiếu phiếu chi theo toà (nút bánh răng header Chi).
   const [missingCfgOpen, setMissingCfgOpen] = useState(false);
+  // Bấm SỐ PHÒNG ở cột Thu → panel vòng đời hợp đồng của phòng trong năm báo cáo.
+  const [lifecycleRoom, setLifecycleRoom] = useState<{ id: string; name: string } | null>(null);
   // Nút + ở header Khoản chi: prefill toà (khi lọc đúng 1 toà thật) + kỳ.
   const openCreateExpense = () => {
     setExpensePrefill({
@@ -939,14 +946,28 @@ function ProfitDistributionDesktop() {
                         : undefined
                   }
                 >
-                  {hasTag && (
-                    <div
-                      className={`ph-tag${side === "expense" ? " ph-tag--code" : ""}`}
-                      title={side === "income" ? r.roomName ?? "—" : r.typeName}
-                    >
-                      {side === "income" ? r.roomName ?? "—" : typeCode(r.typeName)}
-                    </div>
-                  )}
+                  {hasTag &&
+                    (side === "income" && r.roomId ? (
+                      <button
+                        type="button"
+                        className="ph-tag ph-tag--btn"
+                        title={`Xem vòng đời hợp đồng phòng ${r.roomName ?? ""} năm ${yyyy}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setLifecycleRoom({ id: r.roomId!, name: r.roomName ?? "—" });
+                        }}
+                        onDoubleClick={(e) => e.stopPropagation()}
+                      >
+                        {r.roomName ?? "—"}
+                      </button>
+                    ) : (
+                      <div
+                        className={`ph-tag${side === "expense" ? " ph-tag--code" : ""}`}
+                        title={side === "income" ? r.roomName ?? "—" : r.typeName}
+                      >
+                        {side === "income" ? r.roomName ?? "—" : typeCode(r.typeName)}
+                      </div>
+                    ))}
 
                   <div className="ph-row__main">
                     <div className="ph-row__desc">
@@ -1370,6 +1391,12 @@ function ProfitDistributionDesktop() {
             <span className="ph-legend__sw" style={{ background: "#F1FAF4", border: "1px solid #C8E8D3" }} />
             HĐ không đủ ngày / đã đủ
           </span>
+          {showThu && (
+            <span className="ph-legend__item ph-legend__hint">
+              <MousePointerClick className="h-4 w-4" />
+              Bấm số phòng để xem vòng đời hợp đồng
+            </span>
+          )}
         </div>
 
         {/* Sổ 2 cột: Thu | Chi */}
@@ -1487,6 +1514,18 @@ function ProfitDistributionDesktop() {
         defaultType="EXPENSE"
         defaultPrefill={expensePrefill}
       />
+
+      {lifecycleRoom && (
+        <Suspense fallback={null}>
+          <RoomContractLifecycleDrawer
+            key={lifecycleRoom.id}
+            roomId={lifecycleRoom.id}
+            roomName={lifecycleRoom.name}
+            initialYear={yyyy || now.getFullYear()}
+            onClose={() => setLifecycleRoom(null)}
+          />
+        </Suspense>
+      )}
 
       {/* Bánh răng header Chi → tắt/bật cảnh báo "chưa có phiếu" theo toà */}
       <MissingExpenseSettingsDialog
