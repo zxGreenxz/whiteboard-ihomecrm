@@ -714,49 +714,8 @@
       ],
       "anhHuongThat": "Không còn tính năng nào dùng: nút \"Đồng bộ dữ liệu mới nhất\" của org TEST cũ đã gỡ khỏi OrganizationPage.tsx cùng hook useCloneOrgSync.ts (23/09/2026). Nút đồng bộ mới trỏ tới workflow .github/workflows/test-env-sync.yml của môi trường TEST riêng."
     },
-    "supabase/migrations/20260925072852_ma_phieu_duy_nhat.sql": {
-      "sha256": "73a33661a70063c59e347accd6d8d2c87c0dd9919a8f088d201adc0adaf5ecd9",
-      "missingObjects": [
-        "table:app_private.voucher_code_counters",
-        "function:app_private.next_voucher_code_v1",
-        "index:public.income_expenses_org_code_duy_nhat"
-      ],
-      "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "File TẠO 25/09/2026 (đợt 1 sửa phiếu thu chi), CHƯA apply production — object vắng mặt vì migration chưa chạy. Đã chạy trên môi trường TEST (ihomecrm-test, bản sao production) hai lượt liên tiếp trong ROLLBACK rồi mới ghi; kiểm hành vi bằng kịch bản SQL trên TEST. Mã phiếu thu/chi đếm chung cả tổ chức (bảng voucher_code_counters + hàm cấp số next_voucher_code_v1), chỉ mục duy nhất (organization_id, code) cho phiếu mới; không đổi mã phiếu cũ.",
-      "bangChung": [
-        {
-          "duong_dan": "supabase/migrations/20260925072852_ma_phieu_duy_nhat.sql",
-          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.next_voucher_code_v1(p_org uuid, p_type text)"
-        },
-        {
-          "duong_dan": "docs/superpowers/specs/2026-09-25-sua-phieu-thu-chi-dot-1-design.md",
-          "trich_doan": "Đợt 1 sửa phiếu thu chi — chủ chốt 25/09/2026; thứ tự triển khai: áp M1–M4, lên web mới, rồi áp M5."
-        }
-      ]
-    },
-    "supabase/migrations/20260925073251_khoa_thang_loi_nhuan_tuyet_doi.sql": {
-      "sha256": "150d586a3c7d754756a689698bf2079cc4655a783d4be6efcd24a2f0f17b979a",
-      "missingObjects": [
-        "function:app_private.profit_month_locked_v1",
-        "function:app_private.assert_profit_month_open_v2",
-        "function:app_private.guard_profit_month_lock_pending_v1",
-        "trigger:public.profit_monthly.a10_profit_month_lock_requires_no_pending"
-      ],
-      "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "File TẠO 25/09/2026 (đợt 1 sửa phiếu thu chi), CHƯA apply production — object vắng mặt vì migration chưa chạy. Đã chạy trên môi trường TEST (ihomecrm-test, bản sao production) hai lượt liên tiếp trong ROLLBACK rồi mới ghi; kiểm hành vi bằng kịch bản SQL trên TEST. Khoá tháng lợi nhuận tuyệt đối theo ngày phiếu cho mọi người; không cho chốt tháng khi còn phiếu Chờ duyệt (trigger a10 trên profit_monthly).",
-      "bangChung": [
-        {
-          "duong_dan": "supabase/migrations/20260925073251_khoa_thang_loi_nhuan_tuyet_doi.sql",
-          "trich_doan": "CREATE TRIGGER a10_profit_month_lock_requires_no_pending"
-        },
-        {
-          "duong_dan": "docs/superpowers/specs/2026-09-25-sua-phieu-thu-chi-dot-1-design.md",
-          "trich_doan": "Đợt 1 sửa phiếu thu chi — chủ chốt 25/09/2026; thứ tự triển khai: áp M1–M4, lên web mới, rồi áp M5."
-        }
-      ]
-    },
     "supabase/migrations/20260925080906_sua_phieu_cho_duyet.sql": {
-      "sha256": "36b4e0c6435efd37e4882f077eea586bd0c48d5f2794a10a99305860f79a2784",
+      "sha256": "737cfdefad46b32fa1b27d18fd456e56be4a3084982cb6e10281f243dfa6207a",
       "missingObjects": [
         "table:public.income_expense_revisions",
         "function:app_private.ie_revision_immutable_v1",

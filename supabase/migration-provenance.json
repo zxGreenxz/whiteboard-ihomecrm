@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-09-25T14:24:36.251Z",
+  "generatedAt": "2026-09-25T14:41:41.420Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 601,
-    "unknown": 79,
+    "ledger-applied": 603,
+    "unknown": 77,
     "catalog-proven": 211,
     "superseded": 15
   },
@@ -10477,12 +10477,9 @@
       "name": "ma_phieu_duy_nhat",
       "scheme": "timestamp14",
       "sha256": "73a33661a70063c59e347accd6d8d2c87c0dd9919a8f088d201adc0adaf5ecd9",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "table:app_private.voucher_code_counters",
-        "function:app_private.next_voucher_code_v1",
-        "index:public.income_expenses_org_code_duy_nhat"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-25T14:33:14.002Z|bien-nhan-backup"
       ]
     },
     {
@@ -10491,13 +10488,9 @@
       "name": "khoa_thang_loi_nhuan_tuyet_doi",
       "scheme": "timestamp14",
       "sha256": "150d586a3c7d754756a689698bf2079cc4655a783d4be6efcd24a2f0f17b979a",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.profit_month_locked_v1",
-        "function:app_private.assert_profit_month_open_v2",
-        "function:app_private.guard_profit_month_lock_pending_v1",
-        "trigger:public.profit_monthly.a10_profit_month_lock_requires_no_pending"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-25T14:35:53.053Z|bien-nhan-backup"
       ]
     },
     {
@@ -10505,7 +10498,7 @@
       "version": "20260925080906",
       "name": "sua_phieu_cho_duyet",
       "scheme": "timestamp14",
-      "sha256": "36b4e0c6435efd37e4882f077eea586bd0c48d5f2794a10a99305860f79a2784",
+      "sha256": "737cfdefad46b32fa1b27d18fd456e56be4a3084982cb6e10281f243dfa6207a",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [

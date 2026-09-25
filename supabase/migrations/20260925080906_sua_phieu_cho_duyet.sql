@@ -67,6 +67,10 @@ SET LOCAL lock_timeout = '15s';
 -- 0. Bản đang chạy phải đúng bản đã rà. Hai guard niêm phong phải đúng bản mà
 --    lối vòng qua is_income_expense_flow_owned dựa vào (early-return khi phiếu
 --    "không thuộc luồng").
+--    Production giữ is_income_expense_flow_owned và guard_income_expense_owned_items
+--    với xuống dòng CRLF (tạo từ file cũ); baseline của Restore Drill lưu LF. Mã thứ
+--    hai của hai hàm đó là CÙNG thân hàm bỏ CR (đo 25/09: md5(replace(def, CR, ''))
+--    trên production = md5 trên DB dựng lại), không phải bản khác.
 DO $truoc$
 DECLARE
   v_ham record;
@@ -74,11 +78,12 @@ BEGIN
   FOR v_ham IN
     SELECT * FROM (VALUES
       ('app_private.is_income_expense_flow_owned(uuid)',
-       ARRAY['bd4e54b15e1c12dbe22a0bc0088e2f3e', '2a3e6fa637585023d823ce591e756ec0']),
+       ARRAY['bd4e54b15e1c12dbe22a0bc0088e2f3e', '86e404d29c0552a3c54668e0e6459be1',
+             '2a3e6fa637585023d823ce591e756ec0']),
       ('app_private.guard_income_expense_owned_payload()',
        ARRAY['fb01ae8c9de7b283d19ade8195eba726']),
       ('app_private.guard_income_expense_owned_items()',
-       ARRAY['1f0d1e2eb19975cdd52693a703ee464a']),
+       ARRAY['1f0d1e2eb19975cdd52693a703ee464a', '2d393a51018b96f76b6c3196e9950038']),
       ('app_private.begin_ie_flex_write_v1(uuid,text)',
        ARRAY['a340a615e2eb4358c7b9f2c5251426c3']),
       ('app_private.end_ie_flex_write_v1(uuid)',
