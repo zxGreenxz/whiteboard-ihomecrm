@@ -37,6 +37,10 @@ import { useMyPermissions } from "@/hooks/useMyPermissions";
 import { useReservationSettlementForVoucher } from "@/hooks/useReservationSettlement";
 import { canUse } from "@/lib/permissionPages";
 import { canShowAnnotateAction } from "@/lib/voucherAnnotate";
+import { AUDIT_TONE_CLASSES, auditActionLabel, voucherEditAction } from "@/lib/incomeExpenseRevision";
+import { useIsCompanyOwner } from "@/hooks/useIsCompanyOwner";
+import { RevisionCountBadges, RevisionHistory } from "@/components/income-expenses/RevisionSummary";
+import { CollectionMethodAction } from "@/components/income-expenses/CollectionMethodAction";
 import { getVoucherDisplayAttachments } from '@/lib/incomeExpenseSupplement';
 import { useAuth } from "@/hooks/useAuth";
 import { StorageImage } from "@/components/ui/storage-image";
@@ -107,6 +111,7 @@ export function IncomeExpenseDetailDialog({
   const { data: isAdmin = false } = useIsAdmin();
   const { data: perms } = useMyPermissions();
   const { data: isSuperAdmin = false } = useIsSuperAdmin();
+  const { data: isCompanyOwner = false } = useIsCompanyOwner();
   const { data: authUser } = useAuth();
   const currentUserId = authUser?.id ?? null;
 
@@ -157,7 +162,10 @@ export function IncomeExpenseDetailDialog({
   const isExpense = voucher.type === "EXPENSE";
   const isCreator =
     !!currentUserId && voucher.user_id === currentUserId;
-  const showFullEdit = monetaryActionsAllowed && !!onEdit && (isUnapproved || isAdmin);
+  // Đợt 1 sửa phiếu: chỉ phiếu Chờ duyệt sửa được (có lưu vết) hoặc chế độ đổi cờ
+  // KQKD phiếu bỏ cọc; bỏ "Sửa phiếu (Super Admin)" trên phiếu đã duyệt/đã huỷ.
+  const editAction = voucherEditAction(voucher, { isAdmin, isCompanyOwner });
+  const showFullEdit = monetaryActionsAllowed && !!onEdit && editAction.show;
   const showQuickEdit = canShowAnnotateAction({
     hasHandler: !!onQuickEdit,
     isUnapproved,
@@ -210,7 +218,7 @@ export function IncomeExpenseDetailDialog({
                   size="icon"
                   variant="default"
                   className="h-8 w-8 bg-amber-500 hover:bg-amber-600"
-                  title={isUnapproved ? 'Sửa phiếu chờ duyệt' : 'Sửa phiếu (Super Admin)'}
+                  title={editAction.title}
                   onClick={() => {
                     onEdit!(voucher);
                     onOpenChange(false);
@@ -340,6 +348,10 @@ export function IncomeExpenseDetailDialog({
                       Chờ duyệt
                     </span>
                   )}
+                  <RevisionCountBadges
+                    editCount={voucher.revision_count ?? 0}
+                    methodChangeCount={voucher.method_change_count ?? 0}
+                  />
                 </div>
               }
             />
@@ -391,6 +403,11 @@ export function IncomeExpenseDetailDialog({
                 }
               />
             )}
+            {/* Khoản thu hoá đơn kiểu mới: hình thức thu + nút đổi (đợt 1 sửa phiếu). */}
+            <CollectionMethodAction
+              voucher={voucher}
+              row={(label, value) => <Row label={label} value={value} />}
+            />
             <Row
               label={isExpense ? "Người nhận" : "Người nộp"}
               value={voucher.payer_name}
@@ -549,7 +566,12 @@ export function IncomeExpenseDetailDialog({
             </>
           )}
 
-          {/* Nhật ký thao tác (huỷ / khôi phục) */}
+          {/* Đợt 1 sửa phiếu: từng lần sửa khi Chờ duyệt / đổi hình thức thu */}
+          <div className="mt-4">
+            <RevisionHistory voucherId={voucher.id} />
+          </div>
+
+          {/* Nhật ký thao tác (huỷ / khôi phục / duyệt / sửa …) */}
           {history.length > 0 && (
             <>
               <SectionTitle>
@@ -560,17 +582,15 @@ export function IncomeExpenseDetailDialog({
               </SectionTitle>
               <div className="rounded-md border border-zinc-200 overflow-hidden divide-y divide-zinc-200">
                 {history.map((h) => {
-                  const isRestore = h.action === "RESTORED";
+                  // Trước 25/09 mọi sự kiện không phải "Khôi phục" đều hiện "Huỷ phiếu"
+                  // (kể cả Duyệt); nay nhãn theo đúng hành động.
+                  const nhan = auditActionLabel(h.action);
                   return (
                     <div key={h.id} className="flex items-start gap-2 px-4 py-2.5">
                       <span
-                        className={`shrink-0 mt-0.5 px-2 py-0.5 text-xs rounded ${
-                          isRestore
-                            ? "bg-green-100 text-green-700"
-                            : "bg-red-100 text-red-700"
-                        }`}
+                        className={`shrink-0 mt-0.5 px-2 py-0.5 text-xs rounded ${AUDIT_TONE_CLASSES[nhan.tone]}`}
                       >
-                        {isRestore ? "Khôi phục" : "Huỷ phiếu"}
+                        {nhan.label}
                       </span>
                       <div className="text-sm min-w-0">
                         <div className="text-foreground">

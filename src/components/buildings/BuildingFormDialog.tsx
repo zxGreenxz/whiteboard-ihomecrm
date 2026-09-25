@@ -38,8 +38,6 @@ import { useCreateBuilding, useUpdateBuilding } from '@/hooks/useBuildings';
 import { useBuildingServices, useUpsertBuildingServices } from '@/hooks/useBuildingServices';
 import { useServices } from '@/hooks/useServices';
 import { useDocumentTemplatesByType } from '@/hooks/useDocumentTemplates';
-import { useAccounts } from '@/hooks/useAccounts';
-import { useMyContext } from '@/hooks/useMyContext';
 import BuildingAddressSection from './BuildingAddressSection';
 import BuildingGeoSection from './BuildingGeoSection';
 import BuildingServicesSection from './BuildingServicesSection';
@@ -78,11 +76,11 @@ export default function BuildingFormDialog({
   const { data: invoiceTemplates = [] } = useDocumentTemplatesByType('invoice');
   const { data: leaseTemplates = [] } = useDocumentTemplatesByType('lease_contract');
 
-  // Danh sách sổ quỹ cho 2 dropdown "Sổ quỹ TT/TK mặc định" — chỉ super admin
-  // được xem & chỉnh các field này (mặc định áp dụng cho mọi user khi thanh toán).
-  const { data: accounts = [] } = useAccounts();
-  const { data: ctx } = useMyContext();
-  const isSuper = !!ctx?.isSuper;
+  // Sổ nhận chuyển khoản / thanh toán (buildings.default_account_id_tk/_tt) KHÔNG
+  // còn sửa ở form này (đợt 1 sửa phiếu, 25/09/2026): chỉ sửa ở màn "Sổ nhận tiền"
+  // qua set_building_receiving_cashbooks_v1, cùng lúc với danh sách sổ phụ. Form
+  // không đọc cũng không gửi hai cột đó: gửi lại giá trị đọc lúc mở form sẽ ghi đè
+  // cấu hình chủ vừa đổi ở màn Sổ nhận tiền trong lúc form còn mở.
 
   // Form
   const form = useForm<BuildingFormData>({
@@ -124,12 +122,6 @@ export default function BuildingFormDialog({
           invoice_template_id:
             (building as { invoice_template_id?: string | null })
               .invoice_template_id ?? null,
-          default_account_id_tt:
-            (building as { default_account_id_tt?: string | null })
-              .default_account_id_tt ?? null,
-          default_account_id_tk:
-            (building as { default_account_id_tk?: string | null })
-              .default_account_id_tk ?? null,
           commission_tiers:
             ((building as { commission_tiers?: CommissionTier[] })
               .commission_tiers as CommissionTier[]) ?? DEFAULT_COMMISSION_TIERS,
@@ -148,8 +140,6 @@ export default function BuildingFormDialog({
           has_elevator: false,
           contract_template_id: null,
           invoice_template_id: null,
-          default_account_id_tt: null,
-          default_account_id_tk: null,
           commission_tiers: DEFAULT_COMMISSION_TIERS,
         });
       }
@@ -202,8 +192,6 @@ export default function BuildingFormDialog({
             has_elevator: data.has_elevator ?? false,
             contract_template_id: data.contract_template_id ?? null,
             invoice_template_id: data.invoice_template_id ?? null,
-            default_account_id_tt: (data.default_account_id_tt ?? null) as any,
-            default_account_id_tk: (data.default_account_id_tk ?? null) as any,
             commission_tiers: (data.commission_tiers ?? DEFAULT_COMMISSION_TIERS) as any,
           },
         });
@@ -227,8 +215,6 @@ export default function BuildingFormDialog({
           has_elevator: data.has_elevator ?? false,
           contract_template_id: data.contract_template_id ?? null,
           invoice_template_id: data.invoice_template_id ?? null,
-          default_account_id_tt: (data.default_account_id_tt ?? null) as any,
-          default_account_id_tk: (data.default_account_id_tk ?? null) as any,
           commission_tiers: (data.commission_tiers ?? DEFAULT_COMMISSION_TIERS) as any,
         });
         setCreatedBuildingId(newBuilding.id);
@@ -375,82 +361,6 @@ export default function BuildingFormDialog({
                     />
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {isSuper && (
-                      <FormField
-                        control={form.control}
-                        name="default_account_id_tt"
-                        render={({ field }) => (
-                          <FormItem className="space-y-2">
-                            <FormLabel className="text-sm">
-                              Sổ quỹ TT mặc định
-                            </FormLabel>
-                            <Select
-                              value={field.value ?? '__none__'}
-                              onValueChange={(v) =>
-                                field.onChange(v === '__none__' ? null : v)
-                              }
-                            >
-                              <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Chọn sổ quỹ TT" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                <SelectItem value="__none__">-- Không chọn --</SelectItem>
-                                {(accounts || []).map((a: any) => (
-                                  <SelectItem key={a.id} value={a.id}>
-                                    {a.name}
-                                    {a.bank_name ? ` — ${a.bank_name}` : ''}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                            <p className="text-xs text-muted-foreground">
-                              Khi khách thanh toán hoá đơn phòng bằng TT, mặc định ghi vào sổ này (mọi user).
-                            </p>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    )}
-                    {isSuper && (
-                      <FormField
-                        control={form.control}
-                        name="default_account_id_tk"
-                        render={({ field }) => (
-                          <FormItem className="space-y-2">
-                            <FormLabel className="text-sm">
-                              Sổ quỹ TK mặc định
-                            </FormLabel>
-                            <Select
-                              value={field.value ?? '__none__'}
-                              onValueChange={(v) =>
-                                field.onChange(v === '__none__' ? null : v)
-                              }
-                            >
-                              <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Chọn sổ quỹ TK" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                <SelectItem value="__none__">-- Không chọn --</SelectItem>
-                                {(accounts || []).map((a: any) => (
-                                  <SelectItem key={a.id} value={a.id}>
-                                    {a.name}
-                                    {a.bank_name ? ` — ${a.bank_name}` : ''}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                            <p className="text-xs text-muted-foreground">
-                              Khi khách thanh toán hoá đơn phòng bằng TK (chuyển khoản), mặc định ghi vào sổ này (mọi user).
-                            </p>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    )}
                     <FormField
                       control={form.control}
                       name="invoice_template_id"
@@ -512,6 +422,9 @@ export default function BuildingFormDialog({
                       )}
                     />
                   </div>
+                  <p className="text-xs text-muted-foreground">
+                    Sổ nhận chuyển khoản / thanh toán cài ở Tài chính → Sổ quỹ → Sổ nhận tiền.
+                  </p>
                 </CardContent>
               </Card>
 

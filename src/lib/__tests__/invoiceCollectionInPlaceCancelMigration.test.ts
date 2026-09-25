@@ -167,7 +167,9 @@ describe("Đợt 5 — mặt tiền FE", () => {
     ] as const) {
       expect(COLLECTION_BLOCK_TEXT[code]).toBeTruthy();
     }
-    expect(COLLECTION_BLOCK_TEXT.PROFIT_LOCKED).toMatch(/quản trị/);
+    // Đợt 1 sửa phiếu (25/09/2026): khoá tháng lợi nhuận là tuyệt đối — đường đi
+    // tiếp là chủ công ty mở khoá tháng, không còn "nhờ quản trị lập phiếu đối ứng".
+    expect(COLLECTION_BLOCK_TEXT.PROFIT_LOCKED).toMatch(/chủ công ty mở khoá tháng/);
   });
 
   it("đọc được đường nào đã chạy từ payload RPC", () => {

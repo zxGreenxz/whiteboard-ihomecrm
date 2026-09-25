@@ -24,12 +24,29 @@ import {
 } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
   useRecordPaymentRPC,
   type RecordPaymentRPCData,
 } from '@/hooks/useInvoicePayments';
 import { useAccounts } from '@/hooks/useAccounts';
+import {
+  defaultReceivingBookId,
+  missingReceivingBookMessage,
+  receivingBooksFor,
+  useReceivingCashbooks,
+} from '@/hooks/useReceivingCashbooks';
+import { fetchRecentInvoiceCollections } from '@/hooks/useCollectionTenders';
 import { changeAccountOptions, findOwnChangeAccount } from '@/lib/changeAccounts';
-import { ownCashAccountId } from '@/lib/cashAccount';
+import { duplicateCollectionQuestion, findRecentDuplicateCollection } from '@/lib/duplicateCollection';
 import { useAuth } from '@/hooks/useAuth';
 import type { InvoiceWithRelations } from '@/types/invoice';
 import { DollarSign, CheckCircle, Upload, X, Image, Loader2, Plus, Minus } from 'lucide-react';
@@ -84,6 +101,14 @@ const isExistingStorageObjectError = (error: unknown): boolean => {
 
 type PaymentMethod = 'TM' | 'TT' | 'TK';
 
+const METHOD_NAME: Record<PaymentMethod, string> = { TM: 'Tiền mặt', TK: 'Chuyển khoản', TT: 'Thanh toán' };
+
+/** Câu lỗi máy chủ (tiếng Việt), bỏ tiền tố máy-đọc kiểu [PROFIT_LOCKED]. */
+const loiDoc = (error: unknown, fallback: string): string => {
+  const msg = (error as { message?: unknown } | null)?.message;
+  return typeof msg === 'string' && msg.trim() ? msg.replace(/^\[[A-Z_]+\]\s*/, '') : fallback;
+};
+
 const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialogProps) => {
   const recordMutation = useRecordPaymentRPC();
   const { data: accounts = [] } = useAccounts();
@@ -102,11 +127,16 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
     // started = đã gọi RPC ghi tiền ít nhất 1 lần cho attempt này.
     started: boolean;
   } | null>(null);
+  // Thu trùng (đợt 1 sửa phiếu): hoá đơn vừa có khoản thu cùng tổng tiền trong 30
+  // phút ⇒ hỏi lại. `duplicateAckRef` = nội dung người dùng đã bấm "Vẫn thu tiếp".
+  const [duplicateAsk, setDuplicateAsk] = useState<{ question: string; fingerprint: string } | null>(null);
+  const duplicateAckRef = useRef<string | null>(null);
 
   const {
     handleSubmit,
     formState: { errors },
     setValue,
+    getValues,
     watch,
     reset,
     register,
@@ -138,10 +168,6 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
       ),
     [accounts, invoice?.organization_id],
   );
-  const realAccounts = useMemo(
-    () => organizationAccounts.filter((account) => account.is_virtual === false),
-    [organizationAccounts],
-  );
   const virtualAccounts = useMemo(
     () => organizationAccounts.filter((account) => account.is_virtual === true),
     [organizationAccounts],
@@ -160,44 +186,25 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
     ? Math.max((invoice.total_amount || 0) - (invoice.paid_amount || 0), 0)
     : 0;
 
-  // ID sổ quỹ trùng tên tòa nhà của hoá đơn — fallback cho TT/TK khi
-  // toà nhà chưa cấu hình default_account_id_tt/tk trong Cài đặt toà nhà.
-  const defaultAccountIdByName = useMemo(() => {
-    if (!invoice || !realAccounts.length) return '';
-    const buildingName = invoice.building?.name?.trim();
-    if (!buildingName) return '';
-    return realAccounts.find((a) => a.name?.trim() === buildingName)?.id ?? '';
-  }, [invoice, realAccounts]);
-
-  // Sổ quỹ mặc định lấy từ cài đặt toà nhà (mọi user dùng chung).
-  const rawBuildingDefaultTT = (invoice?.building as any)?.default_account_id_tt ?? '';
-  const rawBuildingDefaultTK = (invoice?.building as any)?.default_account_id_tk ?? '';
-  const buildingDefaultTT = realAccounts.some((account) => account.id === rawBuildingDefaultTT)
-    ? rawBuildingDefaultTT
-    : '';
-  const buildingDefaultTK = realAccounts.some((account) => account.id === rawBuildingDefaultTK)
-    ? rawBuildingDefaultTK
-    : '';
-  // Toà nhà có cấu hình default sổ quỹ cho TT/TK chưa? Quyết định xem phương
-  // thức tương ứng có xuất hiện trong dropdown và có cần lock TK thành "+".
-  const hasBuildingTT = !!buildingDefaultTT;
-  const hasBuildingTK = !!buildingDefaultTK;
-
-  // Sổ Thu của user đăng nhập — nếu user có nhiều sổ "…Thu" thì ưu tiên sổ
-  // đánh dấu is_default (xem lib/cashAccount), tránh phụ thuộc thứ tự A→Z.
-  const myCashAccountId = useMemo(
-    () => ownCashAccountId(realAccounts, currentUser?.id),
-    [currentUser, realAccounts],
-  );
-
-  // Sổ quỹ "Chung" — fallback cho TM khi user đăng nhập không phải joey/nathan
-  // (và không sở hữu sổ "Thu" riêng).
-  const chungAccountId = useMemo(() => {
-    if (!realAccounts.length) return '';
-    return realAccounts.find(
-      (a) => typeof a.name === 'string' && a.name.trim().toLowerCase() === 'chung',
-    )?.id ?? '';
-  }, [realAccounts]);
+  // Sổ nhận tiền theo hình thức do MÁY CHỦ quyết (đợt 1 sửa phiếu, 25/09/2026):
+  // TM = sổ tiền mặt riêng của người đang thu; TK/TT = danh sách sổ của toà (mặc
+  // định đứng đầu) giao với sổ người thu giữ/biết. Hình thức chưa có sổ ⇒ chặn
+  // thu kèm câu hướng dẫn, không rơi về sổ "Chung" / sổ trùng tên toà như trước.
+  const receivingOrgId = invoice?.organization_id ?? null;
+  const receiving = useReceivingCashbooks(open ? receivingOrgId : null, invoice?.building_id ?? null);
+  const receivingData = receiving.data;
+  const receivingError = receiving.isError
+    ? loiDoc(receiving.error, 'Không tải được danh sách sổ nhận tiền.')
+    : !receivingOrgId
+      ? 'Chưa xác định được công ty của hoá đơn — tải lại trang rồi thử lại.'
+      : null;
+  const receivingLoading = !receivingError && !receivingData;
+  const buildingName = invoice?.building?.name ?? null;
+  const booksFor = (method: PaymentMethod) => receivingBooksFor(receivingData, method);
+  // Toà có sổ TT/TK chưa? Quyết định có khoá TK thành "+" và hình thức mặc định
+  // của dòng mới.
+  const hasBuildingTT = booksFor('TT').length > 0;
+  const hasBuildingTK = booksFor('TK').length > 0;
 
   // Sổ quỹ "Làm tròn tiền thiếu" — dùng cho audit khi residual < 10K
   // được làm tròn. Chỉ là ledger metadata, không trừ số dư.
@@ -208,29 +215,9 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
     )?.id ?? '';
   }, [virtualAccounts]);
 
-  const renderAccountItems = () =>
-    realAccounts.map((a: any) => (
-      <SelectItem key={a.id} value={a.id}>
-        {a.name}
-        {a.bank_name ? ` — ${a.bank_name}` : ''}
-      </SelectItem>
-    ));
-
-  const accountIdForMethod = (method: PaymentMethod): string => {
-    // TM: sổ Thu của chính nhân viên đang đăng nhập (joey → Hiển Thu,
-    // nathan → Hiệp Thu, v.v. — match qua accounts.user_id). User khác
-    // (không sở hữu sổ Thu) → fallback sổ "Chung".
-    if (method === 'TM') {
-      if (myCashAccountId) return myCashAccountId;
-      if (chungAccountId) return chungAccountId;
-      return defaultAccountIdByName;
-    }
-    // TT/TK: ưu tiên cài đặt sổ quỹ mặc định của toà nhà, sau đó fallback
-    // match theo tên (logic cũ).
-    if (method === 'TT' && buildingDefaultTT) return buildingDefaultTT;
-    if (method === 'TK' && buildingDefaultTK) return buildingDefaultTK;
-    return defaultAccountIdByName;
-  };
+  /** Sổ chọn sẵn cho một hình thức: sổ đầu danh sách (mặc định); '' nếu chưa có sổ. */
+  const accountIdForMethod = (method: PaymentMethod): string =>
+    defaultReceivingBookId(receivingData, method) ?? '';
 
   // Auto-fill số tiền của dòng đầu = outstanding khi mở dialog
   useEffect(() => {
@@ -239,13 +226,18 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
     }
   }, [invoice, outstandingAmount, setValue]);
 
+  // Mỗi dòng luôn trỏ vào một sổ TRONG danh sách của hình thức của nó: danh sách
+  // nạp xong (hoặc đổi) thì dòng mang sổ không hợp lệ kéo về sổ mặc định; hình
+  // thức chưa có sổ thì để trống (form báo câu hướng dẫn và chặn thu). `data` của
+  // React Query giữ nguyên danh tính khi nội dung không đổi nên effect không lặp.
   useEffect(() => {
-    if (!defaultAccountIdByName && !myCashAccountId && !chungAccountId && !buildingDefaultTT && !buildingDefaultTK) return;
-    const firstMethod = (watchedLines?.[0]?.payment_method ?? 'TM') as PaymentMethod;
-    const target = accountIdForMethod(firstMethod);
-    if (target) setValue('payment_lines.0.account_id', target);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [defaultAccountIdByName, myCashAccountId, chungAccountId, buildingDefaultTT, buildingDefaultTK, setValue]);
+    if (!open || !receivingData) return;
+    (getValues('payment_lines') ?? []).forEach((line, idx) => {
+      const list = receivingBooksFor(receivingData, line.payment_method);
+      if (list.some((b) => b.id === line.account_id)) return;
+      setValue(`payment_lines.${idx}.account_id` as const, list[0]?.id ?? '');
+    });
+  }, [open, receivingData, getValues, setValue]);
 
   const tmTotal = (watchedLines ?? [])
     .filter((l: any) => l?.payment_method === 'TM')
@@ -272,9 +264,10 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
   // thị TM/TT + 1 nút "+" ở vị trí thứ 3 (xem JSX dưới). Người dùng
   // bấm "+" để mở khoá TK cho riêng dòng đó (state `unlockedTkFieldIds`)
   // — sau đó mở lại dropdown sẽ thấy TK như option bình thường.
-  // QUAN TRỌNG: chỉ áp dụng cơ chế khoá-thành-"+" khi cả TT và TK đều
-  // có default account; nếu thiếu một trong hai thì phương thức tương
-  // ứng bị ẩn hẳn (xem isTtVisible / isTkVisibleForRow).
+  // QUAN TRỌNG: chỉ áp dụng cơ chế khoá-thành-"+" khi toà có sổ nhận cho CẢ
+  // TT và TK. Hình thức chưa có sổ vẫn hiện trong dropdown: chọn vào thì form
+  // báo câu hướng dẫn và chặn thu (không ẩn đi để người thu khỏi ghi nhầm
+  // sang hình thức còn lại).
   const shouldLockTkForRow = (idx: number): boolean => {
     if (!hasBuildingTT || !hasBuildingTK) return false;
     if (priorHasTmTt) return true;
@@ -297,44 +290,34 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
       return next;
     });
   };
-  // TT chỉ hiện trong dropdown khi toà nhà có default account TT.
-  // Ngoại lệ: nếu dòng hiện tại đang là TT (state cũ) thì vẫn giữ option.
-  const isTtVisibleForRow = (currentMethod: PaymentMethod | undefined): boolean => {
-    if (currentMethod === 'TT') return true;
-    return hasBuildingTT;
-  };
-  // TK xuất hiện trong 3 trạng thái:
+  // TK xuất hiện trong 2 trạng thái:
   //   - Đang chọn TK: luôn hiện (tránh mất option khi state cũ)
-  //   - Toà nhà thiếu default TK: ẩn hẳn, không kể có TM/TT trước hay không
-  //   - Toà nhà có default TK: hiện như bình thường; chỉ khi cả TT cũng có
-  //     default (đầy đủ 2 phương thức) thì mới áp dụng cơ chế khoá-thành-"+"
+  //   - Còn lại: hiện như bình thường; chỉ khi toà có sổ cho cả TT lẫn TK
+  //     thì mới áp dụng cơ chế khoá-thành-"+"
   const isTkVisibleForRow = (
     idx: number,
     fieldId: string,
     currentMethod: PaymentMethod | undefined,
   ): boolean => {
     if (currentMethod === 'TK') return true;
-    if (!hasBuildingTK) return false;
     if (!shouldLockTkForRow(idx)) return true;
     return unlockedTkFieldIds.has(fieldId);
   };
   // Có nên hiển thị nút "+" để mở khoá TK ở vị trí option thứ 3 không?
-  // Chỉ khi TK đang bị khoá (cần unlock) — không kể trường hợp TK đã bị
-  // ẩn hẳn vì thiếu default.
+  // Chỉ khi TK đang bị khoá (cần unlock).
   const showTkPlusForRow = (
     idx: number,
     fieldId: string,
     currentMethod: PaymentMethod | undefined,
   ): boolean => {
     if (currentMethod === 'TK') return false;
-    if (!hasBuildingTK) return false;
     if (!shouldLockTkForRow(idx)) return false;
     return !unlockedTkFieldIds.has(fieldId);
   };
 
   // Method mặc định khi thêm dòng mới: ưu tiên alternate (TM ↔ TT),
-  // nhưng phải có default account cho method đó. Nếu không có default
-  // nào khả dụng thì fallback TM.
+  // nhưng phải có sổ nhận cho method đó. Nếu không có sổ nào khả dụng
+  // thì fallback TM.
   const defaultMethodForNewRow = (
     lines: Array<{ payment_method?: PaymentMethod } | undefined>,
   ): PaymentMethod => {
@@ -401,6 +384,8 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
     setCreditUserEdited(false);
     setUnlockedTkFieldIds(new Set());
     collectionAttemptRef.current = null;
+    duplicateAckRef.current = null;
+    setDuplicateAsk(null);
     onOpenChange(false);
   };
 
@@ -505,12 +490,26 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
         toast.error('Vui lòng chọn sổ ghi nhận tiền thối');
         return;
       }
-      const invalidReceivingLine = data.payment_lines.find(
-        (line) => accountVirtuality.get(line.account_id) !== false,
-      );
-      if (invalidReceivingLine) {
-        toast.error(`Sổ nhận ${invalidReceivingLine.payment_method} phải là sổ quỹ thật`);
+      // Sổ nhận phải nằm trong danh sách máy chủ cho phép của đúng hình thức
+      // (máy chủ cũng chặn — đây chỉ để báo sớm, đúng câu).
+      if (receivingError) {
+        toast.error(receivingError);
         return;
+      }
+      if (!receivingData) {
+        toast.error('Đang tải danh sách sổ nhận tiền — thử lại sau giây lát.');
+        return;
+      }
+      for (const line of data.payment_lines) {
+        const list = receivingBooksFor(receivingData, line.payment_method);
+        if (!list.length) {
+          toast.error(missingReceivingBookMessage(line.payment_method, buildingName));
+          return;
+        }
+        if (!list.some((b) => b.id === line.account_id)) {
+          toast.error(`Sổ nhận ${METHOD_NAME[line.payment_method]} không nằm trong danh sách sổ nhận tiền của toà — chọn lại sổ.`);
+          return;
+        }
       }
       if (
         actualChange > 0
@@ -572,6 +571,25 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
       if (previousAttempt && previousAttempt.started && previousAttempt.fingerprint !== fingerprint) {
         toast.error('Lần thu trước có thể đã được ghi. Vui lòng đóng và tải lại hóa đơn rồi thao tác theo số còn lại mới.');
         return;
+      }
+      // Thu trùng: hoá đơn vừa có khoản thu CÒN HIỆU LỰC cùng tổng tiền trong 30
+      // phút ⇒ hỏi lại (nêu giờ + người thu). Bỏ qua khi đang gọi lại ĐÚNG lần thu
+      // đã gửi (cùng idempotency key, máy chủ trả kết quả cũ chứ không ghi thêm)
+      // hoặc người dùng đã xác nhận "vẫn thu" cho đúng nội dung này.
+      const retryingSameAttempt = !!previousAttempt?.started && previousAttempt.fingerprint === fingerprint;
+      if (!retryingSameAttempt && duplicateAckRef.current !== fingerprint) {
+        let question: string | null = null;
+        try {
+          const recent = await fetchRecentInvoiceCollections([invoice.id]);
+          const dup = findRecentDuplicateCollection(recent, totalAcrossLines, Date.now());
+          if (dup) question = duplicateCollectionQuestion(dup);
+        } catch (error) {
+          question = `Không kiểm tra được các khoản thu gần đây của hoá đơn này (${loiDoc(error, 'lỗi mạng')}). Vẫn thu tiếp?`;
+        }
+        if (question) {
+          setDuplicateAsk({ question, fingerprint });
+          return;
+        }
       }
       if (!previousAttempt || previousAttempt.fingerprint !== fingerprint) {
         collectionAttemptRef.current = {
@@ -680,6 +698,72 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
   const willBePartialPaid = newPaidAmount > 0 && newOutstanding > 0 && !willRound;
 
   const isProcessing = recordMutation.isPending || isUploading;
+
+  // Câu chặn theo hình thức: không đọc được danh sách sổ, hoặc hình thức chưa có
+  // sổ nhận nào (toà chưa cài / người thu chưa có sổ tiền mặt riêng).
+  const lineBookBlock = (method: PaymentMethod): string | null => {
+    if (receivingError) return receivingError;
+    if (receivingLoading) return null;
+    return booksFor(method).length ? null : missingReceivingBookMessage(method, buildingName);
+  };
+  // Nút ghi nhận chỉ bật khi MỌI dòng đã trỏ vào một sổ trong danh sách cho phép.
+  const receivingBlocksSubmit =
+    receivingLoading
+    || !!receivingError
+    || (watchedLines ?? []).some((line) => {
+      const list = booksFor((line?.payment_method ?? 'TM') as PaymentMethod);
+      return !list.length || !list.some((b) => b.id === line?.account_id);
+    });
+
+  /** Ô "Sổ quỹ nhận" của một dòng: TM hiện sổ riêng (không chọn), TK/TT chọn trong danh sách. */
+  const renderBookField = (idx: number) => {
+    const method = (watchedLines?.[idx]?.payment_method ?? 'TM') as PaymentMethod;
+    const list = booksFor(method);
+    const block = lineBookBlock(method);
+    return (
+      <div className="space-y-2 min-w-0">
+        <Label>{method === 'TM' ? 'Sổ tiền mặt riêng *' : 'Sổ quỹ nhận *'}</Label>
+        {receivingLoading ? (
+          <p className="flex h-10 items-center gap-2 text-sm text-muted-foreground" role="status">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Đang tải sổ nhận tiền…
+          </p>
+        ) : block ? (
+          <p className="text-sm text-red-600" role="alert">{block}</p>
+        ) : method === 'TM' ? (
+          <div
+            className="flex h-10 items-center rounded-md border bg-muted/40 px-3 text-sm"
+            title="Tiền mặt luôn vào sổ tiền mặt riêng của người thu"
+          >
+            {list[0]?.name}
+          </div>
+        ) : (
+          <Select
+            value={watchedLines?.[idx]?.account_id ?? ''}
+            onValueChange={(v) =>
+              setValue(`payment_lines.${idx}.account_id` as const, v, { shouldValidate: true })
+            }
+            disabled={list.length <= 1}
+          >
+            <SelectTrigger aria-label={`Sổ nhận ${METHOD_NAME[method]}`}>
+              <SelectValue placeholder="Chọn sổ quỹ nhận tiền" />
+            </SelectTrigger>
+            <SelectContent>
+              {list.map((book) => (
+                <SelectItem key={book.id} value={book.id}>
+                  {book.name}
+                  {book.isDefault ? ' (mặc định)' : ''}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+        {!receivingLoading && !block && errors.payment_lines?.[idx]?.account_id && (
+          <p className="text-sm text-red-500">{errors.payment_lines[idx]?.account_id?.message}</p>
+        )}
+      </div>
+    );
+  };
 
   // Hiển thị toast khi zod validation fail — trước đây handleSubmit nuốt lỗi
   // âm thầm, người dùng bấm "Ghi nhận thanh toán" mà không thấy gì xảy ra
@@ -820,21 +904,11 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                 </div>
               </div>
 
-              {/* Phương thức thanh toán — khi TK thì kèm ô Sổ quỹ cùng dòng
-                  để quản lý đổi sang sổ khác ngay lúc thu. */}
+              {/* Phương thức thanh toán + sổ nhận cùng dòng: TM hiện sổ tiền mặt
+                  riêng, TK/TT chọn trong danh sách sổ của toà. */}
               <div className="flex gap-4 items-start">
-                <div
-                  className={
-                    watchedLines?.[0]?.payment_method === 'TK'
-                      ? 'w-28 shrink-0 space-y-2'
-                      : 'flex-1 space-y-2'
-                  }
-                >
-                  <Label>
-                    {watchedLines?.[0]?.payment_method === 'TK'
-                      ? 'Phương thức *'
-                      : 'Phương thức thanh toán *'}
-                  </Label>
+                <div className="w-28 shrink-0 space-y-2">
+                  <Label>Phương thức *</Label>
                   <Select
                     value={watchedLines?.[0]?.payment_method ?? 'TM'}
                     onValueChange={(value) => {
@@ -842,12 +916,11 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                       setValue('payment_lines.0.payment_method', method, {
                         shouldValidate: true,
                       });
-                      const next = accountIdForMethod(method);
-                      if (next) {
-                        setValue('payment_lines.0.account_id', next, {
-                          shouldValidate: true,
-                        });
-                      }
+                      // Sổ đi theo hình thức: luôn đặt lại (kể cả rỗng) để không
+                      // mang sổ của hình thức cũ sang.
+                      setValue('payment_lines.0.account_id', accountIdForMethod(method), {
+                        shouldValidate: true,
+                      });
                     }}
                   >
                     <SelectTrigger>
@@ -857,9 +930,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="TM">TM</SelectItem>
-                      {isTtVisibleForRow(
-                        watchedLines?.[0]?.payment_method as PaymentMethod | undefined,
-                      ) && <SelectItem value="TT">TT</SelectItem>}
+                      <SelectItem value="TT">TT</SelectItem>
                       {isTkVisibleForRow(
                         0,
                         fields[0]?.id ?? '',
@@ -887,27 +958,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                     </SelectContent>
                   </Select>
                 </div>
-                {watchedLines?.[0]?.payment_method === 'TK' && (
-                  <div className="flex-1 space-y-2 min-w-0">
-                    <Label>Sổ quỹ nhận *</Label>
-                    <Select
-                      value={watchedLines?.[0]?.account_id ?? ''}
-                      onValueChange={(v) =>
-                        setValue('payment_lines.0.account_id', v, { shouldValidate: true })
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Chọn sổ quỹ nhận tiền" />
-                      </SelectTrigger>
-                      <SelectContent>{renderAccountItems()}</SelectContent>
-                    </Select>
-                    {errors.payment_lines?.[0]?.account_id && (
-                      <p className="text-sm text-red-500">
-                        {errors.payment_lines[0]?.account_id?.message}
-                      </p>
-                    )}
-                  </div>
-                )}
+                <div className="flex-1 min-w-0">{renderBookField(0)}</div>
               </div>
 
               {/* Ngày thanh toán */}
@@ -922,34 +973,6 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                 )}
               </div>
 
-              {/* Sổ quỹ nhận — TM/TT chỉ hiện khi auto-pick chưa ra (accounts
-                  chưa load xong hoặc tòa nhà chưa cấu hình default cho
-                  phương thức này). TK đã có ô riêng cạnh phương thức. */}
-              {!watchedLines?.[0]?.account_id
-                && watchedLines?.[0]?.payment_method !== 'TK' && (
-                <div className="space-y-2">
-                  <Label>Sổ quỹ nhận *</Label>
-                  <Select
-                    value={watchedLines?.[0]?.account_id ?? ''}
-                    onValueChange={(v) =>
-                      setValue('payment_lines.0.account_id', v, { shouldValidate: true })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Chọn sổ quỹ nhận tiền" />
-                    </SelectTrigger>
-                    <SelectContent>{renderAccountItems()}</SelectContent>
-                  </Select>
-                  {errors.payment_lines?.[0]?.account_id && (
-                    <p className="text-sm text-red-500">
-                      {errors.payment_lines[0]?.account_id?.message}
-                    </p>
-                  )}
-                  <p className="text-xs text-muted-foreground">
-                    Hệ thống sẽ tự tạo phiếu thu trong mục Thu chi của sổ quỹ này.
-                  </p>
-                </div>
-              )}
             </>
           ) : (
             <>
@@ -1007,14 +1030,12 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                             method,
                             { shouldValidate: true },
                           );
-                          const next = accountIdForMethod(method);
-                          if (next) {
-                            setValue(
-                              `payment_lines.${idx}.account_id` as const,
-                              next,
-                              { shouldValidate: true },
-                            );
-                          }
+                          // Sổ đi theo hình thức: luôn đặt lại (kể cả rỗng).
+                          setValue(
+                            `payment_lines.${idx}.account_id` as const,
+                            accountIdForMethod(method),
+                            { shouldValidate: true },
+                          );
                         }}
                       >
                         <SelectTrigger>
@@ -1024,11 +1045,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="TM">TM</SelectItem>
-                          {isTtVisibleForRow(
-                            watchedLines?.[idx]?.payment_method as
-                              | PaymentMethod
-                              | undefined,
-                          ) && <SelectItem value="TT">TT</SelectItem>}
+                          <SelectItem value="TT">TT</SelectItem>
                           {isTkVisibleForRow(
                             idx,
                             field.id,
@@ -1061,35 +1078,9 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                       </Select>
                     </div>
                   </div>
-                  {/* Sổ quỹ nhận — luôn hiện với dòng TK (cho đổi sổ tại chỗ);
-                      TM/TT chỉ hiện khi auto-pick chưa ra (toà nhà chưa cấu
-                      hình default cho phương thức này). */}
-                  {(watchedLines?.[idx]?.payment_method === 'TK'
-                    || !watchedLines?.[idx]?.account_id) && (
-                    <div className="space-y-2">
-                      <Label>Sổ quỹ nhận *</Label>
-                      <Select
-                        value={watchedLines?.[idx]?.account_id ?? ''}
-                        onValueChange={(v) =>
-                          setValue(
-                            `payment_lines.${idx}.account_id` as const,
-                            v,
-                            { shouldValidate: true },
-                          )
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Chọn sổ quỹ nhận tiền" />
-                        </SelectTrigger>
-                        <SelectContent>{renderAccountItems()}</SelectContent>
-                      </Select>
-                      {errors.payment_lines?.[idx]?.account_id && (
-                        <p className="text-sm text-red-500">
-                          {errors.payment_lines[idx]?.account_id?.message}
-                        </p>
-                      )}
-                    </div>
-                  )}
+                  {/* Sổ nhận của dòng: TM = sổ tiền mặt riêng, TK/TT = chọn trong
+                      danh sách sổ của toà. */}
+                  {renderBookField(idx)}
                 </div>
               ))}
 
@@ -1355,7 +1346,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
             </Button>
             <Button
               type="submit"
-              disabled={isProcessing || totalPaid <= 0 || !!previewError}
+              disabled={isProcessing || totalPaid <= 0 || !!previewError || receivingBlocksSubmit}
             >
               {isProcessing ? (
                 <>
@@ -1369,6 +1360,34 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
           </DialogFooter>
         </form>
       </DialogContent>
+
+      {/* Thu trùng: hoá đơn vừa được thu cùng số tiền trong 30 phút. */}
+      <AlertDialog
+        open={!!duplicateAsk}
+        onOpenChange={(v) => {
+          if (!v) setDuplicateAsk(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Có thể đang thu trùng</AlertDialogTitle>
+            <AlertDialogDescription>{duplicateAsk?.question}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Không thu</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (!duplicateAsk) return;
+                duplicateAckRef.current = duplicateAsk.fingerprint;
+                setDuplicateAsk(null);
+                void handleSubmit(onSubmit, onInvalid)();
+              }}
+            >
+              Vẫn thu tiếp
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 };

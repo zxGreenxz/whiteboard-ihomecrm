@@ -29,6 +29,8 @@
 //   | reversed (REVERSED)                         | Đã hoàn tác                      | Đã hoàn tác                      |
 //   | cancelled (CANCELLED)                       | Đã hủy                           | Đã hủy                           |
 
+import { canReviseVoucher } from "@/lib/incomeExpenseRevision";
+
 // --- Bốn trục trạng thái ---
 
 /** Trục phê duyệt/workflow. */
@@ -164,10 +166,21 @@ export interface ForfeitKqkdGate {
  *     người dùng làm việc chắc chắn hỏng.
  *   · Chân DOANH THU, chưa huỷ, người xem là chủ công ty hoặc super admin →
  *     mở đúng một ô: cờ KQKD, đi qua set_forfeit_voucher_kqkd_v1.
+ *   · Phiếu thường: chỉ phiếu Chờ duyệt sửa được (canReviseVoucher — phiếu tay,
+ *     hoa hồng, trả khách thanh lý; không gắn hoá đơn/chia lợi nhuận). Đường
+ *     "Super Admin sửa phiếu đã duyệt/đã huỷ" đã bỏ từ 25/09/2026: máy chủ không
+ *     còn cửa ghi nào cho nó, bấm Lưu chỉ ăn lỗi. Ai được sửa do máy chủ quyết.
  */
 export function forfeitKqkdGate(
   voucher:
-    | { system_source?: string | null; approval_status?: ApprovalStatus | null }
+    | {
+        system_source?: string | null;
+        approval_status?: ApprovalStatus | null;
+        posting_status?: string | null;
+        invoice_id?: string | null;
+        shareholder_id?: string | null;
+        deleted_at?: string | null;
+      }
     | null
     | undefined,
   viewer: ForfeitKqkdViewer,
@@ -178,9 +191,10 @@ export function forfeitKqkdGate(
     isForfeitRevenueVoucher(voucher) &&
     voucher?.approval_status !== "CANCELLED" &&
     (viewer.isAdmin || viewer.isCompanyOwner);
-  const isUnapprovedDraft = voucher?.approval_status === "UNAPPROVED";
   const canEditNormally =
-    !isForfeitLeg && (!voucher || isUnapprovedDraft || viewer.isAdmin);
+    !isForfeitLeg &&
+    (!voucher ||
+      canReviseVoucher({ ...voucher, approval_status: voucher.approval_status ?? "" }));
   return { isForfeitLeg, forfeitKqkdMode, canEditNormally };
 }
 

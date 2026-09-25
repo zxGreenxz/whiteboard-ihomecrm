@@ -66,6 +66,8 @@ export interface DepositTask {
   code: string | null;
   contractId: string | null;
   voucherId: string | null;
+  /** Phiên bản duyệt của phiếu cọc (null ở nhánh hợp đồng) — Duyệt gửi kèm để chống duyệt nhầm bản đã bị sửa. */
+  approvalVersion: number | null;
 }
 
 export interface DepositTaskGroup {
@@ -172,6 +174,7 @@ export function buildDepositWorkQueue(input: BuildWorkQueueInput): DepositTaskGr
       code: r.contract_number,
       contractId: r.contract_id,
       voucherId: null,
+      approvalVersion: null,
     });
   }
 
@@ -247,6 +250,7 @@ export function buildDepositWorkQueue(input: BuildWorkQueueInput): DepositTaskGr
       code: v.code,
       contractId: null,
       voucherId: v.id,
+      approvalVersion: v.approval_version,
     });
   }
 

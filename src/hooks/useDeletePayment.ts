@@ -10,6 +10,10 @@
 //                             FE, vì một khoản tiền rời khỏi tháng đã chia lợi
 //                             nhuận phải là quyết định có người ký.
 // Payment không có collection_id vẫn đi adapter v3 như cũ.
+//
+// Lý do hoàn tác do NGƯỜI BẤM gõ (≥ 8 ký tự, đợt 1 sửa phiếu 25/09/2026): câu
+// điền sẵn cũ làm mọi lần huỷ — kể cả 6/17 lần thu trùng — đều mang cùng một lý
+// do vô nghĩa, không truy được vì sao tiền rời sổ.
 // =============================================
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -17,12 +21,18 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { todayISO } from '@/lib/collect';
 import { reverseInvoicePaymentBySource, type ReversalMode } from '@/lib/paymentRecordRpc';
-import { periodBlockMessage } from '@/lib/cashbookClosing';
+import { periodBlockCodeFromError, periodBlockMessage } from '@/lib/cashbookClosing';
+import { REVISION_REASON_MAX, REVISION_REASON_MIN } from '@/lib/incomeExpenseRevision';
 
 interface DeletePaymentInput {
   payment_id?: string | null;
   collection_id?: string | null;
+  /** Lý do hoàn tác người dùng gõ — bắt buộc, 8..1000 ký tự. */
+  reason: string;
 }
+
+/** Câu báo khi lý do hoàn tác chưa đủ dài (chặn trước khi gọi máy chủ). */
+export const UNDO_REASON_REQUIRED_TEXT = `Phải ghi lý do hoàn tác (ít nhất ${REVISION_REASON_MIN} ký tự).`;
 
 type DeletePaymentResult = {
   payment_id: string | null;
@@ -52,9 +62,24 @@ export const COLLECTION_BLOCK_TEXT: Record<CollectionReversalBlockCode, string> 
   HANDOVER_LOCKED:
     'Phiếu thu nằm trong một phiên bàn giao đã xác nhận — hai bên phải huỷ phiên đó trước.',
   PROFIT_LOCKED:
-    'Lợi nhuận của tháng chứa khoản thu này đã chốt và đã chia cho cổ đông. Hệ thống không tự huỷ khoản thu của tháng đó; muốn điều chỉnh, hãy nhờ quản trị lập phiếu chi đối ứng ở kỳ hiện tại.',
+    'Tháng của khoản thu này đã chốt lợi nhuận — mọi phiếu của tháng bị khoá; nhờ chủ công ty mở khoá tháng.',
   UNKNOWN: 'Kỳ kế toán của khoản thu này đã đóng nên không hoàn tác được.',
 };
+
+/**
+ * Câu hiện cho một lỗi hoàn tác. Tháng đã chốt lợi nhuận: hàm hoàn tác trên máy
+ * chủ còn trả câu cũ "liên hệ quản trị lập phiếu chi đối ứng" — trái với luật khoá
+ * tháng tuyệt đối (chủ công ty mở khoá tháng) — nên thay bằng câu mới, trừ khi
+ * máy chủ đã nói câu mới (kèm tháng + toà).
+ */
+export function undoErrorText(message: string | null | undefined): string {
+  const msg = message ?? '';
+  if (periodBlockCodeFromError(msg) === 'PROFIT_LOCKED') {
+    const raw = msg.replace(/^\[[A-Z_]+\]\s*/, '').trim();
+    return /mở\s+kh(?:oá|óa)\s+tháng/i.test(raw) ? raw : COLLECTION_BLOCK_TEXT.PROFIT_LOCKED;
+  }
+  return periodBlockMessage(msg) ?? (msg || 'Không hoàn tác được khoản thu.');
+}
 
 /**
  * Hỏi server trước khi bày nút, để người dùng không bấm rồi mới ăn lỗi — và để
@@ -88,7 +113,13 @@ export const useDeletePayment = () => {
     mutationFn: async ({
       payment_id,
       collection_id,
+      reason: rawReason,
     }: DeletePaymentInput): Promise<DeletePaymentResult> => {
+      // Chặn TRƯỚC mọi lời gọi mạng: không có lý do thật thì không hoàn tác.
+      const reason = (rawReason ?? '').trim();
+      if (reason.length < REVISION_REASON_MIN || reason.length > REVISION_REASON_MAX) {
+        throw new Error(UNDO_REASON_REQUIRED_TEXT);
+      }
       const paymentId = payment_id?.trim() || null;
       let collectionId = collection_id?.trim() || null;
 
@@ -115,7 +146,7 @@ export const useDeletePayment = () => {
           payment_id: paymentId,
           collection_id: collectionId,
           reversal_date: todayISO(),
-          reason: 'Hoàn tác thu tiền từ giao diện hóa đơn',
+          reason,
           idempotency_key: collectionId
             ? `revcollection-${collectionId}`
             : `revpayment-${paymentId}`,
@@ -183,7 +214,7 @@ export const useDeletePayment = () => {
       toast({
         variant: 'destructive',
         title: 'Không thể hoàn tác khoản thu',
-        description: periodBlockMessage(error.message) ?? error.message,
+        description: undoErrorText(error?.message),
       });
     },
   });

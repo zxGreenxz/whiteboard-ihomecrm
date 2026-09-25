@@ -589,15 +589,30 @@ describe("forfeitKqkdGate — ai mở được ô nào trên phiếu bỏ cọc"
     expect(g.canEditNormally).toBe(false);
   });
 
-  it("KHÔNG đụng gì tới phiếu thường", () => {
+  it("phiếu thường: chỉ Chờ duyệt mới mở đường sửa — super admin cũng không sửa phiếu đã duyệt", () => {
+    // Đợt 1 sửa phiếu (25/09/2026): bỏ "Sửa phiếu (Super Admin)" — máy chủ không
+    // còn cửa ghi nào cho phiếu đã duyệt/đã huỷ, bấm Lưu chỉ ăn lỗi.
     expect(forfeitKqkdGate(THUONG, superAdmin)).toEqual({
-      isForfeitLeg: false, forfeitKqkdMode: false, canEditNormally: true,
+      isForfeitLeg: false, forfeitKqkdMode: false, canEditNormally: false,
     });
     expect(forfeitKqkdGate(THUONG, quanLyToa).canEditNormally).toBe(false);
     expect(
       forfeitKqkdGate({ system_source: null, approval_status: "UNAPPROVED" }, quanLyToa)
         .canEditNormally,
     ).toBe(true);
+    expect(
+      forfeitKqkdGate({ system_source: "contract.commission", approval_status: "UNAPPROVED" }, quanLyToa)
+        .canEditNormally,
+    ).toBe(true);
+  });
+
+  it("phiếu Chờ duyệt nhưng gắn hoá đơn / chia lợi nhuận / hệ thống khác ⇒ chỉ xem", () => {
+    const cho = { system_source: null, approval_status: "UNAPPROVED" as const };
+    expect(forfeitKqkdGate({ ...cho, invoice_id: "i1" }, superAdmin).canEditNormally).toBe(false);
+    expect(forfeitKqkdGate({ ...cho, shareholder_id: "s1" }, superAdmin).canEditNormally).toBe(false);
+    expect(
+      forfeitKqkdGate({ ...cho, system_source: "invoice.collection.v5" }, superAdmin).canEditNormally,
+    ).toBe(false);
   });
 
   it("tạo phiếu mới (không có voucher) vẫn sửa được bình thường", () => {

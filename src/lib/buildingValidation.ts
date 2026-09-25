@@ -26,8 +26,8 @@ export const buildingSchema = z.object({
   has_elevator: z.boolean().default(false),
   contract_template_id: z.string().uuid().nullable().optional(),
   invoice_template_id: z.string().uuid().nullable().optional(),
-  default_account_id_tt: z.string().uuid().nullable().optional(),
-  default_account_id_tk: z.string().uuid().nullable().optional(),
+  // default_account_id_tk/_tt cố ý KHÔNG có ở đây: sổ nhận tiền của toà chỉ cài ở
+  // màn "Sổ nhận tiền" (set_building_receiving_cashbooks_v1), form toà không ghi.
   commission_tiers: z.array(commissionTierSchema).default(DEFAULT_COMMISSION_TIERS_DATA),
 });
 

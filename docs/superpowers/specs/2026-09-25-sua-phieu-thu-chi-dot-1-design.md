@@ -209,6 +209,12 @@ chết), danh sách/chi tiết Thu chi (phiếu thu hoá đơn). Khoản thu ki�
 - **C3.** Chỉ mục duy nhất `(organization_id, code) WHERE code IS NOT NULL AND created_at >= <thời điểm chạy
   migration>` (dựng bằng `EXECUTE format` trong khối DO). Không writer nào tự đặt `code` (đã rà 25/09).
 - **C4.** Tìm theo mã: danh sách Thu chi vốn hiện ngày + người lập ⇒ không cần đổi giao diện.
+- **C5.** (Thêm lúc thi hành, sau sự cố 25/09 ~14:53.) Phiếu PC2609124 bị đổi Chi → Thu vẫn giữ mã PC; bộ đếm
+  cũ lấy MAX **theo loại** nên cấp lại số 124 cho phiếu chi kế tiếp ⇒ 23505, cả dãy phiếu chi của người lập
+  kẹt tới hết tháng. Phần đếm tách thành `app_private.next_voucher_code_v1(tổ chức, loại)` (trigger và cửa sửa
+  cùng gọi); khởi tạo xét MỌI mã cùng tiền tố (không lọc loại) nên áp lên production là tự gỡ dãy đang kẹt.
+  Sửa phiếu Chờ duyệt mà đổi Thu ↔ Chi ⇒ cấp **mã mới** đúng tiền tố từ bộ đếm chung (số cũ bỏ, không tái
+  dùng); trigger kiểm cột chỉ cho đổi `code` khi đổi loại và tiền tố phải khớp; ảnh chụp lịch sử có mã cũ → mới.
 
 ### D. Khoá tháng lợi nhuận tuyệt đối
 
@@ -293,6 +299,10 @@ chết), danh sách/chi tiết Thu chi (phiếu thu hoá đơn). Khoản thu ki�
 
 - `record_invoice_collection_v5` là hàm tiền lớn: sửa bằng bản prod + md5 ghim + test.
 - Khoá tuyệt đối làm lỗi các việc ghi lùi ngày; đây là chủ ý, cần báo nhân viên.
+- (Đo lúc thi hành, prod 25/09, chỉ đọc) 37/184 phiếu Chờ duyệt có hạng mục CHƯA ghi kỳ: form cũ mở rồi Lưu là
+  lặng lẽ gán kỳ = tháng hiện tại ⇒ form mới giữ kỳ trống trừ khi người dùng tự chọn tháng. 70/184 phiếu Chờ
+  duyệt chưa có sổ quỹ (hoa hồng, trả khách, phiếu con lặp): form mới cho giữ sổ trống — người duyệt chọn lúc
+  duyệt; form chỉ gửi đúng ô đã đổi (không sinh "lần sửa" ma do chuẩn hoá tên ngân hàng / chuỗi rỗng).
 
 ## 7. Ghi lại cho đợt 2 (không làm bây giờ)
 
@@ -300,6 +310,12 @@ chết), danh sách/chi tiết Thu chi (phiếu thu hoá đơn). Khoản thu ki�
 - `useUploadPaymentReceipt` (thêm ảnh cho khoản thu từ 28/07) đang chết — tạm dùng "Bổ sung".
 - Huỷ khoản thu chưa gỡ ngày công chấm theo GPS (`v5_lock_assert` join phiếu thu không lọc phiếu đã huỷ).
 - `SettlementLifecycleModal` (hợp đồng & quyết toán) cũng ghi ảnh ngay khi dán như hộp Thu/Chi cũ.
+- Hộp Thu/Chi (ghi sổ): ảnh gom lại tới lúc xác nhận nhưng vẫn ghi lên phiếu TRƯỚC lệnh ghi sổ (lệnh ghi sổ chỉ
+  nhận mã chứng từ lập từ ảnh đã nằm trên phiếu) ⇒ ghi sổ lỗi thì ảnh đã lên phiếu. Muốn trọn gói phải sửa máy chủ.
+- Form Sửa / hộp Duyệt: ảnh vừa tải rồi bấm Đóng vẫn nằm lại kho (đợt này chỉ sửa nút X).
+- Màn Sổ nhận tiền còn hiện toà ảo "Kho Văn Phòng Chung" (RPC chưa trả cờ toà ảo).
+- Đổi sổ cả đợt đi từng phiếu: nếu một phiếu giữa chừng bị từ chối thì các phiếu trước đã đổi (có báo số
+  phiếu đã đổi) — muốn trọn gói phải có RPC cả đợt.
 - Huỷ duyệt / Khôi phục phiếu niêm phong vẫn báo "canonical" — xử lý cùng "mở lại để sửa".
 - 4 khoản thu tiền mặt vào sổ ngân hàng (60 ngày) để nguyên (không đổi dữ liệu cũ); người thu tự sửa bằng
   "Đổi hình thức thu" nếu muốn.

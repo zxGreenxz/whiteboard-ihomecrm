@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  ANNOTATE_STILL_ALLOWED_NOTE,
   PERIOD_BLOCK_DETAIL,
   PERIOD_BLOCK_SHORT,
   periodBlockCodeFromError,
@@ -157,5 +158,25 @@ describe("Đợt 3 — dịch lý do sang tiếng Việt", () => {
       expect(PERIOD_BLOCK_SHORT[code].length).toBeGreaterThan(0);
       expect(PERIOD_BLOCK_DETAIL[code].length).toBeGreaterThan(20);
     }
+  });
+
+  it("PROFIT_LOCKED theo luật khoá tuyệt đối 25/09/2026: nhờ chủ công ty mở khoá tháng, bổ sung dùng nút Bổ sung", () => {
+    const detail = PERIOD_BLOCK_DETAIL.PROFIT_LOCKED;
+    expect(detail).toContain("kể cả chủ công ty");
+    expect(detail).toContain("nhờ chủ công ty mở khoá tháng");
+    expect(detail).toContain("“Bổ sung”");
+    expect(detail).not.toMatch(/phiếu điều chỉnh/);
+  });
+
+  it("câu PROFIT_LOCKED mới của máy chủ giữ nguyên văn, chỉ bóc tiền tố; rỗng thì rơi về câu chi tiết", () => {
+    const cau =
+      "Tháng 07/2026 của toà 15KV đã chốt lợi nhuận — mọi phiếu của tháng này bị khoá, không sửa phiếu được. Nhờ chủ công ty mở khoá tháng.";
+    expect(periodBlockMessage(`[PROFIT_LOCKED] ${cau}`)).toBe(cau);
+    expect(periodBlockMessage("[PROFIT_LOCKED]")).toBe(PERIOD_BLOCK_DETAIL.PROFIT_LOCKED);
+  });
+
+  it("câu 'vẫn bổ sung được trên phiếu' chỉ nói về sổ quỹ đã chốt, không hứa cho tháng đã chốt lợi nhuận", () => {
+    expect(ANNOTATE_STILL_ALLOWED_NOTE).toMatch(/^Sổ quỹ đã chốt/);
+    expect(ANNOTATE_STILL_ALLOWED_NOTE).not.toMatch(/lợi nhuận/);
   });
 });

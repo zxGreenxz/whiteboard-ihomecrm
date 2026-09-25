@@ -33,6 +33,8 @@
 --      Lý do ≥ 8 ký tự khi đổi Thu/Chi, toà, sổ quỹ, KQKD hoặc số/loại/đơn giá/kỳ
 --      của hạng mục. Phiếu hoa hồng / trả khách thanh lý chỉ đổi được tiền của
 --      hạng mục đang có, sổ quỹ, ngày, người nhận, tên, ảnh, ghi chú.
+--      Đổi Thu ↔ Chi thì cấp mã MỚI đúng tiền tố PT/PC từ bộ đếm chung
+--      (app_private.next_voucher_code_v1 — migration mã phiếu duy nhất); số cũ bỏ.
 --      Sửa xong vẫn Chờ duyệt; không tự duyệt.
 --   7. public.approve_pending_income_expense_checked_v1(p_voucher,
 --      p_expected_approval_version): nút Duyệt gửi kèm phiên bản đang xem; phiếu vừa
@@ -197,6 +199,7 @@ CREATE OR REPLACE FUNCTION app_private.ie_revision_snapshot_v1(p_voucher uuid)
  SET search_path TO 'pg_catalog', 'public', 'app_private'
 AS $function$
   SELECT jsonb_build_object(
+    'code', ie.code,
     'type', ie.type,
     'name', ie.name,
     'voucher_date', ie.voucher_date,
@@ -315,6 +318,18 @@ BEGIN
     -- phiên bản
     'approval_version', 'updated_at'];
 
+  -- Đổi Thu ↔ Chi thì mã phải đổi tiền tố theo loại (PT/PC) — chỉ khi đó mới được
+  -- đổi mã, và mã mới phải đúng tiền tố (sự cố 25/09: PC2609124 đổi sang Thu vẫn
+  -- giữ mã PC làm kẹt dãy mã phiếu chi).
+  IF NEW.type IS DISTINCT FROM OLD.type THEN
+    IF NEW.code IS NOT DISTINCT FROM OLD.code
+       OR NEW.code !~ ('^' || CASE WHEN NEW.type = 'INCOME' THEN 'PT' ELSE 'PC' END || '[0-9]') THEN
+      RAISE EXCEPTION 'Đổi Thu/Chi phải cấp mã phiếu mới đúng tiền tố (phiếu %)', OLD.id
+        USING ERRCODE = '55000';
+    END IF;
+    v_cho_doi := v_cho_doi || 'code'::text;
+  END IF;
+
   IF (to_jsonb(OLD) - v_cho_doi) IS DISTINCT FROM (to_jsonb(NEW) - v_cho_doi) THEN
     RAISE EXCEPTION 'Cửa sửa phiếu chỉ được đổi nội dung phiếu % — phát hiện đổi cột khác', OLD.id
       USING ERRCODE = '55000';
@@ -359,7 +374,7 @@ DECLARE
   v_ok boolean;
   v_prev public.income_expense_revisions%ROWTYPE;
   -- giá trị đích
-  t_type text; t_name text; t_building uuid; t_room uuid; t_tenant uuid; t_contract uuid;
+  t_type text; t_code text; t_name text; t_building uuid; t_room uuid; t_tenant uuid; t_contract uuid;
   t_payer text; t_bank_account text; t_bank_name text; t_account uuid; t_attachments jsonb;
   t_notes text; t_date date; t_bra boolean;
   t_repeat_cycle text; t_repeat_count integer; t_repeat_infinity boolean; t_repeat_auto boolean;
@@ -972,10 +987,22 @@ BEGIN
   -- ── 11. Ghi ───────────────────────────────────────────────────────────────
   v_before := app_private.ie_revision_snapshot_v1(p_voucher);
 
+  -- Đổi Thu ↔ Chi: cấp mã MỚI đúng tiền tố (PT/PC) từ bộ đếm chung của tổ chức;
+  -- số cũ bỏ, không tái dùng. Giữ mã PC trên phiếu thu từng làm bộ đếm cũ cấp
+  -- trùng và kẹt cả dãy phiếu chi (sự cố PC2609124, 25/09/2026). Cấp ở đây — sau
+  -- mọi bước kiểm — nên lần sửa bị từ chối không đốt số (cùng một transaction).
+  IF t_type IS DISTINCT FROM v_row.type THEN
+    t_code := app_private.next_voucher_code_v1(v_org, t_type);
+    v_changed := v_changed || 'code'::text;
+  ELSE
+    t_code := v_row.code;
+  END IF;
+
   PERFORM app_private.begin_ie_flex_write_v1(p_voucher, 'REVISE');
 
   UPDATE public.income_expenses ie
      SET type = t_type,
+         code = t_code,
          name = t_name,
          building_id = t_building,
          room_id = t_room,
@@ -1268,6 +1295,12 @@ BEGIN
   END IF;
   IF pg_get_functiondef('public.approve_income_expense_v1(uuid)'::regprocedure) ~ 'canonical không sửa được' THEN
     RAISE EXCEPTION 'nghiem_thu: approve_income_expense_v1 con cau bao cu';
+  END IF;
+  -- Đổi Thu/Chi phải cấp mã mới đúng tiền tố (hàm cấp số chung từ migration mã phiếu).
+  IF to_regprocedure('app_private.next_voucher_code_v1(uuid,text)') IS NULL
+     OR pg_get_functiondef('public.revise_pending_income_expense_v1(uuid,bigint,jsonb,jsonb,text,text)'::regprocedure)
+        !~ 'app_private\.next_voucher_code_v1\(v_org, t_type\)' THEN
+    RAISE EXCEPTION 'nghiem_thu: doi Thu/Chi chua cap ma phieu moi';
   END IF;
 END
 $nghiem_thu$;

@@ -179,16 +179,15 @@ export interface IncomeExpenseWithRelations {
   items: IncomeExpenseItem[];
   created_at: string;
   updated_at: string;
+  /** Số lần SỬA phiếu Chờ duyệt (income_expense_revisions kind EDIT_PENDING). */
+  revision_count?: number;
+  /** Số lần ĐỔI HÌNH THỨC THU của khoản thu hoá đơn (kind COLLECTION_METHOD). */
+  method_change_count?: number;
 }
 
 // --- Mutation Input Types ---
 
 export interface CreateIncomeExpenseInput extends IncomeExpenseFormValues {}
-
-export interface UpdateIncomeExpenseInput {
-  id: string;
-  data: IncomeExpenseFormValues;
-}
 
 export interface ImportIncomeExpenseRow extends ExcelImportRow {
   building_id: string;
@@ -220,17 +219,6 @@ export interface CreateManagerSalaryPayoutInput {
   account_id: string;
   voucher_date: string;
   note?: string | null;
-}
-
-// Sửa nhanh phiếu thu/chi: chỉ 3 field "non-financial" (sổ quỹ, đính kèm,
-// ghi chú). Dùng cho người tạo phiếu để fix lẹ mà không cần super admin
-// và không phải mở full form (nguy hiểm vì có thể đổi total_amount/items).
-// Backend RPC tự kiểm tra quyền (creator hoặc super admin).
-export interface QuickUpdateIncomeExpenseInput {
-  id: string;
-  account_id: string | null;
-  attachments: string[];
-  notes: string | null;
 }
 
 // Một dòng nhật ký thao tác trên phiếu thu/chi.

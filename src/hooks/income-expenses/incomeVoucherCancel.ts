@@ -52,8 +52,10 @@ const BLOCK_TEXT: Record<IncomeCancelBlockCode, string> = {
   CASHBOOK_CLOSED: "Sổ quỹ của phiếu đã chốt & bàn giao — kỳ đó khoá vĩnh viễn",
   HANDOVER_LOCKED:
     "Phiếu nằm trong phiên bàn giao đã xác nhận — phải huỷ phiên đó trước",
+  // Khoá tháng lợi nhuận là tuyệt đối (chủ chốt 25/09/2026): muốn huỷ phiếu của
+  // tháng đã chốt thì chủ công ty phải mở khoá tháng (có ghi lý do).
   PROFIT_LOCKED:
-    "Tháng của phiếu đã chốt & chia lợi nhuận cho cổ đông — lập phiếu điều chỉnh ở tháng hiện tại",
+    "Tháng của phiếu đã chốt lợi nhuận — mọi phiếu của tháng đó bị khoá. Muốn huỷ, nhờ chủ công ty mở khoá tháng",
   LIFO_ORDER: "Hoá đơn còn khoản thu mới hơn phải huỷ trước",
   CREDIT_SPENT:
     "Tiền thừa của lần thu này đã được cấn sang hoá đơn khác — gỡ khoản đã cấn trước",

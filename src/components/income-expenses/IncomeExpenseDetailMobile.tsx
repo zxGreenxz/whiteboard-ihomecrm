@@ -28,6 +28,10 @@ import { useMyPermissions } from "@/hooks/useMyPermissions";
 import { useReservationSettlementForVoucher } from "@/hooks/useReservationSettlement";
 import { canUse } from "@/lib/permissionPages";
 import { canShowAnnotateAction } from "@/lib/voucherAnnotate";
+import { AUDIT_TONE_CLASSES, auditActionLabel, voucherEditAction } from "@/lib/incomeExpenseRevision";
+import { useIsCompanyOwner } from "@/hooks/useIsCompanyOwner";
+import { RevisionCountBadges, RevisionHistory } from "@/components/income-expenses/RevisionSummary";
+import { CollectionMethodAction } from "@/components/income-expenses/CollectionMethodAction";
 import { getVoucherDisplayAttachments } from '@/lib/incomeExpenseSupplement';
 import { useAuth } from "@/hooks/useAuth";
 import PayViaBankAppSheet from "@/components/income-expenses/PayViaBankAppSheet";
@@ -102,6 +106,7 @@ export function IncomeExpenseDetailMobile({
   const { data: isAdmin = false } = useIsAdmin();
   const { data: perms } = useMyPermissions();
   const { data: isSuperAdmin = false } = useIsSuperAdmin();
+  const { data: isCompanyOwner = false } = useIsCompanyOwner();
   const { data: authUser } = useAuth();
   const currentUserId = authUser?.id ?? null;
   const isSettlementLeg = v.system_source?.startsWith("reservation.") ?? false;
@@ -143,7 +148,10 @@ export function IncomeExpenseDetailMobile({
   const isExpense = v.type === "EXPENSE";
   const accent = v.type === "INCOME" ? "#1f9d57" : "#d6453f";
   const isCreator = !!currentUserId && v.user_id === currentUserId;
-  const showFullEdit = monetaryActionsAllowed && !!onEdit && (isUnapproved || isAdmin);
+  // Đợt 1 sửa phiếu: chỉ phiếu Chờ duyệt sửa được (có lưu vết) hoặc chế độ đổi cờ
+  // KQKD phiếu bỏ cọc; bỏ "Sửa phiếu (Super Admin)" trên phiếu đã duyệt/đã huỷ.
+  const editAction = voucherEditAction(v, { isAdmin, isCompanyOwner });
+  const showFullEdit = monetaryActionsAllowed && !!onEdit && editAction.show;
   const showQuickEdit = canShowAnnotateAction({
     hasHandler: !!onQuickEdit,
     isUnapproved,
@@ -197,7 +205,8 @@ export function IncomeExpenseDetailMobile({
               <button
                 className="vd-act"
                 style={{ background: "#f59e0b" }}
-                aria-label="Sửa"
+                aria-label={editAction.title || "Sửa"}
+                title={editAction.title}
                 onClick={() => {
                   onEdit!(v);
                   onClose();
@@ -348,6 +357,10 @@ export function IncomeExpenseDetailMobile({
                   Chờ duyệt
                 </span>
               )}
+              <RevisionCountBadges
+                editCount={v.revision_count ?? 0}
+                methodChangeCount={v.method_change_count ?? 0}
+              />
             </div>
           </div>
           <Row label="Tên" value={v.name} />
@@ -389,6 +402,11 @@ export function IncomeExpenseDetailMobile({
               </div>
             </div>
           )}
+          {/* Khoản thu hoá đơn kiểu mới: hình thức thu + nút đổi (đợt 1 sửa phiếu). */}
+          <CollectionMethodAction
+            voucher={v}
+            row={(label, value) => <Row label={label} value={value} />}
+          />
           <Row
             label={isExpense ? "Người nhận" : "Người nộp"}
             value={v.payer_name}
@@ -505,6 +523,11 @@ export function IncomeExpenseDetailMobile({
           </>
         )}
 
+        {/* Đợt 1 sửa phiếu: từng lần sửa khi Chờ duyệt / đổi hình thức thu */}
+        <div className="px-1 pt-3">
+          <RevisionHistory voucherId={v.id} />
+        </div>
+
         {history.length > 0 && (
           <>
             <div className="vd-sec">
@@ -515,19 +538,13 @@ export function IncomeExpenseDetailMobile({
             </div>
             <div className="vd-table">
               {history.map((h) => {
-                const isRestore = h.action === "RESTORED";
+                // Nhãn theo đúng hành động (trước đây mọi thứ ≠ Khôi phục đều là "Huỷ phiếu").
+                const nhan = auditActionLabel(h.action);
                 return (
                   <div className="vd-irow" key={h.id}>
                     <div className="vd-irow-l">
-                      <span
-                        className="vd-tag"
-                        style={
-                          isRestore
-                            ? { color: "#15803d", background: "#dcfce7" }
-                            : { color: "#b91c1c", background: "#fee2e2" }
-                        }
-                      >
-                        {isRestore ? "Khôi phục" : "Huỷ phiếu"}
+                      <span className={`vd-tag ${AUDIT_TONE_CLASSES[nhan.tone]}`}>
+                        {nhan.label}
                       </span>
                       <span style={{ marginLeft: 8 }}>{h.actor_name || "—"}</span>
                       {h.note ? (

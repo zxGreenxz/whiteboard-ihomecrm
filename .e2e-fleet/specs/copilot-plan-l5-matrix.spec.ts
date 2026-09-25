@@ -283,10 +283,13 @@ async function docBang(jwt: string, duong: string): Promise<Record<string, unkno
  *   sổ quỹ, rồi mới duyệt.
  *
  *   Ca 6 đo hành động DUYỆT, không đo trình tạo nháp. Nên fixture làm đúng cái
- *   người dùng làm: gọi `update_income_expense_quick` — chính RPC mà màn "Sửa
- *   phiếu" dùng để chọn sổ quỹ, và chỉ NGƯỜI TẠO gọi được (chunha ở đây). PATCH
- *   thẳng bảng không đi được: `income_expenses` không GRANT UPDATE cho
- *   `authenticated` (403 "permission denied for table") — mọi sửa đi qua RPC.
+ *   người dùng làm: gọi `revise_pending_income_expense_v1` — chính RPC mà màn
+ *   "Sửa phiếu" và hộp Duyệt dùng để chọn sổ quỹ (đợt 1 sửa phiếu 25/09/2026;
+ *   `update_income_expense_quick` đã gỡ). Người tạo (chunha ở đây) gọi được;
+ *   chọn sổ LẦN ĐẦU cho phiếu chưa có sổ thì không cần lý do. RPC kiểm phiên
+ *   bản nên phải đọc `approval_version` trước. PATCH thẳng bảng không đi được:
+ *   `income_expenses` không GRANT UPDATE cho `authenticated` (403 "permission
+ *   denied for table") — mọi sửa đi qua RPC.
  */
 async function ganSoQuy(jwt: string, phieuId: string): Promise<string> {
   // Lọc theo tên Ở PHÍA JS, không nhét tên vào query string. Tên sổ quỹ DEMO có
@@ -302,11 +305,13 @@ async function ganSoQuy(jwt: string, phieuId: string): Promise<string> {
     `Không thấy sổ quỹ "${SO_QUY}" trên DEMO (thấy: ${so.map((r) => r.name).join(' | ')})`,
   ).toBeTruthy();
 
-  const dat = await goiRpc(jwt, 'update_income_expense_quick', {
-    p_id: phieuId,
-    p_account_id: soId,
-    p_attachments: [],
-    p_notes: null,
+  const truoc = await docBang(jwt, `income_expenses?id=eq.${phieuId}&select=id,approval_version`);
+  expect(truoc[0]?.approval_version, 'Đọc phiên bản phiếu trước khi sửa').toBeTruthy();
+  const dat = await goiRpc(jwt, 'revise_pending_income_expense_v1', {
+    p_voucher: phieuId,
+    p_expected_approval_version: truoc[0]?.approval_version,
+    p_patch: { account_id: soId },
+    p_idempotency_key: `e2e-gan-so-quy-${phieuId}`,
   });
   expect(dat.status, `Gán sổ quỹ cho phiếu: ${loi(dat)}`).toBe(200);
   const doclai = await docBang(jwt, `income_expenses?id=eq.${phieuId}&select=id,account_id`);

@@ -54,7 +54,6 @@ import {
   useRestoreIncomeExpense,
   useApproveVoucher,
   useUnapproveVoucher,
-  useQuickUpdateIncomeExpense,
   useGenerateRecurringVouchers,
   useStopRecurring,
   useIncomeExpenseBatches,
@@ -63,6 +62,13 @@ import {
   type IncomeExpenseWithRelations,
 } from "@/hooks/useIncomeExpenses";
 import type { IncomeExpenseFilters } from "@/hooks/useIncomeExpenses";
+import { useReviseIncomeExpense } from "@/hooks/income-expenses/revisions";
+import { RevisionComparison } from "@/components/income-expenses/RevisionSummary";
+import {
+  accountChangeNeedsReason,
+  approvalEditPatch,
+  REVISION_REASON_MIN,
+} from "@/lib/incomeExpenseRevision";
 import { usePagination } from "@/hooks/usePagination";
 import { usePhoneViewport } from "@/hooks/use-mobile";
 import { useRoomIdsByCode } from "@/hooks/useRoomIdsByCode";
@@ -165,6 +171,8 @@ const IncomeExpenseDesktopPage = () => {
   // Duyệt phiếu: cho bổ sung/đổi sổ quỹ + đính kèm ngay trước khi ghi vào tồn quỹ.
   const [approveAccountId, setApproveAccountId] = useState<string>("");
   const [approveAttachments, setApproveAttachments] = useState<string[]>([]);
+  // Đổi từ sổ này sang sổ khác ngay trước khi duyệt = một lần sửa phiếu ⇒ cần lý do.
+  const [approveReason, setApproveReason] = useState("");
   const [unapproveTarget, setUnapproveTarget] = useState<string | null>(null);
   // V2: mở Posting dialog "Duyệt và Chi/Thu" (chỉ khi route CANONICAL).
   const [approveAndPostOpen, setApproveAndPostOpen] = useState(false);
@@ -352,7 +360,7 @@ const IncomeExpenseDesktopPage = () => {
   const cancelBatchMutation = useCancelIncomeExpenseBatch();
   const approveMutation = useApproveVoucher();
   const unapproveMutation = useUnapproveVoucher();
-  const quickUpdateMutation = useQuickUpdateIncomeExpense();
+  const reviseMutation = useReviseIncomeExpense();
   const generateRecurringMutation = useGenerateRecurringVouchers();
   const stopRecurringMutation = useStopRecurring();
 
@@ -439,8 +447,12 @@ const IncomeExpenseDesktopPage = () => {
           : approveTarget.account_id ?? "",
       );
       setApproveAttachments(approveTarget.attachments ?? []);
+      setApproveReason("");
     }
   }, [accounts, approveTarget]);
+  const approveNeedsReason =
+    !!approveTarget && accountChangeNeedsReason(approveTarget.account_id, approveAccountId);
+  const approveReasonOk = approveReason.trim().length >= REVISION_REASON_MIN;
 
   const handleFiltersChange = useCallback(
     (newFilters: IncomeExpenseFilters) => {
@@ -527,8 +539,9 @@ const IncomeExpenseDesktopPage = () => {
     []
   );
 
-  // Nếu người dùng đổi sổ quỹ hoặc thêm/bớt ảnh thì lưu trước
-  // (update_income_expense_quick chỉ áp cho phiếu chờ duyệt) rồi mới ghi vào tồn quỹ.
+  // Nếu người dùng đổi sổ quỹ hoặc thêm/bớt ảnh thì lưu trước — qua cửa sửa phiếu
+  // có lưu vết (revise_pending_income_expense_v1) — rồi duyệt ĐÚNG phiên bản vừa
+  // sửa. Phiếu bị người khác sửa giữa chừng ⇒ máy chủ trả 40001, không duyệt nhầm.
   const confirmApprove = useCallback(async () => {
     const target = approveTarget;
     if (!target) return;
@@ -547,21 +560,23 @@ const IncomeExpenseDesktopPage = () => {
       }
       return;
     }
-    const nextAccountId = approveAccountId || null;
-    const accountChanged = nextAccountId !== (target.account_id ?? null);
-    const prevAttachments = target.attachments ?? [];
-    const attachmentsChanged =
-      JSON.stringify(prevAttachments) !== JSON.stringify(approveAttachments);
+    const patch = approvalEditPatch(target, {
+      account_id: approveAccountId || null,
+      attachments: approveAttachments,
+    });
     try {
-      if (accountChanged || attachmentsChanged) {
-        await quickUpdateMutation.mutateAsync({
-          id: target.id,
-          account_id: nextAccountId,
-          attachments: approveAttachments,
-          notes: target.notes ?? null,
+      let version = target.approval_version;
+      if (Object.keys(patch).length > 0) {
+        const revised = await reviseMutation.mutateAsync({
+          voucherId: target.id,
+          expectedApprovalVersion: version,
+          patch,
+          reason: approveReason.trim() || null,
+          silent: true,
         });
+        version = revised.approval_version;
       }
-      await approveMutation.mutateAsync(target.id);
+      await approveMutation.mutateAsync({ id: target.id, expectedApprovalVersion: version });
       setApproveTarget(null);
     } catch {
       // toast đã hiển thị trong hook; giữ hộp thoại để người dùng thử lại.
@@ -570,8 +585,9 @@ const IncomeExpenseDesktopPage = () => {
     approveTarget,
     approveAccountId,
     approveAttachments,
+    approveReason,
     approveMutation,
-    quickUpdateMutation,
+    reviseMutation,
     v2ApproveOnly,
     approveV2Mutation,
   ]);
@@ -1073,6 +1089,9 @@ const IncomeExpenseDesktopPage = () => {
             </AlertDialogDescription>
           </AlertDialogHeader>
 
+          {/* Phiếu đã bị sửa khi Chờ duyệt ⇒ người duyệt thấy đổi gì, ai sửa, vì sao. */}
+          {approveTarget && <RevisionComparison voucherId={approveTarget.id} />}
+
           {!v2ApproveOnly && (
           <div className="space-y-4 py-2">
             <div className="space-y-2">
@@ -1097,6 +1116,22 @@ const IncomeExpenseDesktopPage = () => {
               </p>
             </div>
 
+            {approveNeedsReason && (
+              <div className="space-y-2">
+                <Label htmlFor="approve-reason">Lý do đổi sổ quỹ *</Label>
+                <Textarea
+                  id="approve-reason"
+                  value={approveReason}
+                  onChange={(e) => setApproveReason(e.target.value)}
+                  rows={2}
+                  placeholder="Vì sao đổi sang sổ khác?"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Đổi sổ được lưu thành một lần sửa phiếu (ít nhất {REVISION_REASON_MIN} ký tự).
+                </p>
+              </div>
+            )}
+
             <div className="space-y-2">
               <Label>Hình ảnh đính kèm</Label>
               <AttachmentUpload
@@ -1112,7 +1147,7 @@ const IncomeExpenseDesktopPage = () => {
             <AlertDialogCancel
               disabled={
                 approveMutation.isPending ||
-                quickUpdateMutation.isPending ||
+                reviseMutation.isPending ||
                 approveV2Mutation.isPending
               }
             >
@@ -1137,14 +1172,15 @@ const IncomeExpenseDesktopPage = () => {
               }}
               disabled={
                 approveMutation.isPending ||
-                quickUpdateMutation.isPending ||
+                reviseMutation.isPending ||
                 approveV2Mutation.isPending ||
-                (!v2ApproveOnly && isShareholderPayout && !approveAccountId)
+                (!v2ApproveOnly && isShareholderPayout && !approveAccountId) ||
+                (!v2ApproveOnly && approveNeedsReason && !approveReasonOk)
               }
               className="bg-green-600 hover:bg-green-700"
             >
               {approveMutation.isPending ||
-              quickUpdateMutation.isPending ||
+              reviseMutation.isPending ||
               approveV2Mutation.isPending
                 ? "Đang duyệt…"
                 : v2ApproveOnly

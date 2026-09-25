@@ -7,6 +7,9 @@ import { CollectPayForm, type PayFormState } from '../CollectPayForm';
 
 afterEach(cleanup);
 
+// Người thu có sổ tiền mặt riêng; toà chưa cài sổ CK/TT.
+const CASH_ONLY = { TM: [{ id: 'cash', name: 'Hiệp Thu' }], TK: [], TT: [] };
+
 function Keypad({ remaining = 7_908_000 }: { remaining?: number }) {
   const [change, setChange] = useState<number | null>(null);
   return <CollectKeypad remaining={remaining} entered="8000" onEntered={() => {}}
@@ -30,7 +33,7 @@ describe('editable change in Thu tiền', () => {
   });
 
   it('exposes the form change field at zero without requiring an overpayment first', () => {
-    render(<CollectPayForm remaining={8_333_000} methodAvailable={{ TM: true, TK: false, TT: false }} canCredit onChange={() => {}} />);
+    render(<CollectPayForm remaining={8_333_000} books={CASH_ONLY} canCredit onChange={() => {}} />);
     expect((screen.getByRole('textbox', { name: 'Tiền thối thực tế' }) as HTMLInputElement).value).toBe('0');
   });
   it('edits keypad change in đồng and shows the waived amount', () => {
@@ -49,7 +52,7 @@ describe('editable change in Thu tiền', () => {
 
   it('form forwards actual change and rounding, resets when customer amount changes', async () => {
     const onChange = vi.fn<(state: PayFormState) => void>();
-    render(<CollectPayForm remaining={8_333_000} methodAvailable={{ TM: true, TK: false, TT: false }}
+    render(<CollectPayForm remaining={8_333_000} books={CASH_ONLY}
       canCredit onChange={onChange} />);
     const paidInput = screen.getAllByRole('textbox')[0];
     fireEvent.change(paidInput, { target: { value: '8.500.000' } });
@@ -62,7 +65,7 @@ describe('editable change in Thu tiền', () => {
 
   it('does not send custom cash change after switching to credit', async () => {
     const onChange = vi.fn<(state: PayFormState) => void>();
-    render(<CollectPayForm remaining={8_333_000} methodAvailable={{ TM: true, TK: false, TT: false }} canCredit onChange={onChange} />);
+    render(<CollectPayForm remaining={8_333_000} books={CASH_ONLY} canCredit onChange={onChange} />);
     fireEvent.change(screen.getAllByRole('textbox')[0], { target: { value: '8.500.000' } });
     fireEvent.change(screen.getByRole('textbox', { name: 'Tiền thối thực tế' }), { target: { value: '170.000' } });
     fireEvent.click(screen.getByRole('checkbox'));

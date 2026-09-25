@@ -12,8 +12,14 @@
 // cap là đường một chạm không nhập tiền thối: cap tổng về remaining.
 // =============================================
 
-import type { CollectMethod } from './cashAccount';
 import { collectionSettlement, COLLECTION_ROUNDING_THRESHOLD } from './collectionSettlement';
+
+/**
+ * Ba hình thức thu tiền thật. Sổ nhận của từng hình thức do MÁY CHỦ quyết
+ * (get_receiving_cashbooks_v1 — xem hooks/useReceivingCashbooks), không còn tự
+ * đoán ở giao diện.
+ */
+export type CollectMethod = 'TM' | 'TK' | 'TT';
 
 export interface CollectPlanLine {
   method: CollectMethod;

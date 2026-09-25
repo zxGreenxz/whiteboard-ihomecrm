@@ -7,6 +7,8 @@ import type { ImportIncomeExpenseRow } from "./types";
 import { loadIncomeExpenseAccountingClassResolver } from "./accountingClass";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { withOrg, withOrgAll } from "@/lib/orgPayload";
+import { reviseIncomeExpense, VOUCHER_QUERY_KEYS } from "./revisions";
+import { revisionErrorMessage } from "@/lib/incomeExpenseRevision";
 
 // Compat gateway V2 (Stage-7b drain): RPC chưa có trong generated types cho tới
 // lần regen sau forward-apply — gọi qua cast (mẫu financeV2Mutations.ts).
@@ -369,15 +371,17 @@ export const useCancelIncomeExpenseBatch = () => {
   });
 };
 
-// Đổi sổ quỹ (account_id) đồng loạt cho tất cả phiếu con của 1 batch.
-// Dùng cho UI "Sửa sổ quỹ ở phiếu tổng" — chỉ apply khi mọi phiếu con
-// đang cùng 1 sổ quỹ (frontend kiểm tra trước khi gọi).
+// Đổi sổ quỹ đồng loạt cho các phiếu con CHỜ DUYỆT của một đợt (UI "Sửa sổ quỹ ở
+// phiếu tổng" — chỉ hiện khi mọi phiếu con đang cùng một sổ). Mỗi phiếu là một
+// lần sửa có lưu vết (revise_pending_income_expense_v1) với cùng một lý do.
+// Đợt có phiếu đã duyệt thì từ chối CẢ ĐỢT trước khi ghi gì: đổi một nửa là đợt
+// lệch sổ. Phiếu đã huỷ bỏ qua.
 export const useUpdateBatchAccount = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (input: { batchId: string; accountId: string }) => {
-      const { batchId, accountId } = input;
+    mutationFn: async (input: { batchId: string; accountId: string; reason: string }) => {
+      const { batchId, accountId, reason } = input;
 
       const { data: links, error: linkError } = await supabase
         .from("income_expense_batch_items")
@@ -387,35 +391,60 @@ export const useUpdateBatchAccount = () => {
         toast.error(linkError.message || "Không đọc được danh sách phiếu");
         throw linkError;
       }
-      const ids = ((links ?? []) as any[]).map((l) => l.income_expense_id);
+      const ids = (links ?? []).map((l) => l.income_expense_id);
       if (ids.length === 0) return { count: 0 };
 
-      // Stage-7 drain: đổi sổ quỹ từng phiếu qua ie_compat_update_pending_v2
-      // (account_id là trục tiền — server chỉ cho sửa khi phiếu còn Chờ duyệt
-      // và chưa ghi sổ; phiếu đã duyệt/POSTED sẽ bị từ chối 55000).
+      const { data: rows, error: rowsError } = await supabase
+        .from("income_expenses")
+        .select("id, code, approval_status, approval_version, account_id")
+        .in("id", ids);
+      if (rowsError) {
+        toast.error(rowsError.message || "Không đọc được phiếu trong đợt");
+        throw rowsError;
+      }
+      const live = (rows ?? []).filter((r) => r.approval_status !== "CANCELLED");
+      const daDuyet = live.filter((r) => r.approval_status !== "UNAPPROVED");
+      if (daDuyet.length > 0) {
+        const message =
+          `Đợt có ${daDuyet.length} phiếu đã duyệt (${daDuyet.slice(0, 3).map((r) => r.code).join(", ")}` +
+          `${daDuyet.length > 3 ? "…" : ""}) — chỉ đổi sổ được khi mọi phiếu còn Chờ duyệt.`;
+        toast.error(message);
+        throw new Error(message);
+      }
+
       let count = 0;
-      for (const id of ids) {
-        const { error } = await compatRpc("ie_compat_update_pending_v2", {
-          p_id: id,
-          p_patch: { account_id: accountId },
-          p_items: null,
-        });
-        if (error) {
-          toast.error(error.message || "Không cập nhật được sổ quỹ");
+      for (const r of live) {
+        if (r.account_id === accountId) continue;
+        try {
+          const result = await reviseIncomeExpense({
+            voucherId: r.id,
+            expectedApprovalVersion: Number(r.approval_version),
+            patch: { account_id: accountId },
+            reason,
+          });
+          if (result.changed) count++;
+        } catch (error) {
+          toast.error(
+            `${r.code}: ${revisionErrorMessage(error)}` +
+              (count > 0 ? ` (đã đổi ${count} phiếu trước đó)` : ""),
+          );
           throw error;
         }
-        count++;
       }
 
       return { count };
     },
     onSuccess: ({ count }) => {
-      queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
-      queryClient.invalidateQueries({ queryKey: ["income-expense-batches"] });
-      queryClient.invalidateQueries({ queryKey: ["accounts-with-balance"] });
+      for (const key of VOUCHER_QUERY_KEYS) {
+        queryClient.invalidateQueries({ queryKey: key });
+      }
       toast.success(`Đã đổi sổ quỹ cho ${count} phiếu trong đợt`);
     },
     onError: (error) => {
+      // Đổi dở dang vẫn phải làm mới màn hình: vài phiếu đầu có thể đã đổi.
+      for (const key of VOUCHER_QUERY_KEYS) {
+        queryClient.invalidateQueries({ queryKey: key });
+      }
       console.error("Error updating batch account:", error);
     },
   });

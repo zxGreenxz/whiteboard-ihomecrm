@@ -154,57 +154,28 @@ const trySetTerminationForfeitStatus = async (
 // Duyệt phiếu thu/chi (UNAPPROVED → APPROVED). Dùng khi đã thực thanh toán
 // phiếu nháp (vd phiếu chi hoa hồng tạo cùng hợp đồng).
 //
-// Có phiên bản đang xem (đợt 1 sửa phiếu, 25/09/2026): một RPC
-// approve_pending_income_expense_checked_v1 làm đủ thang ba bậc dưới khoá dòng
-// và so approval_version — phiếu vừa bị sửa ⇒ 40001 "tải lại", người duyệt
-// không duyệt nhầm một nội dung chưa xem.
-// Không có phiên bản (chỗ gọi cũ): thang ba bậc phía client như trước —
-// canonical approve_income_expense_v1 (phiếu flow-owned) trước; phiếu legacy
-// nhận tín hiệu 'chưa thuộc luồng canonical' → dùng approve_voucher.
-export type ApproveVoucherInput = string | { id: string; expectedApprovalVersion: number };
+// Luôn kèm phiên bản đang xem (đợt 1 sửa phiếu, 25/09/2026): một RPC
+// approve_pending_income_expense_checked_v1 làm đủ thang ba bậc (cặp bỏ cọc →
+// canonical → legacy) dưới khoá dòng và so approval_version — phiếu vừa bị sửa
+// ⇒ 40001 "tải lại", người duyệt không duyệt nhầm một nội dung chưa xem. Thang
+// ba bậc phía client (không kiểm phiên bản) đã gỡ cùng đợt.
+export type ApproveVoucherInput = { id: string; expectedApprovalVersion: number };
 
 export const useApproveVoucher = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (input: ApproveVoucherInput) => {
-      if (typeof input !== "string") {
-        try {
-          const result = await approveCheckedVoucher({
-            voucherId: input.id,
-            expectedApprovalVersion: input.expectedApprovalVersion,
-          });
-          return result.mode === "FORFEIT_PAIR";
-        } catch (error: unknown) {
-          toast.error(approvalErrorMessage(error));
-          throw error;
-        }
-      }
-      const id = input;
       try {
-        if (await trySetTerminationForfeitStatus(id, "APPROVED")) return true;
+        const result = await approveCheckedVoucher({
+          voucherId: input.id,
+          expectedApprovalVersion: input.expectedApprovalVersion,
+        });
+        return result.mode === "FORFEIT_PAIR";
       } catch (error: unknown) {
-        toast.error(errorMessage(error, "Không thể duyệt phiếu"));
+        toast.error(approvalErrorMessage(error));
         throw error;
       }
-
-      const canonical = await supabase.rpc("approve_income_expense_v1", {
-        p_voucher_id: id,
-      });
-      if (!canonical.error) return false;
-      if (!isIeLifecycleFallbackSignal(canonical.error)) {
-        toast.error(canonical.error.message || "Không thể duyệt phiếu");
-        throw canonical.error;
-      }
-
-      const { error } = await supabase.rpc("approve_voucher", {
-        voucher_id: id,
-      });
-      if (error) {
-        toast.error(error.message || "Không thể duyệt phiếu");
-        throw error;
-      }
-      return false;
     },
     onSuccess: (isTerminationForfeit) => {
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });

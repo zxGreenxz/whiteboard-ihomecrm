@@ -37,8 +37,20 @@ import { Plus, Trash2, ArrowUp, ArrowDown, AlertTriangle } from 'lucide-react';
 import { useVoucherSlotWarning } from '@/hooks/useVoucherSlotWarning';
 import {
   incomeExpenseFormSchema,
+  incomeExpenseNoAccountFormSchema,
   type IncomeExpenseFormValues,
 } from '@/lib/incomeExpenseValidation';
+import {
+  buildRevisionPatch,
+  isStaleVersionError,
+  isSystemRevisableVoucher,
+  requiresRevisionReason,
+  revisionItemsChanged,
+  REVISION_REASON_MAX,
+  REVISION_REASON_MIN,
+  type RevisableItem,
+} from '@/lib/incomeExpenseRevision';
+import { useReviseIncomeExpense } from '@/hooks/income-expenses/revisions';
 import { addCycle, type RepeatCycle } from '@/lib/recurring';
 import {
   dateToMonth,
@@ -48,7 +60,6 @@ import {
 } from '@/lib/monthPeriod';
 import {
   useCreateIncomeExpense,
-  useUpdateIncomeExpense,
   type IncomeExpenseWithRelations,
 } from '@/hooks/useIncomeExpenses';
 import {
@@ -129,7 +140,25 @@ interface FormItemRow {
   unit_price: number;
   start_date: string;
   end_date: string;
+  /**
+   * Chế độ SỬA: hạng mục gốc CHƯA ghi kỳ. Ô tháng vẫn hiện tháng hiện tại cho
+   * đủ form, nhưng lưu thì giữ kỳ trống — trừ khi người dùng tự chọn tháng.
+   * (25/09/2026: 37/184 phiếu chờ duyệt trên prod ở dạng này; trước đây mở form
+   * rồi Lưu là lặng lẽ gán kỳ = tháng hiện tại.)
+   */
+  keepNullPeriod?: boolean;
 }
+
+/** Hạng mục theo khuôn máy chủ nhận; kỳ trống giữ nguyên là null. */
+const toRevisableItems = (rows: FormItemRow[]): RevisableItem[] =>
+  rows.map((r) => ({
+    income_expense_type_id: r.income_expense_type_id,
+    description: r.description,
+    quantity: r.quantity,
+    unit_price: r.unit_price,
+    start_date: r.keepNullPeriod ? null : r.start_date,
+    end_date: r.keepNullPeriod ? null : r.end_date,
+  }));
 
 /** Nhãn tiếng Việt cho contracts.status thô (dùng hiển thị trong dropdown HĐ). */
 const CONTRACT_STATUS_VI: Record<string, string> = {
@@ -174,7 +203,22 @@ const IncomeExpenseFormInner = ({
   // isEditing vẫn chỉ theo `voucher` → copy mode submit qua đường TẠO MỚI.
   const populateSource = voucher ?? copyFrom ?? null;
   const createMutation = useCreateIncomeExpense();
-  const updateMutation = useUpdateIncomeExpense();
+  const reviseMutation = useReviseIncomeExpense();
+  // Sửa phiếu Chờ duyệt (đợt 1, 25/09/2026): mọi lần lưu đi qua
+  // revise_pending_income_expense_v1 — có lưu vết, lý do khi đổi trục tiền, và
+  // kiểm phiên bản (approval_version lúc MỞ form) để không đè lên người khác.
+  const [revisionReason, setRevisionReason] = useState('');
+  const [staleVersion, setStaleVersion] = useState(false);
+  // Ảnh chụp form ngay sau khi đổ phiếu vào: chỉ gửi những ô khác ảnh này.
+  const [editBaseline, setEditBaseline] = useState<{
+    values: IncomeExpenseFormValues;
+    rows: FormItemRow[];
+  } | null>(null);
+  // Phiếu hoa hồng / trả khách thanh lý: khung do hệ thống dựng, chỉ sửa tiền
+  // của hạng mục đang có + sổ, ngày, người nhận, tên, ảnh (máy chủ cũng chặn).
+  const isSystemVoucher = !!voucher && isSystemRevisableVoucher(voucher);
+  // Phiếu chưa có sổ: giữ được sổ trống, người duyệt chọn lúc duyệt.
+  const accountOptional = !!voucher && !voucher.account_id;
   const { data: authUser } = useAuth();
   const { data: isAdmin = false } = useIsAdmin();
   // Chủ công ty KHÁC chủ tổ chức: xem đầu useIsCompanyOwner (vai "Chủ công ty"
@@ -242,7 +286,9 @@ const IncomeExpenseFormInner = ({
     (!voucher && defaultPrefill?.period?.end_date) || monthToEndDate(currentMonth());
 
   const form = useForm<IncomeExpenseFormValues>({
-    resolver: zodResolver(incomeExpenseFormSchema),
+    resolver: zodResolver(
+      accountOptional ? incomeExpenseNoAccountFormSchema : incomeExpenseFormSchema,
+    ),
     defaultValues: {
       type: defaultType ?? 'INCOME',
       name: '',
@@ -367,17 +413,19 @@ const IncomeExpenseFormInner = ({
         })),
       });
 
-      setItemRows(
-        src.items.map((item) => ({
-          income_expense_type_id: item.income_expense_type_id,
-          type_name: item.type_name,
-          description: item.description,
-          quantity: item.quantity,
-          unit_price: item.unit_price,
-          start_date: item.start_date ?? defPeriodStart,
-          end_date: item.end_date ?? defPeriodEnd,
-        }))
-      );
+      const rows: FormItemRow[] = src.items.map((item) => ({
+        income_expense_type_id: item.income_expense_type_id,
+        type_name: item.type_name,
+        description: item.description,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        start_date: item.start_date ?? defPeriodStart,
+        end_date: item.end_date ?? defPeriodEnd,
+        // Chỉ chế độ SỬA giữ kỳ trống; bản sao là phiếu MỚI, cần kỳ đầy đủ.
+        keepNullPeriod: !!voucher && !item.start_date && !item.end_date,
+      }));
+      setItemRows(rows);
+      setEditBaseline(voucher ? { values: form.getValues(), rows } : null);
     } else {
       const prefillBuilding = defaultPrefill?.building_id;
       const prefillRoom = defaultPrefill?.room_id ?? null;
@@ -571,16 +619,17 @@ const IncomeExpenseFormInner = ({
     syncItemsToForm(updated);
   };
 
+  // Người dùng tự chọn tháng ⇒ kỳ hết là "trống giữ nguyên", lưu cả hai đầu.
   const handleItemStartDateChange = (index: number, value: string) => {
     const updated = [...itemRows];
-    updated[index] = { ...updated[index], start_date: value };
+    updated[index] = { ...updated[index], start_date: value, keepNullPeriod: false };
     setItemRows(updated);
     syncItemsToForm(updated);
   };
 
   const handleItemEndDateChange = (index: number, value: string) => {
     const updated = [...itemRows];
-    updated[index] = { ...updated[index], end_date: value };
+    updated[index] = { ...updated[index], end_date: value, keepNullPeriod: false };
     setItemRows(updated);
     syncItemsToForm(updated);
   };
@@ -610,7 +659,24 @@ const IncomeExpenseFormInner = ({
         return;
       }
       if (isEditing && voucher) {
-        await updateMutation.mutateAsync({ id: voucher.id, data });
+        if (!editBaseline) return;
+        const patch = buildRevisionPatch(editBaseline.values, data);
+        const nextItems = toRevisableItems(itemRows);
+        const items = revisionItemsChanged(toRevisableItems(editBaseline.rows), nextItems)
+          ? nextItems
+          : null;
+        // Không đổi gì thì không gọi máy chủ (khỏi sinh "lần sửa" rỗng).
+        if (Object.keys(patch).length === 0 && !items) {
+          onOpenChange(false);
+          return;
+        }
+        await reviseMutation.mutateAsync({
+          voucherId: voucher.id,
+          expectedApprovalVersion: voucher.approval_version,
+          patch,
+          items,
+          reason: revisionReason.trim() || null,
+        });
       } else {
         await createMutation.mutateAsync(data);
         // Báo cho caller (vd ContractFormDialog) biết phiếu vừa tạo có tổng
@@ -622,21 +688,20 @@ const IncomeExpenseFormInner = ({
         onSaved?.(total);
       }
       onOpenChange(false);
-    } catch {
-      // Errors handled by mutation hooks (toast)
+    } catch (error) {
+      // Lỗi đã được hook báo (toast). Riêng lệch phiên bản: phiếu vừa bị người
+      // khác sửa/duyệt — khoá nút Lưu, bảo người dùng mở lại phiếu.
+      if (isStaleVersionError(error)) setStaleVersion(true);
     }
   };
 
   const isPending =
     createMutation.isPending ||
-    updateMutation.isPending ||
+    reviseMutation.isPending ||
     forfeitKqkdMutation.isPending;
-  // Phiếu Nháp (UNAPPROVED): cho phép sửa.
-  // Phiếu đã ghi nhận/đã huỷ: chỉ xem (read-only) — TRỪ Super Admin.
-  // Super Admin: edit được mọi phiếu (lẻ hoặc trong đợt) ở mọi trạng thái,
-  // của bất kỳ ai. Khớp với RLS bypass ở DB (xem 20260506000002).
-  // Tạo mới: edit được.
-  const isUnapprovedDraft = voucher?.approval_status === 'UNAPPROVED';
+  // Tạo mới: sửa được. Phiếu có sẵn: chỉ phiếu Chờ duyệt sửa được (phiếu tay,
+  // hoa hồng, trả khách thanh lý) — xem forfeitKqkdGate/canReviseVoucher. Phiếu
+  // đã duyệt/đã huỷ chỉ xem, kể cả Super Admin (máy chủ không còn cửa ghi).
 
   // ── Cặp bút toán bỏ cọc: một cửa RẤT hẹp ───────────────────────────────
   // Trigger guard_termination_forfeit_voucher_v1 chặn MỌI ghi lên hai chân của
@@ -654,8 +719,10 @@ const IncomeExpenseFormInner = ({
 
   const canEdit = canEditNormally;
   const isViewing = !!voucher && !canEdit && !forfeitKqkdMode;
-  const isAdminOverride =
-    !!voucher && !isUnapprovedDraft && isAdmin && !isForfeitLeg;
+  const isRevising = !!voucher && canEdit;
+  // Khung phiếu (Thu/Chi, toà, phòng, HĐ, KQKD, lặp, thêm/bớt hạng mục, kỳ):
+  // phiếu hệ thống sửa được thì khung khoá, chỉ mở tiền + sổ/ngày/người nhận/tên/ảnh.
+  const canEditFrame = canEdit && !isSystemVoucher;
 
   // Giá trị cờ KQKD đang hiển thị vs giá trị gốc của phiếu. `null` nghĩa là
   // "tự động", nên phải so ở mức HIỆU LỰC chứ không so thẳng null với boolean.
@@ -669,6 +736,31 @@ const IncomeExpenseFormInner = ({
   const forfeitKqkdChanged =
     forfeitKqkdMode && forfeitKqkdNext !== forfeitKqkdOriginal;
   const forfeitReasonOk = forfeitKqkdReasonValid(forfeitReason);
+
+  // Lý do sửa: bắt buộc khi đổi trục tiền (cùng luật máy chủ). So với ảnh chụp
+  // lúc mở form, không so với giá trị đang gõ dở ở lần trước.
+  const watchedBuildingId = form.watch('building_id');
+  const watchedAccountId = form.watch('account_id');
+  const revisionNeedsReason =
+    isRevising &&
+    !!editBaseline &&
+    requiresRevisionReason(
+      {
+        type: editBaseline.values.type,
+        building_id: editBaseline.values.building_id,
+        account_id: editBaseline.values.account_id || null,
+        business_result_accounting: editBaseline.values.business_result_accounting ?? null,
+        items: toRevisableItems(editBaseline.rows),
+      },
+      {
+        type: voucherType,
+        building_id: watchedBuildingId,
+        account_id: watchedAccountId || null,
+        business_result_accounting: forfeitKqkdWatched ?? null,
+        items: toRevisableItems(itemRows),
+      },
+    );
+  const revisionReasonOk = revisionReason.trim().length >= REVISION_REASON_MIN;
 
   const totalAmount = itemRows.reduce(
     (sum, item) => sum + item.quantity * item.unit_price,
@@ -689,9 +781,7 @@ const IncomeExpenseFormInner = ({
             <DialogTitle>
               {forfeitKqkdMode
                 ? 'HẠCH TOÁN KQKD — PHIẾU BỎ CỌC'
-                : isAdminOverride
-                ? 'SỬA PHIẾU (SUPER ADMIN)'
-                : isUnapprovedDraft
+                : isRevising
                 ? 'SỬA PHIẾU CHỜ DUYỆT'
                 : isViewing
                 ? 'CHI TIẾT PHIẾU'
@@ -724,24 +814,36 @@ const IncomeExpenseFormInner = ({
             </p>
           )}
 
-          {isAdminOverride && (
+          {isRevising && (
+            <p className="text-sm text-muted-foreground">
+              Phiếu đang <b>Chờ duyệt</b>. Sửa xong ấn <b>Lưu</b> — phiếu vẫn Chờ
+              duyệt, và mỗi lần sửa đều được lưu lại (ai sửa, lúc nào, trước →
+              sau) để người duyệt xem. Đổi số tiền, hạng mục, Thu/Chi, toà, sổ
+              quỹ hoặc KQKD phải ghi lý do.
+            </p>
+          )}
+          {isRevising && isSystemVoucher && (
             <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
-              Bạn đang chỉnh sửa phiếu <b>đã ghi nhận/đã huỷ</b> với quyền{' '}
-              <b>Super Admin</b>. Thay đổi sẽ ảnh hưởng trực tiếp đến tồn quỹ
-              và lịch sử kế toán — hãy cân nhắc kỹ trước khi lưu.
+              Phiếu do hệ thống lập (hoa hồng / trả khách thanh lý): chỉ sửa được{' '}
+              <b>số tiền của các hạng mục đang có</b>, sổ quỹ, ngày, người nhận,
+              tên phiếu và ảnh.
             </p>
           )}
-          {!isAdminOverride && isUnapprovedDraft && (
+          {isViewing && !isForfeitLeg && (
             <p className="text-sm text-muted-foreground">
-              Phiếu đang ở trạng thái <b>Chờ duyệt</b>. Bạn có thể chỉnh sửa nội
-              dung, sau đó ấn <b>Lưu</b> để cập nhật. Phiếu chỉ tính vào tồn
-              quỹ khi đã được duyệt.
-            </p>
-          )}
-          {isViewing && (
-            <p className="text-sm text-muted-foreground">
-              Phiếu đã được ghi nhận. Để bỏ ghi nhận, hãy đóng dialog này và
-              ấn nút <b>Huỷ phiếu</b> trên dòng phiếu.
+              {voucher?.approval_status === 'UNAPPROVED' ? (
+                <>
+                  Phiếu này do hệ thống lập từ luồng khác (thu tiền hoá đơn, chia
+                  lợi nhuận…) — sửa ở luồng gốc, không sửa ở đây.
+                </>
+              ) : voucher?.approval_status === 'CANCELLED' ? (
+                <>Phiếu đã huỷ — chỉ xem.</>
+              ) : (
+                <>
+                  Phiếu đã được ghi nhận. Để bỏ ghi nhận, hãy đóng dialog này và
+                  ấn nút <b>Huỷ phiếu</b> trên dòng phiếu.
+                </>
+              )}
             </p>
           )}
 
@@ -750,12 +852,21 @@ const IncomeExpenseFormInner = ({
               {/* Step 1: Voucher type tab toggle */}
               <Tabs
                 value={form.watch('type')}
-                onValueChange={(value) => form.setValue('type', value as 'INCOME' | 'EXPENSE')}
+                onValueChange={(value) => {
+                  const next = value as 'INCOME' | 'EXPENSE';
+                  // SỬA phiếu: hạng mục thu và hạng mục chi là hai danh mục khác
+                  // nhau — đổi chiều thì phải chọn lại (máy chủ cũng bắt).
+                  if (isRevising && next !== form.getValues('type')) {
+                    setItemRows([]);
+                    form.setValue('items', [], { shouldValidate: false });
+                  }
+                  form.setValue('type', next);
+                }}
               >
                 <TabsList className="grid w-full grid-cols-2">
                   <TabsTrigger
                     value="INCOME"
-                    disabled={!canEdit}
+                    disabled={!canEditFrame}
                     className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
                   >
                     <ArrowUp className="h-4 w-4 mr-1" />
@@ -763,7 +874,7 @@ const IncomeExpenseFormInner = ({
                   </TabsTrigger>
                   <TabsTrigger
                     value="EXPENSE"
-                    disabled={!canEdit}
+                    disabled={!canEditFrame}
                     className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
                   >
                     <ArrowDown className="h-4 w-4 mr-1" />
@@ -771,6 +882,13 @@ const IncomeExpenseFormInner = ({
                   </TabsTrigger>
                 </TabsList>
               </Tabs>
+              {isRevising && editBaseline && voucherType !== editBaseline.values.type && (
+                <p className="text-xs text-amber-700" data-testid="revise-type-change-note">
+                  Đổi sang {voucherType === 'INCOME' ? 'phiếu thu' : 'phiếu chi'}: lưu xong phiếu được cấp
+                  mã mới ({voucherType === 'INCOME' ? 'PT…' : 'PC…'}), mã cũ {voucher?.code} bỏ. Hạng mục thu
+                  và chi khác nhau nên phải chọn lại hạng mục.
+                </p>
+              )}
 
               {/* Step 2: Thông tin chung - Grid layout */}
               {/* Row 1: Tòa nhà, Phòng, Sổ quỹ */}
@@ -785,7 +903,7 @@ const IncomeExpenseFormInner = ({
                         <SearchableSelect
                           value={field.value || undefined}
                           onValueChange={handleBuildingChange}
-                          disabled={!canEdit}
+                          disabled={!canEditFrame}
                           placeholder="Chọn tòa nhà"
                           searchPlaceholder="Tìm tòa nhà..."
                           options={
@@ -824,7 +942,7 @@ const IncomeExpenseFormInner = ({
                         <SearchableSelect
                           value={field.value ?? '__none__'}
                           onValueChange={handleRoomChange}
-                          disabled={!canEdit || !selectedBuildingId}
+                          disabled={!canEditFrame || !selectedBuildingId}
                           placeholder="Chọn phòng"
                           searchPlaceholder="Tìm phòng..."
                           options={[
@@ -846,7 +964,9 @@ const IncomeExpenseFormInner = ({
                   name="account_id"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Sổ quỹ *</FormLabel>
+                      <FormLabel>
+                        {accountOptional ? 'Sổ quỹ (chọn lúc duyệt)' : 'Sổ quỹ *'}
+                      </FormLabel>
                       <FormControl>
                         <SearchableSelect
                           value={field.value || undefined}
@@ -914,7 +1034,7 @@ const IncomeExpenseFormInner = ({
                           field.onChange(v === '__none__' ? null : v);
                         }}
                         value={field.value ?? '__none__'}
-                        disabled={!canEdit}
+                        disabled={!canEditFrame}
                       >
                         <FormControl>
                           <SelectTrigger>
@@ -1105,7 +1225,7 @@ const IncomeExpenseFormInner = ({
                           <Switch
                             checked={effective}
                             onCheckedChange={(v) => field.onChange(v)}
-                            disabled={!canEdit && !forfeitKqkdMode}
+                            disabled={!forfeitKqkdMode && !canEditFrame}
                             data-testid="kqkd-switch"
                           />
                         </FormControl>
@@ -1188,7 +1308,7 @@ const IncomeExpenseFormInner = ({
 
                 <div className="flex items-center justify-between">
                   <FormLabel>Hạng mục</FormLabel>
-                  {canEdit && (
+                  {canEditFrame && (
                     <Button
                       type="button"
                       variant="outline"
@@ -1242,7 +1362,7 @@ const IncomeExpenseFormInner = ({
                           onChange={(m) =>
                             handleItemStartDateChange(index, monthToStartDate(m))
                           }
-                          disabled={!canEdit}
+                          disabled={!canEditFrame}
                           className="h-8"
                         />
                         <MonthInput
@@ -1250,10 +1370,10 @@ const IncomeExpenseFormInner = ({
                           onChange={(m) =>
                             handleItemEndDateChange(index, monthToEndDate(m))
                           }
-                          disabled={!canEdit}
+                          disabled={!canEditFrame}
                           className="h-8"
                         />
-                        {canEdit && (
+                        {canEditFrame && (
                           <Button
                             type="button"
                             variant="ghost"
@@ -1263,6 +1383,11 @@ const IncomeExpenseFormInner = ({
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
+                        )}
+                        {item.keepNullPeriod && (
+                          <p className="col-span-full text-[11px] text-muted-foreground">
+                            Phiếu gốc chưa ghi kỳ — lưu vẫn để trống, trừ khi bạn chọn tháng.
+                          </p>
                         )}
                       </div>
                     ))}
@@ -1312,7 +1437,7 @@ const IncomeExpenseFormInner = ({
                             }
                           }}
                           value={field.value ?? 'NONE'}
-                          disabled={!canEdit}
+                          disabled={!canEditFrame}
                         >
                           <FormControl>
                             <SelectTrigger>
@@ -1338,7 +1463,7 @@ const IncomeExpenseFormInner = ({
                     render={({ field }) => {
                       const cycle = form.watch('repeat_cycle');
                       const inf = form.watch('repeat_infinity');
-                      const disabled = !canEdit || cycle === 'NONE' || inf;
+                      const disabled = !canEditFrame || cycle === 'NONE' || inf;
                       return (
                         <FormItem>
                           <FormLabel>Số lần lặp</FormLabel>
@@ -1364,7 +1489,7 @@ const IncomeExpenseFormInner = ({
                     name="repeat_infinity"
                     render={({ field }) => {
                       const cycle = form.watch('repeat_cycle');
-                      const disabled = !canEdit || cycle === 'NONE';
+                      const disabled = !canEditFrame || cycle === 'NONE';
                       return (
                         <FormItem className="flex items-end justify-between rounded-md border p-2">
                           <FormLabel className="text-xs">Lặp vô hạn</FormLabel>
@@ -1385,7 +1510,7 @@ const IncomeExpenseFormInner = ({
                   name="repeat_auto_approve"
                   render={({ field }) => {
                     const cycle = form.watch('repeat_cycle');
-                    const disabled = !canEdit || cycle === 'NONE';
+                    const disabled = !canEditFrame || cycle === 'NONE';
                     return (
                       <FormItem className="flex items-center justify-between rounded-md border p-2">
                         <div className="pr-3">
@@ -1447,6 +1572,39 @@ const IncomeExpenseFormInner = ({
                 )}
               />
 
+              {/* Lý do sửa — chỉ hiện khi đổi trục tiền; máy chủ bắt cùng ngưỡng. */}
+              {revisionNeedsReason && (
+                <div className="space-y-1 rounded-lg border border-amber-200 bg-amber-50/60 p-3">
+                  <label htmlFor="revision-reason" className="text-sm font-medium">
+                    Lý do sửa <span className="text-destructive">*</span>
+                  </label>
+                  <Textarea
+                    id="revision-reason"
+                    data-testid="revision-reason"
+                    value={revisionReason}
+                    onChange={(e) => setRevisionReason(e.target.value)}
+                    maxLength={REVISION_REASON_MAX}
+                    placeholder="Vì sao đổi số tiền / hạng mục / sổ quỹ…?"
+                    rows={2}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {revisionReasonOk
+                      ? 'Lý do được lưu cùng lần sửa — người duyệt sẽ thấy.'
+                      : `Đổi số tiền, hạng mục, Thu/Chi, toà, sổ quỹ hoặc KQKD cần lý do (ít nhất ${REVISION_REASON_MIN} ký tự).`}
+                  </p>
+                </div>
+              )}
+
+              {staleVersion && (
+                <p
+                  role="alert"
+                  className="text-sm text-destructive bg-destructive/5 border border-destructive/30 rounded px-3 py-2"
+                >
+                  Phiếu vừa được người khác sửa hoặc duyệt. Đóng form rồi mở lại
+                  phiếu để xem bản mới nhất trước khi sửa tiếp.
+                </p>
+              )}
+
               {/* Action buttons */}
               <div
                 className={
@@ -1476,6 +1634,8 @@ const IncomeExpenseFormInner = ({
                     // dùng không bấm rồi mới ăn 22023.
                     disabled={
                       isPending ||
+                      staleVersion ||
+                      (revisionNeedsReason && !revisionReasonOk) ||
                       (forfeitKqkdMode && (!forfeitKqkdChanged || !forfeitReasonOk))
                     }
                     className={isMobile ? "flex-1" : ""}

@@ -58,7 +58,7 @@ Nhóm địa lý/quản lý cấp cao nhất, gom nhiều toà nhà. **Vai trò 
 - Liên kết cấu hình:
   - Khu vực: qua bảng nối `area_buildings` (N-N — cột `area_id` cũ đã DROP 2026-06-11); form tạo/sửa toà **không còn ô khu vực**, gom nhóm chỉ làm ở dialog "Quản lý khu vực".
   - `contract_template_id`, `invoice_template_id` → `document_templates.id` (mẫu in mặc định cho HĐ/hoá đơn của toà).
-  - `default_account_id_tt`, `default_account_id_tk` → `accounts.id` — **sổ quỹ mặc định** ghi nhận khi khách thanh toán hoá đơn phòng bằng TT (tiền mặt/thanh toán) / TK (chuyển khoản). Chỉ super admin được xem & sửa 2 field này (gate ở FE — RLS không chặn riêng cột).
+  - `default_account_id_tt`, `default_account_id_tk` → `accounts.id` — **sổ mặc định** trong danh sách sổ nhận tiền của toà cho hình thức TT (thanh toán) / TK (chuyển khoản); sổ phụ nằm ở `app_private.building_receiving_cashbooks`. Từ 25/09/2026 (đợt 1 sửa phiếu) chỉ sửa ở **Tài chính → Sổ quỹ → Sổ nhận tiền** qua `set_building_receiving_cashbooks_v1` (chủ công ty / super admin); form toà không còn hai ô này và không gửi hai cột này. Tiền mặt (TM) vào sổ tiền mặt riêng của người thu (`app_private.personal_cash_books`), máy chủ chặn sổ ngoài danh sách khi thu.
   - `commission_tiers` jsonb (NOT NULL, có default) — bậc hoa hồng môi giới theo số tháng hợp đồng `[{min_months,max_months,rate_percent}]`.
 - `is_virtual` boolean (NOT NULL, default false) — **tòa ảo "Chung"** cho chi phí không thuộc toà thật.
 - **Cột phục vụ trang Phòng trống công khai `/r/:token` & module Sale Phòng** (thêm 2026-06-07, xem §6):
@@ -313,7 +313,7 @@ Từ 2026-06-10 (commit 9ad626d): **trang `/areas` + mục Sidebar "Khu vực" �
 - **Lọc** ([BuildingListFilters](src/components/buildings/BuildingListFilters.tsx)): tìm theo tên/mã/địa chỉ + lọc trạng thái (`SearchableSelect`) + **`BuildingFilterSelect`** (đơn-chọn 1 toà hoặc tất cả, danh sách phẳng A→Z — từ 3c3b7fa thay `BuildingMultiSelect` nhóm khu; state vẫn là mảng, lọc client-side `buildingIds.includes(b.id)`). Cả 3 state lọc giữ qua F5 (`flt:buildings:search/status/buildingIds`).
 - **Nút "Quản lý khu vực"** trên toolbar mở `ManageAreasDialog` (§5.1).
 - **Toggle trạng thái nhanh:** `useUpdateBuildingStatus` với **optimistic update** (snapshot cache, revert nếu lỗi) — bật/tắt ACTIVE/INACTIVE ngay trên bảng.
-- **Tạo / sửa:** `BuildingFormDialog` ([BuildingFormDialog.tsx](src/components/buildings/BuildingFormDialog.tsx)) — form đa section: Thông tin cơ bản (tên + mã, switch trạng thái), Địa chỉ (province/district/ward + street + **toạ độ GPS geo-fence** qua `BuildingGeoSection` — nút lấy vị trí hiện tại hoặc gõ tay `latitude/longitude`), **Dịch vụ toà** (chọn dịch vụ + override giá), Cấu hình (sổ quỹ TT/TK mặc định — **chỉ super admin thấy**, mẫu hoá đơn, mẫu HĐ), Hoa hồng môi giới (`commission_tiers`). Validate bằng `buildingSchema` ([buildingValidation.ts](src/lib/buildingValidation.ts)).
+- **Tạo / sửa:** `BuildingFormDialog` ([BuildingFormDialog.tsx](src/components/buildings/BuildingFormDialog.tsx)) — form đa section: Thông tin cơ bản (tên + mã, switch trạng thái), Địa chỉ (province/district/ward + street + **toạ độ GPS geo-fence** qua `BuildingGeoSection` — nút lấy vị trí hiện tại hoặc gõ tay `latitude/longitude`), **Dịch vụ toà** (chọn dịch vụ + override giá), Cấu hình (mẫu hoá đơn, mẫu HĐ; sổ nhận tiền TT/TK cài ở màn Sổ nhận tiền, không ở form này), Hoa hồng môi giới (`commission_tiers`). Validate bằng `buildingSchema` ([buildingValidation.ts](src/lib/buildingValidation.ts)).
 - **Quy trình submit:**
 
 ```mermaid

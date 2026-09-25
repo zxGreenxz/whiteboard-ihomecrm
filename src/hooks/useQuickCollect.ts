@@ -10,8 +10,10 @@
 //  - Form nhiều dòng: collect({invoice, lines, keepAsCredit, ...}) — cho thu dư
 //    qua TM → tiền thối (sổ "…Thối") hoặc nợ khách (excess_amounts, cần HĐ).
 //
-// Tính tiền (thuần) ở planCollect; sổ quỹ resolve theo phương thức
-// (lib/cashAccount) — mỗi phương thức vào ĐÚNG sổ qua item.accounts.
+// Tính tiền (thuần) ở planCollect. SỔ NHẬN theo hình thức do MÁY CHỦ quyết
+// (get_receiving_cashbooks_v1, đợt 1 sửa phiếu 25/09/2026): TM = sổ tiền mặt
+// riêng của người thu; TK/TT = danh sách sổ của toà (mặc định đứng đầu) giao với
+// sổ người thu giữ/biết. Hình thức chưa có sổ ⇒ CHẶN, không rơi về sổ khác.
 // =============================================
 
 import { useMemo } from 'react';
@@ -22,12 +24,14 @@ import {
   type BulkPaymentItem,
 } from '@/hooks/useBulkRecordPayment';
 import {
-  resolveAccountIdForMethod,
-  resolveTmAccountId,
-  type CollectMethod,
-} from '@/lib/cashAccount';
+  missingReceivingBookMessage,
+  receivingBooksFor,
+  useReceivingCashbooks,
+  type ReceivingBook,
+} from '@/hooks/useReceivingCashbooks';
+import { useOrganization } from '@/contexts/OrganizationContext';
 import { findOwnChangeAccount } from '@/lib/changeAccounts';
-import { planCollect, type CollectPlanLine } from '@/lib/collectPlan';
+import { planCollect, type CollectMethod, type CollectPlanLine } from '@/lib/collectPlan';
 import { remainingOf, todayISO } from '@/lib/collect';
 import { captureGpsAndRecord } from '@/lib/v5PaymentGps';
 import type { InvoiceWithRelations } from '@/types/invoice';
@@ -51,82 +55,111 @@ export interface QuickCollectArgs {
   /** Ngày thanh toán (DATE) — mặc định hôm nay. */
   paymentDate?: string;
   /**
-   * Sổ quỹ người thu chọn tay cho từng phương thức (ô "Sổ quỹ" cạnh TK trong
-   * form thu). Thắng sổ mặc định của toà; server vẫn kiểm quyền trên sổ này.
+   * Sổ người thu chọn cho từng hình thức (ô sổ cạnh TK/TT trong form thu). Chỉ
+   * nhận khi sổ nằm trong danh sách máy chủ cho phép; TM luôn là sổ tiền mặt riêng.
    */
   accountOverrides?: Partial<Record<CollectMethod, string>>;
 }
 
-export const useQuickCollect = (opts?: { enabled?: boolean }) => {
-  const { data: accounts = [] } = useAccounts(opts);
+/** Một sổ được nhận (mặc định đứng đầu danh sách). */
+export interface CollectBook {
+  id: string;
+  name: string;
+  isDefault?: boolean;
+}
+
+/** Sổ được nhận theo hình thức của hoá đơn đang mở (TM = [sổ tiền mặt riêng]). */
+export type ReceivingBooksByMethod = Record<CollectMethod, CollectBook[]>;
+
+// Chép tường minh: tsconfig.app.json tắt strictNullChecks nên kiểu zod suy ra có
+// mọi trường tuỳ chọn, không gán thẳng sang kiểu bắt buộc được.
+const toBooks = (list: ReceivingBook[]): CollectBook[] =>
+  list.map((b) => ({ id: b.id, name: b.name, isDefault: b.isDefault }));
+
+export interface ReceivingBooksState {
+  loading: boolean;
+  /** Câu lỗi khi không đọc được danh sách sổ (đã bỏ tiền tố máy-đọc). */
+  error: string | null;
+  books: ReceivingBooksByMethod;
+}
+
+const KHONG_SO: ReceivingBooksByMethod = { TM: [], TK: [], TT: [] };
+
+const loiDoc = (error: unknown): string => {
+  const msg = (error as { message?: unknown } | null)?.message;
+  return typeof msg === 'string' && msg.trim()
+    ? msg.replace(/^\[[A-Z_]+\]\s*/, '')
+    : 'Không tải được danh sách sổ nhận tiền.';
+};
+
+/**
+ * `invoice` = hoá đơn đang mở ở ngăn thu tiền: danh sách sổ nhận đọc theo toà của
+ * nó và theo NGƯỜI ĐANG ĐĂNG NHẬP (người thu). `collect` chỉ nhận đúng hoá đơn đó.
+ */
+export const useQuickCollect = (opts?: { invoice?: InvoiceWithRelations | null }) => {
+  const invoice = opts?.invoice ?? null;
+  const enabled = !!invoice;
+  const { data: accounts = [] } = useAccounts({ enabled });
   const { data: currentUser } = useAuth();
+  const { selectedOrganizationId } = useOrganization();
   const bulkMutation = useBulkRecordPayment();
 
-  const realAccounts = useMemo(
-    () => accounts.filter((account) => account.is_virtual === false),
-    [accounts],
-  );
+  // Tổ chức của CHÍNH hoá đơn (máy chủ từ chối toà của tổ chức khác); chỉ rơi về
+  // tổ chức đang chọn khi truy vấn hoá đơn không kèm cột này.
+  const organizationId = invoice ? invoice.organization_id || selectedOrganizationId : null;
+  const receivingQuery = useReceivingCashbooks(organizationId, invoice?.building_id ?? null);
+
+  const receiving: ReceivingBooksState = useMemo(() => {
+    const data = receivingQuery.data;
+    return {
+      loading: enabled && !data && !receivingQuery.isError,
+      error: receivingQuery.isError
+        ? loiDoc(receivingQuery.error)
+        : enabled && !organizationId
+          ? 'Chưa xác định được công ty của hoá đơn — chọn công ty rồi mở lại.'
+          : null,
+      books: data
+        ? {
+            TM: toBooks(receivingBooksFor(data, 'TM')),
+            TK: toBooks(receivingBooksFor(data, 'TK')),
+            TT: toBooks(receivingBooksFor(data, 'TT')),
+          }
+        : KHONG_SO,
+    };
+  }, [receivingQuery.data, receivingQuery.isError, receivingQuery.error, enabled, organizationId]);
+
   const virtualAccounts = useMemo(
     () => accounts.filter((account) => account.is_virtual === true),
     [accounts],
   );
 
-  /** Sổ quỹ nhận cho 1 HĐ theo phương thức — '' nếu chưa cấu hình (UI disable chip). */
-  const accountIdFor = (invoice: InvoiceWithRelations, method: CollectMethod): string => {
-    // Chỉ chào sổ thật thuộc ĐÚNG org của hoá đơn (server vẫn validate).
-    const invoiceRealAccounts = realAccounts.filter(
-      (account) =>
-        !invoice.organization_id || account.organization_id === invoice.organization_id,
-    );
-    const building = invoice.building
-      ? {
-          ...invoice.building,
-          default_account_id_tt: invoiceRealAccounts.some(
-            (account) => account.id === invoice.building?.default_account_id_tt,
-          )
-            ? invoice.building.default_account_id_tt
-            : null,
-          default_account_id_tk: invoiceRealAccounts.some(
-            (account) => account.id === invoice.building?.default_account_id_tk,
-          )
-            ? invoice.building.default_account_id_tk
-            : null,
-        }
-      : null;
-    return resolveAccountIdForMethod(
-      method,
-      invoiceRealAccounts,
-      currentUser?.id,
-      building,
-    );
-  };
-
-  /** Sổ thật chọn được cho 1 HĐ (ô "Sổ quỹ" cạnh phương thức trong form thu). */
-  const accountOptionsFor = (invoice: InvoiceWithRelations) =>
-    realAccounts.filter(
-      (account) =>
-        !invoice.organization_id || account.organization_id === invoice.organization_id,
-    );
-
   /** Sổ ảo (thối / làm tròn) thuộc ĐÚNG org của hoá đơn. */
-  const virtualAccountsFor = (invoice: InvoiceWithRelations) =>
+  const virtualAccountsFor = (inv: InvoiceWithRelations) =>
     virtualAccounts.filter(
-      (account) =>
-        !invoice.organization_id || account.organization_id === invoice.organization_id,
+      (account) => !inv.organization_id || account.organization_id === inv.organization_id,
     );
 
   /** Sổ "…Thối" của user (Hiển→Hiển Thối, Hiệp→Hiệp Thối, khác→sổ "…Thối" đầu). */
-  const changeAccountId = (invoice: InvoiceWithRelations): string =>
-    findOwnChangeAccount(virtualAccountsFor(invoice), currentUser?.id)?.id ?? '';
+  const changeAccountId = (inv: InvoiceWithRelations): string =>
+    findOwnChangeAccount(virtualAccountsFor(inv), currentUser?.id)?.id ?? '';
 
   /** Sổ ảo "Làm tròn tiền thiếu" thuộc org của hoá đơn — '' nếu chưa cấu hình. */
-  const roundingAccountIdFor = (invoice: InvoiceWithRelations): string =>
-    virtualAccountsFor(invoice).find(
+  const roundingAccountIdFor = (inv: InvoiceWithRelations): string =>
+    virtualAccountsFor(inv).find(
       (account) => account.name.trim() === 'Làm tròn tiền thiếu',
     )?.id ?? '';
 
+  /** Câu chặn thu theo một hình thức (null = thu được). */
+  const receivingBlockFor = (method: CollectMethod): string | null => {
+    if (receiving.error) return receiving.error;
+    if (receiving.loading) return 'Đang tải danh sách sổ nhận tiền — thử lại sau giây lát.';
+    return receiving.books[method].length
+      ? null
+      : missingReceivingBookMessage(method, invoice?.building?.name);
+  };
+
   const collect = async ({
-    invoice,
+    invoice: target,
     lines,
     amount,
     method = 'TM',
@@ -138,7 +171,12 @@ export const useQuickCollect = (opts?: { enabled?: boolean }) => {
     paymentDate,
     accountOverrides,
   }: QuickCollectArgs) => {
-    const remaining = remainingOf(invoice);
+    // Danh sách sổ đọc theo toà của hoá đơn đang mở; hoá đơn khác thì không dám
+    // đoán sổ.
+    if (!invoice || target.id !== invoice.id) {
+      throw new Error('Hoá đơn vừa đổi — đóng rồi mở lại để thu.');
+    }
+    const remaining = remainingOf(target);
     const isMulti = !!(lines && lines.length);
     const rawLines: CollectPlanLine[] = isMulti
       ? lines!
@@ -150,7 +188,7 @@ export const useQuickCollect = (opts?: { enabled?: boolean }) => {
       keepAsCredit,
       changeAmount,
       allowRounding,
-      hasContract: !!invoice.contract_id,
+      hasContract: !!target.contract_id,
       cap: !isMulti,
     });
     // `planned.ok === false` chứ không phải `!planned.ok`: repo bật
@@ -160,43 +198,33 @@ export const useQuickCollect = (opts?: { enabled?: boolean }) => {
     if (planned.ok === false) throw new Error(planned.error);
     const { amountTm, amountTk, amountTt, change, keepAsCredit: credit, rounding } = planned.plan;
 
-    // Sổ quỹ riêng từng phương thức có tiền.
+    // Sổ nhận riêng từng hình thức có tiền — chỉ trong danh sách máy chủ cho phép.
     const accountsMap: Partial<Record<CollectMethod, string>> = {};
     for (const [m, amt] of [
       ['TM', amountTm],
       ['TK', amountTk],
       ['TT', amountTt],
     ] as [CollectMethod, number][]) {
-      if (amt > 0) {
-        const picked = accountOverrides?.[m]?.trim();
-        // Chỉ nhận sổ người thu chọn nếu nó là sổ thật thuộc đúng org của HĐ.
-        const acc =
-          picked && accountOptionsFor(invoice).some((account) => account.id === picked)
-            ? picked
-            : accountIdFor(invoice, m);
-        if (!acc) {
-          throw new Error(
-            m === 'TM'
-              ? 'Chưa xác định được sổ quỹ Thu (TM). Kiểm tra Cài đặt → Sổ quỹ (sổ "…Thu" của bạn hoặc "Chung").'
-              : `Tòa "${invoice.building?.name ?? ''}" chưa cấu hình sổ quỹ ${m}. Vào Cài đặt → Tòa nhà để chọn sổ mặc định ${m}.`,
-          );
-        }
-        accountsMap[m] = acc;
-      }
+      if (amt <= 0) continue;
+      const blocked = receivingBlockFor(m);
+      if (blocked) throw new Error(blocked);
+      const allowed = receiving.books[m];
+      const picked = m === 'TM' ? undefined : accountOverrides?.[m]?.trim();
+      accountsMap[m] = picked && allowed.some((b) => b.id === picked) ? picked : allowed[0].id;
     }
     const primaryAccount = accountsMap.TM || accountsMap.TK || accountsMap.TT || '';
 
     // Sổ thối (chỉ khi trả thối, không khi nợ khách).
     let chgAccId: string | null = null;
     if (change > 0 && !credit) {
-      chgAccId = changeAccountId(invoice);
+      chgAccId = changeAccountId(target);
       if (!chgAccId) {
         throw new Error(
           'Chưa có sổ "…Thối" để ghi nhận tiền thối. Vào Cài đặt → Sổ quỹ tạo sổ tên kết thúc "Thối", hoặc tích "Nợ khách".',
         );
       }
     }
-    const invoiceRoundingAccountId = roundingAccountIdFor(invoice);
+    const invoiceRoundingAccountId = roundingAccountIdFor(target);
     if (rounding > 0 && !invoiceRoundingAccountId) {
       throw new Error(
         'Chưa có sổ ảo "Làm tròn tiền thiếu". Vào Cài đặt → Sổ quỹ để tạo/cấu hình trước khi làm tròn.',
@@ -204,9 +232,9 @@ export const useQuickCollect = (opts?: { enabled?: boolean }) => {
     }
 
     const item: BulkPaymentItem = {
-      invoice_id: invoice.id,
-      invoice_number: invoice.invoice_number ?? undefined,
-      room_name: invoice.room?.name ?? undefined,
+      invoice_id: target.id,
+      invoice_number: target.invoice_number ?? undefined,
+      room_name: target.room?.name ?? undefined,
       amount_tm: amountTm,
       amount_tk: amountTk,
       amount_tt: amountTt,
@@ -234,13 +262,13 @@ export const useQuickCollect = (opts?: { enabled?: boolean }) => {
 
   return {
     collect,
-    accountIdFor,
-    accountOptionsFor,
+    /** Sổ được nhận theo hình thức của hoá đơn đang mở + trạng thái nạp. */
+    receiving,
+    /** Câu chặn thu theo hình thức (null = thu được). */
+    receivingBlockFor,
     /** Tên sổ thối của user cho 1 HĐ (org-scoped, hiển thị trong form); '' nếu chưa có. */
-    changeAccountNameFor: (invoice: InvoiceWithRelations): string =>
-      findOwnChangeAccount(virtualAccountsFor(invoice), currentUser?.id)?.name ?? '',
+    changeAccountNameFor: (inv: InvoiceWithRelations): string =>
+      findOwnChangeAccount(virtualAccountsFor(inv), currentUser?.id)?.name ?? '',
     isCollecting: bulkMutation.isPending,
-    hasCashAccount:
-      !!resolveTmAccountId(realAccounts, currentUser?.id) || realAccounts.length > 0,
   };
 };

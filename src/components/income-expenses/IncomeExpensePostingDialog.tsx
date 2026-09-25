@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Upload, X, FileText } from 'lucide-react';
+import { toast } from 'sonner';
 import {
   Dialog,
   DialogContent,
@@ -38,6 +39,7 @@ import {
   type PostFinanceExecutionInput,
   type PostingSubjectKind,
 } from '@/lib/incomeExpensePostingValidation';
+import { usePostingAttachmentDraft } from '@/hooks/income-expenses/financeV2Mutations';
 
 /** Chế độ mở dialog (§12.3/§12.4). */
 export type IncomeExpensePostingMode = 'POST_APPROVED' | 'APPROVE_AND_POST';
@@ -124,10 +126,15 @@ export interface IncomeExpensePostingDialogProps {
     voucherId: string,
   ) => Promise<{ evidenceIds: string[]; skipped: { url: string; reason: string }[] }>;
   /**
-   * Dán ảnh = đính ảnh LÊN PHIẾU rồi nhận chính nó làm chứng từ (đường chính từ
-   * 27/08/2026 — xem `useAttachPostingEvidence`). Không truyền thì rơi về
-   * `onUploadEvidence`, lúc đó ảnh chỉ nằm ở kho chứng từ và KHÔNG hiện ở dòng
-   * thu chi.
+   * Có truyền = chế độ ĐÍNH ẢNH LÊN PHIẾU (đường chính từ 27/08/2026): ảnh dán
+   * vào hộp thoại là ảnh đính kèm của phiếu và chính nó thành chứng từ. Không
+   * truyền thì rơi về `onUploadEvidence`, lúc đó ảnh chỉ nằm ở kho chứng từ và
+   * KHÔNG hiện ở dòng thu chi.
+   *
+   * TỪ 25/09/2026 (E2) hộp thoại KHÔNG gọi hàm này nữa, chỉ dùng nó làm công tắc:
+   * ảnh dán chỉ được tải lên kho và gom lại, bấm xác nhận mới ghi lên phiếu
+   * (`usePostingAttachmentDraft`); bấm Huỷ bỏ / đóng hộp thì file vừa tải bị xoá
+   * và phiếu giữ nguyên.
    */
   onAttachEvidence?: (file: File) => Promise<{
     url: string | null;
@@ -135,7 +142,11 @@ export interface IncomeExpensePostingDialogProps {
     skipped: { url: string; reason: string }[];
     attachedToVoucher: boolean;
   } | null>;
-  /** Gỡ một ảnh khỏi phiếu (server chỉ cho người có quyền sửa thu chi). */
+  /**
+   * Có truyền = cho gỡ ảnh đang có trên phiếu. TỪ 25/09/2026 (E2) hộp thoại không
+   * gọi hàm này nữa: bấm X chỉ ẩn ảnh, việc gỡ thật đi chung lệnh ghi ảnh lúc bấm
+   * xác nhận (server chỉ cho người có quyền sửa thu chi gỡ).
+   */
   onRemoveAttachment?: (
     url: string,
   ) => Promise<{ evidenceIds: string[]; skipped: { url: string; reason: string }[] } | null>;
@@ -169,25 +180,37 @@ function todayIso(): string {
  * Ảnh không dùng được cho lần ghi sổ này (vd đã dùng cho lần chi trước) vẫn hiện
  * nhưng mờ đi và nói rõ lý do — im lặng bỏ qua là cách chắc chắn làm người dùng
  * tưởng hệ thống nuốt mất ảnh.
+ *
+ * Từ 25/09/2026 (E2) ảnh vừa thêm / ảnh cũ vừa gỡ CHƯA ghi lên phiếu: chúng chỉ
+ * được ghi khi bấm nút xác nhận, nên ô này nói rõ điều đó thay vì "đã đính".
  */
 function PostingEvidenceUpload({
   items,
   onFiles,
   onRemove,
+  canRemove,
   busy,
   adopting,
   disabled,
   fallbackCount,
+  pendingChanges,
+  confirmLabel,
 }: {
   items: PostingEvidenceItem[];
   onFiles: (files: FileList | File[] | null) => Promise<void>;
   /** Không truyền → không cho gỡ (vd hộp thoại mở cho subject không phải phiếu). */
   onRemove?: (url: string) => Promise<void>;
+  /** Ảnh nào hiện nút X; không truyền = mọi ảnh (khi có `onRemove`). */
+  canRemove?: (item: PostingEvidenceItem) => boolean;
   busy: boolean;
   adopting: boolean;
   disabled?: boolean;
   /** Số chứng từ chỉ nằm ở kho chứng từ, không đính được lên phiếu (đường lùi). */
   fallbackCount: number;
+  /** Còn ảnh vừa thêm / vừa gỡ chưa ghi lên phiếu. */
+  pendingChanges: boolean;
+  /** Chữ trên nút xác nhận ("Chi", "Duyệt và Thu"…) — để câu nhắc nói đúng nút. */
+  confirmLabel: string;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -251,7 +274,7 @@ function PostingEvidenceUpload({
               title={
                 item.usable
                   ? item.addedNow
-                    ? 'Ảnh vừa thêm — đã đính lên phiếu'
+                    ? `Ảnh vừa thêm — sẽ đính lên phiếu khi bấm “${confirmLabel}”`
                     : 'Ảnh đính kèm của phiếu, dùng làm chứng từ'
                   : item.reasonText
               }
@@ -267,7 +290,7 @@ function PostingEvidenceUpload({
                   className="h-full w-full object-cover"
                 />
               )}
-              {onRemove && !disabled && (
+              {onRemove && !disabled && (canRemove ? canRemove(item) : true) && (
                 <button
                   type="button"
                   className="absolute right-0.5 top-0.5 rounded-full bg-red-500 p-0.5 text-white opacity-0 transition-opacity group-hover:opacity-100"
@@ -297,6 +320,13 @@ function PostingEvidenceUpload({
         </p>
       )}
 
+      {pendingChanges && (
+        <p className="text-xs text-muted-foreground">
+          Ảnh vừa thêm/gỡ chỉ ghi lên phiếu khi bấm “{confirmLabel}”. Bấm Huỷ bỏ thì
+          phiếu giữ nguyên và ảnh vừa tải bị xoá.
+        </p>
+      )}
+
       {fallbackCount > 0 && (
         <p className="text-xs text-amber-700">
           {fallbackCount} chứng từ chỉ lưu ở kho chứng từ (không đính được lên
@@ -312,8 +342,9 @@ function PostingEvidenceUpload({
  *
  * Chỉ ba trường người dùng nhập: Ngày Thu/Chi, Sổ quỹ, Hình ảnh/chứng từ. Số
  * tiền read-only = tổng đã duyệt, ngoại trừ MULTI_TRANCHE salary cho nhập tối đa
- * remaining. KHÔNG gọi API — assemble `PostFinanceExecutionInput` rồi
- * `onSubmit`. Tuyệt đối không có chữ "Nháp".
+ * remaining. KHÔNG gọi API ghi sổ — assemble `PostFinanceExecutionInput` rồi
+ * `onSubmit`. Riêng ảnh đi qua `usePostingAttachmentDraft` (tải lên kho, ghi lên
+ * phiếu lúc xác nhận, xoá khi huỷ — E2). Tuyệt đối không có chữ "Nháp".
  */
 export default function IncomeExpensePostingDialog({
   open,
@@ -417,6 +448,27 @@ export default function IncomeExpensePostingDialog({
   }, [open, resolvedCashbookId]);
 
   /**
+   * ẢNH/CHỨNG TỪ GOM TỚI LÚC XÁC NHẬN (E2, chủ chốt 25/09/2026).
+   *
+   * Trước đây dán ảnh là ghi lên phiếu ngay, bấm X là gỡ khỏi phiếu ngay — bấm
+   * Huỷ bỏ thì phiếu đã đổi. Giờ trong lúc hộp mở, phiếu KHÔNG bị đụng tới:
+   *   - ảnh dán/chọn chỉ được tải lên kho (`stagedUrls`), hiện xem trước;
+   *   - X trên ảnh vừa thêm xoá luôn file đó; X trên ảnh cũ chỉ ẩn nó (`removedUrls`);
+   *   - bấm xác nhận: một lệnh ghi ảnh (thêm + gỡ) → adopt → rồi mới ghi sổ;
+   *   - Huỷ bỏ / đóng hộp / unmount: xoá đúng các file tải lên trong lần mở này.
+   */
+  const isVoucher = voucher.subjectKind === 'VOUCHER';
+  /** Ảnh mới gom lại rồi đính lên phiếu lúc xác nhận (đường chính, thay cho đính khi dán). */
+  const stageUploads = isVoucher && !!onAttachEvidence;
+  /** Cho gỡ ảnh đang có trên phiếu (gỡ thật lúc xác nhận). */
+  const canRemoveExisting = isVoucher && !!onRemoveAttachment;
+  const {
+    upload: uploadDraft,
+    commit: commitDraft,
+    discard: discardDraft,
+  } = usePostingAttachmentDraft();
+
+  /**
    * 7ai: ảnh đã đính kèm trên phiếu ĐƯỢC DÙNG LUÔN làm chứng từ. Chạy 1 lần mỗi
    * lần mở, chỉ khi phiếu có ảnh và chưa có chứng từ nào được chọn — người chi
    * mở lên là bấm lưu được ngay, muốn bổ sung thì thêm ảnh mới.
@@ -430,21 +482,78 @@ export default function IncomeExpensePostingDialog({
     { url: string; reason: string }[]
   >([]);
   const [adopting, setAdopting] = useState(false);
-  /** URL vừa dán trong phiên này — `voucher.attachments` là ảnh chụp lúc mở nên không tự cập nhật. */
-  const [sessionUrls, setSessionUrls] = useState<string[]>([]);
-  /** URL vừa gỡ khỏi phiếu — loại khỏi danh sách hiển thị mà không cần mở lại. */
+  /** Ảnh vừa tải lên kho trong lần mở này, CHƯA nằm trên phiếu. Huỷ/đóng hộp ⇒ xoá file. */
+  const [stagedUrls, setStagedUrls] = useState<string[]>([]);
+  /** Ảnh đang có trên phiếu mà người dùng bấm X — CHƯA gỡ khỏi phiếu. */
   const [removedUrls, setRemovedUrls] = useState<string[]>([]);
+  /**
+   * Thay đổi ảnh ĐÃ ghi lên phiếu ở một lần xác nhận trước trong lần mở này (ghi
+   * ảnh xong nhưng lệnh ghi sổ lỗi). `voucher.attachments` là ảnh chụp lúc mở nên
+   * không tự cập nhật — giữ ở đây để danh sách hiển thị đúng phiếu hiện tại.
+   */
+  const [appliedAdds, setAppliedAdds] = useState<string[]>([]);
+  const [appliedRemovals, setAppliedRemovals] = useState<string[]>([]);
   /** Chứng từ đi ĐƯỜNG LÙI: có trong kho chứng từ nhưng không đính được lên phiếu. */
   const [fallbackIds, setFallbackIds] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
+  /** Đang ghi ảnh lên phiếu (bước đầu của xác nhận) — khoá Huỷ bỏ/đóng hộp. */
+  const [committing, setCommitting] = useState(false);
+
+  /**
+   * Việc bất đồng bộ + dọn dẹp cần giá trị MỚI NHẤT, closure của render cũ không
+   * có. `sessionRef` tăng mỗi lần mở/đóng: kết quả về muộn của lần mở cũ tự dọn
+   * thay vì chen vào lần mở mới.
+   */
+  const sessionRef = useRef(0);
+  const stagedRef = useRef<string[]>([]);
+  /** File gốc của ảnh đang chờ — cần khi phải đi đường lùi (tải lại vào kho chứng từ). */
+  const stagedFilesRef = useRef(new Map<string, File>());
+  const committingRef = useRef(false);
+
+  const setStaged = useCallback((next: string[]) => {
+    stagedRef.current = next;
+    setStagedUrls(next);
+  }, []);
+
+  /**
+   * Xoá khỏi kho mọi file tải lên trong lần mở này mà chưa ghi lên phiếu. Đang
+   * ghi ảnh dở dang thì KHÔNG xoá ở đây — file có thể vừa nằm trên phiếu; bước
+   * ghi tự dọn nếu nó hỏng (xem `applyAttachmentChanges`).
+   */
+  const discardStaged = useCallback(() => {
+    const urls = stagedRef.current;
+    stagedRef.current = [];
+    stagedFilesRef.current.clear();
+    if (committingRef.current || urls.length === 0) return;
+    void discardDraft(urls);
+  }, [discardDraft]);
+
+  // Một lần mở = một phiếu + một chế độ. Hết lần mở (đóng hộp, đổi phiếu, unmount)
+  // mà chưa xác nhận ⇒ file vừa tải thành rác: xoá. Phiếu không bị đụng tới.
+  useEffect(() => {
+    if (!open) return;
+    sessionRef.current += 1;
+    return () => {
+      sessionRef.current += 1;
+      discardStaged();
+      setStagedUrls([]);
+      setRemovedUrls([]);
+      setAppliedAdds([]);
+      setAppliedRemovals([]);
+    };
+  }, [open, voucher.subjectId, mode, discardStaged]);
 
   useEffect(() => {
     if (!open) {
       setAdoptedIds([]);
       setAdoptSkipped([]);
-      setSessionUrls([]);
+      setStagedUrls([]);
       setRemovedUrls([]);
+      setAppliedAdds([]);
+      setAppliedRemovals([]);
       setFallbackIds([]);
+      setUploading(false);
+      setCommitting(false);
       return;
     }
     if (attachments.length === 0 || !onAdoptAttachments) return;
@@ -467,80 +576,218 @@ export default function IncomeExpensePostingDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, voucher.subjectId, mode, attachments.length]);
 
+  /** Danh sách đang hiện = ảnh của phiếu (trừ ảnh đã/đang gỡ) + ảnh vừa thêm chờ ghi. */
+  const evidenceItems = useMemo(
+    () =>
+      buildPostingEvidenceItems({
+        attachments: [...attachments, ...appliedAdds].filter(
+          (u) => !removedUrls.includes(u) && !appliedRemovals.includes(u),
+        ),
+        sessionUploaded: stagedUrls,
+        skipped: adoptSkipped,
+      }),
+    [attachments, appliedAdds, removedUrls, appliedRemovals, stagedUrls, adoptSkipped],
+  );
+
+  const hasPendingAttachmentChanges = stagedUrls.length > 0 || removedUrls.length > 0;
+
   /**
-   * `evidenceIds` của form LUÔN được suy ra, không bao giờ sửa tay: chứng từ hợp
-   * lệ = ảnh của phiếu mà server nhận (adopt) + chứng từ đi đường lùi. Suy ra
-   * thay vì tích luỹ để ảnh vừa gỡ biến mất khỏi lần ghi sổ ngay lập tức.
+   * `evidenceIds` của form LUÔN được suy ra, không bao giờ sửa tay. Không còn thay
+   * đổi ảnh chờ ghi: đúng mã chứng từ server đã nhận (adopt) + chứng từ đi đường
+   * lùi. Còn thay đổi chờ ghi: mã thật chỉ có sau khi xác nhận ghi ảnh lên phiếu,
+   * nên tạm đếm theo danh sách đang hiện (ảnh dùng được + ảnh vừa thêm) — chỉ để
+   * kiểm "ít nhất một chứng từ"; lúc gửi luôn dùng mã thật (xem `submit`).
    */
+  const plannedEvidence = useMemo(
+    () =>
+      hasPendingAttachmentChanges
+        ? [
+            ...evidenceItems.filter((i) => i.usable).map((i) => `cho-ghi:${i.url}`),
+            ...fallbackIds,
+          ]
+        : [...adoptedIds, ...fallbackIds],
+    [hasPendingAttachmentChanges, evidenceItems, adoptedIds, fallbackIds],
+  );
+
   useEffect(() => {
-    const next = [...adoptedIds, ...fallbackIds];
+    const next = plannedEvidence;
     const current = form.getValues('evidenceIds') ?? [];
     if (current.length === next.length && current.every((v, i) => v === next[i])) return;
     form.setValue('evidenceIds', next, { shouldValidate: next.length > 0 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [adoptedIds, fallbackIds]);
-
-  const evidenceItems = useMemo(
-    () =>
-      buildPostingEvidenceItems({
-        attachments: attachments.filter((u) => !removedUrls.includes(u)),
-        sessionUploaded: sessionUrls,
-        skipped: adoptSkipped,
-      }),
-    [attachments, removedUrls, sessionUrls, adoptSkipped],
-  );
+  }, [plannedEvidence]);
 
   const handleEvidenceFiles = useCallback(
     async (files: FileList | File[] | null) => {
       const list = files ? Array.from(files as ArrayLike<File>) : [];
       if (list.length === 0) return;
+      const session = sessionRef.current;
       setUploading(true);
       try {
         for (const file of list) {
-          if (onAttachEvidence) {
-            const res = await onAttachEvidence(file);
-            if (!res) continue;
-            if (res.attachedToVoucher) {
-              if (res.url) setSessionUrls((prev) => [...prev, res.url as string]);
-              setAdoptedIds(res.evidenceIds);
-              setAdoptSkipped(res.skipped ?? []);
-            } else {
-              setFallbackIds((prev) => [...prev, ...res.evidenceIds]);
+          if (stageUploads) {
+            // Chỉ tải lên kho — phiếu chưa đổi gì cho tới khi bấm xác nhận.
+            const url = await uploadDraft(file);
+            if (sessionRef.current !== session) {
+              // Hộp đã đóng trong lúc tải: file này không còn thuộc lần mở nào.
+              if (url) void discardDraft([url]);
+              return;
             }
+            if (!url) continue;
+            stagedFilesRef.current.set(url, file);
+            setStaged([...stagedRef.current, url]);
             continue;
           }
           if (onUploadEvidence) {
             const id = await onUploadEvidence(file);
+            if (sessionRef.current !== session) return;
             if (id) setFallbackIds((prev) => [...prev, id]);
           }
         }
       } finally {
-        setUploading(false);
+        if (sessionRef.current === session) setUploading(false);
       }
     },
-    [onAttachEvidence, onUploadEvidence],
+    [stageUploads, uploadDraft, discardDraft, onUploadEvidence, setStaged],
   );
 
   const handleEvidenceRemove = useCallback(
     async (url: string) => {
-      if (!onRemoveAttachment) return;
-      const res = await onRemoveAttachment(url);
-      if (!res) return; // server từ chối (thiếu quyền sửa) — không giả vờ đã gỡ
-      setRemovedUrls((prev) => [...prev, url]);
-      setSessionUrls((prev) => prev.filter((u) => u !== url));
-      setAdoptedIds(res.evidenceIds);
-      setAdoptSkipped(res.skipped ?? []);
+      if (stagedRef.current.includes(url)) {
+        // Ảnh vừa thêm trong lần mở này, chưa từng nằm trên phiếu: xoá file luôn.
+        setStaged(stagedRef.current.filter((u) => u !== url));
+        stagedFilesRef.current.delete(url);
+        await discardDraft([url]);
+        return;
+      }
+      if (!canRemoveExisting) return;
+      // Ảnh đang có trên phiếu: chỉ ẩn đi, KHÔNG xoá file — gỡ thật lúc xác nhận.
+      setRemovedUrls((prev) => (prev.includes(url) ? prev : [...prev, url]));
     },
-    [onRemoveAttachment],
+    [canRemoveExisting, discardDraft, setStaged],
   );
 
+  const canRemoveItem = useCallback(
+    (item: PostingEvidenceItem) => item.addedNow || canRemoveExisting,
+    [canRemoveExisting],
+  );
+
+  /**
+   * ĐƯỜNG LÙI (giữ tinh thần 27/08/2026): server không cho đính ảnh lên phiếu (vd
+   * thủ quỹ giữ sổ khác sổ ghi trên phiếu, không phải người lập) — thà ảnh không
+   * hiện ở dòng thu chi còn hơn chặn người ta chi tiền. Ảnh vừa thêm đi kho chứng
+   * từ riêng; bản trong kho ảnh đính kèm bị xoá cho khỏi rác.
+   */
+  const fallbackToEvidenceStore = async (
+    urls: string[],
+    reason: string,
+    session: number,
+  ): Promise<string[] | null> => {
+    if (!onUploadEvidence) {
+      toast.error(reason);
+      return null;
+    }
+    const ids: string[] = [];
+    const moved: string[] = [];
+    for (const url of urls) {
+      const file = stagedFilesRef.current.get(url);
+      const id = file ? await onUploadEvidence(file) : null;
+      if (!id) break; // uploadFinanceEvidence đã báo lý do
+      ids.push(id);
+      moved.push(url);
+    }
+    if (sessionRef.current !== session) {
+      void discardDraft(urls);
+      return null;
+    }
+    if (moved.length > 0) {
+      setStaged(stagedRef.current.filter((u) => !moved.includes(u)));
+      for (const u of moved) stagedFilesRef.current.delete(u);
+      void discardDraft(moved);
+      setFallbackIds((prev) => [...prev, ...ids]);
+    }
+    if (moved.length < urls.length) return null;
+    toast.warning(
+      'Ảnh đã lưu làm chứng từ, nhưng chưa đính được lên phiếu (thiếu quyền sửa) — nó sẽ không hiện ở dòng thu chi.',
+    );
+    return [...adoptedIds, ...fallbackIds, ...ids];
+  };
+
+  /**
+   * Bước đầu của nút xác nhận: ghi thay đổi ảnh đã gom lên phiếu rồi lấy mã
+   * chứng từ thật cho lệnh ghi sổ. Trả null khi phải dừng (lỗi đã được báo).
+   *
+   * Phải ghi ảnh TRƯỚC lệnh ghi sổ: lệnh đó đòi mã chứng từ, mà chứng từ chỉ lập
+   * được từ file đang nằm trên phiếu. Hệ quả chấp nhận: ghi ảnh xong mà ghi sổ lỗi
+   * thì ảnh đã ở trên phiếu (người dùng đã bấm xác nhận) — chúng chuyển sang
+   * `applied*` và không bị xoá khi đóng hộp.
+   */
+  const applyAttachmentChanges = async (): Promise<string[] | null> => {
+    const add = [...stagedRef.current];
+    const remove = [...removedUrls];
+    const session = sessionRef.current;
+    committingRef.current = true;
+    setCommitting(true);
+    try {
+      const res = await commitDraft(voucher.subjectId, { add, remove });
+      if (sessionRef.current !== session) {
+        // Hộp bị đóng giữa chừng: ghi được thì file đã thuộc phiếu — giữ; không
+        // ghi được thì chúng là rác.
+        if (!res.ok) void discardDraft(add);
+        return null;
+      }
+      if (res.ok) {
+        // Từ đây ảnh vừa thêm đã nằm trên phiếu — KHÔNG còn là rác.
+        setStaged(stagedRef.current.filter((u) => !add.includes(u)));
+        for (const u of add) stagedFilesRef.current.delete(u);
+        setRemovedUrls((prev) => prev.filter((u) => !remove.includes(u)));
+        setAppliedAdds((prev) => [...prev, ...add]);
+        setAppliedRemovals((prev) => [...prev, ...remove]);
+        setAdoptedIds(res.evidenceIds);
+        setAdoptSkipped(res.skipped);
+        return [...res.evidenceIds, ...fallbackIds];
+      }
+      const loi = res.message ?? 'Không ghi được ảnh lên phiếu';
+      if (res.periodBlocked) {
+        toast.error(loi);
+        return null;
+      }
+      if (remove.length > 0) {
+        // Thêm và gỡ đi chung một lệnh nên phiếu CHƯA đổi gì. Hay gặp nhất: người
+        // chi không có quyền sửa thu chi nên không được gỡ ảnh — trả ảnh về chỗ cũ.
+        setRemovedUrls([]);
+        toast.error(
+          `${loi} — ảnh định gỡ đã được trả lại; bấm “${title}” lần nữa để tiếp tục mà không gỡ ảnh.`,
+        );
+        return null;
+      }
+      return await fallbackToEvidenceStore(add, loi, session);
+    } finally {
+      committingRef.current = false;
+      if (sessionRef.current === session) setCommitting(false);
+    }
+  };
+
   const submit = form.handleSubmit(async (values) => {
+    let evidenceIds = values.evidenceIds;
+    if (hasPendingAttachmentChanges) {
+      const applied = await applyAttachmentChanges();
+      if (!applied) return; // hộp giữ nguyên để thử lại hoặc Huỷ bỏ
+      evidenceIds = applied;
+      if (requireEvidence && evidenceIds.length === 0) {
+        form.setError('evidenceIds', {
+          type: 'manual',
+          message: 'Chưa có ảnh nào tính là chứng từ cho lần ghi sổ này — hãy thêm ảnh mới.',
+        });
+        return;
+      }
+    }
     const input: PostFinanceExecutionInput = {
       subjectKind: voucher.subjectKind,
       subjectId: voucher.subjectId,
       cashbookId: values.cashbookId,
       postedOn: values.postedOn,
-      evidenceIds: values.evidenceIds,
+      evidenceIds,
       amount: allowAmount ? values.amount : undefined,
       expectedExecutionRevision,
       expectedApprovalVersion,
@@ -550,10 +797,19 @@ export default function IncomeExpensePostingDialog({
     await onSubmit(input);
   });
 
+  /** Đang ghi ảnh lên phiếu thì không cho đóng: không biết phiếu đã đổi hay chưa. */
+  const handleOpenChange = useCallback(
+    (next: boolean) => {
+      if (!next && committingRef.current) return;
+      onOpenChange(next);
+    },
+    [onOpenChange],
+  );
+
   const remaining = voucher.remainingAmount;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
@@ -672,10 +928,16 @@ export default function IncomeExpensePostingDialog({
                     <PostingEvidenceUpload
                       items={evidenceItems}
                       onFiles={handleEvidenceFiles}
-                      onRemove={onRemoveAttachment ? handleEvidenceRemove : undefined}
+                      onRemove={
+                        stageUploads || canRemoveExisting ? handleEvidenceRemove : undefined
+                      }
+                      canRemove={canRemoveItem}
                       busy={uploading}
                       adopting={adopting}
+                      disabled={committing}
                       fallbackCount={fallbackIds.length}
+                      pendingChanges={hasPendingAttachmentChanges}
+                      confirmLabel={title}
                     />
                   </FormControl>
                   <FormMessage />
@@ -699,12 +961,16 @@ export default function IncomeExpensePostingDialog({
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => onOpenChange(false)}
+                disabled={committing}
+                onClick={() => handleOpenChange(false)}
               >
                 Huỷ bỏ
               </Button>
-              <Button type="submit" disabled={isSubmitting || !capabilityOk}>
-                {isSubmitting ? 'Đang xử lý...' : title}
+              <Button
+                type="submit"
+                disabled={isSubmitting || committing || uploading || !capabilityOk}
+              >
+                {isSubmitting || committing ? 'Đang xử lý...' : title}
               </Button>
             </DialogFooter>
           </form>

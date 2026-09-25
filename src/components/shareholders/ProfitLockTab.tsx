@@ -26,6 +26,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { ProfitHubSlot } from "@/pages/reports/finance/ProfitHubShell";
 import {
   Select,
@@ -175,6 +176,18 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
   const [resetReason, setResetReason] = useState("");
   const resetReasonLength = resetReason.trim().length;
   const resetReasonValid = resetReasonLength >= 8 && resetReasonLength <= 1000;
+  // Mở khoá: chụp phạm vi lúc mở hộp (như resetGuard) — preview/state tải lại
+  // nền không được đổi tập nhà dưới tay người đang gõ lý do.
+  const [unlockOpen, setUnlockOpen] = useState(false);
+  const [unlockGuard, setUnlockGuard] = useState<{
+    organizationId: string;
+    period: string;
+    buildingIds: string[];
+    buildingNames: string[];
+  } | null>(null);
+  const [unlockReason, setUnlockReason] = useState("");
+  const unlockReasonLength = unlockReason.trim().length;
+  const unlockReasonValid = unlockReasonLength >= 8 && unlockReasonLength <= 1000;
   const selectedOrganization = organizations.find(
     (organization) => organization.organization_id === organizationId,
   );
@@ -343,12 +356,13 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
   );
   // Nhà đang chọn mà đã LOCKED — phạm vi của "Mở khoá" (UNLOCK đòi snapshot
   // đang LOCKED).
-  const selectedLockedIds = useMemo(
-    () =>
-      selectedRows
-        .filter((row) => row.current_snapshot?.status === "LOCKED")
-        .map((row) => row.building_id),
+  const selectedLockedRows = useMemo(
+    () => selectedRows.filter((row) => row.current_snapshot?.status === "LOCKED"),
     [selectedRows],
+  );
+  const selectedLockedIds = useMemo(
+    () => selectedLockedRows.map((row) => row.building_id),
+    [selectedLockedRows],
   );
   // Nhà đang chọn CÓ snapshot — phạm vi của "Đặt lại" (xoá cả dòng DRAFT).
   const selectedSnapshotBuildingIds = useMemo(
@@ -393,6 +407,16 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
   const closeMutation = useCloseProfitPeriod();
   const resetMutation = useResetProfitPeriod();
   const unlockMutation = useUnlockProfitMonth();
+  // Lỗi của lượt chốt gần nhất (đúng tổ chức + tháng đang xem), in NGUYÊN VĂN câu
+  // máy chủ. Toast chỉ sống vài giây, mà câu 55000 "Còn N phiếu chờ duyệt trong
+  // tháng … của toà …: PC…, PC… — duyệt hoặc huỷ trước khi chốt." liệt kê đúng
+  // những phiếu phải xử lý trước khi chốt lại.
+  const closeErrorMessage: string | null =
+    closeMutation.isError &&
+    closeMutation.variables?.organizationId === organizationId &&
+    closeMutation.variables?.periodMonth === period
+      ? String(closeMutation.error?.message || "Không thể chốt lợi nhuận")
+      : null;
 
   useEffect(() => {
     if (!preview) return;
@@ -447,6 +471,9 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
     setResetOpen(false);
     setResetGuard(null);
     setResetReason("");
+    setUnlockOpen(false);
+    setUnlockGuard(null);
+    setUnlockReason("");
   }, [scopeKey]);
 
   const updateDraft = (
@@ -639,6 +666,34 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
       setForm((previous) => ({ ...previous, dirty: {} }));
     } catch {
       // Mutation hook surfaces the canonical server error.
+    }
+  };
+
+  const openUnlockConfirmation = () => {
+    if (selectedLockedRows.length === 0) return;
+    setUnlockGuard({
+      organizationId,
+      period,
+      buildingIds: selectedLockedRows.map((row) => row.building_id).sort(),
+      buildingNames: selectedLockedRows.map((row) => row.building_name),
+    });
+    setUnlockOpen(true);
+  };
+
+  const confirmUnlock = async () => {
+    if (!unlockGuard || !unlockReasonValid) return;
+    try {
+      await unlockMutation.mutateAsync({
+        organizationId: unlockGuard.organizationId,
+        periodMonth: unlockGuard.period,
+        buildingIds: unlockGuard.buildingIds,
+        reason: unlockReason,
+      });
+      setUnlockOpen(false);
+      setUnlockGuard(null);
+      setUnlockReason("");
+    } catch {
+      // Hook đã báo lỗi; hộp giữ nguyên cùng lý do vừa gõ để thử lại.
     }
   };
 
@@ -850,24 +905,19 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
             </Button>
           )}
 
-          {/* MỞ KHOÁ — nhẹ hơn "Đặt lại tháng" ở chỗ KHÔNG cần lý do + CAS
-              hash, nhưng KHÔNG hề nhẹ về hậu quả: thân `unlock_profit_month_v1`
-              đang chạy trên prod XOÁ `profit_allocations` +
-              `profit_manager_allocations`, đặt `management_salary = 0` rồi lật
-              snapshot về DRAFT. (Comment cũ ở đây ghi "snapshot giữ nguyên" —
-              SAI, đã đối chiếu thân hàm thật.) Từ 30/07/2026 phiếu của tháng đã
-              chốt bị TRIGGER chặn, nên không có nút này thì chủ phải nhờ kỹ
-              thuật chạy SQL mỗi lần cần sửa một phiếu. */}
+          {/* MỞ KHOÁ — đi `profit_unlock_v2` qua hộp xác nhận BẮT BUỘC ghi lý
+              do (8–1000 ký tự, lưu vào profit_close_runs + profit_close_revisions
+              cùng người mở). Không CAS source hash như "Đặt lại" vì mỗi nhà một
+              hash; nhà nào không còn LOCKED thì máy chủ từ chối cả lượt. Hậu
+              quả KHÔNG nhẹ: XOÁ `profit_allocations` + `profit_manager_allocations`,
+              đặt `management_salary = 0` rồi lật snapshot về DRAFT — sửa xong
+              phải chốt lại. Từ 25/09/2026 khoá tháng là TUYỆT ĐỐI: mọi phiếu có
+              ngày trong tháng đã chốt bị khoá với mọi người, kể cả chủ công ty,
+              nên đây là đường duy nhất để sửa phiếu của tháng đó. */}
           {hasSnapshots && canUnlock && (
             <Button
               className="ph-control"
-              onClick={() => {
-                if (selectedLockedIds.length === 0) return;
-                unlockMutation.mutate({
-                  periodMonth: period,
-                  buildingIds: selectedLockedIds,
-                });
-              }}
+              onClick={openUnlockConfirmation}
               // Không tự nới về "mọi nhà đang khoá" khi chưa tick gì: nút này
               // XOÁ phần đã phân bổ, nên phạm vi phải do người dùng nói ra.
               disabled={
@@ -879,7 +929,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
               title={
                 selectedLockedIds.length === 0
                   ? "Chưa tick nhà nào đang ở trạng thái Đã chốt. Tick những nhà cần sửa phiếu rồi bấm lại."
-                  : "Gỡ khoá để sửa phiếu của các nhà đang chọn. LƯU Ý: phần đã phân bổ cho cổ đông và quản lý của những nhà đó sẽ bị XOÁ, snapshot về Nháp — phải chốt lại sau khi sửa xong."
+                  : "Gỡ khoá để sửa phiếu của các nhà đang chọn — phải ghi lý do, lý do được lưu lại. LƯU Ý: phần đã phân bổ cho cổ đông và quản lý của những nhà đó sẽ bị XOÁ, snapshot về Nháp — phải chốt lại sau khi sửa xong."
               }
             >
               <LockOpen className="mr-1.5 h-3.5 w-3.5" />
@@ -965,6 +1015,14 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
               ? previewQuery.error.message
               : "RPC canonical chưa sẵn sàng."}
           </AlertDescription>
+        </Alert>
+      )}
+
+      {closeErrorMessage && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Chưa chốt được lợi nhuận {periodToLabel(period)}</AlertTitle>
+          <AlertDescription>{closeErrorMessage}</AlertDescription>
         </Alert>
       )}
 
@@ -1525,6 +1583,12 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
                   <strong>{selectedRows.map((row) => row.building_name).join(" · ")}</strong>.
                   Các nhà còn lại giữ nguyên, phiếu thu-chi của chúng vẫn sửa được.
                 </p>
+                <p>
+                  Chốt xong, MỌI phiếu có ngày trong {periodToLabel(period)} của những nhà
+                  này bị khoá với tất cả mọi người, kể cả chủ công ty — muốn sửa phải mở
+                  khoá tháng và ghi lý do. Nhà còn phiếu Chờ duyệt trong tháng thì máy chủ
+                  không cho chốt.
+                </p>
                 {recloseMode && (
                   <p>
                     Thao tác này tạo revision mới và thay snapshot hiện tại. Lý do: <strong>{overallReason.trim()}</strong>
@@ -1613,6 +1677,71 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
                 : resetGuard?.targetBuildingIds
                   ? `Đặt lại ${resetGuard.targetBuildingIds.length} nhà`
                   : "Đặt lại cả tháng"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={unlockOpen}
+        onOpenChange={(open) => {
+          // Đang gửi thì không cho đóng — đóng giữa chừng là mất câu trả lời.
+          if (!open && unlockMutation.isPending) return;
+          setUnlockOpen(open);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Mở khoá {unlockGuard?.buildingIds.length ?? 0} nhà của{" "}
+              {periodToLabel(unlockGuard?.period ?? period)}?
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-sm text-muted-foreground">
+                <p>
+                  Mở khoá để sửa, lập hoặc huỷ phiếu có ngày trong tháng này của:{" "}
+                  <strong>{unlockGuard?.buildingNames.join(" · ")}</strong>.
+                </p>
+                <p className="font-medium text-amber-700">
+                  Phần đã phân bổ cho cổ đông và lương điều hành của những nhà này sẽ bị
+                  XOÁ, bản chốt về Nháp — sửa xong phải chốt lại.
+                </p>
+                <p>Lý do được lưu lại cùng người mở khoá trong lịch sử chốt lợi nhuận.</p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-1">
+            <Label htmlFor="profit-unlock-reason">Lý do mở khoá</Label>
+            <Textarea
+              id="profit-unlock-reason"
+              value={unlockReason}
+              onChange={(event) => setUnlockReason(event.target.value)}
+              rows={3}
+              maxLength={1000}
+              placeholder="Bắt buộc: vì sao cần mở khoá (vd: sửa phiếu PC… nhập sai số tiền)"
+              aria-invalid={unlockReason.length > 0 && !unlockReasonValid}
+              disabled={unlockMutation.isPending}
+            />
+            <p
+              className={`text-xs ${unlockReasonValid ? "text-muted-foreground" : "text-amber-700"}`}
+            >
+              {unlockReasonLength}/1000 ký tự
+              {unlockReasonValid ? "" : " — lý do cần có 8–1000 ký tự."}
+            </p>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={unlockMutation.isPending}>Huỷ</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                // Giữ hộp mở tới khi máy chủ trả lời: lỗi thì còn nguyên lý do để thử lại.
+                event.preventDefault();
+                void confirmUnlock();
+              }}
+              disabled={!unlockReasonValid || unlockMutation.isPending}
+            >
+              {unlockMutation.isPending
+                ? "Đang mở khoá…"
+                : `Mở khoá ${unlockGuard?.buildingIds.length ?? 0} nhà`}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

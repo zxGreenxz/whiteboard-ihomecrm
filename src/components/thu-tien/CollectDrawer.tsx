@@ -20,15 +20,27 @@ import {
   useCollectionReversalEligibility,
   COLLECTION_BLOCK_TEXT,
 } from '@/hooks/useDeletePayment';
+import { fetchRecentInvoiceCollections } from '@/hooks/useCollectionTenders';
 import { useUpdateInvoiceNote } from '@/hooks/useUpdateInvoiceNote';
 import { useInvoice } from '@/hooks/useInvoices';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
 import { getInvoiceEditMode } from '@/lib/invoiceUtils';
+import { duplicateCollectionQuestion, findRecentDuplicateCollection } from '@/lib/duplicateCollection';
+import { REVISION_REASON_MAX, REVISION_REASON_MIN } from '@/lib/incomeExpenseRevision';
 import EditInvoiceDialog from '@/components/invoices/EditInvoiceDialog';
 import { Button } from '@/components/ui/button';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { uploadReceiptToStorage } from '@/lib/receiptUpload';
-import type { CollectMethod } from '@/lib/cashAccount';
 import { InvoiceDetailCard } from './InvoiceDetailCard';
 import { CollectKeypad } from './CollectKeypad';
 import { CollectPayForm, type PayFormState, type PayFormSubmit } from './CollectPayForm';
@@ -64,10 +76,17 @@ export function CollectDrawer({
   onClose,
   onNavigate,
 }: Props) {
-  // Sổ quỹ chỉ tải khi sheet thực sự mở (drawer luôn mounted để chạy animation).
-  const { collect, accountIdFor, accountOptionsFor, changeAccountNameFor, isCollecting } =
-    useQuickCollect({ enabled: !!invoice });
+  // Sổ quỹ + sổ nhận tiền chỉ tải khi sheet thực sự mở (drawer luôn mounted để
+  // chạy animation); sổ nhận đọc theo toà của hoá đơn đang mở.
+  const { collect, receiving, receivingBlockFor, changeAccountNameFor, isCollecting } =
+    useQuickCollect({ invoice });
   const deletePayment = useDeletePayment();
+  // Hoàn tác phải gõ lý do thật (≥ 8 ký tự) — ô lý do mở khi bấm "Hoàn tác".
+  const [undoOpen, setUndoOpen] = useState(false);
+  const [undoReason, setUndoReason] = useState('');
+  // Thu trùng: hỏi lại khi hoá đơn vừa có khoản thu CÙNG số tiền trong 30 phút.
+  const [dupAsk, setDupAsk] = useState<{ question: string; run: () => Promise<void> } | null>(null);
+  const [checkingDup, setCheckingDup] = useState(false);
   const updateNote = useUpdateInvoiceNote();
   const { data: permissions } = useMyPermissions();
   const canEditInvoice = canUse(permissions, 'invoices', 'edit');
@@ -106,6 +125,9 @@ export function CollectDrawer({
     setPayState(null);
     setNoteDraft(invoice?.notes ?? '');
     setEditNoteOpen(false);
+    setUndoOpen(false);
+    setUndoReason('');
+    setDupAsk(null);
   }, [invoice?.id, mode]);
 
   // Giữ DOM khi đóng (chạy animation translateY); chỉ bỏ render khi đã unmount.
@@ -140,8 +162,31 @@ export function CollectDrawer({
   const enteredVal = pristine
     ? Math.max(0, Math.round(remaining))
     : (parseInt(entered, 10) || 0) * 1000;
-  const submitKeypad = async () => {
-    if (enteredVal <= 0) return;
+  /**
+   * Thu trùng (đợt 1 sửa phiếu): trước khi ghi, hoá đơn vừa có khoản thu CÒN HIỆU
+   * LỰC cùng tổng tiền trong 30 phút ⇒ hỏi lại, nêu giờ thu + người thu. Không đọc
+   * được lịch sử thu thì cũng hỏi (không lặng lẽ bỏ qua bước kiểm).
+   */
+  const guardDuplicate = async (grossAmount: number, run: () => Promise<void>) => {
+    setCheckingDup(true);
+    let question: string | null = null;
+    try {
+      const recent = await fetchRecentInvoiceCollections([invoice.id]);
+      const dup = findRecentDuplicateCollection(recent, grossAmount, Date.now());
+      if (dup) question = duplicateCollectionQuestion(dup);
+    } catch (e) {
+      question = `Không kiểm tra được các khoản thu gần đây của hoá đơn này (${(e as Error)?.message || 'lỗi mạng'}). Vẫn thu tiếp?`;
+    } finally {
+      setCheckingDup(false);
+    }
+    if (question) {
+      setDupAsk({ question, run });
+      return;
+    }
+    await run();
+  };
+
+  const collectKeypad = async () => {
     try {
       const res =
         enteredVal > remaining || (changeAmount ?? 0) > 0
@@ -159,6 +204,16 @@ export function CollectDrawer({
       toast.error((e as Error).message);
     }
   };
+  const submitKeypad = async () => {
+    if (enteredVal <= 0) return;
+    // Bàn phím là tiền mặt: thiếu sổ tiền mặt riêng thì chặn trước khi hỏi gì thêm.
+    const blocked = receivingBlockFor('TM');
+    if (blocked) {
+      toast.error(blocked);
+      return;
+    }
+    await guardDuplicate(enteredVal, collectKeypad);
+  };
 
   const saveNote = () => {
     if (!canEditInvoice || getInvoiceEditMode(invoice) !== 'draft') return;
@@ -170,16 +225,34 @@ export function CollectDrawer({
   // luôn: không xác nhận, không lý do, không biết kỳ đã đóng hay chưa. Sau Đợt 5
   // server có thể CHẶN vì lợi nhuận/sổ quỹ đã chốt, nên hỏi trước và nói rõ vì
   // sao, thay vì để người dùng bấm rồi ăn một toast đỏ khó hiểu.
-  const doUndo = () => {
+  // Đợt 1 sửa phiếu: bấm "Hoàn tác" chỉ MỞ ô lý do; ghi lý do thật (≥ 8 ký tự)
+  // rồi mới xác nhận — thay cho câu điền sẵn không nói được vì sao tiền rời sổ.
+  const undoReasonLength = undoReason.trim().length;
+  const undoReasonOk = undoReasonLength >= REVISION_REASON_MIN && undoReasonLength <= REVISION_REASON_MAX;
+  const openUndo = () => {
     if (!undoTarget) return;
     if (undoBlock) {
       toast.error(COLLECTION_BLOCK_TEXT[undoBlock]);
       return;
     }
-    deletePayment.mutate({
-      payment_id: undoTarget.id,
-      collection_id: undoTarget.collection_id,
-    });
+    setUndoReason('');
+    setUndoOpen(true);
+  };
+  const doUndo = () => {
+    if (!undoTarget || undoBlock || !undoReasonOk) return;
+    deletePayment.mutate(
+      {
+        payment_id: undoTarget.id,
+        collection_id: undoTarget.collection_id,
+        reason: undoReason.trim(),
+      },
+      {
+        onSuccess: () => {
+          setUndoOpen(false);
+          setUndoReason('');
+        },
+      },
+    );
   };
 
   const doCall = () => {
@@ -188,11 +261,10 @@ export function CollectDrawer({
 
   // Form thu tiền (TM/TK/TT + ảnh): upload ảnh trước (fail → vẫn thu, báo
   // warning — precedent RecordPaymentDialog), rồi gọi collect như Thu đủ.
-  const methodAvailable = {
-    TM: !!accountIdFor(invoice, 'TM'),
-    TK: !!accountIdFor(invoice, 'TK'),
-    TT: !!accountIdFor(invoice, 'TT'),
-  } as Record<CollectMethod, boolean>;
+  const submitPayForm = (payload: PayFormSubmit) => {
+    const gross = payload.lines.reduce((s, l) => s + (Number(l.amount) || 0), 0);
+    return guardDuplicate(gross, () => runPayForm(payload));
+  };
 
   const runPayForm = async ({ lines, keepAsCredit, changeAmount, paymentDate, receiptFile }: PayFormSubmit) => {
     try {
@@ -218,7 +290,8 @@ export function CollectDrawer({
         notes: noteDraft,
         receiptImageUrl: url,
         paymentDate,
-        // Sổ quỹ người thu chọn tay ở dòng TK (mỗi phương thức tối đa 1 dòng).
+        // Sổ nhận người thu chọn ở từng dòng (mỗi hình thức tối đa 1 dòng);
+        // collect chỉ nhận sổ nằm trong danh sách máy chủ cho phép.
         accountOverrides: Object.fromEntries(
           lines
             .filter((line) => line.accountId)
@@ -231,8 +304,19 @@ export function CollectDrawer({
     }
   };
 
+  // Sổ nhận tiền (máy chủ): đang nạp / lỗi thì chưa cho thu, nói rõ vì sao.
+  const receivingStatus = receiving.error
+    ? <p role="alert" className="pf-hint err">{receiving.error}</p>
+    : receiving.loading
+      ? <p role="status" className="pf-hint">Đang tải sổ nhận tiền…</p>
+      : null;
+  // Bàn phím chỉ thu tiền mặt ⇒ thiếu sổ tiền mặt riêng thì thay bằng câu hướng dẫn.
+  const keypadBlock = receivingStatus ? null : receivingBlockFor('TM');
+
   const keypad = loadingItems || itemsError ? (
     <p role="status" className="pf-hint">{itemsError ? 'Không tải được chi tiết hóa đơn. Vui lòng đóng và mở lại.' : 'Đang tải chi tiết hóa đơn…'}</p>
+  ) : receivingStatus ? receivingStatus : keypadBlock ? (
+    <p role="alert" className="pf-hint err">{keypadBlock}</p>
   ) : (
     <CollectKeypad
       remaining={remaining}
@@ -245,9 +329,32 @@ export function CollectDrawer({
       canCredit={!!invoice.contract_id}
       allowRounding={allowRounding}
       changeAccountName={changeAccountName}
-      confirming={isCollecting}
+      confirming={isCollecting || checkingDup}
       onConfirm={submitKeypad}
     />
+  );
+
+  const dupDialog = (
+    <AlertDialog open={!!dupAsk} onOpenChange={(v) => { if (!v) setDupAsk(null); }}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Có thể đang thu trùng</AlertDialogTitle>
+          <AlertDialogDescription>{dupAsk?.question}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Không thu</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={() => {
+              const run = dupAsk?.run;
+              setDupAsk(null);
+              if (run) void run();
+            }}
+          >
+            Vẫn thu tiếp
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 
   // ── Sheet gọn (Thu 1P): chỉ bàn phím + ghi chú ──
@@ -271,6 +378,7 @@ export function CollectDrawer({
             </div>
           </div>
         </div>
+        {dupDialog}
       </>
     );
   }
@@ -310,15 +418,14 @@ export function CollectDrawer({
                 <NoteEditor value={noteDraft} onChange={setNoteDraft} onBlur={saveNote} />
                 {getInvoiceEditMode(invoice) !== 'draft' && <p className="text-xs text-muted-foreground">Ghi chú này được lưu cùng khoản thu khi bấm Thu.</p>}
               </div>
-              {loadingItems || itemsError ? <p role="status" className="pf-hint">{itemsError ? 'Không tải được chi tiết hóa đơn. Vui lòng đóng và mở lại.' : 'Đang tải chi tiết hóa đơn…'}</p> : <CollectPayForm
+              {loadingItems || itemsError ? <p role="status" className="pf-hint">{itemsError ? 'Không tải được chi tiết hóa đơn. Vui lòng đóng và mở lại.' : 'Đang tải chi tiết hóa đơn…'}</p> : receivingStatus ?? <CollectPayForm
                 key={invoice.id}
                 remaining={remaining}
-                methodAvailable={methodAvailable}
+                books={receiving.books}
+                missingBookMessage={(m) => receivingBlockFor(m) ?? ''}
                 changeAccountName={changeAccountName}
                 canCredit={!!invoice.contract_id}
                 allowRounding={allowRounding}
-                bookOptions={accountOptionsFor(invoice)}
-                defaultTkBookId={accountIdFor(invoice, 'TK')}
                 onChange={setPayState}
               />}
             </>
@@ -337,16 +444,49 @@ export function CollectDrawer({
 
           {canUndo && (invoice.paid_amount ?? 0) > 0 && (
             <div className="is-sub-actions">
-              <button
-                type="button"
-                className="is-sub-btn undo"
-                disabled={deletePayment.isPending || !!undoBlock}
-                title={undoBlock ? COLLECTION_BLOCK_TEXT[undoBlock] : undefined}
-                onClick={doUndo}
-              >
-                <Undo2 />
-                Hoàn tác
-              </button>
+              {undoOpen && !undoBlock ? (
+                <div className="ho-cancelbox" style={{ flexBasis: '100%' }}>
+                  <textarea
+                    className="note-input"
+                    rows={2}
+                    aria-label="Lý do hoàn tác"
+                    maxLength={REVISION_REASON_MAX}
+                    placeholder={`Lý do hoàn tác (bắt buộc, ít nhất ${REVISION_REASON_MIN} ký tự)…`}
+                    value={undoReason}
+                    onChange={(e) => setUndoReason(e.target.value)}
+                    disabled={deletePayment.isPending}
+                  />
+                  <div className="ho-acts">
+                    <button
+                      type="button"
+                      className="ho-btn danger"
+                      disabled={deletePayment.isPending || !undoReasonOk}
+                      onClick={doUndo}
+                    >
+                      {deletePayment.isPending ? 'Đang hoàn tác…' : 'Xác nhận hoàn tác'}
+                    </button>
+                    <button
+                      type="button"
+                      className="ho-btn ghost"
+                      disabled={deletePayment.isPending}
+                      onClick={() => { setUndoOpen(false); setUndoReason(''); }}
+                    >
+                      Đóng
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="is-sub-btn undo"
+                  disabled={deletePayment.isPending || !!undoBlock}
+                  title={undoBlock ? COLLECTION_BLOCK_TEXT[undoBlock] : undefined}
+                  onClick={openUndo}
+                >
+                  <Undo2 />
+                  Hoàn tác
+                </button>
+              )}
               {undoBlock && (
                 <div className="is-sub-hint">{COLLECTION_BLOCK_TEXT[undoBlock]}</div>
               )}
@@ -372,10 +512,10 @@ export function CollectDrawer({
             <button
               type="button"
               className="btn-collect"
-              disabled={!canRecordPayment || !payState?.canSubmit || isCollecting || uploading}
-              onClick={() => payState?.payload && runPayForm(payState.payload)}
+              disabled={!canRecordPayment || !payState?.canSubmit || isCollecting || uploading || checkingDup}
+              onClick={() => payState?.payload && submitPayForm(payState.payload)}
             >
-              {uploading || isCollecting ? 'Đang ghi…' : `Thu ${fmtShort(payState?.total ?? remaining)}`}
+              {uploading || isCollecting ? 'Đang ghi…' : checkingDup ? 'Đang kiểm…' : `Thu ${fmtShort(payState?.total ?? remaining)}`}
               {payState && payState.overpay > 0 && (
                 <small>
                   {payState.keepAsCredit ? 'nợ khách ' : 'thối '}
@@ -398,6 +538,7 @@ export function CollectDrawer({
         </div>
       </div>
       {editNoteOpen && fullInvoice && <EditInvoiceDialog open onOpenChange={setEditNoteOpen} invoice={fullInvoice} />}
+      {dupDialog}
     </>
   );
 }

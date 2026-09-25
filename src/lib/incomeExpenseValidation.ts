@@ -14,7 +14,7 @@ export const itemSchema = z.object({
 );
 
 // Schema cho form Phiếu thu/chi
-export const incomeExpenseFormSchema = z.object({
+const incomeExpenseFormBase = z.object({
   type: z.enum(['INCOME', 'EXPENSE'], {
     required_error: 'Vui lòng chọn loại phiếu',
   }),
@@ -48,9 +48,14 @@ export const incomeExpenseFormSchema = z.object({
   // NHÁP (sổ trống) — thanh toán + duyệt tại trang Đóng tiền tập trung.
   repeat_auto_approve: z.boolean().default(true).optional(),
   items: z.array(itemSchema).min(1, 'Vui lòng thêm ít nhất 1 hạng mục'),
-}).superRefine((val, ctx) => {
-  // Chọn chu kỳ nhưng KHÔNG bật "Lặp vô hạn" thì bắt buộc số lần lặp >= 1 —
-  // tránh tạo phiếu "lặp" nhưng không bao giờ sinh phiếu con (cấu hình chết).
+});
+
+// Chọn chu kỳ nhưng KHÔNG bật "Lặp vô hạn" thì bắt buộc số lần lặp >= 1 —
+// tránh tạo phiếu "lặp" nhưng không bao giờ sinh phiếu con (cấu hình chết).
+const repeatCountRule = (
+  val: z.infer<typeof incomeExpenseFormBase>,
+  ctx: z.RefinementCtx,
+) => {
   const cycle = val.repeat_cycle ?? 'NONE';
   if (cycle !== 'NONE' && !val.repeat_infinity && (val.repeat_count ?? 0) < 1) {
     ctx.addIssue({
@@ -59,7 +64,18 @@ export const incomeExpenseFormSchema = z.object({
       path: ['repeat_count'],
     });
   }
-});
+};
+
+export const incomeExpenseFormSchema = incomeExpenseFormBase.superRefine(repeatCountRule);
+
+/**
+ * Sửa phiếu Chờ duyệt CHƯA có sổ quỹ (phiếu hoa hồng, trả khách thanh lý, phiếu
+ * con lặp chưa thanh toán…): được giữ sổ trống — người duyệt chọn sổ lúc duyệt.
+ * Bắt chọn sổ ở đây là ép đổi dữ liệu chỉ để sửa một cái tên.
+ */
+export const incomeExpenseNoAccountFormSchema = incomeExpenseFormBase
+  .extend({ account_id: z.string() })
+  .superRefine(repeatCountRule);
 
 export type IncomeExpenseFormValues = z.infer<typeof incomeExpenseFormSchema>;
 

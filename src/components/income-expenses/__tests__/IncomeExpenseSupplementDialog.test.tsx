@@ -4,15 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import IncomeExpenseQuickEditDialog from '../IncomeExpenseQuickEditDialog';
 import type { IncomeExpenseWithRelations } from '@/hooks/useIncomeExpenses';
 
-const state = vi.hoisted(() => ({ save: vi.fn(), legacy: vi.fn(), move: vi.fn(), pending: false }));
+const state = vi.hoisted(() => ({ save: vi.fn(), legacy: vi.fn(), pending: false }));
 vi.mock('@/hooks/income-expenses/supplements', () => ({
   useAppendIncomeExpenseSupplement: () => ({ mutateAsync: state.save, isPending: state.pending }),
   useIncomeExpenseSupplements: () => ({ data: [], isLoading: false, isError: false }),
 }));
 vi.mock('@/hooks/income-expenses/annotateMutations', () => ({ useAnnotateIncomeExpense: () => ({ mutateAsync: state.legacy }) }));
-vi.mock('@/hooks/income-expenses/incomeVoucherCashbook', () => ({
-  useMyCashbookAccess: () => ({ data: [] }), useMoveIncomeVoucherCashbook: () => ({ mutateAsync: state.move }),
-}));
 vi.mock('@/hooks/useAccounts', () => ({ useAccounts: () => ({ data: [] }) }));
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ data: { id: '00000000-0000-4000-8000-000000000002' } }) }));
 vi.mock('@/hooks/use-mobile', () => ({ useIsMobile: () => false }));
@@ -33,7 +30,7 @@ const voucher = { id: '00000000-0000-4000-8000-000000000001', code: 'PC-DEMO', t
   notes: 'Ghi chú nguyên bản', attachments: ['https://proof.test/original.png'],
 } as IncomeExpenseWithRelations;
 
-beforeEach(() => { state.save.mockReset().mockResolvedValue({ changed: true }); state.legacy.mockReset(); state.move.mockReset(); state.pending = false; });
+beforeEach(() => { state.save.mockReset().mockResolvedValue({ changed: true }); state.legacy.mockReset(); state.pending = false; });
 afterEach(cleanup);
 
 describe('Bổ sung chứng từ / ghi chú', () => {
@@ -61,7 +58,7 @@ describe('Bổ sung chứng từ / ghi chú', () => {
     expect(state.save.mock.calls[0][0]).toEqual({ voucherId: voucher.id,
       note: 'Khách xác nhận\nĐã nhận hoàn trả', attachments: ['https://proof.test/new.png'], idempotencyKey: expect.any(String) });
     expect(state.save.mock.calls[1][0]).toEqual(state.save.mock.calls[0][0]);
-    expect(state.legacy).not.toHaveBeenCalled(); expect(state.move).not.toHaveBeenCalled();
+    expect(state.legacy).not.toHaveBeenCalled();
     expect(close).toHaveBeenCalledWith(false);
   });
 

@@ -22,9 +22,10 @@ import { fetchAllRows } from '@/lib/supabaseFetchAll';
 import type { InvoiceWithRelations } from '@/types/invoice';
 
 // Cột/embeds ĐÚNG những gì /thu-tien dùng. name_sort giữ lại vì sort client
-// của trang so theo name; building.default_account_id_* cho lib/cashAccount.
+// của trang so theo name. organization_id: sổ nhận tiền (get_receiving_cashbooks_v1)
+// đọc theo ĐÚNG tổ chức của hoá đơn — máy chủ từ chối toà của tổ chức khác.
 const THU_TIEN_SELECT = `
-  id, invoice_number, billing_month, status, total_amount, paid_amount,
+  id, organization_id, invoice_number, billing_month, status, total_amount, paid_amount,
   remaining_amount, notes, building_id, room_id, contract_id,
   contract:contracts!invoices_contract_id_fkey (
     id,
@@ -33,7 +34,7 @@ const THU_TIEN_SELECT = `
       customer:customers!contract_customers_customer_id_fkey (id, full_name, phone)
     )
   ),
-  building:buildings!invoices_building_id_fkey (id, name, name_sort, default_account_id_tt, default_account_id_tk),
+  building:buildings!invoices_building_id_fkey (id, name, name_sort),
   room:rooms!invoices_room_id_fkey (id, name, name_sort),
   payments (id, amount, payment_date, payment_method, created_at, collection_id, reversed_at)
 `;

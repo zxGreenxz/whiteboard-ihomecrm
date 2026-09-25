@@ -64,7 +64,7 @@ Cột số phòng (**total_rooms**) của mỗi toà do hệ thống **tự đ�
 | --- | --- |
 | Danh sách trống dù chắc chắn có toà | Thường do quyền: nếu bạn là nhân viên, chỉ thấy toà được gán phạm vi. Kiểm tra lại phân quyền hoặc nhờ quản lý gán toà. Cũng nên kiểm tra ô tìm kiếm/lọc còn dính từ khoá cũ (bộ lọc giữ qua F5). |
 | Số phòng của toà hiển thị sai sau khi chuyển phòng sang toà khác | Con số tự cập nhật khi có thay đổi phòng kế tiếp của chính toà đó. Không sửa tay số phòng; thêm/xoá/chỉnh một phòng của toà để hệ thống đếm lại. |
-| Không thấy ô **sổ quỹ mặc định** trong form | 2 sổ quỹ TT/TK chỉ hiển thị với tài khoản **quản trị cấp cao**. Nhân viên/quản lý thường sẽ không thấy phần này. |
+| Không thấy ô **sổ quỹ mặc định** trong form | Từ 25/09/2026 sổ nhận tiền (chuyển khoản / thanh toán) của toà cài ở **Tài chính → Sổ quỹ → Sổ nhận tiền**, không còn trong form toà. Chỉ **chủ công ty** hoặc **quản trị cấp cao** thấy màn này. |
 | Bật/tắt hoạt động nhưng bảng "nhảy" lại trạng thái cũ | Thao tác phản hồi tức thì rồi ghi xuống máy chủ; nếu ghi lỗi (mất mạng/thiếu quyền) hệ thống tự trả về trạng thái cũ. Thử lại hoặc kiểm tra quyền **Sửa**. |
 | Toà "Chung" không xuất hiện trong danh sách | Đúng thiết kế: toà ảo dùng cho chi phí không thuộc toà thật nào bị ẩn khỏi danh sách, chỉ dùng trong form thu/chi. |
 | Nhập trùng **mã** toà mà vẫn lưu được | Cơ sở dữ liệu không có ràng buộc duy nhất cho mã toà; đây là nhãn tra cứu do bạn quản lý. Nên tự đặt mã không trùng để lọc và tạo công việc nhanh không chọn nhầm. |

@@ -220,8 +220,9 @@ export default function DepositsMobilePage() {
   };
 
   const handleApprove = (task: DepositTask) => {
-    if (!task.voucherId) return;
-    approveVoucher.mutate(task.voucherId, {
+    if (!task.voucherId || task.approvalVersion === null) return;
+    // Kèm phiên bản đang xem: phiếu vừa bị sửa ⇒ máy chủ trả 40001, không duyệt nhầm.
+    approveVoucher.mutate({ id: task.voucherId, expectedApprovalVersion: task.approvalVersion }, {
       onSettled: () => {
         queryClient.invalidateQueries({ queryKey: ["reservation-deposits"] });
         closeSheet();

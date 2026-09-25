@@ -2,6 +2,11 @@
 // Bulk Record Payment Hook
 // Each invoice is exactly one record_invoice_collection_v5 call containing
 // every TM/TK/TT tender. There is no client-side write fallback.
+//
+// Sổ nhận theo hình thức (đợt 1 sửa phiếu, 25/09/2026): khi item có `accounts`
+// thì mỗi hình thức CHỈ lấy sổ của chính nó trong bảng đó — thiếu là lỗi, không
+// rơi về `account_id` (tiền chuyển khoản không được lặng lẽ vào sổ tiền mặt).
+// Máy chủ vẫn chặn sổ ngoài danh sách sổ nhận tiền của toà / người thu.
 // =============================================
 
 import { useRef } from 'react';
@@ -90,6 +95,10 @@ const resultVoucherIds = (result: unknown): string[] => {
     .filter((id): id is string => typeof id === 'string' && id.length > 0);
 };
 
+/** Sổ nhận của một hình thức: bảng `accounts` (nếu có) là nguồn duy nhất. */
+const receivingAccountOf = (item: BulkPaymentItem, method: 'TM' | 'TK' | 'TT'): string | undefined =>
+  item.accounts ? item.accounts[method] : item.account_id;
+
 const rpcMessage = (error: unknown): string => {
   if (error && typeof error === 'object' && 'message' in error) {
     return String((error as { message?: unknown }).message || 'Lỗi ghi nhận collection');
@@ -166,7 +175,7 @@ export const useBulkRecordPayment = () => {
 
             const accountIds = new Set<string>();
             for (const line of grossLines) {
-              const accountId = item.accounts?.[line.payment_method] ?? item.account_id;
+              const accountId = receivingAccountOf(item, line.payment_method);
               if (accountId) accountIds.add(accountId);
             }
             if (item.change_account_id) accountIds.add(item.change_account_id);
@@ -199,7 +208,7 @@ export const useBulkRecordPayment = () => {
             }
             const lastLineIndex = grossLines.length - 1;
             const tenders: InvoiceCollectionTenderInput[] = grossLines.map((line, index) => {
-              const accountId = item.accounts?.[line.payment_method] ?? item.account_id;
+              const accountId = receivingAccountOf(item, line.payment_method);
               if (!accountId) throw new Error(`Thiếu sổ quỹ nhận cho ${line.payment_method}`);
               const accountIsVirtual = accountVirtuality.get(accountId);
               if (accountIsVirtual !== false) {

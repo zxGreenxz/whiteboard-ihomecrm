@@ -1,9 +1,10 @@
 // =============================================
 // useCashHandovers — data layer cho Bàn giao tiền mặt (/thu-tien).
 //
-// - useUnhandedVouchers: phiếu thu TM CHƯA bàn giao trong sổ "…Thu" của
-//   chính user (resolve qua ownCashAccountId — ledger-based, trùng logic
-//   sổ nhận tiền của useQuickCollect).
+// - useUnhandedVouchers: phiếu thu TM CHƯA bàn giao trong SỔ TIỀN MẶT RIÊNG
+//   của chính user — sổ chủ công ty cài ở màn "Sổ nhận tiền" (máy chủ trả qua
+//   get_receiving_cashbooks_v1; cũng là sổ nhận tiền mặt của useQuickCollect).
+//   Thay cho quy ước tên "…Thu" cũ (đợt 1 sửa phiếu, 25/09/2026).
 // - useCashHandoverList: phiên bàn giao mình là người giao/nhận (RLS tự
 //   lọc) + badge số phiên CẦN TÔI thao tác.
 // - 5 mutation gọi RPC SECURITY DEFINER (migration 20260610130000).
@@ -15,9 +16,9 @@ import { useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { fetchAllRows } from '@/lib/supabaseFetchAll';
-import { useAccounts } from '@/hooks/useAccounts';
 import { useAuth } from '@/hooks/useAuth';
-import { ownCashAccountId } from '@/lib/cashAccount';
+import { useReceivingCashbooks } from '@/hooks/useReceivingCashbooks';
+import { useOrganization } from '@/contexts/OrganizationContext';
 import { needsMyAction, type HandoverItemLite, type HandoverLite } from '@/lib/handover';
 
 export interface UnhandedVoucher {
@@ -42,18 +43,17 @@ export interface CashHandover extends HandoverLite {
 
 /**
  * Phiếu CHƯA bàn giao trong 1 SỔ của chính mình — CẢ phiếu THU lẫn CHI (bàn
- * giao theo số dư ròng). Mặc định sổ "…Thu" của user; truyền `sourceAccountId`
+ * giao theo số dư ròng). Mặc định sổ tiền mặt riêng của user (màn "Sổ nhận
+ * tiền"); chưa cài thì `accountId` rỗng và không tải gì. Truyền `sourceAccountId`
  * để bàn giao từ sổ khác (vd sổ chuyển khoản tkHiep). Loại phiếu CHI chuyển
  * ("Bàn giao tiền mặt →" do confirm sinh ra, mang handover_transfer_id) để
  * không trừ trùng; phiếu THU chuyển ("Nhận bàn giao") vẫn cho quét để bàn giao tiếp.
  */
 export const useUnhandedVouchers = (sourceAccountId?: string) => {
-  const { data: accounts = [] } = useAccounts();
-  const { data: currentUser } = useAuth();
-  const accountId = useMemo(
-    () => sourceAccountId || ownCashAccountId(accounts as any[], currentUser?.id),
-    [sourceAccountId, accounts, currentUser],
-  );
+  const { selectedOrganizationId } = useOrganization();
+  // Cùng khoá truy vấn với HandoverSheet ⇒ chỉ một lần gọi máy chủ.
+  const { data: receiving } = useReceivingCashbooks(selectedOrganizationId, null);
+  const accountId = sourceAccountId || receiving?.personalCashBook?.id || '';
 
   const query = useQuery({
     queryKey: ['handover-vouchers', accountId],

@@ -33,10 +33,28 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { useBuildings } from '@/hooks/useBuildings';
 import { useAccounts } from '@/hooks/useAccounts';
+import {
+  missingReceivingBookMessage,
+  receivingBooksFor,
+  useReceivingCashbooks,
+  type ReceivingBook,
+} from '@/hooks/useReceivingCashbooks';
+import { fetchRecentInvoiceCollections } from '@/hooks/useCollectionTenders';
 import { changeAccountOptions, ownChangeAccountName } from '@/lib/changeAccounts';
+import { collectionClock, findRecentDuplicateCollection } from '@/lib/duplicateCollection';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { getSessionUser } from "@/lib/authSession";
@@ -86,11 +104,21 @@ interface RowData {
 
   notes: string;
 
-  account_id_override: string | null;
+  /** Sổ nhận CK/TT chọn riêng cho dòng (null = sổ chung ở đầu bảng). TM luôn là sổ tiền mặt riêng. */
+  tk_account_override: string | null;
+  tt_account_override: string | null;
   change_account_id_override: string | null;
 
   error?: string;
 }
+
+type BookMethod = 'TK' | 'TT';
+
+/** Câu lỗi máy chủ (tiếng Việt), bỏ tiền tố máy-đọc kiểu [PROFIT_LOCKED]. */
+const loiDoc = (error: unknown, fallback: string): string => {
+  const msg = (error as { message?: unknown } | null)?.message;
+  return typeof msg === 'string' && msg.trim() ? msg.replace(/^\[[A-Z_]+\]\s*/, '') : fallback;
+};
 
 const fmt = (n: number) =>
   new Intl.NumberFormat('vi-VN').format(Math.round(n || 0));
@@ -117,17 +145,23 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
   const [paymentDate, setPaymentDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [showAccountColumns, setShowAccountColumns] = useState(false);
 
-  const [headerAccountId, setHeaderAccountId] = useState('');
-  const [headerAccountUserEdited, setHeaderAccountUserEdited] = useState(false);
+  // Sổ CK/TT chung người thu chọn ở đầu bảng ('' = sổ mặc định của toà).
+  const [headerBook, setHeaderBook] = useState<Record<BookMethod, string>>({ TK: '', TT: '' });
   const [headerChangeAccountId, setHeaderChangeAccountId] = useState('');
   const [headerChangeAccountUserEdited, setHeaderChangeAccountUserEdited] = useState(false);
 
   const [rows, setRows] = useState<RowData[]>([]);
   const [loaded, setLoaded] = useState(false);
+  // Toà của các dòng ĐÃ TẢI: sổ nhận đọc theo toà này, kể cả khi người dùng đổi ô
+  // "Toà nhà" mà chưa bấm tải lại.
+  const [loadedBuildingId, setLoadedBuildingId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [failures, setFailures] = useState<BulkPaymentFailure[]>([]);
   const [editInvoiceId, setEditInvoiceId] = useState<string | null>(null);
   const [viewPaymentsInvoiceId, setViewPaymentsInvoiceId] = useState<string | null>(null);
+  // Thu trùng (đợt 1 sửa phiếu): các phòng vừa được thu cùng số tiền trong 30 phút.
+  const [bulkDupAsk, setBulkDupAsk] = useState<{ lines: string[]; ackKey: string } | null>(null);
+  const bulkDupAckRef = useRef<string | null>(null);
 
   const { data: editingInvoice } = useInvoice(editInvoiceId ?? undefined);
   const { data: viewingPaymentsInvoice } = useInvoice(
@@ -140,12 +174,11 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
     idempotencyKey: string;
     receiptUrl: string | null;
   }>>(new Map());
-  // ─── Auto-detect sổ quỹ nhận khi đổi toà ───
+  // ─── Toà đang chọn → tổ chức (lọc sổ thối / làm tròn cùng tổ chức) ───
   const selectedBuilding = useMemo(
     () => (buildings ?? []).find((building: any) => building.id === buildingId) ?? null,
     [buildings, buildingId],
   );
-  const buildingName = selectedBuilding?.name?.trim() ?? '';
   const buildingOrganizationId = selectedBuilding?.organization_id ?? null;
   // Chỉ dùng sổ quỹ cùng tổ chức với toà đang chọn — tránh chọn nhầm sổ tenant khác.
   const organizationAccounts = useMemo(
@@ -156,32 +189,55 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
       ),
     [accounts, buildingOrganizationId],
   );
-  const realAccounts = useMemo(
-    () => organizationAccounts.filter((account) => account.is_virtual === false),
-    [organizationAccounts],
-  );
   const virtualAccounts = useMemo(
     () => organizationAccounts.filter((account) => account.is_virtual === true),
     [organizationAccounts],
   );
 
-  useEffect(() => {
-    if (headerAccountUserEdited) return;
-    if (!buildingName || !realAccounts.length) {
-      setHeaderAccountId('');
-      return;
-    }
-    const matched = realAccounts.find(
-      (a) => a.name?.trim() === buildingName,
-    );
-    if (matched) {
-      setHeaderAccountId(matched.id);
-    } else {
-      setHeaderAccountId('');
-      // Không tìm được → tự bật cột để user chọn
-      setShowAccountColumns(true);
-    }
-  }, [buildingName, realAccounts, headerAccountUserEdited]);
+  // ─── Sổ nhận tiền theo hình thức (máy chủ quyết — đợt 1 sửa phiếu 25/09/2026) ───
+  // TM = sổ tiền mặt riêng của người đang thu; TK/TT = danh sách sổ của toà (mặc
+  // định đứng đầu) giao với sổ người thu giữ/biết. Hình thức chưa có sổ ⇒ chặn
+  // ghi nhận các dòng có tiền ở hình thức đó (không rơi về sổ trùng tên toà).
+  const receivingBuildingId = (loaded && loadedBuildingId) || buildingId || null;
+  const receivingBuilding = useMemo(
+    () => (buildings ?? []).find((building) => building.id === receivingBuildingId) ?? null,
+    [buildings, receivingBuildingId],
+  );
+  const receivingBuildingName = receivingBuilding?.name?.trim() || null;
+  const receivingOrgId = receivingBuilding?.organization_id ?? null;
+  const receiving = useReceivingCashbooks(
+    open && receivingBuildingId ? receivingOrgId : null,
+    receivingBuildingId,
+  );
+  const receivingData = receiving.data;
+  const receivingError = receiving.isError
+    ? loiDoc(receiving.error, 'Không tải được danh sách sổ nhận tiền.')
+    : receivingBuilding && !receivingOrgId
+      ? 'Chưa xác định được công ty của toà — tải lại trang rồi thử lại.'
+      : null;
+  const receivingLoading = !!receivingBuildingId && !receivingError && !receivingData;
+  const tmBook = receivingData?.personalCashBook ?? null;
+  const booksOf = (method: BookMethod): ReceivingBook[] => receivingBooksFor(receivingData, method);
+  /** Sổ CK/TT chung: sổ người thu chọn ở đầu bảng nếu còn trong danh sách, không thì sổ mặc định. */
+  const headerBookId = (method: BookMethod): string => {
+    const list = booksOf(method);
+    const picked = headerBook[method];
+    return picked && list.some((b) => b.id === picked) ? picked : list[0]?.id ?? '';
+  };
+  /** Sổ CK/TT của một dòng: sổ chọn riêng (nếu hợp lệ) → sổ chung. '' = chưa có sổ. */
+  const rowBookId = (r: RowData, method: BookMethod): string => {
+    const own = method === 'TK' ? r.tk_account_override : r.tt_account_override;
+    return own && booksOf(method).some((b) => b.id === own) ? own : headerBookId(method);
+  };
+  /** Sổ nhận của từng hình thức CÓ TIỀN trong dòng — gửi nguyên vào useBulkRecordPayment. */
+  const accountsForRow = (r: RowData): Partial<Record<'TM' | 'TK' | 'TT', string>> => {
+    const out: Partial<Record<'TM' | 'TK' | 'TT', string>> = {};
+    if (r.amount_tm > 0 && tmBook) out.TM = tmBook.id;
+    if (r.amount_tk > 0 && rowBookId(r, 'TK')) out.TK = rowBookId(r, 'TK');
+    if (r.amount_tt > 0 && rowBookId(r, 'TT')) out.TT = rowBookId(r, 'TT');
+    return out;
+  };
+  const bookName = (method: BookMethod, id: string) => booksOf(method).find((b) => b.id === id)?.name ?? '';
 
   // ─── Auto-detect sổ quỹ thối theo user: Hiển→Hiển Thối, Hiệp→Hiệp Thối ───
   useEffect(() => {
@@ -195,15 +251,8 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
     if (target) setHeaderChangeAccountId(target.id);
   }, [virtualAccounts, currentUserId, headerChangeAccountUserEdited]);
 
-  // Đổi toà (→ đổi tổ chức) có thể làm sổ đã chọn không còn hợp lệ → reset để
-  // fail-closed, buộc auto-detect/chọn lại theo danh sách sổ đã lọc.
-  useEffect(() => {
-    if (headerAccountId && !realAccounts.some((account) => account.id === headerAccountId)) {
-      setHeaderAccountId('');
-      setHeaderAccountUserEdited(false);
-    }
-  }, [headerAccountId, realAccounts]);
-
+  // Đổi toà (→ đổi tổ chức) có thể làm sổ thối đã chọn không còn hợp lệ → reset
+  // để fail-closed, buộc auto-detect/chọn lại theo danh sách sổ đã lọc.
   useEffect(() => {
     if (
       headerChangeAccountId &&
@@ -214,10 +263,6 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
     }
   }, [headerChangeAccountId, virtualAccounts]);
 
-  const headerAccountName = useMemo(
-    () => realAccounts.find((a) => a.id === headerAccountId)?.name ?? '',
-    [realAccounts, headerAccountId],
-  );
   const headerChangeAccountName = useMemo(
     () => virtualAccounts.find((a) => a.id === headerChangeAccountId)?.name ?? '',
     [virtualAccounts, headerChangeAccountId],
@@ -291,7 +336,8 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
             receipt_image: null,
             receipt_preview_url: null,
             notes: '',
-            account_id_override: null,
+            tk_account_override: null,
+            tt_account_override: null,
             change_account_id_override: null,
           } as RowData;
         })
@@ -299,6 +345,7 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
           a.room_name.localeCompare(b.room_name, 'vi', { numeric: true }),
         );
       setRows(next);
+      setLoadedBuildingId(buildingId);
       setLoaded(true);
     } catch (err: any) {
       console.error(err);
@@ -408,10 +455,13 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
     });
     setRows([]);
     setLoaded(false);
+    setLoadedBuildingId(null);
     setFailures([]);
-    setHeaderAccountUserEdited(false);
+    setHeaderBook({ TK: '', TT: '' });
     setHeaderChangeAccountUserEdited(false);
     setShowAccountColumns(false);
+    setBulkDupAsk(null);
+    bulkDupAckRef.current = null;
     submitAttemptsRef.current.clear();
     onOpenChange(false);
   };
@@ -468,20 +518,26 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
       return false;
     }
 
-    // Cần sổ quỹ nhận
-    const needsAccount = selected.some((r) => {
-      const accountId = r.account_id_override ?? headerAccountId;
-      const sum = r.amount_tm + r.amount_tk + r.amount_tt;
-      return (
-        sum > 0 &&
-        (!accountId || !realAccounts.some((account) => account.id === accountId))
-      );
-    });
-    if (needsAccount) {
+    // Cần sổ nhận cho MỌI hình thức có tiền — trong danh sách máy chủ cho phép.
+    if (receivingError) {
+      toast({ variant: 'destructive', title: 'Không đọc được sổ nhận tiền', description: receivingError });
+      return false;
+    }
+    if (!receivingData) {
+      toast({ variant: 'destructive', title: 'Đang tải sổ nhận tiền', description: 'Thử lại sau giây lát.' });
+      return false;
+    }
+    const thieuSo = new Set<string>();
+    for (const r of selected) {
+      if (r.amount_tm > 0 && !tmBook) thieuSo.add(missingReceivingBookMessage('TM'));
+      if (r.amount_tk > 0 && !rowBookId(r, 'TK')) thieuSo.add(missingReceivingBookMessage('TK', receivingBuildingName));
+      if (r.amount_tt > 0 && !rowBookId(r, 'TT')) thieuSo.add(missingReceivingBookMessage('TT', receivingBuildingName));
+    }
+    if (thieuSo.size > 0) {
       toast({
         variant: 'destructive',
-        title: 'Thiếu sổ quỹ nhận',
-        description: 'Vui lòng chọn sổ quỹ nhận (chung hoặc từng dòng)',
+        title: 'Thiếu sổ nhận tiền',
+        description: [...thieuSo].join(' '),
       });
       setShowAccountColumns(true);
       return false;
@@ -529,6 +585,56 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
     return urlData.publicUrl;
   };
 
+  /** Vân tay nội dung một dòng — cùng vân tay ⇒ gọi lại dùng đúng idempotency key cũ. */
+  const rowFingerprint = (r: RowData) => {
+    const fileSignature = r.receipt_image
+      ? `${r.receipt_image.name}:${r.receipt_image.size}:${r.receipt_image.type}:${r.receipt_image.lastModified}`
+      : null;
+    return JSON.stringify({
+      paymentDate,
+      invoice_id: r.invoice_id,
+      amount_tm: r.amount_tm,
+      amount_tk: r.amount_tk,
+      amount_tt: r.amount_tt,
+      change_amount: r.change_amount,
+      keep_as_credit: r.keep_as_credit,
+      accounts: accountsForRow(r),
+      change_account_id: r.change_account_id_override ?? headerChangeAccountId,
+      rounding_account_id: roundingAccountId || null,
+      notes: r.notes.trim() || null,
+      file: fileSignature,
+    });
+  };
+
+  /**
+   * Thu trùng (đợt 1 sửa phiếu): phòng nào vừa có khoản thu CÒN HIỆU LỰC cùng
+   * tổng tiền trong 30 phút? Bỏ qua dòng đang gọi lại đúng lần gửi trước (cùng
+   * idempotency key — máy chủ trả kết quả cũ, không ghi thêm). null = không trùng.
+   */
+  const findBulkDuplicates = async (selected: RowData[]): Promise<string[] | null> => {
+    const toCheck = selected.filter(
+      (r) => submitAttemptsRef.current.get(r.invoice_id)?.fingerprint !== rowFingerprint(r),
+    );
+    if (toCheck.length === 0) return null;
+    try {
+      const recent = await fetchRecentInvoiceCollections(toCheck.map((r) => r.invoice_id));
+      const now = Date.now();
+      const lines = toCheck.flatMap((r) => {
+        const dup = findRecentDuplicateCollection(
+          recent.filter((c) => c.invoice_id === r.invoice_id),
+          r.amount_tm + r.amount_tk + r.amount_tt,
+          now,
+        );
+        return dup
+          ? [`${r.room_name}: ${fmt(dup.gross_amount)} đ lúc ${collectionClock(dup.created_at)} bởi ${dup.collector_name || 'một người khác'}`]
+          : [];
+      });
+      return lines.length ? lines : null;
+    } catch (error) {
+      return [`Không kiểm tra được các khoản thu gần đây (${loiDoc(error, 'lỗi mạng')}).`];
+    }
+  };
+
   const handleSubmit = async () => {
     if (!validateBeforeSubmit()) return;
     const selected = rows.filter(
@@ -541,26 +647,19 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
     setSubmitting(true);
     setFailures([]);
     try {
+      const ackKey = JSON.stringify(selected.map(rowFingerprint));
+      if (bulkDupAckRef.current !== ackKey) {
+        const dupLines = await findBulkDuplicates(selected);
+        if (dupLines) {
+          setBulkDupAsk({ lines: dupLines, ackKey });
+          return;
+        }
+      }
+
       // Giữ cả URL ảnh và idempotency key ổn định cho retry cùng payload.
       const preparedAttempts = await Promise.all(
         selected.map(async (r) => {
-          const fileSignature = r.receipt_image
-            ? `${r.receipt_image.name}:${r.receipt_image.size}:${r.receipt_image.type}:${r.receipt_image.lastModified}`
-            : null;
-          const fingerprint = JSON.stringify({
-            paymentDate,
-            invoice_id: r.invoice_id,
-            amount_tm: r.amount_tm,
-            amount_tk: r.amount_tk,
-            amount_tt: r.amount_tt,
-            change_amount: r.change_amount,
-            keep_as_credit: r.keep_as_credit,
-            account_id: r.account_id_override ?? headerAccountId,
-            change_account_id: r.change_account_id_override ?? headerChangeAccountId,
-            rounding_account_id: roundingAccountId || null,
-            notes: r.notes.trim() || null,
-            file: fileSignature,
-          });
+          const fingerprint = rowFingerprint(r);
           const cached = submitAttemptsRef.current.get(r.invoice_id);
           if (cached?.fingerprint === fingerprint) {
             return { invoice_id: r.invoice_id, ...cached };
@@ -593,6 +692,9 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
         const residualAfter = r.remaining - netThisRow;
         const willRoundRow =
           residualAfter > 0 && residualAfter < 10000 && netThisRow > 0;
+        // Mỗi hình thức vào ĐÚNG sổ của nó (useBulkRecordPayment không rơi về
+        // account_id khi đã có bảng sổ theo hình thức).
+        const accounts = accountsForRow(r);
         return {
           invoice_id: r.invoice_id,
           invoice_number: r.invoice_number,
@@ -601,7 +703,8 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
           amount_tk: r.amount_tk,
           amount_tt: r.amount_tt,
           change_amount: r.change_amount,
-          account_id: r.account_id_override ?? headerAccountId,
+          account_id: accounts.TM || accounts.TK || accounts.TT || '',
+          accounts,
           change_account_id:
             r.change_amount > 0 && !r.keep_as_credit
               ? (r.change_account_id_override ?? headerChangeAccountId)
@@ -725,10 +828,19 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
             </span>
           )}
           <span className="ml-auto text-sm text-muted-foreground">
-            Mặc định nhận:{' '}
-            <span className="font-medium text-foreground">
-              {headerAccountName || '— chưa chọn —'}
-            </span>
+            Sổ nhận:{' '}
+            {receivingLoading ? (
+              <span className="font-medium text-foreground">đang tải…</span>
+            ) : receivingError ? (
+              <span className="font-medium text-red-600">{receivingError}</span>
+            ) : receivingBuildingId ? (
+              <span className="font-medium text-foreground">
+                TM {tmBook?.name || '— chưa cài —'} · TK {bookName('TK', headerBookId('TK')) || '— chưa cài —'} · TT{' '}
+                {bookName('TT', headerBookId('TT')) || '— chưa cài —'}
+              </span>
+            ) : (
+              <span className="font-medium text-foreground">— chọn toà —</span>
+            )}
             {' · '}
             Mặc định thối:{' '}
             <span className="font-medium text-foreground">
@@ -738,29 +850,50 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
         </div>
 
         {showAccountColumns && (
-          <div className="grid grid-cols-2 gap-3 pb-2">
+          <div className="grid grid-cols-4 gap-3 pb-2">
             <div className="space-y-1">
-              <Label>Sổ quỹ nhận chung *</Label>
-              <Select
-                value={headerAccountId}
-                onValueChange={(v) => {
-                  setHeaderAccountId(v);
-                  setHeaderAccountUserEdited(true);
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Chọn sổ quỹ nhận tiền..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {realAccounts.map((a) => (
-                    <SelectItem key={a.id} value={a.id}>
-                      {a.name}
-                      {a.bank_name ? ` — ${a.bank_name}` : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label>Sổ nhận TM (sổ tiền mặt riêng)</Label>
+              {receivingLoading ? (
+                <p className="flex h-10 items-center text-sm text-muted-foreground">Đang tải…</p>
+              ) : tmBook ? (
+                <div className="flex h-10 items-center rounded-md border bg-muted/40 px-3 text-sm">{tmBook.name}</div>
+              ) : (
+                <p className="text-xs text-red-600">{receivingError || missingReceivingBookMessage('TM')}</p>
+              )}
             </div>
+            {(['TK', 'TT'] as const).map((m) => {
+              const list = booksOf(m);
+              return (
+                <div key={m} className="space-y-1">
+                  <Label>{m === 'TK' ? 'Sổ nhận TK (chuyển khoản) chung' : 'Sổ nhận TT (thanh toán) chung'}</Label>
+                  {receivingLoading ? (
+                    <p className="flex h-10 items-center text-sm text-muted-foreground">Đang tải…</p>
+                  ) : list.length === 0 ? (
+                    <p className="text-xs text-red-600">
+                      {receivingError || missingReceivingBookMessage(m, receivingBuildingName)}
+                    </p>
+                  ) : (
+                    <Select
+                      value={headerBookId(m)}
+                      onValueChange={(v) => setHeaderBook((prev) => ({ ...prev, [m]: v }))}
+                      disabled={list.length === 1}
+                    >
+                      <SelectTrigger aria-label={`Sổ nhận ${m} chung`}>
+                        <SelectValue placeholder="Chọn sổ nhận..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {list.map((b) => (
+                          <SelectItem key={b.id} value={b.id}>
+                            {b.name}
+                            {b.isDefault ? ' (mặc định)' : ''}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+              );
+            })}
             <div className="space-y-1">
               <Label>Sổ quỹ tiền thối chung</Label>
               <Select
@@ -972,24 +1105,39 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
                     </td>
                     {showAccountColumns && (
                       <>
-                        <td className="p-1 border">
-                          <Select
-                            value={r.account_id_override ?? headerAccountId}
-                            onValueChange={(v) =>
-                              updateRow(i, { account_id_override: v })
-                            }
-                          >
-                            <SelectTrigger className="h-7 text-xs">
-                              <SelectValue placeholder="—" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {realAccounts.map((a) => (
-                                <SelectItem key={a.id} value={a.id}>
-                                  {a.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                        <td className="p-1 border align-top">
+                          {/* Sổ nhận của từng hình thức có tiền trong dòng: TM cố định
+                              sổ tiền mặt riêng; TK/TT chọn riêng cho dòng này. */}
+                          {r.amount_tm + r.amount_tk + r.amount_tt <= 0 ? (
+                            <span className="text-xs text-slate-400">—</span>
+                          ) : (
+                            <div className="space-y-1">
+                              {r.amount_tm > 0 && (
+                                <RowBookCell
+                                  label="TM"
+                                  books={tmBook ? [tmBook] : []}
+                                  value={tmBook?.id ?? ''}
+                                  locked
+                                />
+                              )}
+                              {r.amount_tk > 0 && (
+                                <RowBookCell
+                                  label="TK"
+                                  books={booksOf('TK')}
+                                  value={rowBookId(r, 'TK')}
+                                  onChange={(v) => updateRow(i, { tk_account_override: v })}
+                                />
+                              )}
+                              {r.amount_tt > 0 && (
+                                <RowBookCell
+                                  label="TT"
+                                  books={booksOf('TT')}
+                                  value={rowBookId(r, 'TT')}
+                                  onChange={(v) => updateRow(i, { tt_account_override: v })}
+                                />
+                              )}
+                            </div>
+                          )}
                         </td>
                         <td className="p-1 border">
                           <Select
@@ -1147,7 +1295,84 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
         }}
         invoice={viewingPaymentsInvoice ?? null}
       />
+
+      {/* Thu trùng: phòng vừa được thu cùng số tiền trong 30 phút. */}
+      <AlertDialog
+        open={!!bulkDupAsk}
+        onOpenChange={(v) => {
+          if (!v) setBulkDupAsk(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Có thể đang thu trùng</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-sm text-muted-foreground">
+                <p>Các phòng sau vừa được thu cùng số tiền trong 30 phút gần đây:</p>
+                <ul className="list-disc space-y-0.5 pl-5">
+                  {(bulkDupAsk?.lines ?? []).map((line) => (
+                    <li key={line}>{line}</li>
+                  ))}
+                </ul>
+                <p>Vẫn ghi nhận tất cả?</p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Không thu</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (!bulkDupAsk) return;
+                bulkDupAckRef.current = bulkDupAsk.ackKey;
+                setBulkDupAsk(null);
+                void handleSubmit();
+              }}
+            >
+              Vẫn thu tiếp
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
+  );
+}
+
+interface RowBookCellProps {
+  label: 'TM' | 'TK' | 'TT';
+  books: ReceivingBook[];
+  value: string;
+  /** TM: sổ tiền mặt riêng — chỉ hiện, không cho chọn. */
+  locked?: boolean;
+  onChange?: (accountId: string) => void;
+}
+
+/** Sổ nhận của một hình thức trong một dòng: chọn được khi có ≥ 2 sổ. */
+function RowBookCell({ label, books, value, locked, onChange }: RowBookCellProps) {
+  if (books.length === 0) {
+    return <div className="text-[11px] text-red-600">{label} · chưa cài sổ</div>;
+  }
+  if (locked || books.length === 1 || !onChange) {
+    const name = books.find((b) => b.id === value)?.name ?? books[0].name;
+    return (
+      <div className="truncate text-[11px] text-slate-600" title={name}>
+        {label} · {name}
+      </div>
+    );
+  }
+  return (
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger className="h-7 text-xs" aria-label={`Sổ nhận ${label} của dòng`}>
+        <span className="mr-1 text-slate-500">{label}</span>
+        <SelectValue placeholder="—" />
+      </SelectTrigger>
+      <SelectContent>
+        {books.map((b) => (
+          <SelectItem key={b.id} value={b.id}>
+            {b.name}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }
 

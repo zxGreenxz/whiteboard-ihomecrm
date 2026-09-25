@@ -51,12 +51,18 @@ import {
   useCancelIncomeExpense,
   useRestoreIncomeExpense,
   useApproveVoucher,
-  useQuickUpdateIncomeExpense,
   useCancelIncomeExpenseBatch,
   EMPTY_INCOME_EXPENSE_FILTERS,
   type IncomeExpenseWithRelations,
   type IncomeExpenseFilters,
 } from "@/hooks/useIncomeExpenses";
+import { useReviseIncomeExpense } from "@/hooks/income-expenses/revisions";
+import { RevisionComparison } from "@/components/income-expenses/RevisionSummary";
+import {
+  accountChangeNeedsReason,
+  approvalEditPatch,
+  REVISION_REASON_MIN,
+} from "@/lib/incomeExpenseRevision";
 import { usePagination } from "@/hooks/usePagination";
 import { MOBILE_FIRST_PAGE_SIZE } from "@/lib/listPageSizes";
 import { useRoomIdsByCode } from "@/hooks/useRoomIdsByCode";
@@ -228,6 +234,8 @@ export default function IncomeExpenseMobilePage() {
   // Duyệt phiếu: cho bổ sung/đổi sổ quỹ + đính kèm ngay trước khi ghi vào tồn quỹ.
   const [approveAccountId, setApproveAccountId] = useState<string>("");
   const [approveAttachments, setApproveAttachments] = useState<string[]>([]);
+  // Đổi từ sổ này sang sổ khác ngay trước khi duyệt = một lần sửa phiếu ⇒ cần lý do.
+  const [approveReason, setApproveReason] = useState("");
   // V2: mở Posting dialog "Duyệt và Chi/Thu" (chỉ khi route CANONICAL).
   const [approveAndPostOpen, setApproveAndPostOpen] = useState(false);
   // V2 §12.3: Thu/Chi phiếu ĐÃ DUYỆT-CHƯA GHI SỔ (CUSTODIAN, không cần quyền duyệt).
@@ -246,8 +254,12 @@ export default function IncomeExpenseMobilePage() {
     if (approveTarget) {
       setApproveAccountId(approveTarget.account_id ?? "");
       setApproveAttachments(approveTarget.attachments ?? []);
+      setApproveReason("");
     }
   }, [approveTarget]);
+  const approveNeedsReason =
+    !!approveTarget && accountChangeNeedsReason(approveTarget.account_id, approveAccountId);
+  const approveReasonOk = approveReason.trim().length >= REVISION_REASON_MIN;
 
   // Trang đầu 15 (khớp MOBILE_FIRST_PAGE_SIZE prefetch từ màn chính — lệch là
   // trật cache key); "Tải thêm" vẫn nới +50.
@@ -473,7 +485,7 @@ export default function IncomeExpenseMobilePage() {
   const cancelIncomeMutation = useCancelIncomeVoucher();
   const restoreMutation = useRestoreIncomeExpense();
   const approveMutation = useApproveVoucher();
-  const quickUpdateMutation = useQuickUpdateIncomeExpense();
+  const reviseMutation = useReviseIncomeExpense();
   const cancelBatchMutation = useCancelIncomeExpenseBatch();
 
   const { data: accounts = [] } = useAccounts();
@@ -539,8 +551,9 @@ export default function IncomeExpenseMobilePage() {
     ),
   });
 
-  // Duyệt phiếu: nếu người dùng đổi sổ quỹ hoặc thêm/bớt ảnh thì lưu trước
-  // (update_income_expense_quick chỉ áp cho phiếu nháp) rồi mới ghi vào tồn quỹ.
+  // Duyệt phiếu: nếu người dùng đổi sổ quỹ hoặc thêm/bớt ảnh thì lưu trước — qua
+  // cửa sửa phiếu có lưu vết (revise_pending_income_expense_v1) — rồi duyệt ĐÚNG
+  // phiên bản vừa sửa. Phiếu bị người khác sửa giữa chừng ⇒ 40001, không duyệt nhầm.
   const handleApprove = async () => {
     const target = approveTarget;
     if (!target) return;
@@ -559,21 +572,23 @@ export default function IncomeExpenseMobilePage() {
       }
       return;
     }
-    const nextAccountId = approveAccountId || null;
-    const accountChanged = nextAccountId !== (target.account_id ?? null);
-    const prevAttachments = target.attachments ?? [];
-    const attachmentsChanged =
-      JSON.stringify(prevAttachments) !== JSON.stringify(approveAttachments);
+    const patch = approvalEditPatch(target, {
+      account_id: approveAccountId || null,
+      attachments: approveAttachments,
+    });
     try {
-      if (accountChanged || attachmentsChanged) {
-        await quickUpdateMutation.mutateAsync({
-          id: target.id,
-          account_id: nextAccountId,
-          attachments: approveAttachments,
-          notes: target.notes ?? null,
+      let version = target.approval_version;
+      if (Object.keys(patch).length > 0) {
+        const revised = await reviseMutation.mutateAsync({
+          voucherId: target.id,
+          expectedApprovalVersion: version,
+          patch,
+          reason: approveReason.trim() || null,
+          silent: true,
         });
+        version = revised.approval_version;
       }
-      await approveMutation.mutateAsync(target.id);
+      await approveMutation.mutateAsync({ id: target.id, expectedApprovalVersion: version });
       setApproveTarget(null);
     } catch {
       // toast đã hiển thị trong hook; giữ hộp thoại để người dùng thử lại.
@@ -853,6 +868,24 @@ export default function IncomeExpenseMobilePage() {
                               style={{ color: "#047857", background: "#d1fae5" }}
                             >
                               Đã đối chiếu
+                            </span>
+                          )}
+                          {/* Đợt 1 sửa phiếu: dấu đã sửa khi Chờ duyệt / đã đổi
+                              hình thức thu — chạm phiếu để xem đổi gì. */}
+                          {(v.revision_count ?? 0) > 0 && (
+                            <span
+                              className="vch-tag"
+                              style={{ color: "#92400e", background: "#fef3c7" }}
+                            >
+                              Đã sửa {v.revision_count} lần
+                            </span>
+                          )}
+                          {(v.method_change_count ?? 0) > 0 && (
+                            <span
+                              className="vch-tag"
+                              style={{ color: "#5b21b6", background: "#ede9fe" }}
+                            >
+                              Đổi HT thu {v.method_change_count} lần
                             </span>
                           )}
                           <span
@@ -1302,6 +1335,9 @@ export default function IncomeExpenseMobilePage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
 
+          {/* Phiếu đã bị sửa khi Chờ duyệt ⇒ người duyệt thấy đổi gì, ai sửa, vì sao. */}
+          {approveTarget && <RevisionComparison voucherId={approveTarget.id} />}
+
           {!v2ApproveOnly && (
           <div className="space-y-4 py-2">
             <div className="space-y-2">
@@ -1326,6 +1362,22 @@ export default function IncomeExpenseMobilePage() {
               </p>
             </div>
 
+            {approveNeedsReason && (
+              <div className="space-y-2">
+                <Label htmlFor="approve-reason">Lý do đổi sổ quỹ *</Label>
+                <Textarea
+                  id="approve-reason"
+                  value={approveReason}
+                  onChange={(e) => setApproveReason(e.target.value)}
+                  rows={2}
+                  placeholder="Vì sao đổi sang sổ khác?"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Đổi sổ được lưu thành một lần sửa phiếu (ít nhất {REVISION_REASON_MIN} ký tự).
+                </p>
+              </div>
+            )}
+
             <div className="space-y-2">
               <Label>Hình ảnh đính kèm</Label>
               <AttachmentUpload
@@ -1341,7 +1393,7 @@ export default function IncomeExpenseMobilePage() {
             <AlertDialogCancel
               disabled={
                 approveMutation.isPending ||
-                quickUpdateMutation.isPending ||
+                reviseMutation.isPending ||
                 approveV2Mutation.isPending
               }
             >
@@ -1366,13 +1418,14 @@ export default function IncomeExpenseMobilePage() {
               }}
               disabled={
                 approveMutation.isPending ||
-                quickUpdateMutation.isPending ||
-                approveV2Mutation.isPending
+                reviseMutation.isPending ||
+                approveV2Mutation.isPending ||
+                (!v2ApproveOnly && approveNeedsReason && !approveReasonOk)
               }
               className="bg-green-600 hover:bg-green-700"
             >
               {approveMutation.isPending ||
-              quickUpdateMutation.isPending ||
+              reviseMutation.isPending ||
               approveV2Mutation.isPending
                 ? "Đang duyệt…"
                 : v2ApproveOnly

@@ -4,18 +4,22 @@
 // tiền thối / nợ khách khi tiền mặt thu DƯ (đúng như trang Hoá đơn) +
 // ngày + ảnh chứng từ. Ghi chú dùng NoteEditor chung của drawer.
 //
+// Sổ nhận theo hình thức do MÁY CHỦ quyết (đợt 1 sửa phiếu, 25/09/2026): TM = sổ
+// tiền mặt riêng của người thu (hiện, không cho chọn); TK/TT = chọn trong danh
+// sách của toà (mặc định sổ đầu, 1 sổ thì khoá). Hình thức chưa có sổ ⇒ báo câu
+// hướng dẫn và KHÔNG cho thu (không rơi về sổ khác).
+//
 // Presentational: KHÔNG gọi mutation/upload. Tính tiền cuối cùng + validate
 // nằm ở planCollect (drawer → useQuickCollect); form chỉ thu input + gợi ý.
 // =============================================
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ImagePlus, Plus, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useClipboardImagePaste } from '@/hooks/useClipboardImagePaste';
 import { validateReceiptFile } from '@/lib/receiptUpload';
-import type { CollectMethod } from '@/lib/cashAccount';
 import { fmtFull, fmtShort, todayISO } from '@/lib/collect';
-import { deriveOverpayPolicy, planCollect } from '@/lib/collectPlan';
+import { deriveOverpayPolicy, planCollect, type CollectMethod } from '@/lib/collectPlan';
 import { ChangeAmountInput } from './ChangeAmountInput';
 
 const formatVN = (n: number) => (n > 0 ? n.toLocaleString('vi-VN') : '');
@@ -27,8 +31,15 @@ const parseVN = (s: string): number => {
 interface PayLine {
   method: CollectMethod;
   amount: number;
-  /** Sổ quỹ nhận — chỉ dòng TK cho chọn tay; rỗng = dùng sổ mặc định của toà. */
+  /** Sổ nhận của dòng — luôn nằm trong `books[method]` (TM: sổ tiền mặt riêng). */
   accountId?: string;
+}
+
+/** Một sổ được nhận (từ get_receiving_cashbooks_v1). */
+export interface PayFormBook {
+  id: string;
+  name: string;
+  isDefault?: boolean;
 }
 
 export interface PayFormSubmit {
@@ -53,36 +64,43 @@ export interface PayFormState {
 
 interface Props {
   remaining: number;
-  methodAvailable: Record<CollectMethod, boolean>;
+  /** Sổ được nhận theo từng hình thức (máy chủ quyết); TM = [sổ tiền mặt riêng]. */
+  books: Record<CollectMethod, PayFormBook[]>;
+  /** Câu báo khi một hình thức chưa có sổ nào (vd missingReceivingBookMessage). */
+  missingBookMessage?: (method: CollectMethod) => string;
   /** Tên sổ "…Thối" để hiển thị; '' nếu chưa có. */
   changeAccountName?: string;
   /** Hoá đơn có hợp đồng → cho phép "Nợ khách". */
   canCredit: boolean;
   allowRounding?: boolean;
-  /** Sổ quỹ chọn được cho dòng TK (sổ thật cùng org với hoá đơn). */
-  bookOptions?: Array<{ id: string; name: string }>;
-  /** Sổ TK mặc định của toà — điền sẵn khi dòng chuyển sang TK. */
-  defaultTkBookId?: string;
   /** Báo trạng thái lên drawer (nút xanh dưới cùng submit). */
   onChange: (state: PayFormState) => void;
 }
 
 const ALL: CollectMethod[] = ['TM', 'TK', 'TT'];
 
+const MAC_DINH_THIEU_SO = (method: CollectMethod) =>
+  method === 'TM'
+    ? 'Người thu chưa có sổ tiền mặt riêng — nhờ chủ công ty cài ở Sổ nhận tiền.'
+    : `Toà này chưa cài sổ nhận tiền cho hình thức ${method === 'TK' ? 'Chuyển khoản' : 'Thanh toán'}.`;
+
 export function CollectPayForm({
   remaining,
-  methodAvailable,
+  books,
+  missingBookMessage = MAC_DINH_THIEU_SO,
   changeAccountName,
   canCredit,
   allowRounding = true,
-  bookOptions = [],
-  defaultTkBookId = '',
   onChange,
 }: Props) {
-  const available = useMemo(() => ALL.filter((m) => methodAvailable[m]), [methodAvailable]);
-  const firstMethod = available[0] ?? 'TM';
+  // Sổ mặc định (đầu danh sách) của một hình thức — '' nếu chưa có sổ nào.
+  const defaultBookOf = (method: CollectMethod) => books[method][0]?.id ?? '';
 
-  const [lines, setLines] = useState<PayLine[]>([{ method: firstMethod, amount: remaining }]);
+  // Dòng đầu luôn là TIỀN MẶT: thiếu sổ tiền mặt riêng thì báo để cài, chứ không
+  // tự nhảy sang TK (tiền mặt bị ghi thành chuyển khoản là sai sổ).
+  const [lines, setLines] = useState<PayLine[]>(() => [
+    { method: 'TM', amount: remaining, accountId: defaultBookOf('TM') || undefined },
+  ]);
   const [keepAsCredit, setKeepAsCredit] = useState(false);
   const [customChange, setCustomChange] = useState<number | null>(null);
   const [paymentDate, setPaymentDate] = useState(todayISO());
@@ -94,39 +112,26 @@ export function CollectPayForm({
 
   useEffect(() => () => { if (receiptPreview) URL.revokeObjectURL(receiptPreview); }, [receiptPreview]);
 
-  // Đồng bộ method khi danh sách sổ khả dụng nạp trễ (accounts load sau mount):
-  // dòng nào mang method không còn hợp lệ → kéo về method khả dụng đầu tiên.
-  // Dep theo chuỗi join để tránh vòng lặp (available là mảng mới mỗi render).
-  const availableKey = available.join(',');
+  // Mỗi dòng luôn trỏ vào một sổ TRONG danh sách của hình thức của nó: danh sách
+  // đổi (nạp lại, chủ vừa cài thêm/bớt sổ) thì dòng mang sổ không còn hợp lệ kéo
+  // về sổ mặc định; hình thức chưa có sổ thì để trống (form báo và chặn thu).
+  // Dep theo chuỗi id để không lặp vô hạn (books là object mới mỗi lần nạp).
+  const booksKey = ALL.map((m) => `${m}:${books[m].map((b) => b.id).join('|')}`).join(';');
   useEffect(() => {
-    if (!available.length) return;
     setLines((prev) => {
       let changed = false;
       const next = prev.map((l) => {
-        if (available.includes(l.method)) return l;
+        const list = books[l.method];
+        if (l.accountId && list.some((b) => b.id === l.accountId)) return l;
+        const fallback = list[0]?.id;
+        if (l.accountId === fallback) return l;
         changed = true;
-        return { ...l, method: available[0] };
+        return { ...l, accountId: fallback };
       });
       return changed ? next : prev;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [availableKey]);
-
-  // Dòng TK luôn phải có sổ nhận: điền sổ mặc định của toà cho dòng chưa chọn.
-  // Chạy cả khi accounts nạp trễ (defaultTkBookId về sau mount) lẫn khi người
-  // dùng vừa đổi dòng sang TK. Dòng người dùng đã chọn tay thì giữ nguyên.
-  useEffect(() => {
-    if (!defaultTkBookId) return;
-    setLines((prev) => {
-      let changed = false;
-      const next = prev.map((l) => {
-        if (l.method !== 'TK' || l.accountId) return l;
-        changed = true;
-        return { ...l, accountId: defaultTkBookId };
-      });
-      return changed ? next : prev;
-    });
-  }, [defaultTkBookId, lines]);
+  }, [booksKey]);
 
   const total = lines.reduce((s, l) => s + (l.amount || 0), 0);
   const tmTotal = lines.filter((l) => l.method === 'TM').reduce((s, l) => s + (l.amount || 0), 0);
@@ -143,8 +148,12 @@ export function CollectPayForm({
     changeAmount: effectiveCredit ? undefined : actualChange, allowRounding });
   const error = checked.ok === false && total > 0 ? checked.error : null;
   const rounding = checked.ok === true ? checked.plan.rounding : 0;
-  const canAddLine = lines.length < available.length;
-  const canSubmit = total > 0 && checked.ok === true;
+  const canAddLine = lines.length < ALL.length;
+  // Câu chặn của từng dòng: hình thức chưa có sổ nhận nào ⇒ không thu được.
+  const lineBlocks = lines.map((l) => (books[l.method].length ? null : missingBookMessage(l.method)));
+  const booksOk = lineBlocks.every((b) => !b)
+    && lines.every((l) => !!l.accountId && books[l.method].some((b) => b.id === l.accountId));
+  const canSubmit = total > 0 && checked.ok === true && booksOk;
 
   const methodsKey = lines.map(line => line.method).join(',');
   useEffect(() => { setCustomChange(null); }, [total, tmTotal, remaining, effectiveCredit, methodsKey]);
@@ -173,12 +182,12 @@ export function CollectPayForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [total, overpay, actualChange, effectiveCredit, canSubmit, lines, paymentDate, receiptFile]);
 
-  // Phương thức chọn được cho 1 dòng = available chưa dùng ở dòng khác + chính nó.
-  // Luôn union method hiện tại để <select> không bao giờ có value ngoài options.
+  // Phương thức chọn được cho 1 dòng = hình thức chưa dùng ở dòng khác + chính nó.
+  // Cả ba hình thức luôn được bày (kể cả chưa có sổ) để người thu thấy câu hướng
+  // dẫn, thay vì ghi nhầm sang hình thức còn lại.
   const methodsForRow = (idx: number): CollectMethod[] => {
     const usedOther = new Set(lines.filter((_, i) => i !== idx).map((l) => l.method));
-    const opts = available.filter((m) => !usedOther.has(m) || m === lines[idx].method);
-    return opts.includes(lines[idx].method) ? opts : [lines[idx].method, ...opts];
+    return ALL.filter((m) => !usedOther.has(m) || m === lines[idx].method);
   };
 
   const setLine = (idx: number, patch: Partial<PayLine>) =>
@@ -186,16 +195,14 @@ export function CollectPayForm({
   const removeLine = (idx: number) => setLines((prev) => prev.filter((_, i) => i !== idx));
   const addLine = () => {
     const used = new Set(lines.map((l) => l.method));
-    const next = available.find((m) => !used.has(m));
+    const unused = ALL.filter((m) => !used.has(m));
+    // Ưu tiên hình thức đã có sổ nhận; không còn thì vẫn thêm để hiện câu hướng dẫn.
+    const next = unused.find((m) => books[m].length > 0) ?? unused[0];
     if (!next) return;
     const gap = Math.max(0, remaining - total);
     setLines((prev) => [
       ...prev,
-      {
-        method: next,
-        amount: gap,
-        accountId: next === 'TK' ? defaultTkBookId : undefined,
-      },
+      { method: next, amount: gap, accountId: defaultBookOf(next) || undefined },
     ]);
   };
 
@@ -224,56 +231,58 @@ export function CollectPayForm({
     <div className="pf-form">
       {/* Danh sách dòng thanh toán */}
       <div className="pf-lines">
-        {lines.map((line, idx) => (
-          <div
-            className={
-              'pf-line' + (line.method === 'TK' && bookOptions.length ? ' has-book' : '')
-            }
-            key={idx}
-          >
-            <select
-              className="pf-method"
-              value={line.method}
-              onChange={(e) => {
-                const method = e.target.value as CollectMethod;
-                setLine(idx, {
-                  method,
-                  accountId:
-                    method === 'TK' ? line.accountId || defaultTkBookId : undefined,
-                });
-              }}
-            >
-              {methodsForRow(idx).map((m) => (
-                <option key={m} value={m}>{m}</option>
-              ))}
-            </select>
-            {line.method === 'TK' && bookOptions.length > 0 && (
-              <select
-                className="pf-book"
-                title="Sổ quỹ nhận"
-                value={line.accountId ?? ''}
-                onChange={(e) => setLine(idx, { accountId: e.target.value })}
-              >
-                {bookOptions.map((book) => (
-                  <option key={book.id} value={book.id}>{book.name}</option>
-                ))}
-              </select>
-            )}
-            <input
-              className="pf-amt"
-              type="text"
-              inputMode="numeric"
-              placeholder="Số tiền"
-              value={formatVN(line.amount)}
-              onChange={(e) => setLine(idx, { amount: parseVN(e.target.value) })}
-            />
-            {lines.length > 1 && (
-              <button type="button" className="pf-rm" title="Bỏ dòng" onClick={() => removeLine(idx)}>
-                <X />
-              </button>
-            )}
-          </div>
-        ))}
+        {lines.map((line, idx) => {
+          const list = books[line.method];
+          return (
+            <div key={idx} className="pf-lines">
+              <div className={'pf-line' + (list.length ? ' has-book' : '')}>
+                <select
+                  className="pf-method"
+                  aria-label={`Hình thức dòng ${idx + 1}`}
+                  value={line.method}
+                  onChange={(e) => {
+                    const method = e.target.value as CollectMethod;
+                    setLine(idx, { method, accountId: defaultBookOf(method) || undefined });
+                  }}
+                >
+                  {methodsForRow(idx).map((m) => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+                {list.length > 0 && (
+                  // TM: sổ tiền mặt riêng — chỉ hiện, không cho chọn. TK/TT: chọn
+                  // trong danh sách của toà; một sổ thì khoá.
+                  <select
+                    className="pf-book"
+                    title={line.method === 'TM' ? 'Sổ tiền mặt riêng của người thu' : 'Sổ nhận tiền'}
+                    aria-label={`Sổ nhận ${line.method}`}
+                    value={line.accountId ?? ''}
+                    disabled={line.method === 'TM' || list.length === 1}
+                    onChange={(e) => setLine(idx, { accountId: e.target.value })}
+                  >
+                    {list.map((book) => (
+                      <option key={book.id} value={book.id}>{book.name}</option>
+                    ))}
+                  </select>
+                )}
+                <input
+                  className="pf-amt"
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="Số tiền"
+                  value={formatVN(line.amount)}
+                  onChange={(e) => setLine(idx, { amount: parseVN(e.target.value) })}
+                />
+                {lines.length > 1 && (
+                  <button type="button" className="pf-rm" title="Bỏ dòng" onClick={() => removeLine(idx)}>
+                    <X />
+                  </button>
+                )}
+              </div>
+              {lineBlocks[idx] && <p className="pf-hint err" role="alert">{lineBlocks[idx]}</p>}
+            </div>
+          );
+        })}
         {canAddLine && (
           <button type="button" className="pf-add" onClick={addLine}>
             <Plus /> Thêm phương thức

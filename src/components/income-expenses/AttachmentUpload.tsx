@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { Upload, X, FileText, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { uploadFile, deleteFile } from '@/lib/storage';
@@ -19,6 +19,12 @@ interface AttachmentUploadProps {
   bucket?: string;
   onUploadingChange?: (uploading: boolean) => void;
   maxFiles?: number;
+  /**
+   * Cho nút X xoá file khỏi kho lưu trữ (mặc định true). Kể cả khi bật, X CHỈ
+   * xoá file do chính lần gắn component này tải lên (E1, 25/09/2026); ảnh có
+   * sẵn truyền vào qua `attachments` chỉ được gỡ khỏi danh sách. `false` = X
+   * không bao giờ xoá file.
+   */
   deleteOnRemove?: boolean;
 }
 
@@ -51,6 +57,21 @@ export default function AttachmentUpload({
   const inputRef = useRef<HTMLInputElement>(null);
   const uploadActive = useRef(false);
 
+  /**
+   * URL do CHÍNH lần mở form/hộp này tải lên — chỉ những file này X mới được xoá
+   * khỏi kho (E1, 25/09/2026).
+   *
+   * Ảnh có sẵn (form Sửa, form Tạo bản sao, hộp Duyệt) là chứng từ của phiếu đã
+   * lưu. Bản sao còn dùng CHUNG URL với phiếu gốc, nên trước đây bấm X để bỏ ảnh
+   * khỏi bản sao là xoá mất file chứng từ của phiếu gốc. Không suy từ tên file
+   * được: ảnh cũ cũng nằm đúng thư mục `<userId>/…` của người đang thao tác.
+   */
+  const sessionUploads = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const uploads = sessionUploads.current;
+    return () => uploads.clear();
+  }, []);
+
   const BUCKET = bucket;
 
   const handleUpload = useCallback(
@@ -80,6 +101,7 @@ export default function AttachmentUpload({
             const safeName = file.name.replace(/[^\w.\-]+/g, '_');
             const path = `${userId}/${Date.now()}-${safeName}`;
             const publicUrl = await uploadFile(BUCKET, path, file);
+            sessionUploads.current.add(publicUrl);
             newUrls.push(publicUrl);
           } catch (err: any) {
             const msg = err?.message || err?.error || '';
@@ -112,16 +134,20 @@ export default function AttachmentUpload({
     async (url: string) => {
       if (disabled || uploadActive.current) return;
 
-      try {
-        // Extract path from URL: everything after /object/public/{bucket}/
-        const marker = `/object/public/${BUCKET}/`;
-        const idx = url.indexOf(marker);
-        if (deleteOnRemove && idx !== -1) {
-          const path = decodeURIComponent(url.slice(idx + marker.length));
-          await deleteFile(BUCKET, path);
+      // Ảnh có sẵn: chỉ gỡ khỏi danh sách của form, file giữ nguyên trong kho.
+      if (deleteOnRemove && sessionUploads.current.has(url)) {
+        try {
+          // Extract path from URL: everything after /object/public/{bucket}/
+          const marker = `/object/public/${BUCKET}/`;
+          const idx = url.indexOf(marker);
+          if (idx !== -1) {
+            const path = decodeURIComponent(url.slice(idx + marker.length));
+            await deleteFile(BUCKET, path);
+          }
+        } catch {
+          toast.error('Không thể xóa file đính kèm');
         }
-      } catch {
-        toast.error('Không thể xóa file đính kèm');
+        sessionUploads.current.delete(url);
       }
 
       onChange(attachments.filter((a) => a !== url));
@@ -233,6 +259,7 @@ export default function AttachmentUpload({
                 <button
                   type="button"
                   onClick={() => handleRemove(url)}
+                  aria-label="Gỡ tệp đính kèm"
                   className="absolute top-0.5 right-0.5 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
                 >
                   <X className="h-3 w-3" />

@@ -38,6 +38,7 @@ function resvRow(over: Partial<ReservationDepositRow> = {}): ReservationDepositR
     total_amount: 2_000_000,
     voucher_date: "2026-08-14",
     approval_status: "APPROVED",
+    approval_version: 1,
     settlement_status: "UNSETTLED",
     settlement: null,
     building_id: "b1",

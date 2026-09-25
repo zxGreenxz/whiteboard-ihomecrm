@@ -3,8 +3,9 @@
 // Khuôn sheet/scrim + mount→rAF .show y hệt CollectionReport.
 //
 // 3 tab:
-//  1. Bàn giao  — phiếu thu chưa bàn giao trong sổ "…Thu" của tôi, tick
-//     chọn (mặc định tick hết) → chọn người nhận → "Xác nhận giao".
+//  1. Bàn giao  — phiếu thu chưa bàn giao trong SỔ TIỀN MẶT RIÊNG của tôi (chủ
+//     công ty cài ở màn "Sổ nhận tiền"; chưa cài thì báo rõ), tick chọn (mặc
+//     định tick hết) → chọn người nhận → "Xác nhận giao".
 //  2. Phiên chờ — phiên PENDING/đang chờ hủy mà tôi tham gia: người nhận
 //     đếm tiền theo danh sách rồi "Xác nhận đã nhận" (chọn sổ nhận);
 //     2 bên đều có "Yêu cầu hủy"; yêu cầu hủy cần BÊN KIA xác nhận.
@@ -27,7 +28,8 @@ import {
   useUnhandedVouchers,
   type CashHandover,
 } from '@/hooks/useCashHandovers';
-import { ownCashAccountId } from '@/lib/cashAccount';
+import { useReceivingCashbooks } from '@/hooks/useReceivingCashbooks';
+import { useOrganization } from '@/contexts/OrganizationContext';
 import { fmtFull } from '@/lib/collect';
 import { friendlyError } from '@/lib/friendlyError';
 import {
@@ -45,6 +47,8 @@ interface Props {
 }
 
 type Tab = 'create' | 'open' | 'history';
+
+const THIEU_SO_TIEN_MAT_RIENG = 'Bạn chưa có sổ tiền mặt riêng — nhờ chủ công ty cài ở Sổ nhận tiền.';
 
 const fmtDate = (d?: string | null) =>
   d ? d.slice(0, 10).split('-').reverse().join('/') : '';
@@ -64,9 +68,20 @@ export function HandoverSheet({ show, onClose }: Props) {
   // Phiên đang mở ô nhập lý do hủy.
   const [cancelFor, setCancelFor] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState('');
-  // Sổ NGUỒN muốn bàn giao ('' = sổ "…Thu" mặc định). Cho phép chọn sổ khác
+  // Sổ NGUỒN muốn bàn giao ('' = sổ tiền mặt riêng). Cho phép chọn sổ khác
   // (vd sổ chuyển khoản tkHiep) — bàn giao net-sweep chạy cho mọi loại sổ.
   const [sourceAccountId, setSourceAccountId] = useState('');
+
+  // Sổ tiền mặt riêng của TÔI — chủ công ty cài ở màn "Sổ nhận tiền" (máy chủ
+  // trả qua get_receiving_cashbooks_v1), thay cho quy ước tên "…Thu" cũ.
+  const { selectedOrganizationId } = useOrganization();
+  const receiving = useReceivingCashbooks(selectedOrganizationId, null);
+  const personalBook = receiving.data?.personalCashBook ?? null;
+  const personalLoading = !!selectedOrganizationId && !receiving.data && !receiving.isError;
+  const personalError = receiving.isError
+    ? ((receiving.error as { message?: string } | null)?.message || 'Không tải được sổ tiền mặt riêng.')
+        .replace(/^\[[A-Z_]+\]\s*/, '')
+    : null;
 
   const myId = currentUser?.id;
   const receivers = useMemo(
@@ -77,18 +92,32 @@ export function HandoverSheet({ show, onClose }: Props) {
     () => (accounts as any[]).filter((a) => a.user_id === myId),
     [accounts, myId],
   );
-  // Sổ có thể bàn giao: sổ thu tiền mặt ("…Thu") hoặc sổ ngân hàng ("TK…" /
-  // có bank_name) do tôi sở hữu — bỏ sổ "…Thối"/audit khác cho gọn.
-  const sourceBooks = useMemo(
-    () => myAccounts.filter((a: any) => {
-      const n = (a.name ?? '').trim();
-      return n.endsWith('Thu') || /^tk/i.test(n) || !!a.bank_name;
-    }),
-    [myAccounts],
-  );
-  const ownId = useMemo(() => ownCashAccountId(accounts as any[], myId), [accounts, myId]);
-  const effectiveSource = sourceAccountId || ownId || sourceBooks[0]?.id || '';
+  // Sổ có thể bàn giao: sổ tiền mặt riêng + sổ thu tiền mặt ("…Thu") hoặc sổ
+  // ngân hàng ("TK…" / có bank_name) do tôi sở hữu — bỏ sổ "…Thối"/audit khác.
+  const sourceBooks = useMemo(() => {
+    const owned = myAccounts
+      .filter((a) => {
+        const n = (a.name ?? '').trim();
+        return n.endsWith('Thu') || /^tk/i.test(n) || !!a.bank_name;
+      })
+      .map((a) => ({ id: String(a.id), name: String(a.name ?? '') }));
+    return personalBook
+      ? [{ id: personalBook.id, name: personalBook.name }, ...owned.filter((a) => a.id !== personalBook.id)]
+      : owned;
+  }, [myAccounts, personalBook]);
+  // Sổ nhận khi tôi là người NHẬN bàn giao: sổ tiền mặt riêng + các sổ của tôi.
+  const receiveBooks = useMemo(() => {
+    const owned = myAccounts.map((a) => ({ id: String(a.id), name: String(a.name ?? '') }));
+    return personalBook
+      ? [{ id: personalBook.id, name: personalBook.name }, ...owned.filter((a) => a.id !== personalBook.id)]
+      : owned;
+  }, [myAccounts, personalBook]);
+  const ownId = personalBook?.id ?? '';
+  // Không lặng lẽ rơi sang sổ khác khi chưa có sổ tiền mặt riêng: người dùng
+  // phải tự chọn ở ô "Sổ bàn giao".
+  const effectiveSource = sourceAccountId || ownId;
   const defaultToAccount = ownId;
+  const showSourcePicker = sourceBooks.length > 1 || (!ownId && sourceBooks.length > 0);
 
   const { data: vouchers = [], accountId, isLoading: loadingVouchers } =
     useUnhandedVouchers(effectiveSource);
@@ -143,12 +172,11 @@ export function HandoverSheet({ show, onClose }: Props) {
   };
 
   const submitConfirm = async (h: CashHandover) => {
-    // Sổ nhận: đã chọn → sổ "…Thu" mặc định → sổ đầu tiên của tôi → null
-    // (null: confirm_cash_handover tự fallback "…Thu"; nếu KHÔNG có sổ nào thì
-    // báo lỗi rõ ràng thay vì gửi null âm thầm).
-    const toId = toAccount[h.id] || defaultToAccount || myAccounts[0]?.id || '';
+    // Sổ nhận: đã chọn → sổ tiền mặt riêng → sổ đầu tiên của tôi (đúng sổ ô chọn
+    // đang hiện). KHÔNG có sổ nào thì báo rõ thay vì gửi null âm thầm.
+    const toId = toAccount[h.id] || defaultToAccount || receiveBooks[0]?.id || '';
     if (!toId) {
-      toast.error('Bạn chưa có sổ quỹ nào để nhận — tạo sổ quỹ trước khi nhận bàn giao');
+      toast.error(`Bạn chưa có sổ nào để nhận bàn giao. ${THIEU_SO_TIEN_MAT_RIENG}`);
       return;
     }
     try {
@@ -310,16 +338,19 @@ export function HandoverSheet({ show, onClose }: Props) {
                   <span className="rp-dd-l">Sổ nhận tiền</span>
                   <div className="rp-dd-sel">
                     <select
-                      value={toAccount[h.id] ?? defaultToAccount}
+                      value={toAccount[h.id] ?? (defaultToAccount || receiveBooks[0]?.id || '')}
                       onChange={(e) => setToAccount((m) => ({ ...m, [h.id]: e.target.value }))}
                     >
-                      {!myAccounts.length && <option value="">— Chưa có sổ quỹ —</option>}
-                      {myAccounts.map((a: any) => (
+                      {!receiveBooks.length && <option value="">— Chưa có sổ quỹ —</option>}
+                      {receiveBooks.map((a) => (
                         <option key={a.id} value={a.id}>{a.name}</option>
                       ))}
                     </select>
                   </div>
                 </label>
+                {!personalLoading && !personalBook && (
+                  <p className="ho-hint">{personalError || THIEU_SO_TIEN_MAT_RIENG}</p>
+                )}
                 <button type="button" className="ho-btn primary" disabled={busy} onClick={() => submitConfirm(h)}>
                   ✓ Xác nhận đã nhận {fmtFull(h.total_amount)}
                 </button>
@@ -412,9 +443,10 @@ export function HandoverSheet({ show, onClose }: Props) {
         <div className="sheet-scroll rp-body">
           {tab === 'create' && (
             <>
-              {/* Chọn sổ nguồn — chỉ hiện khi tôi có >1 sổ (vd Hiệp: "Hiệp Thu"
-                  tiền mặt + "TKHIEP" chuyển khoản). Đổi sổ → tải lại phiếu. */}
-              {sourceBooks.length > 1 && (
+              {/* Chọn sổ nguồn — hiện khi tôi có >1 sổ (vd Hiệp: "Hiệp Thu"
+                  tiền mặt + "TKHIEP" chuyển khoản), hoặc khi chưa có sổ tiền mặt
+                  riêng mà vẫn có sổ khác để chọn. Đổi sổ → tải lại phiếu. */}
+              {showSourcePicker && (
                 <div className="ho-form" style={{ paddingBottom: 0 }}>
                   <label className="rp-dd">
                     <span className="rp-dd-l">Sổ bàn giao</span>
@@ -423,7 +455,8 @@ export function HandoverSheet({ show, onClose }: Props) {
                         value={effectiveSource}
                         onChange={(e) => { setSourceAccountId(e.target.value); setUnticked(new Set()); }}
                       >
-                        {sourceBooks.map((a: any) => (
+                        {!effectiveSource && <option value="">— Chọn sổ —</option>}
+                        {sourceBooks.map((a) => (
                           <option key={a.id} value={a.id}>{a.name}</option>
                         ))}
                       </select>
@@ -431,12 +464,14 @@ export function HandoverSheet({ show, onClose }: Props) {
                   </label>
                 </div>
               )}
-              {!accountId ? (
+              {!accountId && personalLoading ? (
+                <div className="c-empty"><div className="e-ic">⏳</div><p>Đang tải sổ tiền mặt riêng…</p></div>
+              ) : !accountId ? (
                 <div className="c-empty">
                   <div className="e-ic">📒</div>
                   <p>
-                    Bạn chưa có sổ quỹ nào của riêng mình nên chưa tổng kết được tiền.
-                    Tạo sổ quỹ (tên kết thúc "Thu" cho tiền mặt) trong Sổ quỹ trước nhé.
+                    {personalError || THIEU_SO_TIEN_MAT_RIENG}
+                    {sourceBooks.length > 0 ? ' Hoặc chọn sổ khác ở ô "Sổ bàn giao" phía trên.' : ''}
                   </p>
                 </div>
               ) : loadingVouchers ? (

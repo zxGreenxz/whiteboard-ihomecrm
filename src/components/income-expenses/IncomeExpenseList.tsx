@@ -27,6 +27,9 @@ import { useAuth } from '@/hooks/useAuth';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
 import { canShowAnnotateAction } from '@/lib/voucherAnnotate';
+import { voucherEditAction } from '@/lib/incomeExpenseRevision';
+import { useIsCompanyOwner } from '@/hooks/useIsCompanyOwner';
+import { RevisionCountBadges } from '@/components/income-expenses/RevisionSummary';
 import { getVoucherDisplayAttachments } from '@/lib/incomeExpenseSupplement';
 import { useFinanceV2Routes, isCanonicalRead } from '@/lib/financeV2Route';
 import {
@@ -219,6 +222,7 @@ const IncomeExpenseList = ({
   );
   const { data: isAdmin = false } = useIsAdmin();
   const { data: isSuperAdmin = false } = useIsSuperAdmin();
+  const { data: isCompanyOwner = false } = useIsCompanyOwner();
   const { data: authUser } = useAuth();
   const { data: perms } = useMyPermissions();
   const currentUserId = authUser?.id ?? null;
@@ -325,9 +329,12 @@ const IncomeExpenseList = ({
               account_is_virtual: (voucher as any).account_is_virtual,
             });
             const isInternal = layer === 'INTERNAL';
-            // Nháp: cây bút mở full form (giữ nguyên flow cũ).
+            // Đợt 1 sửa phiếu: cây bút chỉ cho phiếu Chờ duyệt sửa được (có lưu vết)
+            // hoặc chế độ đổi cờ KQKD phiếu bỏ cọc — bỏ "Sửa phiếu (Super Admin)"
+            // trên phiếu đã duyệt/đã huỷ (bấm vào cũng không lưu được).
             // Bổ sung chứng từ dùng thao tác riêng cho mọi trạng thái.
-            const showFullEdit = !!onEdit && (isUnapproved || isAdmin);
+            const editAction = voucherEditAction(voucher, { isAdmin, isCompanyOwner });
+            const showFullEdit = !!onEdit && editAction.show;
             // Đợt 2: không còn giới hạn ở NGƯỜI TẠO — kế toán/quản lý có quyền
             // sửa thu chi cũng đính hộ được chứng từ (server là nơi chốt).
             const showQuickEdit = canShowAnnotateAction({
@@ -385,14 +392,14 @@ const IncomeExpenseList = ({
                       </Button>
                     )}
 
-                    {/* Sửa: nháp -> mọi nhân viên; đã ghi nhận/đã huỷ -> chỉ super admin */}
+                    {/* Sửa phiếu Chờ duyệt (có lưu vết) / đổi cờ KQKD phiếu bỏ cọc */}
                     {showFullEdit && (
                       <Button
                         variant="ghost"
                         size="icon"
                         className="h-8 w-8 text-amber-600 hover:text-amber-700 hover:bg-amber-50"
                         onClick={() => onEdit!(voucher)}
-                        title={isUnapproved ? 'Sửa phiếu chờ duyệt' : 'Sửa phiếu (Super Admin)'}
+                        title={editAction.title}
                       >
                         <Pencil className="h-4 w-4" />
                       </Button>
@@ -467,8 +474,12 @@ const IncomeExpenseList = ({
                           title={
                             // Đợt 4: đây CHÍNH LÀ nút "Mở lại" của chủ. Nó gọi
                             // reverse_posted_income_expense_v2 sẵn có: tiền quay
-                            // về sổ, phiếu ở trạng thái Đã duyệt - chưa chi nên
-                            // sửa được và chi lại được.
+                            // về sổ, phiếu ở trạng thái Đã duyệt - chưa chi, chi
+                            // lại hoặc huỷ được.
+                            //
+                            // Đợt 1 sửa phiếu (25/09/2026): bỏ chữ "sửa được" —
+                            // phiếu đã duyệt KHÔNG sửa được (chỉ phiếu Chờ duyệt
+                            // mới sửa, có lưu vết); sửa phiếu đã duyệt để đợt 2.
                             //
                             // CỐ Ý KHÔNG đưa phiếu về "Chờ duyệt":
                             // unapprove_voucher không reset review_state, mà cả
@@ -476,8 +487,8 @@ const IncomeExpenseList = ({
                             // CHANGES_REQUESTED ⇒ tiền ra khỏi sổ rồi kẹt ở đó
                             // vĩnh viễn, không ai duyệt lại được.
                             voucher.type === 'INCOME'
-                              ? 'Mở lại (tiền rời sổ, sửa được rồi thu lại)'
-                              : 'Mở lại (tiền về sổ, sửa được rồi chi lại)'
+                              ? 'Mở lại (tiền rời sổ, rồi thu lại hoặc huỷ)'
+                              : 'Mở lại (tiền về sổ, rồi chi lại hoặc huỷ)'
                           }
                         >
                           <RotateCcw className="h-4 w-4" />
@@ -674,6 +685,11 @@ const IncomeExpenseList = ({
                     {isInternal && !isCancelled && (
                       <span className="shrink-0"><InternalBadge /></span>
                     )}
+                    {/* Đợt 1 sửa phiếu: dấu cho người duyệt biết phiếu đã bị sửa */}
+                    <RevisionCountBadges
+                      editCount={voucher.revision_count ?? 0}
+                      methodChangeCount={voucher.method_change_count ?? 0}
+                    />
                     {/* Phiếu gốc đang lặp */}
                     {voucher.repeat_cycle &&
                       voucher.repeat_cycle !== 'NONE' &&

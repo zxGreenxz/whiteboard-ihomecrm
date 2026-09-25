@@ -1,5 +1,5 @@
 {
-  "$comment": "Hồ sơ RÀ SOÁT THỦ CÔNG cho các file state=unknown có CREATE object nhưng object KHÔNG có trong catalog production. reviewModel trong migration-policy.json bắt \"mọi file state=unknown\" phải được review đầy đủ — đây là kết quả review đó, kèm trích dẫn. LƯU Ý VỀ SỨC MẠNH BẰNG CHỨNG: hồ sơ này KHÔNG chứng minh file đã chạy. Nó chứng minh việc object VẮNG MẶT đã được GIẢI THÍCH (một migration sau đó DROP/đổi tên object), tức vắng mặt không còn là bằng chứng NGƯỢC. Đây là mức yếu hơn cả catalog-proven. Đừng nâng các file này lên trạng thái đã-chứng-minh. | Bổ sung 15/09/2026: 2 file của plan con F (20260915144507_so_hop_dong_chong_dua.sql, 20260915144634_index_hop_dong_org_status.sql) — cả hai là file MỚI chưa qua lane apply, ketLuan `chua-ap-dung-cho-y` theo đúng tiền lệ 20260814004500; bằng chứng là dry-run ROLLBACK + kiểm idempotent hai lượt trên chính catalog production. | Bổ sung 16/09/2026 lúc gộp: 5 file của plan con H1/I1/I3 (org_autofill_strict, buildings_insert_v3, bien_gioi_ho_so_va_toa) — cùng diện `chua-ap-dung-cho-y` như 2 file của plan F.",
+  "$comment": "Hồ sơ RÀ SOÁT THỦ CÔNG cho các file state=unknown có CREATE object nhưng object KHÔNG có trong catalog production. reviewModel trong migration-policy.json bắt \"mọi file state=unknown\" phải được review đầy đủ — đây là kết quả review đó, kèm trích dẫn. LƯU Ý VỀ SỨC MẠNH BẰNG CHỨNG: hồ sơ này KHÔNG chứng minh file đã chạy. Nó chứng minh việc object VẮNG MẶT đã được GIẢI THÍCH (một migration sau đó DROP/đổi tên object), tức vắng mặt không còn là bằng chứng NGƯỢC. Đây là mức yếu hơn cả catalog-proven. Đừng nâng các file này lên trạng thái đã-chứng-minh. | Bổ sung 15/09/2026: 2 file của plan con F (20260915144507_so_hop_dong_chong_dua.sql, 20260915144634_index_hop_dong_org_status.sql) — cả hai là file MỚI chưa qua lane apply, ketLuan `chua-ap-dung-cho-y` theo đúng tiền lệ 20260814004500; bằng chứng là dry-run ROLLBACK + kiểm idempotent hai lượt trên chính catalog production. | Bổ sung 16/09/2026 lúc gộp: 5 file của plan con H1/I1/I3 (org_autofill_strict, buildings_insert_v3, bien_gioi_ho_so_va_toa) — cùng diện `chua-ap-dung-cho-y` như 2 file của plan F. | Bổ sung 25/09/2026: 5 file đợt 1 sửa phiếu thu chi (20260925072852 … 20260925083655) — cùng diện `chua-ap-dung-cho-y`, bằng chứng là chạy hai lượt trên môi trường TEST.",
   "schemaVersion": 1,
   "reviewedAt": "2026-09-02",
   "method": "10 điều tra độc lập song song, mỗi file một agent, bắt buộc trích dẫn file+SQL cho kết luận (A); kết luận \"chưa từng chạy\" sẽ bị một agent phản biện riêng cố bác bỏ. Kết quả: 10/10 giải thích được, 0 file chưa-từng-chạy. Ba trích dẫn được người kiểm lại thủ công (DROP ở 20260528000003:158, CREATE ở 20260527000009:372, và frontend gọi clone_org_request_sync_v1 chứ không phải clone_org_sync_v1). | Bổ sung 12/08/2026: 1 file (20260729150000_notification_config_tables_rpc.sql) — đối chiếu catalog production thật với migration ALTER POLICY ... RENAME, kết luận đổi tên chứ không phải chưa chạy. | Bổ sung 12/08/2026: thêm 1 file (20260729150000_notification_config_tables_rpc.sql). Phương pháp: đối chiếu catalog production THẬT với migration `ALTER POLICY ... RENAME` thay vì suy từ tên file; kết luận là ĐỔI TÊN, không phải chưa-từng-chạy. | Bổ sung 28/08/2026: 1 file (20260731100000_termination_refund_writer.sql) — index ux_tro_voucher bị 20260828090000 DROP có chủ ý vì là ràng buộc giả trên PK; đối chiếu pg_indexes production trước/sau apply.",
@@ -713,6 +713,109 @@
         }
       ],
       "anhHuongThat": "Không còn tính năng nào dùng: nút \"Đồng bộ dữ liệu mới nhất\" của org TEST cũ đã gỡ khỏi OrganizationPage.tsx cùng hook useCloneOrgSync.ts (23/09/2026). Nút đồng bộ mới trỏ tới workflow .github/workflows/test-env-sync.yml của môi trường TEST riêng."
+    },
+    "supabase/migrations/20260925072852_ma_phieu_duy_nhat.sql": {
+      "sha256": "73a33661a70063c59e347accd6d8d2c87c0dd9919a8f088d201adc0adaf5ecd9",
+      "missingObjects": [
+        "table:app_private.voucher_code_counters",
+        "function:app_private.next_voucher_code_v1",
+        "index:public.income_expenses_org_code_duy_nhat"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 25/09/2026 (đợt 1 sửa phiếu thu chi), CHƯA apply production — object vắng mặt vì migration chưa chạy. Đã chạy trên môi trường TEST (ihomecrm-test, bản sao production) hai lượt liên tiếp trong ROLLBACK rồi mới ghi; kiểm hành vi bằng kịch bản SQL trên TEST. Mã phiếu thu/chi đếm chung cả tổ chức (bảng voucher_code_counters + hàm cấp số next_voucher_code_v1), chỉ mục duy nhất (organization_id, code) cho phiếu mới; không đổi mã phiếu cũ.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20260925072852_ma_phieu_duy_nhat.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.next_voucher_code_v1(p_org uuid, p_type text)"
+        },
+        {
+          "duong_dan": "docs/superpowers/specs/2026-09-25-sua-phieu-thu-chi-dot-1-design.md",
+          "trich_doan": "Đợt 1 sửa phiếu thu chi — chủ chốt 25/09/2026; thứ tự triển khai: áp M1–M4, lên web mới, rồi áp M5."
+        }
+      ]
+    },
+    "supabase/migrations/20260925073251_khoa_thang_loi_nhuan_tuyet_doi.sql": {
+      "sha256": "ffe6486b42b050b3f5604fb0caef3aae9db2773b1fc12b9f6c6aba27a350b1c5",
+      "missingObjects": [
+        "function:app_private.profit_month_locked_v1",
+        "function:app_private.assert_profit_month_open_v2",
+        "function:app_private.guard_profit_month_lock_pending_v1",
+        "trigger:public.profit_monthly.a10_profit_month_lock_requires_no_pending"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 25/09/2026 (đợt 1 sửa phiếu thu chi), CHƯA apply production — object vắng mặt vì migration chưa chạy. Đã chạy trên môi trường TEST (ihomecrm-test, bản sao production) hai lượt liên tiếp trong ROLLBACK rồi mới ghi; kiểm hành vi bằng kịch bản SQL trên TEST. Khoá tháng lợi nhuận tuyệt đối theo ngày phiếu cho mọi người; không cho chốt tháng khi còn phiếu Chờ duyệt (trigger a10 trên profit_monthly).",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20260925073251_khoa_thang_loi_nhuan_tuyet_doi.sql",
+          "trich_doan": "CREATE TRIGGER a10_profit_month_lock_requires_no_pending"
+        },
+        {
+          "duong_dan": "docs/superpowers/specs/2026-09-25-sua-phieu-thu-chi-dot-1-design.md",
+          "trich_doan": "Đợt 1 sửa phiếu thu chi — chủ chốt 25/09/2026; thứ tự triển khai: áp M1–M4, lên web mới, rồi áp M5."
+        }
+      ]
+    },
+    "supabase/migrations/20260925080906_sua_phieu_cho_duyet.sql": {
+      "sha256": "fea2f67af03bdb01b2190a85f0c21b8585aa87c7e64a3026988b899d32de661a",
+      "missingObjects": [
+        "table:public.income_expense_revisions",
+        "function:app_private.ie_revision_immutable_v1",
+        "function:app_private.ie_revision_snapshot_v1",
+        "function:app_private.ie_revise_scope_delta_guard",
+        "function:public.revise_pending_income_expense_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 25/09/2026 (đợt 1 sửa phiếu thu chi), CHƯA apply production — object vắng mặt vì migration chưa chạy. Đã chạy trên môi trường TEST (ihomecrm-test, bản sao production) hai lượt liên tiếp trong ROLLBACK rồi mới ghi; kiểm hành vi bằng kịch bản SQL trên TEST. Sửa phiếu Chờ duyệt có lưu vết (bảng income_expense_revisions, writer revise_pending_income_expense_v1, trigger kiểm cột a01_ie_revise_scope_delta) + duyệt có kiểm phiên bản.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20260925080906_sua_phieu_cho_duyet.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION public.revise_pending_income_expense_v1("
+        },
+        {
+          "duong_dan": "docs/superpowers/specs/2026-09-25-sua-phieu-thu-chi-dot-1-design.md",
+          "trich_doan": "Đợt 1 sửa phiếu thu chi — chủ chốt 25/09/2026; thứ tự triển khai: áp M1–M4, lên web mới, rồi áp M5."
+        }
+      ]
+    },
+    "supabase/migrations/20260925082815_so_nhan_tien.sql": {
+      "sha256": "f391f5dfe390a84dae803f8b5bca7fbcc552035d1b00925f7d6feb1abf6a3459",
+      "missingObjects": [
+        "table:app_private.personal_cash_books",
+        "table:app_private.building_receiving_cashbooks",
+        "function:app_private.receiving_cashbook_ids_v1",
+        "function:app_private.receiving_cashbook_allowed_v1",
+        "function:app_private.member_of_org_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 25/09/2026 (đợt 1 sửa phiếu thu chi), CHƯA apply production — object vắng mặt vì migration chưa chạy. Đã chạy trên môi trường TEST (ihomecrm-test, bản sao production) hai lượt liên tiếp trong ROLLBACK rồi mới ghi; kiểm hành vi bằng kịch bản SQL trên TEST. Sổ nhận tiền theo hình thức thu (sổ tiền mặt riêng người thu, danh sách sổ TK/TT theo toà) + đổi hình thức thu có lý do.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20260925082815_so_nhan_tien.sql",
+          "trich_doan": "CREATE TABLE IF NOT EXISTS app_private.personal_cash_books"
+        },
+        {
+          "duong_dan": "docs/superpowers/specs/2026-09-25-sua-phieu-thu-chi-dot-1-design.md",
+          "trich_doan": "Đợt 1 sửa phiếu thu chi — chủ chốt 25/09/2026; thứ tự triển khai: áp M1–M4, lên web mới, rồi áp M5."
+        }
+      ]
+    },
+    "supabase/migrations/20260925083655_dong_duong_cu_sua_phieu.sql": {
+      "sha256": "5e88a6c9b9869b0b031de1a29270d07e6b0b045379091372abe79e250004086e",
+      "missingObjects": [
+        "function:app_private.assert_receiving_cashbook_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 25/09/2026 (đợt 1 sửa phiếu thu chi), CHƯA apply production — object vắng mặt vì migration chưa chạy. Đã chạy trên môi trường TEST (ihomecrm-test, bản sao production) hai lượt liên tiếp trong ROLLBACK rồi mới ghi; kiểm hành vi bằng kịch bản SQL trên TEST. Đóng đường sửa cũ và chốt danh sách sổ khi thu tiền (assert_receiving_cashbook_v1); áp SAU khi web mới lên.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20260925083655_dong_duong_cu_sua_phieu.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.assert_receiving_cashbook_v1("
+        },
+        {
+          "duong_dan": "docs/superpowers/specs/2026-09-25-sua-phieu-thu-chi-dot-1-design.md",
+          "trich_doan": "Đợt 1 sửa phiếu thu chi — chủ chốt 25/09/2026; thứ tự triển khai: áp M1–M4, lên web mới, rồi áp M5."
+        }
+      ]
     }
   }
 }

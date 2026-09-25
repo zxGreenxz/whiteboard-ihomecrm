@@ -534,9 +534,10 @@ const DepositsDesktop = () => {
   const { mutate: approveMutate } = approveVoucher;
   const handleApproveTask = useCallback(
     (task: DepositTask) => {
-      if (!task.voucherId) return;
+      if (!task.voucherId || task.approvalVersion === null) return;
       setApprovingId(task.voucherId);
-      approveMutate(task.voucherId, {
+      // Kèm phiên bản đang xem: phiếu vừa bị sửa ⇒ máy chủ trả 40001, không duyệt nhầm.
+      approveMutate({ id: task.voucherId, expectedApprovalVersion: task.approvalVersion }, {
         onSettled: () => {
           setApprovingId(null);
           queryClient.invalidateQueries({ queryKey: ["reservation-deposits"] });

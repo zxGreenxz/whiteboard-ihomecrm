@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { CollectDrawer } from '../CollectDrawer';
 import type { InvoiceWithRelations } from '@/types/invoice';
 const mocks = vi.hoisted(() => ({ note: vi.fn(), invoice: vi.fn(), canEdit: true }));
-vi.mock('@/hooks/useQuickCollect', () => ({ useQuickCollect: () => ({ collect: vi.fn(), accountIdFor: () => 'account', accountOptionsFor: () => [], changeAccountNameFor: () => 'Sổ thối', isCollecting: false }) }));
+vi.mock('@/hooks/useQuickCollect', () => ({ useQuickCollect: () => ({ collect: vi.fn(), receiving: { loading: false, error: null, books: { TM: [{ id: 'account', name: 'Sổ thu' }], TK: [], TT: [] } }, receivingBlockFor: () => null, changeAccountNameFor: () => 'Sổ thối', isCollecting: false }) }));
 vi.mock('@/hooks/useDeletePayment', () => ({ useDeletePayment: () => ({ mutate: vi.fn() }), useCollectionReversalEligibility: () => ({ data: {} }), COLLECTION_BLOCK_TEXT: {} }));
 vi.mock('@/hooks/useCollectionReport', () => ({ useInvoiceItemsLite: () => ({ data: [], isLoading: false, isError: false }) }));
 vi.mock('@/hooks/useUpdateInvoiceNote', () => ({ useUpdateInvoiceNote: () => ({ mutate: mocks.note }) }));

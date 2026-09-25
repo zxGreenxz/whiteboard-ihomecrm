@@ -35,12 +35,18 @@ function fixture(voucher: IncomeExpenseWithRelations | null, client: QueryClient
 afterEach(() => { cleanup(); state.data = null; state.error = null; state.isSuccess = true; state.isLoading = false; });
 
 describe('reservation voucher detail lifecycle', () => {
-  it('admin sees separate edit and add-document actions', () => {
+  it('admin, phiếu đã duyệt: chỉ còn Bổ sung chứng từ — "Sửa phiếu (Super Admin)" đã bỏ (đợt 1 sửa phiếu)', () => {
     render(fixture(source, new QueryClient()));
     const supplement = screen.getByRole('button', { name: 'Bổ sung chứng từ / ghi chú' });
-    const edit = screen.getByTitle('Sửa phiếu (Super Admin)');
     expect(supplement.querySelector('svg')?.classList.contains('lucide-file-plus2')).toBe(true);
+    expect(screen.queryByTitle('Sửa phiếu (Super Admin)')).toBeNull();
+    expect(screen.queryByTitle('Sửa phiếu chờ duyệt')).toBeNull();
+  });
+  it('phiếu cọc Chờ duyệt: nút sửa riêng, tách khỏi Bổ sung chứng từ', () => {
+    render(fixture({ ...source, approval_status: 'UNAPPROVED', posting_status: 'UNPOSTED' }, new QueryClient()));
+    const edit = screen.getByTitle('Sửa phiếu chờ duyệt');
     expect(edit.querySelector('svg')?.classList.contains('lucide-pencil')).toBe(true);
+    expect(screen.getByRole('button', { name: 'Bổ sung chứng từ / ghi chú' })).toBeTruthy();
   });
   it('opens and closes from a null voucher without changing hook order', () => {
     const client = new QueryClient();
@@ -53,7 +59,7 @@ describe('reservation voucher detail lifecycle', () => {
     render(fixture({ ...source, system_source, type: system_source.endsWith('revenue') ? 'INCOME' : 'EXPENSE', items: [] }, new QueryClient()));
     expect(screen.queryByTitle('Huỷ phiếu')).toBeNull();
     expect(screen.queryByTitle(/Huỷ duyệt/)).toBeNull();
-    expect(screen.queryByTitle('Sửa phiếu (Super Admin)')).toBeNull();
+    expect(screen.queryByTitle('Sửa phiếu chờ duyệt')).toBeNull();
     expect(screen.getByRole('button', { name: 'Bổ sung chứng từ / ghi chú' })).toBeTruthy();
   });
   it('does not offer money actions when settlement lookup failed', () => {
@@ -61,6 +67,11 @@ describe('reservation voucher detail lifecycle', () => {
     render(fixture(source, new QueryClient()));
     expect(screen.queryByTitle('Huỷ phiếu')).toBeNull();
     expect(screen.queryByTitle(/Huỷ duyệt/)).toBeNull();
-    expect(screen.queryByTitle('Sửa phiếu (Super Admin)')).toBeNull();
+    expect(screen.queryByTitle('Sửa phiếu chờ duyệt')).toBeNull();
+  });
+  it('tra cứu xử lý cọc lỗi thì phiếu Chờ duyệt cũng không mời sửa', () => {
+    state.error = new Error('lookup failed'); state.isSuccess = false;
+    render(fixture({ ...source, approval_status: 'UNAPPROVED', posting_status: 'UNPOSTED' }, new QueryClient()));
+    expect(screen.queryByTitle('Sửa phiếu chờ duyệt')).toBeNull();
   });
 });

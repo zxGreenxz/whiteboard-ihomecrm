@@ -22,7 +22,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { supabase } from '@/integrations/supabase/client';
 import type { PostFinanceExecutionInput } from '@/lib/incomeExpensePostingValidation';
 import {
   useApproveIncomeExpenseV2, useApproveAndPostIncomeExpenseV2,
@@ -37,6 +36,8 @@ import {
 } from '@/hooks/income-expenses/incomeVoucherCancel';
 import { useCancelIncomeExpense } from '@/hooks/income-expenses/statusMutations';
 import { useAppendIncomeExpenseSupplement } from '@/hooks/income-expenses/supplements';
+import { reviseIncomeExpense, VOUCHER_QUERY_KEYS } from '@/hooks/income-expenses/revisions';
+import { isStaleVersionError, revisionErrorMessage } from '@/lib/incomeExpenseRevision';
 import {
   useFinanceV2Routes, isCanonicalRead, canWriteWorkflow, canWritePosting,
 } from '@/lib/financeV2Route';
@@ -167,8 +168,12 @@ export function useSettlementActions(rows: SettlementRow[]) {
         expectedApprovalVersion: row.approvalVersion,
       });
     } else {
-      // Org LEGACY: thang ba bậc của Thu chi (bỏ cọc → canonical → legacy).
-      await approveLegacy.mutateAsync(row.voucherId);
+      // Org LEGACY: thang ba bậc của Thu chi (bỏ cọc → canonical → legacy), kèm
+      // phiên bản đang xem — phiếu vừa bị sửa thì máy chủ trả 40001, không duyệt nhầm.
+      await approveLegacy.mutateAsync({
+        id: row.voucherId,
+        expectedApprovalVersion: row.approvalVersion,
+      });
     }
     await lamMoi();
   }, [v2Routes, approveV2, approveLegacy, lamMoi, availabilityOf]);
@@ -213,13 +218,10 @@ export function useSettlementActions(rows: SettlementRow[]) {
   /**
    * Sửa tên / ngân hàng / số tài khoản người nhận.
    *
-   * Patch THƯA: chỉ gửi khoá đã đổi, và BỎ TRỐNG `p_items` để server giữ nguyên
-   * các dòng hạng mục. Tuyệt đối không đi qua `useUpdateIncomeExpense` — hook đó
-   * dựng patch đầy đủ cộng items từ form, dùng nó để sửa một ô là đường ngắn
-   * nhất tới mất dữ liệu.
-   *
-   * ⚠ RPC này KHÔNG có tham số CAS. Hai người cùng sửa sẽ ghi đè nhau im lặng.
-   * Đây là giới hạn đã biết, không được hứa khoá phiên bản.
+   * Đi cửa sửa phiếu Chờ duyệt có lưu vết (revise_pending_income_expense_v1,
+   * 25/09/2026). Patch THƯA: chỉ gửi khoá đã đổi, KHÔNG gửi hạng mục để máy chủ
+   * giữ nguyên các dòng. Kèm phiên bản phiếu đang xem: người khác vừa sửa/duyệt
+   * thì máy chủ trả 40001 thay vì ghi đè im lặng như kênh cũ.
    */
   const editRecipient = useCallback(async (a: {
     voucherId: string;
@@ -227,35 +229,40 @@ export function useSettlementActions(rows: SettlementRow[]) {
     bankName?: string | null;
     bankAccount?: string | null;
   }) => {
-    // Kiểu hẹp để khớp `Json` của generated type — KHÔNG ép `as never`. RPC này
-    // đã có sẵn trong src/integrations/supabase/types.ts, không cần lách kiểu.
+    // Chỉ ba khoá người nhận; khoá nào không truyền thì không gửi (máy chủ giữ nguyên).
     const patch: Record<string, string | null> = {};
     if (a.payerName !== undefined) patch.payer_name = a.payerName;
     if (a.bankName !== undefined) patch.receive_bank_name = a.bankName;
     if (a.bankAccount !== undefined) patch.receive_bank_account = a.bankAccount;
     if (Object.keys(patch).length === 0) return;
+    const row = rows.find((r) => r.voucherId === a.voucherId);
+    if (!row) throw new Error('Không tìm thấy phiếu. Hãy tải lại dữ liệu đối chiếu.');
 
     setDangSua(true);
     try {
-      const { error } = await supabase.rpc('ie_compat_update_pending_v2', {
-        p_id: a.voucherId,
-        p_patch: patch,
+      await reviseIncomeExpense({
+        voucherId: a.voucherId,
+        expectedApprovalVersion: row.approvalVersion,
+        patch,
       });
-      // supabase.rpc KHÔNG ném — lỗi nằm ở `error`.
-      if (error) {
-        toast.error(
-          error.code === '42501'
-            ? 'Bạn không có quyền sửa thông tin người nhận của phiếu này.'
-            : error.message || 'Không sửa được thông tin người nhận',
-        );
-        throw error;
-      }
       toast.success('Đã cập nhật thông tin người nhận');
       await lamMoi();
+    } catch (error) {
+      const code = (error as { code?: string } | null)?.code;
+      toast.error(
+        code === '42501'
+          ? 'Bạn không có quyền sửa thông tin người nhận của phiếu này.'
+          : revisionErrorMessage(error),
+      );
+      if (isStaleVersionError(error)) {
+        await Promise.all(VOUCHER_QUERY_KEYS.map((key) => qc.invalidateQueries({ queryKey: [...key] })));
+        await lamMoi();
+      }
+      throw error;
     } finally {
       setDangSua(false);
     }
-  }, [lamMoi]);
+  }, [rows, lamMoi, qc]);
 
   /**
    * Ghi chú bổ sung — cơ chế chuyển làn của RIÊNG khu này.

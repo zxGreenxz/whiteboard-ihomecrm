@@ -1,9 +1,11 @@
 import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useCallback, useMemo, useState, lazy, Suspense } from "react";
+import { useSearchParams } from "react-router-dom";
 import { usePhoneViewport } from "@/hooks/use-mobile";
 import MainLayout from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -35,6 +37,13 @@ import {
   useCashbookClosingDeepLink,
 } from "@/hooks/useCashbookClosing";
 import CashbookDetailDialog from "@/components/cashbooks/CashbookDetailDialog";
+import ReceivingCashbookSettings from "@/components/cashbooks/ReceivingCashbookSettings";
+import { useCanManageReceivingCashbooks } from "@/hooks/useCanManageReceivingCashbooks";
+
+// Tab "Sổ nhận tiền" (đợt 1 sửa phiếu) điều khiển bằng `?tab=` như Cài đặt chung,
+// để câu báo "nhờ chủ công ty cài ở Sổ nhận tiền" trỏ thẳng vào được.
+const TAB_DANH_SACH = "danh-sach";
+const TAB_SO_NHAN_TIEN = "so-nhan-tien";
 
 const CashbooksDesktop = () => {
   const isMobile = useIsMobile();
@@ -122,6 +131,57 @@ const CashbooksDesktop = () => {
     pagination.setPage(1);
   };
 
+  // Chỉ chủ công ty / super admin thấy tab "Sổ nhận tiền" (cờ hiển thị — RPC mới
+  // là hàng rào). Người khác mở `?tab=so-nhan-tien` vẫn chỉ thấy danh sách sổ.
+  const { allowed: canManageReceiving } = useCanManageReceivingCashbooks();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab =
+    canManageReceiving && searchParams.get("tab") === TAB_SO_NHAN_TIEN ? TAB_SO_NHAN_TIEN : TAB_DANH_SACH;
+  const handleTabChange = (value: string) => {
+    const next = new URLSearchParams(searchParams);
+    if (value === TAB_SO_NHAN_TIEN) next.set("tab", value);
+    else next.delete("tab");
+    // replace: đổi tab không đẻ thêm mục lịch sử — bấm Back phải rời trang.
+    setSearchParams(next, { replace: true });
+  };
+
+  const danhSachSoQuy = (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <Button onClick={handleAdd}>
+          <Plus className="h-4 w-4 mr-2" />
+          Thêm sổ quỹ
+        </Button>
+
+        <form
+          onSubmit={handleSearchSubmit}
+          className="relative flex-1 max-w-sm ml-auto"
+        >
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Tìm theo mã hoặc tên sổ quỹ..."
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            className="pl-9"
+          />
+        </form>
+      </div>
+
+      <CashbookClosingInbox autoOpenRequestId={confirmRequestId} />
+
+      <CashbookList
+        rows={rows}
+        isLoading={isLoading}
+        totalCount={totalCount}
+        pagination={pagination}
+        onView={handleView}
+        onEdit={handleEdit}
+        onDelete={(id) => setDeleteId(id)}
+        onClose={handleClose}
+      />
+    </div>
+  );
+
   return (
     <MainLayout
       title="Sổ quỹ"
@@ -183,41 +243,21 @@ const CashbooksDesktop = () => {
             <Plus className="h-6 w-6" />
           </button>
         </div>
+      ) : canManageReceiving ? (
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
+          <TabsList>
+            <TabsTrigger value={TAB_DANH_SACH}>Danh sách sổ quỹ</TabsTrigger>
+            <TabsTrigger value={TAB_SO_NHAN_TIEN}>Sổ nhận tiền</TabsTrigger>
+          </TabsList>
+          <TabsContent value={TAB_DANH_SACH} className="mt-0">
+            {danhSachSoQuy}
+          </TabsContent>
+          <TabsContent value={TAB_SO_NHAN_TIEN} className="mt-0">
+            <ReceivingCashbookSettings />
+          </TabsContent>
+        </Tabs>
       ) : (
-        <div className="space-y-4">
-          <div className="flex items-center gap-2">
-            <Button onClick={handleAdd}>
-              <Plus className="h-4 w-4 mr-2" />
-              Thêm sổ quỹ
-            </Button>
-
-            <form
-              onSubmit={handleSearchSubmit}
-              className="relative flex-1 max-w-sm ml-auto"
-            >
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Tìm theo mã hoặc tên sổ quỹ..."
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                className="pl-9"
-              />
-            </form>
-          </div>
-
-          <CashbookClosingInbox autoOpenRequestId={confirmRequestId} />
-
-          <CashbookList
-            rows={rows}
-            isLoading={isLoading}
-            totalCount={totalCount}
-            pagination={pagination}
-            onView={handleView}
-            onEdit={handleEdit}
-            onDelete={(id) => setDeleteId(id)}
-            onClose={handleClose}
-          />
-        </div>
+        danhSachSoQuy
       )}
 
       <CashbookDetailDialog

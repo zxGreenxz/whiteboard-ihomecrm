@@ -39,6 +39,12 @@ const COLUMN_LABELS: Record<string, string> = {
   repeat_cycle: "Chu kỳ lặp",
   repeat_remaining: "Số kỳ còn lại",
   repeat_next_date: "Kỳ kế tiếp",
+  // Đợt 1 sửa phiếu (25/09/2026): các cột phiếu Chờ duyệt đổi được khi sửa.
+  repeat_count: "Số lần lặp",
+  repeat_infinity: "Lặp vô hạn",
+  repeat_auto_approve: "Tự duyệt phiếu con",
+  counts_in_business_result: "Tính vào lợi nhuận",
+  verified_by_name: "Người kiểm",
   business_result_accounting: "Tính vào KQKD",
   kqkd_amount: "Phần tính KQKD",
   receive_bank_name: "Ngân hàng nhận",

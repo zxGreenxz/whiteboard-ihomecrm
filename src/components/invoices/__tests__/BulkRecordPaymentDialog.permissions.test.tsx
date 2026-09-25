@@ -9,6 +9,11 @@ vi.mock('@/hooks/useBuildings', () => ({ useBuildings: () => ({ data: [{ id: 'bu
 vi.mock('@/hooks/useAccounts', () => ({ useAccounts: () => ({ data: [] }) }));
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ data: { id: 'collector' } }) }));
 vi.mock('@/hooks/useBulkRecordPayment', () => ({ useBulkRecordPayment: () => ({ mutateAsync: vi.fn() }) }));
+vi.mock('@/hooks/useReceivingCashbooks', async importOriginal => {
+  const actual = await importOriginal<typeof import('@/hooks/useReceivingCashbooks')>();
+  return { ...actual, useReceivingCashbooks: () => ({ data: { collectorUserId: 'collector', personalCashBook: { id: 'cash', name: 'Sổ thu' }, TK: [], TT: [] }, isError: false, error: null }) };
+});
+vi.mock('@/hooks/useCollectionTenders', () => ({ fetchRecentInvoiceCollections: vi.fn(async () => []) }));
 vi.mock('@/hooks/useClipboardImagePaste', () => ({ useClipboardImagePaste: () => ({}) }));
 vi.mock('@/hooks/useInvoices', () => ({ useInvoice: () => ({ data: undefined }) }));
 vi.mock('../EditInvoiceDialog', () => ({ default: () => null }));

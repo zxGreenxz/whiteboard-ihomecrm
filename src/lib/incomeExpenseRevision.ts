@@ -29,6 +29,8 @@ export type RevisionItem = z.infer<typeof revisionItemSchema>;
 
 export const voucherSnapshotSchema = z
   .object({
+    // Đổi Thu ↔ Chi thì máy chủ cấp mã mới đúng tiền tố (PT/PC).
+    code: z.string().nullable().optional(),
     type: z.enum(["INCOME", "EXPENSE"]).optional(),
     name: z.string().optional(),
     voucher_date: z.string().nullable().optional(),
@@ -90,6 +92,7 @@ export type ReviseResult = z.infer<typeof reviseResultSchema>;
 // ── Nhãn tiếng Việt ─────────────────────────────────────────────────────────
 
 export const REVISION_FIELD_LABELS: Record<string, string> = {
+  code: "Mã phiếu",
   type: "Loại phiếu",
   name: "Tên phiếu",
   voucher_date: "Ngày phiếu",
@@ -170,6 +173,8 @@ type Field = { key: string; read: (s: VoucherSnapshot) => string[] };
 
 const EDIT_FIELDS: Field[] = [
   { key: "type", read: (s) => [s.type === "INCOME" ? "Phiếu thu" : s.type === "EXPENSE" ? "Phiếu chi" : "—"] },
+  // Ảnh chụp cũ (trước khi máy chủ ghi mã) không có khoá code ⇒ không so, khỏi báo "đổi" giả.
+  { key: "code", read: (s) => [s.code === undefined ? "" : chu(s.code)] },
   { key: "name", read: (s) => [chu(s.name)] },
   { key: "voucher_date", read: (s) => [ngay(s.voucher_date)] },
   { key: "building_id", read: (s) => [chu(s.building?.name)] },
@@ -232,10 +237,12 @@ export function summarizePendingRevisions(revisions: IncomeExpenseRevision[]): {
   const edits = revisions
     .filter((r) => r.kind === "EDIT_PENDING")
     .sort((x, y) => x.revision_no - y.revision_no);
-  if (edits.length === 0) return null;
+  const dau = edits[0];
+  const cuoi = edits[edits.length - 1];
+  if (!dau || !cuoi) return null;
   return {
     count: edits.length,
-    diff: diffRevisionSnapshots(edits[0].before_snapshot, edits[edits.length - 1].after_snapshot),
+    diff: diffRevisionSnapshots(dau.before_snapshot, cuoi.after_snapshot),
   };
 }
 
@@ -281,12 +288,143 @@ export function requiresRevisionReason(before: RevisableValues, after: Revisable
   if (before.type !== after.type) return true;
   if (before.building_id !== after.building_id) return true;
   if ((before.business_result_accounting ?? null) !== (after.business_result_accounting ?? null)) return true;
-  if (before.account_id && (after.account_id ?? null) !== before.account_id) return true;
+  if (accountChangeNeedsReason(before.account_id, after.account_id)) return true;
   return khoaTien(before.items) !== khoaTien(after.items);
 }
 
 export const REVISION_REASON_MIN = 8;
 export const REVISION_REASON_MAX = 1000;
+
+// ── Chỉ gửi đúng ô người dùng đã đổi ────────────────────────────────────────
+//
+// Form Sửa đổ phiếu vào rồi CHUẨN HOÁ vài ô lúc mở (tên ngân hàng gõ tay →
+// tên trong danh sách, null → ""). Gửi nguyên form thì máy chủ thấy "đổi" ở
+// những ô người dùng không hề chạm và ghi thành một lần sửa. Vì vậy so với ảnh
+// chụp form NGAY SAU khi đổ phiếu vào, và chỉ gửi ô khác.
+
+// Mọi khoá đều tuỳ chọn: kiểu suy từ zod của form để tuỳ chọn hết khi tsconfig
+// tắt strictNullChecks; thiếu khoá = không có giá trị.
+export interface RevisionFormValues {
+  type?: "INCOME" | "EXPENSE";
+  name?: string;
+  building_id?: string;
+  room_id?: string | null;
+  tenant_id?: string | null;
+  contract_id?: string | null;
+  payer_name?: string | null;
+  receive_bank_account?: string | null;
+  receive_bank_name?: string | null;
+  account_id?: string | null;
+  voucher_date?: string;
+  business_result_accounting?: boolean | null;
+  attachments?: string[];
+  repeat_cycle?: string;
+  repeat_count?: number;
+  repeat_infinity?: boolean;
+  repeat_auto_approve?: boolean;
+}
+
+const PATCH_TEXT_KEYS = [
+  "type",
+  "name",
+  "building_id",
+  "room_id",
+  "tenant_id",
+  "contract_id",
+  "payer_name",
+  "receive_bank_account",
+  "receive_bank_name",
+  "account_id",
+  "voucher_date",
+] as const;
+
+/** Chuỗi rỗng / toàn khoảng trắng = không có giá trị (máy chủ cũng NULLIF(btrim)). */
+function giaTri(value: unknown): unknown {
+  if (typeof value === "string") {
+    const s = value.trim();
+    return s === "" ? null : s;
+  }
+  return value ?? null;
+}
+
+function lapLai(v: RevisionFormValues): [string, number, boolean, boolean] {
+  return [
+    v.repeat_cycle || "NONE",
+    Number(v.repeat_count ?? 0),
+    !!v.repeat_infinity,
+    v.repeat_auto_approve !== false,
+  ];
+}
+
+/** Patch cho revise_pending_income_expense_v1: chỉ các khoá có giá trị khác lúc mở form. */
+export function buildRevisionPatch(
+  initial: RevisionFormValues,
+  next: RevisionFormValues,
+): Record<string, unknown> {
+  const patch: Record<string, unknown> = {};
+  for (const key of PATCH_TEXT_KEYS) {
+    const truoc = giaTri(initial[key]);
+    const sau = giaTri(next[key]);
+    if (truoc !== sau) patch[key] = sau;
+  }
+  if ((initial.business_result_accounting ?? null) !== (next.business_result_accounting ?? null)) {
+    patch.business_result_accounting = next.business_result_accounting ?? null;
+  }
+  if (JSON.stringify(initial.attachments ?? []) !== JSON.stringify(next.attachments ?? [])) {
+    patch.attachments = next.attachments ?? [];
+  }
+  const lapTruoc = lapLai(initial);
+  const lapSau = lapLai(next);
+  if (JSON.stringify(lapTruoc) !== JSON.stringify(lapSau)) {
+    // Bốn ô lặp đi cùng nhau: máy chủ tự tính số kỳ còn lại và ngày sinh kế tiếp.
+    [patch.repeat_cycle, patch.repeat_count, patch.repeat_infinity, patch.repeat_auto_approve] = lapSau;
+  }
+  return patch;
+}
+
+function khoaHangMuc(items: RevisableItem[]): string {
+  return JSON.stringify(
+    items
+      .map((i) => [
+        i.income_expense_type_id,
+        (i.description ?? "").trim() || null,
+        Math.trunc(Number(i.quantity)),
+        Math.round(Number(i.unit_price) * 100) / 100,
+        i.start_date || null,
+        i.end_date || null,
+      ])
+      .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
+  );
+}
+
+/**
+ * Hộp Duyệt (nhánh cũ) cho đổi sổ / ảnh ngay trước khi duyệt: patch sửa phiếu,
+ * rỗng = không phải sửa. Đi qua cùng cửa sửa có lưu vết như form Sửa.
+ */
+export function approvalEditPatch(
+  current: { account_id?: string | null; attachments?: string[] | null },
+  next: { account_id?: string | null; attachments: string[] },
+): Record<string, unknown> {
+  const patch: Record<string, unknown> = {};
+  if ((next.account_id || null) !== (current.account_id || null)) patch.account_id = next.account_id || null;
+  if (JSON.stringify(current.attachments ?? []) !== JSON.stringify(next.attachments)) {
+    patch.attachments = next.attachments;
+  }
+  return patch;
+}
+
+/** Đổi từ sổ này sang sổ khác thì phải có lý do; chọn sổ lần đầu thì không. */
+export function accountChangeNeedsReason(
+  currentAccountId: string | null | undefined,
+  nextAccountId: string | null | undefined,
+): boolean {
+  return !!currentAccountId && (nextAccountId || null) !== currentAccountId;
+}
+
+/** Hạng mục có khác lúc mở form không (kể cả mô tả). Không khác ⇒ không gửi hạng mục. */
+export function revisionItemsChanged(initial: RevisableItem[], next: RevisableItem[]): boolean {
+  return khoaHangMuc(initial) !== khoaHangMuc(next);
+}
 
 // ── Nút "Sửa" hiện khi nào ───────────────────────────────────────────────────
 
@@ -315,6 +453,61 @@ export function canReviseVoucher(v: RevisableVoucherLike): boolean {
 export function isSystemRevisableVoucher(v: { system_source?: string | null }): boolean {
   return !!v.system_source && (SYSTEM_REVISABLE_SOURCES as readonly string[]).includes(v.system_source);
 }
+
+const FORFEIT_REVENUE_SOURCE = "termination.forfeit_revenue";
+
+/**
+ * Cây bút trên các mặt Thu chi (bảng, danh sách mobile, hộp chi tiết, trang chi tiết).
+ * - Phiếu sửa được (canReviseVoucher) ⇒ "Sửa phiếu chờ duyệt".
+ * - Phiếu doanh thu bỏ cọc chưa huỷ + super admin / chủ công ty ⇒ chế độ đổi cờ KQKD
+ *   (giữ nguyên cửa riêng set_forfeit_voucher_kqkd_v1).
+ * - Còn lại ẩn — kể cả "Sửa phiếu (Super Admin)" cho phiếu đã duyệt/đã huỷ trước đây
+ *   (bấm vào cũng không lưu được; sửa phiếu đã duyệt để đợt 2).
+ */
+export function voucherEditAction(
+  v: RevisableVoucherLike,
+  viewer: { isAdmin: boolean; isCompanyOwner: boolean },
+): { show: boolean; title: string } {
+  if (canReviseVoucher(v)) return { show: true, title: "Sửa phiếu chờ duyệt" };
+  if (
+    v.system_source === FORFEIT_REVENUE_SOURCE &&
+    v.approval_status !== "CANCELLED" &&
+    (viewer.isAdmin || viewer.isCompanyOwner)
+  ) {
+    return { show: true, title: "Đổi cờ kết quả kinh doanh (phiếu bỏ cọc)" };
+  }
+  return { show: false, title: "" };
+}
+
+// ── Nhãn sự kiện nhật ký phiếu (income_expense_audit_log.action) ────────────
+
+const AUDIT_ACTIONS: Record<string, { label: string; tone: "red" | "green" | "amber" | "blue" | "violet" | "zinc" }> = {
+  CANCELLED: { label: "Huỷ phiếu", tone: "red" },
+  RESTORED: { label: "Khôi phục", tone: "green" },
+  APPROVED: { label: "Duyệt", tone: "green" },
+  UNAPPROVED: { label: "Huỷ duyệt", tone: "amber" },
+  REVISED: { label: "Sửa phiếu", tone: "amber" },
+  COLLECTION_METHOD_CHANGED: { label: "Đổi hình thức thu", tone: "violet" },
+  CASHBOOK_MOVED: { label: "Đổi sổ quỹ", tone: "blue" },
+  MANUAL_LOG: { label: "Sửa nhanh", tone: "zinc" },
+};
+
+/** Nhãn + màu cho một dòng "Lịch sử thao tác". Hành động lạ ⇒ giữ nguyên mã, màu xám. */
+export function auditActionLabel(action: string | null | undefined): {
+  label: string;
+  tone: "red" | "green" | "amber" | "blue" | "violet" | "zinc";
+} {
+  return AUDIT_ACTIONS[action ?? ""] ?? { label: action || "Thao tác", tone: "zinc" };
+}
+
+export const AUDIT_TONE_CLASSES: Record<ReturnType<typeof auditActionLabel>["tone"], string> = {
+  red: "bg-red-100 text-red-700",
+  green: "bg-green-100 text-green-700",
+  amber: "bg-amber-100 text-amber-800",
+  blue: "bg-sky-100 text-sky-700",
+  violet: "bg-violet-100 text-violet-700",
+  zinc: "bg-zinc-100 text-zinc-700",
+};
 
 // ── Dịch lỗi ────────────────────────────────────────────────────────────────
 

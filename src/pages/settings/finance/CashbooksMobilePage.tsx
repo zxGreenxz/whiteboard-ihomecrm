@@ -1,7 +1,7 @@
 import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useCallback, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Plus, Wallet, Lock, X, Pencil, ArrowLeftRight, ReceiptText, FileText } from "lucide-react";
+import { ArrowLeft, Plus, Wallet, Lock, X, Pencil, ArrowLeftRight, ReceiptText, FileText, Settings2 } from "lucide-react";
 import "@/styles/mobileApp.css";
 import "@/styles/financeMobile.css";
 import "@/styles/estateMobile.css";
@@ -9,12 +9,15 @@ import { useAccountsWithBalance, type AccountWithBalance } from "@/hooks/useAcco
 import CashbookForm from "@/components/cashbooks/CashbookForm";
 import CloseCashbookDialog from "@/components/cashbooks/CloseCashbookDialog";
 import CashbookClosingInbox, { closureRecordPath } from "@/components/cashbooks/CashbookClosingInbox";
+import ReceivingCashbookSettings from "@/components/cashbooks/ReceivingCashbookSettings";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   useCashbookCloseConfirmers,
   useCashbookClosingDeepLink,
   useCashbookClosings,
 } from "@/hooks/useCashbookClosing";
 import { useCashbookVisibilityV2 } from "@/hooks/income-expenses/financeV2Mutations";
+import { useCanManageReceivingCashbooks } from "@/hooks/useCanManageReceivingCashbooks";
 
 const compact = (n: number) => {
   const a = Math.abs(n);
@@ -56,6 +59,11 @@ export default function CashbooksMobilePage() {
   // Đợt 6 — đề nghị chốt & bàn giao (thay cho khoá/mở khoá tay).
   const [closeOpen, setCloseOpen] = useState(false);
   const [closeTarget, setCloseTarget] = useState<AccountWithBalance | null>(null);
+  // Sổ nhận tiền (đợt 1 sửa phiếu) — chỉ chủ công ty / super admin thấy lối vào.
+  // Trang này là nhánh điện thoại của CashbooksPage, nên thiếu lối vào ở đây là
+  // chủ dùng điện thoại không tới được màn cài (cùng bẫy hộp thư chốt sổ đợt 6).
+  const { allowed: canManageReceiving } = useCanManageReceivingCashbooks();
+  const [receivingOpen, setReceivingOpen] = useState(false);
 
   // ── PA4 deep-link từ thông báo ────────────────────────────────────
   // `?close=<id>` (E6a) và `?confirm=<id>` (E6b). BẮT BUỘC nối ở CẢ trang này:
@@ -156,6 +164,21 @@ export default function CashbooksMobilePage() {
           <div className="mbody">
             {/* Đợt 6 — hộp thư chờ ký + đường ra biên bản. Tự ẩn khi rỗng. */}
             <CashbookClosingInbox variant="mobile" autoOpenRequestId={confirmRequestId} />
+
+            {canManageReceiving && (
+              <button
+                type="button"
+                className="cmenu-opt"
+                style={{ marginBottom: 14 }}
+                onClick={() => setReceivingOpen(true)}
+              >
+                <span className="cmenu-ic" style={{ background: "#e8f3ec", color: "#1f7a52" }}><Settings2 size={19} /></span>
+                <span className="cmenu-tx">
+                  <span className="cmenu-t">Sổ nhận tiền</span>
+                  <span className="cmenu-s">Tiền mặt vào sổ riêng người thu · chuyển khoản / thanh toán theo toà</span>
+                </span>
+              </button>
+            )}
 
             <div className="iestats">
               <div className="iestat">
@@ -433,6 +456,20 @@ export default function CashbooksMobilePage() {
         bankName={closeBook?.bank_name ?? null}
         candidates={confirmers ?? []}
       />
+
+      {/* Sổ nhận tiền — dùng lại màn desktop trong hộp thoại (khuôn <style> đầu
+          trang đã chặn chiều cao + cho cuộn trên điện thoại). */}
+      {canManageReceiving && (
+        <Dialog open={receivingOpen} onOpenChange={setReceivingOpen}>
+          <DialogContent className="max-w-3xl">
+            <DialogHeader>
+              <DialogTitle>Sổ nhận tiền</DialogTitle>
+              <DialogDescription>Hình thức thu nào vào sổ nào — chỉ chủ công ty cài được.</DialogDescription>
+            </DialogHeader>
+            <ReceivingCashbookSettings />
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

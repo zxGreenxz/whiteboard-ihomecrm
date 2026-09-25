@@ -404,7 +404,7 @@ export const useManagerSalaryPayouts = () => {
 // --- Canonical V2 close workflow. All calculations and writes stay server-side. ---
 
 /**
- * Tên sáu RPC chốt lợi nhuận, giữ lại để đọc thành nhóm.
+ * Tên các RPC chốt lợi nhuận V2, giữ lại để đọc thành nhóm.
  *
  * NHƯNG CHỖ GỌI PHẢI VIẾT THẲNG TÊN. Ba gate canh biên RPC
  * (`check-rpc-surface`, `check-rpc-arg-names`, `check-rpc-layer`) tìm tên bằng
@@ -421,6 +421,7 @@ export const PROFIT_CLOSE_RPC = {
   close: "profit_close_v2",
   reclose: "profit_reclose_v2",
   reset: "profit_reset_checked_v2",
+  unlock: "profit_unlock_v2",
   totalGroupPeers: "profit_total_group_peers_v2",
 } as const;
 
@@ -886,58 +887,123 @@ export interface ResetProfitPeriodInput {
 }
 
 export interface UnlockProfitMonthInput {
+  /** Tổ chức đang chọn trên màn Chốt lợi nhuận — máy chủ gác quyền theo tổ chức. */
+  organizationId: string;
+  /** Kỳ dạng 'YYYY-MM-01'. */
   periodMonth: string;
+  /** Chỉ những nhà ĐANG Đã chốt — máy chủ từ chối cả lượt nếu có nhà không LOCKED. */
   buildingIds: string[];
+  /** Lý do mở khoá 8–1000 ký tự (sau khi cắt khoảng trắng) — được lưu lại. */
+  reason: string;
+}
+
+/** Phần cần dùng trong kết quả jsonb của `profit_unlock_v2`. */
+export interface UnlockProfitMonthResult {
+  run_id: string | null;
+  affected_buildings: number;
+  idempotent_replay: boolean;
 }
 
 /**
- * MỞ KHOÁ tháng đã chốt lợi nhuận — nhẹ hơn "Đặt lại tháng".
+ * Câu tiếng Việt cho các lỗi `profit_unlock_v2` người dùng có thể gặp. Bộ hàm
+ * chốt V2 báo lỗi bằng tiếng Anh; lỗi nào không nhận ra thì giữ NGUYÊN VĂN.
+ */
+export function unlockProfitMonthErrorMessage(message: string | null | undefined): string {
+  const msg = message ?? "";
+  if (/UNLOCK requires LOCKED current snapshots/i.test(msg)) {
+    return "Có nhà trong vùng chọn không còn ở trạng thái Đã chốt (có thể vừa được mở khoá) — tải lại số nguồn rồi chọn lại.";
+  }
+  if (/Every requested building must have a current period snapshot/i.test(msg)) {
+    return "Có nhà trong vùng chọn chưa có bản chốt của tháng này — tải lại số nguồn rồi chọn lại.";
+  }
+  if (/reason must contain 8\.\.1000 characters/i.test(msg)) {
+    return "Lý do mở khoá phải có 8–1000 ký tự";
+  }
+  if (/Unlock permission does not cover|Permission denied: shareholder_profit\.unlock/i.test(msg)) {
+    return "Bạn không có quyền mở khoá lợi nhuận ở một hoặc nhiều nhà đã chọn.";
+  }
+  return msg || "Không thể mở khoá tháng";
+}
+
+/**
+ * MỞ KHOÁ tháng đã chốt lợi nhuận — gọi `profit_unlock_v2`, BẮT BUỘC có lý do.
  *
- * Khác nhau ở chỗ nào:
- *   - Đặt lại tháng (profit_reset_checked_v2): XOÁ hẳn snapshot. Đòi lý do
- *     8–1000 ký tự + CAS state_hash + danh sách snapshot_ids.
- *   - Mở khoá (unlock_profit_month_v1): GIỮ dòng `profit_monthly` nhưng lật về
- *     DRAFT để sửa/ghi phiếu của tháng đó, rồi chốt lại.
+ * Khác "Đặt lại tháng" (profit_reset_checked_v2) ở chỗ nào:
+ *   - Đặt lại: XOÁ hẳn snapshot; CAS state_hash + danh sách snapshot_ids.
+ *   - Mở khoá: GIỮ dòng `profit_monthly` nhưng lật về DRAFT (is_stale = true,
+ *     stale_reason 'UNLOCKED: <lý do>') để sửa/lập/huỷ phiếu của tháng đó, rồi
+ *     chốt lại.
  *
- * ⚠ ĐÍNH CHÍNH (31/07/2026): chỗ này từng ghi "snapshot giữ nguyên" — SAI. Đối
- * chiếu thân hàm ĐANG CHẠY trên prod, `unlock_profit_month_v1` làm:
- *     delete from public.profit_allocations         where profit_monthly_id = any(...);
- *     delete from public.profit_manager_allocations where profit_monthly_id = any(...);
- *     update public.profit_monthly set status='DRAFT', management_salary=0,
- *            locked_at=null, locked_by=null …
- * Tức là PHẦN ĐÃ CHIA BỊ XOÁ. Tài liệu người dùng nói đúng điều này, chỉ có
- * comment + tooltip FE nói sai. `profit_unlock_v2` cũng xoá y như vậy — khác ở
- * chỗ nó đòi reason + idempotency_key + CAS hash và ghi `profit_close_runs`.
+ * Hậu quả KHÔNG nhẹ: máy chủ XOÁ `profit_allocations` + `profit_manager_allocations`
+ * của các nhà được mở và đặt `management_salary = 0` — PHẦN ĐÃ CHIA BỊ XOÁ, phải
+ * chốt lại. (Comment cũ từng ghi "snapshot giữ nguyên" — sai, đã đối chiếu thân
+ * hàm thật 31/07/2026.)
  *
- * NỢ: FE đang gọi đường v1 KHÔNG audit (không reason, không idempotency, không
- * CAS, không ghi profit_close_runs). Chuyển sang `profit_unlock_v2` cần thêm
- * dialog nhập lý do — việc riêng, chưa làm.
+ * Có vết: lý do + idempotency key + người mở + ảnh chụp phân bổ trước khi xoá nằm
+ * trong `profit_close_runs`, mỗi nhà thêm một dòng `profit_close_revisions`. Đường
+ * mở khoá v1 cũ (không lý do, không vết) đã bỏ: giao diện chuyển sang đây ngày
+ * 25/09/2026; migration 20260925083655_dong_duong_cu_sua_phieu gỡ hàm cũ khỏi máy
+ * chủ (áp sau khi web mới lên).
  *
- * RPC đã tồn tại từ trước và tự gác bằng quyền `shareholder_profit.unlock`
- * (thực tế chỉ chủ tổ chức mỗi org có), nhưng tới 30/07/2026 mới được GRANT cho
- * `authenticated` — trước đó có cơ chế khoá mà không có cơ chế mở.
+ * KHÔNG gửi `p_expected_source_hash`: máy chủ so MỘT hash với `source_hash` của
+ * TỪNG nhà, mà mỗi nhà một hash riêng — mở từ hai nhà trở lên là chắc chắn lệch.
+ * Trạng thái đổi dưới tay thì máy chủ tự chặn: nhà nào không còn LOCKED là cả lượt
+ * bị từ chối (55000).
+ *
+ * `p_building_ids` luôn khác NULL: NULL nghĩa là MỌI snapshot của kỳ, kể cả dòng
+ * legacy trên toà ảo — phạm vi phải do người dùng tick ra.
+ *
+ * Quyền `shareholder_profit.unlock` (thực tế chỉ chủ công ty có). Từ 25/09/2026
+ * khoá tháng là TUYỆT ĐỐI — mọi phiếu có ngày trong tháng đã chốt bị khoá với MỌI
+ * người, kể cả chủ công ty và super admin — nên đây là đường duy nhất để sửa phiếu
+ * của tháng đó.
  */
 export const useUnlockProfitMonth = () => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: UnlockProfitMonthInput) => {
-      if (input.buildingIds.length === 0) throw new Error("Không có toà nào đang khoá để mở");
-      const { data, error } = await supabase.rpc("unlock_profit_month_v1", {
+    mutationFn: async (input: UnlockProfitMonthInput): Promise<UnlockProfitMonthResult> => {
+      if (!input.organizationId) throw new Error("Không xác định được tổ chức");
+      if (!/^\d{4}-\d{2}-01$/.test(input.periodMonth)) {
+        throw new Error("Kỳ mở khoá phải là ngày đầu tháng (YYYY-MM-01)");
+      }
+      const buildingIds = [...new Set(input.buildingIds)].sort();
+      if (buildingIds.length === 0) throw new Error("Không có toà nào đang khoá để mở");
+      const reason = input.reason.trim();
+      if (reason.length < 8 || reason.length > 1000) {
+        throw new Error("Lý do mở khoá phải có 8–1000 ký tự");
+      }
+      const { data, error } = await supabase.rpc("profit_unlock_v2", {
+        p_organization_id: input.organizationId,
         p_period_month: input.periodMonth,
-        p_building_ids: input.buildingIds,
+        p_reason: reason,
+        p_idempotency_key: `profit-unlock-${crypto.randomUUID()}`,
+        p_building_ids: buildingIds,
       });
       if (error) throw error;
-      return data as number;
+      const root: Record<string, unknown> =
+        data && typeof data === "object" && !Array.isArray(data)
+          ? (data as Record<string, unknown>)
+          : {};
+      return {
+        run_id: root.run_id == null ? null : String(root.run_id),
+        affected_buildings: money(root.affected_buildings),
+        idempotent_replay: Boolean(root.idempotent_replay),
+      };
     },
-    onSuccess: (count) => {
+    onSuccess: (result, input) => {
       invalidateProfitCloseQueries(qc);
       qc.invalidateQueries({ queryKey: ["income-expenses"] });
+      // Nút Huỷ ở màn Thu chi đọc trạng thái khoá qua hai reader này (giữ 30 giây):
+      // không làm mới thì vừa mở khoá xong nút vẫn mờ vì "tháng đã chốt".
+      qc.invalidateQueries({ queryKey: ["income-cancel-eligibility"] });
+      qc.invalidateQueries({ queryKey: ["flex-cancel-eligibility"] });
+      const thang = `${input.periodMonth.slice(5, 7)}/${input.periodMonth.slice(0, 4)}`;
       toast.success(
-        `Đã mở khoá ${count ?? 0} toà — sửa/ghi phiếu của tháng này được. Phần đã phân bổ cho cổ đông đã bị xoá, PHẢI chốt lại sau khi sửa xong.`,
+        `Đã mở khoá ${result.affected_buildings} toà tháng ${thang} — sửa/ghi phiếu của tháng này được, lý do đã được lưu lại. Phần đã phân bổ cho cổ đông đã bị xoá, PHẢI chốt lại sau khi sửa xong.`,
       );
     },
     onError: (error: any) => {
-      toast.error(error?.message || "Không thể mở khoá tháng");
+      toast.error(unlockProfitMonthErrorMessage(error?.message));
     },
   });
 };

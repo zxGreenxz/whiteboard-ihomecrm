@@ -1,13 +1,12 @@
 // Đổi cờ "tính vào kết quả kinh doanh" của phiếu DOANH THU BỎ CỌC.
 //
-// VÌ SAO PHẢI CÓ CỬA RIÊNG, KHÔNG DÙNG useUpdateIncomeExpense:
+// VÌ SAO PHẢI CÓ CỬA RIÊNG, KHÔNG DÙNG ĐƯỜNG SỬA PHIẾU THƯỜNG:
 //   Cặp bút toán bỏ cọc được canh bởi trigger guard_termination_forfeit_voucher_v1,
 //   và trigger đó KHÔNG nhìn user — nó chỉ hỏi transaction hiện tại đã gọi
-//   app_private.begin_accounting_chain_write_v1() chưa. RPC sửa phiếu thường
-//   (ie_compat_update_pending_v2) không gọi hàm đó, nên super admin bấm Lưu
-//   cũng nhận đúng câu "Bút toán bỏ cọc chỉ được tạo hoặc sửa bởi writer thanh
-//   lý" như mọi người khác. Cột business_result_accounting còn nằm trong
-//   v_money_keys của RPC đó nên phiếu đã duyệt dính thêm rào "trục tiền".
+//   app_private.begin_accounting_chain_write_v1() chưa. Đường sửa phiếu thường
+//   (revise_pending_income_expense_v1, trước đó ie_compat_update_pending_v2)
+//   không gọi hàm đó, lại chỉ nhận phiếu Chờ duyệt — trong khi cặp bỏ cọc
+//   thường đã duyệt.
 //
 //   set_forfeit_voucher_kqkd_v1 mở đúng năng lực writer đó, đổi ĐÚNG một cột,
 //   rồi tự kiểm lại cặp phiếu trong cùng transaction trước khi commit.

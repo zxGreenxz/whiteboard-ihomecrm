@@ -22,30 +22,33 @@ import {
   HoverCardContent,
   HoverCardTrigger,
 } from '@/components/ui/hover-card';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { StorageImage } from '@/components/ui/storage-image';
+import { Textarea } from '@/components/ui/textarea';
 import { AttachmentLightbox } from '@/components/ui/attachment-lightbox';
 import { supabase } from '@/integrations/supabase/client';
 import { useFirstInvoiceDetails, useContractDepositVouchers } from '@/hooks/useInvoices';
-import { useUpdatePaymentMethod } from '@/hooks/useUpdatePaymentMethod';
 import { useUploadPaymentReceipt } from '@/hooks/useUploadPaymentReceipt';
 import {
   useDeletePayment,
   useCollectionReversalEligibility,
   COLLECTION_BLOCK_TEXT,
 } from '@/hooks/useDeletePayment';
+import {
+  toChangeMethodTender,
+  useInvoiceTenders,
+  type ChangeCollectionMethodTender,
+} from '@/hooks/useCollectionTenders';
+import { useAuth } from '@/hooks/useAuth';
+import { useIsCompanyOwner } from '@/hooks/useIsCompanyOwner';
+import { useIsSuperAdmin } from '@/hooks/useIsAdmin';
 import { useClipboardImagePaste } from '@/hooks/useClipboardImagePaste';
 import type { InvoiceWithRelations } from '@/types/invoice';
 import { getInvoiceTitle } from '@/lib/invoiceUtils';
-import { Image as ImageIcon, Calendar, Clock, Loader2, Check, Upload, Trash2, Receipt } from 'lucide-react';
+import { PAYMENT_METHOD_LABELS, REVISION_REASON_MAX, REVISION_REASON_MIN } from '@/lib/incomeExpenseRevision';
+import ChangeCollectionMethodDialog from './ChangeCollectionMethodDialog';
+import { Image as ImageIcon, Calendar, Clock, Loader2, Upload, Trash2, Receipt, ArrowRightLeft } from 'lucide-react';
 
 interface Props {
   open: boolean;
@@ -71,8 +74,6 @@ interface PaymentReceiptRow {
   receipt_image_url: string | null;
   created_at: string;
 }
-
-const METHOD_OPTIONS: PaymentMethod[] = ['TM', 'TT', 'TK'];
 
 /** Slot upload ảnh chứng từ cho 1 phiếu thu chưa có ảnh.
  *  - Click → mở file picker
@@ -185,11 +186,26 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
     },
   });
 
-  const updateMethod = useUpdatePaymentMethod();
   const deletePayment = useDeletePayment();
-  const [editingId, setEditingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  // Lý do hoàn tác: bắt gõ lý do THẬT (≥ 8 ký tự) — thu trùng phải để lại dấu
+  // vết đọc được, không còn câu điền sẵn (đợt 1 sửa phiếu, 25/09/2026).
+  const [undoReason, setUndoReason] = useState('');
+  const undoReasonLength = undoReason.trim().length;
+  const undoReasonOk = undoReasonLength >= REVISION_REASON_MIN && undoReasonLength <= REVISION_REASON_MAX;
+
+  // Dòng thu kiểu mới (invoice_payment_tenders) — người đã thu + sổ nhận, để mở
+  // hộp "Đổi hình thức thu". Khoản thu kiểu cũ (trước 28/07) không có dòng nào.
+  const { data: tenders } = useInvoiceTenders(invoiceId, { enabled: open });
+  const tenderById = new Map((tenders ?? []).map((t) => [t.id, t]));
+  const { data: me } = useAuth();
+  const { data: isCompanyOwner } = useIsCompanyOwner();
+  const { data: isSuperAdmin } = useIsSuperAdmin();
+  const [changeTarget, setChangeTarget] = useState<{
+    organizationId: string;
+    tender: ChangeCollectionMethodTender;
+  } | null>(null);
   // Xem ảnh chứng từ bằng lightbox tại chỗ (không mở tab mới). images = nhóm ảnh
   // đang xem (các lần thu, hoặc ảnh của 1 phiếu cọc); index null = đóng.
   const [lightbox, setLightbox] = useState<{ images: string[]; index: number | null }>({
@@ -200,16 +216,13 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
     .filter((p) => p.receipt_image_url)
     .map((p) => p.receipt_image_url as string);
 
-  const handleChangeMethod = (paymentId: string, newMethod: PaymentMethod) => {
-    setEditingId(paymentId);
-    updateMethod.mutate(
-      { payment_id: paymentId, new_method: newMethod },
-      { onSettled: () => setEditingId(null) },
-    );
+  const openUndoConfirm = (id: string) => {
+    setUndoReason('');
+    setConfirmDeleteId(id);
   };
 
   const handleConfirmDelete = () => {
-    if (!confirmDeleteId) return;
+    if (!confirmDeleteId || !undoReasonOk) return;
     const target = (payments ?? []).find((payment) => payment.id === confirmDeleteId);
     if (!target) return;
     setDeletingId(target.id);
@@ -217,14 +230,36 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
       {
         payment_id: target.payment_id,
         collection_id: target.collection_id,
+        reason: undoReason.trim(),
       },
       {
-        onSettled: () => {
-          setDeletingId(null);
+        onSuccess: () => {
           setConfirmDeleteId(null);
+          setUndoReason('');
         },
+        // Lỗi (vd kỳ đã chốt): giữ hộp mở cùng lý do đã gõ; toast đã nói vì sao.
+        onSettled: () => setDeletingId(null),
       },
     );
+  };
+
+  /**
+   * Dòng này mở được hộp "Đổi hình thức thu" không, và người đang xem có được
+   * đổi không (người đã thu, chủ công ty, super admin — máy chủ kiểm lại).
+   * null = khoản thu kiểu cũ / không có phiếu thu / chưa đọc xong dòng thu.
+   */
+  const changeMethodFor = (p: PaymentReceiptRow) => {
+    if (p.source_kind !== 'COLLECTION_TENDER' || !p.collection_id || !invoice) return null;
+    const tender = tenderById.get(p.id);
+    const buildingId = invoice.building_id || invoice.building?.id;
+    if (!tender || !tender.voucher_id || tender.collection?.status !== 'ACTIVE' || !buildingId) return null;
+    const allowed =
+      isSuperAdmin === true || isCompanyOwner === true || (!!me?.id && tender.collection.actor_id === me.id);
+    return {
+      allowed,
+      organizationId: invoice.organization_id || tender.organization_id,
+      tender: toChangeMethodTender(tender, { id: buildingId, name: invoice.building?.name ?? null }),
+    };
   };
 
   const confirmTarget = (payments ?? []).find((p) => p.id === confirmDeleteId);
@@ -357,7 +392,8 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
                 const appliedAmount = Number(p.applied_amount) || 0;
                 const creditAmount = Number(p.credit_amount) || 0;
                 const isPureCredit = appliedAmount < 0.01 && creditAmount > 0;
-                const canEditLegacyPayment = !p.collection_id && !!p.payment_id;
+                const changeMethod = changeMethodFor(p);
+                const accountName = tenderById.get(p.id)?.account_name ?? null;
 
                 return (
                   <li
@@ -381,48 +417,33 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
                             <span>Credit: {fmtVND(creditAmount)}</span>
                           </div>
                         </div>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger
-                            disabled={editingId === p.id || !canEditLegacyPayment}
-                            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-semibold transition hover:opacity-80 hover:shadow-sm disabled:opacity-60 disabled:cursor-not-allowed ${badgeCls}`}
-                            title={p.collection_id
-                              ? 'Collection V5 đã khóa phương thức; hoàn tác rồi ghi lại nếu cần sửa'
-                              : p.payment_id
-                                ? 'Click để đổi phương thức thanh toán'
-                                : 'Dòng thu không có payment legacy để cập nhật'}
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-semibold ${badgeCls}`}
+                          title={
+                            (PAYMENT_METHOD_LABELS[p.payment_method] ?? p.payment_method) +
+                            (p.collection_id ? '' : ' · khoản thu kiểu cũ (trước 28/07) — không đổi hình thức được')
+                          }
+                        >
+                          {p.payment_method}
+                        </span>
+                        {changeMethod && (
+                          <button
+                            type="button"
+                            disabled={!changeMethod.allowed}
+                            onClick={() =>
+                              setChangeTarget({
+                                organizationId: changeMethod.organizationId,
+                                tender: changeMethod.tender,
+                              })
+                            }
+                            title={changeMethod.allowed
+                              ? 'Đổi sang hình thức / sổ nhận khác — không đổi số tiền'
+                              : 'Chỉ người đã thu hoặc chủ công ty đổi được hình thức thu'}
+                            className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[11px] font-medium text-violet-700 transition hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50"
                           >
-                            {editingId === p.id ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            ) : null}
-                            {p.payment_method}
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-40">
-                            <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
-                              Đổi phương thức
-                            </DropdownMenuLabel>
-                            <DropdownMenuSeparator />
-                            {METHOD_OPTIONS.map((m) => (
-                              <DropdownMenuItem
-                                key={m}
-                                onSelect={() => {
-                                  if (p.payment_id && m !== p.payment_method) {
-                                    handleChangeMethod(p.payment_id, m);
-                                  }
-                                }}
-                                className="flex items-center justify-between"
-                              >
-                                <span className="font-semibold">{m}</span>
-                                {p.payment_method === m && (
-                                  <Check className="h-3.5 w-3.5 text-emerald-600" />
-                                )}
-                              </DropdownMenuItem>
-                            ))}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                        {p.collection_id && (
-                          <span className="rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-[10px] font-medium text-zinc-500">
-                            V5 khóa sổ
-                          </span>
+                            <ArrowRightLeft className="h-3 w-3" />
+                            Đổi hình thức thu
+                          </button>
                         )}
                         {isPureCredit && (
                           <span className="rounded-full border border-cyan-200 bg-cyan-50 px-2 py-0.5 text-[10px] font-semibold text-cyan-700">
@@ -441,6 +462,7 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
                             {timeStr}
                           </span>
                         )}
+                        {accountName && <span className="truncate">Sổ {accountName}</span>}
                       </div>
                       {p.voucher_id ? (
                         <a
@@ -517,7 +539,7 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
                         ? 'Hoàn tác toàn bộ lần thu V5 (mọi dòng TM/TK/TT)'
                         : 'Hoàn tác phiếu thanh toán cũ'}
                       disabled={deletingId === p.id}
-                      onClick={() => setConfirmDeleteId(p.id)}
+                      onClick={() => openUndoConfirm(p.id)}
                       className="shrink-0 grid place-items-center h-9 w-9 rounded-md text-red-600 hover:text-red-700 hover:bg-red-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {deletingId === p.id ? (
@@ -667,6 +689,23 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {!confirmBlocked && (
+            <div className="space-y-1.5">
+              <Label htmlFor="ly-do-hoan-tac-thu">Lý do hoàn tác *</Label>
+              <Textarea
+                id="ly-do-hoan-tac-thu"
+                rows={2}
+                maxLength={REVISION_REASON_MAX}
+                value={undoReason}
+                onChange={(e) => setUndoReason(e.target.value)}
+                placeholder="Vd: thu trùng — khoản này đã thu lúc 14:05"
+                disabled={deletePayment.isPending}
+              />
+              <p className={`text-xs ${undoReasonLength > 0 && !undoReasonOk ? 'text-red-600' : 'text-muted-foreground'}`}>
+                Bắt buộc, ít nhất {REVISION_REASON_MIN} ký tự — lý do được lưu cùng khoản thu đã hoàn tác.
+              </p>
+            </div>
+          )}
           <AlertDialogFooter>
             <AlertDialogCancel disabled={deletePayment.isPending}>
               {confirmBlocked ? 'Đóng' : 'Huỷ'}
@@ -677,7 +716,7 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
                   e.preventDefault();
                   handleConfirmDelete();
                 }}
-                disabled={deletePayment.isPending}
+                disabled={deletePayment.isPending || !undoReasonOk}
                 className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
               >
                 {deletePayment.isPending ? (
@@ -693,6 +732,17 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {changeTarget && (
+        <ChangeCollectionMethodDialog
+          open={!!changeTarget}
+          onOpenChange={(v) => {
+            if (!v) setChangeTarget(null);
+          }}
+          organizationId={changeTarget.organizationId}
+          tender={changeTarget.tender}
+        />
+      )}
     </Dialog>
   );
 };

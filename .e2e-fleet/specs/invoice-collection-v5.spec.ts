@@ -343,7 +343,7 @@ async function collectNonCashOverpayThroughUi(
   await expect(dialog).toBeVisible();
 
   const method = dialog
-    .getByText('Phương thức thanh toán *', { exact: true })
+    .getByText('Phương thức *', { exact: true })
     .locator('..')
     .getByRole('combobox');
   await selectOption(page, method, 'TT');
@@ -398,7 +398,7 @@ async function reverseCollectionThroughUi(page: Page, fixture: AccountingFixture
     has: page.getByRole('heading', { name: 'Các lần thanh toán' }),
   });
   await expect(paymentsDialog).toBeVisible();
-  await expect(paymentsDialog.getByText('V5 khóa sổ', { exact: true })).toHaveCount(2);
+  // Chip "V5 khóa sổ" đã bỏ (đợt 1 sửa phiếu); mỗi dòng thu hiện sổ nhận thay cho nó.
 
   await paymentsDialog.locator('button[title^="Hoàn tác toàn bộ lần thu V5"]').first().click();
   const confirmDialog = page.getByRole('alertdialog').filter({
@@ -411,6 +411,8 @@ async function reverseCollectionThroughUi(page: Page, fixture: AccountingFixture
       response.request().method() === 'POST' && RPC('reverse_invoice_collection_v5').test(response.url()),
     { timeout: 45_000 },
   );
+  // Đợt 1 sửa phiếu (25/09/2026): hoàn tác khoản thu phải gõ lý do thật (≥ 8 ký tự).
+  await confirmDialog.getByLabel('Lý do hoàn tác *').fill('E2E hoàn tác lần thu V5 để kiểm');
   await confirmDialog.getByRole('button', { name: 'Hoàn tác' }).click();
   const reverseResponse = await reversePromise;
   const reverseBody = await rpcBody<ReversalRpcBody>(reverseResponse, 'reverse_invoice_collection_v5');

@@ -70,7 +70,7 @@ Vùng chọn **không được lẫn** nhà đã chốt với nhà chưa chốt:
 
 **Bước 6: Mở khoá / Đặt lại theo nhà.** Nhà đã chốt xen nhà chưa chốt là **bình thường** — đó chính là cái bạn vừa làm ở Bước 4. Hai nút này cũng chạy trên đúng vùng đang tick:
 
-- **Mở khoá N nhà đã chọn** — gỡ khoá để sửa phiếu của những nhà đó. Phần đã phân bổ cho cổ đông và quản lý của chúng **bị xoá**, snapshot về Nháp, sửa xong phải chốt lại.
+- **Mở khoá N nhà đã chọn** — gỡ khoá để sửa phiếu của những nhà đó. Phải gõ **lý do mở khoá** (ít nhất 8 ký tự), lý do được lưu lại. Phần đã phân bổ cho cổ đông và quản lý của chúng **bị xoá**, snapshot về Nháp, sửa xong phải chốt lại. Từ 25/09/2026 tháng đã chốt khoá **mọi** phiếu có ngày trong tháng đó với **mọi người** (kể cả chủ công ty); còn phiếu Chờ duyệt trong tháng/toà thì **không chốt được** — duyệt hoặc huỷ trước.
 - **Đặt lại N nhà đã chọn** — bỏ hẳn snapshot của những nhà đó để chốt mới từ đầu, cần nhập lý do.
 
 Riêng khi tháng còn snapshot nằm trên **toà ảo hoặc toà đã xoá**, màn hình báo đỏ và bạn phải đặt lại các dòng đó trước khi chốt tiếp. Reset được bảo vệ bằng state hash và danh sách snapshot của **cả tháng**; nếu ai đó vừa chốt hoặc mở khoá nhà khác thì thao tác bị từ chối để bạn tải lại.

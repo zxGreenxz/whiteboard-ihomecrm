@@ -28,15 +28,22 @@ export const PERIOD_BLOCK_DETAIL: Record<PeriodBlockCode, string> = {
     "Sổ quỹ chứa phiếu này đã được chốt và bàn giao. Mọi phiếu có ngày phát sinh trong kỳ đã chốt được khoá vĩnh viễn — kể cả chủ tổ chức cũng không mở lại được. Muốn điều chỉnh, hãy lập một phiếu mới ở kỳ hiện tại.",
   HANDOVER_LOCKED:
     "Phiếu đang nằm trong một phiên bàn giao tiền mặt đã xác nhận. Muốn sửa hoặc huỷ, hai bên phải huỷ phiên bàn giao đó trước.",
+  // Khoá tháng lợi nhuận là TUYỆT ĐỐI (chủ chốt 25/09/2026): mọi phiếu có ngày
+  // trong tháng đã chốt, mọi loại, với mọi người kể cả chủ công ty.
   PROFIT_LOCKED:
-    "Lợi nhuận của tháng này đã chốt và đã chia cho cổ đông. Sửa phiếu bây giờ sẽ làm số đã chia lệch khỏi sổ, nên hệ thống khoá lại. Hãy lập phiếu điều chỉnh ở tháng hiện tại.",
+    "Tháng của phiếu này đã chốt lợi nhuận — mọi phiếu có ngày trong tháng đó bị khoá với tất cả mọi người, kể cả chủ công ty. Muốn sửa, nhờ chủ công ty mở khoá tháng (phải ghi lý do). Chỉ cần thêm ảnh chứng từ hoặc ghi chú thì dùng nút “Bổ sung”.",
   UNKNOWN:
     "Kỳ kế toán của phiếu này đã đóng nên không thao tác được nữa. Hãy lập phiếu điều chỉnh ở kỳ hiện tại.",
 };
 
-/** Vẫn cho phép bổ sung ảnh chứng từ / ghi chú sau khi chốt (quyết định #8). */
+/**
+ * CHỈ dùng cho CASHBOOK_CLOSED (quyết định #8): trigger khoá sổ quỹ còn cho thêm
+ * ảnh chứng từ / ghi chú ngay trên phiếu. KHÔNG hiện cho PROFIT_LOCKED — tháng đã
+ * chốt lợi nhuận khoá tuyệt đối cả ảnh/ghi chú trên phiếu, chỉ còn nút “Bổ sung”
+ * (lưu riêng). Đo 25/09/2026: chưa màn hình nào dùng hằng này.
+ */
 export const ANNOTATE_STILL_ALLOWED_NOTE =
-  "Vẫn có thể bổ sung ảnh chứng từ và ghi chú cho phiếu đã chốt — chỉ số tiền là khoá cứng.";
+  "Sổ quỹ đã chốt vẫn cho bổ sung ảnh chứng từ và ghi chú trên phiếu — số tiền và mọi thông tin khác bị khoá cứng.";
 
 export function periodBlockCodeFromError(message: string | null | undefined): PeriodBlockCode | null {
   const msg = message ?? "";

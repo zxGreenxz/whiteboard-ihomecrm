@@ -107,6 +107,8 @@ export interface ReservationDepositRow {
   total_amount: number;
   voucher_date: string;
   approval_status: ReservationStatus;
+  /** Phiên bản duyệt — nút Duyệt gửi kèm để phiếu vừa bị sửa không bị duyệt nhầm. */
+  approval_version: number;
   building_id: string;
   building_name: string;
   room_id: string | null;
@@ -146,7 +148,7 @@ export const useReservationDeposits = (buildingIds?: string[]) => {
             .from('income_expenses')
             .select(
               `id, code, name, payer_name, total_amount, voucher_date,
-               approval_status, building_id, room_id,
+               approval_status, approval_version, building_id, room_id,
                building:buildings!income_expenses_building_id_fkey ( id, name ),
                room:rooms!income_expenses_room_id_fkey ( id, name ),
                ${RESERVATION_SETTLED_EMBED},
@@ -208,6 +210,7 @@ export const useReservationDeposits = (buildingIds?: string[]) => {
           total_amount: depositSum || Number(v.total_amount) || 0,
           voucher_date: v.voucher_date,
           approval_status: v.approval_status,
+          approval_version: Number(v.approval_version ?? 1),
           building_id: v.building?.id ?? v.building_id ?? '',
           building_name: v.building?.name ?? '—',
           room_id: v.room?.id ?? v.room_id ?? null,

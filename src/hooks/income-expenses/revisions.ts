@@ -14,6 +14,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Json } from "@/integrations/supabase/types";
 import {
   incomeExpenseRevisionSchema,
+  isStaleVersionError,
   newRevisionIdempotencyKey,
   reviseResultSchema,
   revisionErrorMessage,
@@ -73,7 +74,10 @@ export interface ReviseIncomeExpenseInput {
   items?: ReviseItemInput[] | null;
   reason?: string | null;
   idempotencyKey?: string;
-  /** Tắt toast mặc định khi màn gọi tự báo (vd hộp Duyệt sửa rồi duyệt liền). */
+  /**
+   * Tắt toast THÀNH CÔNG khi màn gọi tự báo (vd hộp Duyệt sửa rồi duyệt liền).
+   * Lỗi vẫn luôn báo — không được để người dùng bấm mà không biết vì sao hỏng.
+   */
   silent?: boolean;
 }
 
@@ -112,8 +116,12 @@ export function useReviseIncomeExpense() {
           : "Không có gì thay đổi.",
       );
     },
-    onError: (error, input) => {
-      if (!input.silent) toast.error(revisionErrorMessage(error));
+    onError: (error) => {
+      // Phiếu vừa bị người khác sửa/duyệt: kéo bản mới về cho mọi màn đang mở.
+      if (isStaleVersionError(error)) {
+        void Promise.all(VOUCHER_QUERY_KEYS.map((key) => client.invalidateQueries({ queryKey: key })));
+      }
+      toast.error(revisionErrorMessage(error));
     },
   });
 }

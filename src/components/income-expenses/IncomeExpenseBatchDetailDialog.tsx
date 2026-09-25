@@ -27,6 +27,7 @@ import { format } from 'date-fns';
 import { formatPeriod } from '@/lib/monthPeriod';
 import { useIsMobile } from '@/hooks/use-mobile';
 import IncomeExpenseDetailDialog from './IncomeExpenseDetailDialog';
+import BatchAccountReasonDialog from './BatchAccountReasonDialog';
 import {
   Select,
   SelectContent,
@@ -89,14 +90,21 @@ export function IncomeExpenseBatchDetailDialog({
   const { data: isAdmin = false } = useIsAdmin();
   const { data: accounts = [] } = useAccounts();
   const updateBatchAccount = useUpdateBatchAccount();
+  // Sổ vừa chọn, chờ người dùng gõ lý do rồi mới đổi cả đợt.
+  const [pendingAccountId, setPendingAccountId] = useState<string | null>(null);
 
-  // Tất cả phiếu con cùng sổ quỹ? Nếu có, admin được đổi sổ quỹ cả đợt.
+  // Tất cả phiếu con cùng sổ quỹ và phiếu còn hiệu lực đều Chờ duyệt? Nếu có,
+  // admin được đổi sổ quỹ cả đợt (mỗi phiếu một lần sửa có lưu vết).
   const allSameAccount =
     !!batch &&
     batch.vouchers.length > 0 &&
     batch.vouchers.every((v) => v.account_id === batch.vouchers[0].account_id);
+  const allPending =
+    !!batch &&
+    batch.vouchers.every((v) => v.approval_status !== 'APPROVED');
   const sharedAccountId = allSameAccount ? batch?.vouchers[0]?.account_id ?? null : null;
-  const canEditAccount = isAdmin && allSameAccount && !!batch && !batch.all_cancelled;
+  const canEditAccount =
+    isAdmin && allSameAccount && allPending && !!batch && !batch.all_cancelled;
 
   const attachments = batch?.attachments ?? [];
   const isLightboxOpen = lightboxIdx !== null;
@@ -205,10 +213,7 @@ export function IncomeExpenseBatchDetailDialog({
                     value={sharedAccountId}
                     onValueChange={(value) => {
                       if (value && value !== sharedAccountId) {
-                        updateBatchAccount.mutate({
-                          batchId: batch.id,
-                          accountId: value,
-                        });
+                        setPendingAccountId(value);
                       }
                     }}
                     disabled={updateBatchAccount.isPending}
@@ -452,6 +457,24 @@ export function IncomeExpenseBatchDetailDialog({
         attachments={attachments}
         index={lightboxIdx}
         onIndexChange={setLightboxIdx}
+      />
+
+      <BatchAccountReasonDialog
+        open={!!pendingAccountId}
+        onOpenChange={(o) => {
+          if (!o) setPendingAccountId(null);
+        }}
+        fromName={batch.account_name}
+        toName={accounts.find((a) => a.id === pendingAccountId)?.name ?? null}
+        voucherCount={batch.vouchers.filter((v) => v.approval_status !== 'CANCELLED').length}
+        pending={updateBatchAccount.isPending}
+        onConfirm={(reason) => {
+          if (!pendingAccountId) return;
+          updateBatchAccount.mutate(
+            { batchId: batch.id, accountId: pendingAccountId, reason },
+            { onSettled: () => setPendingAccountId(null) },
+          );
+        }}
       />
     </>
   );

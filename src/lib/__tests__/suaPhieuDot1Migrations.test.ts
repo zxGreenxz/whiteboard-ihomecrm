@@ -85,7 +85,11 @@ describe("M1 ma_phieu_duy_nhat", () => {
   });
 
   it("đếm CHUNG cả tổ chức, không còn theo từng người lập", () => {
-    const fn = thanHamDangChay("auto_generate_voucher_code");
+    const fn = thanHamDangChay("next_voucher_code_v1", "app_private");
+    // Trigger lúc lập phiếu chỉ còn gọi hàm cấp số chung (cửa sửa phiếu dùng lại khi đổi Thu/Chi).
+    const trig = thanHamDangChay("auto_generate_voucher_code");
+    expect(trig).toContain("app_private.next_voucher_code_v1(NEW.organization_id, NEW.type)");
+    expect(trig).not.toContain("voucher_code_counters");
     expect(fn).toContain("app_private.voucher_code_counters");
     expect(fn).not.toMatch(/\buser_id\b/);
     expect(fn).not.toContain("pg_advisory_xact_lock");
@@ -93,11 +97,21 @@ describe("M1 ma_phieu_duy_nhat", () => {
     expect(fn).toMatch(/lpad\(v_next::text, 3, '0'\)/);
   });
 
-  it("khởi tạo từ số đuôi lớn nhất của cả tổ chức trong tháng", () => {
-    const fn = thanHamDangChay("auto_generate_voucher_code");
+  it("khởi tạo từ số đuôi lớn nhất của MỌI mã cùng tiền tố trong tổ chức (không lọc loại)", () => {
+    // Sự cố 25/09 PC2609124: bộ đếm cũ lọc theo loại nên cấp lại mã của phiếu đã đổi loại.
+    const fn = thanHamDangChay("next_voucher_code_v1", "app_private");
     expect(fn).toMatch(/max\(substring\(ie\.code FROM 7\)::integer\)/);
-    expect(fn).toMatch(/ie\.organization_id = NEW\.organization_id/);
+    expect(fn).toMatch(/ie\.organization_id = p_org/);
+    expect(fn).not.toMatch(/ie\.type\s*=/);
     expect(fn).toMatch(/ON CONFLICT \(organization_id, prefix, yymm\) DO NOTHING/);
+  });
+
+  it("hàm cấp số không mở cho người gọi thẳng", () => {
+    const code = boChuThich(sql);
+    expect(code).toMatch(
+      /REVOKE ALL ON FUNCTION app_private\.next_voucher_code_v1\(uuid, text\)\s+FROM PUBLIC, anon, authenticated, service_role;/,
+    );
+    expect(code).not.toMatch(/GRANT EXECUTE ON FUNCTION app_private\.next_voucher_code_v1/);
   });
 
   it("chỉ mục duy nhất chỉ phủ phiếu ghi sau khi chạy (không đụng mã cũ)", () => {
@@ -263,9 +277,27 @@ describe("M3 sua_phieu_cho_duyet", () => {
     );
     expect(cot).not.toContain("approval_status");
     expect(cot).not.toContain("birth_operation_id");
+    expect(cot).not.toContain("code");
     expect(fn).toMatch(/NEW\.approval_status IS DISTINCT FROM 'UNAPPROVED'/);
     expect(fn).toMatch(/COALESCE\(OLD\.posting_status, 'UNPOSTED'\) = 'POSTED'/);
     expect(code).toMatch(/CREATE TRIGGER a01_ie_revise_scope_delta\s+BEFORE UPDATE ON public\.income_expenses/);
+  });
+
+  it("đổi Thu/Chi: cấp mã MỚI đúng tiền tố; trigger chỉ cho đổi mã khi đổi loại", () => {
+    // Sự cố 25/09 PC2609124: phiếu đổi Chi → Thu giữ mã PC làm kẹt dãy mã phiếu chi.
+    const guard = thanHamDangChay("ie_revise_scope_delta_guard", "app_private");
+    expect(guard).toMatch(/IF NEW\.type IS DISTINCT FROM OLD\.type THEN[\s\S]*?v_cho_doi := v_cho_doi \|\| 'code'::text;/);
+    expect(guard).toMatch(/NEW\.code IS NOT DISTINCT FROM OLD\.code/);
+    const fn = thanHamDangChay("revise_pending_income_expense_v1");
+    expect(fn).toMatch(
+      /IF t_type IS DISTINCT FROM v_row\.type THEN\s+t_code := app_private\.next_voucher_code_v1\(v_org, t_type\);\s+v_changed := v_changed \|\| 'code'::text;\s+ELSE\s+t_code := v_row\.code;/,
+    );
+    expect(fn).toMatch(/SET type = t_type,\s+code = t_code,/);
+    // Cấp mã SAU mọi bước kiểm (lần sửa bị từ chối không đốt số).
+    expect(fn.indexOf("app_private.next_voucher_code_v1(v_org, t_type)")).toBeGreaterThan(
+      fn.indexOf("PERFORM app_private.assert_period_open_for_edit_v1(p_voucher, 'sửa')"),
+    );
+    expect(thanHamDangChay("ie_revision_snapshot_v1", "app_private")).toContain("'code', ie.code");
   });
 
   it("writer: khoá org rồi khoá phiếu, CAS phiên bản, mở/đóng cửa REVISE", () => {
@@ -519,6 +551,37 @@ describe("M5 dong_duong_cu_sua_phieu", () => {
     );
   });
 
-  // Chỉ bật khi giao diện đã chuyển xong (Phase 2): M5 áp SAU khi web mới lên.
-  it.todo("giao diện không còn gọi 5 hàm đã gỡ (bật ở Phase 2)");
+  // M5 áp SAU khi web mới lên: giao diện, edge function và kịch bản E2E không
+  // được còn gọi hàm sắp gỡ (kênh sửa cũ ie_compat_update_pending_v2 vẫn sống
+  // nhưng chỉ còn tên/ghi chú/ảnh của phiếu đã duyệt — kiểm ở test bên trên).
+  it("giao diện, edge function, E2E không còn gọi 5 hàm đã gỡ", () => {
+    const boQua = (duong: string) => {
+      const d = duong.split("\\").join("/");
+      return d.endsWith("src/integrations/supabase/types.ts") || /\/__tests__\/|\.test\.tsx?$/.test(d);
+    };
+    const conGoi: string[] = [];
+    const duyet = (thuMuc: string) => {
+      for (const muc of readdirSync(thuMuc, { withFileTypes: true })) {
+        const duong = join(thuMuc, muc.name);
+        if (muc.isDirectory()) {
+          if (muc.name !== "node_modules") duyet(duong);
+          continue;
+        }
+        if (!/\.(ts|tsx|js|mjs)$/.test(muc.name) || boQua(duong)) continue;
+        // Bỏ chú thích (chú thích được phép nhắc tên hàm cũ để giải thích lịch
+        // sử). `//` chỉ tính là chú thích khi đứng sau khoảng trắng/đầu dòng —
+        // "https://…/rpc/<tên>" trong chuỗi vẫn được soi.
+        const noiDung = readFileSync(duong, "utf8")
+          .replace(/\/\*[\s\S]*?\*\//g, "")
+          .replace(/(^|\s)\/\/.*$/gm, "$1");
+        for (const ten of TEN_GO) {
+          if (new RegExp(`['"\`]${ten}['"\`]`).test(noiDung)) conGoi.push(`${duong} → ${ten}`);
+        }
+      }
+    };
+    for (const goc of ["src", join("supabase", "functions"), join(".e2e-fleet", "specs")]) {
+      duyet(join(process.cwd(), goc));
+    }
+    expect(conGoi).toEqual([]);
+  });
 });

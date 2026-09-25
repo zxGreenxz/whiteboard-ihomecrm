@@ -266,6 +266,16 @@ describe("profit close V2 boundaries", () => {
     expect(canonicalSection).toContain("profit_reset_checked_v2");
   });
 
+  it("unlocks only through profit_unlock_v2 with a mandatory reason, never the old v1 path", () => {
+    // Chủ chốt 25/09/2026: "Mở khoá tháng phải ghi lý do (lưu lại)". Hàm v1
+    // không lý do, không vết bị gỡ khỏi máy chủ.
+    expect(hookSource).toContain('supabase.rpc("profit_unlock_v2"');
+    expect(hookSource).toMatch(/p_reason: reason,\s*p_idempotency_key: `profit-unlock-/);
+    expect(hookSource).not.toMatch(/unlock_profit_month_v\d/);
+    expect(uiSource).not.toMatch(/unlock_profit_month_v\d/);
+    expect(uiSource).toContain("Lý do mở khoá");
+  });
+
   it("fetches complete profit histories with stable paged queries", () => {
     expect(hookSource).toContain('from("profit_monthly")');
     expect(hookSource).toContain('label: "profit.monthlyHistory"');

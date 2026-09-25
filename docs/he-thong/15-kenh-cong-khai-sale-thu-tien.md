@@ -142,7 +142,7 @@ flowchart LR
 
 ### 2.6. Thu tiền và Đóng tiền tập trung theo kỳ
 
-- Phần thu khách đọc/ghi các bảng sẵn có: `invoices` + `invoice_items` + `payments` (domain 07), `income_expenses` + `income_expense_types` + `accounts` (domain 08), `excess_amounts` (thu dư/hoàn tác). Logic FE thuần nằm ở [src/lib/collect.ts](src/lib/collect.ts), [collectPlan.ts](src/lib/collectPlan.ts) và [cashAccount.ts](src/lib/cashAccount.ts).
+- Phần thu khách đọc/ghi các bảng sẵn có: `invoices` + `invoice_items` + `payments` (domain 07), `income_expenses` + `income_expense_types` + `accounts` (domain 08), `excess_amounts` (thu dư/hoàn tác). Logic FE thuần nằm ở [src/lib/collect.ts](src/lib/collect.ts), [collectPlan.ts](src/lib/collectPlan.ts) và [duplicateCollection.ts](src/lib/duplicateCollection.ts) (cảnh báo thu trùng 30 phút); sổ nhận tiền lấy từ [useReceivingCashbooks.ts](src/hooks/useReceivingCashbooks.ts).
 - Khối **Period Fee V2** dùng `building_fee_accounts` để lưu mã NCC/chủ hộ, mức tiền và sổ mặc định theo `(building_id, fee_category)`. Cờ "Không áp dụng" có nguồn duy nhất là `buildings.hidden_fixed_expenses`; cột `building_fee_accounts.not_applicable` đã deprecated.
 - Lưới phí gồm 9 key `tien_nha`, `dien`, `nuoc`, `internet`, `quan_ly`, `ve_sinh`, `cong_an`, `rac`, `thang_may`; thêm các khu riêng **Hợp đồng & quyết toán** (hoa hồng môi giới · hoàn khách thanh lý · thưởng Sale — chỉ rà soát → duyệt → chi, không tạo phiếu, đi chung các nút duyệt V2 của Thu chi), **bảo trì** và sổ **Cọc đã thu**. Khu Hợp đồng & quyết toán **chỉ có trên màn rộng** (PeriodFeePanel, từ 1024px): menu điện thoại không liệt kê nó, và nếu sheet đứng ở mục này (lựa chọn loại phí lưu chung một khoá sessionStorage với bảng máy tính — vd chọn ở máy tính rồi tải lại trang) thì hiện lời nhắc mở bằng máy tính. `get_period_fee_status` nhận diện phiếu theo `fee_type_matches` trên mọi type nhìn thấy trong các toà được phép, không lọc type theo owner vì dữ liệu thật có phiếu do nhiều người tạo.
 - `pay_period_fee` nhận **tổng tiền của cả khoảng kỳ**; `start_date/end_date` trên item làm nguồn accrual để báo cáo chia theo tháng. Có chip số kỳ và nhập tuỳ ý 1–36 kỳ. RPC chống đóng trùng phiếu APPROVED, trả cảnh báo trước khi user force ghi.
@@ -322,7 +322,7 @@ Dữ liệu ghi (mỗi **dòng phương thức** = một RPC atomic):
 
 Quy tắc kèm theo:
 
-- **Resolve sổ quỹ nhận theo phương thức** ([cashAccount.ts](src/lib/cashAccount.ts)): `TM` → sổ tên kết thúc `"…Thu"` thuộc user đang đăng nhập (**user có nhiều sổ "…Thu" thì ưu tiên sổ `is_default`**) → sổ `"Chung"` → sổ trùng tên toà; `TK` → `buildings.default_account_id_tk` → sổ trùng tên toà; `TT` → `buildings.default_account_id_tt` → sổ trùng tên toà. Không resolve được → **throw, chặn ghi** (không insert `account_id` rỗng).
+- **Sổ nhận tiền theo hình thức** (đợt 1 sửa phiếu, 25/09/2026 — máy chủ quyết, hook [useReceivingCashbooks.ts](src/hooks/useReceivingCashbooks.ts) đọc `get_receiving_cashbooks_v1`): **TM** = sổ tiền mặt riêng của NGƯỜI THU (`app_private.personal_cash_books`, chưa cài ⇒ chặn thu tiền mặt); **TK/TT** = danh sách sổ của toà (sổ mặc định `buildings.default_account_id_tk/tt` + sổ phụ `app_private.building_receiving_cashbooks`) giao với sổ người thu giữ/biết, rỗng ⇒ chặn. `record_invoice_collection_v5` từ chối sổ ngoài danh sách. Quy ước theo TÊN sổ ("…Thu"/"Chung"/trùng tên toà) đã bỏ.
 - **Tiền thối thực tế**: nhấp vào số tiền thối ở bàn phím hoặc form nhiều dòng để sửa. Khoản thiếu được tính sau khi trừ số thối thực tế. Không được thối ít hơn phần khách đưa dư, hoặc vượt tiền mặt đã nhận. Đổi số khách đưa/phương thức hoặc chọn nợ khách sẽ đặt lại tiền thối.
 - **Làm tròn tự động**: residual sau thu `0 < x < 10.000đ` → gắn metadata `rounding_amount` + sổ `"Làm tròn tiền thiếu"` (audit, **không trừ số dư**) → trigger DB mark invoice `PAID`. Áp cho khách đóng thiếu hoặc thối thêm, không áp khi còn cọc; đúng 10.000đ vẫn còn nợ. Cùng cơ chế với [08 §4.10](08-thu-chi-so-quy.md).
 - **Khoản bỏ qua**: mở ở Thu tiền/báo cáo hoặc Hoá đơn để xem số tiền, số hoá đơn, chi tiết theo kỳ hoá đơn và người thu; lọc thêm toà. Tổng tính ở server, không bị giới hạn theo trang. Lần thu đã hoàn tác không tính vào tổng; khoản cũ thiếu thông tin được ghi là dữ liệu cũ.
@@ -448,7 +448,7 @@ flowchart LR
     Q -->|không refetch| MP[ManagePanel desktop]
     Q -->|không refetch| CR[CollectionReport]
     A -->|"THU → drawer (Thu đủ / keypad ×1000 / form TM-TK-TT)"| C{useQuickCollect + planCollect}
-    C -->|"resolve sổ theo phương thức (cashAccount.ts):\nTM: '…Thu' is_default → 'Chung' → tên toà\nTK/TT: default_account_id_* → tên toà"| D["useBulkRecordPayment → v4/v3 adapter"]
+    C -->|"sổ theo hình thức (máy chủ):\nTM: sổ tiền mặt riêng người thu\nTK/TT: danh sách sổ của toà"| D["useBulkRecordPayment → v4/v3 adapter"]
     D --> E[("payment + voucher + item atomic / line")]
     E --> F[("recompute invoice + audit/idempotency")]
     D -.->|"residual < 10K"| G["metadata rounding + sổ 'Làm tròn tiền thiếu'"]

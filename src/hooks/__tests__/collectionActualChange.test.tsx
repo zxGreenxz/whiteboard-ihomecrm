@@ -59,6 +59,35 @@ it('bulk cannot silently retain money by lowering change', async () => {
   expect(mock.rpc).not.toHaveBeenCalled();
 });
 
+it('bảng sổ theo hình thức là nguồn duy nhất: thiếu sổ TK thì lỗi, không rơi về account_id', async () => {
+  const { result } = renderHook(() => useBulkRecordPayment());
+  const mutation = result.current as unknown as { mutationFn: (input: BulkPaymentParams) => Promise<BulkPaymentResult> };
+  const response = await mutation.mutationFn({ payment_date: '2026-09-08', items: [{ invoice_id: 'invoice',
+    amount_tm: 0, amount_tk: 1_000_000, amount_tt: 0, change_amount: 0,
+    account_id: 'cash', accounts: { TM: 'cash' }, change_account_id: null }] });
+  expect(response.failures).toEqual([expect.objectContaining({ message: 'Thiếu sổ quỹ nhận cho TK' })]);
+  expect(mock.rpc).not.toHaveBeenCalled();
+});
+
+it('mỗi hình thức vào đúng sổ của nó', async () => {
+  mock.from.mockImplementation(() => {
+    const query = { select: () => query, eq: () => query,
+      single: async () => ({ data: { id: 'invoice', total_amount: 4_805_000, paid_amount: 0, contract_id: 'contract', invoice_items: [] }, error: null }),
+      in: async () => ({ data: [{ id: 'cash', is_virtual: false }, { id: 'bank', is_virtual: false }], error: null }) };
+    return query;
+  });
+  const { result } = renderHook(() => useBulkRecordPayment());
+  const mutation = result.current as unknown as { mutationFn: (input: BulkPaymentParams) => Promise<BulkPaymentResult> };
+  const response = await mutation.mutationFn({ payment_date: '2026-09-08', items: [{ invoice_id: 'invoice',
+    amount_tm: 805_000, amount_tk: 4_000_000, amount_tt: 0, change_amount: 0,
+    account_id: 'cash', accounts: { TM: 'cash', TK: 'bank' }, change_account_id: null }] });
+  expect(response.ok).toEqual(['invoice']);
+  expect(mock.rpc.mock.lastCall?.[1].p_tenders).toMatchObject([
+    { payment_method: 'TM', account_id: 'cash' },
+    { payment_method: 'TK', account_id: 'bank' },
+  ]);
+});
+
 it('fresh deposit data keeps the shortage as debt while still recording actual money', async () => {
   mock.depositDue = 1_000_000;
   const { result } = renderHook(() => useBulkRecordPayment());

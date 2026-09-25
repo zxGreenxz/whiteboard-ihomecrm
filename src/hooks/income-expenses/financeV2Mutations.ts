@@ -11,15 +11,17 @@
 //   approve_and_post_income_expense_v2(input jsonb)   -> jsonb
 // input = PostFinanceExecutionInput (src/lib/incomeExpensePostingValidation.ts).
 
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 import type { PostFinanceExecutionInput } from "@/lib/incomeExpensePostingValidation";
 import { todayISO } from '@/lib/collect';
 import { uploadFile, deleteFile, sanitizeStorageFileName } from "@/lib/storage";
 import { validateAttachmentFile } from "@/components/income-expenses/AttachmentUpload";
 import { periodBlockMessage } from "@/lib/cashbookClosing";
+import { approvalErrorMessage, isStaleVersionError } from "@/lib/incomeExpenseRevision";
 
 // RPC v2 chưa có trong generated types cho tới lần regen sau forward-apply.
 type RpcResult = { data: unknown; error: { code?: string; message?: string } | null };
@@ -81,7 +83,12 @@ export function useApproveIncomeExpenseV2() {
       invalidate();
       toast.success("Đã duyệt phiếu — chưa ghi sổ (Đã Duyệt - Chưa Thu/Chi)");
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => {
+      // Phiếu vừa bị sửa khi đang mở hộp Duyệt (đợt 1 sửa phiếu): nói bằng lời
+      // người đọc được và kéo bản mới về, thay cho "approval_version mismatch".
+      if (isStaleVersionError(e)) invalidate();
+      toast.error(approvalErrorMessage(e));
+    },
   });
 }
 
@@ -292,6 +299,39 @@ export interface AttachPostingEvidenceOptions {
   organizationId?: string | null;
 }
 
+/** Kho ảnh đính kèm của phiếu thu chi — cũng là kho mà adopt nhận làm chứng từ (7ai). */
+const POSTING_ATTACHMENT_BUCKET = "income-expense-attachments";
+
+/**
+ * Tải MỘT file lên kho ảnh đính kèm, CHƯA gắn vào phiếu nào. Trả URL công khai
+ * (có đuôi file ⇒ có thumbnail), hoặc null khi file không hợp lệ / tải hỏng —
+ * lý do đã được toast.
+ */
+async function uploadPostingAttachmentFile(file: File, userId: string): Promise<string | null> {
+  const invalid = validateAttachmentFile(file);
+  if (invalid) {
+    toast.error(invalid);
+    return null;
+  }
+
+  const path = `${userId}/${Date.now()}-${sanitizeStorageFileName(file.name)}`;
+
+  // Bắt lỗi để BÁO, không để nuốt: giữ lại đối tượng lỗi rồi quyết định ở
+  // ngoài khối catch (catch trả rỗng là mẫu bị gate error-swallow chặn).
+  let url: string | null = null;
+  let loiTai: unknown = null;
+  try {
+    url = await uploadFile(POSTING_ATTACHMENT_BUCKET, path, file);
+  } catch (e) {
+    loiTai = e;
+  }
+  if (!url) {
+    toast.error((loiTai as Error)?.message || "Không tải được ảnh lên kho");
+    return null;
+  }
+  return url;
+}
+
 /**
  * DÁN ẢNH TRONG HỘP THOẠI THU/CHI = ĐÍNH ẢNH LÊN PHIẾU, rồi nhận chính file đó
  * làm chứng từ. Một tấm ảnh, một file trong kho, hai bản ghi trỏ về nó.
@@ -312,6 +352,10 @@ export interface AttachPostingEvidenceOptions {
  * ĐƯỜNG LÙI: `annotate` từ chối 42501 khi actor không đủ quyền đính ảnh (vd thủ
  * quỹ giữ sổ khác sổ đang ghi trên phiếu). Lúc đó xoá file vừa tải cho khỏi rác
  * rồi quay về đường cũ — thà ảnh không hiện ở dòng còn hơn chặn người ta chi tiền.
+ *
+ * TỪ 25/09/2026 hộp Thu/Chi (`IncomeExpensePostingDialog`) KHÔNG dùng hàm này nữa
+ * — nó gom ảnh tới lúc xác nhận (`usePostingAttachmentDraft`). Hàm còn phục vụ
+ * `SettlementLifecycleModal`, vẫn ghi ngay khi dán (ghi nhận cho đợt 2).
  */
 export function useAttachPostingEvidence() {
   const qc = useQueryClient();
@@ -321,28 +365,9 @@ export function useAttachPostingEvidence() {
       file: File,
       opts: AttachPostingEvidenceOptions,
     ): Promise<AttachPostingEvidenceResult | null> => {
-      const invalid = validateAttachmentFile(file);
-      if (invalid) {
-        toast.error(invalid);
-        return null;
-      }
-
-      const bucket = "income-expense-attachments";
-      const path = `${opts.userId}/${Date.now()}-${sanitizeStorageFileName(file.name)}`;
-
-      // Bắt lỗi để BÁO, không để nuốt: giữ lại đối tượng lỗi rồi quyết định ở
-      // ngoài khối catch (catch trả rỗng là mẫu bị gate error-swallow chặn).
-      let url: string | null = null;
-      let loiTai: unknown = null;
-      try {
-        url = await uploadFile(bucket, path, file);
-      } catch (e) {
-        loiTai = e;
-      }
-      if (!url) {
-        toast.error((loiTai as Error)?.message || "Không tải được ảnh lên kho");
-        return null;
-      }
+      const bucket = POSTING_ATTACHMENT_BUCKET;
+      const url = await uploadPostingAttachmentFile(file, opts.userId);
+      if (!url) return null;
 
       const ann = await rpc("annotate_income_expense_v1", {
         p_voucher: opts.voucherId,
@@ -430,5 +455,129 @@ export function useRemovePostingAttachment() {
       return adopted;
     },
     [qc],
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Hộp Thu/Chi GOM thay đổi ảnh tới lúc xác nhận (E2, chủ chốt 25/09/2026).
+//
+// Trước đây dán ảnh = ghi lên phiếu NGAY (useAttachPostingEvidence), gỡ ảnh cũng
+// vậy (useRemovePostingAttachment) — bấm Huỷ bỏ thì phiếu đã đổi rồi. Luật mới:
+//   dán/thêm  → chỉ tải lên kho, hộp thoại giữ URL trong danh sách chờ;
+//   bấm X     → ảnh vừa thêm: xoá file luôn; ảnh cũ của phiếu: chỉ ẩn đi;
+//   xác nhận  → MỘT lệnh annotate (thêm + gỡ) → adopt → rồi mới ghi sổ;
+//   huỷ/đóng  → xoá đúng các file vừa tải trong lần mở này, phiếu không đổi.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Thay đổi ảnh đã gom trong hộp Thu/Chi, chờ ghi lên phiếu. */
+export interface PostingAttachmentChanges {
+  /** Ảnh vừa tải lên kho trong lần mở hộp này. */
+  add: string[];
+  /** Ảnh đang có trên phiếu mà người dùng bấm X. */
+  remove: string[];
+}
+
+/**
+ * Kết quả ghi ảnh lên phiếu. Kiểu phẳng thay vì union: repo chạy `strict: false`
+ * nên `if (res.ok)` không thu hẹp được union.
+ */
+export interface CommitPostingAttachmentsResult {
+  ok: boolean;
+  /** Toàn bộ chứng từ hợp lệ của phiếu sau khi ghi (rỗng khi `ok=false`). */
+  evidenceIds: string[];
+  skipped: { url: string; reason: string }[];
+  /** Câu báo cho người dùng khi `ok=false`. */
+  message: string | null;
+  /** Hỏng vì kỳ đã đóng / tháng đã chốt — lỗi THẬT, không có đường lùi. */
+  periodBlocked: boolean;
+}
+
+/**
+ * GHI thay đổi ảnh đã gom lên phiếu — bước đầu của nút xác nhận, TRƯỚC lệnh ghi sổ.
+ *
+ * Thêm và gỡ đi chung MỘT lệnh `annotate_income_expense_v1` nên phiếu đổi trọn
+ * gói hoặc không đổi gì. Sau đó adopt để chính các file trên phiếu thành chứng
+ * từ FINALIZED. Thứ tự "ghi ảnh → adopt → ghi sổ" là bắt buộc: lệnh ghi sổ đòi
+ * mã chứng từ (không nhận ảnh trong payload), mà adopt chỉ nhận file ĐANG nằm
+ * trong `attachments` của phiếu.
+ *
+ * Không toast: hộp thoại quyết định câu báo và có đi đường lùi hay không.
+ */
+export async function commitPostingAttachmentChanges(
+  voucherId: string,
+  changes: PostingAttachmentChanges,
+): Promise<CommitPostingAttachmentsResult> {
+  const ann = await rpc("annotate_income_expense_v1", {
+    p_voucher: voucherId,
+    p_add_attachments: changes.add,
+    p_remove_attachments: changes.remove,
+  });
+  if (ann.error) {
+    const blocked = periodBlockMessage(ann.error.message);
+    return {
+      ok: false,
+      evidenceIds: [],
+      skipped: [],
+      message: blocked || ann.error.message || "Không ghi được ảnh lên phiếu",
+      periodBlocked: !!blocked,
+    };
+  }
+  const adopted = await adoptVoucherAttachmentsAsEvidence(voucherId);
+  return {
+    ok: true,
+    evidenceIds: adopted.evidenceIds,
+    skipped: adopted.skipped,
+    message: null,
+    periodBlocked: false,
+  };
+}
+
+/**
+ * Xoá khỏi kho các file đã tải trong một lần mở hộp Thu/Chi mà KHÔNG được ghi
+ * lên phiếu (Huỷ bỏ, đóng hộp, gỡ ảnh vừa thêm, hoặc đã chuyển sang đường lùi).
+ * Chỉ được gọi với URL do chính lần mở đó tải lên — ảnh có sẵn của phiếu không
+ * bao giờ đi qua đây. Lỗi từng file thì bỏ qua (xem `cleanupOrphanUpload`).
+ */
+export async function discardPostingAttachmentUploads(urls: string[]): Promise<void> {
+  await Promise.all(urls.map((u) => cleanupOrphanUpload(POSTING_ATTACHMENT_BUCKET, u)));
+}
+
+/**
+ * Bộ ba cho hộp Thu/Chi: `upload` chỉ tải lên kho (thư mục theo tài khoản đang
+ * đăng nhập), `commit` ghi thay đổi lên phiếu lúc xác nhận rồi làm mới danh sách
+ * thu chi, `discard` xoá file vừa tải khi huỷ.
+ */
+export function usePostingAttachmentDraft() {
+  const { data: authUser } = useAuth();
+  const qc = useQueryClient();
+  const userId = authUser?.id ?? "";
+
+  const upload = useCallback(
+    async (file: File): Promise<string | null> => {
+      if (!userId) {
+        toast.error("Chưa xác định được tài khoản đăng nhập — thử lại sau giây lát.");
+        return null;
+      }
+      return uploadPostingAttachmentFile(file, userId);
+    },
+    [userId],
+  );
+
+  const commit = useCallback(
+    async (voucherId: string, changes: PostingAttachmentChanges) => {
+      const res = await commitPostingAttachmentChanges(voucherId, changes);
+      if (res.ok) {
+        // Ảnh đã nằm trên phiếu — dòng thu chi phải thấy ngay, kể cả khi lệnh ghi sổ sau đó lỗi.
+        qc.invalidateQueries({ queryKey: ["income-expenses"] });
+        qc.invalidateQueries({ queryKey: ["voucher-with-batch"] });
+      }
+      return res;
+    },
+    [qc],
+  );
+
+  return useMemo(
+    () => ({ upload, commit, discard: discardPostingAttachmentUploads }),
+    [upload, commit],
   );
 }

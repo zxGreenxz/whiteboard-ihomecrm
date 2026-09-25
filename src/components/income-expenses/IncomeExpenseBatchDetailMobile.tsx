@@ -12,6 +12,7 @@ import type {
   IncomeExpenseWithRelations,
 } from "@/hooks/useIncomeExpenses";
 import IncomeExpenseDetailMobile from "./IncomeExpenseDetailMobile";
+import BatchAccountReasonDialog from "./BatchAccountReasonDialog";
 
 interface Props {
   batch: IncomeExpenseBatchSummary;
@@ -45,6 +46,8 @@ export function IncomeExpenseBatchDetailMobile({
   const { data: isAdmin = false } = useIsAdmin();
   const { data: accounts = [] } = useAccounts();
   const updateBatchAccount = useUpdateBatchAccount();
+  // Sổ vừa chọn, chờ người dùng gõ lý do rồi mới đổi cả đợt.
+  const [pendingAccountId, setPendingAccountId] = useState<string | null>(null);
 
   const isExpense = batch.type === "EXPENSE";
   const accent = isExpense ? "#d6453f" : "#1f9d57";
@@ -52,8 +55,10 @@ export function IncomeExpenseBatchDetailMobile({
   const allSameAccount =
     batch.vouchers.length > 0 &&
     batch.vouchers.every((v) => v.account_id === batch.vouchers[0].account_id);
+  // Chỉ đổi sổ cả đợt khi phiếu còn hiệu lực đều Chờ duyệt (mỗi phiếu một lần sửa có lưu vết).
+  const allPending = batch.vouchers.every((v) => v.approval_status !== "APPROVED");
   const sharedAccountId = allSameAccount ? batch.vouchers[0]?.account_id ?? null : null;
-  const canEditAccount = isAdmin && allSameAccount && !batch.all_cancelled;
+  const canEditAccount = isAdmin && allSameAccount && allPending && !batch.all_cancelled;
 
   const Row = ({ label, value }: { label: string; value: React.ReactNode }) => (
     <div className="vd-row">
@@ -131,7 +136,7 @@ export function IncomeExpenseBatchDetailMobile({
                   onChange={(e) => {
                     const value = e.target.value;
                     if (value && value !== sharedAccountId) {
-                      updateBatchAccount.mutate({ batchId: batch.id, accountId: value });
+                      setPendingAccountId(value);
                     }
                   }}
                   style={{
@@ -309,6 +314,24 @@ export function IncomeExpenseBatchDetailMobile({
         attachments={batch.attachments ?? []}
         index={lightboxIdx}
         onIndexChange={setLightboxIdx}
+      />
+
+      <BatchAccountReasonDialog
+        open={!!pendingAccountId}
+        onOpenChange={(o) => {
+          if (!o) setPendingAccountId(null);
+        }}
+        fromName={batch.account_name}
+        toName={accounts.find((a) => a.id === pendingAccountId)?.name ?? null}
+        voucherCount={batch.vouchers.filter((v) => v.approval_status !== "CANCELLED").length}
+        pending={updateBatchAccount.isPending}
+        onConfirm={(reason) => {
+          if (!pendingAccountId) return;
+          updateBatchAccount.mutate(
+            { batchId: batch.id, accountId: pendingAccountId, reason },
+            { onSettled: () => setPendingAccountId(null) },
+          );
+        }}
       />
     </div>
   );

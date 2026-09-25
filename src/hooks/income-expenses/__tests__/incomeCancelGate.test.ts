@@ -73,6 +73,12 @@ describe("incomeCancelBlockText", () => {
     expect(text.length).toBeGreaterThan(0);
     expect(text).not.toContain("null");
   });
+
+  it("PROFIT_LOCKED theo luật khoá tuyệt đối 25/09/2026: nhờ chủ công ty mở khoá tháng, không bảo lập phiếu điều chỉnh", () => {
+    const text = incomeCancelBlockText(row({ reason_code: "PROFIT_LOCKED" }));
+    expect(text).toContain("nhờ chủ công ty mở khoá tháng");
+    expect(text).not.toMatch(/phiếu điều chỉnh/);
+  });
 });
 
 describe("incomeCancelGate", () => {

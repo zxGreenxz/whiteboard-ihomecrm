@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  accountChangeNeedsReason,
+  approvalEditPatch,
   approvalErrorMessage,
+  buildRevisionPatch,
   canReviseVoucher,
   diffRevisionSnapshots,
   formatRevisionItem,
@@ -10,9 +13,12 @@ import {
   isSystemRevisableVoucher,
   requiresRevisionReason,
   revisionErrorMessage,
+  revisionItemsChanged,
   summarizePendingRevisions,
+  voucherEditAction,
   type IncomeExpenseRevision,
   type RevisableValues,
+  type RevisionFormValues,
   type VoucherSnapshot,
 } from "@/lib/incomeExpenseRevision";
 
@@ -90,6 +96,22 @@ describe("diffRevisionSnapshots", () => {
   });
 });
 
+describe("đổi Thu ↔ Chi: mã phiếu mới", () => {
+  it("hiện dòng Mã phiếu cũ → mới cạnh Loại phiếu", () => {
+    const rows = diffRevisionSnapshots(
+      { ...truoc, code: "PC2609105" },
+      { ...truoc, code: "PT2609150", type: "INCOME" },
+    );
+    expect(rows.map((r) => [r.label, r.before, r.after])).toEqual([
+      ["Loại phiếu", ["Phiếu chi"], ["Phiếu thu"]],
+      ["Mã phiếu", ["PC2609105"], ["PT2609150"]],
+    ]);
+  });
+  it("ảnh chụp không có mã (bản cũ) ⇒ không báo đổi mã giả", () => {
+    expect(diffRevisionSnapshots({ ...truoc }, { ...truoc }).map((r) => r.field)).toEqual([]);
+  });
+});
+
 describe("summarizePendingRevisions", () => {
   it("so ảnh TRƯỚC lần sửa đầu với ảnh SAU lần sửa cuối, bỏ qua đổi hình thức thu", () => {
     const b = { ...truoc, name: "B" };
@@ -139,6 +161,96 @@ describe("requiresRevisionReason — cùng luật máy chủ", () => {
   });
 });
 
+describe("buildRevisionPatch — chỉ gửi ô người dùng đã đổi", () => {
+  const moForm: RevisionFormValues = {
+    type: "EXPENSE",
+    name: "Chi hoa hồng P101",
+    building_id: "b1",
+    room_id: "r1",
+    tenant_id: null,
+    contract_id: "c1",
+    payer_name: "",
+    receive_bank_account: "",
+    receive_bank_name: "VietinBank",
+    account_id: "",
+    voucher_date: "2026-09-20",
+    business_result_accounting: null,
+    attachments: ["https://x/1.png"],
+    repeat_cycle: "NONE",
+    repeat_count: 0,
+    repeat_infinity: false,
+    repeat_auto_approve: true,
+  };
+
+  it("không chạm ô nào ⇒ patch rỗng (không sinh lần sửa ma)", () => {
+    expect(buildRevisionPatch(moForm, { ...moForm })).toEqual({});
+  });
+  it("khoảng trắng / chuỗi rỗng coi như trống, giống máy chủ", () => {
+    expect(buildRevisionPatch(moForm, { ...moForm, payer_name: "   ", name: " Chi hoa hồng P101 " })).toEqual({});
+  });
+  it("đổi tên + chọn sổ ⇒ đúng hai khoá, giá trị đã cắt khoảng trắng", () => {
+    expect(buildRevisionPatch(moForm, { ...moForm, name: "Chi HH P101 ", account_id: "a9" })).toEqual({
+      name: "Chi HH P101",
+      account_id: "a9",
+    });
+  });
+  it("xoá người nhận ⇒ gửi null", () => {
+    const coNguoiNhan = { ...moForm, payer_name: "Anh Tư" };
+    expect(buildRevisionPatch(coNguoiNhan, { ...coNguoiNhan, payer_name: "" })).toEqual({ payer_name: null });
+  });
+  it("ảnh: so danh sách đường dẫn; KQKD: null ≠ false", () => {
+    expect(buildRevisionPatch(moForm, { ...moForm, attachments: ["https://x/2.png"] })).toEqual({
+      attachments: ["https://x/2.png"],
+    });
+    expect(buildRevisionPatch(moForm, { ...moForm, business_result_accounting: false })).toEqual({
+      business_result_accounting: false,
+    });
+  });
+  it("đổi một ô lặp ⇒ gửi đủ bốn ô lặp", () => {
+    expect(buildRevisionPatch(moForm, { ...moForm, repeat_cycle: "MONTH", repeat_count: 3 })).toEqual({
+      repeat_cycle: "MONTH",
+      repeat_count: 3,
+      repeat_infinity: false,
+      repeat_auto_approve: true,
+    });
+  });
+});
+
+describe("hộp Duyệt: đổi sổ / ảnh trước khi duyệt", () => {
+  it("không đổi ⇒ patch rỗng; sổ '' coi như chưa có", () => {
+    expect(approvalEditPatch({ account_id: null, attachments: null }, { account_id: "", attachments: [] })).toEqual({});
+  });
+  it("chọn sổ lần đầu + thêm ảnh ⇒ đúng hai khoá, không cần lý do", () => {
+    expect(
+      approvalEditPatch({ account_id: null, attachments: ["https://x/1.png"] }, {
+        account_id: "a1",
+        attachments: ["https://x/1.png", "https://x/2.png"],
+      }),
+    ).toEqual({ account_id: "a1", attachments: ["https://x/1.png", "https://x/2.png"] });
+    expect(accountChangeNeedsReason(null, "a1")).toBe(false);
+  });
+  it("đổi từ sổ này sang sổ khác (hoặc bỏ sổ) ⇒ cần lý do", () => {
+    expect(accountChangeNeedsReason("a1", "a2")).toBe(true);
+    expect(accountChangeNeedsReason("a1", "")).toBe(true);
+    expect(accountChangeNeedsReason("a1", "a1")).toBe(false);
+  });
+});
+
+describe("revisionItemsChanged", () => {
+  const hm = [
+    { income_expense_type_id: "t1", description: null, quantity: 1, unit_price: 500000, start_date: null, end_date: null },
+    { income_expense_type_id: "t2", description: "Điện", quantity: 1, unit_price: 120000, start_date: "2026-09-01", end_date: "2026-09-30" },
+  ];
+  it("giống hệt (kể cả kỳ trống, thứ tự khác) ⇒ không đổi", () => {
+    expect(revisionItemsChanged(hm, [hm[1], { ...hm[0], start_date: "", end_date: "" }])).toBe(false);
+  });
+  it("mô tả, đơn giá, kỳ khác ⇒ có đổi", () => {
+    expect(revisionItemsChanged(hm, [hm[0], { ...hm[1], description: "Điện T9" }])).toBe(true);
+    expect(revisionItemsChanged(hm, [{ ...hm[0], unit_price: 600000 }, hm[1]])).toBe(true);
+    expect(revisionItemsChanged(hm, [{ ...hm[0], start_date: "2026-09-01", end_date: "2026-09-30" }, hm[1]])).toBe(true);
+  });
+});
+
 describe("canReviseVoucher", () => {
   const cho = { approval_status: "UNAPPROVED", posting_status: "UNPOSTED", system_source: null, invoice_id: null, shareholder_id: null };
   it("phiếu tay / hoa hồng / trả khách Chờ duyệt ⇒ hiện nút", () => {
@@ -154,6 +266,23 @@ describe("canReviseVoucher", () => {
     expect(canReviseVoucher({ ...cho, invoice_id: "i1" })).toBe(false);
     expect(canReviseVoucher({ ...cho, shareholder_id: "s1" })).toBe(false);
     expect(canReviseVoucher({ ...cho, system_source: "invoice.collection.v5" })).toBe(false);
+  });
+});
+
+describe("voucherEditAction — cây bút trên mặt Thu chi", () => {
+  const viewer = { isAdmin: false, isCompanyOwner: false };
+  const cho = { approval_status: "UNAPPROVED", posting_status: "UNPOSTED", system_source: null };
+  it("phiếu chờ duyệt sửa được ⇒ hiện 'Sửa phiếu chờ duyệt'", () => {
+    expect(voucherEditAction(cho, viewer)).toEqual({ show: true, title: "Sửa phiếu chờ duyệt" });
+  });
+  it("phiếu đã duyệt ⇒ ẩn, kể cả super admin (bỏ 'Sửa phiếu (Super Admin)')", () => {
+    expect(voucherEditAction({ ...cho, approval_status: "APPROVED" }, { isAdmin: true, isCompanyOwner: true }).show).toBe(false);
+  });
+  it("phiếu doanh thu bỏ cọc: chủ/super admin giữ chế độ đổi cờ KQKD, người khác ẩn", () => {
+    const boCoc = { approval_status: "APPROVED", system_source: "termination.forfeit_revenue" };
+    expect(voucherEditAction(boCoc, { isAdmin: false, isCompanyOwner: true }).show).toBe(true);
+    expect(voucherEditAction(boCoc, viewer).show).toBe(false);
+    expect(voucherEditAction({ ...boCoc, approval_status: "CANCELLED" }, { isAdmin: true, isCompanyOwner: true }).show).toBe(false);
   });
 });
 

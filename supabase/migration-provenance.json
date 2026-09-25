@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-09-24T01:45:10.250Z",
+  "generatedAt": "2026-09-25T10:05:18.628Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 601,
-    "unknown": 74,
+    "unknown": 79,
     "catalog-proven": 211,
     "superseded": 15
   },
@@ -10469,6 +10469,79 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-09-24T01:44:32.417Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260925072852_ma_phieu_duy_nhat.sql",
+      "version": "20260925072852",
+      "name": "ma_phieu_duy_nhat",
+      "scheme": "timestamp14",
+      "sha256": "73a33661a70063c59e347accd6d8d2c87c0dd9919a8f088d201adc0adaf5ecd9",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "table:app_private.voucher_code_counters",
+        "function:app_private.next_voucher_code_v1",
+        "index:public.income_expenses_org_code_duy_nhat"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260925073251_khoa_thang_loi_nhuan_tuyet_doi.sql",
+      "version": "20260925073251",
+      "name": "khoa_thang_loi_nhuan_tuyet_doi",
+      "scheme": "timestamp14",
+      "sha256": "ffe6486b42b050b3f5604fb0caef3aae9db2773b1fc12b9f6c6aba27a350b1c5",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.profit_month_locked_v1",
+        "function:app_private.assert_profit_month_open_v2",
+        "function:app_private.guard_profit_month_lock_pending_v1",
+        "trigger:public.profit_monthly.a10_profit_month_lock_requires_no_pending"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260925080906_sua_phieu_cho_duyet.sql",
+      "version": "20260925080906",
+      "name": "sua_phieu_cho_duyet",
+      "scheme": "timestamp14",
+      "sha256": "fea2f67af03bdb01b2190a85f0c21b8585aa87c7e64a3026988b899d32de661a",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "table:public.income_expense_revisions",
+        "function:app_private.ie_revision_immutable_v1",
+        "function:app_private.ie_revision_snapshot_v1",
+        "function:app_private.ie_revise_scope_delta_guard",
+        "function:public.revise_pending_income_expense_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260925082815_so_nhan_tien.sql",
+      "version": "20260925082815",
+      "name": "so_nhan_tien",
+      "scheme": "timestamp14",
+      "sha256": "f391f5dfe390a84dae803f8b5bca7fbcc552035d1b00925f7d6feb1abf6a3459",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "table:app_private.personal_cash_books",
+        "table:app_private.building_receiving_cashbooks",
+        "function:app_private.receiving_cashbook_ids_v1",
+        "function:app_private.receiving_cashbook_allowed_v1",
+        "function:app_private.member_of_org_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260925083655_dong_duong_cu_sua_phieu.sql",
+      "version": "20260925083655",
+      "name": "dong_duong_cu_sua_phieu",
+      "scheme": "timestamp14",
+      "sha256": "5e88a6c9b9869b0b031de1a29270d07e6b0b045379091372abe79e250004086e",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.assert_receiving_cashbook_v1"
       ]
     },
     {

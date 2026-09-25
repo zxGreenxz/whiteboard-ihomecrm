@@ -113,8 +113,8 @@ export interface BuildingFormData {
   contract_template_id?: string | null;
   invoice_template_id?: string | null;
   commission_tiers?: CommissionTier[];
-  default_account_id_tt?: string | null;
-  default_account_id_tk?: string | null;
+  // Không có default_account_id_tk/_tt: sổ nhận tiền của toà chỉ cài ở màn
+  // "Sổ nhận tiền" (đợt 1 sửa phiếu), form toà không đọc cũng không ghi hai cột đó.
 }
 
 /** Form data shape for building service rows in the services table */

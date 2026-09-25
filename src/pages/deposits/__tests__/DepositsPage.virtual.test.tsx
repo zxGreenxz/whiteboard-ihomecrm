@@ -125,6 +125,7 @@ function giuCho(i: number): ReservationDepositRow {
     total_amount: 1_000_000,
     voucher_date: "2026-09-01",
     approval_status: "APPROVED",
+    approval_version: 1,
     building_id: "b1",
     building_name: "Toà A",
     room_id: `p-${i}`,
