@@ -232,8 +232,9 @@ chết), danh sách/chi tiết Thu chi (phiếu thu hoá đơn). Khoản thu ki�
     tính lại khi đổi cờ hạn chế của một loại thu chi, thiếu nó thì không đổi được cờ của loại đã dùng ở tháng chốt.
   - Đo prod 25/09 (chỉ đọc): ngoài máy dời lịch phiếu lặp, mọi lần ghi vào tháng đã chốt sau khi chốt đều là
     chủ công ty đi cửa vượt (gần nhất PC2609124, 27/07, 15KV, sửa 25/09); 0 phiếu Chờ duyệt nằm trong tháng đã chốt.
-- **D3.** `assert_period_open_for_edit_v1`: bước lợi nhuận dùng hàm chung, bỏ lọc KQKD; **bỏ** bước 4 (tháng
-  hoá đơn) và 5 (kỳ hạng mục).
+- **D3.** `assert_period_open_for_edit_v1`: bước lợi nhuận dùng hàm chung, bỏ lọc KQKD; **giữ** bước 4 (tháng
+  hoá đơn, bỏ lọc KQKD — chủ chốt 25/09 sau khi rà: đo prod 7 phiếu thu 24.311.500 đ ngày tháng mở của hoá đơn
+  tháng đã chốt; chỉ chặn sửa/huỷ, thu mới nợ cũ và duyệt vẫn đi); **bỏ** bước 5 (kỳ hạng mục).
 - **D4.** Chặn chốt khi còn phiếu Chờ duyệt bằng trigger `a10_profit_month_lock_requires_no_pending` trên
   `profit_monthly` (BEFORE INSERT OR UPDATE OF locked_at): mọi lần đặt `locked_at` mới bị từ chối khi toà còn
   phiếu `UNAPPROVED` có ngày trong tháng, nêu số phiếu + mã. Gắn ở bảng vì màn Chốt lợi nhuận thật đi

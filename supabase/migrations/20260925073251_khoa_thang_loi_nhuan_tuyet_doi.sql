@@ -28,9 +28,11 @@
 --        - scope LINK_CONTRACT, chỉ gắn contract_id từ NULL (tạo hợp đồng gắn
 --          phiếu cọc giữ chỗ có ngày trong tháng đã chốt).
 --      Thêm/gỡ ảnh ngay trên phiếu (ANNOTATE) KHÔNG còn là ngoại lệ — dùng Bổ sung.
---   3. assert_period_open_for_edit_v1: bước lợi nhuận dùng hàm chung, bỏ lọc KQKD;
---      bỏ hai bước xét tháng hoá đơn và kỳ hạng mục — chỉ xét ngày phiếu. Phiếu thu
---      ngày tháng đang mở của một hoá đơn tháng đã chốt vẫn huỷ/đổi được.
+--   3. assert_period_open_for_edit_v1 (cửa của mọi writer sửa/huỷ): bước lợi nhuận
+--      dùng hàm chung, bỏ lọc KQKD; GIỮ bước tháng hoá đơn (chủ chốt 25/09/2026 —
+--      đo prod: 7 phiếu thu 24.311.500 đ ngày tháng mở của hoá đơn tháng đã chốt)
+--      và bỏ lọc KQKD ở bước đó; bỏ bước kỳ hạng mục. Bước tháng hoá đơn chỉ nằm ở
+--      writer sửa/huỷ, không ở trigger: thu mới nợ cũ và duyệt khoản thu đó vẫn đi.
 --   4. Trigger a10_profit_month_lock_requires_no_pending trên profit_monthly: mọi
 --      lần đặt locked_at (profit_close_v2/profit_reclose_v2 của màn Chốt lợi nhuận,
 --      cả lock_profit_month_v1 cũ) bị từ chối khi toà còn phiếu Chờ duyệt có ngày
@@ -76,7 +78,8 @@ BEGIN
       ('public.income_expense_items_check_profit_lock()',
        ARRAY['a7d1e2b8f54e672132fe23d8b1efa1f5', '74f085be2be71bda5de310ee9d12d27d']),
       ('app_private.assert_period_open_for_edit_v1(uuid,text)',
-       ARRAY['72fb2878ffd9b9d5a4a97bd8a8b9699c', 'b80940a9c0aece52868d4489a58ebd20'])
+       ARRAY['72fb2878ffd9b9d5a4a97bd8a8b9699c', 'b80940a9c0aece52868d4489a58ebd20',
+             '959b39d12b4bb86b57a79faf06cf232b'])
     ) AS t(chu_ky, md5_hop_le)
   LOOP
     IF to_regprocedure(v_ham.chu_ky) IS NOT NULL
@@ -253,6 +256,8 @@ DECLARE
   v_lock date;
   v_name text;
   v_handover text;
+  v_billing text;
+  v_billing_building uuid;
 BEGIN
   SELECT * INTO v_row FROM public.income_expenses WHERE id = p_voucher;
   IF NOT FOUND THEN
@@ -299,10 +304,32 @@ BEGIN
   END IF;
 
   -- 3) THÁNG LỢI NHUẬN ĐÃ CHỐT — tuyệt đối theo NGÀY PHIẾU (chủ chốt 25/09/2026):
-  --    mọi loại phiếu, kể cả phiếu ngoài KQKD, với mọi người. Không còn xét tháng
-  --    của hoá đơn hay kỳ của hạng mục: phiếu thu mang ngày tháng đang mở của một
-  --    hoá đơn tháng đã chốt vẫn huỷ/đổi được.
+  --    mọi loại phiếu, kể cả phiếu ngoài KQKD, với mọi người.
   PERFORM app_private.assert_profit_month_open_v2(v_row.building_id, v_row.voucher_date, p_action);
+
+  -- 4) THÁNG CỦA HOÁ ĐƠN đã chốt (chủ chốt 25/09/2026, giữ bước WP2 cũ, bỏ lọc
+  --    KQKD): phiếu thu ngày 27/06 của hoá đơn tháng 05 — tháng 05 chốt rồi thì
+  --    sửa/huỷ/đổi hình thức phiếu này bị chặn như phiếu của tháng 05. Chỉ chặn
+  --    đường sửa/huỷ; THU MỚI nợ cũ và DUYỆT khoản thu đó không đi qua hàm này.
+  IF v_row.invoice_id IS NOT NULL THEN
+    SELECT invoice_row.billing_month, invoice_row.building_id
+      INTO v_billing, v_billing_building
+      FROM public.invoices invoice_row
+     WHERE invoice_row.id = v_row.invoice_id;
+
+    IF v_billing ~ '^[0-9]{4}-[0-9]{2}$'
+       AND app_private.profit_month_locked_v1(
+             COALESCE(v_billing_building, v_row.building_id),
+             to_date(v_billing || '-01', 'YYYY-MM-DD')) THEN
+      SELECT b.name INTO v_name FROM public.buildings b
+       WHERE b.id = COALESCE(v_billing_building, v_row.building_id);
+      RAISE EXCEPTION
+        '[PROFIT_LOCKED] Phiếu này thu tiền hoá đơn tháng % của toà % — tháng đó đã chốt lợi nhuận, không % được. Nhờ chủ công ty mở khoá tháng.',
+        to_char(to_date(v_billing || '-01', 'YYYY-MM-DD'), 'MM/YYYY'),
+        COALESCE(v_name, '(không rõ tên)'), p_action
+        USING ERRCODE = 'P0001';
+    END IF;
+  END IF;
 END
 $function$;
 
@@ -387,9 +414,10 @@ BEGIN
 
   v_def := regexp_replace(
     pg_get_functiondef('app_private.assert_period_open_for_edit_v1(uuid,text)'::regprocedure), '--[^\n]*', '', 'g');
-  IF v_def ~ '(billing_month|item_row|business_result_accounting)'
-     OR v_def !~ 'assert_profit_month_open_v2' THEN
-    RAISE EXCEPTION 'nghiem_thu: assert_period_open_for_edit_v1 chua xet theo ngay phieu';
+  IF v_def ~ '(item_row|business_result_accounting)'
+     OR v_def !~ 'assert_profit_month_open_v2'
+     OR v_def !~ 'billing_month' OR v_def !~ 'profit_month_locked_v1' THEN
+    RAISE EXCEPTION 'nghiem_thu: assert_period_open_for_edit_v1 chua xet ngay phieu + thang hoa don';
   END IF;
 
   IF has_function_privilege('authenticated', 'app_private.assert_profit_month_open_v2(uuid,date,text)', 'EXECUTE')

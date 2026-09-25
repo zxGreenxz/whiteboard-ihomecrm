@@ -735,7 +735,7 @@
       ]
     },
     "supabase/migrations/20260925073251_khoa_thang_loi_nhuan_tuyet_doi.sql": {
-      "sha256": "ffe6486b42b050b3f5604fb0caef3aae9db2773b1fc12b9f6c6aba27a350b1c5",
+      "sha256": "150d586a3c7d754756a689698bf2079cc4655a783d4be6efcd24a2f0f17b979a",
       "missingObjects": [
         "function:app_private.profit_month_locked_v1",
         "function:app_private.assert_profit_month_open_v2",

@@ -185,10 +185,13 @@ describe("M2 khoa_thang_loi_nhuan_tuyet_doi", () => {
     expect(fn).not.toContain("v_mien");
   });
 
-  it("assert_period_open_for_edit_v1 chỉ xét ngày phiếu, bỏ tháng hoá đơn và kỳ hạng mục", () => {
+  it("assert_period_open_for_edit_v1 xét ngày phiếu + tháng hoá đơn cho mọi phiếu, bỏ kỳ hạng mục", () => {
     const fn = thanHamDangChay("assert_period_open_for_edit_v1", "app_private");
-    expect(fn).not.toMatch(/billing_month|item_row|business_result_accounting|WP2_PERIOD_ALL_THREE/);
+    expect(fn).not.toMatch(/item_row|business_result_accounting|WP2_PERIOD_ALL_THREE/);
     expect(fn).toContain("app_private.assert_profit_month_open_v2(v_row.building_id, v_row.voucher_date, p_action)");
+    // Chủ chốt 25/09: phiếu thu của hoá đơn tháng đã chốt cũng khoá sửa/huỷ.
+    expect(fn).toContain("invoice_row.billing_month");
+    expect(fn).toMatch(/app_private\.profit_month_locked_v1\(\s*COALESCE\(v_billing_building, v_row\.building_id\)/);
     // Hai bước sổ quỹ đã chốt và phiên bàn giao giữ nguyên.
     expect(fn).toContain("[CASHBOOK_CLOSED]");
     expect(fn).toContain("[HANDOVER_LOCKED]");

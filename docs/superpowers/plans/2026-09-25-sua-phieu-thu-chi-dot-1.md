@@ -96,7 +96,8 @@ last_value int, updated_at timestamptz, PK(organization_id,prefix,yymm))`; trigg
 mở khoá có lý do đã có `profit_unlock_v2` ⇒ không sửa `lock_profit_month_v1`, không tạo hàm mở khoá/bảng log mới.)
 - [x] Test tĩnh: hai trigger function không còn `is_super_admin`/`is_org_owner`/`business_result_accounting`/
   `auth.uid`; tập miễn đúng 9 cột + NULL→giá trị 3 cột vòng đời + nhánh `STOP_RECURRING` + `LINK_CONTRACT`;
-  `assert_period_open_for_edit_v1` không còn `billing_month`/`item_row`; trigger profit_monthly đếm
+  `assert_period_open_for_edit_v1` không còn `item_row`, giữ bước tháng hoá đơn (`billing_month`, chủ chốt lại
+  25/09) cho mọi phiếu; trigger profit_monthly đếm
   `approval_status = 'UNAPPROVED'`; không đụng hàm `profit_*`/`lock_profit_month_v1`/`unlock_profit_month_v1`.
 - [x] Thử trên TEST (ROLLBACK, hai lượt): sửa tên phiếu 07/2026 toà đã chốt → `[PROFIT_LOCKED]`; chỉ đánh dấu đã kiểm →
   qua; lập phiếu lùi ngày, sửa hạng mục, xoá mềm, xoá hẳn, dời ngày vào tháng chốt → chặn; LINK_CONTRACT / tắt lặp /
