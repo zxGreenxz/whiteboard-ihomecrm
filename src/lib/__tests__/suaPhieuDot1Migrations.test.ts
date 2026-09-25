@@ -360,3 +360,106 @@ describe("M3 sua_phieu_cho_duyet", () => {
     expect(fn).toContain("Phiếu chưa có sổ quỹ — bấm Sửa phiếu, chọn sổ quỹ rồi mới duyệt được.");
   });
 });
+
+// ── M4: sổ nhận tiền + đổi hình thức thu ───────────────────────────────────
+
+describe("M4 so_nhan_tien", () => {
+  const sql = docFile("so_nhan_tien");
+  const code = boChuThich(sql);
+
+  it("khung file đúng khuôn, hai bảng cấu hình trong app_private không mở cho ai", () => {
+    kiemKhungFile(sql);
+    expect(code).toMatch(/CREATE TABLE IF NOT EXISTS app_private\.personal_cash_books/);
+    expect(code).toMatch(/CREATE TABLE IF NOT EXISTS app_private\.building_receiving_cashbooks/);
+    expect(code).toMatch(/payment_method text NOT NULL CHECK \(payment_method IN \('TK', 'TT'\)\)/);
+    expect(code).toMatch(/CREATE UNIQUE INDEX IF NOT EXISTS personal_cash_books_dang_hieu_luc\s+ON app_private\.personal_cash_books \(membership_id\) WHERE valid_to IS NULL/);
+    expect(code).toContain(
+      "REVOKE ALL ON app_private.personal_cash_books, app_private.building_receiving_cashbooks\n  FROM PUBLIC, anon, authenticated, service_role;",
+    );
+  });
+
+  it("khởi tạo chỉ ghi vào bảng mới, không đè dòng đã có", () => {
+    const top = phanChayLucMigrate(sql);
+    expect(top).not.toMatch(/UPDATE\s+public\./i);
+    expect(top).toMatch(/INSERT INTO app_private\.personal_cash_books[\s\S]+?AND NOT EXISTS \(\s+SELECT 1 FROM app_private\.personal_cash_books p WHERE p\.membership_id = m\.id\);/);
+    expect(top).toMatch(/ON CONFLICT \(building_id, payment_method, account_id\) DO NOTHING;/);
+    // Quy tắc chung sổ tiền mặt riêng: "…Thu", không ảo, của chính người đó, đang giữ.
+    expect(top).toContain("a.name ~* '\\mthu\\s*$'");
+    expect(top).toContain("b.possession_kind = 'CUSTODIAN'");
+    // Sổ phụ TK chủ chốt 25/09.
+    for (const cap of ["('102LVT', 'TKHIEP')", "('1392QT', 'TKHIEP')", "('403PVB', 'TKHIEP')",
+                       "('405PVB', 'TKHIEP')", "('512TT', 'TKHIEP')", "('950NK', 'CGIANG8818')"]) {
+      expect(top).toContain(cap);
+    }
+  });
+
+  it("danh sách sổ: TM = sổ riêng; TK/TT = mặc định trước rồi sổ phụ, giao với sổ người thu giữ/biết", () => {
+    const fn = thanHamDangChay("receiving_cashbook_ids_v1", "app_private");
+    expect(fn).toContain("FROM app_private.personal_cash_books p");
+    expect(fn).toContain("CASE p_method WHEN 'TK' THEN b.default_account_id_tk ELSE b.default_account_id_tt END, 0");
+    expect(fn).toContain("FROM app_private.building_receiving_cashbooks r");
+    expect(fn).toContain("app_private.ie_has_cashbook_possession_v1(p_org, u.account_id, p_membership)");
+    expect(fn).toContain("NOT COALESCE(a.is_virtual, false)");
+    expect(fn).toMatch(/array_agg\(g\.account_id ORDER BY g\.thu_tu, g\.name, g\.account_id\)/);
+  });
+
+  it("cài đặt + xem sổ người khác: chỉ chủ công ty (neo theo vai) hoặc super admin", () => {
+    for (const ten of ["list_receiving_cashbook_settings_v1", "set_personal_cash_book_v1",
+                       "set_building_receiving_cashbooks_v1", "get_receiving_cashbooks_v1",
+                       "change_collection_tender_method_v1"]) {
+      const fn = thanHamDangChay(ten);
+      expect(fn, ten).toContain("app_private.ie_actor_is_company_owner_v1(");
+      expect(fn, ten).not.toContain("app_private.is_org_owner_v1(");
+    }
+    // Sổ tiền mặt riêng phải là sổ người đó đang GIỮ.
+    const dat = thanHamDangChay("set_personal_cash_book_v1");
+    expect(dat).toContain("b.possession_kind = 'CUSTODIAN'");
+  });
+
+  it("đổi hình thức thu: khoá đúng thứ tự của hoàn tác, chặn tiền thối/làm tròn, sổ theo NGƯỜI ĐÃ THU", () => {
+    const fn = thanHamDangChay("change_collection_tender_method_v1");
+    const iDot = fn.indexOf("FROM public.invoice_payment_collections c WHERE c.id = v_collection_id FOR UPDATE");
+    const iHd = fn.indexOf("FROM public.invoices i WHERE i.id = v_collection.invoice_id FOR UPDATE");
+    const iOrg = fn.indexOf("app_private.lock_org_for_decision_v1(v_org)");
+    const iDong = fn.indexOf("FROM public.invoice_payment_tenders t WHERE t.id = p_tender_id FOR UPDATE");
+    expect(iDot).toBeGreaterThan(-1);
+    expect(iHd).toBeGreaterThan(iDot);
+    expect(iOrg).toBeGreaterThan(iHd);
+    expect(iDong).toBeGreaterThan(iOrg);
+    expect(fn).toContain("Khoản thu có tiền thối nên không đổi hình thức được.");
+    expect(fn).toContain("Khoản thu có làm tròn nên không đổi hình thức được.");
+    expect(fn).toContain("v_collection.actor_id IS DISTINCT FROM v_actor");
+    expect(fn).toContain("app_private.member_of_org_v1(v_org, v_collection.actor_id)");
+    expect(fn).toContain("app_private.receiving_cashbook_ids_v1(v_org, v_invoice.building_id, p_new_method,");
+    expect(fn).toContain("app_private.assert_period_open_for_edit_v1(v_row.id, 'đổi hình thức thu')");
+    expect(fn).toContain("app_private.move_posted_income_cashbook_v1(v_row.id, v_new_account)");
+    expect(fn).toMatch(/begin_accounting_chain_write_v1\(\);[\s\S]+UPDATE public\.payments[\s\S]+end_accounting_chain_write_v1\(\);/);
+    expect(fn).toContain("'COLLECTION_METHOD'");
+    expect(fn).toMatch(/char_length\(v_reason\) < 8/);
+    expect(fn).toContain("v_flow IS DISTINCT FROM 'INVOICE_COLLECTION_V5'");
+  });
+
+  it("lõi đổi sổ: cửa CASHBOOK_MOVE + hậu kiểm tiền rời hẳn sổ cũ, không mở cho ai", () => {
+    const fn = thanHamDangChay("move_posted_income_cashbook_v1", "app_private");
+    expect(fn).toContain("app_private.begin_ie_flex_write_v1(p_voucher, 'CASHBOOK_MOVE')");
+    expect(fn).toContain("app_private.end_ie_flex_write_v1(p_voucher)");
+    expect(fn).toContain("sổ quỹ cũ vẫn còn số dư của phiếu này");
+    expect(fn).toContain("sổ quỹ mới không nhận được khoản nào");
+    expect(code).toContain(
+      "REVOKE ALL ON FUNCTION app_private.move_posted_income_cashbook_v1(uuid, uuid)\n  FROM PUBLIC, anon, authenticated, service_role;",
+    );
+  });
+
+  it("quyền gọi: 5 RPC cho authenticated, không anon", () => {
+    for (const chuKy of [
+      "public.get_receiving_cashbooks_v1(uuid, uuid, uuid)",
+      "public.list_receiving_cashbook_settings_v1(uuid)",
+      "public.set_personal_cash_book_v1(uuid, uuid)",
+      "public.set_building_receiving_cashbooks_v1(uuid, text, uuid, uuid[])",
+      "public.change_collection_tender_method_v1(uuid, text, uuid, text, text)",
+    ]) {
+      expect(code).toContain(`REVOKE ALL ON FUNCTION ${chuKy}\n  FROM PUBLIC, anon, authenticated, service_role;`);
+      expect(code).toContain(`GRANT EXECUTE ON FUNCTION ${chuKy} TO authenticated;`);
+    }
+  });
+});

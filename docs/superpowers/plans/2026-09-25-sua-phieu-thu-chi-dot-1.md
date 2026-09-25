@@ -153,12 +153,19 @@ TK:[{id,name,isDefault}], TT:[…]}`;
 p_extra_account_ids uuid[]) → jsonb`;
 `public.change_collection_tender_method_v1(p_tender_id uuid, p_new_method text, p_new_account_id uuid DEFAULT NULL,
 p_reason text DEFAULT NULL, p_idempotency_key text DEFAULT NULL) → jsonb`.
-- [ ] Test tĩnh: seed chỉ `INSERT … WHERE NOT EXISTS`, không UPDATE bảng cũ; đổi hình thức chặn `change_amount`,
-  gọi `assert_period_open_for_edit_v1`, `begin_accounting_chain_write_v1`, ghi `income_expense_revisions` kind
-  `COLLECTION_METHOD`; cài đặt chỉ chủ/quản trị.
-- [ ] Thử trên TEST (ROLLBACK): đọc `get_receiving_cashbooks_v1` cho NATHAN ở 102LVT → TM Hiệp Thu, TK [MBHIEP
-  mặc định, TKHIEP]; đổi một khoản thu TK MBHIEP → TKHIEP có lý do → bút toán sổ cũ triệt tiêu, sổ mới nhận đủ,
-  tender/payment đổi; khoản thu có tiền thối → chặn.
+Thêm khi thi hành: `app_private.member_of_org_v1(uuid org, uuid user) → uuid` (membership đang hoạt động, hoặc gần
+nhất). `list_receiving_cashbook_settings_v1` trả `{members:[{membershipId,userId,name,memberType,personalCashBook}],
+buildings:[{id,name,TK:{defaultAccountId,extraAccountIds},TT:{…}}], accounts:[{id,name,custodianMembershipIds}]}`.
+Cổng "chủ công ty" = `ie_actor_is_company_owner_v1` (xem memory vai-chu-cong-ty). Đổi hình thức chặn cả làm tròn.
+- [x] Test tĩnh (7 ca M4): seed chỉ ghi bảng mới (NOT EXISTS / ON CONFLICT), không UPDATE bảng cũ; danh sách sổ đúng
+  thứ tự + giao possession; cổng chủ công ty neo vai; đổi hình thức khoá đúng thứ tự hoàn tác, chặn thối/làm tròn, sổ
+  theo người đã thu, `begin_accounting_chain_write_v1`, lịch sử `COLLECTION_METHOD`; lõi đổi sổ hậu kiểm.
+- [x] Thử trên TEST (ROLLBACK, hai lượt): khởi tạo 4 sổ riêng + 6 sổ phụ; NATHAN ở 403PVB → TM Hiệp Thu, TK [MBHIEP mặc
+  định, TKHIEP]; JOEY ở 950NK → TK [TK939, CGIANG8818]; NATHAN xem của JOEY 42501; chủ xem màn cài đặt; NATHAN tự cài
+  42501; chủ đặt sổ NATHAN chỉ "biết" 42501; chủ cài TT 102LVT → NATHAN thấy HKDTAM; đổi TK MBHIEP → TKHIEP → TM → TK
+  mặc định (sổ cũ 0, sổ mới đủ); lý do ngắn 22023; JOEY đổi hộ 42501; chủ đổi sang sổ ngoài danh sách 42501; có tiền
+  thối 55000; đã bàn giao HANDOVER_LOCKED; trùng hiện tại 22023; TT ở toà chưa cài 55000; 3 dòng lịch sử + 3 sự kiện;
+  hoàn tác cả đợt sau khi đổi (bằng chủ) → REVERSED, tổng bút toán phiếu 0.
 - [ ] Commit `feat(so-nhan-tien): so nhan tien theo hinh thuc thu, doi hinh thuc thu (may chu)`.
 
 ### Task 5: M5 — đóng đường cũ (áp SAU web)

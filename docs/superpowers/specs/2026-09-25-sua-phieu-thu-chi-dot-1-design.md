@@ -174,17 +174,23 @@ ghim trong preflight.
 
 **B3. Writer đổi hình thức thu** `public.change_collection_tender_method_v1(p_tender_id uuid, p_new_method
 text, p_new_account_id uuid, p_reason text, p_idempotency_key text) returns jsonb`:
-- Đợt thu `ACTIVE`; phiếu của dòng `APPROVED` + `POSTED`, chưa huỷ; `change_amount = 0`; (hình thức, sổ) mới
-  khác hiện tại; sổ mới ∈ danh sách cho phép của (toà, hình thức mới, người đã thu); không truyền sổ ⇒ lấy sổ
-  mặc định; lý do ≥ 8 ký tự.
-- Quyền: `invoice_payment_collections.actor_id = auth.uid()`, chủ tổ chức, super admin.
-- Khoá: `assert_period_open_for_edit_v1(voucher, 'đổi hình thức thu của')` (sổ đã chốt, bàn giao, tháng lợi
-  nhuận) + trigger sổ đã chốt xét sổ mới.
+- Đợt thu `ACTIVE`; phiếu của dòng `APPROVED` + `POSTED`, chưa huỷ, luồng `INVOICE_COLLECTION_V5`;
+  `change_amount = 0` và `rounding_amount = 0` (đo 25/09: 65/232 dòng TM có thối, 3 dòng có làm tròn); (hình
+  thức, sổ) mới khác hiện tại; sổ mới ∈ danh sách cho phép của (toà, hình thức mới, NGƯỜI ĐÃ THU —
+  `invoice_payment_collections.actor_id`); không truyền sổ ⇒ lấy sổ mặc định; lý do 8..1000 ký tự.
+- Quyền: người đã thu (`invoice_payment_collections.actor_id = auth.uid()`, còn membership), chủ công ty
+  (`ie_actor_is_company_owner_v1` — neo theo vai), super admin. Rút tiền khỏi sổ cũ KHÔNG đòi giữ sổ (đây là
+  sửa khoản thu của chính mình; `move_income_voucher_cashbook_v1` cũ thì đòi).
+- Khoá: thứ tự như `reverse_invoice_collection_v5` (đợt thu → hoá đơn → tổ chức → dòng → phiếu);
+  `assert_period_open_for_edit_v1(voucher, 'đổi hình thức thu')` (sổ đã chốt, bàn giao, tháng lợi nhuận) +
+  trigger sổ đã chốt xét sổ mới.
 - Ghi: `app_private.move_posted_income_cashbook_v1` (lõi tách từ `move_income_voucher_cashbook_v1`: scope
   `CASHBOOK_MOVE` để cầu a85 đảo bút toán sổ cũ và ghi thế hệ mới + hậu kiểm triệt tiêu), cập nhật
   `invoice_payment_tenders.payment_method/account_id` và `payments.payment_method` (trong
   `begin_accounting_chain_write_v1`), ghi `income_expense_revisions` kind `COLLECTION_METHOD` và sự kiện
-  `CASHBOOK_MOVED`.
+  `COLLECTION_METHOD_CHANGED` (cũ/mới dạng "TK · MBHIEP").
+- Đã thử trên TEST: MBHIEP → TKHIEP → Tiền mặt (Hiệp Thu) → TK mặc định; mỗi lần sổ cũ về 0, sổ mới đủ tiền;
+  hoàn tác cả đợt thu sau đó vẫn đúng (tổng bút toán của phiếu = 0).
 
 **B4. Thu trùng.** Mọi hộp huỷ/hoàn tác khoản thu bắt gõ lý do ≥ 8 ký tự (bỏ câu điền sẵn "Hoàn tác thu tiền
 từ giao diện hóa đơn"). Trước khi thu: hoá đơn có khoản thu còn hiệu lực cùng số tiền trong 30 phút ⇒ hỏi
@@ -296,3 +302,8 @@ chết), danh sách/chi tiết Thu chi (phiếu thu hoá đơn). Khoản thu ki�
 - Huỷ duyệt / Khôi phục phiếu niêm phong vẫn báo "canonical" — xử lý cùng "mở lại để sửa".
 - 4 khoản thu tiền mặt vào sổ ngân hàng (60 ngày) để nguyên (không đổi dữ liệu cũ); người thu tự sửa bằng
   "Đổi hình thức thu" nếu muốn.
+- **Lỗi có sẵn (phát hiện 25/09, chưa sửa):** `reverse_invoice_collection_v5` nhận "chính người đã thu" bằng
+  `income_expenses.user_id` của phiếu, nhưng thu tiền kiểu mới ghi `user_id` = tài khoản chủ (`v_owner`) chứ không
+  phải người thu ⇒ nhân viên KHÔNG tự hoàn tác được khoản mình thu (chỉ chủ/super admin). Đo prod: 109 khoản thu
+  còn hiệu lực có người thu khác `user_id` phiếu. Sửa đúng là so `invoice_payment_collections.actor_id` (như hàm
+  đổi hình thức thu đã làm) — hàm tiền lớn, cần chủ chốt.
