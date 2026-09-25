@@ -9,7 +9,7 @@
 // "Chưa đủ dữ liệu", không in 0.
 // =============================================
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { ArrowLeft, ChevronLeft, ChevronRight, LogIn, LogOut, X } from 'lucide-react';
 import { useOrganization } from '@/contexts/OrganizationContext';
@@ -59,15 +59,53 @@ const DOT: Record<EventKind, string> = {
   ref: '#c2410c', now: '#dc2626', future: '#fff', forfeit: '#dc2626', transfer: '#7c3aed',
 };
 
+/** Bề rộng mặc định của mock: tối đa 760px, không quá 96% màn hình. */
+const defaultWidth = (vw: number) => Math.min(760, vw * 0.96);
+
+/**
+ * Mép trái panel bám MÉP PHẢI của `anchor` — khung cuộn cột Khoản thu, tức ngay
+ * chỗ thanh cuộn — để panel phủ hết cột Khoản chi. Đo lại khi đổi cỡ cửa sổ hoặc
+ * cỡ cột. Không bao giờ hẹp hơn bề rộng mặc định: lọc "Chỉ khoản thu" thì cột
+ * Thu chiếm gần hết bề ngang, bám theo sẽ ra một dải hẹp vô dụng.
+ */
+function useAlignedLeft(anchor: HTMLElement | null | undefined): number | null {
+  const [left, setLeft] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    if (!anchor) {
+      setLeft(null);
+      return;
+    }
+    const measure = () => {
+      if (!anchor.isConnected) return;
+      const vw = window.innerWidth;
+      const right = anchor.getBoundingClientRect().right;
+      // floor: sát mép, không để hở khe nửa pixel giữa thanh cuộn và panel.
+      setLeft(Math.floor(Math.max(0, Math.min(right, vw - defaultWidth(vw)))));
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    ro?.observe(anchor);
+    return () => {
+      window.removeEventListener('resize', measure);
+      ro?.disconnect();
+    };
+  }, [anchor]);
+  return left;
+}
+
 interface Props {
   roomId: string;
   roomName: string;
   /** Năm mở đầu — năm của kỳ báo cáo đang xem. */
   initialYear: number;
   onClose: () => void;
+  /** Phần tử để mép trái panel bám vào (khung cuộn cột Khoản thu). Không có → rộng mặc định. */
+  alignAfter?: HTMLElement | null;
 }
 
-export default function RoomContractLifecycleDrawer({ roomId, roomName, initialYear, onClose }: Props) {
+export default function RoomContractLifecycleDrawer({ roomId, roomName, initialYear, onClose, alignAfter }: Props) {
+  const alignedLeft = useAlignedLeft(alignAfter);
   const todayISO = vnTodayISO();
   const [year, setYear] = useState(initialYear);
   const [sel, setSel] = useState<string | null>(null);
@@ -129,7 +167,11 @@ export default function RoomContractLifecycleDrawer({ roomId, roomName, initialY
     <DialogPrimitive.Root open onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="rcl-scrim" />
-        <DialogPrimitive.Content className="rcl" aria-describedby={undefined}>
+        <DialogPrimitive.Content
+          className="rcl"
+          aria-describedby={undefined}
+          style={alignedLeft === null ? undefined : { left: alignedLeft, width: 'auto' }}
+        >
           <div className="rcl-hero">
             <div className="rcl-hero__top">
               {inDetail && (

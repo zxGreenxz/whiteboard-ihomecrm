@@ -684,7 +684,10 @@ function ProfitDistributionDesktop() {
   // Dialog cài đặt cảnh báo thiếu phiếu chi theo toà (nút bánh răng header Chi).
   const [missingCfgOpen, setMissingCfgOpen] = useState(false);
   // Bấm SỐ PHÒNG ở cột Thu → panel vòng đời hợp đồng của phòng trong năm báo cáo.
-  const [lifecycleRoom, setLifecycleRoom] = useState<{ id: string; name: string } | null>(null);
+  // `anchor` = khung cuộn cột Thu: mép trái panel bám mép phải của nó (chỗ thanh cuộn).
+  const [lifecycleRoom, setLifecycleRoom] = useState<
+    { id: string; name: string; anchor: HTMLElement | null } | null
+  >(null);
   // Nút + ở header Khoản chi: prefill toà (khi lọc đúng 1 toà thật) + kỳ.
   const openCreateExpense = () => {
     setExpensePrefill({
@@ -954,7 +957,11 @@ function ProfitDistributionDesktop() {
                         title={`Xem vòng đời hợp đồng phòng ${r.roomName ?? ""} năm ${yyyy}`}
                         onClick={(e) => {
                           e.stopPropagation();
-                          setLifecycleRoom({ id: r.roomId!, name: r.roomName ?? "—" });
+                          setLifecycleRoom({
+                            id: r.roomId!,
+                            name: r.roomName ?? "—",
+                            anchor: e.currentTarget.closest<HTMLElement>(".ph-panel__scroll"),
+                          });
                         }}
                         onDoubleClick={(e) => e.stopPropagation()}
                       >
@@ -1522,6 +1529,7 @@ function ProfitDistributionDesktop() {
             roomId={lifecycleRoom.id}
             roomName={lifecycleRoom.name}
             initialYear={yyyy || now.getFullYear()}
+            alignAfter={lifecycleRoom.anchor}
             onClose={() => setLifecycleRoom(null)}
           />
         </Suspense>

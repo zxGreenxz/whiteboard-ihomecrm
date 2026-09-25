@@ -85,4 +85,39 @@ describe('RoomContractLifecycleDrawer', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Đóng' }));
     expect(onClose).toHaveBeenCalled();
   });
+
+  describe('bề rộng panel', () => {
+    const innerWidth = window.innerWidth;
+    const anchors: HTMLElement[] = [];
+    afterEach(() => {
+      Object.defineProperty(window, 'innerWidth', { value: innerWidth, configurable: true });
+      anchors.splice(0).forEach((a) => a.remove());
+    });
+    const anchorAt = (right: number) => {
+      const el = document.createElement('div');
+      el.getBoundingClientRect = () => ({ right } as DOMRect);
+      document.body.appendChild(el);
+      anchors.push(el);
+      return el;
+    };
+    const panel = () => document.querySelector<HTMLElement>('.rcl')!;
+
+    it('mép trái bám mép phải khung cuộn cột Khoản thu (chỗ thanh cuộn)', () => {
+      Object.defineProperty(window, 'innerWidth', { value: 1915, configurable: true });
+      render(<RoomContractLifecycleDrawer roomId="r204" roomName="204" initialYear={2026} onClose={vi.fn()} alignAfter={anchorAt(985.6)} />);
+      expect(panel().style.left).toBe('985px');
+      expect(panel().style.width).toBe('auto');
+    });
+
+    it('cột Thu chiếm gần hết bề ngang → giữ bề rộng mặc định 760px', () => {
+      Object.defineProperty(window, 'innerWidth', { value: 1915, configurable: true });
+      render(<RoomContractLifecycleDrawer roomId="r204" roomName="204" initialYear={2026} onClose={vi.fn()} alignAfter={anchorAt(1880)} />);
+      expect(panel().style.left).toBe(`${1915 - 760}px`);
+    });
+
+    it('không có mốc → rộng mặc định theo CSS', () => {
+      render(<RoomContractLifecycleDrawer roomId="r204" roomName="204" initialYear={2026} onClose={vi.fn()} />);
+      expect(panel().style.left).toBe('');
+    });
+  });
 });
