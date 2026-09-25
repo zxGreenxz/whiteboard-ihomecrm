@@ -5,6 +5,8 @@ import { isIeLifecycleFallbackSignal } from "@/lib/canonicalFallback";
 import { periodBlockMessage } from "@/lib/cashbookClosing";
 import { todayISO } from '@/lib/collect';
 import { rpcNullable } from "@/lib/rpcNullable";
+import { approvalErrorMessage } from "@/lib/incomeExpenseRevision";
+import { approveCheckedVoucher } from "@/hooks/income-expenses/revisions";
 
 type RpcError = { code?: string | null; message?: string | null };
 type RpcResult = { error: RpcError | null };
@@ -151,13 +153,34 @@ const trySetTerminationForfeitStatus = async (
 
 // Duyệt phiếu thu/chi (UNAPPROVED → APPROVED). Dùng khi đã thực thanh toán
 // phiếu nháp (vd phiếu chi hoa hồng tạo cùng hợp đồng).
-// Canonical approve_income_expense_v1 (phiếu flow-owned) trước; phiếu legacy
-// nhận tín hiệu 'chưa thuộc luồng canonical' → dùng approve_voucher như cũ.
+//
+// Có phiên bản đang xem (đợt 1 sửa phiếu, 25/09/2026): một RPC
+// approve_pending_income_expense_checked_v1 làm đủ thang ba bậc dưới khoá dòng
+// và so approval_version — phiếu vừa bị sửa ⇒ 40001 "tải lại", người duyệt
+// không duyệt nhầm một nội dung chưa xem.
+// Không có phiên bản (chỗ gọi cũ): thang ba bậc phía client như trước —
+// canonical approve_income_expense_v1 (phiếu flow-owned) trước; phiếu legacy
+// nhận tín hiệu 'chưa thuộc luồng canonical' → dùng approve_voucher.
+export type ApproveVoucherInput = string | { id: string; expectedApprovalVersion: number };
+
 export const useApproveVoucher = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (id: string) => {
+    mutationFn: async (input: ApproveVoucherInput) => {
+      if (typeof input !== "string") {
+        try {
+          const result = await approveCheckedVoucher({
+            voucherId: input.id,
+            expectedApprovalVersion: input.expectedApprovalVersion,
+          });
+          return result.mode === "FORFEIT_PAIR";
+        } catch (error: unknown) {
+          toast.error(approvalErrorMessage(error));
+          throw error;
+        }
+      }
+      const id = input;
       try {
         if (await trySetTerminationForfeitStatus(id, "APPROVED")) return true;
       } catch (error: unknown) {
@@ -186,6 +209,8 @@ export const useApproveVoucher = () => {
     onSuccess: (isTerminationForfeit) => {
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
       queryClient.invalidateQueries({ queryKey: ["accounts-with-balance"] });
+      queryClient.invalidateQueries({ queryKey: ["voucher-with-batch"] });
+      queryClient.invalidateQueries({ queryKey: ["income-expense-revisions"] });
       if (isTerminationForfeit) {
         invalidateTerminationForfeitQueries(queryClient);
       }
