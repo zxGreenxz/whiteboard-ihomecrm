@@ -9,7 +9,7 @@
 // "Chưa đủ dữ liệu", không in 0.
 // =============================================
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { ArrowLeft, ChevronLeft, ChevronRight, LogIn, LogOut, X } from 'lucide-react';
 import { useOrganization } from '@/contexts/OrganizationContext';
@@ -114,6 +114,9 @@ export default function RoomContractLifecycleDrawer({ roomId, roomName, initialY
     [payload, sel, todayISO, lanes, extrasData],
   );
   const inDetail = !!detail;
+  // Đổi màn (danh sách ↔ chi tiết) hoặc đổi năm → cuộn về đầu, không giữ vị trí cũ.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { scrollRef.current?.scrollTo?.({ top: 0 }); }, [sel, year]);
 
   const title = inDetail ? `${detail.tenant} · ${detail.number}` : `Phòng ${roomName} · Vòng đời hợp đồng`;
   const buildingName = payload?.room.buildingName ?? '';
@@ -167,7 +170,7 @@ export default function RoomContractLifecycleDrawer({ roomId, roomName, initialY
             )}
           </div>
 
-          <div className="rcl-scroll">
+          <div className="rcl-scroll" ref={scrollRef}>
             <div className="rcl-stack">
               {room.isLoading && <div className="rcl-empty">Đang tải vòng đời hợp đồng…</div>}
               {room.isError && (

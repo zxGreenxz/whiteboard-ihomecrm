@@ -56,6 +56,13 @@
 .rcl-year button:last-child { border-left: 1px solid rgba(255, 255, 255, 0.14); }
 .rcl-year button:disabled { opacity: 0.35; cursor: default; }
 .rcl-year span { padding: 6px 12px; font-weight: 600; font-size: 12.5px; white-space: nowrap; }
+/* Màn hẹp: bước năm xuống hàng riêng để tiêu đề không bị ép thành cột chữ. */
+@media (max-width: 560px) {
+  .rcl-hero__top { flex-wrap: wrap; }
+  .rcl-year { order: 5; margin-left: 50px; }
+  .rcl-hero { padding: 14px 16px; }
+  .rcl-stack { padding: 14px 12px 24px; }
+}
 
 .rcl-kpis { display: flex; gap: 24px; margin-top: 16px; flex-wrap: wrap; }
 .rcl-kpi__label { font-size: 10.5px; font-weight: 700; letter-spacing: 0.1em; color: rgba(255, 255, 255, 0.55); }
@@ -148,6 +155,7 @@
 
 /* ---------- Danh sách hợp đồng ---------- */
 .rcl-listhead { display: flex; align-items: center; gap: 8px; }
+.rcl-listhead .rcl-h { white-space: nowrap; }
 .rcl-listhead__hint {
   margin-left: auto; min-width: 0; font-size: 11px; color: var(--rcl-ink-4);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;

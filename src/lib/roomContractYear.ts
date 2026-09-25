@@ -671,8 +671,9 @@ export interface ContractDetailView {
   kpis: Kpi[];
 }
 
+// Cùng ngày: nợ còn lại (kể cả "chưa hoàn cọc") đứng SAU mốc thanh lý sinh ra nó.
 const ORDER: Record<EventKind, number> = {
-  dep: 0, in: 1, inv: 2, owe: 3, mark: 4, transfer: 5, out: 6, forfeit: 6, ref: 7, now: 8, future: 9,
+  dep: 0, in: 1, inv: 2, mark: 4, transfer: 5, out: 6, forfeit: 6, ref: 7, owe: 7, now: 8, future: 9,
 };
 
 export function buildContractDetail(input: Omit<RoomYearInput, 'year'>, contractId: string): ContractDetailView | null {
