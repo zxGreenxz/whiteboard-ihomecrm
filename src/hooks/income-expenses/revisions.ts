@@ -25,17 +25,20 @@ import {
 const REVISION_COLUMNS =
   "id,income_expense_id,revision_no,kind,actor_id,actor_name,reason,changed_fields,before_snapshot,after_snapshot,created_at";
 
-/** Key của mọi màn đọc phiếu — sửa/duyệt xong thì làm mới hết. */
+/**
+ * Key của các màn đọc phiếu — sửa phiếu Chờ duyệt xong thì làm mới. Không làm mới
+ * tồn quỹ (phiếu Chờ duyệt chưa ghi sổ) — đo TEST 25/09: làm mới dàn trải sau mỗi
+ * lần Lưu làm các câu nặng (thống kê, tồn quỹ) chạy dồn một lúc.
+ * ["income-expenses"] đã phủ cả danh sách lẫn thống kê (["income-expenses","stats",…]).
+ */
 export const VOUCHER_QUERY_KEYS = [
   ["income-expenses"],
   ["income-expense-batches"],
-  ["income-expense-stats"],
   ["voucher-with-batch"],
   ["income-expense"],
   ["ie-history"],
   ["voucher-change-log"],
   ["income-expense-revisions"],
-  ["accounts-with-balance"],
 ] as const;
 
 export function useIncomeExpenseRevisions(voucherId?: string | null, enabled = true) {
