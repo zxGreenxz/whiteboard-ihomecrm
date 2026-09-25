@@ -307,6 +307,8 @@ describe("M3 sua_phieu_cho_duyet", () => {
     expect(khoaOrg).toBeGreaterThan(-1);
     expect(khoaPhieu).toBeGreaterThan(khoaOrg);
     expect(fn).toMatch(/v_row\.approval_version IS DISTINCT FROM p_expected_approval_version THEN\s+RAISE EXCEPTION '[^']*' USING ERRCODE = 'PT409'/);
+    // Ảnh chỉ kiểm khuôn khi người dùng đổi ảnh (phiếu cũ ảnh sai khuôn vẫn sửa được ô khác).
+    expect(fn).toContain("IF t_attachments IS DISTINCT FROM COALESCE(v_row.attachments, '[]'::jsonb) AND (");
     // KHÔNG dùng 40001: PostgREST coi 40001 là xung đột tuần tự hoá và TỰ CHẠY LẠI giao dịch mãi
     // (đo trên TEST 25/09: lệnh sửa mang phiên bản cũ treo 125 giây rồi 504).
     expect(fn).not.toContain("'40001'");

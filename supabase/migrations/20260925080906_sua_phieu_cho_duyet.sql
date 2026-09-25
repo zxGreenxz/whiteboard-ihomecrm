@@ -644,7 +644,10 @@ BEGIN
      OR t_date < DATE '2000-01-01' OR t_date > DATE '2100-12-31' THEN
     RAISE EXCEPTION 'Ngày phiếu phải nằm trong khoảng 2000-01-01 đến 2100-12-31' USING ERRCODE = '22023';
   END IF;
-  IF jsonb_typeof(t_attachments) <> 'array'
+  -- Chỉ kiểm khi người dùng ĐỔI ảnh: phiếu cũ có ảnh không đạt khuôn (http, khoảng
+  -- trắng, > 20 ảnh) vẫn phải sửa được các ô khác.
+  IF t_attachments IS DISTINCT FROM COALESCE(v_row.attachments, '[]'::jsonb) AND (
+     jsonb_typeof(t_attachments) <> 'array'
      OR jsonb_array_length(t_attachments) > 20
      OR EXISTS (
        SELECT 1
@@ -655,7 +658,7 @@ BEGIN
            OR value #>> '{}' ~ '[[:cntrl:]]'
            OR value #>> '{}' !~
                 '^https://[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?(?::[0-9]{1,5})?(?:[/?#][^[:space:]\\]*)?$'
-     ) THEN
+     )) THEN
     RAISE EXCEPTION 'Ảnh chứng từ phải là tối đa 20 đường dẫn HTTPS hợp lệ' USING ERRCODE = '22023';
   END IF;
   IF t_repeat_cycle NOT IN ('NONE', 'WEEK', 'MONTH', 'QUARTER', 'YEAR') THEN
