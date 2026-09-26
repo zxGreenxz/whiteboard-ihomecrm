@@ -160,7 +160,7 @@ function CommitmentsTab({ orgId }: { orgId: string }) {
                             <>
                               <span className={`font-medium ${nho ? 'text-amber-600' : ''}`}>{fmt(c.amount)}</span>
                               {nho && <AlertTriangle className="inline h-3 w-3 ml-1 text-amber-600" aria-label="Số nhỏ bất thường" />}
-                              <span className={`block text-xs ${vuot ? 'text-destructive font-medium' : 'text-muted-foreground'}`}>
+                              <span className={`block text-xs whitespace-nowrap ${vuot ? 'text-destructive font-medium' : 'text-muted-foreground'}`}>
                                 còn {fmt(c.remaining)}
                               </span>
                             </>

@@ -214,7 +214,9 @@ flowchart TD
 
 - `approve_voucher(voucher_id)` (SECURITY DEFINER): set `APPROVED` + `approved_by=auth.uid()` + `approved_at=now()`, với phiếu **`user_id = auth.uid()` HOẶC caller là super admin** (`OR public.is_super_admin()` — bypass thêm ở migration `20260514000005_super_admin_bypass_rpcs_and_storage`). Dùng cho phiếu nháp (vd phiếu chi hoa hồng `UNAPPROVED` chờ thực chi).
 - `unapprove_voucher(voucher_id)`: ngược lại (`UNAPPROVED`, clear approver) — cùng điều kiện chủ phiếu hoặc super admin.
-- Mặc định mọi phiếu tạo qua form đã là `APPROVED` ngay → workflow duyệt thường chỉ chạm tới phiếu commission/nháp. Huỷ phiếu = set `CANCELLED` (`UPDATE` trực tiếp ở hook, kèm ghi nhật ký qua RPC `log_income_expense_action` — §4.18); khôi phục phiếu đã huỷ CHỈ qua RPC `restore_income_expense` (super admin, §4.18).
+- **Trạng thái sinh của phiếu chi do bộ máy chi quyết** (§4.20; luật đầy đủ ở `20-phe-duyet-tai-chinh.md`).
+  Hôm nay bộ máy chạy thử: phiếu tạo qua form vẫn theo thang cũ — người lập có quyền duyệt ⇒ `APPROVED`;
+  hạng mục `force_approval` hoặc tổng ≥ ngưỡng ⇒ `UNAPPROVED` chờ duyệt. Phiếu THU tự duyệt. Huỷ phiếu = set `CANCELLED` (`UPDATE` trực tiếp ở hook, kèm ghi nhật ký qua RPC `log_income_expense_action` — §4.18); khôi phục phiếu đã huỷ CHỈ qua RPC `restore_income_expense` (super admin, §4.18).
 
 ### 4.3 Khoá sổ (`income_expenses_check_lock`, migration `20260425000001`)
 
@@ -373,6 +375,26 @@ Trong module Bảng lương quản lý ([useSalaryPayout](src/hooks/useManagerSa
 - Kết quả: sổ quỹ net = đúng tiền thực nhận (chi gross − thu tiền phòng); `salary_monthly.paid` chỉ cộng tiền thực nhận.
 
 ---
+
+### 4.20 Bộ máy chi theo cam kết + sổ tiêu (migration `20260926082454` → `…170000`, 26/09/2026)
+
+- **Sổ cam kết** `app_private.spend_commitments`: chủ ký trước số tiền cho (toà × hạng mục × tháng);
+  khởi tạo 12 tháng từ 10/2026 theo mức phí cố định chủ đã khai. Sửa qua `set_spend_commitment_v1` (chủ /
+  super admin); tháng đã có khoản tiêu thì từ chối (không hồi tố).
+- **Sổ tiêu** `app_private.spend_commitment_draws`: trigger `z60_spend_ledger_*` trên
+  `income_expense_items` / `income_expenses` / `income_expense_types` đồng bộ theo TRẠNG THÁI —
+  chờ duyệt ⇒ `HOLD`, đã duyệt ⇒ `DRAW`, huỷ/xoá/đổi toà-kỳ-hạng mục ⇒ `RELEASE`. Phủ mọi đường ghi
+  (form, Thanh toán, định kỳ, compat, duyệt, huỷ, sửa phiếu). Khoá advisory theo bucket.
+  `còn lại = cam kết − Σ(HOLD + DRAW)`.
+- **Bóng lúc sinh**: constraint trigger deferred `zz_spend_shadow_birth` ghi `app_private.spend_decisions`
+  ở COMMIT của transaction sinh phiếu (thực tế vs máy quyết + facts). Cổng writer chốt kết quả cho từng
+  phiếu qua trigger `z59_spend_capture_gate`.
+- **Luật trên hạng mục**: cột `income_expense_types.fee_category` (khoá phí, duy nhất theo org) +
+  `spend_mode`; guard `zz_ie_type_rule_columns_guard` chỉ cho chủ công ty / super admin sửa khi ghi trực
+  tiếp từ client (hàm hệ thống đi như cũ).
+- **Cờ**: `spend.engine.v1` (OFF/SHADOW/ON) và `spend.cashbook_chi.v1` (G6 — người lập phải giữ sổ để
+  chi; SHADOW chỉ cảnh báo). Hậu kiểm: `app_private.spend_ledger_audit_v1()` phải trả 0 lệch.
+- Màn chủ: `/settings/finance/cam-ket-chi`.
 
 ## 5. Quy trình theo từng trang
 

@@ -83,13 +83,15 @@ export const useMySpendOrganizations = () =>
       if (error) throw new Error(error.message);
       const list = Array.isArray(ids) ? (ids as string[]).filter(Boolean) : [];
       if (!list.length) return [];
-      const { data, error: e2 } = await supabase
-        .from('organizations')
-        .select('id, name')
-        .in('id', list)
-        .order('name');
-      if (e2) throw new Error(e2.message);
-      return (data ?? []).map((o) => ({ id: o.id as string, name: (o.name as string) ?? o.id }));
+      // Tên chỉ để HIỂN THỊ. RLS bảng organizations ẩn dòng với vai "Chủ công ty" (đo bằng
+      // trình duyệt 26/09/2026: select trả []), nên id lấy từ my_org_ids là nguồn đúng; đọc
+      // được tên thì dùng, không thì ghi chung chung — tuyệt đối không đánh rơi công ty.
+      const { data } = await supabase.from('organizations').select('id, name').in('id', list);
+      const names = new Map((data ?? []).map((o) => [o.id as string, o.name as string]));
+      return list.map((id, i) => ({
+        id,
+        name: names.get(id) ?? (list.length > 1 ? `Công ty ${i + 1}` : 'Công ty của bạn'),
+      }));
     },
     staleTime: 10 * 60_000,
   });

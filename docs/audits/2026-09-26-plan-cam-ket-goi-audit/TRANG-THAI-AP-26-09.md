@@ -71,12 +71,47 @@ helper `public.ie_type_rule_editor_ok_v1(org)` (definer; anon không có). Trigg
 `65e28c84439d0f2e`; catalog `ce4b01d1… → c7b8f8b6…`; `catalog:capture` "không object hở". Đọc lại prod: trigger
 `zz_ie_type_rule_columns_guard` có, `a05_…` không còn; guard `prosecdef=false`; helper anon=false.
 
-## Chưa áp
+## Áp tiếp — G2 + G4, G5, trạng thái (26/09, 19:57 → 20:40 VN)
 
-G2 (bộ máy quyết định + bóng), G4 (giao thức cam kết), G5 (bật theo bucket — cần ≥ 14 ngày bóng), G6 (sổ chi),
-G7 (một đường duyệt), G8 (dọn đường cũ). Màn hình cho chủ nhập/sửa cam kết chưa có — dùng RPC trực tiếp.
+| Migration | Việc | Backup trước áp · giấy phép | Catalog |
+|---|---|---|---|
+| `20260926150000_bo_may_chi_so_tieu_va_quyet_dinh_bong` | G2 bộ máy + bóng lúc sinh; G4 sổ tiêu phủ mọi writer; cờ `spend.engine.v1` + `spend.cashbook_chi.v1` = SHADOW; RPC chủ | `…12-56-59-013Z.dump` · sha256 `05389e0ee741cdc1…` · `89b2ed951149f0bd` | `c7b8f8b6… → 99ba325f…` |
+| `20260926160000_noi_writer_vao_bo_may_chi` | G5 — 5 cửa chi hỏi cổng; phí cố định + sinh phí dùng hạng mục đã ánh xạ; cổng chốt kết quả cho từng phiếu | `…13-12-44-132Z.dump` · sha256 `58c6db3f82f113c9…` · `9cc8e368b1969084` | `99ba325f… → 1f337020…` |
+| `20260926170000_bo_may_chi_trang_thai_va_canh_bao_so` | RPC trạng thái + cột cảnh báo G6 cho màn chủ | sha256 `fcede28dc95f0322…` · `86da3723a2821e30` | `1f337020… → a5c2c645…` |
+
+**Thử trên TEST trước mỗi lần áp** (transaction rồi ROLLBACK; TEST và production trùng md5 9/9 hàm writer):
+
+- `thu-G2-G4-tren-TEST.cjs` — **24/24**: hai lượt; lập/duyệt/huỷ đi HOLD → DRAW → RELEASE; vượt cam kết ⇒ DRAW
+  `over_commitment` + bóng ghi lệch; dòng 3 tháng chia đều; quản lý trên ngưỡng ⇒ cũ CHỜ, máy nói DUYỆT; sửa cam
+  kết tháng đã tiêu ⇒ 55000; ký tháng mới kéo phiếu có sẵn; đổi luật hạng mục nhả/kéo lại sổ; cổng SHADOW không
+  áp, ON + công tắc thì áp; bật TRAN thiếu trần ⇒ 55000; audit 0 lệch; 0 lỗi máy.
+- `thu-cte-postgrest-tren-TEST.cjs` — câu ghi kiểu PostgREST (CTE INSERT/UPDATE/DELETE, hai CTE cùng bảng) qua được
+  trigger transition table.
+- `thu-G5-tren-TEST.cjs` — **20/20** và `thu-G5-dien-nuoc-phi-dac-biet-TEST.cjs` — **6/6** (xem §12 plan).
+
+**Đọc lại production sau áp:** cờ SHADOW; 7 trigger (`z59_spend_capture_gate`, `z60_spend_ledger_*` ×5,
+`zz_spend_shadow_birth`); sổ tiêu 8 DRAW / 3.100.000đ; audit 0 lệch; 0 lỗi máy; md5 6 hàm writer trùng đúng bản
+đã thử; anon không gọi được RPC nào.
+
+**Gate tiền sau mỗi lần áp:** `gate:reconcile-money` PASS (5.788.924.013đ) · `-v2` PASS (2.688.708.004đ).
+
+## Màn hình chủ — `/settings/finance/cam-ket-chi`
+
+Kiểm bằng trình duyệt thật (dev server của worktree, tài khoản chủ công ty, chỉ xem): trạng thái "Đang chạy thử —
+chưa đổi cách duyệt"; tiền nhà 10/2026 = 681.650.000đ (khớp số đo); thẻ Luật hạng mục đúng 9 ánh xạ. Bắt và sửa
+một lỗi: RLS bảng `organizations` ẩn dòng với vai "Chủ công ty" ⇒ danh sách công ty rỗng ⇒ trang trắng; nay id lấy
+từ `my_org_ids`, tên chỉ để hiển thị.
+
+## Còn lại
+
+- **Bật áp dụng — việc của CHỦ**, sau ≥ 14 ngày chạy thử (định kỳ 30): cờ `spend.engine.v1` → ON (cần điền
+  `commit_sha`, `migration_sha256`, `maintenance_window_id`, `approval_reference`, không thì tuyến ra FROZEN) +
+  công tắc từng toà × hạng mục × tháng ở màn Cam kết chi.
+- G6 bật chặn sau 7 ngày cảnh báo (cờ `spend.cashbook_chi.v1` → ON).
+- Ba điểm chủ cần xem trong kỳ chạy thử: §12 plan.
 
 ## Hành vi hệ thống
 
-**Không đổi.** Hai migration chỉ thêm bảng/cột/trigger; không writer nào đọc chúng. Guard chỉ siết việc sửa
-*luật của hạng mục* (chủ/super admin), không đụng luồng lập/duyệt/chi phiếu.
+**Chưa đổi cách duyệt.** Mọi phiếu vẫn sinh đúng như trước; khác biệt duy nhất là máy ghi sổ tiêu + quyết định
+bóng, và phí cố định / sinh phí dùng hạng mục đã ánh xạ (cả 9 được `fee_type_matches` nhận ⇒ lưới Thanh toán
+không đổi).

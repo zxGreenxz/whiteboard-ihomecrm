@@ -1,8 +1,9 @@
 # PLAN — Cỗ máy chi theo cam kết · **bản v2 (sau audit)**
 
-> **Trạng thái 26/09 tối: G0 xong · G1 ĐÃ ÁP PRODUCTION · G3 ĐÃ ÁP PRODUCTION · G2/G4–G8 chưa.**
-> Chi tiết áp, backup và bằng chứng ở **§12**. Hai migration đã áp đều CHỈ THÊM (bảng/cột/trigger mới),
-> không writer nào đọc cột/bảng mới ⇒ hành vi hệ thống **chưa đổi**. Reconcile-money v1+v2 PASS sau G1.
+> **Trạng thái 26/09 đêm: G1–G5 ĐÃ ÁP PRODUCTION (chế độ CHẠY THỬ) · G6 cảnh báo · G7 dấu vết · G8 tài liệu.**
+> Một bộ máy quyết định + sổ tiêu phủ mọi đường ghi + 5 cửa chi đã hỏi cổng; cờ `spend.engine.v1` = SHADOW
+> nên **cách duyệt chưa đổi**. Việc còn lại là của CHỦ: xem ≥ 14 ngày chạy thử ở màn Cam kết chi rồi bật
+> từng toà × hạng mục × tháng. Chi tiết, backup, bằng chứng ở **§12**. Reconcile-money v1+v2 PASS sau mỗi lần áp.
 >
 > **Nền mã:** `origin/main` = `origin/production` = `e1a0d2ac0312bba94148e974af2fb132303865a6`.
 > **Nền số:** production `tryymsxyyckgbrmmvozx`, org THẬT `aaaa0000-0000-4000-8000-000000000001`,
@@ -743,42 +744,43 @@ Giữ C-1…C-10 của v1, **sửa và thêm**:
 
 ---
 
-## 12. Trạng thái thi hành — cập nhật 26/09/2026 tối
+## 12. Trạng thái thi hành — cập nhật 26/09/2026 đêm
 
-| Bước | Trạng thái | Ghi chú |
+Chủ uỷ quyền hai lần trong phiên: *"thực hiện chi tiết toàn bộ và đưa toàn bộ lên production"* rồi *"thực hiện
+tiếp toàn bộ"*, kèm nhắc: *"quan trọng là thống nhất đường tiền về một máy… đừng lan man, thiếu kiểm soát"*.
+Mọi bước dưới đây: thử trên TEST (transaction rồi ROLLBACK) → lane `migrate:forward --apply` (hai lượt ROLLBACK +
+backup full + giấy phép) → đọc lại production → hai gate tiền.
+
+| Bước | Trạng thái | Migration · backup · bằng chứng |
 |---|---|---|
 | G0 chốt 12 câu | **Xong** | §10 |
-| **G1** sổ cam kết | **ĐÃ ÁP PRODUCTION** | backup `dcca965e…`; 1.272 cam kết; reconcile PASS |
-| G2 bộ máy quyết định + bóng | Chưa | xem "vì sao dừng ở đây" |
-| **G3** ánh xạ + khoá cột luật | **ĐÃ ÁP PRODUCTION** | backup `a55500a6…`; 9 × 2 ánh xạ; guard đã thử hành vi |
-| G4 giao thức cam kết | Chưa | |
-| G5 bật theo bucket | Chưa | **cần ≥ 14 ngày bóng — không nén được** |
-| G6 sổ chi | Chưa | |
-| G7 một đường duyệt | Chưa | |
-| G8 dọn đường cũ | Chưa | |
+| **G1** sổ cam kết | **ĐÃ ÁP** | `20260926082454` · `dcca965e…` · 1.272 cam kết (106 khe × 12 tháng) |
+| **G3** ánh xạ + khoá cột luật | **ĐÃ ÁP** | `20260926113435` · `a55500a6…` · 9 × 2 ánh xạ |
+| ↳ vá hồi quy G3 | **ĐÃ ÁP** | `20260926140000` · `dc533a44…` · guard INVOKER chỉ canh ghi thẳng từ client; TEST trước/sau: `_termination_ensure_type` do quản lý gọi — cũ **chặn 42501**, sau vá được |
+| **G2** bộ máy + bóng lúc sinh | **ĐÃ ÁP (SHADOW)** | `20260926150000` · `05389e0e…` · TEST 24/24 ca |
+| **G4** sổ tiêu cho MỌI writer | **ĐÃ ÁP** | cùng migration G2 — trigger đồng bộ theo trạng thái, không sửa writer nào; khởi tạo 8 DRAW; audit 0 lệch; câu ghi kiểu PostgREST (CTE) qua được |
+| **G5** 5 cửa chi hỏi cổng | **ĐÃ ÁP — cổng chưa áp** | `20260926160000` · `58c6db3f…` · TEST 20/20 + 6/6; md5 6 hàm trên prod trùng bản thử |
+| G5 **bật theo bucket** | **CHỜ CHỦ** | cần ≥ 14 ngày bóng (định kỳ 30) — không nén được; công tắc ở màn Cam kết chi |
+| **G6** quyền CHI trên sổ | **Cảnh báo (SHADOW)** | helper `ie_spend_cashbook_ok_v1` (chủ sổ/CUSTODIAN/OPERATOR, không KNOWER); cờ `spend.cashbook_chi.v1` = SHADOW; màn đếm ca "không giữ sổ" — bật chặn sau 7 ngày cảnh báo |
+| **G7** một đường duyệt | **Dấu vết (câu 05)** | câu 05 giữ tự duyệt cho người có quyền duyệt ⇒ G7 thu về ghi dấu `SELF_APPROVER` + `list_self_approved_vouchers_v1` + thẻ "Tự duyệt" |
+| **G8** dọn đường cũ | **Tài liệu xong; compat giữ** | `08`/`20` hệ thống sửa; compat + `create_income_expense_v2` luôn sinh CHỜ nên không lách bộ máy — không gỡ (gỡ đòi viết lại caller giao diện) |
+| Màn chủ + RPC trạng thái | **Code xong, chờ lên web** | `20260926170000` · `fcede28d…`; `/settings/finance/cam-ket-chi` (5 thẻ) — kiểm bằng trình duyệt thật với tài khoản chủ |
 
-**Hành vi hệ thống sau hai lần áp: KHÔNG ĐỔI.** Hai migration chỉ thêm bảng/cột/trigger mới; không writer nào
-đọc `spend_commitments`, `fee_category`, `spend_mode`. Trigger guard chỉ siết việc *sửa luật của hạng mục*
-(vốn chưa ai làm ngoài chủ) — không đụng luồng lập/duyệt/chi phiếu.
+**Gate tiền sau mỗi lần áp:** `gate:reconcile-money` PASS (A = B = C = 5.788.924.013đ) · `-v2` PASS
+(2.688.708.004đ) — **tiền không đổi**. `gate:truoc-push` 44/44 xanh, gồm đo rò dữ liệu xuyên tổ chức.
 
-**Vì sao dừng ở G1 + G3 dù được uỷ quyền "đưa toàn bộ lên production":**
+**Hai lỗi bắt được trong lúc làm, đã sửa trước khi áp:** (1) guard G3 chặn nhầm hàm hệ thống do quản lý gọi —
+vá bằng `20260926140000`; (2) sổ bóng tính lại lúc COMMIT làm phiếu sinh sau trong cùng transaction (cron định
+kỳ, sinh phí hàng loạt) chấm oan phiếu sinh trước và đè tên writer — sửa bằng cổng chốt kết quả cho từng phiếu
+(`z59_spend_capture_gate`) trong `20260926160000`.
 
-1. **G2 hook writer = viết lại 5 hàm ghi tiền** (`create_income_expense_v1` ~600 dòng, `pay_period_fee`,
-   `pay_utility_bill`, `ie_compat_insert_v2`, bộ sinh định kỳ), mỗi hàm có guard, idempotency, hash provenance
-   riêng. Đợt 1 sửa phiếu 25/09 làm đúng việc này với cả nhóm trong một ngày và vẫn dính một sự cố production
-   (kẹt dãy mã phiếu). Làm cả năm hàm cuối phiên, không ai review, là tái diễn án lệ 21/09.
-2. **Thêm cột `decision_*` lên `income_expenses`** đụng bảng có mật độ guard dày nhất hệ thống (niêm phong,
-   REVISE scope, khoá tháng, cầu a85). Chưa kiểm từng guard có whitelist cột hay không — R6 đã nâng lên
-   "trung bình" vì đúng lý do này.
-3. **G5 cần ≥ 14 ngày dữ liệu bóng thật** theo chính thiết kế được duyệt. Không có cách nén lịch. Bật chặn
-   khi chưa có bóng là bật mù — đúng cái plan sinh ra để tránh.
-4. **Hai bước đã áp là hai bước có đường lùi sạch nhất** (chỉ thêm, không ai đọc). Đó là ranh giới "làm hết
-   thứ có đường lùi mà không hỏi" trong phiên này.
+**Ba điểm chủ cần xem trong kỳ chạy thử:**
+1. **405PVB — công an** cam kết 7.000đ/tháng, chi thật ~750.000đ ⇒ số sót từ lần đóng cũ; màn Cam kết chi tô
+   vàng ô này. Sửa trước khi bật `cong_an`.
+2. **Quản Lý** đang `force_approval` nhưng kiểu chi là CAM_KET ⇒ khi bật, khoản quản lý trong cam kết sẽ được
+   máy duyệt. Muốn giữ bắt buộc duyệt thì đổi kiểu sang "Từng phiếu" ở thẻ Luật hạng mục.
+3. **4 cặp trần còn thiếu** (câu 03): `111PVC–nước`, `158PVC–nước`, `15KV–nước`, `Kho Văn Phòng Chung–điện` —
+   RPC bật công tắc TRAN tự từ chối khi còn toà thiếu trần.
 
-**Bước kế tiếp (phiên riêng, làm trước tiên):** G2 phần lõi — hàm thuần `ie_spend_decide_v1` + bảng bóng +
-`ie_spend_facts_v1`, **chưa hook writer nào** (thêm thuần) → thử TEST → áp. Rồi hook **một** writer 0 lưu
-lượng (`pay_period_fee`) làm mẫu, mỗi writer một PR. Song song: màn hình cam kết cho chủ; khai 4 cặp trần
-điện nước còn thiếu (câu 03).
-
-**Sổ sách repo:** hai file migration + `migration-provenance.json` + `database-inventory.json` + hai file
-evidence đang được đưa lên nhánh riêng và PR nháp — xem báo cáo phiên.
+**Còn lại, không thuộc phiên này:** bật chặn G6 sau 7 ngày cảnh báo; gỡ `fee_type_matches` khỏi lưới trạng thái
+`get_period_fee_status` (writer đã dùng ánh xạ); siết compat bỏ `system_source` từ client (hiện chỉ ảnh hưởng sổ bóng).
