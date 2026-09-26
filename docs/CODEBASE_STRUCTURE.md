@@ -30,7 +30,7 @@ CI khác. Tra runtime của từng cái ở `tooling/runtime-matrix.json`.
 | Cây | Nội dung | Ghi chú |
 |---|---|---|
 | `infra/**` | 2 package: `network-center-worker`, `cloudflare-worker` | `network-center-worker` deploy bằng PowerShell; hai suite kiểm script đó chạy ở job Windows riêng. |
-| `.e2e-fleet/**` | 73 spec Playwright | Chạy LOCAL, cần `FLEET_PASS_*`, chỉ ghi vào org DEMO. Không phải CI gate — xem `tooling/test-matrix.json`. |
+| `.e2e-fleet/**` | 75 spec Playwright | Chạy LOCAL, cần `FLEET_PASS_*`, chỉ ghi vào org DEMO. Không phải CI gate — xem `tooling/test-matrix.json`. |
 | `contracts/**` | 3 file hợp đồng | Bề mặt RPC, Edge và realtime để đối chiếu với source/runtime. |
 
 ## Luồng phụ thuộc chính
@@ -105,7 +105,7 @@ lệch trong im lặng và thành nguồn sai còn nguy hiểm hơn không có g
 
 Test nằm cạnh module trong `__tests__` hoặc file `*.test.ts(x)`; gate chung được khai báo trong `package.json` và CI. Khi thay đổi database, kiểm cả SQL/RPC permission, generated types và caller frontend.
 
-Test **không** chạy chung một lệnh: 10 suite, mỗi suite một runner và một job CI —
+Test **không** chạy chung một lệnh: 12 suite, mỗi suite một runner và một job CI —
 `tooling/test-matrix.json` là bản đồ, `npm run gate:test-matrix` canh nó khớp thực tế.
 Muốn biết test nào đọc mã nguồn bằng `fs` thay vì import: `npm run inventory:repo`.
 

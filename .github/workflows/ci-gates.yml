@@ -328,6 +328,30 @@ jobs:
             scripts/__tests__/check-ts-suppressions.test.mjs \
             scripts/__tests__/check-ts-baseline.test.mjs
 
+  voice-lab-tests:
+    runs-on: ubuntu-latest
+    if: github.ref != 'refs/heads/production'
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Setup Node 24.18.0
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci
+      - name: Voice lab server and authorization regressions
+        run: node --test tools/voice-task-lab/*.test.mjs
+      - name: Build isolated voice lab
+        run: npm run voice-lab:build
+      - name: Install mobile browser engines
+        run: npx playwright install --with-deps chromium webkit
+      - name: Voice lab mobile browser regressions
+        run: cd .e2e-fleet && npx playwright test --config voice-task-lab.config.ts
+
   # KHÔNG gắn bộ lọc đường dẫn vào đây, dù PR chỉ-docs không cần chạy test.
   # `tooling/test-matrix.json` khai job này là chủ sở hữu ĐỘC LẬP của suite
   # `app-unit`, và check-test-matrix-declarations khoá `job.needs` phải trống:

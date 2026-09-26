@@ -24,6 +24,14 @@ Các bảng danh mục đi kèm: `job_types` (loại công việc — có defaul
 
 ---
 
+## Trang thử tạo việc bằng giọng nói
+
+Mở **Thử giọng nói** từ danh sách ứng dụng hoặc menu Công việc; đường dẫn `/voice-task-lab` dùng quyền xem Công việc của công ty đang chọn. Trang này tạo bản nháp để thử và chấm điểm, chưa tạo phiếu trong danh sách Công việc.
+
+Trên điện thoại, cho phép micro rồi ghi âm và nghe lại. Nhận dạng qua 9Router chỉ bật khi máy chủ có model âm thanh. Nếu chưa có, người dùng có thể chủ động chọn **Trình duyệt** để nhận dạng tiếng Việt, hoặc **Nhập chữ**. Trình duyệt không hỗ trợ nhận dạng vẫn có thể ghi âm/nghe lại. Phần trích xuất công việc gọi AI qua backend và cần tài khoản provider 9Router hoạt động.
+
+Sau khi có bản nháp, chấm từng trường Đúng/Sai/Không áp dụng và mức hữu ích từ 1 đến 5. Dự đoán gốc được giữ riêng với phần sửa; chưa chấm không tính là đúng. Lượt sửa lại lời nhận dạng được tính vào nhóm nhập tay để không làm tăng điểm STT. Báo cáo kèm số mẫu và nhóm nguồn/model, lưu trên **thiết bị đang dùng**, tách theo tài khoản và công ty, tối đa 100 lượt. Nút tải JSON xuất dữ liệu để gửi lại người phân tích; không tự đồng bộ giữa điện thoại và máy tính.
+
 ## 2. Cấu trúc dữ liệu
 
 ### 2.1. Hệ JOBS (công việc vận hành)

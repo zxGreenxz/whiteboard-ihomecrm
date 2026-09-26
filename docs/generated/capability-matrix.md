@@ -15,7 +15,7 @@ risk: normal
 
 ## Capability khai trong registry
 
-Registry hiện phủ **26** capability. Toàn app có ~146 route —
+Registry hiện phủ **27** capability. Toàn app có ~146 route —
 phần còn lại vẫn khai tay ở từng nơi. Đây là trạng thái CÓ CHỦ Ý: registry bắt
 đầu từ hai capability đã drift thật, mở rộng là việc riêng.
 
@@ -35,6 +35,7 @@ phần còn lại vẫn khai tay ở từng nơi. Đây là trạng thái CÓ CH
 | Khách hàng | `/customers` | `customers.view` | thường | docs/he-thong/03-khach-hang-lead-ho-so.md |
 | Phương tiện | `/vehicles` | `vehicles.view` | thường | docs/he-thong/03-khach-hang-lead-ho-so.md |
 | Ghi chỉ số | `/meter-readings` | `meter_readings.view` | thường | docs/he-thong/06-cong-to-chi-so.md |
+| Thử giọng nói | `/voice-task-lab` | `tasks.view` | thường | docs/he-thong/11-cong-viec-su-co.md |
 | Công việc | `/tasks` | `tasks.view` | thường | docs/he-thong/11-cong-viec-su-co.md |
 | Chat Zalo | `/chat-zalo` | `chat_zalo.view` | thường | docs/he-thong/18-zalo-chat.md |
 | Thông báo | `/notifications` | `notifications.view` | thường | docs/he-thong/13-bao-cao-dashboard-thong-bao.md |

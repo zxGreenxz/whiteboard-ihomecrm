@@ -82,6 +82,7 @@ describe("các đường dẫn then chốt vẫn còn", () => {
     "/customers/:id",
     "/tenants/:id",
     "/invoices",
+    "/voice-task-lab",
     "/reports/finance/analysis",
     "/reports/finance/profit-distribution",
   ])("%s", (p) => {

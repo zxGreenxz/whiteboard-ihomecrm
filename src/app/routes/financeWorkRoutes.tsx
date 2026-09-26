@@ -19,6 +19,7 @@ import {
   OwnerDashboardV5,
   RefundLogPage,
   TaskManagementPage,
+  VoiceTaskLabAppPage,
   ThanhToan,
   ThuTien,
   VoucherDetailPage,
@@ -54,6 +55,7 @@ export const financeWorkRoutes = (
 
     {/* === CÔNG VIỆC === */}
     <Route path="/tasks" element={<ProtectedRoute><RequirePermission module="tasks"><TaskManagementPage /></RequirePermission></ProtectedRoute>} />
+    <Route path="/voice-task-lab" element={<ProtectedRoute><RequirePermission module="tasks" action="view"><VoiceTaskLabAppPage /></RequirePermission></ProtectedRoute>} />
     <Route path="/my-day" element={<ProtectedRoute><MyDayPage /></ProtectedRoute>} />
     <Route path="/reports/coverage" element={<ProtectedRoute><AdminOnlyRoute><OwnerDashboardV5 /></AdminOnlyRoute></ProtectedRoute>} />
 

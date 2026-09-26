@@ -1,4 +1,9 @@
 {
+    "functions": {
+        "api/voice-task-lab.js": {
+            "maxDuration": 90
+        }
+    },
     "build": {
         "env": {
             "VITE_NETWORK_CENTER_MODE": "production"

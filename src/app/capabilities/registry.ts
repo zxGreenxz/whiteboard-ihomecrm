@@ -102,6 +102,7 @@ export const COPILOT_PAGE_CONTRACTS: readonly CopilotPageContract[] = [
  * Each pattern has a reason so adding a route cannot silently expand exposure.
  */
 export const COPILOT_PAGE_EXEMPTIONS = [
+  { route: "/voice-task-lab", reason: "voice task pilot is evaluated explicitly by the user and is not a Copilot control surface" },
   { route: "/admin/*", reason: "admin surface remains disabled until its authz contract is reviewed" },
   { route: "/settings/*", reason: "settings and control-plane pages remain disabled" },
   { route: "/invite/*", reason: "invite/session flow is not a Copilot surface" },
@@ -441,6 +442,21 @@ export const CAPABILITIES: readonly CapabilityDefinition[] = [
       visibility: "public",
     },
     e2e: { spec: ".e2e-fleet/specs/capability-route-smoke.spec.ts" },
+    risk: "normal",
+  },
+  {
+    id: "voice-task-lab",
+    primaryRoute: "/voice-task-lab",
+    label: "Thử giọng nói",
+    release: { enabled: true, runtimeModule: null },
+    permission: { module: "tasks", action: "view" },
+    surfaces: { desktopNav: true, mobileLauncher: true, permissionPage: "/tasks" },
+    docs: {
+      systemDoc: "docs/he-thong/11-cong-viec-su-co.md",
+      userDoc: "docs/huong-dan-su-dung/03-quan-ly-van-hanh/cong-viec/index.md",
+      visibility: "public",
+    },
+    e2e: { spec: ".e2e-fleet/specs/voice-task-app.spec.ts" },
     risk: "normal",
   },
   {

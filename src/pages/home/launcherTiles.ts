@@ -27,6 +27,7 @@ import {
   Settings,
   UserCircle,
   ClipboardList,
+  Mic,
   Car,
   Wallet,
   Coins,
@@ -72,6 +73,7 @@ export const LAUNCHER_SECTIONS: LauncherSection[] = [
       ...launcherFieldsFor('rooms').map((x) => ({ ...x, icon: Home, accent: '#0d9488', badge: 'totalRooms' }) satisfies LauncherTile),
       ...launcherFieldsFor('leads').map((x) => ({ ...x, icon: UserPlus, accent: '#d97706' }) satisfies LauncherTile),
       ...launcherFieldsFor('tasks').map((x) => ({ ...x, icon: ClipboardList, accent: '#0ea5e9' }) satisfies LauncherTile),
+      ...launcherFieldsFor('voice-task-lab').map((x) => ({ ...x, icon: Mic, accent: '#0f766e' }) satisfies LauncherTile),
       // Sinh từ capability registry (Đợt 4 lát 3) — chỉ `icon`/`accent` là của
       // riêng launcher, phần còn lại registry sở hữu.
       ...launcherFieldsFor('network-center').map((f) => ({ ...f, icon: Network, accent: '#111111' }) satisfies LauncherTile),

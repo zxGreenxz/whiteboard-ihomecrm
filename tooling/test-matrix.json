@@ -7,6 +7,46 @@
   ],
   "suites": [
     {
+      "id": "voice-task-lab-server",
+      "runner": "node --test",
+      "ciJob": "ci-gates / voice-lab-tests",
+      "command": "node --test tools/voice-task-lab/*.test.mjs",
+      "risk": "normal",
+      "includes": [
+        "tools/voice-task-lab/*.test.mjs"
+      ],
+      "ciJobs": [
+        {
+          "workflow": ".github/workflows/ci-gates.yml",
+          "job": "voice-lab-tests"
+        }
+      ],
+      "environment": "ci",
+      "timeoutMinutes": 5,
+      "note": "Isolated trial server; synthetic provider and temp-file tests. No live model-quality claims.",
+      "ciCommandStep": "Voice lab server and authorization regressions"
+    },
+    {
+      "id": "voice-task-lab-mobile",
+      "runner": "playwright",
+      "ciJob": "ci-gates / voice-lab-tests",
+      "command": "cd .e2e-fleet && npx playwright test --config voice-task-lab.config.ts",
+      "risk": "normal",
+      "includes": [
+        ".e2e-fleet/specs/voice-task-lab.spec.ts"
+      ],
+      "ciJobs": [
+        {
+          "workflow": ".github/workflows/ci-gates.yml",
+          "job": "voice-lab-tests"
+        }
+      ],
+      "environment": "ci",
+      "timeoutMinutes": 10,
+      "note": "Synthetic provider on loopback; Android/iPhone viewports and recorder mocks do not prove physical microphone or real-model accuracy.",
+      "ciCommandStep": "Voice lab mobile browser regressions"
+    },
+    {
       "id": "organization-backup-envelope",
       "runner": "node --test",
       "ciJob": "quality-gates",
@@ -211,6 +251,7 @@
       ],
       "excludes": [
         ".e2e-fleet/specs/copilot-readonly-smoke.spec.ts",
+        ".e2e-fleet/specs/voice-task-lab.spec.ts",
         ".e2e-fleet/specs/copilot-confirmation.spec.ts",
         ".e2e-fleet/specs/copilot-draft-matrix.spec.ts",
         ".e2e-fleet/specs/copilot-room-pass-consent.spec.ts"

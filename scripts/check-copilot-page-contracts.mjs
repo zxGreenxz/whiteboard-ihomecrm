@@ -261,9 +261,8 @@ function main() {
     process.exitCode = 3;
     return;
   }
-  // Them /settings/finance/cam-ket-chi (26/09/2026 - man Cam ket chi cua chu, da nam trong
-  // mien tru /settings/*) dua con so len 112.
-  const problems = validateContracts(contracts, routes, exemptions, permissionKeys, 112, actionIds);
+  // Cam kết chi and the voice task lab add two routes: measured inventory is 113.
+  const problems = validateContracts(contracts, routes, exemptions, permissionKeys, 113, actionIds);
   if (problems.length) {
     console.error(`Copilot page contracts: ${problems.length} problem(s)`);
     for (const problem of problems) console.error(`  - ${problem}`);

@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.app.json",
+  "compilerOptions": {
+    "strict": true,
+    "noImplicitAny": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "types": ["vite/client"]
+  },
+  "include": ["main.tsx", "../../src/pages/VoiceTaskLabPage.tsx", "../../src/components/voice-task-lab/**/*.tsx", "../../src/hooks/useVoiceTaskLabRecorder.ts", "../../src/lib/voice-task-lab/**/*.ts"],
+  "exclude": ["../../src/lib/voice-task-lab/**/*.test.ts", "../../src/components/voice-task-lab/**/*.test.tsx"]
+}
