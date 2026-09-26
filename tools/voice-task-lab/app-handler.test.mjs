@@ -16,6 +16,7 @@ function setup(options={}){
     calls.push({url,request});
     const user=request.headers.authorization==='Bearer second-user'?OTHER_USER:USER;
     if(url==='https://project.supabase.co/auth/v1/user')return options.auth?.(user)??json({id:user,is_anonymous:false});
+    if(options.requirePublicSchema&&url.includes('/rest/v1/rpc/')&&(request.headers['content-profile']!=='public'||request.headers['accept-profile']!=='public'))return json({code:'PGRST202'},404);
     if(url.endsWith('/rest/v1/rpc/get_my_organizations'))return json({user_id:user,organizations:[{id:ORG,name:'Pilot',member_type:'OWNER'}],...options.organizations});
     if(url.endsWith('/rest/v1/rpc/get_my_permissions_v2')){assert.deepEqual(JSON.parse(request.body),{p_org:options.expectedOrg??ORG});return options.permissionsResponse??json(options.permissions??{tasks:{view:{org_wide:true,building_ids:[],cashbook_ids:[]}}});}
     assert.ok(url.startsWith('https://ai.chillhome.io.vn/v1/'),'upstream origin must be fixed');
@@ -34,6 +35,13 @@ function setup(options={}){
 
 test('authenticated app member gets capability status with no local-session requirement',async()=>{
   const {run}=setup();const result=await run({action:'status',organizationId:ORG});assert.equal(result.status,200);assert.equal(result.body.authenticated,true);assert.deepEqual(result.body.chatModels,['chat-a']);
+});
+test('RPC requests explicitly select public when PostgREST defaults to a different schema',async()=>{
+  const {run,calls}=setup({requirePublicSchema:true});
+  const result=await run({action:'status',organizationId:ORG});
+  assert.equal(result.status,200);assert.equal(result.body.authenticated,true);
+  const auth=calls.find(call=>call.url.endsWith('/auth/v1/user'));
+  assert.equal(auth.request.headers['content-profile'],undefined);assert.equal(auth.request.headers['accept-profile'],undefined);
 });
 test('missing, invalid and anonymous JWTs cannot reach 9router',async()=>{
   for(const options of [{auth:()=>json({message:'secret-upstream'},401)},{auth:()=>json({id:USER,is_anonymous:true})}]){const {run,calls}=setup(options);assert.equal((await run({action:'status',organizationId:ORG})).status,401);assert.equal(calls.filter(call=>call.url.includes('ai.chillhome')).length,0);}

@@ -23547,6 +23547,24 @@ export type Database = {
           amount: number
           birth_status: string
           building_name: string
+          code: string
+          decided_at: string
+          enforced: boolean
+          engine_reason: string
+          engine_status: string
+          match: boolean
+          route: string
+          voucher_date: string
+          voucher_id: string
+          writer: string
+        }[]
+      }
+      spend_shadow_report_v2: {
+        Args: { p_from?: string; p_organization_id: string; p_to?: string }
+        Returns: {
+          amount: number
+          birth_status: string
+          building_name: string
           cashbook_ok: boolean
           code: string
           decided_at: string

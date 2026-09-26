@@ -85,7 +85,10 @@ export function createAppHandler({fetchImpl=fetch,getEnv=key=>process.env[key],n
     const headers={authorization,apikey:publicKey,'content-type':'application/json'};
     async function call(path,body,auth=false) {
       let response;
-      try{response=await fetchImpl(base+path,{method:body===undefined?'GET':'POST',headers,...(body===undefined?{}:{body:JSON.stringify(body)}),redirect:'error',signal:AbortSignal.timeout(5000)});}catch{throw authUnavailable();}
+      // PostgREST can expose a non-public default schema. Select the same public
+      // schema as supabase-js for RPCs; GoTrue does not receive profile headers.
+      const requestHeaders=path.startsWith('/rest/v1/rpc/')?{...headers,'content-profile':'public','accept-profile':'public'}:headers;
+      try{response=await fetchImpl(base+path,{method:body===undefined?'GET':'POST',headers:requestHeaders,...(body===undefined?{}:{body:JSON.stringify(body)}),redirect:'error',signal:AbortSignal.timeout(5000)});}catch{throw authUnavailable();}
       if(!response.ok){await response.body?.cancel();if(auth&&(response.status===401||response.status===403))throw unauthorized();throw authUnavailable();}
       return boundedAuthJson(response);
     }
