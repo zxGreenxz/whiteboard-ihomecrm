@@ -1,0 +1,1526 @@
+{
+  "started_at": "2026-09-26T05:27:17.027Z",
+  "project_ref": "tryymsxyyckgbrmmvozx",
+  "code_ref": "e1a0d2ac0312bba94148e974af2fb132303865a6",
+  "transaction": "BEGIN READ ONLY ... ROLLBACK",
+  "results": {
+    "catalog-columns": {
+      "sql": "select table_schema,table_name,column_name,data_type from information_schema.columns where table_schema in ('public','app_private') and (table_name in ('income_expense_types','utility_ceiling_versions','special_fee_price_versions','income_expenses','income_expense_items','utility_accounts','buildings','ie_auto_approve_config') or table_name like '%utility%bill%') order by table_schema,table_name,ordinal_position",
+      "rows": [
+        {
+          "table_schema": "app_private",
+          "table_name": "ie_auto_approve_config",
+          "column_name": "organization_id",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "app_private",
+          "table_name": "ie_auto_approve_config",
+          "column_name": "threshold",
+          "data_type": "numeric"
+        },
+        {
+          "table_schema": "app_private",
+          "table_name": "ie_auto_approve_config",
+          "column_name": "updated_by",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "app_private",
+          "table_name": "ie_auto_approve_config",
+          "column_name": "updated_at",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "table_schema": "app_private",
+          "table_name": "special_fee_price_versions",
+          "column_name": "id",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "app_private",
+          "table_name": "special_fee_price_versions",
+          "column_name": "organization_id",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "app_private",
+          "table_name": "special_fee_price_versions",
+          "column_name": "building_id",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "app_private",
+          "table_name": "special_fee_price_versions",
+          "column_name": "fee_category",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "app_private",
+          "table_name": "special_fee_price_versions",
+          "column_name": "effective_from_month",
+          "data_type": "date"
+        },
+        {
+          "table_schema": "app_private",
+          "table_name": "special_fee_price_versions",
+          "column_name": "amount",
+          "data_type": "numeric"
+        },
+        {
+          "table_schema": "app_private",
+          "table_name": "special_fee_price_versions",
+          "column_name": "status",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "app_private",
+          "table_name": "special_fee_price_versions",
+          "column_name": "source",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "app_private",
+          "table_name": "special_fee_price_versions",
+          "column_name": "note",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "app_private",
+          "table_name": "special_fee_price_versions",
+          "column_name": "created_by",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "app_private",
+          "table_name": "special_fee_price_versions",
+          "column_name": "created_at",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "table_schema": "app_private",
+          "table_name": "special_fee_price_versions",
+          "column_name": "retired_at",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "table_schema": "app_private",
+          "table_name": "utility_ceiling_versions",
+          "column_name": "id",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "app_private",
+          "table_name": "utility_ceiling_versions",
+          "column_name": "organization_id",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "app_private",
+          "table_name": "utility_ceiling_versions",
+          "column_name": "building_id",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "app_private",
+          "table_name": "utility_ceiling_versions",
+          "column_name": "utility_type",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "app_private",
+          "table_name": "utility_ceiling_versions",
+          "column_name": "effective_from_month",
+          "data_type": "date"
+        },
+        {
+          "table_schema": "app_private",
+          "table_name": "utility_ceiling_versions",
+          "column_name": "ceiling_amount",
+          "data_type": "numeric"
+        },
+        {
+          "table_schema": "app_private",
+          "table_name": "utility_ceiling_versions",
+          "column_name": "max_ratio_to_billed",
+          "data_type": "numeric"
+        },
+        {
+          "table_schema": "app_private",
+          "table_name": "utility_ceiling_versions",
+          "column_name": "status",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "app_private",
+          "table_name": "utility_ceiling_versions",
+          "column_name": "note",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "app_private",
+          "table_name": "utility_ceiling_versions",
+          "column_name": "created_by",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "app_private",
+          "table_name": "utility_ceiling_versions",
+          "column_name": "created_at",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "table_schema": "app_private",
+          "table_name": "utility_ceiling_versions",
+          "column_name": "retired_at",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "buildings",
+          "column_name": "id",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "buildings",
+          "column_name": "user_id",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "buildings",
+          "column_name": "name",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "buildings",
+          "column_name": "code",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "buildings",
+          "column_name": "type",
+          "data_type": "USER-DEFINED"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "buildings",
+          "column_name": "status",
+          "data_type": "USER-DEFINED"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "buildings",
+          "column_name": "province",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "buildings",
+          "column_name": "district",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "buildings",
+          "column_name": "ward",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "buildings",
+          "column_name": "street_address",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "buildings",
+          "column_name": "total_floors",
+          "data_type": "integer"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "buildings",
+          "column_name": "total_rooms",
+          "data_type": "integer"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "buildings",
+          "column_name": "description",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "buildings",
+          "column_name": "images",
+          "data_type": "jsonb"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "buildings",
+          "column_name": "amenities",
+          "data_type": "jsonb"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "buildings",
+          "column_name": "created_at",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "buildings",
+          "column_name": "updated_at",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "buildings",
+          "column_name": "deleted_at",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "buildings",
+          "column_name": "contract_template_id",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "buildings",
+          "column_name": "invoice_template_id",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "buildings",
+          "column_name": "commission_tiers",
+          "data_type": "jsonb"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "buildings",
+          "column_name": "is_virtual",
+          "data_type": "boolean"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "buildings",
+          "column_name": "default_account_id_tt",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "buildings",
+          "column_name": "default_account_id_tk",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "buildings",
+          "column_name": "floor_layouts",
+          "data_type": "jsonb"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "buildings",
+          "column_name": "public_contact_name",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "buildings",
+          "column_name": "public_contact_phone",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "buildings",
+          "column_name": "public_map_url",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "buildings",
+          "column_name": "public_lift_type",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "buildings",
+          "column_name": "latitude",
+          "data_type": "double precision"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "buildings",
+          "column_name": "longitude",
+          "data_type": "double precision"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "buildings",
+          "column_name": "name_sort",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "buildings",
+          "column_name": "cluster_id",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "buildings",
+          "column_name": "has_elevator",
+          "data_type": "boolean"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "buildings",
+          "column_name": "hidden_fixed_expenses",
+          "data_type": "ARRAY"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "buildings",
+          "column_name": "organization_id",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expense_items",
+          "column_name": "id",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expense_items",
+          "column_name": "income_expense_id",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expense_items",
+          "column_name": "income_expense_type_id",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expense_items",
+          "column_name": "description",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expense_items",
+          "column_name": "quantity",
+          "data_type": "numeric"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expense_items",
+          "column_name": "unit_price",
+          "data_type": "numeric"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expense_items",
+          "column_name": "amount",
+          "data_type": "numeric"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expense_items",
+          "column_name": "notes",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expense_items",
+          "column_name": "created_at",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expense_items",
+          "column_name": "start_date",
+          "data_type": "date"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expense_items",
+          "column_name": "end_date",
+          "data_type": "date"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expense_items",
+          "column_name": "organization_id",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expense_items",
+          "column_name": "accounting_class",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expense_types",
+          "column_name": "id",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expense_types",
+          "column_name": "name",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expense_types",
+          "column_name": "type",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expense_types",
+          "column_name": "description",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expense_types",
+          "column_name": "is_default",
+          "data_type": "boolean"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expense_types",
+          "column_name": "user_id",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expense_types",
+          "column_name": "created_at",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expense_types",
+          "column_name": "updated_at",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expense_types",
+          "column_name": "category",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expense_types",
+          "column_name": "is_deposit",
+          "data_type": "boolean"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expense_types",
+          "column_name": "is_restricted",
+          "data_type": "boolean"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expense_types",
+          "column_name": "hide_in_report",
+          "data_type": "boolean"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expense_types",
+          "column_name": "organization_id",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expense_types",
+          "column_name": "force_approval",
+          "data_type": "boolean"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expense_types",
+          "column_name": "system_only",
+          "data_type": "boolean"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "id",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "user_id",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "code",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "type",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "name",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "building_id",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "room_id",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "tenant_id",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "voucher_date",
+          "data_type": "date"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "total_amount",
+          "data_type": "numeric"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "approval_status",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "approved_by",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "approved_at",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "notes",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "created_at",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "updated_at",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "deleted_at",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "payer_name",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "account_id",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "contract_id",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "attachments",
+          "data_type": "jsonb"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "business_result_accounting",
+          "data_type": "boolean"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "receive_bank_name",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "receive_bank_account",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "creator_name",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "invoice_id",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "repeat_cycle",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "repeat_infinity",
+          "data_type": "boolean"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "repeat_count",
+          "data_type": "integer"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "repeat_remaining",
+          "data_type": "integer"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "repeat_next_date",
+          "data_type": "date"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "repeat_parent_id",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "payment_id",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "change_amount",
+          "data_type": "numeric"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "change_account_id",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "rounding_amount",
+          "data_type": "numeric"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "rounding_account_id",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "verified_at",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "verified_by",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "verified_by_name",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "verified_note",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "counts_in_business_result",
+          "data_type": "boolean"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "shareholder_id",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "handover_id",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "has_restricted_item",
+          "data_type": "boolean"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "handover_transfer_id",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "salary_staff_id",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "salary_role",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "profit_manager_id",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "collect_lat",
+          "data_type": "numeric"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "collect_lng",
+          "data_type": "numeric"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "collect_distance_m",
+          "data_type": "integer"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "collect_geofence_status",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "kqkd_amount",
+          "data_type": "numeric"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "system_source",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "utility_account_id",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "commission_kind",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "commission_legacy_dup",
+          "data_type": "boolean"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "repeat_auto_approve",
+          "data_type": "boolean"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "organization_id",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "approval_request_id",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "posting_id",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "posted_at_v2",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "correlation_id",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "idempotency_key",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "reversed_by_posting_id",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "source_payload_hash",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "payment_collection_id",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "reversal_of_income_expense_id",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "posting_mode",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "posting_status",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "active_posting_id_v2",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "recognition_date",
+          "data_type": "date"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "recognition_source_mode",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "review_state",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "review_owner_membership_id",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "review_reason",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "review_deadline",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "change_field_mask",
+          "data_type": "jsonb"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "review_version",
+          "data_type": "bigint"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "approval_version",
+          "data_type": "bigint"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "posting_version",
+          "data_type": "bigint"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "cancellation_kind",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "maker_user_id",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "maker_membership_id",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "birth_operation_id",
+          "data_type": "uuid"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "income_expenses",
+          "column_name": "birth_txid",
+          "data_type": "xid8"
+        }
+      ]
+    },
+    "utility-functions": {
+      "sql": "select n.nspname schema,p.proname,pg_get_function_identity_arguments(p.oid) signature,p.provolatile,p.prosecdef,md5(pg_get_functiondef(p.oid)) md5,pg_get_functiondef(p.oid) definition from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname in ('public','app_private') and p.proname in ('pay_utility_bill','utility_ceiling_check_v1','set_utility_ceiling_v1','set_special_fee_price_v1','special_fee_rule_check_v1','special_fee_approve_and_post_v1') order by 1,2,3",
+      "rows": [
+        {
+          "schema": "app_private",
+          "proname": "special_fee_approve_and_post_v1",
+          "signature": "p_voucher_id uuid, p_source_kind text",
+          "provolatile": "v",
+          "prosecdef": true,
+          "md5": "26a42035460c92ad2430b546610d24ed",
+          "definition": "CREATE OR REPLACE FUNCTION app_private.special_fee_approve_and_post_v1(p_voucher_id uuid, p_source_kind text DEFAULT 'SPECIAL_PAGE_FEE'::text)\n RETURNS uuid\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'app_private', 'public'\nAS $function$\nDECLARE\n  v_ie       public.income_expenses;\n  v_acc      public.accounts;\n  v_posting  uuid;\n  v_actor    uuid := auth.uid();\n  v_reversed boolean;\n  v_mid      uuid;\nBEGIN\n  SELECT * INTO v_ie FROM public.income_expenses WHERE id = p_voucher_id FOR UPDATE;\n  IF NOT FOUND THEN\n    RAISE EXCEPTION 'Không tìm thấy phiếu %', p_voucher_id USING ERRCODE = 'P0002';\n  END IF;\n  IF v_ie.deleted_at IS NOT NULL THEN\n    RAISE EXCEPTION 'Phiếu % đã huỷ — không ghi sổ', p_voucher_id USING ERRCODE = '55000';\n  END IF;\n\n  -- ══ CHỐT LOẠI PHIẾU — hàng rào quan trọng nhất của hàm này ═════════\n  -- Hàm này DUYỆT HỘ NGƯỜI DÙNG. Nó tuyệt đối không được chạm vào loại phiếu\n  -- mà chủ đã quyết là phải có người duyệt:\n  --   • Chủ chốt 31/07: \"riêng HOÀN CỌC vẫn chờ duyệt kể cả khi số khớp\".\n  --   • Phiếu THU (INCOME) không thuộc phạm vi trang đóng phí.\n  -- Không có chốt này thì bất kỳ writer nào lỡ gọi nhầm cũng tự duyệt được một\n  -- phiếu hoàn cọc — đúng thứ chủ cấm.\n  IF v_ie.type IS DISTINCT FROM 'EXPENSE' THEN\n    RAISE EXCEPTION\n      'Chỉ tự duyệt được phiếu CHI. Phiếu % là loại %.', p_voucher_id, COALESCE(v_ie.type,'(rỗng)')\n      USING ERRCODE = '42501';\n  END IF;\n  IF COALESCE(v_ie.system_source, '') NOT IN ('special_fee.v1', 'fixed_fee', 'utility.bill', 'contract.commission') THEN\n    RAISE EXCEPTION\n      'Phiếu % không thuộc nhóm phí cố định của trang đóng tiền (nguồn: %) — không tự duyệt.',\n      p_voucher_id, COALESCE(v_ie.system_source, '(không rõ)')\n      USING ERRCODE = '42501';\n  END IF;\n\n  -- ══ (2) REPLAY — phải kiểm bút toán còn SỐNG, không chỉ còn con trỏ ══\n  -- Bẫy đã đo được: nếu bút toán cũ ĐÃ BỊ ĐẢO thì trả con trỏ cũ ra rồi đóng\n  -- dấu POSTED lên nó = phiếu nói \"đã chi\" trong khi sổ quỹ nói \"chưa\" — tiền\n  -- biến mất khỏi tồn quỹ mà giao diện vẫn xanh. Phải phân biệt ba trạng thái.\n  IF v_ie.active_posting_id_v2 IS NOT NULL THEN\n    SELECT EXISTS (\n      SELECT 1 FROM public.income_expense_postings r\n       WHERE r.reversal_of_id = v_ie.active_posting_id_v2 AND r.event_kind = 'REVERSAL'\n    ) INTO v_reversed;\n    IF v_reversed THEN\n      RAISE EXCEPTION\n        'Phiếu % đã có bút toán bị ĐẢO — muốn ghi sổ lại phải qua đường ghi sổ lại có kiểm soát, không gọi lại hàm tự duyệt.',\n        COALESCE(v_ie.code, p_voucher_id::text)\n        USING ERRCODE = '55000';\n    END IF;\n    RETURN v_ie.active_posting_id_v2;\n  END IF;\n\n  -- Bút toán tồn tại theo khoá nguồn nhưng phiếu MẤT con trỏ (a85 xoá con trỏ\n  -- khi đảo). Không được ghi đè POSTED lên đó.\n  SELECT p.id INTO v_posting\n    FROM public.income_expense_postings p\n   WHERE p.organization_id = v_ie.organization_id\n     AND p.external_source_kind = 'SPECIAL_FEE_VOUCHER'\n     AND p.external_source_id   = p_voucher_id\n     AND p.event_kind = 'POSTING';\n  IF v_posting IS NOT NULL THEN\n    RAISE EXCEPTION\n      'Phiếu % đã từng được ghi sổ (bút toán %) nhưng con trỏ đã bị gỡ — cần rà tay, không tự ghi lại.',\n      COALESCE(v_ie.code, p_voucher_id::text), v_posting\n      USING ERRCODE = '55000';\n  END IF;\n\n  IF v_ie.account_id IS NULL THEN\n    RAISE EXCEPTION 'Phiếu % chưa có sổ quỹ — không tự ghi sổ được', p_voucher_id\n      USING ERRCODE = '22023';\n  END IF;\n  SELECT * INTO v_acc FROM public.accounts WHERE id = v_ie.account_id;\n  IF NOT FOUND OR v_acc.deleted_at IS NOT NULL THEN\n    RAISE EXCEPTION 'Sổ quỹ của phiếu % không còn hiệu lực', p_voucher_id USING ERRCODE = '22023';\n  END IF;\n  IF v_acc.organization_id IS DISTINCT FROM v_ie.organization_id THEN\n    RAISE EXCEPTION 'Sổ quỹ khác tổ chức của phiếu %', p_voucher_id USING ERRCODE = '42501';\n  END IF;\n\n  -- (3) TẮT CẦU a85/a85b cho transaction này. Xem khối chú thích ở trên.\n  INSERT INTO app_private.ie_transition_authorization (income_expense_id, xid, purpose)\n  VALUES (p_voucher_id, pg_current_xact_id(), 'FINANCE_V2_LIFECYCLE')\n  ON CONFLICT (income_expense_id) DO UPDATE\n    SET xid = EXCLUDED.xid, purpose = EXCLUDED.purpose, granted_at = now();\n\n  -- (4) Lật APPROVED nếu chưa. Trigger khoá kỳ sẽ tự lên tiếng ở đây.\n  IF v_ie.approval_status IS DISTINCT FROM 'APPROVED' THEN\n    UPDATE public.income_expenses\n       SET approval_status = 'APPROVED',\n           review_state    = 'RESOLVED',\n           approved_by     = COALESCE(approved_by, v_actor, user_id),\n           approved_at     = COALESCE(approved_at, now())\n     WHERE id = p_voucher_id;\n  END IF;\n\n  -- ══ SỔ ẢO: DUYỆT NHƯNG KHÔNG GHI SỔ QUỸ ═══════════════════════════\n  -- Sổ ảo (cấn cọc, cấn trừ) không có tiền ra khỏi két nên không có bút toán\n  -- sổ quỹ. Bản nháp trước NÉM LỖI ở đây — sai, vì hôm nay đóng phí từ sổ ảo\n  -- vẫn chạy được (cầu a85b tự bỏ qua sổ ảo và phiếu vẫn APPROVED). Ném lỗi là\n  -- LẤY MẤT một năng lực đang có. Giữ đúng hành vi cũ: duyệt, không ghi sổ.\n  IF COALESCE(v_acc.is_virtual, false) THEN\n    UPDATE public.income_expenses\n       SET posting_status = COALESCE(NULLIF(posting_status, 'UNPOSTED'), 'NOT_APPLICABLE'),\n           updated_at = now()\n     WHERE id = p_voucher_id;\n    DELETE FROM app_private.ie_transition_authorization\n     WHERE income_expense_id = p_voucher_id AND xid = pg_current_xact_id();\n    RETURN NULL;\n  END IF;\n\n  -- Lõi đòi một membership để ghi \"ai ghi sổ\", và cột đó NOT NULL. Người tạo\n  -- phiếu có thể đã rời tổ chức ⇒ lõi ném 23502 trần không ai hiểu. Chặn sớm\n  -- bằng câu tiếng Việt.\n  SELECT om.id INTO v_mid\n    FROM public.organization_memberships om\n   WHERE om.organization_id = v_ie.organization_id\n     AND om.user_id = COALESCE(v_ie.approved_by, v_ie.user_id, v_actor)\n     AND om.status = 'ACTIVE'\n   LIMIT 1;\n  IF v_mid IS NULL AND v_ie.maker_membership_id IS NULL THEN\n    RAISE EXCEPTION\n      'Không xác định được người ghi sổ cho phiếu % (người tạo không còn là thành viên đang hoạt động) — phiếu đã duyệt nhưng cần vào sổ tay.',\n      COALESCE(v_ie.code, p_voucher_id::text)\n      USING ERRCODE = '22023';\n  END IF;\n\n  -- (5) Lõi dùng chung. Khoá replay là chính phiếu này.\n  v_posting := app_private.finance_v2_post_voucher_with_source_v1(\n    p_org             => v_ie.organization_id,\n    p_voucher_id      => p_voucher_id,\n    p_source_kind     => p_source_kind,\n    p_external_kind   => 'SPECIAL_FEE_VOUCHER',\n    p_external_id     => p_voucher_id,\n    p_external_line_id=> NULL,\n    p_posted_on       => v_ie.voucher_date,\n    p_amount_basis    => 'VOUCHER_TOTAL',\n    p_generation      => 1\n  );\n\n  -- (6) Con trỏ posting. Token còn hiệu lực nên cầu vẫn im (và a85 không khai\n  --     posting_status trong danh sách cột kích hoạt nên nó cũng không chạy).\n  UPDATE public.income_expenses\n     SET active_posting_id_v2 = v_posting,\n         posting_id           = v_posting,\n         posting_status       = 'POSTED',\n         posting_mode         = COALESCE(posting_mode, 'CASHBOOK'),\n         posted_at_v2         = now(),\n         updated_at           = now()\n   WHERE id = p_voucher_id;\n\n  -- (7) TRẢ TOKEN. Mọi writer cùng họ đều dọn; để lại thì cầu a85 CÂM cho toàn\n  --     bộ phần còn lại của transaction — một lệnh xoá/đổi tiền sau đó sẽ không\n  --     sinh bút toán đảo, tiền kẹt lại trong sổ.\n  DELETE FROM app_private.ie_transition_authorization\n   WHERE income_expense_id = p_voucher_id AND xid = pg_current_xact_id();\n\n  RETURN v_posting;\nEND;\n$function$\n"
+        },
+        {
+          "schema": "app_private",
+          "proname": "special_fee_rule_check_v1",
+          "signature": "p_org uuid, p_building uuid, p_kind text, p_period_start date, p_period_end date, p_amount numeric",
+          "provolatile": "s",
+          "prosecdef": false,
+          "md5": "9ba89a7fa4712fc825040feeace7ed93",
+          "definition": "CREATE OR REPLACE FUNCTION app_private.special_fee_rule_check_v1(p_org uuid, p_building uuid, p_kind text, p_period_start date, p_period_end date, p_amount numeric)\n RETURNS jsonb\n LANGUAGE plpgsql\n STABLE\n SET search_path TO 'pg_catalog', 'app_private', 'public'\nAS $function$\nDECLARE\n  v_m        date;\n  v_price    numeric;\n  v_expected numeric := 0;\n  v_months   int := 0;\n  v_missing  int := 0;\nBEGIN\n  IF p_period_start IS NULL OR p_period_end IS NULL OR p_period_end < p_period_start THEN\n    RETURN jsonb_build_object('verdict','CONFIG_REQUIRED','reason','Kỳ không hợp lệ');\n  END IF;\n\n  -- Giá công bố là mức THEO THÁNG, nên chỉ so được khi kỳ phủ TRỌN các tháng.\n  -- Kỳ lẻ (vd 15/06→14/07) không quy ra \"mấy tháng\" một cách không mập mờ: đếm\n  -- theo tháng lịch sẽ ra 2 và đòi gấp đôi tiền cho một kỳ dài 30 ngày.\n  -- ⇒ Trả CONFIG_REQUIRED = giữ nguyên hành vi cũ, không tự duyệt, không chặn.\n  IF p_period_start <> date_trunc('month', p_period_start)::date\n     OR p_period_end <> (date_trunc('month', p_period_end) + interval '1 month - 1 day')::date THEN\n    RETURN jsonb_build_object(\n      'verdict','CONFIG_REQUIRED',\n      'reason','Kỳ không trọn tháng nên không đối chiếu được với giá công bố (giá công bố tính theo tháng)');\n  END IF;\n\n  -- Trần vòng lặp: kỳ nhập sai kiểu 1900→2099 sẽ quay 2.400 vòng trong lúc\n  -- đang giữ khoá phiếu. 120 tháng (10 năm) là quá đủ cho mọi kỳ phí thật.\n  IF (date_trunc('month', p_period_end)::date - date_trunc('month', p_period_start)::date) > 3700 THEN\n    RETURN jsonb_build_object(\n      'verdict','CONFIG_REQUIRED',\n      'reason','Kỳ dài bất thường (trên 10 năm) — không đối chiếu tự động');\n  END IF;\n\n  v_m := date_trunc('month', p_period_start)::date;\n  WHILE v_m <= date_trunc('month', p_period_end)::date LOOP\n    v_months := v_months + 1;\n    v_price  := app_private.special_fee_price_for_v1(p_org, p_building, p_kind, v_m);\n    IF v_price IS NULL THEN\n      v_missing := v_missing + 1;\n    ELSE\n      v_expected := v_expected + v_price;\n    END IF;\n    v_m := (v_m + interval '1 month')::date;\n  END LOOP;\n\n  IF v_missing > 0 THEN\n    RETURN jsonb_build_object(\n      'verdict','CONFIG_REQUIRED',\n      'months', v_months,\n      'missing_months', v_missing,\n      'reason','Chưa khai giá ở Cài đặt → Phí cố định cho ' || v_missing || '/' || v_months || ' tháng của kỳ này');\n  END IF;\n\n  IF round(COALESCE(p_amount,0), 2) = round(v_expected, 2) THEN\n    RETURN jsonb_build_object(\n      'verdict','VALID', 'months', v_months, 'expected', round(v_expected,2));\n  END IF;\n\n  -- Định dạng số kiểu Việt Nam: dấu CHẤM ngăn nghìn. to_char mặc định theo\n  -- lc_numeric của máy chủ (đang là kiểu Anh, cho ra \"9,507,910đ\") — người Việt\n  -- đọc dấu phẩy là dấu thập phân nên câu thông báo sẽ gây hiểu nhầm số tiền.\n  RETURN jsonb_build_object(\n    'verdict','AMOUNT_MISMATCH',\n    'months', v_months,\n    'expected', round(v_expected,2),\n    'actual',   round(COALESCE(p_amount,0),2),\n    'reason', format('Giá đã công bố cho kỳ này là %sđ, số đang chi là %sđ',\n                     replace(to_char(round(v_expected), 'FM999G999G999G999'), ',', '.'),\n                     replace(to_char(round(COALESCE(p_amount,0)), 'FM999G999G999G999'), ',', '.')));\nEND;\n$function$\n"
+        },
+        {
+          "schema": "app_private",
+          "proname": "utility_ceiling_check_v1",
+          "signature": "p_org uuid, p_building uuid, p_type text, p_month date, p_amount numeric, p_billed_to_tenants numeric",
+          "provolatile": "s",
+          "prosecdef": false,
+          "md5": "20d1b77c4100de5be3cdbae50c10f39b",
+          "definition": "CREATE OR REPLACE FUNCTION app_private.utility_ceiling_check_v1(p_org uuid, p_building uuid, p_type text, p_month date, p_amount numeric, p_billed_to_tenants numeric DEFAULT NULL::numeric)\n RETURNS jsonb\n LANGUAGE plpgsql\n STABLE\n SET search_path TO 'pg_catalog', 'app_private', 'public'\nAS $function$\nDECLARE v_r record; v_lim numeric;\nBEGIN\n  SELECT * INTO v_r FROM app_private.utility_ceiling_versions v\n   WHERE v.organization_id = p_org AND v.status = 'PUBLISHED'\n     AND v.utility_type = p_type\n     AND v.effective_from_month <= date_trunc('month', p_month)::date\n     AND (v.building_id = p_building OR v.building_id IS NULL)\n   ORDER BY (v.building_id IS NOT NULL) DESC, v.effective_from_month DESC\n   LIMIT 1;\n\n  IF v_r.id IS NULL THEN\n    RETURN jsonb_build_object('verdict','NO_RULE',\n      'reason','Chủ chưa công bố trần cho hạng mục này — giữ nguyên hành vi cũ');\n  END IF;\n\n  IF v_r.ceiling_amount IS NOT NULL AND round(COALESCE(p_amount,0)) > round(v_r.ceiling_amount) THEN\n    RETURN jsonb_build_object('verdict','OVER_CEILING',\n      'ceiling', v_r.ceiling_amount, 'actual', p_amount,\n      'reason','Số chi ' || replace(to_char(round(COALESCE(p_amount,0)),'FM999G999G999G999'),',','.')\n               || 'đ vượt trần ' || replace(to_char(round(v_r.ceiling_amount),'FM999G999G999G999'),',','.') || 'đ');\n  END IF;\n\n  IF v_r.max_ratio_to_billed IS NOT NULL AND COALESCE(p_billed_to_tenants,0) > 0 THEN\n    v_lim := round(p_billed_to_tenants * v_r.max_ratio_to_billed);\n    IF round(COALESCE(p_amount,0)) > v_lim THEN\n      RETURN jsonb_build_object('verdict','OVER_RATIO',\n        'limit', v_lim, 'billed', p_billed_to_tenants, 'ratio', v_r.max_ratio_to_billed,\n        'reason','Số chi vượt ' || v_r.max_ratio_to_billed || ' lần tiền đã thu của khách ('\n                 || replace(to_char(round(p_billed_to_tenants),'FM999G999G999G999'),',','.') || 'đ)');\n    END IF;\n  END IF;\n\n  -- Mẫu số 0 mà vẫn chi ⇒ đáng ngờ, nhưng không chặn: có toà chưa kịp chốt số khách.\n  IF v_r.max_ratio_to_billed IS NOT NULL AND COALESCE(p_billed_to_tenants,0) = 0\n     AND COALESCE(p_amount,0) > 0 THEN\n    RETURN jsonb_build_object('verdict','WARN_NO_BILLED',\n      'reason','Chưa thu đồng nào của khách cho kỳ này mà đã chi nhà cung cấp — nên rà lại');\n  END IF;\n\n  RETURN jsonb_build_object('verdict','WITHIN_LIMIT');\nEND;\n$function$\n"
+        },
+        {
+          "schema": "public",
+          "proname": "pay_utility_bill",
+          "signature": "p_building_id uuid, p_utility_type text, p_amount numeric, p_period_month text, p_voucher_date date, p_provider_code text, p_account_holder text, p_account_id uuid, p_attachments jsonb, p_utility_account_id uuid",
+          "provolatile": "v",
+          "prosecdef": true,
+          "md5": "b6a36737c5fc1aeadf759f89aee552ee",
+          "definition": "CREATE OR REPLACE FUNCTION public.pay_utility_bill(p_building_id uuid, p_utility_type text, p_amount numeric, p_period_month text, p_voucher_date date DEFAULT NULL::date, p_provider_code text DEFAULT NULL::text, p_account_holder text DEFAULT NULL::text, p_account_id uuid DEFAULT NULL::uuid, p_attachments jsonb DEFAULT NULL::jsonb, p_utility_account_id uuid DEFAULT NULL::uuid)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'app_private'\nAS $function$\nDECLARE\n  v_owner   uuid;\n  v_acc     uuid;\n  v_meter   uuid;\n  v_type    uuid;\n  v_caller  text;\n  v_type_nm text;\n  v_vdate   date;\n  v_p_start date;\n  v_p_end   date;\n  v_voucher uuid;\n  v_code    text;\n  v_total   numeric;\n  v_org     uuid;        -- t5_28: org của toà để đọc ngưỡng\n  v_threshold numeric;   -- ngưỡng tự duyệt phiếu chi (nếu có)\n  v_status  text;        -- trạng thái sinh theo ngưỡng\n  v_appr_by uuid;\n  v_appr_at timestamptz;\n  v_kind_vn text;        -- Slice −1: \"điện\"/\"nước\" cho câu lỗi\n  v_dup_code   text;     -- Slice −1 B1: phiếu đã có của đúng slot này\n  v_dup_amount numeric;\n  v_dup_status text;\n  v_meter_code text;     -- Slice −1 B1: mã khách hàng của công tơ ĐANG chọn\n  v_meter_cnt  int;      -- Slice −1 B1: số công tơ cùng loại của toà (>1 thì gợi ý chọn lại)\n  v_ceiling jsonb;       -- 28/08: verdict trần điện/nước (utility_ceiling_check_v1)\n  v_ceiling_verdict text;\nBEGIN\n  IF auth.uid() IS NULL THEN RAISE EXCEPTION 'Bạn chưa đăng nhập' USING ERRCODE = '42501'; END IF;\n  IF p_utility_type NOT IN ('ELECTRIC','WATER') THEN RAISE EXCEPTION 'Loại tiện ích không hợp lệ'; END IF;\n  IF p_amount IS NULL OR p_amount <= 0 THEN RAISE EXCEPTION 'Số tiền phải lớn hơn 0'; END IF;\n  IF p_period_month !~ '^\\d{4}-\\d{2}$' THEN RAISE EXCEPTION 'Kỳ không hợp lệ (cần YYYY-MM)'; END IF;\n\n  v_kind_vn := CASE WHEN p_utility_type = 'ELECTRIC' THEN 'điện' ELSE 'nước' END;\n\n  SELECT b.user_id, b.organization_id INTO v_owner, v_org\n    FROM buildings b WHERE b.id = p_building_id AND b.deleted_at IS NULL;\n  IF v_owner IS NULL THEN RAISE EXCEPTION 'Không tìm thấy toà nhà'; END IF;\n  IF NOT (public.can_access_building(p_building_id) OR public.ie_all_buildings_scope(p_building_id)\n          OR v_owner = auth.uid() OR public.is_admin() OR public.is_super_admin()) THEN\n    RAISE EXCEPTION 'Bạn không có quyền thao tác trên toà này' USING ERRCODE = '42501';\n  END IF;\n\n  -- ══ Slice −1 B2: KHÔNG tự tạo công tơ nữa ══════════════════════════\n  -- Nhánh ELSE cũ INSERT một dòng building_utility_accounts mới mỗi lần\n  -- p_utility_account_id NULL. Giao diện gửi NULL cho MỌI toà/loại chưa khai\n  -- công tơ (dòng tổng hợp accountId=null), nên một cú bấm check bình thường\n  -- là sinh công tơ trong im lặng; và vì map \"đã đóng\" khoá theo id công tơ,\n  -- dòng vừa sinh không bao giờ hiện \"đã đóng\" ⇒ mời người dùng bấm lại.\n  -- Chặn ở đây là chặn cả hai hệ quả bằng một câu.\n  IF p_utility_account_id IS NULL THEN\n    RAISE EXCEPTION\n      '[UTILITY_METER_REQUIRED] Toà này chưa khai công tơ % — hãy khai công tơ (mã khách hàng / chủ hộ) rồi đóng tiền cho đúng công tơ. Trước đây hệ thống tự tạo công tơ mới mỗi lần bấm, nên dòng đó không bao giờ hiện \"đã đóng\" và tiền đóng hai lần không ai thấy.',\n      v_kind_vn\n      USING ERRCODE = '22023';\n  END IF;\n\n  SELECT id, NULLIF(btrim(COALESCE(provider_code, '')), '')\n    INTO v_meter, v_meter_code\n    FROM building_utility_accounts\n   WHERE id = p_utility_account_id AND building_id = p_building_id\n     AND utility_type = p_utility_type AND deleted_at IS NULL;\n  IF v_meter IS NULL THEN RAISE EXCEPTION 'Không tìm thấy đồng hồ điện/nước'; END IF;\n\n  -- Slice −1 B1: toà có MẤY công tơ cùng loại? Cần cho câu lỗi chống trùng.\n  -- Ca thật 1392QT: HAI hợp đồng điện riêng (PE13000241972 và PE13000241924,\n  -- cùng chủ hộ Hoàng Công Hiệp), mỗi tháng là một hoá đơn lớn + một hoá đơn nhỏ.\n  -- Không nói rõ công tơ nào thì người dùng đọc \"kỳ này đã có phiếu\" sẽ tưởng\n  -- mình bấm trùng, trong khi thực tế họ đang trả hoá đơn của công tơ CÒN LẠI.\n  SELECT count(*) INTO v_meter_cnt\n    FROM building_utility_accounts\n   WHERE building_id = p_building_id AND utility_type = p_utility_type\n     AND deleted_at IS NULL;\n\n  v_p_start := to_date(p_period_month || '-01', 'YYYY-MM-DD');\n  v_p_end   := (date_trunc('month', v_p_start) + interval '1 month - 1 day')::date;\n\n  -- ══ Slice −1 B1: MỘT PHIẾU / MỘT CÔNG TƠ / MỘT KỲ ═════════════════\n  -- Khoá tư vấn theo đúng slot TRƯỚC khi đọc: SELECT-rồi-INSERT trần bị đua\n  -- (hai tab, hai lần bấm, hai transaction cùng thấy \"chưa có\" rồi cùng ghi).\n  -- Khoá cấp transaction nên tự nhả khi commit/rollback, và chỉ xếp hàng đúng\n  -- một slot — không serialize cả bảng.\n  -- COALESCE quanh v_org là bắt buộc: pg_advisory_xact_lock STRICT, truyền NULL\n  -- thì nó trả NULL và KHÔNG lấy khoá nào — mất chống-đua trong im lặng.\n  PERFORM pg_catalog.pg_advisory_xact_lock(\n    pg_catalog.hashtextextended(\n      'utility.bill:' || COALESCE(v_org::text, '-') || ':' || v_meter::text || ':'\n        || p_utility_type || ':' || to_char(v_p_start, 'YYYY-MM'),\n      0\n    )\n  );\n\n  -- Khoá nghiệp vụ = (org, công tơ, loại tiện ích, tháng tính tiền). Không cần\n  -- viết org và loại vào WHERE: id công tơ QUYẾT ĐỊNH cả hai (công tơ thuộc\n  -- đúng một toà, và ở trên đã kiểm building_id + utility_type khớp) — thêm\n  -- `organization_id = v_org` vào đây chỉ tạo nguy cơ BỎ SÓT nếu có phiếu cũ\n  -- org NULL, tức tự vô hiệu hoá chính chốt này.\n  -- Tháng lấy từ ITEM (income_expenses không có cột kỳ); date_trunc để chịu\n  -- được 19 phiếu lịch sử có start_date không nằm ngày 1.\n  -- CỐ Ý ĐẾM CẢ 'UNAPPROVED': phiếu chờ duyệt là phiếu VÔ HÌNH trên bảng\n  -- điện/nước (reader lọc APPROVED) — đó chính là lý do người dùng bấm lại.\n  -- KHÔNG đếm phiếu đã huỷ: huỷ mềm (cancel_utility_bill đặt deleted_at) hoặc\n  -- huỷ linh hoạt Đợt 4 (approval_status='CANCELLED') ⇒ đóng lại được.\n  SELECT ie.code, ie.total_amount, ie.approval_status\n    INTO v_dup_code, v_dup_amount, v_dup_status\n    FROM income_expenses ie\n   WHERE ie.system_source = 'utility.bill'\n     AND ie.utility_account_id = v_meter\n     AND ie.deleted_at IS NULL\n     AND ie.approval_status <> 'CANCELLED'\n     AND EXISTS (\n       SELECT 1 FROM income_expense_items it\n        WHERE it.income_expense_id = ie.id\n          AND it.start_date IS NOT NULL\n          AND date_trunc('month', it.start_date)::date = v_p_start\n     )\n   ORDER BY ie.created_at, ie.id\n   LIMIT 1;\n\n  IF v_dup_code IS NOT NULL THEN\n    RAISE EXCEPTION\n      '[UTILITY_BILL_DUPLICATE] Kỳ % của công tơ % ĐÃ CÓ phiếu chi % — %đ (%). Không tạo phiếu thứ hai. Nếu phiếu cũ đang chờ duyệt thì DUYỆT nó; nếu phiếu cũ sai thì HUỶ nó rồi đóng lại.%',\n      to_char(v_p_start, 'MM/YYYY'),\n      COALESCE(v_meter_code, 'này'),\n      v_dup_code,\n      round(COALESCE(v_dup_amount, 0))::bigint::text,\n      CASE v_dup_status WHEN 'UNAPPROVED' THEN 'đang chờ duyệt' ELSE 'đã duyệt' END,\n      -- Gợi ý chỉ hiện khi toà THẬT SỰ có nhiều công tơ cùng loại — nếu không thì\n      -- thêm câu này chỉ làm người dùng đi tìm một công tơ không tồn tại.\n      CASE WHEN COALESCE(v_meter_cnt, 1) > 1\n           THEN format(' Lưu ý: toà này có %s công tơ %s. Nếu hoá đơn bạn đang trả thuộc công tơ khác thì hãy chọn đúng công tơ đó rồi đóng lại.',\n                       v_meter_cnt, v_kind_vn)\n           ELSE '' END\n      USING ERRCODE = '55000';\n  END IF;\n\n  -- Sổ ghi chi (mặc định \"…Thu\" caller)\n  IF p_account_id IS NOT NULL THEN\n    SELECT id INTO v_acc FROM accounts\n     WHERE id = p_account_id AND deleted_at IS NULL\n       AND (user_id = auth.uid() OR public.is_admin() OR public.is_super_admin());\n    IF v_acc IS NULL THEN RAISE EXCEPTION 'Sổ quỹ không hợp lệ hoặc bạn không có quyền ghi chi vào sổ này' USING ERRCODE = '42501'; END IF;\n  ELSE\n    SELECT id INTO v_acc FROM accounts\n     WHERE user_id = auth.uid() AND deleted_at IS NULL AND btrim(name) LIKE '%Thu'\n     ORDER BY is_default DESC NULLS LAST, name LIMIT 1;\n    IF v_acc IS NULL THEN RAISE EXCEPTION 'Bạn chưa có sổ quỹ \"…Thu\" để chi tiền'; END IF;\n  END IF;\n\n  -- Học siêu dữ liệu công tơ — dời xuống SAU chốt chống trùng để một lần bấm\n  -- bị từ chối không để lại thay đổi nào.\n  UPDATE building_utility_accounts SET\n    provider_code  = COALESCE(NULLIF(btrim(p_provider_code), ''), provider_code),\n    account_holder = COALESCE(NULLIF(btrim(p_account_holder), ''), account_holder),\n    updated_at = now()\n  WHERE id = v_meter;\n\n  -- t5_28: hoá đơn điện/nước là phiếu CHI → tôn trọng NGƯỠNG tự duyệt của org.\n  -- Dưới ngưỡng (hoặc chưa đặt ngưỡng) → tự duyệt như cũ; từ ngưỡng trở lên →\n  -- sinh NHÁP chờ duyệt tay (khớp phương án owner + create_income_expense_v1).\n  --\n  -- 26/08/2026: NGƯỜI LẬP PHIẾU MÀ CÓ QUYỀN DUYỆT đi thẳng, không qua ngưỡng.\n  -- Đây đúng là luật chủ đã chốt 25/07/2026 cho create_income_expense_v1 (biến\n  -- v_maker_can_approve), nhưng nó chưa bao giờ được áp cho hai RPC của trang\n  -- Thanh toán. Hệ quả đo được: cùng một số tiền, nhập tay ở form Thu chi thì\n  -- tự duyệt, còn bấm nút đóng tiền ở /thanh-toan lại sinh phiếu CHỜ DUYỆT rồi\n  -- bắt chính người có quyền duyệt sang màn hình khác bấm lần hai.\n  --\n  -- Ngưỡng KHÔNG bị nới: nó giữ nguyên cho người không có quyền duyệt — đó mới\n  -- là đối tượng nó sinh ra để soát.\n  SELECT c.threshold INTO v_threshold\n    FROM app_private.ie_auto_approve_config c WHERE c.organization_id = v_org;\n  IF COALESCE(app_private.ie_maker_can_approve_v1(p_building_id), false) THEN\n    v_status := 'APPROVED'; v_appr_by := auth.uid(); v_appr_at := now();\n  ELSIF v_threshold IS NOT NULL AND p_amount >= v_threshold THEN\n    v_status := 'UNAPPROVED'; v_appr_by := NULL; v_appr_at := NULL;\n  ELSE\n    v_status := 'APPROVED'; v_appr_by := auth.uid(); v_appr_at := now();\n  END IF;\n\n  -- ══ 28/08 — TRẦN ĐIỆN/NƯỚC (nối động cơ 20260801040000 vào writer) ═════\n  -- Động cơ utility_ceiling_check_v1 tồn tại từ 01/08 nhưng KHÔNG writer nào\n  -- gọi — trần chủ công bố là hình vẽ. Từ nay: phiếu VƯỢT TRẦN thì hạ về CHỜ\n  -- DUYỆT, kể cả người-có-quyền-duyệt (họ duyệt được ngay sau đó, nhưng phải\n  -- NHÌN cảnh báo một lần — trần sinh ra để bắt người nhìn số bất thường, và\n  -- người bấm nhanh nhất chính là người có quyền). Không có trần (NO_RULE) ⇒\n  -- hành vi y như cũ. KHÔNG chặn cứng: sai trần thì tệ nhất là chờ duyệt.\n  v_ceiling := app_private.utility_ceiling_check_v1(\n                 v_org, p_building_id, p_utility_type, v_p_start, p_amount);\n  v_ceiling_verdict := COALESCE(v_ceiling->>'verdict', 'NO_RULE');\n  IF v_ceiling_verdict IN ('OVER_CEILING', 'OVER_RATIO') THEN\n    v_status := 'UNAPPROVED'; v_appr_by := NULL; v_appr_at := NULL;\n  END IF;\n\n  v_type_nm := CASE WHEN p_utility_type = 'ELECTRIC' THEN 'Đóng tiền điện' ELSE 'Đóng tiền nước' END;\n  v_type := public._termination_ensure_type(v_owner, 'expense', v_type_nm);\n  UPDATE income_expense_types SET is_deposit = FALSE WHERE id = v_type AND is_deposit IS DISTINCT FROM FALSE;\n\n  v_vdate   := COALESCE(p_voucher_date, public.org_today_v1(NULL));\n  SELECT COALESCE(full_name, '') INTO v_caller FROM profiles WHERE id = auth.uid();\n\n  -- ⚠ HAI DÒNG DƯỚI LÀ MẪU NEO của 20260724120000 — giữ VERBATIM (mục 5 tự kiểm).\n  INSERT INTO income_expenses\n    (user_id, organization_id, type, name, building_id, account_id, voucher_date,\n     total_amount, approval_status, approved_by, approved_at,\n     business_result_accounting, notes, creator_name,\n     attachments, system_source, utility_account_id)\n  VALUES\n    (auth.uid(), v_org, 'EXPENSE',\n     'Đóng ' || lower(v_type_nm) || ' (NCC) — kỳ ' || to_char(v_p_start, 'MM/YYYY'),\n     p_building_id, v_acc, v_vdate,\n     p_amount, v_status, v_appr_by, v_appr_at, TRUE,\n     'Chủ nhà đóng ' || lower(v_type_nm) || ' cho cả toà — kỳ ' || to_char(v_p_start, 'MM/YYYY')\n       || COALESCE(' — mã ' || NULLIF(btrim(p_provider_code), ''), '')\n       || COALESCE(' — chủ hộ ' || NULLIF(btrim(p_account_holder), ''), ''),\n     v_caller,\n     COALESCE(p_attachments, '[]'::jsonb), 'utility.bill', v_meter)\n  RETURNING id INTO v_voucher;\n\n  INSERT INTO income_expense_items\n    (income_expense_id, income_expense_type_id, description, quantity, unit_price, start_date, end_date)\n  VALUES\n    (v_voucher, v_type, 'Đóng ' || lower(v_type_nm) || ' kỳ ' || to_char(v_p_start, 'MM/YYYY'),\n     1, p_amount, v_p_start, v_p_end);\n\n  -- Vượt trần: nối lý do vào ghi chú SAU insert — khối INSERT là MẪU NEO của\n  -- 20260724120000, không được sửa một ký tự nào trong đó.\n  IF v_ceiling_verdict IN ('OVER_CEILING', 'OVER_RATIO') THEN\n    UPDATE income_expenses\n       SET notes = notes || ' — [VƯỢT TRẦN ' || v_kind_vn || '] '\n                 || COALESCE(v_ceiling->>'reason', 'vượt trần đã công bố')\n                 || ' — phiếu chuyển CHỜ DUYỆT.'\n     WHERE id = v_voucher;\n  END IF;\n\n  SELECT code, total_amount INTO v_code, v_total FROM income_expenses WHERE id = v_voucher;\n  RETURN jsonb_build_object('voucher_id', v_voucher, 'code', v_code,\n    'total_amount', v_total, 'account_id', v_acc, 'utility_account_id', v_meter,\n    'ceilingVerdict', v_ceiling_verdict);\nEND;\n$function$\n"
+        },
+        {
+          "schema": "public",
+          "proname": "set_special_fee_price_v1",
+          "signature": "p_building_id uuid, p_fee_category text, p_amount numeric, p_effective_from_month text, p_note text",
+          "provolatile": "v",
+          "prosecdef": true,
+          "md5": "2f3cf7e556927d67959496333c2e1878",
+          "definition": "CREATE OR REPLACE FUNCTION public.set_special_fee_price_v1(p_building_id uuid, p_fee_category text, p_amount numeric, p_effective_from_month text DEFAULT NULL::text, p_note text DEFAULT NULL::text)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'public', 'app_private'\nAS $function$\nDECLARE\n  v_actor uuid := auth.uid();\n  v_org   uuid;\n  v_month date;\n  v_id    uuid;\nBEGIN\n  IF v_actor IS NULL THEN\n    RAISE EXCEPTION 'Bạn chưa đăng nhập' USING ERRCODE = '42501';\n  END IF;\n  IF p_fee_category NOT IN ('tien_nha','dien','nuoc','internet','quan_ly',\n                            've_sinh','cong_an','rac','thang_may') THEN\n    RAISE EXCEPTION 'Hạng mục phí không hợp lệ: %', p_fee_category USING ERRCODE = '22023';\n  END IF;\n  IF p_amount IS NULL OR p_amount <= 0 THEN\n    RAISE EXCEPTION 'Giá công bố phải lớn hơn 0' USING ERRCODE = '22023';\n  END IF;\n\n  SELECT b.organization_id INTO v_org FROM public.buildings b\n   WHERE b.id = p_building_id AND b.deleted_at IS NULL;\n  IF v_org IS NULL THEN\n    RAISE EXCEPTION 'Không tìm thấy toà nhà' USING ERRCODE = 'P0002';\n  END IF;\n\n  IF NOT (public.is_super_admin() OR app_private.is_org_owner_v1(v_org, v_actor)) THEN\n    RAISE EXCEPTION\n      'Chỉ chủ tổ chức mới công bố được giá phí cố định. Giá này quyết định phiếu nào được tự duyệt, nên không mở cho người khác.'\n      USING ERRCODE = '42501';\n  END IF;\n\n  IF p_effective_from_month IS NULL THEN\n    v_month := date_trunc('month', public.org_today_v1(v_org))::date;\n  ELSE\n    IF p_effective_from_month !~ '^\\d{4}-\\d{2}$' THEN\n      RAISE EXCEPTION 'Tháng hiệu lực phải dạng YYYY-MM' USING ERRCODE = '22023';\n    END IF;\n    v_month := to_date(p_effective_from_month || '-01', 'YYYY-MM-DD');\n  END IF;\n\n  -- Công bố lại cho CÙNG tháng hiệu lực: cho bản cũ nghỉ, không xoá.\n  UPDATE app_private.special_fee_price_versions\n     SET status = 'RETIRED', retired_at = now()\n   WHERE organization_id = v_org AND building_id = p_building_id\n     AND fee_category = p_fee_category AND effective_from_month = v_month\n     AND status = 'PUBLISHED';\n\n  INSERT INTO app_private.special_fee_price_versions\n    (organization_id, building_id, fee_category, effective_from_month,\n     amount, source, note, created_by)\n  VALUES (v_org, p_building_id, p_fee_category, v_month,\n          round(p_amount, 2), 'OWNER', NULLIF(btrim(COALESCE(p_note,'')), ''), v_actor)\n  RETURNING id INTO v_id;\n\n  RETURN jsonb_build_object(\n    'id', v_id, 'buildingId', p_building_id, 'feeCategory', p_fee_category,\n    'amount', round(p_amount, 2), 'effectiveFrom', to_char(v_month, 'YYYY-MM'),\n    'note', 'Giá áp dụng từ tháng ' || to_char(v_month, 'MM/YYYY') || '. Phiếu các tháng trước giữ nguyên giá cũ.');\nEND;\n$function$\n"
+        },
+        {
+          "schema": "public",
+          "proname": "set_utility_ceiling_v1",
+          "signature": "p_utility_type text, p_ceiling_amount numeric, p_max_ratio_to_billed numeric, p_building_id uuid, p_effective_from_month text, p_organization_id uuid, p_note text",
+          "provolatile": "v",
+          "prosecdef": true,
+          "md5": "d34815ff21be27282515c7f8c8eb3c1f",
+          "definition": "CREATE OR REPLACE FUNCTION public.set_utility_ceiling_v1(p_utility_type text, p_ceiling_amount numeric DEFAULT NULL::numeric, p_max_ratio_to_billed numeric DEFAULT NULL::numeric, p_building_id uuid DEFAULT NULL::uuid, p_effective_from_month text DEFAULT NULL::text, p_organization_id uuid DEFAULT NULL::uuid, p_note text DEFAULT NULL::text)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'public', 'app_private'\nAS $function$\nDECLARE v_actor uuid := auth.uid(); v_org uuid; v_month date; v_id uuid;\nBEGIN\n  IF v_actor IS NULL THEN RAISE EXCEPTION 'Bạn chưa đăng nhập' USING ERRCODE='42501'; END IF;\n  IF p_utility_type NOT IN ('ELECTRIC','WATER') THEN\n    RAISE EXCEPTION 'Loại chỉ nhận ELECTRIC hoặc WATER' USING ERRCODE='22023';\n  END IF;\n  IF p_ceiling_amount IS NULL AND p_max_ratio_to_billed IS NULL THEN\n    RAISE EXCEPTION 'Phải đặt ít nhất một trong hai: trần tiền, hoặc tỉ lệ so với tiền đã thu'\n      USING ERRCODE='22023';\n  END IF;\n\n  IF p_building_id IS NOT NULL THEN\n    SELECT b.organization_id INTO v_org FROM public.buildings b\n     WHERE b.id = p_building_id AND b.deleted_at IS NULL;\n    IF v_org IS NULL THEN RAISE EXCEPTION 'Không tìm thấy toà nhà' USING ERRCODE='P0002'; END IF;\n  ELSE\n    v_org := COALESCE(p_organization_id,\n      (SELECT m.organization_id FROM public.organization_memberships m\n        WHERE m.user_id = v_actor AND m.status='ACTIVE' LIMIT 1));\n    IF v_org IS NULL THEN RAISE EXCEPTION 'Không xác định được tổ chức' USING ERRCODE='22023'; END IF;\n  END IF;\n\n  IF NOT (public.is_super_admin() OR app_private.is_org_owner_v1(v_org, v_actor)) THEN\n    RAISE EXCEPTION 'Chỉ chủ tổ chức mới đặt được trần chi' USING ERRCODE='42501';\n  END IF;\n\n  v_month := CASE WHEN p_effective_from_month IS NULL\n    THEN date_trunc('month', public.org_today_v1(v_org))::date\n    ELSE to_date(p_effective_from_month || '-01','YYYY-MM-DD') END;\n\n  UPDATE app_private.utility_ceiling_versions\n     SET status='RETIRED', retired_at=now()\n   WHERE organization_id=v_org AND utility_type=p_utility_type\n     AND COALESCE(building_id,'00000000-0000-0000-0000-000000000000'::uuid)\n       = COALESCE(p_building_id,'00000000-0000-0000-0000-000000000000'::uuid)\n     AND effective_from_month=v_month AND status='PUBLISHED';\n\n  INSERT INTO app_private.utility_ceiling_versions\n    (organization_id, building_id, utility_type, effective_from_month,\n     ceiling_amount, max_ratio_to_billed, note, created_by)\n  VALUES (v_org, p_building_id, p_utility_type, v_month,\n          p_ceiling_amount, p_max_ratio_to_billed,\n          NULLIF(btrim(COALESCE(p_note,'')),''), v_actor)\n  RETURNING id INTO v_id;\n\n  RETURN jsonb_build_object('id', v_id, 'utilityType', p_utility_type,\n    'ceilingAmount', p_ceiling_amount, 'maxRatio', p_max_ratio_to_billed,\n    'effectiveFrom', to_char(v_month,'YYYY-MM'),\n    'note','Vượt trần thì phiếu vẫn tạo được nhưng nằm chờ duyệt kèm lý do.');\nEND;\n$function$\n"
+        }
+      ]
+    },
+    "category-policies": {
+      "sql": "select schemaname,tablename,policyname,permissive,roles,cmd,qual,with_check from pg_policies where schemaname='public' and tablename='income_expense_types' order by policyname",
+      "rows": [
+        {
+          "schemaname": "public",
+          "tablename": "income_expense_types",
+          "policyname": "ie_canonical_writer_lock",
+          "permissive": "PERMISSIVE",
+          "roles": "{ie_canonical_writer}",
+          "cmd": "UPDATE",
+          "qual": "true",
+          "with_check": "false"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "income_expense_types",
+          "policyname": "ie_canonical_writer_read",
+          "permissive": "PERMISSIVE",
+          "roles": "{ie_canonical_writer}",
+          "cmd": "SELECT",
+          "qual": "true",
+          "with_check": null
+        },
+        {
+          "schemaname": "public",
+          "tablename": "income_expense_types",
+          "policyname": "income_expense_types_delete_rbac",
+          "permissive": "PERMISSIVE",
+          "roles": "{public}",
+          "cmd": "DELETE",
+          "qual": "can_access_org_entity('categories'::text, 'delete'::text)",
+          "with_check": null
+        },
+        {
+          "schemaname": "public",
+          "tablename": "income_expense_types",
+          "policyname": "income_expense_types_hide_demo_admin",
+          "permissive": "RESTRICTIVE",
+          "roles": "{authenticated}",
+          "cmd": "SELECT",
+          "qual": "(NOT (( SELECT (( SELECT is_super_admin() AS is_super_admin) OR ( SELECT is_admin() AS is_admin))) AND (user_id IN ( SELECT unnest(demo_user_ids()) AS unnest))))",
+          "with_check": null
+        },
+        {
+          "schemaname": "public",
+          "tablename": "income_expense_types",
+          "policyname": "income_expense_types_hide_sandbox_admin",
+          "permissive": "RESTRICTIVE",
+          "roles": "{authenticated}",
+          "cmd": "SELECT",
+          "qual": "(NOT (( SELECT is_super_admin() AS is_super_admin) AND COALESCE((organization_id = ANY (sandbox_org_ids())), false)))",
+          "with_check": null
+        },
+        {
+          "schemaname": "public",
+          "tablename": "income_expense_types",
+          "policyname": "income_expense_types_insert_rbac",
+          "permissive": "PERMISSIVE",
+          "roles": "{public}",
+          "cmd": "INSERT",
+          "qual": null,
+          "with_check": "can_access_org_entity('categories'::text, 'create'::text)"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "income_expense_types",
+          "policyname": "income_expense_types_org_boundary",
+          "permissive": "RESTRICTIVE",
+          "roles": "{authenticated}",
+          "cmd": "ALL",
+          "qual": "((organization_id IS NULL) OR ( SELECT is_super_admin() AS is_super_admin) OR (organization_id IN ( SELECT unnest(my_org_ids()) AS unnest)))",
+          "with_check": "((organization_id IS NULL) OR ( SELECT is_super_admin() AS is_super_admin) OR (organization_id IN ( SELECT unnest(my_org_ids()) AS unnest)))"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "income_expense_types",
+          "policyname": "income_expense_types_restricted_select",
+          "permissive": "RESTRICTIVE",
+          "roles": "{authenticated}",
+          "cmd": "SELECT",
+          "qual": "((is_restricted = false) OR (user_id = auth.uid()) OR can_view_restricted_ie() OR can_create_restricted_ie())",
+          "with_check": null
+        },
+        {
+          "schemaname": "public",
+          "tablename": "income_expense_types",
+          "policyname": "income_expense_types_select_rbac",
+          "permissive": "PERMISSIVE",
+          "roles": "{public}",
+          "cmd": "SELECT",
+          "qual": "can_access_org_entity('categories'::text, 'view'::text)",
+          "with_check": null
+        },
+        {
+          "schemaname": "public",
+          "tablename": "income_expense_types",
+          "policyname": "income_expense_types_select_shareholder",
+          "permissive": "PERMISSIVE",
+          "roles": "{authenticated}",
+          "cmd": "SELECT",
+          "qual": "((is_restricted = false) AND (( SELECT current_shareholder_id() AS current_shareholder_id) IS NOT NULL))",
+          "with_check": null
+        },
+        {
+          "schemaname": "public",
+          "tablename": "income_expense_types",
+          "policyname": "income_expense_types_update_rbac",
+          "permissive": "PERMISSIVE",
+          "roles": "{public}",
+          "cmd": "UPDATE",
+          "qual": "can_access_org_entity('categories'::text, 'edit'::text)",
+          "with_check": "can_access_org_entity('categories'::text, 'edit'::text)"
+        }
+      ]
+    },
+    "category-acl": {
+      "sql": "select c.relrowsecurity,c.relforcerowsecurity,pg_get_userbyid(c.relowner) owner,c.relacl,has_table_privilege('authenticated',c.oid,'INSERT') auth_insert,has_table_privilege('authenticated',c.oid,'UPDATE') auth_update,has_table_privilege('authenticated',c.oid,'DELETE') auth_delete from pg_class c where c.oid='public.income_expense_types'::regclass",
+      "rows": [
+        {
+          "relrowsecurity": true,
+          "relforcerowsecurity": false,
+          "owner": "postgres",
+          "relacl": "{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres,ie_canonical_writer=rw/postgres}",
+          "auth_insert": true,
+          "auth_update": true,
+          "auth_delete": true
+        }
+      ]
+    },
+    "category-triggers-indexes": {
+      "sql": "select 'trigger' kind,tgname name,pg_get_triggerdef(oid) definition from pg_trigger where tgrelid='public.income_expense_types'::regclass and not tgisinternal union all select 'index',indexname,indexdef from pg_indexes where schemaname='public' and tablename='income_expense_types' order by 1,2",
+      "rows": [
+        {
+          "kind": "index",
+          "name": "idx_ie_types_is_deposit",
+          "definition": "CREATE INDEX idx_ie_types_is_deposit ON public.income_expense_types USING btree (is_deposit) WHERE (is_deposit = true)"
+        },
+        {
+          "kind": "index",
+          "name": "idx_income_expense_types_type",
+          "definition": "CREATE INDEX idx_income_expense_types_type ON public.income_expense_types USING btree (type)"
+        },
+        {
+          "kind": "index",
+          "name": "idx_income_expense_types_user_category",
+          "definition": "CREATE INDEX idx_income_expense_types_user_category ON public.income_expense_types USING btree (user_id, type, category) WHERE (category IS NOT NULL)"
+        },
+        {
+          "kind": "index",
+          "name": "idx_income_expense_types_user_id",
+          "definition": "CREATE INDEX idx_income_expense_types_user_id ON public.income_expense_types USING btree (user_id)"
+        },
+        {
+          "kind": "index",
+          "name": "income_expense_types_id_organization_uq",
+          "definition": "CREATE UNIQUE INDEX income_expense_types_id_organization_uq ON public.income_expense_types USING btree (id, organization_id)"
+        },
+        {
+          "kind": "index",
+          "name": "income_expense_types_org_side_normalized_name_uq",
+          "definition": "CREATE UNIQUE INDEX income_expense_types_org_side_normalized_name_uq ON public.income_expense_types USING btree (organization_id, lower(btrim(type)), normalize_income_expense_type_name(name))"
+        },
+        {
+          "kind": "index",
+          "name": "income_expense_types_organization_id_idx",
+          "definition": "CREATE INDEX income_expense_types_organization_id_idx ON public.income_expense_types USING btree (organization_id)"
+        },
+        {
+          "kind": "index",
+          "name": "income_expense_types_pkey",
+          "definition": "CREATE UNIQUE INDEX income_expense_types_pkey ON public.income_expense_types USING btree (id)"
+        },
+        {
+          "kind": "trigger",
+          "name": "a01_reservation_type_guard",
+          "definition": "CREATE TRIGGER a01_reservation_type_guard BEFORE UPDATE ON public.income_expense_types FOR EACH ROW EXECUTE FUNCTION app_private.guard_reservation_deposit_type_v1()"
+        },
+        {
+          "kind": "trigger",
+          "name": "ie_type_restricted_recompute",
+          "definition": "CREATE TRIGGER ie_type_restricted_recompute AFTER UPDATE OF is_restricted ON public.income_expense_types FOR EACH ROW WHEN ((old.is_restricted IS DISTINCT FROM new.is_restricted)) EXECUTE FUNCTION trg_ie_type_recompute_restricted()"
+        },
+        {
+          "kind": "trigger",
+          "name": "income_expense_types_set_user_id_audit",
+          "definition": "CREATE TRIGGER income_expense_types_set_user_id_audit BEFORE INSERT ON public.income_expense_types FOR EACH ROW EXECUTE FUNCTION set_user_id_from_auth()"
+        },
+        {
+          "kind": "trigger",
+          "name": "trg_autofill_org",
+          "definition": "CREATE TRIGGER trg_autofill_org BEFORE INSERT ON public.income_expense_types FOR EACH ROW EXECUTE FUNCTION app_private.autofill_org_strict()"
+        }
+      ]
+    },
+    "category-org-counts": {
+      "sql": "select organization_id,count(*) total,count(*) filter (where force_approval) forced,count(distinct user_id) owners from public.income_expense_types group by 1 order by 1",
+      "rows": [
+        {
+          "organization_id": "aaaa0000-0000-4000-8000-000000000001",
+          "total": "108",
+          "forced": "28",
+          "owners": "5"
+        },
+        {
+          "organization_id": "dddd0000-0000-4000-8000-000000000001",
+          "total": "103",
+          "forced": "28",
+          "owners": "1"
+        }
+      ]
+    },
+    "category-duplicates-by-org": {
+      "sql": "select organization_id,count(*) groups,sum(c) rows from (select organization_id,lower(btrim(name)),type,count(*) c from public.income_expense_types group by 1,2,3 having count(*)>1) s group by 1",
+      "rows": []
+    },
+    "ceiling-summary": {
+      "sql": "select organization_id,status,utility_type,count(*) rows,count(distinct building_id) buildings,min(effective_from_month) first_month,max(effective_from_month) last_month,count(*) filter (where retired_at is not null) retired,count(*) filter(where max_ratio_to_billed is not null) with_ratio from app_private.utility_ceiling_versions group by 1,2,3 order by 1,2,3",
+      "rows": [
+        {
+          "organization_id": "aaaa0000-0000-4000-8000-000000000001",
+          "status": "PUBLISHED",
+          "utility_type": "ELECTRIC",
+          "rows": "16",
+          "buildings": "16",
+          "first_month": "2026-08-01",
+          "last_month": "2026-08-01",
+          "retired": "0",
+          "with_ratio": "0"
+        },
+        {
+          "organization_id": "aaaa0000-0000-4000-8000-000000000001",
+          "status": "PUBLISHED",
+          "utility_type": "WATER",
+          "rows": "8",
+          "buildings": "8",
+          "first_month": "2026-08-01",
+          "last_month": "2026-08-01",
+          "retired": "0",
+          "with_ratio": "0"
+        }
+      ]
+    },
+    "utility-statuses-90d": {
+      "sql": "select approval_status,count(*) vouchers,sum(total_amount) amount,count(distinct building_id) buildings from public.income_expenses where organization_id='aaaa0000-0000-4000-8000-000000000001' and deleted_at is null and system_source='utility.bill' and created_at>now()-interval '90 days' group by 1 order by 1",
+      "rows": [
+        {
+          "approval_status": "APPROVED",
+          "vouchers": "78",
+          "amount": "555975429.00",
+          "buildings": "15"
+        },
+        {
+          "approval_status": "CANCELLED",
+          "vouchers": "5",
+          "amount": "33631.00",
+          "buildings": "3"
+        }
+      ]
+    },
+    "feature-flags": {
+      "sql": "select feature_key,mode,force_freeze from app_private.server_feature_flags where feature_key like 'income_expense%' or feature_key like 'invoice.collection%' order by 1",
+      "rows": [
+        {
+          "feature_key": "income_expense.create_draft.v1",
+          "mode": "ON",
+          "force_freeze": false
+        },
+        {
+          "feature_key": "income_expense.posting.v2",
+          "mode": "ON",
+          "force_freeze": false
+        },
+        {
+          "feature_key": "income_expense.profit_close.v2",
+          "mode": "OFF",
+          "force_freeze": true
+        },
+        {
+          "feature_key": "income_expense.read_semantics.v2",
+          "mode": "ON",
+          "force_freeze": false
+        },
+        {
+          "feature_key": "income_expense.workflow.v2",
+          "mode": "ON",
+          "force_freeze": false
+        },
+        {
+          "feature_key": "invoice.collection.reverse.v5",
+          "mode": "ON",
+          "force_freeze": false
+        },
+        {
+          "feature_key": "invoice.collection.v5",
+          "mode": "ON",
+          "force_freeze": false
+        }
+      ]
+    },
+    "auto-approval-threshold": {
+      "sql": "select * from app_private.ie_auto_approve_config",
+      "rows": [
+        {
+          "organization_id": "dddd0000-0000-4000-8000-000000000001",
+          "threshold": "5000000.00",
+          "updated_by": "de6f33f3-349f-4bec-bd3d-106192f6715e",
+          "updated_at": "2026-07-19T07:42:59.883Z"
+        },
+        {
+          "organization_id": "aaaa0000-0000-4000-8000-000000000001",
+          "threshold": "600000.00",
+          "updated_by": "90450d5f-29b6-4897-bdef-cdb5fb53f339",
+          "updated_at": "2026-07-29T09:39:56.597Z"
+        }
+      ]
+    },
+    "approval-callers": {
+      "sql": "select n.nspname schema,p.proname,pg_get_function_identity_arguments(p.oid) signature from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname in ('public','app_private') and p.prosrc ~ '(approve_income_expense_v1|utility_ceiling_check_v1|receiving_cashbook_ids_v1)' order by 1,2,3",
+      "rows": [
+        {
+          "schema": "app_private",
+          "proname": "assert_receiving_cashbook_v1",
+          "signature": "p_org uuid, p_building uuid, p_method text, p_membership uuid, p_account uuid"
+        },
+        {
+          "schema": "app_private",
+          "proname": "receiving_cashbook_allowed_v1",
+          "signature": "p_org uuid, p_building uuid, p_method text, p_membership uuid, p_account uuid"
+        },
+        {
+          "schema": "public",
+          "proname": "approve_income_expense_v1",
+          "signature": "p_voucher_id uuid"
+        },
+        {
+          "schema": "public",
+          "proname": "approve_pending_income_expense_checked_v1",
+          "signature": "p_voucher uuid, p_expected_approval_version bigint"
+        },
+        {
+          "schema": "public",
+          "proname": "change_collection_tender_method_v1",
+          "signature": "p_tender_id uuid, p_new_method text, p_new_account_id uuid, p_reason text, p_idempotency_key text"
+        },
+        {
+          "schema": "public",
+          "proname": "copilot_execute_ie_duyet_v1",
+          "signature": "p_confirmation_nonce text, p_payload jsonb"
+        },
+        {
+          "schema": "public",
+          "proname": "copilot_preview_ie_duyet_v1",
+          "signature": "p_organization_id uuid, p_payload jsonb"
+        },
+        {
+          "schema": "public",
+          "proname": "get_receiving_cashbooks_v1",
+          "signature": "p_organization_id uuid, p_building_id uuid, p_collector_user_id uuid"
+        },
+        {
+          "schema": "public",
+          "proname": "lock_salary_month_v1",
+          "signature": "p_period_month date, p_managers jsonb, p_idempotency_key text"
+        },
+        {
+          "schema": "public",
+          "proname": "pay_utility_bill",
+          "signature": "p_building_id uuid, p_utility_type text, p_amount numeric, p_period_month text, p_voucher_date date, p_provider_code text, p_account_holder text, p_account_id uuid, p_attachments jsonb, p_utility_account_id uuid"
+        }
+      ]
+    }
+  },
+  "session": [
+    {
+      "db": "postgres",
+      "actor": "postgres",
+      "read_only": "on",
+      "time_vn": "2026-09-26T05:27:12.032Z"
+    }
+  ],
+  "finished_at": "2026-09-26T05:27:20.047Z"
+}

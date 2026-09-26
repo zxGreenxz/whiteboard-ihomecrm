@@ -1,0 +1,38 @@
+[
+  {
+    "name": "utility-live-coverage",
+    "sql": "with u as (select ie.*,ua.utility_type,p.period_month from public.income_expenses ie left join public.building_utility_accounts ua on ua.id=ie.utility_account_id left join lateral (select min(date_trunc('month',it.start_date)::date) period_month from public.income_expense_items it where it.income_expense_id=ie.id) p on true where ie.organization_id='aaaa0000-0000-4000-8000-000000000001' and ie.deleted_at is null and ie.approval_status<>'CANCELLED' and ie.system_source='utility.bill' and ie.created_at>now()-interval '90 days') select count(*) vouchers,count(distinct building_id) buildings,count(distinct (building_id,utility_type)) building_types,count(distinct building_id) filter(where exists(select 1 from app_private.utility_ceiling_versions v where v.organization_id=u.organization_id and v.status='PUBLISHED' and v.building_id=u.building_id)) buildings_with_any_rule,count(distinct (building_id,utility_type)) filter(where exists(select 1 from app_private.utility_ceiling_versions v where v.organization_id=u.organization_id and v.status='PUBLISHED' and v.building_id=u.building_id and v.utility_type=u.utility_type)) building_types_with_rule,count(*) filter(where app_private.utility_ceiling_check_v1(organization_id,building_id,utility_type,period_month,total_amount)->>'verdict'='NO_RULE') no_rule_for_period from u"
+  },
+  {
+    "name": "utility-over-ceiling-evidence",
+    "sql": "select count(*) over_note,count(*) filter(where approved_at>created_at+interval '5 seconds') approved_later,min(approved_at-created_at)::text min_delay,max(approved_at-created_at)::text max_delay,sum(total_amount) amount from public.income_expenses where organization_id='aaaa0000-0000-4000-8000-000000000001' and deleted_at is null and system_source='utility.bill' and created_at>now()-interval '90 days' and notes like '%[VƯỢT TRẦN%'"
+  },
+  {
+    "name": "utility-uncovered-current-building-types",
+    "sql": "select b.name building,ua.utility_type,count(distinct ie.id) vouchers,sum(ie.total_amount) amount from public.income_expenses ie join public.building_utility_accounts ua on ua.id=ie.utility_account_id join public.buildings b on b.id=ie.building_id where ie.organization_id='aaaa0000-0000-4000-8000-000000000001' and ie.deleted_at is null and ie.approval_status<>'CANCELLED' and ie.system_source='utility.bill' and ie.created_at>now()-interval '90 days' and not exists(select 1 from app_private.utility_ceiling_versions v where v.organization_id=ie.organization_id and v.building_id=ie.building_id and v.utility_type=ua.utility_type and v.status='PUBLISHED' and v.effective_from_month<=date_trunc('month',now())::date) group by 1,2 order by 1,2"
+  },
+  {
+    "name": "recurring-by-status-type",
+    "sql": "select type,approval_status,count(*) vouchers,sum(total_amount) amount,count(*) filter(where approved_at<=created_at+interval '5 seconds') approval_time_near_birth from public.income_expenses where organization_id='aaaa0000-0000-4000-8000-000000000001' and deleted_at is null and repeat_parent_id is not null and created_at>now()-interval '90 days' group by 1,2 order by 1,2"
+  },
+  {
+    "name": "B-GHI-SO",
+    "sql": "select count(*) from public.income_expenses ie join public.accounts a on a.id=ie.account_id where ie.organization_id='aaaa0000-0000-4000-8000-000000000001' and ie.deleted_at is null and ie.approval_status='APPROVED' and not coalesce(a.is_virtual,false) and ie.total_amount<>0 and coalesce(ie.posting_mode,'CASHBOOK')<>'NON_CASH' and coalesce(ie.posting_status,'') not in ('POSTED','REVERSED') and not exists(select 1 from app_private.canonical_write_operations c where c.subject_id=ie.id and c.operation='income_expense.approve.v2')"
+  },
+  {
+    "name": "B-DUYET-TRUOC",
+    "sql": "select count(*) from public.income_expenses where organization_id='aaaa0000-0000-4000-8000-000000000001' and deleted_at is null and posting_status='POSTED' and approval_status<>'APPROVED'"
+  },
+  {
+    "name": "B-DUYET-CO-SO",
+    "sql": "select count(*) from public.income_expenses where organization_id='aaaa0000-0000-4000-8000-000000000001' and deleted_at is null and approval_status='APPROVED' and account_id is null"
+  },
+  {
+    "name": "v4-acl",
+    "sql": "select p.oid::regprocedure::text signature,p.proacl,has_function_privilege('authenticated',p.oid,'EXECUTE') authenticated,has_function_privilege('anon',p.oid,'EXECUTE') anon,has_function_privilege('service_role',p.oid,'EXECUTE') service_role from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='record_invoice_payment_v4'"
+  },
+  {
+    "name": "effective-writers",
+    "sql": "select n.nspname schema,p.proname,pg_get_function_identity_arguments(p.oid) signature,md5(pg_get_functiondef(p.oid)) md5,pg_get_functiondef(p.oid) definition from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname in ('public','app_private') and p.proname in ('generate_recurring_vouchers','generate_recurring_vouchers_v2','generate_special_fees_v1','create_income_expense_v1','approve_voucher','approve_pending_income_expense_checked_v1','guard_reservation_deposit_type_v1','receiving_cashbook_ids_v1','ie_has_cashbook_possession_v1') order by 1,2,3"
+  }
+]

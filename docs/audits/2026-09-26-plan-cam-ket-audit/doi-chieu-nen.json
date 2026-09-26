@@ -1,0 +1,867 @@
+{
+  "checked_at": "2026-09-26T05:44:50.194Z",
+  "code_ref": "e1a0d2ac0312bba94148e974af2fb132303865a6",
+  "head": "e1a0d2ac0312bba94148e974af2fb132303865a6",
+  "production_ref": "e1a0d2ac0312bba94148e974af2fb132303865a6",
+  "baseline_time_vn": "2026-09-26 12:09",
+  "run_1": "2026-09-26T05:25:54.841Z",
+  "run_2": "2026-09-26T05:25:57.546Z",
+  "input_hashes": [
+    {
+      "file": "docs/plans/PLAN-CO-MAY-CHI-THEO-CAM-KET-2026-09-26.md",
+      "sha256": "72ae574acc5ac99a8e1d907df171a4bb3c6e6b976f5e3cd15d4f297771c53252"
+    },
+    {
+      "file": "docs/plans/PLAN-MOT-LUONG-THU-CHI-2026-09-23.md",
+      "sha256": "592da4f5abf5c7375a748a20bf671f6e9ea393d886327aa3e9af23b062d27f11"
+    },
+    {
+      "file": "docs/audits/2026-09-26-plan-cam-ket-goi-audit/DOC-TRUOC.md",
+      "sha256": "9d24a9e8b81434b8f51cdeb3651b147bd8baf3c3cc51c714e93d13b5e79d901b"
+    },
+    {
+      "file": "docs/audits/2026-09-26-plan-cam-ket-goi-audit/do-nen.cjs",
+      "sha256": "d9738ea15bc48505c0eeb073d2f6cdd29d971b7436a15c598af1ee972eb6db2a"
+    },
+    {
+      "file": "docs/audits/2026-09-26-plan-cam-ket-goi-audit/do-nen2.cjs",
+      "sha256": "dd6f9f1cf6caf6c3788ed1a9adf53a84fcc08ff86d3ca397701ebb42050e9a00"
+    },
+    {
+      "file": "docs/audits/2026-09-26-plan-cam-ket-goi-audit/do-nen-26-09.json",
+      "sha256": "ed6f06011f1af4013a9ad8c7c890eb0f0fed67a4e5ad3692e61f2879b74a58c2"
+    },
+    {
+      "file": "docs/audits/2026-09-26-plan-cam-ket-goi-audit/md5-ham-26-09.json",
+      "sha256": "48e2ecce4f4d882fdcee583e79de6d0adee2c8a930258ab40b04fe61983172dd"
+    }
+  ],
+  "comparisons": [
+    {
+      "round": "vong_1",
+      "name": "ket-noi",
+      "equal": false,
+      "baseline": [
+        {
+          "db": "postgres",
+          "usr": "postgres",
+          "gio_vn": "2026-09-26 12:09"
+        }
+      ],
+      "measured": [
+        {
+          "db": "postgres",
+          "usr": "postgres",
+          "gio_vn": "2026-09-26 12:25"
+        }
+      ]
+    },
+    {
+      "round": "vong_1",
+      "name": "cot-cac-bang-luat",
+      "equal": true,
+      "baseline": [
+        {
+          "t": "app_private.self_approve_limits",
+          "cot": "organization_id, version, max_single_amount_vnd, updated_by, updated_at"
+        },
+        {
+          "t": "app_private.special_fee_price_versions",
+          "cot": "id, organization_id, building_id, fee_category, effective_from_month, amount, status, source, note, created_by, created_at, retired_at"
+        },
+        {
+          "t": "app_private.utility_ceiling_versions",
+          "cot": "id, organization_id, building_id, utility_type, effective_from_month, ceiling_amount, max_ratio_to_billed, status, note, created_by, created_at, retired_at"
+        }
+      ],
+      "measured": [
+        {
+          "t": "app_private.self_approve_limits",
+          "cot": "organization_id, version, max_single_amount_vnd, updated_by, updated_at"
+        },
+        {
+          "t": "app_private.special_fee_price_versions",
+          "cot": "id, organization_id, building_id, fee_category, effective_from_month, amount, status, source, note, created_by, created_at, retired_at"
+        },
+        {
+          "t": "app_private.utility_ceiling_versions",
+          "cot": "id, organization_id, building_id, utility_type, effective_from_month, ceiling_amount, max_ratio_to_billed, status, note, created_by, created_at, retired_at"
+        }
+      ]
+    },
+    {
+      "round": "vong_1",
+      "name": "bang-gia-so-dong",
+      "equal": true,
+      "baseline": [
+        {
+          "so_dong": "0"
+        }
+      ],
+      "measured": [
+        {
+          "so_dong": "0"
+        }
+      ]
+    },
+    {
+      "round": "vong_1",
+      "name": "tran-dien-nuoc-so-dong",
+      "equal": true,
+      "baseline": [
+        {
+          "so_bang_tran": "2"
+        }
+      ],
+      "measured": [
+        {
+          "so_bang_tran": "2"
+        }
+      ]
+    },
+    {
+      "round": "vong_1",
+      "name": "han-muc-tu-duyet",
+      "equal": true,
+      "baseline": [
+        {
+          "so_dong": "0"
+        }
+      ],
+      "measured": [
+        {
+          "so_dong": "0"
+        }
+      ]
+    },
+    {
+      "round": "vong_1",
+      "name": "hang-muc",
+      "equal": true,
+      "baseline": [
+        {
+          "tong_dong": "211",
+          "co_bat_buoc_duyet": "56",
+          "so_chu_so_huu": "6",
+          "so_nhom_trung_ten": "100"
+        }
+      ],
+      "measured": [
+        {
+          "tong_dong": "211",
+          "co_bat_buoc_duyet": "56",
+          "so_chu_so_huu": "6",
+          "so_nhom_trung_ten": "100"
+        }
+      ]
+    },
+    {
+      "round": "vong_1",
+      "name": "phieu-cho-duyet",
+      "equal": true,
+      "baseline": [
+        {
+          "so_phieu": "144",
+          "tong_tien": "781731917.00",
+          "treo_qua_30_ngay": "51"
+        }
+      ],
+      "measured": [
+        {
+          "so_phieu": "144",
+          "tong_tien": "781731917.00",
+          "treo_qua_30_ngay": "51"
+        }
+      ]
+    },
+    {
+      "round": "vong_1",
+      "name": "so-quy-am",
+      "equal": true,
+      "baseline": {
+        "loi": "column \"organization_id\" does not exist"
+      },
+      "measured": {
+        "loi": "column \"organization_id\" does not exist"
+      }
+    },
+    {
+      "round": "vong_1",
+      "name": "khe-trung-tien-nha",
+      "equal": true,
+      "baseline": [
+        {
+          "so_khe": "8"
+        }
+      ],
+      "measured": [
+        {
+          "so_khe": "8"
+        }
+      ]
+    },
+    {
+      "round": "vong_1",
+      "name": "ai-doc-force-approval",
+      "equal": true,
+      "baseline": [
+        {
+          "sch": "app_private",
+          "proname": "emergency_approve_financial_v1"
+        },
+        {
+          "sch": "app_private",
+          "proname": "ensure_income_expense_type_v1"
+        },
+        {
+          "sch": "app_private",
+          "proname": "self_approve_within_limit_v1"
+        },
+        {
+          "sch": "app_private",
+          "proname": "submit_financial_request_v1"
+        },
+        {
+          "sch": "public",
+          "proname": "_termination_ensure_type"
+        },
+        {
+          "sch": "public",
+          "proname": "create_commission_voucher"
+        },
+        {
+          "sch": "public",
+          "proname": "create_income_expense_v1"
+        },
+        {
+          "sch": "public",
+          "proname": "salary_payout_v1"
+        },
+        {
+          "sch": "public",
+          "proname": "seed_commission_expense_types"
+        }
+      ],
+      "measured": [
+        {
+          "sch": "app_private",
+          "proname": "emergency_approve_financial_v1"
+        },
+        {
+          "sch": "app_private",
+          "proname": "ensure_income_expense_type_v1"
+        },
+        {
+          "sch": "app_private",
+          "proname": "self_approve_within_limit_v1"
+        },
+        {
+          "sch": "app_private",
+          "proname": "submit_financial_request_v1"
+        },
+        {
+          "sch": "public",
+          "proname": "_termination_ensure_type"
+        },
+        {
+          "sch": "public",
+          "proname": "create_commission_voucher"
+        },
+        {
+          "sch": "public",
+          "proname": "create_income_expense_v1"
+        },
+        {
+          "sch": "public",
+          "proname": "salary_payout_v1"
+        },
+        {
+          "sch": "public",
+          "proname": "seed_commission_expense_types"
+        }
+      ]
+    },
+    {
+      "round": "vong_1",
+      "name": "phieu-phi-co-dinh-90-ngay",
+      "equal": true,
+      "baseline": [
+        {
+          "nguon": "utility.bill",
+          "so_phieu": "83",
+          "tong": "556009060.00"
+        }
+      ],
+      "measured": [
+        {
+          "nguon": "utility.bill",
+          "so_phieu": "83",
+          "tong": "556009060.00"
+        }
+      ]
+    },
+    {
+      "round": "vong_1",
+      "name": "co-tuyen-finance",
+      "equal": true,
+      "baseline": {
+        "loi": "column \"flag_key\" does not exist"
+      },
+      "measured": {
+        "loi": "column \"flag_key\" does not exist"
+      }
+    },
+    {
+      "round": "vong_2",
+      "name": "tran-dien-nuoc-dong",
+      "equal": true,
+      "baseline": [
+        {
+          "so_dong": "24"
+        }
+      ],
+      "measured": [
+        {
+          "so_dong": "24"
+        }
+      ]
+    },
+    {
+      "round": "vong_2",
+      "name": "cot-accounts-balance",
+      "equal": true,
+      "baseline": [
+        {
+          "cot": "id, user_id, name, bank_name, account_number, is_default, created_at, updated_at, deleted_at, code, description, bank_account_holder, initial_amount, initial_date, lock_date, branch, is_virtual, current_amount"
+        }
+      ],
+      "measured": [
+        {
+          "cot": "id, user_id, name, bank_name, account_number, is_default, created_at, updated_at, deleted_at, code, description, bank_account_holder, initial_amount, initial_date, lock_date, branch, is_virtual, current_amount"
+        }
+      ]
+    },
+    {
+      "round": "vong_2",
+      "name": "cot-co-tuyen",
+      "equal": true,
+      "baseline": [
+        {
+          "cot": "feature_key, domain, risk_class, mode, force_freeze, config_version, starts_at, ends_at, max_operation_count, max_single_amount_vnd, max_total_amount_vnd, commit_sha, migration_sha256, maintenance_window_id, approval_reference, reason, updated_by, updated_at"
+        }
+      ],
+      "measured": [
+        {
+          "cot": "feature_key, domain, risk_class, mode, force_freeze, config_version, starts_at, ends_at, max_operation_count, max_single_amount_vnd, max_total_amount_vnd, commit_sha, migration_sha256, maintenance_window_id, approval_reference, reason, updated_by, updated_at"
+        }
+      ]
+    },
+    {
+      "round": "vong_2",
+      "name": "so-quy-am",
+      "equal": true,
+      "baseline": [
+        {
+          "so_so": "4",
+          "tong": "-828138725.00"
+        }
+      ],
+      "measured": [
+        {
+          "so_so": "4",
+          "tong": "-828138725.00"
+        }
+      ]
+    },
+    {
+      "round": "vong_2",
+      "name": "hang-muc-trung-nang-nhat",
+      "equal": true,
+      "baseline": [
+        {
+          "ten": "ăn uống",
+          "type": "expense",
+          "so_ban_sao": "2"
+        },
+        {
+          "ten": "anh huy đổi tiền",
+          "type": "income",
+          "so_ban_sao": "2"
+        },
+        {
+          "ten": "bắn foam đường ống đồng",
+          "type": "expense",
+          "so_ban_sao": "2"
+        },
+        {
+          "ten": "bàn giao tiền anh huy",
+          "type": "expense",
+          "so_ban_sao": "2"
+        },
+        {
+          "ten": "bàn giao tiền anh tâm",
+          "type": "expense",
+          "so_ban_sao": "2"
+        },
+        {
+          "ten": "bàn giao tiền mặt",
+          "type": "expense",
+          "so_ban_sao": "2"
+        },
+        {
+          "ten": "bảo trì đường ống đồng",
+          "type": "expense",
+          "so_ban_sao": "2"
+        },
+        {
+          "ten": "bảo trì thang máy",
+          "type": "expense",
+          "so_ban_sao": "2"
+        },
+        {
+          "ten": "bỏ rác",
+          "type": "expense",
+          "so_ban_sao": "2"
+        },
+        {
+          "ten": "bổ sung hoàn cọc",
+          "type": "expense",
+          "so_ban_sao": "2"
+        },
+        {
+          "ten": "bơm gas",
+          "type": "expense",
+          "so_ban_sao": "2"
+        },
+        {
+          "ten": "btaskee",
+          "type": "expense",
+          "so_ban_sao": "2"
+        }
+      ],
+      "measured": [
+        {
+          "ten": "ăn uống",
+          "type": "expense",
+          "so_ban_sao": "2"
+        },
+        {
+          "ten": "anh huy đổi tiền",
+          "type": "income",
+          "so_ban_sao": "2"
+        },
+        {
+          "ten": "bắn foam đường ống đồng",
+          "type": "expense",
+          "so_ban_sao": "2"
+        },
+        {
+          "ten": "bàn giao tiền anh huy",
+          "type": "expense",
+          "so_ban_sao": "2"
+        },
+        {
+          "ten": "bàn giao tiền anh tâm",
+          "type": "expense",
+          "so_ban_sao": "2"
+        },
+        {
+          "ten": "bàn giao tiền mặt",
+          "type": "expense",
+          "so_ban_sao": "2"
+        },
+        {
+          "ten": "bảo trì đường ống đồng",
+          "type": "expense",
+          "so_ban_sao": "2"
+        },
+        {
+          "ten": "bảo trì thang máy",
+          "type": "expense",
+          "so_ban_sao": "2"
+        },
+        {
+          "ten": "bỏ rác",
+          "type": "expense",
+          "so_ban_sao": "2"
+        },
+        {
+          "ten": "bổ sung hoàn cọc",
+          "type": "expense",
+          "so_ban_sao": "2"
+        },
+        {
+          "ten": "bơm gas",
+          "type": "expense",
+          "so_ban_sao": "2"
+        },
+        {
+          "ten": "btaskee",
+          "type": "expense",
+          "so_ban_sao": "2"
+        }
+      ]
+    },
+    {
+      "round": "vong_2",
+      "name": "phieu-dinh-ky-90-ngay",
+      "equal": true,
+      "baseline": [
+        {
+          "so_phieu": "223",
+          "tong": "1300661000.00",
+          "da_duyet": "210"
+        }
+      ],
+      "measured": [
+        {
+          "so_phieu": "223",
+          "tong": "1300661000.00",
+          "da_duyet": "210"
+        }
+      ]
+    },
+    {
+      "round": "vong_2",
+      "name": "nguon-phieu-90-ngay",
+      "equal": true,
+      "baseline": [
+        {
+          "nguon": "(khong nhan)",
+          "so_phieu": "969",
+          "cho_duyet": "59"
+        },
+        {
+          "nguon": "invoice.collection.v5",
+          "so_phieu": "657",
+          "cho_duyet": "0"
+        },
+        {
+          "nguon": "contract.deposit",
+          "so_phieu": "239",
+          "cho_duyet": "0"
+        },
+        {
+          "nguon": "contract.commission",
+          "so_phieu": "116",
+          "cho_duyet": "49"
+        },
+        {
+          "nguon": "invoice.payment",
+          "so_phieu": "84",
+          "cho_duyet": "0"
+        },
+        {
+          "nguon": "utility.bill",
+          "so_phieu": "83",
+          "cho_duyet": "0"
+        },
+        {
+          "nguon": "termination.refund",
+          "so_phieu": "79",
+          "cho_duyet": "36"
+        },
+        {
+          "nguon": "termination.offset",
+          "so_phieu": "73",
+          "cho_duyet": "0"
+        },
+        {
+          "nguon": "termination.revenue",
+          "so_phieu": "72",
+          "cho_duyet": "0"
+        },
+        {
+          "nguon": "contract.create.v2",
+          "so_phieu": "62",
+          "cho_duyet": "0"
+        },
+        {
+          "nguon": "handover.transfer",
+          "so_phieu": "28",
+          "cho_duyet": "0"
+        },
+        {
+          "nguon": "termination.forfeit_offset",
+          "so_phieu": "19",
+          "cho_duyet": "0"
+        },
+        {
+          "nguon": "termination.forfeit_revenue",
+          "so_phieu": "19",
+          "cho_duyet": "0"
+        },
+        {
+          "nguon": "backfill.initial_deposit",
+          "so_phieu": "3",
+          "cho_duyet": "0"
+        },
+        {
+          "nguon": "salary.staff",
+          "so_phieu": "3",
+          "cho_duyet": "0"
+        }
+      ],
+      "measured": [
+        {
+          "nguon": "(khong nhan)",
+          "so_phieu": "969",
+          "cho_duyet": "59"
+        },
+        {
+          "nguon": "invoice.collection.v5",
+          "so_phieu": "657",
+          "cho_duyet": "0"
+        },
+        {
+          "nguon": "contract.deposit",
+          "so_phieu": "239",
+          "cho_duyet": "0"
+        },
+        {
+          "nguon": "contract.commission",
+          "so_phieu": "116",
+          "cho_duyet": "49"
+        },
+        {
+          "nguon": "invoice.payment",
+          "so_phieu": "84",
+          "cho_duyet": "0"
+        },
+        {
+          "nguon": "utility.bill",
+          "so_phieu": "83",
+          "cho_duyet": "0"
+        },
+        {
+          "nguon": "termination.refund",
+          "so_phieu": "79",
+          "cho_duyet": "36"
+        },
+        {
+          "nguon": "termination.offset",
+          "so_phieu": "73",
+          "cho_duyet": "0"
+        },
+        {
+          "nguon": "termination.revenue",
+          "so_phieu": "72",
+          "cho_duyet": "0"
+        },
+        {
+          "nguon": "contract.create.v2",
+          "so_phieu": "62",
+          "cho_duyet": "0"
+        },
+        {
+          "nguon": "handover.transfer",
+          "so_phieu": "28",
+          "cho_duyet": "0"
+        },
+        {
+          "nguon": "termination.forfeit_offset",
+          "so_phieu": "19",
+          "cho_duyet": "0"
+        },
+        {
+          "nguon": "termination.forfeit_revenue",
+          "so_phieu": "19",
+          "cho_duyet": "0"
+        },
+        {
+          "nguon": "backfill.initial_deposit",
+          "so_phieu": "3",
+          "cho_duyet": "0"
+        },
+        {
+          "nguon": "salary.staff",
+          "so_phieu": "3",
+          "cho_duyet": "0"
+        }
+      ]
+    }
+  ],
+  "function_comparisons": [
+    {
+      "fn": "app_private.special_fee_approve_and_post_v1",
+      "md5": "26a42035460c92ad2430b546610d24ed",
+      "do_dai": 7474,
+      "measured": {
+        "fn": "app_private.special_fee_approve_and_post_v1",
+        "md5": "26a42035460c92ad2430b546610d24ed",
+        "do_dai": 7474
+      },
+      "equal": true
+    },
+    {
+      "fn": "app_private.special_fee_rule_check_v1",
+      "md5": "9ba89a7fa4712fc825040feeace7ed93",
+      "do_dai": 3231,
+      "measured": {
+        "fn": "app_private.special_fee_rule_check_v1",
+        "md5": "9ba89a7fa4712fc825040feeace7ed93",
+        "do_dai": 3231
+      },
+      "equal": true
+    },
+    {
+      "fn": "app_private.utility_ceiling_check_v1",
+      "md5": "20d1b77c4100de5be3cdbae50c10f39b",
+      "do_dai": 2340,
+      "measured": {
+        "fn": "app_private.utility_ceiling_check_v1",
+        "md5": "20d1b77c4100de5be3cdbae50c10f39b",
+        "do_dai": 2340
+      },
+      "equal": true
+    },
+    {
+      "fn": "public.approve_income_expense_v1",
+      "md5": "10fdb43c85df855db3ab9c26be7ee6e1",
+      "do_dai": 2888,
+      "measured": {
+        "fn": "public.approve_income_expense_v1",
+        "md5": "10fdb43c85df855db3ab9c26be7ee6e1",
+        "do_dai": 2888
+      },
+      "equal": true
+    },
+    {
+      "fn": "public.approve_voucher",
+      "md5": "b8529fc96ee1ba71f6af780f8dcc97b3",
+      "do_dai": 1306,
+      "measured": {
+        "fn": "public.approve_voucher",
+        "md5": "b8529fc96ee1ba71f6af780f8dcc97b3",
+        "do_dai": 1306
+      },
+      "equal": true
+    },
+    {
+      "fn": "public.cancel_period_fee",
+      "md5": "22e5377e7f39f0acf9925e51306f4225",
+      "do_dai": 2481,
+      "measured": {
+        "fn": "public.cancel_period_fee",
+        "md5": "22e5377e7f39f0acf9925e51306f4225",
+        "do_dai": 2481
+      },
+      "equal": true
+    },
+    {
+      "fn": "public.cancel_utility_bill",
+      "md5": "cca1b34add1b1df64696101cec871a6b",
+      "do_dai": 1481,
+      "measured": {
+        "fn": "public.cancel_utility_bill",
+        "md5": "cca1b34add1b1df64696101cec871a6b",
+        "do_dai": 1481
+      },
+      "equal": true
+    },
+    {
+      "fn": "public.create_income_expense_v1",
+      "md5": "7cc6fa873d8e063187ddb82a66702259",
+      "do_dai": 44585,
+      "measured": {
+        "fn": "public.create_income_expense_v1",
+        "md5": "7cc6fa873d8e063187ddb82a66702259",
+        "do_dai": 44585
+      },
+      "equal": true
+    },
+    {
+      "fn": "public.generate_special_fees_v1",
+      "md5": "6238a35926d7a960d03291557d30f8e9",
+      "do_dai": 6151,
+      "measured": {
+        "fn": "public.generate_special_fees_v1",
+        "md5": "6238a35926d7a960d03291557d30f8e9",
+        "do_dai": 6151
+      },
+      "equal": true
+    },
+    {
+      "fn": "public.ie_compat_insert_v2",
+      "md5": "c71d528be728ead127207b77250f1504",
+      "do_dai": 14079,
+      "measured": {
+        "fn": "public.ie_compat_insert_v2",
+        "md5": "c71d528be728ead127207b77250f1504",
+        "do_dai": 14079
+      },
+      "equal": true
+    },
+    {
+      "fn": "public.pay_period_fee",
+      "md5": "6545b554ba8732eb4362b95fbcd040e4",
+      "do_dai": 16794,
+      "measured": {
+        "fn": "public.pay_period_fee",
+        "md5": "6545b554ba8732eb4362b95fbcd040e4",
+        "do_dai": 16794
+      },
+      "equal": true
+    },
+    {
+      "fn": "public.pay_utility_bill",
+      "md5": "b6a36737c5fc1aeadf759f89aee552ee",
+      "do_dai": 13052,
+      "measured": {
+        "fn": "public.pay_utility_bill",
+        "md5": "b6a36737c5fc1aeadf759f89aee552ee",
+        "do_dai": 13052
+      },
+      "equal": true
+    },
+    {
+      "fn": "public.record_invoice_collection_v5",
+      "md5": "3889ab4d9e3b3f48f8f5c928b6ea314d",
+      "do_dai": 40205,
+      "measured": {
+        "fn": "public.record_invoice_collection_v5",
+        "md5": "3889ab4d9e3b3f48f8f5c928b6ea314d",
+        "do_dai": 40205
+      },
+      "equal": true
+    },
+    {
+      "fn": "public.revise_pending_income_expense_v1",
+      "md5": "7d21c5cc626fba7494e41a4c81ec7a3a",
+      "do_dai": 35134,
+      "measured": {
+        "fn": "public.revise_pending_income_expense_v1",
+        "md5": "7d21c5cc626fba7494e41a4c81ec7a3a",
+        "do_dai": 35134
+      },
+      "equal": true
+    },
+    {
+      "fn": "public.update_cashbook_metadata_v1",
+      "md5": "dee567128ba329fca1cc0a1d25cb7677",
+      "do_dai": 2343,
+      "measured": {
+        "fn": "public.update_cashbook_metadata_v1",
+        "md5": "dee567128ba329fca1cc0a1d25cb7677",
+        "do_dai": 2343
+      },
+      "equal": true
+    },
+    {
+      "fn": "public.update_period_fee",
+      "md5": "6dff15211678b4ff8809b4c3c69e045c",
+      "do_dai": 4470,
+      "measured": {
+        "fn": "public.update_period_fee",
+        "md5": "6dff15211678b4ff8809b4c3c69e045c",
+        "do_dai": 4470
+      },
+      "equal": true
+    }
+  ],
+  "A9": {
+    "range": "c22adb2c..origin/main",
+    "search_scope": "git diff -- supabase/migrations",
+    "matching_diff_lines": []
+  }
+}

@@ -1,0 +1,172 @@
+{
+ "do_luc": "2026-09-26T05:25:57.546Z",
+ "ket_qua": {
+  "tran-dien-nuoc-dong": [
+   {
+    "so_dong": "24"
+   }
+  ],
+  "cot-accounts-balance": [
+   {
+    "cot": "id, user_id, name, bank_name, account_number, is_default, created_at, updated_at, deleted_at, code, description, bank_account_holder, initial_amount, initial_date, lock_date, branch, is_virtual, current_amount"
+   }
+  ],
+  "cot-co-tuyen": [
+   {
+    "cot": "feature_key, domain, risk_class, mode, force_freeze, config_version, starts_at, ends_at, max_operation_count, max_single_amount_vnd, max_total_amount_vnd, commit_sha, migration_sha256, maintenance_window_id, approval_reference, reason, updated_by, updated_at"
+   }
+  ],
+  "so-quy-am": [
+   {
+    "so_so": "4",
+    "tong": "-828138725.00"
+   }
+  ],
+  "hang-muc-trung-nang-nhat": [
+   {
+    "ten": "ăn uống",
+    "type": "expense",
+    "so_ban_sao": "2"
+   },
+   {
+    "ten": "anh huy đổi tiền",
+    "type": "income",
+    "so_ban_sao": "2"
+   },
+   {
+    "ten": "bắn foam đường ống đồng",
+    "type": "expense",
+    "so_ban_sao": "2"
+   },
+   {
+    "ten": "bàn giao tiền anh huy",
+    "type": "expense",
+    "so_ban_sao": "2"
+   },
+   {
+    "ten": "bàn giao tiền anh tâm",
+    "type": "expense",
+    "so_ban_sao": "2"
+   },
+   {
+    "ten": "bàn giao tiền mặt",
+    "type": "expense",
+    "so_ban_sao": "2"
+   },
+   {
+    "ten": "bảo trì đường ống đồng",
+    "type": "expense",
+    "so_ban_sao": "2"
+   },
+   {
+    "ten": "bảo trì thang máy",
+    "type": "expense",
+    "so_ban_sao": "2"
+   },
+   {
+    "ten": "bỏ rác",
+    "type": "expense",
+    "so_ban_sao": "2"
+   },
+   {
+    "ten": "bổ sung hoàn cọc",
+    "type": "expense",
+    "so_ban_sao": "2"
+   },
+   {
+    "ten": "bơm gas",
+    "type": "expense",
+    "so_ban_sao": "2"
+   },
+   {
+    "ten": "btaskee",
+    "type": "expense",
+    "so_ban_sao": "2"
+   }
+  ],
+  "phieu-dinh-ky-90-ngay": [
+   {
+    "so_phieu": "223",
+    "tong": "1300661000.00",
+    "da_duyet": "210"
+   }
+  ],
+  "nguon-phieu-90-ngay": [
+   {
+    "nguon": "(khong nhan)",
+    "so_phieu": "969",
+    "cho_duyet": "59"
+   },
+   {
+    "nguon": "invoice.collection.v5",
+    "so_phieu": "657",
+    "cho_duyet": "0"
+   },
+   {
+    "nguon": "contract.deposit",
+    "so_phieu": "239",
+    "cho_duyet": "0"
+   },
+   {
+    "nguon": "contract.commission",
+    "so_phieu": "116",
+    "cho_duyet": "49"
+   },
+   {
+    "nguon": "invoice.payment",
+    "so_phieu": "84",
+    "cho_duyet": "0"
+   },
+   {
+    "nguon": "utility.bill",
+    "so_phieu": "83",
+    "cho_duyet": "0"
+   },
+   {
+    "nguon": "termination.refund",
+    "so_phieu": "79",
+    "cho_duyet": "36"
+   },
+   {
+    "nguon": "termination.offset",
+    "so_phieu": "73",
+    "cho_duyet": "0"
+   },
+   {
+    "nguon": "termination.revenue",
+    "so_phieu": "72",
+    "cho_duyet": "0"
+   },
+   {
+    "nguon": "contract.create.v2",
+    "so_phieu": "62",
+    "cho_duyet": "0"
+   },
+   {
+    "nguon": "handover.transfer",
+    "so_phieu": "28",
+    "cho_duyet": "0"
+   },
+   {
+    "nguon": "termination.forfeit_offset",
+    "so_phieu": "19",
+    "cho_duyet": "0"
+   },
+   {
+    "nguon": "termination.forfeit_revenue",
+    "so_phieu": "19",
+    "cho_duyet": "0"
+   },
+   {
+    "nguon": "backfill.initial_deposit",
+    "so_phieu": "3",
+    "cho_duyet": "0"
+   },
+   {
+    "nguon": "salary.staff",
+    "so_phieu": "3",
+    "cho_duyet": "0"
+   }
+  ]
+ }
+}

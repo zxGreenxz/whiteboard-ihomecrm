@@ -1,0 +1,50 @@
+[
+  {
+    "name": "catalog-columns",
+    "sql": "select table_schema,table_name,column_name,data_type from information_schema.columns where table_schema in ('public','app_private') and (table_name in ('income_expense_types','utility_ceiling_versions','special_fee_price_versions','income_expenses','income_expense_items','utility_accounts','buildings','ie_auto_approve_config') or table_name like '%utility%bill%') order by table_schema,table_name,ordinal_position"
+  },
+  {
+    "name": "utility-functions",
+    "sql": "select n.nspname schema,p.proname,pg_get_function_identity_arguments(p.oid) signature,p.provolatile,p.prosecdef,md5(pg_get_functiondef(p.oid)) md5,pg_get_functiondef(p.oid) definition from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname in ('public','app_private') and p.proname in ('pay_utility_bill','utility_ceiling_check_v1','set_utility_ceiling_v1','set_special_fee_price_v1','special_fee_rule_check_v1','special_fee_approve_and_post_v1') order by 1,2,3"
+  },
+  {
+    "name": "category-policies",
+    "sql": "select schemaname,tablename,policyname,permissive,roles,cmd,qual,with_check from pg_policies where schemaname='public' and tablename='income_expense_types' order by policyname"
+  },
+  {
+    "name": "category-acl",
+    "sql": "select c.relrowsecurity,c.relforcerowsecurity,pg_get_userbyid(c.relowner) owner,c.relacl,has_table_privilege('authenticated',c.oid,'INSERT') auth_insert,has_table_privilege('authenticated',c.oid,'UPDATE') auth_update,has_table_privilege('authenticated',c.oid,'DELETE') auth_delete from pg_class c where c.oid='public.income_expense_types'::regclass"
+  },
+  {
+    "name": "category-triggers-indexes",
+    "sql": "select 'trigger' kind,tgname name,pg_get_triggerdef(oid) definition from pg_trigger where tgrelid='public.income_expense_types'::regclass and not tgisinternal union all select 'index',indexname,indexdef from pg_indexes where schemaname='public' and tablename='income_expense_types' order by 1,2"
+  },
+  {
+    "name": "category-org-counts",
+    "sql": "select organization_id,count(*) total,count(*) filter (where force_approval) forced,count(distinct user_id) owners from public.income_expense_types group by 1 order by 1"
+  },
+  {
+    "name": "category-duplicates-by-org",
+    "sql": "select organization_id,count(*) groups,sum(c) rows from (select organization_id,lower(btrim(name)),type,count(*) c from public.income_expense_types group by 1,2,3 having count(*)>1) s group by 1"
+  },
+  {
+    "name": "ceiling-summary",
+    "sql": "select organization_id,status,utility_type,count(*) rows,count(distinct building_id) buildings,min(effective_from_month) first_month,max(effective_from_month) last_month,count(*) filter (where retired_at is not null) retired,count(*) filter(where max_ratio_to_billed is not null) with_ratio from app_private.utility_ceiling_versions group by 1,2,3 order by 1,2,3"
+  },
+  {
+    "name": "utility-statuses-90d",
+    "sql": "select approval_status,count(*) vouchers,sum(total_amount) amount,count(distinct building_id) buildings from public.income_expenses where organization_id='aaaa0000-0000-4000-8000-000000000001' and deleted_at is null and system_source='utility.bill' and created_at>now()-interval '90 days' group by 1 order by 1"
+  },
+  {
+    "name": "feature-flags",
+    "sql": "select feature_key,mode,force_freeze from app_private.server_feature_flags where feature_key like 'income_expense%' or feature_key like 'invoice.collection%' order by 1"
+  },
+  {
+    "name": "auto-approval-threshold",
+    "sql": "select * from app_private.ie_auto_approve_config"
+  },
+  {
+    "name": "approval-callers",
+    "sql": "select n.nspname schema,p.proname,pg_get_function_identity_arguments(p.oid) signature from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname in ('public','app_private') and p.prosrc ~ '(approve_income_expense_v1|utility_ceiling_check_v1|receiving_cashbook_ids_v1)' order by 1,2,3"
+  }
+]

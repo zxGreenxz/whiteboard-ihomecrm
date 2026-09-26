@@ -1,0 +1,194 @@
+{
+ "do_luc": "2026-09-26T05:25:54.841Z",
+ "ket_qua": {
+  "ket-noi": [
+   {
+    "db": "postgres",
+    "usr": "postgres",
+    "gio_vn": "2026-09-26 12:25"
+   }
+  ],
+  "cot-cac-bang-luat": [
+   {
+    "t": "app_private.self_approve_limits",
+    "cot": "organization_id, version, max_single_amount_vnd, updated_by, updated_at"
+   },
+   {
+    "t": "app_private.special_fee_price_versions",
+    "cot": "id, organization_id, building_id, fee_category, effective_from_month, amount, status, source, note, created_by, created_at, retired_at"
+   },
+   {
+    "t": "app_private.utility_ceiling_versions",
+    "cot": "id, organization_id, building_id, utility_type, effective_from_month, ceiling_amount, max_ratio_to_billed, status, note, created_by, created_at, retired_at"
+   }
+  ],
+  "bang-gia-so-dong": [
+   {
+    "so_dong": "0"
+   }
+  ],
+  "tran-dien-nuoc-so-dong": [
+   {
+    "so_bang_tran": "2"
+   }
+  ],
+  "han-muc-tu-duyet": [
+   {
+    "so_dong": "0"
+   }
+  ],
+  "hang-muc": [
+   {
+    "tong_dong": "211",
+    "co_bat_buoc_duyet": "56",
+    "so_chu_so_huu": "6",
+    "so_nhom_trung_ten": "100"
+   }
+  ],
+  "phieu-cho-duyet": [
+   {
+    "so_phieu": "144",
+    "tong_tien": "781731917.00",
+    "treo_qua_30_ngay": "51"
+   }
+  ],
+  "so-quy-am": {
+   "loi": "column \"organization_id\" does not exist"
+  },
+  "khe-trung-tien-nha": [
+   {
+    "so_khe": "8"
+   }
+  ],
+  "ai-doc-force-approval": [
+   {
+    "sch": "app_private",
+    "proname": "emergency_approve_financial_v1"
+   },
+   {
+    "sch": "app_private",
+    "proname": "ensure_income_expense_type_v1"
+   },
+   {
+    "sch": "app_private",
+    "proname": "self_approve_within_limit_v1"
+   },
+   {
+    "sch": "app_private",
+    "proname": "submit_financial_request_v1"
+   },
+   {
+    "sch": "public",
+    "proname": "_termination_ensure_type"
+   },
+   {
+    "sch": "public",
+    "proname": "create_commission_voucher"
+   },
+   {
+    "sch": "public",
+    "proname": "create_income_expense_v1"
+   },
+   {
+    "sch": "public",
+    "proname": "salary_payout_v1"
+   },
+   {
+    "sch": "public",
+    "proname": "seed_commission_expense_types"
+   }
+  ],
+  "phieu-phi-co-dinh-90-ngay": [
+   {
+    "nguon": "utility.bill",
+    "so_phieu": "83",
+    "tong": "556009060.00"
+   }
+  ],
+  "md5-ham-plan-nhac": [
+   {
+    "fn": "app_private.special_fee_approve_and_post_v1",
+    "md5": "26a42035460c92ad2430b546610d24ed",
+    "do_dai": 7474
+   },
+   {
+    "fn": "app_private.special_fee_rule_check_v1",
+    "md5": "9ba89a7fa4712fc825040feeace7ed93",
+    "do_dai": 3231
+   },
+   {
+    "fn": "app_private.utility_ceiling_check_v1",
+    "md5": "20d1b77c4100de5be3cdbae50c10f39b",
+    "do_dai": 2340
+   },
+   {
+    "fn": "public.approve_income_expense_v1",
+    "md5": "10fdb43c85df855db3ab9c26be7ee6e1",
+    "do_dai": 2888
+   },
+   {
+    "fn": "public.approve_voucher",
+    "md5": "b8529fc96ee1ba71f6af780f8dcc97b3",
+    "do_dai": 1306
+   },
+   {
+    "fn": "public.cancel_period_fee",
+    "md5": "22e5377e7f39f0acf9925e51306f4225",
+    "do_dai": 2481
+   },
+   {
+    "fn": "public.cancel_utility_bill",
+    "md5": "cca1b34add1b1df64696101cec871a6b",
+    "do_dai": 1481
+   },
+   {
+    "fn": "public.create_income_expense_v1",
+    "md5": "7cc6fa873d8e063187ddb82a66702259",
+    "do_dai": 44585
+   },
+   {
+    "fn": "public.generate_special_fees_v1",
+    "md5": "6238a35926d7a960d03291557d30f8e9",
+    "do_dai": 6151
+   },
+   {
+    "fn": "public.ie_compat_insert_v2",
+    "md5": "c71d528be728ead127207b77250f1504",
+    "do_dai": 14079
+   },
+   {
+    "fn": "public.pay_period_fee",
+    "md5": "6545b554ba8732eb4362b95fbcd040e4",
+    "do_dai": 16794
+   },
+   {
+    "fn": "public.pay_utility_bill",
+    "md5": "b6a36737c5fc1aeadf759f89aee552ee",
+    "do_dai": 13052
+   },
+   {
+    "fn": "public.record_invoice_collection_v5",
+    "md5": "3889ab4d9e3b3f48f8f5c928b6ea314d",
+    "do_dai": 40205
+   },
+   {
+    "fn": "public.revise_pending_income_expense_v1",
+    "md5": "7d21c5cc626fba7494e41a4c81ec7a3a",
+    "do_dai": 35134
+   },
+   {
+    "fn": "public.update_cashbook_metadata_v1",
+    "md5": "dee567128ba329fca1cc0a1d25cb7677",
+    "do_dai": 2343
+   },
+   {
+    "fn": "public.update_period_fee",
+    "md5": "6dff15211678b4ff8809b4c3c69e045c",
+    "do_dai": 4470
+   }
+  ],
+  "co-tuyen-finance": {
+   "loi": "column \"flag_key\" does not exist"
+  }
+ }
+}

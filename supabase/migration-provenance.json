@@ -1,11 +1,11 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-09-25T15:17:45.055Z",
+  "generatedAt": "2026-09-26T11:42:25.822Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 606,
+    "ledger-applied": 608,
     "unknown": 80,
     "catalog-proven": 205,
     "superseded": 15
@@ -10526,6 +10526,28 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-09-25T15:17:15.067Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260926082454_bang_cam_ket_chi.sql",
+      "version": "20260926082454",
+      "name": "bang_cam_ket_chi",
+      "scheme": "timestamp14",
+      "sha256": "a960494aa851b84e7d87d5dd78021bf5ad5bec006ebd1263aa03826ef241cfd7",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-26T11:33:17.010Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260926113435_anh_xa_hang_muc_va_khoa_cot_luat.sql",
+      "version": "20260926113435",
+      "name": "anh_xa_hang_muc_va_khoa_cot_luat",
+      "scheme": "timestamp14",
+      "sha256": "9e82e0cf2f4d3203690844a5860dac82005a196e9e013137d9af787014f6b310",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-26T11:42:06.719Z|bien-nhan-backup"
       ]
     },
     {

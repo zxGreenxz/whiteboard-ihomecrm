@@ -1,0 +1,283 @@
+{
+  "started_at": "2026-09-26T05:29:07.843Z",
+  "project_ref": "tryymsxyyckgbrmmvozx",
+  "code_ref": "e1a0d2ac0312bba94148e974af2fb132303865a6",
+  "transaction": "BEGIN READ ONLY ... ROLLBACK",
+  "results": {
+    "utility-rule-coverage": {
+      "sql": "select count(*) rows,count(distinct building_id) configured_buildings,count(*) filter(where ceiling_amount is not null) absolute_rules,count(*) filter(where max_ratio_to_billed is not null) ratio_rules,count(*) filter(where building_id is null) global_rules from app_private.utility_ceiling_versions where organization_id='aaaa0000-0000-4000-8000-000000000001' and status='PUBLISHED'",
+      "rows": [
+        {
+          "rows": "24",
+          "configured_buildings": "16",
+          "absolute_rules": "24",
+          "ratio_rules": "0",
+          "global_rules": "0"
+        }
+      ]
+    },
+    "utility-building-coverage": {
+      "sql": "WITH utility AS (\nSELECT ie.id,ie.organization_id,ie.building_id,ie.approval_status,ie.total_amount,ie.created_at,ua.utility_type,periods.month,periods.item_count,periods.month_count\nFROM public.income_expenses ie LEFT JOIN public.building_utility_accounts ua ON ua.id=ie.utility_account_id\nLEFT JOIN LATERAL (SELECT min(date_trunc('month',it.start_date)::date) month,count(*) item_count,count(distinct date_trunc('month',it.start_date)::date) month_count FROM public.income_expense_items it WHERE it.income_expense_id=ie.id) periods ON true\nWHERE ie.organization_id='aaaa0000-0000-4000-8000-000000000001' AND ie.deleted_at IS NULL AND ie.system_source='utility.bill' AND ie.created_at>now()-interval '90 days'\n), compared AS (\nSELECT u.*,v.id ceiling_id,v.ceiling_amount,v.created_at rule_created_at,v.effective_from_month,v.max_ratio_to_billed,\napp_private.utility_ceiling_check_v1(u.organization_id,u.building_id,u.utility_type,u.month,u.total_amount)->>'verdict' replay_verdict\nFROM utility u LEFT JOIN LATERAL (SELECT * FROM app_private.utility_ceiling_versions v\nWHERE v.organization_id=u.organization_id AND v.status='PUBLISHED' AND v.utility_type=u.utility_type\nAND v.effective_from_month<=u.month AND (v.building_id=u.building_id OR v.building_id IS NULL)\nORDER BY (v.building_id IS NOT NULL) DESC,v.effective_from_month DESC LIMIT 1) v ON true\n) select count(distinct building_id) active_buildings,count(distinct (building_id,utility_type)) active_building_types,count(distinct building_id) filter(where exists(select 1 from app_private.utility_ceiling_versions v where v.organization_id=c.organization_id and v.status='PUBLISHED' and v.building_id=c.building_id)) buildings_with_any_rule,count(distinct (building_id,utility_type)) filter(where exists(select 1 from app_private.utility_ceiling_versions v where v.organization_id=c.organization_id and v.status='PUBLISHED' and v.building_id=c.building_id and v.utility_type=c.utility_type)) building_types_with_rule,count(*) vouchers,count(*) filter(where ceiling_id is not null) vouchers_rule_for_period,count(*) filter(where month_count<>1 or utility_type is null) unresolvable_period_or_type from compared c",
+      "error": "syntax error at or near \"month\""
+    },
+    "utility-replay-verdict-by-period": {
+      "sql": "WITH utility AS (\nSELECT ie.id,ie.organization_id,ie.building_id,ie.approval_status,ie.total_amount,ie.created_at,ua.utility_type,periods.month,periods.item_count,periods.month_count\nFROM public.income_expenses ie LEFT JOIN public.building_utility_accounts ua ON ua.id=ie.utility_account_id\nLEFT JOIN LATERAL (SELECT min(date_trunc('month',it.start_date)::date) month,count(*) item_count,count(distinct date_trunc('month',it.start_date)::date) month_count FROM public.income_expense_items it WHERE it.income_expense_id=ie.id) periods ON true\nWHERE ie.organization_id='aaaa0000-0000-4000-8000-000000000001' AND ie.deleted_at IS NULL AND ie.system_source='utility.bill' AND ie.created_at>now()-interval '90 days'\n), compared AS (\nSELECT u.*,v.id ceiling_id,v.ceiling_amount,v.created_at rule_created_at,v.effective_from_month,v.max_ratio_to_billed,\napp_private.utility_ceiling_check_v1(u.organization_id,u.building_id,u.utility_type,u.month,u.total_amount)->>'verdict' replay_verdict\nFROM utility u LEFT JOIN LATERAL (SELECT * FROM app_private.utility_ceiling_versions v\nWHERE v.organization_id=u.organization_id AND v.status='PUBLISHED' AND v.utility_type=u.utility_type\nAND v.effective_from_month<=u.month AND (v.building_id=u.building_id OR v.building_id IS NULL)\nORDER BY (v.building_id IS NOT NULL) DESC,v.effective_from_month DESC LIMIT 1) v ON true\n) select month,approval_status,replay_verdict,count(*) vouchers,sum(total_amount) amount,count(*) filter(where rule_created_at>created_at) rule_newer_than_voucher from compared group by 1,2,3 order by 1,2,3",
+      "error": "syntax error at or near \"month\""
+    },
+    "utility-post-wiring": {
+      "sql": "WITH utility AS (\nSELECT ie.id,ie.organization_id,ie.building_id,ie.approval_status,ie.total_amount,ie.created_at,ua.utility_type,periods.month,periods.item_count,periods.month_count\nFROM public.income_expenses ie LEFT JOIN public.building_utility_accounts ua ON ua.id=ie.utility_account_id\nLEFT JOIN LATERAL (SELECT min(date_trunc('month',it.start_date)::date) month,count(*) item_count,count(distinct date_trunc('month',it.start_date)::date) month_count FROM public.income_expense_items it WHERE it.income_expense_id=ie.id) periods ON true\nWHERE ie.organization_id='aaaa0000-0000-4000-8000-000000000001' AND ie.deleted_at IS NULL AND ie.system_source='utility.bill' AND ie.created_at>now()-interval '90 days'\n), compared AS (\nSELECT u.*,v.id ceiling_id,v.ceiling_amount,v.created_at rule_created_at,v.effective_from_month,v.max_ratio_to_billed,\napp_private.utility_ceiling_check_v1(u.organization_id,u.building_id,u.utility_type,u.month,u.total_amount)->>'verdict' replay_verdict\nFROM utility u LEFT JOIN LATERAL (SELECT * FROM app_private.utility_ceiling_versions v\nWHERE v.organization_id=u.organization_id AND v.status='PUBLISHED' AND v.utility_type=u.utility_type\nAND v.effective_from_month<=u.month AND (v.building_id=u.building_id OR v.building_id IS NULL)\nORDER BY (v.building_id IS NOT NULL) DESC,v.effective_from_month DESC LIMIT 1) v ON true\n) select (created_at >= '2026-08-28 15:00:00+00'::timestamptz) after_filename_time,replay_verdict,approval_status,count(*) vouchers,sum(total_amount) amount,count(distinct building_id) buildings from compared group by 1,2,3 order by 1,2,3",
+      "error": "syntax error at or near \"month\""
+    },
+    "utility-missing-building-types": {
+      "sql": "WITH utility AS (\nSELECT ie.id,ie.organization_id,ie.building_id,ie.approval_status,ie.total_amount,ie.created_at,ua.utility_type,periods.month,periods.item_count,periods.month_count\nFROM public.income_expenses ie LEFT JOIN public.building_utility_accounts ua ON ua.id=ie.utility_account_id\nLEFT JOIN LATERAL (SELECT min(date_trunc('month',it.start_date)::date) month,count(*) item_count,count(distinct date_trunc('month',it.start_date)::date) month_count FROM public.income_expense_items it WHERE it.income_expense_id=ie.id) periods ON true\nWHERE ie.organization_id='aaaa0000-0000-4000-8000-000000000001' AND ie.deleted_at IS NULL AND ie.system_source='utility.bill' AND ie.created_at>now()-interval '90 days'\n), compared AS (\nSELECT u.*,v.id ceiling_id,v.ceiling_amount,v.created_at rule_created_at,v.effective_from_month,v.max_ratio_to_billed,\napp_private.utility_ceiling_check_v1(u.organization_id,u.building_id,u.utility_type,u.month,u.total_amount)->>'verdict' replay_verdict\nFROM utility u LEFT JOIN LATERAL (SELECT * FROM app_private.utility_ceiling_versions v\nWHERE v.organization_id=u.organization_id AND v.status='PUBLISHED' AND v.utility_type=u.utility_type\nAND v.effective_from_month<=u.month AND (v.building_id=u.building_id OR v.building_id IS NULL)\nORDER BY (v.building_id IS NOT NULL) DESC,v.effective_from_month DESC LIMIT 1) v ON true\n) select utility_type,count(distinct building_id) active_buildings,count(distinct building_id) filter(where not exists(select 1 from app_private.utility_ceiling_versions v where v.organization_id=c.organization_id and v.status='PUBLISHED' and v.building_id=c.building_id and v.utility_type=c.utility_type)) buildings_without_rule from compared c group by 1 order by 1",
+      "error": "syntax error at or near \"month\""
+    },
+    "utility-safe-boundary-probes": {
+      "sql": "with v as (select * from app_private.utility_ceiling_versions where organization_id='aaaa0000-0000-4000-8000-000000000001' and status='PUBLISHED' and ceiling_amount is not null order by id limit 1) select 'equal' test,app_private.utility_ceiling_check_v1(organization_id,building_id,utility_type,effective_from_month,ceiling_amount)->>'verdict' verdict from v union all select 'over_one',app_private.utility_ceiling_check_v1(organization_id,building_id,utility_type,effective_from_month,ceiling_amount+1)->>'verdict' from v union all select 'before_effective',app_private.utility_ceiling_check_v1(organization_id,building_id,utility_type,(effective_from_month-interval '1 month')::date,ceiling_amount)->>'verdict' from v",
+      "rows": [
+        {
+          "test": "equal",
+          "verdict": "WITHIN_LIMIT"
+        },
+        {
+          "test": "over_one",
+          "verdict": "OVER_CEILING"
+        },
+        {
+          "test": "before_effective",
+          "verdict": "NO_RULE"
+        }
+      ]
+    },
+    "utility-pending-indicator": {
+      "sql": "WITH utility AS (\nSELECT ie.id,ie.organization_id,ie.building_id,ie.approval_status,ie.total_amount,ie.created_at,ua.utility_type,periods.month,periods.item_count,periods.month_count\nFROM public.income_expenses ie LEFT JOIN public.building_utility_accounts ua ON ua.id=ie.utility_account_id\nLEFT JOIN LATERAL (SELECT min(date_trunc('month',it.start_date)::date) month,count(*) item_count,count(distinct date_trunc('month',it.start_date)::date) month_count FROM public.income_expense_items it WHERE it.income_expense_id=ie.id) periods ON true\nWHERE ie.organization_id='aaaa0000-0000-4000-8000-000000000001' AND ie.deleted_at IS NULL AND ie.system_source='utility.bill' AND ie.created_at>now()-interval '90 days'\n), compared AS (\nSELECT u.*,v.id ceiling_id,v.ceiling_amount,v.created_at rule_created_at,v.effective_from_month,v.max_ratio_to_billed,\napp_private.utility_ceiling_check_v1(u.organization_id,u.building_id,u.utility_type,u.month,u.total_amount)->>'verdict' replay_verdict\nFROM utility u LEFT JOIN LATERAL (SELECT * FROM app_private.utility_ceiling_versions v\nWHERE v.organization_id=u.organization_id AND v.status='PUBLISHED' AND v.utility_type=u.utility_type\nAND v.effective_from_month<=u.month AND (v.building_id=u.building_id OR v.building_id IS NULL)\nORDER BY (v.building_id IS NOT NULL) DESC,v.effective_from_month DESC LIMIT 1) v ON true\n) select approval_status,count(*) filter(where ie.notes like '%[VƯỢT TRẦN%') note_over_ceiling,count(*) filter(where ie.approved_at>ie.created_at+interval '2 seconds') approved_later from compared c join public.income_expenses ie on ie.id=c.id group by 1",
+      "error": "syntax error at or near \"month\""
+    },
+    "income-cashbook-90d": {
+      "sql": "select coalesce(ie.system_source,'(khong nhan)') source,ie.approval_status,count(*) vouchers,count(*) filter(where ie.account_id is null) no_account,count(*) filter(where a.is_virtual) virtual_account,count(*) filter(where a.deleted_at is not null) deleted_account from public.income_expenses ie left join public.accounts a on a.id=ie.account_id where ie.organization_id='aaaa0000-0000-4000-8000-000000000001' and ie.deleted_at is null and ie.type='INCOME' and ie.created_at>now()-interval '90 days' group by 1,2 order by 1,2",
+      "rows": [
+        {
+          "source": "(khong nhan)",
+          "approval_status": "APPROVED",
+          "vouchers": "293",
+          "no_account": "0",
+          "virtual_account": "1",
+          "deleted_account": "0"
+        },
+        {
+          "source": "(khong nhan)",
+          "approval_status": "CANCELLED",
+          "vouchers": "18",
+          "no_account": "3",
+          "virtual_account": "0",
+          "deleted_account": "0"
+        },
+        {
+          "source": "adjustment.close_coc",
+          "approval_status": "APPROVED",
+          "vouchers": "1",
+          "no_account": "0",
+          "virtual_account": "1",
+          "deleted_account": "0"
+        },
+        {
+          "source": "backfill.initial_deposit",
+          "approval_status": "APPROVED",
+          "vouchers": "3",
+          "no_account": "0",
+          "virtual_account": "1",
+          "deleted_account": "0"
+        },
+        {
+          "source": "contract.create.v2",
+          "approval_status": "APPROVED",
+          "vouchers": "62",
+          "no_account": "0",
+          "virtual_account": "0",
+          "deleted_account": "0"
+        },
+        {
+          "source": "contract.deposit",
+          "approval_status": "APPROVED",
+          "vouchers": "237",
+          "no_account": "0",
+          "virtual_account": "7",
+          "deleted_account": "0"
+        },
+        {
+          "source": "contract.deposit",
+          "approval_status": "CANCELLED",
+          "vouchers": "2",
+          "no_account": "0",
+          "virtual_account": "0",
+          "deleted_account": "0"
+        },
+        {
+          "source": "deposit.reservation",
+          "approval_status": "APPROVED",
+          "vouchers": "1",
+          "no_account": "0",
+          "virtual_account": "0",
+          "deleted_account": "0"
+        },
+        {
+          "source": "deposit.reservation",
+          "approval_status": "CANCELLED",
+          "vouchers": "1",
+          "no_account": "0",
+          "virtual_account": "0",
+          "deleted_account": "0"
+        },
+        {
+          "source": "handover.transfer",
+          "approval_status": "APPROVED",
+          "vouchers": "14",
+          "no_account": "0",
+          "virtual_account": "0",
+          "deleted_account": "0"
+        },
+        {
+          "source": "invoice.collection.v5",
+          "approval_status": "APPROVED",
+          "vouchers": "636",
+          "no_account": "0",
+          "virtual_account": "0",
+          "deleted_account": "0"
+        },
+        {
+          "source": "invoice.collection.v5",
+          "approval_status": "CANCELLED",
+          "vouchers": "21",
+          "no_account": "0",
+          "virtual_account": "0",
+          "deleted_account": "0"
+        },
+        {
+          "source": "invoice.payment",
+          "approval_status": "APPROVED",
+          "vouchers": "81",
+          "no_account": "0",
+          "virtual_account": "0",
+          "deleted_account": "0"
+        },
+        {
+          "source": "invoice.payment",
+          "approval_status": "CANCELLED",
+          "vouchers": "3",
+          "no_account": "0",
+          "virtual_account": "0",
+          "deleted_account": "0"
+        },
+        {
+          "source": "termination.extra_receipt",
+          "approval_status": "APPROVED",
+          "vouchers": "1",
+          "no_account": "0",
+          "virtual_account": "0",
+          "deleted_account": "0"
+        },
+        {
+          "source": "termination.forfeit_revenue",
+          "approval_status": "APPROVED",
+          "vouchers": "17",
+          "no_account": "0",
+          "virtual_account": "17",
+          "deleted_account": "0"
+        },
+        {
+          "source": "termination.forfeit_revenue",
+          "approval_status": "CANCELLED",
+          "vouchers": "2",
+          "no_account": "0",
+          "virtual_account": "2",
+          "deleted_account": "0"
+        },
+        {
+          "source": "termination.rent_refund_revenue",
+          "approval_status": "APPROVED",
+          "vouchers": "2",
+          "no_account": "0",
+          "virtual_account": "2",
+          "deleted_account": "0"
+        },
+        {
+          "source": "termination.revenue",
+          "approval_status": "APPROVED",
+          "vouchers": "72",
+          "no_account": "0",
+          "virtual_account": "69",
+          "deleted_account": "0"
+        }
+      ]
+    },
+    "category-cross-org-pairs": {
+      "sql": "select count(*) cross_org_duplicate_groups,sum(n) rows_in_groups from (select lower(btrim(name)),type,count(*) n from public.income_expense_types group by 1,2 having count(*)>1 and count(distinct organization_id)>1) s",
+      "rows": [
+        {
+          "cross_org_duplicate_groups": "100",
+          "rows_in_groups": "200"
+        }
+      ]
+    },
+    "rent-slots-distinct-vouchers": {
+      "sql": "select count(*) slots,count(*) filter(where vouchers>1) slots_multiple_vouchers,count(*) filter(where vouchers=1) slots_single_voucher_multiple_items from (select ie.building_id,date_trunc('month',it.start_date) month,count(*) items,count(distinct ie.id) vouchers from public.income_expenses ie join public.income_expense_items it on it.income_expense_id=ie.id join public.income_expense_types t on t.id=it.income_expense_type_id where ie.deleted_at is null and ie.approval_status<>'CANCELLED' and ie.organization_id='aaaa0000-0000-4000-8000-000000000001' and lower(btrim(t.name)) like 'tiền nhà%' and it.start_date is not null group by 1,2 having count(*)>1) s",
+      "error": "syntax error at or near \"month\""
+    },
+    "functions-remaining-catalog": {
+      "sql": "select n.nspname schema,p.proname,pg_get_function_identity_arguments(p.oid) signature,pg_get_functiondef(p.oid) definition from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname in ('public','app_private') and p.proname in ('process_due_repeat_income_expenses','pay_draft_fee_voucher','income_expenses_check_profit_lock','approve_income_expense_v1','ie_compat_insert_v2','can_access_org_entity','set_user_id_from_auth','ensure_income_expense_type_v1','ie_spend_facts_v1') order by 1,2,3",
+      "rows": [
+        {
+          "schema": "app_private",
+          "proname": "ensure_income_expense_type_v1",
+          "signature": "p_organization_id uuid, p_user_id uuid, p_name text, p_type text, p_category text, p_description text, p_is_default boolean, p_is_deposit boolean, p_is_restricted boolean, p_hide_in_report boolean, p_force_approval boolean, p_system_only boolean",
+          "definition": "CREATE OR REPLACE FUNCTION app_private.ensure_income_expense_type_v1(p_organization_id uuid, p_user_id uuid, p_name text, p_type text, p_category text DEFAULT NULL::text, p_description text DEFAULT NULL::text, p_is_default boolean DEFAULT false, p_is_deposit boolean DEFAULT false, p_is_restricted boolean DEFAULT false, p_hide_in_report boolean DEFAULT false, p_force_approval boolean DEFAULT false, p_system_only boolean DEFAULT false)\n RETURNS uuid\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'app_private', 'public'\nAS $function$\nDECLARE\n  v_type_id uuid;\n  v_existing_deposit boolean;\n  v_side text := lower(btrim(COALESCE(p_type, '')));\n  v_normalized_name text := public.normalize_income_expense_type_name(p_name);\nBEGIN\n  IF p_organization_id IS NULL OR p_user_id IS NULL THEN\n    RAISE EXCEPTION 'Organization and owner are required for an income/expense type'\n      USING ERRCODE = '23502';\n  END IF;\n  IF v_side NOT IN ('income', 'expense') THEN\n    RAISE EXCEPTION 'Invalid income/expense type side: %', p_type\n      USING ERRCODE = '23514';\n  END IF;\n  IF v_normalized_name = '' THEN\n    RAISE EXCEPTION 'Income/expense type name cannot be empty'\n      USING ERRCODE = '23514';\n  END IF;\n\n  PERFORM pg_advisory_xact_lock(\n    hashtextextended(\n      p_organization_id::text || ':' || v_side || ':' || v_normalized_name,\n      0\n    )\n  );\n\n  SELECT type_row.id, type_row.is_deposit\n    INTO v_type_id, v_existing_deposit\n  FROM public.income_expense_types type_row\n  WHERE type_row.organization_id = p_organization_id\n    AND lower(btrim(type_row.type)) = v_side\n    AND public.normalize_income_expense_type_name(type_row.name) =\n        v_normalized_name\n  FOR UPDATE;\n\n  IF v_type_id IS NOT NULL THEN\n    IF v_existing_deposit IS DISTINCT FROM p_is_deposit THEN\n      RAISE EXCEPTION 'Existing type % has incompatible is_deposit semantics',\n        v_type_id USING ERRCODE = '23514';\n    END IF;\n\n    UPDATE public.income_expense_types type_row\n    SET\n      category = COALESCE(NULLIF(btrim(type_row.category), ''), p_category),\n      description = COALESCE(NULLIF(btrim(type_row.description), ''), p_description),\n      is_default = COALESCE(type_row.is_default, false) OR p_is_default,\n      is_restricted = type_row.is_restricted OR p_is_restricted,\n      hide_in_report = type_row.hide_in_report OR p_hide_in_report,\n      force_approval = type_row.force_approval OR p_force_approval,\n      system_only = type_row.system_only OR p_system_only,\n      updated_at = clock_timestamp()\n    WHERE type_row.id = v_type_id;\n\n    RETURN v_type_id;\n  END IF;\n\n  INSERT INTO public.income_expense_types (\n    user_id,\n    organization_id,\n    name,\n    type,\n    category,\n    description,\n    is_default,\n    is_deposit,\n    is_restricted,\n    hide_in_report,\n    force_approval,\n    system_only\n  ) VALUES (\n    p_user_id,\n    p_organization_id,\n    btrim(p_name),\n    v_side,\n    NULLIF(btrim(p_category), ''),\n    NULLIF(btrim(p_description), ''),\n    p_is_default,\n    p_is_deposit,\n    p_is_restricted,\n    p_hide_in_report,\n    p_force_approval,\n    p_system_only\n  )\n  RETURNING id INTO v_type_id;\n\n  RETURN v_type_id;\nEND\n$function$\n"
+        },
+        {
+          "schema": "public",
+          "proname": "approve_income_expense_v1",
+          "signature": "p_voucher_id uuid",
+          "definition": "CREATE OR REPLACE FUNCTION public.approve_income_expense_v1(p_voucher_id uuid)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'public', 'app_private'\nAS $function$\ndeclare\n  v_actor uuid := auth.uid();\n  v_actor_name text;\n  v_row public.income_expenses%rowtype;\n  v_rows integer;\nbegin\n  if v_actor is null then\n    raise exception 'Chưa đăng nhập' using errcode = '42501';\n  end if;\n\n  select * into v_row from public.income_expenses\n   where id = p_voucher_id and deleted_at is null\n   for update;\n  if not found then\n    raise exception 'Không thể duyệt phiếu: phiếu không tồn tại hoặc bạn không có quyền duyệt phiếu này'\n      using errcode = '42501';\n  end if;\n\n  -- Row legacy → tín hiệu fallback (hook chuyển sang approve_voucher legacy).\n  if not app_private.is_income_expense_flow_owned(v_row.id) then\n    raise exception 'Phiếu chưa thuộc luồng canonical — dùng đường legacy'\n      using errcode = '55000';\n  end if;\n\n  if v_row.approval_status = 'APPROVED' then\n    return; -- idempotent no-op\n  end if;\n\n  -- t5_26: phiếu đang chờ engine → chỉ quyết qua màn Chờ duyệt\n  perform app_private.assert_no_engine_request_v1(v_row.id);\n\n  if v_row.approval_status = 'CANCELLED' then\n    -- Phương án A: phiếu huỷ là terminal — dùng nút \"Tạo bản sao\".\n    raise exception 'Phiếu đã huỷ — không thể duyệt. Hãy dùng \"Tạo bản sao\" để lập phiếu mới.';\n  end if;\n\n  -- Parity legacy: phải có sổ quỹ trước khi duyệt.\n  if v_row.account_id is null then\n    raise exception 'Phiếu chưa có sổ quỹ — bấm Sửa phiếu, chọn sổ quỹ rồi mới duyệt được.';\n  end if;\n\n  -- Permission parity với public.approve_voucher.\n  if not (\n    v_row.user_id = v_actor\n    or public.is_super_admin()\n    or (v_row.building_id is not null\n        and public.can_do_on_building('income_expenses', 'approve', v_row.building_id))\n  ) then\n    raise exception 'Không thể duyệt phiếu: phiếu không tồn tại hoặc bạn không có quyền duyệt phiếu này'\n      using errcode = '42501';\n  end if;\n\n  v_actor_name := app_private.ie_actor_display_name_v1(v_actor);\n\n  insert into app_private.ie_transition_authorization (income_expense_id, xid, purpose)\n  values (v_row.id, pg_current_xact_id(), 'APPROVED');\n\n  update public.income_expenses\n     set approval_status = 'APPROVED',\n         approved_by = v_actor,\n         approved_at = now()\n   where id = v_row.id;\n  get diagnostics v_rows = row_count;\n\n  delete from app_private.ie_transition_authorization\n   where income_expense_id = v_row.id and xid = pg_current_xact_id();\n\n  if v_rows <> 1 then\n    raise exception 'approve transition affected % rows (expected 1)', v_rows\n      using errcode = '55000';\n  end if;\n\n  perform app_private.append_income_expense_event_v1(\n    v_row.organization_id, v_row.id, 'APPROVED', v_actor, v_actor_name,\n    v_row.approval_status, 'APPROVED', 'Duyệt qua approve_income_expense_v1');\nend;\n$function$\n"
+        },
+        {
+          "schema": "public",
+          "proname": "can_access_org_entity",
+          "signature": "_resource text, _action text",
+          "definition": "CREATE OR REPLACE FUNCTION public.can_access_org_entity(_resource text, _action text)\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'public', 'app_private'\nAS $function$\n  select public.is_super_admin()\n      or app_private.has_any_scope_v3(_resource || '.' || _action);\n$function$\n"
+        },
+        {
+          "schema": "public",
+          "proname": "ie_compat_insert_v2",
+          "signature": "p_row jsonb, p_items jsonb",
+          "definition": "CREATE OR REPLACE FUNCTION public.ie_compat_insert_v2(p_row jsonb, p_items jsonb DEFAULT '[]'::jsonb)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'app_private', 'public'\nAS $function$\nDECLARE\n  v_org              uuid;\n  v_colrec           record;\n  v_defj             jsonb;\n  v_actor            record;\n  v_id               uuid;\n  v_clean            jsonb;\n  v_item             jsonb;\n  v_items            jsonb := coalesce(p_items, '[]'::jsonb);\n  v_draft_marker     text := nullif(btrim(coalesce(p_row ->> 'copilot_draft_marker', '')), '');\n  v_copilot_draft    boolean := false;\n  v_input_item       jsonb;\n  v_item_type_id     uuid;\n  v_item_quantity    numeric;\n  v_item_unit_price  numeric;\n  v_item_amount      numeric;\nBEGIN\n  -- A browser can send a marker-shaped field, but only the execute RPC can\n  -- create a matching private row in this transaction.  Delete the row here\n  -- so the capability is single-use even if the writer is called twice.\n  IF v_draft_marker IS NOT NULL THEN\n    DELETE FROM app_private.copilot_ie_writer_context_v1 c\n     WHERE c.transaction_id = pg_current_xact_id()::text\n       AND c.actor_id = auth.uid()\n       AND c.context_name = 'copilot_execute_income_expense_v1'\n       AND c.marker_digest = extensions.digest(\n             convert_to(v_draft_marker, 'UTF8'), 'sha256')\n       AND c.created_at > clock_timestamp() - interval '10 minutes'\n       AND EXISTS (\n         SELECT 1\n           FROM app_private.copilot_ie_writer_capabilities_v1 cap\n          WHERE cap.capability_key = 'income_expense_draft_v1'\n            AND cap.enabled\n       )\n    RETURNING c.organization_id INTO v_org;\n    v_copilot_draft := FOUND;\n  END IF;\n\n  IF v_copilot_draft THEN\n    -- The private context owns organization identity.  A mismatching payload\n    -- is an invariant failure, not a chance to fall back to another org.\n    BEGIN\n      IF (p_row ->> 'organization_id') IS NOT NULL\n         AND (p_row ->> 'organization_id')::uuid IS DISTINCT FROM v_org THEN\n        RAISE EXCEPTION 'copilot organization mismatch' USING ERRCODE = '42501';\n      END IF;\n    EXCEPTION WHEN invalid_text_representation THEN\n      RAISE EXCEPTION 'copilot organization mismatch' USING ERRCODE = '42501';\n    END;\n  ELSE\n    -- Preserve the established resolution behavior for ordinary callers.\n    v_org := COALESCE(\n      (SELECT a.organization_id\n         FROM public.accounts a\n        WHERE a.id = (p_row ->> 'account_id')::uuid),\n      (SELECT b.organization_id\n         FROM public.buildings b\n        WHERE b.id = (p_row ->> 'building_id')::uuid),\n      (p_row ->> 'organization_id')::uuid);\n    IF v_org IS NULL THEN\n      SELECT m.organization_id INTO v_org\n        FROM public.organization_memberships m\n       WHERE m.user_id = auth.uid()\n         AND m.status = 'ACTIVE'\n       LIMIT 1;\n    END IF;\n  END IF;\n\n  SELECT * INTO v_actor FROM app_private.ie_compat_actor_v2(v_org);\n  IF v_actor.membership_id IS NULL THEN\n    RAISE EXCEPTION 'active organization membership required' USING ERRCODE = '42501';\n  END IF;\n\n  -- Preserve the existing possession guard for callers that select a book.\n  -- The Copilot path always strips account_id before the insert.\n  IF (p_row ->> 'account_id') IS NOT NULL AND NOT v_copilot_draft THEN\n    IF NOT EXISTS (\n      SELECT 1\n        FROM public.cashbook_possession_bindings b\n       WHERE b.organization_id = v_org\n         AND b.cashbook_id = (p_row ->> 'account_id')::uuid\n         AND b.membership_id = v_actor.membership_id\n         AND b.valid_to IS NULL\n         AND (b.possession_kind = 'CUSTODIAN'\n              OR (b.possession_kind = 'KNOWER'\n                  AND COALESCE(p_row ->> 'type', '') = 'INCOME'))\n    ) THEN\n      RAISE EXCEPTION 'cashbook possession is not permitted' USING ERRCODE = '42501';\n    END IF;\n  END IF;\n\n  IF v_copilot_draft THEN\n    -- Re-resolve the building and item type inside the writer.  The execute\n    -- RPC checks these too, but this is the final server-side boundary before\n    -- a shared writer and its triggers observe any values.\n    IF upper(coalesce(p_row ->> 'type', '')) NOT IN ('INCOME', 'EXPENSE') THEN\n      RAISE EXCEPTION 'copilot type is invalid' USING ERRCODE = '22023';\n    END IF;\n    BEGIN\n      IF NOT EXISTS (\n        SELECT 1\n          FROM public.buildings b\n         WHERE b.id = (p_row ->> 'building_id')::uuid\n           AND b.organization_id = v_org\n           AND b.deleted_at IS NULL\n      ) THEN\n        RAISE EXCEPTION 'copilot building is not in organization' USING ERRCODE = '42501';\n      END IF;\n    EXCEPTION WHEN invalid_text_representation THEN\n      RAISE EXCEPTION 'copilot building is invalid' USING ERRCODE = '22023';\n    END;\n\n    IF jsonb_typeof(v_items) <> 'array' OR jsonb_array_length(v_items) <> 1 THEN\n      RAISE EXCEPTION 'copilot requires exactly one item' USING ERRCODE = '22023';\n    END IF;\n    v_input_item := v_items -> 0;\n    IF jsonb_typeof(v_input_item) <> 'object' THEN\n      RAISE EXCEPTION 'copilot item must be an object' USING ERRCODE = '22023';\n    END IF;\n\n    BEGIN\n      v_item_type_id := NULLIF(v_input_item ->> 'income_expense_type_id', '')::uuid;\n      v_item_quantity := COALESCE(NULLIF(v_input_item ->> 'quantity', '')::numeric, 1);\n      v_item_unit_price := NULLIF(v_input_item ->> 'unit_price', '')::numeric;\n      v_item_amount := NULLIF(v_input_item ->> 'amount', '')::numeric;\n    EXCEPTION WHEN others THEN\n      RAISE EXCEPTION 'copilot item amount or type is invalid' USING ERRCODE = '22023';\n    END;\n    IF v_item_type_id IS NULL OR v_item_quantity IS NULL\n       OR v_item_quantity <> 1 THEN\n      RAISE EXCEPTION 'copilot item quantity or type is invalid' USING ERRCODE = '22023';\n    END IF;\n    IF v_item_unit_price IS NULL THEN\n      v_item_unit_price := v_item_amount;\n    END IF;\n    IF v_item_amount IS NULL THEN\n      v_item_amount := v_item_quantity * v_item_unit_price;\n    END IF;\n    IF v_item_unit_price IS NULL OR v_item_amount IS NULL\n       OR v_item_unit_price::text IN ('NaN', 'Infinity', '-Infinity')\n       OR v_item_amount::text IN ('NaN', 'Infinity', '-Infinity')\n       OR v_item_unit_price <= 0\n       OR v_item_amount <= 0\n       OR v_item_amount IS DISTINCT FROM v_item_quantity * v_item_unit_price THEN\n      RAISE EXCEPTION 'copilot item amount is invalid' USING ERRCODE = '22023';\n    END IF;\n\n    PERFORM 1\n      FROM public.income_expense_types t\n     WHERE t.id = v_item_type_id\n       AND t.organization_id = v_org\n       AND lower(t.type) = lower(p_row ->> 'type')\n       AND NOT coalesce(t.system_only, false)\n       AND (\n         NOT coalesce(t.is_restricted, false)\n         OR public.can_create_restricted_ie()\n       )\n     FOR SHARE;\n    IF NOT FOUND THEN\n      RAISE EXCEPTION 'copilot income/expense type is not permitted' USING ERRCODE = '42501';\n    END IF;\n\n    -- Rebuild the line from the allowlist.  Client-supplied organization,\n    -- accounting class, lifecycle, and arbitrary columns never reach INSERT.\n    v_items := jsonb_build_array(\n      jsonb_build_object(\n        'income_expense_type_id', v_item_type_id,\n        'organization_id',        v_org,\n        'description',            COALESCE(\n          NULLIF(btrim(v_input_item ->> 'description'), ''),\n          p_row ->> 'name'),\n        'quantity',               1,\n        'unit_price',             v_item_unit_price,\n        'amount',                 v_item_amount\n      )\n    );\n  END IF;\n\n  -- Strip server-owned fields before applying the mode-specific values.\n  v_clean := p_row - ARRAY[\n    'approval_status', 'approved_by', 'approved_at', 'posting_id',\n    'posted_at_v2', 'posting_mode', 'posting_status', 'active_posting_id_v2',\n    'reversed_by_posting_id', 'deleted_at', 'maker_user_id',\n    'maker_membership_id', 'birth_operation_id', 'birth_txid', 'review_state',\n    'organization_id', 'user_id', 'copilot_draft_marker', 'copilot_draft_only'\n  ]::text[];\n\n  v_clean := v_clean || jsonb_build_object(\n    'organization_id', v_org,\n    'user_id', auth.uid(),\n    'approval_status', CASE\n      WHEN v_copilot_draft THEN 'UNAPPROVED'\n      WHEN COALESCE(p_row ->> 'type', '') = 'INCOME'\n           AND COALESCE(p_row ->> 'repeat_cycle', 'NONE') = 'NONE'\n        THEN 'APPROVED'\n      ELSE 'UNAPPROVED'\n    END,\n    'review_state', CASE\n      WHEN v_copilot_draft THEN 'PENDING'\n      WHEN COALESCE(p_row ->> 'type', '') = 'INCOME'\n           AND COALESCE(p_row ->> 'repeat_cycle', 'NONE') = 'NONE'\n        THEN 'RESOLVED'\n      ELSE 'PENDING'\n    END,\n    'approved_by', CASE\n      WHEN v_copilot_draft THEN NULL::uuid\n      WHEN COALESCE(p_row ->> 'type', '') = 'INCOME'\n           AND COALESCE(p_row ->> 'repeat_cycle', 'NONE') = 'NONE'\n        THEN auth.uid()\n      ELSE NULL::uuid\n    END,\n    'approved_at', CASE\n      WHEN v_copilot_draft THEN NULL::timestamptz\n      WHEN COALESCE(p_row ->> 'type', '') = 'INCOME'\n           AND COALESCE(p_row ->> 'repeat_cycle', 'NONE') = 'NONE'\n        THEN now()\n      ELSE NULL::timestamptz\n    END,\n    'posting_mode', 'CASHBOOK',\n    'posting_status', 'UNPOSTED',\n    'maker_user_id', auth.uid(),\n    'maker_membership_id', v_actor.membership_id\n  );\n\n  -- Ordinary callers retain the established user override; the Copilot\n  -- branch above always keeps the authenticated actor as the owner.\n  IF NOT v_copilot_draft THEN\n    v_clean := v_clean || jsonb_build_object(\n      'user_id', COALESCE((p_row ->> 'user_id')::uuid, auth.uid())\n    );\n  END IF;\n\n  IF p_row ? 'id' AND NOT v_copilot_draft THEN\n    v_clean := v_clean || jsonb_build_object('id', (p_row ->> 'id')::uuid);\n  END IF;\n\n  IF v_copilot_draft THEN\n    -- Draft mode has no cashbook, posting, approval, recurrence, or source\n    -- linkage.  Derived accounting fields are left to their server triggers.\n    v_clean := (v_clean - ARRAY[\n      'id', 'code', 'account_id', 'contract_id', 'invoice_id', 'payment_id',\n      'payment_collection_id', 'handover_id', 'handover_transfer_id',\n      'room_id', 'bed_id', 'tenant_id', 'shareholder_id', 'utility_account_id',\n      'approval_request_id', 'approval_version', 'posting_version',\n      'review_version', 'review_reason', 'review_deadline',\n      'review_owner_membership_id', 'verified_at', 'verified_by',\n      'verified_by_name', 'verified_note', 'cancellation_kind',\n      'source_payload_hash', 'recognition_source_mode', 'recognition_date',\n      'system_source', 'idempotency_key', 'business_result_accounting',\n      'counts_in_business_result', 'has_restricted_item', 'kqkd_amount',\n      'repeat_cycle', 'repeat_infinity', 'repeat_count', 'repeat_auto_approve',\n      'repeat_next_date', 'repeat_parent_id', 'repeat_remaining',\n      'active_posting_id_v2', 'posting_id', 'posted_at_v2',\n      'reversed_by_posting_id', 'approved_by', 'approved_at', 'review_state',\n      'posting_mode', 'posting_status', 'total_amount'\n    ]::text[]) || jsonb_build_object(\n      'account_id', NULL::uuid,\n      'contract_id', NULL::uuid,\n      'invoice_id', NULL::uuid,\n      'payment_id', NULL::uuid,\n      'room_id', NULL::uuid,\n      'bed_id', NULL::uuid,\n      'tenant_id', NULL::uuid,\n      'approval_status', 'UNAPPROVED',\n      'review_state', 'PENDING',\n      'approved_by', NULL::uuid,\n      'approved_at', NULL::timestamptz,\n      'posting_mode', 'CASHBOOK',\n      'posting_status', 'UNPOSTED',\n      'repeat_cycle', 'NONE',\n      'repeat_infinity', false,\n      'repeat_count', 0,\n      'repeat_auto_approve', false,\n      'repeat_next_date', NULL::date,\n      'repeat_parent_id', NULL::uuid,\n      'repeat_remaining', 0,\n      'total_amount', v_item_amount\n    );\n  END IF;\n\n  -- jsonb_populate_record makes absent columns explicit NULLs, so preserve\n  -- the established generic default-fill behavior for NOT NULL columns.\n  IF (v_clean ->> 'total_amount') IS NULL THEN\n    v_clean := v_clean || jsonb_build_object('total_amount', COALESCE((\n      SELECT SUM(COALESCE((i ->> 'amount')::numeric,\n                          COALESCE((i ->> 'quantity')::numeric, 1)\n                          * COALESCE((i ->> 'unit_price')::numeric, 0)))\n        FROM jsonb_array_elements(v_items) i), 0));\n  END IF;\n\n  FOR v_colrec IN\n    SELECT c.column_name, c.column_default\n      FROM information_schema.columns c\n     WHERE c.table_schema = 'public'\n       AND c.table_name = 'income_expenses'\n       AND c.is_nullable = 'NO'\n       AND c.column_default IS NOT NULL\n  LOOP\n    IF (v_clean ->> v_colrec.column_name) IS NULL THEN\n      EXECUTE format('SELECT to_jsonb(%s)', v_colrec.column_default) INTO v_defj;\n      v_clean := v_clean || jsonb_build_object(v_colrec.column_name, v_defj);\n    END IF;\n  END LOOP;\n\n  INSERT INTO public.income_expenses\n  SELECT * FROM jsonb_populate_record(NULL::public.income_expenses, v_clean)\n  RETURNING id INTO v_id;\n\n  FOR v_item IN SELECT * FROM jsonb_array_elements(v_items) LOOP\n    v_item := (v_item - 'income_expense_id')\n              || jsonb_build_object('income_expense_id', v_id);\n    FOR v_colrec IN\n      SELECT c.column_name, c.column_default\n        FROM information_schema.columns c\n       WHERE c.table_schema = 'public'\n         AND c.table_name = 'income_expense_items'\n         AND c.is_nullable = 'NO'\n         AND c.column_default IS NOT NULL\n    LOOP\n      IF (v_item ->> v_colrec.column_name) IS NULL THEN\n        EXECUTE format('SELECT to_jsonb(%s)', v_colrec.column_default) INTO v_defj;\n        v_item := v_item || jsonb_build_object(v_colrec.column_name, v_defj);\n      END IF;\n    END LOOP;\n    INSERT INTO public.income_expense_items\n    SELECT * FROM jsonb_populate_record(NULL::public.income_expense_items, v_item);\n  END LOOP;\n\n  INSERT INTO app_private.finance_v2_semantic_event_log\n    (organization_id, event_kind, source_table, source_id, source_kind, actor, txid)\n  VALUES\n    (v_org, 'COMPAT_INSERT', 'income_expenses', v_id, 'V2_WRITE', auth.uid(), pg_current_xact_id());\n\n  RETURN jsonb_build_object(\n    'id', v_id,\n    'approval_status', (SELECT approval_status\n                          FROM public.income_expenses\n                         WHERE id = v_id)\n  );\nEND\n$function$\n"
+        },
+        {
+          "schema": "public",
+          "proname": "income_expenses_check_profit_lock",
+          "signature": "",
+          "definition": "CREATE OR REPLACE FUNCTION public.income_expenses_check_profit_lock()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO 'pg_catalog', 'public', 'app_private'\nAS $function$\nDECLARE\n  v_mien text[];\n  v_scope text;\nBEGIN\n  -- Đường nhanh: cả vị trí cũ lẫn mới đều ở tháng đang mở.\n  IF NOT (\n    (TG_OP <> 'INSERT' AND app_private.profit_month_locked_v1(OLD.building_id, OLD.voucher_date))\n    OR (TG_OP <> 'DELETE' AND app_private.profit_month_locked_v1(NEW.building_id, NEW.voucher_date))\n  ) THEN\n    RETURN COALESCE(NEW, OLD);\n  END IF;\n\n  IF TG_OP = 'UPDATE' THEN\n    -- Cột KHÔNG đổi tiền: máy dời lịch phiếu lặp, gắn/nhả phiên bàn giao tiền\n    -- mặt, đánh dấu đã kiểm, cờ hạng mục hạn chế (suy từ loại thu chi).\n    v_mien := ARRAY['repeat_remaining', 'repeat_next_date', 'handover_id',\n                    'verified_at', 'verified_by', 'verified_by_name', 'verified_note',\n                    'has_restricted_item', 'updated_at'];\n    -- Ba cột vòng đời được điền khi còn NULL: chỉ miễn đúng chiều NULL -> giá trị.\n    IF OLD.posting_mode IS NULL THEN v_mien := v_mien || 'posting_mode'::text; END IF;\n    IF OLD.posting_status IS NULL THEN v_mien := v_mien || 'posting_status'::text; END IF;\n    IF OLD.review_state IS NULL THEN v_mien := v_mien || 'review_state'::text; END IF;\n\n    IF (to_jsonb(OLD) - v_mien) IS NOT DISTINCT FROM (to_jsonb(NEW) - v_mien) THEN\n      RETURN NEW;\n    END IF;\n\n    SELECT w.scope INTO v_scope\n      FROM app_private.ie_flex_writer_xids w\n     WHERE w.income_expense_id = OLD.id\n       AND w.transaction_id = pg_current_xact_id()\n       AND w.backend_pid = pg_backend_pid();\n\n    -- Dừng lặp lại: chỉ tắt việc sinh phiếu tương lai, không đụng số nào của kỳ.\n    IF v_scope = 'STOP_RECURRING'\n       AND COALESCE(NEW.repeat_cycle, 'NONE') = 'NONE'\n       AND (to_jsonb(OLD) - v_mien - ARRAY['repeat_cycle', 'repeat_infinity', 'repeat_count'])\n           IS NOT DISTINCT FROM\n           (to_jsonb(NEW) - v_mien - ARRAY['repeat_cycle', 'repeat_infinity', 'repeat_count']) THEN\n      RETURN NEW;\n    END IF;\n\n    -- Tạo hợp đồng gắn phiếu cọc giữ chỗ: chỉ contract_id đi từ NULL.\n    IF v_scope = 'LINK_CONTRACT'\n       AND OLD.contract_id IS NULL\n       AND NEW.contract_id IS NOT NULL\n       AND (to_jsonb(OLD) - v_mien - 'contract_id'::text)\n           IS NOT DISTINCT FROM\n           (to_jsonb(NEW) - v_mien - 'contract_id'::text) THEN\n      RETURN NEW;\n    END IF;\n  END IF;\n\n  IF TG_OP <> 'INSERT' THEN\n    PERFORM app_private.assert_profit_month_open_v2(\n      OLD.building_id, OLD.voucher_date,\n      CASE WHEN TG_OP = 'DELETE' THEN 'xoá phiếu' ELSE 'sửa phiếu' END);\n  END IF;\n  IF TG_OP <> 'DELETE' THEN\n    PERFORM app_private.assert_profit_month_open_v2(\n      NEW.building_id, NEW.voucher_date,\n      CASE WHEN TG_OP = 'INSERT' THEN 'lập phiếu' ELSE 'sửa phiếu' END);\n  END IF;\n\n  RETURN COALESCE(NEW, OLD);\nEND\n$function$\n"
+        },
+        {
+          "schema": "public",
+          "proname": "pay_draft_fee_voucher",
+          "signature": "p_voucher_id uuid, p_account_id uuid, p_attachments jsonb",
+          "definition": "CREATE OR REPLACE FUNCTION public.pay_draft_fee_voucher(p_voucher_id uuid, p_account_id uuid, p_attachments jsonb DEFAULT NULL::jsonb)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\nDECLARE\n  v_st    text;\n  v_del   timestamptz;\n  v_bld   uuid;\n  v_owner uuid;\n  v_acc   uuid;\n  v_code  text;\nBEGIN\n  IF auth.uid() IS NULL THEN\n    RAISE EXCEPTION 'Bạn chưa đăng nhập' USING ERRCODE = '42501';\n  END IF;\n  IF p_account_id IS NULL THEN\n    RAISE EXCEPTION 'Chọn sổ quỹ ghi chi trước khi thanh toán';\n  END IF;\n\n  SELECT ie.approval_status, ie.deleted_at, ie.building_id INTO v_st, v_del, v_bld\n    FROM income_expenses ie WHERE ie.id = p_voucher_id\n   FOR UPDATE;\n  IF NOT FOUND THEN RAISE EXCEPTION 'Không tìm thấy phiếu' USING ERRCODE = 'P0002'; END IF;\n\n  -- ── GATE QUYỀN TOÀ — TRƯỚC mọi tiết lộ trạng thái (P2-06, 31/08) ──\n  -- Cùng vị ngữ với pay_period_fee. Không-quyền và không-tồn-tại trả CÙNG một\n  -- câu: caller ngoài org không phân biệt được \"không có phiếu\" với \"có mà\n  -- không được xem\" ⇒ hết đường dò.\n  SELECT b.user_id INTO v_owner\n    FROM buildings b WHERE b.id = v_bld AND b.deleted_at IS NULL;\n  IF v_bld IS NULL OR v_owner IS NULL\n     OR NOT (public.can_access_building(v_bld)\n             OR public.ie_all_buildings_scope(v_bld)\n             OR v_owner = auth.uid()\n             OR public.is_admin() OR public.is_super_admin()) THEN\n    RAISE EXCEPTION 'Không tìm thấy phiếu' USING ERRCODE = 'P0002';\n  END IF;\n\n  IF v_del IS NOT NULL THEN RAISE EXCEPTION 'Phiếu đã bị hủy'; END IF;\n  IF v_st <> 'UNAPPROVED' THEN\n    RAISE EXCEPTION 'Phiếu không ở trạng thái nháp (hiện: %)', v_st;\n  END IF;\n\n  SELECT id INTO v_acc FROM accounts\n   WHERE id = p_account_id AND deleted_at IS NULL\n     AND (user_id = auth.uid() OR public.is_admin() OR public.is_super_admin());\n  IF v_acc IS NULL THEN\n    RAISE EXCEPTION 'Sổ quỹ không hợp lệ hoặc bạn không có quyền ghi chi vào sổ này' USING ERRCODE = '42501';\n  END IF;\n\n  UPDATE income_expenses\n     SET account_id  = v_acc,\n         attachments = COALESCE(p_attachments, attachments)\n   WHERE id = p_voucher_id;\n\n  -- Duyệt qua approve_voucher: giữ nguyên gate quyền duyệt + audit; RAISE → rollback cả sổ/ảnh.\n  PERFORM public.approve_voucher(p_voucher_id);\n\n  SELECT code INTO v_code FROM income_expenses WHERE id = p_voucher_id;\n  RETURN jsonb_build_object('ok', true, 'voucher_id', p_voucher_id, 'code', v_code);\nEND;\n$function$\n"
+        },
+        {
+          "schema": "public",
+          "proname": "set_user_id_from_auth",
+          "signature": "",
+          "definition": "CREATE OR REPLACE FUNCTION public.set_user_id_from_auth()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\nBEGIN\n  IF NEW.user_id IS NULL THEN\n    NEW.user_id := auth.uid();\n  END IF;\n  RETURN NEW;\nEND;\n$function$\n"
+        }
+      ]
+    }
+  },
+  "session": [
+    {
+      "db": "postgres",
+      "actor": "postgres",
+      "read_only": "on",
+      "time_vn": "2026-09-26T05:29:02.778Z"
+    }
+  ],
+  "finished_at": "2026-09-26T05:29:10.271Z"
+}

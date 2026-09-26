@@ -1,0 +1,137 @@
+{
+ "C1-theo-org": [
+  {
+   "org": "iHome CRM",
+   "so_dong": "108",
+   "co_co": "28",
+   "so_user": "5"
+  },
+  {
+   "org": "iHome CRM (Demo)",
+   "so_dong": "103",
+   "co_co": "28",
+   "so_user": "1"
+  }
+ ],
+ "C1-trung-trong-org": [
+  {
+   "so_nhom_trung_trong_org": "0"
+  }
+ ],
+ "C1-unique-index": [
+  {
+   "indexname": "income_expense_types_pkey",
+   "indexdef": "CREATE UNIQUE INDEX income_expense_types_pkey ON public.income_expense_types USING btree (id)"
+  },
+  {
+   "indexname": "income_expense_types_id_organization_uq",
+   "indexdef": "CREATE UNIQUE INDEX income_expense_types_id_organization_uq ON public.income_expense_types USING btree (id, organization_id)"
+  },
+  {
+   "indexname": "income_expense_types_org_side_normalized_name_uq",
+   "indexdef": "CREATE UNIQUE INDEX income_expense_types_org_side_normalized_name_uq ON public.income_expense_types USING btree (organization_id, lower(btrim(type)), normalize_income_expense_type_name(name))"
+  }
+ ],
+ "P1-policy": [
+  {
+   "policyname": "ie_canonical_writer_lock",
+   "permissive": "PERMISSIVE",
+   "cmd": "UPDATE",
+   "roles": "{ie_canonical_writer}"
+  },
+  {
+   "policyname": "ie_canonical_writer_read",
+   "permissive": "PERMISSIVE",
+   "cmd": "SELECT",
+   "roles": "{ie_canonical_writer}"
+  },
+  {
+   "policyname": "income_expense_types_delete_rbac",
+   "permissive": "PERMISSIVE",
+   "cmd": "DELETE",
+   "roles": "{public}"
+  },
+  {
+   "policyname": "income_expense_types_insert_rbac",
+   "permissive": "PERMISSIVE",
+   "cmd": "INSERT",
+   "roles": "{public}"
+  },
+  {
+   "policyname": "income_expense_types_select_rbac",
+   "permissive": "PERMISSIVE",
+   "cmd": "SELECT",
+   "roles": "{public}"
+  },
+  {
+   "policyname": "income_expense_types_select_shareholder",
+   "permissive": "PERMISSIVE",
+   "cmd": "SELECT",
+   "roles": "{authenticated}"
+  },
+  {
+   "policyname": "income_expense_types_update_rbac",
+   "permissive": "PERMISSIVE",
+   "cmd": "UPDATE",
+   "roles": "{public}"
+  },
+  {
+   "policyname": "income_expense_types_hide_demo_admin",
+   "permissive": "RESTRICTIVE",
+   "cmd": "SELECT",
+   "roles": "{authenticated}"
+  },
+  {
+   "policyname": "income_expense_types_hide_sandbox_admin",
+   "permissive": "RESTRICTIVE",
+   "cmd": "SELECT",
+   "roles": "{authenticated}"
+  },
+  {
+   "policyname": "income_expense_types_org_boundary",
+   "permissive": "RESTRICTIVE",
+   "cmd": "ALL",
+   "roles": "{authenticated}"
+  },
+  {
+   "policyname": "income_expense_types_restricted_select",
+   "permissive": "RESTRICTIVE",
+   "cmd": "SELECT",
+   "roles": "{authenticated}"
+  }
+ ],
+ "P1-policy-cu-con-khong": [
+  {
+   "con_policy_mo": "0"
+  }
+ ],
+ "P9-acl-v4": [
+  {
+   "proname": "record_invoice_payment_v4",
+   "acl": "{postgres=X/postgres}"
+  }
+ ],
+ "P8-approve-voucher": [
+  {
+   "co_nhanh_tu_duyet": true
+  }
+ ],
+ "P8-pay-draft-goi-gi": [
+  {
+   "goi_approve_voucher": true,
+   "goi_v1": false
+  }
+ ],
+ "C3-rule-so-sanh": [
+  {
+   "so_sanh_bang": true
+  }
+ ],
+ "P7-thu-khong-so": [
+  {
+   "thu_approved": "293",
+   "thieu_so": "0",
+   "so_ao": "1"
+  }
+ ]
+}

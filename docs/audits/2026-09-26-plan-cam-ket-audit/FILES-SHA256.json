@@ -1,0 +1,79 @@
+{
+  "verified_at": "2026-09-26T05:44:50.297Z",
+  "input_hashes_unchanged": true,
+  "json_files_valid": 11,
+  "credential_excluded": true,
+  "supplemental_read_only_sessions": 3,
+  "files": [
+    {
+      "file": "BAO-CAO.md",
+      "bytes": 47646,
+      "sha256": "2a092cbc53dc833aa26a609b378442f03a6cde000bef3d8bbbab181ede2e247b"
+    },
+    {
+      "file": "catalog-song.json",
+      "bytes": 86871,
+      "sha256": "f34d8b7246f44ed9620822b405f754347cf2a0c15fea3b836c82de366a443da7"
+    },
+    {
+      "file": "do-bo-sung.cjs",
+      "bytes": 2609,
+      "sha256": "e77f5bd1e1c7bb34f09a95ebff4da192e2c1fc100799f138cdd70fa219108ac7"
+    },
+    {
+      "file": "do-nen-ket-qua.json",
+      "bytes": 4272,
+      "sha256": "11ef125f3401ad92dac1d7c8a5b6e36e299addac815526dd98fad1d7aad0682b"
+    },
+    {
+      "file": "do-nen2-ket-qua.json",
+      "bytes": 3387,
+      "sha256": "7c12967f334f735707ce4b60b9f6346e1fa985c384f5dce18bdf8bc7c7397310"
+    },
+    {
+      "file": "doi-chieu-loi-lan1.json",
+      "bytes": 46835,
+      "sha256": "311e21fbf748a3198d7d3e732215faf86a7dac5f3cb36a9ce026210ec569cd6b"
+    },
+    {
+      "file": "doi-chieu-loi-lan2.json",
+      "bytes": 47178,
+      "sha256": "9394f29be5e39bf65895460790dc9d4c7f3d8862b6eff435015e045c80f253fa"
+    },
+    {
+      "file": "doi-chieu-nen.json",
+      "bytes": 22087,
+      "sha256": "885fa54cd1e42175559339a6ace86eb0da68938692e8de2846c9d82a414ae4c5"
+    },
+    {
+      "file": "doi-chieu-song.json",
+      "bytes": 51473,
+      "sha256": "f0d2b5d6d2d747ad1ac7f3bf507841f7e71be377d8314fe94e89d80e56c13d9b"
+    },
+    {
+      "file": "kiem-chung-goi.cjs",
+      "bytes": 5012,
+      "sha256": "c555ee98a556969e9997adfb56f4ffa9354000d6995a6985ae7ea168fd405c46"
+    },
+    {
+      "file": "truy-van-catalog.json",
+      "bytes": 3951,
+      "sha256": "431adca51a892aa62a7a7f5740b00488e6efb24fbddeb175114359c433b22fa1"
+    },
+    {
+      "file": "truy-van-doi-chieu.json",
+      "bytes": 12673,
+      "sha256": "f3d9966d1764869efa7c5d430026ef2cf3ffbff4e326fc874725e9f0cb7078d1"
+    },
+    {
+      "file": "truy-van-xac-nhan.json",
+      "bytes": 5248,
+      "sha256": "4a161a4cf9bb3c146a81c3b806cc0f435548120f197dfaef7be39bdefe0bf384"
+    },
+    {
+      "file": "xac-nhan-song.json",
+      "bytes": 79590,
+      "sha256": "c5d1c6d61e20c4d6ff7a7d19f383e13d69bb93815e225d263f3e843a66a2d851"
+    }
+  ]
+}
