@@ -1,0 +1,126 @@
+{
+ "chay_luc": "2026-09-26T12:55:28.978Z",
+ "migration_qua": true,
+ "ket_qua": [
+  {
+   "ten": "co tuyen moi o SHADOW",
+   "dat": true,
+   "chiTiet": "[{\"feature_key\":\"spend.cashbook_chi.v1\",\"mode\":\"SHADOW\"},{\"feature_key\":\"spend.engine.v1\",\"mode\":\"SHADOW\"}]"
+  },
+  {
+   "ten": "audit sau khoi tao = 0 lech",
+   "dat": true,
+   "chiTiet": "{\"lech_thua\":0,\"lech_thieu\":0,\"bucket_vuot_khong_ly_do\":[]}"
+  },
+  {
+   "ten": "A: chu lap tien nha T10 → 1 dong DRAW",
+   "dat": true,
+   "chiTiet": "APPROVED [{\"kind\":\"DRAW\",\"amount\":\"1000000.00\",\"over_commitment\":false,\"period_month\":\"2026-10-01\",\"fee_category\":\"tien_nha\"}]"
+  },
+  {
+   "ten": "A: bong luc sinh — WITHIN_COMMITMENT, khop",
+   "dat": true,
+   "chiTiet": "{\"writer\":\"manual\",\"route\":\"SHADOW\",\"birth_status\":\"APPROVED\",\"engine_status\":\"APPROVED\",\"engine_reason\":\"WITHIN_COMMITMENT\",\"match\":true,\"enforced\":false}"
+  },
+  {
+   "ten": "B: vuot cam ket → DRAW over_commitment=true",
+   "dat": true,
+   "chiTiet": "[{\"kind\":\"DRAW\",\"amount\":\"132000000.00\",\"over_commitment\":true,\"period_month\":\"2026-10-01\",\"fee_category\":\"tien_nha\"}]"
+  },
+  {
+   "ten": "B: bong — may noi CHO (OVER_COMMITMENT), that la DA DUYET ⇒ lech duoc ghi",
+   "dat": true,
+   "chiTiet": "{\"writer\":\"manual\",\"route\":\"SHADOW\",\"birth_status\":\"APPROVED\",\"engine_status\":\"UNAPPROVED\",\"engine_reason\":\"OVER_COMMITMENT\",\"match\":false,\"enforced\":false}"
+  },
+  {
+   "ten": "C: dong trai 3 thang → 3 dong tieu deu nhau",
+   "dat": true,
+   "chiTiet": "[\"2026-10-01:1000000.00\",\"2026-11-01:1000000.00\",\"2026-12-01:1000000.00\"]"
+  },
+  {
+   "ten": "D: huy phieu A → RELEASE",
+   "dat": true,
+   "chiTiet": "[{\"kind\":\"RELEASE\",\"amount\":\"1000000.00\",\"over_commitment\":false,\"period_month\":\"2026-10-01\",\"fee_category\":\"tien_nha\"}]"
+  },
+  {
+   "ten": "E: quan ly tren nguong → cu CHO, so tieu HOLD",
+   "dat": true,
+   "chiTiet": "UNAPPROVED [{\"kind\":\"HOLD\",\"amount\":\"700000.00\",\"over_commitment\":false,\"period_month\":\"2026-11-01\",\"fee_category\":\"tien_nha\"}]"
+  },
+  {
+   "ten": "E: bong — may noi DUYET (WITHIN_COMMITMENT) ⇒ day la doi chinh sach chu muon",
+   "dat": true,
+   "chiTiet": "{\"writer\":\"manual\",\"route\":\"SHADOW\",\"birth_status\":\"UNAPPROVED\",\"engine_status\":\"APPROVED\",\"engine_reason\":\"WITHIN_COMMITMENT\",\"match\":false,\"enforced\":false}"
+  },
+  {
+   "ten": "E: chu duyet → HOLD thanh DRAW",
+   "dat": true,
+   "chiTiet": "[{\"kind\":\"DRAW\",\"amount\":\"700000.00\",\"over_commitment\":false,\"period_month\":\"2026-11-01\",\"fee_category\":\"tien_nha\"}]"
+  },
+  {
+   "ten": "F: sua cam ket thang da tieu → 55000",
+   "dat": true,
+   "chiTiet": "55000 Tháng 10/2026 của khe này đã có khoản chi hoặc phiếu đang chờ — không sửa cam kế"
+  },
+  {
+   "ten": "F: ky cam ket thang moi → phieu lap truoc duoc keo vao so tieu",
+   "dat": true,
+   "chiTiet": "{\"truoc\":0,\"sau\":[{\"kind\":\"DRAW\",\"amount\":\"500000.00\",\"over_commitment\":false,\"period_month\":\"2027-10-01\",\"fee_category\":\"tien_nha\"}],\"kg\":{\"thang\":\"2027-10-01\",\"con_lai\":1500000,\"so_tien\":2000000,\"commitment_id\":\"80b368d5-b8f3-4e73-b3da-5c55f2340614\",\"so_tieu_dong_bo\":1,\"da_thu_hoi_ban_cu\":false}}"
+  },
+  {
+   "ten": "G: TUNG_PHIEU → nha het; CAM_KET lai → keo lai",
+   "dat": true,
+   "chiTiet": "TUNG_PHIEU con 0, CAM_KET lai 6"
+  },
+  {
+   "ten": "G: thanh vien doi luat qua RPC → 42501",
+   "dat": true,
+   "chiTiet": "Chỉ chủ công ty hoặc quản trị hệ thống được đổi luật chi của hạng mục"
+  },
+  {
+   "ten": "H: SHADOW — cong khong ap",
+   "dat": true,
+   "chiTiet": "{\"enforce\":false,\"route\":\"SHADOW\",\"status\":\"APPROVED\",\"reason\":\"WITHIN_COMMITMENT\"}"
+  },
+  {
+   "ten": "H: ON + cong tac → cong AP, trong cam ket → DUYET",
+   "dat": true,
+   "chiTiet": "{\"enforce\":true,\"status\":\"APPROVED\",\"reason\":\"WITHIN_COMMITMENT\",\"sw\":{\"ghi_chu\":null,\"switch_id\":\"39dc4027-d5d7-409b-966f-a5d2660a5d71\",\"co_hien_tai\":\"CANONICAL\",\"co_hieu_luc_khi\":\"cờ spend.engine.v1 = ON\",\"toa_chua_co_cam_ket\":[]}}"
+  },
+  {
+   "ten": "H: ON + vuot → cong AP, CHO (ke ca chu co quyen duyet)",
+   "dat": true,
+   "chiTiet": "{\"enforce\":true,\"status\":\"UNAPPROVED\",\"reason\":\"OVER_COMMITMENT\"}"
+  },
+  {
+   "ten": "H: bat TRAN nuoc khi con toa thieu tran → 55000 (cau 03)",
+   "dat": true,
+   "chiTiet": "Chưa khai trần nuoc cho: [\"111PVC\", \"1392QT\", \"158PVC\", \"15KV\", \"403PVB\", \"405PVB\", \"44TL\", \"481NVK\", \"65NTG\", \"950NK\", \"Kho Văn Phòng Chung"
+  },
+  {
+   "ten": "I: bao cao bong cho chu doc duoc (A, B, C, G + E neu co)",
+   "dat": true,
+   "chiTiet": "{\"n\":5,\"lech\":3}"
+  },
+  {
+   "ten": "I: dau vet tu duyet loc duoc",
+   "dat": true,
+   "chiTiet": "{\"n\":85}"
+  },
+  {
+   "ten": "I: thanh vien doc bao cao bong → 42501",
+   "dat": true,
+   "chiTiet": ""
+  },
+  {
+   "ten": "J: audit cuoi = 0 lech",
+   "dat": true,
+   "chiTiet": "{\"lech_thua\":0,\"lech_thieu\":0,\"bucket_vuot_khong_ly_do\":[]}"
+  },
+  {
+   "ten": "J: khong co loi may",
+   "dat": true,
+   "chiTiet": "[]"
+  }
+ ]
+}
