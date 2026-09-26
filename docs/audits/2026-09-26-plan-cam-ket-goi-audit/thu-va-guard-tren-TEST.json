@@ -1,0 +1,28 @@
+{
+ "chay_luc": "2026-09-26T12:26:40.312Z",
+ "TRUOC": {
+  "A_member_goi_writer_tao_force": "CHAN 42501 Chỉ chủ công ty hoặc quản trị hệ thống được đổi luật chi của hạng mục ",
+  "C_member_sua_thang_spend_mode": "CHAN 42501 Chỉ chủ công ty hoặc quản trị hệ thống được đổi luật chi của hạng mục ",
+  "D_member_insert_thang_mac_dinh": "DUOC (1 dong)",
+  "E_member_insert_thang_is_deposit": "CHAN 42501 Chỉ chủ công ty hoặc quản trị hệ thống được đổi luật chi của hạng mục ",
+  "F_chu_sua_thang_spend_mode": "DUOC (1 dong)",
+  "G_chu_insert_thang_force": "CHAN 42501 Chỉ chủ công ty hoặc quản trị hệ thống được đổi luật chi của hạng mục ",
+  "B_member_qua_definer_goi_termination_ensure_type_THAT": "CHAN 42501 Chỉ chủ công ty hoặc quản trị hệ thống được đổi luật chi của hạng mục "
+ },
+ "SAU": {
+  "A_member_goi_writer_tao_force": "DUOC (1 dong)",
+  "C_member_sua_thang_spend_mode": "CHAN 42501 Chỉ chủ công ty hoặc quản trị hệ thống được đổi luật chi của hạng mục ",
+  "D_member_insert_thang_mac_dinh": "DUOC (1 dong)",
+  "E_member_insert_thang_is_deposit": "CHAN 42501 Chỉ chủ công ty hoặc quản trị hệ thống được đổi luật chi của hạng mục ",
+  "F_chu_sua_thang_spend_mode": "DUOC (1 dong)",
+  "G_chu_insert_thang_force": "DUOC (1 dong)",
+  "B_member_qua_definer_goi_termination_ensure_type_THAT": "DUOC (1 dong)"
+ },
+ "trigger_sau": [
+  "a01_reservation_type_guard",
+  "ie_type_restricted_recompute",
+  "income_expense_types_set_user_id_audit",
+  "trg_autofill_org",
+  "zz_ie_type_rule_columns_guard"
+ ]
+}

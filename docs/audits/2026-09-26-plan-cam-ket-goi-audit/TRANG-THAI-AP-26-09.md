@@ -41,6 +41,36 @@ lên production"*. Đã áp **hai** giai đoạn có đường lùi sạch nhấ
   thành viên thường → **bị chặn 42501** đúng thông báo *"Chỉ chủ công ty hoặc quản trị hệ thống được đổi luật
   chi của hạng mục…"*.
 
+## Vá hồi quy của G3 — `20260926140000_va_guard_cot_luat_chi_canh_ghi_truc_tiep.sql` (26/09, 19:27 VN)
+
+**Lỗi:** guard G3 là `SECURITY DEFINER` nên chỉ thấy người bấm. 20 hàm hệ thống tự ghi `force_approval` /
+`is_deposit` như một bước phụ (`_termination_ensure_type` do `pay_utility_bill`, `confirm_cash_handover`,
+`terminate_contract_*` gọi; `ensure_income_expense_type_v1` do `reservation_create_leg_v1`,
+`generate_special_fees_v1` gọi) ⇒ lần đầu hệ thống cần tạo/chỉnh hạng mục trong lúc **quản lý** bấm thanh lý
+hay đóng điện nước là bị 42501. Đo prod: **chưa ca nào dính** (mọi hạng mục hệ thống đã có đúng cờ ở cả hai
+org; 0 hạng mục, 0 phiếu mới từ lúc áp G3) — hồi quy chờ nổ.
+
+**Sửa:** guard chuyển `SECURITY INVOKER`, chỉ canh `current_user IN ('authenticated','anon')` — tức ghi thẳng
+từ client. Trong hàm definer, `current_user` là chủ hàm ⇒ mã server đi như trước G3. Kiểm chủ đúng org qua
+helper `public.ie_type_rule_editor_ok_v1(org)` (definer; anon không có). Trigger đổi tên `zz_…` để chạy sau
+`trg_autofill_org`. Không dùng `session_user` (bài học 17/09).
+
+**TEST, cùng bộ ca trước/sau** (`thu-va-guard-tren-TEST.cjs` → `.json`):
+
+| Ca | G3 cũ | Sau vá |
+|---|---|---|
+| Quản lý gọi hàm hệ thống **thật** `_termination_ensure_type` (tên mới) | **CHẶN 42501** | được |
+| Quản lý gọi hàm definer tạo hạng mục `force_approval` + đổi `is_deposit` | **CHẶN 42501** | được |
+| Quản lý sửa thẳng `spend_mode` | chặn | chặn |
+| Quản lý INSERT thẳng hạng mục mặc định (đường màn Danh mục) | được | được |
+| Quản lý INSERT thẳng hạng mục `is_deposit=true` | chặn | chặn |
+| Chủ sửa thẳng `spend_mode` | được | được |
+| Chủ INSERT thẳng hạng mục `force_approval=true` (không gửi org) | **chặn nhầm** (org chưa điền) | được |
+
+**Áp:** lane, backup `ihomecrm-full-2026-09-26T12-27-29-253Z.dump` · sha256 `dc533a449c0e2491…` · giấy phép
+`65e28c84439d0f2e`; catalog `ce4b01d1… → c7b8f8b6…`; `catalog:capture` "không object hở". Đọc lại prod: trigger
+`zz_ie_type_rule_columns_guard` có, `a05_…` không còn; guard `prosecdef=false`; helper anon=false.
+
 ## Chưa áp
 
 G2 (bộ máy quyết định + bóng), G4 (giao thức cam kết), G5 (bật theo bucket — cần ≥ 14 ngày bóng), G6 (sổ chi),
