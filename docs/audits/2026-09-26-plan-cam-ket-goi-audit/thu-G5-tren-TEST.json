@@ -1,0 +1,106 @@
+{
+ "chay_luc": "2026-09-26T13:11:11.917Z",
+ "migration_qua": true,
+ "ket_qua": [
+  {
+   "ten": "S1: quan ly tien nha 700k → CHO nhu cu (nguong 600k)",
+   "dat": true,
+   "chiTiet": "UNAPPROVED"
+  },
+  {
+   "ten": "S2: nguoi co quyen duyet → DUYET nhu cu",
+   "dat": true,
+   "chiTiet": "APPROVED"
+  },
+  {
+   "ten": "S3: pay_period_fee tien nha → dung hang muc DA ANH XA (Tien nha)",
+   "dat": true,
+   "chiTiet": "4fc6d789-3732-416d-ae83-a9543f4fd9b5"
+  },
+  {
+   "ten": "S3: pay_period_fee → tu duyet nhu cu (CONFIG_REQUIRED)",
+   "dat": true,
+   "chiTiet": "{\"auto\":true,\"note\":\"Toà này chưa công bố giá cho hạng mục — phiếu vẫn được duyệt và vào sổ như trước.\",\"sd\":{\"enforce\":false,\"status\":\"APPROVED\",\"reason\":\"WITHIN_COMMITMENT\"}}"
+  },
+  {
+   "ten": "S: so bong ghi dung writer (create_income_expense_v1, pay_period_fee)",
+   "dat": true,
+   "chiTiet": "{\"d1\":{\"writer\":\"create_income_expense_v1\",\"birth_status\":\"UNAPPROVED\",\"engine_status\":\"APPROVED\",\"engine_reason\":\"WITHIN_COMMITMENT\",\"match\":false,\"enforced\":false},\"d3\":{\"writer\":\"pay_period_fee\",\"birth_status\":\"APPROVED\",\"engine_status\":\"APPROVED\",\"engine_reason\":\"WITHIN_COMMITMENT\",\"match\":true,\"enforced\":false}}"
+  },
+  {
+   "ten": "S: bong chi ra doi chinh sach — quan ly trong cam ket, may noi DUYET",
+   "dat": true,
+   "chiTiet": "{\"writer\":\"create_income_expense_v1\",\"birth_status\":\"UNAPPROVED\",\"engine_status\":\"APPROVED\",\"engine_reason\":\"WITHIN_COMMITMENT\",\"match\":false,\"enforced\":false}"
+  },
+  {
+   "ten": "S4: cron dinh ky chay qua, trang thai con = repeat_auto_approve cua cha",
+   "dat": true,
+   "chiTiet": "sinh 0 phieu con"
+  },
+  {
+   "ten": "O1: quan ly trong cam ket (tren nguong) → MAY DUYET",
+   "dat": true,
+   "chiTiet": "APPROVED"
+  },
+  {
+   "ten": "O2: nguoi co quyen duyet VUOT cam ket → CHO (cau 10)",
+   "dat": true,
+   "chiTiet": "UNAPPROVED"
+  },
+  {
+   "ten": "O10: phieu CHO vuot cam ket dang giu cho ca thang → phieu nho sau do cung CHO (cau 09)",
+   "dat": true,
+   "chiTiet": "UNAPPROVED"
+  },
+  {
+   "ten": "O3: hang muc TUNG_PHIEU → luat cu (quan ly tren nguong → CHO)",
+   "dat": true,
+   "chiTiet": "UNAPPROVED"
+  },
+  {
+   "ten": "O4: phieu tron (tien nha trong cam ket + tung phieu, tong 150k duoi nguong) → DUYET",
+   "dat": true,
+   "chiTiet": "APPROVED {\"engine_status\":\"APPROVED\",\"engine_reason\":\"UNDER_THRESHOLD\",\"enforced\":true,\"dl\":[{\"i\":1,\"reason\":\"WITHIN_COMMITMENT\"},{\"i\":2,\"reason\":\"TUNG_PHIEU\"}],\"tong\":150000,\"nguong\":600000,\"duyet\":false,\"so\":true,\"dong\":[{\"amt\":100000,\"mode\":\"CAM_KET\",\"force\":false},{\"amt\":50000,\"mode\":\"TUNG_PHIEU\",\"force\":false}]}"
+  },
+  {
+   "ten": "O5: phieu tron tong 700k → dong tung phieu keo ca phieu ve CHO (nguong)",
+   "dat": true,
+   "chiTiet": "UNAPPROVED"
+  },
+  {
+   "ten": "O6: thang chua ky cam ket (bucket bat nhung khong cam ket) → CHO",
+   "dat": true,
+   "chiTiet": "UNAPPROVED"
+  },
+  {
+   "ten": "O7: pay_period_fee trong cam ket → MAY DUYET + ghi chu bo may",
+   "dat": true,
+   "chiTiet": "{\"auto\":true,\"note\":\"Bộ máy chi: trong cam kết đã ký của tháng — phiếu đã duyệt và vào sổ.\"}"
+  },
+  {
+   "ten": "O8: pay_period_fee vuot cam ket → CHO (ke ca nguoi co quyen duyet)",
+   "dat": true,
+   "chiTiet": "{\"auto\":false,\"note\":\"Bộ máy chi: vượt phần cam kết còn lại của tháng — phiếu đã tạo và đang CHỜ DUYỆT.\"}"
+  },
+  {
+   "ten": "O: so bong ghi enforced=true cho phieu ap, false cho tung phieu",
+   "dat": true,
+   "chiTiet": "{\"e1\":{\"writer\":\"create_income_expense_v1\",\"birth_status\":\"APPROVED\",\"engine_status\":\"APPROVED\",\"engine_reason\":\"WITHIN_COMMITMENT\",\"match\":true,\"enforced\":true},\"e2\":{\"writer\":\"create_income_expense_v1\",\"birth_status\":\"UNAPPROVED\",\"engine_status\":\"UNAPPROVED\",\"engine_reason\":\"OVER_COMMITMENT\",\"match\":true,\"enforced\":true},\"e3\":{\"writer\":\"create_income_expense_v1\",\"birth_status\":\"UNAPPROVED\",\"engine_status\":\"UNAPPROVED\",\"engine_reason\":\"OVER_THRESHOLD\",\"match\":true,\"enforced\":false}}"
+  },
+  {
+   "ten": "O9: tat cong tac → quan ly tren nguong lai CHO (luat cu)",
+   "dat": true,
+   "chiTiet": "UNAPPROVED"
+  },
+  {
+   "ten": "Z: audit so tieu 0 lech",
+   "dat": true,
+   "chiTiet": "{\"lech_thua\":0,\"lech_thieu\":0,\"bucket_vuot_khong_ly_do\":[]}"
+  },
+  {
+   "ten": "Z: 0 loi may",
+   "dat": true,
+   "chiTiet": "[]"
+  }
+ ]
+}

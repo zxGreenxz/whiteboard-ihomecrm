@@ -1,0 +1,35 @@
+{
+ "chay_luc": "2026-09-26T13:12:30.343Z",
+ "ket_qua": [
+  {
+   "ten": "D1 SHADOW: dong dien duoi tran → dung hang muc da anh xa (dien), luat cu",
+   "dat": true,
+   "chiTiet": "{\"st\":\"APPROVED\",\"ceiling\":\"WITHIN_LIMIT\",\"sd\":{\"enforce\":false,\"status\":\"APPROVED\",\"reason\":\"UNDER_CEILING\"}}"
+  },
+  {
+   "ten": "D2 ON: duoi tran → MAY DUYET (UNDER_CEILING)",
+   "dat": true,
+   "chiTiet": "{\"u2s\":\"APPROVED\",\"sd\":{\"e\":true,\"r\":\"UNDER_CEILING\"}}"
+  },
+  {
+   "ten": "D3 ON: vuot tran → CHO (OVER_CEILING) + ghi chu [VUOT TRAN] giu nguyen",
+   "dat": true,
+   "chiTiet": "{\"st\":\"UNAPPROVED\",\"r\":\"OVER_CEILING\"}"
+  },
+  {
+   "ten": "S1: generate_special_fees_v1 chay, dung hang muc da anh xa",
+   "dat": true,
+   "chiTiet": "{\"created\":6,\"posted\":6,\"types\":[{\"fee_category\":\"tien_nha\",\"name\":\"Tiền nhà\"},{\"fee_category\":\"thang_may\",\"name\":\"Bảo Trì Thang Máy\"},{\"fee_category\":\"nuoc\",\"name\":\"Đóng tiền nước\"},{\"fee_category\":\"ve_sinh\",\"name\":\"Vệ sinh tòa nhà định kỳ\"},{\"fee_category\":\"rac\",\"name\":\"Tiền rác\"},{\"fee_category\":\"cong_an\",\"name\":\"Tiền công an\"}]}"
+  },
+  {
+   "ten": "Z: audit so tieu 0 lech",
+   "dat": true,
+   "chiTiet": "{\"lech_thua\":0,\"lech_thieu\":0,\"bucket_vuot_khong_ly_do\":[]}"
+  },
+  {
+   "ten": "Z: 0 loi may",
+   "dat": true,
+   "chiTiet": "[]"
+  }
+ ]
+}
