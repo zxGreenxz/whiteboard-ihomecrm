@@ -6256,6 +6256,7 @@ export type Database = {
           category: string | null
           created_at: string
           description: string | null
+          fee_category: string | null
           force_approval: boolean
           hide_in_report: boolean
           id: string
@@ -6264,6 +6265,7 @@ export type Database = {
           is_restricted: boolean
           name: string
           organization_id: string
+          spend_mode: string
           system_only: boolean
           type: string
           updated_at: string
@@ -6273,6 +6275,7 @@ export type Database = {
           category?: string | null
           created_at?: string
           description?: string | null
+          fee_category?: string | null
           force_approval?: boolean
           hide_in_report?: boolean
           id?: string
@@ -6281,6 +6284,7 @@ export type Database = {
           is_restricted?: boolean
           name: string
           organization_id: string
+          spend_mode?: string
           system_only?: boolean
           type: string
           updated_at?: string
@@ -6290,6 +6294,7 @@ export type Database = {
           category?: string | null
           created_at?: string
           description?: string | null
+          fee_category?: string | null
           force_approval?: boolean
           hide_in_report?: boolean
           id?: string
@@ -6298,6 +6303,7 @@ export type Database = {
           is_restricted?: boolean
           name?: string
           organization_id?: string
+          spend_mode?: string
           system_only?: boolean
           type?: string
           updated_at?: string
@@ -21579,6 +21585,10 @@ export type Database = {
           source: string
         }[]
       }
+      get_spend_engine_status_v1: {
+        Args: { p_organization_id: string }
+        Returns: Json
+      }
       get_termination_refund_facts_v1: {
         Args: { p_voucher_ids: string[] }
         Returns: {
@@ -21697,6 +21707,7 @@ export type Database = {
       }
       ie_stop_recurring_v1: { Args: { p_id: string }; Returns: Json }
       ie_type_is_restricted: { Args: { _type_id: string }; Returns: boolean }
+      ie_type_rule_editor_ok_v1: { Args: { p_org: string }; Returns: boolean }
       invite_organization_member_v1: {
         Args: {
           p_email: string
@@ -21907,6 +21918,52 @@ export type Database = {
       list_receiving_cashbook_settings_v1: {
         Args: { p_organization_id: string }
         Returns: Json
+      }
+      list_self_approved_vouchers_v1: {
+        Args: { p_from: string; p_organization_id: string; p_to: string }
+        Returns: {
+          amount: number
+          approved_at: string
+          building_name: string
+          code: string
+          kind: string
+          maker_id: string
+          maker_name: string
+          type: string
+          voucher_date: string
+          voucher_id: string
+        }[]
+      }
+      list_spend_commitments_v1: {
+        Args: {
+          p_from_month?: string
+          p_organization_id: string
+          p_to_month?: string
+        }
+        Returns: {
+          amount: number
+          building_id: string
+          building_name: string
+          commitment_id: string
+          fee_category: string
+          note: string
+          period_month: string
+          remaining: number
+          source: string
+        }[]
+      }
+      list_spend_policy_switches_v1: {
+        Args: { p_organization_id: string }
+        Returns: {
+          building_id: string
+          building_name: string
+          enabled_at: string
+          fee_category: string
+          note: string
+          period_from: string
+          period_to: string
+          switch_id: string
+        }[]
       }
       lock_cashbook_period_v1: {
         Args: { p_cashbook_id: string; p_lock_date: string; p_unlock?: boolean }
@@ -23327,6 +23384,14 @@ export type Database = {
         Args: { p_threshold: number }
         Returns: Json
       }
+      set_income_expense_type_spend_rule_v1: {
+        Args: {
+          p_fee_category?: string
+          p_spend_mode: string
+          p_type_id: string
+        }
+        Returns: Json
+      }
       set_maintenance_rule_v1: {
         Args: {
           p_building_id?: string
@@ -23422,6 +23487,28 @@ export type Database = {
         }
         Returns: Json
       }
+      set_spend_commitment_v1: {
+        Args: {
+          p_amount: number
+          p_building_id: string
+          p_fee_category: string
+          p_note?: string
+          p_period_month: string
+        }
+        Returns: Json
+      }
+      set_spend_policy_switch_v1: {
+        Args: {
+          p_building_id?: string
+          p_fee_category: string
+          p_from_month: string
+          p_note?: string
+          p_on?: boolean
+          p_organization_id: string
+          p_to_month?: string
+        }
+        Returns: Json
+      }
       set_termination_forfeit_status_v1: {
         Args: { p_status: string; p_voucher_id: string }
         Returns: undefined
@@ -23453,6 +23540,26 @@ export type Database = {
       soft_delete_invoice_with_credit_v1: {
         Args: { p_idempotency_key: string; p_invoice_id: string }
         Returns: Json
+      }
+      spend_shadow_report_v1: {
+        Args: { p_from?: string; p_organization_id: string; p_to?: string }
+        Returns: {
+          amount: number
+          birth_status: string
+          building_name: string
+          cashbook_ok: boolean
+          code: string
+          decided_at: string
+          enforced: boolean
+          engine_reason: string
+          engine_status: string
+          fee_categories: string
+          match: boolean
+          route: string
+          voucher_date: string
+          voucher_id: string
+          writer: string
+        }[]
       }
       staff_building_scope: { Args: { owner_id: string }; Returns: string[] }
       staff_can: {

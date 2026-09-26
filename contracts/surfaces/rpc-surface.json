@@ -1,20 +1,20 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 1740,
-    "catalogFunctions": 1166,
+    "sourceCallSites": 1742,
+    "catalogFunctions": 1175,
     "schemas": [
       "public",
       "api"
     ]
   },
   "counts": {
-    "calledRpcs": 290,
+    "calledRpcs": 298,
     "byRisk": {
-      "normal": 208,
+      "normal": 216,
       "financial": 82
     },
-    "securityDefiner": 274
+    "securityDefiner": 282
   },
   "missingOnServer": [],
   "rpcs": {
@@ -2807,6 +2807,26 @@
       ],
       "risk": "normal"
     },
+    "get_spend_engine_status_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useSpendEngine.ts"
+      ],
+      "risk": "normal"
+    },
     "get_termination_refund_facts_v1": {
       "definitions": [
         {
@@ -3280,6 +3300,66 @@
       ],
       "risk": "financial"
     },
+    "list_self_approved_vouchers_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_from date, p_to date",
+          "returns": "TABLE(voucher_id uuid, code text, voucher_date date, building_name text, type text, amount numeric, maker_id uuid, maker_name text, kind text, approved_at timestamp with time zone)",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useSpendEngine.ts"
+      ],
+      "risk": "normal"
+    },
+    "list_spend_commitments_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_from_month date DEFAULT NULL::date, p_to_month date DEFAULT NULL::date",
+          "returns": "TABLE(commitment_id uuid, building_id uuid, building_name text, fee_category text, period_month date, amount numeric, remaining numeric, source text, note text)",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useSpendEngine.ts"
+      ],
+      "risk": "normal"
+    },
+    "list_spend_policy_switches_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid",
+          "returns": "TABLE(switch_id uuid, fee_category text, building_id uuid, building_name text, period_from date, period_to date, note text, enabled_at timestamp with time zone)",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useSpendEngine.ts"
+      ],
+      "risk": "normal"
+    },
     "lock_salary_month_v1": {
       "definitions": [
         {
@@ -3578,7 +3658,8 @@
       ],
       "callers": [
         "src/hooks/useIncomeExpenseTypes.ts",
-        "src/hooks/useNotificationSettings.ts"
+        "src/hooks/useNotificationSettings.ts",
+        "src/hooks/useSpendEngine.ts"
       ],
       "risk": "normal"
     },
@@ -4549,6 +4630,26 @@
       ],
       "risk": "normal"
     },
+    "set_income_expense_type_spend_rule_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_type_id uuid, p_spend_mode text, p_fee_category text DEFAULT NULL::text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useSpendEngine.ts"
+      ],
+      "risk": "normal"
+    },
     "set_my_notification_preferences_v1": {
       "definitions": [
         {
@@ -4706,6 +4807,46 @@
       ],
       "risk": "normal"
     },
+    "set_spend_commitment_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_building_id uuid, p_fee_category text, p_period_month date, p_amount numeric, p_note text DEFAULT NULL::text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useSpendEngine.ts"
+      ],
+      "risk": "normal"
+    },
+    "set_spend_policy_switch_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_fee_category text, p_from_month date, p_to_month date DEFAULT NULL::date, p_building_id uuid DEFAULT NULL::uuid, p_on boolean DEFAULT true, p_note text DEFAULT NULL::text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useSpendEngine.ts"
+      ],
+      "risk": "normal"
+    },
     "soft_delete_customer": {
       "definitions": [
         {
@@ -4723,6 +4864,26 @@
       ],
       "callers": [
         "src/hooks/useCustomers.ts"
+      ],
+      "risk": "normal"
+    },
+    "spend_shadow_report_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_from date DEFAULT NULL::date, p_to date DEFAULT NULL::date",
+          "returns": "TABLE(voucher_id uuid, code text, voucher_date date, building_name text, writer text, amount numeric, birth_status text, engine_status text, engine_reason text, match boolean, enforced boolean, route text, decided_at timestamp with time zone, cashbook_ok boolean, fee_categories text)",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useSpendEngine.ts"
       ],
       "risk": "normal"
     },

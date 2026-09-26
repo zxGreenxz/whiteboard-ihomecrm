@@ -71,6 +71,7 @@ import {
   PinOff,
   LogOut,
   Network,
+  BadgeCheck,
 } from 'lucide-react';
 
 interface NavItem {
@@ -178,6 +179,8 @@ export const navigationGroups: NavGroup[] = [
           ...navFieldsFor('funds').map((x) => ({ ...x, icon: Wallet }) satisfies NavItem),
           // Cấu hình giá phí cố định theo toà — nguồn gợi ý số tiền cho /thanh-toan.
           { title: 'Phí cố định', href: '/settings/finance/fixed-fees', icon: Settings, module: 'thu_tien', action: 'collect' },
+          // Cam kết chi — một bộ máy duyệt chi; chỉ chủ công ty đọc/sửa được (server chặn người khác).
+          { title: 'Cam kết chi', href: '/settings/finance/cam-ket-chi', icon: BadgeCheck, module: 'thu_tien', action: 'collect' },
           ...navFieldsFor('salary').map((x) => ({ ...x, icon: HandCoins, selfHref: '/finance/my-salary' }) satisfies NavItem),
           { title: 'Ví cá nhân', href: '/finance/personal-wallet', icon: Coins, module: 'personal_finance' },
         ],
