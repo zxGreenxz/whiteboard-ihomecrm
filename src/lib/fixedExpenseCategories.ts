@@ -43,7 +43,8 @@ export const FIXED_EXPENSE_CATEGORIES: FixedExpenseCategory[] = [
   // category bị null — vd vai CỔ ĐÔNG bị RLS chặn income_expense_types → join trả NULL).
   // Cụm "toa nha" đủ hẹp để KHÔNG nuốt "vệ sinh máy lạnh" (category Bảo Trì). Vẫn loại Rác.
   { key: "ve_sinh", label: "Vệ sinh tòa nhà định kỳ", match: (c, n) => (c === "ve sinh" || n.includes("ve sinh toa nha")) && !n.includes("rac") },
-  { key: "cong_an", label: "Công an", match: (c, n) => c === "ca" || n.includes("cong an") },
+  // Công an là tiền công an, KHÔNG phải phí làm tạm trú (27/09/2026) — mirror feeTypeMatches.
+  { key: "cong_an", label: "Công an", match: (c, n) => (c === "ca" || n.includes("cong an")) && !n.includes("tam tru") },
   { key: "rac", label: "Rác", match: (_c, n) => n.includes("rac") },
   { key: "thang_may", label: "Bảo Trì Thang Máy", match: (_c, n) => n.includes("thang may"), requiresElevator: true },
 ];

@@ -215,7 +215,9 @@ flowchart TD
 - `approve_voucher(voucher_id)` (SECURITY DEFINER): set `APPROVED` + `approved_by=auth.uid()` + `approved_at=now()`, với phiếu **`user_id = auth.uid()` HOẶC caller là super admin** (`OR public.is_super_admin()` — bypass thêm ở migration `20260514000005_super_admin_bypass_rpcs_and_storage`). Dùng cho phiếu nháp (vd phiếu chi hoa hồng `UNAPPROVED` chờ thực chi).
 - `unapprove_voucher(voucher_id)`: ngược lại (`UNAPPROVED`, clear approver) — cùng điều kiện chủ phiếu hoặc super admin.
 - **Trạng thái sinh của phiếu chi do bộ máy chi quyết** (§4.20; luật đầy đủ ở `20-phe-duyet-tai-chinh.md`).
-  Hôm nay bộ máy chạy thử: phiếu tạo qua form vẫn theo thang cũ — người lập có quyền duyệt ⇒ `APPROVED`;
+  Từ 27/09/2026 bộ máy ĐANG ÁP cho bucket đã bật (7 hạng mục cam kết từ kỳ 10/2026; điện/nước các toà đã
+  có trần từ kỳ 09/2026): trong cam kết/dưới trần ⇒ `APPROVED`, vượt ⇒ `UNAPPROVED` kể cả người có quyền
+  duyệt. Bucket chưa bật vẫn theo thang cũ — người lập có quyền duyệt ⇒ `APPROVED`;
   hạng mục `force_approval` hoặc tổng ≥ ngưỡng ⇒ `UNAPPROVED` chờ duyệt. Phiếu THU tự duyệt. Huỷ phiếu = set `CANCELLED` (`UPDATE` trực tiếp ở hook, kèm ghi nhật ký qua RPC `log_income_expense_action` — §4.18); khôi phục phiếu đã huỷ CHỈ qua RPC `restore_income_expense` (super admin, §4.18).
 
 ### 4.3 Khoá sổ (`income_expenses_check_lock`, migration `20260425000001`)
@@ -393,7 +395,11 @@ Trong module Bảng lương quản lý ([useSalaryPayout](src/hooks/useManagerSa
   `spend_mode`; guard `zz_ie_type_rule_columns_guard` chỉ cho chủ công ty / super admin sửa khi ghi trực
   tiếp từ client (hàm hệ thống đi như cũ).
 - **Cờ**: `spend.engine.v1` (OFF/SHADOW/ON) và `spend.cashbook_chi.v1` (G6 — người lập phải giữ sổ để
-  chi; SHADOW chỉ cảnh báo). Hậu kiểm: `app_private.spend_ledger_audit_v1()` phải trả 0 lệch.
+  chi; SHADOW chỉ cảnh báo). **Cả hai = `ON` từ 27/09/2026** (migration `20260926172614`, chủ bỏ kỳ chạy
+  thử); công tắc theo bucket ở `app_private.spend_policy_switches`. Hậu kiểm:
+  `app_private.spend_ledger_audit_v1()` phải trả 0 lệch.
+- **Hạng mục công an = tiền công an**, không gồm làm tạm trú: `fee_type_matches('cong_an', …)` loại dòng
+  có chữ "tạm trú" (27/09/2026).
 - Màn chủ: `/settings/finance/cam-ket-chi`.
 
 ## 5. Quy trình theo từng trang

@@ -102,16 +102,57 @@ chưa đổi cách duyệt"; tiền nhà 10/2026 = 681.650.000đ (khớp số đ
 một lỗi: RLS bảng `organizations` ẩn dòng với vai "Chủ công ty" ⇒ danh sách công ty rỗng ⇒ trang trắng; nay id lấy
 từ `my_org_ids`, tên chỉ để hiển thị.
 
-## Còn lại
+## Bật áp dụng — 27/09/2026 (lệnh chủ, bỏ kỳ chạy thử)
 
-- **Bật áp dụng — việc của CHỦ**, sau ≥ 14 ngày chạy thử (định kỳ 30): cờ `spend.engine.v1` → ON (cần điền
-  `commit_sha`, `migration_sha256`, `maintenance_window_id`, `approval_reference`, không thì tuyến ra FROZEN) +
-  công tắc từng toà × hạng mục × tháng ở màn Cam kết chi.
-- G6 bật chặn sau 7 ngày cảnh báo (cờ `spend.cashbook_chi.v1` → ON).
-- Ba điểm chủ cần xem trong kỳ chạy thử: §12 plan.
+Lệnh chủ: *"Phí công an hạng mục là tiền công an không phải làm tạm trú sửa lại, bật hết lên luôn đi đừng test
+14 ngày hay 7 ngày gì nữa"*. Kỳ chạy thử 14 ngày (G5) và 7 ngày cảnh báo (G6) bị bỏ theo lệnh này; thay bằng đo
+trước khi bật + thử trên TEST + diễn tập khôi phục.
 
-## Hành vi hệ thống
+| Migration | Việc | Backup trước áp · giấy phép | Catalog |
+|---|---|---|---|
+| `20260926172614_bat_bo_may_chi_ap_dung_sua_cong_an` | (1) bộ khớp công an loại "tạm trú"; (2) 405PVB công an 7.000đ → 500.000đ (12 tháng + mức gợi ý); (3) cam kết từ phiếu định kỳ hằng tháng đã được tự duyệt (quản lý 13 toà, vệ sinh 403PVB); (4) 5 trần còn thiếu theo câu 03; (5) công tắc; (6) cả hai cờ = ON; (7) đồng bộ lại sổ tiêu | `ihomecrm-full-2026-09-26T17-34-18-032Z.dump` · sha256 `5789fe844c99769d…` · `590841202849f893` | `7a984485…` không đổi — vân tay catalog chỉ tính chữ ký hàm; migration chỉ đổi thân `fee_type_matches` + dữ liệu |
 
-**Chưa đổi cách duyệt.** Mọi phiếu vẫn sinh đúng như trước; khác biệt duy nhất là máy ghi sổ tiêu + quyết định
-bóng, và phí cố định / sinh phí dùng hạng mục đã ánh xạ (cả 9 được `fee_type_matches` nhận ⇒ lưới Thanh toán
-không đổi).
+**Thử trước khi áp:**
+
+- `thu-bat-bo-may-tren-TEST.cjs` — **12/12** trên TEST (chuỗi 8 migration + lượt hai của migration bật; hành vi
+  thật: quản lý chi tiền nhà trong cam kết trên ngưỡng ⇒ máy duyệt; người có quyền duyệt vượt cam kết ⇒ chờ;
+  khoản quản lý đúng cam kết ⇒ duyệt, thêm khoản cùng tháng ⇒ chờ; tiền nhà kỳ 09 ⇒ luật cũ; audit 0 lệch; 0 lỗi
+  máy). Kết quả: `thu-bat-bo-may-tren-TEST.json`.
+- Diễn tập khôi phục trên cụm PG17 tạm tại máy: 233 file sạch / 40 dừng đúng kỳ vọng / 0 lệch.
+- vitest `feeCategories` 19 + `fixedExpenseCategories` 25 = **44/44** (gồm "Làm tạm trú" không phải công an và
+  mẫu đối chiếu hai bản TS).
+
+**Đọc lại production sau áp (27/09, ~00:40 VN, chỉ đọc):** hai cờ = ON, tuyến CANONICAL cho org THẬT;
+`fee_type_matches('cong_an','CA','Làm tạm trú')` = false, `'Tiền công an'` = true; 405PVB công an 12 × 500.000đ,
+0 dòng 7.000đ; cam kết mới quản lý 13 toà (28.600.000đ kỳ 10/2026) + vệ sinh 1 toà (1.500.000đ); 5 trần mới —
+111PVC nước 1.500.000 · 158PVC nước 2.048.000 · 15KV nước 2.356.000 · 44TL nước 2.896.000 · Kho Văn Phòng Chung
+điện 7.884.000; công tắc: 7 hạng mục cam kết mọi toà từ 10/2026, điện 17 toà + nước 12 toà từ 09/2026; audit sổ
+tiêu 0 lệch; 0 lỗi máy.
+
+**Gate tiền sau áp:** `gate:reconcile-money` PASS (A = B = C = 5.788.924.013đ) · `-v2` PASS (2.688.708.004đ,
+20 sổ thực khớp) — tiền không đổi.
+
+## Hành vi hệ thống từ 27/09/2026
+
+- Dòng thuộc 7 hạng mục cam kết, kỳ áp dụng ≥ 10/2026: trong phần còn lại của cam kết ⇒ máy duyệt; vượt hoặc
+  tháng chưa ký ⇒ **chờ duyệt, kể cả người có quyền duyệt**.
+- Điện/nước kỳ ≥ 09/2026 ở toà đã có trần: dưới trần ⇒ duyệt; vượt ⇒ chờ.
+- 3 cửa Thanh toán: người lập không giữ sổ chi ⇒ chờ (G6). Đo trước khi bật: 0/69 phiếu gần đây rơi vào ca này.
+- Phần còn lại (kỳ ≤ 09/2026 của hạng mục cam kết, toà chưa có trần, hạng mục "Từng phiếu") giữ luật cũ.
+- Phiếu định kỳ: tác động đầu tiên ở lượt cron 01:00 ngày 01/10/2026 (sinh phiếu con tháng 10).
+- Lùi: đặt cả hai cờ `mode = 'SHADOW'` qua lane, hoặc tắt công tắc từng bucket ở màn Cam kết chi.
+
+## Điểm chủ cần biết (đo trước khi bật)
+
+1. **Rác** — đo lại 27/09: đúng 2 bucket có phiếu định kỳ vượt cam kết. 15KV: phiếu định kỳ 300.000đ/tháng,
+   cam kết 120.000đ; 162NVK: định kỳ 250.000đ, cam kết 200.000đ ⇒ hai phiếu con này về **chờ duyệt** mỗi tháng
+   từ 01/10. Giữ nguyên số chủ đã khai vì cam kết không tự nới (câu 10); đúng là tăng thì sửa cam kết ở màn Cam
+   kết chi.
+2. **Tiền nhà** (lập tay, không định kỳ) — 158PVC: chi 06/2026 36,75 triệu = cam kết, 07 38,2 triệu, 08 43,2
+   triệu; 65NTG: 18,2–19,5 triệu/tháng (06–09), cam kết 16 triệu ⇒ lập theo mức gần đây sẽ về chờ duyệt. Có thể
+   giá thuê đã tăng — chủ xác nhận rồi sửa cam kết.
+3. **Quản lý** — trước đây phiếu lập tay luôn chờ (hạng mục bắt buộc duyệt); từ kỳ 10/2026 khoản trong cam kết
+   máy duyệt. Muốn giữ bắt buộc duyệt: đổi kiểu hạng mục sang "Từng phiếu" ở thẻ Luật hạng mục.
+4. **Kho Văn Phòng Chung** có 2 dòng ghi "tạm trú" (1.000.000đ, 08/09) nằm dưới hạng mục *Tiền công an* — phiếu
+   đã duyệt nên không sửa; chủ quyết có chuyển hạng mục hay không.
+5. **Org DEMO**: cờ là toàn cục nhưng DEMO không có công tắc ⇒ chỉ G6 có hiệu lực ở đó.

@@ -103,6 +103,17 @@ describe('quan_ly KHÔNG được nuốt tiền lương (§−1.3)', () => {
   });
 });
 
+describe('cong_an là TIỀN CÔNG AN, không phải làm tạm trú (27/09/2026)', () => {
+  it('"Làm tạm trú" (category CA) KHÔNG khớp ô công an', () => {
+    expect(feeTypeMatches('cong_an', 'CA', 'Làm tạm trú')).toBe(false);
+    expect(feeTypeMatches('cong_an', null, 'Tạm trú công an')).toBe(false);
+  });
+  it('tiền công an thật vẫn khớp', () => {
+    expect(feeTypeMatches('cong_an', 'CA', 'Tiền công an')).toBe(true);
+    expect(feeTypeMatches('cong_an', null, 'Công an phường')).toBe(true);
+  });
+});
+
 // PARITY: feeTypeMatches PHẢI khớp match() của FIXED_EXPENSE_CATEGORIES (cùng key)
 // cho mọi cặp (category, name) — đảm bảo trang đóng tiền & Báo cáo Lợi Nhuận nhận
 // diện hạng mục y hệt nhau (§3.3 CAVEAT bảo trì đồng bộ).
@@ -116,6 +127,7 @@ describe('feeTypeMatches ↔ FIXED_EXPENSE_CATEGORIES parity', () => {
     ['Quản Lý', 'Phí quản lý tòa'],
     ['Vệ sinh', 'Vệ sinh tòa nhà định kỳ'],
     ['CA', 'Công an phường'],
+    ['CA', 'Làm tạm trú'],              // tạm trú KHÔNG phải tiền công an (27/09/2026)
     ['Rác', 'Tiền rác'],
     ['Bảo Trì Thang Máy', 'Bảo trì thang máy'],
     ['Bảo Trì', 'Vệ sinh máy lạnh'],   // KHÔNG được lọt nhóm ve_sinh

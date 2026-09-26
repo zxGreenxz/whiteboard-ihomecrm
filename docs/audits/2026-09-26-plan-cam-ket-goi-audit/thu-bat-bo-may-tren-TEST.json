@@ -1,0 +1,66 @@
+{
+ "chay_luc": "2026-09-26T17:31:19.846Z",
+ "migration_qua": true,
+ "ket_qua": [
+  {
+   "ten": "fee_type_matches: tam tru KHONG, tien cong an CO",
+   "dat": true,
+   "ct": "{\"tam_tru\":false,\"cong_an\":true}"
+  },
+  {
+   "ten": "405PVB cong an: 12 thang 500.000d, het 7.000d, goi y 500.000d",
+   "dat": true,
+   "ct": "{\"ca\":{\"n500\":12,\"n7k\":0},\"gy\":{\"g\":\"500000.00\"}}"
+  },
+  {
+   "ten": "quan ly: cam ket tu phieu dinh ky (>= 1 toa)",
+   "dat": true,
+   "ct": "{\"toa\":14,\"dong\":168}"
+  },
+  {
+   "ten": "cong tac: 7 hang muc cam ket + dien nuoc theo toa",
+   "dat": true,
+   "ct": "{\"cam_ket\":7,\"tran\":29}"
+  },
+  {
+   "ten": "co: ca hai CANONICAL",
+   "dat": true,
+   "ct": "{\"r1\":\"CANONICAL\",\"r2\":\"CANONICAL\",\"demo\":\"CANONICAL\"}"
+  },
+  {
+   "ten": "A: quan ly tien nha T11 trong cam ket, tren nguong → MAY DUYET",
+   "dat": true,
+   "ct": "APPROVED"
+  },
+  {
+   "ten": "B: nguoi co quyen duyet vuot cam ket → CHO",
+   "dat": true,
+   "ct": "UNAPPROVED"
+  },
+  {
+   "ten": "C: khoan quan ly dung cam ket (tu phieu dinh ky) → DUYET",
+   "dat": true,
+   "ct": "APPROVED cam ket 1500000.00"
+  },
+  {
+   "ten": "C2: them khoan quan ly cung thang (cam ket da het) → CHO, ke ca nguoi co quyen duyet",
+   "dat": true,
+   "ct": "UNAPPROVED"
+  },
+  {
+   "ten": "D: tien nha thang 9 (chua bat, chua cam ket) → luat cu (quan ly tren nguong → CHO)",
+   "dat": true,
+   "ct": "UNAPPROVED"
+  },
+  {
+   "ten": "audit so tieu 0 lech",
+   "dat": true,
+   "ct": "{\"lech_thua\":0,\"lech_thieu\":0,\"bucket_vuot_khong_ly_do\":[]}"
+  },
+  {
+   "ten": "0 loi may",
+   "dat": true,
+   "ct": "0"
+  }
+ ]
+}

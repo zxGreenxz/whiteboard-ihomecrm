@@ -180,7 +180,10 @@ export const feeTypeMatches = (
   switch (serverKey) {
     case 'internet': return c === 'internet' || n.includes('internet');
     case 'rac': return n.includes('rac');
-    case 'cong_an': return c === 'ca' || n.includes('cong an');
+    // 27/09/2026 (lệnh chủ): công an là TIỀN CÔNG AN, không phải phí làm tạm trú (category
+    // 'CA' nên bản cũ nuốt luôn ⇒ ô công an 405PVB học 7.000đ). Mirror SQL fee_type_matches
+    // (migration 20260926172614) + fixedExpenseCategories.ts.
+    case 'cong_an': return (c === 'ca' || n.includes('cong an')) && !n.includes('tam tru');
     case 've_sinh': return (c === 've sinh' || n.includes('ve sinh toa nha')) && !n.includes('rac');
     case 'thang_may': return n.includes('thang may');
     case 'dien': return c === 'dien' || n.includes('tien dien');

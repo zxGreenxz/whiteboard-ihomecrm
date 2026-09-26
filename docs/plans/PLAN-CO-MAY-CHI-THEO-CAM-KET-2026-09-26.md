@@ -1,9 +1,10 @@
 # PLAN — Cỗ máy chi theo cam kết · **bản v2 (sau audit)**
 
-> **Trạng thái 26/09 đêm: G1–G5 ĐÃ ÁP PRODUCTION (chế độ CHẠY THỬ) · G6 cảnh báo · G7 dấu vết · G8 tài liệu.**
-> Một bộ máy quyết định + sổ tiêu phủ mọi đường ghi + 5 cửa chi đã hỏi cổng; cờ `spend.engine.v1` = SHADOW
-> nên **cách duyệt chưa đổi**. Việc còn lại là của CHỦ: xem ≥ 14 ngày chạy thử ở màn Cam kết chi rồi bật
-> từng toà × hạng mục × tháng. Chi tiết, backup, bằng chứng ở **§12**. Reconcile-money v1+v2 PASS sau mỗi lần áp.
+> **Trạng thái 27/09: ĐANG ÁP DỤNG trên production** — chủ ra lệnh bật luôn, bỏ kỳ chạy thử 14 ngày / 7 ngày
+> (migration `20260926172614`). Cờ `spend.engine.v1` + `spend.cashbook_chi.v1` = ON; công tắc: 7 hạng mục cam kết
+> mọi toà từ kỳ 10/2026, điện/nước các toà đã có trần từ kỳ 09/2026; G6 đưa phiếu về chờ ở 3 cửa Thanh toán khi
+> người lập không giữ sổ. Hạng mục công an = tiền công an (loại làm tạm trú). Chi tiết, backup, bằng chứng ở
+> **§12**. Reconcile-money v1+v2 PASS sau mỗi lần áp.
 >
 > **Nền mã:** `origin/main` = `origin/production` = `e1a0d2ac0312bba94148e974af2fb132303865a6`.
 > **Nền số:** production `tryymsxyyckgbrmmvozx`, org THẬT `aaaa0000-0000-4000-8000-000000000001`,
@@ -744,7 +745,7 @@ Giữ C-1…C-10 của v1, **sửa và thêm**:
 
 ---
 
-## 12. Trạng thái thi hành — cập nhật 26/09/2026 đêm
+## 12. Trạng thái thi hành — cập nhật 27/09/2026
 
 Chủ uỷ quyền hai lần trong phiên: *"thực hiện chi tiết toàn bộ và đưa toàn bộ lên production"* rồi *"thực hiện
 tiếp toàn bộ"*, kèm nhắc: *"quan trọng là thống nhất đường tiền về một máy… đừng lan man, thiếu kiểm soát"*.
@@ -757,14 +758,14 @@ backup full + giấy phép) → đọc lại production → hai gate tiền.
 | **G1** sổ cam kết | **ĐÃ ÁP** | `20260926082454` · `dcca965e…` · 1.272 cam kết (106 khe × 12 tháng) |
 | **G3** ánh xạ + khoá cột luật | **ĐÃ ÁP** | `20260926113435` · `a55500a6…` · 9 × 2 ánh xạ |
 | ↳ vá hồi quy G3 | **ĐÃ ÁP** | `20260926140000` · `dc533a44…` · guard INVOKER chỉ canh ghi thẳng từ client; TEST trước/sau: `_termination_ensure_type` do quản lý gọi — cũ **chặn 42501**, sau vá được |
-| **G2** bộ máy + bóng lúc sinh | **ĐÃ ÁP (SHADOW)** | `20260926150000` · `05389e0e…` · TEST 24/24 ca |
+| **G2** bộ máy + bóng lúc sinh | **ĐÃ ÁP — đang áp dụng từ 27/09** | `20260926150000` · `05389e0e…` · TEST 24/24 ca |
 | **G4** sổ tiêu cho MỌI writer | **ĐÃ ÁP** | cùng migration G2 — trigger đồng bộ theo trạng thái, không sửa writer nào; khởi tạo 8 DRAW; audit 0 lệch; câu ghi kiểu PostgREST (CTE) qua được |
-| **G5** 5 cửa chi hỏi cổng | **ĐÃ ÁP — cổng chưa áp** | `20260926160000` · `58c6db3f…` · TEST 20/20 + 6/6; md5 6 hàm trên prod trùng bản thử |
-| G5 **bật theo bucket** | **CHỜ CHỦ** | cần ≥ 14 ngày bóng (định kỳ 30) — không nén được; công tắc ở màn Cam kết chi |
-| **G6** quyền CHI trên sổ | **Cảnh báo (SHADOW)** | helper `ie_spend_cashbook_ok_v1` (chủ sổ/CUSTODIAN/OPERATOR, không KNOWER); cờ `spend.cashbook_chi.v1` = SHADOW; màn đếm ca "không giữ sổ" — bật chặn sau 7 ngày cảnh báo |
+| **G5** 5 cửa chi hỏi cổng | **ĐÃ ÁP — cổng đang áp** | `20260926160000` · `58c6db3f…` · TEST 20/20 + 6/6; md5 6 hàm trên prod trùng bản thử |
+| G5 **bật theo bucket** | **ĐÃ BẬT 27/09 (lệnh chủ)** | `20260926172614` · `5789fe84…` · TEST 12/12; 7 hạng mục cam kết mọi toà từ 10/2026, điện 17 toà + nước 12 toà từ 09/2026; kỳ bóng 14 ngày bỏ theo lệnh chủ |
+| **G6** quyền CHI trên sổ | **ĐANG ÁP (ON) từ 27/09** | helper `ie_spend_cashbook_ok_v1` (chủ sổ/CUSTODIAN/OPERATOR, không KNOWER); cờ `spend.cashbook_chi.v1` = ON — người lập không giữ sổ ⇒ phiếu về chờ (không chặn tạo); đo trước khi bật 0/69 phiếu; kỳ cảnh báo 7 ngày bỏ theo lệnh chủ |
 | **G7** một đường duyệt | **Dấu vết (câu 05)** | câu 05 giữ tự duyệt cho người có quyền duyệt ⇒ G7 thu về ghi dấu `SELF_APPROVER` + `list_self_approved_vouchers_v1` + thẻ "Tự duyệt" |
 | **G8** dọn đường cũ | **Tài liệu xong; compat giữ** | `08`/`20` hệ thống sửa; compat + `create_income_expense_v2` luôn sinh CHỜ nên không lách bộ máy — không gỡ (gỡ đòi viết lại caller giao diện) |
-| Màn chủ + RPC trạng thái | **Code xong, chờ lên web** | `20260926170000` · `fcede28d…`; `/settings/finance/cam-ket-chi` (5 thẻ) — kiểm bằng trình duyệt thật với tài khoản chủ |
+| Màn chủ + RPC trạng thái | **Đã lên web 26/09** | `20260926170000` · `fcede28d…`; `/settings/finance/cam-ket-chi` (5 thẻ) — kiểm bằng trình duyệt thật với tài khoản chủ |
 
 **Gate tiền sau mỗi lần áp:** `gate:reconcile-money` PASS (A = B = C = 5.788.924.013đ) · `-v2` PASS
 (2.688.708.004đ) — **tiền không đổi**. `gate:truoc-push` 44/44 xanh, gồm đo rò dữ liệu xuyên tổ chức.
@@ -774,13 +775,24 @@ vá bằng `20260926140000`; (2) sổ bóng tính lại lúc COMMIT làm phiếu
 kỳ, sinh phí hàng loạt) chấm oan phiếu sinh trước và đè tên writer — sửa bằng cổng chốt kết quả cho từng phiếu
 (`z59_spend_capture_gate`) trong `20260926160000`.
 
-**Ba điểm chủ cần xem trong kỳ chạy thử:**
-1. **405PVB — công an** cam kết 7.000đ/tháng, chi thật ~750.000đ ⇒ số sót từ lần đóng cũ; màn Cam kết chi tô
-   vàng ô này. Sửa trước khi bật `cong_an`.
-2. **Quản Lý** đang `force_approval` nhưng kiểu chi là CAM_KET ⇒ khi bật, khoản quản lý trong cam kết sẽ được
-   máy duyệt. Muốn giữ bắt buộc duyệt thì đổi kiểu sang "Từng phiếu" ở thẻ Luật hạng mục.
-3. **4 cặp trần còn thiếu** (câu 03): `111PVC–nước`, `158PVC–nước`, `15KV–nước`, `Kho Văn Phòng Chung–điện` —
-   RPC bật công tắc TRAN tự từ chối khi còn toà thiếu trần.
+**Bật áp dụng 27/09/2026 — lệnh chủ:** *"Phí công an hạng mục là tiền công an không phải làm tạm trú sửa lại,
+bật hết lên luôn đi đừng test 14 ngày hay 7 ngày gì nữa"*. Một migration `20260926172614` (backup `5789fe84…`,
+giấy phép `590841202849f893`; thử TEST 12/12; diễn tập khôi phục 233 sạch / 40 kỳ vọng / 0 lệch). Chi tiết số đo
+và đọc lại production: `docs/audits/2026-09-26-plan-cam-ket-goi-audit/TRANG-THAI-AP-26-09.md`.
 
-**Còn lại, không thuộc phiên này:** bật chặn G6 sau 7 ngày cảnh báo; gỡ `fee_type_matches` khỏi lưới trạng thái
+**Ba điểm từng nêu cho kỳ chạy thử — đã xử lý khi bật:**
+1. **405PVB — công an**: số 7.000đ là phí *làm tạm trú* lọt vào vì bộ khớp tên nhận category `CA`. Bộ khớp nay
+   loại "tạm trú" (SQL `fee_type_matches` + hai bản TS); cam kết 12 tháng và mức gợi ý = 500.000đ (khớp chi kỳ
+   08/2026).
+2. **Quản Lý** giữ kiểu CAM_KET ⇒ từ kỳ 10/2026 khoản quản lý trong cam kết được máy duyệt (trước đây phiếu lập
+   tay luôn chờ). Cam kết quản lý 13 toà lấy từ phiếu định kỳ đã được tự duyệt. Muốn giữ bắt buộc duyệt: đổi kiểu
+   sang "Từng phiếu" ở thẻ Luật hạng mục.
+3. **Trần còn thiếu** (câu 03): thêm 5 trần theo công thức cao nhất 3 tháng + 20% — `111PVC–nước`,
+   `158PVC–nước`, `15KV–nước`, `44TL–nước`, `Kho Văn Phòng Chung–điện`.
+
+**Sẽ về "Chờ duyệt" theo luật (đo 27/09):** rác 15KV (định kỳ 300.000đ > cam kết 120.000đ) và 162NVK (250.000đ >
+200.000đ) mỗi tháng; tiền nhà 158PVC (chi gần đây 38,2–43,2 triệu > 36,75 triệu) và 65NTG (18,2–19,5 triệu > 16
+triệu) nếu lập theo mức gần đây. Cam kết không tự nới — chủ sửa ở màn Cam kết chi nếu mức mới là đúng.
+
+**Còn lại, không thuộc phiên này:** gỡ `fee_type_matches` khỏi lưới trạng thái
 `get_period_fee_status` (writer đã dùng ánh xạ); siết compat bỏ `system_source` từ client (hiện chỉ ảnh hưởng sổ bóng).

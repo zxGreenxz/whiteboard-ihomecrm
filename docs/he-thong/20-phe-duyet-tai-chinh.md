@@ -1,6 +1,6 @@
 # Phê duyệt tài chính
 
-> **Reviewed:** 2026-09-26  
+> **Reviewed:** 2026-09-27  
 > Route người dùng: `/approvals`.
 
 > **Phạm vi file này:** LUẬT phê duyệt tài chính — khi nào cần duyệt, ngưỡng, `force_approval`,
@@ -27,16 +27,33 @@ quỹ thật** thì chờ. Phiếu có nhiều dòng: **một dòng chờ ⇒ c�
 trong cam kết (không được có phiếu thứ hai cho cùng phần tiền). Duyệt phần vượt vẫn được, nhưng sổ
 tiêu ghi "đã chi vượt" và cam kết **không tự nới**.
 
-**Trạng thái áp dụng hiện nay: CHẠY THỬ (SHADOW).** Cờ `spend.engine.v1` = `SHADOW`: 5 cửa chi
-(`create_income_expense_v1`, `pay_period_fee`, `pay_utility_bill`, `generate_special_fees_v1`,
-`generate_recurring_vouchers`) hỏi bộ máy nhưng **vẫn quyết theo luật cũ**; máy chỉ ghi lại nó *sẽ*
-quyết thế nào (`app_private.spend_decisions`). Bộ máy chỉ **áp** khi cờ = `ON` **và** toà × hạng mục
-× tháng đó đã bật công tắc (`set_spend_policy_switch_v1`). Plan đã chốt: bật sau ≥ 14 ngày chạy thử
-(phiếu định kỳ: 30 ngày). Chủ xem và bật ở `/settings/finance/cam-ket-chi` (màn **Cam kết chi**).
+**Trạng thái áp dụng hiện nay: ĐANG ÁP DỤNG (từ 27/09/2026).** Chủ ra lệnh bật luôn, bỏ kỳ chạy thử
+14 ngày / 7 ngày (migration `20260926172614`). Cờ `spend.engine.v1` = `ON` và `spend.cashbook_chi.v1` =
+`ON`. 5 cửa chi (`create_income_expense_v1`, `pay_period_fee`, `pay_utility_bill`,
+`generate_special_fees_v1`, `generate_recurring_vouchers`) hỏi bộ máy; bộ máy **áp** khi mọi dòng
+có luật (CAM_KET/TRAN) của phiếu rơi vào toà × hạng mục × tháng đã bật công tắc
+(`app_private.spend_policy_switches`). Công tắc đang bật cho org THẬT:
 
-Luật cũ (đang chạy tới khi bật): người lập có quyền duyệt ⇒ tự duyệt; hạng mục `force_approval` ⇒ chờ;
-chi ≥ ngưỡng ⇒ chờ; trang Thanh toán: phí cố định theo `special_fee_rule_check_v1`, điện nước theo
+- **7 hạng mục cam kết** (tiền nhà, internet, quản lý, vệ sinh, công an, rác, thang máy): mọi toà, từ
+  **kỳ 10/2026** — tháng đầu có cam kết (câu 01). Kỳ 09/2026 trở về trước vẫn theo luật cũ.
+- **Điện** 17 toà, **nước** 12 toà — những toà đã có trần — từ **kỳ 09/2026**. Toà chưa có trần: luật cũ.
+- **G6 — quyền CHI trên sổ**: ở 3 cửa Thanh toán (`pay_period_fee`, `pay_utility_bill`,
+  `generate_special_fees_v1`), người lập không phải chủ sổ / CUSTODIAN / OPERATOR của sổ chi ⇒ phiếu
+  **về chờ duyệt** (không chặn tạo). Luật này không cần công tắc.
+- Phiếu chỉ có dòng "Từng phiếu": kết quả như luật cũ (bộ máy chỉ ghi dấu). Máy lỗi lúc đang áp ⇒ phiếu có
+  dòng cam kết/trần **về chờ**, không bao giờ tự duyệt vì lỗi (`app_private.spend_engine_errors`).
+- Org DEMO: cờ là toàn cục nhưng DEMO chưa bật công tắc nào ⇒ chỉ G6 có hiệu lực ở đó.
+
+Lùi về chạy thử (một lệnh, qua lane): đặt cả hai cờ `mode = 'SHADOW'`; hoặc tắt công tắc từng bucket ở
+`/settings/finance/cam-ket-chi` (màn **Cam kết chi**, thẻ **Bật áp dụng**).
+
+Luật cũ (còn chạy cho bucket chưa bật): người lập có quyền duyệt ⇒ tự duyệt; hạng mục `force_approval` ⇒
+chờ; chi ≥ ngưỡng ⇒ chờ; trang Thanh toán: phí cố định theo `special_fee_rule_check_v1`, điện nước theo
 ngưỡng + trần (`utility_ceiling_check_v1`). Writer chuyên biệt khác giữ invariant riêng của nó.
+
+**Hạng mục "công an" là TIỀN CÔNG AN, không gồm làm tạm trú** (chủ chốt 27/09/2026): bộ khớp tên
+`fee_type_matches('cong_an', …)` loại dòng có chữ "tạm trú"; bản TS `feeTypeMatches` /
+`FIXED_EXPENSE_CATEGORIES` giữ cùng luật.
 
 ## Luồng
 
