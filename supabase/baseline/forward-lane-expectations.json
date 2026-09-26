@@ -207,6 +207,12 @@
       "kyVong": "dung-vi-moi-truong",
       "thongDiep": "nghiem_thu: ACL ie_visible_cashbook_ids_v1 bi doi",
       "why": "File không tự bọc BEGIN/COMMIT: bước 0 chụp ACL của ie_visible_cashbook_ids_v1 bằng set_config(..., true) (sống tới hết transaction) để khối nghiệm thu cuối so lại. Lane production và test-env:thu-sql bọc cả file trong MỘT transaction nên phép so chạy thật (apply 24/09/2026, biên nhận 7c97edea7c6870a8, ACL giữ {postgres=X/postgres}). Diễn tập chạy `psql -f` tự commit từng câu nên giá trị chụp mất trước khi tới nghiệm thu ⇒ ném đúng câu này. Đã tái hiện trên môi trường TEST ở chế độ tự commit: ACL thật KHÔNG đổi. Vì tự commit, mọi object của file (my_company_owner_org_ids_v1, policy accounts_select_company_owner, nhánh chủ công ty trong ie_visible_cashbook_ids_v1) ĐÃ được tạo trên bản dựng lại trước khi khối cuối dừng — không mất object nào. File đã apply production (bất biến) nên khai kỳ vọng thay vì sửa."
+    },
+    "20260926160000_noi_writer_vao_bo_may_chi.sql": {
+      "kyVong": "cascade",
+      "tu": "20260831162000_update_period_fee_cas_va_don_pay_period_fee.sql",
+      "thongDiep": "public.pay_period_fee(uuid,text,numeric,text,text,date,text,text,uuid,jsonb,boolean) đã đổi so với bản đã rà",
+      "why": "G5 ghim md5 thân pay_period_fee SỐNG trên production (6545b554…) trước khi thay — đúng kỷ luật 'so md5 thô trước CREATE OR REPLACE'. Trên bản dựng lại, 20260831162000 — chính file tạo ra thân đó — dừng đúng kỳ vọng (ACL anon, artifact diễn tập, xem entry của nó), nên pay_period_fee còn là bản baseline (md5 ef63636a…) và ghim của G5 dừng theo: chết theo, không phải lỗi độc lập. Đo bằng diễn tập thật trên cụm Postgres 17 tạm ngày 26/09/2026: năm hàm writer còn lại (create_income_expense_v1, pay_utility_bill, generate_special_fees_v1, generate_recurring_vouchers, resolve_fixed_expense_type) và hai hàm G2 (ie_spend_gate_v1, spend_shadow_birth_trg) đều TRÙNG md5 đã ghim; lệch duy nhất là pay_period_fee. Production apply sạch 26/09 qua lane (backup 58c6db3f…). File đã áp nên bất biến — không sửa ghim trong file."
     }
   }
 }
