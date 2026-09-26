@@ -244,7 +244,7 @@ export const useSpendShadowReport = (orgId: string | null, from: string, to: str
     enabled: !!orgId,
     queryKey: ['spend-engine', 'shadow', orgId, from, to],
     queryFn: async (): Promise<SpendShadowRow[]> => {
-      const { data, error } = await supabase.rpc('spend_shadow_report_v1', {
+      const { data, error } = await supabase.rpc('spend_shadow_report_v2', {
         p_organization_id: orgId as string,
         p_from: from,
         p_to: to,

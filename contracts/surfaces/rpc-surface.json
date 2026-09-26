@@ -4867,12 +4867,12 @@
       ],
       "risk": "normal"
     },
-    "spend_shadow_report_v1": {
+    "spend_shadow_report_v2": {
       "definitions": [
         {
           "schema": "public",
           "args": "p_organization_id uuid, p_from date DEFAULT NULL::date, p_to date DEFAULT NULL::date",
-          "returns": "TABLE(voucher_id uuid, code text, voucher_date date, building_name text, writer text, amount numeric, birth_status text, engine_status text, engine_reason text, match boolean, enforced boolean, route text, decided_at timestamp with time zone)",
+          "returns": "TABLE(voucher_id uuid, code text, voucher_date date, building_name text, writer text, amount numeric, birth_status text, engine_status text, engine_reason text, match boolean, enforced boolean, route text, decided_at timestamp with time zone, cashbook_ok boolean, fee_categories text)",
           "volatility": "VOLATILE",
           "securityDefiner": true,
           "searchPath": "search_path=pg_catalog, public, app_private",
