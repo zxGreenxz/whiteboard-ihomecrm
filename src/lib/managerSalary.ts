@@ -41,6 +41,24 @@ export interface SalAdjustment {
   amount: number; // có dấu: trừ = âm
   note?: string | null;
   source?: string;
+  /** Dòng sinh từ khoản định kỳ (id "rec:<khoản>") — không sửa/xoá như Thưởng/Trừ tay. */
+  recurring?: SalRecurringRef;
+}
+
+export interface SalRecurringRef {
+  itemId: string;
+  category: "ALLOWANCE" | "SUPPLEMENTARY";
+  buildingId: string | null;
+  buildingName: string | null;
+}
+
+/** Số ghi đè đang áp cho một dòng (super admin / chủ công ty sửa tay). */
+export interface SalAppliedOverride {
+  computed: number;
+  amount: number;
+  reason: string;
+  byName: string | null;
+  at: string;
 }
 
 export interface SalInvestBy { b: string; amount: number; }
@@ -95,6 +113,10 @@ export interface SalManager {
   // Số ĐÃ ĐÓNG BĂNG của kỳ chốt (salary_monthly). null khi kỳ chưa chốt. Các trường
   // live ở trên (investment, advance, commissionItems…) có thể trôi sau khi chốt.
   frozen?: { base: number; investment: number; commission: number; advance: number } | null;
+  /** Tổ chức của cấu hình lương — khoá gọi RPC khoản định kỳ / ghi đè. */
+  organizationId?: string | null;
+  /** Số ghi đè đang áp, theo khoá dòng (base, streak, job:…, rec:…, sale:…, dh:…). */
+  overrides?: Record<string, SalAppliedOverride>;
 }
 
 export interface SalCalcResult {

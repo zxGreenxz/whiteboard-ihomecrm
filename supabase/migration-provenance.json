@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-09-26T17:47:18.141Z",
+  "generatedAt": "2026-09-27T08:57:36.308Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 614,
-    "unknown": 80,
+    "unknown": 81,
     "catalog-proven": 205,
     "superseded": 15
   },
@@ -10614,6 +10614,22 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-09-26T17:37:15.378Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260927081925_luong_khoan_dinh_ky_va_so_ghi_de.sql",
+      "version": "20260927081925",
+      "name": "luong_khoan_dinh_ky_va_so_ghi_de",
+      "scheme": "timestamp14",
+      "sha256": "b15246d9b8e3e2855cccc515c181a4ef2b8824a383a42c645f8712935c4827aa",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "table:app_private.salary_recurring_items",
+        "table:app_private.salary_recurring_item_versions",
+        "table:app_private.salary_line_overrides",
+        "function:app_private.salary_recurring_amount_v1",
+        "function:app_private.salary_staff_org_v1"
       ]
     },
     {

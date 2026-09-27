@@ -38,7 +38,7 @@ export function BonusPop({ m, periodText, locked, onClose, onAdjust, onRemove, o
         {m.bonusAuto.map((r, i) => <PopRow key={"a" + i} icon={r.icon} label={r.label} note={r.note} amount={r.amount} />)}
         {m.adjustments.map((r, i) => (
           <PopRow key={"m" + i} icon={r.icon} label={r.label} note={r.note} amount={r.amount}
-            acts={!locked ? <>
+            acts={!locked && !r.recurring ? <>
               <button title="Sửa" onClick={() => onAdjust(r)}><I.Pencil size={13} /></button>
               <button title="Xoá" onClick={() => r.id && onRemove(r.id)}><I.Trash size={13} /></button>
             </> : null} />

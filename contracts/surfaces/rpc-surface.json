@@ -1,7 +1,7 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 1765,
+    "sourceCallSites": 1772,
     "catalogFunctions": 1176,
     "schemas": [
       "public",
@@ -16,7 +16,50 @@
     },
     "securityDefiner": 282
   },
-  "missingOnServer": [],
+  "missingOnServer": [
+    {
+      "name": "salary_can_edit_amounts_v1",
+      "callers": [
+        "src/hooks/useSalaryExtras.ts"
+      ]
+    },
+    {
+      "name": "salary_line_override_list_v1",
+      "callers": [
+        "src/hooks/useSalaryExtras.ts"
+      ]
+    },
+    {
+      "name": "salary_line_override_set_v1",
+      "callers": [
+        "src/hooks/useSalaryExtras.ts"
+      ]
+    },
+    {
+      "name": "salary_recurring_create_v1",
+      "callers": [
+        "src/hooks/useSalaryExtras.ts"
+      ]
+    },
+    {
+      "name": "salary_recurring_delete_v1",
+      "callers": [
+        "src/hooks/useSalaryExtras.ts"
+      ]
+    },
+    {
+      "name": "salary_recurring_list_v1",
+      "callers": [
+        "src/hooks/useSalaryExtras.ts"
+      ]
+    },
+    {
+      "name": "salary_recurring_version_add_v1",
+      "callers": [
+        "src/hooks/useSalaryExtras.ts"
+      ]
+    }
+  ],
   "rpcs": {
     "accept_organization_invitation_v1": {
       "definitions": [

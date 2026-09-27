@@ -247,6 +247,14 @@ WHERE sm.staff_id = ${DEMO_SALARY_STAFF}
   return rows.map((r) => r.id);
 }
 
+/** id người hưởng lương fixture (DEMO quanly) — ô chọn người nhận chỉ hiện tên, không hiện chức danh fixture. */
+export async function demoSalaryStaffId(): Promise<string> {
+  const rows = await runSql<{ id: string }>(`SELECT ${DEMO_SALARY_STAFF}::text AS id;`);
+  const id = rows[0]?.id;
+  if (!id) throw new Error('Không tìm thấy tài khoản demo.quanly cho fixture lương.');
+  return id;
+}
+
 /**
  * Dọn dữ liệu lương spec tạo trên DEMO quanly: khoản Thưởng/Trừ mang tiền tố
  * fixture `E2E fleet `, rồi dòng salary_monthly nháp mà spec làm phát sinh (không
@@ -289,6 +297,51 @@ WITH adj AS (
 SELECT (SELECT count(*)::int FROM adj) AS adjustments, (SELECT count(*)::int FROM mon) AS monthly;
 `);
   return { adjustments: number(rows[0]?.adjustments), monthly: number(rows[0]?.monthly) };
+}
+
+/**
+ * Dọn khoản định kỳ + số ghi đè do spec lương tạo (app_private, migration
+ * 20260927081925). Chỉ org DEMO, chỉ bản ghi có lý do mang tiền tố fixture.
+ * Bảng chưa có (migration chưa áp) ⇒ không làm gì, trả 'chua-ap-migration'.
+ * Xoá cứng: nút "Xoá khoản" trên UI chỉ đánh dấu deleted_at.
+ */
+export async function cleanupDemoSalaryExtras(
+  reasonPrefix: string,
+): Promise<{ versions: number; items: number; overrides: number } | 'chua-ap-migration'> {
+  if (!reasonPrefix.startsWith('E2E fleet ')) {
+    throw new Error(`Từ chối dọn dữ liệu lương không thuộc fixture E2E: ${reasonPrefix}`);
+  }
+  const co = await runSql<{ ok: boolean }>(
+    `SELECT to_regclass('app_private.salary_line_overrides') IS NOT NULL AS ok;`,
+  );
+  if (!co[0]?.ok) return 'chua-ap-migration';
+  const like = sqlLiteral(reasonPrefix.replaceAll('%', '') + '%');
+  const org = `${sqlLiteral(DEMO_ORG_ID)}::uuid`;
+  // Câu riêng từng bảng: FK phiên bản → khoản là RESTRICT (kiểm ngay), còn các
+  // DELETE trong cùng một câu CTE không có thứ tự chạy xác định.
+  const rows = await runSql<{ versions: number; items: number; overrides: number }>(`
+CREATE TEMP TABLE e2e_sal_items ON COMMIT DROP AS
+  SELECT DISTINCT v.item_id FROM app_private.salary_recurring_item_versions v
+  WHERE v.organization_id = ${org} AND v.reason LIKE ${like};
+CREATE TEMP TABLE e2e_sal_dem (bang text, n int) ON COMMIT DROP;
+WITH d AS (DELETE FROM app_private.salary_recurring_item_versions
+           WHERE organization_id = ${org} AND item_id IN (SELECT item_id FROM e2e_sal_items) RETURNING 1)
+INSERT INTO e2e_sal_dem SELECT 'versions', count(*) FROM d;
+WITH d AS (DELETE FROM app_private.salary_recurring_items
+           WHERE organization_id = ${org} AND id IN (SELECT item_id FROM e2e_sal_items) RETURNING 1)
+INSERT INTO e2e_sal_dem SELECT 'items', count(*) FROM d;
+WITH d AS (DELETE FROM app_private.salary_line_overrides
+           WHERE organization_id = ${org} AND reason LIKE ${like} RETURNING 1)
+INSERT INTO e2e_sal_dem SELECT 'overrides', count(*) FROM d;
+SELECT (SELECT n FROM e2e_sal_dem WHERE bang = 'versions') AS versions,
+       (SELECT n FROM e2e_sal_dem WHERE bang = 'items') AS items,
+       (SELECT n FROM e2e_sal_dem WHERE bang = 'overrides') AS overrides;
+`);
+  return {
+    versions: number(rows[0]?.versions),
+    items: number(rows[0]?.items),
+    overrides: number(rows[0]?.overrides),
+  };
 }
 
 export async function cleanupFleetCashbook(name: string): Promise<void> {

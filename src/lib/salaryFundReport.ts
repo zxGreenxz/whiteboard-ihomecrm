@@ -34,8 +34,9 @@ export const FUND_GROUPS: { key: FundGroupKey; label: string; desc: string; colo
 
 export const SUPPLEMENTARY_COLOR = "#7c8da0";
 
-// "Bonus QL" và "lương (QL) bổ sung" hiện được nhập tay trong Thưởng (brief §2.3.1).
-// Chưa có cột phân loại nên nhận diện theo nhãn; khoản khác nằm ở Phụ cấp.
+// "Bonus QL" và "lương (QL) bổ sung" nhập tay trong Thưởng (brief §2.3.1) chưa có cột
+// phân loại nên nhận diện theo nhãn. Khoản định kỳ (salary_recurring_*) có loại thật
+// — fundLinesOf dùng loại đó thay vì nhãn.
 export function isSupplementaryLabel(label: string): boolean {
   const n = (label || "").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/gi, "d").toLowerCase();
   return /bonus\s*ql\b/.test(n) || /luong\s*(ql\s*|quan\s*ly\s*)?bo\s*sung/.test(n);
@@ -73,7 +74,8 @@ export function fundLinesOf(m: SalManager): FundLine[] {
     if (a.amount < 0) {
       out.push({ key: "deduction", label: "Khoản trừ nhập tay", group: "extra", amount: a.amount, supplementary: false, note: a.label });
     } else {
-      const sup = isSupplementaryLabel(a.label);
+      // Khoản định kỳ mang loại thật; khoản Thưởng nhập tay vẫn nhận theo nhãn.
+      const sup = a.recurring ? a.recurring.category === "SUPPLEMENTARY" : isSupplementaryLabel(a.label);
       out.push({ key: sup ? "supplementary" : "allow:" + a.label, label: sup ? "Lương QL bổ sung" : a.label, group: "extra", amount: a.amount, supplementary: sup, note: a.note ? `${a.label} · ${a.note}` : a.label });
     }
     adjSum += a.amount;
