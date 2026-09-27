@@ -1,0 +1,40 @@
+{
+  "kind": "TEST_SCOPED_RECONCILE",
+  "at": "2026-09-27T17:50:17.041Z",
+  "gitSha": "2d5d3ae99e65941e063409a3b4b8e599e5a2c312",
+  "targetRef": "hzulujxgonszuleqticb",
+  "results": [
+    {
+      "file": "scripts/reconcile-money.mjs",
+      "exitCode": 0,
+      "result": {
+        "status": 0,
+        "reason": "pass",
+        "count": 2115,
+        "pages": 3,
+        "sourceDigest": "184e9060c60916c8fd5090e2a4c9b0b023e623a58d6a13188dbaba8b4aa7dc27",
+        "targetRef": "hzulujxgonszuleqticb",
+        "mode": "v1",
+        "at": "2026-09-27T17:50:15.155Z"
+      }
+    },
+    {
+      "file": "scripts/reconcile-money-v2.mjs",
+      "exitCode": 0,
+      "result": {
+        "status": 0,
+        "reason": "pass",
+        "accounts": 17,
+        "postings": 3722,
+        "postingDigest": "8db4526c91a24153c1df7e226307e2dfee4cc6182744119e5e0d9c28d4226299",
+        "targetRef": "hzulujxgonszuleqticb",
+        "mode": "v2",
+        "at": "2026-09-27T17:50:17.032Z"
+      }
+    }
+  ],
+  "limits": [
+    "V1 HTTP endpoints are not one database snapshot.",
+    "V2 SQL pagination is not PostgREST cap proof."
+  ]
+}
