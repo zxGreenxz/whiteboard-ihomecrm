@@ -10,6 +10,11 @@
   "scripts": {
     "test:contract-lifecycle": "node --test scripts/tests/contract-lifecycle/*.test.mjs",
     "baseline:contract-lifecycle": "node scripts/contract-lifecycle/baseline.mjs",
+    "test:legacy-approval": "node scripts/contract-lifecycle/legacy-entrypoints-live.mjs",
+    "test:legacy-approval-parity": "node scripts/contract-lifecycle/legacy-parity-live.mjs",
+    "test:legacy-approval-negatives": "node scripts/contract-lifecycle/legacy-negatives-live.mjs",
+    "test:legacy-approval-http": "node scripts/contract-lifecycle/legacy-http-live.mjs",
+    "test:legacy-approval-auth": "node scripts/contract-lifecycle/legacy-auth-live.mjs",
     "voice-lab:build": "vite build --config tools/voice-task-lab/vite.config.ts",
     "voice-lab:start": "node tools/voice-task-lab/run-local.mjs",
     "voice-lab:test": "node --test tools/voice-task-lab/*.test.mjs",

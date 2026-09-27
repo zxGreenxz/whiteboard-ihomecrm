@@ -55,3 +55,38 @@ authorization qua JWT**. Chưa kiểm duyệt/chi hoàn thành công sau commit,
 mutation theo vai trò, concurrency, đối chiếu tiền toàn hệ thống hoặc các tổ hợp
 flags khác. Credit dương mới chứng minh FORFEIT với route hiện tại. Đột biến local
 chỉ thay oracle/copy snapshot; không phải đột biến SQL/permission runtime.
+
+## P1a.1 — legacy approval eligibility
+
+`legacy-entrypoints.test.mjs` là oracle local không credential, nằm trong glob CI
+hiện tại. Các lệnh live dưới đây chỉ chạy khi opt-in, đọc vault gốc và CA tại
+`.superpowers/sdd/2026-09-27-contract-lifecycle/supabase-ca.crt`; evidence đầy đủ
+ở cùng thư mục ignored, chỉ chứa fixture mới (không đưa actor/cấu hình thật vào
+bản public). Dùng Node24.18.0 theo runtime matrix.
+
+```sh
+npm run test:legacy-approval -- --test-rollback --migration supabase/migrations/20260927180948_approve_termination_eligibility.sql
+npm run test:legacy-approval-parity -- --test-rollback
+npm run test:legacy-approval-negatives -- --test-rollback
+npm run test:legacy-approval-http -- --test-commit
+npm run test:legacy-approval-auth -- --test-commit
+```
+
+Hai lệnh `--test-commit` thực hiện cleanup rehearsal trong ROLLBACK trước seed.
+HTTP runner áp migration vào **TEST**, tạo fixture riêng rồi gọi PostgREST bằng
+JWT owner; auth runner thêm building + scope + override riêng cho manager.
+Không tắt trigger, không sửa role/membership có sẵn. Cleanup transaction riêng
+kiểm marker/org/linkage, live FK closure và exact row counts; lỗi cleanup làm
+lệnh thất bại. Giữ audit append-only và bước tăng counter/authorization_version;
+không tuyên bố database không còn mọi dấu vết.
+
+Parity SQL đối chiếu với definition legacy ghim MD5, gồm ACTIVE/EXTENDED,
+refund capped/uncapped, thu thêm, zero và softdeleted COMPLETED replay.
+Capped/uncapped chỉ có bằng chứng SQL rollback, không gọi là JWT proof.
+HTTP concurrency quan sát hai calls chờ khóa, chỉ một phiếu và một noop.
+Hai DRAFT trên cùng contract không dựng được: unique index hiện hành trả23505;
+không gỡ index để ép ca đó chạy. Đây là giới hạn tiền đề, không phải pass race.
+
+Chỉ thay eligibility của `approve_contract_termination_v1`; raw-table bypass,
+global lock protocol, private capabilities và concurrent authority-revocation
+linearization vẫn thuộc các phần việc sau. Không phải release toàn lifecycle.
