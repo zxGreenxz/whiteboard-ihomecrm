@@ -388,6 +388,11 @@ $fn$;
 
 -- ---------------------------------------------------------------------------
 -- 6. Ghi — chỉ super admin / chủ công ty của đúng tổ chức người nhận lương.
+--    Idempotency đồng thời: hai lệnh cùng (người gọi, khoá) cùng lọt qua bước tra
+--    khoá thì lệnh sau CHỜ index unique *_request tới khi lệnh trước commit, rồi vấp
+--    unique_violation. Khối EXCEPTION đọc lại dòng đã commit, so hash và PHÁT LẠI kết
+--    quả như lệnh lặp thường (đo trên TEST 27/09: trước khi sửa lệnh sau nhận 23505).
+--    Chỉ nuốt đúng vi phạm của index khoá; vi phạm khác ném tiếp.
 
 CREATE OR REPLACE FUNCTION public.salary_recurring_create_v1(
   p_staff_id        uuid,
@@ -413,6 +418,7 @@ DECLARE
   v_item  uuid;
   v_ver   uuid;
   v_cu    record;
+  v_rang  text;
 BEGIN
   IF v_actor IS NULL THEN
     RAISE EXCEPTION 'Bạn chưa đăng nhập' USING ERRCODE = '42501';
@@ -475,12 +481,25 @@ BEGIN
       USING ERRCODE = '55000';
   END IF;
 
-  INSERT INTO app_private.salary_recurring_items
-    (organization_id, staff_id, label, category, building_id, note, request_key, request_hash, created_by)
-  VALUES
-    (v_org, p_staff_id, btrim(p_label), p_category, p_building_id, NULLIF(btrim(p_note), ''),
-     v_key, v_hash, v_actor)
-  RETURNING id INTO v_item;
+  BEGIN
+    INSERT INTO app_private.salary_recurring_items
+      (organization_id, staff_id, label, category, building_id, note, request_key, request_hash, created_by)
+    VALUES
+      (v_org, p_staff_id, btrim(p_label), p_category, p_building_id, NULLIF(btrim(p_note), ''),
+       v_key, v_hash, v_actor)
+    RETURNING id INTO v_item;
+  EXCEPTION WHEN unique_violation THEN
+    GET STACKED DIAGNOSTICS v_rang = CONSTRAINT_NAME;
+    IF v_rang IS DISTINCT FROM 'salary_recurring_items_request' THEN RAISE; END IF;
+    SELECT i.id, i.request_hash INTO v_cu
+      FROM app_private.salary_recurring_items i
+     WHERE i.created_by = v_actor AND i.request_key = v_key;
+    IF NOT FOUND THEN RAISE; END IF;
+    IF v_cu.request_hash <> v_hash THEN
+      RAISE EXCEPTION 'Khoá idempotency đã dùng cho một nội dung khác' USING ERRCODE = '22023';
+    END IF;
+    RETURN jsonb_build_object('item_id', v_cu.id, 'lap_lai', true);
+  END;
 
   INSERT INTO app_private.salary_recurring_item_versions
     (item_id, organization_id, kind, effective_month, amount, reason, request_key, request_hash, created_by)
@@ -512,6 +531,7 @@ DECLARE
   v_thang date;
   v_ver   uuid;
   v_cu    record;
+  v_rang  text;
 BEGIN
   IF v_actor IS NULL THEN
     RAISE EXCEPTION 'Bạn chưa đăng nhập' USING ERRCODE = '42501';
@@ -563,11 +583,24 @@ BEGIN
       USING ERRCODE = '55000';
   END IF;
 
-  INSERT INTO app_private.salary_recurring_item_versions
-    (item_id, organization_id, kind, effective_month, amount, reason, request_key, request_hash, created_by)
-  VALUES
-    (p_item_id, v_item.organization_id, p_kind, v_thang, p_amount, btrim(p_reason), v_key, v_hash, v_actor)
-  RETURNING id INTO v_ver;
+  BEGIN
+    INSERT INTO app_private.salary_recurring_item_versions
+      (item_id, organization_id, kind, effective_month, amount, reason, request_key, request_hash, created_by)
+    VALUES
+      (p_item_id, v_item.organization_id, p_kind, v_thang, p_amount, btrim(p_reason), v_key, v_hash, v_actor)
+    RETURNING id INTO v_ver;
+  EXCEPTION WHEN unique_violation THEN
+    GET STACKED DIAGNOSTICS v_rang = CONSTRAINT_NAME;
+    IF v_rang IS DISTINCT FROM 'salary_recurring_item_versions_request' THEN RAISE; END IF;
+    SELECT v.id, v.request_hash INTO v_cu
+      FROM app_private.salary_recurring_item_versions v
+     WHERE v.created_by = v_actor AND v.request_key = v_key;
+    IF NOT FOUND THEN RAISE; END IF;
+    IF v_cu.request_hash <> v_hash THEN
+      RAISE EXCEPTION 'Khoá idempotency đã dùng cho một nội dung khác' USING ERRCODE = '22023';
+    END IF;
+    RETURN jsonb_build_object('version_id', v_cu.id, 'lap_lai', true);
+  END;
 
   RETURN jsonb_build_object('version_id', v_ver, 'lap_lai', false);
 END
@@ -644,6 +677,7 @@ DECLARE
   v_thang date;
   v_id    uuid;
   v_cu    record;
+  v_rang  text;
 BEGIN
   IF v_actor IS NULL THEN
     RAISE EXCEPTION 'Bạn chưa đăng nhập' USING ERRCODE = '42501';
@@ -699,13 +733,26 @@ BEGIN
       USING ERRCODE = '55000';
   END IF;
 
-  INSERT INTO app_private.salary_line_overrides
-    (organization_id, staff_id, period_month, line_key, line_label, computed_amount, amount,
-     reason, request_key, request_hash, created_by)
-  VALUES
-    (v_org, p_staff_id, v_thang, p_line_key, btrim(p_line_label), p_computed_amount, p_amount,
-     btrim(p_reason), v_key, v_hash, v_actor)
-  RETURNING id INTO v_id;
+  BEGIN
+    INSERT INTO app_private.salary_line_overrides
+      (organization_id, staff_id, period_month, line_key, line_label, computed_amount, amount,
+       reason, request_key, request_hash, created_by)
+    VALUES
+      (v_org, p_staff_id, v_thang, p_line_key, btrim(p_line_label), p_computed_amount, p_amount,
+       btrim(p_reason), v_key, v_hash, v_actor)
+    RETURNING id INTO v_id;
+  EXCEPTION WHEN unique_violation THEN
+    GET STACKED DIAGNOSTICS v_rang = CONSTRAINT_NAME;
+    IF v_rang IS DISTINCT FROM 'salary_line_overrides_request' THEN RAISE; END IF;
+    SELECT o.id, o.request_hash INTO v_cu
+      FROM app_private.salary_line_overrides o
+     WHERE o.created_by = v_actor AND o.request_key = v_key;
+    IF NOT FOUND THEN RAISE; END IF;
+    IF v_cu.request_hash <> v_hash THEN
+      RAISE EXCEPTION 'Khoá idempotency đã dùng cho một nội dung khác' USING ERRCODE = '22023';
+    END IF;
+    RETURN jsonb_build_object('override_id', v_cu.id, 'lap_lai', true);
+  END;
 
   RETURN jsonb_build_object('override_id', v_id, 'lap_lai', false);
 END
