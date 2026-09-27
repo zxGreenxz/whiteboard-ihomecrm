@@ -27,6 +27,8 @@ import {
 // YYYY-MM-01 cho tháng lệch n so với mốc — canonical ở lib/salaryPeriod (10E).
 import { shiftPeriodMonth as shiftMonth, vnYmOf } from "@/lib/salaryPeriod";
 import { withOrgAll } from "@/lib/orgPayload";
+import { applySalaryExtras } from "@/lib/salaryOverrides";
+import { EMPTY_SALARY_EXTRAS, fetchSalaryExtras, type SalaryExtras } from "@/hooks/useSalaryExtras";
 
 export interface SalPeriod {
   periodMonth: string; // YYYY-MM-01
@@ -39,6 +41,8 @@ export interface ManagerSalaryData {
   managers: SalManager[];
   period: SalPeriod;
   ownerId: string;
+  /** Khoản định kỳ + số ghi đè của kỳ (đã áp vào managers). */
+  extras: SalaryExtras;
 }
 
 const num = (v: any) => Number(v) || 0;
@@ -73,7 +77,7 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
       const configs = ((cfgRaw || []) as any[]).filter(
         (c) => !c.effective_to || c.effective_to >= start
       );
-      if (configs.length === 0) return { managers: [], period, ownerId: "" };
+      if (configs.length === 0) return { managers: [], period, ownerId: "", extras: EMPTY_SALARY_EXTRAS };
 
       const staffIds: string[] = configs.map((c) => c.staff_id);
       const ownerId: string = configs[0].user_id;
@@ -141,6 +145,7 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
         ieRes,
         buildingsRes,
         trendRes,
+        extras,
       ] = await Promise.all([
         (supabase.from("profiles").select("id, full_name") as any).in("id", staffIds),
         supabase.rpc("salary_work_ledger", { p_period_month: periodMonth, p_staff_id: undefined }),
@@ -162,6 +167,8 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
           .in("staff_id", staffIds)
           .gte("period_month", shiftMonth(periodMonth, -5))
           .lte("period_month", periodMonth),
+        // Khoản định kỳ + số ghi đè (super admin / chủ công ty). Server đã lọc mốc chốt kỳ.
+        fetchSalaryExtras(configs.map((c) => c.organization_id), periodMonth),
       ]);
 
       const nameById = new Map<string, string>(
@@ -452,7 +459,7 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
           }
         }
 
-        const m: SalManager = {
+        const m0: SalManager = {
           id: staff,
           name: full,
           short,
@@ -498,7 +505,11 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
           frozen: locked
             ? { base: num(mRow.base_salary), investment: num(mRow.investment_profit), commission: num(mRow.commission_total), advance: num(mRow.advances_total) }
             : null,
+          organizationId: c.organization_id ?? null,
         };
+        // Gắn khoản định kỳ + số ghi đè TRƯỚC salCalc ⇒ thực nhận, chốt kỳ và phiếu chi
+        // đều dùng số đã sửa. Kỳ đã chốt: calc vẫn đọc số đóng băng bên dưới.
+        const m = applySalaryExtras(m0, extras.recurring, extras.overrides);
 
         // calc: chốt → số đã đóng băng; nháp → tính live
         if (locked) {
@@ -533,7 +544,7 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
       });
 
       period.lockedAt = lockedAt ? new Date(lockedAt).toLocaleString("vi-VN") : null;
-      return { managers, period, ownerId };
+      return { managers, period, ownerId, extras };
     },
   });
 };

@@ -20,6 +20,8 @@ import SalaryFundOverview, { type FundPeriod } from "@/components/salary/SalaryF
 import SalaryIncomePay from "@/components/salary/SalaryIncomePay";
 import SalaryFundModal from "@/components/salary/SalaryFundModal";
 import { useSalaryFeeFund, useSalaryPendingPayouts } from "@/hooks/useSalaryFund";
+import { useSalaryCanEditAmounts } from "@/hooks/useSalaryExtras";
+import SalaryAmountEditDialog, { type EditableLine } from "@/components/salary/SalaryAmountEditDialog";
 import type { SalAdjustment, SalManager } from "@/lib/managerSalary";
 import SalaryLedger from "@/components/salary/SalaryLedger";
 import SalaryConfig from "@/components/salary/SalaryConfig";
@@ -91,6 +93,7 @@ export default function ManagerSalaryPage() {
   const [person, setPerson] = useState<string | null>(null);
   const [fundModal, setFundModal] = useState<"funding" | "rules" | null>(null);
   const [adjDialog, setAdjDialog] = useState<{ m: SalManager; edit?: SalAdjustment | null } | null>(null);
+  const [amountEdit, setAmountEdit] = useState<{ m: SalManager; line: EditableLine } | null>(null);
   const [showLock, setShowLock] = useState(false);
   const [showBulk, setShowBulk] = useState(false);
   const [view, setView] = useState<"admin" | "self">("admin");
@@ -149,6 +152,13 @@ export default function ManagerSalaryPage() {
     toggleExcluded.mutate({ jobId, excluded: next });
 
   const managers = data?.managers || [];
+  // Super admin / chủ công ty của tổ chức đang xem mới sửa được số tiền & khoản định kỳ
+  // (server quyết; nút chỉ là lối vào — RPC tự chặn lần nữa).
+  const salaryOrgId = managers.find((m) => m.organizationId)?.organizationId ?? null;
+  const { data: canEditAmounts = false } = useSalaryCanEditAmounts(isAdmin && !phone ? salaryOrgId : null);
+  // Chủ công ty cấp thêm của kỳ = các dòng định kỳ loại Lương QL bổ sung đang phát sinh.
+  const ownerOf = (ms: SalManager[] | undefined) =>
+    (ms || []).reduce((s, m) => s + m.adjustments.filter((a) => a.recurring?.category === "SUPPLEMENTARY").reduce((x, a) => x + a.amount, 0), 0);
   const { data: pendingPayouts = [] } = useSalaryPendingPayouts(periodMonth, wantFund ? managers.map((m) => m.id) : []);
   const period = data?.period || { label: "", year: 0, periodMonth, lockedAt: null };
   const ownerId = data?.ownerId || "";
@@ -254,9 +264,9 @@ export default function ManagerSalaryPage() {
   const previewMgr = view === "self" ? managers.find((m) => m.id === selfId) : null;
   const allLocked = (ms: SalManager[] | undefined) => !!ms && ms.length > 0 && ms.every((m) => m.status === "LOCKED");
   const fundPeriods: FundPeriod[] = [
-    { periodMonth: prev2, locked: allLocked(dPrev2?.managers), managers: dPrev2?.managers || [], fee: fee2.total, loading: lPrev2 || fee2.isLoading },
-    { periodMonth: prev1, locked: allLocked(dPrev1?.managers), managers: dPrev1?.managers || [], fee: fee1.total, loading: lPrev1 || fee1.isLoading },
-    { periodMonth, locked: monthLocked, managers, fee: fee0.total, loading: isLoading || fee0.isLoading },
+    { periodMonth: prev2, locked: allLocked(dPrev2?.managers), managers: dPrev2?.managers || [], fee: fee2.total, owner: ownerOf(dPrev2?.managers), loading: lPrev2 || fee2.isLoading },
+    { periodMonth: prev1, locked: allLocked(dPrev1?.managers), managers: dPrev1?.managers || [], fee: fee1.total, owner: ownerOf(dPrev1?.managers), loading: lPrev1 || fee1.isLoading },
+    { periodMonth, locked: monthLocked, managers, fee: fee0.total, owner: ownerOf(managers), loading: isLoading || fee0.isLoading },
   ];
   const pendingStaff = new Set(pendingPayouts.map((p) => p.staffId));
   const openPerson = (id: string) => { setPerson(id); setTab("people"); };
@@ -337,6 +347,7 @@ export default function ManagerSalaryPage() {
                 pending={pendingPayouts} accounts={accounts} canPay={canPay}
                 onPayout={onPayout} payBusy={payout.isPending} onOpenLedger={openLedger}
                 onAdjust={(m, edit) => setAdjDialog({ m, edit })} onRemoveAdjustment={onRemoveAdjustment}
+                canEditAmounts={canEditAmounts} onEditAmount={(m, line) => setAmountEdit({ m, line })}
               />
             ) : (
               <>
@@ -362,8 +373,10 @@ export default function ManagerSalaryPage() {
 
         {fundModal && (
           <SalaryFundModal tab={fundModal} onTab={setFundModal} onClose={() => setFundModal(null)}
-            periodMonth={periodMonth} locked={monthLocked} fee={fee0} managers={managers} />
+            periodMonth={periodMonth} locked={monthLocked} fee={fee0} managers={managers}
+            recurring={data?.extras.recurring ?? []} extrasAvailable={data?.extras.available ?? false} canEdit={canEditAmounts} />
         )}
+        {amountEdit && <SalaryAmountEditDialog m={amountEdit.m} line={amountEdit.line} periodMonth={periodMonth} onClose={() => setAmountEdit(null)} />}
         {adjDialog && <AdjustDialog m={adjDialog.m} edit={adjDialog.edit} onClose={() => setAdjDialog(null)}
           onSave={(p) => onSaveAdjustment(adjDialog.m.id, p)} />}
         {showLock && <LockDialog locked={monthLocked} period={period} onClose={() => setShowLock(false)} onConfirm={() => monthLocked ? onUnlock() : onLock()} />}

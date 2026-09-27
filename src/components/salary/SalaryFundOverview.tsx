@@ -17,6 +17,8 @@ export interface FundPeriod {
   managers: SalManager[];
   /** Tổng phí Quản lý đã công bố giá cho tháng. */
   fee: number;
+  /** Chủ công ty cấp thêm (khoản định kỳ Lương QL bổ sung gắn toà) của kỳ. */
+  owner?: number;
   loading: boolean;
 }
 
@@ -51,6 +53,9 @@ export default function SalaryFundOverview({ periods, feeBuildings, feeUnpublish
   const [excOpen, setExcOpen] = useState(false);
   const cur = periods[periods.length - 1];
   const sel = periods[Math.min(cmpIdx, periods.length - 1)];
+  // Nguồn lương = phí Quản lý + chủ cấp thêm. Tách lương bổ sung riêng ⇒ lương căn bản
+  // so với phí Quản lý thôi (phần bổ sung do chủ cấp, đứng ngoài phép so).
+  const fundOf = (p: FundPeriod) => (sep ? p.fee : p.fee + (p.owner ?? 0));
 
   // ---- 5 ô số (kỳ đang xem) ----
   const mgrs = cur.managers;
@@ -66,8 +71,8 @@ export default function SalaryFundOverview({ periods, feeBuildings, feeUnpublish
     return s + Math.max(0, left - (pendingBy.get(m.id) || 0));
   }, 0);
   const cards = [
-    { label: "Nguồn lương tháng", val: salFmt(cur.fee), bar: "#9fcfb6", fg: undefined,
-      sub: `Phí quản lý ${feeBuildings} tòa · chi ngày 1 hàng tháng` + (feeUnpublished ? ` · ${feeUnpublished} tòa chưa công bố giá` : ""), onClick: () => onOpenFund("funding") },
+    { label: "Nguồn lương tháng", val: salFmt(cur.fee + (cur.owner ?? 0)), bar: "#9fcfb6", fg: undefined,
+      sub: `Phí quản lý ${feeBuildings} tòa` + (cur.owner ? ` + chủ cấp ${salFmt(cur.owner)}` : " · chi ngày 1 hàng tháng") + (feeUnpublished ? ` · ${feeUnpublished} tòa chưa công bố giá` : ""), onClick: () => onOpenFund("funding") },
     { label: "Tổng lương vận hành", val: salFmt(opTotal), bar: "hsl(var(--foreground))", fg: undefined,
       sub: `${mgrs.length} người · ${cur.locked ? "đã chốt kỳ" : "tạm tính, chưa chốt kỳ"}`, onClick: () => mgrs[0] && onOpenPerson(mgrs[0].id) },
     { label: "Đã trả", val: salFmt(paid + adv), bar: "hsl(var(--status-neutral-strong))", fg: undefined,
@@ -87,7 +92,7 @@ export default function SalaryFundOverview({ periods, feeBuildings, feeUnpublish
   }), [periods, sep]);
   const R = rep[Math.min(cmpIdx, rep.length - 1)];
   const prevR = cmpIdx > 0 ? rep[cmpIdx - 1] : null;
-  const TR = R.total, FR = sel.fee;
+  const TR = R.total, FR = fundOf(sel);
   const fundLbl = sep ? "Phí quản lý" : "Nguồn lương";
   const groups = FUND_GROUPS.map((g) => ({ ...g, label: sep && g.key === "extra" ? "Phụ cấp" : g.label }));
   const gvals = groups.map((g) => R.gt[g.key]);
@@ -105,7 +110,7 @@ export default function SalaryFundOverview({ periods, feeBuildings, feeUnpublish
 
   // Cột 3 tháng
   const CH = 150;
-  const cMax = Math.max(1, ...rep.map((r) => Math.max(r.total, r.p.fee)));
+  const cMax = Math.max(1, ...rep.map((r) => Math.max(r.total, fundOf(r.p))));
 
   // Bảng thay đổi: nhóm → dòng (hợp key của cả 3 kỳ)
   const keyInfo = new Map<string, FundLine>();
@@ -125,7 +130,7 @@ export default function SalaryFundOverview({ periods, feeBuildings, feeUnpublish
       .forEach((l) => chg.push({ label: l.label, color: lineColor(l, 0), vals: rep.map((r) => valOf(r, l.key)), bold: 0, indent: true }));
   });
   chg.push({ label: "Tổng lương", color: "hsl(var(--foreground))", vals: rep.map((r) => r.total), bold: 2, indent: false });
-  chg.push({ label: fundLbl, color: "#9fcfb6", vals: rep.map((r) => r.p.fee), bold: 1, indent: false, muteDelta: true });
+  chg.push({ label: fundLbl, color: "#9fcfb6", vals: rep.map((r) => fundOf(r.p)), bold: 1, indent: false, muteDelta: true });
   const iCur = rep.indexOf(selCur), iPrev = rep.indexOf(selPrev);
 
   // Mỗi người
@@ -231,7 +236,7 @@ export default function SalaryFundOverview({ periods, feeBuildings, feeUnpublish
           <div style={{ padding: "20px 28px 12px", display: "flex", alignItems: "flex-end", justifyContent: "space-around", gap: 20, height: 260 }}>
             {rep.map((r, i) => {
               const a = i === cmpIdx;
-              const f = r.p.fee;
+              const f = fundOf(r.p);
               return (
                 <button key={r.p.periodMonth} onClick={() => setCmpIdx(i)}
                   style={{ border: 0, background: "transparent", padding: 0, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 6, flex: 1, maxWidth: 110, height: "100%", justifyContent: "flex-end", opacity: a ? 1 : .55 }}>

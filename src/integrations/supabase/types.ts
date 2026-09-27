@@ -23230,6 +23230,37 @@ export type Database = {
       }
       room_sort_key: { Args: { p_name: string }; Returns: string }
       run_recurring_vouchers_job: { Args: never; Returns: undefined }
+      salary_can_edit_amounts_v1: {
+        Args: { p_organization_id: string }
+        Returns: boolean
+      }
+      salary_line_override_list_v1: {
+        Args: { p_organization_id: string; p_period_month: string }
+        Returns: {
+          amount: number
+          computed_amount: number
+          created_at: string
+          created_by: string
+          created_by_name: string
+          line_key: string
+          line_label: string
+          reason: string
+          staff_id: string
+        }[]
+      }
+      salary_line_override_set_v1: {
+        Args: {
+          p_amount: number
+          p_computed_amount: number
+          p_idempotency_key: string
+          p_line_key: string
+          p_line_label: string
+          p_period_month: string
+          p_reason: string
+          p_staff_id: string
+        }
+        Returns: Json
+      }
       salary_payout_v1: {
         Args: {
           p_account_id: string
@@ -23241,6 +23272,52 @@ export type Database = {
           p_staff_id: string
           p_take_home: number
           p_voucher_date: string
+        }
+        Returns: Json
+      }
+      salary_recurring_create_v1: {
+        Args: {
+          p_amount: number
+          p_building_id: string
+          p_category: string
+          p_effective_month: string
+          p_idempotency_key: string
+          p_label: string
+          p_note: string
+          p_reason: string
+          p_staff_id: string
+        }
+        Returns: Json
+      }
+      salary_recurring_delete_v1: {
+        Args: { p_item_id: string; p_reason: string }
+        Returns: Json
+      }
+      salary_recurring_list_v1: {
+        Args: { p_organization_id: string; p_period_month: string }
+        Returns: {
+          amount_for_period: number
+          building_id: string
+          building_name: string
+          category: string
+          created_at: string
+          item_id: string
+          label: string
+          note: string
+          period_locked: boolean
+          staff_id: string
+          staff_name: string
+          versions: Json
+        }[]
+      }
+      salary_recurring_version_add_v1: {
+        Args: {
+          p_amount: number
+          p_effective_month: string
+          p_idempotency_key: string
+          p_item_id: string
+          p_kind: string
+          p_reason: string
         }
         Returns: Json
       }

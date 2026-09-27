@@ -1,12 +1,15 @@
 // Tab "Thu nhập & thanh toán" — gộp Thu nhập theo người + Thanh toán (bản Claude
 // Design 26/09/2026). Trái: người nhận · Giữa: khoản theo 3 nhóm nguồn · Phải: khung
-// thanh toán. Ghi tiền đi qua onPayout (salary_payout_v1, phiếu chờ duyệt) — không
-// có đường ghi mới.
+// thanh toán. Ghi tiền đi qua onPayout (salary_payout_v1, phiếu chờ duyệt).
+// Super admin / chủ công ty sửa được số tiền từng khoản thu nhập (onEditAmount →
+// salary_line_override_set_v1); số đã sửa đã áp sẵn trong SalManager (useManagerSalary).
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Link } from "react-router-dom";
 import { todayISO } from "@/lib/collect";
 import { fundLinesOf, isSupplementaryLabel } from "@/lib/salaryFundReport";
-import type { SalAdjustment, SalManager } from "@/lib/managerSalary";
+import type { SalAdjustment, SalAppliedOverride, SalManager } from "@/lib/managerSalary";
+import { RECURRING_CATEGORY_LABEL, RECURRING_SOURCE_LABEL } from "@/lib/salaryRecurring";
+import type { EditableLine } from "./SalaryAmountEditDialog";
 import type { PendingPayout } from "@/hooks/useSalaryFund";
 import type { SalaryAccount } from "./SalaryMonthly";
 import { salFmt } from "./salaryFormat";
@@ -31,6 +34,29 @@ interface Item {
   strike?: boolean;
   trace: [string, string][];
   adj?: SalAdjustment;
+  /** Khoá ghi đè số tiền (base, streak, job:…, rec:…, sale:…, dh:…) — không có thì không sửa được. */
+  key?: string;
+  /** Số máy tính (trước sửa tay). */
+  computed?: number;
+  ovr?: SalAppliedOverride | null;
+}
+
+// Dòng đã sửa tay: chip, dòng mô tả và các bước căn cứ hiện số máy tính + lý do.
+function withOverride(it: Item, ovr: SalAppliedOverride | undefined): Item {
+  if (!ovr) return { ...it, ovr: null, computed: it.amount ?? 0 };
+  return {
+    ...it,
+    ovr,
+    computed: ovr.computed,
+    chip: { t: "Sửa tay", tone: "tasks" },
+    why: `Máy tính ${salFmt(ovr.computed)} · ${ovr.reason}`,
+    trace: [
+      ...it.trace,
+      ["Số máy tính", salFmt(ovr.computed)],
+      ["Số đã sửa tay", `${salFmt(ovr.amount)} · ${ovr.reason}`],
+      ["Người sửa", `${ovr.byName || "—"} · ${new Date(ovr.at).toLocaleString("vi-VN")}`],
+    ],
+  };
 }
 
 function itemsOf(m: SalManager): Item[] {
@@ -41,8 +67,9 @@ function itemsOf(m: SalManager): Item[] {
     // dòng lệch theo số đã chốt của nhóm này.
     if (l.group === "extra" && l.key !== "extra-locked") continue;
     const isAdj = l.group === "extra";
-    out.push({
-      id: "vh:" + l.key, g: "vh", label: l.label, why: l.note || "", amount: l.amount, payable: true,
+    const key = l.key === "base" || (l.group === "work" && l.key !== "work-locked") ? l.key : undefined;
+    out.push(withOverride({
+      id: "vh:" + l.key, g: "vh", label: l.label, why: l.note || "", amount: l.amount, payable: true, key,
       chip: locked ? { t: "Đã chốt", tone: "success" } : isAdj ? { t: "Nhập tay", tone: "neutral" } : { t: "Tạm tính", tone: "warning" },
       trace: [
         ["Căn cứ", l.note || l.label],
@@ -51,9 +78,24 @@ function itemsOf(m: SalManager): Item[] {
         ["Trạng thái kỳ", locked ? "Đã chốt — dùng số đóng băng" : "Chưa chốt — số có thể đổi đến khi chốt"],
         ["Nguồn chịu tiền", GROUP.vh.src],
       ],
-    });
+    }, key ? m.overrides?.[key] : undefined));
   }
-  m.adjustments.forEach((a, i) => out.push({
+  m.adjustments.filter((a) => a.recurring).forEach((a) => {
+    const r = a.recurring!;
+    const key = a.id as string;
+    out.push(withOverride({
+      id: key, g: "vh", label: a.label, amount: a.amount, payable: true, key,
+      why: `${RECURRING_CATEGORY_LABEL[r.category]} định kỳ` + (a.note ? " · " + a.note : ""),
+      chip: locked ? { t: "Đã chốt", tone: "success" } : { t: "Định kỳ", tone: "info" },
+      trace: [
+        ["Cách phát sinh", "Khoản định kỳ — tự áp mỗi kỳ theo phiên bản đang hiệu lực"],
+        ["Loại", RECURRING_CATEGORY_LABEL[r.category] + (r.buildingName ? ` · ${r.buildingName}` : "")],
+        ["Nguồn chịu tiền", RECURRING_SOURCE_LABEL[r.category] + (r.category === "SUPPLEMENTARY" ? " — không ghi vào thu chi của toà" : "")],
+        ["Đổi mức / ngừng", "Nguồn lương & khoản định kỳ → Khoản định kỳ"],
+      ],
+    }, m.overrides?.[key]));
+  });
+  m.adjustments.filter((a) => !a.recurring).forEach((a, i) => out.push({
     id: "adj:" + (a.id || i), g: "vh", label: a.label, amount: a.amount, payable: true, adj: a,
     why: (a.amount < 0 ? "Trừ nhập tay" : "Thưởng nhập tay") + (a.note ? " · " + a.note : ""),
     chip: locked ? { t: "Đã chốt", tone: "success" } : { t: "Nhập tay", tone: "neutral" },
@@ -64,12 +106,15 @@ function itemsOf(m: SalManager): Item[] {
       ["Nguồn chịu tiền", isSupplementaryLabel(a.label) && a.amount > 0 ? "Chủ cấp bổ sung" : GROUP.vh.src],
     ],
   }));
-  m.commissionItems.forEach((c, i) => out.push({
-    id: "sale:" + (c.voucherId || i), g: "sale", label: c.label, amount: c.amount, payable: true,
-    why: locked ? "Đã chốt cùng bảng lương" : "Phiếu Sale nguồn chưa duyệt — tự duyệt khi chốt lương",
-    chip: { t: "Đã xác nhận", tone: "success" },
-    trace: [["Phiếu Sale nguồn", c.label], ["Chi phí tòa", "Ghi một lần tại phiếu Sale nguồn — trả qua lương không ghi thêm"], ["Nguồn chịu tiền", GROUP.sale.src]],
-  }));
+  m.commissionItems.forEach((c, i) => {
+    const key = c.voucherId ? "sale:" + c.voucherId : undefined;
+    out.push(withOverride({
+      id: "sale:" + (c.voucherId || i), g: "sale", label: c.label, amount: c.amount, payable: true, key,
+      why: locked ? "Đã chốt cùng bảng lương" : "Phiếu Sale nguồn chưa duyệt — tự duyệt khi chốt lương",
+      chip: { t: "Đã xác nhận", tone: "success" },
+      trace: [["Phiếu Sale nguồn", c.label], ["Chi phí tòa", "Ghi một lần tại phiếu Sale nguồn — trả qua lương không ghi thêm"], ["Nguồn chịu tiền", GROUP.sale.src]],
+    }, key ? m.overrides?.[key] : undefined));
+  });
   m.commissionFlagged.forEach((c, i) => out.push({
     id: "sale-paid:" + (c.voucherId || i), g: "sale", label: c.label, amount: c.amount, payable: false, strike: true,
     why: "Phiếu đã duyệt/chi ở nơi khác — đối chiếu, không chuyển lại",
@@ -83,12 +128,15 @@ function itemsOf(m: SalManager): Item[] {
       trace: [["Trạng thái", "Lợi nhuận tòa chưa chốt"], ["Nguồn chịu tiền", GROUP.dh.src]],
     });
   } else {
-    m.investmentBy.forEach((a, i) => out.push({
-      id: "dh:" + a.b + i, g: "dh", label: `${a.b} · lợi nhuận kỳ`, amount: a.amount, payable: a.amount !== 0,
-      why: a.amount > 0 ? "Đã chốt · phân bổ theo thỏa thuận hiện hành" : "Đã chốt · phần phân bổ bằng 0",
-      chip: a.amount > 0 ? { t: "Đã xác nhận", tone: "success" } : { t: "Đã chốt · bằng 0", tone: "neutral" },
-      trace: [["Tòa", a.b], ["Lợi nhuận tòa", "Đã chốt"], ["Thỏa thuận", "Tỷ lệ đọc từ thỏa thuận tòa (không nhập tay ở đây)"], ["Nguồn chịu tiền", GROUP.dh.src]],
-    }));
+    m.investmentBy.forEach((a, i) => {
+      const key = "dh:" + a.b;
+      out.push(withOverride({
+        id: "dh:" + a.b + i, g: "dh", label: `${a.b} · lợi nhuận kỳ`, amount: a.amount, payable: a.amount !== 0, key,
+        why: a.amount > 0 ? "Đã chốt · phân bổ theo thỏa thuận hiện hành" : "Đã chốt · phần phân bổ bằng 0",
+        chip: a.amount > 0 ? { t: "Đã xác nhận", tone: "success" } : { t: "Đã chốt · bằng 0", tone: "neutral" },
+        trace: [["Tòa", a.b], ["Lợi nhuận tòa", "Đã chốt"], ["Thỏa thuận", "Tỷ lệ đọc từ thỏa thuận tòa"], ["Nguồn chịu tiền", GROUP.dh.src]],
+      }, m.overrides?.[key]));
+    });
   }
   return out;
 }
@@ -107,6 +155,9 @@ interface Props {
   onOpenLedger: (f: { who: string }) => void;
   onAdjust: (m: SalManager, edit?: SalAdjustment | null) => void;
   onRemoveAdjustment: (adjId: string) => void;
+  /** Super admin / chủ công ty của tổ chức (server quyết qua salary_can_edit_amounts_v1). */
+  canEditAmounts: boolean;
+  onEditAmount: (m: SalManager, line: EditableLine) => void;
 }
 
 const card: CSSProperties = { background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 12, boxShadow: "var(--shadow-sm)" };
@@ -122,6 +173,10 @@ export default function SalaryIncomePay(props: Props) {
   useEffect(() => { setJustPaid(new Set()); }, [pendingKey]);
   if (!m) return null;
   const pendingOf = (id: string) => pending.filter((p) => p.staffId === id);
+  const editOf = (i: Item): (() => void) | undefined =>
+    props.canEditAmounts && m.status !== "LOCKED" && i.key && i.amount != null
+      ? () => props.onEditAmount(m, { key: i.key as string, label: i.label, computed: i.computed ?? i.amount ?? 0, current: i.amount ?? 0, ovr: i.ovr ?? null })
+      : undefined;
 
   return (
     <div style={{ display: "flex", flexWrap: "wrap", gap: 18, alignItems: "flex-start" }}>
@@ -145,20 +200,22 @@ export default function SalaryIncomePay(props: Props) {
         })}
       </div>
 
-      <PersonDetail key={m.id} m={m} {...props} pendingList={pendingOf(m.id)} onTrace={setTrace}
+      <PersonDetail key={m.id} m={m} {...props} pendingList={pendingOf(m.id)} onTrace={setTrace} editOf={editOf}
         justPaid={justPaid.has(m.id)}
         onPayout={(...a) => { setJustPaid((s) => new Set(s).add(a[0])); props.onPayout(...a); }} />
 
       {trace && <TraceDrawer item={trace} who={m.name} period={`${period.label}/${period.year}`} onClose={() => setTrace(null)}
-        onOpenLedger={trace.g === "vh" && !trace.adj ? () => { setTrace(null); props.onOpenLedger({ who: m.id }); } : undefined}
+        onOpenLedger={trace.g === "vh" && !trace.adj && !trace.id.startsWith("rec:") ? () => { setTrace(null); props.onOpenLedger({ who: m.id }); } : undefined}
         onEdit={trace.adj && m.status !== "LOCKED" ? () => { const a = trace.adj; setTrace(null); props.onAdjust(m, a); } : undefined}
-        onRemove={trace.adj?.id && m.status !== "LOCKED" ? () => { const id = trace.adj!.id!; setTrace(null); props.onRemoveAdjustment(id); } : undefined} />}
+        onRemove={trace.adj?.id && m.status !== "LOCKED" ? () => { const id = trace.adj!.id!; setTrace(null); props.onRemoveAdjustment(id); } : undefined}
+        onEditAmount={(() => { const f = editOf(trace); return f ? () => { setTrace(null); f(); } : undefined; })()} />}
     </div>
   );
 }
 
-function PersonDetail({ m, period, accounts, canPay, onPayout, payBusy, justPaid, onAdjust, pendingList, onTrace }: Props & {
+function PersonDetail({ m, period, accounts, canPay, onPayout, payBusy, justPaid, onAdjust, pendingList, onTrace, editOf }: Props & {
   m: SalManager; pendingList: PendingPayout[]; onTrace: (i: Item) => void; justPaid: boolean;
+  editOf: (i: Item) => (() => void) | undefined;
 }) {
   const items = useMemo(() => itemsOf(m), [m]);
   const [off, setOff] = useState<Record<string, boolean>>({});
@@ -230,6 +287,12 @@ function PersonDetail({ m, period, accounts, canPay, onPayout, payBusy, justPaid
                   </button>
                   <StChip tone={i.chip.tone}>{i.chip.t}</StChip>
                   <span style={{ ...MONO, minWidth: 100, textAlign: "right", fontWeight: 600, textDecoration: i.strike ? "line-through" : "none", color: i.amount == null ? "hsl(var(--status-warning-fg))" : (i.amount < 0 ? "hsl(var(--status-danger-fg))" : undefined) }}>{i.amount == null ? "Chưa đủ cơ sở" : salFmt(i.amount)}</span>
+                  {(() => {
+                    const edit = editOf(i);
+                    return edit ? (
+                      <button className="sal-btn sal-btn--ghost sal-btn--icon sal-btn--sm" aria-label={"Sửa số tiền: " + i.label} title="Sửa số tiền" onClick={edit}>✎</button>
+                    ) : null;
+                  })()}
                 </div>
               );
             })}
@@ -286,8 +349,9 @@ function PersonDetail({ m, period, accounts, canPay, onPayout, payBusy, justPaid
   </>;
 }
 
-function TraceDrawer({ item, who, period, onClose, onOpenLedger, onEdit, onRemove }: {
+function TraceDrawer({ item, who, period, onClose, onOpenLedger, onEdit, onRemove, onEditAmount }: {
   item: Item; who: string; period: string; onClose: () => void; onOpenLedger?: () => void; onEdit?: () => void; onRemove?: () => void;
+  onEditAmount?: () => void;
 }) {
   const G = GROUP[item.g];
   return <>
@@ -316,6 +380,7 @@ function TraceDrawer({ item, who, period, onClose, onOpenLedger, onEdit, onRemov
           ))}
         </div>
         {onOpenLedger && <button className="sal-btn sal-btn--outline" onClick={onOpenLedger}>Xem bảng kê công việc</button>}
+        {onEditAmount && <button className="sal-btn sal-btn--outline" onClick={onEditAmount}>{item.ovr ? "Sửa lại số tiền / bỏ sửa tay" : "Sửa số tiền"}</button>}
         {(onEdit || onRemove) && (
           <div style={{ display: "flex", gap: 8 }}>
             {onEdit && <button className="sal-btn sal-btn--outline" onClick={onEdit}>Sửa khoản</button>}
