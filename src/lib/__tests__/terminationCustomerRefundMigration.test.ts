@@ -1,4 +1,4 @@
-import { boChuThichSql } from "../../../scripts/lib/bo-chu-thich.mjs";
+import { sqlEvidence } from "./helpers/sqlEvidence";
 // Guard TĨNH cho đợt "Hoàn lại khách khi thanh lý" (22/08/2026).
 //
 // Toàn bộ quyết định nằm trong plpgsql nên vitest không chạy được logic thật —
@@ -15,7 +15,7 @@ import { join } from "node:path";
 
 const MIG_DIR = join(process.cwd(), "supabase", "migrations");
 
-const stripComments = boChuThichSql;
+const stripComments = sqlEvidence;
 
 let corpusCache: { file: string; sql: string }[] | null = null;
 function migrationCorpus(): { file: string; sql: string }[] {
@@ -127,8 +127,16 @@ describe("hoàn lại khách — bất biến nghĩa vụ hoàn cọc", () => {
     const finalRecord = /v_audit\.id\s*:=\s*v_term_id;([\s\S]*?)UPDATE app_private\.termination_write_capabilities/.exec(before);
     expect(finalRecord, "final audit record before insert proof").not.toBeNull();
     // This is a straight-line record construction, not defaults behind IF FALSE.
-    expect(finalRecord![1].replace(/v_audit\.\w+\s*:=\s*[^;]+;/g, "").trim()).toBe("");
-    // Last assignment wins: an earlier zero/default cannot hide a later overwrite.
+    expect(finalRecord![1].replace(/v_audit\.\w+\s*:=\s*[^;]+;/g, "").trim(), "straight-line audit construction").toBe("");
+    const proofStart = finalRecord!.index! + finalRecord![0].length - "UPDATE app_private.termination_write_capabilities".length;
+    expect(before.slice(proofStart).replace(/\s+/g, " ").trim(), "audit proof-to-INSERT interval").toBe(
+      "UPDATE app_private.termination_write_capabilities SET expected_after=to_jsonb(v_audit)-ARRAY['refund_amount','total_deductions'],phase=0 " +
+      "WHERE transaction_id=pg_current_xact_id() AND backend_pid=pg_backend_pid() AND termination_id=v_term_id " +
+      "AND actor_id=auth.uid() AND phase=-1; " +
+      "IF NOT FOUND THEN RAISE EXCEPTION 'Missing audit insert proof' USING ERRCODE='42501'; END IF;",
+    );
+    // Only the proven straight-line construction supplies values. The exact
+    // proof interval above cannot mutate the record or supply a dead repair.
     for (const [column, expected] of Object.entries({
       outstanding_debt: "v_debt", early_termination_fee: "v_penalty+v_extra",
       prorated_rent: "0", prorated_days: "0", prorated_services: "0",
@@ -136,12 +144,9 @@ describe("hoàn lại khách — bất biến nghĩa vụ hoàn cọc", () => {
     })) {
       expect(columns, `audit column ${column}`).toContain(column);
       expect(values[columns.indexOf(column)], `audit INSERT value ${column}`).toBe(`v_audit.${column}`);
-      const assignments = [...before.matchAll(new RegExp(`\\bv_audit\\.${column}\\s*:=\\s*([^;]+);`, "gi"))];
+      const assignments = [...finalRecord![1].matchAll(new RegExp(`\\bv_audit\\.${column}\\s*:=\\s*([^;]+);`, "gi"))];
       expect(assignments.length, `audit assignment ${column}`).toBeGreaterThan(0);
       expect(assignments.at(-1)![1].replace(/\s/g, ""), `final audit assignment ${column}`).toBe(expected);
-      // Record replacement / SELECT INTO after that assignment would invalidate the proof.
-      const tail = before.slice(assignments.at(-1)!.index! + assignments.at(-1)![0].length);
-      expect(tail).not.toMatch(/\bv_audit\s*:=|\bINTO\s+(?:STRICT\s+)?v_audit\b/i);
     }
   });
 

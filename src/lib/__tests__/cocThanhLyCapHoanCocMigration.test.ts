@@ -1,4 +1,4 @@
-import { boChuThichSql } from "../../../scripts/lib/bo-chu-thich.mjs";
+import { sqlEvidence } from "./helpers/sqlEvidence";
 // Guard TĨNH cho đợt "Cọc & thanh lý" (plan con H2 · rà soát 15/09/2026).
 //
 // Bốn lỗi được vá đều nằm trong plpgsql nên vitest không chạy được logic thật.
@@ -11,7 +11,7 @@ import { join } from "node:path";
 
 const MIG_DIR = join(process.cwd(), "supabase", "migrations");
 
-const stripComments = boChuThichSql;
+const stripComments = sqlEvidence;
 
 let corpusCache: { file: string; sql: string }[] | null = null;
 function migrationCorpus(): { file: string; sql: string }[] {

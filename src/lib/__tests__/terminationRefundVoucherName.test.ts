@@ -1,4 +1,4 @@
-import { boChuThichSql } from "../../../scripts/lib/bo-chu-thich.mjs";
+import { sqlEvidence } from "./helpers/sqlEvidence";
 import { readFileSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 
@@ -16,7 +16,7 @@ import { describe, expect, it } from "vitest";
  * Đo ĐỊNH NGHĨA SỐNG (CREATE cuối), không ghim file.
  */
 const MIG_DIR = resolve(process.cwd(), "supabase/migrations");
-const stripComments = boChuThichSql;
+const stripComments = sqlEvidence;
 
 let corpusCache: { file: string; sql: string }[] | null = null;
 function migrationCorpus(): { file: string; sql: string }[] {
