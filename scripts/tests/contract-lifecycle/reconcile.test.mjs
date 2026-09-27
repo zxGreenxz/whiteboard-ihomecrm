@@ -78,6 +78,25 @@ test('V1 after snapshot opens a distinct read-only transaction and catches chang
   assert.equal(result.status, 1);
 });
 
+test('V1 real REST paginator classifies exact empty as mismatch while malformed range remains an error', async () => {
+  const before = [{ id: 'a', total_amount: '10' }];
+  const transaction = async (_config, { run }) => run({ query: async () => ({ rows: [{ id: scope.organizationId }] }) });
+  const sqlReader = async () => ({ before, truth: { count: 1, sum: '10' } });
+  const invoke = async (range, rows) => runV1({}, scope, { email: 'actor@test', password: 'secret' }, 'key', {
+    transaction, sqlReader,
+    createHttp: () => ({
+      signIn: async () => 'jwt',
+      rpc: async () => [{ cash_income: '10', internal_income: '0', pending_income: '0' }],
+      selectPage: async () => ({ headers: new Headers({ 'content-range': range }), rows }),
+    }),
+  });
+  const empty = await invoke('*/0', []);
+  assert.equal(empty.status, 1);
+  assert.equal(empty.reason, 'source_mismatch');
+  assert.equal((await invoke('bad-range', [])).status, 2);
+  assert.equal((await invoke('0-0/1', before)).status, 3);
+});
+
 test('V1 SQL source excludes a different organization before deriving RPC IDs', async () => {
   const query = async (sql, values) => {
     const scoped = sql.includes('organization_id = $1') && values[0] === scope.organizationId;

@@ -179,7 +179,7 @@ export async function runV1(config, scope, actor, apiKey, {
     }
     const filtered = `&organization_id=eq.${scope.organizationId}&type=eq.INCOME&approval_status=eq.APPROVED&deleted_at=is.null&voucher_date=gte.${win.start}&voucher_date=lte.${win.end}`;
     phase = 'rest';
-    const rest = await selectRows(http, { table: 'income_expenses', columns: 'id,organization_id,building_id,account_id,room_id,voucher_date,approval_status,deleted_at,total_amount', filters: filtered, token: jwt });
+    const rest = await selectRows(http, { table: 'income_expenses', columns: 'id,organization_id,building_id,account_id,room_id,voucher_date,approval_status,deleted_at,total_amount', filters: filtered, token: jwt, allowEmpty: true });
     const pages = Math.ceil(rest.length / PAGE);
     const combined = { cash_income: '0', internal_income: '0', pending_income: '0' };
     // BigInt result is rendered as decimal string before comparator parses it.
