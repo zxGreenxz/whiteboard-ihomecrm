@@ -98,15 +98,64 @@ test('query failure rolls back and closes; read-only snapshot rolls back', async
 test('HTTP errors cannot echo tokens; Auth sign-in sends password to exact origin', async () => {
   const secret = 'a-secret-token';
   const urls = [];
-  const fetch = async (url) => { urls.push(url); return { ok: false, status: 401, headers: new Headers(), async json() { return { code: 'PGRST301', message: secret }; } }; };
+  const headers = [];
+  const fetch = async (url, init) => { urls.push(url); headers.push(init.headers); return { ok: false, status: 401, headers: new Headers(), async json() { return { code: 'PGRST301', message: secret }; } }; };
   const http = createTestHttp(config, { fetch, apiKey: secret });
   await assert.rejects(http.rpc('check', {}), /verified TEST transaction/);
   await withTestTransaction(config, { connect: fakeConnect().connect, readOnly: true, run: async (verified) => {
     const http = createTestHttp(config, { verified, fetch, apiKey: secret });
     await assert.rejects(http.rpc('check', {}), (e) => e.message.includes('401') && !e.message.includes(secret));
+    await assert.rejects(http.signIn({ email: 'test@example.com', password: secret }), (e) => !e.message.includes(secret));
   } });
-  await assert.rejects(http.signIn({ email: 'test@example.com', password: secret }), (e) => !e.message.includes(secret));
   assert.deepEqual(urls, [`${config.url}/rest/v1/rpc/check`, `${config.url}/auth/v1/token?grant_type=password`]);
+  assert.equal(headers[0]['Content-Profile'], 'public');
+  assert.equal(headers[1]['Content-Profile'], undefined);
+});
+
+test('Auth sign-in rejects absent, expired and wrong-target admission before fetch', async () => {
+  let fetched = false;
+  const fetch = async () => { fetched = true; throw Error('unexpected fetch'); };
+  const credentials = { email: 'test@example.com', password: 'secret' };
+  await assert.rejects(createTestHttp(config, { apiKey: 'anon', fetch }).signIn(credentials), /verified TEST transaction/);
+  let expired;
+  await withTestTransaction(config, { connect: fakeConnect().connect, readOnly: true, run: async (verified) => {
+    expired = createTestHttp(config, { verified, apiKey: 'anon', fetch });
+    const otherRef = 'zzzzzzzzzzzzzzzzzzzz';
+    const wrong = createTestHttp({ expectedRef: otherRef, url: `https://${otherRef}.supabase.co` }, { verified, apiKey: 'anon', fetch });
+    await assert.rejects(wrong.signIn(credentials), /verified TEST transaction/);
+  } });
+  await assert.rejects(expired.signIn(credentials), /verified TEST transaction/);
+  assert.equal(fetched, false);
+});
+
+test('malformed successful RPC, Auth and SELECT bodies never expose parser data', async () => {
+  const canary = 'CANARY_JWT_AND_PERSONAL_DATA';
+  const fetch = async () => ({
+    ok: true, status: 200, headers: new Headers({ 'content-range': '0-0/1' }),
+    async json() { throw new SyntaxError(`Unexpected token ${canary}`); },
+  });
+  await withTestTransaction(config, { connect: fakeConnect().connect, readOnly: true, run: async (verified) => {
+    const http = createTestHttp(config, { verified, apiKey: 'anon', fetch });
+    for (const operation of [
+      () => http.rpc('check', {}),
+      () => http.signIn({ email: 'test@example.com', password: 'secret' }),
+      () => selectAll(http, { table: 'contracts' }),
+      () => http.selectPage({ table: 'contracts', offset: 0, limit: 1 }),
+    ]) {
+      await assert.rejects(operation(), (error) => error.message.includes('invalid JSON') && !error.message.includes(canary));
+    }
+  } });
+});
+
+test('direct SELECT page uses defined default columns, order and filters', async () => {
+  let url;
+  const fetch = async (requested) => {
+    url = requested;
+    return { ok: true, status: 200, headers: new Headers({ 'content-range': '0-0/1' }), async json() { return [{ id: 'a' }]; } };
+  };
+  const page = await createTestHttp(config, { apiKey: 'anon', fetch }).selectPage({ table: 'contracts', offset: 0, limit: 1 });
+  assert.deepEqual(page.rows, [{ id: 'a' }]);
+  assert.equal(url, `${config.url}/rest/v1/contracts?select=*&order=id.asc`);
 });
 
 test('paginated SELECT fetches past 1000 with exact count and order', async () => {
@@ -121,6 +170,17 @@ test('paginated SELECT fetches past 1000 with exact count and order', async () =
   const actual = await withTestTransaction(config, { connect: fakeConnect().connect, readOnly: true, run: (verified) => selectAll(createTestHttp(config, { verified, fetch, apiKey: 'anon' }), { table: 'contracts', orderBy: 'id', pageSize: 1000 }) });
   assert.equal(actual.length, 1001);
   assert.deepEqual(ranges, ['0-999', '1000-1999']);
+});
+
+test('REST SELECT selects public schema explicitly', async () => {
+  let headers;
+  const fetch = async (_url, init) => {
+    headers = init.headers;
+    return { ok: true, status: 200, headers: new Headers({ 'content-range': '0-0/1' }), async json() { return [{ id: 'a' }]; } };
+  };
+  const rows = await selectAll(createTestHttp(config, { apiKey: 'anon', fetch }), { table: 'contracts' });
+  assert.deepEqual(rows, [{ id: 'a' }]);
+  assert.equal(headers['Accept-Profile'], 'public');
 });
 
 test('pagination rejects missing count, changed count, short and unordered pages', async () => {

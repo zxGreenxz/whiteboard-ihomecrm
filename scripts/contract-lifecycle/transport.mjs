@@ -109,6 +109,15 @@ function safeCode(code) {
   return typeof code === 'string' && /^[A-Z0-9_]{2,20}$/.test(code) ? code : 'UNKNOWN';
 }
 
+async function safeJson(response) {
+  try {
+    return await response.json();
+  } catch {
+    // Native JSON parser errors can include snippets of JWT or personal data.
+    throw new Error('TEST HTTP invalid JSON response.');
+  }
+}
+
 export function createTestHttp(config, { verified, fetch: doFetch = globalThis.fetch, apiKey, accessToken } = {}) {
   const { url, expectedRef } = validateTestTarget(config);
   if (typeof doFetch !== 'function' || typeof apiKey !== 'string' || !apiKey) {
@@ -127,7 +136,7 @@ export function createTestHttp(config, { verified, fetch: doFetch = globalThis.f
     }
     if (!response.ok) {
       let code = 'UNKNOWN';
-      try { code = safeCode((await response.json())?.code); } catch { /* no body */ }
+      try { code = safeCode((await safeJson(response))?.code); } catch { /* no body */ }
       throw new Error(`TEST HTTP ${response.status} ${code}`);
     }
     return response;
@@ -136,26 +145,28 @@ export function createTestHttp(config, { verified, fetch: doFetch = globalThis.f
     async rpc(name, args = {}, { allowEmpty = false, token } = {}) {
       if (!IDENT.test(name)) throw new Error('Invalid TEST RPC name.');
       if (!verified || activeContexts.get(verified) !== expectedRef) throw new Error('RPC requires an active verified TEST transaction.');
-      const result = await (await request(`/rest/v1/rpc/${name}`, { method: 'POST', body: args, token, headers: { 'Content-Type': 'application/json' } })).json();
+      const result = await safeJson(await request(`/rest/v1/rpc/${name}`, { method: 'POST', body: args, token, headers: { 'Content-Type': 'application/json', 'Content-Profile': 'public' } }));
       if (!allowEmpty && (result === null || (Array.isArray(result) && result.length === 0))) throw new Error('TEST RPC returned no baseline evidence.');
       return result;
     },
     async signIn({ email, password }) {
       if (typeof email !== 'string' || !email || typeof password !== 'string' || !password) throw new Error('TEST sign-in credentials required.');
-      const result = await (await request('/auth/v1/token?grant_type=password', { method: 'POST', body: { email, password }, headers: { 'Content-Type': 'application/json' } })).json();
+      if (!verified || activeContexts.get(verified) !== expectedRef) throw new Error('Auth sign-in requires an active verified TEST transaction.');
+      const result = await safeJson(await request('/auth/v1/token?grant_type=password', { method: 'POST', body: { email, password }, headers: { 'Content-Type': 'application/json' } }));
       if (typeof result?.access_token !== 'string' || !result.access_token) throw new Error('TEST sign-in returned no access token.');
       return result.access_token;
     },
-    async selectPage({ table, columns, orderBy, filters, offset, limit, token }) {
+    async selectPage({ table, columns = '*', orderBy = 'id', filters = '', offset, limit, token }) {
       if (!IDENT.test(table) || !IDENT.test(orderBy) || !Number.isSafeInteger(offset) || offset < 0 ||
           !Number.isSafeInteger(limit) || limit < 1 || limit > 1000 ||
           (columns !== '*' && !String(columns).split(',').every((v) => IDENT.test(v))) ||
           (filters && (typeof filters !== 'string' || !/^&[a-z0-9_]+=[a-z0-9_.-]+(?:&[a-z0-9_]+=[a-z0-9_.-]+)*$/.test(filters)))) {
         throw new Error('Invalid TEST SELECT page.');
       }
-      return request(`/rest/v1/${table}?select=${columns}&order=${orderBy}.asc${filters}`, {
-        token, headers: { Prefer: 'count=exact', Range: `${offset}-${offset + limit - 1}` },
+      const response = await request(`/rest/v1/${table}?select=${columns}&order=${orderBy}.asc${filters}`, {
+        token, headers: { Prefer: 'count=exact', 'Accept-Profile': 'public', Range: `${offset}-${offset + limit - 1}` },
       });
+      return { headers: response.headers, rows: await safeJson(response) };
     },
   });
 }
@@ -175,7 +186,7 @@ export async function selectAll(http, { table, columns = '*', orderBy = 'id', fi
       const response = await http.selectPage({ table, columns, orderBy, filters, offset, limit, token });
       const raw = response.headers.get('content-range');
       const match = /^(\d+)-(\d+)\/(\d+)$/.exec(raw ?? '');
-      const rows = await response.json();
+      const rows = response.rows;
       if (offset === 0 && raw === '*/0' && Array.isArray(rows) && rows.length === 0) {
         exactEmpty = true;
         return { rows, totalCount: 0 };
