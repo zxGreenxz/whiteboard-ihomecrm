@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-09-27T20:50:47.150Z",
+  "generatedAt": "2026-09-27T21:21:49.685Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 615,
     "unknown": 81,
-    "catalog-proven": 206,
+    "catalog-proven": 207,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -10625,6 +10625,21 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-09-27T11:39:08.882Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260927155251_hoa_hong_quan_ly_so_ao.sql",
+      "version": "20260927155251",
+      "name": "hoa_hong_quan_ly_so_ao",
+      "scheme": "timestamp14",
+      "sha256": "f4bef1760957aa276377203c9ee19e09823094b0b7a3359f39f3f8712d0716c7",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:table:app_private.salary_commission_books",
+        "catalog:table:app_private.commission_manager_links",
+        "catalog:function:app_private.salary_commission_book_v1",
+        "catalog:function:app_private.ie_has_commission_item_v1",
+        "catalog:index:app_private.commission_manager_links_mgr"
       ]
     },
     {
