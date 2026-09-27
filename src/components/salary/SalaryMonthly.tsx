@@ -38,7 +38,7 @@ interface MonthlyProps {
 }
 
 // ---- Dialogs ----
-function AdjustDialog({ m, edit, onClose, onSave }: { m: SalManager; edit?: SalAdjustment | null; onClose: () => void; onSave: (p: SalAdjustPayload) => void }) {
+export function AdjustDialog({ m, edit, onClose, onSave }: { m: SalManager; edit?: SalAdjustment | null; onClose: () => void; onSave: (p: SalAdjustPayload) => void }) {
   const [kind, setKind] = useState<"Thưởng" | "Trừ">(edit ? (edit.amount < 0 ? "Trừ" : "Thưởng") : "Thưởng");
   const [label, setLabel] = useState(edit ? edit.label : "");
   const [amount, setAmount] = useState(edit ? String(Math.abs(edit.amount)) : "");
@@ -116,7 +116,7 @@ function PayoutDialog({ m, accounts, period, onClose, onSave }: {
   );
 }
 
-function BulkPayoutDialog({ managers, accounts, period, onClose, onSave }: {
+export function BulkPayoutDialog({ managers, accounts, period, onClose, onSave }: {
   managers: SalManager[]; accounts: SalaryAccount[]; period: { label: string; year: number };
   onClose: () => void; onSave: (rows: { staffId: string; staffName: string; amount: number }[], accountId: string) => void;
 }) {
@@ -151,7 +151,7 @@ function BulkPayoutDialog({ managers, accounts, period, onClose, onSave }: {
   );
 }
 
-function LockDialog({ locked, period, onClose, onConfirm }: { locked: boolean; period: { label: string; year: number }; onClose: () => void; onConfirm: () => void }) {
+export function LockDialog({ locked, period, onClose, onConfirm }: { locked: boolean; period: { label: string; year: number }; onClose: () => void; onConfirm: () => void }) {
   return (
     <Modal onClose={onClose}>
       <div className="sal-modal-head">

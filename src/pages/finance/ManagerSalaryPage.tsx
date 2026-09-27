@@ -2,7 +2,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import { todayISO } from "@/lib/collect";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Wallet, Eye, Settings, CalendarCheck } from "lucide-react";
+import { Wallet, Eye, Settings, CalendarCheck, LayoutDashboard, HandCoins, Lock, Unlock, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react";
 import MainLayout from "@/components/layout/MainLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { useSalaryV5Config } from "@/hooks/useSalaryV5Config";
@@ -15,7 +15,12 @@ import {
 } from "@/hooks/useManagerSalary";
 import { useBonusRules } from "@/hooks/useSalaryConfig";
 import { usePendingLeaveRequests } from "@/hooks/useMyDay";
-import SalaryMonthly, { type SalaryAccount, type SalAdjustPayload } from "@/components/salary/SalaryMonthly";
+import { AdjustDialog, BulkPayoutDialog, LockDialog, type SalaryAccount, type SalAdjustPayload } from "@/components/salary/SalaryMonthly";
+import SalaryFundOverview, { type FundPeriod } from "@/components/salary/SalaryFundOverview";
+import SalaryIncomePay from "@/components/salary/SalaryIncomePay";
+import SalaryFundModal from "@/components/salary/SalaryFundModal";
+import { useSalaryFeeFund, useSalaryPendingPayouts } from "@/hooks/useSalaryFund";
+import type { SalAdjustment, SalManager } from "@/lib/managerSalary";
 import SalaryLedger from "@/components/salary/SalaryLedger";
 import SalaryConfig from "@/components/salary/SalaryConfig";
 import SalaryLeaveRequests from "@/components/salary/SalaryLeaveRequests";
@@ -80,7 +85,14 @@ export default function ManagerSalaryPage() {
   const isAdmin = !!(perms as any)?.__superadmin || canLock || canManageSalary || canPay;
 
   const [periodMonth, setPeriodMonth] = usePersistedState<string>("flt:salary-manager:period", currentPeriodMonth());
-  const [tab, setTab] = usePersistedState<"sheet" | "ledger" | "leave" | "config">("flt:salary-manager:tab", "sheet");
+  const [rawTab, setTab] = usePersistedState<"overview" | "people" | "ledger" | "leave" | "config" | "sheet">("flt:salary-manager:tab", "overview");
+  // "sheet" = tab Bảng lương tháng cũ, nay là Tổng quan kỳ.
+  const tab = rawTab === "sheet" ? "overview" : rawTab;
+  const [person, setPerson] = useState<string | null>(null);
+  const [fundModal, setFundModal] = useState<"funding" | "rules" | null>(null);
+  const [adjDialog, setAdjDialog] = useState<{ m: SalManager; edit?: SalAdjustment | null } | null>(null);
+  const [showLock, setShowLock] = useState(false);
+  const [showBulk, setShowBulk] = useState(false);
   const [view, setView] = useState<"admin" | "self">("admin");
   const [selfId, setSelfId] = useState<string | null>(null);
   const [ledgerFilter, setLedgerFilter] = useState<{ who?: string } | null>(null);
@@ -102,6 +114,15 @@ export default function ManagerSalaryPage() {
   const salaryEngine = resolveSalaryEngine(v5cfg, effPeriod);
 
   const { data, isLoading, refetch } = useManagerSalary(effPeriod, salaryEngine);
+
+  // Báo cáo cơ cấu quỹ so 3 tháng (chỉ admin desktop). Mỗi kỳ tự chọn engine riêng.
+  const prev1 = shiftMonth(periodMonth, -1), prev2 = shiftMonth(periodMonth, -2);
+  const wantFund = isAdmin && !phone;
+  const { data: dPrev1, isLoading: lPrev1 } = useManagerSalary(wantFund ? prev1 : "", resolveSalaryEngine(v5cfg, prev1));
+  const { data: dPrev2, isLoading: lPrev2 } = useManagerSalary(wantFund ? prev2 : "", resolveSalaryEngine(v5cfg, prev2));
+  const fee0 = useSalaryFeeFund(periodMonth);
+  const fee1 = useSalaryFeeFund(prev1);
+  const fee2 = useSalaryFeeFund(prev2);
   const { data: rulesData } = useBonusRules();
   const requirePhoto = !!rulesData?.rules?.requirePhoto;
 
@@ -128,6 +149,7 @@ export default function ManagerSalaryPage() {
     toggleExcluded.mutate({ jobId, excluded: next });
 
   const managers = data?.managers || [];
+  const { data: pendingPayouts = [] } = useSalaryPendingPayouts(periodMonth, wantFund ? managers.map((m) => m.id) : []);
   const period = data?.period || { label: "", year: 0, periodMonth, lockedAt: null };
   const ownerId = data?.ownerId || "";
   const monthLocked = managers.length > 0 && managers.every((m) => m.status === "LOCKED");
@@ -228,11 +250,20 @@ export default function ManagerSalaryPage() {
     );
   }
 
-  // Admin (desktop)
+  // Admin (desktop) — "Lương & thu nhập" theo bản Claude Design 26/09/2026.
   const previewMgr = view === "self" ? managers.find((m) => m.id === selfId) : null;
+  const allLocked = (ms: SalManager[] | undefined) => !!ms && ms.length > 0 && ms.every((m) => m.status === "LOCKED");
+  const fundPeriods: FundPeriod[] = [
+    { periodMonth: prev2, locked: allLocked(dPrev2?.managers), managers: dPrev2?.managers || [], fee: fee2.total, loading: lPrev2 || fee2.isLoading },
+    { periodMonth: prev1, locked: allLocked(dPrev1?.managers), managers: dPrev1?.managers || [], fee: fee1.total, loading: lPrev1 || fee1.isLoading },
+    { periodMonth, locked: monthLocked, managers, fee: fee0.total, loading: isLoading || fee0.isLoading },
+  ];
+  const pendingStaff = new Set(pendingPayouts.map((p) => p.staffId));
+  const openPerson = (id: string) => { setPerson(id); setTab("people"); };
+  const monthShortLabel = `Th${parseInt(periodMonth.slice(5, 7), 10)}`;
 
   return (
-    <MainLayout title="Bảng lương quản lý" subtitle="Tài chính → Lương" icon={Wallet}>
+    <MainLayout title="Lương & thu nhập" subtitle="Tài chính → Lương" icon={Wallet}>
       <div className="sal-root">
         {managers.length > 1 && (
           <div className="sal-previewbar">
@@ -248,15 +279,33 @@ export default function ManagerSalaryPage() {
         )}
 
         {view === "self" && previewMgr ? (
-          phone ? (
-            <SalarySelfMobile m={previewMgr} period={period} onExit={() => setView("admin")} />
-          ) : (
-            <SalarySelf m={previewMgr} period={period} onOpenLedger={() => { setView("admin"); openLedger({ who: previewMgr.id }); }} />
-          )
+          <SalarySelf m={previewMgr} period={period} onOpenLedger={() => { setView("admin"); openLedger({ who: previewMgr.id }); }} />
         ) : (
           <>
+            <div className="sal-card" style={{ padding: "14px 16px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 18 }}>
+              <div className="sal-monthnav">
+                <button className="sal-monthbtn" aria-label="Tháng trước" onClick={() => setPeriodMonth((p) => shiftMonth(p, -1))}><ChevronLeft size={17} /></button>
+                <span className="sal-monthlabel">Tháng {parseInt(periodMonth.slice(5, 7), 10)} · {periodMonth.slice(0, 4)}</span>
+                <button className="sal-monthbtn" aria-label="Tháng sau" onClick={() => setPeriodMonth((p) => shiftMonth(p, 1))}><ChevronRight size={17} /></button>
+              </div>
+              {monthLocked
+                ? <span className="sal-status sal-status--locked"><Lock size={14} />Đã chốt</span>
+                : <span className="sal-status sal-status--draft"><span className="dot" />Chưa chốt <small>· số tạm tính</small></span>}
+              <div style={{ marginLeft: "auto", display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {!monthLocked && <button className="sal-btn sal-btn--outline" onClick={() => refetch()}><RefreshCw size={15} />Tính lại</button>}
+                {canPay && managers.length > 0 && <button className="sal-btn sal-btn--outline" onClick={() => setShowBulk(true)}><HandCoins size={16} />Trả lương hàng loạt</button>}
+                {canLock && managers.length > 0 && (monthLocked
+                  ? <button className="sal-btn sal-btn--outline" onClick={() => setShowLock(true)}><Unlock size={15} />Mở khoá {monthShortLabel}</button>
+                  : <button className="sal-btn sal-btn--primary" onClick={() => setShowLock(true)}><Lock size={15} />Chốt kỳ {monthShortLabel}</button>)}
+              </div>
+            </div>
+
             <div className="sal-tabs">
-              <button className="sal-tab" data-active={tab === "sheet"} onClick={() => setTab("sheet")}><Wallet size={16} />Bảng lương tháng</button>
+              <button className="sal-tab" data-active={tab === "overview"} onClick={() => setTab("overview")}><LayoutDashboard size={16} />Tổng quan kỳ</button>
+              <button className="sal-tab" data-active={tab === "people"} onClick={() => setTab("people")}>
+                <Wallet size={16} />Thu nhập &amp; thanh toán
+                {pendingPayouts.length > 0 && <span className="sal-tabcount">{pendingPayouts.length}</span>}
+              </button>
               <button className="sal-tab" data-active={tab === "ledger"} onClick={() => setTab("ledger")}><Eye size={16} />Bảng kê công việc<span className="sal-tabcount">{ledgerAll.length}</span></button>
               <button className="sal-tab" data-active={tab === "leave"} onClick={() => setTab("leave")}>
                 <CalendarCheck size={16} />Đơn xin nghỉ
@@ -269,24 +318,27 @@ export default function ManagerSalaryPage() {
               <div className="sal-card"><div style={{ padding: 40, textAlign: "center", color: "hsl(var(--muted-foreground))" }}>Đang tải bảng lương...</div></div>
             ) : tab === "leave" ? (
               <SalaryLeaveRequests />
+            ) : tab === "config" ? (
+              <SalaryConfig />
             ) : managers.length === 0 ? (
               <div className="sal-card"><div className="sal-empty">
                 <span className="ec"><Wallet size={28} /></span>
                 <h3>Chưa có quản lý hưởng lương</h3>
                 <p>Vào tab Cấu hình để thêm quản lý vào diện hưởng lương, đặt lương cứng và tiền phòng.</p>
               </div></div>
-            ) : tab === "sheet" ? (
-              <SalaryMonthly
-                managers={managers} period={period} locked={monthLocked} accounts={accounts}
-                canLock={canLock} canPay={canPay}
-                onSaveAdjustment={onSaveAdjustment} onRemoveAdjustment={onRemoveAdjustment}
-                onPayout={onPayout} onBulkPayout={onBulkPayout}
-                onLock={onLock} onUnlock={onUnlock} onOpenLedger={openLedger}
-                onPrevMonth={() => setPeriodMonth((p) => shiftMonth(p, -1))}
-                onNextMonth={() => setPeriodMonth((p) => shiftMonth(p, 1))}
-                onRecompute={() => refetch()}
+            ) : tab === "overview" ? (
+              <SalaryFundOverview
+                periods={fundPeriods} feeBuildings={fee0.rows.length} feeUnpublished={fee0.unpublished}
+                pending={pendingPayouts} onOpenFund={setFundModal} onOpenPerson={openPerson}
               />
-            ) : tab === "ledger" ? (
+            ) : tab === "people" ? (
+              <SalaryIncomePay
+                managers={managers} period={period} selectedId={person} onSelect={setPerson}
+                pending={pendingPayouts} accounts={accounts} canPay={canPay}
+                onPayout={onPayout} onOpenLedger={openLedger}
+                onAdjust={(m, edit) => setAdjDialog({ m, edit })} onRemoveAdjustment={onRemoveAdjustment}
+              />
+            ) : (
               <>
                 {ledgerFilter?.who && (
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, fontSize: 13 }}>
@@ -304,11 +356,20 @@ export default function ManagerSalaryPage() {
                   busyJobId={toggleExcluded.isPending ? (toggleExcluded.variables as any)?.jobId : null}
                 />
               </>
-            ) : (
-              <SalaryConfig />
             )}
           </>
         )}
+
+        {fundModal && (
+          <SalaryFundModal tab={fundModal} onTab={setFundModal} onClose={() => setFundModal(null)}
+            periodMonth={periodMonth} locked={monthLocked} fee={fee0} managers={managers} />
+        )}
+        {adjDialog && <AdjustDialog m={adjDialog.m} edit={adjDialog.edit} onClose={() => setAdjDialog(null)}
+          onSave={(p) => onSaveAdjustment(adjDialog.m.id, p)} />}
+        {showLock && <LockDialog locked={monthLocked} period={period} onClose={() => setShowLock(false)} onConfirm={() => monthLocked ? onUnlock() : onLock()} />}
+        {/* Người đang có phiếu chi chờ duyệt không vào đợt trả hàng loạt — tránh lập trùng. */}
+        {showBulk && <BulkPayoutDialog managers={managers.filter((m) => !pendingStaff.has(m.id))} accounts={accounts} period={period}
+          onClose={() => setShowBulk(false)} onSave={onBulkPayout} />}
       </div>
     </MainLayout>
   );
