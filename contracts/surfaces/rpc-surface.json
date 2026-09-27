@@ -2,52 +2,21 @@
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
     "sourceCallSites": 1776,
-    "catalogFunctions": 1183,
+    "catalogFunctions": 1188,
     "schemas": [
       "public",
       "api"
     ]
   },
   "counts": {
-    "calledRpcs": 303,
+    "calledRpcs": 308,
     "byRisk": {
       "normal": 216,
-      "financial": 87
+      "financial": 92
     },
-    "securityDefiner": 287
+    "securityDefiner": 292
   },
-  "missingOnServer": [
-    {
-      "name": "assign_commission_manager_v1",
-      "callers": [
-        "src/hooks/useCommissionManager.ts"
-      ]
-    },
-    {
-      "name": "commission_manager_options_v1",
-      "callers": [
-        "src/hooks/useCommissionManager.ts"
-      ]
-    },
-    {
-      "name": "lock_salary_month_v2",
-      "callers": [
-        "src/hooks/useManagerSalary.ts"
-      ]
-    },
-    {
-      "name": "salary_commission_meta_v1",
-      "callers": [
-        "src/hooks/useManagerSalary.ts"
-      ]
-    },
-    {
-      "name": "unlock_salary_month_v2",
-      "callers": [
-        "src/hooks/useManagerSalary.ts"
-      ]
-    }
-  ],
+  "missingOnServer": [],
   "rpcs": {
     "accept_organization_invitation_v1": {
       "definitions": [
@@ -243,6 +212,25 @@
         "src/hooks/useAccounts.ts"
       ],
       "risk": "normal"
+    },
+    "assign_commission_manager_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_voucher_id uuid, p_manager_id uuid, p_expected_approval_version bigint, p_idempotency_key text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useCommissionManager.ts"
+      ],
+      "risk": "financial"
     },
     "award_job_bonus": {
       "definitions": [
@@ -939,6 +927,25 @@
       ],
       "callers": [
         "src/hooks/useReceivingCashbooks.ts"
+      ],
+      "risk": "financial"
+    },
+    "commission_manager_options_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid",
+          "returns": "TABLE(staff_id uuid, display_name text, alias text)",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useCommissionManager.ts"
       ],
       "risk": "financial"
     },
@@ -3391,6 +3398,25 @@
       ],
       "risk": "normal"
     },
+    "lock_salary_month_v2": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_period_month date, p_managers jsonb, p_idempotency_key text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useManagerSalary.ts"
+      ],
+      "risk": "financial"
+    },
     "log_income_expense_action": {
       "definitions": [
         {
@@ -4427,6 +4453,25 @@
       ],
       "risk": "financial"
     },
+    "salary_commission_meta_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_voucher_ids uuid[], p_period_month date",
+          "returns": "TABLE(voucher_id uuid, manager_id uuid, account_id uuid, account_name text, on_manager_book boolean, included_staff_id uuid, included_period date)",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useManagerSalary.ts"
+      ],
+      "risk": "financial"
+    },
     "salary_line_override_list_v1": {
       "definitions": [
         {
@@ -5135,6 +5180,25 @@
       ],
       "callers": [
         "src/hooks/income-expenses/statusMutations.ts"
+      ],
+      "risk": "financial"
+    },
+    "unlock_salary_month_v2": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_period_month date, p_staff_ids uuid[], p_idempotency_key text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useManagerSalary.ts"
       ],
       "risk": "financial"
     },
