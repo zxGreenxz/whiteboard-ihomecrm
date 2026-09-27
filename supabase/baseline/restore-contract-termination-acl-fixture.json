@@ -1,0 +1,307 @@
+{
+  "version": 1,
+  "source": "Captured TEST before 20260927180948 and local disposable PostgreSQL 17.10 baseline; see CI01 diagnostic receipts",
+  "firstMigration": "20260927180948_approve_termination_eligibility.sql",
+  "functions": [
+    {
+      "signature": "app_private.begin_contract_termination_write_v1(uuid,text)",
+      "before": {
+        "md5": "5e8bcaa95e89128cd72d3a78cb6288f0",
+        "owner": "postgres",
+        "acl": null,
+        "secdef": true,
+        "volatility": "v",
+        "config": [
+          "search_path=pg_catalog, app_private, public"
+        ],
+        "result": "void"
+      },
+      "after": {
+        "md5": "5e8bcaa95e89128cd72d3a78cb6288f0",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres}",
+        "secdef": true,
+        "volatility": "v",
+        "config": [
+          "search_path=pg_catalog, app_private, public"
+        ],
+        "result": "void"
+      }
+    },
+    {
+      "signature": "app_private.end_contract_termination_write_v1(uuid)",
+      "before": {
+        "md5": "382f53de40affd1408fe8fa3df3fa7df",
+        "owner": "postgres",
+        "acl": null,
+        "secdef": true,
+        "volatility": "v",
+        "config": [
+          "search_path=pg_catalog, app_private, public"
+        ],
+        "result": "void"
+      },
+      "after": {
+        "md5": "382f53de40affd1408fe8fa3df3fa7df",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres}",
+        "secdef": true,
+        "volatility": "v",
+        "config": [
+          "search_path=pg_catalog, app_private, public"
+        ],
+        "result": "void"
+      }
+    },
+    {
+      "signature": "public.approve_contract_termination_v1(uuid,text)",
+      "before": {
+        "md5": "750d2d72248d9557713ff6c82eedfe51",
+        "owner": "postgres",
+        "acl": "{=X/postgres,postgres=X/postgres,authenticated=X/postgres,anon=X/postgres,service_role=X/postgres}",
+        "secdef": true,
+        "volatility": "v",
+        "config": [
+          "search_path=pg_catalog, public, app_private"
+        ],
+        "result": "jsonb"
+      },
+      "after": {
+        "md5": "750d2d72248d9557713ff6c82eedfe51",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+        "secdef": true,
+        "volatility": "v",
+        "config": [
+          "search_path=pg_catalog, public, app_private"
+        ],
+        "result": "jsonb"
+      }
+    },
+    {
+      "signature": "public.guard_contract_termination_settlement()",
+      "before": {
+        "md5": "7a6552ed4d57734c5e136367ab5fbc97",
+        "owner": "postgres",
+        "acl": "{=X/postgres,postgres=X/postgres,authenticated=X/postgres,anon=X/postgres,service_role=X/postgres}",
+        "secdef": false,
+        "volatility": "v",
+        "config": [
+          "search_path=pg_catalog, public, app_private"
+        ],
+        "result": "trigger"
+      },
+      "after": {
+        "md5": "7a6552ed4d57734c5e136367ab5fbc97",
+        "owner": "postgres",
+        "acl": "{=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+        "secdef": false,
+        "volatility": "v",
+        "config": [
+          "search_path=pg_catalog, public, app_private"
+        ],
+        "result": "trigger"
+      }
+    },
+    {
+      "signature": "public.has_contract_termination_write_v1(uuid)",
+      "before": {
+        "md5": "3e5e94607e6d11e41eb0a92b64a6ddc1",
+        "owner": "postgres",
+        "acl": "{=X/postgres,postgres=X/postgres,authenticated=X/postgres,anon=X/postgres,service_role=X/postgres}",
+        "secdef": true,
+        "volatility": "v",
+        "config": [
+          "search_path=pg_catalog, app_private, public"
+        ],
+        "result": "boolean"
+      },
+      "after": {
+        "md5": "3e5e94607e6d11e41eb0a92b64a6ddc1",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+        "secdef": true,
+        "volatility": "v",
+        "config": [
+          "search_path=pg_catalog, app_private, public"
+        ],
+        "result": "boolean"
+      }
+    },
+    {
+      "signature": "public.reject_contract_termination_v1(uuid,text)",
+      "before": {
+        "md5": "1316562d119902607b2ca904f51d1e6c",
+        "owner": "postgres",
+        "acl": "{=X/postgres,postgres=X/postgres,authenticated=X/postgres,anon=X/postgres,service_role=X/postgres}",
+        "secdef": true,
+        "volatility": "v",
+        "config": [
+          "search_path=pg_catalog, public, app_private"
+        ],
+        "result": "void"
+      },
+      "after": {
+        "md5": "1316562d119902607b2ca904f51d1e6c",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+        "secdef": true,
+        "volatility": "v",
+        "config": [
+          "search_path=pg_catalog, public, app_private"
+        ],
+        "result": "void"
+      }
+    },
+    {
+      "signature": "public.terminate_contract_forfeit_impl(uuid,date,jsonb)",
+      "before": {
+        "md5": "7e90f0f91f1d57ec51da82bd6bce7003",
+        "owner": "postgres",
+        "acl": "{=X/postgres,postgres=X/postgres,authenticated=X/postgres,anon=X/postgres,service_role=X/postgres}",
+        "secdef": true,
+        "volatility": "v",
+        "config": [
+          "search_path=public"
+        ],
+        "result": "jsonb"
+      },
+      "after": {
+        "md5": "7e90f0f91f1d57ec51da82bd6bce7003",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres,service_role=X/postgres}",
+        "secdef": true,
+        "volatility": "v",
+        "config": [
+          "search_path=public"
+        ],
+        "result": "jsonb"
+      }
+    },
+    {
+      "signature": "public.terminate_contract_forfeit_with_credit_v1(uuid,date,jsonb,text)",
+      "before": {
+        "md5": "0c34e7be81350a1125f120c95cc1cc22",
+        "owner": "postgres",
+        "acl": "{=X/postgres,postgres=X/postgres,authenticated=X/postgres,anon=X/postgres,service_role=X/postgres}",
+        "secdef": true,
+        "volatility": "v",
+        "config": [
+          "search_path=pg_catalog, public, app_private"
+        ],
+        "result": "jsonb"
+      },
+      "after": {
+        "md5": "0c34e7be81350a1125f120c95cc1cc22",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+        "secdef": true,
+        "volatility": "v",
+        "config": [
+          "search_path=pg_catalog, public, app_private"
+        ],
+        "result": "jsonb"
+      }
+    },
+    {
+      "signature": "public.terminate_contract_forfeit(uuid,date,jsonb)",
+      "before": {
+        "md5": "20c97cce83ed98d810a157256ddd457f",
+        "owner": "postgres",
+        "acl": "{=X/postgres,postgres=X/postgres,authenticated=X/postgres,anon=X/postgres,service_role=X/postgres}",
+        "secdef": true,
+        "volatility": "v",
+        "config": [
+          "search_path=pg_catalog, public, app_private"
+        ],
+        "result": "jsonb"
+      },
+      "after": {
+        "md5": "20c97cce83ed98d810a157256ddd457f",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+        "secdef": true,
+        "volatility": "v",
+        "config": [
+          "search_path=pg_catalog, public, app_private"
+        ],
+        "result": "jsonb"
+      }
+    },
+    {
+      "signature": "public.terminate_contract_move_out_impl(uuid,date,numeric,numeric,numeric,numeric,text,jsonb,text,uuid,jsonb)",
+      "before": {
+        "md5": "eae1e32af39b4abbffcf26075f1a94d2",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres,service_role=X/postgres}",
+        "secdef": true,
+        "volatility": "v",
+        "config": [
+          "search_path=public"
+        ],
+        "result": "jsonb"
+      },
+      "after": {
+        "md5": "eae1e32af39b4abbffcf26075f1a94d2",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres,service_role=X/postgres}",
+        "secdef": true,
+        "volatility": "v",
+        "config": [
+          "search_path=public"
+        ],
+        "result": "jsonb"
+      }
+    },
+    {
+      "signature": "public.terminate_contract_move_out_with_credit_v1(uuid,date,numeric,numeric,numeric,numeric,text,jsonb,text,uuid,text,jsonb)",
+      "before": {
+        "md5": "fe8c5453ffdc35951c7a750a35da7d01",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+        "secdef": true,
+        "volatility": "v",
+        "config": [
+          "search_path=pg_catalog, public, app_private"
+        ],
+        "result": "jsonb"
+      },
+      "after": {
+        "md5": "fe8c5453ffdc35951c7a750a35da7d01",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+        "secdef": true,
+        "volatility": "v",
+        "config": [
+          "search_path=pg_catalog, public, app_private"
+        ],
+        "result": "jsonb"
+      }
+    },
+    {
+      "signature": "public.terminate_contract_move_out(uuid,date,numeric,numeric,numeric,numeric,text,jsonb,text,uuid,jsonb)",
+      "before": {
+        "md5": "82a4cdbf74b4c0570d4078cbca78adac",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+        "secdef": true,
+        "volatility": "v",
+        "config": [
+          "search_path=pg_catalog, public, app_private"
+        ],
+        "result": "jsonb"
+      },
+      "after": {
+        "md5": "82a4cdbf74b4c0570d4078cbca78adac",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+        "secdef": true,
+        "volatility": "v",
+        "config": [
+          "search_path=pg_catalog, public, app_private"
+        ],
+        "result": "jsonb"
+      }
+    }
+  ]
+}

@@ -48,8 +48,77 @@ const MANIFEST = join(repoRoot, "supabase", "baseline", "manifest.json");
 const ACL_FIXTURE = join(repoRoot, "supabase", "baseline", "restore-settlement-acl-fixture.json");
 const ACL_FIXTURE_SHA256 = "d2cf8ca8a71190720627e5804feb47c1e478b29d399a13a17e83ae1b36d89b41";
 const RESTORE_GROUP = "restore-before-contract-settlement-2026-09-21";
+const TERMINATION_ACL_FIXTURE = join(repoRoot, "supabase", "baseline", "restore-contract-termination-acl-fixture.json");
+const TERMINATION_ACL_SHA256 = "46e54b0c47ec03eb42c59433bcfa917900727b75f1315d4db150c585f2430e89";
+const TERMINATION_FIRST_MIGRATION = "20260927180948_approve_termination_eligibility.sql";
+const TERMINATION_BOUNDARY_MIGRATION = "20260927190750_termination_write_boundary.sql";
+const TERMINATION_SIGNATURES = [
+  "app_private.begin_contract_termination_write_v1(uuid,text)",
+  "app_private.end_contract_termination_write_v1(uuid)",
+  "public.approve_contract_termination_v1(uuid,text)",
+  "public.guard_contract_termination_settlement()",
+  "public.has_contract_termination_write_v1(uuid)",
+  "public.reject_contract_termination_v1(uuid,text)",
+  "public.terminate_contract_forfeit(uuid,date,jsonb)",
+  "public.terminate_contract_forfeit_impl(uuid,date,jsonb)",
+  "public.terminate_contract_forfeit_with_credit_v1(uuid,date,jsonb,text)",
+  "public.terminate_contract_move_out(uuid,date,numeric,numeric,numeric,numeric,text,jsonb,text,uuid,jsonb)",
+  "public.terminate_contract_move_out_impl(uuid,date,numeric,numeric,numeric,numeric,text,jsonb,text,uuid,jsonb)",
+  "public.terminate_contract_move_out_with_credit_v1(uuid,date,numeric,numeric,numeric,numeric,text,jsonb,text,uuid,text,jsonb)",
+];
 const sha256 = (s) => createHash("sha256").update(s).digest("hex");
 const literal = (s) => s === null ? "NULL" : "'" + s.replaceAll("'", "''") + "'";
+
+// The schema-only baseline discards historical function ACLs. This finite
+// witness is used only in a local disposable replay immediately before P1a1.
+// Its hash and exact signatures prevent it from becoming a general ACL bypass.
+export function taoFixtureAclTermination(text) {
+  if (sha256(text.replaceAll("\r\n", "\n")) !== TERMINATION_ACL_SHA256) throw Error("termination ACL fixture digest mismatch");
+  const fixture = JSON.parse(text);
+  if (fixture.version !== 1 || fixture.firstMigration !== TERMINATION_FIRST_MIGRATION
+    || fixture.functions?.length !== TERMINATION_SIGNATURES.length
+    || new Set(fixture.functions.map(f => f.signature)).size !== TERMINATION_SIGNATURES.length
+    || !TERMINATION_SIGNATURES.every(s => fixture.functions.some(f => f.signature === s))) throw Error("termination ACL fixture shape mismatch");
+  const roles = (acl) => {
+    if (acl === null) return ["PUBLIC", "postgres"];
+    if (!/^\{(?:=X\/postgres|(?:postgres|authenticated|anon|service_role)=X\/postgres)(?:,(?:=X\/postgres|(?:postgres|authenticated|anon|service_role)=X\/postgres))*\}$/.test(acl)) throw Error("termination ACL fixture invalid ACL");
+    const result = acl.slice(1, -1).split(",").map(item => item.split("=")[0] || "PUBLIC");
+    if (new Set(result).size !== result.length) throw Error("termination ACL fixture duplicate grant");
+    return result;
+  };
+  for (const f of fixture.functions) {
+    for (const state of ["before", "after"]) {
+      const m = f[state];
+      if (!/^[a-f0-9]{32}$/.test(m?.md5) || m.owner !== "postgres" || typeof m.secdef !== "boolean"
+        || m.volatility !== "v" || !Array.isArray(m.config) || m.config.length !== 1
+        || !/^search_path=[a-z_, ]+$/.test(m.config[0])
+        || !["jsonb", "void", "trigger", "boolean"].includes(m.result)) throw Error("termination ACL fixture invalid metadata");
+      roles(m.acl);
+    }
+    if (["md5", "owner", "secdef", "volatility", "config", "result"].some(k => JSON.stringify(f.before[k]) !== JSON.stringify(f.after[k]))) throw Error("termination ACL fixture changes function metadata");
+  }
+  const row = (f, state) => {
+    const m = f[state];
+    return `(${[f.signature, m.md5, m.owner, m.acl].map(literal).join(",")},${m.secdef},${literal(m.volatility)},ARRAY[${m.config.map(literal).join(",")} ]::text[],${literal(m.result)})`;
+  };
+  const guard = (state) => `DO $termination_acl$ DECLARE f record; p record; BEGIN
+ FOR f IN SELECT * FROM (VALUES ${fixture.functions.map(f => row(f, state)).join(",\n")}) e(signature,md5,owner,acl,secdef,volatility,config,result) LOOP
+ SELECT md5(pg_get_functiondef(oid)) AS md5, proowner::regrole::text AS owner, proacl::text AS acl,
+        prosecdef AS secdef, provolatile::text AS volatility, proconfig AS config, prorettype::regtype::text AS result
+ INTO p FROM pg_proc WHERE oid=to_regprocedure(f.signature);
+ IF NOT FOUND OR p.md5 IS DISTINCT FROM f.md5 OR p.owner IS DISTINCT FROM f.owner
+    OR p.acl IS DISTINCT FROM f.acl OR p.secdef IS DISTINCT FROM f.secdef
+    OR p.volatility IS DISTINCT FROM f.volatility OR p.config IS DISTINCT FROM f.config
+    OR p.result IS DISTINCT FROM f.result THEN RAISE EXCEPTION 'termination ACL ${state} drift: %', f.signature; END IF;
+ END LOOP; END $termination_acl$;`;
+  const changes = fixture.functions.filter(f => f.before.acl !== f.after.acl).map(f => {
+    if (f.after.acl === null) throw Error("termination ACL fixture cannot reconstruct NULL ACL");
+    return `REVOKE ALL ON FUNCTION ${f.signature} FROM ${roles(f.before.acl).join(",")};\n`
+      + roles(f.after.acl).map(role => `GRANT EXECUTE ON FUNCTION ${f.signature} TO ${role};`).join("\n");
+  });
+  if (changes.length !== 9) throw Error("termination ACL fixture changed count drift");
+  return `BEGIN;\nSET LOCAL search_path=pg_catalog;\n${guard("before")}\n${changes.join("\n")}\n${guard("after")}\nCOMMIT;`;
+}
 
 // Baseline explicitly discarded ACL. Reconstruct ONLY the measured missing
 // privileges, before the feature's original SQL; never replace function bodies.
@@ -223,7 +292,7 @@ function main(argv) {
   }
 
   const kyVong = JSON.parse(readFileSync(KY_VONG, "utf8")).expectations ?? {};
-  let restoreGroup; let fixtureSql;
+  let restoreGroup; let fixtureSql; let terminationFixtureSql;
   try {
     const groups = JSON.parse(readFileSync(POLICY, "utf8")).idempotencyRetirements?.filter(g => g.id === RESTORE_GROUP);
     if (groups?.length !== 1) throw Error("drill restore retirement group missing/duplicate");
@@ -231,6 +300,8 @@ function main(argv) {
     // This fixture is for a disposable, local drill only, never a remote DB.
     if (!["localhost", "127.0.0.1", "[::1]"].includes(new URL(dich).hostname)) throw Error("drill ACL fixture requires a local disposable database");
     fixtureSql = taoFixtureAcl(readFileSync(ACL_FIXTURE, "utf8"), ACL_FIXTURE_SHA256, restoreGroup);
+    terminationFixtureSql = taoFixtureAclTermination(readFileSync(TERMINATION_ACL_FIXTURE, "utf8"));
+    if (!files.includes(TERMINATION_FIRST_MIGRATION) || !files.includes(TERMINATION_BOUNDARY_MIGRATION)) throw Error("drill termination migration missing");
     for (const f of [...restoreGroup.migrations, restoreGroup.compensation]) {
       if (!files.includes(f.file) || sha256(readFileSync(join(MIGRATIONS, f.file), "utf8")) !== f.sha256) throw Error(`drill immutable migration digest mismatch: ${f.file}`);
     }
@@ -279,6 +350,14 @@ function main(argv) {
     kiemCatalogPhucHoi(restoreGroup, JSON.parse(String(r.stdout).trim()), restored);
   };
   for (const ten of files) {
+    if (ten === TERMINATION_FIRST_MIGRATION) {
+      console.log("→ Fixture cục bộ kiểm 12 hàm termination, phục dựng đúng 9 ACL lịch sử trước P1a1.");
+      const r = goiPsql(["-d", dich, "-q", "-v", "ON_ERROR_STOP=1", "-f", "-"], { ...psqlOptions, input: terminationFixtureSql });
+      if (r.status !== 0) {
+        console.error(`❌ Fixture termination ACL lệch trạng thái baseline đã đo: ${dauLoi(r.stderr)}`);
+        return 1;
+      }
+    }
     if (ten === restoreGroup.migrations[0].file) {
       console.log("→ RAW baseline --no-acl không giữ ACL production: fixture cục bộ kiểm 22 hash/owner/ACL, khôi phục đúng 15 ACL; không đổi body hay dữ liệu.");
       const r = goiPsql(["-d", dich, "-q", "-v", "ON_ERROR_STOP=1", "-f", "-"], { ...psqlOptions, input: fixtureSql });
@@ -309,7 +388,8 @@ function main(argv) {
       timeout: 5 * 60 * 1000,
       maxBuffer: 64 * 1024 * 1024,
     });
-    if (r.status !== 0 && restoreGroup.migrations.some(m => m.file === ten)) {
+    if (r.status !== 0 && (restoreGroup.migrations.some(m => m.file === ten)
+      || ten === TERMINATION_FIRST_MIGRATION || ten === TERMINATION_BOUNDARY_MIGRATION)) {
       console.error(`❌ Migration dựng đầu vào scenario phải chạy sạch, kể cả ngoài --moc: ${ten}: ${dauLoi(r.stderr)}`);
       return 1;
     }
