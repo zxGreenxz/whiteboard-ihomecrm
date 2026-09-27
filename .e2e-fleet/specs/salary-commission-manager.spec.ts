@@ -170,7 +170,7 @@ test('chủ công ty: phiếu HH của quản lý ở sổ thật → chuyển s
     expect(v1).toMatchObject({ posting_mode: 'NON_CASH', posting_status: 'NOT_APPLICABLE', approval_status: 'UNAPPROVED' });
     const [book] = await sbGet<{ name: string; is_virtual: boolean }[]>(auth, `accounts?select=name,is_virtual&id=eq.${v1.account_id}`);
     expect(book).toEqual({ name: BOOK, is_virtual: true });
-    const meta = await sbRpc(auth, 'salary_commission_meta_v1', { p_voucher_ids: [voucherId] });
+    const meta = await sbRpc(auth, 'salary_commission_meta_v1', { p_voucher_ids: [voucherId], p_period_month: today.slice(0, 8) + '01' });
     expect(meta.ok, meta.text).toBeTruthy();
     expect((meta.json as unknown as { manager_id: string; on_manager_book: boolean }[])[0])
       .toMatchObject({ manager_id: staffId, on_manager_book: true });

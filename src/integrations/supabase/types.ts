@@ -23260,7 +23260,7 @@ export type Database = {
         Returns: boolean
       }
       salary_commission_meta_v1: {
-        Args: { p_voucher_ids: string[] }
+        Args: { p_period_month: string; p_voucher_ids: string[] }
         Returns: {
           account_id: string
           account_name: string

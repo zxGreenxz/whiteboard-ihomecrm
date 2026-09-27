@@ -43,6 +43,7 @@ interface Item {
   paidElsewhere?: number;
   /** Phiếu HH chờ duyệt ở sổ thật — có thể gán quản lý để chuyển sang trả qua lương. */
   assignVoucherId?: string;
+  assignVersion?: number;
 }
 
 // Dòng đã sửa tay: chip, dòng mô tả và các bước căn cứ hiện số máy tính + lý do.
@@ -131,6 +132,7 @@ function itemsOf(m: SalManager): Item[] {
       id: "sale:" + (c.voucherId || i), g: "sale", label: c.label, amount: c.amount, payable: true, key, why, chip,
       paidElsewhere: fromBook ? c.paidElsewhere : 0,
       assignVoucherId: fromBook && !c.approved && !locked ? c.voucherId : undefined,
+      assignVersion: c.version,
       trace: [
         ["Phiếu Sale nguồn", c.label],
         ["Quản lý nhận", c.assigned ? "Chọn ở ô QL của phiếu" : "Khớp tên người nhận trên phiếu"],
@@ -143,17 +145,18 @@ function itemsOf(m: SalManager): Item[] {
   });
   m.commissionFlagged.forEach((c, i) => {
     const inc = c.includedElsewhere;
-    const ky = inc ? inc.period.slice(5, 7) + "/" + inc.period.slice(0, 4) : "khác";
-    const nguoiKhac = !!inc && inc.staffId !== m.id;
+    const ky = inc ? inc.period.slice(5, 7) + "/" + inc.period.slice(0, 4) : "này";
+    // Dấu khoá theo (phiếu, kỳ) và meta chỉ trả dấu của kỳ đang xem ⇒ ở đây luôn là
+    // "đã tính cho NGƯỜI KHÁC trong kỳ này".
     out.push({
       id: "sale-paid:" + (c.voucherId || i), g: "sale", label: c.label, amount: c.amount, payable: false, strike: true,
-      why: `Đã tính vào lương kỳ ${ky}${nguoiKhac ? " của người khác" : ""} — không cộng lại`,
-      chip: { t: "Đã tính kỳ khác", tone: "neutral" },
+      why: `Đã tính vào lương kỳ ${ky} của người khác — không cộng lại`,
+      chip: { t: "Đã tính cho người khác", tone: "neutral" },
       trace: [
         ["Phiếu Sale nguồn", c.label],
-        ["Dấu chốt lương", `Đã tính vào lương kỳ ${ky}${nguoiKhac ? " của một quản lý khác" : ""}`],
-        ["Kết quả", "Không cộng vào thu nhập kỳ này — mỗi phiếu chỉ vào lương một lần"],
-        ["Cần làm", "Nếu sai kỳ: mở chốt kỳ đó rồi chốt lại"],
+        ["Dấu chốt lương", `Đã tính vào lương kỳ ${ky} của một quản lý khác`],
+        ["Kết quả", "Không cộng vào thu nhập người này — mỗi phần hoa hồng chỉ vào lương một người"],
+        ["Cần làm", "Nếu sai người: mở chốt lương người kia kỳ này rồi chốt lại"],
       ],
     });
   });
@@ -199,7 +202,7 @@ interface Props {
    * "Hoa hồng QL chờ trả lương", tiền trả qua lương (assign_commission_manager_v1).
    * Không truyền = không hiện nút. Server tự kiểm quyền sửa phiếu.
    */
-  onAssignCommission?: (m: SalManager, voucherId: string) => void;
+  onAssignCommission?: (m: SalManager, voucherId: string, expectedVersion?: number) => void;
   assignBusy?: boolean;
 }
 
@@ -253,7 +256,7 @@ export default function SalaryIncomePay(props: Props) {
         onRemove={trace.adj?.id && m.status !== "LOCKED" ? () => { const id = trace.adj!.id!; setTrace(null); props.onRemoveAdjustment(id); } : undefined}
         onEditAmount={(() => { const f = editOf(trace); return f ? () => { setTrace(null); f(); } : undefined; })()}
         onAssign={trace.assignVoucherId && props.onAssignCommission
-          ? () => { const vid = trace.assignVoucherId!; setTrace(null); props.onAssignCommission!(m, vid); }
+          ? () => { const vid = trace.assignVoucherId!; const ver = trace.assignVersion; setTrace(null); props.onAssignCommission!(m, vid, ver); }
           : undefined}
         assignLabel={`Chuyển sang trả qua lương (gán ${m.short})`} assignBusy={!!props.assignBusy} />}
     </div>

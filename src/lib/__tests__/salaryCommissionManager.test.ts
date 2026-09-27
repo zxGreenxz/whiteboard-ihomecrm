@@ -57,7 +57,7 @@ describe("classifyCommissionVouchers", () => {
     expect(chia([row("v5", { payerName: "khách lẻ" })], [meta("v5")]).size).toBe(0);
   });
 
-  it("đã tính vào lương kỳ KHÁC → flagged, không cộng", () => {
+  it("lưới an toàn: meta trả nhầm dấu kỳ KHÁC → vẫn flagged, không cộng", () => {
     const r = chia([row("v6")], [meta("v6", { manager_id: NATHAN, on_manager_book: true, included_staff_id: NATHAN, included_period: "2026-08-01" })]);
     expect(r.get(NATHAN)!.items).toEqual([]);
     expect(r.get(NATHAN)!.flagged[0].includedElsewhere).toEqual({ staffId: NATHAN, period: "2026-08-01" });
@@ -133,6 +133,6 @@ describe("dòng mô tả", () => {
     expect(commissionItemNote({ label: "", amount: 1, approved: true, paidElsewhere: 1, paidFrom: "TK939" }, false)).toBe("đã chi từ sổ TK939 — không chuyển lại");
     expect(commissionItemNote({ label: "", amount: 1, approved: false, paidElsewhere: 1, paidFrom: "ATam" }, false)).toBe("chưa gán QL — khi duyệt chi từ sổ ATam");
     expect(commissionItemNote({ label: "", amount: 1, approved: true, paidElsewhere: 1, paidFrom: "TK939" }, true)).toBe("đã chốt · đã chi từ sổ TK939");
-    expect(commissionFlaggedNote({ label: "", amount: 1, approved: true, includedElsewhere: { staffId: "x", period: "2026-08-01" } })).toBe("đã tính vào lương kỳ 08/2026 — không cộng lại");
+    expect(commissionFlaggedNote({ label: "", amount: 1, approved: true, includedElsewhere: { staffId: "x", period: "2026-08-01" } })).toBe("đã tính vào lương người khác kỳ 08/2026 — không cộng lại");
   });
 });

@@ -86,8 +86,12 @@ import { useIsAdmin } from '@/hooks/useIsAdmin';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { todayISO } from '@/lib/collect';
 import { toast } from 'sonner';
-import { assignCommissionManager } from '@/hooks/useCommissionManager';
-import { QlManagerSelectCurrentOrg } from './QlManagerSelect';
+import {
+  assignCommissionManager,
+  invalidateAfterCommissionAssign,
+  useOptionalQueryClient,
+} from '@/hooks/useCommissionManager';
+import { QlManagerSelectForBuilding } from './QlManagerSelect';
 import { isCommissionType } from '@/lib/managerSalary';
 
 interface IncomeExpenseFormProps {
@@ -238,6 +242,7 @@ const IncomeExpenseFormInner = ({
   // Không phải trường của phiếu nên ở ngoài zod schema, như forfeitReason.
   const [qlOn, setQlOn] = useState(false);
   const [qlManagerId, setQlManagerId] = useState('');
+  const queryClient = useOptionalQueryClient();
   const isMobile = useIsMobile();
 
   // Cascade dropdown state
@@ -715,6 +720,7 @@ const IncomeExpenseFormInner = ({
           // tiết phiếu (nút "Gán QL") hoặc màn Lương.
           try {
             await assignCommissionManager({ voucherId: created.id, managerId: qlManagerId });
+            await invalidateAfterCommissionAssign(queryClient);
           } catch (e) {
             toast.error(
               `Đã tạo phiếu nhưng CHƯA gán quản lý: ${e instanceof Error ? e.message : 'lỗi không xác định'}. Gán lại ở chi tiết phiếu (nút "Gán QL").`,
@@ -1148,7 +1154,8 @@ const IncomeExpenseFormInner = ({
                       </div>
                       {showQl && qlOn ? (
                         <>
-                          <QlManagerSelectCurrentOrg
+                          <QlManagerSelectForBuilding
+                            buildingId={watchedBuildingId}
                             value={qlManagerId}
                             onPick={(m) => {
                               setQlManagerId(m.staffId);

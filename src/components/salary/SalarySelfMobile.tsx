@@ -594,12 +594,12 @@ function DetailSheet({ m, period, item, onClose, onGoList }: ScreenProps & { ite
           {m.commissionItems.map((x, i) => <DRow key={"c" + i} label={x.label} note={commissionItemNote(x, m.status === "LOCKED")} amount={x.amount} color="#C4B5FD" />)}
           {flagged.length > 0 && <>
             <div className="flex items-center gap-1 pt-3 pb-1 text-[11.5px] font-bold" style={{ color: "#FF7AA0" }}>
-              <AlertTriangle size={13} />Đã tính vào lương kỳ khác
+              <AlertTriangle size={13} />Đã tính vào lương người khác
             </div>
             {flagged.map((x, i) => <DRow key={"f" + i} label={x.label} note={commissionFlaggedNote(x)} amount={x.amount} neg color="#FF7AA0" />)}
           </>}
         </>}
-        <DTotal label="Tổng HH Sale (nháp)" amount={total} color="#C4B5FD" bg="rgba(139,92,246,.12)" border="rgba(139,92,246,.3)" />
+        <DTotal label="Tổng HH Sale" amount={total} color="#C4B5FD" bg="rgba(139,92,246,.12)" border="rgba(139,92,246,.3)" />
       </Sheet>
     );
   }

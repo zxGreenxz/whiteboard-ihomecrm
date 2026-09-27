@@ -109,7 +109,7 @@ export function CommissionPop({ m }: { m: SalManager }) {
             {flagged.length > 0 && (
               <>
                 <div style={{ padding: "8px 16px 4px", fontSize: 12, fontWeight: 700, color: "hsl(var(--status-danger-fg))", display: "flex", alignItems: "center", gap: 6 }}>
-                  <I.AlertTriangle size={14} />Đã tính vào lương kỳ khác (không cộng vào HH Sale kỳ này)
+                  <I.AlertTriangle size={14} />Đã tính vào lương người khác (không cộng vào HH Sale)
                 </div>
                 {flagged.map((x, i) => (
                   <div key={"f" + i} className="sal-pop-row">

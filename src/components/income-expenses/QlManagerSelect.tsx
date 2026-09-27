@@ -1,21 +1,26 @@
 // Ô chọn quản lý nhận hoa hồng (ô QL, migration 20260927155251). Chỉ mount khi người
-// dùng đã tích QL ⇒ danh sách quản lý tải lười, và form không phụ thuộc
-// OrganizationProvider khi không dùng tới ô này.
+// dùng đã tích QL ⇒ danh sách quản lý tải lười. Công ty lấy theo TOÀ của phiếu
+// (QlManagerSelectForBuilding), không theo công ty đang chọn ở thanh chuyển.
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useOrganization } from "@/contexts/OrganizationContext";
-import { useCommissionManagerOptions, type CommissionManagerOption } from "@/hooks/useCommissionManager";
+import {
+  useCommissionManagerOptions,
+  useOrganizationOfBuilding,
+  type CommissionManagerOption,
+} from "@/hooks/useCommissionManager";
 
 interface Props {
   organizationId: string | null | undefined;
   value: string;
   onPick: (m: CommissionManagerOption) => void;
   id?: string;
+  /** Câu hiện khi chưa có công ty (vd form chưa chọn toà). */
+  noOrgHint?: string;
 }
 
-export function QlManagerSelect({ organizationId, value, onPick, id }: Props) {
+export function QlManagerSelect({ organizationId, value, onPick, id, noOrgHint }: Props) {
   const { data: options = [], isLoading, isError } = useCommissionManagerOptions(organizationId);
   const placeholder = !organizationId
-    ? "Chưa xác định công ty"
+    ? noOrgHint || "Chưa xác định công ty"
     : isLoading
       ? "Đang tải…"
       : isError
@@ -46,10 +51,19 @@ export function QlManagerSelect({ organizationId, value, onPick, id }: Props) {
   );
 }
 
-/** Như QlManagerSelect, lấy công ty đang chọn (OrganizationProvider). */
-export function QlManagerSelectCurrentOrg(props: Omit<Props, "organizationId">) {
-  const { selectedOrganizationId } = useOrganization();
-  return <QlManagerSelect organizationId={selectedOrganizationId} {...props} />;
+/** Như QlManagerSelect, công ty suy từ toà của phiếu. */
+export function QlManagerSelectForBuilding({
+  buildingId,
+  ...props
+}: Omit<Props, "organizationId" | "noOrgHint"> & { buildingId: string | null | undefined }) {
+  const { data: organizationId, isLoading } = useOrganizationOfBuilding(buildingId);
+  return (
+    <QlManagerSelect
+      organizationId={organizationId}
+      noOrgHint={!buildingId ? "Chọn tòa nhà trước" : isLoading ? "Đang tải…" : "Không xác định được công ty của tòa"}
+      {...props}
+    />
+  );
 }
 
 export default QlManagerSelect;

@@ -79,7 +79,9 @@ export interface SalCommissionItem {
   paidFrom?: string | null;
   /** Phiếu đã được gán quản lý nhận (ô QL) — không còn dựa vào khớp tên. */
   assigned?: boolean;
-  /** Chỉ có ở commissionFlagged: đã tính vào lương kỳ khác / người khác. */
+  /** approval_version lúc tải — gửi kèm khi gán QL để server từ chối nếu phiếu vừa đổi. */
+  version?: number;
+  /** Chỉ có ở commissionFlagged: phần của kỳ này đã tính vào lương người khác. */
   includedElsewhere?: { staffId: string; period: string } | null;
 }
 export interface SalAdvanceItem { date: string; label: string; amount: number; }
@@ -107,7 +109,7 @@ export interface SalManager {
   // Mọi phiếu hoa hồng của quản lý trong tháng — cả đã duyệt lẫn chờ duyệt (migration
   // 20260927155251). Phiếu ở sổ thật mang `paidElsewhere` (thu nhập có, tiền chuyển không).
   commissionItems: SalCommissionItem[];
-  // Phiếu khớp người này nhưng ĐÃ tính vào lương kỳ khác / người khác (dấu chốt lương)
+  // Phiếu khớp người này nhưng phần của kỳ này ĐÃ tính vào lương người khác (dấu chốt lương)
   // → hiện gạch, không cộng. Rỗng với tháng đã chốt.
   commissionFlagged: SalCommissionItem[];
   advance: number;
@@ -314,10 +316,10 @@ export function commissionItemNote(c: SalCommissionItem, locked: boolean): strin
   return c.approved ? `đã chi từ sổ ${book} — không chuyển lại` : `chưa gán QL — khi duyệt chi từ sổ ${book}`;
 }
 
-/** Dòng mô tả cho phiếu đã tính vào lương kỳ/người khác (commissionFlagged). */
+/** Dòng mô tả cho phiếu mà phần kỳ này đã tính vào lương người khác (commissionFlagged). */
 export function commissionFlaggedNote(c: SalCommissionItem): string {
   const p = c.includedElsewhere?.period;
-  return `đã tính vào lương kỳ ${p ? p.slice(5, 7) + "/" + p.slice(0, 4) : "khác"} — không cộng lại`;
+  return `đã tính vào lương người khác kỳ ${p ? p.slice(5, 7) + "/" + p.slice(0, 4) : "này"} — không cộng lại`;
 }
 
 /** Tổng hoa hồng đã/sẽ chi từ sổ quỹ thật (không trả qua lương). */
@@ -343,13 +345,16 @@ export interface CommissionVoucherRow {
   status: string; // approval_status
   amount: number;
   payerName: string;
+  version?: number;
 }
 
 /**
  * Chia phiếu hoa hồng của tháng cho từng quản lý (phương án A, chốt 27/09/2026):
  *  - Quản lý nhận = liên kết ô QL (meta.manager_id) nếu có, còn không thì khớp tên
  *    người nhận (payer_name) với biệt danh / tên gọi như trước.
- *  - Phiếu đã có dấu "đã tính vào lương" của NGƯỜI KHÁC hoặc KỲ KHÁC → flagged (gạch).
+ *  - Dấu "đã tính vào lương" khoá theo (phiếu, kỳ) và meta chỉ trả dấu của kỳ đang xem
+ *    (salary_commission_meta_v1(ids, kỳ)) ⇒ dấu của NGƯỜI KHÁC → flagged (gạch). Nhánh
+ *    "kỳ khác" chỉ còn là lưới an toàn nếu meta trả nhầm kỳ.
  *  - Còn lại vào items, cả đã duyệt lẫn chờ duyệt. Phiếu ở sổ ảo quản lý → trả qua
  *    lương; ở sổ thật → paidElsewhere = số gốc (thu nhập có, tiền chuyển không).
  */
@@ -375,6 +380,7 @@ export function classifyCommissionVouchers(
       amount: v.amount,
       approved: v.status === "APPROVED",
       voucherId: v.id,
+      version: v.version,
       assigned: !!linked,
       paidElsewhere: onBook ? 0 : v.amount,
       paidFrom: onBook ? null : mt?.account_name ?? null,

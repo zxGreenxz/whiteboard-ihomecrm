@@ -140,7 +140,7 @@ export default function SalaryFundOverview({ periods, feeBuildings, feeUnpublish
   const exc: Exc[] = [];
   if (feeUnpublished) exc.push({ tag: "Chưa có giá", tone: "warning", title: `${feeUnpublished} tòa chưa công bố giá phí Quản lý`, sub: "Không cộng vào nguồn lương tháng cho tới khi chủ công bố giá", cta: "Nguồn lương", onClick: () => onOpenFund("funding") });
   for (const m of mgrs) {
-    if (m.commissionFlagged?.length) exc.push({ tag: "Cần đối chiếu", tone: "danger", title: `${m.name} · ${m.commissionFlagged.length} phiếu HH đã tính vào lương kỳ khác`, sub: "Không cộng lại kỳ này — nếu sai kỳ thì mở chốt kỳ đó rồi chốt lại", cta: "Thu nhập", onClick: () => onOpenPerson(m.id) });
+    if (m.commissionFlagged?.length) exc.push({ tag: "Cần đối chiếu", tone: "danger", title: `${m.name} · ${m.commissionFlagged.length} phiếu HH đã tính vào lương người khác`, sub: "Không cộng lại — nếu sai người thì mở chốt lương người kia kỳ này rồi chốt lại", cta: "Thu nhập", onClick: () => onOpenPerson(m.id) });
     // Phiếu HH chờ duyệt còn ở sổ thật: duyệt sẽ ra tiền từ sổ đó, lương không trả lại.
     // Hoa hồng quản lý trả qua lương thì phải gán QL (chuyển sang sổ ảo) trước khi duyệt.
     const chuaGan = m.status !== "LOCKED" ? m.commissionItems.filter((c) => !c.approved && (c.paidElsewhere || 0) > 0) : [];

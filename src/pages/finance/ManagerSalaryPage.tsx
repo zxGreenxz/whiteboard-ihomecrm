@@ -350,7 +350,7 @@ export default function ManagerSalaryPage() {
                 onPayout={onPayout} payBusy={payout.isPending} onOpenLedger={openLedger}
                 onAdjust={(m, edit) => setAdjDialog({ m, edit })} onRemoveAdjustment={onRemoveAdjustment}
                 canEditAmounts={canEditAmounts} onEditAmount={(m, line) => setAmountEdit({ m, line })}
-                onAssignCommission={isAdmin ? (m, voucherId) => assignCommission.mutate({ voucherId, managerId: m.id }) : undefined}
+                onAssignCommission={isAdmin ? (m, voucherId, expectedVersion) => assignCommission.mutate({ voucherId, managerId: m.id, expectedVersion: expectedVersion ?? null }) : undefined}
                 assignBusy={assignCommission.isPending}
               />
             ) : (

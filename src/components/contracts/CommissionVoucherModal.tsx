@@ -34,8 +34,13 @@ import { useAccounts } from "@/hooks/useAccounts";
 import { useAuth } from "@/hooks/useAuth";
 import BankSelect from "@/components/income-expenses/BankSelect";
 import AttachmentUpload from "@/components/income-expenses/AttachmentUpload";
-import { QlManagerSelectCurrentOrg } from "@/components/income-expenses/QlManagerSelect";
-import { assignCommissionManager, type CommissionManagerOption } from "@/hooks/useCommissionManager";
+import { QlManagerSelectForBuilding } from "@/components/income-expenses/QlManagerSelect";
+import {
+  assignCommissionManager,
+  invalidateAfterCommissionAssign,
+  useOptionalQueryClient,
+  type CommissionManagerOption,
+} from "@/hooks/useCommissionManager";
 
 interface CommissionVoucherModalProps {
   open: boolean;
@@ -82,6 +87,7 @@ function ExistingVoucherBanner({
  */
 function QlRecipientField({
   idPrefix,
+  buildingId,
   ql,
   onQl,
   managerId,
@@ -90,6 +96,7 @@ function QlRecipientField({
   onRecipient,
 }: {
   idPrefix: string;
+  buildingId: string | null | undefined;
   ql: boolean;
   onQl: (v: boolean) => void;
   managerId: string;
@@ -115,7 +122,12 @@ function QlRecipientField({
         </label>
       </div>
       {ql ? (
-        <QlManagerSelectCurrentOrg id={`${idPrefix}-recipient`} value={managerId} onPick={onManager} />
+        <QlManagerSelectForBuilding
+          id={`${idPrefix}-recipient`}
+          buildingId={buildingId}
+          value={managerId}
+          onPick={onManager}
+        />
       ) : (
         <Input
           id={`${idPrefix}-recipient`}
@@ -151,6 +163,7 @@ export function CommissionVoucherModal({
   const { data: accounts = [] } = useAccounts();
   const { data: authUser } = useAuth();
   const createVoucher = useCreateCommissionVoucher();
+  const queryClient = useOptionalQueryClient();
 
   // Chống chi lần 2: phiếu HH sống đã có của HĐ này (mỗi HĐ tối đa 1 phiếu/loại)
   const { data: existingVouchers = [] } = useExistingCommissionVouchers(
@@ -334,6 +347,7 @@ export function CommissionVoucherModal({
       if (!v?.id || !managerId) return;
       try {
         await assignCommissionManager({ voucherId: v.id, managerId });
+        await invalidateAfterCommissionAssign(queryClient);
       } catch (e) {
         toast.error(
           `Đã tạo phiếu ${v.code ?? ""} nhưng CHƯA gán quản lý: ${
@@ -581,6 +595,7 @@ export function CommissionVoucherModal({
                   </div>
                   <QlRecipientField
                     idPrefix="hh-broker"
+                    buildingId={prefill.building_id}
                     ql={brokerQl}
                     onQl={(v) => {
                       setBrokerQl(v);
@@ -679,6 +694,7 @@ export function CommissionVoucherModal({
                   </div>
                   <QlRecipientField
                     idPrefix="hh-sale"
+                    buildingId={prefill.building_id}
                     ql={saleQl}
                     onQl={(v) => {
                       setSaleQl(v);

@@ -28,24 +28,39 @@
 -- LÀM GÌ
 --   1. app_private.salary_commission_books: sổ ảo của từng công ty (tự tạo).
 --   2. app_private.commission_manager_links: phiếu ↔ quản lý nhận hoa hồng.
---   3. app_private.salary_commission_inclusions: phiếu đã tính vào kỳ lương nào
---      (mỗi phiếu tối đa MỘT dòng — ràng buộc khoá chính).
+--   3. app_private.salary_commission_inclusions: phiếu đã tính vào kỳ lương nào.
+--      Khoá chính (phiếu, kỳ): màn lương cộng hoa hồng theo THÁNG của hạng mục
+--      (start_date), nên một phiếu có hạng mục ở hai tháng là hai phần của hai kỳ;
+--      mỗi phần chỉ thuộc MỘT người (soát chéo 27/09: khoá theo phiếu thì phần
+--      tháng sau bị gạch vĩnh viễn dù chưa từng được trả).
 --   4. public.assign_commission_manager_v1: gán quản lý + chuyển phiếu CHỜ DUYỆT
 --      sang sổ ảo qua đúng cửa REVISE của "sửa phiếu chờ duyệt" (khoá org, khoá
 --      phiếu, CAS approval_version, lịch sử sửa, nhật ký phiếu).
 --   5. public.commission_manager_options_v1 / salary_commission_meta_v1: đọc.
 --   6. public.lock_salary_month_v2 / unlock_salary_month_v2: bọc v1 trong cùng
---      transaction và ghi / gỡ dấu kỳ lương.
+--      transaction và ghi / gỡ dấu kỳ lương. Trước khi ghi dấu, mỗi phiếu phải là
+--      phiếu hoa hồng, cùng công ty, có hạng mục hoa hồng TRONG kỳ, và nếu đã gán ô
+--      QL thì đúng người đó.
+--   6b. THU quyền gọi lock/unlock_salary_month_v1 của authenticated: gọi thẳng v1
+--      là chốt lương KHÔNG ghi dấu ⇒ lọt lưới chống tính hai lần (soát chéo 27/09,
+--      BLOCKER). v2 vẫn gọi v1 bên trong (SECURITY DEFINER). Registry Copilot trỏ
+--      rollback sang unlock_salary_month_v2.
 --   7. Copilot "khoá tháng lương": nhận cả phiếu đã duyệt (trước chỉ UNAPPROVED)
 --      và đi qua lock_salary_month_v2.
 --   8. ie_revise_scope_delta_guard: trong cửa REVISE cho đổi posting_mode /
 --      posting_status CHỈ khi đúng công thức suy từ sổ (như lúc tạo phiếu).
 --
 -- KHÔNG ĐỤNG
---   salary_payout_v1, cầu ghi sổ a85, hàm tạo phiếu, lock/unlock v1 (chỉ bọc).
+--   salary_payout_v1, cầu ghi sổ a85, hàm tạo phiếu, thân lock/unlock v1 (chỉ bọc
+--   và thu quyền gọi thẳng).
+--
+-- THỨ TỰ PHÁT HÀNH
+--   Áp migration rồi promote web NGAY: web đang chạy gọi lock/unlock v1 — trong
+--   khoảng giữa hai bước, chốt / mở chốt lương trên web cũ báo thiếu quyền (42501).
 --
 -- ĐƯỜNG LÙI
---   REVOKE EXECUTE các RPC mới; client quay về lock/unlock v1. Bảng mới để nguyên.
+--   GRANT EXECUTE lock/unlock v1 lại cho authenticated, REVOKE các RPC mới; client
+--   quay về v1. Bảng mới để nguyên.
 --   Phiếu đã chuyển sang sổ ảo: sửa phiếu chờ duyệt đổi lại sổ thật như thường.
 --
 -- Chạy được hai lượt liên tiếp và trên DB rỗng của Restore Drill.
@@ -78,6 +93,15 @@ BEGIN
      OR to_regprocedure('app_private.assert_period_open_for_edit_v1(uuid,text)') IS NULL THEN
     RAISE EXCEPTION 'Thiếu hàm kiểm quyền / khoá kỳ của thu chi' USING ERRCODE = '55000';
   END IF;
+  -- Mục 3 thay trigger function dùng chung của cửa REVISE: chỉ thay khi thân đang
+  -- chạy đúng bản đã rà (khuôn của 20260925080906). Hai mã: bản 20260925080906 đo
+  -- trên production 27/09 (không có CR) và bản do chính migration này dựng (chạy
+  -- lượt hai). So trên thân đã bỏ CR để không vấp CRLF.
+  IF md5(replace(pg_get_functiondef('app_private.ie_revise_scope_delta_guard()'::regprocedure), chr(13), ''))
+     <> ALL (ARRAY['c50c6353af7bcb9f35e58932bae2115a', 'e76e5c34c40e5a644cd7fa85a02b8863']) THEN
+    RAISE EXCEPTION 'app_private.ie_revise_scope_delta_guard() đã đổi so với bản đã rà — chụp lại pg_get_functiondef rồi rà lại'
+      USING ERRCODE = '55000';
+  END IF;
 END
 $truoc$;
 
@@ -102,14 +126,15 @@ CREATE TABLE IF NOT EXISTS app_private.commission_manager_links (
 CREATE INDEX IF NOT EXISTS commission_manager_links_mgr
   ON app_private.commission_manager_links (organization_id, manager_id);
 
--- Mỗi phiếu tối đa MỘT kỳ lương (khoá chính = voucher_id).
+-- Mỗi (phiếu, kỳ) thuộc tối đa MỘT người — khoá chính (voucher_id, period_month).
 CREATE TABLE IF NOT EXISTS app_private.salary_commission_inclusions (
-  voucher_id      uuid PRIMARY KEY REFERENCES public.income_expenses(id) ON DELETE RESTRICT,
+  voucher_id      uuid NOT NULL REFERENCES public.income_expenses(id) ON DELETE RESTRICT,
   organization_id uuid NOT NULL REFERENCES public.organizations(id) ON DELETE RESTRICT,
   staff_id        uuid NOT NULL REFERENCES auth.users(id) ON DELETE RESTRICT,
   period_month    date NOT NULL CHECK (period_month = date_trunc('month', period_month)::date),
   created_by      uuid NOT NULL,
-  created_at      timestamptz NOT NULL DEFAULT clock_timestamp()
+  created_at      timestamptz NOT NULL DEFAULT clock_timestamp(),
+  PRIMARY KEY (voucher_id, period_month)
 );
 CREATE INDEX IF NOT EXISTS salary_commission_inclusions_ky
   ON app_private.salary_commission_inclusions (organization_id, period_month, staff_id);
@@ -124,7 +149,7 @@ COMMENT ON TABLE app_private.salary_commission_books IS
 COMMENT ON TABLE app_private.commission_manager_links IS
   'Phiếu hoa hồng ↔ quản lý hưởng lương nhận hoa hồng đó (chọn trên phiếu, thay cho so tên người nhận).';
 COMMENT ON TABLE app_private.salary_commission_inclusions IS
-  'Phiếu hoa hồng đã tính vào kỳ lương nào. Ghi khi chốt lương (lock_salary_month_v2), gỡ khi mở chốt (unlock_salary_month_v2). Mỗi phiếu tối đa một kỳ.';
+  'Phần hoa hồng (phiếu, kỳ theo tháng hạng mục) đã tính vào lương của ai. Ghi khi chốt lương (lock_salary_month_v2), gỡ khi mở chốt (unlock_salary_month_v2). Mỗi (phiếu, kỳ) thuộc tối đa một người.';
 
 -- ---------------------------------------------------------------------------
 -- 2. Sổ ảo của công ty — lấy hoặc tạo. Chủ sổ: người tạo công ty (hoặc người gọi).
@@ -454,9 +479,11 @@ END
 $fn$;
 
 -- ---------------------------------------------------------------------------
--- 6. Đọc cho màn lương: quản lý đã gán, sổ của phiếu, kỳ lương đã tính.
---    Chỉ trả phiếu thuộc công ty người gọi đang là thành viên (hoặc super admin).
-CREATE OR REPLACE FUNCTION public.salary_commission_meta_v1(p_voucher_ids uuid[])
+-- 6. Đọc cho màn lương: quản lý đã gán, sổ của phiếu, và phần của KỲ ĐANG XEM đã
+--    tính cho ai. Chỉ trả phiếu thuộc công ty người gọi đang là thành viên (hoặc
+--    super admin). Bản một-tham-số (bản nháp trên TEST) bị bỏ.
+DROP FUNCTION IF EXISTS public.salary_commission_meta_v1(uuid[]);
+CREATE OR REPLACE FUNCTION public.salary_commission_meta_v1(p_voucher_ids uuid[], p_period_month date)
 RETURNS TABLE (
   voucher_id       uuid,
   manager_id       uuid,
@@ -483,6 +510,9 @@ BEGIN
   IF cardinality(p_voucher_ids) > 2000 THEN
     RAISE EXCEPTION 'Tối đa 2000 phiếu mỗi lần' USING ERRCODE = '22023';
   END IF;
+  IF p_period_month IS NULL THEN
+    RAISE EXCEPTION 'Thiếu kỳ lương' USING ERRCODE = '22023';
+  END IF;
   RETURN QUERY
     SELECT ie.id,
            l.manager_id,
@@ -495,7 +525,8 @@ BEGIN
       LEFT JOIN public.accounts a ON a.id = ie.account_id
       LEFT JOIN app_private.salary_commission_books b ON b.organization_id = ie.organization_id
       LEFT JOIN app_private.commission_manager_links l ON l.voucher_id = ie.id
-      LEFT JOIN app_private.salary_commission_inclusions i ON i.voucher_id = ie.id
+      LEFT JOIN app_private.salary_commission_inclusions i
+             ON i.voucher_id = ie.id AND i.period_month = date_trunc('month', p_period_month)::date
      WHERE ie.id = ANY (p_voucher_ids)
        AND (v_super OR EXISTS (
              SELECT 1 FROM public.organization_memberships m
@@ -525,16 +556,20 @@ DECLARE
   v_vid    uuid;
   v_cu     app_private.salary_commission_inclusions%ROWTYPE;
   v_ie     record;
+  v_gan    uuid;
   v_dem    integer := 0;
 BEGIN
   -- v1 kiểm đăng nhập, quyền salary.lock, idempotency, khoá org, số liệu.
   v_ket := public.lock_salary_month_v1(p_period_month, p_managers, p_idempotency_key);
   v_thang := date_trunc('month', p_period_month)::date;
+  -- Công ty suy ĐÚNG như v1: từ nhân viên ĐẦU TIÊN (v1 đã buộc mọi người còn lại là
+  -- thành viên công ty đó). Suy riêng từng người sẽ lệch v1 với người có cấu hình
+  -- lương ở công ty khác (soát chéo 27/09).
+  v_org := app_private.salary_staff_org_v1(NULLIF(p_managers -> 0 ->> 'staff_id', '')::uuid);
 
   FOR v_mgr IN SELECT value FROM jsonb_array_elements(p_managers) LOOP
     v_staff := NULLIF(v_mgr ->> 'staff_id', '')::uuid;
     CONTINUE WHEN v_staff IS NULL;
-    v_org := app_private.salary_staff_org_v1(v_staff);
     FOR v_vid IN
       SELECT DISTINCT e.value::uuid
         FROM jsonb_array_elements_text(COALESCE(v_mgr -> 'commission_voucher_ids', '[]'::jsonb)) AS e(value)
@@ -547,10 +582,28 @@ BEGIN
       IF v_ie.deleted_at IS NOT NULL OR v_ie.approval_status = 'CANCELLED' THEN
         RAISE EXCEPTION 'Phiếu hoa hồng % đã huỷ / xoá — không tính vào lương', v_vid USING ERRCODE = '22023';
       END IF;
-      SELECT * INTO v_cu FROM app_private.salary_commission_inclusions x WHERE x.voucher_id = v_vid;
+      -- Đúng phiếu hoa hồng, có hạng mục hoa hồng TRONG kỳ (màn lương gom theo tháng
+      -- của hạng mục) — chặn một danh sách sai/cũ kéo phiếu tháng khác vào kỳ này.
+      IF NOT EXISTS (
+        SELECT 1 FROM public.income_expense_items it
+          JOIN public.income_expense_types t ON t.id = it.income_expense_type_id
+         WHERE it.income_expense_id = v_vid
+           AND (upper(COALESCE(t.category, '')) = 'HOA HỒNG' OR t.name ~* 'hoa h[ồô]ng|hhmg')
+           AND it.start_date >= v_thang AND it.start_date < (v_thang + interval '1 month')::date) THEN
+        RAISE EXCEPTION 'Phiếu % không có hạng mục hoa hồng trong kỳ % — không tính vào lương kỳ này',
+          v_vid, to_char(v_thang, 'MM/YYYY') USING ERRCODE = '22023';
+      END IF;
+      -- Đã gán ô QL thì chỉ đúng người được gán mới nhận.
+      SELECT l.manager_id INTO v_gan FROM app_private.commission_manager_links l WHERE l.voucher_id = v_vid;
+      IF FOUND AND v_gan IS DISTINCT FROM v_staff THEN
+        RAISE EXCEPTION 'Phiếu hoa hồng % đã gán cho quản lý khác — không tính vào lương người này', v_vid
+          USING ERRCODE = '22023';
+      END IF;
+      SELECT * INTO v_cu FROM app_private.salary_commission_inclusions x
+       WHERE x.voucher_id = v_vid AND x.period_month = v_thang;
       IF FOUND THEN
-        IF v_cu.staff_id IS DISTINCT FROM v_staff OR v_cu.period_month IS DISTINCT FROM v_thang THEN
-          RAISE EXCEPTION 'Phiếu hoa hồng % đã tính vào lương kỳ % — không tính lần nữa',
+        IF v_cu.staff_id IS DISTINCT FROM v_staff THEN
+          RAISE EXCEPTION 'Phiếu hoa hồng % đã tính vào lương kỳ % của người khác — không tính lần nữa',
             v_vid, to_char(v_cu.period_month, 'MM/YYYY') USING ERRCODE = '55000';
         END IF;
         CONTINUE;
@@ -594,21 +647,43 @@ $fn$;
 
 -- ---------------------------------------------------------------------------
 -- 8. Quyền gọi.
-REVOKE ALL ON FUNCTION public.commission_manager_options_v1(uuid) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.commission_manager_options_v1(uuid) FROM PUBLIC, anon, service_role;
 GRANT EXECUTE ON FUNCTION public.commission_manager_options_v1(uuid) TO authenticated;
-REVOKE ALL ON FUNCTION public.assign_commission_manager_v1(uuid, uuid, bigint, text) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.assign_commission_manager_v1(uuid, uuid, bigint, text) FROM PUBLIC, anon, service_role;
 GRANT EXECUTE ON FUNCTION public.assign_commission_manager_v1(uuid, uuid, bigint, text) TO authenticated;
-REVOKE ALL ON FUNCTION public.salary_commission_meta_v1(uuid[]) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.salary_commission_meta_v1(uuid[]) TO authenticated;
-REVOKE ALL ON FUNCTION public.lock_salary_month_v2(date, jsonb, text) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.salary_commission_meta_v1(uuid[], date) FROM PUBLIC, anon, service_role;
+GRANT EXECUTE ON FUNCTION public.salary_commission_meta_v1(uuid[], date) TO authenticated;
+REVOKE ALL ON FUNCTION public.lock_salary_month_v2(date, jsonb, text) FROM PUBLIC, anon, service_role;
 GRANT EXECUTE ON FUNCTION public.lock_salary_month_v2(date, jsonb, text) TO authenticated;
-REVOKE ALL ON FUNCTION public.unlock_salary_month_v2(date, uuid[], text) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.unlock_salary_month_v2(date, uuid[], text) FROM PUBLIC, anon, service_role;
 GRANT EXECUTE ON FUNCTION public.unlock_salary_month_v2(date, uuid[], text) TO authenticated;
+
+-- 6b. Gọi thẳng v1 = chốt / mở chốt KHÔNG dấu kỳ ⇒ thu quyền. v2 (SECURITY DEFINER)
+--     vẫn gọi được v1 bên trong. Chủ hàm (postgres) giữ nguyên quyền.
+REVOKE EXECUTE ON FUNCTION public.lock_salary_month_v1(date, jsonb, text) FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.unlock_salary_month_v1(date, uuid[], text) FROM PUBLIC, anon, authenticated;
+
+-- Registry Copilot: đường lùi của "khoá tháng lương" là unlock v2 (v1 không còn gọi
+-- thẳng được). Chỉ đổi khi đang trỏ v1; bảng registry vắng (DB khác) thì bỏ qua.
+DO $registry$
+BEGIN
+  IF to_regclass('app_private.copilot_action_registry') IS NOT NULL THEN
+    UPDATE app_private.copilot_action_registry
+       SET rollback_rpc = 'unlock_salary_month_v2',
+           rollback_note = 'Goi public.unlock_salary_month_v2(p_period_month date, p_staff_ids uuid[], p_idempotency_key text) '
+             '— mo chot dung chieu (salary_monthly LOCKED ve DRAFT cho ky, staff_ids) VA go dau hoa hong da tinh vao ky do. '
+             'Doi quyen salary.unlock (authorize_tenant_action_v3, kiem trong unlock v1 ma v2 goi). '
+             'v1 khong con goi thang duoc tu 20260927155251. CHU Y CHU KY LECH: lock nhan p_managers jsonb, unlock nhan p_staff_ids uuid[]. '
+             'Copilot KHONG tu dong goi ham nay.'
+     WHERE action_id = 'salary.khoa_thang' AND rollback_rpc = 'unlock_salary_month_v1';
+  END IF;
+END
+$registry$;
 
 COMMENT ON FUNCTION public.assign_commission_manager_v1(uuid, uuid, bigint, text) IS
   'Gán quản lý hưởng lương nhận một phiếu hoa hồng CHỜ DUYỆT và chuyển phiếu sang sổ ảo "Hoa hồng QL chờ trả lương" (cửa REVISE, có lịch sử sửa). Chủ chốt 27/09/2026.';
 COMMENT ON FUNCTION public.lock_salary_month_v2(date, jsonb, text) IS
-  'lock_salary_month_v1 + ghi dấu phiếu hoa hồng đã tính vào kỳ lương (mỗi phiếu tối đa một kỳ).';
+  'lock_salary_month_v1 + ghi dấu phần hoa hồng (phiếu, kỳ) đã tính vào lương của ai; mỗi (phiếu, kỳ) tối đa một người.';
 COMMENT ON FUNCTION public.unlock_salary_month_v2(date, uuid[], text) IS
   'unlock_salary_month_v1 + gỡ dấu kỳ lương của phiếu hoa hồng những người vừa mở chốt.';
 
@@ -1122,6 +1197,18 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_trigger t WHERE t.tgname = 'a01_ie_revise_scope_delta'
                   AND t.tgrelid = 'public.income_expenses'::regclass) THEN
     RAISE EXCEPTION 'Thiếu trigger a01_ie_revise_scope_delta';
+  END IF;
+  IF has_function_privilege('authenticated', 'public.lock_salary_month_v1(date,jsonb,text)', 'EXECUTE')
+     OR has_function_privilege('authenticated', 'public.unlock_salary_month_v1(date,uuid[],text)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'lock/unlock_salary_month_v1 vẫn gọi thẳng được — chốt lương sẽ lọt dấu kỳ';
+  END IF;
+  -- Bảng dấu kỳ phải khoá theo (phiếu, kỳ). Bảng cũ khoá theo phiếu (bản nháp) thì
+  -- CREATE TABLE IF NOT EXISTS để nguyên — chặn ở đây thay vì chạy sai âm thầm.
+  IF (SELECT array_agg(a.attname::text ORDER BY a.attname)
+        FROM pg_index ix JOIN pg_attribute a ON a.attrelid = ix.indrelid AND a.attnum = ANY (ix.indkey)
+       WHERE ix.indrelid = 'app_private.salary_commission_inclusions'::regclass AND ix.indisprimary)
+     IS DISTINCT FROM ARRAY['period_month', 'voucher_id'] THEN
+    RAISE EXCEPTION 'salary_commission_inclusions phải có khoá chính (voucher_id, period_month)';
   END IF;
 END
 $kiem$;

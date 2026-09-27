@@ -74,10 +74,14 @@ const HH_QL_MIGRATION = "20260927155251_hoa_hong_quan_ly_so_ao";
  * kết" — thiếu nó thì phiếu sổ ảo bị trừ nhầm như đã chi, phiếu đã tính kỳ trước bị
  * cộng lần hai. Server nhận tối đa 2000 id mỗi lượt → chia lô 1000.
  */
-async function fetchCommissionMeta(ids: string[]): Promise<Map<string, CommissionVoucherMeta>> {
+async function fetchCommissionMeta(ids: string[], periodMonth: string): Promise<Map<string, CommissionVoucherMeta>> {
   const out = new Map<string, CommissionVoucherMeta>();
   for (let i = 0; i < ids.length; i += 1000) {
-    const { data, error } = await supabase.rpc("salary_commission_meta_v1", { p_voucher_ids: ids.slice(i, i + 1000) });
+    // Dấu "đã tính" khoá theo (phiếu, kỳ): hỏi đúng phần của kỳ đang xem.
+    const { data, error } = await supabase.rpc("salary_commission_meta_v1", {
+      p_voucher_ids: ids.slice(i, i + 1000),
+      p_period_month: periodMonth,
+    });
     if (error) {
       throw new Error(
         isMissingRpc(error)
@@ -240,7 +244,7 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
             (from, to) =>
               (supabase
                 .from("income_expense_items")
-                .select("id, amount, start_date, income_expenses(id, name, payer_name, approval_status, type, deleted_at)") as any)
+                .select("id, amount, start_date, income_expenses(id, name, payer_name, approval_status, approval_version, type, deleted_at)") as any)
                 .in("income_expense_type_id", commTypeIds)
                 .gte("start_date", start)
                 .lte("start_date", end)
@@ -259,9 +263,9 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
             if (!ie || ie.type !== "EXPENSE" || ie.deleted_at || ie.approval_status === "CANCELLED") continue;
             const ex = voucherMap.get(ie.id);
             if (ex) ex.amount += num(row.amount);
-            else voucherMap.set(ie.id, { id: ie.id, name: ie.name || "Hoa hồng", status: ie.approval_status, amount: num(row.amount), payerName: ie.payer_name || "" });
+            else voucherMap.set(ie.id, { id: ie.id, name: ie.name || "Hoa hồng", status: ie.approval_status, amount: num(row.amount), payerName: ie.payer_name || "", version: ie.approval_version == null ? undefined : num(ie.approval_version) });
           }
-          const meta = await fetchCommissionMeta([...voucherMap.keys()]);
+          const meta = await fetchCommissionMeta([...voucherMap.keys()], periodMonth);
           for (const [staff, entry] of classifyCommissionVouchers(
             [...voucherMap.values()], meta, aliasToStaff, new Set(staffIds), periodMonth,
           )) commByStaff.set(staff, entry);
