@@ -38,7 +38,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { giaiMoc, taoTruyVanRetirement } from "./check-forward-migration-idempotent.mjs";
-import { chanProduction, coPsql, goiPsql } from "./lib/goi-psql-dich.mjs";
+import { admitLocalPsqlTarget, chanProduction, coPsql, goiPsql } from "./lib/goi-psql-dich.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const MIGRATIONS = join(repoRoot, "supabase", "migrations");
@@ -298,7 +298,7 @@ function main(argv) {
     if (groups?.length !== 1) throw Error("drill restore retirement group missing/duplicate");
     restoreGroup = groups[0];
     // This fixture is for a disposable, local drill only, never a remote DB.
-    if (!["localhost", "127.0.0.1", "[::1]"].includes(new URL(dich).hostname)) throw Error("drill ACL fixture requires a local disposable database");
+    admitLocalPsqlTarget(dich);
     fixtureSql = taoFixtureAcl(readFileSync(ACL_FIXTURE, "utf8"), ACL_FIXTURE_SHA256, restoreGroup);
     terminationFixtureSql = taoFixtureAclTermination(readFileSync(TERMINATION_ACL_FIXTURE, "utf8"));
     if (!files.includes(TERMINATION_FIRST_MIGRATION) || !files.includes(TERMINATION_BOUNDARY_MIGRATION)) throw Error("drill termination migration missing");
@@ -343,7 +343,7 @@ function main(argv) {
 
   const t0 = Date.now();
   const ketQua = [];
-  const psqlOptions = { encoding: "utf8", timeout: 5 * 60 * 1000, maxBuffer: 64 * 1024 * 1024 };
+  const psqlOptions = { localOnly: true, encoding: "utf8", timeout: 5 * 60 * 1000, maxBuffer: 64 * 1024 * 1024 };
   const checkCatalog = (restored) => {
     const r = goiPsql(["-d", dich, "-t", "-A", "-v", "ON_ERROR_STOP=1", "-c", taoTruyVanRetirement(restoreGroup)], psqlOptions);
     if (r.status !== 0) throw Error(`drill catalog query failed: ${dauLoi(r.stderr)}`);
@@ -384,6 +384,7 @@ function main(argv) {
       continue;
     }
     const r = goiPsql(["-d", dich, "-q", "-v", "ON_ERROR_STOP=1", "-f", join(MIGRATIONS, ten)], {
+      localOnly: true,
       encoding: "utf8",
       timeout: 5 * 60 * 1000,
       maxBuffer: 64 * 1024 * 1024,
