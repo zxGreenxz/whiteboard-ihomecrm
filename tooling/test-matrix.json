@@ -17,7 +17,7 @@
       "ciCommandStep": "Contract lifecycle TEST target and catalog preflight (no credentials)",
       "environment": "ci",
       "timeoutMinutes": 5,
-      "note": "Pure preflight and fake-transport guard tests; live TEST integration remains a separate gate."
+      "note": "Pure preflight, fake-transport guards and financial baseline nonempty/mutation oracle tests; live rollback TEST baseline is explicit via baseline:contract-lifecycle and never runs in CI."
     },
     {
       "id": "voice-task-lab-server",

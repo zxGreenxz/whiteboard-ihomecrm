@@ -8,6 +8,8 @@
     "node": ">=20"
   },
   "scripts": {
+    "test:contract-lifecycle": "node --test scripts/tests/contract-lifecycle/*.test.mjs",
+    "baseline:contract-lifecycle": "node scripts/contract-lifecycle/baseline.mjs",
     "voice-lab:build": "vite build --config tools/voice-task-lab/vite.config.ts",
     "voice-lab:start": "node tools/voice-task-lab/run-local.mjs",
     "voice-lab:test": "node --test tools/voice-task-lab/*.test.mjs",
