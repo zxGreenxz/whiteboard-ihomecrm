@@ -17,20 +17,20 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 
 | Chỉ số | Giá trị |
 |---|---|
-| RPC được gọi từ mã nguồn | 298 |
-| Hàm trong catalog (public + api) | 1176 |
+| RPC được gọi từ mã nguồn | 305 |
+| Hàm trong catalog (public + api) | 1183 |
 | File mã nguồn đã quét | 1772 |
-| SECURITY DEFINER | 282 |
-| **Gọi mà server KHÔNG CÓ** | **7** |
+| SECURITY DEFINER | 289 |
+| **Gọi mà server KHÔNG CÓ** | **0** |
 
 ## Theo mức rủi ro
 
 | Mức | Số RPC | Nghĩa là |
 |---|---|---|
 | thường | 216 | còn lại |
-| tiền | 82 | có nơi gọi nằm trong màn tiền — sai là sai sổ sách |
+| tiền | 89 | có nơi gọi nằm trong màn tiền — sai là sai sổ sách |
 
-## 82 RPC chạm TIỀN
+## 89 RPC chạm TIỀN
 
 Đây là danh sách đáng đọc nhất trong trang này: mỗi dòng là một đường ghi hoặc
 đọc có thể làm lệch số trên sổ.
@@ -97,7 +97,14 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 | `reverse_posted_income_expense_v2` | ✔ | hooks/income-expenses/statusMutations.ts |
 | `review_invoice_adjustment_v2` | ✔ | lib/invoiceAdjustmentRpc.ts |
 | `revise_pending_income_expense_v1` | ✔ | hooks/income-expenses/revisions.ts |
+| `salary_can_edit_amounts_v1` | ✔ | hooks/useSalaryExtras.ts |
+| `salary_line_override_list_v1` | ✔ | hooks/useSalaryExtras.ts |
+| `salary_line_override_set_v1` | ✔ | hooks/useSalaryExtras.ts |
 | `salary_payout_v1` | ✔ | hooks/useManagerSalary.ts |
+| `salary_recurring_create_v1` | ✔ | hooks/useSalaryExtras.ts |
+| `salary_recurring_delete_v1` | ✔ | hooks/useSalaryExtras.ts |
+| `salary_recurring_list_v1` | ✔ | hooks/useSalaryExtras.ts |
+| `salary_recurring_version_add_v1` | ✔ | hooks/useSalaryExtras.ts |
 | `salary_staff_months` | ✔ | hooks/useManagerSalary.ts |
 | `salary_work_ledger` | ✔ | hooks/useManagerSalary.ts |
 | `set_building_receiving_cashbooks_v1` | ✔ | hooks/useReceivingCashbooks.ts |

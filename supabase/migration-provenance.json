@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-09-27T11:01:24.953Z",
+  "generatedAt": "2026-09-27T11:44:16.117Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 614,
-    "unknown": 81,
+    "ledger-applied": 615,
+    "unknown": 80,
     "catalog-proven": 205,
     "superseded": 15
   },
@@ -10622,14 +10622,9 @@
       "name": "luong_khoan_dinh_ky_va_so_ghi_de",
       "scheme": "timestamp14",
       "sha256": "64fee8c27e5a3582302b4b3f334c80e16be446ee31e0bdc0e208f61a377de997",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "table:app_private.salary_recurring_items",
-        "table:app_private.salary_recurring_item_versions",
-        "table:app_private.salary_line_overrides",
-        "function:app_private.salary_recurring_amount_v1",
-        "function:app_private.salary_staff_org_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-27T11:39:08.882Z|bien-nhan-backup"
       ]
     },
     {

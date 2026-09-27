@@ -2,64 +2,21 @@
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
     "sourceCallSites": 1772,
-    "catalogFunctions": 1176,
+    "catalogFunctions": 1183,
     "schemas": [
       "public",
       "api"
     ]
   },
   "counts": {
-    "calledRpcs": 298,
+    "calledRpcs": 305,
     "byRisk": {
       "normal": 216,
-      "financial": 82
+      "financial": 89
     },
-    "securityDefiner": 282
+    "securityDefiner": 289
   },
-  "missingOnServer": [
-    {
-      "name": "salary_can_edit_amounts_v1",
-      "callers": [
-        "src/hooks/useSalaryExtras.ts"
-      ]
-    },
-    {
-      "name": "salary_line_override_list_v1",
-      "callers": [
-        "src/hooks/useSalaryExtras.ts"
-      ]
-    },
-    {
-      "name": "salary_line_override_set_v1",
-      "callers": [
-        "src/hooks/useSalaryExtras.ts"
-      ]
-    },
-    {
-      "name": "salary_recurring_create_v1",
-      "callers": [
-        "src/hooks/useSalaryExtras.ts"
-      ]
-    },
-    {
-      "name": "salary_recurring_delete_v1",
-      "callers": [
-        "src/hooks/useSalaryExtras.ts"
-      ]
-    },
-    {
-      "name": "salary_recurring_list_v1",
-      "callers": [
-        "src/hooks/useSalaryExtras.ts"
-      ]
-    },
-    {
-      "name": "salary_recurring_version_add_v1",
-      "callers": [
-        "src/hooks/useSalaryExtras.ts"
-      ]
-    }
-  ],
+  "missingOnServer": [],
   "rpcs": {
     "accept_organization_invitation_v1": {
       "definitions": [
@@ -4439,6 +4396,66 @@
       ],
       "risk": "normal"
     },
+    "salary_can_edit_amounts_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid",
+          "returns": "boolean",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useSalaryExtras.ts"
+      ],
+      "risk": "financial"
+    },
+    "salary_line_override_list_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_period_month date",
+          "returns": "TABLE(staff_id uuid, line_key text, line_label text, computed_amount numeric, amount numeric, reason text, created_by uuid, created_by_name text, created_at timestamp with time zone)",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useSalaryExtras.ts"
+      ],
+      "risk": "financial"
+    },
+    "salary_line_override_set_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_staff_id uuid, p_period_month date, p_line_key text, p_line_label text, p_computed_amount numeric, p_amount numeric, p_reason text, p_idempotency_key text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useSalaryExtras.ts"
+      ],
+      "risk": "financial"
+    },
     "salary_payout_v1": {
       "definitions": [
         {
@@ -4456,6 +4473,86 @@
       ],
       "callers": [
         "src/hooks/useManagerSalary.ts"
+      ],
+      "risk": "financial"
+    },
+    "salary_recurring_create_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_staff_id uuid, p_label text, p_category text, p_building_id uuid, p_amount numeric, p_effective_month date, p_reason text, p_note text, p_idempotency_key text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useSalaryExtras.ts"
+      ],
+      "risk": "financial"
+    },
+    "salary_recurring_delete_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_item_id uuid, p_reason text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useSalaryExtras.ts"
+      ],
+      "risk": "financial"
+    },
+    "salary_recurring_list_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_period_month date",
+          "returns": "TABLE(item_id uuid, staff_id uuid, staff_name text, label text, category text, building_id uuid, building_name text, note text, created_at timestamp with time zone, amount_for_period numeric, period_locked boolean, versions jsonb)",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useSalaryExtras.ts"
+      ],
+      "risk": "financial"
+    },
+    "salary_recurring_version_add_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_item_id uuid, p_kind text, p_effective_month date, p_amount numeric, p_reason text, p_idempotency_key text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useSalaryExtras.ts"
       ],
       "risk": "financial"
     },
