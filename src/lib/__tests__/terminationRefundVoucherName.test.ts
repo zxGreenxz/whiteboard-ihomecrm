@@ -1,3 +1,4 @@
+import { boChuThichSql } from "../../../scripts/lib/bo-chu-thich.mjs";
 import { readFileSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 
@@ -15,7 +16,7 @@ import { describe, expect, it } from "vitest";
  * Đo ĐỊNH NGHĨA SỐNG (CREATE cuối), không ghim file.
  */
 const MIG_DIR = resolve(process.cwd(), "supabase/migrations");
-const stripComments = (sql: string) => sql.replace(/--[^\n]*/g, "");
+const stripComments = boChuThichSql;
 
 let corpusCache: { file: string; sql: string }[] | null = null;
 function migrationCorpus(): { file: string; sql: string }[] {
@@ -66,6 +67,7 @@ describe("terminate_contract_move_out_impl — đổi tên phiếu hoàn khách,
   it("mọi khối tiền của bản gốc còn nguyên", () => {
     const { file, sql } = live();
     const body = bodyOf(sql, "public", "terminate_contract_move_out_impl");
+    expect(body).toMatch(/\bINSERT\s+INTO\s+(?:public\.)?contract_terminations\s*\(/i);
     for (const chot of [
       "'termination.offset'",
       "'termination.revenue'",
@@ -76,7 +78,6 @@ describe("terminate_contract_move_out_impl — đổi tên phiếu hoàn khách,
       "kind, billing_month, issue_date",          // hoá đơn SETTLEMENT
       "_termination_apply_extra_charges(",
       "'CT'::payment_method",                     // cấn trừ công nợ
-      "INSERT INTO contract_terminations",
       "[HOÀN KHÁCH THANH LÝ]",
       "recompute_invoice_for_id(",
       "LEAST(GREATEST(COALESCE(p_deposit_refund, 0), 0), COALESCE(v_contract.deposit_paid, 0))",
@@ -94,19 +95,40 @@ describe("terminate_contract_move_out_impl — đổi tên phiếu hoàn khách,
 
   it("preflight md5 chặn replace mù khi bản prod đã đổi ngoài repo", () => {
     const { sql } = live();
-    // ĐO HÌNH DẠNG CỦA GUARD, KHÔNG GHIM MỘT HASH (sửa 15/09/2026 · plan H2).
-    //
-    // Bản trước ghim cứng '197fa29b…' — md5 của định nghĩa prod tại thời điểm
-    // 20260902104355 chép khối này. Nhưng mỗi lần forward-fix chép lại 20k ký
-    // tự đó sẽ ghim md5 KHÁC: md5 của bản đang chạy lúc nó chép. Nghĩa là hash
-    // cứng biến test thành thứ phải sửa theo mỗi đợt vá — và cái phải-sửa-theo
-    // thì không còn canh được gì.
-    //
-    // Thứ BẤT BIẾN là: file giữ định nghĩa sống phải (a) ghim một md5 của bản
-    // nó chép từ đó, và (b) có lối thoát idempotent theo dấu nhận diện, để
-    // chạy lại lần hai không nổ.
-    expect(sql).toMatch(/md5\(v_def\) <> '[0-9a-f]{32}'/);
-    expect(sql).toMatch(/position\('[^']+' IN v_def\) > 0/);
+    const signature = "terminate_contract_move_out_impl(uuid,date,numeric,numeric,numeric,numeric,text,jsonb,text,uuid,jsonb)";
+    const install = /EXECUTE\s+\$install\$([\s\S]*?)\$install\$;/.exec(sql);
+    expect(install, "bounded install block").not.toBeNull();
+    const pre = sql.slice(0, install!.index);
+    const post = sql.slice(install!.index + install![0].length);
+    const replayEnd = /\bRETURN;\s*END IF;/.exec(pre);
+    expect(replayEnd, "installed replay returns before replacing functions").not.toBeNull();
+    const replay = pre.slice(0, replayEnd!.index);
+    const before = pre.slice(replayEnd!.index + replayEnd![0].length);
+    expect(replay).toMatch(/^\s*DO \$migration\$\s*BEGIN\s*IF EXISTS\(SELECT 1 FROM pg_proc p WHERE p\.oid=to_regprocedure\('guard_contract_termination_settlement\(\)'\) AND md5\(replace\(pg_get_functiondef\(p\.oid\),chr\(13\)\|\|chr\(10\),chr\(10\)\)\)='[0-9a-f]{32}'/);
+    const guard = (block: string, phase: string) => {
+      const lines = block.split("\n").filter((line) => line.includes(`p.oid=to_regprocedure('${signature}')`));
+      expect(lines, `${phase}: exact target metadata guard`).toHaveLength(1);
+      const line = lines[0].trim();
+      let prefix = block.slice(0, block.indexOf(lines[0]));
+      if (phase === "replay") {
+        // Exactly one installed-state IF introduces this branch. Do not accept
+        // IF FALSE / early RETURN wrappers around an otherwise correct witness.
+        const opening = /^\s*DO \$migration\$\s*BEGIN\s*(IF EXISTS[^\n]+)\n/.exec(prefix);
+        expect(opening, "installed branch entry").not.toBeNull();
+        expect(opening![1], "installed branch metadata").toMatch(/^IF EXISTS\(SELECT 1 FROM pg_proc p WHERE p\.oid=to_regprocedure\('guard_contract_termination_settlement\(\)'\) AND md5\(replace\(pg_get_functiondef\(p\.oid\),chr\(13\)\|\|chr\(10\),chr\(10\)\)\)='[0-9a-f]{32}' AND pg_get_userbyid\(p\.proowner\)='postgres' AND p\.proacl::text='[^']+' AND p\.prosecdef=true AND p\.provolatile='v' AND p\.proconfig=ARRAY\['search_path=pg_catalog, public, app_private'\]::text\[\]\) THEN$/);
+        prefix = prefix.slice(opening![0].length);
+      }
+      // Prior statements may only be fail-closed metadata assertions. Nothing
+      // may make the target assertion unreachable or conditional on another IF.
+      expect(prefix.replace(/IF NOT EXISTS\([^\n]+\) THEN RAISE EXCEPTION '[^']+'; END IF;/g, "").trim(), `${phase}: reachable target guard`).toBe("");
+      expect(line).toMatch(/^IF NOT EXISTS\(SELECT 1 FROM pg_proc p WHERE p\.oid=to_regprocedure\('[^']+'\) AND md5\(replace\(pg_get_functiondef\(p\.oid\),chr\(13\)\|\|chr\(10\),chr\(10\)\)\)='[0-9a-f]{32}' AND pg_get_userbyid\(p\.proowner\)='postgres' AND p\.proacl::text='[^']+' AND p\.prosecdef=true AND p\.provolatile='v' AND p\.proconfig=ARRAY\['search_path=public'\]::text\[\]\) THEN RAISE EXCEPTION 'P1a2 function definition\/metadata drift: terminate_contract_move_out_impl'; END IF;$/);
+      return /md5\(replace[\s\S]*?='([0-9a-f]{32})'/.exec(line)![1];
+    };
+    const replayHash = guard(replay, "replay");
+    const beforeHash = guard(before, "before");
+    const afterHash = guard(post, "after");
+    expect(replayHash).toBe(afterHash);
+    expect(beforeHash).not.toBe(afterHash);
   });
 });
 
