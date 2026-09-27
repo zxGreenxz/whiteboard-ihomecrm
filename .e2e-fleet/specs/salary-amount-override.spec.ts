@@ -98,7 +98,8 @@ test('chủ công ty: khoản định kỳ vào lương, ngừng rồi xoá', as
   await modal.getByRole('button', { name: 'Đóng' }).click();
 
   await openIncome(page);
-  await expect(page.getByRole('button', { name: /Hỗ trợ xăng/ })).toBeVisible();
+  // Dòng lương (tên bắt đầu bằng nhãn khoản) — nút bút chì "Sửa số tiền: Hỗ trợ xăng" cũng khớp /Hỗ trợ xăng/.
+  await expect(page.getByRole('button', { name: /^Hỗ trợ xăng/ })).toBeVisible();
   await expect.poll(() => cashOf(page)).toBe(cash0 + 200000);
 
   await page.getByRole('button', { name: /Tổng quan kỳ/ }).click();
@@ -109,6 +110,9 @@ test('chủ công ty: khoản định kỳ vào lương, ngừng rồi xoá', as
   await modal.locator('#recv-reason').fill(TAG + ' ngừng');
   await modal.getByRole('button', { name: 'Lưu phiên bản mới' }).click();
   await expect(row).toContainText('Không phát sinh kỳ này', { timeout: 30_000 });
+  // Danh sách cập nhật TRƯỚC, form xoá ô lý do SAU (onSuccess của lượt lưu) — gõ vào
+  // giữa hai nhịp thì chữ bị xoá mất và nút "Xoá khoản" đứng im. Đợi form reset xong.
+  await expect(modal.locator('#recv-reason')).toHaveValue('');
   await modal.locator('#recv-reason').fill(TAG + ' xoá');
   await modal.getByRole('button', { name: /Xoá khoản/ }).click();
   await expect(modal.getByRole('button').filter({ hasText: 'Hỗ trợ xăng' })).toHaveCount(0, { timeout: 30_000 });

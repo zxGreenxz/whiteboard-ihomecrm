@@ -73,7 +73,9 @@ test('chủ công ty: tổng quan kỳ, nguồn lương, thêm/xoá thưởng �
   await expect(modal.getByText('Phí quản lý từ tòa')).toBeVisible();
   await expect(modal.getByText('Chủ công ty cấp thêm')).toBeVisible();
   await modal.getByRole('button', { name: 'Khoản định kỳ', exact: true }).click();
-  await expect(modal.getByText(/Phụ cấp & lương bổ sung/).first()).toBeVisible();
+  // Tab này từng là bản xem trước ("Phụ cấp & lương bổ sung đang nhập tay"); từ
+  // migration 20260927081925 chủ công ty nhập được — nút nhập phải có mặt.
+  await expect(modal.getByRole('button', { name: '+ Thêm khoản định kỳ' })).toBeVisible();
   await modal.getByRole('button', { name: 'Đóng' }).click();
   await expect(modal).toBeHidden();
 
