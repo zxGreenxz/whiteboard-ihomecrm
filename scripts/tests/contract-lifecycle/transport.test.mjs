@@ -158,6 +158,22 @@ test('direct SELECT page uses defined default columns, order and filters', async
   assert.equal(url, `${config.url}/rest/v1/contracts?select=*&order=id.asc`);
 });
 
+test('REST filter accepts uppercase enum values but rejects injected operators before fetch', async () => {
+  const urls = [];
+  const fetch = async (url) => {
+    urls.push(url);
+    return { ok: true, status: 200, headers: new Headers({ 'content-range': '0-0/1' }), async json() { return [{ id: 'a' }]; } };
+  };
+  const http = createTestHttp(config, { apiKey: 'anon', fetch });
+  const filters = '&type=eq.INCOME&approval_status=eq.APPROVED';
+  assert.equal((await selectAll(http, { table: 'income_expenses', filters })).length, 1);
+  assert.equal(urls[0], `${config.url}/rest/v1/income_expenses?select=*&order=id.asc${filters}`);
+  for (const unsafe of ['&type=eq.INCOME,EXPENSE', '&type=eq.INCOME%26deleted_at=is.null', '&type=eq.INCOME;DROP', '&type=eq.INCOME&x=or.(a,b)']) {
+    await assert.rejects(selectAll(http, { table: 'income_expenses', filters: unsafe }));
+  }
+  assert.equal(urls.length, 1);
+});
+
 test('paginated SELECT fetches past 1000 with exact count and order', async () => {
   const rows = Array.from({ length: 1001 }, (_, i) => ({ id: String(i).padStart(4, '0') }));
   const ranges = [];

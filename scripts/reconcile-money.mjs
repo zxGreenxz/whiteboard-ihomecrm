@@ -35,6 +35,13 @@
 import { readFileSync } from 'node:fs';
 import { createClient } from '@supabase/supabase-js';
 
+if (process.argv.includes('--test-scope')) {
+  const { runTestReconcile } = await import('./contract-lifecycle/reconcile.mjs');
+  const result = await runTestReconcile('v1', process.argv.slice(2));
+  console.log(JSON.stringify(result));
+  process.exit(result.status);
+}
+
 const PAGE = 1000; // = SUPABASE_PAGE (src/lib/supabaseFetchAll.ts)
 const HARD_CAP = 100_000; // trần an toàn phân trang: vượt = nghi order không ổn định
 const REF_CONST = 'tryymsxyyckgbrmmvozx';

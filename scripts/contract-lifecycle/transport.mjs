@@ -160,7 +160,7 @@ export function createTestHttp(config, { verified, fetch: doFetch = globalThis.f
       if (!IDENT.test(table) || !IDENT.test(orderBy) || !Number.isSafeInteger(offset) || offset < 0 ||
           !Number.isSafeInteger(limit) || limit < 1 || limit > 1000 ||
           (columns !== '*' && !String(columns).split(',').every((v) => IDENT.test(v))) ||
-          (filters && (typeof filters !== 'string' || !/^&[a-z0-9_]+=[a-z0-9_.-]+(?:&[a-z0-9_]+=[a-z0-9_.-]+)*$/.test(filters)))) {
+          (filters && (typeof filters !== 'string' || !/^&[a-z0-9_]+=[A-Za-z0-9_.-]+(?:&[a-z0-9_]+=[A-Za-z0-9_.-]+)*$/.test(filters)))) {
         throw new Error('Invalid TEST SELECT page.');
       }
       const response = await request(`/rest/v1/${table}?select=${columns}&order=${orderBy}.asc${filters}`, {
@@ -174,7 +174,7 @@ export function createTestHttp(config, { verified, fetch: doFetch = globalThis.f
 export async function selectAll(http, { table, columns = '*', orderBy = 'id', filters = '', pageSize = 1000, maxRows = 100000, allowEmpty = false, token } = {}) {
   if (!http || typeof http.selectPage !== 'function' || !IDENT.test(table ?? '') || !IDENT.test(orderBy ?? '') ||
       (columns !== '*' && !String(columns).split(',').every((v) => IDENT.test(v))) ||
-      (filters && (typeof filters !== 'string' || !/^&[a-z0-9_]+=[a-z0-9_.-]+(?:&[a-z0-9_]+=[a-z0-9_.-]+)*$/.test(filters)))) {
+      (filters && (typeof filters !== 'string' || !/^&[a-z0-9_]+=[A-Za-z0-9_.-]+(?:&[a-z0-9_]+=[A-Za-z0-9_.-]+)*$/.test(filters)))) {
     throw new Error('Invalid TEST SELECT specification.');
   }
   let exactEmpty = false;
