@@ -1,0 +1,58 @@
+# Prompt audit độc lập plan hợp đồng V2
+
+**Chốt cuối cùng phải đọc trước:** người dùng yêu cầu chỉ cải tiến flow và theo dõi, không viết lại quyết toán đang đúng. Bước đầu bắt buộc ngày thực trả + loại thanh lý; quyết toán ngay hoặc để sau. Khi quyết toán được chọn lại loại, giữ loại ban đầu/cuối và lịch sử đối soát. **Đính chính mới nhất:** chủ xác nhận mô tả giữ nợ khi bỏ cọc trước đó là nhầm; giữ nguyên flow cũ, gồm xử lý/hủy hóa đơn nợ, credit, chứng từ và quyền. Không thiết kế lại tiền; DEFERRED chưa chạy tiền, đến quyết toán mới áp dụng flow hiện hành theo loại cuối. B3/N2 không còn là đề nghị chọn policy mới: map cơ chế hiện hành và bổ sung nguồn/link, chưa chứng minh được mapping thì báo thiếu bằng chứng kỹ thuật. Bằng chứng source/catalog dùng để kiểm parity flow cũ, không tạo task sửa hủy nợ từ chốt đã rút. Nháp không giữ phòng, notice/reminder và dọn sửa vẫn sale giữ nguyên mục tiêu ban đầu.
+
+**Ranh giới phạm vi:**13 yêu cầu R01–R13 được giữ nguyên văn từ plan trước audit. Chỉ nhượng hợp đồng EX01/P9.T là phần mở rộng mới. Không đưa đề xuất thêm tính năng từ audit vào scope khi chủ chưa yêu cầu.
+
+Bạn là reviewer độc lập. Hãy **audit plan V2 và source liên quan, chưa triển khai**. Phản biện cả kết luận của audit trước lẫn cách tác giả tiếp thu; “đã sửa thiết kế” không có nghĩa lỗi sản phẩm hoặc gate đã đóng.
+
+## Checkout, phạm vi và tài liệu
+
+Làm trực tiếp tại `C:\Users\Nguyen Tam\whiteboard-ihomecrm-main`. Chủ cho toàn quyền thư mục để audit: đọc source, caller, trigger, migration, test, cấu hình, lịch sử Git; chạy kiểm tra phù hợp và ghi bằng chứng riêng. **Không cần ZIP**, không ép checkout về snapshot cũ. Quyền thư mục không mở rộng nhiệm vụ thành sửa app/database, commit, push hay deploy.
+
+1. Đọc `AGENTS.md` và `docs/engineering/PROJECT_CONTRACT.md`; ghi HEAD, `git status --short` và diff ban đầu, giữ công việc của phiên khác.
+2. Audit master hiện tại: `docs/superpowers/plans/2026-09-27-contract-lifecycle.md`.
+3. Đọc `docs/audits/2026-09-27-contract-lifecycle/revision-v2/`: `audit-response.md`, `decisions.md`, `finance-review.md`, `drafts-review.md`, `availability-review.md`, `verification-matrix.md`, `verification-summary.md`, `scope-alignment.md`, `flow-control-review.md`. Bản rà flow chốt bảng tác động từng thao tác và FC01–FC06; FC02 giữ đường trace source UI đến saved FORFEIT hủy nợ nhưng đã rút kết luận bất nhất nghiệp vụ sau đính chính của chủ; không yêu cầu sửa tác động tiền đó. Nếu thiếu tài liệu, ghi rõ; không suy ra nội dung hoặc kết quả.
+4. Đối chiếu **35 finding IA-01–IA-35** trong `docs/audits/2026-09-27-contract-lifecycle/independent-audit.md` và đề xuất/bằng chứng tại `independent-verification/` cùng thư mục. Giữ nguyên chúng và các bản lưu `revision-v2/plan-v1-reviewed.md`, `revision-v2/so-do-hop-dong-v3-reviewed.html`, `revision-v2/reviewed-evidence-manifest.json`.
+5. Base đối chiếu là `e498f10d49f3548e72074095c955371d0cee41ab`; **working tree hiện tại mới là đối tượng audit**. Rà diff nếu khác base. Số dòng cũ là điểm neo, không thay việc tìm definition/caller hiện hành.
+
+Các saved live bodies/catalog và log TEST là snapshot có thời điểm, không phải lần đọc DB hiện tại của bạn. Phân biệt source migration, snapshot đã lưu và catalog vừa kiểm. Không lấy CREATE trong một migration cũ làm bằng chứng RPC đang callable. `V01–V55` là **test dự kiến**, không phải 55 test đã chạy; baseline xanh cũ không chứng minh chức năng V2. Theo chốt mới nhất, **B1/B4/N1 đã chốt; kiến trúc B5 đã chốt**. **B2 đã chốt; B3/N2 giữ cơ chế hiện hành**, không coi phương án gợi ý là đã duyệt. Đọc trạng thái và lịch sử mới nhất trong `decisions.md`, không lấy kết luận “cả năm B đều chờ” từ artifact cũ.
+
+Mặc định làm bằng code và artifact. Nếu cần probe DB, phải nêu rõ mục đích, target **project TEST riêng theo Contract**, parity/preflight và fixture/rollback/cleanup; xác minh target trước chạy. Không ghi production, không áp migration/backfill hay sửa DB vận hành từ yêu cầu audit này; không đưa secret vào artifact. Chưa có môi trường phù hợp thì ghi phần chưa kiểm, không chạy command mặc định có thể trỏ production.
+
+## Chốt phải bảo toàn
+
+- Nháp đầy đủ lưu/sửa/xuất gửi khách, không giữ phòng; giữ chỗ/cọc riêng, không dùng phiếu 1đ.
+- Chọn loại thanh lý và ngày bàn giao thật từ đầu; trả phòng quyết toán sau hoặc quyết toán ngay. Chưa biết tiền không phải 0. Giữ loại ban đầu và lịch sử thay đổi khi chốt.
+- Khách A đã trả thì đóng cư trú và đưa phòng ra sale; quyết toán A muộn không đụng phòng, tiền, cọc, chỉ số hay cư trú của B. Chốt số không đồng nghĩa đã thực thu/chi.
+- **B1:** được ghi trả và sale ngay dù thiếu chỉ số; trước bàn giao B phải có mốc đầu rõ được xác minh, không tính lẫn tiêu thụ giữa hai khách.
+- **B4:** giữ quyền hiện tại trên toàn flow, không đổi quyền thu/chi/duyệt. Kiểm financial permission parity theo action và scope; không tự thêm `contracts.settle` hoặc grant mới như một thay đổi nghiệp vụ.
+- **B5:** nhượng dùng hai hợp đồng liên kết, hợp đồng cũ quyết toán và hợp đồng mới ký, có dấu nhượng. Kiểm các biến thể khách tự tìm người nhận theo cọc mới hoặc chuyển cọc cũ/bù, thời hạn mới hoặc hạn cũ đúng chốt mới nhất. Nhánh môi giới khách mới đóng đủ. **N1 đã chốt:** phí nhượng bằng 50% cọc cũ trước các khoản khác, không lấy 50% số ròng còn lại. Ví dụ cọc cũ 4 triệu → dòng phí nhượng 2 triệu trong quyết toán cũ để chi phiếu hoa hồng gắn hợp đồng mới → phần cọc hoàn 2 triệu; điện/nước/nợ/phụ thu khác quyết toán bình thường. **N2:** map cách cấn/chứng từ hiện hành, không tự thêm policy chuyển số còn hoàn hoặc tầng duyệt, không ghi thu/chi tiền mặt giả.
+- Dọn/sửa vẫn sale là trống với thông tin ngày nhận; thiếu/quá hạn ngày cần hàng việc cập nhật. Claim khách kế tiếp chặn chào trùng. Báo trả đến/quá hạn còn hàng việc tới khi giải quyết, đọc/snooze không xóa nghĩa vụ.
+- P11a ký từ nháp và nhận thật ngay phải giao được độc lập với billing tương lai. P11b SIGNED_WAITING là phase sau; billing_start độc lập ngày đến thực tế, không đổi nghĩa vụ tiền âm thầm.
+
+## Điểm cần cố phá
+
+1. **Coverage và phạm vi:** map R01–R13 → task/schema/RPC/caller/trigger/reader → V01–V55; đánh giá từng IA cũ đã xử lý đủ, xử lý sai hay vẫn mở. Tìm dependency vòng, gate không thể chứng minh, rollback làm orphan dữ liệu và scope làm treo phần có thể giao riêng.
+2. **Lock và đường raw:** wait graph bao phủ collection/reversal/approve/close-month/renew/transfer/create cũ lẫn mới, org/room/contract/invoice/voucher/account. Wrapper mới không đóng raw entrypoint. Hàm witness ghim body/owner/ACL cần supersession forward có review; không sửa hash/lịch sử cho xanh. BEFORE trigger trên dòng đã khóa không tự sửa được lock order. Kiểm month row chưa tồn tại, account NULL, overload, grants và write-token guard.
+3. **Eligibility theo từng hành động:** không dùng “mọi writer tiền chỉ ACTIVE”. Thu nợ/quyết toán sau trả phòng vẫn hợp lệ; WAITING không được move-out qua writer cũ; invoice/commission có điều kiện riêng. Guard đường legacy, REST, Copilot và import phải giữ parity quyền hiện tại theo B4, không ngầm đổi người được thu/chi/duyệt hoặc yêu cầu cấp key tiền mới. Giữ auth-before-replay, hash đủ domain input, key ổn định qua retry và preview facts thay đổi phải được phát hiện.
+4. **Chỉ số A/B:** MOVE_OUT của A và MOVE_IN của B là mốc độc lập; tiêu thụ khi dọn/sửa ở giữa không bị đẩy sang A hoặc B. B1 đã cho trả/sale khi thiếu số: phải giữ hàng đối soát và bắt mốc nhận B rõ, không suy A từ B hoặc mặc định B=A. Guard readiness/chỉ số áp cả nhận ngay và activate, không chỉ màn mới.
+5. **Tiền và refund:** đối chiếu bộ máy chi 26–27/09, restore/retirement, accounting date/kỳ khóa, source allocations và reversal. Refund TUNG_PHIEU kỳ vọng 0 HOLD/DRAW; lỗi canonical phải rollback toàn giao dịch, không đòi error row tồn tại sau rollback. Kiểm source money của B đầy đủ và bất biến, không chỉ room status; fixture có hơn 1.000 dòng phải thực sự được xử lý.
+6. **Exact identity và nhượng:** reservation/customer/voucher/contract và các namespace UUID không được suy từ room, tên hoặc số điện thoại. V1 chỉ một claim khách kế tiếp; legacy giữ chỗ, phiếu pending/paid, deadline, late approve, transfer và conversion cùng tuân registry. B5/P9.T phải tạo hai hợp đồng linked, giữ lịch sử chủ tiền; không đổi đại diện cùng contract để giả hoàn tất nhượng. Thử double-allocation/retry: cùng cọc không vừa hoàn A, vừa ghi nhận cho B hoặc tạo cash mới; source được nối theo cơ chế chứng từ hiện hành N2; không tự tạo policy chuyển tiền mới. **N1 bắt buộc có dòng phí nhượng trong quyết toán cũ liên kết exact tới nguồn/phiếu hoa hồng của hợp đồng mới**, dùng bộ máy tiền và quyền duyệt/chi hiện hành. Test 4 triệu → phí 2 triệu → phần cọc hoàn 2 triệu ngay cả khi có khoản khác; không lấy 50% net remaining, không vừa cấn phí hai lần vừa ghi cash giả, không tự approve/post hoặc sinh hai phiếu khi retry. Hai người ký cùng draft/room chỉ một thành công; nháp không sinh tiền/occupancy. Tài liệu/template bất biến và Storage private có scope thực, không fallback URL khi ký URL lỗi.
+7. **Billing và phase:** kiểm tiền đề manual invoice/first_invoice hiện có, không dựng một scheduler hóa đơn “đang chạy” từ giả định. Không dùng G-BILLING tương lai chặn P11a. P11b cần kế hoạch không bỏ sót nghĩa vụ, không double FIRST/cọc và không occupied sớm; invoice issue date khác kỳ dịch vụ, sau trả phòng vẫn có thể lập bổ sung kỳ cũ hợp lệ.
+8. **Availability/jobs:** một facts model cho public/app/worker/Copilot, claim thắng pass; empty khác lỗi, token scope/revoke và public allowlist đúng. Revision phải đúng khi commit đảo thứ tự: raw MAX(sequence) không đủ. Work item, recipient user/membership, outbox supersession, mất quyền, crash/retry, thời gian org và payroll classification cần case cạnh tranh thực.
+9. **Bằng chứng thật:** harness không rỗng/no-op, có seed đủ và assertions về effects/rollback; chạy hai session có barrier khi chứng minh race. JWT negative tests không được thay bằng grep auth.uid(). Phân biệt lệnh đang có với harness còn phải viết. Cả `gate:reconcile-money` và `gate:reconcile-money-v2` vẫn bắt buộc theo Contract khi nghiệm thu/phát hành đúng đích; fixture adapter TEST bổ sung không miễn hai gate và không cho phép tự chạy production trong lượt audit.
+
+## Đầu ra
+
+Ghi `docs/audits/2026-09-27-contract-lifecycle/independent-audit-v2.md` và bằng chứng riêng tại `independent-verification-v2/`; nếu tên đã có thì thêm timestamp. Không ghi đè audit cũ, bản lưu V1, master hoặc app. Đề xuất sửa plan để file riêng.
+
+Báo cáo cần có:
+
+- `AUDIT_PASS`, `NEEDS_CHANGES` hoặc `BLOCKED` **cho thiết kế**, không nhập nhằng với sẵn sàng production; phạm vi đã/chưa kiểm.
+- Bảng 35 IA: đã giải quyết trong thiết kế / còn thiếu / sửa gây hồi quy, kèm neo V2 và source. Finding mới có P0–P3, file:line, scenario phá, tác động, sửa cụ thể và test đóng.
+- Coverage R01–R13, V01–V55 và các gate G-* thực tế của V2; tách gate thiết kế với catalog/JWT/DB/E2E còn chờ. Nêu phần có thể triển khai riêng và blocker thực sự.
+- Đối chiếu13 yêu cầu gốc trong scope-alignment.md. Giữ chọn loại từ đầu, được chọn lại khi quyết toán có lịch sử. Giữ cách tiền/duyệt hiện hành, không hỏi chủ chọn lại B2/B3/N2; chỉ ghi thiếu tương thích kỹ thuật nếu chưa chứng minh call path. Không tự mở rộng scope hoặc sửa policy đúng.
+- Lệnh thực chạy, target, SHA, thời điểm, exit/pass/fail/skip, số assertion/fixture và artifact; không nhận log của tác giả khác là lần chạy của mình.
+
+Kết thúc bằng tóm tắt tiếng Việt và link tuyệt đối tới báo cáo. Ưu tiên phản ví dụ cụ thể hơn góp ý phong cách; nếu không có finding, nêu invariant đã cố phá và giới hạn chứng minh.

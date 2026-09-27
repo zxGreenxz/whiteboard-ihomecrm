@@ -1,0 +1,156 @@
+{
+  "target": "project hzulujxgonszuleqticb (TEST)",
+  "at": "2026-09-27T12:41:09.634Z",
+  "results": {
+    "server": {
+      "rowCount": 1,
+      "rows": [
+        {
+          "v": "17.6",
+          "ext": "btree_gist 1.7, pg_cron 1.6.4, pg_stat_statements 1.11, pg_trgm 1.6, pgcrypto 1.3, plpgsql 1.0, supabase_vault 0.3.1, uuid-ossp 1.1, vector 0.8.2",
+          "pg_cron_available": "1"
+        }
+      ]
+    },
+    "cron_jobs": {
+      "rowCount": 4,
+      "rows": [
+        {
+          "jobname": "don_log_cron_v1",
+          "schedule": "23 19 * * *",
+          "active": true
+        },
+        {
+          "jobname": "finance_month_snapshot_daily_v1",
+          "schedule": "55 16 * * *",
+          "active": true
+        },
+        {
+          "jobname": "pra_prune_public_room_events_v1",
+          "schedule": "41 3 * * *",
+          "active": true
+        },
+        {
+          "jobname": "recurring_vouchers_daily",
+          "schedule": "0 18 * * *",
+          "active": true
+        }
+      ]
+    },
+    "migration_ledger_tail": {
+      "rowCount": 12,
+      "rows": [
+        {
+          "version": "20260727095000",
+          "name": "openclaw_activation_guards"
+        },
+        {
+          "version": "20260727090000",
+          "name": "openclaw_maintenance_jobs"
+        },
+        {
+          "version": "20260727080000",
+          "name": "openclaw_realtime_allowlist"
+        },
+        {
+          "version": "20260727070000",
+          "name": "openclaw_crm_event_sources"
+        },
+        {
+          "version": "20260727060000",
+          "name": "openclaw_rpc_surface"
+        },
+        {
+          "version": "20260727050000",
+          "name": "openclaw_access_policies"
+        },
+        {
+          "version": "20260727040000",
+          "name": "openclaw_delivery_audit_ops"
+        },
+        {
+          "version": "20260727030000",
+          "name": "openclaw_policy_automation_knowledge"
+        },
+        {
+          "version": "20260727025000",
+          "name": "openclaw_inbound_automation"
+        },
+        {
+          "version": "20260727020000",
+          "name": "openclaw_inbox_schema"
+        },
+        {
+          "version": "20260727015000",
+          "name": "openclaw_security_principals"
+        },
+        {
+          "version": "20260727010000",
+          "name": "openclaw_catalog_foundation"
+        }
+      ]
+    },
+    "fn_md5_compare": {
+      "rowCount": 8,
+      "rows": [
+        {
+          "name": "public.approve_contract_termination_v1",
+          "src_md5": "ea77696377513bff08b389aedb30f48c"
+        },
+        {
+          "name": "public.create_contract_v2",
+          "src_md5": "1c16386369410dbddcf3605dcd85346b"
+        },
+        {
+          "name": "public.get_public_available_rooms",
+          "src_md5": "edc42768a090a61e0b06e0bb7acf55fb"
+        },
+        {
+          "name": "public.renew_contract_impl",
+          "src_md5": "2bd721b3a379bc66900405e964ced096"
+        },
+        {
+          "name": "public.terminate_contract_move_out",
+          "src_md5": "55366c922348b55a177db9823aecf93c"
+        },
+        {
+          "name": "public.transfer_room",
+          "src_md5": "90d6b6cbe3d7525c7e606045d25e93c2"
+        },
+        {
+          "name": "public.update_room_status_on_contract_change",
+          "src_md5": "e8a1164f00e0838c201aeb58916ccdce"
+        },
+        {
+          "name": "public.v5_tick_from_job",
+          "src_md5": "b15ee632fb6ab5e9c1b948a21265ff33"
+        }
+      ]
+    },
+    "spend_flags": {
+      "rowCount": 5,
+      "rows": [
+        {
+          "feature_key": "contract.commission.settlement.v2",
+          "mode": "OFF"
+        },
+        {
+          "feature_key": "contract.create.v1",
+          "mode": "ON"
+        },
+        {
+          "feature_key": "contract.create.v2",
+          "mode": "ON"
+        },
+        {
+          "feature_key": "customer.credit.apply.v1",
+          "mode": "ON"
+        },
+        {
+          "feature_key": "customer.credit.reverse.v1",
+          "mode": "ON"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "publication_status": "REDACTED_PUBLIC_DERIVATIVE",
+  "reason": "Removed real TEST-clone row identifiers and linked financial/date values; historical originals remain in the private original checkout.",
+  "original_sha256_algorithm": "SHA-256",
+  "originals": [
+    {
+      "path": "docs/audits/2026-09-27-contract-lifecycle/independent-verification/test-probe-legacy-entrypoints.json",
+      "sha256": "cd37cee7355d3a8df26d3605bf5f8405168e669bcddf6d7ea74b1294759d62b9"
+    },
+    {
+      "path": "docs/audits/2026-09-27-contract-lifecycle/independent-verification/test-probe-lock-order.json",
+      "sha256": "5b8364968f2f8d1bb869861f350538f4ebd39c59c10e2e5c94de0f721f61e9fc"
+    },
+    {
+      "path": "docs/audits/2026-09-27-contract-lifecycle/independent-verification/t-verify-rollback.sql",
+      "sha256": "a68fc3f5b2a57fa97e5be6fb883dd6ad0dddccafb0d17a7810cd836956260080"
+    },
+    {
+      "path": "docs/audits/2026-09-27-contract-lifecycle/independent-audit.md",
+      "sha256": "2d8086ac31ae36830f9cc355908086217708f6400d7cdc0d9a308af50d269602"
+    },
+    {
+      "path": "docs/audits/2026-09-27-contract-lifecycle/revision-v2/finance-review.md",
+      "sha256": "ae0d6ba961a5f3e58f0ecc7392dfc91c0fe35d8a9e158f48933e921cf4845e32"
+    }
+  ],
+  "case_aliases": {
+    "legacy_approval": "legacy-approval-case",
+    "direct_status_patch": "direct-status-patch-case",
+    "lock_order_contract": "lock-contract-case",
+    "lock_order_room": "lock-room-case"
+  },
+  "verification_sql_inputs": [
+    "probe_voucher_prefix",
+    "probe_contract_prefix"
+  ]
+}

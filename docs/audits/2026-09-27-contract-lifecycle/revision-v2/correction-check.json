@@ -1,0 +1,32 @@
+{
+  "checked_at": "2026-09-27T16:47:16.649Z",
+  "scope": "Docs and standalone HTML only; user correction preserves current FORFEIT flow",
+  "decision": "B2 preserves current invoice cancellation/credit/money/approval behavior; FC02 business conflict withdrawn; DEFERRED has no money effects before settlement",
+  "requirements_verbatim_preserved": true,
+  "documents": 11,
+  "relative_links": 50,
+  "planned_scenarios": 55,
+  "saved_sql_hashes_verified": 45,
+  "archives_unchanged": true,
+  "master_sha256": "91b7a24cd6154304ea839c877cce7b2e094ae84e01340f337d854716592f1354",
+  "html_sha256": "d77f1d426a78ac1139036bba91fc9b5fa4c37a4ef2ad92c74e76b6058608fc6c",
+  "html_qa_matches_current": true,
+  "tracked_diff_unchanged_scope": [
+    "docs/doi-chieu/so-quy-686tcb.md"
+  ],
+  "files": {
+    "docs/superpowers/plans/2026-09-27-contract-lifecycle.md": "91b7a24cd6154304ea839c877cce7b2e094ae84e01340f337d854716592f1354",
+    "AUDIT-HOP-DONG-2026-09-27.md": "02a542c1127cd91267d3cda2c49cc66f752efd187ccb10d23c676ee5643804da",
+    "docs/audits/2026-09-27-contract-lifecycle/revision-v2/scope-alignment.md": "9f071964969208b93645f530995eb3e9c650db52a43c3b093715f79b597be131",
+    "docs/audits/2026-09-27-contract-lifecycle/revision-v2/audit-response.md": "8dc5342c806b455a0c446cfe4b1cb0a637aa9896f34c0f36b007c8832499ef17",
+    "docs/audits/2026-09-27-contract-lifecycle/revision-v2/decisions.md": "e514f336ab291c081603845b79c541cfaec6f0c2f620db8b1ecf37263a5fb6c1",
+    "docs/audits/2026-09-27-contract-lifecycle/revision-v2/finance-review.md": "ae0d6ba961a5f3e58f0ecc7392dfc91c0fe35d8a9e158f48933e921cf4845e32",
+    "docs/audits/2026-09-27-contract-lifecycle/revision-v2/drafts-review.md": "6583e0a35ce850f9fd562e5f4b9e94f6472f30530447b42f9f330baec279dd00",
+    "docs/audits/2026-09-27-contract-lifecycle/revision-v2/availability-review.md": "f3b1354d22978ed8b800d57ca928022f5195651b5751795b5712a77c4a7dab57",
+    "docs/audits/2026-09-27-contract-lifecycle/revision-v2/verification-matrix.md": "9d57ab7d93cd3516d79c10bf1205bced4f62915b5ad2e633861d0410b7e63a8c",
+    "docs/audits/2026-09-27-contract-lifecycle/revision-v2/verification-summary.md": "aaacc69d93686a363bc545eadf2eae00ab8207653230882881843455cb6c9445",
+    "docs/audits/2026-09-27-contract-lifecycle/revision-v2/flow-control-review.md": "4897ec05cd334e66200c1d694d19dabb509a0a9ba5f1aa0cfacac0619164ee34"
+  },
+  "unverified": "No new DB/catalog, JWT, money/concurrency/reconcile or CRM E2E run",
+  "errors": []
+}

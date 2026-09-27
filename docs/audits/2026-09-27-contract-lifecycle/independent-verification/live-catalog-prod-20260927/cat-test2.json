@@ -1,0 +1,24 @@
+{
+  "target": "project hzulujxgonszuleqticb (TEST)",
+  "at": "2026-09-27T12:41:25.160Z",
+  "results": {
+    "spend_objects": {
+      "rowCount": 0,
+      "rows": []
+    },
+    "spend_tables": {
+      "rowCount": 0,
+      "rows": []
+    },
+    "counts": {
+      "rowCount": 1,
+      "rows": [
+        {
+          "contracts": "454",
+          "vouchers": "3919",
+          "last_voucher_created": "2026-09-25T12:00:53.818Z"
+        }
+      ]
+    }
+  }
+}

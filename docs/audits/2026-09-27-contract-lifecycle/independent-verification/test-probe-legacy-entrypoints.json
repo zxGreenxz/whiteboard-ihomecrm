@@ -1,0 +1,40 @@
+{
+  "target": "TEST hzulujxgonszuleqticb",
+  "at": "2026-09-27T12:46:02.844Z",
+  "probes": {
+    "scope": {
+      "create_buildings": 9,
+      "edit_buildings": 9
+    },
+    "p1": {
+      "contract_status_before": "TERMINATED",
+      "inserted_termination_status": "DRAFT",
+      "approve_result": {
+        "status": "COMPLETED",
+        "refund_capped": true,
+        "refund_was_positive": true,
+        "voucher_case_alias": "probe-created-expense"
+      },
+      "voucher_created": {
+        "type": "EXPENSE",
+        "approval_status": "UNAPPROVED",
+        "same_contract": true,
+        "amount_matches_refund": true
+      },
+      "termination_status_after": "COMPLETED",
+      "contract_case_alias": "legacy-approval-case",
+      "deposit_was_paid": true
+    },
+    "p2": {
+      "rows_updated": 1,
+      "room_status_before": "OCCUPIED",
+      "after": {
+        "status": "TERMINATED",
+        "room_status": "AVAILABLE"
+      },
+      "contract_case_alias": "direct-status-patch-case"
+    }
+  },
+  "publication_redaction": "PUBLICATION REDACTION: This is a public derivative of a saved TEST-clone audit. Real row identifiers and linked financial/date values are removed. Original SHA-256 digests: publication-redaction-manifest.json. Outcomes and source anchors are preserved.",
+  "actor_case_alias": "manager-test-role"
+}

@@ -1,0 +1,29 @@
+
+ RUN  v4.0.18 C:/Users/Nguyen Tam/whiteboard-ihomecrm-main
+
+ ✓ src/lib/__tests__/roomLifecycle.test.ts (12 tests) 10ms
+ ✓ src/lib/__tests__/contractCreateRpc.test.ts (19 tests) 17ms
+ ✓ src/lib/__tests__/contractSettlement.test.ts (102 tests) 61ms
+ ✓ src/lib/__tests__/contractLifecycle.test.ts (84 tests) 63ms
+ ✓ src/lib/__tests__/contractSettlementReads.test.ts (5 tests) 141ms
+ ✓ src/lib/__tests__/reservationSettlementForm.test.ts (10 tests) 12ms
+ ✓ src/lib/__tests__/reservationHoldDeadlineMigration.test.ts (21 tests) 397ms
+ ✓ src/lib/__tests__/depositWorkQueue.test.ts (27 tests) 13ms
+ ✓ src/lib/__tests__/publicRoomsHoldingDepositMigration.test.ts (12 tests) 7ms
+ ✓ src/lib/__tests__/notificationRoutes.test.ts (9 tests) 6ms
+ ✓ src/components/contracts/contract-form/useContractSubmit.test.ts (4 tests) 8ms
+ ✓ src/hooks/__tests__/realtimeTenantBoundary.test.ts (3 tests) 6ms
+ ✓ src/lib/__tests__/reservationSettlementRpc.test.ts (19 tests) 12ms
+ ✓ src/lib/__tests__/terminationSettlement.test.ts (13 tests) 61ms
+ ✓ src/lib/__tests__/contractStatus.property.test.ts (18 tests) 125ms
+ ✓ src/lib/__tests__/contractValidation.property.test.ts (20 tests) 126ms
+ ✓ src/lib/__tests__/contractOperations.property.test.ts (20 tests) 65ms
+ ✓ src/hooks/__tests__/useContractMovements.test.ts (7 tests) 620ms
+ ✓ src/hooks/__tests__/useContractLifecycle.test.ts (23 tests) 1913ms
+ ✓ src/hooks/__tests__/useContractSettlement.test.ts (68 tests) 6505ms
+
+ Test Files  20 passed (20)
+      Tests  496 passed (496)
+   Start at  18:35:09
+   Duration  23.80s (transform 2.66s, setup 0ms, import 38.29s, tests 10.17s, environment 38.46s)
+

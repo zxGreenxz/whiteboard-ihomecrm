@@ -1,0 +1,37 @@
+{
+  "checked_at": "2026-09-27T16:40:16.111Z",
+  "html_sha256": "120f0c57ce87681c282e57cbe1f545216f7865ec1ec00948980a80f66be49ef4",
+  "headless": true,
+  "viewports": [
+    {
+      "width": 1440,
+      "scroll": 1440,
+      "client": 1440
+    },
+    {
+      "width": 768,
+      "scroll": 768,
+      "client": 768
+    },
+    {
+      "width": 390,
+      "scroll": 390,
+      "client": 390
+    },
+    {
+      "width": 320,
+      "scroll": 320,
+      "client": 320
+    }
+  ],
+  "tabs": 5,
+  "keyboard": "PASS",
+  "print_visible_panels": 5,
+  "relative_links": 2,
+  "console_errors": [],
+  "screenshots": [
+    "html-v05-contract.png",
+    "html-v05-money.png"
+  ],
+  "limits": "Standalone HTML only; not CRM E2E or PDF pagination"
+}

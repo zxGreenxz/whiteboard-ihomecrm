@@ -1,0 +1,3144 @@
+{
+  "schemaVersion": 1,
+  "kind": "P0_BASELINE_CATALOG_PARITY",
+  "status": "CATALOG_MATCHED_RUNTIME_BEHAVIOR_NOT_YET_VERIFIED",
+  "gitSha": "39e31d07aedbec2034b6782fb858f37837752180",
+  "production": {
+    "projectRef": "tryymsxyyckgbrmmvozx",
+    "capturedAt": "2026-09-27T17:00:32.265Z",
+    "readOnly": true
+  },
+  "test": {
+    "projectRef": "hzulujxgonszuleqticb",
+    "capturedAt": "2026-09-27T17:06:09.250Z",
+    "markerVerified": true
+  },
+  "sync": {
+    "completedAt": "2026-09-27T17:05:09Z",
+    "exitCode": 0,
+    "objectsCompared": 8129,
+    "tablesCompared": 495,
+    "schemaMismatchCount": 0,
+    "dataMismatchCount": 0,
+    "restoreErrorCount": 0
+  },
+  "catalogCounts": {
+    "functions": 1634,
+    "triggers": 548,
+    "policies": 1099,
+    "columns": 5791,
+    "constraints": 2947,
+    "grants": 3362,
+    "flags": 32,
+    "cron": 4
+  },
+  "acceptedDifferences": [
+    {
+      "kind": "test-storage-host",
+      "function": "public.append_income_expense_supplement_v1",
+      "proof": "Only literal project ref replacement; definition otherwise identical; ACL/owner unchanged."
+    },
+    {
+      "kind": "removed-column-ordinal-gaps",
+      "count": 265,
+      "proof": "All457 table/view relative column sequences unchanged; column fields otherwise equal."
+    },
+    {
+      "kind": "check-associative-and-parentheses",
+      "count": 8,
+      "ids": [
+        "app_private.canonical_write_operations.canonical_write_operations_idempotency_key_check",
+        "public.network_commands.network_commands_attempt_check",
+        "public.network_config_snapshots.network_config_snapshots_artifact_check",
+        "public.network_device_connections.network_device_connections_credential_ref_check",
+        "public.network_devices.network_devices_credential_ref_check",
+        "public.network_incidents.network_incidents_text_check",
+        "public.network_sla_daily.network_sla_daily_seconds_check",
+        "public.residence_dossier_files.residence_dossier_files_object_name_check"
+      ],
+      "proof": "Individually read both definitions: only associative AND group flattening; existing sync canonical comparison matched."
+    },
+    {
+      "kind": "test-cron-exclusion",
+      "names": [
+        "network_center_watchdog_liveness_v1",
+        "network_center_watchdog_maintenance_v1"
+      ],
+      "proof": "Existing CRON_BO_QUA policy excludes Network Center watchdogs on TEST. Remaining4 job definitions/schedules/activity match."
+    }
+  ],
+  "sourcesLocalOnly": [
+    {
+      "path": ".superpowers/sdd/2026-09-27-contract-lifecycle/full-catalog-production.json",
+      "sha256": "474813f7d85199f7e79b58d383822d84e37102de400748b56fb988feb1bb0812"
+    },
+    {
+      "path": ".superpowers/sdd/2026-09-27-contract-lifecycle/full-catalog-test.json",
+      "sha256": "1724a50df6ea06a9cb114a8c2791a8f376d330d2869a4da73c0d407e29a7a11c"
+    },
+    {
+      "path": ".superpowers/sdd/2026-09-27-contract-lifecycle/test-sync.log",
+      "sha256": "db27b97c09cc9c3ed13d7b47737690c91aac62c4e7a629903b8f72b47ffd21a7"
+    }
+  ],
+  "selectedFunctions": [
+    {
+      "signature": "app_private.accrue_salary_paid_on_approve()",
+      "owner": "postgres",
+      "acl": null,
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "667cd45efb64fa01cab25038ad777dd0",
+      "definitionSha256": "6a7580423021b9a958458f85028bbb52cbcf734e46b46ddcb331baa605141872",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.apply_customer_credit_fifo_v1(uuid,uuid,numeric,uuid,text,text,text)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "a7023b51ceef79fdbe4fc6303062e136",
+      "definitionSha256": "2a5111525933b6c87e48a51a27962ddfc83898ac605670137a20335fa7e52c45",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.authorize_tenant_action_v3(uuid,uuid,text,uuid,uuid)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, app_private, public"
+      ],
+      "sourceMd5": "73dc95b7f570e095202b9e9922121905",
+      "definitionSha256": "842f9ce99956abf93e6c96708b02d0308437b930b780beb8e6e5a269ffce6ca8",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.autofill_org_strict()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public"
+      ],
+      "sourceMd5": "d8932d236021100aa1d112f053c1df89",
+      "definitionSha256": "4d759a549059286b71318461e5e546423813c0b7ee8e32091527e58ee3beb9ba",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.autofill_pre_notification_v1()",
+      "owner": "postgres",
+      "acl": null,
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "b3f74ae96a9f5253b1335c109029ff70",
+      "definitionSha256": "0666ced3c5b63ffbcd55a4e53acf125b02b7add3cce2edd275ad4006b820b441",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.classify_termination_payment_v1()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "a606f4ae09a40a78535df91392835e77",
+      "definitionSha256": "b7e972f7b58604938f28539f3afba0952d9eaef42a9b25f9f96d95ed7728e1fd",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.finance_v2_auto_posting_bridge_insert()",
+      "owner": "postgres",
+      "acl": null,
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, app_private, public"
+      ],
+      "sourceMd5": "d1c7518c2539f1aacb1c141507d685d8",
+      "definitionSha256": "3f20672259b13cbf31b3e4748ed699f20fe26e76435493a043254f8ef9879ee7",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.finance_v2_auto_posting_bridge()",
+      "owner": "postgres",
+      "acl": null,
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, app_private, public"
+      ],
+      "sourceMd5": "f3f413879dc796051bad0deb3f407184",
+      "definitionSha256": "b81bb9be71676976ecfa9417c36d9b4f80b5da640442b6501cb22620eb63f2cc",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.finance_v2_begin_canonical_op(uuid,text,text,uuid,uuid,text,text,uuid)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, app_private, public"
+      ],
+      "sourceMd5": "dced2c2d3dd2bc274c032bc707edbb95",
+      "definitionSha256": "7241cffc4e6a424f81155a31220bcb87f006a386cec43986893fb7fbad8125de",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.finance_v2_birth_provenance_bridge()",
+      "owner": "postgres",
+      "acl": null,
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, app_private, public"
+      ],
+      "sourceMd5": "e40537e161e3de038b62a141c143f384",
+      "definitionSha256": "b16602ddb98012fb0d9cc6c615d704658f977a82aadb8f964c833d515af803b8",
+      "testMatches": true,
+      "pinned": true
+    },
+    {
+      "signature": "app_private.finance_v2_capture_change()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog"
+      ],
+      "sourceMd5": "0d16770302302e96d04ac16daf6e6cbd",
+      "definitionSha256": "a4200e63a2edc41bc2f73d61be1cd7570e89ce00aba7b8010e021862a0b655fd",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.finance_v2_close_request_on_voucher_change()",
+      "owner": "postgres",
+      "acl": null,
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, app_private, public"
+      ],
+      "sourceMd5": "ba9cd61006654b4841658832e493a90f",
+      "definitionSha256": "3078f0667332d4d93bda96461bf8590b3182362ea73bec00b2110bd79efee2eb",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.finance_v2_post_manual_voucher(income_expenses,uuid,uuid,uuid,date,uuid[],text)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, app_private, public"
+      ],
+      "sourceMd5": "c516d30bef09cc9ee2c04ace60fb37bd",
+      "definitionSha256": "6c11180a7f0a333f051e64eccd429dc16857b7bb10481fd97d057840c748c4af",
+      "testMatches": true,
+      "pinned": true
+    },
+    {
+      "signature": "app_private.finance_v2_posting_event_immutable()",
+      "owner": "postgres",
+      "acl": null,
+      "securityDefiner": false,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog"
+      ],
+      "sourceMd5": "af26e8067ca12ae9601418e25c33a79e",
+      "definitionSha256": "efcdff3dae4ebfb8929354dfc82e5ffebfd2f5154f1302637e0f6ca3a6d71eff",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.guard_canonical_write_operation()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, app_private"
+      ],
+      "sourceMd5": "8c32aed702db6705a15dd795c99f39a5",
+      "definitionSha256": "744be5029c6f95d0561b7a684f72f5061bcb08a7f66a4b4ee851abdfd67e3805",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.guard_customer_credit_apply_gate_v1()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, app_private, public"
+      ],
+      "sourceMd5": "842b99f5c92b5c79576b7b9d787a9482",
+      "definitionSha256": "d93b2f586eed394ba16f74c644e0d8a8ba845f259244c33d9d942ef25b7205f0",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.guard_customer_credit_ledger_v1()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "8ae5a526b41c9f0ac6fe5601d771f25b",
+      "definitionSha256": "9c93cbec44ae0b329761485d84b993ad8e8447b23c6342453e2496d4f50d8fdc",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.guard_income_expense_accounting_links_v1()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, app_private, public"
+      ],
+      "sourceMd5": "84281e06fb7333222c2dfe1f32e6fc4b",
+      "definitionSha256": "1843787fbd0689af3d10fb2af02ff4f7662e3e5f3988fc8d0e70958e31e93d71",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.guard_income_expense_owned_items()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, app_private"
+      ],
+      "sourceMd5": "2f2f9c28e38e59dc5cb9b4d1fd1269a5",
+      "definitionSha256": "6fa6ffd652be35f53df6f1e0c56e25a935081bd681dfb8448bf7d1c3f2bcf5e2",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.guard_income_expense_owned_payload()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, app_private"
+      ],
+      "sourceMd5": "358fbf1ffe189c1ae036a57192e7c91b",
+      "definitionSha256": "597e3b8bdbbec7bd24ae7778b4690dc88c08c2c05339c7255e988128d73e72c4",
+      "testMatches": true,
+      "pinned": true
+    },
+    {
+      "signature": "app_private.guard_income_expense_truncate()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, app_private"
+      ],
+      "sourceMd5": "e90b72bd47523c63ac2b0f45b63832c8",
+      "definitionSha256": "5ba66e0d8cc963d2bb9fa3c1fdaa461ec267d1994f2cce77b29704ea47cd33b3",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.guard_invoice_credit_lifecycle_v1()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "8d9175eacbe02fb67cc8bd7d2fa91299",
+      "definitionSha256": "21f3d645017a69cd5b60165313d571d5e38e4c8b690179b60b168af53e502a11",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.guard_payment_canonical_link()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, app_private, public"
+      ],
+      "sourceMd5": "5a12d3613993fa1cb9798a85296059e1",
+      "definitionSha256": "26e080bd32fbaf002dbc1488da502b4349910c7f9f8f81a9eadea64bab15d405",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.guard_profit_payout_item_v2()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "229913db49bb7305b193fc3800c1c31a",
+      "definitionSha256": "0e3ee4d8ee98ca7128bf74784766b76efe3ded19b52c1a30c14448d3680207f2",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.guard_profit_payout_linked_v2()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "4e50eabd8df461ace83eaf4e6c14238e",
+      "definitionSha256": "0e0f5a590ec96514131e2d6aade5f0df081b43b00025cdd4ad17a0d369b3c151",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.guard_profit_payout_scope_compat_v1()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "6d949fed2a66e52bb49ee490146e1a85",
+      "definitionSha256": "e46afc8e63e7ec81da4d26101fc24ddadd30e583869ee21edd6d0a9beb2ba79f",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.guard_reservation_deposit_type_v1()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "ecf16f1345a761e41198fec274095195",
+      "definitionSha256": "02512a90ac307cbb36b7c8d1d5a9f09f8dcdca922caf73f0fcdb8362cc7bc521",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.guard_reservation_settlement_record_v1()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "1f243c2feac52d17254913d062d25ae8",
+      "definitionSha256": "d8c8ddba7e7a25d69fcc8046b50157fa59c5826c7ad2b9d3007303dad465a2b2",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.guard_reservation_voucher_v1()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "b479e8ae992426f559de72aa0b1a0de6",
+      "definitionSha256": "f8f40e8e184d7875ea098379bfa85d72a096e885be4c6bba048ae953a65633ba",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.guard_termination_forfeit_item_v1()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "b675a86eb7451f6b93346d0a741edab6",
+      "definitionSha256": "633a4b9b7424d4cbe8b45d93f7e0bcb7153b7fce3ed60f09fa097dd569b9d32b",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.guard_termination_forfeit_voucher_v1()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "aa6bf0f4a0d97e8a5b86802d96c41b27",
+      "definitionSha256": "7d51101ee8c8b3e8b379cd6529e55512b4b85fb7fbfacb71723c31505921ef97",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.guard_termination_non_cash_payment_v1()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "e17d14b3509d2e8df149c9fd51746863",
+      "definitionSha256": "ebad347b4695a25d28a8b6fc442560e5d817e5c3156e02b6d84c38b1f159fd12",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.ie_cancel_close_request_v1()",
+      "owner": "postgres",
+      "acl": null,
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "87c0031d926891311e4a6e5ed68f8bd7",
+      "definitionSha256": "f3ebfbd338d085f7fd8c7f383c7728d18318656aef42f79c557df0dc7243f74d",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.ie_fill_not_null_defaults()",
+      "owner": "postgres",
+      "acl": null,
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, app_private, public"
+      ],
+      "sourceMd5": "1735d092f3a439106b54a4c009a66647",
+      "definitionSha256": "f1863d68f1f19f273c0b5d3adf1482d9e788398ef22a0fe8bb089aa0c7727ed1",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.ie_normalize_lifecycle_columns()",
+      "owner": "postgres",
+      "acl": null,
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, app_private, public"
+      ],
+      "sourceMd5": "623b03cc3df7ae66b134ca2f0b108cdf",
+      "definitionSha256": "e8577e779298eefb093ea669d7c400be21bd86d36186a0850e79740e0ada247b",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.ie_revise_scope_delta_guard()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, app_private, public"
+      ],
+      "sourceMd5": "7135fafb8c864e735c1945bfa158a386",
+      "definitionSha256": "3ec9d37c592bdb26177f0b18b39c9bb26248c155ed4ceec109b0ece394972766",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.ie_transition_token_upsert()",
+      "owner": "postgres",
+      "acl": null,
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, app_private"
+      ],
+      "sourceMd5": "edbb044e850f6cf21743ca54c53eece2",
+      "definitionSha256": "41a9b089566d72bb87fb9e51f3b1034ef92c4ed067a71a594aee1345ae6e3c0f",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.ie_type_rule_columns_guard()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": false,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public"
+      ],
+      "sourceMd5": "41bb3f9a67ea101028863dab76472c02",
+      "definitionSha256": "ed8b5cb3015092eee555f45ed1107c79ae79f7eb59b394759ee6c313107335ca",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.lock_org_for_decision_v1(uuid)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public"
+      ],
+      "sourceMd5": "cd59b90fbbd143dab9cf0b21bf5d685d",
+      "definitionSha256": "6b6507fdf7bd25a940c1706a77cd585c1a100d7890122acd95c69cf726793dcc",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.log_income_expense_change()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, app_private, public"
+      ],
+      "sourceMd5": "5a9d30ebe2e361bfd5da56129f322e39",
+      "definitionSha256": "57ab1ba42a4a91553ce0db22800494bf73ad99559eab599ca8bae7cf251470d1",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.notify_ie_lifecycle_v1()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, app_private, public"
+      ],
+      "sourceMd5": "ce86f74d59d3b8f8f58e57019b172e96",
+      "definitionSha256": "de94c5f70d1aa1b8fc49e85018687eea5df9ded3d37fb3cb73f1bbe9642c6f2f",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.notify_job_assigned_v1()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, app_private, public"
+      ],
+      "sourceMd5": "f61b2fc59fd70492c8ff8dc0487e28cb",
+      "definitionSha256": "64f7e84de7d1d51ab8b95fd4579ba2bff9e48743f5a399b5645e218fa7aa75a6",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.pin_invoice_collection_manifest_v2()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "c2f9cd917bccd0356cd3d4440146da13",
+      "definitionSha256": "bfa864a45fc43c8dc5f4d656bf7373b0345686ee8079bf6984e0d7d960d8b2bd",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.queue_finance_component_allocation_v1()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, app_private, public"
+      ],
+      "sourceMd5": "9390fa155f83a06840793b078d691947",
+      "definitionSha256": "522f40aa69aab73ade8f20b627ae9db0189809dd1f9f9887ba0eda695d47d796",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.queue_finance_invoice_component_sync_v1()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, app_private, public"
+      ],
+      "sourceMd5": "400aaacd0a6b4fcc451abaec43c271ed",
+      "definitionSha256": "83e6a285736ad8de30d65284a3a184bd331e132cf30acf96e0cc4175a18f0698",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.register_termination_forfeit_v1()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "e37d788b2ec18f01755d618c69d93ddc",
+      "definitionSha256": "c702e049f416707cd089daa407a0013e7c1c596e5925afee6c1004b4b9b14e78",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.reject_income_expense_flow_mutation()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog"
+      ],
+      "sourceMd5": "9eea39a3f5e2fd7655d6194903decff3",
+      "definitionSha256": "1c3e6f19da13acdb7d4d4bab77629c7e1adb914c7527652fae398d2f1c9ea8fd",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.reject_income_expense_flow_truncate()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog"
+      ],
+      "sourceMd5": "5cb60eb706ce2535944dcc32738dc0b6",
+      "definitionSha256": "7aba25d33f26f2bcf37d4ec3d4f3146b7450587aa25ddb80de880255dd74c3cf",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.reservation_create_leg_v1(uuid,text,uuid,uuid,date,numeric)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "eac708d52c21cc9125c04f3845f92311",
+      "definitionSha256": "8a9ca1ff25aef564879902368ea7a307b2cb7ebd37b25fff781020a6b00b4167",
+      "testMatches": true,
+      "pinned": true
+    },
+    {
+      "signature": "app_private.reservation_pay_refund_v1(uuid,uuid,date)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "995a0f0e8bce8645f70ee7eddcd09fe4",
+      "definitionSha256": "8ca645292a2ebc39d6157319936f7f8372fec68d3a842ed02e4063e6f8f7e540",
+      "testMatches": true,
+      "pinned": true
+    },
+    {
+      "signature": "app_private.reservation_room_blockers_v1(uuid,uuid)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "s",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "9790b052a0c2334b4d2b53b57e327428",
+      "definitionSha256": "29fd1cd8dd6c215ecda8a3fbffb5583fbc8d83aaceae6148c481b8ac220ce9c1",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.reservation_settlement_authorize_v1(uuid)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "2e89c9e4d68253d12fa9ccca8961d6a4",
+      "definitionSha256": "05d7fcc766a72d672a9bd120657ac8df7b57682990b66c42ea98749ef380be8b",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.resolve_finance_actor_v2()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, app_private, public"
+      ],
+      "sourceMd5": "50c94679164b0f790b44aeaf7565bc87",
+      "definitionSha256": "f935e6ce3049c0f0b1a7ab94ea106f19888c2a6cdad5219117dfe0eb957e665e",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.resolve_finance_actor_v2(uuid)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, app_private, public"
+      ],
+      "sourceMd5": "a6c972512f070ad0152962ec1761fd51",
+      "definitionSha256": "65eb03bf7bda18279dd35cbdc6b1e7372372b7eb01cd09a226a374142dc3352a",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.spend_capture_gate_trg()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog"
+      ],
+      "sourceMd5": "ef0ff11512085e1e86bd2c06f6ef37d7",
+      "definitionSha256": "6a97931fbae0f993eed2f5ae4189c52b72349330f67ec8ea669ae8479fbf949e",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.spend_ledger_header_trg()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "b06230f9a41485524dbdc8646755e2b7",
+      "definitionSha256": "de74d0139807b0e9cdac80a0ed60dabc314b473cdd2850b4ca970e78e5c29bd0",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.spend_ledger_items_trg()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "feae3e786a893ac826f022259d081f9d",
+      "definitionSha256": "3776968ef185beef69e4cb055cf5f931fe32d0fdae9461f000afdd925910c2d1",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.spend_ledger_type_rule_trg()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "d72bfa0caf343566e7c60232f341566e",
+      "definitionSha256": "a1c4d9d8d960bd47279616f15050c47364c3caa37116a28e0abc5a58c222b4cd",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "app_private.spend_shadow_birth_trg()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "6fdaca0162a4315534308435620db5a0",
+      "definitionSha256": "772f968d51117e02a9a469b4792a577e1b31933a59217b06bb5c371c929bb465",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public._guard_ie_financial_columns()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": false,
+      "volatility": "v",
+      "config": null,
+      "sourceMd5": "9fb9db02d6b1f63560de985c89e100af",
+      "definitionSha256": "c9b949ea819f39681f8e09cddcc53787b1998505c3c5dc68e0e5b5914cb21b00",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public._guard_invoice_columns()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": false,
+      "volatility": "v",
+      "config": null,
+      "sourceMd5": "2e1b604a1550681c0f0b221d92981e60",
+      "definitionSha256": "12bd8eb825fd308766cbe45b2cb6a5514aa8c48e011adba4b8ccfe32d91342ee",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public._internal_settlement_account(uuid)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public"
+      ],
+      "sourceMd5": "99d05616dbcf9d4490d69406090cfe67",
+      "definitionSha256": "3e3d9bacd6e5d5a481e5145964525af8f018ecbfdf71531cb8aed7edaeebe57e",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public._invoice_audit_excess_amounts()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public"
+      ],
+      "sourceMd5": "6da2a15023f746b6f9783b7ae0f37ca5",
+      "definitionSha256": "466687e3437b331e6e636b62fcfa5000cec842c5243adfe34024b601734c9c04",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public._invoice_audit_income_expenses()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public"
+      ],
+      "sourceMd5": "c645394c1c1d1ded851a068a6b19defe",
+      "definitionSha256": "f010005a33e63e87abcd506e50a6c14fa97249c232c8e881c38e1d8407cea157",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public._invoice_audit_invoice_items()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public"
+      ],
+      "sourceMd5": "b2431ba0597f20e56f32731b7fe87d00",
+      "definitionSha256": "4b1f427bf2b530f2ef54c09ce436b04d401d62c32180ee4dbaf93972553db8ac",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public._invoice_audit_invoices()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public"
+      ],
+      "sourceMd5": "35c09c048177d20425579d44e8f2552d",
+      "definitionSha256": "e13c22a56fd07b93b9185d103726766196eed1b66be6c31b854746b7008e95c1",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public._invoice_audit_payments()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public"
+      ],
+      "sourceMd5": "84f5320093a5a41b12f118fa7a49dea2",
+      "definitionSha256": "4ba9c2e6204e3be7896f1276d320b24943320f65c0a26e74a1295f057e3f6ec1",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public._post_financial_voucher(uuid,uuid,uuid)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public"
+      ],
+      "sourceMd5": "3b17530885b70e5a8350e7753a405e98",
+      "definitionSha256": "9505c60e2b9c8134f18ac3d7ca4e249d6c3a278da9c278f4bc159eda0ce817ea",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public._profit_assert_authorized_v2(uuid,text)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public"
+      ],
+      "sourceMd5": "c0590ed358942d73576ba1cd1b3ce4c5",
+      "definitionSha256": "789e411bfc21e224761a66e3da11486c504c597f702a026f2ffde23baa604130",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public._profit_state_change_v2(text,uuid,date,text,text,uuid[],text)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public"
+      ],
+      "sourceMd5": "04473f29d8ab55fced31d18ac7708698",
+      "definitionSha256": "b4933224fc33c5812dfe37ff64b4d2753ae98211fc651151303fdbcfc6dca8cb",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public._profit_write_close_v2_base(text,uuid,date,text,text,text,uuid[],jsonb)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public"
+      ],
+      "sourceMd5": "67f05808d05d408d584e230dce94d2dc",
+      "definitionSha256": "c1b1c7970a38a70d9e71b41b1c79377b70bdc84e42a8bdf1409800194311cbc7",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public._profit_write_close_v2(text,uuid,date,text,text,text,uuid[],jsonb)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public"
+      ],
+      "sourceMd5": "78d8a5b474320e663622da7df461e0a8",
+      "definitionSha256": "cd3a22c6a1bc0cd026f1a8b81e30f7c5007fba602de904fe14e91a98ed38c78b",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public._record_invoice_payment_v4_legacy(uuid,numeric,payment_method,date,text,uuid,text,text,jsonb,jsonb,text,uuid)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "3ca6d5e7a0fddb9c7df7f7fb902a5012",
+      "definitionSha256": "306af5ff8b23011cfdfc82c0af087de7364d1d058786e376e1c9962ba9c7e8f0",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public._reverse_invoice_payment_v3_legacy(uuid,text,text)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "d3c17ffea4d5704b0bec853ebdf670d5",
+      "definitionSha256": "b16b695aebdbd635b814bc8456669e89caccaa8de7bc4fc75ec866b150395563",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public._termination_apply_extra_charges(uuid,jsonb,date,uuid,uuid)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public"
+      ],
+      "sourceMd5": "e2c1de5beb5d55377346412618cf654c",
+      "definitionSha256": "91cd6bc2a43e006a6a412f8dd87c9f7a477881f9d1de84007aa15ee08e733522",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public._termination_ensure_type(uuid,text,text)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public"
+      ],
+      "sourceMd5": "69d0d276b13304599f5b46a3d8c99c04",
+      "definitionSha256": "a52a8e91ace7bb99ff94d261d7be45c7595ca2476c4357e2ed89219ec4446409",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.accounts_closed_book_guard()",
+      "owner": "postgres",
+      "acl": "{=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "securityDefiner": false,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "e7fa1d63d3ece4cafb0b9880bb969923",
+      "definitionSha256": "f440ef0c2d55d0b844d50590ae300549193824715b4f1409c12bc315df7edd1d",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.accounts_set_code()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": false,
+      "volatility": "v",
+      "config": null,
+      "sourceMd5": "55a27fbfa37c120384b80a91a19def97",
+      "definitionSha256": "69faa9032076e47fe51b8fcc1cdba12da6eced20c56c20d02ceeabd29605ac3b",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.apply_contract_extension_update()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": false,
+      "volatility": "v",
+      "config": null,
+      "sourceMd5": "797a15b0a9a632f975d36b9f5e41f2be",
+      "definitionSha256": "13dd02ad2461d5dc8173e31860425e66f4a9949cffd130cebe3e60b4b554cd33",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.apply_contract_transfer()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": false,
+      "volatility": "v",
+      "config": [
+        "search_path=public"
+      ],
+      "sourceMd5": "433a0b413cc4505e47a1dbd82f797600",
+      "definitionSha256": "343c63f662cc2fa3b9fd5966d1d053c0f72173150228e0b4ceda4755bd51f560",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.approve_and_post_income_expense_v2(jsonb)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "0483bd6410ca6537ff3114731a50cde8",
+      "definitionSha256": "4e7dc49b40c7599a38beca8f55546c4c4dd9d9c25e8fde340061dca737c118b0",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.approve_contract_termination_v1(uuid,text)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "ea77696377513bff08b389aedb30f48c",
+      "definitionSha256": "56449a1d7a5a0c196a279ec248eb0009de7676ffce4734d2956f2f0c0b4cecea",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.approve_income_expense_v1(uuid)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "d7eac8563506cbe30abb316da83fdcfd",
+      "definitionSha256": "5b43358cb2780bb8cb277d5f9cf99a8cce292e3a2ff244f08a6c3d021765b143",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.approve_income_expense_v2(uuid,bigint,text)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "f22c6db558d841e8ab4f28a8a971dc17",
+      "definitionSha256": "1b095904409c5d81832b83a6a150c371298e281348b70db4aa2cd9996e358183",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.approve_pending_income_expense_checked_v1(uuid,bigint)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "d8e552e619ee3c7ab064adbaa7455b80",
+      "definitionSha256": "61358dfc6ddd891a1caeff4b21cc299426f88c58431db12b8d2f23e4fff86413",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.approve_voucher(uuid)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public, app_private"
+      ],
+      "sourceMd5": "1caf82e4b7d5c5725b38dea3c0a0acb9",
+      "definitionSha256": "6107c5728d7a969db35a6d953c017fbb7499a2dd2423a1c930d2fc654228a51a",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.auto_calc_item_amount()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": false,
+      "volatility": "v",
+      "config": null,
+      "sourceMd5": "037af4afc27073c58aa025e3ffa6aaeb",
+      "definitionSha256": "46991a598149fad48f2c9b883feb0df3ef6ce363d3d19acdb7ceba9a9218ebba",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.auto_calculate_termination_financials()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": false,
+      "volatility": "v",
+      "config": null,
+      "sourceMd5": "2be263528cf7232ae83379fa8b8a4394",
+      "definitionSha256": "027892d7df8808bc76a9a5536e2b783cc85103e978eef44aebf22e8bb8dc4010",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.auto_calculate_transfer_outstanding()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": false,
+      "volatility": "v",
+      "config": null,
+      "sourceMd5": "7706dc189ce7512a977b3c81e55078fe",
+      "definitionSha256": "771a55d70c1de2afbf345c63d24f234b1091b7d2c1d1ad56855343987efa2253",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.auto_generate_reading_code()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public"
+      ],
+      "sourceMd5": "127fd949d920a398b9292f8054f0ac40",
+      "definitionSha256": "0239a84e51d42eab5146896c75186a8e115d11fc14c66528c188c6bd69d1f8a6",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.auto_generate_voucher_code()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "5488300797b25cfbb2b630bd2c1780b6",
+      "definitionSha256": "1564b4988d4c7fdd1b93f05369476bdfe87e0ad3b568391c94f68389001cf3cf",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.auto_populate_meter_reading_fields()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": false,
+      "volatility": "v",
+      "config": null,
+      "sourceMd5": "f3b84133eee47d49f20a2b42f4ef0283",
+      "definitionSha256": "19fe5254823b1a83b5281d84aacfff5637a9368cd0bdacde3619d6820a32cce2",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.auto_populate_previous_reading()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": false,
+      "volatility": "v",
+      "config": null,
+      "sourceMd5": "858a7cac1beb887000fc05ff1dd56e0e",
+      "definitionSha256": "d7da8299fb77685d58e3b9af3f8cbbd01ee007ec43111b696090cdb9392f9401",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.auto_recalc_total_amount()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": false,
+      "volatility": "v",
+      "config": null,
+      "sourceMd5": "39b3f485e4cd7a5619f4f545d54af767",
+      "definitionSha256": "e0862015baa56bfea8ba142e10c980dce81bb9a3b7eb430be931ba54dcc7f4e6",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.award_job_bonus(uuid)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public"
+      ],
+      "sourceMd5": "548576866b6fee6220d7cd53cb89870c",
+      "definitionSha256": "3cd0be7f2ef5b78fad9c62f8155a87129a9b7ae0efde9dc8553a8236ed8689c6",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.cancel_unposted_income_expense_v2(uuid,bigint,bigint,text,text)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "3f6790aa39eeb29a9d6c82e3c9930ccd",
+      "definitionSha256": "c73e690cfba51c981cf2ef91403020dfad1eaf4407882c7046cff788b2098e2f",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.check_contract_representative()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": false,
+      "volatility": "v",
+      "config": null,
+      "sourceMd5": "fe4956558cf69fba421138b5ad1e0c3f",
+      "definitionSha256": "71a8a9f4400164785dff32654d05ae64df4c1303481b4b322f1d28d81468c19b",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.confirm_cashbook_closing_v1(uuid,numeric)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, app_private, public"
+      ],
+      "sourceMd5": "e403ef90facb97998d3305d128d8d4c7",
+      "definitionSha256": "4bf43d9481f8a220a46e376f009b63602f25dfbfae44c1b5c000fbdb92897e75",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.copilot_available_rooms_v1(uuid)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "s",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "2816da5a32cb4e501da2f46df757b7ee",
+      "definitionSha256": "1a21bfb1fbaa5cba600409988b8fa95828240d08f6e40ae1f1dbf76a644fac9a",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.copilot_execute_cashbook_chot_so_v1(text,jsonb)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private, extensions"
+      ],
+      "sourceMd5": "3c7a7a63cfd66e8277bad99400e79c7c",
+      "definitionSha256": "91b5bf04b271d756ca33c20cee4d37980a6e917b0010d1643c4ad454b6cdaa34",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.copilot_execute_contract_chuyen_nhuong_v1(text,jsonb)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private, extensions"
+      ],
+      "sourceMd5": "c3ff8499789240a3bf31895ff4d83acf",
+      "definitionSha256": "6936b66103ba8831b4ba8f41f008f7d36eef0cc306a19680ab5ed4ca4c0c2157",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.copilot_execute_contract_duyet_thanh_ly_v1(text,jsonb)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private, extensions"
+      ],
+      "sourceMd5": "7408317e49e3cbb2811c16b65727c4e6",
+      "definitionSha256": "d3a43ce8ccbb2d96c08c72419deadf55e772678e7b93375f2d1d49d61e2f08b6",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.copilot_execute_contract_gia_han_v1(text,jsonb)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private, extensions"
+      ],
+      "sourceMd5": "76860fb42350df6844dd1ab459e71d9a",
+      "definitionSha256": "daec2a6a6b80dd1a52f03b2a098fd68c62d1e15191010191759e8661467c8993",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.copilot_execute_ie_duyet_v1(text,jsonb)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private, extensions"
+      ],
+      "sourceMd5": "a0aaf45b997190fa254430025e64eadd",
+      "definitionSha256": "81a3197c6824e4cc1aae75a25f17e227f3ae409457985445d277def1c48868df",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.copilot_execute_ie_duyet_vao_so_v1(text,jsonb)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private, extensions"
+      ],
+      "sourceMd5": "d98f58351dc07813adbe743220e63cc6",
+      "definitionSha256": "0fea887584a95a404b5a831e68125ed69a1bfaad37fc87ec4563ea30e4d3d98c",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.copilot_execute_ie_vao_so_v1(text,jsonb)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private, extensions"
+      ],
+      "sourceMd5": "07122f9fbfe3d6ac5b5792fc7302ffa4",
+      "definitionSha256": "e060a6395927f555a680a794fcc95deb88a0fb258871c4991feff04b4bd0467b",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.copilot_execute_reservation_deposit_v1(text,jsonb)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private, extensions"
+      ],
+      "sourceMd5": "01de25f753d35616fa9d5383f51fec93",
+      "definitionSha256": "f15bbc40965ac99083cefbee03e2fa4f3de7e9253b9cc1dd018c677d5450df34",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.copilot_execute_reservation_hold_terms_v1(text,jsonb)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private, extensions"
+      ],
+      "sourceMd5": "e8d386966312c13f275f200990601ff1",
+      "definitionSha256": "95d3d780501a2bffa2495b6d5cdddfd4dda15ca6308378cdf4085c6b585d1625",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.copilot_execute_room_chuyen_phong_v1(text,jsonb)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private, extensions"
+      ],
+      "sourceMd5": "4b72af06e4352ac0997cbd02cbe443cb",
+      "definitionSha256": "a5588ec691f055f380805519b8aa3e84485b45ed8cf7c94cbaa54c1c77298da5",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.copilot_execute_termination_hoan_coc_v1(text,jsonb)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private, extensions"
+      ],
+      "sourceMd5": "5c37f6863fe455df22326cd6ebcc0dc9",
+      "definitionSha256": "d12104a3d8f2ef548990d0357e5e7f568dcd5e45eaef27e86ab04838d9f968a1",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.copilot_plan_execute_step_v1(uuid,integer,integer,uuid)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private, extensions"
+      ],
+      "sourceMd5": "80e1695e1f91acb275b02708a3f0dd30",
+      "definitionSha256": "35c640f724f1781605643375a6eb482c67dce9c99f821760d835783e947d1a91",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.copilot_preview_cashbook_chot_so_v1(uuid,jsonb)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private, extensions"
+      ],
+      "sourceMd5": "d3287577047e5b4c4961a886c05ae901",
+      "definitionSha256": "94c3bdaa8c0b3a63ffd861aa56bfe96332278246c023df5a892a97cfa9509608",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.copilot_preview_contract_chuyen_nhuong_v1(uuid,jsonb)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private, extensions"
+      ],
+      "sourceMd5": "2ba13651a549f7f78fac9937e15db492",
+      "definitionSha256": "28ed69f4abe662e8cf3d45005b07ef35fea84978143196fc5c39bdd28f01539a",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.copilot_preview_contract_duyet_thanh_ly_v1(uuid,jsonb)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private, extensions"
+      ],
+      "sourceMd5": "02ec8554123dc20f138def740bf3582f",
+      "definitionSha256": "a70ce37fb4143e088f43e991b6f2e8f7d0a3ba2cd8e7ae2ba31496d4449ba1b6",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.copilot_preview_contract_gia_han_v1(uuid,jsonb)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private, extensions"
+      ],
+      "sourceMd5": "e74ee3b3bf215f58092737c4a44eb5e1",
+      "definitionSha256": "5b08d4d14ad547b77174254a8af8ebbb55f2470223e591b8e0ea11a912f6e21d",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.copilot_preview_ie_duyet_v1(uuid,jsonb)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private, extensions"
+      ],
+      "sourceMd5": "1da6b9a9c1a0bfc37501724d398b585a",
+      "definitionSha256": "8fdbaa6818c9a0396b21f2d3a5020cc0fcc693f7e89deac1eb261f9018ad5292",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.copilot_preview_ie_duyet_vao_so_v1(uuid,jsonb)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private, extensions"
+      ],
+      "sourceMd5": "8d693d469a1a9c00735ae9608c49a28c",
+      "definitionSha256": "8ce4ea5df7c4acefc1a4d8858d6cb861b76963a86015f004ca98a6db551cca4f",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.copilot_preview_ie_vao_so_v1(uuid,jsonb)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private, extensions"
+      ],
+      "sourceMd5": "d7bafb8da29711fa3673905c192d133f",
+      "definitionSha256": "db99fd2e071daa00d72edaf361c8cbba12be143e92789d723ca9d26070793fbd",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.copilot_preview_reservation_deposit_v1(uuid,jsonb)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private, extensions"
+      ],
+      "sourceMd5": "109aae4a1190a821101d85cd5ffa70e6",
+      "definitionSha256": "726592791726811c47ab49b10da18c4817a0a176795743c972929b40ed826dcb",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.copilot_preview_reservation_hold_terms_v1(uuid,jsonb)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private, extensions"
+      ],
+      "sourceMd5": "5c1f8d2258fdb557ffc04e582af42637",
+      "definitionSha256": "50f8d347622cd98eb7db7dcd16864404ac3fd929cf84dd110531bc928bcc34ed",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.copilot_preview_room_chuyen_phong_v1(uuid,jsonb)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private, extensions"
+      ],
+      "sourceMd5": "27170d5fb3c1823922e2fd7877a97666",
+      "definitionSha256": "576a8321e74435bcc5b90710b125d09a557393de71f69557243a0df2dc4af02e",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.copilot_preview_termination_hoan_coc_v1(uuid,jsonb)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private, extensions"
+      ],
+      "sourceMd5": "85108e4e40ea4597a7f59e171447eef7",
+      "definitionSha256": "5ba2a7b8b2f9c76e28e8feb960921d3d2689ee51e6940e3c03b5d17245206d83",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.create_commission_voucher(uuid,text,numeric,date,uuid,text,text,text,text,text,jsonb)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, app_private, public"
+      ],
+      "sourceMd5": "84056f4f65ff0070e6d4d7efb81e8f15",
+      "definitionSha256": "29e18bfef87f31515a39c524b622ede3a0e7df3e306247924ef498455f3310a9",
+      "testMatches": true,
+      "pinned": true
+    },
+    {
+      "signature": "public.create_contract_v1(uuid,uuid[],date,date,date,numeric,numeric,jsonb,jsonb,text)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "8352f91f7aea53188674f7fbd75d7813",
+      "definitionSha256": "702601e950a4cab8f7c313e995bad2abc032c9a3a47d8cd86c109111bcc8a598",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.create_contract_v2(jsonb,text)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "1c16386369410dbddcf3605dcd85346b",
+      "definitionSha256": "bdfd1a1bf4c3e518ffd6092213d72697cf611e524ce8dab10509f908af9ba3e0",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.create_invoice_v1(uuid,uuid,uuid,text,date,date,text,numeric,numeric,numeric,numeric,jsonb,text,numeric,text,boolean,jsonb,uuid,text,numeric,text)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "fe4494b01c87a4622ec3aee8adc28fea",
+      "definitionSha256": "5ebac20bab6ee898f63ba717e79ca7f03b29d4fd993f92c26c6acaa59e875579",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.create_new_contract_extension(uuid,integer,numeric,numeric,text)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public"
+      ],
+      "sourceMd5": "f1aee27968e3c521c3731576e47d3564",
+      "definitionSha256": "aa5489e9a93bd5b6ea1fb3846d7d112fc712a2e1a7bd8c6e9ae656912a2b6f0b",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.create_reservation_deposit_v1(uuid,numeric,text)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "cac5ff6dd42792de7b1b24d21e1b3c63",
+      "definitionSha256": "4b11037579863173ba93a67785377b44728e7c43c1e8421d34df851fc1a1c0b2",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.create_sale_bonus_from_deposit_v1(uuid,numeric,text,text,text,date,uuid,jsonb)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "76198f8db4f62dda4e155c45e76b66b2",
+      "definitionSha256": "c8785a50259b8111fd075ee69a9262974f528829c82a6eedc1ef45e7112be601",
+      "testMatches": true,
+      "pinned": true
+    },
+    {
+      "signature": "public.create_simple_extension(uuid,integer,numeric,text)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public"
+      ],
+      "sourceMd5": "19e5e389eaa5b20b46c0fc09b111b4d3",
+      "definitionSha256": "51fdf3aed009aae3d41eb376e5e29934b82b2e09208f157662381914e5d87bb7",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.create_termination_refund_voucher_v1(uuid,uuid,boolean,text)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public, app_private"
+      ],
+      "sourceMd5": "1a3c4b524f83f58b52b4457464f40639",
+      "definitionSha256": "416d86b3c93c10e45dfc49ffd70160b4dbf8634fe93af162382221a21dfd6f58",
+      "testMatches": true,
+      "pinned": true
+    },
+    {
+      "signature": "public.generate_contract_number()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public"
+      ],
+      "sourceMd5": "88e5d773c61c860d12573f49b1d70c59",
+      "definitionSha256": "274a52fb80a4f24c872b242e9826b7bec747271b15bd5e2011e709968d14a04c",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.generate_invoice_number_v2()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public"
+      ],
+      "sourceMd5": "1afa0106be8aff2afc8f304a2ca0005b",
+      "definitionSha256": "2242cf30699c763069be32c63242ed30b9583dfc9832aa50fda3e133652453b1",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.get_my_available_rooms()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "s",
+      "config": [
+        "search_path=public"
+      ],
+      "sourceMd5": "d72c881aeb0364ee2d95d6417fb7e080",
+      "definitionSha256": "468f479f92e49b19a3ab735155fb6c7867f0bd9aae36e9150f91178ce7f2ec40",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.get_public_available_rooms(text)",
+      "owner": "postgres",
+      "acl": "{=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public"
+      ],
+      "sourceMd5": "edc42768a090a61e0b06e0bb7acf55fb",
+      "definitionSha256": "13123c38269d983f7aa24a38624c39196887a8fb47123f40f9730632bf8097d8",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.get_room_cash_lifecycle_v1(uuid,date,date)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public, app_private"
+      ],
+      "sourceMd5": "53ee71bd35174ea43745efac96325612",
+      "definitionSha256": "6893fec3d1c6dd50201fa73f1d580c0dbba738d44fdfea6a230385703f4c9a1e",
+      "testMatches": true,
+      "pinned": true
+    },
+    {
+      "signature": "public.get_room_residence_segments_v1(uuid[])",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public"
+      ],
+      "sourceMd5": "2e26de0d1540ae81e1afed272d618308",
+      "definitionSha256": "db0db4a62c9adbe8be11081346197a765694df6d7532e9ca58eb4fd8bbc36d5b",
+      "testMatches": true,
+      "pinned": true
+    },
+    {
+      "signature": "public.guard_contract_deposit_paid_derived()",
+      "owner": "postgres",
+      "acl": "{=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "securityDefiner": false,
+      "volatility": "v",
+      "config": [
+        "search_path=public"
+      ],
+      "sourceMd5": "3ad1ec545bfc4217b9d71023cc06aced",
+      "definitionSha256": "c5e31f286d91f311d6b55b27e76fa5dca3ac66d7a0cd256c153d0ae054e2afad",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.guard_contract_termination_settlement()",
+      "owner": "postgres",
+      "acl": "{=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "securityDefiner": false,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "28213b0187f01bc518e48677bea2f30c",
+      "definitionSha256": "83f29cb4d1a12d7bde25f15850710638614ae56fd038ee79b34e79ca463356ba",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.guard_invoice_derived_columns()",
+      "owner": "postgres",
+      "acl": "{=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "securityDefiner": false,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public"
+      ],
+      "sourceMd5": "4827cf8e65aacbc0a48d7300ca5ae56d",
+      "definitionSha256": "4c79d593ebc30cb8c268d124350816aa4aed53229b8b5e75e29953ca27cb7c87",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.guard_paid_invoice_direct_adjustment()",
+      "owner": "postgres",
+      "acl": "{=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "securityDefiner": false,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public"
+      ],
+      "sourceMd5": "8b98cab385304c640507d1c729b44b0a",
+      "definitionSha256": "f25b6f8eee0304b3d39a3ec280527060e25835e7b5e53a4d066868c79aca7095",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.ie_annotate_scope_delta_guard()",
+      "owner": "postgres",
+      "acl": "{=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "securityDefiner": false,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "fdf7d8911ba1af9a295c7b2d2335b686",
+      "definitionSha256": "18080557be96ce7559f3d96a3926ac11d9ef47fdbf98bca73a73138186c38a0c",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.ie_handover_guard()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public"
+      ],
+      "sourceMd5": "3856a203410eeea0b75029682a158864",
+      "definitionSha256": "f77ca38048a64fece717422c3cfbc08cb3388aa5324f7d132ed16d6ba5f0a40a",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.income_expense_items_check_lock()",
+      "owner": "postgres",
+      "acl": "{=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "securityDefiner": false,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "18f94f643e8c3aa7d3b60806916224c3",
+      "definitionSha256": "183d278b5b834d177d6dc42252a08fbb27f329e465e44fc70d592793b21b75c1",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.income_expense_items_check_profit_lock()",
+      "owner": "postgres",
+      "acl": "{=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "securityDefiner": false,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "2538163c08b71c617a13f6424fd32f29",
+      "definitionSha256": "3c12af3c0de7b6ac1a6f69adc38c2e8d0653c7420c73712494c9c120819c01fc",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.income_expense_posting_lines_check_lock()",
+      "owner": "postgres",
+      "acl": "{=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "securityDefiner": false,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "857e6a143d7f74e0ecef06cfcd0ead55",
+      "definitionSha256": "2d1a3890499b33e2b8f402ab853e31e2b4a74a2f825dd22863531b2071733ae4",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.income_expenses_check_lock()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": false,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "d78cb58e9b1cac3504ae7b7d697359bd",
+      "definitionSha256": "221d05a842fe81d2cbeb9d541bfc75df0299543f3fbc0ebd8d72a594e17abe0b",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.income_expenses_check_profit_lock()",
+      "owner": "postgres",
+      "acl": "{=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "securityDefiner": false,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "912a692563f017ca9922090be2957b57",
+      "definitionSha256": "9a1c83431b174779d1c07f1773f9580f70b16456fa8f6f19141e0a8438a2f0cf",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.jobs_stamp_completion_time()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public"
+      ],
+      "sourceMd5": "3104d52fcc28aa9807c677c123ca4c83",
+      "definitionSha256": "12fd8e19a6cec38298d926fab5bb994a19ef5cc14d0ad2ededddb517b8329d1a",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.list_cashbooks_for_expense_v2()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "s",
+      "config": [
+        "search_path=pg_catalog, app_private, public"
+      ],
+      "sourceMd5": "a6853bd1aa28905c58579e678f61233a",
+      "definitionSha256": "e0f3fdb7d3ff1a8840ab3c206bf7709f792adec7b02d64c6de89228ca0a62af6",
+      "testMatches": true,
+      "pinned": true
+    },
+    {
+      "signature": "public.lock_cashbook_period_v1(uuid,date,boolean)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "f7b084e2de3a66e318887919b08c7d9d",
+      "definitionSha256": "8fde336c0c929e5f005f2c6bc936c8c2331a0321ce90bd567a31e9a6e454ad2d",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.log_contract_price_history()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public, pg_temp"
+      ],
+      "sourceMd5": "546631467d463af818e1a6dfb294a7b4",
+      "definitionSha256": "c2fa732b6792e18c9e8cb29fa143a755a82827db325f2cf9458fc2bb92eb18a2",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.log_room_price_history()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public, pg_temp"
+      ],
+      "sourceMd5": "9766f5fb6ca8b67b978c4896484eaa95",
+      "definitionSha256": "5aa4f57db59f4e4c221bf76d348c1d0c267d00b843ed0e43e0179b2bc564c737",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.org_today_v1(uuid)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "s",
+      "config": [
+        "search_path=pg_catalog, public"
+      ],
+      "sourceMd5": "bf0d7a3c20c7ab3bea0f463ca1f5b138",
+      "definitionSha256": "ea451975162ef1673d9871a487d2ba87bc4034b2a0d475783cd027af135ea900",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.pay_reservation_refund_v1(jsonb)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "7101a346a5872af8192992a6816186c4",
+      "definitionSha256": "0a1cd3a7517b8f0aa4e3e44bfc255d19bcdc841f3aaae851813c8e7bd79e3c94",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.post_approved_income_expense_v2(jsonb)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "9cb352aa4f544ccc850e663a4f2fb3b9",
+      "definitionSha256": "6284c4802c8c1e6e6e5e2e63c0f760abc1ea444500e3717213022ab583aca571",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.profit_close_v2(uuid,date,text,text,text,uuid[],jsonb)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public"
+      ],
+      "sourceMd5": "36fa531991a55d901c9fed7077a229bd",
+      "definitionSha256": "183ef72196d6d5d87a0f826cdf835551df82f1e40c0969c8cc0019a697403eae",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.profit_reclose_v2(uuid,date,text,text,text,uuid[],jsonb)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public"
+      ],
+      "sourceMd5": "489dd7e85b9df90b153cb773fa18d43c",
+      "definitionSha256": "600b708fee8cc2175e26a0df3459410ddebd49ac50bbbba57c6d265107b4d2d5",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.profit_reset_checked_v2(uuid,date,text,text,text,uuid[],uuid[])",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public"
+      ],
+      "sourceMd5": "4428e497b778580a1702348fe48d5898",
+      "definitionSha256": "97c0247ab1bb2bb3f533640223a3573c4b4b2d59f7572af98c5b22ae64ff788a",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.profit_reset_v2(uuid,date,text,text,uuid[],text)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public"
+      ],
+      "sourceMd5": "f65e114f7276748cf9a58bc5945f96a9",
+      "definitionSha256": "7660272d6af5cdfc5c4b183a0f1310656649094159a0ee8e6fdaf3c0d0add327",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.profit_unlock_v2(uuid,date,text,text,uuid[],text)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public"
+      ],
+      "sourceMd5": "defed14257bbdaffb189bc3c416671bb",
+      "definitionSha256": "f511984e1c7fc3390cf53a4e0d2f427e4fee4445349f35a5ecf4c212f8dcc2cf",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.propose_cashbook_closing_v1(uuid,numeric,uuid,text)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, app_private, public"
+      ],
+      "sourceMd5": "504299642c31ff01f4a8c80aaaa11daa",
+      "definitionSha256": "8549e3a0181f7173aa7f9a52801d3b52773097715323b34d96d3c10ea4356b5f",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.recompute_contract_deposit_paid(uuid)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public"
+      ],
+      "sourceMd5": "03b2f1ff7205db84f6f39b6fbbe2bfef",
+      "definitionSha256": "2793c0d8d7c8786b7f815c59ed8ad7c8e9697e26bd79df26cb78830788b32c96",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.recompute_ie_business_result(uuid)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public"
+      ],
+      "sourceMd5": "0a3c1cff86dc1dd50cadb62a1bb74af7",
+      "definitionSha256": "6462588ad091f7c27e418bde30bea6c7ed9bb29233efcfe9631820d4110c0040",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.recompute_invoice_after_item_change()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public"
+      ],
+      "sourceMd5": "d2aaf5789cafc1433366e9b12f7c10a7",
+      "definitionSha256": "f35c1de0e3095bb23972e16aa5243d6c78f9286842ba2405961a82a3f407ca19",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.recompute_invoice_after_payment_change()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public"
+      ],
+      "sourceMd5": "d10c25d5423c46c7bb7bdf6dde052b49",
+      "definitionSha256": "0a1bc2d0f94af670fde085a1ecfada1011063b9d5e08bdb6aadc47c621936d68",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.recompute_invoice_after_voucher_change()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public"
+      ],
+      "sourceMd5": "2b595c0a96fdf864d2b4ea8c0ee47d03",
+      "definitionSha256": "bf182191dbc8d5c4c61de73332666933d62a70011b89db17c86678db62c42adf",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.recompute_invoice_for_id(uuid)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public"
+      ],
+      "sourceMd5": "d721b567128d2163f5b3ed63780e1373",
+      "definitionSha256": "042285e631717462c0b50e0775633757d0b61f352f3d3558df84cd1538d2a8db",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.recompute_room_reservation(uuid)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public"
+      ],
+      "sourceMd5": "6d44c873ab6d17a1d398db0b02fcc155",
+      "definitionSha256": "4244948ee40dd1132a8983e297c560ffda0a0ff7dc7dbf6daa587523b0bee1b5",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.record_invoice_collection_v5(uuid,date,jsonb,text,boolean,text,text,numeric,text)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "769d02736c40d9e722f48a48e1f5bebb",
+      "definitionSha256": "281e11b5b034b09fc2f33961a39ea634638db35211451c4df0db8832e80682ba",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.record_invoice_payment_v4(uuid,numeric,payment_method,date,text,uuid,text,text,jsonb,jsonb,text,uuid)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "27759a898db4915981c839192edab3a7",
+      "definitionSha256": "9b83def4a6bc289bcb3bfce6e0dceba7a01180f24d5bb0bc2c4289393eacc067",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.reject_contract_termination_v1(uuid,text)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "1952518b8f58df33c0fd062b34e93cdc",
+      "definitionSha256": "74ab72083736c9ccd70e773e629e8c6abba5abf95c8d4e20cdd7c1a804195f09",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.renew_contract_impl(uuid,date,numeric,numeric,text)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public"
+      ],
+      "sourceMd5": "2bd721b3a379bc66900405e964ced096",
+      "definitionSha256": "fdf4271e14f20cc9eee9243c05837bfff44d2d2956208d2d0149748163ddf2c7",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.renew_contract(uuid,date,numeric,numeric,text)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public"
+      ],
+      "sourceMd5": "6cbff04302fd40f35821b3237f8c8027",
+      "definitionSha256": "4e2bc25b2490a8d3c07079ee792e9e5709516192823229356af5f4f80eb98f4c",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.request_income_expense_changes_v2(uuid,bigint,text,jsonb,text)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "0cb30e2b755d50d81e8fbb09c7e3f743",
+      "definitionSha256": "204b60780e150cbc5ca1c7c833ab9cd1e65c5345dfe0d20e07b8e19ad4b658c2",
+      "testMatches": true,
+      "pinned": true
+    },
+    {
+      "signature": "public.resubmit_income_expense_v2(uuid,bigint,jsonb,text)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "c03e8b0b258fd3e0c180e844a38a95ff",
+      "definitionSha256": "b3968ff452c2496c0d386bfd476d02268223ef8997fc56812d6f5b8b0c348e81",
+      "testMatches": true,
+      "pinned": true
+    },
+    {
+      "signature": "public.reverse_invoice_collection_v5(uuid,date,text,text)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "a0d7076b9317ca2bbb7eb680660ac5ee",
+      "definitionSha256": "6272dac43a9765979404a256006be70c0a00d35937a6614d7478be1c21d6b145",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.reverse_invoice_payment_v3(uuid,text,text)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public"
+      ],
+      "sourceMd5": "eb7d4674808305377c83a3f5622409f6",
+      "definitionSha256": "52dba688381056aaf9debbcf9005dbe8f3a7b9d0470c49b272dc5260a7c1cd1e",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.reverse_posted_income_expense_v2(uuid,uuid,date,text,text)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "aaf92651f1666bb8fbff41766791f60a",
+      "definitionSha256": "db078a1b9dfacca95efa252227522e8461ba8fe619e0455347df1efd4b837a4f",
+      "testMatches": true,
+      "pinned": true
+    },
+    {
+      "signature": "public.revise_pending_income_expense_v1(uuid,bigint,jsonb,jsonb,text,text)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "7af7eeaf582e5d60d011364a19d50178",
+      "definitionSha256": "c41ea3d5d610c4098c7f65e5c498404ab486bd2df46ef23e19508a89f723db59",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.room_has_holding_deposit(uuid)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "s",
+      "config": [
+        "search_path=public"
+      ],
+      "sourceMd5": "969b762fdcb47c536d26874b1b193183",
+      "definitionSha256": "b9fd738c326bfccfdda78005bc9662d387b41e755a7f1a5f1d0c621dca7b952c",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.set_contract_public_code()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": false,
+      "volatility": "v",
+      "config": null,
+      "sourceMd5": "6d5464387a957e5497bd1b0e4c3d819b",
+      "definitionSha256": "569119c7dfd9bb3ba3df9bb3c8ccb478190dc3d5ff16e88b00f3e2dce4f22192",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.set_ie_item_accounting_class()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public"
+      ],
+      "sourceMd5": "c5d8e00819a52b63b8e25c73f6cd90f4",
+      "definitionSha256": "14596e21c0427fd483921a6c96de98c0e0c65a630b160b242a484e18761c8556",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.set_reservation_hold_deadline_v1(uuid,date)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public"
+      ],
+      "sourceMd5": "c7043a1c61bfd26ad0e37fb4cb2c8ab1",
+      "definitionSha256": "6bad7b210914dd776d1df3ed126af9a8eda72af2a23f30a05f169adfe9e3ea7a",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.set_reservation_hold_terms_v1(uuid,date,date,numeric)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public"
+      ],
+      "sourceMd5": "6378d889a73c36b1d422f0002ce3fa84",
+      "definitionSha256": "a3e54200ac665a87e32b05d6f005601fc7e4f1d2564f4764ddd0e9d40edf9d6f",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.set_termination_forfeit_status_v1(uuid,text)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "e0da2b670f37574bcde6aa443dd97868",
+      "definitionSha256": "f2b9f5f19d674516f25e6bd82c05a6e8fa158c42a590295ba9e1cbb36cb58606",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.set_user_id_from_auth()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public"
+      ],
+      "sourceMd5": "90c21110095b780c5317b06869aac51f",
+      "definitionSha256": "1ff65a58c5073cdabc1507102dad41bd61835a6299f494891b09bf5b595967cd",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.settle_previous_debt_sources()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public"
+      ],
+      "sourceMd5": "a676b50b7e97126f036f809ab4f86862",
+      "definitionSha256": "6eb92e43134f8ec3afc59dc03c4fb6555e2052472a9024230f421e9f319e3103",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.settle_reservation_deposit_v1(jsonb)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "14935bc556d03a404df71ab6b1aea3bf",
+      "definitionSha256": "fe97b1d599798ffe438eae9155613c9cd7f5eaf83460b660393ff5afbafc5312",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.submit_financial_voucher(uuid,text,text,text)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public"
+      ],
+      "sourceMd5": "fafb64c921f3698c93203cf09dee800f",
+      "definitionSha256": "c0804d13c2663e5aae2854255e9a43515b3ed90c4d211a0aec2bde33408227b9",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.terminate_contract_forfeit_impl(uuid,date,jsonb)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public"
+      ],
+      "sourceMd5": "1f15ee1cd78d3a2981eeb3911228a1ca",
+      "definitionSha256": "059dfecbe5b618cea99e412658761fc44041a2dab6c29811f131b1fe57ec64c3",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.terminate_contract_forfeit_with_credit_v1(uuid,date,jsonb,text)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "69428aa18faa916f997c796a24419d1e",
+      "definitionSha256": "8259f1696d4943712d43473943d1486fc61bf8b06a31ab5e5201c52842c2ee52",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.terminate_contract_forfeit(uuid,date,jsonb)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "05d010410fcc7737036b067766433bda",
+      "definitionSha256": "29a4d7cde548ceb5eec35d100e943305dbf904c5509fbbb766cfbceeea9f1254",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.terminate_contract_move_out_impl(uuid,date,numeric,numeric,numeric,numeric,text,jsonb,text,uuid,jsonb)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public"
+      ],
+      "sourceMd5": "9477e5fa91a4906e2f159fe373c00bda",
+      "definitionSha256": "6f2d69eaae804ab5251eb7688addbf7ee2a20beebe0088ed614ae05337366627",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.terminate_contract_move_out_with_credit_v1(uuid,date,numeric,numeric,numeric,numeric,text,jsonb,text,uuid,text,jsonb)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "dfffdc97765e2ce18223f90c81a79ffa",
+      "definitionSha256": "7d069e72ce00ce7a1ed0c90658352b32bd68be52e2d5665640d5bdb801f69f33",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.terminate_contract_move_out(uuid,date,numeric,numeric,numeric,numeric,text,jsonb,text,uuid,jsonb)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "55366c922348b55a177db9823aecf93c",
+      "definitionSha256": "deba56fcb92fe25fb88d34730d6800357b1ba7b2c3b2c86c155193ab31ebcc12",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.transfer_contract_impl(uuid,uuid,numeric,numeric,date,text)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public"
+      ],
+      "sourceMd5": "0b9f75c2bfc81dbd6599d30405e5db9c",
+      "definitionSha256": "31039653adec8aad59c9f3618a725811386b98aa800fb1b9d9ed5457e5273686",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.transfer_contract(uuid,uuid,numeric,numeric,date,text)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public"
+      ],
+      "sourceMd5": "c9b15b89aa8624cc6c1bd85efe4d26b1",
+      "definitionSha256": "e607b66cc462b5710816e77a427e7ee6f507009bb51068833b3b0210c8cae01c",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.transfer_room(uuid,uuid,numeric,date,text)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public"
+      ],
+      "sourceMd5": "90d6b6cbe3d7525c7e606045d25e93c2",
+      "definitionSha256": "e0b47eff6804ec6eba2b8f6668352a8593b7a5c45d2033a25bb84ae73e99c140",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.trg_contract_link_orphan_deposits()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public"
+      ],
+      "sourceMd5": "4107c6c70b3dd254832f6f9ec582e641",
+      "definitionSha256": "3065861570370f508d474771a8c0c1482d550b6bcac8563c4c1972075050bf50",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.trg_forfeit_settle_on_approve()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "sourceMd5": "650b394763e64fcc4193e68904cc6412",
+      "definitionSha256": "e40c9435f2af2ab41f237de8e7fd6e713913cb6736ca2d61a86e0c6f9a63e374",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.trg_ie_commission_guard()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": false,
+      "volatility": "v",
+      "config": null,
+      "sourceMd5": "94cbb4ff2d6780a4e71b36487e32db75",
+      "definitionSha256": "1a26f04f18d45a72206079d8ba55f869677c5aaae2271ed613484486ad209d18",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.trg_ie_items_commission_kind()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public"
+      ],
+      "sourceMd5": "eaf7edac314acfeaeac8bde114d437e8",
+      "definitionSha256": "77df2560b0add0e2aaffced476740e325382523a5b10efc021841dbd445baab0",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.trg_ie_items_recompute_business_result()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public"
+      ],
+      "sourceMd5": "6320ce349e285d0ed05e6ecb470f05e4",
+      "definitionSha256": "517e2fc3d0dbd7b20802267c331dc00e75d860e415a5a73a1214a796cb9842e4",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.trg_ie_items_recompute_contract_deposit()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public"
+      ],
+      "sourceMd5": "17d8e555df97cb835338c5d1493dd1bd",
+      "definitionSha256": "a69f4ca7d84000cceddc6b2b542df406e85a5e8d18cc05e0181f81dde060a603",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.trg_ie_items_reconcile_room()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public"
+      ],
+      "sourceMd5": "7b8c74f405eec9e99b25aca1c282e346",
+      "definitionSha256": "9240b4632381215f20f6225013e30f6bfb4ff9a809b2d107cf10ad305133bb3a",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.trg_ie_recompute_business_result()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public"
+      ],
+      "sourceMd5": "a70a8d81fda497d58f16bcf52c6295a1",
+      "definitionSha256": "9cc90037d27cebe8410db11204afa55cab99d654264f29d1e0b0335e013281c5",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.trg_ie_recompute_contract_deposit()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public"
+      ],
+      "sourceMd5": "1222f7b0056e4da93406a5296f0e8997",
+      "definitionSha256": "5986fe107870f7984f33559cee1fa4414341a4038fad38f73dec31cb0e4cabfa",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.trg_ie_reconcile_room()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public"
+      ],
+      "sourceMd5": "572c7ec3d55e191cf91ad9153976f4a1",
+      "definitionSha256": "bf36d1acf6a549c97c69a06b1d72cbdbae9d414bce7947dd92c2be3f29b7498d",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.trg_ie_type_recompute_restricted()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public"
+      ],
+      "sourceMd5": "dfd3d2e603c162b53774dc059fbab2f9",
+      "definitionSha256": "a7687e49dcabbf4385375a92e962e4d93e0c09799fe26fb30589c3e732119a28",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.trg_room_status_reconcile()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=\"\""
+      ],
+      "sourceMd5": "a684104a17c7d7334750d9210d3ec572",
+      "definitionSha256": "ce05f001b211401095fe8361638b178830ded3e4278038efe3d5b4f3043c5857",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.update_asset_status_on_contract_change()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": false,
+      "volatility": "v",
+      "config": null,
+      "sourceMd5": "bbddce36016c3cc58e5a2f7c468d4de1",
+      "definitionSha256": "e3f2349b5695c686094d160530e441d20fd47452e742f498dd158a1ae8315f08",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.update_building_total_rooms()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": false,
+      "volatility": "v",
+      "config": null,
+      "sourceMd5": "47a5b448a4219d3c6d8d371c61b2accc",
+      "definitionSha256": "b736433073d89fdb7d350cdbe85485d0257660f025e2c210a5234a86f0dd8b10",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.update_contract_on_termination_approved()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": false,
+      "volatility": "v",
+      "config": null,
+      "sourceMd5": "11a78d11938a9dee1f7ac7d6d2c002fd",
+      "definitionSha256": "2cedca2f75ea2f96af41461b2629e8183223b8e4617bb5a501816ffef9bbfce2",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.update_room_status_on_contract_change()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public"
+      ],
+      "sourceMd5": "e8a1164f00e0838c201aeb58916ccdce",
+      "definitionSha256": "a941bdbf6bb9bca08e32334d8259a6d1bcbb79f25342062e41e4f9f24fe17e2d",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.update_updated_at_column()",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": false,
+      "volatility": "v",
+      "config": null,
+      "sourceMd5": "10ff09e0d1433006b865e7959e736c46",
+      "definitionSha256": "98da83778b25933113f3f53feb884320f11bb72129ad84f7872e0a4fb2d038c9",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.v5_recompute_streak_legacy(uuid,date)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public"
+      ],
+      "sourceMd5": "6d4c32c13e1c1099119355584729aba9",
+      "definitionSha256": "e191728d546e7dae6f83b56d1d321fcc625642269369d7c9c12bf133dfb451a3",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.v5_recompute_streak(uuid,date)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public"
+      ],
+      "sourceMd5": "79ffea0a082ebe453aa0df8f9733ce68",
+      "definitionSha256": "8c7081b97a3768cda19676f28c0dd4339a97fc13d9eb256ae45ef8bb7356f80e",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.v5_tick_attendance(uuid,date,text,uuid,text)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public"
+      ],
+      "sourceMd5": "44079443314a8b315f16c20fc05c0d7c",
+      "definitionSha256": "7dce788419a4399c65a55554be995de8f3a658b5ea902a89ce16052d946b89a9",
+      "testMatches": true,
+      "pinned": false
+    },
+    {
+      "signature": "public.v5_tick_from_job(uuid)",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": [
+        "search_path=public"
+      ],
+      "sourceMd5": "b15ee632fb6ab5e9c1b948a21265ff33",
+      "definitionSha256": "ffc2c3e611a9294c480f3f700c0765ec4ce69dc2bb0b7e9a67262bd8343c1c9f",
+      "testMatches": true,
+      "pinned": false
+    }
+  ],
+  "limits": [
+    "Named static inventory decisions cover220 exact signatures; dynamic/Copilot/checked-approval mappings resolved in captured catalog, not runtime proof.",
+    "No feature migration or production writes.",
+    "No JWT financial parity/concurrency/E2E claim.",
+    "No claim that all P0 requirements are complete."
+  ],
+  "writerInventory": {
+    "path": "docs/generated/contract-lifecycle/2026-09-28-writer-inventory.json",
+    "sha256": "fb250d67e24da9a3bf97aa8762bb173e5e4e31f69f1635d0b721524acdeec073",
+    "count": 220,
+    "status": "STATIC_ANALYSIS_RUNTIME_UNVERIFIED"
+  }
+}

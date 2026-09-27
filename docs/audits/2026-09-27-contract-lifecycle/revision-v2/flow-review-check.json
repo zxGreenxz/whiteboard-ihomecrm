@@ -1,0 +1,43 @@
+{
+  "checked_at": "2026-09-27T16:41:45.279Z",
+  "head": "e498f10d49f3548e72074095c955371d0cee41ab",
+  "scope": "Plan and HTML only; no app/schema/DB changes",
+  "current_documents": 11,
+  "relative_links": 48,
+  "original_requirements_count": 13,
+  "original_requirements_verbatim_preserved": true,
+  "comparison_scope": "Requirement IDs and behavior text; V2 adds a task mapping column absent from V1",
+  "planned_scenarios": 55,
+  "audit_findings": 35,
+  "flow_findings": 6,
+  "saved_function_hashes_verified": 45,
+  "archived_plan_sha256": "9e832acd55963a122f972a0452d853d24c0c1b82aaea5c46559b5e0e5b428756",
+  "archived_html_v3_sha256": "3df3343f203a6fc6d645a9e4fa90990a2a73f6efd5fd573cf5d84d1abeb5b9af",
+  "master_sha256": "949e0d06441e03ace44d0f918127a7b7676cd17826202a55a0189eae6c37a5aa",
+  "current_html_sha256": "120f0c57ce87681c282e57cbe1f545216f7865ec1ec00948980a80f66be49ef4",
+  "html_qa_matches_current": true,
+  "global_docs": {
+    "exit_code": 1,
+    "markdown_files": 358,
+    "errors": 28,
+    "same_as_previous": true
+  },
+  "tracked_diff_unchanged_scope": [
+    "docs/doi-chieu/so-quy-686tcb.md"
+  ],
+  "files": {
+    "docs/superpowers/plans/2026-09-27-contract-lifecycle.md": "949e0d06441e03ace44d0f918127a7b7676cd17826202a55a0189eae6c37a5aa",
+    "AUDIT-HOP-DONG-2026-09-27.md": "819356e637eabf819233b0c027219cd95e0f93efedd13f4d41a4ce63071b52bc",
+    "docs/audits/2026-09-27-contract-lifecycle/revision-v2/scope-alignment.md": "2fdc590328a744e7c56f1b60339c6ff304b5c55e9e9f0af621c83db11f3539a1",
+    "docs/audits/2026-09-27-contract-lifecycle/revision-v2/audit-response.md": "c586fc7b2f22db7f99500bb62553fb574f40a7ea0869401e3c50f4fff5fa5275",
+    "docs/audits/2026-09-27-contract-lifecycle/revision-v2/decisions.md": "783eb90ed0188a7a626f43def861fc055dc97e8fe771250ec94110a8d034e8df",
+    "docs/audits/2026-09-27-contract-lifecycle/revision-v2/finance-review.md": "897489814b85d480a6d10839a4bf61c8a8d0b13999702b74ffec43e2d9fb160c",
+    "docs/audits/2026-09-27-contract-lifecycle/revision-v2/drafts-review.md": "9d870e1aa471cf79b793617467f48c62f69a9add5f66a8566aaa06a0fb187dae",
+    "docs/audits/2026-09-27-contract-lifecycle/revision-v2/availability-review.md": "5ccd2703e2881d1a0cf19e647a8caf5e82aa8a8f7a11d6f6647469899a1b73fb",
+    "docs/audits/2026-09-27-contract-lifecycle/revision-v2/verification-matrix.md": "32604b20b084b745b7017cb781547fa375833927e197cecc677270e8639f4145",
+    "docs/audits/2026-09-27-contract-lifecycle/revision-v2/verification-summary.md": "56041931128b5e3c0996d2a2e7ffd537b575892dd980178fd788c5f9ef4a6e62",
+    "docs/audits/2026-09-27-contract-lifecycle/revision-v2/flow-control-review.md": "9e250720fe5d0efd87e4f09fe770ae265f932d2c47db33f8910e1c55a6adea3f"
+  },
+  "unverified": "Current runtime build/catalog/flags, TEST money/JWT/concurrency/reconcile/CRM E2E",
+  "errors": []
+}

@@ -1,0 +1,34 @@
+{
+  "target": "TEST hzulujxgonszuleqticb",
+  "at": "2026-09-27T12:46:48.232Z",
+  "steps": [
+    {
+      "ms": 0,
+      "s": "L: locked contract"
+    },
+    {
+      "ms": 66,
+      "s": "N: locked room (plan §4.2 step 1)"
+    },
+    {
+      "ms": 471,
+      "s": "L: waiting on room lock (trigger)"
+    },
+    {
+      "ms": 1140,
+      "s": "N: locked contract"
+    },
+    {
+      "ms": 1141,
+      "s": "L: ERROR 40P01 deadlock detected"
+    }
+  ],
+  "result": {
+    "L": "40P01",
+    "N": "ok",
+    "deadlock_detected": true
+  },
+  "publication_redaction": "PUBLICATION REDACTION: This is a public derivative of a saved TEST-clone audit. Real row identifiers and linked financial/date values are removed. Original SHA-256 digests: publication-redaction-manifest.json. Outcomes and source anchors are preserved.",
+  "contract_case_alias": "lock-contract-case",
+  "room_case_alias": "lock-room-case"
+}

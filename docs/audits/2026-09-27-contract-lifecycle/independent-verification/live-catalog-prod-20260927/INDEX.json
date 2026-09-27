@@ -1,0 +1,321 @@
+{
+  "captured_at": "2026-09-27T12:35:40.599Z",
+  "target": "production project (ref in supabase/.temp/project-ref), BEGIN READ ONLY",
+  "functions": [
+    {
+      "file": "app_private__apply_customer_credit_fifo_v1.sql",
+      "name": "app_private.apply_customer_credit_fifo_v1",
+      "args": "p_actor uuid, p_contract_id uuid, p_amount numeric, p_invoice_id uuid, p_application_kind text, p_description text, p_idempotency_key text",
+      "md5_prosrc": "a7023b51ceef79fdbe4fc6303062e136",
+      "lines": 299
+    },
+    {
+      "file": "app_private__guard_canonical_write_operation.sql",
+      "name": "app_private.guard_canonical_write_operation",
+      "args": "",
+      "md5_prosrc": "8c32aed702db6705a15dd795c99f39a5",
+      "lines": 39
+    },
+    {
+      "file": "app_private__lock_org_for_decision_v1.sql",
+      "name": "app_private.lock_org_for_decision_v1",
+      "args": "p_organization_id uuid",
+      "md5_prosrc": "cd59b90fbbd143dab9cf0b21bf5d685d",
+      "lines": 24
+    },
+    {
+      "file": "app_private__notify_job_assigned_v1.sql",
+      "name": "app_private.notify_job_assigned_v1",
+      "args": "",
+      "md5_prosrc": "f61b2fc59fd70492c8ff8dc0487e28cb",
+      "lines": 53
+    },
+    {
+      "file": "app_private__reservation_room_blockers_v1.sql",
+      "name": "app_private.reservation_room_blockers_v1",
+      "args": "p_room uuid, p_exclude_voucher uuid",
+      "md5_prosrc": "9790b052a0c2334b4d2b53b57e327428",
+      "lines": 26
+    },
+    {
+      "file": "public___termination_apply_extra_charges.sql",
+      "name": "public._termination_apply_extra_charges",
+      "args": "p_invoice_id uuid, p_extra_charges jsonb, p_date date, p_user_id uuid, p_contract_id uuid",
+      "md5_prosrc": "e2c1de5beb5d55377346412618cf654c",
+      "lines": 78
+    },
+    {
+      "file": "public__apply_contract_transfer.sql",
+      "name": "public.apply_contract_transfer",
+      "args": "",
+      "md5_prosrc": "433a0b413cc4505e47a1dbd82f797600",
+      "lines": 102
+    },
+    {
+      "file": "public__approve_contract_termination_v1.sql",
+      "name": "public.approve_contract_termination_v1",
+      "args": "p_termination_id uuid, p_note text",
+      "md5_prosrc": "ea77696377513bff08b389aedb30f48c",
+      "lines": 192
+    },
+    {
+      "file": "public__auto_calculate_termination_financials.sql",
+      "name": "public.auto_calculate_termination_financials",
+      "args": "",
+      "md5_prosrc": "2be263528cf7232ae83379fa8b8a4394",
+      "lines": 81
+    },
+    {
+      "file": "public__award_job_bonus.sql",
+      "name": "public.award_job_bonus",
+      "args": "p_job_id uuid",
+      "md5_prosrc": "548576866b6fee6220d7cd53cb89870c",
+      "lines": 153
+    },
+    {
+      "file": "public__copilot_available_rooms_v1.sql",
+      "name": "public.copilot_available_rooms_v1",
+      "args": "p_organization_id uuid",
+      "md5_prosrc": "2816da5a32cb4e501da2f46df757b7ee",
+      "lines": 113
+    },
+    {
+      "file": "public__create_contract_v1.sql",
+      "name": "public.create_contract_v1",
+      "args": "p_room_id uuid, p_customer_ids uuid[], p_signed_date date, p_start_date date, p_end_date date, p_rent_price numeric, p_total_deposit numeric, p_services jsonb, p_first_invoice jsonb, p_idempotency_key text",
+      "md5_prosrc": "8352f91f7aea53188674f7fbd75d7813",
+      "lines": 122
+    },
+    {
+      "file": "public__create_contract_v2.sql",
+      "name": "public.create_contract_v2",
+      "args": "p_payload jsonb, p_idempotency_key text",
+      "md5_prosrc": "1c16386369410dbddcf3605dcd85346b",
+      "lines": 697
+    },
+    {
+      "file": "public__create_reservation_deposit_v1.sql",
+      "name": "public.create_reservation_deposit_v1",
+      "args": "p_room_id uuid, p_amount numeric, p_idempotency_key text",
+      "md5_prosrc": "cac5ff6dd42792de7b1b24d21e1b3c63",
+      "lines": 73
+    },
+    {
+      "file": "public__generate_contract_number.sql",
+      "name": "public.generate_contract_number",
+      "args": "",
+      "md5_prosrc": "88e5d773c61c860d12573f49b1d70c59",
+      "lines": 105
+    },
+    {
+      "file": "public__get_my_available_rooms.sql",
+      "name": "public.get_my_available_rooms",
+      "args": "",
+      "md5_prosrc": "d72c881aeb0364ee2d95d6417fb7e080",
+      "lines": 185
+    },
+    {
+      "file": "public__get_public_available_rooms.sql",
+      "name": "public.get_public_available_rooms",
+      "args": "p_token text",
+      "md5_prosrc": "edc42768a090a61e0b06e0bb7acf55fb",
+      "lines": 186
+    },
+    {
+      "file": "public__guard_contract_deposit_paid_derived.sql",
+      "name": "public.guard_contract_deposit_paid_derived",
+      "args": "",
+      "md5_prosrc": "3ad1ec545bfc4217b9d71023cc06aced",
+      "lines": 18
+    },
+    {
+      "file": "public__guard_contract_termination_settlement.sql",
+      "name": "public.guard_contract_termination_settlement",
+      "args": "",
+      "md5_prosrc": "28213b0187f01bc518e48677bea2f30c",
+      "lines": 109
+    },
+    {
+      "file": "public__jobs_stamp_completion_time.sql",
+      "name": "public.jobs_stamp_completion_time",
+      "args": "",
+      "md5_prosrc": "3104d52fcc28aa9807c677c123ca4c83",
+      "lines": 49
+    },
+    {
+      "file": "public__log_contract_price_history.sql",
+      "name": "public.log_contract_price_history",
+      "args": "",
+      "md5_prosrc": "546631467d463af818e1a6dfb294a7b4",
+      "lines": 77
+    },
+    {
+      "file": "public__org_today_v1.sql",
+      "name": "public.org_today_v1",
+      "args": "p_organization_id uuid",
+      "md5_prosrc": "bf0d7a3c20c7ab3bea0f463ca1f5b138",
+      "lines": 24
+    },
+    {
+      "file": "public__recompute_room_reservation.sql",
+      "name": "public.recompute_room_reservation",
+      "args": "p_room_id uuid",
+      "md5_prosrc": "6d44c873ab6d17a1d398db0b02fcc155",
+      "lines": 43
+    },
+    {
+      "file": "public__renew_contract.sql",
+      "name": "public.renew_contract",
+      "args": "p_contract_id uuid, p_new_end_date date, p_new_rent_price numeric, p_new_deposit numeric, p_notes text",
+      "md5_prosrc": "6cbff04302fd40f35821b3237f8c8027",
+      "lines": 23
+    },
+    {
+      "file": "public__renew_contract_impl.sql",
+      "name": "public.renew_contract_impl",
+      "args": "p_contract_id uuid, p_new_end_date date, p_new_rent_price numeric, p_new_deposit numeric, p_notes text",
+      "md5_prosrc": "2bd721b3a379bc66900405e964ced096",
+      "lines": 59
+    },
+    {
+      "file": "public__room_has_holding_deposit.sql",
+      "name": "public.room_has_holding_deposit",
+      "args": "p_room_id uuid",
+      "md5_prosrc": "969b762fdcb47c536d26874b1b193183",
+      "lines": 27
+    },
+    {
+      "file": "public__set_contract_public_code.sql",
+      "name": "public.set_contract_public_code",
+      "args": "",
+      "md5_prosrc": "6d5464387a957e5497bd1b0e4c3d819b",
+      "lines": 25
+    },
+    {
+      "file": "public__set_reservation_hold_deadline_v1.sql",
+      "name": "public.set_reservation_hold_deadline_v1",
+      "args": "p_income_expense_id uuid, p_hold_until date",
+      "md5_prosrc": "c7043a1c61bfd26ad0e37fb4cb2c8ab1",
+      "lines": 19
+    },
+    {
+      "file": "public__set_reservation_hold_terms_v1.sql",
+      "name": "public.set_reservation_hold_terms_v1",
+      "args": "p_income_expense_id uuid, p_hold_until date, p_topup_due_date date, p_deposit_target numeric",
+      "md5_prosrc": "6378d889a73c36b1d422f0002ce3fa84",
+      "lines": 82
+    },
+    {
+      "file": "public__settle_reservation_deposit_v1.sql",
+      "name": "public.settle_reservation_deposit_v1",
+      "args": "p_input jsonb",
+      "md5_prosrc": "14935bc556d03a404df71ab6b1aea3bf",
+      "lines": 90
+    },
+    {
+      "file": "public__terminate_contract_forfeit.sql",
+      "name": "public.terminate_contract_forfeit",
+      "args": "p_contract_id uuid, p_forfeit_date date, p_extra_charges jsonb",
+      "md5_prosrc": "05d010410fcc7737036b067766433bda",
+      "lines": 73
+    },
+    {
+      "file": "public__terminate_contract_forfeit_impl.sql",
+      "name": "public.terminate_contract_forfeit_impl",
+      "args": "p_contract_id uuid, p_forfeit_date date, p_extra_charges jsonb",
+      "md5_prosrc": "1f15ee1cd78d3a2981eeb3911228a1ca",
+      "lines": 285
+    },
+    {
+      "file": "public__terminate_contract_forfeit_with_credit_v1.sql",
+      "name": "public.terminate_contract_forfeit_with_credit_v1",
+      "args": "p_contract_id uuid, p_forfeit_date date, p_extra_charges jsonb, p_idempotency_key text",
+      "md5_prosrc": "69428aa18faa916f997c796a24419d1e",
+      "lines": 122
+    },
+    {
+      "file": "public__terminate_contract_move_out.sql",
+      "name": "public.terminate_contract_move_out",
+      "args": "p_contract_id uuid, p_move_out_date date, p_deposit_refund numeric, p_penalty_fee numeric, p_excess_rent numeric, p_outstanding_debt numeric, p_notes text, p_extra_charges jsonb, p_shortfall_mode text, p_receipt_account_id uuid, p_refund_items jsonb",
+      "md5_prosrc": "55366c922348b55a177db9823aecf93c",
+      "lines": 190
+    },
+    {
+      "file": "public__terminate_contract_move_out_impl.sql",
+      "name": "public.terminate_contract_move_out_impl",
+      "args": "p_contract_id uuid, p_move_out_date date, p_deposit_refund numeric, p_penalty_fee numeric, p_excess_rent numeric, p_outstanding_debt numeric, p_notes text, p_extra_charges jsonb, p_shortfall_mode text, p_receipt_account_id uuid, p_refund_items jsonb",
+      "md5_prosrc": "9477e5fa91a4906e2f159fe373c00bda",
+      "lines": 315
+    },
+    {
+      "file": "public__terminate_contract_move_out_with_credit_v1.sql",
+      "name": "public.terminate_contract_move_out_with_credit_v1",
+      "args": "p_contract_id uuid, p_move_out_date date, p_deposit_refund numeric, p_penalty_fee numeric, p_excess_rent numeric, p_outstanding_debt numeric, p_notes text, p_extra_charges jsonb, p_shortfall_mode text, p_receipt_account_id uuid, p_idempotency_key text, p_refund_items jsonb",
+      "md5_prosrc": "dfffdc97765e2ce18223f90c81a79ffa",
+      "lines": 133
+    },
+    {
+      "file": "public__transfer_contract.sql",
+      "name": "public.transfer_contract",
+      "args": "p_contract_id uuid, p_new_customer_id uuid, p_new_rent_price numeric, p_new_deposit numeric, p_transfer_date date, p_notes text",
+      "md5_prosrc": "c9b15b89aa8624cc6c1bd85efe4d26b1",
+      "lines": 23
+    },
+    {
+      "file": "public__transfer_contract_impl.sql",
+      "name": "public.transfer_contract_impl",
+      "args": "p_contract_id uuid, p_new_customer_id uuid, p_new_rent_price numeric, p_new_deposit numeric, p_transfer_date date, p_notes text",
+      "md5_prosrc": "0b9f75c2bfc81dbd6599d30405e5db9c",
+      "lines": 123
+    },
+    {
+      "file": "public__transfer_room.sql",
+      "name": "public.transfer_room",
+      "args": "p_contract_id uuid, p_new_room_id uuid, p_new_rent_price numeric, p_transfer_date date, p_notes text",
+      "md5_prosrc": "90d6b6cbe3d7525c7e606045d25e93c2",
+      "lines": 157
+    },
+    {
+      "file": "public__trg_contract_link_orphan_deposits.sql",
+      "name": "public.trg_contract_link_orphan_deposits",
+      "args": "",
+      "md5_prosrc": "4107c6c70b3dd254832f6f9ec582e641",
+      "lines": 49
+    },
+    {
+      "file": "public__trg_room_status_reconcile.sql",
+      "name": "public.trg_room_status_reconcile",
+      "args": "",
+      "md5_prosrc": "a684104a17c7d7334750d9210d3ec572",
+      "lines": 15
+    },
+    {
+      "file": "public__update_asset_status_on_contract_change.sql",
+      "name": "public.update_asset_status_on_contract_change",
+      "args": "",
+      "md5_prosrc": "bbddce36016c3cc58e5a2f7c468d4de1",
+      "lines": 11
+    },
+    {
+      "file": "public__update_contract_on_termination_approved.sql",
+      "name": "public.update_contract_on_termination_approved",
+      "args": "",
+      "md5_prosrc": "11a78d11938a9dee1f7ac7d6d2c002fd",
+      "lines": 23
+    },
+    {
+      "file": "public__update_room_status_on_contract_change.sql",
+      "name": "public.update_room_status_on_contract_change",
+      "args": "",
+      "md5_prosrc": "e8a1164f00e0838c201aeb58916ccdce",
+      "lines": 60
+    },
+    {
+      "file": "public__v5_tick_from_job.sql",
+      "name": "public.v5_tick_from_job",
+      "args": "p_job_id uuid",
+      "md5_prosrc": "b15ee632fb6ab5e9c1b948a21265ff33",
+      "lines": 22
+    }
+  ]
+}

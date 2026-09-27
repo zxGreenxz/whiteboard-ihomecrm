@@ -1,0 +1,33 @@
+{
+  "checked_at": "2026-09-27T16:46:53.078Z",
+  "html_sha256": "d77f1d426a78ac1139036bba91fc9b5fa4c37a4ef2ad92c74e76b6058608fc6c",
+  "headless": true,
+  "viewports": [
+    {
+      "width": 1440,
+      "scroll": 1440,
+      "client": 1440
+    },
+    {
+      "width": 768,
+      "scroll": 768,
+      "client": 768
+    },
+    {
+      "width": 390,
+      "scroll": 390,
+      "client": 390
+    },
+    {
+      "width": 320,
+      "scroll": 320,
+      "client": 320
+    }
+  ],
+  "tabs": 5,
+  "keyboard": "PASS",
+  "print_visible_panels": 5,
+  "console_errors": [],
+  "screenshot": "html-v06-forfeit.png",
+  "limits": "Standalone HTML only; no CRM E2E/money runtime"
+}

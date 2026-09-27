@@ -1,0 +1,58 @@
+{
+  "R": {
+    "count": 13,
+    "missing": [],
+    "extra": []
+  },
+  "V": {
+    "count": 35,
+    "missing": [],
+    "extra": []
+  },
+  "D": {
+    "count": 8,
+    "missing": [],
+    "extra": []
+  },
+  "P": {
+    "ids": [
+      "P0",
+      "P1",
+      "P2",
+      "P3",
+      "P4",
+      "P5",
+      "P6",
+      "P7",
+      "P8",
+      "P9",
+      "P10",
+      "P11",
+      "P12",
+      "P13"
+    ]
+  },
+  "G": {
+    "ids": [
+      "G-CATALOG",
+      "G-LOCK",
+      "G-AUTH",
+      "G-BILLING",
+      "G-LEGACY",
+      "G-CRON",
+      "G-PUBLIC",
+      "G-ACCEPT"
+    ]
+  },
+  "fences": {
+    "count": 16
+  },
+  "npm_scripts_missing": [],
+  "evidence_missing_paths": {
+    "availability-reminders-evidence.md": [],
+    "drafts-reservations-evidence.md": [],
+    "settlement-evidence.md": []
+  },
+  "baseline_log": "20 files / 496 tests PASS observed in saved log",
+  "status": "PASS"
+}

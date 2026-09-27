@@ -1,0 +1,9 @@
+{
+  "checks": 46,
+  "failures": [],
+  "tokenPatternHits": [],
+  "limits": [
+    "Token pattern scan is not a comprehensive secret/PII audit.",
+    "Captured SQL final blank lines and original logs intentionally retained."
+  ]
+}

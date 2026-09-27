@@ -1,0 +1,279 @@
+{
+  "scope": "Saved reviewer artifacts verified for presence/index/header consistency; not a new database capture",
+  "head": "e498f10d49f3548e72074095c955371d0cee41ab",
+  "archived_plan_sha256": "9e832acd55963a122f972a0452d853d24c0c1b82aaea5c46559b5e0e5b428756",
+  "capture_at": "2026-09-27T12:35:40.599Z",
+  "function_files": 45,
+  "functions": [
+    {
+      "file": "app_private__apply_customer_credit_fifo_v1.sql",
+      "name": "app_private.apply_customer_credit_fifo_v1",
+      "md5_prosrc_as_reported": "a7023b51ceef79fdbe4fc6303062e136",
+      "sha256_file": "bd1be8cce59193b36a8161a8e1e1b28208f88f5cea6c0c49e77c3c6927702e80"
+    },
+    {
+      "file": "app_private__guard_canonical_write_operation.sql",
+      "name": "app_private.guard_canonical_write_operation",
+      "md5_prosrc_as_reported": "8c32aed702db6705a15dd795c99f39a5",
+      "sha256_file": "4bc0588a99fcbed30d5f55abfe60184aeb51a10cedadec2d4cefbab4d1653bad"
+    },
+    {
+      "file": "app_private__lock_org_for_decision_v1.sql",
+      "name": "app_private.lock_org_for_decision_v1",
+      "md5_prosrc_as_reported": "cd59b90fbbd143dab9cf0b21bf5d685d",
+      "sha256_file": "150b0c8766b27a89eaf6d4c0d34d8d9627bfaef5f9c81d25507cf8f3ac943f61"
+    },
+    {
+      "file": "app_private__notify_job_assigned_v1.sql",
+      "name": "app_private.notify_job_assigned_v1",
+      "md5_prosrc_as_reported": "f61b2fc59fd70492c8ff8dc0487e28cb",
+      "sha256_file": "8cc15beab9293358e8daaa2171d593bc04e9a34d3c5ac81852f813032ad22d0d"
+    },
+    {
+      "file": "app_private__reservation_room_blockers_v1.sql",
+      "name": "app_private.reservation_room_blockers_v1",
+      "md5_prosrc_as_reported": "9790b052a0c2334b4d2b53b57e327428",
+      "sha256_file": "4e471c46f16b49e0bc7408b5e634697ff1b82d2579f540a80804325ec897ae53"
+    },
+    {
+      "file": "public___termination_apply_extra_charges.sql",
+      "name": "public._termination_apply_extra_charges",
+      "md5_prosrc_as_reported": "e2c1de5beb5d55377346412618cf654c",
+      "sha256_file": "b6c2d967133b8c579da424e3aba6915dd63fd0f24ce87b1e9ac4fcd4cd46cbc5"
+    },
+    {
+      "file": "public__apply_contract_transfer.sql",
+      "name": "public.apply_contract_transfer",
+      "md5_prosrc_as_reported": "433a0b413cc4505e47a1dbd82f797600",
+      "sha256_file": "3f446c5a6ed196ff549612a6dc19e6f24729968a863016f1b81bf3e843333ec3"
+    },
+    {
+      "file": "public__approve_contract_termination_v1.sql",
+      "name": "public.approve_contract_termination_v1",
+      "md5_prosrc_as_reported": "ea77696377513bff08b389aedb30f48c",
+      "sha256_file": "c1de69e40480f00399744bafa8d902eb67479f9b3d4e6418f06c9a6be4ea0e36"
+    },
+    {
+      "file": "public__auto_calculate_termination_financials.sql",
+      "name": "public.auto_calculate_termination_financials",
+      "md5_prosrc_as_reported": "2be263528cf7232ae83379fa8b8a4394",
+      "sha256_file": "30c3a3c092cfa3bcac232ceea9f0989a3433cf491166454d075f52e878f916f5"
+    },
+    {
+      "file": "public__award_job_bonus.sql",
+      "name": "public.award_job_bonus",
+      "md5_prosrc_as_reported": "548576866b6fee6220d7cd53cb89870c",
+      "sha256_file": "d47d6b16b7ca197555be0668db17a3b34badb23606d8cf319c9eb9aafdea8cf2"
+    },
+    {
+      "file": "public__copilot_available_rooms_v1.sql",
+      "name": "public.copilot_available_rooms_v1",
+      "md5_prosrc_as_reported": "2816da5a32cb4e501da2f46df757b7ee",
+      "sha256_file": "676846b48a627849a0e19307b57de89d7c7b62d7a4973d43634b4ddd06c1f96a"
+    },
+    {
+      "file": "public__create_contract_v1.sql",
+      "name": "public.create_contract_v1",
+      "md5_prosrc_as_reported": "8352f91f7aea53188674f7fbd75d7813",
+      "sha256_file": "a0190404b69b61c4123b3f19f4d3d2057c9393642335b223d504b6137504f910"
+    },
+    {
+      "file": "public__create_contract_v2.sql",
+      "name": "public.create_contract_v2",
+      "md5_prosrc_as_reported": "1c16386369410dbddcf3605dcd85346b",
+      "sha256_file": "fdc60289df2821303c5dc04e2aa37ca9612fdddde4732b8751e49b5c6f80a911"
+    },
+    {
+      "file": "public__create_reservation_deposit_v1.sql",
+      "name": "public.create_reservation_deposit_v1",
+      "md5_prosrc_as_reported": "cac5ff6dd42792de7b1b24d21e1b3c63",
+      "sha256_file": "fa2da9ee1a6bdfcff6b44147bdc3a7ed89ca65310ec343519559999eb6fe3ff1"
+    },
+    {
+      "file": "public__generate_contract_number.sql",
+      "name": "public.generate_contract_number",
+      "md5_prosrc_as_reported": "88e5d773c61c860d12573f49b1d70c59",
+      "sha256_file": "8750cf54f066002c7a3935e414bc415f4fcd61ef48fa8eafec91e78349a79b92"
+    },
+    {
+      "file": "public__get_my_available_rooms.sql",
+      "name": "public.get_my_available_rooms",
+      "md5_prosrc_as_reported": "d72c881aeb0364ee2d95d6417fb7e080",
+      "sha256_file": "5cc0c67f334fe68dc2ef5dd5a8f53acf46287205fd8344ccb30c853f802dbfe9"
+    },
+    {
+      "file": "public__get_public_available_rooms.sql",
+      "name": "public.get_public_available_rooms",
+      "md5_prosrc_as_reported": "edc42768a090a61e0b06e0bb7acf55fb",
+      "sha256_file": "d622b17d3c67857b2c672f1cd1302afdbb7af40bb27e2e22b5080221487e02a4"
+    },
+    {
+      "file": "public__guard_contract_deposit_paid_derived.sql",
+      "name": "public.guard_contract_deposit_paid_derived",
+      "md5_prosrc_as_reported": "3ad1ec545bfc4217b9d71023cc06aced",
+      "sha256_file": "6209dd21517c3fbe2480fa9d2c6c66f79f280b4fe20689186e8cb77896ca06f5"
+    },
+    {
+      "file": "public__guard_contract_termination_settlement.sql",
+      "name": "public.guard_contract_termination_settlement",
+      "md5_prosrc_as_reported": "28213b0187f01bc518e48677bea2f30c",
+      "sha256_file": "5f64e2c97d5da998669b8670551d7e08086cf7fad179e888597109760e34911d"
+    },
+    {
+      "file": "public__jobs_stamp_completion_time.sql",
+      "name": "public.jobs_stamp_completion_time",
+      "md5_prosrc_as_reported": "3104d52fcc28aa9807c677c123ca4c83",
+      "sha256_file": "43fa06558b01e986a696033cef6430c63876195223388662d5c784f01c393f68"
+    },
+    {
+      "file": "public__log_contract_price_history.sql",
+      "name": "public.log_contract_price_history",
+      "md5_prosrc_as_reported": "546631467d463af818e1a6dfb294a7b4",
+      "sha256_file": "e0ba5b84e45a6e2b8e1c0ca9c4ce5212d9ea436fc62d54cf2a21a920b40b0570"
+    },
+    {
+      "file": "public__org_today_v1.sql",
+      "name": "public.org_today_v1",
+      "md5_prosrc_as_reported": "bf0d7a3c20c7ab3bea0f463ca1f5b138",
+      "sha256_file": "da3c9de41031d22ec487b8df29d9c73ef97aa3f37609565817eda9c00a75f421"
+    },
+    {
+      "file": "public__recompute_room_reservation.sql",
+      "name": "public.recompute_room_reservation",
+      "md5_prosrc_as_reported": "6d44c873ab6d17a1d398db0b02fcc155",
+      "sha256_file": "6dfc5e040b46b98e79b53e29aaf9177080a5ef8442f69a11815ee1abd7a3f9dc"
+    },
+    {
+      "file": "public__renew_contract.sql",
+      "name": "public.renew_contract",
+      "md5_prosrc_as_reported": "6cbff04302fd40f35821b3237f8c8027",
+      "sha256_file": "def7bfd1114b71ffd8b539eb4a69423daf60a33d90cd7456b1909debb07c0875"
+    },
+    {
+      "file": "public__renew_contract_impl.sql",
+      "name": "public.renew_contract_impl",
+      "md5_prosrc_as_reported": "2bd721b3a379bc66900405e964ced096",
+      "sha256_file": "7860a04d7623024a1879ebf9e9ad19bf10c8c7a834b056eaf8f624ed22535f30"
+    },
+    {
+      "file": "public__room_has_holding_deposit.sql",
+      "name": "public.room_has_holding_deposit",
+      "md5_prosrc_as_reported": "969b762fdcb47c536d26874b1b193183",
+      "sha256_file": "2e6b3a1e61374ca9456ff3044219d452e1cbe6b9277b7b5daff315060841335d"
+    },
+    {
+      "file": "public__set_contract_public_code.sql",
+      "name": "public.set_contract_public_code",
+      "md5_prosrc_as_reported": "6d5464387a957e5497bd1b0e4c3d819b",
+      "sha256_file": "36508fa501121fcd4f68ee46b98b590563215e9fc13bad7600e6dd3a09064f0f"
+    },
+    {
+      "file": "public__set_reservation_hold_deadline_v1.sql",
+      "name": "public.set_reservation_hold_deadline_v1",
+      "md5_prosrc_as_reported": "c7043a1c61bfd26ad0e37fb4cb2c8ab1",
+      "sha256_file": "22f581892333abba0945e5bb5ccc687ba0cbea0dc36ee49a4f1bd9d120350672"
+    },
+    {
+      "file": "public__set_reservation_hold_terms_v1.sql",
+      "name": "public.set_reservation_hold_terms_v1",
+      "md5_prosrc_as_reported": "6378d889a73c36b1d422f0002ce3fa84",
+      "sha256_file": "67c2b0346319fd9997eb2149600aaebfa6ea5c80280b9262b9541b2514e012d2"
+    },
+    {
+      "file": "public__settle_reservation_deposit_v1.sql",
+      "name": "public.settle_reservation_deposit_v1",
+      "md5_prosrc_as_reported": "14935bc556d03a404df71ab6b1aea3bf",
+      "sha256_file": "38e665b7cf56a1209d6ae4a6428a8d6f48d422d082845f10f29952f412664d6d"
+    },
+    {
+      "file": "public__terminate_contract_forfeit.sql",
+      "name": "public.terminate_contract_forfeit",
+      "md5_prosrc_as_reported": "05d010410fcc7737036b067766433bda",
+      "sha256_file": "d45c8da395ba0069134911d7ab9a810fe3033909366703e5206e07262c4dcf16"
+    },
+    {
+      "file": "public__terminate_contract_forfeit_impl.sql",
+      "name": "public.terminate_contract_forfeit_impl",
+      "md5_prosrc_as_reported": "1f15ee1cd78d3a2981eeb3911228a1ca",
+      "sha256_file": "f25d1ff05e8cf72387308c427c555d2f077ab300a6907a1014dbcefd850d685d"
+    },
+    {
+      "file": "public__terminate_contract_forfeit_with_credit_v1.sql",
+      "name": "public.terminate_contract_forfeit_with_credit_v1",
+      "md5_prosrc_as_reported": "69428aa18faa916f997c796a24419d1e",
+      "sha256_file": "65f8378d28562a4ad099b0e5ed18d1ed3b85f3b883888a28b245276d8b48f0a7"
+    },
+    {
+      "file": "public__terminate_contract_move_out.sql",
+      "name": "public.terminate_contract_move_out",
+      "md5_prosrc_as_reported": "55366c922348b55a177db9823aecf93c",
+      "sha256_file": "b40ce1e6c29e8508e4d548f781cdd61385ce0e1e753650705c99dc7f2d9a043c"
+    },
+    {
+      "file": "public__terminate_contract_move_out_impl.sql",
+      "name": "public.terminate_contract_move_out_impl",
+      "md5_prosrc_as_reported": "9477e5fa91a4906e2f159fe373c00bda",
+      "sha256_file": "1cd2b8e2a4556073e79400938bb22dafb104e2424330e6c34022962f8acbd780"
+    },
+    {
+      "file": "public__terminate_contract_move_out_with_credit_v1.sql",
+      "name": "public.terminate_contract_move_out_with_credit_v1",
+      "md5_prosrc_as_reported": "dfffdc97765e2ce18223f90c81a79ffa",
+      "sha256_file": "44eaaad6424611b7946f3ba3a86962eb22d793542fa77dce2504bcc515c48f05"
+    },
+    {
+      "file": "public__transfer_contract.sql",
+      "name": "public.transfer_contract",
+      "md5_prosrc_as_reported": "c9b15b89aa8624cc6c1bd85efe4d26b1",
+      "sha256_file": "2b580676ee1f34685ae5446652031377f7dd00d9128bbba4a6b8d4e760c71b67"
+    },
+    {
+      "file": "public__transfer_contract_impl.sql",
+      "name": "public.transfer_contract_impl",
+      "md5_prosrc_as_reported": "0b9f75c2bfc81dbd6599d30405e5db9c",
+      "sha256_file": "18136fe1e5d10ebfaed79b0da017de2180c3741144efa432c0a50626a36598f6"
+    },
+    {
+      "file": "public__transfer_room.sql",
+      "name": "public.transfer_room",
+      "md5_prosrc_as_reported": "90d6b6cbe3d7525c7e606045d25e93c2",
+      "sha256_file": "959835652548d2d2b7609ec1cbae781777156d6cd87d9757f4402a2c5ed16100"
+    },
+    {
+      "file": "public__trg_contract_link_orphan_deposits.sql",
+      "name": "public.trg_contract_link_orphan_deposits",
+      "md5_prosrc_as_reported": "4107c6c70b3dd254832f6f9ec582e641",
+      "sha256_file": "709acc3f45e24600e9e1de0815647c40b7b6c5f75e8a86c6849685e77dac39e0"
+    },
+    {
+      "file": "public__trg_room_status_reconcile.sql",
+      "name": "public.trg_room_status_reconcile",
+      "md5_prosrc_as_reported": "a684104a17c7d7334750d9210d3ec572",
+      "sha256_file": "6db76effa6a1fcb1bbd56949a23f15288e7824e918f76b4673570c66797f9cf0"
+    },
+    {
+      "file": "public__update_asset_status_on_contract_change.sql",
+      "name": "public.update_asset_status_on_contract_change",
+      "md5_prosrc_as_reported": "bbddce36016c3cc58e5a2f7c468d4de1",
+      "sha256_file": "c7c420b1c2e433d50365ba0c8db02943a8271b0d49a91051d4982a18446ca40d"
+    },
+    {
+      "file": "public__update_contract_on_termination_approved.sql",
+      "name": "public.update_contract_on_termination_approved",
+      "md5_prosrc_as_reported": "11a78d11938a9dee1f7ac7d6d2c002fd",
+      "sha256_file": "bef51717b78704b7f9e63c8805f695a96e63b119ff061dbaf90d2682a35bca99"
+    },
+    {
+      "file": "public__update_room_status_on_contract_change.sql",
+      "name": "public.update_room_status_on_contract_change",
+      "md5_prosrc_as_reported": "e8a1164f00e0838c201aeb58916ccdce",
+      "sha256_file": "82285009b4c5f666c9c530c76c5643d6ebd2a4ee0d057d6b971e947641dad3fa"
+    },
+    {
+      "file": "public__v5_tick_from_job.sql",
+      "name": "public.v5_tick_from_job",
+      "md5_prosrc_as_reported": "b15ee632fb6ab5e9c1b948a21265ff33",
+      "sha256_file": "d61e902aeb7180f09aa84d91929a978a9abac231368b4d8607019a5952faa96a"
+    }
+  ]
+}
