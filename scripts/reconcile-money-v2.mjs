@@ -36,6 +36,13 @@ import {
   loadSupabaseAdminConfig,
 } from './apply-accounting-rollout.mjs';
 
+if (process.argv.includes('--test-scope')) {
+  const { runTestReconcile } = await import('./contract-lifecycle/reconcile.mjs');
+  const result = await runTestReconcile('v2', process.argv.slice(2));
+  console.log(JSON.stringify(result));
+  process.exit(result.status);
+}
+
 const PAGE = 1000; // trần 1000 dòng/response (PostgREST) = SUPABASE_PAGE (src/lib/supabaseFetchAll.ts)
 const HARD_CAP = 200_000; // trần an toàn phân trang: vượt = nghi order không ổn định
 const EPS = 0.01; // ngưỡng lệch tiền (VND) coi là KHÁC nhau

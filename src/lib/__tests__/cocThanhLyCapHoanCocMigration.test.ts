@@ -1,3 +1,4 @@
+import { sqlEvidence } from "./helpers/sqlEvidence";
 // Guard TĨNH cho đợt "Cọc & thanh lý" (plan con H2 · rà soát 15/09/2026).
 //
 // Bốn lỗi được vá đều nằm trong plpgsql nên vitest không chạy được logic thật.
@@ -10,7 +11,7 @@ import { join } from "node:path";
 
 const MIG_DIR = join(process.cwd(), "supabase", "migrations");
 
-const stripComments = (sql: string) => sql.replace(/--[^\n]*/g, "");
+const stripComments = sqlEvidence;
 
 let corpusCache: { file: string; sql: string }[] | null = null;
 function migrationCorpus(): { file: string; sql: string }[] {
@@ -158,6 +159,6 @@ describe("H2.4 — thanh lý trả phòng không nuốt lỗi ghi audit", () => 
   });
 
   it("INSERT contract_terminations vẫn nằm trong luồng chính", () => {
-    expect(liveBodyOf(IMPL)).toMatch(/INSERT INTO contract_terminations/i);
+    expect(liveBodyOf(IMPL)).toMatch(/\bINSERT\s+INTO\s+(?:public\.)?contract_terminations\s*\(/i);
   });
 });

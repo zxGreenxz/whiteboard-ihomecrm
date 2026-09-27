@@ -37,15 +37,47 @@ export function coPsql() {
   return Boolean(PSQL || PSQL_DOCKER);
 }
 
-export function goiPsql(args, opts = {}) {
-  if (!PSQL_DOCKER) return spawnSync(PSQL, args, opts);
+// libpq accepts routing overrides from URI query keys and PG* defaults, even
+// when the URI authority says 127.0.0.1. Restore replay cannot rely on that
+// authority alone. Keep this opt-in so unrelated remote read callers retain
+// their existing connection behavior.
+export function admitLocalPsqlTarget(dich, env = process.env) {
+  if (typeof dich !== "string" || !/^postgres(?:ql)?:\/\/(?:[^/?#@]*@)?(?:127\.0\.0\.1|localhost|\[::1\])(?::\d{1,5})?\/[^?#]+$/.test(dich)) {
+    throw Error("local restore target requires a single loopback URI without query, fragment or host override");
+  }
+  let url;
+  try { url = new URL(dich); } catch { throw Error("local restore target URI is invalid"); }
+  if (!["127.0.0.1", "localhost", "[::1]"].includes(url.hostname) || url.port === "0") {
+    throw Error("local restore target must resolve to loopback");
+  }
+  const routingDefaults = /^(?:PGHOST|PGHOSTADDR|PGPORT|PGDATABASE|PGUSER|PGSERVICE|PGSERVICEFILE|PGSYSCONFDIR|PGOPTIONS|PGTARGETSESSIONATTRS)$/i;
+  if (Object.entries(env).some(([key, value]) => routingDefaults.test(key) && value !== undefined && value !== "")) {
+    throw Error("local restore target refuses inherited libpq routing defaults");
+  }
+  return dich;
+}
 
-  const i = args.indexOf("-f");
-  let input;
+export function goiPsql(args, opts = {}) {
+  const { localOnly = false, ...spawnOptions } = opts;
   let argsRa = args;
-  if (i >= 0 && args[i + 1] && args[i + 1] !== "-") {
-    input = readFileSync(args[i + 1], "utf8");
-    argsRa = [...args.slice(0, i + 1), "-", ...args.slice(i + 2)];
+  if (localOnly) {
+    const targets = args.flatMap((arg, i) => arg === "-d" ? [args[i + 1]] : []);
+    if (targets.length !== 1 || args.some(arg => ["-h", "--host", "-p", "--port", "--dbname"].includes(arg) || /^--(?:host|port|dbname)=/.test(arg))) {
+      throw Error("local restore target requires one -d URI and no CLI routing override");
+    }
+    admitLocalPsqlTarget(targets[0], spawnOptions.env ?? process.env);
+    // A client running with inherited PG* values could route elsewhere; the
+    // container has a separate environment, so erase it inside docker exec.
+    spawnOptions.env = Object.fromEntries(Object.entries(spawnOptions.env ?? process.env).filter(([key]) => !/^PG/i.test(key)));
+    argsRa = ["-X", ...args]; // no ~/.psqlrc \connect before the fixture
+  }
+  if (!PSQL_DOCKER) return spawnSync(PSQL, argsRa, spawnOptions);
+
+  const i = argsRa.indexOf("-f");
+  let input;
+  if (i >= 0 && argsRa[i + 1] && argsRa[i + 1] !== "-") {
+    input = readFileSync(argsRa[i + 1], "utf8");
+    argsRa = [...argsRa.slice(0, i + 1), "-", ...argsRa.slice(i + 2)];
   }
   // PHẢI ép stdin thành "pipe" khi có input — dù input đến từ `-f <file>` hay do
   // người gọi truyền thẳng opts.input. Người gọi truyền `stdio: ["ignore", …]`,
@@ -53,15 +85,18 @@ export function goiPsql(args, opts = {}) {
   // chỉ là không nhận được gì. Bản đầu quên chỗ này và diễn tập báo "0 lỗi" trên
   // một schema 439 bảng trong 0 giây: xanh rỗng hoàn hảo, đúng thứ bài diễn tập
   // sinh ra để chống.
-  const inputThat = input ?? opts.input;
+  const inputThat = input ?? spawnOptions.input;
   const stdio =
     inputThat === undefined
-      ? opts.stdio
-      : Array.isArray(opts.stdio)
-        ? ["pipe", ...opts.stdio.slice(1)]
+      ? spawnOptions.stdio
+      : Array.isArray(spawnOptions.stdio)
+        ? ["pipe", ...spawnOptions.stdio.slice(1)]
         : "pipe";
-  return spawnSync("docker", ["exec", "-i", PSQL_DOCKER, "psql", ...argsRa], {
-    ...opts,
+  const dockerArgs = localOnly
+    ? ["exec", "-i", PSQL_DOCKER, "env", "-i", "PATH=/usr/lib/postgresql/17/bin:/usr/local/bin:/usr/bin:/bin", "psql", ...argsRa]
+    : ["exec", "-i", PSQL_DOCKER, "psql", ...argsRa];
+  return spawnSync("docker", dockerArgs, {
+    ...spawnOptions,
     stdio,
     input: inputThat,
   });

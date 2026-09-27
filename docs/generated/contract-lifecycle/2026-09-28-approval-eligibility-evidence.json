@@ -1,0 +1,420 @@
+{
+  "kind": "P1a1_BOUNDED_APPROVAL_ELIGIBILITY_EVIDENCE",
+  "baseSha": "8d87aa15e5028ec46af2e8b84e6f339749c0b18e",
+  "at": "2026-09-27T18:42:01.910Z",
+  "target": "Dedicated TEST only",
+  "node": "24.18.0",
+  "sourceHashes": {
+    "scripts/contract-lifecycle/legacy-auth-fixture.mjs": "0429a1a86d806160946b8aa43c7da402c372aedc86b870e9d99d0daeeb50a064",
+    "scripts/contract-lifecycle/legacy-auth-live.mjs": "8210953872fdad459dda5aaa6996f7a2f78573db868aca8642941c2315e9e095",
+    "scripts/contract-lifecycle/legacy-entrypoints-live.mjs": "6667470c6ea027f692867751448e9e2724a241305031eafd1bbfcd6e0f43336b",
+    "scripts/contract-lifecycle/legacy-entrypoints.mjs": "75ca696761458ca572945e174f034565cd5fc277daf4ee8ff6f98d55d9acd10a",
+    "scripts/contract-lifecycle/legacy-fixture-cleanup.mjs": "12735e75fc1256a3d78f34601abe9d14955b813cebfaea61975f1ecf0bec3705",
+    "scripts/contract-lifecycle/legacy-http-live.mjs": "9ac20fc6dd26387e325747428649b34822f458e4d505259452d360120f3eb961",
+    "scripts/contract-lifecycle/legacy-negatives-live.mjs": "698a9366b4e43f3e0ddded00e5dcdd099f1cac7a5c395472ea2f50387156c76a",
+    "scripts/contract-lifecycle/legacy-parity-live.mjs": "e1bec41be747cfa1d9e383472a0d215734e7072331227a2996715f0ccd59c9d5",
+    "scripts/tests/contract-lifecycle/legacy-entrypoints.test.mjs": "acf6a752cfb8a362f9837f49a072c4729f3c6312ad64b2834568e36c0e9b42ec",
+    "supabase/migrations/20260927180948_approve_termination_eligibility.sql": "8b3803b081f572d3c3f56137939b40b57ac78047ca5129c23d6c002dd6dc05b6"
+  },
+  "metadata": {
+    "before": "750d2d72248d9557713ff6c82eedfe51",
+    "after": "e5bec0c847f543bb1df1213336cc75fa",
+    "metadata": {
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "secdef": true,
+      "volatility": "v",
+      "config": [
+        "search_path=pg_catalog, public, app_private"
+      ]
+    }
+  },
+  "liveMetadata": [
+    {
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "args": "p_termination_id uuid, p_note text",
+      "result": "jsonb",
+      "definition_md5": "e5bec0c847f543bb1df1213336cc75fa"
+    }
+  ],
+  "red": {
+    "status": "EXPECTED_FAILURE",
+    "behavior": "TERMINATED + fresh DRAFT produced COMPLETED and INCOME100 before guard",
+    "evidenceSha256": "55cec9d6ac3d4e93f637f29596a1d455f3b6f3f7b1dc707876f91562b0a811ab"
+  },
+  "parity": [
+    {
+      "name": "PENDING-APPROVAL",
+      "status": "PASS",
+      "refund": -100,
+      "capped": false,
+      "replay": "SOFTDELETED_CHANGED_NOTE_NOOP_ZERO_DELTA",
+      "transport": "SQL_ROLLBACK_NOT_JWT"
+    },
+    {
+      "name": "ACTIVE-negative",
+      "status": "PASS",
+      "refund": -100,
+      "capped": false,
+      "replay": "SOFTDELETED_CHANGED_NOTE_NOOP_ZERO_DELTA",
+      "transport": "SQL_ROLLBACK_NOT_JWT"
+    },
+    {
+      "name": "EXTENDED-zero",
+      "status": "PASS",
+      "refund": 0,
+      "capped": false,
+      "replay": "SOFTDELETED_CHANGED_NOTE_NOOP_ZERO_DELTA",
+      "transport": "SQL_ROLLBACK_NOT_JWT"
+    },
+    {
+      "name": "ACTIVE-capped",
+      "status": "PASS",
+      "refund": 400,
+      "capped": true,
+      "replay": "SOFTDELETED_CHANGED_NOTE_NOOP_ZERO_DELTA",
+      "transport": "SQL_ROLLBACK_NOT_JWT"
+    },
+    {
+      "name": "EXTENDED-uncapped",
+      "status": "PASS",
+      "refund": 300,
+      "capped": false,
+      "replay": "SOFTDELETED_CHANGED_NOTE_NOOP_ZERO_DELTA",
+      "transport": "SQL_ROLLBACK_NOT_JWT"
+    }
+  ],
+  "negative": [
+    {
+      "name": "DRAFT-contract",
+      "sqlstate": "55000",
+      "status": "PASS"
+    },
+    {
+      "name": "deleted-active",
+      "sqlstate": "55000",
+      "status": "PASS"
+    },
+    {
+      "name": "term-org-mismatch",
+      "sqlstate": "42501",
+      "status": "PASS"
+    },
+    {
+      "name": "room-org-mismatch",
+      "sqlstate": "42501",
+      "status": "PASS"
+    },
+    {
+      "name": "room-building-cross-org",
+      "sqlstate": "42501",
+      "status": "PASS"
+    },
+    {
+      "name": "missing-room-link",
+      "sqlstate": "42501",
+      "status": "PASS"
+    },
+    {
+      "name": "missing-termination",
+      "sqlstate": "42501",
+      "status": "PASS"
+    },
+    {
+      "name": "voucher-insert-failure",
+      "sqlstate": "23514",
+      "status": "PASS"
+    },
+    {
+      "name": "item-insert-failure",
+      "sqlstate": "23514",
+      "status": "PASS"
+    }
+  ],
+  "twoDraftRace": {
+    "status": "NOT_ADMISSIBLE_CURRENT_SCHEMA",
+    "duplicateCode": "23505",
+    "remainingTerminations": 1,
+    "index": "CREATE UNIQUE INDEX idx_terminations_unique_contract ON public.contract_terminations USING btree (contract_id)"
+  },
+  "http": {
+    "status": "PASS",
+    "checks": [
+      {
+        "name": "same-termination-concurrency",
+        "status": "PASS",
+        "waiters": 2,
+        "results": [
+          {
+            "status": "fulfilled",
+            "result": {
+              "status": "COMPLETED",
+              "room_id": "c3dc739e-8809-4245-bbbc-242ca337e072",
+              "voucher_id": "e71c7ac2-1fec-48fb-b352-2c79bb2afc5e",
+              "refund_amount": -100,
+              "refund_capped": false,
+              "termination_id": "65b6f03b-050f-44b5-a6df-933d172f3f9c",
+              "refund_amount_requested": -100
+            }
+          },
+          {
+            "status": "fulfilled",
+            "result": {
+              "noop": true,
+              "status": "COMPLETED",
+              "voucher_id": null,
+              "termination_id": "65b6f03b-050f-44b5-a6df-933d172f3f9c"
+            }
+          }
+        ]
+      },
+      {
+        "name": "same-softdeleted-replay",
+        "status": "PASS"
+      },
+      {
+        "name": "ended-entry",
+        "status": "PASS",
+        "sqlstate": "55000"
+      },
+      {
+        "name": "EXTENDED-zero",
+        "status": "PASS"
+      }
+    ],
+    "cleanup": {
+      "guardsUnchanged": true,
+      "fixturePostingCount": 0,
+      "closure": {
+        "catalogHash": "0f812bbe3089b57a03e907be8f2cbaaad5aa904aba4482c1807cbe2ae8971658",
+        "checked": 107
+      },
+      "deleted": [
+        {
+          "table": "public.income_expense_items",
+          "count": 1
+        },
+        {
+          "table": "public.income_expenses",
+          "count": 1
+        },
+        {
+          "table": "public.contract_terminations",
+          "count": 3
+        },
+        {
+          "table": "public.room_price_history",
+          "count": 3
+        },
+        {
+          "table": "public.contract_customers",
+          "count": 3
+        },
+        {
+          "table": "public.contracts",
+          "count": 3
+        },
+        {
+          "table": "public.customers",
+          "count": 3
+        },
+        {
+          "table": "public.rooms",
+          "count": 3
+        }
+      ],
+      "residualCounts": {
+        "operations": 1,
+        "audit": 8,
+        "changeCapture": 9
+      },
+      "counters": "Retained; never rewound"
+    }
+  },
+  "auth": {
+    "status": "PASS",
+    "checks": [
+      {
+        "name": "cross-org-linkage-before-money",
+        "status": "PASS"
+      },
+      {
+        "name": "revoked-scoped-authority-before-money",
+        "status": "PASS"
+      },
+      {
+        "name": "manager-scoped-positive",
+        "status": "PASS"
+      },
+      {
+        "name": "revoked-scoped-authority-before-COMPLETED-replay",
+        "status": "PASS"
+      }
+    ],
+    "cleanup": {
+      "guardsUnchanged": true,
+      "fixturePostingCount": 0,
+      "closure": {
+        "catalogHash": "0f812bbe3089b57a03e907be8f2cbaaad5aa904aba4482c1807cbe2ae8971658",
+        "checked": 107
+      },
+      "deleted": [
+        {
+          "table": "public.income_expense_items",
+          "count": 1
+        },
+        {
+          "table": "public.income_expenses",
+          "count": 1
+        },
+        {
+          "table": "public.contract_terminations",
+          "count": 1
+        },
+        {
+          "table": "public.room_price_history",
+          "count": 1
+        },
+        {
+          "table": "public.contract_customers",
+          "count": 1
+        },
+        {
+          "table": "public.contracts",
+          "count": 1
+        },
+        {
+          "table": "public.customers",
+          "count": 1
+        },
+        {
+          "table": "public.rooms",
+          "count": 1
+        }
+      ],
+      "residualCounts": {
+        "operations": 1,
+        "audit": 8,
+        "changeCapture": 9
+      },
+      "existingManagerDecisionsUnchanged": true,
+      "authorizationVersion": "Natural trigger increments retained; no shared membership or role edits",
+      "counters": "Retained; never rewound"
+    }
+  },
+  "mutation": {
+    "status": "PASS",
+    "target": "Eligibility status predicate removed in TEST rollback candidate definition",
+    "tool": "scripts/dot-bien.mjs",
+    "sha256Restored": "8b3803b081f572d3c3f56137939b40b57ac78047ca5129c23d6c002dd6dc05b6",
+    "expectedFailure": "Ended contract must reject new approval",
+    "logSha256": "6df6ae4260275c71c75973c5ba15e0da5316868a9367d3abcdda25efeb657e2e"
+  },
+  "metadataDrift": [
+    {
+      "name": "volatility",
+      "status": "PASS"
+    },
+    {
+      "name": "acl",
+      "status": "PASS"
+    },
+    {
+      "name": "search_path",
+      "status": "PASS"
+    }
+  ],
+  "financialBaseline": {
+    "status": "PASS",
+    "scenarios": [
+      "FORFEIT",
+      "REFUND",
+      "DEBT",
+      "PAID"
+    ],
+    "evidenceSha256": "0b86d363b697a21d5969c622a7a18959468e3587aa8e8a51b0364f66c8113645"
+  },
+  "reconcile": {
+    "organization": "Copied REAL organization on dedicated TEST; not DEMO fixture totals",
+    "results": [
+      {
+        "file": "scripts/reconcile-money.mjs",
+        "exitCode": 0,
+        "result": {
+          "status": 0,
+          "reason": "pass",
+          "count": 2115,
+          "pages": 3,
+          "sourceDigest": "184e9060c60916c8fd5090e2a4c9b0b023e623a58d6a13188dbaba8b4aa7dc27",
+          "targetRef": "hzulujxgonszuleqticb",
+          "mode": "v1",
+          "at": "2026-09-27T18:28:01.587Z"
+        }
+      },
+      {
+        "file": "scripts/reconcile-money-v2.mjs",
+        "exitCode": 0,
+        "result": {
+          "status": 0,
+          "reason": "pass",
+          "accounts": 17,
+          "postings": 3722,
+          "postingDigest": "8db4526c91a24153c1df7e226307e2dfee4cc6182744119e5e0d9c28d4226299",
+          "targetRef": "hzulujxgonszuleqticb",
+          "mode": "v2",
+          "at": "2026-09-27T18:28:03.512Z"
+        }
+      }
+    ],
+    "limits": [
+      "V1 HTTP endpoints are not one database snapshot.",
+      "V2 SQL pagination is not PostgREST cap proof."
+    ]
+  },
+  "local": {
+    "tests": 67,
+    "pass": 67,
+    "failed": 0,
+    "skipped": 0
+  },
+  "stableLocks": {
+    "status": "PASS",
+    "scope": "Standard script reads production catalog; TEST changed writer separately verified VOLATILE and actual HTTP"
+  },
+  "limits": [
+    "No production writes, push, PR or release",
+    "Two-DRAFT approval race cannot be constructed under current unique index; duplicate23505 proven instead",
+    "Capped/uncapped refund parity is SQL rollback only, not JWT",
+    "Raw-table bypass/global lock protocol/private capability/concurrent revocation linearization remain pending",
+    "Append-only audits and counter/authorization_version increments retained; exact identities in ignored internal evidence",
+    "No browser UI change; actual PostgREST JWT exercised, no full app E2E claimed"
+  ],
+  "gate": {
+    "startedAt": "2026-09-27T18:42:03.252Z",
+    "finishedAt": "2026-09-27T18:45:07.888Z",
+    "exitCode": 0,
+    "gitSha": "8d87aa15e5028ec46af2e8b84e6f339749c0b18e",
+    "node": "v24.18.0",
+    "args": [
+      "scripts/kiem-nhanh-truoc-push.mjs"
+    ],
+    "log": "p1a1-gate.log",
+    "limits": [
+      "Full groups and org-leak measurement requested; no production apply/release."
+    ],
+    "logSha256": "606739e5aa03fa2a8e3507d95ecfdb0a3fcaa9c48639d628a0559cabd50a24a9",
+    "firstRun": {
+      "exitCode": 1,
+      "reason": "Missing new provenance entry; all other groups passed",
+      "retainedReceipt": "p1a1-gate-first-fail.json"
+    },
+    "provenanceWarning": "80 legacy unknown entries unchanged",
+    "orgLeak": "Standard production synthetic fixtures inside ROLLBACK; no durable write"
+  }
+}

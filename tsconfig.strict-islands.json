@@ -1189,6 +1189,7 @@
     "src/lib/supabaseFetchAll.ts",
     "src/lib/tamTruBridge.ts",
     "src/lib/tamTruPayload.ts",
+    "src/lib/terminationRejectRpc.ts",
     "src/lib/textMatch.ts",
     "src/lib/utilityVoucherSplit.ts",
     "src/lib/utils.ts",

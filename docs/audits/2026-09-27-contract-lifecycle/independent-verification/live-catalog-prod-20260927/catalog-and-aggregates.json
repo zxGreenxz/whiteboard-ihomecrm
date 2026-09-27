@@ -1,0 +1,3705 @@
+{
+ "note": "Production READ ONLY (BEGIN READ ONLY ... ROLLBACK). Catalog + aggregate counts only, no row-level PII. Org labels: THAT=aaaa..., DEMO=dddd...",
+ "catalog": {
+  "at": "2026-09-27T12:34:01.045Z",
+  "results": {
+   "server": {
+    "rowCount": 1,
+    "rows": [
+     {
+      "server_version": "17.6",
+      "db_now": "2026-09-27T12:33:54.719Z",
+      "db_user": "postgres",
+      "extensions": "btree_gist 1.7, pg_cron 1.6.4, pg_stat_statements 1.11, pg_trgm 1.6, pgcrypto 1.3, plpgsql 1.0, supabase_vault 0.3.1, uuid-ossp 1.1, vector 0.8.0"
+     }
+    ]
+   },
+   "columns_key_tables": {
+    "rowCount": 9,
+    "rows": [
+     {
+      "table_schema": "app_private",
+      "table_name": "canonical_write_operations",
+      "cols": "organization_id:uuid, operation:text, subject_scope:text, actor_id:uuid, idempotency_key:text, payload_hash:text, subject_id:uuid, response_payload:jsonb, created_at:timestamptz, completed_at:timestamptz, actor_membership_id:uuid, transaction_id:xid8, expected_review_version:int8, expected_approval_version:int8, expected_posting_version:int8, resulting_review_version:int8, resulting_approval_version:int8, resulting_posting_version:int8, outcome_kind:text"
+     },
+     {
+      "table_schema": "public",
+      "table_name": "contract_customers",
+      "cols": "id:uuid, contract_id:uuid, customer_id:uuid, is_representative:bool, created_at:timestamptz, updated_at:timestamptz, notes:text, organization_id:uuid"
+     },
+     {
+      "table_schema": "public",
+      "table_name": "contract_terminations",
+      "cols": "id:uuid, user_id:uuid, contract_id:uuid, termination_date:date, actual_move_out_date:date, notice_date:date, termination_type:text, outstanding_debt:numeric, prorated_days:int4, prorated_rent:numeric, prorated_services:numeric, early_termination_fee:numeric, notice_violation_fee:numeric, damage_fee:numeric, damage_description:text, damage_images:jsonb, cleaning_fee:numeric, other_fees:numeric, other_fees_description:text, total_deposit:numeric, total_deductions:numeric[GEN], refund_amount:numeric[GEN], refund_method:payment_method, refund_date:date, refund_receipt_url:text, status:text, approved_by:uuid, approved_at:timestamptz, notes:text, internal_notes:text, created_at:timestamptz, updated_at:timestamptz, organization_id:uuid, rent_refund_amount:numeric"
+     },
+     {
+      "table_schema": "public",
+      "table_name": "contracts",
+      "cols": "id:uuid, user_id:uuid, tenant_id:uuid, room_id:uuid, contract_number:text, status:contract_status, signed_date:date, start_date:date, end_date:date, actual_end_date:date, rent_price:numeric, payment_cycle:payment_cycle, total_deposit:numeric, deposit_paid:numeric, deposit_remaining:numeric[GEN], discounts:jsonb, initial_electricity_reading:numeric, initial_water_reading:numeric, notes:text, contract_file_url:text, parent_contract_id:uuid, created_at:timestamptz, updated_at:timestamptz, deleted_at:timestamptz, contract_template_id:uuid, invoice_template_id:uuid, expected_move_out_date:date, start_billing_date:date, end_billing_date:date, public_code:text, deposit_debt_acknowledged:bool, deposit_debt_mode:text, deposit_debt_reason:text, deposit_topup_due_date:date, organization_id:uuid"
+     },
+     {
+      "table_schema": "public",
+      "table_name": "jobs",
+      "cols": "id:uuid, user_id:uuid, code:text, title:text, description:text, building_id:uuid, room_id:uuid, job_type_id:uuid, priority:text, assignee_id:uuid, deadline:timestamptz, status:text, visible_to_customer:bool, attachments:jsonb, completion_time:timestamptz, completion_description:text, completion_attachments:jsonb, acceptance_result:text, customer_evaluation:text, customer_comments:text, accepted_at:timestamptz, started_at:timestamptz, created_at:timestamptz, updated_at:timestamptz, assignee_name:text, completion_lat:float8, completion_lng:float8, completion_distance_m:float8, completion_geofence_status:text, completion_address:text, organization_id:uuid, exclude_from_salary:bool, completion_captured_at:timestamptz"
+     },
+     {
+      "table_schema": "public",
+      "table_name": "meter_readings",
+      "cols": "id:uuid, user_id:uuid, meter_id:uuid, reading_code:text, contract_id:uuid, service_id:uuid, building_id:uuid, room_id:uuid, meter_type:meter_type, settlement_month:text, reading_date:date, previous_reading:numeric, current_reading:numeric, consumption:numeric[GEN], status:text, approved_by:uuid, approved_at:timestamptz, recorded_by:uuid, notes:text, meter_image_url:text, created_at:timestamptz, updated_at:timestamptz, deleted_at:timestamptz, organization_id:uuid"
+     },
+     {
+      "table_schema": "public",
+      "table_name": "notifications",
+      "cols": "id:uuid, user_id:uuid, type:notification_type, channel:notification_channel, recipient_tenant_ids:_uuid, recipient_emails:_text, recipient_phones:_text, subject:text, content:text, invoice_id:uuid, contract_id:uuid, issue_id:uuid, scheduled_at:timestamptz, sent_at:timestamptz, status:notification_status, error_message:text, created_at:timestamptz, job_id:uuid, metadata:jsonb, organization_id:uuid, push_state:text, push_attempts:int2, push_leased_at:timestamptz, push_idem_key:text"
+     },
+     {
+      "table_schema": "public",
+      "table_name": "room_reservation_holds",
+      "cols": "id:uuid, organization_id:uuid, building_id:uuid, room_id:uuid, amount:numeric, status:text, held_by:uuid, held_at:timestamptz, expires_at:timestamptz, contract_id:uuid, idempotency_key:text, created_at:timestamptz"
+     },
+     {
+      "table_schema": "public",
+      "table_name": "rooms",
+      "cols": "id:uuid, building_id:uuid, name:text, code:text, floor:int4, status:room_status, area:numeric, max_occupants:int4, rent_price:numeric, deposit_amount:numeric, description:text, images:jsonb, amenities:jsonb, created_at:timestamptz, updated_at:timestamptz, deleted_at:timestamptz, invoice_template_id:uuid, lease_template_id:uuid, sale_note:text, room_type:text, sale_bonus_note:text, name_sort:text[GEN], organization_id:uuid"
+     }
+    ]
+   },
+   "enums": {
+    "rowCount": 30,
+    "rows": [
+     {
+      "typname": "ai_message_role",
+      "labels": "user,assistant,system"
+     },
+     {
+      "typname": "asset_condition",
+      "labels": "NEW,GOOD,FAIR,POOR,BROKEN"
+     },
+     {
+      "typname": "building_status",
+      "labels": "ACTIVE,INACTIVE,MAINTENANCE"
+     },
+     {
+      "typname": "building_type",
+      "labels": "APARTMENT,DORMITORY,HOUSE,OFFICE,SLEEPBOX,HOMESTAY"
+     },
+     {
+      "typname": "contract_status",
+      "labels": "DRAFT,ACTIVE,EXTENDED,TRANSFERRED,TERMINATED,EXPIRED"
+     },
+     {
+      "typname": "customer_status",
+      "labels": "PROSPECT,ACTIVE,INACTIVE,BLACKLIST"
+     },
+     {
+      "typname": "customer_status_v2",
+      "labels": "RENTING,MOVED_OUT,WALK_IN"
+     },
+     {
+      "typname": "customer_type",
+      "labels": "INDIVIDUAL,ORGANIZATION"
+     },
+     {
+      "typname": "deposit_status",
+      "labels": "PENDING,CONFIRMED,CONVERTED,REFUNDED,FORFEITED"
+     },
+     {
+      "typname": "expense_category",
+      "labels": "MAINTENANCE,REPAIR,UTILITIES,SALARY,SUPPLIES,OTHER"
+     },
+     {
+      "typname": "fee_type",
+      "labels": "TIEN_PHI_DICH_VU,TIEN_DIEN,TIEN_NUOC,TIEN_PHI_KHAC,TIEN_VE_SINH"
+     },
+     {
+      "typname": "id_type",
+      "labels": "CCCD,CMND,PASSPORT,OTHER"
+     },
+     {
+      "typname": "invoice_item_type",
+      "labels": "RENT,SERVICE,PENALTY,DISCOUNT,OTHER"
+     },
+     {
+      "typname": "invoice_status",
+      "labels": "DRAFT,PENDING_APPROVAL,APPROVED,PAID,PARTIAL_PAID,OVERDUE,CANCELLED"
+     },
+     {
+      "typname": "issue_priority",
+      "labels": "LOW,MEDIUM,HIGH,URGENT"
+     },
+     {
+      "typname": "issue_status",
+      "labels": "NEW,ASSIGNED,IN_PROGRESS,RESOLVED,CLOSED,CANCELLED"
+     },
+     {
+      "typname": "lead_source",
+      "labels": "FACEBOOK,ZALO,PHONE,REFERRAL,WALK_IN,WEBSITE,OTHER"
+     },
+     {
+      "typname": "lead_status",
+      "labels": "B1_LEAD,B2_APPOINTMENT,B3_CONSULTATION,CONVERTED,FAILED"
+     },
+     {
+      "typname": "meter_type",
+      "labels": "ELECTRICITY,WATER,GAS,OTHER"
+     },
+     {
+      "typname": "notification_channel",
+      "labels": "IN_APP,EMAIL,SMS,ZALO,PUSH"
+     },
+     {
+      "typname": "notification_status",
+      "labels": "PENDING,SENT,FAILED,CANCELLED,READ"
+     },
+     {
+      "typname": "notification_type",
+      "labels": "NEW_INVOICE,PAYMENT_REMINDER,OVERDUE_INVOICE,CONTRACT_EXPIRING,ISSUE_RESOLVED,GENERAL_ANNOUNCEMENT,CUSTOM,DEPOSIT_SHORTFALL,SALARY_BONUS,ACTION_REQUIRED,APPROVAL_RESULT"
+     },
+     {
+      "typname": "payment_cycle",
+      "labels": "MONTHLY,QUARTERLY,SEMI_ANNUAL,ANNUAL"
+     },
+     {
+      "typname": "payment_method",
+      "labels": "TM,TK,TT,CT"
+     },
+     {
+      "typname": "pricing_type",
+      "labels": "DON_GIA_CO_DINH_THANG,DON_GIA_CO_DINH_DONG_HO,DON_GIA_BIEN_DONG,DON_GIA_THEO_NGUOI,DON_GIA_THEO_PHONG"
+     },
+     {
+      "typname": "room_status",
+      "labels": "AVAILABLE,OCCUPIED,RESERVED,MAINTENANCE,UNAVAILABLE"
+     },
+     {
+      "typname": "service_type",
+      "labels": "FIXED,PER_PERSON,PER_ROOM,METER_READING"
+     },
+     {
+      "typname": "template_category",
+      "labels": "CONTRACT_NEW,CONTRACT_TERMINATION,CONTRACT_EXTENSION,CONTRACT_TRANSFER,INVOICE,RECEIPT,HANDOVER"
+     },
+     {
+      "typname": "tenant_status",
+      "labels": "PROSPECT,DEPOSITED,ACTIVE,INACTIVE,BLACKLIST"
+     },
+     {
+      "typname": "vehicle_type",
+      "labels": "MOTORBIKE,CAR,BICYCLE,OTHER,ELECTRIC_BIKE"
+     }
+    ]
+   },
+   "contracts_constraints": {
+    "rowCount": 13,
+    "rows": [
+     {
+      "conname": "contracts_contract_template_id_fkey",
+      "contype": "f",
+      "def": "FOREIGN KEY (contract_template_id) REFERENCES document_templates(id) ON DELETE SET NULL"
+     },
+     {
+      "conname": "contracts_dates_valid",
+      "contype": "c",
+      "def": "CHECK ((start_date <= end_date))"
+     },
+     {
+      "conname": "contracts_deposit_debt_mode_check",
+      "contype": "c",
+      "def": "CHECK (((deposit_debt_mode IS NULL) OR (deposit_debt_mode = ANY (ARRAY['DEBT'::text, 'FIRST_INVOICE'::text]))))"
+     },
+     {
+      "conname": "contracts_deposit_paid_non_negative",
+      "contype": "c",
+      "def": "CHECK ((deposit_paid >= (0)::numeric))"
+     },
+     {
+      "conname": "contracts_invoice_template_id_fkey",
+      "contype": "f",
+      "def": "FOREIGN KEY (invoice_template_id) REFERENCES document_templates(id) ON DELETE SET NULL"
+     },
+     {
+      "conname": "contracts_organization_id_fkey",
+      "contype": "f",
+      "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE RESTRICT"
+     },
+     {
+      "conname": "contracts_parent_contract_id_fkey",
+      "contype": "f",
+      "def": "FOREIGN KEY (parent_contract_id) REFERENCES contracts(id)"
+     },
+     {
+      "conname": "contracts_pkey",
+      "contype": "p",
+      "def": "PRIMARY KEY (id)"
+     },
+     {
+      "conname": "contracts_rent_price_non_negative",
+      "contype": "c",
+      "def": "CHECK ((rent_price >= (0)::numeric))"
+     },
+     {
+      "conname": "contracts_room_id_fkey",
+      "contype": "f",
+      "def": "FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE RESTRICT"
+     },
+     {
+      "conname": "contracts_tenant_id_fkey",
+      "contype": "f",
+      "def": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE SET NULL"
+     },
+     {
+      "conname": "contracts_total_deposit_non_negative",
+      "contype": "c",
+      "def": "CHECK ((total_deposit >= (0)::numeric))"
+     },
+     {
+      "conname": "contracts_user_id_fkey",
+      "contype": "f",
+      "def": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE"
+     }
+    ]
+   },
+   "contracts_indexes": {
+    "rowCount": 44,
+    "rows": [
+     {
+      "indexname": "contract_terminations_organization_id_idx",
+      "indexdef": "CREATE INDEX contract_terminations_organization_id_idx ON public.contract_terminations USING btree (organization_id)"
+     },
+     {
+      "indexname": "contract_terminations_pkey",
+      "indexdef": "CREATE UNIQUE INDEX contract_terminations_pkey ON public.contract_terminations USING btree (id)"
+     },
+     {
+      "indexname": "idx_terminations_contract_id",
+      "indexdef": "CREATE INDEX idx_terminations_contract_id ON public.contract_terminations USING btree (contract_id)"
+     },
+     {
+      "indexname": "idx_terminations_status",
+      "indexdef": "CREATE INDEX idx_terminations_status ON public.contract_terminations USING btree (status)"
+     },
+     {
+      "indexname": "idx_terminations_termination_date",
+      "indexdef": "CREATE INDEX idx_terminations_termination_date ON public.contract_terminations USING btree (termination_date)"
+     },
+     {
+      "indexname": "idx_terminations_type",
+      "indexdef": "CREATE INDEX idx_terminations_type ON public.contract_terminations USING btree (termination_type)"
+     },
+     {
+      "indexname": "idx_terminations_unique_contract",
+      "indexdef": "CREATE UNIQUE INDEX idx_terminations_unique_contract ON public.contract_terminations USING btree (contract_id)"
+     },
+     {
+      "indexname": "idx_terminations_user_id",
+      "indexdef": "CREATE INDEX idx_terminations_user_id ON public.contract_terminations USING btree (user_id)"
+     },
+     {
+      "indexname": "contracts_id_org_uq",
+      "indexdef": "CREATE UNIQUE INDEX contracts_id_org_uq ON public.contracts USING btree (id, organization_id)"
+     },
+     {
+      "indexname": "contracts_one_active_per_room_uq",
+      "indexdef": "CREATE UNIQUE INDEX contracts_one_active_per_room_uq ON public.contracts USING btree (room_id) WHERE ((deleted_at IS NULL) AND (status = 'ACTIVE'::contract_status))"
+     },
+     {
+      "indexname": "contracts_organization_id_idx",
+      "indexdef": "CREATE INDEX contracts_organization_id_idx ON public.contracts USING btree (organization_id)"
+     },
+     {
+      "indexname": "contracts_pkey",
+      "indexdef": "CREATE UNIQUE INDEX contracts_pkey ON public.contracts USING btree (id)"
+     },
+     {
+      "indexname": "contracts_public_code_key",
+      "indexdef": "CREATE UNIQUE INDEX contracts_public_code_key ON public.contracts USING btree (public_code)"
+     },
+     {
+      "indexname": "idx_contracts_contract_number",
+      "indexdef": "CREATE INDEX idx_contracts_contract_number ON public.contracts USING btree (contract_number)"
+     },
+     {
+      "indexname": "idx_contracts_contract_template_id",
+      "indexdef": "CREATE INDEX idx_contracts_contract_template_id ON public.contracts USING btree (contract_template_id)"
+     },
+     {
+      "indexname": "idx_contracts_created_at",
+      "indexdef": "CREATE INDEX idx_contracts_created_at ON public.contracts USING btree (created_at DESC)"
+     },
+     {
+      "indexname": "idx_contracts_deleted_at",
+      "indexdef": "CREATE INDEX idx_contracts_deleted_at ON public.contracts USING btree (deleted_at)"
+     },
+     {
+      "indexname": "idx_contracts_deposit_topup_due",
+      "indexdef": "CREATE INDEX idx_contracts_deposit_topup_due ON public.contracts USING btree (deposit_topup_due_date) WHERE (deposit_topup_due_date IS NOT NULL)"
+     },
+     {
+      "indexname": "idx_contracts_end_date",
+      "indexdef": "CREATE INDEX idx_contracts_end_date ON public.contracts USING btree (end_date)"
+     },
+     {
+      "indexname": "idx_contracts_expected_move_out_date",
+      "indexdef": "CREATE INDEX idx_contracts_expected_move_out_date ON public.contracts USING btree (expected_move_out_date)"
+     },
+     {
+      "indexname": "idx_contracts_invoice_template_id",
+      "indexdef": "CREATE INDEX idx_contracts_invoice_template_id ON public.contracts USING btree (invoice_template_id)"
+     },
+     {
+      "indexname": "idx_contracts_org_status_con_song",
+      "indexdef": "CREATE INDEX idx_contracts_org_status_con_song ON public.contracts USING btree (organization_id, status) WHERE (deleted_at IS NULL)"
+     },
+     {
+      "indexname": "idx_contracts_parent_contract_id",
+      "indexdef": "CREATE INDEX idx_contracts_parent_contract_id ON public.contracts USING btree (parent_contract_id)"
+     },
+     {
+      "indexname": "idx_contracts_room_id",
+      "indexdef": "CREATE INDEX idx_contracts_room_id ON public.contracts USING btree (room_id)"
+     },
+     {
+      "indexname": "idx_contracts_search",
+      "indexdef": "CREATE INDEX idx_contracts_search ON public.contracts USING gin (to_tsvector('simple'::regconfig, ((COALESCE(contract_number, ''::text) || ' '::text) || COALESCE(notes, ''::text))))"
+     },
+     {
+      "indexname": "idx_contracts_start_billing_date",
+      "indexdef": "CREATE INDEX idx_contracts_start_billing_date ON public.contracts USING btree (start_billing_date)"
+     },
+     {
+      "indexname": "idx_contracts_start_date",
+      "indexdef": "CREATE INDEX idx_contracts_start_date ON public.contracts USING btree (start_date)"
+     },
+     {
+      "indexname": "idx_contracts_status",
+      "indexdef": "CREATE INDEX idx_contracts_status ON public.contracts USING btree (status)"
+     },
+     {
+      "indexname": "idx_contracts_tenant_id",
+      "indexdef": "CREATE INDEX idx_contracts_tenant_id ON public.contracts USING btree (tenant_id)"
+     },
+     {
+      "indexname": "idx_contracts_user_id",
+      "indexdef": "CREATE INDEX idx_contracts_user_id ON public.contracts USING btree (user_id)"
+     },
+     {
+      "indexname": "network_center_contracts_org_id_uidx",
+      "indexdef": "CREATE UNIQUE INDEX network_center_contracts_org_id_uidx ON public.contracts USING btree (organization_id, id)"
+     },
+     {
+      "indexname": "room_reservation_holds_no_overlap",
+      "indexdef": "CREATE INDEX room_reservation_holds_no_overlap ON public.room_reservation_holds USING gist (room_id, tstzrange(held_at, expires_at)) WHERE (status = ANY (ARRAY['PENDING_APPROVAL'::text, 'APPROVED'::text]))"
+     },
+     {
+      "indexname": "room_reservation_holds_pkey",
+      "indexdef": "CREATE UNIQUE INDEX room_reservation_holds_pkey ON public.room_reservation_holds USING btree (id)"
+     },
+     {
+      "indexname": "idx_rooms_building_id",
+      "indexdef": "CREATE INDEX idx_rooms_building_id ON public.rooms USING btree (building_id)"
+     },
+     {
+      "indexname": "idx_rooms_deleted_at",
+      "indexdef": "CREATE INDEX idx_rooms_deleted_at ON public.rooms USING btree (deleted_at)"
+     },
+     {
+      "indexname": "idx_rooms_floor",
+      "indexdef": "CREATE INDEX idx_rooms_floor ON public.rooms USING btree (floor)"
+     },
+     {
+      "indexname": "idx_rooms_invoice_template_id",
+      "indexdef": "CREATE INDEX idx_rooms_invoice_template_id ON public.rooms USING btree (invoice_template_id)"
+     },
+     {
+      "indexname": "idx_rooms_lease_template_id",
+      "indexdef": "CREATE INDEX idx_rooms_lease_template_id ON public.rooms USING btree (lease_template_id)"
+     },
+     {
+      "indexname": "idx_rooms_search",
+      "indexdef": "CREATE INDEX idx_rooms_search ON public.rooms USING gin (to_tsvector('simple'::regconfig, ((((COALESCE(name, ''::text) || ' '::text) || COALESCE(code, ''::text)) || ' '::text) || COALESCE(description, ''::text))))"
+     },
+     {
+      "indexname": "idx_rooms_status",
+      "indexdef": "CREATE INDEX idx_rooms_status ON public.rooms USING btree (status)"
+     },
+     {
+      "indexname": "idx_rooms_unique_name_per_building",
+      "indexdef": "CREATE UNIQUE INDEX idx_rooms_unique_name_per_building ON public.rooms USING btree (building_id, name) WHERE (deleted_at IS NULL)"
+     },
+     {
+      "indexname": "network_center_rooms_org_id_uidx",
+      "indexdef": "CREATE UNIQUE INDEX network_center_rooms_org_id_uidx ON public.rooms USING btree (organization_id, id)"
+     },
+     {
+      "indexname": "rooms_organization_id_idx",
+      "indexdef": "CREATE INDEX rooms_organization_id_idx ON public.rooms USING btree (organization_id)"
+     },
+     {
+      "indexname": "rooms_pkey",
+      "indexdef": "CREATE UNIQUE INDEX rooms_pkey ON public.rooms USING btree (id)"
+     }
+    ]
+   },
+   "holds_constraints": {
+    "rowCount": 28,
+    "rows": [
+     {
+      "tbl": "rooms",
+      "conname": "rooms_area_positive",
+      "contype": "c",
+      "def": "CHECK (((area IS NULL) OR (area > (0)::numeric)))"
+     },
+     {
+      "tbl": "rooms",
+      "conname": "rooms_building_id_fkey",
+      "contype": "f",
+      "def": "FOREIGN KEY (building_id) REFERENCES buildings(id) ON DELETE CASCADE"
+     },
+     {
+      "tbl": "rooms",
+      "conname": "rooms_deposit_amount_non_negative",
+      "contype": "c",
+      "def": "CHECK ((deposit_amount >= (0)::numeric))"
+     },
+     {
+      "tbl": "rooms",
+      "conname": "rooms_floor_positive",
+      "contype": "c",
+      "def": "CHECK ((floor > 0))"
+     },
+     {
+      "tbl": "rooms",
+      "conname": "rooms_invoice_template_id_fkey",
+      "contype": "f",
+      "def": "FOREIGN KEY (invoice_template_id) REFERENCES document_templates(id) ON DELETE SET NULL"
+     },
+     {
+      "tbl": "rooms",
+      "conname": "rooms_lease_template_id_fkey",
+      "contype": "f",
+      "def": "FOREIGN KEY (lease_template_id) REFERENCES document_templates(id) ON DELETE SET NULL"
+     },
+     {
+      "tbl": "rooms",
+      "conname": "rooms_max_occupants_positive",
+      "contype": "c",
+      "def": "CHECK ((max_occupants > 0))"
+     },
+     {
+      "tbl": "rooms",
+      "conname": "rooms_name_not_empty",
+      "contype": "c",
+      "def": "CHECK ((char_length(name) > 0))"
+     },
+     {
+      "tbl": "rooms",
+      "conname": "rooms_organization_id_fkey",
+      "contype": "f",
+      "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE RESTRICT"
+     },
+     {
+      "tbl": "rooms",
+      "conname": "rooms_pkey",
+      "contype": "p",
+      "def": "PRIMARY KEY (id)"
+     },
+     {
+      "tbl": "rooms",
+      "conname": "rooms_rent_price_non_negative",
+      "contype": "c",
+      "def": "CHECK ((rent_price >= (0)::numeric))"
+     },
+     {
+      "tbl": "contract_terminations",
+      "conname": "contract_terminations_approved_by_fkey",
+      "contype": "f",
+      "def": "FOREIGN KEY (approved_by) REFERENCES auth.users(id)"
+     },
+     {
+      "tbl": "contract_terminations",
+      "conname": "contract_terminations_contract_id_fkey",
+      "contype": "f",
+      "def": "FOREIGN KEY (contract_id) REFERENCES contracts(id) ON DELETE RESTRICT"
+     },
+     {
+      "tbl": "contract_terminations",
+      "conname": "contract_terminations_organization_id_fkey",
+      "contype": "f",
+      "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE RESTRICT"
+     },
+     {
+      "tbl": "contract_terminations",
+      "conname": "contract_terminations_pkey",
+      "contype": "p",
+      "def": "PRIMARY KEY (id)"
+     },
+     {
+      "tbl": "contract_terminations",
+      "conname": "contract_terminations_status_check",
+      "contype": "c",
+      "def": "CHECK ((status = ANY (ARRAY['DRAFT'::text, 'PENDING_APPROVAL'::text, 'APPROVED'::text, 'COMPLETED'::text])))"
+     },
+     {
+      "tbl": "contract_terminations",
+      "conname": "contract_terminations_termination_type_check",
+      "contype": "c",
+      "def": "CHECK ((termination_type = ANY (ARRAY['NORMAL'::text, 'EARLY_TENANT'::text, 'EARLY_OWNER'::text, 'BREACH'::text, 'FORFEIT'::text])))"
+     },
+     {
+      "tbl": "contract_terminations",
+      "conname": "contract_terminations_user_id_fkey",
+      "contype": "f",
+      "def": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE"
+     },
+     {
+      "tbl": "contract_terminations",
+      "conname": "terminations_refund_method_required_if_refund",
+      "contype": "c",
+      "def": "CHECK (((refund_amount <= (0)::numeric) OR (refund_method IS NOT NULL)))"
+     },
+     {
+      "tbl": "room_reservation_holds",
+      "conname": "room_reservation_holds_amount_check",
+      "contype": "c",
+      "def": "CHECK ((amount > (0)::numeric))"
+     },
+     {
+      "tbl": "room_reservation_holds",
+      "conname": "room_reservation_holds_building_id_fkey",
+      "contype": "f",
+      "def": "FOREIGN KEY (building_id) REFERENCES buildings(id)"
+     },
+     {
+      "tbl": "room_reservation_holds",
+      "conname": "room_reservation_holds_check",
+      "contype": "c",
+      "def": "CHECK ((expires_at > held_at))"
+     },
+     {
+      "tbl": "room_reservation_holds",
+      "conname": "room_reservation_holds_contract_id_fkey",
+      "contype": "f",
+      "def": "FOREIGN KEY (contract_id) REFERENCES contracts(id)"
+     },
+     {
+      "tbl": "room_reservation_holds",
+      "conname": "room_reservation_holds_no_overlap",
+      "contype": "x",
+      "def": "EXCLUDE USING gist (room_id WITH =, tstzrange(held_at, expires_at) WITH &&) WHERE ((status = ANY (ARRAY['PENDING_APPROVAL'::text, 'APPROVED'::text])))"
+     },
+     {
+      "tbl": "room_reservation_holds",
+      "conname": "room_reservation_holds_organization_id_fkey",
+      "contype": "f",
+      "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE RESTRICT"
+     },
+     {
+      "tbl": "room_reservation_holds",
+      "conname": "room_reservation_holds_pkey",
+      "contype": "p",
+      "def": "PRIMARY KEY (id)"
+     },
+     {
+      "tbl": "room_reservation_holds",
+      "conname": "room_reservation_holds_room_id_fkey",
+      "contype": "f",
+      "def": "FOREIGN KEY (room_id) REFERENCES rooms(id)"
+     },
+     {
+      "tbl": "room_reservation_holds",
+      "conname": "room_reservation_holds_status_check",
+      "contype": "c",
+      "def": "CHECK ((status = ANY (ARRAY['PENDING_APPROVAL'::text, 'APPROVED'::text, 'REJECTED'::text, 'CANCELLED'::text, 'EXPIRED'::text])))"
+     }
+    ]
+   },
+   "triggers_core": {
+    "rowCount": 31,
+    "rows": [
+     {
+      "tbl": "rooms",
+      "tgname": "set_rooms_updated_at",
+      "tgenabled": "O",
+      "def": "CREATE TRIGGER set_rooms_updated_at BEFORE UPDATE ON public.rooms FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()",
+      "fn": "update_updated_at_column",
+      "secdef": false
+     },
+     {
+      "tbl": "rooms",
+      "tgname": "trg_autofill_org",
+      "tgenabled": "O",
+      "def": "CREATE TRIGGER trg_autofill_org BEFORE INSERT ON public.rooms FOR EACH ROW EXECUTE FUNCTION app_private.autofill_org_strict()",
+      "fn": "autofill_org_strict",
+      "secdef": true
+     },
+     {
+      "tbl": "rooms",
+      "tgname": "trg_room_status_reconcile",
+      "tgenabled": "O",
+      "def": "CREATE TRIGGER trg_room_status_reconcile AFTER UPDATE OF status ON public.rooms FOR EACH ROW WHEN ((new.status = 'AVAILABLE'::room_status)) EXECUTE FUNCTION trg_room_status_reconcile()",
+      "fn": "trg_room_status_reconcile",
+      "secdef": true
+     },
+     {
+      "tbl": "rooms",
+      "tgname": "trg_rooms_price_history",
+      "tgenabled": "O",
+      "def": "CREATE TRIGGER trg_rooms_price_history AFTER UPDATE OF rent_price, deposit_amount ON public.rooms FOR EACH ROW EXECUTE FUNCTION log_room_price_history()",
+      "fn": "log_room_price_history",
+      "secdef": true
+     },
+     {
+      "tbl": "rooms",
+      "tgname": "update_building_total_rooms_on_room_change",
+      "tgenabled": "O",
+      "def": "CREATE TRIGGER update_building_total_rooms_on_room_change AFTER INSERT OR DELETE OR UPDATE ON public.rooms FOR EACH ROW EXECUTE FUNCTION update_building_total_rooms()",
+      "fn": "update_building_total_rooms",
+      "secdef": false
+     },
+     {
+      "tbl": "contracts",
+      "tgname": "a00_guard_contract_deposit_paid",
+      "tgenabled": "O",
+      "def": "CREATE TRIGGER a00_guard_contract_deposit_paid BEFORE UPDATE ON public.contracts FOR EACH ROW EXECUTE FUNCTION guard_contract_deposit_paid_derived()",
+      "fn": "guard_contract_deposit_paid_derived",
+      "secdef": false
+     },
+     {
+      "tbl": "contracts",
+      "tgname": "contracts_set_user_id_audit",
+      "tgenabled": "O",
+      "def": "CREATE TRIGGER contracts_set_user_id_audit BEFORE INSERT ON public.contracts FOR EACH ROW EXECUTE FUNCTION set_user_id_from_auth()",
+      "fn": "set_user_id_from_auth",
+      "secdef": true
+     },
+     {
+      "tbl": "contracts",
+      "tgname": "set_contracts_updated_at",
+      "tgenabled": "O",
+      "def": "CREATE TRIGGER set_contracts_updated_at BEFORE UPDATE ON public.contracts FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()",
+      "fn": "update_updated_at_column",
+      "secdef": false
+     },
+     {
+      "tbl": "contracts",
+      "tgname": "trg_autofill_org",
+      "tgenabled": "O",
+      "def": "CREATE TRIGGER trg_autofill_org BEFORE INSERT ON public.contracts FOR EACH ROW EXECUTE FUNCTION app_private.autofill_org_strict()",
+      "fn": "autofill_org_strict",
+      "secdef": true
+     },
+     {
+      "tbl": "contracts",
+      "tgname": "trg_contract_link_orphan_deposits",
+      "tgenabled": "O",
+      "def": "CREATE TRIGGER trg_contract_link_orphan_deposits AFTER INSERT ON public.contracts FOR EACH ROW EXECUTE FUNCTION trg_contract_link_orphan_deposits()",
+      "fn": "trg_contract_link_orphan_deposits",
+      "secdef": true
+     },
+     {
+      "tbl": "contracts",
+      "tgname": "trg_contracts_price_history_ins",
+      "tgenabled": "O",
+      "def": "CREATE TRIGGER trg_contracts_price_history_ins AFTER INSERT ON public.contracts FOR EACH ROW EXECUTE FUNCTION log_contract_price_history()",
+      "fn": "log_contract_price_history",
+      "secdef": true
+     },
+     {
+      "tbl": "contracts",
+      "tgname": "trg_contracts_price_history_upd",
+      "tgenabled": "O",
+      "def": "CREATE TRIGGER trg_contracts_price_history_upd AFTER UPDATE OF rent_price, total_deposit ON public.contracts FOR EACH ROW EXECUTE FUNCTION log_contract_price_history()",
+      "fn": "log_contract_price_history",
+      "secdef": true
+     },
+     {
+      "tbl": "contracts",
+      "tgname": "trg_generate_contract_number",
+      "tgenabled": "O",
+      "def": "CREATE TRIGGER trg_generate_contract_number BEFORE INSERT ON public.contracts FOR EACH ROW EXECUTE FUNCTION generate_contract_number()",
+      "fn": "generate_contract_number",
+      "secdef": true
+     },
+     {
+      "tbl": "contracts",
+      "tgname": "trg_set_contract_public_code",
+      "tgenabled": "O",
+      "def": "CREATE TRIGGER trg_set_contract_public_code BEFORE INSERT ON public.contracts FOR EACH ROW EXECUTE FUNCTION set_contract_public_code()",
+      "fn": "set_contract_public_code",
+      "secdef": false
+     },
+     {
+      "tbl": "contracts",
+      "tgname": "trigger_update_room_status",
+      "tgenabled": "O",
+      "def": "CREATE TRIGGER trigger_update_room_status AFTER INSERT OR UPDATE ON public.contracts FOR EACH ROW EXECUTE FUNCTION update_room_status_on_contract_change()",
+      "fn": "update_room_status_on_contract_change",
+      "secdef": true
+     },
+     {
+      "tbl": "contracts",
+      "tgname": "update_asset_status_on_contract_change_trigger",
+      "tgenabled": "O",
+      "def": "CREATE TRIGGER update_asset_status_on_contract_change_trigger AFTER INSERT OR UPDATE OF status ON public.contracts FOR EACH ROW EXECUTE FUNCTION update_asset_status_on_contract_change()",
+      "fn": "update_asset_status_on_contract_change",
+      "secdef": false
+     },
+     {
+      "tbl": "contract_terminations",
+      "tgname": "a00_contract_termination_settlement_guard",
+      "tgenabled": "O",
+      "def": "CREATE TRIGGER a00_contract_termination_settlement_guard BEFORE INSERT OR UPDATE ON public.contract_terminations FOR EACH ROW EXECUTE FUNCTION guard_contract_termination_settlement()",
+      "fn": "guard_contract_termination_settlement",
+      "secdef": false
+     },
+     {
+      "tbl": "contract_terminations",
+      "tgname": "contract_terminations_set_user_id_audit",
+      "tgenabled": "O",
+      "def": "CREATE TRIGGER contract_terminations_set_user_id_audit BEFORE INSERT ON public.contract_terminations FOR EACH ROW EXECUTE FUNCTION set_user_id_from_auth()",
+      "fn": "set_user_id_from_auth",
+      "secdef": true
+     },
+     {
+      "tbl": "contract_terminations",
+      "tgname": "trg_autofill_org",
+      "tgenabled": "O",
+      "def": "CREATE TRIGGER trg_autofill_org BEFORE INSERT ON public.contract_terminations FOR EACH ROW EXECUTE FUNCTION app_private.autofill_org_strict()",
+      "fn": "autofill_org_strict",
+      "secdef": true
+     },
+     {
+      "tbl": "contract_terminations",
+      "tgname": "trigger_auto_calculate_termination_financials",
+      "tgenabled": "O",
+      "def": "CREATE TRIGGER trigger_auto_calculate_termination_financials BEFORE INSERT OR UPDATE ON public.contract_terminations FOR EACH ROW EXECUTE FUNCTION auto_calculate_termination_financials()",
+      "fn": "auto_calculate_termination_financials",
+      "secdef": false
+     },
+     {
+      "tbl": "contract_terminations",
+      "tgname": "trigger_update_contract_on_termination",
+      "tgenabled": "O",
+      "def": "CREATE TRIGGER trigger_update_contract_on_termination BEFORE UPDATE OF status ON public.contract_terminations FOR EACH ROW EXECUTE FUNCTION update_contract_on_termination_approved()",
+      "fn": "update_contract_on_termination_approved",
+      "secdef": false
+     },
+     {
+      "tbl": "jobs",
+      "tgname": "jobs_set_user_id_audit",
+      "tgenabled": "O",
+      "def": "CREATE TRIGGER jobs_set_user_id_audit BEFORE INSERT ON public.jobs FOR EACH ROW EXECUTE FUNCTION set_user_id_from_auth()",
+      "fn": "set_user_id_from_auth",
+      "secdef": true
+     },
+     {
+      "tbl": "jobs",
+      "tgname": "trg_autofill_org",
+      "tgenabled": "O",
+      "def": "CREATE TRIGGER trg_autofill_org BEFORE INSERT ON public.jobs FOR EACH ROW EXECUTE FUNCTION app_private.autofill_org_strict()",
+      "fn": "autofill_org_strict",
+      "secdef": true
+     },
+     {
+      "tbl": "jobs",
+      "tgname": "trigger_generate_job_code",
+      "tgenabled": "O",
+      "def": "CREATE TRIGGER trigger_generate_job_code BEFORE INSERT ON public.jobs FOR EACH ROW WHEN (((new.code IS NULL) OR (new.code = ''::text))) EXECUTE FUNCTION generate_job_code()",
+      "fn": "generate_job_code",
+      "secdef": true
+     },
+     {
+      "tbl": "jobs",
+      "tgname": "trigger_jobs_stamp_completion_time",
+      "tgenabled": "O",
+      "def": "CREATE TRIGGER trigger_jobs_stamp_completion_time BEFORE INSERT OR UPDATE ON public.jobs FOR EACH ROW EXECUTE FUNCTION jobs_stamp_completion_time()",
+      "fn": "jobs_stamp_completion_time",
+      "secdef": true
+     },
+     {
+      "tbl": "jobs",
+      "tgname": "trigger_jobs_updated_at",
+      "tgenabled": "O",
+      "def": "CREATE TRIGGER trigger_jobs_updated_at BEFORE UPDATE ON public.jobs FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()",
+      "fn": "update_updated_at_column",
+      "secdef": false
+     },
+     {
+      "tbl": "jobs",
+      "tgname": "z95_notify_job_assigned_ins",
+      "tgenabled": "O",
+      "def": "CREATE TRIGGER z95_notify_job_assigned_ins AFTER INSERT ON public.jobs FOR EACH ROW WHEN (((new.assignee_id IS NOT NULL) AND (auth.uid() IS NOT NULL) AND (new.assignee_id IS DISTINCT FROM auth.uid()))) EXECUTE FUNCTION app_private.notify_job_assigned_v1()",
+      "fn": "notify_job_assigned_v1",
+      "secdef": true
+     },
+     {
+      "tbl": "jobs",
+      "tgname": "z95_notify_job_assigned_upd",
+      "tgenabled": "O",
+      "def": "CREATE TRIGGER z95_notify_job_assigned_upd AFTER UPDATE OF assignee_id ON public.jobs FOR EACH ROW WHEN (((new.assignee_id IS NOT NULL) AND (auth.uid() IS NOT NULL) AND (old.assignee_id IS DISTINCT FROM new.assignee_id) AND (new.assignee_id IS DISTINCT FROM auth.uid()))) EXECUTE FUNCTION app_private.notify_job_assigned_v1()",
+      "fn": "notify_job_assigned_v1",
+      "secdef": true
+     },
+     {
+      "tbl": "contract_customers",
+      "tgname": "ensure_single_representative",
+      "tgenabled": "O",
+      "def": "CREATE TRIGGER ensure_single_representative BEFORE INSERT OR UPDATE ON public.contract_customers FOR EACH ROW EXECUTE FUNCTION check_contract_representative()",
+      "fn": "check_contract_representative",
+      "secdef": false
+     },
+     {
+      "tbl": "contract_customers",
+      "tgname": "trg_autofill_org",
+      "tgenabled": "O",
+      "def": "CREATE TRIGGER trg_autofill_org BEFORE INSERT ON public.contract_customers FOR EACH ROW EXECUTE FUNCTION app_private.autofill_org_strict()",
+      "fn": "autofill_org_strict",
+      "secdef": true
+     },
+     {
+      "tbl": "contract_customers",
+      "tgname": "update_contract_customers_updated_at",
+      "tgenabled": "O",
+      "def": "CREATE TRIGGER update_contract_customers_updated_at BEFORE UPDATE ON public.contract_customers FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()",
+      "fn": "update_updated_at_column",
+      "secdef": false
+     }
+    ]
+   },
+   "rls_contracts_rooms": {
+    "rowCount": 39,
+    "rows": [
+     {
+      "schemaname": "public",
+      "tablename": "contract_terminations",
+      "policyname": "contract_terminations_org_boundary",
+      "cmd": "ALL",
+      "roles": "{authenticated}",
+      "qual": "((organization_id IS NULL) OR ( SELECT is_super_admin() AS is_super_admin) OR (organization_id IN ( SELECT unnest(my_org_ids()) AS unnest)))",
+      "with_check": "((organization_id IS NULL) OR ( SELECT is_super_admin() AS is_super_admin) OR (organization_id IN ( SELECT unnest(my_org_ids()) AS unnest)))"
+     },
+     {
+      "schemaname": "public",
+      "tablename": "contract_terminations",
+      "policyname": "contract_terminations_super_admin_all",
+      "cmd": "ALL",
+      "roles": "{authenticated}",
+      "qual": "( SELECT is_super_admin() AS is_super_admin)",
+      "with_check": "( SELECT is_super_admin() AS is_super_admin)"
+     },
+     {
+      "schemaname": "public",
+      "tablename": "contract_terminations",
+      "policyname": "contract_terminations_delete_rbac",
+      "cmd": "DELETE",
+      "roles": "{public}",
+      "qual": "(( SELECT is_super_admin() AS is_super_admin) OR (building_of_contract(contract_id) = ANY (app_private.buildings_for_v3('contracts.delete'::text))))",
+      "with_check": null
+     },
+     {
+      "schemaname": "public",
+      "tablename": "contract_terminations",
+      "policyname": "contract_terminations_insert_rbac",
+      "cmd": "INSERT",
+      "roles": "{public}",
+      "qual": null,
+      "with_check": "(( SELECT is_super_admin() AS is_super_admin) OR (building_of_contract(contract_id) = ANY (app_private.buildings_for_v3('contracts.create'::text))))"
+     },
+     {
+      "schemaname": "public",
+      "tablename": "contract_terminations",
+      "policyname": "contract_terminations_hide_demo_admin",
+      "cmd": "SELECT",
+      "roles": "{public}",
+      "qual": "(NOT ((is_super_admin() OR is_admin()) AND (EXISTS ( SELECT 1\n   FROM ((contracts c\n     JOIN rooms r ON ((r.id = c.room_id)))\n     JOIN buildings b ON ((b.id = r.building_id)))\n  WHERE ((c.id = contract_terminations.contract_id) AND (b.user_id = ANY (demo_user_ids())))))))",
+      "with_check": null
+     },
+     {
+      "schemaname": "public",
+      "tablename": "contract_terminations",
+      "policyname": "contract_terminations_hide_sandbox_admin",
+      "cmd": "SELECT",
+      "roles": "{authenticated}",
+      "qual": "(NOT (( SELECT is_super_admin() AS is_super_admin) AND COALESCE((organization_id = ANY (sandbox_org_ids())), false)))",
+      "with_check": null
+     },
+     {
+      "schemaname": "public",
+      "tablename": "contract_terminations",
+      "policyname": "contract_terminations_select_rbac",
+      "cmd": "SELECT",
+      "roles": "{public}",
+      "qual": "can_access_building(building_of_contract(contract_id))",
+      "with_check": null
+     },
+     {
+      "schemaname": "public",
+      "tablename": "contract_terminations",
+      "policyname": "contract_terminations_update_rbac",
+      "cmd": "UPDATE",
+      "roles": "{public}",
+      "qual": "(( SELECT is_super_admin() AS is_super_admin) OR (building_of_contract(contract_id) = ANY (app_private.buildings_for_v3('contracts.edit'::text))))",
+      "with_check": "(( SELECT is_super_admin() AS is_super_admin) OR (building_of_contract(contract_id) = ANY (app_private.buildings_for_v3('contracts.edit'::text))))"
+     },
+     {
+      "schemaname": "public",
+      "tablename": "contracts",
+      "policyname": "contracts_org_boundary",
+      "cmd": "ALL",
+      "roles": "{authenticated}",
+      "qual": "((organization_id IS NULL) OR ( SELECT is_super_admin() AS is_super_admin) OR (organization_id IN ( SELECT unnest(my_org_ids()) AS unnest)))",
+      "with_check": "((organization_id IS NULL) OR ( SELECT is_super_admin() AS is_super_admin) OR (organization_id IN ( SELECT unnest(my_org_ids()) AS unnest)))"
+     },
+     {
+      "schemaname": "public",
+      "tablename": "contracts",
+      "policyname": "contracts_super_admin_all",
+      "cmd": "ALL",
+      "roles": "{authenticated}",
+      "qual": "( SELECT is_super_admin() AS is_super_admin)",
+      "with_check": "( SELECT is_super_admin() AS is_super_admin)"
+     },
+     {
+      "schemaname": "public",
+      "tablename": "contracts",
+      "policyname": "contracts_delete_rbac",
+      "cmd": "DELETE",
+      "roles": "{public}",
+      "qual": "(( SELECT is_super_admin() AS is_super_admin) OR ((room_id IS NOT NULL) AND (( SELECT rooms.building_id\n   FROM rooms\n  WHERE (rooms.id = contracts.room_id)) = ANY (app_private.buildings_for_v3('contracts.delete'::text)))))",
+      "with_check": null
+     },
+     {
+      "schemaname": "public",
+      "tablename": "contracts",
+      "policyname": "contracts_insert_rbac",
+      "cmd": "INSERT",
+      "roles": "{public}",
+      "qual": null,
+      "with_check": "(( SELECT is_super_admin() AS is_super_admin) OR ((room_id IS NOT NULL) AND (( SELECT rooms.building_id\n   FROM rooms\n  WHERE (rooms.id = contracts.room_id)) = ANY (app_private.buildings_for_v3('contracts.create'::text)))))"
+     },
+     {
+      "schemaname": "public",
+      "tablename": "contracts",
+      "policyname": "contracts_hide_demo_admin",
+      "cmd": "SELECT",
+      "roles": "{authenticated}",
+      "qual": "(NOT (( SELECT (( SELECT is_super_admin() AS is_super_admin) OR ( SELECT is_admin() AS is_admin))) AND (user_id IN ( SELECT unnest(demo_user_ids()) AS unnest))))",
+      "with_check": null
+     },
+     {
+      "schemaname": "public",
+      "tablename": "contracts",
+      "policyname": "contracts_hide_sandbox_admin",
+      "cmd": "SELECT",
+      "roles": "{authenticated}",
+      "qual": "(NOT (( SELECT is_super_admin() AS is_super_admin) AND COALESCE((organization_id = ANY (sandbox_org_ids())), false)))",
+      "with_check": null
+     },
+     {
+      "schemaname": "public",
+      "tablename": "contracts",
+      "policyname": "contracts_select_rbac",
+      "cmd": "SELECT",
+      "roles": "{public}",
+      "qual": "(( SELECT is_super_admin() AS is_super_admin) OR ( SELECT is_admin() AS is_admin) OR ((room_id IS NOT NULL) AND (( SELECT has_full_building_scope() AS has_full_building_scope) OR (room_id IN ( SELECT accessible_room_ids() AS accessible_room_ids)))))",
+      "with_check": null
+     },
+     {
+      "schemaname": "public",
+      "tablename": "contracts",
+      "policyname": "ie_canonical_writer_read",
+      "cmd": "SELECT",
+      "roles": "{ie_canonical_writer}",
+      "qual": "true",
+      "with_check": null
+     },
+     {
+      "schemaname": "public",
+      "tablename": "contracts",
+      "policyname": "contracts_update_rbac",
+      "cmd": "UPDATE",
+      "roles": "{public}",
+      "qual": "(( SELECT is_super_admin() AS is_super_admin) OR ((room_id IS NOT NULL) AND (( SELECT rooms.building_id\n   FROM rooms\n  WHERE (rooms.id = contracts.room_id)) = ANY (app_private.buildings_for_v3('contracts.edit'::text)))))",
+      "with_check": "(( SELECT is_super_admin() AS is_super_admin) OR ((room_id IS NOT NULL) AND (( SELECT rooms.building_id\n   FROM rooms\n  WHERE (rooms.id = contracts.room_id)) = ANY (app_private.buildings_for_v3('contracts.edit'::text)))))"
+     },
+     {
+      "schemaname": "public",
+      "tablename": "contracts",
+      "policyname": "ie_canonical_writer_lock",
+      "cmd": "UPDATE",
+      "roles": "{ie_canonical_writer}",
+      "qual": "true",
+      "with_check": "false"
+     },
+     {
+      "schemaname": "public",
+      "tablename": "jobs",
+      "policyname": "jobs_org_boundary",
+      "cmd": "ALL",
+      "roles": "{authenticated}",
+      "qual": "((organization_id IS NULL) OR ( SELECT is_super_admin() AS is_super_admin) OR (organization_id IN ( SELECT unnest(my_org_ids()) AS unnest)))",
+      "with_check": "((organization_id IS NULL) OR ( SELECT is_super_admin() AS is_super_admin) OR (organization_id IN ( SELECT unnest(my_org_ids()) AS unnest)))"
+     },
+     {
+      "schemaname": "public",
+      "tablename": "jobs",
+      "policyname": "jobs_super_admin_all",
+      "cmd": "ALL",
+      "roles": "{authenticated}",
+      "qual": "( SELECT is_super_admin() AS is_super_admin)",
+      "with_check": "( SELECT is_super_admin() AS is_super_admin)"
+     },
+     {
+      "schemaname": "public",
+      "tablename": "jobs",
+      "policyname": "jobs_delete_rbac",
+      "cmd": "DELETE",
+      "roles": "{public}",
+      "qual": "(( SELECT is_super_admin() AS is_super_admin) OR ((building_id IS NOT NULL) AND (building_id = ANY (app_private.buildings_for_v3('tasks.delete'::text)))) OR ((building_id IS NULL) AND can_access_org_entity('tasks'::text, 'delete'::text)))",
+      "with_check": null
+     },
+     {
+      "schemaname": "public",
+      "tablename": "jobs",
+      "policyname": "jobs_insert_rbac",
+      "cmd": "INSERT",
+      "roles": "{public}",
+      "qual": null,
+      "with_check": "(( SELECT is_super_admin() AS is_super_admin) OR ((building_id IS NOT NULL) AND (building_id = ANY (app_private.buildings_for_v3('tasks.create'::text)))) OR ((building_id IS NULL) AND can_access_org_entity('tasks'::text, 'create'::text)))"
+     },
+     {
+      "schemaname": "public",
+      "tablename": "jobs",
+      "policyname": "jobs_hide_demo_admin",
+      "cmd": "SELECT",
+      "roles": "{authenticated}",
+      "qual": "(NOT (( SELECT (( SELECT is_super_admin() AS is_super_admin) OR ( SELECT is_admin() AS is_admin))) AND (user_id IN ( SELECT unnest(demo_user_ids()) AS unnest))))",
+      "with_check": null
+     },
+     {
+      "schemaname": "public",
+      "tablename": "jobs",
+      "policyname": "jobs_hide_sandbox_admin",
+      "cmd": "SELECT",
+      "roles": "{authenticated}",
+      "qual": "(NOT (( SELECT is_super_admin() AS is_super_admin) AND COALESCE((organization_id = ANY (sandbox_org_ids())), false)))",
+      "with_check": null
+     },
+     {
+      "schemaname": "public",
+      "tablename": "jobs",
+      "policyname": "jobs_select_rbac",
+      "cmd": "SELECT",
+      "roles": "{public}",
+      "qual": "(( SELECT is_super_admin() AS is_super_admin) OR ( SELECT is_admin() AS is_admin) OR ((building_id IS NOT NULL) AND (( SELECT has_full_building_scope() AS has_full_building_scope) OR (building_id IN ( SELECT accessible_building_ids() AS accessible_building_ids)))) OR ((building_id IS NULL) AND ( SELECT can_access_org_entity('tasks'::text, 'view'::text) AS can_access_org_entity)))",
+      "with_check": null
+     },
+     {
+      "schemaname": "public",
+      "tablename": "jobs",
+      "policyname": "jobs_update_rbac",
+      "cmd": "UPDATE",
+      "roles": "{public}",
+      "qual": "(( SELECT is_super_admin() AS is_super_admin) OR ((building_id IS NOT NULL) AND (building_id = ANY (app_private.buildings_for_v3('tasks.edit'::text)))) OR ((building_id IS NULL) AND can_access_org_entity('tasks'::text, 'edit'::text)))",
+      "with_check": "(( SELECT is_super_admin() AS is_super_admin) OR ((building_id IS NOT NULL) AND (building_id = ANY (app_private.buildings_for_v3('tasks.edit'::text)))) OR ((building_id IS NULL) AND can_access_org_entity('tasks'::text, 'edit'::text)))"
+     },
+     {
+      "schemaname": "public",
+      "tablename": "room_reservation_holds",
+      "policyname": "room_reservation_holds_org_boundary",
+      "cmd": "ALL",
+      "roles": "{authenticated}",
+      "qual": "((organization_id IS NULL) OR ( SELECT is_super_admin() AS is_super_admin) OR (organization_id IN ( SELECT unnest(my_org_ids()) AS unnest)))",
+      "with_check": "((organization_id IS NULL) OR ( SELECT is_super_admin() AS is_super_admin) OR (organization_id IN ( SELECT unnest(my_org_ids()) AS unnest)))"
+     },
+     {
+      "schemaname": "public",
+      "tablename": "room_reservation_holds",
+      "policyname": "room_holds_select_super",
+      "cmd": "SELECT",
+      "roles": "{authenticated}",
+      "qual": "is_super_admin()",
+      "with_check": null
+     },
+     {
+      "schemaname": "public",
+      "tablename": "room_reservation_holds",
+      "policyname": "room_reservation_holds_hide_sandbox_admin",
+      "cmd": "SELECT",
+      "roles": "{authenticated}",
+      "qual": "(NOT (( SELECT is_super_admin() AS is_super_admin) AND COALESCE((organization_id = ANY (sandbox_org_ids())), false)))",
+      "with_check": null
+     },
+     {
+      "schemaname": "public",
+      "tablename": "rooms",
+      "policyname": "rooms_org_boundary",
+      "cmd": "ALL",
+      "roles": "{authenticated}",
+      "qual": "((organization_id IS NULL) OR ( SELECT is_super_admin() AS is_super_admin) OR (organization_id IN ( SELECT unnest(my_org_ids()) AS unnest)))",
+      "with_check": "((organization_id IS NULL) OR ( SELECT is_super_admin() AS is_super_admin) OR (organization_id IN ( SELECT unnest(my_org_ids()) AS unnest)))"
+     },
+     {
+      "schemaname": "public",
+      "tablename": "rooms",
+      "policyname": "rooms_super_admin_all",
+      "cmd": "ALL",
+      "roles": "{authenticated}",
+      "qual": "( SELECT is_super_admin() AS is_super_admin)",
+      "with_check": "( SELECT is_super_admin() AS is_super_admin)"
+     },
+     {
+      "schemaname": "public",
+      "tablename": "rooms",
+      "policyname": "rooms_delete_rbac",
+      "cmd": "DELETE",
+      "roles": "{public}",
+      "qual": "(( SELECT is_super_admin() AS is_super_admin) OR (building_id = ANY (app_private.buildings_for_v3('rooms.delete'::text))))",
+      "with_check": null
+     },
+     {
+      "schemaname": "public",
+      "tablename": "rooms",
+      "policyname": "rooms_insert_rbac",
+      "cmd": "INSERT",
+      "roles": "{public}",
+      "qual": null,
+      "with_check": "(( SELECT is_super_admin() AS is_super_admin) OR (building_id = ANY (app_private.buildings_for_v3('rooms.create'::text))))"
+     },
+     {
+      "schemaname": "public",
+      "tablename": "rooms",
+      "policyname": "ie_canonical_writer_read",
+      "cmd": "SELECT",
+      "roles": "{ie_canonical_writer}",
+      "qual": "true",
+      "with_check": null
+     },
+     {
+      "schemaname": "public",
+      "tablename": "rooms",
+      "policyname": "rooms_hide_demo_admin",
+      "cmd": "SELECT",
+      "roles": "{authenticated}",
+      "qual": "(NOT (( SELECT (( SELECT is_super_admin() AS is_super_admin) OR ( SELECT is_admin() AS is_admin))) AND (building_id IN ( SELECT unnest(demo_building_ids()) AS unnest))))",
+      "with_check": null
+     },
+     {
+      "schemaname": "public",
+      "tablename": "rooms",
+      "policyname": "rooms_hide_sandbox_admin",
+      "cmd": "SELECT",
+      "roles": "{authenticated}",
+      "qual": "(NOT (( SELECT is_super_admin() AS is_super_admin) AND COALESCE((organization_id = ANY (sandbox_org_ids())), false)))",
+      "with_check": null
+     },
+     {
+      "schemaname": "public",
+      "tablename": "rooms",
+      "policyname": "rooms_select_rbac",
+      "cmd": "SELECT",
+      "roles": "{public}",
+      "qual": "(( SELECT has_full_building_scope() AS has_full_building_scope) OR (building_id IN ( SELECT accessible_building_ids() AS accessible_building_ids)))",
+      "with_check": null
+     },
+     {
+      "schemaname": "public",
+      "tablename": "rooms",
+      "policyname": "ie_canonical_writer_lock",
+      "cmd": "UPDATE",
+      "roles": "{ie_canonical_writer}",
+      "qual": "true",
+      "with_check": "false"
+     },
+     {
+      "schemaname": "public",
+      "tablename": "rooms",
+      "policyname": "rooms_update_rbac",
+      "cmd": "UPDATE",
+      "roles": "{public}",
+      "qual": "(( SELECT is_super_admin() AS is_super_admin) OR (building_id = ANY (app_private.buildings_for_v3('rooms.edit'::text))))",
+      "with_check": "(( SELECT is_super_admin() AS is_super_admin) OR (building_id = ANY (app_private.buildings_for_v3('rooms.edit'::text))))"
+     }
+    ]
+   },
+   "table_grants": {
+    "rowCount": 15,
+    "rows": [
+     {
+      "table_name": "contract_terminations",
+      "grantee": "anon",
+      "privs": "REFERENCES,SELECT,TRIGGER"
+     },
+     {
+      "table_name": "contract_terminations",
+      "grantee": "authenticated",
+      "privs": "DELETE,INSERT,REFERENCES,SELECT,TRIGGER,UPDATE"
+     },
+     {
+      "table_name": "contract_terminations",
+      "grantee": "service_role",
+      "privs": "DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE"
+     },
+     {
+      "table_name": "contracts",
+      "grantee": "anon",
+      "privs": "DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE"
+     },
+     {
+      "table_name": "contracts",
+      "grantee": "authenticated",
+      "privs": "DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE"
+     },
+     {
+      "table_name": "contracts",
+      "grantee": "service_role",
+      "privs": "DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE"
+     },
+     {
+      "table_name": "jobs",
+      "grantee": "anon",
+      "privs": "DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE"
+     },
+     {
+      "table_name": "jobs",
+      "grantee": "authenticated",
+      "privs": "DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE"
+     },
+     {
+      "table_name": "jobs",
+      "grantee": "service_role",
+      "privs": "DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE"
+     },
+     {
+      "table_name": "notifications",
+      "grantee": "authenticated",
+      "privs": "DELETE,INSERT,REFERENCES,SELECT,TRIGGER,UPDATE"
+     },
+     {
+      "table_name": "notifications",
+      "grantee": "service_role",
+      "privs": "DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE"
+     },
+     {
+      "table_name": "room_reservation_holds",
+      "grantee": "authenticated",
+      "privs": "SELECT"
+     },
+     {
+      "table_name": "rooms",
+      "grantee": "anon",
+      "privs": "DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE"
+     },
+     {
+      "table_name": "rooms",
+      "grantee": "authenticated",
+      "privs": "DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE"
+     },
+     {
+      "table_name": "rooms",
+      "grantee": "service_role",
+      "privs": "DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE"
+     }
+    ]
+   },
+   "column_grants_contracts": {
+    "rowCount": 8,
+    "rows": [
+     {
+      "grantee": "anon",
+      "privilege_type": "INSERT",
+      "cols": "actual_end_date,contract_file_url,contract_number,contract_template_id,created_at,deleted_at,deposit_debt_acknowledged,deposit_debt_mode,deposit_debt_reason,deposit_paid,deposit_remaining,deposit_topup_due_date,discounts,end_billing_date,end_date,expected_move_out_date,id,initial_electricity_reading,initial_water_reading,invoice_template_id,notes,organization_id,parent_contract_id,payment_cycle,public_code,rent_price,room_id,signed_date,start_billing_date,start_date,status,tenant_id,total_deposit,updated_at,user_id"
+     },
+     {
+      "grantee": "anon",
+      "privilege_type": "REFERENCES",
+      "cols": "actual_end_date,contract_file_url,contract_number,contract_template_id,created_at,deleted_at,deposit_debt_acknowledged,deposit_debt_mode,deposit_debt_reason,deposit_paid,deposit_remaining,deposit_topup_due_date,discounts,end_billing_date,end_date,expected_move_out_date,id,initial_electricity_reading,initial_water_reading,invoice_template_id,notes,organization_id,parent_contract_id,payment_cycle,public_code,rent_price,room_id,signed_date,start_billing_date,start_date,status,tenant_id,total_deposit,updated_at,user_id"
+     },
+     {
+      "grantee": "anon",
+      "privilege_type": "SELECT",
+      "cols": "actual_end_date,contract_file_url,contract_number,contract_template_id,created_at,deleted_at,deposit_debt_acknowledged,deposit_debt_mode,deposit_debt_reason,deposit_paid,deposit_remaining,deposit_topup_due_date,discounts,end_billing_date,end_date,expected_move_out_date,id,initial_electricity_reading,initial_water_reading,invoice_template_id,notes,organization_id,parent_contract_id,payment_cycle,public_code,rent_price,room_id,signed_date,start_billing_date,start_date,status,tenant_id,total_deposit,updated_at,user_id"
+     },
+     {
+      "grantee": "anon",
+      "privilege_type": "UPDATE",
+      "cols": "actual_end_date,contract_file_url,contract_number,contract_template_id,created_at,deleted_at,deposit_debt_acknowledged,deposit_debt_mode,deposit_debt_reason,deposit_paid,deposit_remaining,deposit_topup_due_date,discounts,end_billing_date,end_date,expected_move_out_date,id,initial_electricity_reading,initial_water_reading,invoice_template_id,notes,organization_id,parent_contract_id,payment_cycle,public_code,rent_price,room_id,signed_date,start_billing_date,start_date,status,tenant_id,total_deposit,updated_at,user_id"
+     },
+     {
+      "grantee": "authenticated",
+      "privilege_type": "INSERT",
+      "cols": "actual_end_date,contract_file_url,contract_number,contract_template_id,created_at,deleted_at,deposit_debt_acknowledged,deposit_debt_mode,deposit_debt_reason,deposit_paid,deposit_remaining,deposit_topup_due_date,discounts,end_billing_date,end_date,expected_move_out_date,id,initial_electricity_reading,initial_water_reading,invoice_template_id,notes,organization_id,parent_contract_id,payment_cycle,public_code,rent_price,room_id,signed_date,start_billing_date,start_date,status,tenant_id,total_deposit,updated_at,user_id"
+     },
+     {
+      "grantee": "authenticated",
+      "privilege_type": "REFERENCES",
+      "cols": "actual_end_date,contract_file_url,contract_number,contract_template_id,created_at,deleted_at,deposit_debt_acknowledged,deposit_debt_mode,deposit_debt_reason,deposit_paid,deposit_remaining,deposit_topup_due_date,discounts,end_billing_date,end_date,expected_move_out_date,id,initial_electricity_reading,initial_water_reading,invoice_template_id,notes,organization_id,parent_contract_id,payment_cycle,public_code,rent_price,room_id,signed_date,start_billing_date,start_date,status,tenant_id,total_deposit,updated_at,user_id"
+     },
+     {
+      "grantee": "authenticated",
+      "privilege_type": "SELECT",
+      "cols": "actual_end_date,contract_file_url,contract_number,contract_template_id,created_at,deleted_at,deposit_debt_acknowledged,deposit_debt_mode,deposit_debt_reason,deposit_paid,deposit_remaining,deposit_topup_due_date,discounts,end_billing_date,end_date,expected_move_out_date,id,initial_electricity_reading,initial_water_reading,invoice_template_id,notes,organization_id,parent_contract_id,payment_cycle,public_code,rent_price,room_id,signed_date,start_billing_date,start_date,status,tenant_id,total_deposit,updated_at,user_id"
+     },
+     {
+      "grantee": "authenticated",
+      "privilege_type": "UPDATE",
+      "cols": "actual_end_date,contract_file_url,contract_number,contract_template_id,created_at,deleted_at,deposit_debt_acknowledged,deposit_debt_mode,deposit_debt_reason,deposit_paid,deposit_remaining,deposit_topup_due_date,discounts,end_billing_date,end_date,expected_move_out_date,id,initial_electricity_reading,initial_water_reading,invoice_template_id,notes,organization_id,parent_contract_id,payment_cycle,public_code,rent_price,room_id,signed_date,start_billing_date,start_date,status,tenant_id,total_deposit,updated_at,user_id"
+     }
+    ]
+   },
+   "functions_inventory": {
+    "rowCount": 125,
+    "rows": [
+     {
+      "nspname": "public",
+      "proname": "_internal_settlement_account",
+      "args": "p_user_id uuid",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=public",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "src_md5": "99d05616dbcf9d4490d69406090cfe67",
+      "len": 681
+     },
+     {
+      "nspname": "public",
+      "proname": "_termination_apply_extra_charges",
+      "args": "p_invoice_id uuid, p_extra_charges jsonb, p_date date, p_user_id uuid, p_contract_id uuid",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=public",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "src_md5": "e2c1de5beb5d55377346412618cf654c",
+      "len": 2864
+     },
+     {
+      "nspname": "public",
+      "proname": "_termination_ensure_type",
+      "args": "p_user_id uuid, p_type text, p_name text",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=public",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "69d0d276b13304599f5b46a3d8c99c04",
+      "len": 2611
+     },
+     {
+      "nspname": "public",
+      "proname": "_termination_free_billing_month",
+      "args": "p_contract_id uuid, p_start text",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=public",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "src_md5": "58a7636df5e7b2f7022d2069a6fda9c3",
+      "len": 357
+     },
+     {
+      "nspname": "public",
+      "proname": "_termination_offset_account",
+      "args": "p_user_id uuid",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=public",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "src_md5": "563482e1f7f1422cc8017b12f1c69c03",
+      "len": 487
+     },
+     {
+      "nspname": "public",
+      "proname": "_termination_pick_account",
+      "args": "p_user_id uuid, p_building_id uuid",
+      "secdef": true,
+      "vol": "s",
+      "cfg": "search_path=public",
+      "acl": "{=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "src_md5": "4cf4bfe6e1e951ae1e4cec50ea405c7f",
+      "len": 1106
+     },
+     {
+      "nspname": "public",
+      "proname": "apply_contract_transfer",
+      "args": "",
+      "secdef": false,
+      "vol": "v",
+      "cfg": "search_path=public",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "src_md5": "433a0b413cc4505e47a1dbd82f797600",
+      "len": 4100
+     },
+     {
+      "nspname": "app_private",
+      "proname": "apply_customer_credit_fifo_v1",
+      "args": "p_actor uuid, p_contract_id uuid, p_amount numeric, p_invoice_id uuid, p_application_kind text, p_description text, p_idempotency_key text",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "a7023b51ceef79fdbe4fc6303062e136",
+      "len": 9889
+     },
+     {
+      "nspname": "public",
+      "proname": "apply_customer_credit_v1",
+      "args": "p_contract_id uuid, p_amount numeric, p_invoice_id uuid, p_application_kind text, p_description text, p_idempotency_key text",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "886cbbf3b964db3e9335a69683921c65",
+      "len": 170
+     },
+     {
+      "nspname": "public",
+      "proname": "approve_contract_termination_v1",
+      "args": "p_termination_id uuid, p_note text",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "src_md5": "ea77696377513bff08b389aedb30f48c",
+      "len": 7650
+     },
+     {
+      "nspname": "app_private",
+      "proname": "assert_contract_has_no_customer_credit_v1",
+      "args": "p_contract_id uuid, p_organization_id uuid",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "bbc3005b56449d1535740c0dd208217e",
+      "len": 317
+     },
+     {
+      "nspname": "public",
+      "proname": "auto_calculate_termination_financials",
+      "args": "",
+      "secdef": false,
+      "vol": "v",
+      "cfg": "",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "src_md5": "2be263528cf7232ae83379fa8b8a4394",
+      "len": 2289
+     },
+     {
+      "nspname": "public",
+      "proname": "auto_calculate_transfer_outstanding",
+      "args": "",
+      "secdef": false,
+      "vol": "v",
+      "cfg": "",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "src_md5": "7706dc189ce7512a977b3c81e55078fe",
+      "len": 491
+     },
+     {
+      "nspname": "public",
+      "proname": "award_job_bonus",
+      "args": "p_job_id uuid",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=public",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "src_md5": "548576866b6fee6220d7cd53cb89870c",
+      "len": 5900
+     },
+     {
+      "nspname": "app_private",
+      "proname": "begin_contract_termination_write_v1",
+      "args": "p_termination uuid, p_scope text",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, app_private, public",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "79737d5742ba7c8510eff851a40a8fa4",
+      "len": 483
+     },
+     {
+      "nspname": "public",
+      "proname": "cashbook_settlement_report",
+      "args": "p_from date, p_to date",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=public",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "src_md5": "dc810b8bb94237df35b044b9627c1963",
+      "len": 4796
+     },
+     {
+      "nspname": "app_private",
+      "proname": "classify_termination_payment_v1",
+      "args": "",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "a606f4ae09a40a78535df91392835e77",
+      "len": 5531
+     },
+     {
+      "nspname": "app_private",
+      "proname": "contract_customer_credit_balance_v1",
+      "args": "p_contract_id uuid, p_organization_id uuid",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "1bf0983ff4043c73e11f151c0d1ecf44",
+      "len": 1484
+     },
+     {
+      "nspname": "public",
+      "proname": "copilot_available_rooms_v1",
+      "args": "p_organization_id uuid",
+      "secdef": true,
+      "vol": "s",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "src_md5": "2816da5a32cb4e501da2f46df757b7ee",
+      "len": 7215
+     },
+     {
+      "nspname": "public",
+      "proname": "copilot_cashbook_settlement_v1",
+      "args": "p_organization_id uuid, p_from date, p_to date, p_building_ids uuid[]",
+      "secdef": true,
+      "vol": "s",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "src_md5": "048a3c8315c98d80a2ce5dfef05cd2bd",
+      "len": 1177
+     },
+     {
+      "nspname": "public",
+      "proname": "copilot_cashbook_settlement_v2",
+      "args": "p_organization_id uuid, p_from date, p_to date",
+      "secdef": true,
+      "vol": "s",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "src_md5": "bf2693ca904e8857f676e008b506411d",
+      "len": 5192
+     },
+     {
+      "nspname": "public",
+      "proname": "copilot_execute_reservation_deposit_v1",
+      "args": "p_confirmation_nonce text, p_payload jsonb",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public, app_private, extensions",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "src_md5": "01de25f753d35616fa9d5383f51fec93",
+      "len": 7859
+     },
+     {
+      "nspname": "public",
+      "proname": "copilot_execute_reservation_hold_terms_v1",
+      "args": "p_confirmation_nonce text, p_payload jsonb",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public, app_private, extensions",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "src_md5": "e8d386966312c13f275f200990601ff1",
+      "len": 6738
+     },
+     {
+      "nspname": "public",
+      "proname": "copilot_execute_termination_hoan_coc_v1",
+      "args": "p_confirmation_nonce text, p_payload jsonb",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public, app_private, extensions",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "5c37f6863fe455df22326cd6ebcc0dc9",
+      "len": 6508
+     },
+     {
+      "nspname": "public",
+      "proname": "copilot_preview_reservation_deposit_v1",
+      "args": "p_organization_id uuid, p_payload jsonb",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public, app_private, extensions",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "src_md5": "109aae4a1190a821101d85cd5ffa70e6",
+      "len": 4323
+     },
+     {
+      "nspname": "public",
+      "proname": "copilot_preview_reservation_hold_terms_v1",
+      "args": "p_organization_id uuid, p_payload jsonb",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public, app_private, extensions",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "src_md5": "5c1f8d2258fdb557ffc04e582af42637",
+      "len": 3523
+     },
+     {
+      "nspname": "public",
+      "proname": "copilot_preview_termination_hoan_coc_v1",
+      "args": "p_organization_id uuid, p_payload jsonb",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public, app_private, extensions",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "85108e4e40ea4597a7f59e171447eef7",
+      "len": 5006
+     },
+     {
+      "nspname": "public",
+      "proname": "copilot_report_renewals_v1",
+      "args": "p_organization_id uuid, p_tu date, p_den date, p_limit integer",
+      "secdef": true,
+      "vol": "s",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "src_md5": "0796a7a8a7ff99ed7bc28b09dd0f7f95",
+      "len": 4528
+     },
+     {
+      "nspname": "public",
+      "proname": "copilot_report_terminations_v1",
+      "args": "p_organization_id uuid, p_tu date, p_den date, p_limit integer",
+      "secdef": true,
+      "vol": "s",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "src_md5": "5cc35a2f84d914022bbe8ed625be676e",
+      "len": 4903
+     },
+     {
+      "nspname": "public",
+      "proname": "create_contract_v1",
+      "args": "p_room_id uuid, p_customer_ids uuid[], p_signed_date date, p_start_date date, p_end_date date, p_rent_price numeric, p_total_deposit numeric, p_services jsonb, p_first_invoice jsonb, p_idempotency_key text",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "src_md5": "8352f91f7aea53188674f7fbd75d7813",
+      "len": 6288
+     },
+     {
+      "nspname": "public",
+      "proname": "create_contract_v2",
+      "args": "p_payload jsonb, p_idempotency_key text",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "src_md5": "1c16386369410dbddcf3605dcd85346b",
+      "len": 28125
+     },
+     {
+      "nspname": "public",
+      "proname": "create_invoice_refund_obligation_v2",
+      "args": "p_invoice_id uuid, p_amount numeric, p_reason text, p_refund_class text, p_idempotency_key text",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, app_private, public",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "src_md5": "675b4133f5e688f7b1fbef897f81e78c",
+      "len": 1059
+     },
+     {
+      "nspname": "public",
+      "proname": "create_reservation_deposit_v1",
+      "args": "p_room_id uuid, p_amount numeric, p_idempotency_key text",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "src_md5": "cac5ff6dd42792de7b1b24d21e1b3c63",
+      "len": 3722
+     },
+     {
+      "nspname": "public",
+      "proname": "create_termination_refund_voucher_v1",
+      "args": "p_obligation_id uuid, p_account_id uuid, p_force boolean, p_force_reason text",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=public, app_private",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "src_md5": "1a3c4b524f83f58b52b4457464f40639",
+      "len": 6900
+     },
+     {
+      "nspname": "app_private",
+      "proname": "end_contract_termination_write_v1",
+      "args": "p_termination uuid",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, app_private, public",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "021f58135853553c2463d8b005d780df",
+      "len": 233
+     },
+     {
+      "nspname": "app_private",
+      "proname": "enqueue_deferred_customer_credit_v2",
+      "args": "p_org uuid, p_source_kind text, p_source_id uuid, p_customer_id uuid, p_invoice_id uuid, p_amount numeric, p_wrapper_idempotency_key text, p_detail jsonb",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, app_private, public",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "f9eec031ff5cdd26fa7e54b0fd1e1871",
+      "len": 1195
+     },
+     {
+      "nspname": "public",
+      "proname": "estimate_termination_costs",
+      "args": "p_contract_id uuid, p_move_out_date date, p_damage_fee numeric, p_cleaning_fee numeric, p_early_termination_fee numeric",
+      "secdef": false,
+      "vol": "v",
+      "cfg": "",
+      "acl": "{=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "src_md5": "bd49fd8a4b4e524c93b504ed04b45b67",
+      "len": 1479
+     },
+     {
+      "nspname": "public",
+      "proname": "get_customer_credit_balance_v1",
+      "args": "p_contract_id uuid",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "src_md5": "5b962e31260ec31a66cf5d3c36df7172",
+      "len": 2182
+     },
+     {
+      "nspname": "public",
+      "proname": "get_my_available_rooms",
+      "args": "",
+      "secdef": true,
+      "vol": "s",
+      "cfg": "search_path=public",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "src_md5": "d72c881aeb0364ee2d95d6417fb7e080",
+      "len": 6566
+     },
+     {
+      "nspname": "public",
+      "proname": "get_public_available_rooms",
+      "args": "p_token text",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=public",
+      "acl": "{=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "src_md5": "edc42768a090a61e0b06e0bb7acf55fb",
+      "len": 6673
+     },
+     {
+      "nspname": "public",
+      "proname": "get_refund_forfeit_summary",
+      "args": "p_building_ids uuid[]",
+      "secdef": false,
+      "vol": "v",
+      "cfg": "search_path=public",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "src_md5": "d519a774906b97221ba9f33587eaf437",
+      "len": 9837
+     },
+     {
+      "nspname": "public",
+      "proname": "get_reservation_deposit_summary",
+      "args": "p_building_ids uuid[]",
+      "secdef": false,
+      "vol": "s",
+      "cfg": "search_path=public",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "src_md5": "3565d5f1f80807a04dab0117e4e49de5",
+      "len": 1500
+     },
+     {
+      "nspname": "public",
+      "proname": "get_reservation_settlement_summary_v1",
+      "args": "p_building_ids uuid[]",
+      "secdef": true,
+      "vol": "s",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "src_md5": "b946a83eea54b4998ac89a2073a34f3b",
+      "len": 680
+     },
+     {
+      "nspname": "public",
+      "proname": "get_reservation_settlements_v1",
+      "args": "p_building_ids uuid[], p_refund_state text, p_cursor jsonb, p_limit integer, p_source_voucher_id uuid",
+      "secdef": true,
+      "vol": "s",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "src_md5": "972ec3325cb0ef4322341fbf6bfdd471",
+      "len": 1503
+     },
+     {
+      "nspname": "public",
+      "proname": "get_termination_refund_facts_v1",
+      "args": "p_voucher_ids uuid[]",
+      "secdef": true,
+      "vol": "s",
+      "cfg": "search_path=pg_catalog, app_private, public",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "src_md5": "c9b459580c1a219b7adac7caba1a479d",
+      "len": 1711
+     },
+     {
+      "nspname": "app_private",
+      "proname": "guard_canonical_write_operation",
+      "args": "",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, app_private",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "8c32aed702db6705a15dd795c99f39a5",
+      "len": 1168
+     },
+     {
+      "nspname": "public",
+      "proname": "guard_contract_termination_settlement",
+      "args": "",
+      "secdef": false,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "src_md5": "28213b0187f01bc518e48677bea2f30c",
+      "len": 5769
+     },
+     {
+      "nspname": "app_private",
+      "proname": "guard_customer_credit_apply_gate_v1",
+      "args": "",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, app_private, public",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "842b99f5c92b5c79576b7b9d787a9482",
+      "len": 504
+     },
+     {
+      "nspname": "app_private",
+      "proname": "guard_customer_credit_ledger_v1",
+      "args": "",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "8ae5a526b41c9f0ac6fe5601d771f25b",
+      "len": 743
+     },
+     {
+      "nspname": "app_private",
+      "proname": "guard_reservation_deposit_type_v1",
+      "args": "",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "ecf16f1345a761e41198fec274095195",
+      "len": 597
+     },
+     {
+      "nspname": "app_private",
+      "proname": "guard_reservation_settlement_record_v1",
+      "args": "",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "1f243c2feac52d17254913d062d25ae8",
+      "len": 880
+     },
+     {
+      "nspname": "app_private",
+      "proname": "guard_reservation_voucher_v1",
+      "args": "",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "b479e8ae992426f559de72aa0b1a0de6",
+      "len": 3462
+     },
+     {
+      "nspname": "app_private",
+      "proname": "guard_termination_forfeit_item_v1",
+      "args": "",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "b675a86eb7451f6b93346d0a741edab6",
+      "len": 940
+     },
+     {
+      "nspname": "app_private",
+      "proname": "guard_termination_forfeit_voucher_v1",
+      "args": "",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "aa6bf0f4a0d97e8a5b86802d96c41b27",
+      "len": 2392
+     },
+     {
+      "nspname": "app_private",
+      "proname": "guard_termination_non_cash_payment_v1",
+      "args": "",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "e17d14b3509d2e8df149c9fd51746863",
+      "len": 1063
+     },
+     {
+      "nspname": "public",
+      "proname": "has_contract_termination_write_v1",
+      "args": "p_termination uuid",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, app_private, public",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "src_md5": "34405be8c0bed748f2fea6854b93c40f",
+      "len": 231
+     },
+     {
+      "nspname": "app_private",
+      "proname": "lock_org_for_decision_v1",
+      "args": "p_organization_id uuid",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "cd59b90fbbd143dab9cf0b21bf5d685d",
+      "len": 922
+     },
+     {
+      "nspname": "app_private",
+      "proname": "network_center_worker_renew_legacy_impl_v1",
+      "args": "p_worker_id text, p_command_id uuid, p_lease_token uuid, p_lease_seconds integer",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "82c9e27c09154e0e69de6137935af45c",
+      "len": 1199
+     },
+     {
+      "nspname": "public",
+      "proname": "network_center_worker_renew_v1",
+      "args": "p_worker_id text, p_command_id uuid, p_lease_token uuid, p_lease_seconds integer",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "src_md5": "dcb1e2ca2bdc19c71682457753c493d5",
+      "len": 350
+     },
+     {
+      "nspname": "public",
+      "proname": "network_center_worker_renew_v2",
+      "args": "p_credential_digest text, p_command_id uuid, p_lease_token uuid, p_fencing_generation bigint, p_lease_seconds integer",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "src_md5": "2a7a113a0c30b171fcd088c615aad373",
+      "len": 1888
+     },
+     {
+      "nspname": "app_private",
+      "proname": "notify_settle_push_batch_v1",
+      "args": "p_results jsonb",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, app_private, public",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "5dc889c1fae082c9a141d6bf3b1708d6",
+      "len": 2028
+     },
+     {
+      "nspname": "public",
+      "proname": "notify_settle_push_batch_v1",
+      "args": "p_results jsonb",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, app_private, public",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "src_md5": "4e4264cbe4839482db0e5c1217f84eda",
+      "len": 72
+     },
+     {
+      "nspname": "app_private",
+      "proname": "org_timezone_v1",
+      "args": "p_organization_id uuid",
+      "secdef": true,
+      "vol": "s",
+      "cfg": "search_path=pg_catalog, public",
+      "acl": "(default)",
+      "src_md5": "c5aacd2e141ba5addbc4bd866fab6e42",
+      "len": 157
+     },
+     {
+      "nspname": "public",
+      "proname": "org_today_v1",
+      "args": "p_organization_id uuid",
+      "secdef": true,
+      "vol": "s",
+      "cfg": "search_path=pg_catalog, public",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "src_md5": "bf0d7a3c20c7ab3bea0f463ca1f5b138",
+      "len": 927
+     },
+     {
+      "nspname": "public",
+      "proname": "pay_reservation_refund_v1",
+      "args": "p_input jsonb",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "src_md5": "7101a346a5872af8192992a6816186c4",
+      "len": 2985
+     },
+     {
+      "nspname": "app_private",
+      "proname": "post_salary_settlement_tranche_v2",
+      "args": "p_org uuid, p_tranche_id uuid, p_cashbook uuid, p_posted_on date, p_actor_membership uuid",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, app_private, public",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "aa3703be4dee3d95f142cd4277f97d1d",
+      "len": 3469
+     },
+     {
+      "nspname": "public",
+      "proname": "preview_reservation_settlement_v1",
+      "args": "p_voucher_id uuid",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "src_md5": "a1d8dc1778944518f2b935f788304225",
+      "len": 1963
+     },
+     {
+      "nspname": "public",
+      "proname": "preview_termination_refund_v1",
+      "args": "p_termination_id uuid",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=public, app_private",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "src_md5": "6d98f422fbe0dfd078fb859c4f5f4457",
+      "len": 2190
+     },
+     {
+      "nspname": "public",
+      "proname": "recompute_room_reservation",
+      "args": "p_room_id uuid",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=public",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "src_md5": "6d44c873ab6d17a1d398db0b02fcc155",
+      "len": 920
+     },
+     {
+      "nspname": "public",
+      "proname": "record_termination_refund_obligation_v1",
+      "args": "p_termination_id uuid",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=public, app_private",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "55c02df8df78a111ca4c87e2c198ce2d",
+      "len": 1940
+     },
+     {
+      "nspname": "app_private",
+      "proname": "register_termination_forfeit_v1",
+      "args": "",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "e37d788b2ec18f01755d618c69d93ddc",
+      "len": 3531
+     },
+     {
+      "nspname": "public",
+      "proname": "reject_contract_termination_v1",
+      "args": "p_termination_id uuid, p_reason text",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "src_md5": "1952518b8f58df33c0fd062b34e93cdc",
+      "len": 1197
+     },
+     {
+      "nspname": "public",
+      "proname": "renew_contract",
+      "args": "p_contract_id uuid, p_new_end_date date, p_new_rent_price numeric, p_new_deposit numeric, p_notes text",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=public",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "src_md5": "6cbff04302fd40f35821b3237f8c8027",
+      "len": 647
+     },
+     {
+      "nspname": "public",
+      "proname": "renew_contract_impl",
+      "args": "p_contract_id uuid, p_new_end_date date, p_new_rent_price numeric, p_new_deposit numeric, p_notes text",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=public",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "src_md5": "2bd721b3a379bc66900405e964ced096",
+      "len": 2184
+     },
+     {
+      "nspname": "app_private",
+      "proname": "require_termination_forfeit_authorization_v1",
+      "args": "p_voucher_id uuid, p_require_approved boolean, p_allow_frozen_cancelled boolean",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "dd006b786b328573ef989b60ab8f3d6c",
+      "len": 6608
+     },
+     {
+      "nspname": "app_private",
+      "proname": "require_termination_forfeit_payment_v1",
+      "args": "p_revenue_voucher_id uuid",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "6f87f48c089a66fbd1aa9fe2d8622f09",
+      "len": 1810
+     },
+     {
+      "nspname": "app_private",
+      "proname": "reservation_authorize_reversal_v1",
+      "args": "p_voucher uuid, p_cashbook uuid",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "c93d5d6489338167c1bf8a48f4b51308",
+      "len": 941
+     },
+     {
+      "nspname": "app_private",
+      "proname": "reservation_bind_refund_evidence_v1",
+      "args": "p_settlement uuid, p_voucher uuid",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "6fa3618441f8fb3cf308638f7adaac8f",
+      "len": 2420
+     },
+     {
+      "nspname": "app_private",
+      "proname": "reservation_create_leg_v1",
+      "args": "p_settlement uuid, p_kind text, p_voucher uuid, p_account uuid, p_day date, p_amount numeric",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "eac708d52c21cc9125c04f3845f92311",
+      "len": 3874
+     },
+     {
+      "nspname": "app_private",
+      "proname": "reservation_deposit_is_settled_v1",
+      "args": "p_voucher_id uuid",
+      "secdef": true,
+      "vol": "s",
+      "cfg": "search_path=pg_catalog, public",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "5e6a30666197a68bc858c4f1dae59398",
+      "len": 108
+     },
+     {
+      "nspname": "app_private",
+      "proname": "reservation_internal_account_v1",
+      "args": "p_org uuid",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "e28fe5201f9c17866dceda5b43d55c8d",
+      "len": 476
+     },
+     {
+      "nspname": "app_private",
+      "proname": "reservation_pay_refund_v1",
+      "args": "p_settlement uuid, p_account uuid, p_day date",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "995a0f0e8bce8645f70ee7eddcd09fe4",
+      "len": 1546
+     },
+     {
+      "nspname": "app_private",
+      "proname": "reservation_refund_attachments_v1",
+      "args": "p_input jsonb, p_org uuid",
+      "secdef": false,
+      "vol": "s",
+      "cfg": "search_path=pg_catalog, app_private",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "bf88c47f0bb95c2003b541f6079e2db0",
+      "len": 2008
+     },
+     {
+      "nspname": "app_private",
+      "proname": "reservation_room_blockers_v1",
+      "args": "p_room uuid, p_exclude_voucher uuid",
+      "secdef": true,
+      "vol": "s",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "9790b052a0c2334b4d2b53b57e327428",
+      "len": 1296
+     },
+     {
+      "nspname": "app_private",
+      "proname": "reservation_settlement_assert_v1",
+      "args": "p_id uuid",
+      "secdef": true,
+      "vol": "s",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "dc5920433ede46e7c95589ff08434383",
+      "len": 1531
+     },
+     {
+      "nspname": "app_private",
+      "proname": "reservation_settlement_authorize_v1",
+      "args": "p_voucher uuid",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "2e89c9e4d68253d12fa9ccca8961d6a4",
+      "len": 835
+     },
+     {
+      "nspname": "app_private",
+      "proname": "reservation_settlement_basis_v1",
+      "args": "p_voucher uuid",
+      "secdef": true,
+      "vol": "s",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "b3d1c2a6663a25aef1e7286ce836cac7",
+      "len": 2114
+     },
+     {
+      "nspname": "app_private",
+      "proname": "reservation_settlement_can_read_v1",
+      "args": "p_org uuid, p_building uuid",
+      "secdef": true,
+      "vol": "s",
+      "cfg": "search_path=pg_catalog, public",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "src_md5": "3d2f91b5bf6802cfd164fe356a5c02f9",
+      "len": 433
+     },
+     {
+      "nspname": "app_private",
+      "proname": "reservation_settlement_json_v1",
+      "args": "p_settlement uuid",
+      "secdef": true,
+      "vol": "s",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "0a46493b2104419970fa58516d745e26",
+      "len": 1377
+     },
+     {
+      "nspname": "app_private",
+      "proname": "reservation_settlement_refunded_v1",
+      "args": "p_settlement uuid",
+      "secdef": true,
+      "vol": "s",
+      "cfg": "search_path=pg_catalog, public",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "d038787cbc69b3cf45217823effb7805",
+      "len": 408
+     },
+     {
+      "nspname": "app_private",
+      "proname": "reserve_invoice_refund_obligation_v2",
+      "args": "p_org uuid, p_invoice_id uuid, p_building_id uuid, p_amount numeric, p_refund_class text, p_system_source text, p_actor_user uuid, p_actor_membership uuid, p_idempotency_key text",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, app_private, public",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "8bf8197aa25a4e11b6b6824697764c08",
+      "len": 5057
+     },
+     {
+      "nspname": "app_private",
+      "proname": "reverse_customer_credit_application_lifo_v1",
+      "args": "p_actor uuid, p_application_id uuid, p_reason text, p_idempotency_key text",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "3a58f8cd30bdb505a9a228039266e768",
+      "len": 8250
+     },
+     {
+      "nspname": "public",
+      "proname": "reverse_customer_credit_application_v1",
+      "args": "p_application_id uuid, p_reason text, p_idempotency_key text",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "6c9a1b1064c5958f07a804fde021b908",
+      "len": 134
+     },
+     {
+      "nspname": "app_private",
+      "proname": "reverse_invoice_customer_credit_v1",
+      "args": "p_actor uuid, p_invoice_id uuid, p_reason text, p_idempotency_key text",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "2eb8a6a45ea03d2acd1b76f69826281c",
+      "len": 951
+     },
+     {
+      "nspname": "app_private",
+      "proname": "reverse_termination_move_out_pair_v2",
+      "args": "p_org uuid, p_authorization_id uuid, p_reason text",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, app_private, public",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "8f35562f789b5f60367c7130acd56f45",
+      "len": 1135
+     },
+     {
+      "nspname": "public",
+      "proname": "room_has_holding_deposit",
+      "args": "p_room_id uuid",
+      "secdef": true,
+      "vol": "s",
+      "cfg": "search_path=public",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "src_md5": "969b762fdcb47c536d26874b1b193183",
+      "len": 627
+     },
+     {
+      "nspname": "public",
+      "proname": "set_forfeit_voucher_kqkd_v1",
+      "args": "p_voucher uuid, p_kqkd boolean, p_reason text",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, app_private, public",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "src_md5": "ff39f829dddc19f10fb58450d6eba2b0",
+      "len": 6617
+     },
+     {
+      "nspname": "public",
+      "proname": "set_reservation_hold_deadline_v1",
+      "args": "p_income_expense_id uuid, p_hold_until date",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "src_md5": "c7043a1c61bfd26ad0e37fb4cb2c8ab1",
+      "len": 320
+     },
+     {
+      "nspname": "public",
+      "proname": "set_reservation_hold_terms_v1",
+      "args": "p_income_expense_id uuid, p_hold_until date, p_topup_due_date date, p_deposit_target numeric",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "src_md5": "6378d889a73c36b1d422f0002ce3fa84",
+      "len": 3292
+     },
+     {
+      "nspname": "public",
+      "proname": "set_termination_forfeit_status_v1",
+      "args": "p_voucher_id uuid, p_status text",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "src_md5": "e0da2b670f37574bcde6aa443dd97868",
+      "len": 4858
+     },
+     {
+      "nspname": "public",
+      "proname": "settle_previous_debt_sources",
+      "args": "",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=public",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "src_md5": "a676b50b7e97126f036f809ab4f86862",
+      "len": 2613
+     },
+     {
+      "nspname": "public",
+      "proname": "settle_reservation_deposit_v1",
+      "args": "p_input jsonb",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "src_md5": "14935bc556d03a404df71ab6b1aea3bf",
+      "len": 6163
+     },
+     {
+      "nspname": "app_private",
+      "proname": "supersede_salary_settlement_bundle_v2",
+      "args": "p_org uuid, p_bundle_id uuid, p_new_bundle_id uuid, p_reason text",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, app_private, public",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "4fd0c05329092bc199daa41206b79706",
+      "len": 1187
+     },
+     {
+      "nspname": "public",
+      "proname": "terminate_contract_forfeit",
+      "args": "p_contract_id uuid, p_forfeit_date date, p_extra_charges jsonb",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "src_md5": "05d010410fcc7737036b067766433bda",
+      "len": 1697
+     },
+     {
+      "nspname": "public",
+      "proname": "terminate_contract_forfeit_impl",
+      "args": "p_contract_id uuid, p_forfeit_date date, p_extra_charges jsonb",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=public",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "src_md5": "1f15ee1cd78d3a2981eeb3911228a1ca",
+      "len": 14024
+     },
+     {
+      "nspname": "public",
+      "proname": "terminate_contract_forfeit_with_credit_v1",
+      "args": "p_contract_id uuid, p_forfeit_date date, p_extra_charges jsonb, p_idempotency_key text",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "src_md5": "69428aa18faa916f997c796a24419d1e",
+      "len": 4107
+     },
+     {
+      "nspname": "public",
+      "proname": "terminate_contract_move_out",
+      "args": "p_contract_id uuid, p_move_out_date date, p_deposit_refund numeric, p_penalty_fee numeric, p_excess_rent numeric, p_outstanding_debt numeric, p_notes text, p_extra_charges jsonb, p_shortfall_mode text, p_receipt_account_id uuid, p_refund_items jsonb",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "src_md5": "55366c922348b55a177db9823aecf93c",
+      "len": 6065
+     },
+     {
+      "nspname": "public",
+      "proname": "terminate_contract_move_out_impl",
+      "args": "p_contract_id uuid, p_move_out_date date, p_deposit_refund numeric, p_penalty_fee numeric, p_excess_rent numeric, p_outstanding_debt numeric, p_notes text, p_extra_charges jsonb, p_shortfall_mode text, p_receipt_account_id uuid, p_refund_items jsonb",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=public",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "src_md5": "9477e5fa91a4906e2f159fe373c00bda",
+      "len": 20086
+     },
+     {
+      "nspname": "public",
+      "proname": "terminate_contract_move_out_with_credit_v1",
+      "args": "p_contract_id uuid, p_move_out_date date, p_deposit_refund numeric, p_penalty_fee numeric, p_excess_rent numeric, p_outstanding_debt numeric, p_notes text, p_extra_charges jsonb, p_shortfall_mode text, p_receipt_account_id uuid, p_idempotency_key text, p_refund_items jsonb",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "src_md5": "dfffdc97765e2ce18223f90c81a79ffa",
+      "len": 4836
+     },
+     {
+      "nspname": "app_private",
+      "proname": "termination_refund_facts_v1",
+      "args": "p_voucher_id uuid",
+      "secdef": true,
+      "vol": "s",
+      "cfg": "search_path=pg_catalog, app_private, public",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "96c94c92c725ce4c0b8ec36fa006cc83",
+      "len": 3535
+     },
+     {
+      "nspname": "app_private",
+      "proname": "termination_refund_name_v1",
+      "args": "p_contract_id uuid, p_end_date date",
+      "secdef": true,
+      "vol": "s",
+      "cfg": "search_path=pg_catalog, app_private, public",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "4cc1a5c009b6ca0152a9694c43c214bc",
+      "len": 446
+     },
+     {
+      "nspname": "public",
+      "proname": "transfer_contract",
+      "args": "p_contract_id uuid, p_new_customer_id uuid, p_new_rent_price numeric, p_new_deposit numeric, p_transfer_date date, p_notes text",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=public",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "src_md5": "c9b15b89aa8624cc6c1bd85efe4d26b1",
+      "len": 670
+     },
+     {
+      "nspname": "public",
+      "proname": "transfer_contract_impl",
+      "args": "p_contract_id uuid, p_new_customer_id uuid, p_new_rent_price numeric, p_new_deposit numeric, p_transfer_date date, p_notes text",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=public",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "src_md5": "0b9f75c2bfc81dbd6599d30405e5db9c",
+      "len": 3740
+     },
+     {
+      "nspname": "public",
+      "proname": "transfer_room",
+      "args": "p_contract_id uuid, p_new_room_id uuid, p_new_rent_price numeric, p_transfer_date date, p_notes text",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=public",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "src_md5": "90d6b6cbe3d7525c7e606045d25e93c2",
+      "len": 6132
+     },
+     {
+      "nspname": "app_private",
+      "proname": "transition_invoice_refund_reservation_v2",
+      "args": "p_org uuid, p_reservation_id uuid, p_target_state text, p_posting_id uuid, p_expected_state_version bigint, p_reason text",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, app_private, public",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "84df4524d97c2551021cd788878b53e8",
+      "len": 2094
+     },
+     {
+      "nspname": "app_private",
+      "proname": "transition_profit_payout_reservation_v2",
+      "args": "p_org uuid, p_reservation_id uuid, p_target_state text, p_posting_id uuid, p_expected_state_version bigint, p_reason text",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, app_private, public",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "3d7b5dc60d437f4e53ce84423974750b",
+      "len": 2017
+     },
+     {
+      "nspname": "app_private",
+      "proname": "transition_salary_settlement_bundle_v2",
+      "args": "p_org uuid, p_bundle_id uuid, p_decision text, p_reason text",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, app_private, public",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "164e9b99ad3d6959c32ba8414ef4063c",
+      "len": 2436
+     },
+     {
+      "nspname": "app_private",
+      "proname": "transition_termination_forfeit_pair_v2",
+      "args": "p_org uuid, p_revenue_voucher_id uuid, p_decision text, p_reason text",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, app_private, public",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "61591f83e02ed5dd2419a935d02bdabf",
+      "len": 1788
+     },
+     {
+      "nspname": "app_private",
+      "proname": "transition_termination_move_out_pair_v2",
+      "args": "p_org uuid, p_authorization_id uuid, p_decision text, p_reason text",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, app_private, public",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "1013e757331cc608856d69a7c7b52db1",
+      "len": 2364
+     },
+     {
+      "nspname": "public",
+      "proname": "trg_forfeit_settle_on_approve",
+      "args": "",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public, app_private",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "650b394763e64fcc4193e68904cc6412",
+      "len": 8556
+     },
+     {
+      "nspname": "public",
+      "proname": "trg_room_status_reconcile",
+      "args": "",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=\"\"",
+      "acl": "{postgres=X/postgres}",
+      "src_md5": "a684104a17c7d7334750d9210d3ec572",
+      "len": 297
+     },
+     {
+      "nspname": "public",
+      "proname": "update_contract_on_termination_approved",
+      "args": "",
+      "secdef": false,
+      "vol": "v",
+      "cfg": "",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "src_md5": "11a78d11938a9dee1f7ac7d6d2c002fd",
+      "len": 458
+     },
+     {
+      "nspname": "public",
+      "proname": "update_room_status_on_contract_change",
+      "args": "",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=pg_catalog, public",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "src_md5": "e8a1164f00e0838c201aeb58916ccdce",
+      "len": 2050
+     },
+     {
+      "nspname": "public",
+      "proname": "v5_tick_attendance",
+      "args": "p_user uuid, p_date date, p_source text, p_ref uuid, p_note text",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=public",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "src_md5": "44079443314a8b315f16c20fc05c0d7c",
+      "len": 3707
+     },
+     {
+      "nspname": "public",
+      "proname": "v5_tick_from_job",
+      "args": "p_job_id uuid",
+      "secdef": true,
+      "vol": "v",
+      "cfg": "search_path=public",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "src_md5": "b15ee632fb6ab5e9c1b948a21265ff33",
+      "len": 756
+     }
+    ]
+   },
+   "cron_jobs": {
+    "rowCount": 6,
+    "rows": [
+     {
+      "jobid": "27",
+      "jobname": "don_log_cron_v1",
+      "schedule": "23 19 * * *",
+      "active": true,
+      "database": "postgres",
+      "referenced_objects": "cron.job_run_details",
+      "cmd_md5": "43a8b47dbef9c249951587c0c7404db6"
+     },
+     {
+      "jobid": "9",
+      "jobname": "finance_month_snapshot_daily_v1",
+      "schedule": "55 16 * * *",
+      "active": true,
+      "database": "postgres",
+      "referenced_objects": "app_private.run_finance_month_snapshot_job_v1",
+      "cmd_md5": "af661ce64787fda27fbf7813a9bd5957"
+     },
+     {
+      "jobid": "19",
+      "jobname": "network_center_watchdog_liveness_v1",
+      "schedule": "*/2 * * * *",
+      "active": true,
+      "database": "postgres",
+      "referenced_objects": "public.network_center_watchdog_liveness_v1",
+      "cmd_md5": "99d2c204a674303d31e518293951d8b4"
+     },
+     {
+      "jobid": "20",
+      "jobname": "network_center_watchdog_maintenance_v1",
+      "schedule": "17 * * * *",
+      "active": true,
+      "database": "postgres",
+      "referenced_objects": "public.network_center_watchdog_maintenance_v1",
+      "cmd_md5": "1caf02f8157aaf52803d6aad314ba74b"
+     },
+     {
+      "jobid": "59",
+      "jobname": "pra_prune_public_room_events_v1",
+      "schedule": "41 3 * * *",
+      "active": true,
+      "database": "postgres",
+      "referenced_objects": "app_private.pra_prune_public_room_events_v1",
+      "cmd_md5": "9e0ee158903233a8647fc44a78316a60"
+     },
+     {
+      "jobid": "1",
+      "jobname": "recurring_vouchers_daily",
+      "schedule": "0 18 * * *",
+      "active": true,
+      "database": "postgres",
+      "referenced_objects": "public.run_recurring_vouchers_job",
+      "cmd_md5": "57b95543ad52ee1276ec96b98a39af6d"
+     }
+    ]
+   },
+   "cron_last_runs": {
+    "rowCount": 6,
+    "rows": [
+     {
+      "jobname": "don_log_cron_v1",
+      "status": "succeeded",
+      "start_time": "2026-09-26T19:23:00.115Z",
+      "end_time": "2026-09-26T19:23:00.408Z",
+      "msg": "DELETE 1036"
+     },
+     {
+      "jobname": "finance_month_snapshot_daily_v1",
+      "status": "succeeded",
+      "start_time": "2026-09-26T16:55:00.026Z",
+      "end_time": "2026-09-26T16:55:00.515Z",
+      "msg": "1 row"
+     },
+     {
+      "jobname": "network_center_watchdog_liveness_v1",
+      "status": "succeeded",
+      "start_time": "2026-09-27T12:32:00.024Z",
+      "end_time": "2026-09-27T12:32:00.075Z",
+      "msg": "1 row"
+     },
+     {
+      "jobname": "network_center_watchdog_maintenance_v1",
+      "status": "succeeded",
+      "start_time": "2026-09-27T12:17:00.044Z",
+      "end_time": "2026-09-27T12:17:00.769Z",
+      "msg": "1 row"
+     },
+     {
+      "jobname": "pra_prune_public_room_events_v1",
+      "status": "succeeded",
+      "start_time": "2026-09-27T03:41:00.033Z",
+      "end_time": "2026-09-27T03:41:00.307Z",
+      "msg": "1 row"
+     },
+     {
+      "jobname": "recurring_vouchers_daily",
+      "status": "succeeded",
+      "start_time": "2026-09-26T18:00:00.056Z",
+      "end_time": "2026-09-26T18:00:00.936Z",
+      "msg": "1 row"
+     }
+    ]
+   },
+   "publication": {
+    "rowCount": 34,
+    "rows": [
+     {
+      "pubname": "supabase_realtime",
+      "schemaname": "public",
+      "tablename": "accounts"
+     },
+     {
+      "pubname": "supabase_realtime",
+      "schemaname": "public",
+      "tablename": "building_fee_accounts"
+     },
+     {
+      "pubname": "supabase_realtime",
+      "schemaname": "public",
+      "tablename": "building_utility_accounts"
+     },
+     {
+      "pubname": "supabase_realtime",
+      "schemaname": "public",
+      "tablename": "buildings"
+     },
+     {
+      "pubname": "supabase_realtime",
+      "schemaname": "public",
+      "tablename": "cash_handovers"
+     },
+     {
+      "pubname": "supabase_realtime",
+      "schemaname": "public",
+      "tablename": "contract_terminations"
+     },
+     {
+      "pubname": "supabase_realtime",
+      "schemaname": "public",
+      "tablename": "contract_transfers"
+     },
+     {
+      "pubname": "supabase_realtime",
+      "schemaname": "public",
+      "tablename": "contracts"
+     },
+     {
+      "pubname": "supabase_realtime",
+      "schemaname": "public",
+      "tablename": "customers"
+     },
+     {
+      "pubname": "supabase_realtime",
+      "schemaname": "public",
+      "tablename": "income_expense_items"
+     },
+     {
+      "pubname": "supabase_realtime",
+      "schemaname": "public",
+      "tablename": "income_expense_supplements"
+     },
+     {
+      "pubname": "supabase_realtime",
+      "schemaname": "public",
+      "tablename": "income_expenses"
+     },
+     {
+      "pubname": "supabase_realtime",
+      "schemaname": "public",
+      "tablename": "invoices"
+     },
+     {
+      "pubname": "supabase_realtime",
+      "schemaname": "public",
+      "tablename": "jobs"
+     },
+     {
+      "pubname": "supabase_realtime",
+      "schemaname": "public",
+      "tablename": "network_command_events"
+     },
+     {
+      "pubname": "supabase_realtime",
+      "schemaname": "public",
+      "tablename": "network_device_current"
+     },
+     {
+      "pubname": "supabase_realtime",
+      "schemaname": "public",
+      "tablename": "network_incidents"
+     },
+     {
+      "pubname": "supabase_realtime",
+      "schemaname": "public",
+      "tablename": "network_interface_current"
+     },
+     {
+      "pubname": "supabase_realtime",
+      "schemaname": "public",
+      "tablename": "network_worker_building_status"
+     },
+     {
+      "pubname": "supabase_realtime",
+      "schemaname": "public",
+      "tablename": "notifications"
+     },
+     {
+      "pubname": "supabase_realtime",
+      "schemaname": "public",
+      "tablename": "payments"
+     },
+     {
+      "pubname": "supabase_realtime",
+      "schemaname": "public",
+      "tablename": "reservation_deposit_settlements"
+     },
+     {
+      "pubname": "supabase_realtime",
+      "schemaname": "public",
+      "tablename": "rooms"
+     },
+     {
+      "pubname": "supabase_realtime",
+      "schemaname": "public",
+      "tablename": "zalo_accounts"
+     },
+     {
+      "pubname": "supabase_realtime",
+      "schemaname": "public",
+      "tablename": "zalo_conversations"
+     },
+     {
+      "pubname": "supabase_realtime",
+      "schemaname": "public",
+      "tablename": "zalo_labels"
+     },
+     {
+      "pubname": "supabase_realtime",
+      "schemaname": "public",
+      "tablename": "zalo_messages"
+     },
+     {
+      "pubname": "supabase_realtime_messages_publication",
+      "schemaname": "realtime",
+      "tablename": "messages_2026_09_24"
+     },
+     {
+      "pubname": "supabase_realtime_messages_publication",
+      "schemaname": "realtime",
+      "tablename": "messages_2026_09_25"
+     },
+     {
+      "pubname": "supabase_realtime_messages_publication",
+      "schemaname": "realtime",
+      "tablename": "messages_2026_09_26"
+     },
+     {
+      "pubname": "supabase_realtime_messages_publication",
+      "schemaname": "realtime",
+      "tablename": "messages_2026_09_27"
+     },
+     {
+      "pubname": "supabase_realtime_messages_publication",
+      "schemaname": "realtime",
+      "tablename": "messages_2026_09_28"
+     },
+     {
+      "pubname": "supabase_realtime_messages_publication",
+      "schemaname": "realtime",
+      "tablename": "messages_2026_09_29"
+     },
+     {
+      "pubname": "supabase_realtime_messages_publication",
+      "schemaname": "realtime",
+      "tablename": "messages_2026_09_30"
+     }
+    ]
+   },
+   "flag_tables": {
+    "rowCount": 8,
+    "rows": [
+     {
+      "table_schema": "app_private",
+      "table_name": "network_aruba_router_state"
+     },
+     {
+      "table_schema": "app_private",
+      "table_name": "server_feature_flag_canary_orgs"
+     },
+     {
+      "table_schema": "app_private",
+      "table_name": "server_feature_flag_events"
+     },
+     {
+      "table_schema": "app_private",
+      "table_name": "server_feature_flag_operations"
+     },
+     {
+      "table_schema": "app_private",
+      "table_name": "server_feature_flags"
+     },
+     {
+      "table_schema": "app_private",
+      "table_name": "spend_policy_switches"
+     },
+     {
+      "table_schema": "public",
+      "table_name": "copilot_feature_flag_audit"
+     },
+     {
+      "table_schema": "public",
+      "table_name": "copilot_feature_flags"
+     }
+    ]
+   }
+  }
+ },
+ "policy_permissive": {
+  "at": "2026-09-27T12:35:40.599Z",
+  "results": {
+   "policy_permissive": {
+    "rowCount": 39,
+    "rows": [
+     {
+      "tablename": "contract_terminations",
+      "policyname": "contract_terminations_delete_rbac",
+      "permissive": "PERMISSIVE",
+      "cmd": "DELETE"
+     },
+     {
+      "tablename": "contract_terminations",
+      "policyname": "contract_terminations_hide_demo_admin",
+      "permissive": "RESTRICTIVE",
+      "cmd": "SELECT"
+     },
+     {
+      "tablename": "contract_terminations",
+      "policyname": "contract_terminations_hide_sandbox_admin",
+      "permissive": "RESTRICTIVE",
+      "cmd": "SELECT"
+     },
+     {
+      "tablename": "contract_terminations",
+      "policyname": "contract_terminations_insert_rbac",
+      "permissive": "PERMISSIVE",
+      "cmd": "INSERT"
+     },
+     {
+      "tablename": "contract_terminations",
+      "policyname": "contract_terminations_org_boundary",
+      "permissive": "RESTRICTIVE",
+      "cmd": "ALL"
+     },
+     {
+      "tablename": "contract_terminations",
+      "policyname": "contract_terminations_select_rbac",
+      "permissive": "PERMISSIVE",
+      "cmd": "SELECT"
+     },
+     {
+      "tablename": "contract_terminations",
+      "policyname": "contract_terminations_super_admin_all",
+      "permissive": "PERMISSIVE",
+      "cmd": "ALL"
+     },
+     {
+      "tablename": "contract_terminations",
+      "policyname": "contract_terminations_update_rbac",
+      "permissive": "PERMISSIVE",
+      "cmd": "UPDATE"
+     },
+     {
+      "tablename": "contracts",
+      "policyname": "contracts_delete_rbac",
+      "permissive": "PERMISSIVE",
+      "cmd": "DELETE"
+     },
+     {
+      "tablename": "contracts",
+      "policyname": "contracts_hide_demo_admin",
+      "permissive": "RESTRICTIVE",
+      "cmd": "SELECT"
+     },
+     {
+      "tablename": "contracts",
+      "policyname": "contracts_hide_sandbox_admin",
+      "permissive": "RESTRICTIVE",
+      "cmd": "SELECT"
+     },
+     {
+      "tablename": "contracts",
+      "policyname": "contracts_insert_rbac",
+      "permissive": "PERMISSIVE",
+      "cmd": "INSERT"
+     },
+     {
+      "tablename": "contracts",
+      "policyname": "contracts_org_boundary",
+      "permissive": "RESTRICTIVE",
+      "cmd": "ALL"
+     },
+     {
+      "tablename": "contracts",
+      "policyname": "contracts_select_rbac",
+      "permissive": "PERMISSIVE",
+      "cmd": "SELECT"
+     },
+     {
+      "tablename": "contracts",
+      "policyname": "contracts_super_admin_all",
+      "permissive": "PERMISSIVE",
+      "cmd": "ALL"
+     },
+     {
+      "tablename": "contracts",
+      "policyname": "contracts_update_rbac",
+      "permissive": "PERMISSIVE",
+      "cmd": "UPDATE"
+     },
+     {
+      "tablename": "contracts",
+      "policyname": "ie_canonical_writer_lock",
+      "permissive": "PERMISSIVE",
+      "cmd": "UPDATE"
+     },
+     {
+      "tablename": "contracts",
+      "policyname": "ie_canonical_writer_read",
+      "permissive": "PERMISSIVE",
+      "cmd": "SELECT"
+     },
+     {
+      "tablename": "jobs",
+      "policyname": "jobs_delete_rbac",
+      "permissive": "PERMISSIVE",
+      "cmd": "DELETE"
+     },
+     {
+      "tablename": "jobs",
+      "policyname": "jobs_hide_demo_admin",
+      "permissive": "RESTRICTIVE",
+      "cmd": "SELECT"
+     },
+     {
+      "tablename": "jobs",
+      "policyname": "jobs_hide_sandbox_admin",
+      "permissive": "RESTRICTIVE",
+      "cmd": "SELECT"
+     },
+     {
+      "tablename": "jobs",
+      "policyname": "jobs_insert_rbac",
+      "permissive": "PERMISSIVE",
+      "cmd": "INSERT"
+     },
+     {
+      "tablename": "jobs",
+      "policyname": "jobs_org_boundary",
+      "permissive": "RESTRICTIVE",
+      "cmd": "ALL"
+     },
+     {
+      "tablename": "jobs",
+      "policyname": "jobs_select_rbac",
+      "permissive": "PERMISSIVE",
+      "cmd": "SELECT"
+     },
+     {
+      "tablename": "jobs",
+      "policyname": "jobs_super_admin_all",
+      "permissive": "PERMISSIVE",
+      "cmd": "ALL"
+     },
+     {
+      "tablename": "jobs",
+      "policyname": "jobs_update_rbac",
+      "permissive": "PERMISSIVE",
+      "cmd": "UPDATE"
+     },
+     {
+      "tablename": "room_reservation_holds",
+      "policyname": "room_holds_select_super",
+      "permissive": "PERMISSIVE",
+      "cmd": "SELECT"
+     },
+     {
+      "tablename": "room_reservation_holds",
+      "policyname": "room_reservation_holds_hide_sandbox_admin",
+      "permissive": "RESTRICTIVE",
+      "cmd": "SELECT"
+     },
+     {
+      "tablename": "room_reservation_holds",
+      "policyname": "room_reservation_holds_org_boundary",
+      "permissive": "RESTRICTIVE",
+      "cmd": "ALL"
+     },
+     {
+      "tablename": "rooms",
+      "policyname": "ie_canonical_writer_lock",
+      "permissive": "PERMISSIVE",
+      "cmd": "UPDATE"
+     },
+     {
+      "tablename": "rooms",
+      "policyname": "ie_canonical_writer_read",
+      "permissive": "PERMISSIVE",
+      "cmd": "SELECT"
+     },
+     {
+      "tablename": "rooms",
+      "policyname": "rooms_delete_rbac",
+      "permissive": "PERMISSIVE",
+      "cmd": "DELETE"
+     },
+     {
+      "tablename": "rooms",
+      "policyname": "rooms_hide_demo_admin",
+      "permissive": "RESTRICTIVE",
+      "cmd": "SELECT"
+     },
+     {
+      "tablename": "rooms",
+      "policyname": "rooms_hide_sandbox_admin",
+      "permissive": "RESTRICTIVE",
+      "cmd": "SELECT"
+     },
+     {
+      "tablename": "rooms",
+      "policyname": "rooms_insert_rbac",
+      "permissive": "PERMISSIVE",
+      "cmd": "INSERT"
+     },
+     {
+      "tablename": "rooms",
+      "policyname": "rooms_org_boundary",
+      "permissive": "RESTRICTIVE",
+      "cmd": "ALL"
+     },
+     {
+      "tablename": "rooms",
+      "policyname": "rooms_select_rbac",
+      "permissive": "PERMISSIVE",
+      "cmd": "SELECT"
+     },
+     {
+      "tablename": "rooms",
+      "policyname": "rooms_super_admin_all",
+      "permissive": "PERMISSIVE",
+      "cmd": "ALL"
+     },
+     {
+      "tablename": "rooms",
+      "policyname": "rooms_update_rbac",
+      "permissive": "PERMISSIVE",
+      "cmd": "UPDATE"
+     }
+    ]
+   }
+  }
+ },
+ "aggregates": {
+  "at": "2026-09-27T12:38:28.025Z",
+  "results": {
+   "orgs": {
+    "rowCount": 2,
+    "rows": [
+     {
+      "id": "dddd0000-0000-4000-8000-000000000001",
+      "org_label": "DEMO",
+      "status": "ACTIVE"
+     },
+     {
+      "id": "aaaa0000-0000-4000-8000-000000000001",
+      "org_label": "THAT",
+      "status": "ACTIVE"
+     }
+    ]
+   },
+   "contracts_by_status": {
+    "rowCount": 4,
+    "rows": [
+     {
+      "org": "DEMO",
+      "status": "ACTIVE",
+      "count": "16"
+     },
+     {
+      "org": "DEMO",
+      "status": "TERMINATED",
+      "count": "4"
+     },
+     {
+      "org": "THAT",
+      "status": "ACTIVE",
+      "count": "282"
+     },
+     {
+      "org": "THAT",
+      "status": "TERMINATED",
+      "count": "133"
+     }
+    ]
+   },
+   "notice_dates_active": {
+    "rowCount": 2,
+    "rows": [
+     {
+      "org": "DEMO",
+      "with_expected": "0",
+      "expected_past": "0",
+      "expected_today": "0",
+      "expected_future": "0",
+      "end_date_past_still_active": "3",
+      "start_in_future": "0",
+      "billing_start_differs": "16",
+      "active_total": "16"
+     },
+     {
+      "org": "THAT",
+      "with_expected": "1",
+      "expected_past": "0",
+      "expected_today": "0",
+      "expected_future": "1",
+      "end_date_past_still_active": "1",
+      "start_in_future": "0",
+      "billing_start_differs": "171",
+      "active_total": "282"
+     }
+    ]
+   },
+   "rooms_multi_active": {
+    "rowCount": 1,
+    "rows": [
+     {
+      "rooms_with_2plus_active": "0"
+     }
+    ]
+   },
+   "terminated_without_actual_end": {
+    "rowCount": 2,
+    "rows": [
+     {
+      "org": "DEMO",
+      "status": "TERMINATED",
+      "no_actual_end": "0",
+      "total": "4"
+     },
+     {
+      "org": "THAT",
+      "status": "TERMINATED",
+      "no_actual_end": "0",
+      "total": "133"
+     }
+    ]
+   },
+   "holds_by_status": {
+    "rowCount": 2,
+    "rows": [
+     {
+      "org": "DEMO",
+      "status": "EXPIRED",
+      "total": "2",
+      "live_now": "0",
+      "consumed": "0",
+      "min_amount": "1500000.00",
+      "amount_eq_1": "0"
+     },
+     {
+      "org": "THAT",
+      "status": "PENDING_APPROVAL",
+      "total": "1",
+      "live_now": "0",
+      "consumed": "0",
+      "min_amount": "1.00",
+      "amount_eq_1": "1"
+     }
+    ]
+   },
+   "rooms_by_status": {
+    "rowCount": 6,
+    "rows": [
+     {
+      "org": "DEMO",
+      "status": "AVAILABLE",
+      "count": "20"
+     },
+     {
+      "org": "DEMO",
+      "status": "OCCUPIED",
+      "count": "16"
+     },
+     {
+      "org": "DEMO",
+      "status": "RESERVED",
+      "count": "4"
+     },
+     {
+      "org": "DEMO",
+      "status": "MAINTENANCE",
+      "count": "4"
+     },
+     {
+      "org": "THAT",
+      "status": "AVAILABLE",
+      "count": "5"
+     },
+     {
+      "org": "THAT",
+      "status": "OCCUPIED",
+      "count": "281"
+     }
+    ]
+   },
+   "terminations_by_status_type": {
+    "rowCount": 3,
+    "rows": [
+     {
+      "org": "DEMO",
+      "status": "COMPLETED",
+      "termination_type": "NORMAL",
+      "count": "4"
+     },
+     {
+      "org": "THAT",
+      "status": "COMPLETED",
+      "termination_type": "FORFEIT",
+      "count": "37"
+     },
+     {
+      "org": "THAT",
+      "status": "COMPLETED",
+      "termination_type": "NORMAL",
+      "count": "73"
+     }
+    ]
+   },
+   "terminated_contracts_without_termination_row": {
+    "rowCount": 1,
+    "rows": [
+     {
+      "org": "THAT",
+      "status": "TERMINATED",
+      "count": "23"
+     }
+    ]
+   },
+   "open_invoices_on_ended_contracts": {
+    "rowCount": 2,
+    "rows": [
+     {
+      "org": "THAT",
+      "contract_status": "TERMINATED",
+      "invoice_status": "APPROVED",
+      "count": "11"
+     },
+     {
+      "org": "THAT",
+      "contract_status": "TERMINATED",
+      "invoice_status": "OVERDUE",
+      "count": "21"
+     }
+    ]
+   },
+   "customers_multi_active": {
+    "rowCount": 1,
+    "rows": [
+     {
+      "customers_with_2plus_active_contracts": "0"
+     }
+    ]
+   },
+   "customers_active_and_ended": {
+    "rowCount": 1,
+    "rows": [
+     {
+      "customers_with_active_and_ended_contract": "18"
+     }
+    ]
+   },
+   "credit_and_token_tables": {
+    "rowCount": 8,
+    "rows": [
+     {
+      "table_schema": "app_private",
+      "table_name": "deferred_customer_credit_queue"
+     },
+     {
+      "table_schema": "app_private",
+      "table_name": "reservation_settlement_write_tokens"
+     },
+     {
+      "table_schema": "app_private",
+      "table_name": "sale_bonus_cap_versions"
+     },
+     {
+      "table_schema": "app_private",
+      "table_name": "sale_bonus_claims"
+     },
+     {
+      "table_schema": "public",
+      "table_name": "customer_credit_applications"
+     },
+     {
+      "table_schema": "public",
+      "table_name": "customer_credit_lots"
+     },
+     {
+      "table_schema": "public",
+      "table_name": "public_room_share_tokens"
+     },
+     {
+      "table_schema": "public",
+      "table_name": "room_pass_listings"
+     }
+    ]
+   },
+   "orphan_deposit_vouchers": {
+    "rowCount": 3,
+    "rows": [
+     {
+      "org": "DEMO",
+      "approval_status": "APPROVED",
+      "count": "4",
+      "unsettled": "4"
+     },
+     {
+      "org": "THAT",
+      "approval_status": "APPROVED",
+      "count": "2",
+      "unsettled": "1"
+     },
+     {
+      "org": "THAT",
+      "approval_status": "CANCELLED",
+      "count": "11",
+      "unsettled": "11"
+     }
+    ]
+   },
+   "jobs_summary": {
+    "rowCount": 2,
+    "rows": [
+     {
+      "org": "THAT",
+      "status": "COMPLETED",
+      "exclude_from_salary": false,
+      "count": "331"
+     },
+     {
+      "org": "THAT",
+      "status": "COMPLETED",
+      "exclude_from_salary": true,
+      "count": "6"
+     }
+    ]
+   },
+   "meter_readings_final_after_move_out": {
+    "rowCount": 1,
+    "rows": [
+     {
+      "readings_after_end": "1",
+      "total_readings_on_ended": "177"
+     }
+    ]
+   }
+  }
+ },
+ "aggregates2": {
+  "at": "2026-09-27T12:39:01.683Z",
+  "results": {
+   "active_contract_room_status_drift": {
+    "rowCount": 1,
+    "rows": [
+     {
+      "org": "THAT",
+      "room_status": "AVAILABLE",
+      "count": "1"
+     }
+    ]
+   },
+   "occupied_rooms_without_active": {
+    "rowCount": 0,
+    "rows": []
+   },
+   "credit_cols": {
+    "rowCount": 7,
+    "rows": [
+     {
+      "table_schema": "public",
+      "table_name": "contract_extensions",
+      "cols": "id:uuid, user_id:uuid, contract_id:uuid, extension_date:date, extension_type:text, old_end_date:date, extension_months:int4, new_end_date:date, new_rent_price:numeric, rent_price_changed:bool, new_deposit:numeric, additional_deposit_required:numeric, deposit_changed:bool, services_changed:bool, new_services:jsonb, new_contract_id:uuid, status:text, approved_by:uuid, approved_at:timestamptz, notes:text, created_at:timestamptz, updated_at:timestamptz, organization_id:uuid"
+     },
+     {
+      "table_schema": "public",
+      "table_name": "contract_transfers",
+      "cols": "id:uuid, user_id:uuid, contract_id:uuid, transfer_type:text, transfer_date:date, old_tenant_id:uuid, new_tenant_id:uuid, transfer_fee:numeric, old_room_id:uuid, new_room_id:uuid, new_rent_price:numeric, new_deposit:numeric, move_out_date:date, move_in_date:date, new_start_date:date, new_end_date:date, new_services:jsonb, deposit_transfer_type:text, old_tenant_deposit_refund:numeric, new_tenant_deposit_paid:numeric, old_tenant_outstanding:numeric, old_tenant_settlement_amount:numeric, old_tenant_settlement_date:date, status:text, reason:text, notes:text, approved_by:uuid, approved_at:timestamptz, created_at:timestamptz, updated_at:timestamptz, organization_id:uuid"
+     },
+     {
+      "table_schema": "public",
+      "table_name": "customer_credit_applications",
+      "cols": "id:uuid, organization_id:uuid, credit_lot_id:uuid, invoice_id:uuid, excess_amount_id:uuid, amount:numeric, applied_by:uuid, applied_at:timestamptz, reversed_at:timestamptz, application_kind:text, idempotency_key:text, description:text, reversed_by:uuid, reversal_excess_amount_id:uuid, reversal_idempotency_key:text, reversal_reason:text, restored_at:timestamptz, restored_by:uuid, restoration_idempotency_key:text"
+     },
+     {
+      "table_schema": "public",
+      "table_name": "customer_credit_lots",
+      "cols": "id:uuid, organization_id:uuid, contract_id:uuid, source_collection_id:uuid, source_tender_id:uuid, source_payment_id:uuid, source_excess_amount_id:uuid, amount:numeric, remaining_amount:numeric, status:text, created_at:timestamptz, reversed_at:timestamptz"
+     },
+     {
+      "table_schema": "public",
+      "table_name": "deposits",
+      "cols": "id:uuid, user_id:uuid, tenant_id:uuid, room_id:uuid, contract_id:uuid, amount:numeric, deposit_date:date, status:deposit_status, hold_until:date, notes:text, receipt_image_url:text, created_at:timestamptz, updated_at:timestamptz, deleted_at:timestamptz, code:text, ctv_name:text, organization_id:uuid"
+     },
+     {
+      "table_schema": "public",
+      "table_name": "public_room_share_tokens",
+      "cols": "token:text, owner_id:uuid, label:text, revoked:bool, created_at:timestamptz, organization_id:uuid"
+     },
+     {
+      "table_schema": "public",
+      "table_name": "room_pass_listings",
+      "cols": "id:uuid, user_id:uuid, building_id:uuid, room_id:uuid, contact_name:text, contact_phone:text, sale_policy:text, pass_price:numeric, active:bool, created_by:uuid, created_at:timestamptz, updated_at:timestamptz, avail_date:date, contact_manager:bool, organization_id:uuid"
+     }
+    ]
+   },
+   "credit_lots_summary": {
+    "rowCount": 1,
+    "rows": [
+     {
+      "org": "THAT",
+      "count": "72"
+     }
+    ]
+   }
+  }
+ },
+ "aggregates3": {
+  "at": "2026-09-27T12:39:15.684Z",
+  "results": {
+   "pass_listings_summary": {
+    "rowCount": 1,
+    "rows": [
+     {
+      "active": true,
+      "contact_manager": true,
+      "count": "1",
+      "avail_past": "0",
+      "on_active_room": "1"
+     }
+    ]
+   },
+   "share_tokens_summary": {
+    "rowCount": 1,
+    "rows": [
+     {
+      "total": "3",
+      "not_revoked": "3",
+      "owners": "1",
+      "no_org": "0"
+     }
+    ]
+   },
+   "deposits_rows": {
+    "rowCount": 1,
+    "rows": [
+     {
+      "count": "0"
+     }
+    ]
+   }
+  }
+ }
+}

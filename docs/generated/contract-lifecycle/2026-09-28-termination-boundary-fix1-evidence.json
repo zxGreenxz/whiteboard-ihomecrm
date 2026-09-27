@@ -1,0 +1,513 @@
+{
+  "kind": "P1A2_FIX1_R1_R2_R3",
+  "baseSha": "67473ebf828261cdd9dca3dacf7901ab0bf730af",
+  "target": "Dedicated TEST and admitted loopback disposable only",
+  "node": "24.18.0",
+  "sourceHashes": {
+    "scripts/generate-rpc-surface.mjs": "d232ada3d36506a3b84ecdefc78420c388aee934d1556cb5b01bb9b6d7b6be51",
+    "scripts/__tests__/gen-supabase-types.test.ts": "cbeb69df18044714cb849e68f335a8355cbaa05db511ce135ea8be26b6fc3aa1",
+    "scripts/contract-lifecycle/termination-boundary-live.mjs": "ea576a0004ae4f5b34ea8cfbaca6e40a200829483c9b4bb5e58e91440715cd7e",
+    "scripts/contract-lifecycle/termination-boundary-http-live.mjs": "070f28e47722528b94f9020d8d399bcf59c5657549a0da54022ab13e4444532b",
+    "supabase/migrations/20260927190750_termination_write_boundary.sql": "6f39c97459f038d6dc5c0e5294dab465ba8cdaee3187e5d042bec9e4fe0c0c7b"
+  },
+  "R1": {
+    "checks": [
+      {
+        "name": "JWT-TERM-no-termination-direct-INSERT",
+        "status": "PASS",
+        "code": "42501",
+        "httpStatus": 403,
+        "zeroDelta": [
+          "contracts",
+          "rooms",
+          "terminations",
+          "invoices",
+          "vouchers",
+          "items",
+          "postings",
+          "credits",
+          "audit",
+          "operations",
+          "history"
+        ]
+      },
+      {
+        "name": "JWT-TERM-preexisting-DRAFT-approve",
+        "status": "PASS",
+        "code": "55000",
+        "httpStatus": 500,
+        "zeroDelta": [
+          "contracts",
+          "rooms",
+          "terminations",
+          "invoices",
+          "vouchers",
+          "items",
+          "postings",
+          "credits",
+          "audit",
+          "operations",
+          "history"
+        ]
+      }
+    ],
+    "snapshots": [
+      {
+        "name": "TERM-no-termination-direct-INSERT",
+        "beforeSha256": "288df31fbe630b1e3a4d6fa968cf8921e9c61f9361959bb6aaf2a6365a7c7bfe",
+        "afterSha256": "288df31fbe630b1e3a4d6fa968cf8921e9c61f9361959bb6aaf2a6365a7c7bfe",
+        "beforeAfterEqual": true,
+        "counts": {
+          "contracts": 1,
+          "rooms": 1,
+          "terminations": 0,
+          "invoices": 0,
+          "vouchers": 0,
+          "items": 0,
+          "postings": 0,
+          "credits": 0,
+          "audit": 0,
+          "operations": 0,
+          "history": 1
+        }
+      },
+      {
+        "name": "TERM-preexisting-DRAFT-approve",
+        "beforeSha256": "7cebe952a16baa42cf9375c52872b6136ea321083fba85ca9ec0e3af289d9cb8",
+        "afterSha256": "7cebe952a16baa42cf9375c52872b6136ea321083fba85ca9ec0e3af289d9cb8",
+        "beforeAfterEqual": true,
+        "counts": {
+          "contracts": 1,
+          "rooms": 1,
+          "terminations": 1,
+          "invoices": 0,
+          "vouchers": 0,
+          "items": 0,
+          "postings": 0,
+          "credits": 0,
+          "audit": 0,
+          "operations": 0,
+          "history": 1
+        }
+      }
+    ],
+    "cleanup": {
+      "closure": {
+        "catalogHash": "abdca378bba61a68e6705a24812861ae59c7c5cddcd7d01690c93f43d9f3faab",
+        "checked": 64
+      },
+      "deleted": [
+        {
+          "table": "public.income_expense_items",
+          "count": 0
+        },
+        {
+          "table": "public.income_expenses",
+          "count": 0
+        },
+        {
+          "table": "public.contract_terminations",
+          "count": 1
+        },
+        {
+          "table": "public.room_price_history",
+          "count": 2
+        },
+        {
+          "table": "public.contract_customers",
+          "count": 2
+        },
+        {
+          "table": "public.contracts",
+          "count": 2
+        },
+        {
+          "table": "public.customers",
+          "count": 2
+        },
+        {
+          "table": "public.rooms",
+          "count": 2
+        }
+      ],
+      "fixturePostingCount": 0,
+      "guardsUnchanged": true,
+      "retainedTerminationCanonicalIdentities": 1,
+      "retention": "Full owned identities remain in ignored receipt; append-only audit/counters not rewound"
+    },
+    "rehearsal": "PASS"
+  },
+  "R2": {
+    "red": "local types + absent override threw before remote catalog HTTP",
+    "green": "9 focused tests pass; configured catalog default restored; invalid/local+explicit override still rejects before HTTP",
+    "cliPinUnchanged": "2.117.0"
+  },
+  "R3": {
+    "definitionContract": "MD5 after replacing CRLF pairs with LF only; bare CR, comments, other whitespace and metadata remain significant",
+    "canonicalWitnesses": [
+      {
+        "phase": "before",
+        "name": "approve_contract_termination_v1",
+        "rawMd5": "e5bec0c847f543bb1df1213336cc75fa",
+        "canonicalMd5": "e5bec0c847f543bb1df1213336cc75fa",
+        "crlf": 0,
+        "bareCr": 0
+      },
+      {
+        "phase": "before",
+        "name": "begin_contract_termination_write_v1",
+        "rawMd5": "5e8bcaa95e89128cd72d3a78cb6288f0",
+        "canonicalMd5": "5e8bcaa95e89128cd72d3a78cb6288f0",
+        "crlf": 0,
+        "bareCr": 0
+      },
+      {
+        "phase": "before",
+        "name": "end_contract_termination_write_v1",
+        "rawMd5": "382f53de40affd1408fe8fa3df3fa7df",
+        "canonicalMd5": "382f53de40affd1408fe8fa3df3fa7df",
+        "crlf": 0,
+        "bareCr": 0
+      },
+      {
+        "phase": "before",
+        "name": "guard_contract_termination_settlement",
+        "rawMd5": "7a6552ed4d57734c5e136367ab5fbc97",
+        "canonicalMd5": "7a6552ed4d57734c5e136367ab5fbc97",
+        "crlf": 0,
+        "bareCr": 0
+      },
+      {
+        "phase": "before",
+        "name": "has_contract_termination_write_v1",
+        "rawMd5": "3e5e94607e6d11e41eb0a92b64a6ddc1",
+        "canonicalMd5": "3e5e94607e6d11e41eb0a92b64a6ddc1",
+        "crlf": 0,
+        "bareCr": 0
+      },
+      {
+        "phase": "before",
+        "name": "reject_contract_termination_v1",
+        "rawMd5": "1316562d119902607b2ca904f51d1e6c",
+        "canonicalMd5": "1316562d119902607b2ca904f51d1e6c",
+        "crlf": 0,
+        "bareCr": 0
+      },
+      {
+        "phase": "before",
+        "name": "terminate_contract_forfeit",
+        "rawMd5": "20c97cce83ed98d810a157256ddd457f",
+        "canonicalMd5": "20c97cce83ed98d810a157256ddd457f",
+        "crlf": 0,
+        "bareCr": 0
+      },
+      {
+        "phase": "before",
+        "name": "terminate_contract_forfeit_impl",
+        "rawMd5": "7e90f0f91f1d57ec51da82bd6bce7003",
+        "canonicalMd5": "7e90f0f91f1d57ec51da82bd6bce7003",
+        "crlf": 0,
+        "bareCr": 0
+      },
+      {
+        "phase": "before",
+        "name": "terminate_contract_forfeit_with_credit_v1",
+        "rawMd5": "0c34e7be81350a1125f120c95cc1cc22",
+        "canonicalMd5": "0c34e7be81350a1125f120c95cc1cc22",
+        "crlf": 0,
+        "bareCr": 0
+      },
+      {
+        "phase": "before",
+        "name": "terminate_contract_move_out",
+        "rawMd5": "82a4cdbf74b4c0570d4078cbca78adac",
+        "canonicalMd5": "82a4cdbf74b4c0570d4078cbca78adac",
+        "crlf": 0,
+        "bareCr": 0
+      },
+      {
+        "phase": "before",
+        "name": "terminate_contract_move_out_impl",
+        "rawMd5": "eae1e32af39b4abbffcf26075f1a94d2",
+        "canonicalMd5": "eae1e32af39b4abbffcf26075f1a94d2",
+        "crlf": 0,
+        "bareCr": 0
+      },
+      {
+        "phase": "before",
+        "name": "terminate_contract_move_out_with_credit_v1",
+        "rawMd5": "fe8c5453ffdc35951c7a750a35da7d01",
+        "canonicalMd5": "fe8c5453ffdc35951c7a750a35da7d01",
+        "crlf": 0,
+        "bareCr": 0
+      },
+      {
+        "phase": "after",
+        "name": "approve_contract_termination_v1",
+        "rawMd5": "48997e2fd118e5ec2a5d7ce96833c678",
+        "canonicalMd5": "6a403e83918b8d5453f59294edbe9e0b",
+        "crlf": 213,
+        "bareCr": 0
+      },
+      {
+        "phase": "after",
+        "name": "begin_contract_termination_write_v1",
+        "rawMd5": "5e8bcaa95e89128cd72d3a78cb6288f0",
+        "canonicalMd5": "5e8bcaa95e89128cd72d3a78cb6288f0",
+        "crlf": 0,
+        "bareCr": 0
+      },
+      {
+        "phase": "after",
+        "name": "close_termination_write_v2",
+        "rawMd5": "f53bc65ec53e780512718ce71eaf571a",
+        "canonicalMd5": "14f203609a052476d85276784ccce63f",
+        "crlf": 7,
+        "bareCr": 0
+      },
+      {
+        "phase": "after",
+        "name": "create_contract_termination_draft_v1",
+        "rawMd5": "5b0ad7bca7618646c801c5f6445a66c1",
+        "canonicalMd5": "38ffb94b0aab4b7839980f36129e153d",
+        "crlf": 91,
+        "bareCr": 0
+      },
+      {
+        "phase": "after",
+        "name": "end_contract_termination_write_v1",
+        "rawMd5": "382f53de40affd1408fe8fa3df3fa7df",
+        "canonicalMd5": "382f53de40affd1408fe8fa3df3fa7df",
+        "crlf": 0,
+        "bareCr": 0
+      },
+      {
+        "phase": "after",
+        "name": "guard_contract_termination_settlement",
+        "rawMd5": "94abf32b504524e6ed3c78ff2450f78d",
+        "canonicalMd5": "983735d0c72c3bf4cb60c7fb801194e4",
+        "crlf": 77,
+        "bareCr": 0
+      },
+      {
+        "phase": "after",
+        "name": "has_contract_termination_write_v1",
+        "rawMd5": "3e5e94607e6d11e41eb0a92b64a6ddc1",
+        "canonicalMd5": "3e5e94607e6d11e41eb0a92b64a6ddc1",
+        "crlf": 0,
+        "bareCr": 0
+      },
+      {
+        "phase": "after",
+        "name": "open_termination_write_v2",
+        "rawMd5": "0a5fa550150b315bd5f6dbf5d348b031",
+        "canonicalMd5": "4724488912c79281bd5e7078a64299ed",
+        "crlf": 21,
+        "bareCr": 0
+      },
+      {
+        "phase": "after",
+        "name": "reject_contract_termination_v1",
+        "rawMd5": "b42aaea8c3992b07aa4f536c508e28f0",
+        "canonicalMd5": "f8aec733e0ea3bf02949f1d64568ae43",
+        "crlf": 37,
+        "bareCr": 0
+      },
+      {
+        "phase": "after",
+        "name": "terminate_contract_forfeit",
+        "rawMd5": "661553bd812e49b5e9638fa1a93bb08d",
+        "canonicalMd5": "af02d924fc8ee495e48bbcdf7096e8c5",
+        "crlf": 88,
+        "bareCr": 0
+      },
+      {
+        "phase": "after",
+        "name": "terminate_contract_forfeit_impl",
+        "rawMd5": "dd9a36e841a0f39ff15a63be3a526738",
+        "canonicalMd5": "71d861426074b80fbac5c6941f289e00",
+        "crlf": 322,
+        "bareCr": 0
+      },
+      {
+        "phase": "after",
+        "name": "terminate_contract_forfeit_with_credit_v1",
+        "rawMd5": "b9b10d89ec17f2be54cca994cdc330eb",
+        "canonicalMd5": "0063e98e71e2d5e39da19980a82060c6",
+        "crlf": 130,
+        "bareCr": 0
+      },
+      {
+        "phase": "after",
+        "name": "terminate_contract_move_out",
+        "rawMd5": "f8f62f8b75d9ceb5419a3999d26567b2",
+        "canonicalMd5": "af9cf234be5bbf27dd1176801dd910c3",
+        "crlf": 205,
+        "bareCr": 0
+      },
+      {
+        "phase": "after",
+        "name": "terminate_contract_move_out_impl",
+        "rawMd5": "63b2bc6287e0f5bd17daec061c625889",
+        "canonicalMd5": "cefce92ca899b31c98eb80767b17401d",
+        "crlf": 359,
+        "bareCr": 0
+      },
+      {
+        "phase": "after",
+        "name": "terminate_contract_move_out_with_credit_v1",
+        "rawMd5": "a4435a57ad0eda946694c9757201e827",
+        "canonicalMd5": "9bc5208bf731f969e20f30c5b77e4d9e",
+        "crlf": 246,
+        "bareCr": 0
+      }
+    ],
+    "literalAudit": {
+      "definitions": 27,
+      "literals": 1372,
+      "multilineLiterals": []
+    },
+    "sourceBytes": {
+      "priorWorkingSha256": "67cc43b63749c9058ff1b447bba49e62c1a4ff6941f8d74ce410f72eeaa40f7c",
+      "priorGitLfSha256": "84dec45d9d18dbca05731fe02b6660d0c2cdf1fdbe4c8bf447bf945f665d0a34",
+      "newWorkingLfSha256": "6f39c97459f038d6dc5c0e5294dab465ba8cdaee3187e5d042bec9e4fe0c0c7b",
+      "installExactPriorGitLf": true,
+      "bareCr": false
+    },
+    "provenanceBytes": {
+      "sha256": "6f39c97459f038d6dc5c0e5294dab465ba8cdaee3187e5d042bec9e4fe0c0c7b",
+      "indexSha256": "6f39c97459f038d6dc5c0e5294dab465ba8cdaee3187e5d042bec9e4fe0c0c7b",
+      "provenanceSha256": "6f39c97459f038d6dc5c0e5294dab465ba8cdaee3187e5d042bec9e4fe0c0c7b",
+      "state": "unknown"
+    },
+    "installBody": "Exact prior Git LF install section; no business policy or historical pin changes",
+    "localLf": {
+      "status": "PASS",
+      "transport": "pg driver preserves CRLF",
+      "variant": "LF",
+      "postgres": "17.10 diagnostic",
+      "routingDefaultsCleared": true,
+      "inputSha256": "6f39c97459f038d6dc5c0e5294dab465ba8cdaee3187e5d042bec9e4fe0c0c7b",
+      "admitted": true,
+      "idempotent": true,
+      "psqlTwiceRollback": true,
+      "rollbackRestored": true,
+      "stopped": true,
+      "approve": [
+        {
+          "rawMd5": "6a403e83918b8d5453f59294edbe9e0b",
+          "canonicalMd5": "6a403e83918b8d5453f59294edbe9e0b",
+          "crlf": 0
+        }
+      ]
+    },
+    "localCrlf": {
+      "status": "PASS",
+      "transport": "pg driver preserves CRLF",
+      "variant": "CRLF",
+      "postgres": "17.10 diagnostic",
+      "routingDefaultsCleared": true,
+      "inputSha256": "96ef277ecbd9e884ba573362f8c96957786305d69f2272c39d3fe10a55c9fb43",
+      "admitted": true,
+      "idempotent": true,
+      "rollbackRestored": true,
+      "stopped": true,
+      "approve": [
+        {
+          "rawMd5": "48997e2fd118e5ec2a5d7ce96833c678",
+          "canonicalMd5": "6a403e83918b8d5453f59294edbe9e0b",
+          "crlf": 213
+        }
+      ]
+    },
+    "installedTestCrlf": {
+      "status": "PASS",
+      "twiceIdempotent": true,
+      "rollbackRestored": true,
+      "rawDefinitionsUnchanged": true
+    },
+    "mutations": [
+      {
+        "phase": "before",
+        "kind": "body",
+        "code": "P0001",
+        "message": "P1a2 function definition/metadata drift: approve_contract_termination_v1"
+      },
+      {
+        "phase": "before",
+        "kind": "bare-CR",
+        "code": "P0001",
+        "message": "P1a2 function definition/metadata drift: approve_contract_termination_v1"
+      },
+      {
+        "phase": "before",
+        "kind": "ACL",
+        "code": "P0001",
+        "message": "P1a2 function definition/metadata drift: approve_contract_termination_v1"
+      },
+      {
+        "phase": "before",
+        "kind": "owner",
+        "code": "P0001",
+        "message": "P1a2 function definition/metadata drift: approve_contract_termination_v1"
+      },
+      {
+        "phase": "before",
+        "kind": "volatility",
+        "code": "P0001",
+        "message": "P1a2 function definition/metadata drift: approve_contract_termination_v1"
+      },
+      {
+        "phase": "before",
+        "kind": "search_path",
+        "code": "P0001",
+        "message": "P1a2 function definition/metadata drift: approve_contract_termination_v1"
+      },
+      {
+        "phase": "installed-after",
+        "kind": "body",
+        "code": "P0001",
+        "message": "P1a2 function definition/metadata drift: approve_contract_termination_v1"
+      },
+      {
+        "phase": "installed-after",
+        "kind": "bare-CR",
+        "code": "P0001",
+        "message": "P1a2 function definition/metadata drift: approve_contract_termination_v1"
+      },
+      {
+        "phase": "installed-after",
+        "kind": "ACL",
+        "code": "P0001",
+        "message": "P1a2 function definition/metadata drift: approve_contract_termination_v1"
+      },
+      {
+        "phase": "installed-after",
+        "kind": "owner",
+        "code": "P0001",
+        "message": "P1a2 function definition/metadata drift: approve_contract_termination_v1"
+      },
+      {
+        "phase": "installed-after",
+        "kind": "volatility",
+        "code": "P0001",
+        "message": "P1a2 function definition/metadata drift: approve_contract_termination_v1"
+      },
+      {
+        "phase": "installed-after",
+        "kind": "search_path",
+        "code": "P0001",
+        "message": "P1a2 function definition/metadata drift: approve_contract_termination_v1"
+      }
+    ],
+    "history": "Original raw TEST approve48997 and LF6a403 remain distinct raw representations; canonical hash is new validation contract, not a rewrite of old evidence"
+  },
+  "limits": [
+    "CI PostgreSQL17.6 full forward/security remains parent requirement; local17.10 is diagnostic",
+    "Independent scoped re-review pending",
+    "CI01 routing/receipt findings owned separately by parent",
+    "Paid refund/collection/cashbook contention and global lifecycle release not verified here",
+    "No application build/E2E rerun for this harness/catalog/metadata-only round",
+    "No production apply, push, rebase or unrelated source merge"
+  ]
+}

@@ -1,0 +1,34 @@
+start 2026-09-27T12:33:28Z
+e498f10d49f3548e72074095c955371d0cee41ab
+v22.20.0
+
+[1m[46m RUN [49m[22m [36mv4.0.18 [39m[90mC:/Users/Nguyen Tam/whiteboard-ihomecrm-main[39m
+
+ [32m✓[39m src/lib/__tests__/reservationSettlementForm.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m src/lib/__tests__/depositWorkQueue.test.ts [2m([22m[2m27 tests[22m[2m)[22m[32m 14[2mms[22m[39m
+ [32m✓[39m src/lib/__tests__/contractCreateRpc.test.ts [2m([22m[2m19 tests[22m[2m)[22m[32m 17[2mms[22m[39m
+ [32m✓[39m src/lib/__tests__/contractSettlement.test.ts [2m([22m[2m102 tests[22m[2m)[22m[32m 68[2mms[22m[39m
+ [32m✓[39m src/lib/__tests__/contractLifecycle.test.ts [2m([22m[2m84 tests[22m[2m)[22m[32m 67[2mms[22m[39m
+ [32m✓[39m src/lib/__tests__/contractSettlementReads.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 140[2mms[22m[39m
+ [32m✓[39m src/lib/__tests__/reservationHoldDeadlineMigration.test.ts [2m([22m[2m21 tests[22m[2m)[22m[33m 393[2mms[22m[39m
+ [32m✓[39m src/lib/__tests__/contractValidation.property.test.ts [2m([22m[2m20 tests[22m[2m)[22m[32m 218[2mms[22m[39m
+ [32m✓[39m src/lib/__tests__/terminationSettlement.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 92[2mms[22m[39m
+ [32m✓[39m src/lib/__tests__/reservationSettlementRpc.test.ts [2m([22m[2m19 tests[22m[2m)[22m[32m 19[2mms[22m[39m
+ [32m✓[39m src/lib/__tests__/contractStatus.property.test.ts [2m([22m[2m18 tests[22m[2m)[22m[32m 165[2mms[22m[39m
+ [32m✓[39m src/lib/__tests__/roomLifecycle.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m src/lib/__tests__/notificationRoutes.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m src/lib/__tests__/publicRoomsHoldingDepositMigration.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m src/components/contracts/contract-form/useContractSubmit.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m src/hooks/__tests__/realtimeTenantBoundary.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m src/lib/__tests__/contractOperations.property.test.ts [2m([22m[2m20 tests[22m[2m)[22m[32m 68[2mms[22m[39m
+ [32m✓[39m src/hooks/__tests__/useContractMovements.test.ts [2m([22m[2m7 tests[22m[2m)[22m[33m 667[2mms[22m[39m
+ [32m✓[39m src/hooks/__tests__/useContractLifecycle.test.ts [2m([22m[2m23 tests[22m[2m)[22m[33m 1928[2mms[22m[39m
+ [32m✓[39m src/hooks/__tests__/useContractSettlement.test.ts [2m([22m[2m68 tests[22m[2m)[22m[33m 6547[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m20 passed[39m[22m[90m (20)[39m
+[2m      Tests [22m [1m[32m496 passed[39m[22m[90m (496)[39m
+[2m   Start at [22m 19:33:29
+[2m   Duration [22m 8.01s[2m (transform 2.66s, setup 0ms, import 6.27s, tests 10.46s, environment 2.40s)[22m
+
+exit=0
+end 2026-09-27T12:33:37Z

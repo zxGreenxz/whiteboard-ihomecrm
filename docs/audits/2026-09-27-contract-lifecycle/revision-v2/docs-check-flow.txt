@@ -1,0 +1,29 @@
+x Link hỏng: docs/audits/2026-09-21-plan-recovery/2026-09-20-hop-dong-quyet-toan.codex-720-lines.md -> ../specs/2026-09-20-hop-dong-quyet-toan-design.md
+x Link hỏng: docs/audits/2026-09-23-ban-do-co-may-thu-chi.md -> 2026-09-23-plan-mot-luong-thu-chi-bang-chung/README.md
+Đã kiểm 358 file Markdown; 28 lỗi.
+x Nội dung trùng: docs/audits/2026-09-23-ban-do-co-may-thu-chi.md = docs/audits/2026-09-23-plan-mot-luong-thu-chi-goi-audit/docs/audits/2026-09-23-ban-do-co-may-thu-chi.md
+x Link hỏng: docs/audits/2026-09-23-plan-mot-luong-thu-chi-goi-audit/docs/engineering/PROJECT_CONTRACT.md -> ../../tooling/risk-map.json
+x Link hỏng: docs/audits/2026-09-23-plan-mot-luong-thu-chi-goi-audit/docs/engineering/PROJECT_CONTRACT.md -> ../../tooling/runtime-matrix.json
+x Link hỏng: docs/audits/2026-09-23-plan-mot-luong-thu-chi-goi-audit/docs/engineering/PROJECT_CONTRACT.md -> ../../tooling/test-matrix.json
+x Link hỏng: docs/audits/2026-09-23-plan-mot-luong-thu-chi-goi-audit/docs/engineering/PROJECT_CONTRACT.md -> ../../package.json
+x Link hỏng: docs/audits/2026-09-23-plan-mot-luong-thu-chi-goi-audit/docs/engineering/PROJECT_CONTRACT.md -> ../../contracts/surfaces/
+x Link hỏng: docs/audits/2026-09-23-plan-mot-luong-thu-chi-goi-audit/docs/engineering/PROJECT_CONTRACT.md -> ../generated/
+x Link hỏng: docs/audits/2026-09-23-plan-mot-luong-thu-chi-goi-audit/docs/engineering/PROJECT_CONTRACT.md -> ../he-thong/README.md
+x Link hỏng: docs/audits/2026-09-23-plan-mot-luong-thu-chi-goi-audit/docs/engineering/PROJECT_CONTRACT.md -> ../../scripts/clone-org/README.md
+x Link hỏng: docs/audits/2026-09-23-plan-mot-luong-thu-chi-goi-audit/docs/engineering/PROJECT_CONTRACT.md -> ../../tooling/known-gaps.yaml
+x Link hỏng: docs/audits/2026-09-23-plan-mot-luong-thu-chi-goi-audit/docs/engineering/PROJECT_CONTRACT.md -> ../../supabase/migration-policy.json
+x Link hỏng: docs/audits/2026-09-23-plan-mot-luong-thu-chi-goi-audit/docs/engineering/PROJECT_CONTRACT.md -> MIGRATION_STRATEGY.md
+x Link hỏng: docs/audits/2026-09-23-plan-mot-luong-thu-chi-goi-audit/docs/engineering/PROJECT_CONTRACT.md -> ../../supabase/generated-types-policy.json
+x Link hỏng: docs/audits/2026-09-23-plan-mot-luong-thu-chi-goi-audit/docs/engineering/PROJECT_CONTRACT.md -> ../he-thong/manifest.json
+x Link hỏng: docs/audits/2026-09-23-plan-mot-luong-thu-chi-goi-audit/docs/engineering/PROJECT_CONTRACT.md -> ../../tooling/local-credential-contract.json
+x Link hỏng: docs/audits/2026-09-23-plan-mot-luong-thu-chi-goi-audit/docs/engineering/PROJECT_CONTRACT.md -> MIGRATION_STRATEGY.md
+x Link hỏng: docs/audits/2026-09-23-plan-mot-luong-thu-chi-goi-audit/docs/engineering/PROJECT_CONTRACT.md -> DATA_ENVIRONMENTS.md
+x Link hỏng: docs/audits/2026-09-23-plan-mot-luong-thu-chi-goi-audit/docs/engineering/PROJECT_CONTRACT.md -> ../../infra/network-center-worker/README.md
+x Link hỏng: docs/audits/2026-09-23-plan-mot-luong-thu-chi-goi-audit/docs/engineering/PROJECT_CONTRACT.md -> ../../tooling/known-gaps.yaml
+x Link hỏng: docs/audits/2026-09-23-plan-mot-luong-thu-chi-goi-audit/docs/plans/PLAN-MOT-LUONG-THU-CHI-2026-09-23.md -> PLAN-THU-CHI-V2-DUYET-CHI-PHAN-QUYEN-SO-QUY.md
+x Link hỏng: docs/audits/2026-09-23-plan-mot-luong-thu-chi-goi-audit/docs/plans/PLAN-MOT-LUONG-THU-CHI-2026-09-23.md -> EXEC-THU-CHI-V2-ROADMAP.md
+x Link hỏng: docs/audits/2026-09-23-plan-mot-luong-thu-chi-goi-audit/docs/plans/PLAN-MOT-LUONG-THU-CHI-2026-09-23.md -> PLAN-THU-CHI-V2-DUYET-CHI-PHAN-QUYEN-SO-QUY.md
+x Link hỏng: docs/audits/2026-09-23-plan-mot-luong-thu-chi-goi-audit/docs/plans/SUPERPLAN-TOI-UU-NGHIEP-VU-2026-09-23.md -> ../audits/DANH-GIA-NGHIEP-VU-TOAN-DIEN-2026-09-23.md
+x Link hỏng: docs/audits/2026-09-23-plan-mot-luong-thu-chi-goi-audit/docs/plans/SUPERPLAN-TOI-UU-NGHIEP-VU-2026-09-23.md -> superplan-2026-09/K-vong-doi-khach-hang.md
+x Link hỏng: docs/audits/2026-09-23-plan-mot-luong-thu-chi-goi-audit/docs/plans/SUPERPLAN-TOI-UU-NGHIEP-VU-2026-09-23.md -> superplan-2026-09/V-van-hanh-quan-tri.md
+x Link hỏng: docs/plans/PLAN-MOT-LUONG-THU-CHI-2026-09-23.md -> ../audits/2026-09-23-plan-mot-luong-thu-chi-bang-chung/README.md

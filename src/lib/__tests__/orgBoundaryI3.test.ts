@@ -1,3 +1,4 @@
+import { sqlEvidence } from "./helpers/sqlEvidence";
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -23,7 +24,7 @@ import { fileURLToPath } from "node:url";
 const MIG_DIR = join(dirname(fileURLToPath(import.meta.url)), "../../../supabase/migrations");
 
 /** Bỏ chú thích dòng để chữ trong chú thích không làm test xanh/đỏ giả. */
-const stripComments = (sql: string) => sql.replace(/^\s*--.*$/gm, "");
+const stripComments = sqlEvidence;
 
 let corpusCache: { file: string; sql: string }[] | null = null;
 function migrationCorpus(): { file: string; sql: string }[] {
@@ -80,18 +81,25 @@ function livePolicy(policy: string, table: string): { file: string; sql: string 
 }
 
 describe("I3.1 — không đường ghi nào đoán organization_id ra tổ chức THẬT", () => {
-  // public._autofill_org kết thúc bằng hằng số org thật khi không suy được.
-  // Nó chỉ nguy hiểm khi CÒN trigger trỏ vào; file cuối cùng nhắc tới nó phải
-  // là file gỡ nó ra, không phải file gắn thêm.
-  it("migration cuối cùng động tới _autofill_org là migration GỠ trigger", () => {
-    const nhac = migrationCorpus().filter((m) => /_autofill_org\b(?!_)/.test(m.sql));
-    expect(nhac.length).toBeGreaterThan(0);
-    const cuoi = nhac[nhac.length - 1];
-    expect(
-      /proname\s*=\s*'_autofill_org'/.test(cuoi.sql),
-      `${cuoi.file} là file cuối cùng động tới public._autofill_org mà không phải file chuyển trigger. ` +
-        "Gắn thêm trigger cho hàm đoán org là mở lại đúng cửa I3.1 đã đóng.",
-    ).toBe(true);
+  it("gỡ mọi trigger unsafe và không có DDL gắn lại public._autofill_org", () => {
+    const corpus = migrationCorpus();
+    const migrations = corpus.filter(({sql}) => /DO \$chuyen\$/.test(sql) && /p\.proname\s*=\s*'_autofill_org'/.test(sql));
+    expect(migrations.length, "unsafe trigger retirement exists").toBeGreaterThan(0);
+    const retirement = migrations.at(-1)!;
+    const block = /DO \$chuyen\$([\s\S]*?)\$chuyen\$;/.exec(retirement.sql);
+    expect(block).not.toBeNull();
+    expect(block![1]).toMatch(/FOR r IN\s+SELECT c\.relname AS bang, t\.tgname AS ten[\s\S]*?JOIN pg_proc\s+p ON p\.oid = t\.tgfoid[\s\S]*?p\.proname = '_autofill_org'[\s\S]*?p\.pronamespace = 'public'::regnamespace[\s\S]*?LOOP\s+EXECUTE format\('DROP TRIGGER %I ON public\.%I', r\.ten, r\.bang\);\s+EXECUTE format\(\s*'CREATE TRIGGER %I BEFORE INSERT ON public\.%I '\s*'FOR EACH ROW EXECUTE FUNCTION app_private\.autofill_org_strict\(\)', r\.ten, r\.bang\);/);
+    // Quoted pg_get_triggerdef comparisons are evidence, not DDL. Inspect bare
+    // executable SQL plus strings actually passed to EXECUTE, including format.
+    for (const m of corpus.slice(corpus.indexOf(retirement))) {
+      const strings = /'(?:''|[^'])*'/g;
+      const bare = m.sql.replace(strings, "''");
+      const dynamic = [...m.sql.matchAll(/\bEXECUTE\s+(?:format\s*\(\s*)?'(?:''|[^'])*'(?:\s*'(?:''|[^'])*')*/gi)]
+        .map(([text]) => [...text.matchAll(strings)].map(([str]) => str.slice(1, -1).replace(/''/g, "'")).join(""));
+      for (const ddl of [bare, ...dynamic]) {
+        expect(ddl, `${m.file}: unsafe trigger reattachment`).not.toMatch(/\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:CONSTRAINT\s+)?TRIGGER\b[^;]*?\bEXECUTE\s+(?:FUNCTION|PROCEDURE)\s+(?:public\.)?_autofill_org\s*\(/i);
+      }
+    }
   });
 
   it("autofill_org_strict suy được đủ các cột cha mà _autofill_org vốn suy", () => {

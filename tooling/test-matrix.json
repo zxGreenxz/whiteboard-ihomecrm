@@ -7,6 +7,19 @@
   ],
   "suites": [
     {
+      "id": "contract-lifecycle-preflight",
+      "runner": "node --test",
+      "ciJob": "quality-gates",
+      "command": "node --test scripts/tests/contract-lifecycle/*.test.mjs",
+      "risk": "high",
+      "includes": ["scripts/tests/contract-lifecycle/*.test.mjs"],
+      "ciJobs": [{"workflow": ".github/workflows/ci-gates.yml", "job": "quality-gates"}],
+      "ciCommandStep": "Contract lifecycle TEST target and catalog preflight (no credentials)",
+      "environment": "ci",
+      "timeoutMinutes": 5,
+      "note": "Pure preflight, fake-transport guards and financial baseline nonempty/mutation oracle tests; live rollback TEST baseline is explicit via baseline:contract-lifecycle and never runs in CI."
+    },
+    {
       "id": "voice-task-lab-server",
       "runner": "node --test",
       "ciJob": "ci-gates / voice-lab-tests",

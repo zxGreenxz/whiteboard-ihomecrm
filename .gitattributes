@@ -55,3 +55,11 @@ supabase/functions/** text eol=lf
 
 # Hash-verified WeChat model attribution must retain identical checkout bytes.
 scripts/qr/licenses/*.txt text eol=lf
+
+# Archived lifecycle witnesses are hashed as exact checkout bytes. Preserve the
+# existing Git blob bytes on Windows regardless of core.autocrlf.
+docs/audits/2026-09-27-contract-lifecycle/revision-v2/plan-v1-reviewed.md -text
+docs/generated/contract-lifecycle/2026-09-28-writer-inventory.json -text
+# This archived review already uses CRLF. Treat its existing line endings as
+# line endings in whitespace checks while retaining the original file bytes.
+docs/audits/2026-09-27-contract-lifecycle/revision-v2/finance-review.md -text whitespace=cr-at-eol

@@ -1,3 +1,4 @@
+import { sqlEvidence } from "./helpers/sqlEvidence";
 // Guard TĨNH cho đợt "Hoàn lại khách khi thanh lý" (22/08/2026).
 //
 // Toàn bộ quyết định nằm trong plpgsql nên vitest không chạy được logic thật —
@@ -14,7 +15,7 @@ import { join } from "node:path";
 
 const MIG_DIR = join(process.cwd(), "supabase", "migrations");
 
-const stripComments = (sql: string) => sql.replace(/--[^\n]*/g, "");
+const stripComments = sqlEvidence;
 
 let corpusCache: { file: string; sql: string }[] | null = null;
 function migrationCorpus(): { file: string; sql: string }[] {
@@ -115,10 +116,38 @@ describe("hoàn lại khách — bất biến nghĩa vụ hoàn cọc", () => {
     // Hai cột đó nằm ở vế TRỪ của công thức generated refund_amount — ghi vào
     // đó sẽ làm số nghĩa vụ hoàn cọc teo lại đúng bằng khoản mình hoàn.
     const body = impl();
-    const insert = body.slice(body.indexOf("INSERT INTO contract_terminations"));
-    expect(insert).toContain("v_debt, v_penalty + v_extra, 0, 0, 0,");
-    expect(insert).toContain("rent_refund_amount");
-    expect(insert).toContain("v_deposit, v_owed,");
+    const inserts = [...body.matchAll(/\bINSERT\s+INTO\s+(?:public\.)?contract_terminations\s*\(([^)]+)\)\s*VALUES\s*\(([^)]+)\)\s*;/gi)];
+    expect(inserts, "exactly one audit INSERT in live move-out body").toHaveLength(1);
+    const insert = inserts[0];
+    const columns = insert[1].split(",").map((s) => s.trim());
+    const values = insert[2].split(",").map((s) => s.trim());
+    expect(new Set(columns).size).toBe(columns.length);
+    expect(values).toHaveLength(columns.length);
+    const before = body.slice(0, insert.index);
+    const finalRecord = /v_audit\.id\s*:=\s*v_term_id;([\s\S]*?)UPDATE app_private\.termination_write_capabilities/.exec(before);
+    expect(finalRecord, "final audit record before insert proof").not.toBeNull();
+    // This is a straight-line record construction, not defaults behind IF FALSE.
+    expect(finalRecord![1].replace(/v_audit\.\w+\s*:=\s*[^;]+;/g, "").trim(), "straight-line audit construction").toBe("");
+    const proofStart = finalRecord!.index! + finalRecord![0].length - "UPDATE app_private.termination_write_capabilities".length;
+    expect(before.slice(proofStart).replace(/\s+/g, " ").trim(), "audit proof-to-INSERT interval").toBe(
+      "UPDATE app_private.termination_write_capabilities SET expected_after=to_jsonb(v_audit)-ARRAY['refund_amount','total_deductions'],phase=0 " +
+      "WHERE transaction_id=pg_current_xact_id() AND backend_pid=pg_backend_pid() AND termination_id=v_term_id " +
+      "AND actor_id=auth.uid() AND phase=-1; " +
+      "IF NOT FOUND THEN RAISE EXCEPTION 'Missing audit insert proof' USING ERRCODE='42501'; END IF;",
+    );
+    // Only the proven straight-line construction supplies values. The exact
+    // proof interval above cannot mutate the record or supply a dead repair.
+    for (const [column, expected] of Object.entries({
+      outstanding_debt: "v_debt", early_termination_fee: "v_penalty+v_extra",
+      prorated_rent: "0", prorated_days: "0", prorated_services: "0",
+      total_deposit: "v_deposit", rent_refund_amount: "v_owed",
+    })) {
+      expect(columns, `audit column ${column}`).toContain(column);
+      expect(values[columns.indexOf(column)], `audit INSERT value ${column}`).toBe(`v_audit.${column}`);
+      const assignments = [...finalRecord![1].matchAll(new RegExp(`\\bv_audit\\.${column}\\s*:=\\s*([^;]+);`, "gi"))];
+      expect(assignments.length, `audit assignment ${column}`).toBeGreaterThan(0);
+      expect(assignments.at(-1)![1].replace(/\s/g, ""), `final audit assignment ${column}`).toBe(expected);
+    }
   });
 
   it("số quyết toán ròng cộng thêm khoản hoàn", () => {

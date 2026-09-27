@@ -1,0 +1,34 @@
+{
+  "checked_at": "2026-09-27T16:27:26.901Z",
+  "html_sha256": "009162848b61f2ae7ed6ae1518a2075143aa710fa63e2f47316b7f57361958ca",
+  "headless": true,
+  "viewports": [
+    {
+      "width": 1440,
+      "scroll": 1440,
+      "client": 1440
+    },
+    {
+      "width": 768,
+      "scroll": 768,
+      "client": 768
+    },
+    {
+      "width": 390,
+      "scroll": 390,
+      "client": 390
+    },
+    {
+      "width": 320,
+      "scroll": 320,
+      "client": 320
+    }
+  ],
+  "tabs": 5,
+  "keyboard": "PASS",
+  "print_visible_panels": 5,
+  "relative_links": 2,
+  "console_errors": [],
+  "screenshot": "html-v04-example.png",
+  "limits": "Standalone HTML only, not CRM E2E or PDF pagination"
+}

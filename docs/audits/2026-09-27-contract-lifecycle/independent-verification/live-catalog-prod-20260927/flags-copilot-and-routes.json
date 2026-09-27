@@ -1,0 +1,92 @@
+{
+ "at": "2026-09-27T13:00:06.202Z",
+ "target": "project tryymsxyyckgbrmmvozx (production)",
+ "copilot_lifecycle_flags": [
+  {
+   "contract_id": "termination.hoan_coc",
+   "state": "disabled",
+   "canary_org": null,
+   "expires_at": null
+  },
+  {
+   "contract_id": "reservation_deposit.create",
+   "state": "enabled",
+   "canary_org": "DEMO",
+   "expires_at": "2026-09-17T09:50:31.814Z"
+  },
+  {
+   "contract_id": "contract.chuyen_nhuong",
+   "state": "enabled",
+   "canary_org": "DEMO",
+   "expires_at": "2026-09-18T00:48:58.043Z"
+  },
+  {
+   "contract_id": "reservation.set_hold_terms",
+   "state": "enabled",
+   "canary_org": "DEMO",
+   "expires_at": "2026-09-17T08:44:09.838Z"
+  },
+  {
+   "contract_id": "contract.duyet_thanh_ly",
+   "state": "enabled",
+   "canary_org": "DEMO",
+   "expires_at": "2026-09-17T21:11:10.978Z"
+  },
+  {
+   "contract_id": "contract.gia_han",
+   "state": "enabled",
+   "canary_org": "DEMO",
+   "expires_at": "2026-09-18T00:48:59.045Z"
+  },
+  {
+   "contract_id": "room.chuyen_phong",
+   "state": "enabled",
+   "canary_org": "DEMO",
+   "expires_at": "2026-09-18T00:49:06.674Z"
+  },
+  {
+   "contract_id": "room_pass.set_active",
+   "state": "disabled",
+   "canary_org": null,
+   "expires_at": null
+  }
+ ],
+ "server_route_flags": [
+  {
+   "feature_key": "contract.commission.settlement.v2",
+   "mode": "OFF",
+   "force_freeze": false,
+   "ends_at": null
+  },
+  {
+   "feature_key": "contract.create.v1",
+   "mode": "ON",
+   "force_freeze": false,
+   "ends_at": null
+  },
+  {
+   "feature_key": "contract.create.v2",
+   "mode": "ON",
+   "force_freeze": false,
+   "ends_at": null
+  },
+  {
+   "feature_key": "deposit.hold.v1",
+   "mode": "ON",
+   "force_freeze": false,
+   "ends_at": null
+  },
+  {
+   "feature_key": "income_expense.create_draft.v1",
+   "mode": "ON",
+   "force_freeze": false,
+   "ends_at": null
+  },
+  {
+   "feature_key": "income_expense.posting.v2",
+   "mode": "ON",
+   "force_freeze": false,
+   "ends_at": null
+  }
+ ]
+}

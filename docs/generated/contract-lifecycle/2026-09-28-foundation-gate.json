@@ -1,0 +1,17 @@
+{
+  "startedAt": "2026-09-27T18:05:08.552Z",
+  "finishedAt": "2026-09-27T18:05:53.206Z",
+  "exitCode": 0,
+  "gitSha": "5b9f3b26dced75840f236476f1e8bfacf386f7cf",
+  "node": "v24.18.0",
+  "args": [
+    "scripts/kiem-nhanh-truoc-push.mjs",
+    "--khong-dao-strict",
+    "--khong-do-ro-org"
+  ],
+  "log": "foundation-gate.log",
+  "limits": [
+    "Documentation and scripts only; strict-islands/lint and org-leak measurement explicitly skipped.",
+    "No feature migration or application release proven."
+  ]
+}

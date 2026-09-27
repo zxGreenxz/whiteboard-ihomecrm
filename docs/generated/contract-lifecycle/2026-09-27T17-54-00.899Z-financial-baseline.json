@@ -1,0 +1,2162 @@
+{
+  "runId": "p0c-ce8ea93d-151a-42ce-aaf7-6c754841c513",
+  "gitSha": "449de52e11400b8f2df48d011d6dcf229683b624",
+  "testRef": "hzulujxgonszuleqticb",
+  "at": "2026-09-27T17:54:00.899Z",
+  "runtime": "v24.18.0",
+  "harnessSha256": "0ff6994ce8faf859106ef9303b6ed10104ef98bb55790520149141f6af4b52f2",
+  "kind": "CURRENT_FINANCIAL_POLICY_SQL_ROLLBACK",
+  "scenarios": [
+    {
+      "name": "FORFEIT",
+      "status": "PASS",
+      "stage": "complete",
+      "roots": [
+        "8b2d7414-f46b-4347-adff-3f1408743ae5",
+        "9dd53f2d-dd24-44dc-a54f-ad3fc5e9b101",
+        "59923b2d-ebef-450a-914b-a9f113f15c86"
+      ],
+      "fixtureConfiguration": {
+        "newCashbookId": "59923b2d-ebef-450a-914b-a9f113f15c86",
+        "initialAmount": 0,
+        "personalCashbookWasAbsent": true,
+        "writers": [
+          "create_cashbook_v1",
+          "set_personal_cash_book_v1"
+        ]
+      },
+      "serverClock": "2026-09-27 17:53:55.278603+00",
+      "flags": [
+        {
+          "feature_key": "cashbook.access.v2",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "cashbook.archive.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "cashbook.create.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "cashbook.lock_period.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "cashbook.opening_adjust.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "contract.commission.settlement.v2",
+          "mode": "OFF",
+          "route": "LEGACY"
+        },
+        {
+          "feature_key": "contract.create.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "contract.create.v2",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "customer.credit.apply.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "customer.credit.reverse.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "deposit.hold.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "income_expense.create_draft.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "income_expense.posting.v2",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "income_expense.profit_close.v2",
+          "mode": "OFF",
+          "route": "FROZEN"
+        },
+        {
+          "feature_key": "income_expense.read_semantics.v2",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "income_expense.workflow.v2",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "invoice.collection.reverse.v5",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "invoice.collection.v5",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "invoice.create.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "invoice.record_payment.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "invoice.reverse_payment.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "openclaw.media_revocation_gateway.v1",
+          "mode": "OFF",
+          "route": "LEGACY"
+        },
+        {
+          "feature_key": "salary.lock.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "salary.payout.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "salary.settlement.v2",
+          "mode": "OFF",
+          "route": "LEGACY"
+        },
+        {
+          "feature_key": "salary.unlock.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "shareholder_profit.distribute.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "shareholder_profit.distribute.v2",
+          "mode": "SHADOW",
+          "route": "SHADOW"
+        },
+        {
+          "feature_key": "shareholder_profit.pay_manager.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "special_fee.generate.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "spend.cashbook_chi.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "spend.engine.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        }
+      ],
+      "sourceHashes": [
+        {
+          "signature": "public.approve_income_expense_v2(p_voucher uuid, p_expected_approval_version bigint, p_idempotency_key text)",
+          "definition_md5": "6837c1c821c0782242974abe7887f2db"
+        },
+        {
+          "signature": "public.approve_pending_income_expense_checked_v1(p_voucher uuid, p_expected_approval_version bigint)",
+          "definition_md5": "69e9e4eb240089dfb6020d916e51ca0f"
+        },
+        {
+          "signature": "public.create_cashbook_v1(p_name text, p_initial_amount numeric, p_initial_date date, p_bank_name text, p_account_number text, p_quick_default_building_id uuid, p_idempotency_key text, p_description text, p_is_default boolean, p_owner_user_id uuid, p_organization_id uuid)",
+          "definition_md5": "6c5a68c165c9db8d0ac329cd2415b123"
+        },
+        {
+          "signature": "public.create_contract_v2(p_payload jsonb, p_idempotency_key text)",
+          "definition_md5": "ec01e8737a29365a9c0d1db69f182352"
+        },
+        {
+          "signature": "public.create_invoice_v1(p_contract_id uuid, p_building_id uuid, p_room_id uuid, p_billing_month text, p_issue_date date, p_due_date date, p_kind text, p_subtotal numeric, p_discount_amount numeric, p_total_amount numeric, p_previous_debt numeric, p_items jsonb, p_idempotency_key text, p_prepaid_amount numeric, p_discount_notes text, p_electricity_prev_overridden boolean, p_previous_debt_sources jsonb, p_template_id uuid, p_notes text, p_applied_credit numeric, p_creator_name text)",
+          "definition_md5": "4d0237ea1d6ccdd2345062d7bae129e0"
+        },
+        {
+          "signature": "public.record_invoice_collection_v5(p_invoice_id uuid, p_collection_date date, p_tenders jsonb, p_overpay_action text, p_allow_rounding boolean, p_notes text, p_receipt_image_url text, p_expected_paid_amount numeric, p_idempotency_key text)",
+          "definition_md5": "3889ab4d9e3b3f48f8f5c928b6ea314d"
+        },
+        {
+          "signature": "public.set_personal_cash_book_v1(p_membership_id uuid, p_account_id uuid)",
+          "definition_md5": "15db0fd8661a4d72ad46d3fbd854e9b3"
+        },
+        {
+          "signature": "public.terminate_contract_forfeit_impl(p_contract_id uuid, p_forfeit_date date, p_extra_charges jsonb)",
+          "definition_md5": "7e90f0f91f1d57ec51da82bd6bce7003"
+        },
+        {
+          "signature": "public.terminate_contract_forfeit_with_credit_v1(p_contract_id uuid, p_forfeit_date date, p_extra_charges jsonb, p_idempotency_key text)",
+          "definition_md5": "0c34e7be81350a1125f120c95cc1cc22"
+        },
+        {
+          "signature": "public.terminate_contract_move_out_impl(p_contract_id uuid, p_move_out_date date, p_deposit_refund numeric, p_penalty_fee numeric, p_excess_rent numeric, p_outstanding_debt numeric, p_notes text, p_extra_charges jsonb, p_shortfall_mode text, p_receipt_account_id uuid, p_refund_items jsonb)",
+          "definition_md5": "eae1e32af39b4abbffcf26075f1a94d2"
+        },
+        {
+          "signature": "public.terminate_contract_move_out_with_credit_v1(p_contract_id uuid, p_move_out_date date, p_deposit_refund numeric, p_penalty_fee numeric, p_excess_rent numeric, p_outstanding_debt numeric, p_notes text, p_extra_charges jsonb, p_shortfall_mode text, p_receipt_account_id uuid, p_idempotency_key text, p_refund_items jsonb)",
+          "definition_md5": "fe8c5453ffdc35951c7a750a35da7d01"
+        }
+      ],
+      "contractId": "dd194af2-5571-4e3b-97f2-ee8951fce79e",
+      "invoiceIds": [
+        "8911ddbb-904e-470e-867a-b8bfa940319c",
+        "e4182464-495b-48ed-a884-67c4a7f7829d",
+        "64a251da-37bd-4731-a754-dc82c28e21cd"
+      ],
+      "before": {
+        "contracts": [
+          {
+            "id": "dd194af2-5571-4e3b-97f2-ee8951fce79e",
+            "status": "ACTIVE",
+            "deposit_paid": "1000000.00",
+            "total_deposit": "1000000.00"
+          }
+        ],
+        "rooms": [
+          {
+            "id": "8b2d7414-f46b-4347-adff-3f1408743ae5",
+            "status": "OCCUPIED"
+          }
+        ],
+        "invoices": [
+          {
+            "id": "64a251da-37bd-4731-a754-dc82c28e21cd",
+            "status": "PAID",
+            "kind": "SETTLEMENT",
+            "total_amount": "300000.00",
+            "paid_amount": "300000.00",
+            "remaining_amount": "0.00"
+          },
+          {
+            "id": "8911ddbb-904e-470e-867a-b8bfa940319c",
+            "status": "APPROVED",
+            "kind": "SETTLEMENT",
+            "total_amount": "100000.00",
+            "paid_amount": "0.00",
+            "remaining_amount": "100000.00"
+          },
+          {
+            "id": "e4182464-495b-48ed-a884-67c4a7f7829d",
+            "status": "PARTIAL_PAID",
+            "kind": "SETTLEMENT",
+            "total_amount": "200000.00",
+            "paid_amount": "50000.00",
+            "remaining_amount": "150000.00"
+          }
+        ],
+        "payments": [
+          {
+            "id": "9e5cbd32-9f14-4bcf-8eef-61826e2ad671",
+            "invoice_id": "e4182464-495b-48ed-a884-67c4a7f7829d",
+            "amount": "50000.00",
+            "payment_method": "TM"
+          },
+          {
+            "id": "af5ae237-848e-4292-a9a6-f7e286560e40",
+            "invoice_id": "64a251da-37bd-4731-a754-dc82c28e21cd",
+            "amount": "300000.00",
+            "payment_method": "TM"
+          }
+        ],
+        "vouchers": [
+          {
+            "id": "364daca8-b615-473b-8cb4-a11bb9f63233",
+            "type": "INCOME",
+            "total_amount": "50000.00",
+            "approval_status": "APPROVED",
+            "review_state": "RESOLVED",
+            "approval_version": "1",
+            "system_source": "invoice.collection.v5",
+            "posting_mode": "CASHBOOK",
+            "posting_status": "POSTED",
+            "no_account": false,
+            "is_virtual": false
+          },
+          {
+            "id": "3e939e18-e596-471f-b308-8172c95e8c0a",
+            "type": "INCOME",
+            "total_amount": "350000.00",
+            "approval_status": "APPROVED",
+            "review_state": "RESOLVED",
+            "approval_version": "1",
+            "system_source": "invoice.collection.v5",
+            "posting_mode": "CASHBOOK",
+            "posting_status": "POSTED",
+            "no_account": false,
+            "is_virtual": false
+          },
+          {
+            "id": "b63876af-c79c-4a5b-aff4-aef9a8c51a38",
+            "type": "INCOME",
+            "total_amount": "1000000.00",
+            "approval_status": "APPROVED",
+            "review_state": "RESOLVED",
+            "approval_version": "1",
+            "system_source": "contract.create.v2",
+            "posting_mode": "CASHBOOK",
+            "posting_status": "POSTED",
+            "no_account": false,
+            "is_virtual": false
+          }
+        ],
+        "items": [
+          {
+            "id": "1e0b4b00-1f99-4d78-85ca-e45207118ac1",
+            "income_expense_id": "3e939e18-e596-471f-b308-8172c95e8c0a",
+            "amount": "50000.00",
+            "accounting_class": "CUSTOMER_CREDIT"
+          },
+          {
+            "id": "52693e17-3c33-4dac-bcec-4be60ecc2cba",
+            "income_expense_id": "364daca8-b615-473b-8cb4-a11bb9f63233",
+            "amount": "50000.00",
+            "accounting_class": "PNL"
+          },
+          {
+            "id": "b8363098-9ce8-40d7-9469-1ea44b24f5ce",
+            "income_expense_id": "b63876af-c79c-4a5b-aff4-aef9a8c51a38",
+            "amount": "1000000.00",
+            "accounting_class": "DEPOSIT"
+          },
+          {
+            "id": "eb3e4d4c-baec-47c5-b75e-2330d9bf905c",
+            "income_expense_id": "3e939e18-e596-471f-b308-8172c95e8c0a",
+            "amount": "300000.00",
+            "accounting_class": "PNL"
+          }
+        ],
+        "postings": [
+          {
+            "id": "3efe9ceb-1c7e-4f18-b8ce-8900282a3ca9",
+            "voucher_id": "3e939e18-e596-471f-b308-8172c95e8c0a",
+            "direction": "INCOME",
+            "net_cash_effect": "350000.00",
+            "event_kind": "POSTING",
+            "source_kind": "LEGACY_BRIDGE"
+          },
+          {
+            "id": "410b09db-ba68-48b7-94ed-2354ff108972",
+            "voucher_id": "b63876af-c79c-4a5b-aff4-aef9a8c51a38",
+            "direction": "INCOME",
+            "net_cash_effect": "1000000.00",
+            "event_kind": "POSTING",
+            "source_kind": "LEGACY_BRIDGE"
+          },
+          {
+            "id": "9cfa0b6b-06ad-40fa-8151-cefe5b2b165a",
+            "voucher_id": "364daca8-b615-473b-8cb4-a11bb9f63233",
+            "direction": "INCOME",
+            "net_cash_effect": "50000.00",
+            "event_kind": "POSTING",
+            "source_kind": "LEGACY_BRIDGE"
+          }
+        ],
+        "operations": [
+          {
+            "operation": "contract.create.v2",
+            "idempotency_key": "p0c-ce8ea93d-151a-42ce-aaf7-6c754841c513:FORFEIT:create",
+            "completed": true
+          }
+        ],
+        "credit": [
+          {
+            "id": "7937d830-8194-4cca-b1a9-97c69c2310b8",
+            "amount": "50000.00",
+            "remaining_amount": "50000.00",
+            "status": "ACTIVE"
+          }
+        ],
+        "terminations": [],
+        "postingLines": [
+          {
+            "id": "b484699b-0e8c-425d-bffa-f6509f82f4f7",
+            "posting_id": "410b09db-ba68-48b7-94ed-2354ff108972",
+            "line_kind": "MAIN",
+            "signed_amount": "1000000.00"
+          },
+          {
+            "id": "bfe6a579-b357-4737-9d27-84b60161de55",
+            "posting_id": "3efe9ceb-1c7e-4f18-b8ce-8900282a3ca9",
+            "line_kind": "MAIN",
+            "signed_amount": "350000.00"
+          },
+          {
+            "id": "d0ca5d1e-389c-4d39-98b9-0a9d6814a823",
+            "posting_id": "9cfa0b6b-06ad-40fa-8151-cefe5b2b165a",
+            "line_kind": "MAIN",
+            "signed_amount": "50000.00"
+          }
+        ]
+      },
+      "after": {
+        "contracts": [
+          {
+            "id": "dd194af2-5571-4e3b-97f2-ee8951fce79e",
+            "status": "TERMINATED",
+            "deposit_paid": "0.00",
+            "total_deposit": "1000000.00"
+          }
+        ],
+        "rooms": [
+          {
+            "id": "8b2d7414-f46b-4347-adff-3f1408743ae5",
+            "status": "AVAILABLE"
+          }
+        ],
+        "invoices": [
+          {
+            "id": "5e4ed3c4-def7-4e36-8efc-2f8161b71ab8",
+            "status": "PAID",
+            "kind": "SETTLEMENT",
+            "total_amount": "1000000.00",
+            "paid_amount": "1000000.00",
+            "remaining_amount": "0.00"
+          },
+          {
+            "id": "64a251da-37bd-4731-a754-dc82c28e21cd",
+            "status": "PAID",
+            "kind": "SETTLEMENT",
+            "total_amount": "300000.00",
+            "paid_amount": "300000.00",
+            "remaining_amount": "0.00"
+          },
+          {
+            "id": "8911ddbb-904e-470e-867a-b8bfa940319c",
+            "status": "CANCELLED",
+            "kind": "SETTLEMENT",
+            "total_amount": "0.00",
+            "paid_amount": "0.00",
+            "remaining_amount": "0.00"
+          },
+          {
+            "id": "b4a6ee0f-7e72-4da5-93c4-866938a76225",
+            "status": "APPROVED",
+            "kind": "SETTLEMENT",
+            "total_amount": "75000.00",
+            "paid_amount": "0.00",
+            "remaining_amount": "75000.00"
+          },
+          {
+            "id": "e4182464-495b-48ed-a884-67c4a7f7829d",
+            "status": "CANCELLED",
+            "kind": "SETTLEMENT",
+            "total_amount": "50000.00",
+            "paid_amount": "50000.00",
+            "remaining_amount": "0.00"
+          }
+        ],
+        "payments": [
+          {
+            "id": "9e5cbd32-9f14-4bcf-8eef-61826e2ad671",
+            "invoice_id": "e4182464-495b-48ed-a884-67c4a7f7829d",
+            "amount": "50000.00",
+            "payment_method": "TM"
+          },
+          {
+            "id": "af5ae237-848e-4292-a9a6-f7e286560e40",
+            "invoice_id": "64a251da-37bd-4731-a754-dc82c28e21cd",
+            "amount": "300000.00",
+            "payment_method": "TM"
+          },
+          {
+            "id": "e08d3b7d-04a5-4a91-ab46-84c474049d31",
+            "invoice_id": "5e4ed3c4-def7-4e36-8efc-2f8161b71ab8",
+            "amount": "1000000.00",
+            "payment_method": "CT"
+          }
+        ],
+        "vouchers": [
+          {
+            "id": "01320c18-cacc-4e41-822a-003cc80ee125",
+            "type": "EXPENSE",
+            "total_amount": "1000000.00",
+            "approval_status": "APPROVED",
+            "review_state": "RESOLVED",
+            "approval_version": "1",
+            "system_source": "termination.forfeit_offset",
+            "posting_mode": "NON_CASH",
+            "posting_status": "NOT_APPLICABLE",
+            "no_account": false,
+            "is_virtual": true
+          },
+          {
+            "id": "364daca8-b615-473b-8cb4-a11bb9f63233",
+            "type": "INCOME",
+            "total_amount": "50000.00",
+            "approval_status": "APPROVED",
+            "review_state": "RESOLVED",
+            "approval_version": "1",
+            "system_source": "invoice.collection.v5",
+            "posting_mode": "CASHBOOK",
+            "posting_status": "POSTED",
+            "no_account": false,
+            "is_virtual": false
+          },
+          {
+            "id": "3e939e18-e596-471f-b308-8172c95e8c0a",
+            "type": "INCOME",
+            "total_amount": "350000.00",
+            "approval_status": "APPROVED",
+            "review_state": "RESOLVED",
+            "approval_version": "1",
+            "system_source": "invoice.collection.v5",
+            "posting_mode": "CASHBOOK",
+            "posting_status": "POSTED",
+            "no_account": false,
+            "is_virtual": false
+          },
+          {
+            "id": "b63876af-c79c-4a5b-aff4-aef9a8c51a38",
+            "type": "INCOME",
+            "total_amount": "1000000.00",
+            "approval_status": "APPROVED",
+            "review_state": "RESOLVED",
+            "approval_version": "1",
+            "system_source": "contract.create.v2",
+            "posting_mode": "CASHBOOK",
+            "posting_status": "POSTED",
+            "no_account": false,
+            "is_virtual": false
+          },
+          {
+            "id": "dd76be94-7af4-444a-bf28-843200d09ee2",
+            "type": "INCOME",
+            "total_amount": "1000000.00",
+            "approval_status": "APPROVED",
+            "review_state": "RESOLVED",
+            "approval_version": "1",
+            "system_source": "termination.forfeit_revenue",
+            "posting_mode": "NON_CASH",
+            "posting_status": "NOT_APPLICABLE",
+            "no_account": false,
+            "is_virtual": true
+          }
+        ],
+        "items": [
+          {
+            "id": "036bbe71-a9d0-4c72-b76f-43f4633dff1c",
+            "income_expense_id": "01320c18-cacc-4e41-822a-003cc80ee125",
+            "amount": "1000000.00",
+            "accounting_class": "DEPOSIT"
+          },
+          {
+            "id": "1e0b4b00-1f99-4d78-85ca-e45207118ac1",
+            "income_expense_id": "3e939e18-e596-471f-b308-8172c95e8c0a",
+            "amount": "50000.00",
+            "accounting_class": "CUSTOMER_CREDIT"
+          },
+          {
+            "id": "25be99d8-1a08-49ab-8ac8-e05992c81f73",
+            "income_expense_id": "dd76be94-7af4-444a-bf28-843200d09ee2",
+            "amount": "1000000.00",
+            "accounting_class": "PNL"
+          },
+          {
+            "id": "52693e17-3c33-4dac-bcec-4be60ecc2cba",
+            "income_expense_id": "364daca8-b615-473b-8cb4-a11bb9f63233",
+            "amount": "50000.00",
+            "accounting_class": "PNL"
+          },
+          {
+            "id": "b8363098-9ce8-40d7-9469-1ea44b24f5ce",
+            "income_expense_id": "b63876af-c79c-4a5b-aff4-aef9a8c51a38",
+            "amount": "1000000.00",
+            "accounting_class": "DEPOSIT"
+          },
+          {
+            "id": "eb3e4d4c-baec-47c5-b75e-2330d9bf905c",
+            "income_expense_id": "3e939e18-e596-471f-b308-8172c95e8c0a",
+            "amount": "300000.00",
+            "accounting_class": "PNL"
+          }
+        ],
+        "postings": [
+          {
+            "id": "3efe9ceb-1c7e-4f18-b8ce-8900282a3ca9",
+            "voucher_id": "3e939e18-e596-471f-b308-8172c95e8c0a",
+            "direction": "INCOME",
+            "net_cash_effect": "350000.00",
+            "event_kind": "POSTING",
+            "source_kind": "LEGACY_BRIDGE"
+          },
+          {
+            "id": "410b09db-ba68-48b7-94ed-2354ff108972",
+            "voucher_id": "b63876af-c79c-4a5b-aff4-aef9a8c51a38",
+            "direction": "INCOME",
+            "net_cash_effect": "1000000.00",
+            "event_kind": "POSTING",
+            "source_kind": "LEGACY_BRIDGE"
+          },
+          {
+            "id": "9cfa0b6b-06ad-40fa-8151-cefe5b2b165a",
+            "voucher_id": "364daca8-b615-473b-8cb4-a11bb9f63233",
+            "direction": "INCOME",
+            "net_cash_effect": "50000.00",
+            "event_kind": "POSTING",
+            "source_kind": "LEGACY_BRIDGE"
+          }
+        ],
+        "operations": [
+          {
+            "operation": "contract.create.v2",
+            "idempotency_key": "p0c-ce8ea93d-151a-42ce-aaf7-6c754841c513:FORFEIT:create",
+            "completed": true
+          },
+          {
+            "operation": "contract.terminate.forfeit.credit.v1",
+            "idempotency_key": "p0c-ce8ea93d-151a-42ce-aaf7-6c754841c513:FORFEIT:settle",
+            "completed": true
+          },
+          {
+            "operation": "customer.credit.apply.v1",
+            "idempotency_key": "p0c-ce8ea93d-151a-42ce-aaf7-6c754841c513:FORFEIT:settle",
+            "completed": true
+          }
+        ],
+        "credit": [
+          {
+            "id": "7937d830-8194-4cca-b1a9-97c69c2310b8",
+            "amount": "50000.00",
+            "remaining_amount": "0.00",
+            "status": "CONSUMED"
+          }
+        ],
+        "terminations": [
+          {
+            "id": "ebacc5b5-ca40-4d68-8898-52f644f91efc",
+            "status": "COMPLETED",
+            "termination_type": "FORFEIT",
+            "total_deposit": "1000000.00",
+            "outstanding_debt": "0.00",
+            "refund_amount": "0.00"
+          }
+        ],
+        "postingLines": [
+          {
+            "id": "b484699b-0e8c-425d-bffa-f6509f82f4f7",
+            "posting_id": "410b09db-ba68-48b7-94ed-2354ff108972",
+            "line_kind": "MAIN",
+            "signed_amount": "1000000.00"
+          },
+          {
+            "id": "bfe6a579-b357-4737-9d27-84b60161de55",
+            "posting_id": "3efe9ceb-1c7e-4f18-b8ce-8900282a3ca9",
+            "line_kind": "MAIN",
+            "signed_amount": "350000.00"
+          },
+          {
+            "id": "d0ca5d1e-389c-4d39-98b9-0a9d6814a823",
+            "posting_id": "9cfa0b6b-06ad-40fa-8151-cefe5b2b165a",
+            "line_kind": "MAIN",
+            "signed_amount": "50000.00"
+          }
+        ]
+      },
+      "writerSourceIds": {
+        "extraInvoiceId": "b4a6ee0f-7e72-4da5-93c4-866938a76225",
+        "settlementInvoiceId": "5e4ed3c4-def7-4e36-8efc-2f8161b71ab8",
+        "offsetVoucherId": "01320c18-cacc-4e41-822a-003cc80ee125",
+        "revenueVoucherId": "dd76be94-7af4-444a-bf28-843200d09ee2",
+        "refundVoucherId": null
+      },
+      "deltas": {
+        "realCash": 0,
+        "receivable": -175000
+      },
+      "retry": "SAME_RESPONSE_ZERO_EFFECT",
+      "payloadConflict": "23505",
+      "sourceMutationOracle": "COPIED_RESULT_CANCELLATION_REJECTED",
+      "rollbackAbsent": true,
+      "sha256": "0ce2a7bd7ab78d66a028f0c8b4773ff437ab630ef480693f5db602d48e1e31ac"
+    },
+    {
+      "name": "REFUND",
+      "status": "PASS",
+      "stage": "complete",
+      "roots": [
+        "f486005b-1fa8-4371-acdf-5e6e27ef3118",
+        "b2413367-422a-4220-aee2-758bc30b1a2b",
+        "e3338838-2d14-4459-97a5-51a1d4d840d1"
+      ],
+      "fixtureConfiguration": {
+        "newCashbookId": "e3338838-2d14-4459-97a5-51a1d4d840d1",
+        "initialAmount": 0,
+        "personalCashbookWasAbsent": true,
+        "writers": [
+          "create_cashbook_v1",
+          "set_personal_cash_book_v1"
+        ]
+      },
+      "serverClock": "2026-09-27 17:54:04.455457+00",
+      "flags": [
+        {
+          "feature_key": "cashbook.access.v2",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "cashbook.archive.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "cashbook.create.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "cashbook.lock_period.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "cashbook.opening_adjust.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "contract.commission.settlement.v2",
+          "mode": "OFF",
+          "route": "LEGACY"
+        },
+        {
+          "feature_key": "contract.create.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "contract.create.v2",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "customer.credit.apply.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "customer.credit.reverse.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "deposit.hold.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "income_expense.create_draft.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "income_expense.posting.v2",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "income_expense.profit_close.v2",
+          "mode": "OFF",
+          "route": "FROZEN"
+        },
+        {
+          "feature_key": "income_expense.read_semantics.v2",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "income_expense.workflow.v2",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "invoice.collection.reverse.v5",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "invoice.collection.v5",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "invoice.create.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "invoice.record_payment.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "invoice.reverse_payment.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "openclaw.media_revocation_gateway.v1",
+          "mode": "OFF",
+          "route": "LEGACY"
+        },
+        {
+          "feature_key": "salary.lock.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "salary.payout.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "salary.settlement.v2",
+          "mode": "OFF",
+          "route": "LEGACY"
+        },
+        {
+          "feature_key": "salary.unlock.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "shareholder_profit.distribute.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "shareholder_profit.distribute.v2",
+          "mode": "SHADOW",
+          "route": "SHADOW"
+        },
+        {
+          "feature_key": "shareholder_profit.pay_manager.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "special_fee.generate.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "spend.cashbook_chi.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "spend.engine.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        }
+      ],
+      "sourceHashes": [
+        {
+          "signature": "public.approve_income_expense_v2(p_voucher uuid, p_expected_approval_version bigint, p_idempotency_key text)",
+          "definition_md5": "6837c1c821c0782242974abe7887f2db"
+        },
+        {
+          "signature": "public.approve_pending_income_expense_checked_v1(p_voucher uuid, p_expected_approval_version bigint)",
+          "definition_md5": "69e9e4eb240089dfb6020d916e51ca0f"
+        },
+        {
+          "signature": "public.create_cashbook_v1(p_name text, p_initial_amount numeric, p_initial_date date, p_bank_name text, p_account_number text, p_quick_default_building_id uuid, p_idempotency_key text, p_description text, p_is_default boolean, p_owner_user_id uuid, p_organization_id uuid)",
+          "definition_md5": "6c5a68c165c9db8d0ac329cd2415b123"
+        },
+        {
+          "signature": "public.create_contract_v2(p_payload jsonb, p_idempotency_key text)",
+          "definition_md5": "ec01e8737a29365a9c0d1db69f182352"
+        },
+        {
+          "signature": "public.create_invoice_v1(p_contract_id uuid, p_building_id uuid, p_room_id uuid, p_billing_month text, p_issue_date date, p_due_date date, p_kind text, p_subtotal numeric, p_discount_amount numeric, p_total_amount numeric, p_previous_debt numeric, p_items jsonb, p_idempotency_key text, p_prepaid_amount numeric, p_discount_notes text, p_electricity_prev_overridden boolean, p_previous_debt_sources jsonb, p_template_id uuid, p_notes text, p_applied_credit numeric, p_creator_name text)",
+          "definition_md5": "4d0237ea1d6ccdd2345062d7bae129e0"
+        },
+        {
+          "signature": "public.record_invoice_collection_v5(p_invoice_id uuid, p_collection_date date, p_tenders jsonb, p_overpay_action text, p_allow_rounding boolean, p_notes text, p_receipt_image_url text, p_expected_paid_amount numeric, p_idempotency_key text)",
+          "definition_md5": "3889ab4d9e3b3f48f8f5c928b6ea314d"
+        },
+        {
+          "signature": "public.set_personal_cash_book_v1(p_membership_id uuid, p_account_id uuid)",
+          "definition_md5": "15db0fd8661a4d72ad46d3fbd854e9b3"
+        },
+        {
+          "signature": "public.terminate_contract_forfeit_impl(p_contract_id uuid, p_forfeit_date date, p_extra_charges jsonb)",
+          "definition_md5": "7e90f0f91f1d57ec51da82bd6bce7003"
+        },
+        {
+          "signature": "public.terminate_contract_forfeit_with_credit_v1(p_contract_id uuid, p_forfeit_date date, p_extra_charges jsonb, p_idempotency_key text)",
+          "definition_md5": "0c34e7be81350a1125f120c95cc1cc22"
+        },
+        {
+          "signature": "public.terminate_contract_move_out_impl(p_contract_id uuid, p_move_out_date date, p_deposit_refund numeric, p_penalty_fee numeric, p_excess_rent numeric, p_outstanding_debt numeric, p_notes text, p_extra_charges jsonb, p_shortfall_mode text, p_receipt_account_id uuid, p_refund_items jsonb)",
+          "definition_md5": "eae1e32af39b4abbffcf26075f1a94d2"
+        },
+        {
+          "signature": "public.terminate_contract_move_out_with_credit_v1(p_contract_id uuid, p_move_out_date date, p_deposit_refund numeric, p_penalty_fee numeric, p_excess_rent numeric, p_outstanding_debt numeric, p_notes text, p_extra_charges jsonb, p_shortfall_mode text, p_receipt_account_id uuid, p_idempotency_key text, p_refund_items jsonb)",
+          "definition_md5": "fe8c5453ffdc35951c7a750a35da7d01"
+        }
+      ],
+      "contractId": "a2f8c526-165a-4145-8ef3-7de2407e20a1",
+      "invoiceIds": [
+        "030c76f7-e00a-4d06-aab7-40c7b062d4de"
+      ],
+      "before": {
+        "contracts": [
+          {
+            "id": "a2f8c526-165a-4145-8ef3-7de2407e20a1",
+            "status": "ACTIVE",
+            "deposit_paid": "1000000.00",
+            "total_deposit": "1000000.00"
+          }
+        ],
+        "rooms": [
+          {
+            "id": "f486005b-1fa8-4371-acdf-5e6e27ef3118",
+            "status": "OCCUPIED"
+          }
+        ],
+        "invoices": [
+          {
+            "id": "030c76f7-e00a-4d06-aab7-40c7b062d4de",
+            "status": "APPROVED",
+            "kind": "SETTLEMENT",
+            "total_amount": "200000.00",
+            "paid_amount": "0.00",
+            "remaining_amount": "200000.00"
+          }
+        ],
+        "payments": [],
+        "vouchers": [
+          {
+            "id": "a9117cce-19ef-4568-9b8e-b428ab6a66b8",
+            "type": "INCOME",
+            "total_amount": "1000000.00",
+            "approval_status": "APPROVED",
+            "review_state": "RESOLVED",
+            "approval_version": "1",
+            "system_source": "contract.create.v2",
+            "posting_mode": "CASHBOOK",
+            "posting_status": "POSTED",
+            "no_account": false,
+            "is_virtual": false
+          }
+        ],
+        "items": [
+          {
+            "id": "0ffd494e-4a8c-424c-ae22-57be47fc4a61",
+            "income_expense_id": "a9117cce-19ef-4568-9b8e-b428ab6a66b8",
+            "amount": "1000000.00",
+            "accounting_class": "DEPOSIT"
+          }
+        ],
+        "postings": [
+          {
+            "id": "df85224d-40d9-4b5e-907c-dfdcc1ce025a",
+            "voucher_id": "a9117cce-19ef-4568-9b8e-b428ab6a66b8",
+            "direction": "INCOME",
+            "net_cash_effect": "1000000.00",
+            "event_kind": "POSTING",
+            "source_kind": "LEGACY_BRIDGE"
+          }
+        ],
+        "operations": [
+          {
+            "operation": "contract.create.v2",
+            "idempotency_key": "p0c-ce8ea93d-151a-42ce-aaf7-6c754841c513:REFUND:create",
+            "completed": true
+          }
+        ],
+        "credit": [],
+        "terminations": [],
+        "postingLines": [
+          {
+            "id": "c56cffdf-5a3a-4223-a88c-b119e4c6bbba",
+            "posting_id": "df85224d-40d9-4b5e-907c-dfdcc1ce025a",
+            "line_kind": "MAIN",
+            "signed_amount": "1000000.00"
+          }
+        ]
+      },
+      "after": {
+        "contracts": [
+          {
+            "id": "a2f8c526-165a-4145-8ef3-7de2407e20a1",
+            "status": "TERMINATED",
+            "deposit_paid": "800000.00",
+            "total_deposit": "1000000.00"
+          }
+        ],
+        "rooms": [
+          {
+            "id": "f486005b-1fa8-4371-acdf-5e6e27ef3118",
+            "status": "AVAILABLE"
+          }
+        ],
+        "invoices": [
+          {
+            "id": "030c76f7-e00a-4d06-aab7-40c7b062d4de",
+            "status": "PAID",
+            "kind": "SETTLEMENT",
+            "total_amount": "200000.00",
+            "paid_amount": "200000.00",
+            "remaining_amount": "0.00"
+          }
+        ],
+        "payments": [
+          {
+            "id": "f31002d7-bd2a-49d5-b7ad-1f970aaa7857",
+            "invoice_id": "030c76f7-e00a-4d06-aab7-40c7b062d4de",
+            "amount": "200000.00",
+            "payment_method": "CT"
+          }
+        ],
+        "vouchers": [
+          {
+            "id": "a6ee28a2-8b83-48a2-8c7f-6c7c99b8a7e0",
+            "type": "EXPENSE",
+            "total_amount": "200000.00",
+            "approval_status": "APPROVED",
+            "review_state": "RESOLVED",
+            "approval_version": "1",
+            "system_source": "termination.offset",
+            "posting_mode": "NON_CASH",
+            "posting_status": "NOT_APPLICABLE",
+            "no_account": false,
+            "is_virtual": true
+          },
+          {
+            "id": "a9117cce-19ef-4568-9b8e-b428ab6a66b8",
+            "type": "INCOME",
+            "total_amount": "1000000.00",
+            "approval_status": "APPROVED",
+            "review_state": "RESOLVED",
+            "approval_version": "1",
+            "system_source": "contract.create.v2",
+            "posting_mode": "CASHBOOK",
+            "posting_status": "POSTED",
+            "no_account": false,
+            "is_virtual": false
+          },
+          {
+            "id": "c01eebb3-20aa-4e48-a517-dc9e27baf132",
+            "type": "EXPENSE",
+            "total_amount": "800000.00",
+            "approval_status": "UNAPPROVED",
+            "review_state": "PENDING",
+            "approval_version": "1",
+            "system_source": "termination.refund",
+            "posting_mode": "CASHBOOK",
+            "posting_status": "UNPOSTED",
+            "no_account": true,
+            "is_virtual": null
+          },
+          {
+            "id": "ec767b6f-740f-489e-8a48-f63b744b7704",
+            "type": "INCOME",
+            "total_amount": "200000.00",
+            "approval_status": "APPROVED",
+            "review_state": "RESOLVED",
+            "approval_version": "1",
+            "system_source": "termination.revenue",
+            "posting_mode": "NON_CASH",
+            "posting_status": "NOT_APPLICABLE",
+            "no_account": false,
+            "is_virtual": true
+          }
+        ],
+        "items": [
+          {
+            "id": "0ffd494e-4a8c-424c-ae22-57be47fc4a61",
+            "income_expense_id": "a9117cce-19ef-4568-9b8e-b428ab6a66b8",
+            "amount": "1000000.00",
+            "accounting_class": "DEPOSIT"
+          },
+          {
+            "id": "3c9ba130-3555-4d88-a4a2-be606566dd2e",
+            "income_expense_id": "c01eebb3-20aa-4e48-a517-dc9e27baf132",
+            "amount": "800000.00",
+            "accounting_class": "DEPOSIT"
+          },
+          {
+            "id": "cb261545-93a7-4bf5-8635-d8aa7035edf1",
+            "income_expense_id": "ec767b6f-740f-489e-8a48-f63b744b7704",
+            "amount": "200000.00",
+            "accounting_class": "PNL"
+          },
+          {
+            "id": "efe9fb8a-d51b-4256-a362-ac7e23330bd8",
+            "income_expense_id": "a6ee28a2-8b83-48a2-8c7f-6c7c99b8a7e0",
+            "amount": "200000.00",
+            "accounting_class": "DEPOSIT"
+          }
+        ],
+        "postings": [
+          {
+            "id": "df85224d-40d9-4b5e-907c-dfdcc1ce025a",
+            "voucher_id": "a9117cce-19ef-4568-9b8e-b428ab6a66b8",
+            "direction": "INCOME",
+            "net_cash_effect": "1000000.00",
+            "event_kind": "POSTING",
+            "source_kind": "LEGACY_BRIDGE"
+          }
+        ],
+        "operations": [
+          {
+            "operation": "contract.create.v2",
+            "idempotency_key": "p0c-ce8ea93d-151a-42ce-aaf7-6c754841c513:REFUND:create",
+            "completed": true
+          },
+          {
+            "operation": "contract.terminate.move_out.credit.v1",
+            "idempotency_key": "p0c-ce8ea93d-151a-42ce-aaf7-6c754841c513:REFUND:settle",
+            "completed": true
+          }
+        ],
+        "credit": [],
+        "terminations": [
+          {
+            "id": "64bcd120-6b48-42c7-aad9-5bba9177c315",
+            "status": "COMPLETED",
+            "termination_type": "NORMAL",
+            "total_deposit": "1000000.00",
+            "outstanding_debt": "200000.00",
+            "refund_amount": "800000.00"
+          }
+        ],
+        "postingLines": [
+          {
+            "id": "c56cffdf-5a3a-4223-a88c-b119e4c6bbba",
+            "posting_id": "df85224d-40d9-4b5e-907c-dfdcc1ce025a",
+            "line_kind": "MAIN",
+            "signed_amount": "1000000.00"
+          }
+        ]
+      },
+      "writerSourceIds": {
+        "extraInvoiceId": null,
+        "settlementInvoiceId": null,
+        "offsetVoucherId": null,
+        "revenueVoucherId": null,
+        "refundVoucherId": "c01eebb3-20aa-4e48-a517-dc9e27baf132"
+      },
+      "deltas": {
+        "realCash": 0,
+        "receivable": -200000
+      },
+      "retry": "SAME_RESPONSE_ZERO_EFFECT",
+      "payloadConflict": "23505",
+      "approval": {
+        "status": "REJECTED",
+        "sqlstate": "55000",
+        "writer": "approve_income_expense_v2",
+        "meaning": "V2 boundary rejection only; not proof of current UI approval path",
+        "currentUi": {
+          "writer": "approve_pending_income_expense_checked_v1",
+          "sqlstate": "P0001",
+          "condition": "NO_REFUND_CASHBOOK",
+          "effects": 0
+        }
+      },
+      "rollbackAbsent": true,
+      "sha256": "8588eaf72cd7ec0938763df4d744af9b6a0db2ed96e706f99348eff6a214920d"
+    },
+    {
+      "name": "DEBT",
+      "status": "PASS",
+      "stage": "complete",
+      "roots": [
+        "82a7cb23-d089-4229-a9b3-e24eeb8928fb",
+        "69eac181-3169-479b-a721-25a848ba4cb4",
+        "7d982d90-0b87-49cf-94c0-c4e268c10a2c"
+      ],
+      "fixtureConfiguration": {
+        "newCashbookId": "7d982d90-0b87-49cf-94c0-c4e268c10a2c",
+        "initialAmount": 0,
+        "personalCashbookWasAbsent": true,
+        "writers": [
+          "create_cashbook_v1",
+          "set_personal_cash_book_v1"
+        ]
+      },
+      "serverClock": "2026-09-27 17:54:11.5268+00",
+      "flags": [
+        {
+          "feature_key": "cashbook.access.v2",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "cashbook.archive.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "cashbook.create.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "cashbook.lock_period.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "cashbook.opening_adjust.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "contract.commission.settlement.v2",
+          "mode": "OFF",
+          "route": "LEGACY"
+        },
+        {
+          "feature_key": "contract.create.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "contract.create.v2",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "customer.credit.apply.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "customer.credit.reverse.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "deposit.hold.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "income_expense.create_draft.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "income_expense.posting.v2",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "income_expense.profit_close.v2",
+          "mode": "OFF",
+          "route": "FROZEN"
+        },
+        {
+          "feature_key": "income_expense.read_semantics.v2",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "income_expense.workflow.v2",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "invoice.collection.reverse.v5",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "invoice.collection.v5",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "invoice.create.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "invoice.record_payment.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "invoice.reverse_payment.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "openclaw.media_revocation_gateway.v1",
+          "mode": "OFF",
+          "route": "LEGACY"
+        },
+        {
+          "feature_key": "salary.lock.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "salary.payout.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "salary.settlement.v2",
+          "mode": "OFF",
+          "route": "LEGACY"
+        },
+        {
+          "feature_key": "salary.unlock.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "shareholder_profit.distribute.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "shareholder_profit.distribute.v2",
+          "mode": "SHADOW",
+          "route": "SHADOW"
+        },
+        {
+          "feature_key": "shareholder_profit.pay_manager.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "special_fee.generate.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "spend.cashbook_chi.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "spend.engine.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        }
+      ],
+      "sourceHashes": [
+        {
+          "signature": "public.approve_income_expense_v2(p_voucher uuid, p_expected_approval_version bigint, p_idempotency_key text)",
+          "definition_md5": "6837c1c821c0782242974abe7887f2db"
+        },
+        {
+          "signature": "public.approve_pending_income_expense_checked_v1(p_voucher uuid, p_expected_approval_version bigint)",
+          "definition_md5": "69e9e4eb240089dfb6020d916e51ca0f"
+        },
+        {
+          "signature": "public.create_cashbook_v1(p_name text, p_initial_amount numeric, p_initial_date date, p_bank_name text, p_account_number text, p_quick_default_building_id uuid, p_idempotency_key text, p_description text, p_is_default boolean, p_owner_user_id uuid, p_organization_id uuid)",
+          "definition_md5": "6c5a68c165c9db8d0ac329cd2415b123"
+        },
+        {
+          "signature": "public.create_contract_v2(p_payload jsonb, p_idempotency_key text)",
+          "definition_md5": "ec01e8737a29365a9c0d1db69f182352"
+        },
+        {
+          "signature": "public.create_invoice_v1(p_contract_id uuid, p_building_id uuid, p_room_id uuid, p_billing_month text, p_issue_date date, p_due_date date, p_kind text, p_subtotal numeric, p_discount_amount numeric, p_total_amount numeric, p_previous_debt numeric, p_items jsonb, p_idempotency_key text, p_prepaid_amount numeric, p_discount_notes text, p_electricity_prev_overridden boolean, p_previous_debt_sources jsonb, p_template_id uuid, p_notes text, p_applied_credit numeric, p_creator_name text)",
+          "definition_md5": "4d0237ea1d6ccdd2345062d7bae129e0"
+        },
+        {
+          "signature": "public.record_invoice_collection_v5(p_invoice_id uuid, p_collection_date date, p_tenders jsonb, p_overpay_action text, p_allow_rounding boolean, p_notes text, p_receipt_image_url text, p_expected_paid_amount numeric, p_idempotency_key text)",
+          "definition_md5": "3889ab4d9e3b3f48f8f5c928b6ea314d"
+        },
+        {
+          "signature": "public.set_personal_cash_book_v1(p_membership_id uuid, p_account_id uuid)",
+          "definition_md5": "15db0fd8661a4d72ad46d3fbd854e9b3"
+        },
+        {
+          "signature": "public.terminate_contract_forfeit_impl(p_contract_id uuid, p_forfeit_date date, p_extra_charges jsonb)",
+          "definition_md5": "7e90f0f91f1d57ec51da82bd6bce7003"
+        },
+        {
+          "signature": "public.terminate_contract_forfeit_with_credit_v1(p_contract_id uuid, p_forfeit_date date, p_extra_charges jsonb, p_idempotency_key text)",
+          "definition_md5": "0c34e7be81350a1125f120c95cc1cc22"
+        },
+        {
+          "signature": "public.terminate_contract_move_out_impl(p_contract_id uuid, p_move_out_date date, p_deposit_refund numeric, p_penalty_fee numeric, p_excess_rent numeric, p_outstanding_debt numeric, p_notes text, p_extra_charges jsonb, p_shortfall_mode text, p_receipt_account_id uuid, p_refund_items jsonb)",
+          "definition_md5": "eae1e32af39b4abbffcf26075f1a94d2"
+        },
+        {
+          "signature": "public.terminate_contract_move_out_with_credit_v1(p_contract_id uuid, p_move_out_date date, p_deposit_refund numeric, p_penalty_fee numeric, p_excess_rent numeric, p_outstanding_debt numeric, p_notes text, p_extra_charges jsonb, p_shortfall_mode text, p_receipt_account_id uuid, p_idempotency_key text, p_refund_items jsonb)",
+          "definition_md5": "fe8c5453ffdc35951c7a750a35da7d01"
+        }
+      ],
+      "contractId": "a57a19bc-36bd-427a-bc0c-12f94876b004",
+      "invoiceIds": [
+        "82279c26-fb9d-4977-836c-1e653d268b8a"
+      ],
+      "before": {
+        "contracts": [
+          {
+            "id": "a57a19bc-36bd-427a-bc0c-12f94876b004",
+            "status": "ACTIVE",
+            "deposit_paid": "1000000.00",
+            "total_deposit": "1000000.00"
+          }
+        ],
+        "rooms": [
+          {
+            "id": "82a7cb23-d089-4229-a9b3-e24eeb8928fb",
+            "status": "OCCUPIED"
+          }
+        ],
+        "invoices": [
+          {
+            "id": "82279c26-fb9d-4977-836c-1e653d268b8a",
+            "status": "APPROVED",
+            "kind": "SETTLEMENT",
+            "total_amount": "1500000.00",
+            "paid_amount": "0.00",
+            "remaining_amount": "1500000.00"
+          }
+        ],
+        "payments": [],
+        "vouchers": [
+          {
+            "id": "c0d0e3b7-6195-43b3-a90d-64381ebf1a9a",
+            "type": "INCOME",
+            "total_amount": "1000000.00",
+            "approval_status": "APPROVED",
+            "review_state": "RESOLVED",
+            "approval_version": "1",
+            "system_source": "contract.create.v2",
+            "posting_mode": "CASHBOOK",
+            "posting_status": "POSTED",
+            "no_account": false,
+            "is_virtual": false
+          }
+        ],
+        "items": [
+          {
+            "id": "ea3dfa1c-f986-4520-9a13-304be4e4e0a4",
+            "income_expense_id": "c0d0e3b7-6195-43b3-a90d-64381ebf1a9a",
+            "amount": "1000000.00",
+            "accounting_class": "DEPOSIT"
+          }
+        ],
+        "postings": [
+          {
+            "id": "fc91ac59-2b6b-462e-97af-a6b7cf4c5665",
+            "voucher_id": "c0d0e3b7-6195-43b3-a90d-64381ebf1a9a",
+            "direction": "INCOME",
+            "net_cash_effect": "1000000.00",
+            "event_kind": "POSTING",
+            "source_kind": "LEGACY_BRIDGE"
+          }
+        ],
+        "operations": [
+          {
+            "operation": "contract.create.v2",
+            "idempotency_key": "p0c-ce8ea93d-151a-42ce-aaf7-6c754841c513:DEBT:create",
+            "completed": true
+          }
+        ],
+        "credit": [],
+        "terminations": [],
+        "postingLines": [
+          {
+            "id": "48728ab9-5376-4264-8b29-85c383f19e01",
+            "posting_id": "fc91ac59-2b6b-462e-97af-a6b7cf4c5665",
+            "line_kind": "MAIN",
+            "signed_amount": "1000000.00"
+          }
+        ]
+      },
+      "after": {
+        "contracts": [
+          {
+            "id": "a57a19bc-36bd-427a-bc0c-12f94876b004",
+            "status": "TERMINATED",
+            "deposit_paid": "0.00",
+            "total_deposit": "1000000.00"
+          }
+        ],
+        "rooms": [
+          {
+            "id": "82a7cb23-d089-4229-a9b3-e24eeb8928fb",
+            "status": "AVAILABLE"
+          }
+        ],
+        "invoices": [
+          {
+            "id": "82279c26-fb9d-4977-836c-1e653d268b8a",
+            "status": "PARTIAL_PAID",
+            "kind": "SETTLEMENT",
+            "total_amount": "1500000.00",
+            "paid_amount": "1000000.00",
+            "remaining_amount": "500000.00"
+          }
+        ],
+        "payments": [
+          {
+            "id": "25c96923-85c0-409f-ab6c-30a6fb4d13d4",
+            "invoice_id": "82279c26-fb9d-4977-836c-1e653d268b8a",
+            "amount": "1000000.00",
+            "payment_method": "CT"
+          }
+        ],
+        "vouchers": [
+          {
+            "id": "60087dc8-76f5-459f-a658-d8d326a5b02d",
+            "type": "INCOME",
+            "total_amount": "1000000.00",
+            "approval_status": "APPROVED",
+            "review_state": "RESOLVED",
+            "approval_version": "1",
+            "system_source": "termination.revenue",
+            "posting_mode": "NON_CASH",
+            "posting_status": "NOT_APPLICABLE",
+            "no_account": false,
+            "is_virtual": true
+          },
+          {
+            "id": "877f0374-156c-41be-9178-a8c24b419f51",
+            "type": "EXPENSE",
+            "total_amount": "1000000.00",
+            "approval_status": "APPROVED",
+            "review_state": "RESOLVED",
+            "approval_version": "1",
+            "system_source": "termination.offset",
+            "posting_mode": "NON_CASH",
+            "posting_status": "NOT_APPLICABLE",
+            "no_account": false,
+            "is_virtual": true
+          },
+          {
+            "id": "c0d0e3b7-6195-43b3-a90d-64381ebf1a9a",
+            "type": "INCOME",
+            "total_amount": "1000000.00",
+            "approval_status": "APPROVED",
+            "review_state": "RESOLVED",
+            "approval_version": "1",
+            "system_source": "contract.create.v2",
+            "posting_mode": "CASHBOOK",
+            "posting_status": "POSTED",
+            "no_account": false,
+            "is_virtual": false
+          }
+        ],
+        "items": [
+          {
+            "id": "0984171e-9a75-49d8-82f0-93f74052bd27",
+            "income_expense_id": "877f0374-156c-41be-9178-a8c24b419f51",
+            "amount": "1000000.00",
+            "accounting_class": "DEPOSIT"
+          },
+          {
+            "id": "293b88ab-bf56-484b-b79e-42b89203d8ba",
+            "income_expense_id": "60087dc8-76f5-459f-a658-d8d326a5b02d",
+            "amount": "1000000.00",
+            "accounting_class": "PNL"
+          },
+          {
+            "id": "ea3dfa1c-f986-4520-9a13-304be4e4e0a4",
+            "income_expense_id": "c0d0e3b7-6195-43b3-a90d-64381ebf1a9a",
+            "amount": "1000000.00",
+            "accounting_class": "DEPOSIT"
+          }
+        ],
+        "postings": [
+          {
+            "id": "fc91ac59-2b6b-462e-97af-a6b7cf4c5665",
+            "voucher_id": "c0d0e3b7-6195-43b3-a90d-64381ebf1a9a",
+            "direction": "INCOME",
+            "net_cash_effect": "1000000.00",
+            "event_kind": "POSTING",
+            "source_kind": "LEGACY_BRIDGE"
+          }
+        ],
+        "operations": [
+          {
+            "operation": "contract.create.v2",
+            "idempotency_key": "p0c-ce8ea93d-151a-42ce-aaf7-6c754841c513:DEBT:create",
+            "completed": true
+          },
+          {
+            "operation": "contract.terminate.move_out.credit.v1",
+            "idempotency_key": "p0c-ce8ea93d-151a-42ce-aaf7-6c754841c513:DEBT:settle",
+            "completed": true
+          }
+        ],
+        "credit": [],
+        "terminations": [
+          {
+            "id": "3fd1268f-6ce5-4a5a-ac15-93aadb955b20",
+            "status": "COMPLETED",
+            "termination_type": "NORMAL",
+            "total_deposit": "1000000.00",
+            "outstanding_debt": "1500000.00",
+            "refund_amount": "-500000.00"
+          }
+        ],
+        "postingLines": [
+          {
+            "id": "48728ab9-5376-4264-8b29-85c383f19e01",
+            "posting_id": "fc91ac59-2b6b-462e-97af-a6b7cf4c5665",
+            "line_kind": "MAIN",
+            "signed_amount": "1000000.00"
+          }
+        ]
+      },
+      "writerSourceIds": {
+        "extraInvoiceId": null,
+        "settlementInvoiceId": null,
+        "offsetVoucherId": null,
+        "revenueVoucherId": null,
+        "refundVoucherId": null
+      },
+      "deltas": {
+        "realCash": 0,
+        "receivable": -1000000
+      },
+      "retry": "SAME_RESPONSE_ZERO_EFFECT",
+      "payloadConflict": "23505",
+      "rollbackAbsent": true,
+      "sha256": "4f82f83d29e9a5d408a613d9ce2a9c886ef31fcc1c1c730c1aaf5be7a2b12c83"
+    },
+    {
+      "name": "PAID",
+      "status": "PASS",
+      "stage": "complete",
+      "roots": [
+        "ec9f5a79-39b5-4401-aa77-0e09abefe3ff",
+        "2edfb7c1-effb-455e-ac8d-ae3f3dd70fae",
+        "bf548395-cc65-4d9c-9ee6-cd2ebc36c71a"
+      ],
+      "fixtureConfiguration": {
+        "newCashbookId": "bf548395-cc65-4d9c-9ee6-cd2ebc36c71a",
+        "initialAmount": 0,
+        "personalCashbookWasAbsent": true,
+        "writers": [
+          "create_cashbook_v1",
+          "set_personal_cash_book_v1"
+        ]
+      },
+      "serverClock": "2026-09-27 17:54:16.926418+00",
+      "flags": [
+        {
+          "feature_key": "cashbook.access.v2",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "cashbook.archive.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "cashbook.create.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "cashbook.lock_period.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "cashbook.opening_adjust.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "contract.commission.settlement.v2",
+          "mode": "OFF",
+          "route": "LEGACY"
+        },
+        {
+          "feature_key": "contract.create.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "contract.create.v2",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "customer.credit.apply.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "customer.credit.reverse.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "deposit.hold.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "income_expense.create_draft.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "income_expense.posting.v2",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "income_expense.profit_close.v2",
+          "mode": "OFF",
+          "route": "FROZEN"
+        },
+        {
+          "feature_key": "income_expense.read_semantics.v2",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "income_expense.workflow.v2",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "invoice.collection.reverse.v5",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "invoice.collection.v5",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "invoice.create.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "invoice.record_payment.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "invoice.reverse_payment.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "openclaw.media_revocation_gateway.v1",
+          "mode": "OFF",
+          "route": "LEGACY"
+        },
+        {
+          "feature_key": "salary.lock.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "salary.payout.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "salary.settlement.v2",
+          "mode": "OFF",
+          "route": "LEGACY"
+        },
+        {
+          "feature_key": "salary.unlock.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "shareholder_profit.distribute.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "shareholder_profit.distribute.v2",
+          "mode": "SHADOW",
+          "route": "SHADOW"
+        },
+        {
+          "feature_key": "shareholder_profit.pay_manager.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "special_fee.generate.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "spend.cashbook_chi.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        },
+        {
+          "feature_key": "spend.engine.v1",
+          "mode": "ON",
+          "route": "CANONICAL"
+        }
+      ],
+      "sourceHashes": [
+        {
+          "signature": "public.approve_income_expense_v2(p_voucher uuid, p_expected_approval_version bigint, p_idempotency_key text)",
+          "definition_md5": "6837c1c821c0782242974abe7887f2db"
+        },
+        {
+          "signature": "public.approve_pending_income_expense_checked_v1(p_voucher uuid, p_expected_approval_version bigint)",
+          "definition_md5": "69e9e4eb240089dfb6020d916e51ca0f"
+        },
+        {
+          "signature": "public.create_cashbook_v1(p_name text, p_initial_amount numeric, p_initial_date date, p_bank_name text, p_account_number text, p_quick_default_building_id uuid, p_idempotency_key text, p_description text, p_is_default boolean, p_owner_user_id uuid, p_organization_id uuid)",
+          "definition_md5": "6c5a68c165c9db8d0ac329cd2415b123"
+        },
+        {
+          "signature": "public.create_contract_v2(p_payload jsonb, p_idempotency_key text)",
+          "definition_md5": "ec01e8737a29365a9c0d1db69f182352"
+        },
+        {
+          "signature": "public.create_invoice_v1(p_contract_id uuid, p_building_id uuid, p_room_id uuid, p_billing_month text, p_issue_date date, p_due_date date, p_kind text, p_subtotal numeric, p_discount_amount numeric, p_total_amount numeric, p_previous_debt numeric, p_items jsonb, p_idempotency_key text, p_prepaid_amount numeric, p_discount_notes text, p_electricity_prev_overridden boolean, p_previous_debt_sources jsonb, p_template_id uuid, p_notes text, p_applied_credit numeric, p_creator_name text)",
+          "definition_md5": "4d0237ea1d6ccdd2345062d7bae129e0"
+        },
+        {
+          "signature": "public.record_invoice_collection_v5(p_invoice_id uuid, p_collection_date date, p_tenders jsonb, p_overpay_action text, p_allow_rounding boolean, p_notes text, p_receipt_image_url text, p_expected_paid_amount numeric, p_idempotency_key text)",
+          "definition_md5": "3889ab4d9e3b3f48f8f5c928b6ea314d"
+        },
+        {
+          "signature": "public.set_personal_cash_book_v1(p_membership_id uuid, p_account_id uuid)",
+          "definition_md5": "15db0fd8661a4d72ad46d3fbd854e9b3"
+        },
+        {
+          "signature": "public.terminate_contract_forfeit_impl(p_contract_id uuid, p_forfeit_date date, p_extra_charges jsonb)",
+          "definition_md5": "7e90f0f91f1d57ec51da82bd6bce7003"
+        },
+        {
+          "signature": "public.terminate_contract_forfeit_with_credit_v1(p_contract_id uuid, p_forfeit_date date, p_extra_charges jsonb, p_idempotency_key text)",
+          "definition_md5": "0c34e7be81350a1125f120c95cc1cc22"
+        },
+        {
+          "signature": "public.terminate_contract_move_out_impl(p_contract_id uuid, p_move_out_date date, p_deposit_refund numeric, p_penalty_fee numeric, p_excess_rent numeric, p_outstanding_debt numeric, p_notes text, p_extra_charges jsonb, p_shortfall_mode text, p_receipt_account_id uuid, p_refund_items jsonb)",
+          "definition_md5": "eae1e32af39b4abbffcf26075f1a94d2"
+        },
+        {
+          "signature": "public.terminate_contract_move_out_with_credit_v1(p_contract_id uuid, p_move_out_date date, p_deposit_refund numeric, p_penalty_fee numeric, p_excess_rent numeric, p_outstanding_debt numeric, p_notes text, p_extra_charges jsonb, p_shortfall_mode text, p_receipt_account_id uuid, p_idempotency_key text, p_refund_items jsonb)",
+          "definition_md5": "fe8c5453ffdc35951c7a750a35da7d01"
+        }
+      ],
+      "contractId": "08199c64-33ca-4724-915b-8e1d7354af86",
+      "invoiceIds": [
+        "ebbeff1b-d856-4d37-9c6b-55f87a73e23a"
+      ],
+      "before": {
+        "contracts": [
+          {
+            "id": "08199c64-33ca-4724-915b-8e1d7354af86",
+            "status": "ACTIVE",
+            "deposit_paid": "1000000.00",
+            "total_deposit": "1000000.00"
+          }
+        ],
+        "rooms": [
+          {
+            "id": "ec9f5a79-39b5-4401-aa77-0e09abefe3ff",
+            "status": "OCCUPIED"
+          }
+        ],
+        "invoices": [
+          {
+            "id": "ebbeff1b-d856-4d37-9c6b-55f87a73e23a",
+            "status": "APPROVED",
+            "kind": "SETTLEMENT",
+            "total_amount": "1500000.00",
+            "paid_amount": "0.00",
+            "remaining_amount": "1500000.00"
+          }
+        ],
+        "payments": [],
+        "vouchers": [
+          {
+            "id": "4725e339-53fe-40dd-8d66-ae969cb7685b",
+            "type": "INCOME",
+            "total_amount": "1000000.00",
+            "approval_status": "APPROVED",
+            "review_state": "RESOLVED",
+            "approval_version": "1",
+            "system_source": "contract.create.v2",
+            "posting_mode": "CASHBOOK",
+            "posting_status": "POSTED",
+            "no_account": false,
+            "is_virtual": false
+          }
+        ],
+        "items": [
+          {
+            "id": "62ba16dc-84f9-4183-af49-25ef31d233e0",
+            "income_expense_id": "4725e339-53fe-40dd-8d66-ae969cb7685b",
+            "amount": "1000000.00",
+            "accounting_class": "DEPOSIT"
+          }
+        ],
+        "postings": [
+          {
+            "id": "9fa6f73e-2548-4a19-ad21-eda32c12aaf6",
+            "voucher_id": "4725e339-53fe-40dd-8d66-ae969cb7685b",
+            "direction": "INCOME",
+            "net_cash_effect": "1000000.00",
+            "event_kind": "POSTING",
+            "source_kind": "LEGACY_BRIDGE"
+          }
+        ],
+        "operations": [
+          {
+            "operation": "contract.create.v2",
+            "idempotency_key": "p0c-ce8ea93d-151a-42ce-aaf7-6c754841c513:PAID:create",
+            "completed": true
+          }
+        ],
+        "credit": [],
+        "terminations": [],
+        "postingLines": [
+          {
+            "id": "84063b8a-abeb-45a9-8970-5ed98f636b4d",
+            "posting_id": "9fa6f73e-2548-4a19-ad21-eda32c12aaf6",
+            "line_kind": "MAIN",
+            "signed_amount": "1000000.00"
+          }
+        ]
+      },
+      "after": {
+        "contracts": [
+          {
+            "id": "08199c64-33ca-4724-915b-8e1d7354af86",
+            "status": "TERMINATED",
+            "deposit_paid": "0.00",
+            "total_deposit": "1000000.00"
+          }
+        ],
+        "rooms": [
+          {
+            "id": "ec9f5a79-39b5-4401-aa77-0e09abefe3ff",
+            "status": "AVAILABLE"
+          }
+        ],
+        "invoices": [
+          {
+            "id": "ebbeff1b-d856-4d37-9c6b-55f87a73e23a",
+            "status": "PAID",
+            "kind": "SETTLEMENT",
+            "total_amount": "1500000.00",
+            "paid_amount": "1500000.00",
+            "remaining_amount": "0.00"
+          }
+        ],
+        "payments": [
+          {
+            "id": "69ce6c73-b745-4904-8abf-c3825abe7ec8",
+            "invoice_id": "ebbeff1b-d856-4d37-9c6b-55f87a73e23a",
+            "amount": "1500000.00",
+            "payment_method": "CT"
+          }
+        ],
+        "vouchers": [
+          {
+            "id": "2522bb95-42fd-496a-ae29-e9d52b0395bf",
+            "type": "INCOME",
+            "total_amount": "1000000.00",
+            "approval_status": "APPROVED",
+            "review_state": "RESOLVED",
+            "approval_version": "1",
+            "system_source": "termination.revenue",
+            "posting_mode": "NON_CASH",
+            "posting_status": "NOT_APPLICABLE",
+            "no_account": false,
+            "is_virtual": true
+          },
+          {
+            "id": "33958f13-4fc9-4306-877c-e15c3ac11bb8",
+            "type": "INCOME",
+            "total_amount": "500000.00",
+            "approval_status": "APPROVED",
+            "review_state": "RESOLVED",
+            "approval_version": "1",
+            "system_source": "termination.extra_receipt",
+            "posting_mode": "CASHBOOK",
+            "posting_status": "POSTED",
+            "no_account": false,
+            "is_virtual": false
+          },
+          {
+            "id": "4725e339-53fe-40dd-8d66-ae969cb7685b",
+            "type": "INCOME",
+            "total_amount": "1000000.00",
+            "approval_status": "APPROVED",
+            "review_state": "RESOLVED",
+            "approval_version": "1",
+            "system_source": "contract.create.v2",
+            "posting_mode": "CASHBOOK",
+            "posting_status": "POSTED",
+            "no_account": false,
+            "is_virtual": false
+          },
+          {
+            "id": "933cd24e-e25e-495e-9872-b81b44837c41",
+            "type": "EXPENSE",
+            "total_amount": "1000000.00",
+            "approval_status": "APPROVED",
+            "review_state": "RESOLVED",
+            "approval_version": "1",
+            "system_source": "termination.offset",
+            "posting_mode": "NON_CASH",
+            "posting_status": "NOT_APPLICABLE",
+            "no_account": false,
+            "is_virtual": true
+          }
+        ],
+        "items": [
+          {
+            "id": "0dda363d-5848-4d8c-ae5f-daf2ef624357",
+            "income_expense_id": "2522bb95-42fd-496a-ae29-e9d52b0395bf",
+            "amount": "1000000.00",
+            "accounting_class": "PNL"
+          },
+          {
+            "id": "2aa0a320-ba3b-427d-93a5-8cd2494f80df",
+            "income_expense_id": "933cd24e-e25e-495e-9872-b81b44837c41",
+            "amount": "1000000.00",
+            "accounting_class": "DEPOSIT"
+          },
+          {
+            "id": "62ba16dc-84f9-4183-af49-25ef31d233e0",
+            "income_expense_id": "4725e339-53fe-40dd-8d66-ae969cb7685b",
+            "amount": "1000000.00",
+            "accounting_class": "DEPOSIT"
+          },
+          {
+            "id": "bb06443c-d7fe-4ac7-8350-d1c356ff6e03",
+            "income_expense_id": "33958f13-4fc9-4306-877c-e15c3ac11bb8",
+            "amount": "500000.00",
+            "accounting_class": "PNL"
+          }
+        ],
+        "postings": [
+          {
+            "id": "9fa6f73e-2548-4a19-ad21-eda32c12aaf6",
+            "voucher_id": "4725e339-53fe-40dd-8d66-ae969cb7685b",
+            "direction": "INCOME",
+            "net_cash_effect": "1000000.00",
+            "event_kind": "POSTING",
+            "source_kind": "LEGACY_BRIDGE"
+          },
+          {
+            "id": "b9f4eda3-b3fb-4128-af29-a208d5e48c00",
+            "voucher_id": "33958f13-4fc9-4306-877c-e15c3ac11bb8",
+            "direction": "INCOME",
+            "net_cash_effect": "500000.00",
+            "event_kind": "POSTING",
+            "source_kind": "LEGACY_BRIDGE"
+          }
+        ],
+        "operations": [
+          {
+            "operation": "contract.create.v2",
+            "idempotency_key": "p0c-ce8ea93d-151a-42ce-aaf7-6c754841c513:PAID:create",
+            "completed": true
+          },
+          {
+            "operation": "contract.terminate.move_out.credit.v1",
+            "idempotency_key": "p0c-ce8ea93d-151a-42ce-aaf7-6c754841c513:PAID:settle",
+            "completed": true
+          }
+        ],
+        "credit": [],
+        "terminations": [
+          {
+            "id": "19688763-cdd2-4b5c-8658-146dbf2baca8",
+            "status": "COMPLETED",
+            "termination_type": "NORMAL",
+            "total_deposit": "1000000.00",
+            "outstanding_debt": "1500000.00",
+            "refund_amount": "-500000.00"
+          }
+        ],
+        "postingLines": [
+          {
+            "id": "7f91b86f-114b-46d0-95d0-c1d67ac74346",
+            "posting_id": "b9f4eda3-b3fb-4128-af29-a208d5e48c00",
+            "line_kind": "MAIN",
+            "signed_amount": "500000.00"
+          },
+          {
+            "id": "84063b8a-abeb-45a9-8970-5ed98f636b4d",
+            "posting_id": "9fa6f73e-2548-4a19-ad21-eda32c12aaf6",
+            "line_kind": "MAIN",
+            "signed_amount": "1000000.00"
+          }
+        ]
+      },
+      "writerSourceIds": {
+        "extraInvoiceId": null,
+        "settlementInvoiceId": null,
+        "offsetVoucherId": null,
+        "revenueVoucherId": null,
+        "refundVoucherId": null
+      },
+      "deltas": {
+        "realCash": 500000,
+        "receivable": -1500000
+      },
+      "retry": "SAME_RESPONSE_ZERO_EFFECT",
+      "payloadConflict": "23505",
+      "rollbackAbsent": true,
+      "sha256": "f5caa9016b31d57fe0d70e7962b5c57b73afdab467a97f3a98e535e571dfa7bc"
+    }
+  ],
+  "status": "PASS",
+  "limits": [
+    "SQL request claims are not real JWT authorization proof.",
+    "Post-commit approval, concurrency and real JWT mutations remain pending.",
+    "Flags are observed, never changed; no production writes."
+  ],
+  "pass": 4,
+  "fail": 0
+}

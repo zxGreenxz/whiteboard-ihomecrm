@@ -18975,6 +18975,15 @@ export type Database = {
       }
       approve_voucher: { Args: { voucher_id: string }; Returns: undefined }
       archive_cashbook_v1: { Args: { p_cashbook_id: string }; Returns: Json }
+      assign_commission_manager_v1: {
+        Args: {
+          p_expected_approval_version: number
+          p_idempotency_key: string
+          p_manager_id: string
+          p_voucher_id: string
+        }
+        Returns: Json
+      }
       attach_payment_receipt_v1: {
         Args: { p_payment_id: string; p_receipt_url: string }
         Returns: Json
@@ -19581,6 +19590,14 @@ export type Database = {
           id: string
           is_open: boolean
           reason_code: string
+        }[]
+      }
+      commission_manager_options_v1: {
+        Args: { p_organization_id: string }
+        Returns: {
+          alias: string
+          display_name: string
+          staff_id: string
         }[]
       }
       complete_inspection: {
@@ -20466,6 +20483,27 @@ export type Database = {
           p_recipient_bank?: string
           p_recipient_name?: string
           p_voucher_date: string
+        }
+        Returns: Json
+      }
+      create_contract_termination_draft_v1: {
+        Args: {
+          p_cleaning_fee?: number
+          p_contract_id: string
+          p_damage_fee?: number
+          p_early_termination_fee?: number
+          p_idempotency_key: string
+          p_move_out_date: string
+          p_notes?: string
+          p_notice_violation_fee?: number
+          p_other_fees?: number
+          p_outstanding_debt?: number
+          p_prorated_days?: number
+          p_prorated_rent?: number
+          p_prorated_services?: number
+          p_refund_method?: Database["public"]["Enums"]["payment_method"]
+          p_termination_type?: string
+          p_total_deposit?: number
         }
         Returns: Json
       }
@@ -21977,6 +22015,14 @@ export type Database = {
         }
         Returns: Json
       }
+      lock_salary_month_v2: {
+        Args: {
+          p_idempotency_key: string
+          p_managers: Json
+          p_period_month: string
+        }
+        Returns: Json
+      }
       log_income_expense_action: {
         Args: { p_action: string; p_id: string; p_note?: string }
         Returns: undefined
@@ -23234,6 +23280,18 @@ export type Database = {
         Args: { p_organization_id: string }
         Returns: boolean
       }
+      salary_commission_meta_v1: {
+        Args: { p_period_month: string; p_voucher_ids: string[] }
+        Returns: {
+          account_id: string
+          account_name: string
+          included_period: string
+          included_staff_id: string
+          manager_id: string
+          on_manager_book: boolean
+          voucher_id: string
+        }[]
+      }
       salary_line_override_list_v1: {
         Args: { p_organization_id: string; p_period_month: string }
         Returns: {
@@ -23908,6 +23966,14 @@ export type Database = {
         Returns: Json
       }
       unlock_salary_month_v1: {
+        Args: {
+          p_idempotency_key: string
+          p_period_month: string
+          p_staff_ids: string[]
+        }
+        Returns: Json
+      }
+      unlock_salary_month_v2: {
         Args: {
           p_idempotency_key: string
           p_period_month: string

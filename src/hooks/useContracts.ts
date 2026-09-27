@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import { fetchAllRows } from "@/lib/supabaseFetchAll";
 import { isCanonicalFallbackSignal } from "@/lib/canonicalFallback";
+import { rejectTermination } from "@/lib/terminationRejectRpc";
 import { toast } from "sonner";
 import { friendlyError } from "@/lib/friendlyError";
 import { markLocalWrite } from "@/hooks/useRealtimeDataSync";
@@ -1242,27 +1243,7 @@ export const useRejectTermination = () => {
       const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
 
-      // Canonical reject (mirror legacy: về DRAFT + prefix lý do), fallback cũ.
-      const canonical = await supabase.rpc("reject_contract_termination_v1", {
-        p_termination_id: data.termination_id,
-        p_reason: data.rejection_reason ?? undefined,
-      });
-      if (!canonical.error) return { success: true };
-      if (!isCanonicalFallbackSignal(canonical.error)) throw canonical.error;
-
-      const { error } = await supabase
-        .from("contract_terminations")
-        .update({
-          status: "DRAFT",
-          notes: data.rejection_reason
-            ? `[Từ chối] ${data.rejection_reason}`
-            : undefined,
-        })
-        .eq("id", data.termination_id)
-        ;
-
-      if (error) throw error;
-      return { success: true };
+      return rejectTermination((_name, args) => supabase.rpc("reject_contract_termination_v1", args), data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["contracts"] });

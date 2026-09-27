@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-09-27T11:44:16.117Z",
+  "generatedAt": "2026-09-27T21:21:49.685Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 615,
-    "unknown": 80,
-    "catalog-proven": 205,
+    "unknown": 81,
+    "catalog-proven": 207,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -10625,6 +10625,48 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-09-27T11:39:08.882Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260927155251_hoa_hong_quan_ly_so_ao.sql",
+      "version": "20260927155251",
+      "name": "hoa_hong_quan_ly_so_ao",
+      "scheme": "timestamp14",
+      "sha256": "f4bef1760957aa276377203c9ee19e09823094b0b7a3359f39f3f8712d0716c7",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:table:app_private.salary_commission_books",
+        "catalog:table:app_private.commission_manager_links",
+        "catalog:function:app_private.salary_commission_book_v1",
+        "catalog:function:app_private.ie_has_commission_item_v1",
+        "catalog:index:app_private.commission_manager_links_mgr"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260927180948_approve_termination_eligibility.sql",
+      "version": "20260927180948",
+      "name": "approve_termination_eligibility",
+      "scheme": "timestamp14",
+      "sha256": "8b3803b081f572d3c3f56137939b40b57ac78047ca5129c23d6c002dd6dc05b6",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:public.approve_contract_termination_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260927190750_termination_write_boundary.sql",
+      "version": "20260927190750",
+      "name": "termination_write_boundary",
+      "scheme": "timestamp14",
+      "sha256": "6f39c97459f038d6dc5c0e5294dab465ba8cdaee3187e5d042bec9e4fe0c0c7b",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "table:app_private.termination_write_capabilities",
+        "function:app_private.open_termination_write_v2",
+        "function:app_private.close_termination_write_v2",
+        "function:public.create_contract_termination_draft_v1",
+        "trigger:public.contract_terminations.trigger_termination_final_guard"
       ]
     },
     {

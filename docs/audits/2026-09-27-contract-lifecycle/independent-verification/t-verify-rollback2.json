@@ -1,0 +1,31 @@
+{
+  "target": "project hzulujxgonszuleqticb (TEST)",
+  "at": "2026-09-27T12:47:15.849Z",
+  "results": {
+    "voucher_absent": {
+      "rowCount": 1,
+      "rows": [
+        {
+          "vouchers_with_probe_prefix": "0"
+        }
+      ]
+    },
+    "termination_absent": {
+      "rowCount": 1,
+      "rows": [
+        {
+          "terminations_for_probe_contract": "0"
+        }
+      ]
+    },
+    "contract_still_active": {
+      "rowCount": 1,
+      "rows": [
+        {
+          "status": "ACTIVE",
+          "room_status": "OCCUPIED"
+        }
+      ]
+    }
+  }
+}

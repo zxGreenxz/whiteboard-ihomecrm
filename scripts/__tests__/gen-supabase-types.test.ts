@@ -1,7 +1,7 @@
 import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 
 const temporaryDirectories: string[] = [];
 
@@ -18,12 +18,50 @@ async function makeTemporaryDirectory() {
 }
 
 afterEach(async () => {
+  vi.unstubAllGlobals();
   await Promise.all(
     temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
   );
 });
 
 describe('gen-supabase-types wrapper', () => {
+  test('explicit target wins while invalid or conflicting targets fail before a child runs', async () => {
+    const {resolveProjectRef,generateSupabaseTypes} = await loadWrapper();
+    const configToml='project_id = "tryymsxyyckgbrmmvozx"';
+    expect(resolveProjectRef({configToml,explicitProjectRef:'abcdefghijklmnopqrst'})).toBe('abcdefghijklmnopqrst');
+    expect(resolveProjectRef({configToml})).toBe('tryymsxyyckgbrmmvozx');
+    const repoRoot=await makeTemporaryDirectory();
+    for(const environment of [
+      {SUPABASE_PROJECT_REF:''}, {SUPABASE_PROJECT_REF:'INVALID'},
+      {SUPABASE_PROJECT_REF:'abcdefghijklmnopqrst',SUPABASE_TYPES_SOURCE:'local'},
+    ]) {
+      let invoked=false;
+      await expect(generateSupabaseTypes({repoRoot,environment,runCli:async()=>{invoked=true;throw new Error('child');}})).rejects.toThrow(/explicit|override/i);
+      expect(invoked).toBe(false);
+    }
+  });
+  test('catalog shares explicit target validation and never sends invalid target HTTP', async () => {
+    const {hoiCatalog}=await import('../generate-rpc-surface.mjs');
+    let url='';
+    const fetch=async(input: string)=>{url=input;return {ok:true,json:async()=>[{synthetic:true}]};};
+    vi.stubGlobal('fetch',fetch);
+    const result=await hoiCatalog('SELECT 1',{environment:{SUPABASE_PROJECT_REF:'abcdefghijklmnopqrst',SUPABASE_PAT:'synthetic'},fetch});
+    expect(url).toBe('https://api.supabase.com/v1/projects/abcdefghijklmnopqrst/database/query');
+    expect(result).toEqual([{synthetic:true}]);
+    for (const environment of [{SUPABASE_PROJECT_REF:''},{SUPABASE_PROJECT_REF:'abcdefghijklmnopqrst',SUPABASE_TYPES_SOURCE:'local'}]) {
+      url='';
+      await expect(hoiCatalog('SELECT 1',{environment,fetch})).rejects.toThrow(/explicit|override/i);
+      expect(url).toBe('');
+    }
+  });
+  test('local types without an explicit override retain the configured remote catalog', async () => {
+    const {hoiCatalog}=await import('../generate-rpc-surface.mjs');
+    let url='';
+    const fetch=async(input: string)=>{url=input;return {ok:true,json:async()=>[{synthetic:true}]};};
+    const result=await hoiCatalog('SELECT 1',{environment:{SUPABASE_TYPES_SOURCE:'local',SUPABASE_PAT:'synthetic'},fetch});
+    expect(url).toBe('https://api.supabase.com/v1/projects/tryymsxyyckgbrmmvozx/database/query');
+    expect(result).toEqual([{synthetic:true}]);
+  });
   test('reads the project ref and PAT from repository configuration', async () => {
     const { extractSupabaseAccessToken, resolveProjectRef } = await loadWrapper();
     const fakePat = 'sbp_test_PAT-1234567890';
@@ -69,7 +107,7 @@ describe('gen-supabase-types wrapper', () => {
       ...generatorArgs,
     ];
 
-    expect(SUPABASE_CLI_VERSION).toBe('2.109.1');
+    expect(SUPABASE_CLI_VERSION).toBe('2.117.0');
     expect(
       buildSupabaseCliInvocation('tryymsxyyckgbrmmvozx', 'win32', {
         execPath: 'C:\\Program Files\\nodejs\\node.exe',
@@ -146,7 +184,7 @@ describe('gen-supabase-types wrapper', () => {
     );
   });
 
-  test('writes generated types atomically and clears the child PAT environment', async () => {
+  test('writes explicit-target generated types atomically and clears the child PAT environment', async () => {
     const { GENERATED_TYPES_HEADER, generateSupabaseTypes } = await loadWrapper();
     const repoRoot = await makeTemporaryDirectory();
     const fakePat = 'sbp_test_secret-1234567890';
@@ -168,13 +206,16 @@ describe('gen-supabase-types wrapper', () => {
         PATH: process.env.PATH,
         OPENAI_API_KEY: 'model-key-must-not-reach-child',
         UNRELATED_SECRET: 'unrelated-secret-must-not-reach-child',
+        SUPABASE_PROJECT_REF: 'abcdefghijklmnopqrst',
       },
       platform: 'win32',
       runCli: async ({ command, args, env, shell }) => {
         childEnvironment = env;
         expect(command).toBe(process.execPath);
         expect(args[0]).toMatch(/npm-cli\.js$/);
-        expect(args).toContain('tryymsxyyckgbrmmvozx');
+        expect(args).toContain('abcdefghijklmnopqrst');
+        expect(args).not.toContain('tryymsxyyckgbrmmvozx');
+        expect(env.SUPABASE_PROJECT_REF).toBeUndefined();
         expect(shell).toBe(false);
         expect(env.SUPABASE_ACCESS_TOKEN).toBe(fakePat);
         expect(env.SUPABASE_PAT).toBeUndefined();
