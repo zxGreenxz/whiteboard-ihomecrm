@@ -125,6 +125,10 @@ jobs:
         if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
         run: node --test scripts/org-context-repair/sealed-artifact.test.mjs
 
+      - name: Contract lifecycle TEST target and catalog preflight (no credentials)
+        if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
+        run: node --test scripts/tests/contract-lifecycle/preflight.test.mjs
+
       - name: contract-gates (luật agent · bề mặt sản phẩm · runtime pin · known-gap hết hạn)
         if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
         run: |
