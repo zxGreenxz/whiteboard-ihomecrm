@@ -29,6 +29,63 @@ const sum=(rows,key)=>rows.reduce((a,r)=>a+Number(r[key]),0);
 const cash=s=>sum(s.postings,'net_cash_effect');
 const debt=s=>s.invoices.filter(r=>r.status!=='CANCELLED').reduce((a,r)=>a+Number(r.remaining_amount),0);
 
+// Shared by the live runner and copied-result negative tests. Response pointers
+// bind assertions to the writer's actual new rows, not just its amount summary.
+export function assertSettlementSources(name, before, after, response) {
+  const termination=response.termination;
+  const newVoucher=(source,id,type,mode,status,amount)=>{
+    const rows=after.vouchers.filter(v=>v.system_source===source);
+    assert.equal(rows.length,1,`Exactly one ${source} source required`);
+    const row=rows[0];
+    assert.equal(typeof id,'string',`${source} writer source ID required`);
+    assert.equal(row.id,id,`${source} writer source identity`);
+    assert(!before.vouchers.some(v=>v.id===id),`${source} must be a new source`);
+    assert.equal(row.type,type,`${source} voucher type`);
+    assert.equal(row.posting_mode,mode,`${source} posting mode`);
+    assert.equal(row.posting_status,status,`${source} posting status`);
+    assert.equal(Number(row.total_amount),amount,`${source} amount`);
+    return row;
+  };
+  if(name==='FORFEIT') {
+    const newInvoices=after.invoices.filter(i=>!before.invoices.some(b=>b.id===i.id));
+    const expected=[termination.extra_invoice_id,termination.settlement_invoice_id];
+    assert(expected.every(id=>typeof id==='string') && new Set(expected).size===2,'Distinct writer invoice source IDs required');
+    assert.deepEqual(newInvoices.map(i=>i.id).sort(),[...expected].sort(),'Exact new FORFEIT invoice source set');
+    const extra=newInvoices.find(i=>i.id===termination.extra_invoice_id);
+    assert.equal(extra.status,'APPROVED','Extra invoice status');
+    assert.equal(extra.kind,'SETTLEMENT','Extra invoice kind');
+    assert.equal(Number(extra.total_amount),75000,'Extra invoice total');
+    assert.equal(Number(extra.paid_amount),0,'Extra invoice paid');
+    assert.equal(Number(extra.remaining_amount),75000,'Extra invoice receivable');
+    assert.equal(debt(after)-debt(before),-175000,'FORFEIT receivable delta');
+
+    assert.equal(before.credit.length,1,'Nonempty exact original credit lot');
+    assert.deepEqual(after.credit.map(l=>l.id).sort(),before.credit.map(l=>l.id).sort(),'Exact preserved credit lot identities');
+    assert.equal(Number(before.credit[0].amount),50000,'Original credit amount');
+    assert.equal(Number(before.credit[0].remaining_amount),50000,'Original credit balance');
+    assert.equal(before.credit[0].status,'ACTIVE','Original credit status');
+    assert.equal(Number(after.credit[0].amount),50000,'Preserved original credit amount');
+    assert.equal(Number(after.credit[0].remaining_amount),0,'Consumed credit balance');
+    assert.equal(after.credit[0].status,'CONSUMED','Consumed credit status');
+
+    const offset=newVoucher('termination.forfeit_offset',termination.pending_expense_voucher_id,'EXPENSE','NON_CASH','NOT_APPLICABLE',1000000);
+    const revenue=newVoucher('termination.forfeit_revenue',termination.pending_income_voucher_id,'INCOME','NON_CASH','NOT_APPLICABLE',1000000);
+    assert.notEqual(offset.id,revenue.id,'Distinct FORFEIT pair sources');
+    for(const row of [offset,revenue]) {
+      assert.equal(row.approval_status,'APPROVED','FORFEIT pair approval');
+      assert.equal(row.no_account,false,'FORFEIT pair account required');
+      assert.equal(row.is_virtual,true,'FORFEIT pair virtual account source');
+    }
+    assert.equal(cash(after)-cash(before),0,'FORFEIT real cash unchanged');
+  } else if(name==='REFUND') {
+    const refund=newVoucher('termination.refund',termination.refund_voucher_id,'EXPENSE','CASHBOOK','UNPOSTED',800000);
+    assert.equal(refund.approval_status,'UNAPPROVED','Refund approval status');
+    assert.equal(refund.no_account,true,'Refund account must be NULL');
+    assert.equal(refund.is_virtual,null,'Refund has no joined account');
+    assert.equal(cash(after)-cash(before),0,'Refund not yet paid in real cash');
+  }
+}
+
 export async function runFinancialScenario({query}, {name,runId,roots,stage,evidence={},assertForfeitInvoices,digest}) {
   let current='setup';
   const at=s=>{current=s;stage(s);};
@@ -89,6 +146,14 @@ export async function runFinancialScenario({query}, {name,runId,roots,stage,evid
   at('settlement');const response=await call();
   at('after-snapshot');const after=await snapshot(q,contract);
   evidence.after=after;
+  evidence.writerSourceIds={
+    extraInvoiceId:response.termination.extra_invoice_id??null,
+    settlementInvoiceId:response.termination.settlement_invoice_id??null,
+    offsetVoucherId:response.termination.pending_expense_voucher_id??null,
+    revenueVoucherId:response.termination.pending_income_voucher_id??null,
+    refundVoucherId:response.termination.refund_voucher_id??null,
+  };
+  assertSettlementSources(name,before,after,response);
   assert.equal(after.contracts[0]?.status,'TERMINATED');
   assert.equal(after.rooms[0]?.status,'AVAILABLE');
   assert.equal(after.terminations.length,1,'Required termination audit row');
@@ -98,12 +163,6 @@ export async function runFinancialScenario({query}, {name,runId,roots,stage,evid
     assert.equal(Number(response.termination.kept_paid_amount),50000);
     assert.equal(Number(response.termination.forfeit_amount),1000000);
     assert.equal(Number(response.termination.extra_charges_total),75000);
-    const pair=after.vouchers.filter(v=>['termination.forfeit_offset','termination.forfeit_revenue'].includes(v.system_source));
-    assert.equal(pair.length,2);
-    assert(pair.every(v=>v.approval_status==='APPROVED' && v.posting_mode==='NON_CASH' && v.is_virtual && Number(v.total_amount)===1000000));
-    assert.equal(cash(after),cash(before));
-    assert.equal(sum(before.credit,'remaining_amount'),50000,'Positive CREDIT fixture required');
-    assert.equal(sum(after.credit,'remaining_amount'),0,'Credit consumed by FORFEIT');
     assert.equal(Number(response.credit.applied_amount),50000);
     const corrupted=structuredClone(after.invoices);corrupted.find(v=>v.id===invoiceIds[0]).status='APPROVED';
     assert.throws(()=>assertForfeitInvoices(before.invoices,corrupted),/cancellation/);
@@ -122,11 +181,6 @@ export async function runFinancialScenario({query}, {name,runId,roots,stage,evid
     const newPayments=after.payments.filter(p=>!before.payments.some(b=>b.id===p.id));
     assert(newPayments.length>0 && newPayments.every(p=>p.payment_method==='CT'),'Settlement debt must be cleared through CT only');
     assert.equal(sum(newPayments,'amount'),name==='DEBT'?1000000:amounts[0]);
-    if(name==='REFUND'){
-      const refund=after.vouchers.filter(v=>v.system_source==='termination.refund');
-      assert.equal(refund.length,1);assert.equal(Number(refund[0].total_amount),800000);
-      assert.equal(refund[0].approval_status,'UNAPPROVED');assert.equal(refund[0].no_account,true);
-    }
   }
   at('idempotency-retry');assert.deepEqual(await call(),response);
   assert.equal(digest(await snapshot(q,contract)),digest(after),'Retry changed financial sources');

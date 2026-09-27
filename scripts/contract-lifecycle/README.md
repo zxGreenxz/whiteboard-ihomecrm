@@ -26,11 +26,18 @@ dùng chung. Giữ nguyên feature flags và ghi route thực tế vào từng c
   đã trả đủ 300.000đ; thu dư CREDIT 50.000đ; thu thêm 75.000đ. Kiểm hủy phần nợ,
   giữ phần đã thu, giữ hóa đơn đã trả đủ, cặp nội bộ tự duyệt, credit tiêu hết,
   và tiền thật không đổi.
+  Oracle đối chiếu đúng ID hóa đơn thu thêm từ writer với nguồn mới
+  APPROVED/SETTLEMENT, total/remaining 75.000đ, paid 0 và delta phải thu -175.000đ;
+  giữ nguyên đúng lot credit gốc (amount 50.000đ), chỉ đổi sang CONSUMED/remaining 0.
+  Hai phiếu nội bộ phải có đúng một nguồn offset EXPENSE và một nguồn revenue
+  INCOME, mỗi ID khớp writer và có sổ ảo hợp lệ.
 - REFUND: nợ 200.000đ, cấn cọc và tạo phiếu hoàn 800.000đ UNAPPROVED, chưa chọn
   sổ, chưa chi tiền. Đường duyệt UI hiện tại
   `approve_pending_income_expense_checked_v1` phải từ chối P0001 khi chưa có sổ.
   Probe V2 riêng ghi 55000; không suy ra đây là đường UI hay chỉ riêng lỗi
   cùng transaction. Cả hai probe dùng savepoint và kiểm snapshot không đổi.
+  Phiếu hoàn phải khớp ID writer, type EXPENSE và CASHBOOK/UNPOSTED; thiếu,
+  trùng, đổi ID hoặc trạng thái nguồn đều bị từ chối bởi oracle dùng chung.
 - DEBT: nợ 1.500.000đ, cấn cọc 1.000.000đ bằng CT, còn 500.000đ, không thu giả.
 - PAID: gạch 1.500.000đ bằng CT, tạo phiếu thu thật và posting 500.000đ.
 
@@ -39,6 +46,9 @@ tạo hợp đồng, hóa đơn, thu tiền và thanh lý là writer hiện hàn
 chứa nguồn synthetic: hợp đồng/phòng, hóa đơn/payment, phiếu/item/posting/line,
 canonical operations, credit lots và termination audit. Evidence ghim Git SHA,
 digest mã harness, giờ server, nguồn SQL, số đếm và digest từng ca.
+`baseline-sources.test.mjs` dùng bản sao evidence lịch sử để kiểm oracle này;
+những test âm đó không thay thế bằng chứng chạy database thật. Evidence P0c đầu
+tiên được giữ làm lịch sử; bản fix1 bổ sung kiểm nguồn chính xác và ID từ writer.
 
 Giới hạn: đây là SQL chạy với claims của DEMO owner, **không phải chứng minh
 authorization qua JWT**. Chưa kiểm duyệt/chi hoàn thành công sau commit, JWT
