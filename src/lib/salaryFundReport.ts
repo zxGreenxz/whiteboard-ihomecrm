@@ -48,10 +48,12 @@ const WORK_ICON_KEY: Record<string, { key: string; label?: string }> = {
 };
 
 // Lương cứng của kỳ. Kỳ đã chốt: m.base là cấu hình HIỆN TẠI (v5 còn đổi base
-// thành chuyên cần), nên suy ngược từ số đã đóng băng cho khớp gross_total.
+// thành chuyên cần) → dùng base_salary đã đóng băng; thiếu thì suy ngược từ
+// gross_total trừ các phần đã đóng băng (không dùng đầu tư/HH live — có thể trôi).
 export function baseOf(m: SalManager): number {
   if (m.status !== "LOCKED" || !m.calc) return m.base;
-  return Math.max(0, m.calc.gross - m.calc.bonus - m.investment - m.commission);
+  if (m.frozen) return m.frozen.base;
+  return m.calc.gross - m.calc.bonus - m.investment - m.commission;
 }
 
 export function fundLinesOf(m: SalManager): FundLine[] {

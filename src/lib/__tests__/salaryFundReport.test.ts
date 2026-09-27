@@ -76,6 +76,18 @@ describe("fundLinesOf", () => {
   });
 });
 
+describe("baseOf với số đóng băng", () => {
+  it("kỳ đã chốt dùng base_salary đã chốt, không suy từ đầu tư/HH live", () => {
+    const m = mgr({
+      status: "LOCKED", investment: 999_999, commission: 0, // live đã trôi sau khi chốt
+      frozen: { base: 5_500_000, investment: 2_340_000, commission: 800_000, advance: 1_000_000 },
+      calc: { autoSum: 1_900_000, adjSum: 3_400_000, bonus: 5_300_000, gross: 5_500_000 + 5_300_000 + 2_340_000 + 800_000, takehome: 0 },
+    });
+    expect(baseOf(m)).toBe(5_500_000);
+    expect(fundLinesOf(m).reduce((s, l) => s + l.amount, 0)).toBe(5_500_000 + 5_300_000);
+  });
+});
+
 describe("mergeLines", () => {
   it("gộp cùng key giữa nhiều người và bỏ được lương bổ sung", () => {
     const people = fundPeopleOf([mgr(), mgr({ id: "s2", adjustments: [] })]);

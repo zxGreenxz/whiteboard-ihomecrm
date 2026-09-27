@@ -92,6 +92,9 @@ export interface SalManager {
   salaryMonthlyId: string | null;
   ledger: SalLedgerRow[];
   calc?: SalCalcResult;
+  // Số ĐÃ ĐÓNG BĂNG của kỳ chốt (salary_monthly). null khi kỳ chưa chốt. Các trường
+  // live ở trên (investment, advance, commissionItems…) có thể trôi sau khi chốt.
+  frozen?: { base: number; investment: number; commission: number; advance: number } | null;
 }
 
 export interface SalCalcResult {

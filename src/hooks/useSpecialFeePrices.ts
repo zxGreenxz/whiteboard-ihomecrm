@@ -34,10 +34,11 @@ export interface SpecialFeePrice {
   canEdit: boolean;
 }
 
-export const useSpecialFeePrices = (buildingIds?: string[], month?: string) => {
+export const useSpecialFeePrices = (buildingIds?: string[], month?: string, opts?: { enabled?: boolean }) => {
   const key = buildingIds && buildingIds.length ? [...buildingIds].sort() : null;
   const query = useQuery({
     queryKey: ['special-fee-prices', key, month ?? null],
+    enabled: opts?.enabled ?? true,
     queryFn: async (): Promise<SpecialFeePrice[]> => {
       const { data, error } = await supabase.rpc('get_special_fee_prices_v1', {
         // `p_building_ids uuid[] DEFAULT NULL` → bỏ hẳn khoá thay vì truyền null.

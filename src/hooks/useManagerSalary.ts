@@ -495,6 +495,9 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
           status: locked ? "LOCKED" : "DRAFT",
           salaryMonthlyId: mRow?.id ?? null,
           ledger,
+          frozen: locked
+            ? { base: num(mRow.base_salary), investment: num(mRow.investment_profit), commission: num(mRow.commission_total), advance: num(mRow.advances_total) }
+            : null,
         };
 
         // calc: chốt → số đã đóng băng; nháp → tính live
@@ -1159,6 +1162,7 @@ export const useSalaryPayout = () => {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["manager-salary"] });
+      qc.invalidateQueries({ queryKey: ["salary-pending-payouts"] });
       qc.invalidateQueries({ queryKey: ["income-expenses"] });
       qc.invalidateQueries({ queryKey: ["accounts-with-balance"] });
       qc.invalidateQueries({ queryKey: ["invoices"] });

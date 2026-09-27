@@ -18,9 +18,9 @@ export interface FeeFundRow {
  * `building_fee_accounts.default_amount` (bị đường chi ghi đè sau mỗi lần đóng).
  * Tòa chưa công bố giá thì không cộng — đếm riêng ở `unpublished`.
  */
-export const useSalaryFeeFund = (periodMonth: string) => {
+export const useSalaryFeeFund = (periodMonth: string, enabled = true) => {
   const month = periodMonth.slice(0, 7);
-  const q = useSpecialFeePrices(undefined, month);
+  const q = useSpecialFeePrices(undefined, month, { enabled });
   const value = useMemo(() => {
     const cells = (q.data ?? []).filter((p) => p.feeCategory === "quan_ly");
     const rows: FeeFundRow[] = cells

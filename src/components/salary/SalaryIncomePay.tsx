@@ -2,7 +2,7 @@
 // Design 26/09/2026). Trái: người nhận · Giữa: khoản theo 3 nhóm nguồn · Phải: khung
 // thanh toán. Ghi tiền đi qua onPayout (salary_payout_v1, phiếu chờ duyệt) — không
 // có đường ghi mới.
-import { useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Link } from "react-router-dom";
 import { todayISO } from "@/lib/collect";
 import { fundLinesOf, isSupplementaryLabel } from "@/lib/salaryFundReport";
@@ -84,7 +84,7 @@ function itemsOf(m: SalManager): Item[] {
     });
   } else {
     m.investmentBy.forEach((a, i) => out.push({
-      id: "dh:" + a.b + i, g: "dh", label: `${a.b} · lợi nhuận kỳ`, amount: a.amount, payable: a.amount > 0,
+      id: "dh:" + a.b + i, g: "dh", label: `${a.b} · lợi nhuận kỳ`, amount: a.amount, payable: a.amount !== 0,
       why: a.amount > 0 ? "Đã chốt · phân bổ theo thỏa thuận hiện hành" : "Đã chốt · phần phân bổ bằng 0",
       chip: a.amount > 0 ? { t: "Đã xác nhận", tone: "success" } : { t: "Đã chốt · bằng 0", tone: "neutral" },
       trace: [["Tòa", a.b], ["Lợi nhuận tòa", "Đã chốt"], ["Thỏa thuận", "Tỷ lệ đọc từ thỏa thuận tòa (không nhập tay ở đây)"], ["Nguồn chịu tiền", GROUP.dh.src]],
@@ -102,6 +102,8 @@ interface Props {
   accounts: SalaryAccount[];
   canPay: boolean;
   onPayout: (staffId: string, staffName: string, amount: number, accountId: string, voucherDate: string, note: string) => void;
+  /** Mutation trả lương đang chạy — khoá nút để không lập phiếu hai lần. */
+  payBusy: boolean;
   onOpenLedger: (f: { who: string }) => void;
   onAdjust: (m: SalManager, edit?: SalAdjustment | null) => void;
   onRemoveAdjustment: (adjId: string) => void;
@@ -113,6 +115,11 @@ export default function SalaryIncomePay(props: Props) {
   const { managers, period, pending, onSelect } = props;
   const m = managers.find((x) => x.id === props.selectedId) || managers[0];
   const [trace, setTrace] = useState<Item | null>(null);
+  // Người vừa lập phiếu trong phiên: khoá cho tới khi danh sách phiếu chờ duyệt
+  // tải lại (paid chỉ tăng khi duyệt nên số tiền không tự giảm sau khi lập).
+  const [justPaid, setJustPaid] = useState<Set<string>>(new Set());
+  const pendingKey = pending.map((q) => q.voucherId).sort().join(",");
+  useEffect(() => { setJustPaid(new Set()); }, [pendingKey]);
   if (!m) return null;
   const pendingOf = (id: string) => pending.filter((p) => p.staffId === id);
 
@@ -138,7 +145,9 @@ export default function SalaryIncomePay(props: Props) {
         })}
       </div>
 
-      <PersonDetail key={m.id} m={m} {...props} pendingList={pendingOf(m.id)} onTrace={setTrace} />
+      <PersonDetail key={m.id} m={m} {...props} pendingList={pendingOf(m.id)} onTrace={setTrace}
+        justPaid={justPaid.has(m.id)}
+        onPayout={(...a) => { setJustPaid((s) => new Set(s).add(a[0])); props.onPayout(...a); }} />
 
       {trace && <TraceDrawer item={trace} who={m.name} period={`${period.label}/${period.year}`} onClose={() => setTrace(null)}
         onOpenLedger={trace.g === "vh" && !trace.adj ? () => { setTrace(null); props.onOpenLedger({ who: m.id }); } : undefined}
@@ -148,20 +157,32 @@ export default function SalaryIncomePay(props: Props) {
   );
 }
 
-function PersonDetail({ m, period, accounts, canPay, onPayout, onAdjust, pendingList, onTrace }: Props & { m: SalManager; pendingList: PendingPayout[]; onTrace: (i: Item) => void }) {
+function PersonDetail({ m, period, accounts, canPay, onPayout, payBusy, justPaid, onAdjust, pendingList, onTrace }: Props & {
+  m: SalManager; pendingList: PendingPayout[]; onTrace: (i: Item) => void; justPaid: boolean;
+}) {
   const items = useMemo(() => itemsOf(m), [m]);
   const [off, setOff] = useState<Record<string, boolean>>({});
   const [acc, setAcc] = useState(accounts[0]?.id || "");
   const [date, setDate] = useState(todayISO());
   const [note, setNote] = useState(`Lương ${period.label}/${period.year}`);
-  const hasPending = pendingList.length > 0;
-  const blocked = hasPending || !canPay;
-  const chosen = items.filter((i) => i.payable && !off[i.id]);
+  const hasPending = pendingList.length > 0 || justPaid;
+  // Kỳ đã chốt: trả đúng số đóng băng — khoản HH/ứng/đầu tư live có thể trôi sau khi
+  // chốt (phiếu HH duyệt ở nơi khác, ứng huỷ…), nên không cho chọn từng khoản.
+  const fz = m.status === "LOCKED" ? m.frozen ?? null : null;
+  const lockedPay = m.status === "LOCKED";
+  const blocked = hasPending || !canPay || payBusy;
+  // Khoản âm luôn đi kèm; trạng thái bỏ chọn cũ không áp cho khoản đã thành âm.
+  const chosen = items.filter((i) => i.payable && (lockedPay || (i.amount ?? 0) < 0 || !off[i.id]));
   const bySrc = (g: GroupKey) => chosen.filter((i) => i.g === g).reduce((s, i) => s + (i.amount ?? 0), 0);
-  const vS = bySrc("vh"), sS = bySrc("sale"), dS = bySrc("dh");
+  const vS = fz && m.calc ? m.calc.gross - fz.investment - fz.commission : bySrc("vh");
+  const sS = fz ? fz.commission : bySrc("sale");
+  const dS = fz ? fz.investment : bySrc("dh");
   const totalOb = vS + sS + dS;
+  const advance = fz ? fz.advance : m.advance;
   // Chọn đủ mọi khoản ⇒ tiền chuyển = thực nhận − đã trả, đúng số của bảng lương cũ.
-  const cash = Math.max(0, totalOb - m.advance - m.roomRent - m.paid);
+  const cash = lockedPay && m.calc
+    ? Math.max(0, m.calc.takehome - m.paid)
+    : Math.max(0, totalOb - advance - m.roomRent - m.paid);
 
   const Row = ({ k, v, dot, strong, fg }: { k: string; v: string; dot?: string; strong?: boolean; fg?: string }) => (
     <div style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12.5, color: fg ?? (strong ? "hsl(var(--foreground))" : "hsl(var(--status-neutral-fg))"), fontWeight: strong ? 700 : 500, borderTop: strong ? "1px solid hsl(var(--border))" : "none", paddingTop: strong ? 7 : 0 }}>
@@ -199,10 +220,10 @@ function PersonDetail({ m, period, accounts, canPay, onPayout, onAdjust, pending
               <b style={{ flex: 1, fontSize: 13.5, color: GROUP[g].color }}>{GROUP[g].title}</b><span style={{ fontSize: 11.5, color: MUTED }}>{GROUP[g].src}</span>
             </div>
             {list.map((i) => {
-              const ok = i.payable && !blocked && (i.amount ?? 0) >= 0; // khoản trừ luôn đi kèm, không bỏ chọn được
+              const ok = i.payable && !blocked && !lockedPay && (i.amount ?? 0) >= 0; // khoản trừ luôn đi kèm, không bỏ chọn được
               return (
                 <div key={i.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 16px", borderBottom: "1px solid hsl(var(--border) / .45)", opacity: i.payable ? 1 : .7, flexWrap: "wrap" }}>
-                  <input type="checkbox" aria-label={"Đưa vào thanh toán: " + i.label} checked={i.payable && !off[i.id]} disabled={!ok}
+                  <input type="checkbox" aria-label={"Đưa vào thanh toán: " + i.label} checked={i.payable && (lockedPay || (i.amount ?? 0) < 0 || !off[i.id])} disabled={!ok}
                     onChange={() => setOff((s) => ({ ...s, [i.id]: !s[i.id] }))} style={{ accentColor: "hsl(var(--primary))", width: 16, height: 16, margin: 0 }} />
                   <button onClick={() => onTrace(i)} style={{ flex: 1, minWidth: 180, border: 0, background: "transparent", padding: 0, textAlign: "left", cursor: "pointer" }}>
                     <b style={{ display: "block", fontSize: 12.5, fontWeight: 600 }}>{i.label}</b><span style={{ fontSize: 11, color: MUTED }}>{i.why}</span>
@@ -231,8 +252,8 @@ function PersonDetail({ m, period, accounts, canPay, onPayout, onAdjust, pending
           <Row k="Quỹ lương vận hành" v={salFmt(vS)} dot={GROUP.vh.color} />
           <Row k="Chi phí tòa · khoản Sale nguồn" v={salFmt(sS)} dot={GROUP.sale.color} />
           <Row k="Phân bổ lợi nhuận" v={salFmt(dS)} dot={GROUP.dh.color} />
-          <Row k="Tổng thu nhập được chọn" v={salFmt(totalOb)} strong />
-          {m.advance > 0 && <Row k="Đã ứng (trừ lúc ứng)" v={"−" + salFmt(m.advance)} fg="hsl(var(--status-danger-fg))" />}
+          <Row k={lockedPay ? "Tổng thu nhập đã chốt" : "Tổng thu nhập được chọn"} v={salFmt(totalOb)} strong />
+          {advance > 0 && <Row k="Đã ứng (trừ lúc ứng)" v={"−" + salFmt(advance)} fg="hsl(var(--status-danger-fg))" />}
           {m.paid > 0 && <Row k="Đã trả trước đó" v={"−" + salFmt(m.paid)} fg="hsl(var(--status-danger-fg))" />}
         </div>
         {m.roomRent > 0 && (
@@ -256,8 +277,9 @@ function PersonDetail({ m, period, accounts, canPay, onPayout, onAdjust, pending
         <button className="sal-btn sal-btn--primary" style={{ justifyContent: "center" }}
           disabled={blocked || cash <= 0 || !acc}
           onClick={() => onPayout(m.id, m.name, cash, acc, date, note)}>
-          {!canPay ? "Không có quyền trả lương" : hasPending ? "Đang có phiếu chờ duyệt" : cash <= 0 ? "Không còn tiền phải chuyển" : "Lập yêu cầu thanh toán"}
+          {!canPay ? "Không có quyền trả lương" : payBusy ? "Đang lập phiếu…" : hasPending ? "Đang có phiếu chờ duyệt" : cash <= 0 ? "Không còn tiền phải chuyển" : "Lập yêu cầu thanh toán"}
         </button>
+        {lockedPay && <span style={{ fontSize: 11.5, color: "hsl(var(--status-warning-fg))" }}>Kỳ đã chốt — trả theo số đã chốt, không chọn từng khoản.</span>}
         <span style={{ fontSize: 11.5, color: MUTED }}>Tạo một phiếu chi lương chờ duyệt (không tính KQKD). Khi đã có phiếu chờ duyệt, người này bị khóa để không lập trùng. Bấm tên khoản để xem căn cứ.</span>
       </div>
     </div>

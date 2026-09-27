@@ -120,9 +120,9 @@ export default function ManagerSalaryPage() {
   const wantFund = isAdmin && !phone;
   const { data: dPrev1, isLoading: lPrev1 } = useManagerSalary(wantFund ? prev1 : "", resolveSalaryEngine(v5cfg, prev1));
   const { data: dPrev2, isLoading: lPrev2 } = useManagerSalary(wantFund ? prev2 : "", resolveSalaryEngine(v5cfg, prev2));
-  const fee0 = useSalaryFeeFund(periodMonth);
-  const fee1 = useSalaryFeeFund(prev1);
-  const fee2 = useSalaryFeeFund(prev2);
+  const fee0 = useSalaryFeeFund(periodMonth, wantFund);
+  const fee1 = useSalaryFeeFund(prev1, wantFund);
+  const fee2 = useSalaryFeeFund(prev2, wantFund);
   const { data: rulesData } = useBonusRules();
   const requirePhoto = !!rulesData?.rules?.requirePhoto;
 
@@ -335,7 +335,7 @@ export default function ManagerSalaryPage() {
               <SalaryIncomePay
                 managers={managers} period={period} selectedId={person} onSelect={setPerson}
                 pending={pendingPayouts} accounts={accounts} canPay={canPay}
-                onPayout={onPayout} onOpenLedger={openLedger}
+                onPayout={onPayout} payBusy={payout.isPending} onOpenLedger={openLedger}
                 onAdjust={(m, edit) => setAdjDialog({ m, edit })} onRemoveAdjustment={onRemoveAdjustment}
               />
             ) : (
