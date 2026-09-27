@@ -5,9 +5,9 @@ import {
   cleanupDemoSalaryConfig,
   cleanupDemoSalaryFixture,
   demoSalaryMonthlyIds,
-  demoSalaryStaffGivenName,
   demoSalaryStaffId,
   ensureDemoSalaryConfig,
+  setDemoSalaryFixtureAlias,
 } from './accounting-admin';
 
 // Hoa hồng quản lý đi sổ ảo, trả qua lương (migration 20260927155251). Nghiệm thu SAU
@@ -28,16 +28,20 @@ test.describe.configure({ mode: 'serial' });
 const DEMO_ORG = 'dddd0000-0000-4000-8000-000000000001';
 const AMOUNT = 321_000;
 const BOOK = 'Hoa hồng QL chờ trả lương';
+// Biệt danh riêng của dòng cấu hình fixture — người nhận của phiếu = biệt danh này để
+// màn lương khớp phiếu với quản lý fixture qua đường "khớp tên" (chưa gán ô QL).
+const ALIAS = 'hhqlfixture';
 let fixtureState: 'existing' | 'created' | null = null;
 let keepMonthly: string[] = [];
 let staffId = '';
-let givenName = '';
 
 test.beforeAll(async () => {
   keepMonthly = await demoSalaryMonthlyIds();
   staffId = await demoSalaryStaffId();
-  givenName = await demoSalaryStaffGivenName();
   fixtureState = await ensureDemoSalaryConfig();
+  if ((await setDemoSalaryFixtureAlias(ALIAS)) !== 'da-dat') {
+    throw new Error('demo.quanly đang có cấu hình lương THẬT (không phải fixture) — spec không đổi dữ liệu thật; tạm ngừng cấu hình đó rồi chạy lại.');
+  }
 });
 
 test.afterAll(async () => {
@@ -52,14 +56,15 @@ async function captureSupabaseAuth(page: Page) {
 }
 type SbAuth = Awaited<ReturnType<typeof captureSupabaseAuth>>;
 async function sbGet<T>(a: SbAuth, path: string): Promise<T> {
-  const r = await fetch(`${a.base}/rest/v1/${path}`, { headers: { apikey: a.apikey, Authorization: a.auth } });
+  // Schema mặc định của PostgREST dự án này là `api` — bảng/RPC public phải khai profile.
+  const r = await fetch(`${a.base}/rest/v1/${path}`, { headers: { apikey: a.apikey, Authorization: a.auth, 'Accept-Profile': 'public' } });
   if (!r.ok) throw new Error(`GET ${path} → ${r.status} ${await r.text()}`);
   return r.json() as Promise<T>;
 }
 async function sbRpc(a: SbAuth, name: string, body: unknown) {
   const r = await fetch(`${a.base}/rest/v1/rpc/${name}`, {
     method: 'POST',
-    headers: { apikey: a.apikey, Authorization: a.auth, 'Content-Type': 'application/json' },
+    headers: { apikey: a.apikey, Authorization: a.auth, 'Content-Type': 'application/json', 'Content-Profile': 'public' },
     body: JSON.stringify(body),
   });
   const text = await r.text();
@@ -135,7 +140,7 @@ test('chủ công ty: phiếu HH của quản lý ở sổ thật → chuyển s
 
     const sale = await sbRpc(auth, 'create_commission_voucher', {
       p_contract_id: contractId, p_kind: 'sale', p_amount: AMOUNT, p_voucher_date: today,
-      p_account_id: realBook.id, p_payer_name: givenName, p_recipient_name: givenName,
+      p_account_id: realBook.id, p_payer_name: ALIAS, p_recipient_name: ALIAS,
       p_recipient_bank: null, p_recipient_account: null,
       p_item_description: '[E2E] hhql thưởng nóng Sale', p_attachments: [],
     });

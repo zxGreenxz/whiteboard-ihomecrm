@@ -300,17 +300,21 @@ SELECT (SELECT count(*)::int FROM adj) AS adjustments, (SELECT count(*)::int FRO
 }
 
 /**
- * Tên gọi (từ cuối họ tên) của người hưởng lương fixture — đúng khoá app dùng để
- * khớp "người nhận" của phiếu hoa hồng với quản lý khi phiếu chưa gán ô QL
- * (firstName trong src/lib/managerSalary.ts).
+ * Đặt biệt danh cho dòng cấu hình lương DO FIXTURE TẠO (theo `note`) — màn lương khớp
+ * "người nhận" của phiếu hoa hồng chưa gán ô QL bằng biệt danh hoặc tên gọi. Chủ công
+ * ty DEMO KHÔNG đọc được họ tên demo.quanly (màn lương hiện tên dự phòng "Quản lý"),
+ * nên không có biệt danh thì khớp tên không bao giờ xảy ra. Cấu hình thật không bị đụng:
+ * trả 'khong-phai-fixture' để spec báo rõ thay vì đổi dữ liệu thật.
  */
-export async function demoSalaryStaffGivenName(): Promise<string> {
-  const rows = await runSql<{ full_name: string | null }>(
-    `SELECT p.full_name FROM public.profiles p WHERE p.id = ${DEMO_SALARY_STAFF};`,
-  );
-  const parts = (rows[0]?.full_name || '').trim().split(/\s+/).filter(Boolean);
-  if (!parts.length) throw new Error('Tài khoản demo.quanly chưa có họ tên — không khớp được người nhận hoa hồng.');
-  return parts[parts.length - 1];
+export async function setDemoSalaryFixtureAlias(alias: string): Promise<'da-dat' | 'khong-phai-fixture'> {
+  const rows = await runSql<{ id: string }>(`
+UPDATE public.manager_salary_config
+   SET alias = ${sqlLiteral(alias)}
+ WHERE note = ${sqlLiteral(FLEET_SALARY_FIXTURE_NOTE)}
+   AND staff_id = ${DEMO_SALARY_STAFF}
+   AND organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+RETURNING id::text AS id;`);
+  return rows.length ? 'da-dat' : 'khong-phai-fixture';
 }
 
 /**
