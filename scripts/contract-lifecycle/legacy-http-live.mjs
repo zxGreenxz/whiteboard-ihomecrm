@@ -5,7 +5,7 @@ import {docVault} from '../test-env/lib.mjs';
 import {loadTestCredentialsFromVault,withTestTransaction,createTestHttp} from './transport.mjs';
 import {seedLegacy,legacySnapshot} from './legacy-entrypoints-live.mjs';
 import {triggerDigest,legacyLedger,cleanupLegacy} from './legacy-fixture-cleanup.mjs';
-import {assertApprovalSources} from './legacy-entrypoints.mjs';
+import {assertApprovalSources,observeLegacyApprovalCalls} from './legacy-entrypoints.mjs';
 
 assert(process.argv.includes('--test-commit'),'Explicit --test-commit required');
 const dir='.superpowers/sdd/2026-09-27-contract-lifecycle/';
@@ -57,14 +57,24 @@ try {
       const holder=withTestTransaction(config,{run:async ctx=>{await ctx.query("SET LOCAL lock_timeout='10s'; SET LOCAL statement_timeout='45s'");await ctx.query('SELECT id FROM public.contracts WHERE id=$1 FOR UPDATE',[f.contract]);ready();await release;}});
       await Promise.race([readyPromise,holder]);
       const calls=Promise.allSettled([call(f.termination),call(f.termination)]);
-      let waiters=0;
-      try {
+      let observation;
+      try {observation=await observeLegacyApprovalCalls({holder,unlock,calls,pollWaiters:async()=>{
+        let waiters=0;
         for(let i=0;i<40;i++){
           waiters=await withTestTransaction(config,{readOnly:true,run:async ctx=>Number((await ctx.query("SELECT count(*) AS n FROM pg_stat_activity WHERE pid<>pg_backend_pid() AND wait_event_type='Lock' AND query LIKE '%approve_contract_termination_v1%' AND state='active'")).rows[0].n)});
           if(waiters>=2)break;await new Promise(r=>setTimeout(r,100));
         }
-      } finally {unlock();await holder;}
-      const results=await calls;assert(waiters>=2,'Both actual RPCs must be observed waiting on locks');
+        return waiters;
+      }});}catch(err){
+        // Preserve the original observation/holder failures before the TEST
+        // transport sanitizes the outer transaction exception. Cleanup has its
+        // separate error field and cannot replace this failure record.
+        e.error={stage:'concurrency',message:err.message,code:err.code,
+          failures:err.failures?.map(({stage,error})=>({stage,message:error.message,code:error.code}))};
+        throw err;
+      }
+      const {waiters,results}=observation;
+      assert(waiters>=2,'Both actual RPCs must be observed waiting on locks');
       const successful=results.filter(r=>r.status==='fulfilled').map(r=>r.value);
       assert.equal(successful.length,2);assert.equal(successful.filter(r=>r.noop===true).length,1);
       const after=await snapshot(f);assert.equal(after.vouchers.length-before.vouchers.length,1);assert.equal(after.items.length-before.items.length,1);
@@ -85,7 +95,7 @@ finally {
         try {const ledger=await legacyLedger(ctx,e.fixtures);e.ledger=ledger;save();return await cleanupLegacy(ctx,{fixtures:e.fixtures,ledger,expectedTriggerDigest:guards,buildingBaselines:baselines.filter(b=>e.fixtures.some(f=>f.building===b.id))});}
         catch(err){e.cleanupError={message:err.message,code:err.code};throw err;}
       }});
-    } catch {e.status='FAIL';process.exitCode=1;}
+    } catch(err) {e.cleanupError??={message:err.message,code:err.code};e.status='FAIL';process.exitCode=1;}
   }
   save();console.log(JSON.stringify({status:e.status,checks:e.checks,error:e.error,cleanupError:e.cleanupError,cleanup:e.cleanup?{deleted:e.cleanup.deleted,closure:e.cleanup.closure,guardsUnchanged:e.cleanup.guardsUnchanged}:null}));
 }

@@ -1,6 +1,50 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {assertEligibilityDenied,assertApprovalSources} from '../../contract-lifecycle/legacy-entrypoints.mjs';
+import {assertEligibilityDenied,assertApprovalSources,observeLegacyApprovalCalls} from '../../contract-lifecycle/legacy-entrypoints.mjs';
+
+const deferred=()=>{
+  let resolve,reject;
+  const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});
+  return {promise,resolve,reject};
+};
+const nextTurn=()=>new Promise(resolve=>setImmediate(resolve));
+for(const failure of ['poll','holder','poll-and-holder'])test(`${failure} failure drains both started RPCs before cleanup`,async()=>{
+  const first=deferred(),second=deferred(),holder=deferred();
+  const pollError=new Error('poll failed'),holderError=new Error('holder failed'),events=[];
+  const expected=failure==='holder'?holderError:pollError;
+  const calls=Promise.allSettled([
+    first.promise.finally(()=>events.push('first-settled')),
+    second.promise.finally(()=>events.push('second-settled')),
+  ]);
+  const run=(async()=>{
+    try{return await observeLegacyApprovalCalls({
+      holder:holder.promise,calls,
+      unlock:()=>{events.push('holder-released');failure.includes('holder')?holder.reject(holderError):holder.resolve();},
+      pollWaiters:async()=>{if(failure.includes('poll'))throw pollError;return 2;},
+    });}finally{events.push('cleanup-started');}
+  })();
+  // Observe rejection immediately without letting it end the test before draining.
+  const outcome=run.then(value=>({value}),error=>({error}));
+  try {
+    await nextTurn();assert.deepEqual(events,['holder-released'],'Cleanup must wait for both pending calls');
+    first.resolve('first');await nextTurn();
+    assert.deepEqual(events,['holder-released','first-settled'],'Cleanup must wait for the last call too');
+    second.reject(new Error('second RPC failed'));
+    const result=await outcome;
+    assert.equal(result.error?.cause??result.error,expected,'Original observation failure retained');
+    const expectedErrors=failure==='poll-and-holder'?[pollError,holderError]:[expected];
+    assert.deepEqual(result.error.errors,expectedErrors,'One failure cannot overwrite another');
+    assert.deepEqual(events,['holder-released','first-settled','second-settled','cleanup-started']);
+  } finally {first.resolve();second.resolve();holder.resolve();await outcome;}
+});
+test('successful observation still waits for the holder and returns both settled RPC outcomes',async()=>{
+  const holder=deferred(),rpcError=new Error('RPC failed');let released=false;
+  const run=observeLegacyApprovalCalls({holder:holder.promise,unlock:()=>{released=true;},calls:Promise.allSettled([Promise.resolve('approved'),Promise.reject(rpcError)]),pollWaiters:async()=>2});
+  let finished=false;run.then(()=>{finished=true;});
+  await nextTurn();assert.equal(released,true);assert.equal(finished,false);
+  holder.resolve();
+  assert.deepEqual(await run,{waiters:2,results:[{status:'fulfilled',value:'approved'},{status:'rejected',reason:rpcError}]});
+});
 
 const before={contracts:[{id:'contract',status:'TERMINATED'}],terminations:[{id:'term',status:'DRAFT'}],rooms:[{id:'room',status:'AVAILABLE'}],vouchers:[],items:[],postings:[],invoices:[],credits:[]};
 test('ended-entry oracle rejects success and every observed side-effect family',()=>{

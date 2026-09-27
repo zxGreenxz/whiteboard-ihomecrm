@@ -1,5 +1,26 @@
 // Shared assertions for copied synthetic evidence and the explicit live runner.
 import assert from 'node:assert/strict';
+// The live runner's bounded lock-observation region; calls is already allSettled.
+export async function observeLegacyApprovalCalls({holder,unlock,calls,pollWaiters}) {
+  // Observe both promises immediately; a holder rejection must never skip RPC drain.
+  const settled=Promise.allSettled([holder,calls]),failures=[];
+  let waiters,outcomes;
+  try {waiters=await pollWaiters();}
+  catch(error){failures.push({stage:'poll',error});}
+  finally {
+    try {unlock();}catch(error){failures.push({stage:'release',error});}
+    outcomes=await settled;
+  }
+  for(const [index,stage]of ['holder','calls'].entries()) {
+    if(outcomes[index].status==='rejected')failures.push({stage,error:outcomes[index].reason});
+  }
+  if(failures.length) {
+    const error=new AggregateError(failures.map(f=>f.error),'Legacy approval concurrency failed',{cause:failures[0].error});
+    error.failures=failures;
+    throw error;
+  }
+  return {waiters,results:outcomes[1].value};
+}
 export function assertEligibilityDenied({before,after,sqlstate}) {
   assert.equal(sqlstate,'55000','Ended contract must reject new approval with eligibility SQLSTATE');
   assert(before.contracts.length>0&&before.terminations.length>0&&before.rooms.length>0,'Nonempty fixture roots required');
