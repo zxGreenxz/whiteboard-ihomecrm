@@ -35,7 +35,10 @@
 --      này chỉ người tạo dòng / super admin / chính nhân viên đọc được.
 --
 -- KỲ ĐÃ CHỐT
---   Ghi: từ chối mọi phiên bản/ghi đè chạm kỳ LOCKED của người đó.
+--   Ghi: từ chối mọi phiên bản/ghi đè chạm kỳ LOCKED của người đó. Mọi RPC ghi
+--   giữ app_private.lock_org_for_decision_v1(org) TRƯỚC khi kiểm kỳ chốt — cùng
+--   bước 1 của giao thức ghi mà lock_salary_month_v1 / salary_payout_v1 dùng — nên
+--   ghi và chốt kỳ của cùng công ty xếp hàng, không chen nhau (soi chéo 27/09).
 --   Đọc: với kỳ LOCKED chỉ tính phiên bản/ghi đè tạo TRƯỚC locked_at. RPC chốt kỳ
 --   dùng số client gửi (R1), nên một bản ghi lọt vào đúng khoảnh khắc chốt không
 --   được phép đổi số hiển thị của kỳ đã chốt.
@@ -60,6 +63,9 @@ DO $truoc$
 BEGIN
   IF to_regprocedure('app_private.ie_actor_is_company_owner_v1(uuid,uuid)') IS NULL THEN
     RAISE EXCEPTION 'Thiếu app_private.ie_actor_is_company_owner_v1' USING ERRCODE = '55000';
+  END IF;
+  IF to_regprocedure('app_private.lock_org_for_decision_v1(uuid)') IS NULL THEN
+    RAISE EXCEPTION 'Thiếu app_private.lock_org_for_decision_v1' USING ERRCODE = '55000';
   END IF;
   IF to_regprocedure('app_private.v5_can_view_salary_v1(uuid)') IS NULL THEN
     RAISE EXCEPTION 'Thiếu app_private.v5_can_view_salary_v1' USING ERRCODE = '55000';
@@ -428,6 +434,7 @@ BEGIN
   IF v_org IS NULL THEN
     RAISE EXCEPTION 'Không xác định được tổ chức của nhân viên' USING ERRCODE = '42501';
   END IF;
+  PERFORM app_private.lock_org_for_decision_v1(v_org);
   IF NOT app_private.salary_amount_editor_ok_v1(v_org, v_actor) THEN
     RAISE EXCEPTION 'Chỉ chủ công ty hoặc quản trị hệ thống được đặt khoản lương định kỳ'
       USING ERRCODE = '42501';
@@ -526,6 +533,7 @@ AS $fn$
 DECLARE
   v_actor uuid := auth.uid();
   v_item  app_private.salary_recurring_items%ROWTYPE;
+  v_org   uuid;
   v_key   text;
   v_hash  text;
   v_thang date;
@@ -537,6 +545,12 @@ BEGIN
     RAISE EXCEPTION 'Bạn chưa đăng nhập' USING ERRCODE = '42501';
   END IF;
   v_key := app_private.salary_request_key_v1(p_idempotency_key);
+  SELECT i.organization_id INTO v_org FROM app_private.salary_recurring_items i WHERE i.id = p_item_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Không tìm thấy khoản định kỳ' USING ERRCODE = '42501';
+  END IF;
+  PERFORM app_private.lock_org_for_decision_v1(v_org);
+  -- Đọc lại SAU khi giữ khoá: snapshot mới thấy mọi thao tác đã commit trong lúc chờ.
   SELECT * INTO v_item FROM app_private.salary_recurring_items i
    WHERE i.id = p_item_id AND i.deleted_at IS NULL;
   IF NOT FOUND THEN
@@ -619,15 +633,18 @@ AS $fn$
 DECLARE
   v_actor uuid := auth.uid();
   v_item  app_private.salary_recurring_items%ROWTYPE;
+  v_org   uuid;
   v_dau   date;
 BEGIN
   IF v_actor IS NULL THEN
     RAISE EXCEPTION 'Bạn chưa đăng nhập' USING ERRCODE = '42501';
   END IF;
-  SELECT * INTO v_item FROM app_private.salary_recurring_items i WHERE i.id = p_item_id;
+  SELECT i.organization_id INTO v_org FROM app_private.salary_recurring_items i WHERE i.id = p_item_id;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'Không tìm thấy khoản định kỳ' USING ERRCODE = '42501';
   END IF;
+  PERFORM app_private.lock_org_for_decision_v1(v_org);
+  SELECT * INTO v_item FROM app_private.salary_recurring_items i WHERE i.id = p_item_id;
   IF NOT app_private.salary_amount_editor_ok_v1(v_item.organization_id, v_actor) THEN
     RAISE EXCEPTION 'Chỉ chủ công ty hoặc quản trị hệ thống được xoá khoản lương định kỳ'
       USING ERRCODE = '42501';
@@ -687,6 +704,7 @@ BEGIN
   IF v_org IS NULL THEN
     RAISE EXCEPTION 'Không xác định được tổ chức của nhân viên' USING ERRCODE = '42501';
   END IF;
+  PERFORM app_private.lock_org_for_decision_v1(v_org);
   IF NOT app_private.salary_amount_editor_ok_v1(v_org, v_actor) THEN
     RAISE EXCEPTION 'Chỉ chủ công ty hoặc quản trị hệ thống được sửa số tiền lương'
       USING ERRCODE = '42501';
