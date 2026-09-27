@@ -54,6 +54,24 @@ test('catalog capture rejects empty, duplicate, unsorted and incomplete pages', 
   await assert.rejects(captureNamedCatalog({ requirements: req, fetchPage: async () => ({ rows: [{ id: 'a' }], totalCount: 200000 }), maxRows: 1000 }));
 });
 
+test('catalog comparison rejects missing and tampered capture fields', () => {
+  const rows = [{ id: 'a' }];
+  const sha256 = catalogHash(rows);
+  const expected = { writers: { minRows: 1, sha256 } };
+  for (const captured of [
+    { rowCount: 1, sha256, rows: [] },
+    { sha256, rows },
+    { rowCount: 1, sha256 },
+    { rowCount: 1.5, sha256, rows },
+    { rowCount: 1, sha256: 'invalid', rows },
+    { rowCount: 1, sha256, rows: [{ id: 'b' }] },
+  ]) {
+    const comparison = compareNamedCatalog({ writers: captured }, expected);
+    assert.equal(comparison.ready, false, JSON.stringify(captured));
+    assert.ok(comparison.errors.length > 0);
+  }
+});
+
 test('fixture admission rejects missing role, JWT and unstable IDs', () => {
   const fixture = {
     fixtureIds: { lease: '11111111-1111-4111-8111-111111111111' },

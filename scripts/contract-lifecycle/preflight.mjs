@@ -125,7 +125,11 @@ export function compareNamedCatalog(actual, expected) {
     } else if (!Number.isSafeInteger(requirement?.minRows) || requirement.minRows < 1 ||
                !SHA256.test(requirement?.sha256 ?? '')) {
       errors.push(`Catalog ${name}: incomplete requirement.`);
-    } else if (captured.rowCount < requirement.minRows || captured.sha256 !== requirement.sha256) {
+    } else if (!Array.isArray(captured.rows) || !Number.isSafeInteger(captured.rowCount) ||
+               captured.rowCount !== captured.rows.length || !SHA256.test(captured.sha256 ?? '')) {
+      errors.push(`Catalog ${name}: invalid capture.`);
+    } else if (captured.rowCount < requirement.minRows || captured.sha256 !== requirement.sha256 ||
+               catalogHash(captured.rows) !== captured.sha256) {
       errors.push(`Catalog ${name}: missing rows or hash drift.`);
     }
   }
