@@ -189,6 +189,9 @@ const FLEET_SALARY_FIXTURE_NOTE = 'FLEET_FIXTURE salary-mobile-period';
  * thay vì skip. Idempotent: có dòng active rồi (dù ai tạo) thì không đụng;
  * dòng do fixture tạo mang `note` nhận diện để cleanup chỉ xoá đúng nó.
  * effective_from lùi 3 tháng để nút "Tháng trước" có kỳ để lùi.
+ * organization_id PHẢI có: bảng không tự điền, và thiếu nó thì mọi thao tác ghi
+ * lương (thêm Thưởng/Trừ, trả lương) báo "Không xác định được tổ chức của nhân
+ * viên" — cấu hình tạo qua app luôn mang org.
  */
 export async function ensureDemoSalaryConfig(): Promise<'existing' | 'created'> {
   const rows = await runSql<{ existing: number; created: number }>(`
@@ -202,10 +205,11 @@ WITH staff AS (
     AND (c.effective_to IS NULL OR c.effective_to >= date_trunc('month', CURRENT_DATE)::date)
 ), ins AS (
   INSERT INTO public.manager_salary_config
-    (user_id, staff_id, base_salary, default_room_rent, income_goal, role_title, note, effective_from, is_active)
+    (user_id, staff_id, base_salary, default_room_rent, income_goal, role_title, note, effective_from, is_active, organization_id)
   SELECT owner.id, staff.id, 8000000, 0, 0, 'Quản lý vận hành (fixture E2E)',
          ${sqlLiteral(FLEET_SALARY_FIXTURE_NOTE)},
-         (date_trunc('month', CURRENT_DATE) - interval '3 months')::date, true
+         (date_trunc('month', CURRENT_DATE) - interval '3 months')::date, true,
+         ${sqlLiteral(DEMO_ORG_ID)}::uuid
   FROM staff, owner, existing
   WHERE existing.n = 0
   RETURNING id
@@ -229,6 +233,62 @@ WITH del AS (
 SELECT count(*)::int AS deleted FROM del;
 `);
   return number(rows[0]?.deleted);
+}
+
+const DEMO_SALARY_STAFF = `(SELECT id FROM auth.users WHERE email = 'demo.quanly@username.ihomecrm.local')`;
+
+/** id các dòng salary_monthly của DEMO quanly — chụp TRƯỚC spec để chỉ dọn dòng spec tạo. */
+export async function demoSalaryMonthlyIds(): Promise<string[]> {
+  const rows = await runSql<{ id: string }>(`
+SELECT sm.id::text AS id FROM public.salary_monthly sm
+WHERE sm.staff_id = ${DEMO_SALARY_STAFF}
+  AND sm.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid;
+`);
+  return rows.map((r) => r.id);
+}
+
+/**
+ * Dọn dữ liệu lương spec tạo trên DEMO quanly: khoản Thưởng/Trừ mang tiền tố
+ * fixture `E2E fleet `, rồi dòng salary_monthly nháp mà spec làm phát sinh (không
+ * có trong `keepMonthlyIds`, còn DRAFT, không phiếu chi, không còn khoản nào).
+ * Khoản thật và kỳ đã chốt không thể lọt vào.
+ */
+export async function cleanupDemoSalaryFixture(
+  labelPrefix: string,
+  keepMonthlyIds: string[],
+): Promise<{ adjustments: number; monthly: number }> {
+  if (!labelPrefix.startsWith('E2E fleet ')) {
+    throw new Error(`Từ chối dọn khoản lương không thuộc fixture E2E: ${labelPrefix}`);
+  }
+  keepMonthlyIds.forEach((id) => uuidLiteral(id));
+  const keep = keepMonthlyIds.length
+    ? `AND sm.id NOT IN (${keepMonthlyIds.map((id) => uuidLiteral(id)).join(', ')})`
+    : '';
+  const rows = await runSql<{ adjustments: number; monthly: number }>(`
+WITH adj AS (
+  DELETE FROM public.salary_adjustments a
+  USING public.salary_monthly sm
+  WHERE a.salary_monthly_id = sm.id
+    AND sm.staff_id = ${DEMO_SALARY_STAFF}
+    AND sm.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+    AND a.label LIKE ${sqlLiteral(labelPrefix.replaceAll('%', '') + '%')}
+  RETURNING a.id
+), mon AS (
+  DELETE FROM public.salary_monthly sm
+  WHERE sm.staff_id = ${DEMO_SALARY_STAFF}
+    AND sm.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+    AND sm.status = 'DRAFT'
+    AND sm.payout_voucher_id IS NULL
+    ${keep}
+    AND NOT EXISTS (
+      SELECT 1 FROM public.salary_adjustments a2
+      WHERE a2.salary_monthly_id = sm.id AND a2.id NOT IN (SELECT id FROM adj)
+    )
+  RETURNING sm.id
+)
+SELECT (SELECT count(*)::int FROM adj) AS adjustments, (SELECT count(*)::int FROM mon) AS monthly;
+`);
+  return { adjustments: number(rows[0]?.adjustments), monthly: number(rows[0]?.monthly) };
 }
 
 export async function cleanupFleetCashbook(name: string): Promise<void> {
