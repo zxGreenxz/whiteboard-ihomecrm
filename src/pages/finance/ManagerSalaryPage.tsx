@@ -21,6 +21,7 @@ import SalaryIncomePay from "@/components/salary/SalaryIncomePay";
 import SalaryFundModal from "@/components/salary/SalaryFundModal";
 import { useSalaryFeeFund, useSalaryPendingPayouts } from "@/hooks/useSalaryFund";
 import { useSalaryCanEditAmounts } from "@/hooks/useSalaryExtras";
+import { useAssignCommissionManager } from "@/hooks/useCommissionManager";
 import SalaryAmountEditDialog, { type EditableLine } from "@/components/salary/SalaryAmountEditDialog";
 import type { SalAdjustment, SalManager } from "@/lib/managerSalary";
 import SalaryLedger from "@/components/salary/SalaryLedger";
@@ -148,6 +149,7 @@ export default function ManagerSalaryPage() {
   const unlockM = useUnlockSalaryMonth();
   const payout = useSalaryPayout();
   const toggleExcluded = useToggleJobExcluded();
+  const assignCommission = useAssignCommissionManager();
   const onToggleExclude = (jobId: string, next: boolean) =>
     toggleExcluded.mutate({ jobId, excluded: next });
 
@@ -348,6 +350,8 @@ export default function ManagerSalaryPage() {
                 onPayout={onPayout} payBusy={payout.isPending} onOpenLedger={openLedger}
                 onAdjust={(m, edit) => setAdjDialog({ m, edit })} onRemoveAdjustment={onRemoveAdjustment}
                 canEditAmounts={canEditAmounts} onEditAmount={(m, line) => setAmountEdit({ m, line })}
+                onAssignCommission={isAdmin ? (m, voucherId) => assignCommission.mutate({ voucherId, managerId: m.id }) : undefined}
+                assignBusy={assignCommission.isPending}
               />
             ) : (
               <>

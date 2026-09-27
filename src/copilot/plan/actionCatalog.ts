@@ -528,7 +528,7 @@ const SCHEMA_SALARY_LEDGER_ITEM = z.object({
   reason: z.string().nullable().optional(),
 });
 
-/** Một quản lý trong `managers[]` của `salary.khoa_thang` — mirror `lock_salary_month_v1`. */
+/** Một quản lý trong `managers[]` của `salary.khoa_thang` — mirror `lock_salary_month_v1` (server gọi v2 từ 20260927155251). */
 const SCHEMA_SALARY_MANAGER = z.object({
   staff_id: z.string().uuid().describe('ID quản lý cần chốt khoá'),
   base_salary: z.number().nonnegative().optional(),
@@ -540,12 +540,20 @@ const SCHEMA_SALARY_MANAGER = z.object({
   advances_total: z.number().nonnegative().optional(),
   room_rent: z.number().nonnegative().optional(),
   gross_total: z.number().nonnegative().optional(),
-  take_home: z.number().nonnegative().optional(),
+  take_home: z
+    .number()
+    .nonnegative()
+    .optional()
+    .describe(
+      'Thực nhận = tổng thu nhập − đã ứng − tiền phòng − hoa hồng đã/sẽ chi từ sổ quỹ THẬT (phiếu không nằm ở sổ ảo "Hoa hồng QL chờ trả lương")',
+    ),
   paid: z.number().nonnegative().optional(),
   commission_voucher_ids: z
     .array(z.string().uuid())
     .optional()
-    .describe('Danh sách phiếu hoa hồng UNAPPROVED sẽ được duyệt kèm khi chốt'),
+    .describe(
+      'Mọi phiếu hoa hồng của quản lý tính vào lương kỳ này (chờ duyệt lẫn đã duyệt). Phiếu chờ duyệt được duyệt kèm; mọi phiếu được đánh dấu đã tính vào kỳ để không tính lần hai',
+    ),
   ledger: z.array(SCHEMA_SALARY_LEDGER_ITEM).optional().describe('Bảng kê công việc chốt kèm tháng này'),
 });
 

@@ -85,6 +85,10 @@ import { useAuth } from '@/hooks/useAuth';
 import { useIsAdmin } from '@/hooks/useIsAdmin';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { todayISO } from '@/lib/collect';
+import { toast } from 'sonner';
+import { assignCommissionManager } from '@/hooks/useCommissionManager';
+import { QlManagerSelectCurrentOrg } from './QlManagerSelect';
+import { isCommissionType } from '@/lib/managerSalary';
 
 interface IncomeExpenseFormProps {
   open: boolean;
@@ -229,6 +233,11 @@ const IncomeExpenseFormInner = ({
   // schema của phiếu vì nó không phải một trường của phiếu, nó là bằng chứng
   // cho MỘT thao tác.
   const [forfeitReason, setForfeitReason] = useState('');
+  // Ô QL (migration 20260927155251): phiếu chi hoa hồng TẠO MỚI cho quản lý → sau khi
+  // tạo, gán quản lý và chuyển sang sổ ảo "Hoa hồng QL chờ trả lương" (trả qua lương).
+  // Không phải trường của phiếu nên ở ngoài zod schema, như forfeitReason.
+  const [qlOn, setQlOn] = useState(false);
+  const [qlManagerId, setQlManagerId] = useState('');
   const isMobile = useIsMobile();
 
   // Cascade dropdown state
@@ -501,6 +510,22 @@ const IncomeExpenseFormInner = ({
     autoLinkedContractIdRef.current = null;
   };
 
+  // Phiếu chi có hạng mục hoa hồng (cùng luật server ie_has_commission_item_v1) → hiện
+  // ô QL, chỉ khi TẠO MỚI (phiếu đang có thì gán ở chi tiết phiếu: nút "Gán QL").
+  const commissionTypeIds = new Set(
+    expenseTypes.filter((t) => isCommissionType(t)).map((t) => t.id),
+  );
+  const showQl =
+    !isEditing &&
+    voucherType === 'EXPENSE' &&
+    itemRows.some((r) => commissionTypeIds.has(r.income_expense_type_id));
+  useEffect(() => {
+    if (!open) {
+      setQlOn(false);
+      setQlManagerId('');
+    }
+  }, [open]);
+
   // Phiếu có phải "phiếu cọc" hay không (có ít nhất 1 item is_deposit)?
   const hasDepositItem = itemRows.some((r) =>
     depositTypeIds.has(r.income_expense_type_id),
@@ -678,7 +703,24 @@ const IncomeExpenseFormInner = ({
           reason: revisionReason.trim() || null,
         });
       } else {
-        await createMutation.mutateAsync(data);
+        const giaoQl = showQl && qlOn;
+        if (giaoQl && !qlManagerId) {
+          toast.error('Đã tích QL — hãy chọn quản lý nhận hoa hồng.');
+          return;
+        }
+        // Cả hai đường ghi (create_income_expense_v1 / ie_compat_insert_v2) trả về phiếu có id.
+        const created = (await createMutation.mutateAsync(data)) as { id?: string } | null | undefined;
+        if (giaoQl && created?.id) {
+          // Lỗi gán không huỷ phiếu vừa tạo: phiếu ở lại sổ đã chọn, gán lại ở chi
+          // tiết phiếu (nút "Gán QL") hoặc màn Lương.
+          try {
+            await assignCommissionManager({ voucherId: created.id, managerId: qlManagerId });
+          } catch (e) {
+            toast.error(
+              `Đã tạo phiếu nhưng CHƯA gán quản lý: ${e instanceof Error ? e.message : 'lỗi không xác định'}. Gán lại ở chi tiết phiếu (nút "Gán QL").`,
+            );
+          }
+        }
         // Báo cho caller (vd ContractFormDialog) biết phiếu vừa tạo có tổng
         // bao nhiêu để cập nhật field "Đã đặt cọc" ngay tại form HĐ.
         const total = data.items.reduce(
@@ -1085,21 +1127,53 @@ const IncomeExpenseFormInner = ({
                   name="payer_name"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>
-                        {voucherType === 'EXPENSE' ? 'Tên người nhận' : 'Người gửi'}
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder={
-                            voucherType === 'EXPENSE'
-                              ? 'Nhập tên người nhận'
-                              : 'Nhập tên người gửi'
-                          }
-                          {...field}
-                          value={field.value ?? ''}
-                          disabled={!canEdit}
-                        />
-                      </FormControl>
+                      <div className="flex items-center justify-between gap-2">
+                        <FormLabel>
+                          {voucherType === 'EXPENSE' ? 'Tên người nhận' : 'Người gửi'}
+                        </FormLabel>
+                        {showQl && (
+                          <label className="flex items-center gap-1 text-xs font-medium cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={qlOn}
+                              onChange={(e) => {
+                                setQlOn(e.target.checked);
+                                if (!e.target.checked) setQlManagerId('');
+                              }}
+                              aria-label="Người nhận là quản lý (QL)"
+                            />
+                            QL
+                          </label>
+                        )}
+                      </div>
+                      {showQl && qlOn ? (
+                        <>
+                          <QlManagerSelectCurrentOrg
+                            value={qlManagerId}
+                            onPick={(m) => {
+                              setQlManagerId(m.staffId);
+                              field.onChange(m.displayName);
+                            }}
+                          />
+                          <p className="text-xs text-violet-700">
+                            Phiếu sẽ chuyển sang sổ ảo "Hoa hồng QL chờ trả lương": duyệt vẫn tính chi phí tòa
+                            nhưng không chi từ sổ quỹ — tiền trả qua lương.
+                          </p>
+                        </>
+                      ) : (
+                        <FormControl>
+                          <Input
+                            placeholder={
+                              voucherType === 'EXPENSE'
+                                ? 'Nhập tên người nhận'
+                                : 'Nhập tên người gửi'
+                            }
+                            {...field}
+                            value={field.value ?? ''}
+                            disabled={!canEdit}
+                          />
+                        </FormControl>
+                      )}
                       <FormMessage />
                     </FormItem>
                   )}

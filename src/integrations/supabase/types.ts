@@ -18975,6 +18975,15 @@ export type Database = {
       }
       approve_voucher: { Args: { voucher_id: string }; Returns: undefined }
       archive_cashbook_v1: { Args: { p_cashbook_id: string }; Returns: Json }
+      assign_commission_manager_v1: {
+        Args: {
+          p_expected_approval_version: number
+          p_idempotency_key: string
+          p_manager_id: string
+          p_voucher_id: string
+        }
+        Returns: Json
+      }
       attach_payment_receipt_v1: {
         Args: { p_payment_id: string; p_receipt_url: string }
         Returns: Json
@@ -19581,6 +19590,14 @@ export type Database = {
           id: string
           is_open: boolean
           reason_code: string
+        }[]
+      }
+      commission_manager_options_v1: {
+        Args: { p_organization_id: string }
+        Returns: {
+          alias: string
+          display_name: string
+          staff_id: string
         }[]
       }
       complete_inspection: {
@@ -21977,6 +21994,14 @@ export type Database = {
         }
         Returns: Json
       }
+      lock_salary_month_v2: {
+        Args: {
+          p_idempotency_key: string
+          p_managers: Json
+          p_period_month: string
+        }
+        Returns: Json
+      }
       log_income_expense_action: {
         Args: { p_action: string; p_id: string; p_note?: string }
         Returns: undefined
@@ -23234,6 +23259,18 @@ export type Database = {
         Args: { p_organization_id: string }
         Returns: boolean
       }
+      salary_commission_meta_v1: {
+        Args: { p_voucher_ids: string[] }
+        Returns: {
+          account_id: string
+          account_name: string
+          included_period: string
+          included_staff_id: string
+          manager_id: string
+          on_manager_book: boolean
+          voucher_id: string
+        }[]
+      }
       salary_line_override_list_v1: {
         Args: { p_organization_id: string; p_period_month: string }
         Returns: {
@@ -23908,6 +23945,14 @@ export type Database = {
         Returns: Json
       }
       unlock_salary_month_v1: {
+        Args: {
+          p_idempotency_key: string
+          p_period_month: string
+          p_staff_ids: string[]
+        }
+        Returns: Json
+      }
+      unlock_salary_month_v2: {
         Args: {
           p_idempotency_key: string
           p_period_month: string

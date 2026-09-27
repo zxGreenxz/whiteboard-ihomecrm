@@ -3,7 +3,7 @@
 import React from "react";
 import { SAL_ICONS } from "./salaryIcons";
 import { salFmt } from "./salaryFormat";
-import type { SalManager, SalAdjustment } from "@/lib/managerSalary";
+import { commissionFlaggedNote, commissionItemNote, type SalManager, type SalAdjustment } from "@/lib/managerSalary";
 
 const I = SAL_ICONS;
 
@@ -92,7 +92,7 @@ export function CommissionPop({ m }: { m: SalManager }) {
     <>
       <div className="sal-pop-head">
         <span className="ic" style={{ background: "hsl(var(--status-success-bg))", color: "hsl(var(--status-success-fg))" }}><I.HandCoins size={17} /></span>
-        <div><div className="tt">HH Sale (hoa hồng)</div><div className="st">Người nhận = quản lý · tự duyệt khi chốt lương</div></div>
+        <div><div className="tt">HH Sale (hoa hồng)</div><div className="st">Người nhận = quản lý (ô QL hoặc tên) · sổ ảo trả qua lương</div></div>
       </div>
       <div className="sal-pop-body">
         {m.commissionItems.length === 0 && flagged.length === 0 ? (
@@ -102,19 +102,19 @@ export function CommissionPop({ m }: { m: SalManager }) {
             {m.commissionItems.map((x, i) => (
               <div key={"c" + i} className="sal-pop-row">
                 <span className="ric"><I.Clock size={15} /></span>
-                <span className="rl"><b>{x.label}</b><small style={{ color: "hsl(var(--status-warning-fg))" }}>nháp — sẽ duyệt khi chốt lương</small></span>
+                <span className="rl"><b>{x.label}</b><small style={{ color: (x.paidElsewhere || 0) > 0 ? "hsl(var(--muted-foreground))" : "hsl(var(--status-warning-fg))" }}>{commissionItemNote(x, m.status === "LOCKED")}</small></span>
                 <span className="ra">{salFmt(x.amount)}</span>
               </div>
             ))}
             {flagged.length > 0 && (
               <>
                 <div style={{ padding: "8px 16px 4px", fontSize: 12, fontWeight: 700, color: "hsl(var(--status-danger-fg))", display: "flex", alignItems: "center", gap: 6 }}>
-                  <I.AlertTriangle size={14} />Cần kiểm tra — đã duyệt/thanh toán (không tính vào HH Sale)
+                  <I.AlertTriangle size={14} />Đã tính vào lương kỳ khác (không cộng vào HH Sale kỳ này)
                 </div>
                 {flagged.map((x, i) => (
                   <div key={"f" + i} className="sal-pop-row">
                     <span className="ric" style={{ background: "hsl(var(--status-danger-bg))", color: "hsl(var(--status-danger-fg))" }}><I.AlertTriangle size={15} /></span>
-                    <span className="rl"><b>{x.label}</b><small style={{ color: "hsl(var(--status-danger-fg))" }}>đã thanh toán riêng — kiểm tra kẻo trả 2 lần</small></span>
+                    <span className="rl"><b>{x.label}</b><small style={{ color: "hsl(var(--status-danger-fg))" }}>{commissionFlaggedNote(x)}</small></span>
                     <span className="ra" style={{ color: "hsl(var(--status-danger-fg))" }}>{salFmt(x.amount)}</span>
                   </div>
                 ))}
@@ -123,7 +123,7 @@ export function CommissionPop({ m }: { m: SalManager }) {
           </>
         )}
       </div>
-      <div className="sal-pop-foot"><span className="tl">Tổng HH Sale (nháp)</span><span className="tv">{salFmt(total)}</span></div>
+      <div className="sal-pop-foot"><span className="tl">Tổng HH Sale</span><span className="tv">{salFmt(total)}</span></div>
     </>
   );
 }

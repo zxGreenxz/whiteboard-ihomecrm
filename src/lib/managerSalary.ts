@@ -62,7 +62,26 @@ export interface SalAppliedOverride {
 }
 
 export interface SalInvestBy { b: string; amount: number; }
-export interface SalCommissionItem { label: string; amount: number; approved: boolean; voucherId?: string; }
+export interface SalCommissionItem {
+  label: string;
+  amount: number;
+  approved: boolean;
+  voucherId?: string;
+  /**
+   * Tiền của phiếu đã/sẽ ra khỏi một SỔ QUỸ THẬT (phiếu không nằm ở sổ ảo "Hoa hồng
+   * QL chờ trả lương"). Vẫn cộng vào thu nhập, nhưng salCalc trừ khỏi thực nhận để
+   * không chuyển lần hai. 0/không có = trả qua lương. Ghi đè số tiền (sale:<id>) kéo
+   * theo số này (applySalaryExtras) ⇒ dòng sổ thật KHÔNG BAO GIỜ đổi tiền chuyển,
+   * chỉ đổi thu nhập; muốn trả thêm qua lương thì thêm khoản Thưởng.
+   */
+  paidElsewhere?: number;
+  /** Tên sổ thật đã/sẽ chi (hiển thị "Đã chi từ sổ X"). */
+  paidFrom?: string | null;
+  /** Phiếu đã được gán quản lý nhận (ô QL) — không còn dựa vào khớp tên. */
+  assigned?: boolean;
+  /** Chỉ có ở commissionFlagged: đã tính vào lương kỳ khác / người khác. */
+  includedElsewhere?: { staffId: string; period: string } | null;
+}
 export interface SalAdvanceItem { date: string; label: string; amount: number; }
 export interface SalStats { jobs: number; repairs: number; afterHour: number; workdays: number; streak: number; }
 export interface SalTrendPoint { label: string; gross: number; takehome: number; paidOn?: string; current?: boolean; }
@@ -85,9 +104,11 @@ export interface SalManager {
   investmentBy: SalInvestBy[];
   investmentLocked: boolean;
   commission: number;
+  // Mọi phiếu hoa hồng của quản lý trong tháng — cả đã duyệt lẫn chờ duyệt (migration
+  // 20260927155251). Phiếu ở sổ thật mang `paidElsewhere` (thu nhập có, tiền chuyển không).
   commissionItems: SalCommissionItem[];
-  // Phiếu hoa hồng ĐÃ DUYỆT (đã thanh toán) trong tháng → cảnh báo "!" cần kiểm tra
-  // (lẽ ra phải còn nháp để chốt lương mới duyệt). Rỗng với tháng đã chốt.
+  // Phiếu khớp người này nhưng ĐÃ tính vào lương kỳ khác / người khác (dấu chốt lương)
+  // → hiện gạch, không cộng. Rỗng với tháng đã chốt.
   commissionFlagged: SalCommissionItem[];
   advance: number;
   advanceItems: SalAdvanceItem[];
@@ -261,14 +282,114 @@ export function salCalc(
   m: Pick<SalManager, "base" | "investment" | "commission" | "advance" | "roomRent"> & {
     bonusAuto?: SalBonusLine[];
     adjustments?: SalAdjustment[];
+    commissionItems?: SalCommissionItem[];
   }
 ): SalCalcResult {
   const autoSum = (m.bonusAuto || []).reduce((s, a) => s + a.amount, 0);
   const adjSum = (m.adjustments || []).reduce((s, a) => s + a.amount, 0);
   const bonus = autoSum + adjSum;
   const gross = m.base + bonus + m.investment + m.commission;
-  const takehome = gross - m.advance - m.roomRent;
+  // Hoa hồng đã/sẽ chi từ sổ thật: là thu nhập (có trong gross) nhưng tiền đã ra từ
+  // sổ đó — trừ như tiền ứng, kẻo chuyển lần hai qua lương.
+  const paidElsewhere = commissionPaidElsewhere(m.commissionItems);
+  const takehome = gross - m.advance - m.roomRent - paidElsewhere;
   return { autoSum, adjSum, bonus, gross, takehome };
+}
+
+/**
+ * Hạng mục có phải hoa hồng không — CÙNG luật với server
+ * (app_private.ie_has_commission_item_v1): category 'HOA HỒNG' hoặc tên chứa
+ * "hoa hồng"/"hoa hông"/"hhmg".
+ */
+export function isCommissionType(t: { category?: string | null; name?: string | null }): boolean {
+  return String(t.category || "").toUpperCase() === "HOA HỒNG" || /hoa h[ồô]ng|hhmg/i.test(String(t.name || ""));
+}
+
+/** Dòng mô tả ngắn cho một phiếu hoa hồng — dùng chung mọi màn lương. */
+export function commissionItemNote(c: SalCommissionItem, locked: boolean): string {
+  const book = c.paidFrom || "sổ quỹ khác";
+  const fromBook = (c.paidElsewhere || 0) > 0;
+  if (locked) return fromBook ? `đã chốt · đã chi từ sổ ${book}` : "đã chốt cùng bảng lương";
+  if (!fromBook) return c.approved ? "đã duyệt · trả qua lương" : "chờ duyệt · trả qua lương khi chốt";
+  return c.approved ? `đã chi từ sổ ${book} — không chuyển lại` : `chưa gán QL — khi duyệt chi từ sổ ${book}`;
+}
+
+/** Dòng mô tả cho phiếu đã tính vào lương kỳ/người khác (commissionFlagged). */
+export function commissionFlaggedNote(c: SalCommissionItem): string {
+  const p = c.includedElsewhere?.period;
+  return `đã tính vào lương kỳ ${p ? p.slice(5, 7) + "/" + p.slice(0, 4) : "khác"} — không cộng lại`;
+}
+
+/** Tổng hoa hồng đã/sẽ chi từ sổ quỹ thật (không trả qua lương). */
+export function commissionPaidElsewhere(items: SalCommissionItem[] | undefined): number {
+  return (items || []).reduce((s, c) => s + (c.paidElsewhere || 0), 0);
+}
+
+/** Một dòng meta từ salary_commission_meta_v1 (migration 20260927155251). */
+export interface CommissionVoucherMeta {
+  voucher_id: string;
+  manager_id: string | null;
+  account_id: string | null;
+  account_name: string | null;
+  on_manager_book: boolean | null;
+  included_staff_id: string | null;
+  included_period: string | null;
+}
+
+/** Một phiếu hoa hồng đã gộp các dòng item trong tháng. */
+export interface CommissionVoucherRow {
+  id: string;
+  name: string;
+  status: string; // approval_status
+  amount: number;
+  payerName: string;
+}
+
+/**
+ * Chia phiếu hoa hồng của tháng cho từng quản lý (phương án A, chốt 27/09/2026):
+ *  - Quản lý nhận = liên kết ô QL (meta.manager_id) nếu có, còn không thì khớp tên
+ *    người nhận (payer_name) với biệt danh / tên gọi như trước.
+ *  - Phiếu đã có dấu "đã tính vào lương" của NGƯỜI KHÁC hoặc KỲ KHÁC → flagged (gạch).
+ *  - Còn lại vào items, cả đã duyệt lẫn chờ duyệt. Phiếu ở sổ ảo quản lý → trả qua
+ *    lương; ở sổ thật → paidElsewhere = số gốc (thu nhập có, tiền chuyển không).
+ */
+export function classifyCommissionVouchers(
+  vouchers: CommissionVoucherRow[],
+  meta: Map<string, CommissionVoucherMeta>,
+  aliasToStaff: Map<string, string>,
+  staffIds: Set<string>,
+  periodMonth: string,
+): Map<string, { items: SalCommissionItem[]; flagged: SalCommissionItem[] }> {
+  const out = new Map<string, { items: SalCommissionItem[]; flagged: SalCommissionItem[] }>();
+  for (const v of vouchers) {
+    const mt = meta.get(v.id);
+    const linked = mt?.manager_id && staffIds.has(mt.manager_id) ? mt.manager_id : null;
+    // Phiếu đã gán cho một quản lý KHÁC (ngoài danh sách tháng này) thì không được
+    // rơi về khớp tên — liên kết thắng tên.
+    const staff = linked ?? (mt?.manager_id ? null : aliasToStaff.get(v.payerName.trim().toLowerCase()) ?? null);
+    if (!staff) continue;
+    const entry = out.get(staff) || { items: [], flagged: [] };
+    const onBook = !!mt?.on_manager_book;
+    const item: SalCommissionItem = {
+      label: v.name,
+      amount: v.amount,
+      approved: v.status === "APPROVED",
+      voucherId: v.id,
+      assigned: !!linked,
+      paidElsewhere: onBook ? 0 : v.amount,
+      paidFrom: onBook ? null : mt?.account_name ?? null,
+    };
+    const inc = mt?.included_staff_id && mt.included_period
+      ? { staffId: mt.included_staff_id, period: mt.included_period.slice(0, 10) }
+      : null;
+    if (inc && (inc.staffId !== staff || inc.period !== periodMonth)) {
+      entry.flagged.push({ ...item, includedElsewhere: inc });
+    } else {
+      entry.items.push(item);
+    }
+    out.set(staff, entry);
+  }
+  return out;
 }
 
 // Số gọn không hậu tố (cho note "18 việc × 30.000").
