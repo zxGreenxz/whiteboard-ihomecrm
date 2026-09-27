@@ -827,6 +827,29 @@
         }
       ],
       "raSoatBoi": "Claude Code — đợt 1 sửa phiếu 25/09/2026 (hồ sơ ghi khi regen provenance ngay sau khi áp M5)"
+    },
+    "supabase/migrations/20260927190750_termination_write_boundary.sql": {
+      "sha256": "67cc43b63749c9058ff1b447bba49e62c1a4ff6941f8d74ce410f72eeaa40f7c",
+      "missingObjects": [
+        "table:app_private.termination_write_capabilities",
+        "function:app_private.open_termination_write_v2",
+        "function:app_private.close_termination_write_v2",
+        "function:public.create_contract_termination_draft_v1",
+        "trigger:public.contract_terminations.trigger_termination_final_guard"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "P1a.2 candidate chỉ áp trên project TEST riêng; chưa áp production. Objects mới vắng ở production là trạng thái có chủ ý, không phải đã bị gỡ. Migration exact before/after metadata và TEST chạy hai lượt idempotent cùng runtime boundary/JWT/cleanup. Independent source review và forward production lane còn pending; hồ sơ này chỉ giải thích object vắng, không phê duyệt release hoặc nâng provenance.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20260927190750_termination_write_boundary.sql",
+          "trich_doan": "-- P1a.2: atomic, bounded driving-table cutover. Existing monetary policy,\n-- permission checks and business lock order are retained. Capability has no FK."
+        },
+        {
+          "duong_dan": "scripts/contract-lifecycle/termination-boundary-http-live.mjs",
+          "trich_doan": "e.schema='TEST committed, twice idempotent'"
+        }
+      ],
+      "raSoatBoi": "Codex — bounded implementation/catalog absence review; independent task review pending"
     }
   }
 }

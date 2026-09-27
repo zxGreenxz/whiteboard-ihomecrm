@@ -145,7 +145,8 @@ export function createTestHttp(config, { verified, fetch: doFetch = globalThis.f
     async rpc(name, args = {}, { allowEmpty = false, token } = {}) {
       if (!IDENT.test(name)) throw new Error('Invalid TEST RPC name.');
       if (!verified || activeContexts.get(verified) !== expectedRef) throw new Error('RPC requires an active verified TEST transaction.');
-      const result = await safeJson(await request(`/rest/v1/rpc/${name}`, { method: 'POST', body: args, token, headers: { 'Content-Type': 'application/json', 'Content-Profile': 'public' } }));
+      const response = await request(`/rest/v1/rpc/${name}`, { method: 'POST', body: args, token, headers: { 'Content-Type': 'application/json', 'Content-Profile': 'public' } });
+      const result = response.status === 204 ? null : await safeJson(response);
       if (!allowEmpty && (result === null || (Array.isArray(result) && result.length === 0))) throw new Error('TEST RPC returned no baseline evidence.');
       return result;
     },

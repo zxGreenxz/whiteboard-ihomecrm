@@ -20486,6 +20486,27 @@ export type Database = {
         }
         Returns: Json
       }
+      create_contract_termination_draft_v1: {
+        Args: {
+          p_cleaning_fee?: number
+          p_contract_id: string
+          p_damage_fee?: number
+          p_early_termination_fee?: number
+          p_idempotency_key: string
+          p_move_out_date: string
+          p_notes?: string
+          p_notice_violation_fee?: number
+          p_other_fees?: number
+          p_outstanding_debt?: number
+          p_prorated_days?: number
+          p_prorated_rent?: number
+          p_prorated_services?: number
+          p_refund_method?: Database["public"]["Enums"]["payment_method"]
+          p_termination_type?: string
+          p_total_deposit?: number
+        }
+        Returns: Json
+      }
       create_contract_v1: {
         Args: {
           p_customer_ids: string[]

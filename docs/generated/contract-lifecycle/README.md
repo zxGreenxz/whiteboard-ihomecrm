@@ -18,3 +18,12 @@ Các hướng dẫn chạy nằm ở [scripts/contract-lifecycle/README.md](../.
 Review task P0a–P0d và báo cáo giới hạn được lưu ở [hồ sơ implementation](../../audits/2026-09-27-contract-lifecycle/implementation/README.md). Các phép mutation local chỉ chứng minh độ nhạy của harness/oracle; không được đổi tên thành mutation SQL/RLS thực tế.
 
 Vẫn còn: baseline các nhánh tiền/quyền còn lại theo slice, real JWT mutation, concurrency, guards và các tính năng mới, kiểm toàn repo/PR/rollout/rollback và E2E CRM. Ký trước ngày nhận vẫn là phần tùy chọn có gate riêng. Chưa áp migration tính năng hoặc thay đổi dữ liệu nghiệp vụ production trong giai đoạn bằng chứng nền này.
+
+## P1a.2 candidate
+
+[Termination write boundary evidence](2026-09-28-termination-boundary-evidence.json)
+records SQL boundary checks, real JWT authority and named races, exact guarded
+cleanup, generator parity and limits. Scope is contract_terminations only;
+independent review and production release remain pending. Paid refund/collection/
+cashbook contention is a separate required validation before global cutover.
+Reject has no current UI consumer; the headless three-role smoke reads contracts.

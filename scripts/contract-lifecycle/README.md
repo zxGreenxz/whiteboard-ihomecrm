@@ -90,3 +90,40 @@ không gỡ index để ép ca đó chạy. Đây là giới hạn tiền đề,
 Chỉ thay eligibility của `approve_contract_termination_v1`; raw-table bypass,
 global lock protocol, private capabilities và concurrent authority-revocation
 linearization vẫn thuộc các phần việc sau. Không phải release toàn lifecycle.
+
+## P1a.2 — ranh giới ghi contract_terminations
+
+Migration `20260927190750_termination_write_boundary.sql` dùng proof riêng theo
+transaction/backend/actor/org/contract/termination và exact row; không dùng
+caller GUC hay quyền owner làm bypass. DRAFT dùng `contracts.create`; các writer
+cũ giữ quyền hiện có. Hai guard kiểm patch trước normalization và kiểm kết quả
+trước trigger ghi contract. Metadata giữ nguyên các giá trị settlement đã lưu.
+
+Chỉ chạy trên project TEST riêng, Node24.18.0 và vault gốc như các harness trên:
+
+```sh
+node scripts/contract-lifecycle/termination-boundary-live.mjs --test-rollback --migration supabase/migrations/20260927190750_termination_write_boundary.sql
+node scripts/contract-lifecycle/termination-boundary-http-live.mjs --test-commit
+node scripts/contract-lifecycle/termination-boundary-auth-live.mjs --test-commit
+```
+
+HTTP/auth runner rehearsal cleanup trong rollback trước committed seed. Phạm vi
+committed chỉ zero money hoặc INCOME100 chưa duyệt/chưa post, account NULL;
+không dùng cho fixture paid/refund/cashbook. Cleanup giữ guard, kiểm exact roots,
+marker/org/linkage và live FK closure; proof DELETE chỉ owner, exact row và đóng
+ngay sau xóa. Nhánh RPC thất bại trước tạo termination được cleanup khi đã chứng
+minh owned contract có zero termination, không tạo business row để dọn. Audit,
+canonical identity và counter increments được giữ và ghi trong receipt ignored.
+
+SQL suite gồm direct DML/forged proof, metadata NULL legacy có kiểm soát, rollback
+khi audit INSERT lỗi, terminal eligibility, ACTIVE/EXTENDED capped/uncapped/zero.
+Fixture NULL chỉ tồn tại trong rollback; trigger fixture exact row được gỡ và
+catalog được đối chiếu trước assertion. Không coi nó là INSERT NULL hiện hành.
+JWT races đo cùng termination, raw/credit FORFEIT, raw/credit MOVE_OUT,
+approve/FORFEIT và reject/MOVE_OUT. Hai DRAFT bị unique index từ chối23505.
+Paid refund/collection/cashbook races chưa được xác minh bởi bộ này.
+
+Không có consumer UI hiện hành của `useRejectTermination`; typed unit và JWT
+kiểm reject, còn `.e2e-fleet/specs/termination-boundary-read.spec.ts` chỉ smoke
+đọc contracts với owner/manager/accountant, headless, local app explicit TEST.
+Không gọi smoke này là reject UI E2E. Production/schema release không thuộc lệnh.

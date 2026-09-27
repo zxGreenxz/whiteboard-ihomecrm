@@ -7,14 +7,14 @@ export async function managerDecisions({query},exclude=null) {
   await query("SELECT set_config('request.jwt.claim.sub',$1,true)",[actor]);
   return (await query("SELECT id,public.can_do_on_building('contracts','edit',id) AS allowed FROM public.buildings WHERE organization_id='dddd0000-0000-4000-8000-000000000001' AND id IS DISTINCT FROM $1 ORDER BY id",[exclude])).rows;
 }
-export async function seedAuth(ctx) {
+export async function seedAuth(ctx,{draftAdapter=false}={}) {
   const {query}=ctx,building=randomUUID(),override=randomUUID(),marker='p1a1-auth-'+randomUUID();
   const owner=(await query("SELECT id FROM auth.users WHERE email='demo.chunha@username.ihomecrm.local'")).rows[0].id;
   const existingDecisions=await managerDecisions(ctx);
   await query("SELECT set_config('request.jwt.claim.sub',$1,true)",[owner]);
   await query("INSERT INTO public.buildings(id,organization_id,user_id,name,province,district,ward) VALUES($1,'dddd0000-0000-4000-8000-000000000001',$2,$3,'TEST','TEST','TEST')",[building,owner,marker]);
   const scopes=(await query('SELECT * FROM public.authorization_scopes WHERE building_id=$1',[building])).rows;assert.equal(scopes.length,1);
-  const f=await seedLegacy(ctx,{status:'ACTIVE',buildingId:building,marker});
+  const f=await seedLegacy(ctx,{status:'ACTIVE',buildingId:building,marker,draftAdapter,deduction:draftAdapter?0:100});
   const manager=(await query("SELECT id FROM auth.users WHERE email='demo.quanly@username.ihomecrm.local'")).rows[0].id;
   const member=(await query("SELECT id FROM public.organization_memberships WHERE user_id=$1 AND organization_id=$2 AND status='ACTIVE'",[manager,f.organizationId])).rows[0].id;
   await query("INSERT INTO public.member_permission_overrides(id,organization_id,membership_id,permission_key,effect,reason,scope_mode) VALUES($1,$2,$3,'contracts.edit','ALLOW',$4,'SCOPED')",[override,f.organizationId,member,marker]);

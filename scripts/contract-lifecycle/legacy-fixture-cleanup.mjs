@@ -14,15 +14,21 @@ export async function legacyLedger({query},fixtures) {
   const ledger={};
   for(const [t,key]of [['public.rooms','room'],['public.customers','customer'],['public.contracts','contract'],['public.contract_terminations','termination']]) {
     ledger[t]=await select(t,'id=ANY($1::uuid[])',[ids(key)]);
-    assert.equal(ledger[t].length,fixtures.length,'Every owned root must exist');
+    assert.equal(ledger[t].length,key==='termination'?fixtures.filter(f=>f.termination!==null).length:fixtures.length,'Every owned root must exist');
   }
   for(const f of fixtures) {
     const row=t=>ledger['public.'+t].find(r=>r.id===f[{rooms:'room',customers:'customer',contracts:'contract',contract_terminations:'termination'}[t]]);
-    for(const t of ['rooms','customers','contracts','contract_terminations'])assert.equal(row(t).organization_id,f.organizationId);
+    for(const t of ['rooms','customers','contracts'])assert.equal(row(t).organization_id,f.organizationId);
     assert.equal(row('rooms').name,f.marker); assert.equal(row('rooms').building_id,f.building);
     assert.equal(row('customers').full_name,f.marker);assert.equal(row('contracts').notes,f.marker);
-    assert.equal(row('contracts').room_id,f.room);assert.equal(row('contract_terminations').notes,f.marker);
-    assert.equal(row('contract_terminations').contract_id,f.contract);
+    assert.equal(row('contracts').room_id,f.room);
+    if(f.termination===null) {
+      assert.equal((await query('SELECT id FROM public.contract_terminations WHERE contract_id=$1',[f.contract])).rowCount,0,'Absent termination must have no substitute row');
+    } else {
+      assert.equal(row('contract_terminations').organization_id,f.organizationId);
+      assert.equal(row('contract_terminations').notes,f.marker);
+      assert.equal(row('contract_terminations').contract_id,f.contract);
+    }
   }
   // Additional exact term IDs (two-DRAFT race) are supplied by the fixture owner.
   const terms=fixtures.flatMap(f=>f.additionalTerminations??[]);

@@ -129,9 +129,7 @@ describe("termination non-cash payment migration", () => {
   });
 
   it("scopes both termination wrappers around their required capabilities", () => {
-    const forfeitWrapper = functionBody(
-      "CREATE OR REPLACE FUNCTION public.terminate_contract_forfeit(",
-    );
+    const forfeitWrapper = thanHamDangChay("terminate_contract_forfeit");
     // Đo ĐỊNH NGHĨA SỐNG: hàm này đã được DROP/CREATE lại ở đợt "Hoàn lại
     // khách" (22/08/2026) nên không còn nằm trong file migration của đợt này.
     const moveOutWrapper = thanHamDangChay("terminate_contract_move_out");

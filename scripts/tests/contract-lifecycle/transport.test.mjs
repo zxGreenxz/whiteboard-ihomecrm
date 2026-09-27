@@ -6,6 +6,14 @@ import { withTestTransaction, createTestHttp, selectAll, deterministicFixtureId,
 const ref = 'abcdefghijklmnopqrst';
 const config = { expectedRef: ref, url: `https://${ref}.supabase.co`, db: { host: 'aws-1-ap-southeast-1.pooler.supabase.com', user: `postgres.${ref}`, database: 'postgres', password: 'secret' } };
 
+test('void RPC 204 succeeds only when the caller explicitly allows empty results', async () => {
+  await withTestTransaction(config, {connect:fakeConnect().connect,readOnly:true,run:async verified=>{
+    const http=createTestHttp(config,{verified,apiKey:'anon',fetch:async()=>new Response(null,{status:204})});
+    assert.equal(await http.rpc('reject_contract_termination_v1',{}, {allowEmpty:true}),null);
+    await assert.rejects(http.rpc('reject_contract_termination_v1',{}),/no baseline evidence/);
+  }});
+});
+
 function fakeConnect(marker = [{ ref }], fail = false) {
   const calls = [];
   const client = { async query(sql) {

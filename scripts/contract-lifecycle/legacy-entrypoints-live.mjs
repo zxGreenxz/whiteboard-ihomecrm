@@ -6,13 +6,14 @@ import { loadTestCredentialsFromVault, withTestTransaction } from './transport.m
 import { assertEligibilityDenied } from './legacy-entrypoints.mjs';
 
 const ORG='dddd0000-0000-4000-8000-000000000001';
-export async function seedLegacy({query}, {status='TERMINATED', terminationStatus='DRAFT', deduction=100, deposit=0, paid=0, buildingId, marker=`p1a1-${randomUUID()}`}={}) {
+export async function seedLegacy({query}, {status='TERMINATED', terminationStatus='DRAFT', deduction=100, deposit=0, paid=0, buildingId, marker=`p1a1-${randomUUID()}`, draftAdapter=false, omitTermination=false}={}) {
   await query("SET LOCAL lock_timeout='10s'; SET LOCAL statement_timeout='90s'");
   const one=async(sql,params)=>{const r=await query(sql,params);assert.equal(r.rows.length,1);return r.rows[0];};
   const actor=(await one("SELECT id FROM auth.users WHERE email='demo.chunha@username.ihomecrm.local'")).id;
   await query("SELECT set_config('request.jwt.claim.sub',$1,true),set_config('request.jwt.claims',$2,true)",[actor,JSON.stringify({sub:actor,role:'authenticated'})]);
   const building=buildingId??(await one("SELECT id FROM public.buildings WHERE organization_id=$1 AND deleted_at IS NULL AND NOT is_virtual AND public.can_do_on_building('contracts','edit',id) ORDER BY id LIMIT 1",[ORG])).id;
-  const room=randomUUID(),customer=randomUUID(),termination=randomUUID();
+  const room=randomUUID(),customer=randomUUID();
+  let termination=randomUUID();
   let contract=randomUUID(),account;
   await query("INSERT INTO public.rooms(id,organization_id,building_id,name,rent_price,deposit_amount,status) VALUES($1,$2,$3,$4,300000,0,'AVAILABLE')",[room,ORG,building,marker]);
   await query('INSERT INTO public.customers(id,organization_id,user_id,full_name,phone) VALUES($1,$2,$3,$4,$5)',[customer,ORG,actor,marker,'0000000000']);
@@ -28,7 +29,15 @@ export async function seedLegacy({query}, {status='TERMINATED', terminationStatu
     await query("INSERT INTO public.contracts(id,organization_id,user_id,room_id,status,signed_date,start_date,end_date,rent_price,total_deposit,notes) VALUES($1,$2,$3,$4,$5,'2026-01-01','2026-01-01','2028-12-31',300000,$6,$7)",[contract,ORG,actor,room,status,deposit,marker]);
     await query('INSERT INTO public.contract_customers(contract_id,customer_id,is_representative) VALUES($1,$2,true)',[contract,customer]);
   }
-  await query("INSERT INTO public.contract_terminations(id,organization_id,user_id,contract_id,actual_move_out_date,termination_type,total_deposit,outstanding_debt,prorated_rent,prorated_services,refund_method,notes) VALUES($1,$2,$3,$4,public.org_today_v1($2),'NORMAL',$5,$6,0,0,'TM',$7)",[termination,ORG,actor,contract,deposit,deduction,marker]);
+  if(omitTermination) {
+    termination=null;
+  } else if(draftAdapter) {
+    assert.equal(terminationStatus,'DRAFT','Boundary fixtures enter through authorized DRAFT');
+    const result=await one("SELECT public.create_contract_termination_draft_v1($1,public.org_today_v1($2),$3,'NORMAL',$4,$5,0,0,0,0,0,0,0,0,'TM',$6) AS v",[contract,ORG,marker+':draft',deposit,deduction,marker]);
+    termination=result.v.termination_id;
+  } else {
+    await query("INSERT INTO public.contract_terminations(id,organization_id,user_id,contract_id,actual_move_out_date,termination_type,total_deposit,outstanding_debt,prorated_rent,prorated_services,refund_method,notes) VALUES($1,$2,$3,$4,public.org_today_v1($2),'NORMAL',$5,$6,0,0,'TM',$7)",[termination,ORG,actor,contract,deposit,deduction,marker]);
+  }
   if(terminationStatus!=='DRAFT')await query('UPDATE public.contract_terminations SET status=$2 WHERE id=$1',[termination,terminationStatus]);
   return {actor,building,room,customer,contract,termination,marker,organizationId:ORG,...(account?{account}:{})};
 }

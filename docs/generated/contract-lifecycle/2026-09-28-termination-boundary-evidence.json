@@ -1,0 +1,758 @@
+{
+  "kind": "P1A2_BOUNDED_TERMINATION_WRITE_BOUNDARY",
+  "baseSha": "40018c7abcced792a091e0f25dde026df576f7c8",
+  "at": "2026-09-27T20:13:25.347Z",
+  "target": "Dedicated TEST only",
+  "node": "24.18.0",
+  "sourceHashes": {
+    "supabase/migrations/20260927190750_termination_write_boundary.sql": "67cc43b63749c9058ff1b447bba49e62c1a4ff6941f8d74ce410f72eeaa40f7c",
+    "scripts/contract-lifecycle/termination-boundary-live.mjs": "cfde65bdbb1ecfe340c74c8e03e47c91ccf11ace66193071fdded3c82e694b4d",
+    "scripts/contract-lifecycle/termination-boundary-http-live.mjs": "e7ae0f595c2f30cc26f15fb07b3ef7a13cc676c04dbd07dfb172665db475c1c8",
+    "scripts/contract-lifecycle/termination-boundary-auth-fixture.mjs": "f8c51cf717964595038442b2206786d602fb4493dc230b46f78045e0c2f8a026",
+    "scripts/contract-lifecycle/termination-boundary-auth-live.mjs": "9f2a1b03d9e0af66f331bce999c1d7ad28bf0c937bfa4486508959994cde1dd7",
+    "scripts/contract-lifecycle/legacy-fixture-cleanup.mjs": "c183df69d40552ac542bc3b721146534e12fb617058b9ce9e5a411788aa66126",
+    "scripts/gen-supabase-types.mjs": "69f4df9acf7c3c80d0145cc83f37fb4f33c1845705d5e08d422e3391b01c5129",
+    "scripts/generate-rpc-surface.mjs": "12b67762b040448b1c4468a412413961a48fadbbf7525afbf88ecba185fd3f64",
+    "src/lib/terminationRejectRpc.ts": "0e45e399b7ad1f68903f761874883ecaa9d79bb43f40771255ca6f7b4c754664",
+    "src/hooks/useContracts.ts": "851b483bcc7eeb9007962d557d189cb042873ad06faea382c2ce1e941bc4962b",
+    ".e2e-fleet/specs/termination-boundary-read.spec.ts": "6951b57d3463a50b510ee00e13c872b4c2e10fe3c205bcad08c0e8a5b42a8ea5"
+  },
+  "metadata": {
+    "before": [
+      {
+        "name": "approve_contract_termination_v1",
+        "signature": "approve_contract_termination_v1(uuid,text)",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+        "volatility": "v",
+        "secdef": true,
+        "config": [
+          "search_path=pg_catalog, public, app_private"
+        ],
+        "definitionMd5": "e5bec0c847f543bb1df1213336cc75fa"
+      },
+      {
+        "name": "begin_contract_termination_write_v1",
+        "signature": "app_private.begin_contract_termination_write_v1(uuid,text)",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres}",
+        "volatility": "v",
+        "secdef": true,
+        "config": [
+          "search_path=pg_catalog, app_private, public"
+        ],
+        "definitionMd5": "5e8bcaa95e89128cd72d3a78cb6288f0"
+      },
+      {
+        "name": "end_contract_termination_write_v1",
+        "signature": "app_private.end_contract_termination_write_v1(uuid)",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres}",
+        "volatility": "v",
+        "secdef": true,
+        "config": [
+          "search_path=pg_catalog, app_private, public"
+        ],
+        "definitionMd5": "382f53de40affd1408fe8fa3df3fa7df"
+      },
+      {
+        "name": "guard_contract_termination_settlement",
+        "signature": "guard_contract_termination_settlement()",
+        "owner": "postgres",
+        "acl": "{=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+        "volatility": "v",
+        "secdef": false,
+        "config": [
+          "search_path=pg_catalog, public, app_private"
+        ],
+        "definitionMd5": "7a6552ed4d57734c5e136367ab5fbc97"
+      },
+      {
+        "name": "has_contract_termination_write_v1",
+        "signature": "has_contract_termination_write_v1(uuid)",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+        "volatility": "v",
+        "secdef": true,
+        "config": [
+          "search_path=pg_catalog, app_private, public"
+        ],
+        "definitionMd5": "3e5e94607e6d11e41eb0a92b64a6ddc1"
+      },
+      {
+        "name": "reject_contract_termination_v1",
+        "signature": "reject_contract_termination_v1(uuid,text)",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+        "volatility": "v",
+        "secdef": true,
+        "config": [
+          "search_path=pg_catalog, public, app_private"
+        ],
+        "definitionMd5": "1316562d119902607b2ca904f51d1e6c"
+      },
+      {
+        "name": "terminate_contract_forfeit",
+        "signature": "terminate_contract_forfeit(uuid,date,jsonb)",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+        "volatility": "v",
+        "secdef": true,
+        "config": [
+          "search_path=pg_catalog, public, app_private"
+        ],
+        "definitionMd5": "20c97cce83ed98d810a157256ddd457f"
+      },
+      {
+        "name": "terminate_contract_forfeit_impl",
+        "signature": "terminate_contract_forfeit_impl(uuid,date,jsonb)",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres,service_role=X/postgres}",
+        "volatility": "v",
+        "secdef": true,
+        "config": [
+          "search_path=public"
+        ],
+        "definitionMd5": "7e90f0f91f1d57ec51da82bd6bce7003"
+      },
+      {
+        "name": "terminate_contract_forfeit_with_credit_v1",
+        "signature": "terminate_contract_forfeit_with_credit_v1(uuid,date,jsonb,text)",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+        "volatility": "v",
+        "secdef": true,
+        "config": [
+          "search_path=pg_catalog, public, app_private"
+        ],
+        "definitionMd5": "0c34e7be81350a1125f120c95cc1cc22"
+      },
+      {
+        "name": "terminate_contract_move_out",
+        "signature": "terminate_contract_move_out(uuid,date,numeric,numeric,numeric,numeric,text,jsonb,text,uuid,jsonb)",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+        "volatility": "v",
+        "secdef": true,
+        "config": [
+          "search_path=pg_catalog, public, app_private"
+        ],
+        "definitionMd5": "82a4cdbf74b4c0570d4078cbca78adac"
+      },
+      {
+        "name": "terminate_contract_move_out_impl",
+        "signature": "terminate_contract_move_out_impl(uuid,date,numeric,numeric,numeric,numeric,text,jsonb,text,uuid,jsonb)",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres,service_role=X/postgres}",
+        "volatility": "v",
+        "secdef": true,
+        "config": [
+          "search_path=public"
+        ],
+        "definitionMd5": "eae1e32af39b4abbffcf26075f1a94d2"
+      },
+      {
+        "name": "terminate_contract_move_out_with_credit_v1",
+        "signature": "terminate_contract_move_out_with_credit_v1(uuid,date,numeric,numeric,numeric,numeric,text,jsonb,text,uuid,text,jsonb)",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+        "volatility": "v",
+        "secdef": true,
+        "config": [
+          "search_path=pg_catalog, public, app_private"
+        ],
+        "definitionMd5": "fe8c5453ffdc35951c7a750a35da7d01"
+      }
+    ],
+    "after": [
+      {
+        "name": "approve_contract_termination_v1",
+        "signature": "approve_contract_termination_v1(uuid,text)",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+        "volatility": "v",
+        "secdef": true,
+        "config": [
+          "search_path=pg_catalog, public, app_private"
+        ],
+        "definitionMd5": "48997e2fd118e5ec2a5d7ce96833c678"
+      },
+      {
+        "name": "begin_contract_termination_write_v1",
+        "signature": "app_private.begin_contract_termination_write_v1(uuid,text)",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres}",
+        "volatility": "v",
+        "secdef": true,
+        "config": [
+          "search_path=pg_catalog, app_private, public"
+        ],
+        "definitionMd5": "5e8bcaa95e89128cd72d3a78cb6288f0"
+      },
+      {
+        "name": "close_termination_write_v2",
+        "signature": "app_private.close_termination_write_v2(uuid)",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres}",
+        "volatility": "v",
+        "secdef": true,
+        "config": [
+          "search_path=pg_catalog, public, app_private"
+        ],
+        "definitionMd5": "f53bc65ec53e780512718ce71eaf571a"
+      },
+      {
+        "name": "create_contract_termination_draft_v1",
+        "signature": "create_contract_termination_draft_v1(uuid,date,text,text,numeric,numeric,numeric,integer,numeric,numeric,numeric,numeric,numeric,numeric,payment_method,text)",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+        "volatility": "v",
+        "secdef": true,
+        "config": [
+          "search_path=pg_catalog, public, app_private"
+        ],
+        "definitionMd5": "5b0ad7bca7618646c801c5f6445a66c1"
+      },
+      {
+        "name": "end_contract_termination_write_v1",
+        "signature": "app_private.end_contract_termination_write_v1(uuid)",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres}",
+        "volatility": "v",
+        "secdef": true,
+        "config": [
+          "search_path=pg_catalog, app_private, public"
+        ],
+        "definitionMd5": "382f53de40affd1408fe8fa3df3fa7df"
+      },
+      {
+        "name": "guard_contract_termination_settlement",
+        "signature": "guard_contract_termination_settlement()",
+        "owner": "postgres",
+        "acl": "{=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+        "volatility": "v",
+        "secdef": true,
+        "config": [
+          "search_path=pg_catalog, public, app_private"
+        ],
+        "definitionMd5": "94abf32b504524e6ed3c78ff2450f78d"
+      },
+      {
+        "name": "has_contract_termination_write_v1",
+        "signature": "has_contract_termination_write_v1(uuid)",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres}",
+        "volatility": "v",
+        "secdef": true,
+        "config": [
+          "search_path=pg_catalog, app_private, public"
+        ],
+        "definitionMd5": "3e5e94607e6d11e41eb0a92b64a6ddc1"
+      },
+      {
+        "name": "open_termination_write_v2",
+        "signature": "app_private.open_termination_write_v2(uuid,uuid,uuid,text,text,jsonb,jsonb,text,text,text)",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres}",
+        "volatility": "v",
+        "secdef": true,
+        "config": [
+          "search_path=pg_catalog, public, app_private"
+        ],
+        "definitionMd5": "0a5fa550150b315bd5f6dbf5d348b031"
+      },
+      {
+        "name": "reject_contract_termination_v1",
+        "signature": "reject_contract_termination_v1(uuid,text)",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+        "volatility": "v",
+        "secdef": true,
+        "config": [
+          "search_path=pg_catalog, public, app_private"
+        ],
+        "definitionMd5": "b42aaea8c3992b07aa4f536c508e28f0"
+      },
+      {
+        "name": "terminate_contract_forfeit",
+        "signature": "terminate_contract_forfeit(uuid,date,jsonb)",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+        "volatility": "v",
+        "secdef": true,
+        "config": [
+          "search_path=pg_catalog, public, app_private"
+        ],
+        "definitionMd5": "661553bd812e49b5e9638fa1a93bb08d"
+      },
+      {
+        "name": "terminate_contract_forfeit_impl",
+        "signature": "terminate_contract_forfeit_impl(uuid,date,jsonb)",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres}",
+        "volatility": "v",
+        "secdef": true,
+        "config": [
+          "search_path=public"
+        ],
+        "definitionMd5": "dd9a36e841a0f39ff15a63be3a526738"
+      },
+      {
+        "name": "terminate_contract_forfeit_with_credit_v1",
+        "signature": "terminate_contract_forfeit_with_credit_v1(uuid,date,jsonb,text)",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+        "volatility": "v",
+        "secdef": true,
+        "config": [
+          "search_path=pg_catalog, public, app_private"
+        ],
+        "definitionMd5": "b9b10d89ec17f2be54cca994cdc330eb"
+      },
+      {
+        "name": "terminate_contract_move_out",
+        "signature": "terminate_contract_move_out(uuid,date,numeric,numeric,numeric,numeric,text,jsonb,text,uuid,jsonb)",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+        "volatility": "v",
+        "secdef": true,
+        "config": [
+          "search_path=pg_catalog, public, app_private"
+        ],
+        "definitionMd5": "f8f62f8b75d9ceb5419a3999d26567b2"
+      },
+      {
+        "name": "terminate_contract_move_out_impl",
+        "signature": "terminate_contract_move_out_impl(uuid,date,numeric,numeric,numeric,numeric,text,jsonb,text,uuid,jsonb)",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres}",
+        "volatility": "v",
+        "secdef": true,
+        "config": [
+          "search_path=public"
+        ],
+        "definitionMd5": "63b2bc6287e0f5bd17daec061c625889"
+      },
+      {
+        "name": "terminate_contract_move_out_with_credit_v1",
+        "signature": "terminate_contract_move_out_with_credit_v1(uuid,date,numeric,numeric,numeric,numeric,text,jsonb,text,uuid,text,jsonb)",
+        "owner": "postgres",
+        "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+        "volatility": "v",
+        "secdef": true,
+        "config": [
+          "search_path=pg_catalog, public, app_private"
+        ],
+        "definitionMd5": "a4435a57ad0eda946694c9757201e827"
+      }
+    ]
+  },
+  "sql": [
+    {
+      "name": "cleanup-false-absent-root-denied",
+      "status": "PASS"
+    },
+    {
+      "name": "protected-update",
+      "code": "42501"
+    },
+    {
+      "name": "status-update",
+      "code": "42501"
+    },
+    {
+      "name": "delete",
+      "code": "42501"
+    },
+    {
+      "name": "direct-draft",
+      "code": "42501"
+    },
+    {
+      "name": "forged-guc",
+      "code": "42501"
+    },
+    {
+      "name": "authenticated-delete",
+      "code": "42501"
+    },
+    {
+      "name": "private-issuer-denied",
+      "code": "42501"
+    },
+    {
+      "name": "retired-reader-denied",
+      "code": "42501"
+    },
+    {
+      "name": "service-impl-forfeit",
+      "code": "42501"
+    },
+    {
+      "name": "service-impl-move_out",
+      "code": "42501"
+    },
+    {
+      "name": "wrong-proof-actor_id",
+      "code": "42501"
+    },
+    {
+      "name": "wrong-proof-organization_id",
+      "code": "42501"
+    },
+    {
+      "name": "wrong-proof-contract_id",
+      "code": "42501"
+    },
+    {
+      "name": "wrong-proof-termination_id",
+      "code": "42501"
+    },
+    {
+      "name": "wrong-proof-backend_pid",
+      "code": "42501"
+    },
+    {
+      "name": "wrong-proof-transaction_id",
+      "code": "42501"
+    },
+    {
+      "name": "wrong-proof-action",
+      "code": "42501"
+    },
+    {
+      "name": "wrong-proof-expected_after",
+      "code": "42501"
+    },
+    {
+      "name": "metadata",
+      "status": "PASS"
+    },
+    {
+      "name": "reject-repeat-new-reason",
+      "status": "PASS"
+    },
+    {
+      "name": "unique-draft-admission",
+      "code": "23505"
+    },
+    {
+      "name": "ended-contract-draft-insert-and-approval-zero-effects",
+      "status": "PASS"
+    },
+    {
+      "name": "completed-deleted-changed-note-noop",
+      "status": "PASS"
+    },
+    {
+      "name": "legacy-null-metadata-live-debt-services",
+      "status": "PASS",
+      "guardsRestored": true,
+      "fixtureShape": "Controlled rollback-only historical NULL; fixture trigger removed before assertions"
+    },
+    {
+      "name": "audit-fault-atomic-and-raw-entry-eligibility",
+      "status": "PASS"
+    },
+    {
+      "name": "ACTIVE-capped",
+      "status": "PASS",
+      "refund": 400,
+      "capped": true
+    },
+    {
+      "name": "EXTENDED-uncapped",
+      "status": "PASS",
+      "refund": 300,
+      "capped": false
+    },
+    {
+      "name": "EXTENDED-zero",
+      "status": "PASS",
+      "refund": 0,
+      "capped": false
+    }
+  ],
+  "ownerJwt": [
+    {
+      "name": "JWT-draft-positive-replay-conflict",
+      "status": "PASS"
+    },
+    {
+      "name": "JWT-direct-POST",
+      "status": "PASS"
+    },
+    {
+      "name": "JWT-direct-PATCH",
+      "status": "PASS"
+    },
+    {
+      "name": "JWT-direct-DELETE",
+      "status": "PASS"
+    },
+    {
+      "name": "JWT-reject-repeat",
+      "status": "PASS"
+    },
+    {
+      "name": "same-approve",
+      "status": "PASS",
+      "waiters": 2,
+      "outcomes": [
+        "SUCCESS",
+        "SUCCESS"
+      ]
+    },
+    {
+      "name": "raw-credit-forfeit",
+      "status": "PASS",
+      "waiters": 2,
+      "outcomes": [
+        "TEST HTTP 400 P0001",
+        "SUCCESS"
+      ]
+    },
+    {
+      "name": "raw-credit-moveout",
+      "status": "PASS",
+      "waiters": 2,
+      "outcomes": [
+        "SUCCESS",
+        "TEST HTTP 400 P0001"
+      ]
+    },
+    {
+      "name": "approve-forfeit",
+      "status": "PASS",
+      "waiters": 2,
+      "outcomes": [
+        "SUCCESS",
+        "TEST HTTP 400 P0001"
+      ]
+    },
+    {
+      "name": "reject-moveout",
+      "status": "PASS",
+      "waiters": 1,
+      "outcomes": [
+        "SUCCESS",
+        "TEST HTTP 409 23505"
+      ]
+    }
+  ],
+  "scopedManagerJwt": [
+    {
+      "name": "edit-only-create-denied-reject-allowed",
+      "status": "PASS"
+    },
+    {
+      "name": "create-only-staff-draft-attribution-approve-denied-replay",
+      "status": "PASS"
+    },
+    {
+      "name": "create-replay-revoked-authority",
+      "status": "PASS"
+    },
+    {
+      "name": "raw-audit-owner-attribution-credit-replay-authority",
+      "status": "PASS"
+    }
+  ],
+  "cleanup": {
+    "owner": {
+      "closure": {
+        "catalogHash": "abdca378bba61a68e6705a24812861ae59c7c5cddcd7d01690c93f43d9f3faab",
+        "checked": 109
+      },
+      "deleted": [
+        {
+          "table": "public.income_expense_items",
+          "count": 2
+        },
+        {
+          "table": "public.income_expenses",
+          "count": 2
+        },
+        {
+          "table": "public.contract_terminations",
+          "count": 6
+        },
+        {
+          "table": "public.room_price_history",
+          "count": 6
+        },
+        {
+          "table": "public.contract_customers",
+          "count": 6
+        },
+        {
+          "table": "public.contracts",
+          "count": 6
+        },
+        {
+          "table": "public.customers",
+          "count": 6
+        },
+        {
+          "table": "public.rooms",
+          "count": 6
+        }
+      ],
+      "guardsUnchanged": true,
+      "fixturePostingCount": 0,
+      "counters": "Retained; never rewound",
+      "residualPolicy": "Exact identities retained in ignored receipt; append-only history and counter increments not rewound"
+    },
+    "manager": {
+      "closure": {
+        "catalogHash": "abdca378bba61a68e6705a24812861ae59c7c5cddcd7d01690c93f43d9f3faab",
+        "checked": 64
+      },
+      "deleted": [
+        {
+          "table": "public.income_expense_items",
+          "count": 0
+        },
+        {
+          "table": "public.income_expenses",
+          "count": 0
+        },
+        {
+          "table": "public.contract_terminations",
+          "count": 1
+        },
+        {
+          "table": "public.room_price_history",
+          "count": 1
+        },
+        {
+          "table": "public.contract_customers",
+          "count": 1
+        },
+        {
+          "table": "public.contracts",
+          "count": 1
+        },
+        {
+          "table": "public.customers",
+          "count": 1
+        },
+        {
+          "table": "public.rooms",
+          "count": 1
+        }
+      ],
+      "guardsUnchanged": true,
+      "fixturePostingCount": 0,
+      "existingManagerDecisionsUnchanged": true,
+      "createClosure": {
+        "catalogHash": "abdca378bba61a68e6705a24812861ae59c7c5cddcd7d01690c93f43d9f3faab",
+        "checked": 1
+      },
+      "authClosure": {
+        "catalogHash": "abdca378bba61a68e6705a24812861ae59c7c5cddcd7d01690c93f43d9f3faab",
+        "checked": 1
+      },
+      "buildingClosure": {
+        "catalogHash": "abdca378bba61a68e6705a24812861ae59c7c5cddcd7d01690c93f43d9f3faab",
+        "checked": 164
+      },
+      "counters": "Retained; never rewound",
+      "residualPolicy": "Exact identities retained in ignored receipt; append-only history and counter increments not rewound"
+    },
+    "zeroTerminationRollback": "PASS"
+  },
+  "red": {
+    "status": "EXPECTED_FAILURE",
+    "invariant": "Protected direct DRAFT mutation succeeded before boundary"
+  },
+  "mutations": [
+    {
+      "name": "tokenless protected update",
+      "status": "EXPECTED_RUNTIME_FAILURE_SOURCE_RESTORED"
+    },
+    {
+      "name": "raw terminal eligibility",
+      "status": "EXPECTED_RUNTIME_FAILURE_SOURCE_RESTORED"
+    },
+    {
+      "name": "swallowed audit insert",
+      "status": "EXPECTED_RUNTIME_FAILURE_SOURCE_RESTORED",
+      "limit": "Expected23514 became close-proof42501; secondary proof backstop, not successful financial write"
+    }
+  ],
+  "financialOracle": {
+    "status": "PASS",
+    "scenarios": [
+      "FORFEIT",
+      "REFUND",
+      "DEBT",
+      "PAID"
+    ],
+    "transport": "SQL rollback, not JWT concurrency"
+  },
+  "reconciles": {
+    "status": "PASS",
+    "v1": {
+      "sources": 2115,
+      "pages": 3
+    },
+    "v2": {
+      "accounts": 17,
+      "postings": 3722
+    },
+    "target": "Dedicated TEST"
+  },
+  "e2e": {
+    "exitCode": 0,
+    "target": "hzulujxgonszuleqticb",
+    "baseURL": "http://127.0.0.1:4188",
+    "headless": true,
+    "sourceKind": "dirty-worktree-explicit-sha256",
+    "sourceHash": "1e988523975bac6493b2569b6d6f5043a59ccf0bea3423e4faadda76c364ea7c",
+    "rejectUI": "NOT_ADMISSIBLE_CURRENT_UI; no consumer",
+    "claim": "Three-role contracts read smoke only"
+  },
+  "generator": {
+    "explicitTestCli": "2.117.0",
+    "defaultProductionParity": {
+      "kind": "READ_ONLY_PRODUCTION_CLI_PARITY",
+      "versions": [
+        "2.109.1",
+        "2.117.0"
+      ],
+      "oldHash": "b9f16412cf8ef6c81c37a33a72ef4d93654d71425772dd8dc2ac991c03c49972",
+      "newHash": "b9f16412cf8ef6c81c37a33a72ef4d93654d71425772dd8dc2ac991c03c49972",
+      "sameNormalizedBytes": true,
+      "sameAsHead": true,
+      "status": "PASS",
+      "testGeneratedBytesRestored": true
+    },
+    "typesDelta": "Only new DRAFT RPC; existing five unrelated production RPCs preserved"
+  },
+  "testBaselineAlignment": {
+    "status": "COMMITTED_AND_READBACK_VERIFIED",
+    "source": "ee1436e0",
+    "originalSha256": "f4bef1760957aa276377203c9ee19e09823094b0b7a3359f39f3f8712d0716c7",
+    "bodySha256": "905ab3a87745b5a46ab111aa41594f3208acb7e30528a8d30cd46fd41dbc9c35",
+    "functions": 12,
+    "newEmptyTables": 3,
+    "moneyFingerprintsUnchanged": 12,
+    "proofCount": 0,
+    "registryDelta": [
+      "rollback_rpc",
+      "rollback_note",
+      "natural updated_at"
+    ],
+    "limit": "Old TEST salary v1 callers now42501, matching already-live production baseline; no salary feature source merged"
+  },
+  "limits": [
+    "Independent review pending; no production apply or release",
+    "Paid refund/collection/cashbook contention UNVERIFIED, separate required dependency before global cutover",
+    "Two DRAFT race NOT_ADMISSIBLE_CURRENT_SCHEMA; unique23505 tested",
+    "Reject UI NOT_ADMISSIBLE_CURRENT_UI; no current hook consumer",
+    "Current lock edges retained; no claim whole-component deadlock freedom",
+    "CI01 disposable restore ACL reconstruction owned by parent",
+    "Full staged gate tracked separately; do not infer PASS from this runtime receipt"
+  ]
+}

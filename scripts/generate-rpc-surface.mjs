@@ -30,6 +30,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveProjectRef } from "./gen-supabase-types.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 export const DUONG_DAN = join("contracts", "surfaces", "rpc-surface.json");
@@ -46,10 +47,15 @@ export function pat() {
   }
 }
 
-export async function hoiCatalog(sql) {
-  const token = pat();
-  const ref = readFileSync(join(repoRoot, "supabase", "config.toml"), "utf8").match(/project_id\s*=\s*"([^"]+)"/)[1];
-  const r = await fetch(`https://api.supabase.com/v1/projects/${ref}/database/query`, {
+export async function hoiCatalog(sql, {environment = process.env, fetch: doFetch = globalThis.fetch} = {}) {
+  const ref = resolveProjectRef({
+    configToml: readFileSync(join(repoRoot, "supabase", "config.toml"), "utf8"),
+    explicitProjectRef: environment.SUPABASE_PROJECT_REF,
+    source: environment.SUPABASE_TYPES_SOURCE === 'local' ? 'local' : 'project',
+  });
+  if (!ref) throw new Error('Catalog HTTP requires a remote Supabase project.');
+  const token = environment.SUPABASE_PAT || pat();
+  const r = await doFetch(`https://api.supabase.com/v1/projects/${ref}/database/query`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({ query: sql }),
