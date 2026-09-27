@@ -27,3 +27,8 @@ cleanup, generator parity and limits. Scope is contract_terminations only;
 independent review and production release remain pending. Paid refund/collection/
 cashbook contention is a separate required validation before global cutover.
 Reject has no current UI consumer; the headless three-role smoke reads contracts.
+
+[Fix1 evidence](2026-09-28-termination-boundary-fix1-evidence.json) bổ sung hai
+negative JWT trên TERM, tương thích catalog khi types local không có override,
+và fingerprint chỉ chuẩn hóa CRLF→LF. Raw witness cũ được giữ nguyên; metadata/
+ACL/bare-CR mutations vẫn bị chặn. CI PostgreSQL17.6 và review riêng còn pending.

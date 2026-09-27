@@ -54,6 +54,14 @@ describe('gen-supabase-types wrapper', () => {
       expect(url).toBe('');
     }
   });
+  test('local types without an explicit override retain the configured remote catalog', async () => {
+    const {hoiCatalog}=await import('../generate-rpc-surface.mjs');
+    let url='';
+    const fetch=async(input: string)=>{url=input;return {ok:true,json:async()=>[{synthetic:true}]};};
+    const result=await hoiCatalog('SELECT 1',{environment:{SUPABASE_TYPES_SOURCE:'local',SUPABASE_PAT:'synthetic'},fetch});
+    expect(url).toBe('https://api.supabase.com/v1/projects/tryymsxyyckgbrmmvozx/database/query');
+    expect(result).toEqual([{synthetic:true}]);
+  });
   test('reads the project ref and PAT from repository configuration', async () => {
     const { extractSupabaseAccessToken, resolveProjectRef } = await loadWrapper();
     const fakePat = 'sbp_test_PAT-1234567890';

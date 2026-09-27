@@ -127,3 +127,16 @@ Không có consumer UI hiện hành của `useRejectTermination`; typed unit và
 kiểm reject, còn `.e2e-fleet/specs/termination-boundary-read.spec.ts` chỉ smoke
 đọc contracts với owner/manager/accountant, headless, local app explicit TEST.
 Không gọi smoke này là reject UI E2E. Production/schema release không thuộc lệnh.
+
+P1a.2 fix1 có thể chạy riêng hai negative JWT trên hợp đồng TERMINATED bằng:
+
+```sh
+node scripts/contract-lifecycle/termination-boundary-http-live.mjs --test-commit --term-negatives-only
+```
+
+Lệnh rehearsal cả TERM không có termination và ACTIVE+DRAFT rồi chuyển TERM,
+kiểm cleanup trong rollback trước seed durable; receipt riêng
+`p1a2-fix1-term-http.json` không ghi đè bộ runtime trước. Snapshot ngay trước/sau
+phải bằng nhau và request được await đầy đủ trước cleanup. Không thêm fixture tiền.
+Metadata trong candidate mới so MD5 sau đổi đúng cặp CRLF thành LF; bare CR và
+mọi byte khác vẫn có ý nghĩa, owner/ACL/security/config vẫn kiểm exact.

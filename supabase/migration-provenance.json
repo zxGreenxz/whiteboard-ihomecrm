@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-09-27T19:40:06.843Z",
+  "generatedAt": "2026-09-27T20:50:47.150Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
@@ -10643,7 +10643,7 @@
       "version": "20260927190750",
       "name": "termination_write_boundary",
       "scheme": "timestamp14",
-      "sha256": "67cc43b63749c9058ff1b447bba49e62c1a4ff6941f8d74ce410f72eeaa40f7c",
+      "sha256": "6f39c97459f038d6dc5c0e5294dab465ba8cdaee3187e5d042bec9e4fe0c0c7b",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [

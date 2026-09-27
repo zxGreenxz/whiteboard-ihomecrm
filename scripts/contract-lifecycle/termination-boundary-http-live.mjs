@@ -6,21 +6,24 @@ import {docVault} from '../test-env/lib.mjs';
 import {loadTestCredentialsFromVault,withTestTransaction,createTestHttp} from './transport.mjs';
 import {seedLegacy,legacySnapshot} from './legacy-entrypoints-live.mjs';
 import {triggerDigest} from './legacy-fixture-cleanup.mjs';
-import {cleanupBoundary} from './termination-boundary-live.mjs';
+import {cleanupBoundary,seedTerminatedBoundary,rehearseTerminatedBoundary} from './termination-boundary-live.mjs';
 import {observeLegacyApprovalCalls} from './legacy-entrypoints.mjs';
 
 assert(process.argv.includes('--test-commit'),'Explicit --test-commit required');
 const dir='.superpowers/sdd/2026-09-27-contract-lifecycle/';
+const termOnly=process.argv.includes('--term-negatives-only');
 const config=await loadTestCredentialsFromVault();config.db.ca=readFileSync(dir+'supabase-ca.crt','utf8');
 const vault=docVault(),field=k=>process.env[k]||vault.match(new RegExp('(?:^|\\s)'+k+'=([^\\s`]+)','m'))?.[1];
 const migration=readFileSync('supabase/migrations/20260927190750_termination_write_boundary.sql','utf8');
 const e={kind:'REAL_JWT_BOUNDARY_TEST',checks:[],fixtures:[]};
-const save=()=>writeFileSync(dir+'p1a2-http.json',JSON.stringify(e,null,2)+'\n');
+const save=()=>writeFileSync(dir+(termOnly?'p1a2-fix1-term-http.json':'p1a2-http.json'),JSON.stringify(e,null,2)+'\n');
 const txn=(run,commit=false)=>withTestTransaction(config,{run,commit});
 const snapshot=f=>withTestTransaction(config,{readOnly:true,run:ctx=>legacySnapshot(ctx,f)});
 let guards,baselines;
 try {
   await txn(async ctx=>{await ctx.query(migration);await ctx.query(migration);const digest=await triggerDigest(ctx);const before=(await ctx.query("SELECT id,total_rooms FROM public.buildings WHERE organization_id='dddd0000-0000-4000-8000-000000000001'")).rows;
+    e.termRehearsal=await rehearseTerminatedBoundary(ctx,digest,before);
+    if(termOnly)return;
     const f=await seedLegacy(ctx,{status:'ACTIVE',draftAdapter:true});await ctx.query('SELECT public.approve_contract_termination_v1($1,NULL)',[f.termination]);
     e.rehearsal=await cleanupBoundary(ctx,[f],digest,before.filter(b=>b.id===f.building));
     const absent=await seedLegacy(ctx,{status:'ACTIVE',omitTermination:true});
@@ -41,6 +44,21 @@ try {
     const seed=async(name,{draft=true,deduction=0}={})=>{
       const f=await txn(ctx=>seedLegacy(ctx,{status:'ACTIVE',draftAdapter:draft,omitTermination:!draft,deduction,marker:'p1a2-'+randomUUID()}),true);f.name=name;e.fixtures.push(f);save();return f;
     };
+    for(const draft of [false,true]) {
+      const term=await txn(ctx=>seedTerminatedBoundary(ctx,draft),true);term.name=draft?'TERM-preexisting-DRAFT-approve':'TERM-no-termination-direct-INSERT';e.fixtures.push(term);save();
+      const before=await snapshot(term);assert.equal(before.contracts[0].status,'TERMINATED');assert.equal(before.terminations.length,draft?1:0);
+      let code,httpStatus;
+      if(draft) {
+        let error;try{await call('approve_contract_termination_v1',{p_termination_id:term.termination,p_note:'TERM denied'});}catch(err){error=err;}
+        const match=error?.message.match(/TEST HTTP (\d+) ([A-Z0-9]+)/);assert(match,'Actual HTTP rejection required');httpStatus=Number(match[1]);code=match[2];assert.equal(code,'55000');
+      } else {
+        const response=await fetch(config.url+'/rest/v1/contract_terminations',{method:'POST',headers:{apikey:field('TEST_SUPABASE_PUBLISHABLE_KEY'),Authorization:'Bearer '+token,'Content-Type':'application/json','Content-Profile':'public','Accept-Profile':'public'},body:JSON.stringify({contract_id:term.contract,user_id:term.actor,organization_id:term.organizationId,actual_move_out_date:'2026-09-28',termination_type:'NORMAL',total_deposit:0})});
+        httpStatus=response.status;code=(await response.json()).code;assert.equal(response.ok,false);assert.equal(code,'42501');
+      }
+      const after=await snapshot(term);assert.deepEqual(after,before);
+      (e.termSnapshots??=[]).push({name:term.name,before,after});e.checks.push({name:'JWT-'+term.name,status:'PASS',code,httpStatus,zeroDelta:Object.keys(before)});save();
+    }
+    if(termOnly)return;
     const f=await seed('http-draft',{draft:false});
     const created=await call('create_contract_termination_draft_v1',draftArgs(f));f.termination=created.termination_id;save();
     assert.deepEqual(await call('create_contract_termination_draft_v1',draftArgs(f)),created);

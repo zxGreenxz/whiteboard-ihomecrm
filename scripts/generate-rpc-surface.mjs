@@ -51,7 +51,8 @@ export async function hoiCatalog(sql, {environment = process.env, fetch: doFetch
   const ref = resolveProjectRef({
     configToml: readFileSync(join(repoRoot, "supabase", "config.toml"), "utf8"),
     explicitProjectRef: environment.SUPABASE_PROJECT_REF,
-    source: environment.SUPABASE_TYPES_SOURCE === 'local' ? 'local' : 'project',
+    // Catalogs stay remote when only the type generator selects local mode.
+    source: environment.SUPABASE_PROJECT_REF !== undefined && environment.SUPABASE_TYPES_SOURCE === 'local' ? 'local' : 'project',
   });
   if (!ref) throw new Error('Catalog HTTP requires a remote Supabase project.');
   const token = environment.SUPABASE_PAT || pat();

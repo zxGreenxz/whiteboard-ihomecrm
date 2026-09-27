@@ -35,6 +35,26 @@ export async function cleanupBoundary(ctx,fixtures,guards,baselines) {
   assert.equal(Number((await ctx.query('SELECT count(*) AS n FROM app_private.termination_write_capabilities WHERE transaction_id=pg_current_xact_id()')).rows[0].n),0);
   return result;
 }
+export async function seedTerminatedBoundary(ctx,draft) {
+  const f=await seedLegacy(ctx,{status:draft?'ACTIVE':'TERMINATED',draftAdapter:draft,omitTermination:!draft,deduction:0,marker:'p1a2-term-'+randomUUID()});
+  if(draft) {
+    const before=await legacySnapshot(ctx,f);
+    assert.equal(before.contracts[0].status,'ACTIVE');assert.equal(before.terminations[0].status,'DRAFT');
+    const changed=await ctx.query("UPDATE public.contracts SET status='TERMINATED' WHERE id=$1 AND organization_id=$2 AND room_id=$3 AND notes=$4 AND status='ACTIVE'",[f.contract,f.organizationId,f.room,f.marker]);assert.equal(changed.rowCount,1);
+  }
+  return f;
+}
+export async function rehearseTerminatedBoundary(ctx,guards,baselines) {
+  const fixtures=[];
+  for(const draft of [false,true]) {
+    const f=await seedTerminatedBoundary(ctx,draft);fixtures.push(f);const before=await legacySnapshot(ctx,f);
+    assert.equal(before.contracts[0].status,'TERMINATED');assert.equal(before.terminations.length,draft?1:0);
+    if(draft)await denyBoundary(ctx,'SELECT public.approve_contract_termination_v1($1,NULL)',[f.termination],'55000');
+    else await denyBoundary(ctx,"INSERT INTO public.contract_terminations(contract_id,user_id,organization_id,actual_move_out_date,termination_type,total_deposit) VALUES($1,$2,$3,current_date,'NORMAL',0)",[f.contract,f.actor,f.organizationId]);
+    assert.deepEqual(await legacySnapshot(ctx,f),before);
+  }
+  return {fixtures,cleanup:await cleanupBoundary(ctx,fixtures,guards,baselines.filter(b=>fixtures.some(f=>f.building===b.id)))};
+}
 export async function runBoundaryChecks(ctx) {
   const {query}=ctx,checks=[];
   const f=await seedLegacy(ctx,{status:'ACTIVE',draftAdapter:true,marker:'p1a2-'+randomUUID()});
