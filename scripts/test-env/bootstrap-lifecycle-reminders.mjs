@@ -5,11 +5,18 @@ import { resolve } from 'node:path';
 
 const PROD_REF = 'tryymsxyyckgbrmmvozx';
 const literal = value => `'${String(value).replaceAll("'", "''")}'`;
-export function buildLifecycleCronSql(testRef, serviceJwt) {
+function validateTestServiceJwt(testRef, serviceJwt) {
   if (!/^[a-z0-9]{20}$/.test(testRef) || testRef === PROD_REF) throw new Error('Ref must be TEST, never production');
   let claims;
   try { claims = JSON.parse(Buffer.from(serviceJwt.split('.')[1], 'base64url').toString('utf8')); } catch { throw new Error('TEST service JWT required'); }
   if (claims.role !== 'service_role' || claims.ref !== testRef) throw new Error('Service JWT must belong to this TEST project');
+}
+export function buildLifecycleEdgeSecrets(testRef, serviceJwt) {
+  validateTestServiceJwt(testRef, serviceJwt);
+  return [{name:'LIFECYCLE_REMINDERS_SERVICE_JWT',value:serviceJwt}];
+}
+export function buildLifecycleCronSql(testRef, serviceJwt) {
+  validateTestServiceJwt(testRef, serviceJwt);
   return `BEGIN;
 DO $guard$ BEGIN
   IF NOT EXISTS(SELECT 1 FROM test_env.danh_dau WHERE ref=${literal(testRef)}) THEN RAISE EXCEPTION 'TEST database marker mismatch'; END IF;
@@ -54,6 +61,14 @@ async function main() {
   await batBuocDichTest(cred, test);
   const secrets = await mgmt(cred.testPat, 'GET', `/v1/projects/${cred.testRef}/secrets`);
   if (secrets.some(secret => /^VAPID_/.test(secret.name))) throw new Error('TEST cannot have VAPID push credentials');
+  const keys = await mgmt(cred.testPat,'GET',`/v1/projects/${cred.testRef}/api-keys?reveal=true`);
+  const serviceJwt = keys.find(key=>key.name==='service_role')?.api_key;
+  const edgeSecrets = buildLifecycleEdgeSecrets(cred.testRef,serviceJwt);
+  const sql = buildLifecycleCronSql(cred.testRef,serviceJwt);
+  // Keep Edge's exact authorization credential identical to the TEST Vault token.
+  // Never echo a Management error body which could contain that credential.
+  try { await mgmt(cred.testPat,'POST',`/v1/projects/${cred.testRef}/secrets`,edgeSecrets); }
+  catch { throw new Error('TEST lifecycle dedicated Edge credential configuration failed'); }
   // Deploy the additive function without requiring a production counterpart.
   const form = new FormData();
   form.append('metadata', JSON.stringify({name:'lifecycle-reminders',entrypoint_path:'index.ts',verify_jwt:true}));
@@ -66,9 +81,6 @@ async function main() {
   if (!response.ok) throw new Error(`TEST edge deploy failed: HTTP ${response.status}`);
   const deployed = await response.json();
   if (deployed.verify_jwt !== true) throw new Error('Lifecycle edge must verify JWT');
-  const keys = await mgmt(cred.testPat,'GET',`/v1/projects/${cred.testRef}/api-keys?reveal=true`);
-  const serviceJwt = keys.find(key=>key.name==='service_role')?.api_key;
-  const sql = buildLifecycleCronSql(cred.testRef,serviceJwt);
   // Do not echo SQL or nested psql failure: either could contain the vault input.
   try { psql(test,sql); } catch { throw new Error('TEST lifecycle cron bootstrap failed; inspect DB diagnostics without printing credentials'); }
   console.log('TEST lifecycle edge deployed with verify_jwt=true; 15-minute cron installed; no VAPID.');

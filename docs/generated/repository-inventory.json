@@ -1,13 +1,13 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 843,
-  "soFileDocBangFs": 250,
-  "tongLoiGoi": 534,
+  "tongSoFileTest": 844,
+  "soFileDocBangFs": 251,
+  "tongLoiGoi": 535,
   "khongPhanLoaiDuoc": 261,
   "theoLoai": {
     "ma-nguon": {
-      "soFile": 44,
+      "soFile": 45,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
@@ -36,6 +36,7 @@
     "scripts/__tests__/copilot-room-pass-live-acceptance.test.mjs",
     "scripts/__tests__/gen-supabase-types.test.ts",
     "scripts/__tests__/generate-repository-inventory.test.mjs",
+    "scripts/__tests__/lifecycle-reminder-edge-auth.test.ts",
     "scripts/__tests__/network-center-worker-release-readback.test.mjs",
     "scripts/__tests__/network-center-worker-scope-verifier.test.mjs",
     "scripts/__tests__/qr-csp-bindings.test.mjs",
@@ -978,6 +979,14 @@
       "soGoi": 1,
       "loai": {
         "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "scripts/__tests__/lifecycle-reminder-edge-auth.test.ts",
+      "soGoi": 1,
+      "loai": {
+        "ma-nguon": 1
       },
       "khongPhanLoaiDuoc": 0
     },
