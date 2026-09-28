@@ -850,6 +850,29 @@
       ],
       "raSoatBoi": "Claude Code — hoa hồng quản lý sổ ảo 27/09/2026",
       "sha256": "f4bef1760957aa276377203c9ee19e09823094b0b7a3359f39f3f8712d0716c7"
+    },
+    "supabase/migrations/20260928161948_hide_resolved_deposit_management.sql": {
+      "sha256": "501ed836340edf078bdab89a1cf4ffbee01da3cb9a8a4816b00f4c3282e46b94",
+      "missingObjects": [
+        "table:public.deposit_management_exclusions",
+        "index:public.deposit_management_exclusions_org_idx",
+        "policy:public.deposit_management_exclusions.deposit_management_exclusions_select",
+        "policy:public.deposit_management_exclusions.deposit_management_exclusions_source_scope",
+        "policy:public.deposit_management_exclusions.deposit_management_exclusions_hide_sandbox_admin"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "raSoatBoi": "Codex — review độc lập bởi design_reservation_hide, 28/09/2026",
+      "lyLe": "Migration mới, chưa áp production. Đã xác minh bảng chưa tồn tại ở production/TEST; đã áp TEST qua lane test-env, đọc bằng JWT chủ công ty cho thấy dấu ẩn có mặt, anti-join không trả phiếu, summary 102LVT giảm đúng5 triệu và phiếu gốc APPROVED/POSTED giữ nguyên5 triệu. Sáu ca PGlite và kiểm đột biến đạt. Chờ forward lane có backup sau khi commit SHA đã review.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20260928161948_hide_resolved_deposit_management.sql",
+          "trich_doan": "CREATE TABLE IF NOT EXISTS public.deposit_management_exclusions; CREATE POLICY deposit_management_exclusions_source_scope AS RESTRICTIVE; chỉ ghi metadata dấu ẩn."
+        },
+        {
+          "duong_dan": "scripts/__tests__/deposit-management-exclusions.test.mjs",
+          "trich_doan": "Kiểm hành vi summary, dữ liệu nguồn bất biến, RLS, idempotency, catalog drift và enum source."
+        }
+      ]
     }
   }
 }

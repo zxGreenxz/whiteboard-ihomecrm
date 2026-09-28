@@ -10,6 +10,7 @@ import { invokeReservationSettlementRpc, reservationSettlementListArgs, reservat
 
 const settlementRpc = (supabase.rpc as unknown as ReservationSettlementRpcInvoker).bind(supabase);
 export const RESERVATION_SETTLED_EMBED = 'settled:reservation_deposit_settlements!reservation_deposit_settlements_source_voucher_id_fkey ( id )';
+const RESERVATION_MANAGEMENT_EXCLUSION_EMBED = 'management_exclusion:deposit_management_exclusions!deposit_management_exclusions_voucher_id_fkey ( voucher_id )';
 
 type Deposit = Database['public']['Tables']['deposits']['Row'];
 type DepositInsert = Database['public']['Tables']['deposits']['Insert'];
@@ -136,6 +137,7 @@ export interface ReservationDepositRow {
  * và KHÔNG dùng cửa sổ voucher_date+7 (cửa sổ đó chỉ dành cho auto-link HĐ).
  * Lấy cả CANCELLED để hiện "Đã huỷ"; phiếu đã chuyển HĐ (contract_id != NULL)
  * tự rớt khỏi danh sách (đã thành cọc HĐ — xem tab Đủ/Thiếu cọc).
+ * Phiếu có loại trừ quản lý chỉ ẩn tại đây; vẫn giữ nguyên dữ liệu và đường gắn HĐ.
  */
 export const useReservationDeposits = (buildingIds?: string[]) => {
   return useQuery({
@@ -152,10 +154,12 @@ export const useReservationDeposits = (buildingIds?: string[]) => {
                building:buildings!income_expenses_building_id_fkey ( id, name ),
                room:rooms!income_expenses_room_id_fkey ( id, name ),
                ${RESERVATION_SETTLED_EMBED},
+               ${RESERVATION_MANAGEMENT_EXCLUSION_EMBED},
                income_expense_items!inner ( id, amount, income_expense_types!inner ( is_deposit ) )`,
             )
             .is('contract_id', null)
             .is('deleted_at', null)
+            .is('management_exclusion', null)
             .eq('type', 'INCOME')
             .in('approval_status', ['APPROVED', 'UNAPPROVED', 'CANCELLED'])
             .eq('income_expense_items.income_expense_types.is_deposit', true)

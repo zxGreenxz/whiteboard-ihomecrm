@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-09-28T09:55:23.162Z",
+  "generatedAt": "2026-09-28T16:28:11.708Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 630,
-    "unknown": 80,
+    "unknown": 81,
     "catalog-proven": 205,
     "superseded": 15
   },
@@ -10790,6 +10790,22 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-09-28T09:54:23.391Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260928161948_hide_resolved_deposit_management.sql",
+      "version": "20260928161948",
+      "name": "hide_resolved_deposit_management",
+      "scheme": "timestamp14",
+      "sha256": "501ed836340edf078bdab89a1cf4ffbee01da3cb9a8a4816b00f4c3282e46b94",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "table:public.deposit_management_exclusions",
+        "index:public.deposit_management_exclusions_org_idx",
+        "policy:public.deposit_management_exclusions.deposit_management_exclusions_select",
+        "policy:public.deposit_management_exclusions.deposit_management_exclusions_source_scope",
+        "policy:public.deposit_management_exclusions.deposit_management_exclusions_hide_sandbox_admin"
       ]
     },
     {
