@@ -21,7 +21,7 @@
 - [x] Test SQL trước: ẩn đúng phiếu, tổng giảm phần giữ chỗ 5 triệu, phiếu trùng mã khác vẫn còn; dữ liệu tiền không đổi; chạy lại không nhân dấu ẩn; RLS không rò tổ chức/phiếu.
 - [x] Migration mới tạo overlay, policy SELECT, kiểm dữ kiện nguồn, seed một dấu ẩn, thêm NOT EXISTS vào `get_reservation_deposit_summary`.
 - [x] Hook `useReservationDeposits` anti-join `management_exclusion` trước phân trang; kiểm request PostgREST trên mọi trang. Không đổi hook cọc dùng để lập hợp đồng.
-- [ ] Kiểm trên TEST, generated types/surfaces, gate phạm vi và đột biến; review độc lập; draft PR theo Contract.
+- [x] Kiểm trên TEST, generated types/surfaces, gate phạm vi và đột biến; review độc lập; draft PR theo Contract.
 - [ ] Apply production qua forward lane có backup, phát hành app qua promotion sau CI đạt.
 - [ ] Đọc lại bằng JWT thật và trình duyệt: phiếu không hiện trong Quản lý Cọc; chứng từ gốc, cọc hợp đồng và posting không đổi.
 
@@ -37,3 +37,11 @@ Khôi phục hiển thị bằng gỡ dấu ẩn qua thao tác quản trị có 
 - E2E headless desktop 1440px và mobile 390px đạt 2/2, console sạch. Auth/quyền, phiếu nguồn trước/sau, exclusion, reservation list/summary dùng TEST thật. Sáu reader ngoài phạm vi dùng fixture do TEST Nano timeout: cọc HĐ, thanh lý, phiếu hoàn, danh mục tòa, summary cọc HĐ và hoàn cọc. Không tính đây là E2E toàn dashboard.
 - Typecheck app/e2e, build, bundle, stable function locks, view invoker đạt. Reconcile v1/v2 đạt; 44 gate trước push đạt, bao gồm đo rò tổ chức bằng credential thật.
 - Dry-run production rollback đạt; production chưa thay đổi tại thời điểm ghi bằng chứng này.
+
+## Áp dụng production
+
+- Forward lane đã áp dụng tại commit đã review `f6500bca31f812ebf2c64358ae0f306e20eb94ad`, sau backup đầy đủ 565 bảng. Biên nhận: `docs/generated/schema-change-evidence/20260928161948_hide_resolved_deposit_management.json`.
+- So sánh snapshot trước/sau: hash toàn phiếu, hạng mục, posting, dòng posting và hợp đồng không đổi. Số dư tài khoản vẫn 68.285.975đ, cọc hợp đồng vẫn 5.000.000đ; summary 102LVT giảm từ 5.000.000đ/1 phiếu xuống 0đ/0 phiếu.
+- Readback production bằng JWT owner đạt: metadata đúng một dòng; query gốc vẫn đọc được phiếu, anti-join loại đúng UUID. Chưa kiểm cross-org bằng tài khoản DEMO production; đã kiểm JWT hai org trên TEST và hành vi RLS PGlite.
+- Reconcile v1/v2 sau apply và catalog check đều đạt; RLS, security_invoker, search_path không có object hở. Generated types được sinh lại từ schema thật.
+- Draft PR #89 đã mở trước tích hợp; phát hành app và xác minh trình duyệt production còn chờ.

@@ -5412,6 +5412,56 @@ export type Database = {
           },
         ]
       }
+      deposit_management_exclusions: {
+        Row: {
+          hidden_at: string
+          organization_id: string
+          reason: string
+          voucher_id: string
+        }
+        Insert: {
+          hidden_at?: string
+          organization_id: string
+          reason: string
+          voucher_id: string
+        }
+        Update: {
+          hidden_at?: string
+          organization_id?: string
+          reason?: string
+          voucher_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deposit_management_exclusions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deposit_management_exclusions_voucher_id_fkey"
+            columns: ["voucher_id"]
+            isOneToOne: true
+            referencedRelation: "income_expenses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deposit_management_exclusions_voucher_id_fkey"
+            columns: ["voucher_id"]
+            isOneToOne: true
+            referencedRelation: "invoice_pnl_cash_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deposit_management_exclusions_voucher_id_fkey"
+            columns: ["voucher_id"]
+            isOneToOne: true
+            referencedRelation: "legacy_payment_receipt_semantics"
+            referencedColumns: ["voucher_id"]
+          },
+        ]
+      }
       deposits: {
         Row: {
           amount: number
