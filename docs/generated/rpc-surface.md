@@ -17,17 +17,17 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 
 | Chỉ số | Giá trị |
 |---|---|
-| RPC được gọi từ mã nguồn | 329 |
+| RPC được gọi từ mã nguồn | 336 |
 | Hàm trong catalog (public + api) | 1225 |
 | File mã nguồn đã quét | 1869 |
-| SECURITY DEFINER | 313 |
+| SECURITY DEFINER | 320 |
 | **Gọi mà server KHÔNG CÓ** | **0** |
 
 ## Theo mức rủi ro
 
 | Mức | Số RPC | Nghĩa là |
 |---|---|---|
-| thường | 237 | còn lại |
+| thường | 244 | còn lại |
 | tiền | 92 | có nơi gọi nằm trong màn tiền — sai là sai sổ sách |
 
 ## 92 RPC chạm TIỀN

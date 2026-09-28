@@ -62,7 +62,7 @@ export function useSaveContractMoveOutNotice() {
     mutationFn: async (input: Omit<MoveOutNoticeInput, 'organizationId'>) => {
       if (!selectedOrganizationId) throw new Error('Chưa chọn tổ chức');
       const args = buildMoveOutNoticeArgs({ ...input, organizationId: selectedOrganizationId });
-      return invokeMoveOutNotice((name, payload) => supabase.rpc(name, {
+      return invokeMoveOutNotice((_name, payload) => supabase.rpc('set_contract_move_out_notice_v1', {
         ...payload,
         // DEFAULT NULL encodes cancellation; generated optional RPC args omit nullable values.
         p_expected_move_out_date: payload.p_expected_move_out_date ?? undefined,

@@ -10,11 +10,11 @@ import { createContractTransferLink,readContractTransferLinks,cancelContractTran
 type Functions=Database['public']['Functions'];
 const invoke:TransferInvoker=(name,args)=>{
   switch(name){
-    case 'create_contract_transfer_link_v1':return supabase.rpc(name,args as Functions['create_contract_transfer_link_v1']['Args']);
-    case 'read_contract_transfer_links_v1':return supabase.rpc(name,args as Functions['read_contract_transfer_links_v1']['Args']);
-    case 'cancel_contract_transfer_link_v1':return supabase.rpc(name,args as Functions['cancel_contract_transfer_link_v1']['Args']);
-    case 'finalize_contract_transfer_exit_v1':return supabase.rpc(name,args as Functions['finalize_contract_transfer_exit_v1']['Args']);
-    case 'create_contract_transfer_commission_v1':return supabase.rpc(name,args as Functions['create_contract_transfer_commission_v1']['Args']);
+    case 'create_contract_transfer_link_v1':return supabase.rpc('create_contract_transfer_link_v1',args as Functions['create_contract_transfer_link_v1']['Args']);
+    case 'read_contract_transfer_links_v1':return supabase.rpc('read_contract_transfer_links_v1',args as Functions['read_contract_transfer_links_v1']['Args']);
+    case 'cancel_contract_transfer_link_v1':return supabase.rpc('cancel_contract_transfer_link_v1',args as Functions['cancel_contract_transfer_link_v1']['Args']);
+    case 'finalize_contract_transfer_exit_v1':return supabase.rpc('finalize_contract_transfer_exit_v1',args as Functions['finalize_contract_transfer_exit_v1']['Args']);
+    case 'create_contract_transfer_commission_v1':return supabase.rpc('create_contract_transfer_commission_v1',args as Functions['create_contract_transfer_commission_v1']['Args']);
   }
 };
 export function useContractTransferLinks(filter:TransferFilter,enabled=true){

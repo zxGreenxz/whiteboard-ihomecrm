@@ -9,12 +9,12 @@
     ]
   },
   "counts": {
-    "calledRpcs": 329,
+    "calledRpcs": 336,
     "byRisk": {
-      "normal": 237,
+      "normal": 244,
       "financial": 92
     },
-    "securityDefiner": 313
+    "securityDefiner": 320
   },
   "missingOnServer": [],
   "rpcs": {
@@ -635,6 +635,25 @@
         "src/hooks/useCashbookClosing.ts"
       ],
       "risk": "financial"
+    },
+    "cancel_contract_transfer_link_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_link_id uuid, p_expected_version bigint, p_reason text, p_request_id uuid",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/contracts/useContractTransferLinks.ts"
+      ],
+      "risk": "normal"
     },
     "cancel_income_expense_flex_v1": {
       "definitions": [
@@ -1620,6 +1639,44 @@
       ],
       "risk": "financial"
     },
+    "create_contract_transfer_commission_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_link_id uuid, p_expected_version bigint, p_request_id uuid, p_account_id uuid DEFAULT NULL::uuid, p_recipient_bank text DEFAULT NULL::text, p_recipient_account text DEFAULT NULL::text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/contracts/useContractTransferLinks.ts"
+      ],
+      "risk": "normal"
+    },
+    "create_contract_transfer_link_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_old_exit_case_id uuid, p_new_draft_id uuid, p_expected_exit_version bigint, p_expected_draft_revision integer, p_mode text, p_deposit_mode text, p_term_mode text, p_broker_name text, p_reason text, p_request_id uuid",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/contracts/useContractTransferLinks.ts"
+      ],
+      "risk": "normal"
+    },
     "create_income_expense_v1": {
       "definitions": [
         {
@@ -2034,6 +2091,25 @@
       ],
       "callers": [
         "src/hooks/useContractExitCases.ts"
+      ],
+      "risk": "normal"
+    },
+    "finalize_contract_transfer_exit_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_case_id uuid, p_expected_version bigint, p_idempotency_key text, p_current_kind text, p_reason text, p_settlement jsonb, p_link_id uuid, p_expected_link_version bigint",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/contracts/useContractTransferLinks.ts"
       ],
       "risk": "normal"
     },
@@ -4445,6 +4521,25 @@
       ],
       "risk": "normal"
     },
+    "read_contract_transfer_links_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_contract_id uuid DEFAULT NULL::uuid, p_draft_id uuid DEFAULT NULL::uuid, p_exit_case_id uuid DEFAULT NULL::uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/contracts/useContractTransferLinks.ts"
+      ],
+      "risk": "normal"
+    },
     "read_room_turnover_v1": {
       "definitions": [
         {
@@ -5033,6 +5128,25 @@
       ],
       "risk": "normal"
     },
+    "save_room_turnover_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_room_id uuid, p_expected_version bigint, p_payload jsonb",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/rooms/useRoomTurnover.ts"
+      ],
+      "risk": "normal"
+    },
     "save_utility_account": {
       "definitions": [
         {
@@ -5071,6 +5185,25 @@
         "src/hooks/useReceivingCashbooks.ts"
       ],
       "risk": "financial"
+    },
+    "set_contract_move_out_notice_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_contract_id uuid, p_expected_updated_at timestamp with time zone, p_expected_move_out_date date DEFAULT NULL::date, p_reason text DEFAULT NULL::text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useContractMoveOutNotice.ts"
+      ],
+      "risk": "normal"
     },
     "set_copilot_action_policy_v1": {
       "definitions": [

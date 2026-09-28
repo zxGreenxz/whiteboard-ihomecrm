@@ -53,7 +53,7 @@ export function useSaveRoomTurnover() {
     retry:false,
     mutationFn:async(input:Omit<SaveRoomTurnoverInput,'organizationId'>)=>{
       if(!selectedOrganizationId) throw new Error('Chưa chọn tổ chức');
-      return saveRoomTurnover((name,args)=>supabase.rpc(name,args),{...input,organizationId:selectedOrganizationId});
+      return saveRoomTurnover((_name,args)=>supabase.rpc('save_room_turnover_v1',args),{...input,organizationId:selectedOrganizationId});
     },
     onSuccess:()=>{invalidate();toast.success('Đã lưu theo dõi dọn/sửa');},
     onError:(error)=>{if(classifyDbError(error)==='conflict') invalidate();toast.error(turnoverErrorMessage(error));},
