@@ -6,10 +6,35 @@
 // tế" (ai đó seed dữ liệu, hay shim cấp thừa quyền), và là chiều dễ bị cắt
 // nhất khi ai đó "đơn giản hoá" phép so về "có lỗi / không có lỗi".
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 
 import { TOI_THIEU_FILE, chonFileForwardLane, doiChieuKyVong } from "../dien-tap-forward-lane.mjs";
 
 const CUTOFF = "20260805120000";
+
+describe("current lifecycle scheduler environment expectation", () => {
+  const name = "20260928042301_lifecycle_reminder_cron.sql";
+  const ledger = JSON.parse(readFileSync(new URL("../../supabase/baseline/forward-lane-expectations.json", import.meta.url), "utf8"));
+  const expected = { [name]: ledger.expectations[name] };
+
+  it("recognizes the measured missing pg_cron platform failure on the plain PostgreSQL drill", () => {
+    const result = doiChieuKyVong([{ ten: name, ok: false, stderr: 'psql:<stdin>:3: ERROR: extension "pg_cron" is not available' }], expected);
+    expect(result.dat).toBe(true);
+    expect(result.dong[0].trangThai).toBe("dung-dung-ky-vong");
+  });
+
+  it("does not hide a different scheduler schema failure behind the platform exception", () => {
+    const result = doiChieuKyVong([{ ten: name, ok: false, stderr: 'ERROR: column "unexpected" does not exist' }], expected);
+    expect(result.dat).toBe(false);
+    expect(result.dong[0].trangThai).toBe("LECH");
+  });
+
+  it("rejects unexpected clean scheduler replay rather than retaining a stale environment exception", () => {
+    const result = doiChieuKyVong([{ ten: name, ok: true, stderr: "" }], expected);
+    expect(result.dat).toBe(false);
+    expect(result.dong[0].trangThai).toBe("LECH");
+  });
+});
 
 describe("chonFileForwardLane", () => {
   it("chỉ lấy .sql có version 14 chữ số SAU cutoff, theo thứ tự apply", () => {

@@ -46,7 +46,6 @@ const GIAO_KEO: Record<string, string[]> = {
     'useRooms(undefined, { enabled: open })',
   ],
   'src/components/deposits/CreateDepositDialog.tsx': [
-    'useTenantsLegacy({ enabled: open })',
     'useRooms(undefined, { enabled: open })',
     'useAccounts({ enabled: open })',
   ],

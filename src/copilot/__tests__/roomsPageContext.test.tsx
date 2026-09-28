@@ -23,6 +23,7 @@ vi.mock('@/hooks/useBuildings', () => ({ useBuildings: () => ({ data: [fixtures.
 vi.mock('@/hooks/useRoomsWithContracts', () => ({ useRoomsWithActiveContracts: () => ({ data: [] }) }));
 // Unrelated create/edit form owns separate data requests; this test exercises the real list and detail sheet.
 vi.mock('@/components/rooms/RoomFormDialog', () => ({ default: () => null }));
+vi.mock('@/components/rooms/RoomTurnoverQueue', () => ({ RoomTurnoverQueue: () => null }));
 let location: ReturnType<typeof useLocation>;
 function Page() { location = useLocation(); return <RoomsMobilePage />; }
 function context() { return readActivePageContext({ ...location, organizationId: fixtures.org }); }

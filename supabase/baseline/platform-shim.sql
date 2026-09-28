@@ -69,8 +69,12 @@ CREATE TABLE IF NOT EXISTS storage.buckets (
   id text PRIMARY KEY,
   name text NOT NULL,
   public boolean DEFAULT false,
-  file_size_limit bigint
+  file_size_limit bigint,
+  allowed_mime_types text[]
 );
+-- Draft/sign forward migrations upsert private DOCX MIME restrictions. Keep
+-- replay compatible with a scratch database initialized by an older shim.
+ALTER TABLE storage.buckets ADD COLUMN IF NOT EXISTS allowed_mime_types text[];
 CREATE TABLE IF NOT EXISTS storage.objects (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   bucket_id text REFERENCES storage.buckets(id),

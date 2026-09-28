@@ -11,21 +11,33 @@ if (!target || !['127.0.0.1', 'localhost', '[::1]'].includes(new URL(target).hos
 }
 const shim = readFileSync(new URL('../supabase/baseline/platform-shim.sql', import.meta.url), 'utf8');
 
-test('platform shim supports storage row types, bucket FK, folder paths and replay without opening RLS', () => {
+test('platform shim supports private MIME bucket upserts, storage row types, FK and replay without opening RLS', () => {
   const result = goiPsql(['-d', target, '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-f', '-'], {
     encoding: 'utf8', timeout: 30000,
     input: `BEGIN;
 ${shim}
 ${shim}
 DO $test$
-DECLARE stored storage.objects; rejected boolean := false;
+DECLARE stored storage.objects; bucket storage.buckets; rejected boolean := false;
 BEGIN
   IF storage.foldername('actor/nested/proof.png') IS DISTINCT FROM ARRAY['actor','nested']::text[]
     OR storage.foldername('proof.png') IS DISTINCT FROM ARRAY[]::text[]
     OR storage.foldername(NULL) IS NOT NULL THEN
     RAISE EXCEPTION 'Storage folder paths must retain the real platform semantics';
   END IF;
-  INSERT INTO storage.buckets(id,name,public,file_size_limit) VALUES('restore-proof-test','restore-proof-test',false,5242880);
+  INSERT INTO storage.buckets(id,name,public,file_size_limit,allowed_mime_types)
+    VALUES('restore-proof-test','restore-proof-test',true,5242880,ARRAY['image/png']) RETURNING * INTO bucket;
+  IF bucket.allowed_mime_types IS DISTINCT FROM ARRAY['image/png']::text[] THEN
+    RAISE EXCEPTION 'Storage bucket insertion must retain MIME restrictions';
+  END IF;
+  INSERT INTO storage.buckets(id,name,public,file_size_limit,allowed_mime_types)
+    VALUES('restore-proof-test','restore-proof-test',false,10485760,ARRAY['application/vnd.openxmlformats-officedocument.wordprocessingml.document'])
+    ON CONFLICT(id) DO UPDATE SET public=false,file_size_limit=EXCLUDED.file_size_limit,allowed_mime_types=EXCLUDED.allowed_mime_types
+    RETURNING * INTO bucket;
+  IF bucket.public IS DISTINCT FROM false OR bucket.file_size_limit IS DISTINCT FROM 10485760::bigint
+    OR bucket.allowed_mime_types IS DISTINCT FROM ARRAY['application/vnd.openxmlformats-officedocument.wordprocessingml.document']::text[] THEN
+    RAISE EXCEPTION 'Storage bucket upsert must retain private DOCX restrictions and size limit';
+  END IF;
   INSERT INTO storage.objects(bucket_id,name,owner,owner_id,metadata)
     VALUES('restore-proof-test','actor/proof.png','11111111-1111-4111-8111-111111111111','11111111-1111-4111-8111-111111111111','{"mimetype":"image/png"}') RETURNING * INTO stored;
   IF stored.id IS NULL OR stored.archived_at IS NOT NULL OR stored.is_delete_marker IS DISTINCT FROM false

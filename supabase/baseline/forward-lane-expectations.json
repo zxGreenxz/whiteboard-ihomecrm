@@ -213,6 +213,11 @@
       "tu": "20260831162000_update_period_fee_cas_va_don_pay_period_fee.sql",
       "thongDiep": "public.pay_period_fee(uuid,text,numeric,text,text,date,text,text,uuid,jsonb,boolean) đã đổi so với bản đã rà",
       "why": "G5 ghim md5 thân pay_period_fee SỐNG trên production (6545b554…) trước khi thay — đúng kỷ luật 'so md5 thô trước CREATE OR REPLACE'. Trên bản dựng lại, 20260831162000 — chính file tạo ra thân đó — dừng đúng kỳ vọng (ACL anon, artifact diễn tập, xem entry của nó), nên pay_period_fee còn là bản baseline (md5 ef63636a…) và ghim của G5 dừng theo: chết theo, không phải lỗi độc lập. Đo bằng diễn tập thật trên cụm Postgres 17 tạm ngày 26/09/2026: năm hàm writer còn lại (create_income_expense_v1, pay_utility_bill, generate_special_fees_v1, generate_recurring_vouchers, resolve_fixed_expense_type) và hai hàm G2 (ie_spend_gate_v1, spend_shadow_birth_trg) đều TRÙNG md5 đã ghim; lệch duy nhất là pay_period_fee. Production apply sạch 26/09 qua lane (backup 58c6db3f…). File đã áp nên bất biến — không sửa ghim trong file."
+    },
+    "20260928042301_lifecycle_reminder_cron.sql": {
+      "kyVong": "dung-vi-moi-truong",
+      "thongDiep": "extension \"pg_cron\" is not available",
+      "why": "Đo trực tiếp Restore Drill run 36378698513, job 108789731987, candidate 73d0fdd3: image postgres:17.6 trần không có native extension pg_cron của Supabase nên dừng ngay CREATE EXTENSION đầu file. Không giả cron/Vault hoặc bỏ guard để replay xanh; hai private helper và lịch P5 không được dựng lại bởi drill local này. Kiểm riêng trên native TEST hzulujxgonszuleqticb trong ROLLBACK, migration SHA256 9bd7d15828e87e05cdd7eac55caee4badf4b36ff9404b1ac9fc474e5d667ceb3: apply hai lần, marker TEST chặn credential/dispatch trước Vault và HTTP, ACL/owner/search_path/volatility đúng, lịch hiện hữu giữ nguyên. Bằng chứng TEST không thay thế nghiệm thu lịch/JWT production trong lane phát hành sau SHA review và backup. Entry chỉ nhận đúng lỗi nền tảng đã đo; lỗi khác hoặc replay sạch đều phải đỏ."
     }
   }
 }

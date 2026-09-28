@@ -84,6 +84,11 @@ vi.mock("@/components/deposits/ReservationPendingRefundList", () => ({
     createElement("section", { "data-probe": "pending-refund" }),
 }));
 
+vi.mock("@/components/deposits/RoomReservationPanel", () => ({
+  RoomReservationPanel: () =>
+    createElement("section", { "data-probe": "room-reservations" }),
+}));
+
 const { default: DepositsMobilePage } = await import("../DepositsMobilePage");
 
 function dungKhung() {
@@ -107,6 +112,13 @@ describe("DepositsMobilePage · khung app", () => {
     const { host } = dungKhung();
     const probe = host.querySelector('[data-probe="pending-refund"]');
     expect(probe, "không render ReservationPendingRefundList").toBeTruthy();
+    expect(probe?.closest(".mbody"), "nằm ngoài .mbody").toBeTruthy();
+  });
+
+  it('danh sách giữ chỗ nằm trong vùng cuộn .mbody', () => {
+    const { host } = dungKhung();
+    const probe = host.querySelector('[data-probe="room-reservations"]');
+    expect(probe, "không render RoomReservationPanel").toBeTruthy();
     expect(probe?.closest(".mbody"), "nằm ngoài .mbody").toBeTruthy();
   });
 });
