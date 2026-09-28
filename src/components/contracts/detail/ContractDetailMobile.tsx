@@ -11,8 +11,10 @@ import { ContractInfoTab } from './ContractInfoTab';
 import { ContractInvoicesTab } from './ContractInvoicesTab';
 import { ContractPaymentsTab } from './ContractPaymentsTab';
 import { ContractHistoryTab } from './ContractHistoryTab';
+import { ContractMobileSettlementStatus, type ContractMobileSettlementStatusProps } from './ContractMobileSettlementStatus';
 
-interface Props {
+interface Props extends Pick<ContractMobileSettlementStatusProps,
+  'terminationInfo' | 'pendingForfeitCount' | 'pendingRefundCount' | 'statusLoading' | 'sideLoadErrors'> {
   contract: ContractWithRelations;
   services: ContractServiceItem[];
   invoices: InvoiceWithRelations[];
@@ -67,6 +69,9 @@ export function ContractDetailMobile(props: Props) {
           </div>
 
           <div className="mbody">
+            <ContractMobileSettlementStatus contract={contract} invoices={invoices} depositVouchers={depositVouchers}
+              terminationInfo={props.terminationInfo} pendingForfeitCount={props.pendingForfeitCount}
+              pendingRefundCount={props.pendingRefundCount} statusLoading={props.statusLoading} sideLoadErrors={props.sideLoadErrors} />
             <ContractMobileActions
               contract={contract}
               perms={perms}

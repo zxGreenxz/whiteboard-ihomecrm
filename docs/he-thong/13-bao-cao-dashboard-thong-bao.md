@@ -304,7 +304,17 @@ báo cáo** `fa_*` / `cashbook_settlement_report` / `manager_collection_cycle_re
 **Invariant:** mọi thông báo phải gắn 1 `user_id` (owner). Staff thấy/sửa thông
 báo của employer qua `staff_can`, không phải qua `user_id = auth.uid()`.
 
-### 4.2. Bộ sinh thông báo tự động — `runScheduledNotifications`
+### 4.2. Nhắc việc vòng đời hợp đồng (28/09/2026)
+
+Ba nhóm nhắc việc dưới đây chạy theo lịch trên máy chủ, không cần người quản lý mở Dashboard:
+
+- **Báo trả phòng đã đến hẹn:** xác nhận khách đã trả, sửa ngày dự kiến hoặc hủy báo trả nếu khách ở tiếp. Quá hẹn vẫn cần người quản lý xử lý; phòng không tự thành trống.
+- **Phòng cần dọn/sửa:** bổ sung ngày dự kiến, cập nhật tiến độ và xác nhận đã sẵn sàng nhận khách. Việc chưa có ngày hoặc đã đến/quá hẹn vẫn hiện để theo dõi.
+- **Hồ sơ trả phòng chờ hoàn tất:** mở đúng hồ sơ khách cũ để quyết toán sau khi đã xác nhận trả phòng.
+
+Thông báo được gom theo người nhận và ngày, theo quyền hiện có. Nhắc việc không tự hủy giữ chỗ, hoàn thành dọn/sửa hay quyết toán. Thấy thông báo trong ứng dụng chưa chứng minh thiết bị đã nhận Web Push; phần gửi tới thiết bị cần kiểm riêng.
+
+### 4.2a. Bộ sinh thông báo hiện hữu ở Dashboard — runScheduledNotifications
 
 Vị trí: [notificationScheduler.ts](src/lib/notificationScheduler.ts). Gọi từ
 [useScheduledNotifications](src/hooks/useScheduledNotifications.ts) — chạy **ở
@@ -342,10 +352,7 @@ client** khi Dashboard mount + lặp **mỗi 6 giờ** (`setInterval`). Chạy s
 chế độ `FIRST_INVOICE` (khoản cọc thu qua hoá đơn đầu) — vì đã có nhắc hoá đơn
 quá hạn riêng, tránh nhắc 2 lần cùng 1 khoản. Điều kiện `.or('deposit_debt_mode.is.null,deposit_debt_mode.eq.DEBT')`.
 
-> Hệ quả kiến trúc: vì scheduler chạy client và scope `user_id`, thông báo chỉ
-> được sinh khi **chính owner** mở app (staff mở app không sinh được gì cho
-> employer). Không có cron DB cho thông báo (khác với pg_cron sinh phiếu thu
-> chi định kỳ ở domain Thu chi).
+> Bảng ở §4.2a mô tả các kiểm tra hiện hữu khi mở Dashboard. Ba nhóm nhắc việc vòng đời ở §4.2 có lịch máy chủ riêng; không phụ thuộc việc owner mở ứng dụng.
 
 ### 4.3. Quy tắc tổng hợp trong hook báo cáo (các invariant tính toán)
 

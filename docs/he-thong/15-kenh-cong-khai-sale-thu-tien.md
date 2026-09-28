@@ -265,22 +265,23 @@ Quan hệ "ảo" quan trọng (không FK): RPC `get_public_available_rooms` **đ
 
 - Chuỗi token **ngẫu nhiên, không chứa owner_id**; URL không lộ gì. `anon` không SELECT được bảng nào — chỉ EXECUTE 2 RPC: `get_public_available_rooms` (đọc; tự map token → owner và **không trả** `user_id`/hợp đồng/khách thuê/công nợ ra payload — ngoại lệ duy nhất là contact phòng `pass` do khách opt-in, §2.7) và `log_public_room_events` (ghi sự kiện đo đếm, cũng validate token, §2.8).
 - Thu hồi tức thời: set `revoked = true` → mọi request sau trả NULL → trang hiện "Liên kết không hợp lệ hoặc đã hết hạn". Khôi phục được (khác Xoá — mất hẳn).
-- Trang FE khi **không có data/token** rơi về `SAMPLE_BUILDINGS` (data mẫu trong [sampleData.ts](src/pages/phong-trong/sampleData.ts)) để xem thử UI — cần biết điều này khi debug "sao thấy toà lạ".
+- Thiếu token thì không truy vấn; token không hợp lệ/đã thu hồi, danh sách rỗng hợp lệ và lỗi đọc dữ liệu là các kết quả khác nhau. Không thay bằng phòng mẫu hoặc coi lỗi đọc là phòng trống.
 
-### 4.2. `status_public` — **hợp đồng là nguồn sự thật**, không phải `rooms.status`
+### 4.2. Trạng thái phòng để sale (28/09/2026)
 
-RPC tự tính cho từng phòng (vì cờ `rooms.status` có thể stale — phòng có HĐ nhưng vẫn để `AVAILABLE`):
+Đọc tình trạng ở thực tế, báo trả rõ ràng, giữ chỗ và việc dọn/sửa; không chỉ nhìn cờ trạng thái phòng hoặc ngày hết hạn hợp đồng.
 
-| Giá trị | Điều kiện |
+| Hiển thị | Cách hiểu và việc cần làm |
 |---|---|
-| `pass` | Phòng có **listing `room_pass_listings` đang `active`** (khách nhờ sale, §2.7) — nhánh này đặt **TRƯỚC** mọi nhánh khác nên phòng đang có HĐ vẫn ra `pass`. RPC trả kèm `pass_contact_name/phone` (**bị che khi** `pass_contact_manager=true`), `pass_sale_policy`, `pass_price`, `pass_avail_date`, `pass_contact_manager`. |
-| `soon` | Có HĐ hiệu lực thoả **một trong hai** (từ `20260627120000`, siết lại ở `20260629000000`): (a) khách đã đăng ký `contracts.expected_move_out_date` (RegisterMoveOutDialog — "sắp chuyển đi") **nằm trong** `[CURRENT_DATE, CURRENT_DATE + soon_days]` (bản đầu không giới hạn cửa sổ, bản `…29000000` đổi ý: chỉ hiện khi sắp trống thật); (b) `COALESCE(actual_end_date, end_date)` trong cùng cửa sổ (logic gốc). Kèm `avail_date` = MIN ngày trống dự kiến qua các HĐ thoả, ưu tiên `expected_move_out_date`. |
-| `rented` | Có HĐ hiệu lực (không sắp hết) — **kể cả** khi `rooms.status='AVAILABLE'`; HOẶC không HĐ nhưng `rooms.status` ∉ `AVAILABLE` (gồm `RESERVED`/`MAINTENANCE`…). |
-| `free` | Không có HĐ hiệu lực **và** `rooms.status = 'AVAILABLE'`. |
+| Trống | Khách cũ đã trả hoặc phòng chưa có khách; không có giữ chỗ đang hiệu lực ngăn nhận khách khác. |
+| Sắp trống | Khách đang ở đã báo trả với ngày dự kiến. Ngày hết hạn hợp đồng tự nó không phải báo trả. |
+| Cần xác nhận ngày trống | Báo trả đã quá hẹn; hỏi lại khách và cập nhật ngày hoặc xác nhận trả phòng. |
+| Đang dọn/sửa | Có thể đưa lên sale, kèm ngày dự kiến sẵn sàng nếu biết. Chưa biết hoặc quá hẹn thì cần xác nhận lại; chưa nhận khách mới cho đến khi xác nhận sẵn sàng. |
+| Đã thuê / giữ chỗ | Phòng đang có khách hoặc đã có người giữ lượt nhận tiếp theo; không nhận thêm một giữ chỗ khác. |
 
-- Chỉ trả **toà có ≥1 phòng `free`/`soon`/`pass`**, nhưng trả **đủ phòng** của toà đó để vẽ sơ đồ tầng (phòng `rented` hiện mờ). → toà full phòng đã thuê vẫn lên kênh nếu có phòng `pass`.
-- **Phòng `RESERVED` (đã cọc giữ chỗ) hiện như "Đã thuê"** → tự ẩn khỏi bucket trống. Đây chính là cơ chế "khoá phòng realtime" của Tạo cọc nhanh (§4.6).
-- ⚠️ **Ghi chú EXTENDED**: SQL của RPC vẫn viết `c.status IN ('ACTIVE','EXTENDED')` — vô hại vì từ 2026-06-06 status `EXTENDED` **đã ngưng dùng** (HĐ gia hạn giữ `ACTIVE`, xem [05 Hợp đồng](05-hop-dong.md)); điều kiện thực tế chỉ match `ACTIVE`. Nếu viết RPC mới, chỉ cần `ACTIVE`.
+Phòng đang ở có hồ sơ nhờ sale/nhượng riêng phải đọc điều kiện hồ sơ đó; không coi là phòng đã trống. Người phụ trách dọn/sửa có thể bổ sung sau, nhưng trạng thái sẵn sàng phải được xác nhận trước khi khách mới nhận phòng.
+
+Trang công khai, danh sách trong ứng dụng và Copilot dùng cùng thông tin sale. Mã nguồn worker Zalo đã cập nhật; chưa xác minh worker đang chạy đã được triển khai phiên bản này, xem [18 Zalo](18-zalo-chat.md).
 
 ### 4.3. Sơ đồ tầng: layout thủ công + fallback tự sinh
 
@@ -295,16 +296,13 @@ Gọi `supabase.rpc(...)` **như method** (giữ `this`) hoặc `supabase.rpc.bi
 
 ### 4.5. Realtime "mềm" của trang công khai
 
-[usePhongTrong.ts](src/pages/phong-trong/usePhongTrong.ts): React Query `staleTime` 60s, `refetchOnWindowFocus`, `refetchInterval` 5 phút — sale luôn thấy "thời điểm hiện tại" mà không cần websocket. Sau khi tạo cọc nhanh, FE chủ động `invalidateQueries(["phong-trong"])` để phòng biến mất ngay. Hook in-app [useMyAvailableRooms.ts](src/hooks/useMyAvailableRooms.ts) dùng **đúng bộ tham số cache này** (key `["my-available-rooms"]`).
+[usePhongTrong.ts](src/pages/phong-trong/usePhongTrong.ts) đọc lại mỗi 5 giây khi trang đang hiện, khi quay lại cửa sổ hoặc có mạng trở lại; không poll khi chạy nền. Lỗi mạng giãn nhịp tối đa 60 giây, link không hợp lệ dừng poll. Danh sách trong ứng dụng dùng reader riêng, không chạy truy vấn token công khai song song.
 
-### 4.6. Tạo cọc nhanh trên trang công khai
+### 4.6. Giữ chỗ / Tạo cọc nhanh trên trang công khai
 
-Đã commit tại `4b4f1cd` (2026-06-17) — nhãn WIP cũ đã gỡ:
+Nút chỉ dành cho người đã đăng nhập và có quyền hiện hữu. Chọn phòng, khách giữ chỗ và **Giữ chỗ chưa nhận tiền** hoặc nhập khoản cọc dương. Giữ chỗ thuần cần hạn do người dùng chọn, không tạo phiếu tiền và không dùng số tiền giả 1đ. Khoản chưa duyệt chưa được coi là tiền đã nhận để ký hợp đồng; luồng thu và duyệt cọc vẫn theo cơ chế hiện hữu.
 
-- **Quyền**: action `create_deposit` trên module `sale_phong` (nhóm "elevated" trong [permissionPages.ts](src/lib/permissionPages.ts), nhãn "Tạo cọc nhanh trên trang công khai"). Nút chỉ hiện khi có session đăng nhập **và** quyền — khách anon không bao giờ thấy.
-- **Điểm vào**: nút "Tạo cọc giữ phòng" trong DetailSheet (phòng chưa thuê) + click ô phòng xanh ở chế độ Tổng hợp. Mở modal cũng bắn event đo đếm `deposit_dialog` (§4.8).
-- **[QuickDepositModal.tsx](src/pages/phong-trong/QuickDepositModal.tsx)** tạo **phiếu thu `income_expenses`** qua `useCreateIncomeExpense` với: sổ quỹ = "CỌC (giữ hộ khách)" (`get_or_create_deposit_account`), hạng mục = "Tiền cọc" `is_deposit=TRUE` (`ensure_room_deposit_type`), `room_id` = phòng, `contract_id = NULL` (cọc giữ chỗ — chưa có HĐ), `business_result_accounting = NULL` (hạng mục cọc tự loại khỏi KQKD), nội dung "Cọc phòng {x} tòa {y}". **Số tiền để trống → mặc định 1đ** (chỉ để giữ chỗ); "Ngày bổ sung cọc"/"Ngày vào" chỉ ghi thêm vào nội dung/description.
-- **Chuỗi tự động hoá** (migration `20260608000000`): insert phiếu → trigger `trg_ie_reconcile_room` → `recompute_room_reservation` thấy phòng `AVAILABLE` có phiếu cọc chưa-link-HĐ (kể cả **chưa duyệt**) → `rooms.status='RESERVED'` → RPC public xếp phòng vào `rented` → phòng rời danh sách trống của mọi link chia sẻ.
+Với phòng sắp trống, chọn ngày dự kiến nhận không sớm hơn ngày khách cũ đã báo trả. Hết hạn giữ chỗ vẫn giữ lượt đó để người quản lý điều chỉnh hạn, bổ sung cọc hoặc hủy; không tự đưa phòng trở lại sale. Khi ký phải chọn đúng khách và hồ sơ giữ/cọc, đồng thời phòng đã được trả và sẵn sàng nhận khách. Xem [04 Cọc và giữ chỗ](04-coc-giu-cho.md).
 
 ### 4.7. Thu tiền tạo dữ liệu gì (đọc từ code, không đoán)
 

@@ -9,10 +9,10 @@
 Domain Hợp đồng quản lý toàn bộ **vòng đời** của một hợp đồng thuê:
 
 ```
-Lead → (cọc giữ phòng) → KÝ HĐ (DRAFT/ACTIVE) → chốt chỉ số đầu → sinh hoá đơn cọc + tháng đầu
-     → vận hành (ghi chỉ số → hoá đơn định kỳ → thu chi → công nợ)
-     → biến động: GIA HẠN (giữ ACTIVE, ghi contract_extensions) / CHUYỂN PHÒNG / NHƯỢNG HĐ / ĐĂNG KÝ CHUYỂN ĐI
-     → KẾT THÚC: THANH LÝ (move-out: hoàn cọc/cấn trừ) hoặc BỎ CỌC (forfeit) → TERMINATED
+Khách + phòng → soạn/lưu/xuất NHÁP (không giữ phòng)
+     → chọn giữ chỗ riêng nếu có → xác nhận ĐÃ KÝ VÀ NHẬN PHÒNG → HĐ hiệu lực
+     → vận hành → báo ngày dự kiến trả (khách vẫn đang ở)
+     → bàn giao thực tế (ngày + loại thanh lý) → quyết toán ngay hoặc Chờ quyết toán
 ```
 
 Vai trò trung tâm:
@@ -26,6 +26,16 @@ Hai trang chính:
 
 - [ContractsPage.tsx](../../src/pages/contracts/ContractsPage.tsx) — danh sách + lọc + thao tác hàng loạt qua dialog.
 - [ContractDetailPage.tsx](../../src/pages/contracts/ContractDetailPage.tsx) — chi tiết 5 tab (chung / dịch vụ / hoá đơn / thanh toán / lịch sử) + nút thao tác vòng đời.
+
+### 1.1. Nháp, ký và báo trả (cập nhật 28/09/2026)
+
+Tại **Hợp đồng nháp**, bấm **Soạn nháp**, chọn phòng/khách và lưu. Có thể sửa, lưu phiên bản mới và xuất tài liệu. Nháp chưa là hợp đồng chính thức, không giữ phòng, không tạo thu/chi; muốn giữ cho khách phải lập [hồ sơ giữ chỗ riêng](04-coc-giu-cho.md).
+
+Khi khách đã ký đúng tài liệu đã xuất, chọn **Xác nhận đã ký và nhận phòng ngay**. Dùng đúng phiên bản nháp/tài liệu, ngày nhận thực tế và chỉ số đã kiểm tra. Ngày nhận khác ngày bắt đầu trên tài liệu thì sửa rồi lưu/xuất lại nháp trước. Phòng phải đã bàn giao, sẵn sàng; nguồn giữ chỗ/cọc phải khớp phòng và khách. Thành công mới tạo hợp đồng chính thức đang hiệu lực; bấm lại không tạo thêm hợp đồng.
+
+**Báo ngày dự kiến trả phòng** chỉ ghi kế hoạch, không kết thúc lượt ở. Có thể sửa ngày hoặc hủy báo với lý do. Đến/quá hẹn mà khách chưa đi thì xác nhận lại ngày hoặc hủy báo nếu ở tiếp. Ngày hết hạn không tự thành báo trả. Khi khách bàn giao, dùng [luồng trả phòng/quyết toán](16-thanh-ly-hop-dong.md).
+
+**Nhượng liên kết hai hồ sơ:** hồ sơ cũ đã trả nối với nháp người nhận để đối soát. Lựa chọn **cấn cọc cũ sang hợp đồng mới** hiện chỉ lưu ý định và chặn ký; chưa chuyển/cấn phiếu hoặc tiền cọc. Không ghi khách mới đã nộp cọc từ lựa chọn này.
 
 ---
 
@@ -243,7 +253,7 @@ stateDiagram-v2
 > 20260627000001 thay). Xem **[16 — Thanh lý hợp đồng (deep-dive)](16-thanh-ly-hop-dong.md)** cho
 > dòng tiền & sơ đồ đầy đủ, đã đối chiếu định nghĩa hàm LIVE.
 >
-> **Lưu ý kiến trúc**: tồn tại **hai thế hệ** RPC trùng tên — bản legacy "DRAFT→APPROVED" (013/014/015) và bản "tức thì" (action_rpcs + các bản viết lại sau). Cả trang danh sách lẫn trang chi tiết nay đều dùng bộ dialog gọi bản **tức thì** (đồng nhất từ df24746 — xem §5.2; riêng Đăng ký chuyển đi trang chi tiết dùng `RegisterMoveOutDialog` UPDATE trực tiếp, đã sửa chạy đúng ở 922061f). Các RPC legacy không dùng ở FE (`create_new_contract_extension` — bản hiện hành set HĐ cũ → `EXPIRED` thay vì `EXTENDED`, `create_simple_extension`, `create_tenant_transfer`) đã bị **revoke EXECUTE** cho client.
+> **Lưu ý kiến trúc**: tồn tại **hai thế hệ** RPC trùng tên — bản legacy "DRAFT→APPROVED" (013/014/015) và bản "tức thì" (action_rpcs + các bản viết lại sau). Cả trang danh sách lẫn trang chi tiết nay đều dùng bộ dialog gọi bản **tức thì** (đồng nhất từ df24746 — xem §5.2; riêng báo trả ở danh sách và chi tiết cùng dùng form lưu ngày/lý do). Các RPC legacy không dùng ở FE (`create_new_contract_extension` — bản hiện hành set HĐ cũ → `EXPIRED` thay vì `EXTENDED`, `create_simple_extension`, `create_tenant_transfer`) đã bị **revoke EXECUTE** cho client.
 
 ### 4.4. Hàm hỗ trợ & view
 
@@ -304,9 +314,9 @@ Ngoài wrapper RPC (§4.3), bản thân các bảng cũng có policy RBAC theo t
 | Sửa | `status ≠ TERMINATED` | `ContractFormDialog` | `useUpdateContract` + sync customers/services |
 | Gia hạn | inEffect / EXPIRED / EXPIRING | `RenewDialog` | `useRenewContract` → `renew_contract` |
 | Chuyển phòng | inEffect | `TransferRoomDialog` | `useTransferRoom` → `transfer_room` (đổi `room_id`, giữ status, đồng bộ phòng cũ/mới — xem §4.3) |
-| Đăng ký chuyển đi | inEffect | `MoveOutDialog` | `useRegisterMoveOut` (UPDATE `expected_move_out_date`). ⚠️ Form default `notes: ''` và hook chỉ kiểm `notes !== undefined` → submit không nhập ghi chú sẽ **ghi đè trắng** ghi chú HĐ cũ — khác ý đồ APPEND của `RegisterMoveOutDialog` ở trang chi tiết (bản đó **đã sửa** chạy đúng từ 922061f — §5.2). |
-| Nhượng HĐ | inEffect | `TransferContractDialog` | `useTransferContract` → `transfer_contract` |
-| Thanh lý | inEffect / EXPIRED / EXPIRING | `TerminateDialog` | `useTerminateForfeit` / `useTerminateMoveOut` |
+| Đăng ký chuyển đi / Báo trả | inEffect | MoveOutDialog / RegisterMoveOutDialog | Cùng form ghi/sửa/hủy ngày dự kiến và lý do; không xóa ghi chú cũ. |
+| Nhượng HĐ | inEffect | TransferContractDialog | Ghi nhận khách cũ trả phòng, rồi liên kết hồ sơ cũ với nháp của người nhận; hai hợp đồng được xử lý riêng. |
+| Thanh lý / Quyết toán | Đang ở, hoặc hồ sơ đã trả còn chờ quyết toán | TerminateDialog | Bắt buộc ngày thực trả + loại; chọn quyết toán ngay/sau, mở đúng hồ sơ cũ. |
 | Xoá | `status = DRAFT` | `DeleteContractDialog` | `useDeleteContract` (soft-delete). ⚠️ UI tạo HĐ luôn set thẳng `ACTIVE` → nút Xoá gần như không bao giờ bật trên dữ liệu thật (guard trong `useDeleteContract` thực ra cho phép rộng hơn). |
 | QR | `status ≠ TERMINATED/DRAFT` | `ContractQRDialog` | dựng link `/c/<public_code>` |
 
@@ -362,28 +372,15 @@ Chi tiết các bước mới so với mô tả cũ:
 
 > ⚠️ **Luồng import bypass mọi bất biến của domain** (đi đường insert trực tiếp, không qua `useCreateContract`): KHÔNG kiểm "1 phòng 1 HĐ hiệu lực" (có thể tạo 2 HĐ `ACTIVE` cùng phòng), KHÔNG kiểm đủ cọc / `deposit_debt_mode`, KHÔNG tạo phiếu thu cọc / hoá đơn đầu, và set `tenant_id = customers.id` trong khi FK `contracts_tenant_id_fkey` → `tenants` vẫn tồn tại (khách mới tạo qua import → nguy cơ lỗi FK; xem §2.1).
 
-#### Luồng "Thanh lý" (`TerminateDialog` — 2 bước)
+#### Luồng trả phòng và quyết toán
 
-Bước 1 chọn loại; bước 2 nhập số liệu + xác nhận:
+Trong **Thanh lý**, chọn **Ngày khách thực tế trả phòng** đã bàn giao và loại **Hết hạn hợp đồng**, **Trả phòng trước hạn** hoặc **Bỏ cọc**. Không chọn ngày tương lai. Ghi chỉ số đã kiểm tra hoặc chọn bổ sung sau nếu thiếu.
 
-Cả 2 mode đều có khu **"Thu thêm"** ([TerminationExtraCharges](../../src/components/contracts/TerminationExtraCharges.tsx), 8b01507 + 25d176d 27/06): dòng "Tiền phòng + Nước + PDV" prorate theo khoảng **ở từ ngày → đến ngày** (tự suy số ngày, ô "đến" mặc định = ngày thanh lý), "Tiền điện" chốt số đầu (auto từ `meter_readings` APPROVED mới nhất) → số cuối × đơn giá, "Tiền vệ sinh" (mặc định 200k), + nút "Thêm khoản" tuỳ ý — emit mảng gửi RPC qua `p_extra_charges`:
+- **Trả phòng, quyết toán sau:** kết thúc lượt ở, giải phóng phòng và lưu **Chờ quyết toán**; chưa phát sinh thu/chi, khấu trừ hay hoàn cọc.
+- **Tiếp tục quyết toán ngay:** mở form tiền hiện hành theo loại đã chọn; ngày thực trả giữ cố định.
+- **Chờ quyết toán:** mở đúng hồ sơ cũ tại danh sách/chi tiết, chọn **Quyết toán hồ sơ này**. Đổi loại phải có lý do; lịch sử giữ loại ban đầu, người đổi và thời điểm. Quyết toán cũ không đổi phòng/hợp đồng khách mới.
 
-```mermaid
-flowchart TD
-    S1["Bước 1: chọn loại thanh lý"] --> FF{"Loại?"}
-    FF -- "Bỏ cọc (FORFEIT)" --> FO["forfeit_date + khu THU THÊM<br/>(bảng hoá đơn còn nợ sẽ bị huỷ)"]
-    FF -- "Rời phòng (MOVE_OUT)" --> MO["move_out_date, deposit_refund,<br/>excess_rent (pre-fill credit), khu THU THÊM<br/>(ô Phí phạt đã BỎ — p_penalty_fee luôn 0);<br/>công nợ = Σ hoá đơn chưa trả"]
-    FO --> FH["useTerminateForfeit → terminate_contract_forfeit (+p_extra_charges)"]
-    MO --> MH["useTerminateMoveOut → terminate_contract_move_out (+p_extra_charges)"]
-    FH --> R1["HĐ→TERMINATED; huỷ MỌI hoá đơn còn nợ (giữ phần đã thu làm doanh thu, huỷ phần nợ);<br/>hoá đơn thanh lý APPROVED (PENALTY = cọc THỰC thu LEAST) + cặp phiếu CHỜ DUYỆT sổ CỌC→sổ vận hành;<br/>thu thêm → hoá đơn AR RIÊNG chờ thu (tháng trống kế);<br/>tiêu credit dư"]
-    MH --> R2["HĐ→TERMINATED; thu thêm GỘP vào hoá đơn thanh lý (khấu trừ cọc) + chốt điện meter_readings;<br/>đánh PAID mọi hoá đơn nợ (payments TM 'Quyết toán khi thanh lý');<br/>chuyển khoản nội bộ applied: CHI sổ CỌC + THU sổ vận hành 'Doanh thu thanh lý' (KQKD);<br/>S&gt;0 → 1 phiếu CHI sổ CỌC trả khách; S&lt;0 → THU 'Khách trả thêm' (KQKD);<br/>tiêu credit dư"]
-```
-
-(Chi tiết từng bút toán: xem **[16 — Thanh lý hợp đồng (deep-dive)](16-thanh-ly-hop-dong.md)** — mô hình "sổ CỌC + chuyển khoản nội bộ" + Thu thêm. Ô "Số tiền quyết toán" của StepMoveOut = `deposit_refund + excess_rent − (công nợ + thu thêm)`, hiển thị xanh/đỏ theo dấu.)
-
-**Validate**: `terminateForfeitFormSchema` (chỉ ngày), `terminateMoveOutFormSchema` (ngày + `deposit_refund≥0`, `excess_rent` optional ≥0 — **`penalty_fee` đã bỏ khỏi schema & form**); từng khoản thu thêm theo `extraChargeItemSchema` (`kind ∈ PRORATED/ELECTRIC/CLEANING/CUSTOM`, amount ≥ 0). Lưu ý `renewFormSchema` của dialog Gia hạn **không** validate `new_end_date > end_date` phía client — lỗi chỉ hiện qua toast từ RPC sau khi submit. Cột "Kỳ" của bảng hoá đơn chưa trả: bảng **forfeit** đã đọc `billing_month`; bảng **move-out** vẫn đọc `inv.billing_period` (cột không tồn tại — `invoices` chỉ có `billing_month`) → luôn hiện "—".
-
-**Edge case**: HĐ đã `TERMINATED/EXPIRED` → RPC ném lỗi "Hợp đồng đã thanh lý/hết hạn". Quyền: RPC kiểm `can_do_on_building` trước khi chạy logic.
+Bỏ cọc, xử lý nợ, credit, thu/hoàn tiền và duyệt phiếu vẫn theo luồng hiện hành; bàn giao trước chưa tự xử lý các khoản này. Xem [16 — Trả phòng/quyết toán](16-thanh-ly-hop-dong.md).
 
 ### 5.2. `/contracts/:id` — [ContractDetailPage.tsx](../../src/pages/contracts/ContractDetailPage.tsx)
 

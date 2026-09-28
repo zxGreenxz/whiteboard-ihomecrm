@@ -7,6 +7,12 @@
 > AES-256-GCM + lease đơn-instance + watchdog/proactive re-login. Các đoạn dưới
 > đây mô tả mô hình MỚI; chỗ nào còn tả mô hình owner-scoped cũ đã được sửa.
 
+## Danh sách phòng gửi cho sale (28/09/2026)
+
+Khi tư vấn phòng, phân biệt ngày khách đang ở đã báo trả với ngày hết hạn hợp đồng, xem ngày dự kiến dọn/sửa và giữ chỗ đang hiệu lực. Phòng đang dọn/sửa vẫn có thể sale nhưng phải sẵn sàng trước khi nhận khách mới; báo trả quá hẹn cần xác nhận lại. Xem [15 Kênh sale](15-kenh-cong-khai-sale-thu-tien.md).
+
+**Mã nguồn worker Zalo đã cập nhật, nhưng chưa xác minh phiên bản đang chạy trên host.** Phát hành web không tự cập nhật worker. Trước khi hứa ngày nhận phòng, kiểm tra thông tin hiện tại trong ứng dụng; không coi các thay đổi này là bằng chứng đã gửi thông báo tới nhà cung cấp hoặc thiết bị.
+
 ## 1. Tổng quan & vai trò nghiệp vụ
 
 Domain này đưa kênh **Zalo cá nhân** vào CRM: nhắn tin 2 chiều với khách trọ / lead / môi giới ngay trong web (route `/chat-zalo`), gửi hàng loạt theo nhãn phân loại, và nhận Web Push khi có tin mới. Trong vòng đời tổng của CRM, Chat Zalo nằm ở khâu **giao tiếp khách hàng** — trước hợp đồng (tư vấn lead) lẫn sau hợp đồng (chăm sóc khách trọ, nhắc nợ) — nhưng hiện **chưa nối dữ liệu** với các domain khách hàng/HĐ (xem mục 6).

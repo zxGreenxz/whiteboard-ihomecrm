@@ -71,7 +71,7 @@ const ContractDetailView = ({ id, onBack, showBackButton = true }: ContractDetai
   const { data: contract, isLoading: contractLoading } = useContract(id || '');
 
   // Fetch invoices for this contract
-  const { data: invoices, isLoading: invoicesLoading } = useInvoicesLegacy({
+  const { data: invoices, isLoading: invoicesLoading, isFetching: invoicesFetching, isError: invoicesError } = useInvoicesLegacy({
     contract_id: id
   });
 
@@ -127,6 +127,12 @@ const ContractDetailView = ({ id, onBack, showBackButton = true }: ContractDetai
     contractVehiclesQ.isError && 'phương tiện',
     servicesQ.isError && 'dịch vụ',
     historyQ.isError && 'lịch sử hợp đồng',
+  ].filter(Boolean) as string[];
+  const mobileSettlementLoadErrors = [
+    invoicesError && 'hoá đơn',
+    depositVouchersQ.isError && 'phiếu cọc',
+    pendingTerminationQ.isError && 'phiếu thanh lý chờ xử lý',
+    terminationInfoQ.isError && 'quyết toán thanh lý',
   ].filter(Boolean) as string[];
 
   // Error states
@@ -214,6 +220,12 @@ const ContractDetailView = ({ id, onBack, showBackButton = true }: ContractDetai
           invoices={invoices ?? []}
           history={contractHistory}
           depositVouchers={depositVouchers}
+          terminationInfo={terminationInfo}
+          pendingForfeitCount={pendingForfeitCount}
+          pendingRefundCount={pendingRefundCount}
+          statusLoading={invoicesLoading || invoicesFetching || depositVouchersQ.isLoading || depositVouchersQ.isFetching
+            || pendingTerminationQ.isLoading || pendingTerminationQ.isFetching || terminationInfoQ.isLoading || terminationInfoQ.isFetching}
+          sideLoadErrors={mobileSettlementLoadErrors}
           perms={perms}
           customers={contractCustomers}
           onBack={onBack}

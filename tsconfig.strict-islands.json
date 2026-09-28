@@ -154,6 +154,7 @@
     "src/components/contracts/detail/ContractInfoTab.tsx",
     "src/components/contracts/detail/ContractInvoicesTab.tsx",
     "src/components/contracts/detail/ContractMobileActions.tsx",
+    "src/components/contracts/detail/ContractMobileSettlementStatus.tsx",
     "src/components/contracts/detail/ContractPaymentsTab.tsx",
     "src/components/contracts/detail/desktop/CccdDialog.tsx",
     "src/components/contracts/detail/desktop/ContractAlertStrip.tsx",

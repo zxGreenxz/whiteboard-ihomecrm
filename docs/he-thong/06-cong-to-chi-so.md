@@ -2,6 +2,16 @@
 
 > Domain quản lý **đồng hồ điện/nước/gas** gắn theo phòng và quy trình **ghi → (duyệt) → chốt chỉ số** để tính tiêu thụ, từ đó lên **hoá đơn tiền điện/nước** theo đơn giá đồng hồ.
 
+## Chỉ số bàn giao giữa hai lượt khách (cập nhật 28/09/2026)
+
+Khi trả phòng hoặc ký/nhận phòng, dùng **Chỉ số điện, nước khi bàn giao** để nhập số thực tế của đúng đồng hồ và thời điểm đo. **Số 0 là số đã đọc**, không dùng thay cho số chưa biết.
+
+- **Khách cũ trả:** thiếu số thì chọn **Chưa đủ chỉ số, bổ sung sau**. Vẫn nhận bàn giao và đưa phòng lên sale.
+- **Phần thiếu/cần kiểm tra:** danh sách **Chờ bổ sung / kiểm tra chỉ số** mở đúng mốc hợp đồng cũ, còn hiện kể cả đã quyết toán. Bổ sung/xác minh xong mới hết chờ; mốc đã sửa cần kiểm tra lại.
+- **Khách mới nhận:** cần chỉ số đầu vào riêng đã xác minh cho các đồng hồ đang dùng; không lấy số chưa biết hoặc số khách cũ làm mặc định. Mỗi lượt giữ mốc riêng.
+
+Ghi mốc bàn giao không tự thu tiền hoặc thay cách tính điện/nước. Xem [05 — Ký/nhận phòng](05-hop-dong.md) và [16 — Trả phòng](16-thanh-ly-hop-dong.md).
+
 ---
 
 ## 1. Tổng quan & vai trò nghiệp vụ

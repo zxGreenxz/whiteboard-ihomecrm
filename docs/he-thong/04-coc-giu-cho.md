@@ -4,7 +4,7 @@
 
 Domain này phục vụ **toàn bộ vòng đời tiền cọc** trong CRM cho thuê:
 
-- **Giữ chỗ trước hợp đồng**: khách đặt cọc giữ một căn hộ trong khi chưa ký HĐ → từ 2026-06-21 (commit 09b5754) quản lý bằng **phiếu thu cọc "mồ côi"** trong `income_expenses` (type `INCOME`, `contract_id IS NULL`, có item `is_deposit`) — **nguồn thống nhất** cho mọi đường tạo cọc giữ chỗ (trang Phòng trống `/r/:token`, Thu chi, nút "Tạo đặt cọc" trang `/deposits`). Bảng `deposits` (mã `DCxxxxxx`) là **legacy đã chết** — 0 dòng, UI không còn ghi vào (§2.1).
+- **Giữ chỗ trước hợp đồng**: lập hồ sơ riêng cho đúng khách và phòng. Có thể giữ chỗ chưa nhận tiền (0đ, không tạo phiếu thu) hoặc nhận cọc bằng phiếu thu hiện hành. Hạn giữ chỗ là ngày cần liên hệ xử lý, không tự nhả phòng. Nháp hợp đồng không thay thế hồ sơ giữ chỗ (§5.4).
 - **Tự khoá phòng `RESERVED` khi có cọc giữ chỗ** (2026-06-07, commit b3e69db): phiếu giữ chỗ `PENDING/CONFIRMED` chưa link HĐ HOẶC phiếu thu cọc (IE có item `is_deposit`, **kể cả chưa duyệt**) chưa link HĐ → `rooms.status` tự chuyển `AVAILABLE ↔ RESERVED` qua `recompute_room_reservation` (§4.11) → phòng rời bucket "Còn trống" toàn hệ thống (Danh mục căn hộ, Dashboard, Sơ đồ toà nhà, trang công khai `/r/:token`).
 - **Cọc còn thiếu GỘP vào hoá đơn tháng đầu** (2026-06-21, c09eda2): phần cọc khách chưa đưa = item OTHER "Tiền cọc" **TRONG** hoá đơn cọc + tháng đầu (là khoản phải thu của HĐ). Khi thu hoá đơn, phần cọc tách thành **hạng mục `is_deposit` trên CÙNG phiếu thu** và tự loại khỏi KQKD qua cột `kqkd_amount` (hạch toán item-level — migration 20260702120000, §4.13).
 - **Theo dõi đủ/thiếu cọc của HĐ đang hiệu lực**: mỗi HĐ có `total_deposit` (cần thu) và `deposit_paid` (đã thu). Hệ thống chốt **đủ / thiếu cọc** và cảnh báo khoản còn nợ.
@@ -436,31 +436,17 @@ Hiển thị các dòng `state != 'FULL'` (HĐ chưa đủ cọc). Toggle "Chỉ
 
 Bảng từ `contract_terminations` (sort theo `termination_date` desc) — cột đổi ở 09b5754 (bỏ cột "Khấu trừ" gây hiểu nhầm khấu-trừ-vào-cọc): Ngày, toà/phòng/khách (link `/contracts/:id`), Loại (badge Bỏ cọc đỏ / Hoàn cọc xám), **Cọc gốc** (`total_deposit` — với FORFEIT là cọc thực thu, §2.4), **Tổng nợ tất toán** (`total_deductions` — tổng nợ khách khi thanh lý, **KHÔNG trừ vào cọc**), **Còn nợ / Hoàn lại**: FORFEIT → nợ > cọc (`refund_amount` âm) hiện "⚠ Khách nợ X", ngược lại "Cọc thành doanh thu"; REFUND → `refund_done` hiện "Đã hoàn X", else "Chờ hoàn X". Có chú thích cố định trên bảng giải thích ngữ nghĩa "Tổng nợ tất toán".
 
-### 5.4. Tab "Phiếu giữ chỗ" — phiếu thu cọc mồ côi (viết lại ở 09b5754, 2026-06-21)
+### 5.4. Giữ chỗ / Cọc trước hợp đồng (cập nhật 28/09/2026)
 
-Tab đọc **cọc giữ chỗ THẬT** từ `income_expenses` qua `useReservationDeposits` (§5 đầu mục) thay vì bảng `deposits` đã chết — thống nhất 1 nguồn cho mọi đường tạo cọc giữ chỗ (trang Phòng trống, Thu-chi, nút "Tạo đặt cọc").
+Khung **Giữ chỗ / Cọc trước hợp đồng** có tại trang Cọc và chi tiết phòng. Chọn đúng khách; mỗi phòng chỉ có một hồ sơ giữ chỗ cho lượt khách tiếp theo.
 
-- **3 card đếm theo trạng thái phiếu** (`approval_status`): Chờ duyệt (`UNAPPROVED`) / Đang giữ chỗ (`APPROVED`) / Đã huỷ (`CANCELLED`).
-- **Ô search** (mã/nội dung/người nộp/phòng) + **SearchableSelect lọc trạng thái** — cả hai lọc **client-side** (không làm sai KPI tab khác như bản cũ).
-- Bảng: Mã (`code` phiếu thu) / Nội dung / Toà nhà / Phòng / Người nộp (`payer_name`) / Số tiền / Ngày / Trạng thái / Thao tác.
+- **Giữ chỗ chưa nhận tiền:** chọn phòng, khách và hạn bắt buộc. Số tiền là 0đ; không tạo phiếu 1đ tượng trưng hoặc ghi nhận đã thu cọc.
+- **Nhận cọc:** nhập tiền thực nhận, sổ quỹ và ngày phiếu theo luồng hiện hành. Phiếu chưa duyệt/chưa nhận không cộng vào tiền đã nhận; phiếu gốc vẫn quản lý tại Thu chi.
+- **Phòng sắp trống:** phải có báo ngày dự kiến trả của khách đang ở; ngày dự kiến vào không được sớm hơn ngày đó. Giữ chỗ không kết thúc lượt ở hiện tại, chưa cho phép nhận phòng trước bàn giao thực tế.
+- **Quá hạn:** vẫn giữ cho khách này. Dùng **Điều chỉnh hạn**, **Bổ sung cọc** hoặc **Hủy giữ chỗ**; có phiếu cọc còn hiệu lực thì xử lý/đối soát phiếu theo luồng hiện hành trước khi hủy.
+- **Khi ký từ nháp:** chọn đúng nguồn khớp phòng/khách. Chỉ phiếu nguồn hợp lệ đã duyệt được dùng; ký thành công chuyển hồ sơ sang **Đã ký hợp đồng**, không thu lại cùng khoản cọc.
 
-```mermaid
-flowchart TD
-    A["Bấm Tạo đặt cọc<br/>(quyền deposits.create)"] --> B["CreateDepositDialog<br/>(zod: room bắt buộc, amount>=0, deposit_date;<br/>hold_until/ctv/notes → ghi vào description item)"]
-    B -->|"chọn/tạo tenant (tuỳ chọn,<br/>tenant mới status=DEPOSITED)"| C["useCreateIncomeExpense →<br/>phiếu INCOME contract_id=NULL<br/>+ item 'Tiền cọc' (RPC ensure_room_deposit_type)"]
-    C --> D["Sổ quỹ: amount > 1đ → sổ thu default của user;<br/>1đ / không sổ → sổ CỌC ảo (get_or_create_deposit_account)"]
-    C --> E["trigger recompute_room_reservation<br/>→ rooms.status = RESERVED"]
-    F["Phiếu APPROVED → nút Tạo HĐ<br/>(quyền deposits.convert)"] --> G["ContractFormDialog prefill<br/>(buildingId, roomId — KHÔNG depositId)"]
-    G -->|"HĐ tạo THÀNH CÔNG"| H["trg_contract_link_orphan_deposits<br/>tự gắn phiếu cọc vào HĐ<br/>→ phiếu rời tab, cọc vào deposit_paid"]
-    G -.->|"HĐ fail / đóng form"| I["Phiếu giữ nguyên mồ côi,<br/>phòng vẫn RESERVED"]
-```
-
-Các thao tác:
-- **Tạo** ([CreateDepositDialog.tsx](src/components/deposits/CreateDepositDialog.tsx) — viết lại ở 09b5754): tạo **phiếu thu cọc** cùng cơ chế `QuickDepositModal` (§5.7): hạng mục "Tiền cọc" qua RPC `ensure_room_deposit_type`, `business_result_accounting: null` (ngoài KQKD). "Giữ phòng đến" / "CTV" / "Ghi chú" chỉ nối vào **description của item** — không còn cột riêng. Tenant tuỳ chọn (chọn sẵn từ `tenants` legacy hoặc tạo mới `status='DEPOSITED'`) → `tenant_id` + `payer_name` trên phiếu. Bug `hold_until_date` cũ **hết hiệu lực** ở form này (không còn ghi bảng `deposits`).
-- **Sửa / Duyệt / Huỷ phiếu**: làm ở trang **Thu chi** như mọi phiếu IE khác (tab này không có nút sửa). Huỷ (`CANCELLED`) → trigger §4.11 nhả phòng về `AVAILABLE`.
-- **Tạo HĐ** (chỉ hiện với phiếu `APPROVED` có `room_id`, quyền `deposits.convert`): mở `ContractFormDialog` prefill `buildingId`/`roomId` — **KHÔNG truyền depositId/depositAmount**; phiếu cọc mồ côi hiện dạng dòng xám trong form (§4.12) và trigger `trg_contract_link_orphan_deposits` tự gắn khi HĐ được INSERT → phiếu tự rời tab, tiền cọc chảy vào `deposit_paid`. HĐ fail/đóng form → phiếu giữ nguyên, phòng vẫn `RESERVED`.
-- **Entry-point legacy còn hỏng**: [ConvertLeadDialog.tsx](src/components/leads/ConvertLeadDialog.tsx) — "Chuyển sang Đặt cọc" từ pipeline `/leads` (§5.1 doc 03) **vẫn INSERT bảng `deposits`** với key sai **`hold_until_date`** (cột thật là `hold_until`) → PostgREST từ chối INSERT (PGRST204) → **flow convert fail hoàn toàn** (tenant có thể đã tạo, deposit không tạo, lead không flip CONVERTED). Đây là chỗ ghi bảng `deposits` cuối cùng còn trong code; cọc sinh từ đây (nếu sửa bug) cũng **không hiện** ở tab này vì tab đọc `income_expenses`. Cần viết lại sang phiếu thu cọc như CreateDepositDialog.
-- **Dead code**: `EditDepositDialog.tsx`, `ConvertToContractDialog.tsx` — không nơi nào import sau 09b5754, **đã xóa khỏi repo 02/09/2026**; flip `CONVERTED` qua `prefill.depositId` trong ContractFormDialog chỉ còn ý nghĩa lịch sử (§4.6).
+Thao tác theo quyền hiện hành. Xem [05 — Nháp và ký](05-hop-dong.md).
 
 ### 5.5. Chặn ký HĐ thiếu cọc (xảy ra ở domain HĐ, liên đới mạnh)
 
@@ -490,15 +476,11 @@ stateDiagram-v2
 
 > **Báo cáo này là LEGACY chưa migrate**: vẫn đọc bảng `deposits` đã chết (§2.1) → với dữ liệu hiện hành **luôn rỗng**. Cọc giữ chỗ thật xem ở tab Phiếu giữ chỗ `/deposits` (§5.4); cọc đã thu theo HĐ xem qua thống kê hoá đơn / `get_deposit_breakdown_v2` (§4.14). Cột Phân loại đọc từ `deposit_status` cũng kế thừa hạn chế "status không phải nguồn sự thật" (§1).
 
-### 5.7. "Tạo cọc nhanh" trên trang công khai `/r/:token`
+### 5.7. Giữ chỗ / Nhận cọc trên trang công khai
 
-[QuickDepositModal.tsx](src/pages/phong-trong/QuickDepositModal.tsx) (gate tại [PhongTrongPage.tsx](src/pages/phong-trong/PhongTrongPage.tsx)), migration [20260608100000_ensure_room_deposit_type_rpc.sql](supabase/migrations/20260608100000_ensure_room_deposit_type_rpc.sql) — đã lên `main` (module Sale Phòng, 8d95977).
+Nhân viên đang đăng nhập và có quyền mở **Giữ chỗ / Nhận cọc** tại phòng đang xem; khách xem link không tự tạo hồ sơ này. Chọn khách, giữ chỗ chưa nhận tiền hoặc nhận cọc và nhập ngày theo §5.4. Để trống tiền không tự thành phiếu 1đ. Phòng sắp trống phải có ngày dự kiến vào phù hợp báo trả hiện tại.
 
-- Mục đích: nhân viên sale nhận cọc của khách → **khoá phòng `RESERVED` realtime** ngay trên trang công khai. Modal tạo 1 phiếu thu `INCOME` (`contract_id = null` — cọc giữ chỗ, `room_id`/`building_id` theo phòng đang xem) + hạng mục "Tiền cọc" qua **RPC `ensure_room_deposit_type`** (SECURITY DEFINER, get-or-create loại thu của caller qua `_termination_ensure_type` rồi **ép `is_deposit = TRUE`**, revoke `anon`) → trigger §4.11 tự set `rooms.status='RESERVED'` → invalidate query `['phong-trong']` để phòng biến mất khỏi danh sách công khai ngay.
-- **Sổ quỹ theo nguyên tắc §4.12**: cọc **thật** (số tiền > 1đ) ghi vào **sổ thu default của chính staff** (`is_default`, RLS-safe); giữ chỗ 1đ / user không có sổ → fallback sổ ảo "CỌC (giữ hộ khách)" (RPC `get_or_create_deposit_account`).
-- Gate bằng quyền **`sale_phong.create_deposit`** (label "Tạo cọc nhanh") — extra action của module Sale Phòng, **cờ toàn cục, không per-building**; nút chỉ hiện khi user **đang đăng nhập** và có quyền (khách vãng lai xem trang không thấy).
-- Nội dung phiếu = `"Cọc phòng {x} tòa {y}"`; "Ngày bổ sung cọc" + "Ngày vào" (tuỳ chọn) chỉ ghi thêm vào nội dung/description, không có cột riêng. `business_result_accounting: null` (item cọc tự loại khỏi KQKD).
-- **Số tiền để trống → mặc định 1đ** (phiếu giữ-chỗ-tượng-trưng trong sổ CỌC ảo). Khi phòng ký HĐ, `trg_contract_link_orphan_deposits` (§4.4) sẽ link phiếu 1đ vào HĐ (điều kiện `voucher_date <= start_date + 7 ngày` — **không giới hạn lùi**, phiếu cọc cũ bao lâu cũng link miễn HĐ ký sau) và cộng vào `deposit_paid` / KPI `deposit_collected` (§4.14) — vô hại về số nhưng tạo **rác sổ quỹ + nhiễu thống kê** "Cọc đã thu"; cân nhắc bắt buộc nhập tiền hoặc đánh dấu phiếu 1đ để dễ dọn. Phiếu 1đ cũng hiện ở tab Phiếu giữ chỗ (§5.4).
+Giữ thành công thì phòng không được chào như phòng chưa ai giữ. Ký/nhận phòng vẫn cần bàn giao thực tế, dọn/sửa xong và chỉ số đầu vào.
 
 ---
 
