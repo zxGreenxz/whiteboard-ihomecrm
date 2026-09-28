@@ -14,6 +14,7 @@ interface Area {
 }
 
 interface ContractListFiltersProps {
+  buildingOnly?: boolean;
   searchTerm: string;
   onSearchChange: (value: string) => void;
   /** Danh sách building_id đang lọc. [] = tất cả toà nhà. */
@@ -31,6 +32,7 @@ interface ContractListFiltersProps {
 }
 
 export default function ContractListFilters({
+  buildingOnly = false,
   buildingIds,
   onBuildingIdsChange,
   roomFilter,
@@ -45,7 +47,7 @@ export default function ContractListFilters({
   return (
     <div className="grid grid-cols-2 md:flex md:flex-wrap md:items-center gap-3">
       {/* Trạng thái hợp đồng */}
-      <SearchableSelect
+      {!buildingOnly && <SearchableSelect
         value={lifecycleFilter}
         onValueChange={(val) => onLifecycleChange(val as ContractLifecycleFilter)}
         className="md:w-[160px]"
@@ -55,7 +57,7 @@ export default function ContractListFilters({
           { value: 'ACTIVE', label: 'Đang ở' },
           { value: 'TERMINATED', label: 'Thanh lý' },
         ]}
-      />
+      />}
 
       {/* Toà nhà — 1 toà hoặc tất cả, danh sách phẳng A→Z */}
       <BuildingFilterSelect
@@ -66,7 +68,7 @@ export default function ContractListFilters({
       />
 
       {/* Phòng — gộp theo tên (vd nhiều toà cùng có "101" → 1 mục "101") */}
-      <SearchableSelect
+      {!buildingOnly && <SearchableSelect
         value={roomFilter}
         onValueChange={onRoomChange}
         className="md:w-[160px]"
@@ -75,16 +77,16 @@ export default function ContractListFilters({
           { value: 'all', label: 'Tất cả phòng' },
           ...uniqueRoomNames(rooms).map((name) => ({ value: name, label: name })),
         ]}
-      />
+      />}
 
       {/* Chọn tháng — desktop only */}
-      <Input
+      {!buildingOnly && <Input
         type="month"
         value={monthFilter}
         onChange={(e) => onMonthChange(e.target.value)}
         className="hidden md:flex md:w-[160px]"
         placeholder="Chọn tháng"
-      />
+      />}
     </div>
   );
 }

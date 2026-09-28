@@ -7,6 +7,8 @@ import MainLayout from '@/components/layout/MainLayout';
 const ContractsMobilePage = lazy(() => import('./ContractsMobilePage'));
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
+import { ContractWorkspaceTabList } from '@/components/contracts/ContractWorkspaceTabList';
 import EmptyState from '@/components/ui/EmptyState';
 import ContractStatsCards from '@/components/contracts/ContractStatsCards';
 import ContractListFilters from '@/components/contracts/ContractListFilters';
@@ -70,6 +72,7 @@ function ContractsDesktopPage() {
   // State
   // =============================================
 
+  const [workspaceTab, setWorkspaceTab] = useState('contracts');
   // Stats filter — giữ qua F5 trong cùng tab (sessionStorage)
   const [activeStatFilter, setActiveStatFilter] = usePersistedState<ContractStatFilter>('flt:contracts:stat', 'ALL');
 
@@ -259,6 +262,7 @@ function ContractsDesktopPage() {
   // =============================================
 
   const handleStatFilterChange = useCallback((filter: ContractStatFilter) => {
+    setWorkspaceTab('contracts');
     setActiveStatFilter(filter);
     // Đồng bộ lifecycle filter để không bị mâu thuẫn với stats card
     if (filter === 'TERMINATED') setLifecycleFilter('TERMINATED');
@@ -394,7 +398,7 @@ function ContractsDesktopPage() {
 
   return (
     <MainLayout title="Hợp đồng thuê" subtitle="Khách hàng > Hợp đồng" icon={FileText}>
-      <div className="space-y-4">
+      <Tabs value={workspaceTab} onValueChange={setWorkspaceTab} className="space-y-4">
         {/* Stats Cards */}
         <ContractStatsCards
           stats={stats}
@@ -405,6 +409,7 @@ function ContractsDesktopPage() {
         {/* Filters row */}
         {showFilters && (
           <ContractListFilters
+            buildingOnly={workspaceTab !== 'contracts'}
             searchTerm={searchTerm}
             onSearchChange={handleSearchChange}
             buildingIds={buildingIds}
@@ -422,17 +427,21 @@ function ContractsDesktopPage() {
         )}
 
         {/* Search + Toolbar row */}
-        <div className="flex items-center justify-between gap-4">
-          <div className="relative w-full max-w-sm">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative min-w-[240px] flex-1 max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Tìm theo mã HĐ, tên khách, SĐT, tên phòng..."
-              value={searchTerm}
+              aria-label="Tìm hợp đồng"
+              placeholder={workspaceTab === 'contracts' ? 'Tìm theo mã HĐ, tên khách, SĐT, tên phòng...' : 'Chọn Danh sách để tìm hợp đồng'}
+              value={workspaceTab === 'contracts' ? searchTerm : ''}
+              disabled={workspaceTab !== 'contracts'}
               onChange={(e) => handleSearchChange(e.target.value)}
               className="pl-9"
             />
           </div>
-          <div className="flex items-center gap-1">
+          <ContractWorkspaceTabList buildingIds={buildingIds} />
+          <div className="ml-auto flex items-center gap-1">
+            {workspaceTab === 'contracts' && <>
             {hasAnyScope && (
               <Button onClick={() => setFormDialogOpen(true)} size="icon" className="h-8 w-8 bg-green-500 hover:bg-green-600">
                 <Plus className="h-4 w-4" />
@@ -448,6 +457,7 @@ function ContractsDesktopPage() {
                 <Download className="h-4 w-4" />
               </Button>
             )}
+            </>}
             <Button
               variant={showFilters ? 'secondary' : 'ghost'}
               size="icon"
@@ -460,10 +470,19 @@ function ContractsDesktopPage() {
           </div>
         </div>
 
+        <TabsContent value="exits" className="space-y-3">
+          <p className="text-xs text-muted-foreground">Hồ sơ chờ quyết toán theo tòa nhà đang chọn.</p>
+          <ContractExitQueue buildingIds={buildingIds} showEmpty />
+        </TabsContent>
+        <TabsContent value="drafts" className="space-y-3">
+          <p className="text-xs text-muted-foreground">Bản nháp theo tòa nhà đang chọn. Số trên tab là bản chưa ký; bản đã ký vẫn được giữ để tra cứu.</p>
+          <ContractDraftWorkspace buildingId={buildingIds.length === 1 ? buildingIds[0] : undefined}
+            buildingIds={buildingIds} alwaysExpanded />
+        </TabsContent>
+
+        <TabsContent value="contracts" className="space-y-4">
         <MoveOutNoticeQueue buildingIds={buildingIds} />
-        <ContractExitQueue buildingIds={buildingIds} />
         <ContractMeterFollowupQueue buildingIds={buildingIds} />
-        <ContractDraftWorkspace buildingId={buildingIds.length === 1 ? buildingIds[0] : undefined} />
 
         {/* Table */}
         <div className="bg-white rounded-lg border">
@@ -515,6 +534,7 @@ function ContractsDesktopPage() {
             />
           )}
         </div>
+        </TabsContent>
 
         {/* Dialogs — dùng dialogContract (bản FULL từ useContract(id), fallback
             bản rút gọn của danh sách trong lúc đang fetch). Dialog Sửa/In cần
@@ -626,7 +646,7 @@ function ContractsDesktopPage() {
           open={detailModalOpen}
           onOpenChange={setDetailModalOpen}
         />
-      </div>
+      </Tabs>
     </MainLayout>
   );
 }

@@ -13,7 +13,9 @@ const SigningDialog = lazy(() => import('./ConfirmContractSigningDialog').then(m
 const TransferPanel = lazy(() => import('./ContractTransferLinkPanel').then(module => ({ default: module.ContractTransferLinkPanel })));
 
 /** Same entry for desktop and mobile; heavy editor/export code loads on demand. */
-export function ContractDraftWorkspace({ buildingId }: { buildingId?: string }) {
+export function ContractDraftWorkspace({ buildingId, buildingIds, alwaysExpanded = false }: {
+  buildingId?: string; buildingIds?: string[]; alwaysExpanded?: boolean;
+}) {
   const { selectedOrganizationId } = useOrganization();
   const { data: permissions } = useMyPermissions();
   const { hasAnyScope } = useMyBuildingScope();
@@ -40,19 +42,23 @@ export function ContractDraftWorkspace({ buildingId }: { buildingId?: string }) 
 
   return <section className="rounded-lg border bg-background" aria-label="Hợp đồng nháp">
     <div className="flex flex-wrap items-center justify-between gap-3 p-3">
-      <Button variant="ghost" className="h-auto justify-start px-1 text-left" aria-expanded={expanded}
+      {alwaysExpanded ? <div className="flex items-center gap-2">
+        <FilePenLine className="h-4 w-4" />
+        <div><h2 className="font-semibold">Hợp đồng nháp</h2>
+          <p className="text-xs text-muted-foreground">Soạn sẵn, tải gửi khách xem trước</p></div>
+      </div> : <Button variant="ghost" className="h-auto justify-start px-1 text-left" aria-expanded={expanded}
         onClick={() => setExpanded(value => !value)}>
         <FilePenLine className="mr-2 h-4 w-4" />
         <span><span className="block font-semibold">Hợp đồng nháp</span>
           <span className="block text-xs font-normal text-muted-foreground">Soạn sẵn, tải gửi khách xem trước</span></span>
         <ChevronDown className={`ml-3 h-4 w-4 transition-transform ${expanded ? 'rotate-180' : ''}`} />
-      </Button>
+      </Button>}
       {canCreate && <Button size="sm" variant="outline" onClick={() => { setDraft(undefined); setEditorOpen(true); }}>
         <Plus className="mr-1 h-4 w-4" />Soạn nháp
       </Button>}
     </div>
-    {expanded && <Suspense fallback={<p className="p-4 text-sm text-muted-foreground">Đang tải bản nháp…</p>}>
-      <DraftList buildingId={buildingId} canEdit={canEdit} canExport={canExport} canSign={canCreate}
+    {(alwaysExpanded || expanded) && <Suspense fallback={<p className="p-4 text-sm text-muted-foreground">Đang tải bản nháp…</p>}>
+      <DraftList buildingId={buildingId} buildingIds={buildingIds} canEdit={canEdit} canExport={canExport} canSign={canCreate}
         onEdit={editDraft} onExport={editDraft} onSign={setSigningDraft} onTransfer={setTransferDraft} />
     </Suspense>}
     {transferDraft && <div className="p-3"><Button variant="ghost" size="sm" onClick={() => setTransferDraft(undefined)}>Đóng liên kết nhượng</Button>

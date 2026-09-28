@@ -120,6 +120,7 @@
     "src/components/contracts/ContractMeterFollowupQueue.tsx",
     "src/components/contracts/ContractQRDialog.tsx",
     "src/components/contracts/ContractReturnStep.tsx",
+    "src/components/contracts/ContractWorkspaceTabList.tsx",
     "src/components/contracts/ContractStatsCards.tsx",
     "src/components/contracts/ContractTransferLinkDialog.tsx",
     "src/components/contracts/ContractTransferLinkPanel.tsx",

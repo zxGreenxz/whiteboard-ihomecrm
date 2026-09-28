@@ -9,7 +9,7 @@ import { canUse } from '@/lib/permissionPages';
 import { EXIT_KIND_LABELS } from './ContractReturnStep';
 import { TerminateDialog } from './TerminateDialog';
 
-export function ContractExitQueue({ buildingIds = [] }: { buildingIds?: string[] }) {
+export function ContractExitQueue({ buildingIds = [], showEmpty = false }: { buildingIds?: string[]; showEmpty?: boolean }) {
   const [page, setPage] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const { selectedOrganizationId } = useOrganization();
@@ -27,7 +27,9 @@ export function ContractExitQueue({ buildingIds = [] }: { buildingIds?: string[]
   if (query.isError) return <div role="alert" className="rounded-md border p-3 text-sm">
     Không tải được hồ sơ chờ quyết toán. <Button variant="link" onClick={() => void query.refetch()}>Thử lại</Button>
   </div>;
-  if (!query.data?.total) return null;
+  if (!query.data?.total) return showEmpty
+    ? <p className="rounded-lg border bg-background p-8 text-center text-sm text-muted-foreground">Không có hợp đồng chờ quyết toán.</p>
+    : null;
   return <section className="rounded-lg border border-amber-200 bg-amber-50/50 p-3" aria-label="Hồ sơ chờ quyết toán">
     <h2 className="font-semibold">Chờ quyết toán <span className="text-amber-800">({query.data.total})</span></h2>
     <p className="mb-2 text-xs text-muted-foreground">Khách đã trả phòng. Mở đúng hồ sơ cũ để xử lý tiếp.</p>
