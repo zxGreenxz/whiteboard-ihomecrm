@@ -128,9 +128,13 @@ export function applySalaryExtras(
     ...recurringAdjustments(recurring, m.id).map((a) => ({ ...a, amount: take(a.id as string, a.amount) })),
   ];
 
-  const commissionItems: SalCommissionItem[] = m.commissionItems.map((c) =>
-    c.voucherId ? { ...c, amount: take("sale:" + c.voucherId, c.amount) } : c,
-  );
+  // Dòng hoa hồng ở sổ thật: phần "đã chi từ sổ X" đi theo số đã sửa, nên sửa tay chỉ
+  // đổi thu nhập, không đổi tiền chuyển (xem SalCommissionItem.paidElsewhere).
+  const commissionItems: SalCommissionItem[] = m.commissionItems.map((c) => {
+    if (!c.voucherId) return c;
+    const amount = take("sale:" + c.voucherId, c.amount);
+    return c.paidElsewhere ? { ...c, amount, paidElsewhere: amount } : { ...c, amount };
+  });
   const investmentBy: SalInvestBy[] = investmentByBuilding(m.investmentBy).map((a) => ({ ...a, amount: take("dh:" + a.b, a.amount) }));
 
   return {

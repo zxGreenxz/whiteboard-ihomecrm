@@ -300,6 +300,81 @@ SELECT (SELECT count(*)::int FROM adj) AS adjustments, (SELECT count(*)::int FRO
 }
 
 /**
+ * Đặt biệt danh cho dòng cấu hình lương DO FIXTURE TẠO (theo `note`) — màn lương khớp
+ * "người nhận" của phiếu hoa hồng chưa gán ô QL bằng biệt danh hoặc tên gọi. Chủ công
+ * ty DEMO KHÔNG đọc được họ tên demo.quanly (màn lương hiện tên dự phòng "Quản lý"),
+ * nên không có biệt danh thì khớp tên không bao giờ xảy ra. Cấu hình thật không bị đụng:
+ * trả 'khong-phai-fixture' để spec báo rõ thay vì đổi dữ liệu thật.
+ */
+export async function setDemoSalaryFixtureAlias(alias: string): Promise<'da-dat' | 'khong-phai-fixture'> {
+  const rows = await runSql<{ id: string }>(`
+UPDATE public.manager_salary_config
+   SET alias = ${sqlLiteral(alias)}
+ WHERE note = ${sqlLiteral(FLEET_SALARY_FIXTURE_NOTE)}
+   AND staff_id = ${DEMO_SALARY_STAFF}
+   AND organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+RETURNING id::text AS id;`);
+  return rows.length ? 'da-dat' : 'khong-phai-fixture';
+}
+
+/**
+ * Dọn fixture hoa hồng quản lý (migration 20260927155251): gỡ liên kết ô QL + dấu
+ * kỳ lương, huỷ phiếu (đúng đường vòng đời như commission-voucher-per-section),
+ * xoá mềm HĐ + hoá đơn, trả trạng thái phòng. CHỈ phiếu org DEMO mang mô tả hạng
+ * mục có marker `[E2E]` — phiếu thật không thể lọt vào. Sổ ảo "Hoa hồng QL chờ trả
+ * lương" của DEMO được giữ (dùng chung cả công ty, lần sau tái dùng).
+ */
+export async function cleanupDemoCommissionManagerFixture(input: {
+  voucherIds: string[];
+  contractId: string | null;
+  room: { id: string; status: string } | null;
+}): Promise<string[]> {
+  const org = `${sqlLiteral(DEMO_ORG_ID)}::uuid`;
+  const ids = input.voucherIds.filter((v) => /^[0-9a-f-]{36}$/i.test(v));
+  const log: string[] = [];
+  if (ids.length) {
+    const list = ids.map((v) => `${sqlLiteral(v)}::uuid`).join(',');
+    const own = await runSql<{ id: string }>(`
+SELECT ie.id::text AS id FROM public.income_expenses ie
+WHERE ie.id IN (${list}) AND ie.organization_id = ${org}
+  AND EXISTS (SELECT 1 FROM public.income_expense_items i WHERE i.income_expense_id = ie.id AND i.description LIKE '[E2E]%');`);
+    const ok = own.map((r) => r.id);
+    if (ok.length !== ids.length) throw new Error(`Từ chối dọn: ${ids.length - ok.length} phiếu không thuộc fixture DEMO [E2E].`);
+    const safe = ok.map((v) => `${sqlLiteral(v)}::uuid`).join(',');
+    const co = await runSql<{ ok: boolean }>(`SELECT to_regclass('app_private.commission_manager_links') IS NOT NULL AS ok;`);
+    if (co[0]?.ok) {
+      await runSql(`DELETE FROM app_private.salary_commission_inclusions WHERE voucher_id IN (${safe}) AND organization_id = ${org};
+DELETE FROM app_private.commission_manager_links WHERE voucher_id IN (${safe}) AND organization_id = ${org};`);
+      log.push('liên kết + dấu kỳ');
+    }
+    for (const v of ok) {
+      await runSql(`DO $cleanup$ BEGIN
+  INSERT INTO app_private.ie_transition_authorization (income_expense_id, xid, purpose)
+  VALUES (${sqlLiteral(v)}::uuid, pg_current_xact_id(), 'FINANCE_V2_LIFECYCLE')
+  ON CONFLICT (income_expense_id) DO UPDATE SET xid = excluded.xid, purpose = excluded.purpose, granted_at = now();
+  UPDATE public.income_expenses
+     SET approval_status = 'CANCELLED', review_state = 'RESOLVED',
+         cancellation_kind = coalesce(cancellation_kind, 'COMPAT_BATCH_CANCEL'), deleted_at = now()
+   WHERE id = ${sqlLiteral(v)}::uuid AND organization_id = ${org} AND deleted_at IS NULL;
+END $cleanup$;`);
+    }
+    log.push(`huỷ ${ok.length} phiếu`);
+  }
+  if (input.contractId && /^[0-9a-f-]{36}$/i.test(input.contractId)) {
+    const c = `${sqlLiteral(input.contractId)}::uuid`;
+    await runSql(`UPDATE public.invoices SET deleted_at = now() WHERE contract_id = ${c} AND organization_id = ${org};
+UPDATE public.contracts SET deleted_at = now(), status = 'TERMINATED' WHERE id = ${c} AND organization_id = ${org};`);
+    log.push('HĐ');
+  }
+  if (input.room && /^[0-9a-f-]{36}$/i.test(input.room.id)) {
+    await runSql(`UPDATE public.rooms r SET status = ${sqlLiteral(input.room.status)}
+FROM public.buildings b WHERE r.id = ${sqlLiteral(input.room.id)}::uuid AND b.id = r.building_id AND b.organization_id = ${org};`);
+    log.push('phòng');
+  }
+  return log;
+}
+
+/**
  * Dọn khoản định kỳ + số ghi đè do spec lương tạo (app_private, migration
  * 20260927081925). Chỉ org DEMO, chỉ bản ghi có lý do mang tiền tố fixture.
  * Bảng chưa có (migration chưa áp) ⇒ không làm gì, trả 'chua-ap-migration'.

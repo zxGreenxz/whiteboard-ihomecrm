@@ -39,6 +39,11 @@ interface Item {
   /** Số máy tính (trước sửa tay). */
   computed?: number;
   ovr?: SalAppliedOverride | null;
+  /** Hoa hồng ở sổ thật: phần đã/sẽ chi từ sổ đó — luôn đi kèm, trừ khỏi tiền chuyển. */
+  paidElsewhere?: number;
+  /** Phiếu HH chờ duyệt ở sổ thật — có thể gán quản lý để chuyển sang trả qua lương. */
+  assignVoucherId?: string;
+  assignVersion?: number;
 }
 
 // Dòng đã sửa tay: chip, dòng mô tả và các bước căn cứ hiện số máy tính + lý do.
@@ -106,21 +111,55 @@ function itemsOf(m: SalManager): Item[] {
       ["Nguồn chịu tiền", isSupplementaryLabel(a.label) && a.amount > 0 ? "Chủ cấp bổ sung" : GROUP.vh.src],
     ],
   }));
+  // Hoa hồng (migration 20260927155251, phương án A): phiếu ở sổ ảo "Hoa hồng QL chờ trả
+  // lương" trả qua lương; phiếu ở sổ thật là thu nhập nhưng tiền đã/sẽ ra từ sổ đó, nên
+  // luôn đi kèm (không bỏ chọn được) và bị trừ lại ở khung thanh toán.
   m.commissionItems.forEach((c, i) => {
     const key = c.voucherId ? "sale:" + c.voucherId : undefined;
+    const fromBook = (c.paidElsewhere || 0) > 0;
+    const book = c.paidFrom || "sổ quỹ khác";
+    const status = c.approved ? "Đã duyệt (đã tính chi phí tòa)" : "Chờ duyệt — tự duyệt khi chốt lương";
+    const chip: Item["chip"] = locked
+      ? { t: "Đã chốt", tone: "success" }
+      : !fromBook ? { t: "Trả qua lương", tone: "success" }
+      : c.approved ? { t: "Đã chi từ sổ", tone: "neutral" }
+      : { t: "Chưa gán QL", tone: "warning" };
+    const why = !fromBook
+      ? (locked ? "Đã chốt cùng bảng lương" : c.approved ? "Đã duyệt · trả qua lương" : "Chờ duyệt · tự duyệt khi chốt, trả qua lương")
+      : c.approved ? `Đã chi từ sổ ${book} — tính thu nhập, không chuyển lại`
+      : `Khi duyệt sẽ chi từ sổ ${book} — bấm để chuyển sang trả qua lương`;
     out.push(withOverride({
-      id: "sale:" + (c.voucherId || i), g: "sale", label: c.label, amount: c.amount, payable: true, key,
-      why: locked ? "Đã chốt cùng bảng lương" : "Phiếu Sale nguồn chưa duyệt — tự duyệt khi chốt lương",
-      chip: { t: "Đã xác nhận", tone: "success" },
-      trace: [["Phiếu Sale nguồn", c.label], ["Chi phí tòa", "Ghi một lần tại phiếu Sale nguồn — trả qua lương không ghi thêm"], ["Nguồn chịu tiền", GROUP.sale.src]],
+      id: "sale:" + (c.voucherId || i), g: "sale", label: c.label, amount: c.amount, payable: true, key, why, chip,
+      paidElsewhere: fromBook ? c.paidElsewhere : 0,
+      assignVoucherId: fromBook && !c.approved && !locked ? c.voucherId : undefined,
+      assignVersion: c.version,
+      trace: [
+        ["Phiếu Sale nguồn", c.label],
+        ["Quản lý nhận", c.assigned ? "Chọn ở ô QL của phiếu" : "Khớp tên người nhận trên phiếu"],
+        ["Trạng thái phiếu", status],
+        ["Sổ giữ tiền", fromBook ? `${book} (sổ thật) — tiền ra từ sổ này, lương không chuyển lại` : "Hoa hồng QL chờ trả lương (sổ ảo) — tiền trả qua lương"],
+        ["Chi phí tòa", "Ghi một lần tại phiếu Sale nguồn — trả qua lương không ghi thêm"],
+        ["Nguồn chịu tiền", GROUP.sale.src],
+      ],
     }, key ? m.overrides?.[key] : undefined));
   });
-  m.commissionFlagged.forEach((c, i) => out.push({
-    id: "sale-paid:" + (c.voucherId || i), g: "sale", label: c.label, amount: c.amount, payable: false, strike: true,
-    why: "Phiếu đã duyệt/chi ở nơi khác — đối chiếu, không chuyển lại",
-    chip: { t: "Đã trả riêng", tone: "neutral" },
-    trace: [["Phiếu Sale nguồn", c.label], ["Kết quả đối chiếu", "Đã duyệt trong tháng — không cộng vào tiền còn phải chuyển"], ["Cần làm", "Kiểm tra phiếu có đúng là đã trả cho người này"]],
-  }));
+  m.commissionFlagged.forEach((c, i) => {
+    const inc = c.includedElsewhere;
+    const ky = inc ? inc.period.slice(5, 7) + "/" + inc.period.slice(0, 4) : "này";
+    // Dấu khoá theo (phiếu, kỳ) và meta chỉ trả dấu của kỳ đang xem ⇒ ở đây luôn là
+    // "đã tính cho NGƯỜI KHÁC trong kỳ này".
+    out.push({
+      id: "sale-paid:" + (c.voucherId || i), g: "sale", label: c.label, amount: c.amount, payable: false, strike: true,
+      why: `Đã tính vào lương kỳ ${ky} của người khác — không cộng lại`,
+      chip: { t: "Đã tính cho người khác", tone: "neutral" },
+      trace: [
+        ["Phiếu Sale nguồn", c.label],
+        ["Dấu chốt lương", `Đã tính vào lương kỳ ${ky} của một quản lý khác`],
+        ["Kết quả", "Không cộng vào thu nhập người này — mỗi phần hoa hồng chỉ vào lương một người"],
+        ["Cần làm", "Nếu sai người: mở chốt lương người kia kỳ này rồi chốt lại"],
+      ],
+    });
+  });
   if (!m.investmentLocked) {
     out.push({
       id: "dh:pending", g: "dh", label: "Lợi nhuận kỳ chưa chốt", amount: null, payable: false,
@@ -158,6 +197,13 @@ interface Props {
   /** Super admin / chủ công ty của tổ chức (server quyết qua salary_can_edit_amounts_v1). */
   canEditAmounts: boolean;
   onEditAmount: (m: SalManager, line: EditableLine) => void;
+  /**
+   * Gán phiếu hoa hồng (chờ duyệt, ở sổ thật) cho chính người này → chuyển sang sổ ảo
+   * "Hoa hồng QL chờ trả lương", tiền trả qua lương (assign_commission_manager_v1).
+   * Không truyền = không hiện nút. Server tự kiểm quyền sửa phiếu.
+   */
+  onAssignCommission?: (m: SalManager, voucherId: string, expectedVersion?: number) => void;
+  assignBusy?: boolean;
 }
 
 const card: CSSProperties = { background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 12, boxShadow: "var(--shadow-sm)" };
@@ -208,7 +254,11 @@ export default function SalaryIncomePay(props: Props) {
         onOpenLedger={trace.g === "vh" && !trace.adj && !trace.id.startsWith("rec:") ? () => { setTrace(null); props.onOpenLedger({ who: m.id }); } : undefined}
         onEdit={trace.adj && m.status !== "LOCKED" ? () => { const a = trace.adj; setTrace(null); props.onAdjust(m, a); } : undefined}
         onRemove={trace.adj?.id && m.status !== "LOCKED" ? () => { const id = trace.adj!.id!; setTrace(null); props.onRemoveAdjustment(id); } : undefined}
-        onEditAmount={(() => { const f = editOf(trace); return f ? () => { setTrace(null); f(); } : undefined; })()} />}
+        onEditAmount={(() => { const f = editOf(trace); return f ? () => { setTrace(null); f(); } : undefined; })()}
+        onAssign={trace.assignVoucherId && props.onAssignCommission
+          ? () => { const vid = trace.assignVoucherId!; const ver = trace.assignVersion; setTrace(null); props.onAssignCommission!(m, vid, ver); }
+          : undefined}
+        assignLabel={`Chuyển sang trả qua lương (gán ${m.short})`} assignBusy={!!props.assignBusy} />}
     </div>
   );
 }
@@ -228,18 +278,25 @@ function PersonDetail({ m, period, accounts, canPay, onPayout, payBusy, justPaid
   const fz = m.status === "LOCKED" ? m.frozen ?? null : null;
   const lockedPay = m.status === "LOCKED";
   const blocked = hasPending || !canPay || payBusy;
-  // Khoản âm luôn đi kèm; trạng thái bỏ chọn cũ không áp cho khoản đã thành âm.
-  const chosen = items.filter((i) => i.payable && (lockedPay || (i.amount ?? 0) < 0 || !off[i.id]));
+  // Khoản âm và hoa hồng đã chi từ sổ thật luôn đi kèm (bỏ chọn cái sau không đổi tiền
+  // chuyển, chỉ làm lệch thu nhập); trạng thái bỏ chọn cũ không áp cho khoản đã thành âm.
+  const forced = (i: Item) => (i.amount ?? 0) < 0 || (i.paidElsewhere ?? 0) > 0;
+  const chosen = items.filter((i) => i.payable && (lockedPay || forced(i) || !off[i.id]));
   const bySrc = (g: GroupKey) => chosen.filter((i) => i.g === g).reduce((s, i) => s + (i.amount ?? 0), 0);
   const vS = fz && m.calc ? m.calc.gross - fz.investment - fz.commission : bySrc("vh");
   const sS = fz ? fz.commission : bySrc("sale");
   const dS = fz ? fz.investment : bySrc("dh");
   const totalOb = vS + sS + dS;
   const advance = fz ? fz.advance : m.advance;
+  // Hoa hồng đã/sẽ chi từ sổ thật. Kỳ chốt: suy từ số đóng băng (gross − ứng − phòng −
+  // thực nhận) để các dòng luôn cộng khớp, kể cả kỳ chốt trước khi có tách này (= 0).
+  const paidOut = lockedPay && m.calc
+    ? Math.max(0, m.calc.gross - advance - m.roomRent - m.calc.takehome)
+    : chosen.reduce((s, i) => s + (i.paidElsewhere ?? 0), 0);
   // Chọn đủ mọi khoản ⇒ tiền chuyển = thực nhận − đã trả, đúng số của bảng lương cũ.
   const cash = lockedPay && m.calc
     ? Math.max(0, m.calc.takehome - m.paid)
-    : Math.max(0, totalOb - advance - m.roomRent - m.paid);
+    : Math.max(0, totalOb - advance - m.roomRent - paidOut - m.paid);
 
   const Row = ({ k, v, dot, strong, fg }: { k: string; v: string; dot?: string; strong?: boolean; fg?: string }) => (
     <div style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12.5, color: fg ?? (strong ? "hsl(var(--foreground))" : "hsl(var(--status-neutral-fg))"), fontWeight: strong ? 700 : 500, borderTop: strong ? "1px solid hsl(var(--border))" : "none", paddingTop: strong ? 7 : 0 }}>
@@ -277,10 +334,10 @@ function PersonDetail({ m, period, accounts, canPay, onPayout, payBusy, justPaid
               <b style={{ flex: 1, fontSize: 13.5, color: GROUP[g].color }}>{GROUP[g].title}</b><span style={{ fontSize: 11.5, color: MUTED }}>{GROUP[g].src}</span>
             </div>
             {list.map((i) => {
-              const ok = i.payable && !blocked && !lockedPay && (i.amount ?? 0) >= 0; // khoản trừ luôn đi kèm, không bỏ chọn được
+              const ok = i.payable && !blocked && !lockedPay && !forced(i); // khoản trừ / HH đã chi từ sổ luôn đi kèm
               return (
                 <div key={i.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 16px", borderBottom: "1px solid hsl(var(--border) / .45)", opacity: i.payable ? 1 : .7, flexWrap: "wrap" }}>
-                  <input type="checkbox" aria-label={"Đưa vào thanh toán: " + i.label} checked={i.payable && (lockedPay || (i.amount ?? 0) < 0 || !off[i.id])} disabled={!ok}
+                  <input type="checkbox" aria-label={"Đưa vào thanh toán: " + i.label} checked={i.payable && (lockedPay || forced(i) || !off[i.id])} disabled={!ok}
                     onChange={() => setOff((s) => ({ ...s, [i.id]: !s[i.id] }))} style={{ accentColor: "hsl(var(--primary))", width: 16, height: 16, margin: 0 }} />
                   <button onClick={() => onTrace(i)} style={{ flex: 1, minWidth: 180, border: 0, background: "transparent", padding: 0, textAlign: "left", cursor: "pointer" }}>
                     <b style={{ display: "block", fontSize: 12.5, fontWeight: 600 }}>{i.label}</b><span style={{ fontSize: 11, color: MUTED }}>{i.why}</span>
@@ -317,6 +374,7 @@ function PersonDetail({ m, period, accounts, canPay, onPayout, payBusy, justPaid
           <Row k="Phân bổ lợi nhuận" v={salFmt(dS)} dot={GROUP.dh.color} />
           <Row k={lockedPay ? "Tổng thu nhập đã chốt" : "Tổng thu nhập được chọn"} v={salFmt(totalOb)} strong />
           {advance > 0 && <Row k="Đã ứng (trừ lúc ứng)" v={"−" + salFmt(advance)} fg="hsl(var(--status-danger-fg))" />}
+          {paidOut > 0 && <Row k="Hoa hồng chi từ sổ thật (không chuyển lại)" v={"−" + salFmt(paidOut)} fg="hsl(var(--status-danger-fg))" />}
           {m.paid > 0 && <Row k="Đã trả trước đó" v={"−" + salFmt(m.paid)} fg="hsl(var(--status-danger-fg))" />}
         </div>
         {m.roomRent > 0 && (
@@ -349,9 +407,9 @@ function PersonDetail({ m, period, accounts, canPay, onPayout, payBusy, justPaid
   </>;
 }
 
-function TraceDrawer({ item, who, period, onClose, onOpenLedger, onEdit, onRemove, onEditAmount }: {
+function TraceDrawer({ item, who, period, onClose, onOpenLedger, onEdit, onRemove, onEditAmount, onAssign, assignLabel, assignBusy }: {
   item: Item; who: string; period: string; onClose: () => void; onOpenLedger?: () => void; onEdit?: () => void; onRemove?: () => void;
-  onEditAmount?: () => void;
+  onEditAmount?: () => void; onAssign?: () => void; assignLabel?: string; assignBusy?: boolean;
 }) {
   const G = GROUP[item.g];
   return <>
@@ -380,6 +438,12 @@ function TraceDrawer({ item, who, period, onClose, onOpenLedger, onEdit, onRemov
           ))}
         </div>
         {onOpenLedger && <button className="sal-btn sal-btn--outline" onClick={onOpenLedger}>Xem bảng kê công việc</button>}
+        {onAssign && (
+          <>
+            <button className="sal-btn sal-btn--primary" disabled={assignBusy} onClick={onAssign}>{assignBusy ? "Đang chuyển…" : assignLabel}</button>
+            <span style={{ fontSize: 11.5, color: MUTED }}>Phiếu chuyển sang sổ ảo "Hoa hồng QL chờ trả lương": duyệt vẫn tính chi phí tòa nhưng không ra tiền sổ thật; tiền trả qua lương.</span>
+          </>
+        )}
         {onEditAmount && <button className="sal-btn sal-btn--outline" onClick={onEditAmount}>{item.ovr ? "Sửa lại số tiền / bỏ sửa tay" : "Sửa số tiền"}</button>}
         {(onEdit || onRemove) && (
           <div style={{ display: "flex", gap: 8 }}>

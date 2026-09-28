@@ -1,5 +1,5 @@
 {
-  "$comment": "Hồ sơ RÀ SOÁT THỦ CÔNG cho các file state=unknown có CREATE object nhưng object KHÔNG có trong catalog production. reviewModel trong migration-policy.json bắt \"mọi file state=unknown\" phải được review đầy đủ — đây là kết quả review đó, kèm trích dẫn. LƯU Ý VỀ SỨC MẠNH BẰNG CHỨNG: hồ sơ này KHÔNG chứng minh file đã chạy. Nó chứng minh việc object VẮNG MẶT đã được GIẢI THÍCH (một migration sau đó DROP/đổi tên object), tức vắng mặt không còn là bằng chứng NGƯỢC. Đây là mức yếu hơn cả catalog-proven. Đừng nâng các file này lên trạng thái đã-chứng-minh. | Bổ sung 15/09/2026: 2 file của plan con F (20260915144507_so_hop_dong_chong_dua.sql, 20260915144634_index_hop_dong_org_status.sql) — cả hai là file MỚI chưa qua lane apply, ketLuan `chua-ap-dung-cho-y` theo đúng tiền lệ 20260814004500; bằng chứng là dry-run ROLLBACK + kiểm idempotent hai lượt trên chính catalog production. | Bổ sung 16/09/2026 lúc gộp: 5 file của plan con H1/I1/I3 (org_autofill_strict, buildings_insert_v3, bien_gioi_ho_so_va_toa) — cùng diện `chua-ap-dung-cho-y` như 2 file của plan F. | Bổ sung 25/09/2026: 5 file đợt 1 sửa phiếu thu chi (20260925072852 … 20260925083655) — cùng diện `chua-ap-dung-cho-y`, bằng chứng là chạy hai lượt trên môi trường TEST.",
+  "$comment": "Hồ sơ RÀ SOÁT THỦ CÔNG cho các file state=unknown có CREATE object nhưng object KHÔNG có trong catalog production. reviewModel trong migration-policy.json bắt \"mọi file state=unknown\" phải được review đầy đủ — đây là kết quả review đó, kèm trích dẫn. LƯU Ý VỀ SỨC MẠNH BẰNG CHỨNG: hồ sơ này KHÔNG chứng minh file đã chạy. Nó chứng minh việc object VẮNG MẶT đã được GIẢI THÍCH (một migration sau đó DROP/đổi tên object), tức vắng mặt không còn là bằng chứng NGƯỢC. Đây là mức yếu hơn cả catalog-proven. Đừng nâng các file này lên trạng thái đã-chứng-minh. | Bổ sung 15/09/2026: 2 file của plan con F (20260915144507_so_hop_dong_chong_dua.sql, 20260915144634_index_hop_dong_org_status.sql) — cả hai là file MỚI chưa qua lane apply, ketLuan `chua-ap-dung-cho-y` theo đúng tiền lệ 20260814004500; bằng chứng là dry-run ROLLBACK + kiểm idempotent hai lượt trên chính catalog production. | Bổ sung 16/09/2026 lúc gộp: 5 file của plan con H1/I1/I3 (org_autofill_strict, buildings_insert_v3, bien_gioi_ho_so_va_toa) — cùng diện `chua-ap-dung-cho-y` như 2 file của plan F. | Bổ sung 25/09/2026: 5 file đợt 1 sửa phiếu thu chi (20260925072852 … 20260925083655) — cùng diện `chua-ap-dung-cho-y`, bằng chứng là chạy hai lượt trên môi trường TEST. | Bổ sung 27/09/2026: 20260927155251_hoa_hong_quan_ly_so_ao.sql — cùng diện `chua-ap-dung-cho-y`, bằng chứng là chạy hai lượt trên TEST + harness 28/28 ca.",
   "schemaVersion": 1,
   "reviewedAt": "2026-09-02",
   "method": "10 điều tra độc lập song song, mỗi file một agent, bắt buộc trích dẫn file+SQL cho kết luận (A); kết luận \"chưa từng chạy\" sẽ bị một agent phản biện riêng cố bác bỏ. Kết quả: 10/10 giải thích được, 0 file chưa-từng-chạy. Ba trích dẫn được người kiểm lại thủ công (DROP ở 20260528000003:158, CREATE ở 20260527000009:372, và frontend gọi clone_org_request_sync_v1 chứ không phải clone_org_sync_v1). | Bổ sung 12/08/2026: 1 file (20260729150000_notification_config_tables_rpc.sql) — đối chiếu catalog production thật với migration ALTER POLICY ... RENAME, kết luận đổi tên chứ không phải chưa chạy. | Bổ sung 12/08/2026: thêm 1 file (20260729150000_notification_config_tables_rpc.sql). Phương pháp: đối chiếu catalog production THẬT với migration `ALTER POLICY ... RENAME` thay vì suy từ tên file; kết luận là ĐỔI TÊN, không phải chưa-từng-chạy. | Bổ sung 28/08/2026: 1 file (20260731100000_termination_refund_writer.sql) — index ux_tro_voucher bị 20260828090000 DROP có chủ ý vì là ràng buộc giả trên PK; đối chiếu pg_indexes production trước/sau apply.",
@@ -827,6 +827,29 @@
         }
       ],
       "raSoatBoi": "Claude Code — đợt 1 sửa phiếu 25/09/2026 (hồ sơ ghi khi regen provenance ngay sau khi áp M5)"
+    },
+    "supabase/migrations/20260927155251_hoa_hong_quan_ly_so_ao.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20260927155251_hoa_hong_quan_ly_so_ao.sql",
+          "trich_doan": "CREATE TABLE IF NOT EXISTS app_private.salary_commission_books / commission_manager_links / salary_commission_inclusions; CREATE OR REPLACE FUNCTION app_private.salary_commission_book_v1, app_private.ie_has_commission_item_v1"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects đủ 5 object trên — sinh 27/09/2026 ngay sau khi tạo file"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 27/09/2026 (hoa hồng quản lý đi sổ ảo, trả qua lương), chưa đi qua lane apply — 5 object vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Đã áp hai lượt trên TEST (CREATE … IF NOT EXISTS / OR REPLACE, lượt hai không lỗi) và harness hành vi 28/28 ca (sau soát chéo) trong BEGIN…ROLLBACK. Sẽ áp qua npm run migrate:forward (người dùng chạy, có backup) sau khi PR được duyệt; khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "missingObjects": [
+        "table:app_private.salary_commission_books",
+        "table:app_private.commission_manager_links",
+        "table:app_private.salary_commission_inclusions",
+        "function:app_private.salary_commission_book_v1",
+        "function:app_private.ie_has_commission_item_v1"
+      ],
+      "raSoatBoi": "Claude Code — hoa hồng quản lý sổ ảo 27/09/2026",
+      "sha256": "f4bef1760957aa276377203c9ee19e09823094b0b7a3359f39f3f8712d0716c7"
     }
   }
 }

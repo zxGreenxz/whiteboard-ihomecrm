@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { salFmt, salShort, bigNum } from "./salaryFormat";
 import { useCountUp } from "./salaryCommon";
-import { zeroBonusReason, isUnqualifiedContractRow, type SalManager, type SalLedgerRow } from "@/lib/managerSalary";
+import { commissionFlaggedNote, commissionItemNote, zeroBonusReason, isUnqualifiedContractRow, type SalManager, type SalLedgerRow } from "@/lib/managerSalary";
 
 // Nhãn + ghi chú cho khoản thưởng, đọc từ CHÍNH nguồn tiền thay vì hardcode.
 // Chế độ v5 trả thưởng CHUỖI, chế độ cũ trả thưởng theo VIỆC — gọi cả hai là
@@ -604,8 +604,8 @@ function buildDetail(m: SalManager, period: PeriodLite, cat: CatKey): DetailDesc
   }
 
   if (cat === "hh") {
-    const rows: DetailRow[] = m.commissionItems.map((x) => ({ label: x.label, val: "+" + plus(x.amount), color: C.purpleSoft }));
-    for (const x of m.commissionFlagged || []) rows.push({ label: x.label, note: "· đã thanh toán riêng", val: "+" + plus(x.amount), color: C.pink });
+    const rows: DetailRow[] = m.commissionItems.map((x) => ({ label: x.label, note: "· " + commissionItemNote(x, m.status === "LOCKED"), val: "+" + plus(x.amount), color: C.purpleSoft }));
+    for (const x of m.commissionFlagged || []) rows.push({ label: x.label, note: "· " + commissionFlaggedNote(x), val: "+" + plus(x.amount), color: C.pink });
     if (!rows.length) rows.push({ label: "Chưa có hoa hồng tháng này", val: "—", color: C.sub });
     return {
       title: "Hoa hồng Sale", sub: `Hợp đồng đã chốt · ${pt}`,

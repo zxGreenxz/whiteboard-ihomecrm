@@ -13,6 +13,10 @@ import {
   type SalAdjustment,
   type SalTrendPoint,
   type SalCommissionItem,
+  type CommissionVoucherMeta,
+  type CommissionVoucherRow,
+  classifyCommissionVouchers,
+  isCommissionType,
   salCalc,
   buildBonusAuto,
   mergeV5Bonus,
@@ -56,6 +60,38 @@ function monthRange(periodMonth: string) {
 function fmtDM(iso: string): string {
   const [, m, d] = iso.split("-");
   return `${d}/${m}`;
+}
+
+/** Máy chủ chưa có RPC (migration chưa áp) — PostgREST PGRST202 / Postgres 42883. */
+function isMissingRpc(error: { code?: string | null } | null | undefined): boolean {
+  return error?.code === "PGRST202" || error?.code === "42883";
+}
+const HH_QL_MIGRATION = "20260927155251_hoa_hong_quan_ly_so_ao";
+
+/**
+ * Liên kết ô QL + sổ đang giữ tiền + dấu "đã tính vào lương" cho từng phiếu hoa hồng
+ * (salary_commission_meta_v1). FAIL-CLOSED: lỗi tải KHÔNG được coi như "không có liên
+ * kết" — thiếu nó thì phiếu sổ ảo bị trừ nhầm như đã chi, phiếu đã tính kỳ trước bị
+ * cộng lần hai. Server nhận tối đa 2000 id mỗi lượt → chia lô 1000.
+ */
+async function fetchCommissionMeta(ids: string[], periodMonth: string): Promise<Map<string, CommissionVoucherMeta>> {
+  const out = new Map<string, CommissionVoucherMeta>();
+  for (let i = 0; i < ids.length; i += 1000) {
+    // Dấu "đã tính" khoá theo (phiếu, kỳ): hỏi đúng phần của kỳ đang xem.
+    const { data, error } = await supabase.rpc("salary_commission_meta_v1", {
+      p_voucher_ids: ids.slice(i, i + 1000),
+      p_period_month: periodMonth,
+    });
+    if (error) {
+      throw new Error(
+        isMissingRpc(error)
+          ? `Máy chủ chưa có chức năng hoa hồng quản lý (migration ${HH_QL_MIGRATION}) — chưa tính được lương.`
+          : "Lỗi tải liên kết hoa hồng quản lý — không thể tính lương chính xác: " + (error.message || ""),
+      );
+    }
+    for (const r of (data || []) as CommissionVoucherMeta[]) out.set(r.voucher_id, r);
+  }
+  return out;
 }
 
 export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = "legacy") => {
@@ -184,9 +220,11 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
       );
 
       // HH Sale: phiếu chi hoa hồng (loại "Hoa hồng môi giới"/"HHMG"/category HOA HỒNG)
-      // có NGƯỜI-NHẬN (payer_name) = tên/biệt danh quản lý, kỳ phân bổ (item.start_date)
-      // trong tháng. Tháng nháp: phiếu CHƯA DUYỆT (UNAPPROVED) mới tính (chốt lương sẽ
-      // tự duyệt); phiếu ĐÃ DUYỆT → cảnh báo "!" (cần kiểm tra).
+      // kỳ phân bổ (item.start_date) trong tháng, của quản lý nào thì xác định bằng ô QL
+      // (liên kết server) hoặc khớp tên người nhận. Từ 27/09/2026 (phương án A) tính CẢ
+      // phiếu đã duyệt: phiếu ở sổ ảo "Hoa hồng QL chờ trả lương" trả qua lương; phiếu ở
+      // sổ thật là thu nhập nhưng tiền đã/sẽ ra từ sổ đó (không chuyển lần hai). Phiếu đã
+      // có dấu "đã tính vào lương" của kỳ/người khác thì gạch. Xem classifyCommissionVouchers.
       const aliasToStaff = new Map<string, string>();
       for (const c of configs) {
         const al = (c.alias || "").trim().toLowerCase();
@@ -198,7 +236,7 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
       {
         const { data: ctRaw } = await (supabase.from("income_expense_types").select("id, name, category") as any);
         const commTypeIds = ((ctRaw || []) as any[])
-          .filter((t) => String(t.category || "").toUpperCase() === "HOA HỒNG" || /hoa h[ồô]ng|hhmg/i.test(String(t.name || "")))
+          .filter((t) => isCommissionType(t))
           .map((t) => t.id);
         if (commTypeIds.length) {
           // PAGED: cộng hoa hồng qua cả tháng, không chặn per-entity → phân trang kẻo cap 1000.
@@ -206,7 +244,7 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
             (from, to) =>
               (supabase
                 .from("income_expense_items")
-                .select("id, amount, start_date, income_expenses(id, name, payer_name, approval_status, type, deleted_at)") as any)
+                .select("id, amount, start_date, income_expenses(id, name, payer_name, approval_status, approval_version, type, deleted_at)") as any)
                 .in("income_expense_type_id", commTypeIds)
                 .gte("start_date", start)
                 .lte("start_date", end)
@@ -219,22 +257,18 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
           if (ciRaw === null) {
             throw new Error("Lỗi tải dữ liệu hoa hồng (income_expense_items) — không thể tính lương chính xác.");
           }
-          const voucherMap = new Map<string, { name: string; status: string; amount: number; staff: string }>();
+          const voucherMap = new Map<string, CommissionVoucherRow>();
           for (const row of ciRaw as any[]) {
             const ie = (row as any).income_expenses;
             if (!ie || ie.type !== "EXPENSE" || ie.deleted_at || ie.approval_status === "CANCELLED") continue;
-            const staff = aliasToStaff.get((ie.payer_name || "").trim().toLowerCase());
-            if (!staff) continue;
             const ex = voucherMap.get(ie.id);
             if (ex) ex.amount += num(row.amount);
-            else voucherMap.set(ie.id, { name: ie.name || "Hoa hồng", status: ie.approval_status, amount: num(row.amount), staff });
+            else voucherMap.set(ie.id, { id: ie.id, name: ie.name || "Hoa hồng", status: ie.approval_status, amount: num(row.amount), payerName: ie.payer_name || "", version: ie.approval_version == null ? undefined : num(ie.approval_version) });
           }
-          for (const [vid, v] of voucherMap) {
-            const entry = commByStaff.get(v.staff) || { items: [] as SalCommissionItem[], flagged: [] as SalCommissionItem[] };
-            const item: SalCommissionItem = { label: v.name, amount: v.amount, approved: v.status === "APPROVED", voucherId: vid };
-            (v.status === "APPROVED" ? entry.flagged : entry.items).push(item);
-            commByStaff.set(v.staff, entry);
-          }
+          const meta = await fetchCommissionMeta([...voucherMap.keys()], periodMonth);
+          for (const [staff, entry] of classifyCommissionVouchers(
+            [...voucherMap.values()], meta, aliasToStaff, new Set(staffIds), periodMonth,
+          )) commByStaff.set(staff, entry);
         }
       }
 
@@ -404,11 +438,10 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
         const hasSh = shByStaff.has(staff);
         const pending = hasSh && investment === 0 && anyProfitDraft;
 
-        // HH Sale: phiếu hoa hồng người-nhận = quản lý (commByStaff). Tháng nháp: chỉ
-        // phiếu CHƯA DUYỆT tính (chốt lương → tự duyệt); phiếu ĐÃ duyệt → cảnh báo "!".
-        // Tháng ĐÃ CHỐT: dùng số đã đóng băng; hiện đủ phiếu, bỏ cảnh báo.
+        // HH Sale (commByStaff): cả phiếu đã duyệt lẫn chờ duyệt; phiếu đã tính ở kỳ/người
+        // khác nằm ở flagged (gạch, không cộng). Tháng ĐÃ CHỐT: dùng số đã đóng băng.
         const commEntry = commByStaff.get(staff) || { items: [] as SalCommissionItem[], flagged: [] as SalCommissionItem[] };
-        const commissionItems = locked ? commEntry.items.concat(commEntry.flagged) : commEntry.items;
+        const commissionItems = commEntry.items;
         const commissionFlagged = locked ? [] : commEntry.flagged;
         const commission = locked ? num(mRow?.commission_total) : commEntry.items.reduce((s, x) => s + x.amount, 0);
 
@@ -774,12 +807,18 @@ export const useLockSalaryMonth = () => {
           ledger: m.ledger,
         };
       });
-      const canonical = await supabase.rpc("lock_salary_month_v1", {
+      // v2 (migration 20260927155251) = v1 + ghi dấu "đã tính vào lương kỳ này" cho mọi
+      // phiếu hoa hồng gửi kèm (cả đã duyệt), để không phiếu nào vào lương hai lần.
+      // Thiếu v2 trên máy chủ KHÔNG được rơi về đường legacy: legacy không ghi dấu.
+      const canonical = await supabase.rpc("lock_salary_month_v2", {
         p_period_month: periodMonth,
         p_managers: rpcNullable(canonicalManagers),
         p_idempotency_key: `sal-lock-${periodMonth}-${crypto.randomUUID().slice(0, 8)}`,
       });
       if (!canonical.error) return;
+      if (isMissingRpc(canonical.error)) {
+        throw new Error(`Máy chủ chưa có chốt lương kèm dấu hoa hồng (migration ${HH_QL_MIGRATION}).`);
+      }
       if (!isCanonicalFallbackSignal(canonical.error)) {
         toast.error(canonical.error.message || "Không thể chốt lương");
         throw canonical.error;
@@ -871,13 +910,17 @@ export const useUnlockSalaryMonth = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ periodMonth, staffIds }: { periodMonth: string; staffIds: string[] }) => {
-      // Canonical unlock (atomic + giữ organization_id); fallback legacy.
-      const canonical = await supabase.rpc("unlock_salary_month_v1", {
+      // Canonical unlock (atomic + giữ organization_id); fallback legacy. v2 gỡ luôn dấu
+      // "đã tính vào lương" của kỳ này để lần chốt sau tính lại được đúng các phiếu đó.
+      const canonical = await supabase.rpc("unlock_salary_month_v2", {
         p_period_month: periodMonth,
         p_staff_ids: staffIds,
         p_idempotency_key: `sal-unlock-${periodMonth}-${crypto.randomUUID().slice(0, 8)}`,
       });
       if (!canonical.error) return;
+      if (isMissingRpc(canonical.error)) {
+        throw new Error(`Máy chủ chưa có mở chốt lương kèm dấu hoa hồng (migration ${HH_QL_MIGRATION}).`);
+      }
       if (!isCanonicalFallbackSignal(canonical.error)) throw canonical.error;
 
       const { data: rows } = await (supabase

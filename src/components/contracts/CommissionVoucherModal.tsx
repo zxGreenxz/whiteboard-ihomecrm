@@ -34,6 +34,13 @@ import { useAccounts } from "@/hooks/useAccounts";
 import { useAuth } from "@/hooks/useAuth";
 import BankSelect from "@/components/income-expenses/BankSelect";
 import AttachmentUpload from "@/components/income-expenses/AttachmentUpload";
+import { QlManagerSelectForBuilding } from "@/components/income-expenses/QlManagerSelect";
+import {
+  assignCommissionManager,
+  invalidateAfterCommissionAssign,
+  useOptionalQueryClient,
+  type CommissionManagerOption,
+} from "@/hooks/useCommissionManager";
 
 interface CommissionVoucherModalProps {
   open: boolean;
@@ -73,6 +80,75 @@ function ExistingVoucherBanner({
   );
 }
 
+/**
+ * Ô "Tên người nhận" kèm ô QL (migration 20260927155251): tích QL thì chọn quản lý
+ * hưởng lương thay vì gõ tên. Phiếu tạo xong được gán cho quản lý đó và chuyển sang
+ * sổ ảo "Hoa hồng QL chờ trả lương" — không chi từ sổ quỹ, tiền trả qua lương.
+ */
+function QlRecipientField({
+  idPrefix,
+  buildingId,
+  ql,
+  onQl,
+  managerId,
+  onManager,
+  recipient,
+  onRecipient,
+}: {
+  idPrefix: string;
+  buildingId: string | null | undefined;
+  ql: boolean;
+  onQl: (v: boolean) => void;
+  managerId: string;
+  onManager: (m: CommissionManagerOption) => void;
+  recipient: string;
+  onRecipient: (v: string) => void;
+}) {
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between gap-2">
+        <Label className="text-xs" htmlFor={`${idPrefix}-recipient`}>
+          Tên người nhận
+        </Label>
+        <label className="flex items-center gap-1 text-xs font-medium cursor-pointer select-none">
+          <input
+            type="checkbox"
+            id={`${idPrefix}-ql`}
+            checked={ql}
+            onChange={(e) => onQl(e.target.checked)}
+            aria-label="Người nhận là quản lý (QL)"
+          />
+          QL
+        </label>
+      </div>
+      {ql ? (
+        <QlManagerSelectForBuilding
+          id={`${idPrefix}-recipient`}
+          buildingId={buildingId}
+          value={managerId}
+          onPick={onManager}
+        />
+      ) : (
+        <Input
+          id={`${idPrefix}-recipient`}
+          value={recipient}
+          onChange={(e) => onRecipient(e.target.value)}
+        />
+      )}
+    </div>
+  );
+}
+
+function QlNote() {
+  return (
+    <p className="col-span-2 md:col-span-3 rounded-md border border-violet-200 bg-violet-50 px-3 py-2 text-xs text-violet-800">
+      Hoa hồng của quản lý: phiếu sẽ chuyển sang sổ ảo <b>Hoa hồng QL chờ trả lương</b> —
+      duyệt vẫn tính chi phí tòa nhưng <b>không chi tiền từ sổ quỹ</b>; tiền trả qua lương
+      của quản lý.
+    </p>
+  );
+}
+
 export function CommissionVoucherModal({
   open,
   contractId,
@@ -87,6 +163,7 @@ export function CommissionVoucherModal({
   const { data: accounts = [] } = useAccounts();
   const { data: authUser } = useAuth();
   const createVoucher = useCreateCommissionVoucher();
+  const queryClient = useOptionalQueryClient();
 
   // Chống chi lần 2: phiếu HH sống đã có của HĐ này (mỗi HĐ tối đa 1 phiếu/loại)
   const { data: existingVouchers = [] } = useExistingCommissionVouchers(
@@ -117,6 +194,8 @@ export function CommissionVoucherModal({
   const [brokerBank, setBrokerBank] = useState<string>("");
   const [brokerRecipient, setBrokerRecipient] = useState<string>("");
   const [brokerAttachments, setBrokerAttachments] = useState<string[]>([]);
+  const [brokerQl, setBrokerQl] = useState(false);
+  const [brokerManagerId, setBrokerManagerId] = useState<string>("");
 
   // Mục 3 — Sale (optional). Sổ quỹ riêng: mặc định theo sổ quỹ chung (mục 1),
   // đổi được độc lập để chi thưởng nóng từ quỹ khác quỹ chi hoa hồng MG.
@@ -127,6 +206,8 @@ export function CommissionVoucherModal({
   const [saleRecipient, setSaleRecipient] = useState<string>("");
   const [saleAccountId, setSaleAccountId] = useState<string>("");
   const [saleAttachments, setSaleAttachments] = useState<string[]>([]);
+  const [saleQl, setSaleQl] = useState(false);
+  const [saleManagerId, setSaleManagerId] = useState<string>("");
 
   /**
    * Sổ quỹ mặc định = sổ CÙNG TÊN với toà nhà, chọn ngay trên danh sách dropdown
@@ -186,12 +267,16 @@ export function CommissionVoucherModal({
     setBrokerBank("");
     setBrokerRecipient("");
     setBrokerAttachments([]);
+    setBrokerQl(false);
+    setBrokerManagerId("");
     setSaleAmount("");
     setSaleName("");
     setSaleAccountNumber("");
     setSaleBank("");
     setSaleRecipient("");
     setSaleAttachments([]);
+    setSaleQl(false);
+    setSaleManagerId("");
   }, [open, prefill]);
 
   /**
@@ -251,6 +336,27 @@ export function CommissionVoucherModal({
       return;
     }
 
+    if ((willCreateBroker && brokerQl && !brokerManagerId) || (willCreateSale && saleQl && !saleManagerId)) {
+      toast.error("Đã tích QL — hãy chọn quản lý nhận hoa hồng.");
+      return;
+    }
+
+    // Gán quản lý NGAY sau khi tạo (ô QL). Lỗi gán không huỷ phiếu vừa tạo: phiếu ở
+    // lại sổ đã chọn, báo rõ để gán lại ở màn Lương (khoản đó → "Chuyển sang trả qua lương").
+    const ganQl = async (v: { id: string; code: string } | undefined, managerId: string) => {
+      if (!v?.id || !managerId) return;
+      try {
+        await assignCommissionManager({ voucherId: v.id, managerId });
+        await invalidateAfterCommissionAssign(queryClient);
+      } catch (e) {
+        toast.error(
+          `Đã tạo phiếu ${v.code ?? ""} nhưng CHƯA gán quản lý: ${
+            e instanceof Error ? e.message : "lỗi không xác định"
+          }. Gán lại ở Lương → Thu nhập & thanh toán.`
+        );
+      }
+    };
+
     setSubmitting(true);
     let created = 0;
     try {
@@ -258,7 +364,7 @@ export function CommissionVoucherModal({
       // auto_generate_voucher_code (đọc MAX(seq) — 2 insert song song có thể
       // sinh trùng code → vi phạm idx_income_expenses_unique_code_per_user).
       if (willCreateBroker) {
-        await createVoucher.mutateAsync({
+        const v = await createVoucher.mutateAsync({
           contract_id: prefill.contract_id,
           contract_number: prefill.contract_number,
           building_id: prefill.building_id,
@@ -278,10 +384,11 @@ export function CommissionVoucherModal({
             : `Hoa hồng MG (HĐ ${prefill.months} tháng — không khớp mốc cấu hình)`,
         });
         created++;
+        if (brokerQl) await ganQl(v, brokerManagerId);
       }
 
       if (willCreateSale) {
-        await createVoucher.mutateAsync({
+        const v = await createVoucher.mutateAsync({
           contract_id: prefill.contract_id,
           contract_number: prefill.contract_number,
           building_id: prefill.building_id,
@@ -299,6 +406,7 @@ export function CommissionVoucherModal({
           item_description: `Thưởng nóng Sale HĐ ${prefill.months} tháng`,
         });
         created++;
+        if (saleQl) await ganQl(v, saleManagerId);
       }
 
       toast.success(
@@ -485,13 +593,24 @@ export function CommissionVoucherModal({
                       placeholder="Tên công ty / cá nhân môi giới"
                     />
                   </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Tên người nhận</Label>
-                    <Input
-                      value={brokerRecipient}
-                      onChange={(e) => setBrokerRecipient(e.target.value)}
-                    />
-                  </div>
+                  <QlRecipientField
+                    idPrefix="hh-broker"
+                    buildingId={prefill.building_id}
+                    ql={brokerQl}
+                    onQl={(v) => {
+                      setBrokerQl(v);
+                      if (!v) setBrokerManagerId("");
+                    }}
+                    managerId={brokerManagerId}
+                    onManager={(m) => {
+                      setBrokerManagerId(m.staffId);
+                      setBrokerRecipient(m.displayName);
+                      setBrokerName((cur) => cur || m.alias || m.displayName);
+                    }}
+                    recipient={brokerRecipient}
+                    onRecipient={setBrokerRecipient}
+                  />
+                  {brokerQl && <QlNote />}
                   <div className="space-y-1">
                     <Label className="text-xs">Số tài khoản</Label>
                     <Input
@@ -573,13 +692,24 @@ export function CommissionVoucherModal({
                       onChange={(e) => setSaleName(e.target.value)}
                     />
                   </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Tên người nhận</Label>
-                    <Input
-                      value={saleRecipient}
-                      onChange={(e) => setSaleRecipient(e.target.value)}
-                    />
-                  </div>
+                  <QlRecipientField
+                    idPrefix="hh-sale"
+                    buildingId={prefill.building_id}
+                    ql={saleQl}
+                    onQl={(v) => {
+                      setSaleQl(v);
+                      if (!v) setSaleManagerId("");
+                    }}
+                    managerId={saleManagerId}
+                    onManager={(m) => {
+                      setSaleManagerId(m.staffId);
+                      setSaleRecipient(m.displayName);
+                      setSaleName((cur) => cur || m.alias || m.displayName);
+                    }}
+                    recipient={saleRecipient}
+                    onRecipient={setSaleRecipient}
+                  />
+                  {saleQl && <QlNote />}
                   <div className="space-y-1">
                     <Label className="text-xs">Số tài khoản</Label>
                     <Input

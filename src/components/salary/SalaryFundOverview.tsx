@@ -140,7 +140,11 @@ export default function SalaryFundOverview({ periods, feeBuildings, feeUnpublish
   const exc: Exc[] = [];
   if (feeUnpublished) exc.push({ tag: "Chưa có giá", tone: "warning", title: `${feeUnpublished} tòa chưa công bố giá phí Quản lý`, sub: "Không cộng vào nguồn lương tháng cho tới khi chủ công bố giá", cta: "Nguồn lương", onClick: () => onOpenFund("funding") });
   for (const m of mgrs) {
-    if (m.commissionFlagged?.length) exc.push({ tag: "Cần đối chiếu", tone: "danger", title: `${m.name} · ${m.commissionFlagged.length} phiếu HH đã duyệt trong tháng`, sub: "Đã trả riêng ở phiếu Sale — kiểm tra để không trả lại qua lương", cta: "Thu nhập", onClick: () => onOpenPerson(m.id) });
+    if (m.commissionFlagged?.length) exc.push({ tag: "Cần đối chiếu", tone: "danger", title: `${m.name} · ${m.commissionFlagged.length} phiếu HH đã tính vào lương người khác`, sub: "Không cộng lại — nếu sai người thì mở chốt lương người kia kỳ này rồi chốt lại", cta: "Thu nhập", onClick: () => onOpenPerson(m.id) });
+    // Phiếu HH chờ duyệt còn ở sổ thật: duyệt sẽ ra tiền từ sổ đó, lương không trả lại.
+    // Hoa hồng quản lý trả qua lương thì phải gán QL (chuyển sang sổ ảo) trước khi duyệt.
+    const chuaGan = m.status !== "LOCKED" ? m.commissionItems.filter((c) => !c.approved && (c.paidElsewhere || 0) > 0) : [];
+    if (chuaGan.length) exc.push({ tag: "Chưa gán QL", tone: "warning", title: `${m.name} · ${chuaGan.length} phiếu HH chờ duyệt còn ở sổ thật`, sub: "Duyệt sẽ chi từ sổ đó và lương không trả lại — muốn trả qua lương thì bấm khoản đó, chọn \"Chuyển sang trả qua lương\"", cta: "Thu nhập", onClick: () => onOpenPerson(m.id) });
     if (!m.investmentLocked) exc.push({ tag: "Chưa chốt", tone: "warning", title: `${m.name} · lợi nhuận kỳ chưa chốt`, sub: "Thu nhập đồng hành chưa đủ cơ sở — không phải bằng 0", cta: "Thu nhập", onClick: () => onOpenPerson(m.id) });
     if (m.status !== "LOCKED" && fundLinesOf(m).some((l) => l.supplementary && l.amount > 0)) exc.push({ tag: "Nhập tay", tone: "neutral", title: `${m.name} · lương QL bổ sung đang nhập tay trong Thưởng`, sub: "Khoản cố định hàng tháng — nên quản lý thành khoản định kỳ", cta: "Khoản định kỳ", onClick: () => onOpenFund("rules") });
   }

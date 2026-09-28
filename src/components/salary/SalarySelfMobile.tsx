@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { salFmt, salShort, bigNum } from "./salaryFormat";
 import { useCountUp } from "./salaryCommon";
-import { isUnqualifiedContractRow, type SalManager, type SalLedgerRow } from "@/lib/managerSalary";
+import { commissionFlaggedNote, commissionItemNote, isUnqualifiedContractRow, type SalManager, type SalLedgerRow } from "@/lib/managerSalary";
 
 
 // Hạng suy từ số mốc "chặng nhiệm vụ tháng" đã đạt (0..4) — bám dữ liệu thật
@@ -589,17 +589,17 @@ function DetailSheet({ m, period, item, onClose, onGoList }: ScreenProps & { ite
     const flagged = m.commissionFlagged || [];
     return (
       <Sheet title="Hoa hồng Sale" onClose={onClose}>
-        <div className="text-[11.5px] text-[#9A8FC4] -mt-2 mb-1">Tự duyệt khi chốt lương tháng</div>
+        <div className="text-[11.5px] text-[#9A8FC4] -mt-2 mb-1">Phiếu ở sổ ảo trả qua lương · phiếu đã chi từ sổ thật không chuyển lại</div>
         {m.commissionItems.length === 0 && flagged.length === 0 ? <DEmpty>Tháng này chưa có hoa hồng.</DEmpty> : <>
-          {m.commissionItems.map((x, i) => <DRow key={"c" + i} label={x.label} note="nháp — sẽ duyệt khi chốt" amount={x.amount} color="#C4B5FD" />)}
+          {m.commissionItems.map((x, i) => <DRow key={"c" + i} label={x.label} note={commissionItemNote(x, m.status === "LOCKED")} amount={x.amount} color="#C4B5FD" />)}
           {flagged.length > 0 && <>
             <div className="flex items-center gap-1 pt-3 pb-1 text-[11.5px] font-bold" style={{ color: "#FF7AA0" }}>
-              <AlertTriangle size={13} />Cần kiểm tra — đã thanh toán riêng
+              <AlertTriangle size={13} />Đã tính vào lương người khác
             </div>
-            {flagged.map((x, i) => <DRow key={"f" + i} label={x.label} note="đã duyệt — không tính" amount={x.amount} neg color="#FF7AA0" />)}
+            {flagged.map((x, i) => <DRow key={"f" + i} label={x.label} note={commissionFlaggedNote(x)} amount={x.amount} neg color="#FF7AA0" />)}
           </>}
         </>}
-        <DTotal label="Tổng HH Sale (nháp)" amount={total} color="#C4B5FD" bg="rgba(139,92,246,.12)" border="rgba(139,92,246,.3)" />
+        <DTotal label="Tổng HH Sale" amount={total} color="#C4B5FD" bg="rgba(139,92,246,.12)" border="rgba(139,92,246,.3)" />
       </Sheet>
     );
   }

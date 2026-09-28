@@ -41,6 +41,7 @@ import { AUDIT_TONE_CLASSES, auditActionLabel, voucherEditAction } from "@/lib/i
 import { useIsCompanyOwner } from "@/hooks/useIsCompanyOwner";
 import { RevisionHistory, VoucherRevisionBadges } from "@/components/income-expenses/RevisionSummary";
 import { CollectionMethodAction } from "@/components/income-expenses/CollectionMethodAction";
+import { CommissionManagerAction } from "./CommissionManagerAction";
 import { getVoucherDisplayAttachments } from '@/lib/incomeExpenseSupplement';
 import { useAuth } from "@/hooks/useAuth";
 import { StorageImage } from "@/components/ui/storage-image";
@@ -408,6 +409,11 @@ export function IncomeExpenseDetailDialog({
             <Row
               label={isExpense ? "Người nhận" : "Người nộp"}
               value={voucher.payer_name}
+            />
+            {/* Phiếu hoa hồng chờ duyệt: gán quản lý nhận → sổ ảo, trả qua lương (20260927155251). */}
+            <CommissionManagerAction
+              voucher={voucher}
+              row={(label, value) => <Row label={label} value={value} />}
             />
             {isExpense && voucher.receive_bank_account && (
               <Row label="Số TK nhận" value={voucher.receive_bank_account} />
