@@ -1,4 +1,4 @@
-# Trả phòng và quyết toán hợp đồng
+# Thanh lý hợp đồng — trả phòng và quyết toán
 
 ## Quy trình thao tác hiện tại (cập nhật 28/09/2026)
 
