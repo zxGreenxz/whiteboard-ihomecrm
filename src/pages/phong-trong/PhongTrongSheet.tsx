@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useLayoutEffect } from "react";
 import { Icon, amenIcon } from "./icons";
-import { STATUS_META, fmtPrice, MANAGER, genInfoLines, type Room, type Building } from "./sampleData";
+import { STATUS_META, fmtPrice, genInfoLines, type Room, type Building } from "./sampleData";
 import { useTrack } from "./useTracking";
 import { corsFetchUrl } from "@/lib/storage/r2Config";
 
@@ -98,14 +98,13 @@ function buildShareText(r: Room, building?: Building): string {
       ? (r.passContactManager
           ? `• Tình trạng: Khách pass phòng — Liên hệ quản lý`
           : `• Tình trạng: Khách pass phòng${r.passContactPhone ? " — LH " + r.passContactPhone + (r.passContactName ? " (" + r.passContactName + ")" : "") : ""}`)
-      : `• Tình trạng: ${SM[r.status].label}${r.availDate ? " (trống từ " + r.availDate + ")" : ""}`,
+      : `• Tình trạng: ${r.saleFact?.label || SM[r.status].label}`,
     `• Nội thất: ${r.amenities.join(", ")}`,
     ...(isPass && r.passAvailDate ? [`• Dự kiến trống từ: ${r.passAvailDate}`] : []),
     ...(isPass && r.passSalePolicy ? [`• Chính sách sale: ${r.passSalePolicy}`] : []),
     ...(r.saleNote ? [`• Khuyến mãi: ${r.saleNote}`] : []),
     `• Địa chỉ: ${shortAddr(r.buildingAddr)}`,
-    "",
-    "📋 Thông tin chung:",
+    ...(genInfoLines(building).length ? ['', '📋 Thông tin chung:'] : []),
     ...genInfoLines(building).map((t) => `• ${t}`),
   ].join("\n");
 }
@@ -117,9 +116,7 @@ type ShareNav = Navigator & {
 };
 
 function roomImages(r: Room): string[] {
-  return r.images && r.images.length
-    ? r.images
-    : Array.from({ length: r.imgCount }, (_, i) => `https://picsum.photos/seed/${r.code}-${i}/900/650`);
+  return r.images ?? [];
 }
 
 // Tải TOÀN BỘ ảnh phòng thành File[] (tên theo Tòa-Phòng-STT) để chia sẻ / tải về.
@@ -200,11 +197,11 @@ export function DetailSheet({
   const useCustomerContact = isPass && !passViaManager;
   const contactName = useCustomerContact
     ? (r.passContactName?.trim() || "khách")
-    : (building?.manager || MANAGER.name);
+    : (building?.manager || 'quản lý');
   const contactPhone = useCustomerContact
-    ? (r.passContactPhone?.trim() || building?.phone || MANAGER.phone)
-    : (building?.phone || MANAGER.phone);
-  const contactDigits = contactPhone.replace(/\D/g, "") || MANAGER.zalo;
+    ? (r.passContactPhone?.trim() || building?.phone || '')
+    : (building?.phone || '');
+  const contactDigits = contactPhone.replace(/\D/g, '');
 
   // Helper: ghi sự kiện gắn phòng hiện hành.
   const trackRoom = (type: Parameters<typeof track.track>[0], meta?: Record<string, unknown>) =>
@@ -314,7 +311,7 @@ export function DetailSheet({
         <button className="sheet-close" onClick={onClose} aria-label="Đóng" title="Đóng"><Icon.Close /></button>
         <div className="sheet-grab" onClick={onClose} />
         <div className="sheet-scroll">
-          <Gallery images={images} onZoom={(i) => { trackRoom("image_view", { index: i }); setLb(i); }} />
+          {images.length ? <Gallery images={images} onZoom={(i) => { trackRoom("image_view", { index: i }); setLb(i); }} /> : <div className="empty">Chưa có ảnh phòng</div>}
 
           <div className="sheet-body">
             <div className="sh-head">
@@ -326,7 +323,7 @@ export function DetailSheet({
                 background: `var(--st-${r.status}-bg)`, color: stColor(r.status),
                 border: `1px solid var(--st-${r.status}-line)`,
               }}>
-                <i className="bd" style={{ background: stColor(r.status) }} />{SM[r.status].label}
+                <i className="bd" style={{ background: stColor(r.status) }} />{r.saleFact?.label || SM[r.status].label}
               </span>
             </div>
 
@@ -342,10 +339,10 @@ export function DetailSheet({
               <div className="spec"><div className="sp-lbl">Vị trí</div><div className="sp-val">T{r.floor}</div></div>
             </div>
 
-            {r.status === "soon" && r.availDate && (
+            {r.saleFact && r.saleFact.kind !== 'ready' && r.status !== 'pass' && r.status !== 'rented' && (
               <div className="note-box">
                 <Icon.Calendar />
-                {`Phòng sắp trống — dự kiến bàn giao từ ${r.availDate}. Có thể nhận booking & đặt lịch dẫn khách xem sớm.`}
+                {r.saleFact.label}
               </div>
             )}
 
@@ -384,7 +381,7 @@ export function DetailSheet({
               {r.amenities.map((a) => (<span className="amen-pill" key={a}>{amenIcon(a)}{a}</span>))}
             </div>
 
-            <p className="sh-section-lbl">Mô tả</p>
+            {genInfoLines(building).length > 0 && <p className="sh-section-lbl">Mô tả</p>}
             {/* Thông tin chung: điện + thang máy/bộ lấy theo TÒA; nước/PDV/tiện ích chung */}
             <div className="gen-info">
               {genInfoLines(building).map((t, i) => (
@@ -399,15 +396,15 @@ export function DetailSheet({
           </div>
 
           <div className="sh-actions2">
-            <button className="act2" onClick={doDownload}><Icon.Download />Tải ảnh</button>
+            <button className="act2" onClick={doDownload} disabled={!images.length}><Icon.Download />Tải ảnh</button>
             <button className="act2" onClick={doRoute}><Icon.Route />Chỉ đường</button>
             <button className="act2" onClick={doShare}><Icon.Share />Chia sẻ</button>
           </div>
         </div>
 
         <div className="sh-actions">
-          <button className="btn btn-primary btn-half" onClick={doCall}><Icon.Phone />{useCustomerContact ? "Gọi khách" : "Gọi Quản Lý"}</button>
-          <button className="btn btn-zalo btn-half" onClick={doZalo}><Icon.Chat />Zalo</button>
+          <button className="btn btn-primary btn-half" onClick={doCall} disabled={!contactDigits}><Icon.Phone />{contactDigits ? (useCustomerContact ? 'Gọi khách' : 'Gọi Quản Lý') : 'Chưa có số liên hệ'}</button>
+          <button className="btn btn-zalo btn-half" onClick={doZalo} disabled={!contactDigits}><Icon.Chat />Zalo</button>
           <button className="btn btn-nav prev" disabled={!prev} onClick={() => prev && onGo(prev)} title="Phòng trước">
             <Icon.Chevron />
           </button>

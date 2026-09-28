@@ -96,7 +96,7 @@ export default function NotificationOrgConfigCard() {
                     <p className="text-xs text-muted-foreground">
                       {NOTIFICATION_EVENT_LABELS[k].desc}
                     </p>
-                    {events[k].enabled && (
+                    {events[k].enabled && k !== "LIFECYCLE" && (
                       <div className="mt-2 flex items-center gap-2">
                         <span className="text-xs text-muted-foreground">
                           Chỉ báo khi số tiền từ

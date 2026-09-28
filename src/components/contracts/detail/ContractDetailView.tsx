@@ -3,7 +3,7 @@ import { useContract } from '@/hooks/useContracts';
 import { isContractInEffect } from '@/types/contract';
 import { useInvoicesLegacy } from '@/hooks/useInvoices';
 import { differenceInDays } from 'date-fns';
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 // Data layer tách riêng (Phase 9B) — UI không gọi supabase trực tiếp nữa.
 import {
   useContractDepositVouchers,
@@ -19,6 +19,8 @@ import { RenewDialog } from '@/components/contracts/RenewDialog';
 import { TransferContractDialog } from '@/components/contracts/TransferContractDialog';
 import { TransferRoomDialog } from '@/components/contracts/TransferRoomDialog';
 import { TerminateDialog } from '@/components/contracts/TerminateDialog';
+import { ContractExitCasePanel } from '@/components/contracts/ContractExitCasePanel';
+const TransferPanel = lazy(() => import('@/components/contracts/ContractTransferLinkPanel').then(module => ({ default: module.ContractTransferLinkPanel })));
 import RegisterMoveOutDialog from '@/components/contracts/RegisterMoveOutDialog';
 import ContractQRDialog from '@/components/contracts/ContractQRDialog';
 import { ContractFormDialog } from '@/components/contracts/ContractFormDialog';
@@ -180,7 +182,7 @@ const ContractDetailView = ({ id, onBack, showBackButton = true }: ContractDetai
   const dialogs = (
     <>
       <RenewDialog open={extendDialogOpen} onOpenChange={setExtendDialogOpen} contract={contract} />
-      <TransferContractDialog open={transferDialogOpen} onOpenChange={setTransferDialogOpen} contract={contract} />
+      <TransferContractDialog open={transferDialogOpen} onOpenChange={setTransferDialogOpen} contract={contract} onStartReturn={() => setTerminateDialogOpen(true)} />
       <TerminateDialog open={terminateDialogOpen} onOpenChange={setTerminateDialogOpen} contract={contract} />
       <RegisterMoveOutDialog open={moveOutDialogOpen} onOpenChange={setMoveOutDialogOpen} contract={contract} />
       <ContractQRDialog
@@ -204,6 +206,8 @@ const ContractDetailView = ({ id, onBack, showBackButton = true }: ContractDetai
   if (isMobile) {
     return (
       <>
+        {contract.status === 'TERMINATED' && <ContractExitCasePanel key={contract.id} contract={contract} />}
+        {contract.status !== 'TERMINATED' && <Suspense fallback={null}><TransferPanel key={contract.id} contractId={contract.id} /></Suspense>}
         <ContractDetailMobile
           contract={contract}
           services={contractServices}
@@ -230,6 +234,8 @@ const ContractDetailView = ({ id, onBack, showBackButton = true }: ContractDetai
 
   return (
     <>
+      {contract.status === 'TERMINATED' && <ContractExitCasePanel key={contract.id} contract={contract} />}
+      {contract.status !== 'TERMINATED' && <Suspense fallback={null}><TransferPanel key={contract.id} contractId={contract.id} /></Suspense>}
       <ContractDetailDesktop
         contract={contract}
         perms={perms}

@@ -1,10 +1,10 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 788,
-  "soFileDocBangFs": 233,
-  "tongLoiGoi": 508,
-  "khongPhanLoaiDuoc": 257,
+  "tongSoFileTest": 843,
+  "soFileDocBangFs": 249,
+  "tongLoiGoi": 533,
+  "khongPhanLoaiDuoc": 261,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 44,
@@ -23,7 +23,7 @@
       "moTa": "Đọc script PowerShell. Hợp lệ vì lý do như SQL."
     },
     "sql": {
-      "soFile": 66,
+      "soFile": 80,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     }
   },
@@ -156,6 +156,14 @@
       "loai": {
         "tai-lieu": 5,
         "manifest": 1
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "src/lib/__tests__/contractExitCaseMigration.test.ts",
+      "soGoi": 7,
+      "loai": {
+        "sql": 6
       },
       "khongPhanLoaiDuoc": 1
     },
@@ -482,6 +490,12 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": ".e2e-fleet/specs/contract-draft-sign-storage.spec.ts",
+      "soGoi": 2,
+      "loai": {},
+      "khongPhanLoaiDuoc": 2
+    },
+    {
       "file": "infra/network-center-worker/test/backupStore.test.ts",
       "soGoi": 2,
       "loai": {},
@@ -683,6 +697,14 @@
       "khongPhanLoaiDuoc": 2
     },
     {
+      "file": "src/lib/__tests__/contractMeterBoundaryMigration.test.ts",
+      "soGoi": 2,
+      "loai": {
+        "sql": 2
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "src/lib/__tests__/copilotDraftWriterMigration.test.ts",
       "soGoi": 2,
       "loai": {
@@ -764,6 +786,14 @@
       "khongPhanLoaiDuoc": 1
     },
     {
+      "file": "src/lib/__tests__/roomReservationMigration.test.ts",
+      "soGoi": 2,
+      "loai": {
+        "sql": 2
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "src/lib/__tests__/terminationCustomerRefundMigration.test.ts",
       "soGoi": 2,
       "loai": {
@@ -786,6 +816,12 @@
         "ma-nguon": 1
       },
       "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": ".e2e-fleet/specs/contract-moveout-deferred.spec.ts",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
     },
     {
       "file": ".e2e-fleet/specs/copilot-golden-readonly.spec.ts",
@@ -926,6 +962,14 @@
       "soGoi": 1,
       "loai": {
         "tai-lieu": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "scripts/__tests__/lifecycle-reminder-cron-migration.test.ts",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
       },
       "khongPhanLoaiDuoc": 0
     },
@@ -1237,6 +1281,46 @@
     },
     {
       "file": "src/lib/__tests__/contractCreateRpc.test.ts",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/__tests__/contractDraftMigration.test.ts",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/__tests__/contractDraftPayloadValidation.test.ts",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/__tests__/contractMeterFollowups.test.ts",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/__tests__/contractMoveOutNoticeMigration.test.ts",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/__tests__/contractSigningMigration.test.ts",
       "soGoi": 1,
       "loai": {
         "sql": 1
@@ -1700,6 +1784,14 @@
       "khongPhanLoaiDuoc": 1
     },
     {
+      "file": "src/lib/__tests__/roomSaleMigration.test.ts",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "src/lib/__tests__/saleBonusDepositAccountAttachments.test.ts",
       "soGoi": 1,
       "loai": {},
@@ -1736,6 +1828,38 @@
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "src/lib/contract-lifecycle/__tests__/noticeTransitions.test.ts",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/contract-lifecycle/__tests__/reminders.test.ts",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/contract-lifecycle/__tests__/transferMigration.test.ts",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/contract-lifecycle/__tests__/turnoverMigration.test.ts",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "src/lib/contracts/__tests__/errors.test.ts",

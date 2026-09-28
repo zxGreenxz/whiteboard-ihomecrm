@@ -5,6 +5,7 @@ import "@/styles/mobileApp.css";
 import "@/styles/financeMobile.css";
 import "@/styles/estateMobile.css";
 import { useRooms } from "@/hooks/useRooms";
+import { RoomTurnoverQueue } from '@/components/rooms/RoomTurnoverQueue';
 import { useBuildings } from "@/hooks/useBuildings";
 import { useRoomsWithActiveContracts } from "@/hooks/useRoomsWithContracts";
 import { getRoomDisplayStatus, type RoomDisplayStatus } from "@/lib/roomStatus";
@@ -137,6 +138,7 @@ export default function RoomsMobilePage() {
           </div>
 
           <div className="mbody">
+            <RoomTurnoverQueue buildingIds={buildingId ? [buildingId] : []} />
             <div className="lfilter">
               {TABS.map((t) => (
                 <button key={t.id} className={"lchip" + (status === t.id ? " on" : "")} onClick={() => setStatus(t.id)}>

@@ -156,8 +156,14 @@ export interface OwnerInfo {
   id_issue_date?: string | null;
 }
 
+export type ContractTemplateSource = Pick<ContractWithRelations,
+  'contract_number' | 'signed_date' | 'start_date' | 'end_date' | 'start_billing_date' |
+  'rent_price' | 'total_deposit' | 'payment_cycle' | 'discounts' | 'notes' |
+  'initial_electricity_reading' | 'initial_water_reading' | 'actual_end_date' |
+  'room' | 'contract_customers' | 'contract_services'>;
+
 export interface BuildContractDataInput {
-  contract: ContractWithRelations;
+  contract: ContractTemplateSource;
   /** Owner profile fed in by the page (typically derived from auth + profile). */
   owner?: OwnerInfo;
   /** Vehicles linked to the contract's tenants (optional, defaults to []). */
@@ -502,7 +508,7 @@ function extractStoragePath(url: string): string | null {
  * we go through the SDK with the user session instead of a raw fetch on
  * the public URL).
  */
-async function fetchTemplateBuffer(templateUrl: string): Promise<ArrayBuffer> {
+export async function fetchTemplateBuffer(templateUrl: string): Promise<ArrayBuffer> {
   const path = extractStoragePath(templateUrl);
   if (path) {
     const { data, error } = await supabase.storage
@@ -526,11 +532,16 @@ export async function renderContractDocx(
   templateUrl: string,
   data: ContractTemplateData,
 ): Promise<Blob> {
-  const [{ default: Docxtemplater }, { default: PizZip }, buffer] =
+  const buffer = await fetchTemplateBuffer(templateUrl);
+  return renderContractDocxBuffer(buffer, data);
+}
+
+/** Render exact template bytes; draft exports store these bytes alongside the output. */
+export async function renderContractDocxBuffer(buffer: ArrayBuffer, data: ContractTemplateData): Promise<Blob> {
+  const [{ default: Docxtemplater }, { default: PizZip }] =
     await Promise.all([
       getDocxtemplater(),
       getPizZip(),
-      fetchTemplateBuffer(templateUrl),
     ]);
 
   const zip = new PizZip(buffer);

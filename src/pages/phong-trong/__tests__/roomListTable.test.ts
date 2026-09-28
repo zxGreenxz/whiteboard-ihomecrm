@@ -11,7 +11,7 @@ import {
   statusLines,
   typeCell,
 } from "../roomListTable";
-import { MANAGER, type Building, type Room, type RoomStatus } from "../sampleData";
+import { type Building, type Room, type RoomStatus } from "../sampleData";
 
 /* ---- fixtures ---- */
 function room(over: Partial<Room> = {}): Room {
@@ -126,7 +126,7 @@ describe("addressLines (ô ĐỊA CHỈ gộp)", () => {
 
 describe("elecLines (khối thông tin chung)", () => {
   it("chưa tòa nào khai giá điện → câu mặc định", () => {
-    expect(elecLines([building({ elecRate: null })])).toEqual(["Điện theo định mức tòa nhà"]);
+    expect(elecLines([building({ elecRate: null })])).toEqual([]);
   });
 
   it("mọi tòa cùng giá → đúng 1 dòng", () => {
@@ -180,8 +180,8 @@ describe("buildRoomListTable", () => {
     expect(buildRoomListTable(bs).contactLines).toEqual(["LIÊN HỆ ADMIN ĐỂ MỞ CỬA", "0923 889 880"]);
   });
 
-  it("không tòa nào khai SĐT → dùng hotline mặc định", () => {
-    expect(buildRoomListTable([building({ phone: "" })]).contactLines[1]).toBe(MANAGER.phone);
+  it("không tòa nào khai SĐT → ghi chưa có số liên hệ", () => {
+    expect(buildRoomListTable([building({ phone: "" })]).contactLines).toEqual(['Chưa có số liên hệ']);
   });
 
   it("danh sách rỗng → bảng rỗng, không nổ", () => {

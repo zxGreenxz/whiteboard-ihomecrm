@@ -1,9 +1,10 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
 import type { ExtraChargeItem, RefundItem } from "@/lib/contractValidation";
 import { rpcNullable } from "@/lib/rpcNullable";
+import { useOrganization } from '@/contexts/OrganizationContext';
+import { buildRenewNoticeArgs,buildTransferRoomNoticeArgs,type RenewNoticeInput,type TransferRoomNoticeInput } from '@/lib/contract-lifecycle/noticeTransitions';
 import {
   buildForfeitWithCreditRpcArgs,
   buildMoveOutWithCreditRpcArgs,
@@ -18,22 +19,13 @@ import {
 
 export const useRenewContract = () => {
   const queryClient = useQueryClient();
+  const { selectedOrganizationId } = useOrganization();
 
   return useMutation({
-    mutationFn: async (params: {
-      contractId: string;
-      newEndDate: string;
-      newRentPrice?: number;
-      newDeposit?: number;
-      notes?: string;
-    }) => {
-      const { data, error } = await supabase.rpc("renew_contract", {
-        p_contract_id: params.contractId,
-        p_new_end_date: params.newEndDate,
-        p_new_rent_price: params.newRentPrice ?? undefined,
-        p_new_deposit: params.newDeposit ?? undefined,
-        p_notes: params.notes ?? undefined,
-      });
+    retry:false,
+    mutationFn: async (params: RenewNoticeInput) => {
+      if(!selectedOrganizationId) throw new Error('Chưa chọn tổ chức');
+      const { data, error } = await supabase.rpc("renew_contract_with_notice_v1",buildRenewNoticeArgs(params,selectedOrganizationId));
 
       if (error) throw error;
       return data;
@@ -41,10 +33,12 @@ export const useRenewContract = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["contracts"] });
       queryClient.invalidateQueries({ queryKey: ["rooms"] });
+      queryClient.invalidateQueries({ queryKey: ["contract-history"] });
       toast.success("Gia hạn hợp đồng thành công");
     },
     onError: (error: any) => {
       console.error("Error renewing contract:", error);
+      if(error?.code==='PT409') queryClient.invalidateQueries({queryKey:['contracts']});
       toast.error(error?.message || "Có lỗi xảy ra khi gia hạn hợp đồng");
     },
   });
@@ -57,21 +51,13 @@ export const useRenewContract = () => {
 
 export const useTransferRoom = () => {
   const queryClient = useQueryClient();
+  const { selectedOrganizationId } = useOrganization();
 
   return useMutation({
-    mutationFn: async (params: {
-      contractId: string;
-      newRoomId: string;
-      newRentPrice?: number;
-      transferDate: string;
-      notes?: string;
-    }) => {
-      const { data, error } = await supabase.rpc("transfer_room", {
-        p_contract_id: params.contractId,
-        p_new_room_id: params.newRoomId,        p_new_rent_price: params.newRentPrice ?? undefined,
-        p_transfer_date: params.transferDate,
-        p_notes: params.notes ?? undefined,
-      });
+    retry:false,
+    mutationFn: async (params: TransferRoomNoticeInput) => {
+      if(!selectedOrganizationId) throw new Error('Chưa chọn tổ chức');
+      const { data, error } = await supabase.rpc("transfer_room_with_notice_v1",buildTransferRoomNoticeArgs(params,selectedOrganizationId));
 
       if (error) throw error;
       return data;
@@ -79,10 +65,12 @@ export const useTransferRoom = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["contracts"] });
       queryClient.invalidateQueries({ queryKey: ["rooms"] });
+      queryClient.invalidateQueries({ queryKey: ["contract-history"] });
       toast.success("Chuyển phòng thành công");
     },
     onError: (error: any) => {
       console.error("Error transferring room:", error);
+      if(error?.code==='PT409') queryClient.invalidateQueries({queryKey:['contracts']});
       toast.error(error?.message || "Có lỗi xảy ra khi chuyển phòng");
     },
   });
@@ -93,46 +81,7 @@ export const useTransferRoom = () => {
 // Requirements: 6.2, 6.5
 // =============================================
 
-export const useRegisterMoveOut = () => {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async (params: {
-      contractId: string;
-      expectedMoveOutDate: string;
-      notes?: string;
-    }) => {
-      const user = await getSessionUser();
-      if (!user) throw new Error("Not authenticated");
-
-      const updateData: Record<string, any> = {
-        expected_move_out_date: params.expectedMoveOutDate,
-      };
-      if (params.notes !== undefined) {
-        updateData.notes = params.notes;
-      }
-
-      const { error } = await supabase
-        .from("contracts")
-        .update(updateData as any)
-        .eq("id", params.contractId)
-        ;
-
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["contracts"] });
-      queryClient.invalidateQueries({ queryKey: ["rooms"] });
-      toast.success("Đăng ký ngày chuyển đi thành công");
-    },
-    onError: (error: any) => {
-      console.error("Error registering move out:", error);
-      toast.error(
-        error?.message || "Có lỗi xảy ra khi đăng ký ngày chuyển đi"
-      );
-    },
-  });
-};
+export { useSaveContractMoveOutNotice as useRegisterMoveOut } from '@/hooks/useContractMoveOutNotice';
 
 // =============================================
 // useTransferContract — Nhượng hợp đồng

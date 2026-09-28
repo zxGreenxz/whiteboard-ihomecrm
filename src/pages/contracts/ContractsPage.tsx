@@ -15,6 +15,10 @@ import { ContractFormDialog } from '@/components/contracts/ContractFormDialog';
 import { RenewDialog } from '@/components/contracts/RenewDialog';
 import { TransferRoomDialog } from '@/components/contracts/TransferRoomDialog';
 import { MoveOutDialog } from '@/components/contracts/MoveOutDialog';
+import { MoveOutNoticeQueue } from '@/components/contracts/MoveOutNoticeQueue';
+import { ContractDraftWorkspace } from '@/components/contracts/ContractDraftWorkspace';
+import { ContractExitQueue } from '@/components/contracts/ContractExitQueue';
+import { ContractMeterFollowupQueue } from '@/components/contracts/ContractMeterFollowupQueue';
 import { TransferContractDialog } from '@/components/contracts/TransferContractDialog';
 import { TerminateDialog } from '@/components/contracts/TerminateDialog';
 import { DeleteContractDialog } from '@/components/contracts/DeleteContractDialog';
@@ -456,6 +460,11 @@ function ContractsDesktopPage() {
           </div>
         </div>
 
+        <MoveOutNoticeQueue buildingIds={buildingIds} />
+        <ContractExitQueue buildingIds={buildingIds} />
+        <ContractMeterFollowupQueue buildingIds={buildingIds} />
+        <ContractDraftWorkspace buildingId={buildingIds.length === 1 ? buildingIds[0] : undefined} />
+
         {/* Table */}
         <div className="bg-white rounded-lg border">
           {isLoading ? (
@@ -552,6 +561,7 @@ function ContractsDesktopPage() {
         {dialogContract && (
           <TransferContractDialog
             open={transferContractDialogOpen}
+            onStartReturn={() => handleTerminate(dialogContract)}
             onOpenChange={(open) => {
               setTransferContractDialogOpen(open);
               if (!open) setSelectedContract(null);

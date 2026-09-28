@@ -194,14 +194,12 @@ describe('buildRoomListTable — bản JS của worker KHỚP bản TS của web
     expect(t.groups[1].addressLines).toEqual(['Toà B']);
   });
 
-  it('bộ thiếu giá điện / thiếu SĐT: hai bản cùng rơi về giá trị mặc định', () => {
+  it('bộ thiếu giá điện / thiếu SĐT: hai bản cùng không bịa dữ liệu', () => {
     const banJS = JS.buildRoomListTable(duLieuThieuThongTin());
     const banTS = TS.buildRoomListTable(duLieuThieuThongTin());
     expect(banJS).toEqual(banTS);
-    expect(banJS.infoLines[0]).toBe('Điện theo định mức tòa nhà');
-    // SĐT mặc định phải là cùng một hằng MANAGER ở cả hai bản.
-    expect(banJS.contactLines[1]).toBe(banTS.contactLines[1]);
-    expect(banJS.contactLines[1]).toBe(JS.MANAGER.phone);
+    expect(banJS.infoLines).toEqual([]);
+    expect(banJS.contactLines).toEqual(['Chưa có số liên hệ']);
   });
 
   it('danh sách toà RỖNG: hai bản cùng trả bảng rỗng, không ném lỗi', () => {
@@ -300,7 +298,7 @@ describe('elecLines', () => {
   }
 
   it('giá trị neo', () => {
-    expect(JS.elecLines(bo(null))).toEqual(['Điện theo định mức tòa nhà']);
+    expect(JS.elecLines(bo(null))).toEqual([]);
     expect(JS.elecLines(bo(3800, 3800))).toEqual(['Điện 3.800đ/số']);
     expect(JS.elecLines(bo(3800, 3800, 3900)))
       .toEqual(['Điện 3.800đ/số', 'Riêng Toà 2: điện 3.900đ/số']);

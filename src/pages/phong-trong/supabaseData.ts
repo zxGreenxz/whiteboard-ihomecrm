@@ -1,18 +1,13 @@
 /**
  * Adapter: map payload RPC public `get_public_available_rooms(p_token)` -> type
- * Building/Room mà giao diện "Phòng trống" đang dùng. Giữ NGUYÊN toàn bộ UI.
- *
- * Nguồn: RPC SECURITY DEFINER get_public_available_rooms trả jsonb
- *   { areas, buildings, rooms, contact }  (xem
- *   supabase/migrations/20260606120000_public_room_share_phong_trong.sql).
- * RPC đã tự tính `status_public` (free/soon/rented) theo HỢP ĐỒNG là nguồn sự
- * thật, nên adapter chỉ việc đổ vào shape UI. KHÔNG tạo RPC/migration mới —
- * tái dùng đúng kết nối public đã chạy.
+ * Building/Room cho cả public và in-app. Reader quyết định occupancy/hold;
+ * adapter chỉ trình bày facts ngày máy chủ, báo trả và chuẩn bị phòng.
  */
 import { supabase } from "@/integrations/supabase/client";
+import { z } from 'zod';
+import { roomSaleFacts } from '@/lib/roomSaleFacts';
 import {
   layoutFloor,
-  MANAGER,
   type Building,
   type Room,
   type RoomStatus,
@@ -59,6 +54,9 @@ export interface RpcRoom {
   room_type?: string | null;    // "Loại phòng" (Gác, Cửa kính, Ban công, Studio…)
   status_public: RoomStatus;    // 'free' | 'soon' | 'rented' | 'pass' (RPC tính sẵn)
   avail_date: string | null;    // 'YYYY-MM-DD' cho phòng 'soon'
+  sale_state?: string | null;
+  sale_today?: string | null;
+  expected_ready_on?: string | null;
   // Phòng "khách nhờ sale / pass" (status_public='pass'): liên hệ + chính sách CỦA KHÁCH
   pass_contact_name?: string | null;
   pass_contact_phone?: string | null;
@@ -67,12 +65,59 @@ export interface RpcRoom {
   pass_avail_date?: string | null;  // 'YYYY-MM-DD' — ngày dự kiến trống (pass)
   pass_contact_manager?: boolean | null; // true = ẩn SĐT khách, chỉ "Liên hệ quản lý"
 }
-export interface RpcContact { name: string; phone: string }
+export interface RpcContact { name: string | null; phone: string | null }
 export interface RpcPayload {
   areas?: { id: string; name: string }[];
   buildings: RpcBuilding[];
   rooms: RpcRoom[];
   contact?: RpcContact | null;
+}
+
+export class PublicRoomLinkError extends Error {
+  constructor() {
+    super('Liên kết phòng trống không hợp lệ hoặc đã hết hạn.');
+    this.name = 'PublicRoomLinkError';
+  }
+}
+
+const boxSchema = z.object({ x: z.number(), y: z.number(), w: z.number(), h: z.number() });
+const nullableText = z.string().nullable();
+const optionalText = nullableText.optional();
+const layoutSchema = z.object({
+  canvasW: z.number(), canvasH: z.number(), corridor: boxSchema,
+  fixtures: z.array(boxSchema.extend({ id: z.string(), kind: z.enum(['elevator', 'stairs']) })),
+  rooms: z.record(boxSchema),
+});
+const payloadSchema = z.object({
+  areas: z.array(z.object({ id: z.string(), name: z.string() })).optional(),
+  buildings: z.array(z.object({
+    id: z.string(), name: z.string(), code: nullableText, district: nullableText, ward: nullableText,
+    address: nullableText, total_floors: z.number().nullable(), area_ids: z.array(z.string()).nullable().optional(),
+    floor_layouts: z.record(layoutSchema).nullable().optional(), images: z.unknown(),
+    public_contact_name: optionalText, public_contact_phone: optionalText, public_map_url: optionalText,
+    elec_rate: z.number().nullable().optional(), public_lift_type: optionalText,
+  })),
+  rooms: z.array(z.object({
+    id: z.string(), building_id: z.string(), floor: z.number(), name: z.string(), code: nullableText,
+    area: z.number().nullable(), rent_price: z.number().nullable(), deposit_amount: z.number().nullable().optional(),
+    max_occupants: z.number().nullable(), amenities: z.unknown(), images: z.unknown(), description: nullableText,
+    sale_note: optionalText, sale_bonus_note: optionalText, room_type: optionalText,
+    status_public: z.enum(['free', 'soon', 'rented', 'pass']), avail_date: nullableText,
+    sale_state: z.enum(['READY', 'NOTICE', 'NOTICE_OVERDUE', 'PREPARING', 'RENTED', 'PASS']).nullable().optional(),
+    sale_today: optionalText, expected_ready_on: optionalText,
+    pass_contact_name: optionalText, pass_contact_phone: optionalText, pass_sale_policy: optionalText,
+    pass_price: z.number().nullable().optional(), pass_avail_date: optionalText, pass_contact_manager: z.boolean().nullable().optional(),
+  })),
+  contact: z.object({ name: nullableText, phone: nullableText }).nullable().optional(),
+});
+
+function isRoomSalePayload(value: unknown): value is RpcPayload {
+  return payloadSchema.safeParse(value).success;
+}
+
+export function parseRoomSalePayload(value: unknown): RpcPayload {
+  if (!isRoomSalePayload(value)) throw new Error('Dữ liệu danh sách phòng không hợp lệ.');
+  return value;
 }
 
 /* ---- helpers ---- */
@@ -117,12 +162,12 @@ function fmtAvail(d: string | null | undefined): string | null {
 }
 
 /* ---- main ---- */
-export function mapPayloadToBuildings(payload: RpcPayload | null | undefined): Building[] {
+export function mapPayloadToBuildings(payload: RpcPayload | null | undefined, options: { includeInternal?: boolean } = {}): Building[] {
   if (!payload || !Array.isArray(payload.buildings)) return [];
 
-  // Liên hệ chung (hotlines). RPC trả 1 contact cho cả owner; chưa có -> MANAGER mặc định.
-  const contactName = payload.contact?.name || MANAGER.name;
-  const contactPhone = payload.contact?.phone || MANAGER.phone;
+  // Chỉ dùng liên hệ đã cấu hình; thiếu thì giữ rỗng.
+  const contactName = payload.contact?.name?.trim() || '';
+  const contactPhone = payload.contact?.phone?.trim() || '';
 
   // gom phòng theo tòa
   const roomsByB = new Map<string, RpcRoom[]>();
@@ -148,6 +193,8 @@ export function mapPayloadToBuildings(payload: RpcPayload | null | undefined): B
     const rooms: Room[] = rawRooms.map((rr, i) => {
       const imgs = toImages(rr.images);
       const status = rr.status_public;
+      const saleFact = roomSaleFacts({ status, state: rr.sale_state, today: rr.sale_today,
+        availableOn: rr.avail_date, expectedReadyOn: rr.expected_ready_on });
       return {
         id: rr.id,
         no: roomNo(rr, rr.floor * 100 + i + 1),
@@ -163,15 +210,15 @@ export function mapPayloadToBuildings(payload: RpcPayload | null | undefined): B
         area: Math.round(rr.area ?? 0),
         status,
         amenities: toAmenities(rr.amenities),
-        availDate: status === "soon" ? fmtAvail(rr.avail_date) : null,
-        // rooms.images hiện rỗng -> gallery/card dùng placeholder picsum; >=1 để
-        // bottom-sheet không hiện gallery trống. Có ảnh thật thì lấy đúng số lượng.
-        imgCount: imgs.length || 1,
+        availDate: status === "soon" ? fmtAvail(saleFact.availableOn) : null,
+        saleFact,
+        // Thiếu ảnh không tự thêm ảnh mẫu.
+        imgCount: imgs.length,
         phClass: "",
         images: imgs,
         description: rr.description || null,
         saleNote: rr.sale_note || null,
-        saleBonus: rr.sale_bonus_note || null,
+        saleBonus: options.includeInternal ? rr.sale_bonus_note || null : null,
         passContactName: rr.pass_contact_name || null,
         passContactPhone: rr.pass_contact_phone || null,
         passSalePolicy: rr.pass_sale_policy || null,

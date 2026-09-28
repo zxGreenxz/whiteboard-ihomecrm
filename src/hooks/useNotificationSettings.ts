@@ -32,7 +32,7 @@ import { toast } from "sonner";
  * `E6*` → `E6` nằm ở phía SQL (`notify_gate_v1`), frontend không được tự ánh xạ
  * lần nữa kẻo đẻ nguồn sự thật thứ hai.
  */
-export const NOTIFICATION_EVENT_KEYS = ["E1", "E2", "E3", "E4", "E5", "E6"] as const;
+export const NOTIFICATION_EVENT_KEYS = ["E1", "E2", "E3", "E4", "E5", "E6", "LIFECYCLE"] as const;
 export type NotificationEventKey = (typeof NOTIFICATION_EVENT_KEYS)[number];
 
 /** Nhãn tiếng Việt cho 6 họ — dùng chung cho cả card tổ chức lẫn card cá nhân. */
@@ -63,6 +63,10 @@ export const NOTIFICATION_EVENT_LABELS: Record<
   E6: {
     title: "Chốt sổ quỹ",
     desc: "Nhắc chốt sổ sau khi bàn giao xong, đề nghị chốt chờ bạn ký, và biên bản đã ký.",
+  },
+  LIFECYCLE: {
+    title: "Việc cần theo dõi khi trả phòng",
+    desc: "Nhắc báo trả đến hẹn, phòng dọn/sửa quá hạn hoặc chưa hẹn, và hồ sơ trả phòng chờ hoàn tất.",
   },
 };
 

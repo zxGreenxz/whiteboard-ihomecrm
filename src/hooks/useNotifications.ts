@@ -3,6 +3,16 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 import { toast } from 'sonner';
+import { useOrganization } from '@/contexts/OrganizationContext';
+
+// Only lifecycle list links depend on selected-org context. Legacy notifications
+// retain their current visibility; null-event rows must pass SQL NULL semantics.
+function lifecycleInboxScope(organizationId: string | null): string {
+  const legacy = 'metadata->>event.neq.LIFECYCLE,metadata->>event.is.null';
+  return organizationId
+    ? `${legacy},and(metadata->>event.eq.LIFECYCLE,organization_id.eq.${organizationId})`
+    : legacy;
+}
 
 // Types
 export type NotificationType =
@@ -76,9 +86,10 @@ export interface CreateNotificationInput {
  */
 export function useNotifications() {
   const { data: user } = useAuth();
+  const { selectedOrganizationId } = useOrganization();
 
   return useQuery({
-    queryKey: ['notifications', user?.id],
+    queryKey: ['notifications', user?.id, selectedOrganizationId],
     queryFn: async () => {
       if (!user?.id) throw new Error('User not authenticated');
 
@@ -89,6 +100,7 @@ export function useNotifications() {
         // + tránh quét thừa. Xem migration 20260729130000_notifications_rls_own_row.sql.
         .eq('user_id', user.id)
         .eq('channel', 'IN_APP')
+        .or(lifecycleInboxScope(selectedOrganizationId))
         .order('created_at', { ascending: false })
         // Cap an toàn: trang thông báo không cần kéo toàn bộ lịch sử.
         .limit(200);
@@ -106,9 +118,10 @@ export function useNotifications() {
  */
 export function useUnreadNotificationsCount() {
   const { data: user } = useAuth();
+  const { selectedOrganizationId } = useOrganization();
 
   return useQuery({
-    queryKey: ['notifications', 'unread-count', user?.id],
+    queryKey: ['notifications', 'unread-count', user?.id, selectedOrganizationId],
     queryFn: async () => {
       if (!user?.id) throw new Error('User not authenticated');
 
@@ -119,6 +132,7 @@ export function useUnreadNotificationsCount() {
         .select('*', { count: 'exact', head: true })
         .eq('user_id', user.id)
         .eq('channel', 'IN_APP')
+        .or(lifecycleInboxScope(selectedOrganizationId))
         .eq('status', 'PENDING');
 
       if (error) throw error;
@@ -134,9 +148,10 @@ export function useUnreadNotificationsCount() {
  */
 export function useRecentNotifications(limit: number = 5) {
   const { data: user } = useAuth();
+  const { selectedOrganizationId } = useOrganization();
 
   return useQuery({
-    queryKey: ['notifications', 'recent', user?.id, limit],
+    queryKey: ['notifications', 'recent', user?.id, limit, selectedOrganizationId],
     queryFn: async () => {
       if (!user?.id) throw new Error('User not authenticated');
 
@@ -145,6 +160,7 @@ export function useRecentNotifications(limit: number = 5) {
         .select('*')
         .eq('user_id', user.id)
         .eq('channel', 'IN_APP')
+        .or(lifecycleInboxScope(selectedOrganizationId))
         .order('created_at', { ascending: false })
         .limit(limit);
 

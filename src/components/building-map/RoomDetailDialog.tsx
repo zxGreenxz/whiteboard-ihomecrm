@@ -18,11 +18,14 @@ import {
   Maximize2
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useMemo, useState } from "react";
+import { RoomTurnoverPanel } from '@/components/rooms/RoomTurnoverPanel';
+import { lazy, Suspense, useMemo, useState } from "react";
 import {
   ContractFormDialog,
   type ContractPrefill,
 } from "@/components/contracts/ContractFormDialog";
+
+const RoomReservationPanel = lazy(() => import('@/components/deposits/RoomReservationPanel').then(module => ({ default: module.RoomReservationPanel })));
 
 interface RoomDetailDialogProps {
   open: boolean;
@@ -176,6 +179,8 @@ export function RoomDetailDialog({ open, onOpenChange, roomId }: RoomDetailDialo
               <Separator />
 
               {/* Current Contract */}
+              {open && <RoomTurnoverPanel roomId={roomId} />}
+              {open && <Suspense fallback={<p className="text-sm">Đang tải giữ chỗ…</p>}><RoomReservationPanel roomId={roomId} buildingId={room.building_id} /></Suspense>}
               {activeContract ? (
                 <div className="space-y-4">
                   <h3 className="font-semibold text-lg flex items-center gap-2">

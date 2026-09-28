@@ -15,6 +15,7 @@
 // group Zalo hàng chục người — chặn ở tầng dữ liệu chắc hơn dặn tầng trên nhớ lọc.
 // =============================================================================
 import { sb, log, SUPABASE_URL } from './ctx.js';
+import { roomSaleFacts } from './room-sale-facts.js';
 
 /** Bucket PUBLIC chứa ảnh sale (phòng + toà) — khớp supabaseData.ts. */
 const IMAGES_BUCKET = 'room-sale-images';
@@ -82,6 +83,8 @@ export function mapPayloadSangToa(payload) {
 
     const rooms = tho.map((rr, i) => {
       const status = rr.status_public;
+      const saleFact = roomSaleFacts({ status, state: rr.sale_state, today: rr.sale_today,
+        availableOn: rr.avail_date, expectedReadyOn: rr.expected_ready_on });
       return {
         id: rr.id,
         no: soPhong(rr, (rr.floor ?? 1) * 100 + i + 1),
@@ -97,7 +100,8 @@ export function mapPayloadSangToa(payload) {
         area: Math.round(rr.area ?? 0),
         status,
         amenities: dsTienNghi(rr.amenities),
-        availDate: status === 'soon' ? ngayNgan(rr.avail_date) : null,
+        availDate: status === 'soon' ? ngayNgan(saleFact.availableOn) : null,
+        saleFact,
         images: dsAnh(rr.images),
         description: rr.description || null,
         saleNote: rr.sale_note || null,

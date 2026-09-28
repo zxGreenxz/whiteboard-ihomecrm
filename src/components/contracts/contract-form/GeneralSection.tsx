@@ -26,7 +26,7 @@ type GeneralSectionProps = Pick<
   | "filteredRooms"
   | "handleBuildingChange"
   | "handleRoomChange"
->;
+> & { buildingDisabled?: boolean };
 
 /** ===== Section 1: Thông tin chung ===== (JSX chuyển NGUYÊN VĂN) */
 export function GeneralSection({
@@ -36,6 +36,7 @@ export function GeneralSection({
   filteredRooms,
   handleBuildingChange,
   handleRoomChange,
+  buildingDisabled = false,
 }: GeneralSectionProps) {
   return (
     <div className="space-y-4">
@@ -51,6 +52,7 @@ export function GeneralSection({
           <Select
             value={selectedBuildingId}
             onValueChange={handleBuildingChange}
+            disabled={buildingDisabled}
           >
             <SelectTrigger>
               <SelectValue placeholder="Chọn toà nhà" />

@@ -62,9 +62,9 @@ export function RoomCard({ r, onOpen }: { r: Room; onOpen: (r: Room) => void }) 
   return (
     <div className="room-card" ref={impRef} onClick={() => onOpen(r)}>
       <div className="rc-photo">
-        <img className="rc-img" src={(r.images && r.images[0]) || `https://picsum.photos/seed/${r.code}/600/440`} alt={r.type} loading="lazy" decoding="async" />
+        {r.images?.[0] ? <img className="rc-img" src={r.images[0]} alt={r.type} loading="lazy" decoding="async" /> : <div className="rc-img" aria-label="Chưa có ảnh phòng" />}
         <span className="rc-badge">
-          <i className="bd" style={{ background: stColor(r.status) }} />{SM[r.status].label}
+          <i className="bd" style={{ background: stColor(r.status) }} />{r.saleFact?.label || SM[r.status].label}
         </span>
         <span className="rc-code">{r.code}</span>
         <span className="rc-imgcount"><Icon.Photo />{r.imgCount}</span>
@@ -78,8 +78,8 @@ export function RoomCard({ r, onOpen }: { r: Room; onOpen: (r: Room) => void }) 
           {r.amenities.slice(0, 4).map((a) => (<span className="amen" key={a}>{amenIcon(a)}{a}</span>))}
           {r.amenities.length > 4 && <span className="amen">+{r.amenities.length - 4}</span>}
         </div>
-        {r.status === "soon" && r.availDate && (
-          <div className="rc-avail"><Icon.Calendar />Sắp trống · dự kiến từ {r.availDate}</div>
+        {r.saleFact && r.saleFact.kind !== 'ready' && r.status !== 'pass' && r.status !== 'rented' && (
+          <div className="rc-avail"><Icon.Calendar />{r.saleFact.label}</div>
         )}
       </div>
     </div>
@@ -136,10 +136,10 @@ export function OverviewView({
 
   return (
     <div className="ov-wrap">
-      <div className="ov-policy">
+      {GENERAL_POLICY.items.length > 0 && <div className="ov-policy">
         <div className="ov-policy-lbl"><Icon.Info />Thông tin chung</div>
         {GENERAL_POLICY.items.map((t, i) => (<div className="ov-policy-item" key={i}><i />{t}</div>))}
-      </div>
+      </div>}
 
       {!total ? (
         <div className="empty"><div className="e-ic">🔍</div><p>Không có phòng nào khớp bộ lọc.</p></div>
@@ -164,8 +164,8 @@ export function OverviewView({
               <div className="ovh-meta">
                 <div className="ovh-line"><Icon.Pin />{b.address}</div>
                 <div className="ovh-line ovh-contact">
-                  <span className="ovh-ql">QL {b.manager}</span>
-                  <a
+                  <span className="ovh-ql">{b.manager ? `QL ${b.manager}` : 'Chưa có thông tin liên hệ'}</span>
+                  {b.phone && <a
                     className="ovh-zalo"
                     href={"https://zalo.me/" + b.phone.replace(/\D/g, "")}
                     target="_blank"
@@ -173,10 +173,10 @@ export function OverviewView({
                     onClick={(e) => e.stopPropagation()}
                   >
                     <Icon.Chat />Zalo
-                  </a>
-                  <a className="ovh-call" href={"tel:" + b.phone.replace(/\s/g, "")} onClick={(e) => e.stopPropagation()}>
+                  </a>}
+                  {b.phone && <a className="ovh-call" href={"tel:" + b.phone.replace(/\s/g, "")} onClick={(e) => e.stopPropagation()}>
                     <Icon.Phone /><span className="ovh-phone">{b.phone}</span>
-                  </a>
+                  </a>}
                 </div>
                 {b.policy && <span className="ovh-policy"><Icon.Tag />{b.policy}</span>}
               </div>
@@ -227,7 +227,7 @@ function OvRow({ r, onOpen }: { r: Room; onOpen: (r: Room) => void }) {
                       <div className="ovr-l2">
                         <span className="ovr-amen">{r.amenities.join(", ")}</span>
                         <span className="ovr-status" style={{ color: stColor(r.status) }}>
-                          <i style={{ background: stColor(r.status) }} />{SM[r.status].label}
+                          <i style={{ background: stColor(r.status) }} />{r.saleFact?.label || SM[r.status].label}
                         </span>
                       </div>
                       {r.status === "pass" && (r.passContactManager || r.passContactPhone || r.passContactName || r.passSalePolicy || r.passAvailDate) && (
@@ -297,13 +297,15 @@ function FloorCanvas({
                 type="button"
                 disabled={!clickable}
                 onClick={() => clickable && onOpen(r)}
-                title={r.code}
+                title={`${r.code} · ${r.saleFact?.label || SM[r.status].label}`}
                 style={{ left: r.x, top: r.y, width: r.w, height: r.h }}
                 className={"fp-room " + r.status + (vis ? "" : " dim")}
               >
                 <span className="fr-no">{r.no}</span>
                 {r.status !== "rented" && <span className="fr-pr">{fmtPrice(r.price)}tr</span>}
                 <span className="fr-ar">{r.area}m²{r.type ? ` · ${r.type}` : ""}</span>
+                {r.saleFact?.kind === 'preparing' && <span className="fr-ar">Đang chuẩn bị</span>}
+                {r.saleFact?.kind === 'confirm_notice' && <span className="fr-ar">Xác nhận ngày</span>}
               </button>
             );
           })}

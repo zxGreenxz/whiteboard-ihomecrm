@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo,useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
@@ -50,6 +50,7 @@ export function TransferRoomDialog({
   contract,
 }: TransferRoomDialogProps) {
   const transferRoom = useTransferRoom();
+  const noticeRequest=useRef<{intent:string;id:string}|null>(null);
 
   // Data for cascading dropdowns
   const { data: buildingsData } = useBuildings({ enabled: open });
@@ -80,6 +81,7 @@ export function TransferRoomDialog({
   // Reset form when dialog opens
   useEffect(() => {
     if (open) {
+      noticeRequest.current=null;
       form.reset({
         new_room_id: "",
         new_rent_price: undefined,
@@ -111,14 +113,12 @@ export function TransferRoomDialog({
   };
 
   const onSubmit = (data: TransferRoomFormData) => {
+    const params={contractId:contract.id,expectedUpdatedAt:contract.updated_at,newRoomId:data.new_room_id,
+      newRentPrice:data.new_rent_price,transferDate:data.transfer_date,notes:data.notes,
+      noticeReason:data.notes?.trim()||'Hủy báo dọn phòng cũ khi chuyển phòng'};
+    const intent=JSON.stringify(params);if(noticeRequest.current?.intent!==intent)noticeRequest.current={intent,id:crypto.randomUUID()};
     transferRoom.mutate(
-      {
-        contractId: contract.id,
-        newRoomId: data.new_room_id,
-        newRentPrice: data.new_rent_price,
-        transferDate: data.transfer_date,
-        notes: data.notes,
-      },
+      {...params,requestId:noticeRequest.current!.id},
       {
         onSuccess: () => {
           onOpenChange(false);
@@ -283,6 +283,7 @@ export function TransferRoomDialog({
               )}
             />
 
+            {contract.expected_move_out_date&&<p className="rounded border p-3 text-sm">Báo dọn ngày {contract.expected_move_out_date.split('-').reverse().join('/')} của phòng cũ sẽ được hủy khi chuyển phòng thành công. Phòng mới chưa có ngày báo dọn; bạn có thể ghi nhận riêng sau khi chuyển.</p>}
             <DialogFooter>
               <Button
                 type="button"

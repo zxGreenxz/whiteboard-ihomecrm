@@ -34,6 +34,7 @@ import { ContractAlertStrip } from './ContractAlertStrip';
 import { ContractTermsCard } from './ContractTermsCard';
 import { ContractTenantsCard } from './ContractTenantsCard';
 import { ContractFinanceCard } from './ContractFinanceCard';
+import { useContractMoveOutNoticeSnapshot } from '@/hooks/useContractMoveOutNotice';
 
 export interface ContractDetailDesktopProps {
   contract: ContractWithRelations;
@@ -99,6 +100,8 @@ export function ContractDetailDesktop(props: ContractDetailDesktopProps) {
     onBack,
   } = props;
 
+  const noticeSnapshot = useContractMoveOutNoticeSnapshot(isActive && contract.expected_move_out_date ? contract.id : undefined);
+
   return (
     <div
       className="min-h-full bg-[#f4f6f8] text-[#121f17]"
@@ -141,6 +144,8 @@ export function ContractDetailDesktop(props: ContractDetailDesktopProps) {
           sideLoadErrors={sideLoadErrors}
           pendingForfeitCount={pendingForfeitCount}
           pendingRefundCount={pendingRefundCount}
+          today={noticeSnapshot.data?.today}
+          onManageNotice={canUse(perms, 'contracts', 'terminate') ? props.onMoveOut : undefined}
         />
 
         {/* HAI CỘT HAY MỘT CỘT LÀ DO KHUNG CHỨA QUYẾT ĐỊNH, KHÔNG PHẢI VIEWPORT.

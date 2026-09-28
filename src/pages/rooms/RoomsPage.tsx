@@ -8,6 +8,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import EmptyState from '@/components/ui/EmptyState';
 import RoomListFilters from '@/components/rooms/RoomListFilters';
 import RoomListTable from '@/components/rooms/RoomListTable';
+import { RoomTurnoverQueue } from '@/components/rooms/RoomTurnoverQueue';
 import { DeleteRoomDialog } from '@/components/rooms/DeleteRoomDialog';
 import RoomFormDialog from '@/components/rooms/RoomFormDialog';
 
@@ -189,6 +190,7 @@ function RoomsDesktop() {
   return (
     <MainLayout title="Căn hộ" subtitle="Danh mục dữ liệu > Căn hộ" icon={Home}>
       <div className="space-y-4">
+        <RoomTurnoverQueue buildingIds={buildingIds} />
         {/* Filters */}
         <RoomListFilters
           searchTerm={searchTerm}

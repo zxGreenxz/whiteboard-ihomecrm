@@ -4,7 +4,8 @@ import "./phongTrong.css";
 import { Icon } from "./icons";
 import { FilterBar, FloorPlan, ListView, OverviewView, PRICE_BANDS } from "./PhongTrongParts";
 import { DetailSheet, Toast } from "./PhongTrongSheet";
-import { SAMPLE_BUILDINGS, type Building, type Room } from "./sampleData";
+import { type Building, type Room } from "./sampleData";
+import { PublicRoomLinkError } from "./supabaseData";
 import { usePhongTrong } from "./usePhongTrong";
 import { QuickDepositModal } from "./QuickDepositModal";
 import { useSession } from "@/hooks/useAuth";
@@ -16,19 +17,18 @@ import { usePersistedState } from "@/hooks/usePersistedState";
 const OVERVIEW = "__overview__";
 
 /**
- * Trang công khai "Phòng trống" cho Sale — 100% giao diện mock, data mẫu.
- * Route gợi ý: /r/:token (xem README). Khi nối Supabase: thay SAMPLE_BUILDINGS
- * bằng dữ liệu thật map sang type Building/Room (giữ nguyên toàn bộ UI bên dưới).
+ * Bảng phòng cho Sale, chỉ hiển thị dữ liệu thật từ liên kết hoặc dữ liệu
+ * in-app truyền vào. Không dùng phòng mẫu khi kết quả rỗng hoặc lỗi.
  *
  * Dùng lại in-app (mobile): truyền sẵn `buildings` (đã map qua mapPayloadToBuildings)
- * + `embedded` để bỏ thanh brand `.hdr-top` và KHÔNG fallback data mẫu khi rỗng.
+ * + `embedded` để bỏ thanh brand `.hdr-top`.
  */
 export interface PhongTrongPageProps {
   /** Token public; mặc định đọc từ useParams (route /r/:token). */
   token?: string;
   /** Dữ liệu tòa/phòng có sẵn (in-app authenticated) — ưu tiên hơn token. */
   buildings?: Building[];
-  /** Nhúng trong shell mobile: ẩn brand header, rỗng → empty-state thay vì SAMPLE. */
+  /** Nhúng trong shell mobile: ẩn brand header. */
   embedded?: boolean;
 }
 
@@ -37,10 +37,10 @@ export default function PhongTrongPage(props: PhongTrongPageProps = {}) {
   const token = props.token ?? tokenParam;
   const isEmbedded = !!props.embedded;
   // In-app: chỉ gọi RPC token khi KHÔNG được truyền sẵn buildings.
-  const { data, isLoading, isError } = usePhongTrong(props.buildings ? undefined : token);
-  // Ưu tiên buildings truyền vào; rồi data RPC; cuối cùng data mẫu (chỉ khi không embedded).
+  const { data, isLoading, isError, error, refetch } = usePhongTrong(props.buildings ? undefined : token);
+  // Dữ liệu truyền vào, kể cả [], là kết quả có chủ đích của màn hình in-app.
   const sourced = props.buildings ?? data;
-  const buildings = sourced && sourced.length ? sourced : isEmbedded ? [] : SAMPLE_BUILDINGS;
+  const buildings = sourced ?? [];
 
   const [propId, setPropId] = usePersistedState<string>("flt:phong-trong:propId", OVERVIEW);
   const [view, setView] = usePersistedState<"map" | "list">("flt:phong-trong:view", "list");
@@ -55,7 +55,12 @@ export default function PhongTrongPage(props: PhongTrongPageProps = {}) {
   );
 
   const [room, setRoom] = useState<Room | null>(null);
+  // Detail follows fresh reader facts after notice edits/return/holds; no stale room snapshot.
+  const currentRoom = room ? buildings.flatMap((b) => b.rooms).find((r) => r.id === room.id && r.status !== 'rented') ?? null : null;
   const [sheetShow, setSheetShow] = useState(false);
+  useEffect(() => {
+    if (room && !currentRoom) { setRoom(null); setSheetShow(false); }
+  }, [room, currentRoom]);
   // "Tạo cọc nhanh": chỉ cho user ĐANG ĐĂNG NHẬP có quyền sale_phong.create_deposit.
   const { data: session } = useSession();
   const { data: perms } = useMyPermissions();
@@ -237,17 +242,25 @@ export default function PhongTrongPage(props: PhongTrongPageProps = {}) {
       </div></div></div>
     );
   }
-  if (token && isError) {
+  if ((!isEmbedded && props.buildings === undefined && !token) ||
+      (token && isError && error instanceof PublicRoomLinkError)) {
     return (
       <div id="stage"><div className="app"><div className="empty" style={{ marginTop: 80 }}>
         <div className="e-ic">🔒</div><p>Liên kết không hợp lệ hoặc đã hết hạn.<br/>Vui lòng liên hệ quản lý để lấy link mới.</p>
       </div></div></div>
     );
   }
-  // In-app rỗng: không có phòng trống nào → empty-state (không hiện data mẫu).
-  if (isEmbedded && buildings.length === 0) {
+  if (token && isError) {
     return (
-      <div id="stage" className="embed"><div className="app"><div className="empty" style={{ marginTop: 40 }}>
+      <div id="stage"><div className="app"><div className="empty" style={{ marginTop: 80 }}>
+        <p>Chưa tải được danh sách phòng. Vui lòng thử lại.</p>
+        <button type="button" onClick={() => void refetch()}>Thử lại</button>
+      </div></div></div>
+    );
+  }
+  if (buildings.length === 0) {
+    return (
+      <div id="stage" className={isEmbedded ? "embed" : undefined}><div className="app"><div className="empty" style={{ marginTop: 40 }}>
         <div className="e-ic">🏠</div><p>Hiện chưa có phòng trống.</p>
       </div></div></div>
     );
@@ -326,7 +339,7 @@ export default function PhongTrongPage(props: PhongTrongPageProps = {}) {
                 : <ListView rooms={listRooms} onOpen={openRoom} />)}
         </div>
 
-        <DetailSheet room={room} show={sheetShow} onClose={closeSheet} onToast={showToast} saved={saved} toggleSave={toggleSave} onGo={openRoom} buildings={buildings} onQuickDeposit={canQuickDeposit ? (r) => { closeSheet(); openDeposit(r); } : undefined} />
+        <DetailSheet room={currentRoom} show={sheetShow} onClose={closeSheet} onToast={showToast} saved={saved} toggleSave={toggleSave} onGo={openRoom} buildings={buildings} onQuickDeposit={canQuickDeposit ? (r) => { closeSheet(); openDeposit(r); } : undefined} />
         {/* Chỉ mount khi có quyền tạo cọc: modal gọi useAccounts() ngay lúc render,
             khách vãng lai (anon) sẽ bị RLS chặn và nổ toast đỏ "Không thể tải
             danh sách sổ quỹ" giữa trang công khai. Không có quyền thì depositRoom

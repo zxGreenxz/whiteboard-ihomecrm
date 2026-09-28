@@ -11,6 +11,8 @@ import { AlertCircle, Calendar, CheckCircle2 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { ContractWithRelations } from '@/hooks/useContracts';
 import { formatAmount } from '@/components/contracts/detail/formatCurrency';
+import { Button } from '@/components/ui/button';
+import { getMoveOutNoticeState } from '@/lib/contractMoveOutNotice';
 
 type Mau = 'do' | 'cam' | 'xanhDuong' | 'hoPhach';
 
@@ -53,6 +55,8 @@ interface Props {
   sideLoadErrors: string[];
   pendingForfeitCount: number;
   pendingRefundCount: number;
+  today?: string;
+  onManageNotice?: () => void;
 }
 
 export function ContractAlertStrip({
@@ -63,9 +67,12 @@ export function ContractAlertStrip({
   sideLoadErrors,
   pendingForfeitCount,
   pendingRefundCount,
+  today,
+  onManageNotice,
 }: Props) {
   const cocThieu = (contract.deposit_remaining ?? 0) > 0;
   const choXuLy = pendingForfeitCount + pendingRefundCount;
+  const noticeState = today ? getMoveOutNoticeState(contract.expected_move_out_date, today) : 'upcoming';
   const coGi =
     sideLoadErrors.length > 0 ||
     (isExpiringSoon && isActive) ||
@@ -97,8 +104,12 @@ export function ContractAlertStrip({
       )}
 
       {contract.expected_move_out_date && isActive && (
-        <Dai mau="xanhDuong" icon={Calendar}>
-          Khách đã đăng ký chuyển đi vào ngày {ngayVn(contract.expected_move_out_date)}.
+        <Dai mau={noticeState === 'due' || noticeState === 'overdue' ? 'cam' : 'xanhDuong'} icon={Calendar}>
+          <p>
+            {noticeState === 'overdue' ? 'Đã quá ngày dự kiến trả phòng' : noticeState === 'due' ? 'Đến ngày dự kiến trả phòng' : 'Khách dự kiến trả phòng'}: {ngayVn(contract.expected_move_out_date)}.
+            {' '}Khách vẫn đang ở; cần xác nhận lại khi khách đổi kế hoạch.
+          </p>
+          {onManageNotice && <Button type="button" variant="link" className="h-auto px-0 py-1 text-current" onClick={onManageNotice}>Sửa / hủy báo trả phòng</Button>}
         </Dai>
       )}
 

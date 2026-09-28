@@ -1,5 +1,5 @@
 import { useParams, useNavigate } from 'react-router-dom';
-import { useState, useEffect } from 'react';
+import { lazy, Suspense, useState, useEffect } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -29,7 +29,10 @@ import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { EditRoomDialog } from '@/components/rooms/EditRoomDialog';
+import { RoomTurnoverPanel } from '@/components/rooms/RoomTurnoverPanel';
 import { isContractInEffect } from '@/types/contract';
+
+const RoomReservationPanel = lazy(() => import('@/components/deposits/RoomReservationPanel').then(module => ({ default: module.RoomReservationPanel })));
 
 type Contract = {
   id: string;
@@ -350,6 +353,8 @@ const RoomDetailPage = () => {
       </div>
 
       {/* Tabs */}
+      <div className="mb-4"><RoomTurnoverPanel roomId={room.id} /></div>
+      <div className="mb-4"><Suspense fallback={<p className="text-sm">Đang tải giữ chỗ…</p>}><RoomReservationPanel roomId={room.id} buildingId={room.building_id} /></Suspense></div>
       <Tabs defaultValue="general" className="space-y-4">
         <TabsList>
           <TabsTrigger value="general">

@@ -63,7 +63,7 @@ const TEN_THU = {
  */
 export function vanTayDanhSach(rooms) {
   const phan = (rooms || [])
-    .map((r) => [r.id, r.code, r.price, r.status, r.availDate || ''].join('|'))
+    .map((r) => [r.id, r.code, r.price, r.status, r.availDate || '', r.saleFact?.label || ''].join('|'))
     .sort();
   // FNV-1a 32-bit: đủ phân biệt cho vài trăm phòng, ngắn gọn khi ghi vào jsonb,
   // và không kéo `crypto` vào một file cố ý giữ thuần.

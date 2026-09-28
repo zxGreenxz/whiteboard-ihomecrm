@@ -53,7 +53,7 @@ const TAB_DEFS: TabDef[] = [
 export default function SalePhongMobilePage() {
   const navigate = useNavigate();
   const { data: perms } = useMyPermissions();
-  const { data: buildings, isLoading } = useMyAvailableRooms();
+  const { data: buildings, isLoading, isError, refetch } = useMyAvailableRooms();
   const { data: tokens } = usePublicRoomTokens();
   const { data: passListings } = usePassListings();
 
@@ -132,6 +132,11 @@ export default function SalePhongMobilePage() {
           ) : mode === 'browse' ? (
             isLoading ? (
               <div className="mbody"><div className="stub"><p>Đang tải danh sách phòng…</p></div></div>
+            ) : isError ? (
+              <div className="mbody"><div className="stub">
+                <p>Chưa tải được danh sách phòng. Thử lại để xem tình trạng hiện tại.</p>
+                <button onClick={() => { void refetch(); }}>Thử lại</button>
+              </div></div>
             ) : (
               <div className="sp-embed">
                 <PhongTrongPage buildings={buildings ?? []} embedded />

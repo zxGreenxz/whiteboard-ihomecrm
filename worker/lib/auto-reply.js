@@ -41,7 +41,8 @@ export function timTuKhoa(noiDung, danhSach) {
 
 /** Danh sách phòng dạng text gọn cho tin trả lời. */
 export function soanDanhSachPhong(rooms, link) {
-  const trongNgay = rooms.filter((r) => r.status === 'free');
+  const trongNgay = rooms.filter((r) => r.status === 'free' && r.saleFact?.kind !== 'preparing');
+  const dangChuanBi = rooms.filter((r) => r.status === 'free' && r.saleFact?.kind === 'preparing');
   const sapTrong = rooms.filter((r) => r.status === 'soon');
   const pass = rooms.filter((r) => r.status === 'pass');
 
@@ -54,7 +55,8 @@ export function soanDanhSachPhong(rooms, link) {
 
   const phan = [];
   if (trongNgay.length) phan.push(`TRỐNG NGAY (${trongNgay.length}):\n${trongNgay.map((r) => dong(r)).join('\n')}`);
-  if (sapTrong.length) phan.push(`SẮP TRỐNG (${sapTrong.length}):\n${sapTrong.map((r) => dong(r, r.availDate ? ` — trống ${r.availDate}` : '')).join('\n')}`);
+  if (dangChuanBi.length) phan.push(`PHÒNG TRỐNG ĐANG CHUẨN BỊ (${dangChuanBi.length}):\n${dangChuanBi.map(r => dong(r, ` — ${r.saleFact.label}`)).join('\n')}`);
+  if (sapTrong.length) phan.push(`SẮP TRỐNG (${sapTrong.length}):\n${sapTrong.map((r) => dong(r, r.saleFact ? ` — ${r.saleFact.label}` : r.availDate ? ` — trống ${r.availDate}` : '')).join('\n')}`);
   if (pass.length) phan.push(`KHÁCH PASS PHÒNG (${pass.length}):\n${pass.map((r) => dong(r)).join('\n')}`);
   if (!phan.length) return 'Hiện bên em chưa có phòng trống nào ạ. Anh/chị để lại nhu cầu, có phòng em báo ngay.';
   if (link) phan.push(`Bảng đầy đủ: ${link}`);

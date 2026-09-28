@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
@@ -6,6 +6,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
@@ -29,7 +30,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Loader2, ArrowLeft, Ban, LogOut, ReceiptText, Undo2 } from "lucide-react";
+import { Loader2, ArrowLeft, ReceiptText, Undo2 } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -51,10 +52,11 @@ import type {
   TerminateMoveOutFormData,
 } from "@/lib/contractValidation";
 import type { ContractWithRelations } from "@/types/contract";
-import {
-  useTerminateForfeit,
-  useTerminateMoveOut,
-} from "@/hooks/useContractOperations";
+import { useConfirmContractReturn, useFinalizeContractExitCase } from '@/hooks/useContractExitCases';
+import type { ContractExitCase, ExitKind, ExitSettlementInput } from '@/lib/contractExitCases';
+import { ContractReturnStep } from './ContractReturnStep';
+import { ContractMeterBoundaryFields } from './ContractMeterBoundaryFields';
+import type { MeterBoundaryInput } from '@/lib/contractMeterBoundaries';
 import { useUnpaidInvoices } from "@/hooks/useContracts";
 import { useExcessAmount } from "@/hooks/useInvoices";
 import { useAccounts } from "@/hooks/useAccounts";
@@ -70,13 +72,14 @@ import { TerminationRefundItems } from "./TerminationRefundItems";
 import type { ExtraChargeItem, RefundItem } from "@/lib/contractValidation";
 import { computeTerminationSettlement } from "@/lib/terminationSettlement";
 import { todayISO } from '@/lib/collect';
-
-type TerminationType = "FORFEIT" | "MOVE_OUT";
+import { useContractTransferLinks, useFinalizeContractTransferExit } from '@/hooks/contracts/useContractTransferLinks';
+import { transferBrokerFeeLine, withTransferBrokerFee } from '@/lib/contract-lifecycle/transfers';
 
 interface TerminateDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   contract: ContractWithRelations;
+  exitCase?: ContractExitCase;
 }
 
 // Format number as VND
@@ -88,44 +91,86 @@ export function TerminateDialog({
   open,
   onOpenChange,
   contract,
+  exitCase,
 }: TerminateDialogProps) {
   const [step, setStep] = useState<1 | 2>(1);
-  const [terminationType, setTerminationType] =
-    useState<TerminationType | null>(null);
-
-  const terminateForfeit = useTerminateForfeit();
-  const terminateMoveOut = useTerminateMoveOut();
+  const [kind, setKind] = useState<ExitKind | null>(null);
+  const [actualDate, setActualDate] = useState('');
+  const [changeReason, setChangeReason] = useState('');
+  const [meterBoundary, setMeterBoundary] = useState<MeterBoundaryInput | null>({ state: 'MISSING', reason: 'Chưa đủ chỉ số khi nhận bàn giao, bổ sung sau' });
+  const requestKeys = useRef(new Map<string, string>());
+  const confirmReturn = useConfirmContractReturn();
+  const finalizeExit = useFinalizeContractExitCase();
+  const transferQuery = useContractTransferLinks({ exitCaseId: exitCase?.id }, open && !!exitCase);
+  const finalizeTransfer = useFinalizeContractTransferExit();
+  const transfer = transferQuery.data?.find(link => link.state === 'LINKED');
+  const brokerFee = useMemo(() => transfer?.mode === 'BROKER' && transfer.broker_fee !== null && transfer.broker_fee > 0
+    ? transferBrokerFeeLine(transfer) : null, [transfer]);
+  const brokerFeeUnavailable = transfer?.mode === 'BROKER' && !brokerFee;
+  const transferUnavailable = !!exitCase && (transferQuery.isPending || transferQuery.isError || brokerFeeUnavailable);
 
   // Query unpaid invoices — dùng cho cả move-out (tính công nợ) lẫn forfeit
   // (liệt kê các hoá đơn sẽ bị huỷ khi bỏ cọc).
   const { data: unpaidInvoices } = useUnpaidInvoices(
-    terminationType ? contract.id : undefined
+    step === 2 ? contract.id : undefined
   );
   // Tiền nợ khách (credit) còn dư của contract — pre-fill vào "Tiền phòng thừa"
   // ở move-out, hiển thị info ở forfeit.
   const { data: creditBalance = 0 } = useExcessAmount(
-    terminationType ? contract.id : undefined
+    step === 2 ? contract.id : undefined
   );
 
   // Reset state when dialog opens/closes
   useEffect(() => {
     if (open) {
       setStep(1);
-      setTerminationType(null);
+      setKind(exitCase?.current_kind ?? null);
+      setActualDate(exitCase?.actual_move_out_on ?? todayISO());
+      setChangeReason('');
+      setMeterBoundary({ state: 'MISSING', reason: 'Chưa đủ chỉ số khi nhận bàn giao, bổ sung sau' });
+      requestKeys.current.clear();
     }
-  }, [open]);
-
-  const handleSelectType = (type: TerminationType) => {
-    setTerminationType(type);
-    setStep(2);
-  };
+  }, [open, contract.id, exitCase?.id]);
 
   const handleBack = () => {
     setStep(1);
-    setTerminationType(null);
   };
 
-  const isPending = terminateForfeit.isPending || terminateMoveOut.isPending;
+  const isPending = confirmReturn.isPending || finalizeExit.isPending || finalizeTransfer.isPending;
+  const requestKey = (intent: unknown) => {
+    const value = JSON.stringify(intent);
+    let key = requestKeys.current.get(value);
+    if (!key) { key = crypto.randomUUID(); requestKeys.current.set(value, key); }
+    return key;
+  };
+  const deferSettlement = async () => {
+    if (!kind || !actualDate || exitCase || !meterBoundary) return;
+    const intent = { contractId: contract.id, expectedContractUpdatedAt: contract.updated_at,
+      actualMoveOutOn: actualDate, initialKind: kind, settlementMode: 'DEFERRED' as const, meterBoundary };
+    try {
+      await confirmReturn.mutateAsync({ ...intent, idempotencyKey: requestKey(intent) });
+      onOpenChange(false);
+    } catch { /* The mutation displays the error and preserves this form for retry. */ }
+  };
+  const settle = async (settlement: ExitSettlementInput) => {
+    if (!kind) throw new Error('Chọn loại thanh lý trước khi quyết toán');
+    if (exitCase) {
+      if (transferUnavailable) throw new Error('Chưa tải được liên kết nhượng, vui lòng thử lại');
+      const intent = { caseId: exitCase.id, expectedVersion: exitCase.version,
+        currentKind: kind, reason: changeReason.trim() || undefined, settlement };
+      if (transfer) {
+        const linkedIntent = { ...intent, linkId: transfer.id, expectedLinkVersion: transfer.version };
+        await finalizeTransfer.mutateAsync({ ...linkedIntent, idempotencyKey: requestKey(linkedIntent) });
+      } else {
+        await finalizeExit.mutateAsync({ ...intent, idempotencyKey: requestKey(intent) });
+      }
+    } else {
+      if (!meterBoundary) throw new Error('Kiểm tra chỉ số bàn giao hoặc chọn bổ sung sau');
+      const intent = { contractId: contract.id, expectedContractUpdatedAt: contract.updated_at,
+        actualMoveOutOn: actualDate, initialKind: kind, settlementMode: 'IMMEDIATE' as const, settlement, meterBoundary };
+      await confirmReturn.mutateAsync({ ...intent, idempotencyKey: requestKey(intent) });
+    }
+  };
 
   // Get representative customer name
   const representativeCustomer = contract.contract_customers?.find(
@@ -142,36 +187,48 @@ export function TerminateDialog({
     : roomName;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={value => { if (!isPending) onOpenChange(value); }}>
       <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {step === 1
-              ? "Thanh lý hợp đồng"
-              : terminationType === "FORFEIT"
-                ? "Thanh lý — Khách bỏ cọc"
-                : "Thanh lý — Khách rời phòng"}
+              ? (exitCase ? "Quyết toán hồ sơ đã trả phòng" : "Thanh lý hợp đồng")
+              : kind === "FORFEIT"
+                ? "Quyết toán — Khách bỏ cọc"
+                : "Quyết toán — Khách rời phòng"}
           </DialogTitle>
+          <DialogDescription className="sr-only">Ghi nhận ngày trả phòng và loại thanh lý; chọn quyết toán ngay hoặc xử lý hồ sơ sau.</DialogDescription>
         </DialogHeader>
 
+        {transferUnavailable && <p role="status" className="text-sm">{brokerFeeUnavailable ? 'Chưa xác định được phí nhượng hợp lệ. Kiểm tra liên kết nhượng trước khi quyết toán.' : transferQuery.isError ? 'Không tải được liên kết nhượng. Đóng và mở lại hồ sơ để thử lại.' : 'Đang kiểm tra liên kết nhượng…'}</p>}
+
         {step === 1 && (
-          <StepSelectType onSelect={handleSelectType} />
+          <ContractReturnStep actualDate={actualDate} onDateChange={setActualDate}
+            kind={kind} onKindChange={setKind} exitCase={exitCase}
+            changeReason={changeReason} onReasonChange={setChangeReason}
+            pending={isPending || transferUnavailable} physicalReady={!!exitCase || (!!contract.room_id && !!meterBoundary)}
+            onDefer={() => void deferSettlement()} onContinue={() => setStep(2)}>
+            {!exitCase && !!contract.room_id && <ContractMeterBoundaryFields key={contract.room_id} roomId={contract.room_id}
+              allowMissing disabled={isPending} initialValue={meterBoundary} onChange={setMeterBoundary} />}
+          </ContractReturnStep>
         )}
 
-        {step === 2 && terminationType === "FORFEIT" && (
+        {step === 2 && kind === "FORFEIT" && (
           <StepForfeit
             contract={contract}
             creditBalance={creditBalance}
             unpaidInvoices={unpaidInvoices || []}
             onBack={handleBack}
             onClose={() => onOpenChange(false)}
-            isPending={isPending}
-            terminateForfeit={terminateForfeit}
+            isPending={isPending || transferUnavailable}
+            actualDate={actualDate}
+            onSettle={settle}
           />
         )}
 
-        {step === 2 && terminationType === "MOVE_OUT" && (
+        {step === 2 && kind && kind !== "FORFEIT" && (
           <StepMoveOut
+            key={transfer?.id ?? 'ordinary'}
             contract={contract}
             customerName={customerName}
             locationDisplay={locationDisplay}
@@ -179,56 +236,15 @@ export function TerminateDialog({
             creditBalance={creditBalance}
             onBack={handleBack}
             onClose={() => onOpenChange(false)}
-            isPending={isPending}
-            terminateMoveOut={terminateMoveOut}
+            isPending={isPending || transferUnavailable}
+            actualDate={actualDate}
+            onSettle={settle}
+            brokerFee={brokerFee}
+            brokerDepositBase={transfer?.mode === 'BROKER' ? transfer.deposit_base : null}
           />
         )}
       </DialogContent>
     </Dialog>
-  );
-}
-
-// =============================================
-// Step 1: Select termination type
-// =============================================
-
-function StepSelectType({
-  onSelect,
-}: {
-  onSelect: (type: TerminationType) => void;
-}) {
-  return (
-    <div className="space-y-4 py-4">
-      <p className="text-sm text-muted-foreground">
-        Chọn hình thức thanh lý hợp đồng:
-      </p>
-      {/* B3 (audit 03/07): nêu rõ hệ quả rất khác nhau của 2 hình thức ngay tại
-          bước chọn — cả 2 đều gần như không thể hoàn tác. */}
-      <div className="grid grid-cols-2 gap-4">
-        <Button
-          variant="outline"
-          className="h-auto min-h-28 flex flex-col items-center gap-1.5 py-3 whitespace-normal hover:border-red-300 hover:bg-red-50"
-          onClick={() => onSelect("FORFEIT")}
-        >
-          <Ban className="h-6 w-6 text-red-500" />
-          <span className="font-medium">Khách bỏ cọc</span>
-          <span className="text-[11px] font-normal text-muted-foreground leading-snug text-center">
-            Huỷ mọi hoá đơn còn nợ, giữ cọc làm doanh thu (cần Duyệt phiếu sau)
-          </span>
-        </Button>
-        <Button
-          variant="outline"
-          className="h-auto min-h-28 flex flex-col items-center gap-1.5 py-3 whitespace-normal hover:border-orange-300 hover:bg-orange-50"
-          onClick={() => onSelect("MOVE_OUT")}
-        >
-          <LogOut className="h-6 w-6 text-orange-500" />
-          <span className="font-medium">Khách rời phòng</span>
-          <span className="text-[11px] font-normal text-muted-foreground leading-snug text-center">
-            Hoàn cọc sau khi trừ công nợ/thu thêm — quyết toán ngay
-          </span>
-        </Button>
-      </div>
-    </div>
   );
 }
 
@@ -243,7 +259,8 @@ function StepForfeit({
   onBack,
   onClose,
   isPending,
-  terminateForfeit,
+  actualDate,
+  onSettle,
 }: {
   contract: ContractWithRelations;
   creditBalance: number;
@@ -251,12 +268,13 @@ function StepForfeit({
   onBack: () => void;
   onClose: () => void;
   isPending: boolean;
-  terminateForfeit: ReturnType<typeof useTerminateForfeit>;
+  actualDate: string;
+  onSettle: (settlement: ExitSettlementInput) => Promise<void>;
 }) {
   const form = useForm<TerminateForfeitFormData>({
     resolver: zodResolver(terminateForfeitFormSchema),
     defaultValues: {
-      forfeit_date: todayISO(),
+      forfeit_date: actualDate,
     },
   });
 
@@ -283,21 +301,13 @@ function StepForfeit({
     setConfirmOpen(true);
   };
 
-  const doTerminate = () => {
+  const doTerminate = async () => {
     if (!pendingData) return;
     setConfirmOpen(false);
-    terminateForfeit.mutate(
-      {
-        contractId: contract.id,
-        forfeitDate: pendingData.forfeit_date,
-        extraCharges,
-      },
-      {
-        onSuccess: () => {
-          onClose();
-        },
-      }
-    );
+    try {
+      await onSettle({ extraCharges });
+      onClose();
+    } catch { /* Mutation reports the error; keep settlement inputs. */ }
   };
 
   const forfeitInfo = creditBalance > 0;
@@ -322,7 +332,7 @@ function StepForfeit({
           render={({ field }) => (
             <FormItem>
               <FormLabel>
-                Ngày bỏ cọc <span className="text-red-500">*</span>
+                Ngày trả phòng đã xác nhận
               </FormLabel>
               <FormControl>
                 <DateInput
@@ -330,6 +340,7 @@ function StepForfeit({
                   onChange={field.onChange}
                   onBlur={field.onBlur}
                   name={field.name}
+                  disabled
                 />
               </FormControl>
               <FormMessage />
@@ -523,7 +534,10 @@ function StepMoveOut({
   onBack,
   onClose,
   isPending,
-  terminateMoveOut,
+  actualDate,
+  onSettle,
+  brokerFee,
+  brokerDepositBase,
 }: {
   contract: ContractWithRelations;
   customerName: string;
@@ -533,7 +547,10 @@ function StepMoveOut({
   onBack: () => void;
   onClose: () => void;
   isPending: boolean;
-  terminateMoveOut: ReturnType<typeof useTerminateMoveOut>;
+  actualDate: string;
+  onSettle: (settlement: ExitSettlementInput) => Promise<void>;
+  brokerFee: ExtraChargeItem | null;
+  brokerDepositBase: number | null;
 }) {
   // A1 (audit 03/07): mặc định hoàn cọc theo cọc THỰC THU (deposit_paid), không
   // phải cọc theo HĐ — server cũng kẹp LEAST(refund, deposit_paid) để không thể
@@ -544,16 +561,15 @@ function StepMoveOut({
   const form = useForm<TerminateMoveOutFormData>({
     resolver: zodResolver(terminateMoveOutFormSchema),
     defaultValues: {
-      move_out_date: contract.expected_move_out_date
-        ? contract.expected_move_out_date.split("T")[0]
-        : todayISO(),
-      deposit_refund: Math.min(totalDeposit, depositPaid),
+      move_out_date: actualDate,
+      deposit_refund: brokerDepositBase ?? Math.min(totalDeposit, depositPaid),
       excess_rent: 0,
       notes: "",
     },
   });
 
-  const [extraCharges, setExtraCharges] = useState<ExtraChargeItem[]>([]);
+  const [editableCharges, setExtraCharges] = useState<ExtraChargeItem[]>([]);
+  const extraCharges = useMemo(() => withTransferBrokerFee(editableCharges, brokerFee), [editableCharges, brokerFee]);
   const extraTotal = extraCharges.reduce((s, it) => s + (it.amount || 0), 0);
 
   // Khoản MÌNH trả lại khách (tiền phòng ngày không ở…) — thêm 22/08/2026.
@@ -625,13 +641,11 @@ function StepMoveOut({
     setConfirmOpen(true);
   };
 
-  const doTerminate = () => {
+  const doTerminate = async () => {
     if (!pendingData) return;
     setConfirmOpen(false);
-    terminateMoveOut.mutate(
-      {
-        contractId: contract.id,
-        moveOutDate: pendingData.move_out_date,
+    try {
+      await onSettle({
         depositRefund: pendingData.deposit_refund,
         excessRent: pendingData.excess_rent,
         outstandingDebt,
@@ -640,13 +654,9 @@ function StepMoveOut({
         refundItems,
         shortfallMode,
         receiptAccountId: receiptAccountId || null,
-      },
-      {
-        onSuccess: () => {
-          onClose();
-        },
-      }
-    );
+      });
+      onClose();
+    } catch { /* Mutation reports the error; keep settlement inputs. */ }
   };
 
   const formatDate = (dateStr: string | null) =>
@@ -714,7 +724,7 @@ function StepMoveOut({
               render={({ field }) => (
                 <FormItem className="space-y-1">
                   <FormLabel className="text-xs text-muted-foreground">
-                    Ngày chuyển đi <span className="text-red-500">*</span>
+                    Ngày trả phòng đã xác nhận
                   </FormLabel>
                   <FormControl>
                     <DateInput
@@ -723,6 +733,7 @@ function StepMoveOut({
                       onBlur={field.onBlur}
                       name={field.name}
                       className="h-8 text-sm"
+                      disabled
                     />
                   </FormControl>
                   <FormMessage />
@@ -804,6 +815,7 @@ function StepMoveOut({
                   <FormLabel className="text-xs">Tiền cọc hoàn trả</FormLabel>
                   <FormControl>
                     <CurrencyInput
+                      disabled={!!brokerFee}
                       className="h-9 text-sm text-right"
                       value={field.value}
                       onChange={field.onChange}
@@ -872,6 +884,10 @@ function StepMoveOut({
         {/* Section 3b: Thu thêm — vào HOÁ ĐƠN THANH LÝ RIÊNG (kind SETTLEMENT,
             đúng kỳ tháng trả phòng), KHÔNG đụng hoá đơn tiền phòng của tháng. */}
         <div className="border-t pt-4">
+          {brokerFee && <div className="mb-3 rounded border p-3 text-sm">
+            <p>Phí nhượng qua môi giới · 50% cọc cũ: <strong>{formatVND(brokerFee.amount)} đ</strong></p>
+            <p className="text-xs text-muted-foreground">Đã cộng một lần vào khoản thu khi thanh lý. Các khoản khác xử lý như hiện tại.</p>
+          </div>}
           <TerminationExtraCharges
             contract={contract}
             chargeDate={form.watch("move_out_date")}

@@ -4,6 +4,7 @@
  */
 
 export type RoomStatus = "free" | "soon" | "rented" | "pass";
+import type { RoomSaleFact } from '@/lib/roomSaleFacts';
 
 export interface Box { x: number; y: number; w: number; h: number; }
 
@@ -22,9 +23,10 @@ export interface Room extends Box {
   status: RoomStatus;
   amenities: string[];
   availDate: string | null;
+  saleFact?: RoomSaleFact;
   imgCount: number;
   phClass: string;
-  images?: string[];   // ảnh thật từ Supabase (nếu có); rỗng -> dùng placeholder picsum
+  images?: string[];   // ảnh thật từ Supabase; rỗng -> chưa có ảnh
   description?: string | null; // mô tả/ghi chú phòng (vd "cửa sổ hành lang", "ban công")
   saleNote?: string | null;    // ô "Khuyến mãi" (promo riêng của phòng, gửi khách được)
   saleBonus?: string | null;   // ô "Thưởng sale" (nội bộ — KHÔNG đưa vào text gửi khách)
@@ -78,10 +80,8 @@ function fmtElec(rate?: number | null): string {
 }
 export function genInfoLines(b?: { elecRate?: number | null; liftLabel?: string | null }): string[] {
   return [
-    fmtElec(b?.elecRate),
-    "Nước 100k/người · Phí dịch vụ 150k/phòng",
-    `Free xe${b?.liftLabel ? ` · ${b.liftLabel}` : ""} · Máy giặt chung · Sân phơi`,
-    "Tối đa 3 người · 2 xe · Không nhận xe điện",
+    ...(b?.elecRate && b.elecRate > 0 ? [fmtElec(b.elecRate)] : []),
+    ...(b?.liftLabel?.trim() ? [b.liftLabel.trim()] : []),
   ];
 }
 // Bản chung (không gắn tòa) cho box "Thông tin chung" ở trang tổng quan.

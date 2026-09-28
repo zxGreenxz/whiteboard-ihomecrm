@@ -1,1 +1,4 @@
 project_id = "tryymsxyyckgbrmmvozx"
+
+[functions.lifecycle-reminders]
+verify_jwt = true

@@ -2895,6 +2895,519 @@ export type Database = {
           },
         ]
       }
+      contract_draft_documents: {
+        Row: {
+          building_id: string
+          created_at: string
+          created_by: string
+          document_data: Json
+          document_path: string
+          document_sha256: string
+          draft_id: string
+          id: string
+          organization_id: string
+          revision: number
+          template_path: string
+          template_sha256: string
+          template_snapshot: Json
+        }
+        Insert: {
+          building_id: string
+          created_at?: string
+          created_by: string
+          document_data: Json
+          document_path: string
+          document_sha256: string
+          draft_id: string
+          id: string
+          organization_id: string
+          revision: number
+          template_path: string
+          template_sha256: string
+          template_snapshot: Json
+        }
+        Update: {
+          building_id?: string
+          created_at?: string
+          created_by?: string
+          document_data?: Json
+          document_path?: string
+          document_sha256?: string
+          draft_id?: string
+          id?: string
+          organization_id?: string
+          revision?: number
+          template_path?: string
+          template_sha256?: string
+          template_snapshot?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contract_draft_documents_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "building_coverage"
+            referencedColumns: ["building_id"]
+          },
+          {
+            foreignKeyName: "contract_draft_documents_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_draft_documents_draft_id_revision_fkey"
+            columns: ["draft_id", "revision"]
+            isOneToOne: true
+            referencedRelation: "contract_draft_versions"
+            referencedColumns: ["draft_id", "revision"]
+          },
+          {
+            foreignKeyName: "contract_draft_documents_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contract_draft_signings: {
+        Row: {
+          building_id: string
+          contract_id: string
+          contract_number: string
+          creation_options: Json
+          document_data: Json
+          document_id: string
+          document_sha256: string
+          draft_id: string
+          id: string
+          intent_hash: string
+          official_document_path: string
+          official_document_sha256: string | null
+          organization_id: string
+          party_snapshot: Json
+          received_on: string
+          request_id: string
+          reservation_id: string | null
+          reservation_revision: number | null
+          revision: number
+          room_id: string
+          signed_at: string
+          signed_by: string
+          source_voucher_ids: string[]
+          template_path: string
+          template_sha256: string
+          template_snapshot: Json
+          terms: Json
+        }
+        Insert: {
+          building_id: string
+          contract_id: string
+          contract_number: string
+          creation_options: Json
+          document_data: Json
+          document_id: string
+          document_sha256: string
+          draft_id: string
+          id?: string
+          intent_hash: string
+          official_document_path: string
+          official_document_sha256?: string | null
+          organization_id: string
+          party_snapshot: Json
+          received_on: string
+          request_id: string
+          reservation_id?: string | null
+          reservation_revision?: number | null
+          revision: number
+          room_id: string
+          signed_at?: string
+          signed_by: string
+          source_voucher_ids?: string[]
+          template_path: string
+          template_sha256: string
+          template_snapshot: Json
+          terms: Json
+        }
+        Update: {
+          building_id?: string
+          contract_id?: string
+          contract_number?: string
+          creation_options?: Json
+          document_data?: Json
+          document_id?: string
+          document_sha256?: string
+          draft_id?: string
+          id?: string
+          intent_hash?: string
+          official_document_path?: string
+          official_document_sha256?: string | null
+          organization_id?: string
+          party_snapshot?: Json
+          received_on?: string
+          request_id?: string
+          reservation_id?: string | null
+          reservation_revision?: number | null
+          revision?: number
+          room_id?: string
+          signed_at?: string
+          signed_by?: string
+          source_voucher_ids?: string[]
+          template_path?: string
+          template_sha256?: string
+          template_snapshot?: Json
+          terms?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contract_draft_signings_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "building_coverage"
+            referencedColumns: ["building_id"]
+          },
+          {
+            foreignKeyName: "contract_draft_signings_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_draft_signings_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: true
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_draft_signings_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "contract_draft_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_draft_signings_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: true
+            referencedRelation: "contract_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_draft_signings_draft_id_revision_fkey"
+            columns: ["draft_id", "revision"]
+            isOneToOne: false
+            referencedRelation: "contract_draft_versions"
+            referencedColumns: ["draft_id", "revision"]
+          },
+          {
+            foreignKeyName: "contract_draft_signings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_draft_signings_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contract_draft_versions: {
+        Row: {
+          building_id: string
+          created_at: string
+          created_by: string
+          draft_id: string
+          organization_id: string
+          payload: Json
+          request_id: string
+          revision: number
+          room_id: string | null
+          template_id: string | null
+        }
+        Insert: {
+          building_id: string
+          created_at?: string
+          created_by: string
+          draft_id: string
+          organization_id: string
+          payload: Json
+          request_id: string
+          revision: number
+          room_id?: string | null
+          template_id?: string | null
+        }
+        Update: {
+          building_id?: string
+          created_at?: string
+          created_by?: string
+          draft_id?: string
+          organization_id?: string
+          payload?: Json
+          request_id?: string
+          revision?: number
+          room_id?: string | null
+          template_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contract_draft_versions_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "building_coverage"
+            referencedColumns: ["building_id"]
+          },
+          {
+            foreignKeyName: "contract_draft_versions_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_draft_versions_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "contract_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_draft_versions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contract_drafts: {
+        Row: {
+          building_id: string
+          converted_contract_id: string | null
+          created_at: string
+          created_by: string
+          id: string
+          organization_id: string
+          payload: Json
+          revision: number
+          room_id: string | null
+          status: string
+          template_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          building_id: string
+          converted_contract_id?: string | null
+          created_at?: string
+          created_by: string
+          id?: string
+          organization_id: string
+          payload: Json
+          revision?: number
+          room_id?: string | null
+          status?: string
+          template_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          building_id?: string
+          converted_contract_id?: string | null
+          created_at?: string
+          created_by?: string
+          id?: string
+          organization_id?: string
+          payload?: Json
+          revision?: number
+          room_id?: string | null
+          status?: string
+          template_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contract_drafts_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "building_coverage"
+            referencedColumns: ["building_id"]
+          },
+          {
+            foreignKeyName: "contract_drafts_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_drafts_converted_contract_id_fkey"
+            columns: ["converted_contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_drafts_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_drafts_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contract_exit_cases: {
+        Row: {
+          actual_move_out_on: string
+          building_id: string
+          building_name: string | null
+          contract_id: string
+          contract_number: string | null
+          created_at: string
+          current_kind: string
+          customer_name: string | null
+          finalized_at: string | null
+          id: string
+          initial_kind: string
+          legacy_termination_id: string | null
+          organization_id: string
+          party_snapshot: Json
+          physical_actor: string
+          physical_idempotency_key: string
+          physical_payload_hash: string
+          room_at_handover_id: string
+          room_name: string | null
+          settlement_actor: string | null
+          settlement_idempotency_key: string | null
+          settlement_mode: string
+          settlement_payload_hash: string | null
+          settlement_result: Json | null
+          state: string
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          actual_move_out_on: string
+          building_id: string
+          building_name?: string | null
+          contract_id: string
+          contract_number?: string | null
+          created_at?: string
+          current_kind: string
+          customer_name?: string | null
+          finalized_at?: string | null
+          id?: string
+          initial_kind: string
+          legacy_termination_id?: string | null
+          organization_id: string
+          party_snapshot: Json
+          physical_actor: string
+          physical_idempotency_key: string
+          physical_payload_hash: string
+          room_at_handover_id: string
+          room_name?: string | null
+          settlement_actor?: string | null
+          settlement_idempotency_key?: string | null
+          settlement_mode: string
+          settlement_payload_hash?: string | null
+          settlement_result?: Json | null
+          state?: string
+          updated_at?: string
+          version?: number
+        }
+        Update: {
+          actual_move_out_on?: string
+          building_id?: string
+          building_name?: string | null
+          contract_id?: string
+          contract_number?: string | null
+          created_at?: string
+          current_kind?: string
+          customer_name?: string | null
+          finalized_at?: string | null
+          id?: string
+          initial_kind?: string
+          legacy_termination_id?: string | null
+          organization_id?: string
+          party_snapshot?: Json
+          physical_actor?: string
+          physical_idempotency_key?: string
+          physical_payload_hash?: string
+          room_at_handover_id?: string
+          room_name?: string | null
+          settlement_actor?: string | null
+          settlement_idempotency_key?: string | null
+          settlement_mode?: string
+          settlement_payload_hash?: string | null
+          settlement_result?: Json | null
+          state?: string
+          updated_at?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contract_exit_cases_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "building_coverage"
+            referencedColumns: ["building_id"]
+          },
+          {
+            foreignKeyName: "contract_exit_cases_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_exit_cases_legacy_termination_id_fkey"
+            columns: ["legacy_termination_id"]
+            isOneToOne: true
+            referencedRelation: "contract_terminations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_exit_cases_legacy_termination_id_fkey"
+            columns: ["legacy_termination_id"]
+            isOneToOne: true
+            referencedRelation: "v_termination_calculation"
+            referencedColumns: ["termination_id"]
+          },
+          {
+            foreignKeyName: "contract_exit_cases_organization_id_contract_id_fkey"
+            columns: ["organization_id", "contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "contract_exit_cases_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_exit_cases_organization_id_room_at_handover_id_fkey"
+            columns: ["organization_id", "room_at_handover_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
       contract_extensions: {
         Row: {
           additional_deposit_required: number | null
@@ -2991,6 +3504,364 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contract_meter_boundaries: {
+        Row: {
+          building_id: string
+          contract_id: string
+          effective_on: string
+          evidence: string | null
+          id: string
+          kind: string
+          measured_at: string | null
+          meter_code: string | null
+          meter_id: string
+          meter_type: string | null
+          organization_id: string
+          reading: number | null
+          recorded_at: string
+          recorded_by: string
+          revision: number
+          room_id: string
+          set_id: string
+          state: string
+        }
+        Insert: {
+          building_id: string
+          contract_id: string
+          effective_on: string
+          evidence?: string | null
+          id?: string
+          kind: string
+          measured_at?: string | null
+          meter_code?: string | null
+          meter_id: string
+          meter_type?: string | null
+          organization_id: string
+          reading?: number | null
+          recorded_at?: string
+          recorded_by: string
+          revision: number
+          room_id: string
+          set_id: string
+          state: string
+        }
+        Update: {
+          building_id?: string
+          contract_id?: string
+          effective_on?: string
+          evidence?: string | null
+          id?: string
+          kind?: string
+          measured_at?: string | null
+          meter_code?: string | null
+          meter_id?: string
+          meter_type?: string | null
+          organization_id?: string
+          reading?: number | null
+          recorded_at?: string
+          recorded_by?: string
+          revision?: number
+          room_id?: string
+          set_id?: string
+          state?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contract_meter_boundaries_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "building_coverage"
+            referencedColumns: ["building_id"]
+          },
+          {
+            foreignKeyName: "contract_meter_boundaries_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_meter_boundaries_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_meter_boundaries_meter_id_fkey"
+            columns: ["meter_id"]
+            isOneToOne: false
+            referencedRelation: "meters"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_meter_boundaries_meter_id_fkey"
+            columns: ["meter_id"]
+            isOneToOne: false
+            referencedRelation: "meters_with_latest_reading"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_meter_boundaries_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_meter_boundaries_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_meter_boundaries_set_id_fkey"
+            columns: ["set_id"]
+            isOneToOne: false
+            referencedRelation: "contract_meter_boundary_sets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contract_meter_boundary_sets: {
+        Row: {
+          affected_invoice_ids: string[]
+          building_id: string
+          contract_id: string
+          created_at: string
+          effective_on: string
+          id: string
+          initial_payload_hash: string
+          kind: string
+          organization_id: string
+          reason: string | null
+          recorded_by: string
+          revision: number
+          room_id: string
+          state: string
+          updated_at: string
+        }
+        Insert: {
+          affected_invoice_ids?: string[]
+          building_id: string
+          contract_id: string
+          created_at?: string
+          effective_on: string
+          id?: string
+          initial_payload_hash: string
+          kind: string
+          organization_id: string
+          reason?: string | null
+          recorded_by: string
+          revision?: number
+          room_id: string
+          state: string
+          updated_at?: string
+        }
+        Update: {
+          affected_invoice_ids?: string[]
+          building_id?: string
+          contract_id?: string
+          created_at?: string
+          effective_on?: string
+          id?: string
+          initial_payload_hash?: string
+          kind?: string
+          organization_id?: string
+          reason?: string | null
+          recorded_by?: string
+          revision?: number
+          room_id?: string
+          state?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contract_meter_boundary_sets_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "building_coverage"
+            referencedColumns: ["building_id"]
+          },
+          {
+            foreignKeyName: "contract_meter_boundary_sets_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_meter_boundary_sets_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_meter_boundary_sets_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_meter_boundary_sets_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contract_move_out_notice_events: {
+        Row: {
+          actor_id: string
+          contract_id: string
+          contract_updated_at: string
+          created_at: string
+          id: string
+          new_date: string | null
+          organization_id: string
+          previous_date: string | null
+          reason: string | null
+        }
+        Insert: {
+          actor_id: string
+          contract_id: string
+          contract_updated_at: string
+          created_at?: string
+          id?: string
+          new_date?: string | null
+          organization_id: string
+          previous_date?: string | null
+          reason?: string | null
+        }
+        Update: {
+          actor_id?: string
+          contract_id?: string
+          contract_updated_at?: string
+          created_at?: string
+          id?: string
+          new_date?: string | null
+          organization_id?: string
+          previous_date?: string | null
+          reason?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contract_move_out_notice_events_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_move_out_notice_events_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contract_notice_transition_events: {
+        Row: {
+          actor_id: string
+          building_id: string
+          contract_id: string
+          created_at: string
+          expected_updated_at: string
+          id: string
+          intent_hash: string
+          notice_choice: string
+          operation: string
+          organization_id: string
+          previous_notice_date: string | null
+          previous_room_id: string | null
+          reason: string
+          request_id: string
+          result_contract_id: string
+        }
+        Insert: {
+          actor_id: string
+          building_id: string
+          contract_id: string
+          created_at?: string
+          expected_updated_at: string
+          id?: string
+          intent_hash: string
+          notice_choice: string
+          operation: string
+          organization_id: string
+          previous_notice_date?: string | null
+          previous_room_id?: string | null
+          reason: string
+          request_id: string
+          result_contract_id: string
+        }
+        Update: {
+          actor_id?: string
+          building_id?: string
+          contract_id?: string
+          created_at?: string
+          expected_updated_at?: string
+          id?: string
+          intent_hash?: string
+          notice_choice?: string
+          operation?: string
+          organization_id?: string
+          previous_notice_date?: string | null
+          previous_room_id?: string | null
+          reason?: string
+          request_id?: string
+          result_contract_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contract_notice_transition_events_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "building_coverage"
+            referencedColumns: ["building_id"]
+          },
+          {
+            foreignKeyName: "contract_notice_transition_events_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_notice_transition_events_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_notice_transition_events_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_notice_transition_events_previous_room_id_fkey"
+            columns: ["previous_room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_notice_transition_events_result_contract_id_fkey"
+            columns: ["result_contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
             referencedColumns: ["id"]
           },
         ]
@@ -3230,6 +4101,195 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contract_transfer_links: {
+        Row: {
+          broker_fee: number
+          broker_name: string | null
+          building_id: string
+          commission_voucher_id: string | null
+          created_at: string
+          created_by: string
+          deposit_base: number
+          deposit_mode: string
+          ends_on: string
+          fee_state: string
+          id: string
+          intent_hash: string
+          mode: string
+          new_contract_id: string | null
+          new_customer_name: string
+          new_deposit_required: number
+          new_draft_id: string
+          new_draft_revision: number
+          new_party_snapshot: Json
+          old_contract_id: string
+          old_contract_number: string | null
+          old_customer_name: string | null
+          old_exit_case_id: string
+          old_party_snapshot: Json
+          organization_id: string
+          policy_version: string
+          reason: string
+          request_id: string
+          room_id: string
+          starts_on: string
+          state: string
+          term_mode: string
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          broker_fee: number
+          broker_name?: string | null
+          building_id: string
+          commission_voucher_id?: string | null
+          created_at?: string
+          created_by: string
+          deposit_base: number
+          deposit_mode: string
+          ends_on: string
+          fee_state: string
+          id?: string
+          intent_hash: string
+          mode: string
+          new_contract_id?: string | null
+          new_customer_name: string
+          new_deposit_required: number
+          new_draft_id: string
+          new_draft_revision: number
+          new_party_snapshot: Json
+          old_contract_id: string
+          old_contract_number?: string | null
+          old_customer_name?: string | null
+          old_exit_case_id: string
+          old_party_snapshot: Json
+          organization_id: string
+          policy_version?: string
+          reason: string
+          request_id: string
+          room_id: string
+          starts_on: string
+          state?: string
+          term_mode: string
+          updated_at?: string
+          version?: number
+        }
+        Update: {
+          broker_fee?: number
+          broker_name?: string | null
+          building_id?: string
+          commission_voucher_id?: string | null
+          created_at?: string
+          created_by?: string
+          deposit_base?: number
+          deposit_mode?: string
+          ends_on?: string
+          fee_state?: string
+          id?: string
+          intent_hash?: string
+          mode?: string
+          new_contract_id?: string | null
+          new_customer_name?: string
+          new_deposit_required?: number
+          new_draft_id?: string
+          new_draft_revision?: number
+          new_party_snapshot?: Json
+          old_contract_id?: string
+          old_contract_number?: string | null
+          old_customer_name?: string | null
+          old_exit_case_id?: string
+          old_party_snapshot?: Json
+          organization_id?: string
+          policy_version?: string
+          reason?: string
+          request_id?: string
+          room_id?: string
+          starts_on?: string
+          state?: string
+          term_mode?: string
+          updated_at?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contract_transfer_links_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "building_coverage"
+            referencedColumns: ["building_id"]
+          },
+          {
+            foreignKeyName: "contract_transfer_links_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_transfer_links_commission_voucher_id_fkey"
+            columns: ["commission_voucher_id"]
+            isOneToOne: true
+            referencedRelation: "income_expenses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_transfer_links_commission_voucher_id_fkey"
+            columns: ["commission_voucher_id"]
+            isOneToOne: true
+            referencedRelation: "invoice_pnl_cash_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_transfer_links_commission_voucher_id_fkey"
+            columns: ["commission_voucher_id"]
+            isOneToOne: true
+            referencedRelation: "legacy_payment_receipt_semantics"
+            referencedColumns: ["voucher_id"]
+          },
+          {
+            foreignKeyName: "contract_transfer_links_new_contract_id_fkey"
+            columns: ["new_contract_id"]
+            isOneToOne: true
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_transfer_links_new_draft_id_fkey"
+            columns: ["new_draft_id"]
+            isOneToOne: false
+            referencedRelation: "contract_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_transfer_links_old_contract_id_fkey"
+            columns: ["old_contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_transfer_links_old_exit_case_id_fkey"
+            columns: ["old_exit_case_id"]
+            isOneToOne: false
+            referencedRelation: "contract_exit_cases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_transfer_links_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_transfer_links_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
             referencedColumns: ["id"]
           },
         ]
@@ -9530,6 +10590,7 @@ export type Database = {
         Row: {
           approved_at: string | null
           approved_by: string | null
+          boundary_id: string | null
           building_id: string | null
           consumption: number | null
           contract_id: string | null
@@ -9556,6 +10617,7 @@ export type Database = {
         Insert: {
           approved_at?: string | null
           approved_by?: string | null
+          boundary_id?: string | null
           building_id?: string | null
           consumption?: number | null
           contract_id?: string | null
@@ -9582,6 +10644,7 @@ export type Database = {
         Update: {
           approved_at?: string | null
           approved_by?: string | null
+          boundary_id?: string | null
           building_id?: string | null
           consumption?: number | null
           contract_id?: string | null
@@ -9606,6 +10669,13 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "meter_readings_boundary_id_fkey"
+            columns: ["boundary_id"]
+            isOneToOne: false
+            referencedRelation: "contract_meter_boundaries"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "meter_readings_building_id_fkey"
             columns: ["building_id"]
@@ -14308,6 +15378,89 @@ export type Database = {
           },
         ]
       }
+      reservation_receipts: {
+        Row: {
+          created_at: string
+          created_by: string
+          customer_id: string
+          id: string
+          organization_id: string
+          reservation_id: string
+          source_item_id: string
+          source_voucher_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          customer_id: string
+          id?: string
+          organization_id: string
+          reservation_id: string
+          source_item_id: string
+          source_voucher_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          customer_id?: string
+          id?: string
+          organization_id?: string
+          reservation_id?: string
+          source_item_id?: string
+          source_voucher_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reservation_receipts_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reservation_receipts_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reservation_receipts_reservation_id_fkey"
+            columns: ["reservation_id"]
+            isOneToOne: false
+            referencedRelation: "room_reservations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reservation_receipts_source_item_id_fkey"
+            columns: ["source_item_id"]
+            isOneToOne: true
+            referencedRelation: "income_expense_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reservation_receipts_source_voucher_id_fkey"
+            columns: ["source_voucher_id"]
+            isOneToOne: false
+            referencedRelation: "income_expenses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reservation_receipts_source_voucher_id_fkey"
+            columns: ["source_voucher_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_pnl_cash_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reservation_receipts_source_voucher_id_fkey"
+            columns: ["source_voucher_id"]
+            isOneToOne: false
+            referencedRelation: "legacy_payment_receipt_semantics"
+            referencedColumns: ["voucher_id"]
+          },
+        ]
+      }
       reservation_settlement_vouchers: {
         Row: {
           created_at: string
@@ -14712,6 +15865,68 @@ export type Database = {
           },
         ]
       }
+      room_next_claims: {
+        Row: {
+          consumed_contract_id: string | null
+          created_at: string
+          id: string
+          organization_id: string
+          reservation_id: string
+          room_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          consumed_contract_id?: string | null
+          created_at?: string
+          id?: string
+          organization_id: string
+          reservation_id: string
+          room_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          consumed_contract_id?: string | null
+          created_at?: string
+          id?: string
+          organization_id?: string
+          reservation_id?: string
+          room_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "room_next_claims_consumed_contract_id_fkey"
+            columns: ["consumed_contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "room_next_claims_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "room_next_claims_reservation_id_fkey"
+            columns: ["reservation_id"]
+            isOneToOne: true
+            referencedRelation: "room_reservations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "room_next_claims_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       room_pass_listings: {
         Row: {
           active: boolean
@@ -14946,6 +16161,245 @@ export type Database = {
             columns: ["room_id"]
             isOneToOne: false
             referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      room_reservations: {
+        Row: {
+          building_id: string
+          converted_contract_id: string | null
+          created_at: string
+          created_by: string
+          customer_id: string
+          deposit_target: number | null
+          hold_until: string | null
+          id: string
+          idempotency_key: string
+          initial_response: Json | null
+          intended_move_in_on: string | null
+          notes: string | null
+          organization_id: string
+          payload_hash: string
+          revision: number
+          room_id: string
+          status: string
+          topup_due_on: string | null
+          updated_at: string
+        }
+        Insert: {
+          building_id: string
+          converted_contract_id?: string | null
+          created_at?: string
+          created_by: string
+          customer_id: string
+          deposit_target?: number | null
+          hold_until?: string | null
+          id?: string
+          idempotency_key: string
+          initial_response?: Json | null
+          intended_move_in_on?: string | null
+          notes?: string | null
+          organization_id: string
+          payload_hash: string
+          revision?: number
+          room_id: string
+          status?: string
+          topup_due_on?: string | null
+          updated_at?: string
+        }
+        Update: {
+          building_id?: string
+          converted_contract_id?: string | null
+          created_at?: string
+          created_by?: string
+          customer_id?: string
+          deposit_target?: number | null
+          hold_until?: string | null
+          id?: string
+          idempotency_key?: string
+          initial_response?: Json | null
+          intended_move_in_on?: string | null
+          notes?: string | null
+          organization_id?: string
+          payload_hash?: string
+          revision?: number
+          room_id?: string
+          status?: string
+          topup_due_on?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "room_reservations_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "building_coverage"
+            referencedColumns: ["building_id"]
+          },
+          {
+            foreignKeyName: "room_reservations_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "room_reservations_converted_contract_id_fkey"
+            columns: ["converted_contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "room_reservations_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "room_reservations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "room_reservations_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      room_turnover_events: {
+        Row: {
+          actor_id: string
+          created_at: string
+          epoch: number
+          id: string
+          new_state: Json
+          organization_id: string
+          previous_state: Json | null
+          reason: string
+          room_id: string
+          turnover_id: string
+          version: number
+        }
+        Insert: {
+          actor_id: string
+          created_at?: string
+          epoch: number
+          id?: string
+          new_state: Json
+          organization_id: string
+          previous_state?: Json | null
+          reason: string
+          room_id: string
+          turnover_id: string
+          version: number
+        }
+        Update: {
+          actor_id?: string
+          created_at?: string
+          epoch?: number
+          id?: string
+          new_state?: Json
+          organization_id?: string
+          previous_state?: Json | null
+          reason?: string
+          room_id?: string
+          turnover_id?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "room_turnover_events_organization_id_room_id_fkey"
+            columns: ["organization_id", "room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "room_turnover_events_organization_id_turnover_id_fkey"
+            columns: ["organization_id", "turnover_id"]
+            isOneToOne: false
+            referencedRelation: "room_turnovers"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      room_turnovers: {
+        Row: {
+          created_at: string
+          created_by: string
+          epoch: number
+          expected_ready_on: string | null
+          id: string
+          organization_id: string
+          reason: string
+          responsible_user_id: string | null
+          room_id: string
+          source_contract_id: string | null
+          status: string
+          updated_at: string
+          updated_by: string
+          version: number
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          epoch?: number
+          expected_ready_on?: string | null
+          id?: string
+          organization_id: string
+          reason: string
+          responsible_user_id?: string | null
+          room_id: string
+          source_contract_id?: string | null
+          status: string
+          updated_at?: string
+          updated_by: string
+          version?: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          epoch?: number
+          expected_ready_on?: string | null
+          id?: string
+          organization_id?: string
+          reason?: string
+          responsible_user_id?: string | null
+          room_id?: string
+          source_contract_id?: string | null
+          status?: string
+          updated_at?: string
+          updated_by?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "room_turnovers_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "room_turnovers_organization_id_room_id_fkey"
+            columns: ["organization_id", "room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "room_turnovers_source_contract_id_fkey"
+            columns: ["source_contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
             referencedColumns: ["id"]
           },
         ]
@@ -18939,6 +20393,7 @@ export type Database = {
         Returns: {
           approved_at: string | null
           approved_by: string | null
+          boundary_id: string | null
           building_id: string | null
           consumption: number | null
           contract_id: string | null
@@ -19389,6 +20844,16 @@ export type Database = {
         Args: { p_reason: string; p_request: string }
         Returns: Json
       }
+      cancel_contract_transfer_link_v1: {
+        Args: {
+          p_expected_version: number
+          p_link_id: string
+          p_organization_id: string
+          p_reason: string
+          p_request_id: string
+        }
+        Returns: Json
+      }
       cancel_income_expense_flex_v1: {
         Args: {
           p_expected_approval_version?: number
@@ -19618,6 +21083,20 @@ export type Database = {
       }
       confirm_cashbook_closing_v1: {
         Args: { p_counted_balance: number; p_request: string }
+        Returns: Json
+      }
+      confirm_contract_return_v1: {
+        Args: {
+          p_actual_move_out_on: string
+          p_contract_id: string
+          p_expected_contract_updated_at: string
+          p_idempotency_key: string
+          p_initial_kind: string
+          p_meter_boundary?: Json
+          p_organization_id: string
+          p_settlement?: Json
+          p_settlement_mode: string
+        }
         Returns: Json
       }
       confirm_reconciliation: { Args: { p_id: string }; Returns: Json }
@@ -20486,6 +21965,34 @@ export type Database = {
         }
         Returns: Json
       }
+      create_contract_transfer_commission_v1: {
+        Args: {
+          p_account_id?: string
+          p_expected_version: number
+          p_link_id: string
+          p_organization_id: string
+          p_recipient_account?: string
+          p_recipient_bank?: string
+          p_request_id: string
+        }
+        Returns: Json
+      }
+      create_contract_transfer_link_v1: {
+        Args: {
+          p_broker_name: string
+          p_deposit_mode: string
+          p_expected_draft_revision: number
+          p_expected_exit_version: number
+          p_mode: string
+          p_new_draft_id: string
+          p_old_exit_case_id: string
+          p_organization_id: string
+          p_reason: string
+          p_request_id: string
+          p_term_mode: string
+        }
+        Returns: Json
+      }
       create_contract_v1: {
         Args: {
           p_customer_ids: string[]
@@ -20699,6 +22206,7 @@ export type Database = {
         Returns: {
           approved_at: string | null
           approved_by: string | null
+          boundary_id: string | null
           building_id: string | null
           consumption: number | null
           contract_id: string | null
@@ -20778,6 +22286,14 @@ export type Database = {
       }
       create_reservation_deposit_v1: {
         Args: { p_amount: number; p_idempotency_key: string; p_room_id: string }
+        Returns: Json
+      }
+      create_room_reservation_v1: {
+        Args: {
+          p_idempotency_key: string
+          p_organization_id: string
+          p_payload: Json
+        }
         Returns: Json
       }
       create_sale_bonus_from_deposit_v1: {
@@ -21082,6 +22598,32 @@ export type Database = {
         }
         Returns: undefined
       }
+      finalize_contract_exit_case_v1: {
+        Args: {
+          p_case_id: string
+          p_current_kind: string
+          p_expected_version: number
+          p_idempotency_key: string
+          p_organization_id: string
+          p_reason: string
+          p_settlement: Json
+        }
+        Returns: Json
+      }
+      finalize_contract_transfer_exit_v1: {
+        Args: {
+          p_case_id: string
+          p_current_kind: string
+          p_expected_link_version: number
+          p_expected_version: number
+          p_idempotency_key: string
+          p_link_id: string
+          p_organization_id: string
+          p_reason: string
+          p_settlement: Json
+        }
+        Returns: Json
+      }
       finalize_finance_evidence_v2: {
         Args: { p_evidence_id: string }
         Returns: Json
@@ -21199,9 +22741,17 @@ export type Database = {
           voucher_id: string
         }[]
       }
+      get_contract_exit_case_v1: {
+        Args: { p_case_id: string; p_organization_id: string }
+        Returns: Json
+      }
       get_contract_extension_count: {
         Args: { p_contract_id: string }
         Returns: number
+      }
+      get_contract_move_out_notice_v1: {
+        Args: { p_contract_id: string; p_organization_id: string }
+        Returns: Json
       }
       get_contract_stats: {
         Args: { p_building_ids?: string[]; p_in30?: string; p_today?: string }
@@ -21806,6 +23356,30 @@ export type Database = {
         Args: { p_attachments: Json; p_completion: Json }
         Returns: boolean
       }
+      lifecycle_reminder_claim_v1: { Args: { p_limit?: number }; Returns: Json }
+      lifecycle_reminder_health_v1: { Args: never; Returns: Json }
+      lifecycle_reminder_record_failure_v1: {
+        Args: { p_error: string }
+        Returns: undefined
+      }
+      lifecycle_reminder_settle_v1: {
+        Args: {
+          p_error?: string
+          p_id: string
+          p_lease: string
+          p_outcome: string
+          p_sent?: number
+        }
+        Returns: undefined
+      }
+      lifecycle_reminder_sweep_v1: {
+        Args: { p_organization_id?: string }
+        Returns: Json
+      }
+      lifecycle_reminder_validate_v1: {
+        Args: { p_id: string; p_lease: string }
+        Returns: Json
+      }
       list_authorization_catalog_v1: { Args: never; Returns: Json }
       list_cashbook_closings_v1: {
         Args: { p_cashbook?: string }
@@ -21842,6 +23416,40 @@ export type Database = {
           id: string
           name: string
         }[]
+      }
+      list_contract_drafts: {
+        Args: { p_building_id?: string; p_organization_id: string }
+        Returns: Json
+      }
+      list_contract_exit_cases_v1: {
+        Args: {
+          p_building_id?: string
+          p_building_ids?: string[]
+          p_contract_id?: string
+          p_limit?: number
+          p_offset?: number
+          p_organization_id: string
+          p_state?: string
+        }
+        Returns: Json
+      }
+      list_contract_meter_followups_v1: {
+        Args: {
+          p_building_ids?: string[]
+          p_limit?: number
+          p_offset?: number
+          p_organization_id: string
+        }
+        Returns: Json
+      }
+      list_due_contract_move_out_notices_v1: {
+        Args: {
+          p_building_ids?: string[]
+          p_limit?: number
+          p_offset?: number
+          p_organization_id: string
+        }
+        Returns: Json
       }
       list_finance_execution_queue_v2: {
         Args: never
@@ -21934,6 +23542,25 @@ export type Database = {
       list_organization_roles_v1: { Args: never; Returns: Json }
       list_receiving_cashbook_settings_v1: {
         Args: { p_organization_id: string }
+        Returns: Json
+      }
+      list_room_reservations_v1: {
+        Args: {
+          p_customer_id?: string
+          p_limit?: number
+          p_organization_id: string
+          p_room_id?: string
+          p_status?: string
+        }
+        Returns: Json
+      }
+      list_room_turnover_queue_v1: {
+        Args: {
+          p_building_ids?: string[]
+          p_limit?: number
+          p_offset?: number
+          p_organization_id: string
+        }
         Returns: Json
       }
       list_self_approved_vouchers_v1: {
@@ -22910,6 +24537,40 @@ export type Database = {
         Args: { p_deltas: Json; p_miles: Json; p_n: number }
         Returns: Json
       }
+      read_contract_draft_signing_v1: {
+        Args: { p_draft_id: string; p_organization_id: string }
+        Returns: Json
+      }
+      read_contract_meter_boundary_set_v1: {
+        Args: {
+          p_contract_id: string
+          p_kind: string
+          p_organization_id: string
+        }
+        Returns: Json
+      }
+      read_contract_meter_interval_v1: {
+        Args: {
+          p_at: string
+          p_contract_id: string
+          p_meter_id: string
+          p_organization_id: string
+        }
+        Returns: Json
+      }
+      read_contract_transfer_links_v1: {
+        Args: {
+          p_contract_id?: string
+          p_draft_id?: string
+          p_exit_case_id?: string
+          p_organization_id: string
+        }
+        Returns: Json
+      }
+      read_room_turnover_v1: {
+        Args: { p_organization_id: string; p_room_id: string }
+        Returns: Json
+      }
       recompute_contract_deposit_paid: {
         Args: { p_contract_id: string }
         Returns: undefined
@@ -22997,6 +24658,28 @@ export type Database = {
         Args: { p_termination_id: string }
         Returns: Json
       }
+      register_contract_draft_document: {
+        Args: {
+          p_document_data: Json
+          p_document_id: string
+          p_document_sha256: string
+          p_draft_id: string
+          p_expected_revision: number
+          p_organization_id: string
+          p_template_id: string
+          p_template_sha256: string
+          p_template_snapshot: Json
+        }
+        Returns: Json
+      }
+      register_contract_signed_document_v1: {
+        Args: {
+          p_document_sha256: string
+          p_organization_id: string
+          p_signing_id: string
+        }
+        Returns: Json
+      }
       reject_cancel_handover: { Args: { p_handover_id: string }; Returns: Json }
       reject_contract_termination_v1: {
         Args: { p_reason?: string; p_termination_id: string }
@@ -23028,6 +24711,21 @@ export type Database = {
           p_new_end_date: string
           p_new_rent_price?: number
           p_notes?: string
+        }
+        Returns: string
+      }
+      renew_contract_with_notice_v1: {
+        Args: {
+          p_contract_id: string
+          p_expected_updated_at: string
+          p_new_deposit?: number
+          p_new_end_date: string
+          p_new_rent_price?: number
+          p_notes?: string
+          p_notice_choice: string
+          p_notice_reason?: string
+          p_organization_id: string
+          p_request_id: string
         }
         Returns: string
       }
@@ -23234,6 +24932,17 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      revise_contract_meter_boundary_set_v1: {
+        Args: {
+          p_expected_revision: number
+          p_idempotency_key: string
+          p_organization_id: string
+          p_payload: Json
+          p_reason: string
+          p_set_id: string
+        }
+        Returns: Json
+      }
       revise_pending_income_expense_v1: {
         Args: {
           p_expected_approval_version: number
@@ -23389,6 +25098,28 @@ export type Database = {
         Args: { p_building_id: string; p_owner: Json }
         Returns: undefined
       }
+      save_contract_draft: {
+        Args: {
+          p_building_id: string
+          p_draft_id?: string
+          p_expected_revision?: number
+          p_organization_id: string
+          p_payload: Json
+          p_request_id?: string
+          p_room_id: string
+          p_template_id?: string
+        }
+        Returns: Json
+      }
+      save_room_turnover_v1: {
+        Args: {
+          p_expected_version: number
+          p_organization_id: string
+          p_payload: Json
+          p_room_id: string
+        }
+        Returns: Json
+      }
       save_utility_account: {
         Args: {
           p_account_holder?: string
@@ -23432,6 +25163,16 @@ export type Database = {
           p_note?: string
           p_organization_id?: string
           p_rate_percent: number
+        }
+        Returns: Json
+      }
+      set_contract_move_out_notice_v1: {
+        Args: {
+          p_contract_id: string
+          p_expected_move_out_date?: string
+          p_expected_updated_at: string
+          p_organization_id: string
+          p_reason?: string
         }
         Returns: Json
       }
@@ -23643,6 +25384,25 @@ export type Database = {
       shared_account_ids: { Args: never; Returns: string[] }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
+      sign_and_checkin_contract_draft_v1: {
+        Args: {
+          p_boundary: Json
+          p_creation_options: Json
+          p_document_id: string
+          p_document_sha256: string
+          p_draft_id: string
+          p_expected_revision: number
+          p_organization_id: string
+          p_received_on: string
+          p_request_id: string
+          p_reservation_id?: string
+          p_reservation_revision?: number
+          p_room_ready: boolean
+          p_source_voucher_ids?: string[]
+          p_terms_confirmed: boolean
+        }
+        Returns: Json
+      }
       soft_delete_customer: {
         Args: { p_customer_id: string }
         Returns: undefined
@@ -23853,6 +25613,20 @@ export type Database = {
         }
         Returns: string
       }
+      transfer_room_with_notice_v1: {
+        Args: {
+          p_contract_id: string
+          p_expected_updated_at: string
+          p_new_rent_price?: number
+          p_new_room_id: string
+          p_notes?: string
+          p_notice_reason?: string
+          p_organization_id: string
+          p_request_id: string
+          p_transfer_date: string
+        }
+        Returns: string
+      }
       unapprove_invoice_v1: {
         Args: { p_invoice_id: string }
         Returns: {
@@ -23902,6 +25676,7 @@ export type Database = {
         Returns: {
           approved_at: string | null
           approved_by: string | null
+          boundary_id: string | null
           building_id: string | null
           consumption: number | null
           contract_id: string | null
@@ -23970,6 +25745,17 @@ export type Database = {
           p_name: string
           p_owner_user_id: string
           p_quick_default_building_id: string
+        }
+        Returns: Json
+      }
+      update_contract_exit_case_kind_v1: {
+        Args: {
+          p_case_id: string
+          p_expected_version: number
+          p_idempotency_key: string
+          p_kind: string
+          p_organization_id: string
+          p_reason: string
         }
         Returns: Json
       }
@@ -24058,6 +25844,7 @@ export type Database = {
         Returns: {
           approved_at: string | null
           approved_by: string | null
+          boundary_id: string | null
           building_id: string | null
           consumption: number | null
           contract_id: string | null
@@ -24102,6 +25889,18 @@ export type Database = {
           p_period_end?: string
           p_period_start?: string
           p_voucher_id: string
+        }
+        Returns: Json
+      }
+      update_room_reservation_v1: {
+        Args: {
+          p_action: string
+          p_changes?: Json
+          p_expected_revision: number
+          p_idempotency_key: string
+          p_organization_id: string
+          p_receipt?: Json
+          p_reservation_id: string
         }
         Returns: Json
       }

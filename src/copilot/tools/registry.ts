@@ -11,7 +11,8 @@ import { CAPABILITIES } from '@/app/capabilities/registry';
 import { canUse } from '@/lib/permissionPages';
 import type { ActionKey, PermissionsMap } from '@/lib/permissions';
 import { formatVND } from '@/lib/utils';
-import { mapPayloadToBuildings, type RpcPayload } from '@/pages/phong-trong/supabaseData';
+import { mapPayloadToBuildings, parseRoomSalePayload } from '@/pages/phong-trong/supabaseData';
+import type { Room } from '@/pages/phong-trong/sampleData';
 import { maskPhonePartial } from '../maskPii';
 import {
   PILOT_UI_CONTROL_ROUTES,
@@ -1327,15 +1328,15 @@ export function buildRegistryDefinitions(): DomainTool[] {
         const orgId = chotToChuc(ctx, 'phong_trong');
         const { data, error } = await supabase.rpc('copilot_available_rooms_v1', { p_organization_id: orgId });
         if (error) throw new Error(`Lỗi tải phòng trống: ${error.message}`);
-        let buildings = mapPayloadToBuildings((data as unknown as RpcPayload | null) ?? null);
+        let buildings = mapPayloadToBuildings(parseRoomSalePayload(data));
         if (args.toa_nha) {
           const q = args.toa_nha.toLowerCase();
           buildings = buildings.filter((b) => b.name.toLowerCase().includes(q));
         }
         // Building.rooms = TẤT CẢ phòng (phục vụ layout sale) — phòng trống
         // thật là status 'free', sắp trống là 'soon' (đừng đếm rented/pass).
-        const fmt = (r: { code: string; price: number; area: number; floor: number; availDate: string | null }) =>
-          `  - ${r.code}: ${r.price} triệu/tháng, ${r.area}m², tầng ${r.floor}${r.availDate ? `, trống từ ${r.availDate}` : ''}`;
+        const fmt = (r: Room) =>
+          `  - ${r.code}: ${r.price} triệu/tháng, ${r.area}m², tầng ${r.floor}${r.saleFact ? `, ${r.saleFact.label}` : ''}`;
         const lines: string[] = [];
         let totalFree = 0;
         for (const b of buildings) {
@@ -1344,12 +1345,12 @@ export function buildRegistryDefinitions(): DomainTool[] {
           if (!free.length && !soon.length) continue;
           totalFree += free.length;
           const parts = [`${b.name} (${b.address}):`];
-          if (free.length) parts.push(`  Trống ngay (${free.length}):\n${free.map(fmt).join('\n')}`);
+          if (free.length) parts.push(`  Phòng trống (${free.length}):\n${free.map(fmt).join('\n')}`);
           if (soon.length) parts.push(`  Sắp trống (${soon.length}):\n${soon.map(fmt).join('\n')}`);
           lines.push(parts.join('\n'));
         }
         if (!lines.length) return 'Hiện không có phòng trống nào.';
-        return `Tổng ${totalFree} phòng trống ngay.\n\n${lines.join('\n\n')}`;
+        return `Tổng ${totalFree} phòng trống; xem ngày sẵn sàng của từng phòng.\n\n${lines.join('\n\n')}`;
       },
     }),
 

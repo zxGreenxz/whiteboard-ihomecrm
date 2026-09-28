@@ -1,6 +1,5 @@
 // =============================================================================
 // room-list-table.js — BẢN PORT của `src/pages/phong-trong/roomListTable.ts`
-// (kèm `genInfoLines` + `MANAGER` copy từ `src/pages/phong-trong/sampleData.ts`).
 //
 // HAI BẢN PHẢI GIỮ KHỚP. Web dựng bảng bằng bản TS rồi vẽ ảnh cho người xem
 // trang /r/:token; worker dựng LẠI đúng bảng đó để gửi Zalo. Nếu hai bản lệch
@@ -8,7 +7,7 @@
 // không có gì báo động, vì cả hai đều "chạy được". Sửa một bên thì sửa luôn
 // bên kia, và giữ nguyên chuỗi tiếng Việt từng chữ.
 //
-// Vì sao phải copy `genInfoLines`/`MANAGER` sang đây thay vì import: worker là
+// Vì sao phải copy sang đây thay vì import: worker là
 // Node thuần, không có bước biên dịch TypeScript, nên không với tới `.ts` được.
 // Đây là bản chép có chủ ý, không phải trùng lặp do quên.
 //
@@ -21,32 +20,6 @@
 export const EXPORT_STATUSES = ['free', 'soon', 'pass'];
 
 const EXPORTABLE = new Set(EXPORT_STATUSES);
-
-/* --------------------------------------------------------------------------
- * Phần chép từ sampleData.ts — thông tin chung + quản lý mặc định.
- * ------------------------------------------------------------------------ */
-
-/** Định dạng dòng điện cho khối "Thông tin chung"; chưa khai giá → câu chung. */
-function fmtElec(rate) {
-  return rate ? `Điện ${Math.round(rate).toLocaleString('vi-VN')}đ/số` : 'Điện theo định mức tòa nhà';
-}
-
-/**
- * Bốn dòng thông tin chung điện/nước/phí dịch vụ/nội quy.
- * Dòng ĐẦU TIÊN luôn là dòng điện — `buildRoomListTable` cắt bỏ dòng này rồi
- * thay bằng dòng tính theo tòa thật, nên đừng đổi thứ tự các dòng.
- */
-export function genInfoLines(b) {
-  return [
-    fmtElec(b?.elecRate),
-    'Nước 100k/người · Phí dịch vụ 150k/phòng',
-    `Free xe${b?.liftLabel ? ` · ${b.liftLabel}` : ''} · Máy giặt chung · Sân phơi`,
-    'Tối đa 3 người · 2 xe · Không nhận xe điện',
-  ];
-}
-
-/** SĐT/Zalo quản lý mặc định cho ô liên hệ (dùng khi không tòa nào khai SĐT). */
-export const MANAGER = { name: 'Quản lý hệ thống', phone: '0909 123 456', zalo: '0909123456' };
 
 /* --------------------------------------------------------------------------
  * Định dạng từng ô
@@ -68,6 +41,7 @@ function trimDate(d) {
 
 /** Cột TÌNH TRẠNG. Phòng khách pass mang thêm dòng liên hệ của khách. */
 export function statusLines(r) {
+  if (r.saleFact && r.status !== 'pass') return [r.saleFact.label.toLocaleUpperCase('vi-VN')];
   if (r.status === 'soon') {
     return [r.availDate ? `${trimDate(r.availDate)} TRỐNG` : 'SẮP TRỐNG'];
   }
@@ -131,7 +105,7 @@ function modeOf(values) {
  */
 export function elecLines(buildings) {
   const rated = buildings.filter((b) => typeof b.elecRate === 'number' && b.elecRate > 0);
-  if (!rated.length) return ['Điện theo định mức tòa nhà'];
+  if (!rated.length) return [];
 
   const fmt = (n) => `${Math.round(n).toLocaleString('vi-VN')}đ/số`;
   const main = Number(modeOf(rated.map((b) => String(b.elecRate))));
@@ -190,14 +164,12 @@ export function buildRoomListTable(buildings) {
     });
   }
 
-  const phone = modeOf(buildings.map((b) => b.phone)) ?? MANAGER.phone;
-  // Bỏ dòng "Điện …" mặc định của genInfoLines, thay bằng dòng tính theo tòa thật.
-  const [, ...rest] = genInfoLines();
+  const phone = modeOf(buildings.map((b) => b.phone));
 
   return {
     title: 'DANH SÁCH PHÒNG TRỐNG',
-    contactLines: ['LIÊN HỆ ADMIN ĐỂ MỞ CỬA', phone],
-    infoLines: [...elecLines(buildings), ...rest],
+    contactLines: phone ? ['LIÊN HỆ ADMIN ĐỂ MỞ CỬA', phone] : ['Chưa có số liên hệ'],
+    infoLines: elecLines(buildings),
     groups,
     totalRooms: groups.reduce((n, g) => n + g.rows.length, 0),
   };

@@ -7,7 +7,7 @@
  * khối thông tin chung, rồi 6 cột ĐỊA CHỈ / MÃ PHÒNG / GIÁ / LOẠI PHÒNG /
  * NỘI THẤT / TÌNH TRẠNG, mỗi tòa một khối nền màu riêng.
  */
-import { genInfoLines, MANAGER, type Building, type Room } from "./sampleData";
+import { type Building, type Room } from "./sampleData";
 
 /** Trạng thái được đưa vào ảnh — đúng bucket "trống" của trang (bỏ `rented`). */
 export const EXPORT_STATUSES = ["free", "soon", "pass"] as const;
@@ -60,6 +60,7 @@ function trimDate(d: string): string {
 
 /** Cột TÌNH TRẠNG. Phòng khách pass mang thêm dòng liên hệ của khách. */
 export function statusLines(r: Room): string[] {
+  if (r.saleFact && r.status !== 'pass') return [r.saleFact.label.toLocaleUpperCase('vi-VN')];
   if (r.status === "soon") {
     return [r.availDate ? `${trimDate(r.availDate)} TRỐNG` : "SẮP TRỐNG"];
   }
@@ -117,7 +118,7 @@ function modeOf(values: (string | null | undefined)[]): string | undefined {
  */
 export function elecLines(buildings: Building[]): string[] {
   const rated = buildings.filter((b) => typeof b.elecRate === "number" && b.elecRate! > 0);
-  if (!rated.length) return ["Điện theo định mức tòa nhà"];
+  if (!rated.length) return [];
 
   const fmt = (n: number) => `${Math.round(n).toLocaleString("vi-VN")}đ/số`;
   const main = Number(modeOf(rated.map((b) => String(b.elecRate))));
@@ -165,14 +166,12 @@ export function buildRoomListTable(buildings: Building[]): RoomListTable {
     });
   }
 
-  const phone = modeOf(buildings.map((b) => b.phone)) ?? MANAGER.phone;
-  // Bỏ dòng "Điện …" mặc định của genInfoLines, thay bằng dòng tính theo tòa thật.
-  const [, ...rest] = genInfoLines();
+  const phone = modeOf(buildings.map((b) => b.phone));
 
   return {
     title: "DANH SÁCH PHÒNG TRỐNG",
-    contactLines: ["LIÊN HỆ ADMIN ĐỂ MỞ CỬA", phone],
-    infoLines: [...elecLines(buildings), ...rest],
+    contactLines: phone ? ["LIÊN HỆ ADMIN ĐỂ MỞ CỬA", phone] : ['Chưa có số liên hệ'],
+    infoLines: elecLines(buildings),
     groups,
     totalRooms: groups.reduce((n, g) => n + g.rows.length, 0),
   };

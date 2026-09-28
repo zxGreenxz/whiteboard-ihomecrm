@@ -29,6 +29,10 @@ import type {
 import type { BuildingWithRelations } from '@/types/building';
 import type { RoomWithRelations } from '@/types/room';
 import { ContractFormDialog } from '@/components/contracts/ContractFormDialog';
+import { MoveOutNoticeQueue } from '@/components/contracts/MoveOutNoticeQueue';
+import { ContractDraftWorkspace } from '@/components/contracts/ContractDraftWorkspace';
+import { ContractExitQueue } from '@/components/contracts/ContractExitQueue';
+import { ContractMeterFollowupQueue } from '@/components/contracts/ContractMeterFollowupQueue';
 
 // Định dạng tiền gọn (khớp DepositBadge desktop): "1.250.000 đ".
 const fmtVND = (n: number) => new Intl.NumberFormat('vi-VN').format(n) + ' đ';
@@ -181,6 +185,10 @@ export default function ContractsMobilePage() {
           </div>
 
           <div className="mbody">
+            <MoveOutNoticeQueue buildingIds={buildingId ? [buildingId] : []} />
+            <ContractExitQueue buildingIds={buildingId ? [buildingId] : []} />
+            <ContractMeterFollowupQueue buildingIds={buildingId ? [buildingId] : []} />
+            <ContractDraftWorkspace buildingId={buildingId || undefined} />
             <div className="lfilter">
               {statTabs.map((t) => (
                 <button

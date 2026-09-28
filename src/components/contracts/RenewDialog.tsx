@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect,useRef,useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
@@ -6,6 +6,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
@@ -36,6 +37,8 @@ interface RenewDialogProps {
 
 export function RenewDialog({ open, onOpenChange, contract }: RenewDialogProps) {
   const renewContract = useRenewContract();
+  const [noticeChoice,setNoticeChoice]=useState<''|'KEEP'|'CANCEL'>('');
+  const noticeRequest=useRef<{intent:string;id:string}|null>(null);
 
   const form = useForm<RenewFormData>({
     resolver: zodResolver(renewFormSchema),
@@ -50,6 +53,8 @@ export function RenewDialog({ open, onOpenChange, contract }: RenewDialogProps) 
   // Reset form when dialog opens or contract changes
   useEffect(() => {
     if (open) {
+      setNoticeChoice(contract.expected_move_out_date?'':'KEEP');
+      noticeRequest.current=null;
       form.reset({
         new_end_date: "",
         new_rent_price: contract.rent_price,
@@ -60,14 +65,13 @@ export function RenewDialog({ open, onOpenChange, contract }: RenewDialogProps) 
   }, [open, contract, form]);
 
   const onSubmit = (data: RenewFormData) => {
+    if(!noticeChoice) return;
+    const params={contractId:contract.id,expectedUpdatedAt:contract.updated_at,newEndDate:data.new_end_date,
+      newRentPrice:data.new_rent_price,newDeposit:data.new_deposit,notes:data.notes,noticeChoice,
+      noticeReason:data.notes?.trim()||(noticeChoice==='KEEP'?'Giữ báo dọn khi gia hạn hợp đồng':'Hủy báo dọn khi gia hạn hợp đồng')};
+    const intent=JSON.stringify(params);if(noticeRequest.current?.intent!==intent)noticeRequest.current={intent,id:crypto.randomUUID()};
     renewContract.mutate(
-      {
-        contractId: contract.id,
-        newEndDate: data.new_end_date,
-        newRentPrice: data.new_rent_price,
-        newDeposit: data.new_deposit,
-        notes: data.notes,
-      },
+      {...params,requestId:noticeRequest.current!.id},
       {
         onSuccess: () => {
           onOpenChange(false);
@@ -86,10 +90,15 @@ export function RenewDialog({ open, onOpenChange, contract }: RenewDialogProps) 
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Gia hạn hợp đồng</DialogTitle>
+          <DialogDescription>Kiểm tra hạn hợp đồng và báo dọn trước khi gia hạn.</DialogDescription>
         </DialogHeader>
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            {contract.expected_move_out_date&&<div className="space-y-2 rounded border p-3 text-sm">
+              <p>Đã báo dọn ngày {contract.expected_move_out_date.split('-').reverse().join('/')}.</p>
+              <label className="space-y-1"><span>Khi gia hạn, bạn muốn giữ hay hủy báo dọn?</span><select aria-label="Giữ hoặc hủy báo dọn khi gia hạn" className="flex h-10 w-full rounded-md border bg-background px-3" value={noticeChoice} disabled={renewContract.isPending} onChange={event=>setNoticeChoice(event.target.value as typeof noticeChoice)}><option value="">Chọn cách xử lý báo dọn</option><option value="KEEP">Giữ ngày báo dọn hiện tại</option><option value="CANCEL">Hủy báo dọn · Khách tiếp tục ở</option></select></label>
+            </div>}
             {/* Current end date (readonly) */}
             <div className="space-y-2">
               <label className="text-sm font-medium">Ngày kết thúc hiện tại</label>
@@ -187,7 +196,7 @@ export function RenewDialog({ open, onOpenChange, contract }: RenewDialogProps) 
               >
                 Hủy
               </Button>
-              <Button type="submit" disabled={renewContract.isPending}>
+              <Button type="submit" disabled={renewContract.isPending||!noticeChoice}>
                 {renewContract.isPending && (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                 )}

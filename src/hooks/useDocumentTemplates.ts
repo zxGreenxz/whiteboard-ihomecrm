@@ -31,6 +31,7 @@ export type TemplateType =
 
 export interface DocumentTemplate {
   id: string;
+  organization_id?: string | null;
   user_id: string;
   code: string;
   name: string;

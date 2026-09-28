@@ -26,7 +26,6 @@ export function ServicesSection({
   useCustomServices,
   handleToggleCustomServices,
   setServiceDialogOpen,
-  buildingActiveServices,
   buildingServicesAsSelected,
   selectedBuildingId,
   selectedServices,
@@ -70,7 +69,7 @@ export function ServicesSection({
       {!useCustomServices ? (
         /* OFF: dùng dịch vụ mặc định của toà — hiển thị mờ, chỉ xem.
            Hoá đơn sẽ tự lấy đơn giá toà cho HĐ này. */
-        buildingActiveServices.length === 0 ? (
+        buildingServicesAsSelected.length === 0 ? (
           <p className="text-sm text-muted-foreground py-4 text-center">
             {selectedBuildingId
               ? "Toà chưa cấu hình dịch vụ mặc định. Bật \"Dùng dịch vụ riêng\" để thêm dịch vụ cho HĐ."

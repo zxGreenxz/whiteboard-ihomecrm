@@ -58,9 +58,9 @@ const TEN_TRANG_THAI = { free: 'Trống sẵn', soon: 'Sắp trống', pass: 'Kh
 
 /** Một tin chi tiết phòng (chế độ ĐẦY ĐỦ / lượt bổ sung). */
 export function soanTinPhong(room, mau, hotline) {
-  const tinhTrang = room.status === 'soon' && room.availDate
+  const tinhTrang = room.saleFact?.label || (room.status === 'soon' && room.availDate
     ? `Sắp trống ${room.availDate}`
-    : (TEN_TRANG_THAI[room.status] || room.status);
+    : (TEN_TRANG_THAI[room.status] || room.status));
   return dienMau(mau, {
     ma_phong: room.code,
     dia_chi: room.buildingAddr || room.buildingName,

@@ -53,10 +53,10 @@ phần còn lại vẫn khai tay ở từng nơi. Đây là trạng thái CÓ CH
 
 | Chỉ số | Giá trị |
 |---|---|
-| Thư mục mã nguồn | 7 |
-| ĐANG CHẠY trên server | 6 |
-| Có mã mà **chưa deploy** | 1 — network-watchdog |
-| `verify_jwt = false` (ai cũng gọi được) | 3 — demo-reset, network-center-worker, salary-v5-jobs |
+| Thư mục mã nguồn | 8 |
+| ĐANG CHẠY trên server | 5 |
+| Có mã mà **chưa deploy** | 3 — lifecycle-reminders, network-center-worker, network-watchdog |
+| `verify_jwt = false` (ai cũng gọi được) | 2 — demo-reset, salary-v5-jobs |
 
 Thư mục trong repo **không** có nghĩa là hàm đang chạy: deploy là thao tác riêng,
 không gắn với `git push`.
