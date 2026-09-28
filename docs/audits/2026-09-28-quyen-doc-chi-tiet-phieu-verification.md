@@ -72,5 +72,29 @@ PGlite với source gốc; chưa xác minh implementation live. Đây là hạng
 riêng cần xử lý, không sửa allowlist để giấu kết quả. Scanner này không nằm trong
 CI Gates/gate trước push hiện hành và không phát hiện hồi quy của bản voucher.
 
-Chưa phát hành tại thời điểm ghi phần này. CI, backup, biên nhận schema,
-SHA production và smoke production phải được bổ sung trước khi kết luận hoàn tất.
+## Áp dụng schema production
+
+Forward lane áp dụng thành công lúc 09:54 UTC ngày 28/09/2026, từ source commit
+`0487cbacf13a6fb0d4aa1f11ed17e86bff31d003`, đúng digest đã review phía trên.
+Lane đã replay hai lần trong transaction rollback và tạo, kiểm backup đầy đủ
+565 bảng có dữ liệu trước khi áp dụng. Biên nhận backup `5231916d9295d38c`;
+SHA-256 dump `6232ad03d0fbf0f82534e5a9d1526e4dae04768b011b928282a641b3e83fa198`.
+Xem [biên nhận schema](../generated/schema-change-evidence/20260928091816_align_voucher_detail_read.json).
+Catalog sau apply khớp fingerprint
+`4da4eeecc8764920a2205d7d99689dae2873ab04bc6057212f237b916b97541e`.
+
+Smoke production dùng transaction chỉ đọc, vai `authenticated` và JWT claims của
+NATHAN: đúng UUID gốc, header 941.040 đ, 1/1 item “Thu chi khác”, tên tòa “950NK”,
+`items_complete=true`, không có issue. Truy vấn trực tiếp tòa vẫn trả 0 dòng;
+gọi reader với org khác trả 0 dòng. Không ghi dữ liệu nghiệp vụ production.
+
+Build giao diện cuối đạt trong 31,63 giây; kiểm bundle đạt với 561 chunk,
+entry 235 KB. PR #88 lưu lịch sử CI và phát hành. Schema đã áp dụng; bản giao diện
+chỉ được promote sau khi CI của đúng SHA trên main xanh ở từng bước.
+
+Gate trước push đầy đủ đạt 44/44 trong 247 giây, gồm generated types/surfaces,
+hai tầng strict, lint và phép đo ranh giới tổ chức. Kiểm external controls xác nhận
+cả hai project Vercel của repo vẫn dùng nhánh `production`. Snapshot được cập nhật
+vì thêm tên biến máy chủ `VOICE_LAB_NINEROUTER_API_KEY` (sensitive, preview/production)
+đã tồn tại trên Vercel; không đọc giá trị hoặc sửa env. Quyền bảo vệ nhánh GitHub
+vẫn là khoảng trống đã đăng ký của gói hiện tại, không được tính thành control đạt.

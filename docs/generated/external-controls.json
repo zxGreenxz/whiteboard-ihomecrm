@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/check-external-controls.mjs. \"unverified\" KHÔNG phải pass — control có thể bị tắt về sau, nên bằng chứng phải chạy lại được, không phải ảnh chụp một lần.",
-  "checkedAt": "2026-09-23T14:32:33.991Z",
+  "checkedAt": "2026-09-28T10:02:51.093Z",
   "repo": "zxGreenxz/whiteboard-ihomecrm",
   "controls": {
     "githubBranchProtection": {
@@ -47,6 +47,11 @@
       "status": "checked",
       "envVarNames": [
         {
+          "key": "VOICE_LAB_NINEROUTER_API_KEY",
+          "target": "preview+production",
+          "type": "sensitive"
+        },
+        {
           "key": "VITE_APP_ENV",
           "target": "preview",
           "type": "plain"
@@ -83,12 +88,12 @@
         }
       ],
       "productionDeployment": {
-        "sha": "1b77256d2eaef916c50441502fd94e6586218b70",
+        "sha": "83b60019f57c67e2a8e4cf89fb7e6748472580a8",
         "ref": "production",
         "state": "READY",
         "ancestorOfMain": true
       },
-      "note": "7 env var (CHỈ tên + target, không lấy giá trị). Production đang chạy 1b77256d2eae từ nhánh \"production\", state READY. SHA đó NẰM TRÊN origin/main — đúng hợp đồng."
+      "note": "8 env var (CHỈ tên + target, không lấy giá trị). Production đang chạy 83b60019f57c từ nhánh \"production\", state READY. SHA đó NẰM TRÊN origin/main — đúng hợp đồng."
     },
     "productionBranchExists": {
       "status": "present",
@@ -96,8 +101,8 @@
     }
   },
   "localHead": {
-    "head": "1b77256d2eaef916c50441502fd94e6586218b70",
-    "branch": "codex/moi-truong-test",
+    "head": "0487cbacf13a6fb0d4aa1f11ed17e86bff31d003",
+    "branch": "codex/quyen-doc-chi-tiet-phieu",
     "hasProductionBranch": true
   }
 }
