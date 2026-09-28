@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-09-28T04:30:18.586Z",
+  "generatedAt": "2026-09-28T06:00:26.068Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 616,
-    "unknown": 93,
+    "ledger-applied": 629,
+    "unknown": 80,
     "catalog-proven": 205,
     "superseded": 15
   },
@@ -10644,14 +10644,9 @@
       "name": "contract_moveout_notice_workflow",
       "scheme": "timestamp14",
       "sha256": "0373b49e1a6cf150c5a1c195280146d9402c29a5532515df79700cb48d9bdc26",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "table:public.contract_move_out_notice_events",
-        "function:public.get_contract_move_out_notice_v1",
-        "function:public.set_contract_move_out_notice_v1",
-        "function:public.list_due_contract_move_out_notices_v1",
-        "index:public.contract_move_out_notice_events_contract_idx"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-28T05:12:33.776Z|bien-nhan-backup"
       ]
     },
     {
@@ -10660,14 +10655,9 @@
       "name": "contract_drafts_workflow",
       "scheme": "timestamp14",
       "sha256": "924d9545b49a415735020cb19dcddfad3713726a81ff62add64f033dff3b92c8",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "table:public.contract_drafts",
-        "table:public.contract_draft_versions",
-        "table:public.contract_draft_documents",
-        "function:app_private.contract_draft_scope_allowed",
-        "function:public.save_contract_draft"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-28T05:17:32.950Z|bien-nhan-backup"
       ]
     },
     {
@@ -10676,14 +10666,9 @@
       "name": "contract_exit_case_workflow",
       "scheme": "timestamp14",
       "sha256": "8e6a3dd77890d23a875885ab1bc70806ad9dd3fa24886d7fd8b29c507ca1fdee",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "table:public.contract_exit_cases",
-        "table:app_private.contract_exit_kind_history",
-        "table:app_private.contract_exit_writer_context",
-        "function:app_private.guard_contract_exit_case_v1",
-        "function:app_private.guard_contract_exit_history_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-28T05:26:02.113Z|bien-nhan-backup"
       ]
     },
     {
@@ -10692,14 +10677,9 @@
       "name": "room_turnover_workflow",
       "scheme": "timestamp14",
       "sha256": "bb7b70454c4a38cd4d9404f05347fc1f9929c50903d8c27b3769b8676a5f5f5c",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "table:public.room_turnovers",
-        "table:public.room_turnover_events",
-        "function:public.read_room_turnover_v1",
-        "function:public.save_room_turnover_v1",
-        "function:public.list_room_turnover_queue_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-28T05:31:03.091Z|bien-nhan-backup"
       ]
     },
     {
@@ -10708,10 +10688,9 @@
       "name": "room_sale_workflow_facts",
       "scheme": "timestamp14",
       "sha256": "6f8fcbfa1d59323e0fc72a4fa390d2822854cc2ae9cb76b82aee830efa1e0055",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.room_sale_workflow_fact_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-28T05:34:24.754Z|bien-nhan-backup"
       ]
     },
     {
@@ -10720,14 +10699,9 @@
       "name": "contract_meter_boundaries",
       "scheme": "timestamp14",
       "sha256": "c1c5b871d02f51de47196ad32df3c6bf0f41fa3fe5f2ae692489de4da6e9c291",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "table:public.contract_meter_boundary_sets",
-        "table:public.contract_meter_boundaries",
-        "table:app_private.contract_meter_boundary_history",
-        "function:app_private.assert_meter_boundary_scope_v1",
-        "function:app_private.assert_meter_boundary_writer_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-28T05:22:52.410Z|bien-nhan-backup"
       ]
     },
     {
@@ -10736,14 +10710,9 @@
       "name": "contract_draft_sign_checkin",
       "scheme": "timestamp14",
       "sha256": "c3f367728f38b9cb3575bb3491b7fdf611b9bb8e147a37d812ec64e02c82fd74",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "table:public.contract_draft_signings",
-        "function:app_private.guard_contract_draft_signing_source_v1",
-        "function:app_private.guard_signed_contract_draft_v1",
-        "function:public.read_contract_draft_signing_v1",
-        "function:public.sign_and_checkin_contract_draft_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-28T05:41:28.127Z|bien-nhan-backup"
       ]
     },
     {
@@ -10752,14 +10721,9 @@
       "name": "lifecycle_reminders",
       "scheme": "timestamp14",
       "sha256": "9a91cc955180aca08870aa611f5021e12f47116ff38a711612d61bc7b636443a",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "table:app_private.lifecycle_reminder_deliveries",
-        "table:app_private.lifecycle_reminder_runs",
-        "function:app_private.lifecycle_reminder_sources_v1",
-        "function:app_private.lifecycle_recipient_allowed_v1",
-        "function:app_private.lifecycle_reminder_payload_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-28T05:55:40.005Z|bien-nhan-backup"
       ]
     },
     {
@@ -10768,14 +10732,9 @@
       "name": "room_reservation_workflow",
       "scheme": "timestamp14",
       "sha256": "e7d328d597dfd310c3e309b2a14204e8d5cc77403c00364c2f0b45393f6c105f",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "table:public.room_reservations",
-        "table:public.room_next_claims",
-        "table:public.reservation_receipts",
-        "table:app_private.room_reservation_history",
-        "function:app_private.assert_room_reservation_scope_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-28T05:38:34.582Z|bien-nhan-backup"
       ]
     },
     {
@@ -10784,14 +10743,9 @@
       "name": "contract_transfer_links",
       "scheme": "timestamp14",
       "sha256": "32161e2eac3fedd0891ff6de3e814c20f710540933df9e29fb592ef960b37427",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "table:public.contract_transfer_links",
-        "table:app_private.contract_transfer_events",
-        "function:app_private.contract_transfer_response_v1",
-        "function:public.read_contract_transfer_links_v1",
-        "function:public.create_contract_transfer_link_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-28T05:44:36.464Z|bien-nhan-backup"
       ]
     },
     {
@@ -10800,14 +10754,9 @@
       "name": "contract_notice_action_adapters",
       "scheme": "timestamp14",
       "sha256": "a5246826790af7231338cc9e9343b2936123cad2ccbba126f5b18a3cbbfededa",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "table:public.contract_notice_transition_events",
-        "function:app_private.apply_contract_notice_transition_v1",
-        "function:public.renew_contract_with_notice_v1",
-        "function:public.transfer_room_with_notice_v1",
-        "policy:public.contract_notice_transition_events.contract_notice_transition_events_read"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-28T05:47:55.055Z|bien-nhan-backup"
       ]
     },
     {
@@ -10816,10 +10765,9 @@
       "name": "contract_meter_followups",
       "scheme": "timestamp14",
       "sha256": "8f4f80843d78c06bba689871902429193279ed6218b25b6dc51791e637001454",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:public.list_contract_meter_followups_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-28T05:51:55.739Z|bien-nhan-backup"
       ]
     },
     {
@@ -10828,11 +10776,9 @@
       "name": "lifecycle_reminder_cron",
       "scheme": "timestamp14",
       "sha256": "9bd7d15828e87e05cdd7eac55caee4badf4b36ff9404b1ac9fc474e5d667ceb3",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.lifecycle_reminder_service_jwt_v1",
-        "function:app_private.dispatch_lifecycle_reminders_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-28T05:59:40.130Z|bien-nhan-backup"
       ]
     },
     {

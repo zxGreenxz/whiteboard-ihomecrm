@@ -2,12 +2,11 @@
   "$comment": "BỀ MẶT EDGE FUNCTION. Thư mục trong repo KHÔNG có nghĩa là hàm đang chạy — deploy là thao tác riêng, không gắn với git push. Sinh từ BA nguồn: thư mục supabase/functions/*, Management API (trạng thái đang chạy), và call site functions.invoke(). Sinh bởi scripts/generate-edge-surface.mjs; kiểm bởi scripts/check-edge-surface.mjs.",
   "counts": {
     "source": 8,
-    "deployed": 6,
+    "deployed": 7,
     "invoked": 1,
     "publiclyCallable": 3
   },
   "sourceWithoutDeployment": [
-    "lifecycle-reminders",
     "network-watchdog"
   ],
   "deploymentWithoutSource": [],
@@ -17,7 +16,7 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 24,
+      "version": 25,
       "verifyJwt": true,
       "callers": []
     },
@@ -25,23 +24,23 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 20,
+      "version": 21,
       "verifyJwt": false,
       "callers": []
     },
     "lifecycle-reminders": {
       "hasSource": true,
-      "deployed": false,
-      "status": null,
-      "version": null,
-      "verifyJwt": null,
+      "deployed": true,
+      "status": "ACTIVE",
+      "version": 1,
+      "verifyJwt": true,
       "callers": []
     },
     "llm-proxy": {
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 34,
+      "version": 35,
       "verifyJwt": true,
       "callers": []
     },
@@ -49,7 +48,7 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 9,
+      "version": 10,
       "verifyJwt": false,
       "callers": []
     },
@@ -65,7 +64,7 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 23,
+      "version": 24,
       "verifyJwt": false,
       "callers": []
     },
@@ -73,7 +72,7 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 25,
+      "version": 26,
       "verifyJwt": true,
       "callers": [
         "src/lib/push.ts",
