@@ -21,6 +21,8 @@ import { useRooms } from "@/hooks/useRooms";
 import { useJobTypes } from "@/hooks/useJobTypes";
 import { useProfiles, useUpdateJob } from "@/hooks/useJobs";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useAuth } from "@/hooks/useAuth";
+import AttachmentUpload from "@/components/income-expenses/AttachmentUpload";
 import { JOB_PRIORITIES, PRIORITY_LABELS, type JobWithRelations, type JobPriority } from "@/types/jobs";
 
 interface TaskEditDialogProps {
@@ -44,6 +46,7 @@ export default function TaskEditDialog({
   job,
   onSuccess,
 }: TaskEditDialogProps) {
+  const { data: authUser } = useAuth();
   const { data: buildings = [] } = useBuildings();
   const { data: jobTypes = [] } = useJobTypes();
   const { data: profiles = [] } = useProfiles();
@@ -58,6 +61,9 @@ export default function TaskEditDialog({
   const [priority, setPriority] = useState<JobPriority>("NORMAL");
   const [assigneeId, setAssigneeId] = useState<string | null>(null);
   const [deadlineLocal, setDeadlineLocal] = useState<string>("");
+  const [attachments, setAttachments] = useState<string[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const isBusy = isUploading || updateJob.isPending;
 
   const { data: roomsForBuilding = [] } = useRooms(buildingId ?? undefined);
 
@@ -71,10 +77,15 @@ export default function TaskEditDialog({
       setPriority(job.priority);
       setAssigneeId(job.assignee_id);
       setDeadlineLocal(toDatetimeLocal(job.deadline));
+      setAttachments(job.attachments ?? []);
     }
   }, [open, job]);
 
   if (!job) return null;
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!isBusy) onOpenChange(nextOpen);
+  };
 
   const handleBuildingChange = (v: string) => {
     const next = v === "__none__" ? null : v;
@@ -83,7 +94,11 @@ export default function TaskEditDialog({
   };
 
   const handleSubmit = async () => {
-    if (!title.trim()) return;
+    if (!title.trim() || isBusy) return;
+    const originalAttachments = job.attachments ?? [];
+    const attachmentsChanged =
+      attachments.length !== originalAttachments.length ||
+      attachments.some((url, index) => url !== originalAttachments[index]);
     try {
       await updateJob.mutateAsync({
         id: job.id,
@@ -96,6 +111,9 @@ export default function TaskEditDialog({
           priority,
           assignee_id: assigneeId,
           deadline: deadlineLocal ? new Date(deadlineLocal).toISOString() : null,
+          ...(attachmentsChanged
+            ? { attachments: attachments.length ? attachments : null }
+            : {}),
         },
       });
       onOpenChange(false);
@@ -237,11 +255,25 @@ export default function TaskEditDialog({
           />
         </div>
       </div>
+
+      <div className="space-y-2">
+        <h3 className="text-[13px] font-medium">Ảnh đính kèm</h3>
+        <AttachmentUpload
+          key={job.id}
+          attachments={attachments}
+          onChange={setAttachments}
+          userId={authUser?.id ?? ""}
+          bucket="job-attachments"
+          deleteOnRemove={false}
+          disabled={updateJob.isPending || !authUser?.id}
+          onUploadingChange={setIsUploading}
+        />
+      </div>
     </>
   );
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
         className={
           isMobile
@@ -266,14 +298,15 @@ export default function TaskEditDialog({
             <DialogFooter className="shrink-0 px-4 py-3 border-t flex flex-col gap-2 bg-background">
               <Button
                 className="bg-blue-600 hover:bg-blue-700 text-white w-full h-11"
-                disabled={!title.trim() || updateJob.isPending}
+                disabled={!title.trim() || isBusy}
                 onClick={handleSubmit}
               >
-                {updateJob.isPending ? "Đang lưu..." : "Lưu"}
+                {isUploading ? "Đang tải ảnh..." : updateJob.isPending ? "Đang lưu..." : "Lưu"}
               </Button>
               <Button
                 variant="outline"
-                onClick={() => onOpenChange(false)}
+                onClick={() => handleOpenChange(false)}
+                disabled={isBusy}
                 className="w-full h-11"
               >
                 Huỷ
@@ -289,15 +322,15 @@ export default function TaskEditDialog({
             </DialogHeader>
             <div className="space-y-4">{formBody}</div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => onOpenChange(false)}>
+              <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={isBusy}>
                 Huỷ
               </Button>
               <Button
                 className="bg-blue-600 hover:bg-blue-700 text-white"
-                disabled={!title.trim() || updateJob.isPending}
+                disabled={!title.trim() || isBusy}
                 onClick={handleSubmit}
               >
-                {updateJob.isPending ? "Đang lưu..." : "Lưu"}
+                {isUploading ? "Đang tải ảnh..." : updateJob.isPending ? "Đang lưu..." : "Lưu"}
               </Button>
             </DialogFooter>
           </>
