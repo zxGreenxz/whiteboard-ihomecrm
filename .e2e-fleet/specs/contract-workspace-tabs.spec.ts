@@ -1,8 +1,16 @@
 import { test, expect, type Page } from '@playwright/test';
-import { login } from './auth';
+import { credentials, type UserKey } from './auth';
 
 const TEST_HOST = 'hzulujxgonszuleqticb.supabase.co';
 const DEMO_ORG = 'dddd0000-0000-4000-8000-000000000001';
+const METER_CONTRACT_ID = 'e2e00000-0000-4000-8000-000000000001';
+// UI-only response: no TEST/PROD row, voucher or contract is created.
+const METER_FOLLOWUP = {
+  items: [{ id: 'e2e00000-0000-4000-8000-000000000002', contract_id: METER_CONTRACT_ID,
+    contract_number: 'E2E-CHISO', building_name: 'Toà kiểm thử UI', room_name: 'Phòng mẫu',
+    effective_on: '2026-09-28', state: 'MISSING' }],
+  total: 1, limit: 10, offset: 0,
+};
 const READ_RPC = new Set([
   'get_dashboard_summary', 'revenue_by_month', 'get_contract_stats', 'get_my_context',
   'get_my_assignments', 'is_admin', 'is_super_admin', 'get_my_permissions', 'get_my_permissions_v2',
@@ -16,12 +24,57 @@ const READ_RPC = new Set([
 
 type CapturedReaders = { exits: number[]; drafts: number[] };
 
+// Authenticate the real TEST role, then open the target route directly. Delivering
+// the login response to the home page would also mount unrelated dashboard readers.
+async function openContracts(page: Page, role: UserKey) {
+  const account = credentials(role);
+  const authPage = await page.context().newPage();
+  type Session = { access_token: string; refresh_token: string; expires_in: number; user: { email: string } };
+  let resolveSession!: (session: Session) => void;
+  let rejectSession!: (error: unknown) => void;
+  const authenticated = new Promise<Session>((resolve, reject) => { resolveSession = resolve; rejectSession = reject; });
+  await authPage.route(`https://${TEST_HOST}/auth/v1/token*`, async route => {
+    try {
+      const request = route.request();
+      expect(request.method()).toBe('POST');
+      expect(new URL(request.url()).searchParams.get('grant_type')).toBe('password');
+      expect(request.postDataJSON().email).toBe(account.email);
+      const response = await route.fetch({ maxRedirects: 0 });
+      expect(response.ok()).toBe(true);
+      const session: Session = await response.json();
+      expect(session.user.email).toBe(account.email);
+      resolveSession(session);
+    } catch (error) { rejectSession(error); }
+    finally { await route.abort('aborted'); }
+  });
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await authPage.goto('/login');
+    await authPage.getByRole('textbox', { name: 'Tài Khoản' }).fill(account.email);
+    await authPage.getByRole('textbox', { name: 'Mật khẩu' }).fill(account.pass);
+    await authPage.getByRole('button', { name: 'Đăng nhập', exact: true }).click();
+    const session = await Promise.race([authenticated, new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error('TEST role authentication timed out')), 45_000);
+    })]);
+    await page.addInitScript(({ session, host }) => {
+      localStorage.setItem(`sb-${host.split('.')[0]}-auth-token`, JSON.stringify({
+        ...session, expires_at: Math.floor(Date.now() / 1000) + session.expires_in,
+      }));
+    }, { session, host: TEST_HOST });
+  } finally {
+    clearTimeout(timer);
+    await authPage.close();
+  }
+  await page.goto('/contracts');
+}
+
 async function readonlyDemo(page: Page, email: string) {
   expect(process.env.FLEET_BASE_URL).toBe('http://127.0.0.1:5197');
   const blocked: string[] = [];
   const errors: string[] = [];
   const captured: CapturedReaders = { exits: [], drafts: [] };
   let observedTest = false;
+  let meterResponsesMocked = 0;
   await page.context().addInitScript(org => localStorage.setItem('ihomecrm.selectedOrganizationId', org), DEMO_ORG);
   await page.context().route('**/*', async route => {
     const request = route.request();
@@ -42,6 +95,12 @@ async function readonlyDemo(page: Page, email: string) {
         if (grant === 'refresh_token' || (grant === 'password' && body.email === email)) return route.continue();
       }
       const rpc = url.pathname.match(/^\/rest\/v1\/rpc\/([^/]+)$/)?.[1];
+      if (rpc === 'list_contract_meter_followups_v1' && method === 'POST') {
+        const body = request.postDataJSON();
+        if (body?.p_organization_id !== DEMO_ORG || body?.p_limit !== 10 || body?.p_offset !== 0) return block();
+        meterResponsesMocked++;
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(METER_FOLLOWUP) });
+      }
       if (rpc && READ_RPC.has(rpc) && method === 'POST') {
         const body = request.postDataJSON();
         if (body?.p_organization_id && body.p_organization_id !== DEMO_ORG) return block();
@@ -67,7 +126,7 @@ async function readonlyDemo(page: Page, email: string) {
   });
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
-  return { blocked, errors, captured, observedTest: () => observedTest };
+  return { blocked, errors, captured, observedTest: () => observedTest, meterResponsesMocked: () => meterResponsesMocked };
 }
 
 async function settledTabs(page: Page, captured: CapturedReaders) {
@@ -91,16 +150,14 @@ for (const role of ['chunha', 'quanly'] as const) {
     await page.setViewportSize({ width: 1440, height: 1000 });
     const email = `demo.${role}@username.ihomecrm.local`;
     const audit = await readonlyDemo(page, email);
-    await login(page, role);
-    await expect(page.locator('main')).toBeVisible();
-    await page.goto('/contracts');
+    await openContracts(page, role);
     let settled;
     try {
       settled = await settledTabs(page, audit.captured);
     } catch (error) {
       await testInfo.attach('readonly-diagnostics.json', { body: JSON.stringify({
         path: new URL(page.url()).pathname, blocked: audit.blocked, errors: audit.errors,
-        observedTest: audit.observedTest(), captured: audit.captured,
+        observedTest: audit.observedTest(), meterResponsesMocked: audit.meterResponsesMocked(), captured: audit.captured,
       }, null, 2), contentType: 'application/json' });
       throw error;
     }
@@ -108,6 +165,9 @@ for (const role of ['chunha', 'quanly'] as const) {
     await expect(list).toHaveAttribute('data-state', 'active');
     await expect(page.getByRole('region', { name: 'Hồ sơ chờ quyết toán' })).toHaveCount(0);
     await expect(page.getByRole('region', { name: 'Hợp đồng nháp' })).toHaveCount(0);
+    const meterRegion = page.getByRole('region', { name: 'Chờ bổ sung chỉ số bàn giao' });
+    await expect(meterRegion).toHaveCount(0);
+    await expect(exits).toContainText('Chỉ số 1');
     await expect(page.getByText('Đang tải dữ liệu...', { exact: true })).toHaveCount(0);
     await expect(page.getByText('Không tải được danh sách hợp đồng', { exact: true })).toHaveCount(0);
     if (role === 'chunha') await page.screenshot({ path: testInfo.outputPath('owner-contract-list.png'), animations: 'disabled' });
@@ -118,6 +178,9 @@ for (const role of ['chunha', 'quanly'] as const) {
     await expect(exits).toHaveAttribute('data-state', 'active');
     await expect(search).toBeDisabled();
     await expect(page.getByRole('region', { name: 'Hợp đồng nháp' })).toHaveCount(0);
+    await expect(meterRegion).toBeVisible();
+    await expect(meterRegion.getByRole('heading', { name: 'Chờ bổ sung / kiểm tra chỉ số (1)' })).toBeVisible();
+    await expect(meterRegion.getByRole('link', { name: 'Mở mốc bàn giao' })).toHaveAttribute('href', `/contracts/${METER_CONTRACT_ID}`);
     await expect(page.getByText('Đang tải hồ sơ chờ quyết toán…')).toHaveCount(0);
     await expect(page.getByRole('alert').filter({ hasText: 'Không tải được hồ sơ chờ quyết toán' })).toHaveCount(0);
     if (exitCount) await expect(page.getByRole('region', { name: 'Hồ sơ chờ quyết toán' })).toBeVisible();
@@ -131,6 +194,7 @@ for (const role of ['chunha', 'quanly'] as const) {
     await expect(workspace.getByText('Đang tải bản nháp…')).toHaveCount(0);
     await expect(workspace.getByRole('alert')).toHaveCount(0);
     await expect(page.getByRole('region', { name: 'Hồ sơ chờ quyết toán' })).toHaveCount(0);
+    await expect(meterRegion).toHaveCount(0);
     if (role === 'chunha') {
       await expect(workspace.getByRole('button', { name: 'Soạn nháp', exact: true })).toBeVisible();
       await page.screenshot({ path: testInfo.outputPath('owner-contract-drafts.png'), animations: 'disabled' });
@@ -142,11 +206,13 @@ for (const role of ['chunha', 'quanly'] as const) {
     await expect(search).toHaveValue('__workspace_tabs_readonly__');
     await expect(workspace).toHaveCount(0);
     await expect(page.getByRole('region', { name: 'Hồ sơ chờ quyết toán' })).toHaveCount(0);
+    await expect(meterRegion).toHaveCount(0);
     if (role === 'chunha') {
       await page.setViewportSize({ width: 800, height: 900 });
       await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
     }
     expect(audit.observedTest()).toBe(true);
+    expect(audit.meterResponsesMocked()).toBeGreaterThan(0);
     expect(audit.blocked).toEqual([]);
     expect(audit.errors).toEqual([]);
   });

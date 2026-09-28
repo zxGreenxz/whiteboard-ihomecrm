@@ -471,8 +471,9 @@ function ContractsDesktopPage() {
         </div>
 
         <TabsContent value="exits" className="space-y-3">
-          <p className="text-xs text-muted-foreground">Hồ sơ chờ quyết toán theo tòa nhà đang chọn.</p>
+          <p className="text-xs text-muted-foreground">Theo dõi quyết toán và bổ sung chỉ số bàn giao theo tòa nhà đang chọn.</p>
           <ContractExitQueue buildingIds={buildingIds} showEmpty />
+          <ContractMeterFollowupQueue buildingIds={buildingIds} />
         </TabsContent>
         <TabsContent value="drafts" className="space-y-3">
           <p className="text-xs text-muted-foreground">Bản nháp theo tòa nhà đang chọn. Số trên tab là bản chưa ký; bản đã ký vẫn được giữ để tra cứu.</p>
@@ -482,7 +483,6 @@ function ContractsDesktopPage() {
 
         <TabsContent value="contracts" className="space-y-4">
         <MoveOutNoticeQueue buildingIds={buildingIds} />
-        <ContractMeterFollowupQueue buildingIds={buildingIds} />
 
         {/* Table */}
         <div className="bg-white rounded-lg border">
