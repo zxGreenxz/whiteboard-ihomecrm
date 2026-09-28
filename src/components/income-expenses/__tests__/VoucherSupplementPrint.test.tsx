@@ -3,11 +3,11 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest';
 import IncomeExpensePrintPage from '@/pages/payments/IncomeExpensePrintPage';
 
-const state = vi.hoisted(() => ({ voucher: { id: 'voucher', code: 'PT-DEMO', type: 'INCOME', total_amount: 100,
+const state = vi.hoisted(() => ({ fetching:false, error:false, voucher: { detail_read:{complete:true,expected_item_count:0}, id: 'voucher', code: 'PT-DEMO', type: 'INCOME', total_amount: 100,
   voucher_date: null, created_at: null, notes: 'Gốc', attachments: ['old.png'], items: [],
   supplements: [{ id: 'supp', note: 'Bổ sung', actor_name: 'Admin DEMO', created_at: '2026-09-10T05:00:00Z', attachments: ['new.png'] }] } }));
 vi.mock('react-router-dom', () => ({ useParams: () => ({ id: 'voucher' }) }));
-vi.mock('@tanstack/react-query', () => ({ useQuery: () => ({ data: state.voucher, isLoading: false }) }));
+vi.mock('@tanstack/react-query', () => ({ useQuery: () => ({ data: state.voucher, isLoading: false, isFetching:state.fetching, isError:state.error, isSuccess:!state.error, isFetchedAfterMount:true, refetch:vi.fn() }) }));
 vi.mock('@/integrations/supabase/client', () => ({ supabase: {} }));
 vi.mock('@/hooks/income-expenses/supplements', () => ({ hydrateIncomeExpenseSupplements: vi.fn() }));
 vi.mock('@/components/ui/storage-image', () => ({ StorageImage: ({ value, ...props }: { value: string }) => <img src={value} {...props} /> }));
@@ -33,4 +33,13 @@ it('waits for original and supplemental private photos before printing and does 
   view.rerender(<IncomeExpensePrintPage />);
   await act(async () => { vi.advanceTimersByTime(1000); });
   expect(print).toHaveBeenCalledTimes(1);
+});
+
+it("never prints stale cached detail while a fresh read is pending or failed",async()=>{
+ vi.useFakeTimers();const print=vi.spyOn(window,"print").mockImplementation(()=>{});
+ state.fetching=true;const view=render(<IncomeExpensePrintPage/>);
+ await act(async()=>{vi.advanceTimersByTime(1000);});expect(print).not.toHaveBeenCalled();expect(screen.queryByText("PT-DEMO")).toBeNull();
+ state.fetching=false;state.error=true;view.rerender(<IncomeExpensePrintPage/>);
+ expect(screen.queryByText("PT-DEMO")).toBeNull();expect(screen.getByText("Thử lại")).toBeTruthy();
+ state.error=false;
 });

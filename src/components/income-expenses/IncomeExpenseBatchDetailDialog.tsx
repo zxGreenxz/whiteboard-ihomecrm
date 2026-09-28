@@ -1,3 +1,4 @@
+import { useVoucherWithBatch } from "@/hooks/useVoucherDetail";
 import { useState, useEffect } from 'react';
 import {
   Dialog,
@@ -74,7 +75,13 @@ const SectionTitle = ({ children }: { children: React.ReactNode }) => (
   </h3>
 );
 
-export function IncomeExpenseBatchDetailDialog({
+export function IncomeExpenseBatchDetailDialog(props:Props) {
+  const detail=useVoucherWithBatch(props.open ? props.batch?.vouchers[0]?.id : undefined);
+  if(!props.open || !props.batch) return null;
+  if(detail.isFetching || !detail.isFetchedAfterMount || !detail.isSuccess || !detail.data?.batch || detail.data.batch.id!==props.batch.id) return <Dialog open={props.open} onOpenChange={props.onOpenChange}><DialogContent aria-describedby={undefined}><DialogTitle>Chi tiết đợt</DialogTitle><p role="status">{detail.isFetching ? "Đang tải chi tiết đợt…" : "Không tải được đầy đủ phiếu trong đợt hoặc bạn không còn quyền xem."}</p><Button onClick={()=>detail.refetch()}>Thử lại</Button></DialogContent></Dialog>;
+  return <IncomeExpenseBatchDetailContent {...props} batch={detail.data.batch}/>;
+}
+function IncomeExpenseBatchDetailContent({
   open,
   onOpenChange,
   batch,

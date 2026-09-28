@@ -1,3 +1,5 @@
+import { useIncomeExpenseDetail } from "@/hooks/income-expenses/detailRead";
+import { hasCompleteVoucherDetail } from "@/lib/incomeExpenseDetailRead";
 import { useNavigate } from "react-router-dom";
 import { ReservationSettlementDetails } from "@/components/deposits/ReservationSettlementDetails";
 import { useQuery } from "@tanstack/react-query";
@@ -50,7 +52,8 @@ import {
 import { ReservationSettlementDialog } from "@/components/deposits/ReservationSettlementDialog";
 
 interface Props {
-  voucher: IncomeExpenseWithRelations;
+  voucher?: IncomeExpenseWithRelations;
+  voucherId?: string;
   onClose: () => void;
   onEdit?: (v: IncomeExpenseWithRelations) => void;
   onQuickEdit?: (v: IncomeExpenseWithRelations) => void;
@@ -86,7 +89,16 @@ const REPEAT_LABEL: Record<string, string> = {
  * (IncomeExpenseWithRelations) + cùng logic quyền như IncomeExpenseDetailDialog
  * (sửa đầy đủ / sửa nhanh / duyệt / huỷ / in). Hiển thị trong khung .cm-app.
  */
-export function IncomeExpenseDetailMobile({
+export function IncomeExpenseDetailMobile(props: Props) {
+  const detail = useIncomeExpenseDetail(props.voucherId ?? props.voucher?.id, true);
+  if (detail.isFetching || !detail.isFetchedAfterMount || !detail.isSuccess || !hasCompleteVoucherDetail(detail.data)) {
+    const message = detail.isFetching ? "Đang tải chi tiết phiếu…" : detail.isSuccess && !detail.data ? "Phiếu không còn khả dụng hoặc bạn không còn quyền xem." : "Không tải được đầy đủ chi tiết phiếu.";
+    return <div className="fixed inset-0 z-50 bg-background p-6"><p role="status">{message}</p><button onClick={() => detail.refetch()}>Thử lại</button><button onClick={props.onClose}>Đóng</button></div>;
+  }
+  return <IncomeExpenseDetailMobileContent {...props} voucher={detail.data!} />;
+}
+
+function IncomeExpenseDetailMobileContent({
   voucher: v,
   onClose,
   onEdit,
@@ -97,7 +109,7 @@ export function IncomeExpenseDetailMobile({
   onCopy,
   onPostApproved,
   onReversePosting,
-}: Props) {
+}: Props & { voucher: IncomeExpenseWithRelations }) {
   const navigate = useNavigate();
   const attachments = getVoucherDisplayAttachments(v);
   const [paySheetOpen, setPaySheetOpen] = useState(false);
@@ -475,6 +487,7 @@ export function IncomeExpenseDetailMobile({
           </button>
         )}
 
+        {v.items.length === 0 && <p>Phiếu này không có hạng mục (dữ liệu cũ hoặc phiếu hệ thống).</p>}
         {v.items && v.items.length > 0 && (
           <>
             <div className="vd-sec">

@@ -27,6 +27,9 @@ export const useStopRecurring = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
+      queryClient.invalidateQueries({ queryKey: ["income-expense-batches"] });
+      queryClient.invalidateQueries({ queryKey: ["voucher-with-batch"] });
+      queryClient.invalidateQueries({ queryKey: ["income-expense"] });
       toast.success("Đã dừng lặp lại cho phiếu này");
     },
   });
@@ -47,6 +50,9 @@ export const useGenerateRecurringVouchers = () => {
     },
     onSuccess: (rows) => {
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
+      queryClient.invalidateQueries({ queryKey: ["income-expense-batches"] });
+      queryClient.invalidateQueries({ queryKey: ["voucher-with-batch"] });
+      queryClient.invalidateQueries({ queryKey: ["income-expense"] });
       queryClient.invalidateQueries({ queryKey: ["accounts-with-balance"] });
       toast.success(
         rows.length === 0

@@ -10,8 +10,9 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IncomeExpenseWithRelations } from '@/hooks/useIncomeExpenses';
 
-const h = vi.hoisted(() => ({ revise: vi.fn(), create: vi.fn() }));
+const h = vi.hoisted(() => ({ revise: vi.fn(), create: vi.fn(), detail: null as unknown, fetching: false, error: false }));
 
+vi.mock("@/hooks/income-expenses/detailRead", () => ({ useIncomeExpenseDetail: () => ({data:h.detail,isFetching:h.fetching,isError:h.error,isSuccess:!h.error,isFetchedAfterMount:true,refetch:vi.fn()}) }));
 vi.mock('@/integrations/supabase/client', () => ({
   supabase: { from: vi.fn(), rpc: vi.fn(), auth: { getUser: vi.fn() } },
 }));
@@ -58,6 +59,7 @@ if (!('ResizeObserver' in globalThis)) {
 
 const phieu =(over: Partial<IncomeExpenseWithRelations> = {}): IncomeExpenseWithRelations =>
   ({
+    detail_read:{complete:true,expected_item_count:1},
     id: 'v1', code: 'PC2609001', type: 'EXPENSE', name: 'Chi sửa ống nước', building_id: 'b1',
     building_name: 'Toà A', room_id: null, tenant_id: null, contract_id: null, payer_name: null,
     receive_bank_account: null, receive_bank_name: null, account_id: 'a1', voucher_date: '2026-09-20',
@@ -73,11 +75,12 @@ const phieu =(over: Partial<IncomeExpenseWithRelations> = {}): IncomeExpenseWith
   }) as unknown as IncomeExpenseWithRelations;
 
 const moForm = (v: IncomeExpenseWithRelations) =>
-  render(<IncomeExpenseForm open onOpenChange={() => {}} voucher={v} />);
+  { h.detail=v; return render(<IncomeExpenseForm open onOpenChange={() => {}} voucher={v} />); };
 
 const nutLuu = () => screen.getByTestId('ie-form-save') as HTMLButtonElement;
 
 beforeEach(() => {
+  h.fetching=false; h.error=false;
   h.revise.mockReset().mockResolvedValue({ id: 'v1', changed: true, approval_version: 6, changed_fields: [] });
 });
 afterEach(cleanup);
@@ -156,4 +159,9 @@ describe('Form sửa phiếu Chờ duyệt', () => {
     expect(screen.getByText('CHI TIẾT PHIẾU')).toBeTruthy();
     expect(screen.queryByTestId('ie-form-save')).toBeNull();
   });
+});
+
+describe("Complete detail baseline",()=>{
+ it("blocks submit until detail is verified",()=>{const v=phieu({detail_read:undefined});moForm(v);expect(nutLuu().disabled).toBe(true);fireEvent.click(nutLuu());expect(h.revise).not.toHaveBeenCalled();});
+ it("does not reset a typed edit on realtime refresh and blocks a changed version",()=>{const v=phieu();const view=moForm(v);fireEvent.change(screen.getByDisplayValue("Chi sửa ống nước"),{target:{value:"Đang sửa dở"}});h.detail={...v,approval_version:6,name:"Đã đổi trên máy khác"};view.rerender(<IncomeExpenseForm open onOpenChange={()=>{}} voucher={v}/>);expect(screen.getByDisplayValue("Đang sửa dở")).toBeTruthy();expect(nutLuu().disabled).toBe(true);});
 });

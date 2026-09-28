@@ -58,6 +58,7 @@ export const FINANCE_SYNC_ENTRIES: readonly SyncEntry[] = [
       ["handover-vouchers"], // bàn giao tiền
       ["invoice-collectors"], // quy công thu
       ["manager-salary"], // bảng lương quản lý
+      ["income-expense"],
       ["voucher-with-batch"], // chi tiết phiếu
       ["orphan-deposit-vouchers"],
       ["contract-deposit-vouchers"],
@@ -105,6 +106,7 @@ export const FINANCE_SYNC_ENTRIES: readonly SyncEntry[] = [
     keys: [
       ["reservation-refund-evidence"],
       ["reservation-settlement-audit"],
+      ["income-expense"],
       ["voucher-with-batch"],
       ["reservation-settlements"],
       ["reservation-settlement-summary"],
@@ -143,6 +145,8 @@ export const FINANCE_SYNC_ENTRIES: readonly SyncEntry[] = [
     table: "income_expense_items",
     keys: [
       ["income-expenses"],
+      ["income-expense-batches"],
+      ["income-expense"],
       ["voucher-with-batch"],
       ["accounts-with-balance"],
       ["cash-book-summary"],

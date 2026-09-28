@@ -207,6 +207,7 @@ function VoucherCard({
 
       {settlement.data && <ReservationSettlementDetails key={settlement.data.id} settlement={settlement.data} />}
       {needsSettlement && settlement.error && <p role="alert" className="mt-3 text-sm text-destructive">Không tải được thông tin xử lý cọc. <button className="underline" onClick={() => void settlement.refetch()}>Thử lại</button></p>}
+      {v.items.length === 0 && <p>Phiếu này không có hạng mục (dữ liệu cũ hoặc phiếu hệ thống).</p>}
       {v.items && v.items.length > 0 && (
         <>
           <SectionTitle>Hạng mục</SectionTitle>
@@ -358,9 +359,9 @@ function BatchCard({
 export default function VoucherDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { data, isLoading } = useVoucherWithBatch(id);
-  const voucher = data?.voucher ?? null;
-  const batch = data?.batch ?? null;
+  const { data, isLoading, isFetching, isError, isFetchedAfterMount, refetch } = useVoucherWithBatch(id);
+  const voucher = !isError && !isFetching && isFetchedAfterMount ? data?.voucher ?? null : null;
+  const batch = voucher ? data?.batch ?? null : null;
   const { data: user } = useAuth();
   const { data: isAdmin = false } = useIsAdmin();
   const { data: permissions } = useMyPermissions();
@@ -421,14 +422,14 @@ export default function VoucherDetailPage() {
       </div>
 
       <div className="max-w-6xl mx-auto p-4">
-        {isLoading ? (
+        {isLoading || isFetching ? (
           <div className="max-w-2xl mx-auto space-y-3">
             <Skeleton className="h-8 w-48" />
             <Skeleton className="h-64 w-full" />
           </div>
         ) : !voucher ? (
           <div className="text-center py-16 text-muted-foreground">
-            Không tìm thấy phiếu thu này (có thể đã bị xoá hoặc bạn không có quyền xem).
+            Không tải được đầy đủ chi tiết phiếu hoặc bạn không còn quyền xem. <button onClick={() => refetch()}>Thử lại</button>
           </div>
         ) : (
           <div

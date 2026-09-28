@@ -24567,6 +24567,10 @@ export type Database = {
         }
         Returns: Json
       }
+      read_income_expense_details_v1: {
+        Args: { p_organization_id: string; p_voucher_ids: string[] }
+        Returns: Json
+      }
       read_room_turnover_v1: {
         Args: { p_organization_id: string; p_room_id: string }
         Returns: Json

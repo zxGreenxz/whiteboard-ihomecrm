@@ -1,3 +1,5 @@
+import { useIncomeExpenseDetail } from "@/hooks/income-expenses/detailRead";
+import { hasCompleteVoucherDetail } from "@/lib/incomeExpenseDetailRead";
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -57,6 +59,7 @@ interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   voucher: IncomeExpenseWithRelations | null;
+  voucherId?: string | null;
   onCancel?: (id: string, type?: string | null) => void;
   onEdit?: (voucher: IncomeExpenseWithRelations) => void;
   /** Append-only narrative/evidence, independent of the financial edit form. */
@@ -93,7 +96,17 @@ const SectionTitle = ({ children }: { children: React.ReactNode }) => (
   </h3>
 );
 
-export function IncomeExpenseDetailDialog({
+export function IncomeExpenseDetailDialog(props: Props) {
+  const detail = useIncomeExpenseDetail(props.voucherId ?? props.voucher?.id, props.open);
+  if (!props.open || (!props.voucherId && !props.voucher)) return null;
+  if (detail.isFetching || !detail.isFetchedAfterMount || !detail.isSuccess || !hasCompleteVoucherDetail(detail.data)) {
+    const message = detail.isFetching ? "Đang tải chi tiết phiếu…" : detail.isSuccess && !detail.data ? "Phiếu không còn khả dụng hoặc bạn không còn quyền xem." : "Không tải được đầy đủ chi tiết phiếu.";
+    return <Dialog open={props.open} onOpenChange={props.onOpenChange}><DialogContent aria-describedby={undefined}><DialogTitle>Chi tiết phiếu</DialogTitle><p role="status">{message}</p><Button onClick={() => detail.refetch()}>Thử lại</Button></DialogContent></Dialog>;
+  }
+  return <IncomeExpenseDetailDialogContent {...props} voucher={detail.data!} />;
+}
+
+function IncomeExpenseDetailDialogContent({
   open,
   onOpenChange,
   voucher,
@@ -506,6 +519,7 @@ export function IncomeExpenseDetailDialog({
           )}
 
           {/* Hạng mục */}
+          {voucher.items.length === 0 && <p className="text-sm text-muted-foreground">Phiếu này không có hạng mục (dữ liệu cũ hoặc phiếu hệ thống).</p>}
           {voucher.items && voucher.items.length > 0 && (
             <>
               <SectionTitle>Hạng mục</SectionTitle>

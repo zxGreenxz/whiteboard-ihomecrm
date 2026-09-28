@@ -6,6 +6,8 @@ import { MemoryRouter } from 'react-router-dom';
 import { IncomeExpenseDetailDialog } from '../IncomeExpenseDetailDialog';
 import type { IncomeExpenseWithRelations } from '@/hooks/useIncomeExpenses';
 
+const detailState = vi.hoisted(() => ({data:null as unknown,isFetching:false,isSuccess:true}));
+vi.mock("@/hooks/income-expenses/detailRead",()=>({useIncomeExpenseDetail:()=>({...detailState,isFetchedAfterMount:true,refetch:vi.fn()})}));
 const state = vi.hoisted(() => ({ data: null as unknown, error: null as Error | null, isSuccess: true, isLoading: false }));
 vi.mock('@/hooks/useReservationSettlement', async () => {
   const React = await import('react');
@@ -27,6 +29,7 @@ const source = {
 } as unknown as IncomeExpenseWithRelations;
 
 function fixture(voucher: IncomeExpenseWithRelations | null, client: QueryClient) {
+  detailState.data = voucher ? {...voucher,detail_read:{complete:true,expected_item_count:voucher.items.length}} : null;
   return <QueryClientProvider client={client}><MemoryRouter><IncomeExpenseDetailDialog
     open={!!voucher} voucher={voucher} onOpenChange={() => {}}
     onEdit={() => {}} onQuickEdit={() => {}} onCancel={() => {}} onUnapprove={() => {}}
@@ -74,4 +77,9 @@ describe('reservation voucher detail lifecycle', () => {
     render(fixture({ ...source, approval_status: 'UNAPPROVED', posting_status: 'UNPOSTED' }, new QueryClient()));
     expect(screen.queryByTitle('Sửa phiếu chờ duyệt')).toBeNull();
   });
+});
+
+it("does not display a cached voucher after access is revoked or the refresh fails",()=>{
+ const client=new QueryClient();const view=render(fixture(source,client));expect(screen.getByText("PT-TEST")).toBeTruthy();
+ detailState.isSuccess=false;view.rerender(fixture(source,client));expect(screen.queryByText("PT-TEST")).toBeNull();expect(screen.queryByTitle("In phiếu")).toBeNull();expect(screen.getByText("Thử lại")).toBeTruthy();detailState.isSuccess=true;
 });

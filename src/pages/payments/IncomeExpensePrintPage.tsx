@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { useIncomeExpenseDetail } from "@/hooks/income-expenses/detailRead";
+import { hasCompleteVoucherDetail } from "@/lib/incomeExpenseDetailRead";
 import { format } from "date-fns";
 import { formatVND } from "@/lib/utils";
-import { hydrateIncomeExpenseSupplements } from '@/hooks/income-expenses/supplements';
-import { getVoucherDisplayAttachments, type IncomeExpenseSupplement } from '@/lib/incomeExpenseSupplement';
+import { getVoucherDisplayAttachments } from '@/lib/incomeExpenseSupplement';
 import { StorageImage } from '@/components/ui/storage-image';
 import {
   VoucherNote,
@@ -13,72 +12,11 @@ import {
 } from "@/components/income-expenses/VoucherNote";
 
 
-interface VoucherRow {
-  supplements?: IncomeExpenseSupplement[];
-  attachments?: string[];
-  id: string;
-  code: string;
-  type: "INCOME" | "EXPENSE";
-  name: string;
-  total_amount: number;
-  voucher_date: string;
-  payer_name: string | null;
-  receive_bank_name: string | null;
-  receive_bank_account: string | null;
-  notes: string | null;
-  commission_kind?: "broker" | "sale" | null;
-  contract_id?: string | null;
-  system_source?: string | null;
-  approval_status: string;
-  business_result_accounting: boolean | null;
-  creator_name: string | null;
-  created_at: string;
-  building?: { id: string; name: string } | null;
-  room?: { id: string; name: string } | null;
-  account?: { id: string; name: string } | null;
-  items?: Array<{
-    id: string;
-    description: string | null;
-    quantity: number;
-    unit_price: number;
-    amount: number;
-    income_expense_type?: { id: string; name: string } | null;
-  }>;
-}
-
-const useVoucherForPrint = (id: string | undefined) =>
-  useQuery({
-    queryKey: ["income-expense", "print", id],
-    enabled: !!id,
-    queryFn: async (): Promise<VoucherRow | null> => {
-      const { data, error } = await (supabase
-        .from("income_expenses" as any)
-        .select(
-          `
-          *,
-          building:buildings!income_expenses_building_id_fkey ( id, name ),
-          room:rooms!income_expenses_room_id_fkey ( id, name ),
-          account:accounts!income_expenses_account_id_fkey ( id, name ),
-          items:income_expense_items (
-            id, description, quantity, unit_price, amount,
-            income_expense_type:income_expense_types!income_expense_items_income_expense_type_id_fkey ( id, name )
-          )
-        `
-        )
-        .eq("id", id)
-        .single() as any);
-      if (error) {
-        console.error(error);
-        return null;
-      }
-      const [voucher] = await hydrateIncomeExpenseSupplements([data as VoucherRow]);
-      return voucher ?? null;
-    },
-  });
-
 const IncomeExpensePrintPage = () => {
   const { id } = useParams<{ id: string }>();
-  const { data: voucher, isLoading } = useVoucherForPrint(id);
+  const detail = useIncomeExpenseDetail(id);
+  const fresh = detail.isSuccess && detail.isFetchedAfterMount && !detail.isFetching && hasCompleteVoucherDetail(detail.data);
+  const voucher = fresh ? detail.data : null;
   const [loadedImages, setLoadedImages] = useState<Set<string>>(() => new Set());
   const printedVoucher = useRef<string | null>(null);
   const attachments = getVoucherDisplayAttachments(voucher ?? {});
@@ -94,11 +32,11 @@ const IncomeExpensePrintPage = () => {
     }
   }, [voucher, imagesReady]);
 
-  if (isLoading) {
+  if (detail.isLoading || detail.isFetching || !detail.isFetchedAfterMount) {
     return <div className="p-8 text-center">Đang tải...</div>;
   }
   if (!voucher) {
-    return <div className="p-8 text-center text-red-600">Không tìm thấy phiếu</div>;
+    return <div className="p-8 text-center text-red-600">Không tải được đầy đủ chi tiết phiếu hoặc bạn không còn quyền xem. <button onClick={() => detail.refetch()}>Thử lại</button></div>;
   }
 
   const isIncome = voucher.type === "INCOME";
@@ -201,7 +139,7 @@ const IncomeExpensePrintPage = () => {
             <b>Tên phiếu:</b> {voucher.name}
           </span>
           <span>
-            <b>Tài khoản:</b> {voucher.account?.name || "—"}
+            <b>Tài khoản:</b> {voucher.account_name || "—"}
           </span>
         </div>
         <div className="info-row">
@@ -211,9 +149,9 @@ const IncomeExpensePrintPage = () => {
           </span>
           <span>
             <b>Tòa nhà:</b>{" "}
-            {voucher.building?.name
-              ? `${voucher.building.name}${
-                  voucher.room?.name ? " / " + voucher.room.name : ""
+            {voucher.building_name
+              ? `${voucher.building_name}${
+                  voucher.room_name ? " / " + voucher.room_name : ""
                 }`
               : "—"}
           </span>
@@ -229,6 +167,7 @@ const IncomeExpensePrintPage = () => {
           </div>
         )}
 
+        {voucher.items.length === 0 && <p>Phiếu này không có hạng mục (dữ liệu cũ hoặc phiếu hệ thống).</p>}
         <table className="items">
           <thead>
             <tr>
@@ -244,7 +183,7 @@ const IncomeExpensePrintPage = () => {
               <tr key={it.id}>
                 <td>{i + 1}</td>
                 <td>
-                  {it.income_expense_type?.name || "—"}
+                  {it.type_name || "—"}
                   {it.description ? ` — ${it.description}` : ""}
                 </td>
                 <td style={{ textAlign: "right" }}>{it.quantity}</td>

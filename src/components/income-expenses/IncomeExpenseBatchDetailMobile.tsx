@@ -1,3 +1,4 @@
+import { useVoucherWithBatch } from "@/hooks/useVoucherDetail";
 import { useState } from "react";
 import { X, Ban, Layers, ChevronRight, Pencil, FileText } from "lucide-react";
 import { format } from "date-fns";
@@ -32,7 +33,20 @@ const isPdf = (url: string) => /\.pdf(\?|$)/i.test(url);
  * → mở chi tiết phiếu (IncomeExpenseDetailMobile). Giữ nguyên nghiệp vụ của dialog
  * cũ: huỷ cả đợt, đổi sổ quỹ cả đợt (admin), sửa/huỷ/duyệt từng phiếu con.
  */
-export function IncomeExpenseBatchDetailMobile({
+export function IncomeExpenseBatchDetailMobile(props: Props) {
+  const detail = useVoucherWithBatch(props.batch.vouchers[0]?.id);
+  if (detail.isFetching || !detail.isFetchedAfterMount || !detail.isSuccess || !detail.data?.batch || detail.data.batch.id !== props.batch.id) {
+    return (
+      <div className="sheet-ov"><div className="sheet p-6">
+        <p role="status">{detail.isFetching ? "Đang tải chi tiết đợt…" : "Không tải được đầy đủ phiếu trong đợt hoặc bạn không còn quyền xem."}</p>
+        <button onClick={() => detail.refetch()}>Thử lại</button>
+        <button onClick={props.onClose}>Đóng</button>
+      </div></div>
+    );
+  }
+  return <IncomeExpenseBatchDetailContent {...props} batch={detail.data.batch} />;
+}
+function IncomeExpenseBatchDetailContent({
   batch,
   onClose,
   onCancelBatch,

@@ -146,11 +146,11 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
     business_result_only: pnlOnly,
   };
 
-  const { data: accrual, isLoading: accrualLoading } = useAccrualMonthReport(
+  const { data: accrual, isLoading: accrualLoading, isError: accrualError, refetch: retryAccrual } = useAccrualMonthReport(
     accrualMode ? ymStr : "", filters, { businessResultOnly: pnlOnly },
   );
   // Cash chỉ đọc ở nhánh !accrualMode (đồng bộ desktop) — đừng kéo 2000 dòng khi đang dồn tích.
-  const { data: cash, isLoading: cashLoading } = useIncomeExpenses(
+  const { data: cash, isLoading: cashLoading, isError: cashError, refetch: retryCash } = useIncomeExpenses(
     filters, { page: 1, pageSize: LIST_LIMIT }, undefined, { enabled: !accrualMode },
   );
   const { data: stats } = useIncomeExpenseStats(filters, { businessResultOnly: pnlOnly });
@@ -648,12 +648,20 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
   // HIỆN khi có lệch VÀ user bấm chấm đỏ (hoặc đang ẩn dải thống kê → hiện thẳng).
   const showVerify = hasVerifyIssue && (verifyOpen || hideStatCards);
 
+  const reportError = accrualMode ? accrualError : cashError;
+
   return (
     <div className="flex-1 min-h-0 flex flex-col">
       <MobileHeader onBack={onBack ?? (() => navigate(-1))} right={headerRight} />
 
       <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden [&::-webkit-scrollbar]:hidden">
         <div className="mx-auto w-full max-w-[480px] px-3.5 pt-3 pb-2 flex flex-col gap-2.5">
+          {reportError ? (
+            <div role="alert" className="rounded-lg border border-destructive/30 p-4">
+              <p>Chưa tải đủ chi tiết phiếu. Chưa thể hiển thị số liệu báo cáo.</p>
+              <button className="mt-3 rounded border px-4 py-2" onClick={() => void (accrualMode ? retryAccrual() : retryCash())}>Thử lại</button>
+            </div>
+          ) : <>
           {/* Dải tổng DOANH THU | CHI PHÍ | LỢI NHUẬN */}
           {!hideStatCards && (
             <div className="flex items-center gap-2.5 rounded-[13px] border border-[#e7e3da] bg-white px-[13px] py-[11px] shadow-[0_1px_2px_rgba(27,24,19,.05)]">
@@ -769,6 +777,7 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
           <div className="pt-2 border-t border-[#efece4] text-[11px] font-semibold text-[#8d8678] leading-relaxed">
             Tổng {nInc + nExp} khoản · {accrualMode ? "ghi nhận theo kỳ áp dụng (phân bổ)" : "ghi nhận theo ngày phiếu"}
           </div>
+          </>}
         </div>
       </div>
 

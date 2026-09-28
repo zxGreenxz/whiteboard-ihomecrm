@@ -1,3 +1,4 @@
+import { useIncomeExpenseDetail } from "@/hooks/income-expenses/detailRead";
 import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useState, useCallback, useEffect, useMemo, useRef, lazy, Suspense } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -41,7 +42,6 @@ import IncomeExpenseList from "@/components/income-expenses/IncomeExpenseList";
 import IncomeExpenseForm from "@/components/income-expenses/IncomeExpenseForm";
 import IncomeExpenseDetailDialog from "@/components/income-expenses/IncomeExpenseDetailDialog";
 import IncomeExpenseQuickEditDialog from "@/components/income-expenses/IncomeExpenseQuickEditDialog";
-import { useIncomeExpenseSupplements } from '@/hooks/income-expenses/supplements';
 import IncomeExpenseVerifyDialog from "@/components/income-expenses/IncomeExpenseVerifyDialog";
 import IncomeExpenseImportDialog from "@/components/income-expenses/IncomeExpenseImportDialog";
 import IncomeExpenseBatchForm from "@/components/income-expenses/IncomeExpenseBatchForm";
@@ -142,8 +142,10 @@ const IncomeExpenseDesktopPage = () => {
   const [isBatchFormOpen, setIsBatchFormOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
-  const [detailVoucher, setDetailVoucher] =
-    useState<IncomeExpenseWithRelations | null>(null);
+  const [detailVoucherId, setDetailVoucherId] = useState<string | null>(null);
+  const setDetailVoucher = useCallback((value: IncomeExpenseWithRelations | null) => setDetailVoucherId(value?.id ?? null), []);
+  const selectedDetail = useIncomeExpenseDetail(detailVoucherId);
+  const detailVoucher = selectedDetail.isSuccess && !selectedDetail.isFetching ? selectedDetail.data ?? null : null;
   const [editingVoucher, setEditingVoucher] =
     useState<IncomeExpenseWithRelations | null>(null);
   // Tạo bản sao từ phiếu đã huỷ: mở form TẠO MỚI prefill toàn bộ (kể cả ảnh).
@@ -322,14 +324,14 @@ const IncomeExpenseDesktopPage = () => {
   useCopilotPageContext('income-expenses.list', { ...effectiveFilters, search: parsedSearch.text, view: viewMode }, detailVoucher);
   // keepPreviousData: màn danh sách phân trang — giữ trang cũ để bảng không nhảy
   // về skeleton mỗi lần đổi trang/filter (opt-in ở consumer, xem useIncomeExpenses).
-  const { data: listResult, isLoading } = useIncomeExpenses(
+  const { data: listResult, isLoading, isError: listError, refetch: retryList } = useIncomeExpenses(
     effectiveFilters,
     { page: pagination.page, pageSize: pagination.pageSize },
     parsedSearch.text,
     { keepPreviousData: true }
   );
 
-  const { data: batchResult, isLoading: isBatchLoading } =
+  const { data: batchResult, isLoading: isBatchLoading, isError: batchError, refetch: retryBatch } =
     useIncomeExpenseBatches(
       effectiveFilters,
       { page: pagination.page, pageSize: pagination.pageSize },
@@ -339,10 +341,9 @@ const IncomeExpenseDesktopPage = () => {
       { enabled: viewMode === "batch" }
     );
 
-  const vouchers = listResult?.data ?? [];
-  const detailSupplements = useIncomeExpenseSupplements(detailVoucher?.id, !!detailVoucher);
+  const vouchers = listError ? [] : listResult?.data ?? [];
   const totalCount = listResult?.totalCount ?? 0;
-  const batches = batchResult?.data ?? [];
+  const batches = batchError ? [] : batchResult?.data ?? [];
   const batchTotalCount = batchResult?.totalCount ?? 0;
 
   const detailBatch =
@@ -822,7 +823,7 @@ const IncomeExpenseDesktopPage = () => {
           </div>
         </div>
 
-        {viewMode === "individual" ? (
+        {(viewMode === "individual" ? listError : batchError) ? <div role="alert" className="p-6 text-destructive">Không tải được đầy đủ chi tiết phiếu. <Button onClick={() => viewMode === "individual" ? retryList() : retryBatch()}>Thử lại</Button></div> : viewMode === "individual" ? (
           <IncomeExpenseList
             vouchers={vouchers}
             isLoading={isLoading || parsedSearch.pending}
@@ -884,11 +885,12 @@ const IncomeExpenseDesktopPage = () => {
         defaultType={formType}
       />
       <IncomeExpenseDetailDialog
-        open={!!detailVoucher}
+        open={!!detailVoucherId}
         onOpenChange={(o) => {
           if (!o) setDetailVoucher(null);
         }}
-        voucher={detailVoucher ? { ...detailVoucher, supplements: detailSupplements.data ?? detailVoucher.supplements } : null}
+        voucherId={detailVoucherId}
+        voucher={detailVoucher}
         onCancel={handleCancelVoucher}
         onRestore={handleRestoreVoucher}
         onEdit={handleEditVoucher}

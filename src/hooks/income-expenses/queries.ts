@@ -1,3 +1,4 @@
+import { enrichIncomeExpenseDetails } from "./detailRead";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { VOUCHER_SOURCES } from "@/lib/voucherSources";
@@ -10,7 +11,6 @@ import { hydrateReservationCreators, type CreatorVoucher } from "./reservationCr
 import { hydrateIncomeExpenseSupplements } from './supplements';
 import type {
   IncomeExpenseFilters,
-  IncomeExpenseItem,
   IncomeExpenseWithRelations,
   IncomeExpenseAuditLog,
   IncomeExpenseBatchSummary,
@@ -304,7 +304,8 @@ export const incomeExpensesListQuery = (
           `
           *,
           building:buildings!income_expenses_building_id_fkey ( id, name ),
-          room:rooms!income_expenses_room_id_fkey ( id, name ),          tenant:tenants!income_expenses_tenant_id_fkey ( id, full_name ),
+          room:rooms!income_expenses_room_id_fkey ( id, name ),
+          tenant:tenants!income_expenses_tenant_id_fkey ( id, full_name ),
           account:accounts!income_expenses_account_id_fkey ( id, name, is_virtual )${itemFilterJoinSelect(itemPlan)}${layerJoinSelect(filters)}
         `,
           { count: "exact" }
@@ -414,53 +415,11 @@ export const incomeExpensesListQuery = (
       const { data: vouchers, error, count } = await query;
 
       if (error) {
-        console.error("useIncomeExpenses error:", error);
-        return { data: [], totalCount: 0 };
+        throw error;
       }
 
       if (!vouchers || vouchers.length === 0) {
         return { data: [], totalCount: count || 0 };
-      }
-
-      // Fetch items for all vouchers in one query
-      const voucherIds = (vouchers as any[]).map((v: any) => v.id);
-      const { data: allItems, error: itemsError } = await supabase
-        .from("income_expense_items")
-        .select(
-          `
-          *,
-          income_expense_type:income_expense_types!income_expense_items_income_expense_type_id_fkey ( id, name, category, is_deposit )
-        `
-        )
-        .in("income_expense_id", voucherIds);
-
-      if (itemsError) {
-        console.error("useIncomeExpenses items error:", itemsError);
-      }
-
-      // Group items by income_expense_id
-      const itemsByVoucherId = new Map<string, IncomeExpenseItem[]>();
-      if (allItems) {
-        for (const item of allItems as any[]) {
-          const vId = item.income_expense_id;
-          if (!itemsByVoucherId.has(vId)) {
-            itemsByVoucherId.set(vId, []);
-          }
-          itemsByVoucherId.get(vId)!.push({
-            id: item.id,
-            income_expense_id: item.income_expense_id,
-            income_expense_type_id: item.income_expense_type_id,
-            type_name: item.income_expense_type?.name ?? "",
-            category: item.income_expense_type?.category ?? null,
-            is_deposit: !!item.income_expense_type?.is_deposit,
-            description: item.description,
-            quantity: item.quantity,
-            unit_price: Number(item.unit_price),
-            amount: Number(item.amount),
-            start_date: item.start_date ?? null,
-            end_date: item.end_date ?? null,
-          });
-        }
       }
 
       // Map vouchers to IncomeExpenseWithRelations
@@ -484,7 +443,8 @@ export const incomeExpensesListQuery = (
           building_id: v.building_id,
           building_name: v.building?.name ?? "",
           room_id: v.room_id,
-          room_name: v.room?.name ?? null,          tenant_id: v.tenant_id,
+          room_name: v.room?.name ?? null,
+          tenant_id: v.tenant_id,
           tenant_name: v.tenant?.full_name ?? null,
           voucher_date: v.voucher_date,
           total_amount: Number(v.total_amount),
@@ -521,7 +481,7 @@ export const incomeExpensesListQuery = (
           verified_by: v.verified_by ?? null,
           verified_by_name: v.verified_by_name ?? null,
           verified_note: v.verified_note ?? null,
-          items: itemsByVoucherId.get(v.id) ?? [],
+          items: [],
           created_at: v.created_at,
           updated_at: v.updated_at,
           };
@@ -539,7 +499,7 @@ export const incomeExpensesListQuery = (
 
       // Search đã áp dụng server-side ở trên — count là tổng khớp thật.
       return {
-        data: await hydrateIncomeExpenseSupplements(mapped),
+        data: await hydrateIncomeExpenseSupplements(await enrichIncomeExpenseDetails(mapped)),
         totalCount: count || 0,
       };
     },
@@ -933,56 +893,6 @@ export const useIncomeExpenseBatches = (
         vouchers.push(...((r.data ?? []) as any[]));
       }
 
-      // 4. Lấy items của tất cả phiếu con — chunk + fetchAllRows (100 phiếu có
-      //    thể có >1000 item).
-      const fetchedVoucherIds = vouchers.map((v) => v.id);
-      const itemChunks = await Promise.all(
-        chunkIds(fetchedVoucherIds).map((ids) =>
-          fetchAllRows<any>(
-            (from, to) =>
-              supabase
-                .from("income_expense_items")
-                .select(
-                  `
-          *,
-          income_expense_type:income_expense_types!income_expense_items_income_expense_type_id_fkey ( id, name, category, is_deposit )
-        `
-                )
-                .in("income_expense_id", ids)
-                .order("id", { ascending: true }) // id PK = order ổn định
-                .range(from, to),
-            { label: "ie-batch-voucher-items" }
-          )
-        )
-      );
-      const allItems: any[] = [];
-      for (const chunk of itemChunks) {
-        if (chunk === null) {
-          throw new Error("useIncomeExpenseBatches: lỗi tải chi tiết phiếu con");
-        }
-        allItems.push(...chunk);
-      }
-
-      const itemsByVoucherId = new Map<string, IncomeExpenseItem[]>();
-      for (const item of allItems as any[]) {
-        const vId = item.income_expense_id;
-        if (!itemsByVoucherId.has(vId)) itemsByVoucherId.set(vId, []);
-        itemsByVoucherId.get(vId)!.push({
-          id: item.id,
-          income_expense_id: item.income_expense_id,
-          income_expense_type_id: item.income_expense_type_id,
-          type_name: item.income_expense_type?.name ?? "",
-          category: item.income_expense_type?.category ?? null,
-          is_deposit: !!item.income_expense_type?.is_deposit,
-          description: item.description,
-          quantity: item.quantity,
-          unit_price: Number(item.unit_price),
-          amount: Number(item.amount),
-          start_date: item.start_date ?? null,
-          end_date: item.end_date ?? null,
-        });
-      }
-
       // 5. Map vouchers → IncomeExpenseWithRelations
       const voucherMap = new Map<string, IncomeExpenseWithRelations>();
       for (const v of await hydrateIncomeExpenseSupplements(await hydrateReservationCreators(vouchers))) {
@@ -1002,7 +912,8 @@ export const useIncomeExpenseBatches = (
           building_id: v.building_id,
           building_name: v.building?.name ?? "",
           room_id: v.room_id,
-          room_name: v.room?.name ?? null,          tenant_id: v.tenant_id,
+          room_name: v.room?.name ?? null,
+          tenant_id: v.tenant_id,
           tenant_name: v.tenant?.full_name ?? null,
           voucher_date: v.voucher_date,
           total_amount: Number(v.total_amount),
@@ -1039,11 +950,13 @@ export const useIncomeExpenseBatches = (
           verified_by: v.verified_by ?? null,
           verified_by_name: v.verified_by_name ?? null,
           verified_note: v.verified_note ?? null,
-          items: itemsByVoucherId.get(v.id) ?? [],
+          items: [],
           created_at: v.created_at,
           updated_at: v.updated_at,
         });
       }
+
+      for (const detail of await enrichIncomeExpenseDetails([...voucherMap.values()])) voucherMap.set(detail.id, detail);
 
       // 6. Group voucherIds theo batch
       const voucherIdsByBatch = new Map<string, string[]>();

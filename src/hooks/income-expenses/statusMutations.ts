@@ -179,6 +179,8 @@ export const useApproveVoucher = () => {
     },
     onSuccess: (isTerminationForfeit) => {
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
+      queryClient.invalidateQueries({ queryKey: ["income-expense-batches"] });
+      queryClient.invalidateQueries({ queryKey: ["income-expense"] });
       queryClient.invalidateQueries({ queryKey: ["accounts-with-balance"] });
       queryClient.invalidateQueries({ queryKey: ["voucher-with-batch"] });
       queryClient.invalidateQueries({ queryKey: ["income-expense-revisions"] });
@@ -248,6 +250,9 @@ export const useUnapproveVoucher = () => {
     },
     onSuccess: (isTerminationForfeit) => {
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
+      queryClient.invalidateQueries({ queryKey: ["income-expense-batches"] });
+      queryClient.invalidateQueries({ queryKey: ["voucher-with-batch"] });
+      queryClient.invalidateQueries({ queryKey: ["income-expense"] });
       queryClient.invalidateQueries({ queryKey: ["accounts-with-balance"] });
       if (isTerminationForfeit) {
         invalidateTerminationForfeitQueries(queryClient);
@@ -437,6 +442,9 @@ export const useCancelIncomeExpense = () => {
     },
     onSuccess: (isTerminationForfeit) => {
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
+      queryClient.invalidateQueries({ queryKey: ["income-expense-batches"] });
+      queryClient.invalidateQueries({ queryKey: ["voucher-with-batch"] });
+      queryClient.invalidateQueries({ queryKey: ["income-expense"] });
       queryClient.invalidateQueries({ queryKey: ["accounts-with-balance"] });
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
       queryClient.invalidateQueries({ queryKey: ["invoice"] });
@@ -482,6 +490,9 @@ export const useRestoreIncomeExpense = () => {
     },
     onSuccess: (_data, id) => {
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
+      queryClient.invalidateQueries({ queryKey: ["income-expense-batches"] });
+      queryClient.invalidateQueries({ queryKey: ["voucher-with-batch"] });
+      queryClient.invalidateQueries({ queryKey: ["income-expense"] });
       queryClient.invalidateQueries({ queryKey: ["accounts-with-balance"] });
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
       queryClient.invalidateQueries({ queryKey: ["invoice"] });
@@ -526,6 +537,8 @@ export const useVerifyIncomeExpense = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
+      queryClient.invalidateQueries({ queryKey: ["voucher-with-batch"] });
+      queryClient.invalidateQueries({ queryKey: ["income-expense"] });
       queryClient.invalidateQueries({ queryKey: ["income-expense-batches"] });
       toast.success("Đã cập nhật trạng thái kiểm");
     },

@@ -36,6 +36,9 @@ function genIdempotencyKey(): string {
 
 const INVALIDATE_KEYS = [
   ["income-expenses"],
+  ["income-expense"],
+  ["income-expense-batches"],
+  ["voucher-with-batch"],
   ["income-expense-stats"],
   ["accounts-with-balance"],
   ["finance-v2-routes"],
@@ -402,6 +405,8 @@ export function useAttachPostingEvidence() {
 
       // Dòng thu chi phải thấy ảnh NGAY, kể cả khi người dùng bấm Huỷ bỏ sau đó.
       qc.invalidateQueries({ queryKey: ["income-expenses"] });
+      qc.invalidateQueries({ queryKey: ["income-expense-batches"] });
+      qc.invalidateQueries({ queryKey: ["income-expense"] });
       qc.invalidateQueries({ queryKey: ["voucher-with-batch"] });
 
       return {
@@ -451,6 +456,8 @@ export function useRemovePostingAttachment() {
       }
       const adopted = await adoptVoucherAttachmentsAsEvidence(voucherId);
       qc.invalidateQueries({ queryKey: ["income-expenses"] });
+      qc.invalidateQueries({ queryKey: ["income-expense-batches"] });
+      qc.invalidateQueries({ queryKey: ["income-expense"] });
       qc.invalidateQueries({ queryKey: ["voucher-with-batch"] });
       return adopted;
     },
@@ -569,6 +576,8 @@ export function usePostingAttachmentDraft() {
       if (res.ok) {
         // Ảnh đã nằm trên phiếu — dòng thu chi phải thấy ngay, kể cả khi lệnh ghi sổ sau đó lỗi.
         qc.invalidateQueries({ queryKey: ["income-expenses"] });
+        qc.invalidateQueries({ queryKey: ["income-expense-batches"] });
+        qc.invalidateQueries({ queryKey: ["income-expense"] });
         qc.invalidateQueries({ queryKey: ["voucher-with-batch"] });
       }
       return res;

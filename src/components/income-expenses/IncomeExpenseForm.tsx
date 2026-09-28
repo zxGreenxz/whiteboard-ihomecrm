@@ -1,3 +1,5 @@
+import { useIncomeExpenseDetail } from "@/hooks/income-expenses/detailRead";
+import { hasCompleteVoucherDetail } from "@/lib/incomeExpenseDetailRead";
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -200,16 +202,25 @@ const IncomeExpenseForm = (props: IncomeExpenseFormProps) => {
 const IncomeExpenseFormInner = ({
   open,
   onOpenChange,
-  voucher,
-  copyFrom,
+  voucher: initialVoucher,
+  copyFrom: initialCopyFrom,
   defaultType,
   defaultPrefill,
   onSaved,
 }: IncomeExpenseFormProps) => {
-  const isEditing = !!voucher;
+  const isEditing = !!initialVoucher;
   // Nguồn dữ liệu đổ vào form: phiếu đang SỬA, hoặc phiếu gốc khi TẠO BẢN SAO.
   // isEditing vẫn chỉ theo `voucher` → copy mode submit qua đường TẠO MỚI.
-  const populateSource = voucher ?? copyFrom ?? null;
+  const sourceId = initialVoucher?.id ?? initialCopyFrom?.id;
+  const detail = useIncomeExpenseDetail(sourceId, open);
+  const voucher = initialVoucher ? detail.data ?? initialVoucher : null;
+  const copyFrom = initialCopyFrom ? detail.data ?? initialCopyFrom : null;
+  const populateSource = sourceId ? detail.data : null;
+  const initializedSource = useRef<string | null>(null);
+  const baselineVersion = useRef<{approval:number;updatedAt:string} | null>(null);
+  const detailBlocked = !!sourceId && (!detail.isSuccess || !detail.isFetchedAfterMount || detail.isFetching || !hasCompleteVoucherDetail(detail.data));
+  const detailConflict = !!baselineVersion.current && !!detail.data && (baselineVersion.current.approval !== detail.data.approval_version || baselineVersion.current.updatedAt !== detail.data.updated_at);
+
   const createMutation = useCreateIncomeExpense();
   const reviseMutation = useReviseIncomeExpense();
   // Sửa phiếu Chờ duyệt (đợt 1, 25/09/2026): mọi lần lưu đi qua
@@ -378,12 +389,17 @@ const IncomeExpenseFormInner = ({
   // Populate form when editing/copying or reset when adding
   useEffect(() => {
     if (!open) return;
+    if (sourceId) {
+      if (detailBlocked || !populateSource || initializedSource.current === sourceId) return;
+      initializedSource.current = sourceId;
+      baselineVersion.current = {approval:populateSource.approval_version,updatedAt:populateSource.updated_at};
+    }
 
     if (populateSource) {
       // Chế độ SỬA (voucher) hoặc TẠO BẢN SAO (copyFrom): đổ toàn bộ dữ liệu
       // phiếu nguồn vào form — bản sao giữ nguyên cả attachments (copy URL).
       const src = populateSource;
-      setSelectedBuildingId(src.building_id);
+      setSelectedBuildingId(src.building_id ?? undefined);
       setSelectedRoomId(src.room_id ?? undefined);
 
       // Kỳ áp dụng mặc định (chỉ dùng khi item cũ chưa có start/end) = tháng hiện tại.
@@ -394,7 +410,7 @@ const IncomeExpenseFormInner = ({
       form.reset({
         type: src.type,
         name: src.name,
-        building_id: src.building_id,
+        building_id: src.building_id ?? undefined,
         room_id: src.room_id ?? null,
         tenant_id: src.tenant_id ?? null,
         contract_id: src.contract_id ?? null,
@@ -490,7 +506,7 @@ const IncomeExpenseFormInner = ({
       setItemRows(prefillItemsRows);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [populateSource, open, defaultType, defaultPrefill, form]);
+  }, [populateSource, sourceId, detailBlocked, open, defaultType, defaultPrefill, form]);
 
   // Cascade: when building changes → clear room, tenant, contract
   const handleBuildingChange = (buildingId: string) => {
@@ -671,6 +687,7 @@ const IncomeExpenseFormInner = ({
   };
 
   const onSubmit = async (data: IncomeExpenseFormValues) => {
+    if (detailBlocked || detailConflict) return;
     try {
       // Cửa hẹp phiếu bỏ cọc: KHÔNG đụng updateMutation. Đường thường sẽ chết ở
       // trigger writer thanh lý, và nó cũng sẽ ghi cả những cột ta cố ý không
@@ -702,7 +719,7 @@ const IncomeExpenseFormInner = ({
         }
         await reviseMutation.mutateAsync({
           voucherId: voucher.id,
-          expectedApprovalVersion: voucher.approval_version,
+          expectedApprovalVersion: baselineVersion.current!.approval,
           patch,
           items,
           reason: revisionReason.trim() || null,
@@ -815,6 +832,9 @@ const IncomeExpenseFormInner = ({
     0
   );
 
+  if (sourceId && detail.isFetchedAfterMount && (!detail.isSuccess || !detail.data)) {
+    return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent aria-describedby={undefined}><DialogTitle>Chi tiết phiếu</DialogTitle><p role="alert">Không tải được đầy đủ chi tiết phiếu hoặc bạn không còn quyền xem.</p><Button onClick={() => detail.refetch()}>Thử lại</Button></DialogContent></Dialog>;
+  }
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1676,6 +1696,8 @@ const IncomeExpenseFormInner = ({
                 </div>
               )}
 
+              {detailBlocked && <div role="alert" className="text-sm text-destructive">Chưa tải đủ chi tiết phiếu. <button type="button" onClick={() => detail.refetch()}>Thử lại</button></div>}
+              {detailConflict && <div role="alert" className="text-sm text-destructive">Phiếu đã thay đổi. Đóng và mở lại để tải bản mới trước khi lưu.</div>}
               {staleVersion && (
                 <p
                   role="alert"
@@ -1715,7 +1737,7 @@ const IncomeExpenseFormInner = ({
                     // dùng không bấm rồi mới ăn 22023.
                     disabled={
                       isPending ||
-                      staleVersion ||
+                      staleVersion || detailBlocked || detailConflict ||
                       (revisionNeedsReason && !revisionReasonOk) ||
                       (forfeitKqkdMode && (!forfeitKqkdChanged || !forfeitReasonOk))
                     }

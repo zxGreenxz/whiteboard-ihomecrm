@@ -1,5 +1,6 @@
+import { useIncomeExpenseDetail } from "@/hooks/income-expenses/detailRead";
 import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -78,7 +79,6 @@ import IncomeExpenseForm from "@/components/income-expenses/IncomeExpenseForm";
 import IncomeExpenseQuickCreateDialog from "@/components/income-expenses/IncomeExpenseQuickCreateDialog";
 import IncomeExpenseBatchForm from "@/components/income-expenses/IncomeExpenseBatchForm";
 import IncomeExpenseQuickEditDialog from "@/components/income-expenses/IncomeExpenseQuickEditDialog";
-import { useIncomeExpenseSupplements } from '@/hooks/income-expenses/supplements';
 import IncomeExpenseBatchListMobile from "@/components/income-expenses/IncomeExpenseBatchListMobile";
 import IncomeExpenseBatchDetailMobile from "@/components/income-expenses/IncomeExpenseBatchDetailMobile";
 import PayViaBankAppSheet from "@/components/income-expenses/PayViaBankAppSheet";
@@ -205,8 +205,10 @@ export default function IncomeExpenseMobilePage() {
   const [filterOpen, setFilterOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
 
-  const [detailVoucher, setDetailVoucher] =
-    useState<IncomeExpenseWithRelations | null>(null);
+  const [detailVoucherId, setDetailVoucherId] = useState<string | null>(null);
+  const setDetailVoucher = useCallback((value: IncomeExpenseWithRelations | null) => setDetailVoucherId(value?.id ?? null), []);
+  const selectedDetail = useIncomeExpenseDetail(detailVoucherId);
+  const detailVoucher = selectedDetail.isSuccess && !selectedDetail.isFetching ? selectedDetail.data ?? null : null;
   const [shareVoucher, setShareVoucher] =
     useState<IncomeExpenseWithRelations | null>(null);
   const [editingVoucher, setEditingVoucher] =
@@ -373,13 +375,13 @@ export default function IncomeExpenseMobilePage() {
   useCopilotPageContext('income-expenses.list', { ...effectiveFilters, search: parsed.text, view: viewMode }, detailVoucher);
   // keepPreviousData: màn danh sách phân trang — giữ trang cũ để danh sách không
   // nháy skeleton mỗi lần "Tải thêm"/đổi filter (opt-in, xem useIncomeExpenses).
-  const { data: listResult, isLoading } = useIncomeExpenses(
+  const { data: listResult, isLoading, isError: listError, refetch: retryList } = useIncomeExpenses(
     effectiveFilters,
     { page: pagination.page, pageSize: pagination.pageSize },
     parsed.text,
     { keepPreviousData: true },
   );
-  const { data: batchResult, isLoading: isBatchLoading } =
+  const { data: batchResult, isLoading: isBatchLoading, isError: batchError, refetch: retryBatch } =
     useIncomeExpenseBatches(
       effectiveFilters,
       { page: pagination.page, pageSize: pagination.pageSize },
@@ -390,12 +392,11 @@ export default function IncomeExpenseMobilePage() {
   const { data: stats, isLoading: isStatsLoading } =
     useIncomeExpenseStats(effectiveFilters, { keepPreviousData: true });
 
-  const vouchers = listResult?.data ?? [];
+  const vouchers = listError ? [] : listResult?.data ?? [];
   // Dấu "Đã sửa N lần": câu riêng, không làm chậm câu đọc danh sách.
   const { data: revisionCounts } = useRevisionCounts(vouchers.map((x) => x.id));
-  const detailSupplements = useIncomeExpenseSupplements(detailVoucher?.id, !!detailVoucher);
   const totalCount = listResult?.totalCount ?? 0;
-  const batches = batchResult?.data ?? [];
+  const batches = batchError ? [] : batchResult?.data ?? [];
   const batchTotalCount = batchResult?.totalCount ?? 0;
   const detailBatch =
     detailBatchId !== null
@@ -743,7 +744,7 @@ export default function IncomeExpenseMobilePage() {
               </button>
             </div>
 
-            {viewMode === "individual" ? (
+            {(viewMode === "individual" ? listError : batchError) ? <div role="alert" className="stub">Không tải được đầy đủ chi tiết phiếu. <button onClick={() => viewMode === "individual" ? retryList() : retryBatch()}>Thử lại</button></div> : viewMode === "individual" ? (
               isLoading || parsed.pending ? (
                 <div className="stub">
                   <p>Đang tải phiếu…</p>
@@ -968,9 +969,10 @@ export default function IncomeExpenseMobilePage() {
           </div>
 
           {/* Chi tiết phiếu — bottom sheet */}
-          {detailVoucher && (
+          {detailVoucherId && (
             <IncomeExpenseDetailMobile
-              voucher={{ ...detailVoucher, supplements: detailSupplements.data ?? detailVoucher.supplements }}
+              voucherId={detailVoucherId}
+              voucher={detailVoucher ?? undefined}
               onClose={() => setDetailVoucher(null)}
               onEdit={(v) => setEditingVoucher(v)}
               onQuickEdit={(v) => setQuickEditVoucher(v)}

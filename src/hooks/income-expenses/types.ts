@@ -104,6 +104,7 @@ export interface IncomeExpenseItem {
   // Nhóm hạng mục (income_expense_types.category) — dùng để sắp xếp ưu tiên
   // khoản chi trong báo cáo Phân bổ lợi nhuận. Có thể null.
   category: string | null;
+  accounting_class?: string | null;
   // Hạng mục CỌC (income_expense_types.is_deposit) — báo cáo KQKD loại dòng này.
   is_deposit: boolean;
   description: string | null;
@@ -116,6 +117,7 @@ export interface IncomeExpenseItem {
 
 
 export interface IncomeExpenseWithRelations {
+  detail_read?: { complete: boolean; expected_item_count: number };
   /** Display-only additions; never merge into raw notes/attachments sent to money writers. */
   supplements?: import('@/lib/incomeExpenseSupplement').IncomeExpenseSupplement[];
   id: string;
@@ -130,7 +132,7 @@ export interface IncomeExpenseWithRelations {
   code: string;
   type: "INCOME" | "EXPENSE";
   name: string;
-  building_id: string;
+  building_id: string | null;
   building_name: string;
   room_id: string | null;
   room_name: string | null;  tenant_id: string | null;

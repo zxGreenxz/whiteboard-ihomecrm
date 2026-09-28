@@ -275,7 +275,7 @@ function ProfitDistributionDesktop() {
   // enabled: chế độ DỒN TÍCH (mặc định) lấy rows từ accrual — list tiền mặt
   // 1000 dòng + items chỉ được đọc ở nhánh !accrualMode (kể cả capWarning),
   // fetch sẵn chỉ tổ nghẽn pool mỗi lần đổi toà/kỳ.
-  const { data: result, isLoading } = useIncomeExpenses(
+  const { data: result, isLoading, isError: cashError, refetch: retryCash } = useIncomeExpenses(
     filters,
     {
       page: 1,
@@ -294,7 +294,7 @@ function ProfitDistributionDesktop() {
   // Truyền month='' khi tắt → hook trả rỗng, không query. Dùng chung `filters`
   // (hook tự bỏ qua start/end_date — kỳ lấy theo `month`); truyền BIẾN thay vì
   // object literal để building_ids đi qua được dù AccrualFilters chưa khai báo.
-  const { data: accrual, isLoading: accrualLoading } = useAccrualMonthReport(
+  const { data: accrual, isLoading: accrualLoading, isError: accrualError, refetch: retryAccrual } = useAccrualMonthReport(
     accrualMode ? ym : "",
     filters,
     { businessResultOnly: pnlOnly }
@@ -1093,8 +1093,11 @@ function ProfitDistributionDesktop() {
     );
   };
 
+  const reportError = accrualMode ? accrualError : cashError;
+
   return (
     <>
+      {!reportError && <>
       {/* ---- Phần đổ lên dải hero xanh (KPI · chip cảnh báo) ---- */}
       {!hideStatCards && (
         <ProfitHubSlot name="kpis">
@@ -1204,6 +1207,7 @@ function ProfitDistributionDesktop() {
         </button>
       </ProfitHubSlot>
 
+      </>}
       <div className="ph-stack">
         {/* Thanh công cụ: kỳ · toà · phòng · loại phiếu — cùng 1 hàng, hero chỉ còn số. */}
         <div className="ph-toolbar">
@@ -1375,6 +1379,12 @@ function ProfitDistributionDesktop() {
           </div>
         </div>
 
+        {reportError ? (
+          <div role="alert" className="rounded-lg border border-destructive/30 p-4">
+            <p>Chưa tải đủ chi tiết phiếu. Chưa thể hiển thị số liệu báo cáo.</p>
+            <Button variant="outline" className="mt-3" onClick={() => void (accrualMode ? retryAccrual() : retryCash())}>Thử lại</Button>
+          </div>
+        ) : <>
         {/* Chú thích màu nền dòng — đúng 5 trạng thái của sổ */}
         <div className="ph-legend">
           <span className="ph-legend__title">Chú thích:</span>
@@ -1486,6 +1496,7 @@ function ProfitDistributionDesktop() {
             </span>
           )}
         </div>
+        </>}
       </div>
 
       {/* Bấm số tiền / nhấp đôi dòng thu theo HĐ → các lần thu (số tiền + ngày giờ) */}

@@ -241,6 +241,22 @@
       }
     },
     {
+      "id": "voucher-detail-read-test",
+      "runner": "playwright",
+      "ciJob": "(local — project TEST riêng)",
+      "command": "npm run test:voucher-detail-read && cd .e2e-fleet && npx playwright test specs/voucher-detail-read-scope.spec.ts --workers=1",
+      "risk": "authorization",
+      "includes": [".e2e-fleet/specs/voucher-detail-read-scope.spec.ts"],
+      "ciJobs": [],
+      "environment": "local",
+      "note": "JWT harness scripts/test-voucher-detail-read-authz.mjs kiểm read/write/org và dọn fixture trên TEST. Browser cần FLEET_BASE_URL của app dùng đúng TEST schema. PGlite/loader/component regressions chạy trong app-unit trên CI.",
+      "blockedFromCi": {
+        "reason": "Cần điều phối schema TEST và app của đúng commit, tránh dùng project fixture chung đồng thời với đồng bộ TEST.",
+        "expiry": "2026-11-30",
+        "exitCondition": "Có orchestrator TEST cô lập schema, fixture và app theo commit trước khi thêm job tự động."
+      }
+    },
+    {
       "id": "e2e-fleet",
       "runner": "playwright",
       "ciJob": "(local — phần fleet còn lại chưa có job CI)",
@@ -250,6 +266,7 @@
         ".e2e-fleet/specs/**/*.spec.ts"
       ],
       "excludes": [
+        ".e2e-fleet/specs/voucher-detail-read-scope.spec.ts",
         ".e2e-fleet/specs/copilot-readonly-smoke.spec.ts",
         ".e2e-fleet/specs/voice-task-lab.spec.ts",
         ".e2e-fleet/specs/copilot-confirmation.spec.ts",

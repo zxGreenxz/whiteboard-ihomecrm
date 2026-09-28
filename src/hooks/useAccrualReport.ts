@@ -4,6 +4,8 @@ import { allocateAmountByMonth } from "@/lib/accrualAllocation";
 import { monthToStartDate, monthToEndDate } from "@/lib/monthPeriod";
 import type { IncomeExpenseFilters } from "@/hooks/useIncomeExpenses";
 import type { Database } from "@/integrations/supabase/types";
+import { loadIncomeExpenseDetails } from "@/hooks/income-expenses/detailRead";
+import { fetchAllRows } from "@/lib/supabaseFetchAll";
 
 /** Đúng 4 cột `income_expense_types` mà truy vấn dưới đây select. */
 type AccrualItemType = Pick<
@@ -89,9 +91,6 @@ const EMPTY: AccrualReportResult = {
   pendingCount: 0,
 };
 
-// PostgREST trả tối đa 1000 dòng/trang → fetch-all phải phân trang theo `.range`.
-const PARENT_PAGE = 1000;
-
 // Lọc kỳ ở CẤP ITEM qua embedded inner-join (income_expense_items!inner) thay vì
 // gom voucher_id rồi `.in("id", [hàng trăm UUID])` — cách cũ làm URL GET chục KB
 // → PostgREST 400 → báo cáo rỗng oan (xem useIncomeExpenses.ts:124-128). `!inner`
@@ -100,7 +99,7 @@ const PARENT_PAGE = 1000;
 // LƯU Ý: `!inner` cũng loại phiếu KHÔNG có item nào → bù lại bằng truy vấn (3)
 // (ACCRUAL_SELECT_NOITEM) để không thất thoát total_amount của phiếu trống item.
 const ACCRUAL_SELECT = `
-  id, name, type, voucher_date, approval_status, counts_in_business_result, business_result_accounting, building_id, room_id, invoice_id,
+  id, organization_id, updated_at, name, type, voucher_date, approval_status, counts_in_business_result, business_result_accounting, building_id, room_id, invoice_id,
   building:buildings!income_expenses_building_id_fkey ( id, name ),
   room:rooms!income_expenses_room_id_fkey ( id, name ),
   items:income_expense_items!inner (
@@ -115,7 +114,7 @@ const ACCRUAL_SELECT = `
 // như cách gom invoice_id). items KHÔNG `!inner`/không lọc kỳ → lấy mọi hạng mục
 // của phiếu (kỳ của item = ngày thu, không dùng để xếp tháng ở nhánh này).
 const ACCRUAL_SELECT_INV = `
-  id, name, type, voucher_date, approval_status, counts_in_business_result, business_result_accounting, building_id, room_id, invoice_id, total_amount,
+  id, organization_id, updated_at, name, type, voucher_date, approval_status, counts_in_business_result, business_result_accounting, building_id, room_id, invoice_id, total_amount,
   building:buildings!income_expenses_building_id_fkey ( id, name ),
   room:rooms!income_expenses_room_id_fkey ( id, name ),
   invoice:invoices!income_expenses_invoice_id_fkey!inner ( billing_month ),
@@ -131,7 +130,7 @@ const ACCRUAL_SELECT_INV = `
 // (khớp nhánh b_noitem của fa_accrual_allocations). Chỉ cần items(id) để biết
 // rỗng hay không — phiếu có item đã được nhánh (1) xử lý.
 const ACCRUAL_SELECT_NOITEM = `
-  id, name, type, voucher_date, approval_status, counts_in_business_result, building_id, room_id, invoice_id, total_amount,
+  id, organization_id, updated_at, name, type, voucher_date, approval_status, counts_in_business_result, business_result_accounting, building_id, room_id, invoice_id, total_amount,
   building:buildings!income_expenses_building_id_fkey ( id, name ),
   room:rooms!income_expenses_room_id_fkey ( id, name ),
   items:income_expense_items ( id )
@@ -246,33 +245,55 @@ export const useAccrualMonthReport = (
           .range(from, to);
       };
 
-      // Fetch-all: lặp từng trang 1000 tới khi trang ngắn hơn PARENT_PAGE.
+      // Tiến theo số dòng thực nhận, kể cả khi server hạ giới hạn dưới 1000.
       const fetchAll = async (
         build: (f: number, t: number) => any,
       ): Promise<any[]> => {
-        const out: any[] = [];
-        for (let from = 0; ; from += PARENT_PAGE) {
-          const { data, error } = await build(from, from + PARENT_PAGE - 1);
-          if (error) {
-            // KHÔNG trả null: đây là báo cáo TIỀN. Một trang lỗi mà nuốt đi thì
-            // báo cáo hiện 0 đ — không phân biệt được với "tháng này không có
-            // phiếu nào", và người đối chiếu quỹ đọc ra một con số thiếu mà
-            // không có gì báo là thiếu.
-            console.error("useAccrualMonthReport error:", error);
-            throw error;
-          }
-          const pageRows = (data ?? []) as any[];
-          out.push(...pageRows);
-          if (pageRows.length < PARENT_PAGE) break;
-        }
+        const out = await fetchAllRows(build, { label: 'accrual-month' });
+        if (out === null) throw new Error('Không tải đủ dữ liệu báo cáo. Vui lòng thử lại.');
         return out;
       };
 
-      const [nonInv, inv, noItem] = await Promise.all([
+      const candidates = await Promise.all([
         fetchAll(buildNonInvoice),
         fetchAll(buildInvoice),
         fetchAll(buildNonInvoiceNoItem),
       ]);
+
+      // Quan hệ nhúng chỉ chọn ứng viên trong phạm vi hiện tại. Dùng cùng
+      // reader với màn phiếu để không hiểu item bị ẩn/cắt thành item không tồn tại.
+      const idsByOrg = new Map<string, Set<string>>();
+      for (const voucher of candidates.flat()) {
+        if (!voucher.organization_id) throw new Error('Không xác định được tổ chức của phiếu.');
+        const ids = idsByOrg.get(voucher.organization_id) ?? new Set<string>();
+        ids.add(voucher.id);
+        idsByOrg.set(voucher.organization_id, ids);
+      }
+      const snapshots = (await Promise.all([...idsByOrg].map(([org, ids]) =>
+        loadIncomeExpenseDetails(org, [...ids]),
+      ))).flat();
+      const byId = new Map(snapshots.map(row => [row.id, row]));
+      const [nonInv, inv, noItem] = candidates.map(group => group.map(voucher => {
+        const snapshot = byId.get(voucher.id);
+        if (!snapshot) throw new Error('Không tải đủ chi tiết phiếu cho báo cáo.');
+        // Các truy vấn ứng viên và RPC là những request riêng: nếu phiếu đổi
+        // trạng thái/phạm vi giữa hai lần đọc thì tải lại, không cộng nhầm bộ lọc.
+        const scopeFields = ['organization_id', 'building_id', 'room_id', 'type',
+          'approval_status', 'business_result_accounting', 'voucher_date', 'invoice_id', 'updated_at'] as const;
+        if (scopeFields.some(key => (snapshot[key] ?? null) !== (voucher[key] ?? null))) {
+          throw new Error('Phiếu đã thay đổi trong lúc tải báo cáo. Vui lòng thử lại.');
+        }
+        return {
+          ...voucher,
+          ...snapshot,
+          room: snapshot.room_id === voucher.room?.id ? voucher.room : null,
+          building: snapshot.building_name ? { id: snapshot.building_id, name: snapshot.building_name } : null,
+          items: snapshot.items.map(item => ({ ...item, income_expense_type: {
+            id: item.income_expense_type_id, name: item.type_name,
+            category: item.category, is_deposit: item.is_deposit,
+          } })),
+        };
+      }));
 
       // Transform: phân bổ từng item vào tháng YM (client-side).
       let totalIncome = 0;
