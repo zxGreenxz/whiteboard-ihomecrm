@@ -71,7 +71,6 @@ export function ContractDetailMobile(props: Props) {
           </div>
 
           <div className="mbody">
-            {props.commissionFollowup}
             {props.exitCasePanel}
             <ContractMobileSettlementStatus contract={contract} invoices={invoices} depositVouchers={depositVouchers}
               terminationInfo={props.terminationInfo} pendingForfeitCount={props.pendingForfeitCount}
@@ -89,6 +88,7 @@ export function ContractDetailMobile(props: Props) {
               onTerminate={props.onTerminate}
               onDelete={props.onDelete}
             />
+            {props.commissionFollowup}
 
             <div className="cd-tabs">
               {TABS.map((t) => (

@@ -5,14 +5,9 @@
 // "Thanh toan - Hop dong & quyet toan.dc.html"). Khác bản đầu của tôi ở chỗ:
 // MỘT bảng + thẻ số bấm để lọc, chứ không phải bốn khối xếp chồng.
 //
-// ── ĐÂY LÀ LỚP MẶT, KHÔNG PHẢI NƠI LẬP PHIẾU ───────────────────────────────
-// Mọi dòng ở "Cần rà soát" và "Chờ duyệt" đều là phiếu chi UNAPPROVED do trang
-// Thu chi tạo ra. Khu này KHÔNG tạo phiếu, KHÔNG sửa luồng Thu chi, và KHÔNG
-// đụng vào `src/pages/payments`, `src/components/income-expenses`,
-// `src/hooks/income-expenses` hay `supabase/`. Chỉ ba việc — Duyệt, Chi,
-// Duyệt & Chi — gọi xuống đúng hàm sẵn có của Thu chi qua useSettlementActions.
-// Việc chuyển làn Cần rà soát ⇄ Chờ duyệt là của riêng khu này và SUY RA từ dữ
-// liệu, không ghi cột nào.
+// Phiếu chi hiện có giữ nguyên luồng Duyệt/Chi qua useSettlementActions.
+// Làn Cần rà soát còn hiển thị lỗi tạo hoa hồng đã được ghi nhận: retry đúng
+// request qua writer chuẩn; các hồ sơ đó không có voucher ID hoặc tổng tiền.
 // =============================================================================
 
 import { Component, Suspense, useEffect, useMemo, useState, type ReactNode } from 'react';
@@ -32,7 +27,9 @@ import type { SettlementKind } from '@/lib/settlementTypes';
 import { useContractSettlement } from '@/hooks/useContractSettlement';
 import { useContractMovements, MOVEMENT_LABEL, type MovementType } from '@/hooks/useContractMovements';
 import { useSettlementActions } from '@/hooks/useSettlementActions';
-import { ContractCommissionFollowupPanel } from '@/components/contracts/ContractCommissionFollowupPanel';
+import { CommissionFailureList } from '@/components/contracts/ContractCommissionFollowupPanel';
+import { useContractCommissionFollowups } from '@/hooks/useContractCommissionFollowup';
+import { COMMISSION_FOLLOWUP_PAGE_SIZE } from '@/lib/contractCommissionFollowup';
 const SettlementLifecycleModal = lazy(() => import('./SettlementLifecycleModal').then((m) => ({ default: m.SettlementLifecycleModal })));
 const MovementLifecycleModal = lazy(() => import('./MovementLifecycleModal').then((m) => ({ default: m.MovementLifecycleModal })));
 import { NHAN_VUONG_MAC } from './nhan';
@@ -167,9 +164,26 @@ export function ContractSettlementSection({ buildingIds, period, buildingsLoadin
   const [dangMo, setDangMo] = useState<string | null>(null);
   const [dangMoBd, setDangMoBd] = useState<string | null>(null);
   const [trangBd, setTrangBd] = useState(1);
+  const [failurePage, setFailurePage] = useState(0);
 
   const mv = tab === 'movements';
   const f = mv ? locBd : locChi;
+  const [year, month] = period.split('-').map(Number);
+  const lastDay = new Date(year, month, 0).getDate();
+  const priorDay = new Date(year, month - 1, 0);
+  const periodFrom = f.scope === 'current' ? `${period}-01` : undefined;
+  const periodTo = f.scope === 'current' ? `${period}-${lastDay}` : f.scope === 'prior'
+    ? `${priorDay.getFullYear()}-${String(priorDay.getMonth() + 1).padStart(2, '0')}-${priorDay.getDate()}` : undefined;
+  const failureScope = JSON.stringify([organizationId, buildingIds, f.building, f.kind, f.q, f.scope, period, f.origin, f.person]);
+  useEffect(() => setFailurePage(0), [failureScope]);
+  const failureEnabled = !mv && !buildingsLoading && !buildingsError && !!organizationId && buildingIds.length > 0
+    && (f.building === 'all' || buildingIds.includes(f.building)) && f.kind !== 'refund'
+    && (f.origin === 'all' || f.origin === 'contract') && f.person === 'all';
+  const failureFilter = { buildingIds: f.building === 'all' ? buildingIds : [f.building], unresolvedOnly: true,
+    search: f.q, periodFrom, periodTo, enabled: failureEnabled };
+  const failures = useContractCommissionFollowups({ ...failureFilter, page: failurePage,
+    kind: f.kind === 'commission' ? 'broker' : f.kind === 'bonus' ? 'sale' : undefined });
+  const failureTotal = failureEnabled && !failures.isError && !failures.isPending ? failures.data?.total ?? 0 : 0;
 
   /**
    * MỘT lối đổi bộ lọc duy nhất, và nó luôn đi qua `normalisePeriodFilter`.
@@ -337,7 +351,8 @@ export function ContractSettlementSection({ buildingIds, period, buildingsLoadin
       {
         key: 'review' as StatusFilter, label: 'Cần rà soát', dot: STATUS_STYLE.review.fg,
         gtri: { kind: 'number', count: raSoat.length, total: cong(raSoat) } as StatValue,
-        so: String(raSoat.length), meta: 'hồ sơ cần kiểm tra',
+        so: failureEnabled && (failures.isError || failures.isPending) ? '…' : String(raSoat.length + failureTotal),
+        meta: failures.isError && failureEnabled ? 'Chưa tải được lỗi tạo phiếu' : `${raSoat.length} phiếu cần kiểm tra${failureTotal ? ` · ${failureTotal} lỗi tạo phiếu` : ''}`,
       },
       ...(gop
         ? [mk('pendpay', 'Chờ Duyệt và Chi', ['pending', 'approved'], STATUS_STYLE.pending.fg, false,
@@ -353,7 +368,7 @@ export function ContractSettlementSection({ buildingIds, period, buildingsLoadin
       mk('paid', 'Đã chi', ['paid'], STATUS_STYLE.paid.fg, true),
       mk('noncash', 'Không ghi quỹ', ['noncash'], STATUS_STYLE.noncash.fg),
     ];
-  }, [mv, doThe, nenThe, gop, viewOf, f.scope, period, docButToan]);
+  }, [mv, doThe, nenThe, gop, viewOf, f.scope, period, docButToan, failureEnabled, failureTotal, failures.isError, failures.isPending]);
 
   const theBd = useMemo(() => {
     if (!mv) return [];
@@ -363,9 +378,15 @@ export function ContractSettlementSection({ buildingIds, period, buildingsLoadin
   }, [mv, nenBd]);
 
   // ── Chip ──────────────────────────────────────────────────────────────────
-  const demChi = (k: string) =>
-    nenChi.filter((r) => (k === 'all' || r.kind === k)
+  const demChi = (k: string) => {
+    if (chi.isError || chi.isLoading) return '…';
+    const vouchers = nenChi.filter((r) => (k === 'all' || r.kind === k)
       && matchStatus(viewOf.get(r.key) ?? 'unknown', f.status)).length;
+    if (!failureEnabled || f.status !== 'review' || k === 'refund') return vouchers;
+    if (failures.isError || failures.isPending || !failures.data) return '…';
+    const count = failures.data.counts_by_kind[k === 'commission' ? 'broker' : k === 'bonus' ? 'sale' : 'all'];
+    return vouchers + count;
+  };
   const demBd = (k: string) => nenBd.filter((e) => k === 'all' || e.type === k).length;
 
   const chipLoai = mv
@@ -441,8 +462,6 @@ export function ContractSettlementSection({ buildingIds, period, buildingsLoadin
 
   return (
     <div className="cs-wrap">
-      {!buildingsLoading && !buildingsError && buildingIds.length > 0 && (f.building === 'all' || buildingIds.includes(f.building)) && <ContractCommissionFollowupPanel
-        buildingIds={f.building === 'all' ? buildingIds : [f.building]} />}
       {/* ── Thanh chuyển tab ───────────────────────────────────────────── */}
       <div className="cs-viewbar">
         <div className="cs-pills">
@@ -473,17 +492,17 @@ export function ContractSettlementSection({ buildingIds, period, buildingsLoadin
       </div>
 
       {/* ── Thẻ số ─────────────────────────────────────────────────────── */}
-      {!mv && !dangTai && !hong && !dangDoiChieu && !loiDoiChieu && (
+      {!mv && !buildingsLoading && !buildingsError && !org.isLoading && !org.isError && !dangDoiChieu && !loiDoiChieu && (
         <div className="cs-stats" style={{ gridTemplateColumns: `repeat(${the.length}, minmax(0,1fr))` }}>
-          {the.map((t) => {
+          {the.filter(t => (!dangTai && !hong) || t.key === 'review').map((t) => {
             const on = f.status === t.key;
             return (
               <div className="cs-stat-wrap" key={t.key}>
                 <button type="button" className={`cs-stat ${on ? 'on' : ''}`}
                   onClick={() => datLoc({ status: on ? 'open' : t.key })}>
                   <div className="cs-stat-lbl"><span className="cs-dot" style={{ background: t.dot }} />{t.label}</div>
-                  <div className="cs-stat-num">{t.so}</div>
-                  <div className="cs-stat-meta">{t.meta}</div>
+                  <div className="cs-stat-num">{dangTai || hong ? '…' : t.so}</div>
+                  <div className="cs-stat-meta">{dangTai || hong ? 'Chưa tải đủ phiếu; xem lỗi tạo đã ghi nhận' : t.meta}</div>
                   <span className="cs-stat-cta">{on ? 'Đang lọc' : 'Lọc'}</span>
                 </button>
                 {/* Thiếu bút toán là thứ THỬ LẠI ĐƯỢC — mạng chập, hoặc vừa
@@ -537,7 +556,7 @@ export function ContractSettlementSection({ buildingIds, period, buildingsLoadin
         </div>
       )}
 
-      {!dangTai && !hong && (
+      {((!dangTai && !hong) || (!mv && failureEnabled && !org.isLoading && !org.isError)) && (
         <section className="cs-surface">
           {(dangDoiChieu || loiDoiChieu) && <div className="cs-notice" role="status">
             <span>{loiDoiChieu ? 'Chưa đọc đủ dữ liệu đối chiếu. Các khoản liên quan chưa thể duyệt hoặc chi.' : 'Đang đối chiếu căn cứ và yêu cầu bổ sung. Các khoản liên quan chưa thể duyệt hoặc chi.'}</span>
@@ -669,7 +688,7 @@ export function ContractSettlementSection({ buildingIds, period, buildingsLoadin
             </div>
           )}
 
-          <div className="cs-resline">
+          {!dangTai && !hong && <div className="cs-resline">
             <span>
               {soDong}
               {mv
@@ -677,9 +696,21 @@ export function ContractSettlementSection({ buildingIds, period, buildingsLoadin
                 : ` khoản · ${STATUS_FILTER_LABEL[f.status]} · ${periodScopeLabel(f.scope, period)}`}
             </span>
             <span>{mv ? 'Mỗi dòng = một sự kiện' : 'Danh sách chi tiết'}</span>
-          </div>
+          </div>}
 
           {/* ── Bảng khoản chi ───────────────────────────────────────────── */}
+          {!mv && f.status === 'review' && failureEnabled && <section aria-label="Lỗi tạo hoa hồng / thưởng Sale" className="space-y-3 mb-4 px-3.5">
+            <h3 className="text-sm font-semibold">Lỗi tạo hoa hồng / thưởng Sale</h3>
+            {!failures.isError && !failures.isPending && <p className="text-sm">{failureTotal} yêu cầu tạo cần rà soát</p>}
+            <CommissionFailureList query={failures} scope={failureScope} empty />
+            {failureTotal > COMMISSION_FOLLOWUP_PAGE_SIZE && <div className="flex items-center gap-3 text-sm">
+              <button type="button" className="cs-linkbtn" disabled={failurePage === 0} onClick={() => setFailurePage(page => page - 1)}>Trang trước</button>
+              <span>Trang {failurePage + 1}/{Math.ceil(failureTotal / COMMISSION_FOLLOWUP_PAGE_SIZE)}</span>
+              <button type="button" className="cs-linkbtn" disabled={(failurePage + 1) * COMMISSION_FOLLOWUP_PAGE_SIZE >= failureTotal}
+                onClick={() => setFailurePage(page => page + 1)}>Trang sau</button>
+            </div>}
+          </section>}
+          {!dangTai && !hong && <>
           {!mv && hienChi.length > 0 && (
             <div style={{ ['--cs-cols' as string]: COT_CHI }}>
               <div className="cs-head">
@@ -779,7 +810,7 @@ export function ContractSettlementSection({ buildingIds, period, buildingsLoadin
             </div>
           )}
 
-          {soDong === 0 && (
+          {soDong === 0 && !(f.status === 'review' && failureEnabled && (failureTotal > 0 || failures.isError || failures.isPending)) && (
             <div className="cs-empty">
               {/* KHÔNG suy "mọi việc đã xong". Rỗng chỉ nói về PHẠM VI ĐANG XEM;
                   kết luận rộng hơn thế là câu không có bằng chứng. */}
@@ -828,6 +859,7 @@ export function ContractSettlementSection({ buildingIds, period, buildingsLoadin
               }`}
             </span>
           </div>
+          </>}
         </section>
       )}
 

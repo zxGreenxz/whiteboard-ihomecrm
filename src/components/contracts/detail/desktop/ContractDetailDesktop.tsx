@@ -19,6 +19,7 @@
 // thành tuỳ chọn cho người dùng, chỉ là hằng của màn hình.
 
 import type { ContractWithRelations } from '@/hooks/useContracts';
+import type { ReactNode } from 'react';
 import type { InvoiceWithRelations } from '@/hooks/useInvoices';
 import type { ContractTerminationInfo } from '@/hooks/contracts/useContractDetailData';
 import type {
@@ -38,6 +39,7 @@ import { useContractMoveOutNoticeSnapshot } from '@/hooks/useContractMoveOutNoti
 
 export interface ContractDetailDesktopProps {
   contract: ContractWithRelations;
+  commissionFollowup?: ReactNode;
   perms: Parameters<typeof canUse>[0];
   isActive: boolean;
   isExpiringSoon: boolean;
@@ -136,6 +138,7 @@ export function ContractDetailDesktop(props: ContractDetailDesktopProps) {
       />
 
       <div className={`${KHUNG} pb-12 pt-4`}>
+        <div className="mb-4">{props.commissionFollowup}</div>
         <ContractAlertStrip
           contract={contract}
           isActive={isActive}

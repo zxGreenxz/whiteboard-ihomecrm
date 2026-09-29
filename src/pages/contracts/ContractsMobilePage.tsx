@@ -31,7 +31,6 @@ import type { RoomWithRelations } from '@/types/room';
 import { ContractFormDialog } from '@/components/contracts/ContractFormDialog';
 import { MoveOutNoticeQueue } from '@/components/contracts/MoveOutNoticeQueue';
 import { ContractDraftWorkspace } from '@/components/contracts/ContractDraftWorkspace';
-import { ContractCommissionFollowupPanel } from '@/components/contracts/ContractCommissionFollowupPanel';
 import { ContractExitQueue } from '@/components/contracts/ContractExitQueue';
 import { ContractMeterFollowupQueue } from '@/components/contracts/ContractMeterFollowupQueue';
 
@@ -186,7 +185,6 @@ export default function ContractsMobilePage() {
           </div>
 
           <div className="mbody">
-            <ContractCommissionFollowupPanel buildingIds={buildingId ? [buildingId] : []} />
             <MoveOutNoticeQueue buildingIds={buildingId ? [buildingId] : []} />
             <ContractExitQueue buildingIds={buildingId ? [buildingId] : []} />
             <ContractMeterFollowupQueue buildingIds={buildingId ? [buildingId] : []} />

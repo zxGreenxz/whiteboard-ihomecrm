@@ -248,11 +248,11 @@ const ContractDetailView = ({ id, onBack, showBackButton = true }: ContractDetai
 
   return (
     <>
-      <ContractCommissionFollowupPanel key={`commission:${contract.id}`} contractId={contract.id} />
       {contract.status === 'TERMINATED' && <ContractExitCasePanel key={`exit:${contract.id}`} contract={contract} />}
       {contract.status !== 'TERMINATED' && <Suspense fallback={null}><TransferPanel key={contract.id} contractId={contract.id} /></Suspense>}
       <ContractDetailDesktop
         contract={contract}
+        commissionFollowup={<ContractCommissionFollowupPanel key={`commission:${contract.id}`} contractId={contract.id} />}
         perms={perms}
         isActive={isActive}
         isExpiringSoon={isExpiringSoon}

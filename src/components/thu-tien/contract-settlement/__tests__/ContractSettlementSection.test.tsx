@@ -41,15 +41,18 @@ const H = vi.hoisted(() => ({
   modalError: false,
   followupCalls: [] as Record<string, unknown>[],
   followupTotal: 0,
+  followupCounts: { all: 0, broker: 0, sale: 0 },
+  followupError: false,
 }));
 vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ selectedOrganizationId: 'org' }) }));
 vi.mock('@/hooks/useContractCommissionFollowup', () => ({
   useContractCommissionFollowups: (args: Record<string, unknown>) => {
     H.followupCalls.push(args);
-    return { data: { rows: [], total: H.followupTotal }, isError: false, isPending: false, refetch: vi.fn() };
+    return { data: { rows: [], total: H.followupTotal, counts_by_kind: H.followupCounts }, isError: H.followupError, isPending: false, refetch: vi.fn() };
   },
   useRecordContractCommissionEvent: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
+vi.mock('@/hooks/useCommissionVoucher', () => ({ useRetryCommissionVoucher: () => ({ mutateAsync: vi.fn(), isPending: false }) }));
 
 vi.mock('@/hooks/useContractSettlement', () => ({
   useContractSettlement: (args: Record<string, unknown>) => {
@@ -172,18 +175,58 @@ beforeEach(() => {
   // đếm dòng/thẻ đều sai theo kiểu rất khó lần.
   cleanup();
   dem = 0;
-  H.followupCalls = []; H.followupTotal = 0;
+  H.followupCalls = []; H.followupTotal = 0; H.followupError = false;
+  H.followupCounts = { all: 0, broker: 0, sale: 0 };
   H.soLanRefetch = 0;
   H.calls = []; H.movementCalls = []; H.movements = []; H.targeted = null; H.orgError = false; H.modalError = false;
 });
-it('shows the commission backlog without adding unconfirmed obligations to voucher totals and keeps building filters', () => {
+it('counts actual failures only in existing review lane, preserving voucher amounts and period/building filters', () => {
   H.followupTotal = 25;
   ve([dong({ amount: 1_000, eventDate: '2026-09-05' })]);
-  expect(screen.getByText('25 khoản cần kiểm tra')).toBeTruthy();
+  expect(screen.queryByText('25 khoản cần kiểm tra')).toBeNull();
+  expect(screen.queryByText('Lỗi tạo hoa hồng / thưởng Sale')).toBeNull();
   expect(chanTrang()).toContain('Tổng giá trị phiếu đang xem: 1.000');
-  expect(H.followupCalls.at(-1)).toMatchObject({ buildingIds: [TOA], unresolvedOnly: true });
+  expect(H.followupCalls[0]).toMatchObject({ buildingIds: [TOA], unresolvedOnly: true, periodFrom: '2026-09-01', periodTo: '2026-09-30' });
+  fireEvent.click(screen.getByRole('button', { name: /Cần rà soát/ }));
+  expect(screen.getByText('Lỗi tạo hoa hồng / thưởng Sale')).toBeTruthy();
+  expect(screen.getByText('25 yêu cầu tạo cần rà soát')).toBeTruthy();
   fireEvent.change(screen.getByLabelText('Tòa'), { target: { value: TOA } });
   expect(H.followupCalls.at(-1)).toMatchObject({ buildingIds: [TOA] });
+  fireEvent.change(screen.getByLabelText('Phạm vi kỳ'), { target: { value: 'prior' } });
+  expect(H.followupCalls.at(-1)).toMatchObject({ periodFrom: undefined, periodTo: '2026-08-31' });
+});
+it('queue load failure in review never claims there are zero actual failures', () => {
+  H.followupError = true;
+  ve([]);
+  fireEvent.click(screen.getByRole('button', { name: /Cần rà soát/ }));
+  expect(screen.getByText(/Không tải được trạng thái tạo/)).toBeTruthy();
+  expect(screen.queryByText(/0 yêu cầu tạo/)).toBeNull();
+  expect(document.querySelector('.cs-chip-n')?.textContent).toBe('…');
+});
+it('reads one queue scope per render and uses authoritative kind counts beyond the current page', () => {
+  H.followupTotal = 25; H.followupCounts = { all: 25, broker: 21, sale: 4 };
+  ve([]);
+  expect(new Set(H.followupCalls.map(call => call.kind))).toEqual(new Set([undefined]));
+  fireEvent.click(screen.getByRole('button', { name: /Cần rà soát/ }));
+  const chips = [...document.querySelectorAll<HTMLButtonElement>('.cs-chip')];
+  const broker = chips.find(chip => chip.textContent?.startsWith('Hoa hồng'))!;
+  expect(broker.textContent).toContain('21');
+  expect(chips.find(chip => chip.textContent?.startsWith('Thưởng'))?.textContent).toContain('4');
+  H.followupCalls = [];
+  fireEvent.click(broker);
+  expect(H.followupCalls.length).toBeGreaterThan(0);
+  expect(H.followupCalls.every(call => call.kind === 'broker')).toBe(true);
+});
+it('empty building scope disables queue requests rather than loading the full org', () => {
+  ve([], {}, KY, { buildingIds: [] });
+  expect(H.followupCalls.every(call => call.enabled === false)).toBe(true);
+});
+it.each([{ isError: true }, { isLoading: true }])('keeps the review queue accessible when the voucher source is unavailable: %s', state => {
+  H.followupTotal = 25; H.followupCounts = { all: 25, broker: 21, sale: 4 };
+  ve([], state);
+  fireEvent.click(screen.getByRole('button', { name: /Cần rà soát/ }));
+  expect(screen.getByText('25 yêu cầu tạo cần rà soát')).toBeTruthy();
+  expect(document.querySelector('.cs-foot')).toBeNull();
 });
 
 const bienDong = (n: number) => ({

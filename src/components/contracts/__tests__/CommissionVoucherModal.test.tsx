@@ -22,10 +22,12 @@ const state = vi.hoisted(() => ({
   isError: false,
   refetch: vi.fn(),
   create: vi.fn(),
+  prepare: vi.fn(),
+  order: [] as string[],
   accounts: [] as unknown[],
   voucherError: false,
   voucherLoading: false,
-  followups: [] as { kind: string; state: string; can_manage: boolean }[],
+  followups: [] as { kind: string; state: string; can_manage: boolean; request_id?: string; can_retry?: boolean }[],
 }));
 
 vi.mock("@/hooks/useCommissionVoucher", () => ({
@@ -38,12 +40,14 @@ vi.mock("@/hooks/useCommissionVoucher", () => ({
     refetch: state.refetch,
   }),
   useCreateCommissionVoucher: () => ({ mutateAsync: state.create, isPending: false }),
-  useExistingCommissionVouchers: () => ({ data: [], isError: state.voucherError, isLoading: state.voucherLoading, refetch: state.refetch }),
+  usePrepareCommissionVouchers: () => ({ mutateAsync: state.prepare, isPending: false }),
+  useExistingCommissionVouchers: () => ({ data: [], isError: state.voucherError, isLoading: state.voucherLoading,
+    refetch: async () => ({ data: [], isError: state.voucherError }) }),
 }));
 vi.mock('@/hooks/useContractCommissionFollowup', () => ({ useContractCommissionFollowups: () => ({
   data: { rows: state.followups }, isError: false, isLoading: false, refetch: state.refetch,
 }) }));
-vi.mock("@/hooks/useSaleBonus", () => ({ useSaleBonusStatus: () => ({ data: null }) }));
+vi.mock("@/hooks/useSaleBonus", () => ({ useSaleBonusStatus: () => ({ data: null, refetch: async () => ({ data: null }) }) }));
 vi.mock("@/hooks/useAccounts", () => ({ useAccounts: () => ({ data: state.accounts }) }));
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ data: { id: "u1" } }) }));
 vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ selectedOrganizationId: 'org1' }) }));
@@ -52,6 +56,7 @@ vi.mock("@/components/income-expenses/AttachmentUpload", () => ({ default: () =>
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() } }));
 
 import { CommissionVoucherModal } from "../CommissionVoucherModal";
+import { toast } from 'sonner';
 
 vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
 
@@ -83,7 +88,14 @@ beforeEach(() => {
   state.voucherLoading = false;
   state.followups = ['broker', 'sale'].map(kind => ({ kind, state: 'PENDING', can_manage: true }));
   state.refetch.mockReset();
+  state.refetch.mockImplementation(async () => ({ data: { rows: state.followups }, isError: state.voucherError }));
   state.create.mockReset();
+  vi.mocked(toast.error).mockClear();
+  state.order = [];
+  state.prepare.mockReset();
+  state.prepare.mockImplementation(async (inputs: { kind: string; contract_id: string }[]) => {
+    state.order.push('prepare'); return inputs.map(input => ({ contract_id: input.contract_id, kind: input.kind, request_id: `request-${input.kind}` }));
+  });
   state.accounts = [{ id: "acc-toa-a", name: "Toà A", is_default: false }, { id: "acc-khac", name: "Sổ khác", is_default: true }];
 });
 afterEach(cleanup);
@@ -109,6 +121,7 @@ it("prefill lỗi thì báo lỗi và cho tải lại, không kẹt ở dòng '�
   expect(screen.queryByText(/Đang tải thông tin hợp đồng/)).toBeNull();
   expect(screen.getByText(/Không tải được thông tin hợp đồng/)).toBeTruthy();
 
+  state.refetch.mockClear();
   fireEvent.click(screen.getByRole("button", { name: "Tải lại" }));
   expect(state.refetch).toHaveBeenCalledTimes(1);
 });
@@ -184,4 +197,51 @@ it("sổ quỹ mặc định lấy từ danh sách sổ quỹ của modal, kể 
   rerender(<CommissionVoucherModal open contractId="c1" onOpenChange={() => {}} />);
 
   expect(screen.getByText("Mặc định: sổ quỹ cùng tên với tòa nhà.")).toBeTruthy();
+});
+
+it('saves both selected positive intents before executing either kind', async () => {
+  state.create.mockImplementation(async (input: { kind: string }) => { state.order.push(input.kind); return { status: 'COMPLETED', id: 'v', code: 'PC' }; });
+  render(<CommissionVoucherModal open contractId="c1" onOpenChange={() => {}} />);
+  fireEvent.change(screen.getByPlaceholderText('Để trống nếu không có'), { target: { value: '500000' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Tạo phiếu chi' }));
+  await waitFor(() => expect(state.order).toEqual(['prepare', 'broker', 'sale']));
+  expect(state.prepare.mock.calls[0][0].map((input: { kind: string }) => input.kind)).toEqual(['broker', 'sale']);
+  expect(state.create.mock.calls[1][0].preparedRequest.request_id).toBe('request-sale');
+});
+it('failed prepare cannot execute any voucher', async () => {
+  state.prepare.mockRejectedValue(new Error('Không lưu được'));
+  render(<CommissionVoucherModal open contractId="c1" onOpenChange={() => {}} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Tạo phiếu chi' }));
+  await waitFor(() => expect(state.prepare).toHaveBeenCalled());
+  expect(state.create).not.toHaveBeenCalled();
+});
+it('legacy failed-kind modal contains only selected Sale inputs', () => {
+  render(<CommissionVoucherModal open contractId="c1" onlyKind="sale" onOpenChange={() => {}} />);
+  expect(screen.queryByPlaceholderText('Tên công ty / cá nhân môi giới')).toBeNull();
+  expect(screen.getByPlaceholderText('Để trống nếu không có')).toBeTruthy();
+});
+it('legacy failure with event request id but no saved payload prepares a fresh selected-kind request', async () => {
+  state.followups = [{ kind: 'broker', state: 'FAILED', can_manage: true, request_id: 'legacy-event', can_retry: false },
+    { kind: 'sale', state: 'PENDING', can_manage: true }];
+  state.create.mockResolvedValue({ status: 'COMPLETED', id: 'new-voucher', code: 'PC-NEW' });
+  render(<CommissionVoucherModal open contractId="c1" onlyKind="broker" onOpenChange={() => {}} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Tạo phiếu chi' }));
+  await waitFor(() => expect(state.prepare).toHaveBeenCalledOnce());
+  expect(state.prepare.mock.calls[0][0].map((input: { kind: string }) => input.kind)).toEqual(['broker']);
+  await waitFor(() => expect(state.create).toHaveBeenCalledOnce());
+});
+it('fresh failure reading authoritative status on submit prevents issuance', async () => {
+  render(<CommissionVoucherModal open contractId="c1" onOpenChange={() => {}} />);
+  state.refetch.mockResolvedValue({ isError: true });
+  fireEvent.click(screen.getByRole('button', { name: 'Tạo phiếu chi' }));
+  await waitFor(() => expect(state.refetch).toHaveBeenCalled());
+  expect(state.create).not.toHaveBeenCalled(); expect(state.prepare).not.toHaveBeenCalled();
+});
+it('missing authoritative kind on submit reports read uncertainty instead of silently closing', async () => {
+  const close = vi.fn();
+  render(<CommissionVoucherModal open contractId="c1" onOpenChange={close} />);
+  state.refetch.mockResolvedValue({ data: { rows: [] }, isError: false });
+  fireEvent.click(screen.getByRole('button', { name: 'Tạo phiếu chi' }));
+  await waitFor(() => expect(vi.mocked(toast.error)).toHaveBeenCalled());
+  expect(state.prepare).not.toHaveBeenCalled(); expect(state.create).not.toHaveBeenCalled(); expect(close).not.toHaveBeenCalled();
 });
