@@ -48,6 +48,10 @@ Report có `unexpectedNetwork=[]`, `console=[]`, blocked production `[]`. Lỗi 
 
 Popup strict trên source cuối, session 21824, **exit 1**: cả hai kiểm tra hành vi direct-create và draft → reopen → sign đều đạt, popup vẫn mở và đóng hai popup tạo **0 commission request**. Gate tổng đỏ vì **8 HTTP 500 thực** ở v2 và các đường đọc contracts, rooms, stats, reservations, read-draft-signing, Sale bonus; console ghi `57014` ở rooms/stats. `cleanup=true`, blocked production `[]`. Draft signing dùng metadata DOCX tổng hợp, chưa kiểm byte/export/download DOCX thật. Popup strict ở checkpoint cũ từng xanh nhưng **không thay thế** verdict đỏ trên source cuối. Backend đang chẩn đoán hẹp bằng phép đọc; chưa có attribution nguyên nhân hoặc fix mới.
 
+Một lượt **chẩn đoán owner** sau đó trên cùng source `832b4261`, session 91045, vẫn **exit 1**: hai hành vi popup tiếp tục đạt, `cleanup=true`, production violations 0, nhưng ba reader cũ (`rooms`, `get_contract_stats`, `list_contract_drafts`) trả HTTP 500 / SQL `57014`; **cả hai** browser request `list_contract_commission_followups_v2` đều HTTP 200. Lượt đỏ 8 lỗi ở trên vẫn giữ nguyên. Trace ghi 11 request khởi đầu trong 58 ms; metrics cùng khoảng có tỷ trọng iowait **36,33–43,51%** trên các delta CPU được cập nhật theo đợt. Đây là tương quan tải, **chưa quy được nguyên nhân** cho SQL riêng, I/O hay hạ tầng; không đổi strict gate thành đạt.
+
+EXPLAIN chỉ đọc, từng reader riêng lẻ sau cleanup trên TEST owner: rooms/building **401,941 ms thực thi / 110,184 ms planning**, 2.892 shared hits/0 reads/15 phòng; hai lần gọi `accessible_building_ids` đều một loop theo scope, không lặp theo từng phòng. Stats **87,833 ms / 48,461 ms**, 433 hits/0 reads; scope helper một loop. Drafts **1,446 ms / 18,631 ms**, nhưng **0 dòng sau cleanup**, nên không chứng minh đường đọc drafts khỏe trong cửa sổ lỗi. Các plan riêng lẻ dưới timeout 8 giây không giải thích ba HTTP `57014` khoảng 10,6 giây khi nhiều request đồng thời. Chưa có fix có quan hệ nhân quả; strict popup tiếp tục chặn phát hành theo Contract §3/11.
+
 Monitor **chỉ đọc** chạy cùng E2E trong 6 phút/161 mẫu: **tuổi truy vấn v2 lớn nhất quan sát trong mẫu là 5,718 giây**, không phải phép đo latency đầy đủ; tối đa **một** phiên v2 active cùng một mẫu. Không lấy mẫu được Lock/I/O wait. Active với wait NULL không chứng minh CPU saturation. Lượt E2E này không có HTTP failure nên không xác định được nguyên nhân các timeout cũ. Những lượt owner/full-core trước vẫn **đỏ** với HTTP 500/503, trong đó có `57014` ở v2 và reader legacy; một lượt scoped đạt không đổi verdict lịch sử hoặc chứng minh mọi đường đọc đã khỏe.
 
 Lượt whole-app unit trước đây **đỏ 9599/9600**, một timeout ở `CustomerFieldSearch`; test đó đã đạt trong lượt focused 133 test riêng. Lượt serial cuối trên source `832b4261`, Node **24.18.0**/`maxWorkers=1`, đúng manifest include/exclude, **exit 0: 685 file và 9.633 test đạt**, **671,20 giây**, không skip hoặc tăng timeout riêng. Đây là kết quả mới; lượt đỏ trước vẫn được giữ là lịch sử, không sửa baseline. Types TEST tạm vẫn không được stage/commit hoặc dùng làm types production.
@@ -69,7 +73,7 @@ Giới hạn: smoke không bấm **Tạo phiếu hoa hồng** hoặc **Tạo l�
 
 ## Việc phát hành còn chờ
 
-- xử lý/verdict gate popup strict hiện đỏ do 8 HTTP 500; draft PR cho thay đổi tiền/schema; whole-app unit và review sửa ba finding đã đạt, release SHA sạch vẫn cần xác minh;
+- xử lý/verdict gate popup strict: lượt đầu 8 HTTP 500, lượt chẩn đoán owner kế tiếp còn 3 HTTP 500/`57014`; draft PR cho thay đổi tiền/schema; whole-app unit và review sửa ba finding đã đạt, release SHA sạch vẫn cần xác minh;
 - forward migration lane có backup trên SHA sạch đã review;
 - sinh metadata/types từ production sau migration, chạy toàn bộ gate trước push và CI;
 - promote đúng SHA, xác minh Vercel rồi mới chạy smoke chỉ đọc ở trên;
