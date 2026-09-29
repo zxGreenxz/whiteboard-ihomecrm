@@ -157,6 +157,11 @@ export function draftErrorMessage(error: unknown): string {
   if (code === '40001') return 'Bản nháp đã được người khác cập nhật. Đóng và mở lại để tải phiên bản mới; nội dung đang nhập vẫn được giữ trong cửa sổ này.';
   if (code === '42501' || code === '28000') return 'Bạn không có quyền thực hiện thao tác với bản nháp này.';
   if (code === '22023' || error instanceof z.ZodError) return 'Thông tin bản nháp chưa hợp lệ. Kiểm tra lại các trường đã nhập.';
+  if (code === '55000') {
+    const message = typeof error === 'object' && error !== null && 'message' in error ? String(error.message) : '';
+    if (message === 'Hủy liên kết nhượng trước khi xoá bản nháp') return 'Hủy liên kết nhượng trước khi xóa bản nháp này.';
+    return 'Bản nháp đã ký hoặc đã xóa. Tải lại danh sách để kiểm tra trạng thái mới nhất.';
+  }
   if (error instanceof Error && error.message.startsWith('Tài liệu:')) return error.message;
   return 'Không thể xử lý bản nháp. Vui lòng thử lại.';
 }

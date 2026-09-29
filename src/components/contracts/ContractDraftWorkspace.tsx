@@ -59,7 +59,8 @@ export function ContractDraftWorkspace({ buildingId, buildingIds, alwaysExpanded
       </Button>}
     </div>
     {(alwaysExpanded || expanded) && <Suspense fallback={<p className="p-4 text-sm text-muted-foreground">Đang tải bản nháp…</p>}>
-      <DraftList buildingId={buildingId} buildingIds={buildingIds} canEdit={canEdit} canExport={canExport} canSign={canCreate}
+      <DraftList key={`${selectedOrganizationId}:${buildingId ?? ''}`} buildingId={buildingId} buildingIds={buildingIds} canEdit={canEdit} canExport={canExport} canSign={canCreate}
+        canDelete={value => canUse(permissions, 'contracts', 'delete', value.building_id)}
         onEdit={editDraft} onPrint={setPrintDraft} onSign={editDraft} onTransfer={setTransferDraft} />
     </Suspense>}
     {transferDraft && <div className="p-3"><Button variant="ghost" size="sm" onClick={() => setTransferDraft(undefined)}>Đóng liên kết nhượng</Button>
