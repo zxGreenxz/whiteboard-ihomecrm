@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
@@ -30,6 +30,8 @@ import { useOrphanDepositVouchers } from "@/hooks/useDeposits";
 import { useAccounts, type Account } from "@/hooks/useAccounts";
 import { useAuth } from "@/hooks/useAuth";
 import { todayISO } from '@/lib/collect';
+import { emptyDraftOwner, type ContractDraft, type DraftOwner } from '@/lib/contractDrafts';
+import { buildContractDraftPayload, restoreContractDraftEditorState } from '@/lib/contractDraftEditor';
 import {
   nextDepositUid,
   type ContractPrefill,
@@ -42,6 +44,7 @@ interface UseContractFormStateParams {
   open: boolean;
   contract?: ContractWithRelations;
   prefill?: ContractPrefill;
+  draft?: ContractDraft;
 }
 
 /** Sổ quỹ được phép nhận tiền cọc: CHỈ sổ THẬT, không bao giờ là sổ ảo.
@@ -83,8 +86,13 @@ export function useContractFormState({
   open,
   contract,
   prefill,
+  draft,
 }: UseContractFormStateParams) {
   const isEditMode = !!contract;
+  const isDraftMode = !!draft && !contract;
+  const hydratedDraftId = useRef<string | null>(null);
+  const draftInvoiceBaseline = useRef<{ draftId: string; signature: string | null } | null>(null);
+  const draftInvoiceEditRevision = useRef(0);
 
   // Mutations
   const createContract = useCreateContract();
@@ -134,7 +142,8 @@ export function useContractFormState({
       ),
     [buildingServicesData],
   );
-  const buildingServicesAsSelected = useMemo<SelectedService[]>(
+  const [savedDraftDefaultServices, setSavedDraftDefaultServices] = useState<SelectedService[] | null>(null);
+  const liveBuildingServicesAsSelected = useMemo<SelectedService[]>(
     () =>
       buildingActiveServices.map((b) => ({
         id: b.service_id,
@@ -151,6 +160,7 @@ export function useContractFormState({
       })),
     [buildingActiveServices, selectedCustomers.length],
   );
+  const buildingServicesAsSelected = savedDraftDefaultServices ?? liveBuildingServicesAsSelected;
 
   // Invoice preview (hoá đơn cọc + tháng đầu) — items được tự sinh từ
   // rent/cọc/services, user có thể chỉnh trực tiếp; khi lưu HĐ items này
@@ -253,6 +263,7 @@ export function useContractFormState({
 
   useEffect(() => {
     if (isEditMode || depositShortfall) return;
+    if (isDraftMode && !form.getFieldState('rent_price').isDirty && !form.getFieldState('total_deposit').isDirty) return;
     if (form.getValues("deposit_debt_mode") !== undefined) {
       form.setValue("deposit_debt_mode", undefined);
     }
@@ -265,10 +276,11 @@ export function useContractFormState({
     if (form.getValues("deposit_debt_acknowledged")) {
       form.setValue("deposit_debt_acknowledged", false);
     }
-  }, [depositShortfall, form, isEditMode]);
+  }, [depositShortfall, form, isEditMode, isDraftMode]);
 
   // ---- Helpers thao tác dòng cọc ----
-  const addDepositRow = (amount = 0) =>
+  const addDepositRow = (amount = 0) => {
+    if (isDraftMode) draftInvoiceEditRevision.current += 1;
     setDepositRows((p) => [
       ...p,
       {
@@ -281,10 +293,15 @@ export function useContractFormState({
         images: [],
       },
     ]);
-  const updateDepositRow = (uid: string, patch: Partial<DepositRow>) =>
+  };
+  const updateDepositRow = (uid: string, patch: Partial<DepositRow>) => {
+    if (isDraftMode) draftInvoiceEditRevision.current += 1;
     setDepositRows((p) => p.map((r) => (r.uid === uid ? { ...r, ...patch } : r)));
-  const removeDepositRow = (uid: string) =>
+  };
+  const removeDepositRow = (uid: string) => {
+    if (isDraftMode) draftInvoiceEditRevision.current += 1;
     setDepositRows((p) => p.filter((r) => r.uid !== uid));
+  };
 
   // ---- Giá mặc định của PHÒNG (nguồn của ô "Tiền thuê" khi còn khoá) ----
   const selectedRoom = useMemo(
@@ -297,7 +314,31 @@ export function useContractFormState({
 
   // ---- Reset form when dialog opens ----
   useEffect(() => {
-    if (!open) return;
+    if (!open) { hydratedDraftId.current = null; draftInvoiceBaseline.current = null; draftInvoiceEditRevision.current = 0; return; }
+
+    if (isDraftMode && draft) {
+      // Background list refresh must not replace edits in an already-open draft.
+      if (hydratedDraftId.current === draft.id) return;
+      hydratedDraftId.current = draft.id;
+      draftInvoiceBaseline.current = { draftId: draft.id, signature: null };
+      draftInvoiceEditRevision.current = 0;
+      const restored = restoreContractDraftEditorState(draft);
+      setSelectedBuildingId(draft.building_id);
+      setSelectedRoomId(draft.room_id ?? '');
+      setSelectedCustomers(restored.selectedCustomers);
+      setSelectedServices(restored.selectedServices);
+      setSavedDraftDefaultServices(restored.buildingDefaultServices);
+      setUseCustomServices(restored.useCustomServices);
+      setDepositRows(restored.depositRows);
+      setInvoiceItems(restored.invoiceItems);
+      setRentUnlocked(restored.rentUnlocked);
+      setDepositUnlocked(restored.depositUnlocked);
+      form.reset(restored.form);
+      return;
+    }
+    hydratedDraftId.current = null;
+    draftInvoiceBaseline.current = null;
+    setSavedDraftDefaultServices(null);
 
     if (contract) {
       // Edit mode: pre-populate
@@ -397,7 +438,7 @@ export function useContractFormState({
         deposit_topup_due_date: "",
       });
     }
-  }, [open, contract, form, prefill]);
+  }, [open, contract, form, prefill, draft, isDraftMode]);
 
   // Hai effect "bám mặc định" phải khai báo SAU effect reset ở trên: React chạy
   // effect theo thứ tự khai báo, nên nếu đặt trước thì trong cùng một commit
@@ -408,23 +449,24 @@ export function useContractFormState({
   // "Tiền thuê" mặc định = giá niêm yết của phòng, tự đổi theo phòng được chọn.
   // Chỉ ở chế độ TẠO MỚI: form sửa phải giữ nguyên giá đã ký của HĐ.
   useEffect(() => {
-    if (isEditMode || !open) return;
+    if (isEditMode || isDraftMode || !open) return;
     if (rentUnlocked) return;
     if ((form.getValues("rent_price") ?? 0) === roomDefaultRent) return;
     form.setValue("rent_price", roomDefaultRent);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomDefaultRent, rentUnlocked, isEditMode, open]);
+  }, [roomDefaultRent, rentUnlocked, isEditMode, isDraftMode, open]);
 
   // "Tiền cọc" mặc định = tiền thuê khi ô cọc CÒN KHOÁ (chỉ tạo mới).
   useEffect(() => {
     if (isEditMode || !open) return;
+    if (isDraftMode && !form.getFieldState('rent_price').isDirty) return;
     if (depositUnlocked) return;
     if ((form.getValues("total_deposit") ?? 0) === (rentForDepositDefault ?? 0)) {
       return;
     }
     form.setValue("total_deposit", rentForDepositDefault ?? 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rentForDepositDefault, depositUnlocked, isEditMode, open]);
+  }, [rentForDepositDefault, depositUnlocked, isEditMode, isDraftMode, open]);
 
   // Tiền cọc ghi vào SỔ QUỸ THẬT user chọn ở từng dòng "Đã đặt cọc" (sổ CỌC
   // chỉ là sổ ảo theo dõi, không nhận dòng tiền). RPC tạo các phiếu này cùng HĐ.
@@ -434,6 +476,7 @@ export function useContractFormState({
   const startBillingInput = form.watch("start_billing_date");
   const endBillingInput = form.watch("end_billing_date");
   useEffect(() => {
+    if (isDraftMode && !form.getFieldState('start_billing_date').isDirty) return;
     if (!startBillingInput) return;
     if (endBillingInput) return;
     const d = new Date(startBillingInput);
@@ -443,7 +486,7 @@ export function useContractFormState({
     const mm = String(next.getMonth() + 1).padStart(2, "0");
     const dd = String(next.getDate()).padStart(2, "0");
     form.setValue("end_billing_date", `${yyyy}-${mm}-${dd}`);
-  }, [startBillingInput, endBillingInput, form]);
+  }, [startBillingInput, endBillingInput, form, isDraftMode]);
 
   // Match create_contract_v2 exactly: date-only values, start falls back to
   // contract start, and an omitted end falls back to the effective start.
@@ -475,6 +518,7 @@ export function useContractFormState({
     [selectedServices],
   );
   useEffect(() => {
+    if (isDraftMode) return;
     if (customerCount <= 0) return;
     setSelectedServices((prev) => {
       let changed = false;
@@ -491,7 +535,7 @@ export function useContractFormState({
       });
       return changed ? next : prev;
     });
-  }, [customerCount, perPersonServiceIdsKey]);
+  }, [customerCount, perPersonServiceIdsKey, isDraftMode]);
 
   // Tự sinh items hoá đơn cọc + tháng đầu khi inputs đổi. User chỉnh trực
   // tiếp trên bảng preview vẫn được — nhưng nếu họ đổi rent/dates/services
@@ -522,9 +566,28 @@ export function useContractFormState({
         .join("|"),
     [invoiceServices],
   );
+  // The saved manual invoice is the baseline. Only edits to invoice-driving
+  // fields in this open editor rebuild it; background receipt reads do not.
+  const draftInvoiceSignature = JSON.stringify([
+    rentPriceWatch, totalDepositWatch, typedDepositTotal, depositDebtMode,
+    startBilling, endBilling, discountMonthsWatch, discountAmtWatch, servicesKey,
+    draftInvoiceEditRevision.current,
+  ]);
   useEffect(() => {
     if (!open) return;
     if (isEditMode) return; // edit mode không sinh hoá đơn tự động
+    if (isDraftMode && draft?.payload.editor_state) {
+      const baseline = draftInvoiceBaseline.current;
+      if (!baseline || baseline.draftId !== draft.id) return;
+      const userChangedInvoiceField = (
+        ['rent_price', 'total_deposit', 'deposit_debt_mode', 'start_date',
+          'start_billing_date', 'end_billing_date', 'discount_months',
+          'discount_amount_per_month'] as const
+      ).some((field) => form.getFieldState(field).isDirty);
+      if (!userChangedInvoiceField && draftInvoiceEditRevision.current === 0) return;
+      if (baseline.signature === draftInvoiceSignature) return;
+      baseline.signature = draftInvoiceSignature;
+    }
     const items = buildFirstInvoiceItems({
       rent_price: rentPriceWatch,
       total_deposit: totalDepositWatch,
@@ -561,6 +624,9 @@ export function useContractFormState({
     discountMonthsWatch,
     discountAmtWatch,
     servicesKey,
+    isDraftMode,
+    draft?.payload.editor_state,
+    draftInvoiceSignature,
   ]);
 
   const invoiceSubtotal = useMemo(
@@ -632,9 +698,19 @@ export function useContractFormState({
     setSelectedBuildingId(buildingId);
     setSelectedRoomId("");
     form.setValue("room_id", "");
+    if (isDraftMode) {
+      setSavedDraftDefaultServices(null);
+      if (!rentUnlocked) form.setValue('rent_price', 0, { shouldDirty: true });
+      if (!depositUnlocked) form.setValue('total_deposit', 0, { shouldDirty: true });
+    }
   };
 
   const handleRoomChange = (roomId: string) => {
+    if (isDraftMode && roomId !== selectedRoomId) {
+      const nextRent = Number(rooms.find((room) => room.id === roomId)?.rent_price ?? 0);
+      if (!rentUnlocked) form.setValue('rent_price', nextRent, { shouldDirty: true });
+      if (!depositUnlocked) form.setValue('total_deposit', rentUnlocked ? form.getValues('rent_price') ?? 0 : nextRent, { shouldDirty: true });
+    }
     setSelectedRoomId(roomId);
     form.setValue("room_id", roomId);
   };
@@ -650,6 +726,15 @@ export function useContractFormState({
       newCustomers[0].is_representative = true;
     }
     setSelectedCustomers(newCustomers);
+    if (isDraftMode && newCustomers.length > 1) {
+      if (selectedServices.some((service) => service.pricing_type === 'DON_GIA_THEO_NGUOI' && (service.quantity ?? 1) === 1)) {
+        draftInvoiceEditRevision.current += 1;
+      }
+      setSelectedServices((prev) => prev.map((service) =>
+        service.pricing_type === 'DON_GIA_THEO_NGUOI' && (service.quantity ?? 1) === 1
+          ? { ...service, quantity: newCustomers.length }
+          : service));
+    }
   };
 
   const handleRemoveCustomer = (customerId: string) => {
@@ -685,6 +770,7 @@ export function useContractFormState({
   // từ dịch vụ đang bật của toà để user chỉnh tiếp (thêm/bớt/sửa giá). Tắt
   // lại không xoá lựa chọn (giữ để bật lại không mất), chỉ không lưu khi save.
   const handleToggleCustomServices = (on: boolean) => {
+    if (isDraftMode) draftInvoiceEditRevision.current += 1;
     setUseCustomServices(on);
     if (on && selectedServices.length === 0 && buildingServicesAsSelected.length > 0) {
       setSelectedServices(buildingServicesAsSelected);
@@ -692,14 +778,18 @@ export function useContractFormState({
   };
 
   const handleServicesSelected = (services: ServiceBasic[]) => {
+    if (isDraftMode) draftInvoiceEditRevision.current += 1;
     const newServices: SelectedService[] = services.map((s) => {
       const existing = selectedServices.find((ss) => ss.id === s.id);
-      return existing ?? { ...s, initial_reading: 0, quantity: 1 };
+      return existing ?? { ...s, initial_reading: 0,
+        quantity: isDraftMode && s.pricing_type === 'DON_GIA_THEO_NGUOI' && selectedCustomers.length > 1
+          ? selectedCustomers.length : 1 };
     });
     setSelectedServices(newServices);
   };
 
   const handleRemoveService = (serviceId: string) => {
+    if (isDraftMode) draftInvoiceEditRevision.current += 1;
     setSelectedServices((prev) => prev.filter((s) => s.id !== serviceId));
   };
 
@@ -708,6 +798,7 @@ export function useContractFormState({
     field: "initial_reading" | "quantity" | "unit_price",
     value: number
   ) => {
+    if (isDraftMode) draftInvoiceEditRevision.current += 1;
     setSelectedServices((prev) =>
       prev.map((s) => (s.id === serviceId ? { ...s, [field]: value } : s))
     );
@@ -754,6 +845,7 @@ export function useContractFormState({
 
   return {
     isEditMode,
+    isDraftMode,
     // mutations (submit orchestration dùng)
     createContract,
     updateContract,
@@ -776,17 +868,24 @@ export function useContractFormState({
     selectedBuildingId,
     selectedRoomId,
     selectedCustomers,
+    setSelectedCustomers,
     selectedServices,
+    setSelectedServices,
     customerDialogOpen,
     setCustomerDialogOpen,
     serviceDialogOpen,
     setServiceDialogOpen,
     useCustomServices,
+    setUseCustomServices,
     invoiceItems,
+    setInvoiceItems,
     depositRows,
+    setDepositRows,
     rentUnlocked,
+    setRentUnlocked,
     unlockRent: () => setRentUnlocked(true),
     depositUnlocked,
+    setDepositUnlocked,
     unlockDeposit: () => setDepositUnlocked(true),
     commissionContractId,
     setCommissionContractId,
@@ -823,6 +922,10 @@ export function useContractFormState({
     handleServicesSelected,
     handleRemoveService,
     handleServiceFieldChange,
+    getDraftPayload: (owner: DraftOwner = draft?.payload.owner ?? emptyDraftOwner()) => buildContractDraftPayload({
+      form: form.getValues(), selectedCustomers, selectedServices, buildingServices: buildingServicesAsSelected,
+      useCustomServices, depositRows, invoiceItems, rentUnlocked, depositUnlocked,
+    }, owner),
     onInvalid,
   };
 }

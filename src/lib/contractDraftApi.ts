@@ -27,7 +27,14 @@ export interface SaveContractDraftInput {
 export async function saveContractDraft(input: SaveContractDraftInput): Promise<ContractDraft> {
   const payload = contractDraftPayloadSchema.parse(input.payload);
   const json: Json = { form: { ...payload.form }, customers: payload.customers.map(c => ({ ...c })),
-    services: payload.services.map(s => ({ ...s })), use_custom_services: payload.use_custom_services, owner: { ...payload.owner } };
+    services: payload.services.map(s => ({ ...s })), use_custom_services: payload.use_custom_services, owner: { ...payload.owner },
+    ...(payload.editor_state ? { editor_state: {
+      version: payload.editor_state.version, form: { ...payload.editor_state.form },
+      deposit_rows: payload.editor_state.deposit_rows.map(row => ({ ...row, images: [...row.images] })),
+      invoice_items: payload.editor_state.invoice_items.map(item => ({ ...item })),
+      selected_services: payload.editor_state.selected_services.map(service => ({ ...service })),
+      rent_unlocked: payload.editor_state.rent_unlocked, deposit_unlocked: payload.editor_state.deposit_unlocked,
+    } } : {}) };
   const { data, error } = await supabase.rpc('save_contract_draft', {
     p_organization_id: input.organizationId, p_building_id: input.buildingId,
     p_room_id: rpcNullable(payload.form.room_id || null), p_payload: json, p_template_id: input.templateId ?? undefined,

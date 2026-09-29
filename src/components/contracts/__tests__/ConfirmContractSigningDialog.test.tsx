@@ -56,4 +56,46 @@ describe('confirm persisted document signing',()=>{
     expect(screen.getByText(/Không tải được nguồn giữ chỗ/)).toBeTruthy();expect(screen.getByRole('button',{name:'Xác nhận đã ký và nhận phòng'}).hasAttribute('disabled')).toBe(true);
     fireEvent.click(screen.getByLabelText(/Không chuyển nguồn giữ chỗ/));expect(screen.getByRole('button',{name:'Xác nhận đã ký và nhận phòng'}).hasAttribute('disabled')).toBe(false);
   });
+  it('uses prepared official money and invoice inputs without asking or rebuilding them',async()=>{
+    const options={deposit_debt_mode:'DEBT' as const,deposit_debt_reason:'Đã xác nhận tại form',deposit_topup_due_date:'2026-10-02',
+      deposit_receipts:[{amount:400000,account_id:id,received_date:'2026-09-28',attachments:['proof/1']}],
+      existing_deposit_voucher_ids:[id],invoice_template_id:id,
+      first_invoice:{items:[{type:'RENT' as const,accounting_class:'REVENUE' as const,description:'Dòng đã sửa tại form',unit_price:1234567,quantity:1}],
+        discount_amount:11111,notes:'Ghi chú đã sửa'}};
+    render(<ConfirmContractSigningDialog open onOpenChange={vi.fn()} draft={draft} preparedCreation={{options,depositPaid:400000}}/>);
+    expect(screen.queryByText(/Chọn cách bổ sung/)).toBeNull();
+    expect(screen.queryByText(/Tạo hoá đơn đầu theo kỳ/)).toBeNull();
+    ready();fireEvent.click(screen.getByRole('button',{name:'Xác nhận đã ký và nhận phòng'}));
+    await waitFor(()=>expect(mocks.sign).toHaveBeenCalledTimes(1));
+    expect(mocks.sign.mock.calls[0][0].creationOptions).toEqual(options);
+  });
+  it('requires review in the shared form when selected reservation vouchers were absent from prepared inputs',()=>{
+    const own={id,organization_id:id,building_id:id,room_id:id,customer_id:id,customer_name:'Khách A',status:'HOLD',claim_status:'LIVE',revision:4,
+      received_amount:2000000,source_voucher_ids:[id],receipts:[{received:true,approval_status:'APPROVED'}]};
+    mocks.reservations.data.reservations=[own];
+    const withCustomer={...draft,payload:{...payload,form:{...payload.form,total_deposit:2000000},
+      customers:[{id,full_name:'Khách A',phone:'0900000000',id_number:'0123456789',is_representative:true,notes:null}]}};
+    render(<ConfirmContractSigningDialog open onOpenChange={vi.fn()} draft={withCustomer}
+      preparedCreation={{options:{existing_deposit_voucher_ids:[],deposit_debt_mode:'DEBT',deposit_debt_reason:'Theo form',deposit_topup_due_date:'2026-10-02'},depositPaid:0}}/>);
+    ready();fireEvent.click(screen.getByLabelText(/Khách A.*2.000.000/));
+    expect(screen.getByText(/quay lại form.*kiểm tra/i)).toBeTruthy();
+    expect(screen.getByRole('button',{name:'Xác nhận đã ký và nhận phòng'}).hasAttribute('disabled')).toBe(true);
+    expect(mocks.sign).not.toHaveBeenCalled();
+  });
+  it('keeps an already prepared reservation source without changing the official paid amount',async()=>{
+    const own={id,organization_id:id,building_id:id,room_id:id,customer_id:id,customer_name:'Khách A',status:'HOLD',claim_status:'LIVE',revision:4,
+      received_amount:2000000,source_voucher_ids:[id],receipts:[{received:true,approval_status:'APPROVED'}]};
+    mocks.reservations.data.reservations=[own];
+    const withCustomer={...draft,payload:{...payload,form:{...payload.form,total_deposit:2000000},
+      customers:[{id,full_name:'Khách A',phone:'0900000000',id_number:'0123456789',is_representative:true,notes:null}]}};
+    const options={existing_deposit_voucher_ids:[id],deposit_debt_mode:'DEBT' as const,deposit_debt_reason:'Theo form',deposit_topup_due_date:'2026-10-02'};
+    render(<ConfirmContractSigningDialog open onOpenChange={vi.fn()} draft={withCustomer}
+      preparedCreation={{options,depositPaid:2000000}}/>);
+    ready();fireEvent.click(screen.getByLabelText(/Khách A.*2.000.000/));
+    expect(screen.queryByText(/quay lại form.*kiểm tra/i)).toBeNull();
+    fireEvent.click(screen.getByRole('button',{name:'Xác nhận đã ký và nhận phòng'}));
+    await waitFor(()=>expect(mocks.sign).toHaveBeenCalledTimes(1));
+    expect(mocks.sign.mock.calls[0][0]).toMatchObject({creationOptions:options,
+      reservationSource:{reservationId:id,revision:4,sourceVoucherIds:[id]}});
+  });
 });

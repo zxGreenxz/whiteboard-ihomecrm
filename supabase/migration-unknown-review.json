@@ -850,6 +850,29 @@
       ],
       "raSoatBoi": "Claude Code — hoa hồng quản lý sổ ảo 27/09/2026",
       "sha256": "f4bef1760957aa276377203c9ee19e09823094b0b7a3359f39f3f8712d0716c7"
+    },
+    "supabase/migrations/20260929010015_unified_contract_editor_draft_signing.sql": {
+      "sha256": "61b52d8b081874249db8c09b91413da5e5795e77863afc7d7e875752e3ab842c",
+      "missingObjects": [
+        "function:app_private.validate_contract_draft_editor_state_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Migration mới cho form hợp đồng dùng chung, chưa áp production. Helper kiểm metadata nháp là object mới; hai RPC giữ signature và quyền hiện có. Đã dry-run và áp lặp trên TEST; 29 ca PGlite, JWT save/replay/list và từ chối payload sai/cross-org đạt. Hai phép đột biến xác nhận bỏ validation hoặc bỏ chuyển receipt inputs làm test đỏ. Đã soát độc lập luồng ký và sửa hai điểm UI về ghi chú chuẩn hoá và trạng thái sau lần lưu nháp đầu. Sẽ áp qua migrate:forward với backup sau khi mở draft PR; chưa tuyên bố production có helper.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20260929010015_unified_contract_editor_draft_signing.sql:3",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.validate_contract_draft_editor_state_v1(p_state jsonb,p_organization_id uuid)"
+        },
+        {
+          "duong_dan": "src/lib/__tests__/contractDraftMigration.test.ts",
+          "trich_doan": "Kiểm optional editor_state, dữ liệu thiếu, null/unknown keys, idempotent replay và metadata không tạo contract/receipt."
+        },
+        {
+          "duong_dan": "src/lib/__tests__/contractSigningMigration.test.ts",
+          "trich_doan": "Kiểm chuyển đúng receipt/voucher/invoice options vào create_contract_v2, revision/document/source guards và dịch vụ riêng tắt."
+        }
+      ],
+      "raSoatBoi": "Codex + implement_drafts + prepare_p1b_schema_interfaces + implement_notices, 2026-09-29"
     }
   }
 }

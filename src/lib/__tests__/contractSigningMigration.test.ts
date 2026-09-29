@@ -4,6 +4,8 @@ import { beforeAll, beforeEach, afterAll, describe, expect, it } from 'vitest';
 import { emptyContractDraftPayload } from '../contractDrafts';
 const path='supabase/migrations/20260928024559_contract_draft_sign_checkin.sql';
 const sql=existsSync(path)?readFileSync(path,'utf8'):'';
+const unifiedPath='supabase/migrations/20260929010015_unified_contract_editor_draft_signing.sql';
+const unified=existsSync(unifiedPath)?readFileSync(unifiedPath,'utf8'):'';
 const db=new PGlite();
 const uid=(n:number)=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const org=uid(1),other=uid(2),building=uid(3),room=uid(4),draft=uid(5),doc=uid(6),actor=uid(7),customer=uid(8),template=uid(9),request=uid(10);
@@ -51,7 +53,7 @@ beforeAll(async()=>{
     CREATE TABLE storage.objects(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),bucket_id text,name text,owner_id text,UNIQUE(bucket_id,name));ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
     GRANT SELECT,INSERT,UPDATE,DELETE ON storage.objects TO authenticated;
     CREATE POLICY existing_generic_policy ON storage.objects FOR ALL TO authenticated USING(true) WITH CHECK(true);
-  `);await db.exec(sql);await db.exec(sql);
+  `);await db.exec(sql);await db.exec(sql);if(unified){await db.exec(unified);await db.exec(unified);}
 },30000);
 beforeEach(async()=>{
   await db.exec(`RESET ROLE;SELECT set_config('test.deny','',false),set_config('test.boundary_fail','',false),set_config('test.deny_authorizer','',false);
@@ -65,7 +67,7 @@ beforeEach(async()=>{
 afterAll(async()=>{await db.close();});
 describe('actual sign/check-in SQL, existing core and authority stubbed',()=>{
   it.each([0,123])('uses B verified actual reading %s in the core while retaining the printed draft proposal',async reading=>{
-    const service=uid(41),meter=uid(42);const proposal={...terms,services:[{id:service,name:'Electric',unit_price:3000,initial_reading:7,quantity:1,type:'METER_READING',unit:'kWh',pricing_type:'METER'}]};
+    const service=uid(41),meter=uid(42);const proposal={...terms,use_custom_services:true,services:[{id:service,name:'Electric',unit_price:3000,initial_reading:7,quantity:1,type:'METER_READING',unit:'kWh',pricing_type:'METER'}]};
     await db.query('INSERT INTO public.services VALUES($1,$2,NULL)',[service,org]);
     await db.query('INSERT INTO public.meters VALUES($1,$2,$3,$4,$5,$6,NULL)',[meter,org,building,room,service,'ACTIVE']);
     await db.query('UPDATE public.contract_drafts SET payload=$2 WHERE id=$1',[draft,JSON.stringify(proposal)]);await db.query('UPDATE public.contract_draft_versions SET payload=$2 WHERE draft_id=$1',[draft,JSON.stringify(proposal)]);
@@ -77,7 +79,7 @@ describe('actual sign/check-in SQL, existing core and authority stubbed',()=>{
     expect((await db.query<{payload:unknown}>('SELECT payload FROM public.test_boundaries')).rows[0].payload).toEqual(actual);
   });
   it('rejects differing physical readings for one legacy scalar service instead of guessing a meter',async()=>{
-    const service=uid(41),a=uid(42),b=uid(43);const proposal={...terms,services:[{id:service,name:'Electric',unit_price:3000,initial_reading:7,quantity:1,type:'METER_READING',unit:'kWh',pricing_type:'METER'}]};
+    const service=uid(41),a=uid(42),b=uid(43);const proposal={...terms,use_custom_services:true,services:[{id:service,name:'Electric',unit_price:3000,initial_reading:7,quantity:1,type:'METER_READING',unit:'kWh',pricing_type:'METER'}]};
     await db.query('INSERT INTO public.services VALUES($1,$2,NULL)',[service,org]);
     for(const meter of[a,b])await db.query('INSERT INTO public.meters VALUES($1,$2,$3,$4,$5,$6,NULL)',[meter,org,building,room,service,'ACTIVE']);
     await db.query('UPDATE public.contract_drafts SET payload=$2 WHERE id=$1',[draft,JSON.stringify(proposal)]);await db.query('UPDATE public.contract_draft_versions SET payload=$2 WHERE draft_id=$1',[draft,JSON.stringify(proposal)]);
@@ -85,7 +87,7 @@ describe('actual sign/check-in SQL, existing core and authority stubbed',()=>{
     expect((await db.query('SELECT * FROM public.test_core_calls')).rows).toHaveLength(0);
   });
   it.each(['METER_READING','FIXED'])('requires a physical mapping only for selected %s services',async type=>{
-    const service=uid(41);const proposal={...terms,services:[{id:service,name:'Service',unit_price:3000,initial_reading:7,quantity:1,type,unit:'unit',pricing_type:type==='METER_READING'?'METER':'FIXED'}]};
+    const service=uid(41);const proposal={...terms,use_custom_services:true,services:[{id:service,name:'Service',unit_price:3000,initial_reading:7,quantity:1,type,unit:'unit',pricing_type:type==='METER_READING'?'METER':'FIXED'}]};
     await db.query('INSERT INTO public.services VALUES($1,$2,NULL)',[service,org]);
     await db.query('UPDATE public.contract_drafts SET payload=$2 WHERE id=$1',[draft,JSON.stringify(proposal)]);await db.query('UPDATE public.contract_draft_versions SET payload=$2 WHERE draft_id=$1',[draft,JSON.stringify(proposal)]);
     if(type==='METER_READING'){
@@ -133,9 +135,31 @@ describe('actual sign/check-in SQL, existing core and authority stubbed',()=>{
     await db.exec("UPDATE public.room_turnovers SET status='READY'");await expect(sign({date:'2026-09-29'})).rejects.toMatchObject({code:'22023'});await sign();
     expect((await db.query<{payload:typeof terms}>('SELECT payload FROM public.test_core_calls')).rows[0].payload).toMatchObject({contract:{start_date:'2026-09-28',start_billing_date:'2026-09-28',end_billing_date:'2026-09-30'}});
   });
-  it('rejects changed parties and injected mutable contract, receipt or voucher options',async()=>{
+  it('rejects changed parties and injected mutable contract or reservation options',async()=>{
     await db.exec("UPDATE public.customers SET full_name='Khách khác'");await expect(sign()).rejects.toMatchObject({code:'40001'});await db.exec("UPDATE public.customers SET full_name='Khách A'");
-    for(const options of [{contract:{rent_price:1}},{deposit_receipts:[{amount:10}]},{existing_deposit_voucher_ids:[uid(11)]},{reservation_id:uid(11)}]) await expect(sign({options})).rejects.toMatchObject({code:'22023'});
+    for(const options of [{contract:{rent_price:1}},{reservation_id:uid(11)},{deposit_receipts:{}},{existing_deposit_voucher_ids:'wrong'}]) await expect(sign({options})).rejects.toMatchObject({code:'22023'});
+  });
+  it('forwards prepared receipts, invoice template and deduplicated voucher sources only to existing core',async()=>{
+    const receipt={amount:250000,account_id:null,received_date:'2026-09-28',attachments:[]};
+    const options={deposit_receipts:[receipt],existing_deposit_voucher_ids:[uid(32),uid(32)],invoice_template_id:uid(33)};
+    const first=(await sign({options})).rows[0].result;
+    const core=(await db.query<{payload:Record<string,unknown>}>('SELECT payload FROM public.test_core_calls')).rows[0].payload;
+    expect(core).toMatchObject({deposit_receipts:[receipt],existing_deposit_voucher_ids:[uid(32)],contract:{invoice_template_id:uid(33)}});
+    expect((core.contract as Record<string,unknown>)).not.toHaveProperty('deposit_receipts');
+    expect((core.contract as Record<string,unknown>)).not.toHaveProperty('existing_deposit_voucher_ids');
+    expect(first.creation_options).toMatchObject(options);
+    expect((await sign({options})).rows[0].result.id).toBe(first.id);
+    await expect(sign({options:{...options,deposit_receipts:[{...receipt,amount:250001}]}})).rejects.toMatchObject({code:'23505'});
+    expect((await db.query('SELECT * FROM public.test_core_calls')).rows).toHaveLength(1);
+  });
+  it('keeps custom-services OFF empty when the saved draft still carries displayed defaults',async()=>{
+    const service=uid(41);
+    const proposal={...terms,use_custom_services:false,services:[{id:service,name:'Default service',unit_price:3000,initial_reading:0,quantity:1,type:'FIXED',unit:'unit',pricing_type:'FIXED'}]};
+    await db.query('INSERT INTO public.services VALUES($1,$2,NULL)',[service,org]);
+    await db.query('UPDATE public.contract_drafts SET payload=$2 WHERE id=$1',[draft,JSON.stringify(proposal)]);
+    await db.query('UPDATE public.contract_draft_versions SET payload=$2 WHERE draft_id=$1',[draft,JSON.stringify(proposal)]);
+    await sign();
+    expect((await db.query<{payload:{services:unknown[]}}>('SELECT payload FROM public.test_core_calls')).rows[0].payload.services).toEqual([]);
   });
   it('rolls the official create back completely when physical boundary assertion fails',async()=>{
     await db.exec("SELECT set_config('test.boundary_fail','yes',false)");await expect(sign()).rejects.toMatchObject({code:'55000'});

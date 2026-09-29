@@ -8,6 +8,7 @@ type ContractFormFooterProps = Pick<
   "isEditMode" | "isPending" | "blockByDepositDebt"
 > & {
   onOpenChange: (open: boolean) => void;
+  onSaveDraft?: () => void;
 };
 
 /** ===== Footer buttons ===== (JSX chuyển NGUYÊN VĂN) */
@@ -16,9 +17,10 @@ export function ContractFormFooter({
   isPending,
   blockByDepositDebt,
   onOpenChange,
+  onSaveDraft,
 }: ContractFormFooterProps) {
   return (
-    <div className="flex justify-end gap-3 pt-4 border-t">
+    <div className="flex flex-wrap justify-end gap-3 pt-4 border-t">
       <Button
         type="button"
         variant="outline"
@@ -27,11 +29,12 @@ export function ContractFormFooter({
       >
         Hủy
       </Button>
+      {!isEditMode && onSaveDraft && <Button type="button" variant="outline" disabled={isPending} onClick={onSaveDraft}>Lưu nháp</Button>}
       <Button
         type="submit"
-        disabled={isPending || blockByDepositDebt}
+        disabled={isPending || (isEditMode && blockByDepositDebt)}
         title={
-          blockByDepositDebt
+          isEditMode && blockByDepositDebt
             ? "Khách chưa đóng đủ cọc — tích \"Đồng ý cho nợ cọc\" để lưu"
             : undefined
         }

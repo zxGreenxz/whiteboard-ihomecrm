@@ -10,6 +10,32 @@ const serviceSchema = z.object({
   unit: z.string().nullable(), type: z.string(), pricing_type: z.string().nullable(),
   initial_reading: z.number().finite().nonnegative(), quantity: z.number().finite().nonnegative(),
 }).strict();
+export type ContractDraftService = z.infer<typeof serviceSchema>;
+/** Local editor input only. Saving this metadata never posts a receipt or invoice. */
+export const contractDraftEditorStateSchema = z.object({
+  version: z.literal(1),
+  form: z.object({
+    deposit_debt_acknowledged: z.boolean(),
+    deposit_debt_mode: z.enum(['DEBT', 'FIRST_INVOICE']).optional(),
+    deposit_debt_reason: z.string(),
+    deposit_topup_due_date: z.string(),
+    invoice_template_id: z.string().uuid().nullable(),
+  }).strict(),
+  deposit_rows: z.array(z.object({
+    uid: z.string(), amount: z.number().finite().nonnegative(), account_id: z.string(),
+    received_date: z.string(), images: z.array(z.string()),
+  }).strict()),
+  invoice_items: z.array(z.object({
+    id: z.string(), type: z.enum(['RENT', 'SERVICE', 'DISCOUNT', 'OTHER']),
+    accounting_class: z.enum(['REVENUE', 'DEPOSIT']), description: z.string(),
+    unit_price: z.number().finite().nonnegative(), quantity: z.number().finite().nonnegative(),
+    service_id: z.string().nullable().optional(), from_date: z.string().nullable().optional(),
+    to_date: z.string().nullable().optional(),
+  }).strict()),
+  selected_services: z.array(serviceSchema),
+  rent_unlocked: z.boolean(), deposit_unlocked: z.boolean(),
+}).strict();
+export type ContractDraftEditorState = z.infer<typeof contractDraftEditorStateSchema>;
 export const draftOwnerSchema = z.object({ name: z.string(), phone: z.string(), birthday: z.string(),
   id_number: z.string(), id_issue_place: z.string(), id_issue_date: z.string() }).strict();
 export type DraftOwner = z.infer<typeof draftOwnerSchema>;
@@ -26,6 +52,7 @@ export const contractDraftPayloadSchema = z.object({
   }).strict(),
   customers: z.array(customerSchema), services: z.array(serviceSchema), use_custom_services: z.boolean(),
   owner: draftOwnerSchema.default(emptyDraftOwner),
+  editor_state: contractDraftEditorStateSchema.optional(),
 }).strict();
 export type ContractDraftPayload = z.infer<typeof contractDraftPayloadSchema>;
 

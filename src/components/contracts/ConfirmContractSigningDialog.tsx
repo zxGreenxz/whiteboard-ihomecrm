@@ -10,7 +10,7 @@ import { ContractMeterBoundaryFields } from '@/components/contracts/ContractMete
 import { useContractDraftSigning, useContractSigning, useSignedContractDocument } from '@/hooks/contracts/useContractSigning';
 import { useRoomReservations } from '@/hooks/useRoomReservations';
 import type { RoomReservation } from '@/lib/reservationIdentityRpc';
-import { buildSigningCreationOptions, matchingSigningReservations, signingReservationReady, signingErrorMessage, validateSigningConfirmation, type ContractSigning, type SigningReservationIdentity } from '@/lib/contractSigning';
+import { buildSigningCreationOptions, matchingSigningReservations, signingReservationReady, signingErrorMessage, validateSigningConfirmation, type ContractSigning, type PreparedSigningCreation, type SigningReservationIdentity } from '@/lib/contractSigning';
 import type { ContractDraft } from '@/lib/contractDrafts';
 import type { MeterBoundaryInput } from '@/lib/contractMeterBoundaries';
 
@@ -30,8 +30,9 @@ export interface ConfirmContractSigningDialogProps {
   canSign?: boolean;
   canPrint?: boolean;
   onSigned?: (signing: ContractSigning) => void;
+  preparedCreation?: PreparedSigningCreation;
 }
-export function ConfirmContractSigningDialog({ open, onOpenChange, draft, canSign = true, canPrint = false, onSigned }: ConfirmContractSigningDialogProps) {
+export function ConfirmContractSigningDialog({ open, onOpenChange, draft, canSign = true, canPrint = false, onSigned, preparedCreation }: ConfirmContractSigningDialogProps) {
   const snapshot = useContractDraftSigning(draft.id, open);
   const signingMutation = useContractSigning(draft.organization_id);
   const documentMutation = useSignedContractDocument(draft.organization_id);
@@ -63,15 +64,17 @@ export function ConfirmContractSigningDialog({ open, onOpenChange, draft, canSig
     && !!currentReservation && signingReservationReady(currentReservation) && currentReservation.revision === selectedReservation.revision
     && currentReservation.received_amount === selectedReservation.received_amount
     && JSON.stringify(currentReservation.source_voucher_ids) === JSON.stringify(selectedReservation.source_voucher_ids));
-  const depositPaid = selectedReservation?.received_amount ?? 0;
+  const unpreparedReservationSources = !!preparedCreation && !!selectedReservation
+    && selectedReservation.source_voucher_ids.some(id => !(preparedCreation.options.existing_deposit_voucher_ids ?? []).includes(id));
+  const depositPaid = preparedCreation?.depositPaid ?? selectedReservation?.received_amount ?? 0;
   const confirmationErrors = validateSigningConfirmation(draft, document, { receivedOn, roomReady, termsConfirmed,
     metersConfirmed: meterBoundary?.state === 'VERIFIED' }, snapshot.data?.server_today);
 
   const handleSign = async () => {
     setErrors(confirmationErrors);
-    if (confirmationErrors.length || !document || meterBoundary?.state !== 'VERIFIED' || !canSign || !reservationValid) return;
+    if (confirmationErrors.length || !document || meterBoundary?.state !== 'VERIFIED' || !canSign || !reservationValid || unpreparedReservationSources) return;
     try {
-      const creationOptions = buildSigningCreationOptions(draft.payload, { createFirstInvoice, depositMode, debtReason, topupDueOn, depositPaid });
+      const creationOptions = preparedCreation?.options ?? buildSigningCreationOptions(draft.payload, { createFirstInvoice, depositMode, debtReason, topupDueOn, depositPaid });
       const value = { source: { draftId: draft.id, revision: draft.revision, documentId: document.id, documentSha256: document.document_sha256 },
         receivedOn, roomReady, termsConfirmed, boundary: meterBoundary, creationOptions,
         ...(selectedReservation ? { reservationSource: { reservationId: selectedReservation.id, revision: selectedReservation.revision,
@@ -124,7 +127,9 @@ export function ConfirmContractSigningDialog({ open, onOpenChange, draft, canSig
               : reservations.length ? reservations.map(reservation => <label key={reservation.id} className="flex gap-2 items-start"><input type="radio" name="signing-reservation" disabled={!signingReservationReady(reservation)} checked={selectedReservation?.id === reservation.id && selectedReservation.revision === reservation.revision} onChange={() => selectReservation(reservation)}/><span>{reservation.customer_name || draft.payload.customers.find(customer => customer.id === reservation.customer_id)?.full_name} · Đã nhận {reservation.received_amount.toLocaleString('vi-VN')} đ · phiên bản {reservation.revision}{!signingReservationReady(reservation) && ' · Chờ nhận/duyệt tiền'}</span></label>)
                 : <p className="text-muted-foreground">Không có giữ chỗ đang hiệu lực khớp phòng và khách của bản nháp.</p>}
             {selectedReservation && !reservationValid && <p role="alert" className="text-destructive">Nguồn đã chọn chưa xác minh được hoặc đã đổi. Tải lại và chọn đúng phiên bản trước khi ký.</p>}
+            {unpreparedReservationSources && <p role="alert" className="text-destructive">Nguồn giữ chỗ có phiếu cọc chưa được form hợp đồng kiểm tra. Quay lại form để kiểm tra cọc và hoá đơn đầu trước khi ký.</p>}
           </div>
+          {preparedCreation ? <p className="rounded-md border p-3 text-sm">Dùng khoản cọc đã nhận {depositPaid.toLocaleString('vi-VN')} đ cùng lựa chọn nợ cọc và hoá đơn đầu đã kiểm tra trong form hợp đồng chính thức.</p> : <>
           {draft.payload.form.total_deposit - depositPaid >= 0.01 && <div className="rounded-md border p-3 space-y-3 text-sm">
             <p>Cọc còn thiếu {(draft.payload.form.total_deposit - depositPaid).toLocaleString('vi-VN')} đ. Chọn cách bổ sung:</p>
             <label className="flex gap-2"><input type="radio" name="signing-deposit-mode" checked={depositMode === 'DEBT'} onChange={() => setDepositMode('DEBT')}/>Theo dõi nợ cọc, bổ sung sau</label>
@@ -133,8 +138,9 @@ export function ConfirmContractSigningDialog({ open, onOpenChange, draft, canSig
           </div>}
           <label className="flex gap-2 text-sm"><input type="checkbox" checked={createFirstInvoice} disabled={depositMode === 'FIRST_INVOICE'} onChange={event => setCreateFirstInvoice(event.target.checked)}/><span>Tạo hoá đơn đầu theo kỳ tính tiền và dịch vụ đã lưu</span></label>
           <p className="text-xs text-muted-foreground">Nguồn cọc đã chọn được chuyển đúng sang hợp đồng; không ghi phiếu thu cọc lần nữa. Phần chưa thu theo cách bổ sung đã chọn.</p>
+          </>}
         </fieldset>
-        <Button type="button" disabled={pending || !canSign || confirmationErrors.length > 0 || !meterBoundary || !reservationValid} onClick={() => void handleSign()}>{signingMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin"/>}Xác nhận đã ký và nhận phòng</Button>
+        <Button type="button" disabled={pending || !canSign || confirmationErrors.length > 0 || !meterBoundary || !reservationValid || unpreparedReservationSources} onClick={() => void handleSign()}>{signingMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin"/>}Xác nhận đã ký và nhận phòng</Button>
       </div>}
       <Button type="button" variant="outline" disabled={pending} onClick={() => onOpenChange(false)}>Đóng</Button>
     </DialogContent>

@@ -11,6 +11,7 @@ import {
 import {
   calculateContractDepositBalance,
   prepareContractCreateRequest,
+  type ContractCreateRequest,
 } from "@/lib/contractCreateRpc";
 import { applyDepositAdjustmentNote } from "@/lib/contractPriceAdjustment";
 import type { ContractFormState } from "./useContractFormState";
@@ -21,6 +22,8 @@ interface UseContractSubmitParams {
   onOpenChange: (open: boolean) => void;
   /** Gọi sau khi TẠO HĐ thành công (không gọi ở edit mode). */
   onCreated?: (contractId: string) => void;
+  /** Saved drafts use the same validation and request preparation before signing. */
+  onCreateRequest?: (request: ContractCreateRequest) => void | Promise<void>;
 }
 
 export function isStaleOrphanDepositError(error: unknown) {
@@ -46,6 +49,7 @@ export function useContractSubmit({
   contract,
   onOpenChange,
   onCreated,
+  onCreateRequest,
 }: UseContractSubmitParams) {
   const {
     isEditMode,
@@ -79,7 +83,7 @@ export function useContractSubmit({
       try {
         const el = document.querySelector('[data-slot="dialog-content"]');
         if (el) el.scrollTop = 0;
-      } catch {}
+      } catch { /* Validation remains visible even if scrolling is unavailable. */ }
       return;
     }
 
@@ -114,7 +118,7 @@ export function useContractSubmit({
 
     if (isEditMode && contract) {
       // Edit mode: update contract fields
-      const updates: Record<string, any> = {
+      const updates = {
         room_id: data.room_id,
         signed_date: data.signed_date,
         start_date: data.start_date,
@@ -184,7 +188,7 @@ export function useContractSubmit({
         try {
           const el = document.querySelector('[data-slot="dialog-content"]');
           if (el) el.scrollTop = 0;
-        } catch {}
+        } catch { /* Validation remains visible even if scrolling is unavailable. */ }
         return;
       }
 
@@ -354,6 +358,8 @@ export function useContractSubmit({
               }
             : null,
       });
+
+      if (onCreateRequest) return onCreateRequest(request);
 
       createContract.mutate(
         request,

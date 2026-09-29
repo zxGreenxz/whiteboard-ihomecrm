@@ -1,9 +1,11 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { PGlite } from '@electric-sql/pglite';
 import { beforeAll, afterAll, describe, expect, it } from 'vitest';
 import { emptyContractDraftPayload } from '../contractDrafts';
 
 const migration = readFileSync('supabase/migrations/20260928013253_contract_drafts_workflow.sql', 'utf8');
+const unifiedPath = 'supabase/migrations/20260929010015_unified_contract_editor_draft_signing.sql';
+const unified = existsSync(unifiedPath) ? readFileSync(unifiedPath, 'utf8') : '';
 const db = new PGlite();
 const org = '11111111-1111-4111-8111-111111111111';
 const otherOrg = '99999999-9999-4999-8999-999999999999';
@@ -44,7 +46,7 @@ const setup = `
   CREATE TABLE public.services(id uuid PRIMARY KEY,organization_id uuid,deleted_at timestamptz);
   CREATE TABLE public.document_templates(id uuid PRIMARY KEY,organization_id uuid,deleted_at timestamptz,is_active boolean,type text);
   INSERT INTO public.document_templates VALUES('${template}','${org}',null,true,'lease_contract');
-  CREATE TABLE public.contracts(id uuid PRIMARY KEY); CREATE TABLE public.invoices(id uuid PRIMARY KEY);
+  CREATE TABLE public.contracts(id uuid PRIMARY KEY); CREATE TABLE public.contract_draft_signings(id uuid PRIMARY KEY); CREATE TABLE public.invoices(id uuid PRIMARY KEY);
   CREATE TABLE public.income_expenses(id uuid PRIMARY KEY); CREATE TABLE public.payments(id uuid PRIMARY KEY);
   CREATE TABLE storage.buckets(id text PRIMARY KEY,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);
   CREATE TABLE storage.objects(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),bucket_id text,name text,owner_id text,UNIQUE(bucket_id,name));
@@ -58,7 +60,7 @@ async function save(id: string, request: string, data = payload, expected?: numb
 async function register(id = documentId, revision = 2) {
   return db.query<{ result: { id: string; revision: number } }>('SELECT public.register_contract_draft_document($1,$2,$3,$4,$5,$6,$7,$8,$9) result', [org,draftId,revision,id,template,JSON.stringify({id:template,name:'Mẫu gốc',updated_at:'2026-09-28'}),'a'.repeat(64),'b'.repeat(64),JSON.stringify({DRAFT_TITLE:'BẢN NHÁP'})]);
 }
-beforeAll(async () => { await db.exec(setup); await db.exec(migration); await db.exec(migration); }, 30000);
+beforeAll(async () => { await db.exec(setup); await db.exec(migration); await db.exec(migration); if (unified) { await db.exec(unified); await db.exec(unified); } }, 30000);
 afterAll(async () => { await db.close(); });
 
 describe('contract draft migration executes on PostgreSQL (stubbed existing authority)', () => {
@@ -91,6 +93,27 @@ describe('contract draft migration executes on PostgreSQL (stubbed existing auth
     for (const table of ['contracts','invoices','income_expenses','payments']) expect((await db.query(`SELECT * FROM public.${table}`)).rows).toHaveLength(0);
     expect((await db.query<{status:string}>('SELECT status FROM public.rooms')).rows[0].status).toBe('AVAILABLE');
   });
+  it('round-trips versioned full editor metadata without money writes, preserving old draft reads and replay', async () => {
+    const editorState = { version: 1, form: { deposit_debt_acknowledged: false, deposit_debt_reason: '', deposit_topup_due_date: '', invoice_template_id: null },
+      deposit_rows: [{ uid:'dep-1', amount:250000, account_id:'', received_date:'', images:[] }],
+      invoice_items: [{ id:'line-1', type:'RENT', accounting_class:'REVENUE', description:'Tiền phòng', unit_price:1000000, quantity:1, service_id:null, from_date:null, to_date:null }],
+      selected_services: [], rent_unlocked:true, deposit_unlocked:true };
+    const extended = { ...payload, editor_state:editorState } as typeof payload;
+    const id='00000000-0000-4000-8000-000000000040', key='00000000-0000-4000-8000-000000000041';
+    expect((await save(id,key,extended)).rows[0].result.payload).toMatchObject({editor_state:editorState});
+    expect((await save(id,key,extended)).rows[0].result.revision).toBe(1);
+    const read=(await db.query<{payload:{editor_state?:unknown}}>('SELECT payload FROM public.contract_drafts WHERE id=$1',[id])).rows[0].payload;
+    expect(read.editor_state).toEqual(editorState);
+    expect((await db.query<{payload:{editor_state?:unknown}}>('SELECT payload FROM public.contract_drafts WHERE id=$1',[draftId])).rows[0].payload.editor_state).toBeUndefined();
+    for(const table of ['contracts','invoices','income_expenses','payments']) expect((await db.query(`SELECT * FROM public.${table}`)).rows).toHaveLength(0);
+    expect((await db.query<{status:string}>('SELECT status FROM public.rooms')).rows[0].status).toBe('AVAILABLE');
+  });
+  it('rejects unknown nested editor keys, derived money snapshots and malformed version', async () => {
+    const base={version:1,form:{deposit_debt_acknowledged:false,deposit_debt_reason:'',deposit_topup_due_date:'',invoice_template_id:null},deposit_rows:[],invoice_items:[],selected_services:[],rent_unlocked:false,deposit_unlocked:false};
+    const invoice={id:'line-1',type:'RENT',accounting_class:'REVENUE',description:'Tiền phòng',unit_price:1,quantity:1};
+    const values=[{...base,version:2},{...base,deposit_paid:1},{...base,deposit_rows:[{uid:'x',amount:1,account_id:'',received_date:'',images:[],voucher_id:customer}]},{...base,form:{...base.form,existing_deposit_voucher_ids:[customer]}},{...base,form:{...base.form,deposit_debt_mode:null}},{...base,invoice_items:[{...invoice,type:null}]},{...base,invoice_items:[{...invoice,accounting_class:null}]}];
+    for(let i=0;i<values.length;i++) await expect(save(`00000000-0000-4000-8000-${String(50+i).padStart(12,'0')}`,`00000000-0000-4000-8000-${String(60+i).padStart(12,'0')}`,{...payload,editor_state:values[i]} as typeof payload)).rejects.toMatchObject({code:'22023'});
+  });
   it('binds document registration to uploaded exact-revision files, then replays the immutable artifact', async () => {
     await expect(register()).rejects.toMatchObject({ code:'22023' });
     const root = `${org}/${building}/${draftId}/2/${documentId}`;
@@ -116,7 +139,7 @@ describe('contract draft migration executes on PostgreSQL (stubbed existing auth
   it('requires existing document-print permission for downloads despite contract view permission', async () => {
     await db.exec("SELECT set_config('test.deny','contracts.print',false); SET ROLE authenticated");
     try {
-      expect((await db.query('SELECT * FROM public.contract_drafts')).rows).toHaveLength(1);
+      expect((await db.query('SELECT * FROM public.contract_drafts WHERE id=$1',[draftId])).rows).toHaveLength(1);
       expect((await db.query('SELECT * FROM storage.objects')).rows).toHaveLength(0);
       await expect(register()).rejects.toMatchObject({code:'42501'});
     } finally { await db.exec("RESET ROLE; SELECT set_config('test.deny','',false)"); }

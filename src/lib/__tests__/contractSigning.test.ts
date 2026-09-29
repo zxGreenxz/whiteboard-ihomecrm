@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { emptyContractDraftPayload, type ContractDraft } from '../contractDrafts';
-import { buildContractSigningArgs, buildSigningCreationOptions, matchingSigningReservations, signingErrorMessage, signingReservationReady, validateSigningConfirmation } from '../contractSigning';
+import { buildContractSigningArgs, buildPreparedSigningCreation, buildSigningCreationOptions, matchingSigningReservations, signingErrorMessage, signingReservationReady, validateSigningConfirmation } from '../contractSigning';
+import type { ContractCreateRequest } from '../contractCreateRpc';
 
 const id = '11111111-1111-4111-8111-111111111111';
 const payload = emptyContractDraftPayload();
@@ -37,6 +38,26 @@ describe('sign exact persisted draft, without automatic money',()=>{
     const partial=buildSigningCreationOptions(positive,{createFirstInvoice:true,depositPaid:1500000,depositMode:'FIRST_INVOICE'});
     expect(partial.first_invoice?.items.find(item=>item.accounting_class==='DEPOSIT')?.unit_price).toBe(500000);
     expect(()=>buildSigningCreationOptions(positive,{createFirstInvoice:false,depositPaid:Infinity})).toThrow();
+  });
+  it('carries official validated receipt, voucher, invoice and template inputs without rebuilding totals',()=>{
+    const invoice={items:[{type:'RENT' as const,accounting_class:'REVENUE' as const,description:'Kỳ đầu đã sửa',unit_price:1234567,quantity:1}],
+      discount_amount:12345,discount_notes:'Ưu đãi riêng',issue_date:'2026-09-28',due_date:'2026-10-01',notes:'Giữ mô tả form'};
+    const request:ContractCreateRequest={idempotencyKey:'contract-create-signed-form',payload:{
+      contract:{room_id:id,signed_date:'2026-09-28',start_date:'2026-09-28',end_date:'2027-09-28',rent_price:3000000,total_deposit:3000000,payment_cycle:'MONTHLY',
+        deposit_debt_mode:'DEBT',deposit_debt_reason:'Theo form chính thức',deposit_topup_due_date:'2026-10-15',invoice_template_id:id},
+      customers:[],services:[],deposit_receipts:[{amount:500000,account_id:id,received_date:'2026-09-28',attachments:['path/1']}],
+      existing_deposit_voucher_ids:[id],first_invoice:invoice,
+    }};
+    const prepared=buildPreparedSigningCreation(request,1700000);
+    expect(prepared).toEqual({depositPaid:1700000,options:{deposit_debt_mode:'DEBT',deposit_debt_reason:'Theo form chính thức',
+      deposit_topup_due_date:'2026-10-15',invoice_template_id:id,deposit_receipts:request.payload.deposit_receipts,
+      existing_deposit_voucher_ids:[id],first_invoice:invoice}});
+    expect(prepared.options.first_invoice).not.toBe(invoice);
+    const args=buildContractSigningArgs(id,{source:{draftId:id,revision:3,documentId:id,documentSha256:'a'.repeat(64)},
+      requestId:id,receivedOn:'2026-09-28',roomReady:true,termsConfirmed:true,boundary:{state:'VERIFIED',readings:[]},creationOptions:prepared.options});
+    expect(args.p_creation_options).toMatchObject({deposit_receipts:[{amount:500000}],existing_deposit_voucher_ids:[id],
+      invoice_template_id:id,first_invoice:{items:[{description:'Kỳ đầu đã sửa',unit_price:1234567}],discount_amount:12345}});
+    expect(()=>buildPreparedSigningCreation(request,Infinity)).toThrow();
   });
   it('binds selected reservation revision and exact source IDs, rejects duplicated sources',()=>{
     const input={source:{draftId:id,revision:3,documentId:id,documentSha256:'a'.repeat(64)},requestId:id,receivedOn:'2026-09-28',roomReady:true,termsConfirmed:true,boundary:{state:'VERIFIED' as const,readings:[]},creationOptions:{},reservationSource:{reservationId:id,revision:4,sourceVoucherIds:[id]}};

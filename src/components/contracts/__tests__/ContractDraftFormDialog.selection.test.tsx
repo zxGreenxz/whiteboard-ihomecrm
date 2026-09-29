@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { emptyContractDraftPayload, type ContractDraft } from '@/lib/contractDrafts';
 import { ContractDraftFormDialog } from '../ContractDraftFormDialog';
 
-const actions = vi.hoisted(() => ({ save: vi.fn(), export: vi.fn(), templates: [] as unknown[], payload: {} }));
+const actions = vi.hoisted(() => ({ save: vi.fn(), export: vi.fn(), submit: vi.fn(), templates: [] as unknown[], payload: {}, draftIds: [] as (string | undefined)[] }));
 vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ selectedOrganizationId: '11111111-1111-4111-8111-111111111111' }) }));
 vi.mock('@/hooks/useDocumentTemplates', () => ({ useDocumentTemplatesByType: () => ({ data: actions.templates, isLoading: false, isError: false }) }));
 vi.mock('@/hooks/useContractDrafts', () => ({
@@ -12,13 +12,23 @@ vi.mock('@/hooks/useContractDrafts', () => ({
   useExportContractDraft: () => ({ mutateAsync: actions.export, isPending: false }),
   useDownloadContractDraftDocument: () => ({ mutate: vi.fn(), isPending: false }),
 }));
-vi.mock('@/hooks/contracts/useContractDraftForm', async () => {
+vi.mock('../contract-form/useContractFormState', async () => {
   const { useForm } = await import('react-hook-form');
-  return { useContractDraftForm: () => ({ form: useForm({ defaultValues: { payment_cycle: 'MONTHLY', rent_price: 0, total_deposit: 0 } }),
-    selectedBuildingId: '22222222-2222-4222-8222-222222222222', selectedCustomers: [], selectedServices: [],
-    owner: { name: '', phone: '', birthday: '', id_number: '', id_issue_place: '', id_issue_date: '' },
-    customerDialogOpen: false, serviceDialogOpen: false, setOwner: vi.fn(), getPayload: () => actions.payload }) };
+  const { useEffect } = await import('react');
+  return { useContractFormState: ({draft}:{draft?:ContractDraft}) => {
+    actions.draftIds.push(draft?.id);
+    const form = useForm({defaultValues:{...emptyContractDraftPayload().form,contract_template_id:draft?.template_id ?? null}});
+    useEffect(() => { form.setValue('contract_template_id',draft?.template_id ?? null); },[draft?.id,draft?.template_id,form]);
+    return {form,selectedBuildingId:'22222222-2222-4222-8222-222222222222',selectedCustomers:[],selectedServices:[],
+      isEditMode:false,isPending:false,blockByDepositDebt:true,customerDialogOpen:false,serviceDialogOpen:false,
+      getDraftPayload:()=>structuredClone(actions.payload),onInvalid:vi.fn()};
+  }};
 });
+vi.mock('@/hooks/useMyPermissions',()=>({useMyPermissions:()=>({data:{__superadmin:true}})}));
+vi.mock('../contract-form/useContractSubmit',()=>({useContractSubmit:()=>actions.submit}));
+vi.mock('../contract-form/RentDepositSection',()=>({RentDepositSection:()=> <p>RentDepositSection</p>}));
+vi.mock('../contract-form/FirstInvoicePreview',()=>({FirstInvoicePreview:()=> <p>FirstInvoicePreview</p>}));
+vi.mock('../CommissionVoucherModal',()=>({CommissionVoucherModal:()=>null}));
 vi.mock('../contract-form/GeneralSection', () => ({ GeneralSection: () => null }));
 vi.mock('../contract-form/CustomersSection', () => ({ CustomersSection: () => null }));
 vi.mock('../contract-form/ServicesSection', () => ({ ServicesSection: () => null }));
@@ -47,6 +57,37 @@ beforeEach(() => {
   actions.payload = { ...emptyContractDraftPayload(), form: { ...emptyContractDraftPayload().form, notes: 'Nội dung đang soạn' } };
   actions.save.mockReset().mockImplementation(async (input: { templateId: string | null }) => ({ ...draft(activeId), payload: actions.payload, template_id: input.templateId, revision: 2 }));
   actions.export.mockReset();
+  actions.submit.mockReset();
+  actions.draftIds = [];
+});
+it('opens the complete official form and saves incomplete input as draft without submitting a contract', async () => {
+  render(<ContractDraftFormDialog open onOpenChange={vi.fn()} />);
+  screen.getByRole('heading', { name: 'Tạo hợp đồng mới' });
+  screen.getByText('RentDepositSection'); screen.getByText('FirstInvoicePreview');
+  fireEvent.click(screen.getByRole('button', { name: /^Lưu$/ }));
+  const choice = screen.getByRole('dialog', { name: 'Bạn muốn lưu hợp đồng thế nào?' });
+  expect(actions.save).not.toHaveBeenCalled(); expect(actions.submit).not.toHaveBeenCalled();
+  fireEvent.click(within(choice).getByRole('button', { name: 'Lưu nháp' }));
+  await waitFor(() => expect(actions.save).toHaveBeenCalledOnce());
+  expect(actions.submit).not.toHaveBeenCalled();
+  await waitFor(() => expect(actions.draftIds.at(-1)).toBe('77777777-7777-4777-8777-777777777777'));
+});
+it('requires an explicit signing choice before using the official submit path', async () => {
+  render(<ContractDraftFormDialog open onOpenChange={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: /^Lưu$/ }));
+  const choice = screen.getByRole('dialog', { name: 'Bạn muốn lưu hợp đồng thế nào?' });
+  fireEvent.click(within(choice).getByRole('button', { name: 'Xác nhận ký' }));
+  await waitFor(() => expect(actions.submit).toHaveBeenCalledOnce());
+  expect(actions.save).not.toHaveBeenCalled();
+});
+it('keeps the official deposit-adjustment note in the saved draft document terms', async () => {
+  const empty = emptyContractDraftPayload();
+  actions.payload = { ...empty, form: { ...empty.form, rent_price: 4000000, total_deposit: 3000000, notes: 'Thoả thuận' } };
+  render(<ContractDraftFormDialog open onOpenChange={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Lưu nháp' }));
+  await waitFor(() => expect(actions.save).toHaveBeenCalledWith(expect.objectContaining({ payload: expect.objectContaining({
+    form: expect.objectContaining({ notes: expect.stringContaining('[Điều chỉnh cọc]') }),
+  }) })));
 });
 it('offers only active templates in the selected organization and saves an unavailable-template draft without a template', async () => {
   render(<ContractDraftFormDialog open draft={draft(inactiveId)} onOpenChange={vi.fn()} />);

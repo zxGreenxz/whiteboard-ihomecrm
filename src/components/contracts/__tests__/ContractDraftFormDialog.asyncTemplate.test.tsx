@@ -9,7 +9,22 @@ const actions=vi.hoisted(()=>({save:vi.fn(),loading:true,templates:[] as unknown
 vi.mock('@/contexts/OrganizationContext',()=>({useOrganization:()=>({selectedOrganizationId:'11111111-1111-4111-8111-111111111111'})}));
 vi.mock('@/hooks/useDocumentTemplates',()=>({useDocumentTemplatesByType:()=>({data:actions.templates,isLoading:actions.loading,isError:false})}));
 vi.mock('@/hooks/useContractDrafts',()=>({useSaveContractDraft:()=>({mutateAsync:actions.save,isPending:false}),useExportContractDraft:()=>({mutateAsync:vi.fn(),isPending:false}),useDownloadContractDraftDocument:()=>({mutate:vi.fn(),isPending:false})}));
-vi.mock('@/hooks/contracts/useContractDraftForm',async()=>{const{useForm}=await import('react-hook-form');return{useContractDraftForm:()=>({form:useForm({defaultValues:{payment_cycle:'MONTHLY',rent_price:0,total_deposit:0}}),selectedBuildingId:'22222222-2222-4222-8222-222222222222',selectedCustomers:[],selectedServices:[],owner:{name:'',phone:'',birthday:'',id_number:'',id_issue_place:'',id_issue_date:''},customerDialogOpen:false,serviceDialogOpen:false,setOwner:vi.fn(),getPayload:()=>actions.payload})};});
+vi.mock('../contract-form/useContractFormState', async () => {
+  const { useForm } = await import('react-hook-form');
+  const { useEffect } = await import('react');
+  return { useContractFormState: ({draft}:{draft?:ContractDraft}) => {
+    const form = useForm({defaultValues:{...emptyContractDraftPayload().form,contract_template_id:draft?.template_id ?? null}});
+    useEffect(() => { form.setValue('contract_template_id',draft?.template_id ?? null); },[draft?.id,draft?.template_id,form]);
+    return {form,selectedBuildingId:'22222222-2222-4222-8222-222222222222',selectedCustomers:[],selectedServices:[],
+      isEditMode:false,isPending:false,blockByDepositDebt:true,customerDialogOpen:false,serviceDialogOpen:false,
+      getDraftPayload:()=>structuredClone(actions.payload),onInvalid:vi.fn()};
+  }};
+});
+vi.mock('@/hooks/useMyPermissions',()=>({useMyPermissions:()=>({data:{__superadmin:true}})}));
+vi.mock('../contract-form/useContractSubmit',()=>({useContractSubmit:()=>vi.fn()}));
+vi.mock('../contract-form/RentDepositSection',()=>({RentDepositSection:()=> <p>RentDepositSection</p>}));
+vi.mock('../contract-form/FirstInvoicePreview',()=>({FirstInvoicePreview:()=> <p>FirstInvoicePreview</p>}));
+vi.mock('../CommissionVoucherModal',()=>({CommissionVoucherModal:()=>null}));
 vi.mock('../contract-form/GeneralSection',()=>({GeneralSection:()=>null}));
 vi.mock('../contract-form/CustomersSection',()=>({CustomersSection:()=>null}));
 vi.mock('../contract-form/ServicesSection',()=>({ServicesSection:()=>null}));

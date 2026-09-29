@@ -1,9 +1,18 @@
+import { lazy, Suspense, useEffect, useState } from 'react';
+import { toast } from 'sonner';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog";
+import { Button } from '@/components/ui/button';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useMyPermissions } from '@/hooks/useMyPermissions';
+import { canUse } from '@/lib/permissionPages';
+import type { ContractDraft } from '@/lib/contractDrafts';
+import { buildPreparedSigningCreation, type PreparedSigningCreation } from '@/lib/contractSigning';
 import { Form } from "@/components/ui/form";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -20,6 +29,10 @@ import { RentDepositSection } from "./contract-form/RentDepositSection";
 import { ServicesSection } from "./contract-form/ServicesSection";
 import { FirstInvoicePreview } from "./contract-form/FirstInvoicePreview";
 import { ContractFormFooter } from "./contract-form/ContractFormFooter";
+import { useContractDraftEditor } from './contract-form/useContractDraftEditor';
+import { ContractDraftDocuments } from './contract-form/ContractDraftDocuments';
+
+const SigningDialog = lazy(() => import('./ConfirmContractSigningDialog').then(module => ({ default: module.ConfirmContractSigningDialog })));
 
 // Public API giữ nguyên: ContractPrefill vẫn import được từ file này.
 export type { ContractPrefill } from "./contract-form/types";
@@ -31,12 +44,15 @@ interface ContractFormDialogProps {
   prefill?: ContractPrefill;
   /** Gọi sau khi TẠO HĐ thành công (không gọi ở edit mode). */
   onCreated?: (contractId: string) => void;
+  draft?: ContractDraft;
+  canExport?: boolean;
+  onSaved?: (draft: ContractDraft) => void;
 }
 
 /**
  * Root component mỏng sau refactor Phase 10C: lifecycle open/close + state
  * (useContractFormState) + submit orchestration (useContractSubmit) +
- * composition các section trong ./contract-form/. Hành vi giữ NGUYÊN 100%.
+ * Shared editor for new contracts, saved drafts and official contract updates.
  */
 export function ContractFormDialog({
   open,
@@ -44,35 +60,78 @@ export function ContractFormDialog({
   contract,
   prefill,
   onCreated,
+  draft,
+  canExport: canExportProp,
+  onSaved,
 }: ContractFormDialogProps) {
-  const state = useContractFormState({ open, contract, prefill });
+  const [savedDraft, setSavedDraft] = useState(draft);
+  useEffect(() => {
+    setSavedDraft(draft);
+    // Reopening replaces the editor; a background refresh of the same draft does not.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, draft?.id]);
+  const state = useContractFormState({ open, contract, prefill, draft: savedDraft });
+  const editor = useContractDraftEditor({ open, draft, state, onSaved: value => {
+    setSavedDraft(value); onSaved?.(value);
+  } });
+  const { data: permissions } = useMyPermissions();
+  const canExport = (canExportProp ?? true) && canUse(permissions, 'contracts', 'print', state.selectedBuildingId || undefined);
+  const canSign = canUse(permissions, 'contracts', 'create', state.selectedBuildingId || undefined);
+  const canSaveDraft = canUse(permissions, 'contracts', editor.current ? 'edit' : 'create', state.selectedBuildingId || undefined);
+  const [choiceOpen, setChoiceOpen] = useState(false);
+  const [signing, setSigning] = useState<{ draft: ContractDraft; prepared: PreparedSigningCreation }>();
+  useEffect(() => { if (!open) { setChoiceOpen(false); setSigning(undefined); } }, [open]);
+  const pending = state.isPending || editor.pending;
+  const saveDraft = async () => {
+    if (!canSaveDraft) return;
+    setChoiceOpen(false);
+    await editor.persist();
+  };
   const onSubmit = useContractSubmit({
     state,
     contract,
     onOpenChange,
     onCreated,
+    onCreateRequest: editor.current ? async request => {
+      if (!canSign) return;
+      const current = editor.current;
+      if (current && editor.matchesSavedDocument(request) && current.documents.some(document => document.revision === current.revision)) {
+        setSigning({ draft: current, prepared: buildPreparedSigningCreation(request, state.typedDepositTotal + state.approvedOrphanTotal) });
+        return;
+      }
+      if (!canSaveDraft || !canExport) {
+        toast.error('Nội dung đã đổi hoặc chưa có tài liệu. Cần lưu và xuất lại bản nháp trước khi ký.'); return;
+      }
+      const saved = await editor.persist({ signingRequest: request });
+      if (saved) setSigning({ draft: saved, prepared: buildPreparedSigningCreation(request, state.typedDepositTotal + state.approvedOrphanTotal) });
+    } : undefined,
   });
   const { form, isEditMode, onInvalid } = state;
 
   return (
     <>
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={value => { if (!pending) onOpenChange(value); }}>
       <DialogContent className="max-w-4xl max-h-[90vh] p-0">
         <DialogHeader className="px-6 pt-6 pb-0">
           <DialogTitle>
             {isEditMode ? "Cập nhật hợp đồng" : "Tạo hợp đồng mới"}
+            {editor.current && <span className="ml-2 text-sm font-normal text-muted-foreground">Nháp · phiên bản {editor.current.revision}</span>}
             {isEditMode && contract?.contract_number && (
               <span className="ml-2 text-sm font-normal text-muted-foreground">
                 ({contract.contract_number})
               </span>
             )}
           </DialogTitle>
+          {!isEditMode && <DialogDescription>Nhập thông tin hợp đồng, sau đó lưu nháp hoặc xác nhận ký.</DialogDescription>}
         </DialogHeader>
 
         <ScrollArea className="max-h-[calc(90vh-120px)] px-6 pb-6">
           <Form {...form}>
             <form
-              onSubmit={form.handleSubmit(onSubmit, onInvalid)}
+              onSubmit={event => {
+                if (isEditMode) { void form.handleSubmit(onSubmit, onInvalid)(event); return; }
+                event.preventDefault(); setChoiceOpen(true);
+              }}
               onKeyDown={(e) => {
                 // Chặn Enter submit ngoài ý muốn — chỉ cho Enter trong
                 // <textarea> (để xuống dòng) và button submit (click thật sự).
@@ -85,8 +144,10 @@ export function ContractFormDialog({
               }}
               className="space-y-6"
             >
+              {editor.errors.length > 0 && <Alert variant="destructive"><AlertDescription><ul className="list-disc pl-4">{editor.errors.map(error => <li key={`${error.field}-${error.label}`}>{error.label}: {error.message}</li>)}</ul></AlertDescription></Alert>}
+              <fieldset disabled={pending || !!signing} className="space-y-6">
               {/* ===== Section 1: Thông tin chung ===== */}
-              <GeneralSection {...state} />
+              <GeneralSection {...state} buildingDisabled={!!editor.current} />
 
               {/* ===== Section 2: Khách hàng ===== */}
               <CustomersSection {...state} />
@@ -99,9 +160,11 @@ export function ContractFormDialog({
 
               {/* ===== Section 5: Xem trước hoá đơn cọc + tháng đầu ===== */}
               {!isEditMode && <FirstInvoicePreview {...state} />}
+              {!isEditMode && <ContractDraftDocuments editor={editor} canExport={canExport && canSaveDraft} />}
+              </fieldset>
 
               {/* ===== Footer buttons ===== */}
-              <ContractFormFooter {...state} onOpenChange={onOpenChange} />
+              <ContractFormFooter {...state} isPending={pending} onOpenChange={onOpenChange} onSaveDraft={canSaveDraft ? () => void saveDraft() : undefined} />
             </form>
           </Form>
         </ScrollArea>
@@ -122,6 +185,27 @@ export function ContractFormDialog({
         />
       </DialogContent>
     </Dialog>
+
+    <Dialog open={choiceOpen} onOpenChange={setChoiceOpen}>
+      <DialogContent className="max-w-md"><DialogHeader><DialogTitle>Bạn muốn lưu hợp đồng thế nào?</DialogTitle>
+        <DialogDescription>Lưu nháp để tiếp tục soạn hoặc gửi khách xem trước. Xác nhận ký khi đã kiểm tra và thống nhất thông tin.</DialogDescription></DialogHeader>
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">Lưu nháp chưa giữ phòng và chưa ghi nhận thu tiền.</p>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button type="button" variant="outline" disabled={pending || !canSaveDraft} onClick={() => void saveDraft()}>Lưu nháp</Button>
+            <Button type="button" disabled={pending || !canSign} onClick={() => {
+              setChoiceOpen(false); void form.handleSubmit(onSubmit, onInvalid)();
+            }}>Xác nhận ký</Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+    {signing && <Suspense fallback={<p role="status">Đang mở xác nhận ký…</p>}>
+      <SigningDialog open draft={signing.draft} preparedCreation={signing.prepared} canSign={canSign} canPrint={canExport}
+        onOpenChange={value => { if (!value) setSigning(undefined); }} onSigned={result => {
+          setSigning(undefined); onOpenChange(false); onCreated?.(result.contract_id); state.setCommissionContractId(result.contract_id);
+        }} />
+    </Suspense>}
 
     {/* Modal tạo phiếu chi hoa hồng — chỉ mở sau khi tạo HĐ thành công */}
     <CommissionVoucherModal

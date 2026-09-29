@@ -11,6 +11,26 @@ vi.mock("sonner", () => ({
 }));
 
 describe("useContractSubmit", () => {
+  it("passes the validated official request to draft signing without creating a second contract", () => {
+    const createContract = { mutate: vi.fn() };
+    const prepared = vi.fn();
+    const state = {
+      isEditMode: false, form: { setError: vi.fn() },
+      selectedCustomers: [{ id: "22222222-2222-4222-8222-222222222222", is_representative: true }],
+      selectedServices: [], useCustomServices: false, createContract,
+      typedDepositTotal: 0, approvedOrphanTotal: 0, orphanDepositVouchers: [],
+      invoiceItems: [], firstInvoiceDiscount: { amount: 0, notes: null }, depositRows: [],
+    } as unknown as ContractFormState;
+    const submit = useContractSubmit({ state, onOpenChange: vi.fn(), onCreateRequest: prepared });
+    submit({ room_id: "11111111-1111-4111-8111-111111111111", signed_date: "2026-09-29",
+      start_date: "2026-09-29", end_date: "2027-09-29", start_billing_date: "2026-09-29", end_billing_date: "2026-09-30",
+      rent_price: 4000000, total_deposit: 0, payment_cycle: "MONTHLY", notes: "" } as ContractFormData);
+    expect(prepared).toHaveBeenCalledWith(expect.objectContaining({ payload: expect.objectContaining({
+      contract: expect.objectContaining({ room_id: "11111111-1111-4111-8111-111111111111" }),
+      customers: [expect.objectContaining({ is_representative: true })],
+    }) }));
+    expect(createContract.mutate).not.toHaveBeenCalled();
+  });
   it("recognizes a stale orphan deposit rejected after settlement", () => {
     expect(isStaleOrphanDepositError(new Error("Phiếu cọc đã xử lý bỏ cọc; không được dùng lại"))).toBe(true);
     expect(isStaleOrphanDepositError(new Error("Lỗi kết nối"))).toBe(false);

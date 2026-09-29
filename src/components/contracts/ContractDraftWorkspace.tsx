@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { ChevronDown, FilePenLine, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useOrganization } from '@/contexts/OrganizationContext';
@@ -27,6 +27,7 @@ export function ContractDraftWorkspace({ buildingId, buildingIds, alwaysExpanded
   const canCreate = hasAnyScope && canUse(permissions, 'contracts', 'create');
   const canEdit = canUse(permissions, 'contracts', 'edit');
   const canExport = canUse(permissions, 'contracts', 'print');
+  const editorPrefill = useMemo(() => buildingId ? { buildingId } : undefined, [buildingId]);
 
   useEffect(() => {
     setEditorOpen(false);
@@ -59,7 +60,10 @@ export function ContractDraftWorkspace({ buildingId, buildingIds, alwaysExpanded
     </div>
     {(alwaysExpanded || expanded) && <Suspense fallback={<p className="p-4 text-sm text-muted-foreground">Đang tải bản nháp…</p>}>
       <DraftList buildingId={buildingId} buildingIds={buildingIds} canEdit={canEdit} canExport={canExport} canSign={canCreate}
-        onEdit={editDraft} onExport={editDraft} onSign={setSigningDraft} onTransfer={setTransferDraft} />
+        onEdit={editDraft} onExport={editDraft} onSign={value => {
+          if (value.status === 'SIGNED') setSigningDraft(value);
+          else editDraft(value);
+        }} onTransfer={setTransferDraft} />
     </Suspense>}
     {transferDraft && <div className="p-3"><Button variant="ghost" size="sm" onClick={() => setTransferDraft(undefined)}>Đóng liên kết nhượng</Button>
       <Suspense fallback={<p className="text-sm">Đang tải liên kết nhượng…</p>}><TransferPanel key={transferDraft.id} draft={transferDraft} canEdit={canEdit} /></Suspense>
@@ -71,7 +75,7 @@ export function ContractDraftWorkspace({ buildingId, buildingIds, alwaysExpanded
     </Suspense>}
     {editorOpen && <Suspense fallback={<p role="status" className="p-4 text-sm">Đang mở bản nháp…</p>}>
       <DraftForm open={editorOpen} onOpenChange={setEditorOpen} draft={draft}
-        prefill={buildingId ? { buildingId } : undefined} canExport={canExport}
+        prefill={editorPrefill} canExport={canExport}
         onSaved={() => setExpanded(true)} />
     </Suspense>}
   </section>;
