@@ -46,6 +46,17 @@ beforeAll(async () => {
   await db.exec('GRANT SELECT ON income_expenses TO authenticated');
   await db.exec(readFileSync(path, 'utf8'));
   await db.exec(`CREATE FUNCTION public.create_commission_voucher(p_contract_id uuid,p_kind text,p_amount numeric,p_voucher_date date,p_account_id uuid DEFAULT NULL,p_payer_name text DEFAULT NULL,p_recipient_name text DEFAULT NULL,p_recipient_bank text DEFAULT NULL,p_recipient_account text DEFAULT NULL,p_item_description text DEFAULT NULL,p_attachments jsonb DEFAULT '[]') RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER AS $$ DECLARE v_id uuid:=gen_random_uuid(); v_code text:='PC-NEW'; v_contract record; BEGIN SELECT '${org}'::uuid organization_id INTO v_contract; IF p_item_description='SERVER_FAIL' THEN RAISE EXCEPTION 'Fixture rejected'; END IF; INSERT INTO income_expenses(id,organization_id,contract_id,building_id,commission_kind,code,approval_status) VALUES(v_id,'${org}',p_contract_id,'${building}',p_kind,'PC-NEW','UNAPPROVED'); RETURN jsonb_build_object('id', v_id, 'code', v_code); END $$;`);
+  // Only the dependency boundary is simulated; the migrated transaction must
+  // roll back both canonical rows and assignment side effects on denial.
+  await db.exec(`CREATE TABLE manager_routes(voucher_id uuid PRIMARY KEY,manager_id uuid,request_key text);
+    CREATE TABLE assignment_calls(voucher_id uuid,manager_id uuid);
+    GRANT SELECT ON manager_routes,assignment_calls TO authenticated;
+    CREATE FUNCTION public.assign_commission_manager_v1(uuid,uuid,bigint,text) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER AS $$ BEGIN
+      INSERT INTO assignment_calls VALUES($1,$2);
+      INSERT INTO manager_routes VALUES($1,$2,$4) ON CONFLICT(voucher_id) DO UPDATE SET manager_id=$2,request_key=$4;
+      IF current_setting('test.assignment_denied',true)='yes' THEN RAISE EXCEPTION 'Assignment denied' USING ERRCODE='42501'; END IF;
+      RETURN jsonb_build_object('voucher_id',$1,'manager_id',$2);
+    END $$;`);
   const hotfix='supabase/migrations/20260929154941_commission_failure_retry.sql';
   if (existsSync(hotfix)) { await db.exec(readFileSync(hotfix,'utf8')); await db.exec(readFileSync(hotfix,'utf8')); }
 }, 30_000);
@@ -72,7 +83,7 @@ async function liveVoucher(kind = 'broker', linkedContract: string | null = cont
 }
 
 
-const intent = (kind='broker', request=id(100), description='Commission') => ({ request_id: request, contract_id: contract, kind, amount: 100, voucher_date: '2026-09-29', item_description: description });
+const intent = (kind='broker', request=id(100), description='Commission') => ({ manager_id:null as string|null, request_id: request, contract_id: contract, kind, amount: 100, voucher_date: '2026-09-29', item_description: description });
 async function prepare(intents=[intent()]) { return (await db.query<{result: unknown}>("select public.prepare_commission_requests_v1($1,$2::jsonb) result",[org,JSON.stringify(intents)])).rows[0].result; }
 async function execute(request=id(100),kind='broker') { return (await db.query<{result: {status: string; id?: string; code?: string}}>("select public.execute_commission_request_v1($1,$2,$3,$4) result",[org,contract,kind,request])).rows[0].result; }
 async function age() { await owner("ALTER TABLE contract_commission_events DISABLE TRIGGER guard_contract_commission_events; UPDATE contract_commission_events SET created_at=now()-interval '10 minutes'; ALTER TABLE contract_commission_events ENABLE TRIGGER guard_contract_commission_events"); }
@@ -243,5 +254,44 @@ describe('authoritative kind counts share the scoped read before kind/page filte
  it('keeps the v1 payload limited to existing rows and total fields',()=>tx(async()=>{
   const legacy=(await db.query<{result:object}>('select public.list_contract_commission_followups_v1($1,NULL,NULL,0,20,true) result',[org])).rows[0].result;
   expect(Object.keys(legacy).sort()).toEqual(['rows','total']);
+ }));
+});
+
+// Losing intents / receipt replay must never touch the winner's manager route.
+describe('durable manager routing is part of fresh financial creation only',()=>{
+ it.each(['broker','sale'])('persists %s manager intent across interruption, rolls back denied assignment and retries exactly once',kind=>tx(async()=>{
+  await prepare([{...intent(kind),manager_id:id(80)}]);
+  await age();
+  await owner("SET LOCAL test.assignment_denied='yes'");
+  expect((await execute(id(100),kind)).status).toBe('FAILED');
+  expect((await db.query('select * from income_expenses')).rows).toHaveLength(0);
+  expect((await db.query('select * from assignment_calls')).rows).toHaveLength(0);
+  expect((await db.query('select * from manager_routes')).rows).toHaveLength(0);
+  expect((await list({unresolved:true})).rows).toMatchObject([{state:'FAILED'}]);
+  await owner("SET LOCAL test.assignment_denied='no'");
+  const done=await execute(id(100),kind);expect(done.status).toBe('COMPLETED');
+  expect((await db.query('select * from manager_routes')).rows).toMatchObject([{voucher_id:done.id,manager_id:id(80),request_key:`commission-request:${id(100)}`}]);
+  expect(await execute(id(100),kind)).toEqual(done);
+  expect((await db.query('select * from assignment_calls')).rows).toHaveLength(1);
+ }));
+ it.each(['broker','sale'])('different %s manager intents and later receipt replay preserve the winner',kind=>tx(async()=>{
+  await prepare([{...intent(kind,id(100)),manager_id:id(80)},{...intent(kind,id(101)),manager_id:id(81)}]);
+  const winner=await execute(id(100),kind);
+  expect(await execute(id(101),kind)).toMatchObject({status:'ALREADY_EXISTS',id:winner.id});
+  expect((await db.query('select * from manager_routes')).rows).toMatchObject([{manager_id:id(80)}]);
+  await owner(`UPDATE manager_routes SET manager_id='${id(82)}'`);
+  await execute(id(100),kind);await execute(id(101),kind);
+  expect((await db.query('select * from manager_routes')).rows).toMatchObject([{manager_id:id(82)}]);
+  expect((await db.query('select * from assignment_calls')).rows).toHaveLength(1);
+ }));
+ it('direct/deposit existing voucher receives no manager assignment from the new form',()=>tx(async()=>{
+  await liveVoucher();await prepare([{...intent(),manager_id:id(80)}]);
+  expect(await execute()).toMatchObject({status:'ALREADY_EXISTS',id:voucher});
+  expect((await db.query('select * from assignment_calls')).rows).toHaveLength(0);
+ }));
+ it('rejects malformed manager identity and changes to the manager of a saved payload',()=>tx(async()=>{
+  await denied(()=>prepare([{...intent(),manager_id:'not-a-uuid'}]),'22023');
+  await prepare([{...intent(),manager_id:id(80)}]);
+  await denied(()=>prepare([{...intent(),manager_id:id(81)}]),'PT409');
  }));
 });

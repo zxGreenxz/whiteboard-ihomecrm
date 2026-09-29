@@ -11,12 +11,16 @@ const ctx=await testConnection();
 const originalWriter=psqlJson(ctx.test,"select pg_get_functiondef(oid) body from pg_proc where proname='create_commission_voucher'")[0].body;
 const session=await originalTestSession(ctx); const jwt=session.access_token;
 const org='aaaa0000-0000-4000-8000-000000000001';
-const contracts=Array.from({length:8},()=>randomUUID());const suffix=randomBytes(6).toString('hex');
+const contracts=Array.from({length:12},()=>randomUUID());const suffix=randomBytes(6).toString('hex');
+const managers=[];const configIds=[randomUUID(),randomUUID()];const fixtureAccount=randomUUID();
+const originalBooks=psqlJson(ctx.test,`select account_id from app_private.salary_commission_books where organization_id=${lit(org)}`).map(r=>r.account_id);
+let failure=null;
+const originalAuditGuards=psqlJson(ctx.test,"SELECT tgname,tgenabled FROM pg_trigger WHERE tgrelid='public.income_expense_audit_log'::regclass AND NOT tgisinternal ORDER BY tgname");
 const vouchers=[];const passes=[];let deniedActor;let deniedJwt;const member=randomUUID();
 const mutation=sql=>psql(ctx.test,`BEGIN; SET LOCAL session_replication_role=replica; ${sql} COMMIT;`);
 const rpc=async(name,body,token=jwt)=>request(ctx,token,`rpc/${name}`,body);
 const ok=async(name,body,token=jwt)=>{const r=await rpc(name,body,token);assert.equal(r.status,200,`${name}: HTTP ${r.status}, ${r.json.code}: ${r.json.message}`);return r.json;};
-const check=async(name,fn)=>{await fn();passes.push(name);console.log(`PASS ${name}`);};
+const check=async(name,fn)=>{try{await fn();passes.push(name);console.log(`PASS ${name}`);}catch(error){failure={name,message:error.message};console.error(`FAIL ${name}: ${error.message}`);throw error;}};
 const payload=(contract=contracts[0],kind='broker',id=randomUUID())=>({request_id:id,contract_id:contract,kind,amount:1234,voucher_date:'2026-09-29',item_description:`TEST retry ${suffix}`});
 const prepare=intents=>ok('prepare_commission_requests_v1',{p_organization_id:org,p_intents:intents});
 const exec=(p,token=jwt)=>ok('execute_commission_request_v1',{p_organization_id:org,p_contract_id:p.contract_id,p_kind:p.kind,p_request_id:p.request_id},token);
@@ -26,7 +30,7 @@ assert(source,'real actor needs a manageable building fixture');
 try {
  mutation(contracts.map((id,i)=>`INSERT INTO public.contracts(id,user_id,room_id,organization_id,status,signed_date,start_date,end_date,rent_price,public_code,contract_number)
  SELECT ${lit(id)},user_id,room_id,organization_id,'TERMINATED',current_date,current_date,current_date+365,1000000,${lit(`RETRY${suffix}${i}`)},${lit(`TEST-RETRY-${suffix}-${i}`)} FROM public.contracts WHERE id=${lit(source.contract_id)};`).join('\n'));
- await check('unattempted contracts same room are not failures',async()=>{assert.equal((await list()).total,0);assert.equal((await list(false)).total,16);});
+ await check('unattempted contracts same room are not failures',async()=>{assert.equal((await list()).total,0);assert.equal((await list(false)).total,contracts.length*2);});
  const p=payload(), sale=payload(contracts[0],'sale');
  await check('prepare both intents before executing either',async()=>{assert.equal((await prepare([p,sale])).length,2);assert.equal((await list()).total,0);assert.equal((await list(false)).rows.filter(r=>r.state==='PROCESSING').length,2);});
  await check('concurrent same request creates exactly one voucher',async()=>{
@@ -92,6 +96,48 @@ try {
   const unchanged=psqlJson(ctx.test,`SELECT completed_at FROM public.contract_commission_requests WHERE contract_id=${lit(c)} AND request_id=${lit(b.request_id)}`)[0];assert.equal(unchanged.completed_at,saved.completed_at);
   const replacement=await exec(fresh);assert.equal(replacement.status,'COMPLETED');assert.notEqual(replacement.id,original.id);vouchers.push(replacement.id);
  });
+ // Exact isolated manager/config identities. Existing manager configurations are never edited.
+ for(let i=0;i<2;i++) {
+  const response=await fetch(`${ctx.url}/auth/v1/admin/users`,{method:'POST',headers:{apikey:ctx.cred.testSecretKey,Authorization:`Bearer ${ctx.cred.testSecretKey}`,'Content-Type':'application/json'},body:JSON.stringify({email:`retry-manager-${suffix}-${i}@example.invalid`,password:`Tt!${randomBytes(22).toString('base64url')}`,email_confirm:true})});
+  assert.equal(response.status,200);managers.push((await response.json()).id);
+  mutation(`INSERT INTO public.manager_salary_config(id,user_id,staff_id,organization_id,is_active,alias) VALUES(${lit(configIds[i])},${lit(session.user.id)},${lit(managers[i])},${lit(org)},${i===0},${lit('TEST manager '+suffix+' '+i)});`);
+ }
+ const route=id=>psqlJson(ctx.test,`SELECT ie.id,ie.account_id,ie.approval_status,ie.posting_mode,ie.posting_status,ie.approval_version,ie.total_amount,l.manager_id,l.request_key,
+  (SELECT count(*)::int FROM public.income_expense_revisions r WHERE r.income_expense_id=ie.id) revisions,
+  (SELECT count(*)::int FROM public.income_expense_postings p WHERE p.voucher_id=ie.id) postings
+  FROM public.income_expenses ie LEFT JOIN app_private.commission_manager_links l ON l.voucher_id=ie.id WHERE ie.id=${lit(id)}`)[0];
+ const assertRoute=(result,intent)=>{assert.equal(result.status,'COMPLETED');assert(result.id);vouchers.push(result.id);const r=route(result.id);
+  assert.equal(r.manager_id,intent.manager_id);assert.equal(r.request_key,`commission-request:${intent.request_id}`);assert.equal(r.posting_mode,'NON_CASH');assert.equal(r.posting_status,'NOT_APPLICABLE');assert.equal(r.approval_status,'UNAPPROVED');assert.equal(Number(r.total_amount),intent.amount);assert.equal(r.postings,0);assert.equal(r.revisions,1);
+  assert.equal(psqlJson(ctx.test,`SELECT is_virtual FROM public.accounts WHERE id=${lit(r.account_id)}`)[0].is_virtual,true);return r;};
+ await check('QL canonical failure then exact saved retry preserves manager and salary route',async()=>{
+  const p={...payload(contracts[8]),manager_id:managers[0],account_id:fixtureAccount};await prepare([p]);assert.equal((await exec(p)).status,'FAILED');
+  assert.equal(psqlJson(ctx.test,`SELECT count(*)::int n FROM public.income_expenses WHERE contract_id=${lit(p.contract_id)}`)[0].n,0);
+  mutation(`INSERT INTO public.accounts(id,user_id,organization_id,name,code) VALUES(${lit(fixtureAccount)},${lit(session.user.id)},${lit(org)},${lit('TEST retry '+suffix)},${lit('RETRY'+suffix)});`);
+  const done=await exec(p);const saved=assertRoute(done,p);assert.deepEqual(await exec(p),done);assert.deepEqual(route(done.id),saved);
+ });
+ for(const kind of ['broker','sale']) await check(`QL ${kind} assignment denied leaves no partial money state and saved retry succeeds`,async()=>{
+  mutation(`UPDATE public.manager_salary_config SET is_active=false WHERE id=${lit(configIds[1])};`);
+  const p={...payload(contracts[9],kind),manager_id:managers[1]};await prepare([p]);const denied=await exec(p);assert.equal(denied.status,'FAILED');
+  assert.equal(psqlJson(ctx.test,`SELECT count(*)::int n FROM public.income_expenses WHERE contract_id=${lit(p.contract_id)} AND commission_kind=${lit(kind)}`)[0].n,0);
+  const request=psqlJson(ctx.test,`SELECT completed_at,result,payload FROM public.contract_commission_requests WHERE request_id=${lit(p.request_id)}`)[0];assert.equal(request.completed_at,null);assert.equal(request.result,null);assert.equal(request.payload.manager_id,managers[1]);
+  mutation(`UPDATE public.manager_salary_config SET is_active=true WHERE id=${lit(configIds[1])};`);
+  const done=await exec(p);const saved=assertRoute(done,p);assert.deepEqual(await exec(p),done);assert.deepEqual(route(done.id),saved);
+ });
+ for(const kind of ['broker','sale']) await check(`QL ${kind} competing managers and receipt replay cannot reroute the winner`,async()=>{
+  const a={...payload(contracts[10],kind),manager_id:managers[0]},b={...payload(contracts[10],kind),manager_id:managers[1]};await prepare([a,b]);
+  const results=await Promise.all([exec(a),exec(b)]);assert.deepEqual(results.map(r=>r.status).sort(),['ALREADY_EXISTS','COMPLETED']);assert.equal(results[0].id,results[1].id);
+  const winner=results.findIndex(r=>r.status==='COMPLETED');const original=assertRoute(results[winner],[a,b][winner]);
+  await exec(a);await exec(b);assert.deepEqual(route(results[0].id),original);
+  const late={...payload(contracts[10],kind),manager_id:[a,b][1-winner].manager_id};await prepare([late]);assert.equal((await exec(late)).status,'ALREADY_EXISTS');assert.deepEqual(route(results[0].id),original);
+  assert.equal(psqlJson(ctx.test,`SELECT count(*)::int n FROM public.income_expenses WHERE contract_id=${lit(a.contract_id)} AND commission_kind=${lit(kind)}`)[0].n,1);
+ });
+ await check('QL interrupted both kinds resume after new JWT session with saved payload only',async()=>{
+  const intents=['broker','sale'].map(kind=>({...payload(contracts[11],kind),manager_id:managers[0]}));await prepare(intents);
+  mutation(`UPDATE public.contract_commission_events SET created_at=clock_timestamp()-interval '10 minutes' WHERE contract_id=${lit(contracts[11])};`);
+  const rows=(await list()).rows.filter(r=>r.contract_id===contracts[11]);assert.equal(rows.length,2);assert(rows.every(r=>r.state==='UNKNOWN' && r.can_retry));
+  const fresh=(await originalTestSession(ctx)).access_token;
+  for(const intent of intents) assertRoute(await exec(intent,fresh),intent);
+ });
  await check('real JWT without membership denied all new public boundaries',async()=>{
   const email=`retry-${suffix}@example.invalid`,password=`Tt!${randomBytes(22).toString('base64url')}`;
   const created=await fetch(`${ctx.url}/auth/v1/admin/users`,{method:'POST',headers:{apikey:ctx.cred.testSecretKey,Authorization:`Bearer ${ctx.cred.testSecretKey}`,'Content-Type':'application/json'},body:JSON.stringify({email,password,email_confirm:true})});assert.equal(created.status,200);deniedActor=(await created.json()).id;
@@ -126,9 +172,17 @@ try {
  });
 } finally {
  const all=contracts.map(lit).join(',');const vids=psqlJson(ctx.test,`select id from public.income_expenses where contract_id in (${all})`).map(r=>r.id);const ids=[...new Set([...vids,...vouchers])].map(lit).join(',')||'NULL';
- mutation(`DELETE FROM app_private.sale_bonus_claims WHERE deposit_voucher_id IN (${ids}) OR bonus_voucher_id IN (${ids});DELETE FROM public.contract_commission_requests WHERE contract_id IN (${all});DELETE FROM public.contract_commission_events WHERE contract_id IN (${all});DELETE FROM public.income_expense_items WHERE income_expense_id IN (${ids});DELETE FROM public.income_expenses WHERE id IN (${ids});DELETE FROM public.contracts WHERE id IN (${all});`);
+ mutation(`DELETE FROM app_private.commission_manager_links WHERE voucher_id IN (${ids});DELETE FROM app_private.salary_commission_inclusions WHERE voucher_id IN (${ids});DELETE FROM public.income_expense_revisions WHERE income_expense_id IN (${ids});DELETE FROM app_private.canonical_write_operations WHERE subject_id IN (${ids});DELETE FROM app_private.income_expense_flow_ownership WHERE income_expense_id IN (${ids});DELETE FROM app_private.sale_bonus_claims WHERE deposit_voucher_id IN (${ids}) OR bonus_voucher_id IN (${ids});DELETE FROM public.contract_commission_requests WHERE contract_id IN (${all});DELETE FROM public.contract_commission_events WHERE contract_id IN (${all});DELETE FROM public.income_expense_items WHERE income_expense_id IN (${ids});DELETE FROM public.income_expenses WHERE id IN (${ids});DELETE FROM public.contracts WHERE id IN (${all});`);
+ const createdBooks=psqlJson(ctx.test,`SELECT account_id FROM app_private.salary_commission_books WHERE organization_id=${lit(org)}`).map(r=>r.account_id).filter(id=>!originalBooks.includes(id));
+ const accountsToClean=[fixtureAccount,...createdBooks].map(lit).join(',');
+ mutation(`DELETE FROM public.manager_salary_config WHERE id IN (${configIds.map(lit).join(',')});DELETE FROM app_private.salary_commission_books WHERE organization_id=${lit(org)} AND account_id IN (${accountsToClean});DELETE FROM public.accounts WHERE id IN (${accountsToClean});`);
+ for(const id of managers){const r=await fetch(`${ctx.url}/auth/v1/admin/users/${id}`,{method:'DELETE',headers:{apikey:ctx.cred.testSecretKey,Authorization:`Bearer ${ctx.cred.testSecretKey}`}});assert.equal(r.status,200);}
+ for(const [table,column,values] of [['public.income_expenses','id',ids],['app_private.commission_manager_links','voucher_id',ids],['public.income_expense_revisions','income_expense_id',ids],['app_private.canonical_write_operations','subject_id',ids],['public.income_expense_postings','voucher_id',ids],['public.contract_commission_requests','contract_id',all],['public.accounts','id',accountsToClean],['public.manager_salary_config','id',configIds.map(lit).join(',')]])
+  assert.equal(psqlJson(ctx.test,`SELECT count(*)::int n FROM ${table} WHERE ${column} IN (${values})`)[0].n,0,`cleanup ${table}`);
  if(deniedActor){mutation(`DELETE FROM public.member_override_scopes WHERE override_id IN (SELECT id FROM public.member_permission_overrides WHERE membership_id=${lit(member)});DELETE FROM public.member_permission_overrides WHERE membership_id=${lit(member)};DELETE FROM public.organization_memberships WHERE id=${lit(member)};`);const r=await fetch(`${ctx.url}/auth/v1/admin/users/${deniedActor}`,{method:'DELETE',headers:{apikey:ctx.cred.testSecretKey,Authorization:`Bearer ${ctx.cred.testSecretKey}`}});assert.equal(r.status,200);}
  assert.equal(psqlJson(ctx.test,`select count(*)::int n from public.contracts where id in (${all})`)[0].n,0);
- writeFileSync('.superpowers/sdd/2026-09-29-commission-failure-retry/task-1-jwt-report.json',JSON.stringify({date:new Date().toISOString(),target:ctx.cred.testRef,passed:passes,cleanup:true,migration_sha256:createHash('sha256').update(readFileSync('supabase/migrations/20260929154941_commission_failure_retry.sql')).digest('hex')},null,2));
+ const auditRetained=psqlJson(ctx.test,`SELECT id,income_expense_id,sequence_no FROM public.income_expense_audit_log WHERE income_expense_id IN (${ids}) ORDER BY sequence_no`);
+ assert.deepEqual(psqlJson(ctx.test,"SELECT tgname,tgenabled FROM pg_trigger WHERE tgrelid='public.income_expense_audit_log'::regclass AND NOT tgisinternal ORDER BY tgname"),originalAuditGuards);
+ writeFileSync('.superpowers/sdd/2026-09-29-commission-failure-retry/final-fix-jwt-report.json',JSON.stringify({date:new Date().toISOString(),target:ctx.cred.testRef,passed:passes,failure,economic_fixture_cleanup:true,audit_retained:auditRetained,audit_retained_reason:'Append-only audit and hash chain preserved; no guard disabled.',fixture_ids:{contracts,vouchers:vids,managers,configIds,account_ids:[fixtureAccount,...createdBooks]},migration_sha256:createHash('sha256').update(readFileSync('supabase/migrations/20260929154941_commission_failure_retry.sql')).digest('hex')},null,2));
 }
-console.log(`PASS ${passes.length} actual TEST JWT/concurrency cases; fixtures cleaned`);
+console.log(`PASS ${passes.length} actual TEST JWT/concurrency cases; economic fixtures cleaned, append-only audit retained`);

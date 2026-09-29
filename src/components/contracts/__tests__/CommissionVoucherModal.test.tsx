@@ -23,6 +23,7 @@ const state = vi.hoisted(() => ({
   refetch: vi.fn(),
   create: vi.fn(),
   prepare: vi.fn(),
+  assign: vi.fn(),
   order: [] as string[],
   accounts: [] as unknown[],
   voucherError: false,
@@ -40,6 +41,7 @@ vi.mock("@/hooks/useCommissionVoucher", () => ({
     refetch: state.refetch,
   }),
   useCreateCommissionVoucher: () => ({ mutateAsync: state.create, isPending: false }),
+  useRetryCommissionVoucher: () => ({ mutateAsync: state.create, isPending: false }),
   usePrepareCommissionVouchers: () => ({ mutateAsync: state.prepare, isPending: false }),
   useExistingCommissionVouchers: () => ({ data: [], isError: state.voucherError, isLoading: state.voucherLoading,
     refetch: async () => ({ data: [], isError: state.voucherError }) }),
@@ -48,6 +50,9 @@ vi.mock('@/hooks/useContractCommissionFollowup', () => ({ useContractCommissionF
   data: { rows: state.followups }, isError: false, isLoading: false, refetch: state.refetch,
 }) }));
 vi.mock("@/hooks/useSaleBonus", () => ({ useSaleBonusStatus: () => ({ data: null, refetch: async () => ({ data: null }) }) }));
+vi.mock('@/hooks/useCommissionManager', () => ({ assignCommissionManager: state.assign, invalidateAfterCommissionAssign: vi.fn(), useOptionalQueryClient: () => undefined }));
+vi.mock('@/components/income-expenses/QlManagerSelect', () => ({ QlManagerSelectForBuilding: ({ id, onPick }: { id: string; onPick: (manager: { staffId: string; displayName: string }) => void }) =>
+  <button id={id} onClick={() => onPick({ staffId: id.includes('broker') ? 'manager-broker' : 'manager-sale', displayName: 'Quản lý đã chọn' })}>Chọn quản lý</button> }));
 vi.mock("@/hooks/useAccounts", () => ({ useAccounts: () => ({ data: state.accounts }) }));
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ data: { id: "u1" } }) }));
 vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ selectedOrganizationId: 'org1' }) }));
@@ -90,6 +95,7 @@ beforeEach(() => {
   state.refetch.mockReset();
   state.refetch.mockImplementation(async () => ({ data: { rows: state.followups }, isError: state.voucherError }));
   state.create.mockReset();
+  state.assign.mockReset();
   vi.mocked(toast.error).mockClear();
   state.order = [];
   state.prepare.mockReset();
@@ -157,19 +163,21 @@ it('không tạo lại môi giới đã quyết định không phát sinh khi đ
   expect(state.create.mock.calls[0][0].kind).toBe('sale');
 });
 
-it('môi giới tạo được nhưng Sale lỗi: thử lại chỉ gửi Sale dù cache phiếu chưa cập nhật', async () => {
-  state.create.mockResolvedValueOnce({ id: 'broker-voucher', code: 'PC-BROKER' }).mockRejectedValueOnce(new Error('lỗi Sale'))
-    .mockResolvedValueOnce({ id: 'sale-voucher', code: 'PC-SALE' });
-  const close = vi.fn();
-  render(<CommissionVoucherModal open contractId="c1" onOpenChange={close} />);
-  fireEvent.change(screen.getByPlaceholderText('Để trống nếu không có'), { target: { value: '500000' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Tạo phiếu chi' }));
-  await waitFor(() => expect(state.create).toHaveBeenCalledTimes(2));
-  await waitFor(() => expect((screen.getByRole('button', { name: 'Tạo phiếu chi' }) as HTMLButtonElement).disabled).toBe(false));
+it('failure while modal remains open hides saved Sale fields and explicitly retries the same request', async () => {
+  state.create.mockResolvedValueOnce({ status:'COMPLETED', id: 'broker-voucher', code: 'PC-BROKER' }).mockImplementationOnce(async () => {
+    state.followups=[{kind:'broker',state:'VOUCHER_CREATED',can_manage:true},{kind:'sale',state:'FAILED',can_manage:true,can_retry:true,request_id:'request-sale'}];
+    throw new Error('lỗi Sale');
+  }).mockResolvedValueOnce({ status:'COMPLETED',id: 'sale-voucher', code: 'PC-SALE' });
+  const close=vi.fn();render(<CommissionVoucherModal open contractId="c1" onOpenChange={close} />);
+  fireEvent.change(screen.getByPlaceholderText('Để trống nếu không có'),{target:{value:'500000'}});
+  fireEvent.click(screen.getByRole('button',{name:'Tạo phiếu chi'}));
+  await waitFor(()=>expect(screen.queryByPlaceholderText('Để trống nếu không có')).toBeNull());
+  await waitFor(()=>expect(screen.getByRole('button',{name:'Tạo lại thưởng Sale'})).toBeTruthy());
   expect(close).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'Tạo phiếu chi' }));
-  await waitFor(() => expect(state.create).toHaveBeenCalledTimes(3));
-  expect(state.create.mock.calls.map(c => c[0].kind)).toEqual(['broker', 'sale', 'sale']);
+  fireEvent.click(screen.getByRole('button',{name:'Tạo lại thưởng Sale'}));
+  await waitFor(()=>expect(state.create).toHaveBeenCalledTimes(3));
+  expect(state.prepare).toHaveBeenCalledOnce();
+  expect(state.create.mock.calls[2][0]).toEqual({contract_id:'c1',kind:'sale',request_id:'request-sale'});
 });
 
 it('phản hồi tạo phiếu A không được đánh dấu có phiếu hoặc đóng popup B đang mở', async () => {
@@ -206,7 +214,7 @@ it('saves both selected positive intents before executing either kind', async ()
   fireEvent.click(screen.getByRole('button', { name: 'Tạo phiếu chi' }));
   await waitFor(() => expect(state.order).toEqual(['prepare', 'broker', 'sale']));
   expect(state.prepare.mock.calls[0][0].map((input: { kind: string }) => input.kind)).toEqual(['broker', 'sale']);
-  expect(state.create.mock.calls[1][0].preparedRequest.request_id).toBe('request-sale');
+  expect(state.create.mock.calls[1][0]).toEqual({contract_id:'c1',kind:'sale',request_id:'request-sale'});
 });
 it('failed prepare cannot execute any voucher', async () => {
   state.prepare.mockRejectedValue(new Error('Không lưu được'));
@@ -244,4 +252,49 @@ it('missing authoritative kind on submit reports read uncertainty instead of sil
   fireEvent.click(screen.getByRole('button', { name: 'Tạo phiếu chi' }));
   await waitFor(() => expect(vi.mocked(toast.error)).toHaveBeenCalled());
   expect(state.prepare).not.toHaveBeenCalled(); expect(state.create).not.toHaveBeenCalled(); expect(close).not.toHaveBeenCalled();
+});
+
+it('broker durable FAILED + sale PENDING shows immutable retry and submits only new Sale edits', async () => {
+  state.followups[0]={kind:'broker',state:'FAILED',can_manage:true,can_retry:true,request_id:'saved-broker'};
+  state.create.mockResolvedValue({status:'COMPLETED',id:'v',code:'PC'});
+  render(<CommissionVoucherModal open contractId="c1" onOpenChange={()=>{}} />);
+  expect(screen.queryByPlaceholderText('Tên công ty / cá nhân môi giới')).toBeNull();
+  expect(screen.queryByText('Số tiền hoa hồng *')).toBeNull();
+  expect(screen.queryByText('Sổ quỹ (chi hoa hồng MG)')).toBeNull();
+  expect(document.getElementById('hh-broker-ql')).toBeNull();
+  expect(screen.getByRole('button',{name:'Tạo lại hoa hồng môi giới'})).toBeTruthy();
+  fireEvent.change(screen.getByPlaceholderText('Để trống nếu không có'),{target:{value:'700000'}});
+  fireEvent.click(screen.getByRole('button',{name:'Tạo phiếu chi'}));
+  await waitFor(()=>expect(state.create).toHaveBeenCalledOnce());
+  expect(state.prepare.mock.calls[0][0]).toMatchObject([{kind:'sale',amount:700000}]);
+  expect(state.create.mock.calls[0][0].kind).toBe('sale');
+});
+it.each(['broker','sale'])('explicit %s saved retry ignores form and reuses exact identity', async kind=>{
+  state.followups=state.followups.map(row=>row.kind===kind?{...row,state:'FAILED',request_id:`saved-${kind}`,can_retry:true}:row);
+  state.create.mockResolvedValue({status:'COMPLETED',id:'v',code:'PC'});
+  render(<CommissionVoucherModal open contractId="c1" onOpenChange={()=>{}} />);
+  fireEvent.click(screen.getByRole('button',{name:kind==='broker'?'Tạo lại hoa hồng môi giới':'Tạo lại thưởng Sale'}));
+  await waitFor(()=>expect(state.create).toHaveBeenCalledOnce());
+  expect(state.create.mock.calls[0][0]).toEqual({contract_id:'c1',kind,request_id:`saved-${kind}`});
+  expect(state.prepare).not.toHaveBeenCalled();expect(state.assign).not.toHaveBeenCalled();
+});
+it.each(['FAILED','PROCESSING'])('fresh %s transition stops stale edited form and exposes saved state', async status=>{
+  render(<CommissionVoucherModal open contractId="c1" onOpenChange={()=>{}} />);
+  fireEvent.change(oTenMG(),{target:{value:'Edited recipient'}});
+  state.followups[0]={kind:'broker',state:status,can_manage:true,request_id:'other-tab-request',can_retry:status==='FAILED'};
+  fireEvent.click(screen.getByRole('button',{name:'Tạo phiếu chi'}));
+  await waitFor(()=>expect(screen.queryByPlaceholderText('Tên công ty / cá nhân môi giới')).toBeNull());
+  expect(state.create).not.toHaveBeenCalled();expect(state.prepare).not.toHaveBeenCalled();
+  expect(toast.error).toHaveBeenCalled();
+});
+it.each(['COMPLETED','ALREADY_EXISTS'])('saves both selected managers and performs no client assignment on %s',async status=>{
+  state.create.mockResolvedValue({status,id:'winning-voucher',code:'PC'});
+  render(<CommissionVoucherModal open contractId="c1" onOpenChange={()=>{}} />);
+  fireEvent.change(screen.getByPlaceholderText('Để trống nếu không có'),{target:{value:'500000'}});
+  for(const id of ['hh-broker-ql','hh-sale-ql']) fireEvent.click(document.getElementById(id)!);
+  for(const button of screen.getAllByText('Chọn quản lý')) fireEvent.click(button);
+  fireEvent.click(screen.getByRole('button',{name:'Tạo phiếu chi'}));
+  await waitFor(()=>expect(state.create).toHaveBeenCalledTimes(2));
+  expect(state.prepare.mock.calls[0][0]).toMatchObject([{kind:'broker',manager_id:'manager-broker'},{kind:'sale',manager_id:'manager-sale'}]);
+  expect(state.assign).not.toHaveBeenCalled();
 });

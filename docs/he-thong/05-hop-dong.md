@@ -358,6 +358,9 @@ Chi tiết các bước mới so với mô tả cũ:
 - Lỗi đã ghi nhận xuất hiện đúng hai nơi: ngay dưới nút **Tạo phiếu hoa hồng** trong chi tiết hợp đồng và trong **Cần rà soát** của **Hợp đồng & quyết toán**. Không có bảng lỗi chung trên danh sách Hợp đồng hoặc ngoài làn rà soát này.
 - Với yêu cầu còn đủ dữ liệu đã lưu, **Tạo lại** đối chiếu trực tiếp yêu cầu đó và trả phiếu đã tồn tại nếu lần trước thực tế đã thành công. Hồ sơ cũ thiếu dữ liệu yêu cầu mới mở form của đúng loại lỗi để người dùng bổ sung; hệ thống không tự đoán sổ quỹ hay dữ liệu nhận tiền.
 
+- Trong popup, loại đã có yêu cầu được lưu hiển thị riêng với nút **Tạo lại**, không mở các ô sửa số tiền/sổ quỹ/ngân hàng/người nhận của lần đó. Loại còn mới vẫn nhập và tạo riêng được. Nếu trạng thái đổi trong lúc nhập, hệ thống dừng gửi phần nhập xung đột và chuyển sang yêu cầu đã lưu.
+- Lựa chọn **QL** và quản lý nhận tiền được lưu cùng yêu cầu. Với phiếu mới, tạo phiếu và gán quản lý qua luồng sổ ảo hiện hành phải cùng hoàn tất mới báo thành công; lỗi gán không để lại phiếu ở sổ trả tiền sai. Khi chỉ đối chiếu phiếu đã có hoặc phát lại biên nhận thành công, hệ thống không lấy lựa chọn QL ở form khác để đổi quản lý/sổ của phiếu đó.
+
 **Validate (zod `contractFormSchema`)**: `room_id` là uuid, các ngày bắt buộc, `end_date > start_date`, giá/cọc ≥ 0, `deposit_debt_mode ∈ {DEBT, FIRST_INVOICE}`.
 
 **Edge case**:

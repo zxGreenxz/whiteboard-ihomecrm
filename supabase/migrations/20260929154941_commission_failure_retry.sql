@@ -118,10 +118,11 @@ BEGIN
    c:=(i->>'contract_id')::uuid; k:=i->>'kind'; r:=(i->>'request_id')::uuid; a:=(i->>'amount')::numeric;
    IF c IS NULL OR r IS NULL OR k IS NULL OR k NOT IN ('broker','sale') OR a IS NULL OR a<=0 OR a::text IN ('NaN','Infinity','-Infinity')
     OR (i->>'voucher_date')::date IS NULL OR jsonb_typeof(COALESCE(i->'attachments','[]'))<>'array'
-    OR EXISTS(SELECT 1 FROM jsonb_object_keys(i) key WHERE key<>ALL(ARRAY['contract_id','kind','request_id','amount','voucher_date','account_id','payer_name','recipient_name','recipient_bank','recipient_account','item_description','attachments'])) THEN
+    OR EXISTS(SELECT 1 FROM jsonb_object_keys(i) key WHERE key<>ALL(ARRAY['contract_id','kind','request_id','amount','voucher_date','account_id','payer_name','recipient_name','recipient_bank','recipient_account','item_description','attachments','manager_id'])) THEN
     RAISE EXCEPTION 'Yêu cầu tạo phiếu không hợp lệ' USING ERRCODE='22023';
    END IF;
    PERFORM (i->>'account_id')::uuid;
+   PERFORM (i->>'manager_id')::uuid;
   EXCEPTION WHEN invalid_text_representation OR invalid_datetime_format OR datetime_field_overflow THEN
    RAISE EXCEPTION 'Yêu cầu tạo phiếu không hợp lệ' USING ERRCODE='22023';
   END;
@@ -176,6 +177,13 @@ BEGIN
     receipt:=public.create_commission_voucher(p_contract_id,p_kind,(p->>'amount')::numeric,(p->>'voucher_date')::date,
       (p->>'account_id')::uuid,p->>'payer_name',p->>'recipient_name',p->>'recipient_bank',p->>'recipient_account',p->>'item_description',COALESCE(p->'attachments','[]'));
     IF receipt->>'id' IS NULL THEN RAISE EXCEPTION 'Không nhận được định danh phiếu'; END IF;
+    -- Manager selection belongs to this saved intent. Assignment uses its
+    -- existing authorization/routing rules and rolls back WITH fresh creation.
+    -- Existing vouchers and receipt replays never enter this subtransaction.
+    IF p->>'manager_id' IS NOT NULL THEN
+     PERFORM public.assign_commission_manager_v1((receipt->>'id')::uuid,(p->>'manager_id')::uuid,NULL,
+       'commission-request:'||p_request_id::text);
+    END IF;
     receipt:=receipt||jsonb_build_object('status','COMPLETED');
    EXCEPTION WHEN OTHERS THEN
     failure:=left(SQLERRM,1500); receipt:=NULL;

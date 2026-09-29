@@ -8,7 +8,7 @@ const state = vi.hoisted(() => ({ rpc: vi.fn(), org: 'dddd0000-0000-4000-8000-00
 vi.mock('@/integrations/supabase/client', () => ({ supabase: { rpc: state.rpc } }));
 vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ selectedOrganizationId: state.org }) }));
 vi.mock('sonner', () => ({ toast: { error: vi.fn() } }));
-import { useCreateCommissionVoucher, type CreateCommissionVoucherInput } from '../useCommissionVoucher';
+import { useCreateCommissionVoucher, useRetryCommissionVoucher, type CreateCommissionVoucherInput } from '../useCommissionVoucher';
 
 const input: CreateCommissionVoucherInput = {
   contract_id: '11111111-1111-4111-8111-111111111111', contract_number: 'HD-TEST',
@@ -17,11 +17,11 @@ const input: CreateCommissionVoucherInput = {
   payer_name: null, recipient_name: 'Môi giới', recipient_bank: null, recipient_account_number: null,
   item_description: 'Hoa hồng',
 };
-function setup() {
+function setup(hookToRender = useCreateCommissionVoucher) {
   // A caller's permissive default must not cause an automatic money retry.
   const client = new QueryClient({ defaultOptions: { mutations: { retry: 2, retryDelay: 0 } } });
   const invalidate = vi.spyOn(client, 'invalidateQueries');
-  const hook = renderHook(useCreateCommissionVoucher, { wrapper: ({ children }: PropsWithChildren) =>
+  const hook = renderHook(hookToRender, { wrapper: ({ children }: PropsWithChildren) =>
     <QueryClientProvider client={client}>{children}</QueryClientProvider> });
   return { ...hook, invalidate };
 }
@@ -65,7 +65,7 @@ it('invalidates true sources after execute transport failure without another exe
   const { result, invalidate } = setup();
   await act(async () => { await expect(result.current.mutateAsync(input)).rejects.toMatchObject({ message: 'Kết nối bị ngắt' }); });
   expect(state.rpc.mock.calls.map(c => c[0])).toEqual(['prepare_commission_requests_v1', 'execute_commission_request_v1']);
-  for (const key of ['contract-commission-followups', 'existing-commission-vouchers', 'sale-bonus-status', 'income-expenses', 'accounts-with-balance', 'commission-voucher-facts'])
+  for (const key of ['contract-commission-followups', 'existing-commission-vouchers', 'sale-bonus-status', 'income-expenses', 'accounts-with-balance', 'commission-voucher-facts', 'manager-salary'])
     expect(invalidate).toHaveBeenCalledWith({ queryKey: [key] });
   expect(errors).toHaveBeenCalledOnce();
 });
@@ -96,10 +96,26 @@ it('surfaces FAILED server receipt and leaves explicit retry to the user', async
   await act(async () => { await expect(result.current.mutateAsync(input)).rejects.toThrow('Máy chủ chưa tạo được phiếu'); });
   expect(state.rpc.mock.calls.filter(c => c[0] === 'execute_commission_request_v1')).toHaveLength(1);
 });
-it('reuses a saved request without preparing replacement payload', async () => {
+it.each(['broker','sale'] as const)('persists selected %s manager with the exact creation payload', async kind => {
+  const { result } = setup();
+  await act(async () => { await result.current.mutateAsync({ ...input, kind, manager_id: '55555555-5555-4555-8555-555555555555' }); });
+  expect(state.rpc.mock.calls[0][1].p_intents[0]).toMatchObject({kind,manager_id:'55555555-5555-4555-8555-555555555555'});
+});
+it('rejects combining editable creation input with a saved request identity', async () => {
   const preparedRequest = { contract_id: input.contract_id, kind: input.kind, request_id: '33333333-3333-4333-8333-333333333333' };
   const { result } = setup();
-  await act(async () => { await result.current.mutateAsync({ ...input, preparedRequest }); });
-  expect(state.rpc.mock.calls).toEqual([['execute_commission_request_v1', { p_organization_id: state.org,
-    p_contract_id: input.contract_id, p_kind: input.kind, p_request_id: preparedRequest.request_id }]]);
+  await act(async () => { await expect(result.current.mutateAsync({ ...input, preparedRequest } as CreateCommissionVoucherInput)).rejects.toThrow('Tạo lại'); });
+  expect(state.rpc).not.toHaveBeenCalled();
+});
+it('saved retry accepts only the saved identity and never prepares a replacement', async () => {
+  const request = { contract_id: input.contract_id, kind: input.kind, request_id: '33333333-3333-4333-8333-333333333333' };
+  const client=new QueryClient();
+  const invalidate=vi.spyOn(client,'invalidateQueries');
+  const {result}=renderHook(useRetryCommissionVoucher,{wrapper:({children}:PropsWithChildren)=><QueryClientProvider client={client}>{children}</QueryClientProvider>});
+  await act(async()=>{await result.current.mutateAsync(request);});
+  expect(state.rpc.mock.calls).toEqual([['execute_commission_request_v1',{p_organization_id:state.org,p_contract_id:input.contract_id,p_kind:input.kind,p_request_id:request.request_id}]]);
+  expect(invalidate).toHaveBeenCalledWith({queryKey:['manager-salary']});
+  state.rpc.mockClear();
+  await act(async()=>{await expect(result.current.mutateAsync({...request,amount:9999} as typeof request)).rejects.toThrow();});
+  expect(state.rpc).not.toHaveBeenCalled();
 });

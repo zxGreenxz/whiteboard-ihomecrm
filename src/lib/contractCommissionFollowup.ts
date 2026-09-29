@@ -93,11 +93,12 @@ export async function runTrackedCommissionCreation<T>(input: { contractId: strin
 const creationPayloadSchema = z.object({
   contract_id: z.string().uuid(), kind: kindSchema, amount: z.number().finite().positive(),
   voucher_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), account_id: z.string().uuid().nullable().optional(),
+  manager_id: z.string().uuid().nullable().optional(),
   payer_name: z.string().nullable().optional(), recipient_name: z.string().nullable().optional(),
   recipient_bank: z.string().nullable().optional(), recipient_account: z.string().nullable().optional(),
   item_description: z.string().nullable().optional(), attachments: z.array(z.string()).optional(),
 }).strict();
-const preparedRequestSchema = z.object({ contract_id: z.string().uuid(), kind: kindSchema, request_id: z.string().uuid() });
+const preparedRequestSchema = z.object({ contract_id: z.string().uuid(), kind: kindSchema, request_id: z.string().uuid() }).strict();
 const creationResultSchema = z.object({ status: z.enum(['COMPLETED', 'ALREADY_EXISTS', 'FAILED']), id: z.string().uuid().nullable(), code: z.string().nullable() });
 export type CommissionCreationPayload = z.infer<typeof creationPayloadSchema>;
 export type PreparedCommissionRequest = z.infer<typeof preparedRequestSchema>;

@@ -23,6 +23,21 @@ Các số đo dưới đây được ghi trực tiếp để checkout sạch kh�
 
 Types đang có trong worktree được sinh từ TEST và chứa thay đổi rent-support ngoài hotfix; không được commit hoặc dùng làm types production. E2E UI khỏe hoàn chỉnh, điều tra 9 lỗi HTTP, review độc lập và các gate toàn nhánh vẫn còn chờ controller.
 
+## Vòng sửa ba finding của final review (base `4d01d1ba`)
+
+Ý định QL nay được lưu bằng `manager_id` trong payload riêng của yêu cầu. Chỉ fresh canonical creation mới gọi assignment hiện hữu, trong cùng financial subtransaction, trước khi ghi COMPLETED; lỗi assignment rollback phiếu và giữ lỗi/yêu cầu để retry. ALREADY_EXISTS và receipt replay không gán lại manager/account. Không đổi quyền, công thức lương, duyệt hay posting. Modal tách loại đã lưu khỏi loại còn nhập mới: saved kind chỉ có Tạo lại đúng identity; fresh read đổi sang saved/processing sẽ chặn phần form xung đột.
+
+Bằng chứng vòng sửa trên TEST `hzulujxgonszuleqticb`:
+
+- RED trước source fix cho SQL manager payload, hook boundary và UI saved/new; GREEN **169 test / 9 file** tập trung. Log giữ cảnh báo Router và lỗi import động cố ý của bài error-boundary hiện hữu; không suy ra console browser sạch.
+- Migration áp hai lần TEST; actual JWT **23/23** gồm canonical failure, assignment denial/rollback, cả broker/sale chọn manager khác nhau cạnh tranh, replay không đổi winner, interrupted/new-session retry và scope/redaction/cancellation/alias cũ. Hai mutation bỏ assignment hoặc cho assignment ở replay đều bị suite bắt đỏ, digest khôi phục. SQL SHA256: `2ae63fa284e2df5bc8af9314ab9ac88432c6e4311e9377f1fc8c49bcb20cadde`.
+- Hai money gates chạy sau cleanup bằng full-scope owner JWT TEST: v1 **5.784.524.013 VND**, SQL = RPC = 1165 dòng phân trang; v2 **20 sổ thực**, 3741 posting / 4 trang, SQL = phân trang **2.684.308.004 VND**.
+- Node **24.18.0** cho lượt xác minh cuối: typecheck baseline **0 fingerprint**, targeted ESLint sạch, build **4958 module**, bundle **564 chunk / entry 235 kB / 99 trang lazy**. Provenance official (SQL stage trước generator, production catalog chỉ đọc), RPC-cast, Copilot docs và truy vấn stable-fn-locks trên TEST đều đạt. Types TEST tạm không stage/commit.
+
+Lượt JWT mở rộng đầu tiên thất bại do harness đọc sai tên cột posting và cleanup gọi sai tên bảng audit; đã giữ log lỗi, dọn exact-ID 12 hợp đồng/14 phiếu/2 manager users cùng configs/2 accounts trước chạy lại. Lượt sau đạt 23/23 và kiểm không còn fixture nghiệp vụ. Giữ nguyên **8 dòng audit append-only** tổng hai lượt, cùng guard/hash chain; không tuyên bố đã xóa mọi dòng và không tắt audit guard để dọn. Chi tiết IDs/RED/recovery/mutation/commands ở report làm việc `.superpowers/sdd/2026-09-29-commission-failure-retry/final-fix-report.md`.
+
+Vòng này không chạy lại browser hoặc toàn bộ app unit. Kết quả E2E đỏ trước đó, scoped rereview ba finding, full suite/gates/release và production smoke còn chờ controller; các PASS trên không thay thế chúng.
+
 ## Smoke production chỉ đọc — chưa chạy
 
 Sau khi controller xác nhận migration và app đã phát hành đúng cùng SHA, chạy từ root repo:

@@ -184,7 +184,7 @@ export const useCommissionPrefill = (contractId: string | null) => {
       const matched = findMatchingTier(months, tiers);
 
       const rep =
-        contract.contract_customers?.find((c: any) => c.is_representative) ??
+        contract.contract_customers?.find((c) => c.is_representative) ??
         contract.contract_customers?.[0] ??
         null;
 
@@ -231,7 +231,8 @@ export interface CreateCommissionVoucherInput {
   item_description: string;
   /** Ảnh chứng từ riêng của phiếu (URL đã upload bucket income-expense-attachments) */
   attachments?: string[];
-  preparedRequest?: PreparedCommissionRequest;
+  /** Explicit salary manager selection, saved with the creation intent. */
+  manager_id?: string | null;
 }
 
 export function commissionCreationPayload(input: CreateCommissionVoucherInput) {
@@ -239,7 +240,7 @@ export function commissionCreationPayload(input: CreateCommissionVoucherInput) {
     contract_id: input.contract_id, kind: input.kind, amount: input.amount, voucher_date: input.voucher_date,
     account_id: input.account_id, payer_name: input.payer_name, recipient_name: input.recipient_name,
     recipient_bank: input.recipient_bank, recipient_account: input.recipient_account_number,
-    item_description: input.item_description, attachments: input.attachments ?? [],
+    item_description: input.item_description, attachments: input.attachments ?? [], manager_id: input.manager_id ?? null,
   };
 }
 
@@ -255,7 +256,7 @@ export const useRetryCommissionVoucher = () => {
   return useMutation({ retry: false,
     mutationFn: (request: PreparedCommissionRequest) => executeCommissionCreation(batBuoc(selectedOrganizationId, 'organizationId'), request),
     onSettled: () => {
-      for (const key of [CONTRACT_COMMISSION_FOLLOWUP_KEY, 'sale-bonus-status', 'income-expenses', 'accounts-with-balance', 'existing-commission-vouchers', 'commission-voucher-facts'])
+      for (const key of [CONTRACT_COMMISSION_FOLLOWUP_KEY, 'sale-bonus-status', 'income-expenses', 'accounts-with-balance', 'existing-commission-vouchers', 'commission-voucher-facts', 'manager-salary'])
         queryClient.invalidateQueries({ queryKey: [key] });
     },
   });
@@ -269,7 +270,8 @@ export const useCreateCommissionVoucher = () => {
     retry: false,
     mutationFn: async (input: CreateCommissionVoucherInput) => {
       if (!selectedOrganizationId) throw new Error("Chưa xác định được tổ chức đang xử lý.");
-      const request = input.preparedRequest ?? (await prepareCommissionCreations(selectedOrganizationId, [commissionCreationPayload(input)]))[0];
+      if ('preparedRequest' in input) throw new Error('Yêu cầu đã lưu phải dùng Tạo lại, không nhận dữ liệu form mới.');
+      const request = (await prepareCommissionCreations(selectedOrganizationId, [commissionCreationPayload(input)]))[0];
       if (request.contract_id !== input.contract_id || request.kind !== input.kind) throw new Error('Yêu cầu tạo phiếu không khớp hợp đồng hoặc loại.');
       return executeCommissionCreation(selectedOrganizationId, request);
     },
@@ -283,6 +285,7 @@ export const useCreateCommissionVoucher = () => {
         queryKey: ["existing-commission-vouchers"],
       });
       queryClient.invalidateQueries({ queryKey: ["commission-voucher-facts"] });
+      queryClient.invalidateQueries({ queryKey: ["manager-salary"] });
     },
     onError: (err) => {
       console.error("Error creating commission voucher:", err);
