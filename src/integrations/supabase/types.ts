@@ -3364,6 +3364,7 @@ export type Database = {
           physical_actor: string
           physical_idempotency_key: string
           physical_payload_hash: string
+          return_note: string | null
           room_at_handover_id: string
           room_name: string | null
           settlement_actor: string | null
@@ -3393,6 +3394,7 @@ export type Database = {
           physical_actor: string
           physical_idempotency_key: string
           physical_payload_hash: string
+          return_note?: string | null
           room_at_handover_id: string
           room_name?: string | null
           settlement_actor?: string | null
@@ -3422,6 +3424,7 @@ export type Database = {
           physical_actor?: string
           physical_idempotency_key?: string
           physical_payload_hash?: string
+          return_note?: string | null
           room_at_handover_id?: string
           room_name?: string | null
           settlement_actor?: string | null
@@ -21221,6 +21224,7 @@ export type Database = {
           p_initial_kind: string
           p_meter_boundary?: Json
           p_organization_id: string
+          p_return_note?: string
           p_settlement?: Json
           p_settlement_mode: string
         }

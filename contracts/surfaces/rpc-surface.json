@@ -1031,7 +1031,7 @@
       "definitions": [
         {
           "schema": "public",
-          "args": "p_organization_id uuid, p_contract_id uuid, p_expected_contract_updated_at timestamp with time zone, p_idempotency_key text, p_actual_move_out_on date, p_initial_kind text, p_settlement_mode text, p_settlement jsonb DEFAULT NULL::jsonb, p_meter_boundary jsonb DEFAULT NULL::jsonb",
+          "args": "p_organization_id uuid, p_contract_id uuid, p_expected_contract_updated_at timestamp with time zone, p_idempotency_key text, p_actual_move_out_on date, p_initial_kind text, p_settlement_mode text, p_settlement jsonb DEFAULT NULL::jsonb, p_meter_boundary jsonb DEFAULT NULL::jsonb, p_return_note text DEFAULT NULL::text",
           "returns": "jsonb",
           "volatility": "VOLATILE",
           "securityDefiner": true,
