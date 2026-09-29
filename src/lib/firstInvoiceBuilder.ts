@@ -335,6 +335,24 @@ export function computeFirstBillingMonth(
   return result;
 }
 
+/** Local support preview context, retaining the canonical first billing month. */
+export function buildFirstInvoiceBillingContext(
+  from?: string | null,
+  to?: string | null,
+  contractStartDate?: string | null,
+): { billing_month: string; invoice_period_label: string } {
+  const period = normalizeFirstBillingPeriod(from, to, contractStartDate);
+  const billingMonth = computeFirstBillingMonth(period.start_date, period.end_date);
+  const monthLabel = billingMonth ? `${billingMonth.slice(5, 7)}/${billingMonth.slice(0, 4)}` : '';
+  const dateLabel = (date: string): string => date.split('-').reverse().join('/');
+  return {
+    billing_month: billingMonth,
+    invoice_period_label: period.start_date && period.end_date
+      ? `${dateLabel(period.start_date)}–${dateLabel(period.end_date)} (${monthLabel})`
+      : monthLabel,
+  };
+}
+
 /**
  * Chặn kỳ đầu thiếu tháng: `to` phải ≥ ngày cuối tháng của `from`
  * (vd 20/5–30/5 lỗi vì tháng 5 chưa được chọn đủ tới 31/5).
