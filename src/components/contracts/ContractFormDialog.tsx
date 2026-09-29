@@ -30,9 +30,9 @@ import { ServicesSection } from "./contract-form/ServicesSection";
 import { FirstInvoicePreview } from "./contract-form/FirstInvoicePreview";
 import { ContractFormFooter } from "./contract-form/ContractFormFooter";
 import { useContractDraftEditor } from './contract-form/useContractDraftEditor';
-import { ContractDraftDocuments } from './contract-form/ContractDraftDocuments';
 
 const SigningDialog = lazy(() => import('./ConfirmContractSigningDialog').then(module => ({ default: module.ConfirmContractSigningDialog })));
+const PrintDraftDialog = lazy(() => import('./PrintContractDraftDialog').then(module => ({ default: module.PrintContractDraftDialog })));
 
 // Public API giữ nguyên: ContractPrefill vẫn import được từ file này.
 export type { ContractPrefill } from "./contract-form/types";
@@ -80,7 +80,8 @@ export function ContractFormDialog({
   const canSaveDraft = canUse(permissions, 'contracts', editor.current ? 'edit' : 'create', state.selectedBuildingId || undefined);
   const [choiceOpen, setChoiceOpen] = useState(false);
   const [signing, setSigning] = useState<{ draft: ContractDraft; prepared: PreparedSigningCreation }>();
-  useEffect(() => { if (!open) { setChoiceOpen(false); setSigning(undefined); } }, [open]);
+  const [printBeforeSigning, setPrintBeforeSigning] = useState<{ draft: ContractDraft; prepared: PreparedSigningCreation }>();
+  useEffect(() => { if (!open) { setChoiceOpen(false); setSigning(undefined); setPrintBeforeSigning(undefined); } }, [open]);
   const pending = state.isPending || editor.pending;
   const saveDraft = async () => {
     if (!canSaveDraft) return;
@@ -100,10 +101,10 @@ export function ContractFormDialog({
         return;
       }
       if (!canSaveDraft || !canExport) {
-        toast.error('Nội dung đã đổi hoặc chưa có tài liệu. Cần lưu và xuất lại bản nháp trước khi ký.'); return;
+        toast.error('Nội dung đã đổi hoặc chưa có tài liệu. Cần lưu và in bản nháp trước khi ký.'); return;
       }
       const saved = await editor.persist({ signingRequest: request });
-      if (saved) setSigning({ draft: saved, prepared: buildPreparedSigningCreation(request, state.typedDepositTotal + state.approvedOrphanTotal) });
+      if (saved) setPrintBeforeSigning({ draft: saved, prepared: buildPreparedSigningCreation(request, state.typedDepositTotal + state.approvedOrphanTotal) });
     } : undefined,
   });
   const { form, isEditMode, onInvalid } = state;
@@ -145,7 +146,7 @@ export function ContractFormDialog({
               className="space-y-6"
             >
               {editor.errors.length > 0 && <Alert variant="destructive"><AlertDescription><ul className="list-disc pl-4">{editor.errors.map(error => <li key={`${error.field}-${error.label}`}>{error.label}: {error.message}</li>)}</ul></AlertDescription></Alert>}
-              <fieldset disabled={pending || !!signing} className="space-y-6">
+              <fieldset disabled={pending || !!signing || !!printBeforeSigning} className="space-y-6">
               {/* ===== Section 1: Thông tin chung ===== */}
               <GeneralSection {...state} buildingDisabled={!!editor.current} />
 
@@ -160,7 +161,6 @@ export function ContractFormDialog({
 
               {/* ===== Section 5: Xem trước hoá đơn cọc + tháng đầu ===== */}
               {!isEditMode && <FirstInvoicePreview {...state} />}
-              {!isEditMode && <ContractDraftDocuments editor={editor} canExport={canExport && canSaveDraft} />}
               </fieldset>
 
               {/* ===== Footer buttons ===== */}
@@ -200,6 +200,15 @@ export function ContractFormDialog({
         </div>
       </DialogContent>
     </Dialog>
+    {printBeforeSigning && <Suspense fallback={<p role="status">Đang mở in hợp đồng…</p>}>
+      <PrintDraftDialog open draft={printBeforeSigning.draft} canEdit={canSaveDraft}
+        onDraftSaved={editor.acceptPrintedDraft}
+        onOpenChange={value => { if (!value) setPrintBeforeSigning(undefined); }} onPrinted={printed => {
+          editor.acceptPrintedDraft(printed);
+          setSigning({ draft: printed, prepared: printBeforeSigning.prepared });
+          setPrintBeforeSigning(undefined);
+        }} />
+    </Suspense>}
     {signing && <Suspense fallback={<p role="status">Đang mở xác nhận ký…</p>}>
       <SigningDialog open draft={signing.draft} preparedCreation={signing.prepared} canSign={canSign} canPrint={canExport}
         onOpenChange={value => { if (!value) setSigning(undefined); }} onSigned={result => {

@@ -24,7 +24,7 @@ async function openContracts(page:Page){
  await page.goto('/contracts');
 }
 
-test('TEST owner exports saved draft bytes then signs once and reloads the exact official DOCX',async({page},info)=>{
+test('TEST owner exports saved draft bytes then signs once and prints official DOCX',async({page},info)=>{
  test.setTimeout(150_000);
  expect(process.env.FLEET_BASE_URL).toBe('http://127.0.0.1:5197');
  expect(process.env.LIFECYCLE_FIXTURE_FILE).toBeTruthy();
@@ -52,17 +52,31 @@ test('TEST owner exports saved draft bytes then signs once and reloads the exact
   const row=workspace.locator('div.p-4.flex').filter({hasText:fixture.customerName});await expect(row).toHaveCount(1);
   await row.getByRole('button',{name:'Sửa nháp',exact:true}).click();
   let dialog=page.getByRole('dialog',{name:/Tạo hợp đồng mới/});await expect(dialog).toBeVisible();
-  await expect(dialog.getByText('Mẫu hợp đồng',{exact:true}).locator('..').getByRole('combobox')).toContainText('Owned actual signing DOCX');
+  await expect(dialog.getByText('Mẫu hợp đồng',{exact:true})).toHaveCount(0);
+  await expect(dialog.getByRole('button',{name:'Lưu và xuất nháp .docx',exact:true})).toHaveCount(0);
   // The official form now previews an invoice by default. Explicitly remove
   // its RENT row so this owned zero-money fixture still tests no invoice writes.
   await expect(dialog.locator('button[title="Xoá dòng"]:visible')).toHaveCount(1);
   await dialog.locator('button[title="Xoá dòng"]:visible').click();
   await expect(dialog.locator('p:visible').filter({hasText:'Chưa có dữ liệu — hãy nhập tiền thuê'})).toBeVisible();
+  const savedPromise=page.waitForResponse(response=>response.url().endsWith('/rpc/save_contract_draft'));
+  await dialog.getByRole('button',{name:'Lưu nháp',exact:true}).click();expect((await savedPromise).status()).toBe(200);
+  await dialog.getByRole('button',{name:'Hủy',exact:true}).click();await expect(dialog).toHaveCount(0);
+  // Printing a persisted revision is a single list action, using the same
+  // official template picker. It cannot implicitly save unsaved form changes.
+  await row.getByRole('button',{name:'In',exact:true}).click();
+  let print=page.getByRole('dialog',{name:'In hợp đồng'});await expect(print).toBeVisible();
+  await expect(print.getByText('Chọn mẫu hợp đồng',{exact:true})).toBeVisible();
+  await print.getByText('Owned actual signing DOCX',{exact:true}).click();
   const registeredPromise=page.waitForResponse(response=>response.url().endsWith('/rpc/register_contract_draft_document'));
-  const draftDownloadPromise=page.waitForEvent('download');await dialog.getByRole('button',{name:'Lưu và xuất nháp .docx',exact:true}).click();
+  const draftDownloadPromise=page.waitForEvent('download');await print.getByRole('button',{name:'Tải xuống .docx',exact:true}).click();
   const[registered,draftDownload]=await Promise.all([registeredPromise,draftDownloadPromise]);expect(registered.status()).toBe(200);const document=await registered.json() as {draft_id:string;revision:number;document_sha256:string};expect(document.draft_id).toBe(fixture.draft);
   const draftBytes=await documentBytes(draftDownload,'actual-draft');expect(draftBytes.hash).toBe(document.document_sha256);expect(draftBytes.xml).toContain('BẢN NHÁP');expect(draftBytes.xml).toContain(fixture.customerName);checks.push('real template authenticated download, DOCX render, private storage upload/register and browser download share exact SHA');
-  const repeatedPromise=page.waitForEvent('download');await dialog.getByRole('button',{name:'Lưu và xuất nháp .docx',exact:true}).click();const repeated=await documentBytes(await repeatedPromise,'repeated-draft');expect(repeated.hash).toBe(draftBytes.hash);expect(registerCalls).toBe(1);checks.push('same saved revision re-export downloads immutable exact artifact; no duplicate registration');
+  await expect(print).toHaveCount(0);
+  await row.getByRole('button',{name:'In',exact:true}).click();print=page.getByRole('dialog',{name:'In hợp đồng'});await expect(print).toBeVisible();
+  const repeatedPromise=page.waitForEvent('download');await print.getByRole('button',{name:'Tải xuống .docx',exact:true}).click();const repeated=await documentBytes(await repeatedPromise,'repeated-draft');expect(repeated.hash).toBe(draftBytes.hash);expect(registerCalls).toBe(1);checks.push('same saved revision re-export downloads immutable exact artifact; no duplicate registration');
+  await expect(print).toHaveCount(0);
+  await row.getByRole('button',{name:'Sửa nháp',exact:true}).click();dialog=page.getByRole('dialog',{name:/Tạo hợp đồng mới/});await expect(dialog).toBeVisible();
   await dialog.getByRole('button',{name:'Lưu',exact:true}).click();
   const choice=page.getByRole('dialog',{name:'Bạn muốn lưu hợp đồng thế nào?'});await expect(choice).toBeVisible();
   await choice.getByRole('button',{name:'Xác nhận ký',exact:true}).click();
@@ -79,10 +93,12 @@ test('TEST owner exports saved draft bytes then signs once and reloads the exact
   await expect(dialog).toHaveCount(0); // onSigned closes the shared form and confirmation.
   await page.reload();await page.getByRole('tablist',{name:'Các mục hợp đồng'}).getByRole('tab',{name:/Hợp đồng nháp/}).click();
   await expect(row.getByText(`Đã ký từ nháp · ${fixture.customerName}`,{exact:true})).toBeVisible();await expect(row.getByRole('button',{name:'Sửa nháp',exact:true})).toHaveCount(0);
-  await row.getByRole('button',{name:'Xem hợp đồng đã ký',exact:true}).click();dialog=page.getByRole('dialog',{name:'Xác nhận đã ký và nhận phòng ngay'});await expect(dialog.getByText(`Đã ghi nhận ký và nhận phòng · ${signed.contract_number}`,{exact:true})).toBeVisible();
-  const officialDownloadPromise=page.waitForEvent('download');await dialog.getByRole('button',{name:/^(Tạo lại bản tải|Tải hợp đồng đã ký)$/}).click();const official=await documentBytes(await officialDownloadPromise,'actual-official');expect(official.xml).toContain(signed.contract_number);expect(official.xml).toContain(fixture.customerName);expect(official.xml).not.toContain('BẢN NHÁP');checks.push('official DOCX rendered from pinned original template and exact saved terms, assigned same contract number');
-  await dialog.getByRole('button',{name:'Đóng',exact:true}).click();await page.reload();await page.getByRole('tablist',{name:'Các mục hợp đồng'}).getByRole('tab',{name:/Hợp đồng nháp/}).click();await row.getByRole('button',{name:'Xem hợp đồng đã ký',exact:true}).click();dialog=page.getByRole('dialog',{name:'Xác nhận đã ký và nhận phòng ngay'});
-  const againPromise=page.waitForEvent('download');await dialog.getByRole('button',{name:'Tải hợp đồng đã ký',exact:true}).click();const again=await documentBytes(await againPromise,'reloaded-official');expect(again.hash).toBe(official.hash);checks.push('reload shows SIGNED source and downloads exact stored official bytes/number');
+  await expect(row.getByRole('button',{name:'Xem hợp đồng đã ký',exact:true})).toHaveCount(0);
+  await row.getByRole('button',{name:'In',exact:true}).click();print=page.getByRole('dialog',{name:'In hợp đồng'});
+  await expect(print.getByText(signed.contract_number,{exact:true})).toBeVisible();await print.getByText('Owned actual signing DOCX',{exact:true}).click();
+  const officialDownloadPromise=page.waitForEvent('download');await print.getByRole('button',{name:'Tải xuống .docx',exact:true}).click();const official=await documentBytes(await officialDownloadPromise,'actual-official');expect(official.xml).toContain(signed.contract_number);expect(official.xml).toContain(fixture.customerName);expect(official.xml).not.toContain('BẢN NHÁP');checks.push('signed row In renders real official DOCX with the one created contract number and customer');
+  await page.reload();await page.getByRole('tablist',{name:'Các mục hợp đồng'}).getByRole('tab',{name:/Hợp đồng nháp/}).click();await row.getByRole('button',{name:'In',exact:true}).click();print=page.getByRole('dialog',{name:'In hợp đồng'});
+  await print.getByText('Owned actual signing DOCX',{exact:true}).click();const againPromise=page.waitForEvent('download');await print.getByRole('button',{name:'Tải xuống .docx',exact:true}).click();const again=await documentBytes(await againPromise,'reloaded-official');expect(again.xml).toContain(signed.contract_number);expect(again.xml).toContain(fixture.customerName);checks.push('reload shows SIGNED source and prints the official contract again from the same template');
   expect(prodRequests).toBe(0);expect(errors).toEqual([]);
   writeFileSync(`${fixture.artifactDirectory}/draft-sign-ui.json`,JSON.stringify({status:'PASS',checks,draftSha256:draftBytes.hash,officialSha256:official.hash,contractId:signed.contract_id,contractNumber:signed.contract_number,registerCalls,prodRequests,errors,failedNetwork},null,2));
  }finally{const dialogs=await page.getByRole('dialog').allTextContents().catch(()=>[]);writeFileSync(`${fixture.artifactDirectory}/draft-sign-debug.json`,JSON.stringify({checks,errors,failedNetwork,prodRequests,dialogs},null,2));await info.attach('draft-sign-errors.json',{body:JSON.stringify({checks,errors,failedNetwork,prodRequests}),contentType:'application/json'});}

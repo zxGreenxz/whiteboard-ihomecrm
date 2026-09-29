@@ -136,6 +136,9 @@ async function assertSharedSections(dialog: ReturnType<Page['getByRole']>) {
     await expect(dialog.getByRole('heading', { name: title, exact: true })).toBeVisible();
   }
   await expect(dialog.getByRole('button', { name: 'Lưu', exact: true })).toBeVisible();
+  await expect(dialog.getByText('Mẫu hợp đồng', { exact: true })).toHaveCount(0);
+  await expect(dialog.getByText('Thông tin chủ nhà trên tài liệu', { exact: true })).toHaveCount(0);
+  await expect(dialog.getByRole('button', { name: 'Lưu và xuất nháp .docx', exact: true })).toHaveCount(0);
 }
 
 async function openChoice(page: Page, dialog: ReturnType<Page['getByRole']>) {
@@ -206,6 +209,14 @@ for (const role of ['chunha', 'quanly'] as const) {
       await expect(reopened.getByPlaceholder('Ghi chú hợp đồng...')).toHaveValue(marker);
       await expect(reopened.locator('input[name="rent_price"]')).toHaveValue('1.234.567');
       await reopened.getByRole('button', { name: 'Hủy', exact: true }).click();
+      const savedRow = row.locator('..').locator('..');
+      await expect(savedRow.getByRole('button', { name: 'Xuất nháp', exact: true })).toHaveCount(0);
+      await expect(savedRow.getByRole('button', { name: /^Tải v\d+$/ })).toHaveCount(0);
+      await savedRow.getByRole('button', { name: 'In', exact: true }).click();
+      const print = page.getByRole('dialog', { name: 'In hợp đồng' });
+      await expect(print.getByText('Chọn mẫu hợp đồng', { exact: true })).toBeVisible();
+      await expect(print.getByRole('button', { name: 'Tải xuống .docx', exact: true })).toBeVisible();
+      await print.getByRole('button', { name: 'Hủy', exact: true }).click();
     } else {
       await choice.getByRole('button', { name: 'Close' }).click();
       await expect(choice).toHaveCount(0);

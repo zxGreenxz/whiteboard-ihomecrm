@@ -9,7 +9,7 @@ import type { ContractDraft } from '@/lib/contractDrafts';
 
 const DraftList = lazy(() => import('./ContractDraftList').then(module => ({ default: module.ContractDraftList })));
 const DraftForm = lazy(() => import('./ContractDraftFormDialog').then(module => ({ default: module.ContractDraftFormDialog })));
-const SigningDialog = lazy(() => import('./ConfirmContractSigningDialog').then(module => ({ default: module.ConfirmContractSigningDialog })));
+const PrintDraftDialog = lazy(() => import('./PrintContractDraftDialog').then(module => ({ default: module.PrintContractDraftDialog })));
 const TransferPanel = lazy(() => import('./ContractTransferLinkPanel').then(module => ({ default: module.ContractTransferLinkPanel })));
 
 /** Same entry for desktop and mobile; heavy editor/export code loads on demand. */
@@ -22,7 +22,7 @@ export function ContractDraftWorkspace({ buildingId, buildingIds, alwaysExpanded
   const [expanded, setExpanded] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
   const [draft, setDraft] = useState<ContractDraft>();
-  const [signingDraft, setSigningDraft] = useState<ContractDraft>();
+  const [printDraft, setPrintDraft] = useState<ContractDraft>();
   const [transferDraft, setTransferDraft] = useState<ContractDraft>();
   const canCreate = hasAnyScope && canUse(permissions, 'contracts', 'create');
   const canEdit = canUse(permissions, 'contracts', 'edit');
@@ -32,7 +32,7 @@ export function ContractDraftWorkspace({ buildingId, buildingIds, alwaysExpanded
   useEffect(() => {
     setEditorOpen(false);
     setDraft(undefined);
-    setSigningDraft(undefined);
+    setPrintDraft(undefined);
     setTransferDraft(undefined);
   }, [selectedOrganizationId, buildingId]);
 
@@ -60,18 +60,15 @@ export function ContractDraftWorkspace({ buildingId, buildingIds, alwaysExpanded
     </div>
     {(alwaysExpanded || expanded) && <Suspense fallback={<p className="p-4 text-sm text-muted-foreground">Đang tải bản nháp…</p>}>
       <DraftList buildingId={buildingId} buildingIds={buildingIds} canEdit={canEdit} canExport={canExport} canSign={canCreate}
-        onEdit={editDraft} onExport={editDraft} onSign={value => {
-          if (value.status === 'SIGNED') setSigningDraft(value);
-          else editDraft(value);
-        }} onTransfer={setTransferDraft} />
+        onEdit={editDraft} onPrint={setPrintDraft} onSign={editDraft} onTransfer={setTransferDraft} />
     </Suspense>}
     {transferDraft && <div className="p-3"><Button variant="ghost" size="sm" onClick={() => setTransferDraft(undefined)}>Đóng liên kết nhượng</Button>
       <Suspense fallback={<p className="text-sm">Đang tải liên kết nhượng…</p>}><TransferPanel key={transferDraft.id} draft={transferDraft} canEdit={canEdit} /></Suspense>
     </div>}
-    {signingDraft && <Suspense fallback={<p role="status" className="p-4 text-sm">Đang mở xác nhận ký…</p>}>
-      <SigningDialog key={`${selectedOrganizationId}:${signingDraft.id}`} open
-        onOpenChange={open => { if (!open) setSigningDraft(undefined); }} draft={signingDraft}
-        canSign={canCreate} canPrint={canExport} />
+    {printDraft && <Suspense fallback={<p role="status" className="p-4 text-sm">Đang mở hộp thoại In…</p>}>
+      <PrintDraftDialog key={`${selectedOrganizationId}:${printDraft.id}`} open draft={printDraft}
+        canEdit={canUse(permissions, 'contracts', 'edit', printDraft.building_id)}
+        onOpenChange={open => { if (!open) setPrintDraft(undefined); }} />
     </Suspense>}
     {editorOpen && <Suspense fallback={<p role="status" className="p-4 text-sm">Đang mở bản nháp…</p>}>
       <DraftForm open={editorOpen} onOpenChange={setEditorOpen} draft={draft}
