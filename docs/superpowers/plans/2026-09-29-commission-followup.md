@@ -53,7 +53,7 @@
 - 168 test liên quan đạt trước tối ưu; SQL cuối mở rộng 18 lên 20 ca đạt, độc lập review SQL 20 + modal 8 đạt.
 - Typecheck baseline 0 lỗi, cả hai strict islands đạt với types sinh từ schema TEST; types normalize/check đạt. CLI không nhận định dạng PAT TEST nên dùng API introspection chính thức, qua writer atomic của generator. Types TEST còn phản ánh một số cột bổ sung của các nhánh khác đã có trên môi trường này.
 - Build và bundle đạt: entry khoảng 235 kB, 99 trang lazy có chunk riêng. Gate tiền v1 đối chiếu 1.171 phiếu trên 2 trang khớp SQL/RLS; v2 đối chiếu 20 sổ và 3.768 posting khớp.
-- Browser TEST thật: danh sách desktop/mobile, chi tiết, quyết toán, phân trang, mở tiếp phiếu; không console/network error hoặc request production trong lượt đọc cuối.
+- Browser TEST thật: danh sách desktop/mobile, chi tiết, quyết toán, phân trang, mở tiếp phiếu; không console/network error hoặc request production trong một lượt đọc đầy đủ.
 - Fixture TEST: lưu/mở nháp, ký thật và popup còn hiện; giả lập 503 trước writer, ATTEMPTED/FAILED được lưu thật và hiện sau reload; quyết định không phát sinh Sale có lý do được lưu thật. Không tạo hóa đơn/phiếu tiền trong fixture này. Hạn chế: tài liệu ký dùng metadata mẫu, chưa kiểm byte/upload/download DOCX.
 - SQL tối ưu từ lỗi timeout thực tế 57014 xuống khoảng 0,5–1 giây cho 678 khoản; scope tính một lần mỗi quyền/tòa, ưu tiên UNKNOWN/FAILED trước dữ liệu cũ.
 - Review độc lập bắt và sửa hai lỗi: lộ số tiền/lý do khi phiếu bị RLS sổ quỹ ẩn; phản hồi A ảnh hưởng popup B. Mutation kiểm audit trước writer, partial success, idempotency/quyền/phiếu hủy/redaction; đều đỏ khi phá và khôi phục digest.
@@ -64,3 +64,5 @@ Bằng chứng cục bộ ở outputs/commission-followup/; không commit screen
 Kiểm bổ sung: 5/5 test hook đạt, gồm phản hồi tạo phiếu sai cấu trúc phải lưu lỗi để đối chiếu và không tự tạo lại; thông báo không lộ cấu trúc kiểm tra kỹ thuật.
 
 JWT TEST thật: 9 ca owner/outsider/concurrency đạt; quản lý được giới hạn đúng 9 tòa, ngoài phạm vi đọc rỗng và ghi 403. Catalog TEST kiểm 8 hàm, không có quyền anon hoặc SELECT/DML trực tiếp trên audit.
+
+Lượt smoke mở rộng cuối ghi nhận timeout 57014 ở các reader dữ liệu tòa/phí/quyết toán hiện có; RPC theo dõi hoa hồng mới vẫn trả 200. Một lượt browser đầy đủ trước đó sạch lỗi. Chưa xác minh nguyên nhân timeout này, nên không kết luận toàn trang quyết toán luôn ổn định.
