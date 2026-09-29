@@ -26,6 +26,10 @@ export function ContractExitCasePanel({ contract }: { contract: ContractWithRela
     </div>
     <div className="text-sm"><p>Loại ban đầu: <strong>{EXIT_KIND_LABELS[exitCase.initial_kind]}</strong></p>
       <p>Loại hiện tại: <strong>{EXIT_KIND_LABELS[exitCase.current_kind]}</strong></p></div>
+    <section aria-label="Nội dung thanh lý" className="space-y-1 rounded-md border bg-muted/30 p-3 text-sm">
+      <h3 className="font-medium">Nội dung thanh lý</h3>
+      <p className="whitespace-pre-wrap break-words">{exitCase.return_note || 'Chưa có nội dung thanh lý'}</p>
+    </section>
     {!!exitCase.kind_history.length && <details className="text-sm"><summary className="cursor-pointer font-medium">Lịch sử đổi loại thanh lý ({exitCase.kind_history.length})</summary>
       <ol className="mt-2 space-y-2">{exitCase.kind_history.map(change => <li key={change.version} className="border-l-2 pl-3">
         <p>{EXIT_KIND_LABELS[change.before_kind]} → {EXIT_KIND_LABELS[change.after_kind]}</p>

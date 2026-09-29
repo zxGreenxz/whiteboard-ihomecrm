@@ -46,19 +46,21 @@ describe('thanh lý tách bước trả phòng', () => {
     expect(spies.finalize).not.toHaveBeenCalled();
     expect(transfers.finalize).not.toHaveBeenCalled();
   });
-  it('nhánh quyết toán sau chỉ gửi ngày/loại/phiên bản, không mở form tiền', async () => {
+  it('nhánh quyết toán sau gửi ghi chú đã trim cùng ngày/loại, không mở form tiền', async () => {
     const close = vi.fn();
     render(<TerminateDialog open onOpenChange={close} contract={contract} />);
     expect(spies.invoices.mock.calls.every(([id]) => id === undefined)).toBe(true);
     expect(spies.credit.mock.calls.every(([id]) => id === undefined)).toBe(true);
     fireEvent.change(screen.getByLabelText(/Ngày khách thực tế trả phòng/), { target: { value: '2026-09-28' } });
     fireEvent.click(screen.getByLabelText('Bỏ cọc'));
+    fireEvent.change(screen.getByLabelText(/Nội dung thanh lý/), { target: { value: '  Khách chuyển nơi làm việc.\nĐã nhận chìa khóa.  ' } });
     fireEvent.click(screen.getByRole('button', { name: 'Trả phòng, quyết toán sau' }));
     await waitFor(() => expect(close).toHaveBeenCalledWith(false));
     expect(spies.confirm).toHaveBeenCalledOnce();
     const request = spies.confirm.mock.calls[0][0];
     expect(request).toEqual({ contractId: contract.id, expectedContractUpdatedAt: contract.updated_at,
       actualMoveOutOn: '2026-09-28', initialKind: 'FORFEIT', settlementMode: 'DEFERRED', idempotencyKey: expect.any(String),
+      returnNote: 'Khách chuyển nơi làm việc.\nĐã nhận chìa khóa.',
       meterBoundary: { state: 'MISSING', reason: expect.any(String) } });
     expect('settlement' in request).toBe(false);
     expect(spies.finalize).not.toHaveBeenCalled();
@@ -69,6 +71,7 @@ describe('thanh lý tách bước trả phòng', () => {
     const close = vi.fn();
     render(<TerminateDialog open onOpenChange={close} contract={contract} />);
     fireEvent.click(screen.getByLabelText('Hết hạn hợp đồng'));
+    fireEvent.click(screen.getByRole('button', { name: 'Dùng nội dung mẫu' }));
     const save = screen.getByRole('button', { name: 'Trả phòng, quyết toán sau' });
     fireEvent.click(save);
     await waitFor(() => expect(spies.confirm).toHaveBeenCalledTimes(1));
@@ -76,5 +79,20 @@ describe('thanh lý tách bước trả phòng', () => {
     await waitFor(() => expect(spies.confirm).toHaveBeenCalledTimes(2));
     expect(spies.confirm.mock.calls[0][0].idempotencyKey).toBe(spies.confirm.mock.calls[1][0].idempotencyKey);
     expect(close).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText(/Nội dung thanh lý/), { target: { value: 'Khách chuyển nhà.' } });
+    fireEvent.click(save);
+    await waitFor(() => expect(spies.confirm).toHaveBeenCalledTimes(3));
+    expect(spies.confirm.mock.calls[2][0].idempotencyKey).not.toBe(spies.confirm.mock.calls[0][0].idempotencyKey);
+  });
+  it('giữ nội dung tự nhập khi đổi loại và quay lại từ quyết toán', () => {
+    render(<TerminateDialog open onOpenChange={vi.fn()} contract={contract} />);
+    fireEvent.click(screen.getByLabelText('Hết hạn hợp đồng'));
+    fireEvent.click(screen.getByRole('button', { name: 'Dùng nội dung mẫu' }));
+    fireEvent.change(screen.getByLabelText(/Nội dung thanh lý/), { target: { value: 'Nội dung khách đã xác nhận.' } });
+    fireEvent.click(screen.getByLabelText('Bỏ cọc'));
+    expect((screen.getByLabelText(/Nội dung thanh lý/) as HTMLTextAreaElement).value).toBe('Nội dung khách đã xác nhận.');
+    fireEvent.click(screen.getByRole('button', { name: 'Tiếp tục quyết toán ngay' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Quay lại' }));
+    expect((screen.getByLabelText(/Nội dung thanh lý/) as HTMLTextAreaElement).value).toBe('Nội dung khách đã xác nhận.');
   });
 });

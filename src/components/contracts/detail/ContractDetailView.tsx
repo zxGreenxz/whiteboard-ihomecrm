@@ -212,10 +212,10 @@ const ContractDetailView = ({ id, onBack, showBackButton = true }: ContractDetai
   if (isMobile) {
     return (
       <>
-        {contract.status === 'TERMINATED' && <ContractExitCasePanel key={contract.id} contract={contract} />}
         {contract.status !== 'TERMINATED' && <Suspense fallback={null}><TransferPanel key={contract.id} contractId={contract.id} /></Suspense>}
         <ContractDetailMobile
           contract={contract}
+          exitCasePanel={contract.status === 'TERMINATED' ? <ContractExitCasePanel key={contract.id} contract={contract} /> : null}
           services={contractServices}
           invoices={invoices ?? []}
           history={contractHistory}

@@ -27,8 +27,8 @@ describe('selected organization at the exit-case hook boundary',()=>{
   });
   it('injects the selected org into all mutation DTOs and distinguishes pending/finalized success',async()=>{
     const confirm=useConfirmContractReturn() as unknown as MutationOptions<ConfirmContractReturnInput>;
-    await confirm.mutationFn({contractId:id,expectedContractUpdatedAt:'2026-09-27T00:00:00Z',idempotencyKey:'return-key-0001',actualMoveOutOn:'2026-09-28',initialKind:'EARLY_RETURN',settlementMode:'DEFERRED'});
-    expect(mocks.rpc).toHaveBeenLastCalledWith('confirm_contract_return_v1',expect.objectContaining({p_organization_id:row.organization_id,p_settlement:null}));
+    await confirm.mutationFn({contractId:id,expectedContractUpdatedAt:'2026-09-27T00:00:00Z',idempotencyKey:'return-key-0001',actualMoveOutOn:'2026-09-28',initialKind:'EARLY_RETURN',settlementMode:'DEFERRED',returnNote:'Khách chuyển nhà.'});
+    expect(mocks.rpc).toHaveBeenLastCalledWith('confirm_contract_return_v1',expect.objectContaining({p_organization_id:row.organization_id,p_settlement:null,p_return_note:'Khách chuyển nhà.'}));
     await confirm.onSuccess(row);expect(mocks.success).toHaveBeenLastCalledWith('Đã trả phòng • Chờ quyết toán');
     const finalize=useFinalizeContractExitCase() as unknown as MutationOptions<FinalizeContractExitCaseInput>;
     await finalize.mutationFn({caseId:id,expectedVersion:1,idempotencyKey:'settle-key-0001',currentKind:'FORFEIT',settlement:{}});

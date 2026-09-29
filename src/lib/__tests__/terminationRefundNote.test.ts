@@ -26,6 +26,7 @@ const goc = (over: Partial<TerminationRefundFacts> = {}): TerminationRefundFacts
     rep_name: "Vũ Minh Nhật", rep_phone: "0901", commission_kind: null, total_amount: null, rate_percent: null,
   },
   end_date: "2026-08-01",
+  return_note: null,
   termination: {
     termination_date: "2026-08-01", actual_move_out_date: "2026-08-01",
     outstanding_debt: 0, early_termination_fee: 1_912_400, deposit_used: 4_200_000,
@@ -155,6 +156,15 @@ describe("buildTerminationCard — khung tổng hợp khớp màn thanh lý", ()
 });
 
 describe("parseTerminationRefundFacts", () => {
+  it("giữ nguyên nội dung thanh lý và xuống dòng từ facts", () => {
+    const note = "Khách chuyển công tác.\nĐã bàn giao phòng.";
+    expect(parseTerminationRefundFacts({ voucher: { id: "v1" }, return_note: note })?.return_note).toBe(note);
+  });
+
+  it.each([undefined, null, 12, { notes: "không phải chuỗi" }])("hồ sơ cũ hoặc return_note sai kiểu %j không lấy ghi chú phiếu thay thế", returnNote => {
+    expect(parseTerminationRefundFacts({ voucher: { id: "v1", notes: "ghi chú tự sinh" }, return_note: returnNote })?.return_note).toBeNull();
+  });
+
   it("ép số dạng chuỗi, loại dòng rác, null khi thiếu voucher", () => {
     expect(parseTerminationRefundFacts(null)).toBeNull();
     expect(parseTerminationRefundFacts({ contract: {} })).toBeNull();

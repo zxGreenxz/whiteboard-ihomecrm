@@ -1,9 +1,9 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 869,
-  "soFileDocBangFs": 253,
-  "tongLoiGoi": 545,
+  "tongSoFileTest": 873,
+  "soFileDocBangFs": 255,
+  "tongLoiGoi": 553,
   "khongPhanLoaiDuoc": 261,
   "theoLoai": {
     "ma-nguon": {
@@ -15,7 +15,7 @@
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
-      "soFile": 11,
+      "soFile": 12,
       "moTa": "Đọc tài liệu/asset."
     },
     "powershell": {
@@ -23,7 +23,7 @@
       "moTa": "Đọc script PowerShell. Hợp lệ vì lý do như SQL."
     },
     "sql": {
-      "soFile": 82,
+      "soFile": 83,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     }
   },
@@ -112,6 +112,14 @@
       "khongPhanLoaiDuoc": 7
     },
     {
+      "file": "src/lib/__tests__/contractExitCaseMigration.test.ts",
+      "soGoi": 12,
+      "loai": {
+        "sql": 11
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": "infra/network-center-worker/test/installHostSafety.test.ts",
       "soGoi": 11,
       "loai": {},
@@ -157,14 +165,6 @@
       "loai": {
         "tai-lieu": 5,
         "manifest": 1
-      },
-      "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "src/lib/__tests__/contractExitCaseMigration.test.ts",
-      "soGoi": 7,
-      "loai": {
-        "sql": 6
       },
       "khongPhanLoaiDuoc": 1
     },
@@ -640,6 +640,14 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": "scripts/__tests__/termination-refund-return-note.test.mjs",
+      "soGoi": 2,
+      "loai": {
+        "sql": 2
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "src/components/__tests__/dialogGateFetchKhiDong.test.ts",
       "soGoi": 2,
       "loai": {},
@@ -855,6 +863,14 @@
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": ".e2e-fleet/specs/contract-return-note.spec.ts",
+      "soGoi": 1,
+      "loai": {
+        "tai-lieu": 1
+      },
+      "khongPhanLoaiDuoc": 0
     },
     {
       "file": ".e2e-fleet/specs/copilot-golden-readonly.spec.ts",
