@@ -14,3 +14,11 @@ Máy chủ chuyển nháp chưa ký sang `DELETED`, ghi người/thời điểm 
 - Review độc lập schema: không có P0/P1. Giới hạn lưu trữ: file đang upload mà xóa nháp đồng thời có thể được giữ trong thư mục nháp đã xóa do quyền đọc/xóa Storage đã bị chặn. Chúng không được đăng ký thành tài liệu và không thể dùng ký; thao tác này giữ lịch sử/file, không có nhiệm vụ purge vật lý.
 
 Chưa tính kết quả CI hoặc production là đạt ở thời điểm ghi tài liệu này. Biên nhận apply được forward lane ghi riêng; phát hành app phải qua CI đúng SHA.
+
+## Kiểm chứng phát hành 30/09/2026
+
+- Rebase trên `924b522b`, giữ thay đổi ghi chú trả phòng và hộp xử lý hoa hồng của main. Review độc lập bản `cca94be4`: không có P0/P1; digest SQL không đổi.
+- Forward lane chạy thử thành công và áp hai lượt trong transaction rollback trước khi ghi thật. Sao lưu đầy đủ thành công trong 199 giây, 27,2 MB, đọc lại được 567 mục TABLE DATA; không loại dữ liệu bảng nào.
+- Production đã áp migration lúc `2026-09-29T17:19:06Z`; biên nhận ở `docs/generated/schema-change-evidence/20260929034044_contract_draft_deletion.json`. Catalog trước/sau khác nhau đúng lần thay schema này.
+- Trên mã sau rebase: 83 ca trong 16 file test component hợp đồng đạt; app TypeScript và Vite build đạt. E2E TEST chủ nhà và quản lý đều đạt: hủy, xác nhận xóa, số đếm, tải lại; không lỗi console, fixture đã dọn.
+- Log phát hành chi tiết lưu ngoài Git trong `.superpowers/sdd/2026-09-30-draft-delete-release/`. Kiểm CI và promote app là bước riêng sau khi commit; không suy từ biên nhận database rằng app đã lên production.
