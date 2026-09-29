@@ -1,8 +1,20 @@
 // Exact request identities present before a harness-owned navigation only.
 // Neither mutation requests nor HTTP/console failures are navigation exceptions.
+// This harness's probe preserves HTTP evidence even for a gateway HTML body.
+// The shared authorization harness intentionally remains untouched.
+export async function requestCommissionProbe(ctx, jwt, path, body) {
+  const start = performance.now();
+  const response = await fetch(`${ctx.url}/rest/v1/${path}`, {
+    method: 'POST', headers: { apikey: ctx.cred.testPublishableKey, Authorization: `Bearer ${jwt}`,
+      'Content-Type': 'application/json', 'Accept-Profile': 'public', 'Content-Profile': 'public' },
+    body: JSON.stringify(body),
+  });
+  const json = await response.json().catch(() => null);
+  return { status: response.status, json, ms: performance.now() - start };
+}
 export function safeHttpFailure(body) {
   const result = { message: 'HTTP error; response message omitted' };
-  if (typeof body?.code === 'string' && /^[A-Z0-9_]{3,20}$/.test(body.code)) result.code = body.code;
+  if (typeof body?.code === 'string' && /^(?:[A-Z0-9]{5}|PGRST[0-9]{3})$/.test(body.code)) result.code = body.code;
   const known = ['canceling statement due to statement timeout', 'Timed out acquiring connection from connection pool.',
     'Could not query the database for the schema cache. Retrying.'];
   if (known.includes(body?.message)) result.message = body.message;

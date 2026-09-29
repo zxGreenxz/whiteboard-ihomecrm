@@ -7,7 +7,7 @@ import pg from 'pg';
 import { chromium, expect } from '@playwright/test';
 import { testConnection, signInTest, request } from './test-voucher-detail-read-authz.mjs';
 import { matKhauTest } from './test-env/hau-ky.mjs';
-import { createNavigationReadGuard, safeHttpFailure } from './lib/commission-e2e-network.mjs';
+import { createNavigationReadGuard, safeHttpFailure, requestCommissionProbe } from './lib/commission-e2e-network.mjs';
 import { createScopedActor, assertScopedActor } from './lib/commission-e2e-scoped-actor.mjs';
 
 const BASE = 'http://127.0.0.1:4186';
@@ -64,7 +64,7 @@ const isExpectedConsole = (text, location) => {
     && (injectedFailure === 'canonical-failure' ? text.includes('Máy chủ chưa tạo được phiếu.') : text.includes('Failed to fetch'));
 };
 const rpc = async (name, body) => {
-  const result = await request(ctx, session.access_token, `rpc/${name}`, body);
+  const result = await requestCommissionProbe(ctx, session.access_token, `rpc/${name}`, body);
   if (result.status >= 400) report.unexpectedNetwork.push({ path: `/rest/v1/rpc/${name}`, source: 'JWT probe',
     status: result.status, durationMs: result.ms, ...safeHttpFailure(result.json) });
   return result;

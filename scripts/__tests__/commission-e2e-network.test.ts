@@ -1,8 +1,9 @@
-import { describe, expect, it } from 'vitest';
-import { createNavigationReadGuard, safeHttpFailure } from '../lib/commission-e2e-network.mjs';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createNavigationReadGuard, safeHttpFailure, requestCommissionProbe } from '../lib/commission-e2e-network.mjs';
 const appOrigin = 'http://127.0.0.1:4186', testOrigin = 'https://test.supabase.co';
 const request = (path: string, method = 'GET', origin = testOrigin) => ({ url: () => origin + path, method: () => method });
 const setup = () => createNavigationReadGuard({ appOrigin, testOrigin });
+afterEach(() => vi.restoreAllMocks());
 
 it('retains only a standard code and recognized infrastructure message', () => {
   expect(safeHttpFailure({ code: '57014', message: 'canceling statement due to statement timeout', details: 'private details', hint: 'secret' }))
@@ -11,6 +12,32 @@ it('retains only a standard code and recognized infrastructure message', () => {
 it('does not leak unknown server messages or arbitrary codes', () => {
   expect(safeHttpFailure({ code: 'private credentials!', message: 'account secret', data: { secret: 'x' } }))
     .toEqual({ message: 'HTTP error; response message omitted' });
+});
+it('omits uppercase private strings that previously matched the broad code regex', () => {
+  expect(safeHttpFailure({ code: 'PRIVATE_CREDENTIALS', message: 'private' }))
+    .toEqual({ message: 'HTTP error; response message omitted' });
+});
+it.each(['57014', '42501', '0A000', 'PGRST003'])('accepts the actual structured code format %s', code => {
+  expect(safeHttpFailure({ code }).code).toBe(code);
+});
+it.each([500, 503])('retains status and elapsed time when the JWT probe receives HTML HTTP%s', async status => {
+  vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('<html>private gateway body</html>', { status }));
+  const result = await requestCommissionProbe({ url: testOrigin, cred: { testPublishableKey: 'test-public-key' } },
+    'test-jwt', 'rpc/list_contract_commission_followups_v2', {});
+  expect(result.status).toBe(status); expect(result.json).toBeNull(); expect(result.ms).toBeGreaterThanOrEqual(0);
+  expect(JSON.stringify(result)).not.toContain('private');
+});
+it('sends the real actor JWT boundary and preserves a valid JSON result', async () => {
+  const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json({ rows: [], total: 0 }));
+  const body = { p_contract_ids: ['fixture'] };
+  const result = await requestCommissionProbe({ url: testOrigin, cred: { testPublishableKey: 'test-public-key' } },
+    'test-jwt', 'rpc/list_contract_commission_followups_v2', body);
+  expect(result).toMatchObject({ status: 200, json: { rows: [], total: 0 } });
+  expect(fetch).toHaveBeenCalledWith(`${testOrigin}/rest/v1/rpc/list_contract_commission_followups_v2`, {
+    method: 'POST', headers: { apikey: 'test-public-key', Authorization: 'Bearer test-jwt',
+      'Content-Type': 'application/json', 'Accept-Profile': 'public', 'Content-Profile': 'public' },
+    body: JSON.stringify(body),
+  });
 });
 describe('harness navigation cancellation boundary', () => {
   it.each(['/rest/v1/invoices', '/rest/v1/income_expenses'])('records the exact in-flight read %s', path => {
