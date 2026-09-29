@@ -2,9 +2,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { differenceInMonths } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { z } from "zod";
 import { useOrganization } from "@/contexts/OrganizationContext";
-import { recordContractCommissionEvent, runTrackedCommissionCreation } from "@/lib/contractCommissionFollowup";
+import { prepareCommissionCreations, executeCommissionCreation, type PreparedCommissionRequest } from "@/lib/contractCommissionFollowup";
 import { CONTRACT_COMMISSION_FOLLOWUP_KEY } from "@/hooks/useContractCommissionFollowup";
 import type { CommissionTier } from "@/types/building";
 import { isJsonObject, jsonArray } from "@/lib/jsonValue";
@@ -232,7 +231,35 @@ export interface CreateCommissionVoucherInput {
   item_description: string;
   /** Ảnh chứng từ riêng của phiếu (URL đã upload bucket income-expense-attachments) */
   attachments?: string[];
+  preparedRequest?: PreparedCommissionRequest;
 }
+
+export function commissionCreationPayload(input: CreateCommissionVoucherInput) {
+  return {
+    contract_id: input.contract_id, kind: input.kind, amount: input.amount, voucher_date: input.voucher_date,
+    account_id: input.account_id, payer_name: input.payer_name, recipient_name: input.recipient_name,
+    recipient_bank: input.recipient_bank, recipient_account: input.recipient_account_number,
+    item_description: input.item_description, attachments: input.attachments ?? [],
+  };
+}
+
+export const usePrepareCommissionVouchers = () => {
+  const { selectedOrganizationId } = useOrganization();
+  return useMutation({ retry: false, mutationFn: (inputs: CreateCommissionVoucherInput[]) =>
+    prepareCommissionCreations(batBuoc(selectedOrganizationId, 'organizationId'), inputs.map(commissionCreationPayload)) });
+};
+
+export const useRetryCommissionVoucher = () => {
+  const { selectedOrganizationId } = useOrganization();
+  const queryClient = useQueryClient();
+  return useMutation({ retry: false,
+    mutationFn: (request: PreparedCommissionRequest) => executeCommissionCreation(batBuoc(selectedOrganizationId, 'organizationId'), request),
+    onSettled: () => {
+      for (const key of [CONTRACT_COMMISSION_FOLLOWUP_KEY, 'sale-bonus-status', 'income-expenses', 'accounts-with-balance', 'existing-commission-vouchers', 'commission-voucher-facts'])
+        queryClient.invalidateQueries({ queryKey: [key] });
+    },
+  });
+};
 
 export const useCreateCommissionVoucher = () => {
   const queryClient = useQueryClient();
@@ -242,45 +269,9 @@ export const useCreateCommissionVoucher = () => {
     retry: false,
     mutationFn: async (input: CreateCommissionVoucherInput) => {
       if (!selectedOrganizationId) throw new Error("Chưa xác định được tổ chức đang xử lý.");
-      return runTrackedCommissionCreation({ contractId: input.contract_id, kind: input.kind, amount: input.amount }, {
-        record: (event) => recordContractCommissionEvent(selectedOrganizationId, event),
-        create: async () => {
-          // Toàn bộ nghiệp vụ nằm trong RPC create_commission_voucher (definer):
-          // kiểm quyền theo tòa, advisory lock + CHẶN TRÙNG theo (HĐ, loại),
-          // resolve loại phí theo OWNER tòa (staff không cần có type seed riêng),
-          // tạo voucher + item atomic; trạng thái duyệt do máy chủ quyết định.
-          // DB còn unique index uq_ie_commission_per_contract làm hàng rào cuối.
-          const { data, error } = await supabase.rpc(
-            "create_commission_voucher",
-            {
-              p_contract_id: input.contract_id,
-              p_kind: input.kind,
-              p_amount: input.amount,
-              p_voucher_date: input.voucher_date,
-              p_account_id: input.account_id ?? undefined,
-              p_payer_name: input.payer_name ?? undefined,
-              p_recipient_name: input.recipient_name ?? undefined,
-              p_recipient_bank: input.recipient_bank ?? undefined,
-              p_recipient_account: input.recipient_account_number ?? undefined,
-              p_item_description: input.item_description,
-              p_attachments: input.attachments ?? [],
-            }
-          );
-          if (error) {
-            if (error.code === "23505") {
-              const label =
-                input.kind === "broker" ? "hoa hồng môi giới" : "thưởng nóng Sale";
-              throw new Error(
-                `HĐ ${input.contract_number ?? ""} đã có phiếu ${label}. Kiểm tra phiếu hiện có trước khi tiếp tục.`
-              );
-            }
-            throw new Error(error.message);
-          }
-          const voucher = z.object({ id: z.string().uuid(), code: z.string() }).safeParse(data);
-          if (!voucher.success) throw new Error('Chưa xác nhận được thông tin phiếu vừa tạo. Hãy đối chiếu phiếu hiện có.');
-          return { id: voucher.data.id, code: voucher.data.code };
-        },
-      });
+      const request = input.preparedRequest ?? (await prepareCommissionCreations(selectedOrganizationId, [commissionCreationPayload(input)]))[0];
+      if (request.contract_id !== input.contract_id || request.kind !== input.kind) throw new Error('Yêu cầu tạo phiếu không khớp hợp đồng hoặc loại.');
+      return executeCommissionCreation(selectedOrganizationId, request);
     },
     // Lỗi mạng không chứng minh server chưa tạo phiếu: luôn đọc lại nguồn thật.
     onSettled: () => {
