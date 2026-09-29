@@ -78,6 +78,27 @@ async function execute(request=id(100),kind='broker') { return (await db.query<{
 async function age() { await owner("ALTER TABLE contract_commission_events DISABLE TRIGGER guard_contract_commission_events; UPDATE contract_commission_events SET created_at=now()-interval '10 minutes'; ALTER TABLE contract_commission_events ENABLE TRIGGER guard_contract_commission_events"); }
 
 describe('actual failed/interrupted issuance, never historical backlog',()=>{
+ it('evaluates live voucher authorization once per paginated row, including financial history',()=>tx(async()=>{
+  await record('ATTEMPTED'); await record('FAILED',id(100),100,'Private failure');
+  await liveVoucher();
+  await owner(`INSERT INTO income_expenses(id,organization_id,contract_id,building_id,commission_kind,code,approval_status)
+   VALUES('${id(140)}','${org}','${contract}','${building}','sale','PC-OFF-PAGE','APPROVED');
+   CREATE SEQUENCE visibility_calls;
+   CREATE OR REPLACE FUNCTION app_private.ie_supplement_can_read_v1(uuid) RETURNS boolean LANGUAGE plpgsql STABLE SECURITY DEFINER AS $$
+    BEGIN PERFORM nextval('visibility_calls');
+    RETURN EXISTS(SELECT 1 FROM income_expenses v JOIN grants g ON g.organization_id=v.organization_id AND g.building_id=v.building_id WHERE v.id=$1 AND v.visible AND g.user_id=auth.uid() AND g.permission='income_expenses.view'); END $$;
+   GRANT SELECT ON visibility_calls TO authenticated`);
+  const page=await list({limit:1});
+  expect(page.total).toBe(2); expect(page.rows).toHaveLength(1);
+  expect(page.rows[0]).toMatchObject({kind:'broker',state:'VOUCHER_CREATED',voucher_id:voucher,last_reason:'Private failure',attempted_amount:100});
+  expect(page.rows[0].events).toHaveLength(2);
+  expect((await db.query<{last_value:number}>('SELECT last_value::integer FROM visibility_calls')).rows[0].last_value).toBe(1);
+  await owner('ALTER SEQUENCE visibility_calls RESTART WITH 1; UPDATE income_expenses SET visible=false');
+  const hidden=await list({limit:1});
+  expect(hidden.rows[0]).toMatchObject({voucher_id:null,voucher_code:null,voucher_status:null,last_reason:null,attempted_amount:null});
+  expect(hidden.rows[0].events.every(event=>event.amount===null && event.reason===null)).toBe(true);
+  expect((await db.query<{last_value:number}>('SELECT last_value::integer FROM visibility_calls')).rows[0].last_value).toBe(1);
+ }));
  it('hundreds of unattempted subjects yield zero unresolved failures',()=>tx(async()=>{
   await owner(`INSERT INTO contracts(id,organization_id,room_id,contract_number,status) SELECT gen_random_uuid(),'${org}','${room}','legacy-'||g,'ACTIVE' FROM generate_series(1,350) g`);
   expect((await list({unresolved:true})).total).toBe(0);

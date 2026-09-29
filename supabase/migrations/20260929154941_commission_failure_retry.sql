@@ -287,27 +287,31 @@ BEGIN
     SELECT * FROM filtered
     ORDER BY CASE WHEN state IN ('FAILED','UNKNOWN') THEN 0 ELSE 1 END,last_at DESC NULLS LAST,contract_id,kind
     LIMIT p_limit OFFSET p_offset
+  ), page_visibility AS MATERIALIZED (
+    -- Parent voucher RLS can be expensive for scoped readers. Evaluate once per
+    -- page row, not once per projected field and again for every history event.
+    SELECT p.*,p.can_read_finance AND p.live_voucher_id IS NOT NULL
+      AND app_private.ie_supplement_can_read_v1(p.live_voucher_id) AS visible_voucher
+    FROM page p
   ), projected AS (
     SELECT p.contract_id,p.contract_number,p.building_id,p.building_name,p.room_name,p.kind,p.state,p.request_id,p.attempted_at,
       EXISTS(SELECT 1 FROM public.contract_commission_requests req WHERE req.organization_id=p_organization_id AND req.contract_id=p.contract_id AND req.kind=p.kind AND req.request_id=p.request_id) AND p.can_manage AND p.state IN ('FAILED','UNKNOWN') can_retry,
       CASE WHEN last_visible.ok THEN p.last_reason END last_reason,p.last_at,p.last_actor,p.can_manage,
       CASE WHEN last_visible.ok THEN p.attempted_amount END attempted_amount,
-      CASE WHEN visible.ok THEN p.live_voucher_id END voucher_id,
-      CASE WHEN visible.ok THEN p.live_voucher_code END voucher_code,
-      CASE WHEN visible.ok THEN p.live_voucher_status END voucher_status,
+      CASE WHEN p.visible_voucher THEN p.live_voucher_id END voucher_id,
+      CASE WHEN p.visible_voucher THEN p.live_voucher_code END voucher_code,
+      CASE WHEN p.visible_voucher THEN p.live_voucher_status END voucher_status,
       COALESCE((SELECT jsonb_agg(jsonb_build_object('action',h.action,'reason',CASE WHEN h.read_financial THEN h.reason END,
         'amount',CASE WHEN h.read_financial THEN h.amount END,'actor_name',h.actor_name,'created_at',h.created_at) ORDER BY h.event_order)
-        FROM (SELECT ev.*,visible.ok OR (p.live_voucher_id IS NULL AND p.can_read_finance
+        FROM (SELECT ev.*,p.visible_voucher OR (p.live_voucher_id IS NULL AND p.can_read_finance
             AND (p.can_read_org_finance OR ev.actor_id=auth.uid())) read_financial
           FROM public.contract_commission_events ev
           WHERE ev.organization_id=p_organization_id AND ev.contract_id=p.contract_id AND ev.kind=p.kind) h),'[]'::jsonb) events
-    FROM page p
-    CROSS JOIN LATERAL (SELECT p.can_read_finance AND p.live_voucher_id IS NOT NULL
-      AND app_private.ie_supplement_can_read_v1(p.live_voucher_id) AS ok) visible
+    FROM page_visibility p
     -- A hidden live voucher also hides financial history (including free text).
     -- Before a voucher exists, only its author or an org-wide finance reader can
     -- read these fields, and both still need scoped financial read permission.
-    CROSS JOIN LATERAL (SELECT visible.ok OR (p.live_voucher_id IS NULL AND p.can_read_finance
+    CROSS JOIN LATERAL (SELECT p.visible_voucher OR (p.live_voucher_id IS NULL AND p.can_read_finance
       AND (p.can_read_org_finance OR p.last_actor_id=auth.uid())) AS ok) last_visible
   )
   SELECT jsonb_build_object('rows',COALESCE((SELECT jsonb_agg(to_jsonb(projected)

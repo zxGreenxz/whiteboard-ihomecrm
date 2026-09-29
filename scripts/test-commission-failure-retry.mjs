@@ -34,6 +34,11 @@ try {
   assert.equal(psqlJson(ctx.test,`select count(*)::int n from public.income_expenses where contract_id=${lit(p.contract_id)} and commission_kind='broker'`)[0].n,1);
  });
  await check('lost response retry returns durable original identity',async()=>{assert.equal((await exec(p)).id,vouchers[0]);});
+ await check('scoped financial JWT reads live voucher identity and history after execute',async()=>{
+  const row=(await list(false)).rows.find(r=>r.contract_id===p.contract_id && r.kind==='broker');
+  assert.equal(row.state,'VOUCHER_CREATED');assert.equal(row.voucher_id,vouchers[0]);assert(row.voucher_code);
+  assert.equal(row.attempted_amount,p.amount);assert(row.events.some(e=>e.action==='ATTEMPTED' && e.amount===p.amount));
+ });
  await check('changed payload conflicts and failed execute not success',async()=>{
   const changed=await rpc('prepare_commission_requests_v1',{p_organization_id:org,p_intents:[{...p,amount:9999}]});assert.equal(changed.status,409);
   const fail={...payload(contracts[1]),account_id:randomUUID(),recipient_bank:'PRIVATE TEST BANK',recipient_account:'PRIVATE ACCOUNT'};await prepare([fail]);const result=await exec(fail);assert.equal(result.status,'FAILED');assert.equal(result.id,null);
@@ -107,6 +112,10 @@ try {
   assert.equal(result.total,1);const row=result.rows[0];assert.equal(row.state,'FAILED');assert.equal(row.attempted_amount,null);assert.equal(row.last_reason,null);assert.equal(row.can_manage,false);assert.equal(row.can_retry,false);assert(row.events.every(e=>e.amount===null && e.reason===null));assert(!JSON.stringify(result).includes('PRIVATE'));
   const denied=await rpc('execute_commission_request_v1',{p_organization_id:org,p_contract_id:row.contract_id,p_kind:row.kind,p_request_id:row.request_id},deniedJwt);assert.equal(denied.status,403);
   const prep=await rpc('prepare_commission_requests_v1',{p_organization_id:org,p_intents:[payload()]},deniedJwt);assert.equal(prep.status,403);
+  const full=await ok('list_contract_commission_followups_v2',{p_organization_id:org,p_contract_ids:contracts,p_unresolved_only:false},deniedJwt);
+  const live=full.rows.filter(r=>r.state==='VOUCHER_CREATED');assert(live.length>0,'hidden-finance case must include actual live vouchers');
+  for(const r of live){assert.equal(r.voucher_id,null);assert.equal(r.voucher_code,null);assert.equal(r.voucher_status,null);assert.equal(r.attempted_amount,null);assert.equal(r.last_reason,null);assert(r.events.every(e=>e.amount===null && e.reason===null));}
+  const foreign=await rpc('list_contract_commission_followups_v2',{p_organization_id:'dddd0000-0000-4000-8000-000000000001',p_contract_ids:contracts},deniedJwt);assert.equal(foreign.status,403);
   for(const token of [jwt,deniedJwt]) {const raw=await request(ctx,token,'contract_commission_requests?select=*&limit=1');assert.equal(raw.status,403);}
  });
  await check('ACL volatility and canonical body stable during fixtures',async()=>{
