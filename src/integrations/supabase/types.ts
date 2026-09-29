@@ -3270,8 +3270,6 @@ export type Database = {
           converted_contract_id: string | null
           created_at: string
           created_by: string
-          deleted_at: string | null
-          deleted_by: string | null
           id: string
           organization_id: string
           payload: Json
@@ -3286,8 +3284,6 @@ export type Database = {
           converted_contract_id?: string | null
           created_at?: string
           created_by: string
-          deleted_at?: string | null
-          deleted_by?: string | null
           id?: string
           organization_id: string
           payload: Json
@@ -3302,8 +3298,6 @@ export type Database = {
           converted_contract_id?: string | null
           created_at?: string
           created_by?: string
-          deleted_at?: string | null
-          deleted_by?: string | null
           id?: string
           organization_id?: string
           payload?: Json
@@ -3370,7 +3364,6 @@ export type Database = {
           physical_actor: string
           physical_idempotency_key: string
           physical_payload_hash: string
-          return_note: string | null
           room_at_handover_id: string
           room_name: string | null
           settlement_actor: string | null
@@ -3400,7 +3393,6 @@ export type Database = {
           physical_actor: string
           physical_idempotency_key: string
           physical_payload_hash: string
-          return_note?: string | null
           room_at_handover_id: string
           room_name?: string | null
           settlement_actor?: string | null
@@ -3430,7 +3422,6 @@ export type Database = {
           physical_actor?: string
           physical_idempotency_key?: string
           physical_payload_hash?: string
-          return_note?: string | null
           room_at_handover_id?: string
           room_name?: string | null
           settlement_actor?: string | null
@@ -21230,7 +21221,6 @@ export type Database = {
           p_initial_kind: string
           p_meter_boundary?: Json
           p_organization_id: string
-          p_return_note?: string
           p_settlement?: Json
           p_settlement_mode: string
         }
@@ -22490,14 +22480,6 @@ export type Database = {
           p_idempotency_key: string
           p_reason: string
           p_voucher: string
-        }
-        Returns: Json
-      }
-      delete_contract_draft_v1: {
-        Args: {
-          p_draft_id: string
-          p_expected_revision: number
-          p_organization_id: string
         }
         Returns: Json
       }

@@ -41,8 +41,8 @@
 - [x] Chuyển regression đã tái hiện vào test repo: ký từ ContractDraftWorkspace vẫn mở hoa hồng; tải lại kết quả ký sau mất mạng cũng tiếp tục được.
 - [x] Giữ component/form hoặc nâng state popup lên vị trí sống sau editor; popup không mất do đóng form.
 - [x] Test liên quan, typecheck baseline, build/bundle, E2E headless DEMO/TEST và console errors.
-- [ ] Pre-push production chưa đạt toàn bộ: generator đọc production chưa có hai RPC mới. Gate tiền v1/v2, SQL function/ACL trên TEST, catalog production, types TEST, provenance và mutation đã kiểm. Không coi việc này là đủ điều kiện phát hành.
-- [ ] Đã review độc lập; bản sửa được chuẩn bị cho draft PR. Việc phát hành còn chờ schema và các gate production cùng đạt.
+- [x] Sau rollout schema production, sinh lại types/surface/provenance; full pre-push đạt 44 gate, gồm strict, lint và đo rò org.
+- [x] Draft PR #94 đã được review độc lập; migration và artifact rollout đã kiểm lại. Promote web còn phụ thuộc CI đúng SHA trên main và kiểm deployment.
 
 ## Tiến độ
 
@@ -66,3 +66,11 @@ Kiểm bổ sung: 5/5 test hook đạt, gồm phản hồi tạo phiếu sai c�
 JWT TEST thật: 9 ca owner/outsider/concurrency đạt; quản lý được giới hạn đúng 9 tòa, ngoài phạm vi đọc rỗng và ghi 403. Catalog TEST kiểm 8 hàm, không có quyền anon hoặc SELECT/DML trực tiếp trên audit.
 
 Lượt smoke mở rộng cuối ghi nhận timeout 57014 ở các reader dữ liệu tòa/phí/quyết toán hiện có; RPC theo dõi hoa hồng mới vẫn trả 200. Một lượt browser đầy đủ trước đó sạch lỗi. Chưa xác minh nguyên nhân timeout này, nên không kết luận toàn trang quyết toán luôn ổn định.
+
+## Rollout schema production 29/09/2026
+
+Theo yêu cầu phát hành của người dùng, forward lane chạy dry-run và hai lượt idempotency trong ROLLBACK, rồi tạo backup full 27,2 MB/566 bảng trước apply. Receipt `docs/generated/schema-change-evidence/20260929130117_contract_commission_followups.json` ghi digest, actor, bản review và catalog trước/sau. Review độc lập kiểm cả hash file backup thực tế.
+
+Types đã sinh lại từ production, bỏ các cột/hàm chỉ có ở TEST; RPC surface không còn missingOnServer. Kiểm production chỉ đọc: 8 hàm khớp thân SQL đã review và catalog TEST, owner/search_path/volatility/ACL đúng; audit RLS và trigger bất biến đúng. JWT chủ tổ chức đọc 20/682 khoản trong 247 ms; hợp đồng khác org không xuất hiện; org không có quyền và bảng audit trả 403. Không ghi dữ liệu nghiệp vụ org thật.
+
+Lượt kiểm cuối: 59/59 test tập trung đạt; baseline TypeScript 0 lỗi; full pre-push 44 gate đạt trong 254 giây. Reconcile v1 1.171 phiếu/2 trang khớp 5.799.257.813 VND; v2 20 sổ và 3.768 posting khớp. Bằng chứng cục bộ: `outputs/commission-followup/release-*.log` và `production-readonly-report.json`. Kết quả này xác nhận schema; chưa thay cho CI và smoke của bản web sau promote.

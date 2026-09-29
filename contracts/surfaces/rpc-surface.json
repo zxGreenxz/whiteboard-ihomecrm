@@ -2,34 +2,21 @@
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
     "sourceCallSites": 1902,
-    "catalogFunctions": 1226,
+    "catalogFunctions": 1228,
     "schemas": [
       "public",
       "api"
     ]
   },
   "counts": {
-    "calledRpcs": 337,
+    "calledRpcs": 339,
     "byRisk": {
       "normal": 245,
-      "financial": 92
+      "financial": 94
     },
-    "securityDefiner": 321
+    "securityDefiner": 323
   },
-  "missingOnServer": [
-    {
-      "name": "list_contract_commission_followups_v1",
-      "callers": [
-        "src/lib/contractCommissionFollowup.ts"
-      ]
-    },
-    {
-      "name": "record_contract_commission_event_v1",
-      "callers": [
-        "src/lib/contractCommissionFollowup.ts"
-      ]
-    }
-  ],
+  "missingOnServer": [],
   "rpcs": {
     "accept_organization_invitation_v1": {
       "definitions": [
@@ -3385,6 +3372,25 @@
       ],
       "risk": "normal"
     },
+    "list_contract_commission_followups_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_contract_ids uuid[] DEFAULT NULL::uuid[], p_building_ids uuid[] DEFAULT NULL::uuid[], p_offset integer DEFAULT 0, p_limit integer DEFAULT 50, p_unresolved_only boolean DEFAULT false",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/contractCommissionFollowup.ts"
+      ],
+      "risk": "financial"
+    },
     "list_contract_drafts": {
       "definitions": [
         {
@@ -4590,6 +4596,25 @@
         "src/hooks/rooms/useRoomTurnover.ts"
       ],
       "risk": "normal"
+    },
+    "record_contract_commission_event_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_contract_id uuid, p_kind text, p_action text, p_request_id uuid, p_amount numeric DEFAULT NULL::numeric, p_reason text DEFAULT NULL::text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/contractCommissionFollowup.ts"
+      ],
+      "risk": "financial"
     },
     "record_payment_gps": {
       "definitions": [
