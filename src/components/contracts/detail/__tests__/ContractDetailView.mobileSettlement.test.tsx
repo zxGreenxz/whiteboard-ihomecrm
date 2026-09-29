@@ -4,6 +4,7 @@ import { cleanup, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import ContractDetailView from '../ContractDetailView';
 import type { ContractTerminationInfo } from '@/hooks/contracts/useContractDetailData';
+import type { ReactNode } from 'react';
 
 const state = vi.hoisted(() => ({
   invoices: { data: [] as unknown[], isLoading: false, isFetching: false, isError: false },
@@ -19,6 +20,7 @@ vi.mock('@/hooks/useContractCommissionFollowup', () => ({
   useContractCommissionFollowups: () => ({ data: undefined, isError: true, isPending: false, refetch: vi.fn() }),
   useRecordContractCommissionEvent: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
+vi.mock('@/hooks/useCommissionVoucher', () => ({ useRetryCommissionVoucher: () => ({ mutateAsync: vi.fn(), isPending: false }) }));
 vi.mock('@/hooks/useMyPermissions', () => ({ useMyPermissions: () => ({ data: {} }) }));
 vi.mock('@/hooks/useContracts', () => ({ useContract: () => ({ data: { id: 'contract', contract_number: 'DEMO',
   status: 'TERMINATED', start_date: '2026-01-01', end_date: '2026-12-31', contract_customers: [],
@@ -31,12 +33,12 @@ vi.mock('@/hooks/contracts/useContractDetailData', () => ({
   useContractServices: () => ({ data: [], isError: false, isLoading: false }),
   useContractHistory: () => state.history,
 }));
-vi.mock('../ContractMobileActions', () => ({ ContractMobileActions: () => null }));
+vi.mock('../ContractMobileActions', () => ({ ContractMobileActions: () => <div data-testid="contract-actions" /> }));
 vi.mock('../ContractInfoTab', () => ({ ContractInfoTab: () => null }));
 vi.mock('../ContractInvoicesTab', () => ({ ContractInvoicesTab: () => null }));
 vi.mock('../ContractPaymentsTab', () => ({ ContractPaymentsTab: () => null }));
 vi.mock('../ContractHistoryTab', () => ({ ContractHistoryTab: () => null }));
-vi.mock('../desktop/ContractDetailDesktop', () => ({ ContractDetailDesktop: () => null }));
+vi.mock('../desktop/ContractDetailDesktop', () => ({ ContractDetailDesktop: ({ commissionFollowup }: { commissionFollowup: ReactNode }) => <main>{commissionFollowup}</main> }));
 vi.mock('@/components/contracts/RenewDialog', () => ({ RenewDialog: () => null }));
 vi.mock('@/components/contracts/TransferContractDialog', () => ({ TransferContractDialog: () => null }));
 vi.mock('@/components/contracts/TransferRoomDialog', () => ({ TransferRoomDialog: () => null }));
@@ -80,13 +82,14 @@ it.each([true, false])('giữ cả hai panel không trùng React key khi mobile=
     const view = () => <MemoryRouter><ContractDetailView id="contract" onBack={() => {}} /></MemoryRouter>;
     const { rerender } = render(view());
     rerender(view());
-    const commission = screen.getAllByRole('region', { name: 'Theo dõi hoa hồng và thưởng Sale' });
+    const commission = screen.getAllByLabelText('Tạo hoa hồng và thưởng Sale');
     const exit = screen.getAllByRole('region', { name: 'Nội dung thanh lý' });
     expect(commission).toHaveLength(1);
     expect(exit).toHaveLength(1);
     expect(exit[0].textContent).toContain('Khách chuyển công tác.\nĐã bàn giao chìa khóa.');
     if (mobile) {
       expect(commission[0].closest('.cdt-app .mbody')).not.toBeNull();
+      expect(screen.getByTestId('contract-actions').nextElementSibling).toBe(commission[0]);
       expect(exit[0].closest('.cdt-app .mbody')).toBe(commission[0].closest('.cdt-app .mbody'));
     }
     expect(errors.mock.calls.filter(isDuplicateKey)).toEqual([]);
@@ -141,7 +144,8 @@ it('keeps a loaded settlement status available when unrelated history fails', ()
 it.each([true, false])('keeps commission read failures visible in the %s mobile detail branch', mobile => {
   viewport.mobile = mobile;
   render(<MemoryRouter><ContractDetailView id="contract" onBack={() => {}} /></MemoryRouter>);
-  const panel = screen.getByRole('region', { name: 'Theo dõi hoa hồng và thưởng Sale' });
+  const panel = screen.getByLabelText('Tạo hoa hồng và thưởng Sale');
   expect(within(panel).getByRole('alert').textContent).toContain('Không tải được');
+  expect(within(panel).getByRole('button', { name: 'Tạo phiếu hoa hồng' }).parentElement?.nextElementSibling).toBe(within(panel).getByRole('alert'));
   if (mobile) expect(panel.closest('.mbody')).toBeTruthy();
 });

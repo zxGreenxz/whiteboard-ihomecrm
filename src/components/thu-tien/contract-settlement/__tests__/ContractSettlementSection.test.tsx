@@ -21,6 +21,7 @@ import { createElement, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, fireEvent, render, screen, within, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ContractCommissionFollowup } from '@/lib/contractCommissionFollowup';
 
 interface KetQuaChi {
   rows: SettlementRow[];
@@ -43,16 +44,22 @@ const H = vi.hoisted(() => ({
   followupTotal: 0,
   followupCounts: { all: 0, broker: 0, sale: 0 },
   followupError: false,
+  followupRows: [] as ContractCommissionFollowup[],
+  retry: vi.fn(),
+}));
+vi.mock('@/lib/contractCommissionFollowup', async original => ({
+  ...(await original<Record<string, unknown>>()),
+  readContractCommissionFollowups: async () => ({ rows: H.followupRows }),
 }));
 vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ selectedOrganizationId: 'org' }) }));
 vi.mock('@/hooks/useContractCommissionFollowup', () => ({
   useContractCommissionFollowups: (args: Record<string, unknown>) => {
     H.followupCalls.push(args);
-    return { data: { rows: [], total: H.followupTotal, counts_by_kind: H.followupCounts }, isError: H.followupError, isPending: false, refetch: vi.fn() };
+    return { data: { rows: H.followupRows, total: H.followupTotal, counts_by_kind: H.followupCounts }, isError: H.followupError, isPending: false, refetch: vi.fn() };
   },
   useRecordContractCommissionEvent: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
-vi.mock('@/hooks/useCommissionVoucher', () => ({ useRetryCommissionVoucher: () => ({ mutateAsync: vi.fn(), isPending: false }) }));
+vi.mock('@/hooks/useCommissionVoucher', () => ({ useRetryCommissionVoucher: () => ({ mutateAsync: H.retry, isPending: false }) }));
 
 vi.mock('@/hooks/useContractSettlement', () => ({
   useContractSettlement: (args: Record<string, unknown>) => {
@@ -176,6 +183,7 @@ beforeEach(() => {
   cleanup();
   dem = 0;
   H.followupCalls = []; H.followupTotal = 0; H.followupError = false;
+  H.followupRows = []; H.retry.mockReset();
   H.followupCounts = { all: 0, broker: 0, sale: 0 };
   H.soLanRefetch = 0;
   H.calls = []; H.movementCalls = []; H.movements = []; H.targeted = null; H.orgError = false; H.modalError = false;
@@ -220,6 +228,39 @@ it('reads one queue scope per render and uses authoritative kind counts beyond t
 it('empty building scope disables queue requests rather than loading the full org', () => {
   ve([], {}, KY, { buildingIds: [] });
   expect(H.followupCalls.every(call => call.enabled === false)).toBe(true);
+});
+it.each([{ before: 21, page: 1, after: 20, expected: 0 }, { before: 81, page: 4, after: 22, expected: 1 }])('clamps queue page when the total shrinks from $before to $after', async ({ before, page, after, expected }) => {
+  H.followupTotal = before; H.followupCounts = { all: before, broker: before, sale: 0 };
+  const { rerender } = ve([]);
+  fireEvent.click(screen.getByRole('button', { name: /Cần rà soát/ }));
+  for (let i = 0; i < page; i++) fireEvent.click(screen.getByRole('button', { name: 'Trang sau' }));
+  expect(H.followupCalls.at(-1)?.page).toBe(page);
+  H.followupTotal = after; H.followupCounts = { all: after, broker: after, sale: 0 };
+  rerender(<ContractSettlementSection buildingIds={[TOA]} period={KY} />);
+  await waitFor(() => expect(H.followupCalls.at(-1)?.page).toBe(expected));
+});
+it('returns to the remaining failures after retry removes the sole row on page two', async () => {
+  const failed: ContractCommissionFollowup = { contract_id: 'contract-last', contract_number: 'HD-LAST', building_id: TOA,
+    building_name: 'Tòa A', room_name: '101', kind: 'broker', state: 'FAILED', last_reason: 'Thử lại',
+    last_actor: null, last_at: null, attempted_amount: null, voucher_id: null, voucher_code: null,
+    voucher_status: null, can_manage: true, events: [], can_retry: true, request_id: 'saved-last' };
+  H.followupTotal = 21; H.followupCounts = { all: 21, broker: 21, sale: 0 }; H.followupRows = [failed];
+  H.retry.mockImplementation(async () => {
+    // The invalidated reader returns total 20 and no rows at offset 20.
+    H.followupTotal = 20; H.followupCounts = { all: 20, broker: 20, sale: 0 }; H.followupRows = [];
+    return { status: 'COMPLETED', code: 'PC-LAST' };
+  });
+  const { rerender } = ve([]);
+  fireEvent.click(screen.getByRole('button', { name: /Cần rà soát/ }));
+  fireEvent.click(screen.getByRole('button', { name: 'Trang sau' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Tạo lại' }));
+  await waitFor(() => expect(H.retry).toHaveBeenCalledWith({ contract_id: 'contract-last', kind: 'broker', request_id: 'saved-last' }));
+  rerender(<ContractSettlementSection buildingIds={[TOA]} period={KY} />);
+  await waitFor(() => expect(H.followupCalls.at(-1)?.page).toBe(0));
+  H.followupRows = [{ ...failed, contract_id: 'contract-remaining', contract_number: 'HD-REMAINING' }];
+  rerender(<ContractSettlementSection buildingIds={[TOA]} period={KY} />);
+  expect(screen.getByRole('alert').textContent).toContain('HD-REMAINING');
+  expect(screen.queryByText('Chưa ghi nhận lỗi tạo phiếu trong phạm vi đang xem.')).toBeNull();
 });
 it.each([{ isError: true }, { isLoading: true }])('keeps the review queue accessible when the voucher source is unavailable: %s', state => {
   H.followupTotal = 25; H.followupCounts = { all: 25, broker: 21, sale: 4 };

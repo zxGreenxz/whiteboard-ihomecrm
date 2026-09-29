@@ -7,6 +7,7 @@ import pg from 'pg';
 import { chromium, expect } from '@playwright/test';
 import { testConnection, signInTest, request } from './test-voucher-detail-read-authz.mjs';
 import { matKhauTest } from './test-env/hau-ky.mjs';
+import { createNavigationReadGuard } from './lib/commission-e2e-network.mjs';
 
 const BASE = 'http://127.0.0.1:4186';
 const PROD_REF = 'tryymsxyyckgbrmmvozx';
@@ -44,11 +45,12 @@ const ids = [randomUUID(), randomUUID()];
 const repairedAccount = randomUUID();
 const marker = `E2E-RETRY-${Date.now()}`;
 const report = { target: ctx.cred.testRef, base: BASE, marker, checks: [], console: [], blockedProduction: [],
-  expectedConsole: [], expectedNetwork: [], successfulHeadReceipts: [], unexpectedNetwork: [], cleanup: false, screenshots: [] };
+  expectedConsole: [], expectedNetwork: [], successfulHeadReceipts: [], navigationCancelledReads: [], unexpectedNetwork: [], cleanup: false, screenshots: [] };
 let browser;
 let activePage;
 let injectedFailure = null;
 const expectedExecuteRequests = new Set();
+const navigationGuards = new Map(), networkJobs = [];
 const isExpectedConsole = (text, location) => {
   if (!injectedFailure) return false;
   if (/Failed to load resource/.test(text)) return location.endsWith('/rpc/execute_commission_request_v1')
@@ -82,6 +84,9 @@ const guarded = async (viewport) => {
     localStorage.setItem(key, JSON.stringify(session));
   }, { org: ORG, key: `sb-${ctx.cred.testRef}-auth-token`, session: owner });
   const page = await context.newPage();
+  const navigation = createNavigationReadGuard({ appOrigin: BASE, testOrigin: ctx.url });
+  navigationGuards.set(page, navigation);
+  page.on('request', navigation.started); page.on('requestfinished', navigation.finished);
   page.setDefaultTimeout(30_000);
   page.on('pageerror', error => report.console.push(`pageerror: ${error.message}`));
   page.on('console', message => {
@@ -94,14 +99,17 @@ const guarded = async (viewport) => {
   page.on('response', response => {
     if (response.status() < 400) return;
     const path = new URL(response.url()).pathname;
-    (expectedExecuteRequests.has(response.request()) ? report.expectedNetwork : report.unexpectedNetwork)
-      .push({ path, status: response.status() });
+    report.unexpectedNetwork.push({ path, status: response.status() });
   });
-  page.on('requestfailed', async failed => {
+  page.on('requestfailed', failed => { networkJobs.push((async () => {
+    navigation.finished(failed);
     const entry = { path: new URL(failed.url()).pathname, method: failed.method(), responseStatus: (await failed.response())?.status(), failure: failed.failure()?.errorText };
     const successHead = entry.path === '/rest/v1/notifications' && entry.method === 'HEAD' && entry.responseStatus === 200 && entry.failure === 'net::ERR_ABORTED';
-    (successHead ? report.successfulHeadReceipts : expectedExecuteRequests.has(failed) ? report.expectedNetwork : report.unexpectedNetwork).push(entry);
-  });
+    const cancelled = navigation.cancelled(failed, entry.failure, entry.responseStatus);
+    if (cancelled) report.navigationCancelledReads.push(cancelled);
+    else (successHead ? report.successfulHeadReceipts : expectedExecuteRequests.has(failed) ? report.expectedNetwork : report.unexpectedNetwork).push(entry);
+  })()); });
+  navigation.snapshot('goto');
   await page.goto(`${BASE}/contracts`);
   return { context, page };
 };
@@ -114,9 +122,10 @@ const settle = async page => {
   await page.waitForLoadState('networkidle', { timeout: 30_000 });
 };
 const go = async (page, path) => { await settle(page);
+  navigationGuards.get(page).snapshot('spa-route');
   await page.evaluate(path => { history.pushState({}, '', path); dispatchEvent(new PopStateEvent('popstate')); }, path);
 };
-const reload = async page => { await settle(page); await page.reload(); };
+const reload = async page => { await settle(page); navigationGuards.get(page).snapshot('reload'); await page.reload(); };
 try {
   const markerCheck = await db.query('select ref from test_env.danh_dau limit 1');
   assert.equal(markerCheck.rows[0]?.ref, ctx.cred.testRef, 'TEST database marker required');
@@ -248,13 +257,18 @@ try {
   }
   assert.equal(report.blockedProduction.length, 0, 'browser attempted production Supabase access');
   await settle(page);
+  await Promise.all(networkJobs);
   assert.deepEqual(report.unexpectedNetwork, [], 'unexpected HTTP or network errors');
   assert.deepEqual(report.console, [], 'unexpected console errors');
 } catch (error) { report.failure = error.message; report.failureUrl = activePage?.url();
   if (activePage) await shot(activePage, 'task-2-e2e-failure').catch(() => {});
   process.exitCode = 1; }
 finally {
-  if (browser) await browser.close();
+  if (browser) { for (const guard of navigationGuards.values()) guard.snapshot('close'); await browser.close(); }
+  await Promise.all(networkJobs);
+  if (report.unexpectedNetwork.length || report.console.length || report.blockedProduction.length) {
+    report.failure ??= 'Unexpected browser errors remain after closing the context'; process.exitCode = 1;
+  }
   try {
     await db.query('rollback');
     await db.query('begin'); await db.query('set local session_replication_role=replica');

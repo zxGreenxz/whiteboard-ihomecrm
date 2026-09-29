@@ -7,6 +7,7 @@ import pg from 'pg';
 import { chromium, expect } from '@playwright/test';
 import { testConnection, signInTest, request } from './test-voucher-detail-read-authz.mjs';
 import { matKhauTest } from './test-env/hau-ky.mjs';
+import { createNavigationReadGuard } from './lib/commission-e2e-network.mjs';
 
 const BASE = 'http://127.0.0.1:4186';
 const OUT = '.superpowers/sdd/2026-09-29-commission-failure-retry';
@@ -20,11 +21,13 @@ const db = new pg.Client({ host: ctx.cred.testPoolerHost, port: 5432, user: `pos
 await db.connect();
 const f = { rooms: [randomUUID(), randomUUID()], customer: randomUUID(), draft: randomUUID(), template: randomUUID(),
   marker: `E2E-POPUP-${Date.now()}`, createdAt: new Date().toISOString() };
-const report = { target: ctx.cred.testRef, fixture: f, checks: [], errors: [], network: [], successfulHeadReceipts: [], blockedProduction: [], cleanup: false,
+const report = { target: ctx.cred.testRef, fixture: f, checks: [], errors: [], network: [], successfulHeadReceipts: [], navigationCancelledReads: [], blockedProduction: [], cleanup: false,
   limitation: 'Draft signing uses synthetic registered DOCX metadata. Actual DOCX bytes/export/download are not validated.' };
-let browser, page;
+let browser, page, navigation;
+const networkJobs = [];
 const settle = () => page.waitForLoadState('networkidle', { timeout: 30_000 });
 const go = async path => { await settle(); if (new URL(page.url()).pathname !== path) {
+  navigation.snapshot('spa-route');
   await page.evaluate(path => { history.pushState({}, '', path); dispatchEvent(new PopStateEvent('popstate')); }, path);
 } };
 const shot = name => page.screenshot({ path: `${OUT}/${name}.png` });
@@ -67,16 +70,22 @@ try {
     localStorage.setItem('ihomecrm.selectedOrganizationId', org); localStorage.setItem(key, JSON.stringify(session));
   }, { org: ORG, key: `sb-${ctx.cred.testRef}-auth-token`, session: owner });
   page = await context.newPage();
+  navigation = createNavigationReadGuard({ appOrigin: BASE, testOrigin: ctx.url });
+  page.on('request', navigation.started); page.on('requestfinished', navigation.finished);
   page.setDefaultTimeout(30_000);
   page.on('pageerror', error => report.errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') report.errors.push({ text: message.text(), location: message.location().url }); });
   page.on('response', response => { if (response.status() >= 400) report.network.push({ path: new URL(response.url()).pathname, status: response.status() }); });
-  page.on('requestfailed', async failed => {
+  page.on('requestfailed', failed => { networkJobs.push((async () => {
+    navigation.finished(failed);
     const entry = { path: new URL(failed.url()).pathname, method: failed.method(), responseStatus: (await failed.response())?.status(), failure: failed.failure()?.errorText };
     // Chromium reports loadingFailed for this body-less successful HEAD; retain its HTTP receipt.
-    (entry.path === '/rest/v1/notifications' && entry.method === 'HEAD' && entry.responseStatus === 200
+    const cancelled = navigation.cancelled(failed, entry.failure, entry.responseStatus);
+    if (cancelled) report.navigationCancelledReads.push(cancelled);
+    else (entry.path === '/rest/v1/notifications' && entry.method === 'HEAD' && entry.responseStatus === 200
       && entry.failure === 'net::ERR_ABORTED' ? report.successfulHeadReceipts : report.network).push(entry);
-  });
+  })()); });
+  navigation.snapshot('goto');
   await page.goto(`${BASE}/contracts`);
   await expect(page.getByRole('tablist', { name: 'Các mục hợp đồng' })).toBeVisible({ timeout: 30_000 });
   await settle();
@@ -129,7 +138,7 @@ try {
     [randomUUID(), f.draft, draft.revision, ORG, f.building, 'a'.repeat(64), 'b'.repeat(64),
       { id: f.template, name: f.marker, updated_at: f.createdAt }, { REPRESENT_NAME: f.marker, REPRESENT_ID_NUMBER: identity }, owner.user.id]);
   // Fixture metadata was registered outside the app; reload source truth rather than reuse its cached draft.
-  await settle(); await page.reload();
+  await settle(); navigation.snapshot('reload'); await page.reload();
   await expect(page.getByRole('tablist', { name: 'Các mục hợp đồng' })).toBeVisible({ timeout: 30_000 });
   editor = await openDraft();
   await editor.getByRole('button', { name: 'Lưu', exact: true }).click();
@@ -152,11 +161,16 @@ try {
   assert.equal(contracts.length, 2);
   assert.equal((await db.query('select count(*)::int n from public.contract_commission_requests where contract_id=any($1::uuid[])', [contracts.map(row => row.id)])).rows[0].n, 0);
   report.checks.push('Saved draft reopened and signed through real RPC; popup retained; closing both popups created no commission request');
+  await Promise.all(networkJobs);
   assert.deepEqual(report.errors, []); assert.deepEqual(report.network, []); assert.deepEqual(report.blockedProduction, []);
 } catch (error) {
   report.failure = error.message; report.url = page?.url(); if (page) await shot('task-2-popup-failure').catch(() => {}); process.exitCode = 1;
 } finally {
-  if (browser) await browser.close();
+  if (browser) { navigation?.snapshot('close'); await browser.close(); }
+  await Promise.all(networkJobs);
+  if (report.network.length || report.errors.length || report.blockedProduction.length) {
+    report.failure ??= 'Unexpected browser errors remain after closing the context'; process.exitCode = 1;
+  }
   try {
     await db.query('rollback'); await db.query('begin');
     const contracts = (await db.query('select id from public.contracts where room_id=any($1::uuid[])', [f.rooms])).rows.map(row => row.id);

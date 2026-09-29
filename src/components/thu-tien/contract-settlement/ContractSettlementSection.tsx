@@ -184,6 +184,11 @@ export function ContractSettlementSection({ buildingIds, period, buildingsLoadin
   const failures = useContractCommissionFollowups({ ...failureFilter, page: failurePage,
     kind: f.kind === 'commission' ? 'broker' : f.kind === 'bonus' ? 'sale' : undefined });
   const failureTotal = failureEnabled && !failures.isError && !failures.isPending ? failures.data?.total ?? 0 : 0;
+  useEffect(() => {
+    if (!failureEnabled || failures.isError || failures.isPending || !failures.data) return;
+    const lastPage = Math.max(0, Math.ceil(failures.data.total / COMMISSION_FOLLOWUP_PAGE_SIZE) - 1);
+    setFailurePage(page => Math.min(page, lastPage));
+  }, [failureEnabled, failures.isError, failures.isPending, failures.data]);
 
   /**
    * MỘT lối đổi bộ lọc duy nhất, và nó luôn đi qua `normalisePeriodFilter`.

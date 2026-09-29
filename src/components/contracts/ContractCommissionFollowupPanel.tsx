@@ -38,6 +38,7 @@ export function CommissionFailureList({ query, scope, empty = false }: {
       const current = fresh.rows.find(r => r.contract_id === row.contract_id && r.kind === row.kind);
       if (!current) throw new Error('missing');
       if (current.state === 'VOUCHER_CREATED') {
+        await query.refetch();
         toast.info(current.voucher_code ? `Đã có phiếu ${current.voucher_code}.` : 'Yêu cầu đã được đối chiếu; không cần tạo lại.');
         return;
       }

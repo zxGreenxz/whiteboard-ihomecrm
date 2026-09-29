@@ -61,10 +61,19 @@ it('legacy failure opens only failed kind and closing never records an implicit 
 it('fresh reconciliation removes obsolete retry instead of retrying an existing voucher', async () => {
   mocks.query.data = { rows: [row({ state: 'FAILED', request_id: 'old', can_retry: true })], total: 1 };
   mocks.read.mockResolvedValue({ rows: [row({ state: 'VOUCHER_CREATED', voucher_id: 'live', voucher_code: 'PC-LIVE' })] });
-  render(<ContractCommissionFollowupPanel contractId="contract-1" />);
+  mocks.query.refetch.mockImplementation(async () => {
+    mocks.query.data = { rows: [row({ state: 'VOUCHER_CREATED', voucher_id: 'live', voucher_code: 'PC-LIVE' })], total: 1 };
+    return { data: mocks.query.data, isError: false };
+  });
+  const { rerender } = render(<ContractCommissionFollowupPanel contractId="contract-1" />);
   fireEvent.click(screen.getByRole('button', { name: 'Tạo lại' }));
   await waitFor(() => expect(mocks.read).toHaveBeenCalledWith('org-1', { contractId: 'contract-1' }));
   expect(mocks.retry).not.toHaveBeenCalled(); expect(screen.queryByRole('dialog')).toBeNull();
+  await waitFor(() => expect(mocks.query.refetch).toHaveBeenCalledOnce());
+  rerender(<ContractCommissionFollowupPanel contractId="contract-1" />);
+  expect(screen.queryByRole('button', { name: 'Tạo lại' })).toBeNull();
+  expect(screen.queryByRole('alert')).toBeNull();
+  expect(screen.getByText(/PC-LIVE/)).toBeTruthy();
 });
 it('reads exact contract before retry even if a refreshed queue page no longer contains that target', async () => {
   mocks.query.data = { rows: [row({ state: 'FAILED', request_id: 'saved', can_retry: true })], total: 25 };
