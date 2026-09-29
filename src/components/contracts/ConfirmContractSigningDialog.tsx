@@ -49,14 +49,24 @@ export function ConfirmContractSigningDialog({ open, onOpenChange, draft, canSig
   const [selectedReservation, setSelectedReservation] = useState<(RoomReservation & SigningReservationIdentity) | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const intent = useRef<{ key: string; requestId: string } | null>(null);
+  const continuedRequest = useRef<string | null>(null);
   useEffect(() => {
     if (!open) return;
     setReceivedOn(draft.payload.form.start_date); setRoomReady(false); setTermsConfirmed(false); setMeterBoundary(null);
     setCreateFirstInvoice(true); setDepositMode(undefined); setDebtReason(''); setTopupDueOn('');
-    setLocalSigning(null); setSelectedReservation(null); setErrors([]); intent.current = null;
+    setLocalSigning(null); setSelectedReservation(null); setErrors([]); intent.current = null; continuedRequest.current = null;
   }, [open, draft.id, draft.revision, draft.payload.form.start_date]);
   const document = draft.documents.find(item => item.revision === draft.revision);
   const signed = localSigning ?? snapshot.data?.signing;
+  useEffect(() => {
+    const requestId = intent.current?.requestId;
+    if (!open || !signed || !requestId || continuedRequest.current === requestId) return;
+    // Only resume the intent submitted here; opening an older signed draft is a read operation.
+    if (!localSigning && signed.request_id !== requestId) return;
+    continuedRequest.current = requestId;
+    setErrors([]);
+    onSigned?.(signed);
+  }, [open, signed, localSigning, onSigned]);
   const pending = signingMutation.isPending || documentMutation.isPending;
   const reservations = matchingSigningReservations(draft, (reservationsQuery.data?.reservations ?? []).filter(hasSigningIdentity));
   const currentReservation = selectedReservation && reservations.find(row => row.id === selectedReservation.id);
@@ -82,7 +92,7 @@ export function ConfirmContractSigningDialog({ open, onOpenChange, draft, canSig
       const key = JSON.stringify(value);
       if (intent.current?.key !== key) intent.current = { key, requestId: crypto.randomUUID() };
       const result = await signingMutation.mutateAsync({ ...value, requestId: intent.current.requestId });
-      setLocalSigning(result); setErrors([]); onSigned?.(result);
+      setLocalSigning(result); setErrors([]);
     } catch (error) {
       setErrors([signingErrorMessage(error)]);
       // A lost HTTP response can follow a successful commit. Refresh source truth before allowing another click.

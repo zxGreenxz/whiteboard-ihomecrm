@@ -617,7 +617,7 @@ export const useCreateContract = () => {
     // income_expenses, income_expense_items), nên ~0,8s sau hub đánh lượt THỨ
     // HAI trên ~70 khoá + prefetch 3 domain — đúng lúc modal hoa hồng vừa mở.
     //
-    // Giữ lại đúng HAI khoá, và chúng không thừa:
+    // Giữ các khoá cần đổi ngay trên màn tạo hợp đồng:
     //   - ["contracts"]: màn đang đứng, phải đổi ngay chứ không đợi debounce.
     //   - ["rooms"]: descriptor `rooms` của hub CỐ Ý chỉ mang
     //     ["business-performance"] (xem src/hooks/realtime/operations.ts), nên
@@ -625,6 +625,7 @@ export const useCreateContract = () => {
     // Bảy khoá còn lại đã nằm trong descriptor `invoices` / `income_expenses`.
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["contracts"] });
+      queryClient.invalidateQueries({ queryKey: ["contract-commission-followups"] });
       queryClient.invalidateQueries({ queryKey: ["rooms"] });
       markLocalWrite([
         "contracts",

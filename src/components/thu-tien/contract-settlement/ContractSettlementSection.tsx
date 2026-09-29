@@ -32,6 +32,7 @@ import type { SettlementKind } from '@/lib/settlementTypes';
 import { useContractSettlement } from '@/hooks/useContractSettlement';
 import { useContractMovements, MOVEMENT_LABEL, type MovementType } from '@/hooks/useContractMovements';
 import { useSettlementActions } from '@/hooks/useSettlementActions';
+import { ContractCommissionFollowupPanel } from '@/components/contracts/ContractCommissionFollowupPanel';
 const SettlementLifecycleModal = lazy(() => import('./SettlementLifecycleModal').then((m) => ({ default: m.SettlementLifecycleModal })));
 const MovementLifecycleModal = lazy(() => import('./MovementLifecycleModal').then((m) => ({ default: m.MovementLifecycleModal })));
 import { NHAN_VUONG_MAC } from './nhan';
@@ -440,6 +441,8 @@ export function ContractSettlementSection({ buildingIds, period, buildingsLoadin
 
   return (
     <div className="cs-wrap">
+      {!buildingsLoading && !buildingsError && buildingIds.length > 0 && (f.building === 'all' || buildingIds.includes(f.building)) && <ContractCommissionFollowupPanel
+        buildingIds={f.building === 'all' ? buildingIds : [f.building]} />}
       {/* ── Thanh chuyển tab ───────────────────────────────────────────── */}
       <div className="cs-viewbar">
         <div className="cs-pills">

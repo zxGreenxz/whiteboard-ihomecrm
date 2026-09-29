@@ -12,7 +12,7 @@
 // và modal kẹt ở dòng "Đang tải".
 //
 // Hai bài đầu khoá đúng hai hệ quả đó ở tầng giao diện.
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { CommissionPrefillData } from "@/hooks/useCommissionVoucher";
 
@@ -23,6 +23,9 @@ const state = vi.hoisted(() => ({
   refetch: vi.fn(),
   create: vi.fn(),
   accounts: [] as unknown[],
+  voucherError: false,
+  voucherLoading: false,
+  followups: [] as { kind: string; state: string; can_manage: boolean }[],
 }));
 
 vi.mock("@/hooks/useCommissionVoucher", () => ({
@@ -35,11 +38,15 @@ vi.mock("@/hooks/useCommissionVoucher", () => ({
     refetch: state.refetch,
   }),
   useCreateCommissionVoucher: () => ({ mutateAsync: state.create, isPending: false }),
-  useExistingCommissionVouchers: () => ({ data: [] }),
+  useExistingCommissionVouchers: () => ({ data: [], isError: state.voucherError, isLoading: state.voucherLoading, refetch: state.refetch }),
 }));
+vi.mock('@/hooks/useContractCommissionFollowup', () => ({ useContractCommissionFollowups: () => ({
+  data: { rows: state.followups }, isError: false, isLoading: false, refetch: state.refetch,
+}) }));
 vi.mock("@/hooks/useSaleBonus", () => ({ useSaleBonusStatus: () => ({ data: null }) }));
 vi.mock("@/hooks/useAccounts", () => ({ useAccounts: () => ({ data: state.accounts }) }));
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ data: { id: "u1" } }) }));
+vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ selectedOrganizationId: 'org1' }) }));
 vi.mock("@/components/income-expenses/BankSelect", () => ({ default: () => null }));
 vi.mock("@/components/income-expenses/AttachmentUpload", () => ({ default: () => null }));
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() } }));
@@ -72,6 +79,9 @@ beforeEach(() => {
   state.prefill = prefillMoi();
   state.isPending = false;
   state.isError = false;
+  state.voucherError = false;
+  state.voucherLoading = false;
+  state.followups = ['broker', 'sale'].map(kind => ({ kind, state: 'PENDING', can_manage: true }));
   state.refetch.mockReset();
   state.create.mockReset();
   state.accounts = [{ id: "acc-toa-a", name: "Toà A", is_default: false }, { id: "acc-khac", name: "Sổ khác", is_default: true }];
@@ -110,10 +120,59 @@ it("đang tải thì hiện dòng chờ và vẫn bỏ qua được", () => {
   render(<CommissionVoucherModal open contractId="c1" onOpenChange={close} />);
 
   expect(screen.getByText(/Đang tải thông tin hợp đồng/)).toBeTruthy();
-  const boQua = screen.getByRole("button", { name: "Bỏ qua" }) as HTMLButtonElement;
+  const boQua = screen.getByRole("button", { name: "Để xử lý sau" }) as HTMLButtonElement;
   expect(boQua.disabled).toBe(false);
   fireEvent.click(boQua);
   expect(close).toHaveBeenCalledWith(false);
+});
+
+it('lỗi đọc phiếu hiện có phải chặn tạo và cho đối chiếu lại', () => {
+  state.voucherError = true;
+  render(<CommissionVoucherModal open contractId="c1" onOpenChange={() => {}} />);
+  expect((screen.getByRole('button', { name: 'Tạo phiếu chi' }) as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.getByText(/Chưa đối chiếu được phiếu hiện có/)).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Để xử lý sau' })).toBeTruthy();
+});
+
+it('không tạo lại môi giới đã quyết định không phát sinh khi đang xử lý Sale', async () => {
+  state.followups[0].state = 'NOT_APPLICABLE';
+  state.create.mockResolvedValue({ id: 'sale-voucher', code: 'PC-SALE' });
+  render(<CommissionVoucherModal open contractId="c1" onOpenChange={() => {}} />);
+  fireEvent.change(screen.getByPlaceholderText('Để trống nếu không có'), { target: { value: '500000' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Tạo phiếu chi' }));
+  await waitFor(() => expect(state.create).toHaveBeenCalledTimes(1));
+  expect(state.create.mock.calls[0][0].kind).toBe('sale');
+});
+
+it('môi giới tạo được nhưng Sale lỗi: thử lại chỉ gửi Sale dù cache phiếu chưa cập nhật', async () => {
+  state.create.mockResolvedValueOnce({ id: 'broker-voucher', code: 'PC-BROKER' }).mockRejectedValueOnce(new Error('lỗi Sale'))
+    .mockResolvedValueOnce({ id: 'sale-voucher', code: 'PC-SALE' });
+  const close = vi.fn();
+  render(<CommissionVoucherModal open contractId="c1" onOpenChange={close} />);
+  fireEvent.change(screen.getByPlaceholderText('Để trống nếu không có'), { target: { value: '500000' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Tạo phiếu chi' }));
+  await waitFor(() => expect(state.create).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect((screen.getByRole('button', { name: 'Tạo phiếu chi' }) as HTMLButtonElement).disabled).toBe(false));
+  expect(close).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Tạo phiếu chi' }));
+  await waitFor(() => expect(state.create).toHaveBeenCalledTimes(3));
+  expect(state.create.mock.calls.map(c => c[0].kind)).toEqual(['broker', 'sale', 'sale']);
+});
+
+it('phản hồi tạo phiếu A không được đánh dấu có phiếu hoặc đóng popup B đang mở', async () => {
+  let finish!: (value: { id: string; code: string }) => void;
+  state.create.mockReturnValue(new Promise(resolve => { finish = resolve; }));
+  const close = vi.fn();
+  const { rerender } = render(<CommissionVoucherModal open contractId="c1" onOpenChange={close} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Tạo phiếu chi' }));
+  await waitFor(() => expect(state.create).toHaveBeenCalledTimes(1));
+  rerender(<CommissionVoucherModal open={false} contractId="c1" onOpenChange={close} />);
+  state.prefill = { ...prefillMoi(), contract_id: 'c2', contract_number: 'HD-002' };
+  rerender(<CommissionVoucherModal open contractId="c2" onOpenChange={close} />);
+  await act(async () => { finish({ id: 'broker-a', code: 'PC-A' }); });
+  await waitFor(() => expect((screen.getByRole('button', { name: 'Tạo phiếu chi' }) as HTMLButtonElement).disabled).toBe(false));
+  expect(close).not.toHaveBeenCalled();
+  expect(oTenMG()).toBeTruthy();
 });
 
 it("sổ quỹ mặc định lấy từ danh sách sổ quỹ của modal, kể cả khi sổ về sau prefill", () => {

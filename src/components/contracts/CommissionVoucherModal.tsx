@@ -30,8 +30,10 @@ import {
   type ExistingCommissionVoucher,
 } from "@/hooks/useCommissionVoucher";
 import { useSaleBonusStatus } from "@/hooks/useSaleBonus";
+import { useContractCommissionFollowups } from "@/hooks/useContractCommissionFollowup";
 import { useAccounts } from "@/hooks/useAccounts";
 import { useAuth } from "@/hooks/useAuth";
+import { useOrganization } from "@/contexts/OrganizationContext";
 import BankSelect from "@/components/income-expenses/BankSelect";
 import AttachmentUpload from "@/components/income-expenses/AttachmentUpload";
 import { QlManagerSelectForBuilding } from "@/components/income-expenses/QlManagerSelect";
@@ -61,7 +63,7 @@ function formatDateVN(s: string | null | undefined): string {
   ).padStart(2, "0")}-${d.getFullYear()}`;
 }
 
-/** Banner "đã chi" — thay form nhập khi HĐ đã có phiếu HH loại tương ứng */
+/** Có phiếu chưa chứng minh khoản tiền đã được thanh toán. */
 function ExistingVoucherBanner({
   voucher,
   label,
@@ -71,11 +73,10 @@ function ExistingVoucherBanner({
 }) {
   return (
     <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-800">
-      Đã chi {label} cho HĐ này: phiếu <b>{voucher.code ?? "?"}</b> —{" "}
+      Đã có phiếu {label} cho HĐ này: <b>{voucher.code ?? "?"}</b> —{" "}
       <b>{formatVND(Number(voucher.total_amount) || 0)}</b>
-      {voucher.approval_status === "UNAPPROVED" ? " (chờ duyệt)" : ""}.
-      Mỗi hợp đồng chỉ chi 1 lần; nếu phiếu sai, hãy hủy phiếu đó ở trang Thu
-      chi rồi tạo lại.
+      {voucher.approval_status === "UNAPPROVED" ? " (chờ duyệt)" : voucher.approval_status === "APPROVED" ? " (đã duyệt)" : ""}.
+      {' '}Đã có phiếu không đồng nghĩa đã thanh toán. Đối chiếu tại Thu chi trước khi xử lý tiếp.
     </div>
   );
 }
@@ -154,6 +155,7 @@ export function CommissionVoucherModal({
   contractId,
   onOpenChange,
 }: CommissionVoucherModalProps) {
+  const { selectedOrganizationId } = useOrganization();
   const {
     data: prefill,
     isError: prefillFailed,
@@ -166,9 +168,10 @@ export function CommissionVoucherModal({
   const queryClient = useOptionalQueryClient();
 
   // Chống chi lần 2: phiếu HH sống đã có của HĐ này (mỗi HĐ tối đa 1 phiếu/loại)
-  const { data: existingVouchers = [] } = useExistingCommissionVouchers(
+  const vouchersQuery = useExistingCommissionVouchers(
     open ? contractId : null
   );
+  const existingVouchers = vouchersQuery.data ?? [];
   const existingBroker = existingVouchers.find(
     (v) => v.commission_kind === "broker"
   );
@@ -180,8 +183,19 @@ export function CommissionVoucherModal({
   // Phiếu đó `contract_id` rỗng nên `useExistingCommissionVouchers` KHÔNG thấy —
   // tin nó thì màn hình này mời người dùng thưởng lần hai cho cùng thương vụ.
   // `sale_bonus_status_v1` dò cả đường phiếu cọc → hợp đồng.
-  const { data: saleBonus } = useSaleBonusStatus(open ? contractId : null);
+  const saleQuery = useSaleBonusStatus(open ? contractId : null);
+  const saleBonus = saleQuery.data;
   const salePaidElsewhere = !!saleBonus?.alreadyPaid && !existingSale;
+  const followups = useContractCommissionFollowups({ contractId: contractId ?? undefined, enabled: open && !!contractId });
+  const [createdKinds, setCreatedKinds] = useState<string[]>([]);
+  const brokerFollowup = followups.data?.rows.find(row => row.kind === 'broker');
+  const saleFollowup = followups.data?.rows.find(row => row.kind === 'sale');
+  const resolved = (row: typeof brokerFollowup) => row?.state === 'VOUCHER_CREATED' || row?.state === 'NOT_APPLICABLE';
+  const brokerDone = !!existingBroker || resolved(brokerFollowup) || createdKinds.includes('broker');
+  const saleDone = !!existingSale || salePaidElsewhere || resolved(saleFollowup) || createdKinds.includes('sale');
+  const checkingVouchers = vouchersQuery.isLoading || saleQuery.isLoading || followups.isLoading;
+  const checkFailed = vouchersQuery.isError || saleQuery.isError || followups.isError;
+  const canCreate = !!brokerFollowup?.can_manage && !!saleFollowup?.can_manage;
 
   // ---- Form state (no react-hook-form — lightweight modal) ----
   const [accountId, setAccountId] = useState<string>("");
@@ -251,6 +265,7 @@ export function CommissionVoucherModal({
     if (!prefill) return;
     if (seededForContractId.current === prefill.contract_id) return;
     seededForContractId.current = prefill.contract_id;
+    setCreatedKinds([]);
 
     setVoucherDate(prefill.signed_date);
 
@@ -314,23 +329,30 @@ export function CommissionVoucherModal({
       : null;
 
   const [submitting, setSubmitting] = useState(false);
+  const activeSubmission = useRef<symbol>();
+  useEffect(() => {
+    activeSubmission.current = undefined;
+    setSubmitting(false);
+    return () => { activeSubmission.current = undefined; };
+  }, [open, contractId, selectedOrganizationId]);
 
   const handleSubmit = async () => {
     if (!prefill) return;
-    if (submitting) return; // chặn double-click trong khi chạy
+    if (submitting || activeSubmission.current) return;
+    if (checkingVouchers || checkFailed || !canCreate) return;
 
     const saleAmt = typeof saleAmount === "number" ? saleAmount : 0;
     // Loại đã có phiếu sống → skip (RPC + unique index vẫn chặn nếu lách)
-    const willCreateBroker = brokerAmount > 0 && !existingBroker;
-    const willCreateSale = saleAmt > 0 && !existingSale && !salePaidElsewhere;
+    const willCreateBroker = brokerAmount > 0 && !brokerDone;
+    const willCreateSale = saleAmt > 0 && !saleDone;
 
     if (!willCreateBroker && !willCreateSale) {
       if (existingBroker || existingSale || salePaidElsewhere) {
         toast.info(
-          "HĐ này đã có phiếu hoa hồng — mỗi hợp đồng chỉ chi 1 lần, không tạo thêm."
+          "HĐ này đã có phiếu hoa hồng. Kiểm tra tại Thu chi trước khi xử lý tiếp."
         );
       } else {
-        toast.info("Không có khoản chi nào — bỏ qua tạo phiếu.");
+        toast.info("Chưa tạo thêm phiếu. Khoản chưa xử lý vẫn được theo dõi trên hợp đồng.");
       }
       onOpenChange(false);
       return;
@@ -358,6 +380,8 @@ export function CommissionVoucherModal({
     };
 
     setSubmitting(true);
+    const submission = Symbol('commission submission');
+    activeSubmission.current = submission;
     let created = 0;
     try {
       // Tạo tuần tự để tránh race condition trên trigger
@@ -384,6 +408,7 @@ export function CommissionVoucherModal({
             : `Hoa hồng MG (HĐ ${prefill.months} tháng — không khớp mốc cấu hình)`,
         });
         created++;
+        if (activeSubmission.current === submission) setCreatedKinds(kinds => [...kinds, 'broker']);
         if (brokerQl) await ganQl(v, brokerManagerId);
       }
 
@@ -406,19 +431,23 @@ export function CommissionVoucherModal({
           item_description: `Thưởng nóng Sale HĐ ${prefill.months} tháng`,
         });
         created++;
+        if (activeSubmission.current === submission) setCreatedKinds(kinds => [...kinds, 'sale']);
         if (saleQl) await ganQl(v, saleManagerId);
       }
 
       toast.success(
-        `Đã tạo ${created} phiếu chi hoa hồng (chờ duyệt) cho HĐ ${
+        `Đã tạo ${created} phiếu hoa hồng / thưởng Sale cho HĐ ${
           prefill.contract_number ?? ""
         }`
       );
-      onOpenChange(false);
+      if (activeSubmission.current === submission) onOpenChange(false);
     } catch {
       // toast.error đã hiển thị bởi mutation onError
     } finally {
-      setSubmitting(false);
+      if (activeSubmission.current === submission) {
+        activeSubmission.current = undefined;
+        setSubmitting(false);
+      }
     }
   };
 
@@ -434,6 +463,7 @@ export function CommissionVoucherModal({
           <DialogDescription>
             Hợp đồng đã được tạo. Vui lòng xác nhận thông tin chi hoa hồng cho
             đơn vị môi giới và (nếu có) thưởng nóng Sale.
+            {' '}Khoản chưa xử lý được giữ tại hợp đồng và Hợp đồng & quyết toán để tiếp tục sau.
           </DialogDescription>
         </DialogHeader>
 
@@ -461,6 +491,11 @@ export function CommissionVoucherModal({
             </div>
           ) : (
             <div className="space-y-6 pb-2">
+              {checkingVouchers ? <p role="status" className="text-sm text-muted-foreground">Đang đối chiếu phiếu hiện có...</p>
+                : checkFailed ? <div role="alert" className="text-sm text-destructive space-y-2">
+                  <p>Chưa đối chiếu được phiếu hiện có. Hãy tải lại trước khi tạo để tránh trùng phiếu.</p>
+                  <Button variant="outline" onClick={() => { void vouchersQuery.refetch(); void saleQuery.refetch(); void followups.refetch(); }}>Đối chiếu lại</Button>
+                </div> : !canCreate ? <p role="alert" className="text-sm text-muted-foreground">Bạn chưa có quyền xử lý hoa hồng của hợp đồng này.</p> : null}
               {/* Metadata HĐ (owner decision 2026-07-23): Phòng/Tòa, thời hạn
                   HĐ, giá phòng, % hoa hồng — read-only, không đổi logic tạo. */}
               <div className="rounded-md border bg-muted/40 px-3 py-2.5 text-sm grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1">
@@ -571,7 +606,7 @@ export function CommissionVoucherModal({
                     voucher={existingBroker}
                     label="hoa hồng môi giới"
                   />
-                ) : (
+                ) : brokerDone ? <p className="text-sm text-muted-foreground">{brokerFollowup?.state === 'NOT_APPLICABLE' ? 'Đã ghi nhận không phát sinh hoa hồng môi giới. Có thể mở lại tại phần theo dõi trên hợp đồng.' : 'Đã có phiếu hoa hồng môi giới; đối chiếu tại Thu chi.'}</p> : (
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                   <div className="space-y-1">
                     <Label className="text-xs">Số tiền hoa hồng *</Label>
@@ -661,16 +696,16 @@ export function CommissionVoucherModal({
                   /* Đã thưởng từ PHIẾU CỌC — tô xám, nói rõ bao nhiêu và khi nào. */
                   <div className="rounded-md border bg-muted/50 p-3 text-sm space-y-1">
                     <div className="font-medium text-muted-foreground">
-                      Hợp đồng này đã được thưởng Sale
+                      Hợp đồng này đã có phiếu thưởng Sale từ phiếu cọc
                     </div>
-                    <p className="text-muted-foreground">{saleBonus?.note}</p>
+                    <p className="text-muted-foreground">{saleBonus?.code ? `Phiếu ${saleBonus.code}. ` : ''}Đã có phiếu không đồng nghĩa đã thanh toán.</p>
                     {saleBonus?.status === "UNAPPROVED" && (
                       <p className="text-xs text-amber-600 dark:text-amber-400">
                         Phiếu đó đang chờ duyệt.
                       </p>
                     )}
                   </div>
-                ) : (
+                ) : saleDone ? <p className="text-sm text-muted-foreground">{saleFollowup?.state === 'NOT_APPLICABLE' ? 'Đã ghi nhận không phát sinh thưởng Sale. Có thể mở lại tại phần theo dõi trên hợp đồng.' : 'Đã có phiếu thưởng Sale; đối chiếu tại Thu chi.'}</p> : (
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                   <div className="space-y-1">
                     <Label className="text-xs">Số tiền thưởng</Label>
@@ -775,20 +810,20 @@ export function CommissionVoucherModal({
             variant="outline"
             onClick={() => onOpenChange(false)}
           >
-            Bỏ qua
+            Để xử lý sau
           </Button>
           <Button
             type="button"
             className="bg-green-600 hover:bg-green-700"
             onClick={handleSubmit}
             disabled={
-              isPending || !prefill || (!!existingBroker && !!existingSale)
+              isPending || !prefill || checkingVouchers || checkFailed || !canCreate || (brokerDone && saleDone)
             }
           >
             {isPending
               ? "Đang tạo..."
-              : existingBroker && existingSale
-              ? "Đã chi đủ hoa hồng"
+              : brokerDone && saleDone
+              ? "Đã xử lý cả hai khoản"
               : "Tạo phiếu chi"}
           </Button>
         </DialogFooter>

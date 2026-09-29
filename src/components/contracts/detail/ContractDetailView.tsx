@@ -20,6 +20,7 @@ import { TransferContractDialog } from '@/components/contracts/TransferContractD
 import { TransferRoomDialog } from '@/components/contracts/TransferRoomDialog';
 import { TerminateDialog } from '@/components/contracts/TerminateDialog';
 import { ContractExitCasePanel } from '@/components/contracts/ContractExitCasePanel';
+import { ContractCommissionFollowupPanel } from '@/components/contracts/ContractCommissionFollowupPanel';
 const TransferPanel = lazy(() => import('@/components/contracts/ContractTransferLinkPanel').then(module => ({ default: module.ContractTransferLinkPanel })));
 import RegisterMoveOutDialog from '@/components/contracts/RegisterMoveOutDialog';
 import ContractQRDialog from '@/components/contracts/ContractQRDialog';
@@ -216,6 +217,7 @@ const ContractDetailView = ({ id, onBack, showBackButton = true }: ContractDetai
         {contract.status !== 'TERMINATED' && <Suspense fallback={null}><TransferPanel key={contract.id} contractId={contract.id} /></Suspense>}
         <ContractDetailMobile
           contract={contract}
+          commissionFollowup={<ContractCommissionFollowupPanel key={contract.id} contractId={contract.id} />}
           services={contractServices}
           invoices={invoices ?? []}
           history={contractHistory}
@@ -246,6 +248,7 @@ const ContractDetailView = ({ id, onBack, showBackButton = true }: ContractDetai
 
   return (
     <>
+      <ContractCommissionFollowupPanel key={`commission:${contract.id}`} contractId={contract.id} />
       {contract.status === 'TERMINATED' && <ContractExitCasePanel key={contract.id} contract={contract} />}
       {contract.status !== 'TERMINATED' && <Suspense fallback={null}><TransferPanel key={contract.id} contractId={contract.id} /></Suspense>}
       <ContractDetailDesktop

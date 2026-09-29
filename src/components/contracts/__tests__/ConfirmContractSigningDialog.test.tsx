@@ -28,6 +28,22 @@ describe('confirm persisted document signing',()=>{
     fireEvent.click(screen.getByRole('button',{name:'Xác nhận đã ký và nhận phòng'}));await screen.findByText('Network lost');
     fireEvent.click(screen.getByRole('button',{name:'Xác nhận đã ký và nhận phòng'}));await waitFor(()=>expect(mocks.sign).toHaveBeenCalledTimes(2));expect(mocks.sign.mock.calls[0][0].requestId).toBe(mocks.sign.mock.calls[1][0].requestId);
   });
+  it('continues once when a snapshot recovers the current signing intent after a lost response',async()=>{
+    const onSigned=vi.fn();mocks.sign.mockRejectedValueOnce(new Error('Network lost'));
+    const props={open:true,onOpenChange:vi.fn(),draft,onSigned};
+    const {rerender}=render(<ConfirmContractSigningDialog {...props}/>);ready();
+    fireEvent.click(screen.getByRole('button',{name:'Xác nhận đã ký và nhận phòng'}));await screen.findByText('Network lost');
+    const recovered={...result,request_id:mocks.sign.mock.calls[0][0].requestId};
+    mocks.query.data.signing=recovered;rerender(<ConfirmContractSigningDialog {...props}/>);
+    await waitFor(()=>expect(onSigned).toHaveBeenCalledWith(recovered));
+    rerender(<ConfirmContractSigningDialog {...props}/>);
+    expect(onSigned).toHaveBeenCalledTimes(1);expect(screen.queryByText('Network lost')).toBeNull();
+  });
+  it('does not reopen the follow-up for an old or another user signing snapshot',async()=>{
+    const onSigned=vi.fn();mocks.query.data.signing={...result,request_id:'older-intent'};
+    render(<ConfirmContractSigningDialog open onOpenChange={vi.fn()} draft={draft} onSigned={onSigned}/>);
+    await screen.findByText(/Đã ghi nhận ký.*HD-2026-00001/);expect(onSigned).not.toHaveBeenCalled();
+  });
   it('keeps signed state and retries only the download when artifact rendering fails',async()=>{
     mocks.query.data.signing=result;mocks.download.mockRejectedValue(new Error('Render failed'));render(<ConfirmContractSigningDialog open onOpenChange={vi.fn()} draft={draft} canPrint/>);
     fireEvent.click(screen.getByRole('button',{name:'Tạo lại bản tải'}));await screen.findByText(/Hợp đồng vẫn đã ký.*Render failed/);expect(mocks.sign).not.toHaveBeenCalled();

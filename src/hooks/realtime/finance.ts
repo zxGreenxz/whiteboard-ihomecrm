@@ -39,6 +39,9 @@ export const FINANCE_SYNC_ENTRIES: readonly SyncEntry[] = [
   {
     table: "income_expenses",
     keys: [
+      ["contract-commission-followups"],
+      ["existing-commission-vouchers"],
+      ["sale-bonus-status"],
       ["reservation-refund-evidence"],
       ["reservation-settlement-audit"],
       ["income-expenses"],

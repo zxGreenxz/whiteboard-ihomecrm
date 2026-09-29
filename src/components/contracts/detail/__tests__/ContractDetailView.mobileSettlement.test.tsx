@@ -12,7 +12,13 @@ const state = vi.hoisted(() => ({
   termination: { data: null as ContractTerminationInfo | null, isLoading: false, isFetching: false, isError: false },
   history: { data: [], isLoading: false, isFetching: false, isError: false },
 }));
-vi.mock('@/hooks/use-mobile', () => ({ usePhoneViewport: () => true }));
+const viewport = vi.hoisted(() => ({ mobile: true }));
+vi.mock('@/hooks/use-mobile', () => ({ usePhoneViewport: () => viewport.mobile }));
+vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ selectedOrganizationId: 'org-1' }) }));
+vi.mock('@/hooks/useContractCommissionFollowup', () => ({
+  useContractCommissionFollowups: () => ({ data: undefined, isError: true, isPending: false, refetch: vi.fn() }),
+  useRecordContractCommissionEvent: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}));
 vi.mock('@/hooks/useMyPermissions', () => ({ useMyPermissions: () => ({ data: {} }) }));
 vi.mock('@/hooks/useContracts', () => ({ useContract: () => ({ data: { id: 'contract', contract_number: 'DEMO',
   status: 'TERMINATED', start_date: '2026-01-01', end_date: '2026-12-31', contract_customers: [],
@@ -43,6 +49,7 @@ vi.mock('@/components/contracts/PrintContractDialog', () => ({ PrintContractDial
 vi.mock('@/components/contracts/DeleteContractDialog', () => ({ DeleteContractDialog: () => null }));
 
 beforeEach(() => {
+  viewport.mobile = true;
   state.invoices.data = [];
   state.pending.data = { refund: 0, forfeit: 0 };
   for (const query of Object.values(state)) { query.isLoading = false; query.isFetching = false; query.isError = false; }
@@ -92,4 +99,11 @@ it('preserves missing termination information through View and mobile', () => {
 it('keeps a loaded settlement status available when unrelated history fails', () => {
   state.history.isError = true;
   expect(show().getByText('Không còn khoản nào treo')).toBeTruthy();
+});
+it.each([true, false])('keeps commission read failures visible in the %s mobile detail branch', mobile => {
+  viewport.mobile = mobile;
+  render(<MemoryRouter><ContractDetailView id="contract" onBack={() => {}} /></MemoryRouter>);
+  const panel = screen.getByRole('region', { name: 'Theo dõi hoa hồng và thưởng Sale' });
+  expect(within(panel).getByRole('alert').textContent).toContain('Không tải được');
+  if (mobile) expect(panel.closest('.mbody')).toBeTruthy();
 });

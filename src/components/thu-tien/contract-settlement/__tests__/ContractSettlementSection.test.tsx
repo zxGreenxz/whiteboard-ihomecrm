@@ -39,6 +39,16 @@ const H = vi.hoisted(() => ({
   targeted: null as unknown,
   orgError: false,
   modalError: false,
+  followupCalls: [] as Record<string, unknown>[],
+  followupTotal: 0,
+}));
+vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ selectedOrganizationId: 'org' }) }));
+vi.mock('@/hooks/useContractCommissionFollowup', () => ({
+  useContractCommissionFollowups: (args: Record<string, unknown>) => {
+    H.followupCalls.push(args);
+    return { data: { rows: [], total: H.followupTotal }, isError: false, isPending: false, refetch: vi.fn() };
+  },
+  useRecordContractCommissionEvent: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 
 vi.mock('@/hooks/useContractSettlement', () => ({
@@ -162,8 +172,18 @@ beforeEach(() => {
   // đếm dòng/thẻ đều sai theo kiểu rất khó lần.
   cleanup();
   dem = 0;
+  H.followupCalls = []; H.followupTotal = 0;
   H.soLanRefetch = 0;
   H.calls = []; H.movementCalls = []; H.movements = []; H.targeted = null; H.orgError = false; H.modalError = false;
+});
+it('shows the commission backlog without adding unconfirmed obligations to voucher totals and keeps building filters', () => {
+  H.followupTotal = 25;
+  ve([dong({ amount: 1_000, eventDate: '2026-09-05' })]);
+  expect(screen.getByText('25 khoản cần kiểm tra')).toBeTruthy();
+  expect(chanTrang()).toContain('Tổng giá trị phiếu đang xem: 1.000');
+  expect(H.followupCalls.at(-1)).toMatchObject({ buildingIds: [TOA], unresolvedOnly: true });
+  fireEvent.change(screen.getByLabelText('Tòa'), { target: { value: TOA } });
+  expect(H.followupCalls.at(-1)).toMatchObject({ buildingIds: [TOA] });
 });
 
 const bienDong = (n: number) => ({

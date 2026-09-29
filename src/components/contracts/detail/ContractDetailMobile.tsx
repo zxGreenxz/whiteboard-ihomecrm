@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Pencil } from 'lucide-react';
 import '@/pages/contracts/contractDetailMobile.css';
@@ -22,6 +22,7 @@ interface Props extends Pick<ContractMobileSettlementStatusProps,
   depositVouchers: ContractDepositVoucher[];
   perms: Parameters<typeof canUse>[0];
   customers: NonNullable<ContractWithRelations['contract_customers']>;
+  commissionFollowup?: ReactNode;
   onBack: () => void;
   onEdit: () => void;
   onPrint: () => void;
@@ -69,6 +70,7 @@ export function ContractDetailMobile(props: Props) {
           </div>
 
           <div className="mbody">
+            {props.commissionFollowup}
             <ContractMobileSettlementStatus contract={contract} invoices={invoices} depositVouchers={depositVouchers}
               terminationInfo={props.terminationInfo} pendingForfeitCount={props.pendingForfeitCount}
               pendingRefundCount={props.pendingRefundCount} statusLoading={props.statusLoading} sideLoadErrors={props.sideLoadErrors} />

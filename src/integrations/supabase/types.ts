@@ -2774,6 +2774,83 @@ export type Database = {
           },
         ]
       }
+      contract_commission_events: {
+        Row: {
+          action: string
+          actor_id: string
+          actor_name: string | null
+          amount: number | null
+          building_id: string
+          contract_id: string
+          created_at: string
+          event_order: number
+          id: string
+          kind: string
+          organization_id: string
+          reason: string | null
+          request_id: string
+        }
+        Insert: {
+          action: string
+          actor_id: string
+          actor_name?: string | null
+          amount?: number | null
+          building_id: string
+          contract_id: string
+          created_at?: string
+          event_order?: never
+          id?: string
+          kind: string
+          organization_id: string
+          reason?: string | null
+          request_id: string
+        }
+        Update: {
+          action?: string
+          actor_id?: string
+          actor_name?: string | null
+          amount?: number | null
+          building_id?: string
+          contract_id?: string
+          created_at?: string
+          event_order?: never
+          id?: string
+          kind?: string
+          organization_id?: string
+          reason?: string | null
+          request_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contract_commission_events_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "building_coverage"
+            referencedColumns: ["building_id"]
+          },
+          {
+            foreignKeyName: "contract_commission_events_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_commission_events_organization_id_contract_id_fkey"
+            columns: ["organization_id", "contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "contract_commission_events_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       contract_customers: {
         Row: {
           contract_id: string
@@ -3193,6 +3270,8 @@ export type Database = {
           converted_contract_id: string | null
           created_at: string
           created_by: string
+          deleted_at: string | null
+          deleted_by: string | null
           id: string
           organization_id: string
           payload: Json
@@ -3207,6 +3286,8 @@ export type Database = {
           converted_contract_id?: string | null
           created_at?: string
           created_by: string
+          deleted_at?: string | null
+          deleted_by?: string | null
           id?: string
           organization_id: string
           payload: Json
@@ -3221,6 +3302,8 @@ export type Database = {
           converted_contract_id?: string | null
           created_at?: string
           created_by?: string
+          deleted_at?: string | null
+          deleted_by?: string | null
           id?: string
           organization_id?: string
           payload?: Json
@@ -3287,6 +3370,7 @@ export type Database = {
           physical_actor: string
           physical_idempotency_key: string
           physical_payload_hash: string
+          return_note: string | null
           room_at_handover_id: string
           room_name: string | null
           settlement_actor: string | null
@@ -3316,6 +3400,7 @@ export type Database = {
           physical_actor: string
           physical_idempotency_key: string
           physical_payload_hash: string
+          return_note?: string | null
           room_at_handover_id: string
           room_name?: string | null
           settlement_actor?: string | null
@@ -3345,6 +3430,7 @@ export type Database = {
           physical_actor?: string
           physical_idempotency_key?: string
           physical_payload_hash?: string
+          return_note?: string | null
           room_at_handover_id?: string
           room_name?: string | null
           settlement_actor?: string | null
@@ -21144,6 +21230,7 @@ export type Database = {
           p_initial_kind: string
           p_meter_boundary?: Json
           p_organization_id: string
+          p_return_note?: string
           p_settlement?: Json
           p_settlement_mode: string
         }
@@ -22406,6 +22493,14 @@ export type Database = {
         }
         Returns: Json
       }
+      delete_contract_draft_v1: {
+        Args: {
+          p_draft_id: string
+          p_expected_revision: number
+          p_organization_id: string
+        }
+        Returns: Json
+      }
       delete_meter_reading_v1: { Args: { p_id: string }; Returns: undefined }
       delete_room_pass_listing: { Args: { p_id: string }; Returns: undefined }
       delete_staff_member: { Args: { p_staff_id: string }; Returns: undefined }
@@ -23466,6 +23561,17 @@ export type Database = {
           id: string
           name: string
         }[]
+      }
+      list_contract_commission_followups_v1: {
+        Args: {
+          p_building_ids?: string[]
+          p_contract_ids?: string[]
+          p_limit?: number
+          p_offset?: number
+          p_organization_id: string
+          p_unresolved_only?: boolean
+        }
+        Returns: Json
       }
       list_contract_drafts: {
         Args: { p_building_id?: string; p_organization_id: string }
@@ -24644,6 +24750,18 @@ export type Database = {
       recompute_room_reservation: {
         Args: { p_room_id: string }
         Returns: undefined
+      }
+      record_contract_commission_event_v1: {
+        Args: {
+          p_action: string
+          p_amount?: number
+          p_contract_id: string
+          p_kind: string
+          p_organization_id: string
+          p_reason?: string
+          p_request_id: string
+        }
+        Returns: Json
       }
       record_invoice_collection_v5: {
         Args: {

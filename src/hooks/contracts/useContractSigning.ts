@@ -24,7 +24,7 @@ export function useContractSigning(organizationId: string) {
     return signAndCheckinDraft(selectedOrganizationId, input);
   }, onSuccess: async signing => {
     queryClient.setQueryData(['contract-draft-signing', organizationId, signing.draft_id], (current: { server_today?: string } | undefined) => ({ ...current, signing }));
-    await Promise.all(['contract-drafts', 'contracts', 'rooms', 'my-available-rooms', 'room-reservations', 'contract-draft-signing'].map(key => queryClient.invalidateQueries({ queryKey: [key] })));
+    await Promise.all(['contract-drafts', 'contracts', 'rooms', 'my-available-rooms', 'room-reservations', 'contract-draft-signing', 'contract-commission-followups'].map(key => queryClient.invalidateQueries({ queryKey: [key] })));
     toast.success(`Đã ghi nhận ký và nhận phòng · ${signing.contract_number}`);
   }, onError: error => toast.error(signingErrorMessage(error)) });
 }

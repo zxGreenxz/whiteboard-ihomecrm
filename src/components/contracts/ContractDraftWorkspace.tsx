@@ -21,6 +21,7 @@ export function ContractDraftWorkspace({ buildingId, buildingIds, alwaysExpanded
   const { hasAnyScope } = useMyBuildingScope();
   const [expanded, setExpanded] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
+  const [editorMounted, setEditorMounted] = useState(false);
   const [draft, setDraft] = useState<ContractDraft>();
   const [printDraft, setPrintDraft] = useState<ContractDraft>();
   const [transferDraft, setTransferDraft] = useState<ContractDraft>();
@@ -31,6 +32,7 @@ export function ContractDraftWorkspace({ buildingId, buildingIds, alwaysExpanded
 
   useEffect(() => {
     setEditorOpen(false);
+    setEditorMounted(false);
     setDraft(undefined);
     setPrintDraft(undefined);
     setTransferDraft(undefined);
@@ -38,6 +40,7 @@ export function ContractDraftWorkspace({ buildingId, buildingIds, alwaysExpanded
 
   const editDraft = (value: ContractDraft) => {
     setDraft(value);
+    setEditorMounted(true);
     setEditorOpen(true);
   };
 
@@ -54,7 +57,7 @@ export function ContractDraftWorkspace({ buildingId, buildingIds, alwaysExpanded
           <span className="block text-xs font-normal text-muted-foreground">Soạn sẵn, tải gửi khách xem trước</span></span>
         <ChevronDown className={`ml-3 h-4 w-4 transition-transform ${expanded ? 'rotate-180' : ''}`} />
       </Button>}
-      {canCreate && <Button size="sm" variant="outline" onClick={() => { setDraft(undefined); setEditorOpen(true); }}>
+      {canCreate && <Button size="sm" variant="outline" onClick={() => { setDraft(undefined); setEditorMounted(true); setEditorOpen(true); }}>
         <Plus className="mr-1 h-4 w-4" />Soạn nháp
       </Button>}
     </div>
@@ -70,7 +73,8 @@ export function ContractDraftWorkspace({ buildingId, buildingIds, alwaysExpanded
         canEdit={canUse(permissions, 'contracts', 'edit', printDraft.building_id)}
         onOpenChange={open => { if (!open) setPrintDraft(undefined); }} />
     </Suspense>}
-    {editorOpen && <Suspense fallback={<p role="status" className="p-4 text-sm">Đang mở bản nháp…</p>}>
+    {/* The form owns the post-signing commission dialog; closing its editor must not unmount it. */}
+    {editorMounted && <Suspense fallback={<p role="status" className="p-4 text-sm">Đang mở bản nháp…</p>}>
       <DraftForm open={editorOpen} onOpenChange={setEditorOpen} draft={draft}
         prefill={editorPrefill} canExport={canExport}
         onSaved={() => setExpanded(true)} />

@@ -19,6 +19,7 @@ import { TransferRoomDialog } from '@/components/contracts/TransferRoomDialog';
 import { MoveOutDialog } from '@/components/contracts/MoveOutDialog';
 import { MoveOutNoticeQueue } from '@/components/contracts/MoveOutNoticeQueue';
 import { ContractDraftWorkspace } from '@/components/contracts/ContractDraftWorkspace';
+import { ContractCommissionFollowupPanel } from '@/components/contracts/ContractCommissionFollowupPanel';
 import { ContractExitQueue } from '@/components/contracts/ContractExitQueue';
 import { ContractMeterFollowupQueue } from '@/components/contracts/ContractMeterFollowupQueue';
 import { TransferContractDialog } from '@/components/contracts/TransferContractDialog';
@@ -469,6 +470,8 @@ function ContractsDesktopPage() {
             </Button>
           </div>
         </div>
+
+        <ContractCommissionFollowupPanel buildingIds={buildingIds} />
 
         <TabsContent value="exits" className="space-y-3">
           <p className="text-xs text-muted-foreground">Theo dõi quyết toán và bổ sung chỉ số bàn giao theo tòa nhà đang chọn.</p>
