@@ -138,9 +138,13 @@ export async function createContractQrImage(
   return composeContractQrImage(qr, opts);
 }
 
+/** Giải mã dataURL base64 tại chỗ: fetch(data:) bị CSP connect-src chặn. */
 export async function dataUrlToBlob(url: string): Promise<Blob> {
-  const res = await fetch(url);
-  return res.blob();
+  const [, mimeType, base64] = /^data:([^;,]+);base64,([\s\S]*)$/.exec(url) ?? [];
+  if (!mimeType || base64 === undefined) throw new Error('Dữ liệu ảnh không hợp lệ.');
+
+  const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
+  return new Blob([bytes], { type: mimeType });
 }
 
 /**

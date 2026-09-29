@@ -747,7 +747,7 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
                   <TableCell colSpan={3} className={`${TD} pl-5 text-right`}>
                     <div className="text-[14.5px] font-semibold text-[hsl(210_10%_34%)]">Giảm trừ</div>
                     {invoice.discount_notes && (
-                      <div className="text-[12.5px] text-[hsl(210_10%_38%)]">
+                      <div className="whitespace-pre-wrap break-words text-[12.5px] text-[hsl(210_10%_38%)]">
                         {invoice.discount_notes}
                       </div>
                     )}

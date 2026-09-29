@@ -326,6 +326,11 @@ export function InvoiceDetailMobile({
                   <div className="invitem">
                     <span className="invitem-desc">
                       <b>Giảm trừ</b>
+                      {invoice.discount_notes && (
+                        <small className="whitespace-pre-wrap break-words" style={{ textTransform: "none" }}>
+                          {invoice.discount_notes}
+                        </small>
+                      )}
                     </span>
                     <span className="r" />
                     <span className="r" />
