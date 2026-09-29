@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { toast } from 'sonner';
-import { listContractDrafts, saveContractDraft, exportContractDraft, downloadContractDraftDocument,
+import { listContractDrafts, saveContractDraft, exportContractDraft, downloadContractDraftDocument, deleteContractDraft,
   type SaveContractDraftInput } from '@/lib/contractDraftApi';
 import { draftErrorMessage, type ContractDraft, type ContractDraftDocument } from '@/lib/contractDrafts';
 import type { DocumentTemplate } from '@/hooks/useDocumentTemplates';
@@ -22,6 +22,15 @@ export function useSaveContractDraft() {
   return useMutation({ mutationFn: (input: SaveContractDraftInput) => saveContractDraft(input),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['contract-drafts'] }),
     onError: error => toast.error(draftErrorMessage(error)),
+  });
+}
+export function useDeleteContractDraft() {
+  const queryClient = useQueryClient();
+  return useMutation({ mutationFn: deleteContractDraft,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['contract-drafts'] });
+      toast.success('Đã xóa bản nháp');
+    },
   });
 }
 export function useExportContractDraft() {

@@ -14,6 +14,14 @@ import { contractDraftSchema, contractDraftDocumentSchema, contractDraftPayloadS
 import { rpcNullable } from '@/lib/rpcNullable';
 const BUCKET = 'contract-draft-documents';
 
+export async function deleteContractDraft(draft: ContractDraft): Promise<void> {
+  const { data, error } = await supabase.rpc('delete_contract_draft_v1', {
+    p_organization_id: draft.organization_id, p_draft_id: draft.id, p_expected_revision: draft.revision,
+  });
+  if (error) throw error;
+  z.object({ draft_id: z.literal(draft.id), deleted: z.literal(true) }).parse(data);
+}
+
 export async function listContractDrafts(organizationId: string, buildingId?: string): Promise<ContractDraft[]> {
   const { data, error } = await supabase.rpc('list_contract_drafts', { p_organization_id: organizationId, p_building_id: buildingId });
   if (error) throw error;
