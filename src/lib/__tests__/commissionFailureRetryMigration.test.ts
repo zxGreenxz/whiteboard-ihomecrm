@@ -9,7 +9,7 @@ const org = id(1), otherOrg = id(2), actor = id(3), otherActor = id(4), building
 const room = id(7), hiddenRoom = id(8), contract = id(9), hiddenContract = id(10), foreignContract = id(11), voucher = id(12), deposit = id(13);
 type Event = { action: string; reason: string | null; amount: number | null; actor_name: string | null; created_at: string };
 type Row = { contract_id: string; kind: string; state: string; last_reason: string | null; last_actor: string | null; attempted_amount: number | null; voucher_id: string | null; voucher_code: string | null; voucher_status: string | null; can_manage: boolean; events: Event[] };
-type Page = { rows: Row[]; total: number };
+type Page = { rows: Row[]; total: number; counts_by_kind: { all: number; broker: number; sale: number } };
 
 beforeAll(async () => {
   // Real PostgreSQL roles/RLS and transaction-local JWT claims. The permission
@@ -189,5 +189,38 @@ describe('completed lifecycle reconciles every intent that predates cancellation
   expect(await execute(id(202))).toMatchObject({status:'ALREADY_EXISTS',id:original.id});
   const fresh=await execute(id(203));expect(fresh.status).toBe('COMPLETED');expect(fresh.id).not.toBe(original.id);
   expect((await db.query('select * from income_expenses')).rows).toHaveLength(2);
+ }));
+});
+
+describe('authoritative kind counts share the scoped read before kind/page filtering',()=>{
+ it('returns zero unresolved kind counts for subjects without attempts',()=>tx(async()=>{
+  expect((await list({unresolved:true})).counts_by_kind).toEqual({all:0,broker:0,sale:0});
+ }));
+ it('counts both kinds beyond page size and respects every scope without leaking hidden subjects',()=>tx(async()=>{
+  await owner(`INSERT INTO contracts(id,organization_id,room_id,contract_number,status)
+    SELECT ('00000000-0000-4000-8000-'||lpad((300+n)::text,12,'0'))::uuid,'${org}','${room}','COUNT-'||lpad(n::text,2,'0'),'ACTIVE' FROM generate_series(1,22) n;
+   WITH subjects AS (SELECT c.id,c.organization_id,r.building_id,k.kind,gen_random_uuid() request_id FROM contracts c JOIN rooms r ON r.id=c.room_id CROSS JOIN (VALUES('broker'),('sale')) k(kind) WHERE c.contract_number LIKE 'COUNT-%' OR c.id IN ('${hiddenContract}','${foreignContract}'))
+   INSERT INTO contract_commission_events(organization_id,contract_id,building_id,kind,action,request_id,amount,reason,actor_id,created_at)
+    SELECT s.organization_id,s.id,s.building_id,s.kind,a.action,s.request_id,100,CASE WHEN a.action='FAILED' THEN 'Fixture failure' END,'${actor}',CASE WHEN a.action='ATTEMPTED' THEN '2026-09-28 18:00:00+00'::timestamptz ELSE '2026-09-29 00:00:00+00'::timestamptz END
+    FROM subjects s CROSS JOIN (VALUES('ATTEMPTED'),('FAILED')) a(action) ORDER BY s.id,s.kind,CASE WHEN a.action='ATTEMPTED' THEN 0 ELSE 1 END`);
+  const read=async(options:{kind?:string;offset?:number;search?:string;buildings?:string[];ids?:string[];from?:string;to?:string;organization?:string}={})=>(await db.query<{result:Page}>(
+    'select public.list_contract_commission_followups_v2($1,$2::uuid[],$3::uuid[],$4,20,true,$5,$6,$7::date,$8::date) result',
+    [options.organization??org,options.ids??null,options.buildings??null,options.offset??0,options.kind??null,options.search??null,options.from??null,options.to??null])).rows[0].result;
+  const page=await read({kind:'broker',offset:20});expect(page.total).toBe(22);expect(page.rows).toHaveLength(2);expect(page.rows.every(r=>r.kind==='broker')).toBe(true);expect(page.counts_by_kind).toEqual({all:44,broker:22,sale:22});
+  const sale=await read({kind:'sale',offset:100});expect(sale.total).toBe(22);expect(sale.rows).toHaveLength(0);expect(sale.counts_by_kind).toEqual({all:44,broker:22,sale:22});
+  expect((await read({search:'COUNT-01'})).counts_by_kind).toEqual({all:2,broker:1,sale:1});
+  expect((await read({ids:[id(301)]})).counts_by_kind).toEqual({all:2,broker:1,sale:1});
+  expect((await read({buildings:[building]})).counts_by_kind).toEqual({all:44,broker:22,sale:22});
+  expect((await read({buildings:[hiddenBuilding]})).counts_by_kind).toEqual({all:0,broker:0,sale:0});
+  expect((await read({from:'2026-09-29',to:'2026-09-29'})).counts_by_kind).toEqual({all:44,broker:22,sale:22});
+  expect((await read({from:'2026-09-28',to:'2026-09-28'})).counts_by_kind).toEqual({all:0,broker:0,sale:0});
+  expect((await read({search:'missing'})).counts_by_kind).toEqual({all:0,broker:0,sale:0});
+  await denied(()=>read({organization:otherOrg}),'42501');
+  await owner(`DELETE FROM grants WHERE permission='income_expenses.view'`);
+  const redacted=await read();expect(redacted.counts_by_kind).toEqual({all:44,broker:22,sale:22});expect(redacted.rows.every(r=>r.attempted_amount===null && r.last_reason===null)).toBe(true);
+ }));
+ it('keeps the v1 payload limited to existing rows and total fields',()=>tx(async()=>{
+  const legacy=(await db.query<{result:object}>('select public.list_contract_commission_followups_v1($1,NULL,NULL,0,20,true) result',[org])).rows[0].result;
+  expect(Object.keys(legacy).sort()).toEqual(['rows','total']);
  }));
 });

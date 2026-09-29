@@ -17,7 +17,13 @@ export const commissionFollowupSchema = z.object({
   events: z.array(eventSchema),
   request_id: z.string().uuid().nullable().optional(), attempted_at: z.string().nullable().optional(), can_retry: z.boolean().optional(),
 });
-export const commissionFollowupPageSchema = z.object({ rows: z.array(commissionFollowupSchema), total: z.number().int().nonnegative() });
+export const commissionFollowupCountsSchema = z.object({
+  all: z.number().int().nonnegative(), broker: z.number().int().nonnegative(), sale: z.number().int().nonnegative(),
+}).refine(counts => counts.all === counts.broker + counts.sale, 'Tổng số lượng theo loại không khớp.');
+export type CommissionFollowupCounts = z.infer<typeof commissionFollowupCountsSchema>;
+export const commissionFollowupPageSchema = z.object({
+  rows: z.array(commissionFollowupSchema), total: z.number().int().nonnegative(), counts_by_kind: commissionFollowupCountsSchema,
+});
 export type ContractCommissionFollowup = z.infer<typeof commissionFollowupSchema>;
 export type CommissionKind = z.infer<typeof kindSchema>;
 export interface CommissionEventInput {

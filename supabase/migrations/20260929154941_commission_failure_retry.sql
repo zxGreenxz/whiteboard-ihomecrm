@@ -276,12 +276,13 @@ BEGIN
     LEFT JOIN LATERAL app_private.contract_commission_latest_event_v1(p_organization_id,e.contract_id,e.kind) last ON true
     LEFT JOIN public.contract_commission_events attempt ON attempt.organization_id=p_organization_id
       AND attempt.contract_id=e.contract_id AND attempt.kind=e.kind AND attempt.request_id=last.request_id AND attempt.action='ATTEMPTED'
-  ), filtered AS MATERIALIZED (
+  ), scoped AS MATERIALIZED (
     SELECT * FROM states WHERE (NOT p_unresolved_only OR (state IN ('FAILED','UNKNOWN') AND attempted_at IS NOT NULL))
-      AND (p_kind IS NULL OR kind=p_kind)
       AND (nullif(btrim(p_search),'') IS NULL OR strpos(lower(concat_ws(' ',contract_number,building_name,room_name)),lower(btrim(p_search)))>0)
       AND (p_period_from IS NULL OR (attempted_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date>=p_period_from)
       AND (p_period_to IS NULL OR (attempted_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date<=p_period_to)
+  ), filtered AS MATERIALIZED (
+    SELECT * FROM scoped WHERE p_kind IS NULL OR kind=p_kind
   ), page AS (
     SELECT * FROM filtered
     ORDER BY CASE WHEN state IN ('FAILED','UNKNOWN') THEN 0 ELSE 1 END,last_at DESC NULLS LAST,contract_id,kind
@@ -311,7 +312,9 @@ BEGIN
   )
   SELECT jsonb_build_object('rows',COALESCE((SELECT jsonb_agg(to_jsonb(projected)
       ORDER BY CASE WHEN state IN ('FAILED','UNKNOWN') THEN 0 ELSE 1 END,last_at DESC NULLS LAST,contract_id,kind) FROM projected),'[]'::jsonb),
-    'total',(SELECT count(*) FROM filtered)) INTO result;
+    'total',(SELECT count(*) FROM filtered),
+    'counts_by_kind',(SELECT jsonb_build_object('all',count(*),'broker',count(*) FILTER(WHERE kind='broker'),
+      'sale',count(*) FILTER(WHERE kind='sale')) FROM scoped)) INTO result;
   RETURN result;
 END
 $fn$;

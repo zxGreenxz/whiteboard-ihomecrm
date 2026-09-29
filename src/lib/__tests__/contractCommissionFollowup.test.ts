@@ -73,3 +73,12 @@ describe('durable creation boundary',()=>{
   expect(await executeCommissionCreation(org,{contract_id:contract,kind:'sale',request_id:org})).toEqual({status:'ALREADY_EXISTS',id:null,code:null});
  });
 });
+
+describe('kind count response boundary',()=>{
+ it('requires complete nonnegative authoritative counters and validates their sum',()=>{
+  const good={rows:[],total:22,counts_by_kind:{all:44,broker:22,sale:22}};
+  expect(commissionFollowupPageSchema.parse(good)).toEqual(good);
+  for(const counts of [undefined,{all:-1,broker:0,sale:0},{all:1,broker:0,sale:0},{all:1,broker:1},{all:1.5,broker:1,sale:.5}])
+   expect(()=>commissionFollowupPageSchema.parse({...good,counts_by_kind:counts})).toThrow();
+ });
+});
