@@ -109,7 +109,7 @@ END $fn$;
 
 CREATE OR REPLACE FUNCTION public.prepare_commission_requests_v1(p_organization_id uuid,p_intents jsonb)
 RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,app_private AS $fn$
-DECLARE i jsonb; p jsonb; c uuid; k text; r uuid; a numeric; existing public.contract_commission_requests; receipts jsonb:='[]';
+DECLARE i jsonb; p jsonb; c uuid; k text; r uuid; a numeric; b uuid; live record; existing public.contract_commission_requests; receipts jsonb:='[]';
 BEGIN
  IF jsonb_typeof(p_intents) IS DISTINCT FROM 'array' OR jsonb_array_length(p_intents)<1 OR jsonb_array_length(p_intents)>100 THEN RAISE EXCEPTION 'Danh sách yêu cầu không hợp lệ' USING ERRCODE='22023'; END IF;
  -- Stable lock order also covers a batch spanning contracts.
@@ -125,7 +125,7 @@ BEGIN
   EXCEPTION WHEN invalid_text_representation OR invalid_datetime_format OR datetime_field_overflow THEN
    RAISE EXCEPTION 'Yêu cầu tạo phiếu không hợp lệ' USING ERRCODE='22023';
   END;
-  PERFORM app_private.authorize_commission_request_v1(p_organization_id,c);
+  b:=app_private.authorize_commission_request_v1(p_organization_id,c);
   PERFORM pg_advisory_xact_lock(hashtext('commission:'||c::text||':'||k));
   p:=i-'request_id';
   SELECT * INTO existing FROM public.contract_commission_requests WHERE organization_id=p_organization_id AND contract_id=c AND kind=k AND request_id=r;
@@ -134,6 +134,15 @@ BEGIN
   ELSE
    PERFORM public.record_contract_commission_event_v1(p_organization_id,c,k,'ATTEMPTED',r,a,NULL);
    INSERT INTO public.contract_commission_requests(organization_id,contract_id,kind,request_id,payload,actor_id) VALUES(p_organization_id,c,k,r,p,auth.uid());
+   -- Intent prepared while a voucher is live belongs to that completed lifecycle.
+   -- Capture now, so delaying execute until after cancellation cannot replace it.
+   SELECT * INTO live FROM app_private.contract_commission_live_voucher_v1(p_organization_id,c,k);
+   IF FOUND THEN
+    UPDATE public.contract_commission_requests SET completed_at=clock_timestamp(),result=jsonb_build_object('status','ALREADY_EXISTS','id',live.id,'code',live.code)
+      WHERE organization_id=p_organization_id AND contract_id=c AND kind=k AND request_id=r;
+    INSERT INTO public.contract_commission_events(organization_id,contract_id,building_id,kind,action,request_id,amount,actor_id,actor_name)
+      VALUES(p_organization_id,c,b,k,'COMPLETED',r,a,auth.uid(),(SELECT full_name FROM public.profiles WHERE id=auth.uid())) ON CONFLICT DO NOTHING;
+   END IF;
   END IF;
   receipts:=receipts||jsonb_build_array(jsonb_build_object('contract_id',c,'kind',k,'request_id',r));
  END LOOP;
@@ -150,10 +159,13 @@ BEGIN
  SELECT * INTO req FROM public.contract_commission_requests WHERE organization_id=p_organization_id AND contract_id=p_contract_id AND kind=p_kind AND request_id=p_request_id FOR UPDATE;
  IF NOT FOUND THEN RAISE EXCEPTION 'Không tìm thấy yêu cầu đã ghi nhận' USING ERRCODE='PT409'; END IF;
  p:=req.payload; receipt:=req.result;
- -- A delayed retry cannot recreate after a newer successful request was cancelled.
+ -- Completion time, not prepare order: every intent present at success belongs
+ -- to that lifecycle. Both timestamps use clock_timestamp() while holding the
+ -- same commission lock (transaction now() would collapse distinct intents).
+ -- Returning a prior receipt must not advance its completion timestamp.
  IF receipt IS NULL THEN
   SELECT result||jsonb_build_object('status','ALREADY_EXISTS') INTO receipt FROM public.contract_commission_requests WHERE organization_id=p_organization_id AND contract_id=p_contract_id AND kind=p_kind
-    AND completed_at IS NOT NULL AND created_at>=req.created_at ORDER BY completed_at DESC LIMIT 1;
+    AND completed_at IS NOT NULL AND completed_at>=req.created_at ORDER BY completed_at DESC LIMIT 1;
  END IF;
  IF receipt IS NULL THEN
   SELECT * INTO v FROM app_private.contract_commission_live_voucher_v1(p_organization_id,p_contract_id,p_kind);

@@ -11,7 +11,7 @@ const ctx=await testConnection();
 const originalWriter=psqlJson(ctx.test,"select pg_get_functiondef(oid) body from pg_proc where proname='create_commission_voucher'")[0].body;
 const session=await originalTestSession(ctx); const jwt=session.access_token;
 const org='aaaa0000-0000-4000-8000-000000000001';
-const contracts=Array.from({length:5},()=>randomUUID());const suffix=randomBytes(6).toString('hex');
+const contracts=Array.from({length:8},()=>randomUUID());const suffix=randomBytes(6).toString('hex');
 const vouchers=[];const passes=[];let deniedActor;let deniedJwt;const member=randomUUID();
 const mutation=sql=>psql(ctx.test,`BEGIN; SET LOCAL session_replication_role=replica; ${sql} COMMIT;`);
 const rpc=async(name,body,token=jwt)=>request(ctx,token,`rpc/${name}`,body);
@@ -26,7 +26,7 @@ assert(source,'real actor needs a manageable building fixture');
 try {
  mutation(contracts.map((id,i)=>`INSERT INTO public.contracts(id,user_id,room_id,organization_id,status,signed_date,start_date,end_date,rent_price,public_code,contract_number)
  SELECT ${lit(id)},user_id,room_id,organization_id,'TERMINATED',current_date,current_date,current_date+365,1000000,${lit(`RETRY${suffix}${i}`)},${lit(`TEST-RETRY-${suffix}-${i}`)} FROM public.contracts WHERE id=${lit(source.contract_id)};`).join('\n'));
- await check('unattempted contracts same room are not failures',async()=>{assert.equal((await list()).total,0);assert.equal((await list(false)).total,10);});
+ await check('unattempted contracts same room are not failures',async()=>{assert.equal((await list()).total,0);assert.equal((await list(false)).total,16);});
  const p=payload(), sale=payload(contracts[0],'sale');
  await check('prepare both intents before executing either',async()=>{assert.equal((await prepare([p,sale])).length,2);assert.equal((await list()).total,0);assert.equal((await list(false)).rows.filter(r=>r.state==='PROCESSING').length,2);});
  await check('concurrent same request creates exactly one voucher',async()=>{
@@ -69,6 +69,23 @@ try {
   assert.equal((await list()).rows.some(row=>row.contract_id===legacy.contract_id),false);
   const receipt=psqlJson(ctx.test,`SELECT voucher_id FROM public.contract_commission_events WHERE contract_id=${lit(legacy.contract_id)} AND action='COMPLETED'`);assert.equal(receipt.length,1);assert.equal(receipt[0].voucher_id,v.id);
   const replacement=payload(contracts[4]);await prepare([replacement]);const created=await exec(replacement);assert.equal(created.status,'COMPLETED');assert.notEqual(created.id,v.id);vouchers.push(created.id);
+ });
+ for(const reverse of [false,true]) await check(`delayed pre-success intent cannot replace cancelled voucher; reversed prepare=${reverse}`,async()=>{
+  const c=contracts[reverse?6:5],a=payload(c),b=payload(c);
+  if(reverse){await prepare([b]);await prepare([a]);}else{await prepare([a]);await prepare([b]);}
+  const original=await exec(a);assert.equal(original.status,'COMPLETED');vouchers.push(original.id);
+  mutation(`UPDATE public.income_expenses SET approval_status='CANCELLED',deleted_at=now() WHERE id=${lit(original.id)};`);
+  const stale=await exec(b);assert.equal(stale.status,'ALREADY_EXISTS');assert(stale.id===null || stale.id===original.id);
+  assert.equal(psqlJson(ctx.test,`SELECT count(*)::int n FROM public.income_expenses WHERE contract_id=${lit(c)} AND commission_kind='broker'`)[0].n,1);
+  const fresh=payload(c);await prepare([fresh]);const replacement=await exec(fresh);assert.equal(replacement.status,'COMPLETED');assert.notEqual(replacement.id,original.id);vouchers.push(replacement.id);
+ });
+ await check('prepare against live voucher captures receipt before cancellation and retry does not postpone completion',async()=>{
+  const c=contracts[7],a=payload(c),b=payload(c);await prepare([a]);const original=await exec(a);vouchers.push(original.id);await prepare([b]);
+  const saved=psqlJson(ctx.test,`SELECT completed_at,result FROM public.contract_commission_requests WHERE contract_id=${lit(c)} AND request_id=${lit(b.request_id)}`)[0];assert(saved.completed_at);assert.equal(saved.result.status,'ALREADY_EXISTS');assert.equal(saved.result.id,original.id);
+  mutation(`UPDATE public.income_expenses SET approval_status='CANCELLED',deleted_at=now() WHERE id=${lit(original.id)};`);
+  const fresh=payload(c);await prepare([fresh]);assert.equal((await exec(b)).status,'ALREADY_EXISTS');
+  const unchanged=psqlJson(ctx.test,`SELECT completed_at FROM public.contract_commission_requests WHERE contract_id=${lit(c)} AND request_id=${lit(b.request_id)}`)[0];assert.equal(unchanged.completed_at,saved.completed_at);
+  const replacement=await exec(fresh);assert.equal(replacement.status,'COMPLETED');assert.notEqual(replacement.id,original.id);vouchers.push(replacement.id);
  });
  await check('real JWT without membership denied all new public boundaries',async()=>{
   const email=`retry-${suffix}@example.invalid`,password=`Tt!${randomBytes(22).toString('base64url')}`;

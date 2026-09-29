@@ -168,3 +168,26 @@ it('old deployed app direct canonical success survives lost response and later c
  await record('FAILED',id(100),100,'Lost response');await owner(`UPDATE income_expenses SET approval_status='CANCELLED' WHERE id='${r.id}'`);
  expect((await list({unresolved:true})).total).toBe(0);expect((await broker()).state).toBe('PENDING');
 }));
+
+describe('completed lifecycle reconciles every intent that predates cancellation',()=>{
+ it.each([false,true])('does not replace a cancelled voucher from delayed intent; B prepared first=%s', reverse=>tx(async()=>{
+  const a=intent('broker',id(201)),b=intent('broker',id(202));
+  if(reverse){await prepare([b]);await prepare([a]);}else{await prepare([a]);await prepare([b]);}
+  const original=await execute(id(201));
+  await owner(`UPDATE income_expenses SET approval_status='CANCELLED',deleted_at=now() WHERE id='${original.id}'`);
+  const delayed=await execute(id(202));expect(delayed).toMatchObject({status:'ALREADY_EXISTS',id:original.id});
+  expect((await db.query('select * from income_expenses')).rows).toHaveLength(1);
+  await prepare([intent('broker',id(203))]);const fresh=await execute(id(203));expect(fresh.status).toBe('COMPLETED');expect(fresh.id).not.toBe(original.id);
+  expect((await db.query('select * from income_expenses')).rows).toHaveLength(2);
+ }));
+ it('captures existing receipt during prepare before cancellation, without extending the issuance lifecycle on retry',()=>tx(async()=>{
+  await prepare([intent('broker',id(201))]);const original=await execute(id(201));
+  await prepare([intent('broker',id(202))]);
+  await owner(`UPDATE income_expenses SET approval_status='CANCELLED',deleted_at=now() WHERE id='${original.id}'`);
+  expect(await execute(id(202))).toMatchObject({status:'ALREADY_EXISTS',id:original.id});
+  await prepare([intent('broker',id(203))]);
+  expect(await execute(id(202))).toMatchObject({status:'ALREADY_EXISTS',id:original.id});
+  const fresh=await execute(id(203));expect(fresh.status).toBe('COMPLETED');expect(fresh.id).not.toBe(original.id);
+  expect((await db.query('select * from income_expenses')).rows).toHaveLength(2);
+ }));
+});
