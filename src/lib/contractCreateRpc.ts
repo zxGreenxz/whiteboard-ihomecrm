@@ -1,3 +1,4 @@
+import { supportPlanInputSchema, type SupportPlanInput } from './rentSupport';
 import type { Json } from "@/integrations/supabase/types";
 import type { Contract, PaymentCycle } from "@/types/contract";
 import {
@@ -8,6 +9,7 @@ import {
 } from "@/lib/firstInvoiceBuilder";
 
 export interface ContractCreateContractInput {
+  rent_support?: SupportPlanInput;
   room_id: string;
   signed_date: string;
   start_date: string;
@@ -172,6 +174,10 @@ export function buildCreateContractRpcArgs(
   request: ContractCreateRequest,
 ): CreateContractV2RpcArgs {
   const { payload } = request;
+  if (payload.contract.rent_support && payload.contract.discounts
+    && (payload.contract.discounts.months !== 0 || payload.contract.discounts.amount_per_month !== 0)) {
+    throw new Error("Lịch hỗ trợ không dùng đồng thời với giảm tiền thuê cũ.");
+  }
   const startDate = requiredDateOnly(payload.contract.start_date, "start_date");
   const endDate = requiredDateOnly(payload.contract.end_date, "end_date");
   const signedDate = payload.contract.signed_date
@@ -200,7 +206,8 @@ export function buildCreateContractRpcArgs(
       contract_template_id: payload.contract.contract_template_id ?? null,
       invoice_template_id: payload.contract.invoice_template_id ?? null,
       notes: payload.contract.notes?.trim() || null,
-      discounts: payload.contract.discounts ?? [],
+      discounts: payload.contract.rent_support ? { version: 2, kind: "RENT_SUPPORT_SCHEDULE" } : payload.contract.discounts ?? [],
+      ...(payload.contract.rent_support ? { rent_support: supportPlanInputSchema.parse(payload.contract.rent_support) } : {}),
       deposit_debt_mode: payload.contract.deposit_debt_mode ?? null,
       deposit_debt_reason: payload.contract.deposit_debt_reason?.trim() || null,
       deposit_topup_due_date:

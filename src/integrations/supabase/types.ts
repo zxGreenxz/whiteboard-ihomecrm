@@ -3324,6 +3324,7 @@ export type Database = {
           converted_contract_id: string | null
           created_at: string
           created_by: string
+          customer_revision: number | null
           deleted_at: string | null
           deleted_by: string | null
           id: string
@@ -3340,6 +3341,7 @@ export type Database = {
           converted_contract_id?: string | null
           created_at?: string
           created_by: string
+          customer_revision?: number | null
           deleted_at?: string | null
           deleted_by?: string | null
           id?: string
@@ -3356,6 +3358,7 @@ export type Database = {
           converted_contract_id?: string | null
           created_at?: string
           created_by?: string
+          customer_revision?: number | null
           deleted_at?: string | null
           deleted_by?: string | null
           id?: string
@@ -24775,6 +24778,17 @@ export type Database = {
         Args: { p_deltas: Json; p_miles: Json; p_n: number }
         Returns: Json
       }
+      quote_contract_rent_support_v1: {
+        Args: {
+          p_contract_id: string
+          p_draft_id: string
+          p_invoice_context: Json
+          p_organization_id: string
+          p_payload: Json
+          p_payout_context: Json
+        }
+        Returns: Json
+      }
       read_contract_draft_signing_v1: {
         Args: { p_draft_id: string; p_organization_id: string }
         Returns: Json
@@ -24792,6 +24806,16 @@ export type Database = {
           p_at: string
           p_contract_id: string
           p_meter_id: string
+          p_organization_id: string
+        }
+        Returns: Json
+      }
+      read_contract_rent_support_v1: {
+        Args: {
+          p_building_ids: string[]
+          p_contract_ids: string[]
+          p_limit?: number
+          p_offset?: number
           p_organization_id: string
         }
         Returns: Json
@@ -25194,6 +25218,17 @@ export type Database = {
           p_payload: Json
           p_reason: string
           p_set_id: string
+        }
+        Returns: Json
+      }
+      revise_contract_rent_support_v1: {
+        Args: {
+          p_contract_id: string
+          p_expected_revision: number
+          p_organization_id: string
+          p_payload: Json
+          p_reason: string
+          p_request_id: string
         }
         Returns: Json
       }

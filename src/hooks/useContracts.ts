@@ -651,6 +651,7 @@ export const useCreateContract = () => {
     onSuccess: async (contract, request) => {
       queryClient.invalidateQueries({ queryKey: ["contracts"] });
       queryClient.invalidateQueries({ queryKey: ["contract-commission-followups"] });
+      queryClient.invalidateQueries({ queryKey: ["contract-rent-support"] });
       queryClient.invalidateQueries({ queryKey: ["rooms"] });
       markLocalWrite([
         "contracts",

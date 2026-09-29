@@ -83,7 +83,7 @@ export function buildSigningCreationOptions(payload: ContractDraftPayload, choic
 export interface SigningConfirmation { receivedOn: string; roomReady: boolean; termsConfirmed: boolean; metersConfirmed: boolean }
 export function validateSigningConfirmation(draft: ContractDraft, document: ContractDraftDocument | undefined, confirmation: SigningConfirmation, serverToday?: string): string[] {
   const errors: string[] = [];
-  if (!document || document.draft_id !== draft.id || document.revision !== draft.revision) errors.push('Lưu và xuất đúng phiên bản nháp trước khi ký.');
+  if (!document || document.draft_id !== draft.id || (document.revision < (draft.customer_revision ?? draft.revision) || document.revision > draft.revision)) errors.push('Lưu và xuất đúng phiên bản nháp trước khi ký.');
   if (!dateOnly.safeParse(confirmation.receivedOn).success || confirmation.receivedOn !== draft.payload.form.start_date
     || !serverToday || confirmation.receivedOn > serverToday || draft.payload.form.signed_date > serverToday) errors.push('Ngày nhận phải trùng ngày bắt đầu đã xuất và không ở tương lai. Đổi ngày cần lưu và xuất lại nháp.');
   if (!confirmation.roomReady) errors.push('Xác nhận phòng đã sẵn sàng bàn giao.');

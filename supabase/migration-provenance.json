@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-09-30T02:44:39.273Z",
+  "generatedAt": "2026-09-30T06:37:18.116Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 637,
-    "unknown": 80,
+    "unknown": 82,
     "catalog-proven": 205,
     "superseded": 15
   },
@@ -10856,6 +10856,36 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-09-29T13:54:40.956Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260929151043_contract_rent_support_plans.sql",
+      "version": "20260929151043",
+      "name": "contract_rent_support_plans",
+      "scheme": "timestamp14",
+      "sha256": "0b697ce2873de97f3322c119a0bf4acd39ae8e6603d28a5c92552047b9234c71",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "table:app_private.contract_rent_support_plans",
+        "table:app_private.contract_rent_support_months",
+        "table:app_private.rent_support_revision_requests",
+        "function:app_private.rent_support_immutable_v1",
+        "function:app_private.rent_support_scope_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260929151415_contract_rent_support_draft_signing.sql",
+      "version": "20260929151415",
+      "name": "contract_rent_support_draft_signing",
+      "scheme": "timestamp14",
+      "sha256": "3f25a2a5cb1320bbf57f9d6cae72965c353661892634983393a3fb4915a0c887",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.rent_support_draft_customer_v1",
+        "function:app_private.rent_support_draft_revision_v1",
+        "trigger:public.contract_drafts.rent_support_draft_revision"
       ]
     },
     {

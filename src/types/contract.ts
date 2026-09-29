@@ -1,3 +1,4 @@
+import type { SupportPlanInput } from '@/lib/rentSupport';
 // =============================================
 // Contract Module Types
 // =============================================
@@ -145,6 +146,7 @@ export interface ContractFilters {
 
 // Form data
 export interface ContractFormData {
+  rent_support?: SupportPlanInput;
   room_id: string;
   signed_date: string;
   start_date: string;

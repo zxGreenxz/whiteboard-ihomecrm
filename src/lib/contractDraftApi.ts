@@ -35,7 +35,7 @@ export interface SaveContractDraftInput {
 }
 export async function saveContractDraft(input: SaveContractDraftInput): Promise<ContractDraft> {
   const payload = contractDraftPayloadSchema.parse(input.payload);
-  const json: Json = { form: { ...payload.form }, customers: payload.customers.map(c => ({ ...c })),
+  const json: Json = { ...(payload.rent_support ? { rent_support: { ...payload.rent_support, segments: payload.rent_support.segments.map(segment => ({ ...segment })) } } : {}), form: { ...payload.form }, customers: payload.customers.map(c => ({ ...c })),
     services: payload.services.map(s => ({ ...s })), use_custom_services: payload.use_custom_services, owner: { ...payload.owner },
     ...(payload.editor_state ? { editor_state: {
       version: payload.editor_state.version, form: { ...payload.editor_state.form },
@@ -100,7 +100,7 @@ async function sha256(blob: Blob): Promise<string> {
 }
 
 export async function exportContractDraft(draft: ContractDraft, template: DocumentTemplate): Promise<{ document: ContractDraftDocument; blob: Blob }> {
-  const previous = draft.documents.find(document => document.revision === draft.revision);
+  const previous = draft.documents.find(document => document.revision >= (draft.customer_revision ?? draft.revision) && document.revision <= draft.revision);
   if (previous) return { document: previous, blob: await downloadContractDraftDocument(previous) };
   const fieldErrors = validateDraftForExport(draft.payload);
   if (fieldErrors.length) throw new Error(`Tài liệu: ${fieldErrors.map(e => `${e.label}: ${e.message}`).join('; ')}`);

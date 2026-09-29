@@ -54,6 +54,7 @@ export function buildContractDraftPayload(input: ContractDraftEditorInput, owner
       discount_months: form.discount_months ?? 0,
       discount_amount_per_month: form.discount_amount_per_month ?? 0,
     },
+    ...(form.rent_support ? { rent_support: form.rent_support } : {}),
     customers: input.selectedCustomers.map(customer => ({
       id: customer.id, full_name: customer.full_name, phone: customer.phone,
       id_number: customer.id_number, is_representative: customer.is_representative, notes: customer.notes,
@@ -102,6 +103,7 @@ export function restoreContractDraftEditorState(draft: ContractDraft): RestoredC
   const editor = payload.editor_state;
   return {
     form: {
+      ...(payload.rent_support ? { rent_support: payload.rent_support } : {}),
       ...payload.form, room_id: draft.room_id ?? payload.form.room_id,
       deposit_paid: 0, deposit_account_id: null,
       contract_template_id: draft.template_id,

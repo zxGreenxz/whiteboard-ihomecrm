@@ -1,3 +1,4 @@
+import { supportPlanInputSchema } from './rentSupport';
 import { z } from 'zod';
 import { validateFirstBillingPeriod } from '@/lib/firstInvoiceBuilder';
 import { contractBillingBoundMessages } from '@/lib/contractBillingBounds';
@@ -23,6 +24,7 @@ export const contractFormSchema = z.object({
   contract_template_id: z.string().uuid().nullable().optional(),
   invoice_template_id: z.string().uuid().nullable().optional(),
   notes: z.string().optional(),
+  rent_support: supportPlanInputSchema.optional(),
   discount_months: z.number().int().min(0).optional(),
   discount_amount_per_month: z.number().min(0).optional(),
 }).refine(

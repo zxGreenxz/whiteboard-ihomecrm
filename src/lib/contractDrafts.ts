@@ -1,5 +1,6 @@
 import {FinancialWorkflowError,workflowFeedbackDescription} from '@/lib/financialWorkflowError';
 import { z } from 'zod';
+import { supportPlanInputSchema } from './rentSupport';
 import { todayISO } from '@/lib/collect';
 
 const customerSchema = z.object({
@@ -54,7 +55,12 @@ export const contractDraftPayloadSchema = z.object({
   customers: z.array(customerSchema), services: z.array(serviceSchema), use_custom_services: z.boolean(),
   owner: draftOwnerSchema.default(emptyDraftOwner),
   editor_state: contractDraftEditorStateSchema.optional(),
-}).strict();
+  rent_support: supportPlanInputSchema.optional(),
+}).strict().superRefine((payload, ctx) => {
+  if (payload.rent_support && (payload.form.discount_months !== 0 || payload.form.discount_amount_per_month !== 0)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['rent_support'], message: 'Lịch hỗ trợ không dùng đồng thời với giảm tiền thuê cũ.' });
+  }
+});
 export type ContractDraftPayload = z.infer<typeof contractDraftPayloadSchema>;
 
 export const contractDraftDocumentSchema = z.object({
@@ -68,6 +74,7 @@ export const contractDraftSchema = z.object({
   id: z.string().uuid(), organization_id: z.string().uuid(), building_id: z.string().uuid(),
   room_id: z.string().uuid().nullable(), payload: contractDraftPayloadSchema,
   template_id: z.string().uuid().nullable(), revision: z.number().int().positive(),
+  customer_revision: z.number().int().positive().nullish(),
   created_by: z.string().uuid(), created_at: z.string(), updated_at: z.string(),
   documents: z.array(contractDraftDocumentSchema).default([]),
   status: z.enum(['EDITABLE', 'SIGNED']).optional(),
