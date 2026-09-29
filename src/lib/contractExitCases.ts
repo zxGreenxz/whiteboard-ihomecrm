@@ -31,7 +31,7 @@ export interface ContractExitSettlementInput {
 export type ExitSettlementInput = ContractExitSettlementInput;
 interface ReturnBase {
   contractId:string; expectedContractUpdatedAt:string; idempotencyKey:string;
-  actualMoveOutOn:string; initialKind:ExitKind;meterBoundary?:MeterBoundaryInput;
+  actualMoveOutOn:string; initialKind:ExitKind;returnNote:string;meterBoundary?:MeterBoundaryInput;
 }
 export type ConfirmContractReturnInput = ReturnBase & (
   {settlementMode:'DEFERRED'; settlement?:never} |
@@ -54,6 +54,7 @@ const responseSchema = z.object({
   created_at:z.string(),updated_at:z.string(),
   contract_number:z.string().nullable().optional(),building_name:z.string().nullable().optional(),
   room_name:z.string().nullable().optional(),customer_name:z.string().nullable().optional(),
+  return_note:z.string().nullable().default(null),
   settlement_result:z.custom<Json>(value=>value===null || (typeof value==='object' && !Array.isArray(value))),
   kind_history:z.array(z.object({before_kind:kindSchema,after_kind:kindSchema,reason:z.string(),version:z.number().int().positive(),changed_at:z.string(),changed_by:z.string().uuid(),actor_name:z.string().nullable().optional()})),
 });
@@ -77,11 +78,12 @@ function settlementPayload(kind:ExitKind,input:ContractExitSettlementInput): Jso
 export function buildConfirmContractReturnArgs(input:ConfirmContractReturnInput,organizationId:string) {
   const base=z.object({contractId:z.string().uuid(),expectedContractUpdatedAt:z.string().datetime({offset:true}),
     idempotencyKey:keySchema,actualMoveOutOn:dateSchema,initialKind:kindSchema,
+    returnNote:z.string().trim().min(1,'Vui lòng ghi nội dung thanh lý để đối chiếu'),
     settlementMode:z.enum(['DEFERRED','IMMEDIATE']),settlement:z.unknown().optional(),meterBoundary:z.unknown().optional()}).strict().parse(input);
   if(base.settlementMode==='DEFERRED' && base.settlement!==undefined) throw new Error('Trả phòng, quyết toán sau không nhận dữ liệu tiền');
   if(base.settlementMode==='IMMEDIATE' && (base.settlement===undefined || base.settlement===null)) throw new Error('Quyết toán ngay cần dữ liệu quyết toán');
   return {p_organization_id:z.string().uuid().parse(organizationId),p_contract_id:base.contractId,p_expected_contract_updated_at:base.expectedContractUpdatedAt,
-    p_idempotency_key:base.idempotencyKey,p_actual_move_out_on:base.actualMoveOutOn,p_initial_kind:base.initialKind,
+    p_idempotency_key:base.idempotencyKey,p_actual_move_out_on:base.actualMoveOutOn,p_initial_kind:base.initialKind,p_return_note:base.returnNote,
     p_settlement_mode:base.settlementMode,p_settlement:base.settlementMode==='IMMEDIATE'?settlementPayload(base.initialKind,input.settlement!):null,
     p_meter_boundary:base.meterBoundary===undefined?null:buildMeterBoundaryPayload(input.meterBoundary!)};
 }

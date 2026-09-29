@@ -213,11 +213,11 @@ const ContractDetailView = ({ id, onBack, showBackButton = true }: ContractDetai
   if (isMobile) {
     return (
       <>
-        {contract.status === 'TERMINATED' && <ContractExitCasePanel key={contract.id} contract={contract} />}
         {contract.status !== 'TERMINATED' && <Suspense fallback={null}><TransferPanel key={contract.id} contractId={contract.id} /></Suspense>}
         <ContractDetailMobile
           contract={contract}
-          commissionFollowup={<ContractCommissionFollowupPanel key={contract.id} contractId={contract.id} />}
+          commissionFollowup={<ContractCommissionFollowupPanel key={`commission:${contract.id}`} contractId={contract.id} />}
+          exitCasePanel={contract.status === 'TERMINATED' ? <ContractExitCasePanel key={`exit:${contract.id}`} contract={contract} /> : null}
           services={contractServices}
           invoices={invoices ?? []}
           history={contractHistory}
@@ -249,7 +249,7 @@ const ContractDetailView = ({ id, onBack, showBackButton = true }: ContractDetai
   return (
     <>
       <ContractCommissionFollowupPanel key={`commission:${contract.id}`} contractId={contract.id} />
-      {contract.status === 'TERMINATED' && <ContractExitCasePanel key={contract.id} contract={contract} />}
+      {contract.status === 'TERMINATED' && <ContractExitCasePanel key={`exit:${contract.id}`} contract={contract} />}
       {contract.status !== 'TERMINATED' && <Suspense fallback={null}><TransferPanel key={contract.id} contractId={contract.id} /></Suspense>}
       <ContractDetailDesktop
         contract={contract}

@@ -11,7 +11,7 @@ const caseId = '00000000-0000-4000-8000-000000000002';
 const deferred: ConfirmContractReturnInput = {
   contractId, expectedContractUpdatedAt: '2026-09-27T00:00:00Z',
   idempotencyKey: 'return-request-0001', actualMoveOutOn: '2026-09-28',
-  initialKind: 'EARLY_RETURN', settlementMode: 'DEFERRED',
+  initialKind: 'EARLY_RETURN', settlementMode: 'DEFERRED', returnNote: 'Khách chuyển nơi làm việc.',
 };
 const row = {
   id: caseId, organization_id: contractId, building_id: contractId, contract_id: contractId,
@@ -22,6 +22,20 @@ const row = {
 };
 
 describe('contract return request boundary', () => {
+  it.each(['', '  \n\t  ', undefined])('từ chối nội dung thanh lý rỗng trước khi gọi RPC: %j', (returnNote) => {
+    expect(() => buildConfirmContractReturnArgs({ ...deferred, returnNote } as ConfirmContractReturnInput, contractId)).toThrow();
+  });
+  it('trim ghi chú riêng cho cả quyết toán sau và bỏ cọc ngay', () => {
+    expect(buildConfirmContractReturnArgs({ ...deferred, returnNote: '  Khách chuyển nhà.\nBàn giao đủ chìa.  ' }, contractId).p_return_note)
+      .toBe('Khách chuyển nhà.\nBàn giao đủ chìa.');
+    expect(buildConfirmContractReturnArgs({ ...deferred, initialKind: 'FORFEIT', settlementMode: 'IMMEDIATE', settlement: {} }, contractId))
+      .toMatchObject({ p_return_note: 'Khách chuyển nơi làm việc.', p_settlement: { extra_charges: [] } });
+  });
+  it('đọc lại ghi chú và tương thích hồ sơ cũ thiếu nội dung', () => {
+    expect(parseContractExitCase({ ...row, return_note: 'Nội dung đối chiếu' }).return_note).toBe('Nội dung đối chiếu');
+    expect(parseContractExitCase({ ...row, return_note: null }).return_note).toBeNull();
+    expect(parseContractExitCase(row).return_note).toBeNull();
+  });
   it('requires actual date and initial kind before dispatch', () => {
     expect(() => buildConfirmContractReturnArgs({...deferred, actualMoveOutOn: ''},contractId)).toThrow();
     expect(() => buildConfirmContractReturnArgs({...deferred, actualMoveOutOn: '2026-02-30'},contractId)).toThrow();
@@ -32,6 +46,7 @@ describe('contract return request boundary', () => {
       p_organization_id:contractId,p_contract_id: contractId, p_expected_contract_updated_at: '2026-09-27T00:00:00Z',
       p_idempotency_key: 'return-request-0001', p_actual_move_out_on: '2026-09-28',
       p_initial_kind: 'EARLY_RETURN', p_settlement_mode: 'DEFERRED', p_settlement: null,p_meter_boundary:null,
+      p_return_note: 'Khách chuyển nơi làm việc.',
     });
     expect(() => buildConfirmContractReturnArgs({...deferred, settlement: {depositRefund: 0}} as unknown as ConfirmContractReturnInput,contractId)).toThrow();
   });

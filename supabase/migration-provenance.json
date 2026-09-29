@@ -1,11 +1,11 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-09-29T13:55:18.664Z",
+  "generatedAt": "2026-09-29T14:13:23.110Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 633,
+    "ledger-applied": 635,
     "unknown": 80,
     "catalog-proven": 205,
     "superseded": 15
@@ -10812,6 +10812,28 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-09-29T02:17:16.275Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260929123356_contract_exit_return_note.sql",
+      "version": "20260929123356",
+      "name": "contract_exit_return_note",
+      "scheme": "timestamp14",
+      "sha256": "c221f2fdb1706e458b3171f325a70808f67a051e3baecb863d510b24ed2c7075",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-29T13:58:25.139Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260929123724_termination_refund_return_note.sql",
+      "version": "20260929123724",
+      "name": "termination_refund_return_note",
+      "scheme": "timestamp14",
+      "sha256": "127365aaf1f8a1ef23a417668aadfbc859d0fe81740e97b2f43ebde4b21c782b",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-29T14:11:52.434Z|bien-nhan-backup"
       ]
     },
     {

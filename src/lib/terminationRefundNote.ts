@@ -69,6 +69,8 @@ export interface TerminationRefundFacts {
   };
   contract: CommissionVoucherFacts | null;
   end_date: string | null;
+  /** Nội dung người dùng nhập lúc xác nhận trả phòng; không suy ra từ ghi chú phiếu. */
+  return_note: string | null;
   termination: TerminationRecord | null;
   excess_rent: number;
   shortfall_mode: "PAID" | "DEBT" | null;
@@ -124,6 +126,7 @@ export function parseTerminationRefundFacts(raw: Json | null | undefined): Termi
     },
     contract: parseCommissionVoucherFacts(raw.contract),
     end_date: str(raw.end_date),
+    return_note: str(raw.return_note),
     termination: t
       ? {
           termination_date: str(t.termination_date),

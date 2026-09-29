@@ -108,6 +108,7 @@ const factsHoan = (over: Partial<TerminationRefundFacts> = {}): TerminationRefun
   },
   contract: hopDong401(),
   end_date: '2026-09-05',
+  return_note: null,
   termination: {
     termination_date: '2026-09-05', actual_move_out_date: '2026-09-05',
     outstanding_debt: 0, early_termination_fee: 1_424_000, deposit_used: 4_500_000,
@@ -166,6 +167,19 @@ beforeEach(() => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe('cùng một phiếu hoàn — modal khớp nguồn Thu chi', () => {
+  it('Thu chi và Hoàn khách đều bổ sung nội dung thanh lý và giữ bảng quyết toán cũ', () => {
+    const note = 'Khách trả sớm để chuyển công tác.\nĐã nhận lại chìa khóa.';
+    H.hoan = { data: { ...factsHoan(), return_note: note }, isLoading: false, isError: false };
+    const thuChi = ve(<VoucherNote voucher={{ id: V_HOAN, system_source: 'termination.refund', contract_id: HD }} fallbackNotes={GHI_CHU_GOC} />);
+    const hoanKhach = ve(<SettlementVoucherDetails row={dong()} />);
+    for (const html of [thuChi, hoanKhach]) {
+      expect(chu(html)).toContain('Nội dung thanh lý');
+      expect(chu(html)).toContain(note);
+      expect(chu(html)).toContain('3.076.000 đ');
+    }
+    expect(chu(thuChi)).toContain(GHI_CHU_GOC);
+  });
+
   /** Đúng bộ mốc trên ảnh chủ: phiếu cọc, ngày thu, từng khoản cấn, tổng hoàn. */
   const MOC = [
     'PT2607068',                  // mã phiếu thu cọc

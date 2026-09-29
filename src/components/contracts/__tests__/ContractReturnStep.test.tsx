@@ -5,10 +5,26 @@ import { ContractReturnStep } from '../ContractReturnStep';
 
 afterEach(cleanup);
 const defaults = () => ({ actualDate: '2026-09-28', onDateChange: vi.fn(), kind: null,
-  onKindChange: vi.fn(), changeReason: '', onReasonChange: vi.fn(), pending: false,
+  onKindChange: vi.fn(), changeReason: '', onReasonChange: vi.fn(), returnNote: 'Khách trả phòng.', onReturnNoteChange: vi.fn(), pending: false,
   onDefer: vi.fn(), onContinue: vi.fn() });
 
 describe('bước ghi trả phòng', () => {
+  it.each(['', '  \n\t  '])('chặn cả hai nhánh khi nội dung trống: %j', (returnNote) => {
+    render(<ContractReturnStep {...defaults()} kind="EARLY_RETURN" returnNote={returnNote} />);
+    expect(screen.getByRole('button', { name: 'Trả phòng, quyết toán sau' }).hasAttribute('disabled')).toBe(true);
+    expect(screen.getByRole('button', { name: 'Tiếp tục quyết toán ngay' }).hasAttribute('disabled')).toBe(true);
+  });
+  it.each([
+    ['NATURAL_EXPIRY', 'Khách trả phòng do hết hạn hợp đồng.'],
+    ['EARLY_RETURN', 'Khách trả phòng trước thời hạn hợp đồng.'],
+    ['FORFEIT', 'Khách trả phòng và bỏ cọc.'],
+  ] as const)('điền câu mẫu theo loại %s bằng thao tác bấm', (kind, note) => {
+    const props = defaults();
+    render(<ContractReturnStep {...props} kind={kind} returnNote="" />);
+    expect(props.onReturnNoteChange).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Dùng nội dung mẫu' }));
+    expect(props.onReturnNoteChange).toHaveBeenCalledWith(note);
+  });
   it('bắt chọn loại và ngày thực tế trước cả hai nhánh', () => {
     const props = defaults();
     const { rerender } = render(<ContractReturnStep {...props} />);

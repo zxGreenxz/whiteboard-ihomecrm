@@ -11,11 +11,18 @@ export const EXIT_KIND_LABELS: Record<ExitKind, string> = {
   FORFEIT: 'Bỏ cọc',
 };
 
+const RETURN_NOTE_SAMPLES: Record<ExitKind, string> = {
+  NATURAL_EXPIRY: 'Khách trả phòng do hết hạn hợp đồng.',
+  EARLY_RETURN: 'Khách trả phòng trước thời hạn hợp đồng.',
+  FORFEIT: 'Khách trả phòng và bỏ cọc.',
+};
+
 interface Props {
   actualDate: string; onDateChange: (value: string) => void;
   kind: ExitKind | null; onKindChange: (value: ExitKind) => void;
   exitCase?: Pick<ContractExitCase, 'initial_kind' | 'current_kind'>;
   changeReason: string; onReasonChange: (value: string) => void;
+  returnNote: string; onReturnNoteChange: (value: string) => void;
   pending: boolean; onDefer: () => void; onContinue: () => void;
   physicalReady?: boolean; children?: ReactNode;
 }
@@ -23,7 +30,8 @@ interface Props {
 export function ContractReturnStep(props: Props) {
   const id = useId();
   const changingKind = !!props.exitCase && props.kind !== props.exitCase.current_kind;
-  const valid = !!props.kind && !!props.actualDate && props.physicalReady !== false && (!changingKind || !!props.changeReason.trim());
+  const valid = !!props.kind && !!props.actualDate && props.physicalReady !== false
+    && (!!props.exitCase || !!props.returnNote.trim()) && (!changingKind || !!props.changeReason.trim());
   return <div className="space-y-5 py-2">
     <div className="space-y-2">
       <Label htmlFor={`${id}-date`}>Ngày khách thực tế trả phòng <span className="text-destructive">*</span></Label>
@@ -38,6 +46,27 @@ export function ContractReturnStep(props: Props) {
             onChange={() => props.onKindChange(kind)} />{label}
         </label>)}
     </fieldset>
+    {!props.exitCase && <div className="space-y-2">
+      <Label htmlFor={`${id}-return-note`}>Nội dung thanh lý <span className="text-destructive">*</span></Label>
+      <Textarea id={`${id}-return-note`} value={props.returnNote} disabled={props.pending} required
+        aria-describedby={`${id}-return-note-help`} rows={3}
+        onChange={event => props.onReturnNoteChange(event.target.value)}
+        placeholder="Nhập lý do và nội dung cần lưu để đối chiếu" />
+      <p id={`${id}-return-note-help`} className="text-xs text-muted-foreground">
+        Bắt buộc ghi nội dung để đối chiếu. Có thể dùng mẫu bên dưới và bổ sung nếu cần.
+      </p>
+      {props.kind && <div className="space-y-2 rounded-md bg-muted p-3">
+        <p className="text-sm">{RETURN_NOTE_SAMPLES[props.kind]}</p>
+        <Button type="button" size="sm" variant="outline" disabled={props.pending}
+          onClick={() => props.kind && props.onReturnNoteChange(RETURN_NOTE_SAMPLES[props.kind])}>
+          Dùng nội dung mẫu
+        </Button>
+      </div>}
+    </div>}
+    {props.exitCase && <div className="space-y-1 text-sm">
+      <p className="font-medium">Nội dung thanh lý đã ghi</p>
+      <p className="whitespace-pre-wrap break-words">{props.returnNote || 'Chưa có nội dung thanh lý'}</p>
+    </div>}
     {props.exitCase && <p className="text-sm text-muted-foreground">Loại đã ghi lúc trả: {EXIT_KIND_LABELS[props.exitCase.initial_kind]}. Hồ sơ vẫn giữ thông tin này để đối soát.</p>}
     {changingKind && <div className="space-y-2">
       <Label htmlFor={`${id}-reason`}>Lý do đổi loại thanh lý <span className="text-destructive">*</span></Label>

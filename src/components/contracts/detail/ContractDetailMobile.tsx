@@ -23,6 +23,7 @@ interface Props extends Pick<ContractMobileSettlementStatusProps,
   perms: Parameters<typeof canUse>[0];
   customers: NonNullable<ContractWithRelations['contract_customers']>;
   commissionFollowup?: ReactNode;
+  exitCasePanel?: ReactNode;
   onBack: () => void;
   onEdit: () => void;
   onPrint: () => void;
@@ -71,6 +72,7 @@ export function ContractDetailMobile(props: Props) {
 
           <div className="mbody">
             {props.commissionFollowup}
+            {props.exitCasePanel}
             <ContractMobileSettlementStatus contract={contract} invoices={invoices} depositVouchers={depositVouchers}
               terminationInfo={props.terminationInfo} pendingForfeitCount={props.pendingForfeitCount}
               pendingRefundCount={props.pendingRefundCount} statusLoading={props.statusLoading} sideLoadErrors={props.sideLoadErrors} />

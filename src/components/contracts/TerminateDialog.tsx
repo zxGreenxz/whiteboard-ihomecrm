@@ -97,6 +97,7 @@ export function TerminateDialog({
   const [kind, setKind] = useState<ExitKind | null>(null);
   const [actualDate, setActualDate] = useState('');
   const [changeReason, setChangeReason] = useState('');
+  const [returnNote, setReturnNote] = useState('');
   const [meterBoundary, setMeterBoundary] = useState<MeterBoundaryInput | null>({ state: 'MISSING', reason: 'Chưa đủ chỉ số khi nhận bàn giao, bổ sung sau' });
   const requestKeys = useRef(new Map<string, string>());
   const confirmReturn = useConfirmContractReturn();
@@ -127,6 +128,7 @@ export function TerminateDialog({
       setKind(exitCase?.current_kind ?? null);
       setActualDate(exitCase?.actual_move_out_on ?? todayISO());
       setChangeReason('');
+      setReturnNote(exitCase?.return_note ?? '');
       setMeterBoundary({ state: 'MISSING', reason: 'Chưa đủ chỉ số khi nhận bàn giao, bổ sung sau' });
       requestKeys.current.clear();
     }
@@ -144,9 +146,9 @@ export function TerminateDialog({
     return key;
   };
   const deferSettlement = async () => {
-    if (!kind || !actualDate || exitCase || !meterBoundary) return;
+    if (!kind || !actualDate || exitCase || !meterBoundary || !returnNote.trim()) return;
     const intent = { contractId: contract.id, expectedContractUpdatedAt: contract.updated_at,
-      actualMoveOutOn: actualDate, initialKind: kind, settlementMode: 'DEFERRED' as const, meterBoundary };
+      actualMoveOutOn: actualDate, initialKind: kind, returnNote: returnNote.trim(), settlementMode: 'DEFERRED' as const, meterBoundary };
     try {
       await confirmReturn.mutateAsync({ ...intent, idempotencyKey: requestKey(intent) });
       onOpenChange(false);
@@ -165,9 +167,10 @@ export function TerminateDialog({
         await finalizeExit.mutateAsync({ ...intent, idempotencyKey: requestKey(intent) });
       }
     } else {
+      if (!returnNote.trim()) throw new Error('Vui lòng ghi nội dung thanh lý để đối chiếu');
       if (!meterBoundary) throw new Error('Kiểm tra chỉ số bàn giao hoặc chọn bổ sung sau');
       const intent = { contractId: contract.id, expectedContractUpdatedAt: contract.updated_at,
-        actualMoveOutOn: actualDate, initialKind: kind, settlementMode: 'IMMEDIATE' as const, settlement, meterBoundary };
+        actualMoveOutOn: actualDate, initialKind: kind, returnNote: returnNote.trim(), settlementMode: 'IMMEDIATE' as const, settlement, meterBoundary };
       await confirmReturn.mutateAsync({ ...intent, idempotencyKey: requestKey(intent) });
     }
   };
@@ -206,6 +209,7 @@ export function TerminateDialog({
           <ContractReturnStep actualDate={actualDate} onDateChange={setActualDate}
             kind={kind} onKindChange={setKind} exitCase={exitCase}
             changeReason={changeReason} onReasonChange={setChangeReason}
+            returnNote={returnNote} onReturnNoteChange={setReturnNote}
             pending={isPending || transferUnavailable} physicalReady={!!exitCase || (!!contract.room_id && !!meterBoundary)}
             onDefer={() => void deferSettlement()} onContinue={() => setStep(2)}>
             {!exitCase && !!contract.room_id && <ContractMeterBoundaryFields key={contract.room_id} roomId={contract.room_id}

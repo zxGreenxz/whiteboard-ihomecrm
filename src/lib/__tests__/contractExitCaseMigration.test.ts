@@ -3,6 +3,8 @@ import { PGlite } from '@electric-sql/pglite';
 import { beforeAll, afterAll, describe, expect, it } from 'vitest';
 
 const path='supabase/migrations/20260928015559_contract_exit_case_workflow.sql';
+const notePath='supabase/migrations/20260929123356_contract_exit_return_note.sql';
+const returnNote='Khách trả phòng trước hạn, đã bàn giao chìa khóa.';
 const org='00000000-0000-4000-8000-000000000001';
 const actor='00000000-0000-4000-8000-000000000002';
 const building='00000000-0000-4000-8000-000000000003';
@@ -66,6 +68,7 @@ ${physical('p_move_out_date')}
   await db.exec(triggerSource.slice(start,triggerSource.indexOf('$fn$;',start)+6));
   await db.exec('CREATE TRIGGER trigger_update_room_status AFTER INSERT OR UPDATE ON contracts FOR EACH ROW EXECUTE FUNCTION update_room_status_on_contract_change()');
   if(existsSync(path)) {await db.exec(readFileSync(path,'utf8'));await db.exec(readFileSync(path,'utf8'));}
+  if(existsSync(notePath)) {await db.exec(readFileSync(notePath,'utf8'));await db.exec(readFileSync(notePath,'utf8'));}
 },30000);
 afterAll(async()=>{await db.close();});
 async function scenario(fn:()=>Promise<void>){
@@ -73,7 +76,7 @@ async function scenario(fn:()=>Promise<void>){
   try {await fn();} finally {await db.exec('ROLLBACK');}
 }
 async function confirm(opts:Record<string,unknown>={}){
-  return (await db.query<{result:Record<string,unknown>}>(`SELECT confirm_contract_return_v1($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb) AS result`,[opts.org??org,opts.contract??contract,opts.updated??'2026-09-27',opts.key??'physical-key-0001',opts.date??'2026-09-28',opts.kind??'EARLY_RETURN',opts.mode??'DEFERRED',opts.money===undefined?null:JSON.stringify(opts.money),opts.meter===undefined?null:JSON.stringify(opts.meter)])).rows[0].result;
+  return (await db.query<{result:Record<string,unknown>}>(`SELECT confirm_contract_return_v1($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb,$10) AS result`,[opts.org??org,opts.contract??contract,opts.updated??'2026-09-27',opts.key??'physical-key-0001',opts.date??'2026-09-28',opts.kind??'EARLY_RETURN',opts.mode??'DEFERRED',opts.money===undefined?null:JSON.stringify(opts.money),opts.meter===undefined?null:JSON.stringify(opts.meter),opts.note===undefined?returnNote:opts.note])).rows[0].result;
 }
 async function finalize(id:unknown,opts:Record<string,unknown>={}){
   return (await db.query<{result:Record<string,unknown>}>(`SELECT finalize_contract_exit_case_v1($1,$2,$3,$4,$5,$6,$7::jsonb) AS result`,[opts.org??org,id,opts.version??1,opts.key??'settlement-key-0001',opts.kind??'EARLY_RETURN',opts.reason??null,JSON.stringify(opts.money??{deposit_refund:100,shortfall_mode:'DEBT'})])).rows[0].result;
@@ -84,7 +87,69 @@ async function rejected(fn:()=>Promise<unknown>,code:string){
   finally {await db.exec('ROLLBACK TO SAVEPOINT expected_failure; RELEASE SAVEPOINT expected_failure');}
 }
 describe('actual return / old canonical settlement SQL seam',()=>{
+  it('requires a nonblank return note before any physical, meter or financial effect',()=>scenario(async()=>{
+    for(const note of [null,'','   ','\n\t ']) {
+      await rejected(()=>confirm({note}),'22023');
+      await rejected(()=>confirm({note,mode:'IMMEDIATE',kind:'FORFEIT',money:{}}),'22023');
+    }
+    expect((await db.query('SELECT status,actual_end_date FROM contracts WHERE id=$1',[contract])).rows[0]).toEqual({status:'ACTIVE',actual_end_date:null});
+    for(const table of ['contract_exit_cases','canonical_calls','contract_terminations','meter_boundary_calls']) {
+      expect((await db.query<{n:number}>(`SELECT count(*)::int AS n FROM ${table}`)).rows[0].n).toBe(0);
+    }
+    expect((await db.query<{status:string}>('SELECT status FROM rooms WHERE id=$1',[room])).rows[0].status).toBe('OCCUPIED');
+  }));
+  it('stores a trimmed return note and exposes it through detail and list in deferred cases',()=>scenario(async()=>{
+    const result=await confirm({note:`  ${returnNote}\n`});
+    expect(result).toMatchObject({state:'PENDING',return_note:returnNote});
+    expect((await db.query<{return_note:string}>('SELECT return_note FROM contract_exit_cases WHERE id=$1',[result.id])).rows[0].return_note).toBe(returnNote);
+    const detail=(await db.query<{result:Record<string,unknown>}>('SELECT get_contract_exit_case_v1($1,$2) AS result',[org,result.id])).rows[0].result;
+    expect(detail.return_note).toBe(returnNote);
+    const list=(await db.query<{result:{items:Record<string,unknown>[]}}>('SELECT list_contract_exit_cases_v1($1) AS result',[org])).rows[0].result;
+    expect(list.items[0].return_note).toBe(returnNote);
+  }));
+  it.each(['NATURAL_EXPIRY','EARLY_RETURN','FORFEIT'])('retains the return note when %s is settled immediately',kind=>scenario(async()=>{
+    const result=await confirm({kind,mode:'IMMEDIATE',money:{},note:returnNote});
+    expect(result).toMatchObject({state:'FINALIZED',return_note:returnNote});
+    const readback=(await db.query<{result:Record<string,unknown>}>('SELECT get_contract_exit_case_v1($1,$2) AS result',[org,result.id])).rows[0].result;
+    expect(readback.return_note).toBe(returnNote);
+    expect((await db.query<{n:number}>('SELECT count(*)::int AS n FROM canonical_calls')).rows[0].n).toBe(1);
+  }));
+  it('binds the normalized return note to physical replay intent',()=>scenario(async()=>{
+    const result=await confirm({note:returnNote});
+    expect(await confirm({note:` ${returnNote} `})).toEqual(result);
+    await rejected(()=>confirm({note:'Khách bỏ cọc và đã dọn hết đồ.'}),'23505');
+    expect((await db.query<{n:number}>('SELECT count(*)::int AS n FROM meter_boundary_calls')).rows[0].n).toBe(1);
+  }));
+  it('keeps return notes immutable through kind changes and final settlement',()=>scenario(async()=>{
+    const pending=await confirm({note:returnNote});
+    await rejected(()=>db.query("UPDATE contract_exit_cases SET return_note='Rewritten',version=version+1 WHERE id=$1",[pending.id]),'42501');
+    const settled=await finalize(pending.id,{kind:'FORFEIT',reason:'Bổ sung xác nhận bỏ cọc',money:{}});
+    expect(settled).toMatchObject({state:'FINALIZED',return_note:returnNote});
+    expect(settled.kind_history).toMatchObject([{reason:'Bổ sung xác nhận bỏ cọc'}]);
+    await rejected(()=>db.query("UPDATE contract_exit_cases SET return_note='Rewritten',version=version+1 WHERE id=$1",[pending.id]),'42501');
+  }));
+  it('keeps pre-migration pending cases readable and finalizable with a null return note',()=>scenario(async()=>{
+    // Reproduce a real row written before the note migration, then upgrade in place.
+    await db.exec('DROP FUNCTION public.confirm_contract_return_v1(uuid,uuid,timestamptz,text,date,text,text,jsonb,jsonb,text)');
+    await db.exec(readFileSync(path,'utf8'));
+    const pending=(await db.query<{result:Record<string,unknown>}>('SELECT confirm_contract_return_v1($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb) AS result',[org,contract,'2026-09-27','legacy-physical-0001','2026-09-28','EARLY_RETURN','DEFERRED',null,null])).rows[0].result;
+    await db.exec(readFileSync(notePath,'utf8'));
+    const upgraded=(await db.query<{result:Record<string,unknown>}>('SELECT get_contract_exit_case_v1($1,$2) AS result',[org,pending.id])).rows[0].result;
+    expect(upgraded).toMatchObject({state:'PENDING',return_note:null});
+    expect(await finalize(pending.id)).toMatchObject({state:'FINALIZED',return_note:null});
+  }));
   it('requires the additive API rather than silently accepting a missing migration',async()=>{expect(existsSync(path)).toBe(true);});
+  it('exposes only the extended RPC signature and retains least-privilege access',()=>scenario(async()=>{
+    const signature='public.confirm_contract_return_v1(uuid,uuid,timestamptz,text,date,text,text,jsonb,jsonb,text)';
+    expect((await db.query('SELECT has_function_privilege($1,$2,\'EXECUTE\') AS allowed',['authenticated',signature])).rows[0]).toEqual({allowed:true});
+    for(const role of ['anon','service_role']) {
+      expect((await db.query('SELECT has_function_privilege($1,$2,\'EXECUTE\') AS allowed',[role,signature])).rows[0]).toEqual({allowed:false});
+    }
+    expect((await db.query("SELECT count(*)::int AS n FROM pg_proc WHERE proname='confirm_contract_return_v1'")).rows[0]).toEqual({n:1});
+    expect((await db.query("SELECT has_function_privilege('authenticated','app_private.contract_exit_case_response_v1(uuid)','EXECUTE') AS allowed")).rows[0]).toEqual({allowed:false});
+    expect((await db.query("SELECT p.prosecdef,p.provolatile,p.proconfig,r.rolname FROM pg_proc p JOIN pg_roles r ON r.oid=p.proowner WHERE p.oid=$1::regprocedure",[signature])).rows[0]).toMatchObject({prosecdef:true,provolatile:'v',proconfig:['search_path=pg_catalog, public, app_private'],rolname:'postgres'});
+    await rejected(()=>db.query('SELECT confirm_contract_return_v1($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb)',[org,contract,'2026-09-27','legacy-request-0001','2026-09-28','EARLY_RETURN','DEFERRED',null,null]),'22023');
+  }));
   it('applies twice and DEFERRED leaves all financial effects absent',()=>scenario(async()=>{
     const result=await confirm(); expect(result).toMatchObject({state:'PENDING',initial_kind:'EARLY_RETURN',version:1,settlement_result:null});
     expect((await db.query<{n:number}>('SELECT count(*)::int AS n FROM canonical_calls')).rows[0].n).toBe(0);
@@ -229,6 +294,7 @@ describe('actual return / old canonical settlement SQL seam',()=>{
       expect(after[i].body).toBe(expected);
     }
     await db.exec(readFileSync(path,'utf8')); expect(await definitions()).toEqual(after);
+    await db.exec(readFileSync(notePath,'utf8'));
   });
   it('pairs the actual exit and meter migrations: A missing still returns, B requires its own verified reading',async()=>{
     await db.exec(`ALTER TABLE contracts ADD COLUMN created_at timestamptz DEFAULT now();

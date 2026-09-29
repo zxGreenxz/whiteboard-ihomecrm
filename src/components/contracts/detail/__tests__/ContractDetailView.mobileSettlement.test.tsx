@@ -41,7 +41,14 @@ vi.mock('@/components/contracts/RenewDialog', () => ({ RenewDialog: () => null }
 vi.mock('@/components/contracts/TransferContractDialog', () => ({ TransferContractDialog: () => null }));
 vi.mock('@/components/contracts/TransferRoomDialog', () => ({ TransferRoomDialog: () => null }));
 vi.mock('@/components/contracts/TerminateDialog', () => ({ TerminateDialog: () => null }));
-vi.mock('@/components/contracts/ContractExitCasePanel', () => ({ ContractExitCasePanel: () => null }));
+vi.mock('@/hooks/useContractExitCases', () => ({ useContractExitCases: () => ({
+  data: { items: [{ id: 'exit', state: 'FINALIZED', actual_move_out_on: '2026-09-28',
+    initial_kind: 'EARLY_RETURN', current_kind: 'EARLY_RETURN', kind_history: [],
+    return_note: 'Khách chuyển công tác.\nĐã bàn giao chìa khóa.' }] }, isLoading: false, isError: false,
+}) }));
+vi.mock('@/components/contracts/ContractReturnStep', () => ({ EXIT_KIND_LABELS: { EARLY_RETURN: 'Trả sớm' } }));
+vi.mock('@/components/contracts/ContractTransferLinkPanel', () => ({ ContractTransferLinkPanel: () => null }));
+vi.mock('@/components/contracts/ContractMeterBoundaryPanel', () => ({ ContractMeterBoundaryPanel: () => null }));
 vi.mock('@/components/contracts/RegisterMoveOutDialog', () => ({ default: () => null }));
 vi.mock('@/components/contracts/ContractQRDialog', () => ({ default: () => null }));
 vi.mock('@/components/contracts/ContractFormDialog', () => ({ ContractFormDialog: () => null }));
@@ -62,6 +69,37 @@ function show() {
   render(<MemoryRouter><ContractDetailView id="contract" onBack={() => {}} /></MemoryRouter>);
   return within(screen.getByRole('region', { name: 'Trạng thái sau trả phòng' }));
 }
+it.each([true, false])('giữ cả hai panel không trùng React key khi mobile=%s', mobile => {
+  viewport.mobile = mobile;
+  const originalError = console.error;
+  const isDuplicateKey = (args: unknown[]) => args.some(value => typeof value === 'string' && /same key/.test(value));
+  const errors = vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+    if (!isDuplicateKey(args)) originalError(...args);
+  });
+  try {
+    const view = () => <MemoryRouter><ContractDetailView id="contract" onBack={() => {}} /></MemoryRouter>;
+    const { rerender } = render(view());
+    rerender(view());
+    const commission = screen.getAllByRole('region', { name: 'Theo dõi hoa hồng và thưởng Sale' });
+    const exit = screen.getAllByRole('region', { name: 'Nội dung thanh lý' });
+    expect(commission).toHaveLength(1);
+    expect(exit).toHaveLength(1);
+    expect(exit[0].textContent).toContain('Khách chuyển công tác.\nĐã bàn giao chìa khóa.');
+    if (mobile) {
+      expect(commission[0].closest('.cdt-app .mbody')).not.toBeNull();
+      expect(exit[0].closest('.cdt-app .mbody')).toBe(commission[0].closest('.cdt-app .mbody'));
+    }
+    expect(errors.mock.calls.filter(isDuplicateKey)).toEqual([]);
+  } finally {
+    errors.mockRestore();
+  }
+});
+it('đặt nội dung thanh lý bên trong vùng cuộn mobile để không bị màn fullscreen che', () => {
+  show();
+  const note = screen.getByRole('region', { name: 'Nội dung thanh lý' });
+  expect(note.textContent).toContain('Khách chuyển công tác.\nĐã bàn giao chìa khóa.');
+  expect(note.closest('.cdt-app .mbody')).not.toBeNull();
+});
 it('maps actual View reader data and both pending counts into the real mobile status', () => {
   state.invoices.data = [{ id: 'invoice', total_amount: 1_000, paid_amount: 0 }];
   state.termination.data!.posted_refund = 0;

@@ -120,6 +120,12 @@ export function TerminationRefundNote({ voucher, fallbackNotes, enabled = true, 
           {(hideRefundInstruction ? header.slice(1) : header).join("\n")}
         </div>
       ) : null}
+      {!isLoading && !isError && facts ? (
+        <section aria-label="Nội dung thanh lý" className="space-y-1 rounded-md border bg-muted/30 p-3 text-sm">
+          <h3 className="font-medium">Nội dung thanh lý</h3>
+          <p className="whitespace-pre-wrap break-words">{facts.return_note || "Chưa có nội dung thanh lý"}</p>
+        </section>
+      ) : null}
       {card ? <SettlementCard card={card} /> : null}
       {notes ? (
         <details className="text-xs text-muted-foreground">
