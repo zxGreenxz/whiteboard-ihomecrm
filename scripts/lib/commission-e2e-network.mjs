@@ -1,5 +1,14 @@
 // Exact request identities present before a harness-owned navigation only.
 // Neither mutation requests nor HTTP/console failures are navigation exceptions.
+export function safeHttpFailure(body) {
+  const result = { message: 'HTTP error; response message omitted' };
+  if (typeof body?.code === 'string' && /^[A-Z0-9_]{3,20}$/.test(body.code)) result.code = body.code;
+  const known = ['canceling statement due to statement timeout', 'Timed out acquiring connection from connection pool.',
+    'Could not query the database for the schema cache. Retrying.'];
+  if (known.includes(body?.message)) result.message = body.message;
+  return result;
+}
+
 export function createNavigationReadGuard({ appOrigin, testOrigin }) {
   const pending = new Set(), snapshots = new Map();
   let sequence = 0;

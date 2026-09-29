@@ -7,7 +7,8 @@ import pg from 'pg';
 import { chromium, expect } from '@playwright/test';
 import { testConnection, signInTest, request } from './test-voucher-detail-read-authz.mjs';
 import { matKhauTest } from './test-env/hau-ky.mjs';
-import { createNavigationReadGuard } from './lib/commission-e2e-network.mjs';
+import { createNavigationReadGuard, safeHttpFailure } from './lib/commission-e2e-network.mjs';
+import { createScopedActor, assertScopedActor } from './lib/commission-e2e-scoped-actor.mjs';
 
 const BASE = 'http://127.0.0.1:4186';
 const PROD_REF = 'tryymsxyyckgbrmmvozx';
@@ -16,6 +17,8 @@ const ctx = await testConnection();
 assert.equal(ctx.cred.testRef, 'hzulujxgonszuleqticb');
 const ownerEmail = 'nguyentam@username.ihomecrm.local';
 const owner = await signInTest(ctx, ownerEmail, matKhauTest(ctx.cred.passwordSeed, ownerEmail));
+const scoped = process.argv.includes('--scoped-staff');
+let session = owner, isolatedActor;
 const scope = await request(ctx, owner.access_token, 'rpc/list_contract_commission_followups_v2',
   { p_organization_id: ORG, p_unresolved_only: false, p_limit: 100 });
 assert.equal(scope.status, 200, 'owner followup source must be readable');
@@ -44,13 +47,14 @@ if (process.argv.includes('--cleanup-residue')) {
 const ids = [randomUUID(), randomUUID()];
 const repairedAccount = randomUUID();
 const marker = `E2E-RETRY-${Date.now()}`;
-const report = { target: ctx.cred.testRef, base: BASE, marker, checks: [], console: [], blockedProduction: [],
+const report = { target: ctx.cred.testRef, base: BASE, marker, actorMode: scoped ? 'isolated-scoped-staff' : 'existing-owner', checks: [], console: [], blockedProduction: [],
   expectedConsole: [], expectedNetwork: [], successfulHeadReceipts: [], navigationCancelledReads: [], unexpectedNetwork: [], cleanup: false, screenshots: [] };
 let browser;
 let activePage;
 let injectedFailure = null;
 const expectedExecuteRequests = new Set();
 const navigationGuards = new Map(), networkJobs = [];
+let existingTypes = [];
 const isExpectedConsole = (text, location) => {
   if (!injectedFailure) return false;
   if (/Failed to load resource/.test(text)) return location.endsWith('/rpc/execute_commission_request_v1')
@@ -59,7 +63,12 @@ const isExpectedConsole = (text, location) => {
     && location.includes('/src/hooks/useCommissionVoucher.ts')
     && (injectedFailure === 'canonical-failure' ? text.includes('Máy chủ chưa tạo được phiếu.') : text.includes('Failed to fetch'));
 };
-const rpc = async (name, body) => request(ctx, owner.access_token, `rpc/${name}`, body);
+const rpc = async (name, body) => {
+  const result = await request(ctx, session.access_token, `rpc/${name}`, body);
+  if (result.status >= 400) report.unexpectedNetwork.push({ path: `/rest/v1/rpc/${name}`, source: 'JWT probe',
+    status: result.status, durationMs: result.ms, ...safeHttpFailure(result.json) });
+  return result;
+};
 const list = async (contractId) => {
   const r = await rpc('list_contract_commission_followups_v2',
     { p_organization_id: ORG, p_contract_ids: [contractId], p_unresolved_only: false });
@@ -82,7 +91,7 @@ const guarded = async (viewport) => {
   await context.addInitScript(({ org, key, session }) => {
     localStorage.setItem('ihomecrm.selectedOrganizationId', org);
     localStorage.setItem(key, JSON.stringify(session));
-  }, { org: ORG, key: `sb-${ctx.cred.testRef}-auth-token`, session: owner });
+  }, { org: ORG, key: `sb-${ctx.cred.testRef}-auth-token`, session });
   const page = await context.newPage();
   const navigation = createNavigationReadGuard({ appOrigin: BASE, testOrigin: ctx.url });
   navigationGuards.set(page, navigation);
@@ -99,7 +108,14 @@ const guarded = async (viewport) => {
   page.on('response', response => {
     if (response.status() < 400) return;
     const path = new URL(response.url()).pathname;
-    report.unexpectedNetwork.push({ path, status: response.status() });
+    const entry = { path, status: response.status(), method: response.request().method(),
+      responseStartMs: response.request().timing().responseStart };
+    report.unexpectedNetwork.push(entry);
+    networkJobs.push((async () => {
+      // Never persist arbitrary response bodies, details, hints or business data.
+      const body = await response.json().catch(() => null);
+      Object.assign(entry, safeHttpFailure(body));
+    })());
   });
   page.on('requestfailed', failed => { networkJobs.push((async () => {
     navigation.finished(failed);
@@ -129,6 +145,9 @@ const reload = async page => { await settle(page); navigationGuards.get(page).sn
 try {
   const markerCheck = await db.query('select ref from test_env.danh_dau limit 1');
   assert.equal(markerCheck.rows[0]?.ref, ctx.cred.testRef, 'TEST database marker required');
+  existingTypes = (await db.query('select id from public.income_expense_types')).rows.map(row => row.id);
+  if (scoped) session = await createScopedActor({ ctx, db, organizationId: ORG, buildingId: source.building_id,
+    ownerId: owner.user.id, marker, record: actor => { isolatedActor = actor; } });
   await db.query('begin');
   await db.query('set local session_replication_role=replica');
   for (const [i, id] of ids.entries()) await db.query(`insert into public.contracts
@@ -136,6 +155,11 @@ try {
     select $1,user_id,room_id,organization_id,'TERMINATED',current_date,current_date,current_date+365,1000000,$2,$3
     from public.contracts where id=$4`, [id, `${marker}-${i}`, `${marker}-${i}`, source.contract_id]);
   await db.query('commit');
+  if (scoped) {
+    report.scopeProof = await assertScopedActor({ ctx, db, session, organizationId: ORG,
+      buildingId: source.building_id, fixtureContractId: ids[0] });
+    report.checks.push('Real STAFF JWT can view/manage fixture and cannot read another building contract; exactly one building visible');
+  }
   browser = await chromium.launch({ headless: true });
   const desktop = await guarded({ width: 1440, height: 1000 });
   const { page } = desktop;
@@ -186,7 +210,7 @@ try {
   }
   await db.query('begin'); await db.query('set local session_replication_role=replica');
   await db.query("insert into public.accounts(id,user_id,organization_id,name,code,initial_amount,initial_date) values($1,$2,$3,$4,$5,0,current_date)",
-    [repairedAccount, owner.user.id, ORG, marker, marker]);
+    [repairedAccount, session.user.id, ORG, `${marker}-repaired`, `${marker}-repaired`]);
   await db.query('commit');
   if (process.argv.includes('--settlement-retry')) {
     const queue = page.getByLabel('Lỗi tạo hoa hồng / thưởng Sale');
@@ -215,6 +239,7 @@ try {
   await expect(detail.getByRole('alert')).toHaveCount(0);
   assert.equal(await voucherCount(ids[0], 'broker'), 1);
   report.checks.push('Direct Tạo lại used saved request after repair; exactly one real voucher, queue cleared after reload');
+  }
   await page.setViewportSize({ width: 390, height: 844 });
   await go(page, `/contracts/${ids[1]}`);
   await expect(detail.getByRole('button', { name: 'Tạo phiếu hoa hồng' })).toBeVisible({ timeout: 30_000 });
@@ -254,7 +279,6 @@ try {
   assert.equal(await voucherCount(ids[1], 'broker'), 1);
   report.checks.push('Lost after-commit response: reload shows existing voucher, direct server replay returns same receipt and one voucher');
   await shot(page, 'task-2-lost-response-mobile');
-  }
   assert.equal(report.blockedProduction.length, 0, 'browser attempted production Supabase access');
   await settle(page);
   await Promise.all(networkJobs);
@@ -273,6 +297,29 @@ finally {
     await db.query('rollback');
     await db.query('begin'); await db.query('set local session_replication_role=replica');
     const vouchers = (await db.query('select id from public.income_expenses where contract_id=any($1::uuid[])', [ids])).rows.map(row => row.id);
+    // Capture canonical types before deleting their fixture item links. Existing
+    // types are never deleted; new actor-owned seeds are also exact identities.
+    const generatedTypes = (await db.query(`select distinct t.id from public.income_expense_types t
+      where not(t.id=any($1::uuid[])) and (t.user_id=$2 or exists(select 1 from public.income_expense_items i
+      where i.income_expense_type_id=t.id and i.income_expense_id=any($3::uuid[])))`,
+    [existingTypes, isolatedActor?.id ?? null, vouchers])).rows.map(row => row.id);
+    const actorAccounts = isolatedActor ? (await db.query('select id from public.accounts where user_id=$1', [isolatedActor.id])).rows.map(row => row.id) : [];
+    assert.equal((await db.query(`select count(*)::int n from public.income_expense_items where income_expense_type_id=any($1::uuid[])
+      and not(income_expense_id=any($2::uuid[]))`, [generatedTypes, vouchers])).rows[0].n, 0, 'new type must not belong to any unrelated voucher');
+    const overrides = isolatedActor ? (await db.query('select id from public.member_permission_overrides where membership_id=$1', [isolatedActor.membershipId])).rows.map(row => row.id) : [];
+    const exactIds = [...ids, repairedAccount, ...vouchers, ...generatedTypes, ...actorAccounts, ...overrides,
+      ...(isolatedActor ? [isolatedActor.id, isolatedActor.membershipId, isolatedActor.accountId] : [])];
+    const targets = (await db.query(`select n.nspname,c.relname,array_agg(a.attname::text) cols from pg_class c
+      join pg_namespace n on n.oid=c.relnamespace join pg_attribute a on a.attrelid=c.oid
+      where n.nspname in ('public','app_private') and c.relkind in ('r','p') and not c.relispartition
+      and a.attnum>0 and not a.attisdropped and a.atttypid='uuid'::regtype group by n.nspname,c.relname`)).rows;
+    const quote = value => `"${value.replaceAll('"', '""')}"`;
+    // Any UUID match is one of this run's new actor/fixture identities, never
+    // organization/building/source-contract IDs. Covers private claims and seeds.
+    for (const target of targets) await db.query(`delete from ${quote(target.nspname)}.${quote(target.relname)}
+      where ${target.cols.map(col => `${quote(col)}=any($1::uuid[])`).join(' or ')}`, [exactIds]);
+    for (const target of targets) assert.equal((await db.query(`select count(*)::int n from ${quote(target.nspname)}.${quote(target.relname)}
+      where ${target.cols.map(col => `${quote(col)}=any($1::uuid[])`).join(' or ')}`, [exactIds])).rows[0].n, 0);
     await db.query('delete from public.income_expense_items where income_expense_id=any($1::uuid[])', [vouchers]);
     await db.query('delete from public.income_expenses where id=any($1::uuid[])', [vouchers]);
     await db.query('delete from public.contract_commission_events where contract_id=any($1::uuid[])', [ids]);
@@ -280,6 +327,13 @@ finally {
     await db.query('delete from public.contracts where id=any($1::uuid[])', [ids]);
     await db.query('delete from public.accounts where id=$1', [repairedAccount]);
     await db.query('commit');
+    if (isolatedActor) {
+      const deleted = await fetch(`${ctx.url}/auth/v1/admin/users/${isolatedActor.id}`, { method: 'DELETE', headers: {
+        apikey: ctx.cred.testSecretKey, Authorization: `Bearer ${ctx.cred.testSecretKey}` } });
+      assert.equal(deleted.status, 200, 'isolated TEST auth user removed');
+      assert.equal((await db.query('select count(*)::int n from auth.users where id=$1', [isolatedActor.id])).rows[0].n, 0);
+    }
+    report.cleanedGeneratedResources = { actor: !!isolatedActor, types: generatedTypes.length, accounts: actorAccounts.length, vouchers: vouchers.length };
     const residue = await db.query('select count(*)::int n from public.contracts where id=any($1::uuid[])', [ids]);
     assert.equal(residue.rows[0].n, 0); report.cleanup = true;
   } catch (error) { await db.query('rollback'); report.cleanupError = error.message; process.exitCode = 1; }

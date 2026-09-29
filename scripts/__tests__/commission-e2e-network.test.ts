@@ -1,8 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { createNavigationReadGuard } from '../lib/commission-e2e-network.mjs';
+import { createNavigationReadGuard, safeHttpFailure } from '../lib/commission-e2e-network.mjs';
 const appOrigin = 'http://127.0.0.1:4186', testOrigin = 'https://test.supabase.co';
 const request = (path: string, method = 'GET', origin = testOrigin) => ({ url: () => origin + path, method: () => method });
 const setup = () => createNavigationReadGuard({ appOrigin, testOrigin });
+
+it('retains only a standard code and recognized infrastructure message', () => {
+  expect(safeHttpFailure({ code: '57014', message: 'canceling statement due to statement timeout', details: 'private details', hint: 'secret' }))
+    .toEqual({ code: '57014', message: 'canceling statement due to statement timeout' });
+});
+it('does not leak unknown server messages or arbitrary codes', () => {
+  expect(safeHttpFailure({ code: 'private credentials!', message: 'account secret', data: { secret: 'x' } }))
+    .toEqual({ message: 'HTTP error; response message omitted' });
+});
 describe('harness navigation cancellation boundary', () => {
   it.each(['/rest/v1/invoices', '/rest/v1/income_expenses'])('records the exact in-flight read %s', path => {
     const guard = setup(), read = request(path); guard.started(read); guard.snapshot('reload');
