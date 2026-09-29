@@ -32,6 +32,7 @@ async function openContracts(page: import('@playwright/test').Page, role: UserKe
       ...value, expires_at: Math.floor(Date.now() / 1000) + value.expires_in,
     })), session);
   } finally { clearTimeout(timer); await authPage.close(); }
+  await page.addInitScript(() => localStorage.setItem('ihomecrm.selectedOrganizationId', 'dddd0000-0000-4000-8000-000000000001'));
   await page.goto('/contracts');
 }
 

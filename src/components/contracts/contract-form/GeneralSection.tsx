@@ -51,7 +51,12 @@ export function GeneralSection({
           </Label>
           <Select
             value={selectedBuildingId}
-            onValueChange={handleBuildingChange}
+            onValueChange={value => {
+              // Async option mounting may emit an empty value. There is no
+              // explicit clear option, and a saved draft's building is fixed.
+              if (buildingDisabled || !value) return;
+              handleBuildingChange(value);
+            }}
             disabled={buildingDisabled}
           >
             <SelectTrigger>
@@ -79,6 +84,7 @@ export function GeneralSection({
               <Select
                 value={field.value}
                 onValueChange={(val) => {
+                  if (!val) return;
                   handleRoomChange(val);
                   field.onChange(val);
                 }}

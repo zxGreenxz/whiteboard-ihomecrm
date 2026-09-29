@@ -38,6 +38,7 @@ it('hydrates one saved draft per open/id and preserves edits against query refre
   const { result, rerender } = renderHook(({ open, draft }) => useContractFormState({ open, draft }),
     { initialProps: { open: true, draft: initial } });
   await waitFor(() => expect(result.current.form.getValues('notes')).toBe('Lưu từ nháp'));
+  expect(result.current.selectedBuildingId).toBe(building);
   expect(result.current.form.getValues('rent_price')).toBe(3200000);
   expect(result.current.form.getValues('total_deposit')).toBe(3700000);
   expect(result.current.invoiceItems[0]?.description).toBe('Phí sửa');

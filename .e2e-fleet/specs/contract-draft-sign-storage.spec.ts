@@ -20,6 +20,7 @@ async function openContracts(page:Page){
   const session=await Promise.race([authenticated,new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(new Error('TEST auth timed out')),45_000);})]);
   await page.addInitScript(value=>localStorage.setItem('sb-hzulujxgonszuleqticb-auth-token',JSON.stringify({...value,expires_at:Math.floor(Date.now()/1000)+value.expires_in})),session);
  }finally{clearTimeout(timer);await authPage.close();}
+ await page.addInitScript(()=>localStorage.setItem('ihomecrm.selectedOrganizationId','dddd0000-0000-4000-8000-000000000001'));
  await page.goto('/contracts');
 }
 
