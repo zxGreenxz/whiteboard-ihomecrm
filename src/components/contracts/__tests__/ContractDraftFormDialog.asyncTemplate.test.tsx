@@ -34,13 +34,14 @@ vi.mock('@/components/ui/scroll-area',()=>({ScrollArea:({children}:{children:Rea
 vi.mock('@/components/ui/date-input',()=>({DateInput:()=>null}));
 afterEach(cleanup);
 
-it('restores the saved template through real Radix async options without a native empty change clearing it',async()=>{
+it('retains the saved template when the catalog loads without adding a template control to the editor',async()=>{
  actions.loading=true;actions.templates=[];actions.payload={...emptyContractDraftPayload(),form:{...emptyContractDraftPayload().form,notes:'Edited saved draft'}};
  const draft:ContractDraft={id:'77777777-7777-4777-8777-777777777777',organization_id:org,building_id:'22222222-2222-4222-8222-222222222222',room_id:null,payload:emptyContractDraftPayload(),template_id:template,revision:1,created_by:'66666666-6666-4666-8666-666666666666',created_at:'2026-09-28',updated_at:'2026-09-28',documents:[]};
  actions.save.mockReset().mockImplementation(async()=>({...draft,payload:actions.payload}));
  const props={open:true,draft,onOpenChange:vi.fn()};const view=render(<ContractDraftFormDialog {...props}/>);
+ expect(screen.queryByRole('combobox')).toBeNull();
  await act(async()=>{actions.loading=false;actions.templates=[{id:template,name:'Saved active template',organization_id:org,is_active:true}];view.rerender(<ContractDraftFormDialog {...props}/>);});
- await waitFor(()=>expect(screen.getAllByRole('combobox').at(-1)?.textContent).toContain('Saved active template'));
+ expect(screen.queryByRole('combobox')).toBeNull();
  fireEvent.click(screen.getByRole('button',{name:'Lưu nháp'}));
  await waitFor(()=>expect(actions.save).toHaveBeenCalledWith(expect.objectContaining({templateId:template,expectedRevision:1})));
 });
