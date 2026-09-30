@@ -64,6 +64,11 @@ describe("thongDiepLoiDoc — nói đúng hai điều người đọc cần bi�
     expect(thongDiepLoiDoc(new TypeError("Load failed"))).toMatch(/kết nối/i);
   });
 
+  it("'upload failed' / 'download failed' KHÔNG bị đọc thành mất mạng", () => {
+    expect(thongDiepLoiDoc(new Error("R2 upload failed (500): boom"))).not.toMatch(/kết nối/i);
+    expect(thongDiepLoiDoc(new Error("Template download failed"))).not.toMatch(/kết nối/i);
+  });
+
   it("42883 / 42703 (client cũ hơn schema) → bảo tải lại trang", () => {
     expect(thongDiepLoiDoc({ code: "42883" })).toMatch(/tải lại trang/i);
   });

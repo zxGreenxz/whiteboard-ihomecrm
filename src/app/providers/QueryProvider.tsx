@@ -67,7 +67,8 @@ export function thongDiepLoiDoc(error: unknown): string {
   const loi = error as { message?: unknown } | null;
   const tin = typeof loi?.message === "string" ? loi.message : "";
   // "Load failed" là cách Safari/iPhone báo mất mạng (Chrome nói "Failed to fetch").
-  if (/Failed to fetch|Load failed|NetworkError|network error|ERR_INTERNET/i.test(tin)) {
+  // \b để "upload failed"/"download failed" (lỗi nghiệp vụ) không bị đọc thành mất mạng.
+  if (/Failed to fetch|\bLoad failed|NetworkError|network error|ERR_INTERNET/i.test(tin)) {
     return "Mất kết nối — chưa tải được dữ liệu";
   }
   const nhom: ErrorCategory = classifyDbError(error);
