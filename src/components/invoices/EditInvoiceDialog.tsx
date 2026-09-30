@@ -36,6 +36,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { InvoiceEntryShell } from './invoice-entry/InvoiceEntryShell';
 import { useInvoiceEntry } from './invoice-entry/useInvoiceEntry';
 import type { InvoiceEntryCurrent, InvoiceEntryPricing } from './invoice-entry/types';
+import { useOrganization } from '@/contexts/OrganizationContext';
+import { useToast } from '@/hooks/use-toast';
+import { useInvoiceRentSupport } from '@/hooks/invoices/useInvoiceRentSupport';
 
 import IssuedInvoiceEditor from './IssuedInvoiceEditor';
 
@@ -68,6 +71,8 @@ const DraftInvoiceEditor = ({ open, onOpenChange, invoice }: EditInvoiceDialogPr
   const [meterError,setMeterError]=useState<string|null>(null);
   const [meterLoading,setMeterLoading]=useState(!!invoice.room_id);
   const [meterAttempt,setMeterAttempt]=useState(0);
+  const { selectedOrganizationId } = useOrganization();
+  const { toast } = useToast();
   const [meterId, setMeterId] = useState<string | null>(null);
   const [debtSources, setDebtSources] = useState<PreviousDebtSource[]>(() => initialDebtSources(invoice));
   const [isLoadingDebt, setIsLoadingDebt] = useState(false);
@@ -141,6 +146,14 @@ const DraftInvoiceEditor = ({ open, onOpenChange, invoice }: EditInvoiceDialogPr
   const creditBalance=creditQuery.data??0;
   const missingSources=servicesQuery.isError||servicesQuery.isPending||servicesQuery.data===undefined||(!!invoice.contract_id&&(creditQuery.isError||creditQuery.isPending||creditQuery.data===undefined));
   const sourcesUnavailable=missingSources||meterLoading||!!meterError;
+  const isSupport = !!invoice.rent_support_plan_revision;
+  const support = useInvoiceRentSupport(form, {
+    organizationId: selectedOrganizationId, contractId: invoice.contract_id, enabled: open && isSupport,
+    invoiceId: invoice.id, kind: invoice.kind, initialSupport: invoice.invoice_support_amount ?? 0, initialCredit: invoice.credit_discount_amount ?? 0,
+    credit: isSupport ? invoice.credit_discount_amount ?? 0 : 0,
+    items: buildInvoiceItems(ctl.v, { elecServiceId: defaults.elecServiceId, waterServiceId: defaults.waterServiceId,
+      pdvServiceId: defaults.pdvServiceId, rentDescription: decomposed.rentDescription, baseline: decomposed.baseline }),
+  });
 
   const current: InvoiceEntryCurrent = useMemo(() => {
     const { values: b, baseline } = decomposed;
@@ -160,8 +173,8 @@ const DraftInvoiceEditor = ({ open, onOpenChange, invoice }: EditInvoiceDialogPr
     };
   }, [decomposed, invoice.total_amount]);
 
-  const onSubmit = (data: InvoiceEntryValues) => {
-    if(reconcileRequired||sourcesUnavailable) return;
+  const onSubmit = async (data: InvoiceEntryValues) => {
+    if((reconcileRequired||sourcesUnavailable)&&!support.hasPending) return;
     setSubmitError(null);
     const items = buildInvoiceItems(data, {
       elecServiceId: defaults.elecServiceId,
@@ -181,7 +194,7 @@ const DraftInvoiceEditor = ({ open, onOpenChange, invoice }: EditInvoiceDialogPr
       notes: data.notes || null,
       discount_amount: data.discount_amount || 0,
       discount_notes: data.discount_notes?.trim() || null,
-      applied_credit: 0,
+      applied_credit: isSupport ? support.credit : 0,
       electricity_prev_overridden: !!data.prev_reading_overridden,
       prepaid_amount: invoice.prepaid_amount || 0,
       previous_debt: data.previous_debt || 0,
@@ -191,9 +204,23 @@ const DraftInvoiceEditor = ({ open, onOpenChange, invoice }: EditInvoiceDialogPr
       items,
     };
 
+    try {
+      const prepared = await support.prepare(formData);
+      if (prepared.saved) {
+        toast({ title: 'Đã xác minh lần lưu trước', description: `Hóa đơn ${prepared.saved.invoice_number || prepared.saved.id} — kỳ ${prepared.saved.billing_month}.` });
+        support.clear(); onOpenChange(false); return;
+      }
+      if (reconcileRequired || sourcesUnavailable) {
+        setSubmitError('Chưa xác minh được lần lưu trước hoặc dữ liệu nguồn. Đối chiếu trước khi lưu tiếp.');
+        return;
+      }
+      if (prepared.context) formData.rent_support_context = prepared.context;
+    } catch (error) {
+      setSubmitError(invoiceFailureMessage(error, 'sửa hoá đơn')); return;
+    }
     updateMutation.mutate(
       { id: invoice.id, formData },
-      { onSuccess: () => onOpenChange(false), onError:(error)=>{setSubmitError(invoiceFailureMessage(error,"sửa hoá đơn"));if(error instanceof InvoicePartialError||voucherOutcomeUnknown(error))setReconcileRequired(true);} },
+      { onSuccess: () => { support.clear(); onOpenChange(false); }, onError:(error)=>{setSubmitError(invoiceFailureMessage(error,"sửa hoá đơn"));if(error instanceof InvoicePartialError||voucherOutcomeUnknown(error))setReconcileRequired(true);} },
     );
   };
 
@@ -224,21 +251,21 @@ const DraftInvoiceEditor = ({ open, onOpenChange, invoice }: EditInvoiceDialogPr
       creditBalance={creditBalance}
       defaultDepositAmount={0}
       ready
-      validationError={firstEntryError(errors)}
+      validationError={support.error || firstEntryError(errors)}
       notice={<>
         {missingSources&&<p role="alert" className="text-destructive">Chưa tải đủ giá dịch vụ hoặc số tiền thừa của khách. Tải lại trước khi lưu hoá đơn.<Button type="button" variant="outline" onClick={()=>{void servicesQuery.refetch();if(invoice.contract_id)void creditQuery.refetch();}}>Tải lại dữ liệu</Button></p>}
         {meterError&&<p role="alert" className="text-destructive">{meterError}<Button type="button" variant="outline" onClick={()=>setMeterAttempt(value=>value+1)}>Tải lại công tơ</Button></p>}
         {meterLoading&&<p role="status">Đang tải công tơ của phòng...</p>}
         {submitError&&<p role="alert" className="text-destructive">{submitError}</p>}
       </>}
-      onResetAll={() => reset(decomposed.values)}
+      onResetAll={() => { support.resetParts(); reset(decomposed.values); }}
       onCancel={() => onOpenChange(false)}
-      footNote="Hoá đơn nháp — lưu sẽ thay toàn bộ dòng bằng giá trị mới."
+      footNote={isSupport ? `Hỗ trợ ${support.support.toLocaleString('vi-VN')}đ · Giảm khác ${Math.max(0, support.manual).toLocaleString('vi-VN')}đ · Credit ${support.credit.toLocaleString('vi-VN')}đ` : 'Hoá đơn nháp — lưu sẽ thay toàn bộ dòng bằng giá trị mới.'}
       submit={{
         label: 'Lưu hoá đơn',
         pendingLabel: 'Đang lưu...',
-        pending: updateMutation.isPending,
-        disabled: reconcileRequired||sourcesUnavailable,
+        pending: updateMutation.isPending || form.formState.isSubmitting,
+        disabled: (reconcileRequired || sourcesUnavailable || !support.ready) && !support.hasPending,
       }}
     />
   );

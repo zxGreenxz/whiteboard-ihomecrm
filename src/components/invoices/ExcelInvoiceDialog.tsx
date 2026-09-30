@@ -12,6 +12,7 @@ import {
   buildExcelRows,
   computeExcelRowTotal,
   reresolveRowPricing,
+  requoteExcelRowSupport,
   resolveBuildingDefaults,
   type ExcelRowData as RowData,
   type SubmitContext,
@@ -47,6 +48,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { useBuildings } from '@/hooks/useBuildings';
 import { useBuildingServices } from '@/hooks/useBuildingServices';
+import { useExcelInvoiceSupportQuotes } from '@/hooks/invoices/useExcelInvoiceSupportQuotes';
 
 interface Props {
   open: boolean;
@@ -86,6 +88,10 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
   // Đơn giá mặc định theo toà — logic trong lib (resolveBuildingDefaults),
   // chỉ xét dịch vụ đang BẬT, fallback hardcode khi toà chưa cấu hình.
   const defaults = useMemo(() => resolveBuildingDefaults(bldSvc), [bldSvc]);
+  const periodStart = startOfMonth(parse(billingMonth + '-01', 'yyyy-MM-dd', new Date()));
+  const submitContext: SubmitContext = { buildingId, billingMonth, issueDate, dueDate, periodStart,
+    fromDate: format(periodStart, 'yyyy-MM-dd'), toDate: format(endOfMonth(periodStart), 'yyyy-MM-dd') };
+  const supportQuotes = useExcelInvoiceSupportQuotes(rows, submitContext);
 
   // Load rooms + active contracts + meters + last reading for the building.
   // Fetch nằm ở hook (fetchExcelInvoiceSource), transform ở lib (buildExcelRows).
@@ -121,7 +127,7 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
   // toà mới). Tôn trọng override tay của user.
   useEffect(() => {
     if (!loaded) return;
-    setRows((prev) => prev.map((r) => reresolveRowPricing(r, defaults)));
+    setRows((prev) => prev.map((r) => requoteExcelRowSupport(reresolveRowPricing(r, defaults), billingMonth)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [defaults.elec, defaults.water, defaults.pdv]);
 
@@ -147,7 +153,7 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
           ? (Number(row.occupants) || 0) * row.water_rate
           : 0;
       }
-      next[idx] = row;
+      next[idx] = requoteExcelRowSupport(row, billingMonth);
       return next;
     });
   };
@@ -196,8 +202,11 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
   };
 
   const handleSubmit = async () => {
-    if(sourcesBlocked)return;
+    if(sourcesBlocked || !supportQuotes.ready)return;
     const selected = rows.filter((r) => r.selected);
+    if (selected.some(row => row.support_error)) {
+      toast({ variant: 'destructive', title: 'Cần kiểm tra hỗ trợ', description: 'Sửa các dòng báo lỗi trước khi tạo hóa đơn.' }); return;
+    }
     if (selected.length === 0) {
       toast({ variant: 'destructive', title: 'Chưa chọn phòng nào' });
       return;
@@ -224,14 +233,14 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
     try {
       const result=await submitExcel.submit(selected,ctx);
       setSubmitResult(result);
-      result.rows.filter(row=>row.invoiceId||row.readingSaved||row.outcomeUnknown).forEach(row=>lockedContractsRef.current.add(`${billingMonth}:${row.contractId}`));
-      setRows(previous=>previous.map(row=>lockedContractsRef.current.has(`${billingMonth}:${row.contract_id}`)?{...row,selected:false}:row));
+      result.rows.filter(row=>!row.supportRecoveryPending && (row.invoiceId||row.readingSaved||row.outcomeUnknown)).forEach(row=>lockedContractsRef.current.add(`${billingMonth}:${row.contractId}`));
+      setRows(previous=>previous.map(row=>({...row,selected:lockedContractsRef.current.has(`${billingMonth}:${row.contract_id}`)?false:row.selected,submit_error:result.errors.find(error=>error.contractId===row.contract_id)?.message})));
+      if (result.recovered.length) toast({ title: 'Đã tìm thấy kết quả lần tạo trước', description: result.recovered.map(row => `${row.invoiceNumber} — kỳ ${row.billingMonth}`).join(', ') });
       toast({title:result.fail>0||result.readingFails.length>0?'Đã xử lý một phần':'Đã tạo hoá đơn',description:`Đã xác nhận ${result.ok} hoá đơn; ${result.fail} phòng chưa tạo xong; ${result.readingFails.length} phòng cần kiểm tra chỉ số điện.`});
       if(result.fail===0 && result.readingFails.length===0) handleClose();
     } catch(error) {
       setSubmitError('Chưa hoàn tất tạo hoá đơn. Kiểm tra danh sách hoá đơn và chỉ số điện trước khi thao tác tiếp.');
     } finally {setSubmitting(false);}
-
   };
 
   return (
@@ -269,7 +278,12 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
             <Input
               type="month"
               value={billingMonth}
-              onChange={(e) => { setBillingMonth(e.target.value); invalidateRows(); }}
+              onChange={(e) => {
+                const month = e.target.value;
+                loadRevision.current++;
+                setBillingMonth(month);
+                if (loaded) setRows(previous => previous.map(row => requoteExcelRowSupport(row, month)));
+              }}
             />
           </div>
           <div className="space-y-1">
@@ -444,6 +458,11 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
                           disabled={r.discount <= 0}
                         />
                       </div>
+                      {r.support_plan_revision && <div className="text-[10px] leading-tight text-slate-600">Hỗ trợ {fmt(r.invoice_support_amount ?? 0)}đ · Giảm khác {fmt(Math.max(0, r.discount - (r.invoice_support_amount ?? 0) - r.applied_credit))}đ · Credit {fmt(r.applied_credit)}đ</div>}
+                      {r.support_error && <div role="alert" className="text-xs text-red-700">{r.support_error}</div>}
+                      {r.submit_error && <div role="alert" className="text-xs text-red-700">{r.submit_error}</div>}
+                      {supportQuotes.states[i]?.error && !r.support_error && <div role="alert" className="text-xs text-red-700">{supportQuotes.states[i].error}</div>}
+                      {r.support_plan_revision && r.selected && !supportQuotes.states[i]?.ready && !supportQuotes.states[i]?.error && <div className="text-xs text-slate-600">Đang kiểm tra hỗ trợ...</div>}
                     </td>
                     <td className="p-1 border bg-red-50/30">
                       <HoverCard openDelay={0} closeDelay={100}>
@@ -556,7 +575,7 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
           </Button>
           <Button
             onClick={handleSubmit}
-            disabled={submitting || totals.count === 0 || sourcesBlocked}
+            disabled={submitting || totals.count === 0 || sourcesBlocked || !supportQuotes.ready}
             className="bg-indigo-600 hover:bg-indigo-700"
           >
             {submitting ? (

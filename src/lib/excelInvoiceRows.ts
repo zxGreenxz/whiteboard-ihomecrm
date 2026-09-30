@@ -19,6 +19,10 @@ import type { SupportCustomerSchedule } from './rentSupport';
 
 // ── Kiểu dữ liệu ─────────────────────────────────────────────────────────────
 export interface ExcelRowData {
+  support_schedule?: SupportCustomerSchedule;
+  support_organization_id?: string;
+  support_error?: string;
+  submit_error?: string;
   invoice_support_amount?: number;
   support_plan_revision?: number;
   support_billing_month?: string;
@@ -298,7 +302,7 @@ export function buildExcelRows(args: {
       const combinedNotes = noteParts.join(" — ");
 
       return {
-        ...(c.rent_support ? { invoice_support_amount: promoAmount, support_plan_revision: c.rent_support.revision, support_billing_month: args.billingMonth } : {}),
+        ...(c.rent_support ? { support_organization_id: c.organization_id, support_schedule: c.rent_support.schedule, invoice_support_amount: promoAmount, support_plan_revision: c.rent_support.revision, support_billing_month: args.billingMonth } : {}),
         contract_id: c.id,
         room_id: c.room_id,
         room_name: c.room?.name ?? "?",
@@ -370,6 +374,18 @@ export function computeExcelRowTotal(r: ExcelRowData): number {
   const water = days > 0 ? prorateAmount(r.water_amount, days) : r.water_amount;
   const pdv = days > 0 ? prorateAmount(r.pdv_amount, days) : r.pdv_amount;
   return rent + r.electric_amount + water + pdv - r.discount + (r.previous_debt || 0);
+}
+
+/** Replace only the support portion when month/revenue changes; preserve edits. */
+export function requoteExcelRowSupport(row: ExcelRowData, billingMonth: string): ExcelRowData {
+  if (!row.support_schedule) return row;
+  const manual = row.discount - (row.invoice_support_amount ?? 0) - row.applied_credit;
+  if (manual < 0) return { ...row, support_error: 'Giảm trừ phải đủ phần hỗ trợ và credit đã chọn.' };
+  const revenue = computeExcelRowTotal(row) + row.discount - row.previous_debt;
+  const preview = previewInvoiceRentSupport(row.support_schedule, billingMonth, Math.max(0, revenue - manual - row.applied_credit));
+  if (preview.state !== 'READY') return { ...row, support_error: preview.notes || 'Chọn tháng để kiểm tra hỗ trợ.' };
+  return { ...row, invoice_support_amount: preview.amount, support_billing_month: billingMonth,
+    discount: preview.amount + manual + row.applied_credit, support_error: undefined };
 }
 
 // ── 10. Build items + form data khi submit (GIỮ NGUYÊN thứ tự/threshold cũ) ──
@@ -460,15 +476,17 @@ export function buildInvoiceItems(
 export function buildInvoiceFormData(
   row: ExcelRowData,
   ctx: SubmitContext,
+  requestId?: string,
 ): InvoiceFormData {
   const appliedCredit = Math.min(
     Math.max(0, row.applied_credit || 0),
     Math.max(0, row.discount || 0),
   );
   if (row.support_plan_revision && row.support_billing_month !== ctx.billingMonth) throw new Error('Tháng hóa đơn đã đổi; tải lại lịch hỗ trợ.');
+  if (row.support_error) throw new Error(row.support_error);
   const supportContext = row.support_plan_revision ? invoiceRentSupportContextSchema.parse({
     version: 1, expected_plan_revision: row.support_plan_revision,
-    manual_discount_amount: String(row.discount - (row.invoice_support_amount ?? 0) - appliedCredit), request_id: globalThis.crypto.randomUUID(),
+    manual_discount_amount: String(row.discount - (row.invoice_support_amount ?? 0) - appliedCredit), request_id: requestId ?? globalThis.crypto.randomUUID(),
   }) : undefined;
   return {
     ...(supportContext ? { rent_support_context: supportContext } : {}),

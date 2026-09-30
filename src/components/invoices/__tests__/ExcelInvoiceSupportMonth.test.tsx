@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, act } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import ExcelInvoiceDialog from '../ExcelInvoiceDialog';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 const source = vi.hoisted(() => ({ load: vi.fn() }));
 vi.mock('@/hooks/invoices/useExcelInvoiceData', () => ({ fetchExcelInvoiceSource: source.load, fetchPreviousDebtForContract: vi.fn(), useSubmitExcelInvoices: () => vi.fn() }));
 vi.mock('@/hooks/useBuildings', () => ({ useBuildings: () => ({ data: [{ id: 'b1', name: 'Building' }] }) }));
@@ -17,7 +18,7 @@ it('discards an in-flight Excel load when the user changes billing month', async
   HTMLElement.prototype.scrollIntoView = vi.fn(); HTMLElement.prototype.hasPointerCapture = vi.fn(() => false); HTMLElement.prototype.releasePointerCapture = vi.fn();
   let resolve!: (data: unknown) => void;
   source.load.mockReturnValue(new Promise(done => { resolve = done; }));
-  render(<ExcelInvoiceDialog open onOpenChange={() => {}} />);
+  render(<QueryClientProvider client={new QueryClient()}><ExcelInvoiceDialog open onOpenChange={() => {}} /></QueryClientProvider>);
   fireEvent.keyDown(screen.getAllByRole('combobox')[0], { key: 'ArrowDown' });
   fireEvent.keyDown(screen.getByRole('option', { name: 'Building' }), { key: 'Enter' });
   fireEvent.click(screen.getByRole('button', { name: 'Tải dữ liệu' }));

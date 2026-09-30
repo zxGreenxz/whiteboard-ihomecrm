@@ -11,6 +11,16 @@ export const invoiceRentSupportContextSchema = z.object({
   request_id: z.string().uuid(),
 }).strict();
 export type InvoiceRentSupportContext = z.infer<typeof invoiceRentSupportContextSchema>;
+/** Exact canonical request readback. Never infer success from amount/date/month. */
+export async function readSavedInvoiceSupportRequest(organizationId: string, contractId: string, requestId: string, invoiceId?: string) {
+  const { supabase } = await import('@/integrations/supabase/client');
+  let query = supabase.from('invoices').select('id, invoice_number, billing_month, status, rent_support_request_id')
+    .eq('organization_id', organizationId).eq('contract_id', contractId).eq('rent_support_request_id', requestId);
+  if (invoiceId) query = query.eq('id', invoiceId);
+  const { data, error } = await query.maybeSingle();
+  if (error) throw new Error('Chưa xác minh được kết quả lần lưu trước. Vui lòng thử kiểm tra lại.');
+  return data;
+}
 export async function readInvoiceRentSupportPlan(organizationId: string, contractId: string) {
   const result = await readContractRentSupport(organizationId, { contractIds: [contractId], limit: 1 });
   const row = result.rows.find(value => value.contract_id === contractId);
@@ -23,13 +33,13 @@ const invoiceQuoteSchema = z.object({ invoice_support: z.string().regex(/^\d+(?:
   plan_revision: z.number().int().positive(), billing_month: z.string(), quote_hash: z.string().min(1),
   state: z.enum(['READY', 'NEEDS_REVIEW']), issue: z.string().optional(),
 }).strict();
-export async function quoteInvoiceRentSupport(organizationId: string, contractId: string, billingMonth: string, items: Json[], credit: number, context: InvoiceRentSupportContext) {
+export async function quoteInvoiceRentSupport(organizationId: string, contractId: string, billingMonth: string, items: Json[], credit: number, context: InvoiceRentSupportContext, kind: 'MONTHLY' | 'SETTLEMENT' = 'MONTHLY') {
   const parsed = invoiceRentSupportContextSchema.parse(context);
   if (!Number.isFinite(credit) || credit < 0) throw new Error('Credit không hợp lệ.');
   const { supabase } = await import('@/integrations/supabase/client');
   const { data, error } = await supabase.rpc('quote_contract_rent_support_v1', { p_organization_id: organizationId, p_contract_id: contractId,
     p_draft_id: rpcNullable<string>(null), p_payload: null, p_payout_context: null,
-    p_invoice_context: { version: 1, billing_month: billingMonth, kind: 'MONTHLY', items,
+    p_invoice_context: { version: 1, billing_month: billingMonth, kind, items,
       manual_discount_amount: parsed.manual_discount_amount, credit_discount_amount: String(credit), expected_plan_revision: parsed.expected_plan_revision } });
   if (error) throw error;
   return invoiceQuoteSchema.parse(data);

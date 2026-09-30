@@ -50,6 +50,11 @@ export interface PreviousDebtSource {
 
 /** Matches `invoices` table */
 export interface Invoice {
+  invoice_support_amount?: number;
+  manual_discount_amount?: number | null;
+  credit_discount_amount?: number | null;
+  rent_support_plan_revision?: number | null;
+  rent_support_request_id?: string | null;
   adjustment_revision?: number;
   adjustment_review_status?: 'NONE' | 'PENDING' | 'CHECKED';
   id: string;

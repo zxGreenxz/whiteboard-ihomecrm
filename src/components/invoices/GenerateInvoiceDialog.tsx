@@ -25,7 +25,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { getSessionUser } from "@/lib/authSession";
 import { useToast } from '@/hooks/use-toast';
 import { computePreviousDebt, getContractDiscountSlot } from '@/lib/invoiceHelpers';
-import { invoiceRentSupportContextSchema } from '@/lib/invoiceRentSupport';
+import { useInvoiceRentSupport } from '@/hooks/invoices/useInvoiceRentSupport';
 import { format, addMonths } from 'date-fns';
 import { resolveInvoicePricing, type ContractServiceInput } from '@/lib/contractServicePricing';
 import { todayISO } from '@/lib/collect';
@@ -366,6 +366,7 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
 
   useEffect(() => {
     if (!watchedContractId) return;
+    if (selectedContract?.discounts?.version === 2) return;
     if (watchedDiscount > 0 && !discountSlot?.supportRevision) return;
     const promoAmount = discountSlot?.applicable ? discountSlot.amountPerMonth : 0;
     const promoNote = discountSlot?.applicable ? discountSlot.label : '';
@@ -379,9 +380,16 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
     const notes = [promoNote, creditNote].filter(Boolean).join(' — ');
     seed({ discount_amount: total, discount_notes: notes, applied_credit: creditAmount });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [watchedContractId, watchedBillingMonth, creditBalance, discountSlot?.applicable, discountSlot?.amountPerMonth, discountSlot?.supportRevision]);
+  }, [watchedContractId, watchedBillingMonth, creditBalance, discountSlot?.applicable, discountSlot?.amountPerMonth, discountSlot?.supportRevision, selectedContract?.discounts?.version]);
 
   const ctl = useInvoiceEntry(form, { baseline, pricing, active: !!selectedContract });
+  const support = useInvoiceRentSupport(form, {
+    organizationId: selectedOrganizationId, contractId: watchedContractId,
+    enabled: open && selectedContract?.discounts?.version === 2,
+    items: buildInvoiceItems(ctl.v, { elecServiceId: pricing.elecServiceId, waterServiceId: pricing.waterServiceId, pdvServiceId: pricing.pdvServiceId,
+      rentDescription: `Tiền thuê căn hộ ${selectedContract?.room?.name || ''}`.trim() }),
+    credit: creditBalance,
+  });
 
   const handleClose = () => {
     reset(initialValues());
@@ -395,7 +403,7 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
   };
 
   const onSubmit = async (data: CreateInvoiceValues) => {
-    if (!selectedContract || reconcileRequired || sourcesUnavailable) return;
+    if (!selectedContract || (reconcileRequired && !support.hasPending) || sourcesUnavailable) return;
     setSubmitError(null);
     let readingSaved=false;
     try {
@@ -405,17 +413,31 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
     if (!buildingId || !roomId) return;
     const marker = selectedContract.discounts;
     const isSupport = marker && typeof marker === 'object' && !Array.isArray(marker) && marker.version === 2;
-    if (isSupport && (!discountSlot?.supportRevision || discountSlot.billingMonth !== data.billing_month)) {
+    if (isSupport && !support.ready && !support.hasPending) {
       toast({ variant: 'destructive', title: 'Chưa tải được lịch hỗ trợ', description: 'Đợi lịch hỗ trợ của tháng đã chọn trước khi tạo hóa đơn.' });
       return;
     }
     const discountAmount = data.discount_amount || 0;
     const appliedCredit = Math.min(Math.max(0, data.applied_credit || 0), Math.max(0, discountAmount));
-    const parsedSupport = discountSlot?.supportRevision ? invoiceRentSupportContextSchema.safeParse({ version: 1,
-      expected_plan_revision: discountSlot.supportRevision, manual_discount_amount: String(discountAmount - discountSlot.amountPerMonth - appliedCredit), request_id: globalThis.crypto.randomUUID() }) : undefined;
-    if (parsedSupport && !parsedSupport.success) {
-      toast({ variant: 'destructive', title: 'Giảm trừ không hợp lệ', description: 'Giảm trừ phải đủ phần hỗ trợ và credit đã chọn.' });
-      return;
+    const items = buildInvoiceItems(data, { elecServiceId: pricing.elecServiceId, waterServiceId: pricing.waterServiceId,
+      pdvServiceId: pricing.pdvServiceId, rentDescription: `Tiền thuê căn hộ ${roomData?.name || ''}`.trim() });
+    const invoiceFormData: InvoiceFormData = {
+      building_id: buildingId, room_id: roomId, contract_id: data.contract_id,
+      billing_month: data.billing_month, issue_date: data.issue_date, due_date: data.due_date,
+      notes: data.notes || null, discount_amount: discountAmount, discount_notes: data.discount_notes?.trim() || null,
+      applied_credit: appliedCredit, electricity_prev_overridden: !!data.prev_reading_overridden,
+      prepaid_amount: 0, previous_debt: data.previous_debt || 0,
+      previous_debt_sources: data.previous_debt_overridden ? [] : debtSources, items,
+    };
+    try {
+      const prepared = await support.prepare(invoiceFormData);
+      if (prepared.saved) {
+        toast({ title: 'Đã tìm thấy hóa đơn đã lưu', description: `Hóa đơn ${prepared.saved.invoice_number || prepared.saved.id} — kỳ ${prepared.saved.billing_month}.` });
+        support.clear(); handleClose(); return;
+      }
+      if (prepared.context) invoiceFormData.rent_support_context = prepared.context;
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'Chưa thể tạo hóa đơn', description: (error as Error).message }); return;
     }
 
     // 1) Ghi chỉ số mới (nếu user nhập) — APPROVED ngay.
@@ -475,35 +497,8 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
         : 'chỉ số mới nhỏ hơn chỉ số cũ';
     }
 
-    // 2) Build items — prorate rent + nước + PDV khi có ngày thuê thực tế.
-    const items = buildInvoiceItems(data, {
-      elecServiceId: pricing.elecServiceId,
-      waterServiceId: pricing.waterServiceId,
-      pdvServiceId: pricing.pdvServiceId,
-      rentDescription: `Tiền thuê căn hộ ${roomData?.name || ''}`.trim(),
-    });
-
-    const invoiceFormData: InvoiceFormData = {
-      ...(parsedSupport?.success ? { rent_support_context: parsedSupport.data } : {}),
-      building_id: buildingId,
-      room_id: roomId,
-      contract_id: data.contract_id,
-      billing_month: data.billing_month,
-      issue_date: data.issue_date,
-      due_date: data.due_date,
-      notes: data.notes || null,
-      discount_amount: discountAmount,
-      discount_notes: data.discount_notes?.trim() || null,
-      applied_credit: appliedCredit,
-      electricity_prev_overridden: !!data.prev_reading_overridden,
-      prepaid_amount: 0,
-      previous_debt: data.previous_debt || 0,
-      // User chỉnh tay → clear sources để trigger DB không cascade-paid sai.
-      previous_debt_sources: data.previous_debt_overridden ? [] : debtSources,
-      items,
-    };
-
     const receipt=await createMutation.mutateAsync(invoiceFormData);
+    support.clear();
     if(readingWarn) {
       setCompletedInvoiceId(receipt.id);
       setReconcileRequired(true);
@@ -642,19 +637,23 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
       creditBalance={watchedContractId ? creditBalance : 0}
       defaultDepositAmount={Number(selectedContract?.total_deposit) || 0}
       ready={!!selectedContract}
-      validationError={firstEntryError(errors)}
+      validationError={support.error || firstEntryError(errors)}
       notice={<><QueryRegion label="dữ liệu lập hoá đơn" queries={sources}>{null}</QueryRegion>{meterError&&<p role="alert" className="text-destructive">{meterError}</p>}{submitError&&<p role="alert" className="text-destructive">{submitError}</p>}{completedInvoiceId&&<a className="underline" href={`/invoices/${completedInvoiceId}`}>Mở hoá đơn đã lưu</a>}</>}
-      onResetAll={() => reset({ ...baseline, contract_id: watchedContractId })}
+      onResetAll={() => { support.resetParts(); reset({ ...baseline, contract_id: watchedContractId }); }}
       onCancel={handleClose}
-      footNote="Kiểm tra trạng thái duyệt trên hoá đơn sau khi tạo."
+      footNote={isSupportSummary(selectedContract?.discounts?.version === 2, support)}
       submit={{
         label: 'Tạo hoá đơn',
         pendingLabel: 'Đang tạo...',
-        pending: createMutation.isPending,
-        disabled: !!existingInvoice || reconcileRequired || sourcesUnavailable,
+        pending: createMutation.isPending || form.formState.isSubmitting,
+        disabled: !selectedContract || sourcesUnavailable || (reconcileRequired && !support.hasPending) || (!!existingInvoice && !support.hasPending) || (!support.ready && !support.hasPending),
       }}
     />
   );
 };
 
 export default GenerateInvoiceDialog;
+
+function isSupportSummary(enabled: boolean, support: { support: number; manual: number; credit: number }) {
+  return enabled ? `Hỗ trợ ${support.support.toLocaleString('vi-VN')}đ · Giảm khác ${Math.max(0, support.manual).toLocaleString('vi-VN')}đ · Credit ${support.credit.toLocaleString('vi-VN')}đ` : 'Hoá đơn mới tạo ở trạng thái nháp, chờ duyệt.';
+}

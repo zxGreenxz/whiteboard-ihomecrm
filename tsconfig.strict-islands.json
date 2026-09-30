@@ -724,6 +724,8 @@
     "src/hooks/income-expenses/supplements.ts",
     "src/hooks/income-expenses/types.ts",
     "src/hooks/invoices/useExcelInvoiceData.ts",
+    "src/hooks/invoices/useExcelInvoiceSupportQuotes.ts",
+    "src/hooks/invoices/useInvoiceRentSupport.ts",
     "src/hooks/network-center/useNetworkCenter.ts",
     "src/hooks/readErrors.ts",
     "src/hooks/realtime/contracts.ts",

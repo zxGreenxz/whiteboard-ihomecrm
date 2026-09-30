@@ -9,6 +9,7 @@ import { voucherOutcomeUnknown } from '@/lib/voucherFeedback';
 // của React Query có thể cho chỉ số điện/nợ cũ đã lỗi thời). Giữ ngữ nghĩa
 // fetch-tươi-mỗi-lần-bấm y như bản inline cũ.
 import { supabase } from "@/integrations/supabase/client";
+import { useRef } from 'react';
 import { getSessionUser } from "@/lib/authSession";
 import { useCreateInvoice } from "@/hooks/useInvoices";
 import { useOrganization } from "@/contexts/OrganizationContext";
@@ -27,7 +28,7 @@ import {
   type SubmitContext,
 } from "@/lib/excelInvoiceRows";
 import type { PreviousDebtSource } from "@/types/invoice";
-import { readInvoiceRentSupportPlan } from '@/lib/invoiceRentSupport';
+import { readInvoiceRentSupportPlan, readSavedInvoiceSupportRequest } from '@/lib/invoiceRentSupport';
 
 export interface ExcelInvoiceSource {
   /** HĐ ACTIVE của toà, đã gom 1 phòng 1 HĐ (giữ HĐ mới nhất). */
@@ -168,7 +169,9 @@ export interface SubmitExcelResult {
   fail: number;
   /** Phòng đã tạo hoá đơn nhưng KHÔNG lưu được chỉ số điện. */
   readingFails: string[];
-  rows: Array<{contractId:string;roomName:string;invoiceId?:string;readingSaved:boolean;error?:string;outcomeUnknown?:boolean}>;
+  rows: Array<{contractId:string;roomName:string;invoiceId?:string;readingSaved:boolean;error?:string;outcomeUnknown?:boolean;supportRecoveryPending?:boolean}>;
+  errors: Array<{ contractId: string; message: string }>;
+  recovered: Array<{ contractId: string; billingMonth: string; invoiceNumber: string }>;
 }
 
 /**
@@ -181,16 +184,45 @@ export interface SubmitExcelResult {
 export function useSubmitExcelInvoices() {
   const createInvoice = useCreateInvoice({silent:true});
   const { selectedOrganizationId } = useOrganization();
+  const intents = useRef(new Map<string, { fingerprint: string; requestId: string; organizationId: string; completed: boolean; readingSaved: boolean; recoveryOnly: boolean; invoiceId?: string }>());
 
   const submit = async (rows: ExcelRowData[], ctx: SubmitContext): Promise<SubmitExcelResult> => {
     let ok = 0;
     let fail = 0;
     const readingFails: string[] = [];
     const results:SubmitExcelResult["rows"]=[];
+    const errors: SubmitExcelResult['errors'] = [];
+    const recovered: SubmitExcelResult['recovered'] = [];
 
     for (const row of rows) {
       let readingSaved=false;
       try {
+        // Resolve the existing intent before any new payload, meter or invoice write.
+        const old = intents.current.get(row.contract_id);
+        if (old && !old.completed) {
+          readingSaved = old.readingSaved;
+          const saved = await readSavedInvoiceSupportRequest(old.organizationId, row.contract_id, old.requestId);
+          if (saved) {
+            old.completed = true;
+            old.invoiceId = saved.id;
+            recovered.push({ contractId: row.contract_id, billingMonth: saved.billing_month, invoiceNumber: saved.invoice_number || saved.id });
+            results.push({contractId:row.contract_id,roomName:row.room_name,invoiceId:saved.id,readingSaved});
+            ok++; continue;
+          }
+          if (old.recoveryOnly) throw new Error('Chưa xác minh được lần lưu trước. Đối chiếu hóa đơn và chỉ số điện trước khi tạo tiếp.');
+        }
+        const payload = buildInvoiceFormData(row, ctx, '00000000-0000-4000-8000-000000000001');
+        const fingerprint = JSON.stringify([selectedOrganizationId, payload]);
+        if (payload.rent_support_context) {
+          if (!selectedOrganizationId) throw new Error('Chưa chọn tổ chức.');
+          if (old?.completed && old.fingerprint === fingerprint) {
+            results.push({contractId:row.contract_id,roomName:row.room_name,invoiceId:old.invoiceId,readingSaved:old.readingSaved});
+            ok++; continue;
+          }
+          const intent = old?.fingerprint === fingerprint ? old : { fingerprint, requestId: globalThis.crypto.randomUUID(), organizationId: selectedOrganizationId, completed: false, readingSaved: false, recoveryOnly: false };
+          intents.current.set(row.contract_id, intent);
+          payload.rent_support_context.request_id = intent.requestId;
+        }
         // 1) Chốt chỉ số điện để CHỈ SỐ ĐẦU tháng sau nối tiếp đúng.
         const consumption =
           (Number(row.current_reading) || 0) - (Number(row.prev_reading) || 0);
@@ -220,18 +252,27 @@ export function useSubmitExcelInvoices() {
         }
 
         // 2) Tạo hoá đơn (items + form data build ở lib — có test).
-        const receipt=await createInvoice.mutateAsync(buildInvoiceFormData(row, ctx));
+        const receipt=await createInvoice.mutateAsync(payload);
         const id=(receipt as {id?:string}|null)?.id;
         if(!id) throw new TypeError("Missing invoice creation receipt");
         results.push({contractId:row.contract_id,roomName:row.room_name,invoiceId:id,readingSaved});
+        const intent = intents.current.get(row.contract_id);
+        if (intent) { intent.completed = true; intent.invoiceId = id; intent.readingSaved = readingSaved; }
         ok++;
       } catch (err) {
         console.error("Create invoice failed for", row.room_name, err);
         fail++;
-        results.push({contractId:row.contract_id,roomName:row.room_name,invoiceId:err instanceof InvoicePartialError?err.invoiceId:undefined,readingSaved,error:`${readingSaved?"Đã lưu chỉ số điện nhưng chưa tạo xong hoá đơn. ":""}${invoiceFailureMessage(err,"tạo hoá đơn")}`,outcomeUnknown:voucherOutcomeUnknown(err)});
+        const intent = intents.current.get(row.contract_id);
+        if (intent && !intent.completed) {
+          intent.readingSaved = readingSaved;
+          intent.recoveryOnly ||= readingSaved || err instanceof InvoicePartialError || voucherOutcomeUnknown(err);
+        }
+        const message = `${readingSaved?"Đã lưu chỉ số điện nhưng chưa tạo xong hoá đơn. ":""}${invoiceFailureMessage(err,"tạo hoá đơn")}`;
+        results.push({contractId:row.contract_id,roomName:row.room_name,invoiceId:err instanceof InvoicePartialError?err.invoiceId:undefined,readingSaved,error:message,outcomeUnknown:voucherOutcomeUnknown(err),supportRecoveryPending:!!intent && !intent.completed && intent.recoveryOnly});
+        errors.push({ contractId: row.contract_id, message });
       }
     }
-    return { ok, fail, readingFails, rows:results };
+    return { ok, fail, readingFails, rows:results, errors, recovered };
   };
 
   return { submit, isPending: createInvoice.isPending };

@@ -42,7 +42,8 @@ export type PayoutContext = z.infer<typeof payoutContextSchema>;
 /** Compare decimal money without losing precision through Number conversion. */
 function moneyBalances(gross:string,held:string,net:string) {
  const values=[gross,held,net],scale=Math.max(...values.map(x=>(x.split('.')[1]??'').length));
- const [g,h,n]=values.map(x=>{const [whole,fraction='']=x.split('.');return BigInt(whole+fraction.padEnd(scale,'0'));});
+ const scaled=(x:string)=>{const [whole='',fraction='']=x.split('.');return BigInt(whole+fraction.padEnd(scale,'0'));};
+ const g=scaled(gross),h=scaled(held),n=scaled(net);
  return g===h+n;
 }
 export const payoutSourceReceiptSchema=z.object({source_id:uuid,operation_id:uuid,kind:z.enum(['broker','sale']),gross:money,withheld:money,net:money,
