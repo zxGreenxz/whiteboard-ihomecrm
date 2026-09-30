@@ -272,7 +272,7 @@ export const useCreateCommissionVoucher = () => {
       if (!selectedOrganizationId) throw new Error("Chưa xác định được tổ chức đang xử lý.");
       if ('preparedRequest' in input) throw new Error('Yêu cầu đã lưu phải dùng Tạo lại, không nhận dữ liệu form mới.');
       const request = (await prepareCommissionCreations(selectedOrganizationId, [commissionCreationPayload(input)]))[0];
-      if (request.contract_id !== input.contract_id || request.kind !== input.kind) throw new Error('Yêu cầu tạo phiếu không khớp hợp đồng hoặc loại.');
+      if (!request || request.contract_id !== input.contract_id || request.kind !== input.kind) throw new Error('Yêu cầu tạo phiếu không khớp hợp đồng hoặc loại.');
       return executeCommissionCreation(selectedOrganizationId, request);
     },
     // Lỗi mạng không chứng minh server chưa tạo phiếu: luôn đọc lại nguồn thật.

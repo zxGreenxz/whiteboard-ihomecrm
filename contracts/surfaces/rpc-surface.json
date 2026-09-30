@@ -1,7 +1,7 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 1888,
+    "sourceCallSites": 1889,
     "catalogFunctions": 1232,
     "schemas": [
       "public",
@@ -9,12 +9,12 @@
     ]
   },
   "counts": {
-    "calledRpcs": 340,
+    "calledRpcs": 341,
     "byRisk": {
       "normal": 246,
-      "financial": 94
+      "financial": 95
     },
-    "securityDefiner": 324
+    "securityDefiner": 325
   },
   "missingOnServer": [],
   "rpcs": {
@@ -1619,26 +1619,6 @@
       ],
       "risk": "normal"
     },
-    "create_commission_voucher": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_contract_id uuid, p_kind text, p_amount numeric, p_voucher_date date, p_account_id uuid DEFAULT NULL::uuid, p_payer_name text DEFAULT NULL::text, p_recipient_name text DEFAULT NULL::text, p_recipient_bank text DEFAULT NULL::text, p_recipient_account text DEFAULT NULL::text, p_item_description text DEFAULT NULL::text, p_attachments jsonb DEFAULT '[]'::jsonb",
-          "returns": "jsonb",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, app_private, public",
-          "execRoles": [
-            "authenticated",
-            "service_role"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/useCommissionVoucher.ts"
-      ],
-      "risk": "financial"
-    },
     "create_contract_transfer_commission_v1": {
       "definitions": [
         {
@@ -1909,6 +1889,25 @@
       ],
       "callers": [
         "src/hooks/income-expenses/specialized.ts"
+      ],
+      "risk": "financial"
+    },
+    "execute_commission_request_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_contract_id uuid, p_kind text, p_request_id uuid",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/contractCommissionFollowup.ts"
       ],
       "risk": "financial"
     },
@@ -3391,11 +3390,11 @@
       ],
       "risk": "normal"
     },
-    "list_contract_commission_followups_v1": {
+    "list_contract_commission_followups_v2": {
       "definitions": [
         {
           "schema": "public",
-          "args": "p_organization_id uuid, p_contract_ids uuid[] DEFAULT NULL::uuid[], p_building_ids uuid[] DEFAULT NULL::uuid[], p_offset integer DEFAULT 0, p_limit integer DEFAULT 50, p_unresolved_only boolean DEFAULT false",
+          "args": "p_organization_id uuid, p_contract_ids uuid[] DEFAULT NULL::uuid[], p_building_ids uuid[] DEFAULT NULL::uuid[], p_offset integer DEFAULT 0, p_limit integer DEFAULT 50, p_unresolved_only boolean DEFAULT false, p_kind text DEFAULT NULL::text, p_search text DEFAULT NULL::text, p_period_from date DEFAULT NULL::date, p_period_to date DEFAULT NULL::date",
           "returns": "jsonb",
           "volatility": "STABLE",
           "securityDefiner": true,
@@ -4322,6 +4321,25 @@
         "src/hooks/usePublicRoomsAnalytics.ts"
       ],
       "risk": "normal"
+    },
+    "prepare_commission_requests_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_intents jsonb",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/contractCommissionFollowup.ts"
+      ],
+      "risk": "financial"
     },
     "preview_special_fees_v1": {
       "definitions": [
