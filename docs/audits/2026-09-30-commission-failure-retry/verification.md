@@ -166,3 +166,9 @@ Các lượt smoke trước giữ nguyên RED: probe thiếu Content-Profile pub
 Không tạo lỗi/phiếu/hợp đồng hoặc execute retry trên production. Hàng lỗi thật và concurrency/lost-response được chứng minh trên TEST bằng JWT và E2E đã ghi ở trên, không suy ra từ lane production đang rỗng. Direct-create và draft→reopen→sign popup TEST đạt; DOCX bytes/export/download vẫn chưa kiểm. Managed watcher chưa sửa và attribution timeout TEST vẫn có giới hạn; không đổi pool/compute/timeout production.
 
 Bản sửa theo dõi lỗi đã phát hành. Phần lịch hỗ trợ tiền thuê vẫn là hạng mục riêng chưa hoàn tất; controller khôi phục Task2 privacy fix từ checkpoint ở worktree rent-support, writers vẫn tắt và không kéo WIP đó vào hotfix này.
+
+## Tích hợp lại nhánh hỗ trợ — 30/09/2026
+
+Task2 persistence/privacy của rent-support đã hoàn tất scoped review spec và quality sau hai vòng sửa, checkpoint `507f7da47413281beca352961eeb785a0af39173`. Nhánh chưa push được rebase lên main `ea4e451e`: source không có conflict, chỉ types/provenance máy sinh được lấy từ main rồi sinh lại bằng công cụ chính thức; HEAD tính năng trở thành `8e5ddb5926378c27d58a7369ed76162da33d8e51`. Kiểm sau tích hợp đạt 17 file/177 test, TypeScript app, types, provenance và RPC cast. Worktree tính năng có dependency riêng Node24.18.0/SheetJS0.20.3, checkout chính giữ dependency cũ. Full plan và ledger giữ lại trong worktree tính năng; Task3 hóa đơn đã được giao, writer/funding vẫn tắt.
+
+Đây là bằng chứng hoàn tất bước resume/rebase của hotfix, chưa phải phát hành lịch hỗ trợ hoặc khấu trừ upfront. Schema/app production vẫn giữ bản hotfix đã xác minh `ca3c8a0727346779b488c2a9d1f3bb032ba7472b`; không có thao tác tiền hoặc cấu hình production mới.
