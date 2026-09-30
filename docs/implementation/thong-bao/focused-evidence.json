@@ -1,0 +1,791 @@
+[
+  {
+    "report": "root-mobile-dashboard-final.json",
+    "startedAtEpochMs": 1790759178149,
+    "success": true,
+    "passed": 21,
+    "failed": 0,
+    "files": [
+      "src/pages/__tests__/DashboardMobilePage.feedback.test.tsx",
+      "src/components/errors/__tests__/QueryRegion.test.tsx",
+      "src/pages/contracts/__tests__/ContractStatsRegions.feedback.test.tsx"
+    ]
+  },
+  {
+    "report": "late-import-owner-green.json",
+    "startedAtEpochMs": 1790756550421,
+    "success": true,
+    "passed": 88,
+    "failed": 0,
+    "files": [
+      "src/hooks/__tests__/useSettlementActions.test.ts",
+      "src/lib/__tests__/contractImport.property.test.ts",
+      "src/lib/__tests__/contractImportWorkflow.test.ts",
+      "src/components/contracts/__tests__/ContractImportExportDialog.durable.test.tsx",
+      "src/components/thu-tien/contract-settlement/__tests__/SettlementLifecycleModal.test.tsx"
+    ]
+  },
+  {
+    "report": "root-push-review.json",
+    "startedAtEpochMs": 1790756819380,
+    "success": true,
+    "passed": 38,
+    "failed": 0,
+    "files": [
+      "src/components/notifications/PushNotificationSettings.feedback.test.tsx",
+      "src/components/notifications/PushToggle.feedback.test.tsx",
+      "src/lib/__tests__/pushLifecycle.feedback.test.ts"
+    ]
+  },
+  {
+    "report": "root-final-query-review.json",
+    "startedAtEpochMs": 1790758337294,
+    "success": true,
+    "passed": 99,
+    "failed": 0,
+    "files": [
+      "src/hooks/__tests__/contractListReadFeedback.test.ts",
+      "src/hooks/__tests__/useContractSettlement.test.ts",
+      "src/components/deposits/__tests__/HoldDeadline.feedback.test.tsx",
+      "src/pages/contracts/__tests__/ContractStatsRegions.feedback.test.tsx"
+    ]
+  },
+  {
+    "report": "contract-import-typed-cycle-final.json",
+    "startedAtEpochMs": 1790757260323,
+    "success": true,
+    "passed": 10,
+    "failed": 0,
+    "files": [
+      "src/lib/__tests__/contractExcelSourceRows.test.ts",
+      "src/lib/__tests__/contractImportWorkflow.test.ts",
+      "src/components/contracts/__tests__/ContractImportExportDialog.durable.test.tsx"
+    ]
+  },
+  {
+    "report": "hold-deadline-input-final.json",
+    "startedAtEpochMs": 1790758326421,
+    "success": true,
+    "passed": 25,
+    "failed": 0,
+    "files": [
+      "src/components/deposits/__tests__/CreateDeposit.feedback.test.tsx",
+      "src/components/deposits/__tests__/HoldDeadline.feedback.test.tsx",
+      "src/components/deposits/__tests__/ReservationSettlementDialogs.test.tsx"
+    ]
+  },
+  {
+    "report": "finish-copilot-focused-final.json",
+    "startedAtEpochMs": 1790754853506,
+    "success": true,
+    "passed": 829,
+    "failed": 0,
+    "files": [
+      "src/components/my-day/RoutePlannerSheet.feedback.test.tsx",
+      "src/components/notifications/NotificationOrgConfigDraft.feedback.test.tsx",
+      "src/components/notifications/NotificationSettings.feedback.test.tsx",
+      "src/copilot/__tests__/ChatPanel.memory.feedback.test.tsx",
+      "src/copilot/__tests__/ChatPanel.test.tsx",
+      "src/copilot/__tests__/chatPersistenceOrgScope.test.ts",
+      "src/copilot/__tests__/chatReceipts.feedback.test.ts",
+      "src/copilot/__tests__/confirmationPersistence.feedback.test.ts",
+      "src/copilot/__tests__/confirmationRace.test.ts",
+      "src/copilot/__tests__/memory.test.ts",
+      "src/copilot/__tests__/memoryReceipts.feedback.test.ts",
+      "src/copilot/__tests__/providersReads.feedback.test.tsx",
+      "src/copilot/__tests__/StepUpPinModal.feedback.test.tsx",
+      "src/copilot/__tests__/writeToolsHanhDong.test.ts",
+      "src/lib/__tests__/contractDraftApi.editor.test.ts",
+      "src/lib/__tests__/contractDraftExportReceipts.feedback.test.ts",
+      "src/lib/__tests__/contractDrafts.test.ts",
+      "src/lib/__tests__/contractSigningApi.test.ts",
+      "src/hooks/__tests__/accountJobReadModels.feedback.test.tsx",
+      "src/hooks/__tests__/accountProfitReads.feedback.test.tsx",
+      "src/hooks/__tests__/accountTemplateReceipts.feedback.test.tsx",
+      "src/hooks/__tests__/documentTemplateFeedback.test.ts",
+      "src/hooks/__tests__/insertGuiOrganizationId.test.ts",
+      "src/hooks/__tests__/notificationSettingsReceipts.feedback.test.tsx",
+      "src/hooks/__tests__/organizationReadModels.feedback.test.tsx",
+      "src/hooks/__tests__/passListingsFeedback.test.tsx",
+      "src/hooks/__tests__/profitConfigurationFeedback.test.ts",
+      "src/hooks/__tests__/profitConfigurationPersistence.feedback.test.tsx",
+      "src/hooks/__tests__/profitPayoutPersistence.feedback.test.tsx",
+      "src/hooks/__tests__/profitPersistentFeedback.test.tsx",
+      "src/hooks/__tests__/profitReadBoundaries.feedback.test.tsx",
+      "src/hooks/__tests__/publicRoomAnalytics.feedback.test.tsx",
+      "src/hooks/__tests__/publicRoomReceipts.feedback.test.tsx",
+      "src/hooks/__tests__/uiPreferencesFeedback.test.tsx",
+      "src/hooks/__tests__/useUnlockProfitMonth.test.tsx",
+      "src/components/onboarding/__tests__/onboardingCompleted.test.ts",
+      "src/components/onboarding/__tests__/OnboardingWizard.feedback.test.tsx",
+      "src/components/sale-phong/__tests__/analyticsRegions.feedback.test.tsx",
+      "src/components/sale-phong/__tests__/passListingsRegions.feedback.test.tsx",
+      "src/components/sale-phong/__tests__/saleAdminFeedback.test.tsx",
+      "src/components/sale-phong/__tests__/saleImagesFeedback.test.tsx",
+      "src/components/tasks/__tests__/TaskCreate.feedback.test.tsx",
+      "src/components/shareholders/__tests__/ProfitForms.feedback.test.tsx",
+      "src/components/shareholders/__tests__/ProfitPayout.feedback.test.tsx",
+      "src/copilot/admin/__tests__/adminPersistence.feedback.test.ts",
+      "src/copilot/admin/__tests__/adminWrites.feedback.test.ts",
+      "src/copilot/admin/__tests__/AiCopilotAdminPage.feedback.test.tsx",
+      "src/copilot/admin/__tests__/HanhDongTab.feedback.test.tsx",
+      "src/copilot/admin/__tests__/policyReadReceipts.feedback.test.ts",
+      "src/copilot/plan/__tests__/adminReadReceipts.feedback.test.ts",
+      "src/pages/sale-phong/__tests__/SalePhongMobilePage.error.test.tsx"
+    ]
+  },
+  {
+    "report": "final-mobile-dashboard-regions-green-2.json",
+    "startedAtEpochMs": 1790758934041,
+    "success": true,
+    "passed": 21,
+    "failed": 0,
+    "files": [
+      "src/pages/__tests__/DashboardMobilePage.feedback.test.tsx",
+      "src/pages/contracts/__tests__/ContractStatsRegions.feedback.test.tsx",
+      "src/components/errors/__tests__/QueryRegion.test.tsx"
+    ]
+  },
+  {
+    "report": "commission-rebase-focused.json",
+    "startedAtEpochMs": 1790759935152,
+    "success": true,
+    "passed": 70,
+    "failed": 0,
+    "files": [
+      "src/hooks/__tests__/commissionReservationFeedbackOwner.test.tsx",
+      "src/lib/__tests__/contractCommissionFollowup.test.ts",
+      "src/lib/__tests__/contractCommissionFollowupMigration.test.ts",
+      "src/components/contracts/__tests__/CommissionVoucherModal.test.tsx",
+      "src/components/contracts/__tests__/ContractCommissionFollowupPanel.test.tsx"
+    ]
+  },
+  {
+    "report": "final-rebase-details-settlement-independent.json",
+    "startedAtEpochMs": 1790760057827,
+    "success": true,
+    "passed": 87,
+    "failed": 0,
+    "files": [
+      "src/components/contracts/detail/__tests__/ContractDetailView.mobileSettlement.test.tsx",
+      "src/components/thu-tien/contract-settlement/__tests__/ContractSettlementSection.test.tsx"
+    ]
+  },
+  {
+    "report": "integration-regressions-green.json",
+    "startedAtEpochMs": 1790761345598,
+    "success": true,
+    "passed": 111,
+    "failed": 0,
+    "files": [
+      "src/components/__tests__/dialogGateFetchKhiDong.test.ts",
+      "src/lib/__tests__/sheetjsCompatibility.test.ts",
+      "src/components/finance-performance/__tests__/BuildingPerformanceTab.test.tsx",
+      "src/components/thu-tien/contract-settlement/__tests__/SettlementLifecycleModal.test.tsx",
+      "src/components/thu-tien/contract-settlement/__tests__/tokenPortal.test.ts"
+    ]
+  },
+  {
+    "report": "building-services-narrow-final.json",
+    "startedAtEpochMs": 1790762381984,
+    "success": true,
+    "passed": 9,
+    "failed": 0,
+    "files": [
+      "src/hooks/__tests__/buildingServiceWriteOutcome.test.ts"
+    ]
+  },
+  {
+    "report": "copilot-test-lint-focused-final.json",
+    "startedAtEpochMs": 1790760664358,
+    "success": true,
+    "passed": 281,
+    "failed": 0,
+    "files": [
+      "src/pages/settings/Authorization.feedback.test.tsx",
+      "src/hooks/__tests__/accountJobReadModels.feedback.test.tsx",
+      "src/hooks/__tests__/customerDetailContracts.test.ts",
+      "src/hooks/__tests__/notificationCounts.test.ts",
+      "src/hooks/__tests__/organizationReadModels.feedback.test.tsx",
+      "src/hooks/__tests__/profitPayoutPersistence.feedback.test.tsx",
+      "src/hooks/__tests__/profitReadBoundaries.feedback.test.tsx",
+      "src/hooks/__tests__/publicRoomAnalytics.feedback.test.tsx",
+      "src/hooks/__tests__/residenceWriteOutcome.test.ts",
+      "src/hooks/__tests__/zaloActions.feedback.test.ts",
+      "src/lib/__tests__/luckyAdminFeedback.test.ts",
+      "src/lib/__tests__/luckyStateReadFeedback.test.ts",
+      "src/copilot/admin/__tests__/adminWrites.feedback.test.ts",
+      "src/copilot/admin/__tests__/AiCopilotAdminPage.feedback.test.tsx",
+      "src/pages/settings/finance/__tests__/SpendEngine.feedback.test.tsx"
+    ]
+  },
+  {
+    "report": "finance-lint-owned-tests-1.json",
+    "startedAtEpochMs": 1790761400603,
+    "success": true,
+    "passed": 281,
+    "failed": 0,
+    "files": [
+      "src/hooks/__tests__/autoApproveThresholdFeedback.test.ts",
+      "src/hooks/__tests__/contractCreateDurable.test.ts",
+      "src/hooks/__tests__/contractEditWriters.test.ts",
+      "src/hooks/__tests__/feedbackOutcomes.test.ts",
+      "src/hooks/__tests__/feePersistence.test.ts",
+      "src/hooks/__tests__/financeDurableWriters.test.ts",
+      "src/hooks/__tests__/incomeExpenseNamedFeedback.test.ts",
+      "src/hooks/__tests__/invoiceItemsReadFeedback.test.ts",
+      "src/hooks/__tests__/invoiceNoteNotificationOwner.test.tsx",
+      "src/hooks/__tests__/receivingCashbookDurableFeedback.test.ts",
+      "src/hooks/__tests__/reconciliationFeedback.test.ts",
+      "src/hooks/__tests__/requiredInvoiceReadFeedback.test.ts",
+      "src/hooks/__tests__/salaryAdminFeedback.test.ts",
+      "src/hooks/__tests__/salaryDurableWorkflow.test.ts",
+      "src/hooks/__tests__/salaryReadSources.test.ts",
+      "src/lib/__tests__/invoiceRelatedRead.test.ts",
+      "src/components/contracts/contract-form/useContractSubmit.test.ts",
+      "src/components/income-expenses/__tests__/IncomeExpenseBatchValidation.test.tsx",
+      "src/components/invoices/__tests__/EditInvoiceDraftRead.test.tsx",
+      "src/components/invoices/__tests__/InvoiceHistoryReadFeedback.test.tsx",
+      "src/components/invoices/__tests__/RecordRefund.feedback.test.tsx",
+      "src/components/thu-tien/__tests__/SpecialFeeBatchRead.test.tsx",
+      "src/pages/settings/__tests__/IeAutoApproveThresholdCard.feedback.test.tsx",
+      "src/hooks/income-expenses/__tests__/financeDirectoryReadFeedback.test.ts",
+      "src/hooks/income-expenses/__tests__/voucherFeedbackHooks.test.ts",
+      "src/hooks/reports/__tests__/useBusinessPerformanceGatedData.test.ts",
+      "src/pages/settings/finance/__tests__/FixedFees.feedback.test.tsx",
+      "src/pages/reports/finance/__tests__/CashbookClosureRecord.feedback.test.tsx",
+      "src/pages/reports/finance/__tests__/ReconcileDialog.feedback.test.tsx"
+    ]
+  },
+  {
+    "report": "final-owned-fixtures-lint-tests.json",
+    "startedAtEpochMs": 1790760655146,
+    "success": true,
+    "passed": 111,
+    "failed": 0,
+    "files": [
+      "src/pages/__tests__/DashboardMobilePage.feedback.test.tsx",
+      "src/hooks/__tests__/contractListReadFeedback.test.ts",
+      "src/hooks/__tests__/contractNoticeOperationFeedback.test.ts",
+      "src/hooks/__tests__/financialReadFeedback.test.ts",
+      "src/hooks/__tests__/meterOutcome.test.ts",
+      "src/hooks/__tests__/meterReadingOutcome.test.ts",
+      "src/hooks/__tests__/slotAndRenewalReadFeedback.test.tsx",
+      "src/components/customers/__tests__/CustomerForm.feedback.test.tsx"
+    ]
+  },
+  {
+    "report": "root-lint-fixture-tests-final.json",
+    "startedAtEpochMs": 1790761297711,
+    "success": true,
+    "passed": 88,
+    "failed": 0,
+    "files": [
+      "src/contexts/__tests__/OrganizationContext.test.ts",
+      "src/components/reports/ExportButtons.feedback.test.tsx",
+      "src/pages/__tests__/ThuTien.query.test.tsx",
+      "src/hooks/__tests__/areaDeletePartial.test.ts",
+      "src/hooks/__tests__/materialCatalogReceipt.test.ts",
+      "src/hooks/__tests__/myDayFeedbackBoundary.test.ts",
+      "src/hooks/__tests__/vehicleAreaWriteOutcome.test.ts",
+      "src/lib/__tests__/customerImportOutcome.test.ts",
+      "src/components/building-map/__tests__/RoomDetail.feedback.test.tsx",
+      "src/components/cashbooks/__tests__/CashbookForm.feedback.test.tsx",
+      "src/components/errors/__tests__/ReportQueryCallers.feedback.test.tsx",
+      "src/components/customers/__tests__/CT01Download.feedback.test.tsx",
+      "src/components/contracts/__tests__/DeleteContract.feedback.test.tsx",
+      "src/pages/payments/__tests__/RefundLog.feedback.test.tsx"
+    ]
+  },
+  {
+    "report": "final-building-service-caller-independent.json",
+    "startedAtEpochMs": 1790762054557,
+    "success": true,
+    "passed": 22,
+    "failed": 0,
+    "files": [
+      "C:/Users/Nguyen Tam/.codex/worktrees/thong-bao-nguoi-dung/whiteboard-ihomecrm-main/src/hooks/__tests__/buildingServiceWriteOutcome.test.ts",
+      "C:/Users/Nguyen Tam/.codex/worktrees/thong-bao-nguoi-dung/whiteboard-ihomecrm-main/src/lib/__tests__/buildingSaveWorkflow.test.ts",
+      "C:/Users/Nguyen Tam/.codex/worktrees/thong-bao-nguoi-dung/whiteboard-ihomecrm-main/src/components/buildings/__tests__/BuildingFormOwnerRetry.test.tsx"
+    ]
+  },
+  {
+    "report": "final-quota-main-writer-independent.json",
+    "startedAtEpochMs": 1790764116886,
+    "success": true,
+    "passed": 24,
+    "failed": 0,
+    "files": [
+      "C:/Users/Nguyen Tam/.codex/worktrees/thong-bao-nguoi-dung/whiteboard-ihomecrm-main/src/hooks/__tests__/serviceQuotaWriteOutcome.test.ts",
+      "C:/Users/Nguyen Tam/.codex/worktrees/thong-bao-nguoi-dung/whiteboard-ihomecrm-main/src/components/service-quotas/__tests__/EditQuotaDialog.partial.test.tsx"
+    ]
+  },
+  {
+    "report": "final-material-main-writer-independent.json",
+    "startedAtEpochMs": 1790764991315,
+    "success": true,
+    "passed": 57,
+    "failed": 0,
+    "files": [
+      "C:/Users/Nguyen Tam/.codex/worktrees/thong-bao-nguoi-dung/whiteboard-ihomecrm-main/src/hooks/__tests__/assetMaterialDeleteOutcome.test.ts",
+      "C:/Users/Nguyen Tam/.codex/worktrees/thong-bao-nguoi-dung/whiteboard-ihomecrm-main/src/hooks/__tests__/materialMainWriterParity.test.ts",
+      "C:/Users/Nguyen Tam/.codex/worktrees/thong-bao-nguoi-dung/whiteboard-ihomecrm-main/src/hooks/__tests__/materialVoucherOutcome.test.ts",
+      "C:/Users/Nguyen Tam/.codex/worktrees/thong-bao-nguoi-dung/whiteboard-ihomecrm-main/src/lib/__tests__/materialUsageValidation.test.ts",
+      "C:/Users/Nguyen Tam/.codex/worktrees/thong-bao-nguoi-dung/whiteboard-ihomecrm-main/src/components/materials/__tests__/MaterialVoucherForms.feedback.test.tsx"
+    ]
+  },
+  {
+    "report": "final-area-receipt-closure-independent.json",
+    "startedAtEpochMs": 1790766249830,
+    "success": true,
+    "passed": 83,
+    "failed": 0,
+    "files": [
+      "C:/Users/Nguyen Tam/.codex/worktrees/thong-bao-nguoi-dung/whiteboard-ihomecrm-main/src/hooks/__tests__/areaDeletePartial.test.ts",
+      "C:/Users/Nguyen Tam/.codex/worktrees/thong-bao-nguoi-dung/whiteboard-ihomecrm-main/src/hooks/__tests__/estateCoreWriteOutcome.test.ts",
+      "C:/Users/Nguyen Tam/.codex/worktrees/thong-bao-nguoi-dung/whiteboard-ihomecrm-main/src/hooks/__tests__/materialMainWriterParity.test.ts",
+      "C:/Users/Nguyen Tam/.codex/worktrees/thong-bao-nguoi-dung/whiteboard-ihomecrm-main/src/hooks/__tests__/serviceQuotaWriteOutcome.test.ts",
+      "C:/Users/Nguyen Tam/.codex/worktrees/thong-bao-nguoi-dung/whiteboard-ihomecrm-main/src/hooks/__tests__/vehicleAreaWriteOutcome.test.ts",
+      "C:/Users/Nguyen Tam/.codex/worktrees/thong-bao-nguoi-dung/whiteboard-ihomecrm-main/src/components/customers/__tests__/CustomerForm.feedback.test.tsx",
+      "C:/Users/Nguyen Tam/.codex/worktrees/thong-bao-nguoi-dung/whiteboard-ihomecrm-main/src/components/service-quotas/__tests__/EditQuotaDialog.partial.test.tsx"
+    ]
+  },
+  {
+    "report": "notification-nuia-owned-focused.json",
+    "startedAtEpochMs": 1790767236030,
+    "success": true,
+    "passed": 66,
+    "failed": 0,
+    "files": [
+      "src/app/providers/__tests__/QueryProvider.errorPolicy.test.ts",
+      "src/components/errors/__tests__/QueryRegion.test.tsx",
+      "src/hooks/__tests__/zaloMediaFeedback.test.ts",
+      "src/lib/__tests__/formErrors.test.ts",
+      "src/lib/__tests__/luckyAdminFeedback.test.ts",
+      "src/lib/__tests__/luckyStateReadFeedback.test.ts"
+    ]
+  },
+  {
+    "report": "finance-nuia-focused.json",
+    "startedAtEpochMs": 1790767280534,
+    "success": true,
+    "passed": 53,
+    "failed": 0,
+    "files": [
+      "src/hooks/__tests__/salaryAdminFeedback.test.ts",
+      "src/lib/__tests__/contractBillingBounds.test.ts",
+      "src/lib/__tests__/contractMoneyReceipt.test.ts",
+      "src/lib/__tests__/friendlyError.feedback.test.ts",
+      "src/lib/__tests__/reservationIdentityRpc.test.ts",
+      "src/lib/__tests__/salarySettingsFeedback.test.ts",
+      "src/lib/__tests__/voucherFeedback.test.ts"
+    ]
+  },
+  {
+    "report": "notification-leaf-import.json",
+    "startedAtEpochMs": 1790767970993,
+    "success": true,
+    "passed": 42,
+    "failed": 0,
+    "files": [
+      "src/hooks/__tests__/residenceWriteOutcome.test.ts",
+      "src/lib/__tests__/financialWorkflow.test.ts",
+      "src/lib/__tests__/voucherFeedback.test.ts"
+    ]
+  },
+  {
+    "report": "contract-server-focus-unit.json",
+    "startedAtEpochMs": 1790768533090,
+    "success": true,
+    "passed": 22,
+    "failed": 0,
+    "files": [
+      "src/components/contracts/contract-form/useContractSubmit.test.ts",
+      "src/lib/__tests__/contractBillingBounds.test.ts"
+    ],
+    "note": "Đếm lại chỉ nguồn hiện hành; raw artifact có archive, không tính archive là test sản phẩm."
+  },
+  {
+    "report": "error-boundary-page-names-green.json",
+    "startedAtEpochMs": 1790768730804,
+    "success": true,
+    "passed": 95,
+    "failed": 0,
+    "files": [
+      "src/components/errors/ErrorBoundary.feedback.test.tsx",
+      "src/components/errors/ErrorBoundary.pageNames.test.tsx",
+      "src/lib/__tests__/errorPageNames.test.ts"
+    ]
+  },
+  {
+    "report": "final-leaf-contract-focus-independent.json",
+    "startedAtEpochMs": 1790769371570,
+    "success": true,
+    "passed": 73,
+    "failed": 0,
+    "files": [
+      "src/components/contracts/contract-form/useContractSubmit.focus.test.ts",
+      "src/components/contracts/contract-form/useContractSubmit.test.ts",
+      "src/hooks/__tests__/residenceWriteOutcome.test.ts",
+      "src/lib/__tests__/financialWorkflow.test.ts",
+      "src/lib/__tests__/formErrors.test.ts",
+      "src/lib/__tests__/operationOutcome.test.ts",
+      "src/lib/__tests__/voucherFeedback.test.ts"
+    ],
+    "note": "Đếm lại chỉ nguồn hiện hành; raw artifact có archive, không tính archive là test sản phẩm."
+  },
+  {
+    "report": "contract-parent-focus-green.json",
+    "startedAtEpochMs": 1790770634789,
+    "success": true,
+    "passed": 32,
+    "failed": 0,
+    "files": [
+      "src/components/contracts/contract-form/useContractSubmit.test.ts",
+      "src/lib/__tests__/contractBillingBounds.test.ts",
+      "src/lib/__tests__/formErrors.test.ts"
+    ]
+  },
+  {
+    "report": "final-b03-template-residence-independent.json",
+    "startedAtEpochMs": 1790771112592,
+    "success": true,
+    "passed": 106,
+    "failed": 0,
+    "files": [
+      "src/components/contracts/contract-form/useContractSubmit.focus.test.ts",
+      "src/components/contracts/contract-form/useContractSubmit.test.ts",
+      "src/hooks/__tests__/accountTemplateReceipts.feedback.test.tsx",
+      "src/hooks/__tests__/documentTemplateFeedback.test.ts",
+      "src/hooks/__tests__/residenceWriteOutcome.test.ts",
+      "src/lib/__tests__/contractBillingBounds.test.ts",
+      "src/lib/__tests__/formErrors.test.ts",
+      "src/lib/__tests__/orgPayload.test.ts",
+      "src/lib/__tests__/orgPayloadCoverage.test.ts"
+    ]
+  },
+  {
+    "report": "template-authorized-line-green.json",
+    "startedAtEpochMs": 1790770944962,
+    "success": true,
+    "passed": 66,
+    "failed": 0,
+    "files": [
+      "src/hooks/__tests__/accountTemplateReceipts.feedback.test.tsx",
+      "src/hooks/__tests__/documentTemplateFeedback.test.ts",
+      "src/lib/__tests__/orgPayload.test.ts",
+      "src/lib/__tests__/orgPayloadCoverage.test.ts"
+    ]
+  },
+  {
+    "report": "notification-final-failures-isolated.json",
+    "startedAtEpochMs": 1790771062429,
+    "success": true,
+    "passed": 132,
+    "failed": 0,
+    "files": [
+      "src/components/customers/__tests__/AddressCascadingDropdowns.test.tsx",
+      "src/components/customers/__tests__/CustomerFieldSearch.test.tsx",
+      "src/components/deposits/__tests__/CreateDeposit.feedback.test.tsx",
+      "src/components/thu-tien/__tests__/PeriodFeeDeferredData.test.tsx",
+      "src/components/thu-tien/contract-settlement/__tests__/SettlementLifecycleModal.test.tsx",
+      "src/lib/__tests__/suaPhieuDot1Migrations.test.ts"
+    ]
+  },
+  {
+    "report": "notification-lazy-feedback-independent.json",
+    "startedAtEpochMs": 1790771569374,
+    "success": true,
+    "passed": 82,
+    "failed": 0,
+    "files": [
+      "src/app/providers/__tests__/QueryProvider.errorPolicy.test.ts",
+      "src/app/providers/__tests__/QueryProvider.queryLabels.test.ts",
+      "src/hooks/__tests__/residenceWriteOutcome.test.ts",
+      "src/lib/__tests__/formErrors.test.ts",
+      "src/lib/__tests__/pushLifecycle.feedback.test.ts",
+      "src/lib/__tests__/residenceRegistrations.test.ts"
+    ]
+  },
+  {
+    "report": "query-provider-label-lazy-green.json",
+    "startedAtEpochMs": 1790771421214,
+    "success": true,
+    "passed": 31,
+    "failed": 0,
+    "files": [
+      "src/app/providers/__tests__/QueryProvider.errorPolicy.test.ts",
+      "src/app/providers/__tests__/QueryProvider.queryLabels.test.ts"
+    ]
+  },
+  {
+    "report": "async-action-feedback-regressions-final.json",
+    "startedAtEpochMs": 1790773050777,
+    "success": true,
+    "passed": 83,
+    "failed": 0,
+    "files": [
+      "src/components/notifications/NotificationOrgConfigDraft.feedback.test.tsx",
+      "src/components/notifications/NotificationSettings.feedback.test.tsx",
+      "src/components/notifications/PushNotificationSettings.feedback.test.tsx",
+      "src/components/notifications/PushToggle.feedback.test.tsx",
+      "src/pages/auth/Login.feedback.test.tsx",
+      "src/hooks/__tests__/feedbackOutcomes.test.ts",
+      "src/hooks/__tests__/lifecycleNotificationOrgScope.test.ts",
+      "src/hooks/__tests__/notificationCounts.test.ts",
+      "src/hooks/__tests__/notificationSettingsReceipts.feedback.test.tsx",
+      "src/hooks/__tests__/useAuthMutationKeys.test.ts",
+      "src/lib/__tests__/asyncActionFeedback.test.ts",
+      "src/lib/__tests__/authBootstrap.test.ts",
+      "src/app/providers/__tests__/AuthCacheSync.test.ts",
+      "src/app/providers/__tests__/authCacheSyncStrictMode.test.ts"
+    ]
+  },
+  {
+    "report": "final-notification-bootstrap-independent.json",
+    "startedAtEpochMs": 1790773317067,
+    "success": true,
+    "passed": 239,
+    "failed": 0,
+    "files": [
+      "src/components/errors/ErrorBoundary.feedback.test.tsx",
+      "src/components/errors/ErrorBoundary.pageNames.test.tsx",
+      "src/hooks/__tests__/accountJobReadModels.feedback.test.tsx",
+      "src/hooks/__tests__/notificationCounts.test.ts",
+      "src/hooks/__tests__/useAuthMutationKeys.test.ts",
+      "src/hooks/__tests__/useTamTruKetQuaSync.test.tsx",
+      "src/lib/__tests__/asyncActionFeedback.test.ts",
+      "src/lib/__tests__/errorPageNames.test.ts",
+      "src/lib/__tests__/pushLifecycle.feedback.test.ts",
+      "src/app/providers/__tests__/QueryProvider.errorPolicy.test.ts",
+      "src/app/providers/__tests__/QueryProvider.queryLabels.test.ts",
+      "src/components/auth/__tests__/AdminOnlyRoute.feedback.test.tsx"
+    ]
+  },
+  {
+    "report": "final-notification-bootstrap-mutation-owner.json",
+    "startedAtEpochMs": 1790773591714,
+    "success": true,
+    "passed": 2,
+    "failed": 0,
+    "files": [
+      "src/hooks/__tests__/invoiceNoteNotificationOwner.test.tsx",
+      "src/hooks/__tests__/myDayNotificationOwner.test.tsx"
+    ]
+  },
+  {
+    "report": "copilot-a13-errorboundary-independent.json",
+    "startedAtEpochMs": 1790773272593,
+    "success": true,
+    "passed": 101,
+    "failed": 0,
+    "files": [
+      "src/components/errors/ErrorBoundary.feedback.test.tsx",
+      "src/components/errors/ErrorBoundary.pageNames.test.tsx",
+      "src/lib/__tests__/errorPageNames.test.ts"
+    ]
+  },
+  {
+    "report": "admin-route-error-lazy-green.json",
+    "startedAtEpochMs": 1790772630715,
+    "success": true,
+    "passed": 17,
+    "failed": 0,
+    "files": [
+      "src/components/auth/__tests__/AdminOnlyRoute.feedback.test.tsx",
+      "src/components/errors/__tests__/QueryRegion.test.tsx"
+    ]
+  },
+  {
+    "report": "final-residence-keys-bootstrap-independent.json",
+    "startedAtEpochMs": 1790773688319,
+    "success": true,
+    "passed": 20,
+    "failed": 0,
+    "files": [
+      "src/hooks/__tests__/residenceWriteOutcome.test.ts",
+      "src/hooks/__tests__/useTamTruKetQuaSync.test.tsx",
+      "src/lib/__tests__/residenceRegistrations.test.ts"
+    ]
+  },
+  {
+    "report": "async-auth-focus-green.json",
+    "startedAtEpochMs": 1790774239077,
+    "success": true,
+    "passed": 33,
+    "failed": 0,
+    "files": [
+      "src/pages/auth/Login.feedback.test.tsx",
+      "src/hooks/__tests__/useAuthMutationKeys.test.ts",
+      "src/lib/__tests__/asyncFormErrors.test.tsx",
+      "src/lib/__tests__/authBootstrap.test.ts",
+      "src/lib/__tests__/formErrors.test.ts",
+      "src/app/providers/__tests__/AuthCacheSync.test.ts",
+      "src/app/providers/__tests__/authCacheSyncStrictMode.test.ts"
+    ]
+  },
+  {
+    "report": "final-async-auth-focus-independent.json",
+    "startedAtEpochMs": 1790774431682,
+    "success": true,
+    "passed": 33,
+    "failed": 0,
+    "files": [
+      "src/pages/auth/Login.feedback.test.tsx",
+      "src/hooks/__tests__/useAuthMutationKeys.test.ts",
+      "src/lib/__tests__/asyncFormErrors.test.tsx",
+      "src/lib/__tests__/authBootstrap.test.ts",
+      "src/lib/__tests__/formErrors.test.ts",
+      "src/app/providers/__tests__/AuthCacheSync.test.ts",
+      "src/app/providers/__tests__/authCacheSyncStrictMode.test.ts"
+    ]
+  },
+  {
+    "report": "residence-validation-import-final.json",
+    "startedAtEpochMs": 1790774651378,
+    "success": true,
+    "passed": 20,
+    "failed": 0,
+    "files": [
+      "src/hooks/__tests__/residenceWriteOutcome.test.ts",
+      "src/hooks/__tests__/useTamTruKetQuaSync.test.tsx",
+      "src/lib/__tests__/residenceRegistrations.test.ts"
+    ]
+  },
+  {
+    "report": "final-residence-validation-independent.json",
+    "startedAtEpochMs": 1790774812345,
+    "success": true,
+    "passed": 20,
+    "failed": 0,
+    "files": [
+      "src/hooks/__tests__/residenceWriteOutcome.test.ts",
+      "src/hooks/__tests__/useTamTruKetQuaSync.test.tsx",
+      "src/lib/__tests__/residenceRegistrations.test.ts"
+    ]
+  },
+  {
+    "report": "finance-main-merge-focused.json",
+    "startedAtEpochMs": 1790775769762,
+    "success": true,
+    "passed": 131,
+    "failed": 0,
+    "files": [
+      "src/hooks/__tests__/financeDurableWriters.test.ts",
+      "src/hooks/__tests__/incomeExpenseDetailParallel.test.ts",
+      "src/components/income-expenses/__tests__/BatchAccountReasonDialog.feedback.test.tsx",
+      "src/components/income-expenses/__tests__/IncomeExpenseBatchDetailRead.test.tsx",
+      "src/components/income-expenses/__tests__/IncomeExpenseFormDongThiKhongDoc.test.tsx",
+      "src/components/income-expenses/__tests__/IncomeExpenseFormRevise.test.tsx",
+      "src/components/income-expenses/__tests__/voucherDetailReadState.test.tsx",
+      "src/hooks/income-expenses/__tests__/postingEvidencePartial.test.tsx",
+      "src/hooks/income-expenses/__tests__/uploadFinanceEvidenceDeadline.test.ts",
+      "src/hooks/income-expenses/__tests__/voucherFeedbackHooks.test.ts"
+    ]
+  },
+  {
+    "report": "rebase-storage-zalo-focused.json",
+    "startedAtEpochMs": 1790775876833,
+    "success": true,
+    "passed": 45,
+    "failed": 0,
+    "files": [
+      "src/hooks/__tests__/zaloActions.feedback.test.ts",
+      "src/hooks/__tests__/zaloMediaFeedback.test.ts",
+      "src/lib/__tests__/imageCompress.test.ts",
+      "src/lib/__tests__/r2UploadDeadline.test.ts",
+      "src/lib/__tests__/storageIdentityPolicy.test.ts",
+      "src/lib/__tests__/storageKey.test.ts",
+      "src/lib/__tests__/storageUploadDeadline.test.ts",
+      "src/lib/__tests__/storageUploadOutcome.test.ts",
+      "src/hooks/chat-zalo/__tests__/useZaloMedia.test.ts"
+    ]
+  },
+  {
+    "report": "notification-main-read-recovery-green.json",
+    "startedAtEpochMs": 1790775614770,
+    "success": true,
+    "passed": 34,
+    "failed": 0,
+    "files": [
+      "src/app/providers/__tests__/QueryProvider.errorPolicy.test.ts",
+      "src/app/providers/__tests__/QueryProvider.queryLabels.test.ts"
+    ]
+  },
+  {
+    "report": "final-main9aa-merge-independent.json",
+    "startedAtEpochMs": 1790776245958,
+    "success": true,
+    "passed": 210,
+    "failed": 0,
+    "files": [
+      "src/hooks/__tests__/financeDurableWriters.test.ts",
+      "src/hooks/__tests__/incomeExpenseDetailParallel.test.ts",
+      "src/hooks/__tests__/zaloActions.feedback.test.ts",
+      "src/hooks/__tests__/zaloMediaFeedback.test.ts",
+      "src/lib/__tests__/imageCompress.test.ts",
+      "src/lib/__tests__/r2UploadDeadline.test.ts",
+      "src/lib/__tests__/storageIdentityPolicy.test.ts",
+      "src/lib/__tests__/storageKey.test.ts",
+      "src/lib/__tests__/storageUploadDeadline.test.ts",
+      "src/lib/__tests__/storageUploadOutcome.test.ts",
+      "src/app/providers/__tests__/QueryProvider.errorPolicy.test.ts",
+      "src/app/providers/__tests__/QueryProvider.queryLabels.test.ts",
+      "src/components/income-expenses/__tests__/BatchAccountReasonDialog.feedback.test.tsx",
+      "src/components/income-expenses/__tests__/IncomeExpenseBatchDetailRead.test.tsx",
+      "src/components/income-expenses/__tests__/IncomeExpenseFormDongThiKhongDoc.test.tsx",
+      "src/components/income-expenses/__tests__/IncomeExpenseFormRevise.test.tsx",
+      "src/components/income-expenses/__tests__/voucherDetailReadState.test.tsx",
+      "src/hooks/chat-zalo/__tests__/useZaloMedia.test.ts",
+      "src/hooks/income-expenses/__tests__/postingEvidencePartial.test.tsx",
+      "src/hooks/income-expenses/__tests__/uploadFinanceEvidenceDeadline.test.ts",
+      "src/hooks/income-expenses/__tests__/voucherFeedbackHooks.test.ts"
+    ]
+  },
+  {
+    "report": "notification-fallback-copy-final.json",
+    "startedAtEpochMs": 1790775108663,
+    "success": true,
+    "passed": 13,
+    "failed": 0,
+    "files": [
+      "src/hooks/__tests__/useTamTruKetQuaSync.test.tsx",
+      "src/lib/__tests__/asyncActionFeedback.test.ts"
+    ]
+  },
+  {
+    "report": "final-main9aa-merge-owners-reads-independent.json",
+    "startedAtEpochMs": 1790776406780,
+    "success": true,
+    "passed": 48,
+    "failed": 0,
+    "files": [
+      "src/hooks/__tests__/incomeExpenseDetailRead.test.ts",
+      "src/hooks/__tests__/invoiceNoteNotificationOwner.test.tsx",
+      "src/hooks/__tests__/myDayNotificationOwner.test.tsx",
+      "src/lib/__tests__/asyncActionFeedback.test.ts",
+      "src/lib/__tests__/incomeExpenseDetailRead.test.ts",
+      "src/lib/__tests__/voucherDetailReadMigration.test.ts"
+    ]
+  },
+  {
+    "report": "notification-fallback-copy-bundle-final.json",
+    "startedAtEpochMs": 1790777187713,
+    "success": true,
+    "passed": 7,
+    "failed": 0,
+    "files": [
+      "src/lib/__tests__/asyncActionFeedback.test.ts"
+    ]
+  },
+  {
+    "report": "final-fallback-copy-independent.json",
+    "startedAtEpochMs": 1790777280251,
+    "success": true,
+    "passed": 7,
+    "failed": 0,
+    "files": [
+      "src/lib/__tests__/asyncActionFeedback.test.ts"
+    ]
+  }
+]

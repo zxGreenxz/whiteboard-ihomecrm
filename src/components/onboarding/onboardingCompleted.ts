@@ -9,11 +9,14 @@ export const ONBOARDING_KEY = 'onboarding_completed';
 // data = null → cờ bị đọc thành false vĩnh viễn và bảng Chào mừng hiện lại mãi
 // cho tài khoản cũ (bug 26/08/2026, tài khoản nguyentamca165).
 export async function fetchOnboardingCompleted(userId: string): Promise<boolean> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('settings')
     .select('value')
     .eq('key', ONBOARDING_KEY)
     .eq('user_id', userId)
     .maybeSingle();
-  return data?.value === true;
+  if (error) throw error;
+  if (data === null) return false; // A verified absent row is a genuinely new user.
+  if (!data || typeof data.value !== 'boolean') throw new TypeError('Malformed onboarding completion flag');
+  return data.value;
 }

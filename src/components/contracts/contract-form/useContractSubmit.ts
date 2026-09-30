@@ -1,3 +1,4 @@
+import {validateInputDrafts} from '@/lib/inputDraftValidation';
 import { toast } from "sonner";
 
 import type { ContractFormData } from "@/lib/contractValidation";
@@ -14,10 +15,17 @@ import {
   type ContractCreateRequest,
 } from "@/lib/contractCreateRpc";
 import { applyDepositAdjustmentNote } from "@/lib/contractPriceAdjustment";
+import { contractCreateFeedback,isContractTemplateSettingError } from '@/lib/contractFeedback';
+import {validateContractDepositRows,validateContractServiceRows} from '@/lib/contractRowFeedback';
+import { validateFirstInvoiceRows } from '@/lib/contractInvoiceFeedback';
+import { applyFeedbackToForm, focusFirstError } from '@/lib/formErrors';
+import {runContractEdit,readContractEditSnapshot} from '@/lib/contractEditWorkflow';
+import {workflowErrorMessage} from '@/lib/financialWorkflow';
 import type { ContractFormState } from "./useContractFormState";
 
 interface UseContractSubmitParams {
   state: ContractFormState;
+  formRoot?:()=>HTMLElement|null;
   contract?: ContractWithRelations;
   onOpenChange: (open: boolean) => void;
   /** Gọi sau khi TẠO HĐ thành công (không gọi ở edit mode). */
@@ -46,6 +54,7 @@ export async function refreshStaleOrphanDeposits(error: unknown, refetch: () => 
  */
 export function useContractSubmit({
   state,
+  formRoot,
   contract,
   onOpenChange,
   onCreated,
@@ -61,6 +70,8 @@ export function useContractSubmit({
     updateContract,
     syncCustomers,
     syncServices,
+    partialSyncRef,
+    setPartialSyncIssue,
     typedDepositTotal,
     approvedOrphanTotal,
     orphanDepositVouchers,
@@ -73,23 +84,44 @@ export function useContractSubmit({
 
   // ---- Submit handler ----
   const onSubmit = (data: ContractFormData) => {
+    const root=formRoot?.()??(typeof document==='undefined'?null:document.querySelector<HTMLElement>('[data-slot="dialog-content"]'));
+    if(!validateInputDrafts(root))return;
+    if (state.sourceIssues?.length) {
+      const labels = state.sourceIssues.map(issue => issue.label).join(', ');
+      form.setError('root.server', { type: 'server', message: `Chưa tải được ${labels}. Tải lại nguồn trước khi lưu hợp đồng.` });
+      toast.error('Chưa thể lưu hợp đồng', { description: `Cần tải lại ${labels} để đối chiếu dữ liệu.` });
+      return;
+    }
+    const recoveringEdit=isEditMode&&!!partialSyncRef?.current;
+    const rowErrors=recoveringEdit?{}:{...validateContractDepositRows(isEditMode?[]:depositRows??[]),
+      ...validateContractServiceRows(useCustomServices?selectedServices:[])};
+    if(Object.keys(rowErrors).length){
+      void applyFeedbackToForm(form,{description:'Kiểm tra các lần cọc và dòng dịch vụ được đánh dấu đỏ.',fieldErrors:rowErrors},{root});
+      toast.error('Chưa thể lưu hợp đồng',{description:'Kiểm tra các lần cọc và dòng dịch vụ được đánh dấu đỏ.'});
+      return;
+    }
+    const focusField = (name: string) => {
+      void focusFirstError({ [name]: 'error' }, {
+        root: root,
+      });
+    };
     // Resident requires at least one customer (representative tenant) on a
     // contract — fail fast in the UI rather than letting Postgres throw a
     // confusing NOT NULL violation on tenant_id.
-    if (selectedCustomers.length === 0) {
+    if (selectedCustomers.length === 0 && !recoveringEdit) {
+      void applyFeedbackToForm(form, { description: 'Vui lòng chọn ít nhất một khách hàng cho hợp đồng.',
+        fieldErrors: { customers: 'Vui lòng chọn ít nhất một khách hàng.' } }, {
+        root: root,
+      });
       toast.error("Không thể lưu hợp đồng", {
         description: "Vui lòng chọn ít nhất một khách hàng cho hợp đồng.",
       });
-      try {
-        const el = document.querySelector('[data-slot="dialog-content"]');
-        if (el) el.scrollTop = 0;
-      } catch { /* Validation remains visible even if scrolling is unavailable. */ }
       return;
     }
 
     const representativeId =
       selectedCustomers.find((customer) => customer.is_representative)?.id ??
-      selectedCustomers[0].id;
+      selectedCustomers[0]?.id;
 
     const customers = selectedCustomers.map((c) => ({
       customer_id: c.id,
@@ -144,29 +176,22 @@ export function useContractSubmit({
             : null,
       };
 
-      updateContract.mutate(
-        { id: contract.id, updates },
-        {
-          onSuccess: async () => {
-            // Luồng update không tự đụng contract_customers / contract_services
-            // → phải sync tay sau khi update HĐ. Đồng bộ cả khách (đại diện +
-            // ghi chú) lẫn dịch vụ (đổi loại điện, đơn giá, chỉ số đầu). Chỉ
-            // đóng dialog khi cả hai thành công; lỗi sẽ giữ dialog mở + toast.
-            try {
-              await Promise.all([
-                syncCustomers.mutateAsync({ contractId: contract.id, customers }),
-                syncServices.mutateAsync({ contractId: contract.id, services }),
-              ]);
-              onOpenChange(false);
-            } catch (e) {
-              console.error("Sync khách hàng/dịch vụ HĐ thất bại:", e);
-              toast.error("Đã cập nhật HĐ nhưng đồng bộ khách hàng/dịch vụ thất bại", {
-                description: "Vui lòng thử lại.",
-              });
-            }
-          },
-        }
-      );
+      state.setEditSubmitting?.(true);
+      void runContractEdit({contractId:contract.id,updates,fieldsFingerprint:JSON.stringify(data),customers,services},{
+        read:readContractEditSnapshot,
+        update:input=>updateContract.mutateAsync(input),
+        customers:input=>syncCustomers.mutateAsync(input),
+        services:input=>syncServices.mutateAsync(input),
+        onJob:job=>{partialSyncRef.current=job;setPartialSyncIssue?.(job?`Hợp đồng ${job.contractId} có yêu cầu cập nhật cần đối chiếu. Bấm “Kiểm tra và hoàn tất đồng bộ” để đọc dữ liệu hiện có trước khi tiếp tục.`:null);},
+      }).then(saved=>{
+        setPartialSyncIssue?.(null);form.clearErrors?.('root.server');
+        if(saved.fieldsFingerprint===JSON.stringify(data)&&saved.customersFingerprint===JSON.stringify(customers)&&saved.servicesFingerprint===JSON.stringify(services)){
+          toast.success('Đã cập nhật hợp đồng và đồng bộ khách hàng, dịch vụ');onOpenChange(false);
+        }else toast.error('Đã đồng bộ xong; thay đổi mới trong form chưa lưu',{description:`ID hợp đồng: ${contract.id}. Bấm Cập nhật để lưu các thay đổi bạn nhập sau lần trước.`});
+      }).catch(error=>{
+        const message=workflowErrorMessage(error,'cập nhật hợp đồng');setPartialSyncIssue?.(partialSyncRef.current?message:null);form.setError('root.server',{type:'server',message});
+        toast.error('Chưa hoàn tất cập nhật hợp đồng',{description:message});
+      }).finally(()=>state.setEditSubmitting?.(false));
     } else {
       // Create mode
 
@@ -185,10 +210,7 @@ export function useContractSubmit({
           message: billCheck.message,
         });
         toast.error("Không thể lưu hợp đồng", { description: billCheck.message });
-        try {
-          const el = document.querySelector('[data-slot="dialog-content"]');
-          if (el) el.scrollTop = 0;
-        } catch { /* Validation remains visible even if scrolling is unavailable. */ }
+        focusField('end_billing_date');
         return;
       }
 
@@ -198,6 +220,9 @@ export function useContractSubmit({
         depositPaidValue,
       );
       if (depositBalance.isOverpaid) {
+        const depositField = depositRows.length ? `deposit_rows.${depositRows[depositRows.length - 1].uid}.amount` : 'total_deposit';
+        form.setError(depositField as never, { type: 'manual', message: `Tiền cọc đã nhận ${formatCurrency(depositPaidValue)} vượt tiền cọc hợp đồng ${formatCurrency(data.total_deposit)}. Kiểm tra số tiền cọc được đánh dấu.` });
+        focusField(depositField);
         toast.error("Không thể lưu hợp đồng", {
           description: `Tổng tiền cọc đã nhận đang vượt ${formatCurrency(depositBalance.overpayment)} so với tiền cọc của hợp đồng.`,
         });
@@ -216,6 +241,7 @@ export function useContractSubmit({
             message:
               "Khách chưa đóng đủ cọc — chọn cách xử lý (Nợ cọc / Đóng đủ ngay).",
           });
+          focusField('deposit_debt_mode');
           toast.error("Không thể lưu hợp đồng", {
             description: `Khách còn thiếu ${formatCurrency(remaining)} tiền cọc. Chọn "Nợ cọc" hoặc "Đóng đủ ngay" (thêm dòng cọc) để tiếp tục.`,
           });
@@ -226,6 +252,7 @@ export function useContractSubmit({
             type: "manual",
             message: "Nhập lý do cho nợ cọc.",
           });
+          focusField('deposit_debt_reason');
           toast.error("Không thể lưu hợp đồng", {
             description: "Vui lòng nhập lý do cho nợ cọc.",
           });
@@ -236,6 +263,7 @@ export function useContractSubmit({
             type: "manual",
             message: "Chọn hạn bổ sung cọc.",
           });
+          focusField('deposit_topup_due_date');
           toast.error("Không thể lưu hợp đồng", {
             description: "Vui lòng chọn hạn bổ sung cọc.",
           });
@@ -256,6 +284,14 @@ export function useContractSubmit({
           item.accounting_class !== "DEPOSIT" ||
           effectiveDebtMode === "FIRST_INVOICE",
       );
+      const invoiceRowErrors = validateFirstInvoiceRows(firstInvoiceItems, billingPeriod);
+      if (Object.keys(invoiceRowErrors).length > 0) {
+        void applyFeedbackToForm(form, {
+          description: 'Kiểm tra các dòng hóa đơn đầu.', fieldErrors: invoiceRowErrors,
+        }, { root: root });
+        toast.error('Không thể lưu hợp đồng', { description: 'Kiểm tra dòng hóa đơn đầu được đánh dấu đỏ.' });
+        return;
+      }
       const depositInvoiceItems = firstInvoiceItems.filter(
         (item) => item.accounting_class === "DEPOSIT",
       );
@@ -268,9 +304,12 @@ export function useContractSubmit({
               remaining,
           ) >= 0.01)
       ) {
-        toast.error("Không thể lưu hợp đồng", {
-          description: "Dòng tiền cọc trong hoá đơn đầu không còn khớp phần cọc thiếu.",
-        });
+        const message = `Dòng tiền cọc trong hóa đơn đầu phải bằng ${formatCurrency(remaining)}. Cập nhật dòng tiền cọc theo phần còn thiếu.`;
+        const fieldErrors = depositInvoiceItems.length
+          ? Object.fromEntries(depositInvoiceItems.map(item=>[`invoice_items.${item.id}.unit_price`,message]))
+          : {first_invoice:message};
+        void applyFeedbackToForm(form, {description:message,fieldErrors},{root});
+        toast.error("Chưa thể lưu hợp đồng", {description:message});
         return;
       }
 
@@ -325,9 +364,7 @@ export function useContractSubmit({
         },
         customers,
         services,
-        deposit_receipts: depositRows
-          .filter((row) => (Number(row.amount) || 0) > 0)
-          .map((row) => ({
+        deposit_receipts: depositRows.map((row) => ({
             amount: Number(row.amount),
             account_id: row.account_id || null,
             received_date: row.received_date || data.signed_date,
@@ -362,7 +399,7 @@ export function useContractSubmit({
       if (onCreateRequest) return onCreateRequest(request);
 
       createContract.mutate(
-        request,
+        {...request,suppressErrorToast:true},
         {
           onSuccess: (contract) => {
             onOpenChange(false);
@@ -372,8 +409,17 @@ export function useContractSubmit({
             }
           },
           onError: async (error) => {
+            const feedback = contractCreateFeedback(error, data);
             const refreshState = await refreshStaleOrphanDeposits(error, refetchOrphanDepositVouchers);
-            if (refreshState === "not-stale") return;
+            if (Object.keys(feedback.fieldErrors ?? {}).length > 0) {
+              // Keep field messages now; focus when the submitted fieldset becomes editable.
+              void applyFeedbackToForm(form, feedback, { root, waitForEnabled: true });
+            }
+            if (refreshState === "not-stale") {
+              form.setError('root.server',{type:'server',message:feedback.description});
+              toast.error(feedback.title,{description:feedback.description,...(isContractTemplateSettingError(error)?{action:{label:'Mở mẫu tài liệu',onClick:()=>window.open('/settings/templates','_blank','noopener,noreferrer')}}:{})});
+              return;
+            }
             toast.error("Danh sách cọc giữ chỗ đã thay đổi", {
               description: refreshState === "refreshed"
                 ? "Đã tải lại cọc của phòng. Thông tin hợp đồng bạn nhập vẫn được giữ; hãy kiểm tra phần cọc rồi lưu lại."

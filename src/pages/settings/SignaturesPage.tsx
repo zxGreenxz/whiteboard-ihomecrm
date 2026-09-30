@@ -1,13 +1,9 @@
 import { FileSignature, Upload, Pencil, Type } from 'lucide-react';
 import MainLayout from "@/components/layout/MainLayout";
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 
 const SignaturesPage = () => {
-  const signatures = [
-    { id: 1, name: 'Chữ ký Giám đốc', type: 'Upload', url: '/signatures/director.png' },
-    { id: 2, name: 'Chữ ký Kế toán', type: 'Draw', url: null },
-  ];
+
 
   return (
     <MainLayout>
@@ -25,39 +21,21 @@ const SignaturesPage = () => {
         </div>
 
         <div className="mb-6 flex gap-3">
-          <Button>
+          <Button disabled>
             <Upload className="h-4 w-4 mr-2" />
             Tải ảnh lên
           </Button>
-          <Button variant="outline">
+          <Button variant="outline" disabled>
             <Pencil className="h-4 w-4 mr-2" />
             Vẽ chữ ký
           </Button>
-          <Button variant="outline">
+          <Button variant="outline" disabled>
             <Type className="h-4 w-4 mr-2" />
             Nhập text
           </Button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {signatures.map((signature) => (
-            <Card key={signature.id}>
-              <CardHeader>
-                <CardTitle className="text-base">{signature.name}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="bg-gray-50 h-32 rounded flex items-center justify-center mb-3">
-                  {signature.url ? (
-                    <img src={signature.url} alt={signature.name} className="max-h-full" />
-                  ) : (
-                    <p className="text-muted-foreground text-sm">Chưa có chữ ký</p>
-                  )}
-                </div>
-                <p className="text-xs text-muted-foreground">Phương thức: {signature.type}</p>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        <p role="status" className="rounded-md border p-4 text-sm text-muted-foreground">Tính năng mẫu chữ ký chưa được kết nối với dữ liệu. Các thao tác tải ảnh, vẽ và nhập chữ ký chưa khả dụng.</p>
       </div>
     </MainLayout>
   );

@@ -34,9 +34,11 @@ import {
   type MaterialPurchaseWithItems,
 } from '@/hooks/useMaterialPurchases';
 import { format } from 'date-fns';
+import { QueryRegion } from '@/components/errors/QueryRegion';
 
 export default function MaterialPurchasesContent() {
-  const { data: purchases = [], isLoading } = useMaterialPurchases();
+  const purchasesQuery = useMaterialPurchases();
+  const { data: purchases = [], isLoading } = purchasesQuery;
   const deleteMut = useDeleteMaterialPurchase();
 
   const [formOpen, setFormOpen] = useState(false);
@@ -55,6 +57,7 @@ export default function MaterialPurchasesContent() {
   };
 
   return (
+    <QueryRegion label="danh sách phiếu nhập vật tư" queries={[purchasesQuery]}>
     <div className="space-y-4">
       <div className="flex justify-end">
         <Button
@@ -235,5 +238,6 @@ export default function MaterialPurchasesContent() {
         </AlertDialogContent>
       </AlertDialog>
     </div>
+    </QueryRegion>
   );
 }

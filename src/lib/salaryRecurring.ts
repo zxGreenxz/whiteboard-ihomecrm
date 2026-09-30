@@ -66,7 +66,7 @@ const rowSchema = z.object({
 
 /** Kiểm hình dạng tại biên RPC — sai hình dạng thì ném, không lặng lẽ thành 0đ. */
 export function parseRecurringRows(rows: unknown): RecurringItem[] {
-  return z.array(rowSchema).parse(rows ?? []).map((r) => ({
+  return z.array(rowSchema).parse(rows).map((r) => ({
     id: r.item_id,
     staffId: r.staff_id,
     staffName: r.staff_name,

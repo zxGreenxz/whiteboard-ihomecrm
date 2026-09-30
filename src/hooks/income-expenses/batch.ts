@@ -1,3 +1,8 @@
+import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
+import {FinancialWorkflowError,isConfirmedFinancialRejection,workflowErrorMessage} from '@/lib/financialWorkflow';
+import {financialReadRows} from '@/lib/financialReadValidation';
+import {runFinancialPending} from '@/lib/financialPendingAction';
+import { VoucherPartialError, voucherFailureMessage, voucherOutcomeUnknown } from "@/lib/voucherFeedback";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
@@ -39,57 +44,73 @@ const compatRpc = (
  * đúng, thay vì hỏng cả mẻ chỉ vì một phiếu.
  */
 async function cancelVouchersSplitByType(
-  vouchers: { id: string; type?: string | null }[],
-  reason: string,
-): Promise<{ cancelled: number; failures: { id: string; message: string }[] }> {
-  const incomes = vouchers.filter((v) => v.type === "INCOME");
-  const others = vouchers.filter((v) => v.type !== "INCOME");
-  const failures: { id: string; message: string }[] = [];
+  vouchers: { id: string; type?: string | null }[], reason: string,
+  recordCompleted?:(ids:string[])=>void,
+): Promise<{ cancelled: number; failures: { id: string; message: string; outcomeUnknown:boolean }[]; completedIds: string[] }> {
+  const incomes = vouchers.filter(v => v.type === "INCOME");
+  const others = vouchers.filter(v => v.type !== "INCOME");
+  const failures: {id:string;message:string;outcomeUnknown:boolean}[] = [];
+  const completedIds: string[] = [];
   let cancelled = 0;
-
-  if (others.length > 0) {
-    const { data, error } = await compatRpc("ie_compat_cancel_v2", {
-      p_ids: others.map((v) => v.id),
-      p_reason: reason,
-    });
-    if (error) {
-      for (const v of others) failures.push({ id: v.id, message: error.message ?? "Không huỷ được" });
-    } else {
-      cancelled += (data as { cancelled?: number } | null)?.cancelled ?? others.length;
+  if (others.length) {
+    try {
+      const {data,error} = await compatRpc("ie_compat_cancel_v2", {p_ids:others.map(v=>v.id),p_reason:reason});
+      if (error) throw error;
+      const count = (data as {cancelled?:unknown} | null)?.cancelled;
+      if (typeof count !== "number" || !Number.isInteger(count) || count < 0 || count > others.length) throw new TypeError("Missing cancellation receipt");
+      if(recordCompleted && count!==others.length){
+        const {data:rows,error:readError}=await supabase.from('income_expenses').select('id,approval_status').in('id',others.map(v=>v.id));
+        if(readError || !Array.isArray(rows) || others.some(v=>!rows.some(row=>row.id===v.id&&row.approval_status==='CANCELLED')))throw new TypeError('Chưa xác nhận được từng phiếu chi trong đợt đã huỷ.');
+      }
+      cancelled += count; completedIds.push(...others.map(v=>v.id));
+      recordCompleted?.(others.map(v=>v.id));
+    } catch(error) {
+      failures.push(...others.map(v=>({id:v.id,message:voucherFailureMessage(error,"huỷ phiếu"),outcomeUnknown:!isConfirmedFinancialRejection(error)})));
     }
   }
-
-  // Cửa phiếu thu nhận TỪNG phiếu (mỗi phiếu là một transaction atomic ở
-  // server) — lỗi một phiếu không kéo đổ những phiếu đã huỷ xong.
   for (const v of incomes) {
-    const { error } = await compatRpc("cancel_income_voucher_v1", {
-      p_voucher: v.id,
-      p_reason: reason,
-    });
-    if (error) failures.push({ id: v.id, message: error.message ?? "Không huỷ được" });
-    else cancelled += 1;
+    try {
+      const {data,error} = await compatRpc("cancel_income_voucher_v1", {p_voucher:v.id,p_reason:reason});
+      if (error) throw error;
+      const receipt = data as {id?:unknown;changed?:unknown} | null;
+      if ((recordCompleted&&receipt?.id!==v.id) || typeof receipt?.changed !== "boolean") throw new TypeError("Missing cancellation receipt");
+      if (receipt.changed) cancelled++;
+      completedIds.push(v.id);
+      recordCompleted?.([v.id]);
+    } catch(error) { failures.push({id:v.id,message:voucherFailureMessage(error,"huỷ phiếu thu"),outcomeUnknown:!isConfirmedFinancialRejection(error)}); }
   }
-
-  return { cancelled, failures };
+  return {cancelled,failures,completedIds};
 }
+
+interface ExcelImportResult {
+  successCount:number;createdVouchers:Array<{row:number;id:string;code:string|null}>;failedCount:number;errors:Array<{row:number;message:string}>;
+}
+class ExcelImportUnconfirmed extends TypeError {
+  constructor(readonly result:ExcelImportResult){super('Một số dòng Excel chưa được đối chiếu với máy chủ.');}
+}
+// The compat writer has no server request key. This lock covers unresolved imports
+// for the actor/org; identical successful rows remain valid independent vouchers.
+const excelSnapshotKey=(userId:string,organizationId:string)=>`ihome:excel-import-pending:v1:${userId}:${organizationId}`;
 
 // Import phiếu thu/chi hàng loạt từ Excel
 export const useImportIncomeExpenses = () => {
   const queryClient = useQueryClient();
+  const {selectedOrganizationId}=useOrganization();
+  const workflow=persistentFinancialWorkflow('voucher-excel-import');
 
   return useMutation({
     mutationFn: async (
       rows: ImportIncomeExpenseRow[]
-    ): Promise<{
-      successCount: number;
-      failedCount: number;
-      errors: Array<{ row: number; message: string }>;
-    }> => {
+    ): Promise<ExcelImportResult> => {
       const user = await getSessionUser();
 
       if (!user) throw new Error("User not authenticated");
 
+      if(rows.some(row=>!Number.isFinite(row.amount)||row.amount<=0))throw new Error('Nhập số tiền hợp lệ lớn hơn 0 ở từng dòng Excel.');
+      const snapshotKey=excelSnapshotKey(user.id,selectedOrganizationId??'');
+      try { return await workflow.run('excel-import','nhập phiếu từ Excel',async progress=>{
       let successCount = 0;
+      const createdVouchers: Array<{ row: number; id: string; code: string | null }> = [];
       let failedCount = 0;
       const errors: Array<{ row: number; message: string }> = [];
       const accountingClassFor =
@@ -97,6 +118,11 @@ export const useImportIncomeExpenses = () => {
           rows.map((row) => row.income_expense_type_id),
         );
 
+      const unconfirmedRows:number[]=[];
+      const failedRows:number[]=[];
+      const snapshotRows=rows.map((row,index)=>({sourceRow:row.source_row??index+1,type:row.type,buildingId:row.building_id,itemTypeId:row.income_expense_type_id,voucherDate:row.voucher_date,amount:row.amount}));
+      const saveSnapshot=()=>localStorage.setItem(snapshotKey,JSON.stringify({attemptId:progress.requestKey,rows:snapshotRows,createdVouchers,unconfirmedRows,failedRows}));
+      saveSnapshot(); // Store real row positions before the first writer, without personal names/notes.
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
         try {
@@ -104,7 +130,7 @@ export const useImportIncomeExpenses = () => {
           // strip field client gửi) — không đọc buildings ở client vì RLS chỉ mở
           // cho ai có scope buildings.view, còn Thu/Chi cho phép all_buildings.
           // Phiếu + item trong MỘT call server-side (birth UNAPPROVED — §8).
-          const { error: compatError } = await compatRpc("ie_compat_insert_v2", {
+          const { data: created, error: compatError } = await compatRpc("ie_compat_insert_v2", {
             p_row: {
               user_id: user.id,
               type: row.type,
@@ -125,39 +151,62 @@ export const useImportIncomeExpenses = () => {
             ],
           });
 
-          if (compatError) {
-            failedCount++;
-            errors.push({ row: i + 1, message: compatError.message ?? "Lỗi không xác định" });
-            continue;
-          }
+          if (compatError) throw compatError;
 
+          const receipt = created as {id?: string; code?: string} | null;
+          if (typeof receipt?.id!=="string"||!receipt.id) throw new TypeError("Chưa xác nhận kết quả: Failed to fetch receipt");
+          createdVouchers.push({ row: i + 1, id: receipt.id, code: receipt.code ?? null });
+          progress.completed.push({id:receipt.id,label:`Đã tạo phiếu ${receipt.code??receipt.id} từ dòng ${snapshotRows[i].sourceRow}`});
           successCount++;
+          saveSnapshot();
         } catch (err: any) {
           failedCount++;
-          errors.push({ row: i + 1, message: err.message || "Lỗi không xác định" });
+          failedRows.push(snapshotRows[i].sourceRow);
+          errors.push({ row: i + 1, message: voucherFailureMessage(err, "nhập phiếu") });
+          if(!isConfirmedFinancialRejection(err))unconfirmedRows.push(snapshotRows[i].sourceRow);
+          saveSnapshot();
         }
       }
 
-      return { successCount, failedCount, errors };
+      const result={successCount,failedCount,errors,createdVouchers};
+      if(unconfirmedRows.length || (failedCount>0 && createdVouchers.length>0))throw new ExcelImportUnconfirmed(result);
+      localStorage.removeItem(snapshotKey);
+      return result;
+      },undefined,selectedOrganizationId??undefined);
+      } catch(error) {
+        // Preserve row outcomes for the result screen while the durable guard stays blocked.
+        let cause:unknown=error;const seen=new Set<unknown>();
+        while(cause && !seen.has(cause)){
+          if(cause instanceof ExcelImportUnconfirmed)return cause.result;
+          seen.add(cause);cause=typeof cause==='object'?(cause as {cause?:unknown}).cause:undefined;
+        }
+        if(error instanceof FinancialWorkflowError){
+          const raw=localStorage.getItem(snapshotKey);
+          if(raw){
+            const snapshot=JSON.parse(raw) as {unconfirmedRows?:unknown;failedRows?:unknown};
+            const rows=snapshot.failedRows??snapshot.unconfirmedRows;
+            if(Array.isArray(rows)&&rows.length>0&&rows.every(row=>Number.isInteger(row)&&row>0))throw new FinancialWorkflowError(`${workflowErrorMessage(error,'nhập phiếu từ Excel')} Dòng Excel chưa hoàn tất: ${rows.join(', ')}.`,error.outcome,error.completed,error);
+          }
+        }
+        throw error;
+      }
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
-      if (result.successCount > 0) {
-        toast.success("Dữ liệu đã được TẠO thành công");
-      }
-      if (result.failedCount > 0 && result.successCount === 0) {
-        toast.error(`Tất cả ${result.failedCount} phiếu đều lỗi`);
-      }
+      if (result.failedCount > 0) {
+        toast.warning(`Đã tạo ${result.successCount} phiếu${result.createdVouchers.length?": "+result.createdVouchers.map(v=>v.code??v.id).join(", "):""}; ${result.failedCount} dòng chưa hoàn tất. Xem lỗi từng dòng và đối chiếu trước khi nhập lại.`);
+      } else if (result.successCount > 0) {
+        toast.success(`Đã tạo ${result.successCount} phiếu từ Excel. Xem trạng thái từng phiếu trong danh sách thu chi.`);
+      } else toast.info("Không có dòng dữ liệu để nhập.");
     },
     onError: (error) => {
-      console.error("Error importing income expenses:", error);
-      toast.error("Không thể nhập dữ liệu từ Excel");
+      toast.error(error instanceof FinancialWorkflowError ? workflowErrorMessage(error,'nhập phiếu từ Excel') : voucherFailureMessage(error, 'nhập phiếu từ Excel'));
     },
   });
 };
 
 // Tạo phiếu tổng = INSERT 1 batch + N phiếu con + N junction + N items.
-export const useCreateIncomeExpenseBatch = () => {
+export const useCreateIncomeExpenseBatch = (options: {silent?:boolean} = {}) => {
   const queryClient = useQueryClient();
   const { selectedOrganizationId } = useOrganization();
 
@@ -174,6 +223,7 @@ export const useCreateIncomeExpenseBatch = () => {
           input.items.map((item) => item.income_expense_type_id),
         );
 
+      return runFinancialPending({namespace:"voucher-batch-create",userId:user.id,organizationId:selectedOrganizationId ?? "",businessKey:input.type},async progress=>{
       // 1. INSERT batch metadata
       const { data: batch, error: batchError } = await supabase
         .from("income_expense_batches")
@@ -189,10 +239,11 @@ export const useCreateIncomeExpenseBatch = () => {
         .single();
 
       if (batchError || !batch) {
-        toast.error(batchError?.message || "Không thể tạo phiếu tổng");
-        throw batchError;
+        throw batchError ?? new Error("Chưa nhận được kết quả tạo đợt phiếu");
       }
 
+      if(!batch.id)throw new TypeError("Chưa xác nhận mã đợt phiếu");
+      progress.recordCompleted([batch.id]);
       // 2. Tạo N phiếu con qua ie_compat_insert_v2 (phiếu + item atomic mỗi
       //    call, birth UNAPPROVED — §8). Tạo TỪNG phiếu để giữ thứ tự rõ ràng
       //    (tương ứng với items input). Nếu lỗi ở giữa: rollback bằng cách xoá
@@ -241,6 +292,7 @@ export const useCreateIncomeExpenseBatch = () => {
             throw voucherError ?? new Error("Không thể tạo phiếu con");
           }
           childVouchers.push({ id: voucherId, type: input.type });
+          progress.recordCompleted([voucherId]);
         }
 
         // 3. INSERT junction rows (bảng batch_items — ngoài phạm vi drain).
@@ -252,54 +304,66 @@ export const useCreateIncomeExpenseBatch = () => {
           .from("income_expense_batch_items")
           .insert(withOrgAll(linkRows, selectedOrganizationId));
         if (linkError) throw linkError;
-      } catch (err: any) {
-        // Best-effort rollback: xoá batch (CASCADE xoá junction);
-        // Phiếu con đã tạo sẽ thành phiếu lẻ standalone — huỷ chúng qua RPC
-        // (Stage-7: client không còn UPDATE/DELETE trực tiếp income_expenses).
-        if (childVouchers.length > 0) {
-          // Tách THU/CHI: phiếu thu vừa tạo nay đã GHI SỔ ngay (Đợt B) nên
-          // đường compat sẽ từ chối, để lại phiếu mồ côi sống nhăn.
-          await cancelVouchersSplitByType(childVouchers, "Rollback tạo phiếu tổng lỗi");
-        }
-        await supabase
-          .from("income_expense_batches")
-          .delete()
-          .eq("id", (batch as any).id);
-        toast.error(err?.message || "Không thể tạo phiếu tổng");
-        throw err;
+      } catch (error: unknown) {
+        // Keep all receipts even if compensation fails; the user must reconcile,
+        // never blindly create the whole batch again after a multi-step failure.
+        let cancelled = 0;
+        let cleanupFailed = false;
+        try {
+          if (childVouchers.length > 0) {
+            const cleanup = await cancelVouchersSplitByType(childVouchers, "Rollback tạo phiếu tổng lỗi");
+            cancelled = cleanup.cancelled;
+            cleanupFailed = cleanup.failures.length > 0;
+          }
+          const removed = await supabase.from("income_expense_batches").delete().eq("id", (batch as any).id);
+          cleanupFailed ||= !!removed.error;
+        } catch { cleanupFailed = true; }
+        throw new VoucherPartialError(
+          `Chưa hoàn tất đợt phiếu. Đã nhận kết quả tạo ${childVouchers.length} phiếu, đã huỷ lại ${cancelled} phiếu.${cleanupFailed ? " Chưa xác nhận được việc dọn toàn bộ đợt." : ""} Hãy kiểm tra danh sách phiếu trước khi lập đợt mới.`,
+          childVouchers.map(v => v.id), (batch as any).id, error,
+        );
       }
 
-      return { batch, voucherCount: childVouchers.length };
+      return { batch, voucherCount: childVouchers.length, voucherIds: childVouchers.map(v=>v.id) };
+      });
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
       queryClient.invalidateQueries({ queryKey: ["income-expense-batches"] });
       queryClient.invalidateQueries({ queryKey: ["accounts-with-balance"] });
-      toast.success(`Đã tạo ${result.voucherCount} phiếu trong 1 đợt`);
+      if (!options.silent) toast.success(`Đã tạo ${result.voucherCount} phiếu trong một đợt. Xem trạng thái từng phiếu trong danh sách thu chi.`);
     },
     onError: (error) => {
+      queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
+      queryClient.invalidateQueries({ queryKey: ["income-expense-batches"] });
       console.error("Error creating income expense batch:", error);
+      if (!options.silent) toast.error(voucherFailureMessage(error, "tạo đợt phiếu"));
     },
   });
 };
 
+class BatchCancelUnconfirmed extends TypeError {
+  constructor(readonly result:{count:number;failures:{id:string;message:string;outcomeUnknown:boolean}[];completedIds:string[]}){super('Một số phiếu trong đợt chưa được đối chiếu.');}
+}
 // Huỷ tất cả phiếu con của 1 batch (1 click)
 export const useCancelIncomeExpenseBatch = () => {
   const queryClient = useQueryClient();
+  const {selectedOrganizationId}=useOrganization();
+  const workflow=persistentFinancialWorkflow('voucher-batch-cancel');
 
   return useMutation({
     mutationFn: async (batchId: string) => {
+      try {return await workflow.run(batchId,'huỷ đợt phiếu',async progress=>{
       // 1. Lấy danh sách voucher_id thuộc batch
       const { data: links, error: linkError } = await supabase
         .from("income_expense_batch_items")
         .select("income_expense_id")
         .eq("batch_id", batchId);
       if (linkError) {
-        toast.error(linkError.message || "Không thể đọc danh sách phiếu trong đợt");
         throw linkError;
       }
-      const ids = ((links ?? []) as any[]).map((l) => l.income_expense_id);
-      if (ids.length === 0) return { count: 0 };
+      const ids = financialReadRows<any>(links).map((l) => l.income_expense_id);
+      if (ids.length === 0) return { count: 0, failures: [], completedIds: [] };
 
       // 2. Đọc (read-only) các phiếu còn hiệu lực để biết payment_id cần
       //    cascade xoá; sau đó huỷ qua ie_compat_cancel_v2 (Stage-7: client
@@ -311,31 +375,22 @@ export const useCancelIncomeExpenseBatch = () => {
         .in("id", ids)
         .neq("approval_status", "CANCELLED");
       if (readError) {
-        toast.error(readError.message || "Không thể đọc phiếu trong đợt");
         throw readError;
       }
-      const activeVouchers = (vouchers ?? []) as any[];
-      if (activeVouchers.length === 0) return { count: 0 };
+      const activeVouchers = financialReadRows<any>(vouchers);
+      if (activeVouchers.length === 0) return { count: 0, failures: [], completedIds: [] };
 
-      const { cancelled, failures } = await cancelVouchersSplitByType(
+      const { cancelled, failures, completedIds } = await cancelVouchersSplitByType(
         activeVouchers,
         "Huỷ cả đợt phiếu",
+        ids=>progress.completed.push(...ids.map(id=>({id,label:`Đã huỷ phiếu ${id}`}))),
       );
-      if (failures.length > 0 && cancelled === 0) {
-        toast.error(failures[0].message || "Không thể huỷ phiếu trong đợt");
-        throw new Error(failures[0].message);
-      }
-      if (failures.length > 0) {
-        toast.warning(
-          `Đã huỷ ${cancelled} phiếu; ${failures.length} phiếu không huỷ được: ${failures[0].message}`,
-        );
-      }
 
       // Phiếu THU đã được server gỡ khoản thanh toán bên trong
       // cancel_income_voucher_v1 (đánh dấu reversed_at, hoá đơn tự mở lại nợ).
       // Chỉ còn phiếu CHI đường cũ mới cần client dọn payments hộ.
       const paymentIdsToDelete = activeVouchers
-        .filter((v) => v.type !== "INCOME" && v.payment_id)
+        .filter((v) => v.type !== "INCOME" && v.payment_id && !failures.some(f => f.id === v.id))
         .map((v) => v.payment_id);
       if (paymentIdsToDelete.length > 0) {
         const { error: payErr } = await supabase
@@ -343,14 +398,25 @@ export const useCancelIncomeExpenseBatch = () => {
           .delete()
           .in("id", paymentIdsToDelete);
         if (payErr) {
-          toast.error(payErr.message || "Không thể rollback thanh toán hoá đơn");
-          throw payErr;
+          throw new VoucherPartialError(`Đã huỷ ${cancelled} phiếu nhưng chưa cập nhật được thanh toán hoá đơn. Hãy kiểm tra phiếu và hoá đơn liên quan trước khi thao tác tiếp.`, activeVouchers.filter(v => !failures.some(f => f.id === v.id)).map(v => v.id), batchId, payErr);
         }
       }
 
-      return { count: cancelled };
+      const result={count:cancelled,failures,completedIds};
+      if(failures.some(failure=>failure.outcomeUnknown))throw new BatchCancelUnconfirmed(result);
+      return result;
+      },undefined,selectedOrganizationId??undefined);
+      } catch(error) {
+        let cause:unknown=error;const seen=new Set<unknown>();
+        while(cause && !seen.has(cause)){
+          if(cause instanceof BatchCancelUnconfirmed)return cause.result;
+          seen.add(cause);cause=typeof cause==='object'?(cause as {cause?:unknown}).cause:undefined;
+        }
+        if(error instanceof FinancialWorkflowError && error.completed.length)throw new VoucherPartialError(workflowErrorMessage(error,'huỷ đợt phiếu'),error.completed.map(step=>step.id),batchId,error);
+        throw error;
+      }
     },
-    onSuccess: ({ count }) => {
+    onSuccess: ({ count, failures }) => {
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
       queryClient.invalidateQueries({ queryKey: ["income-expense-batches"] });
       queryClient.invalidateQueries({ queryKey: ["accounts-with-balance"] });
@@ -359,13 +425,15 @@ export const useCancelIncomeExpenseBatch = () => {
       queryClient.invalidateQueries({ queryKey: ["payments"] });
       queryClient.invalidateQueries({ queryKey: ["invoice-statistics"] });
       queryClient.invalidateQueries({ queryKey: ["utility-payments"] });
-      toast.success(
-        count === 0
-          ? "Không còn phiếu nào trong đợt cần huỷ"
-          : `Đã huỷ ${count} phiếu trong đợt`
-      );
+      if (failures?.length) toast.warning(`Đã huỷ ${count} phiếu; ${failures.length} phiếu chưa huỷ được. Kiểm tra lại từng phiếu trước khi thực hiện tiếp.`);
+      else if (count === 0) toast.info("Không còn phiếu nào trong đợt cần huỷ. Không có thay đổi mới.");
+      else toast.success(`Đã huỷ ${count} phiếu trong đợt.`);
     },
     onError: (error) => {
+      queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
+      queryClient.invalidateQueries({ queryKey: ["income-expense-batches"] });
+      queryClient.invalidateQueries({ queryKey: ["accounts-with-balance"] });
+      toast.error(error instanceof FinancialWorkflowError?workflowErrorMessage(error,'huỷ đợt phiếu'):voucherFailureMessage(error, 'huỷ đợt phiếu'));
       console.error("Error cancelling income expense batch:", error);
     },
   });
@@ -376,22 +444,27 @@ export const useCancelIncomeExpenseBatch = () => {
 // lần sửa có lưu vết (revise_pending_income_expense_v1) với cùng một lý do.
 // Đợt có phiếu đã duyệt thì từ chối CẢ ĐỢT trước khi ghi gì: đổi một nửa là đợt
 // lệch sổ. Phiếu đã huỷ bỏ qua.
+const batchAccountIssues=new Map<string,unknown>();
+export const getBatchAccountIssue=(batchId:string)=>batchAccountIssues.get(batchId);
+
 export const useUpdateBatchAccount = () => {
   const queryClient = useQueryClient();
+  const {selectedOrganizationId}=useOrganization();
+  const workflow=persistentFinancialWorkflow('voucher-batch-account');
 
   return useMutation({
     mutationFn: async (input: { batchId: string; accountId: string; reason: string }) => {
       const { batchId, accountId, reason } = input;
+      try {return await workflow.run(batchId,'đổi sổ quỹ cho đợt phiếu',async progress=>{
 
       const { data: links, error: linkError } = await supabase
         .from("income_expense_batch_items")
         .select("income_expense_id")
         .eq("batch_id", batchId);
       if (linkError) {
-        toast.error(linkError.message || "Không đọc được danh sách phiếu");
         throw linkError;
       }
-      const ids = (links ?? []).map((l) => l.income_expense_id);
+      const ids = financialReadRows(links).map((l) => l.income_expense_id);
       if (ids.length === 0) return { count: 0 };
 
       const { data: rows, error: rowsError } = await supabase
@@ -399,20 +472,20 @@ export const useUpdateBatchAccount = () => {
         .select("id, code, approval_status, approval_version, account_id")
         .in("id", ids);
       if (rowsError) {
-        toast.error(rowsError.message || "Không đọc được phiếu trong đợt");
         throw rowsError;
       }
-      const live = (rows ?? []).filter((r) => r.approval_status !== "CANCELLED");
+      const live = financialReadRows(rows).filter((r) => r.approval_status !== "CANCELLED");
       const daDuyet = live.filter((r) => r.approval_status !== "UNAPPROVED");
       if (daDuyet.length > 0) {
         const message =
           `Đợt có ${daDuyet.length} phiếu đã duyệt (${daDuyet.slice(0, 3).map((r) => r.code).join(", ")}` +
           `${daDuyet.length > 3 ? "…" : ""}) — chỉ đổi sổ được khi mọi phiếu còn Chờ duyệt.`;
-        toast.error(message);
-        throw new Error(message);
+        throw new FinancialWorkflowError(message,'failure',[]);
       }
 
+
       let count = 0;
+      const completedIds: string[] = [];
       for (const r of live) {
         if (r.account_id === accountId) continue;
         try {
@@ -421,31 +494,38 @@ export const useUpdateBatchAccount = () => {
             expectedApprovalVersion: Number(r.approval_version),
             patch: { account_id: accountId },
             reason,
+            idempotencyKey:`${progress.requestKey}:${r.id}`,
           });
-          if (result.changed) count++;
+          if(result.id!==r.id)throw new TypeError('Chưa xác nhận được đúng phiếu vừa đổi sổ.');
+          if (result.changed) { count++; completedIds.push(r.id); progress.completed.push({id:r.id,label:`Đã đổi sổ phiếu ${r.code??r.id}`}); }
         } catch (error) {
-          toast.error(
-            `${r.code}: ${revisionErrorMessage(error)}` +
-              (count > 0 ? ` (đã đổi ${count} phiếu trước đó)` : ""),
-          );
-          throw error;
+          if(!completedIds.length && isConfirmedFinancialRejection(error))throw error;
+          throw new VoucherPartialError(`${r.code}: ${revisionErrorMessage(error)} Đã đổi sổ cho ${count} phiếu trước đó. Hãy kiểm tra đợt phiếu trước khi tiếp tục.`, completedIds, batchId, error);
         }
       }
 
       return { count };
+      },undefined,selectedOrganizationId??undefined);
+      }catch(error){
+        if(error instanceof FinancialWorkflowError && error.completed.length)throw new VoucherPartialError(workflowErrorMessage(error,'đổi sổ quỹ cho đợt phiếu'),error.completed.map(step=>step.id),batchId,error);
+        throw error;
+      }
     },
     onSuccess: ({ count }) => {
       for (const key of VOUCHER_QUERY_KEYS) {
         queryClient.invalidateQueries({ queryKey: key });
       }
-      toast.success(`Đã đổi sổ quỹ cho ${count} phiếu trong đợt`);
+      if (count === 0) toast.info("Các phiếu đã dùng sổ quỹ này. Không có thay đổi mới.");
+      else toast.success(`Đã đổi sổ quỹ cho ${count} phiếu trong đợt.`);
     },
-    onError: (error) => {
+    onError: (error,input) => {
+      if(error instanceof VoucherPartialError||voucherOutcomeUnknown(error)) batchAccountIssues.set(input.batchId,error);
       // Đổi dở dang vẫn phải làm mới màn hình: vài phiếu đầu có thể đã đổi.
       for (const key of VOUCHER_QUERY_KEYS) {
         queryClient.invalidateQueries({ queryKey: key });
       }
       console.error("Error updating batch account:", error);
+      toast.error(error instanceof FinancialWorkflowError?workflowErrorMessage(error,'đổi sổ quỹ cho đợt phiếu'):voucherFailureMessage(error, 'đổi sổ quỹ cho đợt phiếu'));
     },
   });
 };

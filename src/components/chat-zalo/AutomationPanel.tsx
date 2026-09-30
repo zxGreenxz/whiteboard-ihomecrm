@@ -1,3 +1,5 @@
+import { QueryRegion } from '@/components/errors/QueryRegion';
+import { actionErrorMessage } from '@/lib/actionFeedback';
 // =============================================================================
 // AutomationPanel.tsx — tóm tắt tự động hoá ở cột phải (tab "Tự động hoá").
 //
@@ -19,7 +21,7 @@
 // `onOpenSettings` — cột phải rộng ~330px, không phải chỗ dựng form 7 ngày.
 // =============================================================================
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Image as ImageIcon, MessageSquare, Send, SlidersHorizontal, History, Loader2, OctagonX } from 'lucide-react';
 import { EMERALD, tagStyle } from './zaloTheme';
 import { mono } from './infoCards';
@@ -139,7 +141,7 @@ export default function AutomationPanel({ automations, onToggle, templates, conv
   const loiCfg = cfgQuery.isError;
 
   return (
-    <div className="wz-scroll" style={{ flex: 1, overflowY: 'auto', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <QueryRegion label="Tự động hóa Zalo và nhật ký" queries={[cfgQuery,runsQuery]}>    <div className="wz-scroll" style={{ flex: 1, overflowY: 'auto', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
       {/* ------------------------------------------- Gửi ảnh phòng trống */}
       <div style={{ border: '1px solid hsl(152 35% 84%)', background: 'hsl(152 40% 98%)', borderRadius: 12, padding: '13px 14px' }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
@@ -255,7 +257,7 @@ export default function AutomationPanel({ automations, onToggle, templates, conv
               // Nguyên văn worker ghi, chỉ cắt độ dài: đây là câu trả lời cho
               // "sao sáng nay không thấy tin", diễn giải lại là thêm chỗ nói sai.
               <div style={{ fontSize: 11.5, color: luotCuoi.mode === 'failed' ? 'hsl(0 70% 42%)' : 'hsl(210 10% 45%)', lineHeight: 1.45 }}>
-                {rutGon(luotCuoi.reason)}
+                {luotCuoi.mode === 'failed' ? 'Lượt tự động này chưa hoàn tất. Kiểm tra kết nối tài khoản hoặc liên hệ quản trị viên.' : rutGon(luotCuoi.reason)}
               </div>
             ) : null}
           </div>
@@ -291,6 +293,7 @@ export default function AutomationPanel({ automations, onToggle, templates, conv
         </div>
       </div>
     </div>
+    </QueryRegion>
   );
 }
 
@@ -305,8 +308,10 @@ export default function AutomationPanel({ automations, onToggle, templates, conv
  */
 function NutDungKhanCap({ dangBat }: { dangBat: boolean }) {
   const dung = useEmergencyStop();
+  const [open,setOpen] = useState(false);
+  const [error,setError] = useState('');
   return (
-    <AlertDialog>
+    <AlertDialog open={open} onOpenChange={setOpen}>
       <AlertDialogTrigger asChild>
         <button
           disabled={dung.isPending}
@@ -338,10 +343,11 @@ function NutDungKhanCap({ dangBat }: { dangBat: boolean }) {
             </div>
           </AlertDialogDescription>
         </AlertDialogHeader>
+        {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
         <AlertDialogFooter>
           <AlertDialogCancel>Không</AlertDialogCancel>
           <AlertDialogAction
-            onClick={() => dung.mutate()}
+            disabled={dung.isPending} onClick={event => {event.preventDefault();setError('');dung.mutate(undefined,{onSuccess:()=>setOpen(false),onError:cause=>setError(actionErrorMessage(cause,'Chưa xác nhận được kết quả dừng lịch'))});}}
             style={{ background: 'hsl(0 72% 45%)' }}
           >
             Dừng ngay

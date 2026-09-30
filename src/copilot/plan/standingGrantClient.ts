@@ -104,6 +104,7 @@ export interface KetQuaTaoGrant {
   maLoi: string | null;
   thongBao: string | null;
   grant: Grant | null;
+  knownGrantId?: string;
 }
 
 function rangBuocSangJson(r: RangBuocGrant): Json {
@@ -128,12 +129,15 @@ export async function taoGrant(thamSo: ThamSoTaoGrant): Promise<KetQuaTaoGrant> 
   const ban = kq.ban ?? {};
   const grantId = chuoi(ban.grant_id);
   const actionId = chuoi(ban.action_id);
-  if (!grantId || !actionId) {
+  const maxPerDay = ban.max_per_day;
+  const expiresAt = chuoi(ban.expires_at);
+  if (!grantId || actionId !== thamSo.actionId || typeof maxPerDay !== 'number' || !Number.isSafeInteger(maxPerDay) || maxPerDay !== thamSo.maxPerDay || !expiresAt || !Number.isFinite(Date.parse(expiresAt))) {
     return {
       ok: false,
       maLoi: 'phan_hoi_khong_doc_duoc',
       thongBao: 'Server trả về hình dạng không đọc được.',
       grant: null,
+      ...(grantId ? {knownGrantId: grantId} : {}),
     };
   }
   return {
@@ -143,8 +147,8 @@ export async function taoGrant(thamSo: ThamSoTaoGrant): Promise<KetQuaTaoGrant> 
     grant: {
       grantId,
       actionId,
-      maxPerDay: so(ban.max_per_day) ?? thamSo.maxPerDay,
-      expiresAt: chuoi(ban.expires_at),
+      maxPerDay,
+      expiresAt,
     },
   };
 }
@@ -165,6 +169,7 @@ export async function thuHoiGrant(grantId: string, reason: string): Promise<KetQ
     p_reason: reason,
   });
   const kq = docKetQua(data, error);
+  if (kq.ok && kq.ban?.grant_id !== grantId) return {ok:false,maLoi:'phan_hoi_khong_doc_duoc',thongBao:'Chưa xác nhận được hạn mức đã thu hồi. Đọc lại trạng thái trước khi thực hiện tiếp.'};
   return { ok: kq.ok, maLoi: kq.maLoi, thongBao: kq.thongBao };
 }
 
@@ -186,7 +191,7 @@ export async function thuHoiTatCaGrant(
   });
   const kq = docKetQua(data, error);
   if (!kq.ok) return { ok: false, maLoi: kq.maLoi, thongBao: kq.thongBao, soLuongThuHoi: null };
-  return { ok: true, maLoi: null, thongBao: null, soLuongThuHoi: so(kq.ban?.revoked_count) };
+  return { ok: true, maLoi: null, thongBao: null, soLuongThuHoi: typeof kq.ban?.revoked_count === 'number' ? kq.ban.revoked_count : null };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -217,24 +222,33 @@ function rangBuocTuJson(gt: unknown): RangBuocGrant {
   if (maxAmount !== null) ra.maxAmount = maxAmount;
   if (Array.isArray(r.building_ids)) {
     const ids = r.building_ids.filter((x): x is string => typeof x === 'string');
-    if (ids.length > 0) ra.buildingIds = ids;
+    ra.buildingIds = ids;
   }
   return ra;
 }
 
+function dateValue(value: unknown, dateOnly = false): boolean {
+ if (typeof value !== 'string' || !Number.isFinite(Date.parse(value))) return false;
+ return dateOnly ? /^\d{4}-\d{2}-\d{2}$/.test(value) && new Date(value).toISOString().slice(0, 10) === value : /^\d{4}-\d{2}-\d{2}T/.test(value);
+}
+function validConstraints(value: unknown): boolean {
+ const row = laBan(value);
+ return !!row && (row.max_amount === undefined || typeof row.max_amount === 'number' && Number.isFinite(row.max_amount) && row.max_amount > 0) &&
+  (row.building_ids === undefined || Array.isArray(row.building_ids) && row.building_ids.every(id => typeof id === 'string' && !!id));
+}
 function chuanHoaDongGrant(gt: unknown): DongGrant | null {
   const r = laBan(gt);
   if (!r) return null;
   const grantId = chuoi(r.grant_id);
   const actionId = chuoi(r.action_id);
-  if (!grantId || !actionId) return null;
+  if (!grantId || !actionId || typeof r.max_per_day !== 'number' || !Number.isSafeInteger(r.max_per_day) || r.max_per_day < 1 || typeof r.used_today !== 'number' || !Number.isSafeInteger(r.used_today) || r.used_today < 0 || !validConstraints(r.constraints) || !dateValue(r.expires_at) || !dateValue(r.created_at) || !chuoi(r.granter_user_id) || typeof r.reason !== 'string' || !(r.used_on === null || dateValue(r.used_on, true)) || !(r.revoked_at === null || dateValue(r.revoked_at)) || !(r.revoked_by === null || !!chuoi(r.revoked_by))) return null;
   return {
     grantId,
     actionId,
     labelVi: chuoi(r.label_vi) ?? actionId,
     constraints: rangBuocTuJson(r.constraints),
-    maxPerDay: so(r.max_per_day) ?? 0,
-    usedToday: so(r.used_today) ?? 0,
+    maxPerDay: r.max_per_day,
+    usedToday: r.used_today,
     usedOn: chuoi(r.used_on),
     expiresAt: chuoi(r.expires_at),
     revokedAt: chuoi(r.revoked_at),
@@ -265,10 +279,10 @@ export async function dsGrant(organizationId: string): Promise<KetQuaDsGrant> {
     const raw = (error.message ?? String(error)).trim();
     return { ok: false, maLoi: raw || null, thongBao: dienGiaiLoiKeHoach(raw), danhSach: [] };
   }
-  const danhSach = Array.isArray(data)
-    ? data.map(chuanHoaDongGrant).filter((d): d is DongGrant => d !== null)
-    : [];
-  return { ok: true, maLoi: null, thongBao: null, danhSach };
+  if (!Array.isArray(data)) return {ok:false,maLoi:'phan_hoi_khong_doc_duoc',thongBao:'Chưa xác nhận được danh sách hạn mức. Đọc lại trước khi thay đổi.',danhSach:[]};
+  const rows = data.map(chuanHoaDongGrant);
+  if (rows.some(row => row === null)) return {ok:false,maLoi:'phan_hoi_khong_doc_duoc',thongBao:'Chưa xác nhận được đầy đủ hạn mức. Đọc lại trước khi thay đổi.',danhSach:[]};
+  return { ok: true, maLoi: null, thongBao: null, danhSach: rows as DongGrant[] };
 }
 
 export interface DongBaoCaoNgay {
@@ -313,7 +327,7 @@ export async function baoCaoNgayGrant(
     };
   }
   const ban = laBan(data);
-  if (!ban) {
+  if (!ban || !Array.isArray(ban.plans) || typeof ban.total_amount !== 'number' || !Number.isFinite(ban.total_amount) || ban.total_amount < 0 || typeof ban.plan_count !== 'number' || !Number.isSafeInteger(ban.plan_count) || ban.plan_count !== ban.plans.length || ban.date !== ngayBaoCao || !dateValue(ban.date, true)) {
     return {
       ok: false,
       maLoi: 'phan_hoi_khong_doc_duoc',
@@ -329,13 +343,13 @@ export async function baoCaoNgayGrant(
           const r = laBan(p);
           if (!r) return null;
           const planId = chuoi(r.plan_id);
-          if (!planId) return null;
+          if (!planId || typeof r.step_count !== 'number' || !Number.isSafeInteger(r.step_count) || r.step_count < 0 || !Array.isArray(r.standing_grant_ids) || r.standing_grant_ids.some(id => typeof id !== 'string' || !id) || !chuoi(r.plan_status) || !chuoi(r.max_risk) || !dateValue(r.approved_at)) return null;
           return {
             planId,
             approvedAt: chuoi(r.approved_at),
             planStatus: chuoi(r.plan_status) ?? '—',
             maxRisk: chuoi(r.max_risk) ?? '—',
-            stepCount: so(r.step_count) ?? 0,
+            stepCount: r.step_count,
             standingGrantIds: Array.isArray(r.standing_grant_ids)
               ? r.standing_grant_ids.filter((x): x is string => typeof x === 'string')
               : [],
@@ -343,6 +357,7 @@ export async function baoCaoNgayGrant(
         })
         .filter((d): d is DongBaoCaoNgay => d !== null)
     : [];
+  if (ke.length !== ban.plans.length) return {ok:false,maLoi:'phan_hoi_khong_doc_duoc',thongBao:'Chưa xác nhận được đầy đủ báo cáo hạn mức. Đọc lại dữ liệu.',ngay:null,ke:[],tongTien:null};
   return {
     ok: true,
     maLoi: null,

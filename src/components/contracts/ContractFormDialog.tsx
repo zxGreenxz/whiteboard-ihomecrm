@@ -1,4 +1,5 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import {validateInputDrafts} from '@/lib/inputDraftValidation';
+import { lazy, Suspense, useEffect, useState, useRef } from 'react';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -64,6 +65,7 @@ export function ContractFormDialog({
   canExport: canExportProp,
   onSaved,
 }: ContractFormDialogProps) {
+  const formRoot=useRef<HTMLFormElement>(null);
   const [savedDraft, setSavedDraft] = useState(draft);
   useEffect(() => {
     setSavedDraft(draft);
@@ -84,12 +86,14 @@ export function ContractFormDialog({
   useEffect(() => { if (!open) { setChoiceOpen(false); setSigning(undefined); setPrintBeforeSigning(undefined); } }, [open]);
   const pending = state.isPending || editor.pending;
   const saveDraft = async () => {
-    if (!canSaveDraft) return;
+    if (!canSaveDraft || !validateInputDrafts(formRoot.current)) return;
+    if (state.sourceIssues.length) return;
     setChoiceOpen(false);
     await editor.persist();
   };
   const onSubmit = useContractSubmit({
     state,
+    formRoot:()=>formRoot.current,
     contract,
     onOpenChange,
     onCreated,
@@ -128,7 +132,7 @@ export function ContractFormDialog({
 
         <ScrollArea className="max-h-[calc(90vh-120px)] px-6 pb-6">
           <Form {...form}>
-            <form
+            <form ref={formRoot}
               onSubmit={event => {
                 if (isEditMode) { void form.handleSubmit(onSubmit, onInvalid)(event); return; }
                 event.preventDefault(); setChoiceOpen(true);
@@ -146,6 +150,11 @@ export function ContractFormDialog({
               className="space-y-6"
             >
               {editor.errors.length > 0 && <Alert variant="destructive"><AlertDescription><ul className="list-disc pl-4">{editor.errors.map(error => <li key={`${error.field}-${error.label}`}>{error.label}: {error.message}</li>)}</ul></AlertDescription></Alert>}
+              {state.sourceIssues.length > 0 && <Alert variant="destructive" role="alert"><AlertDescription>
+                <p>Chưa tải đủ nguồn hợp đồng: {state.sourceIssues.map(issue => issue.label).join(', ')}. Hãy tải lại trước khi lưu hoặc xác nhận ký.</p>
+                <div className="mt-2 flex flex-wrap gap-2">{state.sourceIssues.map(issue => <Button key={issue.key} type="button" variant="outline" size="sm" onClick={issue.retry}>Tải lại {issue.label}</Button>)}</div>
+              </AlertDescription></Alert>}
+              {state.partialSyncIssue && <Alert variant="destructive" role="alert"><AlertDescription>{state.partialSyncIssue}</AlertDescription></Alert>}
               <fieldset disabled={pending || !!signing || !!printBeforeSigning} className="space-y-6">
               {/* ===== Section 1: Thông tin chung ===== */}
               <GeneralSection {...state} buildingDisabled={!!editor.current} />
@@ -164,7 +173,7 @@ export function ContractFormDialog({
               </fieldset>
 
               {/* ===== Footer buttons ===== */}
-              <ContractFormFooter {...state} isPending={pending} onOpenChange={onOpenChange} onSaveDraft={canSaveDraft ? () => void saveDraft() : undefined} />
+              <ContractFormFooter {...state} isPending={pending} sourceBlocked={state.sourceIssues.length > 0} onOpenChange={onOpenChange} onSaveDraft={canSaveDraft ? () => void saveDraft() : undefined} />
             </form>
           </Form>
         </ScrollArea>
@@ -192,8 +201,8 @@ export function ContractFormDialog({
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">Lưu nháp chưa giữ phòng và chưa ghi nhận thu tiền.</p>
           <div className="flex flex-wrap justify-end gap-2">
-            <Button type="button" variant="outline" disabled={pending || !canSaveDraft} onClick={() => void saveDraft()}>Lưu nháp</Button>
-            <Button type="button" disabled={pending || !canSign} onClick={() => {
+            <Button type="button" variant="outline" disabled={pending || !canSaveDraft || state.sourceIssues.length > 0} onClick={() => void saveDraft()}>Lưu nháp</Button>
+            <Button type="button" disabled={pending || !canSign || state.sourceIssues.length > 0} onClick={() => {
               setChoiceOpen(false); void form.handleSubmit(onSubmit, onInvalid)();
             }}>Xác nhận ký</Button>
           </div>

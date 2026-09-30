@@ -291,7 +291,7 @@ export function UtilityEnContent({ billingMonth, buildings, canRecordPayment, lo
                             ) : row.isSynthetic ? (
                               <span className="ud-stat-none">chưa khai công tơ</span>
                             ) : (
-                              <input className="ud-amt" type="text" inputMode="numeric" placeholder="Số tiền" value={formatVN(amount)} onFocus={() => S.setActiveKey(k)} onChange={(e) => S.setAmount(k, parseVN(e.target.value))} />
+                              <><input name={`utility_amount_${k}`} aria-invalid={!!S.amountErrors?.[k]} aria-describedby={S.amountErrors?.[k]?`${`utility_amount_${k}`}-error`:undefined} style={{borderColor:S.amountErrors?.[k]?"hsl(var(--destructive))":undefined}} className="ud-amt" type="text" inputMode="numeric" placeholder="Số tiền" value={formatVN(amount)} onFocus={() => S.setActiveKey(k)} onChange={(e) => S.setAmount(k, parseVN(e.target.value))} /><span id={`${`utility_amount_${k}`}-error`} role={S.amountErrors?.[k]?"alert":undefined} className="text-xs text-destructive">{S.amountErrors?.[k]}</span></>
                             )}
                           </td>
                           <td className="act">
@@ -323,7 +323,7 @@ export function UtilityEnContent({ billingMonth, buildings, canRecordPayment, lo
                                 <button type="button" className={'ud-attach' + (S.attach[k] ? ' has' : '')} title={S.attach[k] ? 'Đã đính kèm ảnh phiếu' : 'Đính kèm ảnh phiếu'} disabled={!canRecordPayment || S.uploadingKey === k} onClick={() => S.onAttachClick(k)}>
                                   {S.uploadingKey === k ? <span className="ub-spin dark" /> : <Camera />}
                                 </button>
-                                <button type="button" className="ud-pay" title="Đóng tiền" disabled={!canRecordPayment || amount <= 0 || paying} onClick={() => S.submitPay(row, row.buildingName)}>
+                                <button type="button" className="ud-pay" title="Đóng tiền" disabled={!canRecordPayment || paying} onClick={(e) => S.submitPay(row, row.buildingName,e.currentTarget.closest('tr')??e.currentTarget.parentElement)}>
                                   {paying ? <span className="ub-spin" /> : <Check />}
                                 </button>
                               </span>

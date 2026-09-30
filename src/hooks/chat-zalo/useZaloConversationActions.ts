@@ -1,3 +1,5 @@
+import { ZaloActionUnknownError, ZaloActionFailureError, zaloActionErrorMessage } from '@/lib/zaloActionFeedback';
+import { notifyActionError } from '@/lib/actionFeedback';
 // Tiện ích hội thoại: ghim / tắt thông báo / đánh dấu chưa đọc (optimistic +
 // rollback), soạn tin theo SĐT (job async + poll), xoá phía mình, seen/typing.
 import { useRef, useCallback } from 'react';
@@ -38,7 +40,7 @@ export function useSetConversationFlags() {
     },
     onError: (e: Error, _v, ctx) => {
       for (const [key, list] of ctx?.entries || []) qc.setQueryData(key, list);
-      toast.error(e?.message || 'Không đổi được trạng thái hội thoại');
+      notifyActionError(e, 'Không đổi được trạng thái hội thoại');
     },
     onSettled: () => qc.invalidateQueries({ queryKey: QK.conversations }),
   });
@@ -48,33 +50,34 @@ export function useSetConversationFlags() {
 export function useStartChatByPhone() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (v: { accountId: string; phone: string }): Promise<string> => {
-      const { data, error } = await supabase.rpc('zalo_start_chat_by_phone', {
-        p_account_id: v.accountId, p_phone: v.phone,
-      });
-      if (error) throw error;
-      const res = data as { status?: string; conversation_id?: string; job_id?: string } | null;
-      if (res?.status === 'ready' && res.conversation_id) return res.conversation_id;
-      const jobId = res?.job_id;
-      if (!jobId) throw new Error('Không khởi tạo được tìm kiếm');
+    mutationFn: async (v: { accountId: string; phone: string; jobId?: string }): Promise<string> => {
+      let jobId=v.jobId;
+      if (!jobId) {
+        const { data, error } = await supabase.rpc('zalo_start_chat_by_phone', { p_account_id: v.accountId, p_phone: v.phone });
+        if (error) throw error;
+        const res = data as { status?: string; conversation_id?: string; job_id?: string } | null;
+        if (res?.status === 'ready' && res.conversation_id) return res.conversation_id;
+        jobId = res?.job_id;
+        if (!jobId) throw new ZaloActionUnknownError('tìm hội thoại theo số điện thoại');
+      }
+      const pending = (cause?:unknown) => new ZaloActionUnknownError('tìm hội thoại theo số điện thoại', {label:'Mã yêu cầu tìm kiếm',id:jobId!,jobId},cause);
       for (let i = 0; i < 15; i++) {
         await new Promise((r) => setTimeout(r, 1000));
-        const { data: job } = await supabase
-          .from('zalo_send_queue')
-          .select('status, result, last_error')
-          .eq('id', jobId)
-          .maybeSingle();
-        if (job?.status === 'sent') {
+        const { data: job, error } = await supabase.from('zalo_send_queue').select('status, result, last_error').eq('id', jobId).maybeSingle().then(result=>result,cause=>{throw pending(cause)});
+        if (error || !job) throw pending(error);
+        if (job.status === 'sent') {
           const cid = (job.result as { conversation_id?: string } | null)?.conversation_id;
           if (cid) return cid;
-          throw new Error('Worker không trả về hội thoại');
+          throw pending();
         }
-        if (job?.status === 'failed') throw new Error(job.last_error || 'Số này không dùng Zalo');
+        if (job.status === 'failed') throw new ZaloActionFailureError(job.last_error === 'Số điện thoại này không dùng Zalo (hoặc chặn tìm kiếm).'
+          ? 'Số điện thoại này không dùng Zalo hoặc đã chặn tìm kiếm. Kiểm tra số hoặc liên hệ người nhận.'
+          : 'Dịch vụ Zalo chưa tìm được hội thoại cho số điện thoại này. Kiểm tra số điện thoại và trạng thái tài khoản kết nối.',job.last_error);
       }
-      throw new Error('Tìm kiếm quá lâu — worker có đang chạy không?');
+      throw pending();
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: QK.conversations }),
-    onError: (e: Error) => { toast.error(e?.message || 'Không tìm được số này trên Zalo'); },
+    onError: (e: Error) => { toast.error(zaloActionErrorMessage(e, 'tìm hội thoại theo số điện thoại')); },
   });
 }
 
@@ -89,7 +92,7 @@ export function useDeleteMessageForMe() {
       qc.invalidateQueries({ queryKey: QK.messages(v.conversationId) });
       toast.success('Đã xoá tin ở phía bạn');
     },
-    onError: (e: Error) => { toast.error(e?.message || 'Không xoá được'); },
+    onError: (e: Error) => { notifyActionError(e, 'Không xoá được'); },
   });
 }
 

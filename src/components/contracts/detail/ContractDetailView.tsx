@@ -1,3 +1,5 @@
+import { QueryRegion } from '@/components/errors/QueryRegion';
+import type { ContractDetailQueries } from './ContractDetailRegions';
 import { Button } from '@/components/ui/button';
 import { useContract } from '@/hooks/useContracts';
 import { isContractInEffect } from '@/types/contract';
@@ -69,12 +71,14 @@ const ContractDetailView = ({ id, onBack, showBackButton = true }: ContractDetai
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   // Fetch contract with relations
-  const { data: contract, isLoading: contractLoading } = useContract(id || '');
+  const contractQuery = useContract(id || '');
+  const { data: contract, isLoading: contractLoading } = contractQuery;
 
   // Fetch invoices for this contract
-  const { data: invoices, isLoading: invoicesLoading, isFetching: invoicesFetching, isError: invoicesError } = useInvoicesLegacy({
+  const invoicesQuery = useInvoicesLegacy({
     contract_id: id
   });
+  const {data:invoices,isLoading:invoicesLoading,isFetching:invoicesFetching,isError:invoicesError}=invoicesQuery;
 
   // Phiếu thu cọc (IE) đã link contract này — chứng minh deposit_paid khớp phiếu.
   const depositVouchersQ = useContractDepositVouchers(id);
@@ -120,6 +124,15 @@ const ContractDetailView = ({ id, onBack, showBackButton = true }: ContractDetai
   const contractHistory: ContractHistoryItem[] = historyQ.data ?? [];
   const historyLoading = historyQ.isLoading;
 
+  const queryStates: ContractDetailQueries = {
+    invoices: invoicesQuery, deposits: depositVouchersQ, pending: pendingTerminationQ,
+    termination: contract?.status === 'TERMINATED' ? terminationInfoQ : undefined,
+    vehicles: customerIds.length ? contractVehiclesQ : undefined,
+    services: servicesQ,
+    buildingServices: contract?.room?.building?.id && contractServices.length === 0 ? buildingServicesQ : undefined,
+    history: historyQ,
+  };
+
   // Gom lỗi các query phụ để báo 1 chỗ (data chính contract lỗi đã có nhánh riêng).
   const sideLoadErrors = [
     depositVouchersQ.isError && 'phiếu cọc',
@@ -146,6 +159,10 @@ const ContractDetailView = ({ id, onBack, showBackButton = true }: ContractDetai
         </Button>
       </div>
     );
+  }
+
+  if (contract === undefined && !contractLoading) {
+    return <QueryRegion label="thông tin hợp đồng" queries={[contractQuery]}><></></QueryRegion>;
   }
 
   if (contractLoading) {
@@ -212,10 +229,11 @@ const ContractDetailView = ({ id, onBack, showBackButton = true }: ContractDetai
   // CSS .cdt-* scope riêng nên không ảnh hưởng desktop.
   if (isMobile) {
     return (
-      <>
+      <QueryRegion label="thông tin hợp đồng" queries={[contractQuery]}>
         {contract.status !== 'TERMINATED' && <Suspense fallback={null}><TransferPanel key={contract.id} contractId={contract.id} /></Suspense>}
         <ContractDetailMobile
           contract={contract}
+          queryStates={queryStates}
           commissionFollowup={<ContractCommissionFollowupPanel key={`commission:${contract.id}`} contractId={contract.id} />}
           exitCasePanel={contract.status === 'TERMINATED' ? <ContractExitCasePanel key={`exit:${contract.id}`} contract={contract} /> : null}
           services={contractServices}
@@ -242,24 +260,25 @@ const ContractDetailView = ({ id, onBack, showBackButton = true }: ContractDetai
           onDelete={() => setDeleteDialogOpen(true)}
         />
         {dialogs}
-      </>
+      </QueryRegion>
     );
   }
 
   return (
-    <>
+    <QueryRegion label="thông tin hợp đồng" queries={[contractQuery]}>
       {contract.status === 'TERMINATED' && <ContractExitCasePanel key={`exit:${contract.id}`} contract={contract} />}
       {contract.status !== 'TERMINATED' && <Suspense fallback={null}><TransferPanel key={contract.id} contractId={contract.id} /></Suspense>}
       <ContractDetailDesktop
         contract={contract}
         commissionFollowup={<ContractCommissionFollowupPanel key={`commission:${contract.id}`} contractId={contract.id} />}
+        queryStates={queryStates}
         perms={perms}
         isActive={isActive}
         isExpiringSoon={isExpiringSoon}
         daysRemaining={daysRemaining}
         totalDays={totalDays}
         daysElapsed={daysElapsed}
-        outstandingAmount={outstandingAmount}
+        outstandingAmount={invoicesError || invoices === undefined ? null : outstandingAmount}
         sideLoadErrors={sideLoadErrors}
         customers={contractCustomers}
         vehiclesByCustomer={vehiclesByCustomer}
@@ -287,7 +306,7 @@ const ContractDetailView = ({ id, onBack, showBackButton = true }: ContractDetai
         onDelete={() => setDeleteDialogOpen(true)}
       />
       {dialogs}
-    </>
+    </QueryRegion>
   );
 };
 

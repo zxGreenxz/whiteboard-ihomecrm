@@ -19,6 +19,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Download, FileSpreadsheet, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
 import { runExportDataset, type ExportFilters } from '@/hooks/exports/useExportDataset';
 import { EXPORT_DATASETS, type ExportEntity } from '@/lib/exportDatasetRegistry';
+import { friendlyError } from '@/lib/friendlyError';
+import { FetchAllLimitError } from '@/lib/supabaseFetchAll';
 
 interface ExportExcelDialogProps {
   open: boolean;
@@ -42,6 +44,7 @@ const ExportExcelDialog = ({
   const currentConfig = EXPORT_DATASETS[exportType];
 
   const handleExport = async () => {
+    if (isExporting) return;
     setIsExporting(true);
     setExportedCount(null);
     setErrorMsg(null);
@@ -54,16 +57,19 @@ const ExportExcelDialog = ({
       setExportedCount(count);
     } catch (error) {
       console.error('Export error:', error);
-      setErrorMsg(
-        (error as Error)?.message ||
-          'Xuất file thất bại — vui lòng thử lại hoặc thu hẹp bộ lọc.',
-      );
+      if (error instanceof FetchAllLimitError) {
+        setErrorMsg(`Danh sách vượt ${error.limit.toLocaleString('vi-VN')} dòng. Lọc bớt dữ liệu trước khi xuất tệp.`);
+      } else {
+        const feedback = friendlyError(error, `Chưa xuất được ${currentConfig.title.replace(/^Xuất\s+/i, '')}`, { operation: 'xuất danh sách' });
+        setErrorMsg(`${feedback.title}. ${feedback.description}`);
+      }
     } finally {
       setIsExporting(false);
     }
   };
 
   const handleClose = () => {
+    if (isExporting) return;
     setExportedCount(null);
     setErrorMsg(null);
     onOpenChange(false);
@@ -90,7 +96,7 @@ const ExportExcelDialog = ({
               className="flex gap-4"
             >
               <div className="flex items-center space-x-2">
-                <RadioGroupItem value="xlsx" id="xlsx" />
+                <RadioGroupItem value="xlsx" id="xlsx" disabled={isExporting} />
                 <Label htmlFor="xlsx" className="font-normal cursor-pointer">
                   Excel (.xlsx)
                 </Label>
@@ -109,6 +115,7 @@ const ExportExcelDialog = ({
             <div className="flex items-center space-x-2">
               <Checkbox
                 id="includeRelations"
+                disabled={isExporting}
                 checked={includeRelations}
                 onCheckedChange={(checked) => setIncludeRelations(checked as boolean)}
               />
@@ -140,14 +147,14 @@ const ExportExcelDialog = ({
             <Alert className="bg-green-50 border-green-200">
               <CheckCircle className="h-4 w-4 text-green-600" />
               <AlertDescription className="text-green-800">
-                Xuất file thành công! Đã tải xuống {exportedCount.toLocaleString('vi-VN')} dòng.
+                Đã chuẩn bị tệp {currentConfig.title.replace(/^Xuất\s+/i, '')}, gồm {exportedCount.toLocaleString('vi-VN')} dòng, để tải xuống.
               </AlertDescription>
             </Alert>
           )}
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={handleClose}>
+          <Button variant="outline" onClick={handleClose} disabled={isExporting}>
             {exportedCount !== null ? 'Đóng' : 'Hủy'}
           </Button>
           <Button onClick={handleExport} disabled={isExporting}>

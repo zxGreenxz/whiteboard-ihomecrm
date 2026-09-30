@@ -1,3 +1,4 @@
+import {flattenFieldErrors} from '@/lib/formErrors';
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -8,6 +9,7 @@ import type { ContractFormState } from "./useContractFormState";
 
 type CustomersSectionProps = Pick<
   ContractFormState,
+  | "form"
   | "selectedCustomers"
   | "setCustomerDialogOpen"
   | "handleRepresentativeChange"
@@ -17,14 +19,16 @@ type CustomersSectionProps = Pick<
 
 /** ===== Section 2: Khách hàng ===== (JSX chuyển NGUYÊN VĂN) */
 export function CustomersSection({
+  form,
   selectedCustomers,
   setCustomerDialogOpen,
   handleRepresentativeChange,
   handleRemoveCustomer,
   handleCustomerNotesChange,
 }: CustomersSectionProps) {
+  const error=flattenFieldErrors(form.formState.errors).customers;
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-field-name="customers">
       <div className="flex items-center justify-between border-b pb-2">
         <h3 className="text-sm font-semibold text-foreground">
           Khách hàng
@@ -33,12 +37,19 @@ export function CustomersSection({
           type="button"
           variant="outline"
           size="sm"
+          name="customers"
+          aria-invalid={!!error}
+          aria-describedby={error?'contract-customers-error':undefined}
+          className={error?'border-destructive':undefined}
           onClick={() => setCustomerDialogOpen(true)}
         >
           <Plus className="h-4 w-4 mr-1" />
           Thêm khách hàng
         </Button>
       </div>
+      {(form.formState.errors as Record<string, { message?: string }>).customers?.message && (
+        <p id="contract-customers-error" role="alert" className="text-sm font-medium text-destructive">{(form.formState.errors as Record<string, { message?: string }>).customers?.message}</p>
+      )}
 
       {selectedCustomers.length === 0 ? (
         <p className="text-sm text-muted-foreground py-4 text-center">

@@ -12,6 +12,7 @@ import { reportBoundaryError } from "./boundaryReporter";
 interface Props {
   children: ReactNode;
   fallback?: ReactNode;
+  pageName?: string;
 }
 
 interface State {
@@ -19,6 +20,7 @@ interface State {
   error: Error | null;
   errorInfo: ErrorInfo | null;
   isChunkError: boolean;
+  resolvedPageName: string | null;
   // Lỗi chunk-load còn "ngân sách" auto-reload → sẽ tự tải lại, hiện spinner
   // thay vì thẻ lỗi để không chớp cảnh báo ngay trước khi trang tự hồi phục.
   willAutoReload: boolean;
@@ -30,6 +32,7 @@ class ErrorBoundary extends Component<Props, State> {
     error: null,
     errorInfo: null,
     isChunkError: false,
+    resolvedPageName: null,
     willAutoReload: false,
   };
 
@@ -40,6 +43,7 @@ class ErrorBoundary extends Component<Props, State> {
       error,
       errorInfo: null,
       isChunkError: chunk,
+      resolvedPageName: null,
       willAutoReload: chunk && hasAutoReloadBudget(),
     };
   }
@@ -54,14 +58,23 @@ class ErrorBoundary extends Component<Props, State> {
     // bản mới. Truyền `error` để rút URL chunk hỏng mà bust đúng entry.
     if (isChunkLoadError(error)) {
       if (reloadOnceForStaleChunk(error)) return;
-      // Hết lượt / privacy mode → không auto-reload nữa: rơi về thẻ "Có phiên
-      // bản mới" + nút Tải lại thủ công thay vì kẹt spinner vĩnh viễn.
+      // Hết lượt / privacy mode: chuyển sang nút tải lại thủ công.
       this.setState({ willAutoReload: false });
+      this.resolvePageName();
       return;
     }
     console.error("ErrorBoundary caught an error:", error, errorInfo);
     this.setState({ errorInfo });
+    this.resolvePageName();
   }
+
+  private resolvePageName = () => {
+    if ((this.props.pageName !== undefined && this.props.pageName !== null) || this.props.fallback) return;
+    const path = typeof window === 'undefined' ? '' : window.location.pathname;
+    void import('@/lib/errorPageNames')
+      .then(({ errorPageName }) => { this.setState({ resolvedPageName: errorPageName(path) }); })
+      .catch(() => { this.setState({ resolvedPageName: 'đang mở' }); });
+  };
 
   private handleRefresh = () => {
     window.location.reload();
@@ -72,6 +85,7 @@ class ErrorBoundary extends Component<Props, State> {
   };
 
   public override render() {
+    const pageName = this.props.pageName ?? this.state.resolvedPageName ?? 'đang mở';
     if (this.state.hasError) {
       if (this.props.fallback) {
         return this.props.fallback;
@@ -101,9 +115,9 @@ class ErrorBoundary extends Component<Props, State> {
               <div className="h-16 w-16 rounded-full bg-blue-100 flex items-center justify-center mx-auto mb-4">
                 <RefreshCw className="h-8 w-8 text-blue-600" />
               </div>
-              <h1 className="text-xl font-bold text-gray-900 mb-2">Có phiên bản mới</h1>
+              <h1 className="text-xl font-bold text-gray-900 mb-2">Chưa tải được trang {pageName}.</h1>
               <p className="text-gray-600 mb-4">
-                Ứng dụng vừa được cập nhật. Hãy tải lại để dùng bản mới nhất.
+                Chưa tải đủ nội dung để mở trang. Bạn có thể tải lại để tiếp tục.
               </p>
               <div className="flex justify-center">
                 <Button onClick={this.handleRefresh}>
@@ -123,29 +137,11 @@ class ErrorBoundary extends Component<Props, State> {
               <AlertTriangle className="h-8 w-8 text-red-600" />
             </div>
             <h1 className="text-xl font-bold text-gray-900 mb-2">
-              Đã xảy ra lỗi
+              Chưa mở được trang {pageName}.
             </h1>
             <p className="text-gray-600 mb-4">
-              Rất tiếc, đã có lỗi xảy ra khi tải trang này. Vui lòng thử lại.
+              Nội dung trang chưa hiển thị được. Bạn có thể tải lại hoặc quay về trang chủ.
             </p>
-
-            {process.env.NODE_ENV === "development" && this.state.error && (
-              <div className="mb-4 p-3 bg-red-50 rounded-md text-left">
-                <p className="text-sm font-mono text-red-800 break-all">
-                  {this.state.error.toString()}
-                </p>
-                {this.state.errorInfo && (
-                  <details className="mt-2">
-                    <summary className="text-xs text-red-600 cursor-pointer">
-                      Chi tiết lỗi
-                    </summary>
-                    <pre className="mt-2 text-xs text-red-700 overflow-auto max-h-40">
-                      {this.state.errorInfo.componentStack}
-                    </pre>
-                  </details>
-                )}
-              </div>
-            )}
 
             <div className="flex gap-3 justify-center">
               <Button variant="outline" onClick={this.handleGoHome}>

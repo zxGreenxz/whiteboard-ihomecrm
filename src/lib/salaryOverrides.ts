@@ -41,7 +41,7 @@ const overrideRowSchema = z.object({
 
 /** Kiểm hình dạng hàng salary_line_override_list_v1 tại biên RPC. */
 export function parseOverrideRows(rows: unknown): SalLineOverride[] {
-  return z.array(overrideRowSchema).parse(rows ?? []).map((r) => ({
+  return z.array(overrideRowSchema).parse(rows).map((r) => ({
     staffId: r.staff_id,
     key: r.line_key,
     label: r.line_label,

@@ -1,3 +1,4 @@
+import { QueryRegion } from '@/components/errors/QueryRegion';
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -108,7 +109,8 @@ const relTime = (iso: string) => {
  */
 export default function NotificationsMobilePage() {
   const navigate = useNavigate();
-  const { data: list = [] } = useNotifications();
+  const notificationsQuery = useNotifications();
+  const { data: list = [] } = notificationsQuery;
   // Allow-list URL cần quyền của người bấm (route bị chặn → hạ về /my-day).
   const { data: perms } = useMyPermissions();
   const markAsRead = useMarkAsRead();
@@ -166,6 +168,8 @@ export default function NotificationsMobilePage() {
     setSel(n.id);
   };
 
+  if (notificationsQuery.isLoading || notificationsQuery.isError) return <div className="cm-stage"><div className="cm-app p-4"><QueryRegion label="Danh sách thông báo" queries={[notificationsQuery]}><p>Dữ liệu thông báo chưa được cập nhật.</p></QueryRegion></div></div>;
+
   // ---- Chi tiết bản tin ----
   if (current) {
     const meta = metaOf(current.type);
@@ -220,8 +224,7 @@ export default function NotificationsMobilePage() {
                 <button
                   className="ntd-del"
                   onClick={() => {
-                    deleteNotification.mutate(current.id);
-                    setSel(null);
+                    deleteNotification.mutate(current.id, { onSuccess: () => setSel(null) });
                   }}
                 >
                   <Trash2 size={16} />

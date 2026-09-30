@@ -41,6 +41,8 @@ const THEO_MA: readonly [string, string][] = [
   // bên xin cấp entitlement, một bên đổi ô chọn tổ chức.
   ['organization_forbidden', 'Bạn không có quyền dùng Copilot trong tổ chức đang chọn.'],
   ['organization_mismatch', 'Tổ chức đã đổi, mở lại cuộc trò chuyện.'],
+  ['page_rollout_disabled', 'Điều khiển trang này chưa được bật cho công ty của bạn.'],
+  ['page_permission_missing', 'Bạn chưa có quyền điều khiển trang này. Liên hệ quản trị viên để kiểm tra quyền.'],
   ['rollout_unavailable', 'Trang/công cụ này chưa được bật cho tổ chức.'],
   // Anh em server-side của `rollout_unavailable`. Từ 03/09/2026 ba RPC miền
   // nhạy cảm (bảng lương, lợi nhuận cổ đông, trung tâm mạng) tự đọc
@@ -85,9 +87,7 @@ export function dienGiaiLoiChat(msg: string): string {
     if (msg.includes(ma)) return cau;
   }
   if (/not_entitled|not_permitted|403/.test(msg)) return HET_QUYEN_HOAC_HAN_MUC;
-  // Lỗi lạ hiện nguyên văn: giấu đi thì không ai gỡ được, và người dùng không
-  // có gì để chụp màn hình gửi đi.
-  return `Lỗi: ${msg}`;
+  return 'Copilot chưa trả lời được yêu cầu này. Nội dung bạn nhập vẫn được giữ.';
 }
 
 // ── Kế hoạch thực thi (G3) ───────────────────────────────────────────────────
@@ -236,12 +236,12 @@ const THEO_MA_KE_HOACH: readonly [string, string][] = [
  * Hàm THUẦN, khớp theo chuỗi CON và duyệt theo THỨ TỰ bảng: mã dài đứng trước
  * mã ngắn lồng trong nó (`step_up_not_implemented` trước `step_up_required`,
  * `plan_not_draft` trước `plan_not_found`), đúng kỷ luật của `THEO_MA` ở trên.
- * Mã lạ hiện nguyên văn — giấu đi thì người dùng không có gì để chụp gửi đi.
+ * Lỗi chưa nhận diện giữ trạng thái chưa xác nhận, không lộ chi tiết máy chủ.
  */
 export function dienGiaiLoiKeHoach(msg: string): string {
   const s = String(msg ?? '');
   for (const [ma, cau] of THEO_MA_KE_HOACH) {
     if (s.includes(ma)) return cau;
   }
-  return `Lỗi kế hoạch: ${s}`;
+  return 'Chưa xác nhận được kết quả thực hiện kế hoạch. Kiểm tra trạng thái từng bước trước khi thao tác tiếp để tránh thực hiện trùng.';
 }

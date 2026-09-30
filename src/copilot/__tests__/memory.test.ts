@@ -189,7 +189,7 @@ describe('đường ra mạng — RPC gọi bằng TÊN VIẾT THẲNG và đún
   });
 
   it('ghiNhoLen gọi copilot_memory_upsert_v1', async () => {
-    rpc.mockResolvedValue({ data: { key: 'k', value: 'v', total: 1 }, error: null });
+    rpc.mockResolvedValue({ data: { key: 'k', value: 'v', source:'copilot', total: 1 }, error: null });
     await ghiNhoLen(ORG, 'k', 'v');
     expect(rpc).toHaveBeenCalledWith('copilot_memory_upsert_v1', {
       p_organization_id: ORG,
@@ -213,7 +213,7 @@ describe('đường ra mạng — RPC gọi bằng TÊN VIẾT THẲNG và đún
     // `supabase.rpc` KHÔNG bao giờ ném: lỗi mạng/5xx về trong `error`. Một
     // `try/catch` quanh nó mà không đọc `error` là mã chết.
     rpc.mockResolvedValue({ data: null, error: { message: 'memory_limit_reached' } });
-    await expect(layGhiNho(ORG)).rejects.toThrow(/memory_limit_reached/);
+    await expect(layGhiNho(ORG)).rejects.toMatchObject({message:'memory_limit_reached'});
   });
 
   it('mã lỗi server dịch sang câu người đọc được', () => {
@@ -221,7 +221,7 @@ describe('đường ra mạng — RPC gọi bằng TÊN VIẾT THẲNG và đún
       new RegExp(String(SO_GHI_NHO_TOI_DA)),
     );
     expect(dienGiaiLoiGhiNho('organization_required')).toMatch(/công ty/);
-    expect(dienGiaiLoiGhiNho('mot loi la')).toMatch(/mot loi la/);
+    expect(dienGiaiLoiGhiNho('mot loi la')).not.toMatch(/mot loi la/);
   });
 });
 
@@ -318,9 +318,9 @@ describe('nguồn user ↔ copilot — cột `source` có việc thật', () => 
     expect(s).not.toContain(`Người dùng gõ (${NHAN_COPILOT_TU_GHI})`);
   });
 
-  it('server trả source lạ ⇒ rơi về "copilot", không lọt ra ngoài kiểu', async () => {
+  it('server trả source lạ ⇒ kết quả chưa xác nhận, không tự nhận đã ghi', async () => {
     rpc.mockResolvedValue({ data: { key: 'k', value: 'v', source: 'admin', total: 1 }, error: null });
-    expect((await ghiNhoLen(ORG, 'k', 'v')).nguon).toBe('copilot');
+    await expect(ghiNhoLen(ORG,'k','v')).rejects.toBeInstanceOf(TypeError);
   });
 });
 
@@ -349,7 +349,7 @@ describe('tool ghi_nho / quen', () => {
 
   it('ghi_nho: chuẩn hoá khoá rồi upsert, câu trả về có số mục đang dùng', async () => {
     rpc.mockResolvedValue({
-      data: { key: 'toa_uu_tien', value: 'DEMO A', total: 3 },
+      data: { key: 'toa_uu_tien', value: 'DEMO A', source:'copilot', total: 3 },
       error: null,
     });
     const ra = await ghiNhoTool.execute(

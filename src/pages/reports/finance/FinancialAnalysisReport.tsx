@@ -1,3 +1,4 @@
+import {QueryRegion} from "@/components/errors/QueryRegion";
 import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
@@ -47,7 +48,8 @@ export default function FinancialAnalysisReport() {
   }, []);
 
   // Cần cả toà ảo "Chung" (chi phí chung) → tự fetch includeVirtual và truyền vào.
-  const { data: buildings = [] } = useBuildings({ includeVirtual: true });
+  const buildingsQuery=useBuildings({includeVirtual:true});
+  const {data:buildings=[]}=buildingsQuery;
   const buildingOptions = useMemo(
     () =>
       (buildings as any[]).map((b) => ({
@@ -133,6 +135,7 @@ export default function FinancialAnalysisReport() {
           </div>
         </div>
 
+        <QueryRegion label="toà nhà của báo cáo" queries={[buildingsQuery]}>
         <Tabs defaultValue="overview" className="space-y-4">
           <TabsList className="flex w-full h-auto justify-start overflow-x-auto">
             <TabsTrigger value="overview">Tổng quan</TabsTrigger>
@@ -157,6 +160,7 @@ export default function FinancialAnalysisReport() {
             <OperationsTab filters={filters} />
           </TabsContent>
         </Tabs>
+        </QueryRegion>
       </div>
     </MainLayout>
   );

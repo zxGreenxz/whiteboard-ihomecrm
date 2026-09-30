@@ -1,3 +1,4 @@
+import {recordWriteBlocked,recordWriteMessage} from '@/lib/recordWriteOutcome';
 import { useState, useCallback, useRef } from 'react';
 import {
   Dialog,
@@ -67,12 +68,15 @@ const MeterReadingImportDialog = ({ open, onOpenChange }: MeterReadingImportDial
   const [isDragging, setIsDragging] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [unknownOutcome, setUnknownOutcome] = useState<string|null>(null);
+  const [submitFailure,setSubmitFailure]=useState('');
+  const busy=useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const importMutation = useImportMeterReadings();
 
   const resetState = useCallback(() => {
-    setStep('upload');
+    setSubmitFailure('');setStep('upload');
     setParsedRows([]);
     setFileName('');
     setIsDragging(false);
@@ -82,10 +86,11 @@ const MeterReadingImportDialog = ({ open, onOpenChange }: MeterReadingImportDial
 
   const handleOpenChange = useCallback(
     (newOpen: boolean) => {
-      if (!newOpen) resetState();
+      if(busy.current || isProcessing || importMutation.isPending)return;
+      if (!newOpen && !unknownOutcome && !submitFailure) resetState();
       onOpenChange(newOpen);
     },
-    [onOpenChange, resetState],
+    [onOpenChange, resetState, unknownOutcome,submitFailure,isProcessing,importMutation.isPending],
   );
 
   const processFile = useCallback(async (file: File) => {
@@ -154,6 +159,7 @@ const MeterReadingImportDialog = ({ open, onOpenChange }: MeterReadingImportDial
   );
 
   const handleImport = useCallback(async () => {
+    if(unknownOutcome || busy.current || isProcessing || importMutation.isPending)return;
     const validRows = parsedRows.filter((r) => r.valid);
     const invalidRows = parsedRows.filter((r) => !r.valid);
 
@@ -162,7 +168,7 @@ const MeterReadingImportDialog = ({ open, onOpenChange }: MeterReadingImportDial
       return;
     }
 
-    setIsProcessing(true);
+    busy.current=true;setIsProcessing(true);setSubmitFailure('');
 
     try {
       const rpcResults = await importMutation.mutateAsync({
@@ -215,19 +221,20 @@ const MeterReadingImportDialog = ({ open, onOpenChange }: MeterReadingImportDial
         details,
       });
       setStep('result');
-    } catch {
-      // Error toast is handled by the mutation hook
+    } catch (error) {
+      const message=recordWriteMessage(error,'nhập chỉ số');setSubmitFailure(message);
+      if(recordWriteBlocked(error))setUnknownOutcome(message);
     } finally {
-      setIsProcessing(false);
+      busy.current=false;setIsProcessing(false);
     }
-  }, [parsedRows, importMutation]);
+  }, [parsedRows, importMutation,unknownOutcome,isProcessing]);
 
   const validCount = parsedRows.filter((r) => r.valid).length;
   const invalidCount = parsedRows.filter((r) => !r.valid).length;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[85vh] flex flex-col">
+      <DialogContent aria-describedby={undefined} className="max-w-3xl max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>
             {step === 'upload' && 'Nhập dữ liệu chỉ số từ Excel'}
@@ -376,10 +383,11 @@ const MeterReadingImportDialog = ({ open, onOpenChange }: MeterReadingImportDial
             )}
 
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={resetState}>
+              {(unknownOutcome || submitFailure) && <p role="alert" className="w-full text-sm text-destructive">{unknownOutcome || submitFailure}</p>}
+              <Button variant="outline" onClick={resetState} disabled={!!unknownOutcome}>
                 Chọn file khác
               </Button>
-              <Button onClick={handleImport} disabled={validCount === 0 || isProcessing}>
+              <Button onClick={handleImport} disabled={validCount === 0 || isProcessing || !!unknownOutcome}>
                 {isProcessing ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />

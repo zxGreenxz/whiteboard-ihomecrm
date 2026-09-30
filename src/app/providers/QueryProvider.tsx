@@ -1,9 +1,10 @@
 import type { ReactNode } from "react";
-import { QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { reportBoundaryError } from "@/components/errors/boundaryReporter";
 import { classifyDbError, type ErrorCategory } from "@/lib/contracts/errors";
+import { notifyActionError } from "@/lib/asyncActionFeedback";
 
 /**
  * Cấu hình TanStack Query của toàn app.
@@ -15,12 +16,8 @@ import { classifyDbError, type ErrorCategory } from "@/lib/contracts/errors";
  * không bị ảnh hưởng; mutation vẫn cập nhật đúng vì toàn repo dùng
  * invalidateQueries sau mutation.
  *
- * VỀ `retry: 1` — ĐÂY LÀ MỘT KHOẢNG TRỐNG ĐÃ BIẾT, ghi ra để không ai tưởng nó
- * đã được cân nhắc kỹ. Thử lại một lần cho MỌI lỗi nghĩa là một lời gọi GHI đã
- * thành công rồi hỏng ở đường về sẽ được gửi lại — trên đường tiền, đó là cách
- * tạo bút toán trùng. src/lib/contracts/envelopes.ts có `retryOnlyConcurrency`
- * làm đúng việc này theo PHÂN LOẠI lỗi; chuyển mặc định toàn cục sang nó là một
- * lượt riêng vì nó đổi hành vi của mọi query đang chạy.
+ * Query đọc được thử lại một lần. Mutation ghi không tự thử lại; kết quả
+ * chưa rõ cần đối chiếu theo ID giao dịch trước khi người dùng gửi tiếp.
  */
 
 /**
@@ -50,6 +47,7 @@ export function nenBaoLoi(
 interface TruyVanLoi {
   queryKey: unknown;
   meta?: Record<string, unknown>;
+  fetch?: () => Promise<unknown>;
 }
 
 /**
@@ -74,7 +72,7 @@ export function thongDiepLoiDoc(error: unknown): string {
   const nhom: ErrorCategory = classifyDbError(error);
   if (nhom === "permission") return "Không có quyền xem dữ liệu này";
   if (nhom === "concurrency" || nhom === "rate_limit") return "Hệ thống đang bận — thử lại sau giây lát";
-  if (nhom === "internal_invariant") return "Trang đang cũ hơn máy chủ — tải lại trang";
+  if (nhom === "internal_invariant") return "Chưa tải được dữ liệu do lỗi hệ thống; tải lại trang";
   return LOI_DOC_MAC_DINH;
 }
 
@@ -103,25 +101,53 @@ export function xuLyLoiQuery(
         : Object.assign(new Error(String(goc?.message ?? error)), { cause: error });
     reportBoundaryError(loi);
 
-    if (query.meta?.silent === true) return;
+    if (query.meta?.silent === true || query.meta?.errorDisplay === 'inline' || query.meta?.feedback === 'inline') return;
 
     const khoa = JSON.stringify(query.queryKey ?? null);
     const now = phuThuoc?.now ?? Date.now;
     if (!nenBaoLoi(khoa, now(), phuThuoc?.bo ?? daBaoGanDay)) return;
 
-    toast.error(thongDiepLoiDoc(error), {
-      description: `Mục dữ liệu: ${khoa}. Thao tác lại hoặc tải lại trang; nếu vẫn lỗi, gửi dòng này cho quản trị.`,
-    });
+    const showToast = (label: string) => {
+      try {
+        toast.error(`Chưa tải được ${label}.`, {
+          description: `${thongDiepLoiDoc(error)}.`,
+          ...(query.fetch ? { action: { label: "Tải lại", onClick: () => { void query.fetch!().catch(() => { /* QueryCache reports the next read failure. */ }); } } } : {}),
+        });
+      } catch {
+        /* A broken toast sink must not reject the asynchronous feedback handler. */
+      }
+    };
+    void import("@/lib/queryFeedback")
+      .then(({ queryLabel }) => showToast(queryLabel(query.queryKey, query.meta?.label)))
+      .catch(cause => {
+        try {
+          reportBoundaryError(cause instanceof Error ? cause : Object.assign(new Error('Query feedback labels failed to load'), { cause }));
+        } catch {
+          /* Diagnostics cannot prevent the safe fallback toast. */
+        }
+        showToast('dữ liệu của mục đang mở');
+      });
   } catch {
     /* bộ báo lỗi không được tự làm sập app — nuốt ở ĐÚNG chỗ này là có chủ ý */
   }
 }
 
 export const queryClient = new QueryClient({
+  mutationCache: new MutationCache({
+    onError: (error, _variables, _context, mutation) => {
+      // A form/hook with its own handler owns the result. Explicitly silent
+      // background operations remain silent; diagnostics still retain cause.
+      reportBoundaryError(error instanceof Error ? error : Object.assign(new Error('Mutation failed'), { cause: error }));
+      if (mutation.options.onError || mutation.meta?.silent || mutation.meta?.handlesFeedback) return;
+      const operation = typeof mutation.meta?.operation === 'string' ? mutation.meta.operation : undefined;
+      notifyActionError(error, operation ? `Chưa ${operation}.` : 'Chưa hoàn tất thao tác đang thực hiện', { operation, financial: mutation.meta?.financial === true });
+    },
+  }),
   queryCache: new QueryCache({
     onError: (error, query) => xuLyLoiQuery(error, query as unknown as TruyVanLoi),
   }),
   defaultOptions: {
+    mutations: { retry: false },
     queries: {
       staleTime: 60_000,
       refetchOnWindowFocus: false,

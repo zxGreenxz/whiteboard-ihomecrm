@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 // Route guard — chỉ super_admin hoặc admin role được vào.
 //
 // Dùng cho `/admin/users` và các trang quản trị cấp hệ thống.
@@ -5,6 +6,9 @@
 import { Navigate } from "react-router-dom";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
+
+const QueryRegion = lazy(() => import("@/components/errors/QueryRegion").then(module => ({ default: module.QueryRegion })));
 
 interface AdminOnlyRouteProps {
   /** Redirect path khi không phải admin. Mặc định `/`. */
@@ -13,7 +17,8 @@ interface AdminOnlyRouteProps {
 }
 
 export function AdminOnlyRoute({ fallbackPath = "/", children }: AdminOnlyRouteProps) {
-  const { data: isAdmin, isLoading } = useIsAdmin();
+  const query=useIsAdmin();
+  const { data: isAdmin, isLoading } = query;
 
   if (isLoading) {
     return (
@@ -23,6 +28,15 @@ export function AdminOnlyRoute({ fallbackPath = "/", children }: AdminOnlyRouteP
       </div>
     );
   }
+
+  if (query.isError) return <Suspense fallback={
+    <div role="alert" className="rounded-md border border-destructive/40 p-4 text-sm">
+      <p className="font-medium text-destructive">Chưa tải được quyền quản trị.</p>
+      <Button type="button" variant="outline" size="sm" className="mt-2" onClick={() => {
+        void Promise.allSettled([Promise.resolve().then(() => query.refetch())]);
+      }}>Tải lại</Button>
+    </div>
+  }><QueryRegion queries={[query]} label="quyền quản trị"><></></QueryRegion></Suspense>;
 
   if (!isAdmin) {
     return <Navigate to={fallbackPath} replace />;

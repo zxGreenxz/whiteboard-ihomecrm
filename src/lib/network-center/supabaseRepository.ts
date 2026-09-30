@@ -141,6 +141,31 @@ function actionName(type: NetworkActionRequest["type"]): string {
   return type.toUpperCase();
 }
 
+const operationNames: Record<string, string> = {
+  network_center_list_fleet_v1: "tải danh sách thiết bị",
+  network_center_get_building_v1: "tải trạng thái mạng của tòa nhà",
+  network_center_list_clients_v1: "tải thiết bị đang kết nối",
+  network_center_list_commands_v1: "tải lịch sử thao tác",
+  network_center_get_command_v1: "kiểm tra trạng thái yêu cầu",
+  network_center_list_audit_v1: "tải lịch sử thay đổi",
+  network_center_list_h196a_v1: "tải danh sách thiết bị H196A",
+  network_center_list_aruba_v1: "tải danh sách thiết bị Aruba",
+  network_center_ack_incident_v1: "xác nhận sự cố",
+  network_center_create_maintenance_v1: "tạo lịch bảo trì",
+  network_center_cancel_maintenance_v1: "hủy lịch bảo trì",
+  network_center_request_snapshot_v1: "sao lưu cấu hình thiết bị",
+  network_center_compare_snapshots_v1: "so sánh hai bản cấu hình",
+  network_center_execute_action_v1: "thực hiện thao tác trên thiết bị",
+  network_center_update_settings_v1: "lưu cài đặt mạng",
+};
+function operationName(rpcName: string) { return operationNames[rpcName] ?? "xử lý yêu cầu tại Trung tâm mạng"; }
+function invalidResultMessage(rpcName: string) {
+  return `Chưa nhận được kết quả hợp lệ cho ${operationName(rpcName)}. Tải lại trạng thái trước khi thử lại.`;
+}
+function unknownResultMessage(rpcName: string) {
+  return `Chưa xác nhận được kết quả ${operationName(rpcName)}. Tải lại trạng thái để kiểm tra yêu cầu trước khi tiếp tục.`;
+}
+
 function denialMessage(
   rpcName: string,
   error: NonNullable<NetworkCenterRpcResult["error"]>,
@@ -155,7 +180,9 @@ function denialMessage(
   if (rpcName === "network_center_update_settings_v1" && error.code === "40001") {
     return "Cài đặt đã thay đổi; vui lòng tải lại trước khi lưu";
   }
-  return "Dịch vụ Network Center từ chối yêu cầu";
+  if (error.code === "42501") return `Bạn không có quyền ${operationName(rpcName)}.`;
+  if (error.code === "PGRST301" || error.code === "PGRST302") return "Phiên đăng nhập đã hết hạn. Đăng nhập lại để tiếp tục.";
+  return `Chưa thực hiện được ${operationName(rpcName)}. Kiểm tra trạng thái hiện tại trước khi thử lại.`;
 }
 
 export class SupabaseNetworkCenterRepository implements NetworkCenterRepository {
@@ -414,7 +441,7 @@ export class SupabaseNetworkCenterRepository implements NetworkCenterRepository 
     try {
       response = await this.rpc(rpcName, args);
     } catch {
-      throw new NetworkCenterRepositoryError("Không thể kết nối dịch vụ Network Center", {
+      throw new NetworkCenterRepositoryError(unknownResultMessage(rpcName), {
         rpcName,
       });
     }
@@ -432,7 +459,7 @@ export class SupabaseNetworkCenterRepository implements NetworkCenterRepository 
     try {
       result = parseNetworkCenterExecuteResult(response.data);
     } catch {
-      throw new NetworkCenterRepositoryError("Dữ liệu Network Center không đúng hợp đồng", {
+      throw new NetworkCenterRepositoryError(invalidResultMessage(rpcName), {
         rpcName,
       });
     }
@@ -457,7 +484,7 @@ export class SupabaseNetworkCenterRepository implements NetworkCenterRepository 
       || Boolean(commandId) === Boolean(exactRequestId)
       || (commandId !== null && !UUID_PATTERN.test(commandId))
       || (exactRequestId !== null && !UUID_PATTERN.test(exactRequestId))) {
-      throw new NetworkCenterRepositoryError("Định danh command/request không hợp lệ");
+      throw new NetworkCenterRepositoryError("Thông tin yêu cầu chưa hợp lệ. Tải lại trạng thái thiết bị để tiếp tục.");
     }
     const command = await this.call(
       "network_center_get_command_v1",
@@ -479,7 +506,7 @@ export class SupabaseNetworkCenterRepository implements NetworkCenterRepository 
     expectedVersion?: number,
   ): Promise<void> {
     if (!Number.isInteger(expectedVersion) || (expectedVersion ?? 0) < 1) {
-      throw new NetworkCenterRepositoryError("Thiếu phiên bản cài đặt đang hiển thị");
+      throw new NetworkCenterRepositoryError("Thông tin yêu cầu chưa hợp lệ. Tải lại cài đặt trước khi lưu.");
     }
     await this.call(
       "network_center_update_settings_v1",
@@ -536,7 +563,7 @@ export class SupabaseNetworkCenterRepository implements NetworkCenterRepository 
     try {
       response = await this.rpc(rpcName, args);
     } catch {
-      throw new NetworkCenterRepositoryError("Không thể kết nối dịch vụ Network Center", {
+      throw new NetworkCenterRepositoryError(unknownResultMessage(rpcName), {
         rpcName,
       });
     }
@@ -547,14 +574,14 @@ export class SupabaseNetworkCenterRepository implements NetworkCenterRepository 
       });
     }
     if (response.data === null || response.data === undefined) {
-      throw new NetworkCenterRepositoryError("Dịch vụ Network Center trả về dữ liệu rỗng", {
+      throw new NetworkCenterRepositoryError(invalidResultMessage(rpcName), {
         rpcName,
       });
     }
     try {
       return parse(response.data);
     } catch {
-      throw new NetworkCenterRepositoryError("Dữ liệu Network Center không đúng hợp đồng", {
+      throw new NetworkCenterRepositoryError(invalidResultMessage(rpcName), {
         rpcName,
       });
     }

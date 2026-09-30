@@ -5,7 +5,7 @@ import { cn, formatVND } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { CurrencyInput } from "@/components/ui/currency-input";
 
-interface LockedCurrencyInputProps {
+interface LockedCurrencyInputProps extends Omit<React.ComponentPropsWithoutRef<'input'>, 'value' | 'onChange' | 'onBlur'> {
   value?: number | null;
   onChange?: (value: number) => void;
   onBlur?: () => void;
@@ -29,7 +29,7 @@ interface LockedCurrencyInputProps {
  *
  * Mở khoá rồi thì KHÔNG tự khoá lại (khoá lại sẽ nuốt mất số user vừa gõ).
  */
-export function LockedCurrencyInput({
+export const LockedCurrencyInput = React.forwardRef<HTMLInputElement, LockedCurrencyInputProps>(function LockedCurrencyInput({
   value,
   onChange,
   onBlur,
@@ -39,8 +39,14 @@ export function LockedCurrencyInput({
   unlockLabel = "Sửa giá",
   disabled,
   className,
-}: LockedCurrencyInputProps) {
-  const inputRef = React.useRef<HTMLInputElement>(null);
+  ...rest
+}: LockedCurrencyInputProps, forwardedRef) {
+  const inputRef = React.useRef<HTMLInputElement|null>(null);
+  const setInputRef = React.useCallback((node: HTMLInputElement | null) => {
+    inputRef.current = node;
+    if (typeof forwardedRef === 'function') forwardedRef(node);
+    else if (forwardedRef) forwardedRef.current = node;
+  }, [forwardedRef]);
   // Vừa mở khoá → đưa con trỏ vào ô luôn, khỏi phải bấm thêm lần nữa.
   const wasLocked = React.useRef(locked);
   React.useEffect(() => {
@@ -51,7 +57,8 @@ export function LockedCurrencyInput({
   if (!locked) {
     return (
       <CurrencyInput
-        ref={inputRef}
+        {...rest}
+        ref={setInputRef}
         value={value}
         onChange={onChange}
         onBlur={onBlur}
@@ -65,6 +72,8 @@ export function LockedCurrencyInput({
   return (
     <div className="relative w-full">
       <Input
+        {...rest}
+        ref={setInputRef}
         readOnly
         tabIndex={-1}
         name={name}
@@ -84,4 +93,4 @@ export function LockedCurrencyInput({
       </button>
     </div>
   );
-}
+});

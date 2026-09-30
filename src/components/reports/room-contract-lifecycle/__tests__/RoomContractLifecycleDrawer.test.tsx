@@ -6,6 +6,7 @@ import type { LifecyclePayload } from '@/lib/roomLifecycle';
 const H = vi.hoisted(() => ({
   payload: null as unknown,
   lifecycle: { data: undefined as unknown, isError: false, error: null as unknown },
+  extras: {data:undefined as unknown,isError:false,refetch:vi.fn()},
 }));
 vi.mock('@/contexts/OrganizationContext', () => ({
   useOrganization: () => ({ selectedOrganizationId: 'org' }),
@@ -17,7 +18,7 @@ vi.mock('@/hooks/useContractLifecycle', () => ({
   useContractLifecycle: () => H.lifecycle,
 }));
 vi.mock('@/hooks/useRoomContractExtras', () => ({
-  useRoomContractExtras: () => ({ data: undefined }),
+  useRoomContractExtras: () => H.extras,
 }));
 vi.mock('@/lib/vnDate', () => ({ vnTodayISO: () => '2026-09-25' }));
 import RoomContractLifecycleDrawer from '../RoomContractLifecycleDrawer';
@@ -40,6 +41,7 @@ const payload: LifecyclePayload = {
 
 beforeEach(() => {
   H.payload = payload;
+  H.extras={data:undefined,isError:false,refetch:vi.fn()};
   H.lifecycle = { data: undefined, isError: false, error: null };
 });
 afterEach(cleanup);
@@ -70,7 +72,7 @@ describe('RoomContractLifecycleDrawer', () => {
   it('lỗi nguồn tiền được nói ra, không đổi thành số 0', () => {
     H.lifecycle = { data: undefined, isError: true, error: new Error('Không đọc được bản ghi thanh lý — thử lại.') };
     render(<RoomContractLifecycleDrawer roomId="r204" roomName="204" initialYear={2026} onClose={vi.fn()} />);
-    expect(screen.getByText('Cọc & công nợ: Không đọc được bản ghi thanh lý — thử lại.')).toBeTruthy();
+    expect(screen.getByText(/Chưa tải được cọc và công nợ/)).toBeTruthy();
     fireEvent.click(screen.getByText('Ngô Phương Anh'));
     const kpi = (label: string) => screen.getByText(label).parentElement!.textContent!;
     expect(kpi('ĐÃ THU')).toContain('Chưa đủ dữ liệu');
@@ -120,4 +122,13 @@ describe('RoomContractLifecycleDrawer', () => {
       expect(panel().style.left).toBe('');
     });
   });
+});
+
+it('does not expose raw money diagnostics and shows a retry for missing extra sources',()=>{
+ H.lifecycle={data:undefined,isError:true,error:new Error('SQL SELECT public.internal')};
+ H.extras={data:undefined,isError:true,refetch:vi.fn()};
+ render(<RoomContractLifecycleDrawer roomId="r204" roomName="204" initialYear={2026} onClose={vi.fn()}/>);
+ expect(document.body.textContent).not.toContain('SQL SELECT');
+ expect(screen.getByText(/Chưa tải đủ thông tin gia hạn/)).toBeTruthy();
+ fireEvent.click(screen.getByRole('button',{name:'Tải lại thông tin bổ sung'}));expect(H.extras.refetch).toHaveBeenCalledTimes(1);
 });

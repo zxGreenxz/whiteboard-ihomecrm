@@ -1,13 +1,16 @@
+// @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const boundary = vi.hoisted(() => ({
   uploadFile: vi.fn(),
+  deleteFile: vi.fn(),
   getSessionUser: vi.fn(),
   from: vi.fn(),
 }));
 
 vi.mock('@/lib/storage', () => ({
   uploadFile: boundary.uploadFile,
+  deleteFile: boundary.deleteFile,
   getPublicUrl: (b: string, p: string) => `https://x.supabase.co/storage/v1/object/public/${b}/${p}`,
   parseStorageRef: (v: string) => {
     const m = v.match(/\/object\/public\/([^/]+)\/(.+)$/);
@@ -22,6 +25,8 @@ import {
   DossierFileError, dossierStorageValue, listCustomerDossierFiles, removeDossierFile,
   slugTen, tenTepHoSo, uploadDossierFile,
 } from '../residenceDossierFiles';
+
+beforeEach(() => { localStorage.clear(); });
 
 type Chain = Record<string, ReturnType<typeof vi.fn>> & { then: (res: (v: unknown) => void) => void };
 function table(result: unknown): Chain {
@@ -57,6 +62,7 @@ describe('uploadDossierFile', () => {
   beforeEach(() => {
     boundary.from.mockReset();
     boundary.uploadFile.mockReset();
+    boundary.deleteFile.mockReset();
     boundary.getSessionUser.mockResolvedValue({ id: 'user-1' });
     boundary.uploadFile.mockResolvedValue('https://x.supabase.co/storage/v1/object/public/residence-docs/user-1/ct01/1-nguyengiabinhct011.jpg');
   });
@@ -92,7 +98,7 @@ describe('uploadDossierFile', () => {
   it('ảnh chủ quyền không gắn khách và lấy tên toà từ database', async () => {
     const buildings = table({ data: { organization_id: 'org-1', name: '950NK' }, error: null });
     const files = table({ data: [], error: null });
-    const filesInsert = table({ data: { id: 'f2' }, error: null });
+    const filesInsert = table({ data: { id: 'f2', object_name: 'user-1/ct01/1-nguyengiabinhct011.jpg', bucket_id: 'residence-docs' }, error: null });
     let lanGoi = 0;
     boundary.from.mockImplementation((t: string) => {
       if (t === 'buildings') return buildings;
@@ -129,6 +135,18 @@ describe('uploadDossierFile', () => {
     await expect(uploadDossierFile({ kind: 'CT01', buildingId: 'b1', customerId: 'c1', file: new File(['x'], 'a.jpg', { type: 'image/jpeg' }) }))
       .rejects.toThrow(/không có quyền/i);
   });
+
+  it('xóa ảnh vừa tải nếu dòng hồ sơ không lưu được', async () => {
+    const buildings = table({ data: { organization_id: 'org-1' }, error: null });
+    const count = table({ data: [], error: null });
+    const insert = table({ data: null, error: { code: '23514' } });
+    let index = 0;
+    boundary.from.mockImplementation((name: string) => name === 'buildings' ? buildings : (++index === 1 ? count : insert));
+    boundary.deleteFile.mockResolvedValue(undefined);
+    await expect(uploadDossierFile({ kind: 'CT01', buildingId: 'b1', customerId: 'c1', file: new File(['x'], 'a.jpg', { type: 'image/jpeg' }) }))
+      .rejects.toThrow(/chưa lưu được ảnh vào hồ sơ/i);
+    expect(boundary.deleteFile).toHaveBeenCalledWith('residence-docs', 'user-1/ct01/1-nguyengiabinhct011.jpg');
+  });
 });
 
 describe('listCustomerDossierFiles', () => {
@@ -144,7 +162,7 @@ describe('listCustomerDossierFiles', () => {
 
 describe('removeDossierFile', () => {
   it('xoá mềm bằng deleted_at', async () => {
-    const files = table({ error: null });
+    const files = table({ data: { id: 'f1' }, error: null });
     boundary.from.mockReturnValue(files);
     await removeDossierFile('f1');
     expect(files.update.mock.calls[0][0]).toHaveProperty('deleted_at');

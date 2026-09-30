@@ -841,6 +841,7 @@ export function useSetBusinessPerformanceReportingRole(
   const userId = user?.id ?? null;
   const scope = normalizedScope(filters);
   return useMutation({
+    meta: { handlesFeedback: true },
     mutationFn: async (input) => {
       const typeId = parseBusinessPerformanceUuid(
         input.incomeExpenseTypeId,

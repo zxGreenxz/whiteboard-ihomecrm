@@ -18,6 +18,10 @@ interface Props {
   onDraft: (v: string) => void;
   onSend: () => void;
   sending?: boolean;
+  sendBlocked?: boolean;
+  sendError?: string;
+  actionNotice?: string;
+  onClearUnconfirmed?: () => void;
   onPickTemplate: (body: string) => void;
   onBack?: () => void;
   onOpenInfo?: () => void;
@@ -44,7 +48,7 @@ interface Props {
 
 /** Cột 2: header + (thanh tìm) + luồng tin + ô soạn; kéo-thả tệp vào để gửi. */
 export default function ChatThread({
-  conv, draft, showTyping, templates, onDraft, onSend, sending, onPickTemplate, onBack, onOpenInfo, className,
+  conv, draft, showTyping, templates, onDraft, onSend, sending, sendBlocked, sendError, actionNotice, onClearUnconfirmed, onPickTemplate, onBack, onOpenInfo, className,
   canLoadHistory, loadingHistory, onLoadHistory, onReact, onRecall, onShare, onReply, onDelete,
   replyTo, onCancelReply, onSendMedia, mediaSending, onSendVoice, voiceSending, onSendSticker,
   unreadAtOpen, onTyping, onManageTemplates,
@@ -80,6 +84,7 @@ export default function ChatThread({
           onClose={() => { setSearchOpen(false); setSearchTerm(''); setScrollToId(null); }}
         />
       )}
+      {actionNotice && <div role="status" className="border-b border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">{actionNotice}</div>}
       <MessageList
         conv={conv}
         showTyping={showTyping}
@@ -99,7 +104,7 @@ export default function ChatThread({
         draft={draft}
         onDraft={onDraft}
         onSend={onSend}
-        sending={sending}
+        sending={sending} sendBlocked={sendBlocked} sendError={sendError} onClearUnconfirmed={onClearUnconfirmed}
         templates={templates}
         onPickTemplate={onPickTemplate}
         replyTo={replyTo}

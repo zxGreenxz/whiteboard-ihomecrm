@@ -1,3 +1,4 @@
+import {financialReadRows,financialReadNumber} from '@/lib/financialReadValidation';
 // =============================================
 // useInvoiceCollectors — AI đã thu BAO NHIÊU cho từng hoá đơn.
 //
@@ -57,7 +58,7 @@ export const useInvoiceCollectors = (invoiceIds: string[]) => {
       const rows: any[] = [];
       for (const r of results) {
         if (r.error) throw r.error;
-        rows.push(...((r.data ?? []) as any[]));
+        rows.push(...financialReadRows(r.data));
       }
       // Gộp chunk xong sort lại toàn cục theo created_at (giữ thứ tự thu
       // trước → sau như bản 1-query cũ).
@@ -71,7 +72,7 @@ export const useInvoiceCollectors = (invoiceIds: string[]) => {
         (map[inv] ??= []).push({
           payment_id: row.payment_id,
           creator_name: row.creator_name,
-          amount: Number(row.total_amount) || 0,
+          amount: financialReadNumber(row.total_amount),
           date: row.voucher_date,
         });
       }

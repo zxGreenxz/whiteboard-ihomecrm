@@ -1,3 +1,4 @@
+import { QueryRegion } from "@/components/errors/QueryRegion";
 // "Lương của tôi" — trang TRỌN MÀN (QUEST), mở ở TAB MỚI khi nhân viên bấm
 // "Bảng lương" ở sidebar. Tự cô lập khỏi MainLayout: tự dựng chrome riêng (top bar
 // + nền tối tím-vàng). Desktop → SalarySelfDesktop; điện thoại → SalarySelfMobile.
@@ -25,8 +26,10 @@ function Shell({ children }: { children: React.ReactNode }) {
 
 export default function MySalaryPage() {
   const phone = usePhoneViewport();
-  const { data: myMgr, isLoading: myLoading } = useMyManagerConfig();
-  const { data: staffMonth } = useStaffDisplayMonth(myMgr?.staff_id, true);
+  const managerConfigQuery = useMyManagerConfig();
+  const { data: myMgr, isLoading: myLoading } = managerConfigQuery;
+  const displayMonthQuery = useStaffDisplayMonth(myMgr?.staff_id, true);
+  const {data:staffMonth} = displayMonthQuery;
 
   // Tháng đang xem: mặc định = tháng hiển thị (lùi theo chốt lương). Cho phép lùi
   // về lịch sử; chặn vượt quá mốc được phép xem (staffMonth) — giữ đúng chính sách.
@@ -35,15 +38,20 @@ export default function MySalaryPage() {
   const effPeriod = override || ceiling;
 
   // Chế độ lương (cũ/v5) — chỉ đổi SỐ LIỆU tháng chưa chốt, UI giữ nguyên.
-  const { data: v5cfg } = useSalaryV5Config();
+  const engineQuery = useSalaryV5Config();
+  const { data: v5cfg } = engineQuery;
   // v5 chỉ áp từ system_v5.effective_from trở đi — tháng trước đó rơi về legacy.
   const salaryEngine = resolveSalaryEngine(v5cfg, effPeriod);
 
-  const { data, isLoading } = useManagerSalary(effPeriod, salaryEngine);
-  const { data: rulesData } = useBonusRules();
+  const salaryQuery = useManagerSalary(effPeriod, salaryEngine);
+  const {data, isLoading} = salaryQuery;
+  const rulesQuery = useBonusRules();
+  const { data: rulesData } = rulesQuery;
   const requirePhoto = !!rulesData?.rules?.requirePhoto;
 
-  if (myLoading || (!data && isLoading)) {
+  const sources = [...(myMgr?.staff_id ? [displayMonthQuery] : []), managerConfigQuery, engineQuery, salaryQuery, rulesQuery];
+  if (sources.some(query => query.isError)) return <Shell><QueryRegion label="bảng lương cá nhân" queries={sources}><p>Chưa tải đủ dữ liệu bảng lương.</p></QueryRegion></Shell>;
+  if (sources.some(query => query.isLoading) || myLoading || (!data && isLoading)) {
     return <Shell><div><Loader2 className="animate-spin" style={{ margin: "0 auto 10px", color: "#FFD23F" }} /><p style={{ fontSize: 14, color: "#9A8FC4" }}>Đang tải bảng lương…</p></div></Shell>;
   }
 

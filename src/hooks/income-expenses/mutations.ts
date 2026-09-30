@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import { rpcNullable } from "@/lib/rpcNullable";
 import { toast } from "sonner";
+import { createdVoucherFeedback, voucherFailureMessage } from "@/lib/voucherFeedback";
 import { addCycle, type RepeatCycle } from "@/lib/recurring";
 import { isIeCreateFallbackSignal } from "@/lib/canonicalFallback";
 import type {
@@ -93,7 +94,10 @@ export const useCreateIncomeExpense = () => {
           })),
           p_idempotency_key: `ie-create-${crypto.randomUUID()}`,
         });
-        if (!canonical.error) return canonical.data;
+        if (!canonical.error) {
+          if (!(canonical.data as {id?:string} | null)?.id) throw new TypeError("Missing voucher creation confirmation");
+          return canonical.data;
+        }
         // Fallback hợp lệ: (a) tín hiệu route/lớp phiếu chuẩn, HOẶC (b) ĐÚNG hai
         // lỗi quyền-sổ của v1 — writer v1 chỉ biết CUSTODIAN/OPERATOR (legacy
         // accounts.user_id + account_shared_users), chưa biết KNOWER (V2).
@@ -111,7 +115,6 @@ export const useCreateIncomeExpense = () => {
         const v1CashbookPermission =
           canonical.error.code === "42501" && V1_CASHBOOK_FALLBACK_MESSAGE.test(msg);
         if (!isIeCreateFallbackSignal(canonical.error) && !v1CashbookPermission) {
-          toast.error(msg || "Không thể tạo phiếu thu/chi");
           throw canonical.error;
         }
       }
@@ -176,18 +179,20 @@ export const useCreateIncomeExpense = () => {
       });
 
       if (compat.error) {
-        toast.error(compat.error.message || "Không thể tạo phiếu thu/chi");
         throw compat.error;
       }
 
+      if (!(compat.data as {id?:string} | null)?.id) throw new TypeError("Missing voucher creation confirmation");
       return compat.data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
-      toast.success("Dữ liệu đã được TẠO thành công");
+      const feedback = createdVoucherFeedback(data);
+      toast[feedback.kind](feedback.message);
     },
     onError: (error) => {
       console.error("Error creating income expense:", error);
+      toast.error(voucherFailureMessage(error, "tạo phiếu"));
     },
   });
 };

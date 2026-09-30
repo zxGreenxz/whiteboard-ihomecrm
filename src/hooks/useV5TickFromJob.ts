@@ -11,14 +11,16 @@ import { jsonProp } from '@/lib/jsonValue';
  * Không ném lỗi: chấm công là việc PHỤ của luồng hoàn tất công việc. Để nó làm
  * hỏng lượt đóng công việc thì người dùng mất thao tác chính vì một thứ bên lề.
  */
-export async function v5TickFromJob(jobId: string): Promise<boolean> {
+export async function v5TickFromJob(jobId: string, options: { throwOnError?: boolean } = {}): Promise<boolean> {
   try {
     // `supabase.rpc()` trả PostgrestBuilder — chỉ `implements PromiseLike` nên
     // KHÔNG có `.catch()` theo kiểu; `await` trong try/catch cho ngữ nghĩa y hệt
     // mà không phải bọc `Promise.resolve()`.
-    const { data } = await supabase.rpc('v5_tick_from_job', { p_job_id: jobId });
+    const { data, error } = await supabase.rpc('v5_tick_from_job', { p_job_id: jobId });
+    if (error) throw error;
     return Boolean(jsonProp(data, 'ticked'));
-  } catch {
+  } catch (error) {
+    if (options.throwOnError) throw error;
     return false;
   }
 }

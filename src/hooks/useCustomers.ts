@@ -1,3 +1,6 @@
+import { persistentFinancialWorkflow } from '@/lib/persistentFinancialWorkflow';
+import { FinancialWorkflowError, type CompletedFinancialStep } from '@/lib/financialWorkflow';
+import { confirmedRecordId, confirmedRecordBatch, recordWriteMessage } from '@/lib/recordWriteOutcome';
 import { useCallback } from "react";
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -9,10 +12,12 @@ import type {
   CustomerStats,
   CustomerFormData,
 } from "@/types/customer";
+import type { VehicleType } from '@/types/vehicle';
 import type { PaginatedData, PaginationParams } from "@/hooks/usePagination";
 import { isContractInEffect, ACTIVE_CONTRACT_STATUSES } from "@/types/contract";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { withOrg, withOrgAll } from "@/lib/orgPayload";
+import { friendlyError } from '@/lib/friendlyError';
 
 // Resolve building/room filter → customer IDs.
 // contracts has no customer_id (link is via contract_customers) and no
@@ -191,7 +196,7 @@ export const useCustomers = (
       const { data, error, count } = await query;
       if (error) {
         console.error("useCustomers error:", error);
-        return { data: [], count: 0 };
+        throw error;
       }
 
       const customers = (data || []) as Customer[];
@@ -360,9 +365,13 @@ export const useCustomerStats = (filters?: CustomerFilters) => {
       );
       if (error) {
         console.error("useCustomerStats error:", error);
-        return { total: 0, individual: 0, organization: 0, foreign: 0 };
+        throw error;
       }
-      const row = (data ?? {}) as Record<string, number>;
+      if (!data || typeof data !== 'object') throw new Error('Chưa xác nhận được thống kê khách hàng');
+      const row = data as Record<string, number>;
+      if (['total', 'individual', 'organization', 'foreign'].some(key => !Number.isFinite(Number(row[key])))) {
+        throw new Error('Thống kê khách hàng chưa đủ dữ liệu');
+      }
       return {
         total: Number(row.total) || 0,
         individual: Number(row.individual) || 0,
@@ -394,203 +403,112 @@ export interface CreateCustomerResult {
   vehicleError?: { message?: string; code?: string } | null;
 }
 
-export const useCreateCustomer = () => {
+export const useCreateCustomer = (options: {silent?:boolean} = {}) => {
   const queryClient = useQueryClient();
-  const { selectedOrganizationId } = useOrganization();
-
+  const {selectedOrganizationId} = useOrganization();
+  const guard = persistentFinancialWorkflow('customer-create');
+  const refresh = () => {for(const key of ['customers','customer-stats','vehicles']) queryClient.invalidateQueries({queryKey:[key]});};
   return useMutation({
-    mutationFn: async (formData: CustomerFormData) => {
-      const user = await getSessionUser();
-      if (!user) throw new Error("Not authenticated");
-
-      // Separate inline vehicles from customer data
-      const { vehicles, ...customerData } = formData;
-
-      const { data, error } = await supabase
-        .from("customers")
-        .insert(withOrg({
-          ...customerData,
-          user_id: user.id,
-          status_v2: "RENTING",
-        } as any, selectedOrganizationId))
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      // Create inline vehicles if any
-      if (vehicles && vehicles.length > 0 && data) {
-        const vehicleInserts = vehicles.map((v) => ({
-          user_id: user.id,
-          customer_id: (data as any).id,
-          vehicle_type: v.vehicle_type,
-          vehicle_name: v.vehicle_name,
-          color: v.color || null,
-          license_plate: v.license_plate,
-        }));
-
-        const { error: vehicleError } = await supabase
-          .from("vehicles")
-          .insert(withOrgAll(vehicleInserts, selectedOrganizationId) as any);
-
-        // KHÔNG có transaction bao ngoài: khách đã INSERT xong ở trên. Lỗi ở
-        // đây là hỏng MỘT PHẦN, và đó là lý do không `throw`:
-        //   throw ⇒ onSuccess không chạy ⇒ mất cả ba invalidateQueries dưới đây
-        //   ⇒ khách vừa tạo KHÔNG hiện trong danh sách, và người dùng đọc toast
-        //   "có lỗi, vui lòng thử lại" rồi tạo lại ⇒ khách trùng.
-        // Vì vậy báo sự thật qua kết quả trả về, đừng reject.
-        if (vehicleError) {
-          console.error(
-            "Tạo khách thành công nhưng insert vehicles lỗi:",
-            vehicleError,
-          );
-          return {
-            customer: data as unknown as Customer,
-            vehicleError,
-          } satisfies CreateCustomerResult;
+    meta:{handlesFeedback:true},
+    mutationFn:async(formData:CustomerFormData):Promise<CreateCustomerResult>=>{
+      const user=await getSessionUser(); if(!user)throw new Error('Not authenticated');
+      const {vehicles,...customerData}=formData;
+      vehicles?.forEach(vehicle=>validatedVehicleType(vehicle.vehicle_type));
+      const payload=withOrg({...customerData,user_id:user.id,status_v2:'RENTING'} as any,selectedOrganizationId);
+      let saved:Customer|undefined;
+      try{return await guard.run('create','tạo khách hàng',async progress=>{
+        const {data,error}=await supabase.from('customers').insert(withOrg(payload,selectedOrganizationId)).select().single();
+        if(error)throw error;const id=confirmedRecordId(data,'tạo khách hàng');
+        saved=data as unknown as Customer;
+        progress.completed.push({id,label:'Đã tạo khách hàng'});
+        if(vehicles?.length){
+          progress.stage='lưu phương tiện của khách';
+          const inserts=vehicles.map(v=>({user_id:user.id,customer_id:id,vehicle_type:validatedVehicleType(v.vehicle_type),vehicle_name:v.vehicle_name,color:v.color||null,license_plate:v.license_plate}));
+          const {data:rows,error:vehicleError}=await supabase.from('vehicles').insert(withOrgAll(inserts,selectedOrganizationId) as any).select('id');
+          if(vehicleError)throw vehicleError;
+          const ids=confirmedRecordBatch(rows,inserts.length,'lưu phương tiện của khách');
+          progress.completed.push(...ids.map(id=>({id,label:'Đã lưu phương tiện'})));
         }
+        return {customer:saved};
+      },undefined,payload.organization_id);}
+      catch(error){
+        // Keep the established partial result contract while the durable guard remains blocked.
+        if(saved&&error instanceof FinancialWorkflowError&&error.outcome==='partial')return {customer:saved,vehicleError:error};
+        throw error;
       }
-
-      return { customer: data as unknown as Customer } satisfies CreateCustomerResult;
     },
-    onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: ["customers"] });
-      queryClient.invalidateQueries({ queryKey: ["customer-stats"] });
-      queryClient.invalidateQueries({ queryKey: ["vehicles"] });
-      if (result.vehicleError) {
-        // Trước đây chỗ này luôn báo "TẠO thành công" kể cả khi phần xe hỏng.
-        toast.error(
-          `Đã tạo khách "${result.customer.full_name ?? ""}" nhưng CHƯA lưu được phương tiện. ` +
-            `Vào Sửa khách hàng để thêm xe — đừng tạo lại khách.`,
-        );
-        return;
-      }
-      toast.success("Dữ liệu đã được TẠO thành công");
+    onSuccess:result=>{
+      refresh();if(options.silent)return;
+      if(result.vehicleError){toast.error(`Khách hàng ${result.customer.full_name || result.customer.id} đã tạo, phương tiện chưa hoàn tất.`,{description:recordWriteMessage(result.vehicleError,'lưu phương tiện')});return;}
+      toast.success(`Đã tạo khách hàng ${result.customer.full_name || result.customer.id}`);
     },
-    onError: (error: any) => {
-      if (error?.code === "23505") {
-        toast.error("Số điện thoại hoặc CCCD đã tồn tại");
-      } else if (error?.code === "23503") {
-        toast.error("Dữ liệu liên quan không tồn tại");
-      } else {
-        toast.error("Có lỗi xảy ra. Vui lòng thử lại.");
-      }
-      console.error("Error creating customer:", error);
-    },
+    onError:error=>{refresh();if(!options.silent)toast.error('Chưa tạo được khách hàng',{description:recordWriteMessage(error,'tạo khách hàng')});},
   });
 };
 
-// Đồng bộ danh sách xe khai inline trong form khách hàng với bảng `vehicles`.
-// Chỉ đụng 4 cột khai được ở form (loại/dòng/màu/biển số) — xe tạo từ trang
-// Phương tiện còn toà/phòng/chủ xe/vé/ảnh nên KHÔNG ghi đè các cột đó.
-// Dòng bị gỡ khỏi form ⇒ soft-delete (giống nút Xoá ở trang Phương tiện).
-async function syncCustomerVehicles(
-  customerId: string,
-  vehicles: NonNullable<CustomerFormData["vehicles"]>,
-  organizationId: string | null,
-): Promise<void> {
-  const user = await getSessionUser();
-  if (!user) throw new Error("Not authenticated");
-  const sb = supabase as any;
-
-  const { data: existing, error: loadError } = await sb
-    .from("vehicles")
-    .select("id")
-    .eq("customer_id", customerId)
-    .is("deleted_at", null);
-  if (loadError) throw loadError;
-
-  const fields = (v: (typeof vehicles)[number]) => ({
-    vehicle_type: v.vehicle_type,
-    vehicle_name: v.vehicle_name,
-    color: v.color || null,
-    license_plate: v.license_plate,
-  });
-
-  const keptIds = new Set(vehicles.map((v) => v.id).filter(Boolean) as string[]);
-  const removedIds = ((existing || []) as { id: string }[])
-    .map((v) => v.id)
-    .filter((vid) => !keptIds.has(vid));
-
-  if (removedIds.length > 0) {
-    const { error } = await sb
-      .from("vehicles")
-      .update({ deleted_at: new Date().toISOString() })
-      .in("id", removedIds);
-    if (error) throw error;
+function validatedVehicleType(value: string): VehicleType {
+  switch (value) {
+    case 'MOTORBIKE': case 'CAR': case 'BICYCLE': case 'ELECTRIC_BIKE': case 'OTHER': return value;
+    default: throw new Error('Loại phương tiện không hợp lệ. Chọn lại trước khi lưu.');
   }
-
-  for (const v of vehicles.filter((x) => x.id)) {
-    const { error } = await sb.from("vehicles").update(fields(v)).eq("id", v.id);
-    if (error) throw error;
+}
+// Preserve main removal-update-insert order; receipts record each completed step.
+async function syncCustomerVehicles(customerId:string,vehicles:NonNullable<CustomerFormData['vehicles']>,organizationId:string|null,completed:CompletedFinancialStep[]):Promise<void>{
+  const user=await getSessionUser();if(!user)throw new Error('Not authenticated');
+  const {data:existing,error:loadError}=await supabase.from('vehicles').select('id').eq('customer_id',customerId).is('deleted_at',null);
+  if(loadError)throw loadError;
+  if(!Array.isArray(existing)||existing.some(row=>typeof row?.id!=='string'||!row.id)||new Set(existing.map(row=>row.id)).size!==existing.length)throw new Error('Chưa xác nhận được danh sách phương tiện hiện tại.');
+  const existingIds=existing.map(row=>row.id);
+  const keptIds=vehicles.flatMap(v=>v.id?[v.id]:[]);
+  if(new Set(keptIds).size!==keptIds.length||keptIds.some(id=>!existingIds.includes(id)))throw new Error('Phương tiện vừa thay đổi hoặc không thuộc khách này. Tải lại để đối chiếu.');
+  const fields=(v:(typeof vehicles)[number])=>({vehicle_type:validatedVehicleType(v.vehicle_type),vehicle_name:v.vehicle_name,color:v.color||null,license_plate:v.license_plate});
+  const removedIds=existingIds.filter(id=>!keptIds.includes(id));
+  if(removedIds.length){
+    const {data,error}=await supabase.from('vehicles').update({deleted_at:new Date().toISOString()}).in('id',removedIds).select('id');
+    if(error)throw error;
+    const ids=confirmedRecordBatch(data,removedIds.length,'gỡ phương tiện');
+    if(removedIds.some(id=>!ids.includes(id)))throw new Error('Chưa xác nhận đủ phương tiện được gỡ.');
+    completed.push(...ids.map(id=>({id,label:'Đã gỡ phương tiện'})));
   }
-
-  const added = vehicles.filter((v) => !v.id);
-  if (added.length > 0) {
-    const { error } = await sb.from("vehicles").insert(
-      withOrgAll(
-        added.map((v) => ({ ...fields(v), user_id: user.id, customer_id: customerId })),
-        organizationId,
-      ),
-    );
-    if (error) throw error;
+  for(const v of vehicles.filter(v=>v.id)){
+    const {data,error}=await supabase.from('vehicles').update(fields(v)).eq('id',v.id!).select('id').single();
+    if(error)throw error;const id=confirmedRecordId(data,'cập nhật phương tiện',v.id);
+    completed.push({id,label:'Đã cập nhật phương tiện'});
+  }
+  const added=vehicles.filter(v=>!v.id);
+  if(added.length){
+    const payload=withOrgAll(added.map(v=>({...fields(v),user_id:user.id,customer_id:customerId})),organizationId);
+    const {data,error}=await supabase.from('vehicles').insert(withOrgAll(payload,organizationId)).select('id');
+    if(error)throw error;
+    const ids=confirmedRecordBatch(data,added.length,'thêm phương tiện');
+    completed.push(...ids.map(id=>({id,label:'Đã thêm phương tiện'})));
   }
 }
 
-// =============================================
-// useUpdateCustomer - Update mutation
-// Requirements: 5.2
-// =============================================
-
 export const useUpdateCustomer = () => {
-  const queryClient = useQueryClient();
-  const { selectedOrganizationId } = useOrganization();
-
+  const queryClient=useQueryClient();const {selectedOrganizationId}=useOrganization();
+  const guard=persistentFinancialWorkflow('customer-update');
+  const refresh=()=>{for(const key of ['customers','customer-stats','vehicles'])queryClient.invalidateQueries({queryKey:[key]});};
   return useMutation({
-    mutationFn: async ({
-      id,
-      data: formData,
-    }: {
-      id: string;
-      data: Partial<CustomerFormData>;
-    }) => {
-      // vehicles không phải cột của customers — đồng bộ riêng bên dưới.
-      const { vehicles, ...customerData } = formData;
-
-      const { data, error } = await supabase
-        .from("customers")
-        .update(customerData as any)
-        .eq("id", id)
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      // `undefined` = caller không đụng tới xe (vd form khác chỉ sửa vài cột)
-      // ⇒ giữ nguyên. Mảng rỗng mới nghĩa là "xoá hết xe".
-      if (vehicles) await syncCustomerVehicles(id, vehicles, selectedOrganizationId);
-
-      return data as unknown as Customer;
+    meta:{handlesFeedback:true},
+    mutationFn:async({id,data:formData}:{id:string;data:Partial<CustomerFormData>}):Promise<CreateCustomerResult>=>{
+      const {vehicles,...customerData}=formData;
+      vehicles?.forEach(vehicle=>validatedVehicleType(vehicle.vehicle_type));let saved:Customer|undefined;
+      try{return await guard.run(id,'cập nhật khách hàng',async progress=>{
+        const {data,error}=await supabase.from('customers').update(customerData as any).eq('id',id).select().single();
+        if(error)throw error;confirmedRecordId(data,'cập nhật khách hàng',id);
+        saved=data as unknown as Customer;progress.completed.push({id,label:'Đã cập nhật khách hàng'});
+        if(vehicles){progress.stage='đồng bộ phương tiện';await syncCustomerVehicles(id,vehicles,selectedOrganizationId,progress.completed);}
+        return {customer:saved};
+      });}
+      catch(error){if(saved&&error instanceof FinancialWorkflowError&&error.outcome==='partial')return {customer:saved,vehicleError:error};throw error;}
     },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["customers"] });
-      queryClient.invalidateQueries({ queryKey: ["customer-stats"] });
-      queryClient.invalidateQueries({ queryKey: ["vehicles"] });
-      if (data?.id) {
-        queryClient.invalidateQueries({ queryKey: ["customers", data.id] });
-      }
-      toast.success("Dữ liệu đã được CẬP NHẬT thành công");
+    onSuccess:result=>{
+      refresh();
+      if(result.vehicleError){toast.error(`Khách hàng ${result.customer.full_name || result.customer.id} đã cập nhật, phương tiện chưa hoàn tất.`,{description:recordWriteMessage(result.vehicleError,'đồng bộ phương tiện')});return;}
+      toast.success(`Đã cập nhật khách hàng ${result.customer.full_name || result.customer.id}`);
     },
-    onError: (error: any) => {
-      if (error?.code === "23505") {
-        toast.error("Số điện thoại hoặc CCCD đã tồn tại");
-      } else if (error?.code === "23503") {
-        toast.error("Dữ liệu liên quan không tồn tại");
-      } else {
-        toast.error("Có lỗi xảy ra. Vui lòng thử lại.");
-      }
-      console.error("Error updating customer:", error);
-    },
+    onError:error=>{refresh();toast.error('Chưa cập nhật được khách hàng',{description:recordWriteMessage(error,'cập nhật khách hàng')});},
   });
 };
 
@@ -601,6 +519,13 @@ export const useUpdateCustomer = () => {
 
 export const useDeleteCustomer = () => {
   const queryClient = useQueryClient();
+  const { selectedOrganizationId } = useOrganization();
+  const guard = persistentFinancialWorkflow('customer-delete');
+  const readDeletion = async (id: string) => {
+    const { data: deleted, error } = await supabase.from('customers').select('id, deleted_at').eq('id', id).maybeSingle();
+    if (error || !deleted || deleted.id !== id || typeof deleted.deleted_at !== 'string' || !Number.isFinite(Date.parse(deleted.deleted_at))) return null;
+    return deleted;
+  };
 
   return useMutation({
     mutationFn: async (id: string) => {
@@ -612,7 +537,10 @@ export const useDeleteCustomer = () => {
         .select("contract_id")
         .eq("customer_id", id);
       if (linkError) throw linkError;
-      const contractIds = (links ?? []).map((l) => l.contract_id);
+      if (!Array.isArray(links) || links.some(link => typeof link.contract_id !== 'string' || !link.contract_id)) {
+        throw new Error('Chưa tải đủ liên kết hợp đồng để kiểm tra điều kiện xoá khách hàng.');
+      }
+      const contractIds = links.map((link) => link.contract_id);
       if (contractIds.length > 0) {
         const { data: active, error: activeError } = await supabase
           .from("contracts")
@@ -621,32 +549,47 @@ export const useDeleteCustomer = () => {
           .in("status", ACTIVE_CONTRACT_STATUSES)
           .is("deleted_at", null);
         if (activeError) throw activeError;
-        if (active && active.length > 0) {
+        if (!Array.isArray(active) || active.some(contract => typeof contract.id !== 'string' || !contract.id)) {
+          throw new Error('Chưa xác nhận đủ hợp đồng hiệu lực để kiểm tra điều kiện xoá khách hàng.');
+        }
+        if (active.length > 0) {
           throw new Error(
             `Không thể xoá khách hàng đang có ${active.length} hợp đồng hiệu lực — thanh lý hoặc kết thúc hợp đồng trước.`,
           );
         }
       }
 
-      const { error } = await supabase.rpc('soft_delete_customer' as any, {
-        p_customer_id: id,
-      });
-
-      if (error) throw error;
+      return guard.run(id, 'xoá khách hàng', async () => {
+        const { error } = await supabase.rpc('soft_delete_customer' as any, { p_customer_id: id });
+        if (error) throw error;
+        // RPC trả void: xác nhận trạng thái bằng lần đọc, không ghi lần nữa.
+        const deleted = await readDeletion(id);
+        if (!deleted) throw new FinancialWorkflowError('Yêu cầu xoá đã được gửi nhưng chưa xác nhận được trạng thái khách hàng. Tải lại và đối chiếu bản ghi trước khi tiếp tục.', 'unknown', [{id, label:'Khách hàng cần đối chiếu'}]);
+        return deleted;
+      }, async () => {
+        const deleted = await readDeletion(id);
+        return deleted ? {result: deleted} : null;
+      }, selectedOrganizationId);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["customers"] });
       queryClient.invalidateQueries({ queryKey: ["customer-stats"] });
-      toast.success("Dữ liệu đã được XOÁ thành công");
+      toast.success('Đã xác nhận xoá khách hàng');
     },
     onError: (error: any) => {
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
+      queryClient.invalidateQueries({ queryKey: ['customer-stats'] });
+      if (error instanceof FinancialWorkflowError) {
+        toast.error('Chưa xác nhận xoá khách hàng', {description:recordWriteMessage(error, 'xoá khách hàng')});
+        return;
+      }
       const message: string = error?.message ?? "";
       if (message.startsWith("Không thể xoá khách hàng") || message.includes("CUSTOMER_HAS_ACTIVE_CONTRACT")) {
         toast.error("Không thể xoá khách hàng đang có hợp đồng hiệu lực — thanh lý hoặc kết thúc hợp đồng trước.");
       } else if (error?.code === "23503") {
         toast.error("Dữ liệu liên quan không tồn tại");
       } else {
-        toast.error("Có lỗi xảy ra. Vui lòng thử lại.");
+        toast.error('Chưa xoá được khách hàng', {description:recordWriteMessage(error, 'xoá khách hàng')});
       }
       console.error("Error deleting customer:", error);
     },

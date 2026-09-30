@@ -27,9 +27,12 @@ export default function VacantRoomsReport() {
   const [floorId, setFloorId] = usePersistedState<string | undefined>("flt:rpt-vacant-rooms:floorId", undefined);
 
   useCopilotPageContext(['reports.real-estate.vacant', 'reports.real-estate.vacant-alias'], { building_id: buildingId, floor_id: floorId });
-  const { data: buildings } = useBuildings();
-  const { data: floors } = useFloors(buildingId);
-  const { data: vacantRooms, isLoading } = useVacantRoomsReport(buildingId, floorId);
+  const buildingsQuery = useBuildings();
+  const { data: buildings } = buildingsQuery;
+  const floorsQuery = useFloors(buildingId);
+  const { data: floors } = floorsQuery;
+  const reportQuery = useVacantRoomsReport(buildingId, floorId);
+  const { data: vacantRooms, isLoading } = reportQuery;
 
   // Sắp xếp theo toà nhà rồi tên phòng (MB* → G* → L* → 1,2,3,4...)
   const sortedRooms = useMemo(
@@ -129,6 +132,8 @@ export default function VacantRoomsReport() {
   return (
     <MainLayout>
       <ReportLayout
+        queries={[reportQuery]}
+        filterQueries={[buildingsQuery, floorsQuery]}
         title="Báo cáo Căn hộ trống"
         description="Danh sách các căn hộ hiện đang trống và sẵn sàng cho thuê"
         icon={<Home className="h-8 w-8" />}

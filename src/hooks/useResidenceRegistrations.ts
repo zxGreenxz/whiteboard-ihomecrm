@@ -5,13 +5,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
-  ghiHoSoTamTru, listCustomerRegistrations,
+  ghiHoSoTamTru, listCustomerRegistrations, RegistrationError,
   type GhiHoSoInput, type ResidenceRegistration,
 } from '@/lib/residenceRegistrations';
+import { FinancialWorkflowError } from '@/lib/financialWorkflowError';
+import { recordWriteMessage } from '@/lib/recordWriteOutcome';
+import { friendlyError } from '@/lib/friendlyError';
 
-export const residenceRegistrationKeys = {
-  customer: (customerId: string) => ['residence-registrations', customerId] as const,
-};
+import { residenceRegistrationKeys } from '@/lib/residenceRegistrationKeys';
+export { residenceRegistrationKeys } from '@/lib/residenceRegistrationKeys';
 
 export function useCustomerRegistrations(customerId: string | undefined) {
   return useQuery<ResidenceRegistration[], Error>({
@@ -28,6 +30,8 @@ export function useGhiHoSoTamTru(customerId: string | undefined) {
     onSuccess: async () => {
       if (customerId) await queryClient.invalidateQueries({ queryKey: residenceRegistrationKeys.customer(customerId) });
     },
-    onError: (error) => toast.error(error.message),
+    onError: (error) => toast.error(error instanceof FinancialWorkflowError ? recordWriteMessage(error, 'lưu mã hồ sơ tạm trú') : error instanceof RegistrationError
+      ? error.message
+      : friendlyError(error, 'Chưa lưu được mã hồ sơ tạm trú', { operation: 'lưu mã hồ sơ tạm trú' }).description),
   });
 }

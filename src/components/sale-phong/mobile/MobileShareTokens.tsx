@@ -1,3 +1,6 @@
+import {QueryRegion} from '@/components/errors/QueryRegion';
+import {actionErrorMessage} from '@/lib/actionFeedback';
+import {FinancialWorkflowError} from '@/lib/financialWorkflow';
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -16,24 +19,29 @@ const fmtDate = (s: string) => {
 };
 
 export default function MobileShareTokens({ onHeaderAction }: { onHeaderAction: (a: HeaderAction | null) => void }) {
-  const { data: tokens, isLoading } = usePublicRoomTokens();
-  const createMut = useCreatePublicRoomToken();
-  const labelMut = useUpdateTokenLabel();
-  const revokeMut = useSetTokenRevoked();
-  const deleteMut = useDeletePublicRoomToken();
+  const tokenQuery=usePublicRoomTokens();
+  const {data:tokens,isLoading}=tokenQuery;
+  const createMut = useCreatePublicRoomToken({inlineError:true});
+  const labelMut = useUpdateTokenLabel({inlineError:true});
+  const revokeMut = useSetTokenRevoked({inlineError:true});
+  const deleteMut = useDeletePublicRoomToken({inlineError:true});
 
   const [editing, setEditing] = useState<PublicRoomToken | null>(null); // null = create, token = edit
   const [sheetOpen, setSheetOpen] = useState(false);
   const [label, setLabel] = useState("");
   const [confirm, setConfirm] = useState<{ kind: "revoke" | "delete"; token: PublicRoomToken } | null>(null);
 
-  const openCreate = () => { setEditing(null); setLabel(""); setSheetOpen(true); };
+  const [writeError,setWriteError]=useState('');
+  const [blocked,setBlocked]=useState(false);
+  const canWrite=!blocked&&!tokenQuery.isError&&tokenQuery.data!==undefined;
+  const busy=createMut.isPending||labelMut.isPending||revokeMut.isPending||deleteMut.isPending;
+  const openCreate = () => { setWriteError('');setEditing(null); setLabel(""); setSheetOpen(true); };
 
   useEffect(() => {
-    onHeaderAction({ label: "Tạo link", onClick: openCreate });
+    onHeaderAction(canWrite&&!busy?{label:"Tạo link",onClick:openCreate}:null);
     return () => onHeaderAction(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [onHeaderAction,canWrite,busy]);
 
   const copyLink = async (token: string) => {
     try {
@@ -44,23 +52,21 @@ export default function MobileShareTokens({ onHeaderAction }: { onHeaderAction: 
     }
   };
 
-  const save = () => {
-    if (editing) {
-      labelMut.mutate({ token: editing.token, label }, { onSuccess: () => setSheetOpen(false) });
-    } else {
-      createMut.mutate(label, {
-        onSuccess: (row) => { setSheetOpen(false); if (row?.token) copyLink(row.token); },
-      });
-    }
+  const perform=async(task:()=>Promise<unknown>,done:()=>void)=>{
+    if(!canWrite||busy)return;setWriteError('');
+    try{await task();done();}catch(error){setWriteError(actionErrorMessage(error,'Chưa xác nhận được thao tác link chia sẻ.'));if(error instanceof FinancialWorkflowError&&error.outcome!=='failure')setBlocked(true);}
   };
+  const save=()=>void perform(async()=>{if(editing)return labelMut.mutateAsync({token:editing.token,label});const row=await createMut.mutateAsync(label);await copyLink(row.token);return row;},()=>setSheetOpen(false));
+  const errorNotice=writeError?<p role="alert" className="text-destructive">{writeError}</p>:null;
 
   return (
-    <div style={{ padding: "14px 16px 28px" }}>
+    <div style={{ padding: "14px 16px 28px" }}><QueryRegion label="link chia sẻ" queries={[tokenQuery]}>
       <div className="sp-note blue">
         <Info size={17} stroke="var(--acc-blue)" />
         <p>Mỗi link hiển thị tất cả toà đang có phòng trống. Gửi cho khách/sale — không cần đăng nhập, thu hồi bất cứ lúc nào.</p>
       </div>
 
+      {!sheetOpen&&!confirm&&errorNotice}
       {isLoading ? (
         <div className="stub"><p>Đang tải…</p></div>
       ) : !tokens || tokens.length === 0 ? (
@@ -88,19 +94,19 @@ export default function MobileShareTokens({ onHeaderAction }: { onHeaderAction: 
                   <button className="sp-iconbtn" title="Mở link" onClick={() => window.open(roomShareUrl(t.token), "_blank", "noopener")}>
                     <ExternalLink size={16} />
                   </button>
-                  <button className="sp-iconbtn" title="Đổi nhãn" onClick={() => { setEditing(t); setLabel(t.label ?? ""); setSheetOpen(true); }}>
+                  <button className="sp-iconbtn" title="Đổi nhãn" disabled={!canWrite||busy} onClick={()=>{setWriteError('');setEditing(t);setLabel(t.label??"");setSheetOpen(true);}}>
                     <Pencil size={16} />
                   </button>
                   {t.revoked ? (
-                    <button className="sp-iconbtn" title="Khôi phục" onClick={() => revokeMut.mutate({ token: t.token, revoked: false })}>
+                    <button className="sp-iconbtn" title="Khôi phục" disabled={!canWrite||busy} onClick={()=>void perform(()=>revokeMut.mutateAsync({token:t.token,revoked:false}),()=>{})}>
                       <RotateCcw size={16} />
                     </button>
                   ) : (
-                    <button className="sp-iconbtn warn" title="Thu hồi" onClick={() => setConfirm({ kind: "revoke", token: t })}>
+                    <button className="sp-iconbtn warn" title="Thu hồi" disabled={!canWrite||busy} onClick={()=>{setWriteError('');setConfirm({kind:"revoke",token:t});}}>
                       <Ban size={16} />
                     </button>
                   )}
-                  <button className="sp-iconbtn danger" title="Xoá" onClick={() => setConfirm({ kind: "delete", token: t })}>
+                  <button className="sp-iconbtn danger" title="Xoá" disabled={!canWrite||busy} onClick={()=>{setWriteError('');setConfirm({kind:"delete",token:t});}}>
                     <Trash2 size={16} />
                   </button>
                 </span>
@@ -119,9 +125,10 @@ export default function MobileShareTokens({ onHeaderAction }: { onHeaderAction: 
         <label className="sl">Nhãn link</label>
         <input className="sp-input" value={label} placeholder="VD: Gửi sale khu Gò Vấp"
           onChange={(e) => setLabel(e.target.value)} onKeyDown={(e) => e.key === "Enter" && save()} />
+        {errorNotice}
         <div className="sp-sheet-btns">
           <button className="cancel" onClick={() => setSheetOpen(false)}>Hủy</button>
-          <button className="ok" onClick={save} disabled={createMut.isPending || labelMut.isPending}>
+          <button className="ok" onClick={save} disabled={busy||!canWrite}>
             {editing ? "Lưu" : "Tạo link"}
           </button>
         </div>
@@ -140,17 +147,14 @@ export default function MobileShareTokens({ onHeaderAction }: { onHeaderAction: 
                 ? "Link sẽ bị xoá khỏi hệ thống, không thể khôi phục. Nếu chỉ muốn tạm tắt, hãy dùng Thu hồi."
                 : "Khách mở link đã thu hồi sẽ thấy \"Liên kết không hợp lệ\". Bạn có thể khôi phục lại sau."}
             </p>
+            {errorNotice}
             <div className="sp-sheet-btns">
               <button className="cancel" onClick={() => setConfirm(null)}>Hủy</button>
-              <button className={"ok" + (confirm.kind === "delete" ? " danger" : "")} onClick={() => {
-                if (confirm.kind === "delete") deleteMut.mutate(confirm.token.token);
-                else revokeMut.mutate({ token: confirm.token.token, revoked: true });
-                setConfirm(null);
-              }}>{confirm.kind === "delete" ? "Xoá" : "Thu hồi"}</button>
+              <button className={"ok" + (confirm.kind === "delete" ? " danger" : "")} disabled={busy||!canWrite} onClick={()=>void perform(()=>confirm.kind==='delete'?deleteMut.mutateAsync(confirm.token.token):revokeMut.mutateAsync({token:confirm.token.token,revoked:true}),()=>setConfirm(null))}>{confirm.kind === "delete" ? "Xoá" : "Thu hồi"}</button>
             </div>
           </>
         )}
       </SaleSheet>
-    </div>
+    </QueryRegion></div>
   );
 }

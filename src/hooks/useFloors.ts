@@ -1,3 +1,4 @@
+import { friendlyError } from "@/lib/friendlyError";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
@@ -31,7 +32,8 @@ export const useFloors = (buildingId?: string) => {
         throw error;
       }
 
-      return data || [];
+      if (!Array.isArray(data)) throw new TypeError("Invalid category list response");
+      return data;
     },
   });
 };
@@ -54,7 +56,7 @@ export const useFloor = (id: string) => {
   });
 };
 
-export const useCreateFloor = () => {
+export const useCreateFloor = (options?: {inlineError?:boolean}) => {
   const queryClient = useQueryClient();
   const { selectedOrganizationId } = useOrganization();
 
@@ -70,28 +72,25 @@ export const useCreateFloor = () => {
         .select()
         .single();
 
-      if (error) {
-        if (error.code === "23505") {
-          toast.error("Tầng này đã tồn tại trong toà nhà");
-        } else {
-          toast.error("Không thể tạo tầng");
-        }
-        throw error;
-      }
+      if (error) throw error;
+      if (!data || typeof data.id !== "string" || !data.id) throw new TypeError("Unconfirmed category result");
 
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["floors"] });
-      toast.success("Tầng đã được tạo thành công");
+      toast.success(`Đã tạo tầng ${data.name || data.floor_number}.`);
     },
     onError: (error) => {
       console.error("Error creating floor:", error);
+      if (options?.inlineError) return;
+      const feedback = friendlyError(error, "Chưa tạo được tầng", { operation: "tạo tầng" });
+      toast.error(feedback.title, { description: feedback.description });
     },
   });
 };
 
-export const useUpdateFloor = () => {
+export const useUpdateFloor = (options?: {inlineError?:boolean}) => {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -103,28 +102,25 @@ export const useUpdateFloor = () => {
         .select()
         .single();
 
-      if (error) {
-        if (error.code === "23505") {
-          toast.error("Tầng này đã tồn tại trong toà nhà");
-        } else {
-          toast.error("Không thể cập nhật tầng");
-        }
-        throw error;
-      }
+      if (error) throw error;
+      if (!data || data.id !== id) throw new TypeError("Unconfirmed category result");
 
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["floors"] });
-      toast.success("Tầng đã được cập nhật thành công");
+      toast.success(`Đã lưu thay đổi tầng ${data.name || data.floor_number}.`);
     },
     onError: (error) => {
       console.error("Error updating floor:", error);
+      if (options?.inlineError) return;
+      const feedback = friendlyError(error, "Chưa lưu thay đổi được tầng", { operation: "lưu thay đổi tầng" });
+      toast.error(feedback.title, { description: feedback.description });
     },
   });
 };
 
-export const useDeleteFloor = () => {
+export const useDeleteFloor = (options?: {inlineError?:boolean}) => {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -136,19 +132,20 @@ export const useDeleteFloor = () => {
         .select()
         .single();
 
-      if (error) {
-        toast.error("Không thể xóa tầng");
-        throw error;
-      }
+      if (error) throw error;
+      if (!data || data.id !== id) throw new TypeError("Unconfirmed category result");
 
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["floors"] });
-      toast.success("Tầng đã được xóa thành công");
+      toast.success(`Đã xóa tầng ${data.name || data.floor_number}.`);
     },
     onError: (error) => {
       console.error("Error deleting floor:", error);
+      if (options?.inlineError) return;
+      const feedback = friendlyError(error, "Chưa xóa được tầng", { operation: "xóa tầng" });
+      toast.error(feedback.title, { description: feedback.description });
     },
   });
 };

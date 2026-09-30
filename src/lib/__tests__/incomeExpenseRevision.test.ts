@@ -298,8 +298,8 @@ describe("dịch lỗi", () => {
   it("giữ câu tiếng Việt của máy chủ, bỏ tiền tố máy đọc", () => {
     expect(revisionErrorMessage({ code: "P0001", message: "[PROFIT_LOCKED] Tháng 07/2026 của toà 15KV đã chốt" }))
       .toBe("Tháng 07/2026 của toà 15KV đã chốt");
-    expect(revisionErrorMessage({ code: "22023", message: "Đổi số tiền … phải ghi lý do" })).toBe("Đổi số tiền … phải ghi lý do");
-    expect(revisionErrorMessage("không phải object")).toBe("Chưa lưu được phiếu. Hãy thử lại.");
+    expect(revisionErrorMessage({ code: "22023", message: "Đổi số tiền, hạng mục, loại, sổ quỹ hoặc toà phải ghi lý do (ít nhất 8 ký tự)." })).toBe("Đổi số tiền, hạng mục, loại, sổ quỹ hoặc toà phải ghi lý do (ít nhất 8 ký tự).");
+    expect(revisionErrorMessage("không phải object")).toContain("Giữ thông tin đang nhập");
   });
 });
 

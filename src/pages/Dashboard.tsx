@@ -31,6 +31,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { usePrefetchHeavyPages } from '@/hooks/usePrefetchHeavyPages';
+import { QueryRegion } from '@/components/errors/QueryRegion';
 
 const Dashboard = () => {
   const [selectedBuilding, setSelectedBuilding] = usePersistedState<string | null>('flt:dashboard:building', null);
@@ -47,14 +48,17 @@ const Dashboard = () => {
   // là hiện ngay, không "Đang tải".
   usePrefetchHeavyPages();
 
-  const { data: stats, isLoading } = useDashboardStats(buildingId);
-  const { data: buildings = [] } = useBuildings();
+  const statsQuery = useDashboardStats(buildingId);
+  const { data: stats, isLoading } = statsQuery;
+  const buildingsQuery = useBuildings();
+  const { data: buildings = [] } = buildingsQuery;
   // Chỉ fetch khi user MỞ dialog (3 query full-table rooms+contracts×2).
-  const { data: vacantRooms, isLoading: vacantLoading } = useVacantRoomsReport(
+  const vacantQuery = useVacantRoomsReport(
     buildingId || undefined,
     undefined,
     { enabled: vacantOpen },
   );
+  const { data: vacantRooms, isLoading: vacantLoading } = vacantQuery;
 
   // Run scheduled notification checks
   useScheduledNotifications();
@@ -77,6 +81,7 @@ const Dashboard = () => {
           </div>
           <div className="flex gap-2 items-center">
             {/* Building Filter */}
+            <QueryRegion label="danh sách tòa nhà" queries={[buildingsQuery]}>
             <SearchableSelect
               value={selectedBuilding || 'all'}
               onValueChange={(value) => setSelectedBuilding(value === 'all' ? null : value)}
@@ -87,6 +92,7 @@ const Dashboard = () => {
                 ...buildings.map((building: any) => ({ value: building.id, label: building.name })),
               ]}
             />
+            </QueryRegion>
             <Button variant="outline" size="sm" asChild>
               <Link to="/reports/real-estate">
                 <BarChart3 className="h-4 w-4 mr-2" />
@@ -97,6 +103,7 @@ const Dashboard = () => {
         </div>
 
         {/* Stats Grid - 5 cards */}
+        <QueryRegion label="số liệu tổng quan phòng, doanh thu và công nợ" queries={[statsQuery]}>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
           {/* Total Rooms */}
           <Card className="border-l-4 border-l-primary hover:shadow-md transition-shadow">
@@ -218,6 +225,7 @@ const Dashboard = () => {
         </div>
 
         {/* Operations summary — Resident-style 3 widgets */}
+        </QueryRegion>
         <OperationsSummary buildingId={buildingId} />
 
         {/* Charts Row */}
@@ -340,7 +348,7 @@ const Dashboard = () => {
             <DialogTitle className="flex items-center gap-2">
               <DoorOpen className="h-5 w-5 text-red-600" />
               Danh sách phòng trống
-              {!vacantLoading && vacantRooms && (
+              {!vacantLoading && !vacantQuery.isError && vacantRooms && (
                 <span className="text-sm font-normal text-muted-foreground">
                   ({vacantRooms.length})
                 </span>
@@ -351,6 +359,7 @@ const Dashboard = () => {
             </DialogDescription>
           </DialogHeader>
 
+          <QueryRegion label="danh sách phòng trống" queries={[vacantQuery]}>
           <div className="max-h-[60vh] overflow-y-auto rounded-md border">
             {vacantLoading ? (
               <div className="space-y-2 p-4">
@@ -415,6 +424,7 @@ const Dashboard = () => {
             )}
           </div>
 
+          </QueryRegion>
           <div className="flex justify-end">
             <Button asChild variant="outline" size="sm">
               <Link to="/reports/real-estate/vacant-rooms" onClick={() => setVacantOpen(false)}>

@@ -1,5 +1,6 @@
+// @vitest-environment jsdom
 // Sổ hồ sơ tạm trú: kiểm mã, đổi ngày, và hình dạng dữ liệu ghi xuống.
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 
 const boundary = vi.hoisted(() => ({ from: vi.fn(), user: vi.fn() }));
 vi.mock('@/integrations/supabase/client', () => ({ supabase: { from: boundary.from } }));
@@ -7,6 +8,7 @@ vi.mock('@/lib/authSession', () => ({ getSessionUser: boundary.user }));
 
 import { ghiHoSoTamTru, maHoSoHopLe, ngayIso, ngayVn, RegistrationError } from '@/lib/residenceRegistrations';
 
+beforeEach(() => {localStorage.clear();vi.resetAllMocks();});
 afterEach(() => vi.clearAllMocks());
 
 describe('maHoSoHopLe', () => {
@@ -48,7 +50,7 @@ describe('ghiHoSoTamTru', () => {
 
   it('ghi đúng trường và chốt trùng theo (công ty, mã hồ sơ)', async () => {
     boundary.user.mockResolvedValue({ id: 'u1' });
-    const { upsert } = dungChuoi({ data: { id: 'r1', subm_code: 'G01.899.909-260916-890028' }, error: null });
+    const { upsert } = dungChuoi({ data: { id: 'r1', subm_code: 'G01.899.909-260916-890028', customer_id: 'c1', building_id: 'b1', organization_id: 'o1', contract_id: 'ct1', receive_org: 'Công an Phường Hạnh Thông', temp_resident_from: '2026-09-16', temp_resident_to: '2028-09-14' }, error: null });
     await ghiHoSoTamTru({
       customerId: 'c1', buildingId: 'b1', organizationId: 'o1', contractId: 'ct1',
       submCode: ' G01.899.909-260916-890028 ', receiveOrg: 'Công an Phường Hạnh Thông',

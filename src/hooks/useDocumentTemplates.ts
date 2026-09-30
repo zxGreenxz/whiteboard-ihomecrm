@@ -1,3 +1,7 @@
+import { requireAccountWriteReceipt } from "@/lib/accountSettingsWriteReceipt";
+import { requireReadRows, requireReadRow, templateRow } from "@/lib/accountProfitReadModels";
+import { hasUnconfirmedResponse } from "@/lib/operationOutcome";
+import { notifyActionError } from '@/lib/actionFeedback';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
@@ -175,12 +179,12 @@ async function getNextTemplateNumber(userId: string): Promise<number> {
     throw error;
   }
 
-  if (!data || data.length === 0) {
-    return 1;
-  }
-
-  const lastNumber = parseInt(data[0].code.replace("MHD", ""), 10);
-  return Number.isFinite(lastNumber) ? lastNumber + 1 : 1;
+  if (!Array.isArray(data)) throw new TypeError('Malformed template code source');
+  if (data.length === 0) return 1;
+  const code = data[0]?.code;
+  const lastNumber = typeof code === 'string' && /^MHD\d+$/.test(code) ? Number(code.slice(3)) : NaN;
+  if (!Number.isSafeInteger(lastNumber) || lastNumber < 0 || lastNumber >= Number.MAX_SAFE_INTEGER) throw new TypeError('Malformed template code source');
+  return lastNumber + 1;
 }
 
 const formatTemplateCode = (n: number): string => `MHD${n.toString().padStart(6, "0")}`;
@@ -209,11 +213,10 @@ export const useDocumentTemplates = (category?: TemplateCategory) => {
       const { data, error } = await query;
 
       if (error) {
-        toast.error("Không thể tải danh sách mẫu");
         throw error;
       }
 
-      return data as DocumentTemplate[];
+      return requireReadRows<DocumentTemplate>(data, templateRow);
     },
   });
 };
@@ -248,11 +251,10 @@ export const useDocumentTemplatesByType = (
       const { data, error } = await query;
 
       if (error) {
-        toast.error("Không thể tải danh sách mẫu");
         throw error;
       }
 
-      return data as DocumentTemplate[];
+      return requireReadRows<DocumentTemplate>(data, templateRow);
     },
   });
 };
@@ -270,11 +272,10 @@ export const useDocumentTemplate = (id: string) => {
         .single();
 
       if (error) {
-        toast.error("Không thể tải thông tin mẫu");
         throw error;
       }
 
-      return data as DocumentTemplate;
+      return requireReadRow<DocumentTemplate>(data, row => row.id === id && templateRow(row));
     },
     enabled: !!id,
   });
@@ -317,7 +318,6 @@ export const useCreateDocumentTemplate = () => {
         });
 
       if (uploadError) {
-        toast.error(`Không thể tải file lên: ${uploadError.message}`);
         throw uploadError;
       }
 
@@ -330,15 +330,14 @@ export const useCreateDocumentTemplate = () => {
       // covers soft-deleted rows, so a freshly computed code can still collide
       // (e.g. re-uploading a previously deleted template). On 23505 bump the
       // number and retry; this self-heals even if several codes are taken.
-      const startNumber = await getNextTemplateNumber(user.id);
+      try {
+      const startNumber = await getNextTemplateNumber(user.id).catch(error => { throw new TemplateSaveUnknownError(urlData.publicUrl, error); });
       let data: DocumentTemplate | null = null;
       let lastError: { code?: string } | null = null;
 
       for (let attempt = 0; attempt < 25; attempt++) {
         const code = formatTemplateCode(startNumber + attempt);
-        const res = await supabase
-          .from("document_templates")
-          .insert(withOrg({
+        const submitted = withOrg({
             user_id: user.id,
             code,
             name: payload.name,
@@ -352,12 +351,19 @@ export const useCreateDocumentTemplate = () => {
             type: payload.type,
             variables: payload.variables,
             content: payload.content,
-          }, selectedOrganizationId))
+          }, selectedOrganizationId);
+        const res = await supabase
+          .from("document_templates")
+          .insert(withOrg(submitted, selectedOrganizationId))
           .select()
           .single();
 
         if (!res.error) {
-          data = res.data as DocumentTemplate;
+          try {
+            data = requireAccountWriteReceipt(res.data, submitted) as DocumentTemplate;
+          } catch (cause) {
+            throw new TemplateSaveUnknownError(urlData.publicUrl, cause, res.data && typeof res.data.id === 'string' ? res.data.id : undefined);
+          }
           break;
         }
 
@@ -367,25 +373,23 @@ export const useCreateDocumentTemplate = () => {
       }
 
       if (!data) {
-        // Cleanup: delete uploaded file if database insert never succeeded
-        await supabase.storage.from("document-templates").remove([filePath]);
-
-        if (lastError?.code === "23505") {
-          toast.error("Mã mẫu đã tồn tại");
-        } else {
-          toast.error("Không thể tạo mẫu");
-        }
-        throw lastError ?? new Error("Không thể tạo mẫu");
+        // A response failure does not prove the insert was rolled back. Keep the uploaded file.
+        throw new TemplateSaveUnknownError(urlData.publicUrl, lastError);
       }
 
       return data;
+      } catch (error) {
+        if (error instanceof TemplateSaveUnknownError) throw error;
+        throw new TemplateSaveUnknownError(urlData.publicUrl, error);
+      }
     },
-    onSuccess: () => {
+    onSuccess: (template) => {
       queryClient.invalidateQueries({ queryKey: ["document-templates"] });
-      toast.success("Mẫu đã được tạo thành công");
+      toast.success(`Đã tạo mẫu “${template.name}” (${template.code}).`);
     },
     onError: (error) => {
-      console.error("Error creating template:", error);
+      if (error instanceof TemplateSaveUnknownError) toast.warning(error.message);
+      else notifyActionError(error, "Chưa xác nhận được kết quả tạo mẫu tài liệu");
     },
   });
 };
@@ -422,15 +426,18 @@ export const useUpdateDocumentTemplate = () => {
         content: payload.content,
       };
 
+      let oldPathToRemove: string | null = null;
+      let uploadedUrl: string | null = null;
       // If new file uploaded
       if (payload.file) {
         // Get old template info
-        const { data: oldTemplate } = await supabase
+        const { data: oldTemplate, error: oldTemplateError } = await supabase
           .from("document_templates")
           .select("file_url")
           .eq("id", payload.id)
           .single();
 
+        if (oldTemplateError) throw oldTemplateError;
         // Upload new file (sanitize name — Storage rejects diacritics/spaces)
         const fileExt = payload.file.name.split(".").pop();
         const safeName = sanitizeStorageFileName(payload.file.name);
@@ -446,8 +453,7 @@ export const useUpdateDocumentTemplate = () => {
           });
 
         if (uploadError) {
-          toast.error(`Không thể tải file lên: ${uploadError.message}`);
-          throw uploadError;
+            throw uploadError;
         }
 
         // Get new public URL
@@ -455,23 +461,13 @@ export const useUpdateDocumentTemplate = () => {
           .from("document-templates")
           .getPublicUrl(filePath);
 
+        uploadedUrl = urlData.publicUrl;
         updateData.file_url = urlData.publicUrl;
         updateData.file_name = payload.file.name;
         updateData.file_size = payload.file.size;
         updateData.file_type = fileExt;
 
-        // Delete old file after successful upload
-        if (oldTemplate?.file_url) {
-          try {
-            const oldPath = oldTemplate.file_url.split("/").slice(-2).join("/");
-            await supabase.storage
-              .from("document-templates")
-              .remove([oldPath]);
-          } catch (error) {
-            console.error("Error deleting old file:", error);
-            // Don't throw - file deletion is not critical
-          }
-        }
+        if (oldTemplate?.file_url) oldPathToRemove = extractTemplatePath(oldTemplate.file_url);
       }
 
       // Update database record
@@ -480,15 +476,28 @@ export const useUpdateDocumentTemplate = () => {
         .update(updateData)
         .eq("id", payload.id)
         .select()
-        .single();
+        .single().then(result => result, cause => { if (uploadedUrl) throw new TemplateSaveUnknownError(uploadedUrl, cause, payload.id); throw cause; });
 
       if (error) {
-        if (error.code === "23505") {
-          toast.error("Mã mẫu đã tồn tại");
-        } else {
-          toast.error("Không thể cập nhật mẫu");
-        }
+        if (uploadedUrl) throw new TemplateSaveUnknownError(uploadedUrl, error, payload.id);
         throw error;
+      }
+      try { requireAccountWriteReceipt(data, { ...updateData, id: payload.id }); }
+      catch (cause) {
+        if (uploadedUrl) throw new TemplateSaveUnknownError(uploadedUrl, cause, payload.id);
+        throw new TemplateMutationReceiptError(payload.id);
+      }
+      if (!data || data.id !== payload.id || typeof data.name !== 'string' || !data.name || typeof data.code !== 'string' || !data.code
+        || (uploadedUrl && data.file_url !== uploadedUrl)) {
+        const cause = new TemplateMutationReceiptError(payload.id);
+        if (uploadedUrl) throw new TemplateSaveUnknownError(uploadedUrl, cause, payload.id);
+        throw cause;
+      }
+      if (oldPathToRemove) {
+        try {
+          const cleanup = await supabase.storage.from("document-templates").remove([oldPathToRemove]);
+          if (cleanup.error) console.warn('Template saved; old file cleanup pending', cleanup.error);
+        } catch (cleanupError) { console.warn('Template saved; old file cleanup pending', cleanupError); }
       }
 
       return data;
@@ -498,10 +507,11 @@ export const useUpdateDocumentTemplate = () => {
       queryClient.invalidateQueries({
         queryKey: ["document-template", data.id],
       });
-      toast.success("Mẫu đã được cập nhật thành công");
+      toast.success(`Đã lưu mẫu “${data.name}” (${data.code}).`);
     },
     onError: (error) => {
-      console.error("Error updating template:", error);
+      if (error instanceof TemplateSaveUnknownError) toast.warning(error.message);
+      else notifyActionError(error, "Chưa xác nhận được kết quả lưu mẫu tài liệu");
     },
   });
 };
@@ -512,22 +522,26 @@ export const useDeleteDocumentTemplate = () => {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
+      const deletedAt = new Date().toISOString();
+      const { data, error } = await supabase
         .from("document_templates")
-        .update({ deleted_at: new Date().toISOString() })
-        .eq("id", id);
-
-      if (error) {
-        toast.error("Không thể xóa mẫu");
-        throw error;
+        .update({ deleted_at: deletedAt })
+        .eq("id", id)
+        .select('id, deleted_at')
+        .single();
+      if (error) throw error;
+      if (!data || data.id !== id || typeof data.deleted_at !== 'string' || Date.parse(data.deleted_at) !== Date.parse(deletedAt)) {
+        throw new TemplateMutationReceiptError(id);
       }
+      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["document-templates"] });
       toast.success("Mẫu đã được xóa thành công");
     },
     onError: (error) => {
-      console.error("Error deleting template:", error);
+      if (error instanceof TemplateSaveUnknownError) toast.warning(error.message);
+      else notifyActionError(error, "Chưa xác nhận được kết quả xóa mẫu tài liệu");
     },
   });
 };
@@ -561,8 +575,8 @@ export const useViewTemplate = () => {
       window.open(data.signedUrl, "_blank");
     },
     onError: (error) => {
-      console.error("Error viewing template:", error);
-      toast.error("Không thể mở file");
+      if (error instanceof TemplateSaveUnknownError) toast.warning(error.message);
+      else notifyActionError(error, "Chưa xác nhận được kết quả mở mẫu tài liệu");
     },
   });
 };
@@ -606,11 +620,28 @@ export const useDownloadTemplate = () => {
       document.body.removeChild(a);
     },
     onSuccess: () => {
-      toast.success("Tải xuống thành công");
+      toast.success("Đã chuẩn bị tệp mẫu để tải xuống.");
     },
     onError: (error) => {
-      console.error("Error downloading template:", error);
-      toast.error("Có lỗi xảy ra khi tải file");
+      if (error instanceof TemplateSaveUnknownError) toast.warning(error.message);
+      else notifyActionError(error, "Chưa xác nhận được kết quả chuẩn bị tệp mẫu tài liệu");
     },
   });
 };
+
+export class TemplateSaveUnknownError extends Error {
+  constructor(readonly uploadedUrl: string, readonly cause: unknown, readonly templateId?: string) {
+    super(`Tệp mẫu đã tải lên nhưng chưa xác nhận được kết quả lưu mẫu${templateId ? ` ${templateId}` : ''}. Kiểm tra danh sách mẫu trước khi thao tác tiếp để tránh tạo trùng.`);
+    this.name = 'TemplateSaveUnknownError';
+  }
+}
+
+export class TemplateMutationReceiptError extends TypeError {
+  constructor(readonly templateId: string) {
+    super('Chưa xác nhận được mẫu tài liệu đã thay đổi. Giữ mẫu đang chọn và đọc lại trạng thái trước khi thực hiện tiếp.');
+    this.name = 'TemplateMutationReceiptError';
+  }
+}
+export function templateWriteOutcomeUnknown(error: unknown): boolean {
+  return error instanceof TemplateSaveUnknownError || error instanceof TemplateMutationReceiptError || hasUnconfirmedResponse(error);
+}

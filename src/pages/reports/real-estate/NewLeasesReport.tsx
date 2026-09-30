@@ -26,10 +26,12 @@ export default function NewLeasesReport() {
   });
 
   useCopilotPageContext('reports.real-estate.new-leases', { building_id: buildingId, from: dateRange?.from, to: dateRange?.to });
-  const { data: buildings } = useBuildings();
-  const { data: leases, isLoading } = useNewLeasesReport(
+  const buildingsQuery = useBuildings();
+  const { data: buildings } = buildingsQuery;
+  const reportQuery = useNewLeasesReport(
     dateRange?.from, dateRange?.to, buildingId
   );
+  const { data: leases, isLoading } = reportQuery;
 
   const formatCurrency = (amount: number) =>
     new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(amount);
@@ -76,6 +78,8 @@ export default function NewLeasesReport() {
   return (
     <MainLayout>
       <ReportLayout
+        queries={[reportQuery]}
+        filterQueries={[buildingsQuery]}
         title="Báo cáo Cho thuê"
         description="Danh sách hợp đồng cho thuê mới được ký trong kỳ"
         icon={<FileCheck className="h-8 w-8" />}

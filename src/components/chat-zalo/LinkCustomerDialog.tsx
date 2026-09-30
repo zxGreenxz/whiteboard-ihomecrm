@@ -1,3 +1,5 @@
+import { QueryRegion } from '@/components/errors/QueryRegion';
+import { isZaloActionUnconfirmed, zaloActionErrorMessage } from '@/lib/zaloActionFeedback';
 import { useState } from 'react';
 import { Loader2, Link2, Unlink, Search } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -17,7 +19,12 @@ interface Props {
 export default function LinkCustomerDialog({ open, onOpenChange, conv }: Props) {
   const orgId = useZaloOrgId();
   const [term, setTerm] = useState('');
-  const { data: hits = [], isFetching } = useSearchCustomers(term, open ? orgId : null);
+  const searchQuery = useSearchCustomers(term, open ? orgId : null);
+  const { data: hits = [], isFetching } = searchQuery;
+  const [failures,setFailures] = useState<Record<string,unknown>>({});
+  const failure = conv ? failures[conv.id] : null;
+  const blocked = isZaloActionUnconfirmed(failure);
+  const handleFailure = (error:unknown) => { if(conv) setFailures(previous=>({...previous,[conv.id]:error})); };
   const link = useLinkConversation();
   const unlink = useUnlinkConversation();
 
@@ -35,6 +42,7 @@ export default function LinkCustomerDialog({ open, onOpenChange, conv }: Props) 
           <div className="relative">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
+              aria-label="Tên hoặc số điện thoại khách hàng"
               value={term}
               onChange={(e) => setTerm(e.target.value)}
               placeholder="Tìm khách hàng theo tên hoặc SĐT…"
@@ -42,6 +50,9 @@ export default function LinkCustomerDialog({ open, onOpenChange, conv }: Props) 
               autoFocus
             />
           </div>
+          {failure != null && <p role="alert" className="text-sm text-destructive">{zaloActionErrorMessage(failure,'thay đổi liên kết hồ sơ khách hàng')}</p>}
+          {term.trim().length < 2 && <p className="text-sm text-muted-foreground">Nhập ít nhất 2 ký tự tên hoặc số điện thoại để tìm khách hàng.</p>}
+          <QueryRegion label="kết quả tìm khách hàng" queries={term.trim().length>=2 && orgId ? [searchQuery] : []}>
           <div className="max-h-64 overflow-y-auto rounded-md border">
             {isFetching && <div className="flex items-center gap-2 p-3 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Đang tìm…</div>}
             {!isFetching && term.trim().length >= 2 && hits.length === 0 && (
@@ -53,9 +64,9 @@ export default function LinkCustomerDialog({ open, onOpenChange, conv }: Props) 
                 className="flex w-full items-center justify-between gap-2 border-b px-3 py-2 text-left text-sm last:border-0 hover:bg-muted"
                 onClick={() => link.mutate(
                   { conversationId: conv.id, customerId: c.id },
-                  { onSuccess: () => onOpenChange(false) },
+                  { onSuccess: () => onOpenChange(false), onError:handleFailure },
                 )}
-                disabled={link.isPending}
+                disabled={link.isPending || unlink.isPending || blocked}
               >
                 <span className="min-w-0">
                   <span className="block truncate font-medium">{c.full_name}</span>
@@ -65,12 +76,13 @@ export default function LinkCustomerDialog({ open, onOpenChange, conv }: Props) 
               </button>
             ))}
           </div>
+          </QueryRegion>
           {(conv.customerId || conv.leadId) && (
             <Button
               variant="outline"
               className="w-full"
-              disabled={unlink.isPending}
-              onClick={() => unlink.mutate({ conversationId: conv.id }, { onSuccess: () => onOpenChange(false) })}
+              disabled={unlink.isPending || link.isPending || blocked}
+              onClick={() => unlink.mutate({ conversationId: conv.id }, { onSuccess: () => onOpenChange(false), onError:handleFailure })}
             >
               {unlink.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Unlink className="mr-2 h-4 w-4" />}
               Tháo liên kết hiện tại

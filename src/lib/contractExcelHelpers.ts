@@ -21,6 +21,8 @@ const getXLSX = (): Promise<XLSXModule> => (xlsxPromise ??= import('xlsx'));
 // =============================================
 
 export interface ContractImportRow {
+  /** Original worksheet position, before filtering blank or invalid rows. */
+  source_row?: number;
   room_name: string;
   customer_name: string;
   customer_phone: string;
@@ -502,6 +504,7 @@ export async function parseContractExcel(
             const notes = row.notes ? String(row.notes).trim() : undefined;
 
             success.push({
+              source_row: excelRowNum,
               room_name: roomName,
               customer_name: customerName,
               customer_phone: customerPhone,

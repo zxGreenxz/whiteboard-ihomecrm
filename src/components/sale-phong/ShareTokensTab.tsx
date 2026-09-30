@@ -1,3 +1,6 @@
+import {QueryRegion} from '@/components/errors/QueryRegion';
+import {actionErrorMessage} from '@/lib/actionFeedback';
+import {FinancialWorkflowError} from '@/lib/financialWorkflow';
 import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -27,11 +30,12 @@ const fmtDate = (s: string) => {
 };
 
 export default function ShareTokensTab() {
-  const { data: tokens, isLoading } = usePublicRoomTokens();
-  const createMut = useCreatePublicRoomToken();
-  const labelMut = useUpdateTokenLabel();
-  const revokeMut = useSetTokenRevoked();
-  const deleteMut = useDeletePublicRoomToken();
+  const tokenQuery=usePublicRoomTokens();
+  const {data:tokens,isLoading}=tokenQuery;
+  const createMut = useCreatePublicRoomToken({inlineError:true});
+  const labelMut = useUpdateTokenLabel({inlineError:true});
+  const revokeMut = useSetTokenRevoked({inlineError:true});
+  const deleteMut = useDeletePublicRoomToken({inlineError:true});
 
   const [createOpen, setCreateOpen] = useState(false);
   const [newLabel, setNewLabel] = useState("");
@@ -49,28 +53,31 @@ export default function ShareTokensTab() {
     }
   };
 
-  const doCreate = () => {
-    createMut.mutate(newLabel, {
-      onSuccess: (row) => { setCreateOpen(false); setNewLabel(""); if (row?.token) copyLink(row.token); },
-    });
+  const [writeError,setWriteError]=useState('');
+  const [blocked,setBlocked]=useState(false);
+  const canWrite=!blocked&&!tokenQuery.isError&&tokenQuery.data!==undefined;
+  const busy=createMut.isPending||labelMut.isPending||revokeMut.isPending||deleteMut.isPending;
+  const perform=async(task:()=>Promise<unknown>,done:()=>void)=>{
+    if(!canWrite||busy)return;setWriteError('');
+    try{await task();done();}catch(error){setWriteError(actionErrorMessage(error,'Chưa xác nhận được thao tác link chia sẻ.'));if(error instanceof FinancialWorkflowError&&error.outcome!=='failure')setBlocked(true);}
   };
-  const doEdit = () => {
-    if (!editing) return;
-    labelMut.mutate({ token: editing.token, label: editLabel }, { onSuccess: () => setEditing(null) });
-  };
+  const doCreate=()=>void perform(async()=>{const row=await createMut.mutateAsync(newLabel);await copyLink(row.token);},()=>{setCreateOpen(false);setNewLabel('');});
+  const doEdit=()=>{if(editing)void perform(()=>labelMut.mutateAsync({token:editing.token,label:editLabel}),()=>setEditing(null));};
+  const errorNotice=writeError?<p role="alert" className="text-sm text-destructive">{writeError}</p>:null;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4"><QueryRegion label="link chia sẻ" queries={[tokenQuery]}>
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">
           Mỗi link hiển thị tất cả toà của bạn đang có phòng trống. Gửi link cho khách/sale —
           không cần đăng nhập. Thu hồi link bất cứ lúc nào.
         </p>
-        <Button size="sm" onClick={() => { setNewLabel(""); setCreateOpen(true); }}>
+        <Button size="sm" disabled={!canWrite||busy} onClick={() => {setWriteError('');setNewLabel("");setCreateOpen(true);}}>
           <Plus className="h-4 w-4 mr-1" />Tạo link mới
         </Button>
       </div>
 
+      {!createOpen&&!editing&&!revoking&&!deleting&&errorNotice}
       <Card>
         <CardContent className="p-0">
           {isLoading ? (
@@ -113,19 +120,19 @@ export default function ShareTokensTab() {
                         <Button variant="ghost" size="icon" title="Mở link" onClick={() => window.open(roomShareUrl(t.token), "_blank", "noopener")}>
                           <ExternalLink className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" title="Đổi nhãn" onClick={() => { setEditing(t); setEditLabel(t.label ?? ""); }}>
+                        <Button variant="ghost" size="icon" title="Đổi nhãn" disabled={!canWrite||busy} onClick={() => {setWriteError('');setEditing(t);setEditLabel(t.label ?? "");}}>
                           <Pencil className="h-4 w-4" />
                         </Button>
                         {t.revoked ? (
-                          <Button variant="ghost" size="icon" title="Khôi phục" onClick={() => revokeMut.mutate({ token: t.token, revoked: false })}>
+                          <Button variant="ghost" size="icon" title="Khôi phục" disabled={!canWrite||busy} onClick={()=>void perform(()=>revokeMut.mutateAsync({token:t.token,revoked:false}),()=>{})}>
                             <RotateCcw className="h-4 w-4" />
                           </Button>
                         ) : (
-                          <Button variant="ghost" size="icon" title="Thu hồi" onClick={() => setRevoking(t)}>
+                          <Button variant="ghost" size="icon" title="Thu hồi" disabled={!canWrite||busy} onClick={()=>{setWriteError('');setRevoking(t);}}>
                             <Ban className="h-4 w-4 text-amber-600" />
                           </Button>
                         )}
-                        <Button variant="ghost" size="icon" title="Xoá" onClick={() => setDeleting(t)}>
+                        <Button variant="ghost" size="icon" title="Xoá" disabled={!canWrite||busy} onClick={()=>{setWriteError('');setDeleting(t);}}>
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </div>
@@ -148,9 +155,10 @@ export default function ShareTokensTab() {
               onChange={(e) => setNewLabel(e.target.value)} onKeyDown={(e) => e.key === "Enter" && doCreate()} />
             <p className="text-xs text-muted-foreground">Link sẽ được tạo ngẫu nhiên và copy sẵn vào clipboard.</p>
           </div>
+          {errorNotice}
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>Hủy</Button>
-            <Button onClick={doCreate} disabled={createMut.isPending}>Tạo link</Button>
+            <Button onClick={doCreate} disabled={busy||!canWrite}>Tạo link</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -164,9 +172,10 @@ export default function ShareTokensTab() {
             <Input id="edit-label" value={editLabel} onChange={(e) => setEditLabel(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && doEdit()} />
           </div>
+          {errorNotice}
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditing(null)}>Hủy</Button>
-            <Button onClick={doEdit} disabled={labelMut.isPending}>Lưu</Button>
+            <Button onClick={doEdit} disabled={busy||!canWrite}>Lưu</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -180,9 +189,10 @@ export default function ShareTokensTab() {
               Khách mở link đã thu hồi sẽ thấy "Liên kết không hợp lệ". Bạn có thể khôi phục lại sau.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {errorNotice}
           <AlertDialogFooter>
             <AlertDialogCancel>Hủy</AlertDialogCancel>
-            <AlertDialogAction onClick={() => { if (revoking) revokeMut.mutate({ token: revoking.token, revoked: true }); setRevoking(null); }}>
+            <AlertDialogAction disabled={busy||!canWrite} onClick={e=>{e.preventDefault();if(revoking)void perform(()=>revokeMut.mutateAsync({token:revoking.token,revoked:true}),()=>setRevoking(null));}}>
               Thu hồi
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -198,14 +208,15 @@ export default function ShareTokensTab() {
               Link sẽ bị xoá khỏi hệ thống, không thể khôi phục. Nếu chỉ muốn tạm tắt, hãy dùng "Thu hồi".
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {errorNotice}
           <AlertDialogFooter>
             <AlertDialogCancel>Hủy</AlertDialogCancel>
-            <AlertDialogAction onClick={() => { if (deleting) deleteMut.mutate(deleting.token); setDeleting(null); }}>
+            <AlertDialogAction disabled={busy||!canWrite} onClick={e=>{e.preventDefault();if(deleting)void perform(()=>deleteMut.mutateAsync(deleting.token),()=>setDeleting(null));}}>
               Xoá
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </QueryRegion></div>
   );
 }

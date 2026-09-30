@@ -1,9 +1,11 @@
+import {QueryRegion} from '@/components/errors/QueryRegion';
 import { useState, useMemo, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -48,9 +50,11 @@ export function ServiceSelectionDialog({
   // toà — để user gán bất kỳ dịch vụ nào cho HĐ (vd loại điện khác mặc định
   // toà). buildingId chỉ dùng để gắn nhãn "toà" cho dịch vụ là mặc định.
   // enabled: open — dialog mounted sẵn, chỉ fetch khi thực sự mở.
-  const { data: services = [], isLoading } = useServices(undefined, {
+  const sourceQuery = useServices(undefined, {
     enabled: open,
   });
+
+  const {data:services=[],isLoading}=sourceQuery;
 
   // Seed checked state each time the dialog opens. The parent controls `open`
   // directly (no DialogTrigger) and Radix doesn't fire onOpenChange for
@@ -84,6 +88,7 @@ export function ServiceSelectionDialog({
   };
 
   const handleConfirm = () => {
+    if(sourceQuery.isError||sourceQuery.data===undefined) return;
     const selected: ServiceBasic[] = services
       .filter((s) => checkedIds.has(s.id))
       .map((s) => ({
@@ -103,6 +108,7 @@ export function ServiceSelectionDialog({
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Chọn dịch vụ</DialogTitle>
+          <DialogDescription>Chọn trong danh sách đã tải. Lựa chọn hiện có được giữ khi tải lỗi.</DialogDescription>
         </DialogHeader>
 
         {/* Search input */}
@@ -117,6 +123,7 @@ export function ServiceSelectionDialog({
         </div>
 
         {/* Service list */}
+        <QueryRegion label="danh sách dịch vụ" queries={[sourceQuery]}>
         <ScrollArea className="h-[360px] border rounded-md">
           {isLoading ? (
             <div className="flex items-center justify-center h-full py-10">
@@ -163,12 +170,13 @@ export function ServiceSelectionDialog({
             </div>
           )}
         </ScrollArea>
+        </QueryRegion>
 
         <DialogFooter className="gap-2 sm:gap-0">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Hủy
           </Button>
-          <Button onClick={handleConfirm}>
+          <Button disabled={sourceQuery.isError||sourceQuery.data===undefined} onClick={handleConfirm}>
             Xác nhận{checkedIds.size > 0 && ` (${checkedIds.size})`}
           </Button>
         </DialogFooter>

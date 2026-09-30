@@ -1,3 +1,4 @@
+import { focusFirstError } from '@/lib/asyncFormErrors';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useForgotPassword } from '@/hooks/useAuth';
@@ -16,11 +17,13 @@ const ForgotPassword = () => {
 
   const validateEmail = () => {
     if (!email.trim()) {
-      setError('Email không được để trống');
+      setError('Nhập email nhận hướng dẫn.');
+      void focusFirstError({ email: 'required' });
       return false;
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      setError('Email không hợp lệ');
+      setError('Nhập email đúng định dạng, ví dụ ten@congty.vn.');
+      void focusFirstError({ email: 'invalid' });
       return false;
     }
     return true;
@@ -60,7 +63,7 @@ const ForgotPassword = () => {
               Kiểm tra email của bạn
             </CardTitle>
             <CardDescription className="text-center">
-              Chúng tôi đã gửi link đặt lại mật khẩu đến email <strong>{email}</strong>
+              Nếu email này hợp lệ, bạn sẽ nhận được link đặt lại mật khẩu đến email <strong>{email}</strong>
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -114,7 +117,7 @@ const ForgotPassword = () => {
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
-                id="email"
+                id="email" name="email" aria-invalid={!!error} aria-describedby={error ? "email-error" : undefined}
                 type="email"
                 placeholder="email@example.com"
                 value={email}
@@ -123,7 +126,7 @@ const ForgotPassword = () => {
                 autoComplete="email"
                 autoFocus
               />
-              {error && <p className="text-sm text-red-500">{error}</p>}
+              {error && <p id="email-error" role="alert" className="text-sm text-red-500">{error}</p>}
             </div>
 
             <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm text-gray-600">

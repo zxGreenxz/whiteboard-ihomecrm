@@ -1,3 +1,5 @@
+import { ZaloActionUnknownError, zaloActionErrorMessage } from '@/lib/zaloActionFeedback';
+import { notifyActionError } from '@/lib/actionFeedback';
 // Hooks dữ liệu cho trang Chat Zalo (Supabase + Realtime).
 // Map row DB → shape ZaloConversation/ZaloMessage mà các component dùng.
 //
@@ -100,7 +102,9 @@ export function mapMsg(r: any): ZaloMessage {
     : t === 'sticker' ? 'sticker'
     : undefined;
   const isMedia = !!type && type !== 'sys';
-  const body = (r.body && String(r.body).trim()) ? r.body : (isMedia ? undefined : '[Tin nhắn]');
+  const body = t === 'sys' && r.direction === 'out' && r.body === '(Tin đã được thu hồi)'
+    ? 'Đã yêu cầu thu hồi tin nhắn. Chưa xác nhận kết quả thu hồi trên Zalo.'
+    : (r.body && String(r.body).trim()) ? r.body : (isMedia ? undefined : '[Tin nhắn]');
   return {
     id: r.id,
     type,
@@ -210,6 +214,7 @@ export function useSendZaloMessage() {
         p_mentions: v.mentions && v.mentions.length ? v.mentions : null,
       });
       if (error) throw error;
+      if (!data || typeof data !== 'object' || typeof data.id !== 'string') throw new Error('Unconfirmed Zalo text queue response');
       return { row: data, cliId };
     },
     onMutate: async (v) => {
@@ -237,7 +242,7 @@ export function useSendZaloMessage() {
     },
     onError: (err, _v, ctx) => {
       if (ctx?.key) qc.setQueryData(ctx.key, ctx.prev);
-      toast.error('Không gửi được tin nhắn');
+      notifyActionError(err, 'Chưa xác nhận được kết quả gửi tin nhắn Zalo');
       console.error('zalo_send_message', err);
     },
     onSettled: (_d, _e, v) => {
@@ -262,7 +267,7 @@ export function useReactMessage() {
       qc.setQueryData<ZaloMessage[]>(key, (prev || []).map((m) => (m.id === v.messageId ? { ...m, react: v.emoji } : m)));
       return { prev, key };
     },
-    onError: (e, _v, ctx) => { if (ctx?.key) qc.setQueryData(ctx.key, ctx.prev); toast.error('Không thả được cảm xúc'); console.error('zalo_react', e); },
+    onError: (e, _v, ctx) => { if (ctx?.key) qc.setQueryData(ctx.key, ctx.prev); notifyActionError(e, 'Chưa xác nhận được kết quả thả cảm xúc'); console.error('zalo_react', e); },
     onSettled: (_d, _e, v) => qc.invalidateQueries({ queryKey: QK.messages(v.conversationId) }),
   });
 }
@@ -276,10 +281,11 @@ export function useRecallMessage() {
       if (error) throw error;
     },
     onSuccess: (_d, v) => {
+      toast.info('Đã tiếp nhận yêu cầu thu hồi tin nhắn. Chưa xác nhận kết quả thu hồi trên Zalo.');
       qc.invalidateQueries({ queryKey: QK.messages(v.conversationId) });
       qc.invalidateQueries({ queryKey: QK.conversations });
     },
-    onError: (e: any) => { toast.error(e?.message || 'Không thu hồi được'); console.error('zalo_recall', e); },
+    onError: (e: any) => { notifyActionError(e, 'Không thu hồi được'); console.error('zalo_recall', e); },
   });
 }
 
@@ -292,10 +298,10 @@ export function useLoadHistory() {
       if (error) throw error;
     },
     onSuccess: (_d, v) => {
-      toast.success('Đang tải thêm tin cũ…');
+      toast.info('Đã yêu cầu tải thêm tin nhắn cũ. Tin nhắn sẽ xuất hiện khi đồng bộ xong.');
       setTimeout(() => qc.invalidateQueries({ queryKey: QK.messages(v.conversationId) }), 3000);
     },
-    onError: (e: any) => { toast.error(e?.message || 'Không tải được tin cũ'); console.error('zalo_load_history', e); },
+    onError: (e: any) => { notifyActionError(e, 'Không tải được tin cũ'); console.error('zalo_load_history', e); },
   });
 }
 
@@ -347,7 +353,7 @@ export function useToggleAutomation() {
       qc.setQueryData<ZaloAutomations>(key, { ...(prev || { broadcastOn: false, autoReplyOn: false }), [field]: v.enabled } as ZaloAutomations);
       return { prev, key };
     },
-    onError: (_e, _v, ctx) => { if (ctx) qc.setQueryData(ctx.key, ctx.prev); toast.error('Không đổi được trạng thái'); },
+    onError: (error, _v, ctx) => { if (ctx) qc.setQueryData(ctx.key, ctx.prev); notifyActionError(error,'Chưa xác nhận được trạng thái tự động hóa Zalo'); },
     onSettled: () => qc.invalidateQueries({ queryKey: QK.automations }),
   });
 }
@@ -403,7 +409,7 @@ export function useSaveAutomation() {
       toast.success('Đã lưu cài đặt tự động hoá');
       qc.invalidateQueries({ queryKey: QK.automations });
     },
-    onError: (e: Error) => toast.error(e?.message || 'Không lưu được cài đặt'),
+    onError: (e: Error) => notifyActionError(e, 'Không lưu được cài đặt'),
   });
 }
 
@@ -477,6 +483,7 @@ export function useEmergencyStop() {
       const { data, error } = await db.rpc('zalo_dung_khan_cap', { p_organization_id: orgId });
       if (error) throw error;
       const r = (data || {}) as Record<string, number>;
+      if (!['da_huy','tin_danh_dau_that_bai','con_dang_gui'].every(key => typeof r[key] === 'number' && Number.isInteger(r[key]) && r[key] >= 0)) throw new Error('Unconfirmed emergency stop response');
       return {
         daHuy: r.da_huy ?? 0,
         tinDanhDauThatBai: r.tin_danh_dau_that_bai ?? 0,
@@ -488,9 +495,9 @@ export function useEmergencyStop() {
       // một lời gọi Zalo, tin đó vẫn sẽ đi ra. Giấu chi tiết này đi thì người
       // dùng thấy một tin lọt sau khi bấm và mất tin vào nút.
       const them = r.conDangGui > 0
-        ? ` Còn ${r.conDangGui} tin đang gửi dở sẽ vẫn đi ra.`
+        ? ` Còn ${r.conDangGui} tin đang xử lý có thể tiếp tục được gửi.`
         : '';
-      toast.success(
+      (r.conDangGui > 0 ? toast.warning : r.daHuy > 0 ? toast.success : toast.info)(
         r.daHuy > 0
           ? `Đã dừng: huỷ ${r.daHuy} tin đang chờ, tắt cả hai công tắc.${them}`
           : `Không còn tin nào đang chờ. Đã tắt cả hai công tắc.${them}`,
@@ -498,7 +505,7 @@ export function useEmergencyStop() {
       qc.invalidateQueries({ queryKey: QK.automations });
       qc.invalidateQueries({ queryKey: QK.conversations });
     },
-    onError: (e: Error) => toast.error(e?.message || 'Không dừng được — thử lại'),
+    onError: (e: Error) => notifyActionError(e, 'Chưa xác nhận được kết quả dừng lịch gửi Zalo'),
   });
 }
 
@@ -516,7 +523,7 @@ export function useMarkSalePartner() {
       toast.success(v.isSale ? 'Đã đánh dấu là sale/môi giới' : 'Đã bỏ đánh dấu sale');
       qc.invalidateQueries({ queryKey: QK.conversations });
     },
-    onError: (e: Error) => toast.error(e?.message || 'Không đổi được đánh dấu'),
+    onError: (e: Error) => notifyActionError(e, 'Không đổi được đánh dấu'),
   });
 }
 
@@ -572,10 +579,20 @@ export function useBroadcast() {
     mutationFn: async (v: { conversationIds: string[]; body: string }): Promise<number> => {
       const { data, error } = await db.rpc('zalo_broadcast', { p_conversation_ids: v.conversationIds, p_body: v.body });
       if (error) throw error;
-      return Number(data) || 0;
+      if (typeof data !== 'number' || !Number.isInteger(data) || data < 0 || data > v.conversationIds.length) throw new Error('Unconfirmed broadcast queue response');
+      return data;
     },
-    onSuccess: (n) => { toast.success(`Đã gửi tới ${n} hội thoại`); qc.invalidateQueries({ queryKey: QK.conversations }); },
-    onError: (e: any) => { toast.error(e?.message || 'Không gửi được'); console.error('zalo_broadcast', e); },
+    onSuccess: (n, v) => {
+      const total = v.conversationIds.length;
+      const message = `Đã xếp ${n}/${total} hội thoại vào hàng đợi gửi`;
+      if (n < total) {
+        toast.warning(message, { description: `${total - n} hội thoại chưa được xếp hàng. Kiểm tra quyền và trạng thái hội thoại; không gửi lại toàn bộ danh sách.` });
+      } else {
+        toast.info(message);
+      }
+      qc.invalidateQueries({ queryKey: QK.conversations });
+    },
+    onError: (e: any) => { notifyActionError(e, 'Chưa xác nhận được kết quả xếp hàng gửi Zalo'); console.error('zalo_broadcast', e); },
   });
 }
 
@@ -609,10 +626,13 @@ export function useRequestConnect() {
         p_account_id: v.accountId ?? null, p_name: v.name ?? null, p_organization_id: orgId,
       });
       if (error) throw error;
+      if (!data || typeof data.id !== 'string' || !data.id || data.status !== 'connecting' || data.kind !== 'personal'
+        || (v.accountId && data.id !== v.accountId) || (orgId && data.organization_id !== orgId))
+        throw new ZaloActionUnknownError('khởi tạo kết nối Zalo', v.accountId ? {label:'Mã tài khoản',id:v.accountId} : undefined);
       return mapAccount(data);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: QK.accounts }),
-    onError: (e) => { toast.error('Không khởi tạo được kết nối'); console.error('zalo_request_connect', e); },
+    onError: (e) => { toast.error(zaloActionErrorMessage(e, 'khởi tạo kết nối Zalo')); console.error('zalo_request_connect', e); },
   });
 }
 
@@ -624,7 +644,7 @@ export function useDisconnectAccount() {
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: QK.accounts }),
-    onError: (e) => { toast.error('Không ngắt được kết nối'); console.error('zalo_disconnect_account', e); },
+    onError: (e) => { notifyActionError(e, 'Chưa xác nhận được kết quả ngắt kết nối Zalo'); console.error('zalo_disconnect_account', e); },
   });
 }
 

@@ -1,3 +1,6 @@
+import {readSetting,readIndividualSetting,readGeneralSettings} from '@/lib/accountJobReadModels';
+import { requireAccountWriteReceipt } from "@/lib/accountSettingsWriteReceipt";
+import { notifyActionError } from '@/lib/actionFeedback';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
@@ -12,6 +15,8 @@ export type SettingKey =
   | 'notification_config'
   | 'code_generation_config'
   | 'acceptance_geofence';
+
+const SETTING_LABELS: Record<SettingKey,string> = {"company_info": "thông tin công ty", "contract_config": "cấu hình hợp đồng", "invoice_config": "cấu hình hóa đơn", "payment_config": "cấu hình thanh toán", "notification_config": "cấu hình thông báo", "code_generation_config": "cấu hình tạo mã", "acceptance_geofence": "kiểm tra vị trí nghiệm thu"};
 
 // Types for different settings
 export interface CompanyInfo {
@@ -150,15 +155,12 @@ function useSetting<T>(key: SettingKey, defaultValue: T) {
         .from('settings')
         .select('*')
         .eq('key', key)
+        .eq('user_id', user.id)
         .maybeSingle();
 
       if (error) throw error;
 
-      if (!data) {
-        return defaultValue;
-      }
-
-      return data.value as T;
+      return readSetting(data,key,user.id,defaultValue);
     },
     enabled: !!user?.id,
     staleTime: 1000 * 60 * 5, // 5 minutes
@@ -168,7 +170,7 @@ function useSetting<T>(key: SettingKey, defaultValue: T) {
 /**
  * Generic hook to update a setting
  */
-function useUpdateSetting<T>(key: SettingKey) {
+function useUpdateSetting<T>(key: SettingKey, options: { silent?: boolean } = {}) {
   const queryClient = useQueryClient();
   const { data: user } = useAuth();
 
@@ -192,14 +194,14 @@ function useUpdateSetting<T>(key: SettingKey) {
         .single();
 
       if (error) throw error;
-      return data;
+      return requireAccountWriteReceipt(data, { user_id: user.id, key, value });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['settings', key] });
-      toast.success('Cài đặt đã được lưu thành công');
+      if (!options.silent) toast.success(`Đã lưu ${SETTING_LABELS[key]}.`);
     },
     onError: (error) => {
-      toast.error('Có lỗi xảy ra khi lưu cài đặt: ' + error.message);
+      if (!options.silent) notifyActionError(error, `Chưa xác nhận được kết quả lưu ${SETTING_LABELS[key]}`);
     },
   });
 }
@@ -209,8 +211,8 @@ export function useCompanyInfo() {
   return useSetting<CompanyInfo>('company_info', DEFAULT_COMPANY_INFO);
 }
 
-export function useUpdateCompanyInfo() {
-  return useUpdateSetting<CompanyInfo>('company_info');
+export function useUpdateCompanyInfo(options: { silent?: boolean } = {}) {
+  return useUpdateSetting<CompanyInfo>('company_info', options);
 }
 
 export function useContractConfig() {
@@ -341,14 +343,7 @@ export function useIndividualSetting(key: string, defaultValue: IndividualSettin
         .maybeSingle();
 
       if (error) throw error;
-      if (!data) return defaultValue;
-
-      // Parse the JSONB value
-      const val = data.value;
-      if (typeof val === 'boolean' || typeof val === 'number' || typeof val === 'string') {
-        return val as IndividualSettingValue;
-      }
-      return defaultValue;
+      return readIndividualSetting(data,defaultValue);
     },
     enabled: !!user?.id,
     staleTime: 1000 * 60 * 5,
@@ -376,14 +371,14 @@ export function useUpdateIndividualSetting(key: string) {
         .single();
 
       if (error) throw error;
-      return data;
+      return requireAccountWriteReceipt(data, { user_id: user.id, key, value });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['settings', 'individual', key] });
-      toast.success('Dữ liệu đã được CẬP NHẬT thành công');
+      toast.success('Đã lưu tùy chọn.');
     },
     onError: (error) => {
-      toast.error('Có lỗi xảy ra: ' + error.message);
+      notifyActionError(error, 'Chưa xác nhận được kết quả lưu tùy chọn');
     },
   });
 }
@@ -439,19 +434,12 @@ export function useGeneralSettings() {
       const { data, error } = await supabase
         .from('settings')
         .select('key, value')
+        .eq('user_id', user.id)
         .in('key', keys);
 
       if (error) throw error;
 
-      const result: GeneralSettingsMap = { ...GENERAL_SETTINGS_DEFAULTS };
-      if (data) {
-        for (const row of data) {
-          if (row.key in result) {
-            result[row.key] = row.value as IndividualSettingValue;
-          }
-        }
-      }
-      return result;
+      return readGeneralSettings(data,GENERAL_SETTINGS_DEFAULTS);
     },
     enabled: !!user?.id,
     staleTime: 1000 * 60 * 5,
@@ -466,7 +454,7 @@ export function useUpdateGeneralSetting() {
   const { data: user } = useAuth();
 
   return useMutation({
-    mutationFn: async ({ key, value }: { key: string; value: IndividualSettingValue }) => {
+    mutationFn: async ({ key, value }: { key: string; value: IndividualSettingValue; label?: string }) => {
       if (!user?.id) throw new Error('User not authenticated');
 
       const { data, error } = await supabase
@@ -479,14 +467,14 @@ export function useUpdateGeneralSetting() {
         .single();
 
       if (error) throw error;
-      return data;
+      return requireAccountWriteReceipt(data, { user_id: user.id, key, value });
     },
-    onSuccess: () => {
+    onSuccess: (_data, input) => {
       queryClient.invalidateQueries({ queryKey: ['settings', 'general-all'] });
-      toast.success('Dữ liệu đã được CẬP NHẬT thành công');
+      toast.success(`Đã lưu cài đặt “${input.label || 'tùy chọn hệ thống'}”.`);
     },
-    onError: (error) => {
-      toast.error('Có lỗi xảy ra: ' + error.message);
+    onError: (error, input) => {
+      notifyActionError(error, `Chưa xác nhận được kết quả lưu cài đặt “${input.label || 'tùy chọn hệ thống'}”`);
     },
   });
 }

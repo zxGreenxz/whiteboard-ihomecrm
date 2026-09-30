@@ -22,6 +22,7 @@ import {
 } from "@/lib/contractTemplateEngine";
 import { supabase } from "@/integrations/supabase/client";
 import { ContractTemplatePicker } from './ContractTemplatePicker';
+import { friendlyError } from '@/lib/friendlyError';
 
 const VEHICLE_TYPE_LABELS: Record<string, string> = {
   MOTORBIKE: "Xe máy",
@@ -126,12 +127,12 @@ export function PrintContractDialog({
         contract.contract_number ?? contract.id.slice(0, 8)
       }`.replace(/[\\/:*?"<>|]+/g, "_");
       downloadDocxBlob(blob, safeName);
-      toast.success("Đã tạo file hợp đồng");
+      toast.success("Đã chuẩn bị file hợp đồng để tải");
       onOpenChange(false);
     } catch (err) {
       console.error("Render contract template failed", err);
-      const msg = err instanceof Error ? err.message : "Lỗi không xác định";
-      toast.error(`Không thể tạo file: ${msg}`);
+      const feedback = friendlyError(err, 'Không thể tạo file hợp đồng', { operation: 'in hợp đồng' });
+      toast.error(feedback.title, { description: feedback.description });
     } finally {
       setIsRendering(false);
     }

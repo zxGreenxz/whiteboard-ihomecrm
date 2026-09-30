@@ -84,12 +84,13 @@ FormLabel.displayName = "FormLabel";
 
 const FormControl = React.forwardRef<React.ElementRef<typeof Slot>, React.ComponentPropsWithoutRef<typeof Slot>>(
   ({ ...props }, ref) => {
-    const { error, formItemId, formDescriptionId, formMessageId } = useFormField();
+    const { error, name, formItemId, formDescriptionId, formMessageId } = useFormField();
 
     return (
       <Slot
         ref={ref}
         id={formItemId}
+        data-field-name={name}
         aria-describedby={!error ? `${formDescriptionId}` : `${formDescriptionId} ${formMessageId}`}
         aria-invalid={!!error}
         {...props}
@@ -118,7 +119,7 @@ const FormMessage = React.forwardRef<HTMLParagraphElement, React.HTMLAttributes<
     }
 
     return (
-      <p ref={ref} id={formMessageId} className={cn("text-sm font-medium text-destructive", className)} {...props}>
+      <p ref={ref} id={formMessageId} role="alert" className={cn("text-sm font-medium text-destructive", className)} {...props}>
         {body}
       </p>
     );

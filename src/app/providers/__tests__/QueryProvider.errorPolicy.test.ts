@@ -8,7 +8,7 @@
 //     40 toast chồng nhau và người dùng học cách bấm tắt mà không đọc.
 // Nên: toast có chống lặp theo queryKey, và query nào tự khai `meta.silent` thì
 // im hẳn (prefetch, thăm dò tuỳ chọn).
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const toastError = vi.fn();
 const reportBoundaryError = vi.fn();
@@ -23,8 +23,10 @@ const { KHOANG_LAP_TOAST_MS, nenBaoLoi, thongDiepLoiDoc, xuLyLoiQuery } = await 
 const truyVan = (key: unknown[], meta?: Record<string, unknown>) => ({ queryKey: key, meta });
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  toastError.mockReset();
+  reportBoundaryError.mockClear();
 });
+afterEach(async () => { await vi.dynamicImportSettled(); });
 
 describe("nenBaoLoi — chống lặp theo queryKey", () => {
   it("lần đầu của một key thì báo", () => {
@@ -69,8 +71,12 @@ describe("thongDiepLoiDoc — nói đúng hai điều người đọc cần bi�
     expect(thongDiepLoiDoc(new Error("Template download failed"))).not.toMatch(/kết nối/i);
   });
 
-  it("42883 / 42703 (client cũ hơn schema) → bảo tải lại trang", () => {
+  it("42883 / 42703 có hướng khôi phục tải lại trang", () => {
     expect(thongDiepLoiDoc({ code: "42883" })).toMatch(/tải lại trang/i);
+  });
+
+  it("42883 / 42703 không đủ bằng chứng nói trang cũ hơn máy chủ", () => {
+    expect(thongDiepLoiDoc({ code: "42883" })).not.toMatch(/cũ hơn|cập nhật|phiên bản/i);
   });
 
   it("40001 → bảo thử lại sau, KHÔNG đổ cho người dùng", () => {
@@ -83,17 +89,24 @@ describe("thongDiepLoiDoc — nói đúng hai điều người đọc cần bi�
 });
 
 describe("xuLyLoiQuery", () => {
-  it("toast một lần cho mỗi queryKey, không nổ theo số lần refetch", () => {
+  it.each(['errorDisplay','feedback'])('keeps %s inline errors in their region without another toast', key => {
+    xuLyLoiQuery(new Error('failure'), truyVan(['salary'], {[key]:'inline'}), {bo:new Map()});
+    expect(toastError).not.toHaveBeenCalled();
+    expect(reportBoundaryError).toHaveBeenCalledTimes(1);
+  });
+  it("toast một lần cho mỗi queryKey, không nổ theo số lần refetch", async () => {
     const bo = new Map<string, number>();
     const loi = { code: "42501", message: "RLS" };
     for (let i = 0; i < 5; i += 1) xuLyLoiQuery(loi, truyVan(["areas"]), { bo, now: () => 1_000 });
+    await vi.dynamicImportSettled();
     expect(toastError).toHaveBeenCalledTimes(1);
   });
 
-  it("hai key khác nhau vẫn được báo riêng", () => {
+  it("hai key khác nhau vẫn được báo riêng", async () => {
     const bo = new Map<string, number>();
     xuLyLoiQuery({ message: "x" }, truyVan(["areas"]), { bo, now: () => 1_000 });
     xuLyLoiQuery({ message: "x" }, truyVan(["floors"]), { bo, now: () => 1_000 });
+    await vi.dynamicImportSettled();
     expect(toastError).toHaveBeenCalledTimes(2);
   });
 
@@ -123,15 +136,17 @@ describe("xuLyLoiQuery", () => {
     expect(String(loi.message)).toContain("RLS");
   });
 
-  it("kèm queryKey vào mô tả để lần ra chỗ hỏng", () => {
-    xuLyLoiQuery({ code: "42501", message: "RLS" }, truyVan(["areas"]), {
+  it("dùng nhãn khu vực, không lộ khóa nội bộ hoặc ID", async () => {
+    xuLyLoiQuery({ code: "42501", message: "RLS" }, truyVan(["areas", "private-org-uuid"]), {
       bo: new Map(),
       now: () => 1_000,
     });
+    await vi.dynamicImportSettled();
     const [tieuDe, tuyChon] = toastError.mock.calls[0];
     expect(typeof tieuDe).toBe("string");
     expect(tieuDe.length).toBeGreaterThan(0);
-    expect(String(tuyChon?.description ?? "")).toContain("areas");
+    expect(String(tieuDe) + String(tuyChon?.description ?? "")).toContain("khu vực");
+    expect(String(tieuDe) + String(tuyChon?.description ?? "")).not.toMatch(/areas|private-org-uuid/);
   });
 
   it("toast hỏng cũng KHÔNG ném — bộ báo lỗi không được tự làm sập app", () => {
@@ -142,4 +157,26 @@ describe("xuLyLoiQuery", () => {
       xuLyLoiQuery({ message: "x" }, truyVan(["areas"]), { bo: new Map(), now: () => 1_000 }),
     ).not.toThrow();
   });
+});
+
+it("offers a real retry action for the failed query instead of a nonexistent page button", async () => {
+  const fetch = vi.fn().mockResolvedValue([]);
+  xuLyLoiQuery(new Error('Failed to fetch'), { queryKey: ['rooms'], fetch }, { bo: new Map() });
+  await vi.dynamicImportSettled();
+  const options = toastError.mock.calls[0][1];
+  expect(options.action.label).toBe('Tải lại');
+  options.action.onClick();
+  await Promise.resolve();
+  expect(fetch).toHaveBeenCalledOnce();
+});
+
+it.each(['Load failed','TypeError: Load failed'])('keeps latest-main Safari network feedback for %s', message => {
+ expect(thongDiepLoiDoc({message})).toMatch(/kết nối/i);
+});
+it.each(['R2 upload failed (500)','Template download failed'])('does not classify a business upload/download error as Safari network failure: %s', message => {
+ expect(thongDiepLoiDoc({message})).not.toMatch(/kết nối/i);
+});
+it('preserves the exported default read message for existing callers',async()=>{
+ const {LOI_DOC_MAC_DINH}=await import('../QueryProvider');
+ expect(thongDiepLoiDoc({code:'XX999'})).toBe(LOI_DOC_MAC_DINH);expect(LOI_DOC_MAC_DINH).toBe('Không tải được dữ liệu');
 });

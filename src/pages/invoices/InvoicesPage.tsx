@@ -92,6 +92,8 @@ const InvoicesDesktopPage = () => {
   }, [debouncedSearch, setPage]);
 
   // Selection
+  const [cancelResults,setCancelResults]=useState<{id:string;message:string;outcomeUnknown:boolean}[]>([]);
+  const [blockedCancelIds,setBlockedCancelIds]=useState<string[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   // Column visibility (persisted in localStorage)
@@ -316,13 +318,18 @@ const InvoicesDesktopPage = () => {
   }, [forceDeleteTarget, forceCancelMutation]);
 
   const handleBulkCancel = useCallback(() => {
-    if (selectedIds.length === 0) return;
+    if (selectedIds.length === 0 || selectedIds.some(id=>blockedCancelIds.includes(id))) return;
     if (confirm(`Huỷ ${selectedIds.length} hoá đơn đã chọn? Chúng sẽ chuyển vào mục "Đã huỷ" và có thể phục hồi khi cần.`)) {
       bulkCancelMutation.mutate(selectedIds, {
-        onSuccess: () => setSelectedIds([]),
+        onSuccess: result => {
+          setCancelResults(result.failures);
+          const unknown=result.failures.filter(item=>item.outcomeUnknown).map(item=>item.id);
+          setBlockedCancelIds(ids=>[...ids,...unknown]);
+          setSelectedIds(ids=>ids.filter(id=>!result.completedIds.includes(id)&&!unknown.includes(id)));
+        },
       });
     }
-  }, [selectedIds, bulkCancelMutation]);
+  }, [selectedIds, bulkCancelMutation,blockedCancelIds]);
 
   return (
     <MainLayout
@@ -363,6 +370,7 @@ const InvoicesDesktopPage = () => {
             canCancel={canCancel}
           />
 
+          {cancelResults.length>0 && <div role="alert" className="rounded border p-3 text-sm">{cancelResults.map(item=><p key={item.id}><a href={`/invoices/${item.id}`} className="underline">Mở hóa đơn</a>: {item.message}</p>)}</div>}
           {/* Table */}
           <div className="bg-white rounded-lg border">
             {isLoading ? (
@@ -374,7 +382,7 @@ const InvoicesDesktopPage = () => {
                 <AlertTriangle className="h-10 w-10 text-destructive" />
                 <div className="font-medium">Không tải được danh sách hoá đơn</div>
                 <div className="text-sm text-muted-foreground max-w-md break-words">
-                  {(error as Error)?.message || 'Lỗi kết nối hoặc máy chủ. Vui lòng thử lại.'}
+                  Chưa đủ dữ liệu để hiển thị hóa đơn. Tải lại danh sách để kiểm tra.
                 </div>
                 <Button variant="outline" onClick={() => refetch()}>Thử lại</Button>
               </div>

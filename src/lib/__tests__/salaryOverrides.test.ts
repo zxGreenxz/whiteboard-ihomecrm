@@ -102,3 +102,5 @@ describe("parseOverrideRows — biên RPC", () => {
     expect(() => parseOverrideRows([{ ...r, amount: null }])).toThrow();
   });
 });
+
+it('does not interpret a missing required salaryOverrides response as empty',()=>{expect(()=>parseOverrideRows(null)).toThrow();expect(()=>parseOverrideRows(undefined)).toThrow();expect(parseOverrideRows([])).toEqual([]);});

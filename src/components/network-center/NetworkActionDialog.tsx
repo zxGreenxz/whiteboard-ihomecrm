@@ -1,5 +1,5 @@
 import { Play, ShieldAlert } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -26,6 +26,8 @@ import type { NetworkActionRequest, NetworkActionType, NetworkBuilding, NetworkJ
 import type { NetworkActionIntent, NetworkIntentStatus } from "@/lib/network-center/intentRegistry";
 import { NETWORK_ACTION_DEFINITIONS } from "@/lib/network-center/model";
 import { allowsNetworkExecution } from "@/lib/network-center/model";
+import { actionFieldErrors, networkFeedback } from '@/lib/network-center/feedback';
+import { focusFirstError } from '@/lib/formErrors';
 import { ExecuteButton } from "./ExecuteGuard";
 
 interface NetworkActionDialogProps {
@@ -74,6 +76,11 @@ export function NetworkActionDialog({
   const [fields, setFields] = useState<Record<string, string | number | boolean>>({});
   const [confirmation, setConfirmation] = useState("");
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const formRef = useRef<HTMLFormElement>(null);
+  const pending = useRef(false);
+  const fieldError = (name: string) => fieldErrors[name] ? <p id={`network-error-${name}`} className="nc-form-error" role="alert">{fieldErrors[name]}</p> : null;
+  const fieldProps = (name: string) => ({ name, "data-field-name": name, "aria-invalid": Boolean(fieldErrors[name]), "aria-describedby": fieldErrors[name] ? `network-error-${name}` : undefined });
   const [result, setResult] = useState<NetworkJob | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const definition = useMemo(
@@ -97,6 +104,7 @@ export function NetworkActionDialog({
     setFields(initialFieldsFor("flush_dns_cache"));
     setConfirmation("");
     setError("");
+    setFieldErrors({});
     setResult(null);
     setSubmitting(false);
   }, []);
@@ -157,15 +165,23 @@ export function NetworkActionDialog({
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (draftLocked && !canRetryUnknown) return;
+    if (pending.current || (draftLocked && !canRetryUnknown)) return;
+    const errors = actionFieldErrors(site, { type, reason, fields, confirmation });
+    setFieldErrors(errors);
+    if (Object.keys(errors).length) {
+      void focusFirstError(errors, { root: formRef.current });
+      return;
+    }
+    pending.current = true;
     setResult(null);
     setError("");
     setSubmitting(true);
     try {
       setResult(await onExecute({ type, reason, fields, confirmation }));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Không thể thực thi thao tác");
+      setError(networkFeedback(caught, `${definition.label.toLocaleLowerCase()} cho ${site.router.identity}`).description);
     } finally {
+      pending.current = false;
       setSubmitting(false);
     }
   };
@@ -193,11 +209,11 @@ export function NetworkActionDialog({
           <DialogDescription>
             {isDemo
               ? "Chỉ thay đổi bộ nhớ demo trong trình duyệt, không gọi router thật."
-              : "Yêu cầu được kiểm tra, đưa vào hàng đợi worker và thực thi trực tiếp trên MikroTik mục tiêu."}
+              : "Yêu cầu được kiểm tra, đưa vào hàng đợi xử lý và thực thi trực tiếp trên MikroTik mục tiêu."}
             {" "}Luồng: kiểm tra đầu vào → sao lưu → thực hiện → kiểm tra sau → hoàn tất.
           </DialogDescription>
         </DialogHeader>
-        <form className="nc-form" onSubmit={submit}>
+        <form ref={formRef} noValidate className="nc-form" onSubmit={submit}>
           <div className="nc-field">
             <Label>Loại thao tác</Label>
             <Select value={type} disabled={draftLocked} onValueChange={(value) => chooseType(value as NetworkActionType)}>
@@ -228,7 +244,7 @@ export function NetworkActionDialog({
                 disabled={draftLocked}
                 onValueChange={(value) => setFields((current) => ({ ...current, [field.key]: value }))}
               >
-                <SelectTrigger aria-label={field.label}><SelectValue placeholder="Chọn cổng LAN đang UP" /></SelectTrigger>
+                <SelectTrigger {...fieldProps(`fields.${field.key}`)} aria-label={field.label}><SelectValue placeholder="Chọn cổng LAN đang hoạt động" /></SelectTrigger>
                 <SelectContent className="network-center nc-select-content">
                   <SelectGroup>
                     {lanInterfaces.map((networkInterface) => (
@@ -237,12 +253,14 @@ export function NetworkActionDialog({
                   </SelectGroup>
                 </SelectContent>
               </Select>
+              {fieldError(`fields.${field.key}`)}
             </div>
           ) : (
             <div className="nc-field" key={field.key}>
               <Label htmlFor={`action-${field.key}`}>{field.label}</Label>
               <Input
                 id={`action-${field.key}`}
+                {...fieldProps(`fields.${field.key}`)}
                 type="number"
                 min={field.min}
                 max={field.max}
@@ -250,6 +268,7 @@ export function NetworkActionDialog({
                 disabled={draftLocked}
                 onChange={(event) => setFields((current) => ({ ...current, [field.key]: Number(event.target.value) }))}
               />
+              {fieldError(`fields.${field.key}`)}
             </div>
           ))}
 
@@ -257,11 +276,13 @@ export function NetworkActionDialog({
             <Label htmlFor="network-action-reason">Lý do thao tác</Label>
             <Textarea
               id="network-action-reason"
+              {...fieldProps("reason")}
               value={reason}
               disabled={draftLocked}
               onChange={(event) => setReason(event.target.value)}
               placeholder="Nêu lý do vận hành cụ thể"
             />
+            {fieldError("reason")}
           </div>
 
           {definition.requiresIdentity ? (
@@ -269,11 +290,13 @@ export function NetworkActionDialog({
               <Label htmlFor="router-confirmation">Gõ chính xác {site.router.identity} để xác nhận</Label>
               <Input
                 id="router-confirmation"
+                {...fieldProps("confirmation")}
                 value={confirmation}
                 disabled={draftLocked}
                 onChange={(event) => setConfirmation(event.target.value)}
                 autoComplete="off"
               />
+              {fieldError("confirmation")}
             </div>
           ) : null}
 
@@ -294,7 +317,7 @@ export function NetworkActionDialog({
                 : canRetryUnknown
                   ? "Thử gửi lại an toàn"
                   : draftLocked
-                    ? "Đang theo dõi intent hiện tại"
+                    ? "Đang theo dõi yêu cầu hiện tại"
                     : isDemo
                       ? "Kiểm tra và mô phỏng cục bộ"
                       : "Kiểm tra và thực thi"}

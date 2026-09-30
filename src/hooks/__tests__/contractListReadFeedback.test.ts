@@ -1,0 +1,20 @@
+import {beforeEach,expect,it,vi} from 'vitest';
+const h=vi.hoisted(()=>({data:[] as unknown,count:0 as unknown,error:null as unknown,receipt:null as unknown,dependency:[] as unknown}));
+vi.mock('@tanstack/react-query',()=>({useQuery:(o:unknown)=>o,useMutation:(o:unknown)=>o,useQueryClient:()=>({invalidateQueries:vi.fn()})}));
+vi.mock('@/lib/authSession',()=>({getSessionUser:async()=>({id:'actor'})}));
+vi.mock('@/integrations/supabase/client',()=>({supabase:{rpc:async()=>({data:h.data,error:h.error}),from:(table:string)=>{let writer=false;const b:Record<string,unknown>={};for(const name of ['select','is','eq','in','order','range','gte','lte','limit','maybeSingle'])b[name]=()=>b;b.update=()=>{writer=true;return b;};b.then=(resolve:(response:{data:unknown;count:unknown;error:unknown})=>unknown)=>Promise.resolve({data:writer?h.receipt:table==='contract_terminations'?h.dependency:h.data,count:h.count,error:h.error}).then(resolve);return b;}}}));
+import {contractsPagedQuery,useUnpaidInvoices,contractStatsQuery,useContractDashboardCounts,useDeleteContract} from '../useContracts';
+beforeEach(()=>{h.data=[];h.count=0;h.error=null;});
+it.each([null,undefined,{}])('does not call missing paged contracts an empty list %j',async data=>{h.data=data;await expect(contractsPagedQuery().queryFn()).rejects.toThrow();});
+it.each([null,undefined,-1,1.5])('does not call an unconfirmed total a count %s',async count=>{h.count=count;await expect(contractsPagedQuery().queryFn()).rejects.toThrow();});
+it('keeps a confirmed zero and empty contracts as valid',async()=>{await expect(contractsPagedQuery().queryFn()).resolves.toEqual({data:[],count:0});});
+const useUnpaidRead=()=>(useUnpaidInvoices('contract') as unknown as {queryFn:()=>Promise<unknown>}).queryFn();
+it.each([null,[{id:'invoice',total_amount:'bad',paid_amount:0,remaining_amount:1}]])('does not authorize settlement from an incomplete unpaid source %j',async data=>{h.data=data;await expect(useUnpaidRead()).rejects.toThrow();});
+it('keeps confirmed unpaid amounts numeric without assuming a missing amount is zero',async()=>{h.data=[{id:'invoice',total_amount:'100',paid_amount:'0',remaining_amount:'100'}];await expect(useUnpaidRead()).resolves.toMatchObject([{total_amount:100,paid_amount:0,remaining_amount:100}]);});
+
+const queryRead=(hook:unknown)=>(hook as {queryFn:()=>Promise<unknown>}).queryFn();
+it.each([null,{}, {total:0,expiring:null,expired:0,terminated:0}])('missing contract stats never become zero %j',async data=>{h.data=data;await expect(contractStatsQuery().queryFn()).rejects.toThrow();});
+it.each([null,undefined,-1,1.5])('dashboard incomplete count never becomes zero %j',async count=>{h.count=count;await expect(queryRead(useContractDashboardCounts())).rejects.toThrow();});
+it('confirmed contract zero stats and dashboard zero remain accepted',async()=>{h.data={total:0,expiring:0,expired:0,terminated:0};await expect(contractStatsQuery().queryFn()).resolves.toMatchObject({total:0});h.count=0;await expect(queryRead(useContractDashboardCounts())).resolves.toMatchObject({active:0});});
+it.each([null,{id:'other',deleted_at:'2026-09-30'},{id:'c1',deleted_at:null}])('delete missing or wrong receipt cannot report success %j',async receipt=>{h.receipt=receipt;await expect((useDeleteContract() as unknown as {mutationFn:(id:string)=>Promise<unknown>}).mutationFn('c1')).rejects.toThrow();});
+it('delete confirms exact ID and deleted timestamp',async()=>{h.receipt={id:'c1',contract_number:'HD01',deleted_at:'2026-09-30T00:00:00Z'};await expect((useDeleteContract() as unknown as {mutationFn:(id:string)=>Promise<unknown>}).mutationFn('c1')).resolves.toMatchObject({id:'c1'});});

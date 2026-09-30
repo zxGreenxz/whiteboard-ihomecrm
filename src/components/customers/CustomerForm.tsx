@@ -21,12 +21,16 @@ import CustomerIndividualFields from './CustomerIndividualFields';
 import CustomerOrganizationFields from './CustomerOrganizationFields';
 import CustomerVehiclesSection from './CustomerVehiclesSection';
 import CCCDQrUpload from './CCCDQrUpload';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { applyFeedbackToForm, focusFirstError } from '@/lib/formErrors';
+import { recordWriteBlocked, recordWriteMessage } from '@/lib/recordWriteOutcome';
+import { FinancialWorkflowError } from '@/lib/financialWorkflow';
+import { friendlyError } from '@/lib/friendlyError';
 import { isCurrentCccdScan, mapCccdToCustomerFields } from '@/lib/cccdCustomerMapping';
 
 interface CustomerFormProps {
   defaultValues?: Partial<CustomerFormData>;
-  onSubmit: (data: CustomerFormData) => void;
+  onSubmit: (data: CustomerFormData) => unknown | Promise<unknown>;
   isSubmitting: boolean;
 }
 
@@ -37,6 +41,9 @@ interface CustomerFormProps {
  */
 export default function CustomerForm({ defaultValues, onSubmit, isSubmitting }: CustomerFormProps) {
   const queryClient = useQueryClient();
+  const [saving, setSaving] = useState(false);
+  const [blocked, setBlocked] = useState(false);
+  const submitting = useRef(false);
   const form = useForm<CustomerFormData>({
     resolver: zodResolver(customerSchema),
     defaultValues: {
@@ -50,6 +57,16 @@ export default function CustomerForm({ defaultValues, onSubmit, isSubmitting }: 
     },
   });
 
+  const submit = async (data: CustomerFormData) => {
+    if (submitting.current || blocked || isSubmitting) return;
+    submitting.current = true; setSaving(true); form.clearErrors('root.server');
+    try { await onSubmit(data); }
+    catch (error) {
+      setBlocked(recordWriteBlocked(error));
+      if (error instanceof FinancialWorkflowError) form.setError('root.server',{type:'server',message:recordWriteMessage(error,'lưu khách hàng')});
+      else await applyFeedbackToForm(form,friendlyError(error,'Chưa lưu được khách hàng',{operation:'lưu khách hàng'}));
+    } finally {submitting.current=false;setSaving(false);}
+  };
   const customerType = form.watch('customer_type');
   const isOrganization = customerType === 'ORGANIZATION';
   const scanContextRef = useRef({ customerType, active: true, generation: 0, taskId: 0 });
@@ -156,7 +173,9 @@ export default function CustomerForm({ defaultValues, onSubmit, isSubmitting }: 
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+            <form onSubmit={form.handleSubmit(submit, errors => {void focusFirstError(errors);})} className="space-y-6">
+        {form.formState.errors.root?.server?.message && <p role="alert" className="rounded border border-destructive p-3 text-sm text-destructive">{form.formState.errors.root.server.message}</p>}
+        <fieldset disabled={isSubmitting || saving || blocked} className="space-y-6">
         {/* Toggle Cá nhân / Tổ chức */}
         <div className="bg-white rounded-lg border p-4">
           <div className="flex gap-2">
@@ -338,10 +357,11 @@ export default function CustomerForm({ defaultValues, onSubmit, isSubmitting }: 
 
         {/* Submit */}
         <div className="flex justify-end gap-3">
-          <Button type="submit" disabled={isSubmitting} className="bg-green-600 hover:bg-green-700">
+          <Button type="submit" disabled={isSubmitting || saving || blocked} className="bg-green-600 hover:bg-green-700">
             {isSubmitting ? 'Đang lưu...' : 'Lưu'}
           </Button>
         </div>
+        </fieldset>
       </form>
     </Form>
   );

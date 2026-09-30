@@ -1,3 +1,6 @@
+import { QueryRegion } from "@/components/errors/QueryRegion";
+import { salarySettingsErrorMessage, SALARY_JOB_LABELS } from "@/lib/salarySettingsFeedback";
+import { voucherOutcomeUnknown } from "@/lib/voucherFeedback";
 // OwnerDashboardV5 (/reports/coverage) — TRUNG TÂM v5 của CHỦ, 5 tab:
 // Coverage map · Nghi án · Đối soát tháng (3 ASSERT + nút chốt tiền) · Shadow/Gates · Cài đặt v5.
 // LƯU Ý VỊ TRÍ (lệch nhỏ so US-5.1, ghi log): settings v5 đặt TẠI ĐÂY thay vì GeneralSettingsPage
@@ -7,7 +10,7 @@ import MainLayout from "@/components/layout/MainLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { useSignedUrl } from "@/hooks/useSignedUrl";
+import { useSignedUrlQuery } from "@/hooks/useSignedUrl";
 // Data layer tách riêng (Phase 9A) — UI chỉ nhận data/loading và gọi mutation.
 import {
   useV5Coverage, useV5Flagged, useV5InspectionLog, useV5SessionPhotos,
@@ -39,27 +42,32 @@ const STATUS_META: Record<string, { label: string; cls: string }> = {
   presence: { label: "Có mặt", cls: "bg-amber-100 text-amber-700" },
 };
 
-function InspPhoto({ p }: { p: InspectionPhotoRow }) {
-  const url = useSignedUrl(p.storage_path);
+export function InspPhoto({ p }: { p: InspectionPhotoRow }) {
+  const source=useSignedUrlQuery(p.storage_path,undefined,{errorDisplay:"inline"});
+  const url=source.data;
+  const [failedUrl,setFailedUrl]=useState<string|null>(null);
+  const [attempt,setAttempt]=useState(0);
+  const imageFailed=!!url&&failedUrl===url;
+  const retry=()=>{setFailedUrl(null);setAttempt(previous=>previous+1);void source.refetch();};
   const geo = p.geofence_status as string | null;
   const geoColor =
     geo === "inside" ? "text-emerald-600" : geo === "outside" ? "text-red-600" : "text-muted-foreground";
   return (
-    <a href={url} target="_blank" rel="noreferrer" className="block">
-      <div className="aspect-square overflow-hidden rounded-lg border bg-slate-100">
-        {url ? (
-          <img src={url} alt={p.slot} loading="lazy" className="h-full w-full object-cover" />
-        ) : (
-          <div className="flex h-full items-center justify-center text-[10px] text-muted-foreground">
-            đang tải…
+    <QueryRegion label={`ảnh kiểm tra ${p.slot}`} queries={[source]}>
+      <div>
+        {imageFailed ? <div role="alert" className="rounded border border-destructive/40 p-3 text-sm">
+          <p>Chưa tải được ảnh kiểm tra {p.slot}. Kiểm tra kết nối rồi tải lại ảnh.</p>
+          <Button variant="outline" size="sm" onClick={retry}>Tải lại ảnh</Button>
+        </div> : url ? <a href={url} target="_blank" rel="noreferrer" className="block">
+          <div className="aspect-square overflow-hidden rounded-lg border bg-slate-100">
+            <img key={`${url}:${attempt}`} src={url} alt={p.slot} loading="lazy" className="h-full w-full object-cover" onError={()=>setFailedUrl(url)} />
           </div>
-        )}
+        </a> : <p className="p-3 text-sm text-muted-foreground">Chưa có đường dẫn ảnh kiểm tra.</p>}
+        <div className="mt-0.5 truncate text-[10px] text-muted-foreground">
+          {p.slot}{p.distance_m != null ? ` · ${p.distance_m}m` : ""} · <span className={geoColor}>{geo ?? "—"}</span>
+        </div>
       </div>
-      <div className="mt-0.5 truncate text-[10px] text-muted-foreground">
-        {p.slot}
-        {p.distance_m != null ? ` · ${p.distance_m}m` : ""} · <span className={geoColor}>{geo ?? "—"}</span>
-      </div>
-    </a>
+    </QueryRegion>
   );
 }
 
@@ -103,6 +111,7 @@ function InspSessionCard({ s }: { s: InspectionSessionRow }) {
       </button>
       {open && (
         <div className="mt-3 border-t pt-3">
+          <QueryRegion label="ảnh của phiên kiểm tra" queries={[photos]}>
           {photos.isLoading ? (
             <div className="text-xs text-muted-foreground">Đang tải ảnh…</div>
           ) : (photos.data ?? []).length === 0 ? (
@@ -114,6 +123,7 @@ function InspSessionCard({ s }: { s: InspectionSessionRow }) {
               ))}
             </div>
           )}
+          </QueryRegion>
           <div className="mt-2 text-[11px] text-muted-foreground">
             Tình trạng ghi nhận: {s.condition_note || "—"}
             {hasFails ? ` · Lỗi: ${failReasons.join(", ")}` : ""}
@@ -208,6 +218,7 @@ export default function OwnerDashboardV5() {
 
         {/* TAB 1 — Coverage map (grid màu theo D) */}
         <TabsContent value="coverage">
+          <QueryRegion label="lịch ghé kiểm tra nhà" queries={[coverage]}>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
             {(coverage.data ?? []).map((b) => (
               <div key={b.building_id} className="rounded-xl border p-3">
@@ -223,10 +234,12 @@ export default function OwnerDashboardV5() {
               </div>
             ))}
           </div>
+        </QueryRegion>
         </TabsContent>
 
         {/* TAB 1b — Nhật ký kiểm tra nhà: chi tiết từng phiên của quản lý */}
         <TabsContent value="insplog">
+          <QueryRegion label="nhật ký kiểm tra" queries={[logQ]}>
           <div className="mb-3 flex flex-wrap items-end gap-3">
             <label className="text-xs">
               <span className="mb-1 block text-muted-foreground">Từ ngày</span>
@@ -326,10 +339,13 @@ export default function OwnerDashboardV5() {
               ))}
             </div>
           )}
+        </QueryRegion>
         </TabsContent>
 
         {/* TAB 2 — Nghi án (máy flag, chủ kết án, due process C2) */}
         <TabsContent value="fraud">
+          <QueryRegion label="ngày công cần xem xét" queries={[flagged]}>
+          {verdict.isError && <p role="alert" className="mb-2 text-sm text-destructive">{salarySettingsErrorMessage(verdict.error,'kết luận ngày công')}</p>}
           {(flagged.data ?? []).length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">Không có nghi án nào đang mở.</p>
           ) : (
@@ -341,21 +357,23 @@ export default function OwnerDashboardV5() {
                 </pre>
                 <div className="mt-2 flex gap-2">
                   <Button size="sm" variant="destructive"
-                    onClick={() => verdict.mutate({ user: f.user_id, date: f.work_date, confirm: true })}>
+                    disabled={verdict.isPending || flagged.isError || voucherOutcomeUnknown(verdict.error)} onClick={() => verdict.mutate({ user: f.user_id, date: f.work_date, confirm: true })}>
                     Xác nhận gian lận (huỷ công + tước mốc tháng)
                   </Button>
                   <Button size="sm" variant="outline"
-                    onClick={() => verdict.mutate({ user: f.user_id, date: f.work_date, confirm: false })}>
+                    disabled={verdict.isPending || flagged.isError || voucherOutcomeUnknown(verdict.error)} onClick={() => verdict.mutate({ user: f.user_id, date: f.work_date, confirm: false })}>
                     Hợp lệ — trả lại công
                   </Button>
                 </div>
               </div>
             ))
           )}
+        </QueryRegion>
         </TabsContent>
 
         {/* TAB 3 — Đối soát tháng: 3 ASSERT + nút chốt tiền v5 */}
         <TabsContent value="recon">
+          <QueryRegion label="đối soát lương tháng" queries={[assertQ,cfgQ]}>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead><tr className="border-b text-left text-xs text-muted-foreground">
@@ -375,9 +393,10 @@ export default function OwnerDashboardV5() {
               </tbody>
             </table>
           </div>
+          {applyLock.isError && <p role="alert" className="text-sm text-destructive">{salarySettingsErrorMessage(applyLock.error,'ghi tiền chuyên cần và chuỗi vào bảng lương')}</p>}
           <div className="mt-3 flex items-center gap-3">
             <Button
-              disabled={applyLock.isPending || (assertQ.data ?? []).some((r) => !r.all_ok) || !flags.v5_money}
+              disabled={applyLock.isPending || assertQ.isError || cfgQ.isError || !assertQ.data?.length || voucherOutcomeUnknown(applyLock.error) || (assertQ.data ?? []).some((r) => !r.all_ok) || !flags.v5_money}
               onClick={() => applyLock.mutate()}
             >
               Ghi tiền v5 vào bảng lương tháng này
@@ -388,10 +407,12 @@ export default function OwnerDashboardV5() {
               </span>
             )}
           </div>
+        </QueryRegion>
         </TabsContent>
 
         {/* TAB 4 — Shadow report + gates */}
         <TabsContent value="shadow">
+          <QueryRegion label="bảng tính thử lương" queries={[shadowQ,cfgQ]}>
           <div className="mb-2 text-sm text-muted-foreground">
             Stage hiện tại: <b>{cfgQ.data?.system_v5?.stage ?? "off"}</b> · Gate thoát xem V5-HE-THONG Ch.11.
           </div>
@@ -413,11 +434,16 @@ export default function OwnerDashboardV5() {
               </tbody>
             </table>
           </div>
+        </QueryRegion>
         </TabsContent>
 
         {/* TAB 5 — Cài đặt v5: chế độ lương/flags/stage/jobs/cron_runs */}
         <TabsContent value="settings">
+          <QueryRegion label="cài đặt vận hành lương" queries={[cfgQ]}>
           <div className="max-w-xl space-y-4">
+            {setCfg.isError && <p role="alert" className="text-sm text-destructive">{salarySettingsErrorMessage(setCfg.error,'lưu cấu hình lương')}</p>}
+            {runJob.isError && <p role="alert" className="text-sm text-destructive">{salarySettingsErrorMessage(runJob.error,'chạy tác vụ. Kiểm tra nhật ký trước khi thực hiện tiếp')}</p>}
+            {runJob.data && <p role="status" className="text-sm">{runJob.data.message}</p>}
             {/* Công tắc chọn CHẾ ĐỘ LƯƠNG đang áp dụng cho trang /finance/salary */}
             <div className="rounded-xl border-2 border-emerald-200 bg-emerald-50/50 p-4">
               <div className="mb-1 text-sm font-semibold">Chế độ lương đang áp dụng</div>
@@ -433,7 +459,7 @@ export default function OwnerDashboardV5() {
                   return (
                     <Button key={o.key} size="sm"
                       variant={cur === o.key ? "default" : "outline"}
-                      onClick={() => setCfg.mutate({ system_v5: { salary_engine: o.key } })}>
+                      disabled={setCfg.isPending || cfgQ.isError || voucherOutcomeUnknown(setCfg.error)} onClick={() => setCfg.mutate({ system_v5: { salary_engine: o.key } })}>
                       {o.label}
                     </Button>
                   );
@@ -448,12 +474,12 @@ export default function OwnerDashboardV5() {
               <div className="mb-2 text-sm font-semibold">Feature flags (kill-switch)</div>
               <div className="flex items-center justify-between py-1.5">
                 <span className="text-sm">Tiền v5 (<code>v5_money</code>) — TẮT = lương giữ nguyên cơ chế cũ</span>
-                <Switch checked={!!flags.v5_money}
+                <Switch disabled={setCfg.isPending || cfgQ.isError || voucherOutcomeUnknown(setCfg.error)} checked={!!flags.v5_money}
                   onCheckedChange={(v) => setCfg.mutate({ system_v5: { feature_flags: { ...flags, v5_money: v } } })} />
               </div>
               <div className="flex items-center justify-between py-1.5">
                 <span className="text-sm">Coverage v5 (<code>v5_coverage</code>) — nhắc 3 nấc/push đỏ</span>
-                <Switch checked={!!flags.v5_coverage}
+                <Switch disabled={setCfg.isPending || cfgQ.isError || voucherOutcomeUnknown(setCfg.error)} checked={!!flags.v5_coverage}
                   onCheckedChange={(v) => setCfg.mutate({ system_v5: { feature_flags: { ...flags, v5_coverage: v } } })} />
               </div>
               <div className="mt-2 flex items-center gap-2">
@@ -461,7 +487,7 @@ export default function OwnerDashboardV5() {
                 {["off", "grace", "shadow_coverage", "shadow_money", "live"].map((s) => (
                   <Button key={s} size="sm"
                     variant={cfgQ.data?.system_v5?.stage === s ? "default" : "outline"}
-                    onClick={() => setCfg.mutate({ system_v5: { stage: s } })}>
+                    disabled={setCfg.isPending || cfgQ.isError || voucherOutcomeUnknown(setCfg.error)} onClick={() => setCfg.mutate({ system_v5: { stage: s } })}>
                     {s}
                   </Button>
                 ))}
@@ -475,19 +501,23 @@ export default function OwnerDashboardV5() {
               <div className="mb-2 text-sm font-semibold">Jobs (chạy lại thủ công — idempotent)</div>
               <div className="flex flex-wrap gap-2">
                 {["nightly", "digest", "tier", "score", "close_period"].map((j) => (
-                  <Button key={j} size="sm" variant="outline" disabled={runJob.isPending}
-                    onClick={() => runJob.mutate(j)}>{j}</Button>
+                  <Button key={j} size="sm" variant="outline" disabled={runJob.isPending || runJob.data?.blocksRepeat || voucherOutcomeUnknown(runJob.error)}
+                    onClick={() => runJob.mutate(j)}>{SALARY_JOB_LABELS[j]}</Button>
                 ))}
               </div>
+              <QueryRegion label="nhật ký tác vụ" queries={[cronQ]}>
               <div className="mt-3 max-h-56 overflow-auto rounded bg-slate-50 p-2 text-[11px]">
                 {(cronQ.data ?? []).map((c) => (
                   <div key={c.id} className="border-b py-1">
-                    <b>{c.job}</b> · {c.idem_key} · {c.finished_at ? "✅" : "…"} {c.error ? `⛔ ${c.error}` : ""}
+                    <b>{SALARY_JOB_LABELS[c.job] ?? 'Tác vụ vận hành'}</b> · {c.started_at ? new Date(c.started_at).toLocaleString('vi-VN') : 'Chưa có thời gian bắt đầu'} · {c.error ? 'Chưa hoàn tất' : c.finished_at ? 'Đã hoàn tất' : 'Đang xử lý'}
+                    {c.error && <p>{salarySettingsErrorMessage({message:c.error},'hoàn tất tác vụ. Kiểm tra kết quả đã xử lý trước khi thực hiện tiếp')}</p>}
                   </div>
                 ))}
               </div>
+              </QueryRegion>
             </div>
           </div>
+        </QueryRegion>
         </TabsContent>
       </Tabs>
     </MainLayout>

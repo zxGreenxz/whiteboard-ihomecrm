@@ -1,3 +1,4 @@
+import { voucherFailureMessage } from "./voucherFeedback";
 // Sửa phiếu thu chi Chờ duyệt có lưu vết (đợt 1, 25/09/2026).
 //
 // Máy chủ là nơi quyết định (public.revise_pending_income_expense_v1): quyền, loại
@@ -529,20 +530,13 @@ export function isStaleVersionError(error: unknown): boolean {
 }
 
 export function revisionErrorMessage(error: unknown): string {
-  const e = errorShape.safeParse(error);
-  if (!e.success) return "Chưa lưu được phiếu. Hãy thử lại.";
   if (isStaleVersionError(error)) return "Phiếu vừa được người khác sửa — tải lại để xem thay đổi.";
-  const msg = (e.data.message ?? "").trim();
-  // Máy chủ đã nói câu tiếng Việt cụ thể (lý do, quyền, khoá kỳ, loại phiếu…).
-  if (msg) return msg.replace(/^\[[A-Z_]+\]\s*/, "");
-  return "Chưa lưu được phiếu. Hãy thử lại.";
+  return voucherFailureMessage(error, "lưu thay đổi phiếu");
 }
 
 export function approvalErrorMessage(error: unknown): string {
   if (isStaleVersionError(error)) return "Phiếu vừa được sửa — tải lại để xem thay đổi trước khi duyệt.";
-  const e = errorShape.safeParse(error);
-  const msg = e.success ? (e.data.message ?? "").trim() : "";
-  return msg ? msg.replace(/^\[[A-Z_]+\]\s*/, "") : "Không thể duyệt phiếu.";
+  return voucherFailureMessage(error, "duyệt phiếu");
 }
 
 /** Khoá gọi lại an toàn cho một lần bấm Lưu (8–200 ký tự ASCII). */

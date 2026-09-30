@@ -1,3 +1,6 @@
+import {readJobs} from '@/lib/accountJobReadModels';
+import { requireAccountWriteReceipt } from "@/lib/accountSettingsWriteReceipt";
+import { notifyActionError } from '@/lib/actionFeedback';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
@@ -135,7 +138,7 @@ export const jobsQuery = (filters?: TaskFilters) => ({
         throw new Error("Không tải được danh sách công việc");
       }
 
-      return rows as JobWithRelations[];
+      return readJobs(rows);
     },
   });
 
@@ -143,7 +146,7 @@ export const useJobs = (filters?: TaskFilters) => {
   return useQuery(jobsQuery(filters));
 };
 
-export const useCreateJob = () => {
+export const useCreateJob = (options: { silent?: boolean } = {}) => {
   const queryClient = useQueryClient();
   const { selectedOrganizationId } = useOrganization();
 
@@ -160,18 +163,17 @@ export const useCreateJob = () => {
         .single();
 
       if (error) {
-        toast.error("Không thể tạo công việc");
         throw error;
       }
 
-      return data;
+      return requireAccountWriteReceipt(data, { title: job.title, user_id: user.id, organization_id: selectedOrganizationId });
     },
-    onSuccess: () => {
+    onSuccess: (_data, job) => {
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
-      toast.success("Dữ liệu đã được TẠO thành công");
+      if (!options.silent) toast.success(`Đã tạo công việc “${job.title}”.`);
     },
     onError: (error) => {
-      console.error("Error creating job:", error);
+      if (!options.silent) notifyActionError(error, "Chưa xác nhận được kết quả tạo công việc");
     },
   });
 };
@@ -197,18 +199,17 @@ export const useUpdateJobStatus = () => {
         .single();
 
       if (error) {
-        toast.error("Không thể cập nhật trạng thái");
         throw error;
       }
 
-      return data;
+      return requireAccountWriteReceipt(data, { status, ...extraData, id });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
       toast.success("Trạng thái đã được cập nhật thành công");
     },
     onError: (error) => {
-      console.error("Error updating job status:", error);
+      notifyActionError(error, "Chưa xác nhận được kết quả thao tác công việc");
     },
   });
 };
@@ -226,23 +227,22 @@ export const useUpdateJob = () => {
         .single();
 
       if (error) {
-        toast.error("Không thể cập nhật công việc");
         throw error;
       }
 
-      return data;
+      return requireAccountWriteReceipt(data, { ...patch, id });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
-      toast.success("Dữ liệu đã được CẬP NHẬT thành công");
+      toast.success("Đã cập nhật công việc.");
     },
     onError: (error) => {
-      console.error("Error updating job:", error);
+      notifyActionError(error, "Chưa xác nhận được kết quả thao tác công việc");
     },
   });
 };
 
-export const useCompleteJob = () => {
+export const useCompleteJob = (options: { silent?: boolean } = {}) => {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -282,18 +282,17 @@ export const useCompleteJob = () => {
         .single();
 
       if (error) {
-        toast.error("Không thể hoàn thành công việc");
         throw error;
       }
 
-      return data;
+      return requireAccountWriteReceipt(data, { id: input.id, status: 'COMPLETED', completion_attachments: input.completion_attachments });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
-      toast.success("Công việc đã hoàn thành");
+      if (!options.silent) toast.success("Đã ghi nhận công việc hoàn thành.");
     },
     onError: (error) => {
-      console.error("Error completing job:", error);
+      if (!options.silent) notifyActionError(error, "Chưa xác nhận được kết quả hoàn thành công việc");
     },
   });
 };
@@ -311,18 +310,17 @@ export const useDeleteJob = () => {
         .single();
 
       if (error) {
-        toast.error("Không thể xoá công việc");
         throw error;
       }
 
-      return data;
+      return requireAccountWriteReceipt(data, { id });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
-      toast.success("Dữ liệu đã được XOÁ thành công");
+      toast.success("Đã xóa công việc.");
     },
     onError: (error) => {
-      console.error("Error deleting job:", error);
+      notifyActionError(error, "Chưa xác nhận được kết quả thao tác công việc");
     },
   });
 };

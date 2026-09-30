@@ -1,0 +1,14 @@
+// @vitest-environment jsdom
+import {act} from 'react';
+import {fireEvent,screen,waitFor} from '@testing-library/react';
+import {afterEach,beforeEach,expect,it} from 'vitest';
+import {byId,click,io,mount,resetIo,unmount,send} from './renderHarness';
+import ChatPanel from '../ChatPanel';
+beforeEach(()=>resetIo());afterEach(unmount);
+const open=async()=>{await mount(<ChatPanel onClose={()=>{}}/>);await click(document.querySelector<HTMLButtonElement>('button[title^="Ghi nhớ"]')!);};
+const fill=async(key:string,value:string)=>{await act(async()=>{fireEvent.change(byId('copilot-ghi-nho-khoa'),{target:{value:key}});fireEvent.change(byId('copilot-ghi-nho-noi-dung'),{target:{value}});});};
+it.each([{key:'',value:'v',field:'khoa'},{key:'###',value:'v',field:'khoa'},{key:'k',value:'',field:'noi-dung'},{key:'k',value:'v'.repeat(501),field:'noi-dung'},{key:'k',value:'a\u0085b',field:'noi-dung'}])('memory invalid raw draft shows field/red/focus before writer %j',async v=>{await open();await fill(v.key,v.value);await click(byId('copilot-ghi-nho-them'));const field=byId<HTMLInputElement>('copilot-ghi-nho-'+v.field);await waitFor(()=>expect(document.activeElement).toBe(field));expect(field.getAttribute('aria-invalid')).toBe('true');expect(field.value).toBe(v.field==='khoa'?v.key:v.value);expect(io.memoryUpsert).not.toHaveBeenCalled();expect(screen.getByRole('alert').textContent).toBeTruthy();});
+it('memory save rejection keeps both inputs and shows safe inline error',async()=>{io.memoryUpsert.mockRejectedValue(new TypeError('Failed to fetch SQL_PRIVATE'));await open();await fill('k','Điều cần nhớ');await click(byId('copilot-ghi-nho-them'));await waitFor(()=>expect(screen.getByRole('alert').textContent).toMatch(/chưa xác nhận/i));expect((byId('copilot-ghi-nho-khoa') as HTMLInputElement).value).toBe('k');expect((byId('copilot-ghi-nho-noi-dung') as HTMLInputElement).value).toBe('Điều cần nhớ');expect(document.body.textContent).not.toContain('SQL_PRIVATE');expect(byId('copilot-ghi-nho-them').hasAttribute('disabled')).toBe(true);});
+it('failed memory read does not claim empty and blocks editing until actual reload',async()=>{io.memoryList.mockRejectedValue(new Error('SQL_PRIVATE'));await open();expect(document.body.textContent).not.toContain('Chưa nhớ gì.');expect(byId('copilot-ghi-nho-them').hasAttribute('disabled')).toBe(true);io.memoryList.mockResolvedValue([]);await click(screen.getByRole('button',{name:'Đọc lại ghi nhớ'}));await waitFor(()=>expect(document.body.textContent).toContain('Chưa nhớ gì.'));});
+
+it('chat transport failure restores the actual question draft',async()=>{io.turn.mockRejectedValue(new TypeError('Failed to fetch'));await mount(<ChatPanel onClose={()=>{}}/>);await send('Câu hỏi đang soạn');await waitFor(()=>expect((byId('copilot-input') as HTMLTextAreaElement).value).toBe('Câu hỏi đang soạn'));expect(byId('copilot-send').hasAttribute('disabled')).toBe(false);});

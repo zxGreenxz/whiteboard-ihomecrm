@@ -1,3 +1,4 @@
+vi.mock('@/contexts/OrganizationContext',()=>({useOrganization:()=>({selectedOrganizationId:'org1'})}));
 // @vitest-environment jsdom
 import { createElement, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -144,4 +145,13 @@ describe('Phí kỳ — hoãn dữ liệu ngoài Hợp đồng & quyết toán',
     expect(H.reads).toEqual([]);
     expect(H.readRpc).not.toHaveBeenCalled();
   });
+});
+
+
+it.each([NaN,Infinity])('manual pay chặn số tiền %s trước writer ở cả GRID/utility',async amount=>{
+ const cat=FEE_CATEGORIES.find(c=>c.family==='GRID')!;
+ const {result}=renderHook(()=>({fee:usePeriodFeeState('2026-12',cat,H.buildings,()=>undefined,()=>undefined,{enabled:false}),utility:useUtilityPayState('2026-12',H.buildings,{enabled:false})}),{wrapper:wrapper()});
+ act(()=>{result.current.fee.setAmount('building',amount);result.current.utility.setAmount('meter',amount);});
+ await act(async()=>{await result.current.fee.submitPay('building');await result.current.utility.submitPay({key:'meter',accountId:'m1',buildingId:'building',buildingName:'A',type:'electric',persistedCode:'',persistedHolder:'',isSynthetic:false,canDelete:false},'A');});
+ expect(H.readRpc).not.toHaveBeenCalled();expect(result.current.fee.amountErrors.building).toBeTruthy();expect(result.current.utility.amountErrors.meter).toBeTruthy();
 });

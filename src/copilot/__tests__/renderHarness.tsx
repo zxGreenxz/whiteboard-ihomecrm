@@ -15,7 +15,7 @@ const io = vi.hoisted(() => ({
   providers: undefined as { value: string; label: string }[] | undefined,
   availability: null as CopilotAvailabilitySnapshot | null,
   refetch: vi.fn(), latest: vi.fn(), messages: vi.fn(), create: vi.fn(), turn: vi.fn(), save: vi.fn(),
-  uiAgent: vi.fn(), entitlementQuery: vi.fn(), permissionQuery: vi.fn(),
+  memoryList:vi.fn(), memoryUpsert:vi.fn(), memoryForget:vi.fn(), uiAgent: vi.fn(), entitlementQuery: vi.fn(), permissionQuery: vi.fn(),
 }));
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ data: io.user }) }));
 vi.mock('@/hooks/useMyPermissions', () => ({ useMyPermissions: () => { io.permissionQuery(); return { data: io.perms }; } }));
@@ -37,7 +37,7 @@ vi.mock('../chatEngine', async importOriginal => ({
 }));
 vi.mock('../createAgent', () => ({ createUiControlAgent: io.uiAgent }));
 vi.mock('../memoryClient', async importOriginal => ({
-  ...await importOriginal<typeof import('../memoryClient')>(), layGhiNho: async () => [],
+  ...await importOriginal<typeof import('../memoryClient')>(), layGhiNho:io.memoryList,ghiNhoLen:io.memoryUpsert,boGhiNho:io.memoryForget,
 }));
 vi.mock('@/integrations/supabase/client', () => ({ supabase: {} }));
 
@@ -56,6 +56,7 @@ export function resetIo() {
   io.turn.mockReset().mockImplementation(async ({ userText }) => ({ newMessages: [
     { role: 'user', content: userText }, { role: 'assistant', content: 'Có 2 phòng trống: A101, A102.' },
   ], toolEvents: [] }));
+  io.memoryList.mockReset().mockResolvedValue([]);io.memoryUpsert.mockReset().mockImplementation(async(_org,khoa,noiDung,nguon)=>({khoa,noiDung,nguon,tong:1}));io.memoryForget.mockReset().mockImplementation(async(_org,khoa)=>({khoa,thay:true,tong:0}));
   io.uiAgent.mockReset().mockImplementation(() => ({ run: async () => ({ data: 'Đã lọc phòng.' }), dispose() {}, stop: async () => {} }));
   Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value() {} });
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });

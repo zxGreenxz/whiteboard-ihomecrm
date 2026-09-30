@@ -188,6 +188,8 @@ export interface IncomeExpenseWithRelations {
 export interface CreateIncomeExpenseInput extends IncomeExpenseFormValues {}
 
 export interface ImportIncomeExpenseRow extends ExcelImportRow {
+  /** Actual Excel row position, including header and rejected rows. */
+  source_row?: number;
   building_id: string;
   income_expense_type_id: string;
 }
@@ -198,6 +200,7 @@ export interface ImportIncomeExpenseRow extends ExcelImportRow {
 // - tòa = tòa ảo "Chung" (không thuộc tòa thật)
 // - 1 item type "Chia lợi nhuận cổ đông" → trigger set total_amount = amount
 export interface CreateProfitDistributionInput {
+  organizationId: string;
   shareholder_id: string;
   shareholder_name?: string;
   amount: number;
@@ -211,6 +214,7 @@ export interface CreateProfitDistributionInput {
 // - business_result_accounting=false (lương đã trừ ở tầng phân bổ → không trừ kép KQKD)
 // - tòa = tòa ảo "Chung"; 1 item type "Lương điều hành" → trigger set total_amount
 export interface CreateManagerSalaryPayoutInput {
+  organizationId: string;
   manager_id: string;
   manager_name?: string;
   amount: number;

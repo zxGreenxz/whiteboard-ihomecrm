@@ -12,6 +12,7 @@ interface Props {
 }
 export function BuildingLegalOwnerFields({ form, loading, error, retry }: Props) {
   return <section className="space-y-4 rounded-lg border p-4" aria-label="Chủ sở hữu pháp lý">
+    {form.formState.errors.root?.server?.message && <p role="alert" className="text-sm text-destructive">{form.formState.errors.root.server.message}</p>}
     <h3 className="font-semibold text-sm">Chủ sở hữu pháp lý (bên cho thuê)</h3>
     <p className="text-sm text-muted-foreground">Người đứng tên sở hữu tòa nhà, dùng làm bên A trong hợp đồng thuê.</p>
     {loading ? <p role="status">Đang tải chủ sở hữu...</p> : error ? <div role="alert">{error} <Button type="button" variant="outline" onClick={retry}>Tải lại</Button></div> :

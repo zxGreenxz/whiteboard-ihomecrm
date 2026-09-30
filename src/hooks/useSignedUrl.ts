@@ -17,14 +17,16 @@ import {
  *  - blob:/data:/URL ngoài → trả nguyên (không cần ký)
  *  - file Storage    → undefined khi đang ký, signed URL khi xong
  */
-export function useSignedUrl(
+export function useSignedUrlQuery(
   value?: string | null,
-  expiresIn: number = SIGNED_URL_TTL
-): string | undefined {
+  expiresIn: number = SIGNED_URL_TTL,
+  options: {errorDisplay?: "inline"} = {},
+) {
   const v = value || '';
   const isStorage = !!parseStorageRef(v);
 
-  const { data } = useQuery({
+  const query = useQuery({
+    meta:{label:"ảnh hoặc tệp đính kèm",...options},
     queryKey: ['signed-url', v, expiresIn],
     enabled: !!v && isStorage,
     queryFn: () => createSignedUrlFromStored(v, expiresIn),
@@ -33,7 +35,10 @@ export function useSignedUrl(
     retry: 1,
   });
 
-  if (!v) return undefined;
-  if (!isStorage) return v;
-  return data;
+  return {...query,data:!v ? undefined : !isStorage ? v : query.data};
+}
+
+/** Compatibility for image-only callers; error-aware views use useSignedUrlQuery. */
+export function useSignedUrl(value?: string | null,expiresIn: number = SIGNED_URL_TTL): string | undefined {
+  return useSignedUrlQuery(value,expiresIn).data;
 }

@@ -1,9 +1,11 @@
+import {loadContractEditJob,type ContractEditJob} from '@/lib/contractEditWorkflow';
 import { useEffect, useState, useMemo, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 
 import { contractFormSchema } from "@/lib/contractValidation";
+import { focusFirstError } from "@/lib/formErrors";
 import type { ContractFormData } from "@/lib/contractValidation";
 import { calculateContractDepositBalance } from "@/lib/contractCreateRpc";
 import { describeDepositAdjustment } from "@/lib/contractPriceAdjustment";
@@ -93,6 +95,18 @@ export function useContractFormState({
   const hydratedDraftId = useRef<string | null>(null);
   const draftInvoiceBaseline = useRef<{ draftId: string; signature: string | null } | null>(null);
   const draftInvoiceEditRevision = useRef(0);
+  const partialSyncRef = useRef<ContractEditJob|null>(null);
+  const [partialSyncIssue, setPartialSyncIssue] = useState<string | null>(null);
+  const [editRecoveryLoading,setEditRecoveryLoading]=useState(false);
+  const [editSubmitting,setEditSubmitting]=useState(false);
+  useEffect(()=>{
+    if(!open||!contract){partialSyncRef.current=null;setPartialSyncIssue(null);return;}
+    let cancelled=false;partialSyncRef.current=null;setEditRecoveryLoading(true);
+    void loadContractEditJob(contract.id).then(job=>{if(cancelled)return;partialSyncRef.current=job;setPartialSyncIssue(job?`Hợp đồng ${job.contractId} có yêu cầu cập nhật chưa đối chiếu xong. Bấm “Kiểm tra và hoàn tất đồng bộ” để kiểm tra dữ liệu đang lưu.`:null);})
+      .catch(()=>{if(!cancelled)setPartialSyncIssue(`Chưa đọc được dấu vết cập nhật hợp đồng ${contract.id}. Kiểm tra quyền lưu dữ liệu trình duyệt và đối chiếu hợp đồng trước khi tiếp tục.`);})
+      .finally(()=>{if(!cancelled)setEditRecoveryLoading(false);});
+    return ()=>{cancelled=true;};
+  },[open,contract?.id]);
 
   // Mutations
   const createContract = useCreateContract();
@@ -100,19 +114,22 @@ export function useContractFormState({
   const syncCustomers = useSyncContractCustomers();
   const syncServices = useSyncContractServices();
   const isPending =
+    editRecoveryLoading || editSubmitting ||
     createContract.isPending ||
     updateContract.isPending ||
     syncCustomers.isPending ||
     syncServices.isPending;
 
   // Data hooks
-  const { data: buildings = [] } = useBuildings();
+  const buildingsQuery = useBuildings({ enabled: open });
+  const buildings = buildingsQuery.data ?? [];
 
   // Cascading state
   const [selectedBuildingId, setSelectedBuildingId] = useState<string>("");
   const [selectedRoomId, setSelectedRoomId] = useState<string>("");
 
-  const { data: rooms = [] } = useRooms(selectedBuildingId || undefined);
+  const roomsQuery = useRooms(selectedBuildingId || undefined, { enabled: open && !!selectedBuildingId });
+  const rooms = roomsQuery.data ?? [];
 
   // Filtered rooms for cascading
   const filteredRooms = useMemo(
@@ -134,7 +151,8 @@ export function useContractFormState({
 
   // Dịch vụ đang BẬT của toà — dùng để (1) hiển thị preview mờ khi OFF, (2)
   // seed vào dịch vụ riêng khi user bật nút gạt lần đầu.
-  const { data: buildingServicesData = [] } = useBuildingServices(selectedBuildingId);
+  const buildingServicesQuery = useBuildingServices(selectedBuildingId);
+  const buildingServicesData = buildingServicesQuery.data ?? [];
   const buildingActiveServices = useMemo(
     () =>
       (buildingServicesData as BuildingServiceWithDetails[]).filter(
@@ -169,7 +187,8 @@ export function useContractFormState({
 
   // RPC creates deposit receipts atomically; the form only needs accounts for
   // selecting the real cashbook of each receipt row.
-  const { data: allAccounts = [] } = useAccounts({ enabled: open });
+  const accountsQuery = useAccounts({ enabled: open });
+  const allAccounts = accountsQuery.data ?? [];
   const { data: authUser } = useAuth();
 
   const accounts = useMemo(
@@ -180,6 +199,12 @@ export function useContractFormState({
   // Danh sách dòng "Đã đặt cọc": mỗi dòng = 1 lần khách đưa cọc → 1 phiếu thu
   // cọc (is_deposit) vào SỔ QUỸ THẬT đã chọn (sổ CỌC chỉ là sổ ảo theo dõi).
   const [depositRows, setDepositRows] = useState<DepositRow[]>([]);
+  const sourceIssues = open ? [
+    (buildingsQuery.isError || buildingsQuery.data === undefined) && { key: 'buildings', label: 'danh sách tòa nhà', retry: (): void => { void buildingsQuery.refetch(); } },
+    selectedBuildingId && (roomsQuery.isError || roomsQuery.data === undefined) && { key: 'rooms', label: 'danh sách phòng', retry: (): void => { void roomsQuery.refetch(); } },
+    selectedBuildingId && (buildingServicesQuery.isError || buildingServicesQuery.data === undefined) && { key: 'buildingServices', label: 'dịch vụ mặc định của tòa', retry: (): void => { void buildingServicesQuery.refetch(); } },
+    depositRows.some(row => Number(row.amount) > 0) && (accountsQuery.isError || accountsQuery.data === undefined) && { key: 'accounts', label: 'sổ quỹ nhận cọc', retry: (): void => { void accountsQuery.refetch(); } },
+  ].filter((issue): issue is { key: string; label: string; retry: () => void } => !!issue) : [];
   // Khoá/mở 2 ô tiền. KHOÁ (xám + nút bút chì) = bám mặc định:
   //   - "Tiền thuê"  bám giá niêm yết của phòng (rooms.rent_price)
   //   - "Tiền cọc"   bám tiền thuê của hợp đồng
@@ -237,10 +262,15 @@ export function useContractFormState({
   //  - chỉ tính phiếu ĐÃ DUYỆT vào "đã đặt cọc" (recompute chỉ cộng APPROVED);
   //  - KHÔNG tạo lại phiếu cho các dòng này (tránh double-count deposit_paid).
   const startDateWatch = form.watch("start_date");
-  const { data: orphanDepositVouchers = [], refetch: refetchOrphanDepositVouchers } = useOrphanDepositVouchers(
+  const orphanDepositsQuery = useOrphanDepositVouchers(
     !isEditMode && open ? selectedRoomId || undefined : undefined,
     startDateWatch || undefined,
   );
+  const orphanDepositVouchers = orphanDepositsQuery.data ?? [];
+  const refetchOrphanDepositVouchers = orphanDepositsQuery.refetch;
+  if (open && !isEditMode && selectedRoomId && (orphanDepositsQuery.isError || orphanDepositsQuery.data === undefined)) {
+    sourceIssues.push({ key: 'orphanDeposits', label: 'phiếu cọc đã thu trước của phòng', retry: () => void orphanDepositsQuery.refetch() });
+  }
   const approvedOrphanTotal = useMemo(
     () =>
       orphanDepositVouchers
@@ -295,10 +325,12 @@ export function useContractFormState({
     ]);
   };
   const updateDepositRow = (uid: string, patch: Partial<DepositRow>) => {
+    for(const key of Object.keys(patch))form.clearErrors(`deposit_rows.${uid}.${key}` as never);
     if (isDraftMode) draftInvoiceEditRevision.current += 1;
     setDepositRows((p) => p.map((r) => (r.uid === uid ? { ...r, ...patch } : r)));
   };
   const removeDepositRow = (uid: string) => {
+    form.clearErrors(`deposit_rows.${uid}` as never);
     if (isDraftMode) draftInvoiceEditRevision.current += 1;
     setDepositRows((p) => p.filter((r) => r.uid !== uid));
   };
@@ -725,6 +757,7 @@ export function useContractFormState({
     if (newCustomers.length > 0 && !newCustomers.some((c) => c.is_representative)) {
       newCustomers[0].is_representative = true;
     }
+    if(newCustomers.length)form.clearErrors('customers' as never);
     setSelectedCustomers(newCustomers);
     if (isDraftMode && newCustomers.length > 1) {
       if (selectedServices.some((service) => service.pricing_type === 'DON_GIA_THEO_NGUOI' && (service.quantity ?? 1) === 1)) {
@@ -789,6 +822,7 @@ export function useContractFormState({
   };
 
   const handleRemoveService = (serviceId: string) => {
+    form.clearErrors(`services.${serviceId}` as never);
     if (isDraftMode) draftInvoiceEditRevision.current += 1;
     setSelectedServices((prev) => prev.filter((s) => s.id !== serviceId));
   };
@@ -798,6 +832,7 @@ export function useContractFormState({
     field: "initial_reading" | "quantity" | "unit_price",
     value: number
   ) => {
+    form.clearErrors(`services.${serviceId}.${field}` as never);
     if (isDraftMode) draftInvoiceEditRevision.current += 1;
     setSelectedServices((prev) =>
       prev.map((s) => (s.id === serviceId ? { ...s, [field]: value } : s))
@@ -836,11 +871,13 @@ export function useContractFormState({
     toast.error("Không thể lưu hợp đồng", {
       description: lines.join("\n") + extra,
     });
-    // Cuộn về đầu để user thấy chỗ lỗi đầu tiên.
-    try {
-      const el = document.querySelector('[data-slot="dialog-content"]');
-      if (el) el.scrollTop = 0;
-    } catch {}
+    void focusFirstError(errors, {
+      root: document.querySelector<HTMLElement>('[data-slot="dialog-content"]'),
+      order: ['room_id', 'signed_date', 'start_date', 'end_date', 'rent_price',
+        'payment_cycle', 'start_billing_date', 'end_billing_date', 'total_deposit',
+        'deposit_debt_mode', 'deposit_debt_reason', 'deposit_topup_due_date',
+        'discount_months', 'discount_amount_per_month'],
+    });
   };
 
   return {
@@ -851,12 +888,17 @@ export function useContractFormState({
     updateContract,
     syncCustomers,
     syncServices,
+    partialSyncRef,
+    partialSyncIssue,
+    setEditSubmitting,
+    setPartialSyncIssue,
     isPending,
     // data
     buildings,
     rooms,
     filteredRooms,
     accounts,
+    sourceIssues,
     authUser,
     buildingActiveServices,
     buildingServicesAsSelected,

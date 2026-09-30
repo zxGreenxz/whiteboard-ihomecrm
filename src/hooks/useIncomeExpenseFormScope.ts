@@ -1,3 +1,4 @@
+import {financialReadRows} from '@/lib/financialReadValidation';
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { compareBuildingThenRoom } from "@/lib/roomSort";
@@ -38,12 +39,8 @@ export const useIncomeExpenseFormBuildings = (opts?: { failOnError?: boolean }) 
     queryFn: async () => {
       // RPC chưa có trong types generated → cast any.
       const { data, error } = await supabase.rpc("ie_form_buildings");
-      if (error) {
-        if (opts?.failOnError) throw error;
-        console.error("ie_form_buildings error:", error);
-        return [] as IeFormBuilding[];
-      }
-      const rows = (data ?? []) as IeFormBuilding[];
+      if (error) throw error;
+      const rows = financialReadRows(data) as IeFormBuilding[];
       return [...rows].sort((a, b) => {
         if (a.managed !== b.managed) return a.managed ? -1 : 1;
         return a.name.localeCompare(b.name, "vi");
@@ -69,11 +66,8 @@ export const useIncomeExpenseFormRooms = (
         // `_building_id uuid DEFAULT NULL` → bỏ hẳn khoá thay vì truyền null.
         _building_id: bid ?? undefined,
       });
-      if (error) {
-        console.error("ie_form_rooms error:", error);
-        return [] as IeFormRoom[];
-      }
-      const rows = (data ?? []) as IeFormRoom[];
+      if (error) throw error;
+      const rows = financialReadRows(data) as IeFormRoom[];
       // Cùng kiểu sắp xếp với useRooms (MB* → G* → L* → 1,2,3…). Trong 1 toà tên
       // toà không đổi nên thực chất so theo tên phòng.
       return [...rows].sort((a, b) =>

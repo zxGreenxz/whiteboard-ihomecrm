@@ -1,3 +1,6 @@
+// @vitest-environment jsdom
+import {renderHook,cleanup} from '@testing-library/react';
+import {afterEach} from 'vitest';
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -21,6 +24,7 @@ vi.mock("@/integrations/supabase/client", () => ({
   },
 }));
 
+vi.mock("@/lib/authSession",()=>({getSessionUser:async()=>({id:"u1"})}));
 vi.mock("sonner", () => ({
   toast: {
     error: mocks.toastError,
@@ -37,6 +41,7 @@ import {
 type StatusMutation = {
   mutationFn: (id: string) => Promise<boolean>;
   onSuccess: (isTerminationForfeit: boolean) => void;
+  onError: (error: unknown) => void;
 };
 
 const FORFEIT_INVALIDATION_KEYS = [
@@ -81,18 +86,27 @@ const mockVoucherRead = (result: {
   error: Record<string, unknown> | null;
 }) => {
   const builder: Record<string, ReturnType<typeof vi.fn>> = {};
-  builder.select = vi.fn(() => builder);
-  builder.eq = vi.fn(() => builder);
-  builder.maybeSingle = vi.fn().mockResolvedValue(result);
+  let columns='',id='';
+  builder.select=vi.fn((value:string)=>{columns=value;return builder;});
+  builder.eq=vi.fn((_column:string,value:string)=>{id=value;return builder;});
+  builder.maybeSingle=vi.fn(async()=>{
+    if(columns==='id,code,approval_status,posting_status,verified_at'){
+      const status=[...mocks.rpc.mock.calls].reverse().find(([name])=>name==='set_termination_forfeit_status_v1')?.[1]?.p_status??'UNAPPROVED';
+      return {data:{id,code:'PT01',approval_status:status,posting_status:'UNPOSTED',verified_at:null},error:null};
+    }
+    return result;
+  });
   mocks.from.mockReturnValue(builder);
   return builder;
 };
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.clearAllMocks();localStorage.clear();
   mocks.from.mockReset();
-  mocks.rpc.mockReset();
+  mocks.rpc.mockReset();mockVoucherRead({data:{},error:null});
 });
+
+afterEach(cleanup);
 
 // Thang ba bậc phía client của nút Duyệt đã gỡ (đợt 1 sửa phiếu, 25/09/2026) —
 // máy chủ làm trong approve_pending_income_expense_checked_v1. Cửa dự phòng khi
@@ -131,7 +145,7 @@ describe("termination forfeit status rollout fallback", () => {
       throw new Error(`Unexpected RPC ${name}`);
     });
 
-    const mutation = useUnapproveVoucher() as unknown as StatusMutation;
+    const mutation = renderHook(()=>useUnapproveVoucher()).result.current as unknown as StatusMutation;
     await expect(mutation.mutationFn("voucher-1")).resolves.toBe(false);
 
     expect(mocks.rpc).toHaveBeenNthCalledWith(
@@ -174,11 +188,14 @@ describe("termination forfeit status rollout fallback", () => {
     mockVoucherRead({ data, error: null });
     mocks.rpc.mockResolvedValueOnce({ data: null, error: rpcError });
 
-    const mutation = useUnapproveVoucher() as unknown as StatusMutation;
+    const mutation = renderHook(()=>useUnapproveVoucher()).result.current as unknown as StatusMutation;
     await expect(mutation.mutationFn("forfeit-voucher")).rejects.toEqual(rpcError);
+    expect(mocks.toastError).not.toHaveBeenCalled();
+    mutation.onError(rpcError);
 
     expect(mocks.rpc).toHaveBeenCalledTimes(1);
-    expect(mocks.toastError).toHaveBeenCalledWith(rpcError.message);
+    expect(mocks.toastError).toHaveBeenCalledOnce();
+    expect(String(mocks.toastError.mock.calls[0][0])).not.toContain(rpcError.message);
   });
 
   it("fails closed when the voucher classification read fails", async () => {
@@ -191,11 +208,14 @@ describe("termination forfeit status rollout fallback", () => {
     mockVoucherRead({ data: null, error: readError });
     mocks.rpc.mockResolvedValueOnce({ data: null, error: rpcError });
 
-    const mutation = useUnapproveVoucher() as unknown as StatusMutation;
+    const mutation = renderHook(()=>useUnapproveVoucher()).result.current as unknown as StatusMutation;
     await expect(mutation.mutationFn("hidden-voucher")).rejects.toEqual(readError);
+    expect(mocks.toastError).not.toHaveBeenCalled();
+    mutation.onError(readError);
 
     expect(mocks.rpc).toHaveBeenCalledTimes(1);
-    expect(mocks.toastError).toHaveBeenCalledWith(readError.message);
+    expect(mocks.toastError).toHaveBeenCalledOnce();
+    expect(String(mocks.toastError.mock.calls[0][0])).not.toContain(readError.message);
   });
 
   it("fails closed when the voucher is missing or hidden by RLS", async () => {
@@ -207,11 +227,14 @@ describe("termination forfeit status rollout fallback", () => {
     mockVoucherRead({ data: null, error: null });
     mocks.rpc.mockResolvedValueOnce({ data: null, error: rpcError });
 
-    const mutation = useUnapproveVoucher() as unknown as StatusMutation;
+    const mutation = renderHook(()=>useUnapproveVoucher()).result.current as unknown as StatusMutation;
     await expect(mutation.mutationFn("unknown-voucher")).rejects.toEqual(rpcError);
+    expect(mocks.toastError).not.toHaveBeenCalled();
+    mutation.onError(rpcError);
 
     expect(mocks.rpc).toHaveBeenCalledTimes(1);
-    expect(mocks.toastError).toHaveBeenCalledWith(rpcError.message);
+    expect(mocks.toastError).toHaveBeenCalledOnce();
+    expect(String(mocks.toastError.mock.calls[0][0])).not.toContain(rpcError.message);
   });
 
   it("keeps ordinary vouchers on the existing unapprove flow", async () => {
@@ -232,7 +255,7 @@ describe("termination forfeit status rollout fallback", () => {
       throw new Error(`Unexpected RPC ${name}`);
     });
 
-    const mutation = useUnapproveVoucher() as unknown as StatusMutation;
+    const mutation = renderHook(()=>useUnapproveVoucher()).result.current as unknown as StatusMutation;
     await expect(mutation.mutationFn("ordinary-voucher")).resolves.toBe(false);
     expect(mocks.rpc).toHaveBeenCalledTimes(2);
   });
@@ -259,11 +282,14 @@ describe("termination forfeit status rollout fallback", () => {
   ])("fails closed for $name", async ({ error }) => {
     mocks.rpc.mockResolvedValueOnce({ data: null, error });
 
-    const mutation = useUnapproveVoucher() as unknown as StatusMutation;
+    const mutation = renderHook(()=>useUnapproveVoucher()).result.current as unknown as StatusMutation;
     await expect(mutation.mutationFn("voucher-1")).rejects.toEqual(error);
+    expect(mocks.toastError).not.toHaveBeenCalled();
+    mutation.onError(error);
 
     expect(mocks.rpc).toHaveBeenCalledTimes(1);
-    expect(mocks.toastError).toHaveBeenCalledWith(error.message);
+    expect(mocks.toastError).toHaveBeenCalledOnce();
+    expect(String(mocks.toastError.mock.calls[0][0])).not.toContain(error.message);
   });
 });
 
@@ -286,7 +312,7 @@ describe("huỷ duyệt phiếu — CAS approval_version (H3.2)", () => {
       error: null,
     });
 
-    const mutation = useUnapproveVoucher() as unknown as StatusMutation;
+    const mutation = renderHook(()=>useUnapproveVoucher()).result.current as unknown as StatusMutation;
     await expect(mutation.mutationFn("voucher-9")).resolves.toBe(false);
 
     expect(voucherQuery.select).toHaveBeenCalledWith("approval_version");
@@ -320,7 +346,7 @@ describe("huỷ duyệt phiếu — CAS approval_version (H3.2)", () => {
       error: null,
     });
 
-    const mutation = useUnapproveVoucher() as unknown as StatusMutation;
+    const mutation = renderHook(()=>useUnapproveVoucher()).result.current as unknown as StatusMutation;
     await expect(mutation.mutationFn("voucher-9")).resolves.toBe(false);
 
     expect(mocks.rpc).toHaveBeenCalledWith("unapprove_voucher", {
@@ -349,11 +375,13 @@ describe("huỷ duyệt phiếu — CAS approval_version (H3.2)", () => {
       error: null,
     });
 
-    const mutation = useUnapproveVoucher() as unknown as StatusMutation;
+    const mutation = renderHook(()=>useUnapproveVoucher()).result.current as unknown as StatusMutation;
     await expect(mutation.mutationFn("voucher-9")).rejects.toEqual(error);
+    expect(mocks.toastError).not.toHaveBeenCalled();
+    mutation.onError(error);
 
     expect(mocks.toastError).toHaveBeenCalledWith(
-      "Phiếu vừa được người khác thay đổi — hãy tải lại trang rồi thử lại",
+      "Phiếu vừa được người khác thay đổi — hãy tải lại phiếu để kiểm tra.",
     );
   });
 });
@@ -369,7 +397,7 @@ describe("termination forfeit status invalidations", () => {
   ) => {
     mocks.rpc.mockResolvedValueOnce({ data: null, error: null });
 
-    const mutation = useStatusMutation() as unknown as StatusMutation;
+    const mutation = renderHook(()=>useStatusMutation()).result.current as unknown as StatusMutation;
     const result = await mutation.mutationFn("forfeit-voucher");
     mutation.onSuccess(result);
 
@@ -386,8 +414,9 @@ describe("termination forfeit status invalidations", () => {
 
 describe("duyệt phiếu — luôn kèm phiên bản đang xem (đợt 1 sửa phiếu)", () => {
   type ApproveMutation = {
-    mutationFn: (input: { id: string; expectedApprovalVersion: number }) => Promise<boolean>;
-    onSuccess: (isTerminationForfeit: boolean) => void;
+    mutationFn: (input: { id: string; expectedApprovalVersion: number }) => Promise<{id:string;approved:boolean;mode?:string;already?:boolean}>;
+    onSuccess: (result: {id:string;approved:boolean;mode?:string;already?:boolean}) => void;
+  onError: (error: unknown) => void;
   };
 
   it("gọi RPC duyệt có kiểm phiên bản, không tự đi thang ba bậc ở client", async () => {
@@ -395,10 +424,10 @@ describe("duyệt phiếu — luôn kèm phiên bản đang xem (đợt 1 sửa 
       data: { id: "voucher-1", approved: true, mode: "VOUCHER" },
       error: null,
     });
-    const mutation = useApproveVoucher() as unknown as ApproveMutation;
+    const mutation = renderHook(()=>useApproveVoucher()).result.current as unknown as ApproveMutation;
     await expect(
       mutation.mutationFn({ id: "voucher-1", expectedApprovalVersion: 3 }),
-    ).resolves.toBe(false);
+    ).resolves.toMatchObject({approved:true,mode:"VOUCHER"});
     expect(mocks.rpc).toHaveBeenCalledTimes(1);
     expect(mocks.rpc).toHaveBeenCalledWith("approve_pending_income_expense_checked_v1", {
       p_voucher: "voucher-1",
@@ -411,10 +440,10 @@ describe("duyệt phiếu — luôn kèm phiên bản đang xem (đợt 1 sửa 
       data: { id: "forfeit-voucher", approved: true, mode: "FORFEIT_PAIR" },
       error: null,
     });
-    const mutation = useApproveVoucher() as unknown as ApproveMutation;
+    const mutation = renderHook(()=>useApproveVoucher()).result.current as unknown as ApproveMutation;
     const result = await mutation.mutationFn({ id: "forfeit-voucher", expectedApprovalVersion: 1 });
     mutation.onSuccess(result);
-    expect(result).toBe(true);
+    expect(result).toMatchObject({approved:true,mode:"FORFEIT_PAIR"});
     expect(getInvalidatedRoots()).toEqual(
       expect.arrayContaining([...FORFEIT_INVALIDATION_KEYS, "income-expense-revisions"]),
     );
@@ -423,10 +452,12 @@ describe("duyệt phiếu — luôn kèm phiên bản đang xem (đợt 1 sửa 
   it("phiếu vừa bị sửa (PT409) ⇒ báo tải lại, không duyệt", async () => {
     const error = { code: "PT409", message: "Phiếu vừa được sửa" };
     mocks.rpc.mockResolvedValueOnce({ data: null, error });
-    const mutation = useApproveVoucher() as unknown as ApproveMutation;
+    const mutation = renderHook(()=>useApproveVoucher()).result.current as unknown as ApproveMutation;
     await expect(
       mutation.mutationFn({ id: "voucher-1", expectedApprovalVersion: 1 }),
     ).rejects.toEqual(error);
+    expect(mocks.toastError).not.toHaveBeenCalled();
+    mutation.onError(error);
     expect(mocks.toastError).toHaveBeenCalledWith(
       "Phiếu vừa được sửa — tải lại để xem thay đổi trước khi duyệt.",
     );

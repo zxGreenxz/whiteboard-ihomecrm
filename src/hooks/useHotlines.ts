@@ -1,3 +1,4 @@
+import { friendlyError } from "@/lib/friendlyError";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
@@ -22,12 +23,13 @@ export const useHotlines = () => {
         throw error;
       }
 
-      return data || [];
+      if (!Array.isArray(data)) throw new TypeError("Invalid category list response");
+      return data;
     },
   });
 };
 
-export const useCreateHotline = () => {
+export const useCreateHotline = (options?: {inlineError?:boolean}) => {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -42,24 +44,25 @@ export const useCreateHotline = () => {
         .select()
         .single();
 
-      if (error) {
-        toast.error("Không thể tạo hotline");
-        throw error;
-      }
+      if (error) throw error;
+      if (!data || typeof data.id !== "string" || !data.id) throw new TypeError("Unconfirmed category result");
 
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["hotlines"] });
-      toast.success("Hotline đã được tạo thành công");
+      toast.success(`Đã tạo hotline ${data.name}.`);
     },
     onError: (error) => {
+      if (options?.inlineError) return;
       console.error("Error creating hotline:", error);
+      const feedback = friendlyError(error, "Chưa tạo được hotline", { operation: "tạo hotline" });
+      toast.error(feedback.title, { description: feedback.description });
     },
   });
 };
 
-export const useUpdateHotline = () => {
+export const useUpdateHotline = (options?: {inlineError?:boolean}) => {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -71,24 +74,25 @@ export const useUpdateHotline = () => {
         .select()
         .single();
 
-      if (error) {
-        toast.error("Không thể cập nhật hotline");
-        throw error;
-      }
+      if (error) throw error;
+      if (!data || data.id !== id) throw new TypeError("Unconfirmed category result");
 
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["hotlines"] });
-      toast.success("Hotline đã được cập nhật thành công");
+      toast.success(`Đã lưu thay đổi hotline ${data.name}.`);
     },
     onError: (error) => {
+      if (options?.inlineError) return;
       console.error("Error updating hotline:", error);
+      const feedback = friendlyError(error, "Chưa lưu thay đổi được hotline", { operation: "lưu thay đổi hotline" });
+      toast.error(feedback.title, { description: feedback.description });
     },
   });
 };
 
-export const useDeleteHotline = () => {
+export const useDeleteHotline = (options?: {inlineError?:boolean}) => {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -100,19 +104,20 @@ export const useDeleteHotline = () => {
         .select()
         .single();
 
-      if (error) {
-        toast.error("Không thể xóa hotline");
-        throw error;
-      }
+      if (error) throw error;
+      if (!data || data.id !== id) throw new TypeError("Unconfirmed category result");
 
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["hotlines"] });
-      toast.success("Hotline đã được xóa thành công");
+      toast.success(`Đã xóa hotline ${data.name}.`);
     },
     onError: (error) => {
+      if (options?.inlineError) return;
       console.error("Error deleting hotline:", error);
+      const feedback = friendlyError(error, "Chưa xóa được hotline", { operation: "xóa hotline" });
+      toast.error(feedback.title, { description: feedback.description });
     },
   });
 };

@@ -1,0 +1,12 @@
+// @vitest-environment jsdom
+import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {afterEach,beforeEach,expect,it,vi} from 'vitest';
+const m=vi.hoisted(()=>({data:{} as Record<string,unknown>,error:null as unknown,save:vi.fn(),refetch:vi.fn(),success:vi.fn()}));
+vi.mock('@/hooks/useUiPreferences',()=>({useUiPreferences:()=>({data:m.data,isError:!!m.error,error:m.error,isLoading:false,fetchStatus:'idle',refetch:m.refetch}),useSetUiPreference:()=>({mutateAsync:m.save,isPending:false})}));
+vi.mock('sonner',()=>({toast:{success:m.success,info:vi.fn(),error:vi.fn()}}));
+import RoutePlannerSheet from './RoutePlannerSheet';
+const missions:never[]=[];
+const props={open:true,onOpenChange:vi.fn(),missions,date:'2026-09-30',onStartInspection:vi.fn()};
+afterEach(cleanup);beforeEach(()=>{vi.clearAllMocks();m.data={};m.error=null;m.save.mockResolvedValue({});m.refetch.mockResolvedValue({data:{},isError:false});});
+it('lỗi đọc tuyến đã lưu không được biến thành tuyến trống có thể ghi',async()=>{m.error={code:'42501',message:'private sql'};render(<RoutePlannerSheet {...props}/>);expect(screen.getByRole('alert').textContent).not.toContain('private sql');expect(screen.queryByRole('button',{name:'Lưu tuyến hôm nay'})).toBeNull();fireEvent.click(screen.getByRole('button',{name:/Tải lại/}));await waitFor(()=>expect(m.refetch).toHaveBeenCalledTimes(1));});
+it('receipt rỗng giữ bản nháp và chỉ đọc lại, không cho gửi tiếp qua đóng mở',async()=>{const view=render(<RoutePlannerSheet {...props}/>);fireEvent.click(screen.getByRole('button',{name:'Lưu tuyến hôm nay'}));await screen.findByRole('alert');expect(m.success).not.toHaveBeenCalled();expect((screen.getByRole('button',{name:'Lưu tuyến hôm nay'}) as HTMLButtonElement).disabled).toBe(true);view.rerender(<RoutePlannerSheet {...props} open={false}/>);view.rerender(<RoutePlannerSheet {...props}/>);expect(screen.getByRole('alert').textContent).toMatch(/Chưa xác nhận/);fireEvent.click(screen.getByRole('button',{name:'Đọc lại tuyến đã lưu'}));await waitFor(()=>expect(m.refetch).toHaveBeenCalledTimes(1));expect((screen.getByRole('button',{name:'Lưu tuyến hôm nay'}) as HTMLButtonElement).disabled).toBe(true);const value=m.save.mock.calls[0][0].value;m.refetch.mockResolvedValueOnce({isError:false,data:{v5_route_plan:value}});fireEvent.click(screen.getByRole('button',{name:'Đọc lại tuyến đã lưu'}));await waitFor(()=>expect(screen.queryByRole('alert')).toBeNull());expect(m.save).toHaveBeenCalledTimes(1);expect(m.success).toHaveBeenCalledTimes(1);});

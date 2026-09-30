@@ -1,3 +1,4 @@
+import { QueryRegion } from '@/components/errors/QueryRegion';
 import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -43,7 +44,8 @@ const currentMonth = currentMonthVN;
 const ThuTien = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { data: buildings = [] } = useBuildings();
+  const buildingsQuery = useBuildings();
+  const { data: buildings = [] } = buildingsQuery;
   const { data: perms } = useMyPermissions();
   // Quyền chi tiết trang Thu tiền (fallback legacy: invoices.record_payment)
   const canRecordPayment = canUse(perms, 'thu_tien', 'collect');
@@ -78,7 +80,8 @@ const ThuTien = () => {
 
   // 1 query cả kỳ (mọi toà) dùng chung với ManagePanel/CollectionReport;
   // slice theo toà đang chọn ở client → đổi tab toà không refetch.
-  const { data: monthInvoices, isLoading } = useThuTienInvoices(billingMonth);
+  const invoicesQuery = useThuTienInvoices(billingMonth);
+  const { data: monthInvoices, isLoading } = invoicesQuery;
   const allRooms = useMemo(
     () => (monthInvoices ?? []).filter((i) => !buildingId || i.building_id === buildingId),
     [monthInvoices, buildingId],
@@ -92,7 +95,10 @@ const ThuTien = () => {
     () => (monthInvoices ?? []).map((i) => i.id),
     [monthInvoices],
   );
-  const { data: collectorsMap = {} } = useInvoiceCollectors(invoiceIds);
+  const collectorsQuery = useInvoiceCollectors(invoiceIds);
+  const { data: collectorsMap = {} } = collectorsQuery;
+  const requiredQueries = [buildingsQuery, invoicesQuery, ...(invoiceIds.length ? [collectorsQuery] : [])];
+  const sourcesVerified = requiredQueries.every(query => !query.isError && query.data !== undefined);
   const collectorNames = useMemo(() => {
     const out: Record<string, string[]> = {};
     for (const [id, entries] of Object.entries(collectorsMap)) {
@@ -295,6 +301,7 @@ const ThuTien = () => {
       {/* Desktop ≥1024px: cột trái 75% là panel quản lý/báo cáo; CSS ẩn trên mobile.
           Nút "Điện nước" điều hướng sang page /thanh-toan. Dùng chung billingMonth
           qua sessionStorage nên đi qua lại giữ nguyên kỳ đang xem. */}
+      <QueryRegion label="danh sách tòa nhà" queries={[buildingsQuery]}>
       <ManagePanel
         buildings={buildingOpts}
         billingMonth={billingMonth}
@@ -305,6 +312,7 @@ const ThuTien = () => {
         onOpenUtility={openUtility}
         canRecordPayment={canRecordPayment}
       />
+      </QueryRegion>
       <div className="tt-phone-col">
         <div className="tt-page">
         <div className="hdr">
@@ -350,11 +358,12 @@ const ThuTien = () => {
               />
             </div>
           </div>
-          <BuildingPills buildings={buildingOpts} value={buildingId} onChange={setBuildingId} />
+          <QueryRegion label="danh sách tòa nhà" queries={[buildingsQuery]}><BuildingPills buildings={buildingOpts} value={buildingId} onChange={setBuildingId} /></QueryRegion>
         </div>
 
         <div className="scroll">
           <div className="scroll-pad">
+            <QueryRegion label="số liệu thu tiền và người thu" queries={requiredQueries}>
             <CollectSummaryBar
               collectedSum={summary.collectedSum}
               paidRooms={summary.paidRooms}
@@ -388,13 +397,14 @@ const ThuTien = () => {
               <RoomCellGrid
                 list={list}
                 collectorsByInvoice={collectorNames}
-                canRecordPayment={canRecordPayment}
+                canRecordPayment={canRecordPayment && sourcesVerified}
                 emptyIcon={emptyIcon}
                 emptyMessage={emptyMessage}
                 onOpen={openCellView}
                 onPart={openCellKeypad}
               />
             )}
+            </QueryRegion>
           </div>
         </div>
 
@@ -403,8 +413,8 @@ const ThuTien = () => {
           show={drawer.show}
           mode={drawer.mode}
           collectors={openInvoice ? collectorsMap[openInvoice.id] ?? [] : []}
-          canRecordPayment={canRecordPayment}
-          canUndo={canUse(perms, 'thu_tien', 'undo')}
+          canRecordPayment={canRecordPayment && sourcesVerified}
+          canUndo={sourcesVerified && canUse(perms, 'thu_tien', 'undo')}
           prev={prev}
           next={next}
           onClose={closeDrawer}

@@ -34,10 +34,10 @@ const fields: FieldDef[] = [
 ];
 
 export default function HotlinesPage() {
-  const { data, isLoading } = useHotlines();
-  const createMutation = useCreateHotline();
-  const updateMutation = useUpdateHotline();
-  const deleteMutation = useDeleteHotline();
+  const { data, isLoading, error, refetch } = useHotlines();
+  const createMutation = useCreateHotline({inlineError:true});
+  const updateMutation = useUpdateHotline({inlineError:true});
+  const deleteMutation = useDeleteHotline({inlineError:true});
 
   return (
     <CategoryCrudPage<Hotline>
@@ -46,11 +46,13 @@ export default function HotlinesPage() {
       icon={Phone}
       data={data}
       isLoading={isLoading}
+      error={error}
+      onRetry={refetch}
       columns={columns}
       fields={fields}
-      onCreate={(values) => createMutation.mutate(values as any)}
-      onUpdate={(id, values) => updateMutation.mutate({ id, updates: values as any })}
-      onDelete={(id) => deleteMutation.mutate(id)}
+      onCreate={(values) => createMutation.mutateAsync(values as any)}
+      onUpdate={(id, values) => updateMutation.mutateAsync({ id, updates: values as any })}
+      onDelete={(id) => deleteMutation.mutateAsync(id)}
       isCreating={createMutation.isPending}
       isUpdating={updateMutation.isPending}
       isDeleting={deleteMutation.isPending}

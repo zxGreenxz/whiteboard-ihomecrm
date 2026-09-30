@@ -1,3 +1,5 @@
+import { focusFirstError } from '@/lib/formErrors';
+import { actionErrorMessage } from '@/lib/actionFeedback';
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -40,7 +42,7 @@ interface TaskTypeFormDialogProps {
   jobType?: JobTypeWithRelations | null;
   jobGroups: Array<{ id: string; name: string }>;
   departments: Array<{ id: string; name: string }>;
-  onSubmit: (values: JobTypeFormValues) => void;
+  onSubmit: (values: JobTypeFormValues) => void | Promise<unknown>;
   onCreateJobGroup: (name: string) => Promise<any>;
   isSubmitting?: boolean;
 }
@@ -58,6 +60,7 @@ export default function TaskTypeFormDialog({
   const isEditing = !!jobType;
   const [isCreatingGroup, setIsCreatingGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
+  const [groupError,setGroupError] = useState("");
 
   const form = useForm<JobTypeFormValues>({
     resolver: zodResolver(jobTypeFormSchema),
@@ -126,7 +129,8 @@ export default function TaskTypeFormDialog({
 
   const handleCreateGroup = async () => {
     const trimmed = newGroupName.trim();
-    if (!trimmed) return;
+    if (!trimmed) {setGroupError("Nhập tên nhóm công việc.");void focusFirstError({newGroupName:"Nhập tên nhóm."});return;}
+    setGroupError("");
     try {
       const created = await onCreateJobGroup(trimmed);
       if (created?.id) {
@@ -134,9 +138,7 @@ export default function TaskTypeFormDialog({
       }
       setIsCreatingGroup(false);
       setNewGroupName("");
-    } catch {
-      // Error handled by parent hook
-    }
+    } catch (error) { setGroupError(actionErrorMessage(error,"Chưa tạo được nhóm công việc")); }
   };
 
   const handleCancelCreateGroup = () => {
@@ -144,8 +146,8 @@ export default function TaskTypeFormDialog({
     setNewGroupName("");
   };
 
-  const handleFormSubmit = (values: JobTypeFormValues) => {
-    onSubmit(values);
+  const handleFormSubmit = async (values: JobTypeFormValues) => {
+    try { await onSubmit(values); } catch (error) { form.setError("root.server", {message:actionErrorMessage(error,"Chưa lưu được loại công việc")}); }
   };
 
   return (
@@ -158,7 +160,7 @@ export default function TaskTypeFormDialog({
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-4">
+          <form onSubmit={form.handleSubmit(handleFormSubmit, errors=>{void focusFirstError(errors);})} className="space-y-4">
             {/* Tên loại công việc */}
             <FormField
               control={form.control}
@@ -183,10 +185,11 @@ export default function TaskTypeFormDialog({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Nhóm công việc *</FormLabel>
+                    {groupError && <p role="alert" className="text-sm text-destructive">{groupError}</p>}
                     {isCreatingGroup ? (
                       <div className="flex gap-2">
                         <Input
-                          placeholder="Tên nhóm mới"
+                          placeholder="Tên nhóm mới" name="newGroupName" aria-invalid={!!groupError}
                           value={newGroupName}
                           onChange={(e) => setNewGroupName(e.target.value)}
                           onKeyDown={(e) => {
@@ -451,6 +454,7 @@ export default function TaskTypeFormDialog({
             </div>
 
             {/* Buttons */}
+            {form.formState.errors.root?.server?.message && <p role="alert" className="text-sm text-destructive">{form.formState.errors.root.server.message}</p>}
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Huỷ

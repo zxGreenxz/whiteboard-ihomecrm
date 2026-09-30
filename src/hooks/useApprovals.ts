@@ -1,6 +1,10 @@
+import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
+import {workflowErrorMessage} from '@/lib/financialWorkflow';
+import {financialReadRows,financialReadNumber} from '@/lib/financialReadValidation';
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { approvalDecisionFeedback, voucherFailureMessage } from "@/lib/voucherFeedback";
 
 // Một yêu cầu duyệt đang chờ CHÍNH TÔI xử lý — khớp cột của
 // public.list_my_pending_approvals_v1() (server đã lọc theo auth.uid(), client
@@ -42,15 +46,16 @@ const invalidateAfterDecision = (queryClient: ReturnType<typeof useQueryClient>)
 export const usePendingApprovals = () => {
   return useQuery({
     queryKey: ["pending-approvals"],
+    meta: {errorDisplay:"inline",label:"yêu cầu chờ duyệt"},
     queryFn: async (): Promise<PendingApproval[]> => {
       const { data, error } = await supabase.rpc("list_my_pending_approvals_v1");
       if (error) throw error;
 
-      return ((data ?? []) as any[]).map((r) => ({
+      return financialReadRows(data as any[]).map((r) => ({
         request_id: r.request_id,
         submission_no: Number(r.submission_no ?? 0),
         submitted_at: r.submitted_at,
-        amount: Number(r.amount ?? 0),
+        amount: financialReadNumber(r.amount),
         voucher_id: r.voucher_id,
         voucher_code: r.voucher_code ?? null,
         voucher_name: r.voucher_name ?? null,
@@ -72,30 +77,37 @@ export const usePendingApprovals = () => {
 // từ server nên hiển thị nguyên văn.
 export const useDecideApproval = () => {
   const queryClient = useQueryClient();
+  const workflow=persistentFinancialWorkflow('approval-request',{scope:'actor'});
 
   return useMutation({
     mutationFn: async (input: {
       requestId: string;
+      organizationId?: string | null;
       decision: "APPROVE" | "REJECT";
       reason?: string | null;
     }) => {
+      return workflow.run(input.requestId,'xử lý yêu cầu duyệt',async progress=>{
       const { data, error } = await supabase.rpc("decide_financial_request_v2", {
         p_request_id: input.requestId,
         p_decision: input.decision,
         p_reason: input.reason ?? undefined,
       });
       if (error) {
-        toast.error(error.message || "Không thể xử lý yêu cầu duyệt");
         throw error;
       }
+      if ((data as {request_id?:unknown}|null)?.request_id!==input.requestId || approvalDecisionFeedback(data, input.decision).kind === "warning") throw new TypeError("Missing approval decision confirmation");
+      progress.completed.push({id:input.requestId,label:'Đã nhận kết quả xử lý yêu cầu duyệt'});
       return data as { request_id: string; state: string };
+      },undefined,input.organizationId);
     },
     onSuccess: (_data, input) => {
       invalidateAfterDecision(queryClient);
-      toast.success(input.decision === "APPROVE" ? "Đã duyệt yêu cầu" : "Đã từ chối yêu cầu");
+      const feedback = approvalDecisionFeedback(_data, input.decision);
+      toast[feedback.kind](feedback.message);
     },
     onError: (error) => {
       console.error("Error deciding financial request:", error);
+      toast.error(workflowErrorMessage(error,'xử lý yêu cầu duyệt'));
     },
   });
 };
@@ -103,25 +115,31 @@ export const useDecideApproval = () => {
 // Người lập (hoặc super admin) tự thu hồi yêu cầu đã gửi — phiếu về lại nháp.
 export const useWithdrawApproval = () => {
   const queryClient = useQueryClient();
+  const workflow=persistentFinancialWorkflow('approval-request',{scope:'actor'});
 
   return useMutation({
-    mutationFn: async (input: { requestId: string; reason?: string | null }) => {
+    mutationFn: async (input: { requestId: string; organizationId?:string|null; reason?: string | null }) => {
+      return workflow.run(input.requestId,'thu hồi yêu cầu duyệt',async progress=>{
       const { data, error } = await supabase.rpc("withdraw_financial_request_v1", {
         p_request_id: input.requestId,
         p_reason: input.reason ?? undefined,
       });
       if (error) {
-        toast.error(error.message || "Không thể thu hồi yêu cầu");
         throw error;
       }
+      if ((data as {request_id?:unknown}|null)?.request_id!==input.requestId || approvalDecisionFeedback(data, "WITHDRAW").kind === "warning") throw new TypeError("Missing withdrawal confirmation");
+      progress.completed.push({id:input.requestId,label:'Đã nhận kết quả thu hồi yêu cầu duyệt'});
       return data as { request_id: string; state: string };
+      },undefined,input.organizationId);
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       invalidateAfterDecision(queryClient);
-      toast.success("Đã thu hồi yêu cầu");
+      const feedback = approvalDecisionFeedback(data, "WITHDRAW");
+      toast[feedback.kind](feedback.message);
     },
     onError: (error) => {
       console.error("Error withdrawing financial request:", error);
+      toast.error(workflowErrorMessage(error,'thu hồi yêu cầu duyệt'));
     },
   });
 };

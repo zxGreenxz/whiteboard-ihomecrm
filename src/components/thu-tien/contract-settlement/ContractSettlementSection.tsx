@@ -51,7 +51,7 @@ const useOrgCuaToa = (buildingIds: string[]) =>
     queryFn: async (): Promise<string | null> => {
       const { data, error } = await supabase
         .from('buildings').select('organization_id').in('id', buildingIds).limit(1).maybeSingle();
-      if (error) throw new Error(error.message);
+      if (error) throw Object.assign(new Error('Không đọc được tổ chức của tòa để đối chiếu hợp đồng.'), { code: error.code, cause: error });
       if (!data?.organization_id) throw new Error('Không xác định được tổ chức của tòa');
       return data.organization_id;
     },

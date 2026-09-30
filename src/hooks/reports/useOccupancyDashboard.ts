@@ -8,12 +8,13 @@
 // ĐỊNH NGHĨA metric khoá trong migration 20260710180000_occupancy_v2_rpcs.sql —
 // UI/export trích dẫn OCCUPANCY_METRIC_DEFINITIONS bên dưới, đừng tự diễn giải lại.
 // Lưu ý 2 định nghĩa "occupied" khác nhau CÓ CHỦ Ý:
-//   - snapshot: HĐ ACTIVE đang hiệu lực tại as_of (quá hạn chưa thanh lý vẫn là ở)
+//   - snapshot: hợp đồng đang hiệu lực đang hiệu lực tại as_of (quá hạn chưa thanh lý vẫn là ở)
 //   - trend (fa_occupancy_monthly): HĐ non-DRAFT giao tháng — tháng quá khứ tính cả
 //     HĐ nay đã TERMINATED/EXPIRED (đúng lịch sử).
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { format, startOfMonth, subMonths } from "date-fns";
+import { financialReadNumber, financialReadRows } from '@/lib/financialReadValidation';
 
 export interface OccupancySnapshotRow {
   building_id: string;
@@ -51,14 +52,14 @@ export interface OccupancyTrendPoint {
 }
 
 export const OCCUPANCY_METRIC_DEFINITIONS = [
-  "Đang thuê: phòng có HĐ ACTIVE hiệu lực tại ngày snapshot (HĐ quá hạn chưa thanh lý/gia hạn vẫn tính là đang ở).",
-  "Đã giữ chỗ: không có HĐ ACTIVE và trạng thái phòng RESERVED (đã cọc).",
-  "Trống: không có HĐ ACTIVE và trạng thái AVAILABLE.",
-  "Bảo trì / Không khai thác: trạng thái MAINTENANCE / UNAVAILABLE (trạng thái bất thường xếp vào Không khai thác, KHÔNG tính Trống).",
+  "Đang thuê: phòng có hợp đồng đang hiệu lực hiệu lực tại ngày đã chọn (HĐ quá hạn chưa thanh lý/gia hạn vẫn tính là đang ở).",
+  "Đã giữ chỗ: không có hợp đồng đang hiệu lực và phòng đã giữ chỗ (đã cọc).",
+  "Trống: không có hợp đồng đang hiệu lực và phòng còn trống.",
+  "Bảo trì / Không khai thác: phòng đang bảo trì / không khai thác (trạng thái bất thường xếp vào Không khai thác, KHÔNG tính Trống).",
   "Tỷ lệ lấp đầy = Đang thuê / Tổng; Tỷ lệ cam kết = (Đang thuê + Giữ chỗ) / Tổng.",
   "Doanh thu bỏ lỡ = Σ giá thuê niêm yết của RIÊNG phòng Trống (không tính giữ chỗ/bảo trì/không khai thác).",
-  "Sắp trống: HĐ ACTIVE có ngày hết hạn HIỆU LỰC (đã cộng gia hạn APPROVED/COMPLETED) rơi trong cửa sổ 30/60 ngày; 1 phòng 1 dòng.",
-  "Trend theo tháng: phòng có HĐ (mọi trạng thái trừ NHÁP) giao tháng đó — tháng quá khứ tính cả HĐ nay đã thanh lý/hết hạn.",
+  "Sắp trống: hợp đồng đang hiệu lực có ngày hết hạn HIỆU LỰC (đã cộng gia hạn đã duyệt/hoàn tất) rơi trong cửa sổ 30/60 ngày; 1 phòng 1 dòng.",
+  "Xu hướng theo tháng: phòng có HĐ (mọi trạng thái trừ NHÁP) giao tháng đó — tháng quá khứ tính cả HĐ nay đã thanh lý/hết hạn.",
 ] as const;
 
 /**
@@ -76,6 +77,7 @@ const toIdsParam = (buildingIds: string[]): string[] | undefined =>
 
 export function useOccupancySnapshot(asOfDate: string, buildingIds: string[]) {
   return useQuery({
+    meta: {feedback:'inline'},
     queryKey: ["occupancy-dashboard", "snapshot", asOfDate, buildingIds] as const,
     queryFn: async (): Promise<OccupancySnapshotRow[]> => {
       const { data, error } = await supabase.rpc("occupancy_snapshot_v2", {
@@ -83,7 +85,11 @@ export function useOccupancySnapshot(asOfDate: string, buildingIds: string[]) {
         p_building_ids: toIdsParam(buildingIds),
       });
       if (error) throw error;
-      return (data ?? []) as OccupancySnapshotRow[];
+      return financialReadRows(data).map(row => {
+        const normalized = {...row};
+        for (const key of ['total','occupied','reserved','maintenance','unavailable','available','occupancy_pct','committed_pct','missed_revenue'] as const) normalized[key] = financialReadNumber(row[key]);
+        return normalized;
+      }) as OccupancySnapshotRow[];
     },
   });
 }
@@ -94,6 +100,7 @@ export function useUpcomingVacancy(
   buildingIds: string[],
 ) {
   return useQuery({
+    meta: {feedback:'inline'},
     queryKey: [
       "occupancy-dashboard", "upcoming-vacancy", asOfDate, windowDays, buildingIds,
     ] as const,
@@ -104,7 +111,7 @@ export function useUpcomingVacancy(
         p_building_ids: toIdsParam(buildingIds),
       });
       if (error) throw error;
-      return (data ?? []) as UpcomingVacancyRow[];
+      return financialReadRows(data).map(row => ({...row,days_remaining:financialReadNumber(row.days_remaining),rent_price:financialReadNumber(row.rent_price)})) as UpcomingVacancyRow[];
     },
   });
 }
@@ -112,6 +119,7 @@ export function useUpcomingVacancy(
 /** Trend 12 tháng (gộp mọi toà trong filter thành 1 đường). */
 export function useOccupancyTrend12m(buildingIds: string[]) {
   return useQuery({
+    meta: {feedback:'inline'},
     queryKey: ["occupancy-dashboard", "trend-12m", buildingIds] as const,
     queryFn: async (): Promise<OccupancyTrendPoint[]> => {
       const end = new Date();
@@ -124,11 +132,12 @@ export function useOccupancyTrend12m(buildingIds: string[]) {
       if (error) throw error;
       // Gộp theo tháng (RPC trả tháng × toà)
       const byMonth = new Map<string, { occupied: number; total: number }>();
-      for (const row of data ?? []) {
+      for (const row of financialReadRows(data)) {
         const key = row.month as string;
+        if (typeof key !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(key)) throw new TypeError('Invalid occupancy month');
         const cur = byMonth.get(key) ?? { occupied: 0, total: 0 };
-        cur.occupied += row.occupied_rooms ?? 0;
-        cur.total += row.total_rooms ?? 0;
+        cur.occupied += financialReadNumber(row.occupied_rooms);
+        cur.total += financialReadNumber(row.total_rooms);
         byMonth.set(key, cur);
       }
       return [...byMonth.entries()]

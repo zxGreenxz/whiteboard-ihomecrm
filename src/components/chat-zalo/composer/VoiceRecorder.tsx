@@ -7,6 +7,7 @@ interface Props {
   onDone: (blob: Blob, durationMs: number, mime: string) => void;
   onCancel: () => void;
   sending?: boolean;
+  blocked?: boolean;
 }
 
 // Ưu tiên mp4/aac (Zalo nhận thẳng); fallback webm/opus (worker sẽ degrade
@@ -20,7 +21,7 @@ function pickMime(): string {
 }
 
 /** Thanh ghi âm thay chỗ ô soạn: timer đỏ + dừng/nghe lại + gửi/huỷ. */
-export default function VoiceRecorder({ onDone, onCancel, sending }: Props) {
+export default function VoiceRecorder({ onDone, onCancel, sending, blocked }: Props) {
   const [recording, setRecording] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [blob, setBlob] = useState<Blob | null>(null);
@@ -93,7 +94,7 @@ export default function VoiceRecorder({ onDone, onCancel, sending }: Props) {
           {previewUrl && <audio src={previewUrl} controls style={{ height: 34, flex: 1, minWidth: 0 }} />}
           <button
             onClick={() => blob && onDone(blob, durationRef.current, mimeRef.current)}
-            disabled={!blob || sending}
+            disabled={!blob || sending || blocked}
             title="Gửi tin thoại"
             style={{ width: 38, height: 38, borderRadius: 10, border: 'none', background: EMERALD, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', opacity: sending ? 0.75 : 1, flex: 'none' }}
           >
@@ -101,7 +102,7 @@ export default function VoiceRecorder({ onDone, onCancel, sending }: Props) {
           </button>
         </>
       )}
-      <button onClick={onCancel} disabled={sending} title="Huỷ" style={{ width: 34, height: 34, borderRadius: 9, border: '1px solid hsl(210 20% 88%)', background: '#fff', color: 'hsl(210 10% 45%)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flex: 'none' }}>
+      <button onClick={onCancel} disabled={sending || blocked} title="Huỷ" style={{ width: 34, height: 34, borderRadius: 9, border: '1px solid hsl(210 20% 88%)', background: '#fff', color: 'hsl(210 10% 45%)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flex: 'none' }}>
         <Trash2 size={15} />
       </button>
     </div>

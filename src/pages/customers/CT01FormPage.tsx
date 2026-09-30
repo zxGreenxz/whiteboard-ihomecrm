@@ -1,3 +1,4 @@
+import { recordWriteBlocked, recordWriteMessage } from '@/lib/recordWriteOutcome';
 import { useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
@@ -15,14 +16,25 @@ export default function CT01FormPage() {
   const printRef = useRef<HTMLDivElement>(null);
   const [printData, setPrintData] = useState<CT01FormValues | null>(null);
 
-  const { data: customer, isLoading } = useCustomer(id ?? '');
+  const customerQuery = useCustomer(id ?? '');
+  const { data: customer, isLoading } = customerQuery;
+  const [failure,setFailure] = useState('');
+  const [blocked,setBlocked] = useState(false);
+  const busy = useRef(false);
   const createDeclaration = useCreateCT01Declaration();
 
   const handleSubmitAndPrint = async (values: CT01FormValues) => {
-    if (!id) return;
-    await createDeclaration.mutateAsync({ customerId: id, data: toCT01FormData(values) });
-    setPrintData(values);
-    setTimeout(() => window.print(), 100);
+    if (!id || busy.current || blocked || customerQuery.isError || createDeclaration.isPending) return;
+    busy.current = true;
+    setFailure('');
+    try {
+      await createDeclaration.mutateAsync({ customerId: id, data: toCT01FormData(values) });
+      setPrintData(values);
+      setTimeout(() => window.print(), 100);
+    } catch (error) {
+      setFailure(recordWriteMessage(error, 'lưu tờ khai CT01'));
+      setBlocked(recordWriteBlocked(error));
+    } finally { busy.current = false; }
   };
 
   const handlePrintOnly = () => {
@@ -38,6 +50,8 @@ export default function CT01FormPage() {
       </div>
     );
   }
+
+  if (customerQuery.isError) return <div role="alert" className="p-6 text-destructive">Chưa tải được thông tin khách hàng. <Button onClick={()=>void customerQuery.refetch()}>Tải lại</Button></div>;
 
   if (!customer) {
     return (
@@ -66,10 +80,11 @@ export default function CT01FormPage() {
           <CardTitle>Thông tin tờ khai</CardTitle>
         </CardHeader>
         <CardContent>
+          {failure && <p role="alert" className="mb-3 text-sm text-destructive">{failure}</p>}
           <CT01Form
             customer={customer}
             onSubmit={handleSubmitAndPrint}
-            isLoading={createDeclaration.isPending}
+            isLoading={createDeclaration.isPending || blocked}
           />
         </CardContent>
       </Card>

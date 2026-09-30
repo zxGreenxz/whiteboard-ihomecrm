@@ -1,3 +1,4 @@
+import {financialReadRows} from '@/lib/financialReadValidation';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -25,6 +26,7 @@ const HISTORY_LIMIT = 1000;
 export const useInvoiceHistory = (invoiceId: string | null, enabled = true) => {
   return useQuery({
     queryKey: ['invoice-history', invoiceId],
+    meta:{errorDisplay:'inline',label:'lịch sử hoá đơn'},
     enabled: enabled && !!invoiceId,
     queryFn: async (): Promise<InvoiceAuditEntry[]> => {
       const { data, error } = await supabase
@@ -35,7 +37,7 @@ export const useInvoiceHistory = (invoiceId: string | null, enabled = true) => {
         .order('id', { ascending: false })
         .limit(HISTORY_LIMIT);
       if (error) throw error;
-      return (data || []) as unknown as InvoiceAuditEntry[];
+      return financialReadRows(data) as unknown as InvoiceAuditEntry[];
     },
   });
 };

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
@@ -33,6 +33,9 @@ import { meterFormSchema, type MeterFormValues } from '@/lib/meterReadingValidat
 import { useCreateMeter, useUpdateMeter, type MeterWithRoom } from '@/hooks/useMeters';
 import { useBuildings } from '@/hooks/useBuildings';
 import { useRooms } from '@/hooks/useRooms';
+import { focusFirstError } from '@/lib/formErrors';
+import { isDuplicateMeterCode } from '@/lib/meterFeedback';
+import {recordWriteBlocked,recordWriteMessage} from '@/lib/recordWriteOutcome';
 
 interface MeterFormProps {
   open: boolean;
@@ -47,13 +50,21 @@ const METER_TYPE_OPTIONS = [
 ] as const;
 
 const MeterForm = ({ open, onOpenChange, meter }: MeterFormProps) => {
+  const formRef = useRef<HTMLFormElement>(null);
   const isEditing = !!meter;
+  const [failure,setFailure]=useState<unknown>();
+  const [blocked,setBlocked]=useState(false);
+  const draftKey=useRef<string|null>(null);
   const createMeter = useCreateMeter();
   const updateMeter = useUpdateMeter();
 
-  const { data: buildings } = useBuildings();
+  const buildingsQuery=useBuildings();
+  const {data:buildings}=buildingsQuery;
   const [selectedBuildingId, setSelectedBuildingId] = useState<string>('');
-  const { data: rooms } = useRooms(selectedBuildingId || undefined);
+  const roomsQuery=useRooms(selectedBuildingId||undefined);
+  const {data:rooms}=roomsQuery;
+  const sources=[buildingsQuery,roomsQuery];
+  const sourceBlocked=sources.some(query=>query.isError||query.isLoading);
 
   const form = useForm<MeterFormValues>({
     resolver: zodResolver(meterFormSchema),
@@ -70,6 +81,9 @@ const MeterForm = ({ open, onOpenChange, meter }: MeterFormProps) => {
 
   // Populate form when editing, reset when adding
   useEffect(() => {
+    const key=meter?.id??'create';
+    if(draftKey.current===key && (failure || form.formState.isDirty))return;
+    draftKey.current=key;setFailure(undefined);setBlocked(false);
     if (meter && open) {
       const values: MeterFormValues = {
         building_id: meter.building_id || '',
@@ -97,6 +111,7 @@ const MeterForm = ({ open, onOpenChange, meter }: MeterFormProps) => {
   }, [meter, open, form]);
 
   const onSubmit = async (data: MeterFormValues) => {
+    if(blocked||sourceBlocked)return;form.clearErrors('root.server');
     try {
       if (isEditing) {
         await updateMeter.mutateAsync({
@@ -122,13 +137,15 @@ const MeterForm = ({ open, onOpenChange, meter }: MeterFormProps) => {
           location_note: data.location_note || null,
         } as Parameters<typeof createMeter.mutateAsync>[0]);
       }
+      draftKey.current=null;
       onOpenChange(false);
       form.reset();
     } catch (error: unknown) {
-      // Handle duplicate meter code error (PostgreSQL error 23505)
-      const pgError = error as { code?: string };
-      if (pgError?.code === '23505') {
+      setFailure(error);setBlocked(recordWriteBlocked(error));
+      form.setError('root.server',{type:'server',message:recordWriteMessage(error,'lưu công tơ')});
+      if (isDuplicateMeterCode(error)) {
         form.setError('code', { message: 'Mã công tơ đã tồn tại' });
+        await focusFirstError({ code: 'Mã công tơ đã tồn tại' }, { root: formRef.current });
       }
     }
   };
@@ -136,15 +153,18 @@ const MeterForm = ({ open, onOpenChange, meter }: MeterFormProps) => {
   const isPending = createMeter.isPending || updateMeter.isPending;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px] max-h-[90vh]">
+    <Dialog open={open} onOpenChange={value=>{if(!form.formState.isSubmitting&&!isPending)onOpenChange(value);}}>
+      <DialogContent aria-describedby={undefined} className="sm:max-w-[600px] max-h-[90vh]">
         <DialogHeader>
           <DialogTitle>{isEditing ? 'Sửa công tơ' : 'Thêm công tơ'}</DialogTitle>
         </DialogHeader>
 
         <ScrollArea className="max-h-[calc(90vh-120px)] pr-4">
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <form ref={formRef} onSubmit={form.handleSubmit(onSubmit, errors => { void focusFirstError(errors, { root: formRef.current }); })} className="space-y-4">
+              {form.formState.errors.root?.server?.message && <p role="alert" className="text-sm text-destructive">{form.formState.errors.root.server.message}</p>}
+              {sourceBlocked && <div role="alert" className="rounded border border-destructive p-3 text-sm">Chưa tải đủ tòa hoặc phòng. Tải lại trước khi lưu.<Button type="button" variant="outline" onClick={()=>{for(const query of sources)void query.refetch();}}>Tải lại dữ liệu</Button></div>}
+              <fieldset disabled={blocked || sourceBlocked || isPending || form.formState.isSubmitting} className="space-y-4">
               {/* Tòa nhà (*) */}
               <FormField
                 control={form.control}
@@ -308,6 +328,7 @@ const MeterForm = ({ open, onOpenChange, meter }: MeterFormProps) => {
                 />
               </div>
 
+              </fieldset>
               <DialogFooter>
                 <Button
                   type="button"
@@ -316,7 +337,7 @@ const MeterForm = ({ open, onOpenChange, meter }: MeterFormProps) => {
                 >
                   Hủy
                 </Button>
-                <Button type="submit" disabled={isPending}>
+                <Button type="submit" disabled={blocked || sourceBlocked || isPending || form.formState.isSubmitting}>
                   {isPending ? 'Đang lưu...' : 'Lưu'}
                 </Button>
               </DialogFooter>

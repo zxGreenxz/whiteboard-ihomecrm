@@ -1,3 +1,8 @@
+import {runFinancialPending} from '@/lib/financialPendingAction';
+import {useOrganization} from '@/contexts/OrganizationContext';
+import {getSessionUser} from '@/lib/authSession';
+import {financialReadNumber,financialReadRows} from '@/lib/financialReadValidation';
+import { readCreatedVoucherReceipt, type CreatedVoucherReceipt } from '@/lib/createdVoucherReceipt';
 // =============================================================================
 // usePeriodFees — data layer cho "Đóng tiền Tập trung theo Kỳ" (V2 — 10/07).
 //
@@ -146,7 +151,7 @@ export interface MaintenanceGroup {
  */
 export type PayPeriodFeeResult =
   | { warning: 'duplicate'; existing_count: number; existing_amount: number; can_force?: boolean }
-  | { voucher_id: string; code: string; total_amount: number; account_id: string };
+  | CreatedVoucherReceipt;
 
 // ── Invalidate helper ──────────────────────────────────────────────────────
 const invalidateFees = (qc: ReturnType<typeof useQueryClient>) => {
@@ -159,12 +164,14 @@ const invalidateFees = (qc: ReturnType<typeof useQueryClient>) => {
   qc.invalidateQueries({ queryKey: ['utility-payments'] });
 };
 
-const mapVoucher = (v: any): PeriodFeeVoucher => ({
+const mapVoucher = (v: any): PeriodFeeVoucher => {
+  if(!v || !['UNAPPROVED','APPROVED'].includes(v.status)) throw new TypeError('Chưa đọc được trạng thái phiếu phí.');
+  return ({
   id: v.id,
-  amount: Number(v.amount) || 0,
+  amount: financialReadNumber(v.amount),
   // `voucher_total` là khoá MỚI của A2; reader cũ chưa có ⇒ lùi về `amount`
   // (đúng với phiếu một hạng mục, tức toàn bộ dữ liệu hiện tại).
-  voucherTotal: Number(v.voucher_total) || Number(v.amount) || 0,
+  voucherTotal: financialReadNumber(v.voucher_total ?? v.amount),
   status: v.status === 'UNAPPROVED' ? 'UNAPPROVED' : 'APPROVED',
   date: (v.date ?? '').slice(0, 10),
   source: v.source ?? null,
@@ -183,6 +190,7 @@ const mapVoucher = (v: any): PeriodFeeVoucher => ({
   creatorName: v.creator_name ?? null,
   updatedAt: v.updated_at ?? null,
 });
+};
 
 // ── GRID: trạng thái đã/chưa đóng ────────────────────────────────────────────
 export const usePeriodFeeStatus = (
@@ -201,15 +209,15 @@ export const usePeriodFeeStatus = (
         p_building_ids: buildingIds,
         p_category_keys: categoryKeys,
       });
-      if (error) throw new Error(error.message);
-      return ((data ?? []) as any[]).map((r) => ({
+      if (error) throw error;
+      return financialReadRows(data as any[]).map((r) => ({
         buildingId: r.building_id,
         categoryKey: r.category_key,
-        paidAmount: Number(r.paid_amount) || 0,
+        paidAmount: financialReadNumber(r.paid_amount),
         // `pending_amount` = tên cột mới nếu reader SQL đổi cách gọi trạng thái
         // chờ duyệt; `draft_amount` = tên đang chạy trên prod. Nhận cả hai để lần
         // đổi tên bên SQL không làm ô quay về "chưa đóng" trong im lặng.
-        draftAmount: Number(r.pending_amount ?? r.draft_amount) || 0,
+        draftAmount: financialReadNumber(r.pending_amount ?? r.draft_amount),
         coveredStart: r.covered_start ?? null,
         coveredEnd: r.covered_end ?? null,
         voucherIds: Array.isArray(r.voucher_ids) ? r.voucher_ids : [],
@@ -217,7 +225,7 @@ export const usePeriodFeeStatus = (
         hasReceipt: !!r.has_receipt,
         accountName: r.account_name ?? null,
         accountIsEmpty: !!r.account_is_empty,
-        expectedAmount: r.expected_amount == null ? null : Number(r.expected_amount),
+        expectedAmount: r.expected_amount == null ? null : financialReadNumber(r.expected_amount),
         notApplicable: !!r.not_applicable,
       }));
     },
@@ -237,7 +245,9 @@ export const usePeriodFeeStatus = (
 // ── GRID: đóng 1 phí (p_amount = TỔNG cả khoảng kỳ) ─────────────────────────
 export const usePayPeriodFee = () => {
   const qc = useQueryClient();
+  const {selectedOrganizationId}=useOrganization();
   return useMutation({
+    meta: {handlesFeedback:true},
     mutationFn: async (args: {
       buildingId: string;
       categoryKey: string;
@@ -251,6 +261,8 @@ export const usePayPeriodFee = () => {
       attachments?: string[];
       force?: boolean;          // true = bỏ qua cảnh báo trùng
     }): Promise<PayPeriodFeeResult> => {
+      const user=await getSessionUser();
+      return runFinancialPending({namespace:'period-fee-pay',userId:user?.id??'',organizationId:selectedOrganizationId??'',businessKey:[args.buildingId,args.categoryKey,args.periodStart,args.periodEnd].join(':')},async progress=>{
       const { data, error } = await supabase.rpc('pay_period_fee', {
         p_building_id: args.buildingId,
         p_category_key: args.categoryKey,
@@ -264,8 +276,13 @@ export const usePayPeriodFee = () => {
         p_attachments: args.attachments && args.attachments.length ? args.attachments : null,
         p_force: args.force ?? false,
       });
-      if (error) throw new Error(error.message);
-      return data as PayPeriodFeeResult;
+      if (error) throw error;
+      if ((data as {warning?:string} | null)?.warning === 'duplicate') return data as PayPeriodFeeResult;
+      const receipt=await readCreatedVoucherReceipt(data);
+      progress.recordCompleted([receipt.id]);
+      if(!receipt.approval_status||!receipt.posting_status)throw new TypeError("Chưa xác nhận trạng thái phiếu phí đã tạo");
+      return receipt;
+      });
     },
     onSuccess: (data) => {
       // Cảnh báo trùng = CHƯA ghi gì → không cần invalidate.
@@ -277,15 +294,23 @@ export const usePayPeriodFee = () => {
 // ── Thanh toán phiếu NHÁP (recurring draft-mode): sổ + ảnh + duyệt ──────────
 export const usePayDraftFeeVoucher = () => {
   const qc = useQueryClient();
+  const {selectedOrganizationId}=useOrganization();
   return useMutation({
+    meta: {handlesFeedback: true},
     mutationFn: async (args: { voucherId: string; accountId: string; attachments?: string[] | null }) => {
+      const user=await getSessionUser();
+      return runFinancialPending({namespace:'draft-fee-pay',userId:user?.id??'',organizationId:selectedOrganizationId??'',businessKey:args.voucherId},async progress=>{
       const { data, error } = await supabase.rpc('pay_draft_fee_voucher', {
         p_voucher_id: args.voucherId,
         p_account_id: args.accountId,
         p_attachments: args.attachments ?? null,
       });
-      if (error) throw new Error(error.message);
-      return data as { ok: boolean; voucher_id: string; code: string };
+      if (error) throw error;
+      const receipt=await readCreatedVoucherReceipt(data);
+      progress.recordCompleted([receipt.id]);
+      if(!receipt.approval_status||!receipt.posting_status)throw new TypeError("Chưa xác nhận trạng thái phiếu phí đã tạo");
+      return receipt;
+      });
     },
     onSuccess: () => invalidateFees(qc),
   });
@@ -294,10 +319,17 @@ export const usePayDraftFeeVoucher = () => {
 // ── Hủy phiếu (v2: cả phiếu auto khớp hạng mục) ─────────────────────────────
 export const useCancelPeriodFee = () => {
   const qc = useQueryClient();
+  const {selectedOrganizationId}=useOrganization();
   return useMutation({
+    meta: {handlesFeedback: true},
     mutationFn: async (voucherId: string) => {
-      const { error } = await supabase.rpc('cancel_period_fee', { p_voucher_id: voucherId });
-      if (error) throw new Error(error.message);
+      const user=await getSessionUser();
+      return runFinancialPending({namespace:'period-fee-cancel',userId:user?.id??'',organizationId:selectedOrganizationId??'',businessKey:voucherId},async progress=>{
+        const {data,error}=await supabase.rpc('cancel_period_fee',{p_voucher_id:voucherId});
+        if(error)throw error;
+        if(!data || typeof data!=='object' || Array.isArray(data) || data.ok!==true || data.voucher_id!==voucherId) throw new TypeError('Chưa xác nhận được phiếu phí đã hủy.');
+        progress.recordCompleted([voucherId]);
+      });
     },
     onSuccess: () => invalidateFees(qc),
   });
@@ -307,12 +339,14 @@ export const useCancelPeriodFee = () => {
 export const useAppendFeeAttachment = () => {
   const qc = useQueryClient();
   return useMutation({
+    meta: {handlesFeedback: true},
     mutationFn: async (args: { voucherId: string; url: string }) => {
-      const { error } = await supabase.rpc('append_fee_attachment', {
+      const { data,error } = await supabase.rpc('append_fee_attachment', {
         p_voucher_id: args.voucherId,
         p_url: args.url,
       });
-      if (error) throw new Error(error.message);
+      if (error) throw error;
+      if(!data || typeof data!=='object' || Array.isArray(data) || data.ok!==true || data.voucher_id!==args.voucherId)throw new TypeError('Chưa xác nhận được thay đổi phiếu phí đã lưu.');
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['period-fee-status'] });
@@ -325,6 +359,7 @@ export const useAppendFeeAttachment = () => {
 export const useUpdatePeriodFee = () => {
   const qc = useQueryClient();
   return useMutation({
+    meta: {handlesFeedback: true},
     mutationFn: async (args: {
       voucherId: string;
       accountId?: string | null;
@@ -339,7 +374,7 @@ export const useUpdatePeriodFee = () => {
        */
       expectedUpdatedAt?: string | null;
     }) => {
-      const { error } = await supabase.rpc('update_period_fee', {
+      const { data,error } = await supabase.rpc('update_period_fee', {
         p_voucher_id: args.voucherId,
         p_account_id: args.accountId ?? undefined,
         p_attachments: args.attachments ?? null,
@@ -349,7 +384,8 @@ export const useUpdatePeriodFee = () => {
         p_notes: args.notes ?? undefined,
         p_expected_updated_at: args.expectedUpdatedAt ?? undefined,
       });
-      if (error) throw new Error(error.message);
+      if (error) throw error;
+      if(!data || typeof data!=='object' || Array.isArray(data) || data.ok!==true || data.voucher_id!==args.voucherId)throw new TypeError('Chưa xác nhận được thay đổi phiếu phí đã lưu.');
     },
     onSuccess: () => invalidateFees(qc),
   });
@@ -380,20 +416,20 @@ export const useFeeAccounts = (opts?: { enabled?: boolean }) => {
           .select('id, hidden_fixed_expenses')
           .is('deleted_at', null),
       ]);
-      if (cfgRes.error) throw new Error(cfgRes.error.message);
-      if (bldRes.error) throw new Error(bldRes.error.message);
+      if (cfgRes.error) throw cfgRes.error;
+      if (bldRes.error) throw bldRes.error;
 
       const hidden = new Set<string>();
-      for (const b of (bldRes.data ?? []) as any[]) {
+      for (const b of financialReadRows<any>(bldRes.data)) {
         for (const k of (b.hidden_fixed_expenses ?? []) as string[]) hidden.add(`${b.id}:${k}`);
       }
 
-      const rows: FeeAccount[] = ((cfgRes.data ?? []) as any[]).map((r) => ({
+      const rows: FeeAccount[] = financialReadRows<any>(cfgRes.data).map((r) => ({
         buildingId: r.building_id,
         feeCategory: r.fee_category,
         providerCode: r.provider_code ?? '',
         accountHolder: r.account_holder ?? '',
-        defaultAmount: r.default_amount == null ? null : Number(r.default_amount),
+        defaultAmount: r.default_amount == null ? null : financialReadNumber(r.default_amount),
         defaultAccountId: r.default_account_id ?? null,
         notApplicable: hidden.has(`${r.building_id}:${r.fee_category}`),
       }));
@@ -425,6 +461,7 @@ export const useFeeAccounts = (opts?: { enabled?: boolean }) => {
 export const useUpsertFeeAccount = () => {
   const qc = useQueryClient();
   return useMutation({
+    meta: {handlesFeedback: true},
     mutationFn: async (args: {
       buildingId: string;
       feeCategory: string;
@@ -443,8 +480,9 @@ export const useUpsertFeeAccount = () => {
         p_default_account_id: args.defaultAccountId ?? undefined,
         p_not_applicable: args.notApplicable ?? undefined,
       });
-      if (error) throw new Error(error.message);
-      return data as string;
+      if (error) throw error;
+      if(typeof data!=='string' || !data)throw new TypeError('Chưa xác nhận được mã cấu hình phí đã lưu.');
+      return data;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['fee-accounts'] });
@@ -467,16 +505,15 @@ export const usePeriodMaintenance = (
         p_period_month: period,
         p_building_ids: buildingIds,
       });
-      if (error) throw new Error(error.message);
-      return ((data ?? []) as any[]).map((r) => {
-        // `state` là cột MỚI của A3a; reader cũ không có ⇒ suy từ approval_status,
-        // và nếu cả hai vắng thì coi là đã duyệt (đúng hành vi trước slice này).
-        const state: MaintenanceState =
-          r.state === 'PENDING_APPROVAL' || r.approval_status === 'UNAPPROVED'
-            ? 'PENDING_APPROVAL'
-            : r.state === 'POSTED' || r.posting_status === 'POSTED'
-              ? 'POSTED'
-              : 'APPROVED_UNPOSTED';
+      if (error) throw error;
+      return financialReadRows<any>(data).map((r) => {
+        const state:MaintenanceState =
+          ['PENDING_APPROVAL','POSTED','APPROVED_UNPOSTED'].includes(r.state) ? r.state
+          : r.approval_status==='UNAPPROVED' ? 'PENDING_APPROVAL'
+          : r.approval_status==='APPROVED' && r.posting_status==='POSTED' ? 'POSTED'
+          : r.approval_status==='APPROVED' && ['UNPOSTED','PENDING'].includes(r.posting_status) ? 'APPROVED_UNPOSTED'
+          : undefined;
+        if(!state)throw new TypeError('Chưa đọc được trạng thái phiếu bảo trì.');
         return {
           batchId: r.batch_id ?? null,
           payerName: r.payer_name ?? null,
@@ -484,7 +521,7 @@ export const usePeriodMaintenance = (
           buildingId: r.building_id,
           buildingName: r.building_name ?? '',
           subtype: (r.subtype === 'mg' ? 'mg' : 'ml') as 'ml' | 'mg',
-          amount: Number(r.amount) || 0,
+          amount: financialReadNumber(r.amount),
           accountName: r.account_name ?? null,
           hasReceipt: !!r.has_receipt,
           voucherDate: r.voucher_date ?? null,

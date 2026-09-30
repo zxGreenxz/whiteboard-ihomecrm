@@ -1,5 +1,6 @@
 // Ảnh giấy tờ chứng minh chỗ ở hợp pháp của toà (sổ hồng, hợp đồng thuê nhà nguyên căn...).
 // Tải một lần, tool đính kèm cho mọi hồ sơ tạm trú của toà. Chỉ hiện khi toà đã có id.
+import { QueryRegion } from '@/components/errors/QueryRegion';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
 import { useBuildingOwnershipFiles, useDossierFileMutations } from '@/hooks/useResidenceDossierFiles';
@@ -19,10 +20,11 @@ export default function BuildingOwnershipDocs({ buildingId, buildingName }: Buil
 
   return (
     <section className="space-y-2 rounded-md border p-3" aria-label="Giấy tờ chứng minh chỗ ở hợp pháp">
+      <QueryRegion label="giấy tờ chỗ ở hợp pháp" queries={[files]}>
       <DossierImageUploader kind="OWNERSHIP" files={files.data ?? []} canEdit={canEdit}
         onUpload={upload.mutateAsync} onRemove={remove.mutateAsync}
         hint="Dùng cho hồ sơ Đăng ký tạm trú trên Cổng DVC: tải một lần, đính kèm cho mọi khách của toà." />
-      {files.isError && <p className="text-xs text-red-600">Không tải được ảnh giấy tờ chỗ ở hợp pháp.</p>}
+      </QueryRegion>
     </section>
   );
 }

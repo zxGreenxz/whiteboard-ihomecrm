@@ -1,3 +1,5 @@
+import { hasUnconfirmedResponse } from '@/lib/operationOutcome';
+import { actionErrorMessage, notifyActionError } from '@/lib/actionFeedback';
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -22,7 +24,7 @@ export default function PushNotificationSettings() {
   const ios = isIOS();
   const standalone = isStandalone();
 
-  const [subscribed, setSubscribed] = useState(false);
+  const [subscribed, setSubscribed] = useState<boolean | null>(null);
   const [permission, setPermission] = useState<NotificationPermission | "unsupported">("default");
   const [busy, setBusy] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -30,13 +32,18 @@ export default function PushNotificationSettings() {
   // Chi tiết lỗi lần gửi thử gần nhất — hiện ngay trên thẻ, không chỉ trong toast
   // (toast biến mất trước khi người dùng kịp đọc mã lỗi).
   const [lastError, setLastError] = useState<string | null>(null);
+  const [toggleError, setToggleError] = useState<string | null>(null);
+  const [pendingToggle, setPendingToggle] = useState<unknown>(null);
 
   useEffect(() => {
     let alive = true;
     (async () => {
       setPermission(getPermission());
       if (supported) {
-        const s = await isSubscribed().catch(() => false);
+        const s = await isSubscribed().catch(error => {
+          if (alive) setToggleError(actionErrorMessage(error, 'Chưa kiểm tra được trạng thái thông báo đẩy'));
+          return null;
+        });
         if (alive) setSubscribed(s);
       }
       if (alive) setReady(true);
@@ -57,6 +64,7 @@ export default function PushNotificationSettings() {
 
   const handleToggle = async (next: boolean) => {
     setBusy(true);
+    setToggleError(null);
     try {
       if (next) {
         const res = await enablePush();
@@ -73,48 +81,68 @@ export default function PushNotificationSettings() {
           toast.info("Chưa cấp quyền thông báo");
         }
       } else {
-        await disablePush();
+        const result = await disablePush();
+        if (result === "unsupported") {
+          toast.info("Trình duyệt/thiết bị không hỗ trợ thông báo đẩy");
+          return;
+        }
         setSubscribed(false);
-        toast.success("Đã tắt thông báo trên thiết bị này");
+        if (result === "already-disabled") toast.info("Thiết bị này đã tắt thông báo đẩy.");
+        else toast.success("Đã tắt thông báo trên thiết bị này");
       }
     } catch (e) {
-      toast.error("Có lỗi: " + ((e as Error)?.message || String(e)));
+      setToggleError(actionErrorMessage(e, 'Chưa xác nhận được thay đổi thông báo đẩy trên thiết bị này'));
+      if (hasUnconfirmedResponse(e)) { setSubscribed(null); setPendingToggle(e); }
+      notifyActionError(e, 'Chưa xác nhận được thay đổi thông báo đẩy trên thiết bị này');
     } finally {
       setBusy(false);
     }
+  };
+
+  const readPushState = async () => {
+    setBusy(true);
+    try {
+      setSubscribed(await isSubscribed(pendingToggle));
+      setPendingToggle(null);
+      setToggleError(null);
+    } catch (error) {
+      setSubscribed(null);
+      setToggleError(actionErrorMessage(error, 'Chưa kiểm tra được trạng thái thông báo đẩy'));
+    } finally { setBusy(false); }
   };
 
   const handleTest = async () => {
     setTesting(true);
     setLastError(null);
     try {
-      const { sent, total, failed, pruned, errors } = await sendTestPush();
+      const { sent, total, failed, pruned } = await sendTestPush();
 
-      if (sent > 0) {
-        toast.success(
-          `Đã gửi tới ${sent}/${total} thiết bị. Không thấy gì? Kiểm tra chế độ Không làm phiền của máy.`,
-        );
+      if (sent > 0 && failed > 0) {
+        const message = `Đã tiếp nhận gửi đến ${sent}/${total} thiết bị; ${failed} thiết bị chưa gửi được.`;
+        setLastError(message);
+        toast.warning(message);
+      } else if (sent > 0) {
+        toast.success(`Đã tiếp nhận gửi đến ${sent}/${total} thiết bị. Việc hiển thị còn tùy quyền thông báo và chế độ Không làm phiền của thiết bị.`);
       } else if (total === 0) {
-        toast.warning('Thiết bị này chưa đăng ký. Bật công tắc "Bật trên thiết bị này" trước.');
+        toast.warning('Chưa có thiết bị đăng ký nhận thông báo cho tài khoản này.');
       } else {
-        // Gửi được lệnh nhưng KHÔNG thiết bị nào nhận — đây là ca trước đây bị giấu đi.
-        const first = errors[0];
-        const detail = first
-          ? `HTTP ${first.status ?? "?"} · ${first.host} · ${first.body}`
-          : "không có chi tiết lỗi";
-        setLastError(detail);
-        toast.error(`Gửi thất bại ${failed}/${total} thiết bị — ${detail}`, { duration: 12000 });
-        console.error("[push] gửi thử thất bại", errors);
+        const message = `Chưa gửi được thông báo thử đến ${failed}/${total} thiết bị. Kiểm tra trạng thái đăng ký trên từng thiết bị.`;
+        setLastError(message);
+        toast.error(message);
       }
 
       if (pruned > 0) {
-        toast.warning(`${pruned} thiết bị đã hết hạn đăng ký và được gỡ. Hãy bật lại trên máy đó.`);
-        setSubscribed(await isSubscribed());
+        toast.warning(`${pruned} thiết bị đã hết hạn đăng ký. Kiểm tra và bật lại trên máy đó.`);
+        try { setSubscribed(await isSubscribed()); }
+        catch (error) {
+          setSubscribed(null);
+          setToggleError(actionErrorMessage(error, 'Chưa kiểm tra được trạng thái đăng ký sau khi gửi thử'));
+        }
       }
     } catch (e) {
-      const msg = (e as Error)?.message || String(e);
+      const msg = actionErrorMessage(e, 'Chưa xác nhận được kết quả gửi thông báo thử');
       setLastError(msg);
-      toast.error("Gửi thử thất bại: " + msg, { duration: 12000 });
+      toast.error(msg, { duration: 12000 });
     } finally {
       setTesting(false);
     }
@@ -126,7 +154,7 @@ export default function PushNotificationSettings() {
         <CardTitle className="flex items-center gap-2">
           <Bell className="h-5 w-5" />
           Thông báo đẩy (Push)
-          {subscribed ? (
+          {subscribed === null ? (<Badge variant="outline" className="ml-1">Chưa xác định</Badge>) : subscribed ? (
             <Badge className="ml-1">Đang bật</Badge>
           ) : (
             <Badge variant="outline" className="ml-1">Đang tắt</Badge>
@@ -169,6 +197,8 @@ export default function PushNotificationSettings() {
           </Alert>
         )}
 
+        {supported && ready && subscribed === null && <Alert variant="destructive"><AlertDescription>Chưa kiểm tra được trạng thái đăng ký của thiết bị này. <Button variant="outline" size="sm" onClick={() => void readPushState()} disabled={busy}>Kiểm tra lại</Button></AlertDescription></Alert>}
+        {toggleError && <p role="alert" className="text-sm text-destructive">{toggleError}</p>}
         <div className="flex items-center justify-between rounded-lg border p-3">
           <div className="space-y-0.5">
             <div className="text-sm font-medium">Bật trên thiết bị này</div>
@@ -179,8 +209,8 @@ export default function PushNotificationSettings() {
           <div className="flex items-center gap-2">
             {(busy || !ready) && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
             <Switch
-              checked={subscribed}
-              disabled={!supported || busy || !ready || permission === "denied"}
+              checked={subscribed === true}
+              disabled={!supported || busy || !ready || subscribed === null || permission === "denied"}
               onCheckedChange={handleToggle}
             />
           </div>
@@ -195,12 +225,8 @@ export default function PushNotificationSettings() {
           <Alert variant="destructive">
             <BellOff className="h-4 w-4" />
             <AlertDescription className="space-y-1">
-              <div className="font-medium">Lần gửi thử gần nhất thất bại</div>
-              <code className="block break-all text-xs">{lastError}</code>
-              <div className="text-xs">
-                HTTP 403/401 nghĩa là cặp khoá VAPID không khớp với đăng ký trên máy — tắt rồi bật
-                lại công tắc ở trên để đăng ký lại bằng khoá hiện tại.
-              </div>
+              <div className="font-medium">Kết quả gửi thử gần nhất</div>
+              <p className="text-sm">{lastError}</p>
             </AlertDescription>
           </Alert>
         )}

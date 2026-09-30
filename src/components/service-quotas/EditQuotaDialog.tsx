@@ -1,10 +1,11 @@
-import { useEffect } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -23,7 +24,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Plus, X } from "lucide-react";
-import { useUpdateServiceQuota } from "@/hooks/useServices";
+import { ServiceQuotaPartialError, useUpdateServiceQuota } from "@/hooks/useServices";
+import { focusFirstError } from "@/lib/formErrors";
+import { recordWriteBlocked, recordWriteMessage } from "@/lib/recordWriteOutcome";
 import type { ServiceQuotaWithTiers } from "@/hooks/useServices";
 
 const tierSchema = z.object({
@@ -47,7 +50,11 @@ interface EditQuotaDialogProps {
 }
 
 export function EditQuotaDialog({ open, onOpenChange, quota }: EditQuotaDialogProps) {
+  const [failure,setFailure]=useState<unknown>();
+  const [blocked,setBlocked]=useState(false);
+  const draftKey=useRef<string|null>(null);
   const updateMutation = useUpdateServiceQuota();
+  const [partialMessage, setPartialMessage] = useState<string | null>(null);
 
   const form = useForm<QuotaFormValues>({
     resolver: zodResolver(quotaSchema),
@@ -66,6 +73,8 @@ export function EditQuotaDialog({ open, onOpenChange, quota }: EditQuotaDialogPr
   // Populate form when quota changes
   useEffect(() => {
     if (quota && open) {
+      if(draftKey.current===quota.id && (failure || partialMessage || form.formState.isDirty))return;
+      draftKey.current=quota.id;setFailure(undefined);setBlocked(false);setPartialMessage(null);
       const sortedTiers = [...(quota.service_quota_tiers || [])].sort(
         (a, b) => a.tier_number - b.tier_number
       );
@@ -85,6 +94,10 @@ export function EditQuotaDialog({ open, onOpenChange, quota }: EditQuotaDialogPr
   }, [quota, open, form]);
 
   const onSubmit = async (data: QuotaFormValues) => {
+    // The core quota may already have changed. A second click must not replay
+    // the whole update while the tier result is still unresolved.
+    if (blocked || partialMessage) return;
+    form.clearErrors('root.server');
     try {
       await updateMutation.mutateAsync({
         id: quota.id,
@@ -92,27 +105,33 @@ export function EditQuotaDialog({ open, onOpenChange, quota }: EditQuotaDialogPr
         description: data.description || null,
         tiers: data.tiers.map((t, i) => ({
           tier_number: i + 1,
-          from_value: parseFloat(t.from_value) || 0,
-          to_value: t.to_value ? parseFloat(t.to_value) : null,
-          unit_price: parseFloat(t.unit_price) || 0,
+          from_value: Number(t.from_value),
+          to_value: t.to_value ? Number(t.to_value) : null,
+          unit_price: Number(t.unit_price),
         })),
       });
       onOpenChange(false);
-    } catch {
-      // handled by mutation
+    } catch (error) {
+      setFailure(error);setBlocked(recordWriteBlocked(error) || error instanceof ServiceQuotaPartialError);
+      if (error instanceof ServiceQuotaPartialError) setPartialMessage(error.message);
+      else form.setError('root.server', { type: 'server', message: recordWriteMessage(error,'cập nhật định mức') });
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={value=>{if(!form.formState.isSubmitting)onOpenChange(value);}}>
       <DialogContent className="sm:max-w-[600px] max-h-[90vh]">
         <DialogHeader>
           <DialogTitle>Cập nhật định mức dịch vụ</DialogTitle>
+          <DialogDescription className="sr-only">Sửa thông tin định mức và các bậc giá.</DialogDescription>
         </DialogHeader>
 
         <ScrollArea className="max-h-[calc(90vh-100px)] pr-4">
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <form onSubmit={form.handleSubmit(onSubmit, errors => { void focusFirstError(errors); })} className="space-y-4">
+              {partialMessage && <p role="alert" className="rounded-md border border-amber-500 p-3 text-sm">{partialMessage}</p>}
+              {form.formState.errors.root?.server?.message && <p role="alert" className="text-sm text-destructive">{form.formState.errors.root.server.message}</p>}
+              <fieldset disabled={blocked || form.formState.isSubmitting} className="space-y-4">
               <FormField
                 control={form.control}
                 name="name"
@@ -240,6 +259,7 @@ export function EditQuotaDialog({ open, onOpenChange, quota }: EditQuotaDialogPr
                 </Button>
               </div>
 
+              </fieldset>
               <div className="flex justify-end gap-3 pt-4">
                 <Button
                   type="button"
@@ -248,7 +268,7 @@ export function EditQuotaDialog({ open, onOpenChange, quota }: EditQuotaDialogPr
                 >
                   Hủy
                 </Button>
-                <Button type="submit" disabled={updateMutation.isPending}>
+                <Button type="submit" disabled={blocked || form.formState.isSubmitting || updateMutation.isPending || !!partialMessage}>
                   {updateMutation.isPending ? "Đang cập nhật..." : "Cập nhật"}
                 </Button>
               </div>

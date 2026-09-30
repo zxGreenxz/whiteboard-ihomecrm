@@ -53,6 +53,7 @@ interface ParsedRow {
 
 interface ImportResult {
   successCount: number;
+  createdVouchers?: Array<{row:number;id:string;code:string|null}>;
   errorCount: number;
   errors: Array<{ row: number; message: string }>;
 }
@@ -278,6 +279,7 @@ const IncomeExpenseImportDialog = ({ open, onOpenChange }: IncomeExpenseImportDi
       // Resolve building names → building IDs and item names → type IDs
       const allTypes = [...(incomeTypes || []), ...(expenseTypes || [])];
       const resolvedRows: ImportIncomeExpenseRow[] = [];
+      const sourceRows: number[] = [];
       const resolveErrors: Array<{ row: number; message: string }> = [];
 
       for (const row of validRows) {
@@ -306,10 +308,12 @@ const IncomeExpenseImportDialog = ({ open, onOpenChange }: IncomeExpenseImportDi
           continue;
         }
 
+        sourceRows.push(row.rowIndex);
         resolvedRows.push({
           ...row.data,
           building_id: building.id,
           income_expense_type_id: expenseType.id,
+          source_row: row.rowIndex,
         });
       }
 
@@ -334,6 +338,7 @@ const IncomeExpenseImportDialog = ({ open, onOpenChange }: IncomeExpenseImportDi
 
       setImportResult({
         successCount: result.successCount,
+        createdVouchers: result.createdVouchers.map(v => ({ ...v, row: sourceRows[v.row - 1] ?? v.row })),
         errorCount: result.failedCount + invalidRows.length + resolveErrors.length,
         errors: [
           ...invalidRows.map((r) => ({
@@ -341,7 +346,7 @@ const IncomeExpenseImportDialog = ({ open, onOpenChange }: IncomeExpenseImportDi
             message: r.error || 'Dữ liệu không hợp lệ',
           })),
           ...resolveErrors,
-          ...result.errors,
+          ...result.errors.map(error => ({ ...error, row: sourceRows[error.row - 1] ?? error.row })),
         ],
       });
       setStep('result');
@@ -362,7 +367,8 @@ const IncomeExpenseImportDialog = ({ open, onOpenChange }: IncomeExpenseImportDi
           <DialogTitle>
             {step === 'upload' && 'Nhập dữ liệu thu chi từ Excel'}
             {step === 'preview' && 'Xem trước dữ liệu'}
-            {step === 'result' && 'Kết quả nhập dữ liệu'}
+            {step === 'result' && importResult?.createdVouchers?.length ? <div className="text-sm space-y-1"><p>Phiếu đã tạo — không nhập lại các dòng này:</p>{importResult.createdVouchers.map(v => <p key={v.id}>Dòng {v.row}: <a className="text-primary underline" href={`/income-expense/voucher/${v.id}`}>{v.code || 'Xem phiếu'}</a></p>)}</div> : null}
+        {step === 'result' && 'Kết quả nhập dữ liệu'}
           </DialogTitle>
         </DialogHeader>
 

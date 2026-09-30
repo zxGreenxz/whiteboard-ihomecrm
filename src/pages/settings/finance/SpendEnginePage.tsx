@@ -1,3 +1,6 @@
+import {QueryRegion} from '@/components/errors/QueryRegion';
+import {useOperationFormFeedback} from '@/hooks/useOperationFormFeedback';
+import {SPEND_ERROR_RULES,parseCommitmentAmount,validateSpendSwitch} from '@/lib/spendFeedback';
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import MainLayout from '@/components/layout/MainLayout';
@@ -32,11 +35,6 @@ import {
 const fmt = (n: number | null | undefined) =>
   n == null ? '—' : Math.round(n).toLocaleString('vi-VN') + 'đ';
 
-const parseAmount = (s: string): number | null => {
-  const digits = s.replace(/[^\d]/g, '');
-  return digits ? Number(digits) : null;
-};
-
 const pad = (n: number) => String(n).padStart(2, '0');
 const thisMonth = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; };
 const isoDay = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -56,20 +54,6 @@ const STATUS_LABEL: Record<string, string> = {
   APPROVED: 'Đã duyệt', UNAPPROVED: 'Chờ duyệt', CANCELLED: 'Đã huỷ',
 };
 
-function ErrorBox({ error }: { error: unknown }) {
-  const msg = error instanceof Error ? error.message : 'Lỗi không xác định';
-  const chiChu = /Chỉ chủ công ty|42501/.test(msg);
-  return (
-    <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm">
-      <div className="flex items-center gap-2 font-medium text-destructive">
-        <AlertTriangle className="h-4 w-4" />
-        {chiChu ? 'Trang này chỉ dành cho chủ công ty hoặc quản trị hệ thống' : 'Không đọc được dữ liệu'}
-      </div>
-      {!chiChu && <p className="mt-1 text-muted-foreground">{msg}</p>}
-    </div>
-  );
-}
-
 // ─────────────────────────────── Cam kết tháng ───────────────────────────────
 interface EditCommit { buildingId: string; buildingName: string; fee: SpendFeeKey; month: string; amount: string; note: string; current: SpendCommitmentRow | null }
 
@@ -77,13 +61,15 @@ function CommitmentsTab({ orgId }: { orgId: string }) {
   const [month, setMonth] = useState(thisMonth());
   const q = useSpendCommitments(orgId, month, month);
   const save = useSetSpendCommitment();
+  const feedback=useOperationFormFeedback("lưu cam kết chi",{rules:SPEND_ERROR_RULES});
   const [edit, setEdit] = useState<EditCommit | null>(null);
   const buildings = useQuery({
     queryKey: ['spend-engine', 'buildings', orgId],
+    meta:{label:'tòa nhà cho quy tắc duyệt chi',errorDisplay:'inline'},
     queryFn: async () => {
       const { data, error } = await supabase.from('buildings').select('id, name')
         .eq('organization_id', orgId).is('deleted_at', null).order('name');
-      if (error) throw new Error(error.message);
+      if (error) throw error;
       return (data ?? []) as { id: string; name: string }[];
     },
     staleTime: 10 * 60_000,
@@ -103,18 +89,17 @@ function CommitmentsTab({ orgId }: { orgId: string }) {
 
   const onSave = async () => {
     if (!edit) return;
-    try {
-      const amount = parseAmount(edit.amount);
-      await save.mutateAsync({ buildingId: edit.buildingId, feeCategory: edit.fee, month: edit.month, amount, note: edit.note || undefined });
-      toast.success(amount ? 'Đã lưu cam kết' : 'Đã thu hồi cam kết tháng này');
-      setEdit(null);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Không lưu được');
-    }
+    let amount:number|null=null;let amountError:string|undefined;
+    try{amount=parseCommitmentAmount(edit.amount);}catch(error){amountError=(error as Error).message;}
+    await feedback.run(async()=>{
+      const result=await save.mutateAsync({ buildingId:edit.buildingId,feeCategory:edit.fee,month:edit.month,amount,note:edit.note||undefined });
+      const context=`${SPEND_FEE_LABEL[edit.fee]} — ${edit.buildingName}, tháng ${edit.month}`;
+      toast[result.changed?'success':'info'](amount ? `Đã lưu cam kết ${context}.` : result.changed ? `Đã thu hồi cam kết ${context}.` : `${context}: không có cam kết để thu hồi; không thay đổi dữ liệu.`);
+    },()=>setEdit(null),{amount:amountError});
   };
 
   return (
-    <div className="space-y-3">
+    <QueryRegion label="cam kết chi" queries={[q,buildings]}><div className="space-y-3">
       <div className="flex flex-wrap items-end gap-3">
         <div className="space-y-1">
           <Label htmlFor="ck-thang">Tháng</Label>
@@ -126,7 +111,6 @@ function CommitmentsTab({ orgId }: { orgId: string }) {
           chi thì không sửa được nữa (không hồi tố). Tổng tiền nhà tháng này: <strong>{fmt(tong)}</strong>.
         </p>
       </div>
-      {q.isError && <ErrorBox error={q.error} />}
       {q.isLoading || buildings.isLoading ? <Skeleton className="h-64 w-full" /> : (
         <div className="overflow-x-auto rounded-md border">
           <Table>
@@ -154,7 +138,7 @@ function CommitmentsTab({ orgId }: { orgId: string }) {
                           type="button"
                           className="w-full text-right rounded px-1 py-0.5 hover:bg-muted"
                           onClick={() => setEdit({ buildingId: b.id, buildingName: b.name, fee: k, month, amount: c ? String(Math.round(c.amount)) : '', note: c?.note ?? '', current: c })}
-                          title="Bấm để sửa cam kết"
+                          disabled={feedback.blocked||q.isError||buildings.isError} title="Bấm để sửa cam kết"
                         >
                           {c ? (
                             <>
@@ -180,8 +164,8 @@ function CommitmentsTab({ orgId }: { orgId: string }) {
         Ô vàng: số dưới {fmt(SO_NHO_BAT_THUONG)} — thường là số sót từ lần đóng cũ; nên kiểm lại trước khi bật áp dụng.
       </p>
 
-      <Dialog open={!!edit} onOpenChange={(o) => !o && setEdit(null)}>
-        <DialogContent>
+      <Dialog open={!!edit} onOpenChange={(o) => !o && feedback.close(()=>setEdit(null))}>
+        <DialogContent ref={feedback.root}>
           <DialogHeader>
             <DialogTitle>Cam kết {edit ? SPEND_FEE_LABEL[edit.fee] : ''} — {edit?.buildingName}</DialogTitle>
             <DialogDescription>
@@ -193,8 +177,8 @@ function CommitmentsTab({ orgId }: { orgId: string }) {
             <div className="space-y-3">
               <div className="space-y-1.5">
                 <Label htmlFor="ck-tien">Số tiền cam kết</Label>
-                <Input id="ck-tien" inputMode="numeric" value={edit.amount}
-                  onChange={(e) => setEdit({ ...edit, amount: e.target.value })} placeholder="vd 26.000.000" />
+                <Input {...feedback.field("amount")} id="ck-tien" inputMode="numeric" value={edit.amount}
+                  onChange={(e) => setEdit({ ...edit, amount: e.target.value })} placeholder="vd 26.000.000" />{feedback.issue("amount")}
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="ck-ghichu">Ghi chú</Label>
@@ -202,13 +186,14 @@ function CommitmentsTab({ orgId }: { orgId: string }) {
               </div>
             </div>
           )}
+          {feedback.notice}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEdit(null)}>Huỷ</Button>
-            <Button onClick={onSave} disabled={save.isPending}>Lưu</Button>
+            <Button variant="outline" onClick={() => feedback.close(()=>setEdit(null))}>Huỷ</Button>
+            <Button onClick={onSave} disabled={save.isPending||feedback.saving||feedback.blocked||q.isError||buildings.isError}>Lưu</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </div></QueryRegion>
   );
 }
 
@@ -218,6 +203,7 @@ interface TypeRow { id: string; name: string; fee_category?: string | null; spen
 function RulesTab({ orgId }: { orgId: string }) {
   const types = useIncomeExpenseTypes('expense');
   const setRule = useSetTypeSpendRule();
+  const feedback=useOperationFormFeedback("đổi quy tắc duyệt chi",{rules:SPEND_ERROR_RULES});
   const [chiCoLuat, setChiCoLuat] = useState(true);
   const list = useMemo(() => {
     const rows = ((types.data ?? []) as unknown as TypeRow[]).filter((t) => !t.organization_id || t.organization_id === orgId);
@@ -225,17 +211,13 @@ function RulesTab({ orgId }: { orgId: string }) {
     return [...shown].sort((a, b) => Number(!!b.fee_category) - Number(!!a.fee_category) || a.name.localeCompare(b.name, 'vi'));
   }, [types.data, orgId, chiCoLuat]);
 
-  const change = async (t: TypeRow, mode: SpendMode) => {
-    try {
-      await setRule.mutateAsync({ typeId: t.id, mode });
-      toast.success(`${t.name}: ${SPEND_MODE_LABEL[mode]}`);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Không đổi được luật');
-    }
+  const change = async (t:TypeRow,mode:SpendMode)=>{
+    if(t.spend_mode===mode)return;
+    await feedback.run(()=>setRule.mutateAsync({typeId:t.id,mode}),()=>toast.success(`Đã lưu ${t.name}: ${SPEND_MODE_LABEL[mode]}.`));
   };
 
   return (
-    <div className="space-y-3">
+    <QueryRegion label="quy tắc hạng mục chi" queries={[types]}><div ref={feedback.root} className="space-y-3">{feedback.notice}
       <p className="text-sm text-muted-foreground max-w-3xl">
         Luật chi khai <strong>trên hạng mục</strong>: <strong>Theo cam kết</strong> (tiền nhà, internet, quản lý…) —
         so với số đã ký của tháng; <strong>Theo trần</strong> (điện, nước) — so với trần đã công bố;
@@ -246,7 +228,6 @@ function RulesTab({ orgId }: { orgId: string }) {
         <Checkbox checked={chiCoLuat} onCheckedChange={(v) => setChiCoLuat(v === true)} />
         Chỉ hiện hạng mục đã gắn khoá phí hoặc có luật riêng
       </label>
-      {types.isError && <ErrorBox error={types.error} />}
       {types.isLoading ? <Skeleton className="h-48 w-full" /> : (
         <div className="rounded-md border">
           <Table>
@@ -264,7 +245,7 @@ function RulesTab({ orgId }: { orgId: string }) {
                   <TableCell className="font-medium">{t.name}</TableCell>
                   <TableCell>{t.fee_category ? SPEND_FEE_LABEL[t.fee_category as SpendFeeKey] ?? t.fee_category : '—'}</TableCell>
                   <TableCell>
-                    <Select value={(t.spend_mode as SpendMode) ?? 'TUNG_PHIEU'} onValueChange={(v) => change(t, v as SpendMode)} disabled={setRule.isPending}>
+                    <Select value={(t.spend_mode as SpendMode) ?? 'TUNG_PHIEU'} onValueChange={(v) => change(t, v as SpendMode)} disabled={setRule.isPending||feedback.saving||feedback.blocked||types.isError}>
                       <SelectTrigger className="w-40 h-8"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         {(['CAM_KET', 'TRAN', 'TUNG_PHIEU'] as SpendMode[]).map((m) => (
@@ -280,7 +261,7 @@ function RulesTab({ orgId }: { orgId: string }) {
           </Table>
         </div>
       )}
-    </div>
+    </div></QueryRegion>
   );
 }
 
@@ -288,42 +269,40 @@ function RulesTab({ orgId }: { orgId: string }) {
 function SwitchesTab({ orgId, route }: { orgId: string; route: string | undefined }) {
   const q = useSpendSwitches(orgId);
   const set = useSetSpendSwitch();
+  const feedback=useOperationFormFeedback("lưu phạm vi áp dụng quy tắc chi",{rules:SPEND_ERROR_RULES});
   const [fee, setFee] = useState<SpendFeeKey>('tien_nha');
   const [from, setFrom] = useState(thisMonth());
   const [to, setTo] = useState('');
   const [building, setBuilding] = useState<string>('ALL');
   const buildings = useQuery({
     queryKey: ['spend-engine', 'buildings', orgId],
+    meta:{label:'tòa nhà cho quy tắc duyệt chi',errorDisplay:'inline'},
     queryFn: async () => {
       const { data, error } = await supabase.from('buildings').select('id, name')
         .eq('organization_id', orgId).is('deleted_at', null).order('name');
-      if (error) throw new Error(error.message);
+      if (error) throw error;
       return (data ?? []) as { id: string; name: string }[];
     },
     staleTime: 10 * 60_000,
   });
 
-  const add = async () => {
-    try {
-      const r = await set.mutateAsync({ orgId, feeCategory: fee, fromMonth: from, toMonth: to || null,
-        buildingId: building === 'ALL' ? null : building, on: true });
-      const thieu = (r?.toa_chua_co_cam_ket as string[] | undefined) ?? [];
-      toast.success('Đã bật công tắc' + (thieu.length ? ` — lưu ý ${thieu.length} toà chưa ký cam kết sẽ về chờ duyệt` : ''));
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Không bật được');
-    }
+  const add=async()=>{
+    await feedback.run(async()=>{
+      const r=await set.mutateAsync({orgId,feeCategory:fee,fromMonth:from,toMonth:to||null,buildingId:building==='ALL'?null:building,on:true});
+      const context=`${SPEND_FEE_LABEL[fee]}, từ tháng ${from}`;
+      const message=r.active ? `Đã bật áp dụng quy tắc ${context}.` : `Đã lưu phạm vi ${context}. Chưa áp dụng vì quy tắc duyệt chi hiện chưa được bật.`;
+      toast[r.missing.length?'warning':r.active?'success':'info'](message+(r.missing.length?` ${r.missing.length} tòa chưa ký cam kết; các phiếu thuộc phạm vi thiếu cam kết sẽ chờ duyệt.`:''));
+    },()=>undefined,validateSpendSwitch(from,to));
   };
-  const off = async (s: { fee_category: SpendFeeKey; building_id: string | null; period_from: string }) => {
-    try {
-      await set.mutateAsync({ orgId, feeCategory: s.fee_category, fromMonth: s.period_from.slice(0, 7), buildingId: s.building_id, on: false });
-      toast.success('Đã tắt công tắc — hạng mục này đi luật cũ ngay');
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Không tắt được');
-    }
+  const off=async(s:{fee_category:SpendFeeKey;building_id:string|null;period_from:string})=>{
+    await feedback.run(async()=>{
+      const r=await set.mutateAsync({orgId,feeCategory:s.fee_category,fromMonth:s.period_from.slice(0,7),buildingId:s.building_id,on:false});
+      toast[r.changed?'success':'info'](r.changed?`Đã tắt ${r.count} phạm vi ${SPEND_FEE_LABEL[s.fee_category]} từ tháng ${s.period_from.slice(0,7)}. Các phạm vi khác còn bật vẫn giữ hiệu lực.`:'Phạm vi này đã tắt hoặc không còn tồn tại; không có thay đổi mới.');
+    },()=>undefined);
   };
 
   return (
-    <div className="space-y-3">
+    <QueryRegion label="phạm vi áp dụng quy tắc chi" queries={[q,buildings]}><div ref={feedback.root} className="space-y-3">{feedback.notice}
       <div className={`rounded-md border p-3 text-sm ${route === 'CANONICAL' ? 'border-primary/40 bg-primary/5' : 'bg-muted/40'}`}>
         {route === 'CANONICAL'
           ? <>Bộ máy <strong>đang áp dụng</strong>: hạng mục × toà × tháng nào có công tắc dưới đây thì phiếu chi được máy quyết theo luật; còn lại đi như cũ.</>
@@ -334,31 +313,30 @@ function SwitchesTab({ orgId, route }: { orgId: string; route: string | undefine
         <div className="space-y-1">
           <Label>Hạng mục</Label>
           <Select value={fee} onValueChange={(v) => setFee(v as SpendFeeKey)}>
-            <SelectTrigger className="w-40 h-9"><SelectValue /></SelectTrigger>
+            <SelectTrigger data-field-name="feeCategory" aria-invalid={!!feedback.issue("feeCategory")} className="w-40 h-9"><SelectValue /></SelectTrigger>
             <SelectContent>{SPEND_FEE_KEYS.map((k) => <SelectItem key={k} value={k}>{SPEND_FEE_LABEL[k]}</SelectItem>)}</SelectContent>
-          </Select>
+          </Select>{feedback.issue("feeCategory")}
         </div>
         <div className="space-y-1">
           <Label>Toà</Label>
           <Select value={building} onValueChange={setBuilding}>
-            <SelectTrigger className="w-48 h-9"><SelectValue /></SelectTrigger>
+            <SelectTrigger data-field-name="buildingId" aria-invalid={!!feedback.issue("buildingId")} className="w-48 h-9"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">Tất cả toà</SelectItem>
               {(buildings.data ?? []).map((b) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
             </SelectContent>
-          </Select>
+          </Select>{feedback.issue("buildingId")}
         </div>
         <div className="space-y-1">
           <Label htmlFor="sw-tu">Từ tháng</Label>
-          <Input id="sw-tu" type="month" value={from} onChange={(e) => e.target.value && setFrom(e.target.value)} className="w-40" />
+          <Input {...feedback.field("fromMonth")} id="sw-tu" type="month" value={from} onChange={(e) => e.target.value && setFrom(e.target.value)} className="w-40" />{feedback.issue("fromMonth")}
         </div>
         <div className="space-y-1">
           <Label htmlFor="sw-toi">Tới tháng (bỏ trống = không hạn)</Label>
-          <Input id="sw-toi" type="month" value={to} onChange={(e) => setTo(e.target.value)} className="w-40" />
+          <Input {...feedback.field("toMonth")} id="sw-toi" type="month" value={to} onChange={(e) => setTo(e.target.value)} className="w-40" />{feedback.issue("toMonth")}
         </div>
-        <Button onClick={add} disabled={set.isPending}><Plus className="h-4 w-4 mr-1" />Bật</Button>
+        <Button onClick={add} disabled={set.isPending||feedback.saving||feedback.blocked||q.isError||buildings.isError}><Plus className="h-4 w-4 mr-1" />Bật</Button>
       </div>
-      {q.isError && <ErrorBox error={q.error} />}
       {q.isLoading ? <Skeleton className="h-24 w-full" /> : (
         <div className="rounded-md border">
           <Table>
@@ -376,7 +354,7 @@ function SwitchesTab({ orgId, route }: { orgId: string; route: string | undefine
                   <TableCell>{s.period_from.slice(0, 7)}</TableCell>
                   <TableCell>{s.period_to ? s.period_to.slice(0, 7) : 'không hạn'}</TableCell>
                   <TableCell className="text-right">
-                    <Button variant="ghost" size="sm" onClick={() => off(s)} disabled={set.isPending}><Trash2 className="h-4 w-4 mr-1" />Tắt</Button>
+                    <Button variant="ghost" size="sm" onClick={() => off(s)} disabled={set.isPending||feedback.saving||feedback.blocked||q.isError||buildings.isError}><Trash2 className="h-4 w-4 mr-1" />Tắt</Button>
                   </TableCell>
                 </TableRow>
               ))}
@@ -384,7 +362,7 @@ function SwitchesTab({ orgId, route }: { orgId: string; route: string | undefine
           </Table>
         </div>
       )}
-    </div>
+    </div></QueryRegion>
   );
 }
 
@@ -400,7 +378,7 @@ function ShadowTab({ orgId }: { orgId: string }) {
   const canhBaoSo = (q.data ?? []).filter((r) => r.cashbook_ok === false).length;
 
   return (
-    <div className="space-y-3">
+    <QueryRegion label="kết quả đối chiếu duyệt chi" queries={[q]}><div className="space-y-3">
       <p className="text-sm text-muted-foreground max-w-3xl">
         Mỗi phiếu sinh ra, máy chấm ngay lúc đó: <strong>thực tế</strong> phiếu đã duyệt hay chờ, và <strong>máy</strong> sẽ
         quyết thế nào theo luật hạng mục. Lệch là chỗ cần xem: hoặc đó chính là thay đổi bạn muốn (vd quản lý trả tiền nhà
@@ -413,7 +391,6 @@ function ShadowTab({ orgId }: { orgId: string }) {
         <label className="flex items-center gap-2 text-sm pb-2"><Checkbox checked={chiLech} onCheckedChange={(v) => setChiLech(v === true)} />Chỉ phiếu lệch / cảnh báo sổ</label>
         <div className="text-sm pb-2 text-muted-foreground">{tong} phiếu · <span className={lech ? 'text-amber-600 font-medium' : ''}>{lech} lệch</span> · {canhBaoSo} cảnh báo sổ</div>
       </div>
-      {q.isError && <ErrorBox error={q.error} />}
       {q.isLoading ? <Skeleton className="h-48 w-full" /> : (
         <div className="overflow-x-auto rounded-md border">
           <Table>
@@ -450,7 +427,7 @@ function ShadowTab({ orgId }: { orgId: string }) {
           </Table>
         </div>
       )}
-    </div>
+    </div></QueryRegion>
   );
 }
 
@@ -461,7 +438,7 @@ function SelfApprovedTab({ orgId }: { orgId: string }) {
   const q = useSelfApprovedVouchers(orgId, from, to);
   const tong = (q.data ?? []).reduce((s, r) => s + r.amount, 0);
   return (
-    <div className="space-y-3">
+    <QueryRegion label="phiếu tự duyệt" queries={[q]}><div className="space-y-3">
       <p className="text-sm text-muted-foreground max-w-3xl">
         Phiếu mà <strong>người lập có quyền duyệt</strong> nên được duyệt luôn (giữ nguyên, không thêm thao tác) — ở đây chỉ
         để bạn lọc và đếm được: tự duyệt lúc lập, hoặc người lập tự bấm duyệt phiếu của mình.
@@ -471,7 +448,6 @@ function SelfApprovedTab({ orgId }: { orgId: string }) {
         <div className="space-y-1"><Label htmlFor="td-toi">Tới ngày</Label><Input id="td-toi" type="date" value={to} onChange={(e) => e.target.value && setTo(e.target.value)} className="w-40" /></div>
         <div className="text-sm pb-2 text-muted-foreground">{q.data?.length ?? 0} phiếu · {fmt(tong)}</div>
       </div>
-      {q.isError && <ErrorBox error={q.error} />}
       {q.isLoading ? <Skeleton className="h-48 w-full" /> : (
         <div className="overflow-x-auto rounded-md border">
           <Table>
@@ -497,7 +473,7 @@ function SelfApprovedTab({ orgId }: { orgId: string }) {
           </Table>
         </div>
       )}
-    </div>
+    </div></QueryRegion>
   );
 }
 
@@ -535,11 +511,10 @@ export default function SpendEnginePage() {
           </div>
         </div>
 
-        {orgs.isError && <ErrorBox error={orgs.error} />}
-        {status.isError && <ErrorBox error={status.error} />}
+        <QueryRegion label="công ty và trạng thái quy tắc duyệt chi" queries={orgId?[orgs,status]:[orgs]}>
         {status.data && (
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-md border p-3 text-sm">
-            <div className="flex items-center gap-2">Bộ máy: {r ? <Badge variant={r.tone}>{r.text}</Badge> : route}</div>
+            <div className="flex items-center gap-2">Bộ máy: {r ? <Badge variant={r.tone}>{r.text}</Badge> : 'Chưa xác định trạng thái'}</div>
             <div>Chạy thử từ: <strong>{status.data.shadow_since ? status.data.shadow_since.slice(0, 10) : 'chưa có phiếu'}</strong></div>
             <div>30 ngày: <strong>{status.data.decisions_30d}</strong> phiếu chấm, <strong className={status.data.mismatches_30d ? 'text-amber-600' : ''}>{status.data.mismatches_30d}</strong> lệch, {status.data.enforced_30d} đã áp</div>
             <div>Cảnh báo sổ: <strong>{status.data.cashbook_warn_30d}</strong></div>
@@ -564,6 +539,7 @@ export default function SpendEnginePage() {
             <TabsContent value="tu-duyet"><SelfApprovedTab orgId={orgId} /></TabsContent>
           </Tabs>
         )}
+        </QueryRegion>
       </div>
     </MainLayout>
   );

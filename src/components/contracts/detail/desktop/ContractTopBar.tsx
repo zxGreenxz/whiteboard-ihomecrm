@@ -105,7 +105,7 @@ interface Props {
   contract: ContractWithRelations;
   perms: Parameters<typeof canUse>[0];
   isActive: boolean;
-  outstandingAmount: number;
+  outstandingAmount: number | null;
   daysRemaining: number;
   totalDays: number;
   daysElapsed: number;
@@ -188,9 +188,10 @@ export function ContractTopBar({
                 />
                 {chip.nhan}
               </span>
+              {outstandingAmount == null && <span role="status" className="text-sm text-amber-200">Chưa xác minh được công nợ</span>}
               {/* Công nợ là chip RIÊNG, không đè chip trạng thái: một HĐ đang
                   chạy vẫn có thể còn nợ, giấu một trong hai là nói thiếu. */}
-              {outstandingAmount > 0 && (
+              {outstandingAmount != null && outstandingAmount > 0 && (
                 <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md bg-[#ef4444]/[.18] px-2.5 py-1 text-[12.5px] font-semibold tabular-nums tracking-[.02em] text-[#fca5a5]">
                   <span className="h-[5px] w-[5px] rounded-full bg-[#f87171]" />
                   Còn công nợ {formatAmount(outstandingAmount)}

@@ -1,6 +1,7 @@
+import { QueryRegion } from '@/components/errors/QueryRegion';
 // Tab "Đơn xin nghỉ" — chủ duyệt/từ chối phép có lương của nhân viên.
 import { toast } from "sonner";
-import { usePendingLeaveRequests, useApproveLeave } from "@/hooks/useMyDay";
+import { leaveActionErrorMessage, usePendingLeaveRequests, useApproveLeave } from "@/hooks/useMyDay";
 import { SAL_ICONS } from "./salaryIcons";
 
 const I = SAL_ICONS;
@@ -11,19 +12,21 @@ function dmy(iso: string): string {
 }
 
 export default function SalaryLeaveRequests() {
-  const { data: rows = [], isLoading } = usePendingLeaveRequests();
+  const query = usePendingLeaveRequests();
+  const {data:rows=[],isLoading} = query;
   const approve = useApproveLeave();
 
   const onDecide = (userId: string, workDate: string, ok: boolean) => {
     approve.mutate(
       { user: userId, date: workDate, approve: ok },
       {
-        onSuccess: () => toast.success(ok ? "Đã duyệt phép" : "Đã từ chối phép"),
-        onError: (e: any) => toast.error(e?.message || "Có lỗi xảy ra, thử lại"),
+        onSuccess: () => toast.success(`Đã ${ok ? "duyệt" : "từ chối"} đơn nghỉ ngày ${dmy(workDate)} của ${rows.find(row=>row.user_id===userId)?.staff_name || "nhân viên"}.`),
+        onError: (error: unknown) => toast.error(leaveActionErrorMessage(error, {date:workDate,approve:ok,employeeName:rows.find(row=>row.user_id===userId)?.staff_name})),
       }
     );
   };
 
+  if (query.isError) return <QueryRegion label="đơn nghỉ chờ duyệt" queries={[query]}><span /></QueryRegion>;
   if (isLoading) {
     return (
       <div className="sal-card">

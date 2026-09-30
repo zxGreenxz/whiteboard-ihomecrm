@@ -1,0 +1,32 @@
+// @vitest-environment jsdom
+import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
+import {MemoryRouter} from 'react-router-dom';
+import {afterEach,beforeEach,expect,it,vi} from 'vitest';
+const h=vi.hoisted(()=>({response:{data:null as unknown,error:null as unknown},row:{id:'c1',contract_number:'HD1',status:'ACTIVE',start_date:'2026-09-01',end_date:'2027-09-01',rent_price:1000000,total_deposit:0,deposit_paid:0,room:{name:'101',building:{name:'Tòa Demo'}},contract_customers:[]}}));
+vi.mock('@/integrations/supabase/client',()=>({supabase:{from:()=>({select:()=>({in:()=>({in:()=>Promise.resolve(h.response)})})})}}));
+vi.mock('@/hooks/useContracts',()=>({useContractsPaged:()=>({data:{data:[h.row],count:1},isLoading:false,isError:false,refetch:vi.fn()}),useContractStats:()=>({data:{total:1,expiring:0,expired:0,terminated:0}})}));
+vi.mock('@/hooks/useBuildings',()=>({useBuildings:()=>({data:[]})}));
+vi.mock('@/hooks/useRooms',()=>({useRooms:()=>({data:[]})}));
+vi.mock('@/hooks/useMyBuildingScope',()=>({useMyBuildingScope:()=>({hasAnyScope:false})}));
+vi.mock('@/hooks/useMyPermissions',()=>({useMyPermissions:()=>({data:{}})}));
+vi.mock('@/hooks/useCopilotPageContext',()=>({useCopilotPageContext:()=>{}}));
+vi.mock('@/hooks/usePersistedState',async()=>{const {useState}=await import('react');return {usePersistedState:(_key:string,value:unknown)=>useState(value)};});
+vi.mock('@/components/contracts/ContractFormDialog',()=>({ContractFormDialog:()=>null}));
+vi.mock('@/components/contracts/MoveOutNoticeQueue',()=>({MoveOutNoticeQueue:()=>null}));
+vi.mock('@/components/contracts/ContractDraftWorkspace',()=>({ContractDraftWorkspace:()=>null}));
+vi.mock('@/components/contracts/ContractCommissionFollowupPanel',()=>({ContractCommissionFollowupPanel:()=>null}));
+vi.mock('@/components/contracts/ContractExitQueue',()=>({ContractExitQueue:()=>null}));
+vi.mock('@/components/contracts/ContractMeterFollowupQueue',()=>({ContractMeterFollowupQueue:()=>null}));
+import ContractsMobilePage from '../ContractsMobilePage';
+let client:QueryClient;
+beforeEach(()=>{client=new QueryClient({defaultOptions:{queries:{retry:false,gcTime:0}}});h.response={data:null,error:null};});
+afterEach(()=>{cleanup();client.clear();});
+it('mobile list keeps contracts and filters while renewal state is unconfirmed, then retries just that state',async()=>{
+ render(<QueryClientProvider client={client}><MemoryRouter><ContractsMobilePage/></MemoryRouter></QueryClientProvider>);
+ await waitFor(()=>expect(screen.getByRole('alert').textContent).toContain('Chưa tải được trạng thái gia hạn'));
+ expect(screen.getByText('P.101 · Tòa Demo')).toBeTruthy();expect(screen.getByRole('combobox',{name:'Toà nhà'})).toBeTruthy();
+ expect(screen.queryByText('Đã gia hạn')).toBeNull();
+ h.response={data:[{contract_id:'c1'}],error:null};fireEvent.click(screen.getByRole('button',{name:'Tải lại'}));
+ await screen.findByText('Đã gia hạn');expect(screen.queryByRole('alert')).toBeNull();
+});

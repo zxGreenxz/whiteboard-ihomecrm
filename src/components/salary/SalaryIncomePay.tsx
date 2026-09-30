@@ -1,3 +1,4 @@
+import { useSalaryFormFeedback } from "./useSalaryFormFeedback";
 // Tab "Thu nhập & thanh toán" — gộp Thu nhập theo người + Thanh toán (bản Claude
 // Design 26/09/2026). Trái: người nhận · Giữa: khoản theo 3 nhóm nguồn · Phải: khung
 // thanh toán. Ghi tiền đi qua onPayout (salary_payout_v1, phiếu chờ duyệt).
@@ -188,7 +189,7 @@ interface Props {
   pending: PendingPayout[];
   accounts: SalaryAccount[];
   canPay: boolean;
-  onPayout: (staffId: string, staffName: string, amount: number, accountId: string, voucherDate: string, note: string) => void;
+  onPayout: (staffId: string, staffName: string, amount: number, accountId: string, voucherDate: string, note: string) => Promise<unknown> | void;
   /** Mutation trả lương đang chạy — khoá nút để không lập phiếu hai lần. */
   payBusy: boolean;
   onOpenLedger: (f: { who: string }) => void;
@@ -248,7 +249,7 @@ export default function SalaryIncomePay(props: Props) {
 
       <PersonDetail key={m.id} m={m} {...props} pendingList={pendingOf(m.id)} onTrace={setTrace} editOf={editOf}
         justPaid={justPaid.has(m.id)}
-        onPayout={(...a) => { setJustPaid((s) => new Set(s).add(a[0])); props.onPayout(...a); }} />
+        onPayout={async (...a) => { const result = await props.onPayout(...a); setJustPaid((s) => new Set(s).add(a[0])); return result; }} />
 
       {trace && <TraceDrawer item={trace} who={m.name} period={`${period.label}/${period.year}`} onClose={() => setTrace(null)}
         onOpenLedger={trace.g === "vh" && !trace.adj && !trace.id.startsWith("rec:") ? () => { setTrace(null); props.onOpenLedger({ who: m.id }); } : undefined}
@@ -267,6 +268,7 @@ function PersonDetail({ m, period, accounts, canPay, onPayout, payBusy, justPaid
   m: SalManager; pendingList: PendingPayout[]; onTrace: (i: Item) => void; justPaid: boolean;
   editOf: (i: Item) => (() => void) | undefined;
 }) {
+  const feedback = useSalaryFormFeedback("lập phiếu chi lương");
   const items = useMemo(() => itemsOf(m), [m]);
   const [off, setOff] = useState<Record<string, boolean>>({});
   const [acc, setAcc] = useState(accounts[0]?.id || "");
@@ -365,7 +367,7 @@ function PersonDetail({ m, period, accounts, canPay, onPayout, payBusy, justPaid
       ))}
     </div>
 
-    <div style={{ ...card, boxShadow: "var(--shadow-md)", position: "sticky", top: 16, flex: "1 1 300px", maxWidth: 380, minWidth: 280 }}>
+    <div ref={feedback.root} style={{ ...card, boxShadow: "var(--shadow-md)", position: "sticky", top: 16, flex: "1 1 300px", maxWidth: 380, minWidth: 280 }}>
       <div style={{ padding: "14px 16px", borderBottom: "1px solid hsl(var(--border))" }}><b style={{ fontSize: 14 }}>Thanh toán cho {m.short}</b><div style={{ fontSize: 11.5, color: MUTED }}>Kỳ {period.label}/{period.year}</div></div>
       <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
@@ -383,23 +385,23 @@ function PersonDetail({ m, period, accounts, canPay, onPayout, payBusy, justPaid
             <span style={{ color: MUTED }}>{m.roomRentInvoice ? "Trừ thẳng vào hóa đơn phòng, không chuyển khoản phần này." : "Chưa có hóa đơn phòng tháng kế — trừ theo mức cố định trong cấu hình."}</span>
           </div>
         )}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", borderTop: "2px solid hsl(var(--border))", paddingTop: 10 }}>
+        <div {...feedback.field("amount")} tabIndex={-1} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", borderTop: "2px solid hsl(var(--border))", paddingTop: 10 }}>
           <span style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em", color: "hsl(var(--primary))" }}>Tiền thực chuyển</span>
           <span style={{ ...MONO, fontWeight: 800, fontSize: 18, color: "hsl(var(--primary))" }}>{salFmt(cash)}</span>
         </div>
         <div className="sal-field"><label>Chi từ sổ</label>
-          <select className="sal-select" style={{ height: 40 }} value={acc} onChange={(e) => setAcc(e.target.value)} disabled={blocked}>
+          <select className="sal-select" style={{ height: 40 }} {...feedback.field("account")} value={acc} onChange={(e) => setAcc(e.target.value)} disabled={blocked}>
             {accounts.length === 0 ? <option value="">— Chưa có sổ quỹ —</option> : accounts.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-          </select></div>
+          </select>{feedback.issue("account")}</div>
         <div className="sal-field"><label>Ngày chi</label>
-          <input type="date" className="sal-input mono" value={date} onChange={(e) => setDate(e.target.value)} disabled={blocked} /></div>
+          <input type="date" className="sal-input mono" {...feedback.field("date")} value={date} onChange={(e) => setDate(e.target.value)} disabled={blocked} />{feedback.issue("date")}</div>
         <div className="sal-field"><label>Ghi chú</label>
           <input className="sal-input" value={note} onChange={(e) => setNote(e.target.value)} disabled={blocked} /></div>
         <button className="sal-btn sal-btn--primary" style={{ justifyContent: "center" }}
-          disabled={blocked || cash <= 0 || !acc}
-          onClick={() => onPayout(m.id, m.name, cash, acc, date, note)}>
+          disabled={blocked || feedback.saving || feedback.blocked}
+          onClick={() => void feedback.run(() => onPayout(m.id, m.name, cash, acc, date, note), () => {}, {amount: cash <= 0 ? "Không còn tiền phải chuyển." : undefined, account: !acc ? "Chọn sổ quỹ chi lương." : undefined, date: !date ? "Chọn ngày chi lương." : undefined})}>
           {!canPay ? "Không có quyền trả lương" : payBusy ? "Đang lập phiếu…" : hasPending ? "Đang có phiếu chờ duyệt" : cash <= 0 ? "Không còn tiền phải chuyển" : "Lập yêu cầu thanh toán"}
-        </button>
+        </button>{feedback.notice}{feedback.issue("amount")}
         {lockedPay && <span style={{ fontSize: 11.5, color: "hsl(var(--status-warning-fg))" }}>Kỳ đã chốt — trả theo số đã chốt, không chọn từng khoản.</span>}
         <span style={{ fontSize: 11.5, color: MUTED }}>Tạo một phiếu chi lương chờ duyệt (không tính KQKD). Khi đã có phiếu chờ duyệt, người này bị khóa để không lập trùng. Bấm tên khoản để xem căn cứ.</span>
       </div>

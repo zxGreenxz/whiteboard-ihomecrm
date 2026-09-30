@@ -1,3 +1,4 @@
+import { QueryRegion } from "@/components/errors/QueryRegion";
 import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
@@ -30,7 +31,8 @@ export default function PaymentScheduleReport() {
   const [pageSize, setPageSize] = useState<number>(10);
 
   useCopilotPageContext('reports.finance.payment-schedule', { building_ids: buildingIds, from: startDate, to: endDate });
-  const { data: invoices = [], isLoading } = usePaymentScheduleReport(365);
+  const paymentScheduleReportQuery = usePaymentScheduleReport(365);
+  const { data: invoices = [], isLoading } = paymentScheduleReportQuery;
 
   // Group invoices by room → "đã lên hóa đơn đến ngày" = latest billing_period_end per room
   const rows = useMemo(() => {
@@ -122,6 +124,7 @@ export default function PaymentScheduleReport() {
           </div>
         </div>
 
+        <QueryRegion label="lịch thanh toán" queries={[paymentScheduleReportQuery]}>
         <div className="rounded-md border">
           <Table>
             <TableHeader>
@@ -183,6 +186,7 @@ export default function PaymentScheduleReport() {
               : `${(page - 1) * pageSize + 1} - ${Math.min(page * pageSize, totalCount)} trên tổng số ${totalCount} bản ghi`}
           </div>
         </div>
+      </QueryRegion>
       </div>
     </MainLayout>
   );

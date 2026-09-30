@@ -1,3 +1,6 @@
+import { actionErrorMessage } from '@/lib/actionFeedback';
+import { hasUnconfirmedResponse } from '@/lib/operationOutcome';
+import { QueryRegion } from '@/components/errors/QueryRegion';
 import { useEffect, useMemo, useState } from "react";
 import {
   closestCenter,
@@ -57,6 +60,16 @@ import {
 } from "@/lib/v5Routing";
 
 const ROUTE_PLAN_KEY = "v5_route_plan";
+function matchesSavedRoute(preferences: unknown, value: V5SavedRoutePlan): boolean {
+  if (!preferences || typeof preferences !== 'object') return false;
+  const row = (preferences as Record<string, unknown>)[ROUTE_PLAN_KEY];
+  if (!row || typeof row !== 'object') return false;
+  const saved = row as Record<string, unknown>;
+  return saved.version === value.version && saved.date === value.date && saved.mode === value.mode
+    && saved.updated_at === value.updated_at && Array.isArray(saved.building_ids)
+    && saved.building_ids.length === value.building_ids.length
+    && saved.building_ids.every((id, index) => id === value.building_ids[index]);
+}
 const ACTIVE_BUCKETS = new Set([0, 1, 2]);
 
 const BUCKET_COPY: Record<number, { label: string; className: string }> = {
@@ -266,13 +279,18 @@ export default function RoutePlannerSheet({
   date,
   onStartInspection,
 }: RoutePlannerSheetProps) {
-  const { data: preferences } = useUiPreferences();
-  const setPreference = useSetUiPreference();
+  const preferencesQuery = useUiPreferences();
+  const preferences = preferencesQuery.data;
+  const setPreference = useSetUiPreference({inlineError:true});
   const [ordered, setOrdered] = useState<Mission[]>([]);
   const [mode, setMode] = useState<V5SavedRoutePlan["mode"]>("priority");
   const [dirty, setDirty] = useState(false);
   const [currentPosition, setCurrentPosition] = useState<RouteCoordinates | null>(null);
   const [locating, setLocating] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [pendingRoute, setPendingRoute] = useState<V5SavedRoutePlan | null>(null);
+  const [readingSavedRoute, setReadingSavedRoute] = useState(false);
+  const pendingMessage = 'Chưa xác nhận được kết quả lưu tuyến hôm nay. Tuyến đang nhập được giữ lại; đọc lại tuyến đã lưu trước khi thay đổi hoặc gửi tiếp.';
 
   const activeMissions = useMemo(() => missions.filter(isActiveRouteStop), [missions]);
   const referenceMissions = useMemo(
@@ -306,12 +324,13 @@ export default function RoutePlannerSheet({
   }, [activeMissions, date, dirty, mode, open, preferences]);
 
   useEffect(() => {
-    if (open) return;
+    if (open || pendingRoute) return;
+    setSaveError(null);
     setOrdered([]);
     setMode("priority");
     setDirty(false);
     setCurrentPosition(null);
-  }, [open]);
+  }, [open, pendingRoute]);
 
   const moveMission = (from: number, to: number) => {
     if (to < 0 || to >= ordered.length) return;
@@ -353,6 +372,7 @@ export default function RoutePlannerSheet({
   };
 
   const handleSave = async () => {
+    if (setPreference.isPending || pendingRoute || preferencesQuery.isError || !preferences) return;
     if (!date) {
       toast.info("Chưa tải xong ngày làm việc · thử lại sau một chút nhé");
       return;
@@ -364,13 +384,37 @@ export default function RoutePlannerSheet({
       mode,
       updated_at: new Date().toISOString(),
     };
+    setSaveError(null);
+    setDirty(true);
     try {
-      await setPreference.mutateAsync({ key: ROUTE_PLAN_KEY, value });
+      const receipt = await setPreference.mutateAsync({ key: ROUTE_PLAN_KEY, value });
+      if (!matchesSavedRoute(receipt, value)) {
+        setPendingRoute(value);
+        setSaveError(pendingMessage);
+        return;
+      }
       setDirty(false);
       toast.success("Đã lưu tuyến hôm nay trên tài khoản của bạn");
     } catch (error: unknown) {
-      toast.info(error instanceof Error ? error.message : "Chưa lưu được tuyến · thử lại nhé");
+      if (hasUnconfirmedResponse(error)) {
+        setPendingRoute(value);
+        setSaveError(pendingMessage);
+      } else setSaveError(actionErrorMessage(error, 'Chưa lưu được tuyến hôm nay'));
     }
+  };
+  const readSavedRoute = async () => {
+    if (!pendingRoute || readingSavedRoute) return;
+    setReadingSavedRoute(true);
+    try {
+      const result = await preferencesQuery.refetch();
+      if (!result.isError && matchesSavedRoute(result.data, pendingRoute)) {
+        setPendingRoute(null);
+        setSaveError(null);
+        setDirty(false);
+        toast.success('Đã xác nhận tuyến hôm nay được lưu trên tài khoản của bạn');
+      } else setSaveError(pendingMessage);
+    } catch { setSaveError(pendingMessage); }
+    finally { setReadingSavedRoute(false); }
   };
 
   return (
@@ -391,7 +435,12 @@ export default function RoutePlannerSheet({
           </div>
         </SheetHeader>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+        <QueryRegion label="tuyến đường đã lưu" queries={[preferencesQuery]}>
+        {saveError && <div role="alert" className="mx-4 mt-3 rounded-md border border-destructive/40 p-3 text-sm text-destructive">
+          {saveError}
+          {pendingRoute && <Button type="button" variant="outline" className="mt-2" disabled={readingSavedRoute} onClick={readSavedRoute}>Đọc lại tuyến đã lưu</Button>}
+        </div>}
+        <fieldset disabled={!!pendingRoute || setPreference.isPending} className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
           <div className="mb-4 grid grid-cols-2 gap-2">
             <Button
               type="button"
@@ -500,14 +549,15 @@ export default function RoutePlannerSheet({
               </div>
             </section>
           )}
-        </div>
+        </fieldset>
 
         <div className="border-t bg-white px-4 pb-[calc(env(safe-area-inset-bottom)+12px)] pt-3">
-          <Button className="h-11 w-full" disabled={setPreference.isPending} onClick={handleSave}>
+          <Button className="h-11 w-full" disabled={setPreference.isPending || !!pendingRoute || preferencesQuery.isError} onClick={handleSave}>
             {setPreference.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Lưu tuyến hôm nay
           </Button>
         </div>
+        </QueryRegion>
       </SheetContent>
     </Sheet>
   );

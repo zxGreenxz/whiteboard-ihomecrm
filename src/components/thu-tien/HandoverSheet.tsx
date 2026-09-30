@@ -1,3 +1,5 @@
+import { useOperationFormFeedback } from '@/hooks/useOperationFormFeedback';
+import { QueryRegion } from '@/components/errors/QueryRegion';
 // =============================================
 // HandoverSheet — full sheet "Bàn giao tiền mặt" trong khung điện thoại.
 // Khuôn sheet/scrim + mount→rAF .show y hệt CollectionReport.
@@ -31,7 +33,6 @@ import {
 import { useReceivingCashbooks } from '@/hooks/useReceivingCashbooks';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { fmtFull } from '@/lib/collect';
-import { friendlyError } from '@/lib/friendlyError';
 import {
   fmtDateTime,
   handoverStatusLabel,
@@ -55,8 +56,9 @@ const fmtDate = (d?: string | null) =>
 
 export function HandoverSheet({ show, onClose }: Props) {
   const { data: currentUser } = useAuth();
-  const { data: accounts = [] } = useAccounts();
-  const { data: staffUsers = [] } = useStaffUsers();
+  const accountsQuery = useAccounts(); const {data:accounts=[]} = accountsQuery;
+  const staffQuery = useStaffUsers(); const {data:staffUsers=[]} = staffQuery;
+  const feedback = useOperationFormFeedback('xử lý phiên bàn giao');
 
   const [tab, setTab] = useState<Tab>('create');
   // Mặc định tick HẾT: lưu tập "bỏ tick" để khỏi đồng bộ khi list thay đổi.
@@ -78,10 +80,7 @@ export function HandoverSheet({ show, onClose }: Props) {
   const receiving = useReceivingCashbooks(selectedOrganizationId, null);
   const personalBook = receiving.data?.personalCashBook ?? null;
   const personalLoading = !!selectedOrganizationId && !receiving.data && !receiving.isError;
-  const personalError = receiving.isError
-    ? ((receiving.error as { message?: string } | null)?.message || 'Không tải được sổ tiền mặt riêng.')
-        .replace(/^\[[A-Z_]+\]\s*/, '')
-    : null;
+  const personalError = receiving.isError ? 'Chưa tải được cấu hình sổ nhận tiền. Tải lại để kiểm tra.' : null;
 
   const myId = currentUser?.id;
   const receivers = useMemo(
@@ -119,9 +118,11 @@ export function HandoverSheet({ show, onClose }: Props) {
   const defaultToAccount = ownId;
   const showSourcePicker = sourceBooks.length > 1 || (!ownId && sourceBooks.length > 0);
 
-  const { data: vouchers = [], accountId, isLoading: loadingVouchers } =
-    useUnhandedVouchers(effectiveSource);
-  const { data: handovers = [], actionCount } = useCashHandoverList();
+  const vouchersQuery = useUnhandedVouchers(effectiveSource);
+  const {data:vouchers=[],accountId,isLoading:loadingVouchers} = vouchersQuery;
+  const handoversQuery = useCashHandoverList();
+  const {data:handovers=[],actionCount} = handoversQuery;
+  const catalogBlocked = [accountsQuery,staffQuery,receiving].some(query => query.isError || query.isLoading);
 
   const createMut = useCreateHandover();
   const confirmMut = useConfirmHandover();
@@ -151,78 +152,43 @@ export function HandoverSheet({ show, onClose }: Props) {
       return next;
     });
 
-  const busy =
+  const busy = feedback.saving || feedback.blocked || catalogBlocked ||
     createMut.isPending || confirmMut.isPending || requestCancelMut.isPending ||
     confirmCancelMut.isPending || rejectCancelMut.isPending;
 
-  const submitCreate = async () => {
-    if (!receiverId) return toast.error('Chọn người nhận bàn giao');
-    if (!selectedIds.length) return toast.error('Chọn ít nhất 1 phiếu thu');
-    try {
-      const res = await createMut.mutateAsync({ receiverId, voucherIds: selectedIds, note });
-      const recvName = receivers.find((r) => r.id === receiverId)?.full_name ?? 'người nhận';
-      toast.success(`Đã tạo phiên ${res.code} (${fmtFull(res.total_amount)}) — chờ ${recvName} xác nhận`);
-      setUnticked(new Set());
-      setNote('');
-      setTab('open');
-    } catch (e) {
-      const fe = friendlyError(e, 'Không tạo được phiên bàn giao');
-      toast.error(fe.title, { description: fe.description });
-    }
-  };
+  const submitCreate = () => feedback.run(async () => {
+    const res = await createMut.mutateAsync({ receiverId, voucherIds: selectedIds, note });
+    const recvName = receivers.find((r) => r.id === receiverId)?.full_name ?? 'người nhận';
+    const bookName = sourceBooks.find(book => book.id === effectiveSource)?.name ?? 'sổ đã chọn';
+    toast.success('Đã lập phiên bàn giao ' + res.code + ' từ ' + bookName + ', gồm ' + res.voucher_count + ' phiếu. Đang chờ ' + recvName + ' xác nhận.');
+  }, () => {setUnticked(new Set());setNote('');setTab('open');}, {
+    receiver: !receiverId ? 'Chọn người nhận bàn giao.' : undefined,
+    vouchers: !selectedIds.length ? 'Chọn ít nhất một phiếu để bàn giao.' : net < 0 ? 'Phần chi lớn hơn phần thu. Kiểm tra lại các phiếu được chọn.' : undefined,
+  });
 
-  const submitConfirm = async (h: CashHandover) => {
-    // Sổ nhận: đã chọn → sổ tiền mặt riêng → sổ đầu tiên của tôi (đúng sổ ô chọn
-    // đang hiện). KHÔNG có sổ nào thì báo rõ thay vì gửi null âm thầm.
+  const submitConfirm = (h: CashHandover) => {
     const toId = toAccount[h.id] || defaultToAccount || receiveBooks[0]?.id || '';
-    if (!toId) {
-      toast.error(`Bạn chưa có sổ nào để nhận bàn giao. ${THIEU_SO_TIEN_MAT_RIENG}`);
-      return;
-    }
-    try {
-      const res = await confirmMut.mutateAsync({
-        handoverId: h.id,
-        toAccountId: toId,
-      });
-      toast.success(`Đã nhận ${fmtFull(h.total_amount)} — phiên ${res.code} hoàn tất, tiền đã vào sổ của bạn`);
-    } catch (e) {
-      const fe = friendlyError(e, 'Không xác nhận nhận được phiên bàn giao');
-      toast.error(fe.title, { description: fe.description });
-    }
+    return feedback.run(async () => {
+      const res = await confirmMut.mutateAsync({handoverId:h.id,toAccountId:toId});
+      const book = receiveBooks.find(item => item.id === toId)?.name ?? 'sổ nhận đã chọn';
+      toast.success('Đã xác nhận nhận bàn giao phiên ' + res.code + ' vào sổ ' + book + '.');
+    }, () => undefined, {['account_' + h.id]:!toId ? 'Chọn sổ quỹ nhận bàn giao.' : undefined});
   };
 
-  const submitRequestCancel = async (h: CashHandover) => {
-    if (!cancelReason.trim()) return toast.error('Nhập lý do hủy');
-    try {
-      await requestCancelMut.mutateAsync({ handoverId: h.id, reason: cancelReason });
-      toast.success(`Đã gửi yêu cầu hủy phiên ${h.code} — chờ bên kia xác nhận`);
-      setCancelFor(null);
-      setCancelReason('');
-    } catch (e) {
-      const fe = friendlyError(e, 'Không gửi được yêu cầu hủy');
-      toast.error(fe.title, { description: fe.description });
-    }
-  };
+  const submitRequestCancel = (h: CashHandover) => feedback.run(async () => {
+    await requestCancelMut.mutateAsync({handoverId:h.id,reason:cancelReason});
+    toast.success('Đã gửi yêu cầu hủy phiên ' + h.code + '. Đang chờ bên còn lại xác nhận.');
+  }, () => {setCancelFor(null);setCancelReason('');}, {reason:!cancelReason.trim() ? 'Nhập lý do hủy phiên bàn giao.' : undefined});
 
-  const submitConfirmCancel = async (h: CashHandover) => {
-    try {
-      await confirmCancelMut.mutateAsync({ handoverId: h.id });
-      toast.success(`Đã hủy phiên ${h.code} — các phiếu thu được nhả về "Chưa bàn giao"`);
-    } catch (e) {
-      const fe = friendlyError(e, 'Không hủy được phiên bàn giao');
-      toast.error(fe.title, { description: fe.description });
-    }
-  };
+  const submitConfirmCancel = (h: CashHandover) => feedback.run(async () => {
+    await confirmCancelMut.mutateAsync({handoverId:h.id});
+    toast.success('Đã hủy phiên bàn giao ' + h.code + '. Các phiếu trở về trạng thái chưa bàn giao.');
+  }, () => undefined);
 
-  const submitRejectCancel = async (h: CashHandover, mine: boolean) => {
-    try {
-      await rejectCancelMut.mutateAsync({ handoverId: h.id });
-      toast.success(mine ? `Đã thu hồi yêu cầu hủy phiên ${h.code}` : `Đã từ chối yêu cầu hủy phiên ${h.code}`);
-    } catch (e) {
-      const fe = friendlyError(e, 'Không xử lý được yêu cầu hủy');
-      toast.error(fe.title, { description: fe.description });
-    }
-  };
+  const submitRejectCancel = (h: CashHandover, mine: boolean) => feedback.run(async () => {
+    await rejectCancelMut.mutateAsync({handoverId:h.id});
+    toast.success((mine ? 'Đã thu hồi yêu cầu hủy phiên ' : 'Đã từ chối yêu cầu hủy phiên ') + h.code + '.');
+  }, () => undefined);
 
   const voucherRow = (v: (typeof vouchers)[number]) => {
     const checked = !unticked.has(v.id);
@@ -337,7 +303,7 @@ export function HandoverSheet({ show, onClose }: Props) {
                 <label className="rp-dd">
                   <span className="rp-dd-l">Sổ nhận tiền</span>
                   <div className="rp-dd-sel">
-                    <select
+                    <select {...feedback.field("account_" + h.id)}
                       value={toAccount[h.id] ?? (defaultToAccount || receiveBooks[0]?.id || '')}
                       onChange={(e) => setToAccount((m) => ({ ...m, [h.id]: e.target.value }))}
                     >
@@ -348,6 +314,7 @@ export function HandoverSheet({ show, onClose }: Props) {
                     </select>
                   </div>
                 </label>
+                {feedback.issue("account_" + h.id)}
                 {!personalLoading && !personalBook && (
                   <p className="ho-hint">{personalError || THIEU_SO_TIEN_MAT_RIENG}</p>
                 )}
@@ -361,10 +328,11 @@ export function HandoverSheet({ show, onClose }: Props) {
                 <textarea
                   className="note-input"
                   rows={2}
-                  placeholder="Lý do hủy phiên (bắt buộc)…"
+                  {...feedback.field("reason")} placeholder="Lý do hủy phiên (bắt buộc)…"
                   value={cancelReason}
                   onChange={(e) => setCancelReason(e.target.value)}
                 />
+                {feedback.issue("reason")}
                 <div className="ho-acts">
                   <button type="button" className="ho-btn danger" disabled={busy} onClick={() => submitRequestCancel(h)}>
                     Gửi yêu cầu hủy
@@ -393,10 +361,11 @@ export function HandoverSheet({ show, onClose }: Props) {
                 <textarea
                   className="note-input"
                   rows={2}
-                  placeholder="Lý do hủy phiên (bắt buộc)…"
+                  {...feedback.field("reason")} placeholder="Lý do hủy phiên (bắt buộc)…"
                   value={cancelReason}
                   onChange={(e) => setCancelReason(e.target.value)}
                 />
+                {feedback.issue("reason")}
                 <div className="ho-acts">
                   <button type="button" className="ho-btn danger" disabled={busy} onClick={() => submitRequestCancel(h)}>
                     Gửi yêu cầu hủy
@@ -415,24 +384,26 @@ export function HandoverSheet({ show, onClose }: Props) {
 
   return (
     <>
-      <div className={'sheet-scrim' + (show ? ' show' : '')} onClick={onClose} />
-      <div className={'sheet full' + (show ? ' show' : '')}>
+      <div className={'sheet-scrim' + (show ? ' show' : '')} onClick={() => feedback.close(onClose)} />
+      <div ref={feedback.root} className={'sheet full' + (show ? ' show' : '')}>
         <div className="rp-topbar">
           <div>
             <div className="rp-title">Bàn giao tiền mặt</div>
             <div className="rp-sub">Nộp số dư (thu − chi) · xác nhận 2 phía để không lộn tiền</div>
           </div>
-          <button type="button" className="rp-x" onClick={onClose}>
+          <button type="button" className="rp-x" onClick={() => feedback.close(onClose)}>
             <X />
           </button>
         </div>
 
+        {feedback.notice}
+        <style>{'.ho-form [aria-invalid="true"],.ho-cancelbox [aria-invalid="true"],.ho-vlist[aria-invalid="true"]{border:1px solid #dc2626!important;outline-color:#dc2626}'}</style>
         <div className="ho-tabs">
           <button type="button" className={'cchip' + (tab === 'create' ? ' on' : '')} onClick={() => setTab('create')}>
-            Bàn giao <span className="cnt">{vouchers.length}</span>
+            Bàn giao <span className="cnt">{vouchersQuery.isError || vouchersQuery.isLoading ? "—" : vouchers.length}</span>
           </button>
           <button type="button" className={'cchip' + (tab === 'open' ? ' on' : '')} onClick={() => setTab('open')}>
-            Phiên chờ <span className="cnt">{openList.length}</span>
+            Phiên chờ <span className="cnt">{handoversQuery.isError || handoversQuery.isLoading ? "—" : openList.length}</span>
             {actionCount > 0 && <span className="ho-dot" />}
           </button>
           <button type="button" className={'cchip' + (tab === 'history' ? ' on' : '')} onClick={() => setTab('history')}>
@@ -442,7 +413,7 @@ export function HandoverSheet({ show, onClose }: Props) {
 
         <div className="sheet-scroll rp-body">
           {tab === 'create' && (
-            <>
+            <QueryRegion label="phiếu và danh mục bàn giao" queries={[accountsQuery,staffQuery,receiving,...(effectiveSource ? [vouchersQuery] : [])]}>
               {/* Chọn sổ nguồn — hiện khi tôi có >1 sổ (vd Hiệp: "Hiệp Thu"
                   tiền mặt + "TKHIEP" chuyển khoản), hoặc khi chưa có sổ tiền mặt
                   riêng mà vẫn có sổ khác để chọn. Đổi sổ → tải lại phiếu. */}
@@ -499,7 +470,7 @@ export function HandoverSheet({ show, onClose }: Props) {
                     <label className="rp-dd">
                       <span className="rp-dd-l">Người nhận</span>
                       <div className="rp-dd-sel">
-                        <select value={receiverId} onChange={(e) => setReceiverId(e.target.value)}>
+                        <select {...feedback.field("receiver")} value={receiverId} onChange={(e) => setReceiverId(e.target.value)}>
                           <option value="">— Chọn người nhận —</option>
                           {receivers.map((u) => (
                             <option key={u.id} value={u.id}>{u.full_name || u.email}</option>
@@ -507,6 +478,7 @@ export function HandoverSheet({ show, onClose }: Props) {
                         </select>
                       </div>
                     </label>
+                    {feedback.issue("receiver")}
                     <textarea
                       className="note-input"
                       rows={2}
@@ -516,7 +488,8 @@ export function HandoverSheet({ show, onClose }: Props) {
                     />
                   </div>
 
-                  <div className="ho-vlist">
+                  <div className="ho-vlist" {...feedback.field("vouchers")} tabIndex={-1}>
+                    {feedback.issue("vouchers")}
                     {incomeVouchers.map((v) => voucherRow(v))}
                     {expenseVouchers.length > 0 && (
                       <>
@@ -530,7 +503,7 @@ export function HandoverSheet({ show, onClose }: Props) {
                     <button
                       type="button"
                       className="ho-btn primary big"
-                      disabled={busy || !selectedIds.length || !receiverId || net < 0}
+                      disabled={busy || vouchersQuery.isError || vouchersQuery.isLoading}
                       onClick={submitCreate}
                     >
                       Xác nhận giao {fmtFull(net)}
@@ -548,29 +521,29 @@ export function HandoverSheet({ show, onClose }: Props) {
                   </div>
                 </>
               )}
-            </>
+            </QueryRegion>
           )}
 
-          {tab === 'open' && (
-            openList.length === 0 ? (
+          {tab === 'open' && (<QueryRegion label="phiên bàn giao đang chờ" queries={[handoversQuery,accountsQuery,receiving]}>
+            {openList.length === 0 ? (
               <div className="c-empty"><div className="e-ic">🤝</div><p>Không có phiên bàn giao nào đang chờ.</p></div>
             ) : (
               <div className="ho-cards">{openList.map((h) => renderCard(h, true))}</div>
-            )
+            )}</QueryRegion>
           )}
 
-          {tab === 'history' && (
-            historyList.length === 0 ? (
+          {tab === 'history' && (<QueryRegion label="lịch sử bàn giao" queries={[handoversQuery,accountsQuery,receiving]}>
+            {historyList.length === 0 ? (
               <div className="c-empty"><div className="e-ic">🗂️</div><p>Chưa có phiên bàn giao nào hoàn tất.</p></div>
             ) : (
               // Phiên CONFIRMED vẫn cần nút "Yêu cầu hủy" (hủy sau khi đã nhận
               // phải có 2 bên xác nhận) → giữ actions; CANCELLED thì thuần đọc.
               <div className="ho-cards">{historyList.map((h) => renderCard(h, h.status === 'CONFIRMED'))}</div>
-            )
+            )}</QueryRegion>
           )}
 
           <div className="rp-foot">
-            <button type="button" className="rp-close" onClick={onClose}>Đóng</button>
+            <button type="button" className="rp-close" onClick={() => feedback.close(onClose)}>Đóng</button>
           </div>
         </div>
       </div>

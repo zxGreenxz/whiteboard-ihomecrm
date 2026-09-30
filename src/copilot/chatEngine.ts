@@ -1,3 +1,8 @@
+import {requireAccountWriteReceipt} from '@/lib/accountSettingsWriteReceipt';
+import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
+import {financialPending} from '@/lib/financialPending';
+import {FinancialWorkflowError} from '@/lib/financialWorkflowError';
+import {requireReadRow,requireReadRows,readString,readNullableString,readDate,readRecord} from '@/lib/accountProfitReadModels';
 // Chat engine — nói thẳng OpenAI-compat với `llm-proxy` qua `llmClient`.
 //
 // Bản trước dùng `LLM` class của @page-agent/llms và một tool giả tên `respond`
@@ -539,8 +544,9 @@ export function isCurrentChatScope(
 }
 
 async function currentUserId(): Promise<string> {
-  const { data } = await supabase.auth.getUser();
-  const userId = data.user?.id;
+  const { data,error } = await supabase.auth.getUser();
+  if(error)throw error;
+  const userId = data?.user?.id;
   if (!userId) throw new Error('Chưa đăng nhập');
   return userId;
 }
@@ -558,7 +564,11 @@ export async function loadLatestThread(organizationId: string | null): Promise<T
     .limit(1)
     .maybeSingle();
   if (error) throw error;
-  return data;
+  if(data===null)return null;
+  const row=requireReadRow<ThreadRow>(data,r=>readString(r.id)&&readNullableString(r.title)&&readDate(r.updated_at));
+  const pending=financialPending.read({namespace:'copilot-history',userId,organizationId,businessKey:row.id});
+  if(pending)throw new FinancialWorkflowError(`Chưa xác nhận được kết quả lưu lịch sử cuộc trò chuyện ${row.id}. Đọc lịch sử trước khi thực hiện tiếp.`,'unknown',pending.completedIds.map(id=>({id,label:'Tin nhắn đã có mã'})));
+  return row;
 }
 
 async function loadOwnedThread(threadId: string, organizationId: string | null) {
@@ -572,7 +582,8 @@ async function loadOwnedThread(threadId: string, organizationId: string | null) 
   query = organizationId ? query.eq('organization_id', organizationId) : query.is('organization_id', null);
   const { data, error } = await query.maybeSingle();
   if (error) throw error;
-  return data;
+  if(data===null)return null;
+  return requireReadRow<{id:string;user_id:string;organization_id:string}>(data,r=>r.id===threadId&&r.user_id===userId&&r.organization_id===organizationId);
 }
 
 /**
@@ -588,17 +599,12 @@ export async function createThread(title: string, organizationId: string | null)
   if (!organizationId) throw new Error('Phải chọn tổ chức trước khi lưu chat');
   const userId = await currentUserId();
   if (!userId) throw new Error('Chưa đăng nhập');
-  const { data, error } = await supabase
-    .from('ai_chat_threads')
-    .insert({
-      user_id: userId,
-      title: title.slice(0, 120),
-      ...(organizationId ? { organization_id: organizationId } : {}),
-    })
-    .select('id, title, updated_at')
-    .single();
-  if (error) throw error;
-  return data;
+  return persistentFinancialWorkflow('copilot-thread').run('new','tạo cuộc trò chuyện',async progress=>{
+  const { data, error } = await supabase.from('ai_chat_threads').insert({user_id:userId,title:title.slice(0,120),organization_id:organizationId}).select('id,title,updated_at,user_id,organization_id').single();
+  if(error)throw error;
+  if(readRecord(data)&&readString(data.id))progress.completed.push({id:data.id,label:'Mã cuộc trò chuyện nhận từ máy chủ'});
+  return requireReadRow<ThreadRow>(data,row=>readString(row.id)&&row.title===title.slice(0,120)&&readDate(row.updated_at)&&row.user_id===userId&&row.organization_id===organizationId);
+  },undefined,organizationId);
 }
 
 /**
@@ -638,8 +644,15 @@ export async function saveMessages(
     // để đường ghi không phụ thuộc vào việc luồng đã có nhãn hay chưa.
     ...(organizationId ? { organization_id: organizationId } : {}),
   }));
-  const { error } = await supabase.from('ai_chat_messages').insert(rows);
-  if (error) throw error;
+  await persistentFinancialWorkflow('copilot-history').run(threadId,'lưu lịch sử trò chuyện',async progress=>{
+    const {data,error}=await supabase.from('ai_chat_messages').insert(rows).select('id,thread_id,user_id,organization_id,role,content,tool_calls,tool_call_id,model');
+    if(error)throw error;
+    if(Array.isArray(data))for(const row of data)if(readRecord(row)&&readString(row.id))progress.completed.push({id:row.id,label:'Mã tin nhắn nhận từ máy chủ'});
+    const receipts=requireReadRows<Record<string,unknown>>(data,row=>readString(row.id));
+    if(receipts.length!==rows.length||new Set(receipts.map(row=>row.id)).size!==receipts.length)throw new TypeError('Unconfirmed message batch');
+    const remaining=[...receipts];
+    for(const expected of rows){const index=remaining.findIndex(receipt=>{try{requireAccountWriteReceipt(receipt,expected);return true;}catch{return false;}});if(index<0)throw new TypeError('Unconfirmed message content');remaining.splice(index,1);}
+  },undefined,organizationId??undefined);
 }
 
 /** Dựng lại Message[] từ rows DB (order theo seq — identity toàn cục). */
@@ -669,5 +682,6 @@ export async function loadThreadMessages(threadId: string, organizationId: strin
     .order('seq', { ascending: true })
     .limit(200);
   if (error) throw error;
-  return rowsToMessages((data ?? []) as { role: string; content: string | null; tool_calls: unknown; tool_call_id: string | null }[]);
+  const rows=requireReadRows<{role:string;content:string|null;tool_calls:unknown;tool_call_id:string|null}>(data,row=>['user','assistant','tool','system'].includes(row.role as string)&&readNullableString(row.content)&&readNullableString(row.tool_call_id)&&(row.tool_calls===null||Array.isArray(row.tool_calls)&&row.tool_calls.every(call=>readRecord(call)&&readString(call.id)&&call.type==='function'&&readRecord(call.function)&&readString(call.function.name)&&typeof call.function.arguments==='string')));
+  return rowsToMessages(rows);
 }

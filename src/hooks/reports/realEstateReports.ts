@@ -27,6 +27,7 @@ export function useVacantRoomsReport(
   opts?: { enabled?: boolean },
 ) {
   return useQuery({
+    meta: { errorDisplay: "inline", label: "báo cáo phòng trống" },
     queryKey: ["reports", "vacant-rooms", buildingId, floorId],
     // Cho phép gate theo UI (vd Dashboard chỉ fetch khi MỞ dialog phòng trống
     // — hook này bắn 3 query full-table, không nên chạy ngầm mỗi lần mount).
@@ -68,12 +69,13 @@ export function useVacantRoomsReport(
       const occupiedRoomIds = new Set(activeContracts?.map(c => c.room_id) || []);
 
       // Get ended contracts (TERMINATED / EXPIRED) to compute days_vacant per room
-      const { data: endedContracts } = await supabase
+      const { data: endedContracts, error: endedError } = await supabase
         .from("contracts")
         .select("room_id, end_date, actual_end_date")
         .in("status", ["TERMINATED", "EXPIRED"])
         .is("deleted_at", null);
 
+      if (endedError) throw endedError;
       const lastEndByRoom = new Map<string, string>();
       for (const c of endedContracts ?? []) {
         const effectiveEnd = (c as any).actual_end_date || (c as any).end_date;
@@ -250,20 +252,22 @@ export function useVacantRoomNotes(
 
         let terminations: any[] = [];
         if (endedContractIds.length) {
-          const { data } = await supabase
+          const { data, error: termError } = await supabase
             .from("contract_terminations")
             .select("contract_id, termination_type, termination_date, actual_move_out_date")
             .in("contract_id", endedContractIds);
+          if (termError) throw termError;
           terminations = data ?? [];
         }
 
         // Transfers có old_room_id = phòng gắn cờ (đã duyệt) — bắt được chuyển phòng
         // dù room_id của HĐ đã đổi tại chỗ sang phòng mới.
-        const { data: transfersData } = await supabase
+        const { data: transfersData, error: transfersError } = await supabase
           .from("contract_transfers")
           .select("old_room_id, transfer_type, transfer_date, status")
           .in("old_room_id", [...flaggedIds])
           .in("status", ["APPROVED", "COMPLETED"]);
+        if (transfersError) throw transfersError;
         const transfers = (transfersData ?? []).filter(
           (t: any) => !t.transfer_date || t.transfer_date <= monthEndDate,
         );
@@ -338,6 +342,7 @@ export function useVacantRoomNotes(
  */
 export function useExpiringContractsReport(daysAhead: number = 30, buildingId?: string, floorId?: string) {
   return useQuery({
+    meta: { errorDisplay: "inline", label: "báo cáo hợp đồng sắp hết hạn" },
     queryKey: ["reports", "expiring-contracts", daysAhead, buildingId, floorId],
     queryFn: async () => {
       const today = new Date();
@@ -413,6 +418,7 @@ export function useRenewalsTransfersReport(
   buildingId?: string
 ) {
   return useQuery({
+    meta: { errorDisplay: "inline", label: "báo cáo gia hạn và chuyển nhượng" },
     queryKey: ["reports", "renewals-transfers", startDate, endDate, buildingId],
     queryFn: async (): Promise<RenewalTransferRow[]> => {
       const repName = (ccs: EmbeddedCustomers | undefined): string => {
@@ -512,6 +518,7 @@ export function useExpenseRatioReport(
   buildingId?: string
 ) {
   return useQuery({
+    meta: { errorDisplay: "inline", label: "báo cáo tỷ lệ chi phí và doanh thu" },
     queryKey: [
       "reports",
       "expense-ratio",
@@ -535,26 +542,7 @@ export function useExpenseRatioReport(
 
       // --- Auth + date range cho cả revenue (INCOME) và expense (EXPENSE)
       const user = await getSessionUser();
-      if (!user) {
-        return {
-          summary: {
-            totalExpense: 0,
-            totalRevenue: 0,
-            avgRatio: 0,
-            peakMonth: "",
-            peakRatio: 0,
-          },
-          byMonth: months.map((m) => ({
-            month: m,
-            revenue: revenueByMonth[m] ?? 0,
-            expensesByCategory: {} as Record<string, number>,
-            totalExpense: 0,
-            ratio: null as number | null,
-          })),
-          byTypeName: [] as Array<{ category: string; typeName: string; total: number }>,
-          categories: [] as string[],
-        };
-      }
+      if (!user) throw new Error("Not authenticated");
 
       const startDateStr = format(rangeStart, "yyyy-MM-dd");
       const endDateStr = format(rangeEnd, "yyyy-MM-dd");
@@ -695,6 +683,7 @@ export function useExpenseRatioReport(
  */
 export function usePromotionsReport(startDate?: Date, endDate?: Date, buildingId?: string) {
   return useQuery({
+    meta: { errorDisplay: "inline", label: "báo cáo khuyến mại" },
     queryKey: ["reports", "promotions", startDate?.toISOString(), endDate?.toISOString(), buildingId],
     queryFn: async () => {
       let query = supabase
@@ -766,6 +755,7 @@ export function usePromotionsReport(startDate?: Date, endDate?: Date, buildingId
  */
 export function useNewLeasesReport(startDate?: Date, endDate?: Date, buildingId?: string) {
   return useQuery({
+    meta: { errorDisplay: "inline", label: "báo cáo hợp đồng mới" },
     queryKey: ["reports", "new-leases", startDate?.toISOString(), endDate?.toISOString(), buildingId],
     queryFn: async () => {
       let query = supabase
@@ -831,6 +821,7 @@ export function useNewLeasesReport(startDate?: Date, endDate?: Date, buildingId?
  */
 export function useTerminationsReport(startDate?: Date, endDate?: Date, buildingId?: string) {
   return useQuery({
+    meta: { errorDisplay: "inline", label: "báo cáo thanh lý hợp đồng" },
     queryKey: ["reports", "terminations", startDate?.toISOString(), endDate?.toISOString(), buildingId],
     queryFn: async () => {
       // Get terminated/expired contracts (filter date client-side để fallback end_date khi actual_end_date null)
@@ -864,10 +855,11 @@ export function useTerminationsReport(startDate?: Date, endDate?: Date, building
       const contractIds = (contracts || []).map(c => c.id);
       let terminations: any[] = [];
       if (contractIds.length > 0) {
-        const { data: termData } = await supabase
+        const { data: termData, error: termError } = await supabase
           .from("contract_terminations")
           .select("contract_id, termination_type, termination_date, notes")
           .in("contract_id", contractIds);
+        if (termError) throw termError;
         terminations = termData || [];
       }
 
@@ -888,11 +880,13 @@ export function useTerminationsReport(startDate?: Date, endDate?: Date, building
       });
 
       // Mẫu số tỉ lệ: contracts đã từng đi vào vận hành (loại DRAFT), không deleted
-      const { count: totalContracts } = await supabase
+      const { count: totalContracts, error: countError } = await supabase
         .from("contracts")
         .select("id", { count: "exact", head: true })
         .is("deleted_at", null)
         .neq("status", "DRAFT");
+      if (countError) throw countError;
+      if (totalContracts == null) throw new Error("Missing required contract count");
 
       return {
         items: filtered.map((contract: any) => {

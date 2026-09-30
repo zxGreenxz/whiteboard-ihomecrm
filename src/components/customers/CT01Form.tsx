@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ct01Schema, type CT01FormValues } from '@/lib/ct01Validation';
@@ -27,7 +27,7 @@ import { CT01FamilyMembersTable } from '@/components/customers/CT01FamilyMembers
 
 interface CT01FormProps {
   customer: Customer;
-  onSubmit: (values: CT01FormValues) => void;
+  onSubmit: (values: CT01FormValues) => void | Promise<void>;
   isLoading?: boolean;
 }
 
@@ -53,8 +53,11 @@ export function CT01Form({ customer, onSubmit, isLoading }: CT01FormProps) {
     },
   });
 
+  const loadedCustomerId = useRef<string>();
   useEffect(() => {
     if (customer) {
+      if (loadedCustomerId.current === customer.id && (form.formState.isDirty || isLoading)) return;
+      loadedCustomerId.current = customer.id;
       const filled = autoFillCT01FromCustomer(customer);
       form.reset({
         registration_authority: filled.registration_authority ?? '',
@@ -74,11 +77,12 @@ export function CT01Form({ customer, onSubmit, isLoading }: CT01FormProps) {
         family_members: filled.family_members ?? [],
       });
     }
-  }, [customer, form]);
+  }, [customer, form, isLoading]);
 
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+        <fieldset disabled={isLoading} className="space-y-6">
         {/* Cơ quan ĐKCT - full width */}
         <FormField
           control={form.control}
@@ -319,6 +323,7 @@ export function CT01Form({ customer, onSubmit, isLoading }: CT01FormProps) {
             {isLoading ? 'Đang xử lý...' : 'Lưu phiếu CT01'}
           </Button>
         </div>
+        </fieldset>
       </form>
     </Form>
   );

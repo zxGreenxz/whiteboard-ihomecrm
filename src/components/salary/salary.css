@@ -568,3 +568,7 @@ textarea.sal-input { height: auto; padding: 10px 12px; resize: vertical; min-hei
   color: hsl(var(--status-warning-fg));
 }
 .sal-exbtn:disabled { opacity: .45; cursor: default; }
+.sal-root [aria-invalid="true"], .sal-modal [aria-invalid="true"], [data-field][aria-invalid="true"] {
+  border-color: #dc2626 !important;
+  outline-color: #dc2626;
+}

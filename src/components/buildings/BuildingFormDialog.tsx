@@ -1,4 +1,5 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
+import { recordWriteBlocked, recordWriteMessage } from '@/lib/recordWriteOutcome';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
@@ -45,6 +46,14 @@ import { CommissionTiersField } from './CommissionTiersField';
 import { BuildingLegalOwnerFields } from './BuildingLegalOwnerFields';
 import BuildingOwnershipDocs from '@/components/residence/BuildingOwnershipDocs';
 import { useBuildingLegalOwnerForm } from '@/hooks/useBuildingLegalOwnerForm';
+import { FinancialWorkflowError } from '@/lib/financialWorkflowError';
+import { focusFirstError } from '@/lib/formErrors';
+import { persistentFinancialWorkflow } from '@/lib/persistentFinancialWorkflow';
+import { runBuildingSaveWorkflow } from '@/lib/buildingSaveWorkflow';
+import { useBuildingSavePending } from '@/hooks/useBuildingSavePending';
+import { supabase } from '@/integrations/supabase/client';
+import { useOrganization } from '@/contexts/OrganizationContext';
+import type { BuildingLegalOwner } from '@/lib/buildingLegalOwner';
 
 interface BuildingFormDialogProps {
   open: boolean;
@@ -58,18 +67,30 @@ export default function BuildingFormDialog({
   building,
 }: BuildingFormDialogProps) {
   const isEditMode = !!building;
+  const {selectedOrganizationId}=useOrganization();
+  const priorSave=useBuildingSavePending(building?`edit:${building.id}`:'create',selectedOrganizationId,open);
+  const saveGuard=useMemo(()=>persistentFinancialWorkflow('building-form-save'),[]);
+  const savedOwner=useRef<BuildingLegalOwner|null>(null);
+  const [coreFailure, setCoreFailure] = useState<unknown>();
+  const [coreBlocked, setCoreBlocked] = useState(false);
+  const draftKey = useRef<string | null>(null);
   const owner = useBuildingLegalOwnerForm(building?.id, open);
   const [createdBuildingId, setCreatedBuildingId] = useState<string | null>(null);
-  useEffect(() => { if (!open) setCreatedBuildingId(null); }, [open]);
+  const [updatedBuildingId, setUpdatedBuildingId] = useState<string | null>(null);
+  const [savedServicesPayload, setSavedServicesPayload] = useState<Array<{ service_id: string; is_active: boolean; unit_price_override: number | null }> | null>(null);
+  const [partialMessage, setPartialMessage] = useState<string | null>(null);
+  useEffect(() => { setCreatedBuildingId(null); setUpdatedBuildingId(null); setSavedServicesPayload(null); setPartialMessage(null); }, [building?.id]);
 
   // Hooks
-  const createBuilding = useCreateBuilding();
-  const updateBuilding = useUpdateBuilding();
-  const upsertServices = useUpsertBuildingServices();
+  const createBuilding = useCreateBuilding({ silentSuccess: true });
+  const updateBuilding = useUpdateBuilding({ silentSuccess: true });
+  const upsertServices = useUpsertBuildingServices({silent:true});
 
   // Services
-  const { data: allServices } = useServices(undefined, { enabled: open });
-  const { data: existingBuildingServices } = useBuildingServices(open ? building?.id || '' : '');
+  const servicesQuery = useServices(undefined, { enabled: open });
+  const { data: allServices } = servicesQuery;
+  const existingServicesQuery = useBuildingServices(open ? building?.id || '' : '');
+  const { data: existingBuildingServices } = existingServicesQuery;
   const [buildingServices, setBuildingServices] = useState<BuildingServiceFormData[]>([]);
 
   // Document templates for Cấu hình section
@@ -101,6 +122,10 @@ export default function BuildingFormDialog({
   // Reset form when dialog opens
   useEffect(() => {
     if (open) {
+      const key = building?.id ?? 'create';
+      if (draftKey.current === key && (coreFailure || createdBuildingId || updatedBuildingId || form.formState.isDirty)) return;
+      draftKey.current = key;
+      setCoreFailure(undefined); setCoreBlocked(false);
       if (building) {
         form.reset({
           name: building.name,
@@ -167,70 +192,52 @@ export default function BuildingFormDialog({
   }, [allServices, existingBuildingServices]);
 
   const onSubmit = async (data: BuildingFormData) => {
+    if (coreBlocked || sourceBlocked) return;
     if (!await owner.validate()) return;
-    const ownerSnapshot = owner.form.getValues();
-    const servicesPayload = buildingServices.map((s) => ({
-      service_id: s.service_id,
-      is_active: s.is_active,
-      unit_price_override: s.unit_price_override,
-    }));
-
+    form.clearErrors('root.server');
+    setPartialMessage(null); setCoreFailure(undefined);
+    let savedId: string | null = createdBuildingId ?? updatedBuildingId;
+    const ownerSnapshot = savedOwner.current ?? owner.form.getValues();
+    const servicesPayload = savedServicesPayload ?? buildingServices.map(s=>({service_id:s.service_id,is_active:s.is_active,unit_price_override:s.unit_price_override}));
+    const corePayload={
+      name:data.name,code:data.code||null,province:data.province,district:data.district,ward:data.ward,street_address:data.street_address,
+      latitude:data.latitude??null,longitude:data.longitude??null,status:data.status,has_elevator:data.has_elevator??false,
+      contract_template_id:data.contract_template_id??null,invoice_template_id:data.invoice_template_id??null,
+      commission_tiers:(data.commission_tiers??DEFAULT_COMMISSION_TIERS) as any,
+    };
     try {
-      if (isEditMode && building) {
-        await updateBuilding.mutateAsync({
-          id: building.id,
-          updates: {
-            name: data.name,
-            code: data.code || null,
-            province: data.province,
-            district: data.district,
-            ward: data.ward,
-            street_address: data.street_address,
-            latitude: data.latitude ?? null,
-            longitude: data.longitude ?? null,
-            status: data.status,
-            has_elevator: data.has_elevator ?? false,
-            contract_template_id: data.contract_template_id ?? null,
-            invoice_template_id: data.invoice_template_id ?? null,
-            commission_tiers: (data.commission_tiers ?? DEFAULT_COMMISSION_TIERS) as any,
-          },
-        });
-        await owner.save(building.id, ownerSnapshot);
-        await upsertServices.mutateAsync({
-          buildingId: building.id,
-          services: servicesPayload,
-        });
-        toast.success('Dữ liệu đã được CẬP NHẬT thành công');
-      } else {
-        const newBuilding = createdBuildingId ? { id: createdBuildingId } : await createBuilding.mutateAsync({
-          name: data.name,
-          code: data.code || null,
-          province: data.province,
-          district: data.district,
-          ward: data.ward,
-          street_address: data.street_address,
-          latitude: data.latitude ?? null,
-          longitude: data.longitude ?? null,
-          status: data.status,
-          has_elevator: data.has_elevator ?? false,
-          contract_template_id: data.contract_template_id ?? null,
-          invoice_template_id: data.invoice_template_id ?? null,
-          commission_tiers: (data.commission_tiers ?? DEFAULT_COMMISSION_TIERS) as any,
-        });
-        setCreatedBuildingId(newBuilding.id);
-        await owner.save(newBuilding.id, ownerSnapshot);
-        await upsertServices.mutateAsync({
-          buildingId: newBuilding.id,
-          services: servicesPayload,
-        });
-        toast.success('Dữ liệu đã được TẠO thành công');
-      }
+      if(!selectedOrganizationId)throw new Error('Chọn tổ chức trước khi lưu tòa.');
+      await runBuildingSaveWorkflow(saveGuard,{
+        key:building?`edit:${building.id}`:'create',organizationId:selectedOrganizationId,expectedCore:corePayload,
+        writeCore:()=>building?updateBuilding.mutateAsync({id:building.id,updates:corePayload}):createBuilding.mutateAsync(corePayload),
+        readCore:async ids=>{const {data:rows,error}=await supabase.from('buildings').select('*').in('id',[...ids]).eq('organization_id',selectedOrganizationId).is('deleted_at',null);if(error)throw error;return rows;},
+        onCoreConfirmed:id=>{savedId=id;savedOwner.current=ownerSnapshot;setSavedServicesPayload(servicesPayload);if(building)setUpdatedBuildingId(id);else setCreatedBuildingId(id);},
+        saveRelated:async(id,progress,recovering)=>{
+          await owner.save(id,ownerSnapshot,recovering);
+          progress.stage='lưu dịch vụ tòa nhà';
+          try {const ids=await upsertServices.mutateAsync({buildingId:id,services:servicesPayload});progress.completed.push(...(ids??[]).map(serviceId=>({id:serviceId,label:'Đã đối chiếu dịch vụ tòa'})));}
+          catch(error){if(error instanceof FinancialWorkflowError)progress.completed.push(...error.completed);throw error;}
+        },
+      });
+      toast.success(`Đã ${building?'cập nhật':'tạo'} tòa nhà ${data.name}`);
+      setCreatedBuildingId(null);
+      setUpdatedBuildingId(null);
+      setSavedServicesPayload(null);
+      draftKey.current = null; savedOwner.current=null;
       onOpenChange(false);
-    } catch (error: any) {
-      // Errors handled by hook toasts
+    } catch (error: unknown) {
+      if (savedId) {
+        const message = recordWriteMessage(error,'lưu tòa nhà và dữ liệu liên quan')+" Mở lại tòa có ID đã lưu để đối chiếu; không tạo lại tòa.";
+        setPartialMessage(message);
+      } else {
+        setCoreFailure(error); setCoreBlocked(recordWriteBlocked(error));
+        form.setError('root.server', { type: 'server', message: recordWriteMessage(error,'lưu tòa nhà') });
+      }
     }
   };
 
+  const sources = [servicesQuery, ...(isEditMode ? [existingServicesQuery] : [])];
+  const sourceBlocked = sources.some(query => query.isError || query.isLoading);
   const isPending =
     createBuilding.isPending || updateBuilding.isPending || upsertServices.isPending || owner.saving || form.formState.isSubmitting;
 
@@ -238,7 +245,7 @@ export default function BuildingFormDialog({
   const hasElevator = form.watch('has_elevator');
 
   return (
-    <Dialog open={open} onOpenChange={value => { if (!isPending) onOpenChange(value); }}>
+    <Dialog open={open} onOpenChange={value => { if (!isPending && (value || (!createdBuildingId && !updatedBuildingId))) onOpenChange(value); }}>
       <DialogContent className="max-w-4xl max-h-[90vh] p-0">
         <DialogHeader className="px-6 pt-6 pb-2">
           <DialogTitle className="text-green-600 text-lg font-bold uppercase">
@@ -250,8 +257,12 @@ export default function BuildingFormDialog({
         </DialogHeader>
         <ScrollArea className="max-h-[calc(90vh-80px)] px-6 pb-6">
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              <fieldset disabled={!!createdBuildingId} className="space-y-4">
+            <form onSubmit={form.handleSubmit(onSubmit, errors => { void focusFirstError(errors); })} className="space-y-4">
+              {priorSave && <p role="alert" className="rounded border border-amber-500 p-3 text-sm">Yêu cầu lưu tòa trước chưa được xác nhận đầy đủ. {priorSave.ids.length>0?`ID cần đối chiếu: ${priorSave.ids.join(', ')}.`:'Giữ thông tin đã nhập và đối chiếu trước khi tạo lại.'} {priorSave.buildingId && <a className="underline" href={`/buildings/${priorSave.buildingId}`}>Mở tòa đã lưu</a>} Lần lưu tiếp chỉ được tiếp tục phần còn thiếu sau khi đối chiếu đúng tòa.</p>}
+              {form.formState.errors.root?.server?.message && <p role="alert" className="text-sm text-destructive">{form.formState.errors.root.server.message}</p>}
+              {partialMessage && <p role="alert" className="rounded-md border border-amber-500 p-3 text-sm">{partialMessage}</p>}
+              {sourceBlocked && <div role="alert" className="rounded border border-destructive p-3 text-sm">Chưa tải đủ dịch vụ của tòa. Tải lại trước khi lưu.<Button type="button" variant="outline" onClick={() => {for(const query of sources)void query.refetch();}}>Tải lại dịch vụ</Button></div>}
+              <fieldset disabled={isPending || coreBlocked || sourceBlocked || !!createdBuildingId || !!updatedBuildingId} className="space-y-4">
               {/* Section 1: Thông tin cơ bản */}
               <Card>
                 <CardContent className="pt-6 space-y-4">
@@ -453,7 +464,7 @@ export default function BuildingFormDialog({
               </Card>
 
               </fieldset>
-              {createdBuildingId && <p role="status" className="text-sm text-amber-700">Tòa nhà đã được tạo. Lần lưu tiếp theo chỉ hoàn tất chủ sở hữu và dịch vụ; thông tin cơ bản cần chỉnh sau khi hoàn tất.</p>}
+              {(createdBuildingId || updatedBuildingId) && <p role="status" className="text-sm text-amber-700">Tòa nhà đã lưu với ID {createdBuildingId ?? updatedBuildingId}. Lần lưu tiếp theo chỉ hoàn tất chủ sở hữu và dịch vụ; thông tin cơ bản cần chỉnh sau khi hoàn tất.</p>}
               <BuildingLegalOwnerFields {...owner} />
               {isEditMode && building && <BuildingOwnershipDocs buildingId={building.id} buildingName={building.name} />}
               {/* Footer */}
@@ -464,11 +475,11 @@ export default function BuildingFormDialog({
                   onClick={() => onOpenChange(false)}
                   disabled={isPending}
                 >
-                  Huỷ bỏ
+                  {createdBuildingId || updatedBuildingId ? 'Đóng để đối chiếu tòa đã lưu' : 'Huỷ bỏ'}
                 </Button>
                 <Button
                   type="submit"
-                  disabled={isPending || owner.loading || !!owner.error}
+                  disabled={isPending || coreBlocked || sourceBlocked || owner.loading || !!owner.error}
                   className="bg-green-600 hover:bg-green-700"
                 >
                   {isPending ? 'Đang lưu...' : 'Lưu'}

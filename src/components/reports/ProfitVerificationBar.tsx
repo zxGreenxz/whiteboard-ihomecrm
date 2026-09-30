@@ -1,3 +1,4 @@
+import {QueryRegion} from '@/components/errors/QueryRegion';
 import { useEffect, useState } from "react";
 import { ShieldCheck, AlertTriangle, ChevronDown, Info } from "lucide-react";
 import { useProfitVerification } from "@/hooks/useProfitVerification";
@@ -144,10 +145,10 @@ export function ProfitVerificationBar(props: ProfitVerificationBarProps) {
 
         {visualState === "UNAVAILABLE" ? (
           <span className="font-medium text-red-600">
-            UNAVAILABLE — không thể xác minh số server
+            Chưa tải được số liệu đối chiếu
           </span>
         ) : visualState === "LOADING" ? (
-          <span className="font-medium text-amber-700">Đang tải số kiểm chứng server…</span>
+          <span className="font-medium text-amber-700">Đang tải số liệu đối chiếu…</span>
         ) : capWarning ? (
           <span className="text-amber-700">
             ⚠ Danh sách chạm trần {capWarning.shown}/{capWarning.total} dòng — tổng ở thẻ vẫn đủ (server tính)
@@ -176,6 +177,7 @@ export function ProfitVerificationBar(props: ProfitVerificationBarProps) {
 
         <ChevronDown className={`h-4 w-4 ml-auto shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
+      <QueryRegion label="số liệu đối chiếu lợi nhuận" queries={[verificationQuery]}>
 
       {/* Hàng 2a (§2.3): phiếu CHỜ DUYỆT nằm TRONG tổng — counter riêng. */}
       {pendingCount > 0 && (
@@ -227,13 +229,6 @@ export function ProfitVerificationBar(props: ProfitVerificationBarProps) {
             {" — "}Σ dòng hiển thị: thu <b className="tabular-nums">{fmt(shownIncomeSum)}</b> · chi{" "}
             <b className="tabular-nums">{fmt(shownExpenseSum)}</b>
           </div>
-          {verificationQuery.isError && (
-            <div className="text-red-600">
-              {verificationQuery.error instanceof Error
-                ? verificationQuery.error.message
-                : "UNAVAILABLE: lỗi tải dữ liệu kiểm chứng"}
-            </div>
-          )}
           {v?.invoicePaid != null && (
             <div className="inline-flex items-start gap-1.5">
               <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
@@ -251,15 +246,16 @@ export function ProfitVerificationBar(props: ProfitVerificationBarProps) {
                 .map(([name]) => name)
                 .slice(0, 8)
                 .join(", ")}{" "}
-              — mở console/Phân tích tài chính để đối chiếu chi tiết.
+              — mở Phân tích tài chính để đối chiếu chi tiết.
             </div>
           )}
           <div className="text-[12px]">
-            Số kiểm chứng tính SERVER-SIDE trên toàn bộ phiếu khớp bộ lọc (không giới hạn 1000 dòng).
+            Số đối chiếu được tính trên toàn bộ phiếu khớp bộ lọc.
             {!accrualMode && " Chế độ tiền mặt: tổng thẻ theo ngày phiếu trong tháng."}
           </div>
         </div>
       )}
+      </QueryRegion>
     </div>
   );
 }

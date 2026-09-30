@@ -1,3 +1,6 @@
+import { QueryRegion } from '@/components/errors/QueryRegion';
+import { focusFirstError } from '@/lib/formErrors';
+import { actionErrorMessage } from '@/lib/actionFeedback';
 // =============================================================================
 // AutomationSettingsDialog.tsx — màn cài đặt đầy đủ cho hai tính năng tự động.
 //
@@ -50,13 +53,17 @@ interface Props {
 type Tab = 'broadcast' | 'reply' | 'nhatky';
 
 export default function AutomationSettingsDialog({ open, onOpenChange, conversations }: Props) {
-  const { data, isLoading } = useZaloAutomationConfigs(open);
+  const configQuery = useZaloAutomationConfigs(open);
+  const { data, isLoading } = configQuery;
   // Nhật ký chỉ nạp khi dialog mở — cùng lý do với cấu hình: đây là màn người
   // dùng chủ động mở, không phải thứ trang chat phải trả tiền băng thông cho.
-  const { data: runs = [], isLoading: dangTaiRuns } = useZaloAutomationRuns(open);
+  const runsQuery = useZaloAutomationRuns(open);
+  const { data: runs = [], isLoading: dangTaiRuns } = runsQuery;
   const luu = useSaveAutomation();
 
   const [tab, setTab] = useState<Tab>('broadcast');
+  const [errors,setErrors] = useState<Record<string,string>>({});
+  const [serverError,setServerError] = useState('');
 
   const [bcBat, setBcBat] = useState(false);
   const [bc, setBc] = useState<CauHinhBroadcast>(() => chuanHoaBroadcast(null));
@@ -94,11 +101,22 @@ export default function AutomationSettingsDialog({ open, onOpenChange, conversat
   const coDoi = tab === 'broadcast' ? bcDoi : arDoi;
 
   const luuTab = () => {
+    if(configQuery.isError || !daNap.current) return;
+    const fields:Record<string,string>={};
+    if(tab==='broadcast' && bcBat){
+      if(!bc.recipients.length) fields.recipients='Chọn ít nhất một người nhận trước khi bật lịch gửi.';
+      if(!bc.template.blocks.length) fields.template='Chọn ít nhất một khối nội dung trước khi bật lịch gửi.';
+    }
+    if(tab==='reply' && arBat && !ar.keywords.length) fields.keywords='Thêm từ khóa kích hoạt trước khi bật tự động trả lời.';
+    setErrors(fields);setServerError('');
+    if(Object.keys(fields).length){void focusFirstError(fields,{order:['recipients','template','keywords']});return;}
+
     if (tab === 'broadcast') {
       const sach = chuanHoaBroadcast(bc);
       luu.mutate(
         { kind: 'broadcast_vacant', enabled: bcBat, config: sach },
         {
+          onError: error => setServerError(actionErrorMessage(error,"Chưa lưu được cài đặt tự động hóa Zalo")),
           onSuccess: () => {
             // Ghi lại đúng thứ vừa gửi đi: giá trị có thể đã bị kẹp lúc chuẩn
             // hoá, nếu không đồng bộ thì form vẫn hiện số cũ và báo "chưa lưu".
@@ -112,6 +130,7 @@ export default function AutomationSettingsDialog({ open, onOpenChange, conversat
       luu.mutate(
         { kind: 'auto_reply', enabled: arBat, config: sach },
         {
+          onError: error => setServerError(actionErrorMessage(error,"Chưa lưu được cài đặt tự động hóa Zalo")),
           onSuccess: () => {
             setAr(sach);
             setBanDau((s) => ({ ...s, ar: JSON.stringify([arBat, sach]) }));
@@ -136,6 +155,7 @@ export default function AutomationSettingsDialog({ open, onOpenChange, conversat
           </DialogDescription>
         </DialogHeader>
 
+        <QueryRegion label="Cài đặt tự động hóa Zalo" queries={[configQuery]}>
         {isLoading && !daNap.current ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '34px 0', justifyContent: 'center', fontSize: 12.5, color: CHU_MO }}>
             <Loader2 size={15} className="animate-spin" />
@@ -187,11 +207,13 @@ export default function AutomationSettingsDialog({ open, onOpenChange, conversat
                   tieuDe="Người nhận"
                   moTa="Chỉ nhóm và hội thoại đã đánh dấu sale mới hiện ở đây — khách thuê không bao giờ nhận bản tin rao phòng."
                 >
+                  <div data-field-name="recipients" tabIndex={-1} aria-invalid={!!errors.recipients} className="rounded aria-[invalid=true]:border aria-[invalid=true]:border-destructive">
                   <RecipientPicker
                     conversations={conversations}
                     value={bc.recipients}
                     onChange={(ids) => setBc({ ...bc, recipients: ids })}
                   />
+                  {errors.recipients && <p role="alert" className="text-sm text-destructive">{errors.recipients}</p>}</div>
                 </KhoiCaiDat>
 
                 <KhoiCaiDat
@@ -207,12 +229,14 @@ export default function AutomationSettingsDialog({ open, onOpenChange, conversat
                   tieuDe="Nội dung tin"
                   moTa="Thứ tự khối chính là thứ tự gửi. Khối “chi tiết + ảnh từng phòng” chỉ chạy ở ngày ĐẦY ĐỦ."
                 >
+                  <div data-field-name="template" tabIndex={-1} aria-invalid={!!errors.template} className="rounded aria-[invalid=true]:border aria-[invalid=true]:border-destructive">
                   <TemplateBuilder
                     value={bc.template}
                     onChange={(t) => setBc({ ...bc, template: t })}
                     eventDriven={bc.eventDriven}
                     onEventDrivenChange={(e) => setBc({ ...bc, eventDriven: e })}
                   />
+                  {errors.template && <p role="alert" className="text-sm text-destructive">{errors.template}</p>}</div>
                 </KhoiCaiDat>
 
                 <KhoiCaiDat
@@ -246,7 +270,7 @@ export default function AutomationSettingsDialog({ open, onOpenChange, conversat
                   tieuDe="Điều kiện và nội dung trả lời"
                   moTa="Từ khoá chặn luôn thắng từ khoá kích hoạt: tin nào chạm danh sách chặn thì máy im lặng."
                 >
-                  <AutoReplyFields value={ar} onChange={setAr} />
+                  <div data-field-name="keywords" tabIndex={-1} aria-invalid={!!errors.keywords} className="rounded aria-[invalid=true]:border aria-[invalid=true]:border-destructive"><AutoReplyFields value={ar} onChange={setAr} />{errors.keywords && <p role="alert" className="text-sm text-destructive">{errors.keywords}</p>}</div>
                 </KhoiCaiDat>
               </div>
             </TabsContent>
@@ -255,20 +279,21 @@ export default function AutomationSettingsDialog({ open, onOpenChange, conversat
             <TabsContent value="nhatky">
               <div style={{ maxHeight: '58vh', overflowY: 'auto', paddingRight: 4 }}>
                 <p style={{ fontSize: 12, color: CHU_MO, margin: '2px 0 10px' }}>
-                  Mỗi lượt engine chạy đều ghi một dòng, <b>kể cả lượt quyết định không gửi</b>.
+                  Mỗi lượt tự động chạy đều ghi một dòng, <b>kể cả lượt quyết định không gửi</b>.
                   Nhật ký trống nhiều ngày trong khi tính năng đang bật là dấu hiệu tài khoản Zalo
                   đã rớt phiên — lúc đó tự động hoá ngừng trong im lặng.
                 </p>
-                <RunLog runs={runs} loading={dangTaiRuns} />
+                <QueryRegion label="Nhật ký tự động hóa Zalo" queries={[runsQuery]}><RunLog runs={runs} loading={dangTaiRuns} /></QueryRegion>
               </div>
             </TabsContent>
           </Tabs>
         )}
 
+        {serverError && <p role="alert" className="text-sm text-destructive">{serverError}</p>}
         <DialogFooter className="items-center gap-2 sm:justify-between">
           <span style={{ fontSize: 11.5, color: coDoi && tab !== 'nhatky' ? 'hsl(17 88% 38%)' : CHU_MO, fontWeight: coDoi && tab !== 'nhatky' ? 600 : 400 }}>
             {tab === 'nhatky'
-              ? 'Nhật ký chỉ đọc — worker là bên ghi.'
+              ? 'Nhật ký ghi lại kết quả xử lý tự động.'
               : coDoi ? 'Có thay đổi chưa lưu ở tab này.' : 'Nút Lưu chỉ ghi tab đang mở.'}
           </span>
           <span style={{ display: 'flex', gap: 8 }}>
@@ -276,13 +301,13 @@ export default function AutomationSettingsDialog({ open, onOpenChange, conversat
               Đóng
             </Button>
             {tab !== 'nhatky' && (
-              <Button onClick={luuTab} disabled={luu.isPending || isLoading}>
+              <Button onClick={luuTab} disabled={luu.isPending || isLoading || configQuery.isError}>
                 {luu.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 {tab === 'broadcast' ? 'Lưu lịch gửi' : 'Lưu tự động trả lời'}
               </Button>
             )}
           </span>
-        </DialogFooter>
+        </DialogFooter></QueryRegion>
       </DialogContent>
     </Dialog>
   );

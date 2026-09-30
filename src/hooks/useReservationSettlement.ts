@@ -92,6 +92,7 @@ export function useSettleReservationDeposit() {
   const invalidate = useInvalidateSettlementData();
   const idempotency = useStableIdempotencyKey("reservation-settle");
   return useMutation({
+    meta: { handlesFeedback: true },
     mutationFn: (input: Omit<SettleReservationInput, "idempotencyKey">) => {
       const p_input: SettleReservationInput = { ...input, idempotencyKey: idempotency.keyFor(input) };
       return invokeReservationSettlementRpc(
@@ -106,6 +107,7 @@ export function usePayReservationRefund() {
   const invalidate = useInvalidateSettlementData();
   const idempotency = useStableIdempotencyKey("reservation-refund");
   return useMutation({
+    meta: { handlesFeedback: true },
     mutationFn: (input: Omit<PayReservationRefundInput, "idempotencyKey">) => {
       const p_input: PayReservationRefundInput = { ...input, idempotencyKey: idempotency.keyFor(input) };
       return invokeReservationSettlementRpc(

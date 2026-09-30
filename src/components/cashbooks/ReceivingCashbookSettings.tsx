@@ -17,7 +17,8 @@
 // =============================================================================
 
 import { useId, useMemo, useState } from "react";
-import { ZodError } from "zod";
+import { receivingCashbookError } from "@/lib/receivingCashbookFeedback";
+import { FinancialWorkflowError } from "@/lib/financialWorkflow";
 import { AlertTriangle, Banknote, ChevronDown, Landmark, Loader2, Lock, Save } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -68,9 +69,7 @@ function tenVai(memberType: string | null): string {
 }
 
 function thongDiepLoi(error: unknown): string {
-  if (error instanceof ZodError) return "Máy chủ trả dữ liệu không đúng dạng — tải lại trang, còn lỗi thì báo quản trị.";
-  const message = (error as { message?: unknown } | null)?.message;
-  return typeof message === "string" && message.trim() ? message : "Lỗi không rõ — thử lại sau.";
+  return receivingCashbookError(error,"tải cấu hình sổ nhận tiền");
 }
 
 function cungCauHinh(a: MethodConfig, b: MethodConfig): boolean {
@@ -102,6 +101,13 @@ export default function ReceivingCashbookSettings() {
   const settings = useReceivingCashbookSettings(selectedOrganizationId, quyen.allowed);
 
   if (quyen.isLoading) return <KhungDangTai />;
+
+  if (quyen.error) return <Alert variant="destructive">
+    <AlertTitle>Chưa kiểm tra được quyền cài sổ nhận tiền</AlertTitle>
+    <AlertDescription>Tải lại để kiểm tra quyền của bạn trước khi thay đổi cấu hình.
+      <Button type="button" variant="outline" size="sm" className="mt-2" onClick={() => void quyen.refetch()}>Tải lại</Button>
+    </AlertDescription>
+  </Alert>;
 
   if (!quyen.allowed) {
     return (
@@ -210,7 +216,7 @@ function DongSoTienMat({
   soGiu: Account[];
   soConDung: Set<string>;
 }) {
-  const luu = useSetPersonalCashBook();
+  const luu = useSetPersonalCashBook(member.name ?? undefined);
   const ten = member.name?.trim() || "Không tên";
   const hienTai = member.personalCashBook;
   // Sổ đang cài mà người đó không còn giữ (hoặc sổ đã xoá / thành sổ ảo): vẫn phải
@@ -235,8 +241,9 @@ function DongSoTienMat({
         </Badge>
       </div>
       <div className="w-full space-y-1 sm:w-72 sm:shrink-0">
+        {luu.isError && <p role="alert" className="text-sm text-red-600">{receivingCashbookError(luu.error, `lưu sổ tiền mặt riêng của ${ten}`)}</p>}
         <div className="flex items-center gap-2">
-          <Select value={dangChon ?? CHUA_CAI} onValueChange={doiSo} disabled={luu.isPending || khongGiuSoNao}>
+          <Select value={dangChon ?? CHUA_CAI} onValueChange={doiSo} disabled={luu.isPending || luu.error instanceof FinancialWorkflowError || khongGiuSoNao}>
             <SelectTrigger aria-label={`Sổ tiền mặt riêng của ${ten}`} className="min-w-0 flex-1">
               <SelectValue />
             </SelectTrigger>
@@ -321,7 +328,7 @@ function CaiSoTheoHinhThuc({
   accounts: Account[];
   theoId: Map<string, Account>;
 }) {
-  const luu = useSetBuildingReceivingCashbooks();
+  const luu = useSetBuildingReceivingCashbooks(building.name);
   const idMacDinh = useId();
   const idSoPhu = useId();
   const [nhap, setNhap] = useState<MethodConfig | null>(null);
@@ -364,12 +371,13 @@ function CaiSoTheoHinhThuc({
   return (
     <div className="min-w-0 space-y-2 rounded-md bg-muted/40 p-2.5 sm:p-3">
       <p className="text-sm font-medium">{tenHinhThuc}</p>
+      {luu.isError && <p role="alert" className="text-sm text-red-600">{receivingCashbookError(luu.error, `lưu sổ nhận tiền ${nhan}`)}</p>}
 
       <div className="space-y-1">
         <Label htmlFor={idMacDinh} className="text-xs font-normal text-muted-foreground">
           Sổ mặc định
         </Label>
-        <Select value={dangSua.defaultAccountId ?? CHUA_CAI} onValueChange={chonMacDinh} disabled={luu.isPending}>
+        <Select value={dangSua.defaultAccountId ?? CHUA_CAI} onValueChange={chonMacDinh} disabled={luu.isPending || luu.error instanceof FinancialWorkflowError}>
           <SelectTrigger id={idMacDinh} aria-label={`Sổ mặc định ${nhan}`} className="bg-background">
             <SelectValue />
           </SelectTrigger>
@@ -466,7 +474,7 @@ function CaiSoTheoHinhThuc({
           type="button"
           size="sm"
           onClick={luuLai}
-          disabled={!coThayDoi || macDinhHong || luu.isPending}
+          disabled={!coThayDoi || macDinhHong || luu.isPending || luu.error instanceof FinancialWorkflowError}
           aria-label={`Lưu ${nhan}`}
         >
           {luu.isPending ? (

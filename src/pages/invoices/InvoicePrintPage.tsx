@@ -1,3 +1,5 @@
+import {invoiceForPrint,invoicePrintItemLabel} from '@/lib/invoicePrintRead';
+import { Button } from "@/components/ui/button";
 import { useEffect } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -6,8 +8,9 @@ import { batBuoc } from "@/lib/queryGuard";
 import { format } from "date-fns";
 import { formatVND } from "@/lib/utils";
 
-const useInvoiceForPrint = (id: string | undefined) =>
+export const useInvoiceForPrint = (id: string | undefined) =>
   useQuery({
+    meta:{errorDisplay:"inline",label:"hóa đơn để in"},
     queryKey: ["invoice", "print", id],
     enabled: !!id,
     queryFn: async () => {
@@ -28,33 +31,31 @@ const useInvoiceForPrint = (id: string | undefined) =>
         )
         .eq("id", batBuoc(id, "id"))
         .single() as any);
-      if (error) {
-        console.error(error);
-        return null;
-      }
-      return data as any;
+      if (error) throw error;
+      return invoiceForPrint(data,batBuoc(id,"id"));
     },
   });
 
 const InvoicePrintPage = () => {
   const { id } = useParams<{ id: string }>();
-  const { data: inv, isLoading } = useInvoiceForPrint(id);
+  const { data: inv, isLoading, isError, refetch } = useInvoiceForPrint(id);
 
   useEffect(() => {
-    if (inv) {
+    if (inv && !isError) {
       const t = setTimeout(() => window.print(), 500);
       return () => clearTimeout(t);
     }
-  }, [inv]);
+  }, [inv,isError]);
 
   if (isLoading) return <div className="p-8 text-center">Đang tải...</div>;
+  if (isError) return <div role="alert" className="p-8 text-center">Chưa tải được hóa đơn để in. Không in khi dữ liệu chưa được xác nhận.<Button variant="outline" onClick={()=>void refetch()}>Tải lại</Button></div>;
   if (!inv) return <div className="p-8 text-center text-red-600">Không tìm thấy hoá đơn</div>;
 
-  const items = (inv.invoice_items || []).slice().sort(
-    (a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0)
+  const items = inv.invoice_items.slice().sort(
+    (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)
   );
   const tenant = inv.contract?.tenant;
-  const remaining = (inv.total_amount || 0) - (inv.paid_amount || 0);
+  const remaining = inv.total_amount - inv.paid_amount;
 
   return (
     <div className="bg-white text-black min-h-screen">
@@ -167,11 +168,11 @@ const InvoicePrintPage = () => {
           <tbody>
             {items.length === 0 ? (
               <tr><td colSpan={5} style={{ textAlign: "center" }}>—</td></tr>
-            ) : items.map((it: any, i: number) => (
+            ) : items.map((it, i) => (
               <tr key={it.id}>
                 <td>{i + 1}</td>
-                <td>{it.description || it.type}</td>
-                <td className="num">{Number(it.quantity ?? 1)}</td>
+                <td>{it.description || invoicePrintItemLabel(it.type)}</td>
+                <td className="num">{it.quantity}</td>
                 <td className="num">{formatVND(it.unit_price)}</td>
                 <td className="num">{formatVND(it.amount)}</td>
               </tr>
@@ -181,10 +182,10 @@ const InvoicePrintPage = () => {
 
         <div className="summary">
           <div><span>Tạm tính:</span><span>{formatVND(inv.subtotal)}</span></div>
-          {Number(inv.discount_amount || 0) > 0 && (
+          {inv.discount_amount > 0 && (
             <div><span>Giảm giá:</span><span>− {formatVND(inv.discount_amount)}</span></div>
           )}
-          {Number(inv.previous_debt || 0) !== 0 && (
+          {inv.previous_debt !== 0 && (
             <div><span>Nợ kỳ trước:</span><span>{formatVND(inv.previous_debt)}</span></div>
           )}
           <div className="total"><span>TỔNG CỘNG:</span><span>{formatVND(inv.total_amount)}</span></div>

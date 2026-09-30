@@ -1,3 +1,7 @@
+import {useIncomeExpenseRevisions} from '@/hooks/income-expenses/revisions';
+import { focusFirstError } from "@/lib/formErrors";
+import { voucherFailureMessage, voucherOutcomeUnknown, VoucherPartialError } from "@/lib/voucherFeedback";
+import { QueryRegion } from "@/components/errors/QueryRegion";
 import { useIncomeExpenseDetail } from "@/hooks/income-expenses/detailRead";
 import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useState, useCallback, useEffect, useMemo, useRef, lazy, Suspense } from "react";
@@ -172,9 +176,14 @@ const IncomeExpenseDesktopPage = () => {
   const [cancelTargetType, setCancelTargetType] = useState<string | null>(null);
   // Huỷ phiếu ĐÃ CHI: cảnh báo hoàn-tác-tiền + lý do (ghi vào reversal).
   const [cancelReason, setCancelReason] = useState("");
+  const [reasonError, setReasonError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [blockedVoucherId, setBlockedVoucherId] = useState<string | null>(null);
   const [restoreTarget, setRestoreTarget] = useState<string | null>(null);
   const [approveTarget, setApproveTarget] =
     useState<IncomeExpenseWithRelations | null>(null);
+  const approveHistoryQuery=useIncomeExpenseRevisions(approveTarget?.id);
+  const approveHistoryBlocked=!!approveTarget&&(approveHistoryQuery.isError||approveHistoryQuery.isLoading||approveHistoryQuery.data===undefined);
   // Duyệt phiếu: cho bổ sung/đổi sổ quỹ + đính kèm ngay trước khi ghi vào tồn quỹ.
   const [approveAccountId, setApproveAccountId] = useState<string>("");
   const [approveAttachments, setApproveAttachments] = useState<string[]>([]);
@@ -329,26 +338,27 @@ const IncomeExpenseDesktopPage = () => {
   useCopilotPageContext('income-expenses.list', { ...effectiveFilters, search: parsedSearch.text, view: viewMode }, detailVoucher);
   // keepPreviousData: màn danh sách phân trang — giữ trang cũ để bảng không nhảy
   // về skeleton mỗi lần đổi trang/filter (opt-in ở consumer, xem useIncomeExpenses).
-  const { data: listResult, isLoading, isError: listError, refetch: retryList } = useIncomeExpenses(
+  const listQuery = useIncomeExpenses(
     effectiveFilters,
     { page: pagination.page, pageSize: pagination.pageSize },
     parsedSearch.text,
-    { keepPreviousData: true }
+    { keepPreviousData: true, inlineErrors: true }
   );
+  const { data: listResult, isLoading, isError: listError, refetch: retryList } = listQuery;
 
-  const { data: batchResult, isLoading: isBatchLoading, isError: batchError, refetch: retryBatch } =
-    useIncomeExpenseBatches(
+  const batchQuery = useIncomeExpenseBatches(
       effectiveFilters,
       { page: pagination.page, pageSize: pagination.pageSize },
       parsedSearch.text,
       // Chỉ fetch Phiếu tổng khi đang xem tab đó — đỡ 1 query nặng mỗi lần
       // tải trang ở tab Phiếu lẻ (mặc định).
-      { enabled: viewMode === "batch" }
+      { enabled: viewMode === "batch", inlineErrors: true }
     );
+  const { data: batchResult, isLoading: isBatchLoading, isError: batchError, refetch: retryBatch } = batchQuery;
 
-  const vouchers = listError ? [] : listResult?.data ?? [];
+  const vouchers = listResult?.data ?? [];
   const totalCount = listResult?.totalCount ?? 0;
-  const batches = batchError ? [] : batchResult?.data ?? [];
+  const batches = batchResult?.data ?? [];
   const batchTotalCount = batchResult?.totalCount ?? 0;
 
   const detailBatch =
@@ -356,8 +366,8 @@ const IncomeExpenseDesktopPage = () => {
       ? batches.find((b) => b.id === detailBatchId) ?? null
       : null;
 
-  const { data: stats, isLoading: isStatsLoading } =
-    useIncomeExpenseStats(effectiveFilters, { keepPreviousData: true });
+  const statsQuery = useIncomeExpenseStats(effectiveFilters, { keepPreviousData: true, inlineErrors: true });
+  const { data: stats, isLoading: isStatsLoading } = statsQuery;
 
   const cancelMutation = useCancelIncomeExpense();
   const flexCancelMutation = useCancelVoucherFlex();
@@ -389,7 +399,7 @@ const IncomeExpenseDesktopPage = () => {
   const approveAndPostV2Mutation = useApproveAndPostIncomeExpenseV2();
   const postApprovedV2Mutation = usePostApprovedIncomeExpenseV2();
   const reversePostingV2Mutation = useReversePostingV2();
-  const { data: custodianBooks = [] } = useCustodianCashbooksV2(
+  const { data: custodianBooks = [], isError: cashbookError, refetch: retryCashbooks } = useCustodianCashbooksV2(
     approveAndPostOpen || !!postApprovedTarget,
   );
 
@@ -454,6 +464,7 @@ const IncomeExpenseDesktopPage = () => {
       );
       setApproveAttachments(approveTarget.attachments ?? []);
       setApproveReason("");
+      setActionError(null); setReasonError(null);
     }
   }, [accounts, approveTarget]);
   const approveNeedsReason =
@@ -551,6 +562,13 @@ const IncomeExpenseDesktopPage = () => {
   const confirmApprove = useCallback(async () => {
     const target = approveTarget;
     if (!target) return;
+    if (blockedVoucherId === target.id||approveHistoryBlocked) return;
+    if (!v2ApproveOnly && approveNeedsReason && !approveReasonOk) {
+      setReasonError("approveReason");
+      void focusFirstError({approveReason: "Nhập lý do đổi sổ có ít nhất 8 ký tự."});
+      return;
+    }
+    setActionError(null);
     // V2 CANONICAL: duyệt-only qua RPC canonical — KHÔNG đổi tồn quỹ, không quick-update
     // sổ/ảnh (posting fields thuộc Posting dialog, §12.3). Không có fallback legacy.
     if (v2ApproveOnly) {
@@ -561,8 +579,9 @@ const IncomeExpenseDesktopPage = () => {
             (target as { approval_version?: number }).approval_version ?? 1,
         });
         setApproveTarget(null);
-      } catch {
-        // toast đã hiển thị trong hook; giữ hộp thoại để người dùng thử lại.
+      } catch (error) {
+        setActionError(voucherFailureMessage(error, "duyệt phiếu"));
+        if (voucherOutcomeUnknown(error)) setBlockedVoucherId(target.id);
       }
       return;
     }
@@ -570,6 +589,7 @@ const IncomeExpenseDesktopPage = () => {
       account_id: approveAccountId || null,
       attachments: approveAttachments,
     });
+    let revisionSaved = false;
     try {
       let version = target.approval_version;
       if (Object.keys(patch).length > 0) {
@@ -581,17 +601,22 @@ const IncomeExpenseDesktopPage = () => {
           silent: true,
         });
         version = revised.approval_version;
+        revisionSaved = revised.changed !== false;
       }
       await approveMutation.mutateAsync({ id: target.id, expectedApprovalVersion: version });
       setApproveTarget(null);
-    } catch {
-      // toast đã hiển thị trong hook; giữ hộp thoại để người dùng thử lại.
+    } catch (error) {
+      setActionError(revisionSaved
+        ? `Đã lưu thay đổi của phiếu nhưng chưa hoàn tất duyệt. ${voucherFailureMessage(error, "duyệt phiếu")} Tải lại phiếu trước khi tiếp tục.`
+        : voucherFailureMessage(error, "duyệt phiếu"));
+      if (revisionSaved || voucherOutcomeUnknown(error)) setBlockedVoucherId(target.id);
     }
   }, [
     approveTarget,
     approveAccountId,
     approveAttachments,
     approveReason,
+    approveNeedsReason, approveReasonOk, blockedVoucherId, approveHistoryBlocked,
     approveMutation,
     reviseMutation,
     v2ApproveOnly,
@@ -629,50 +654,39 @@ const IncomeExpenseDesktopPage = () => {
     setCancelBatchTarget(batchId);
   }, []);
 
-  const confirmCancel = useCallback(() => {
+  const confirmCancel = async () => {
+    if (!cancelTarget || blockedVoucherId === cancelTarget) return;
     const reason = cancelReason.trim();
-    if (cancelTarget) {
-      // ĐỢT A: phiếu THU đi cửa riêng — server tự rẽ nhánh đợt thu hoá đơn /
-      // cặp bỏ cọc / phiếu thường và tự mở lại nợ hoá đơn. Không còn thang 6
-      // bậc, không còn "owned by system flow".
-      if (cancelTargetGate.useIncomeDoor) {
-        cancelIncomeMutation.mutate({ voucherId: cancelTarget, reason });
-      } else if (cancelTargetGate.useFlexWriter && cancelTargetVoucher) {
-        // Đợt 4 (phiếu CHI): writer linh hoạt là đường duy nhất truyền được CAS
-        // hai version. Đường cũ luôn gửi null nên hai người bấm cùng lúc là huỷ
-        // đè lên nhau trong im lặng.
-        flexCancelMutation.mutate({
-          voucherId: cancelTarget,
-          reason,
-          expectedApprovalVersion: cancelTargetVoucher.approval_version ?? null,
-          expectedPostingVersion: cancelTargetVoucher.posting_version ?? null,
-        });
-      } else {
-        cancelMutation.mutate(
-          reason ? { id: cancelTarget, reason } : cancelTarget,
-        );
-      }
+    if (reason.length < 8) {
+      setReasonError("cancelReason"); void focusFirstError({cancelReason: "Nhập lý do huỷ có ít nhất 8 ký tự."}); return;
     }
-    setCancelTarget(null);
-    setCancelTargetType(null);
-    setCancelReason("");
-  }, [
-    cancelTarget,
-    cancelReason,
-    cancelMutation,
-    cancelIncomeMutation,
-    cancelTargetGate.useFlexWriter,
-    cancelTargetGate.useIncomeDoor,
-    cancelTargetVoucher,
-    flexCancelMutation,
-  ]);
+    setActionError(null);
+    try {
+      if (cancelTargetGate.useIncomeDoor) await cancelIncomeMutation.mutateAsync({voucherId:cancelTarget,reason});
+      else if (cancelTargetGate.useFlexWriter && cancelTargetVoucher) await flexCancelMutation.mutateAsync({voucherId:cancelTarget,reason,expectedApprovalVersion:cancelTargetVoucher.approval_version ?? null,expectedPostingVersion:cancelTargetVoucher.posting_version ?? null});
+      else await cancelMutation.mutateAsync({id:cancelTarget,reason});
+      setCancelTarget(null); setCancelTargetType(null); setCancelReason("");
+    } catch (error) {
+      setActionError(voucherFailureMessage(error,"huỷ phiếu"));
+      if (voucherOutcomeUnknown(error) || error instanceof VoucherPartialError) setBlockedVoucherId(cancelTarget);
+    }
+  };
 
-  const confirmCancelBatch = useCallback(() => {
-    if (cancelBatchTarget) {
-      cancelBatchMutation.mutate(cancelBatchTarget);
+  const confirmCancelBatch = async () => {
+    if (!cancelBatchTarget || blockedVoucherId === cancelBatchTarget) return;
+    setActionError(null);
+    try {
+      const result = await cancelBatchMutation.mutateAsync(cancelBatchTarget);
+      if (result.failures?.length) {
+        setActionError(`Đã huỷ ${result.count} phiếu; ${result.failures.length} phiếu chưa hoàn tất. Kiểm tra từng phiếu trong đợt trước khi thao tác tiếp.`);
+        setBlockedVoucherId(cancelBatchTarget); return;
+      }
+      setCancelBatchTarget(null);
+    } catch(error) {
+      setActionError(voucherFailureMessage(error,"huỷ đợt phiếu"));
+      if (error instanceof VoucherPartialError || voucherOutcomeUnknown(error)) setBlockedVoucherId(cancelBatchTarget);
     }
-    setCancelBatchTarget(null);
-  }, [cancelBatchTarget, cancelBatchMutation]);
+  };
 
   const handleViewModeChange = useCallback(
     (v: string) => {
@@ -753,12 +767,14 @@ const IncomeExpenseDesktopPage = () => {
           onChange={handleFiltersChange}
         />
 
+        <QueryRegion label="thống kê thu chi" queries={[statsQuery]}>
         <IncomeExpenseStats
           stats={statsData}
           isLoading={isStatsLoading}
           onShowInternal={() => handleFiltersChange({ ...filters, layer: 'INTERNAL' })}
           onShowPending={() => handleFiltersChange({ ...filters, layer: 'PENDING' })}
         />
+        </QueryRegion>
 
         {/* View mode toggle + Search */}
         <div className="flex items-center gap-2">
@@ -828,7 +844,8 @@ const IncomeExpenseDesktopPage = () => {
           </div>
         </div>
 
-        {(viewMode === "individual" ? listError : batchError) ? <div role="alert" className="p-6 text-destructive">Không tải được đầy đủ chi tiết phiếu. <Button onClick={() => viewMode === "individual" ? retryList() : retryBatch()}>Thử lại</Button></div> : viewMode === "individual" ? (
+        <QueryRegion label="danh sách phiếu thu chi" queries={[viewMode === "individual" ? listQuery : batchQuery]}>
+        {viewMode === "individual" ? (
           <IncomeExpenseList
             vouchers={vouchers}
             isLoading={isLoading || parsedSearch.pending}
@@ -861,6 +878,7 @@ const IncomeExpenseDesktopPage = () => {
             totalCount={batchTotalCount}
           />
         )}
+        </QueryRegion>
       </div>
 
       <IncomeExpenseForm
@@ -1018,21 +1036,25 @@ const IncomeExpenseDesktopPage = () => {
               phiếu đã huỷ phải tự giải thích được khi đối soát về sau. */}
           <div className="space-y-1">
             <Textarea
+              name="cancelReason"
+              aria-invalid={reasonError === "cancelReason"}
               value={cancelReason}
-              onChange={(e) => setCancelReason(e.target.value)}
+              onChange={(e) => { setCancelReason(e.target.value); setReasonError(null); }}
               placeholder="Lý do huỷ (bắt buộc, ít nhất 8 ký tự) — ví dụ: ghi nhầm số tiền, khách huỷ giao dịch…"
               rows={2}
             />
             <p className="text-xs text-muted-foreground">
+              {reasonError === "cancelReason" && <span role="alert" className="text-destructive">Nhập lý do huỷ có ít nhất 8 ký tự. </span>}
               Lý do được lưu cùng mốc lập / duyệt / huỷ phiếu để đối soát lại khi cần.
             </p>
           </div>
+          {actionError && <p role="alert" className="text-sm text-destructive">{actionError}</p>}
           <AlertDialogFooter>
             <AlertDialogCancel>Đóng</AlertDialogCancel>
             <AlertDialogAction
-              onClick={confirmCancel}
+              onClick={(event) => { event.preventDefault(); void confirmCancel(); }}
               disabled={
-                cancelReason.trim().length < 8 ||
+                blockedVoucherId === cancelTarget ||
                 !cancelTargetGate.canCancel ||
                 flexCancelMutation.isPending ||
                 cancelIncomeMutation.isPending ||
@@ -1040,7 +1062,7 @@ const IncomeExpenseDesktopPage = () => {
               }
               className="bg-red-600 hover:bg-red-700"
             >
-              {cancelTargetPosted ? "Huỷ phiếu & trừ khỏi sổ quỹ" : "Huỷ phiếu"}
+              {cancelTargetPosted ? "Huỷ phiếu và cập nhật sổ quỹ" : "Huỷ phiếu"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1060,6 +1082,7 @@ const IncomeExpenseDesktopPage = () => {
               lịch sử của phiếu.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {actionError && <p role="alert" className="text-sm text-destructive">{actionError}</p>}
           <AlertDialogFooter>
             <AlertDialogCancel>Đóng</AlertDialogCancel>
             <AlertDialogAction
@@ -1129,12 +1152,15 @@ const IncomeExpenseDesktopPage = () => {
                 <Label htmlFor="approve-reason">Lý do đổi sổ quỹ *</Label>
                 <Textarea
                   id="approve-reason"
+                  name="approveReason"
+                  aria-invalid={reasonError === "approveReason"}
                   value={approveReason}
-                  onChange={(e) => setApproveReason(e.target.value)}
+                  onChange={(e) => { setApproveReason(e.target.value); setReasonError(null); }}
                   rows={2}
                   placeholder="Vì sao đổi sang sổ khác?"
                 />
                 <p className="text-xs text-muted-foreground">
+                  {reasonError === "approveReason" && <span role="alert" className="text-destructive">Nhập lý do đổi sổ có ít nhất 8 ký tự. </span>}
                   Đổi sổ được lưu thành một lần sửa phiếu (ít nhất {REVISION_REASON_MIN} ký tự).
                 </p>
               </div>
@@ -1151,10 +1177,11 @@ const IncomeExpenseDesktopPage = () => {
           </div>
           )}
 
+          {actionError && <p role="alert" className="text-sm text-destructive">{actionError}</p>}
           <AlertDialogFooter>
             <AlertDialogCancel
               disabled={
-                approveMutation.isPending ||
+                approveHistoryBlocked || approveMutation.isPending ||
                 reviseMutation.isPending ||
                 approveV2Mutation.isPending
               }
@@ -1183,7 +1210,7 @@ const IncomeExpenseDesktopPage = () => {
                 reviseMutation.isPending ||
                 approveV2Mutation.isPending ||
                 (!v2ApproveOnly && isShareholderPayout && !approveAccountId) ||
-                (!v2ApproveOnly && approveNeedsReason && !approveReasonOk)
+                blockedVoucherId === approveTarget?.id
               }
               className="bg-green-600 hover:bg-green-700"
             >
@@ -1216,6 +1243,8 @@ const IncomeExpenseDesktopPage = () => {
           }}
           capability={{ isCustodian: custodianBooks.length > 0, canApprove: true }}
           cashbookOptions={custodianBooks}
+          cashbookError={cashbookError}
+          onRetryCashbooks={retryCashbooks}
           expectedExecutionRevision={0}
           expectedApprovalVersion={
             (approveTarget as { approval_version?: number }).approval_version ?? 1
@@ -1278,20 +1307,23 @@ const IncomeExpenseDesktopPage = () => {
             placeholder="Lý do hoàn tác (ghi vào bút toán — nên nhập)"
             rows={2}
           />
+          {actionError && <p role="alert" className="text-sm text-destructive">{actionError}</p>}
           <AlertDialogFooter>
             <AlertDialogCancel>Đóng</AlertDialogCancel>
             <AlertDialogAction
               className="bg-violet-600 hover:bg-violet-700"
               disabled={reversePostingV2Mutation.isPending}
-              onClick={() => {
-                if (!reverseTarget?.account_id) return;
-                reversePostingV2Mutation.mutate({
-                  voucherId: reverseTarget.id,
-                  cashbookId: reverseTarget.account_id,
-                  reason: reverseReason.trim() || null,
-                });
-                setReverseTarget(null);
-                setReverseReason("");
+              onClick={async (event) => {
+                event.preventDefault();
+                if (!reverseTarget?.account_id || blockedVoucherId === reverseTarget.id) return;
+                setActionError(null);
+                try {
+                  await reversePostingV2Mutation.mutateAsync({voucherId:reverseTarget.id,cashbookId:reverseTarget.account_id,reason:reverseReason.trim() || null});
+                  setReverseTarget(null); setReverseReason("");
+                } catch(error) {
+                  setActionError(voucherFailureMessage(error,"hoàn tác thu/chi"));
+                  if (voucherOutcomeUnknown(error)) setBlockedVoucherId(reverseTarget.id);
+                }
               }}
             >
               Hoàn tác
@@ -1319,6 +1351,8 @@ const IncomeExpenseDesktopPage = () => {
           }}
           capability={{ isCustodian: custodianBooks.length > 0, canApprove: false }}
           cashbookOptions={custodianBooks}
+          cashbookError={cashbookError}
+          onRetryCashbooks={retryCashbooks}
           expectedExecutionRevision={0}
           expectedApprovalVersion={postApprovedTarget.approval_version ?? 1}
           expectedPostingVersion={postApprovedTarget.posting_version ?? 1}
@@ -1357,6 +1391,7 @@ const IncomeExpenseDesktopPage = () => {
               đã ghi nhận.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {actionError && <p role="alert" className="text-sm text-destructive">{actionError}</p>}
           <AlertDialogFooter>
             <AlertDialogCancel>Đóng</AlertDialogCancel>
             <AlertDialogAction
@@ -1377,15 +1412,14 @@ const IncomeExpenseDesktopPage = () => {
           <AlertDialogHeader>
             <AlertDialogTitle>Xác nhận huỷ cả đợt</AlertDialogTitle>
             <AlertDialogDescription>
-              Tất cả phiếu trong đợt sẽ được đánh dấu <b>Đã huỷ</b> cùng lúc và
-              không còn ảnh hưởng đến tồn quỹ. Các phiếu vẫn được lưu lại trong
-              lịch sử.
+              Hệ thống sẽ huỷ từng phiếu trong đợt và báo số phiếu hoàn tất. Nếu một phiếu chưa huỷ được, hãy kiểm tra kết quả từng phiếu trước khi tiếp tục. Lịch sử vẫn được giữ.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {actionError && <p role="alert" className="text-sm text-destructive">{actionError}</p>}
           <AlertDialogFooter>
             <AlertDialogCancel>Đóng</AlertDialogCancel>
             <AlertDialogAction
-              onClick={confirmCancelBatch}
+              onClick={(event) => { event.preventDefault(); void confirmCancelBatch(); }}
               className="bg-red-600 hover:bg-red-700"
             >
               Huỷ cả đợt

@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
@@ -28,6 +28,8 @@ import {
   useUpdateIncomeExpenseTemplate,
   type IncomeExpenseTemplate,
 } from '@/hooks/useIncomeExpenseTemplates';
+import { focusFirstError } from '@/lib/formErrors';
+import { recordWriteBlocked, recordWriteMessage } from '@/lib/recordWriteOutcome';
 
 interface IncomeExpenseTemplateFormProps {
   open: boolean;
@@ -37,6 +39,9 @@ interface IncomeExpenseTemplateFormProps {
 
 const IncomeExpenseTemplateForm = ({ open, onOpenChange, template }: IncomeExpenseTemplateFormProps) => {
   const isEditing = !!template;
+  const [blocked,setBlocked]=useState(false);
+  const busy=useRef(false);
+  const draftKey=useRef<string|null>(null);
   const createTemplate = useCreateIncomeExpenseTemplate();
   const updateTemplate = useUpdateIncomeExpenseTemplate();
 
@@ -53,6 +58,10 @@ const IncomeExpenseTemplateForm = ({ open, onOpenChange, template }: IncomeExpen
 
   // Populate form when editing, reset when adding
   useEffect(() => {
+    if(!open) return;
+    const key=template?.id ?? 'new';
+    if(draftKey.current===key && (form.formState.isDirty || form.formState.errors.root?.server || blocked)) return;
+    draftKey.current=key;setBlocked(false);
     if (template && open) {
       form.reset({
         name: template.name,
@@ -73,6 +82,9 @@ const IncomeExpenseTemplateForm = ({ open, onOpenChange, template }: IncomeExpen
   }, [template, open, form]);
 
   const onSubmit = async (data: IncomeExpenseTemplateFormValues) => {
+    if(blocked || busy.current || createTemplate.isPending || updateTemplate.isPending) return;
+    busy.current=true;
+    form.clearErrors('root.server');
     try {
       if (isEditing) {
         await updateTemplate.mutateAsync({
@@ -94,17 +106,20 @@ const IncomeExpenseTemplateForm = ({ open, onOpenChange, template }: IncomeExpen
           is_income_template: data.is_income_template ?? false,
         });
       }
+      draftKey.current=null;
+      form.reset();
       onOpenChange(false);
-    } catch {
-      // Errors handled by mutation hooks (toast)
-    }
+    } catch (error) {
+      setBlocked(recordWriteBlocked(error));
+      form.setError('root.server', { type: 'server', message: recordWriteMessage(error,'lưu mẫu in thu chi') });
+    } finally {busy.current=false;}
   };
 
   const isPending = createTemplate.isPending || updateTemplate.isPending;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[480px]">
+    <Dialog open={open} onOpenChange={next=>{if(!isPending && !busy.current) onOpenChange(next);}}>
+      <DialogContent aria-describedby={undefined} className="sm:max-w-[480px]">
         <DialogHeader>
           <DialogTitle>
             {isEditing ? 'Sửa mẫu in thu chi' : 'Thêm mẫu in thu chi'}
@@ -112,7 +127,9 @@ const IncomeExpenseTemplateForm = ({ open, onOpenChange, template }: IncomeExpen
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={form.handleSubmit(onSubmit, errors => { void focusFirstError(errors); })} className="space-y-4">
+            {form.formState.errors.root?.server?.message && <p role="alert" className="text-sm text-destructive">{form.formState.errors.root.server.message}</p>}
+            <fieldset disabled={isPending || blocked} className="space-y-4">
             <FormField
               control={form.control}
               name="name"
@@ -203,10 +220,11 @@ const IncomeExpenseTemplateForm = ({ open, onOpenChange, template }: IncomeExpen
               >
                 Hủy
               </Button>
-              <Button type="submit" disabled={isPending}>
+              <Button type="submit" disabled={isPending || blocked}>
                 {isPending ? 'Đang lưu...' : 'Lưu'}
               </Button>
             </div>
+            </fieldset>
           </form>
         </Form>
       </DialogContent>

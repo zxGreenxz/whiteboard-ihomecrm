@@ -11,6 +11,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { friendlyError } from "@/lib/friendlyError";
 
 export interface OrgAccountingStandard {
   organization_id: string;
@@ -30,8 +31,9 @@ export const useAccountingStandard = () =>
       const { data, error } = await supabase.rpc(
         "list_ie_accounting_standard_v1",
       );
-      if (error) throw new Error(error.message);
-      return (data ?? []) as OrgAccountingStandard[];
+      if (error) throw error;
+      if (!Array.isArray(data)) throw new Error('Chưa xác nhận được Chuẩn kế toán của tổ chức. Tải lại trước khi thay đổi cấu hình.');
+      return data as OrgAccountingStandard[];
     },
   });
 
@@ -52,7 +54,11 @@ export const useSetAccountingStandard = () => {
           p_reason: input.reason ?? undefined,
         },
       );
-      if (error) throw new Error(error.message);
+      if (error) throw error;
+      if (!data || typeof data !== 'object' || !('organization_id' in data) || !('strict_mode' in data) || !('changed' in data) ||
+          data.organization_id !== input.organizationId || typeof data.strict_mode !== 'boolean' || typeof data.changed !== 'boolean') {
+        throw new Error('Chưa xác nhận được kết quả đổi Chuẩn kế toán. Tải lại trạng thái tổ chức trước khi thao tác tiếp.');
+      }
       return data as { organization_id: string; strict_mode: boolean; changed: boolean };
     },
     onSuccess: (result) => {
@@ -60,16 +66,19 @@ export const useSetAccountingStandard = () => {
       // Cờ chế độ đi chung kênh với route Finance V2 — phải làm mới cả hai,
       // nếu không giao diện thu chi vẫn hiển thị theo chế độ cũ tới 60 giây.
       qc.invalidateQueries({ queryKey: ["finance-v2-routes"] });
+      if (!result.changed) {
+        toast.info("Chuẩn kế toán không thay đổi");
+        return;
+      }
       toast.success(
-        result?.changed === false
-          ? "Chế độ không đổi"
-          : result?.strict_mode
-            ? "Đã bật Chuẩn kế toán — thu chi quay lại cơ chế chặt"
-            : "Đã tắt Chuẩn kế toán — thu chi chuyển sang cơ chế linh hoạt",
+        result.strict_mode
+            ? "Đã bật chế độ Chuẩn kế toán."
+            : "Đã tắt chế độ Chuẩn kế toán.",
       );
     },
-    onError: (error: Error) => {
-      toast.error(error.message || "Không đổi được chế độ");
+    onError: (error: unknown) => {
+      const feedback = friendlyError(error, "Chưa đổi được Chuẩn kế toán", { operation: "đổi Chuẩn kế toán", financial: true });
+      toast.error(feedback.title, { description: feedback.description });
     },
   });
 };

@@ -11,13 +11,13 @@ describe("incomeExpenseTypeErrorMessage", () => {
     ).toBe("Hạng mục này đã tồn tại trong tổ chức");
   });
 
-  it("preserves a non-duplicate database message", () => {
+  it("does not expose an unrelated database message", () => {
     expect(
       incomeExpenseTypeErrorMessage(
         { code: "42501", message: "DB unavailable" },
         "fallback",
       ),
-    ).toBe("DB unavailable");
+    ).toBe("fallback");
   });
 
   it("uses the operation fallback when the database has no useful message", () => {

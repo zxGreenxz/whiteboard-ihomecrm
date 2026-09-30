@@ -14,6 +14,8 @@
 //   thích ở đầu file đó). Modal chỉ biết "xong" hay "chưa", không cầm token.
 import { useEffect, useRef, useState } from 'react';
 
+import { focusFirstError } from '@/lib/formErrors';
+
 import { xacThucPin } from './plan/stepUpClient';
 
 const SO_O = 4;
@@ -39,6 +41,7 @@ export default function StepUpPinModal({ organizationId, onXacThucXong, onHuy }:
   const [oSo, setOSo] = useState<string[]>(() => Array(SO_O).fill(''));
   const [dangGui, setDangGui] = useState(false);
   const [loi, setLoi] = useState('');
+  const modalRef = useRef<HTMLDivElement>(null);
   const oRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   useEffect(() => {
@@ -77,23 +80,34 @@ export default function StepUpPinModal({ organizationId, onXacThucXong, onHuy }:
     if (dangGui || !duDo) return;
     setDangGui(true);
     setLoi('');
-    const kq = await xacThucPin(pin, organizationId);
-    setDangGui(false);
-    if (!kq.ok) {
-      const phan: string[] = [];
-      if (kq.thongBao) phan.push(kq.thongBao);
-      if (kq.soLanConLai !== null) phan.push(`Còn ${kq.soLanConLai} lần thử.`);
-      if (kq.khoaConGiay !== null) phan.push(`Thử lại sau ${kq.khoaConGiay} giây.`);
-      setLoi(phan.join(' ') || 'Không xác thực được PIN.');
-      setOSo(Array(SO_O).fill(''));
-      oRefs.current[0]?.focus();
-      return;
+    try {
+      const kq = await xacThucPin(pin, organizationId);
+      setDangGui(false);
+      if (!kq.ok) {
+        const phan: string[] = [];
+        if (kq.thongBao) phan.push(kq.thongBao);
+        if (kq.soLanConLai !== null) phan.push(`Còn ${kq.soLanConLai} lần thử.`);
+        if (kq.khoaConGiay !== null) phan.push(`Thử lại sau ${kq.khoaConGiay} giây.`);
+        const message = phan.join(' ') || 'Không xác thực được PIN.';
+        setLoi(message);
+        setOSo(Array(SO_O).fill(''));
+        await focusFirstError({ 'pinDigits.0': message }, { root: modalRef.current });
+        return;
+      }
+      onXacThucXong();
+    } catch {
+      setDangGui(false);
+      const message = 'Chưa xác thực được PIN. Kiểm tra kết nối rồi thử xác thực lại.';
+      setLoi(message);
+      await focusFirstError({ 'pinDigits.0': message }, { root: modalRef.current });
+    } finally {
+      setDangGui(false);
     }
-    onXacThucXong();
   };
 
   return (
     <div
+      ref={modalRef}
       data-testid="copilot-step-up-modal"
       className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 p-4"
       role="dialog"
@@ -108,10 +122,15 @@ export default function StepUpPinModal({ organizationId, onXacThucXong, onHuy }:
           {oSo.map((gt, i) => (
             <input
               key={i}
+              name={`pinDigits.${i}`}
               ref={(el) => {
                 oRefs.current[i] = el;
               }}
               data-testid={`copilot-step-up-digit-${i}`}
+              aria-label={`Chữ số PIN thứ ${i + 1}`}
+              aria-invalid={!!loi}
+              aria-describedby={loi ? "copilot-pin-error" : undefined}
+              style={loi ? {borderColor:"hsl(var(--destructive))"} : undefined}
               type="password"
               inputMode="numeric"
               autoComplete={i === 0 ? 'one-time-code' : 'off'}
@@ -125,7 +144,7 @@ export default function StepUpPinModal({ organizationId, onXacThucXong, onHuy }:
           ))}
         </div>
         {loi && (
-          <p className="mb-3 text-xs text-red-700" data-testid="copilot-step-up-loi">
+          <p id="copilot-pin-error" role="alert" className="mb-3 text-xs text-red-700" data-testid="copilot-step-up-loi">
             {loi}
           </p>
         )}

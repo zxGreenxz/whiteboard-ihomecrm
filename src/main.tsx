@@ -3,7 +3,6 @@ import App from "./App.tsx";
 import "./index.css";
 import { reloadOnceForStaleChunk } from "./lib/chunkReload";
 import { hideAppSplash } from "./lib/appSplash";
-import { registerServiceWorker } from "./lib/push";
 import { initPerfTrace } from "./lib/perfTrace";
 import { ganMetaBuildSha } from './buildMetadata';
 
@@ -31,5 +30,6 @@ window.setTimeout(hideAppSplash, 4500);
 
 // Đăng ký service worker (PWA + Web Push). Không chặn render.
 window.addEventListener("load", () => {
-  registerServiceWorker();
+  void import("./lib/push").then(({ registerServiceWorker }) => registerServiceWorker())
+    .catch(error => console.warn("[push] background service worker registration failed", error));
 });

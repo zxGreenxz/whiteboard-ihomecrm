@@ -1,3 +1,7 @@
+import {validateInputDrafts} from '@/lib/inputDraftValidation';
+import {focusFirstError} from '@/lib/formErrors';
+import { feeFailureMessage } from "@/lib/feeFeedback";
+import { createdVoucherFeedback, voucherFailureMessage, voucherOutcomeUnknown } from '@/lib/voucherFeedback';
 // =============================================================================
 // usePeriodFeeState V2 — state + hành động dùng chung (desktop panel + mobile sheet)
 // cho họ GRID của trang "Đóng tiền Tập trung theo Kỳ". 1 dòng / tòa.
@@ -71,6 +75,8 @@ import {
   addMonths,
   readSlot, writeSlot, subscribeSlot, retainSlot, releaseSlot, inflightPays,
 } from '@/lib/periodFeeSlots';
+
+const uncertainFeePays = new Set<string>();
 
 const fmtDate = (d?: string | null) => (d ? d.slice(0, 10).split('-').reverse().join('/') : '');
 
@@ -189,6 +195,9 @@ export function usePeriodFeeState(
     return () => releaseSlot(scope);
   }, [scope]);
   const { amounts, bookSel, attach, periodN, draft, payingKey } = slot;
+  const [editError,setEditError]=useState<string|null>(null);
+  const [blockedEdits,setBlockedEdits]=useState<Set<string>>(()=>new Set());
+  const [amountErrors,setAmountErrors]=useState<Record<string,string>>({});
   const patch = (p: (s: FeeSlot) => Partial<FeeSlot>) =>
     writeSlot(scope, (s) => ({ ...s, ...p(s) }));
 
@@ -280,21 +289,21 @@ export function usePeriodFeeState(
     const cfg = cfgOf(bId);
     if (code === (cfg?.providerCode ?? '') && holder === (cfg?.accountHolder ?? '')) return;
     if (!code && !holder && !cfg) return;
-    upsertCfg.mutate({ buildingId: bId, feeCategory: key, providerCode: code || null, accountHolder: holder || null });
+    upsertCfg.mutate({ buildingId: bId, feeCategory: key, providerCode: code || null, accountHolder: holder || null }, {onError:error=>toast.error(feeFailureMessage(error,"lưu thông tin phí"))});
   };
 
   /** Sửa số tiền DỰ KIẾN (inline). */
   const saveExpected = (bId: string, amount: number | null) =>
     upsertCfg.mutate(
       { buildingId: bId, feeCategory: key, defaultAmount: amount },
-      { onSuccess: () => toast.success('Đã lưu số tiền dự kiến') },
+      { onSuccess: () => toast.success('Đã lưu số tiền dự kiến'), onError:error=>toast.error(feeFailureMessage(error,'lưu số tiền dự kiến')) },
     );
 
   /** Cờ "Không áp dụng" cho tòa×hạng mục. */
   const setNotApplicable = (bId: string, na: boolean) =>
     upsertCfg.mutate(
       { buildingId: bId, feeCategory: key, notApplicable: na },
-      { onSuccess: () => toast.success(na ? `Đã đánh dấu KHÔNG áp dụng — ${buildingName(bId)}` : `Đã bật lại hạng mục — ${buildingName(bId)}`) },
+      { onSuccess: () => toast.success(na ? `Đã đánh dấu KHÔNG áp dụng — ${buildingName(bId)}` : `Đã bật lại hạng mục — ${buildingName(bId)}`), onError:error=>toast.error(feeFailureMessage(error,"đổi áp dụng phí; trạng thái vẫn giữ theo lần lưu trước")) },
     );
 
   // ── Đính ảnh (1 input file dùng chung 4 mode) ──
@@ -344,7 +353,7 @@ export function usePeriodFeeState(
         patch((s) => ({ attach: { ...s.attach, [bId!]: url } }));
         toast.success('Đã đính kèm ảnh phiếu');
       }
-    } catch (ex) { toast.error('Không tải được ảnh: ' + (ex as Error).message); }
+    } catch (ex) { toast.error(`Chưa đính được ảnh ${file.name}. Kiểm tra ảnh hiện có trên phiếu trước khi tải lại.`); }
     finally { setUploadingKey(null); }
   };
 
@@ -387,6 +396,10 @@ export function usePeriodFeeState(
     // Chốt đồng bộ: chặn cú bấm thứ hai (bề mặt kia, hoặc double-click) NGAY,
     // không chờ re-render như `disabled` của nút.
     const lock = `${scope}::${bId}`;
+    if (uncertainFeePays.has(lock)) {
+      toast.error('Lần tạo phiếu trước chưa xác nhận được kết quả. Tải lại danh sách và kiểm tra phiếu trước khi đóng tiếp.');
+      return;
+    }
     if (inflightPays.has(lock)) {
       toast.error('Đang gửi phiếu cho ô này — chờ kết quả rồi hãy bấm lại.');
       return;
@@ -397,6 +410,7 @@ export function usePeriodFeeState(
     }
     const amount = amountOf(bId);
     const n = nOf(bId);
+    if(!Number.isFinite(amount)||amount<=0||!Number.isInteger(n)||n<1){toast.error('Kiểm tra số tiền và số kỳ cần đóng trước khi tạo phiếu.');return;}
     const periodEnd = addMonths(period, n - 1);
     const accountId = bookSel[bId] ?? defaultBookFor(bId) ?? null;
     inflightPays.add(lock);
@@ -447,16 +461,22 @@ export function usePeriodFeeState(
         };
       });
       if (accountId) rememberBook(bId, accountId);
-      toast.success(`Đã chi ${fmtFull(amount)} — ${category.label} · ${buildingName(bId)}`);
-    } catch (ex) { toast.error((ex as Error).message); }
+      const feedback = createdVoucherFeedback(res);
+      toast[feedback.kind](`${feedback.message} ${fmtFull(amount)} — ${category.label} · ${buildingName(bId)}`);
+    } catch (ex) {
+      if (voucherOutcomeUnknown(ex)) uncertainFeePays.add(lock);
+      toast.error(voucherFailureMessage(ex, "tạo phiếu phí định kỳ"));
+    }
     finally {
       inflightPays.delete(lock);
       patch((s) => (s.payingKey === bId ? { payingKey: null } : {}));
     }
   };
-  const submitPay = async (bId: string) => {
+  const submitPay = async (bId: string, root?:HTMLElement|null) => {
+    if(root && !validateInputDrafts(root))return;
     const amount = amountOf(bId);
-    if (amount <= 0) { toast.error('Nhập số tiền cần đóng'); return; }
+    if (!Number.isFinite(amount) || amount <= 0) {const message='Nhập số tiền cần đóng lớn hơn 0.';setAmountErrors(errors=>({...errors,[bId]:message}));void focusFirstError({[`fee_amount_${bId}`]:message},{root});return;}
+    setAmountErrors(errors=>{const next={...errors};delete next[bId];return next;});
     await doPay(bId, false);
   };
   const confirmPayDup = async () => {
@@ -481,6 +501,7 @@ export function usePeriodFeeState(
   };
   const submitPayDraft = async (accountId: string) => {
     if (!draftTarget) return;
+    if (uncertainFeePays.has(`draft::${draftTarget.voucher.id}`)) { toast.error('Lần thanh toán trước chưa xác nhận kết quả. Mở phiếu để đối chiếu trước khi chi tiếp.'); return; }
     try {
       const res = await payDraftMut.mutateAsync({
         voucherId: draftTarget.voucher.id,
@@ -488,10 +509,11 @@ export function usePeriodFeeState(
         attachments: draftPayAttachments.length ? draftPayAttachments : null,
       });
       rememberBook(draftTarget.buildingId, accountId);
-      toast.success(`Đã thanh toán & duyệt phiếu ${res.code ?? ''} — ${draftTarget.categoryLabel} · ${draftTarget.buildingName}`);
+      const feedback=createdVoucherFeedback(res); toast[feedback.kind](feedback.message.replace('Đã tạo','Đã cập nhật'));
+      if (res.posting_status !== 'POSTED') { uncertainFeePays.add(`draft::${draftTarget.voucher.id}`); return; }
       setDraftTarget(null);
       setDraftPayAttachments([]);
-    } catch (ex) { toast.error((ex as Error).message); }
+    } catch (ex) { if(voucherOutcomeUnknown(ex))uncertainFeePays.add(`draft::${draftTarget.voucher.id}`); toast.error(feeFailureMessage(ex,"chi phiếu phí")); }
   };
 
   // ── Hủy phiếu (per-voucher) ──
@@ -540,7 +562,7 @@ export function usePeriodFeeState(
       toast.success('Đã hủy phiếu chi');
       setCancelTarget(null);
       setCancelBId(null);
-    } catch (ex) { toast.error((ex as Error).message); }
+    } catch (ex) { toast.error(feeFailureMessage(ex,"hủy phiếu phí")); }
   };
 
   // ── Sửa phiếu (seed từ voucher CỤ THỂ) ──
@@ -578,7 +600,8 @@ export function usePeriodFeeState(
     accountId?: string | null;
     notes?: string;
   }) => {
-    if (!editTarget) return;
+    if (!editTarget || blockedEdits.has(editTarget.voucherId)) return;
+    setEditError(null);
     const t = editTarget;
     const mergedAtts = t.newAttachments.length ? [...t.existingAttachments, ...t.newAttachments] : null;
     const notesChanged = args.isAdmin && args.notes != null && args.notes !== t.notesOriginal;
@@ -595,10 +618,11 @@ export function usePeriodFeeState(
       });
       toast.success('Đã lưu thay đổi phiếu');
       setEditTarget(null);
-    } catch (ex) { toast.error((ex as Error).message); }
+    } catch (ex) {const message=feeFailureMessage(ex,"sửa phiếu phí");setEditError(message);toast.error(message);if(voucherOutcomeUnknown(ex))setBlockedEdits(ids=>new Set([...ids,t.voucherId]));}
   };
 
   return {
+    amountErrors,editError,editBlocked:!!editTarget&&blockedEdits.has(editTarget.voucherId),
     detailsLoading: accountRead.isLoading || preferenceRead.isLoading,
     detailsError: accountRead.isError || preferenceRead.isError,
     refetchDetails: () => Promise.all([accountRead.refetch(), preferenceRead.refetch()]),

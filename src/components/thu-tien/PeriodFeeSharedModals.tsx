@@ -41,6 +41,8 @@ export function PeriodFeeSharedModals({
         isAdmin={isAdmin}
         myBooks={S.myBooks}
         saving={S.saving}
+        error={S.editError}
+        blocked={S.editBlocked}
         uploading={S.uploadingKey === '__edit__'}
         onAttach={S.onEditAttachClick}
         onView={onView}

@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { friendlyError } from "@/lib/friendlyError";
+import { requireAccountWriteReceipt } from "@/lib/accountSettingsWriteReceipt";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ChevronDown, DoorOpen, Plus, Check, X, Images } from "lucide-react";
@@ -47,7 +49,12 @@ export default function MobileSaleInfo() {
   const [similarIds, setSimilarIds] = useState<string[]>([]);
   const [amenDraft, setAmenDraft] = useState("");
   const [savingRoom, setSavingRoom] = useState(false);
+  const [roomSaveError, setRoomSaveError] = useState("");
+  const errorRoomId = useRef("");
   useEffect(() => {
+    if (room && room.id === errorRoomId.current) return;
+    errorRoomId.current = "";
+    setRoomSaveError("");
     setAmenities(toStrArr(room?.amenities));
     setRImages(toStrArr(room?.images));
     setSimilarIds([]);
@@ -86,20 +93,43 @@ export default function MobileSaleInfo() {
   const saveRoom = async () => {
     if (!room) return;
     setSavingRoom(true);
+    setRoomSaveError("");
+    const savedIds: string[] = [];
     try {
-      const { error: e1 } = await supabase.from("rooms")
-        .update({ amenities: amenities.length > 0 ? amenities : null, images: rImages }).eq("id", room.id);
+      const mainPatch = { amenities: amenities.length > 0 ? amenities : null, images: rImages };
+      const { data: main, error: e1 } = await supabase.from("rooms")
+        .update(mainPatch).eq("id", room.id).select("id,images,amenities").single();
       if (e1) throw e1;
+      requireAccountWriteReceipt(main, { id: room.id, ...mainPatch });
+      savedIds.push(room.id);
       if (similarIds.length > 0) {
-        const { error: e2 } = await supabase.from("rooms").update({ images: rImages }).in("id", similarIds);
+        const { data: peers, error: e2 } = await supabase.from("rooms")
+          .update({ images: rImages }).in("id", similarIds).select("id,images");
         if (e2) throw e2;
+        if (!Array.isArray(peers)) throw new TypeError("Malformed room image receipts");
+        for (const row of peers) {
+          if (!similarIds.includes(row.id)) throw new TypeError("Unexpected room image receipt");
+          requireAccountWriteReceipt(row, { id: row.id, images: rImages });
+          if (!savedIds.includes(row.id)) savedIds.push(row.id);
+        }
+        if (peers.length !== similarIds.length || savedIds.length !== similarIds.length + 1)
+          throw new TypeError("Incomplete room image receipts");
       }
-      toast.success(similarIds.length > 0 ? `Đã lưu & đồng bộ ảnh cho ${similarIds.length + 1} phòng` : "Đã lưu thông tin phòng");
+      errorRoomId.current = "";
+      toast.success(similarIds.length > 0
+        ? "Đã lưu phòng " + room.name + " và xác nhận đồng bộ ảnh cho " + savedIds.length + " phòng."
+        : "Đã lưu thông tin phòng " + room.name + ".");
       qc.invalidateQueries({ queryKey: ["rooms"] });
       qc.invalidateQueries({ queryKey: ["buildings"] });
       qc.invalidateQueries({ queryKey: ["my-available-rooms"] });
-    } catch (err) {
-      toast.error("Không thể lưu: " + ((err as { message?: string })?.message ?? "lỗi không xác định"));
+    } catch (error) {
+      const feedback = friendlyError(error, "Chưa xác nhận được kết quả lưu thông tin sale", { operation: "lưu thông tin sale" });
+      const description = savedIds.length
+        ? "Đã lưu phòng " + room.name + " (" + room.id + "). Chưa xác nhận đồng bộ đầy đủ ảnh; giữ nội dung và kiểm tra các phòng đã chọn. Mã phòng đã xác nhận: " + savedIds.join(", ") + ". " + feedback.description
+        : "Chưa xác nhận được kết quả lưu phòng " + room.name + " (" + room.id + "). " + feedback.description;
+      errorRoomId.current = room.id;
+      setRoomSaveError(description);
+      toast.error(savedIds.length ? "Thông tin sale mới lưu một phần" : feedback.title, { description });
     } finally {
       setSavingRoom(false);
     }
@@ -198,6 +228,7 @@ export default function MobileSaleInfo() {
                 )}
               </div>
 
+              {roomSaveError && <p role="alert" className="text-sm text-destructive">{roomSaveError}</p>}
               <button className="sp-save" onClick={saveRoom} disabled={savingRoom}>
                 {savingRoom ? "Đang lưu…" : similarIds.length > 0 ? `Lưu & đồng bộ (${similarIds.length + 1} phòng)` : "Lưu thông tin phòng"}
               </button>

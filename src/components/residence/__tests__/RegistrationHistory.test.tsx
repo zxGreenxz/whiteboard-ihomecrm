@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // Dấu "đã đăng ký tạm trú": hiện lần nộp mới nhất, gấp các lần trước thành lịch sử.
 import React from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -59,5 +59,15 @@ describe('RegistrationManualEntry', () => {
     fireEvent.change(o, { target: { value: ' G01.899.909-260916-890028 ' } });
     fireEvent.click(screen.getByRole('button', { name: 'Lưu' }));
     expect(onGhi).toHaveBeenCalledWith('G01.899.909-260916-890028');
+  });
+  it('giữ mã và biểu mẫu khi lưu thất bại', async () => {
+    const onGhi = vi.fn().mockRejectedValue(new Error('failed'));
+    render(<RegistrationManualEntry onGhi={onGhi} />);
+    fireEvent.click(screen.getByRole('button', { name: /ghi mã hồ sơ đã nộp/i }));
+    fireEvent.change(screen.getByLabelText('Mã hồ sơ đã nộp'), { target: { value: 'G01.899.909-260916-890028' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Lưu' }));
+    await waitFor(() => expect(screen.getByRole('alert')).toBeTruthy());
+    expect((screen.getByLabelText('Mã hồ sơ đã nộp') as HTMLInputElement).value).toBe('G01.899.909-260916-890028');
+    expect(screen.getByRole('button', { name: 'Lưu' }).hasAttribute('disabled')).toBe(false);
   });
 });

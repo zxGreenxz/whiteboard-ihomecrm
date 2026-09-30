@@ -3,20 +3,18 @@
 // nên giữ đủ lịch sử và lấy dòng mới nhất để hiển thị.
 import { supabase } from '@/integrations/supabase/client';
 import { getSessionUser } from '@/lib/authSession';
+import { FinancialWorkflowError } from './financialWorkflowError';
 import type { Database } from '@/integrations/supabase/types';
 
 type Row = Database['public']['Tables']['residence_registrations']['Row'];
 export type ResidenceRegistration = Pick<Row, 'id' | 'organization_id' | 'building_id' | 'customer_id' | 'contract_id'
   | 'subm_code' | 'receive_org' | 'temp_resident_from' | 'temp_resident_to' | 'submitted_at' | 'created_at'>;
 
-export class RegistrationError extends Error {}
+import { RegistrationError, maHoSoHopLe } from './residenceRegistrationValidation';
+export { RegistrationError, maHoSoHopLe } from './residenceRegistrationValidation';
 
 const COLUMNS = 'id,organization_id,building_id,customer_id,contract_id,subm_code,receive_org,temp_resident_from,temp_resident_to,submitted_at,created_at';
 
-/** Mã hồ sơ cổng cấp: G01.899.909-260916-890012. Chặn rác trước khi ghi vào sổ. */
-export function maHoSoHopLe(raw: unknown): raw is string {
-  return typeof raw === 'string' && /^[A-Z0-9][A-Z0-9.\-/]{4,60}$/i.test(raw.trim());
-}
 
 /** dd/mm/yyyy → yyyy-mm-dd; trả null nếu không đúng dạng (cột date không nhận rác). */
 export function ngayIso(raw: string | null | undefined): string | null {
@@ -29,7 +27,8 @@ export async function listCustomerRegistrations(customerId: string): Promise<Res
   const { data, error } = await supabase.from('residence_registrations').select(COLUMNS)
     .eq('customer_id', customerId).is('deleted_at', null).order('submitted_at', { ascending: false });
   if (error) throw new RegistrationError('Không tải được lịch sử đăng ký tạm trú.');
-  return (data ?? []) as ResidenceRegistration[];
+  if (!Array.isArray(data)) throw new RegistrationError('Chưa tải được lịch sử đăng ký tạm trú.');
+  return data as ResidenceRegistration[];
 }
 
 export interface GhiHoSoInput {
@@ -54,6 +53,14 @@ export async function ghiHoSoTamTru(input: GhiHoSoInput): Promise<ResidenceRegis
   if (!maHoSoHopLe(input.submCode)) throw new RegistrationError('Mã hồ sơ không hợp lệ.');
   const user = await getSessionUser();
   if (!user) throw new RegistrationError('Bạn cần đăng nhập lại.');
+  const matches = (row: ResidenceRegistration | null): row is ResidenceRegistration => !!row?.id
+    && row.organization_id === input.organizationId && row.customer_id === input.customerId && row.building_id === input.buildingId
+    && row.subm_code === input.submCode.trim() && row.contract_id === (input.contractId ?? null)
+    && row.receive_org === (input.receiveOrg ?? '').slice(0,200)
+    && row.temp_resident_from === ngayIso(input.tempResidentFrom) && row.temp_resident_to === ngayIso(input.tempResidentTo);
+  // Load the feedback receipt coordinator only when saving; the guard still precedes every writer.
+  const { persistentFinancialWorkflow } = await import('./persistentFinancialWorkflow');
+  return persistentFinancialWorkflow('residence-registration-save', {scope:'target'}).run(input.submCode.trim(), 'lưu mã hồ sơ tạm trú', async (progress) => {
   const { data, error } = await supabase.from('residence_registrations').upsert({
     organization_id: input.organizationId,
     building_id: input.buildingId,
@@ -66,12 +73,23 @@ export async function ghiHoSoTamTru(input: GhiHoSoInput): Promise<ResidenceRegis
     submitted_at: input.submittedAt ?? new Date().toISOString(),
     created_by: user.id,
   }, { onConflict: 'organization_id,subm_code' }).select(COLUMNS).single();
-  if (error || !data) {
-    throw new RegistrationError(error?.code === '42501'
-      ? 'Bạn không có quyền ghi hồ sơ tạm trú của khách này.'
-      : 'Chưa lưu được mã hồ sơ tạm trú. Vui lòng thử lại.');
+  if (error) {
+    if (error.code === '42501') throw new FinancialWorkflowError('Bạn không có quyền ghi hồ sơ tạm trú của khách này.', 'failure', [], error);
+    throw error;
   }
+  const ids = data?.id ? [{id:data.id,label:'Mã hồ sơ tạm trú cần đối chiếu'}] : [];
+  if (!matches(data)) {
+    throw new FinancialWorkflowError('Chưa xác nhận được mã hồ sơ tạm trú đã lưu. Giữ mã đang nhập và đối chiếu lịch sử trước khi gửi lại.', 'unknown', ids);
+  }
+  progress.completed.push(...ids);
   return data as ResidenceRegistration;
+  }, async (pending) => {
+    const {data,error} = await supabase.from('residence_registrations').select(COLUMNS)
+      .eq('organization_id',input.organizationId).eq('subm_code',input.submCode.trim()).is('deleted_at',null).maybeSingle();
+    if (error) throw error;
+    if (!matches(data) || (pending.completedIds.length > 0 && !pending.completedIds.includes(data.id))) return null;
+    return {result:data as ResidenceRegistration};
+  }, input.organizationId);
 }
 
 /** yyyy-mm-dd hoặc ISO → dd/mm/yyyy để hiện lên giao diện. */

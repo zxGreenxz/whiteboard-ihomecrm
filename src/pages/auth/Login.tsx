@@ -1,3 +1,4 @@
+import { focusFirstError } from '@/lib/asyncFormErrors';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useLogin } from '@/hooks/useAuth';
@@ -37,6 +38,7 @@ const Login = () => {
     }
 
     setErrors(newErrors);
+    void focusFirstError(newErrors, { order: ['identifier', 'password'] });
     return Object.keys(newErrors).length === 0;
   };
 
@@ -49,7 +51,12 @@ const Login = () => {
       identifier: formData.identifier, // Can be phone or email
       password: formData.password,
       rememberMe: formData.rememberMe,
-    });
+    }, { onError: (error: Error & { code?: string }) => {
+      if (error.code === 'invalid_credentials' || error.message === 'Invalid login credentials') {
+        const invalid = { identifier: 'Email/số điện thoại hoặc mật khẩu không đúng.', password: 'Kiểm tra lại thông tin đăng nhập.' };
+        setErrors(invalid); void focusFirstError(invalid, { order: ['identifier', 'password'] });
+      }
+    } });
   };
 
   const handleChange = (field: string, value: string | boolean) => {
@@ -80,7 +87,7 @@ const Login = () => {
             <div className="space-y-2">
               <Label htmlFor="identifier">Tài Khoản</Label>
               <Input
-                id="identifier"
+                id="identifier" name="identifier" aria-invalid={!!errors.identifier} aria-describedby={errors.identifier ? "identifier-error" : undefined}
                 type="text"
                 value={formData.identifier}
                 onChange={(e) => handleChange('identifier', e.target.value)}
@@ -88,7 +95,7 @@ const Login = () => {
                 autoComplete="username"
               />
               {errors.identifier && (
-                <p className="text-sm text-red-500">{errors.identifier}</p>
+                <p id="identifier-error" role="alert" className="text-sm text-red-500">{errors.identifier}</p>
               )}
             </div>
 
@@ -105,7 +112,7 @@ const Login = () => {
               </div>
               <div className="relative">
                 <Input
-                  id="password"
+                  id="password" name="password" aria-invalid={!!errors.password} aria-describedby={errors.password ? "password-error" : undefined}
                   type={showPassword ? 'text' : 'password'}
                   value={formData.password}
                   onChange={(e) => handleChange('password', e.target.value)}
@@ -121,7 +128,7 @@ const Login = () => {
                 </button>
               </div>
               {errors.password && (
-                <p className="text-sm text-red-500">{errors.password}</p>
+                <p id="password-error" role="alert" className="text-sm text-red-500">{errors.password}</p>
               )}
             </div>
 

@@ -3,17 +3,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ContractDraft } from '@/lib/contractDrafts';
 import { emptyContractDraftPayload } from '@/lib/contractDrafts';
-const mocks=vi.hoisted(()=>({sign:vi.fn(),download:vi.fn(),query:{data:{server_today:'2026-09-28',signing:null as unknown},isPending:false,isError:false,refetch:vi.fn()},reservations:{data:{reservations:[] as unknown[]},isPending:false,isError:false,refetch:vi.fn()},boundary:true}));
+const mocks=vi.hoisted(()=>({sign:vi.fn(),download:vi.fn(),query:{data:{server_today:'2026-09-28',signing:null as unknown},isPending:false,isError:false,refetch:vi.fn()},reservations:{data:{reservations:[] as unknown[]},isPending:false,isError:false,refetch:vi.fn()},boundary:true,pendingRequestId:null as string|null}));
 vi.mock('@/hooks/useRoomReservations',()=>({useRoomReservations:()=>mocks.reservations}));
-vi.mock('@/hooks/contracts/useContractSigning',()=>({useContractDraftSigning:()=>mocks.query,useContractSigning:()=>({mutateAsync:mocks.sign,isPending:false}),useSignedContractDocument:()=>({mutateAsync:mocks.download,isPending:false,isError:false})}));
+vi.mock('@/hooks/contracts/useContractSigning',()=>({useContractDraftSigning:()=>mocks.query,useContractSigning:()=>({mutateAsync:mocks.sign,isPending:false,pendingRequestId:mocks.pendingRequestId}),useSignedContractDocument:()=>({mutateAsync:mocks.download,isPending:false,isError:false})}));
 vi.mock('@/components/contracts/ContractMeterBoundaryFields',()=>({ContractMeterBoundaryFields:({onChange}:{onChange:(value:unknown)=>void})=><button type="button" onClick={()=>onChange({state:'VERIFIED',readings:[]})}>Xác minh chỉ số</button>}));
-vi.mock('@/components/ui/date-input',()=>({DateInput:({value,onChange,name}:{value:string;onChange:(value:string)=>void;name:string})=><input aria-label={name} value={value} onChange={event=>onChange(event.target.value)}/>}));
 import { ConfirmContractSigningDialog } from '../ConfirmContractSigningDialog';
 const id='11111111-1111-4111-8111-111111111111';const payload=emptyContractDraftPayload();payload.form={...payload.form,room_id:id,signed_date:'2026-09-28',start_date:'2026-09-28',end_date:'2027-09-28',start_billing_date:'2026-09-28',end_billing_date:'2026-09-30'};
 const draft:ContractDraft={id,organization_id:id,building_id:id,room_id:id,revision:1,template_id:id,payload,created_by:id,created_at:'2026-09-28',updated_at:'2026-09-28',documents:[{id,draft_id:id,revision:1,document_path:'document.docx',template_path:'template.docx',document_sha256:'a'.repeat(64),template_sha256:'b'.repeat(64),template_snapshot:{id,name:'Mẫu đã xuất',updated_at:'2026-09-28'},created_at:'2026-09-28'}]};
 const result={id,organization_id:id,draft_id:id,contract_id:id,contract_number:'HD-2026-00001',official_document_sha256:null};
 function ready(){fireEvent.click(screen.getByLabelText(/Khách đã ký đúng/));fireEvent.click(screen.getByLabelText(/Phòng đã sẵn sàng/));fireEvent.click(screen.getByText('Xác minh chỉ số'));}
-beforeEach(()=>{vi.clearAllMocks();mocks.query.data={server_today:'2026-09-28',signing:null};mocks.query.isError=false;mocks.reservations.data={reservations:[]};mocks.reservations.isError=false;mocks.sign.mockResolvedValue(result);});
+beforeEach(()=>{vi.clearAllMocks();mocks.pendingRequestId=null;mocks.query.data={server_today:'2026-09-28',signing:null};mocks.query.isError=false;mocks.reservations.data={reservations:[]};mocks.reservations.isError=false;mocks.sign.mockResolvedValue(result);});
 afterEach(cleanup);
 describe('confirm persisted document signing',()=>{
   it('requires all confirmations/physical readings and sends the exact artifact source once',async()=>{
@@ -23,16 +22,17 @@ describe('confirm persisted document signing',()=>{
     await waitFor(()=>expect(mocks.sign).toHaveBeenCalledTimes(1));expect(mocks.sign.mock.calls[0][0]).toMatchObject({source:{draftId:id,revision:1,documentId:id,documentSha256:'a'.repeat(64)},creationOptions:{}});
     await screen.findByText(/Đã ghi nhận ký.*HD-2026-00001/);expect(screen.queryByRole('button',{name:'Xác nhận đã ký và nhận phòng'})).toBeNull();
   });
-  it('retries the same stable intent after a lost response instead of issuing a new identity',async()=>{
+  it('lost response blocks another signing and offers readonly reconciliation instead of a new identity',async()=>{
     mocks.sign.mockRejectedValueOnce(new Error('Network lost'));render(<ConfirmContractSigningDialog open onOpenChange={vi.fn()} draft={draft}/>);ready();
-    fireEvent.click(screen.getByRole('button',{name:'Xác nhận đã ký và nhận phòng'}));await screen.findByText('Network lost');
-    fireEvent.click(screen.getByRole('button',{name:'Xác nhận đã ký và nhận phòng'}));await waitFor(()=>expect(mocks.sign).toHaveBeenCalledTimes(2));expect(mocks.sign.mock.calls[0][0].requestId).toBe(mocks.sign.mock.calls[1][0].requestId);
+    fireEvent.click(screen.getByRole('button',{name:'Xác nhận đã ký và nhận phòng'}));await screen.findByText(/Chưa.*ký hợp đồng/);expect(screen.queryByText('Network lost')).toBeNull();
+    const signButton=screen.getByRole('button',{name:'Xác nhận đã ký và nhận phòng'});expect(signButton.hasAttribute('disabled')).toBe(true);fireEvent.click(signButton);expect(mocks.sign).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole('button',{name:'Đối chiếu lần ký đã gửi'}));await waitFor(()=>expect(mocks.sign).toHaveBeenCalledTimes(2));expect(mocks.sign.mock.calls[1][0]).toBeUndefined();
   });
   it('continues once when a snapshot recovers the current signing intent after a lost response',async()=>{
     const onSigned=vi.fn();mocks.sign.mockRejectedValueOnce(new Error('Network lost'));
     const props={open:true,onOpenChange:vi.fn(),draft,onSigned};
     const {rerender}=render(<ConfirmContractSigningDialog {...props}/>);ready();
-    fireEvent.click(screen.getByRole('button',{name:'Xác nhận đã ký và nhận phòng'}));await screen.findByText('Network lost');
+    fireEvent.click(screen.getByRole('button',{name:'Xác nhận đã ký và nhận phòng'}));await screen.findByText(/Chưa.*ký hợp đồng/);
     const recovered={...result,request_id:mocks.sign.mock.calls[0][0].requestId};
     mocks.query.data.signing=recovered;rerender(<ConfirmContractSigningDialog {...props}/>);
     await waitFor(()=>expect(onSigned).toHaveBeenCalledWith(recovered));
@@ -46,7 +46,7 @@ describe('confirm persisted document signing',()=>{
   });
   it('keeps signed state and retries only the download when artifact rendering fails',async()=>{
     mocks.query.data.signing=result;mocks.download.mockRejectedValue(new Error('Render failed'));render(<ConfirmContractSigningDialog open onOpenChange={vi.fn()} draft={draft} canPrint/>);
-    fireEvent.click(screen.getByRole('button',{name:'Tạo lại bản tải'}));await screen.findByText(/Hợp đồng vẫn đã ký.*Render failed/);expect(mocks.sign).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button',{name:'Tạo lại bản tải'}));await screen.findByText(/Hợp đồng vẫn đã ký.*Chưa ghi nhận/);expect(mocks.sign).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button',{name:'Tạo lại bản tải'}));await waitFor(()=>expect(mocks.download).toHaveBeenCalledTimes(2));
   });
   it('blocks signing on read error/unexported draft and gates official download by print permission',()=>{
@@ -114,4 +114,12 @@ describe('confirm persisted document signing',()=>{
     expect(mocks.sign.mock.calls[0][0]).toMatchObject({creationOptions:options,
       reservationSource:{reservationId:id,revision:4,sourceVoucherIds:[id]}});
   });
+});
+
+it('pending marker được hydrate khóa sign payload mới sau remount và chỉ cho readonly reconcile',async()=>{
+ mocks.pendingRequestId=id;mocks.sign.mockResolvedValue({...result,request_id:id});const onSigned=vi.fn();render(<ConfirmContractSigningDialog open onOpenChange={vi.fn()} draft={draft} onSigned={onSigned}/>);ready();
+ expect(screen.getByRole('button',{name:'Xác nhận đã ký và nhận phòng'}).hasAttribute('disabled')).toBe(true);fireEvent.click(screen.getByRole('button',{name:'Đối chiếu lần ký đã gửi'}));await waitFor(()=>expect(mocks.sign).toHaveBeenCalledWith(undefined));await waitFor(()=>expect(onSigned).toHaveBeenCalledOnce());
+});
+it('manual sign giữ invalid date raw/focus và không bypass bằng ngày cũ trong state',async()=>{
+ render(<ConfirmContractSigningDialog open onOpenChange={vi.fn()} draft={draft}/>);ready();const date=screen.getByLabelText('Ngày nhận phòng thực tế') as HTMLInputElement;fireEvent.change(date,{target:{value:'31/02/2026'}});fireEvent.click(screen.getByRole('button',{name:'Xác nhận đã ký và nhận phòng'}));await screen.findByText(/Kiểm tra ngày\/số/);expect(date.value).toBe('31/02/2026');expect(document.activeElement).toBe(date);expect(mocks.sign).not.toHaveBeenCalled();
 });

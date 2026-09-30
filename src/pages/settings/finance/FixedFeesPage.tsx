@@ -1,4 +1,8 @@
-import { useMemo, useState } from 'react';
+import {parseCurrencyAmount} from '@/lib/currencyAmountInput';
+import { QueryRegion } from "@/components/errors/QueryRegion";
+import { feeFailureMessage } from "@/lib/feeFeedback";
+import { focusFirstError } from "@/lib/formErrors";
+import { useMemo, useRef, useState } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -24,12 +28,8 @@ import { useSpecialFeePrices, useSetSpecialFeePrice } from '@/hooks/useSpecialFe
 const fmt = (n: number | null) =>
   n == null ? '—' : n.toLocaleString('vi-VN') + 'đ';
 
-/** Bỏ mọi ký tự không phải số để người dùng dán được "1.500.000đ". */
-const parseAmount = (s: string): number | null => {
-  const digits = s.replace(/[^\d]/g, '');
-  if (!digits) return null;
-  return Number(digits);
-};
+/** Empty means keep the previous suggestion; invalid text must never change its value. */
+const parseAmount=(raw:string):number|null=>raw.trim()===''?null:parseCurrencyAmount(raw).value??Number.NaN;
 
 interface EditState {
   buildingId: string;
@@ -56,13 +56,18 @@ const thisMonth = () => {
 };
 
 export default function FixedFeesPage() {
-  const { data, isLoading, isError, error, refetch, isFetching, byBuilding, summary } =
-    useFeeConfigMatrix();
+  const configQuery = useFeeConfigMatrix();
+  const { data, isLoading, isError, error, refetch, isFetching, byBuilding, summary } = configQuery;
   const save = useSaveFeeConfig();
   const prices = useSpecialFeePrices();
   const setPrice = useSetSpecialFeePrice();
   const [edit, setEdit] = useState<EditState | null>(null);
   const [publish, setPublish] = useState<PublishState | null>(null);
+  const editRoot=useRef<HTMLDivElement>(null);
+  const [editError,setEditError]=useState<string|null>(null);
+  const publishRoot=useRef<HTMLDivElement>(null);
+  const [publishErrors,setPublishErrors]=useState<Record<string,string>>({});
+  const [submitError,setSubmitError]=useState<string|null>(null);
   const [onlyMissing, setOnlyMissing] = useState(false);
 
   const buildings = useMemo(() => {
@@ -73,7 +78,8 @@ export default function FixedFeesPage() {
     );
   }, [byBuilding, onlyMissing]);
 
-  const beginEdit = (c: FeeConfigCell) =>
+  const beginEdit = (c: FeeConfigCell) => {
+    setEditError(null);
     setEdit({
       buildingId: c.buildingId,
       feeCategory: c.feeCategory,
@@ -81,10 +87,15 @@ export default function FixedFeesPage() {
       providerCode: c.providerCode,
       accountHolder: c.accountHolder,
     });
+  };
 
   const commit = async (clearAmount = false) => {
     if (!edit) return;
     const parsed = parseAmount(edit.amount);
+    if(!clearAmount && parsed!==null && !Number.isFinite(parsed)){
+      const message='Nhập số tiền nguyên theo đồng; không nhập số âm, chữ hoặc số lẻ.';setEditError(message);void focusFirstError({amount:message},{root:editRoot.current,order:['amount']});return;
+    }
+    setEditError(null);
     try {
       await save.mutateAsync({
         buildingId: edit.buildingId,
@@ -97,28 +108,30 @@ export default function FixedFeesPage() {
       toast.success(clearAmount ? 'Đã xoá giá mặc định' : 'Đã lưu cấu hình');
       setEdit(null);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Không lưu được');
+      toast.error(feeFailureMessage(e,'lưu cấu hình phí'));
     }
   };
 
   const commitPublish = async () => {
     if (!publish) return;
     const parsed = parseAmount(publish.amount);
-    if (!parsed || parsed <= 0) {
-      toast.error('Nhập giá lớn hơn 0');
-      return;
-    }
+    const errors:Record<string,string>={};
+    if(parsed===null || !Number.isFinite(parsed) || parsed<=0) errors.amount='Nhập giá công bố nguyên theo đồng và lớn hơn 0';
+    if(!/^\d{4}-\d{2}$/.test(publish.month))errors.month='Chọn tháng bắt đầu áp dụng giá';
+    setPublishErrors(errors);setSubmitError(null);
+    if(Object.keys(errors).length){void focusFirstError(errors,{root:publishRoot.current,order:['amount','month']});return;}
+
     try {
       const res = await setPrice.mutateAsync({
         buildingId: publish.buildingId,
         feeCategory: publish.feeCategory,
-        amount: parsed,
+        amount: parsed!,
         effectiveFromMonth: publish.month,
       });
-      toast.success(res?.note ?? 'Đã công bố giá');
+      toast.success(`Đã công bố giá ${fmt(parsed)} cho ${publish.feeLabel} · ${publish.buildingName}, từ kỳ ${publish.month}.`);
       setPublish(null);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Không công bố được');
+      const message=feeFailureMessage(e,'công bố giá phí');setSubmitError(message);toast.error(message);
     }
   };
 
@@ -133,7 +146,7 @@ export default function FixedFeesPage() {
         ? `Đã tắt "${FEE_KINDS.find((k) => k.key === c.feeCategory)?.label}" cho toà này`
         : 'Đã bật lại hạng mục');
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Không đổi được');
+      toast.error(feeFailureMessage(e,'đổi áp dụng phí; trạng thái vẫn giữ theo lần lưu trước'));
     }
   };
 
@@ -165,11 +178,12 @@ export default function FixedFeesPage() {
               <AlertTriangle className="h-4 w-4" /> Không đọc được cấu hình
             </div>
             <p className="mt-1 text-muted-foreground">
-              {error instanceof Error ? error.message : 'Lỗi không xác định'}
+              Chưa đủ dữ liệu cấu hình. Tải lại trước khi sửa hoặc công bố giá.
             </p>
           </div>
         )}
 
+        <QueryRegion label="cấu hình và giá phí" queries={[configQuery,prices]}>
         {isLoading ? (
           <div className="space-y-2">
             <Skeleton className="h-16 w-full" />
@@ -239,15 +253,16 @@ export default function FixedFeesPage() {
                               // Enter/Escape gắn ở CẢ BA ô, không chỉ ô giá: luồng tự nhiên là
                               // gõ giá → tab sang mã khách hàng → Enter, và lúc đó con trỏ
                               // không còn ở ô giá nên Enter sẽ không làm gì (đã tự cắn khi test).
-                              <div className="space-y-1.5 min-w-[8rem]"
+                              <div ref={editRoot} className="space-y-1.5 min-w-[8rem]"
                                    onKeyDown={(e) => {
                                      if (e.key === 'Enter') { e.preventDefault(); commit(); }
                                      if (e.key === 'Escape') { e.preventDefault(); setEdit(null); }
                                    }}>
-                                <Input autoFocus inputMode="numeric" placeholder="Giá mỗi kỳ"
+                                <Input name="amount" aria-invalid={!!editError} aria-describedby={editError?'fee-edit-error':undefined} autoFocus inputMode="numeric" placeholder="Giá mỗi kỳ"
                                        value={edit.amount}
                                        onChange={(e) => setEdit({ ...edit, amount: e.target.value })}
                                        className="h-8 text-sm" />
+                                {editError && <p id="fee-edit-error" role="alert" className="text-sm text-destructive">{editError}</p>}
                                 <Input placeholder="Mã khách hàng" value={edit.providerCode}
                                        onChange={(e) => setEdit({ ...edit, providerCode: e.target.value })}
                                        className="h-8 text-xs" />
@@ -379,8 +394,10 @@ export default function FixedFeesPage() {
         )}
 
         {/* ── Công bố giá ─────────────────────────────────────────────── */}
+        </QueryRegion>
+
         <Dialog open={publish !== null} onOpenChange={(o) => !o && setPublish(null)}>
-          <DialogContent className="sm:max-w-md">
+          <DialogContent ref={publishRoot} className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle>
                 {publish?.currentAmount == null ? 'Công bố giá' : 'Đổi giá công bố'}
@@ -390,6 +407,8 @@ export default function FixedFeesPage() {
               </DialogDescription>
             </DialogHeader>
 
+            {submitError && <p role="alert" className="text-sm text-destructive">{submitError}</p>}
+            {Object.entries(publishErrors).map(([field,message])=><p key={field} id={`publish-${field}-error`} role="alert" className="text-sm text-destructive">{message}</p>)}
             {publish && (
               <div className="space-y-4"
                    onKeyDown={(e) => {
@@ -397,7 +416,7 @@ export default function FixedFeesPage() {
                    }}>
                 <div className="space-y-1.5">
                   <Label htmlFor="sfp-amount">Mức phí mỗi tháng</Label>
-                  <Input id="sfp-amount" autoFocus inputMode="numeric"
+                  <Input name="amount" aria-invalid={!!publishErrors.amount} aria-describedby="publish-amount-error" id="sfp-amount" autoFocus inputMode="numeric"
                          placeholder="Ví dụ: 1.500.000"
                          value={publish.amount}
                          onChange={(e) => setPublish({ ...publish, amount: e.target.value })} />
@@ -410,7 +429,7 @@ export default function FixedFeesPage() {
 
                 <div className="space-y-1.5">
                   <Label htmlFor="sfp-month">Áp dụng từ tháng</Label>
-                  <Input id="sfp-month" type="month" value={publish.month}
+                  <Input name="month" aria-invalid={!!publishErrors.month} aria-describedby="publish-month-error" id="sfp-month" type="month" value={publish.month}
                          onChange={(e) => setPublish({ ...publish, month: e.target.value })} />
                   <p className="text-[11px] text-muted-foreground">
                     Phiếu của các tháng <strong>trước</strong> tháng này giữ nguyên giá cũ —

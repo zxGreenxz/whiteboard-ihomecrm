@@ -1,7 +1,8 @@
 // Khối "Hồ sơ tạm trú" trong chi tiết khách: ảnh CT01 và hợp đồng đã ký của khách,
 // trạng thái giấy chỗ ở hợp pháp của toà, và hàng thao tác cuối cùng gồm thời hạn
 // tạm trú (dùng chung cho cả tải giấy lẫn nộp DVC), nút tải giấy và nút gửi sang Cổng DVC.
-import { useEffect, useMemo, useState } from 'react';
+import { recordWriteBlocked, recordWriteMessage } from '@/lib/recordWriteOutcome';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
@@ -20,6 +21,7 @@ import LeaseTermBadge from './LeaseTermBadge';
 import RegistrationHistory from './RegistrationHistory';
 import RegistrationManualEntry from './RegistrationManualEntry';
 import TamTruDvcButton from './TamTruDvcButton';
+import { QueryRegion } from '@/components/errors/QueryRegion';
 
 // Khối cần đủ dữ liệu cho cả gói gửi Cổng DVC lẫn tờ khai CT01 tải về.
 export interface ResidenceDossierSectionProps { customer: TamTruCustomerInput & CT01Customer }
@@ -105,17 +107,28 @@ export default function ResidenceDossierSection({ customer }: ResidenceDossierSe
 
   // Số tháng: lấy lại từ hạn đã lưu trên ảnh (chủ chốt lần trước), mặc định 24.
   const [thangChon, setThangChon] = useState<12 | 24 | null>(null);
+  const [termFailure,setTermFailure]=useState('');
+  const [termBlocked,setTermBlocked]=useState(false);
+  const [termSaving,setTermSaving]=useState(false);
+  const termBusy=useRef(false);
+  const termSelect=useRef<HTMLSelectElement>(null);
   const thangDaLuu = thangTheoHan(hopDong.han);
   const durationMonths: 12 | 24 = thangChon ?? thangDaLuu ?? 24;
   const ngayKy = ngayKyHopDong(hopDong.han, leaseFile);
   // Hạn đọc thẳng từ giấy thắng mọi phép tính; không đọc được thì tính từ ngày ký.
   const hanDen = hopDong.han?.to ?? hanTheoThang(ngayKy, durationMonths);
 
-  const doiThang = (thang: 12 | 24) => {
-    setThangChon(thang);
+  const doiThang = async (thang: 12 | 24) => {
+    if(termBusy.current || termBlocked || termSaving)return;
     const den = hanTheoThang(ngayKy, thang);
     // Ghi lại ngay để lần sau mở hồ sơ vẫn đúng thứ chủ đã chọn.
-    if (leaseFile && den) void luuHan.mutateAsync({ id: leaseFile.id, from: ngayKy, to: den, nguon: 'manual' });
+    if (leaseFile && den) {
+      termBusy.current=true;setTermSaving(true);setTermFailure('');
+      try { await luuHan.mutateAsync({ id: leaseFile.id, from: ngayKy, to: den, nguon: 'manual' }); }
+      catch (error) { setTermFailure(recordWriteMessage(error,'lưu thời hạn tạm trú'));setTermBlocked(recordWriteBlocked(error));termSelect.current?.focus();return; }
+      finally {termBusy.current=false;setTermSaving(false);}
+    }
+    setThangChon(thang);
   };
 
   if (!allowed) return null;
@@ -125,8 +138,7 @@ export default function ResidenceDossierSection({ customer }: ResidenceDossierSe
   return (
     <section className="space-y-3" aria-label="Hồ sơ tạm trú">
       <h3 className="text-sm font-semibold">Hồ sơ tạm trú (Cổng DVC Bộ Công an)</h3>
-      {tenancies.isLoading && <p className="text-xs text-muted-foreground">Đang tải hợp đồng đang ở…</p>}
-      {tenancies.isError && <p className="text-xs text-red-600">Không tải được hợp đồng đang ở. Vui lòng thử lại.</p>}
+      <QueryRegion label="hồ sơ tạm trú" queries={[tenancies, customerFiles, dangKy, ...(tenancy ? [ownershipFiles] : [])]}>
       {tenancies.data && tenancies.data.length === 0 && (
         <p className="text-xs text-muted-foreground">Khách chưa có hợp đồng đang ở, chưa thể lập hồ sơ tạm trú.</p>
       )}
@@ -148,7 +160,7 @@ export default function ResidenceDossierSection({ customer }: ResidenceDossierSe
             hint="Tải ảnh này TRƯỚC: máy đọc ngày ghi trên hợp đồng để điền hạn tạm trú, mất vài giây.">
             <LeaseTermBadge trangThai={hopDong.trangThai} han={hopDong.han} coAnh={!!leaseFile} canEdit
               onDocLai={hopDong.docLai}
-              onSua={(from, to) => { if (leaseFile) void luuHan.mutateAsync({ id: leaseFile.id, from, to, nguon: 'manual' }); }} />
+              onSua={async (from, to) => { if (!leaseFile) throw new Error('Chưa có ảnh hợp đồng'); await luuHan.mutateAsync({ id: leaseFile.id, from, to, nguon: 'manual' }); }} />
           </DossierImageUploader>
           <DossierImageUploader kind="CT01" files={files.filter(f => f.kind === 'CT01')} canEdit contractId={tenancy.contractId}
             onUpload={upload.mutateAsync} onRemove={remove.mutateAsync}
@@ -162,13 +174,14 @@ export default function ResidenceDossierSection({ customer }: ResidenceDossierSe
           <div className="flex flex-wrap items-center gap-3 border-t pt-3">
             <label className="flex items-center gap-2 text-sm text-muted-foreground">
               Thời hạn tạm trú
-              <select aria-label="Thời hạn tạm trú" value={durationMonths}
-                onChange={(e) => doiThang(e.target.value === '12' ? 12 : 24)}
+              <select ref={termSelect} aria-invalid={!!termFailure} disabled={termSaving || termBlocked} aria-label="Thời hạn tạm trú" value={durationMonths}
+                onChange={(e) => { void doiThang(e.target.value === '12' ? 12 : 24); }}
                 className="h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground">
                 <option value="12">12 tháng</option>
                 <option value="24">24 tháng</option>
               </select>
             </label>
+            {termFailure && <p role="alert" className="basis-full text-sm text-destructive">{termFailure}</p>}
             <span className="text-sm text-muted-foreground">
               {ngayKy} → <b className="text-foreground">{hanDen}</b>
             </span>
@@ -176,12 +189,13 @@ export default function ResidenceDossierSection({ customer }: ResidenceDossierSe
             <TamTruDvcButton customer={customer} tenancy={tenancy} customerFiles={files} ownershipFiles={ownership}
               tempResidentFrom={ngayKy} tempResidentTo={hanDen} durationMonths={durationMonths} />
             <RegistrationManualEntry dangGhi={ghiMa.isPending} onGhi={(submCode) => {
-              if (!soDangKy) return;
-              void ghiMa.mutateAsync({ ...soDangKy, submCode, receiveOrg: '', tempResidentFrom: ngayKy, tempResidentTo: hanDen });
+              if (!soDangKy) throw new Error('Chưa có thông tin hồ sơ');
+              return ghiMa.mutateAsync({ ...soDangKy, submCode, receiveOrg: '', tempResidentFrom: ngayKy, tempResidentTo: hanDen });
             }} />
           </div>
         </>
       )}
+      </QueryRegion>
     </section>
   );
 }

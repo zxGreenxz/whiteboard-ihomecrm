@@ -1,3 +1,10 @@
+import {runFinancialPending} from '@/lib/financialPendingAction';
+import {useOrganization} from '@/contexts/OrganizationContext';
+import {VoucherPartialError} from '@/lib/voucherFeedback';
+import {QueryRegion} from '@/components/errors/QueryRegion';
+import { focusFirstError } from "@/lib/formErrors";
+import { reservationErrorMessage } from "@/lib/reservationIdentityRpc";
+import { voucherFailureMessage, voucherOutcomeUnknown } from "@/lib/voucherFeedback";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -74,7 +81,7 @@ const AGREED_PRICE_PREFIX = "Giá thoả thuận: ";
 
 const depositSchema = z.object({
   customer_id: z.string().min(1, "Phải chọn khách hàng cụ thể"),
-  room_id: z.string().min(1, "Phải chọn căn hộ"),
+  room_id: z.string().min(1, "Chọn phòng giữ chỗ"),
   /** Giá phòng/tháng — mặc định lấy giá niêm yết của căn hộ, sửa được. */
   room_price: z.number().min(0, "Giá phòng phải >= 0").optional(),
   amount: z.number().min(0, "Số tiền phải >= 0"),
@@ -118,9 +125,14 @@ interface CreateDepositDialogProps {
 
 export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogProps) {
   const queryClient = useQueryClient();
+  const {selectedOrganizationId}=useOrganization();
   const [customer, setCustomer] = useState<CustomerBasic | null>(null);
   const [customerPicker, setCustomerPicker] = useState(false);
   const intent = useRef<{fingerprint:string;key:string}|null>(null);
+  const formRoot = useRef<HTMLFormElement>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [completed, setCompleted] = useState<{reservationId:string;voucherIds:string[]}|null>(null);
+  const [uncertain, setUncertain] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [myUserId, setMyUserId] = useState<string | null>(null);
   // Ảnh chứng từ giữ ngoài react-hook-form: AttachmentUpload đã tự quản lý
@@ -128,11 +140,13 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
   const [depositAttachments, setDepositAttachments] = useState<string[]>([]);
   const [bonusAttachments, setBonusAttachments] = useState<string[]>([]);
 
-  const createReservation = useCreateRoomReservation();
+  const createReservation = useCreateRoomReservation({silent:true});
   const createSaleBonus = useCreateSaleBonusFromDeposit();
-  const setHoldTerms = useSetReservationHoldTerms();
-  const { data: rooms = [] } = useRooms(undefined, { enabled: open });
-  const { data: accounts = [] } = useAccounts({ enabled: open });
+  const setHoldTerms = useSetReservationHoldTerms({silent:true});
+  const roomsQuery=useRooms(undefined, { enabled: open });
+  const {data:rooms=[]}=roomsQuery;
+  const accountsQuery=useAccounts({ enabled: open });
+  const {data:accounts=[]}=accountsQuery;
 
   useEffect(() => {
     let active = true;
@@ -153,6 +167,7 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
   }, [accounts, myUserId]);
 
   const form = useForm<DepositFormValues>({
+    shouldFocusError: false,
     resolver: zodResolver(depositSchema),
     defaultValues: {
       customer_id: "",
@@ -219,7 +234,8 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
     !!topupDue && !!holdUntil && (diffDaysISO(topupDue, holdUntil) ?? 0) > 0;
 
   const onSubmit = async (data: DepositFormValues) => {
-    if (submitting) return;
+    if (submitting || completed || uncertain || roomsQuery.isError || roomsQuery.isLoading || accountsQuery.isError || accountsQuery.isLoading) return;
+    setSubmitError(null);
     setSubmitting(true);
     try {
       const room = rooms.find((r) => r.id === data.room_id);
@@ -261,7 +277,12 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
       };
       const fingerprint=JSON.stringify(input);
       if(intent.current?.fingerprint!==fingerprint)intent.current={fingerprint,key:`room-reservation-${crypto.randomUUID()}`};
-      const createdReservation=await createReservation.mutateAsync({...input,idempotencyKey:intent.current.key});
+      await runFinancialPending({namespace:"deposit-create",userId:myUserId??"",organizationId:selectedOrganizationId??"",businessKey:data.room_id},async progress=>{
+      const createdReservation=await createReservation.mutateAsync({...input,idempotencyKey:progress.requestKey});
+      progress.recordCompleted([createdReservation.id,...createdReservation.receipts.map(r=>r.source_voucher_id)]);
+      const completedReceipt = {reservationId:createdReservation.id,voucherIds:createdReservation.receipts.map(r=>r.source_voucher_id)};
+      setCompleted(completedReceipt);
+      const partialMessages: string[] = [];
 
       // Thưởng nóng Sale ngay tại đây (tuỳ chọn). Cố ý tạo SAU khi phiếu cọc đã
       // có id: phiếu thưởng neo vào phiếu cọc, và chính cái neo đó là thứ giúp
@@ -294,11 +315,9 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
             topupDueDate: topupToSave,
             depositTarget: targetToSave,
           });
-        } catch {
-          toast.error(
-            "Phiếu cọc đã tạo, nhưng CHƯA ghi được kỳ hạn (hạn làm HĐ / hạn bổ " +
-              "sung cọc) — vào thẻ phiếu trên trang Quản lý Cọc để đặt lại.",
-          );
+        } catch (error) {
+          partialMessages.push("Đã tạo hồ sơ cọc nhưng chưa xác nhận được kỳ hạn. Mở hồ sơ đã tạo để kiểm tra hạn làm hợp đồng và hạn bổ sung cọc; không tạo lại cọc.");
+          console.error("Deposit hold terms", error);
         }
       }
       if (bonusAmt > 0 && depositId) {
@@ -312,12 +331,12 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
             accountId: data.sale_bonus_account_id || null,
             attachments: bonusAttachments,
           });
-          toast.success(`Đã tạo phiếu thưởng Sale ${r?.code ?? ""} — đang chờ duyệt.`);
+          if (!r?.voucherId) throw new TypeError("Chưa nhận được mã phiếu thưởng Sale");
+          completedReceipt.voucherIds.push(r.voucherId);
+          progress.recordCompleted([r.voucherId]);
+          setCompleted({...completedReceipt});
         } catch (e) {
-          toast.error(
-            "Phiếu cọc đã tạo, nhưng chưa tạo được phiếu thưởng Sale: " +
-              ((e as Error)?.message ?? "lỗi không rõ")
-          );
+          partialMessages.push("Đã tạo hồ sơ cọc nhưng bước tạo thưởng Sale chưa hoàn tất. " + voucherFailureMessage(e, "tạo phiếu thưởng Sale") + " Kiểm tra các phiếu thưởng gắn với cọc này trước khi tạo bổ sung.");
         }
       }
 
@@ -327,6 +346,13 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
       queryClient.invalidateQueries({ queryKey: ["phong-trong"] });
       queryClient.invalidateQueries({ queryKey: ["orphan-deposit-vouchers"] });
 
+      if (partialMessages.length) {
+        const message = partialMessages.join(" "); throw new VoucherPartialError(message,[completedReceipt.reservationId,...completedReceipt.voucherIds]);
+      }
+      const received = createdReservation.receipts.some(r => r.received);
+      toast.success(received ? "Đã lưu giữ chỗ và xác nhận khoản cọc đã thu. Mở phiếu nguồn để xem số tiền và sổ quỹ." : createdReservation.receipts.length ? "Đã lưu giữ chỗ và tạo phiếu cọc. Chưa xác nhận tiền vào quỹ; xem trạng thái phiếu nguồn." : "Đã giữ chỗ. Chưa thu tiền cọc.");
+      });
+      setCompleted(null);
       form.reset();
       setDepositAttachments([]);
       setBonusAttachments([]);
@@ -335,7 +361,7 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
       onOpenChange(false);
     } catch (error) {
       console.error("Failed to create reservation deposit:", error);
-      toast.error((error as Error)?.message || "Không thể tạo phiếu cọc giữ chỗ");
+      const message = error instanceof VoucherPartialError ? error.message : reservationErrorMessage(error); setSubmitError(message); toast.error(message); if (voucherOutcomeUnknown(error)) setUncertain(true);
     } finally {
       setSubmitting(false);
     }
@@ -353,7 +379,9 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
 
         <ScrollArea className="max-h-[calc(90vh-120px)] pr-4">
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <form ref={formRoot} onSubmit={form.handleSubmit(onSubmit, errors => void focusFirstError(errors, {root:formRoot.current,order:["customer_id","room_id","room_price","amount","deposit_date","hold_until","account_id","sale_bonus_amount"]}))} className="space-y-4">
+              {submitError && <div role="alert" className="rounded-md border border-destructive p-3 text-sm text-destructive">{submitError}</div>}
+              {completed && <div className="rounded-md border p-3 text-sm"><p>Hồ sơ đã tạo. Kiểm tra trước khi bổ sung bước còn thiếu.</p><a className="underline" href="/deposits">Mở Quản lý cọc</a>{completed.voucherIds.map(id=><a key={id} className="block underline" href={`/income-expense/voucher/${id}`}>Mở phiếu {id}</a>)}</div>}
               <FormField control={form.control} name="customer_id" render={()=> (
                 <FormItem><FormLabel>Khách hàng *</FormLabel><FormControl>
                   <Button type="button" variant="outline" onClick={()=>setCustomerPicker(true)} disabled={submitting}>
@@ -362,6 +390,7 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
                 </FormControl><FormMessage/></FormItem>
               )}/>
 
+              <QueryRegion label="phòng và sổ quỹ nhận cọc" queries={[roomsQuery,accountsQuery]}>{null}</QueryRegion>
               {/* Room Selection */}
               <FormField
                 control={form.control}
@@ -844,7 +873,7 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
                 >
                   Hủy
                 </Button>
-                <Button type="submit" disabled={submitting}>
+                <Button type="submit" disabled={submitting || !!completed || uncertain || roomsQuery.isError || roomsQuery.isLoading || accountsQuery.isError || accountsQuery.isLoading}>
                   {submitting ? "Đang tạo..." : amountNow>0 ? "Tạo cọc & giữ chỗ" : "Giữ chỗ 0 đồng"}
                 </Button>
               </div>

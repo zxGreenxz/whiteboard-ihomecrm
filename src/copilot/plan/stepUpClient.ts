@@ -135,16 +135,17 @@ export async function xacThucPin(pin: string, organizationId: string): Promise<K
   }
   const token = chuoi(kq.ban?.step_up_token);
   const hetHan = chuoi(kq.ban?.expires_at);
-  if (!token) {
+  const expires = hetHan ? Date.parse(hetHan) : NaN;
+  if (!token || !Number.isFinite(expires) || expires <= Date.now()) {
     return {
       ok: false,
       maLoi: 'phan_hoi_khong_doc_duoc',
-      thongBao: 'Server trả về hình dạng không đọc được.',
+      thongBao: 'Chưa xác nhận được kết quả xác thực PIN. Đọc lại trạng thái trước khi tiếp tục.',
       soLanConLai: null,
       khoaConGiay: null,
     };
   }
-  const conLai = hetHan ? new Date(hetHan).getTime() - Date.now() : 5 * 60_000;
+  const conLai = expires - Date.now();
   datXacNhanDangCho(
     {
       kind: 'step_up',
@@ -155,7 +156,7 @@ export async function xacThucPin(pin: string, organizationId: string): Promise<K
       intentKey: khoaYStepUp(organizationId),
       organizationId,
     },
-    Math.max(conLai, 1000),
+    conLai,
   );
   return { ok: true, maLoi: null, thongBao: null, soLanConLai: null, khoaConGiay: null };
 }
@@ -217,7 +218,10 @@ export async function trangThaiPin(): Promise<KetQuaTrangThaiPin> {
   const { data, error } = await supabase.rpc('copilot_step_up_status_v1');
   const kq = docKetQua(data, error);
   if (!kq.ok) return { ok: false, maLoi: kq.ma, thongBao: kq.thongBao, trangThai: null };
-  const ban = kq.ban ?? {};
+  const ban = kq.ban;
+  if (!ban || typeof ban.da_dat !== 'boolean' || typeof ban.failed_attempts !== 'number' || !Number.isSafeInteger(ban.failed_attempts) || ban.failed_attempts < 0 || !(ban.locked_until === null || typeof ban.locked_until === 'string' && Number.isFinite(Date.parse(ban.locked_until)))) {
+    return {ok:false,maLoi:'phan_hoi_khong_doc_duoc',thongBao:'Chưa xác nhận được trạng thái PIN. Đọc lại trạng thái trước khi thay đổi.',trangThai:null};
+  }
   return {
     ok: true,
     maLoi: null,
@@ -225,7 +229,7 @@ export async function trangThaiPin(): Promise<KetQuaTrangThaiPin> {
     trangThai: {
       daDat: ban.da_dat === true,
       lockedUntil: chuoi(ban.locked_until),
-      failedAttempts: so(ban.failed_attempts) ?? 0,
+      failedAttempts: ban.failed_attempts,
     },
   };
 }

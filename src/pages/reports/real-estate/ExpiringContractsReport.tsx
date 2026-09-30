@@ -30,11 +30,14 @@ export default function ExpiringContractsReport() {
   const [floorId, setFloorId] = usePersistedState<string | undefined>("flt:rpt-expiring:floorId", undefined);
 
   useCopilotPageContext(['reports.real-estate.expiring', 'reports.real-estate.expiring-alias'], { days: daysFilter, building_id: buildingId, floor_id: floorId });
-  const { data: buildings } = useBuildings();
-  const { data: floors } = useFloors(buildingId);
-  const { data: contracts, isLoading } = useExpiringContractsReport(
+  const buildingsQuery = useBuildings();
+  const { data: buildings } = buildingsQuery;
+  const floorsQuery = useFloors(buildingId);
+  const { data: floors } = floorsQuery;
+  const reportQuery = useExpiringContractsReport(
     daysFilter, buildingId, floorId
   );
+  const { data: contracts, isLoading } = reportQuery;
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("vi-VN", {
@@ -141,6 +144,8 @@ export default function ExpiringContractsReport() {
   return (
     <MainLayout>
       <ReportLayout
+        queries={[reportQuery]}
+        filterQueries={[buildingsQuery, floorsQuery]}
         title="Báo cáo Căn hộ sắp trống"
         description="Danh sách căn hộ có hợp đồng sắp hết hạn, cần chuẩn bị cho thuê lại"
         icon={<Home className="h-8 w-8" />}

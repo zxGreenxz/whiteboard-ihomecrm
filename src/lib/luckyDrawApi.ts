@@ -1,3 +1,9 @@
+import { parseLuckyState, parseLuckyAdminState, PublicRequestError } from './publicFeedback';
+import { z } from 'zod';
+import { persistentFinancialWorkflow } from './persistentFinancialWorkflow';
+import { FinancialWorkflowError, FinancialWorkflowGuard } from './financialWorkflow';
+import { financialPending, FinancialPendingStorageError } from './financialPending';
+import { getSessionUser } from './authSession';
 /**
  * Tầng dữ liệu cho sự kiện trao thưởng + vòng xoay may mắn (/quayso).
  *
@@ -31,7 +37,7 @@ export interface LuckyTeamPublic {
   inWheel: boolean;
   checkedIn: boolean;
   checkedInAt: string | null;
-  isMine: boolean;
+  isMine: boolean | null;
   /** Hồ sơ nhận thưởng — server CHỈ trả cho chính đội đang xem. */
   payoutAccount: string | null;
   payoutBank: string | null;
@@ -67,7 +73,7 @@ export function luckyGameOf(g: string | null | undefined): LuckyGame {
 export interface LuckyEventPublic {
   id: string;
   /** Đường dẫn ngắn: /quayso/<slug>. */
-  slug: string;
+  slug: string | null;
   title: string;
   prizeLabel: string;
   prizeAmount: number;
@@ -145,7 +151,7 @@ export interface LuckyAdminState {
 
 /* ─────────────────────────── RPC public (fetch thuần) ─────────────────────── */
 
-async function publicRpc<T>(fn: string, args: Record<string, unknown>): Promise<T> {
+async function publicRpc(fn: string, args: Record<string, unknown>): Promise<LuckyPublicState> {
   const url = `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/rpc/${fn}`;
   const apikey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
   // AbortSignal.timeout chưa có trên iOS cũ → tự dựng bằng AbortController.
@@ -163,8 +169,8 @@ async function publicRpc<T>(fn: string, args: Record<string, unknown>): Promise<
       body: JSON.stringify(args),
       signal: controller.signal,
     });
-    if (!res.ok) throw new Error(`RPC ${fn} ${res.status}`);
-    return (await res.json()) as T;
+    if (!res.ok) throw new PublicRequestError(res.status);
+    return parseLuckyState(await res.json());
   } finally {
     clearTimeout(timer);
   }
@@ -175,7 +181,7 @@ export function fetchLuckyPublicState(
   code: string | null,
   slug: string | null = null,
 ) {
-  return publicRpc<LuckyPublicState>('lucky_public_state_v1', {
+  return publicRpc('lucky_public_state_v1', {
     p_event: eventId,
     p_code: code || null,
     p_slug: slug || null,
@@ -183,11 +189,23 @@ export function fetchLuckyPublicState(
 }
 
 export function luckyCheckin(code: string) {
-  return publicRpc<LuckyPublicState>('lucky_checkin_v1', { p_code: code });
+  return publicRpc('lucky_checkin_v1', { p_code: code });
 }
 
+const publicDrawGuard = new FinancialWorkflowGuard({ scope: async businessKey => ({
+  namespace: 'lucky-public-draw', userId: 'public-viewer', organizationId: 'public-event', businessKey,
+}) });
 export function luckyDraw(eventId: string) {
-  return publicRpc<LuckyPublicState>('lucky_draw_v1', { p_event: eventId });
+  const intent: DrawIntent = { eventId, ordinal: null };
+  return publicDrawGuard.run(eventId, 'xác nhận kết quả quay', async () => {
+    const result = await publicRpc('lucky_draw_v1', { p_event: eventId });
+    if (!result.ok && result.reason && knownDrawRefusals.has(result.reason)) return result;
+    if (!confirmsDraw(result, intent)) throw invalidReceipt();
+    return result;
+  }, async () => {
+    const result = await fetchLuckyPublicState(eventId, null);
+    return confirmsDraw(result, intent) ? { result } : null;
+  });
 }
 
 /**
@@ -248,7 +266,7 @@ export interface LuckyPayoutInput {
 export const PROOF_MAX_FILES = 10;
 
 export function luckySavePayout(code: string, p: LuckyPayoutInput) {
-  return publicRpc<LuckyPublicState>('lucky_save_payout_v1', { p_code: code, p });
+  return publicRpc('lucky_save_payout_v1', { p_code: code, p });
 }
 
 export const PROOF_BUCKET = 'lucky-proofs';
@@ -266,6 +284,7 @@ export const PROOF_MAX_BYTES = 10 * 1024 * 1024;
 export async function uploadLuckyProof(
   eventId: string,
   file: File,
+  lifecycle?: { onPlanned?: (proof: LuckyProof) => void; onRejected?: (proof: LuckyProof) => void },
 ): Promise<{ path: string; name: string }> {
   if (file.size > PROOF_MAX_BYTES) {
     throw new Error('Ảnh lớn hơn 10MB — chụp lại nhỏ hơn giúp mình nhé.');
@@ -276,6 +295,9 @@ export async function uploadLuckyProof(
       ? crypto.randomUUID()
       : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const path = `${eventId}/${rand}.${ext}`;
+  const proof = { path, name: file.name };
+  // Record the object identity before sending: a lost response must not create a new upload.
+  lifecycle?.onPlanned?.(proof);
 
   const url = `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/${PROOF_BUCKET}/${path}`;
   const apikey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
@@ -294,8 +316,11 @@ export async function uploadLuckyProof(
       body: file,
       signal: controller.signal,
     });
-    if (!res.ok) throw new Error(`Upload lỗi ${res.status}`);
-    return { path, name: file.name };
+    if (!res.ok) {
+      if ([400, 401, 403, 404, 410, 413, 415, 422].includes(res.status)) lifecycle?.onRejected?.(proof);
+      throw new PublicRequestError(res.status);
+    }
+    return proof;
   } finally {
     clearTimeout(timer);
   }
@@ -319,95 +344,176 @@ export async function uploadLuckyProof(
  * khai `RETURNS json`), và thiếu tham số bắt buộc vẫn lọt. Đừng đọc helper này
  * như một bảo đảm toàn phần.
  */
-export async function adminRpc<T>(
+export async function adminRpc(
   run: () => PromiseLike<{ data: unknown; error: PostgrestError | null }>,
-): Promise<T> {
+): Promise<unknown> {
   const { data, error } = await run();
   if (error) throw error;
-  return data as T;
+  if (!data || typeof data !== "object" || typeof (data as { ok?: unknown }).ok !== "boolean") throw new PublicRequestError(0, "invalid-response");
+  return data;
+}
+
+const adminWriteGuard = persistentFinancialWorkflow('lucky-admin', { scope: 'actor' });
+const drawIntentKey = (requestKey: string) => 'ihome:lucky-draw-intent:v1:' + requestKey;
+type DrawIntent = { eventId: string; ordinal: number | null };
+function rememberDraw(requestKey: string, intent: DrawIntent) {
+  try { localStorage.setItem(drawIntentKey(requestKey), JSON.stringify(intent)); }
+  catch { throw new FinancialPendingStorageError(); }
+}
+function readDraw(requestKey: string): DrawIntent | null {
+  try {
+    const raw = localStorage.getItem(drawIntentKey(requestKey));
+    if (!raw) return null;
+    const value: unknown = JSON.parse(raw);
+    const result = z.object({ eventId: z.string().min(1), ordinal: z.number().int().positive().nullable() }).safeParse(value);
+    if (!result.success) throw new FinancialPendingStorageError();
+    return {eventId:result.data.eventId,ordinal:result.data.ordinal};
+  } catch (error) { if (error instanceof FinancialPendingStorageError) throw error; throw new FinancialPendingStorageError(); }
+}
+const getAdminState = async () => parseLuckyAdminState(await adminRpc(() => supabase.rpc('lucky_admin_get_v1')));
+const invalidReceipt = () => new PublicRequestError(0, 'invalid-response');
+function checkedReceipt<S extends z.ZodTypeAny>(schema: S, value: unknown): z.infer<S> {
+  if (value && typeof value === 'object' && 'ok' in value && value.ok === false &&
+      'reason' in value && typeof value.reason === 'string' && ['not_found', 'forbidden', 'closed'].includes(value.reason)) {
+    throw new FinancialWorkflowError(value.reason === 'forbidden' ? 'Bạn không có quyền quản trị sự kiện này.' : value.reason === 'closed' ? 'Sự kiện đã đóng. Tải lại trạng thái trước khi tiếp tục.' : 'Đội hoặc sự kiện không còn tồn tại. Tải lại danh sách trước khi tiếp tục.', 'failure', []);
+  }
+  const result = schema.safeParse(value);
+  if (!result.success) throw invalidReceipt();
+  return result.data;
+}
+const teamReceipt = z.object({ ok: z.literal(true), teamId: z.string().min(1), code: z.string().regex(/^\d{6,8}$/) });
+const ackReceipt = z.object({ ok: z.literal(true) });
+async function requireAdminEvent(eventId: string) {
+  const source = await getAdminState();
+  const event = source.events.find(e => e.id === eventId);
+  if (!event) throw new FinancialWorkflowError('Sự kiện không còn trong danh sách bạn được quản lý. Tải lại danh sách trước khi tiếp tục.', 'failure', []);
+  return { source, event };
+}
+async function requireAdminTeam(teamId: string) {
+  const source = await getAdminState();
+  const event = source.events.find(e => e.teams.some(t => t.id === teamId));
+  if (!event) throw new FinancialWorkflowError('Đội không còn trong danh sách bạn được quản lý. Tải lại danh sách trước khi tiếp tục.', 'failure', []);
+  return { source, event };
+}
+function publicFromAdmin(event: LuckyEventAdmin): LuckyPublicState {
+  return { ok: true, event, rounds: event.rounds, teams: event.teams.map(t => ({ ...t, isMine: null, proofCount: t.proofs.length })) };
+}
+function confirmsDraw(state: LuckyPublicState, intent: DrawIntent): boolean {
+  if (!state.ok || state.event?.id !== intent.eventId) return false;
+  if (intent.ordinal !== null) {
+    const round = state.rounds?.find(r => r.ordinal === intent.ordinal);
+    return !!round && round.status === 'drawn' && !!round.drawnAt && round.winners.length > 0;
+  }
+  return state.event.status === 'drawn' && !!state.event.drawnAt && !!state.event.winnerTeamId;
+}
+const knownDrawRefusals = new Set(['forbidden', 'not_found', 'closed', 'not_time', 'round_not_found', 'previous_round_pending', 'no_checked_in_teams']);
+async function reconcileDrawReceipt(requestKey: string, expected: DrawIntent): Promise<{ result: LuckyPublicState } | null> {
+  const intent = readDraw(requestKey);
+  if (!intent || intent.eventId !== expected.eventId || intent.ordinal !== expected.ordinal) return null;
+  const { event } = await requireAdminEvent(intent.eventId);
+  const state = publicFromAdmin(event);
+  return confirmsDraw(state, intent) ? { result: state } : null;
+}
+async function runAdminDraw(intent: DrawIntent, run: () => PromiseLike<{ data: unknown; error: PostgrestError | null }>) {
+  await requireAdminEvent(intent.eventId);
+  return adminWriteGuard.run(intent.eventId, intent.ordinal === null ? 'quay sự kiện' : 'chốt lượt quay', async progress => {
+    rememberDraw(progress.requestKey, intent);
+    const state = parseLuckyState(await adminRpc(run));
+    if (!state.ok) {
+      if (!state.reason || !knownDrawRefusals.has(state.reason)) throw invalidReceipt();
+      return state; // These SQL branches return before the writer.
+    }
+    if (!confirmsDraw(state, intent)) throw invalidReceipt();
+    progress.completed.push({ id: intent.eventId, label: 'Đã xác nhận kết quả quay' });
+    return state;
+  }, pending => reconcileDrawReceipt(pending.requestKey ?? pending.attemptId, intent));
 }
 
 export const luckyAdminApi = {
-  get: () => adminRpc<LuckyAdminState>(() => supabase.rpc('lucky_admin_get_v1')),
-  upsertEvent: (p: {
-    id?: string;
-    title?: string;
-    slug?: string;
-    prizeLabel?: string;
-    prizeAmount?: number;
-    drawAt?: string | null;
-    status?: 'open' | 'closed';
-    game?: LuckyGame;
-    raceSeconds?: number;
-  }) => adminRpc<{ ok: boolean; eventId: string; slug: string; game: LuckyGame }>(() => supabase.rpc('lucky_admin_upsert_event_v1', { p })),
-  /**
-   * Khai lại TOÀN BỘ thể lệ (danh sách lượt). Server từ chối khi đã quay ít
-   * nhất một lượt — đổi thể lệ giữa chừng là thay luật khi cuộc chơi đang chạy;
-   * muốn đổi thì bấm "Đặt lại kết quả" trước.
-   */
-  /**
-   * Chốt kết quả MỘT lượt. Phải truyền `ordinal` chứ không để server tự tìm
-   * "lượt kế tiếp": hai máy cùng bấm thì máy sau (đang chờ khoá) sẽ thấy lượt
-   * trước vừa xong và chốt luôn lượt kế — cháy một lượt chưa ai kịp xem. Có
-   * `ordinal` thì lần gọi thứ hai chỉ trả lại kết quả cũ.
-   *
-   * Đi qua `adminRpc` (supabase-js, có phiên đăng nhập) chứ KHÔNG qua
-   * `publicRpc`: server đòi quyền quản trị sự kiện, anon gọi thì 401.
-   */
-  drawRound: (eventId: string, ordinal: number) =>
-    adminRpc<LuckyPublicState>(() => supabase.rpc('lucky_draw_round_v1', {
-      p_event: eventId,
-      p_ordinal: ordinal,
-    })),
-  setRounds: (eventId: string, rounds: LuckyRoundInput[]) =>
-    adminRpc<{ ok: boolean; rounds: number }>(() => supabase.rpc('lucky_admin_set_rounds_v1', {
-      p_event: eventId,
-      // Ép qua dạng bản ghi thuần: `Json` của generated types đòi index
-      // signature, mà interface TypeScript thì không có. Chuyển sang object
-      // literal giữ nguyên dữ liệu và thoả kiểu, không phải `as unknown as`.
-      p_rounds: rounds.map((r) => ({
-        label: r.label ?? '',
-        amount: r.amount,
-        winnersCount: r.winnersCount,
-      })),
-    })),
-  addTeam: (p: {
-    eventId: string;
-    name: string;
-    deals?: number;
-    topRank?: number | null;
-    topPrize?: number | null;
-    inWheel?: boolean;
-    sale?: string | null;
-  }) =>
-    adminRpc<{ ok: boolean; teamId: string; code: string }>(() => supabase.rpc('lucky_admin_add_team_v1', {
-      p_event: p.eventId,
-      p_name: p.name,
-      p_deals: p.deals ?? 1,
-      p_top_rank: p.topRank ?? undefined,
-      p_top_prize: p.topPrize ?? undefined,
-      p_in_wheel: p.inWheel ?? true,
-      p_sale: p.sale ?? undefined,
-    })),
-  updateTeam: (
-    teamId: string,
-    p: {
-      name?: string;
-      sale?: string | null;
-      deals?: number;
-      topRank?: number | null;
-      topPrizeAmount?: number | null;
-      inWheel?: boolean;
-      checkedIn?: boolean;
-      regenCode?: boolean;
-    },
-  ) => adminRpc<{ ok: boolean; teamId: string; code: string }>(() => supabase.rpc('lucky_admin_update_team_v1', { p_team: teamId, p })),
-  deleteTeam: (teamId: string) =>
-    adminRpc<{ ok: boolean }>(() => supabase.rpc('lucky_admin_delete_team_v1', { p_team: teamId })),
-  forceDraw: (eventId: string) =>
-    adminRpc<LuckyPublicState>(() => supabase.rpc('lucky_admin_force_draw_v1', { p_event: eventId })),
-  resetDraw: (eventId: string) =>
-    adminRpc<{ ok: boolean }>(() => supabase.rpc('lucky_admin_reset_draw_v1', { p_event: eventId })),
+  get: getAdminState,
+  upsertEvent: async (p: {
+    id?: string; title?: string; slug?: string; prizeLabel?: string; prizeAmount?: number;
+    drawAt?: string | null; status?: 'open' | 'closed'; game?: LuckyGame; raceSeconds?: number;
+  }) => {
+    if (p.id) await requireAdminEvent(p.id); else await getAdminState();
+    return adminWriteGuard.run(p.id ?? 'new-event', 'lưu sự kiện quay số', async progress => {
+      const value = await adminRpc(() => supabase.rpc('lucky_admin_upsert_event_v1', { p }));
+      const result = checkedReceipt(z.object({ ok: z.literal(true), eventId: z.string().min(1), slug: z.string().nullable(), game: z.enum(['wheel', 'race']) }), value);
+      progress.completed.push({ id: result.eventId, label: 'Đã nhận mã sự kiện' });
+      if (p.id && result.eventId !== p.id) throw invalidReceipt();
+      return result;
+    });
+  },
+  drawRound: (eventId: string, ordinal: number) => runAdminDraw({ eventId, ordinal }, () => supabase.rpc('lucky_draw_round_v1', { p_event: eventId, p_ordinal: ordinal })),
+  setRounds: async (eventId: string, rounds: LuckyRoundInput[]) => {
+    const before = await requireAdminEvent(eventId);
+    return adminWriteGuard.run(eventId, 'lưu thể lệ quay số', async progress => {
+      const result = checkedReceipt(z.object({ ok: z.literal(true), rounds: z.number().int().nonnegative() }), await adminRpc(() => supabase.rpc('lucky_admin_set_rounds_v1', {
+        p_event: eventId, p_rounds: rounds.map(r => ({ label: r.label ?? '', amount: r.amount, winnersCount: r.winnersCount })),
+      })));
+      progress.completed.push({ id: eventId, label: 'Đã tiếp nhận yêu cầu lưu thể lệ' });
+      const after = await requireAdminEvent(eventId);
+      // The equal-length check short-circuits before indexing the submitted round array.
+      if (result.rounds !== rounds.length || after.source.organizationId !== before.source.organizationId ||
+          after.event.rounds.length !== rounds.length || after.event.rounds.some((r, i) => r.ordinal !== i + 1 || r.amount !== rounds[i]!.amount || r.winnersCount !== rounds[i]!.winnersCount || (rounds[i]!.label?.trim() && r.label !== rounds[i]!.label?.trim()))) throw invalidReceipt();
+      return result;
+    });
+  },
+  addTeam: async (p: { eventId: string; name: string; deals?: number; topRank?: number | null; topPrize?: number | null; inWheel?: boolean; sale?: string | null }) => {
+    await requireAdminEvent(p.eventId);
+    return adminWriteGuard.run(p.eventId, 'thêm đội tham gia', async progress => {
+      const result = checkedReceipt(teamReceipt, await adminRpc(() => supabase.rpc('lucky_admin_add_team_v1', {
+        p_event: p.eventId, p_name: p.name, p_deals: p.deals ?? 1, p_top_rank: p.topRank ?? undefined,
+        p_top_prize: p.topPrize ?? undefined, p_in_wheel: p.inWheel ?? true, p_sale: p.sale ?? undefined,
+      })));
+      progress.completed.push({ id: result.teamId, label: 'Đã tạo đội tham gia' }); return result;
+    });
+  },
+  updateTeam: async (teamId: string, p: { name?: string; sale?: string | null; deals?: number; topRank?: number | null; topPrizeAmount?: number | null; inWheel?: boolean; checkedIn?: boolean; regenCode?: boolean }) => {
+    const { event } = await requireAdminTeam(teamId);
+    return adminWriteGuard.run(event.id, 'cập nhật đội tham gia', async progress => {
+      const result = checkedReceipt(teamReceipt, await adminRpc(() => supabase.rpc('lucky_admin_update_team_v1', { p_team: teamId, p })));
+      progress.completed.push({ id: result.teamId, label: 'Đã nhận kết quả cập nhật đội' });
+      if (result.teamId !== teamId) throw invalidReceipt(); return result;
+    });
+  },
+  deleteTeam: async (teamId: string) => {
+    const before = await requireAdminTeam(teamId);
+    return adminWriteGuard.run(before.event.id, 'xóa đội tham gia', async progress => {
+      const result = checkedReceipt(ackReceipt, await adminRpc(() => supabase.rpc('lucky_admin_delete_team_v1', { p_team: teamId })));
+      progress.completed.push({ id: teamId, label: 'Đã tiếp nhận yêu cầu xóa đội' });
+      const after = await requireAdminEvent(before.event.id);
+      if (after.source.organizationId !== before.source.organizationId || after.event.teams.some(t => t.id === teamId)) throw invalidReceipt();
+      return result;
+    });
+  },
+  forceDraw: (eventId: string) => runAdminDraw({ eventId, ordinal: null }, () => supabase.rpc('lucky_admin_force_draw_v1', { p_event: eventId })),
+  resetDraw: async (eventId: string) => {
+    const before = await requireAdminEvent(eventId);
+    return adminWriteGuard.run(eventId, 'đặt lại kết quả quay số', async progress => {
+      const result = checkedReceipt(ackReceipt, await adminRpc(() => supabase.rpc('lucky_admin_reset_draw_v1', { p_event: eventId })));
+      progress.completed.push({ id: eventId, label: 'Đã tiếp nhận yêu cầu đặt lại kết quả' });
+      const after = await requireAdminEvent(eventId); const e = after.event;
+      if (after.source.organizationId !== before.source.organizationId || e.status !== 'open' || e.drawnAt !== null || e.winnerTeamId !== null || e.rounds.some(r => r.status !== 'pending' || r.drawnAt !== null || r.winners.length > 0)) throw invalidReceipt();
+      return result;
+    });
+  },
+  hasPendingAction: async (eventId: string) => {
+    const user = await getSessionUser();
+    if (!user) return false;
+    return !!financialPending.read({ namespace: 'lucky-admin', userId: user.id, organizationId: 'actor-scope', businessKey: eventId });
+  },
+  /** Read-only recovery: a generic successful refresh cannot release an unresolved draw. */
+  reconcileDraw: async (eventId: string) => {
+    const user = await getSessionUser();
+    if (!user) throw new FinancialWorkflowError('Phiên đăng nhập đã hết hạn. Đăng nhập lại để tiếp tục.', 'failure', []);
+    const pending = financialPending.read({ namespace: 'lucky-admin', userId: user.id, organizationId: 'actor-scope', businessKey: eventId });
+    if (!pending) return null;
+    const intent = readDraw(pending.requestKey ?? pending.attemptId);
+    if (!intent || intent.eventId !== eventId) return null;
+    return adminWriteGuard.run(eventId, 'đối chiếu kết quả quay', async () => { throw invalidReceipt(); },
+      row => reconcileDrawReceipt(row.requestKey ?? row.attemptId, intent));
+  },
 };
 
 /* ──────────────────────────────── Tiện ích ────────────────────────────────── */

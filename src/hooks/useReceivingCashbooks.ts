@@ -1,3 +1,7 @@
+import { persistentFinancialWorkflow } from '@/lib/persistentFinancialWorkflow';
+import {voucherFailureMessage} from '@/lib/voucherFeedback';
+import { useRef } from 'react';
+import { FinancialWorkflowError } from '@/lib/financialWorkflow';
 // Sổ nhận tiền theo hình thức thu (đợt 1 sửa phiếu, 25/09/2026).
 //
 // Luật "hình thức nào vào sổ nào" nay ở MÁY CHỦ (thay cho src/lib/cashAccount.ts):
@@ -12,7 +16,6 @@ import { z } from "zod";
 
 import { supabase } from "@/integrations/supabase/client";
 import { rpcNullable } from "@/lib/rpcNullable";
-import { newRevisionIdempotencyKey } from "@/lib/incomeExpenseRevision";
 
 export type ReceivingMethod = "TM" | "TK" | "TT";
 
@@ -105,6 +108,7 @@ export type ReceivingSettings = z.infer<typeof receivingSettingsSchema>;
 
 export function useReceivingCashbookSettings(organizationId: string | null | undefined, enabled = true) {
   return useQuery({
+    meta: {feedback:"inline"},
     queryKey: ["receiving-cashbook-settings", organizationId],
     enabled: enabled && !!organizationId,
     queryFn: async (): Promise<ReceivingSettings> => {
@@ -125,36 +129,39 @@ function invalidateReceiving(client: ReturnType<typeof useQueryClient>) {
   ]);
 }
 
-export function useSetPersonalCashBook() {
+export function useSetPersonalCashBook(memberName?: string) {
   const client = useQueryClient();
+  const guard = useRef(persistentFinancialWorkflow('receiving-personal',{scope:'actor'}));
   return useMutation({
-    mutationFn: async (input: { membershipId: string; accountId: string | null }) => {
+    meta: {handlesFeedback:true},
+    mutationFn: async (input: { membershipId: string; accountId: string | null }) => guard.current.run(input.membershipId, "lưu sổ tiền mặt riêng", async () => {
       const { data, error } = await supabase.rpc("set_personal_cash_book_v1", {
         p_membership_id: input.membershipId,
         p_account_id: rpcNullable(input.accountId),
       });
       if (error) throw error;
+      const parsed = z.object({membershipId:z.string().min(1),personalCashBook:z.object({id:z.string().min(1),name:z.string()}).nullable()}).safeParse(data);
+      if (!parsed.success || parsed.data.membershipId !== input.membershipId || (parsed.data.personalCashBook === null ? null : parsed.data.personalCashBook.id) !== input.accountId) throw new FinancialWorkflowError('Chưa xác nhận được sổ tiền mặt riêng đã lưu. Tải lại cấu hình để đối chiếu trước khi đổi tiếp.', 'unknown', []);
       return data;
-    },
+    }),
     onSuccess: async () => {
       await invalidateReceiving(client);
-      toast.success("Đã lưu sổ tiền mặt riêng.");
-    },
-    onError: (error: { message?: string }) => {
-      toast.error(error?.message || "Không lưu được sổ tiền mặt riêng.");
+      toast.success("Đã lưu sổ tiền mặt riêng" + (memberName ? " của " + memberName : "") + ".");
     },
   });
 }
 
-export function useSetBuildingReceivingCashbooks() {
+export function useSetBuildingReceivingCashbooks(buildingName?: string) {
   const client = useQueryClient();
+  const guard = useRef(persistentFinancialWorkflow('receiving-building',{scope:'actor'}));
   return useMutation({
+    meta: {handlesFeedback:true},
     mutationFn: async (input: {
       buildingId: string;
       method: "TK" | "TT";
       defaultAccountId: string | null;
       extraAccountIds: string[];
-    }) => {
+    }) => guard.current.run(input.buildingId + input.method, "lưu sổ nhận tiền của tòa", async () => {
       const { data, error } = await supabase.rpc("set_building_receiving_cashbooks_v1", {
         p_building_id: input.buildingId,
         p_method: input.method,
@@ -162,14 +169,13 @@ export function useSetBuildingReceivingCashbooks() {
         p_extra_account_ids: input.extraAccountIds,
       });
       if (error) throw error;
+      const value = data as {buildingId?:string;method?:string;defaultAccountId?:string|null;extraAccountIds?:unknown} | null;
+      if (!value || value.buildingId !== input.buildingId || value.method !== input.method || value.defaultAccountId !== input.defaultAccountId || !Array.isArray(value.extraAccountIds) || [...value.extraAccountIds].sort().join('|') !== [...new Set(input.extraAccountIds)].filter(id => id !== input.defaultAccountId).sort().join('|')) throw new FinancialWorkflowError('Chưa xác nhận được cấu hình sổ nhận tiền đã lưu. Tải lại cấu hình của tòa để đối chiếu trước khi đổi tiếp.', 'unknown', []);
       return data;
-    },
+    }),
     onSuccess: async () => {
       await invalidateReceiving(client);
-      toast.success("Đã lưu sổ nhận tiền của toà.");
-    },
-    onError: (error: { message?: string }) => {
-      toast.error(error?.message || "Không lưu được sổ nhận tiền của toà.");
+      toast.success("Đã lưu cấu hình sổ nhận tiền của tòa" + (buildingName ? " " + buildingName : "") + ".");
     },
   });
 }
@@ -177,8 +183,8 @@ export function useSetBuildingReceivingCashbooks() {
 // ── Đổi hình thức thu của một dòng thu ──────────────────────────────────────
 
 export const changeTenderMethodResultSchema = z.object({
-  tenderId: z.string(),
-  voucherId: z.string(),
+  tenderId: z.string().min(1),
+  voucherId: z.string().min(1),
   changed: z.boolean(),
   replayed: z.boolean().optional(),
   revisionNo: z.number().optional(),
@@ -197,19 +203,26 @@ export interface ChangeTenderMethodInput {
 
 export function useChangeCollectionTenderMethod() {
   const client = useQueryClient();
+  const guard=useRef(persistentFinancialWorkflow('collection-tender-method',{scope:'actor'}));
   return useMutation({
-    mutationFn: async (input: ChangeTenderMethodInput) => {
+    meta:{handlesFeedback:true},
+    mutationFn: async (input: ChangeTenderMethodInput) => guard.current.run(input.tenderId,"đổi hình thức thu",async progress=>{
       const { data, error } = await supabase.rpc("change_collection_tender_method_v1", {
         p_tender_id: input.tenderId,
         p_new_method: input.method,
         p_new_account_id: input.accountId ?? undefined,
         p_reason: input.reason.trim(),
-        p_idempotency_key: input.idempotencyKey ?? newRevisionIdempotencyKey("tender-method"),
+        p_idempotency_key: progress.requestKey,
       });
       if (error) throw error;
-      return changeTenderMethodResultSchema.parse(data);
-    },
-    onSuccess: async () => {
+      const parsed=changeTenderMethodResultSchema.safeParse(data);
+      if(!parsed.success) throw new TypeError("Chưa xác nhận được kết quả đổi hình thức thu.");
+      const result=parsed.data;
+      if(result.tenderId!==input.tenderId || (result.changed && !result.replayed && (!result.to || result.to.method!==input.method || (input.accountId!==null && result.to.accountId!==input.accountId))))throw new TypeError("Chưa xác nhận được đúng khoản thu và sổ nhận sau thay đổi.");
+      progress.completed.push({id:result.voucherId,label:`Phiếu thu đã đối chiếu: ${result.voucherId}`});
+      return result;
+    }),
+    onSuccess: async (result) => {
       await Promise.all(
         [
           ["income-expenses"], ["voucher-with-batch"], ["income-expense-revisions"], ["ie-history"],
@@ -217,10 +230,11 @@ export function useChangeCollectionTenderMethod() {
           ["cash-book"], ["cash-book-summary"],
         ].map((queryKey) => client.invalidateQueries({ queryKey })),
       );
-      toast.success("Đã đổi hình thức thu.");
+      if(result.changed) toast.success("Đã đổi hình thức thu"+(result.to?.accountName?` vào sổ ${result.to.accountName}`:"")+".");
+      else toast.info("Hình thức thu và sổ nhận không thay đổi.");
     },
     onError: (error: { message?: string }) => {
-      toast.error((error?.message || "Không đổi được hình thức thu.").replace(/^\[[A-Z_]+\]\s*/, ""));
+      toast.error(voucherFailureMessage(error,"đổi hình thức thu"));
     },
   });
 }

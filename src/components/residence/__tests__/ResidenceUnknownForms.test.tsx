@@ -1,0 +1,16 @@
+// @vitest-environment jsdom
+import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {afterEach,expect,it,vi} from 'vitest';
+vi.mock('@/components/ui/storage-image',()=>({StorageImage:()=>null}));
+vi.mock('@/lib/storage',()=>({getPublicUrl:(b:string,p:string)=>b+'/'+p}));
+vi.mock('@/integrations/supabase/client',()=>({supabase:{}}));
+vi.mock('@/lib/authSession',()=>({getSessionUser:vi.fn()}));
+import DossierImageUploader from '../DossierImageUploader';
+import RegistrationManualEntry from '../RegistrationManualEntry';
+import LeaseTermBadge from '../LeaseTermBadge';
+import {FinancialWorkflowError} from '@/lib/financialWorkflow';
+afterEach(cleanup);
+const unknown=(id:string)=>new FinancialWorkflowError('Chưa xác nhận kết quả.','unknown',[{id,label:'Bản ghi cần đối chiếu'}]);
+it('upload batch stops on unknown and displays its object path, preserving remaining filenames',async()=>{const upload=vi.fn().mockRejectedValue(unknown('actor/ct01/known.jpg'));render(<DossierImageUploader kind="CT01" files={[]} canEdit onUpload={upload} onRemove={vi.fn()}/>);const files=[new File(['a'],'a.jpg',{type:'image/jpeg'}),new File(['b'],'b.jpg',{type:'image/jpeg'})];fireEvent.change(screen.getByLabelText(/Chọn tệp tờ khai/i),{target:{files}});await waitFor(()=>expect(screen.getByRole('alert').textContent).toContain('actor/ct01/known.jpg'));expect(screen.getByRole('alert').textContent).toContain('b.jpg');fireEvent.change(screen.getByLabelText(/Chọn tệp tờ khai/i),{target:{files}});expect(upload).toHaveBeenCalledTimes(1);});
+it('manual registration keeps code and server ID after cancel/reopen without replay',async()=>{const write=vi.fn().mockRejectedValue(unknown('reg1'));render(<RegistrationManualEntry onGhi={write}/>);fireEvent.click(screen.getByRole('button',{name:/Ghi mã/}));fireEvent.change(screen.getByLabelText('Mã hồ sơ đã nộp'),{target:{value:'G01.899.909-260916-890028'}});fireEvent.click(screen.getByRole('button',{name:'Lưu'}));await waitFor(()=>expect(screen.getByRole('alert').textContent).toContain('reg1'));fireEvent.click(screen.getByRole('button',{name:'Huỷ'}));fireEvent.click(screen.getByRole('button',{name:/Ghi mã/}));expect((screen.getByLabelText('Mã hồ sơ đã nộp') as HTMLInputElement).value).toBe('G01.899.909-260916-890028');fireEvent.click(screen.getByRole('button',{name:'Lưu'}));expect(write).toHaveBeenCalledTimes(1);});
+it('manual lease dates keep draft and file ID after cancel/reopen without replay',async()=>{const write=vi.fn().mockRejectedValue(unknown('f1'));render(<LeaseTermBadge trangThai="xong" han={{from:'30/09/2026',to:'30/09/2028'} as never} coAnh canEdit onDocLai={vi.fn()} onSua={write}/>);fireEvent.click(screen.getByRole('button',{name:'Sửa ngày'}));fireEvent.change(screen.getByLabelText('Hợp đồng đến ngày'),{target:{value:'2029-09-30'}});fireEvent.click(screen.getByRole('button',{name:'Lưu'}));await waitFor(()=>expect(screen.getByRole('alert').textContent).toContain('f1'));fireEvent.click(screen.getByRole('button',{name:'Huỷ'}));fireEvent.click(screen.getByRole('button',{name:'Sửa ngày'}));expect((screen.getByLabelText('Hợp đồng đến ngày') as HTMLInputElement).value).toBe('2029-09-30');fireEvent.click(screen.getByRole('button',{name:'Lưu'}));expect(write).toHaveBeenCalledTimes(1);});

@@ -1,3 +1,6 @@
+import {getSessionUserId} from '@/lib/authSession';
+import {requireReadRows,readString} from '@/lib/accountProfitReadModels';
+import { notifyActionError } from '@/lib/actionFeedback';
 // Tầng dữ liệu cho hai màn cài đặt thông báo (PR-7b · §C + §E.3).
 //
 // Hai lớp cấu hình RIÊNG BIỆT, đừng trộn:
@@ -13,10 +16,7 @@
 //     được, KHÔNG đặt trong /settings/general vì 8/10 người nhận thông báo không có
 //     `settings.view` (nathan ôm 658/1130 dòng mà không mở nổi trang để tự tắt).
 //
-// 🔴 NGUYÊN TẮC HẠ CÁNH AN TOÀN: toàn bộ hook đọc PHẢI trả về mặc định hợp lệ khi RPC
-// lỗi hoặc CHƯA TỒN TẠI. Frontend được ship trước migration, nên nếu thiếu nhánh này
-// thì tab Thông báo và trang Tài khoản sẽ vỡ trắng trên production ngay lúc deploy FE.
-// Mặc định = "bật hết, giờ yên tĩnh 21h→7h" — đúng hành vi hiện tại của hệ thống.
+// Lỗi đọc phải có trạng thái riêng. Chỉ dùng giá trị mặc định khi máy chủ xác nhận chưa có cấu hình.
 
 import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -84,6 +84,7 @@ export type NotificationEventConfig = {
 }
 
 export interface NotificationOrgConfig {
+  organizationId: string;
   events: Record<NotificationEventKey, NotificationEventConfig>;
   /** Giờ bắt đầu / kết thúc khoảng yên tĩnh (0..23, theo giờ máy chủ). */
   quiet_start: number;
@@ -107,33 +108,6 @@ export interface MyNotificationPreferences {
   available: boolean;
 }
 
-/* ───────────────────────────── Mặc định an toàn ─────────────────────────── */
-
-const DEFAULT_EVENTS = (): Record<NotificationEventKey, NotificationEventConfig> =>
-  Object.fromEntries(
-    NOTIFICATION_EVENT_KEYS.map(
-      (k): [NotificationEventKey, NotificationEventConfig] => [
-        k,
-        { enabled: true, min_amount: null },
-      ],
-    ),
-  ) as Record<NotificationEventKey, NotificationEventConfig>;
-
-const DEFAULT_ORG_CONFIG = (): NotificationOrgConfig => ({
-  events: DEFAULT_EVENTS(),
-  quiet_start: 21,
-  quiet_end: 7,
-  available: false,
-});
-
-const DEFAULT_PREFS = (): Record<NotificationEventKey, NotificationPreferenceRow> =>
-  Object.fromEntries(
-    NOTIFICATION_EVENT_KEYS.map((k) => [
-      k,
-      { event_key: k, in_app: true, push: true, cadence: "IMMEDIATE" as NotificationCadence },
-    ]),
-  ) as Record<NotificationEventKey, NotificationPreferenceRow>;
-
 /* ───────────────────────────── Tiện ích nội bộ ──────────────────────────── */
 
 type Json = Record<string, unknown>;
@@ -141,37 +115,50 @@ type Json = Record<string, unknown>;
 const asRecord = (v: unknown): Json | null =>
   v && typeof v === "object" && !Array.isArray(v) ? (v as Json) : null;
 
-/** RPC có thể trả object, mảng-1-phần-tử (SETOF), hoặc null. Chuẩn hoá về object. */
+/** Các RPC SQL trả một JSON envelope; array/null không phải trạng thái đã xác minh. */
 const unwrapRow = (data: unknown): Json | null => {
-  if (Array.isArray(data)) return asRecord(data[0]);
+  if (Array.isArray(data)) return null;
   return asRecord(data);
 };
 
-const toBool = (v: unknown, fallback: boolean): boolean =>
-  typeof v === "boolean" ? v : v === "true" ? true : v === "false" ? false : fallback;
-
-const toHour = (v: unknown, fallback: number): number => {
-  const n = Number(v);
-  return Number.isInteger(n) && n >= 0 && n <= 23 ? n : fallback;
-};
-
-const toAmount = (v: unknown): number | null => {
-  if (v === null || v === undefined || v === "") return null;
-  const n = Number(v);
-  return Number.isFinite(n) && n > 0 ? n : null;
-};
-
-const toCadence = (v: unknown): NotificationCadence =>
-  v === "DIGEST" || v === "OFF" || v === "IMMEDIATE" ? v : "IMMEDIATE";
-
 /**
- * Ghi log MỘT dòng khi RPC vắng mặt, rồi trả mặc định. Không toast: người dùng bình
- * thường không cần biết migration chưa lên, và toast đỏ lúc mở trang là báo động giả.
+ * Log chẩn đoán kèm lỗi query; card hiển thị lỗi đọc và chặn lưu.
  */
 const warnUnavailable = (fn: string, message: string) => {
   // eslint-disable-next-line no-console
-  console.warn(`[notification-settings] ${fn} chưa dùng được (${message}) — dùng mặc định.`);
+  console.warn(`[notification-settings] ${fn} chưa dùng được (${message})`);
 };
+
+export class NotificationSettingsReceiptError extends Error {
+  constructor() { super('Chưa xác nhận được cấu hình thông báo đã lưu. Đọc lại trạng thái trước khi thay đổi tiếp.'); }
+}
+
+// SQL returns a complete envelope, including defaults when no configuration exists.
+// A missing envelope is a failed read/unknown write, never a default configuration.
+function requireNotificationConfig(data: unknown): Json {
+  const row = unwrapRow(data);
+  const events = asRecord(row?.events);
+  if (!row || typeof row.organization_id !== 'string' || !row.organization_id || !events
+    || !Number.isInteger(row.quiet_start) || Number(row.quiet_start) < 0 || Number(row.quiet_start) > 23
+    || !Number.isInteger(row.quiet_end) || Number(row.quiet_end) < 0 || Number(row.quiet_end) > 23
+    || NOTIFICATION_EVENT_KEYS.some(key => {
+      const event = asRecord(events[key]);
+      return !event || typeof event.enabled !== 'boolean'
+        || (event.min_amount !== null && (typeof event.min_amount !== 'number' || !Number.isFinite(event.min_amount) || event.min_amount < 0));
+    })) throw new NotificationSettingsReceiptError();
+  return row;
+}
+function requireNotificationPreferences(data: unknown, organizationId: string, actorId: string): Json {
+  const row = unwrapRow(data);
+  const prefs = asRecord(row?.preferences);
+  if (!row || row.organization_id !== organizationId || row.user_id !== actorId || !prefs
+    || NOTIFICATION_EVENT_KEYS.some(key => {
+      const pref = asRecord(prefs[key]);
+      return !pref || typeof pref.in_app !== 'boolean' || typeof pref.push !== 'boolean'
+        || !['IMMEDIATE','DIGEST','OFF'].includes(String(pref.cadence));
+    })) throw new NotificationSettingsReceiptError();
+  return row;
+}
 
 /* ─────────────────────────── Tổ chức: đọc / ghi ─────────────────────────── */
 
@@ -180,33 +167,15 @@ export const NOTIFICATION_ORG_CONFIG_KEY = ["notification-org-config"] as const;
 export function useNotificationOrgConfig() {
   return useQuery({
     queryKey: NOTIFICATION_ORG_CONFIG_KEY,
-    // Đọc hỏng KHÔNG được ném lên trên: card phải render được ở trạng thái mặc định.
+    meta: { label: "cấu hình thông báo", errorDisplay: "inline" },
     queryFn: async (): Promise<NotificationOrgConfig> => {
       const { data, error } = await supabase.rpc("get_notification_org_config_v1");
       if (error) {
-        warnUnavailable("get_notification_org_config_v1", error.message);
-        return DEFAULT_ORG_CONFIG();
+        throw error;
       }
-      const row = unwrapRow(data);
-      if (!row) return { ...DEFAULT_ORG_CONFIG(), available: true };
+      const row = requireNotificationConfig(data);
 
-      const rawEvents = asRecord(row.events) ?? {};
-      const events = DEFAULT_EVENTS();
-      for (const k of NOTIFICATION_EVENT_KEYS) {
-        const e = asRecord(rawEvents[k]);
-        if (!e) continue;
-        events[k] = {
-          enabled: toBool(e.enabled, true),
-          min_amount: toAmount(e.min_amount),
-        };
-      }
-
-      return {
-        events,
-        quiet_start: toHour(row.quiet_start, 21),
-        quiet_end: toHour(row.quiet_end, 7),
-        available: true,
-      };
+      return {organizationId: row.organization_id as string,events:row.events as Record<NotificationEventKey,NotificationEventConfig>,quiet_start:row.quiet_start as number,quiet_end:row.quiet_end as number,available:true};
     },
     staleTime: 60_000,
     retry: false,
@@ -218,6 +187,7 @@ export function useSetNotificationOrgConfig() {
 
   return useMutation({
     mutationFn: async (input: {
+      organizationId: string;
       events: Record<NotificationEventKey, NotificationEventConfig>;
       quiet_start: number;
       quiet_end: number;
@@ -227,7 +197,10 @@ export function useSetNotificationOrgConfig() {
         p_quiet_start: input.quiet_start,
         p_quiet_end: input.quiet_end,
       });
-      if (error) throw new Error(error.message);
+      if (error) throw error;
+      const row=requireNotificationConfig(data);
+      const events=row.events as Record<NotificationEventKey,NotificationEventConfig>;
+      if(row.organization_id!==input.organizationId||row.quiet_start!==input.quiet_start||row.quiet_end!==input.quiet_end||NOTIFICATION_EVENT_KEYS.some(key=>events[key].enabled!==input.events[key].enabled||events[key].min_amount!==input.events[key].min_amount)) throw new NotificationSettingsReceiptError();
       return data;
     },
     onSuccess: () => {
@@ -235,7 +208,7 @@ export function useSetNotificationOrgConfig() {
       toast.success("Đã lưu cấu hình thông báo của tổ chức");
     },
     onError: (e: Error) => {
-      toast.error(e.message || "Không lưu được cấu hình thông báo");
+      notifyActionError(e, "Không lưu được cấu hình thông báo");
     },
   });
 }
@@ -266,9 +239,8 @@ export function useMyOrgIds() {
       // Sắp xếp để thứ tự ỔN ĐỊNH giữa các lần gọi: array_agg không đảm bảo thứ tự, mà
       // ô chọn lấy phần tử đầu làm mặc định — thứ tự nhảy = mỗi lần mở trang lại đặt sở
       // thích cho một tổ chức khác.
-      return Array.isArray(data)
-        ? Array.from(new Set((data as string[]).filter(Boolean))).sort()
-        : [];
+      if(!Array.isArray(data)||data.some(id=>!readString(id)))throw new TypeError('Invalid organization IDs');
+      return Array.from(new Set(data as string[])).sort();
     },
     staleTime: 5 * 60_000,
     retry: false,
@@ -276,28 +248,14 @@ export function useMyOrgIds() {
 }
 
 export function useMyOrgOptions() {
-  const { data: ids = [], isLoading: loadingIds } = useMyOrgIds();
-
-  // Chỉ đi hỏi tên khi thật sự có nhiều hơn một tổ chức — người dùng 1 org không cần
-  // thấy ô chọn, và RPC tên có thể không dành cho họ.
-  const { data: named = [] } = useQuery({
-    queryKey: ["my-org-names"],
-    enabled: ids.length > 1,
-    retry: false,
-    staleTime: 5 * 60_000,
-    queryFn: async (): Promise<{ organization_id: string; organization_name: string }[]> => {
-      const { data, error } = await supabase.rpc("list_ie_accounting_standard_v1");
-      if (error) throw error;
-      return Array.isArray(data) ? (data as any[]) : [];
-    },
-  });
-
-  const options = useMemo(() => {
-    const byId = new Map(named.map((o) => [o.organization_id, o.organization_name]));
-    return ids.map((id) => ({ id, name: byId.get(id) || `Tổ chức ${id.slice(0, 8)}…` }));
-  }, [ids, named]);
-
-  return { options, isLoading: loadingIds };
+  const idsQuery=useMyOrgIds();
+  const ids=idsQuery.data??[];
+  const needsNames=ids.length>1;
+  const namesQuery=useQuery({queryKey:['my-org-names'],enabled:needsNames,retry:false,staleTime:5*60_000,queryFn:async()=>{const {data,error}=await supabase.rpc('list_ie_accounting_standard_v1');if(error)throw error;return requireReadRows<{organization_id:string;organization_name:string}>(data,row=>readString(row.organization_id)&&readString(row.organization_name));}});
+  const named=namesQuery.data;
+  const options=useMemo(()=>{if(needsNames&&!named)return [];const byId=new Map(named?.map(o=>[o.organization_id,o.organization_name])??[]);return ids.map(id=>({id,name:byId.get(id)||`Tổ chức ${id.slice(0,8)}…`}));},[ids,named,needsNames]);
+  const error=idsQuery.error??(needsNames?namesQuery.error:null);
+  return {options,isLoading:idsQuery.isLoading||(needsNames&&namesQuery.isLoading),isError:idsQuery.isError||(needsNames&&namesQuery.isError),error,refetch:()=>Promise.allSettled(needsNames?[idsQuery.refetch(),namesQuery.refetch()]:[idsQuery.refetch()])};
 }
 
 export const MY_NOTIFICATION_PREFS_KEY = (orgId: string | null) =>
@@ -317,34 +275,14 @@ export function useMyNotificationPreferences(organizationId: string | null) {
         { p_organization_id: batBuoc(organizationId, "organizationId") },
       );
       if (error) {
-        warnUnavailable("get_my_notification_preferences_v1", error.message);
-        return { prefs: DEFAULT_PREFS(), available: false };
+        throw error;
       }
 
-      const prefs = DEFAULT_PREFS();
-      // Hình dạng THẬT của RPC: { organization_id, user_id, preferences: { E1:{in_app,push,
-      // cadence,updated_at}, … } }. Bóc `preferences` ra trước — đọc thẳng object ngoài sẽ
-      // duyệt phải organization_id/user_id và âm thầm trả về TOÀN MẶC ĐỊNH, tức người dùng
-      // tưởng đã tắt mà thật ra vẫn bật.
-      const envelope = unwrapRow(data);
-      const bag = envelope && asRecord(envelope.preferences) ? asRecord(envelope.preferences)! : envelope;
-      const rows: unknown[] = Array.isArray(data)
-        ? data
-        : bag
-          ? Object.entries(bag).map(([k, v]) => ({ event_key: k, ...(asRecord(v) ?? {}) }))
-          : [];
-      for (const r of rows) {
-        const row = asRecord(r);
-        if (!row) continue;
-        const key = String(row.event_key ?? "") as NotificationEventKey;
-        if (!NOTIFICATION_EVENT_KEYS.includes(key)) continue;
-        prefs[key] = {
-          event_key: key,
-          in_app: toBool(row.in_app, true),
-          push: toBool(row.push, true),
-          cadence: toCadence(row.cadence),
-        };
-      }
+      const actorId=await getSessionUserId();
+      if(!actorId)throw new Error('Chưa đăng nhập');
+      const envelope=requireNotificationPreferences(data,batBuoc(organizationId,'organizationId'),actorId);
+      const bag=envelope.preferences as Record<NotificationEventKey,{in_app:boolean;push:boolean;cadence:NotificationCadence}>;
+      const prefs=Object.fromEntries(NOTIFICATION_EVENT_KEYS.map(key=>[key,{event_key:key,...bag[key]}])) as Record<NotificationEventKey,NotificationPreferenceRow>;
       return { prefs, available: true };
     },
   });
@@ -358,6 +296,8 @@ export function useSetMyNotificationPreferences(organizationId: string | null) {
       if (!organizationId) throw new Error("Chưa xác định được tổ chức của bạn");
       // Gửi ĐÚNG 3 khoá server cần; `event_key` đã là khoá của object nên nhét lại vào
       // trong value là nguồn sự thật thứ hai.
+      const actorId=await getSessionUserId();
+      if(!actorId)throw new Error('Chưa đăng nhập');
       const payload = Object.fromEntries(
         NOTIFICATION_EVENT_KEYS.map((k) => [
           k,
@@ -368,14 +308,17 @@ export function useSetMyNotificationPreferences(organizationId: string | null) {
         "set_my_notification_preferences_v1",
         { p_organization_id: organizationId, p_prefs: payload },
       );
-      if (error) throw new Error(error.message);
+      if (error) throw error;
+      const row=requireNotificationPreferences(data,organizationId,actorId);
+      const actual=row.preferences as Record<NotificationEventKey,NotificationPreferenceRow>;
+      if(NOTIFICATION_EVENT_KEYS.some(key=>actual[key].in_app!==prefs[key].in_app||actual[key].push!==prefs[key].push||actual[key].cadence!==prefs[key].cadence))throw new NotificationSettingsReceiptError();
       return data;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: MY_NOTIFICATION_PREFS_KEY(organizationId) });
     },
     onError: (e: Error) => {
-      toast.error(e.message || "Không lưu được tuỳ chọn thông báo");
+      notifyActionError(e, "Không lưu được tuỳ chọn thông báo");
     },
   });
 }

@@ -63,11 +63,12 @@ export default function MeterReadingsMobilePage() {
   const [isImportOpen, setIsImportOpen] = useState(false);
   const pagination = usePagination(30);
 
-  const { data: buildingsData = [] } = useBuildings();
+  const buildingsQuery = useBuildings();
+  const buildingsData = buildingsQuery.data ?? [];
   const buildings = buildingsData as BuildingWithRelations[];
 
   useCopilotPageContext('meter-readings.list', { building_id: filters.building_id, meter_type: filters.meter_type, month: filters.month, status: filters.status });
-  const { data: listResult, isLoading } = useMeterReadingsList(
+  const readingsQuery = useMeterReadingsList(
     {
       building_id: filters.building_id ?? undefined,
       meter_type: filters.meter_type ?? undefined,
@@ -76,10 +77,12 @@ export default function MeterReadingsMobilePage() {
     },
     { page: pagination.page, pageSize: pagination.pageSize },
   );
+  const { data: listResult, isLoading } = readingsQuery;
   const readings = listResult?.data ?? [];
   const totalCount = listResult?.totalCount ?? 0;
 
-  const { data: stats } = useMeterReadingStats(filters.building_id ?? undefined, filters.month);
+  const statsQuery = useMeterReadingStats(filters.building_id ?? undefined, filters.month);
+  const stats = statsQuery.data;
   const approved = stats?.approved_count ?? 0;
   const unapproved = stats?.unapproved_count ?? 0;
   const elec = stats?.electricity_consumption ?? 0;
@@ -101,7 +104,7 @@ export default function MeterReadingsMobilePage() {
             </button>
             <div className="mtitle">
               <h1>Ghi chỉ số</h1>
-              <p>{monthLabel} · {totalCount} chỉ số</p>
+              <p>{monthLabel} · {readingsQuery.isError || !listResult ? 'đang kiểm tra chỉ số' : `${totalCount} chỉ số`}</p>
             </div>
             <div className="mtop-act">
               <button className="mtop-btn ghost" onClick={() => setIsImportOpen(true)} aria-label="Nhập từ Excel">
@@ -119,9 +122,11 @@ export default function MeterReadingsMobilePage() {
                   </option>
                 ))}
               </select>
+              {buildingsQuery.isError && <div role="alert" className="text-sm text-red-700">Không tải được danh sách tòa nhà. <button type="button" onClick={() => void buildingsQuery.refetch()}>Tải lại tòa nhà</button></div>}
               <select
                 className="cm-select"
                 aria-label="Toà nhà"
+                disabled={buildingsQuery.isError || !buildingsQuery.data}
                 value={filters.building_id ?? ""}
                 onChange={(e) => patch({ building_id: e.target.value || null })}
               >
@@ -134,7 +139,9 @@ export default function MeterReadingsMobilePage() {
               </select>
             </div>
 
-            <div className="bm-stats">
+            {statsQuery.isError ? <div role="alert" className="stub"><p>Không tải được thống kê chỉ số. <button type="button" onClick={() => void statsQuery.refetch()}>Tải lại thống kê</button></p></div>
+            : !stats ? <div role="status" className="stub"><p>Đang tải thống kê chỉ số…</p></div>
+            : <div className="bm-stats">
               <div className="bm-stat" style={{ "--bmc": "#15803d" } as React.CSSProperties}>
                 <div className="n">{approved}</div>
                 <div className="l">Đã duyệt</div>
@@ -147,7 +154,7 @@ export default function MeterReadingsMobilePage() {
                 <div className="n">{compactNum(elec)}</div>
                 <div className="l">kWh điện</div>
               </div>
-            </div>
+            </div>}
 
             <div className="lfilter">
               {TABS.map((t) => (
@@ -161,7 +168,9 @@ export default function MeterReadingsMobilePage() {
               ))}
             </div>
 
-            {isLoading ? (
+            {readingsQuery.isError ? (
+              <div role="alert" className="stub"><p>Không tải được danh sách chỉ số. <button type="button" onClick={() => void readingsQuery.refetch()}>Tải lại chỉ số</button></p></div>
+            ) : isLoading || !listResult ? (
               <div className="stub"><p>Đang tải chỉ số…</p></div>
             ) : readings.length === 0 ? (
               <div className="stub"><p>Chưa có chỉ số nào cho bộ lọc này. Thêm chỉ số qua nút (+).</p></div>

@@ -1,7 +1,9 @@
+import {confirmedRecordId,recordWriteMessage} from '@/lib/recordWriteOutcome';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { fetchAllRows } from '@/lib/supabaseFetchAll';
 import { toast } from 'sonner';
+import { friendlyError } from '@/lib/friendlyError';
 import type { Material, MaterialWithCategory } from '@/types/material';
 import type { MaterialFormValues } from '@/lib/materialValidation';
 
@@ -96,15 +98,16 @@ export const useCreateMaterial = () => {
         .select()
         .single();
       if (error) {
-        toast.error(error.message || 'Không thể tạo vật tư');
         throw error;
       }
+      confirmedRecordId(data,'tạo vật tư');
       return data as unknown as Material;
     },
-    onSuccess: () => {
+    onSuccess: material => {
       qc.invalidateQueries({ queryKey: ['materials'] });
-      toast.success('Đã tạo vật tư');
+      toast.success(`Đã tạo vật tư ${material.name}`);
     },
+    onError: error => { toast.error(recordWriteMessage(error,'tạo vật tư')); },
   });
 };
 
@@ -128,15 +131,16 @@ export const useUpdateMaterial = () => {
         .select()
         .single();
       if (error) {
-        toast.error(error.message || 'Không thể cập nhật vật tư');
         throw error;
       }
-      return data;
+      confirmedRecordId(data,'cập nhật vật tư',id);
+      return data as unknown as Material;
     },
-    onSuccess: () => {
+    onSuccess: material => {
       qc.invalidateQueries({ queryKey: ['materials'] });
-      toast.success('Đã cập nhật vật tư');
+      toast.success(`Đã cập nhật vật tư ${material.name}`);
     },
+    onError: error => { toast.error(recordWriteMessage(error,'cập nhật vật tư')); },
   });
 };
 
@@ -144,18 +148,21 @@ export const useSoftDeleteMaterial = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('materials' as any)
         .update({ deleted_at: new Date().toISOString() })
-        .eq('id', id);
+        .eq('id', id)
+        .select('id')
+        .single();
       if (error) {
-        toast.error(error.message || 'Không thể xoá vật tư');
         throw error;
       }
+      confirmedRecordId(data,'xóa vật tư',id);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['materials'] });
       toast.success('Đã xoá vật tư');
     },
+    onError: error => { toast.error(recordWriteMessage(error,'xóa vật tư')); },
   });
 };

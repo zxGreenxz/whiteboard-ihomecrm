@@ -1,3 +1,8 @@
+import { hasUnconfirmedResponse } from '@/lib/operationOutcome';
+import { focusFirstError } from '@/lib/formErrors';
+import { passwordFieldErrors, AvatarProfilePartialError } from '@/lib/accountFeedback';
+import { actionErrorMessage, notifyActionError } from '@/lib/actionFeedback';
+import { QueryRegion } from '@/components/errors/QueryRegion';
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, User, Camera, Lock, Check, Bell, CreditCard, Download, LogOut, ChevronRight, ShieldCheck } from "lucide-react";
@@ -32,7 +37,8 @@ const initialsOf = (name?: string | null, email?: string | null) => {
  */
 export default function AccountMobilePage() {
   const navigate = useNavigate();
-  const { data: profile } = useProfile();
+  const profileQuery = useProfile();
+  const { data: profile } = profileQuery;
   const { data: authUser } = useAuth();
   const { data: perms } = useMyPermissions();
   const updateProfile = useUpdateProfile();
@@ -49,9 +55,14 @@ export default function AccountMobilePage() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string,string>>({});
+  const [passwordError, setPasswordError] = useState("");
+  const [avatarError, setAvatarError] = useState("");
 
-  const [pushOn, setPushOn] = useState(false);
+  const [pushOn, setPushOn] = useState<boolean | null>(null);
   const [pushBusy, setPushBusy] = useState(false);
+  const [pushError, setPushError] = useState("");
+  const [pendingPush, setPendingPush] = useState<unknown>(null);
 
   useEffect(() => {
     if (profile && !init) {
@@ -67,7 +78,10 @@ export default function AccountMobilePage() {
     if (isPushSupported()) {
       isSubscribed()
         .then((s) => alive && setPushOn(s))
-        .catch(() => {});
+        .catch(error => { if (alive) {
+          setPushOn(null);
+          setPushError(actionErrorMessage(error, "Chưa kiểm tra được trạng thái thông báo đẩy"));
+        } });
     }
     return () => {
       alive = false;
@@ -89,19 +103,23 @@ export default function AccountMobilePage() {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 2 * 1024 * 1024) {
-      toast.error("Ảnh không được vượt quá 2MB");
+      setAvatarError("Chọn ảnh không quá 2MB.");
+      void focusFirstError({ avatar: "Chọn ảnh không quá 2MB." });
       return;
     }
-    uploadAvatar.mutate(file);
+    setAvatarError("");
+    uploadAvatar.mutate(file, { onError: error => setAvatarError(error instanceof AvatarProfilePartialError ? error.message : actionErrorMessage(error, "Chưa cập nhật được ảnh đại diện")) });
   };
 
   const onSaveProfile = () => updateProfile.mutate({ full_name: fullName, phone, email });
 
   const onChangePassword = () => {
-    if (!newPassword || !confirmPassword) return toast.error("Vui lòng nhập đầy đủ mật khẩu mới và xác nhận");
-    if (newPassword.length < 6) return toast.error("Mật khẩu mới phải có ít nhất 6 ký tự");
-    if (newPassword !== confirmPassword) return toast.error("Mật khẩu xác nhận không khớp");
+    const errors = passwordFieldErrors(newPassword, confirmPassword);
+    setFieldErrors(errors);
+    setPasswordError('');
+    if (Object.keys(errors).length) { void focusFirstError(errors, { order: ['newPassword', 'confirmPassword'] }); return; }
     changePassword.mutate(newPassword, {
+      onError: error => setPasswordError(actionErrorMessage(error, "Chưa xác nhận được kết quả đổi mật khẩu")),
       onSuccess: () => {
         setCurrentPassword("");
         setNewPassword("");
@@ -116,6 +134,7 @@ export default function AccountMobilePage() {
       return;
     }
     setPushBusy(true);
+    setPushError("");
     try {
       if (next) {
         const res = await enablePush();
@@ -128,15 +147,34 @@ export default function AccountMobilePage() {
           toast.info("Chưa cấp quyền thông báo");
         }
       } else {
-        await disablePush();
+        const result = await disablePush();
+        if (result === "unsupported") {
+          toast.info("Trình duyệt/thiết bị không hỗ trợ thông báo đẩy");
+          return;
+        }
         setPushOn(false);
-        toast.success("Đã tắt thông báo trên thiết bị này");
+        if (result === "already-disabled") toast.info("Thiết bị này đã tắt thông báo đẩy.");
+        else toast.success("Đã tắt thông báo trên thiết bị này");
       }
     } catch (e) {
-      toast.error("Có lỗi: " + ((e as Error)?.message || String(e)));
+      setPushError(actionErrorMessage(e, "Chưa xác nhận được thay đổi thông báo đẩy"));
+      if (hasUnconfirmedResponse(e)) { setPushOn(null); setPendingPush(e); }
+      notifyActionError(e, "Chưa xác nhận được thay đổi thông báo đẩy");
     } finally {
       setPushBusy(false);
     }
+  };
+
+  const readPushState = async () => {
+    setPushBusy(true);
+    try {
+      setPushOn(await isSubscribed(pendingPush));
+      setPendingPush(null);
+      setPushError("");
+    } catch (error) {
+      setPushOn(null);
+      setPushError(actionErrorMessage(error, "Chưa kiểm tra được trạng thái thông báo đẩy"));
+    } finally { setPushBusy(false); }
   };
 
   return (
@@ -154,8 +192,10 @@ export default function AccountMobilePage() {
           </div>
 
           <div className="mbody">
+          <QueryRegion label="thông tin tài khoản" queries={[profileQuery]}>
+          {avatarError && <p role="alert" className="text-sm text-destructive">{avatarError}</p>}
             <div className="acc-hero">
-              <div className="acc-av" onClick={() => fileRef.current?.click()} style={{ cursor: "pointer", overflow: "hidden" }}>
+              <div className="acc-av" role="button" tabIndex={0} data-field-name="avatar" aria-invalid={!!avatarError} onKeyDown={e => { if(e.key === "Enter" || e.key === " ") fileRef.current?.click(); }} onClick={() => fileRef.current?.click()} style={{ cursor: "pointer", overflow: "hidden" }}>
                 {profile?.avatar_url ? (
                   <img src={profile.avatar_url} alt={profile.full_name || "Avatar"} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                 ) : (
@@ -209,12 +249,15 @@ export default function AccountMobilePage() {
               </div>
               <div className="ff">
                 <label className="ff-lbl">Mật khẩu mới</label>
-                <input className="ff-input" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Ít nhất 6 ký tự" />
+                <input className="ff-input" id="newPassword" name="newPassword" aria-invalid={!!fieldErrors.newPassword} aria-describedby={fieldErrors.newPassword ? "newPassword-error" : undefined} style={fieldErrors.newPassword ? {borderColor:"hsl(var(--destructive))"} : undefined} type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Ít nhất 6 ký tự" />
+              {fieldErrors.newPassword && <p id="newPassword-error" role="alert" className="text-sm text-destructive">{fieldErrors.newPassword}</p>}
               </div>
               <div className="ff">
                 <label className="ff-lbl">Xác nhận mật khẩu mới</label>
-                <input className="ff-input" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Nhập lại mật khẩu mới" />
+                <input className="ff-input" id="confirmPassword" name="confirmPassword" aria-invalid={!!fieldErrors.confirmPassword} aria-describedby={fieldErrors.confirmPassword ? "confirmPassword-error" : undefined} style={fieldErrors.confirmPassword ? {borderColor:"hsl(var(--destructive))"} : undefined} type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Nhập lại mật khẩu mới" />
+              {fieldErrors.confirmPassword && <p id="confirmPassword-error" role="alert" className="text-sm text-destructive">{fieldErrors.confirmPassword}</p>}
               </div>
+              {passwordError && <p role="alert" className="text-sm text-destructive">{passwordError}</p>}
               <button className="ff-save ghost" type="button" onClick={onChangePassword} disabled={changePassword.isPending}>
                 <Lock />
                 {changePassword.isPending ? "Đang đổi…" : "Đổi mật khẩu"}
@@ -223,17 +266,19 @@ export default function AccountMobilePage() {
 
             <div className="msub"><span className="msub-t">Tùy chọn</span></div>
             <div className="acc-rows">
+              {pushError && <p role="alert" className="text-sm text-destructive">{pushError}</p>}
               <div className="sp-rowcard">
                 <span className="ic brand"><Bell /></span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <span className="gn">Thông báo đẩy</span>
-                  <span className="gv">Nhắc nợ · hoá đơn · công việc</span>
+                  {pushOn === null && <button type="button" className="text-sm underline" onClick={() => void readPushState()} disabled={pushBusy}>Tải lại trạng thái thiết bị</button>}
+                  <span className="gv">{pushOn === null ? "Chưa xác định trạng thái đăng ký của thiết bị" : "Nhắc nợ · hoá đơn · công việc"}</span>
                 </div>
                 <button
                   className={"sp-switch" + (pushOn ? " on" : "")}
                   onClick={() => !pushBusy && onTogglePush(!pushOn)}
                   aria-label="Thông báo đẩy"
-                  disabled={pushBusy}
+                  disabled={pushBusy || pushOn === null}
                 >
                   <span className="knob" />
                 </button>
@@ -277,6 +322,7 @@ export default function AccountMobilePage() {
               {logout.isPending ? "Đang đăng xuất…" : "Đăng xuất"}
             </button>
             <div className="acc-ver">iHomeCRM · phiên bản {APP_VERSION}</div>
+            </QueryRegion>
           </div>
         </div>
       </div>

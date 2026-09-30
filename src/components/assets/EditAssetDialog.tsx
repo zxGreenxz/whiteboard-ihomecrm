@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -18,6 +18,8 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useBuildings } from "@/hooks/useBuildings";
 import { useRooms } from "@/hooks/useRooms";
+import { focusFirstError } from "@/lib/formErrors";
+import {recordWriteBlocked,recordWriteMessage} from "@/lib/recordWriteOutcome";
 
 const assetSchema = z.object({
   code: z.string().optional(),
@@ -42,33 +44,46 @@ interface EditAssetDialogProps {
 }
 
 export function EditAssetDialog({ open, onOpenChange, asset }: EditAssetDialogProps) {
+  const [failure,setFailure]=useState<unknown>();
+  const [blocked,setBlocked]=useState(false);
+  const draftKey=useRef<string|null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deleteFailure,setDeleteFailure]=useState<unknown>();
+  const deleting=useRef(false);
   const updateAsset = useUpdateAsset();
   const deleteAsset = useDeleteAsset();
-  const { data: buildings = [] } = useBuildings({ enabled: open });
+  const buildingsQuery=useBuildings({ enabled: open });
+  const {data:buildings=[]}=buildingsQuery;
 
   const buildingId = asset.building_id || undefined;
-  const { data: rooms = [] } = useRooms(buildingId, { enabled: open });
+  const roomsQuery=useRooms(buildingId, { enabled: open });
+  const {data:rooms=[]}=roomsQuery;
 
-  const { data: categories = [] } = useQuery({
+  const categoriesQuery = useQuery({
     queryKey: ["asset-categories"],
     queryFn: async () => {
       const { data, error } = await supabase.from("asset_categories").select("*").order("name");
       if (error) throw error;
-      return data || [];
+      if(!Array.isArray(data))throw new Error('Chưa xác nhận được danh mục tài sản. Tải lại trước khi lưu.');
+      return data;
     },
     enabled: open,
   });
 
-  const { data: suppliers = [] } = useQuery({
+  const suppliersQuery = useQuery({
     queryKey: ["suppliers"],
     queryFn: async () => {
       const { data, error } = await supabase.from("suppliers").select("*").order("name");
       if (error) throw error;
-      return data || [];
+      if(!Array.isArray(data))throw new Error('Chưa xác nhận được danh mục tài sản. Tải lại trước khi lưu.');
+      return data;
     },
     enabled: open,
   });
+
+  const {data:categories=[]}=categoriesQuery;const {data:suppliers=[]}=suppliersQuery;
+  const sources=[buildingsQuery,roomsQuery,categoriesQuery,suppliersQuery];
+  const sourceBlocked=sources.some(query=>query.isError||query.isLoading);
 
   const form = useForm<AssetFormValues>({
     resolver: zodResolver(assetSchema),
@@ -84,6 +99,8 @@ export function EditAssetDialog({ open, onOpenChange, asset }: EditAssetDialogPr
 
   useEffect(() => {
     if (asset) {
+      if(draftKey.current===asset.id && (failure || form.formState.isDirty))return;
+      draftKey.current=asset.id;setBlocked(false);setFailure(undefined);
       form.reset({
         code: asset.code || "",
         name: asset.name || "",
@@ -101,6 +118,8 @@ export function EditAssetDialog({ open, onOpenChange, asset }: EditAssetDialogPr
   }, [asset, form]);
 
   const onSubmit = async (data: AssetFormValues) => {
+    if(blocked||sourceBlocked)return;
+    form.clearErrors('root.server');
     try {
       await updateAsset.mutateAsync({
         id: asset.id,
@@ -118,17 +137,23 @@ export function EditAssetDialog({ open, onOpenChange, asset }: EditAssetDialogPr
       });
       onOpenChange(false);
     } catch (error) {
+      setFailure(error);setBlocked(recordWriteBlocked(error));
       console.error("Failed to update asset:", error);
+      form.setError('root.server', { type: 'server', message: recordWriteMessage(error,'cập nhật tài sản') });
     }
   };
 
   const handleDelete = async () => {
+    if(blocked||deleting.current||deleteAsset.isPending)return;
+    deleting.current=true;setDeleteFailure(undefined);
     try {
       await deleteAsset.mutateAsync(asset.id);
       setShowDeleteDialog(false);
       onOpenChange(false);
     } catch (error) {
+      setDeleteFailure(error);setBlocked(recordWriteBlocked(error));
       console.error("Failed to delete asset:", error);
+    } finally {deleting.current=false;
     }
   };
 
@@ -136,15 +161,18 @@ export function EditAssetDialog({ open, onOpenChange, asset }: EditAssetDialogPr
 
   return (
     <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-2xl max-h-[90vh]">
+      <Dialog open={open} onOpenChange={value=>{if(!form.formState.isSubmitting)onOpenChange(value);}}>
+        <DialogContent aria-describedby={undefined} className="max-w-2xl max-h-[90vh]">
           <DialogHeader>
             <DialogTitle>Chỉnh sửa tài sản</DialogTitle>
           </DialogHeader>
           <ScrollArea className="max-h-[calc(90vh-120px)] pr-4">
             <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+              <form onSubmit={form.handleSubmit(onSubmit, errors => { void focusFirstError(errors); })} className="space-y-4">
+                {form.formState.errors.root?.server?.message && <p role="alert" className="text-sm text-destructive">{form.formState.errors.root.server.message}</p>}
+                {sourceBlocked && <div role="alert" className="rounded border border-destructive p-3 text-sm">Chưa tải đủ dữ liệu tài sản. Tải lại trước khi lưu.<Button type="button" variant="outline" onClick={()=>{for(const query of sources)void query.refetch();}}>Tải lại dữ liệu</Button></div>}
+            <fieldset disabled={blocked || sourceBlocked || form.formState.isSubmitting} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
                   <FormField control={form.control} name="code" render={({ field }) => (
                     <FormItem>
                       <FormLabel>Mã tài sản</FormLabel>
@@ -276,11 +304,12 @@ export function EditAssetDialog({ open, onOpenChange, asset }: EditAssetDialogPr
                   </FormItem>
                 )} />
 
-                <div className="flex justify-between gap-3 pt-4">
+                </fieldset>
+            <div className="flex justify-between gap-3 pt-4">
                   <Button type="button" variant="destructive" onClick={() => setShowDeleteDialog(true)}>Xóa</Button>
                   <div className="flex gap-3">
                     <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Hủy</Button>
-                    <Button type="submit" disabled={updateAsset.isPending}>
+                    <Button type="submit" disabled={blocked || sourceBlocked || form.formState.isSubmitting || updateAsset.isPending}>
                       {updateAsset.isPending ? "Đang lưu..." : "Lưu thay đổi"}
                     </Button>
                   </div>
@@ -297,9 +326,10 @@ export function EditAssetDialog({ open, onOpenChange, asset }: EditAssetDialogPr
             <AlertDialogTitle>Xác nhận xóa</AlertDialogTitle>
             <AlertDialogDescription>Bạn có chắc chắn muốn xóa tài sản này?</AlertDialogDescription>
           </AlertDialogHeader>
+          {deleteFailure!==undefined && <p role="alert" className="text-sm text-destructive">{recordWriteMessage(deleteFailure,'xóa tài sản')}</p>}
           <AlertDialogFooter>
             <AlertDialogCancel>Hủy</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+            <AlertDialogAction disabled={blocked || deleteAsset.isPending} onClick={event=>{event.preventDefault();void handleDelete();}} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
               Xóa
             </AlertDialogAction>
           </AlertDialogFooter>

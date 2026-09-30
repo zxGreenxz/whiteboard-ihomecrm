@@ -1,3 +1,5 @@
+import { requireReadRows, readString, readNullableString, readDate } from "@/lib/accountProfitReadModels";
+import { notifyActionError } from '@/lib/actionFeedback';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { taoTaiKhoanQuanTri } from '@/lib/edgeFunctions';
@@ -26,18 +28,23 @@ export const useAdminUsers = () => {
         .order('created_at', { ascending: false });
       if (error) throw error;
 
-      const [{ data: supers }, { data: assignments }] = await Promise.all([
+      const [{ data: supers, error: superError }, { data: assignments, error: assignmentsError }] = await Promise.all([
         supabase.from('super_admins').select('user_id'),
         supabase.from('staff_assignments').select('staff_id'),
       ]);
 
-      const superSet = new Set((supers ?? []).map((s) => (s as any).user_id));
+      if (superError) throw superError;
+      if (assignmentsError) throw assignmentsError;
+      const validProfiles = requireReadRows<Pick<AdminUser, 'id' | 'full_name' | 'email' | 'phone' | 'is_active' | 'created_at'>>(profiles, row => readString(row.id) && ['full_name', 'email', 'phone'].every(key => readNullableString(row[key])) && (row.is_active === null || typeof row.is_active === 'boolean') && readDate(row.created_at));
+      const validSupers = requireReadRows<{user_id: string}>(supers, row => readString(row.user_id));
+      const validAssignments = requireReadRows<{staff_id: string}>(assignments, row => readString(row.staff_id));
+      const superSet = new Set(validSupers.map((s) => s.user_id));
       const assignCount: Record<string, number> = {};
-      for (const a of (assignments ?? []) as any[]) {
+      for (const a of validAssignments) {
         assignCount[a.staff_id] = (assignCount[a.staff_id] ?? 0) + 1;
       }
 
-      return (profiles ?? []).map((p: any) => ({
+      return validProfiles.map((p) => ({
         id: p.id,
         full_name: p.full_name,
         email: p.email,
@@ -78,7 +85,7 @@ export const useCreateAdminUser = () => {
       qc.invalidateQueries({ queryKey: ['admin-users'] });
     },
     onError: (e: any) => {
-      toast.error('Không thể tạo tài khoản', { description: e?.message ?? String(e) });
+      notifyActionError(e, 'Chưa xác nhận được kết quả tạo tài khoản');
     },
   });
 };

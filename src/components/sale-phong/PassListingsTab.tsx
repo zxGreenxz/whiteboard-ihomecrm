@@ -1,4 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { NumberInput } from "@/components/ui/number-input";
+import { validateInputDrafts } from "@/lib/inputDraftValidation";
+import { QueryRegion } from "@/components/errors/QueryRegion";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -52,30 +55,36 @@ const emptyForm: FormState = {
 };
 
 export default function PassListingsTab() {
-  const { data: listings, isLoading } = usePassListings();
-  const { data: formRooms } = usePassListingFormRooms();
+  const listingQuery = usePassListings();
+  const { data: listings, isLoading } = listingQuery;
+  const roomQuery = usePassListingFormRooms();
+  const { data: formRooms } = roomQuery;
   const upsertMut = useUpsertPassListing();
   const activeMut = useSetPassListingActive();
   const deleteMut = useDeletePassListing();
 
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm);
+  const priceInput = useRef<HTMLInputElement>(null);
   const [deleting, setDeleting] = useState<PassListing | null>(null);
   const [contactPickerOpen, setContactPickerOpen] = useState(false);
 
   // Khách thuê của phòng đang chọn (để điền sẵn đại diện + cho chọn khách khác).
-  const { data: roomCustomers = [] } = usePassListingRoomCustomers(open ? form.roomId : null);
+  const customerQuery = usePassListingRoomCustomers(open ? form.roomId : null);
+  const { data: roomCustomers = [] } = customerQuery;
+  const sourceBlocked = listingQuery.isError || roomQuery.isError || !listings || !formRooms;
+  const customerBlocked = !!form.roomId && (customerQuery.isError || !customerQuery.data);
 
   // Đổi phòng → điền sẵn SĐT/tên khách ĐẠI DIỆN nếu contact đang trống.
   useEffect(() => {
-    if (!open || !form.roomId || roomCustomers.length === 0) return;
+    if (!open || !form.roomId || customerBlocked || roomCustomers.length === 0) return;
     setForm((f) => {
       if (f.contactName.trim() || f.contactPhone.trim()) return f; // không ghi đè khi đã có
       const rep = roomCustomers.find((c) => c.is_representative) ?? roomCustomers[0];
       return { ...f, contactName: rep.full_name ?? "", contactPhone: rep.phone ?? "" };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomCustomers, form.roomId, open]);
+  }, [roomCustomers, form.roomId, open, customerBlocked]);
 
   // Tra cứu tên phòng/tòa từ danh sách form (listings chỉ lưu id).
   const roomById = useMemo(() => {
@@ -113,8 +122,9 @@ export default function PassListingsTab() {
   };
 
   const doSave = () => {
-    if (!form.roomId) return;
-    const price = form.passPrice.replace(/[^\d]/g, "");
+    if (!form.roomId || sourceBlocked || customerBlocked) return;
+    if (!validateInputDrafts(priceInput.current?.closest('[role="dialog"]'))) return;
+    const price = form.passPrice.trim().replace(",", ".");
     upsertMut.mutate(
       {
         id: form.id,
@@ -148,7 +158,7 @@ export default function PassListingsTab() {
   };
 
   return (
-    <div className="space-y-4">
+    <QueryRegion label="phòng khách nhờ sale" queries={[listingQuery, roomQuery]}><div className="space-y-4">
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">
           Phòng đang có khách thuê nhưng khách <b>nhờ sale / pass phòng</b>. Phòng sẽ hiện trên
@@ -228,7 +238,7 @@ export default function PassListingsTab() {
       </Card>
 
       {/* Tạo / sửa listing */}
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={(value) => { if (!upsertMut.isPending) setOpen(value); }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{form.id ? "Sửa phòng khách nhờ sale" : "Thêm phòng khách nhờ sale"}</DialogTitle>
@@ -236,6 +246,7 @@ export default function PassListingsTab() {
               Chọn phòng đang có khách, nhập SĐT khách + chính sách sale để hiển thị trên trang công khai.
             </DialogDescription>
           </DialogHeader>
+          {form.roomId && <QueryRegion label="khách thuê phòng" queries={[customerQuery]}>{null}</QueryRegion>}
           <div className="space-y-3 py-1">
             <div className="space-y-1.5">
               <Label>Phòng</Label>
@@ -317,9 +328,9 @@ export default function PassListingsTab() {
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="pass-price">Giá pass (đ/tháng)</Label>
-                <Input id="pass-price" inputMode="numeric" placeholder="Để trống = giá phòng"
-                  value={form.passPrice}
-                  onChange={(e) => setForm((f) => ({ ...f, passPrice: e.target.value }))} />
+                <NumberInput ref={priceInput} id="pass-price" name="passPrice" allowDecimal placeholder="Để trống = giá phòng"
+                  value={form.passPrice ? Number(form.passPrice.replace(",", ".")) : null}
+                  onChange={(value) => setForm((f) => ({ ...f, passPrice: priceInput.current?.value ?? String(value) }))} />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="pass-avail">Ngày trống phòng (tuỳ chọn)</Label>
@@ -346,7 +357,7 @@ export default function PassListingsTab() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Hủy</Button>
-            <Button onClick={doSave} disabled={!form.roomId || upsertMut.isPending}>Lưu</Button>
+            <Button onClick={doSave} disabled={!form.roomId || sourceBlocked || customerBlocked || upsertMut.isPending}>Lưu</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -363,12 +374,12 @@ export default function PassListingsTab() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Hủy</AlertDialogCancel>
-            <AlertDialogAction onClick={() => { if (deleting) deleteMut.mutate(deleting.id); setDeleting(null); }}>
+            <AlertDialogAction disabled={deleteMut.isPending} onClick={(event) => { event.preventDefault(); if (deleting) deleteMut.mutate(deleting.id, { onSuccess: () => setDeleting(null) }); }}>
               Xoá
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </div></QueryRegion>
   );
 }

@@ -19,7 +19,7 @@ const incomeExpenseFormBase = z.object({
     required_error: 'Vui lòng chọn loại phiếu',
   }),
   name: z.string().min(1, 'Vui lòng nhập tên phiếu'),
-  building_id: z.string().min(1, 'Vui lòng chọn căn hộ'),
+  building_id: z.string().min(1, 'Chọn toà nhà cho phiếu.'),
   room_id: z.string().nullable().optional(),
   tenant_id: z.string().nullable().optional(),
   // Hợp đồng liên quan — bắt buộc cho phiếu cọc nếu HĐ đã tồn tại, optional
@@ -31,8 +31,8 @@ const incomeExpenseFormBase = z.object({
   // Thông tin chuyển khoản người nhận (chỉ phiếu CHI) — phục vụ QR chi tiền.
   receive_bank_account: z.string().nullable().optional(),
   receive_bank_name: z.string().nullable().optional(),
-  account_id: z.string().min(1, 'Vui lòng chọn tài khoản'),
-  voucher_date: z.string().min(1, 'Vui lòng chọn ngày'),
+  account_id: z.string().min(1, 'Chọn sổ quỹ ghi nhận phiếu.'),
+  voucher_date: z.string().min(1, 'Chọn ngày trên phiếu.'),
   // null = tự động (DB suy theo hạng mục cọc → cọc không tính KQKD);
   // true/false = override tay. Mặc định null (auto).
   business_result_accounting: z.boolean().nullable().default(null),
@@ -43,7 +43,7 @@ const incomeExpenseFormBase = z.object({
     .default('NONE')
     .optional(),
   repeat_infinity: z.boolean().default(false).optional(),
-  repeat_count: z.coerce.number().int().min(0).max(240).default(0).optional(),
+  repeat_count: z.coerce.number({ invalid_type_error: 'Nhập số lần lặp là số nguyên từ 1 đến 240.' }).int('Nhập số lần lặp là số nguyên từ 1 đến 240.').min(0, 'Nhập số lần lặp là số nguyên từ 1 đến 240.').max(240, 'Nhập số lần lặp là số nguyên từ 1 đến 240.').default(0).optional(),
   // true (mặc định): phiếu định kỳ con tự APPROVED + kế thừa sổ. false: con sinh
   // NHÁP (sổ trống) — thanh toán + duyệt tại trang Đóng tiền tập trung.
   repeat_auto_approve: z.boolean().default(true).optional(),
@@ -60,7 +60,7 @@ const repeatCountRule = (
   if (cycle !== 'NONE' && !val.repeat_infinity && (val.repeat_count ?? 0) < 1) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      message: 'Nhập số lần lặp ≥ 1 hoặc bật "Lặp vô hạn"',
+      message: 'Nhập số lần lặp là số nguyên từ 1 đến 240 hoặc bật "Lặp vô hạn".',
       path: ['repeat_count'],
     });
   }
@@ -169,7 +169,7 @@ export const incomeExpenseBatchFormSchema = z.object({
   }),
   shared_name: z.string().min(1, 'Vui lòng nhập tên phiếu chung'),
   account_id: z.string().min(1, 'Vui lòng chọn sổ quỹ'),
-  voucher_date: z.string().min(1, 'Vui lòng chọn ngày'),
+  voucher_date: z.string().min(1, 'Chọn ngày trên phiếu.'),
   payer_name: z.string().nullable().optional(),
   // null = tự động (theo hạng mục cọc); true/false = override tay.
   business_result_accounting: z.boolean().nullable().default(null),

@@ -24,6 +24,11 @@ import {
 import { parseMoneyInput, formatMoney as fmtVND, sameMoney } from "@/lib/moneyInput";
 
 
+import { useOperationFormFeedback } from '@/hooks/useOperationFormFeedback';
+import { QueryRegion } from '@/components/errors/QueryRegion';
+import { CASHBOOK_CLOSING_RULES } from '@/lib/cashbookClosingFeedback';
+import { format } from 'date-fns';
+
 export interface ConfirmCashbookClosingDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -33,19 +38,21 @@ export interface ConfirmCashbookClosingDialogProps {
 export default function ConfirmCashbookClosingDialog({
   open, onOpenChange, request,
 }: ConfirmCashbookClosingDialogProps) {
+  const feedback = useOperationFormFeedback('xử lý đề nghị chốt sổ', {rules:CASHBOOK_CLOSING_RULES});
   const [counted, setCounted] = useState("");
   const [agreed, setAgreed] = useState(false);
   const confirmMut = useConfirmCashbookClosing();
   const cancelMut = useCancelCashbookClosing();
 
-  const { data: freshSystem, isLoading: loadingFresh, isError: freshFailed } = useCashbookBalanceAsOf(
+  const balanceQuery = useCashbookBalanceAsOf(
     open ? request?.cashbook_id ?? null : null,
     request?.closed_through ?? null,
   );
 
+  const {data:freshSystem,isLoading:loadingFresh,isError:freshFailed} = balanceQuery;
   useEffect(() => {
-    if (!open) { setCounted(""); setAgreed(false); }
-  }, [open]);
+    if (!open && !feedback.blocked) { setCounted(""); setAgreed(false); }
+  }, [open, feedback.blocked]);
 
   if (!request) return null;
 
@@ -58,19 +65,21 @@ export default function ConfirmCashbookClosingDialog({
   const matches = countedNum !== null && sameMoney(countedNum, declared);
   // Không đọc được số dư tươi = không kiểm được "sổ đã trôi chưa". Ký trong
   // trạng thái đó là ký mù, nên chặn.
-  const canConfirm = matches && agreed && !drifted && !loadingFresh && !freshFailed
+  const sourceReady = !drifted && !loadingFresh && !freshFailed
     && freshSystem !== null && freshSystem !== undefined;
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!confirmMut.isPending) onOpenChange(o); }}>
-      <DialogContent className="max-w-lg">
+    <Dialog open={open} onOpenChange={(o) => feedback.close(() => onOpenChange(o))}>
+      <DialogContent ref={feedback.root} className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Xác nhận nhận bàn giao — {request.cashbook_name}</DialogTitle>
           <DialogDescription>
-            {request.proposed_by_name ?? "Người giữ sổ"} đề nghị chốt sổ tới {request.closed_through}.
+            {request.proposed_by_name ?? "Người giữ sổ"} đề nghị chốt sổ tới {format(new Date(request.closed_through), 'dd/MM/yyyy')}.
           </DialogDescription>
         </DialogHeader>
 
+        {feedback.notice}
+        <QueryRegion label="số dư sổ quỹ để đối chiếu" queries={[balanceQuery]}><span /></QueryRegion>
         <div className="space-y-3">
           <div className="rounded-md border p-3 text-sm space-y-1">
             <div className="flex justify-between">
@@ -92,12 +101,6 @@ export default function ConfirmCashbookClosingDialog({
             )}
           </div>
 
-          {freshFailed && (
-            <div className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-800">
-              Không đọc được số dư sổ quỹ lúc này nên không đối chiếu được — chưa ký
-              nhận được. Thử lại, hoặc nhờ quản trị kiểm quyền xem sổ.
-            </div>
-          )}
 
           {drifted && (
             <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
@@ -112,7 +115,7 @@ export default function ConfirmCashbookClosingDialog({
               <AlertTriangle className="h-4 w-4" /> Ký là khoá VĨNH VIỄN
             </p>
             <p className="text-sm text-red-800">
-              Mọi phiếu có ngày ≤ {request.closed_through} sẽ không sửa, huỷ hay xoá được nữa,
+              Mọi phiếu có ngày ≤ {format(new Date(request.closed_through), 'dd/MM/yyyy')} sẽ không sửa, huỷ hay xoá được nữa,
               và không ai mở lại được — kể cả chủ tổ chức. Từ lúc này bạn chịu trách nhiệm về
               số tiền đã nhận.
             </p>
@@ -121,10 +124,11 @@ export default function ConfirmCashbookClosingDialog({
           <div className="space-y-1.5">
             <Label htmlFor="counted-confirm">Gõ lại số tiền BẠN vừa đếm được</Label>
             <Input
-              id="counted-confirm" inputMode="numeric" value={counted}
+              id="counted-confirm" {...feedback.field("counted")} inputMode="numeric" value={counted}
               onChange={(e) => setCounted(e.target.value)}
               placeholder="Đếm tiền rồi nhập vào đây"
             />
+            {feedback.issue("counted")}
             {countedNum !== null && !matches && (
               <p className="text-sm text-red-700">
                 Khác số bên giao khai ({fmtVND(declared)}) — hai bên phải đếm lại cùng nhau.
@@ -133,35 +137,37 @@ export default function ConfirmCashbookClosingDialog({
           </div>
 
           <label className="flex items-start gap-2 text-sm">
-            <Checkbox checked={agreed} onCheckedChange={(v) => setAgreed(v === true)} />
+            <Checkbox {...feedback.field("agreed")} checked={agreed} onCheckedChange={(v) => setAgreed(v === true)} />
             <span>Tôi đã đếm tiền mặt và xác nhận đã nhận đủ số trên.</span>
           </label>
+          {feedback.issue("agreed")}
         </div>
 
         <DialogFooter className="gap-2">
           <Button
             variant="outline"
-            disabled={confirmMut.isPending || cancelMut.isPending}
-            onClick={async () => {
+            disabled={feedback.saving || feedback.blocked}
+            onClick={() => void feedback.run(async () => {
               await cancelMut.mutateAsync({
-                requestId: request.request_id,
+                requestId: request.request_id, cashbookName: request.cashbook_name,
                 reason: "Người nhận từ chối / cần đếm lại",
               });
-              onOpenChange(false);
-            }}
+            }, () => onOpenChange(false))}
           >
             Từ chối &amp; huỷ đề nghị
           </Button>
           <Button
             className="bg-red-600 hover:bg-red-700"
-            disabled={!canConfirm || confirmMut.isPending}
-            onClick={async () => {
+            disabled={!sourceReady || feedback.saving || feedback.blocked}
+            onClick={() => void feedback.run(async () => {
               await confirmMut.mutateAsync({
-                requestId: request.request_id,
+                requestId: request.request_id, cashbookName: request.cashbook_name,
                 countedBalance: countedNum as number,
               });
-              onOpenChange(false);
-            }}
+            }, () => onOpenChange(false), {
+              counted: countedNum === null ? 'Nhập số tiền bạn thực kiểm đếm.' : !matches ? 'Số tiền khác số người giao khai. Hai bên cần kiểm đếm lại.' : undefined,
+              agreed: !agreed ? 'Xác nhận bạn đã kiểm đếm và nhận đủ số tiền.' : undefined,
+            })}
           >
             {confirmMut.isPending
               ? (<><Loader2 className="h-4 w-4 mr-2 animate-spin" />Đang chốt…</>)

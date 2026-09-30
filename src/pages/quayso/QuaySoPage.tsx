@@ -1,7 +1,10 @@
+import { uploadProofBatch, type ProofFailure } from '@/lib/luckyProofUpload';
+import { readPendingLuckyProofs, readUnconfirmedLuckyUploads, retainPlannedLuckyUpload, confirmPlannedLuckyUpload, retainUploadedLuckyProof, confirmPendingLuckyProofs } from '@/lib/luckyProofPending';
+import { publicFailure, checkinCodeError } from '@/lib/publicFeedback';
 /**
  * Trang CÔNG KHAI /quayso — sale không đăng nhập.
  *
- * Luồng: nhập mã 6 số (web cấp sẵn cho từng đội) → điểm danh → chờ đếm ngược
+ * Luồng: nhập mã 6–8 số (web cấp sẵn cho từng đội) → điểm danh → chờ đếm ngược
  * tới giờ mở thưởng (draw_at do quản trị hẹn) → server chốt đội trúng MỘT lần
  * (lucky_draw_v1, mọi client gọi đều idempotent) → mọi máy quay bánh xe về
  * cùng một đội.
@@ -25,7 +28,6 @@ import {
   luckyGameOf,
   serverClockOffset,
   totalRoundsPrize,
-  uploadLuckyProof,
   PROOF_MAX_FILES,
   type LuckyProof,
   type LuckyPublicState,
@@ -77,13 +79,17 @@ interface PayoutFormProps {
   onSaved: (s: LuckyPublicState) => void;
 }
 
-function PayoutForm({ eventId, code, team, onSaved }: PayoutFormProps) {
+export function PayoutForm({ eventId, code, team, onSaved }: PayoutFormProps) {
+  const [initialPending] = useState(() => {
+    try { return { proofs: readPendingLuckyProofs(eventId, team.id), uploads: readUnconfirmedLuckyUploads(eventId, team.id), error: null as string | null }; }
+    catch { return { proofs: [] as LuckyProof[], uploads: [] as LuckyProof[], error: 'Chưa đọc được các tệp đang chờ xác nhận. Kiểm tra quyền lưu dữ liệu của trình duyệt trước khi tải thêm tệp.' }; }
+  });
   const [account, setAccount] = useState(team.payoutAccount ?? '');
   const [bank, setBank] = useState(team.payoutBank ?? '');
   const [holder, setHolder] = useState(team.payoutHolder ?? '');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-  const [err, setErr] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(initialPending.error);
   const [progress, setProgress] = useState<string | null>(null);
   const [proofs, setProofs] = useState<LuckyProof[]>(team.proofs ?? []);
   // Đã có STK thì mở ở chế độ xem gọn; chưa có gì thì mở sẵn ô điền.
@@ -94,6 +100,11 @@ function PayoutForm({ eventId, code, team, onSaved }: PayoutFormProps) {
   // anon không có quyền đọc nên tấm nộp từ phiên trước chỉ hiện tên file.
   const [localUrls, setLocalUrls] = useState<Record<string, string>>({});
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const uploadRef = useRef<HTMLLabelElement>(null);
+  const [pendingProofs, setPendingProofs] = useState<LuckyProof[]>(initialPending.proofs);
+  const [unconfirmedUploads, setUnconfirmedUploads] = useState<LuckyProof[]>(initialPending.uploads);
+  const [fileErrors, setFileErrors] = useState<ProofFailure[]>([]);
+  const uploadLock = useRef(false);
 
   // Thu hồi blob URL khi rời trang để không rò bộ nhớ.
   const urlsRef = useRef(localUrls);
@@ -102,50 +113,74 @@ function PayoutForm({ eventId, code, team, onSaved }: PayoutFormProps) {
 
   const persist = async (next: LuckyProof[], okMsg: string) => {
     const res = await luckySavePayout(code, { proofs: next });
-    if (!res.ok) throw new Error('Không lưu được giấy cọc.');
-    setProofs(res.teams?.find((t) => t.isMine)?.proofs ?? next);
+    if (!res.ok || res.event?.id !== eventId) throw new Error('Unconfirmed attachment state');
+    const mine = res.teams?.find((t) => t.isMine && t.id === team.id);
+    if (!mine || !Array.isArray(mine.proofs) || next.length !== mine.proofs.length
+      || next.some(item => !mine.proofs.some(saved => saved.path === item.path))) {
+      throw new Error('Unconfirmed attachment state');
+    }
+    setPendingProofs(confirmPendingLuckyProofs(eventId, team.id, mine.proofs));
+    setProofs(mine.proofs);
     setMsg(okMsg);
     onSaved(res);
   };
 
-  const pickFiles = async (files: FileList | null) => {
+  const pickFiles = async (files: FileList | File[] | null) => {
     const list = Array.from(files ?? []);
-    if (!list.length) return;
-    setErr(null);
-    setMsg(null);
-    setBusy(true);
-
-    const room = PROOF_MAX_FILES - proofs.length;
-    const take = list.slice(0, Math.max(0, room));
-    const added: LuckyProof[] = [];
-    const blobs: Record<string, string> = {};
+    if (!list.length || uploadLock.current || pendingProofs.length || unconfirmedUploads.length || initialPending.error) return;
+    uploadLock.current = true;
+    setErr(null); setMsg(null); setBusy(true);
     try {
-      if (room <= 0) throw new Error(`Tối đa ${PROOF_MAX_FILES} tấm — xoá bớt rồi nộp tiếp nhé.`);
-      for (let i = 0; i < take.length; i++) {
-        setProgress(`Đang tải ${i + 1}/${take.length}…`);
-        const up = await uploadLuckyProof(eventId, take[i]);
-        added.push({ path: up.path, name: up.name });
-        if (take[i].type.startsWith('image/')) blobs[up.path] = URL.createObjectURL(take[i]);
+      const result = await uploadProofBatch(eventId, list, proofs.length, undefined,
+        (index, total) => setProgress(`Đang tải ${index}/${total}…`), proof => {
+          setPendingProofs(current => [...new Map([...current, proof].map(p => [p.path, p])).values()]);
+          retainUploadedLuckyProof(eventId, team.id, proof);
+          setUnconfirmedUploads(confirmPlannedLuckyUpload(eventId, team.id, proof));
+        }, {
+          onPlanned: proof => setUnconfirmedUploads(retainPlannedLuckyUpload(eventId, team.id, proof)),
+          onRejected: proof => setUnconfirmedUploads(confirmPlannedLuckyUpload(eventId, team.id, proof)),
+        });
+      setFileErrors(current => [...current.filter(item => !list.includes(item.file)), ...result.failed]);
+      const added = result.uploaded.map(item => item.proof);
+      if (added.length && !result.failed.some(failed => result.uploaded.some(uploaded => uploaded.file === failed.file))) {
+        const blobs = Object.fromEntries(result.uploaded.filter(item => item.file.type.startsWith('image/')).map(item => [item.proof.path, URL.createObjectURL(item.file)]));
+        setLocalUrls(current => ({ ...current, ...blobs }));
+        setPendingProofs(added);
+        try {
+          await persist([...proofs, ...added], `Đã nộp ${added.length}/${list.length} giấy cọc cho đội ${team.name}.`);
+          setPendingProofs([]);
+        } catch (error) {
+          setErr(`Đã tải ${added.length} tệp lên nhưng chưa xác nhận được việc gắn vào đội ${team.name}. Giữ các tệp bên dưới và kiểm tra trạng thái trước khi tiếp tục. ${publicFailure(error, 'lưu giấy cọc')}`);
+        }
       }
-      const next = [...proofs, ...added];
-      setLocalUrls((m) => ({ ...m, ...blobs }));
-      await persist(
-        next,
-        list.length > take.length
-          ? `Đã nộp ${take.length} tấm (bỏ qua ${list.length - take.length} tấm vượt giới hạn) ✓`
-          : `Đã nộp ${take.length} tấm giấy cọc ✓`,
-      );
-    } catch (e) {
-      Object.values(blobs).forEach(URL.revokeObjectURL);
-      setErr(e instanceof Error ? e.message : 'Tải ảnh không thành công, thử lại.');
+      if (result.failed.length || added.length) requestAnimationFrame(() => uploadRef.current?.focus());
     } finally {
-      setBusy(false);
-      setProgress(null);
+      uploadLock.current = false; setBusy(false); setProgress(null);
       if (fileRef.current) fileRef.current.value = '';
     }
   };
 
+  const reconcileProofs = async () => {
+    if (uploadLock.current) return;
+    uploadLock.current = true; setBusy(true); setErr(null);
+    try {
+      const current = await fetchLuckyPublicState(eventId, code);
+      const mine = current.ok ? current.teams?.find(item => item.isMine && item.id === team.id) : undefined;
+      if (!mine || current.event?.id !== eventId) throw new Error('Unconfirmed attachment state');
+      const remaining = pendingProofs.filter(item => !mine.proofs.some(saved => saved.path === item.path));
+      setProofs(mine.proofs); setPendingProofs(confirmPendingLuckyProofs(eventId, team.id, mine.proofs)); onSaved(current);
+      if (remaining.length) {
+        // Reuse the uploaded paths; never upload those files again.
+        await persist([...mine.proofs, ...remaining], `Đã gắn ${remaining.length} giấy cọc vào đội ${team.name}.`);
+        setPendingProofs([]);
+      } else setMsg(`Đã xác nhận giấy cọc được lưu cho đội ${team.name}.`);
+    } catch (error) { setErr(publicFailure(error, `xác nhận giấy cọc của đội ${team.name}`)); }
+    finally { uploadLock.current = false; setBusy(false); }
+  };
+
   const removeProof = async (path: string) => {
+    if (uploadLock.current || pendingProofs.length || unconfirmedUploads.length || initialPending.error) return;
+    uploadLock.current = true;
     setErr(null);
     setMsg(null);
     setBusy(true);
@@ -157,13 +192,16 @@ function PayoutForm({ eventId, code, team, onSaved }: PayoutFormProps) {
         setLocalUrls(({ [path]: _drop, ...rest }) => rest);
       }
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Không bỏ được, thử lại.');
+      setErr(publicFailure(e, `gỡ giấy cọc của đội ${team.name}`));
     } finally {
+      uploadLock.current = false;
       setBusy(false);
     }
   };
 
   const saveAccount = async () => {
+    if (uploadLock.current) return;
+    uploadLock.current = true;
     setErr(null);
     setMsg(null);
     setBusy(true);
@@ -174,12 +212,18 @@ function PayoutForm({ eventId, code, team, onSaved }: PayoutFormProps) {
         payoutHolder: holder,
       });
       if (!res.ok) throw new Error('Không lưu được số tài khoản.');
-      setMsg('Đã lưu số tài khoản ✓');
+      const mine = res.teams?.find(item => item.isMine && item.id === team.id);
+      if (!mine || (mine.payoutAccount ?? '') !== account.trim() || (mine.payoutBank ?? '') !== bank.trim() || (mine.payoutHolder ?? '') !== holder.trim()) {
+        setErr('Chưa xác nhận được tài khoản nhận thưởng đã lưu. Giữ nội dung và tải lại trạng thái trước khi tiếp tục.');
+        return;
+      }
+      setMsg(`Đã lưu tài khoản nhận thưởng của đội ${team.name}.`);
       setEditing(false);          // lưu xong thu gọn lại, muốn sửa thì bấm "Chỉnh sửa"
       onSaved(res);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Lưu không thành công, thử lại.');
+      setErr(publicFailure(e, `lưu tài khoản nhận thưởng của đội ${team.name}`));
     } finally {
+      uploadLock.current = false;
       setBusy(false);
     }
   };
@@ -214,7 +258,7 @@ function PayoutForm({ eventId, code, team, onSaved }: PayoutFormProps) {
                 type="button"
                 className="qs-proof-x"
                 aria-label={`Bỏ ${p.name}`}
-                disabled={busy}
+                disabled={busy || pendingProofs.length > 0 || unconfirmedUploads.length > 0 || !!initialPending.error}
                 onClick={() => void removeProof(p.path)}
               >
                 ✕
@@ -224,13 +268,13 @@ function PayoutForm({ eventId, code, team, onSaved }: PayoutFormProps) {
         </ul>
       )}
 
-      <label className="qs-uploadbox">
+      <label className="qs-uploadbox" ref={uploadRef} tabIndex={0} role="button" aria-label="Thêm giấy cọc" aria-invalid={fileErrors.length > 0 || pendingProofs.length > 0 || unconfirmedUploads.length > 0} aria-describedby={fileErrors.length || pendingProofs.length || unconfirmedUploads.length ? "qs-proof-errors" : undefined} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); if (!busy && !pendingProofs.length && !unconfirmedUploads.length) fileRef.current?.click(); } }}>
         <input
           ref={fileRef}
           type="file"
           accept="image/*,application/pdf"
           multiple
-          disabled={busy}
+          disabled={busy || pendingProofs.length > 0 || unconfirmedUploads.length > 0 || !!initialPending.error}
           onChange={(e) => void pickFiles(e.target.files)}
         />
         <span className="qs-up-empty">
@@ -243,6 +287,15 @@ function PayoutForm({ eventId, code, team, onSaved }: PayoutFormProps) {
         </span>
       </label>
 
+      {(fileErrors.length > 0 || pendingProofs.length > 0 || unconfirmedUploads.length > 0) && <div id="qs-proof-errors" role="alert" className="qs-codeerr">
+        {fileErrors.map((failure, index) => <div key={index}>
+          <p>{failure.message}</p>
+          <button type="button" disabled={busy || pendingProofs.length > 0 || unconfirmedUploads.length > 0 || !!initialPending.error} onClick={() => void pickFiles([failure.file])}>Thử lại {failure.file.name}</button>
+          <button type="button" disabled={busy} onClick={() => setFileErrors(current => current.filter(item => item !== failure))}>Gỡ {failure.file.name} khỏi biểu mẫu</button>
+        </div>)}
+        {unconfirmedUploads.length > 0 && <p>Chưa xác nhận được kết quả tải: {unconfirmedUploads.map(item => item.name).join(", ")}. Không tải lại các tệp này để tránh tạo trùng. Liên hệ ban tổ chức để kiểm tra tệp đã gửi.</p>}
+        {pendingProofs.length > 0 && <><p>Tệp đã tải lên, đang chờ xác nhận: {pendingProofs.map(item => item.name).join(', ')}.</p><button type="button" disabled={busy} onClick={() => void reconcileProofs()}>Kiểm tra và gắn các tệp đã tải</button></>}
+      </div>}
       {editing ? (
         <div className="qs-fields">
           <label>
@@ -307,7 +360,7 @@ function PayoutForm({ eventId, code, team, onSaved }: PayoutFormProps) {
       )}
 
       {msg && <p className="qs-okmsg">{msg}</p>}
-      {err && <p className="qs-codeerr">{err}</p>}
+      {err && <p role="alert" className="qs-codeerr">{err}</p>}
     </section>
   );
 }
@@ -330,10 +383,13 @@ export default function QuaySoPage() {
   });
   const [codeInput, setCodeInput] = useState('');
   const [codeError, setCodeError] = useState<string | null>(null);
+  const [codeInvalid, setCodeInvalid] = useState(false);
+  const codeRef = useRef<HTMLInputElement>(null);
   const [checkinBusy, setCheckinBusy] = useState(false);
   const [showWin, setShowWin] = useState(false);
   const confettiRef = useRef<HTMLCanvasElement | null>(null);
   const drawCalledForRef = useRef<string | null>(null);
+  const [drawError, setDrawError] = useState<string | null>(null);
 
   // drawnAt đã được BÁNH XE quay xong và công bố. Trước mốc này phải giấu tên
   // đội trúng ở mọi chỗ, nếu không thì vừa bấm quay đã lộ đáp án, mất 5 giây
@@ -360,6 +416,7 @@ export default function QuaySoPage() {
 
   const stateQuery = useQuery<LuckyPublicState>({
     queryKey,
+    meta: { errorDisplay: "inline", label: "trạng thái sự kiện quay số" },
     enabled: Boolean(eventParam || slug || savedCode),
     queryFn: () => fetchLuckyPublicState(eventParam, savedCode || null, slug),
     refetchIntervalInBackground: true,
@@ -440,8 +497,10 @@ export default function QuaySoPage() {
         }));
         else void stateQuery.refetch();
       })
-      .catch(() => {
-        drawCalledForRef.current = null; // mạng lỗi → cho phép thử lại vòng poll sau
+      .catch(error => {
+        setDrawError(publicFailure(error, `xác nhận kết quả quay sự kiện ${event.title}`));
+        // An open state alone does not prove the previous request was rolled back.
+        void stateQuery.refetch();
       });
   }, [event, msLeft, queryClient, queryKey, stateQuery]);
 
@@ -465,15 +524,21 @@ export default function QuaySoPage() {
 
   const submitCode = async () => {
     const code = codeInput.trim();
-    if (!/^\d{6,8}$/.test(code)) {
-      setCodeError('Mã gồm 6 chữ số — xem lại tin nhắn BTC gửi cho đội bạn.');
+    const inputError = checkinCodeError(code);
+    if (inputError) {
+      setCodeError(inputError);
+      setCodeInvalid(true);
+      codeRef.current?.focus();
       return;
     }
+    if (checkinBusy) return;
     setCheckinBusy(true);
+    setCodeInvalid(false);
     setCodeError(null);
     try {
       const res = await luckyCheckin(code);
       if (!res.ok) {
+        if (res.reason === "bad_code") { setCodeInvalid(true); codeRef.current?.focus(); }
         setCodeError(
           res.reason === 'too_late'
             ? 'Đã trễ giờ điểm danh — đội bạn không tham gia quay thưởng lần này.'
@@ -498,8 +563,8 @@ export default function QuaySoPage() {
           /* không hỗ trợ */
         }
       }
-    } catch {
-      setCodeError('Mạng chập chờn — thử lại giúp mình.');
+    } catch (error) {
+      setCodeError(publicFailure(error, 'xác nhận điểm danh'));
     } finally {
       setCheckinBusy(false);
     }
@@ -541,14 +606,15 @@ export default function QuaySoPage() {
           {[0, 1].map((half) => (
             <span key={half}>
               {event
-                ? `${event.title} ✦ ${gioiThieuGiai} ✦ Điểm danh bằng mã 6 số ✦ ${rounds.length ? 'Càng nhiều vé cơ hội càng cao' : 'Mở thưởng tự động đúng giờ'} ✦ `
-                : 'IHOME · Vòng xoay may mắn ✦ Điểm danh bằng mã 6 số ✦ '}
+                ? `${event.title} ✦ ${gioiThieuGiai} ✦ Điểm danh bằng mã 6–8 số ✦ ${rounds.length ? 'Càng nhiều vé cơ hội càng cao' : 'Mở thưởng tự động đúng giờ'} ✦ `
+                : 'IHOME · Vòng xoay may mắn ✦ Điểm danh bằng mã 6–8 số ✦ '}
             </span>
           ))}
         </div>
       </div>
 
       <main className="qs-shell">
+        {drawError && event?.status === 'open' && <div className="qs-codeerr" role="alert">{drawError} <button type="button" disabled={stateQuery.isFetching} onClick={() => void stateQuery.refetch()}>Tải lại trạng thái</button></div>}
         <section className="qs-hero">
           <span className="qs-flag">
             <i />
@@ -563,7 +629,7 @@ export default function QuaySoPage() {
               ? rounds.length
                 ? `${gioiThieuGiai} — mỗi deal một vé, càng nhiều vé cơ hội càng cao. Nhập mã để điểm danh.`
                 : `${gioiThieuGiai} — nhập mã đội để điểm danh và theo dõi giờ mở thưởng.`
-              : 'Nhập mã 6 số BTC cấp cho đội bạn để vào sự kiện.'}
+              : 'Nhập mã 6–8 số BTC cấp cho đội bạn để vào sự kiện.'}
           </p>
         </section>
 
@@ -594,10 +660,10 @@ export default function QuaySoPage() {
           </section>
         ) : (
           <section className="qs-codebox">
-            <label htmlFor="qs-code">Mã điểm danh của đội (6 số, BTC đã gửi riêng):</label>
+            <label htmlFor="qs-code">Mã điểm danh của đội (6–8 số, BTC đã gửi riêng):</label>
             <div className="qs-coderow">
               <input
-                id="qs-code"
+                id="qs-code" ref={codeRef} aria-invalid={codeInvalid} aria-describedby={codeError ? "qs-code-error" : undefined}
                 className="qs-codeinput"
                 inputMode="numeric"
                 autoComplete="one-time-code"
@@ -613,7 +679,7 @@ export default function QuaySoPage() {
                 {checkinBusy ? '…' : 'Điểm danh'}
               </button>
             </div>
-            {codeError && <p className="qs-codeerr">{codeError}</p>}
+            {codeError && <p id="qs-code-error" role="alert" className="qs-codeerr">{codeError}</p>}
           </section>
         )}
 
@@ -629,7 +695,7 @@ export default function QuaySoPage() {
 
         {noEntry && (
           <div className="qs-empty">
-            Chưa có mã? Hỏi BTC lấy mã 6 số của đội bạn — nhập mã là vào thẳng sự kiện.
+            Chưa có mã? Hỏi BTC lấy mã 6–8 số của đội bạn — nhập mã là vào thẳng sự kiện.
           </div>
         )}
 
@@ -638,7 +704,7 @@ export default function QuaySoPage() {
         )}
 
         {stateQuery.isError && (
-          <div className="qs-empty">Mất kết nối — đang tự thử lại…</div>
+          <div className="qs-empty" role="alert">{publicFailure(stateQuery.error, "tải trạng thái sự kiện")} {state ? "Đang hiển thị dữ liệu đã tải trước đó." : ""}<button type="button" onClick={() => void stateQuery.refetch()}>Tải lại trạng thái</button></div>
         )}
 
         {event && (

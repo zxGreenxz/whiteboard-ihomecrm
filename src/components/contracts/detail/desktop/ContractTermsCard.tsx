@@ -4,6 +4,7 @@
 // Hai cột con nằm trong lưới gap 1px trên nền #eef0f3 — khe lưới CHÍNH LÀ đường
 // kẻ, nên không cần border riêng và không bị kẻ đôi khi xuống một cột.
 
+import { ContractDetailRegion, type ContractDetailQueries } from '../ContractDetailRegions';
 import { Droplets, ExternalLink, FileText, Settings, Zap } from 'lucide-react';
 import type { ContractWithRelations } from '@/hooks/useContracts';
 import type { ContractServiceItem, ContractHistoryItem } from '@/components/contracts/detail/types';
@@ -34,6 +35,7 @@ const ngayVn = (gt: string | null | undefined): string => {
 
 interface Props {
   contract: ContractWithRelations;
+  queryStates?: ContractDetailQueries;
   services: ContractServiceItem[];
   servicesLoading: boolean;
   buildingServices: DichVuToaLite[];
@@ -44,6 +46,7 @@ interface Props {
 
 export function ContractTermsCard({
   contract,
+  queryStates,
   services,
   servicesLoading,
   buildingServices,
@@ -89,6 +92,7 @@ export function ContractTermsCard({
           )}
         </div>
 
+        <ContractDetailRegion label="dịch vụ của hợp đồng" queries={[queryStates?.services,queryStates?.buildingServices]}>
         {/* ── Cột con: Dịch vụ ────────────────────────────────── */}
         <div className="min-w-0 bg-white">
           {/* Chip NGUỒN GIÁ là phần quan trọng nhất của khối này. HĐ không khai
@@ -182,6 +186,7 @@ export function ContractTermsCard({
             </table>
           )}
         </div>
+        </ContractDetailRegion>
       </div>
 
       {/* Ghi chú đứng RIÊNG một khối rộng cả thẻ, không nhét vào cột giá trị
@@ -197,6 +202,7 @@ export function ContractTermsCard({
         </div>
       )}
 
+      <ContractDetailRegion label="lịch sử hợp đồng" queries={[queryStates?.history]}>
       {/* ── Lịch sử ───────────────────────────────────────────── */}
       <div className="border-t border-[#eef0f3]">
         <NhanMuc>Lịch sử hợp đồng</NhanMuc>
@@ -224,6 +230,7 @@ export function ContractTermsCard({
           ))
         )}
       </div>
+      </ContractDetailRegion>
     </The>
   );
 }

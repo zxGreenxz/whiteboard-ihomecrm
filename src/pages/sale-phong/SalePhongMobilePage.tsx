@@ -1,3 +1,4 @@
+import {QueryRegion} from '@/components/errors/QueryRegion';
 import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -54,8 +55,10 @@ export default function SalePhongMobilePage() {
   const navigate = useNavigate();
   const { data: perms } = useMyPermissions();
   const { data: buildings, isLoading, isError, refetch } = useMyAvailableRooms();
-  const { data: tokens } = usePublicRoomTokens();
-  const { data: passListings } = usePassListings();
+  const tokenQuery=usePublicRoomTokens();
+  const tokens=tokenQuery.data;
+  const passQuery = usePassListings();
+  const { data: passListings } = passQuery;
 
   const [mode, setMode] = useState<Mode>('browse');
   const [openTab, setOpenTab] = useState<TabKey | null>(null);
@@ -72,8 +75,8 @@ export default function SalePhongMobilePage() {
   const activeTabDef = openTab ? TAB_DEFS.find((t) => t.key === openTab) : null;
 
   const statFor = (key: TabKey): string | null => {
-    if (key === 'tokens' && tokens) return `${tokens.length} link`;
-    if (key === 'pass' && passListings) return `${passListings.length} phòng`;
+    if (key === 'tokens' && tokens && !tokenQuery.isError && tokenQuery.status==='success') return `${tokens.length} link`;
+    if (key === 'pass' && passListings && !passQuery.isError && passQuery.status === 'success') return `${passListings.length} phòng`;
     return null;
   };
   const statColor = (key: TabKey) =>
@@ -144,6 +147,8 @@ export default function SalePhongMobilePage() {
             )
           ) : (
             <div className="mbody">
+              <QueryRegion label="số link chia sẻ" queries={[tokenQuery]}>{null}</QueryRegion>
+              <QueryRegion label="số phòng khách nhờ sale" queries={[passQuery]}>{null}</QueryRegion>
               {adminTabs.length === 0 ? (
                 <div className="stub">
                   <p>

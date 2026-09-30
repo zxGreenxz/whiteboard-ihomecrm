@@ -1,3 +1,7 @@
+import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
+import {FinancialWorkflowError,isConfirmedFinancialRejection} from '@/lib/financialWorkflow';
+import {getSessionUser} from '@/lib/authSession';
+import {requireReadRows,readRecord,readString} from '@/lib/accountProfitReadModels';
 // WRITE TOOL draft-first — xác nhận bằng NONCE do server phát.
 //
 // LUỒNG, và vì sao nó chia làm hai nửa không nối với nhau qua mô hình:
@@ -124,7 +128,7 @@ function dienGiaiLoi(message: string): string {
   for (const [ma, cau] of Object.entries(GIAI_THICH_LOI)) {
     if (message.includes(ma)) return cau;
   }
-  return `Lỗi khi lập phiếu: ${message}`;
+  return 'Chưa lập được bản xem trước phiếu thu/chi. Chưa có phiếu nào được tạo từ bước xem trước này.';
 }
 
 export const taoPhieuThuChiNhap: DomainTool<Input> = {
@@ -214,6 +218,7 @@ export async function thucThiXacNhan(
   nonce: string,
   canonical: unknown,
   expectedContext: ConfirmationExecutionContext,
+  onReceipt?: (data:unknown)=>void,
 ): Promise<string> {
   const current = layNguCanhXacNhan();
   if (
@@ -232,6 +237,7 @@ export async function thucThiXacNhan(
     // biên dịch không nói gì — mà sửa nó chính là thứ phép so hash tồn tại để bắt.
     p_payload: canonical as Json,
   });
+  if (!error) onReceipt?.(data);
   if (error) {
     const m = error.message ?? String(error);
     if (m.includes('confirmation_expired')) {
@@ -246,23 +252,27 @@ export async function thucThiXacNhan(
     if (m.includes('confirmation_not_found') || m.includes('confirmation_required')) {
       return '⚠️ Không tìm thấy đề xuất hợp lệ. Hãy yêu cầu Copilot lập lại phiếu.';
     }
-    throw new Error(`Lỗi tạo phiếu: ${m}`);
+    throw new FinancialWorkflowError('Chưa xác nhận được kết quả tạo phiếu. Kiểm tra danh sách thu chi trước khi thao tác tiếp để tránh tạo trùng.',isConfirmedFinancialRejection(error)?'failure':'unknown',[],error);
   }
 
   const kq = data as unknown as { status?: string; entity_id?: string } | null;
-  if (kq?.status === 'da_tao_truoc_do') {
-    return '⚠️ Phiếu này đã được tạo trước đó — không tạo trùng. Xem tại [Thu chi](/income-expense).';
-  }
   const id = kq?.entity_id;
-  if (!id) throw new Error('Server không trả về id phiếu.');
+  if(!readString(id))throw new TypeError('Chưa xác nhận được mã phiếu đã tạo.');
+  if (kq?.status === 'da_tao_truoc_do') {
+    return `⚠️ Phiếu ${id} đã được tạo trước đó — không tạo trùng. Xem tại [Thu chi](/income-expense).`;
+  }
+  if (!id || kq?.status !== 'da_tao') throw new Error('Chưa xác nhận được kết quả tạo phiếu. Kiểm tra danh sách thu chi trước khi thao tác tiếp.');
 
   // Đọc lại mã phiếu (read-only) để câu thông báo có thứ người dùng tra cứu được.
-  const { data: codeRow } = await supabase
+  let code = id;
+  try {
+  const { data: codeRow, error: codeError } = await supabase
     .from('income_expenses')
     .select('code')
     .eq('id', id)
     .maybeSingle();
-  const code = (codeRow as { code?: string } | null)?.code ?? id.slice(0, 8);
+  if (!codeError && typeof codeRow?.code === 'string') code = codeRow.code;
+  } catch { /* Entity creation is confirmed; a readback failure must not invite creation again. */ }
   return `✅ Đã tạo phiếu CHỜ DUYỆT ${code}. Phiếu chưa duyệt, chưa vào sổ; kiểm tra và duyệt tại [Thu chi](/income-expense).`;
 }
 
@@ -444,7 +454,7 @@ export function dienGiaiLoiHanhDong(message: string, nhan: string): string {
   for (const [ma, cau] of Object.entries(GIAI_THICH_LOI_HANH_DONG)) {
     if (message.includes(ma)) return cau;
   }
-  return `Lỗi khi lập đề xuất "${nhan}": ${message}`;
+  return `Chưa lập được đề xuất “${nhan}”. Chưa thực hiện thay đổi từ bước xem trước này.`;
 }
 
 /** Một giá trị trong khối `preview` → chuỗi người đọc được. */
@@ -557,6 +567,7 @@ export async function thucThiXacNhanHanhDong(
   nonce: string,
   canonical: unknown,
   expectedContext: ConfirmationExecutionContext,
+  onReceipt?: (data:unknown)=>void,
 ): Promise<string> {
   const entry = ACTION_CATALOG[tool] as ActionCatalogEntry | undefined;
   if (!entry) throw new Error(`hanh_dong_khong_co_trong_so: ${tool}`);
@@ -575,6 +586,7 @@ export async function thucThiXacNhanHanhDong(
     p_confirmation_nonce: nonce,
     p_payload: canonical,
   });
+  if (!error) onReceipt?.(data);
   if (error) {
     const m = error.message ?? String(error);
     if (m.includes('confirmation_expired')) {
@@ -598,15 +610,20 @@ export async function thucThiXacNhanHanhDong(
     }
     if (tool === 'room_pass.set_active') {
       const known = Object.entries(GIAI_THICH_LOI_HANH_DONG).find(([code]) => m.includes(code));
-      return known?.[1] ?? 'Chưa xác minh được kết quả đổi trạng thái tin. Hãy kiểm tra trạng thái hiện tại trước khi thử lại.';
+      if(known)return known[1];
     }
-    throw new Error(`Lỗi khi ${entry.labelVi.toLowerCase()}: ${m}`);
+    throw new FinancialWorkflowError(`Chưa xác nhận được kết quả “${entry.labelVi}”. Kiểm tra trạng thái hiện tại trước khi thao tác tiếp để tránh thực hiện trùng.`,isConfirmedFinancialRejection(error)?'failure':'unknown',[],error);
   }
 
+  if(!readString(data?.entity_id))throw new TypeError(`Chưa xác nhận được mã bản ghi của ${entry.labelVi}.`);
   if (data?.status === 'da_thuc_hien_truoc_do') {
-    return `⚠️ "${entry.labelVi}" đã được thực hiện trước đó — không làm lại.`;
+    return `⚠️ "${entry.labelVi}" đã được thực hiện trước đó — không làm lại. Mã bản ghi: ${data.entity_id}.`;
   }
-  return `✅ Đã ${entry.labelVi.toLowerCase()}.`;
+  if (data?.status === 'da_gui') {
+    return `Đã tiếp nhận yêu cầu “${entry.labelVi}”. Hệ thống đang xử lý; kiểm tra trạng thái tại màn hình tương ứng.${data.entity_id ? ` Mã bản ghi: ${data.entity_id}.` : ''}`;
+  }
+  if (data?.status !== 'da_thuc_hien') throw new Error(`Chưa xác nhận được kết quả “${entry.labelVi}”. Kiểm tra trạng thái hiện tại trước khi thao tác tiếp.`);
+  return `✅ Đã ${entry.labelVi.toLowerCase()}. Mã bản ghi: ${data.entity_id}.`;
 }
 
 /**
@@ -622,11 +639,37 @@ export async function thucThiXacNhanTheoTool(
   canonical: unknown,
   expectedContext: ConfirmationExecutionContext,
 ): Promise<string> {
-  if (tool === 'income_expense.create_draft') {
-    return thucThiXacNhan(nonce, canonical, expectedContext);
-  }
-  if (!(tool in ACTION_CATALOG)) {
-    throw new Error(`hanh_dong_khong_co_trong_so: ${tool}`);
-  }
-  return thucThiXacNhanHanhDong(tool as ActionId, nonce, canonical, expectedContext);
+  if (!(tool in ACTION_CATALOG)) throw new Error(`hanh_dong_khong_co_trong_so: ${tool}`);
+  const entry=ACTION_CATALOG[tool as ActionId] as ActionCatalogEntry;
+  const current=layNguCanhXacNhan();
+  if(!current||current.organizationId!==expectedContext.organizationId||current.threadId!==expectedContext.threadId
+    ||expectedContext.generation!==undefined&&current.generation!==expectedContext.generation)throw new Error('confirmation_scope_mismatch: organization or conversation changed');
+  const organizationId=expectedContext.organizationId;
+  if(!organizationId)throw new FinancialWorkflowError('Chưa chọn tổ chức để thực hiện đề xuất.','failure',[]);
+  // Stable payload identity survives a new preview/nonce/thread. The nonce remains memory-only.
+  const key=tool+':'+canonicalJson(canonical);
+  return persistentFinancialWorkflow('copilot-confirmation').run(key,entry.labelVi.toLowerCase(),async progress=>{
+    const record=(raw:unknown)=>{if(readRecord(raw)&&readString(raw.entity_id))progress.completed.push({id:raw.entity_id,label:'Mã bản ghi nhận từ máy chủ'});};
+    return tool==='income_expense.create_draft'
+      ? thucThiXacNhan(nonce,canonical,expectedContext,record)
+      : thucThiXacNhanHanhDong(tool as ActionId,nonce,canonical,expectedContext,record);
+  },async(pending,progress)=>{
+    const tables:Record<string,string>={'income_expense.create_draft':'income_expenses','income_expense.annotate':'income_expenses','room_pass.set_active':'room_pass_listings','zalo.set_conversation_flags':'zalo_conversations','meter_reading.create':'meter_readings','reservation_deposit.create':'room_reservation_holds'};
+    const table=tables[tool];if(!table||!readRecord(canonical))return null;
+    const actor=await getSessionUser();if(!actor)throw {code:'PGRST301'};
+    const auditTool=tool==='income_expense.create_draft'?'tao_phieu_thu_chi_nhap':tool;
+    // Audit is immutable and SELECT is allowed to its actor. Never infer rollback from [] or a failed read.
+    const {data,error}=await supabase.from('ai_write_audit').select('id,user_id,organization_id,tool,payload,entity_table,entity_id')
+      .eq('user_id',actor.id).eq('organization_id',organizationId).eq('tool',auditTool).contains('payload',canonical).limit(2);
+    if(error)throw error;
+    const rows=requireReadRows<Record<string,unknown>>(data,row=>readString(row.id)&&readString(row.entity_id)&&readRecord(row.payload));
+    const exact=rows.filter(row=>row.user_id===actor.id&&row.organization_id===organizationId&&row.tool===auditTool&&row.entity_table===table&&canonicalJson(row.payload)===canonicalJson(canonical));
+    if(exact.length!==1)return null;
+    const receipt=exact[0];const id=receipt.entity_id as string;
+    if(pending.completedIds.length&&!pending.completedIds.includes(id))return null;
+    progress.completed.push({id,label:'Đã đối chiếu bằng sổ thực thi của chính tài khoản'});
+    return {result:tool==='income_expense.create_draft'
+      ?`Đã đối chiếu phiếu ${id} được tạo từ đề xuất này. Không tạo thêm phiếu; xem trạng thái hiện tại tại [Thu chi](/income-expense).`
+      :`Đã đối chiếu “${entry.labelVi}” trong sổ thực thi. Mã bản ghi: ${id}. Không thực hiện lại; kiểm tra trạng thái hiện tại tại màn hình tương ứng.`};
+  },organizationId);
 }

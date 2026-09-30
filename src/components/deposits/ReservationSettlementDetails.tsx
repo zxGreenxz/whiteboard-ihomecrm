@@ -31,7 +31,7 @@ export function ReservationSettlementDetails({ settlement, onImageOpenChange }: 
     </dl>
     {settlement.refundAmount === 0 && <p>Giữ lại toàn bộ cọc, không hoàn tiền.</p>}
     {settlement.retainedAmount === 0 && <p>Hoàn toàn bộ cọc, không ghi nhận doanh thu.</p>}
-    {audit.isLoading ? <p>Đang tải thông tin người xử lý…</p> : audit.error ? <p role="alert">Không tải được thông tin người xử lý và lý do.</p> : audit.data && <div className="space-y-1">
+    {audit.isLoading ? <p>Đang tải thông tin người xử lý…</p> : audit.error ? <p role="alert">Không tải được thông tin người xử lý và lý do. <button type="button" className="underline" onClick={()=>void audit.refetch()}>Tải lại</button></p> : audit.data && <div className="space-y-1">
       <p>Ngày xử lý: {audit.data.settlementDate.split("-").reverse().join("/")} · Người xử lý: <b>{audit.data.actorName || "Chưa có tên"}</b></p>
       <p>Lý do: {[reason, audit.data.reason_text].filter(Boolean).join(" — ") || "Khác"}</p>
     </div>}

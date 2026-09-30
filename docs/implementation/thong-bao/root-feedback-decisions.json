@@ -1,0 +1,2677 @@
+{
+  "20b9741e944a620c": {
+    "status": "fixed",
+    "file": "src/pages/finance/ManagerSalaryPage.tsx",
+    "line": 145,
+    "kind": "useQuery",
+    "groups": "E06–E08/E11/I08",
+    "evidence": "Đối chiếu call tại src/pages/finance/ManagerSalaryPage.tsx:145 và enclosing caller trong salary-cashbooks.md. E06–E08/E11/I08: salaryMutationFeedback/salaryReadSources/salaryDurableWorkflow; SalaryMonthly DOM; salary snapshot/remaining/paid/enum mutation hashes restored; independent review 121/121. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "a4cc0b2e512e53ea": {
+    "status": "fixed",
+    "file": "src/pages/finance/ManagerSalaryPage.tsx",
+    "line": 234,
+    "kind": "notification",
+    "groups": "E06–E08/E11/I08",
+    "evidence": "Đối chiếu call tại src/pages/finance/ManagerSalaryPage.tsx:234 và enclosing caller trong salary-cashbooks.md. E06–E08/E11/I08: salaryMutationFeedback/salaryReadSources/salaryDurableWorkflow; SalaryMonthly DOM; salary snapshot/remaining/paid/enum mutation hashes restored; independent review 121/121. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "daea07a9a9707597": {
+    "status": "fixed",
+    "file": "src/pages/my-day/MyDayPage.tsx",
+    "line": 43,
+    "kind": "useQuery",
+    "groups": "G20/G22/I16",
+    "evidence": "Đối chiếu call tại src/pages/my-day/MyDayPage.tsx:43 và enclosing caller trong network-public.md. G20/G22/I16: myDayFeedbackBoundary18+MyDayRead1; required summary/missions/requests/session/count; SQL GPS statuses kept; leave pending vsapproved; completion one owner with actual tick/neutral replay. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "264b8b36af4dc002": {
+    "status": "fixed",
+    "file": "src/pages/my-day/MyDayPage.tsx",
+    "line": 172,
+    "kind": "notification",
+    "groups": "G20/G22/I16",
+    "evidence": "Đối chiếu call tại src/pages/my-day/MyDayPage.tsx:172 và enclosing caller trong network-public.md. G20/G22/I16: myDayFeedbackBoundary18+MyDayRead1; required summary/missions/requests/session/count; SQL GPS statuses kept; leave pending vsapproved; completion one owner with actual tick/neutral replay. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "ffc8a54fd42f4ab4": {
+    "status": "fixed",
+    "file": "src/pages/my-day/MyDayPage.tsx",
+    "line": 173,
+    "kind": "notification",
+    "groups": "G20/G22/I16",
+    "evidence": "Đối chiếu call tại src/pages/my-day/MyDayPage.tsx:173 và enclosing caller trong network-public.md. G20/G22/I16: myDayFeedbackBoundary18+MyDayRead1; required summary/missions/requests/session/count; SQL GPS statuses kept; leave pending vsapproved; completion one owner with actual tick/neutral replay. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "405c129de99eed00": {
+    "status": "fixed",
+    "file": "src/pages/invoices/InvoicePrintPage.tsx",
+    "line": 12,
+    "kind": "useQuery",
+    "groups": "I07/I09",
+    "evidence": "Đối chiếu call tại src/pages/invoices/InvoicePrintPage.tsx:12 và enclosing caller trong salary-cashbooks.md. I07/I09: requiredInvoiceReadFeedback/invoicePrintRead; closure and collection required monetary/row schemas; six suites43/43; exact ID/date; no printing/export from missing source. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "d0585df04e751bc3": {
+    "status": "fixed",
+    "file": "src/pages/reports/finance/CashbookClosureRecord.tsx",
+    "line": 63,
+    "kind": "useQuery",
+    "groups": "I07/I09",
+    "evidence": "Đối chiếu call tại src/pages/reports/finance/CashbookClosureRecord.tsx:63 và enclosing caller trong salary-cashbooks.md. I07/I09: requiredInvoiceReadFeedback/invoicePrintRead; closure and collection required monetary/row schemas; six suites43/43; exact ID/date; no printing/export from missing source. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "b5f68d07ef028e67": {
+    "status": "fixed",
+    "file": "src/pages/quayso/QuaySoScreenPage.tsx",
+    "line": 74,
+    "kind": "useQuery",
+    "groups": "H16–H19",
+    "evidence": "Đối chiếu call tại src/pages/quayso/QuaySoScreenPage.tsx:74 và enclosing caller trong network-public.md. H16–H19: luckyAdminFeedback15+luckyStateReadFeedback15; adminDOM3; payoutDOM6 incl full remount/unknown storage; upload3 RED→GREEN+batch2; actual SQL null/deletedwinner preserved. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "8841b156569ea8b8": {
+    "status": "fixed",
+    "file": "src/pages/quayso/QuaySoPage.tsx",
+    "line": 417,
+    "kind": "useQuery",
+    "groups": "H16–H19",
+    "evidence": "Đối chiếu call tại src/pages/quayso/QuaySoPage.tsx:417 và enclosing caller trong network-public.md. H16–H19: luckyAdminFeedback15+luckyStateReadFeedback15; adminDOM3; payoutDOM6 incl full remount/unknown storage; upload3 RED→GREEN+batch2; actual SQL null/deletedwinner preserved. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "813de07533d033ee": {
+    "status": "fixed",
+    "file": "src/pages/quayso/LuckyDrawAdminPage.tsx",
+    "line": 82,
+    "kind": "useQuery",
+    "groups": "H16–H19",
+    "evidence": "Đối chiếu call tại src/pages/quayso/LuckyDrawAdminPage.tsx:82 và enclosing caller trong network-public.md. H16–H19: luckyAdminFeedback15+luckyStateReadFeedback15; adminDOM3; payoutDOM6 incl full remount/unknown storage; upload3 RED→GREEN+batch2; actual SQL null/deletedwinner preserved. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "337f36d3c61b94ef": {
+    "status": "fixed",
+    "file": "src/pages/quayso/LuckyDrawAdminPage.tsx",
+    "line": 96,
+    "kind": "useMutation",
+    "groups": "H16–H19",
+    "evidence": "Đối chiếu call tại src/pages/quayso/LuckyDrawAdminPage.tsx:96 và enclosing caller trong network-public.md. H16–H19: luckyAdminFeedback15+luckyStateReadFeedback15; adminDOM3; payoutDOM6 incl full remount/unknown storage; upload3 RED→GREEN+batch2; actual SQL null/deletedwinner preserved. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "35d7dc7ebfa61457": {
+    "status": "fixed",
+    "file": "src/pages/quayso/LuckyDrawAdminPage.tsx",
+    "line": 105,
+    "kind": "notification",
+    "groups": "H16–H19",
+    "evidence": "Đối chiếu call tại src/pages/quayso/LuckyDrawAdminPage.tsx:105 và enclosing caller trong network-public.md. H16–H19: luckyAdminFeedback15+luckyStateReadFeedback15; adminDOM3; payoutDOM6 incl full remount/unknown storage; upload3 RED→GREEN+batch2; actual SQL null/deletedwinner preserved. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "6a0bde83337a1d19": {
+    "status": "fixed",
+    "file": "src/pages/quayso/LuckyDrawAdminPage.tsx",
+    "line": 107,
+    "kind": "notification",
+    "groups": "H16–H19",
+    "evidence": "Đối chiếu call tại src/pages/quayso/LuckyDrawAdminPage.tsx:107 và enclosing caller trong network-public.md. H16–H19: luckyAdminFeedback15+luckyStateReadFeedback15; adminDOM3; payoutDOM6 incl full remount/unknown storage; upload3 RED→GREEN+batch2; actual SQL null/deletedwinner preserved. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "38aaead3165bb3ad": {
+    "status": "fixed",
+    "file": "src/pages/quayso/LuckyDrawAdminPage.tsx",
+    "line": 109,
+    "kind": "useMutation",
+    "groups": "H16–H19",
+    "evidence": "Đối chiếu call tại src/pages/quayso/LuckyDrawAdminPage.tsx:109 và enclosing caller trong network-public.md. H16–H19: luckyAdminFeedback15+luckyStateReadFeedback15; adminDOM3; payoutDOM6 incl full remount/unknown storage; upload3 RED→GREEN+batch2; actual SQL null/deletedwinner preserved. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "f88db141ecfbe2fa": {
+    "status": "fixed",
+    "file": "src/pages/quayso/LuckyDrawAdminPage.tsx",
+    "line": 118,
+    "kind": "notification",
+    "groups": "H16–H19",
+    "evidence": "Đối chiếu call tại src/pages/quayso/LuckyDrawAdminPage.tsx:118 và enclosing caller trong network-public.md. H16–H19: luckyAdminFeedback15+luckyStateReadFeedback15; adminDOM3; payoutDOM6 incl full remount/unknown storage; upload3 RED→GREEN+batch2; actual SQL null/deletedwinner preserved. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "4c5bc86174c164cf": {
+    "status": "fixed",
+    "file": "src/pages/quayso/LuckyDrawAdminPage.tsx",
+    "line": 120,
+    "kind": "notification",
+    "groups": "H16–H19",
+    "evidence": "Đối chiếu call tại src/pages/quayso/LuckyDrawAdminPage.tsx:120 và enclosing caller trong network-public.md. H16–H19: luckyAdminFeedback15+luckyStateReadFeedback15; adminDOM3; payoutDOM6 incl full remount/unknown storage; upload3 RED→GREEN+batch2; actual SQL null/deletedwinner preserved. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "0924e911f2722734": {
+    "status": "fixed",
+    "file": "src/pages/quayso/LuckyDrawAdminPage.tsx",
+    "line": 122,
+    "kind": "useMutation",
+    "groups": "H16–H19",
+    "evidence": "Đối chiếu call tại src/pages/quayso/LuckyDrawAdminPage.tsx:122 và enclosing caller trong network-public.md. H16–H19: luckyAdminFeedback15+luckyStateReadFeedback15; adminDOM3; payoutDOM6 incl full remount/unknown storage; upload3 RED→GREEN+batch2; actual SQL null/deletedwinner preserved. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "a83057b6a445914a": {
+    "status": "fixed",
+    "file": "src/pages/quayso/LuckyDrawAdminPage.tsx",
+    "line": 125,
+    "kind": "notification",
+    "groups": "H16–H19",
+    "evidence": "Đối chiếu call tại src/pages/quayso/LuckyDrawAdminPage.tsx:125 và enclosing caller trong network-public.md. H16–H19: luckyAdminFeedback15+luckyStateReadFeedback15; adminDOM3; payoutDOM6 incl full remount/unknown storage; upload3 RED→GREEN+batch2; actual SQL null/deletedwinner preserved. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "46f56a698bd0055d": {
+    "status": "fixed",
+    "file": "src/pages/quayso/LuckyDrawAdminPage.tsx",
+    "line": 126,
+    "kind": "notification",
+    "groups": "H16–H19",
+    "evidence": "Đối chiếu call tại src/pages/quayso/LuckyDrawAdminPage.tsx:126 và enclosing caller trong network-public.md. H16–H19: luckyAdminFeedback15+luckyStateReadFeedback15; adminDOM3; payoutDOM6 incl full remount/unknown storage; upload3 RED→GREEN+batch2; actual SQL null/deletedwinner preserved. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "e9f831f755a5b005": {
+    "status": "fixed",
+    "file": "src/pages/quayso/LuckyDrawAdminPage.tsx",
+    "line": 128,
+    "kind": "useMutation",
+    "groups": "H16–H19",
+    "evidence": "Đối chiếu call tại src/pages/quayso/LuckyDrawAdminPage.tsx:128 và enclosing caller trong network-public.md. H16–H19: luckyAdminFeedback15+luckyStateReadFeedback15; adminDOM3; payoutDOM6 incl full remount/unknown storage; upload3 RED→GREEN+batch2; actual SQL null/deletedwinner preserved. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "ad2cf054f9b78bd0": {
+    "status": "fixed",
+    "file": "src/pages/quayso/LuckyDrawAdminPage.tsx",
+    "line": 130,
+    "kind": "notification",
+    "groups": "H16–H19",
+    "evidence": "Đối chiếu call tại src/pages/quayso/LuckyDrawAdminPage.tsx:130 và enclosing caller trong network-public.md. H16–H19: luckyAdminFeedback15+luckyStateReadFeedback15; adminDOM3; payoutDOM6 incl full remount/unknown storage; upload3 RED→GREEN+batch2; actual SQL null/deletedwinner preserved. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "f813ed9229961c96": {
+    "status": "fixed",
+    "file": "src/pages/quayso/LuckyDrawAdminPage.tsx",
+    "line": 131,
+    "kind": "notification",
+    "groups": "H16–H19",
+    "evidence": "Đối chiếu call tại src/pages/quayso/LuckyDrawAdminPage.tsx:131 và enclosing caller trong network-public.md. H16–H19: luckyAdminFeedback15+luckyStateReadFeedback15; adminDOM3; payoutDOM6 incl full remount/unknown storage; upload3 RED→GREEN+batch2; actual SQL null/deletedwinner preserved. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "25ce109da65c1d70": {
+    "status": "fixed",
+    "file": "src/pages/quayso/LuckyDrawAdminPage.tsx",
+    "line": 133,
+    "kind": "useMutation",
+    "groups": "H16–H19",
+    "evidence": "Đối chiếu call tại src/pages/quayso/LuckyDrawAdminPage.tsx:133 và enclosing caller trong network-public.md. H16–H19: luckyAdminFeedback15+luckyStateReadFeedback15; adminDOM3; payoutDOM6 incl full remount/unknown storage; upload3 RED→GREEN+batch2; actual SQL null/deletedwinner preserved. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "5649b2f672755c20": {
+    "status": "fixed",
+    "file": "src/pages/quayso/LuckyDrawAdminPage.tsx",
+    "line": 137,
+    "kind": "notification",
+    "groups": "H16–H19",
+    "evidence": "Đối chiếu call tại src/pages/quayso/LuckyDrawAdminPage.tsx:137 và enclosing caller trong network-public.md. H16–H19: luckyAdminFeedback15+luckyStateReadFeedback15; adminDOM3; payoutDOM6 incl full remount/unknown storage; upload3 RED→GREEN+batch2; actual SQL null/deletedwinner preserved. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "7d483cc4c8bcd3f2": {
+    "status": "fixed",
+    "file": "src/pages/quayso/LuckyDrawAdminPage.tsx",
+    "line": 138,
+    "kind": "notification",
+    "groups": "H16–H19",
+    "evidence": "Đối chiếu call tại src/pages/quayso/LuckyDrawAdminPage.tsx:138 và enclosing caller trong network-public.md. H16–H19: luckyAdminFeedback15+luckyStateReadFeedback15; adminDOM3; payoutDOM6 incl full remount/unknown storage; upload3 RED→GREEN+batch2; actual SQL null/deletedwinner preserved. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "ee91beb2f7823263": {
+    "status": "fixed",
+    "file": "src/pages/quayso/LuckyDrawAdminPage.tsx",
+    "line": 139,
+    "kind": "notification",
+    "groups": "H16–H19",
+    "evidence": "Đối chiếu call tại src/pages/quayso/LuckyDrawAdminPage.tsx:139 và enclosing caller trong network-public.md. H16–H19: luckyAdminFeedback15+luckyStateReadFeedback15; adminDOM3; payoutDOM6 incl full remount/unknown storage; upload3 RED→GREEN+batch2; actual SQL null/deletedwinner preserved. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "7b11e29f114711ee": {
+    "status": "fixed",
+    "file": "src/pages/quayso/LuckyDrawAdminPage.tsx",
+    "line": 141,
+    "kind": "notification",
+    "groups": "H16–H19",
+    "evidence": "Đối chiếu call tại src/pages/quayso/LuckyDrawAdminPage.tsx:141 và enclosing caller trong network-public.md. H16–H19: luckyAdminFeedback15+luckyStateReadFeedback15; adminDOM3; payoutDOM6 incl full remount/unknown storage; upload3 RED→GREEN+batch2; actual SQL null/deletedwinner preserved. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "d07014acfa2c21ca": {
+    "status": "fixed",
+    "file": "src/pages/quayso/LuckyDrawAdminPage.tsx",
+    "line": 143,
+    "kind": "useMutation",
+    "groups": "H16–H19",
+    "evidence": "Đối chiếu call tại src/pages/quayso/LuckyDrawAdminPage.tsx:143 và enclosing caller trong network-public.md. H16–H19: luckyAdminFeedback15+luckyStateReadFeedback15; adminDOM3; payoutDOM6 incl full remount/unknown storage; upload3 RED→GREEN+batch2; actual SQL null/deletedwinner preserved. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "18cd8cd82c899693": {
+    "status": "fixed",
+    "file": "src/pages/quayso/LuckyDrawAdminPage.tsx",
+    "line": 148,
+    "kind": "notification",
+    "groups": "H16–H19",
+    "evidence": "Đối chiếu call tại src/pages/quayso/LuckyDrawAdminPage.tsx:148 và enclosing caller trong network-public.md. H16–H19: luckyAdminFeedback15+luckyStateReadFeedback15; adminDOM3; payoutDOM6 incl full remount/unknown storage; upload3 RED→GREEN+batch2; actual SQL null/deletedwinner preserved. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "899ecd16fee22f78": {
+    "status": "fixed",
+    "file": "src/pages/quayso/LuckyDrawAdminPage.tsx",
+    "line": 149,
+    "kind": "notification",
+    "groups": "H16–H19",
+    "evidence": "Đối chiếu call tại src/pages/quayso/LuckyDrawAdminPage.tsx:149 và enclosing caller trong network-public.md. H16–H19: luckyAdminFeedback15+luckyStateReadFeedback15; adminDOM3; payoutDOM6 incl full remount/unknown storage; upload3 RED→GREEN+batch2; actual SQL null/deletedwinner preserved. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "64cef33daf0e3e88": {
+    "status": "fixed",
+    "file": "src/pages/quayso/LuckyDrawAdminPage.tsx",
+    "line": 150,
+    "kind": "notification",
+    "groups": "H16–H19",
+    "evidence": "Đối chiếu call tại src/pages/quayso/LuckyDrawAdminPage.tsx:150 và enclosing caller trong network-public.md. H16–H19: luckyAdminFeedback15+luckyStateReadFeedback15; adminDOM3; payoutDOM6 incl full remount/unknown storage; upload3 RED→GREEN+batch2; actual SQL null/deletedwinner preserved. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "b3247b1ff3c4f9c2": {
+    "status": "fixed",
+    "file": "src/pages/quayso/LuckyDrawAdminPage.tsx",
+    "line": 151,
+    "kind": "notification",
+    "groups": "H16–H19",
+    "evidence": "Đối chiếu call tại src/pages/quayso/LuckyDrawAdminPage.tsx:151 và enclosing caller trong network-public.md. H16–H19: luckyAdminFeedback15+luckyStateReadFeedback15; adminDOM3; payoutDOM6 incl full remount/unknown storage; upload3 RED→GREEN+batch2; actual SQL null/deletedwinner preserved. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "2484384885716d56": {
+    "status": "fixed",
+    "file": "src/pages/quayso/LuckyDrawAdminPage.tsx",
+    "line": 152,
+    "kind": "notification",
+    "groups": "H16–H19",
+    "evidence": "Đối chiếu call tại src/pages/quayso/LuckyDrawAdminPage.tsx:152 và enclosing caller trong network-public.md. H16–H19: luckyAdminFeedback15+luckyStateReadFeedback15; adminDOM3; payoutDOM6 incl full remount/unknown storage; upload3 RED→GREEN+batch2; actual SQL null/deletedwinner preserved. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "418881a4dfd387e5": {
+    "status": "fixed",
+    "file": "src/pages/quayso/LuckyDrawAdminPage.tsx",
+    "line": 153,
+    "kind": "notification",
+    "groups": "H16–H19",
+    "evidence": "Đối chiếu call tại src/pages/quayso/LuckyDrawAdminPage.tsx:153 và enclosing caller trong network-public.md. H16–H19: luckyAdminFeedback15+luckyStateReadFeedback15; adminDOM3; payoutDOM6 incl full remount/unknown storage; upload3 RED→GREEN+batch2; actual SQL null/deletedwinner preserved. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "270f1edbd75b65a4": {
+    "status": "fixed",
+    "file": "src/pages/quayso/LuckyDrawAdminPage.tsx",
+    "line": 155,
+    "kind": "notification",
+    "groups": "H16–H19",
+    "evidence": "Đối chiếu call tại src/pages/quayso/LuckyDrawAdminPage.tsx:155 và enclosing caller trong network-public.md. H16–H19: luckyAdminFeedback15+luckyStateReadFeedback15; adminDOM3; payoutDOM6 incl full remount/unknown storage; upload3 RED→GREEN+batch2; actual SQL null/deletedwinner preserved. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "80b60fda6133d120": {
+    "status": "fixed",
+    "file": "src/pages/quayso/LuckyDrawAdminPage.tsx",
+    "line": 157,
+    "kind": "useMutation",
+    "groups": "H16–H19",
+    "evidence": "Đối chiếu call tại src/pages/quayso/LuckyDrawAdminPage.tsx:157 và enclosing caller trong network-public.md. H16–H19: luckyAdminFeedback15+luckyStateReadFeedback15; adminDOM3; payoutDOM6 incl full remount/unknown storage; upload3 RED→GREEN+batch2; actual SQL null/deletedwinner preserved. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "b53b72bcba3b44f0": {
+    "status": "fixed",
+    "file": "src/pages/quayso/LuckyDrawAdminPage.tsx",
+    "line": 162,
+    "kind": "notification",
+    "groups": "H16–H19",
+    "evidence": "Đối chiếu call tại src/pages/quayso/LuckyDrawAdminPage.tsx:162 và enclosing caller trong network-public.md. H16–H19: luckyAdminFeedback15+luckyStateReadFeedback15; adminDOM3; payoutDOM6 incl full remount/unknown storage; upload3 RED→GREEN+batch2; actual SQL null/deletedwinner preserved. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "56f639d76a562ea1": {
+    "status": "fixed",
+    "file": "src/pages/quayso/LuckyDrawAdminPage.tsx",
+    "line": 164,
+    "kind": "notification",
+    "groups": "H16–H19",
+    "evidence": "Đối chiếu call tại src/pages/quayso/LuckyDrawAdminPage.tsx:164 và enclosing caller trong network-public.md. H16–H19: luckyAdminFeedback15+luckyStateReadFeedback15; adminDOM3; payoutDOM6 incl full remount/unknown storage; upload3 RED→GREEN+batch2; actual SQL null/deletedwinner preserved. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "3c614f18b7fdc324": {
+    "status": "fixed",
+    "file": "src/pages/quayso/LuckyDrawAdminPage.tsx",
+    "line": 166,
+    "kind": "useMutation",
+    "groups": "H16–H19",
+    "evidence": "Đối chiếu call tại src/pages/quayso/LuckyDrawAdminPage.tsx:166 và enclosing caller trong network-public.md. H16–H19: luckyAdminFeedback15+luckyStateReadFeedback15; adminDOM3; payoutDOM6 incl full remount/unknown storage; upload3 RED→GREEN+batch2; actual SQL null/deletedwinner preserved. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "e5238d92c5b703d7": {
+    "status": "fixed",
+    "file": "src/pages/quayso/LuckyDrawAdminPage.tsx",
+    "line": 170,
+    "kind": "notification",
+    "groups": "H16–H19",
+    "evidence": "Đối chiếu call tại src/pages/quayso/LuckyDrawAdminPage.tsx:170 và enclosing caller trong network-public.md. H16–H19: luckyAdminFeedback15+luckyStateReadFeedback15; adminDOM3; payoutDOM6 incl full remount/unknown storage; upload3 RED→GREEN+batch2; actual SQL null/deletedwinner preserved. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "fc730d2a55386dd8": {
+    "status": "fixed",
+    "file": "src/pages/quayso/LuckyDrawAdminPage.tsx",
+    "line": 172,
+    "kind": "notification",
+    "groups": "H16–H19",
+    "evidence": "Đối chiếu call tại src/pages/quayso/LuckyDrawAdminPage.tsx:172 và enclosing caller trong network-public.md. H16–H19: luckyAdminFeedback15+luckyStateReadFeedback15; adminDOM3; payoutDOM6 incl full remount/unknown storage; upload3 RED→GREEN+batch2; actual SQL null/deletedwinner preserved. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "007417d6a8759b37": {
+    "status": "fixed",
+    "file": "src/pages/quayso/LuckyDrawAdminPage.tsx",
+    "line": 189,
+    "kind": "notification",
+    "groups": "H16–H19",
+    "evidence": "Đối chiếu call tại src/pages/quayso/LuckyDrawAdminPage.tsx:189 và enclosing caller trong network-public.md. H16–H19: luckyAdminFeedback15+luckyStateReadFeedback15; adminDOM3; payoutDOM6 incl full remount/unknown storage; upload3 RED→GREEN+batch2; actual SQL null/deletedwinner preserved. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "15c8089d33d9a196": {
+    "status": "fixed",
+    "file": "src/hooks/reports/useOccupancyDashboard.ts",
+    "line": 79,
+    "kind": "useQuery",
+    "groups": "I01/I11/I12",
+    "evidence": "Đối chiếu call tại src/hooks/reports/useOccupancyDashboard.ts:79 và enclosing caller trong reports.md. I01/I11/I12: useDashboard7+DOM2; realEstateFeedback3/ReportLayout DOM; useOccupancyDashboard6; source error/required count distinct from empty, export disabled on failed source. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "8ff13116cc9b4b6b": {
+    "status": "fixed",
+    "file": "src/hooks/reports/useOccupancyDashboard.ts",
+    "line": 102,
+    "kind": "useQuery",
+    "groups": "I01/I11/I12",
+    "evidence": "Đối chiếu call tại src/hooks/reports/useOccupancyDashboard.ts:102 và enclosing caller trong reports.md. I01/I11/I12: useDashboard7+DOM2; realEstateFeedback3/ReportLayout DOM; useOccupancyDashboard6; source error/required count distinct from empty, export disabled on failed source. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "d04924f81af4db7f": {
+    "status": "fixed",
+    "file": "src/hooks/reports/useOccupancyDashboard.ts",
+    "line": 121,
+    "kind": "useQuery",
+    "groups": "I01/I11/I12",
+    "evidence": "Đối chiếu call tại src/hooks/reports/useOccupancyDashboard.ts:121 và enclosing caller trong reports.md. I01/I11/I12: useDashboard7+DOM2; realEstateFeedback3/ReportLayout DOM; useOccupancyDashboard6; source error/required count distinct from empty, export disabled on failed source. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "70d71b46b06d0acc": {
+    "status": "fixed",
+    "file": "src/hooks/reports/realEstateReports.ts",
+    "line": 29,
+    "kind": "useQuery",
+    "groups": "I01/I11/I12",
+    "evidence": "Đối chiếu call tại src/hooks/reports/realEstateReports.ts:29 và enclosing caller trong reports.md. I01/I11/I12: useDashboard7+DOM2; realEstateFeedback3/ReportLayout DOM; useOccupancyDashboard6; source error/required count distinct from empty, export disabled on failed source. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "03800d12ff4d6655": {
+    "status": "fixed",
+    "file": "src/hooks/reports/realEstateReports.ts",
+    "line": 144,
+    "kind": "useQuery",
+    "groups": "I01/I11/I12",
+    "evidence": "Đối chiếu call tại src/hooks/reports/realEstateReports.ts:144 và enclosing caller trong reports.md. I01/I11/I12: useDashboard7+DOM2; realEstateFeedback3/ReportLayout DOM; useOccupancyDashboard6; source error/required count distinct from empty, export disabled on failed source. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "ec03acb64b7476aa": {
+    "status": "fixed",
+    "file": "src/hooks/reports/realEstateReports.ts",
+    "line": 344,
+    "kind": "useQuery",
+    "groups": "I01/I11/I12",
+    "evidence": "Đối chiếu call tại src/hooks/reports/realEstateReports.ts:344 và enclosing caller trong reports.md. I01/I11/I12: useDashboard7+DOM2; realEstateFeedback3/ReportLayout DOM; useOccupancyDashboard6; source error/required count distinct from empty, export disabled on failed source. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "b1653988ab5cfea5": {
+    "status": "fixed",
+    "file": "src/hooks/reports/realEstateReports.ts",
+    "line": 420,
+    "kind": "useQuery",
+    "groups": "I01/I11/I12",
+    "evidence": "Đối chiếu call tại src/hooks/reports/realEstateReports.ts:420 và enclosing caller trong reports.md. I01/I11/I12: useDashboard7+DOM2; realEstateFeedback3/ReportLayout DOM; useOccupancyDashboard6; source error/required count distinct from empty, export disabled on failed source. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "56d40d74eaaef8c0": {
+    "status": "fixed",
+    "file": "src/hooks/reports/realEstateReports.ts",
+    "line": 520,
+    "kind": "useQuery",
+    "groups": "I01/I11/I12",
+    "evidence": "Đối chiếu call tại src/hooks/reports/realEstateReports.ts:520 và enclosing caller trong reports.md. I01/I11/I12: useDashboard7+DOM2; realEstateFeedback3/ReportLayout DOM; useOccupancyDashboard6; source error/required count distinct from empty, export disabled on failed source. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "4e511dc4ebfc1231": {
+    "status": "fixed",
+    "file": "src/hooks/reports/realEstateReports.ts",
+    "line": 685,
+    "kind": "useQuery",
+    "groups": "I01/I11/I12",
+    "evidence": "Đối chiếu call tại src/hooks/reports/realEstateReports.ts:685 và enclosing caller trong reports.md. I01/I11/I12: useDashboard7+DOM2; realEstateFeedback3/ReportLayout DOM; useOccupancyDashboard6; source error/required count distinct from empty, export disabled on failed source. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "f7bd7d63a820e883": {
+    "status": "fixed",
+    "file": "src/hooks/reports/realEstateReports.ts",
+    "line": 757,
+    "kind": "useQuery",
+    "groups": "I01/I11/I12",
+    "evidence": "Đối chiếu call tại src/hooks/reports/realEstateReports.ts:757 và enclosing caller trong reports.md. I01/I11/I12: useDashboard7+DOM2; realEstateFeedback3/ReportLayout DOM; useOccupancyDashboard6; source error/required count distinct from empty, export disabled on failed source. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "e89ca8eaa3d2e847": {
+    "status": "fixed",
+    "file": "src/hooks/reports/realEstateReports.ts",
+    "line": 823,
+    "kind": "useQuery",
+    "groups": "I01/I11/I12",
+    "evidence": "Đối chiếu call tại src/hooks/reports/realEstateReports.ts:823 và enclosing caller trong reports.md. I01/I11/I12: useDashboard7+DOM2; realEstateFeedback3/ReportLayout DOM; useOccupancyDashboard6; source error/required count distinct from empty, export disabled on failed source. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "d64b8254aef94625": {
+    "status": "fixed",
+    "file": "src/hooks/network-center/useNetworkCenter.ts",
+    "line": 145,
+    "kind": "useQuery",
+    "groups": "H08–H10",
+    "evidence": "Đối chiếu call tại src/hooks/network-center/useNetworkCenter.ts:145 và enclosing caller trong network-public.md. H08–H10: networkFeedback/repository guard66; Network dialogs DOM3; source errors propagated; maintenance/settings/action unknown guard; no infrastructure commands run. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "948fb29e64b3f045": {
+    "status": "fixed",
+    "file": "src/hooks/network-center/useNetworkCenter.ts",
+    "line": 185,
+    "kind": "useQuery",
+    "groups": "H08–H10",
+    "evidence": "Đối chiếu call tại src/hooks/network-center/useNetworkCenter.ts:185 và enclosing caller trong network-public.md. H08–H10: networkFeedback/repository guard66; Network dialogs DOM3; source errors propagated; maintenance/settings/action unknown guard; no infrastructure commands run. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "2c73970d015280e0": {
+    "status": "fixed",
+    "file": "src/hooks/network-center/useNetworkCenter.ts",
+    "line": 212,
+    "kind": "useQuery",
+    "groups": "H08–H10",
+    "evidence": "Đối chiếu call tại src/hooks/network-center/useNetworkCenter.ts:212 và enclosing caller trong network-public.md. H08–H10: networkFeedback/repository guard66; Network dialogs DOM3; source errors propagated; maintenance/settings/action unknown guard; no infrastructure commands run. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "27ffc72382bf80bf": {
+    "status": "fixed",
+    "file": "src/hooks/network-center/useNetworkCenter.ts",
+    "line": 237,
+    "kind": "useInfiniteQuery",
+    "groups": "H08–H10",
+    "evidence": "Đối chiếu call tại src/hooks/network-center/useNetworkCenter.ts:237 và enclosing caller trong network-public.md. H08–H10: networkFeedback/repository guard66; Network dialogs DOM3; source errors propagated; maintenance/settings/action unknown guard; no infrastructure commands run. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "15d6a8a73fcc1bc6": {
+    "status": "fixed",
+    "file": "src/hooks/network-center/useNetworkCenter.ts",
+    "line": 254,
+    "kind": "useInfiniteQuery",
+    "groups": "H08–H10",
+    "evidence": "Đối chiếu call tại src/hooks/network-center/useNetworkCenter.ts:254 và enclosing caller trong network-public.md. H08–H10: networkFeedback/repository guard66; Network dialogs DOM3; source errors propagated; maintenance/settings/action unknown guard; no infrastructure commands run. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "5835293d577cdc60": {
+    "status": "fixed",
+    "file": "src/hooks/network-center/useNetworkCenter.ts",
+    "line": 347,
+    "kind": "useMutation",
+    "groups": "H08–H10",
+    "evidence": "Đối chiếu call tại src/hooks/network-center/useNetworkCenter.ts:347 và enclosing caller trong network-public.md. H08–H10: networkFeedback/repository guard66; Network dialogs DOM3; source errors propagated; maintenance/settings/action unknown guard; no infrastructure commands run. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "ed58a3c9be1034e6": {
+    "status": "fixed",
+    "file": "src/hooks/network-center/useNetworkCenter.ts",
+    "line": 358,
+    "kind": "useMutation",
+    "groups": "H08–H10",
+    "evidence": "Đối chiếu call tại src/hooks/network-center/useNetworkCenter.ts:358 và enclosing caller trong network-public.md. H08–H10: networkFeedback/repository guard66; Network dialogs DOM3; source errors propagated; maintenance/settings/action unknown guard; no infrastructure commands run. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "815cde729e6ca2d0": {
+    "status": "fixed",
+    "file": "src/hooks/network-center/useNetworkCenter.ts",
+    "line": 372,
+    "kind": "useMutation",
+    "groups": "H08–H10",
+    "evidence": "Đối chiếu call tại src/hooks/network-center/useNetworkCenter.ts:372 và enclosing caller trong network-public.md. H08–H10: networkFeedback/repository guard66; Network dialogs DOM3; source errors propagated; maintenance/settings/action unknown guard; no infrastructure commands run. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "d742a8f51c0bca52": {
+    "status": "fixed",
+    "file": "src/hooks/network-center/useNetworkCenter.ts",
+    "line": 386,
+    "kind": "useMutation",
+    "groups": "H08–H10",
+    "evidence": "Đối chiếu call tại src/hooks/network-center/useNetworkCenter.ts:386 và enclosing caller trong network-public.md. H08–H10: networkFeedback/repository guard66; Network dialogs DOM3; source errors propagated; maintenance/settings/action unknown guard; no infrastructure commands run. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "30e297f1d6d3e7c3": {
+    "status": "fixed",
+    "file": "src/hooks/network-center/useNetworkCenter.ts",
+    "line": 397,
+    "kind": "useMutation",
+    "groups": "H08–H10",
+    "evidence": "Đối chiếu call tại src/hooks/network-center/useNetworkCenter.ts:397 và enclosing caller trong network-public.md. H08–H10: networkFeedback/repository guard66; Network dialogs DOM3; source errors propagated; maintenance/settings/action unknown guard; no infrastructure commands run. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "1a33ee5d163f0c12": {
+    "status": "fixed",
+    "file": "src/hooks/network-center/useNetworkCenter.ts",
+    "line": 411,
+    "kind": "useMutation",
+    "groups": "H08–H10",
+    "evidence": "Đối chiếu call tại src/hooks/network-center/useNetworkCenter.ts:411 và enclosing caller trong network-public.md. H08–H10: networkFeedback/repository guard66; Network dialogs DOM3; source errors propagated; maintenance/settings/action unknown guard; no infrastructure commands run. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "1d9b68114515a8a6": {
+    "status": "fixed",
+    "file": "src/hooks/useCollectionTenders.ts",
+    "line": 278,
+    "kind": "useQuery",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/hooks/useCollectionTenders.ts:278 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "9d1d8e77984c037a": {
+    "status": "fixed",
+    "file": "src/hooks/useCollectionTenders.ts",
+    "line": 286,
+    "kind": "useQuery",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/hooks/useCollectionTenders.ts:286 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "3e108269ee4f3e9f": {
+    "status": "fixed",
+    "file": "src/hooks/useCollectionReport.ts",
+    "line": 45,
+    "kind": "useQuery",
+    "groups": "I07/I09",
+    "evidence": "Đối chiếu call tại src/hooks/useCollectionReport.ts:45 và enclosing caller trong salary-cashbooks.md. I07/I09: requiredInvoiceReadFeedback/invoicePrintRead; closure and collection required monetary/row schemas; six suites43/43; exact ID/date; no printing/export from missing source. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "de7891e13295f2a8": {
+    "status": "fixed",
+    "file": "src/hooks/useCollectionReport.ts",
+    "line": 104,
+    "kind": "useQuery",
+    "groups": "I07/I09",
+    "evidence": "Đối chiếu call tại src/hooks/useCollectionReport.ts:104 và enclosing caller trong salary-cashbooks.md. I07/I09: requiredInvoiceReadFeedback/invoicePrintRead; closure and collection required monetary/row schemas; six suites43/43; exact ID/date; no printing/export from missing source. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "2090c01398e0d482": {
+    "status": "fixed",
+    "file": "src/hooks/useCashHandovers.ts",
+    "line": 60,
+    "kind": "useQuery",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/hooks/useCashHandovers.ts:60 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "ef8ad79e24948d9f": {
+    "status": "fixed",
+    "file": "src/hooks/useCashHandovers.ts",
+    "line": 97,
+    "kind": "useQuery",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/hooks/useCashHandovers.ts:97 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "0bf3e79e253f6ef8": {
+    "status": "fixed",
+    "file": "src/hooks/useCashHandovers.ts",
+    "line": 147,
+    "kind": "useMutation",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/hooks/useCashHandovers.ts:147 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "4adee6acfc560545": {
+    "status": "fixed",
+    "file": "src/hooks/useCashHandovers.ts",
+    "line": 176,
+    "kind": "useMutation",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/hooks/useCashHandovers.ts:176 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "974ec32c388f3d53": {
+    "status": "fixed",
+    "file": "src/hooks/useCashHandovers.ts",
+    "line": 195,
+    "kind": "useMutation",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/hooks/useCashHandovers.ts:195 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "c7932a6f828d5e20": {
+    "status": "fixed",
+    "file": "src/hooks/useCashHandovers.ts",
+    "line": 214,
+    "kind": "useMutation",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/hooks/useCashHandovers.ts:214 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "c0341c88eb915557": {
+    "status": "fixed",
+    "file": "src/hooks/useCashHandovers.ts",
+    "line": 232,
+    "kind": "useMutation",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/hooks/useCashHandovers.ts:232 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "c11d24e356c63188": {
+    "status": "fixed",
+    "file": "src/hooks/useCashbookClosing.ts",
+    "line": 124,
+    "kind": "useQuery",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/hooks/useCashbookClosing.ts:124 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "c00901a67de244f9": {
+    "status": "fixed",
+    "file": "src/hooks/useCashbookClosing.ts",
+    "line": 145,
+    "kind": "useQuery",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/hooks/useCashbookClosing.ts:145 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "07a414bdbc29ab44": {
+    "status": "fixed",
+    "file": "src/hooks/useCashbookClosing.ts",
+    "line": 173,
+    "kind": "useQuery",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/hooks/useCashbookClosing.ts:173 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "2bfeb96547ef5d83": {
+    "status": "fixed",
+    "file": "src/hooks/useCashbookClosing.ts",
+    "line": 195,
+    "kind": "useQuery",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/hooks/useCashbookClosing.ts:195 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "e8222f8a1fa1c556": {
+    "status": "fixed",
+    "file": "src/hooks/useCashbookClosing.ts",
+    "line": 224,
+    "kind": "useQuery",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/hooks/useCashbookClosing.ts:224 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "4e19e7939f912e70": {
+    "status": "fixed",
+    "file": "src/hooks/useCashbookClosing.ts",
+    "line": 250,
+    "kind": "useMutation",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/hooks/useCashbookClosing.ts:250 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "b33400910d2d65e9": {
+    "status": "fixed",
+    "file": "src/hooks/useCashbookClosing.ts",
+    "line": 264,
+    "kind": "notification",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/hooks/useCashbookClosing.ts:264 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "9d191da69e837237": {
+    "status": "fixed",
+    "file": "src/hooks/useCashbookClosing.ts",
+    "line": 272,
+    "kind": "useMutation",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/hooks/useCashbookClosing.ts:272 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "e61a6e5099bad00e": {
+    "status": "fixed",
+    "file": "src/hooks/useCashbookClosing.ts",
+    "line": 285,
+    "kind": "notification",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/hooks/useCashbookClosing.ts:285 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "08be7cc94a307867": {
+    "status": "fixed",
+    "file": "src/hooks/useCashbookClosing.ts",
+    "line": 340,
+    "kind": "useMutation",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/hooks/useCashbookClosing.ts:340 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "45074163d718f46b": {
+    "status": "fixed",
+    "file": "src/hooks/useCashbookClosing.ts",
+    "line": 353,
+    "kind": "notification",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/hooks/useCashbookClosing.ts:353 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "c9d9f4dbbabb79ec": {
+    "status": "fixed",
+    "file": "src/hooks/useCashbookClosing.ts",
+    "line": 354,
+    "kind": "notification",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/hooks/useCashbookClosing.ts:354 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "aab1d4fa4bf41d25": {
+    "status": "fixed",
+    "file": "src/hooks/useAutoDebtConfig.ts",
+    "line": 13,
+    "kind": "useQuery",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useAutoDebtConfig.ts:13 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "dc6a3d73e9ef3fd6": {
+    "status": "background-only",
+    "file": "src/hooks/useAutoDebtConfig.ts",
+    "line": 28,
+    "kind": "log",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useAutoDebtConfig.ts:28 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Log chẩn đoán đi cùng phản hồi UI/throw; không phát thêm toast hoặc lộ chi tiết kỹ thuật."
+  },
+  "d31751f93289ce50": {
+    "status": "fixed",
+    "file": "src/hooks/useAutoDebtConfig.ts",
+    "line": 41,
+    "kind": "useMutation",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useAutoDebtConfig.ts:41 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "44d38063e5ac9e88": {
+    "status": "fixed",
+    "file": "src/hooks/useAutoDebtConfig.ts",
+    "line": 60,
+    "kind": "notification",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useAutoDebtConfig.ts:60 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "55627f235025fae6": {
+    "status": "background-only",
+    "file": "src/hooks/useAutoDebtConfig.ts",
+    "line": 64,
+    "kind": "log",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useAutoDebtConfig.ts:64 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Log chẩn đoán đi cùng phản hồi UI/throw; không phát thêm toast hoặc lộ chi tiết kỹ thuật."
+  },
+  "4ab122c5c704199e": {
+    "status": "fixed",
+    "file": "src/hooks/useAutoDebtConfig.ts",
+    "line": 66,
+    "kind": "notification",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useAutoDebtConfig.ts:66 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "bf6e93f7d211bfd0": {
+    "status": "fixed",
+    "file": "src/hooks/useAutoDebtConfig.ts",
+    "line": 74,
+    "kind": "useMutation",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useAutoDebtConfig.ts:74 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "eb28a91a16d2ff66": {
+    "status": "fixed",
+    "file": "src/hooks/useAutoDebtConfig.ts",
+    "line": 90,
+    "kind": "notification",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useAutoDebtConfig.ts:90 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "3797ecba1c77b336": {
+    "status": "background-only",
+    "file": "src/hooks/useAutoDebtConfig.ts",
+    "line": 94,
+    "kind": "log",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useAutoDebtConfig.ts:94 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Log chẩn đoán đi cùng phản hồi UI/throw; không phát thêm toast hoặc lộ chi tiết kỹ thuật."
+  },
+  "9da9976e4be4a7ae": {
+    "status": "fixed",
+    "file": "src/hooks/useAutoDebtConfig.ts",
+    "line": 96,
+    "kind": "notification",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useAutoDebtConfig.ts:96 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "9ff8307d488a0494": {
+    "status": "fixed",
+    "file": "src/hooks/useAutoDebtConfig.ts",
+    "line": 104,
+    "kind": "useMutation",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useAutoDebtConfig.ts:104 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "936be2730fd3da5e": {
+    "status": "fixed",
+    "file": "src/hooks/useAutoDebtConfig.ts",
+    "line": 120,
+    "kind": "notification",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useAutoDebtConfig.ts:120 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "4c20abb24f323e2e": {
+    "status": "background-only",
+    "file": "src/hooks/useAutoDebtConfig.ts",
+    "line": 124,
+    "kind": "log",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useAutoDebtConfig.ts:124 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Log chẩn đoán đi cùng phản hồi UI/throw; không phát thêm toast hoặc lộ chi tiết kỹ thuật."
+  },
+  "c91816bb059af174": {
+    "status": "fixed",
+    "file": "src/hooks/useAutoDebtConfig.ts",
+    "line": 126,
+    "kind": "notification",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useAutoDebtConfig.ts:126 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "ae0443d8aa33615f": {
+    "status": "fixed",
+    "file": "src/hooks/useAssetWarehouses.ts",
+    "line": 13,
+    "kind": "useQuery",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useAssetWarehouses.ts:13 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "d446b5569fd1420e": {
+    "status": "background-only",
+    "file": "src/hooks/useAssetWarehouses.ts",
+    "line": 28,
+    "kind": "log",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useAssetWarehouses.ts:28 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Log chẩn đoán đi cùng phản hồi UI/throw; không phát thêm toast hoặc lộ chi tiết kỹ thuật."
+  },
+  "2d6d658914c61331": {
+    "status": "fixed",
+    "file": "src/hooks/useAssetWarehouses.ts",
+    "line": 41,
+    "kind": "useMutation",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useAssetWarehouses.ts:41 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "7b1d5eff1c3f1f6c": {
+    "status": "fixed",
+    "file": "src/hooks/useAssetWarehouses.ts",
+    "line": 60,
+    "kind": "notification",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useAssetWarehouses.ts:60 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "a255e9015c44bfa4": {
+    "status": "background-only",
+    "file": "src/hooks/useAssetWarehouses.ts",
+    "line": 64,
+    "kind": "log",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useAssetWarehouses.ts:64 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Log chẩn đoán đi cùng phản hồi UI/throw; không phát thêm toast hoặc lộ chi tiết kỹ thuật."
+  },
+  "db6ab3603933b0b0": {
+    "status": "fixed",
+    "file": "src/hooks/useAssetWarehouses.ts",
+    "line": 66,
+    "kind": "notification",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useAssetWarehouses.ts:66 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "73a2ab14bd2724be": {
+    "status": "fixed",
+    "file": "src/hooks/useAssetWarehouses.ts",
+    "line": 74,
+    "kind": "useMutation",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useAssetWarehouses.ts:74 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "54fca483890a3b55": {
+    "status": "fixed",
+    "file": "src/hooks/useAssetWarehouses.ts",
+    "line": 90,
+    "kind": "notification",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useAssetWarehouses.ts:90 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "0aee837a6259ffe0": {
+    "status": "background-only",
+    "file": "src/hooks/useAssetWarehouses.ts",
+    "line": 94,
+    "kind": "log",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useAssetWarehouses.ts:94 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Log chẩn đoán đi cùng phản hồi UI/throw; không phát thêm toast hoặc lộ chi tiết kỹ thuật."
+  },
+  "9d75028f11e78af4": {
+    "status": "fixed",
+    "file": "src/hooks/useAssetWarehouses.ts",
+    "line": 96,
+    "kind": "notification",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useAssetWarehouses.ts:96 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "36fc246b141dfc8c": {
+    "status": "fixed",
+    "file": "src/hooks/useAssetWarehouses.ts",
+    "line": 104,
+    "kind": "useMutation",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useAssetWarehouses.ts:104 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "1f4bf3d7f77d1839": {
+    "status": "fixed",
+    "file": "src/hooks/useAssetWarehouses.ts",
+    "line": 120,
+    "kind": "notification",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useAssetWarehouses.ts:120 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "09b7684867ba2489": {
+    "status": "background-only",
+    "file": "src/hooks/useAssetWarehouses.ts",
+    "line": 124,
+    "kind": "log",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useAssetWarehouses.ts:124 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Log chẩn đoán đi cùng phản hồi UI/throw; không phát thêm toast hoặc lộ chi tiết kỹ thuật."
+  },
+  "0d852eadb8a143df": {
+    "status": "fixed",
+    "file": "src/hooks/useAssetWarehouses.ts",
+    "line": 126,
+    "kind": "notification",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useAssetWarehouses.ts:126 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "aca77c274396b8d5": {
+    "status": "fixed",
+    "file": "src/hooks/useAccounts.ts",
+    "line": 75,
+    "kind": "useQuery",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/hooks/useAccounts.ts:75 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "a88145970e898b44": {
+    "status": "fixed",
+    "file": "src/hooks/useAccounts.ts",
+    "line": 124,
+    "kind": "useQuery",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/hooks/useAccounts.ts:124 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "c4aab77b9653f2b5": {
+    "status": "fixed",
+    "file": "src/hooks/useAccounts.ts",
+    "line": 209,
+    "kind": "useMutation",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/hooks/useAccounts.ts:209 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "f4ed1e26f3cbd907": {
+    "status": "fixed",
+    "file": "src/hooks/useAccounts.ts",
+    "line": 240,
+    "kind": "notification",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/hooks/useAccounts.ts:240 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "1b3557be0410827e": {
+    "status": "fixed",
+    "file": "src/hooks/useAccounts.ts",
+    "line": 244,
+    "kind": "notification",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/hooks/useAccounts.ts:244 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "109884221c194637": {
+    "status": "fixed",
+    "file": "src/hooks/useAccounts.ts",
+    "line": 252,
+    "kind": "useMutation",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/hooks/useAccounts.ts:252 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "c0323066b4bf19e7": {
+    "status": "fixed",
+    "file": "src/hooks/useAccounts.ts",
+    "line": 274,
+    "kind": "notification",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/hooks/useAccounts.ts:274 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "724a8cec60b61f93": {
+    "status": "fixed",
+    "file": "src/hooks/useAccounts.ts",
+    "line": 278,
+    "kind": "notification",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/hooks/useAccounts.ts:278 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "5789ac6ab8470749": {
+    "status": "fixed",
+    "file": "src/hooks/useAccounts.ts",
+    "line": 286,
+    "kind": "useMutation",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/hooks/useAccounts.ts:286 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "bad9c1053ad4a062": {
+    "status": "fixed",
+    "file": "src/hooks/useAccounts.ts",
+    "line": 297,
+    "kind": "notification",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/hooks/useAccounts.ts:297 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "8f2dd37171c318c2": {
+    "status": "fixed",
+    "file": "src/hooks/useAccounts.ts",
+    "line": 301,
+    "kind": "notification",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/hooks/useAccounts.ts:301 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "bf371624b69bf03c": {
+    "status": "background-only",
+    "file": "src/components/errors/ErrorBoundary.tsx",
+    "line": 66,
+    "kind": "log",
+    "groups": "A01–A13",
+    "evidence": "Đối chiếu call tại src/components/errors/ErrorBoundary.tsx:63 và enclosing caller trong shared.md. A01–A13: QueryProvider.errorPolicy19; QueryRegion DOM; formErrors/typedInputs; ErrorBoundary.feedback; clipboardFeedback/caller4; exportReadFeedback/fetchAll. Log chẩn đoán đi cùng phản hồi UI/throw; không phát thêm toast hoặc lộ chi tiết kỹ thuật. Bổ sung source freeze 30/09/2026: A13: console.error remains diagnostic after reportBoundaryError and non-chunk path; dynamic errorPageNames has safe đang mở fallback and preserves custom/explicit/empty pageName. Independent copilot-a13-errorboundary-independent.json101/101, source table parity41 routes; chunk reload budget/auth rules unchanged. No synthetic AST IDs for render headings/labels."
+  },
+  "a12928d3c50e90aa": {
+    "status": "fixed",
+    "file": "src/hooks/useHotlines.ts",
+    "line": 13,
+    "kind": "useQuery",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useHotlines.ts:13 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "5118851fbcba8c4f": {
+    "status": "background-only",
+    "file": "src/hooks/useHotlines.ts",
+    "line": 22,
+    "kind": "log",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useHotlines.ts:22 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Log chẩn đoán đi cùng phản hồi UI/throw; không phát thêm toast hoặc lộ chi tiết kỹ thuật."
+  },
+  "ea1424844ebdd710": {
+    "status": "fixed",
+    "file": "src/hooks/useHotlines.ts",
+    "line": 35,
+    "kind": "useMutation",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useHotlines.ts:35 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "84235686328c2833": {
+    "status": "fixed",
+    "file": "src/hooks/useHotlines.ts",
+    "line": 54,
+    "kind": "notification",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useHotlines.ts:54 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "a2d8cfbb4b605912": {
+    "status": "background-only",
+    "file": "src/hooks/useHotlines.ts",
+    "line": 58,
+    "kind": "log",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useHotlines.ts:58 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Log chẩn đoán đi cùng phản hồi UI/throw; không phát thêm toast hoặc lộ chi tiết kỹ thuật."
+  },
+  "850f0bbf274c992b": {
+    "status": "fixed",
+    "file": "src/hooks/useHotlines.ts",
+    "line": 60,
+    "kind": "notification",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useHotlines.ts:60 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "77d803833fd9e819": {
+    "status": "fixed",
+    "file": "src/hooks/useHotlines.ts",
+    "line": 68,
+    "kind": "useMutation",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useHotlines.ts:68 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "9a7c60e6c11ca464": {
+    "status": "fixed",
+    "file": "src/hooks/useHotlines.ts",
+    "line": 84,
+    "kind": "notification",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useHotlines.ts:84 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "e814cb38f3d76194": {
+    "status": "background-only",
+    "file": "src/hooks/useHotlines.ts",
+    "line": 88,
+    "kind": "log",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useHotlines.ts:88 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Log chẩn đoán đi cùng phản hồi UI/throw; không phát thêm toast hoặc lộ chi tiết kỹ thuật."
+  },
+  "8ba95b4b2e2dec1e": {
+    "status": "fixed",
+    "file": "src/hooks/useHotlines.ts",
+    "line": 90,
+    "kind": "notification",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useHotlines.ts:90 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "d47ab673de974123": {
+    "status": "fixed",
+    "file": "src/hooks/useHotlines.ts",
+    "line": 98,
+    "kind": "useMutation",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useHotlines.ts:98 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "61c5dbd8f9173860": {
+    "status": "fixed",
+    "file": "src/hooks/useHotlines.ts",
+    "line": 114,
+    "kind": "notification",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useHotlines.ts:114 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "13cfda51ee641995": {
+    "status": "background-only",
+    "file": "src/hooks/useHotlines.ts",
+    "line": 118,
+    "kind": "log",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useHotlines.ts:118 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Log chẩn đoán đi cùng phản hồi UI/throw; không phát thêm toast hoặc lộ chi tiết kỹ thuật."
+  },
+  "336adab1ace4830a": {
+    "status": "fixed",
+    "file": "src/hooks/useHotlines.ts",
+    "line": 120,
+    "kind": "notification",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useHotlines.ts:120 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "1375d4b8b167eceb": {
+    "status": "fixed",
+    "file": "src/hooks/useFloors.ts",
+    "line": 16,
+    "kind": "useQuery",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useFloors.ts:16 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "dc860182fb8f21ba": {
+    "status": "background-only",
+    "file": "src/hooks/useFloors.ts",
+    "line": 31,
+    "kind": "log",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useFloors.ts:31 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Log chẩn đoán đi cùng phản hồi UI/throw; không phát thêm toast hoặc lộ chi tiết kỹ thuật."
+  },
+  "06bf62ba11ef1b97": {
+    "status": "fixed",
+    "file": "src/hooks/useFloors.ts",
+    "line": 42,
+    "kind": "useQuery",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useFloors.ts:42 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "54ea77e286005466": {
+    "status": "fixed",
+    "file": "src/hooks/useFloors.ts",
+    "line": 63,
+    "kind": "useMutation",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useFloors.ts:63 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "3af3d998c49abb6a": {
+    "status": "fixed",
+    "file": "src/hooks/useFloors.ts",
+    "line": 82,
+    "kind": "notification",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useFloors.ts:82 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "5ba76dd7d356b0fb": {
+    "status": "background-only",
+    "file": "src/hooks/useFloors.ts",
+    "line": 85,
+    "kind": "log",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useFloors.ts:85 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Log chẩn đoán đi cùng phản hồi UI/throw; không phát thêm toast hoặc lộ chi tiết kỹ thuật."
+  },
+  "545568556c1fff72": {
+    "status": "fixed",
+    "file": "src/hooks/useFloors.ts",
+    "line": 88,
+    "kind": "notification",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useFloors.ts:88 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "dfdb1c330f937a80": {
+    "status": "fixed",
+    "file": "src/hooks/useFloors.ts",
+    "line": 96,
+    "kind": "useMutation",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useFloors.ts:96 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "1730318cf34010c0": {
+    "status": "fixed",
+    "file": "src/hooks/useFloors.ts",
+    "line": 112,
+    "kind": "notification",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useFloors.ts:112 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "987629472a284a76": {
+    "status": "background-only",
+    "file": "src/hooks/useFloors.ts",
+    "line": 115,
+    "kind": "log",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useFloors.ts:115 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Log chẩn đoán đi cùng phản hồi UI/throw; không phát thêm toast hoặc lộ chi tiết kỹ thuật."
+  },
+  "dfaedf58bea6716f": {
+    "status": "fixed",
+    "file": "src/hooks/useFloors.ts",
+    "line": 118,
+    "kind": "notification",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useFloors.ts:118 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "59fac277ff5d06c4": {
+    "status": "fixed",
+    "file": "src/hooks/useFloors.ts",
+    "line": 126,
+    "kind": "useMutation",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useFloors.ts:126 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "0b8e67df11c3d792": {
+    "status": "fixed",
+    "file": "src/hooks/useFloors.ts",
+    "line": 142,
+    "kind": "notification",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useFloors.ts:142 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "ce4e14efbf0cfeee": {
+    "status": "background-only",
+    "file": "src/hooks/useFloors.ts",
+    "line": 145,
+    "kind": "log",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useFloors.ts:145 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Log chẩn đoán đi cùng phản hồi UI/throw; không phát thêm toast hoặc lộ chi tiết kỹ thuật."
+  },
+  "18cf67a45626c264": {
+    "status": "fixed",
+    "file": "src/hooks/useFloors.ts",
+    "line": 148,
+    "kind": "notification",
+    "groups": "F17/I13",
+    "evidence": "Đối chiếu call tại src/hooks/useFloors.ts:148 và enclosing caller trong shared.md. F17/I13: CategoryCrudPage DOM3; categoryResponseFeedback9 RED→GREEN; CRUD awaited and returned IDs checked; source null throws; caller inline owner preserves drafts. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "bead2f33306fadb5": {
+    "status": "fixed",
+    "file": "src/hooks/useDashboard.ts",
+    "line": 104,
+    "kind": "useQuery",
+    "groups": "I01/I11/I12",
+    "evidence": "Đối chiếu call tại src/hooks/useDashboard.ts:104 và enclosing caller trong reports.md. I01/I11/I12: useDashboard7+DOM2; realEstateFeedback3/ReportLayout DOM; useOccupancyDashboard6; source error/required count distinct from empty, export disabled on failed source. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "539a99e3654ae87d": {
+    "status": "fixed",
+    "file": "src/hooks/useDashboard.ts",
+    "line": 109,
+    "kind": "useQuery",
+    "groups": "I01/I11/I12",
+    "evidence": "Đối chiếu call tại src/hooks/useDashboard.ts:109 và enclosing caller trong reports.md. I01/I11/I12: useDashboard7+DOM2; realEstateFeedback3/ReportLayout DOM; useOccupancyDashboard6; source error/required count distinct from empty, export disabled on failed source. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "4dfb2d6907a6da77": {
+    "status": "fixed",
+    "file": "src/hooks/useDashboard.ts",
+    "line": 135,
+    "kind": "useQuery",
+    "groups": "I01/I11/I12",
+    "evidence": "Đối chiếu call tại src/hooks/useDashboard.ts:135 và enclosing caller trong reports.md. I01/I11/I12: useDashboard7+DOM2; realEstateFeedback3/ReportLayout DOM; useOccupancyDashboard6; source error/required count distinct from empty, export disabled on failed source. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "e3c5834698d00e93": {
+    "status": "fixed",
+    "file": "src/hooks/useDashboard.ts",
+    "line": 192,
+    "kind": "useQuery",
+    "groups": "I01/I11/I12",
+    "evidence": "Đối chiếu call tại src/hooks/useDashboard.ts:192 và enclosing caller trong reports.md. I01/I11/I12: useDashboard7+DOM2; realEstateFeedback3/ReportLayout DOM; useOccupancyDashboard6; source error/required count distinct from empty, export disabled on failed source. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "d2e754d750c1ed70": {
+    "status": "fixed",
+    "file": "src/hooks/useDashboard.ts",
+    "line": 227,
+    "kind": "useQuery",
+    "groups": "I01/I11/I12",
+    "evidence": "Đối chiếu call tại src/hooks/useDashboard.ts:227 và enclosing caller trong reports.md. I01/I11/I12: useDashboard7+DOM2; realEstateFeedback3/ReportLayout DOM; useOccupancyDashboard6; source error/required count distinct from empty, export disabled on failed source. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "a64bf90b5a33fc1b": {
+    "status": "fixed",
+    "file": "src/hooks/useDashboard.ts",
+    "line": 383,
+    "kind": "useQuery",
+    "groups": "I01/I11/I12",
+    "evidence": "Đối chiếu call tại src/hooks/useDashboard.ts:383 và enclosing caller trong reports.md. I01/I11/I12: useDashboard7+DOM2; realEstateFeedback3/ReportLayout DOM; useOccupancyDashboard6; source error/required count distinct from empty, export disabled on failed source. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "3ed25a60588157d6": {
+    "status": "fixed",
+    "file": "src/hooks/useContractMoveOutNotice.ts",
+    "line": 13,
+    "kind": "useQuery",
+    "groups": "B16–B19/I03",
+    "evidence": "Đối chiếu call tại src/hooks/useContractMoveOutNotice.ts:13 và enclosing caller trong contracts.md. B16–B19/I03: lifecycle receipt/source parsers and inline components; required date/scope/amount; no returned null source shown as empty; money status follows returned result. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "2e414511f0516b6f": {
+    "status": "fixed",
+    "file": "src/hooks/useContractMoveOutNotice.ts",
+    "line": 33,
+    "kind": "useMutation",
+    "groups": "B16–B19/I03",
+    "evidence": "Đối chiếu call tại src/hooks/useContractMoveOutNotice.ts:33 và enclosing caller trong contracts.md. B16–B19/I03: lifecycle receipt/source parsers and inline components; required date/scope/amount; no returned null source shown as empty; money status follows returned result. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "235e14b05737f6fe": {
+    "status": "fixed",
+    "file": "src/hooks/useContractMoveOutNotice.ts",
+    "line": 60,
+    "kind": "useMutation",
+    "groups": "B16–B19/I03",
+    "evidence": "Đối chiếu call tại src/hooks/useContractMoveOutNotice.ts:60 và enclosing caller trong contracts.md. B16–B19/I03: lifecycle receipt/source parsers and inline components; required date/scope/amount; no returned null source shown as empty; money status follows returned result. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "ffa93edc04a9092d": {
+    "status": "fixed",
+    "file": "src/hooks/useContractMoveOutNotice.ts",
+    "line": 74,
+    "kind": "notification",
+    "groups": "B16–B19/I03",
+    "evidence": "Đối chiếu call tại src/hooks/useContractMoveOutNotice.ts:74 và enclosing caller trong contracts.md. B16–B19/I03: lifecycle receipt/source parsers and inline components; required date/scope/amount; no returned null source shown as empty; money status follows returned result. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "6d5e6c59347b662e": {
+    "status": "fixed",
+    "file": "src/hooks/useContractMoveOutNotice.ts",
+    "line": 78,
+    "kind": "notification",
+    "groups": "B16–B19/I03",
+    "evidence": "Đối chiếu call tại src/hooks/useContractMoveOutNotice.ts:78 và enclosing caller trong contracts.md. B16–B19/I03: lifecycle receipt/source parsers and inline components; required date/scope/amount; no returned null source shown as empty; money status follows returned result. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "5847baf09d46cc4f": {
+    "status": "fixed",
+    "file": "src/hooks/useContractMeterBoundaries.ts",
+    "line": 18,
+    "kind": "useQuery",
+    "groups": "B16–B19/I03",
+    "evidence": "Đối chiếu call tại src/hooks/useContractMeterBoundaries.ts:18 và enclosing caller trong contracts.md. B16–B19/I03: lifecycle receipt/source parsers and inline components; required date/scope/amount; no returned null source shown as empty; money status follows returned result. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "2f28c9657b2a8e95": {
+    "status": "fixed",
+    "file": "src/hooks/useContractMeterBoundaries.ts",
+    "line": 22,
+    "kind": "useQuery",
+    "groups": "B16–B19/I03",
+    "evidence": "Đối chiếu call tại src/hooks/useContractMeterBoundaries.ts:22 và enclosing caller trong contracts.md. B16–B19/I03: lifecycle receipt/source parsers and inline components; required date/scope/amount; no returned null source shown as empty; money status follows returned result. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "9391ba43b970e56c": {
+    "status": "fixed",
+    "file": "src/hooks/useContractMeterBoundaries.ts",
+    "line": 26,
+    "kind": "useMutation",
+    "groups": "B16–B19/I03",
+    "evidence": "Đối chiếu call tại src/hooks/useContractMeterBoundaries.ts:26 và enclosing caller trong contracts.md. B16–B19/I03: lifecycle receipt/source parsers and inline components; required date/scope/amount; no returned null source shown as empty; money status follows returned result. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "22a96c581b513aa6": {
+    "status": "fixed",
+    "file": "src/hooks/useContractMeterBoundaries.ts",
+    "line": 29,
+    "kind": "notification",
+    "groups": "B16–B19/I03",
+    "evidence": "Đối chiếu call tại src/hooks/useContractMeterBoundaries.ts:29 và enclosing caller trong contracts.md. B16–B19/I03: lifecycle receipt/source parsers and inline components; required date/scope/amount; no returned null source shown as empty; money status follows returned result. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "55e4548fb644b21b": {
+    "status": "fixed",
+    "file": "src/hooks/useContractMeterBoundaries.ts",
+    "line": 30,
+    "kind": "notification",
+    "groups": "B16–B19/I03",
+    "evidence": "Đối chiếu call tại src/hooks/useContractMeterBoundaries.ts:30 và enclosing caller trong contracts.md. B16–B19/I03: lifecycle receipt/source parsers and inline components; required date/scope/amount; no returned null source shown as empty; money status follows returned result. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "400438a0222e8ce6": {
+    "status": "fixed",
+    "file": "src/hooks/useContractExitCases.ts",
+    "line": 25,
+    "kind": "useQuery",
+    "groups": "B16–B19/I03",
+    "evidence": "Đối chiếu call tại src/hooks/useContractExitCases.ts:25 và enclosing caller trong contracts.md. B16–B19/I03: lifecycle receipt/source parsers and inline components; required date/scope/amount; no returned null source shown as empty; money status follows returned result. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "0de83780bbc66e66": {
+    "status": "fixed",
+    "file": "src/hooks/useContractExitCases.ts",
+    "line": 29,
+    "kind": "useQuery",
+    "groups": "B16–B19/I03",
+    "evidence": "Đối chiếu call tại src/hooks/useContractExitCases.ts:29 và enclosing caller trong contracts.md. B16–B19/I03: lifecycle receipt/source parsers and inline components; required date/scope/amount; no returned null source shown as empty; money status follows returned result. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "53a0aa9148c1d640": {
+    "status": "fixed",
+    "file": "src/hooks/useContractExitCases.ts",
+    "line": 34,
+    "kind": "useMutation",
+    "groups": "B16–B19/I03",
+    "evidence": "Đối chiếu call tại src/hooks/useContractExitCases.ts:34 và enclosing caller trong contracts.md. B16–B19/I03: lifecycle receipt/source parsers and inline components; required date/scope/amount; no returned null source shown as empty; money status follows returned result. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "6434b47b28352a74": {
+    "status": "fixed",
+    "file": "src/hooks/useContractExitCases.ts",
+    "line": 37,
+    "kind": "notification",
+    "groups": "B16–B19/I03",
+    "evidence": "Đối chiếu call tại src/hooks/useContractExitCases.ts:37 và enclosing caller trong contracts.md. B16–B19/I03: lifecycle receipt/source parsers and inline components; required date/scope/amount; no returned null source shown as empty; money status follows returned result. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "ca49fc5d33724d5d": {
+    "status": "fixed",
+    "file": "src/hooks/useContractExitCases.ts",
+    "line": 38,
+    "kind": "notification",
+    "groups": "B16–B19/I03",
+    "evidence": "Đối chiếu call tại src/hooks/useContractExitCases.ts:38 và enclosing caller trong contracts.md. B16–B19/I03: lifecycle receipt/source parsers and inline components; required date/scope/amount; no returned null source shown as empty; money status follows returned result. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "c26f5a677887cff7": {
+    "status": "fixed",
+    "file": "src/hooks/useManagerSalary.ts",
+    "line": 103,
+    "kind": "useQuery",
+    "groups": "E06–E08/E11/I08",
+    "evidence": "Đối chiếu call tại src/hooks/useManagerSalary.ts:103 và enclosing caller trong salary-cashbooks.md. E06–E08/E11/I08: salaryMutationFeedback/salaryReadSources/salaryDurableWorkflow; SalaryMonthly DOM; salary snapshot/remaining/paid/enum mutation hashes restored; independent review 121/121. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "b98646138c1d0488": {
+    "status": "fixed",
+    "file": "src/hooks/useManagerSalary.ts",
+    "line": 613,
+    "kind": "useQuery",
+    "groups": "E06–E08/E11/I08",
+    "evidence": "Đối chiếu call tại src/hooks/useManagerSalary.ts:613 và enclosing caller trong salary-cashbooks.md. E06–E08/E11/I08: salaryMutationFeedback/salaryReadSources/salaryDurableWorkflow; SalaryMonthly DOM; salary snapshot/remaining/paid/enum mutation hashes restored; independent review 121/121. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "64c1683e9e9bf765": {
+    "status": "fixed",
+    "file": "src/hooks/useManagerSalary.ts",
+    "line": 637,
+    "kind": "useQuery",
+    "groups": "E06–E08/E11/I08",
+    "evidence": "Đối chiếu call tại src/hooks/useManagerSalary.ts:637 và enclosing caller trong salary-cashbooks.md. E06–E08/E11/I08: salaryMutationFeedback/salaryReadSources/salaryDurableWorkflow; SalaryMonthly DOM; salary snapshot/remaining/paid/enum mutation hashes restored; independent review 121/121. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "85b1e0c48971c9c2": {
+    "status": "fixed",
+    "file": "src/hooks/useManagerSalary.ts",
+    "line": 740,
+    "kind": "useMutation",
+    "groups": "E06–E08/E11/I08",
+    "evidence": "Đối chiếu call tại src/hooks/useManagerSalary.ts:740 và enclosing caller trong salary-cashbooks.md. E06–E08/E11/I08: salaryMutationFeedback/salaryReadSources/salaryDurableWorkflow; SalaryMonthly DOM; salary snapshot/remaining/paid/enum mutation hashes restored; independent review 121/121. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "77ef844205411c2e": {
+    "status": "fixed",
+    "file": "src/hooks/useManagerSalary.ts",
+    "line": 771,
+    "kind": "notification",
+    "groups": "E06–E08/E11/I08",
+    "evidence": "Đối chiếu call tại src/hooks/useManagerSalary.ts:771 và enclosing caller trong salary-cashbooks.md. E06–E08/E11/I08: salaryMutationFeedback/salaryReadSources/salaryDurableWorkflow; SalaryMonthly DOM; salary snapshot/remaining/paid/enum mutation hashes restored; independent review 121/121. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "d510a025fafe6fdc": {
+    "status": "fixed",
+    "file": "src/hooks/useManagerSalary.ts",
+    "line": 779,
+    "kind": "useMutation",
+    "groups": "E06–E08/E11/I08",
+    "evidence": "Đối chiếu call tại src/hooks/useManagerSalary.ts:779 và enclosing caller trong salary-cashbooks.md. E06–E08/E11/I08: salaryMutationFeedback/salaryReadSources/salaryDurableWorkflow; SalaryMonthly DOM; salary snapshot/remaining/paid/enum mutation hashes restored; independent review 121/121. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "0e9e89d7f149879a": {
+    "status": "fixed",
+    "file": "src/hooks/useManagerSalary.ts",
+    "line": 786,
+    "kind": "notification",
+    "groups": "E06–E08/E11/I08",
+    "evidence": "Đối chiếu call tại src/hooks/useManagerSalary.ts:786 và enclosing caller trong salary-cashbooks.md. E06–E08/E11/I08: salaryMutationFeedback/salaryReadSources/salaryDurableWorkflow; SalaryMonthly DOM; salary snapshot/remaining/paid/enum mutation hashes restored; independent review 121/121. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "f55f9dcc8eb6161c": {
+    "status": "fixed",
+    "file": "src/hooks/useManagerSalary.ts",
+    "line": 789,
+    "kind": "notification",
+    "groups": "E06–E08/E11/I08",
+    "evidence": "Đối chiếu call tại src/hooks/useManagerSalary.ts:789 và enclosing caller trong salary-cashbooks.md. E06–E08/E11/I08: salaryMutationFeedback/salaryReadSources/salaryDurableWorkflow; SalaryMonthly DOM; salary snapshot/remaining/paid/enum mutation hashes restored; independent review 121/121. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "8e8017ca82615f1e": {
+    "status": "fixed",
+    "file": "src/hooks/useManagerSalary.ts",
+    "line": 790,
+    "kind": "notification",
+    "groups": "E06–E08/E11/I08",
+    "evidence": "Đối chiếu call tại src/hooks/useManagerSalary.ts:790 và enclosing caller trong salary-cashbooks.md. E06–E08/E11/I08: salaryMutationFeedback/salaryReadSources/salaryDurableWorkflow; SalaryMonthly DOM; salary snapshot/remaining/paid/enum mutation hashes restored; independent review 121/121. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "fee7e6e98fb466ad": {
+    "status": "fixed",
+    "file": "src/hooks/useManagerSalary.ts",
+    "line": 800,
+    "kind": "useMutation",
+    "groups": "E06–E08/E11/I08",
+    "evidence": "Đối chiếu call tại src/hooks/useManagerSalary.ts:800 và enclosing caller trong salary-cashbooks.md. E06–E08/E11/I08: salaryMutationFeedback/salaryReadSources/salaryDurableWorkflow; SalaryMonthly DOM; salary snapshot/remaining/paid/enum mutation hashes restored; independent review 121/121. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "0f1de25a4d3333ec": {
+    "status": "fixed",
+    "file": "src/hooks/useManagerSalary.ts",
+    "line": 811,
+    "kind": "notification",
+    "groups": "E06–E08/E11/I08",
+    "evidence": "Đối chiếu call tại src/hooks/useManagerSalary.ts:811 và enclosing caller trong salary-cashbooks.md. E06–E08/E11/I08: salaryMutationFeedback/salaryReadSources/salaryDurableWorkflow; SalaryMonthly DOM; salary snapshot/remaining/paid/enum mutation hashes restored; independent review 121/121. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "8538ec1f0a405804": {
+    "status": "fixed",
+    "file": "src/hooks/useManagerSalary.ts",
+    "line": 813,
+    "kind": "notification",
+    "groups": "E06–E08/E11/I08",
+    "evidence": "Đối chiếu call tại src/hooks/useManagerSalary.ts:813 và enclosing caller trong salary-cashbooks.md. E06–E08/E11/I08: salaryMutationFeedback/salaryReadSources/salaryDurableWorkflow; SalaryMonthly DOM; salary snapshot/remaining/paid/enum mutation hashes restored; independent review 121/121. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "fe5dfde32b9f602d": {
+    "status": "fixed",
+    "file": "src/hooks/useManagerSalary.ts",
+    "line": 821,
+    "kind": "useMutation",
+    "groups": "E06–E08/E11/I08",
+    "evidence": "Đối chiếu call tại src/hooks/useManagerSalary.ts:821 và enclosing caller trong salary-cashbooks.md. E06–E08/E11/I08: salaryMutationFeedback/salaryReadSources/salaryDurableWorkflow; SalaryMonthly DOM; salary snapshot/remaining/paid/enum mutation hashes restored; independent review 121/121. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "7eae06ef69457640": {
+    "status": "fixed",
+    "file": "src/hooks/useManagerSalary.ts",
+    "line": 974,
+    "kind": "notification",
+    "groups": "E06–E08/E11/I08",
+    "evidence": "Đối chiếu call tại src/hooks/useManagerSalary.ts:974 và enclosing caller trong salary-cashbooks.md. E06–E08/E11/I08: salaryMutationFeedback/salaryReadSources/salaryDurableWorkflow; SalaryMonthly DOM; salary snapshot/remaining/paid/enum mutation hashes restored; independent review 121/121. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "5f0e3c8890241885": {
+    "status": "fixed",
+    "file": "src/hooks/useManagerSalary.ts",
+    "line": 975,
+    "kind": "notification",
+    "groups": "E06–E08/E11/I08",
+    "evidence": "Đối chiếu call tại src/hooks/useManagerSalary.ts:975 và enclosing caller trong salary-cashbooks.md. E06–E08/E11/I08: salaryMutationFeedback/salaryReadSources/salaryDurableWorkflow; SalaryMonthly DOM; salary snapshot/remaining/paid/enum mutation hashes restored; independent review 121/121. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "0a3e538e31158946": {
+    "status": "fixed",
+    "file": "src/hooks/useManagerSalary.ts",
+    "line": 983,
+    "kind": "useMutation",
+    "groups": "E06–E08/E11/I08",
+    "evidence": "Đối chiếu call tại src/hooks/useManagerSalary.ts:983 và enclosing caller trong salary-cashbooks.md. E06–E08/E11/I08: salaryMutationFeedback/salaryReadSources/salaryDurableWorkflow; SalaryMonthly DOM; salary snapshot/remaining/paid/enum mutation hashes restored; independent review 121/121. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "a558244fa641006c": {
+    "status": "fixed",
+    "file": "src/hooks/useManagerSalary.ts",
+    "line": 1027,
+    "kind": "notification",
+    "groups": "E06–E08/E11/I08",
+    "evidence": "Đối chiếu call tại src/hooks/useManagerSalary.ts:1027 và enclosing caller trong salary-cashbooks.md. E06–E08/E11/I08: salaryMutationFeedback/salaryReadSources/salaryDurableWorkflow; SalaryMonthly DOM; salary snapshot/remaining/paid/enum mutation hashes restored; independent review 121/121. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "f8bc0a55d261c0b4": {
+    "status": "fixed",
+    "file": "src/hooks/useManagerSalary.ts",
+    "line": 1028,
+    "kind": "notification",
+    "groups": "E06–E08/E11/I08",
+    "evidence": "Đối chiếu call tại src/hooks/useManagerSalary.ts:1028 và enclosing caller trong salary-cashbooks.md. E06–E08/E11/I08: salaryMutationFeedback/salaryReadSources/salaryDurableWorkflow; SalaryMonthly DOM; salary snapshot/remaining/paid/enum mutation hashes restored; independent review 121/121. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "2f293a695ba2a5ca": {
+    "status": "fixed",
+    "file": "src/hooks/useManagerSalary.ts",
+    "line": 1062,
+    "kind": "useMutation",
+    "groups": "E06–E08/E11/I08",
+    "evidence": "Đối chiếu call tại src/hooks/useManagerSalary.ts:1062 và enclosing caller trong salary-cashbooks.md. E06–E08/E11/I08: salaryMutationFeedback/salaryReadSources/salaryDurableWorkflow; SalaryMonthly DOM; salary snapshot/remaining/paid/enum mutation hashes restored; independent review 121/121. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "66547ec0b4d12e97": {
+    "status": "fixed",
+    "file": "src/hooks/useMyDay.ts",
+    "line": 96,
+    "kind": "useQuery",
+    "groups": "G20/G22/I16",
+    "evidence": "Đối chiếu call tại src/hooks/useMyDay.ts:96 và enclosing caller trong network-public.md. G20/G22/I16: myDayFeedbackBoundary18+MyDayRead1; required summary/missions/requests/session/count; SQL GPS statuses kept; leave pending vsapproved; completion one owner with actual tick/neutral replay. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "586668825e214db0": {
+    "status": "fixed",
+    "file": "src/hooks/useMyDay.ts",
+    "line": 109,
+    "kind": "useQuery",
+    "groups": "G20/G22/I16",
+    "evidence": "Đối chiếu call tại src/hooks/useMyDay.ts:109 và enclosing caller trong network-public.md. G20/G22/I16: myDayFeedbackBoundary18+MyDayRead1; required summary/missions/requests/session/count; SQL GPS statuses kept; leave pending vsapproved; completion one owner with actual tick/neutral replay. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "79af80fbb3574a6f": {
+    "status": "fixed",
+    "file": "src/hooks/useMyDay.ts",
+    "line": 123,
+    "kind": "useMutation",
+    "groups": "G20/G22/I16",
+    "evidence": "Đối chiếu call tại src/hooks/useMyDay.ts:123 và enclosing caller trong network-public.md. G20/G22/I16: myDayFeedbackBoundary18+MyDayRead1; required summary/missions/requests/session/count; SQL GPS statuses kept; leave pending vsapproved; completion one owner with actual tick/neutral replay. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "c7cdf279577af6b5": {
+    "status": "fixed",
+    "file": "src/hooks/useMyDay.ts",
+    "line": 149,
+    "kind": "useQuery",
+    "groups": "G20/G22/I16",
+    "evidence": "Đối chiếu call tại src/hooks/useMyDay.ts:149 và enclosing caller trong network-public.md. G20/G22/I16: myDayFeedbackBoundary18+MyDayRead1; required summary/missions/requests/session/count; SQL GPS statuses kept; leave pending vsapproved; completion one owner with actual tick/neutral replay. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "9e5eb562813257b3": {
+    "status": "fixed",
+    "file": "src/hooks/useMyDay.ts",
+    "line": 194,
+    "kind": "useMutation",
+    "groups": "G20/G22/I16",
+    "evidence": "Đối chiếu call tại src/hooks/useMyDay.ts:194 và enclosing caller trong network-public.md. G20/G22/I16: myDayFeedbackBoundary18+MyDayRead1; required summary/missions/requests/session/count; SQL GPS statuses kept; leave pending vsapproved; completion one owner with actual tick/neutral replay. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "37fb8ff3b2801ff9": {
+    "status": "fixed",
+    "file": "src/hooks/useMyDay.ts",
+    "line": 243,
+    "kind": "useQuery",
+    "groups": "G20/G22/I16",
+    "evidence": "Đối chiếu call tại src/hooks/useMyDay.ts:243 và enclosing caller trong network-public.md. G20/G22/I16: myDayFeedbackBoundary18+MyDayRead1; required summary/missions/requests/session/count; SQL GPS statuses kept; leave pending vsapproved; completion one owner with actual tick/neutral replay. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "4e53756e4938db0e": {
+    "status": "fixed",
+    "file": "src/hooks/useMyDay.ts",
+    "line": 270,
+    "kind": "useMutation",
+    "groups": "G20/G22/I16",
+    "evidence": "Đối chiếu call tại src/hooks/useMyDay.ts:270 và enclosing caller trong network-public.md. G20/G22/I16: myDayFeedbackBoundary18+MyDayRead1; required summary/missions/requests/session/count; SQL GPS statuses kept; leave pending vsapproved; completion one owner with actual tick/neutral replay. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "1b4f8b1114dcb0ba": {
+    "status": "fixed",
+    "file": "src/hooks/useMyDay.ts",
+    "line": 286,
+    "kind": "useMutation",
+    "groups": "G20/G22/I16",
+    "evidence": "Đối chiếu call tại src/hooks/useMyDay.ts:286 và enclosing caller trong network-public.md. G20/G22/I16: myDayFeedbackBoundary18+MyDayRead1; required summary/missions/requests/session/count; SQL GPS statuses kept; leave pending vsapproved; completion one owner with actual tick/neutral replay. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "b8a2f9c832efa032": {
+    "status": "fixed",
+    "file": "src/hooks/useMyDay.ts",
+    "line": 324,
+    "kind": "useMutation",
+    "groups": "G20/G22/I16",
+    "evidence": "Đối chiếu call tại src/hooks/useMyDay.ts:324 và enclosing caller trong network-public.md. G20/G22/I16: myDayFeedbackBoundary18+MyDayRead1; required summary/missions/requests/session/count; SQL GPS statuses kept; leave pending vsapproved; completion one owner with actual tick/neutral replay. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "da3d6cf09f43489d": {
+    "status": "fixed",
+    "file": "src/hooks/useMyDay.ts",
+    "line": 342,
+    "kind": "useMutation",
+    "groups": "G20/G22/I16",
+    "evidence": "Đối chiếu call tại src/hooks/useMyDay.ts:342 và enclosing caller trong network-public.md. G20/G22/I16: myDayFeedbackBoundary18+MyDayRead1; required summary/missions/requests/session/count; SQL GPS statuses kept; leave pending vsapproved; completion one owner with actual tick/neutral replay. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "1707c4979db9a328": {
+    "status": "fixed",
+    "file": "src/lib/clipboardFeedback.tsx",
+    "line": 7,
+    "kind": "notification",
+    "groups": "A01–A13",
+    "evidence": "Đối chiếu call tại src/lib/clipboardFeedback.tsx:7 và enclosing caller trong shared.md. A01–A13: QueryProvider.errorPolicy19; QueryRegion DOM; formErrors/typedInputs; ErrorBoundary.feedback; clipboardFeedback/caller4; exportReadFeedback/fetchAll. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "22e2422530b53719": {
+    "status": "fixed",
+    "file": "src/lib/clipboardFeedback.tsx",
+    "line": 10,
+    "kind": "notification",
+    "groups": "A01–A13",
+    "evidence": "Đối chiếu call tại src/lib/clipboardFeedback.tsx:10 và enclosing caller trong shared.md. A01–A13: QueryProvider.errorPolicy19; QueryRegion DOM; formErrors/typedInputs; ErrorBoundary.feedback; clipboardFeedback/caller4; exportReadFeedback/fetchAll. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "91130211f366afdd": {
+    "status": "fixed",
+    "file": "src/lib/clipboardFeedback.tsx",
+    "line": 14,
+    "kind": "notification",
+    "groups": "A01–A13",
+    "evidence": "Đối chiếu call tại src/lib/clipboardFeedback.tsx:14 và enclosing caller trong shared.md. A01–A13: QueryProvider.errorPolicy19; QueryRegion DOM; formErrors/typedInputs; ErrorBoundary.feedback; clipboardFeedback/caller4; exportReadFeedback/fetchAll. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "78ef750a8371373a": {
+    "status": "fixed",
+    "file": "src/hooks/usePropertyDetailQueries.ts",
+    "line": 71,
+    "kind": "useQuery",
+    "groups": "I03/B18",
+    "evidence": "Đối chiếu call tại src/hooks/usePropertyDetailQueries.ts:71 và enclosing caller trong contracts.md. I03/B18: contractDetailReadFeedback7+detailDOM3 RED→GREEN; property detail source tests20; missing source and denied cached detail blocks rendering; each tab QueryRegion. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "a93ad8efe4581585": {
+    "status": "fixed",
+    "file": "src/hooks/usePropertyDetailQueries.ts",
+    "line": 76,
+    "kind": "useQuery",
+    "groups": "I03/B18",
+    "evidence": "Đối chiếu call tại src/hooks/usePropertyDetailQueries.ts:76 và enclosing caller trong contracts.md. I03/B18: contractDetailReadFeedback7+detailDOM3 RED→GREEN; property detail source tests20; missing source and denied cached detail blocks rendering; each tab QueryRegion. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "f83fe397a26d5181": {
+    "status": "fixed",
+    "file": "src/hooks/usePropertyDetailQueries.ts",
+    "line": 81,
+    "kind": "useQuery",
+    "groups": "I03/B18",
+    "evidence": "Đối chiếu call tại src/hooks/usePropertyDetailQueries.ts:81 và enclosing caller trong contracts.md. I03/B18: contractDetailReadFeedback7+detailDOM3 RED→GREEN; property detail source tests20; missing source and denied cached detail blocks rendering; each tab QueryRegion. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "4c3bc9a96e368f70": {
+    "status": "fixed",
+    "file": "src/hooks/usePropertyDetailQueries.ts",
+    "line": 86,
+    "kind": "useQuery",
+    "groups": "I03/B18",
+    "evidence": "Đối chiếu call tại src/hooks/usePropertyDetailQueries.ts:86 và enclosing caller trong contracts.md. I03/B18: contractDetailReadFeedback7+detailDOM3 RED→GREEN; property detail source tests20; missing source and denied cached detail blocks rendering; each tab QueryRegion. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "ce00d7cd08cfdd49": {
+    "status": "fixed",
+    "file": "src/hooks/usePropertyDetailQueries.ts",
+    "line": 91,
+    "kind": "useQuery",
+    "groups": "I03/B18",
+    "evidence": "Đối chiếu call tại src/hooks/usePropertyDetailQueries.ts:91 và enclosing caller trong contracts.md. I03/B18: contractDetailReadFeedback7+detailDOM3 RED→GREEN; property detail source tests20; missing source and denied cached detail blocks rendering; each tab QueryRegion. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "0e663e3c13717f0c": {
+    "status": "fixed",
+    "file": "src/hooks/usePropertyDetailQueries.ts",
+    "line": 96,
+    "kind": "useQuery",
+    "groups": "I03/B18",
+    "evidence": "Đối chiếu call tại src/hooks/usePropertyDetailQueries.ts:96 và enclosing caller trong contracts.md. I03/B18: contractDetailReadFeedback7+detailDOM3 RED→GREEN; property detail source tests20; missing source and denied cached detail blocks rendering; each tab QueryRegion. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "3234e8add9541df4": {
+    "status": "fixed",
+    "file": "src/hooks/useReceivingCashbooks.ts",
+    "line": 67,
+    "kind": "useQuery",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/hooks/useReceivingCashbooks.ts:67 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "ef433357ce954800": {
+    "status": "fixed",
+    "file": "src/hooks/useReceivingCashbooks.ts",
+    "line": 110,
+    "kind": "useQuery",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/hooks/useReceivingCashbooks.ts:110 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "f48676ed0c921c40": {
+    "status": "fixed",
+    "file": "src/hooks/useReceivingCashbooks.ts",
+    "line": 135,
+    "kind": "useMutation",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/hooks/useReceivingCashbooks.ts:135 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "c40222e40aec5084": {
+    "status": "fixed",
+    "file": "src/hooks/useReceivingCashbooks.ts",
+    "line": 149,
+    "kind": "notification",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/hooks/useReceivingCashbooks.ts:149 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "f06dea099d057332": {
+    "status": "fixed",
+    "file": "src/hooks/useReceivingCashbooks.ts",
+    "line": 157,
+    "kind": "useMutation",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/hooks/useReceivingCashbooks.ts:157 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "2dd1663a45f11caf": {
+    "status": "fixed",
+    "file": "src/hooks/useReceivingCashbooks.ts",
+    "line": 178,
+    "kind": "notification",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/hooks/useReceivingCashbooks.ts:178 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "f0009a2cf378c242": {
+    "status": "fixed",
+    "file": "src/hooks/useReceivingCashbooks.ts",
+    "line": 207,
+    "kind": "useMutation",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/hooks/useReceivingCashbooks.ts:207 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "b58914a276142a32": {
+    "status": "fixed",
+    "file": "src/hooks/useReceivingCashbooks.ts",
+    "line": 233,
+    "kind": "notification",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/hooks/useReceivingCashbooks.ts:233 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "05fccdd7d86e59b5": {
+    "status": "fixed",
+    "file": "src/hooks/useReceivingCashbooks.ts",
+    "line": 234,
+    "kind": "notification",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/hooks/useReceivingCashbooks.ts:234 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "a115123189ec7f8a": {
+    "status": "fixed",
+    "file": "src/hooks/useReceivingCashbooks.ts",
+    "line": 237,
+    "kind": "notification",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/hooks/useReceivingCashbooks.ts:237 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "884fe1e01177d829": {
+    "status": "fixed",
+    "file": "src/hooks/useSalaryFund.ts",
+    "line": 54,
+    "kind": "useQuery",
+    "groups": "E06–E08/E11/I08",
+    "evidence": "Đối chiếu call tại src/hooks/useSalaryFund.ts:54 và enclosing caller trong salary-cashbooks.md. E06–E08/E11/I08: salaryMutationFeedback/salaryReadSources/salaryDurableWorkflow; SalaryMonthly DOM; salary snapshot/remaining/paid/enum mutation hashes restored; independent review 121/121. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "ed6c2b8b6ebbc0cd": {
+    "status": "fixed",
+    "file": "src/components/cashbooks/CashbookForm.tsx",
+    "line": 96,
+    "kind": "useQuery",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/components/cashbooks/CashbookForm.tsx:96 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "5fc96e7599f4e7d5": {
+    "status": "fixed",
+    "file": "src/components/cashbooks/CashbookForm.tsx",
+    "line": 119,
+    "kind": "useQuery",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/components/cashbooks/CashbookForm.tsx:119 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "a9e2bdf6a907a4ce": {
+    "status": "fixed",
+    "file": "src/components/cashbooks/CashbookForm.tsx",
+    "line": 138,
+    "kind": "useQuery",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/components/cashbooks/CashbookForm.tsx:138 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "6a0dc14dc41a43e9": {
+    "status": "fixed",
+    "file": "src/components/cashbooks/CashbookForm.tsx",
+    "line": 335,
+    "kind": "useMutation",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/components/cashbooks/CashbookForm.tsx:335 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "e3c699716b7283bb": {
+    "status": "fixed",
+    "file": "src/components/cashbooks/CashbookForm.tsx",
+    "line": 458,
+    "kind": "notification",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/components/cashbooks/CashbookForm.tsx:458 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "448f54b38a82dccd": {
+    "status": "fixed",
+    "file": "src/components/dashboard/DebtChart.tsx",
+    "line": 16,
+    "kind": "useQuery",
+    "groups": "I01/I11/I12",
+    "evidence": "Đối chiếu call tại src/components/dashboard/DebtChart.tsx:16 và enclosing caller trong reports.md. I01/I11/I12: useDashboard7+DOM2; realEstateFeedback3/ReportLayout DOM; useOccupancyDashboard6; source error/required count distinct from empty, export disabled on failed source. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "d3236421aa9f9bff": {
+    "status": "fixed",
+    "file": "src/components/inspections/InspectionRunner.tsx",
+    "line": 136,
+    "kind": "notification",
+    "groups": "G20/G22/I16",
+    "evidence": "Đối chiếu call tại src/components/inspections/InspectionRunner.tsx:136 và enclosing caller trong network-public.md. G20/G22/I16: myDayFeedbackBoundary18+MyDayRead1; required summary/missions/requests/session/count; SQL GPS statuses kept; leave pending vsapproved; completion one owner with actual tick/neutral replay. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "a63184e5ebd5cd8c": {
+    "status": "fixed",
+    "file": "src/components/inspections/InspectionRunner.tsx",
+    "line": 150,
+    "kind": "notification",
+    "groups": "G20/G22/I16",
+    "evidence": "Đối chiếu call tại src/components/inspections/InspectionRunner.tsx:150 và enclosing caller trong network-public.md. G20/G22/I16: myDayFeedbackBoundary18+MyDayRead1; required summary/missions/requests/session/count; SQL GPS statuses kept; leave pending vsapproved; completion one owner with actual tick/neutral replay. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "7846b5e0c6ff3ac4": {
+    "status": "fixed",
+    "file": "src/components/inspections/InspectionRunner.tsx",
+    "line": 155,
+    "kind": "notification",
+    "groups": "G20/G22/I16",
+    "evidence": "Đối chiếu call tại src/components/inspections/InspectionRunner.tsx:155 và enclosing caller trong network-public.md. G20/G22/I16: myDayFeedbackBoundary18+MyDayRead1; required summary/missions/requests/session/count; SQL GPS statuses kept; leave pending vsapproved; completion one owner with actual tick/neutral replay. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "4c146242bb7c17aa": {
+    "status": "fixed",
+    "file": "src/components/inspections/InspectionRunner.tsx",
+    "line": 183,
+    "kind": "notification",
+    "groups": "G20/G22/I16",
+    "evidence": "Đối chiếu call tại src/components/inspections/InspectionRunner.tsx:183 và enclosing caller trong network-public.md. G20/G22/I16: myDayFeedbackBoundary18+MyDayRead1; required summary/missions/requests/session/count; SQL GPS statuses kept; leave pending vsapproved; completion one owner with actual tick/neutral replay. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "5c0a0f32cd541216": {
+    "status": "fixed",
+    "file": "src/components/inspections/InspectionRunner.tsx",
+    "line": 192,
+    "kind": "notification",
+    "groups": "G20/G22/I16",
+    "evidence": "Đối chiếu call tại src/components/inspections/InspectionRunner.tsx:192 và enclosing caller trong network-public.md. G20/G22/I16: myDayFeedbackBoundary18+MyDayRead1; required summary/missions/requests/session/count; SQL GPS statuses kept; leave pending vsapproved; completion one owner with actual tick/neutral replay. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "bcfeb9c6e5dee0c1": {
+    "status": "fixed",
+    "file": "src/components/inspections/InspectionRunner.tsx",
+    "line": 198,
+    "kind": "notification",
+    "groups": "G20/G22/I16",
+    "evidence": "Đối chiếu call tại src/components/inspections/InspectionRunner.tsx:198 và enclosing caller trong network-public.md. G20/G22/I16: myDayFeedbackBoundary18+MyDayRead1; required summary/missions/requests/session/count; SQL GPS statuses kept; leave pending vsapproved; completion one owner with actual tick/neutral replay. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "eb4cf8f9348e6e54": {
+    "status": "fixed",
+    "file": "src/components/inspections/InspectionRunner.tsx",
+    "line": 215,
+    "kind": "notification",
+    "groups": "G20/G22/I16",
+    "evidence": "Đối chiếu call tại src/components/inspections/InspectionRunner.tsx:215 và enclosing caller trong network-public.md. G20/G22/I16: myDayFeedbackBoundary18+MyDayRead1; required summary/missions/requests/session/count; SQL GPS statuses kept; leave pending vsapproved; completion one owner with actual tick/neutral replay. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "7a3516389988b422": {
+    "status": "fixed",
+    "file": "src/components/inspections/InspectionRunner.tsx",
+    "line": 217,
+    "kind": "notification",
+    "groups": "G20/G22/I16",
+    "evidence": "Đối chiếu call tại src/components/inspections/InspectionRunner.tsx:217 và enclosing caller trong network-public.md. G20/G22/I16: myDayFeedbackBoundary18+MyDayRead1; required summary/missions/requests/session/count; SQL GPS statuses kept; leave pending vsapproved; completion one owner with actual tick/neutral replay. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "8445075561feefca": {
+    "status": "fixed",
+    "file": "src/hooks/contracts/useContractDetailData.ts",
+    "line": 22,
+    "kind": "useQuery",
+    "groups": "I03/B18",
+    "evidence": "Đối chiếu call tại src/hooks/contracts/useContractDetailData.ts:22 và enclosing caller trong contracts.md. I03/B18: contractDetailReadFeedback7+detailDOM3 RED→GREEN; property detail source tests20; missing source and denied cached detail blocks rendering; each tab QueryRegion. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "7878af841fd13d70": {
+    "status": "fixed",
+    "file": "src/hooks/contracts/useContractDetailData.ts",
+    "line": 119,
+    "kind": "useQuery",
+    "groups": "I03/B18",
+    "evidence": "Đối chiếu call tại src/hooks/contracts/useContractDetailData.ts:119 và enclosing caller trong contracts.md. I03/B18: contractDetailReadFeedback7+detailDOM3 RED→GREEN; property detail source tests20; missing source and denied cached detail blocks rendering; each tab QueryRegion. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "ecc7c4b166daab67": {
+    "status": "fixed",
+    "file": "src/hooks/contracts/useContractDetailData.ts",
+    "line": 170,
+    "kind": "useQuery",
+    "groups": "I03/B18",
+    "evidence": "Đối chiếu call tại src/hooks/contracts/useContractDetailData.ts:170 và enclosing caller trong contracts.md. I03/B18: contractDetailReadFeedback7+detailDOM3 RED→GREEN; property detail source tests20; missing source and denied cached detail blocks rendering; each tab QueryRegion. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "f1431acd42c7308f": {
+    "status": "fixed",
+    "file": "src/hooks/contracts/useContractDetailData.ts",
+    "line": 223,
+    "kind": "useQuery",
+    "groups": "I03/B18",
+    "evidence": "Đối chiếu call tại src/hooks/contracts/useContractDetailData.ts:223 và enclosing caller trong contracts.md. I03/B18: contractDetailReadFeedback7+detailDOM3 RED→GREEN; property detail source tests20; missing source and denied cached detail blocks rendering; each tab QueryRegion. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "a6c016376837a098": {
+    "status": "fixed",
+    "file": "src/hooks/contracts/useContractDetailData.ts",
+    "line": 239,
+    "kind": "useQuery",
+    "groups": "I03/B18",
+    "evidence": "Đối chiếu call tại src/hooks/contracts/useContractDetailData.ts:239 và enclosing caller trong contracts.md. I03/B18: contractDetailReadFeedback7+detailDOM3 RED→GREEN; property detail source tests20; missing source and denied cached detail blocks rendering; each tab QueryRegion. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "8ad686069cb07ec6": {
+    "status": "fixed",
+    "file": "src/hooks/contracts/useContractDetailData.ts",
+    "line": 264,
+    "kind": "useQuery",
+    "groups": "I03/B18",
+    "evidence": "Đối chiếu call tại src/hooks/contracts/useContractDetailData.ts:264 và enclosing caller trong contracts.md. I03/B18: contractDetailReadFeedback7+detailDOM3 RED→GREEN; property detail source tests20; missing source and denied cached detail blocks rendering; each tab QueryRegion. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "f8c05dbb737e3689": {
+    "status": "fixed",
+    "file": "src/components/contracts/contract-form/useContractSubmit.ts",
+    "line": 92,
+    "kind": "notification",
+    "groups": "B01–B13",
+    "evidence": "Đối chiếu call tại src/components/contracts/contract-form/useContractSubmit.ts:92 và enclosing caller trong contracts.md. B01–B13: contractFeedback/BillingBounds/bothboundary-equality; submit focus/DOM nestedcontrols; all required fields red and first by DOM order; receipt/date/account fallback rules retained; old Preview desktop/mobile4 not final SHA. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "0af9226956e92dc1": {
+    "status": "fixed",
+    "file": "src/components/contracts/contract-form/useContractSubmit.ts",
+    "line": 100,
+    "kind": "notification",
+    "groups": "B01–B13",
+    "evidence": "Đối chiếu call tại src/components/contracts/contract-form/useContractSubmit.ts:100 và enclosing caller trong contracts.md. B01–B13: contractFeedback/BillingBounds/bothboundary-equality; submit focus/DOM nestedcontrols; all required fields red and first by DOM order; receipt/date/account fallback rules retained; old Preview desktop/mobile4 not final SHA. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "2bcee12221e40b66": {
+    "status": "fixed",
+    "file": "src/components/contracts/contract-form/useContractSubmit.ts",
+    "line": 116,
+    "kind": "notification",
+    "groups": "B01–B13",
+    "evidence": "Đối chiếu call tại src/components/contracts/contract-form/useContractSubmit.ts:116 và enclosing caller trong contracts.md. B01–B13: contractFeedback/BillingBounds/bothboundary-equality; submit focus/DOM nestedcontrols; all required fields red and first by DOM order; receipt/date/account fallback rules retained; old Preview desktop/mobile4 not final SHA. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "8f5c87b407feed66": {
+    "status": "fixed",
+    "file": "src/components/contracts/contract-form/useContractSubmit.ts",
+    "line": 189,
+    "kind": "notification",
+    "groups": "B01–B13",
+    "evidence": "Đối chiếu call tại src/components/contracts/contract-form/useContractSubmit.ts:189 và enclosing caller trong contracts.md. B01–B13: contractFeedback/BillingBounds/bothboundary-equality; submit focus/DOM nestedcontrols; all required fields red and first by DOM order; receipt/date/account fallback rules retained; old Preview desktop/mobile4 not final SHA. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "4902e0e95ec98431": {
+    "status": "fixed",
+    "file": "src/components/contracts/contract-form/useContractSubmit.ts",
+    "line": 190,
+    "kind": "notification",
+    "groups": "B01–B13",
+    "evidence": "Đối chiếu call tại src/components/contracts/contract-form/useContractSubmit.ts:190 và enclosing caller trong contracts.md. B01–B13: contractFeedback/BillingBounds/bothboundary-equality; submit focus/DOM nestedcontrols; all required fields red and first by DOM order; receipt/date/account fallback rules retained; old Preview desktop/mobile4 not final SHA. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "bb3f128d0adcc891": {
+    "status": "fixed",
+    "file": "src/components/contracts/contract-form/useContractSubmit.ts",
+    "line": 193,
+    "kind": "notification",
+    "groups": "B01–B13",
+    "evidence": "Đối chiếu call tại src/components/contracts/contract-form/useContractSubmit.ts:193 và enclosing caller trong contracts.md. B01–B13: contractFeedback/BillingBounds/bothboundary-equality; submit focus/DOM nestedcontrols; all required fields red and first by DOM order; receipt/date/account fallback rules retained; old Preview desktop/mobile4 not final SHA. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "913a4d3247659b1b": {
+    "status": "fixed",
+    "file": "src/components/contracts/contract-form/useContractSubmit.ts",
+    "line": 212,
+    "kind": "notification",
+    "groups": "B01–B13",
+    "evidence": "Đối chiếu call tại src/components/contracts/contract-form/useContractSubmit.ts:212 và enclosing caller trong contracts.md. B01–B13: contractFeedback/BillingBounds/bothboundary-equality; submit focus/DOM nestedcontrols; all required fields red and first by DOM order; receipt/date/account fallback rules retained; old Preview desktop/mobile4 not final SHA. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "289c4c491b652a95": {
+    "status": "fixed",
+    "file": "src/components/contracts/contract-form/useContractSubmit.ts",
+    "line": 226,
+    "kind": "notification",
+    "groups": "B01–B13",
+    "evidence": "Đối chiếu call tại src/components/contracts/contract-form/useContractSubmit.ts:226 và enclosing caller trong contracts.md. B01–B13: contractFeedback/BillingBounds/bothboundary-equality; submit focus/DOM nestedcontrols; all required fields red and first by DOM order; receipt/date/account fallback rules retained; old Preview desktop/mobile4 not final SHA. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "724d80c041c4b662": {
+    "status": "fixed",
+    "file": "src/components/contracts/contract-form/useContractSubmit.ts",
+    "line": 245,
+    "kind": "notification",
+    "groups": "B01–B13",
+    "evidence": "Đối chiếu call tại src/components/contracts/contract-form/useContractSubmit.ts:245 và enclosing caller trong contracts.md. B01–B13: contractFeedback/BillingBounds/bothboundary-equality; submit focus/DOM nestedcontrols; all required fields red and first by DOM order; receipt/date/account fallback rules retained; old Preview desktop/mobile4 not final SHA. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "696d4bdd3acbdaeb": {
+    "status": "fixed",
+    "file": "src/components/contracts/contract-form/useContractSubmit.ts",
+    "line": 256,
+    "kind": "notification",
+    "groups": "B01–B13",
+    "evidence": "Đối chiếu call tại src/components/contracts/contract-form/useContractSubmit.ts:256 và enclosing caller trong contracts.md. B01–B13: contractFeedback/BillingBounds/bothboundary-equality; submit focus/DOM nestedcontrols; all required fields red and first by DOM order; receipt/date/account fallback rules retained; old Preview desktop/mobile4 not final SHA. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "08edd5fe7d1a2f46": {
+    "status": "fixed",
+    "file": "src/components/contracts/contract-form/useContractSubmit.ts",
+    "line": 267,
+    "kind": "notification",
+    "groups": "B01–B13",
+    "evidence": "Đối chiếu call tại src/components/contracts/contract-form/useContractSubmit.ts:267 và enclosing caller trong contracts.md. B01–B13: contractFeedback/BillingBounds/bothboundary-equality; submit focus/DOM nestedcontrols; all required fields red and first by DOM order; receipt/date/account fallback rules retained; old Preview desktop/mobile4 not final SHA. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "92b1a49f9d4411a6": {
+    "status": "fixed",
+    "file": "src/components/contracts/contract-form/useContractSubmit.ts",
+    "line": 292,
+    "kind": "notification",
+    "groups": "B01–B13",
+    "evidence": "Đối chiếu call tại src/components/contracts/contract-form/useContractSubmit.ts:292 và enclosing caller trong contracts.md. B01–B13: contractFeedback/BillingBounds/bothboundary-equality; submit focus/DOM nestedcontrols; all required fields red and first by DOM order; receipt/date/account fallback rules retained; old Preview desktop/mobile4 not final SHA. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "a0748dfb6e264677": {
+    "status": "fixed",
+    "file": "src/components/contracts/contract-form/useContractSubmit.ts",
+    "line": 312,
+    "kind": "notification",
+    "groups": "B01–B13",
+    "evidence": "Đối chiếu call tại src/components/contracts/contract-form/useContractSubmit.ts:312 và enclosing caller trong contracts.md. B01–B13: contractFeedback/BillingBounds/bothboundary-equality; submit focus/DOM nestedcontrols; all required fields red and first by DOM order; receipt/date/account fallback rules retained; old Preview desktop/mobile4 not final SHA. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "867dd91be536b86b": {
+    "status": "fixed",
+    "file": "src/components/contracts/contract-form/useContractSubmit.ts",
+    "line": 421,
+    "kind": "notification",
+    "groups": "B01–B13",
+    "evidence": "Đối chiếu call tại src/components/contracts/contract-form/useContractSubmit.ts:421 và enclosing caller trong contracts.md. B01–B13: contractFeedback/BillingBounds/bothboundary-equality; submit focus/DOM nestedcontrols; all required fields red and first by DOM order; receipt/date/account fallback rules retained; old Preview desktop/mobile4 not final SHA. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "27757b0662ff4048": {
+    "status": "fixed",
+    "file": "src/components/contracts/contract-form/useContractSubmit.ts",
+    "line": 424,
+    "kind": "notification",
+    "groups": "B01–B13",
+    "evidence": "Đối chiếu call tại src/components/contracts/contract-form/useContractSubmit.ts:424 và enclosing caller trong contracts.md. B01–B13: contractFeedback/BillingBounds/bothboundary-equality; submit focus/DOM nestedcontrols; all required fields red and first by DOM order; receipt/date/account fallback rules retained; old Preview desktop/mobile4 not final SHA. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "be5f3784a11f118f": {
+    "status": "fixed",
+    "file": "src/components/contracts/contract-form/useContractFormState.ts",
+    "line": 871,
+    "kind": "notification",
+    "groups": "B01–B13",
+    "evidence": "Đối chiếu call tại src/components/contracts/contract-form/useContractFormState.ts:871 và enclosing caller trong contracts.md. B01–B13: contractFeedback/BillingBounds/bothboundary-equality; submit focus/DOM nestedcontrols; all required fields red and first by DOM order; receipt/date/account fallback rules retained; old Preview desktop/mobile4 not final SHA. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "b1affbce9f675b67": {
+    "status": "background-only",
+    "file": "src/components/import-export/ExportExcelDialog.tsx",
+    "line": 59,
+    "kind": "log",
+    "groups": "A01–A13",
+    "evidence": "Đối chiếu call tại src/components/import-export/ExportExcelDialog.tsx:59 và enclosing caller trong shared.md. A01–A13: QueryProvider.errorPolicy19; QueryRegion DOM; formErrors/typedInputs; ErrorBoundary.feedback; clipboardFeedback/caller4; exportReadFeedback/fetchAll. Log chẩn đoán đi cùng phản hồi UI/throw; không phát thêm toast hoặc lộ chi tiết kỹ thuật."
+  },
+  "69ce8d8dcb258a56": {
+    "status": "fixed",
+    "file": "src/components/thu-tien/HandoverSheet.tsx",
+    "line": 163,
+    "kind": "notification",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/components/thu-tien/HandoverSheet.tsx:163 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "0a3ba85a4596e4a3": {
+    "status": "fixed",
+    "file": "src/components/thu-tien/HandoverSheet.tsx",
+    "line": 174,
+    "kind": "notification",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/components/thu-tien/HandoverSheet.tsx:174 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "ed7e1a2dc575f1c5": {
+    "status": "fixed",
+    "file": "src/components/thu-tien/HandoverSheet.tsx",
+    "line": 180,
+    "kind": "notification",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/components/thu-tien/HandoverSheet.tsx:180 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "1e5e68b6e6255164": {
+    "status": "fixed",
+    "file": "src/components/thu-tien/HandoverSheet.tsx",
+    "line": 185,
+    "kind": "notification",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/components/thu-tien/HandoverSheet.tsx:185 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "f384bce5dfe45a42": {
+    "status": "fixed",
+    "file": "src/components/thu-tien/HandoverSheet.tsx",
+    "line": 190,
+    "kind": "notification",
+    "groups": "E01–E05/I14",
+    "evidence": "Đối chiếu call tại src/components/thu-tien/HandoverSheet.tsx:190 và enclosing caller trong salary-cashbooks.md. E01–E05/I14: cashbookFeedback/persistence/forms; cashbookClosingFeedback4+DOM2; handoverFeedback2+DOM2; receivingCashbookDurableFeedback; receiving permission/tender schemas; mutation actor restored. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "ea79a1f79d97bf28": {
+    "status": "fixed",
+    "file": "src/components/reports/ExportButtons.tsx",
+    "line": 32,
+    "kind": "notification",
+    "groups": "A01–A13",
+    "evidence": "Đối chiếu call tại src/components/reports/ExportButtons.tsx:32 và enclosing caller trong shared.md. A01–A13: QueryProvider.errorPolicy19; QueryRegion DOM; formErrors/typedInputs; ErrorBoundary.feedback; clipboardFeedback/caller4; exportReadFeedback/fetchAll. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "09e07f779cdf501e": {
+    "status": "fixed",
+    "file": "src/components/reports/ExportButtons.tsx",
+    "line": 44,
+    "kind": "notification",
+    "groups": "A01–A13",
+    "evidence": "Đối chiếu call tại src/components/reports/ExportButtons.tsx:44 và enclosing caller trong shared.md. A01–A13: QueryProvider.errorPolicy19; QueryRegion DOM; formErrors/typedInputs; ErrorBoundary.feedback; clipboardFeedback/caller4; exportReadFeedback/fetchAll. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "3e6fdbf0c69a158b": {
+    "status": "fixed",
+    "file": "src/components/reports/ExportButtons.tsx",
+    "line": 48,
+    "kind": "notification",
+    "groups": "A01–A13",
+    "evidence": "Đối chiếu call tại src/components/reports/ExportButtons.tsx:48 và enclosing caller trong shared.md. A01–A13: QueryProvider.errorPolicy19; QueryRegion DOM; formErrors/typedInputs; ErrorBoundary.feedback; clipboardFeedback/caller4; exportReadFeedback/fetchAll. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "c17db963f1c64a9f": {
+    "status": "background-only",
+    "file": "src/components/reports/ExportButtons.tsx",
+    "line": 50,
+    "kind": "log",
+    "groups": "A01–A13",
+    "evidence": "Đối chiếu call tại src/components/reports/ExportButtons.tsx:50 và enclosing caller trong shared.md. A01–A13: QueryProvider.errorPolicy19; QueryRegion DOM; formErrors/typedInputs; ErrorBoundary.feedback; clipboardFeedback/caller4; exportReadFeedback/fetchAll. Log chẩn đoán đi cùng phản hồi UI/throw; không phát thêm toast hoặc lộ chi tiết kỹ thuật."
+  },
+  "1f0c50dfb2301b40": {
+    "status": "fixed",
+    "file": "src/components/reports/ExportButtons.tsx",
+    "line": 52,
+    "kind": "notification",
+    "groups": "A01–A13",
+    "evidence": "Đối chiếu call tại src/components/reports/ExportButtons.tsx:52 và enclosing caller trong shared.md. A01–A13: QueryProvider.errorPolicy19; QueryRegion DOM; formErrors/typedInputs; ErrorBoundary.feedback; clipboardFeedback/caller4; exportReadFeedback/fetchAll. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "244aebad336b7bc7": {
+    "status": "fixed",
+    "file": "src/components/reports/ExportButtons.tsx",
+    "line": 89,
+    "kind": "notification",
+    "groups": "A01–A13",
+    "evidence": "Đối chiếu call tại src/components/reports/ExportButtons.tsx:89 và enclosing caller trong shared.md. A01–A13: QueryProvider.errorPolicy19; QueryRegion DOM; formErrors/typedInputs; ErrorBoundary.feedback; clipboardFeedback/caller4; exportReadFeedback/fetchAll. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "db2ec732b7234cd7": {
+    "status": "fixed",
+    "file": "src/components/reports/ExportButtons.tsx",
+    "line": 144,
+    "kind": "notification",
+    "groups": "A01–A13",
+    "evidence": "Đối chiếu call tại src/components/reports/ExportButtons.tsx:144 và enclosing caller trong shared.md. A01–A13: QueryProvider.errorPolicy19; QueryRegion DOM; formErrors/typedInputs; ErrorBoundary.feedback; clipboardFeedback/caller4; exportReadFeedback/fetchAll. Mã nguồn/test hiện tại; E2E Preview đúng SHA và vai trò được ghi riêng, không suy từ quét tĩnh."
+  },
+  "62acbabc7f433406": {
+    "status": "fixed",
+    "file": "src/pages/payments/RefundLogPage.tsx",
+    "line": 61,
+    "kind": "useQuery",
+    "groups": "I07/I09/G07/I14",
+    "evidence": "Đã đối chiếu nguồn query và caller: required account/array/finite money hoặc boolean thật; throw nguyên lỗi/mã; QueryRegion tại DepositBreakdown, SettlementPanels, RefundLog, RoomLifecycle, AdminOnlyRoute; MyBuildingScope trả NONE khi nguồn chưa xác nhận. reportPermissionSourceFeedback22, ReportQueryCallers4, RefundLog5, RoomDrawer8; các ca 0/false/rỗng thật được giữ. Review độc lập final-independent-review.md. Log chẩn đoán được giữ; không thay quyết định quyền hoặc tính tiền."
+  },
+  "08ab12340341303b": {
+    "status": "background-only",
+    "file": "src/pages/payments/RefundLogPage.tsx",
+    "line": 105,
+    "kind": "log",
+    "groups": "I07/I09/G07/I14",
+    "evidence": "Đã đối chiếu nguồn query và caller: required account/array/finite money hoặc boolean thật; throw nguyên lỗi/mã; QueryRegion tại DepositBreakdown, SettlementPanels, RefundLog, RoomLifecycle, AdminOnlyRoute; MyBuildingScope trả NONE khi nguồn chưa xác nhận. reportPermissionSourceFeedback22, ReportQueryCallers4, RefundLog5, RoomDrawer8; các ca 0/false/rỗng thật được giữ. Review độc lập final-independent-review.md. Log chẩn đoán được giữ; không thay quyết định quyền hoặc tính tiền."
+  },
+  "17fda20e708ee2cc": {
+    "status": "fixed",
+    "file": "src/hooks/useCashBook.ts",
+    "line": 33,
+    "kind": "useQuery",
+    "groups": "I07/I09/G07/I14",
+    "evidence": "Đã đối chiếu nguồn query và caller: required account/array/finite money hoặc boolean thật; throw nguyên lỗi/mã; QueryRegion tại DepositBreakdown, SettlementPanels, RefundLog, RoomLifecycle, AdminOnlyRoute; MyBuildingScope trả NONE khi nguồn chưa xác nhận. reportPermissionSourceFeedback22, ReportQueryCallers4, RefundLog5, RoomDrawer8; các ca 0/false/rỗng thật được giữ. Review độc lập final-independent-review.md. Log chẩn đoán được giữ; không thay quyết định quyền hoặc tính tiền."
+  },
+  "b0dbfce454d52d56": {
+    "status": "fixed",
+    "file": "src/hooks/useCashBook.ts",
+    "line": 105,
+    "kind": "useQuery",
+    "groups": "I07/I09/G07/I14",
+    "evidence": "Đã đối chiếu nguồn query và caller: required account/array/finite money hoặc boolean thật; throw nguyên lỗi/mã; QueryRegion tại DepositBreakdown, SettlementPanels, RefundLog, RoomLifecycle, AdminOnlyRoute; MyBuildingScope trả NONE khi nguồn chưa xác nhận. reportPermissionSourceFeedback22, ReportQueryCallers4, RefundLog5, RoomDrawer8; các ca 0/false/rỗng thật được giữ. Review độc lập final-independent-review.md. Log chẩn đoán được giữ; không thay quyết định quyền hoặc tính tiền."
+  },
+  "ab1200d35628ed69": {
+    "status": "fixed",
+    "file": "src/hooks/useIsOrgOwner.ts",
+    "line": 40,
+    "kind": "useQuery",
+    "groups": "I07/I09/G07/I14",
+    "evidence": "Đã đối chiếu nguồn query và caller: required account/array/finite money hoặc boolean thật; throw nguyên lỗi/mã; QueryRegion tại DepositBreakdown, SettlementPanels, RefundLog, RoomLifecycle, AdminOnlyRoute; MyBuildingScope trả NONE khi nguồn chưa xác nhận. reportPermissionSourceFeedback22, ReportQueryCallers4, RefundLog5, RoomDrawer8; các ca 0/false/rỗng thật được giữ. Review độc lập final-independent-review.md. Log chẩn đoán được giữ; không thay quyết định quyền hoặc tính tiền."
+  },
+  "1b8185f54ebe6a02": {
+    "status": "background-only",
+    "file": "src/hooks/useIsOrgOwner.ts",
+    "line": 46,
+    "kind": "log",
+    "groups": "I07/I09/G07/I14",
+    "evidence": "Đã đối chiếu nguồn query và caller: required account/array/finite money hoặc boolean thật; throw nguyên lỗi/mã; QueryRegion tại DepositBreakdown, SettlementPanels, RefundLog, RoomLifecycle, AdminOnlyRoute; MyBuildingScope trả NONE khi nguồn chưa xác nhận. reportPermissionSourceFeedback22, ReportQueryCallers4, RefundLog5, RoomDrawer8; các ca 0/false/rỗng thật được giữ. Review độc lập final-independent-review.md. Log chẩn đoán được giữ; không thay quyết định quyền hoặc tính tiền."
+  },
+  "fe561ff5b65ad76d": {
+    "status": "fixed",
+    "file": "src/hooks/useIsCompanyOwner.ts",
+    "line": 38,
+    "kind": "useQuery",
+    "groups": "I07/I09/G07/I14",
+    "evidence": "Đã đối chiếu nguồn query và caller: required account/array/finite money hoặc boolean thật; throw nguyên lỗi/mã; QueryRegion tại DepositBreakdown, SettlementPanels, RefundLog, RoomLifecycle, AdminOnlyRoute; MyBuildingScope trả NONE khi nguồn chưa xác nhận. reportPermissionSourceFeedback22, ReportQueryCallers4, RefundLog5, RoomDrawer8; các ca 0/false/rỗng thật được giữ. Review độc lập final-independent-review.md. Log chẩn đoán được giữ; không thay quyết định quyền hoặc tính tiền."
+  },
+  "2880805d460f5e87": {
+    "status": "background-only",
+    "file": "src/hooks/useIsCompanyOwner.ts",
+    "line": 44,
+    "kind": "log",
+    "groups": "I07/I09/G07/I14",
+    "evidence": "Đã đối chiếu nguồn query và caller: required account/array/finite money hoặc boolean thật; throw nguyên lỗi/mã; QueryRegion tại DepositBreakdown, SettlementPanels, RefundLog, RoomLifecycle, AdminOnlyRoute; MyBuildingScope trả NONE khi nguồn chưa xác nhận. reportPermissionSourceFeedback22, ReportQueryCallers4, RefundLog5, RoomDrawer8; các ca 0/false/rỗng thật được giữ. Review độc lập final-independent-review.md. Log chẩn đoán được giữ; không thay quyết định quyền hoặc tính tiền."
+  },
+  "7b5c25ecd15b2076": {
+    "status": "fixed",
+    "file": "src/hooks/useIsAdmin.ts",
+    "line": 16,
+    "kind": "useQuery",
+    "groups": "I07/I09/G07/I14",
+    "evidence": "Đã đối chiếu nguồn query và caller: required account/array/finite money hoặc boolean thật; throw nguyên lỗi/mã; QueryRegion tại DepositBreakdown, SettlementPanels, RefundLog, RoomLifecycle, AdminOnlyRoute; MyBuildingScope trả NONE khi nguồn chưa xác nhận. reportPermissionSourceFeedback22, ReportQueryCallers4, RefundLog5, RoomDrawer8; các ca 0/false/rỗng thật được giữ. Review độc lập final-independent-review.md. Log chẩn đoán được giữ; không thay quyết định quyền hoặc tính tiền."
+  },
+  "01c651aa3b80aaf1": {
+    "status": "background-only",
+    "file": "src/hooks/useIsAdmin.ts",
+    "line": 21,
+    "kind": "log",
+    "groups": "I07/I09/G07/I14",
+    "evidence": "Đã đối chiếu nguồn query và caller: required account/array/finite money hoặc boolean thật; throw nguyên lỗi/mã; QueryRegion tại DepositBreakdown, SettlementPanels, RefundLog, RoomLifecycle, AdminOnlyRoute; MyBuildingScope trả NONE khi nguồn chưa xác nhận. reportPermissionSourceFeedback22, ReportQueryCallers4, RefundLog5, RoomDrawer8; các ca 0/false/rỗng thật được giữ. Review độc lập final-independent-review.md. Log chẩn đoán được giữ; không thay quyết định quyền hoặc tính tiền."
+  },
+  "a3af31e3a7212763": {
+    "status": "fixed",
+    "file": "src/hooks/useIsAdmin.ts",
+    "line": 42,
+    "kind": "useQuery",
+    "groups": "I07/I09/G07/I14",
+    "evidence": "Đã đối chiếu nguồn query và caller: required account/array/finite money hoặc boolean thật; throw nguyên lỗi/mã; QueryRegion tại DepositBreakdown, SettlementPanels, RefundLog, RoomLifecycle, AdminOnlyRoute; MyBuildingScope trả NONE khi nguồn chưa xác nhận. reportPermissionSourceFeedback22, ReportQueryCallers4, RefundLog5, RoomDrawer8; các ca 0/false/rỗng thật được giữ. Review độc lập final-independent-review.md. Log chẩn đoán được giữ; không thay quyết định quyền hoặc tính tiền."
+  },
+  "e64747b96773c81c": {
+    "status": "background-only",
+    "file": "src/hooks/useIsAdmin.ts",
+    "line": 47,
+    "kind": "log",
+    "groups": "I07/I09/G07/I14",
+    "evidence": "Đã đối chiếu nguồn query và caller: required account/array/finite money hoặc boolean thật; throw nguyên lỗi/mã; QueryRegion tại DepositBreakdown, SettlementPanels, RefundLog, RoomLifecycle, AdminOnlyRoute; MyBuildingScope trả NONE khi nguồn chưa xác nhận. reportPermissionSourceFeedback22, ReportQueryCallers4, RefundLog5, RoomDrawer8; các ca 0/false/rỗng thật được giữ. Review độc lập final-independent-review.md. Log chẩn đoán được giữ; không thay quyết định quyền hoặc tính tiền."
+  },
+  "fd53e3a8a08c13dd": {
+    "status": "fixed",
+    "file": "src/hooks/useMyContext.ts",
+    "line": 24,
+    "kind": "useQuery",
+    "groups": "I07/I09/G07/I14",
+    "evidence": "Đã đối chiếu nguồn query và caller: required account/array/finite money hoặc boolean thật; throw nguyên lỗi/mã; QueryRegion tại DepositBreakdown, SettlementPanels, RefundLog, RoomLifecycle, AdminOnlyRoute; MyBuildingScope trả NONE khi nguồn chưa xác nhận. reportPermissionSourceFeedback22, ReportQueryCallers4, RefundLog5, RoomDrawer8; các ca 0/false/rỗng thật được giữ. Review độc lập final-independent-review.md. Log chẩn đoán được giữ; không thay quyết định quyền hoặc tính tiền."
+  },
+  "5bff374c05fb2658": {
+    "status": "fixed",
+    "file": "src/hooks/useMyBuildingScope.ts",
+    "line": 49,
+    "kind": "useQuery",
+    "groups": "I07/I09/G07/I14",
+    "evidence": "Đã đối chiếu nguồn query và caller: required account/array/finite money hoặc boolean thật; throw nguyên lỗi/mã; QueryRegion tại DepositBreakdown, SettlementPanels, RefundLog, RoomLifecycle, AdminOnlyRoute; MyBuildingScope trả NONE khi nguồn chưa xác nhận. reportPermissionSourceFeedback22, ReportQueryCallers4, RefundLog5, RoomDrawer8; các ca 0/false/rỗng thật được giữ. Review độc lập final-independent-review.md. Log chẩn đoán được giữ; không thay quyết định quyền hoặc tính tiền."
+  },
+  "57c3eff3efe2268a": {
+    "status": "background-only",
+    "file": "src/hooks/useMyBuildingScope.ts",
+    "line": 54,
+    "kind": "log",
+    "groups": "I07/I09/G07/I14",
+    "evidence": "Đã đối chiếu nguồn query và caller: required account/array/finite money hoặc boolean thật; throw nguyên lỗi/mã; QueryRegion tại DepositBreakdown, SettlementPanels, RefundLog, RoomLifecycle, AdminOnlyRoute; MyBuildingScope trả NONE khi nguồn chưa xác nhận. reportPermissionSourceFeedback22, ReportQueryCallers4, RefundLog5, RoomDrawer8; các ca 0/false/rỗng thật được giữ. Review độc lập final-independent-review.md. Log chẩn đoán được giữ; không thay quyết định quyền hoặc tính tiền."
+  },
+  "05daa3e604d205be": {
+    "status": "fixed",
+    "file": "src/hooks/useSettlementReport.ts",
+    "line": 66,
+    "kind": "useQuery",
+    "groups": "I07/I09/G07/I14",
+    "evidence": "Đã đối chiếu nguồn query và caller: required account/array/finite money hoặc boolean thật; throw nguyên lỗi/mã; QueryRegion tại DepositBreakdown, SettlementPanels, RefundLog, RoomLifecycle, AdminOnlyRoute; MyBuildingScope trả NONE khi nguồn chưa xác nhận. reportPermissionSourceFeedback22, ReportQueryCallers4, RefundLog5, RoomDrawer8; các ca 0/false/rỗng thật được giữ. Review độc lập final-independent-review.md. Log chẩn đoán được giữ; không thay quyết định quyền hoặc tính tiền."
+  },
+  "d92ca0568f253a7b": {
+    "status": "fixed",
+    "file": "src/hooks/useRoomCashLifecycle.ts",
+    "line": 12,
+    "kind": "useQuery",
+    "groups": "I07/I09/G07/I14",
+    "evidence": "Đã đối chiếu nguồn query và caller: required account/array/finite money hoặc boolean thật; throw nguyên lỗi/mã; QueryRegion tại DepositBreakdown, SettlementPanels, RefundLog, RoomLifecycle, AdminOnlyRoute; MyBuildingScope trả NONE khi nguồn chưa xác nhận. reportPermissionSourceFeedback22, ReportQueryCallers4, RefundLog5, RoomDrawer8; các ca 0/false/rỗng thật được giữ. Review độc lập final-independent-review.md. Log chẩn đoán được giữ; không thay quyết định quyền hoặc tính tiền."
+  },
+  "2f50c0ac8ec2aeb7": {
+    "status": "fixed",
+    "file": "src/hooks/useThanhToanLedgers.ts",
+    "line": 44,
+    "kind": "useQuery",
+    "groups": "I07/I09/G07/I14",
+    "evidence": "Đã đối chiếu nguồn query và caller: required account/array/finite money hoặc boolean thật; throw nguyên lỗi/mã; QueryRegion tại DepositBreakdown, SettlementPanels, RefundLog, RoomLifecycle, AdminOnlyRoute; MyBuildingScope trả NONE khi nguồn chưa xác nhận. reportPermissionSourceFeedback22, ReportQueryCallers4, RefundLog5, RoomDrawer8; các ca 0/false/rỗng thật được giữ. Review độc lập final-independent-review.md. Log chẩn đoán được giữ; không thay quyết định quyền hoặc tính tiền."
+  },
+  "8c4c9f960ed59265": {
+    "status": "fixed",
+    "file": "src/hooks/useStatBreakdowns.ts",
+    "line": 30,
+    "kind": "useQuery",
+    "groups": "I07/I09/G07/I14",
+    "evidence": "Đã đối chiếu nguồn query và caller: required account/array/finite money hoặc boolean thật; throw nguyên lỗi/mã; QueryRegion tại DepositBreakdown, SettlementPanels, RefundLog, RoomLifecycle, AdminOnlyRoute; MyBuildingScope trả NONE khi nguồn chưa xác nhận. reportPermissionSourceFeedback22, ReportQueryCallers4, RefundLog5, RoomDrawer8; các ca 0/false/rỗng thật được giữ. Review độc lập final-independent-review.md. Log chẩn đoán được giữ; không thay quyết định quyền hoặc tính tiền."
+  },
+  "42bf1a20ec85a23e": {
+    "status": "fixed",
+    "file": "src/hooks/useStatBreakdowns.ts",
+    "line": 92,
+    "kind": "useQuery",
+    "groups": "I07/I09/G07/I14",
+    "evidence": "Đã đối chiếu nguồn query và caller: required account/array/finite money hoặc boolean thật; throw nguyên lỗi/mã; QueryRegion tại DepositBreakdown, SettlementPanels, RefundLog, RoomLifecycle, AdminOnlyRoute; MyBuildingScope trả NONE khi nguồn chưa xác nhận. reportPermissionSourceFeedback22, ReportQueryCallers4, RefundLog5, RoomDrawer8; các ca 0/false/rỗng thật được giữ. Review độc lập final-independent-review.md. Log chẩn đoán được giữ; không thay quyết định quyền hoặc tính tiền."
+  },
+  "98e73997fd78afef": {
+    "status": "fixed",
+    "file": "src/pages/settings/finance/SpendEnginePage.tsx",
+    "line": 66,
+    "kind": "useQuery",
+    "groups": "E20/I13",
+    "evidence": "QueryRegion theo nguồn cấu hình/ledger, safe mutation notifyActionError. Source đối chiếu spend-transfer-green.json; giữ predicate/giới hạn hiện có."
+  },
+  "f542b1391bc30e9e": {
+    "status": "fixed",
+    "file": "src/pages/settings/finance/SpendEnginePage.tsx",
+    "line": 216,
+    "kind": "notification",
+    "groups": "E20/I13",
+    "evidence": "QueryRegion theo nguồn cấu hình/ledger, safe mutation notifyActionError. Source đối chiếu spend-transfer-green.json; giữ predicate/giới hạn hiện có."
+  },
+  "7485c72f19d6bc03": {
+    "status": "fixed",
+    "file": "src/pages/settings/finance/SpendEnginePage.tsx",
+    "line": 277,
+    "kind": "useQuery",
+    "groups": "E20/I13",
+    "evidence": "QueryRegion theo nguồn cấu hình/ledger, safe mutation notifyActionError. Source đối chiếu spend-transfer-green.json; giữ predicate/giới hạn hiện có."
+  },
+  "fd490b195edf0c7a": {
+    "status": "fixed",
+    "file": "src/components/building-map/RoomDetailDialog.tsx",
+    "line": 54,
+    "kind": "useQuery",
+    "groups": "I03",
+    "evidence": "Room contract/invoice query raw cause + inline QueryRegion retry, không hiện không có dữ liệu khi lỗi; room-query-final.json2/2 DOM."
+  },
+  "9e1f9fd794d4e318": {
+    "status": "fixed",
+    "file": "src/components/building-map/RoomDetailDialog.tsx",
+    "line": 89,
+    "kind": "useQuery",
+    "groups": "I03",
+    "evidence": "Room contract/invoice query raw cause + inline QueryRegion retry, không hiện không có dữ liệu khi lỗi; room-query-final.json2/2 DOM."
+  },
+  "7a6445d57d4f45da": {
+    "status": "already-correct",
+    "file": "src/hooks/useAccrualReport.ts",
+    "line": 148,
+    "kind": "useQuery",
+    "groups": "I09",
+    "evidence": "Đã đúng: query không nuốt lỗi, toàn bộ candidates thay bằng loadIncomeExpenseDetails parsed snapshots; incomeExpenseDetailRead Zod bắt finite quantity/unit_price/amount. useAccrualReportDetailRead source + scope/cap/empty tests. Không đổi phép tính."
+  },
+  "a698f752ae9e39b9": {
+    "status": "already-correct",
+    "file": "src/hooks/useInvoiceRoundingReport.ts",
+    "line": 10,
+    "kind": "useQuery",
+    "groups": "I07",
+    "evidence": "Đã đúng: repository fetchInvoiceRoundingReport validated read payload, InvoiceRoundingReportDialog có5 DOM ca permission/error/empty/filter/paging. Không quy lỗi thành0."
+  },
+  "9d738a581614ee0b": {
+    "status": "fixed",
+    "file": "src/hooks/useSpendEngine.ts",
+    "line": 81,
+    "kind": "useQuery",
+    "groups": "E20/I13",
+    "evidence": "spend-transfer-green.json 38/38 gồm Spend source29 + transfer3 + invoice6. Required numeric/arrays, raw error causes; actual SpendEnginePage QueryRegion. Không đổi quy tắc."
+  },
+  "5869de628c0c47f9": {
+    "status": "fixed",
+    "file": "src/hooks/useSpendEngine.ts",
+    "line": 118,
+    "kind": "useQuery",
+    "groups": "E20/I13",
+    "evidence": "spend-transfer-green.json 38/38 gồm Spend source29 + transfer3 + invoice6. Required numeric/arrays, raw error causes; actual SpendEnginePage QueryRegion. Không đổi quy tắc."
+  },
+  "0eeefee7ffd62248": {
+    "status": "fixed",
+    "file": "src/hooks/useSpendEngine.ts",
+    "line": 149,
+    "kind": "useQuery",
+    "groups": "E20/I13",
+    "evidence": "spend-transfer-green.json 38/38 gồm Spend source29 + transfer3 + invoice6. Required numeric/arrays, raw error causes; actual SpendEnginePage QueryRegion. Không đổi quy tắc."
+  },
+  "6df8f4d162ed49c8": {
+    "status": "fixed",
+    "file": "src/hooks/useSpendEngine.ts",
+    "line": 170,
+    "kind": "useMutation",
+    "groups": "E20/I13",
+    "evidence": "spend-transfer-green.json 38/38 gồm Spend source29 + transfer3 + invoice6. Required numeric/arrays, raw error causes; actual SpendEnginePage QueryRegion. Không đổi quy tắc."
+  },
+  "f5c82cfaeb28dd93": {
+    "status": "fixed",
+    "file": "src/hooks/useSpendEngine.ts",
+    "line": 202,
+    "kind": "useQuery",
+    "groups": "E20/I13",
+    "evidence": "spend-transfer-green.json 38/38 gồm Spend source29 + transfer3 + invoice6. Required numeric/arrays, raw error causes; actual SpendEnginePage QueryRegion. Không đổi quy tắc."
+  },
+  "56edde46f52aa730": {
+    "status": "fixed",
+    "file": "src/hooks/useSpendEngine.ts",
+    "line": 217,
+    "kind": "useMutation",
+    "groups": "E20/I13",
+    "evidence": "spend-transfer-green.json 38/38 gồm Spend source29 + transfer3 + invoice6. Required numeric/arrays, raw error causes; actual SpendEnginePage QueryRegion. Không đổi quy tắc."
+  },
+  "b3900a583c19b074": {
+    "status": "fixed",
+    "file": "src/hooks/useSpendEngine.ts",
+    "line": 258,
+    "kind": "useQuery",
+    "groups": "E20/I13",
+    "evidence": "spend-transfer-green.json 38/38 gồm Spend source29 + transfer3 + invoice6. Required numeric/arrays, raw error causes; actual SpendEnginePage QueryRegion. Không đổi quy tắc."
+  },
+  "79e11c4504bca0e2": {
+    "status": "fixed",
+    "file": "src/hooks/useSpendEngine.ts",
+    "line": 287,
+    "kind": "useQuery",
+    "groups": "E20/I13",
+    "evidence": "spend-transfer-green.json 38/38 gồm Spend source29 + transfer3 + invoice6. Required numeric/arrays, raw error causes; actual SpendEnginePage QueryRegion. Không đổi quy tắc."
+  },
+  "c104fde1fbd3690c": {
+    "status": "fixed",
+    "file": "src/hooks/useSpendEngine.ts",
+    "line": 304,
+    "kind": "useMutation",
+    "groups": "E20/I13",
+    "evidence": "spend-transfer-green.json 38/38 gồm Spend source29 + transfer3 + invoice6. Required numeric/arrays, raw error causes; actual SpendEnginePage QueryRegion. Không đổi quy tắc."
+  },
+  "61b7eec5f9d9bc9a": {
+    "status": "fixed",
+    "file": "src/hooks/useUpdateInvoiceNote.ts",
+    "line": 19,
+    "kind": "useMutation",
+    "groups": "A07/C20",
+    "evidence": "Một caller CollectDrawer inline, mutation handlesFeedback; actual MutationCache integration1, useUpdateInvoiceNote6 trong spend-transfer-green.json."
+  },
+  "a10f242259b2d6d2": {
+    "status": "fixed",
+    "file": "src/hooks/reports/useBusinessPerformanceGatedData.ts",
+    "line": 843,
+    "kind": "useMutation",
+    "groups": "A07/I10",
+    "evidence": "Reporting role inline form owns result, preserves raw42501 and selected role; reporting-role-green-2.json45/45,2 RED→GREEN."
+  },
+  "654cc645b0d29487": {
+    "status": "background-only",
+    "file": "src/lib/supabaseFetchAll.ts",
+    "line": 93,
+    "kind": "log",
+    "groups": "A05",
+    "evidence": "Log chẩn đoán nội bộ; tiếp tục throw originalerror, enclosing query/caller xử lý safe feedback. supabaseFetchAll property boundary tests; không phát toast cho log."
+  },
+  "a1a26c6df2882bdd": {
+    "status": "fixed",
+    "file": "src/components/customers/CT01DownloadButton.tsx",
+    "line": 51,
+    "kind": "notification",
+    "groups": "A11/F21",
+    "evidence": "CT01 DOM2: await chuẩn bị tệp, lỗi CT01 nghiệp vụ giữ, SQL unknown safe; ct01-room-final-2.json4/4."
+  },
+  "3e77db3692f4ac95": {
+    "status": "fixed",
+    "file": "src/components/customers/CT01DownloadButton.tsx",
+    "line": 53,
+    "kind": "notification",
+    "groups": "A11/F21",
+    "evidence": "CT01 DOM2: await chuẩn bị tệp, lỗi CT01 nghiệp vụ giữ, SQL unknown safe; ct01-room-final-2.json4/4."
+  },
+  "9c3ca1519be1c4fb": {
+    "status": "fixed",
+    "file": "src/hooks/income-expenses/statusMutations.ts",
+    "owner": "useUnapproveVoucher",
+    "kind": "useMutation",
+    "groups": "C13",
+    "evidence": "Đã đọc toàn mutation và caller trong lượt finance/root. Gate lint chỉ bỏ catch rethrow vô ích quanh trySetTerminationForfeitStatus; lỗi gốc giữ nguyên, không sửa RPC/payload/thứ tự lifecycle/receipt hay hướng tăng giảm tiền. Shared persistent lifecycle giữ completed IDs và chặn replay unknown; một onError an toàn. Full src snapshot cùng focused voucher/finance; type/build/Preview ghi tại verification.md."
+  },
+  "5b963c526d13e446": {
+    "status": "fixed",
+    "file": "src/hooks/income-expenses/statusMutations.ts",
+    "owner": "useCancelIncomeExpense",
+    "kind": "useMutation",
+    "groups": "C15/C16",
+    "evidence": "Đã đọc toàn mutation và caller trong lượt finance/root. Gate lint chỉ bỏ catch rethrow vô ích quanh trySetTerminationForfeitStatus; lỗi gốc giữ nguyên, không sửa RPC/payload/thứ tự lifecycle/receipt hay hướng tăng giảm tiền. Shared persistent lifecycle giữ completed IDs và chặn replay unknown; một onError an toàn. Full src snapshot cùng focused voucher/finance; type/build/Preview ghi tại verification.md."
+  },
+  "d5601a5a3c372417": {
+    "status": "fixed",
+    "file": "src/hooks/useBuildingServices.ts",
+    "kind": "useMutation",
+    "groups": "F09",
+    "evidence": "Review độc lập final-building-service-caller-independent.json22/22 + typed guard9/9/app exit0. Writer DELETE→INSERT bốn trường và sáu legacy casts của main giữ nguyên; không đổi org/auth/giới hạn tiền/SQL. select receipt xác nhận đúng IDs/values, lưu completed IDs trước validate batch; partial/unknown giữ barrier không gửi lại toàn bộ. BuildingForm silent + handlesFeedback một owner, giữ draft/lỗi inline. E2E F09 chưa chạy."
+  },
+  "5211b68b25fbabdd": {
+    "file": "src/hooks/useAreas.ts",
+    "line": 165,
+    "kind": "useMutation",
+    "status": "fixed",
+    "groups": "F07",
+    "evidence": "F07: main DELETE→UPSERT giữ input/filter; null không thành receipt rỗng, mã cặp dương giữ trước kiểm cả lô. RED3→GREEN; độc lập vehicleArea16 trong final-area83/83. E2E chưa xác minh."
+  },
+  "c82f738d38ce499c": {
+    "file": "src/hooks/useMaterialAdjustments.ts",
+    "line": 61,
+    "kind": "useMutation",
+    "status": "fixed",
+    "groups": "F18–F20",
+    "evidence": "F18–F20: khôi phục đúng main header/delete-all/insert/projection/server IDs/compensation; chỉ thêm kiểm tra biên nhận, thông báo partial và giữ mã. Independent material57/57 + parity22 trong final-area83/83; E2E/backend concurrency chưa xác minh."
+  },
+  "1835eb9fd6d81278": {
+    "file": "src/hooks/useMaterialAdjustments.ts",
+    "line": 74,
+    "kind": "useMutation",
+    "status": "fixed",
+    "groups": "F18–F20",
+    "evidence": "F18–F20: khôi phục đúng main header/delete-all/insert/projection/server IDs/compensation; chỉ thêm kiểm tra biên nhận, thông báo partial và giữ mã. Independent material57/57 + parity22 trong final-area83/83; E2E/backend concurrency chưa xác minh."
+  },
+  "6cd90b14f5edc48e": {
+    "file": "src/hooks/useMaterialPurchases.ts",
+    "line": 38,
+    "kind": "useMutation",
+    "status": "fixed",
+    "groups": "F18–F20",
+    "evidence": "F18–F20: khôi phục đúng main header/delete-all/insert/projection/server IDs/compensation; chỉ thêm kiểm tra biên nhận, thông báo partial và giữ mã. Independent material57/57 + parity22 trong final-area83/83; E2E/backend concurrency chưa xác minh."
+  },
+  "ebc4b2008b4c143d": {
+    "file": "src/hooks/useMaterialPurchases.ts",
+    "line": 76,
+    "kind": "useMutation",
+    "status": "fixed",
+    "groups": "F18–F20",
+    "evidence": "F18–F20: khôi phục đúng main header/delete-all/insert/projection/server IDs/compensation; chỉ thêm kiểm tra biên nhận, thông báo partial và giữ mã. Independent material57/57 + parity22 trong final-area83/83; E2E/backend concurrency chưa xác minh."
+  },
+  "923566a0564b6917": {
+    "file": "src/hooks/useMaterialUsages.ts",
+    "line": 54,
+    "kind": "useMutation",
+    "status": "fixed",
+    "groups": "F18–F20",
+    "evidence": "F18–F20: khôi phục đúng main header/delete-all/insert/projection/server IDs/compensation; chỉ thêm kiểm tra biên nhận, thông báo partial và giữ mã. Independent material57/57 + parity22 trong final-area83/83; E2E/backend concurrency chưa xác minh."
+  },
+  "a11cd1204cfc515a": {
+    "file": "src/hooks/useMaterialUsages.ts",
+    "line": 103,
+    "kind": "useMutation",
+    "status": "fixed",
+    "groups": "F18–F20",
+    "evidence": "F18–F20: khôi phục đúng main header/delete-all/insert/projection/server IDs/compensation; chỉ thêm kiểm tra biên nhận, thông báo partial và giữ mã. Independent material57/57 + parity22 trong final-area83/83; E2E/backend concurrency chưa xác minh."
+  },
+  "c2d0ece6299e54d4": {
+    "file": "src/hooks/useServices.ts",
+    "line": 111,
+    "kind": "useMutation",
+    "status": "fixed",
+    "groups": "F11/F12",
+    "evidence": "F11/F12: main dịch vụ gỡ→bật→thêm; quota UPDATE→DELETE-all→INSERT5 và create3→INSERT5, không thêm org/filter/limits. Exact receipts, partial và draft/no-replay; serviceQuota25 +dialog2 trong independent83/83. E2E và live RLS legacy chưa xác minh."
+  },
+  "7d6b4fad8e49d46c": {
+    "file": "src/hooks/useServices.ts",
+    "line": 126,
+    "kind": "useMutation",
+    "status": "fixed",
+    "groups": "F11/F12",
+    "evidence": "F11/F12: main dịch vụ gỡ→bật→thêm; quota UPDATE→DELETE-all→INSERT5 và create3→INSERT5, không thêm org/filter/limits. Exact receipts, partial và draft/no-replay; serviceQuota25 +dialog2 trong independent83/83. E2E và live RLS legacy chưa xác minh."
+  },
+  "730b88779defe34c": {
+    "file": "src/hooks/useServices.ts",
+    "line": 198,
+    "kind": "useMutation",
+    "status": "fixed",
+    "groups": "F11/F12",
+    "evidence": "F11/F12: main dịch vụ gỡ→bật→thêm; quota UPDATE→DELETE-all→INSERT5 và create3→INSERT5, không thêm org/filter/limits. Exact receipts, partial và draft/no-replay; serviceQuota25 +dialog2 trong independent83/83. E2E và live RLS legacy chưa xác minh."
+  },
+  "6dc7e96e4b0365e5": {
+    "file": "src/hooks/useServices.ts",
+    "line": 238,
+    "kind": "useMutation",
+    "status": "fixed",
+    "groups": "F11/F12",
+    "evidence": "F11/F12: main dịch vụ gỡ→bật→thêm; quota UPDATE→DELETE-all→INSERT5 và create3→INSERT5, không thêm org/filter/limits. Exact receipts, partial và draft/no-replay; serviceQuota25 +dialog2 trong independent83/83. E2E và live RLS legacy chưa xác minh."
+  },
+  "b7b3b894dcef3811": {
+    "status": "fixed",
+    "file": "src/app/providers/QueryProvider.tsx",
+    "line": 112,
+    "kind": "notification",
+    "groups": "A05/A07",
+    "caller": "xuLyLoiQuery/showToast",
+    "evidence": "A05/A07 · src/app/providers/QueryProvider.tsx:110 (xuLyLoiQuery/showToast; notification): Nhãn đọc được tải động từ queryFeedback; pending/import lỗi dùng nhãn dữ liệu của mục đang mở, không hiển thị queryKey/UUID. Description thongDiepLoiDoc và nút chỉ query.fetch giữ nguyên; diagnostic trước silent/inline/dedupe, toast sink có catch. QueryProvider.queryLabels7 + errorPolicy24 trong focused31/31; không đổi retry/write. Bổ sung main9aa sourcefreeze HEAD2b9babf: Sau manual Provider merge giữ main Safari \\bLoad failed và LOI_DOC_MAC_DINH export; internal_invariant chỉ lỗi hệ thống + tải lại trang, không khẳng định version/schema chưa có bằng chứng. Cùng call showToast, read-only retry/silent/inline/dedupe và task async queryLabel giữ. notification-main-read-recovery-green.json34/34 (27errorPolicy+7labels), independent210/210."
+  },
+  "643799aa926e84c6": {
+    "status": "fixed",
+    "file": "src/app/providers/QueryProvider.tsx",
+    "line": 143,
+    "kind": "notification",
+    "groups": "A01/A07",
+    "caller": "MutationCache.onError",
+    "evidence": "A01/A07 · src/app/providers/QueryProvider.tsx:141 (MutationCache.onError; notification): Diagnostic giữ cause; mutation đã có onError, silent hoặc handlesFeedback không nhận thêm toast. Remaining caller tải async converter chỉ ở lỗi, giữ operation/financial options và cùng title/description. Mutation retry:false giữ nguyên. final-notification-bootstrap-mutation-owner.json2/2 cùng bootstrap239/239. Bổ sung main9aa sourcefreeze HEAD2b9babf: Provider merge vẫn async mutation sink, cùng operation/financial; caller onError/silent/handlesFeedback có owner không thêm toast; mutation retry:false. Root34/34 + independent210/210, không auth/permission change."
+  },
+  "a9f7747a742040fd": {
+    "status": "fixed",
+    "file": "src/lib/asyncActionFeedback.ts",
+    "line": 35,
+    "kind": "notification",
+    "groups": "A01/A07/G01/G23",
+    "caller": "asyncActionFeedback/deliver primary",
+    "evidence": "A01/A07/G01/G23: deliver primary chỉ tải friendlyError khi báo lỗi, giữ title/description/options của converter. Import/converter failure đi safeFallback; bản copy cuối giữ “Giữ thông tin đang nhập. Kiểm tra trạng thái.” cho lỗi thường và “Giữ thông tin đang nhập. Đối chiếu phiếu, sổ quỹ. Không gửi thêm khi chưa rõ kết quả.” cho financial. Title vẫn gồm operation. Cause/actionError chỉ diagnostic, không raw UI hoặc unhandled rejection. Cùng source sink/call ID, không đổi auth/writer/rules. notification-fallback-copy-bundle-final.json7/7 sau hai string delta; full src sau rebase11050/11050 trước delta copy. Build/bundle cuối PASS247379byte dưới247384,2, baseline giữ nguyên; full Contract gate/Preview đúng SHA còn root kiểm."
+  },
+  "23a5f3ce767e51c0": {
+    "status": "fixed",
+    "file": "src/lib/asyncActionFeedback.ts",
+    "line": 41,
+    "kind": "notification",
+    "groups": "A01/A07/G01/G23",
+    "caller": "asyncActionFeedback/deliver fallback",
+    "evidence": "A01/A07/G01/G23: deliver fallback chỉ thử một lần khi primary sink throw, dùng cùng delivery ID nên cập nhật cùng toast nếu primary đã publish. Fallback/converter/import và diagnostic failure được chặn; không reject detached task, không replay writer. Copy cuối vẫn giữ input/state và financial đối chiếu phiếu,sổ quỹ/không gửi thêm khi chưa rõ. notification-fallback-copy-bundle-final.json7/7 giữ assertions same-id/dedupe/import/2sink/financial unknown; independent main merge258/258 trên27 file trước delta copy. Build/bundle cuối PASS247379byte dưới247384,2, baseline giữ nguyên; full Contract gate/Preview đúng SHA chưa xác nhận."
+  }
+}

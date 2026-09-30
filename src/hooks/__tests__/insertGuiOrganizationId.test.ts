@@ -23,6 +23,7 @@ const io = vi.hoisted(() => ({
 
 function builder(table: string) {
   const b: Record<string, unknown> = {};
+  let writtenPayload:unknown;
   for (const m of [
     "select", "eq", "neq", "is", "in", "not", "or", "ilike", "gte", "lte", "gt", "lt",
     "order", "limit", "range", "delete", "update", "filter", "match", "contains", "returns",
@@ -31,13 +32,14 @@ function builder(table: string) {
   }
   b.insert = (payload: unknown) => {
     io.inserts.push({ table, payload });
+    writtenPayload=payload;
     return b;
   };
   b.upsert = b.insert;
-  b.single = async () => ({ data: io.single[table] ?? { id: `${table}-id` }, error: null });
+  b.single = async () => ({ data: io.single[table] ?? { id: `${table}-id`, ...((table === "jobs" || table === "document_templates") && writtenPayload && typeof writtenPayload === "object" ? writtenPayload : {}) }, error: null });
   b.maybeSingle = async () => ({ data: (io.rows[table] ?? [])[0] ?? null, error: null });
   b.then = (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) =>
-    Promise.resolve({ data: io.rows[table] ?? [], error: null, count: (io.rows[table] ?? []).length })
+    Promise.resolve({ data: ['building_services','contract_customers','contract_services'].includes(table) && writtenPayload ? (Array.isArray(writtenPayload)?writtenPayload:[writtenPayload]).map((row,index)=>({id:"link-"+index,...row as object})) : io.rows[table] ?? [], error: null, count: (io.rows[table] ?? []).length })
       .then(res, rej);
   return b;
 }
@@ -128,8 +130,11 @@ const expectOrg = (table: string) => {
 };
 
 beforeEach(() => {
+  const storageValues=new Map<string,string>();
+  vi.stubGlobal("localStorage",{getItem:(key:string)=>storageValues.get(key)??null,setItem:(key:string,value:string)=>{storageValues.set(key,value)},removeItem:(key:string)=>{storageValues.delete(key)}});
   vi.clearAllMocks();
   io.org = ORG;
+  localStorage.setItem('ihomecrm.selectedOrganizationId',ORG);
   io.inserts = [];
   io.rows = {};
   io.single = {};
@@ -186,6 +191,7 @@ describe("useCustomers", () => {
 
   it("useUpdateCustomer gửi organization_id cho xe thêm mới qua syncCustomerVehicles", async () => {
     io.rows.vehicles = [];
+    io.single.customers = {id:"k1"};
     await run(useUpdateCustomer, { id: "k1", data: form });
     expectOrg("vehicles");
   });
@@ -248,6 +254,7 @@ describe("hook tạo một dòng", () => {
   });
 
   it("useBulkCreateMeterReadings (useMeterReadings) → meter_readings từng dòng", async () => {
+    io.rows.meter_readings = [{ id: 'reading-1' }, { id: 'reading-2' }];
     await run(useBulkCreateMeterReadings, [
       { meter_id: "m1", reading_date: "2026-09-01", current_reading: 120 },
       { meter_id: "m2", reading_date: "2026-09-01", current_reading: 80 },
@@ -267,6 +274,7 @@ describe("hook tạo một dòng", () => {
   });
 
   it("useBulkCreateRooms → rooms từng dòng", async () => {
+    io.rows.rooms = [{id:"room-1"},{id:"room-2"}];
     await run(useBulkCreateRooms, [{ building_id: "b1", name: "P101", code: "P101" }, { building_id: "b1", name: "P102", code: "P102" }]);
     expectOrg("rooms");
   });
@@ -280,6 +288,7 @@ describe("hook tạo một dòng", () => {
 
   it("useUpdateService → building_services cho toà mới gán", async () => {
     io.rows.building_services = [];
+    io.single.services={id:"s1"};
     await run(useUpdateService, { id: "s1", updates: { name: "Điện" }, building_ids: ["b9"] });
     expectOrg("building_services");
   });

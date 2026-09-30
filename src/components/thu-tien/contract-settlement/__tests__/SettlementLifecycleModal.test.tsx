@@ -77,12 +77,14 @@ vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
 }));
 
+import { toast } from 'sonner';
 import { SettlementLifecycleModal } from '../SettlementLifecycleModal';
 import {
   fmtMoney,
   type SettlementRow, type ViewStatus,
 } from '@/lib/contractSettlement';
 import type { useSettlementActions } from '@/hooks/useSettlementActions';
+import { VoucherPartialError } from '@/lib/voucherFeedback';
 
 type Actions = ReturnType<typeof useSettlementActions>;
 
@@ -214,6 +216,25 @@ beforeEach(() => {
   H.basisState = 'ready';
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); });
+
+it('oversized supplement reason stays inline, keeps draft, focuses field and never calls writer',async()=>{
+ const man=dungMan(phieu(),'pending',{requestSupplement:true});const field=screen.getByPlaceholderText('Cần bổ sung gì…');
+ fireEvent.change(field,{target:{value:'x'.repeat(5000)}});fireEvent.click(screen.getByRole('button',{name:'Cần bổ sung'}));
+ await waitFor(()=>expect(field.getAttribute('aria-invalid')).toBe('true'));
+ expect(document.activeElement).toBe(field);expect((field as HTMLTextAreaElement).value).toHaveLength(5000);expect(man.actions.requestSupplement).not.toHaveBeenCalled();expect(screen.getByText(/Lý do được nhập tối đa/)).toBeTruthy();
+ fireEvent.change(field,{target:{value:'Thiếu chứng từ khoản chi'}});fireEvent.click(screen.getByRole('button',{name:'Cần bổ sung'}));await waitFor(()=>expect(man.actions.requestSupplement).toHaveBeenCalledOnce());
+});
+
+it('để hook hủy phiếu phát duy nhất một thông báo kết quả', async () => {
+  vi.mocked(toast.success).mockClear();
+  const man = dungMan(phieu(), 'pending', { cancel: true });
+  vi.mocked(man.actions.cancel).mockImplementationOnce(async () => { toast.success('Đã hủy phiếu PC-1.'); });
+  fireEvent.click(screen.getByRole('button', { name: 'Từ chối phiếu' }));
+  fireEvent.change(screen.getByPlaceholderText('Lý do từ chối (tối thiểu 8 ký tự)…'), { target: { value: 'Không đúng căn cứ' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Xác nhận' }));
+  await waitFor(() => expect(man.dong).toHaveBeenCalledOnce());
+  expect(toast.success).toHaveBeenCalledOnce();
+});
 
 describe('Task 3 — lệnh của đúng hồ sơ và trạng thái nguồn đọc', () => {
   it.each(['custodian', 'accounts'] as const)('cached sổ %s đang refetch vẫn khóa ghi chi tới khi nguồn xong', async (source) => {
@@ -561,6 +582,20 @@ describe('T1 — chứng từ của bước ghi chi', () => {
     await waitFor(() => expect(nutXacNhan().disabled).toBe(false));
   });
 
+  it('ảnh đã đính phiếu nhưng adopt lỗi thì khóa chi và yêu cầu đối chiếu, không tải lại ảnh', async () => {
+    H.attach.mockRejectedValue(new VoucherPartialError('Ảnh đã đính nhưng chưa xác minh chứng từ', [V_A]));
+    dungMan(phieu());
+    moFormChi();
+    await waitFor(() => expect(H.adopt).toHaveBeenCalledTimes(1));
+    chonSo();
+    const input = oTaiAnh().querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [tepAnh()] } });
+    await waitFor(() => expect(chuTrenMan()).toContain('không tải lại cùng ảnh'));
+    expect(nutXacNhan().disabled).toBe(true);
+    expect(input.disabled).toBe(true);
+    expect(H.attach).toHaveBeenCalledTimes(1);
+  });
+
   it('bấm xác nhận hai lần chỉ ghi sổ MỘT lần', async () => {
     const man = dungMan(phieu());
     let xong: () => void = () => {};
@@ -614,7 +649,7 @@ describe('T1 — chứng từ của bước ghi chi', () => {
     chonSo();
     // Chứng từ của phiếu A tuyệt đối không được làm phiếu B chi được.
     expect(nutXacNhan().disabled).toBe(true);
-    expect(chuTrenMan()).toContain('cần ít nhất 1 chứng từ');
+    expect(chuTrenMan()).toContain('Thêm ít nhất một ảnh hoặc tệp chứng từ cho lần thu/chi này.');
   });
 
   /**
@@ -656,7 +691,7 @@ describe('T1 — chứng từ của bước ghi chi', () => {
     });
 
     expect(nutXacNhan().disabled).toBe(true);
-    expect(chuTrenMan()).toContain('cần ít nhất 1 chứng từ');
+    expect(chuTrenMan()).toContain('Thêm ít nhất một ảnh hoặc tệp chứng từ cho lần thu/chi này.');
     expect(anhNho()).toHaveLength(0); // anh cua phieu A khong duoc moc tren phieu B
     expect(lamMoi.mock.calls.some((c) => {
       const k = (c[0] as { queryKey?: unknown[] } | undefined)?.queryKey;
@@ -1011,7 +1046,8 @@ describe('T4 — chọn ngân hàng, lưu và QR', () => {
 
     fireEvent.change(oStk(), { target: { value: STK_MOI } });
     fireEvent.click(nutLuu()!);
-    await waitFor(() => expect(chuTrenMan()).toMatch(/permission denied for function/));
+    await waitFor(() => expect(chuTrenMan()).toMatch(/Không đủ quyền/));
+    expect(chuTrenMan()).not.toMatch(/permission denied for function/);
 
     expect(oStk().value).toBe(STK_MOI);               // không nuốt mất thứ vừa gõ
     expect(nutLuu()).not.toBeNull();
@@ -1037,8 +1073,8 @@ describe('T4 — chọn ngân hàng, lưu và QR', () => {
 
     fireEvent.change(oStk(), { target: { value: STK_MOI } });
     fireEvent.click(nutLuu()!);
-    await waitFor(() => expect(chuTrenMan()).toMatch(/permission denied for function/));
-    expect(chuTrenMan()).toMatch(/Chưa lưu thì không duyệt\/chi được/);
+    await waitFor(() => expect(chuTrenMan()).toMatch(/Không đủ quyền/));
+    expect(chuTrenMan()).toMatch(/Tải lại phiếu để đối chiếu trước khi duyệt\/chi/);
 
     // Gõ lại nguyên số cũ của phiếu.
     fireEvent.change(oStk(), { target: { value: '0123456789' } });
@@ -1046,7 +1082,7 @@ describe('T4 — chọn ngân hàng, lưu và QR', () => {
     expect(nutLuu()).toBeNull();                      // không còn gì để lưu
     expect(nutDuyetChi()?.disabled).toBe(false);      // hàng rào tiền mở đúng
     expect(srcQR()).toContain('970436-0123456789');   // QR cũ về
-    expect(chuTrenMan()).not.toMatch(/Chưa lưu thì không duyệt\/chi được/);
+    expect(chuTrenMan()).not.toMatch(/Tải lại phiếu để đối chiếu trước khi duyệt\/chi/);
     expect(chuTrenMan()).not.toMatch(/permission denied for function/);
   });
 

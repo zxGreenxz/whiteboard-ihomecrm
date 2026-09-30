@@ -1,3 +1,6 @@
+import { focusFirstError } from '@/lib/formErrors';
+import { collectionFailureMessage } from '@/lib/collectionFeedback';
+import { voucherOutcomeUnknown } from '@/lib/voucherFeedback';
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -119,6 +122,10 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
   const [isUploading, setIsUploading] = useState(false);
   const [changeUserEdited, setChangeUserEdited] = useState(false);
   const [creditUserEdited, setCreditUserEdited] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  const [reconcileRequired,setReconcileRequired] = useState(false);
+  useEffect(()=>{setReconcileRequired(false);setSubmitError(null);},[invoice?.id]);
   const collectionAttemptRef = useRef<{
     fingerprint: string;
     request: RecordPaymentRPCData | null;
@@ -136,6 +143,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
     handleSubmit,
     formState: { errors },
     setValue,
+    setError,
     getValues,
     watch,
     reset,
@@ -143,6 +151,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
     control,
   } = useForm<PaymentFormData>({
     resolver: zodResolver(paymentSchema),
+    shouldFocusError: false,
     defaultValues: {
       payment_lines: [{ amount: 0, payment_method: 'TM', account_id: '' }],
       change_amount: 0,
@@ -455,6 +464,9 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
     return urlData.publicUrl;
   };
 
+  const rejectField=(name:`payment_lines.${number}.account_id`|'change_account_id',message:string)=>{
+    setError(name,{type:'manual',message});void focusFirstError({[name]:message},{root:formRef.current});
+  };
   const onSubmit = async (data: PaymentFormData) => {
     if (!invoice) return;
 
@@ -483,11 +495,11 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
       }
       const actualChange = keepAsCredit ? 0 : submittedChange;
       if (keepAsCredit && !invoice.contract_id) {
-        toast.error('Hóa đơn không gắn hợp đồng nên không thể giữ tiền dư làm credit');
+        setSubmitError('Hoá đơn chưa gắn hợp đồng nên chưa thể giữ tiền dư cho kỳ sau. Kiểm tra hợp đồng của hoá đơn.');
         return;
       }
       if (actualChange > 0 && !data.change_account_id) {
-        toast.error('Vui lòng chọn sổ ghi nhận tiền thối');
+        rejectField('change_account_id','Chọn sổ ghi nhận tiền thối.');
         return;
       }
       // Sổ nhận phải nằm trong danh sách máy chủ cho phép của đúng hình thức
@@ -500,14 +512,14 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
         toast.error('Đang tải danh sách sổ nhận tiền — thử lại sau giây lát.');
         return;
       }
-      for (const line of data.payment_lines) {
+      for (const [lineIndex,line] of data.payment_lines.entries()) {
         const list = receivingBooksFor(receivingData, line.payment_method);
         if (!list.length) {
-          toast.error(missingReceivingBookMessage(line.payment_method, buildingName));
+          rejectField(`payment_lines.${lineIndex}.account_id`,missingReceivingBookMessage(line.payment_method, buildingName));
           return;
         }
         if (!list.some((b) => b.id === line.account_id)) {
-          toast.error(`Sổ nhận ${METHOD_NAME[line.payment_method]} không nằm trong danh sách sổ nhận tiền của toà — chọn lại sổ.`);
+          rejectField(`payment_lines.${lineIndex}.account_id`,`Chọn lại sổ nhận ${METHOD_NAME[line.payment_method]} trong danh sách sổ của toà.`);
           return;
         }
       }
@@ -516,7 +528,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
         && !keepAsCredit
         && accountVirtuality.get(data.change_account_id ?? '') !== true
       ) {
-        toast.error('Sổ ghi nhận tiền thối phải là sổ ảo');
+        rejectField('change_account_id','Chọn sổ ghi nhận tiền thối hợp lệ trong danh sách.');
         return;
       }
 
@@ -564,6 +576,8 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
         file: fileFingerprint,
       });
 
+      if (reconcileRequired) return;
+      setSubmitError(null);
       const previousAttempt = collectionAttemptRef.current;
       // Fail-closed: nếu attempt trước đã gọi RPC (server có thể đã commit dù
       // client báo lỗi) mà lần này số tiền/nội dung đã khác → chặn, buộc tải
@@ -584,7 +598,8 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
           const dup = findRecentDuplicateCollection(recent, totalAcrossLines, Date.now());
           if (dup) question = duplicateCollectionQuestion(dup);
         } catch (error) {
-          question = `Không kiểm tra được các khoản thu gần đây của hoá đơn này (${loiDoc(error, 'lỗi mạng')}). Vẫn thu tiếp?`;
+          setSubmitError('Chưa kiểm tra được các khoản thu gần đây. Chưa gửi lệnh thu tiền; dữ liệu đã nhập vẫn được giữ. Bấm ghi nhận để kiểm tra lại.');
+          return;
         }
         if (question) {
           setDuplicateAsk({ question, fingerprint });
@@ -649,6 +664,9 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
       handleClose();
     } catch (error) {
       console.error('Payment error:', error);
+      const started=!!collectionAttemptRef.current?.started;
+      setSubmitError(started ? collectionFailureMessage(error) : 'Chưa gửi lệnh thu tiền. Kiểm tra kết nối và chứng từ đã chọn; dữ liệu đã nhập vẫn được giữ.');
+      if (started && voucherOutcomeUnknown(error)) setReconcileRequired(true);
     } finally {
       setIsUploading(false);
     }
@@ -745,7 +763,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
             }
             disabled={list.length <= 1}
           >
-            <SelectTrigger aria-label={`Sổ nhận ${METHOD_NAME[method]}`}>
+            <SelectTrigger name={`payment_lines.${idx}.account_id`} aria-invalid={!!errors.payment_lines?.[idx]?.account_id} aria-label={`Sổ nhận ${METHOD_NAME[method]}`}>
               <SelectValue placeholder="Chọn sổ quỹ nhận tiền" />
             </SelectTrigger>
             <SelectContent>
@@ -769,6 +787,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
   // âm thầm, người dùng bấm "Ghi nhận thanh toán" mà không thấy gì xảy ra
   // (lúc được lúc không tuỳ account_id đã auto-fill kịp hay chưa).
   const onInvalid = (formErrors: Record<string, any>) => {
+    void focusFirstError(formErrors,{root:formRef.current});
     const lines: string[] = [];
     const pl = formErrors.payment_lines;
     if (Array.isArray(pl)) {
@@ -806,7 +825,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit(onSubmit, onInvalid)} className="space-y-4">
+        <form ref={formRef} onSubmit={handleSubmit(onSubmit, onInvalid)} className="space-y-4">
           {/* Invoice Info */}
           <div className="bg-gray-50 p-4 rounded-md space-y-2 text-sm">
             <div className="flex justify-between">
@@ -843,6 +862,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                   <Label htmlFor="amount">Tiền khách đưa *</Label>
                   <Input
                     id="amount"
+                    name="payment_lines.0.amount" aria-invalid={!!errors.payment_lines?.[0]?.amount}
                     type="text"
                     inputMode="numeric"
                     value={formatVN(watchedLines?.[0]?.amount || 0)}
@@ -862,7 +882,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                 <div className="flex-1 space-y-2">
                   <Label htmlFor="change_amount">Tiền thối</Label>
                   <Input
-                    id="change_amount"
+                    id="change_amount" name="change_amount" aria-invalid={!!errors.change_amount}
                     aria-label="Tiền thối thực tế"
                     disabled={watchedKeepAsCredit}
                     type="text"
@@ -965,6 +985,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
               <div className="space-y-2">
                 <Label htmlFor="payment_date">Ngày thanh toán *</Label>
                 <DateInput
+                  id="payment_date" name="payment_date" aria-invalid={!!errors.payment_date}
                   value={watch('payment_date') || ''}
                   onChange={(v) => setValue('payment_date', v, { shouldValidate: true, shouldDirty: true })}
                 />
@@ -1003,6 +1024,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                       <Input
                         type="text"
                         inputMode="numeric"
+                        name={`payment_lines.${idx}.amount`} aria-invalid={!!errors.payment_lines?.[idx]?.amount}
                         value={formatVN(watchedLines?.[idx]?.amount || 0)}
                         onChange={(e) =>
                           setValue(
@@ -1099,6 +1121,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
               <div className="space-y-2">
                 <Label htmlFor="payment_date">Ngày thanh toán *</Label>
                 <DateInput
+                  id="payment_date" name="payment_date" aria-invalid={!!errors.payment_date}
                   value={watch('payment_date') || ''}
                   onChange={(v) => setValue('payment_date', v, { shouldValidate: true, shouldDirty: true })}
                 />
@@ -1155,7 +1178,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                 value={watchedChangeAccountId ?? ''}
                 onValueChange={(v) => setValue('change_account_id', v, { shouldValidate: true })}
               >
-                <SelectTrigger>
+                <SelectTrigger name="change_account_id" aria-invalid={!!errors.change_account_id}>
                   <SelectValue placeholder="Chọn sổ ghi nhận tiền thối" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1335,6 +1358,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
             />
           </div>
 
+          {submitError && <p role="alert" className="text-sm text-destructive">{submitError}</p>}
           <DialogFooter>
             <Button
               type="button"
@@ -1346,7 +1370,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
             </Button>
             <Button
               type="submit"
-              disabled={isProcessing || totalPaid <= 0 || !!previewError || receivingBlocksSubmit}
+              disabled={isProcessing || reconcileRequired || receivingBlocksSubmit}
             >
               {isProcessing ? (
                 <>

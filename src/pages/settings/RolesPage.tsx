@@ -1,3 +1,7 @@
+import { authorizationOutcomeUnknown } from '@/lib/authorizationFeedback';
+import { QueryRegion } from '@/components/errors/QueryRegion';
+import { focusFirstError } from '@/lib/formErrors';
+import { actionErrorMessage } from '@/lib/actionFeedback';
 // Màn "Mẫu vai trò" — gói quyền dùng lại được.
 //
 // Vai trò KHÔNG chứa phạm vi. Phạm vi được gắn lúc gán vai trò cho người
@@ -29,12 +33,14 @@ import {
   useAuthorizationCatalog,
   useOrganizationRoles,
   useUpsertOrganizationRole,
+  authorizationErrorMessage,
   type OrganizationRole,
 } from '@/hooks/useOrganizationAuthorization';
 import { PermissionPicker } from '@/components/authorization/PermissionPicker';
 
 export default function RolesPage() {
-  const { data: roles = [], isLoading, error } = useOrganizationRoles();
+  const listQuery = useOrganizationRoles();
+  const { data: roles = [], isLoading, error } = listQuery;
   const [sua, setSua] = useState<{ role: OrganizationRole | null; nhanBan?: boolean } | null>(null);
 
   return (
@@ -54,15 +60,7 @@ export default function RolesPage() {
           </Button>
         </div>
 
-        {error && (
-          <Card className="border-destructive/40">
-            <CardContent className="flex gap-3 p-4 text-sm">
-              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
-              <p>{(error as { message?: string })?.message ?? 'Không xem được danh sách vai trò.'}</p>
-            </CardContent>
-          </Card>
-        )}
-
+        <QueryRegion label="danh sách vai trò" queries={[listQuery]}>
         {isLoading ? (
           <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
             {[0, 1, 2].map((i) => (
@@ -124,6 +122,7 @@ export default function RolesPage() {
             ))}
           </div>
         )}
+        </QueryRegion>
       </div>
 
       {sua && (
@@ -149,16 +148,20 @@ function HopThoaiVaiTro({
   open: boolean;
   onOpenChange: (v: boolean) => void;
 }) {
-  const { data: catalog } = useAuthorizationCatalog(open);
+  const catalogQuery = useAuthorizationCatalog(open);
+  const { data: catalog } = catalogQuery;
   const luu = useUpsertOrganizationRole();
 
   const taoMoi = !role || nhanBan;
   const chiDoc = !!role && role.isSystem && !nhanBan;
 
   const [ten, setTen] = useState('');
+  const [nameError,setNameError] = useState('');
+  const [serverError,setServerError] = useState('');
   const [allow, setAllow] = useState<Set<string>>(new Set());
 
   useEffect(() => {
+    setNameError(''); setServerError('');
     setTen(role ? (nhanBan ? `${role.name} (bản sao)` : role.name) : '');
     setAllow(new Set(role?.allowKeys ?? []));
   }, [role, nhanBan]);
@@ -174,6 +177,9 @@ function HopThoaiVaiTro({
     [...allow].some((k) => !role?.allowKeys.includes(k));
 
   const gui = async () => {
+    if (!ten.trim()) { setNameError('Nhập tên vai trò.'); void focusFirstError({ten:'Nhập tên vai trò.'}); return; }
+    setNameError(''); setServerError('');
+    try {
     await luu.mutateAsync({
       roleId: taoMoi ? null : role!.roleId,
       name: ten.trim(),
@@ -182,6 +188,7 @@ function HopThoaiVaiTro({
       reason: taoMoi ? 'tạo vai trò mới' : 'cập nhật quyền của vai trò',
     });
     onOpenChange(false);
+    } catch (error) { setServerError(authorizationErrorMessage(error, 'Chưa xác nhận được kết quả lưu vai trò.')); }
   };
 
   return (
@@ -198,17 +205,18 @@ function HopThoaiVaiTro({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="min-h-0 flex-1 space-y-3 overflow-auto">
+        <QueryRegion label="Danh mục quyền" queries={[catalogQuery]}><div className="min-h-0 flex-1 space-y-3 overflow-auto">
           <div>
             <Label htmlFor="ten">Tên vai trò</Label>
             <Input
-              id="ten"
+              id="ten" name="ten" aria-invalid={!!nameError} aria-describedby={nameError ? "role-name-error" : undefined}
               className="mt-1.5"
               value={ten}
               disabled={chiDoc}
               onChange={(e) => setTen(e.target.value)}
               placeholder="Vd: Kế toán khu B"
             />
+            {nameError && <p id="role-name-error" role="alert" className="text-sm text-destructive">{nameError}</p>}
           </div>
 
           {!taoMoi && role && role.memberCount > 0 && !chiDoc && (
@@ -255,6 +263,7 @@ function HopThoaiVaiTro({
           </div>
         </div>
 
+        {serverError && <p role="alert" className="text-sm text-destructive">{serverError}</p>}
         <DialogFooter className="flex-col gap-2 sm:flex-row sm:items-center">
           <span
             className={cn(
@@ -270,12 +279,12 @@ function HopThoaiVaiTro({
             {chiDoc ? 'Đóng' : 'Huỷ'}
           </Button>
           {!chiDoc && (
-            <Button onClick={gui} disabled={!ten.trim() || !doi || luu.isPending}>
+            <Button onClick={gui} disabled={(!taoMoi && !doi) || luu.isPending || authorizationOutcomeUnknown(luu.error) || catalogQuery.isError}>
               {luu.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {taoMoi ? 'Tạo vai trò' : 'Lưu thay đổi'}
             </Button>
           )}
-        </DialogFooter>
+        </DialogFooter></QueryRegion>
       </DialogContent>
     </Dialog>
   );

@@ -1,3 +1,5 @@
+import {financialReadNumber,financialReadRows} from '@/lib/financialReadValidation';
+import {voucherFailureMessage} from '@/lib/voucherFeedback';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { differenceInMonths } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
@@ -38,7 +40,7 @@ export const useCommissionVoucherFacts = (
         { p_voucher_ids: [batBuoc(voucherId, "voucherId")] }
       );
       if (error) throw error;
-      const row = (data ?? [])[0];
+      const row = financialReadRows(data)[0];
       return row ? parseCommissionVoucherFacts(row.facts) : null;
     },
   });
@@ -194,7 +196,7 @@ export const useCommissionPrefill = (contractId: string | null) => {
         signed_date: contract.signed_date,
         start_date: contract.start_date ?? null,
         end_date: contract.end_date ?? null,
-        rent_price: Number(contract.rent_price ?? 0),
+        rent_price: financialReadNumber(contract.rent_price),
         months,
         matched_tier: matched,
         building_id: contract.room?.building?.id ?? "",
@@ -246,14 +248,14 @@ export function commissionCreationPayload(input: CreateCommissionVoucherInput) {
 
 export const usePrepareCommissionVouchers = () => {
   const { selectedOrganizationId } = useOrganization();
-  return useMutation({ retry: false, mutationFn: (inputs: CreateCommissionVoucherInput[]) =>
+  return useMutation({ meta: {handlesFeedback:true}, retry: false, mutationFn: (inputs: CreateCommissionVoucherInput[]) =>
     prepareCommissionCreations(batBuoc(selectedOrganizationId, 'organizationId'), inputs.map(commissionCreationPayload)) });
 };
 
 export const useRetryCommissionVoucher = () => {
   const { selectedOrganizationId } = useOrganization();
   const queryClient = useQueryClient();
-  return useMutation({ retry: false,
+  return useMutation({ meta: {handlesFeedback:true}, retry: false,
     mutationFn: (request: PreparedCommissionRequest) => executeCommissionCreation(batBuoc(selectedOrganizationId, 'organizationId'), request),
     onSettled: () => {
       for (const key of [CONTRACT_COMMISSION_FOLLOWUP_KEY, 'sale-bonus-status', 'income-expenses', 'accounts-with-balance', 'existing-commission-vouchers', 'commission-voucher-facts', 'manager-salary'])
@@ -262,7 +264,7 @@ export const useRetryCommissionVoucher = () => {
   });
 };
 
-export const useCreateCommissionVoucher = () => {
+export const useCreateCommissionVoucher = (options: {silent?:boolean} = {}) => {
   const queryClient = useQueryClient();
   const { selectedOrganizationId } = useOrganization();
 
@@ -289,7 +291,7 @@ export const useCreateCommissionVoucher = () => {
     },
     onError: (err) => {
       console.error("Error creating commission voucher:", err);
-      toast.error(err?.message || "Không thể tạo phiếu chi hoa hồng");
+      if (!options.silent) toast.error(voucherFailureMessage(err, "tạo phiếu hoa hồng"));
     },
   });
 };
@@ -324,7 +326,11 @@ export const useExistingCommissionVouchers = (contractId: string | null) => {
         .is("deleted_at", null)
         .neq("approval_status", "CANCELLED");
       if (error) throw error;
-      return (data ?? []) as ExistingCommissionVoucher[];
+      return financialReadRows(data).map(row=>{
+        if(row.commission_kind!=='broker'&&row.commission_kind!=='sale')throw new TypeError('Chưa đọc được loại phiếu hoa hồng đã có.');
+        if(typeof row.id!=='string'||!row.id||!['UNAPPROVED','APPROVED'].includes(row.approval_status))throw new TypeError('Chưa đọc được trạng thái phiếu hoa hồng đã có.');
+        return {...row,commission_kind:row.commission_kind,total_amount:financialReadNumber(row.total_amount)};
+      });
     },
   });
 };

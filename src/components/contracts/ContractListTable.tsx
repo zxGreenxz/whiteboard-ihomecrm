@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { friendlyError } from '@/lib/friendlyError';
 import {
   Table,
   TableBody,
@@ -221,11 +222,8 @@ export default function ContractListTable({
         description: [loc.buildingCode, loc.roomName].filter(Boolean).join(' · '),
       });
     } catch (e: any) {
-      toast({
-        title: 'Không copy được ảnh QR',
-        description: e?.message || 'Lỗi không xác định',
-        variant: 'destructive',
-      });
+      const feedback = friendlyError(e, 'Không copy được ảnh QR', { operation: 'copy ảnh QR hợp đồng' });
+      toast({ title: feedback.title, description: feedback.description, variant: 'destructive' });
     } finally {
       setCopyingId(null);
     }

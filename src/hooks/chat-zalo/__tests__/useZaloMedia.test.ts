@@ -29,7 +29,7 @@ describe("useSendZaloMedia", () => {
       const path = key.replace(/\.[^./]+$/, "") + ".jpg";
       return { url: `stored:${bucket}/${path}`, path, type: "image/jpeg", size: 240_000 };
     });
-    mock.rpc.mockResolvedValue({ data: [], error: null });
+    mock.rpc.mockResolvedValue({ data: [{ id: "queued-message-1" }], error: null });
     const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
     const wrapper = ({ children }: { children: ReactNode }) =>
       createElement(QueryClientProvider, { client }, children);

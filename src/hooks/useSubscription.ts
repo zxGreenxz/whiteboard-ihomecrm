@@ -1,3 +1,6 @@
+import {readSubscriptionPlans,readUserSubscription} from '@/lib/accountJobReadModels';
+import { requireAccountWriteReceipt } from "@/lib/accountSettingsWriteReceipt";
+import { notifyActionError } from '@/lib/actionFeedback';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
@@ -26,7 +29,7 @@ export const useSubscriptionPlans = () => {
         throw error;
       }
 
-      return data || [];
+      return readSubscriptionPlans(data);
     },
   });
 };
@@ -58,7 +61,7 @@ export const useUserSubscription = () => {
         throw error;
       }
 
-      return data;
+      return readUserSubscription(data,user.id);
     },
   });
 };
@@ -75,22 +78,21 @@ export const useCreateUserSubscription = () => {
       const { data, error } = await supabase
         .from("user_subscriptions")
         .insert({ ...subscription, user_id: user.id })
-        .select()
+        .select("*, plan:subscription_plans(name)")
         .single();
 
       if (error) {
-        toast.error("Không thể đăng ký gói cước");
         throw error;
       }
 
-      return data;
+      return requireAccountWriteReceipt(data, { ...subscription, user_id: user.id });
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["user_subscriptions"] });
-      toast.success("Gói cước đã được đăng ký thành công");
+      toast.success(`Đã đăng ký gói “${data.plan?.name || data.plan_id}”.`);
     },
     onError: (error) => {
-      console.error("Error creating user subscription:", error);
+      notifyActionError(error, "Chưa xác nhận được kết quả đăng ký gói cước");
     },
   });
 };
@@ -104,22 +106,21 @@ export const useUpdateUserSubscription = () => {
         .from("user_subscriptions")
         .update(updates)
         .eq("id", id)
-        .select()
+        .select("*, plan:subscription_plans(name)")
         .single();
 
       if (error) {
-        toast.error("Không thể cập nhật gói cước");
         throw error;
       }
 
-      return data;
+      return requireAccountWriteReceipt(data, { ...updates, id });
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["user_subscriptions"] });
-      toast.success("Gói cước đã được cập nhật thành công");
+      toast.success(`Đã cập nhật gói “${data.plan?.name || data.plan_id}”.`);
     },
     onError: (error) => {
-      console.error("Error updating user subscription:", error);
+      notifyActionError(error, "Chưa xác nhận được kết quả cập nhật gói cước");
     },
   });
 };
@@ -133,22 +134,21 @@ export const useCancelUserSubscription = () => {
         .from("user_subscriptions")
         .update({ status: "cancelled" })
         .eq("id", id)
-        .select()
+        .select("*, plan:subscription_plans(name)")
         .single();
 
       if (error) {
-        toast.error("Không thể hủy gói cước");
         throw error;
       }
 
-      return data;
+      return requireAccountWriteReceipt(data, { id, status: 'cancelled' });
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["user_subscriptions"] });
-      toast.success("Gói cước đã được hủy thành công");
+      toast.success(`Đã hủy gói “${data.plan?.name || data.plan_id}”.`);
     },
     onError: (error) => {
-      console.error("Error cancelling user subscription:", error);
+      notifyActionError(error, "Chưa xác nhận được kết quả hủy gói cước");
     },
   });
 };

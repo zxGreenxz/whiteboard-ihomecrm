@@ -1,3 +1,4 @@
+import { financialReadRows, financialReadNumber } from '@/lib/financialReadValidation';
 import { useQuery } from '@tanstack/react-query';
 import { rpcNullable } from "@/lib/rpcNullable";
 import { supabase } from '@/integrations/supabase/client';
@@ -48,6 +49,7 @@ export const useVoucherSlotWarning = (a: Args) => {
   return useQuery({
     queryKey: ['voucher-slot-warning', a.buildingId, typeIds, a.start, a.end, a.type, a.excludeId],
     enabled: ready,
+    meta: { errorDisplay: 'inline', label: 'các phiếu cùng hạng mục trong kỳ' },
     // Cảnh báo là tiện ích tức thời, không phải nguồn sự thật — giữ ngắn để lần
     // mở form sau thấy phiếu vừa được đồng nghiệp tạo.
     staleTime: 15_000,
@@ -60,13 +62,13 @@ export const useVoucherSlotWarning = (a: Args) => {
         p_type: a.type,
         p_exclude_id: a.excludeId ?? undefined,
       });
-      if (error) throw new Error(error.message);
-      return ((data ?? []) as any[]).map((r) => ({
+      if (error) throw error;
+      return financialReadRows(data).map((r) => ({
         voucherId: r.voucher_id,
         code: r.code,
         voucherName: r.voucher_name ?? null,
-        totalAmount: Number(r.total_amount ?? 0),
-        matchedAmount: Number(r.matched_amount ?? 0),
+        totalAmount: financialReadNumber(r.total_amount),
+        matchedAmount: financialReadNumber(r.matched_amount),
         voucherDate: r.voucher_date ?? null,
         approvalStatus: r.approval_status,
         createdAt: r.created_at,

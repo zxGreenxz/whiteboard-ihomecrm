@@ -1,3 +1,4 @@
+import { networkFeedback } from "@/lib/network-center/feedback";
 import { Check, X } from "lucide-react";
 import { useState } from "react";
 
@@ -16,7 +17,7 @@ export function IncidentsTab({ site, controller }: { site: NetworkBuilding; cont
     try {
       await operation();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Không thể cập nhật sự cố");
+      setError(networkFeedback(caught, `${key === "maintenance" ? "hủy lịch bảo trì" : "xác nhận sự cố"} tại ${site.buildingName}`).description);
     } finally {
       setPendingKey(null);
     }

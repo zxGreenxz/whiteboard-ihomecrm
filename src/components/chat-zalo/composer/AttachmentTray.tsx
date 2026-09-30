@@ -16,6 +16,7 @@ interface Props {
   onSend: () => void;
   onCancel: () => void;
   uploading: boolean;
+  blocked?: boolean;
 }
 
 function fmtSize(b: number): string {
@@ -24,7 +25,7 @@ function fmtSize(b: number): string {
 }
 
 /** Khay xem trước tệp đã chọn (ảnh thumbnail / icon tệp) + caption + nút gửi. */
-export default function AttachmentTray({ items, caption, onCaption, onRemove, onSend, onCancel, uploading }: Props) {
+export default function AttachmentTray({ items, caption, onCaption, onRemove, onSend, onCancel, uploading, blocked }: Props) {
   const allImages = useMemo(() => items.every((i) => i.file.type.startsWith('image/')), [items]);
 
   // revoke objectURL khi unmount (tránh leak)
@@ -37,7 +38,7 @@ export default function AttachmentTray({ items, caption, onCaption, onRemove, on
         <span style={{ fontSize: 12.5, fontWeight: 700, color: 'hsl(160 30% 18%)' }}>
           {allImages ? `Gửi ${items.length} ảnh` : `Gửi ${items.length} tệp`}
         </span>
-        <button onClick={onCancel} disabled={uploading} title="Huỷ" style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'hsl(210 10% 50%)', display: 'flex', padding: 2 }}>
+        <button onClick={onCancel} disabled={uploading || blocked} title="Huỷ" style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'hsl(210 10% 50%)', display: 'flex', padding: 2 }}>
           <X size={16} />
         </button>
       </div>
@@ -53,7 +54,7 @@ export default function AttachmentTray({ items, caption, onCaption, onRemove, on
                 <span style={{ fontSize: 10, color: 'hsl(210 10% 50%)' }}>{fmtSize(it.file.size)}</span>
               </div>
             )}
-            {!uploading && (
+            {!uploading && !blocked && (
               <button onClick={() => onRemove(i)} title="Bỏ tệp này" style={{ position: 'absolute', top: -6, right: -6, width: 20, height: 20, borderRadius: '50%', border: '1px solid hsl(210 20% 85%)', background: '#fff', color: 'hsl(0 60% 45%)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 1px 3px rgba(16,24,40,.15)' }}>
                 <X size={12} />
               </button>
@@ -65,18 +66,18 @@ export default function AttachmentTray({ items, caption, onCaption, onRemove, on
         <input
           value={caption}
           onChange={(e) => onCaption(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter' && !uploading) { e.preventDefault(); onSend(); } }}
+          onKeyDown={(e) => { if (e.key === 'Enter' && !uploading && !blocked) { e.preventDefault(); onSend(); } }}
           placeholder="Thêm chú thích…"
-          disabled={uploading}
+          disabled={uploading || blocked}
           style={{ flex: 1, border: '1px solid hsl(210 20% 88%)', borderRadius: 9, padding: '7px 11px', fontSize: 13, fontFamily: 'inherit', outline: 'none' }}
         />
         <button
           onClick={onSend}
-          disabled={uploading}
+          disabled={uploading || blocked}
           style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0 16px', borderRadius: 9, border: 'none', background: EMERALD, color: '#fff', fontWeight: 600, fontSize: 13, cursor: uploading ? 'default' : 'pointer', opacity: uploading ? 0.75 : 1 }}
         >
           {uploading ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-          {uploading ? 'Đang gửi…' : 'Gửi'}
+          {blocked ? 'Cần kiểm tra kết quả' : uploading ? 'Đang gửi…' : 'Gửi'}
         </button>
       </div>
     </div>

@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Gauge, CheckCircle, Clock, Zap, Droplet } from "lucide-react";
 import { useMeterReadingStats } from "@/hooks/useMeterReadings";
+import { Button } from '@/components/ui/button';
 
 interface MeterReadingStatsProps {
   buildingId?: string;
@@ -9,7 +10,12 @@ interface MeterReadingStatsProps {
 }
 
 export function MeterReadingStats({ buildingId, month }: MeterReadingStatsProps) {
-  const { data: stats, isLoading } = useMeterReadingStats(buildingId, month);
+  const query = useMeterReadingStats(buildingId, month);
+  const stats = query.data;
+  const isLoading = query.isLoading || !stats;
+  if (query.isError) return <div role="alert" className="rounded-md border border-destructive p-4 text-sm text-destructive">
+    Không tải được thống kê chỉ số. <Button type="button" variant="link" onClick={() => void query.refetch()}>Tải lại thống kê</Button>
+  </div>;
 
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">

@@ -278,14 +278,12 @@ export function useSettlementActions(rows: SettlementRow[]) {
   }) => {
     const noiDung = a.noiDung.trim();
     if (!noiDung) {
-      toast.error('Cần nhập lý do.');
-      return;
+      throw new Error('Nhập lý do bổ sung thông tin cho phiếu.');
     }
     const full = `${a.dau} ${noiDung}`;
     // Giới hạn 5.000 ký tự của RPC tính CẢ tiền tố.
     if (full.length > 5000) {
-      toast.error('Nội dung quá dài (tối đa 5.000 ký tự, đã gồm nhãn).');
-      return;
+      throw new Error(`Lý do được nhập tối đa ${5000 - a.dau.length - 1} ký tự. Hãy rút ngắn nội dung.`);
     }
     await supplement.mutateAsync({
       voucherId: a.voucherId,

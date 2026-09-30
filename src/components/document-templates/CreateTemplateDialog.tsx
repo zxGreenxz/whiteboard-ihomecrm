@@ -1,3 +1,5 @@
+import { focusFirstError } from '@/lib/formErrors';
+import { actionErrorMessage } from '@/lib/actionFeedback';
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -33,6 +35,7 @@ import {
   TemplateCategory,
   CATEGORY_LABELS,
   CATEGORY_TO_TYPE,
+  TemplateSaveUnknownError,
 } from "@/hooks/useDocumentTemplates";
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
@@ -50,14 +53,14 @@ const formSchema = z.object({
   ] as const),
   description: z.string().optional(),
   file: z
-    .instanceof(FileList)
+    .instanceof(FileList, { message: "Chọn tệp .docx không quá 5MB." })
     .refine((files) => files.length > 0, "Vui lòng chọn file")
     .refine(
       (files) => files[0]?.size <= MAX_FILE_SIZE,
       "File không được vượt quá 5MB"
     )
     .refine(
-      (files) => files[0]?.name.endsWith(".docx"),
+      (files) => files[0]?.name.toLowerCase().endsWith(".docx"),
       "Chỉ chấp nhận file .docx"
     ),
   is_default: z.boolean().default(false),
@@ -71,6 +74,7 @@ interface Props {
 }
 
 export function CreateTemplateDialog({ open, onOpenChange }: Props) {
+  const [saveBlocked, setSaveBlocked] = useState(false);
   const [selectedFileName, setSelectedFileName] = useState<string>("");
   const createMutation = useCreateDocumentTemplate();
 
@@ -99,7 +103,8 @@ export function CreateTemplateDialog({ open, onOpenChange }: Props) {
       setSelectedFileName("");
       onOpenChange(false);
     } catch (error) {
-      // Error is handled by the mutation
+      if (error instanceof TemplateSaveUnknownError) setSaveBlocked(true);
+      form.setError('root.server', { message: error instanceof TemplateSaveUnknownError ? error.message : actionErrorMessage(error, 'Chưa lưu được mẫu tài liệu') });
     }
   };
 
@@ -113,7 +118,7 @@ export function CreateTemplateDialog({ open, onOpenChange }: Props) {
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={form.handleSubmit(onSubmit, errors => { void focusFirstError(errors, { order: ["name", "category", "file"] }); })} className="space-y-4">
             {/* Name */}
             <FormField
               control={form.control}
@@ -192,15 +197,15 @@ export function CreateTemplateDialog({ open, onOpenChange }: Props) {
                   </FormLabel>
                   <FormControl>
                     <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-green-400 transition-colors cursor-pointer">
-                      <label htmlFor="file-upload" className="cursor-pointer block">
+                      <button type="button" data-field-name="file" aria-invalid={!!form.formState.errors.file} className="cursor-pointer block w-full rounded aria-[invalid=true]:border aria-[invalid=true]:border-destructive" onClick={() => document.getElementById("file-upload")?.click()}>
                         <Upload className="h-10 w-10 mx-auto text-gray-400 mb-2" />
                         <p className="text-sm text-gray-600">
                           {selectedFileName || "Click để tải file"}
                         </p>
                         <p className="text-xs text-gray-400 mt-1">
-                          Chỉ chấp nhận file .docx
+                          Chọn tệp .docx không quá 5MB
                         </p>
-                      </label>
+                      </button>
                       <input
                         id="file-upload"
                         type="file"
@@ -240,14 +245,14 @@ export function CreateTemplateDialog({ open, onOpenChange }: Props) {
               )}
             />
 
+            {form.formState.errors.root?.server?.message && <p role="alert" className="text-sm text-destructive">{form.formState.errors.root.server.message}</p>}
             {/* Actions */}
             <div className="flex justify-end gap-2 pt-4">
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => {
-                  form.reset();
-                  setSelectedFileName("");
+                  if (!saveBlocked) { form.reset(); setSelectedFileName(""); }
                   onOpenChange(false);
                 }}
               >
@@ -256,7 +261,7 @@ export function CreateTemplateDialog({ open, onOpenChange }: Props) {
               <Button
                 type="submit"
                 className="bg-green-600 hover:bg-green-700"
-                disabled={createMutation.isPending}
+                disabled={createMutation.isPending || saveBlocked}
               >
                 {createMutation.isPending ? "Đang lưu..." : "Lưu"}
               </Button>

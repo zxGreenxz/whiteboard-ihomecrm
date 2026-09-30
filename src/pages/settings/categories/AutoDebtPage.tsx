@@ -30,10 +30,10 @@ const fields: FieldDef[] = [
 ];
 
 export default function AutoDebtPage() {
-  const { data, isLoading } = useAutoDebtConfigs();
-  const createMutation = useCreateAutoDebtConfig();
-  const updateMutation = useUpdateAutoDebtConfig();
-  const deleteMutation = useDeleteAutoDebtConfig();
+  const { data, isLoading, error, refetch } = useAutoDebtConfigs();
+  const createMutation = useCreateAutoDebtConfig({inlineError:true});
+  const updateMutation = useUpdateAutoDebtConfig({inlineError:true});
+  const deleteMutation = useDeleteAutoDebtConfig({inlineError:true});
 
   return (
     <CategoryCrudPage<AutoDebtConfig>
@@ -42,11 +42,13 @@ export default function AutoDebtPage() {
       icon={RefreshCw}
       data={data}
       isLoading={isLoading}
+      error={error}
+      onRetry={refetch}
       columns={columns}
       fields={fields}
-      onCreate={(values) => createMutation.mutate(values as any)}
-      onUpdate={(id, values) => updateMutation.mutate({ id, updates: values as any })}
-      onDelete={(id) => deleteMutation.mutate(id)}
+      onCreate={(values) => createMutation.mutateAsync(values as any)}
+      onUpdate={(id, values) => updateMutation.mutateAsync({ id, updates: values as any })}
+      onDelete={(id) => deleteMutation.mutateAsync(id)}
       isCreating={createMutation.isPending}
       isUpdating={updateMutation.isPending}
       isDeleting={deleteMutation.isPending}

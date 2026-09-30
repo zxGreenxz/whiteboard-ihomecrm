@@ -33,6 +33,7 @@ import { EditServiceDialog } from "@/components/services/EditServiceDialog";
 import { DeleteServiceDialog } from "@/components/services/DeleteServiceDialog";
 import { useQueryClient } from "@tanstack/react-query";
 import { usePersistedState } from "@/hooks/usePersistedState";
+import { QueryRegion } from '@/components/errors/QueryRegion';
 
 export default function ServicesPage() {
   const queryClient = useQueryClient();
@@ -47,11 +48,13 @@ export default function ServicesPage() {
   const [currentPage, setCurrentPage] = useState(1);
 
   useCopilotPageContext('services.list', { building_id: buildingFilter, fee_type: feeTypeFilter });
-  const { data: services, isLoading } = useServices({
+  const servicesQuery = useServices({
     building_id: buildingFilter || undefined,
     fee_type: feeTypeFilter || undefined,
   });
-  const { data: buildings } = useBuildings();
+  const { data: services, isLoading } = servicesQuery;
+  const buildingsQuery = useBuildings();
+  const { data: buildings } = buildingsQuery;
 
   const totalCount = services?.length || 0;
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
@@ -98,6 +101,7 @@ export default function ServicesPage() {
 
   return (
     <MainLayout>
+      <QueryRegion label="danh sách dịch vụ và tòa áp dụng" queries={[servicesQuery, buildingsQuery]}>
       <div className="space-y-4">
         {/* Toolbar */}
         <div className="flex items-center gap-2">
@@ -276,6 +280,7 @@ export default function ServicesPage() {
           </>
         )}
       </div>
+      </QueryRegion>
     </MainLayout>
   );
 }

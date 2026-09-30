@@ -1,3 +1,7 @@
+import { QueryRegion } from "@/components/errors/QueryRegion";
+import { focusFirstError } from "@/lib/formErrors";
+import { profitActionErrorMessage } from "@/lib/profitFeedback";
+import { FinancialWorkflowError } from "@/lib/financialWorkflow";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -94,16 +98,20 @@ function SignedAdjustmentInput({
   value,
   onChange,
   label,
+  name,
+  error,
 }: {
   value: number;
   onChange: (value: number) => void;
   label: string;
+  name: string;
+  error?: string;
 }) {
   const [text, setText] = useState(String(value));
   const [focused, setFocused] = useState(false);
 
   useEffect(() => {
-    if (!focused) setText(String(value));
+    if (!focused && Number.isFinite(value)) setText(String(value));
   }, [focused, value]);
 
   return (
@@ -114,19 +122,17 @@ function SignedAdjustmentInput({
       onFocus={() => setFocused(true)}
       onChange={(event) => {
         const next = event.target.value;
-        if (!/^-?\d*(?:[.,]\d{0,2})?$/.test(next)) return;
         setText(next);
-        if (next === "" || next === "-") return;
-        const parsed = Number(next.replace(",", "."));
-        if (Number.isFinite(parsed)) onChange(parsed);
+        const parsed = next === "" ? 0 : /^-?\d+(?:[.,]\d{0,2})?$/.test(next) ? Number(next.replace(",", ".")) : NaN;
+        onChange(parsed);
       }}
       onBlur={() => {
         setFocused(false);
-        const parsed = Number(text.replace(",", "."));
-        const normalized = Number.isFinite(parsed) ? parsed : 0;
-        setText(String(normalized));
-        onChange(normalized);
+
       }}
+      name={name}
+      aria-invalid={!!error}
+      aria-describedby={error ? `${name}-error` : undefined}
       className="text-right font-mono"
       aria-label={label}
     />
@@ -161,6 +167,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
     touched: boolean;
   }>({ scopeKey: "", ids: [], touched: false });
   const [overallReason, setOverallReason] = useState("");
+  const [selectionError, setSelectionError] = useState("");
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
   const [overallReasonError, setOverallReasonError] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -173,6 +180,9 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
     /** null = cả kỳ, kể cả dòng legacy trên toà ảo/đã xoá. */
     targetBuildingIds: string[] | null;
   } | null>(null);
+  const [reasonErrors,setReasonErrors] = useState<Record<string,string>>({});
+  const [actionError,setActionError] = useState('');
+  const [previewSourceError,setPreviewSourceError]=useState('');
   const [resetReason, setResetReason] = useState("");
   const resetReasonLength = resetReason.trim().length;
   const resetReasonValid = resetReasonLength >= 8 && resetReasonLength <= 1000;
@@ -407,6 +417,10 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
   const closeMutation = useCloseProfitPeriod();
   const resetMutation = useResetProfitPeriod();
   const unlockMutation = useUnlockProfitMonth();
+  const querySources = [stateQuery,peersQuery,...(canLock ? [previewQuery] : [])];
+  const sourceUnavailable = querySources.some(query=>query.isError);
+  const actionBlocked = [closeMutation,resetMutation,unlockMutation].some(mutation=>mutation.error instanceof FinancialWorkflowError && mutation.variables?.organizationId === organizationId && mutation.variables?.periodMonth === period);
+  useEffect(()=>{setActionError('');setReasonErrors({});},[scopeKey]);
   // Lỗi của lượt chốt gần nhất (đúng tổ chức + tháng đang xem), in NGUYÊN VĂN câu
   // máy chủ. Toast chỉ sống vài giây, mà câu 55000 "Còn N phiếu chờ duyệt trong
   // tháng … của toà …: PC…, PC… — duyệt hoặc huỷ trước khi chốt." liệt kê đúng
@@ -415,7 +429,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
     closeMutation.isError &&
     closeMutation.variables?.organizationId === organizationId &&
     closeMutation.variables?.periodMonth === period
-      ? String(closeMutation.error?.message || "Không thể chốt lợi nhuận")
+      ? profitActionErrorMessage(closeMutation.error,"chốt lợi nhuận")
       : null;
 
   useEffect(() => {
@@ -466,6 +480,8 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
     setSelection({ scopeKey: "", ids: [], touched: false });
     setOverallReason("");
     setRowErrors({});
+    setSelectionError("");
+    setPreviewSourceError('');
     setOverallReasonError(null);
     setConfirmOpen(false);
     setResetOpen(false);
@@ -580,20 +596,37 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
       dirty: {},
     });
     setRowErrors({});
+    setSelectionError("");
+    setPreviewSourceError('');
     setOverallReasonError(null);
   };
 
+  const focusCloseRows = (errors: Record<string, string>, overallError?: string | null) => {
+    const fields = Object.fromEntries(Object.entries(errors).map(([id, message]) => [
+      `${id}:${message.startsWith('Số điều chỉnh') ? 'adjustmentAmount' : message.includes('chưa phân bổ') ? message.includes('chọn') ? 'unallocatedDisposition' : 'unallocatedReason' : 'adjustmentReason'}`, message,
+    ]));
+    void focusFirstError({ ...fields, ...(overallError ? { overallReason: overallError } : {}) });
+  };
+  const reportResidualRows = () => {
+    const errors = Object.fromEntries(invalidResidualRows.map(row => [row.building_id, !normalizeUnallocatedDisposition(activeDrafts[row.building_id]?.unallocatedDisposition ?? row.unallocated_disposition) ? 'Phần chưa phân bổ phải chọn Giữ lại hoặc Chuyển kỳ sau' : 'Lý do xử lý phần chưa phân bổ phải có 8–500 ký tự']));
+    setRowErrors(errors);
+    focusCloseRows(errors);
+  };
   const openCloseConfirmation = () => {
+    if(sourceUnavailable || actionBlocked) return;
     if (closeAction === "EMPTY") {
-      toast.error("Chọn ít nhất một nhà để chốt");
+      const message = 'Chọn ít nhất một nhà để chốt';
+      setSelectionError(message);
+      void focusFirstError({ profitBuildings: message });
       return;
     }
     if (closeAction === "MIXED") {
-      toast.error(
-        "Vùng chọn đang lẫn nhà đã chốt và nhà chưa chốt — tách làm hai lượt",
-      );
+      const message = 'Vùng chọn đang lẫn nhà đã chốt và nhà chưa chốt — tách làm hai lượt';
+      setSelectionError(message);
+      void focusFirstError({ profitBuildings: message });
       return;
     }
+    setSelectionError('');
     const validation = validateProfitCloseDrafts(targetBuildingIds, activeDrafts, {
       reclose: recloseMode,
       overallReason,
@@ -602,11 +635,11 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
     setRowErrors(validation.rowErrors);
     setOverallReasonError(validation.overallReasonError);
     if (!validation.valid) {
-      toast.error("Kiểm tra lại lý do điều chỉnh trước khi chốt");
+      focusCloseRows(validation.rowErrors, validation.overallReasonError);
       return;
     }
     if (hasInvalidResidualDisposition) {
-      toast.error("Mọi phần lợi nhuận chưa phân bổ phải có cách xử lý và lý do");
+      reportResidualRows();
       return;
     }
     if (previewInputPending || previewQuery.isFetching) {
@@ -614,16 +647,19 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
       return;
     }
     if (!preview?.source_hash) {
-      toast.error("Preview chưa có mã nguồn dữ liệu; hãy tải lại trước khi chốt");
+      const message='Chưa xác nhận được dữ liệu nguồn. Tải lại số liệu trước khi chốt.';
+      setPreviewSourceError(message);void focusFirstError({profitPreviewSource:message});
       return;
     }
     setConfirmOpen(true);
   };
 
   const confirmClose = async () => {
-    if (!preview) return;
+    if (!preview || sourceUnavailable || actionBlocked) return;
+    setActionError('');
     if (hasInvalidResidualDisposition) {
-      toast.error("Preview còn phần chưa phân bổ chưa có cách xử lý hợp lệ");
+      setConfirmOpen(false);
+      reportResidualRows();
       return;
     }
     try {
@@ -643,13 +679,15 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
       setConfirmOpen(false);
       setOverallReason("");
       setForm((previous) => ({ ...previous, dirty: {} }));
-    } catch {
-      // Mutation hook surfaces the canonical server error.
+    } catch(error) {
+      setActionError(profitActionErrorMessage(error,'thay đổi trạng thái chốt lợi nhuận'));
     }
   };
 
   const confirmReset = async () => {
-    if (!resetGuard || !resetReasonValid) return;
+    if (!resetGuard || sourceUnavailable || actionBlocked) return;
+    if(!resetReasonValid){setReasonErrors({resetReason:'Nhập lý do đặt lại từ 8 đến 1000 ký tự.'});await focusFirstError({resetReason:'invalid'});return;}
+    setReasonErrors({}); setActionError('');
     try {
       await resetMutation.mutateAsync({
         organizationId: resetGuard.organizationId,
@@ -664,8 +702,8 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
       setResetReason("");
       setOverallReason("");
       setForm((previous) => ({ ...previous, dirty: {} }));
-    } catch {
-      // Mutation hook surfaces the canonical server error.
+    } catch(error) {
+      setActionError(profitActionErrorMessage(error,'thay đổi trạng thái chốt lợi nhuận'));
     }
   };
 
@@ -681,7 +719,9 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
   };
 
   const confirmUnlock = async () => {
-    if (!unlockGuard || !unlockReasonValid) return;
+    if (!unlockGuard || sourceUnavailable || actionBlocked) return;
+    if(!unlockReasonValid){setReasonErrors({unlockReason:'Nhập lý do mở khóa từ 8 đến 1000 ký tự.'});await focusFirstError({unlockReason:'invalid'});return;}
+    setReasonErrors({}); setActionError('');
     try {
       await unlockMutation.mutateAsync({
         organizationId: unlockGuard.organizationId,
@@ -692,9 +732,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
       setUnlockOpen(false);
       setUnlockGuard(null);
       setUnlockReason("");
-    } catch {
-      // Hook đã báo lỗi; hộp giữ nguyên cùng lý do vừa gõ để thử lại.
-    }
+    } catch(error) { setActionError(profitActionErrorMessage(error,'mở khóa lợi nhuận')); }
   };
 
   const staleCount = rows.filter(
@@ -763,6 +801,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
     );
 
   return (
+    <QueryRegion label="số liệu chốt lợi nhuận" queries={organizationId ? querySources : []}>
     <>
       <ProfitHubSlot name="kpis">
         <div className="ph-kpi ph-kpi--flex">
@@ -883,13 +922,10 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
               className="ph-btn-primary"
               onClick={openCloseConfirmation}
               disabled={
-                selectedIds.length === 0 ||
-                closeAction === "MIXED" ||
-                dataLoading ||
+                sourceUnavailable || actionBlocked || dataLoading ||
                 previewQuery.isFetching ||
                 stateQuery.isFetching ||
                 previewInputPending ||
-                hasInvalidResidualDisposition ||
                 closeMutation.isPending
               }
               title={
@@ -923,7 +959,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
               disabled={
                 unlockMutation.isPending ||
                 resetMutation.isPending ||
-                closeMutation.isPending ||
+                closeMutation.isPending || actionBlocked || sourceUnavailable ||
                 selectedLockedIds.length === 0
               }
               title={
@@ -994,30 +1030,9 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
         </Alert>
       )}
 
-      {stateQuery.isError && (
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Không tải được trạng thái snapshot</AlertTitle>
-          <AlertDescription>
-            {stateQuery.error instanceof Error
-              ? stateQuery.error.message
-              : "RPC trạng thái snapshot chưa sẵn sàng."}
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {canLock && previewQuery.isError && (
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Không tải được preview chốt lợi nhuận</AlertTitle>
-          <AlertDescription>
-            {previewQuery.error instanceof Error
-              ? previewQuery.error.message
-              : "RPC canonical chưa sẵn sàng."}
-          </AlertDescription>
-        </Alert>
-      )}
-
+      {previewSourceError&&<div role="alert" className="rounded-md border border-destructive p-3 text-sm text-destructive"><p>{previewSourceError}</p><Button type="button" variant="outline" data-field-name="profitPreviewSource" onClick={()=>void previewQuery.refetch()}>Tải lại số liệu</Button></div>}
+      {selectionError && <p role="alert" id="profitBuildings-error" className="text-sm text-destructive">{selectionError}</p>}
+      {organizationId && <QueryRegion label="trạng thái chốt sổ quỹ" queries={[closingStatusQuery]}><></></QueryRegion>}
       {closeErrorMessage && (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
@@ -1199,6 +1214,9 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
                       onCheckedChange={(value) => toggleAll(value === true)}
                       disabled={rows.length === 0}
                       aria-label="Chọn tất cả nhà"
+                      data-field-name="profitBuildings"
+                      aria-invalid={!!selectionError}
+                      aria-describedby={selectionError ? 'profitBuildings-error' : undefined}
                     />
                     <p className="mt-1 text-[10px] font-normal leading-tight text-muted-foreground">
                       {selectedIds.length}/{rows.length}
@@ -1252,6 +1270,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
                   };
                   const rowError = rowErrors[row.building_id];
                   const dispositionError = rowError?.includes("chưa phân bổ");
+                  const amountError = rowError?.startsWith('Số điều chỉnh') ? rowError : undefined;
                   const hasResidual = hasUnallocatedProfitResidual(
                     row.unallocated_profit,
                   );
@@ -1333,8 +1352,11 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
                                 })
                               }
                               label={`Điều chỉnh lợi nhuận ${row.building_name}`}
+                              name={`${row.building_id}:adjustmentAmount`}
+                              error={amountError}
                             />
                             <Input
+                              name={`${row.building_id}:adjustmentReason`}
                               value={draft.adjustmentReason}
                               onChange={(event) =>
                                 updateDraft(row.building_id, {
@@ -1343,11 +1365,12 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
                               }
                               placeholder={draft.adjustmentAmount === 0 ? "Không bắt buộc" : "Lý do (ít nhất 8 ký tự)"}
                               maxLength={500}
-                              aria-invalid={!!rowError && !dispositionError}
+                              aria-invalid={!!rowError && !dispositionError && !amountError}
+                              aria-describedby={rowError && !dispositionError && !amountError ? `${row.building_id}:adjustmentReason-error` : undefined}
                               aria-label={`Lý do điều chỉnh ${row.building_name}`}
                             />
                             {rowError && !dispositionError && (
-                              <p className="text-xs text-destructive">{rowError}</p>
+                              <p role="alert" id={`${row.building_id}:${amountError ? 'adjustmentAmount' : 'adjustmentReason'}-error`} className="text-xs text-destructive">{rowError}</p>
                             )}
                           </div>
                         ) : (
@@ -1402,7 +1425,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
                                   })
                                 }
                               >
-                                <SelectTrigger aria-label={`Cách xử lý phần chưa phân bổ ${row.building_name}`}>
+                                <SelectTrigger data-field-name={`${row.building_id}:unallocatedDisposition`} aria-invalid={dispositionInvalid && !normalizedDraftDisposition} aria-describedby={dispositionInvalid?`${row.building_id}:unallocatedError`:undefined} aria-label={`Cách xử lý phần chưa phân bổ ${row.building_name}`}>
                                   <SelectValue placeholder="Chọn cách xử lý" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -1411,6 +1434,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
                                 </SelectContent>
                               </Select>
                               <Input
+                                name={`${row.building_id}:unallocatedReason`}
                                 value={draft.unallocatedDispositionReason}
                                 onChange={(event) =>
                                   updateDraft(row.building_id, {
@@ -1420,10 +1444,11 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
                                 placeholder="Lý do xử lý (ít nhất 8 ký tự)"
                                 maxLength={500}
                                 aria-invalid={dispositionInvalid}
+                                aria-describedby={dispositionInvalid?`${row.building_id}:unallocatedError`:undefined}
                                 aria-label={`Lý do xử lý phần chưa phân bổ ${row.building_name}`}
                               />
                               {dispositionInvalid && (
-                                <p className="text-xs text-destructive">
+                                <p role="alert" id={`${row.building_id}:unallocatedError`} className="text-xs text-destructive">
                                   {dispositionError
                                     ? rowError
                                     : !normalizedDraftDisposition
@@ -1545,6 +1570,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
           <div>
             <Textarea
               className="ph-note-box"
+              name="overallReason"
               value={overallReason}
               onChange={(event) => {
                 setOverallReason(event.target.value);
@@ -1614,12 +1640,14 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {(closingStatusQuery.isError || closingStatusQuery.isLoading) && <p className="text-sm text-amber-700">Chưa xác nhận được trạng thái chốt sổ quỹ. Kiểm tra sổ quỹ trước khi xác nhận thao tác lợi nhuận.</p>}
+          {actionError && <p role="alert" className="text-sm text-destructive">{actionError}</p>}
           <AlertDialogFooter>
             <AlertDialogCancel disabled={closeMutation.isPending}>Huỷ</AlertDialogCancel>
             <AlertDialogAction
-              onClick={confirmClose}
+              onClick={(event)=>{event.preventDefault();void confirmClose();}}
               disabled={
-                closeMutation.isPending ||
+                closeMutation.isPending || actionBlocked || sourceUnavailable ||
                 previewInputPending ||
                 previewQuery.isFetching ||
                 hasInvalidResidualDisposition
@@ -1654,6 +1682,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
           </AlertDialogHeader>
           <div className="space-y-1">
             <Textarea
+              name="resetReason" aria-invalid={!!reasonErrors.resetReason} aria-describedby="reset-reason-error"
               value={resetReason}
               onChange={(event) => setResetReason(event.target.value)}
               rows={3}
@@ -1661,15 +1690,18 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
               placeholder="Bắt buộc: lý do đặt lại"
               aria-label="Lý do đặt lại"
             />
+            {reasonErrors.resetReason && <p id="reset-reason-error" className="text-sm text-destructive">{reasonErrors.resetReason}</p>}
             {!resetReasonValid && (
               <p className="text-xs text-muted-foreground">Lý do cần có 8–1000 ký tự.</p>
             )}
           </div>
+          {(closingStatusQuery.isError || closingStatusQuery.isLoading) && <p className="text-sm text-amber-700">Chưa xác nhận được trạng thái chốt sổ quỹ. Kiểm tra sổ quỹ trước khi xác nhận thao tác lợi nhuận.</p>}
+          {actionError && <p role="alert" className="text-sm text-destructive">{actionError}</p>}
           <AlertDialogFooter>
             <AlertDialogCancel disabled={resetMutation.isPending}>Huỷ</AlertDialogCancel>
             <AlertDialogAction
-              onClick={confirmReset}
-              disabled={!resetReasonValid || resetMutation.isPending}
+              onClick={(event)=>{event.preventDefault();void confirmReset();}}
+              disabled={resetMutation.isPending || actionBlocked || sourceUnavailable}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {resetMutation.isPending
@@ -1713,15 +1745,16 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
           <div className="space-y-1">
             <Label htmlFor="profit-unlock-reason">Lý do mở khoá</Label>
             <Textarea
-              id="profit-unlock-reason"
+              id="profit-unlock-reason" name="unlockReason" aria-describedby="unlock-reason-error"
               value={unlockReason}
               onChange={(event) => setUnlockReason(event.target.value)}
               rows={3}
               maxLength={1000}
               placeholder="Bắt buộc: vì sao cần mở khoá (vd: sửa phiếu PC… nhập sai số tiền)"
-              aria-invalid={unlockReason.length > 0 && !unlockReasonValid}
+              aria-invalid={!!reasonErrors.unlockReason || (unlockReason.length > 0 && !unlockReasonValid)}
               disabled={unlockMutation.isPending}
             />
+            {reasonErrors.unlockReason && <p id="unlock-reason-error" className="text-sm text-destructive">{reasonErrors.unlockReason}</p>}
             <p
               className={`text-xs ${unlockReasonValid ? "text-muted-foreground" : "text-amber-700"}`}
             >
@@ -1729,6 +1762,8 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
               {unlockReasonValid ? "" : " — lý do cần có 8–1000 ký tự."}
             </p>
           </div>
+          {(closingStatusQuery.isError || closingStatusQuery.isLoading) && <p className="text-sm text-amber-700">Chưa xác nhận được trạng thái chốt sổ quỹ. Kiểm tra sổ quỹ trước khi xác nhận thao tác lợi nhuận.</p>}
+          {actionError && <p role="alert" className="text-sm text-destructive">{actionError}</p>}
           <AlertDialogFooter>
             <AlertDialogCancel disabled={unlockMutation.isPending}>Huỷ</AlertDialogCancel>
             <AlertDialogAction
@@ -1737,7 +1772,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
                 event.preventDefault();
                 void confirmUnlock();
               }}
-              disabled={!unlockReasonValid || unlockMutation.isPending}
+              disabled={unlockMutation.isPending || actionBlocked || sourceUnavailable}
             >
               {unlockMutation.isPending
                 ? "Đang mở khoá…"
@@ -1747,5 +1782,6 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
         </AlertDialogContent>
       </AlertDialog>
     </>
+    </QueryRegion>
   );
 }

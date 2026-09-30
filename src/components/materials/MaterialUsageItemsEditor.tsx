@@ -25,12 +25,14 @@ interface Props {
    * Để trống khi tạo mới.
    */
   existingQuantitiesByMaterial?: Record<string, number>;
+  errors?: Record<string, string>;
 }
 
 export default function MaterialUsageItemsEditor({
   items,
   onItemsChange,
   existingQuantitiesByMaterial = {},
+  errors = {},
 }: Props) {
   const { data: materials = [] } = useMaterials({});
 
@@ -70,23 +72,28 @@ export default function MaterialUsageItemsEditor({
           <div className="col-span-3 text-right">Số lượng</div>
           <div className="col-span-2" />
         </div>
-        {items.map((r) => {
+        {items.map((r, index) => {
           const m = materials.find((x) => x.id === r.material_id);
           const q = Number(r.quantity) || 0;
           const alreadyCounted = r.material_id ? (existingQuantitiesByMaterial[r.material_id] ?? 0) : 0;
           const over = m && q > Number(m.on_hand) + alreadyCounted;
+          const materialError = errors[`materials.${index}.material_id`];
+          const quantityError = errors[`materials.${index}.quantity`];
           return (
             <div key={r.key} className="grid grid-cols-12 gap-2 px-2 py-1.5 items-center">
-              <div className="col-span-7">
+              <div className="col-span-7" data-field-name={`materials.${index}.material_id`}>
                 <MaterialPicker
                   value={r.material_id}
                   onChange={(id) => updateItem(r.key, { material_id: id })}
                   showStock
+                  invalid={!!materialError}
                 />
+                {materialError && <p role="alert" className="text-xs text-destructive">{materialError}</p>}
               </div>
-              <div className="col-span-3">
+              <div className="col-span-3" data-field-name={`materials.${index}.quantity`}>
                 <Input
                   type="number"
+                  aria-invalid={!!quantityError}
                   min={0}
                   step="any"
                   value={r.quantity}
@@ -94,6 +101,7 @@ export default function MaterialUsageItemsEditor({
                   className={`text-right h-8 ${over ? 'border-amber-500 focus-visible:ring-amber-500' : ''}`}
                   placeholder="0"
                 />
+                {quantityError && <p role="alert" className="text-xs text-destructive">{quantityError}</p>}
               </div>
               <div className="col-span-2 flex justify-end gap-1">
                 <Button

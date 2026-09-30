@@ -45,7 +45,7 @@ describe("reservation settlement RPC DTOs", () => {
   it("hides response validation internals from users", async () => {
     const rpc = async () => ({ data: { invalid_field: true }, error: null });
     await expect(invokeReservationSettlementRpc(rpc, "get_reservation_settlement_summary_v1", {}, reservationSettlementSummarySchema))
-      .rejects.toThrow("Dữ liệu xử lý cọc chưa hợp lệ. Hãy tải lại và thử lại.");
+      .rejects.toThrow("Chưa xác nhận được kết quả xử lý cọc. Tải lại phiếu và đối chiếu trước khi thực hiện lại.");
   });
   it.each([
     [{ message: "Không có quyền xử lý phiếu cọc này", code: "42501" }, "Bạn chưa đủ quyền thực hiện thao tác này."],
@@ -58,6 +58,11 @@ describe("reservation settlement RPC DTOs", () => {
     [{ message: "Kỳ ghi nhận 09/2026 đã khoá — không ghi sổ được." }, "Ngày đã chọn nằm trong kỳ sổ quỹ đã khóa."],
   ])("maps safe server errors without exposing technical text", (error, expected) => {
     expect(reservationSettlementErrorMessage(error)).toBe(expected);
+  });
+  it("preserves error codes and treats a lost financial response as unknown", async () => {
+    const rpc = async () => ({data:null,error:{code:"57014",message:"timeout"}});
+    await expect(invokeReservationSettlementRpc(rpc,"pay_reservation_refund_v1",{},reservationSettlementSchema)).rejects.toMatchObject({code:"57014"});
+    expect(reservationSettlementErrorMessage({code:"57014",message:"timeout"})).toContain("đối chiếu trước");
   });
   it("sends the source voucher filter before pagination", () => {
     expect(reservationSettlementListArgs({
@@ -76,7 +81,7 @@ describe("reservation settlement RPC DTOs", () => {
     expect(reservationSettlementErrorMessage("[PERIOD_LOCKED] cashbook_closed_through_v1 failed"))
       .toBe("Ngày đã chọn nằm trong kỳ sổ quỹ đã khóa.");
     expect(reservationSettlementErrorMessage("select * from private_table"))
-      .toBe("Không thể xử lý cọc giữ chỗ. Vui lòng thử lại.");
+      .toContain("kiểm tra lại trạng thái trước khi tiếp tục");
   });
 
   it("keeps a key for ambiguous retry and retires it after confirmed success", () => {

@@ -1,3 +1,4 @@
+import { actionErrorMessage } from "@/lib/actionFeedback";
 // Lớp dữ liệu cho tab "Hành động" của trang quản trị AI Copilot.
 //
 // VÌ SAO TÁCH KHỎI FILE .tsx
@@ -92,25 +93,24 @@ export function chuanHoaSo(gt: unknown): DongSoHanhDong[] {
 export function chuanHoaChinhSach(gt: unknown): ChinhSachHanhDong | null {
   if (!gt || typeof gt !== 'object' || Array.isArray(gt)) return null;
   const r = gt as Record<string, unknown>;
-  const revision = typeof r.revision === 'number' ? r.revision : Number(r.revision);
+  const revision = r.revision;
+  if (typeof revision !== 'number' || typeof r.standing_grants_enabled !== 'boolean') return null;
   if (!Number.isSafeInteger(revision) || revision <= 0) return null;
   const risk = r.max_direct_risk;
   if (risk !== 'L3' && risk !== 'L4' && risk !== 'L5') return null;
-  const roles = Array.isArray(r.allowed_roles)
-    ? r.allowed_roles.filter((x): x is string => typeof x === 'string')
-    : [];
-  if (roles.length === 0) return null;
+  if (!Array.isArray(r.allowed_roles) || !r.allowed_roles.length || r.allowed_roles.some(role => typeof role !== 'string' || !['superadmin', 'owner', 'manager', 'staff'].includes(role))) return null;
+  const roles = r.allowed_roles as string[];
   return {
     revision,
     maxDirectRisk: risk,
     allowedRoles: roles,
-    standingGrantsEnabled: r.standing_grants_enabled === true,
+    standingGrantsEnabled: r.standing_grants_enabled,
   };
 }
 
 /** Mã lỗi của hai RPC chính sách → câu người vận hành đọc và làm được gì đó. */
 export function dienGiaiLoiChinhSach(loi: unknown): string {
-  const cau = loi instanceof Error ? loi.message : String(loi ?? '');
+  const cau = loi instanceof Error ? loi.message : loi && typeof loi === 'object' && typeof (loi as {message?:unknown}).message === 'string' ? (loi as {message:string}).message : String(loi ?? '');
   if (cau.includes('copilot_policy_stale_revision')) {
     return 'Chính sách vừa đổi bởi người khác, tải lại rồi thử lại.';
   }
@@ -127,10 +127,10 @@ export function dienGiaiLoiChinhSach(loi: unknown): string {
     return 'Danh sách vai không hợp lệ (chỉ superadmin/owner/manager/staff, và không được rỗng).';
   }
   if (cau.includes('copilot_policy_missing')) {
-    return 'Chưa có hàng chính sách trong cơ sở dữ liệu — migration G2-A chưa chạy?';
+    return 'Chưa xác nhận được cấu hình chính sách. Tải lại cấu hình trước khi thay đổi.';
   }
   if (cau.includes('unauthenticated')) return 'Phiên đăng nhập đã hết hạn, hãy đăng nhập lại.';
-  return `Không đổi được chính sách: ${cau}`;
+  return actionErrorMessage(loi, 'Chưa xác nhận được kết quả đổi chính sách.');
 }
 
 /** Đọc sổ hành động của một công ty. Không có công ty ⇒ không đọc gì. */
@@ -143,15 +143,18 @@ export async function docSoHanhDong(
     p_organization_id: organizationId,
     p_limit: soDong,
   });
-  if (error) throw new Error(error.message ?? String(error));
+  if (error) throw error;
+  if (!Array.isArray(data) || data.some(row => !chuanHoaDongSo(row))) throw new TypeError('Malformed Copilot ledger rows');
   return chuanHoaSo(data);
 }
 
 /** Đọc van chính sách. `null` = server trả hình dạng không đọc được. */
 export async function docChinhSachHanhDong(): Promise<ChinhSachHanhDong | null> {
   const { data, error } = await supabase.rpc('get_copilot_action_policy_v1');
-  if (error) throw new Error(error.message ?? String(error));
-  return chuanHoaChinhSach(data);
+  if (error) throw error;
+  const policy = chuanHoaChinhSach(data);
+  if (!policy) throw new TypeError('Malformed Copilot action policy');
+  return policy;
 }
 
 export interface DoiChinhSachInput {
@@ -178,7 +181,7 @@ export async function doiChinhSachHanhDong(input: DoiChinhSachInput): Promise<Ch
     p_reason: input.reason,
     p_evidence_link: input.evidenceLink,
   });
-  if (error) throw new Error(error.message ?? String(error));
+  if (error) throw error;
   return chuanHoaChinhSach(data);
 }
 

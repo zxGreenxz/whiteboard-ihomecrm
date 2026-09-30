@@ -51,10 +51,10 @@ export function TemplateCodesDialog({
     try {
       await navigator.clipboard.writeText(code);
       setCopied(code);
-      toast.success(`Đã copy ${code}`);
+      toast.success(`Đã sao chép ${code}`);
       setTimeout(() => setCopied((cur) => (cur === code ? null : cur)), 1200);
     } catch {
-      toast.error("Không thể copy");
+      toast.error("Chưa sao chép được mã biểu mẫu. Chọn mã và dùng lệnh Sao chép của thiết bị.");
     }
   };
 

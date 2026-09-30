@@ -1,3 +1,4 @@
+import { hasUnconfirmedResponse } from '@/lib/operationOutcome';
 // Sở thích thông báo CỦA CHÍNH TÔI — 5 họ sự kiện × 2 công tắc (trong app / đẩy về máy).
 //
 // 🔴 Vì sao card này nằm ở /account/profile chứ KHÔNG phải /settings/general:
@@ -17,7 +18,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Bell } from "lucide-react";
+import { Button } from '@/components/ui/button';
 import {
+  NotificationSettingsReceiptError,
   NOTIFICATION_EVENT_KEYS,
   NOTIFICATION_EVENT_LABELS,
   useMyNotificationPreferences,
@@ -35,14 +38,14 @@ interface Props {
 }
 
 export default function NotificationPreferencesCard({ variant = "desktop" }: Props) {
-  const { options, isLoading: loadingOrgs } = useMyOrgOptions();
+  const { options, isLoading: loadingOrgs, isError: orgError, refetch: retryOrgs } = useMyOrgOptions();
   const [orgId, setOrgId] = useState<string | null>(null);
 
   // 9/10 tài khoản có đúng 1 tổ chức ⇒ tự chọn, không bắt bấm. Chỉ chủ (2 tổ chức)
   // mới thấy ô chọn bên dưới.
   const effectiveOrgId = orgId ?? options[0]?.id ?? null;
 
-  const { data, isLoading } = useMyNotificationPreferences(effectiveOrgId);
+  const { data, isLoading, isError, refetch } = useMyNotificationPreferences(effectiveOrgId);
   const save = useSetMyNotificationPreferences(effectiveOrgId);
 
   const [draft, setDraft] = useState<PrefMap | null>(null);
@@ -52,7 +55,17 @@ export default function NotificationPreferencesCard({ variant = "desktop" }: Pro
   }, [data]);
 
   const rows = useMemo(() => draft, [draft]);
-  const locked = !data?.available || save.isPending || !effectiveOrgId;
+  const uncertain = save.error instanceof NotificationSettingsReceiptError || hasUnconfirmedResponse(save.error);
+  const readAfterUnknown = async () => {
+    const result = await refetch();
+    if (!result.isError && result.data) save.reset();
+  };
+  const uncertainNotice = uncertain ? <div role="alert" className="rounded-md border border-amber-400 p-3 text-sm">
+    <p>Chưa xác nhận được cấu hình thông báo đã lưu. Giữ nguyên nội dung đang sửa và đọc lại trạng thái trước khi thay đổi tiếp.</p>
+    <Button type="button" variant="outline" size="sm" onClick={() => void readAfterUnknown()}>Đọc lại trạng thái</Button>
+  </div> : null;
+
+  const locked = uncertain || isError || orgError || !data?.available || save.isPending || !effectiveOrgId;
 
   const toggle = (key: NotificationEventKey, field: "in_app" | "push", next: boolean) => {
     if (!rows) return;
@@ -60,13 +73,13 @@ export default function NotificationPreferencesCard({ variant = "desktop" }: Pro
     // Cập nhật lạc quan rồi mới gọi RPC: công tắc phải nhảy ngay, không đợi mạng.
     setDraft(updated);
     save.mutate(updated, {
-      onError: () => setDraft(rows), // hoàn nguyên đúng trạng thái trước cú bấm
+      onError: (error) => { if (!(error instanceof NotificationSettingsReceiptError) && !hasUnconfirmedResponse(error)) setDraft(rows); }, // Chỉ hoàn nguyên khi biết chắc lưu thất bại.
     });
   };
 
   // Không thuộc tổ chức nào ⇒ query bị `enabled:false` và sẽ treo ở "Đang tải…" mãi mãi
   // nếu không tách riêng nhánh này.
-  const noOrg = !loadingOrgs && !effectiveOrgId;
+  const noOrg = !orgError && !loadingOrgs && !effectiveOrgId;
   const busy = !noOrg && (loadingOrgs || isLoading || !rows);
 
   const notice = noOrg
@@ -74,6 +87,10 @@ export default function NotificationPreferencesCard({ variant = "desktop" }: Pro
     : !busy && data && !data.available
       ? "Tuỳ chọn cá nhân chưa bật trên máy chủ — đang hiển thị mặc định (nhận tất cả) và tạm thời chưa lưu được."
       : null;
+
+  if (isError || orgError) {
+    return <Card><CardContent className="space-y-3 p-4"><p role="alert">Chưa tải được tùy chọn thông báo của bạn. Chưa xác định được trạng thái các công tắc.</p><Button variant="outline" onClick={() => void (orgError ? retryOrgs() : refetch())}>Tải lại tùy chọn</Button></CardContent></Card>;
+  }
 
   /* ───────────────────────────── Mobile (.cm-app) ──────────────────────── */
   if (variant === "mobile") {
@@ -86,6 +103,7 @@ export default function NotificationPreferencesCard({ variant = "desktop" }: Pro
           </div>
         </div>
 
+        {uncertainNotice}
         {options.length > 1 && (
           <div className="ff">
             <label className="ff-lbl">Tổ chức</label>
@@ -173,6 +191,7 @@ export default function NotificationPreferencesCard({ variant = "desktop" }: Pro
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        {uncertainNotice}
         {options.length > 1 && (
           <div className="flex items-center gap-3">
             <Label className="text-sm">Tổ chức</Label>

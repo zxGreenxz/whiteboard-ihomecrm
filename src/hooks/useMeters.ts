@@ -1,3 +1,6 @@
+import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
+import {FinancialWorkflowError} from '@/lib/financialWorkflow';
+import {confirmedRecordId,recordWriteMessage} from '@/lib/recordWriteOutcome';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
@@ -7,6 +10,17 @@ import { toast } from "sonner";
 import { nullIfNotFound } from "@/hooks/readErrors";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { withOrg } from "@/lib/orgPayload";
+import { isDuplicateMeterCode } from "@/lib/meterFeedback";
+import { friendlyError } from '@/lib/friendlyError';
+
+class MeterServiceError extends Error {}
+function meterMutationFailure(error: unknown, action: string) {
+  if (isDuplicateMeterCode(error)) { toast.error('Mã công tơ đã tồn tại'); return; }
+  if (error instanceof MeterServiceError) { toast.error(error.message); return; }
+  if(error instanceof FinancialWorkflowError){toast.error(`Chưa ${action} được công tơ`,{description:recordWriteMessage(error,`${action} công tơ`)});return;}
+  const feedback = friendlyError(error, `Chưa ${action} được công tơ`, { operation: `${action} công tơ` });
+  toast.error(feedback.title, { description: feedback.description });
+}
 
 type Meter = Database["public"]["Tables"]["meters"]["Row"];
 type MeterInsert = Database["public"]["Tables"]["meters"]["Insert"];
@@ -108,8 +122,7 @@ export function filterMeters(
 async function resolveServiceId(meterType: string | null | undefined): Promise<string> {
   const match = meterType ? METER_TYPE_TO_SERVICE_MATCH[meterType] : undefined;
   if (!match) {
-    toast.error("Không tìm thấy dịch vụ tương ứng với loại công tơ");
-    throw new Error(`No service mapping for meter_type: ${meterType}`);
+    throw new MeterServiceError('Không tìm thấy dịch vụ tương ứng với loại công tơ. Kiểm tra loại công tơ đã chọn.');
   }
 
   const activeServices = () =>
@@ -129,16 +142,12 @@ async function resolveServiceId(meterType: string | null | undefined): Promise<s
   for (const attempt of attempts) {
     const { data, error } = await attempt().maybeSingle();
     if (error) {
-      toast.error("Không kiểm tra được danh mục dịch vụ");
       throw error;
     }
     if (data?.id) return data.id;
   }
 
-  toast.error(
-    `Chưa có dịch vụ "${match.label}" đang hoạt động — vào Cài đặt ▸ Dịch vụ tạo trước khi thêm công tơ.`,
-  );
-  throw new Error(`Service not found for meter_type: ${meterType}`);
+  throw new MeterServiceError(`Chưa có dịch vụ "${match.label}" đang hoạt động — vào Cài đặt ▸ Dịch vụ tạo trước khi thêm công tơ.`);
 }
 
 // ============================================================================
@@ -300,7 +309,8 @@ export const useUnrecordedMeters = (params: {
         throw error;
       }
 
-      return data || [];
+      if (!Array.isArray(data)) throw new Error('Chưa xác nhận được danh sách công tơ chưa chốt. Tải lại để kiểm tra.');
+      return data;
     },
     enabled: !!month,
   });
@@ -315,7 +325,9 @@ export const useCreateMeter = () => {
   const queryClient = useQueryClient();
   const { selectedOrganizationId } = useOrganization();
 
+  const guard=persistentFinancialWorkflow('meter-create');
   return useMutation({
+    meta:{handlesFeedback:true},
     mutationFn: async (meter: Omit<MeterInsert, "user_id">) => {
       const user = await getSessionUser();
 
@@ -324,31 +336,28 @@ export const useCreateMeter = () => {
       // Auto-resolve service_id from meter_type
       const serviceId = await resolveServiceId(meter.meter_type);
 
+      return guard.run('create','tạo công tơ',async()=>{
       const { data, error } = await supabase
         .from("meters")
         .insert(withOrg({ ...meter, user_id: user.id, service_id: serviceId }, selectedOrganizationId))
         .select()
         .single();
 
-      if (error) {
-        if (error.code === "23505") {
-          toast.error("Mã công tơ đã tồn tại");
-        } else {
-          toast.error("Không thể tạo công tơ");
-        }
-        throw error;
-      }
-
+      if (error) throw error;
+      confirmedRecordId(data,'tạo công tơ');
       return data;
+      },undefined,selectedOrganizationId??undefined);
     },
-    onSuccess: () => {
+    onSuccess: (meter) => {
       queryClient.invalidateQueries({ queryKey: ["meters"] });
       queryClient.invalidateQueries({ queryKey: ["meters-with-latest-reading"] });
       queryClient.invalidateQueries({ queryKey: ["unrecorded-meters"] });
-      toast.success("Dữ liệu đã được TẠO thành công");
+      toast.success(`Đã tạo công tơ ${meter.code}`);
     },
     onError: (error) => {
       console.error("Error creating meter:", error);
+      queryClient.invalidateQueries({ queryKey: ['meters'] });
+      meterMutationFailure(error, 'tạo');
     },
   });
 };
@@ -373,25 +382,20 @@ export const useUpdateMeter = () => {
         .select()
         .single();
 
-      if (error) {
-        if (error.code === "23505") {
-          toast.error("Mã công tơ đã tồn tại");
-        } else {
-          toast.error("Không thể cập nhật công tơ");
-        }
-        throw error;
-      }
-
+      if (error) throw error;
+      confirmedRecordId(data,'cập nhật công tơ',id);
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (meter) => {
       queryClient.invalidateQueries({ queryKey: ["meters"] });
       queryClient.invalidateQueries({ queryKey: ["meters-with-latest-reading"] });
       queryClient.invalidateQueries({ queryKey: ["unrecorded-meters"] });
-      toast.success("Dữ liệu đã được CẬP NHẬT thành công");
+      toast.success(`Đã cập nhật công tơ ${meter.code}`);
     },
     onError: (error) => {
       console.error("Error updating meter:", error);
+      queryClient.invalidateQueries({ queryKey: ['meters'] });
+      meterMutationFailure(error, 'cập nhật');
     },
   });
 };
@@ -402,24 +406,26 @@ export const useDeleteMeter = () => {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("meters")
         .update({ deleted_at: new Date().toISOString() })
-        .eq("id", id);
+        .eq("id", id)
+        .select('id')
+        .single();
 
-      if (error) {
-        toast.error("Không thể xóa công tơ");
-        throw error;
-      }
+      if (error) throw error;
+      confirmedRecordId(data,'xóa công tơ',id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["meters"] });
       queryClient.invalidateQueries({ queryKey: ["meters-with-latest-reading"] });
       queryClient.invalidateQueries({ queryKey: ["unrecorded-meters"] });
-      toast.success("Dữ liệu đã được XOÁ thành công");
+      toast.success("Đã xóa công tơ");
     },
     onError: (error) => {
       console.error("Error deleting meter:", error);
+      queryClient.invalidateQueries({ queryKey: ['meters'] });
+      meterMutationFailure(error, 'xóa');
     },
   });
 };

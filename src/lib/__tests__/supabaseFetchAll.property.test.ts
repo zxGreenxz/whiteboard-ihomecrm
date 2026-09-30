@@ -57,9 +57,10 @@ describe("fetchAllRows", () => {
     expect(got).toEqual(rows);
   });
 
-  it("trả null khi query lỗi (caller phải coi null là lỗi, không phải rỗng)", async () => {
+  it("giữ lỗi query; caller legacy chỉ nhận null khi yêu cầu rõ", async () => {
     const build = () => Promise.resolve({ data: null, error: new Error("boom") });
-    const got = await fetchAllRows(build);
+    await expect(fetchAllRows(build)).rejects.toThrow("boom");
+    const got = await fetchAllRows(build, {throwOnError:false});
     expect(got).toBeNull();
   });
 

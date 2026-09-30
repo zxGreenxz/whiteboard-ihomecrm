@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/table';
 import { Separator } from '@/components/ui/separator';
 import { StorageImage } from '@/components/ui/storage-image';
-import { toast } from 'sonner';
+import { copyTextWithFeedback } from '@/lib/clipboardFeedback';
 import { useCustomer } from '@/hooks/useCustomers';
 import { useVehicles } from '@/hooks/useVehicles';
 import type { VehicleWithRelations } from '@/types/vehicle';
@@ -84,8 +84,7 @@ export default function CustomerDetailModal({
       .filter(Boolean)
       .join('\n');
 
-    navigator.clipboard.writeText(info);
-    toast.success('Đã sao chép thông tin');
+    void copyTextWithFeedback(info, 'thông tin khách hàng');
   };
 
   const handleEdit = () => {

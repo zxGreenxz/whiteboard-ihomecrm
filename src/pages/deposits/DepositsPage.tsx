@@ -1,3 +1,4 @@
+import { QueryRegion } from "@/components/errors/QueryRegion";
 import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { memo, useCallback, useState, useMemo, lazy, Suspense } from "react";
 import { Link } from "react-router-dom";
@@ -358,26 +359,32 @@ const DepositsDesktop = () => {
   const [onlyShort, setOnlyShort] = usePersistedState("flt:deposits:onlyShort", false);
 
   useCopilotPageContext('deposits.list', { building_ids: buildingIds, view, tab: view === 'ledger' ? tab : undefined, ...(view === 'ledger' && tab === 'holds' ? { approval_status: statusFilter, search: searchQuery } : {}), ...(view === 'ledger' && tab === 'rooms' ? { only_short: onlyShort } : {}) });
-  const { data: held = [], isLoading: heldLoading } = useHeldDeposits();
-  const { data: refunds = [], isLoading: refundsLoading } =
-    useDepositRefundsForfeits();
+  const heldDepositsQuery = useHeldDeposits();
+  const { data: held = [], isLoading: heldLoading } = heldDepositsQuery;
+  const depositRefundsForfeitsQuery = useDepositRefundsForfeits();
+  const { data: refunds = [], isLoading: refundsLoading } = depositRefundsForfeitsQuery;
   // Cọc giữ chỗ — nguồn thống nhất từ income_expenses (lọc toà server-side).
-  const { data: reservations = [], isLoading: resvLoading } =
-    useReservationDeposits(buildingIds);
+  const reservationDepositsQuery = useReservationDeposits(buildingIds);
+  const { data: reservations = [], isLoading: resvLoading } = reservationDepositsQuery;
 
   // Tổng/KPI: RPC SQL aggregate (miễn nhiễm cap-1000) — thay client-reduce trên
   // danh sách (hụt tổng khi HĐ/phiếu > 1000). Danh sách chi tiết vẫn dùng row
   // hooks (đã phân trang) cho bảng.
-  const { data: heldAgg = [] } = useHeldDepositSummary(buildingIds);
+  const heldDepositSummaryQuery = useHeldDepositSummary(buildingIds);
+  const { data: heldAgg = [] } = heldDepositSummaryQuery;
   // Hạn phải làm hợp đồng (bảng reservation_hold_deadlines). Chưa tải xong thì
   // `holdDeadlines` rỗng ⇒ chưa phiếu nào bị xếp "quá hạn làm HĐ" — thà thiếu
   // một nhóm trong nửa giây còn hơn tô đỏ nhầm.
-  const { data: holdTerms = {} } = useReservationHoldDeadlines();
-  const { data: resvSummary } = useReservationDepositSummary(buildingIds);
+  const reservationHoldDeadlinesQuery = useReservationHoldDeadlines();
+  const { data: holdTerms = {} } = reservationHoldDeadlinesQuery;
+  const reservationDepositSummaryQuery = useReservationDepositSummary(buildingIds);
+  const { data: resvSummary } = reservationDepositSummaryQuery;
   // KPI "Đã hoàn cọc" = TIỀN THẬT ĐÃ RA KHỎI KÉT (quyết định của chủ 30/07,
   // §1ter.1) ⇒ phải lấy từ server, xem khối chú thích ở `refundKpi` bên dưới.
-  const { data: rfSummary } = useRefundForfeitSummary(buildingIds);
-  const { data: reservationSettlementSummary } = useReservationDepositSettlementSummary(buildingIds);
+  const refundForfeitSummaryQuery = useRefundForfeitSummary(buildingIds);
+  const { data: rfSummary } = refundForfeitSummaryQuery;
+  const reservationDepositSettlementSummaryQuery = useReservationDepositSettlementSummary(buildingIds);
+  const { data: reservationSettlementSummary } = reservationDepositSettlementSummaryQuery;
 
   // Lọc theo toà nhà (client-side) cho dashboard.
   const heldFiltered = useMemo(
@@ -601,6 +608,7 @@ const DepositsDesktop = () => {
           </div>
         </div>
 
+        <QueryRegion label="cọc và kỳ hạn xử lý" queries={[heldDepositsQuery, depositRefundsForfeitsQuery, reservationDepositsQuery, heldDepositSummaryQuery, reservationHoldDeadlinesQuery, reservationDepositSummaryQuery, refundForfeitSummaryQuery, reservationDepositSettlementSummaryQuery]}>
         {/* ===== DẢI KPI — luôn hiện, không nằm trong tab nào ===== */}
         <Card className="flex flex-wrap items-center gap-y-4 px-5 py-4">
           <KpiCell
@@ -1014,6 +1022,7 @@ const DepositsDesktop = () => {
         </Tabs>
         )}
 
+        </QueryRegion>
         {/* Dialogs */}
         <CreateDepositDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} />
         <ReservationSettlementDialog voucherId={settlementVoucherId} open={!!settlementVoucherId} onOpenChange={(next) => !next && setSettlementVoucherId(null)} />

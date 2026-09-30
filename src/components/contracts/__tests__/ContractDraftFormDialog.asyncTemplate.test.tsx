@@ -16,7 +16,7 @@ vi.mock('../contract-form/useContractFormState', async () => {
     const form = useForm({defaultValues:{...emptyContractDraftPayload().form,contract_template_id:draft?.template_id ?? null}});
     useEffect(() => { form.setValue('contract_template_id',draft?.template_id ?? null); },[draft?.id,draft?.template_id,form]);
     return {form,selectedBuildingId:'22222222-2222-4222-8222-222222222222',selectedCustomers:[],selectedServices:[],
-      isEditMode:false,isPending:false,blockByDepositDebt:true,customerDialogOpen:false,serviceDialogOpen:false,
+      sourceIssues:[],isEditMode:false,isPending:false,blockByDepositDebt:true,customerDialogOpen:false,serviceDialogOpen:false,
       getDraftPayload:()=>structuredClone(actions.payload),onInvalid:vi.fn()};
   }};
 });

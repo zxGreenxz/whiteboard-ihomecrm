@@ -1,3 +1,8 @@
+import {runFinancialPending} from '@/lib/financialPendingAction';
+import {useOrganization} from '@/contexts/OrganizationContext';
+import {getSessionUser} from '@/lib/authSession';
+import {financialReadNumber,financialReadRows} from '@/lib/financialReadValidation';
+import { parseGeneratedFeeReceipt } from "@/lib/feeFeedback";
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -36,12 +41,12 @@ export const useSpecialFeePreview = (period: string, buildingIds?: string[], ena
         // `p_building_ids uuid[] DEFAULT NULL` → bỏ hẳn khoá thay vì truyền null.
         p_building_ids: key ?? undefined,
       });
-      if (error) throw new Error(error.message);
-      return ((data ?? []) as any[]).map((r) => ({
+      if (error) throw error;
+      return financialReadRows(data).map((r: any) => ({
         buildingId: r.building_id,
         buildingName: r.building_name,
         feeCategory: r.fee_category,
-        amount: r.amount == null ? null : Number(r.amount),
+        amount: r.amount == null ? null : financialReadNumber(r.amount),
         providerCode: r.provider_code ?? null,
         status: r.status,
         reason: r.reason ?? null,
@@ -73,29 +78,26 @@ export interface GenerateResult {
  */
 export const useGenerateSpecialFees = () => {
   const qc = useQueryClient();
+  const {selectedOrganizationId}=useOrganization();
   return useMutation({
+    meta: {handlesFeedback: true},
     mutationFn: async (
       a: { period: string; buildingIds: string[]; accountId?: string | null },
     ): Promise<GenerateResult> => {
+      const user=await getSessionUser();
+      return runFinancialPending({namespace:'special-fee-generate',userId:user?.id??'',organizationId:selectedOrganizationId??'',businessKey:[a.period,...[...a.buildingIds].sort()].join(':')},async progress=>{
       const { data, error } = await supabase.rpc('generate_special_fees_v1', {
         p_period: a.period,
         p_building_ids: a.buildingIds,
-        // Khoá chống phát lại: gắn theo kỳ + tập toà + mốc phút, đủ để hai cú bấm
-        // liền nhau dùng chung một khoá mà lượt sau (cố ý) vẫn tạo được khoá mới.
-        p_idempotency_key:
-          `sf-${a.period}-${a.buildingIds.length}-${Math.floor(Date.now() / 60000)}`,
+        p_idempotency_key: progress.requestKey,
         p_account_id: a.accountId ?? undefined,
       });
-      if (error) throw new Error(error.message);
-      const d = data as any;
-      return {
-        period: d.period,
-        created: Number(d.created ?? 0),
-        posted: Number(d.posted ?? 0),
-        totalAmount: Number(d.totalAmount ?? 0),
-        voucherIds: (d.voucherIds ?? []) as string[],
-        note: d.note ?? '',
-      };
+      if (error) throw error;
+      const receipt=parseGeneratedFeeReceipt(data);
+      if(receipt.period!==a.period)throw new TypeError("Kỳ của biên nhận chưa khớp yêu cầu");
+      progress.recordCompleted(receipt.voucherIds);
+      return receipt;
+      });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['special-fee-preview'] });

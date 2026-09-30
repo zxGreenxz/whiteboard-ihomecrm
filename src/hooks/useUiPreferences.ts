@@ -1,3 +1,5 @@
+import {notifyActionError} from '@/lib/actionFeedback';
+import {readRecord} from '@/lib/accountProfitReadModels';
 // =============================================================================
 // useUiPreferences — tuỳ chọn hiển thị UI theo từng user, LƯU TRÊN SERVER.
 // Lưu ở cột profiles.ui_preferences (jsonb) → GIỮ qua F5 và đồng bộ đa thiết bị.
@@ -37,7 +39,8 @@ export const useUiPreferences = (opts?: { enabled?: boolean }) =>
         .eq('id', userId)
         .single();
       if (error) throw error;
-      return (data?.ui_preferences as UiPreferences) ?? {};
+      if(!data||!readRecord(data.ui_preferences))throw new TypeError('Chưa đọc được tùy chọn giao diện.');
+      return data.ui_preferences;
     },
     staleTime: 5 * 60 * 1000,
   });
@@ -50,17 +53,20 @@ export const useUiPrefBool = (key: string, fallback = false): boolean => {
 };
 
 /** Ghi atomic 1 key qua RPC để hai thiết bị không ghi đè các preference khác. */
-export const useSetUiPreference = () => {
+export const useSetUiPreference = (options: {inlineError?:boolean} = {}) => {
   const qc = useQueryClient();
   return useMutation({
     mutationKey: MUTATION_KEY,
+    meta: {handlesFeedback:true},
     mutationFn: async ({ key, value }: { key: string; value: unknown }) => {
       const { data, error } = await supabase.rpc('set_my_ui_preference', {
         p_key: key,
         p_value: value as Json,
       });
       if (error) throw error;
-      return (data as UiPreferences) ?? {};
+      const canonical=(value:unknown)=>JSON.stringify(value,(_key,item:unknown)=>readRecord(item)?Object.fromEntries(Object.entries(item).sort(([a],[b])=>a.localeCompare(b))):item);
+      if(!readRecord(data)||!Object.prototype.hasOwnProperty.call(data,key)||canonical(data[key])!==canonical(value))throw new TypeError('Chưa xác nhận được tùy chọn giao diện đã lưu.');
+      return data;
     },
     onMutate: async ({ key, value }) => {
       await qc.cancelQueries({ queryKey: QK });
@@ -82,7 +88,8 @@ export const useSetUiPreference = () => {
         optimisticPreferences,
       };
     },
-    onError: (_error, _variables, context) => {
+    onError: (error, _variables, context) => {
+      if(!options.inlineError)notifyActionError(error,'Chưa lưu được tùy chọn giao diện');
       if (!context) return;
       const owners = getOptimisticOwners(qc);
       if (owners.get(context.key) !== context.optimisticOwner) return;

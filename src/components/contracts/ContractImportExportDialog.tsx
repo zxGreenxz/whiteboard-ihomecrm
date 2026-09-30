@@ -4,7 +4,7 @@
  * Requirements: 11.1, 11.2, 11.3, 11.4, 11.5, 11.6, 12.1, 12.2
  */
 
-import { useRef, useState, useMemo } from 'react';
+import { useRef, useState, useMemo, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -48,9 +48,15 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import type { Database } from '@/integrations/supabase/types';
+type ContractImportInsert=Database['public']['Tables']['contracts']['Insert'];
 import { getSessionUser } from "@/lib/authSession";
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { withOrg } from '@/lib/orgPayload';
+import { importContractBatch, readContractImportPending, type ContractImportReport, type ContractImportProgressRow } from '@/lib/contractImportWorkflow';
+import { matchesContractMoneyReceipt } from '@/lib/contractMoneyReceipt';
+import { confirmedRecordId } from '@/lib/recordWriteOutcome';
+import { friendlyError } from '@/lib/friendlyError';
 
 // =============================================
 // Props
@@ -82,7 +88,10 @@ export function ContractImportExportDialog({
   const [isImporting, setIsImporting] = useState(false);
   const [parseResult, setParseResult] = useState<ImportResult<ContractImportRow> | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
-  const [importResult, setImportResult] = useState<{ success: number; failed: number; errors: Array<{ row: number; message: string }> } | null>(null);
+  const [importResult, setImportResult] = useState<ContractImportReport | null>(null);
+  const [blocked,setBlocked]=useState(false);
+  const [pendingChecked,setPendingChecked]=useState(false);
+  const importing=useRef(false);
 
   const { selectedOrganizationId } = useOrganization();
   const { data: buildingsData } = useBuildings({ enabled: open });
@@ -91,9 +100,16 @@ export function ContractImportExportDialog({
     [buildingsData]
   );
 
+  useEffect(()=>{let active=true;if(!open||mode!=='import')return;setPendingChecked(false);setBlocked(false);setImportResult(null);setParseError(null);
+    void getSessionUser().then(user=>{if(!active)return;if(!user||!selectedOrganizationId)throw new Error('Chưa đăng nhập hoặc chưa chọn tổ chức');
+      const pending=readContractImportPending({userId:user.id,organizationId:selectedOrganizationId});if(pending){setImportResult(pending);setSelectedBuildingId(pending.buildingId);setBlocked(!pending.canCorrect);}
+    }).catch(error=>{if(active){setBlocked(true);setParseError(friendlyError(error,'Chưa đối chiếu lượt nhập trước').description);}}).finally(()=>{if(active)setPendingChecked(true);});return()=>{active=false;};
+  },[open,mode,selectedOrganizationId]);
+
   // ---- handlers ----
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    if(blocked||importing.current)return;
     const file = e.target.files?.[0] ?? null;
     setSelectedFile(file);
     setParseResult(null);
@@ -102,11 +118,11 @@ export function ContractImportExportDialog({
   }
 
   function handleSelectFile() {
-    fileInputRef.current?.click();
+    if(!blocked&&!importing.current)fileInputRef.current?.click();
   }
 
   async function handleParse() {
-    if (!selectedFile || !selectedBuildingId) return;
+    if (!selectedFile || !selectedBuildingId || blocked || importing.current || !pendingChecked) return;
     setIsParsing(true);
     setParseResult(null);
     setParseError(null);
@@ -122,138 +138,56 @@ export function ContractImportExportDialog({
   }
 
   async function handleConfirmImport() {
-    if (!parseResult || !selectedBuildingId) return;
-    const validRows = parseResult.success;
-    if (validRows.length === 0) return;
-
-    setIsImporting(true);
-    const results = { success: 0, failed: 0, errors: [] as Array<{ row: number; message: string }> };
-
-    // Get user
-    const user = await getSessionUser();
-    if (!user) {
-      toast.error('Chưa đăng nhập');
-      setIsImporting(false);
-      return;
-    }
-
-    // Load rooms for the selected building
-    const { data: rooms } = await supabase
-      .from('rooms')
-      .select('id, name, code')
-      .eq('building_id', selectedBuildingId)
-      .is('deleted_at', null);
-
-    // Load existing customers
-    const { data: existingCustomers } = await supabase
-      .from('customers')
-      .select('id, full_name, phone, id_number')
-      .is('deleted_at', null);
-
-    const customersList: Array<{ id: string; full_name: string; phone: string; id_number: string | null }> = existingCustomers ?? [];
-
-    for (let i = 0; i < validRows.length; i++) {
-      const row = validRows[i];
-      const rowNum = i + 2;
-
-      try {
-        // Find room by name
-        const room = rooms?.find(
-          (r: any) =>
-            r.name?.toLowerCase() === row.room_name.toLowerCase() ||
-            r.code?.toLowerCase() === row.room_name.toLowerCase()
-        );
-        if (!room) {
-          results.errors.push({ row: rowNum, message: `Không tìm thấy phòng "${row.room_name}"` });
-          results.failed++;
-          continue;
-        }
-
-        // Find or create customer
-        let customerId: string;
-        const existingCustomer = customersList.find(
-          (c: any) => c.phone === row.customer_phone
-        );
-
-        if (existingCustomer) {
-          customerId = existingCustomer.id;
-        } else {
-          const { data: newCustomer, error: customerError } = await supabase
-            .from('customers')
-            .insert(withOrg({
-              user_id: user.id,
-              full_name: row.customer_name,
-              phone: row.customer_phone,
-              id_number: row.customer_id_number || null,
-            }, selectedOrganizationId))
-            .select()
-            .single();
-
-          if (customerError || !newCustomer) {
-            results.errors.push({ row: rowNum, message: `Không thể tạo khách hàng: ${customerError?.message || 'Unknown'}` });
-            results.failed++;
-            continue;
-          }
-          customerId = newCustomer.id;
-          customersList.push({ id: newCustomer.id, full_name: row.customer_name, phone: row.customer_phone, id_number: row.customer_id_number || null });
-        }
-
-        // Create contract using direct insert (batch-friendly)
-        const contractInsert: any = {
-          user_id: user.id,
-          tenant_id: customerId,
-          room_id: room.id,
-          signed_date: row.signed_date,
-          start_date: row.start_date,
-          end_date: row.end_date,
-          rent_price: row.rent_price,
-          payment_cycle: row.payment_cycle || 'MONTHLY',
-          total_deposit: row.deposit || 0,
-          deposit_paid: 0,
-          notes: row.notes || null,
-          status: 'ACTIVE',
-        };
-
-        const { data: contract, error: contractError } = await supabase
-          .from('contracts')
-          .insert(withOrg(contractInsert, selectedOrganizationId))
-          .select()
-          .single();
-
-        if (contractError || !contract) {
-          results.errors.push({ row: rowNum, message: `Lỗi tạo hợp đồng: ${contractError?.message || 'Unknown'}` });
-          results.failed++;
-          continue;
-        }
-
-        // Insert contract_customer
-        await supabase.from('contract_customers').insert(withOrg({
-          contract_id: contract.id,
-          customer_id: customerId,
-          is_representative: true,
-        }, selectedOrganizationId));
-
-        // Update room status
-        await supabase
-          .from('rooms')
-          .update({ status: 'OCCUPIED' })
-          .eq('id', room.id);
-
-        results.success++;
-      } catch (e: any) {
-        results.errors.push({ row: rowNum, message: e.message || 'Lỗi không xác định' });
-        results.failed++;
-      }
-    }
-
-    setImportResult(results);
-    setIsImporting(false);
-
-    if (results.success > 0) {
-      toast.success(`Đã tạo ${results.success} hợp đồng.${results.failed > 0 ? ` ${results.failed} thất bại.` : ''}`);
-    } else if (results.failed > 0) {
-      toast.error(`Tất cả ${results.failed} hợp đồng đều gặp lỗi.`);
-    }
+    if (!parseResult || !selectedBuildingId || !selectedOrganizationId || importing.current || blocked || !pendingChecked) return;
+    const validRows = parseResult.success;if (!validRows.length) return;
+    importing.current=true;setIsImporting(true);setParseError(null);
+    try {
+      const user=await getSessionUser();if(!user)throw {code:'PGRST301',message:'Not authenticated'};
+      const [{data:rooms,error:roomsError},{data:existingCustomers,error:customersError}]=await Promise.all([
+        supabase.from('rooms').select('id, name, code').eq('building_id',selectedBuildingId).is('deleted_at',null),
+        supabase.from('customers').select('id, full_name, phone, id_number').is('deleted_at',null),
+      ]);
+      if(roomsError)throw roomsError;if(customersError)throw customersError;
+      if(!rooms||!existingCustomers)throw new TypeError('Không tải được phòng hoặc khách hàng.');
+      const customersList=[...existingCustomers];
+      const findRoom=(row:ContractImportRow)=>rooms.find(room=>room.name?.toLowerCase()===row.room_name.toLowerCase()||room.code?.toLowerCase()===row.room_name.toLowerCase());
+      const verifyCustomer=async(id:string,row:ContractImportRow)=>{const {data,error}=await supabase.from('customers').select('id, organization_id, phone').eq('id',id).maybeSingle();if(error)throw error;return !!data&&data.id===id&&data.organization_id===selectedOrganizationId&&data.phone===row.customer_phone;};
+      const verify=async(entry:ContractImportProgressRow,input?:ContractImportRow)=>{
+        if(!entry.contractId||!entry.roomId||!entry.customerId)return false;
+        const [core,links,room]=await Promise.all([
+          supabase.from('contracts').select('id, organization_id, room_id, signed_date, start_date, end_date, rent_price, total_deposit, status').eq('id',entry.contractId).maybeSingle(),
+          supabase.from('contract_customers').select('contract_id, customer_id, is_representative').eq('contract_id',entry.contractId),
+          supabase.from('rooms').select('id, organization_id, status').eq('id',entry.roomId).maybeSingle(),
+        ]);
+        if(core.error)throw core.error;if(links.error)throw links.error;if(room.error)throw room.error;
+        return !!core.data&&core.data.id===entry.contractId&&core.data.organization_id===selectedOrganizationId&&core.data.room_id===entry.roomId&&core.data.status==='ACTIVE'
+          &&!!room.data&&room.data.id===entry.roomId&&room.data.organization_id===selectedOrganizationId&&room.data.status==='OCCUPIED'
+          &&Array.isArray(links.data)&&links.data.some(link=>link.contract_id===entry.contractId&&link.customer_id===entry.customerId&&link.is_representative)
+          &&(!input||(core.data.signed_date===input.signed_date&&core.data.start_date===input.start_date&&core.data.end_date===input.end_date&&matchesContractMoneyReceipt(core.data.rent_price,input.rent_price)&&matchesContractMoneyReceipt(core.data.total_deposit,input.deposit)));
+      };
+      const result=await importContractBatch(validRows,{userId:user.id,organizationId:selectedOrganizationId,buildingId:selectedBuildingId},{
+        customer:async(row,priorId)=>{
+          if(!findRoom(row))throw {code:'22023',message:'Không tìm thấy phòng trong tòa đang nhập'};
+          if(priorId)return {id:priorId,created:false};
+          const existing=customersList.find(customer=>customer.phone===row.customer_phone);if(existing)return {id:existing.id,created:false};
+          const {data,error}=await supabase.from('customers').insert(withOrg({user_id:user.id,full_name:row.customer_name,phone:row.customer_phone,id_number:row.customer_id_number||null},selectedOrganizationId)).select().single();if(error)throw error;
+          const id=confirmedRecordId(data,'tạo khách nhập');customersList.push({id,full_name:row.customer_name,phone:row.customer_phone,id_number:row.customer_id_number||null});return {id,created:true};
+        },
+        contract:async(row,customerId)=>{
+          const room=findRoom(row);if(!room)throw {code:'22023',message:'Không tìm thấy phòng trong tòa đang nhập'};
+          const imported={user_id:user.id,tenant_id:customerId,room_id:room.id,signed_date:row.signed_date,start_date:row.start_date,end_date:row.end_date,rent_price:row.rent_price,payment_cycle:(row.payment_cycle||'MONTHLY') as NonNullable<ContractImportInsert['payment_cycle']>,total_deposit:row.deposit||0,deposit_paid:0,notes:row.notes||null,status:'ACTIVE'} satisfies Omit<ContractImportInsert,'public_code'>;
+          // Parser accepts only MONTHLY/QUARTERLY/SEMI_ANNUAL/ANNUAL.
+          // 20260530000003 trigger fills omitted public_code; generated Insert marks it required. Keep the existing payload.
+          const {data,error}=await supabase.from('contracts').insert(withOrg(imported,selectedOrganizationId) as ContractImportInsert).select().single();if(error)throw error;
+          return {id:confirmedRecordId(data,'tạo hợp đồng nhập'),roomId:room.id};
+        },
+        link:async(contractId,customerId)=>{const {error}=await supabase.from('contract_customers').insert(withOrg({contract_id:contractId,customer_id:customerId,is_representative:true},selectedOrganizationId));if(error)throw error;},
+        occupy:async(roomId)=>{const {error}=await supabase.from('rooms').update({status:'OCCUPIED'}).eq('id',roomId);if(error)throw error;},verify,verifyCustomer,
+      },report=>{setImportResult(report);setBlocked(report.pending&&!report.canCorrect);});
+      if(result.failed>0){toast.error(`Đã nhập ${result.success} hợp đồng; ${result.failed} dòng cần kiểm tra. Giữ các ID đã tạo và đối chiếu trước khi nhập lại.`);}
+      else if(result.success>0)toast.success(`Đã hoàn tất nhập ${result.success} hợp đồng.`);
+    }catch(error){setParseError(friendlyError(error,'Chưa nhập được hợp đồng',{operation:'nhập hợp đồng từ Excel',financial:true}).description);}
+    finally{importing.current=false;setIsImporting(false);}
   }
 
   function handleExport() {
@@ -263,7 +197,9 @@ export function ContractImportExportDialog({
   }
 
   function handleClose() {
+    if(importing.current)return;
     onOpenChange(false);
+    if(importResult?.pending||blocked)return;
     setTimeout(() => {
       setSelectedFile(null);
       setSelectedBuildingId('');
@@ -279,8 +215,8 @@ export function ContractImportExportDialog({
   const hasParseResult = parseResult !== null;
   const validCount = parseResult?.success.length ?? 0;
   const errorCount = parseResult?.errors.length ?? 0;
-  const canParse = !!selectedFile && !!selectedBuildingId && !isParsing;
-  const canConfirm = hasParseResult && validCount > 0 && !isImporting && !importResult;
+  const canParse = !!selectedFile && !!selectedBuildingId && !isParsing && !blocked && pendingChecked;
+  const canConfirm = hasParseResult && validCount > 0 && !isImporting && !importResult && !blocked && pendingChecked;
 
   // ---- render ----
 
@@ -294,7 +230,7 @@ export function ContractImportExportDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
+    <Dialog open={open} onOpenChange={value=>{if(!value)handleClose();}}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Nhập dữ liệu hợp đồng</DialogTitle>
@@ -304,7 +240,7 @@ export function ContractImportExportDialog({
           {/* Step 1: Select building */}
           <div className="space-y-2">
             <p className="text-sm font-medium">Bước 1: Chọn toà nhà</p>
-            <Select value={selectedBuildingId} onValueChange={setSelectedBuildingId}>
+            <Select value={selectedBuildingId} onValueChange={setSelectedBuildingId} disabled={isImporting || blocked}>
               <SelectTrigger>
                 <SelectValue placeholder="Chọn toà nhà..." />
               </SelectTrigger>
@@ -352,6 +288,7 @@ export function ContractImportExportDialog({
               onClick={handleSelectFile}
               onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
               onDrop={(e) => {
+                if(blocked||importing.current)return;
                 e.preventDefault();
                 e.stopPropagation();
                 const file = e.dataTransfer.files?.[0];
@@ -477,6 +414,9 @@ export function ContractImportExportDialog({
           {/* Import result (after batch create) */}
           {importResult && (
             <div className="space-y-3">
+              {importResult.message&&<p role="alert" className="text-sm text-destructive">{importResult.message}</p>}
+              {importResult.pending&&importResult.canCorrect&&<p className="text-sm">Có thể sửa file tại các dòng bị từ chối rồi đọc lại. Các ID đã tạo chỉ được bỏ qua sau khi đối chiếu máy chủ; không tạo lại các dòng này.</p>}
+              {importResult.customerIds.length>0&&<p className="text-xs text-muted-foreground">Khách đã tạo: {importResult.customerIds.map(item=>`dòng ${item.row}: ${item.id}`).join('; ')}.</p>}
               {importResult.failed === 0 ? (
                 <Alert className="border-green-200 bg-green-50 text-green-800">
                   <CheckCircle2 className="h-4 w-4 text-green-600" />
@@ -494,6 +434,9 @@ export function ContractImportExportDialog({
               )}
 
               {/* Import error table */}
+              {importResult.createdIds.length > 0 && <p className="text-xs text-muted-foreground">
+                Bản ghi đã tạo: {importResult.createdIds.map(item => `dòng ${item.row}: ${item.id}`).join('; ')}.
+              </p>}
               {importResult.errors.length > 0 && (
                 <div className="rounded-md border overflow-hidden max-h-48 overflow-y-auto">
                   <Table>

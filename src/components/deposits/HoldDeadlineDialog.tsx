@@ -1,4 +1,7 @@
-import { useState } from "react";
+import { focusFirstError } from "@/lib/formErrors";
+import { validateInputDrafts } from "@/lib/inputDraftValidation";
+import { friendlyError } from "@/lib/friendlyError";
+import { useRef, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -72,6 +75,9 @@ function HoldDeadlineForm({
   target: HoldDeadlineTarget;
   onOpenChange: (open: boolean) => void;
 }) {
+  const root = useRef<HTMLDivElement>(null);
+  const [fieldErrors,setFieldErrors] = useState<Record<string,string>>({});
+  const [submitError,setSubmitError] = useState<string|null>(null);
   const setTerms = useSetReservationHoldTerms();
   const [hold, setHold] = useState(target.holdUntil ?? "");
   const [topup, setTopup] = useState(target.topupDueDate ?? "");
@@ -87,6 +93,16 @@ function HoldDeadlineForm({
       : Math.max(0, Math.round(depositTarget) - Math.round(target.paidAmount));
 
   const submit = (xoaHet: boolean) => {
+    if (!xoaHet && !validateInputDrafts(root.current)) return;
+    const errors: Record<string,string> = {};
+    if (!xoaHet) {
+      if (topupSauHold) errors.topup_due_date = 'Hạn bổ sung cọc không được sau hạn làm hợp đồng.';
+      if (!hold && !topup && depositTarget <= 0) errors.hold_until = 'Nhập ít nhất một kỳ hạn hoặc số cọc cần đủ.';
+      if (!Number.isFinite(depositTarget) || depositTarget < 0) errors.deposit_target = 'Cọc cần đủ phải là số tiền không âm.';
+    }
+    setFieldErrors(errors); setSubmitError(null);
+    if (Object.keys(errors).length) { void focusFirstError(errors,{root:root.current,order:['deposit_target','topup_due_date','hold_until']}); return; }
+
     setTerms.mutate(
       {
         incomeExpenseId: target.voucherId,
@@ -94,14 +110,15 @@ function HoldDeadlineForm({
         topupDueDate: xoaHet ? null : topup || null,
         depositTarget: xoaHet ? null : depositTarget > 0 ? depositTarget : null,
       },
-      { onSuccess: () => onOpenChange(false) },
+      { onSuccess: () => onOpenChange(false), onError: error => setSubmitError(friendlyError(error, "Chưa lưu được kỳ hạn", {operation:"lưu kỳ hạn phiếu cọc"}).description) },
     );
   };
 
   const luuDuoc = !topupSauHold && (!!hold || !!topup || depositTarget > 0);
 
   return (
-      <DialogContent className="max-w-md">
+      <DialogContent ref={root} className="max-w-md">
+        {submitError && <p role="alert" className="text-sm text-destructive">{submitError}</p>}
         <DialogHeader>
           <DialogTitle>Kỳ hạn phiếu cọc giữ chỗ</DialogTitle>
           <DialogDescription>{target.label}</DialogDescription>
@@ -119,14 +136,14 @@ function HoldDeadlineForm({
                 <CurrencyInput
                   value={depositTarget}
                   onChange={(v) => setDepositTarget(Number(v) || 0)}
-                  name="deposit_target"
+                  aria-label="Cọc cần đủ" aria-invalid={!!fieldErrors.deposit_target} aria-describedby={fieldErrors.deposit_target ? "deposit-target-error" : undefined} name="deposit_target"
                 />
               </div>
               <div>
                 <div className="mb-1 text-[11.5px] font-semibold text-muted-foreground">
                   Hạn bổ sung
                 </div>
-                <DateInput value={topup} onChange={setTopup} name="topup_due_date" />
+                <DateInput value={topup} onChange={setTopup} aria-label="Hạn bổ sung" aria-invalid={!!fieldErrors.topup_due_date} aria-describedby={fieldErrors.topup_due_date ? "topup-due-error" : undefined} name="topup_due_date" />
               </div>
             </div>
             {target.paidAmount !== null && (
@@ -167,7 +184,7 @@ function HoldDeadlineForm({
                 </Button>
               ))}
             </div>
-            <DateInput value={hold} onChange={setHold} name="hold_until" />
+            <DateInput value={hold} onChange={setHold} aria-label="Hạn phải làm hợp đồng" aria-invalid={!!fieldErrors.hold_until} aria-describedby={fieldErrors.hold_until ? "hold-until-error" : undefined} name="hold_until" />
             {holdDays !== null && (
               <p className={"text-[12px] " + (holdDays < 0 ? "text-red-600" : "text-muted-foreground")}>
                 {holdDays < 0
@@ -179,6 +196,9 @@ function HoldDeadlineForm({
             )}
           </div>
 
+          {fieldErrors.deposit_target && <p id="deposit-target-error" className="text-sm text-destructive" role="alert">{fieldErrors.deposit_target}</p>}
+          {fieldErrors.topup_due_date && <p id="topup-due-error" className="text-sm text-destructive" role="alert">{fieldErrors.topup_due_date}</p>}
+          {fieldErrors.hold_until && <p id="hold-until-error" className="text-sm text-destructive" role="alert">{fieldErrors.hold_until}</p>}
           {topupSauHold && (
             <div className="flex items-start gap-2.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-[12.5px] text-red-700">
               <AlertTriangle className="mt-px h-4 w-4 shrink-0" />
@@ -210,7 +230,7 @@ function HoldDeadlineForm({
             </Button>
             <Button
               type="button"
-              disabled={!luuDuoc || setTerms.isPending}
+              disabled={setTerms.isPending}
               onClick={() => submit(false)}
             >
               {setTerms.isPending ? "Đang lưu..." : "Lưu kỳ hạn"}

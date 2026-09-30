@@ -1,3 +1,5 @@
+import { feeFailureMessage } from "@/lib/feeFeedback";
+import { voucherOutcomeUnknown } from "@/lib/voucherFeedback";
 import { useMemo, useState } from 'react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -43,6 +45,9 @@ interface Props {
  */
 export function SpecialFeeBatchDialog({ open, onOpenChange, period }: Props) {
   const preview = useSpecialFeePreview(period, undefined, open);
+  const [uncertain,setUncertain] = useState(false);
+  const [submitError,setSubmitError] = useState<string|null>(null);
+  const [createdIds,setCreatedIds] = useState<string[]>([]);
   const generate = useGenerateSpecialFees();
   const accounts = useAccounts({ enabled: open });
   const [skipped, setSkipped] = useState<Set<string>>(new Set());
@@ -69,6 +74,8 @@ export function SpecialFeeBatchDialog({ open, onOpenChange, period }: Props) {
   }, [rows]);
 
   const run = async () => {
+    if (uncertain || preview.isError || accounts.isError || accounts.isPending || accounts.data===undefined) return;
+    setSubmitError(null);
     // Server sinh theo TOÀ, nên toà nào bị bỏ hết hạng mục thì không gửi lên.
     const ids = [...new Set(willGenerate.map((r) => r.buildingId))];
     if (!ids.length) return;
@@ -77,7 +84,7 @@ export function SpecialFeeBatchDialog({ open, onOpenChange, period }: Props) {
         period, buildingIds: ids, accountId: accountId || null,
       });
       if (res.created === 0) {
-        toast.success('Không có ô nào cần sinh thêm.');
+        toast.info('Không có ô nào cần sinh thêm.');
       } else if (res.posted > 0) {
         toast.success(
           `Đã sinh ${res.created} phiếu — tổng ${fmt(res.totalAmount)}. ` +
@@ -88,9 +95,9 @@ export function SpecialFeeBatchDialog({ open, onOpenChange, period }: Props) {
           `Đã sinh ${res.created} phiếu — tổng ${fmt(res.totalAmount)}. Tất cả đang CHỜ DUYỆT.`,
         );
       }
-      onOpenChange(false);
+      setCreatedIds(res.voucherIds);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Không sinh được phiếu');
+      const message=feeFailureMessage(e,'sinh phiếu phí hàng loạt'); setSubmitError(message); if(voucherOutcomeUnknown(e))setUncertain(true); toast.error(message);
     }
   };
 
@@ -111,7 +118,7 @@ export function SpecialFeeBatchDialog({ open, onOpenChange, period }: Props) {
           </div>
         ) : preview.isError ? (
           <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm">
-            {preview.error instanceof Error ? preview.error.message : 'Không đọc được danh sách'}
+            Chưa tải được dữ liệu xem trước. Tải lại trước khi sinh phiếu.<Button variant="outline" onClick={()=>void preview.refetch()}>Tải lại</Button>
           </div>
         ) : (
           <>
@@ -122,18 +129,19 @@ export function SpecialFeeBatchDialog({ open, onOpenChange, period }: Props) {
                 <strong className="tabular-nums">{fmt(total)}</strong>
               </div>
               <p className="text-xs text-muted-foreground mt-1">
-                Bấm hai lần cũng không sinh trùng.
+                Kiểm tra các phiếu đã tạo trước khi sinh thêm cho kỳ này.
               </p>
             </div>
 
+            {accounts.isError||accounts.data===undefined ? <p role="alert" className="text-sm text-destructive">Chưa tải được danh sách sổ quỹ. Tải lại trước khi sinh phiếu.<Button variant="outline" onClick={()=>void accounts.refetch()}>Tải lại sổ quỹ</Button></p>:null}
             <div className="space-y-1.5">
               <Label htmlFor="sfb-account">Chi từ sổ quỹ</Label>
-              <Select value={accountId} onValueChange={setAccountId}>
+              <Select value={accountId||"__pending__"} onValueChange={value=>setAccountId(value==="__pending__"?"":value)} disabled={accounts.isError||accounts.isPending||accounts.data===undefined}>
                 <SelectTrigger id="sfb-account">
                   <SelectValue placeholder="Chưa chọn — phiếu sẽ nằm chờ duyệt" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Chưa chọn — phiếu nằm chờ duyệt</SelectItem>
+                  <SelectItem value="__pending__">Chưa chọn — phiếu nằm chờ duyệt</SelectItem>
                   {realAccounts.map((a: any) => (
                     <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
                   ))}
@@ -200,9 +208,10 @@ export function SpecialFeeBatchDialog({ open, onOpenChange, period }: Props) {
           </>
         )}
 
+        <div>{submitError && <p role="alert" className="text-sm text-destructive">{submitError}</p>}{createdIds.map(id=><a className="block text-sm underline" key={id} href={`/income-expense/voucher/${id}`}>Mở phiếu {id}</a>)}</div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Đóng</Button>
-          <Button onClick={run} disabled={generate.isPending || willGenerate.length === 0}>
+          <Button onClick={run} disabled={generate.isPending || uncertain || createdIds.length > 0 || preview.isError || accounts.isError || accounts.isPending || accounts.data===undefined || willGenerate.length === 0}>
             <Check className="h-4 w-4 mr-1" />
             {generate.isPending
               ? 'Đang sinh…'

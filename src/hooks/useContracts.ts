@@ -1,15 +1,23 @@
+import {matchesContractMoneyReceipt} from '@/lib/contractMoneyReceipt';
+import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
+import {sameContractFields,type ContractRelationWriteProgress} from '@/lib/contractEditWorkflow';
+import {sameContractCustomers,sameContractServices} from '@/lib/contractRelationReconcile';
+import {financialReadRows,financialReadNumber} from '@/lib/financialReadValidation';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import { fetchAllRows } from "@/lib/supabaseFetchAll";
 import { isCanonicalFallbackSignal } from "@/lib/canonicalFallback";
 import { toast } from "sonner";
-import { friendlyError } from "@/lib/friendlyError";
+import { contractCreateFeedback, isContractTemplateSettingError } from "@/lib/contractFeedback";
+import { friendlyError } from '@/lib/friendlyError';
+import { assertImportedContractRelations } from "@/lib/contractImportOutcome";
 import { markLocalWrite } from "@/hooks/useRealtimeDataSync";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { withOrg, withOrgAll } from "@/lib/orgPayload";
 import {
   createContractV2,
+  buildCreateContractRpcArgs,
   type ContractCreateRequest,
 } from "@/lib/contractCreateRpc";
 import type {
@@ -367,6 +375,7 @@ async function fetchContractsPagedOnce(
     throw error;
   }
 
+  if(typeof count!=="number"||!Number.isSafeInteger(count)||count<0)throw new TypeError("Chưa xác nhận được tổng số hợp đồng.");
   return {
  // ContractWithRelations là kiểu VIẾT TAY, hẹp hơn hình dạng thật DB trả (một
     // số cột nullable ở DB được khai không-null ở đây, và quan hệ lồng khác cách
@@ -376,8 +385,8 @@ async function fetchContractsPagedOnce(
     // câu lệnh — hai thứ khác hẳn nhau.
     // Việc hoà giải kiểu viết tay với kiểu sinh từ DB là một lượt riêng, đã ghi
     // vào known-gaps: contract-type-handwritten-drift.
-    data: (data || []) as unknown as ContractWithRelations[],
-    count: count || 0,
+    data: financialReadRows(data) as unknown as ContractWithRelations[],
+    count,
   };
 }
 
@@ -483,12 +492,13 @@ export const contractStatsQuery = (buildingIds?: string[]) => ({
         console.error("useContractStats error:", error);
         throw error;
       }
-      const row = (data ?? {}) as Record<string, number>;
+      if (!data || typeof data !== "object" || Array.isArray(data)) throw new TypeError("Chưa tải đủ thống kê hợp đồng.");
+      const row = data as Record<string, unknown>;
       return {
-        total: Number(row.total) || 0,
-        expiring: Number(row.expiring) || 0,
-        expired: Number(row.expired) || 0,
-        terminated: Number(row.terminated) || 0,
+        total: financialReadNumber(row.total),
+        expiring: financialReadNumber(row.expiring),
+        expired: financialReadNumber(row.expired),
+        terminated: financialReadNumber(row.terminated),
       };
     },
   });
@@ -496,6 +506,7 @@ export const contractStatsQuery = (buildingIds?: string[]) => ({
 export const useContractStats = (buildingIds?: string[]) => {
   return useQuery({
     ...contractStatsQuery(buildingIds),
+    meta: { errorDisplay: 'inline', label: 'thống kê hợp đồng' },
     placeholderData: keepPreviousData,
   });
 };
@@ -514,9 +525,15 @@ export interface ContractDashboardCounts {
   terminatedThisMonth: number;
 }
 
+const confirmedContractCount = (value: unknown): number => {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) throw new TypeError("Chưa xác nhận được tổng số hợp đồng.");
+  return value;
+};
+
 export const useContractDashboardCounts = (buildingId?: string | null) => {
   return useQuery({
     queryKey: ["contracts", "dashboard-counts", buildingId ?? null],
+    meta: { errorDisplay: 'inline', label: 'tổng quan hợp đồng' },
     queryFn: async (): Promise<ContractDashboardCounts> => {
       const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
@@ -552,10 +569,10 @@ export const useContractDashboardCounts = (buildingId?: string | null) => {
 
       const [active, newThisMonth, expiringSoon, terminatedThisMonth] = results;
       return {
-        active: active.count ?? 0,
-        newThisMonth: newThisMonth.count ?? 0,
-        expiringSoon: expiringSoon.count ?? 0,
-        terminatedThisMonth: terminatedThisMonth.count ?? 0,
+        active: confirmedContractCount(active.count),
+        newThisMonth: confirmedContractCount(newThisMonth.count),
+        expiringSoon: confirmedContractCount(expiringSoon.count),
+        terminatedThisMonth: confirmedContractCount(terminatedThisMonth.count),
       };
     },
   });
@@ -601,16 +618,24 @@ export const useContract = (id?: string) => {
 
 export const useCreateContract = () => {
   const queryClient = useQueryClient();
-
+  const workflow=persistentFinancialWorkflow('contract-create',{scope:'actor'});
   return useMutation({
-    mutationFn: async (request: ContractCreateRequest) => {
-      const response = await createContractV2(
-        // Generated types intentionally lag until the migration is applied.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (fn, args) => supabase.rpc(fn, args),
-        request,
-      );
-      return response.contract;
+    mutationFn: async (request:ContractCreateRequest&{suppressErrorToast?:boolean}) => {
+      // Local validation runs before the durable marker/writer.
+      buildCreateContractRpcArgs(request);
+      const roomId=request.payload.contract.room_id;
+      return workflow.run(roomId,'tạo hợp đồng',async progress=>{
+        const response=await createContractV2(async(fn,args)=>{
+          const result=await supabase.rpc(fn,args);
+          const raw=result.data as unknown as {contract?:{id?:unknown;contract_number?:unknown}}|null;
+          if(!result.error&&typeof raw?.contract?.id==='string'&&raw.contract.id)progress.completed.push({id:raw.contract.id,label:`Đã nhận hợp đồng ${typeof raw.contract.contract_number==='string'?raw.contract.contract_number:raw.contract.id}`});
+          return result;
+        },{...request,idempotencyKey:progress.requestKey});
+        const receipt=response.contract;
+        if(!receipt||typeof receipt.id!=='string'||!receipt.id||receipt.room_id!==roomId||receipt.status!=='ACTIVE')throw new TypeError('Chưa xác nhận được đúng hợp đồng và phòng vừa tạo.');
+        if(!matchesContractMoneyReceipt(receipt.rent_price,request.payload.contract.rent_price)||!matchesContractMoneyReceipt(receipt.total_deposit,request.payload.contract.total_deposit))throw new TypeError('Chưa xác nhận được đúng tiền thuê và tiền cọc của hợp đồng vừa tạo.');
+        return receipt;
+      });
     },
     // 15/09 (plan con B): chín lượt invalidate ở đây là lượt ĐÁNH THỨ NHẤT.
     // create_contract_v2 ghi 5 bảng có realtime (contracts, rooms, invoices,
@@ -623,7 +648,7 @@ export const useCreateContract = () => {
     //     ["business-performance"] (xem src/hooks/realtime/operations.ts), nên
     //     không ai invalidate hộ khoá này. Bỏ nó là kho phòng kẹt trạng thái cũ.
     // Bảy khoá còn lại đã nằm trong descriptor `invoices` / `income_expenses`.
-    onSuccess: () => {
+    onSuccess: async (contract, request) => {
       queryClient.invalidateQueries({ queryKey: ["contracts"] });
       queryClient.invalidateQueries({ queryKey: ["contract-commission-followups"] });
       queryClient.invalidateQueries({ queryKey: ["rooms"] });
@@ -634,12 +659,28 @@ export const useCreateContract = () => {
         "income_expenses",
         "income_expense_items",
       ]);
-      toast.success("Dữ liệu đã được TẠO thành công");
+      if (contract.contract_number) {
+        toast.success(`Đã tạo hợp đồng ${contract.contract_number}`);
+      } else {
+        const roomId = request?.payload?.contract?.room_id;
+        if (!roomId) {
+          toast.success('Đã tạo hợp đồng');
+        } else {
+          let name:string|undefined;try{const room=await supabase.from('rooms').select('name').eq('id',roomId).maybeSingle();if(!room.error)name=room.data?.name;}catch{/* The positive contract receipt is already confirmed. */}
+          toast.success(name?`Đã tạo hợp đồng cho phòng ${name}`:'Đã tạo hợp đồng');
+        }
+      }
     },
-    onError: (error: any) => {
+    onError: (error: unknown,request) => {
+      if(request.suppressErrorToast)return;
       console.error("Error creating contract:", error);
-      const fe = friendlyError(error, "Không lưu được hợp đồng");
-      toast.error(fe.title, { description: fe.description });
+      const fe = contractCreateFeedback(error);
+      toast.error(fe.title, { description: fe.description,
+        ...(isContractTemplateSettingError(error) ? { action: {
+          label: 'Mở mẫu tài liệu',
+          onClick: () => window.open('/settings/templates', '_blank', 'noopener,noreferrer'),
+        } } : {}),
+      });
     },
   });
 };
@@ -659,6 +700,7 @@ export const useUpdateContract = () => {
     }: {
       id: string;
       updates: UpdateContractPayload;
+      suppressSuccessToast?: boolean;
     }) => {
       const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
@@ -671,22 +713,21 @@ export const useUpdateContract = () => {
         .single();
 
       if (error) throw error;
+      if(!data||data.id!==id||!sameContractFields(data as unknown as Record<string,unknown>,updates))throw new TypeError('Chưa xác nhận được đúng hợp đồng và thông tin vừa cập nhật.');
       return data as unknown as Contract;
     },
-    onSuccess: (data) => {
+    onSuccess: (data, vars) => {
       queryClient.invalidateQueries({ queryKey: ["contracts"] });
       if (data?.id) {
         queryClient.invalidateQueries({ queryKey: ["contracts", data.id] });
       }
-      toast.success("Dữ liệu đã được CẬP NHẬT thành công");
+      if (!vars.suppressSuccessToast) toast.success(data.contract_number ? `Đã cập nhật hợp đồng ${data.contract_number}` : 'Đã cập nhật hợp đồng');
     },
-    onError: (error: any) => {
+    onError: (error: unknown,vars) => {
+      if(vars.suppressSuccessToast)return;
       console.error("Error updating contract:", error);
-      if (error?.code === "23503") {
-        toast.error("Dữ liệu liên kết không tồn tại");
-      } else {
-        toast.error(error?.message || "Có lỗi xảy ra. Vui lòng thử lại.");
-      }
+      const feedback = friendlyError(error, 'Không cập nhật được hợp đồng', { operation: 'cập nhật hợp đồng' });
+      toast.error(feedback.title, { description: feedback.description });
     },
   });
 };
@@ -705,6 +746,7 @@ export const useSyncContractCustomers = () => {
     mutationFn: async ({
       contractId,
       customers,
+      organizationId,skipDelete,onPhase,
     }: {
       contractId: string;
       customers: Array<{
@@ -712,14 +754,17 @@ export const useSyncContractCustomers = () => {
         is_representative: boolean;
         notes?: string | null;
       }>;
-    }) => {
-      const { error: delErr } = await supabase
+    } & ContractRelationWriteProgress) => {
+      if(!skipDelete){
+      onPhase?.("deleting");
+      const { data: deleted,error: delErr } = await supabase
         .from("contract_customers")
         .delete()
-        .eq("contract_id", contractId);
+        .eq("contract_id", contractId).select("customer_id,is_representative,notes");
       if (delErr) throw delErr;
-
-      if (customers.length === 0) return;
+      financialReadRows(deleted);onPhase?.("deleted");
+      }
+      if (customers.length === 0) {onPhase?.("done");return;}
 
       const rows = customers.map((c) => ({
         contract_id: contractId,
@@ -728,10 +773,12 @@ export const useSyncContractCustomers = () => {
         notes: c.notes ?? null,
       }));
 
-      const { error: insErr } = await supabase
+      onPhase?.("inserting");
+      const {data:inserted,error: insErr } = await supabase
         .from("contract_customers")
-        .insert(withOrgAll(rows, selectedOrganizationId));
+        .insert(withOrgAll(rows, organizationId??selectedOrganizationId)).select("customer_id,is_representative,notes");
       if (insErr) throw insErr;
+      if(!sameContractCustomers(financialReadRows(inserted),customers))throw new TypeError("Chưa xác nhận được đầy đủ khách hàng của hợp đồng.");onPhase?.("done");
     },
     onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: ["contracts"] });
@@ -756,6 +803,7 @@ export const useSyncContractServices = () => {
     mutationFn: async ({
       contractId,
       services,
+      organizationId,skipDelete,onPhase,
     }: {
       contractId: string;
       services: Array<{
@@ -763,14 +811,17 @@ export const useSyncContractServices = () => {
         unit_price: number;
         initial_reading?: number | null;
       }>;
-    }) => {
-      const { error: delErr } = await supabase
+    } & ContractRelationWriteProgress) => {
+      if(!skipDelete){
+      onPhase?.("deleting");
+      const { data: deleted,error: delErr } = await supabase
         .from("contract_services")
         .delete()
-        .eq("contract_id", contractId);
+        .eq("contract_id", contractId).select("service_id,unit_price,initial_reading");
       if (delErr) throw delErr;
-
-      if (services.length === 0) return;
+      financialReadRows(deleted);onPhase?.("deleted");
+      }
+      if (services.length === 0) {onPhase?.("done");return;}
 
       const rows = services.map((s) => ({
         contract_id: contractId,
@@ -779,10 +830,12 @@ export const useSyncContractServices = () => {
         initial_reading: s.initial_reading ?? null,
       }));
 
-      const { error: insErr } = await supabase
+      onPhase?.("inserting");
+      const {data:inserted,error: insErr } = await supabase
         .from("contract_services")
-        .insert(withOrgAll(rows, selectedOrganizationId) as any);
+        .insert(withOrgAll(rows, organizationId??selectedOrganizationId)).select("service_id,unit_price,initial_reading");
       if (insErr) throw insErr;
+      if(!sameContractServices(financialReadRows(inserted),services))throw new TypeError("Chưa xác nhận được đầy đủ dịch vụ của hợp đồng.");onPhase?.("done");
     },
     onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: ["contracts"] });
@@ -812,7 +865,7 @@ export const useDeleteContract = () => {
         .limit(1);
 
       if (invoicesError) throw invoicesError;
-      if (invoices && invoices.length > 0) {
+      if (financialReadRows(invoices).length > 0) {
         throw new Error(
           "Không thể xóa hợp đồng đã có hoá đơn hoặc bản ghi thanh lý"
         );
@@ -826,28 +879,34 @@ export const useDeleteContract = () => {
         .limit(1);
 
       if (terminationsError) throw terminationsError;
-      if (terminations && terminations.length > 0) {
+      if (financialReadRows(terminations).length > 0) {
         throw new Error(
           "Không thể xóa hợp đồng đã có hoá đơn hoặc bản ghi thanh lý"
         );
       }
 
       // Soft-delete the contract
-      const { error } = await supabase
+      const { data: deleted, error } = await supabase
         .from("contracts")
         .update({ deleted_at: new Date().toISOString() } as any)
         .eq("id", contractId)
-        ;
+        .select("id, contract_number, deleted_at")
+        .maybeSingle();
 
       if (error) throw error;
+      if (!deleted || deleted.id !== contractId || typeof deleted.deleted_at !== "string" || !Number.isFinite(Date.parse(deleted.deleted_at))) {
+        throw new Error("Chưa xác nhận được kết quả xóa hợp đồng. Tải lại danh sách để kiểm tra.");
+      }
+      return deleted;
     },
-    onSuccess: () => {
+    onSuccess: (deleted) => {
       queryClient.invalidateQueries({ queryKey: ["contracts"] });
-      toast.success("Hợp đồng đã được xóa thành công");
+      toast.success(`Đã xóa hợp đồng ${deleted.contract_number || deleted.id.slice(0, 8)}.`);
     },
     onError: (error: any) => {
       console.error("Error deleting contract:", error);
-      toast.error(error?.message || "Có lỗi xảy ra. Vui lòng thử lại.");
+      const feedback = friendlyError(error, 'Không xóa được hợp đồng', { operation: 'xóa hợp đồng' });
+      toast.error(feedback.title, { description: feedback.description });
     },
   });
 };
@@ -1028,7 +1087,8 @@ export const useContractsLegacy = (
         console.error("useContractsLegacy error:", error);
         throw error;
       }
-      return (data || []) as unknown as LegacyContractWithRelations[];
+      if (!Array.isArray(data)) throw new TypeError('Chưa xác nhận được danh sách hợp đồng của phòng. Tải lại để kiểm tra.');
+      return data as unknown as LegacyContractWithRelations[];
     },
   });
 };
@@ -1056,7 +1116,9 @@ export const useUnpaidInvoices = (contractId?: string) => {
         .is("deleted_at", null);
 
       if (error) throw error;
-      return data || [];
+      return financialReadRows(data).map(invoice=>({...invoice,
+        total_amount:financialReadNumber(invoice.total_amount),paid_amount:financialReadNumber(invoice.paid_amount),remaining_amount:financialReadNumber(invoice.remaining_amount),
+      }));
     },
     enabled: !!contractId,
   });
@@ -1314,23 +1376,25 @@ export const useBulkCreateContracts = () => {
       const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
 
-      const { data: rooms } = await supabase
+      const { data: rooms, error: roomsError } = await supabase
         .from("rooms")
         .select("id, name, code")
         .eq("building_id", building_id)
         .is("deleted_at", null);
 
-      if (!rooms) throw new Error("Không thể tải danh sách căn hộ");
+      if (roomsError || !rooms) throw new Error("Không thể tải danh sách căn hộ");
 
-      const { data: existingTenants } = await supabase
+      const { data: existingTenants, error: tenantsError } = await supabase
         .from("tenants")
         .select("id, full_name, phone")
         .is("deleted_at", null);
+      if (tenantsError || !existingTenants) throw new Error("Không thể tải danh sách khách hàng");
 
       const results = {
         success: 0,
         failed: 0,
         errors: [] as Array<{ row: number; message: string }>,
+        createdIds: [] as Array<{ row: number; id: string }>,
       };
 
       for (let i = 0; i < rows.length; i++) {
@@ -1375,7 +1439,7 @@ export const useBulkCreateContracts = () => {
             if (tenantError || !newTenant) {
               results.errors.push({
                 row: rowNum,
-                message: `Không thể tạo khách hàng: ${tenantError?.message || "Unknown"}`,
+                message: `Không thể tạo khách hàng: ${friendlyError(tenantError, 'Không thể tạo khách hàng').description}`,
               });
               results.failed++;
               continue;
@@ -1412,13 +1476,14 @@ export const useBulkCreateContracts = () => {
           if (contractError || !contract) {
             results.errors.push({
               row: rowNum,
-              message: `Lỗi tạo hợp đồng: ${contractError?.message || "Unknown"}`,
+              message: `Lỗi tạo hợp đồng: ${friendlyError(contractError, 'Không thể tạo hợp đồng').description}`,
             });
             results.failed++;
             continue;
           }
 
-          await supabase.from("contract_tenants").insert(withOrgAll([
+          results.createdIds.push({ row: rowNum, id: contract.id });
+          const { error: relationError } = await supabase.from("contract_tenants").insert(withOrgAll([
             {
               contract_id: contract.id,
               tenant_id: tenantId,
@@ -1426,12 +1491,16 @@ export const useBulkCreateContracts = () => {
               move_in_date: row.start_date,
             },
           ], selectedOrganizationId));
+          assertImportedContractRelations(contract.id, relationError, null);
 
           results.success++;
         } catch (e: any) {
+          const createdId = results.createdIds.find(item => item.row === rowNum)?.id;
           results.errors.push({
             row: rowNum,
-            message: e.message || "Lỗi không xác định",
+            message: createdId
+              ? `Hợp đồng ${createdId} đã tạo nhưng các bước liên quan chưa hoàn tất. Kiểm tra bản ghi này trước khi nhập lại.`
+              : friendlyError(e, 'Chưa hoàn tất dòng nhập hợp đồng').description,
           });
           results.failed++;
         }
@@ -1442,17 +1511,17 @@ export const useBulkCreateContracts = () => {
     onSuccess: (results) => {
       queryClient.invalidateQueries({ queryKey: ["contracts"] });
       queryClient.invalidateQueries({ queryKey: ["rooms"] });
-      if (results.success > 0) {
+      if (results.failed > 0) {
+        toast.error(`Đã nhập ${results.success} hợp đồng; ${results.failed} dòng cần kiểm tra. Đối chiếu ID hợp đồng đã tạo trước khi nhập lại.`);
+      } else if (results.success > 0) {
         toast.success(
           `Đã tạo ${results.success} hợp đồng.${results.failed > 0 ? ` ${results.failed} thất bại.` : ""}`
         );
       }
-      if (results.success === 0 && results.failed > 0) {
-        toast.error(`Tất cả ${results.failed} hợp đồng đều gặp lỗi.`);
-      }
     },
     onError: (error: any) => {
-      toast.error(error?.message || "Có lỗi xảy ra khi nhập dữ liệu");
+      const feedback = friendlyError(error, 'Không thể nhập hợp đồng');
+      toast.error(feedback.title, { description: feedback.description });
     },
   });
 };

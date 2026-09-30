@@ -1,3 +1,5 @@
+import {focusFirstError} from '@/lib/formErrors';
+import {voucherFailureMessage,voucherOutcomeUnknown} from '@/lib/voucherFeedback';
 // =============================================
 // ChangeCollectionMethodDialog — "Đổi hình thức thu" của MỘT dòng thu hoá đơn
 // (đợt 1 sửa phiếu, chủ chốt 25/09/2026).
@@ -78,12 +80,7 @@ const methodLabel = (m: string) => PAYMENT_METHOD_LABELS[m] ?? m;
 const fmtVnd = (n: number) => `${new Intl.NumberFormat('vi-VN').format(Math.round(Number(n) || 0))} đ`;
 
 /** Câu lỗi máy chủ đã viết sẵn bằng tiếng Việt; bỏ tiền tố máy-đọc kiểu [PROFIT_LOCKED]. */
-const loiDoc = (error: unknown): string => {
-  const msg = (error as { message?: unknown } | null)?.message;
-  return typeof msg === 'string' && msg.trim()
-    ? msg.replace(/^\[[A-Z_]+\]\s*/, '')
-    : 'Không tải được danh sách sổ nhận tiền.';
-};
+const loiDoc = (_error:unknown) => 'Chưa tải được danh sách sổ nhận tiền. Tải lại danh sách trước khi đổi hình thức thu.';
 
 export default function ChangeCollectionMethodDialog({
   open,
@@ -100,6 +97,10 @@ export default function ChangeCollectionMethodDialog({
   /** Sổ người dùng tự chọn trong danh sách ('' = chưa chọn → dùng sổ gợi ý). */
   const [pickedAccountId, setPickedAccountId] = useState('');
   const [reason, setReason] = useState('');
+  const root=useRef<HTMLDivElement>(null);
+  const [reasonError,setReasonError]=useState<string|null>(null);
+  const [submitError,setSubmitError]=useState<string|null>(null);
+  const [uncertainIds,setUncertainIds]=useState<Set<string>>(()=>new Set());
   // Khoá gọi lại ổn định cho CÙNG một nội dung: bấm lại sau khi mạng chập chờn thì
   // máy chủ trả kết quả cũ thay vì đổi thêm lần nữa; đổi nội dung thì khoá mới.
   const attemptRef = useRef<{ fingerprint: string; key: string } | null>(null);
@@ -110,6 +111,8 @@ export default function ChangeCollectionMethodDialog({
     setMethod(currentMethod);
     setPickedAccountId('');
     setReason('');
+    setReasonError(null);
+    setSubmitError(null);
     attemptRef.current = null;
   }, [open, tender.id, currentMethod]);
 
@@ -147,10 +150,12 @@ export default function ChangeCollectionMethodDialog({
   const thieuSo = !chan && !!books.data && !selectedAccountId ? missingReceivingBookMessage(method, tender.buildingName) : null;
 
   const canSubmit =
-    !chan && !booksLoading && !thieuSo && !!selectedAccountId && !unchanged && reasonOk && !mutation.isPending;
+    !chan && !booksLoading && !thieuSo && !!selectedAccountId && !unchanged && !mutation.isPending && !uncertainIds.has(tender.id);
 
   const handleSubmit = async () => {
     if (!canSubmit || !selectedAccountId) return;
+    if(!reasonOk) {const message=`Nhập lý do đổi từ ${REVISION_REASON_MIN} đến ${REVISION_REASON_MAX} ký tự.`;setReasonError(message);void focusFirstError({reason:message},{root:root.current});return;}
+    setReasonError(null);setSubmitError(null);
     const payload = { tenderId: tender.id, method, accountId: selectedAccountId, reason: reason.trim() };
     const fingerprint = JSON.stringify(payload);
     if (!attemptRef.current || attemptRef.current.fingerprint !== fingerprint) {
@@ -158,8 +163,9 @@ export default function ChangeCollectionMethodDialog({
     }
     try {
       await mutation.mutateAsync({ ...payload, idempotencyKey: attemptRef.current.key });
-    } catch {
-      // Hook đã báo lỗi bằng toast (câu tiếng Việt của máy chủ); giữ hộp mở để sửa.
+    } catch (error) {
+      setSubmitError(voucherFailureMessage(error,"đổi hình thức thu"));
+      if(voucherOutcomeUnknown(error))setUncertainIds(ids=>new Set([...ids,tender.id]));
       return;
     }
     // Các khoá màn hoá đơn / Thu tiền mà hook dùng chung không phủ tới.
@@ -179,7 +185,7 @@ export default function ChangeCollectionMethodDialog({
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!mutation.isPending) onOpenChange(v); }}>
-      <DialogContent className="max-w-md">
+      <DialogContent ref={root} className="max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ArrowRightLeft className="h-5 w-5 text-violet-600" />
@@ -213,7 +219,7 @@ export default function ChangeCollectionMethodDialog({
 
           {chan && (
             <Alert variant="destructive">
-              <AlertDescription>{chan}</AlertDescription>
+              <AlertDescription>{chan}{books.isError&&<Button type="button" variant="outline" onClick={()=>void books.refetch()}>Tải lại sổ nhận</Button>}</AlertDescription>
             </Alert>
           )}
 
@@ -286,6 +292,7 @@ export default function ChangeCollectionMethodDialog({
           <div className="space-y-2">
             <Label htmlFor="ly-do-doi-hinh-thuc">Lý do đổi *</Label>
             <Textarea
+              name="reason" aria-invalid={!!reasonError} aria-describedby={reasonError?"change-method-reason-error":undefined}
               id="ly-do-doi-hinh-thuc"
               rows={3}
               maxLength={REVISION_REASON_MAX}
@@ -294,6 +301,7 @@ export default function ChangeCollectionMethodDialog({
               placeholder="Vd: khách chuyển vào TKHIEP chứ không phải MBHIEP"
               disabled={disabledAll}
             />
+            {reasonError&&<p id="change-method-reason-error" role="alert" className="text-sm text-destructive">{reasonError}</p>}
             <p className={`text-xs ${reasonLength > 0 && !reasonOk ? 'text-red-600' : 'text-muted-foreground'}`}>
               Bắt buộc, ít nhất {REVISION_REASON_MIN} ký tự
               {reasonLength > 0 && reasonLength < REVISION_REASON_MIN
@@ -304,6 +312,8 @@ export default function ChangeCollectionMethodDialog({
           </div>
         </div>
 
+        {submitError&&<p role="alert" className="text-sm text-destructive">{submitError}</p>}
+        {uncertainIds.has(tender.id)&&!submitError&&<p role="alert" className="text-sm text-destructive">Chưa xác nhận được lần đổi trước. Tải lại khoản thu để đối chiếu trước khi đổi tiếp.</p>}
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={mutation.isPending}>
             Huỷ

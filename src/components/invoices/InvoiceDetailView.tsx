@@ -1,3 +1,5 @@
+import {readInvoiceRelatedVouchers} from '@/lib/invoiceRelatedRead';
+import {QueryRegion} from '@/components/errors/QueryRegion';
 import { useState, Suspense, lazy } from 'react';
 import { Button } from '@/components/ui/button';
 import {
@@ -158,7 +160,8 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
   // Xem ảnh chứng từ thanh toán bằng lightbox tại chỗ (không mở tab mới).
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
 
-  const { data: invoice, isLoading } = useInvoice(id || '');
+  const invoiceQuery = useInvoice(id || '');
+  const {data:invoice,isLoading}=invoiceQuery;
   const cancelMutation = useCancelInvoice();
   const restoreMutation = useRestoreInvoice();
   const { data: ctx } = useMyContext();
@@ -173,7 +176,8 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
   // Lấy danh sách phiếu thu/chi APPROVED gắn với hoá đơn (declared trước early
   // returns để giữ thứ tự hooks ổn định giữa các render). payment_id là mối nối
   // phiếu ↔ lần thu; account/creator_name cho chip "Sổ quỹ" / "Người thu".
-  const { data: relatedVouchers = [] } = useQuery({
+  const vouchersQuery = useQuery({
+    meta:{errorDisplay:"inline",label:"phiếu thu chi của hoá đơn"},
     queryKey: ['invoice-vouchers', id],
     enabled: !!id,
     queryFn: async () => {
@@ -187,11 +191,13 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
         .is('deleted_at', null)
         .order('voucher_date', { ascending: true });
       if (error) throw error;
-      return (data ?? []) as unknown as RelatedVoucher[];
+      return readInvoiceRelatedVouchers(data as unknown as RelatedVoucher[]|null);
     },
   });
 
+  const relatedVouchers=vouchersQuery.data??[];
   if (!id) return null;
+  if(invoiceQuery.isError||vouchersQuery.isError||vouchersQuery.isPending||vouchersQuery.data===undefined) return <QueryRegion label="chi tiết hoá đơn và các phiếu liên quan" queries={[invoiceQuery,vouchersQuery]}><></></QueryRegion>;
 
   if (isLoading) {
     return (

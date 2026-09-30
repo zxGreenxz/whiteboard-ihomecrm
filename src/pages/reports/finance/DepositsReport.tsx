@@ -1,3 +1,4 @@
+import { QueryRegion } from "@/components/errors/QueryRegion";
 import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
@@ -37,9 +38,11 @@ export default function DepositsReport() {
   const [pageSize, setPageSize] = useState<number>(10);
 
   useCopilotPageContext('reports.finance.deposits', { building_ids: buildingIds, status: statusFilter });
-  const { data: deposits = [], isLoading } = useDepositsReport();
+  const depositsReportQuery = useDepositsReport();
+  const { data: deposits = [], isLoading } = depositsReportQuery;
   // Tổng tiền: RPC SQL aggregate (miễn nhiễm cap-1000), theo đúng bộ lọc.
-  const { data: summary } = useDepositsReportSummary(statusFilter, buildingIds);
+  const depositsReportSummaryQuery = useDepositsReportSummary(statusFilter, buildingIds);
+  const { data: summary } = depositsReportSummaryQuery;
 
   const filtered = useMemo(() => {
     let arr = [...(deposits as any[])];
@@ -88,6 +91,7 @@ export default function DepositsReport() {
           />
         </div>
 
+        <QueryRegion label="báo cáo tiền cọc" queries={[depositsReportQuery, depositsReportSummaryQuery]}>
         <div className="text-base font-semibold">Tổng: {formatCurrency(total)}</div>
 
         <div className="rounded-md border">
@@ -159,6 +163,7 @@ export default function DepositsReport() {
               : `${(page - 1) * pageSize + 1} - ${Math.min(page * pageSize, totalCount)} trên tổng số ${totalCount} bản ghi`}
           </div>
         </div>
+      </QueryRegion>
       </div>
     </MainLayout>
   );

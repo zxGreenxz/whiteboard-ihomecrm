@@ -1,3 +1,4 @@
+import { networkFeedback } from "@/lib/network-center/feedback";
 import { ArrowRight, Check } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
@@ -24,7 +25,7 @@ export function IncidentRail({ incidents, buildingNames, rolloutStates, canExecu
     try {
       await onAcknowledge(buildingId, incidentId);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Không thể xác nhận sự cố");
+      setError(networkFeedback(caught, `xác nhận sự cố ${incidents.find(item => item.id === incidentId)?.title ?? "đã chọn"} tại ${buildingNames.get(buildingId) ?? "tòa nhà"}`).description);
     } finally {
       setPendingIncidentId(null);
     }

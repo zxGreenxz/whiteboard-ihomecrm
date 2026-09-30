@@ -1,3 +1,4 @@
+import { QueryRegion } from "@/components/errors/QueryRegion";
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Plus, Search, ChevronDown, X, BarChart3 } from "lucide-react";
@@ -145,10 +146,11 @@ export default function InvoicesMobilePage() {
   };
 
   useCopilotPageContext('invoices.list', filters);
-  const { data: result, isLoading } = useInvoices(filters, {
+  const invoicesQuery = useInvoices(filters, {
     page: 1,
     pageSize,
   });
+  const { data: result, isLoading } = invoicesQuery;
   const rows = (result?.data ?? []) as InvoiceWithRelations[];
   const totalCount = result?.count ?? 0;
 
@@ -249,6 +251,7 @@ export default function InvoicesMobilePage() {
               />
             </div>
 
+            <QueryRegion label="danh sách hóa đơn" queries={[invoicesQuery]}>
             {isLoading || resolvedSearch.pending ? (
               <div className="stub">
                 <p>Đang tải hoá đơn…</p>
@@ -312,6 +315,7 @@ export default function InvoicesMobilePage() {
                 )}
               </div>
             )}
+          </QueryRegion>
           </div>
 
           {/* Báo cáo hoá đơn — bottom sheet (dùng lại thống kê thật) */}

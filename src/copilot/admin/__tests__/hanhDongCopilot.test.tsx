@@ -75,7 +75,7 @@ describe('đọc sổ hành động', () => {
 
   it('lỗi RPC về dưới dạng { error } — hàm phải ném để React Query thấy', async () => {
     rpc.mockResolvedValue({ data: null, error: { message: 'unauthenticated' } });
-    await expect(docSoHanhDong(ORG)).rejects.toThrow(/unauthenticated/);
+    await expect(docSoHanhDong(ORG)).rejects.toMatchObject({message: 'unauthenticated'});
   });
 
   it('dòng hỏng bị bỏ, dòng lành vẫn về — một bản ghi rác không giết cả bảng', () => {
@@ -166,7 +166,7 @@ describe('chính sách hành động', () => {
         reason: 'x',
         evidenceLink: 'y',
       }),
-    ).rejects.toThrow(/copilot_policy_stale_revision/);
+    ).rejects.toMatchObject({message: expect.stringContaining('copilot_policy_stale_revision')});
     expect(dienGiaiLoiChinhSach(new Error('copilot_policy_stale_revision: ...'))).toContain(
       'tải lại',
     );
@@ -177,8 +177,8 @@ describe('chính sách hành động', () => {
     expect(dienGiaiLoiChinhSach(new Error('copilot_policy_not_permitted'))).toContain('super admin');
     expect(dienGiaiLoiChinhSach(new Error('copilot_policy_risk_invalid'))).toContain('L3');
     expect(dienGiaiLoiChinhSach(new Error('copilot_policy_roles_invalid'))).toContain('vai');
-    expect(dienGiaiLoiChinhSach(new Error('copilot_policy_missing'))).toContain('migration');
-    expect(dienGiaiLoiChinhSach(new Error('bung bét'))).toContain('bung bét');
+    expect(dienGiaiLoiChinhSach(new Error('copilot_policy_missing'))).toContain('cấu hình');
+    expect(dienGiaiLoiChinhSach(new Error('bung bét'))).not.toContain('bung bét');
   });
 });
 
@@ -409,7 +409,7 @@ describe('TheStepUpPin — render thuần', () => {
     return html.slice(mo, dong).includes('disabled=""');
   }
 
-  it('đủ user_id + lý do nhưng CHƯA gõ "RESET" ⇒ nút Reset PIN vẫn bị khoá', () => {
+  it('chưa gõ RESET vẫn cho bấm để chỉ ra ô xác nhận; mutation chưa được gọi', () => {
     const html = renderToStaticMarkup(
       <TheStepUpPin
         {...props}
@@ -419,7 +419,7 @@ describe('TheStepUpPin — render thuần', () => {
         resetXacNhan=""
       />,
     );
-    expect(laNutBiKhoa(html, 'copilot-admin-pin-reset-submit')).toBe(true);
+    expect(laNutBiKhoa(html, 'copilot-admin-pin-reset-submit')).toBe(false);
   });
 
   it('gõ đúng "RESET" + đủ user_id/lý do + KHÔNG phải chính mình ⇒ nút Reset PIN mở khoá', () => {
@@ -528,7 +528,7 @@ describe('TheUyQuyenDung — render thuần', () => {
     expect(html).not.toContain('copilot-admin-grant-action');
   });
 
-  it('vẽ đủ form tạo + nút bị KHOÁ khi chưa đủ dữ liệu bắt buộc', () => {
+  it('vẽ đủ form tạo và cho bấm để validation chỉ ra trường bắt buộc', () => {
     const html = renderToStaticMarkup(<TheUyQuyenDung {...props} />);
     expect(html).toContain('copilot-admin-grant-action');
     expect(html).toContain('copilot-admin-grant-max-per-day');
@@ -536,9 +536,9 @@ describe('TheUyQuyenDung — render thuần', () => {
     expect(html).toContain('copilot-admin-grant-max-amount');
     expect(html).toContain('copilot-admin-grant-buildings');
     expect(html).toContain('copilot-admin-grant-reason');
-    // Nút "Cấp hạn mức" disabled khi actionId/lyDoTao còn rỗng.
+    // Nút cho phép mở validation; DOM suite xác nhận không mở PIN/gửi khi sai.
     const nut = html.match(/<button[^>]*copilot-admin-grant-submit[^>]*>/)?.[0] ?? '';
-    expect(nut).toContain('disabled=""');
+    expect(nut).not.toContain('disabled=""');
   });
 
   it('đủ dữ liệu bắt buộc ⇒ nút "Cấp hạn mức" KHÔNG bị khoá', () => {
@@ -606,7 +606,7 @@ describe('TheUyQuyenDung — render thuần', () => {
     expect(html).toContain('Đã thu hồi');
   });
 
-  it('nút "Thu hồi" của một dòng bị khoá khi CHƯA nhập lý do thu hồi', () => {
+  it('nút Thu hồi cho mở validation khi lý do còn trống', () => {
     const html = renderToStaticMarkup(
       <TheUyQuyenDung
         {...props}
@@ -631,7 +631,7 @@ describe('TheUyQuyenDung — render thuần', () => {
       />,
     );
     const nut = html.match(/<button[^>]*copilot-admin-grant-revoke[^>]*>/)?.[0] ?? '';
-    expect(nut).toContain('disabled=""');
+    expect(nut).not.toContain('disabled=""');
   });
 
   it('kill switch "Thu hồi tất cả" khoá khi lý do < 10 ký tự HOẶC không còn hạn mức sống', () => {

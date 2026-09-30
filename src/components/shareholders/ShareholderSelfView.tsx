@@ -1,3 +1,4 @@
+import { QueryRegion } from "@/components/errors/QueryRegion";
 import { useMemo, useState } from "react";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -18,10 +19,13 @@ const ALL = "all";
 export default function ShareholderSelfView({ me }: { me: Shareholder }) {
   const [year, setYear] = useState(currentYear());
   const [month, setMonth] = useState<string>(ALL); // "all" | "1".."12"
-  const { data: allocations = [] } = useProfitAllocations(); // RLS: chỉ của mình
-  const { data: distributions = [] } = useShareholderDistributions(); // RLS: chỉ của mình
+  const allocationsQuery = useProfitAllocations();
+  const { data: allocations = [] } = allocationsQuery; // RLS: chỉ của mình
+  const distributionsQuery = useShareholderDistributions();
+  const { data: distributions = [] } = distributionsQuery; // RLS: chỉ của mình
   // Tên tòa qua RPC riêng (cổ đông không còn quyền đọc bảng buildings).
-  const { data: buildings = [] } = useMyShareBuildings();
+  const buildingsQuery = useMyShareBuildings();
+  const { data: buildings = [] } = buildingsQuery;
 
   const buildingName = (id?: string) => buildings.find((b) => b.id === id)?.name ?? "—";
   const monthOf = (p?: string) => Number((p ?? "").slice(5, 7));
@@ -82,6 +86,7 @@ export default function ShareholderSelfView({ me }: { me: Shareholder }) {
   const paidTotal = distributions.reduce((s, d) => s + d.total_amount, 0);
 
   return (
+    <QueryRegion label="lợi nhuận và cấu hình phân bổ" queries={[allocationsQuery, distributionsQuery, buildingsQuery]}>
     <>
       <ProfitHubSlot name="kpis">
         <div className="ph-kpi ph-kpi--flex">
@@ -245,5 +250,6 @@ export default function ShareholderSelfView({ me }: { me: Shareholder }) {
         </div>
       </div>
     </>
+    </QueryRegion>
   );
 }

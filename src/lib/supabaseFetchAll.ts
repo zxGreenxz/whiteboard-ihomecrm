@@ -10,7 +10,8 @@
 // Truyền một factory `build(from, to)` áp `.range(from, to)` ở cuối chuỗi.
 //
 // FAIL-CLOSED (đừng âm thầm trả số sai):
-//   - Lỗi query  → trả `null`. Caller PHẢI coi null là LỖI (throw / báo lỗi),
+//   - Lỗi query → ném nguyên lỗi, giữ mã quyền/xung đột. Chỉ caller legacy chọn
+//     throwOnError:false mới nhận null; null luôn là LỖI (throw / báo lỗi),
 //     KHÔNG được coi là "rỗng" rồi cộng ra 0 (đó chính là bug "biến lỗi tải
 //     thành tiền 0"). Ví dụ đúng: `if (rows === null) throw ...`.
 //   - Chạm hardCap → THROW (không cắt mảng trả về). Vượt trần = nghi order
@@ -26,6 +27,11 @@
 
 export const SUPABASE_PAGE = 1000;
 
+export class FetchAllLimitError extends Error {
+  readonly code = 'EXPORT_ROW_LIMIT';
+  constructor(readonly limit: number, message: string) { super(message); this.name = 'FetchAllLimitError'; }
+}
+
 /**
  * Lặp phân trang một query PostgREST và gộp toàn bộ dòng.
  *
@@ -35,7 +41,7 @@ export const SUPABASE_PAGE = 1000;
  *                       nguyên dương.
  * @param opts.hardCap   trần an toàn số dòng; VƯỢT sẽ THROW (không cắt). Phải là
  *                       số nguyên dương ≥ pageSize. Mặc định 100k.
- * @returns mảng đầy đủ, hoặc `null` nếu query lỗi (caller PHẢI xử lý null như lỗi).
+ * @returns mảng đầy đủ; chỉ chế độ legacy throwOnError:false trả null khi query lỗi.
  * @throws RangeError nếu pageSize/hardCap không hợp lệ; Error nếu chạm hardCap.
  */
 /**
@@ -63,7 +69,7 @@ export type PagedQueryBuilder = (
 
 export async function fetchAllRows<T = any>(
   build: PagedQueryBuilder,
-  opts: { pageSize?: number; hardCap?: number; label?: string } = {},
+  opts: { pageSize?: number; hardCap?: number; label?: string; throwOnError?: boolean } = {},
 ): Promise<T[] | null> {
   const page = opts.pageSize ?? SUPABASE_PAGE;
   const hardCap = opts.hardCap ?? 100_000;
@@ -85,16 +91,18 @@ export async function fetchAllRows<T = any>(
     const { data, error } = await build(from, from + page - 1);
     if (error) {
       console.error(`fetchAllRows${tag} error:`, error);
+      if (opts.throwOnError !== false) throw error;
       return null;
     }
-    const rows = (data ?? []) as T[];
+    if (!Array.isArray(data)) throw new TypeError(`Invalid page response${tag}`);
+    const rows = data as T[];
     if (rows.length === 0) break; // trang rỗng = hết thật (không suy từ "trang ngắn")
     out.push(...rows);
     if (out.length > hardCap) {
       // FAIL-CLOSED: không trả mảng bị cắt. Vượt trần = order không ổn định
       // (lặp/trùng) hoặc dataset lớn bất thường — cả hai đều phải lộ ra, không
       // được âm thầm cộng thiếu.
-      throw new Error(
+      throw new FetchAllLimitError(hardCap,
         `fetchAllRows${tag}: vượt hardCap ${hardCap} dòng (đã gộp ${out.length}). ` +
           `Nghi order không ổn định (thiếu tiebreaker duy nhất) hoặc dataset quá lớn — ` +
           `nâng hardCap có chủ ý hoặc chuyển sang SUM/aggregate trong SQL.`,

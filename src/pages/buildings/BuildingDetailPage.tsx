@@ -1,5 +1,6 @@
+import {useBuildingDetailContracts,useBuildingDetailInvoices} from '@/hooks/usePropertyDetailQueries';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -24,120 +25,24 @@ import {
   Eye,
 } from 'lucide-react';
 import { useBuilding } from '@/hooks/useBuildings';
+import { QueryRegion } from '@/components/errors/QueryRegion';
 import { useRooms } from '@/hooks/useRooms';
-import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { EditBuildingDialog } from '@/components/buildings/EditBuildingDialog';
-
-type Contract = {
-  id: string;
-  contract_number: string | null;
-  start_date: string;
-  end_date: string;
-  status: string;
-  rent_price: number;
-  tenant: { id: string; full_name: string; phone: string } | null;
-  room: { id: string; name: string } | null;
-};
-
-type Invoice = {
-  id: string;
-  invoice_number: string | null;
-  due_date: string;
-  total_amount: number;
-  status: string;
-  contract: {
-    tenant: { full_name: string } | null;
-    room: { name: string } | null;
-  } | null;
-};
 
 const BuildingDetailPage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [contracts, setContracts] = useState<Contract[]>([]);
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [loadingContracts, setLoadingContracts] = useState(false);
-  const [loadingInvoices, setLoadingInvoices] = useState(false);
-
-  const { data: building, isLoading: loadingBuilding } = useBuilding(id || '');
-  const { data: rooms, isLoading: loadingRooms } = useRooms(id);
-
-  // Fetch contracts for this building
-  useEffect(() => {
-    const fetchContracts = async () => {
-      if (!id) return;
-      setLoadingContracts(true);
-      try {
-        const { data, error } = await supabase
-          .from('contracts')
-          .select(`
-            id,
-            contract_number,
-            start_date,
-            end_date,
-            status,
-            rent_price,
-            tenant:tenants(id, full_name, phone),
-            room:rooms!contracts_room_id_fkey(id, name, building_id)
-          `)
-          .eq('room.building_id', id)
-          .is('deleted_at', null)
-          .order('created_at', { ascending: false })
-          .limit(50);
-
-        if (error) throw error;
-        // Filter out contracts where room doesn't belong to this building
-        const filtered = (data || []).filter(c => c.room?.building_id === id);
-        setContracts(filtered as unknown as Contract[]);
-      } catch (error) {
-        console.error('Error fetching contracts:', error);
-      } finally {
-        setLoadingContracts(false);
-      }
-    };
-
-    fetchContracts();
-  }, [id]);
-
-  // Fetch invoices for this building
-  useEffect(() => {
-    const fetchInvoices = async () => {
-      if (!id || !rooms || rooms.length === 0) return;
-      setLoadingInvoices(true);
-      try {
-        const roomIds = rooms.map(r => r.id);
-        const { data, error } = await supabase
-          .from('invoices')
-          .select(`
-            id,
-            invoice_number,
-            due_date,
-            total_amount,
-            status,
-            contract:contracts(
-              tenant:tenants(full_name),
-              room:rooms!contracts_room_id_fkey(name)
-            )
-          `)
-          .in('contract.room_id', roomIds)
-          .is('deleted_at', null)
-          .order('created_at', { ascending: false })
-          .limit(50);
-
-        if (error) throw error;
-        setInvoices((data || []) as unknown as Invoice[]);
-      } catch (error) {
-        console.error('Error fetching invoices:', error);
-      } finally {
-        setLoadingInvoices(false);
-      }
-    };
-
-    fetchInvoices();
-  }, [id, rooms]);
+  const buildingQuery=useBuilding(id||'');
+  const {data:building,isLoading:loadingBuilding}=buildingQuery;
+  const roomsQuery=useRooms(id);
+  const {data:rooms,isLoading:loadingRooms}=roomsQuery;
+  const contractsQuery=useBuildingDetailContracts(id||'');
+  const {data:contracts=[],isLoading:loadingContracts}=contractsQuery;
+  const invoicesQuery=useBuildingDetailInvoices(id||'',rooms?.map(room=>room.id));
+  const {data:invoices=[],isLoading:loadingInvoices}=invoicesQuery;
 
   if (loadingBuilding) {
     return (
@@ -147,6 +52,12 @@ const BuildingDetailPage = () => {
         </div>
       </MainLayout>
     );
+  }
+
+  if (buildingQuery.isError && !building) {
+    return <MainLayout title="Chi tiết Tòa nhà" icon={Building2}>
+      <QueryRegion label="chi tiết tòa nhà" queries={[buildingQuery]}><></></QueryRegion>
+    </MainLayout>;
   }
 
   if (!building) {
@@ -289,10 +200,11 @@ const BuildingDetailPage = () => {
 
   return (
     <MainLayout
-      title={`Tòa nhà: ${building.name}`}
-      subtitle={building.code || undefined}
+      title={buildingQuery.isError?"Chi tiết tòa nhà":`Tòa nhà: ${building.name}`}
+      subtitle={buildingQuery.isError?undefined:building.code||undefined}
       icon={Building2}
     >
+      <QueryRegion label="chi tiết tòa nhà" queries={[buildingQuery]}>
       {/* Header Actions */}
       <div className="flex items-center justify-between mb-6">
         <Button variant="outline" onClick={() => navigate('/buildings')}>
@@ -316,15 +228,15 @@ const BuildingDetailPage = () => {
           </TabsTrigger>
           <TabsTrigger value="rooms">
             <Home className="h-4 w-4 mr-2" />
-            Căn hộ ({roomStats.total})
+            Căn hộ ({roomsQuery.isError||roomsQuery.data===undefined?'…':roomStats.total})
           </TabsTrigger>
           <TabsTrigger value="contracts">
             <FileText className="h-4 w-4 mr-2" />
-            Hợp đồng ({contracts.length})
+            Hợp đồng ({contractsQuery.isError||contractsQuery.data===undefined?'…':contracts.length})
           </TabsTrigger>
           <TabsTrigger value="invoices">
             <Receipt className="h-4 w-4 mr-2" />
-            Hóa đơn ({invoices.length})
+            Hóa đơn ({invoicesQuery.isError||invoicesQuery.data===undefined?'…':invoices.length})
           </TabsTrigger>
         </TabsList>
 
@@ -395,6 +307,7 @@ const BuildingDetailPage = () => {
             </Card>
           </div>
 
+          <QueryRegion label="thống kê phòng của tòa nhà" queries={[roomsQuery]}>
           {/* Room Stats */}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <Card>
@@ -429,6 +342,7 @@ const BuildingDetailPage = () => {
             </Card>
           </div>
 
+          </QueryRegion>
           {/* Ghi chú — đọc `description`, KHÔNG phải `notes`.
               Cùng vết với RoomDetailPage: bảng `buildings` không có cột `notes`,
               nên khối này luôn trống. Cột có thật là `description`. */}
@@ -446,6 +360,7 @@ const BuildingDetailPage = () => {
 
         {/* Rooms Tab */}
         <TabsContent value="rooms">
+          <QueryRegion label="phòng của tòa nhà" queries={[roomsQuery]}>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>Danh sách Căn hộ</CardTitle>
@@ -498,10 +413,12 @@ const BuildingDetailPage = () => {
               )}
             </CardContent>
           </Card>
+        </QueryRegion>
         </TabsContent>
 
         {/* Contracts Tab */}
         <TabsContent value="contracts">
+          <QueryRegion label="hợp đồng của tòa nhà" queries={[contractsQuery]}>
           <Card>
             <CardHeader>
               <CardTitle>Hợp đồng trong tòa nhà</CardTitle>
@@ -557,10 +474,12 @@ const BuildingDetailPage = () => {
               )}
             </CardContent>
           </Card>
+        </QueryRegion>
         </TabsContent>
 
         {/* Invoices Tab */}
         <TabsContent value="invoices">
+          <QueryRegion label="hóa đơn của tòa nhà" queries={roomsQuery.data?.length===0?[roomsQuery]:[roomsQuery,invoicesQuery]}>
           <Card>
             <CardHeader>
               <CardTitle>Hóa đơn trong tòa nhà</CardTitle>
@@ -614,6 +533,7 @@ const BuildingDetailPage = () => {
               )}
             </CardContent>
           </Card>
+        </QueryRegion>
         </TabsContent>
       </Tabs>
 
@@ -623,6 +543,7 @@ const BuildingDetailPage = () => {
         onOpenChange={setEditDialogOpen}
         building={building as any}
       />
+      </QueryRegion>
     </MainLayout>
   );
 };

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   mapMeterToReading,
   getPreviousReadingFromList,
@@ -55,6 +55,7 @@ import {
 import {
   useBulkCreateMeterReadings,
   useUpdateMeterReading,
+  MeterReadingBatchPartialError,
   type MeterReadingDetailed,
 } from '@/hooks/useMeterReadings';
 import { useUnrecordedMeters } from '@/hooks/useMeters';
@@ -65,6 +66,9 @@ import { uploadFile, sanitizeStorageFileName } from '@/lib/storage';
 import { toast } from 'sonner';
 import { ImagePlus, Loader2 } from 'lucide-react';
 import { todayISO } from '@/lib/collect';
+import { focusFirstError } from '@/lib/formErrors';
+import {recordWriteBlocked,recordWriteMessage} from '@/lib/recordWriteOutcome';
+import {validateInputDrafts} from '@/lib/inputDraftValidation';
 
 // ============================================================================
 // Types
@@ -94,6 +98,11 @@ const STORAGE_BUCKET = 'meter-images';
 // ============================================================================
 
 const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps) => {
+  const formRef = useRef<HTMLFormElement>(null);
+  const busy=useRef(false);
+  const draftKey=useRef<string|null>(null);
+  const loadedFilter=useRef<string|null>(null);
+  const [submitFailure,setSubmitFailure]=useState('');
   const isEditing = !!reading;
   const bulkCreate = useBulkCreateMeterReadings();
   const updateReading = useUpdateMeterReading();
@@ -102,15 +111,18 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
   const { data: currentUser } = useAuth();
 
   // Building & Room selects
-  const { data: buildings } = useBuildings();
+  const buildingsQuery=useBuildings();const {data:buildings}=buildingsQuery;
   const [selectedBuildingId, setSelectedBuildingId] = useState<string>('');
-  const { data: rooms } = useRooms(selectedBuildingId || undefined);
+  const roomsQuery=useRooms(selectedBuildingId || undefined);const {data:rooms}=roomsQuery;
+  const sourceBlocked=buildingsQuery.isLoading || buildingsQuery.isError || roomsQuery.isLoading || roomsQuery.isError;
 
   // UI state
   const [showUnrecordedOnly, setShowUnrecordedOnly] = useState(true);
   const [showMetersTable, setShowMetersTable] = useState(false);
   const [uploadingIndex, setUploadingIndex] = useState<number | null>(null);
   const [validationErrors, setValidationErrors] = useState<Record<number, string>>({});
+  const [imageErrors, setImageErrors] = useState<Record<number, string>>({});
+  const [unknownBatchOutcome, setUnknownBatchOutcome] = useState<string | null>(null);
 
   const currentMonth = new Date().toISOString().slice(0, 7);
 
@@ -138,17 +150,22 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
   const watchMonth = form.watch('settlement_month');
 
   // Query unrecorded meters based on filter selections
-  const { data: unrecordedMeters, isLoading: isLoadingMeters } = useUnrecordedMeters({
+  const unrecordedQuery = useUnrecordedMeters({
     buildingId: watchBuildingId || undefined,
     roomId: watchRoomId || undefined,
     meterType: watchMeterType || undefined,
     month: watchMonth || currentMonth,
   });
+  const { data: unrecordedMeters, isLoading: isLoadingMeters } = unrecordedQuery;
 
   // --------------------------------------------------------------------------
   // Populate form when editing
   // --------------------------------------------------------------------------
   useEffect(() => {
+    if(!open)return;
+    const key=reading?.id ?? 'new';
+    if(draftKey.current===key && (form.formState.isDirty || submitFailure || unknownBatchOutcome || Object.keys(imageErrors).length))return;
+    draftKey.current=key;setSubmitFailure('');setUnknownBatchOutcome(null);loadedFilter.current=null;
     if (reading && open) {
       setSelectedBuildingId(reading.building_id || '');
       form.reset({
@@ -192,6 +209,7 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
   // Load meters into form readings array
   // --------------------------------------------------------------------------
   const loadMetersIntoForm = useCallback(() => {
+    if (unrecordedQuery.isError || !unrecordedQuery.data) return;
     if (metersList.length === 0) {
       if (
         isLoadEnabled({ buildingId: watchBuildingId, month: watchMonth || '' }) &&
@@ -208,14 +226,16 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
     replace(readingsData);
     setShowMetersTable(true);
     setValidationErrors({});
-  }, [metersList, replace, watchBuildingId, watchMonth, isLoadingMeters]);
+  }, [metersList, replace, watchBuildingId, watchMonth, isLoadingMeters, unrecordedQuery.isError, unrecordedQuery.data]);
 
   // Auto-load meters when filters change (add mode only)
   useEffect(() => {
-    if (isEditing || !open) return;
-    if (isLoadingMeters) return;
+    if (isEditing || !open || submitFailure || unknownBatchOutcome) return;
+    const key=[watchBuildingId,watchRoomId,watchMeterType,watchMonth].join(':');
+    if(loadedFilter.current===key && form.formState.dirtyFields.readings)return;
+    if (isLoadingMeters || unrecordedQuery.isError || !unrecordedQuery.data) return;
     if (isLoadEnabled({ buildingId: watchBuildingId, month: watchMonth || '' })) {
-      loadMetersIntoForm();
+      loadedFilter.current=key;loadMetersIntoForm();
     } else {
       if (showMetersTable) {
         replace([]);
@@ -240,9 +260,12 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
       const path = `${currentUser.id}/readings/${Date.now()}_${sanitizeStorageFileName(file.name)}`;
       const url = await uploadFile(STORAGE_BUCKET, path, file);
       form.setValue(`readings.${index}.meter_image_url`, url);
+      setImageErrors(previous => { const next = { ...previous }; delete next[index]; return next; });
     } catch (error) {
       console.error('Image upload error:', error);
-      toast.error('Không thể tải lên hình ảnh');
+      setImageErrors(previous => ({ ...previous, [index]: 'Không tải được ảnh công tơ. Chọn lại ảnh trước khi lưu.' }));
+      toast.error('Không thể tải lên ảnh công tơ');
+      void focusFirstError({ [`readings.${index}.meter_image_url`]: 'Không tải được ảnh' }, { root: formRef.current });
     } finally {
       setUploadingIndex(null);
     }
@@ -283,6 +306,7 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
     });
 
     setValidationErrors(errors);
+    if (!valid) void focusFirstError(Object.fromEntries(Object.entries(errors).map(([index, message]) => [`readings.${index}.current_reading`, message])), { root: formRef.current });
     return valid;
   };
 
@@ -290,8 +314,10 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
   // Submit handler
   // --------------------------------------------------------------------------
   const onSubmit = async (data: MeterReadingFormValues) => {
+    if (unknownBatchOutcome || busy.current || bulkCreate.isPending || updateReading.isPending || sourceBlocked || (!isEditing && (unrecordedQuery.isLoading || unrecordedQuery.isError || !unrecordedQuery.data)) || !validateInputDrafts(formRef.current)) return;
     if (!validateReadings()) return;
 
+    busy.current=true;setSubmitFailure('');
     try {
       if (isEditing && reading) {
         // Update single reading
@@ -322,10 +348,12 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
 
         await bulkCreate.mutateAsync(readingsToCreate);
       }
-      onOpenChange(false);
-    } catch {
-      // Errors handled by mutation hooks (toast)
-    }
+      draftKey.current=null;loadedFilter.current=null;form.reset();onOpenChange(false);
+    } catch (error) {
+      const message=recordWriteMessage(error,'lưu chỉ số');
+      setSubmitFailure(message);
+      if(recordWriteBlocked(error))setUnknownBatchOutcome(message);
+    } finally {busy.current=false;}
   };
 
   const isPending = bulkCreate.isPending || updateReading.isPending;
@@ -334,8 +362,8 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
   // Render
   // --------------------------------------------------------------------------
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[900px] max-h-[90vh]">
+    <Dialog open={open} onOpenChange={next=>{if(!busy.current && !isPending && uploadingIndex===null)onOpenChange(next);}}>
+      <DialogContent aria-describedby={undefined} className="sm:max-w-[900px] max-h-[90vh]">
         <DialogHeader>
           <DialogTitle>
             {isEditing ? 'Cập nhật chỉ số' : 'Thêm chỉ số'}
@@ -344,7 +372,11 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
 
         <ScrollArea className="max-h-[calc(90vh-120px)] pr-4">
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <form ref={formRef} onSubmit={form.handleSubmit(onSubmit, errors => { void focusFirstError(errors, { root: formRef.current }); })} className="space-y-4">
+              {(unknownBatchOutcome || submitFailure) && <p role="alert" className="rounded-md border border-destructive p-3 text-sm text-destructive">{unknownBatchOutcome || submitFailure}</p>}
+              {!isEditing && unrecordedQuery.isError && <p role="alert" className="rounded-md border border-destructive p-3 text-sm text-destructive">Không tải được công tơ chưa chốt. Dữ liệu đã nhập được giữ nguyên. <Button type="button" variant="link" onClick={() => void unrecordedQuery.refetch()}>Tải lại công tơ</Button></p>}
+              {sourceBlocked && <div role="alert" className="text-destructive">Chưa tải đủ toà nhà hoặc phòng. <Button type="button" variant="outline" onClick={()=>{void buildingsQuery.refetch();void roomsQuery.refetch();}}>Tải lại dữ liệu</Button></div>}
+              <fieldset disabled={isPending || sourceBlocked || !!unknownBatchOutcome} className="space-y-4">
               {/* Row 1: Tòa nhà + Phòng */}
               <div className="grid grid-cols-2 gap-4">
                 <FormField
@@ -558,12 +590,14 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
                                     <FormItem className="w-32">
                                       <FormControl>
                                         <NumberInput
+                                          aria-label={`Chỉ số mới ${getMeterName(field.meter_id)}`}
                                           allowDecimal
                                           min={0}
                                           className={`text-right ${error ? 'border-red-500' : ''}`}
                                           value={inputField.value}
                                           onBlur={inputField.onBlur}
                                           name={inputField.name}
+                                          aria-invalid={Boolean(error)}
                                           onChange={(val) => {
                                             inputField.onChange(val);
                                             if (validationErrors[index]) {
@@ -608,6 +642,7 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
 
                             {/* Hình ảnh (upload) */}
                             <TableCell>
+                              <div className="flex flex-col gap-1">
                               <div className="flex items-center gap-2">
                                 {form.watch(
                                   `readings.${index}.meter_image_url`
@@ -620,7 +655,9 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
                                     className="h-10 w-10 rounded object-cover"
                                   />
                                 ) : null}
-                                <label className="cursor-pointer">
+                                <label className={`cursor-pointer ${imageErrors[index] ? 'rounded ring-2 ring-destructive' : ''}`}
+                                  data-field-name={`readings.${index}.meter_image_url`} tabIndex={0}
+                                  aria-invalid={Boolean(imageErrors[index])}>
                                   <input
                                     type="file"
                                     accept="image/*"
@@ -638,6 +675,8 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
                                   )}
                                 </label>
                               </div>
+                              {imageErrors[index] && <p role="alert" className="text-xs text-destructive">{imageErrors[index]}</p>}
+                              </div>
                             </TableCell>
                           </TableRow>
                         );
@@ -654,6 +693,7 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
                 </p>
               )}
 
+              </fieldset>
               {/* Actions */}
               <div className="flex justify-end gap-3 pt-4">
                 <Button
@@ -665,7 +705,7 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
                 </Button>
                 <Button
                   type="submit"
-                  disabled={isPending || fields.length === 0}
+                  disabled={isPending || sourceBlocked || uploadingIndex!==null || fields.length === 0 || !!unknownBatchOutcome || (!isEditing && (unrecordedQuery.isError || !unrecordedQuery.data))}
                 >
                   {isPending ? (
                     <>

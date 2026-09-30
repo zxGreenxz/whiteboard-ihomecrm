@@ -1,4 +1,8 @@
 import { useMemo, useState, type ReactNode } from "react";
+import { toast } from "sonner";
+import { FinancialWorkflowError, workflowErrorMessage } from "@/lib/financialWorkflow";
+import { createdVoucherFeedback } from "@/lib/voucherFeedback";
+import { QueryRegion } from "@/components/errors/QueryRegion";
 import { todayISO } from "@/lib/collect";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
@@ -78,8 +82,10 @@ function MobileSalaryEmpty() {
 }
 
 export default function ManagerSalaryPage() {
-  const { data: perms, isLoading: permsLoading } = useMyPermissions();
-  const { data: myMgr, isLoading: myLoading } = useMyManagerConfig();
+  const permissionQuery = useMyPermissions();
+  const { data: perms, isLoading: permsLoading } = permissionQuery;
+  const managerConfigQuery = useMyManagerConfig();
+  const { data: myMgr, isLoading: myLoading } = managerConfigQuery;
   const phone = usePhoneViewport();
 
   const canLock = canUse(perms, "salary", "lock");
@@ -103,7 +109,8 @@ export default function ManagerSalaryPage() {
 
   // Nhân viên (không phải admin): mặc định hiển thị tháng lùi theo chốt lương +
   // override admin. Admin giữ điều hướng tháng tự do.
-  const { data: staffMonth } = useStaffDisplayMonth(myMgr?.staff_id, !isAdmin);
+  const displayMonthQuery = useStaffDisplayMonth(myMgr?.staff_id, !isAdmin);
+  const {data:staffMonth} = displayMonthQuery;
   // Nhân viên vẫn được LÙI về tháng cũ; trần (không vượt quá) = staffMonth.
   const [selfOverride, setSelfOverride] = useState<string | null>(null);
   const selfCeiling = staffMonth || currentPeriodMonth();
@@ -113,41 +120,48 @@ export default function ManagerSalaryPage() {
   // Chế độ lương đang áp dụng (cũ/v5) — công tắc ở /reports/coverage tab Cài đặt v5.
   // Chỉ ĐỔI SỐ LIỆU (base=chuyên cần, thưởng=chuỗi, ngày công=ticked) cho tháng CHƯA chốt;
   // giao diện + tháng đã chốt giữ nguyên.
-  const { data: v5cfg } = useSalaryV5Config();
+  const engineQuery = useSalaryV5Config();
+  const { data: v5cfg } = engineQuery;
   // v5 chỉ áp từ system_v5.effective_from trở đi — tháng trước đó rơi về legacy.
   const salaryEngine = resolveSalaryEngine(v5cfg, effPeriod);
 
-  const { data, isLoading, refetch } = useManagerSalary(effPeriod, salaryEngine);
+  const salaryQuery = useManagerSalary(effPeriod, salaryEngine);
+  const { data, isLoading, refetch } = salaryQuery;
 
   // Báo cáo cơ cấu quỹ so 3 tháng (chỉ admin desktop). Mỗi kỳ tự chọn engine riêng.
   const prev1 = shiftMonth(periodMonth, -1), prev2 = shiftMonth(periodMonth, -2);
   const wantFund = isAdmin && !phone;
-  const { data: dPrev1, isLoading: lPrev1 } = useManagerSalary(wantFund ? prev1 : "", resolveSalaryEngine(v5cfg, prev1));
-  const { data: dPrev2, isLoading: lPrev2 } = useManagerSalary(wantFund ? prev2 : "", resolveSalaryEngine(v5cfg, prev2));
+  const prev1Query = useManagerSalary(wantFund ? prev1 : "", resolveSalaryEngine(v5cfg, prev1));
+  const prev2Query = useManagerSalary(wantFund ? prev2 : "", resolveSalaryEngine(v5cfg, prev2));
+  const {data:dPrev1,isLoading:lPrev1} = prev1Query;
+  const {data:dPrev2,isLoading:lPrev2} = prev2Query;
   const fee0 = useSalaryFeeFund(periodMonth, wantFund);
   const fee1 = useSalaryFeeFund(prev1, wantFund);
   const fee2 = useSalaryFeeFund(prev2, wantFund);
-  const { data: rulesData } = useBonusRules();
+  const rulesQuery = useBonusRules();
+  const { data: rulesData } = rulesQuery;
   const requirePhoto = !!rulesData?.rules?.requirePhoto;
 
-  const { data: accounts = [] } = useQuery<SalaryAccount[]>({
+  const accountsQuery = useQuery<SalaryAccount[]>({
     queryKey: ["salary-accounts"],
     enabled: isAdmin,
     queryFn: async () => {
-      const { data } = await (supabase.from("accounts" as any).select("id, name") as any)
+      const { data, error } = await (supabase.from("accounts" as any).select("id, name") as any)
         .is("deleted_at", null)
         .order("name", { ascending: true });
+      if (error) throw error;
       return ((data || []) as any[]).map((a) => ({ id: a.id, name: a.name }));
     },
   });
 
+  const accounts = accountsQuery.data ?? [];
   const { data: pendingLeaves = [] } = usePendingLeaveRequests(isAdmin);
 
   const saveAdj = useSaveSalaryAdjustment();
   const delAdj = useDeleteSalaryAdjustment();
   const lockM = useLockSalaryMonth();
   const unlockM = useUnlockSalaryMonth();
-  const payout = useSalaryPayout();
+  const payout = useSalaryPayout({silent: true});
   const toggleExcluded = useToggleJobExcluded();
   const assignCommission = useAssignCommissionManager();
   const onToggleExclude = (jobId: string, next: boolean) =>
@@ -161,7 +175,8 @@ export default function ManagerSalaryPage() {
   // Chủ công ty cấp thêm của kỳ = các dòng định kỳ loại Lương QL bổ sung đang phát sinh.
   const ownerOf = (ms: SalManager[] | undefined) =>
     (ms || []).reduce((s, m) => s + m.adjustments.filter((a) => a.recurring?.category === "SUPPLEMENTARY").reduce((x, a) => x + a.amount, 0), 0);
-  const { data: pendingPayouts = [] } = useSalaryPendingPayouts(periodMonth, wantFund ? managers.map((m) => m.id) : []);
+  const pendingPayoutQuery = useSalaryPendingPayouts(periodMonth, isAdmin ? managers.map((m) => m.id) : []);
+  const pendingPayouts = pendingPayoutQuery.data ?? [];
   const period = data?.period || { label: "", year: 0, periodMonth, lockedAt: null };
   const ownerId = data?.ownerId || "";
   const monthLocked = managers.length > 0 && managers.every((m) => m.status === "LOCKED");
@@ -184,19 +199,46 @@ export default function ManagerSalaryPage() {
 
   // ---- callbacks → mutations ----
   const onSaveAdjustment = (staffId: string, p: SalAdjustPayload) =>
-    saveAdj.mutate({ ownerId, staffId, periodMonth, id: p.id, kind: p.kind, label: p.label, amount: p.amount, note: p.note });
+    saveAdj.mutateAsync({ ownerId, staffId, periodMonth, id: p.id, kind: p.kind, label: p.label, amount: p.amount, note: p.note });
   const onRemoveAdjustment = (id: string) => delAdj.mutate(id);
   // Hoá đơn tiền phòng của quản lý (để trả lương tự gạch nợ / cấn trừ vào lương).
   const rentInvoiceOf = (staffId: string) =>
     managers.find((m) => m.id === staffId)?.roomRentInvoice ?? null;
-  const onPayout = (staffId: string, staffName: string, amount: number, accountId: string, voucherDate: string, note: string) =>
-    payout.mutate({ ownerId, staffId, staffName, periodMonth, amount, account_id: accountId, voucher_date: voucherDate, note, rentInvoice: rentInvoiceOf(staffId) });
-  const onBulkPayout = (rows: { staffId: string; staffName: string; amount: number }[], accountId: string) =>
-    rows.forEach((r) => payout.mutate({ ownerId, staffId: r.staffId, staffName: r.staffName, periodMonth, amount: r.amount, account_id: accountId, voucher_date: today(), note: `Lương ${period.label}/${period.year}`, rentInvoice: rentInvoiceOf(r.staffId) }));
-  const onLock = () => lockM.mutate({ ownerId, periodMonth, managers });
-  const onUnlock = () => unlockM.mutate({ periodMonth, staffIds: managers.map((m) => m.id) });
+  const onPayout = async (staffId: string, staffName: string, amount: number, accountId: string, voucherDate: string, note: string) => {
+    const result = await payout.mutateAsync({ ownerId, staffId, staffName, periodMonth, amount, account_id: accountId, voucher_date: voucherDate, note, rentInvoice: rentInvoiceOf(staffId) });
+    const feedback = createdVoucherFeedback(result);
+    toast[feedback.kind](`${feedback.message} Người nhận: ${staffName}.`);
+    return result;
+  };
+  const onBulkPayout = async (rows: { staffId: string; staffName: string; amount: number }[], accountId: string) => {
+    const completed: {id: string; label: string}[] = [];
+    const failures: string[] = [];
+    let pending = 0;
+    let createdCount = 0;
+    let uncertain = false;
+    for (const row of rows) {
+      try {
+        const result = await payout.mutateAsync({ownerId, staffId:row.staffId, staffName:row.staffName, periodMonth, amount:row.amount, account_id:accountId, voucher_date:today(), note:`Lương ${period.label}/${period.year}`, rentInvoice:rentInvoiceOf(row.staffId)});
+        if (result.approval_status === 'UNAPPROVED') pending++;
+        createdCount++;
+        completed.push({id:result.id,label:`${row.staffName}: ${createdVoucherFeedback(result).message}`});
+      } catch (error) {
+        failures.push(`${row.staffName}: ${workflowErrorMessage(error, 'lập phiếu chi lương')}`);
+        if (error instanceof FinancialWorkflowError && error.outcome !== 'failure') {
+          uncertain = true; completed.push(...error.completed);
+          if (error.completed.length) createdCount++;
+        }
+      }
+    }
+    if (failures.length) throw new FinancialWorkflowError(`Đã tạo ${createdCount}/${rows.length} phiếu chi lương. ${failures.length} nhân viên chưa hoàn tất các bước. ${failures.join(' ')}`, completed.length ? 'partial' : uncertain ? 'unknown' : 'failure', completed);
+    toast.success(`Đã lập ${rows.length}/${rows.length} phiếu chi lương. ${pending} phiếu đang chờ duyệt, chưa chi tiền.`);
+  };
+  const onLock = () => lockM.mutateAsync({ ownerId, periodMonth, managers });
+  const onUnlock = () => unlockM.mutateAsync({ periodMonth, staffIds: managers.map((m) => m.id) });
 
   // ===== Render =====
+  const sources = [...(!isAdmin && myMgr?.staff_id ? [displayMonthQuery] : []), permissionQuery, managerConfigQuery, engineQuery, salaryQuery, rulesQuery, ...(isAdmin ? [accountsQuery, ...(managers.length ? [pendingPayoutQuery] : [])] : [])];
+  if (sources.some(query => query.isError || query.isLoading)) return <MainLayout title="Bảng lương"><QueryRegion label="bảng lương và sổ quỹ chi lương" queries={sources}><p>Chưa tải đủ dữ liệu tính lương. Tải lại để tiếp tục.</p></QueryRegion></MainLayout>;
   // PHONE: gộp TOÀN BỘ nhánh mobile — KHÔNG bao giờ dùng MainLayout desktop,
   // kể cả lúc quyền đang tải. Trước đây khi useMyPermissions còn tải, isAdmin
   // tạm = false → admin lẫn nhân viên đều RƠI xuống nhánh desktop MainLayout
@@ -339,10 +381,12 @@ export default function ManagerSalaryPage() {
                 <p>Vào tab Cấu hình để thêm quản lý vào diện hưởng lương, đặt lương cứng và tiền phòng.</p>
               </div></div>
             ) : tab === "overview" ? (
+              <QueryRegion label="cơ cấu quỹ lương" queries={[prev1Query,prev2Query,fee0,fee1,fee2]}>
               <SalaryFundOverview
                 periods={fundPeriods} feeBuildings={fee0.rows.length} feeUnpublished={fee0.unpublished}
                 pending={pendingPayouts} onOpenFund={setFundModal} onOpenPerson={openPerson}
               />
+              </QueryRegion>
             ) : tab === "people" ? (
               <SalaryIncomePay
                 managers={managers} period={period} selectedId={person} onSelect={setPerson}
@@ -375,11 +419,11 @@ export default function ManagerSalaryPage() {
           </>
         )}
 
-        {fundModal && (
+        {fundModal && (<QueryRegion label="nguồn quỹ lương" queries={[fee0]}>
           <SalaryFundModal tab={fundModal} onTab={setFundModal} onClose={() => setFundModal(null)}
             periodMonth={periodMonth} locked={monthLocked} fee={fee0} managers={managers}
             recurring={data?.extras.recurring ?? []} extrasAvailable={data?.extras.available ?? false} canEdit={canEditAmounts} />
-        )}
+        </QueryRegion>)}
         {amountEdit && <SalaryAmountEditDialog m={amountEdit.m} line={amountEdit.line} periodMonth={periodMonth} onClose={() => setAmountEdit(null)} />}
         {adjDialog && <AdjustDialog m={adjDialog.m} edit={adjDialog.edit} onClose={() => setAdjDialog(null)}
           onSave={(p) => onSaveAdjustment(adjDialog.m.id, p)} />}

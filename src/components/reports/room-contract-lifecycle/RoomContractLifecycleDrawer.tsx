@@ -1,3 +1,4 @@
+import {friendlyError} from '@/lib/friendlyError';
 // =============================================
 // RoomContractLifecycleDrawer — Báo cáo Lợi Nhuận: bấm SỐ PHÒNG ở cột Khoản thu
 // → panel phải "Vòng đời hợp đồng" của phòng trong năm; bấm một hợp đồng → chi
@@ -135,7 +136,7 @@ export default function RoomContractLifecycleDrawer({ roomId, roomName, initialY
     return new Map<string, Lane>(money.data.lanes.map((l) => [l.contractId, l]));
   }, [money.data, money.isError, selectedOrganizationId, target]);
   const moneyNotice = money.isError
-    ? `Cọc & công nợ: ${(money.error as Error)?.message ?? 'không đọc được'}`
+    ? `Chưa tải được cọc và công nợ. ${friendlyError(money.error, 'Chưa tải được cọc và công nợ').description}`
     : !selectedOrganizationId && target
       ? 'Cọc & công nợ: chưa chốt được tổ chức đang xem'
       : money.data && money.data.status.deposit.kind !== 'sufficient'
@@ -217,11 +218,12 @@ export default function RoomContractLifecycleDrawer({ roomId, roomName, initialY
               {room.isLoading && <div className="rcl-empty">Đang tải vòng đời hợp đồng…</div>}
               {room.isError && (
                 <div className="rcl-alert">
-                  {(room.error as Error)?.message ?? 'Không đọc được vòng đời hợp đồng của phòng'}
+                  Chưa tải được vòng đời hợp đồng của phòng {roomName}. {friendlyError(room.error, 'Chưa tải được vòng đời hợp đồng').description}
                   <button type="button" onClick={() => room.refetch()}>Thử lại</button>
                 </div>
               )}
-              {moneyNotice && payload && <div className="rcl-note">{moneyNotice}</div>}
+              {moneyNotice && payload && <div className="rcl-note" role="alert">{moneyNotice}{money.isError && <button type="button" onClick={()=>void money.refetch()}>Tải lại cọc và công nợ</button>}</div>}
+              {(extras.isError || extras.data?.partial) && <div className="rcl-note" role="alert">Chưa tải đủ thông tin gia hạn, chuyển phòng và khách đại diện. Dòng thời gian có thể thiếu các mốc này. <button type="button" onClick={()=>void extras.refetch()}>Tải lại thông tin bổ sung</button></div>}
 
               {!inDetail && yearView && (
                 <>

@@ -1,3 +1,6 @@
+import {readOrganizationMembers,readMemberAuthorization,readOrganizationRoles,readAuthorizationCatalog,readOrganizationProfile} from '@/lib/authorizationReadModels';
+import { authorizationOutcomeUnknown, authorizationReceipt, AuthorizationReceiptError } from '@/lib/authorizationFeedback';
+import { actionErrorMessage } from '@/lib/actionFeedback';
 // Tầng dữ liệu cho 4 màn quản trị phân quyền (Tổ chức / Thành viên / Mẫu vai
 // trò / hộp thoại phân quyền).
 //
@@ -186,36 +189,38 @@ export const authzKeys = {
  * `(supabase as any)`. Đổi sang thunk thì tên hàm, tên tham số và kiểu tham số
  * của cả 10 lời gọi đều được generated types đối chiếu thật.
  *
- * Cái KHÔNG lấy lại được: các RPC này khai `RETURNS json` nên `data` là `Json`;
- * `as T` bên dưới vẫn là khẳng định về HÌNH DẠNG trả về, không được kiểm.
- * Nó vốn đã như vậy từ trước (`any as T`), chỉ là giờ thấy rõ. Muốn gác nốt
- * phần này thì phải validate ở runtime, không phải việc của một helper.
+ * Kết quả JSON đọc được kiểm cấu trúc runtime tại boundary; receipt ghi
+ * được kiểm theo thao tác và đối tượng nhận bên dưới.
  */
 async function callRpc<T>(
   run: () => PromiseLike<{ data: unknown; error: PostgrestError | null }>,
+  validate?: (data:unknown)=>T,
 ): Promise<T> {
   const { data, error } = await run();
   if (error) throw error;
-  return data as T;
+  if (data === null || data === undefined) throw new AuthorizationReceiptError();
+  return validate?validate(data):data as T;
 }
 
 /* ────────────────────────────────  Đọc  ─────────────────────────────────── */
 
 export const useOrganizationMembers = (enabled = true) =>
   useQuery({
+    meta: {label:"thông tin phân quyền tổ chức",errorDisplay:"inline"},
     queryKey: authzKeys.members,
     enabled,
     staleTime: 30_000,
     queryFn: async () => {
       const d = await callRpc<{ organizationId: string; members: OrganizationMember[] }>(
-        () => supabase.rpc('list_organization_members_v1'),
+        () => supabase.rpc('list_organization_members_v1'),readOrganizationMembers,
       );
-      return d ?? { organizationId: '', members: [] };
+      return d;
     },
   });
 
 export const useMemberAuthorization = (membershipId: string | null) =>
   useQuery({
+    meta: {label:"thông tin phân quyền tổ chức",errorDisplay:"inline"},
     queryKey: authzKeys.member(membershipId ?? '∅'),
     enabled: !!membershipId,
     // Không cache: `version` là khoá chống ghi chen, đọc lại số cũ sẽ khiến
@@ -228,44 +233,45 @@ export const useMemberAuthorization = (membershipId: string | null) =>
       // giữ đúng bất biến đó bằng một phép kiểm thật, không phải dấu `!`.
       callRpc<MemberAuthorization>(() => supabase.rpc('get_member_authorization_v1', {
         p_membership: batBuoc(membershipId, 'membershipId'),
-      })),
+      }),data=>readMemberAuthorization(data,batBuoc(membershipId,'membershipId'))),
   });
 
 export const useOrganizationRoles = (enabled = true) =>
   useQuery({
+    meta: {label:"thông tin phân quyền tổ chức",errorDisplay:"inline"},
     queryKey: authzKeys.roles,
     enabled,
     staleTime: 30_000,
-    queryFn: async () => (await callRpc<OrganizationRole[]>(() => supabase.rpc('list_organization_roles_v1'))) ?? [],
+    queryFn: () => callRpc<OrganizationRole[]>(() => supabase.rpc('list_organization_roles_v1'),readOrganizationRoles),
   });
 
 export const useAuthorizationCatalog = (enabled = true) =>
   useQuery({
+    meta: {label:"thông tin phân quyền tổ chức",errorDisplay:"inline"},
     queryKey: authzKeys.catalog,
     enabled,
     // Danh mục quyền + phạm vi gần như tĩnh; ~55 kB nên đừng tải lại liên tục.
     staleTime: 10 * 60_000,
     queryFn: async () =>
-      (await callRpc<AuthorizationCatalog>(() => supabase.rpc('list_authorization_catalog_v1'))) ?? {
-        scopes: [],
-        permissions: [],
-      },
+      callRpc<AuthorizationCatalog>(() => supabase.rpc('list_authorization_catalog_v1'),readAuthorizationCatalog),
   });
 
 export const useOrganizationProfile = (enabled = true) =>
   useQuery({
+    meta: {label:"thông tin phân quyền tổ chức",errorDisplay:"inline"},
     queryKey: authzKeys.organization,
     enabled,
     staleTime: 30_000,
-    queryFn: () => callRpc<OrganizationProfile>(() => supabase.rpc('get_organization_profile_v1')),
+    queryFn: () => callRpc<OrganizationProfile>(() => supabase.rpc('get_organization_profile_v1'),readOrganizationProfile),
   });
 
 /* ────────────────────────────────  Ghi  ─────────────────────────────────── */
 
 /** Thông điệp lỗi thân thiện: RPC đã viết tiếng Việt sẵn, chỉ cần lấy ra. */
-const loi = (e: unknown, macDinh: string) => {
+export const authorizationErrorMessage = (e: unknown, macDinh: string) => {
+  if (authorizationOutcomeUnknown(e)) return e instanceof AuthorizationReceiptError ? e.message : 'Chưa xác nhận được kết quả thay đổi. Giữ nội dung đang sửa và đọc lại trạng thái trước khi thực hiện tiếp.';
   const m = (e as { message?: string })?.message;
-  return m && !/^(permission denied|JSON object)/i.test(m) ? m : macDinh;
+  return m && knownAuthorizationReasons.includes(m) ? m : actionErrorMessage(e, macDinh);
 };
 
 // `type` chu khong phai `interface`: chi type alias moi gan duoc vao `Json` khi
@@ -315,7 +321,7 @@ export const useSaveMemberAuthorization = () => {
         p_role_bindings: v.roleBindings ?? null,
         p_overrides: v.overrides ?? null,
         p_reason: v.reason,
-      })),
+      })).then(result => authorizationReceipt(result, 'member', {id:v.membershipId,version:v.expectedVersion})),
     onSuccess: (r, v) => {
       qc.invalidateQueries({ queryKey: authzKeys.members });
       qc.invalidateQueries({ queryKey: authzKeys.member(v.membershipId) });
@@ -329,7 +335,7 @@ export const useSaveMemberAuthorization = () => {
           (lost.length ? ` · −${lost.length}` : ''),
       );
     },
-    onError: (e) => toast.error(loi(e, 'Không lưu được phân quyền.')),
+    onError: (e) => toast.error(authorizationErrorMessage(e, 'Không lưu được phân quyền.')),
   });
 };
 
@@ -353,7 +359,7 @@ export const useUpsertOrganizationRole = () => {
           p_expected_version: rpcNullable(v.expectedVersion ?? null),
           p_reason: v.reason ?? undefined,
         },
-      )),
+      )).then(result => authorizationReceipt(result, 'role', {id:v.roleId,version:v.expectedVersion})),
     onSuccess: (r) => {
       qc.invalidateQueries({ queryKey: authzKeys.roles });
       qc.invalidateQueries({ queryKey: authzKeys.members });
@@ -365,7 +371,7 @@ export const useUpsertOrganizationRole = () => {
           : `Đã lưu vai trò${r?.affectedMembers ? ` · ảnh hưởng ${r.affectedMembers} người` : ''}.`,
       );
     },
-    onError: (e) => toast.error(loi(e, 'Không lưu được vai trò.')),
+    onError: (e) => toast.error(authorizationErrorMessage(e, 'Không lưu được vai trò.')),
   });
 };
 
@@ -388,20 +394,20 @@ export const useInviteMember = () =>
           p_scope_ids: v.scopeIds?.length ? v.scopeIds : undefined,
           p_expires_days: v.expiresDays ?? 7,
         },
-      )),
-    onError: (e) => toast.error(loi(e, 'Không gửi được lời mời.')),
+      )).then(result => authorizationReceipt(result, 'invite')),
+    onError: (e) => toast.error(authorizationErrorMessage(e, 'Không gửi được lời mời.')),
   });
 
 export const useRevokeInvitation = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (invitationId: string) =>
-      callRpc(() => supabase.rpc('revoke_organization_invitation_v1', { p_invitation: invitationId })),
+      callRpc(() => supabase.rpc('revoke_organization_invitation_v1', { p_invitation: invitationId })).then(result => authorizationReceipt(result, 'revoke', {id:invitationId})),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: authzKeys.organization });
       toast.success('Đã thu hồi lời mời.');
     },
-    onError: (e) => toast.error(loi(e, 'Không thu hồi được lời mời.')),
+    onError: (e) => toast.error(authorizationErrorMessage(e, 'Không thu hồi được lời mời.')),
   });
 };
 
@@ -409,11 +415,52 @@ export const useUpdateOrganizationProfile = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (name: string) =>
-      callRpc<{ name: string }>(() => supabase.rpc('update_organization_profile_v1', { p_name: name })),
+      callRpc<{ name: string }>(() => supabase.rpc('update_organization_profile_v1', { p_name: name })).then(result => authorizationReceipt(result, 'profile', {name})),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: authzKeys.organization });
       toast.success('Đã lưu thông tin tổ chức.');
     },
-    onError: (e) => toast.error(loi(e, 'Không lưu được thông tin tổ chức.')),
+    onError: (e) => toast.error(authorizationErrorMessage(e, 'Không lưu được thông tin tổ chức.')),
   });
 };
+
+const knownAuthorizationReasons: readonly string[] = [
+  "Bạn chưa đăng nhập.",
+  "Thiếu thành viên hoặc số phiên bản. Hãy tải lại trang rồi thử lại.",
+  "Không có gì để lưu.",
+  "Hãy ghi lý do thay đổi phân quyền.",
+  "Không tìm thấy thành viên này.",
+  "Bạn không thể tự sửa quyền của chính mình. Hãy nhờ chủ sở hữu thực hiện.",
+  "Có người vừa đổi phân quyền của thành viên này. Hãy tải lại trang để xem thay đổi mới nhất.",
+  "Vai trò không thuộc tổ chức này.",
+  "Vai trò phải kèm ít nhất một phạm vi (toàn tổ chức, khu vực hoặc toà nhà).",
+  "Bạn không thuộc tổ chức nào đang hoạt động.",
+  "Hãy đặt tên cho vai trò.",
+  "Vai trò mới phải chọn ít nhất một quyền (hoặc gửi danh sách rỗng nếu cố ý).",
+  "Không tìm thấy vai trò này.",
+  "Có người vừa đổi vai trò này. Hãy tải lại trang.",
+  "Địa chỉ email không hợp lệ.",
+  "Hạn lời mời phải từ 1 đến 30 ngày.",
+  "Có phạm vi không thuộc tổ chức này.",
+  "Người này đã là thành viên của tổ chức.",
+  "Hãy đăng nhập bằng đúng email đã nhận lời mời, rồi mở lại đường dẫn.",
+  "Thiếu mã lời mời.",
+  "Tài khoản của bạn chưa có email nên không nhận lời mời được.",
+  "Lời mời không tồn tại. Hãy sao chép lại đường dẫn hoặc xin mời lại.",
+  "Lời mời này dành cho một địa chỉ email khác.",
+  "Lời mời này đã được dùng hoặc đã bị thu hồi.",
+  "Lời mời đã hết hạn. Hãy xin người quản lý mời lại.",
+  "Bạn đã là thành viên của tổ chức này rồi.",
+  "Bạn không có quyền xem danh sách thành viên.",
+  "Bạn không có quyền xem phân quyền thành viên.",
+  "Không tìm thấy thành viên này trong tổ chức của bạn.",
+  "Bạn không có quyền xem mẫu vai trò.",
+  "Bạn không có quyền xem danh mục phân quyền.",
+  "Bạn không có quyền xem thông tin tổ chức.",
+  "Bạn không có quyền sửa thông tin tổ chức.",
+  "Tên tổ chức không được để trống.",
+  "Tên tổ chức tối đa 200 ký tự.",
+  "Bạn không có quyền thu hồi lời mời.",
+  "Không tìm thấy lời mời này.",
+  "Lời mời này không còn ở trạng thái chờ."
+];

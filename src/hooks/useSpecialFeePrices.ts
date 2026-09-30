@@ -1,3 +1,4 @@
+import {financialReadNumber,financialReadRows} from '@/lib/financialReadValidation';
 import { useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -45,12 +46,12 @@ export const useSpecialFeePrices = (buildingIds?: string[], month?: string, opts
         p_building_ids: key ?? undefined,
         p_month: month ?? undefined,
       });
-      if (error) throw new Error(error.message);
-      return ((data ?? []) as any[]).map((r) => ({
+      if (error) throw error;
+      return financialReadRows<any>(data).map((r) => ({
         buildingId: r.building_id,
         buildingName: r.building_name,
         feeCategory: r.fee_category,
-        amount: r.amount == null ? null : Number(r.amount),
+        amount: r.amount == null ? null : financialReadNumber(r.amount),
         effectiveFrom: r.effective_from ?? null,
         source: r.source ?? null,
         canEdit: !!r.can_edit,
@@ -90,7 +91,9 @@ export interface SetSpecialFeePriceArgs {
 export const useSetSpecialFeePrice = () => {
   const qc = useQueryClient();
   return useMutation({
+    meta: {handlesFeedback: true},
     mutationFn: async (a: SetSpecialFeePriceArgs) => {
+      if(a.amount!=null && (!Number.isFinite(a.amount)||a.amount<0))throw {code:'22023',message:'Số tiền phí không hợp lệ'};
       const { data, error } = await supabase.rpc('set_special_fee_price_v1', {
         p_building_id: a.buildingId,
         p_fee_category: a.feeCategory,
@@ -98,8 +101,10 @@ export const useSetSpecialFeePrice = () => {
         p_effective_from_month: a.effectiveFromMonth ?? undefined,
         p_note: a.note ?? undefined,
       });
-      if (error) throw new Error(error.message);
-      return data as { effectiveFrom: string; note: string };
+      if (error) throw error;
+      const receipt=data as {id?:string;buildingId?:string;feeCategory?:string;amount?:unknown;effectiveFrom?:string;note?:string}|null;
+      if(!receipt?.id || receipt.buildingId!==a.buildingId || receipt.feeCategory!==a.feeCategory || financialReadNumber(receipt.amount)!==a.amount || typeof receipt.effectiveFrom!=='string' || !/^\d{4}-\d{2}$/.test(receipt.effectiveFrom))throw new TypeError('Chưa xác nhận được giá phí đã công bố.');
+      return {effectiveFrom:receipt.effectiveFrom,note:receipt.note??''};
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['special-fee-prices'] });

@@ -1,3 +1,7 @@
+import {useOrganization} from '@/contexts/OrganizationContext';
+import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
+import {FinancialWorkflowError,workflowErrorMessage} from '@/lib/financialWorkflow';
+import {financialReadRows} from '@/lib/financialReadValidation';
 // Finance V2 — mutation hooks gọi RPC canonical (Stage-5 writers, plan §7.2).
 //
 // CHỈ dùng khi route workflow/posting của org là CANONICAL (caller gate bằng
@@ -11,28 +15,36 @@
 //   approve_and_post_income_expense_v2(input jsonb)   -> jsonb
 // input = PostFinanceExecutionInput (src/lib/incomeExpensePostingValidation.ts).
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { VoucherPartialError, voucherFailureMessage, voucherLifecycleFeedback } from "@/lib/voucherFeedback";
 import { useAuth } from "@/hooks/useAuth";
 import type { PostFinanceExecutionInput } from "@/lib/incomeExpensePostingValidation";
 import { todayISO } from '@/lib/collect';
+import { UploadTimeoutError } from '@/lib/uploadDeadline';
 import { uploadFile, deleteFile, sanitizeStorageFileName, uploadToStorageWithDeadline } from "@/lib/storage";
 import { validateAttachmentFile } from "@/components/income-expenses/AttachmentUpload";
 import { periodBlockMessage } from "@/lib/cashbookClosing";
-import { approvalErrorMessage, isStaleVersionError } from "@/lib/incomeExpenseRevision";
+import { isStaleVersionError } from "@/lib/incomeExpenseRevision";
 
 // RPC v2 chưa có trong generated types cho tới lần regen sau forward-apply.
 type RpcResult = { data: unknown; error: { code?: string; message?: string } | null };
 const rpc = (fn: string, args?: Record<string, unknown>): PromiseLike<RpcResult> =>
   (supabase.rpc as unknown as (f: string, a?: Record<string, unknown>) => PromiseLike<RpcResult>)(fn, args);
 
-function genIdempotencyKey(): string {
-  return typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-    ? crypto.randomUUID()
-    : `v2-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+function confirmV2Receipt(value:unknown,subjectId:string,action:'approve'|'post'|'approvePost'|'reverse'):unknown {
+  const receipt=value && typeof value==='object'?value as Record<string,unknown>:{};
+  const id=receipt.voucherId??receipt.refundVoucherId;
+  if(id!==subjectId || voucherLifecycleFeedback(value,action).kind==='warning')throw new TypeError('Chưa xác nhận được đúng phiếu và trạng thái sau thao tác.');
+  return value;
 }
+function requireSubjectId(value:unknown):asserts value is string {
+  if(typeof value!=='string'||!value)throw new TypeError('Chưa xác định được phiếu cần xử lý.');
+}
+
+export type FinancePostingInput=PostFinanceExecutionInput & {organizationId?:string|null};
 
 const INVALIDATE_KEYS = [
   ["income-expenses"],
@@ -58,14 +70,19 @@ export function isOwnedBySystemFlow(message: string | null | undefined): boolean
 }
 
 /** Duyệt-only V2: balance KHÔNG đổi (khác legacy). */
-export function useApproveIncomeExpenseV2() {
+export function useApproveIncomeExpenseV2(options:{scope?:'target'}={}) {
   const invalidate = useInvalidateMoney();
+  const {selectedOrganizationId}=useOrganization();
+  const workflow=useRef(persistentFinancialWorkflow('voucher-v2-approve',options));
   return useMutation({
-    mutationFn: async (args: { voucherId: string; expectedApprovalVersion?: number }) => {
+    mutationFn: async (args: { voucherId: string; expectedApprovalVersion?: number; organizationId?:string|null }) => {
+      requireSubjectId(args.voucherId);
+      if(options.scope==='target'&&!args.organizationId)throw new FinancialWorkflowError('Chưa xác định được tổ chức của phiếu. Tải lại yêu cầu trước khi tiếp tục.','failure',[]);
+      return workflow.current.run(args.voucherId,'duyệt phiếu',async progress=>{
       const { data, error } = await rpc("approve_income_expense_v2", {
         p_voucher: args.voucherId,
         p_expected_approval_version: args.expectedApprovalVersion ?? 1,
-        p_idempotency_key: genIdempotencyKey(),
+        p_idempotency_key: progress.requestKey,
       });
       if (error && isOwnedBySystemFlow(error.message)) {
         // 7ac: phiếu flow-owned (INVOICE_REFUND/TERMINATION_REFUND) duyệt qua
@@ -74,23 +91,29 @@ export function useApproveIncomeExpenseV2() {
           p_voucher: args.voucherId,
           p_decision: "approve",
           p_reason: null,
-          p_idempotency_key: genIdempotencyKey(),
+          p_idempotency_key: progress.requestKey,
         });
-        if (owned.error) throw new Error(owned.error.message || "Duyệt phiếu thất bại");
-        return owned.data;
+        if (owned.error) throw owned.error;
+        const receipt=confirmV2Receipt(owned.data,args.voucherId,'approve');
+        progress.completed.push({id:args.voucherId,label:'Đã duyệt phiếu'});
+        return receipt;
       }
-      if (error) throw new Error(error.message || "Duyệt phiếu thất bại");
-      return data;
+      if (error) throw error;
+      const receipt=confirmV2Receipt(data,args.voucherId,'approve');
+      progress.completed.push({id:args.voucherId,label:'Đã xác nhận duyệt phiếu'});
+      return receipt;
+      },undefined,args.organizationId??selectedOrganizationId??undefined);
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       invalidate();
-      toast.success("Đã duyệt phiếu — chưa ghi sổ (Đã Duyệt - Chưa Thu/Chi)");
+      const feedback = voucherLifecycleFeedback(data, "approve");
+      toast[feedback.kind](feedback.message);
     },
     onError: (e: Error) => {
       // Phiếu vừa bị sửa khi đang mở hộp Duyệt (đợt 1 sửa phiếu): nói bằng lời
       // người đọc được và kéo bản mới về, thay cho "approval_version mismatch".
       if (isStaleVersionError(e)) invalidate();
-      toast.error(approvalErrorMessage(e));
+      toast.error(workflowErrorMessage(e,'duyệt phiếu'));
     },
   });
 }
@@ -98,34 +121,53 @@ export function useApproveIncomeExpenseV2() {
 /** Thu/Chi phiếu ĐÃ duyệt (CUSTODIAN, không cần quyền duyệt). */
 export function usePostApprovedIncomeExpenseV2() {
   const invalidate = useInvalidateMoney();
+  const {selectedOrganizationId}=useOrganization();
+  const workflow=useRef(persistentFinancialWorkflow('voucher-v2-post'));
   return useMutation({
-    mutationFn: async (input: PostFinanceExecutionInput) => {
-      const { data, error } = await rpc("post_approved_income_expense_v2", { input });
-      if (error) throw new Error(error.message || "Ghi sổ thất bại");
-      return data;
+    mutationFn: async (input: FinancePostingInput) => {
+      requireSubjectId(input.subjectId);
+      const {organizationId,...postingInput}=input;
+      return workflow.current.run(input.subjectId,'ghi nhận thu/chi',async progress=>{
+      const { data, error } = await rpc("post_approved_income_expense_v2", { input:{...postingInput,idempotencyKey:progress.requestKey} });
+      if (error) throw error;
+      const receipt=confirmV2Receipt(data,input.subjectId,'post');
+      progress.completed.push({id:input.subjectId,label:'Đã xác nhận ghi nhận thu/chi'});
+      return receipt;
+      },undefined,selectedOrganizationId??undefined);
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       invalidate();
-      toast.success("Đã ghi sổ (posting) thành công");
+      const feedback = voucherLifecycleFeedback(data, "post");
+      toast[feedback.kind](feedback.message);
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(workflowErrorMessage(e,'ghi nhận thu/chi')),
   });
 }
 
 /** Duyệt và Thu/Chi atomic (actor vừa approver vừa CUSTODIAN). */
-export function useApproveAndPostIncomeExpenseV2() {
+export function useApproveAndPostIncomeExpenseV2(options:{scope?:'target'}={}) {
   const invalidate = useInvalidateMoney();
+  const {selectedOrganizationId}=useOrganization();
+  const workflow=useRef(persistentFinancialWorkflow('voucher-v2-approve-post',options));
   return useMutation({
-    mutationFn: async (input: PostFinanceExecutionInput) => {
-      const { data, error } = await rpc("approve_and_post_income_expense_v2", { input });
-      if (error) throw new Error(error.message || "Duyệt và ghi sổ thất bại");
-      return data;
+    mutationFn: async (input: FinancePostingInput) => {
+      requireSubjectId(input.subjectId);
+      const {organizationId,...postingInput}=input;
+      if(options.scope==='target'&&!organizationId)throw new FinancialWorkflowError('Chưa xác định được tổ chức của phiếu. Tải lại yêu cầu trước khi tiếp tục.','failure',[]);
+      return workflow.current.run(input.subjectId,'duyệt và ghi nhận thu/chi',async progress=>{
+      const { data, error } = await rpc("approve_and_post_income_expense_v2", { input:{...postingInput,idempotencyKey:progress.requestKey} });
+      if (error) throw error;
+      const receipt=confirmV2Receipt(data,input.subjectId,'approvePost');
+      progress.completed.push({id:input.subjectId,label:'Đã xác nhận duyệt và ghi nhận thu/chi'});
+      return receipt;
+      },undefined,organizationId??selectedOrganizationId??undefined);
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       invalidate();
-      toast.success("Đã duyệt và ghi sổ atomic");
+      const feedback = voucherLifecycleFeedback(data, "approvePost");
+      toast[feedback.kind](feedback.message);
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(workflowErrorMessage(e,'duyệt và ghi nhận thu/chi')),
   });
 }
 
@@ -133,27 +175,35 @@ export function useApproveAndPostIncomeExpenseV2() {
  *  dấu, phiếu về "Đã hoàn tác" — nằm chờ Chi lại hoặc Huỷ. CUSTODIAN đúng sổ. */
 export function useReversePostingV2() {
   const invalidate = useInvalidateMoney();
+  const {selectedOrganizationId}=useOrganization();
+  const workflow=useRef(persistentFinancialWorkflow('voucher-v2-reverse'));
   return useMutation({
     mutationFn: async (args: {
       voucherId: string;
       cashbookId: string;
       reason?: string | null;
     }) => {
+      requireSubjectId(args.voucherId);
+      return workflow.current.run(args.voucherId,'hoàn tác thu/chi',async progress=>{
       const { data, error } = await rpc("reverse_posted_income_expense_v2", {
         p_voucher: args.voucherId,
         p_cashbook: args.cashbookId,
         p_posted_on: todayISO(),
         p_reason: args.reason || "Hoàn tác thủ công",
-        p_idempotency_key: `rev-${args.voucherId}-${Date.now()}`,
+        p_idempotency_key: progress.requestKey,
       });
-      if (error) throw new Error(error.message || "Hoàn tác thất bại");
-      return data;
+      if (error) throw error;
+      const receipt=confirmV2Receipt(data,args.voucherId,'reverse');
+      progress.completed.push({id:args.voucherId,label:'Đã xác nhận hoàn tác thu/chi'});
+      return receipt;
+      },undefined,selectedOrganizationId??undefined);
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       invalidate();
-      toast.success("Đã hoàn tác — tiền trả về sổ, phiếu chờ Chi lại hoặc Huỷ");
+      const feedback = voucherLifecycleFeedback(data, "reverse");
+      toast[feedback.kind](feedback.message);
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(workflowErrorMessage(e,'hoàn tác thu/chi')),
   });
 }
 
@@ -168,16 +218,18 @@ export async function uploadFinanceEvidence(
 ): Promise<string | null> {
   // PHẢI truyền org của phiếu: server-default là membership đầu tiên của user —
   // user đa-org sẽ bị stamp sai tenant ⇒ posting từ chối "not FINALIZED in tenant".
+  try {
   const intent = await rpc("create_finance_evidence_upload_intent_v2", {
     p_organization_id: organizationId ?? null,
   });
   if (intent.error) {
-    toast.error(intent.error.message || "Không tạo được intent chứng từ");
+    toast.error(voucherFailureMessage(intent.error, `chuẩn bị tải chứng từ “${file.name}”`));
     return null;
   }
   const { evidence_id, bucket_id, object_name } = intent.data as {
     evidence_id: string; bucket_id: string; object_name: string;
   };
+  if([evidence_id,bucket_id,object_name].some(value=>typeof value!=='string'||!value))throw new TypeError('Chưa đọc được yêu cầu tải chứng từ.');
   // Có hạn chờ: hàm này là đường lùi chạy trong bước "đang ghi ảnh" của hộp Thu/Chi,
   // lúc hộp KHOÁ không cho đóng — upload kẹt không hạn là khoá hộp tới khi tắt app.
   // Quá hạn thì `up.error` là UploadTimeoutError, đi chung nhánh báo lỗi bên dưới.
@@ -186,15 +238,23 @@ export async function uploadFinanceEvidence(
     upsert: false,
   });
   if (up.error) {
-    toast.error(up.error.message || "Upload chứng từ thất bại");
+    toast.error(up.error instanceof UploadTimeoutError
+      ? `Tải chứng từ “${file.name}” quá lâu. Chưa xác nhận tệp đã lưu. Giữ tệp và kiểm tra trạng thái chứng từ trước khi tải tiếp.`
+      : voucherFailureMessage(up.error, `tải chứng từ “${file.name}”`));
     return null;
   }
   const fin = await rpc("finalize_finance_evidence_v2", { p_evidence_id: evidence_id });
   if (fin.error) {
-    toast.error(fin.error.message || "Finalize chứng từ thất bại");
+    toast.error(voucherFailureMessage(fin.error, `xác nhận chứng từ “${file.name}”`));
     return null;
   }
+  const receipt=fin.data as {evidence_id?:unknown;state?:unknown}|null;
+  if(receipt?.evidence_id!==evidence_id || receipt.state!=='FINALIZED')throw new TypeError('Chưa xác nhận được chứng từ đã lưu hoàn tất.');
   return evidence_id;
+  } catch (error) {
+    toast.error(voucherFailureMessage(error, `tải chứng từ “${file.name}”`));
+    return null;
+  }
 }
 
 /**
@@ -214,15 +274,15 @@ export async function adoptVoucherAttachmentsAsEvidence(
   });
   if (error) {
     console.warn("[financeV2] adopt_voucher_attachments_as_evidence_v2:", error.message);
-    return { evidenceIds: [], skipped: [] };
+    throw error;
   }
-  const payload = (data ?? {}) as {
+  const payload = data as {
     evidence_ids?: string[];
     skipped?: { url: string; reason: string }[];
   };
   return {
-    evidenceIds: payload.evidence_ids ?? [],
-    skipped: payload.skipped ?? [],
+    evidenceIds: financialReadRows<string>(payload?.evidence_ids).map(id=>{if(typeof id!=='string' || !id)throw new TypeError('Chưa đọc được mã chứng từ của phiếu.');return id;}),
+    skipped: financialReadRows<{url:string;reason:string}>(payload?.skipped).map(row=>{if(!row || typeof row.url!=='string' || typeof row.reason!=='string')throw new TypeError('Chưa đọc được các chứng từ bị bỏ qua.');return row;}),
   };
 }
 
@@ -236,9 +296,9 @@ export function useMyCashbookAccessV2() {
       const { data, error } = await rpc("list_my_cashbook_access_v2");
       if (error) {
         console.warn("[financeV2] list_my_cashbook_access_v2:", error.message);
-        return null; // null = KHÔNG rõ (RPC lỗi) → caller fail-open giữ list cũ
+        throw error;
       }
-      return (data ?? []) as { cashbook_id: string; possession_kind: string }[];
+      return financialReadRows(data as { cashbook_id: string; possession_kind: string }[] | null);
     },
   });
 }
@@ -261,9 +321,9 @@ export function useCashbookVisibilityV2() {
       const { data, error } = await rpc("list_cashbook_visibility_v2");
       if (error) {
         console.warn("[financeV2] list_cashbook_visibility_v2:", error.message);
-        return null; // null = KHÔNG rõ (RPC lỗi/chưa deploy) → caller giữ hành vi cũ
+        throw error;
       }
-      return (data ?? []) as CashbookVisibility[];
+      return financialReadRows(data as CashbookVisibility[] | null);
     },
   });
 }
@@ -278,9 +338,9 @@ export function useCustodianCashbooksV2(enabled: boolean) {
     queryFn: async () => {
       const { data, error } = await rpc("list_cashbooks_for_expense_v2");
       if (error) {
-        throw new Error(error.message || "Không đọc được sổ quỹ");
+        throw error;
       }
-      return (data ?? []) as { id: string; name: string }[];
+      return financialReadRows(data as { id: string; name: string }[] | null);
     },
   });
 }
@@ -332,7 +392,7 @@ async function uploadPostingAttachmentFile(file: File, userId: string): Promise<
     loiTai = e;
   }
   if (!url) {
-    toast.error((loiTai as Error)?.message || "Không tải được ảnh lên kho");
+    toast.error(voucherFailureMessage(loiTai, `tải chứng từ “${file.name}”`));
     return null;
   }
   return url;
@@ -404,13 +464,21 @@ export function useAttachPostingEvidence() {
         };
       }
 
-      const adopted = await adoptVoucherAttachmentsAsEvidence(opts.voucherId);
-
       // Dòng thu chi phải thấy ảnh NGAY, kể cả khi người dùng bấm Huỷ bỏ sau đó.
       qc.invalidateQueries({ queryKey: ["income-expenses"] });
       qc.invalidateQueries({ queryKey: ["income-expense-batches"] });
       qc.invalidateQueries({ queryKey: ["income-expense"] });
       qc.invalidateQueries({ queryKey: ["voucher-with-batch"] });
+
+      let adopted;
+      try {
+        adopted = await adoptVoucherAttachmentsAsEvidence(opts.voucherId);
+      } catch (error) {
+        throw new VoucherPartialError(
+          "Ảnh đã đính vào phiếu nhưng chưa kiểm tra được chứng từ. Hãy tải lại phiếu để kiểm tra trước khi thu/chi; không tải lại cùng ảnh.",
+          [opts.voucherId], undefined, error,
+        );
+      }
 
       return {
         url,
@@ -450,19 +518,21 @@ export function useRemovePostingAttachment() {
         p_remove_attachments: [url],
       });
       if (res.error) {
-        toast.error(
-          periodBlockMessage(res.error.message) ||
-            res.error.message ||
-            "Không gỡ được ảnh khỏi phiếu",
-        );
+        toast.error(voucherFailureMessage(res.error, "gỡ chứng từ khỏi phiếu"));
         return null;
       }
-      const adopted = await adoptVoucherAttachmentsAsEvidence(voucherId);
       qc.invalidateQueries({ queryKey: ["income-expenses"] });
       qc.invalidateQueries({ queryKey: ["income-expense-batches"] });
       qc.invalidateQueries({ queryKey: ["income-expense"] });
       qc.invalidateQueries({ queryKey: ["voucher-with-batch"] });
-      return adopted;
+      try {
+        return await adoptVoucherAttachmentsAsEvidence(voucherId);
+      } catch (error) {
+        throw new VoucherPartialError(
+          "Ảnh đã gỡ khỏi phiếu nhưng chưa kiểm tra được chứng từ còn lại. Hãy tải lại phiếu để kiểm tra trước khi thu/chi.",
+          [voucherId], undefined, error,
+        );
+      }
     },
     [qc],
   );
@@ -492,6 +562,8 @@ export interface PostingAttachmentChanges {
  * nên `if (res.ok)` không thu hẹp được union.
  */
 export interface CommitPostingAttachmentsResult {
+  /** Ảnh đã ghi, chỉ bước kiểm chứng từ chưa đọc được. Không xoá ảnh hay ghi sổ. */
+  evidenceReadFailed?: boolean;
   ok: boolean;
   /** Toàn bộ chứng từ hợp lệ của phiếu sau khi ghi (rỗng khi `ok=false`). */
   evidenceIds: string[];
@@ -528,18 +600,17 @@ export async function commitPostingAttachmentChanges(
       ok: false,
       evidenceIds: [],
       skipped: [],
-      message: blocked || ann.error.message || "Không ghi được ảnh lên phiếu",
+      message: blocked || voucherFailureMessage(ann.error, "lưu chứng từ lên phiếu"),
       periodBlocked: !!blocked,
     };
   }
-  const adopted = await adoptVoucherAttachmentsAsEvidence(voucherId);
-  return {
-    ok: true,
-    evidenceIds: adopted.evidenceIds,
-    skipped: adopted.skipped,
-    message: null,
-    periodBlocked: false,
-  };
+  try {
+    const adopted = await adoptVoucherAttachmentsAsEvidence(voucherId);
+    return { ok: true, evidenceIds: adopted.evidenceIds, skipped: adopted.skipped, message: null, periodBlocked: false };
+  } catch (error) {
+    console.error("Evidence read failed after attachments were committed:", error);
+    return { ok: true, evidenceIds: [], skipped: [], evidenceReadFailed: true, message: "Ảnh đã lưu trên phiếu nhưng chưa kiểm tra được chứng từ. Chưa ghi nhận thu/chi; hãy mở lại phiếu để kiểm tra.", periodBlocked: false };
+  }
 }
 
 /**

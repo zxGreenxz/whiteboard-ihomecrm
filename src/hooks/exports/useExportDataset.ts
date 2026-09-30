@@ -65,7 +65,7 @@ export async function runExportDataset({
         .order("id", { ascending: true }) // tiebreaker chống sót/trùng dòng ranh giới trang
         .range(from, to);
     },
-    { hardCap: EXPORT_HARD_CAP, label: `export:${entity}` },
+    { hardCap: EXPORT_HARD_CAP, label: `export:${entity}`, throwOnError: true },
   );
   // fetchAllRows fail-closed: null = query lỗi → PHẢI throw, không coi là rỗng.
   if (rows === null) throw new Error("Tải dữ liệu export thất bại — thử lại sau.");

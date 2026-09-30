@@ -1,3 +1,5 @@
+import {validateInputDrafts} from '@/lib/inputDraftValidation';
+import {isConfirmedFinancialRejection} from '@/lib/financialWorkflow';
 import { useEffect, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -34,7 +36,7 @@ export interface ConfirmContractSigningDialogProps {
 }
 export function ConfirmContractSigningDialog({ open, onOpenChange, draft, canSign = true, canPrint = false, onSigned, preparedCreation }: ConfirmContractSigningDialogProps) {
   const snapshot = useContractDraftSigning(draft.id, open);
-  const signingMutation = useContractSigning(draft.organization_id);
+  const signingMutation = useContractSigning(draft.organization_id,draft.id);
   const documentMutation = useSignedContractDocument(draft.organization_id);
   const reservationsQuery = useRoomReservations({ roomId: draft.room_id ?? undefined, status: 'HOLD' }, open && !!draft.room_id);
   const [receivedOn, setReceivedOn] = useState(draft.payload.form.start_date);
@@ -48,26 +50,35 @@ export function ConfirmContractSigningDialog({ open, onOpenChange, draft, canSig
   const [localSigning, setLocalSigning] = useState<ContractSigning | null>(null);
   const [selectedReservation, setSelectedReservation] = useState<(RoomReservation & SigningReservationIdentity) | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
+  const [unconfirmed,setUnconfirmed]=useState(false);
+  const dialogRoot=useRef<HTMLDivElement>(null);
+  const reconcilingRequest=useRef<string|null>(null);
   const intent = useRef<{ key: string; requestId: string } | null>(null);
   const continuedRequest = useRef<string | null>(null);
   useEffect(() => {
     if (!open) return;
     setReceivedOn(draft.payload.form.start_date); setRoomReady(false); setTermsConfirmed(false); setMeterBoundary(null);
     setCreateFirstInvoice(true); setDepositMode(undefined); setDebtReason(''); setTopupDueOn('');
-    setLocalSigning(null); setSelectedReservation(null); setErrors([]); intent.current = null; continuedRequest.current = null;
+    setLocalSigning(null); setSelectedReservation(null); setErrors([]);setUnconfirmed(false);intent.current = null; continuedRequest.current = null;reconcilingRequest.current=null;
   }, [open, draft.id, draft.revision, draft.payload.form.start_date]);
   const document = draft.documents.find(item => item.revision === draft.revision);
   const signed = localSigning ?? snapshot.data?.signing;
   useEffect(() => {
-    const requestId = intent.current?.requestId;
+    const requestId = signingMutation.pendingRequestId??intent.current?.requestId;
     if (!open || !signed || !requestId || continuedRequest.current === requestId) return;
     // Only resume the intent submitted here; opening an older signed draft is a read operation.
     if (!localSigning && signed.request_id !== requestId) return;
+    if(!localSigning&&signingMutation.pendingRequestId){
+      if(reconcilingRequest.current===requestId)return;reconcilingRequest.current=requestId;
+      // Positive matching snapshot may trigger another read to clear the exact marker; no signing writer is replayed.
+      void signingMutation.mutateAsync(undefined).then(result=>{intent.current={key:'recovered',requestId:result.request_id};setLocalSigning(result);setUnconfirmed(false);}).catch(error=>setErrors([signingErrorMessage(error)]));return;
+    }
     continuedRequest.current = requestId;
     setErrors([]);
     onSigned?.(signed);
-  }, [open, signed, localSigning, onSigned]);
+  }, [open, signed, localSigning, onSigned,signingMutation.pendingRequestId]);
   const pending = signingMutation.isPending || documentMutation.isPending;
+  const unresolved=unconfirmed||!!signingMutation.pendingRequestId;
   const reservations = matchingSigningReservations(draft, (reservationsQuery.data?.reservations ?? []).filter(hasSigningIdentity));
   const currentReservation = selectedReservation && reservations.find(row => row.id === selectedReservation.id);
   const reservationValid = !selectedReservation || (!reservationsQuery.isError && !reservationsQuery.isPending && !reservationsQuery.isFetching
@@ -81,6 +92,8 @@ export function ConfirmContractSigningDialog({ open, onOpenChange, draft, canSig
     metersConfirmed: meterBoundary?.state === 'VERIFIED' }, snapshot.data?.server_today);
 
   const handleSign = async () => {
+    if(unresolved)return;
+    if(!validateInputDrafts(dialogRoot.current)){setErrors(['Kiểm tra ngày/số đang được đánh dấu đỏ trước khi ký.']);return;}
     setErrors(confirmationErrors);
     if (confirmationErrors.length || !document || meterBoundary?.state !== 'VERIFIED' || !canSign || !reservationValid || unpreparedReservationSources) return;
     try {
@@ -92,13 +105,18 @@ export function ConfirmContractSigningDialog({ open, onOpenChange, draft, canSig
       const key = JSON.stringify(value);
       if (intent.current?.key !== key) intent.current = { key, requestId: crypto.randomUUID() };
       const result = await signingMutation.mutateAsync({ ...value, requestId: intent.current.requestId });
-      setLocalSigning(result); setErrors([]);
+      if(result.request_id)intent.current={key,requestId:result.request_id};setLocalSigning(result);setUnconfirmed(false);setErrors([]);
     } catch (error) {
+      if(!isConfirmedFinancialRejection(error))setUnconfirmed(true);
       setErrors([signingErrorMessage(error)]);
       // A lost HTTP response can follow a successful commit. Refresh source truth before allowing another click.
       void snapshot.refetch();
       void reservationsQuery.refetch();
     }
+  };
+  const handleReconcile=async()=>{
+    try{const result=await signingMutation.mutateAsync(undefined);intent.current={key:'recovered',requestId:result.request_id};setLocalSigning(result);setUnconfirmed(false);setErrors([]);}
+    catch(error){setErrors([signingErrorMessage(error)]);void snapshot.refetch();}
   };
   const selectReservation = (reservation: (RoomReservation & SigningReservationIdentity) | null) => {
     setSelectedReservation(reservation); setDepositMode(undefined); setDebtReason(''); setTopupDueOn(''); setErrors([]);
@@ -111,9 +129,10 @@ export function ConfirmContractSigningDialog({ open, onOpenChange, draft, canSig
     } catch (error) { setErrors([`Hợp đồng vẫn đã ký. Chưa tạo được bản tải: ${signingErrorMessage(error)}`]); }
   };
   return <Dialog open={open} onOpenChange={value => { if (!pending) onOpenChange(value); }}>
-    <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+    <DialogContent ref={dialogRoot} className="max-w-2xl max-h-[90vh] overflow-y-auto">
       <DialogHeader><DialogTitle>Xác nhận đã ký và nhận phòng ngay</DialogTitle><DialogDescription>Ghi nhận khách đã ký tài liệu đã xuất và bàn giao phòng theo ngày bắt đầu của bản nháp.</DialogDescription></DialogHeader>
       {errors.length > 0 && <Alert variant="destructive"><AlertDescription>{errors.map(error => <p key={error}>{error}</p>)}</AlertDescription></Alert>}
+      {unresolved&&<Alert><AlertDescription>Lần ký đã gửi cần được đối chiếu trước khi tiếp tục. Tải lại trang không huỷ yêu cầu đã gửi. <Button type="button" variant="link" disabled={pending} onClick={()=>void handleReconcile()}>Đối chiếu lần ký đã gửi</Button></AlertDescription></Alert>}
       {signed ? <div className="space-y-4">
         <Alert><AlertDescription>Đã ghi nhận ký và nhận phòng · {signed.contract_number}</AlertDescription></Alert>
         <p className="text-sm">Hợp đồng chính thức đã được tạo từ nháp phiên bản {signed.revision}. Có thể tải lại đúng bản này.</p>
@@ -126,7 +145,7 @@ export function ConfirmContractSigningDialog({ open, onOpenChange, draft, canSig
         </div>
         {!document && <p role="alert" className="text-sm text-destructive">Lưu và xuất đúng phiên bản nháp trước khi ký.</p>}
         <fieldset disabled={pending || !canSign} className="space-y-4">
-          <div className="space-y-1"><Label>Ngày nhận phòng thực tế</Label><DateInput name="Ngày nhận phòng thực tế" value={receivedOn} onChange={setReceivedOn}/><p className="text-xs text-muted-foreground">Nếu ngày nhận khác ngày bắt đầu trên tài liệu, sửa và xuất lại nháp trước khi xác nhận.</p></div>
+          <div className="space-y-1"><Label htmlFor="signing-received-date">Ngày nhận phòng thực tế</Label><DateInput id="signing-received-date" name="receivedOn" value={receivedOn} onChange={setReceivedOn}/><p className="text-xs text-muted-foreground">Nếu ngày nhận khác ngày bắt đầu trên tài liệu, sửa và xuất lại nháp trước khi xác nhận.</p></div>
           <label className="flex gap-2 text-sm"><input type="checkbox" checked={termsConfirmed} onChange={event => setTermsConfirmed(event.target.checked)}/><span>Khách đã ký đúng tài liệu nháp phiên bản {draft.revision} đã xuất.</span></label>
           <label className="flex gap-2 text-sm"><input type="checkbox" checked={roomReady} onChange={event => setRoomReady(event.target.checked)}/><span>Phòng đã sẵn sàng và được bàn giao cho khách mới.</span></label>
           {draft.room_id && <ContractMeterBoundaryFields key={`${draft.id}:${draft.revision}:${draft.room_id}`} roomId={draft.room_id} onChange={setMeterBoundary} disabled={pending}/>}
@@ -150,7 +169,7 @@ export function ConfirmContractSigningDialog({ open, onOpenChange, draft, canSig
           <p className="text-xs text-muted-foreground">Nguồn cọc đã chọn được chuyển đúng sang hợp đồng; không ghi phiếu thu cọc lần nữa. Phần chưa thu theo cách bổ sung đã chọn.</p>
           </>}
         </fieldset>
-        <Button type="button" disabled={pending || !canSign || confirmationErrors.length > 0 || !meterBoundary || !reservationValid || unpreparedReservationSources} onClick={() => void handleSign()}>{signingMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin"/>}Xác nhận đã ký và nhận phòng</Button>
+        <Button type="button" disabled={pending || unresolved || !canSign || confirmationErrors.length > 0 || !meterBoundary || !reservationValid || unpreparedReservationSources} onClick={() => void handleSign()}>{signingMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin"/>}Xác nhận đã ký và nhận phòng</Button>
       </div>}
       <Button type="button" variant="outline" disabled={pending} onClick={() => onOpenChange(false)}>Đóng</Button>
     </DialogContent>

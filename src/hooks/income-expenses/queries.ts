@@ -1,3 +1,4 @@
+import {financialReadNumber,financialReadRows} from '@/lib/financialReadValidation';
 import { enrichIncomeExpenseDetails } from "./detailRead";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -47,13 +48,7 @@ async function getItemTypeSiblingIds(
   // queryFn list/stats/batches) → burst nghẽn pool. Giờ resolve thuần JS trên
   // cache 1-fetch (ieTypesCache, TTL 5', RLS áp như cũ) — giữ nguyên ngữ nghĩa
   // match exact của .eq().
-  let allTypes: IeTypeLite[];
-  try {
-    allTypes = await getAllIeTypesCached();
-  } catch (err) {
-    console.error("getItemTypeSiblingIds types fetch error:", err);
-    return [];
-  }
+  const allTypes: IeTypeLite[] = await getAllIeTypesCached();
 
   // --- Lọc theo NHÓM (Loại): mọi type_id có category khớp (mọi user, không cần
   // expand sibling vì đã match trực tiếp chuỗi category). ---
@@ -418,7 +413,8 @@ export const incomeExpensesListQuery = (
         throw error;
       }
 
-      if (!vouchers || vouchers.length === 0) {
+      financialReadRows(vouchers);
+      if (vouchers.length === 0) {
         return { data: [], totalCount: count || 0 };
       }
 
@@ -447,7 +443,7 @@ export const incomeExpensesListQuery = (
           tenant_id: v.tenant_id,
           tenant_name: v.tenant?.full_name ?? null,
           voucher_date: v.voucher_date,
-          total_amount: Number(v.total_amount),
+          total_amount: financialReadNumber(v.total_amount),
           approval_status: v.approval_status,
           approved_by: v.approved_by,
           approved_at: v.approved_at,
@@ -467,7 +463,7 @@ export const incomeExpensesListQuery = (
           attachments: v.attachments ?? [],
           business_result_accounting: v.business_result_accounting ?? null,
           counts_in_business_result: v.counts_in_business_result ?? true,
-          kqkd_amount: Number(v.kqkd_amount ?? v.total_amount) || 0,
+          kqkd_amount: financialReadNumber(v.kqkd_amount ?? v.total_amount),
           receive_bank_name: v.receive_bank_name ?? null,
           receive_bank_account: v.receive_bank_account ?? null,
           creator_name: v.creator_name ?? null,
@@ -517,10 +513,11 @@ export const useIncomeExpenses = (
   filters: IncomeExpenseFilters,
   pagination: { page: number; pageSize: number },
   searchQuery?: string,
-  options?: { enabled?: boolean; keepPreviousData?: boolean }
+  options?: { enabled?: boolean; keepPreviousData?: boolean; inlineErrors?: boolean }
 ) => {
   return useQuery({
     ...incomeExpensesListQuery(filters, pagination, searchQuery),
+    meta: options?.inlineErrors ? { errorDisplay: "inline", label: "phiếu thu chi" } : undefined,
     enabled: options?.enabled ?? true,
     placeholderData: options?.keepPreviousData ? keepPreviousData : undefined,
   });
@@ -651,34 +648,33 @@ export const incomeExpenseStatsQuery = (
       );
 
       if (error) {
-        console.error('useIncomeExpenseStats error:', error);
-        return EMPTY_STATS;
+        throw error;
       }
       const s = Array.isArray(data) ? data[0] : data;
-      if (!s) return EMPTY_STATS;
-      const totalIncome = Number(s.cash_income) || 0;
-      const totalExpense = Number(s.cash_expense) || 0;
+      if (!s) throw new Error("Chưa tải đủ thống kê phiếu thu chi.");
+      const totalIncome = financialReadNumber(s.cash_income);
+      const totalExpense = financialReadNumber(s.cash_expense);
       // MỘT nguồn duy nhất cho 2 số chờ-xử-lý-theo-chiều: vừa nuôi allIncome/
       // allExpense (Phân bổ LN), vừa nuôi ngoặc "gồm cả chờ duyệt" ở 3 thẻ.
-      const pendingIncome = Number(s.pending_income) || 0;
-      const pendingExpense = Number(s.pending_expense) || 0;
+      const pendingIncome = financialReadNumber(s.pending_income);
+      const pendingExpense = financialReadNumber(s.pending_expense);
       const allIncome = businessResultOnly
         ? totalIncome
-        : totalIncome + (Number(s.internal_income) || 0) + pendingIncome;
+        : totalIncome + (financialReadNumber(s.internal_income)) + pendingIncome;
       const allExpense = businessResultOnly
         ? totalExpense
-        : totalExpense + (Number(s.internal_expense) || 0) + pendingExpense;
+        : totalExpense + (financialReadNumber(s.internal_expense)) + pendingExpense;
       return {
         totalIncome,
         totalExpense,
         difference: totalIncome - totalExpense,
         allIncome,
         allExpense,
-        internalCount: Number(s.internal_count) || 0,
-        internalIncome: Number(s.internal_income) || 0,
-        internalExpense: Number(s.internal_expense) || 0,
-        pendingCount: Number(s.pending_count) || 0,
-        pendingTotal: Number(s.pending_total) || 0,
+        internalCount: financialReadNumber(s.internal_count),
+        internalIncome: financialReadNumber(s.internal_income),
+        internalExpense: financialReadNumber(s.internal_expense),
+        pendingCount: financialReadNumber(s.pending_count),
+        pendingTotal: financialReadNumber(s.pending_total),
         pendingIncome,
         pendingExpense,
       };
@@ -691,11 +687,12 @@ export const incomeExpenseStatsQuery = (
 // dưới nhãn kỳ mới).
 export const useIncomeExpenseStats = (
   filters: IncomeExpenseFilters,
-  opts?: { businessResultOnly?: boolean; keepPreviousData?: boolean }
+  opts?: { businessResultOnly?: boolean; keepPreviousData?: boolean; inlineErrors?: boolean }
 ) => {
   const businessResultOnly = opts?.businessResultOnly ?? false;
   return useQuery({
     ...incomeExpenseStatsQuery(filters, businessResultOnly),
+    meta: opts?.inlineErrors ? { errorDisplay: "inline", label: "thống kê thu chi" } : undefined,
     placeholderData: opts?.keepPreviousData ? keepPreviousData : undefined,
   });
 };
@@ -705,6 +702,7 @@ export const useIncomeExpenseStats = (
 export const useIncomeExpenseHistory = (id: string | null, enabled = true) => {
   return useQuery({
     queryKey: ["ie-history", id],
+    meta:{errorDisplay:"inline",label:"nhật ký phiếu thu chi"},
     enabled: enabled && !!id,
     queryFn: async (): Promise<IncomeExpenseAuditLog[]> => {
       const { data, error } = await supabase.rpc(
@@ -713,7 +711,7 @@ export const useIncomeExpenseHistory = (id: string | null, enabled = true) => {
         { p_id: batBuoc(id, 'id') }
       );
       if (error) throw error;
-      return (data ?? []) as IncomeExpenseAuditLog[];
+      return financialReadRows<IncomeExpenseAuditLog>(data);
     },
   });
 };
@@ -728,9 +726,10 @@ export const useIncomeExpenseBatches = (
   filters: IncomeExpenseFilters,
   pagination: { page: number; pageSize: number },
   searchQuery?: string,
-  options?: { enabled?: boolean }
+  options?: { enabled?: boolean; inlineErrors?: boolean }
 ) => {
   return useQuery({
+    meta: options?.inlineErrors ? { errorDisplay: "inline", label: "đợt phiếu thu chi" } : undefined,
     enabled: options?.enabled ?? true,
     // Giữ trang cũ khi đổi filter/search/trang để bảng không nhảy về skeleton.
     placeholderData: keepPreviousData,
@@ -890,7 +889,7 @@ export const useIncomeExpenseBatches = (
           console.error("useIncomeExpenseBatches voucher error:", r.error);
           throw r.error;
         }
-        vouchers.push(...((r.data ?? []) as any[]));
+        vouchers.push(...financialReadRows<any>(r.data));
       }
 
       // 5. Map vouchers → IncomeExpenseWithRelations
@@ -916,7 +915,7 @@ export const useIncomeExpenseBatches = (
           tenant_id: v.tenant_id,
           tenant_name: v.tenant?.full_name ?? null,
           voucher_date: v.voucher_date,
-          total_amount: Number(v.total_amount),
+          total_amount: financialReadNumber(v.total_amount),
           approval_status: v.approval_status,
           approved_by: v.approved_by,
           approved_at: v.approved_at,
@@ -936,7 +935,7 @@ export const useIncomeExpenseBatches = (
           attachments: v.attachments ?? [],
           business_result_accounting: v.business_result_accounting ?? null,
           counts_in_business_result: v.counts_in_business_result ?? true,
-          kqkd_amount: Number(v.kqkd_amount ?? v.total_amount) || 0,
+          kqkd_amount: financialReadNumber(v.kqkd_amount ?? v.total_amount),
           receive_bank_name: v.receive_bank_name ?? null,
           receive_bank_account: v.receive_bank_account ?? null,
           creator_name: v.creator_name ?? null,

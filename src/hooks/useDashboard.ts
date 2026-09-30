@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUserId } from "@/lib/authSession";
-import { toast } from "sonner";
 import { startOfMonth, endOfMonth, subMonths, format } from "date-fns";
 import { getRepresentativeName } from "@/lib/contractCustomerHelpers";
 
@@ -75,11 +74,23 @@ export interface DashboardSummary {
 
 const dashboardSummaryQuery = (buildingId?: string | null) => ({
   queryKey: ["dashboard-summary", buildingId ?? null] as const,
+  meta: { label: "số liệu bảng tin", errorDisplay: "inline" },
   queryFn: async (): Promise<DashboardSummary> => {
     const { data, error } = await supabase.rpc("get_dashboard_summary", {
       p_building_id: buildingId ?? undefined,
     });
     if (error) throw error;
+    const fields: Array<keyof DashboardSummary> = [
+      "total_rooms", "occupied_rooms", "reserved_rooms", "revenue_this_month",
+      "total_debt", "new_contracts_this_month", "unresolved_issues", "leads_total",
+      "leads_converted", "leads_new_month", "deposits_total", "deposits_moved_in",
+      "deposits_new_month", "contracts_active", "contracts_new_month",
+      "contracts_expiring_soon", "contracts_terminated_month",
+    ];
+    if (!data || typeof data !== "object" || Array.isArray(data)
+      || fields.some(field => typeof data[field] !== "number" || !Number.isFinite(data[field]))) {
+      throw new Error("Chưa tải đủ số liệu bảng tin.");
+    }
     return data as unknown as DashboardSummary;
   },
   // Stats dashboard không cần tươi từng phút: 5 phút + dừng khi tab ẩn.
@@ -123,6 +134,7 @@ export const useDashboardStats = (buildingId?: string | null) => {
 export const useRevenueChart = (months: number = 12, buildingId?: string | null) => {
   return useQuery({
     queryKey: ["revenue-chart", months, buildingId],
+    meta: { errorDisplay: "inline" },
     queryFn: async (): Promise<RevenueData[]> => {
       const userId = await getSessionUserId();
       if (!userId) throw new Error('Not authenticated');
@@ -214,6 +226,7 @@ export const useOccupancyChart = (buildingId?: string | null) => {
 export const useAlerts = (buildingId?: string | null) => {
   return useQuery({
     queryKey: ["dashboard-alerts", buildingId],
+    meta: { errorDisplay: "inline" },
     queryFn: async (): Promise<Alert[]> => {
       const userId = await getSessionUserId();
       if (!userId) throw new Error('Not authenticated');
@@ -221,7 +234,7 @@ export const useAlerts = (buildingId?: string | null) => {
       const alerts: Alert[] = [];
 
       // Overdue invoices
-      const { data: overdueInvoices } = await supabase
+      const { data: overdueInvoices, error: overdueInvoicesError } = await supabase
         .from("invoices")
         .select(
           `id, invoice_number, due_date, total_amount, paid_amount,
@@ -237,6 +250,8 @@ export const useAlerts = (buildingId?: string | null) => {
         .lt("due_date", new Date().toISOString())
         .order("due_date", { ascending: true })
         .limit(5);
+
+      if (overdueInvoicesError) throw overdueInvoicesError;
 
       overdueInvoices?.forEach((invoice: any) => {
         const debt = (invoice.total_amount || 0) - (invoice.paid_amount || 0);
@@ -256,7 +271,7 @@ export const useAlerts = (buildingId?: string | null) => {
       const thirtyDaysFromNow = new Date();
       thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
 
-      const { data: expiringContracts } = await supabase
+      const { data: expiringContracts, error: expiringContractsError } = await supabase
         .from("contracts")
         .select(
           `id, contract_number, end_date,
@@ -270,6 +285,8 @@ export const useAlerts = (buildingId?: string | null) => {
         .gte("end_date", new Date().toISOString())
         .order("end_date", { ascending: true })
         .limit(5);
+
+      if (expiringContractsError) throw expiringContractsError;
 
       expiringContracts?.forEach((contract: any) => {
         const daysLeft = Math.ceil((new Date(contract.end_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
@@ -289,7 +306,7 @@ export const useAlerts = (buildingId?: string | null) => {
       const twentyFourHoursAgo = new Date();
       twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
 
-      const { data: urgentIssues } = await supabase
+      const { data: urgentIssues, error: urgentIssuesError } = await supabase
         .from("issues")
         .select("id, title, priority, created_at")
         .eq("priority", "URGENT")
@@ -297,6 +314,8 @@ export const useAlerts = (buildingId?: string | null) => {
         .lt("created_at", twentyFourHoursAgo.toISOString())
         .order("created_at", { ascending: true })
         .limit(5);
+
+      if (urgentIssuesError) throw urgentIssuesError;
 
       urgentIssues?.forEach((issue) => {
         alerts.push({
@@ -313,7 +332,7 @@ export const useAlerts = (buildingId?: string | null) => {
       // Deposit shortfall — HĐ đang hiệu lực còn thiếu cọc (mode DEBT/legacy;
       // KHÔNG gồm FIRST_INVOICE vì khoản đó thu qua hoá đơn đầu, đã có cảnh báo
       // hoá đơn quá hạn riêng). Đánh dấu để admin nhớ thu đủ cọc.
-      const { data: depositShortContracts } = await supabase
+      const { data: depositShortContracts, error: depositShortContractsError } = await supabase
         .from("contracts")
         .select(
           `id, contract_number, total_deposit, deposit_paid, deposit_remaining, deposit_topup_due_date,
@@ -328,6 +347,8 @@ export const useAlerts = (buildingId?: string | null) => {
         .or("deposit_debt_mode.is.null,deposit_debt_mode.eq.DEBT")
         .order("deposit_remaining", { ascending: false })
         .limit(5);
+
+      if (depositShortContractsError) throw depositShortContractsError;
 
       depositShortContracts?.forEach((c: any) => {
         const customerName = getRepresentativeName(c, "Khách hàng");
@@ -361,6 +382,7 @@ export const useAlerts = (buildingId?: string | null) => {
 export const useRecentActivities = (buildingId?: string | null) => {
   return useQuery({
     queryKey: ["recent-activities", buildingId],
+    meta: { errorDisplay: "inline" },
     queryFn: async (): Promise<RecentActivity[]> => {
       const userId = await getSessionUserId();
       if (!userId) throw new Error('Not authenticated');
@@ -371,7 +393,7 @@ export const useRecentActivities = (buildingId?: string | null) => {
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-      const { data: recentContracts } = await supabase
+      const { data: recentContracts, error: recentContractsError } = await supabase
         .from("contracts")
         .select(
           `id, contract_number, created_at,
@@ -384,6 +406,8 @@ export const useRecentActivities = (buildingId?: string | null) => {
         .gte("created_at", sevenDaysAgo.toISOString())
         .order("created_at", { ascending: false })
         .limit(5);
+
+      if (recentContractsError) throw recentContractsError;
 
       recentContracts?.forEach((contract: any) => {
         const customerName = getRepresentativeName(contract, "Khách hàng");
@@ -448,12 +472,14 @@ export const useRecentActivities = (buildingId?: string | null) => {
       });
 
       // Recent issues (last 7 days)
-      const { data: recentIssues } = await supabase
+      const { data: recentIssues, error: recentIssuesError } = await supabase
         .from("issues")
         .select("id, title, priority, created_at")
         .gte("created_at", sevenDaysAgo.toISOString())
         .order("created_at", { ascending: false })
         .limit(5);
+
+      if (recentIssuesError) throw recentIssuesError;
 
       recentIssues?.forEach((issue) => {
         activities.push({

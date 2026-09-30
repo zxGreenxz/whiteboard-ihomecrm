@@ -1,0 +1,4 @@
+// @vitest-environment jsdom
+import {cleanup,render,screen} from '@testing-library/react';import {afterEach,it,expect,vi} from 'vitest';import {ContractFormFooter} from './ContractFormFooter';afterEach(cleanup);
+it('partial recovery chỉ đọc intent đã gửi vẫn bấm được khi checkbox nợ cọc chưa hydrate',()=>{render(<ContractFormFooter isEditMode isPending={false} blockByDepositDebt partialSyncIssue="ID c1 cần đối chiếu" onOpenChange={vi.fn()}/>);expect((screen.getByRole('button',{name:'Kiểm tra và hoàn tất đồng bộ'}) as HTMLButtonElement).disabled).toBe(false);});
+it('lượt cập nhật mới vẫn giữ quy tắc phải xác nhận nợ cọc',()=>{render(<ContractFormFooter isEditMode isPending={false} blockByDepositDebt partialSyncIssue={null} onOpenChange={vi.fn()}/>);expect((screen.getByRole('button',{name:'Cập nhật'}) as HTMLButtonElement).disabled).toBe(true);});

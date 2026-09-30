@@ -1,3 +1,7 @@
+import {focusFirstError} from '@/lib/formErrors';
+import {friendlyError} from '@/lib/friendlyError';
+import {voucherOutcomeUnknown} from '@/lib/voucherFeedback';
+import { QueryRegion } from "@/components/errors/QueryRegion";
 import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 // =============================================
 // Báo cáo Bàn giao tiền & Đối soát sổ — cho CHỦ theo dõi:
@@ -7,7 +11,7 @@ import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 // Dữ liệu: RPC cashbook_settlement_report (useSettlementReport).
 // =============================================
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronRight, HandCoins, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -29,7 +33,7 @@ import { DateRangePicker } from '@/components/reports/DateRangePicker';
 import { format, startOfMonth } from 'date-fns';
 import { useSettlementReport, type SettlementAccount } from '@/hooks/useSettlementReport';
 import { usePersistedDateRange } from '@/hooks/usePersistedState';
-import { useProposeReconciliation } from '@/hooks/useReconciliations';
+import { useProposeReconciliation,isReconciliationUncertain } from '@/hooks/useReconciliations';
 import { fmtDateTime } from '@/lib/handover';
 import { useStaffUsers } from '@/hooks/useStaffUsers';
 import { useAuth } from '@/hooks/useAuth';
@@ -50,7 +54,8 @@ export default function BanGiaoReport() {
   const to = dateRange?.to ? toDate(dateRange.to) : '';
 
   useCopilotPageContext('reports.finance.handover', { from, to });
-  const { data, isLoading } = useSettlementReport(from, to);
+  const settlementReportQuery = useSettlementReport(from, to);
+  const { data, isLoading } = settlementReportQuery;
   const { data: perms } = useMyPermissions();
   const canReconcile = canUse(perms, 'reports_finance', 'reconcile');
 
@@ -103,6 +108,7 @@ export default function BanGiaoReport() {
           <DateRangePicker value={dateRange} onChange={setDateRange} />
         </div>
 
+        <QueryRegion label="báo cáo bàn giao và đối soát" queries={[settlementReportQuery]}>
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
           {stat('Đã thu (kỳ)', totals.collected, 'text-emerald-700')}
           {stat('Đã chi (kỳ)', totals.spent, 'text-red-700')}
@@ -214,6 +220,7 @@ export default function BanGiaoReport() {
             )}
           </CardContent>
         </Card>
+      </QueryRegion>
       </div>
 
       {/* "Chốt số" đối soát SỐ DƯ HIỆN TẠI → as_of = hôm nay (khớp cơ sở số dư
@@ -226,21 +233,30 @@ export default function BanGiaoReport() {
 }
 
 // ── Dialog "Chốt số / đối soát" 1 sổ ─────────────────────────────────
-function ReconcileDialog({
+export function ReconcileDialog({
   account, asOf, onClose,
 }: { account: SettlementAccount; asOf: string; onClose: () => void }) {
   const { data: currentUser } = useAuth();
-  const { data: staff = [] } = useStaffUsers();
+  const staffQuery=useStaffUsers();
+  const {data:staff=[]}=staffQuery;
   const proposeMut = useProposeReconciliation();
 
   const [counted, setCounted] = useState<string>(String(Math.round(account.current_balance)));
   const [note, setNote] = useState('');
   const [counterparty, setCounterparty] = useState('');
+  const root=useRef<HTMLDivElement>(null);
+  const [countedError,setCountedError]=useState<string|null>(null);
+  const [submitError,setSubmitError]=useState<string|null>(null);
+  const [uncertain,setUncertain]=useState(()=>isReconciliationUncertain(account.account_id,asOf || format(new Date(),'yyyy-MM-dd')));
 
-  const countedNum = Number(counted.replace(/[^\d-]/g, '')) || 0;
+  const countedText=counted.replace(/[.,\s]/g,'');
+  const countedNum=countedText.trim() && /^-?\d+$/.test(countedText)?Number(countedText):NaN;
   const diff = countedNum - account.current_balance;
 
   const submit = async () => {
+    if(uncertain||staffQuery.isError||staffQuery.isLoading) return;
+    if(!Number.isFinite(countedNum)) {const message='Nhập số dư thực tế bằng số; nhập 0 nếu sổ đã hết tiền.';setCountedError(message);void focusFirstError({counted:message},{root:root.current});return;}
+    setCountedError(null);setSubmitError(null);
     try {
       const res = await proposeMut.mutateAsync({
         accountId: account.account_id,
@@ -256,7 +272,12 @@ function ReconcileDialog({
       );
       onClose();
     } catch (e) {
-      toast.error((e as Error).message);
+      const message=friendlyError(e,'Chưa ghi nhận được đối soát',{operation:'ghi nhận đối soát sổ',financial:true,rules:[
+        {message:'Bạn không có quyền đối soát sổ này',description:'Bạn chưa có quyền đối soát sổ này. Nhờ chủ sổ kiểm tra quyền.'},
+        {message:'Không tìm thấy sổ quỹ',description:'Sổ quỹ không còn khả dụng. Tải lại danh sách sổ để kiểm tra.'},
+      ]}).description;
+      setSubmitError(message);toast.error(message);
+      if(voucherOutcomeUnknown(e))setUncertain(true);
     }
   };
 
@@ -264,7 +285,7 @@ function ReconcileDialog({
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent ref={root} className="max-w-md">
         <DialogHeader>
           <DialogTitle>Chốt số / đối soát — {account.name}</DialogTitle>
           <DialogDescription>
@@ -281,15 +302,17 @@ function ReconcileDialog({
           </div>
 
           <div>
-            <Label className="text-xs">Số đếm/đối chiếu thực tế</Label>
+            <Label htmlFor="reconciliation-counted" className="text-xs">Số đếm/đối chiếu thực tế</Label>
             <Input
+              id="reconciliation-counted" name="counted" aria-invalid={!!countedError} aria-describedby={countedError?"reconciliation-counted-error":undefined}
               inputMode="numeric"
               value={counted}
               onChange={(e) => setCounted(e.target.value)}
               className="tabular-nums"
             />
+            {countedError&&<p id="reconciliation-counted-error" role="alert" className="text-xs text-destructive">{countedError}</p>}
             <div className={`mt-1 text-xs ${diff === 0 ? 'text-muted-foreground' : diff < 0 ? 'text-red-600' : 'text-amber-600'}`}>
-              Lệch: {fmt(diff)} {diff !== 0 ? '(đếm − hệ thống)' : '· khớp'}
+              Lệch: {Number.isFinite(diff)?fmt(diff):"Chưa nhập số dư hợp lệ"} {diff !== 0 ? '(đếm − hệ thống)' : '· khớp'}
             </div>
           </div>
 
@@ -308,6 +331,7 @@ function ReconcileDialog({
             viễn, cần cả hai bên ký), làm ở màn <b>Sổ quỹ</b>.
           </p>
 
+          <QueryRegion label="người xác nhận đối soát" queries={[staffQuery]}>
           <div>
             <Label className="text-xs">Người xác nhận cùng (không bắt buộc)</Label>
             <SearchableSelect
@@ -321,15 +345,17 @@ function ReconcileDialog({
             />
           </div>
 
+          </QueryRegion>
           <div>
             <Label className="text-xs">Ghi chú</Label>
             <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="vd: đối chiếu sao kê ngân hàng" />
           </div>
         </div>
 
+        {(submitError||uncertain)&&<p role="alert" className="text-sm text-destructive">{submitError||"Lần đối soát trước chưa xác nhận. Tải lại danh sách đối soát để đối chiếu trước khi tạo tiếp."}</p>}
         <DialogFooter>
           <Button variant="ghost" onClick={onClose}>Đóng</Button>
-          <Button onClick={submit} disabled={proposeMut.isPending}>
+          <Button onClick={submit} disabled={proposeMut.isPending||uncertain||staffQuery.isLoading||staffQuery.isError}>
             {counterparty ? 'Gửi đối soát' : 'Chốt số'}
           </Button>
         </DialogFooter>

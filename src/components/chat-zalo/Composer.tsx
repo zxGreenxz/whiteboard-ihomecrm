@@ -1,3 +1,5 @@
+import { ZaloMediaSendError } from '@/hooks/chat-zalo/useZaloMedia';
+import { actionErrorMessage } from '@/lib/actionFeedback';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Image as ImageIcon, Paperclip, Mic, Send, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -18,6 +20,9 @@ interface Props {
   onSend: () => void;
   /** đang gửi text (busy-lock chống double-Enter) */
   sending?: boolean;
+  sendBlocked?: boolean;
+  sendError?: string;
+  onClearUnconfirmed?: () => void;
   templates: ZaloTemplateItem[];
   onPickTemplate: (body: string) => void;
   /** thanh trả lời (quote) */
@@ -48,7 +53,7 @@ const iconBtn = {
 
 /** Ô soạn tin: textarea auto-grow + emoji/ảnh/tệp/voice/sticker/mẫu tin + khay media + reply bar. */
 export default function Composer({
-  draft, onDraft, onSend, sending, templates, onPickTemplate,
+  draft, onDraft, onSend, sending, sendBlocked, sendError, onClearUnconfirmed, templates, onPickTemplate,
   replyTo, onCancelReply,
   onSendMedia, mediaSending, onSendVoice, voiceSending,
   accountId, onSendSticker,
@@ -64,6 +69,8 @@ export default function Composer({
   const [pendingKind, setPendingKind] = useState<'image' | 'file'>('image');
   const [caption, setCaption] = useState('');
   const [recording, setRecording] = useState(false);
+  const [mediaError,setMediaError] = useState('');
+  const [mediaBlocked,setMediaBlocked] = useState(false);
   const [suggestIdx, setSuggestIdx] = useState(0);
 
   useEffect(() => { if (!sending) sendLock.current = false; }, [sending]);
@@ -116,12 +123,13 @@ export default function Composer({
   }, [externalFiles]);
 
   const sendMedia = async () => {
-    if (!pending.length || !onSendMedia || mediaSending) return;
+    if (!pending.length || !onSendMedia || mediaSending || mediaBlocked) return;
+    setMediaError('');
     try {
       await onSendMedia(pendingKind, pending.map((p) => p.file), caption);
       setPending([]);
       setCaption('');
-    } catch { /* toast trong hook */ }
+    } catch (error) { setMediaError(error instanceof ZaloMediaSendError ? error.message : actionErrorMessage(error,'Chưa gửi được tệp Zalo')); if(error instanceof ZaloMediaSendError && error.outcomeUnknown) setMediaBlocked(true); }
   };
 
   const pickSuggest = (item: SuggestItem) => {
@@ -130,7 +138,7 @@ export default function Composer({
   };
 
   const trySend = () => {
-    if (sendLock.current || sending) return;
+    if (sendLock.current || sending || sendBlocked) return;
     if (!draft.trim()) return;
     sendLock.current = true;
     onSend();
@@ -180,24 +188,27 @@ export default function Composer({
   return (
     <div style={{ flex: 'none', borderTop: '1px solid hsl(210 20% 90%)', background: '#fff', padding: '12px 16px 14px' }}>
       {replyTo && onCancelReply && <ReplyBar replyTo={replyTo} onCancel={onCancelReply} />}
+      {sendError && <div role="alert" className="mb-2 rounded border border-destructive p-2 text-sm text-destructive"><p>{sendError}</p><button type="button" className="underline" onClick={onClearUnconfirmed}>Đã kiểm tra cuộc trò chuyện · bỏ bản soạn này</button></div>}
+      {mediaError && <p role="alert" className="mb-2 rounded border border-destructive p-2 text-sm text-destructive">{mediaError}</p>}
+      {mediaBlocked && <button type="button" className="mb-2 text-sm underline" onClick={() => {setMediaBlocked(false);setMediaError('');setPending([]);setCaption('');setRecording(false);}}>Đã kiểm tra cuộc trò chuyện · bỏ bản soạn này</button>}
       <AttachmentTray
         items={pending}
         caption={caption}
         onCaption={setCaption}
         onRemove={(i) => setPending((prev) => prev.filter((_, x) => x !== i))}
         onSend={sendMedia}
-        onCancel={() => { setPending([]); setCaption(''); }}
-        uploading={!!mediaSending}
+        onCancel={() => { if(!mediaBlocked){setPending([]);setCaption('');setMediaError('');} }}
+        uploading={!!mediaSending} blocked={mediaBlocked}
       />
       {recording && onSendVoice ? (
         <VoiceRecorder
-          sending={voiceSending}
+          sending={voiceSending} blocked={mediaBlocked}
           onCancel={() => setRecording(false)}
           onDone={async (blob, dur, mime) => {
             try {
               await onSendVoice(blob, dur, mime);
               setRecording(false);
-            } catch { /* toast trong hook */ }
+            } catch (error) { setMediaError(error instanceof ZaloMediaSendError ? error.message : actionErrorMessage(error,'Chưa gửi được bản ghi âm')); if(error instanceof ZaloMediaSendError && error.outcomeUnknown) setMediaBlocked(true); }
           }}
         />
       ) : (
@@ -234,7 +245,7 @@ export default function Composer({
           </div>
           <button
             onClick={trySend}
-            disabled={sending}
+            disabled={sending || sendBlocked}
             title="Gửi"
             style={{ width: 46, height: 46, borderRadius: 13, border: 'none', background: EMERALD, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: sending ? 'default' : 'pointer', opacity: sending ? 0.75 : 1, boxShadow: '0 6px 14px -5px hsl(152 69% 31% / .7)', flex: 'none' }}
           >

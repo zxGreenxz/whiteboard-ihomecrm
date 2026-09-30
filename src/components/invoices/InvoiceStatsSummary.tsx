@@ -1,3 +1,4 @@
+import { QueryRegion } from "@/components/errors/QueryRegion";
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useInvoiceStatistics, type InvoiceStatisticsFilters } from '@/hooks/useInvoices';
@@ -59,7 +60,8 @@ const InvoiceStatsSummary = ({
   onShowDeposit,
 }: InvoiceStatsSummaryProps) => {
   const isMobile = useIsMobile();
-  const { data: stats, isLoading } = useInvoiceStatistics(filters);
+  const invoiceStatisticsQuery = useInvoiceStatistics(filters);
+  const { data: stats, isLoading } = invoiceStatisticsQuery;
   const { data: ctx } = useMyContext();
   // Staff (không phải owner/super admin) chỉ thấy row 2 + row 3.
   const hideAggregateRow = ctx?.isStaff === true;
@@ -84,7 +86,7 @@ const InvoiceStatsSummary = ({
 
   if (isMobile) {
     return (
-      <MobileStats
+      <QueryRegion label="thống kê hóa đơn" queries={[invoiceStatisticsQuery]}><MobileStats
         s={s}
         isLoading={isLoading}
         hideAggregateRow={hideAggregateRow}
@@ -92,12 +94,12 @@ const InvoiceStatsSummary = ({
         onMethodClick={onMethodClick}
         onShowChange={onShowChange}
         onShowDeposit={onShowDeposit}
-      />
+      /></QueryRegion>
     );
   }
 
   return (
-    <DesktopStats
+    <QueryRegion label="thống kê hóa đơn" queries={[invoiceStatisticsQuery]}><DesktopStats
       s={s}
       isLoading={isLoading}
       hideAggregateRow={hideAggregateRow}
@@ -105,7 +107,7 @@ const InvoiceStatsSummary = ({
       onMethodClick={onMethodClick}
       onShowChange={onShowChange}
       onShowDeposit={onShowDeposit}
-    />
+    /></QueryRegion>
   );
 };
 

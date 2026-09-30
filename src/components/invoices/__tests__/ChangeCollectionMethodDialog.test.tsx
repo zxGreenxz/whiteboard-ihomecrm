@@ -118,11 +118,14 @@ describe('ChangeCollectionMethodDialog', () => {
     expect(nutDoi().disabled).toBe(true);
   });
 
-  it('bắt lý do ít nhất 8 ký tự', () => {
+  it('bắt lý do ít nhất 8 ký tự và focus ô lỗi', async () => {
     renderDialog();
     fireEvent.click(screen.getByRole('radio', { name: 'Tiền mặt' }));
     fireEvent.change(oLyDo(), { target: { value: '  ngắn  ' } });
-    expect(nutDoi().disabled).toBe(true);
+    fireEvent.click(nutDoi());
+    await waitFor(()=>expect(document.activeElement).toBe(oLyDo()));
+    expect(oLyDo().getAttribute('aria-invalid')).toBe('true');
+    expect(mocks.doiHinhThuc).not.toHaveBeenCalled();
     expect(screen.getByText(/còn thiếu/)).toBeTruthy();
     fireEvent.change(oLyDo(), { target: { value: 'Khách đưa tiền mặt' } });
     expect(nutDoi().disabled).toBe(false);

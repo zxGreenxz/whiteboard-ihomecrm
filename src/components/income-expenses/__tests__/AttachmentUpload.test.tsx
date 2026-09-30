@@ -81,6 +81,30 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('AttachmentUpload — X chỉ xoá file tải lên trong lần mở này (E1)', () => {
+  it('giữ tệp và lỗi có tên khi xóa kho thất bại', async () => {
+    render(<Khung dau={[]} />);
+    const { url } = await taiAnhMoi();
+    H.xoaFile.mockRejectedValueOnce(new Error('permission denied for bucket private'));
+    fireEvent.click(nutGo(url));
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Chưa xóa được'));
+    expect(danhSach()).toContain(url);
+    expect(screen.getByRole('alert').textContent).not.toContain('bucket');
+  });
+  it('tải một phần giữ tên tệp lỗi và chỉ thử lại tệp đó', async () => {
+    render(<Khung dau={[]} />);
+    H.taiLen.mockRejectedValueOnce(new Error('R2 upload failed: secret SQL'));
+    fireEvent.change(document.querySelector('input[type="file"]')!, { target: { files: [
+      new File(['a'], 'loi.png', { type: 'image/png' }),
+      new File(['b'], 'duoc.png', { type: 'image/png' }),
+    ] } });
+    await waitFor(() => expect(screen.getByText(/Đã tải 1\/2 tệp/)).toBeTruthy());
+    expect(screen.getByRole('alert').textContent).toContain('loi.png');
+    expect(screen.getByRole('alert').textContent).not.toMatch(/secret|SQL|R2/);
+    fireEvent.click(screen.getByRole('button', { name: 'Thử lại loi.png' }));
+    await waitFor(() => expect(H.taiLen).toHaveBeenCalledTimes(3));
+    expect(H.taiLen.mock.calls[2][2].name).toBe('loi.png');
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Thử lại loi.png' })).toBeNull());
+  });
   it('X trên ảnh có sẵn chỉ gỡ khỏi danh sách của form, KHÔNG xoá file trong kho', async () => {
     render(<Khung dau={[ANH_CU]} />);
     fireEvent.click(nutGo(ANH_CU));

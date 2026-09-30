@@ -3,6 +3,9 @@ import { rpcNullable } from "@/lib/rpcNullable";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
+import { notifyActionError } from "@/lib/actionFeedback";
+import { requireAccountWriteReceipt } from "@/lib/accountSettingsWriteReceipt";
+import { requireReadRows, readString, readNullableString, readNumber } from "@/lib/accountProfitReadModels";
 
 /**
  * Quản lý "phòng khách nhờ sale / pass" — overlay lên phòng đang có khách để hiển
@@ -22,13 +25,18 @@ const FORM_ROOMS_KEY = ["pass-listing-form-rooms"] as const;
 export function usePassListings() {
   return useQuery({
     queryKey: KEY,
+    meta: { errorDisplay: "inline" },
     queryFn: async (): Promise<PassListing[]> => {
       const { data, error } = await supabase
         .from("room_pass_listings")
         .select("*")
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return data ?? [];
+      return requireReadRows<PassListing>(data, row =>
+        ['id', 'room_id', 'building_id', 'user_id'].every(key => readString(row[key])) &&
+        typeof row.active === 'boolean' && typeof row.contact_manager === 'boolean' &&
+        ['contact_name', 'contact_phone', 'sale_policy', 'avail_date'].every(key => readNullableString(row[key])) &&
+        (row.pass_price === null || readNumber(row.pass_price)));
     },
   });
 }
@@ -37,10 +45,14 @@ export function usePassListings() {
 export function usePassListingFormRooms() {
   return useQuery({
     queryKey: FORM_ROOMS_KEY,
+    meta: { errorDisplay: "inline" },
     queryFn: async (): Promise<PassListingFormRoom[]> => {
       const { data, error } = await supabase.rpc("pass_listing_form_rooms");
       if (error) throw error;
-      return (data ?? []) as PassListingFormRoom[];
+      return requireReadRows<PassListingFormRoom>(data, row =>
+        ['room_id', 'building_id', 'owner_id', 'room_name', 'building_name'].every(key => readString(row[key])) &&
+        readNullableString(row.room_code) && readNullableString(row.current_listing_id) &&
+        typeof row.has_active_contract === 'boolean' && (row.rent_price === null || readNumber(row.rent_price)));
     },
   });
 }
@@ -49,11 +61,13 @@ export function usePassListingFormRooms() {
 export function usePassListingRoomCustomers(roomId: string | null | undefined) {
   return useQuery({
     queryKey: ["pass-listing-room-customers", roomId],
+    meta: { errorDisplay: "inline" },
     enabled: !!roomId,
     queryFn: async (): Promise<PassListingRoomCustomer[]> => {
       const { data, error } = await supabase.rpc("pass_listing_room_customers", { p_room_id: roomId! });
       if (error) throw error;
-      return (data ?? []) as PassListingRoomCustomer[];
+      return requireReadRows<PassListingRoomCustomer>(data, row =>
+        readNullableString(row.full_name) && readNullableString(row.phone) && typeof row.is_representative === 'boolean');
     },
   });
 }
@@ -86,7 +100,13 @@ export function useUpsertPassListing() {
         p_contact_manager: input.contactManager ?? false,
       });
       if (error) throw error;
-      return data as PassListing;
+      return requireAccountWriteReceipt(data, {
+        id: input.id ?? undefined, room_id: input.roomId,
+        contact_name: input.contactName ?? null, contact_phone: input.contactPhone ?? null,
+        sale_policy: input.salePolicy ?? null, pass_price: input.passPrice ?? null,
+        avail_date: input.availDate ?? null, active: input.active ?? true,
+        contact_manager: input.contactManager ?? false,
+      });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: KEY });
@@ -94,7 +114,7 @@ export function useUpsertPassListing() {
       qc.invalidateQueries({ queryKey: ["phong-trong"] });
       toast.success("Đã lưu phòng khách nhờ sale");
     },
-    onError: (e) => toast.error("Không thể lưu: " + (e as Error).message),
+    onError: (error) => notifyActionError(error, "Chưa xác nhận được kết quả lưu phòng pass"),
   });
 }
 
@@ -102,8 +122,9 @@ export function useSetPassListingActive() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, active }: { id: string; active: boolean }) => {
-      const { error } = await supabase.rpc("set_room_pass_listing_active", { p_id: id, p_active: active });
+      const { data, error } = await supabase.rpc("set_room_pass_listing_active", { p_id: id, p_active: active });
       if (error) throw error;
+      requireAccountWriteReceipt(data, { id, active });
       return active;
     },
     onSuccess: (active) => {
@@ -111,7 +132,7 @@ export function useSetPassListingActive() {
       qc.invalidateQueries({ queryKey: ["phong-trong"] });
       toast.success(active ? "Đã bật hiển thị" : "Đã ẩn khỏi trang công khai");
     },
-    onError: (e) => toast.error("Không thể đổi trạng thái: " + (e as Error).message),
+    onError: (error) => notifyActionError(error, "Chưa xác nhận được kết quả đổi hiển thị phòng pass"),
   });
 }
 
@@ -126,8 +147,8 @@ export function useDeletePassListing() {
       qc.invalidateQueries({ queryKey: KEY });
       qc.invalidateQueries({ queryKey: FORM_ROOMS_KEY });
       qc.invalidateQueries({ queryKey: ["phong-trong"] });
-      toast.success("Đã xoá");
+      toast.success("Phòng pass đã được gỡ khỏi danh sách.");
     },
-    onError: (e) => toast.error("Không thể xoá: " + (e as Error).message),
+    onError: (error) => notifyActionError(error, "Chưa xác nhận được kết quả gỡ phòng pass"),
   });
 }

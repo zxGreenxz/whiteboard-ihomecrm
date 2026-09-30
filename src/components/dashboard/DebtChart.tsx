@@ -1,3 +1,4 @@
+import { QueryRegion } from "@/components/errors/QueryRegion";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { useQuery } from "@tanstack/react-query";
@@ -12,8 +13,9 @@ interface DebtData {
 }
 
 export function DebtChart() {
-  const { data: debtData = [], isLoading } = useQuery({
+  const query = useQuery({
     queryKey: ["debt-chart"],
+    meta: {label:"công nợ theo tháng",errorDisplay:"inline"},
     queryFn: async (): Promise<DebtData[]> => {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
@@ -26,12 +28,14 @@ export function DebtChart() {
       const rangeStart = format(startOfMonth(subMonths(new Date(), 5)), "yyyy-MM-dd");
       const rangeEnd = format(endOfMonth(new Date()), "yyyy-MM-dd");
 
-      const { data: invoices } = await supabase
+      const { data: invoices, error } = await supabase
         .from("invoices")
         .select("total_amount, paid_amount, due_date")
         .in("status", ["APPROVED", "PARTIAL_PAID"])
         .gte("due_date", rangeStart)
         .lte("due_date", rangeEnd);
+
+      if (error) throw error;
 
       // Khởi tạo đủ 6 tháng (tháng không có nợ vẫn hiện 0).
       const byMonth = new Map<string, number>();
@@ -58,6 +62,7 @@ export function DebtChart() {
     },
   });
 
+  const { data: debtData = [], isLoading } = query;
   if (isLoading) {
     return (
       <Card>
@@ -83,6 +88,7 @@ export function DebtChart() {
   };
 
   return (
+    <QueryRegion label="công nợ theo tháng" queries={[query]}>
     <Card>
       <CardHeader>
         <CardTitle>Công nợ theo tháng</CardTitle>
@@ -119,5 +125,6 @@ export function DebtChart() {
         )}
       </CardContent>
     </Card>
+    </QueryRegion>
   );
 }

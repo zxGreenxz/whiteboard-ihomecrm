@@ -1,3 +1,4 @@
+import {focusFirstError} from '@/lib/formErrors';
 // =============================================================================
 // PeriodFeeEditModal V2 — Sửa 1 phiếu CỤ THỂ (seed từ vouchers payload).
 //   • Admin  → sửa toàn bộ (tiền, kỳ, sổ, ảnh, ghi chú). Phiếu NHIỀU DÒNG:
@@ -6,7 +7,7 @@
 // Ảnh: hiện ảnh ĐANG CÓ (không bị đè mất khi thêm mới — merge ở hook).
 // =============================================================================
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { X, Edit3, Camera, Check, AlertTriangle, Info } from 'lucide-react';
 import { UtilityBookMenu } from './UtilityBookMenu';
 import { UtilityReceiptThumb } from './UtilityReceiptThumb';
@@ -21,13 +22,17 @@ interface Props {
   myBooks: { id: string; name: string }[];
   saving: boolean;
   uploading: boolean;
+  error?:string|null;
+  blocked?:boolean;
   onAttach: () => void;
   onView: (attachments: string[]) => void;
   onClose: () => void;
   onSave: (args: { amount?: number; periodStart?: string; periodEnd?: string; accountId?: string | null; notes?: string }) => void;
 }
 
-export function PeriodFeeEditModal({ target, isAdmin, myBooks, saving, uploading, onAttach, onView, onClose, onSave }: Props) {
+export function PeriodFeeEditModal({ target, isAdmin, myBooks, saving, uploading, onAttach, onView, onClose, onSave, error, blocked=false }: Props) {
+  const root=useRef<HTMLDivElement>(null);
+  const [fieldErrors,setFieldErrors]=useState<Record<string,string>>({});
   const [amount, setAmount] = useState(0);
   const [pStart, setPStart] = useState('');
   const [pEnd, setPEnd] = useState('');
@@ -53,6 +58,15 @@ export function PeriodFeeEditModal({ target, isAdmin, myBooks, saving, uploading
   const allAtts = [...target.existingAttachments, ...target.newAttachments];
 
   const handleSave = () => {
+    if(blocked) return;
+    const errors:Record<string,string>={};
+    if(!lockAmount) {
+      if(amount<=0) errors.amount='Nhập số tiền lớn hơn 0 để cập nhật phiếu.';
+      if(!/^\d{4}-\d{2}$/.test(pStart)) errors.periodStart='Chọn kỳ bắt đầu.';
+      if(!/^\d{4}-\d{2}$/.test(pEnd)||pEnd<pStart) errors.periodEnd='Chọn kỳ kết thúc từ kỳ bắt đầu trở đi.';
+    }
+    setFieldErrors(errors);
+    if(Object.keys(errors).length) {void focusFirstError(errors,{root:root.current});return;}
     onSave({
       amount: isAdmin && !multiItem ? amount : undefined,
       periodStart: isAdmin && !multiItem ? pStart : undefined,
@@ -63,7 +77,7 @@ export function PeriodFeeEditModal({ target, isAdmin, myBooks, saving, uploading
   };
 
   return (
-    <div className="ptt-modal">
+    <div ref={root} className="ptt-modal">
       <div className="ptt-modal-scrim" onClick={onClose} />
       <div className="ptt-modal-card ptt-edit">
         <div className="ptt-modal-head">
@@ -97,7 +111,7 @@ export function PeriodFeeEditModal({ target, isAdmin, myBooks, saving, uploading
           <div className="ptt-edit-row">
             <label className="ptt-field">
               <span className="ptt-field-lbl">Số tiền</span>
-              <input className="ptt-field-in mono num" value={formatVN(amount)} disabled={lockAmount} inputMode="numeric" onChange={(e) => setAmount(parseVN(e.target.value))} />
+              <><input name="amount" aria-invalid={!!fieldErrors.amount} style={{borderColor:fieldErrors.amount?"hsl(var(--destructive))":undefined}} className="ptt-field-in mono num" value={formatVN(amount)} disabled={lockAmount} inputMode="numeric" onChange={(e) => setAmount(parseVN(e.target.value))} />{fieldErrors.amount&&<span role="alert" className="text-xs text-destructive">{fieldErrors.amount}</span>}</>
             </label>
             <label className="ptt-field">
               <span className="ptt-field-lbl">Tòa</span>
@@ -109,9 +123,9 @@ export function PeriodFeeEditModal({ target, isAdmin, myBooks, saving, uploading
             <label className="ptt-field">
               <span className="ptt-field-lbl">Kỳ áp dụng</span>
               <span className="ptt-range">
-                <input type="month" className="ptt-field-in" value={pStart} disabled={lockAmount} onChange={(e) => setPStart(e.target.value)} />
+                <><input name="periodStart" aria-invalid={!!fieldErrors.periodStart} style={{borderColor:fieldErrors.periodStart?"hsl(var(--destructive))":undefined}} type="month" className="ptt-field-in" value={pStart} disabled={lockAmount} onChange={(e) => setPStart(e.target.value)} />{fieldErrors.periodStart&&<span role="alert" className="text-xs text-destructive">{fieldErrors.periodStart}</span>}</>
                 <span className="ptt-range-arrow">→</span>
-                <input type="month" className="ptt-field-in" value={pEnd} disabled={lockAmount} onChange={(e) => setPEnd(e.target.value)} />
+                <><input name="periodEnd" aria-invalid={!!fieldErrors.periodEnd} style={{borderColor:fieldErrors.periodEnd?"hsl(var(--destructive))":undefined}} type="month" className="ptt-field-in" value={pEnd} disabled={lockAmount} onChange={(e) => setPEnd(e.target.value)} />{fieldErrors.periodEnd&&<span role="alert" className="text-xs text-destructive">{fieldErrors.periodEnd}</span>}</>
               </span>
             </label>
           )}
@@ -159,9 +173,10 @@ export function PeriodFeeEditModal({ target, isAdmin, myBooks, saving, uploading
           )}
         </div>
 
+        {error&&<p role="alert" className="text-sm text-destructive">{error}</p>}
         <div className="ptt-modal-foot">
           <button type="button" className="ptt-btn ghost" onClick={onClose}>Hủy</button>
-          <button type="button" className="ptt-btn go" disabled={saving} onClick={handleSave}>
+          <button type="button" className="ptt-btn go" disabled={saving||blocked} onClick={handleSave}>
             {saving ? <span className="ub-spin" /> : <Check />}Lưu thay đổi
           </button>
         </div>

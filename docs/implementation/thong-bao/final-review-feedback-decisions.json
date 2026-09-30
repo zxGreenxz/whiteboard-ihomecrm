@@ -1,0 +1,1315 @@
+{
+  "591baa9f27256a00": {
+    "status": "already-correct",
+    "file": "src/lib/actionFeedback.ts",
+    "line": 12,
+    "kind": "notification",
+    "groups": "A01/A07",
+    "evidence": "Review độc lập call src/lib/actionFeedback.ts:12. Boundary nhận unknown, gọi friendlyError và phát đúng một toast; không đưa error.message trực tiếp ra UI. Phân loại mã nguồn tại snapshot; không xem là E2E mọi vai trò."
+  },
+  "e62af85c19076726": {
+    "status": "already-correct",
+    "file": "src/hooks/useAssignablePeople.ts",
+    "line": 19,
+    "kind": "useQuery",
+    "groups": "I14",
+    "evidence": "Review độc lập call src/hooks/useAssignablePeople.ts:19. Lỗi profiles được throw nguyên trạng sau diagnostic; người nhận không bị suy thành không có danh mục từ nhánh error. Không thay RLS hoặc phạm vi người được giao. Phân loại mã nguồn tại snapshot; không xem là E2E mọi vai trò."
+  },
+  "8a775b2f500138b7": {
+    "status": "background-only",
+    "file": "src/hooks/useAssignablePeople.ts",
+    "line": 28,
+    "kind": "log",
+    "groups": "I14",
+    "evidence": "Review độc lập call src/hooks/useAssignablePeople.ts:28. Lỗi profiles được throw nguyên trạng sau diagnostic; người nhận không bị suy thành không có danh mục từ nhánh error. Không thay RLS hoặc phạm vi người được giao. Phân loại mã nguồn tại snapshot; không xem là E2E mọi vai trò."
+  },
+  "10b56dfb28f6f3a9": {
+    "status": "already-correct",
+    "file": "src/hooks/useAddressData.ts",
+    "line": 87,
+    "kind": "useQuery",
+    "groups": "F21/I14",
+    "evidence": "Review độc lập call src/hooks/useAddressData.ts:87. requestJson kiểm HTTP, parseNamedCodes/parseDistricts/parseWards kiểm hình dạng; hook giữ error/retry riêng thay vì giấu lỗi trong danh sách. Không đổi danh mục địa chỉ. Phân loại mã nguồn tại snapshot; không xem là E2E mọi vai trò."
+  },
+  "3c3092f9b6b40bb4": {
+    "status": "already-correct",
+    "file": "src/hooks/useAddressData.ts",
+    "line": 103,
+    "kind": "useQuery",
+    "groups": "F21/I14",
+    "evidence": "Review độc lập call src/hooks/useAddressData.ts:103. requestJson kiểm HTTP, parseNamedCodes/parseDistricts/parseWards kiểm hình dạng; hook giữ error/retry riêng thay vì giấu lỗi trong danh sách. Không đổi danh mục địa chỉ. Phân loại mã nguồn tại snapshot; không xem là E2E mọi vai trò."
+  },
+  "f0b81e957c841784": {
+    "status": "already-correct",
+    "file": "src/hooks/useAddressData.ts",
+    "line": 123,
+    "kind": "useQuery",
+    "groups": "F21/I14",
+    "evidence": "Review độc lập call src/hooks/useAddressData.ts:123. requestJson kiểm HTTP, parseNamedCodes/parseDistricts/parseWards kiểm hình dạng; hook giữ error/retry riêng thay vì giấu lỗi trong danh sách. Không đổi danh mục địa chỉ. Phân loại mã nguồn tại snapshot; không xem là E2E mọi vai trò."
+  },
+  "04e3c760ad0bc622": {
+    "status": "already-correct",
+    "file": "src/hooks/useMyAvailableRooms.ts",
+    "line": 17,
+    "kind": "useQuery",
+    "groups": "I02",
+    "evidence": "Review độc lập call src/hooks/useMyAvailableRooms.ts:17. RPC error được throw; parseRoomSalePayload kiểm dữ liệu trước mapPayloadToBuildings; lỗi không được coi là danh sách phòng trống. Phân loại mã nguồn tại snapshot; không xem là E2E mọi vai trò."
+  },
+  "3d56701ccbbc0411": {
+    "status": "background-only",
+    "file": "src/hooks/useMyPermissions.ts",
+    "line": 68,
+    "kind": "log",
+    "groups": "G07/I14",
+    "evidence": "Review độc lập call src/hooks/useMyPermissions.ts:68. fetchMyPermissions giữ error nguyên trạng; RequirePermission phân biệt pending/error/confirmed-permission, có tải lại. Null hợp lệ chỉ là chưa được gán quyền, không đổi predicate quyền. Phân loại mã nguồn tại snapshot; không xem là E2E mọi vai trò."
+  },
+  "7b26f84de0b068a4": {
+    "status": "background-only",
+    "file": "src/hooks/useMyPermissions.ts",
+    "line": 75,
+    "kind": "log",
+    "groups": "G07/I14",
+    "evidence": "Review độc lập call src/hooks/useMyPermissions.ts:75. fetchMyPermissions giữ error nguyên trạng; RequirePermission phân biệt pending/error/confirmed-permission, có tải lại. Null hợp lệ chỉ là chưa được gán quyền, không đổi predicate quyền. Phân loại mã nguồn tại snapshot; không xem là E2E mọi vai trò."
+  },
+  "0d7648b4c47a8254": {
+    "status": "already-correct",
+    "file": "src/hooks/useMyPermissions.ts",
+    "line": 84,
+    "kind": "useQuery",
+    "groups": "G07/I14",
+    "evidence": "Review độc lập call src/hooks/useMyPermissions.ts:84. fetchMyPermissions giữ error nguyên trạng; RequirePermission phân biệt pending/error/confirmed-permission, có tải lại. Null hợp lệ chỉ là chưa được gán quyền, không đổi predicate quyền. Phân loại mã nguồn tại snapshot; không xem là E2E mọi vai trò."
+  },
+  "e6e7b2cae08a44e5": {
+    "status": "already-correct",
+    "file": "src/hooks/rooms/useRoomTurnover.ts",
+    "line": 13,
+    "kind": "useQuery",
+    "groups": "F10/I03",
+    "evidence": "Review độc lập call src/hooks/rooms/useRoomTurnover.ts:13. Reader parseRoomTurnoverSnapshot/Queue và giữ RPC error; RoomTurnoverPanel/Queue có error/retry. Writer saveRoomTurnover kiểm ID phòng/org trước success, form chỉ đóng sau await, lỗi giữ form và conflict yêu cầu tải mới. Phân loại mã nguồn tại snapshot; không xem là E2E mọi vai trò."
+  },
+  "004179d59807cd56": {
+    "status": "already-correct",
+    "file": "src/hooks/rooms/useRoomTurnover.ts",
+    "line": 32,
+    "kind": "useQuery",
+    "groups": "F10/I03",
+    "evidence": "Review độc lập call src/hooks/rooms/useRoomTurnover.ts:32. Reader parseRoomTurnoverSnapshot/Queue và giữ RPC error; RoomTurnoverPanel/Queue có error/retry. Writer saveRoomTurnover kiểm ID phòng/org trước success, form chỉ đóng sau await, lỗi giữ form và conflict yêu cầu tải mới. Phân loại mã nguồn tại snapshot; không xem là E2E mọi vai trò."
+  },
+  "c13e70cc67f0c563": {
+    "status": "already-correct",
+    "file": "src/hooks/rooms/useRoomTurnover.ts",
+    "line": 52,
+    "kind": "useMutation",
+    "groups": "F10/I03",
+    "evidence": "Review độc lập call src/hooks/rooms/useRoomTurnover.ts:52. Reader parseRoomTurnoverSnapshot/Queue và giữ RPC error; RoomTurnoverPanel/Queue có error/retry. Writer saveRoomTurnover kiểm ID phòng/org trước success, form chỉ đóng sau await, lỗi giữ form và conflict yêu cầu tải mới. Phân loại mã nguồn tại snapshot; không xem là E2E mọi vai trò."
+  },
+  "e7acd1771886c391": {
+    "status": "already-correct",
+    "file": "src/hooks/rooms/useRoomTurnover.ts",
+    "line": 58,
+    "kind": "notification",
+    "groups": "F10/I03",
+    "evidence": "Review độc lập call src/hooks/rooms/useRoomTurnover.ts:58. Reader parseRoomTurnoverSnapshot/Queue và giữ RPC error; RoomTurnoverPanel/Queue có error/retry. Writer saveRoomTurnover kiểm ID phòng/org trước success, form chỉ đóng sau await, lỗi giữ form và conflict yêu cầu tải mới. Phân loại mã nguồn tại snapshot; không xem là E2E mọi vai trò."
+  },
+  "f175c9e74554f048": {
+    "status": "already-correct",
+    "file": "src/hooks/rooms/useRoomTurnover.ts",
+    "line": 59,
+    "kind": "notification",
+    "groups": "F10/I03",
+    "evidence": "Review độc lập call src/hooks/rooms/useRoomTurnover.ts:59. Reader parseRoomTurnoverSnapshot/Queue và giữ RPC error; RoomTurnoverPanel/Queue có error/retry. Writer saveRoomTurnover kiểm ID phòng/org trước success, form chỉ đóng sau await, lỗi giữ form và conflict yêu cầu tải mới. Phân loại mã nguồn tại snapshot; không xem là E2E mọi vai trò."
+  },
+  "11ac3bed7f1fb57f": {
+    "status": "already-correct",
+    "file": "src/hooks/reports/useBusinessPerformanceGatedData.ts",
+    "line": 660,
+    "kind": "useQuery",
+    "groups": "I10/I11/I12",
+    "evidence": "Review độc lập call src/hooks/reports/useBusinessPerformanceGatedData.ts:660. Các query giữ RPC error và rows(data,field) kiểm mảng, parse nguồn/cờ availability trước kết quả. Chỉ phân loại query đã đọc; mutation reporting-role chưa tự kết luận owner ở lượt này. Phân loại mã nguồn tại snapshot; không xem là E2E mọi vai trò."
+  },
+  "8571f7dc6f8b235c": {
+    "status": "already-correct",
+    "file": "src/hooks/reports/useBusinessPerformanceGatedData.ts",
+    "line": 693,
+    "kind": "useQuery",
+    "groups": "I10/I11/I12",
+    "evidence": "Review độc lập call src/hooks/reports/useBusinessPerformanceGatedData.ts:693. Các query giữ RPC error và rows(data,field) kiểm mảng, parse nguồn/cờ availability trước kết quả. Chỉ phân loại query đã đọc; mutation reporting-role chưa tự kết luận owner ở lượt này. Phân loại mã nguồn tại snapshot; không xem là E2E mọi vai trò."
+  },
+  "bef1e63b8c120ba7": {
+    "status": "already-correct",
+    "file": "src/hooks/reports/useBusinessPerformanceGatedData.ts",
+    "line": 724,
+    "kind": "useQuery",
+    "groups": "I10/I11/I12",
+    "evidence": "Review độc lập call src/hooks/reports/useBusinessPerformanceGatedData.ts:724. Các query giữ RPC error và rows(data,field) kiểm mảng, parse nguồn/cờ availability trước kết quả. Chỉ phân loại query đã đọc; mutation reporting-role chưa tự kết luận owner ở lượt này. Phân loại mã nguồn tại snapshot; không xem là E2E mọi vai trò."
+  },
+  "6dc234db64312f92": {
+    "status": "already-correct",
+    "file": "src/hooks/reports/useBusinessPerformanceGatedData.ts",
+    "line": 751,
+    "kind": "useQuery",
+    "groups": "I10/I11/I12",
+    "evidence": "Review độc lập call src/hooks/reports/useBusinessPerformanceGatedData.ts:751. Các query giữ RPC error và rows(data,field) kiểm mảng, parse nguồn/cờ availability trước kết quả. Chỉ phân loại query đã đọc; mutation reporting-role chưa tự kết luận owner ở lượt này. Phân loại mã nguồn tại snapshot; không xem là E2E mọi vai trò."
+  },
+  "26c095f08340b8e6": {
+    "status": "already-correct",
+    "file": "src/hooks/reports/useBusinessPerformanceGatedData.ts",
+    "line": 780,
+    "kind": "useQuery",
+    "groups": "I10/I11/I12",
+    "evidence": "Review độc lập call src/hooks/reports/useBusinessPerformanceGatedData.ts:780. Các query giữ RPC error và rows(data,field) kiểm mảng, parse nguồn/cờ availability trước kết quả. Chỉ phân loại query đã đọc; mutation reporting-role chưa tự kết luận owner ở lượt này. Phân loại mã nguồn tại snapshot; không xem là E2E mọi vai trò."
+  },
+  "5bcf03e555e2179a": {
+    "status": "already-correct",
+    "file": "src/hooks/reports/useBusinessPerformanceGatedData.ts",
+    "line": 811,
+    "kind": "useQuery",
+    "groups": "I10/I11/I12",
+    "evidence": "Review độc lập call src/hooks/reports/useBusinessPerformanceGatedData.ts:811. Các query giữ RPC error và rows(data,field) kiểm mảng, parse nguồn/cờ availability trước kết quả. Chỉ phân loại query đã đọc; mutation reporting-role chưa tự kết luận owner ở lượt này. Phân loại mã nguồn tại snapshot; không xem là E2E mọi vai trò."
+  },
+  "1a98ffff69a12c2b": {
+    "status": "already-correct",
+    "file": "src/hooks/reports/useBusinessPerformance.ts",
+    "line": 853,
+    "kind": "useQuery",
+    "groups": "I10/I11/I12",
+    "evidence": "Review độc lập call src/hooks/reports/useBusinessPerformance.ts:853. Query giữ RPC error; requiredRows, parse từng nguồn, assert requested scope/complete matrix trước tổng hợp. Caller báo cáo có trạng thái tải lỗi riêng; không gán 0 cho nguồn thiếu. Phân loại mã nguồn tại snapshot; không xem là E2E mọi vai trò."
+  },
+  "1619a72556d4578a": {
+    "status": "already-correct",
+    "file": "src/hooks/reports/useBusinessPerformance.ts",
+    "line": 925,
+    "kind": "useQuery",
+    "groups": "I10/I11/I12",
+    "evidence": "Review độc lập call src/hooks/reports/useBusinessPerformance.ts:925. Query giữ RPC error; requiredRows, parse từng nguồn, assert requested scope/complete matrix trước tổng hợp. Caller báo cáo có trạng thái tải lỗi riêng; không gán 0 cho nguồn thiếu. Phân loại mã nguồn tại snapshot; không xem là E2E mọi vai trò."
+  },
+  "ad12bf6a0f6c2cb4": {
+    "status": "already-correct",
+    "file": "src/hooks/reports/useBusinessPerformance.ts",
+    "line": 977,
+    "kind": "useQuery",
+    "groups": "I10/I11/I12",
+    "evidence": "Review độc lập call src/hooks/reports/useBusinessPerformance.ts:977. Query giữ RPC error; requiredRows, parse từng nguồn, assert requested scope/complete matrix trước tổng hợp. Caller báo cáo có trạng thái tải lỗi riêng; không gán 0 cho nguồn thiếu. Phân loại mã nguồn tại snapshot; không xem là E2E mọi vai trò."
+  },
+  "5fd0f8a30874a2d9": {
+    "status": "already-correct",
+    "file": "src/hooks/reports/useBusinessPerformance.ts",
+    "line": 1034,
+    "kind": "useQuery",
+    "groups": "I10/I11/I12",
+    "evidence": "Review độc lập call src/hooks/reports/useBusinessPerformance.ts:1034. Query giữ RPC error; requiredRows, parse từng nguồn, assert requested scope/complete matrix trước tổng hợp. Caller báo cáo có trạng thái tải lỗi riêng; không gán 0 cho nguồn thiếu. Phân loại mã nguồn tại snapshot; không xem là E2E mọi vai trò."
+  },
+  "2311b67f7e680289": {
+    "status": "already-correct",
+    "file": "src/hooks/reports/useBusinessPerformance.ts",
+    "line": 1100,
+    "kind": "useQuery",
+    "groups": "I10/I11/I12",
+    "evidence": "Review độc lập call src/hooks/reports/useBusinessPerformance.ts:1100. Query giữ RPC error; requiredRows, parse từng nguồn, assert requested scope/complete matrix trước tổng hợp. Caller báo cáo có trạng thái tải lỗi riêng; không gán 0 cho nguồn thiếu. Phân loại mã nguồn tại snapshot; không xem là E2E mọi vai trò."
+  },
+  "d298aaab2713ab5a": {
+    "status": "already-correct",
+    "file": "src/hooks/reports/useBusinessPerformance.ts",
+    "line": 1190,
+    "kind": "useQuery",
+    "groups": "I10/I11/I12",
+    "evidence": "Review độc lập call src/hooks/reports/useBusinessPerformance.ts:1190. Query giữ RPC error; requiredRows, parse từng nguồn, assert requested scope/complete matrix trước tổng hợp. Caller báo cáo có trạng thái tải lỗi riêng; không gán 0 cho nguồn thiếu. Phân loại mã nguồn tại snapshot; không xem là E2E mọi vai trò."
+  },
+  "60823a74e3580efa": {
+    "status": "background-only",
+    "file": "src/hooks/readErrors.ts",
+    "line": 28,
+    "kind": "log",
+    "groups": "A01/I03",
+    "evidence": "Review độc lập call src/hooks/readErrors.ts:28. nullIfNotFound chỉ trả null cho not_found theo khóa duy nhất; lỗi khác ghi chẩn đoán và throw nguyên error để caller xử lý. Phân loại mã nguồn tại snapshot; không xem là E2E mọi vai trò."
+  },
+  "0a0630bde685f56e": {
+    "status": "already-correct",
+    "file": "src/hooks/useReceiptPasteTarget.ts",
+    "line": 94,
+    "kind": "notification",
+    "groups": "A07/A08",
+    "evidence": "Review độc lập call src/hooks/useReceiptPasteTarget.ts:94. Thông tin hướng dẫn chọn dòng khi Ctrl+V chưa có đích; event được đánh dấu để chỉ một listener báo, không khẳng định tệp đã tải/lưu. Phân loại mã nguồn tại snapshot; không xem là E2E mọi vai trò."
+  },
+  "424ffa0cef4890e0": {
+    "status": "background-only",
+    "file": "src/hooks/useRealtimeDataSync.ts",
+    "line": 235,
+    "kind": "log",
+    "groups": "A07/G26",
+    "evidence": "Review độc lập call src/hooks/useRealtimeDataSync.ts:235. Hub invalidation nền ghi chẩn đoán khi channel lỗi; không phải chuông thông báo hoặc mutation nghiệp vụ, không thêm toast liên tục. Phân loại mã nguồn tại snapshot; không xem là E2E mọi vai trò."
+  },
+  "a4bde0cf658c2898": {
+    "status": "background-only",
+    "file": "src/hooks/useRealtimeDataSync.ts",
+    "line": 239,
+    "kind": "log",
+    "groups": "A07/G26",
+    "evidence": "Review độc lập call src/hooks/useRealtimeDataSync.ts:239. Hub invalidation nền ghi chẩn đoán khi channel lỗi; không phải chuông thông báo hoặc mutation nghiệp vụ, không thêm toast liên tục. Phân loại mã nguồn tại snapshot; không xem là E2E mọi vai trò."
+  },
+  "61bf1f7dd7e45079": {
+    "status": "already-correct",
+    "file": "src/hooks/useRoomsWithContracts.ts",
+    "line": 57,
+    "kind": "useQuery",
+    "groups": "I02/I03",
+    "evidence": "Review độc lập call src/hooks/useRoomsWithContracts.ts:57. fetchAllRows null bị throw trước map. Mảng rỗng có nghĩa đọc thành công không có phòng; không đổi cách chọn hợp đồng đang hiệu lực. Phân loại mã nguồn tại snapshot; không xem là E2E mọi vai trò."
+  },
+  "40b099e7b2c6f390": {
+    "status": "already-correct",
+    "file": "src/hooks/useRoomIdsByCode.ts",
+    "line": 25,
+    "kind": "useQuery",
+    "groups": "I02/I14",
+    "evidence": "Review độc lập call src/hooks/useRoomIdsByCode.ts:25. Lookup mã phòng throw error thay vì giải thích mã không tồn tại; query chỉ bật khi chuỗi đúng định dạng tìm mã, không đổi cách so khớp. Phân loại mã nguồn tại snapshot; không xem là E2E mọi vai trò."
+  },
+  "cfcbd41edf5cef23": {
+    "status": "background-only",
+    "file": "src/hooks/useRoomIdsByCode.ts",
+    "line": 41,
+    "kind": "log",
+    "groups": "I02/I14",
+    "evidence": "Review độc lập call src/hooks/useRoomIdsByCode.ts:41. Lookup mã phòng throw error thay vì giải thích mã không tồn tại; query chỉ bật khi chuỗi đúng định dạng tìm mã, không đổi cách so khớp. Phân loại mã nguồn tại snapshot; không xem là E2E mọi vai trò."
+  },
+  "eeaaf6c28e7b1842": {
+    "status": "already-correct",
+    "file": "src/hooks/useStaffUsers.ts",
+    "line": 16,
+    "kind": "useQuery",
+    "groups": "I14",
+    "evidence": "Review độc lập call src/hooks/useStaffUsers.ts:16. Lỗi danh sách profiles được throw; RoomTurnoverPanel giữ thông báo tên nhân viên/người phụ trách chưa tải thay vì kết luận không có người. Phân loại mã nguồn tại snapshot; không xem là E2E mọi vai trò."
+  },
+  "28f6dfbf4f11b68d": {
+    "status": "background-only",
+    "file": "src/hooks/useStaffUsers.ts",
+    "line": 25,
+    "kind": "log",
+    "groups": "I14",
+    "evidence": "Review độc lập call src/hooks/useStaffUsers.ts:25. Lỗi danh sách profiles được throw; RoomTurnoverPanel giữ thông báo tên nhân viên/người phụ trách chưa tải thay vì kết luận không có người. Phân loại mã nguồn tại snapshot; không xem là E2E mọi vai trò."
+  },
+  "a621d70bf7b4a904": {
+    "status": "background-only",
+    "file": "src/lib/prefetchPages.ts",
+    "line": 284,
+    "kind": "log",
+    "groups": "A07",
+    "evidence": "Review độc lập call src/lib/prefetchPages.ts:284. Warm chunk và prefetch chủ động chạy nền; trang chính tải lại nguồn của nó, lỗi prefetch không phải thao tác user bị mất dữ liệu. Phân loại mã nguồn tại snapshot; không xem là E2E mọi vai trò."
+  },
+  "5c49cfb0128fd3c4": {
+    "status": "background-only",
+    "file": "src/lib/perfTrace.ts",
+    "line": 75,
+    "kind": "log",
+    "groups": "A07",
+    "evidence": "Review độc lập call src/lib/perfTrace.ts:75. Log cảnh báo đo thời gian request, không phải lỗi nghiệp vụ; plan yêu cầu không biến cảnh báo hiệu năng thành toast. Phân loại mã nguồn tại snapshot; không xem là E2E mọi vai trò."
+  },
+  "81706839f373f113": {
+    "status": "already-correct",
+    "file": "src/components/buildings/BuildingGeoSection.tsx",
+    "line": 38,
+    "kind": "notification",
+    "groups": "F08/A07",
+    "evidence": "Review call src/components/buildings/BuildingGeoSection.tsx:38 và caller live. Geolocation positive callback cập nhật tọa độ đã lấy và độ chính xác; thất bại tách quyền vị trí khỏi không lấy được. Parse link chỉ báo khi parseLatLngFromMapsUrl trả tọa độ, không khẳng định đã lưu tòa xuống máy chủ. Mã nguồn đã đọc; E2E từng tình huống được nghiệm thu riêng."
+  },
+  "287cac4370d44cfa": {
+    "status": "already-correct",
+    "file": "src/components/buildings/BuildingGeoSection.tsx",
+    "line": 46,
+    "kind": "notification",
+    "groups": "F08/A07",
+    "evidence": "Review call src/components/buildings/BuildingGeoSection.tsx:46 và caller live. Geolocation positive callback cập nhật tọa độ đã lấy và độ chính xác; thất bại tách quyền vị trí khỏi không lấy được. Parse link chỉ báo khi parseLatLngFromMapsUrl trả tọa độ, không khẳng định đã lưu tòa xuống máy chủ. Mã nguồn đã đọc; E2E từng tình huống được nghiệm thu riêng."
+  },
+  "c0b82a4d6e2cf98b": {
+    "status": "already-correct",
+    "file": "src/components/buildings/BuildingGeoSection.tsx",
+    "line": 50,
+    "kind": "notification",
+    "groups": "F08/A07",
+    "evidence": "Review call src/components/buildings/BuildingGeoSection.tsx:50 và caller live. Geolocation positive callback cập nhật tọa độ đã lấy và độ chính xác; thất bại tách quyền vị trí khỏi không lấy được. Parse link chỉ báo khi parseLatLngFromMapsUrl trả tọa độ, không khẳng định đã lưu tòa xuống máy chủ. Mã nguồn đã đọc; E2E từng tình huống được nghiệm thu riêng."
+  },
+  "e705836f7f80f77c": {
+    "status": "already-correct",
+    "file": "src/components/buildings/BuildingGeoSection.tsx",
+    "line": 65,
+    "kind": "notification",
+    "groups": "F08/A07",
+    "evidence": "Review call src/components/buildings/BuildingGeoSection.tsx:65 và caller live. Geolocation positive callback cập nhật tọa độ đã lấy và độ chính xác; thất bại tách quyền vị trí khỏi không lấy được. Parse link chỉ báo khi parseLatLngFromMapsUrl trả tọa độ, không khẳng định đã lưu tòa xuống máy chủ. Mã nguồn đã đọc; E2E từng tình huống được nghiệm thu riêng."
+  },
+  "2edcb0a37206015d": {
+    "status": "fixed",
+    "file": "src/lib/financeV2Route.ts",
+    "line": 92,
+    "kind": "useQuery",
+    "groups": "A04/I14",
+    "evidence": "Review call src/lib/financeV2Route.ts:92 và caller live. fetchFinanceV2ClientFlags chỉ fallback LEGACY cho xác nhận PGRST202; lỗi khác throw nguyên trạng. Hình dạng mảng được kiểm trước map; dùng trong form thu chi chặn source lỗi theo nguồn route. Mã nguồn đã đọc; E2E từng tình huống được nghiệm thu riêng."
+  },
+  "5ffd120d884ebbd4": {
+    "status": "background-only",
+    "file": "src/lib/createdVoucherReceipt.ts",
+    "line": 21,
+    "kind": "log",
+    "groups": "C01/E16/A07",
+    "evidence": "Review call src/lib/createdVoucherReceipt.ts:21 và caller live. ID phiếu phải có trước đọc trạng thái; lỗi đọc trạng thái phụ giữ ID và trạng thái null. createdVoucherFeedback(null status) cảnh báo tải lại, không khẳng định đã chi. Log diagnostic không toast lỗi tạo giả. Mã nguồn đã đọc; E2E từng tình huống được nghiệm thu riêng."
+  },
+  "dd476a178546edec": {
+    "status": "background-only",
+    "file": "src/lib/notificationScheduler.ts",
+    "line": 339,
+    "kind": "log",
+    "groups": "G23/A07",
+    "evidence": "Review call src/lib/notificationScheduler.ts:339 và caller live. runScheduledNotifications chạy từ useScheduledNotifications theo lịch nền, không phải click tạo/xóa của người dùng. Log tổng hợp lỗi tác vụ nền; không thay đổi thành nhiều toast. Mã nguồn đã đọc; E2E từng tình huống được nghiệm thu riêng."
+  },
+  "cf9f90af8bfb253e": {
+    "status": "background-only",
+    "file": "src/lib/v5PaymentGps.ts",
+    "line": 39,
+    "kind": "notification",
+    "groups": "E10/G20/A07",
+    "evidence": "Review call src/lib/v5PaymentGps.ts:39 và caller live. captureGpsAndRecord được gọi fire-and-forget sau phiếu thu đã lưu (useQuickCollect); chỉ đọc action pending_check/ticked thực từ response. GPS phụ không đổi kết quả tiền hoặc phát lỗi hệ thống liên tục, phù hợp ranh giới tác vụ phụ trong plan. Mã nguồn đã đọc; E2E từng tình huống được nghiệm thu riêng."
+  },
+  "3ae99daa87ab52e2": {
+    "status": "background-only",
+    "file": "src/lib/v5PaymentGps.ts",
+    "line": 46,
+    "kind": "notification",
+    "groups": "E10/G20/A07",
+    "evidence": "Review call src/lib/v5PaymentGps.ts:46 và caller live. captureGpsAndRecord được gọi fire-and-forget sau phiếu thu đã lưu (useQuickCollect); chỉ đọc action pending_check/ticked thực từ response. GPS phụ không đổi kết quả tiền hoặc phát lỗi hệ thống liên tục, phù hợp ranh giới tác vụ phụ trong plan. Mã nguồn đã đọc; E2E từng tình huống được nghiệm thu riêng."
+  },
+  "42ce3a917737e93f": {
+    "status": "fixed",
+    "file": "src/hooks/useMyDay.ts",
+    "line": 123,
+    "kind": "useMutation",
+    "groups": "A07/G20/G22",
+    "evidence": "Review độc lập call src/hooks/useMyDay.ts:123. Mutation gắn meta.handlesFeedback để QueryProvider không phát thêm toast khi MyDayPage/InspectionRunner tự hiển thị lỗi tại form. Bộ myDayFeedbackBoundary.test.ts độc lập đạt 23/23, gồm cả năm meta. Root báo integration MutationCache 43/43 trong ba file; không tính các ca đó là reviewer đã chạy. Không đổi nghiệp vụ ngày công hoặc kiểm tra tòa."
+  },
+  "887fb478e7080aeb": {
+    "status": "fixed",
+    "file": "src/hooks/useMyDay.ts",
+    "line": 271,
+    "kind": "useMutation",
+    "groups": "A07/G20/G22",
+    "evidence": "Review độc lập call src/hooks/useMyDay.ts:271. Mutation gắn meta.handlesFeedback để QueryProvider không phát thêm toast khi MyDayPage/InspectionRunner tự hiển thị lỗi tại form. Bộ myDayFeedbackBoundary.test.ts độc lập đạt 23/23, gồm cả năm meta. Root báo integration MutationCache 43/43 trong ba file; không tính các ca đó là reviewer đã chạy. Không đổi nghiệp vụ ngày công hoặc kiểm tra tòa."
+  },
+  "3d8a2cacddab48f6": {
+    "status": "fixed",
+    "file": "src/hooks/useMyDay.ts",
+    "line": 288,
+    "kind": "useMutation",
+    "groups": "A07/G20/G22",
+    "evidence": "Review độc lập call src/hooks/useMyDay.ts:288. Mutation gắn meta.handlesFeedback để QueryProvider không phát thêm toast khi MyDayPage/InspectionRunner tự hiển thị lỗi tại form. Bộ myDayFeedbackBoundary.test.ts độc lập đạt 23/23, gồm cả năm meta. Root báo integration MutationCache 43/43 trong ba file; không tính các ca đó là reviewer đã chạy. Không đổi nghiệp vụ ngày công hoặc kiểm tra tòa."
+  },
+  "72ba0d387031f5bc": {
+    "status": "fixed",
+    "file": "src/hooks/useMyDay.ts",
+    "line": 327,
+    "kind": "useMutation",
+    "groups": "A07/G20/G22",
+    "evidence": "Review độc lập call src/hooks/useMyDay.ts:327. Mutation gắn meta.handlesFeedback để QueryProvider không phát thêm toast khi MyDayPage/InspectionRunner tự hiển thị lỗi tại form. Bộ myDayFeedbackBoundary.test.ts độc lập đạt 23/23, gồm cả năm meta. Root báo integration MutationCache 43/43 trong ba file; không tính các ca đó là reviewer đã chạy. Không đổi nghiệp vụ ngày công hoặc kiểm tra tòa."
+  },
+  "f6ff038da5cb0a56": {
+    "status": "fixed",
+    "file": "src/hooks/useMyDay.ts",
+    "line": 346,
+    "kind": "useMutation",
+    "groups": "A07/G20/G22",
+    "evidence": "Review độc lập call src/hooks/useMyDay.ts:346. Mutation gắn meta.handlesFeedback để QueryProvider không phát thêm toast khi MyDayPage/InspectionRunner tự hiển thị lỗi tại form. Bộ myDayFeedbackBoundary.test.ts độc lập đạt 23/23, gồm cả năm meta. Root báo integration MutationCache 43/43 trong ba file; không tính các ca đó là reviewer đã chạy. Không đổi nghiệp vụ ngày công hoặc kiểm tra tòa."
+  },
+  "17fda20e708ee2cc": {
+    "status": "fixed",
+    "file": "src/hooks/useCashBook.ts",
+    "line": 33,
+    "kind": "useQuery",
+    "groups": "I07/I09",
+    "evidence": "Review độc lập call src/hooks/useCashBook.ts:33. Hai query giữ nguyên lỗi RPC, financialReadNumber/Rows không biến nguồn thiếu hoặc tiền sai thành 0/[]; meta inline, caller DailyCashbookReport/CashFlowReport dùng QueryRegion. Độc lập reportPermissionSourceFeedback.test.ts đạt 22/22; confirmed zero và empty thật vẫn hợp lệ. Bằng chứng source/test, không là nghiệm thu Preview hoặc production."
+  },
+  "b0dbfce454d52d56": {
+    "status": "fixed",
+    "file": "src/hooks/useCashBook.ts",
+    "line": 105,
+    "kind": "useQuery",
+    "groups": "I07/I09",
+    "evidence": "Review độc lập call src/hooks/useCashBook.ts:105. Hai query giữ nguyên lỗi RPC, financialReadNumber/Rows không biến nguồn thiếu hoặc tiền sai thành 0/[]; meta inline, caller DailyCashbookReport/CashFlowReport dùng QueryRegion. Độc lập reportPermissionSourceFeedback.test.ts đạt 22/22; confirmed zero và empty thật vẫn hợp lệ. Bằng chứng source/test, không là nghiệm thu Preview hoặc production."
+  },
+  "ab1200d35628ed69": {
+    "status": "fixed",
+    "file": "src/hooks/useIsOrgOwner.ts",
+    "line": 40,
+    "kind": "useQuery",
+    "groups": "G07/I14",
+    "evidence": "Review độc lập call src/hooks/useIsOrgOwner.ts:40. Query quyền giữ nguyên error và yêu cầu boolean xác nhận; false thật vẫn false. Không đổi vai hoặc server predicate. Độc lập reportPermissionSourceFeedback.test.ts đạt 22/22; fallback QueryProvider hiển thị lỗi nguồn khi caller không có inline. Bằng chứng source/test, không là nghiệm thu Preview hoặc production."
+  },
+  "1b8185f54ebe6a02": {
+    "status": "background-only",
+    "file": "src/hooks/useIsOrgOwner.ts",
+    "line": 46,
+    "kind": "log",
+    "groups": "G07/I14",
+    "evidence": "Review độc lập call src/hooks/useIsOrgOwner.ts:46. Diagnostic giữ nguyên ở log trước khi throw/query lỗi hiện qua owner; không tạo thêm toast. Query quyền giữ nguyên error và yêu cầu boolean xác nhận; false thật vẫn false. Không đổi vai hoặc server predicate. Độc lập reportPermissionSourceFeedback.test.ts đạt 22/22; fallback QueryProvider hiển thị lỗi nguồn khi caller không có inline. Bằng chứng source/test, không là nghiệm thu Preview hoặc production."
+  },
+  "fe561ff5b65ad76d": {
+    "status": "fixed",
+    "file": "src/hooks/useIsCompanyOwner.ts",
+    "line": 38,
+    "kind": "useQuery",
+    "groups": "G07/I14",
+    "evidence": "Review độc lập call src/hooks/useIsCompanyOwner.ts:38. Query quyền giữ nguyên error và yêu cầu boolean xác nhận; false thật vẫn false. Không đổi vai hoặc server predicate. Độc lập reportPermissionSourceFeedback.test.ts đạt 22/22; fallback QueryProvider hiển thị lỗi nguồn khi caller không có inline. Bằng chứng source/test, không là nghiệm thu Preview hoặc production."
+  },
+  "2880805d460f5e87": {
+    "status": "background-only",
+    "file": "src/hooks/useIsCompanyOwner.ts",
+    "line": 44,
+    "kind": "log",
+    "groups": "G07/I14",
+    "evidence": "Review độc lập call src/hooks/useIsCompanyOwner.ts:44. Diagnostic giữ nguyên ở log trước khi throw/query lỗi hiện qua owner; không tạo thêm toast. Query quyền giữ nguyên error và yêu cầu boolean xác nhận; false thật vẫn false. Không đổi vai hoặc server predicate. Độc lập reportPermissionSourceFeedback.test.ts đạt 22/22; fallback QueryProvider hiển thị lỗi nguồn khi caller không có inline. Bằng chứng source/test, không là nghiệm thu Preview hoặc production."
+  },
+  "7b5c25ecd15b2076": {
+    "status": "fixed",
+    "file": "src/hooks/useIsAdmin.ts",
+    "line": 16,
+    "kind": "useQuery",
+    "groups": "G07/I14",
+    "evidence": "Review độc lập call src/hooks/useIsAdmin.ts:16. Hai query quyền giữ nguyên error và yêu cầu boolean xác nhận; false thật không bị thay đổi. AdminOnlyRoute dùng QueryRegion trước redirect. Độc lập reportPermissionSourceFeedback.test.ts đạt 22/22, không đổi RPC/predicate quyền. Bằng chứng source/test, không là nghiệm thu Preview hoặc production."
+  },
+  "01c651aa3b80aaf1": {
+    "status": "background-only",
+    "file": "src/hooks/useIsAdmin.ts",
+    "line": 21,
+    "kind": "log",
+    "groups": "G07/I14",
+    "evidence": "Review độc lập call src/hooks/useIsAdmin.ts:21. Diagnostic giữ nguyên ở log trước khi throw/query lỗi hiện qua owner; không tạo thêm toast. Hai query quyền giữ nguyên error và yêu cầu boolean xác nhận; false thật không bị thay đổi. AdminOnlyRoute dùng QueryRegion trước redirect. Độc lập reportPermissionSourceFeedback.test.ts đạt 22/22, không đổi RPC/predicate quyền. Bằng chứng source/test, không là nghiệm thu Preview hoặc production."
+  },
+  "a3af31e3a7212763": {
+    "status": "fixed",
+    "file": "src/hooks/useIsAdmin.ts",
+    "line": 42,
+    "kind": "useQuery",
+    "groups": "G07/I14",
+    "evidence": "Review độc lập call src/hooks/useIsAdmin.ts:42. Hai query quyền giữ nguyên error và yêu cầu boolean xác nhận; false thật không bị thay đổi. AdminOnlyRoute dùng QueryRegion trước redirect. Độc lập reportPermissionSourceFeedback.test.ts đạt 22/22, không đổi RPC/predicate quyền. Bằng chứng source/test, không là nghiệm thu Preview hoặc production."
+  },
+  "e64747b96773c81c": {
+    "status": "background-only",
+    "file": "src/hooks/useIsAdmin.ts",
+    "line": 47,
+    "kind": "log",
+    "groups": "G07/I14",
+    "evidence": "Review độc lập call src/hooks/useIsAdmin.ts:47. Diagnostic giữ nguyên ở log trước khi throw/query lỗi hiện qua owner; không tạo thêm toast. Hai query quyền giữ nguyên error và yêu cầu boolean xác nhận; false thật không bị thay đổi. AdminOnlyRoute dùng QueryRegion trước redirect. Độc lập reportPermissionSourceFeedback.test.ts đạt 22/22, không đổi RPC/predicate quyền. Bằng chứng source/test, không là nghiệm thu Preview hoặc production."
+  },
+  "fd53e3a8a08c13dd": {
+    "status": "fixed",
+    "file": "src/hooks/useMyContext.ts",
+    "line": 24,
+    "kind": "useQuery",
+    "groups": "G07/I14",
+    "evidence": "Review độc lập call src/hooks/useMyContext.ts:24. Phiên không có user trả context vô danh đúng hiện trạng; user đã đăng nhập phải có nguồn RPC và hai boolean. Error/null không tự nhận owner. Hình dạng context SQL hợp lệ giữ nguyên. Độc lập reportPermissionSourceFeedback.test.ts đạt 22/22. Bằng chứng source/test, không là nghiệm thu Preview hoặc production."
+  },
+  "5bff374c05fb2658": {
+    "status": "fixed",
+    "file": "src/hooks/useMyBuildingScope.ts",
+    "line": 49,
+    "kind": "useQuery",
+    "groups": "G07/I14",
+    "evidence": "Review độc lập call src/hooks/useMyBuildingScope.ts:49. Assignments error được throw thay vì []; nếu một nguồn context/admin/assignments lỗi, helper trả trạng thái isError với error. Không mặc định ALL khi chưa đọc context. Global QueryProvider báo nguồn. Review nguồn, không claim runtime RLS hoặc E2E mọi role. Bằng chứng source/test, không là nghiệm thu Preview hoặc production."
+  },
+  "57c3eff3efe2268a": {
+    "status": "background-only",
+    "file": "src/hooks/useMyBuildingScope.ts",
+    "line": 54,
+    "kind": "log",
+    "groups": "G07/I14",
+    "evidence": "Review độc lập call src/hooks/useMyBuildingScope.ts:54. Diagnostic giữ nguyên ở log trước khi throw/query lỗi hiện qua owner; không tạo thêm toast. Assignments error được throw thay vì []; nếu một nguồn context/admin/assignments lỗi, helper trả trạng thái isError với error. Không mặc định ALL khi chưa đọc context. Global QueryProvider báo nguồn. Review nguồn, không claim runtime RLS hoặc E2E mọi role. Bằng chứng source/test, không là nghiệm thu Preview hoặc production."
+  },
+  "6da6047ded3db864": {
+    "status": "fixed",
+    "file": "src/hooks/useRoomContractExtras.ts",
+    "line": 42,
+    "kind": "useQuery",
+    "groups": "I03/I11",
+    "evidence": "Review độc lập call src/hooks/useRoomContractExtras.ts:42. Các nguồn bổ sung không có tiền; query giữ partial khi fetchAllRows không đủ. Caller Drawer nay hiển thị cảnh báo thiếu gia hạn/chuyển phòng/đại diện và retry, không nói như đủ mốc. Độc lập Drawer DOM 8/8, gồm ca thiếu extras. Bằng chứng source/test, không là nghiệm thu Preview hoặc production."
+  },
+  "d92ca0568f253a7b": {
+    "status": "fixed",
+    "file": "src/hooks/useRoomCashLifecycle.ts",
+    "line": 12,
+    "kind": "useQuery",
+    "groups": "A01/I03/I11",
+    "evidence": "Review độc lập call src/hooks/useRoomCashLifecycle.ts:12. Giữ nguyên cause/mã lỗi RPC; yêu cầu nguồn có đúng room và các mảng cần thiết. Drawer dùng friendlyError và nút retry thay raw error.message. Độc lập RoomContractLifecycleDrawer.test.tsx đạt 8/8; không đổi toán vòng đời. Bằng chứng source/test, không là nghiệm thu Preview hoặc production."
+  },
+  "05daa3e604d205be": {
+    "status": "fixed",
+    "file": "src/hooks/useSettlementReport.ts",
+    "line": 66,
+    "kind": "useQuery",
+    "groups": "A01/I09",
+    "evidence": "Review độc lập call src/hooks/useSettlementReport.ts:66. Giữ nguyên error RPC thay wrap new Error(message), yêu cầu accounts/sessions/reconciliations mảng trước trả báo cáo; meta inline, caller SettlementReport dùng QueryRegion. Review nguồn, không claim đã kiểm DB/RLS thực. Bằng chứng source/test, không là nghiệm thu Preview hoặc production."
+  },
+  "8c4c9f960ed59265": {
+    "status": "fixed",
+    "file": "src/hooks/useStatBreakdowns.ts",
+    "line": 30,
+    "kind": "useQuery",
+    "groups": "I07/I09",
+    "evidence": "Review độc lập call src/hooks/useStatBreakdowns.ts:30. Query giữ lỗi RPC, yêu cầu nguồn mảng và tiền hợp lệ trước mapping; null các số liên kết tùy chọn giữ nguyên đúng mô hình. ChangeBreakdownDialog/DepositBreakdownDialog dùng QueryRegion. Độc lập reportPermissionSourceFeedback.test.ts đạt 22/22. Bằng chứng source/test, không là nghiệm thu Preview hoặc production."
+  },
+  "42bf1a20ec85a23e": {
+    "status": "fixed",
+    "file": "src/hooks/useStatBreakdowns.ts",
+    "line": 92,
+    "kind": "useQuery",
+    "groups": "I07/I09",
+    "evidence": "Review độc lập call src/hooks/useStatBreakdowns.ts:92. Query giữ lỗi RPC, yêu cầu nguồn mảng và tiền hợp lệ trước mapping; null các số liên kết tùy chọn giữ nguyên đúng mô hình. ChangeBreakdownDialog/DepositBreakdownDialog dùng QueryRegion. Độc lập reportPermissionSourceFeedback.test.ts đạt 22/22. Bằng chứng source/test, không là nghiệm thu Preview hoặc production."
+  },
+  "bd02c0246655c660": {
+    "status": "fixed",
+    "file": "src/hooks/useUiPreferences.ts",
+    "line": 30,
+    "kind": "useQuery",
+    "groups": "G09/G21",
+    "evidence": "Review độc lập call src/hooks/useUiPreferences.ts:30. Nguồn ui_preferences JSON object bắt buộc; mutation xác nhận đúng key/value server, owner phát một friendly error và rollback đúng key. RoutePlannerSheet dùng inlineError để caller tự báo. Độc lập uiPreferencesFeedback.test.tsx đạt 14/14, gồm JSONB đổi thứ tự key vẫn được chấp nhận. Bằng chứng source/test, không là nghiệm thu Preview hoặc production."
+  },
+  "867afb055f2b1157": {
+    "status": "fixed",
+    "file": "src/hooks/useUiPreferences.ts",
+    "line": 58,
+    "kind": "useMutation",
+    "groups": "G09/G21",
+    "evidence": "Review độc lập call src/hooks/useUiPreferences.ts:58. Nguồn ui_preferences JSON object bắt buộc; mutation xác nhận đúng key/value server, owner phát một friendly error và rollback đúng key. RoutePlannerSheet dùng inlineError để caller tự báo. Độc lập uiPreferencesFeedback.test.tsx đạt 14/14, gồm JSONB đổi thứ tự key vẫn được chấp nhận. Bằng chứng source/test, không là nghiệm thu Preview hoặc production."
+  },
+  "48ca2fe80064be6e": {
+    "status": "fixed",
+    "file": "src/hooks/useUiPreferences.ts",
+    "line": 92,
+    "kind": "notification",
+    "groups": "G09/G21",
+    "evidence": "Review độc lập call src/hooks/useUiPreferences.ts:92. Nguồn ui_preferences JSON object bắt buộc; mutation xác nhận đúng key/value server, owner phát một friendly error và rollback đúng key. RoutePlannerSheet dùng inlineError để caller tự báo. Độc lập uiPreferencesFeedback.test.tsx đạt 14/14, gồm JSONB đổi thứ tự key vẫn được chấp nhận. Bằng chứng source/test, không là nghiệm thu Preview hoặc production."
+  },
+  "f44413406ce9281a": {
+    "status": "already-correct",
+    "file": "src/pages/vehicles/VehiclesPage.tsx",
+    "line": 102,
+    "kind": "notification",
+    "groups": "G14/F06",
+    "evidence": "Đã đọc hai handler VehiclesPage: nói rõ chức năng nhập/xuất chưa triển khai; toast.info không khẳng định dữ liệu đã ghi/xuất. Không thêm chức năng. Chỉ phân loại call này; không chứng nhận toàn bộ file/mọi vai trò."
+  },
+  "79c8e2b231606f7f": {
+    "status": "already-correct",
+    "file": "src/pages/vehicles/VehiclesPage.tsx",
+    "line": 106,
+    "kind": "notification",
+    "groups": "G14/F06",
+    "evidence": "Đã đọc hai handler VehiclesPage: nói rõ chức năng nhập/xuất chưa triển khai; toast.info không khẳng định dữ liệu đã ghi/xuất. Không thêm chức năng. Chỉ phân loại call này; không chứng nhận toàn bộ file/mọi vai trò."
+  },
+  "5cd71a3a2a8ec41d": {
+    "status": "already-correct",
+    "file": "src/pages/ThuTien.tsx",
+    "line": 264,
+    "kind": "notification",
+    "groups": "A03",
+    "evidence": "ThuTien deeplink handover đợi perms có dữ liệu rồi dùng cùng predicate canRecordPayment với nút thật; chỉ khi không được phép mới thông tin thiếu quyền. Không suy lỗi tải thành thiếu quyền. Chỉ phân loại call này; không chứng nhận toàn bộ file/mọi vai trò."
+  },
+  "d559fdfb12fa9e7a": {
+    "status": "already-correct",
+    "file": "src/pages/TasksMobilePage.tsx",
+    "line": 126,
+    "kind": "notification",
+    "groups": "I03/G15",
+    "evidence": "TasksMobile deep link giữ param khi query loading/isError; sau đọc thành công chỉ nói không thấy trong danh sách đang xem và giải thích phạm vi bộ lọc/90 ngày. Chỉ phân loại call này; không chứng nhận toàn bộ file/mọi vai trò."
+  },
+  "ebccb963618c405c": {
+    "status": "already-correct",
+    "file": "src/pages/public/PublicContractInvoicePage.tsx",
+    "line": 102,
+    "kind": "useQuery",
+    "groups": "H19",
+    "evidence": "PublicContractInvoicePage query inline; fetch tách HTTP429/HTTP khác/timeout, parsePublicInvoice; màn error/publicFailure và Thử lại đứng trước empty link, không suy lỗi thành hợp đồng thanh lý. Chỉ phân loại call này; không chứng nhận toàn bộ file/mọi vai trò."
+  },
+  "d0d57a2005461c64": {
+    "status": "background-only",
+    "file": "src/pages/NotFound.tsx",
+    "line": 8,
+    "kind": "log",
+    "groups": "A13",
+    "evidence": "NotFound log chỉ diagnostic tuyến không tồn tại; UI trực tiếp hiện Không tìm thấy trang này và Về trang chủ. Sửa tiếng Việt là copy nhỏ, không thêm phục hồi mới. Chỉ phân loại call này; không chứng nhận toàn bộ file/mọi vai trò."
+  },
+  "f97560f92a874096": {
+    "status": "fixed",
+    "file": "src/pages/customers/CustomersMobilePage.tsx",
+    "line": 29,
+    "kind": "notification",
+    "groups": "A12",
+    "evidence": "Đọc helper copyTextWithFeedback và caller khách desktop/mobile: await navigator.clipboard.writeText rồi mới success; lỗi hiện vùng nội dung có thể chọn/sao chép, không đưa lỗi clipboard ra UI. Chỉ phân loại call này; không chứng nhận toàn bộ file/mọi vai trò."
+  },
+  "2ed21df7d53a92a2": {
+    "status": "fixed",
+    "file": "src/pages/customers/CustomerDetailPage.tsx",
+    "line": 164,
+    "kind": "notification",
+    "groups": "A12",
+    "evidence": "Đọc helper copyTextWithFeedback và caller khách desktop/mobile: await navigator.clipboard.writeText rồi mới success; lỗi hiện vùng nội dung có thể chọn/sao chép, không đưa lỗi clipboard ra UI. Chỉ phân loại call này; không chứng nhận toàn bộ file/mọi vai trò."
+  },
+  "3d7488d3ec69c698": {
+    "status": "fixed",
+    "file": "src/pages/customers/CustomerDetailMobilePage.tsx",
+    "line": 137,
+    "kind": "notification",
+    "groups": "A12",
+    "evidence": "Đọc helper copyTextWithFeedback và caller khách desktop/mobile: await navigator.clipboard.writeText rồi mới success; lỗi hiện vùng nội dung có thể chọn/sao chép, không đưa lỗi clipboard ra UI. Chỉ phân loại call này; không chứng nhận toàn bộ file/mọi vai trò."
+  },
+  "b5f477d5f28c144b": {
+    "status": "fixed",
+    "file": "src/components/customers/CustomerDetailModal.tsx",
+    "line": 87,
+    "kind": "notification",
+    "groups": "A12",
+    "evidence": "Đọc helper copyTextWithFeedback và caller khách desktop/mobile: await navigator.clipboard.writeText rồi mới success; lỗi hiện vùng nội dung có thể chọn/sao chép, không đưa lỗi clipboard ra UI. Chỉ phân loại call này; không chứng nhận toàn bộ file/mọi vai trò."
+  },
+  "37e3c09558d19d04": {
+    "status": "already-correct",
+    "file": "src/pages/customers/CustomersMobilePage.tsx",
+    "line": 91,
+    "kind": "useQuery",
+    "groups": "I02/I03",
+    "evidence": "CustomersMobile vehicles query giữ error gốc; QueryRegion danh sách khách hàng gồm customers/buildings và vehicles khi custIds có dữ liệu, lỗi xe không bị xem như danh sách xe rỗng thành công. Chỉ phân loại call này; không chứng nhận toàn bộ file/mọi vai trò."
+  },
+  "ba7eb9594f495aee": {
+    "status": "already-correct",
+    "file": "src/pages/phong-trong/usePhongTrong.ts",
+    "line": 13,
+    "kind": "useQuery",
+    "groups": "H19",
+    "evidence": "usePhongTrong giữ RPC error và tách null token thu hồi bằng PublicRoomLinkError; parseRoomSalePayload phải hợp lệ, không trả danh sách mẫu thay lỗi. Polling dừng cho link hết hiệu lực. Chỉ phân loại call này; không chứng nhận toàn bộ file/mọi vai trò."
+  },
+  "c598ccc693098b46": {
+    "status": "already-correct",
+    "file": "src/pages/reports/finance/ProfitDistributionReport.tsx",
+    "line": 703,
+    "kind": "notification",
+    "groups": "E15",
+    "evidence": "Hai thông tin trung tính ở ProfitDistribution desktop/mobile nêu tên loại chi chưa khớp và hướng chọn hạng mục thủ công; không báo đã lập hay đã chi. Chỉ phân loại call này; không chứng nhận toàn bộ file/mọi vai trò."
+  },
+  "1925d34d140dc5f5": {
+    "status": "already-correct",
+    "file": "src/pages/reports/finance/ProfitDistributionMobile.tsx",
+    "line": 406,
+    "kind": "notification",
+    "groups": "E15",
+    "evidence": "Hai thông tin trung tính ở ProfitDistribution desktop/mobile nêu tên loại chi chưa khớp và hướng chọn hạng mục thủ công; không báo đã lập hay đã chi. Chỉ phân loại call này; không chứng nhận toàn bộ file/mọi vai trò."
+  },
+  "efb14fa5852283aa": {
+    "status": "already-correct",
+    "file": "src/pages/assets/AssetsPage.tsx",
+    "line": 182,
+    "kind": "useQuery",
+    "groups": "I04",
+    "evidence": "Asset categories query kiểm error rồi throw nguyên nhân; empty [] chỉ sau không có lỗi. Thông báo tải do boundary query chung; không phải kết quả mutation. Chỉ phân loại call này; không chứng nhận toàn bộ file/mọi vai trò."
+  },
+  "0f0b9c540b7daa3f": {
+    "status": "fixed",
+    "file": "src/contexts/OrganizationContext.tsx",
+    "line": 183,
+    "kind": "useQuery",
+    "groups": "I13/G07",
+    "evidence": "RPC error giữ nguyên; parseOrganizations không chuyển payload/dòng hỏng thành empty. SQL 20260814032500 có organizations coalesce []; test33 GREEN gồm danh bạ thật [], nullable member_type, UI lỗi/Thử lại/giữ lựa chọn localStorage. Chỉ phân loại call này; không chứng nhận toàn bộ file/mọi vai trò."
+  },
+  "f3752fed18e0d5d3": {
+    "status": "fixed",
+    "file": "src/hooks/useAcceptanceGeofence.ts",
+    "line": 25,
+    "kind": "useQuery",
+    "groups": "I13/G22",
+    "evidence": "Không nuốt RPC failure thành cấu hình mặc định. SQL 20260628000001 luôn object enabled/radius_m kể cả mặc định; thiếu/sai payload throw. Callers TaskCompleteDialog/InspectionRunner hiện QueryRegion có retry, giữ ảnh/phiên và quy tắc camera cũ. 8 ca boundary/DOM trong GREEN33. Chỉ phân loại call này; không chứng nhận toàn bộ file/mọi vai trò."
+  },
+  "d981a3bb0733ac47": {
+    "status": "fixed",
+    "file": "src/hooks/useRoomPriceHistory.ts",
+    "line": 35,
+    "kind": "useQuery",
+    "groups": "I03/I11",
+    "evidence": "Query giữ error gốc, meta inline. RoomPriceHistorySection QueryRegion phân biệt lỗi/tải lại stale/empty thật, có retry khu vực. 3 ca DOM trong GREEN33; enrich tên người đọc riêng là thông tin phụ, không đổi lịch sử tiền. Chỉ phân loại call này; không chứng nhận toàn bộ file/mọi vai trò."
+  },
+  "a13b53617b4292ab": {
+    "status": "background-only",
+    "file": "src/hooks/useRoomPriceHistory.ts",
+    "line": 48,
+    "kind": "log",
+    "groups": "I03",
+    "evidence": "Diagnostic ngay trước throw error gốc; caller lịch sử giá hiển thị lỗi bền vững qua QueryRegion nên người dùng không cần console. Chỉ phân loại call này; không chứng nhận toàn bộ file/mọi vai trò."
+  },
+  "016eb66e6109791c": {
+    "status": "already-correct",
+    "file": "src/hooks/contracts/useMoveOutNoticeQueue.ts",
+    "line": 11,
+    "kind": "useQuery",
+    "groups": "I11",
+    "evidence": "Đọc các query hàng chờ move-out/meter: có tổ chức thì mới enabled, RPC error throw nguyên nhân, parseMoveOutNoticeQueue/pageSchema trước trả dữ liệu, không dùng [] thay thất bại. Caller sống MoveOutNoticeQueue/ContractMeterFollowupQueue. Chỉ phân loại call này; không chứng nhận toàn bộ file/mọi vai trò."
+  },
+  "a28ae5bf8594eca6": {
+    "status": "already-correct",
+    "file": "src/hooks/useContractMeterFollowups.ts",
+    "line": 11,
+    "kind": "useQuery",
+    "groups": "I11",
+    "evidence": "Đọc các query hàng chờ move-out/meter: có tổ chức thì mới enabled, RPC error throw nguyên nhân, parseMoveOutNoticeQueue/pageSchema trước trả dữ liệu, không dùng [] thay thất bại. Caller sống MoveOutNoticeQueue/ContractMeterFollowupQueue. Chỉ phân loại call này; không chứng nhận toàn bộ file/mọi vai trò."
+  },
+  "01a9cd93f1a64955": {
+    "status": "background-only",
+    "file": "src/lib/customerExcelHelpers.ts",
+    "line": 513,
+    "kind": "log",
+    "groups": "A08/F05",
+    "evidence": "Đã đọc downloadAndUploadImage và uploadIdImagesFromUrls: rehost ảnh URL là bước phụ, lỗi trả null nhưng caller luôn lưu URL gốc ở key ảnh. Log hỗ trợ chẩn đoán, không xóa dữ liệu ảnh/không có success riêng cho rehost. Chỉ phân loại call này; không chứng nhận toàn bộ file/mọi vai trò."
+  },
+  "cde9d264af49668a": {
+    "status": "background-only",
+    "file": "src/lib/customerExcelHelpers.ts",
+    "line": 523,
+    "kind": "log",
+    "groups": "A08/F05",
+    "evidence": "Đã đọc downloadAndUploadImage và uploadIdImagesFromUrls: rehost ảnh URL là bước phụ, lỗi trả null nhưng caller luôn lưu URL gốc ở key ảnh. Log hỗ trợ chẩn đoán, không xóa dữ liệu ảnh/không có success riêng cho rehost. Chỉ phân loại call này; không chứng nhận toàn bộ file/mọi vai trò."
+  },
+  "a511fa5703385281": {
+    "status": "unused",
+    "file": "src/lib/invoiceHelpers.ts",
+    "line": 46,
+    "kind": "log",
+    "groups": "D01",
+    "evidence": "rg autoGenerateInvoiceNumber chỉ thấy định nghĩa lib/invoiceHelpers.ts, không có caller trong src; không chuyển diagnostic legacy thành toast cho luồng đang dùng. Chỉ phân loại call này; không chứng nhận toàn bộ file/mọi vai trò."
+  },
+  "4beb5efa87ab3a75": {
+    "status": "unused",
+    "file": "src/hooks/useContractOperations.ts",
+    "line": 24,
+    "kind": "notification",
+    "groups": "B16/B17",
+    "evidence": "showContractOperationError chỉ gọi trong ba hook legacy useTransferContract/useTerminateForfeit/useTerminateMoveOut; rg toàn src không có import/caller UI cho ba hook. Renew/transfer room live dùng boundary riêng đã ledger. Chỉ phân loại call này; không chứng nhận toàn bộ file/mọi vai trò."
+  },
+  "097a747498e720c2": {
+    "status": "already-correct",
+    "file": "src/hooks/useContractMovements.ts",
+    "line": 131,
+    "kind": "useQuery",
+    "groups": "I11",
+    "evidence": "useContractMovements đợi đủ bốn nguồn; fetchAllRows null bất kỳ nguồn thì throw trước dựng danh sách. Enrich tên nhân viên là phần phụ có chú thích, không đổi kết quả thu/chi; caller ContractSettlementSection. Chỉ phân loại call này; không chứng nhận toàn bộ file/mọi vai trò."
+  },
+  "6acbdb99ede8dad2": {
+    "status": "already-correct",
+    "file": "src/hooks/useContractLifecycle.ts",
+    "line": 103,
+    "kind": "useQuery",
+    "groups": "I11",
+    "evidence": "useContractLifecycle tách reads từng nguồn; hợp đồng/thanh lý bắt buộc fail-closed, các nguồn phụ lỗi có reads.hong/thieu và số tiền chưa xác minh. Caller LifecycleBand/Drawer/MovementModal dùng trạng thái đó, không coi đọc rỗng posting là đã khớp. Chỉ phân loại call này; không chứng nhận toàn bộ file/mọi vai trò."
+  },
+  "2a11ae0208f98bf5": {
+    "status": "already-correct",
+    "file": "src/hooks/useIncomeExpenseFormScope.ts",
+    "line": 37,
+    "kind": "useQuery",
+    "groups": "I14/C03",
+    "evidence": "IncomeExpense form buildings/rooms giữ lỗi RPC gốc và yêu cầu financialReadRows(data), không chuyển lỗi/null thành danh mục rỗng. Thứ tự sắp xếp/phạm vi quyền giữ nguyên. Chỉ phân loại call này; không chứng nhận toàn bộ file/mọi vai trò."
+  },
+  "7ae7c411b5f67327": {
+    "status": "already-correct",
+    "file": "src/hooks/useIncomeExpenseFormScope.ts",
+    "line": 61,
+    "kind": "useQuery",
+    "groups": "I14/C03",
+    "evidence": "IncomeExpense form buildings/rooms giữ lỗi RPC gốc và yêu cầu financialReadRows(data), không chuyển lỗi/null thành danh mục rỗng. Thứ tự sắp xếp/phạm vi quyền giữ nguyên. Chỉ phân loại call này; không chứng nhận toàn bộ file/mọi vai trò."
+  },
+  "59f9a47bc5dcccb0": {
+    "status": "already-correct",
+    "file": "src/hooks/useIeAutoApproveThreshold.ts",
+    "line": 21,
+    "kind": "useQuery",
+    "groups": "E20/I13",
+    "evidence": "Threshold query giữ RPC cause; null là giá trị nghiệp vụ bỏ ngưỡng theo contract hiện có, giá trị khác dùng financialReadNumber. Không biến lỗi tải thành null/default. Chỉ phân loại call này; không chứng nhận toàn bộ file/mọi vai trò."
+  },
+  "710ccbe0fa68edf0": {
+    "status": "already-correct",
+    "file": "src/hooks/useCustomerDetailContracts.ts",
+    "line": 7,
+    "kind": "useQuery",
+    "groups": "I03",
+    "evidence": "Customer detail contracts giữ lỗi gốc, kiểm mảng và các trường tiền/quan hệ nullable trước trả; meta inline. Không trả [] vì query thất bại. Chỉ phân loại call này; không chứng nhận toàn bộ file/mọi vai trò."
+  },
+  "fdf60990eb2f2262": {
+    "status": "already-correct",
+    "file": "src/hooks/useInvoiceHistory.ts",
+    "line": 27,
+    "kind": "useQuery",
+    "groups": "I07/D03",
+    "evidence": "Invoice history query inline giữ error gốc và financialReadRows, nguồn null không thành không có lịch sử. Giữ giới hạn lịch sử mới nhất hiện có. Chỉ phân loại call này; không chứng nhận toàn bộ file/mọi vai trò."
+  },
+  "3c8a996a754e9299": {
+    "status": "already-correct",
+    "file": "src/hooks/useInvoiceCollectors.ts",
+    "line": 33,
+    "kind": "useQuery",
+    "groups": "I06/D05",
+    "evidence": "InvoiceCollectors kiểm lỗi từng chunk/financialReadRows và số tiền financialReadNumber; một nguồn lỗi không thành map collector empty. ThuTien dùng collectorsQuery trong trạng thái nguồn bắt buộc. Chỉ phân loại call này; không chứng nhận toàn bộ file/mọi vai trò."
+  },
+  "3dc2bbeff062c284": {
+    "status": "already-correct",
+    "file": "src/hooks/useSalaryV5Config.ts",
+    "line": 20,
+    "kind": "useQuery",
+    "groups": "I08",
+    "evidence": "SalaryV5 config query giữ sourceError gốc; caller ManagerSalaryPage/MySalaryPage giữ engineQuery cho boundary nguồn lương. Không default false từ exception. Chỉ phân loại call này; không chứng nhận toàn bộ file/mọi vai trò."
+  },
+  "df2ad377b9854056": {
+    "status": "already-correct",
+    "file": "src/hooks/useTerminationRefundFacts.ts",
+    "line": 21,
+    "kind": "useQuery",
+    "groups": "I06/B17",
+    "evidence": "TerminationRefundFacts giữ error RPC; row vắng hợp lệ theo RPC gate quyền được null, row có dữ liệu parse facts. TerminationRefundNote render nhánh isError Không đọc được hồ sơ thanh lý trước header/fallback, không khẳng định tiền hoàn đã chi. Chỉ phân loại call này; không chứng nhận toàn bộ file/mọi vai trò."
+  },
+  "450cd4591e308512": {
+    "status": "already-correct",
+    "file": "src/components/customers/CT01DownloadButton.tsx",
+    "line": 38,
+    "kind": "notification",
+    "groups": "F21/A11",
+    "evidence": "CT01 thiếu hợp đồng/tòa trả câu nghiệp vụ đúng sau await loadCT01Tenancies; không báo download hoàn tất khi chưa có dữ liệu. Chỉ phân loại call này; không chứng nhận toàn bộ file/mọi vai trò."
+  },
+  "c2f2ed41b2056c6b": {
+    "status": "already-correct",
+    "file": "src/components/customers/CCCDQrCameraScanner.tsx",
+    "line": 64,
+    "kind": "notification",
+    "groups": "F21",
+    "evidence": "Camera QR CCCD khi nhiều thẻ trong khung nêu đúng nguyên nhân và hướng giữ một thẻ; lỗi xác định cục bộ, không dùng error kỹ thuật. Chỉ phân loại call này; không chứng nhận toàn bộ file/mọi vai trò."
+  },
+  "e4b97a2078de595e": {
+    "status": "already-correct",
+    "file": "src/components/sale-phong/SaleImagesTab.tsx",
+    "line": 121,
+    "kind": "notification",
+    "groups": "F10/F23",
+    "evidence": "SaleImages/MobileSaleInfo cảnh báo hai phòng có nguồn ảnh riêng nêu tên phòng và cách xử lý theo quy tắc hiện có; không thay quy tắc nhóm ảnh. Chỉ phân loại call này; không chứng nhận toàn bộ file/mọi vai trò."
+  },
+  "aa89d13f2b4e3c93": {
+    "status": "already-correct",
+    "file": "src/components/sale-phong/mobile/MobileSaleInfo.tsx",
+    "line": 77,
+    "kind": "notification",
+    "groups": "F10/F23",
+    "evidence": "SaleImages/MobileSaleInfo cảnh báo hai phòng có nguồn ảnh riêng nêu tên phòng và cách xử lý theo quy tắc hiện có; không thay quy tắc nhóm ảnh. Chỉ phân loại call này; không chứng nhận toàn bộ file/mọi vai trò."
+  },
+  "5060a84fd5362ff1": {
+    "status": "fixed",
+    "file": "src/hooks/useRenewedContracts.ts",
+    "line": 14,
+    "kind": "useQuery",
+    "groups": "I03/I11/B16",
+    "evidence": "RED→GREEN final-slot-renewal-red.json (8 fail/26), final-slot-renewal-green-2.json (26/26,4file). Required rows không đổi null thành chưa gia hạn. Meta inline vì RenewedBadge và ContractsMobilePage render lỗi/retry; mobile giữ danh sách/bộ lọc. Empty thật giữ kết quả không có gia hạn; đã kiểm query vẫn lọc APPROVED/COMPLETED, không đổi predicate."
+  },
+  "be29be5c2a7d9759": {
+    "status": "fixed",
+    "file": "src/hooks/useVoucherSlotWarning.ts",
+    "line": 49,
+    "kind": "useQuery",
+    "groups": "A01/C04/I05",
+    "evidence": "RED→GREEN final-slot-renewal-red.json (8 fail/26), final-slot-renewal-green-2.json (26/26,4file). Giữ nguyên RPC error/code, required array và 2 số tiền không default0. IncomeExpenseForm có QueryRegion lỗi/retry ngay trên hạng mục khi source đủ điều kiện; DOM kiểm Lưu vẫn hoạt động và mutation đúng chỉ một lần. Nguồn không enabled thì không tạo lỗi giả; không đổi rule/predicate/SQL."
+  },
+  "0f5833cc6cda7c7d": {
+    "status": "already-correct",
+    "file": "src/hooks/useContracts.ts",
+    "line": 127,
+    "kind": "useQuery",
+    "groups": "B14/I02",
+    "evidence": "Review độc lập actual enclosing call và caller hiện hành: useContracts yêu cầu phiên, giữ lỗi nguyên trạng qua fetchAllRows; caller GenerateInvoiceDialog/AssetHandoverDialog có QueryRegion. Mảng rỗng thật vẫn hợp lệ. Xác minh source/fixture, không thay thế E2E đúng SHA/role/TEST."
+  },
+  "21ac50eb68645223": {
+    "status": "background-only",
+    "file": "src/hooks/useContracts.ts",
+    "line": 374,
+    "kind": "log",
+    "groups": "I11",
+    "evidence": "Review độc lập actual enclosing call và caller hiện hành: fetchContractsPagedOnce diagnostic lỗi truy vấn rồi throw chính error; caller desktop/mobile giữ trạng thái lỗi danh sách. Đây không phải nhánh chỉ log rồi tiếp tục. Xác minh source/fixture, không thay thế E2E đúng SHA/role/TEST."
+  },
+  "99f36a1625ac7865": {
+    "status": "already-correct",
+    "file": "src/hooks/useContracts.ts",
+    "line": 416,
+    "kind": "useQuery",
+    "groups": "I11",
+    "evidence": "Review độc lập actual enclosing call và caller hiện hành: contractsPagedQuery yêu cầu count nguyên không âm và financialReadRows; wrapper giữ dữ liệu trước khi tải. ContractsPage/Mobile tách loading/error trước empty. contractListReadFeedback 23 ca đạt trong final-contract-stats-regions-green-3.json. Xác minh source/fixture, không thay thế E2E đúng SHA/role/TEST."
+  },
+  "b3d48cb861aa8380": {
+    "status": "background-only",
+    "file": "src/hooks/useContracts.ts",
+    "line": 492,
+    "kind": "log",
+    "groups": "I01/I11",
+    "evidence": "Review độc lập actual enclosing call và caller hiện hành: contractStatsQuery log lỗi RPC rồi throw nguyên cause/code; UI không lấy nhánh log làm thành công. Xác minh source/fixture, không thay thế E2E đúng SHA/role/TEST."
+  },
+  "18d8b85ddf97df52": {
+    "status": "fixed",
+    "file": "src/hooks/useContracts.ts",
+    "line": 507,
+    "kind": "useQuery",
+    "groups": "I01/I11/A07",
+    "evidence": "Review độc lập actual enclosing call và caller hiện hành: Stats yêu cầu object và các số finite; metadata inline chỉ sau khi cả hai caller ContractsPage/ContractsMobilePage có QueryRegion lỗi+retry. Không còn bốn số 0 khi tải đầu lỗi; giữ tìm kiếm/tòa/danh sách. Ba DOM RED trước sửa, GREEN 27/27 gồm 3 DOM mới, 1 gia hạn và 23 nguồn. Xác minh source/fixture, không thay thế E2E đúng SHA/role/TEST."
+  },
+  "b9af64ae92e4c292": {
+    "status": "fixed",
+    "file": "src/hooks/useContracts.ts",
+    "line": 534,
+    "kind": "useQuery",
+    "groups": "I01/A07",
+    "evidence": "Review độc lập actual enclosing call và caller hiện hành: Dashboard counts giữ error và yêu cầu bốn count nguyên không âm; caller sống duy nhất DashboardMobilePage đã QueryRegion riêng khối Tổng quan hợp đồng và metadata inline. DOM kiểm lỗi không tạo bốn số 0, retry đúng query, giữ tòa và các khối khác; final-contract-stats-regions-green-3.json đạt. Xác minh source/fixture, không thay thế E2E đúng SHA/role/TEST."
+  },
+  "199a9ec3c28595a6": {
+    "status": "background-only",
+    "file": "src/hooks/useContracts.ts",
+    "line": 565,
+    "kind": "log",
+    "groups": "I01",
+    "evidence": "Review độc lập actual enclosing call và caller hiện hành: useContractDashboardCounts diagnostic trước throw original error; có QueryRegion tại caller live, không nuốt lỗi nguồn. Xác minh source/fixture, không thay thế E2E đúng SHA/role/TEST."
+  },
+  "611aa1c18233920f": {
+    "status": "already-correct",
+    "file": "src/hooks/useContracts.ts",
+    "line": 587,
+    "kind": "useQuery",
+    "groups": "B14/I03",
+    "evidence": "Review độc lập actual enclosing call và caller hiện hành: useContract enabled theo ID, yêu cầu phiên, .single và throw nguyên error; không đổi database error thành null hoặc không tồn tại. Quyết định này về truyền lỗi; không phải kiểm toàn DTO. Xác minh source/fixture, không thay thế E2E đúng SHA/role/TEST."
+  },
+  "37a70d09c2a721eb": {
+    "status": "background-only",
+    "file": "src/hooks/useContracts.ts",
+    "line": 602,
+    "kind": "log",
+    "groups": "B14/I03",
+    "evidence": "Review độc lập actual enclosing call và caller hiện hành: useContract log lỗi .single rồi throw chính error cho QueryProvider/caller, không phải nhánh lỗi im lặng. Xác minh source/fixture, không thay thế E2E đúng SHA/role/TEST."
+  },
+  "db7a8c504a5c39ce": {
+    "status": "fixed",
+    "file": "src/hooks/useContracts.ts",
+    "line": 855,
+    "kind": "useMutation",
+    "groups": "B14/A07",
+    "evidence": "Review độc lập actual enclosing call và caller hiện hành: Xóa kiểm nguồn hóa đơn/thanh lý bằng error+required rows và chọn lại đúng ID, deleted_at hợp lệ. DeleteContractDialog await mutation, preventDefault đóng sớm, giữ xác nhận và inline lỗi; hook là owner toast. DeleteContract.feedback 2 DOM và nguồn 23 ca đạt. Xác minh source/fixture, không thay thế E2E đúng SHA/role/TEST."
+  },
+  "9eeac37bbb08579c": {
+    "status": "fixed",
+    "file": "src/hooks/useContracts.ts",
+    "line": 904,
+    "kind": "notification",
+    "groups": "B14",
+    "evidence": "Review độc lập actual enclosing call và caller hiện hành: Success xóa chỉ sau receipt cùng ID và deleted_at, nêu contract_number hoặc ID ngắn đã xác nhận. Không chỉ dựa HTTP update không error. Xác minh source/fixture, không thay thế E2E đúng SHA/role/TEST."
+  },
+  "de377cf12f6eaa85": {
+    "status": "background-only",
+    "file": "src/hooks/useContracts.ts",
+    "line": 907,
+    "kind": "log",
+    "groups": "B14/A01",
+    "evidence": "Review độc lập actual enclosing call và caller hiện hành: onError xóa giữ diagnostic rồi phát friendlyError; caller giữ lỗi inline, không phát toast thứ hai. Xác minh source/fixture, không thay thế E2E đúng SHA/role/TEST."
+  },
+  "5e2ccffc1c8bb85a": {
+    "status": "fixed",
+    "file": "src/hooks/useContracts.ts",
+    "line": 909,
+    "kind": "notification",
+    "groups": "B14/A01/A07",
+    "evidence": "Review độc lập actual enclosing call và caller hiện hành: Hook xóa dùng friendlyError và là owner toast; DeleteContractDialog chỉ giữ phản hồi tại form và không đóng thất bại. DOM failure không hiện SELECT private, giữ dialog. Xác minh source/fixture, không thay thế E2E đúng SHA/role/TEST."
+  },
+  "75477323f6abe662": {
+    "status": "already-correct",
+    "file": "src/hooks/useContracts.ts",
+    "line": 1056,
+    "kind": "useQuery",
+    "groups": "I14/C02",
+    "evidence": "Review độc lập actual enclosing call và caller hiện hành: useContractsLegacy giữ error gốc và required array; live IncomeExpenseForm theo dõi requiredSources trước lưu, không dùng danh mục thiếu như danh sách rỗng hợp lệ. Slot/renewal suite gồm 14 DOM form đạt ở final-slot-renewal-green-2.json. Xác minh source/fixture, không thay thế E2E đúng SHA/role/TEST."
+  },
+  "4c966c96687bf76b": {
+    "status": "background-only",
+    "file": "src/hooks/useContracts.ts",
+    "line": 1087,
+    "kind": "log",
+    "groups": "I14",
+    "evidence": "Review độc lập actual enclosing call và caller hiện hành: useContractsLegacy diagnostic lỗi rồi throw chính error; caller IncomeExpenseForm có trạng thái nguồn. Xác minh source/fixture, không thay thế E2E đúng SHA/role/TEST."
+  },
+  "764e8c651339b3db": {
+    "status": "fixed",
+    "file": "src/hooks/useContracts.ts",
+    "line": 1104,
+    "kind": "useQuery",
+    "groups": "B18/I06",
+    "evidence": "Review độc lập actual enclosing call và caller hiện hành: useUnpaidInvoices bắt buộc rows và total/paid/remaining finite. TerminateDialog không tính thanh lý từ nguồn chưa tải; nguồn null/amount thiếu bị reject, empty/zero xác nhận hợp lệ trong 23 ca source. Xác minh source/fixture, không thay thế E2E đúng SHA/role/TEST."
+  },
+  "c2c6b95e7094cf6c": {
+    "status": "unused",
+    "file": "src/hooks/useContracts.ts",
+    "line": 1198,
+    "kind": "useQuery",
+    "groups": "B18",
+    "evidence": "Review độc lập actual enclosing call và caller hiện hành: rg usePendingTerminations trong src chỉ tìm definition tại useContracts, không có caller UI/non-test. Giữ legacy chưa dùng; không biến data||[] của export chết thành sửa SQL hay tính năng. Xác minh source/fixture, không thay thế E2E đúng SHA/role/TEST."
+  },
+  "1d4df99c44ffb8c9": {
+    "status": "already-correct",
+    "file": "src/hooks/useContractDrafts.ts",
+    "line": 12,
+    "kind": "useQuery",
+    "groups": "B14/I11",
+    "evidence": "Review độc lập actual enclosing call và caller hiện hành: API listContractDrafts throw error và z.array(contractDraftSchema).parse(data); ContractDraftList có loading/error/Thử lại trước empty, Workspace/Transfer gọi query đầy đủ. DraftList 5 DOM đạt. Xác minh source/fixture, không thay thế E2E đúng SHA/role/TEST."
+  },
+  "a4228d4f71aefb57": {
+    "status": "already-correct",
+    "file": "src/hooks/useContractDrafts.ts",
+    "line": 22,
+    "kind": "useMutation",
+    "groups": "B14",
+    "evidence": "Review độc lập actual enclosing call và caller hiện hành: SaveContractDraft parse payload và receipt runtime; editor/PrintContractDraftDialog giữ cửa sổ khi mutation chưa xong/lỗi, requestId/revision phục vụ retry có kiểm soát. Không tự thêm rule. PrintDialog 6 và API export receipt 8 ca đạt. Xác minh source/fixture, không thay thế E2E đúng SHA/role/TEST."
+  },
+  "277122cf87402d3d": {
+    "status": "already-correct",
+    "file": "src/hooks/useContractDrafts.ts",
+    "line": 24,
+    "kind": "notification",
+    "groups": "A01/B14/A07",
+    "evidence": "Review độc lập actual enclosing call và caller hiện hành: onError save dùng draftErrorMessage: 40001 cập nhật đồng thời, quyền, dữ liệu nháp, tình trạng đã ký/xóa và lỗi Tài liệu đã kiểm; lỗi khác không đưa SQL. Hook owns toast; caller giữ lỗi form. Xác minh source/fixture, không thay thế E2E đúng SHA/role/TEST."
+  },
+  "e18b80783809cd15": {
+    "status": "already-correct",
+    "file": "src/hooks/useContractDrafts.ts",
+    "line": 29,
+    "kind": "useMutation",
+    "groups": "B14/A07",
+    "evidence": "Review độc lập actual enclosing call và caller hiện hành: deleteContractDraft bắt receipt đúng draft_id/deleted=true. Hook không tự onError nên QueryProvider fallback một toast; ContractDraftList catch giữ xác nhận + draftErrorMessage inline, không báo toast thêm. Xác minh source/fixture, không thay thế E2E đúng SHA/role/TEST."
+  },
+  "b55de7acc443688f": {
+    "status": "already-correct",
+    "file": "src/hooks/useContractDrafts.ts",
+    "line": 32,
+    "kind": "notification",
+    "groups": "B14",
+    "evidence": "Review độc lập actual enclosing call và caller hiện hành: Success xóa bản nháp chỉ chạy sau API exact-ID/deleted receipt và refresh cache. Caller await trước đóng; không khẳng định xóa nếu server trả null. Xác minh source/fixture, không thay thế E2E đúng SHA/role/TEST."
+  },
+  "abf6b01c12b18ade": {
+    "status": "fixed",
+    "file": "src/hooks/useContractDrafts.ts",
+    "line": 38,
+    "kind": "useMutation",
+    "groups": "A11/B20",
+    "evidence": "Review độc lập actual enclosing call và caller hiện hành: Export nháp giữ workflow partial khi file đã tải nhưng đăng ký chưa xác nhận, không dọn file/khuyên xuất lại mù. Document receipt đối chiếu draft/revision/hash; downloadDocxBlob chuẩn bị file. ExportReceipts 8, PrintDialog 6 DOM đạt. Xác minh source/fixture, không thay thế E2E đúng SHA/role/TEST."
+  },
+  "670d4589fc49780a": {
+    "status": "fixed",
+    "file": "src/hooks/useContractDrafts.ts",
+    "line": 41,
+    "kind": "notification",
+    "groups": "A11",
+    "evidence": "Review độc lập actual enclosing call và caller hiện hành: Success export nói đã lưu nháp và chuẩn bị tệp BAN_NHAP theo document draft_id/revision đã xác nhận, để tải xuống; không nói trình duyệt đã lưu tệp trên máy. Xác minh source/fixture, không thay thế E2E đúng SHA/role/TEST."
+  },
+  "cef39e33a812edfa": {
+    "status": "fixed",
+    "file": "src/hooks/useContractDrafts.ts",
+    "line": 43,
+    "kind": "notification",
+    "groups": "A01/A11",
+    "evidence": "Review độc lập actual enclosing call và caller hiện hành: onError export đi qua draftErrorMessage; FinancialWorkflowError giữ completed-ID/phần chưa xác nhận và CT tài liệu đã kiểm, không hiện SQL/JSON. ExportReceipts kiểm partial/unknown và safe output, 8 ca đạt. Xác minh source/fixture, không thay thế E2E đúng SHA/role/TEST."
+  },
+  "7faba0b60c51eb84": {
+    "status": "already-correct",
+    "file": "src/hooks/useContractDrafts.ts",
+    "line": 47,
+    "kind": "useMutation",
+    "groups": "A11",
+    "evidence": "Review độc lập actual enclosing call và caller hiện hành: DownloadContractDraftDocument readonly bắt blob và SHA256 đối chiếu trước kích hoạt download; không phát false-success trước clipboard/file browser. Error truyền tới onError safe. Xác minh source/fixture, không thay thế E2E đúng SHA/role/TEST."
+  },
+  "a3297f73d55e129f": {
+    "status": "already-correct",
+    "file": "src/hooks/useContractDrafts.ts",
+    "line": 50,
+    "kind": "notification",
+    "groups": "A01/A11",
+    "evidence": "Review độc lập actual enclosing call và caller hiện hành: onError tải tài liệu nháp dùng draftErrorMessage; không lấy storage error.message trực tiếp. Không có success khẳng định tệp đã lưu máy. Xác minh source/fixture, không thay thế E2E đúng SHA/role/TEST."
+  },
+  "f8a322be7e7c2459": {
+    "status": "already-correct",
+    "file": "src/hooks/contracts/useContractTransferLinks.ts",
+    "line": 22,
+    "kind": "useQuery",
+    "groups": "B16/I11",
+    "evidence": "Review độc lập actual enclosing call và caller hiện hành: readContractTransferLinks yêu cầu scope tổ chức và một filter, runtime array schema, giữ original RPC error; panels giữ query loading/error/retry. Không thay phí/đặt cọc/kỳ hạn. Xác minh source/fixture, không thay thế E2E đúng SHA/role/TEST."
+  },
+  "9da4b4fc592e9484": {
+    "status": "fixed",
+    "file": "src/hooks/contracts/useContractTransferLinks.ts",
+    "line": 29,
+    "kind": "useMutation",
+    "groups": "B16/A01/A07",
+    "evidence": "Review độc lập actual enclosing call và caller hiện hành: Transfer mutation retry:false, input+receipt runtime; onError riêng owns toast, QueryProvider không báo thêm. Làm mới trạng thái cả khi lỗi, thông báo transferErrorMessage giữ PT409/quyền và safe fallback. Transfers 3 ca đạt. Xác minh source/fixture, không thay thế E2E đúng SHA/role/TEST."
+  },
+  "b662d0945d3f8191": {
+    "status": "fixed",
+    "file": "src/hooks/contracts/useContractTransferLinks.ts",
+    "line": 30,
+    "kind": "notification",
+    "groups": "B16",
+    "evidence": "Review độc lập actual enclosing call và caller hiện hành: Success factory nêu liên kết/hủy liên kết/quyết toán hồ sơ/nối phiếu hoa hồng sau receipt của từng run; không đồng nhất thành đã chi tiền. Đã đọc hàm run và output schema; không mở validator/SQL khác. Xác minh source/fixture, không thay thế E2E đúng SHA/role/TEST."
+  },
+  "725cc9d6b1921bdb": {
+    "status": "fixed",
+    "file": "src/hooks/contracts/useContractTransferLinks.ts",
+    "line": 30,
+    "kind": "notification",
+    "groups": "A01/B16",
+    "evidence": "Review độc lập actual enclosing call và caller hiện hành: Transfer onError dùng transferErrorMessage: PT409 tình trạng đổi, 42501 quyền, còn lại friendlyError. Transfers.test 3 ca đạt, có SELECT secret không được đưa ra UI. Xác minh source/fixture, không thay thế E2E đúng SHA/role/TEST."
+  },
+  "3f32422224ac6182": {
+    "status": "fixed",
+    "file": "src/components/thu-tien/CollectDrawer.tsx",
+    "line": 198,
+    "kind": "notification",
+    "groups": "D05/D08",
+    "evidence": "Review độc lập actual enclosing call và caller hiện hành: CollectDrawer readOutcome yêu cầu ok/failures đúng mảng và invoice ID được xác nhận; success/đóng chỉ khi không còn thất bại. Unknown giữ trạng thái đối chiếu, không khuyên thu lại. CollectDrawer.receiving 10 DOM đạt. Xác minh source/fixture, không thay thế E2E đúng SHA/role/TEST."
+  },
+  "a5730aca079e459b": {
+    "status": "background-only",
+    "file": "src/components/thu-tien/CollectDrawer.tsx",
+    "line": 217,
+    "kind": "log",
+    "groups": "D08",
+    "evidence": "Review độc lập actual enclosing call và caller hiện hành: Diagnostic kiểm khoản thu gần đây đồng thời đặt lỗi inline rõ tránh thu trùng rồi return trước write; không hỏi Vẫn thu tiếp khi nguồn chưa đọc. Xác minh source/fixture, không thay thế E2E đúng SHA/role/TEST."
+  },
+  "a72a035657f3686a": {
+    "status": "fixed",
+    "file": "src/components/thu-tien/CollectDrawer.tsx",
+    "line": 256,
+    "kind": "notification",
+    "groups": "D06",
+    "evidence": "Review độc lập actual enclosing call và caller hiện hành: receivingBlockFor từ useQuickCollect trả câu tiếng Việt về sổ tiền mặt, quyền hoặc nguồn; thiếu sổ có lời giải thích cạnh khu vực/nút trước khi nhận tiền, không lấy lỗi kỹ thuật. Receiving 10 DOM đạt. Xác minh source/fixture, không thay thế E2E đúng SHA/role/TEST."
+  },
+  "dac33bc301a58c74": {
+    "status": "fixed",
+    "file": "src/components/thu-tien/CollectDrawer.tsx",
+    "line": 265,
+    "kind": "notification",
+    "groups": "A07/D01",
+    "evidence": "Review độc lập actual enclosing call và caller hiện hành: Ghi chú failure nêu đúng chưa lưu được ghi chú và tải lại hóa đơn. useUpdateInvoiceNote meta.handlesFeedback + receipt; per-call owns toast, global cache không báo trùng, draft ghi chú giữ. Xác minh source/fixture, không thay thế E2E đúng SHA/role/TEST."
+  },
+  "39abbb1bc83942fc": {
+    "status": "fixed",
+    "file": "src/components/thu-tien/CollectDrawer.tsx",
+    "line": 279,
+    "kind": "notification",
+    "groups": "C14/D03",
+    "evidence": "Review độc lập actual enclosing call và caller hiện hành: Hoàn tác bị chặn dùng COLLECTION_BLOCK_TEXT theo khóa/quyền/trạng thái đã xác định. Reason đỏ/focus với giới hạn hiện có; không thực hiện writer khi blocked hoặc suy đã hoàn tác từ toast. Xác minh source/fixture, không thay thế E2E đúng SHA/role/TEST."
+  },
+  "8b93a8f6cbd638c7": {
+    "status": "background-only",
+    "file": "src/components/thu-tien/CollectDrawer.tsx",
+    "line": 333,
+    "kind": "log",
+    "groups": "A08/D06",
+    "evidence": "Review độc lập actual enclosing call và caller hiện hành: Upload receipt catch diagnostic nhưng đồng thời đặt receiptError có tên file, chưa gửi khoản thu, giữ ảnh và return trước collect. Không tiếp tục thanh toán sau lỗi file. Receiving 10 DOM đạt. Xác minh source/fixture, không thay thế E2E đúng SHA/role/TEST."
+  },
+  "c3cd33ba1d82b27b": {
+    "status": "fixed",
+    "file": "src/hooks/useReconciliations.ts",
+    "line": 51,
+    "kind": "useMutation",
+    "groups": "E05/A07",
+    "evidence": "Review độc lập actual enclosing call và caller hiện hành: ProposeReconciliation yêu cầu receipt id/PENDING-or-CONFIRMED/finite balances, pending marker theo actor/org/book/date. meta handlesFeedback chỉ vì ReconcileDialog live tự hiển thị lỗi/retry-safe và kết quả chờ/xác nhận đúng trạng thái, await mới đóng. Reconciliation 3 + dialog 2 DOM đạt. Xác minh source/fixture, không thay thế E2E đúng SHA/role/TEST."
+  },
+  "f813553804486369": {
+    "status": "unused",
+    "file": "src/hooks/useReconciliations.ts",
+    "line": 77,
+    "kind": "useMutation",
+    "groups": "E05",
+    "evidence": "Review độc lập actual enclosing call và caller hiện hành: rg confirmReconciliation chỉ definition, comment ClosingInbox xác nhận dùng useCashbookClosing thay legacy này. Không có caller hiện hành; không tự thêm luồng chốt sổ. Xác minh source/fixture, không thay thế E2E đúng SHA/role/TEST."
+  },
+  "a8d2c5e13c9ad9ca": {
+    "status": "unused",
+    "file": "src/hooks/useReconciliations.ts",
+    "line": 101,
+    "kind": "useMutation",
+    "groups": "E05",
+    "evidence": "Review độc lập actual enclosing call và caller hiện hành: rg cancelReconciliation chỉ definition trong hook, không có caller UI/non-test. Receipt exact ID/status giữ sẵn nhưng không coi đây là trải nghiệm người dùng đang sống. Xác minh source/fixture, không thay thế E2E đúng SHA/role/TEST."
+  },
+  "f7c455718578a4ba": {
+    "status": "background-only",
+    "file": "src/pages/contracts/ContractsPage.tsx",
+    "line": 382,
+    "kind": "log",
+    "groups": "A11",
+    "evidence": "Review độc lập actual enclosing call và caller hiện hành: ContractsPage handleExport catch console.error rồi friendlyError đúng operation xuất danh sách hợp đồng + toast; finally trả isExporting. Không nuốt lỗi tải/xuất vào empty hoặc thành công. Xác minh source/fixture, không thay thế E2E đúng SHA/role/TEST."
+  },
+  "628f125779b7d2d8": {
+    "status": "fixed",
+    "file": "src/hooks/useBuildings.ts",
+    "line": 29,
+    "kind": "useQuery",
+    "groups": "I01/A06",
+    "evidence": "Bổ sung xác minh đúng caller mobile DashboardMobilePage, không sửa source hook: useBuildings → QueryRegion riêng danh sách tòa, giữ lựa chọn persisted khi lỗi và retry; không suy lỗi thành không có tòa. final-mobile-dashboard-regions-red.json: 8/9 lỗi đúng vùng thiếu trước sửa; final-mobile-dashboard-regions-green-2.json: 21/21, gồm 11 DOM mobile, 3 DOM caller hợp đồng trước và 7 QueryRegion. Source/fixture only; không suy E2E mọi caller hay role/TEST."
+  },
+  "539a99e3654ae87d": {
+    "status": "fixed",
+    "file": "src/hooks/useDashboard.ts",
+    "line": 109,
+    "kind": "useQuery",
+    "groups": "I01/A06",
+    "evidence": "Bổ sung xác minh đúng caller mobile DashboardMobilePage, không sửa source hook: useDashboardStats → QueryRegion số liệu bảng tin; thiếu/error không còn spinner che toàn trang. Các khối độc lập vẫn hiển thị. final-mobile-dashboard-regions-red.json: 8/9 lỗi đúng vùng thiếu trước sửa; final-mobile-dashboard-regions-green-2.json: 21/21, gồm 11 DOM mobile, 3 DOM caller hợp đồng trước và 7 QueryRegion. Source/fixture only; không suy E2E mọi caller hay role/TEST."
+  },
+  "4dfb2d6907a6da77": {
+    "status": "fixed",
+    "file": "src/hooks/useDashboard.ts",
+    "line": 135,
+    "kind": "useQuery",
+    "groups": "I01/A06",
+    "evidence": "Bổ sung xác minh đúng caller mobile DashboardMobilePage, không sửa source hook: useRevenueChart → QueryRegion doanh thu theo tháng; lỗi không thành biểu đồ rỗng, retry đúng revenue. final-mobile-dashboard-regions-red.json: 8/9 lỗi đúng vùng thiếu trước sửa; final-mobile-dashboard-regions-green-2.json: 21/21, gồm 11 DOM mobile, 3 DOM caller hợp đồng trước và 7 QueryRegion. Source/fixture only; không suy E2E mọi caller hay role/TEST."
+  },
+  "e3c5834698d00e93": {
+    "status": "fixed",
+    "file": "src/hooks/useDashboard.ts",
+    "line": 192,
+    "kind": "useQuery",
+    "groups": "I01/A06",
+    "evidence": "Bổ sung xác minh đúng caller mobile DashboardMobilePage, không sửa source hook: useOccupancyChart → QueryRegion tỷ lệ lấp đầy với statsQuery vì totalRooms dùng số liệu thống kê trước fallback. Retry hai nguồn cần thiết, không tính tỷ lệ từ nguồn lỗi. final-mobile-dashboard-regions-red.json: 8/9 lỗi đúng vùng thiếu trước sửa; final-mobile-dashboard-regions-green-2.json: 21/21, gồm 11 DOM mobile, 3 DOM caller hợp đồng trước và 7 QueryRegion. Source/fixture only; không suy E2E mọi caller hay role/TEST."
+  },
+  "d2e754d750c1ed70": {
+    "status": "fixed",
+    "file": "src/hooks/useDashboard.ts",
+    "line": 227,
+    "kind": "useQuery",
+    "groups": "I01/A06",
+    "evidence": "Bổ sung xác minh đúng caller mobile DashboardMobilePage, không sửa source hook: useAlerts → QueryRegion cảnh báo: lỗi không thành không có cảnh báo hoặc hệ thống bình thường. Empty đã xác nhận nói không có cảnh báo trong phạm vi đang xem; dữ liệu cũ lỗi mạng có timestamp, lỗi quyền khóa dữ liệu cũ. final-mobile-dashboard-regions-red.json: 8/9 lỗi đúng vùng thiếu trước sửa; final-mobile-dashboard-regions-green-2.json: 21/21, gồm 11 DOM mobile, 3 DOM caller hợp đồng trước và 7 QueryRegion. Source/fixture only; không suy E2E mọi caller hay role/TEST."
+  },
+  "a64bf90b5a33fc1b": {
+    "status": "fixed",
+    "file": "src/hooks/useDashboard.ts",
+    "line": 383,
+    "kind": "useQuery",
+    "groups": "I01/A06",
+    "evidence": "Bổ sung xác minh đúng caller mobile DashboardMobilePage, không sửa source hook: useRecentActivities → QueryRegion hoạt động gần đây; lỗi không thành chưa có hoạt động. Empty thật vẫn đúng, retry riêng. final-mobile-dashboard-regions-red.json: 8/9 lỗi đúng vùng thiếu trước sửa; final-mobile-dashboard-regions-green-2.json: 21/21, gồm 11 DOM mobile, 3 DOM caller hợp đồng trước và 7 QueryRegion. Source/fixture only; không suy E2E mọi caller hay role/TEST."
+  },
+  "2cd631f35ab5105d": {
+    "status": "fixed",
+    "file": "src/hooks/useLeads.ts",
+    "line": 39,
+    "kind": "useQuery",
+    "groups": "I01/A06",
+    "evidence": "Bổ sung xác minh đúng caller mobile DashboardMobilePage, không sửa source hook: useLeads → QueryRegion tổng quan khách hẹn, không lấy [] fallback làm bốn số 0 khi nguồn lỗi. Công thức và phạm vi lọc hiện có giữ nguyên. final-mobile-dashboard-regions-red.json: 8/9 lỗi đúng vùng thiếu trước sửa; final-mobile-dashboard-regions-green-2.json: 21/21, gồm 11 DOM mobile, 3 DOM caller hợp đồng trước và 7 QueryRegion. Source/fixture only; không suy E2E mọi caller hay role/TEST."
+  },
+  "483549264d5bc3a9": {
+    "status": "fixed",
+    "file": "src/hooks/useDeposits.ts",
+    "line": 267,
+    "kind": "useQuery",
+    "groups": "I01/A06",
+    "evidence": "Bổ sung xác minh đúng caller mobile DashboardMobilePage, không sửa source hook: useDeposits → QueryRegion tổng quan đặt cọc, lỗi không thành bốn số 0. Giữ bộ lọc và công thức, retry không tải lại các nguồn độc lập. final-mobile-dashboard-regions-red.json: 8/9 lỗi đúng vùng thiếu trước sửa; final-mobile-dashboard-regions-green-2.json: 21/21, gồm 11 DOM mobile, 3 DOM caller hợp đồng trước và 7 QueryRegion. Source/fixture only; không suy E2E mọi caller hay role/TEST."
+  },
+  "d60d57e741aa8f42": {
+    "status": "already-correct",
+    "file": "src/hooks/useVoucherDetail.ts",
+    "line": 29,
+    "kind": "useQuery",
+    "groups": "I05/C27",
+    "caller": "useVoucherWithBatch",
+    "evidence": "I05/C27 · src/hooks/useVoucherDetail.ts:29 (useVoucherWithBatch;useQuery): Đã đọc enclosing loadVoucherWithBatch: detail/link/batch/pagedlinks và hydrate source thật giữ throw; confirmed missing header/batch tách null, không fake phiếu. Main áp deadline45s, meta.silent để detail UI sở hữu lỗi; query retry:false/stale0/refetchOnMount always giữ. File exactmain trong finance-main-merge-parity.json; batchDetailRead2/voucherReadState10 thuộc131/131 và independent210/210. Không đổi filters/lookup/writer/rules; chưa browser/RLS thật mọi vai."
+  }
+}

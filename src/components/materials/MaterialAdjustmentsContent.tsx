@@ -35,9 +35,11 @@ import {
   type MaterialAdjustmentWithItems,
 } from '@/hooks/useMaterialAdjustments';
 import { format } from 'date-fns';
+import { QueryRegion } from '@/components/errors/QueryRegion';
 
 export default function MaterialAdjustmentsContent() {
-  const { data: adjustments = [], isLoading } = useMaterialAdjustments();
+  const adjustmentsQuery = useMaterialAdjustments();
+  const { data: adjustments = [], isLoading } = adjustmentsQuery;
   const deleteMut = useDeleteMaterialAdjustment();
 
   const [formOpen, setFormOpen] = useState(false);
@@ -55,6 +57,7 @@ export default function MaterialAdjustmentsContent() {
   };
 
   return (
+    <QueryRegion label="danh sách phiếu kiểm kê vật tư" queries={[adjustmentsQuery]}>
     <div className="space-y-4">
       <div className="flex justify-end">
         <Button onClick={() => setFormOpen(true)} className="gap-1.5">
@@ -216,5 +219,6 @@ export default function MaterialAdjustmentsContent() {
         </AlertDialogContent>
       </AlertDialog>
     </div>
+    </QueryRegion>
   );
 }

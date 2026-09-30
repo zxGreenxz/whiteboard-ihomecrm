@@ -35,6 +35,7 @@ export const useRoomPriceHistory = (
   return useQuery({
     enabled: (options?.enabled ?? true) && !!roomId,
     queryKey: ["room-price-history", roomId, limit],
+    meta: { errorDisplay: "inline", label: "lịch sử giá" },
     queryFn: async (): Promise<RoomPriceHistoryEntry[]> => {
       const { data, error } = await supabase
         .from("room_price_history")

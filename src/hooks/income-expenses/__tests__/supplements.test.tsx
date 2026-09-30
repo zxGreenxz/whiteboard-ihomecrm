@@ -36,7 +36,7 @@ describe('supplement read and mutation boundary', () => {
   });
   it('keeps read failures as errors instead of reporting an empty successful history', async () => {
     state.error = { message: 'fixture error' };
-    await expect(hydrateIncomeExpenseSupplements([{ id: voucherId }])).rejects.toThrow('Không tải được');
+    await expect(hydrateIncomeExpenseSupplements([{ id: voucherId }])).rejects.toBe(state.error);
   });
   it('sends only additions and a retry identity, parses the saved response', async () => {
     state.rpc.mockResolvedValue({ data: { id: row.id, income_expense_id: voucherId, changed: true }, error: null });

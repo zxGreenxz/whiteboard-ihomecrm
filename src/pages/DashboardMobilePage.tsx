@@ -1,3 +1,4 @@
+import { QueryRegion } from '@/components/errors/QueryRegion';
 import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -93,22 +94,31 @@ export default function DashboardMobilePage() {
   const now = useMemo(() => new Date(), []);
   const period = `Kỳ ${String(now.getMonth() + 1).padStart(2, "0")}/${now.getFullYear()}`;
 
-  const { data: buildingsData } = useBuildings();
+  const buildingsQuery = useBuildings();
+  const { data: buildingsData } = buildingsQuery;
   const buildings = useMemo(
     () => (Array.isArray(buildingsData) ? (buildingsData as Array<{ id: string; name: string }>) : []),
     [buildingsData],
   );
 
-  const { data: stats } = useDashboardStats(buildingId);
-  const { data: revenue = [] } = useRevenueChart(12, buildingId);
-  const { data: occupancy = [] } = useOccupancyChart(buildingId);
-  const { data: alerts = [] } = useAlerts(buildingId);
-  const { data: activities = [] } = useRecentActivities(buildingId);
+  const statsQuery = useDashboardStats(buildingId);
+  const revenueQuery = useRevenueChart(12, buildingId);
+  const occupancyQuery = useOccupancyChart(buildingId);
+  const alertsQuery = useAlerts(buildingId);
+  const activitiesQuery = useRecentActivities(buildingId);
+  const { data: stats } = statsQuery;
+  const { data: revenue = [] } = revenueQuery;
+  const { data: occupancy = [] } = occupancyQuery;
+  const { data: alerts = [] } = alertsQuery;
+  const { data: activities = [] } = activitiesQuery;
 
   // Tổng quan vận hành — tính y hệt OperationsSummary desktop.
-  const { data: leads = [] } = useLeads();
-  const { data: deposits = [] } = useDeposits();
-  const { data: contractCounts } = useContractDashboardCounts(buildingId);
+  const leadsQuery = useLeads();
+  const depositsQuery = useDeposits();
+  const { data: leads = [] } = leadsQuery;
+  const { data: deposits = [] } = depositsQuery;
+  const contractCountsQuery = useContractDashboardCounts(buildingId);
+  const { data: contractCounts } = contractCountsQuery;
 
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const newLeads = leads.filter((l: any) => l.created_at && new Date(l.created_at) >= startOfMonth).length;
@@ -121,6 +131,7 @@ export default function DashboardMobilePage() {
   const ops = [
     {
       title: "Tổng quan khách hẹn",
+      queries: [leadsQuery],
       Icon: UserPlus,
       iconC: "#2563eb",
       to: "/leads",
@@ -133,6 +144,7 @@ export default function DashboardMobilePage() {
     },
     {
       title: "Tổng quan đặt cọc",
+      queries: [depositsQuery],
       Icon: Wallet,
       iconC: "#d97706",
       to: "/deposits",
@@ -145,6 +157,7 @@ export default function DashboardMobilePage() {
     },
     {
       title: "Tổng quan hợp đồng",
+      queries: [contractCountsQuery],
       Icon: FileSignature,
       iconC: "#1f9d57",
       to: "/contracts",
@@ -190,244 +203,250 @@ export default function DashboardMobilePage() {
                 <Calendar size={15} />
                 <span>{period}</span>
               </div>
-              <select
-                className="cm-select dash-bld"
-                value={building}
-                onChange={(e) => setBuilding(e.target.value)}
-                aria-label="Toà nhà"
-              >
-                <option value="">Tất cả toà</option>
-                {buildings.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name}
-                  </option>
-                ))}
-              </select>
+              <QueryRegion label="danh sách tòa nhà" queries={[buildingsQuery]}>
+                <select
+                  className="cm-select dash-bld"
+                  value={building}
+                  onChange={(e) => setBuilding(e.target.value)}
+                  aria-label="Toà nhà"
+                >
+                  <option value="">Tất cả toà</option>
+                  {buildings.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+              </QueryRegion>
             </div>
 
-            {!stats ? (
-              <div className="stub">
-                <p>Đang tải bảng tin…</p>
-              </div>
-            ) : (
-              <>
-                {/* KPI */}
-                <div className="kgrid">
-                  {kpis.map((k) => {
-                    const Ico = k.Icon;
-                    return (
-                      <div className="kcard" key={k.label} style={{ borderLeftColor: k.accent }}>
-                        <div className="kc-top">
-                          <span className="kc-lbl">{k.label}</span>
-                          <span className="kc-ic" style={{ background: k.accent + "1f", color: k.accent }}>
-                            <Ico size={16} />
-                          </span>
-                        </div>
-                        <div className="kc-val">{k.value}</div>
-                        <div className="kc-sub">{k.sub}</div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Tỷ lệ lấp đầy */}
-                <div className="cd-card">
-                  <div className="cd-card-h">
-                    <span className="cd-card-t">
-                      <DoorOpen size={16} />
-                      Tỷ lệ lấp đầy
-                    </span>
-                    <span
-                      className="cd-count"
-                      style={{ background: "transparent", color: "var(--ink-3)", border: 0 }}
-                    >
-                      {totalRooms} phòng
-                    </span>
-                  </div>
-                  <div className="occ-bar">
-                    {occupancy.map((o) => (
-                      <div
-                        key={o.status}
-                        style={{ width: o.percentage + "%", background: OCC_COLOR[o.status] || "#cbd2cb" }}
-                        title={o.status}
-                      />
-                    ))}
-                  </div>
-                  <div className="occ-legend">
-                    {occupancy.map((o) => (
-                      <div className="occ-leg" key={o.status}>
-                        <span className="occ-dot" style={{ background: OCC_COLOR[o.status] || "#cbd2cb" }} />
-                        <span className="occ-leg-l">{o.status}</span>
-                        <span className="occ-leg-v">
-                          {o.count}
-                          <small> · {Number(o.percentage).toFixed(1)}%</small>
+            {/* KPI */}
+            <QueryRegion label="số liệu bảng tin" queries={[statsQuery]}>
+              <div className="kgrid">
+                {kpis.map((k) => {
+                  const Ico = k.Icon;
+                  return (
+                    <div className="kcard" key={k.label} style={{ borderLeftColor: k.accent }}>
+                      <div className="kc-top">
+                        <span className="kc-lbl">{k.label}</span>
+                        <span className="kc-ic" style={{ background: k.accent + "1f", color: k.accent }}>
+                          <Ico size={16} />
                         </span>
                       </div>
-                    ))}
-                  </div>
-                </div>
+                      <div className="kc-val">{k.value}</div>
+                      <div className="kc-sub">{k.sub}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </QueryRegion>
 
-                {/* Doanh thu theo tháng */}
-                <div className="cd-card">
-                  <div className="cd-card-h">
-                    <span className="cd-card-t">
-                      <TrendingUp size={16} />
-                      Doanh thu theo tháng
-                    </span>
-                    {typeof lastGrowth === "number" && (
-                      <span className={"occ-growth" + (lastGrowth < 0 ? " down" : "")}>
-                        {lastGrowth < 0 ? <TrendingDown size={12} /> : <TrendingUp size={12} />}
-                        {lastGrowth > 0 ? "+" : ""}
-                        {lastGrowth.toFixed(1)}%
+            {/* Tỷ lệ lấp đầy */}
+            <QueryRegion label="tỷ lệ lấp đầy" queries={[occupancyQuery, statsQuery]}>
+              <div className="cd-card">
+                <div className="cd-card-h">
+                  <span className="cd-card-t">
+                    <DoorOpen size={16} />
+                    Tỷ lệ lấp đầy
+                  </span>
+                  <span
+                    className="cd-count"
+                    style={{ background: "transparent", color: "var(--ink-3)", border: 0 }}
+                  >
+                    {totalRooms} phòng
+                  </span>
+                </div>
+                <div className="occ-bar">
+                  {occupancy.map((o) => (
+                    <div
+                      key={o.status}
+                      style={{ width: o.percentage + "%", background: OCC_COLOR[o.status] || "#cbd2cb" }}
+                      title={o.status}
+                    />
+                  ))}
+                </div>
+                <div className="occ-legend">
+                  {occupancy.map((o) => (
+                    <div className="occ-leg" key={o.status}>
+                      <span className="occ-dot" style={{ background: OCC_COLOR[o.status] || "#cbd2cb" }} />
+                      <span className="occ-leg-l">{o.status}</span>
+                      <span className="occ-leg-v">
+                        {o.count}
+                        <small> · {Number(o.percentage).toFixed(1)}%</small>
                       </span>
-                    )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </QueryRegion>
+
+            {/* Doanh thu theo tháng */}
+            <QueryRegion label="doanh thu theo tháng" queries={[revenueQuery]}>
+              <div className="cd-card">
+                <div className="cd-card-h">
+                  <span className="cd-card-t">
+                    <TrendingUp size={16} />
+                    Doanh thu theo tháng
+                  </span>
+                  {typeof lastGrowth === "number" && (
+                    <span className={"occ-growth" + (lastGrowth < 0 ? " down" : "")}>
+                      {lastGrowth < 0 ? <TrendingDown size={12} /> : <TrendingUp size={12} />}
+                      {lastGrowth > 0 ? "+" : ""}
+                      {lastGrowth.toFixed(1)}%
+                    </span>
+                  )}
+                </div>
+                <div className="chart">
+                  {revenue.map((r, i) => (
+                    <div className="chart-bw" key={r.month + i}>
+                      <div
+                        className="chart-bar"
+                        style={{
+                          height: (r.revenue / maxRev) * 100 + "%",
+                          background: i === revenue.length - 1 ? "var(--brand)" : undefined,
+                        }}
+                      />
+                      <span className="chart-x">{monthLabel(r.month)}</span>
+                    </div>
+                  ))}
+                </div>
+                <p className="panel-s">12 tháng gần nhất · triệu ₫</p>
+              </div>
+            </QueryRegion>
+
+            {/* Tổng quan vận hành */}
+            <p className="dash-sec">Tổng quan vận hành</p>
+            <div className="ops">
+              {ops.map((b) => {
+                const Ico = b.Icon;
+                return (
+                  <div className="opsb" key={b.title}>
+                    <div className="opsb-h">
+                      <span className="opsb-ic" style={{ background: b.iconC + "1c", color: b.iconC }}>
+                        <Ico size={16} />
+                      </span>
+                      <span className="opsb-t">{b.title}</span>
+                      <button className="opsb-go" onClick={() => navigate(b.to)}>
+                        Xem
+                        <ChevronRight size={13} />
+                      </button>
+                    </div>
+                    <QueryRegion label={b.title.toLowerCase()} queries={b.queries}>
+                      <div className="opsb-grid">
+                        {b.stats.map((s) => (
+                          <div className="opsb-stat" key={s.label}>
+                            <span className="opsb-v" style={{ color: s.tone || "var(--ink)" }}>
+                              {s.value}
+                            </span>
+                            <span className="opsb-l">{s.label}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </QueryRegion>
                   </div>
-                  <div className="chart">
-                    {revenue.map((r, i) => (
-                      <div className="chart-bw" key={r.month + i}>
+                );
+              })}
+            </div>
+
+            {/* Cảnh báo & Thông báo */}
+            <QueryRegion label="cảnh báo" queries={[alertsQuery]}>
+              <div className="cd-card">
+                <div className="cd-card-h">
+                  <span className="cd-card-t">
+                    <AlertTriangle size={16} />
+                    Cảnh báo & Thông báo
+                  </span>
+                  <span className="cd-count">{alerts.length}</span>
+                </div>
+                {alerts.length === 0 ? (
+                  <p className="panel-s" style={{ margin: 0 }}>
+                    Không có cảnh báo trong phạm vi đang xem.
+                  </p>
+                ) : (
+                  <div className="alerts">
+                    {alerts.map((a) => {
+                      const cfg = SEVERITY[a.severity] || SEVERITY.low;
+                      const Ico = cfg.Icon;
+                      return (
                         <div
-                          className="chart-bar"
-                          style={{
-                            height: (r.revenue / maxRev) * 100 + "%",
-                            background: i === revenue.length - 1 ? "var(--brand)" : undefined,
-                          }}
-                        />
-                        <span className="chart-x">{monthLabel(r.month)}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <p className="panel-s">12 tháng gần nhất · triệu ₫</p>
-                </div>
-
-                {/* Tổng quan vận hành */}
-                <p className="dash-sec">Tổng quan vận hành</p>
-                <div className="ops">
-                  {ops.map((b) => {
-                    const Ico = b.Icon;
-                    return (
-                      <div className="opsb" key={b.title}>
-                        <div className="opsb-h">
-                          <span className="opsb-ic" style={{ background: b.iconC + "1c", color: b.iconC }}>
-                            <Ico size={16} />
+                          className={"alert" + (a.link ? " tap" : "")}
+                          key={a.id}
+                          onClick={() => a.link && navigate(a.link)}
+                        >
+                          <span className="alert-ic" style={{ background: cfg.bg, color: cfg.c }}>
+                            <Ico size={17} />
                           </span>
-                          <span className="opsb-t">{b.title}</span>
-                          <button className="opsb-go" onClick={() => navigate(b.to)}>
-                            Xem
-                            <ChevronRight size={13} />
-                          </button>
-                        </div>
-                        <div className="opsb-grid">
-                          {b.stats.map((s) => (
-                            <div className="opsb-stat" key={s.label}>
-                              <span className="opsb-v" style={{ color: s.tone || "var(--ink)" }}>
-                                {s.value}
+                          <div className="alert-body">
+                            <div className="alert-top">
+                              <span className="alert-t">{a.title}</span>
+                              <span className="alert-badge" style={{ background: cfg.bg, color: cfg.c }}>
+                                {ALERT_LABEL[a.type] || "Thông báo"}
                               </span>
-                              <span className="opsb-l">{s.label}</span>
                             </div>
-                          ))}
+                            <div className="alert-desc">{a.description}</div>
+                            <div className="alert-date">
+                              {format(new Date(a.date), "dd/MM/yyyy HH:mm", { locale: vi })}
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Cảnh báo & Thông báo */}
-                <div className="cd-card">
-                  <div className="cd-card-h">
-                    <span className="cd-card-t">
-                      <AlertTriangle size={16} />
-                      Cảnh báo & Thông báo
-                    </span>
-                    <span className="cd-count">{alerts.length}</span>
+                      );
+                    })}
                   </div>
-                  {alerts.length === 0 ? (
-                    <p className="panel-s" style={{ margin: 0 }}>
-                      Không có cảnh báo — hệ thống đang hoạt động bình thường.
-                    </p>
-                  ) : (
-                    <div className="alerts">
-                      {alerts.map((a) => {
-                        const cfg = SEVERITY[a.severity] || SEVERITY.low;
-                        const Ico = cfg.Icon;
-                        return (
-                          <div
-                            className={"alert" + (a.link ? " tap" : "")}
-                            key={a.id}
-                            onClick={() => a.link && navigate(a.link)}
-                          >
-                            <span className="alert-ic" style={{ background: cfg.bg, color: cfg.c }}>
-                              <Ico size={17} />
-                            </span>
-                            <div className="alert-body">
-                              <div className="alert-top">
-                                <span className="alert-t">{a.title}</span>
-                                <span className="alert-badge" style={{ background: cfg.bg, color: cfg.c }}>
-                                  {ALERT_LABEL[a.type] || "Thông báo"}
+                )}
+              </div>
+            </QueryRegion>
+
+            {/* Hoạt động gần đây */}
+            <QueryRegion label="hoạt động gần đây" queries={[activitiesQuery]}>
+              <div className="cd-card">
+                <div className="cd-card-h">
+                  <span className="cd-card-t">
+                    <Clock size={16} />
+                    Hoạt động gần đây
+                  </span>
+                  <span
+                    className="cd-count"
+                    style={{ background: "transparent", color: "var(--ink-3)", border: 0 }}
+                  >
+                    7 ngày qua
+                  </span>
+                </div>
+                {activities.length === 0 ? (
+                  <p className="panel-s" style={{ margin: 0 }}>
+                    Chưa có hoạt động nào.
+                  </p>
+                ) : (
+                  <div className="feed">
+                    {activities.map((a) => {
+                      const cfg = ACTIVITY[a.type] || ACTIVITY.contract;
+                      const Ico = cfg.Icon;
+                      return (
+                        <div className="feed-it" key={a.id}>
+                          <span className="feed-ic" style={{ background: cfg.bg, color: cfg.c }}>
+                            <Ico size={15} />
+                          </span>
+                          <div className="feed-body">
+                            <div className="feed-top">
+                              <span className="feed-t">{a.title}</span>
+                              {a.amount ? (
+                                <span className="feed-amt">
+                                  +{compact(a.amount)}
+                                  <small>₫</small>
                                 </span>
-                              </div>
-                              <div className="alert-desc">{a.description}</div>
-                              <div className="alert-date">
-                                {format(new Date(a.date), "dd/MM/yyyy HH:mm", { locale: vi })}
-                              </div>
+                              ) : null}
                             </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-
-                {/* Hoạt động gần đây */}
-                <div className="cd-card">
-                  <div className="cd-card-h">
-                    <span className="cd-card-t">
-                      <Clock size={16} />
-                      Hoạt động gần đây
-                    </span>
-                    <span
-                      className="cd-count"
-                      style={{ background: "transparent", color: "var(--ink-3)", border: 0 }}
-                    >
-                      7 ngày qua
-                    </span>
-                  </div>
-                  {activities.length === 0 ? (
-                    <p className="panel-s" style={{ margin: 0 }}>
-                      Chưa có hoạt động nào.
-                    </p>
-                  ) : (
-                    <div className="feed">
-                      {activities.map((a) => {
-                        const cfg = ACTIVITY[a.type] || ACTIVITY.contract;
-                        const Ico = cfg.Icon;
-                        return (
-                          <div className="feed-it" key={a.id}>
-                            <span className="feed-ic" style={{ background: cfg.bg, color: cfg.c }}>
-                              <Ico size={15} />
+                            <div className="feed-desc">{a.description}</div>
+                            <span className="feed-w">
+                              {formatDistanceToNow(new Date(a.date), { addSuffix: true, locale: vi })}
                             </span>
-                            <div className="feed-body">
-                              <div className="feed-top">
-                                <span className="feed-t">{a.title}</span>
-                                {a.amount ? (
-                                  <span className="feed-amt">
-                                    +{compact(a.amount)}
-                                    <small>₫</small>
-                                  </span>
-                                ) : null}
-                              </div>
-                              <div className="feed-desc">{a.description}</div>
-                              <span className="feed-w">
-                                {formatDistanceToNow(new Date(a.date), { addSuffix: true, locale: vi })}
-                              </span>
-                            </div>
                           </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              </>
-            )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </QueryRegion>
           </div>
         </div>
       </div>

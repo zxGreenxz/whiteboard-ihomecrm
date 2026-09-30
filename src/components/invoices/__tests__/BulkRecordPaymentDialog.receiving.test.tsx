@@ -114,3 +114,15 @@ it('phòng vừa được thu cùng số tiền trong 30 phút: hỏi lại rồ
   await waitFor(() => expect(mocks.ghi).toHaveBeenCalledTimes(1));
   expect(mocks.recent).toHaveBeenCalledTimes(1);
 });
+
+it('D08 kiểm tra khoản thu gần đây lỗi: giữ số tiền, không mời bỏ qua và chỉ tiếp sau lần đọc thành công', async () => {
+  mocks.recent.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+  await nhapTien('TM', '1.000.000');
+  fireEvent.click(screen.getByRole('button', { name: /Ghi nhận 1 thanh toán/ }));
+  expect(await screen.findByText('Chưa kiểm tra được các khoản thu gần đây. Chưa gửi lệnh thu tiền; dữ liệu đã nhập vẫn được giữ. Bấm ghi nhận để kiểm tra lại.')).toBeTruthy();
+  expect(screen.queryByRole('button', {name:'Vẫn thu tiếp'})).toBeNull();
+  expect(mocks.ghi).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: /Ghi nhận 1 thanh toán/ }));
+  await waitFor(()=>expect(mocks.ghi).toHaveBeenCalledOnce());
+  expect(mocks.recent).toHaveBeenCalledTimes(2);
+});

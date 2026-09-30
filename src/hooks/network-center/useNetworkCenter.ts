@@ -345,6 +345,7 @@ export function useNetworkCenter(selectedBuildingId?: string) {
   }, [actor.id, fleetKey, physicalBuildingById, queryClient]);
 
   const acknowledgeMutation = useMutation({
+    meta: { handlesFeedback: true },
     mutationFn: (variables: { buildingId: string; incidentId: string; requestId: string }) =>
       requireRepository().acknowledgeIncident(
         variables.buildingId,
@@ -355,6 +356,7 @@ export function useNetworkCenter(selectedBuildingId?: string) {
     onSuccess: (_, variables) => invalidateBuilding(variables.buildingId),
   });
   const createMaintenanceMutation = useMutation({
+    meta: { handlesFeedback: true },
     mutationFn: (variables: {
       buildingId: string;
       input: MaintenanceInput;
@@ -368,6 +370,7 @@ export function useNetworkCenter(selectedBuildingId?: string) {
     onSuccess: (_, variables) => invalidateBuilding(variables.buildingId),
   });
   const cancelMaintenanceMutation = useMutation({
+    meta: { handlesFeedback: true },
     mutationFn: (variables: {
       buildingId: string;
       maintenanceId: string;
@@ -381,6 +384,7 @@ export function useNetworkCenter(selectedBuildingId?: string) {
     onSuccess: (_, variables) => invalidateBuilding(variables.buildingId),
   });
   const captureConfigurationMutation = useMutation({
+    meta: { handlesFeedback: true },
     mutationFn: (variables: { buildingId: string; label: string; requestId: string }) =>
       requireRepository().captureConfiguration(
         variables.buildingId,
@@ -391,6 +395,7 @@ export function useNetworkCenter(selectedBuildingId?: string) {
     onSuccess: (_, variables) => invalidateBuilding(variables.buildingId),
   });
   const executeActionMutation = useMutation({
+    meta: { handlesFeedback: true },
     mutationFn: (variables: {
       buildingId: string;
       request: NetworkActionRequest;
@@ -404,6 +409,7 @@ export function useNetworkCenter(selectedBuildingId?: string) {
     onSuccess: (_, variables) => invalidateBuilding(variables.buildingId),
   });
   const updateSettingsMutation = useMutation({
+    meta: { handlesFeedback: true },
     mutationFn: (variables: {
       buildingId: string;
       settings: Partial<NetworkSettings>;

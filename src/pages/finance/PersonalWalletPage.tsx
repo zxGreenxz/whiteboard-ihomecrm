@@ -9,7 +9,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialog, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
@@ -32,6 +32,7 @@ import {
   computeShareholderSummary,
 } from "@/hooks/useShareholderProfit";
 import { usePersistedState } from "@/hooks/usePersistedState";
+import { QueryRegion } from "@/components/errors/QueryRegion";
 
 export default function PersonalWalletPage() {
   const [year, setYear] = usePersistedState("flt:personal-wallet:year", currentYear());
@@ -39,13 +40,17 @@ export default function PersonalWalletPage() {
   const [editing, setEditing] = useState<PersonalTransaction | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
-  const { data: txns = [] } = usePersonalTransactions();
+  const txnsQuery = usePersonalTransactions();
+  const { data: txns = [] } = txnsQuery;
   const deleteMut = useDeletePersonalTransaction();
 
   // Banner cổ đông (nếu user là cổ đông): còn lại được nhận từ công ty.
-  const { data: me } = useMyShareholder();
-  const { data: allocations = [] } = useProfitAllocations();
-  const { data: distributions = [] } = useShareholderDistributions();
+  const shareholderQuery = useMyShareholder();
+  const allocationsQuery = useProfitAllocations();
+  const distributionsQuery = useShareholderDistributions();
+  const { data: me } = shareholderQuery;
+  const { data: allocations = [] } = allocationsQuery;
+  const { data: distributions = [] } = distributionsQuery;
   const companyRemaining = useMemo(() => {
     if (!me) return null;
     const s = computeShareholderSummary([me.id], allocations, distributions)[me.id];
@@ -91,7 +96,9 @@ export default function PersonalWalletPage() {
 
   return (
     <MainLayout title="Ví thu chi cá nhân" subtitle="Tài chính → Cá nhân" icon={Wallet}>
+      <QueryRegion label="giao dịch ví cá nhân" queries={[txnsQuery]}>
       <div className="space-y-4">
+        <QueryRegion label="phần lợi nhuận cổ đông" queries={[shareholderQuery, allocationsQuery, distributionsQuery]}>
         {companyRemaining && (
           <Card className="border-blue-200 bg-blue-50">
             <CardContent className="p-4 flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
@@ -102,6 +109,7 @@ export default function PersonalWalletPage() {
             </CardContent>
           </Card>
         )}
+        </QueryRegion>
 
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
           <StatCard label="Tổng thu" value={formatCurrency(totals.income)} icon={ArrowDownCircle} tone="green" />
@@ -217,10 +225,14 @@ export default function PersonalWalletPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Huỷ</AlertDialogCancel>
-            <AlertDialogAction className="bg-red-600 hover:bg-red-700" onClick={async () => { if (deleteId) await deleteMut.mutateAsync(deleteId); setDeleteId(null); }}>Xoá</AlertDialogAction>
+            <Button variant="destructive" disabled={deleteMut.isPending} onClick={async () => {
+              if (!deleteId) return;
+              try { await deleteMut.mutateAsync(deleteId); setDeleteId(null); } catch { /* hook báo lỗi; giữ hộp thoại để đối chiếu */ }
+            }}>{deleteMut.isPending ? 'Đang xóa...' : 'Xóa'}</Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      </QueryRegion>
     </MainLayout>
   );
 }

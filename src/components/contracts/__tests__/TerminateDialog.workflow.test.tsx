@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ContractWithRelations } from '@/types/contract';
 
 const spies = vi.hoisted(() => ({ confirm: vi.fn(), finalize: vi.fn(), invoices: vi.fn(), credit: vi.fn() }));
+const finance = vi.hoisted(() => ({ invoiceError: false, creditError: false }));
 const meters = vi.hoisted(() => ({ data: [], isPending: false, isError: false }));
 const transfers = vi.hoisted(() => ({ data: [] as unknown[], isPending: false, isError: false, finalize: vi.fn() }));
 vi.mock('@/hooks/contracts/useContractTransferLinks', () => ({
@@ -15,8 +16,8 @@ vi.mock('@/hooks/useContractExitCases', () => ({
   useConfirmContractReturn: () => ({ mutateAsync: spies.confirm, isPending: false }),
   useFinalizeContractExitCase: () => ({ mutateAsync: spies.finalize, isPending: false }),
 }));
-vi.mock('@/hooks/useContracts', () => ({ useUnpaidInvoices: (id?: string) => { spies.invoices(id); return { data: [] }; } }));
-vi.mock('@/hooks/useInvoices', () => ({ useExcessAmount: (id?: string) => { spies.credit(id); return { data: 0 }; } }));
+vi.mock('@/hooks/useContracts', () => ({ useUnpaidInvoices: (id?: string) => { spies.invoices(id); return { data: finance.invoiceError ? undefined : [], isError: finance.invoiceError }; } }));
+vi.mock('@/hooks/useInvoices', () => ({ useExcessAmount: (id?: string) => { spies.credit(id); return { data: finance.creditError ? undefined : 0, isError: finance.creditError }; } }));
 vi.mock('@/hooks/useAccounts', () => ({ useAccounts: () => ({ data: [] }) }));
 vi.mock('../TerminationExtraCharges', () => ({ TerminationExtraCharges: () => null }));
 vi.mock('../TerminationRefundItems', () => ({ TerminationRefundItems: () => null }));
@@ -27,10 +28,19 @@ const contract = { id: 'a1111111-1111-4111-8111-111111111111', updated_at: '2026
   status: 'ACTIVE', start_date: '2026-01-01', end_date: '2026-12-31', expected_move_out_date: null,
   contract_customers: [], total_deposit: 4_000_000, deposit_paid: 4_000_000,
 } as ContractWithRelations;
-beforeEach(() => { vi.clearAllMocks(); transfers.data=[]; spies.confirm.mockResolvedValue({ state: 'PENDING' }); });
+beforeEach(() => { vi.clearAllMocks(); transfers.data=[]; finance.invoiceError=false; finance.creditError=false; spies.confirm.mockResolvedValue({ state: 'PENDING' }); });
 afterEach(cleanup);
 
 describe('thanh lý tách bước trả phòng', () => {
+  it('không mở quyết toán tiền khi truy vấn công nợ hoặc credit lỗi', () => {
+    finance.invoiceError = true;
+    finance.creditError = true;
+    render(<TerminateDialog open onOpenChange={vi.fn()} contract={contract} exitCase={{id:'d1111111-1111-4111-8111-111111111111',current_kind:'EARLY_RETURN',initial_kind:'EARLY_RETURN',actual_move_out_on:'2026-09-28',version:1,state:'PENDING',kind_history:[]} as import('@/lib/contractExitCases').ContractExitCase} />);
+    fireEvent.click(screen.getByRole('button', { name: /Tiếp tục quyết toán/ }));
+    expect(screen.getByText(/Không tải được công nợ và số dư khách hàng/)).toBeTruthy();
+    expect(screen.queryByText(/Tổng công nợ chưa thu/)).toBeNull();
+    expect(spies.finalize).not.toHaveBeenCalled();
+  });
   it('phí nhượng chưa xác định giữ hồ sơ mở và báo rõ, không vỡ form', () => {
     transfers.data=[{id:'c1111111-1111-4111-8111-111111111111',state:'LINKED',mode:'BROKER',broker_fee:null,deposit_base:null,version:1}];
     render(<TerminateDialog open onOpenChange={vi.fn()} contract={contract} exitCase={{id:'d1111111-1111-4111-8111-111111111111',current_kind:'EARLY_RETURN',initial_kind:'EARLY_RETURN',actual_move_out_on:'2026-09-28',version:1,state:'PENDING',kind_history:[]} as import('@/lib/contractExitCases').ContractExitCase} />);

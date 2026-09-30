@@ -1,3 +1,4 @@
+import { readSalaryWriteReceipt, salarySettingsErrorMessage } from "@/lib/salarySettingsFeedback";
 // Khoản lương định kỳ + số ghi đè từng khoản (migration 20260927081925).
 // Đọc gắn vào useManagerSalary (fetchSalaryExtras); ghi qua bốn RPC có cổng
 // "super admin hoặc chủ công ty của đúng tổ chức người nhận lương" ở server.
@@ -35,9 +36,9 @@ export async function fetchSalaryExtras(orgIds: string[], periodMonth: string): 
         supabase.rpc("salary_recurring_list_v1", { p_organization_id: org, p_period_month: periodMonth }),
         supabase.rpc("salary_line_override_list_v1", { p_organization_id: org, p_period_month: periodMonth }),
       ]);
+      if (r.error && !thieuHam(r.error)) throw r.error;
+      if (o.error && !thieuHam(o.error)) throw o.error;
       if (thieuHam(r.error) || thieuHam(o.error)) return null;
-      if (r.error) throw r.error;
-      if (o.error) throw o.error;
       return { recurring: parseRecurringRows(r.data), overrides: parseOverrideRows(o.data) };
     }),
   );
@@ -55,7 +56,8 @@ export const useSalaryCanEditAmounts = (organizationId: string | null | undefine
       const { data, error } = await supabase.rpc("salary_can_edit_amounts_v1", { p_organization_id: organizationId as string });
       if (thieuHam(error)) return false;
       if (error) throw error;
-      return data === true;
+      if (typeof data !== "boolean") throw new TypeError("Unconfirmed salary edit permission");
+      return data;
     },
   });
 
@@ -65,19 +67,18 @@ export const useSalaryCanEditAmounts = (organizationId: string | null | undefine
  */
 export const newSalaryRequestKey = (prefix: "sal-rec" | "sal-recv" | "sal-ovr") => `${prefix}-${crypto.randomUUID()}`;
 
-function useSalaryWrite<I>(run: (input: I) => Promise<void>, ok: string) {
+function useSalaryWrite<I>(run: (input: I) => Promise<{id:string;replayed:boolean}>, ok: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: run,
     // Chờ bảng lương tải lại xong rồi mới báo xong: nút giữ "Đang lưu…" và hộp đóng
     // khi số trên màn đã là số mới (không để người dùng thấy số cũ sau khi bấm lưu).
-    onSuccess: async () => {
+    onSuccess: async (receipt) => {
       await qc.invalidateQueries({ queryKey: ["manager-salary"] });
-      toast.success(ok);
+      toast[receipt.replayed ? "info" : "success"](receipt.replayed ? "Yêu cầu đã được lưu trước đó. Không tạo thêm thay đổi." : ok);
     },
-    // Thông điệp server đã là tiếng Việt và phân loại sẵn (42501 quyền · 22023 dữ
-    // liệu · 55000 kỳ đã chốt) — hiện nguyên, không nuốt.
-    onError: (e: unknown) => toast.error((e as { message?: string } | null)?.message || "Không lưu được"),
+    // Chỉ giữ thông điệp nghiệp vụ đã đối chiếu RPC; lỗi lạ dùng ngữ cảnh an toàn.
+    onError: (error: unknown) => toast.error(salarySettingsErrorMessage(error,"lưu thay đổi khoản lương")),
   });
 }
 
@@ -95,7 +96,7 @@ export interface CreateRecurringInput {
 
 export const useCreateRecurring = () =>
   useSalaryWrite<CreateRecurringInput>(async (i) => {
-    const { error } = await supabase.rpc("salary_recurring_create_v1", {
+    const { data, error } = await supabase.rpc("salary_recurring_create_v1", {
       p_staff_id: i.staffId,
       p_label: i.label,
       p_category: i.category,
@@ -107,6 +108,7 @@ export const useCreateRecurring = () =>
       p_idempotency_key: i.requestKey,
     });
     if (error) throw error;
+    return readSalaryWriteReceipt(data,"item_id");
   }, "Đã tạo khoản định kỳ");
 
 export interface AddRecurringVersionInput {
@@ -120,7 +122,7 @@ export interface AddRecurringVersionInput {
 
 export const useAddRecurringVersion = () =>
   useSalaryWrite<AddRecurringVersionInput>(async (i) => {
-    const { error } = await supabase.rpc("salary_recurring_version_add_v1", {
+    const { data, error } = await supabase.rpc("salary_recurring_version_add_v1", {
       p_item_id: i.itemId,
       p_kind: i.kind,
       p_effective_month: i.effectiveMonth,
@@ -129,12 +131,14 @@ export const useAddRecurringVersion = () =>
       p_idempotency_key: i.requestKey,
     });
     if (error) throw error;
+    return readSalaryWriteReceipt(data,"version_id");
   }, "Đã lưu phiên bản mới");
 
 export const useDeleteRecurring = () =>
   useSalaryWrite<{ itemId: string; reason: string }>(async (i) => {
-    const { error } = await supabase.rpc("salary_recurring_delete_v1", { p_item_id: i.itemId, p_reason: i.reason });
+    const { data, error } = await supabase.rpc("salary_recurring_delete_v1", { p_item_id: i.itemId, p_reason: i.reason });
     if (error) throw error;
+    return readSalaryWriteReceipt(data,"item_id");
   }, "Đã xoá khoản định kỳ");
 
 export interface SetLineOverrideInput {
@@ -151,7 +155,7 @@ export interface SetLineOverrideInput {
 
 export const useSetLineOverride = () =>
   useSalaryWrite<SetLineOverrideInput>(async (i) => {
-    const { error } = await supabase.rpc("salary_line_override_set_v1", {
+    const { data, error } = await supabase.rpc("salary_line_override_set_v1", {
       p_staff_id: i.staffId,
       p_period_month: i.periodMonth,
       p_line_key: i.lineKey,
@@ -162,4 +166,5 @@ export const useSetLineOverride = () =>
       p_idempotency_key: i.requestKey,
     });
     if (error) throw error;
+    return readSalaryWriteReceipt(data,"override_id");
   }, "Đã lưu số tiền mới");

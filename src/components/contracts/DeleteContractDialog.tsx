@@ -1,3 +1,4 @@
+import { friendlyError } from '@/lib/friendlyError';
 import { useState, useEffect } from "react";
 import {
   AlertDialog,
@@ -26,6 +27,9 @@ export function DeleteContractDialog({
   contract,
 }: DeleteContractDialogProps) {
   const deleteContract = useDeleteContract();
+  const [readError, setReadError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [readAttempt, setReadAttempt] = useState(0);
   const [checking, setChecking] = useState(false);
   const [hasFinancialRecords, setHasFinancialRecords] = useState(false);
 
@@ -36,57 +40,69 @@ export function DeleteContractDialog({
       return;
     }
 
+    let active = true;
     const checkRecords = async () => {
       setChecking(true);
+      setReadError(null);
       try {
         // Check invoices
-        const { data: invoices } = await supabase
+        const { data: invoices, error: invoicesError } = await supabase
           .from("invoices")
           .select("id")
           .eq("contract_id", contract.id)
           .limit(1);
 
-        if (invoices && invoices.length > 0) {
+        if (!active) return;
+        if (invoicesError) throw invoicesError;
+        if (!Array.isArray(invoices)) throw new Error("Chưa tải đủ hóa đơn liên quan.");
+        if (invoices.length > 0) {
           setHasFinancialRecords(true);
           setChecking(false);
           return;
         }
 
         // Check termination records
-        const { data: terminations } = await supabase
+        const { data: terminations, error: terminationsError } = await supabase
           .from("contract_terminations")
           .select("id")
           .eq("contract_id", contract.id)
           .limit(1);
 
-        if (terminations && terminations.length > 0) {
+        if (!active) return;
+        if (terminationsError) throw terminationsError;
+        if (!Array.isArray(terminations)) throw new Error("Chưa tải đủ hồ sơ thanh lý liên quan.");
+        if (terminations.length > 0) {
           setHasFinancialRecords(true);
           setChecking(false);
           return;
         }
 
         setHasFinancialRecords(false);
-      } catch {
-        setHasFinancialRecords(false);
+      } catch (error) {
+        if (active) setReadError(friendlyError(error, "Chưa kiểm tra được dữ liệu liên quan", {operation:"kiểm tra hợp đồng trước khi xóa"}).description);
       } finally {
-        setChecking(false);
+        if (active) setChecking(false);
       }
     };
 
-    checkRecords();
-  }, [open, contract.id]);
+    void checkRecords();
+    return () => { active = false; };
+  }, [open, contract.id, readAttempt]);
 
-  const handleDelete = async () => {
+  const handleDelete = async (event: React.MouseEvent) => {
+    event.preventDefault();
+    setSaveError(null);
     try {
       await deleteContract.mutateAsync(contract.id);
       onOpenChange(false);
-    } catch {
-      // Error handled by mutation hook
+    } catch (error) {
+      setSaveError(friendlyError(error, "Chưa xóa được hợp đồng", {operation:"xóa hợp đồng"}).description);
+      // Mutation owns its toast
     }
   };
 
   const contractNumber = contract.contract_number || contract.id.slice(0, 8);
-  const canDelete = !checking && !hasFinancialRecords;
+  const canDelete = !checking && !readError && !hasFinancialRecords;
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -95,7 +111,7 @@ export function DeleteContractDialog({
           <AlertDialogTitle>Xác nhận xóa hợp đồng</AlertDialogTitle>
           <AlertDialogDescription asChild>
             <div className="space-y-3">
-              {checking ? (
+              {readError ? <div role="alert" className="text-destructive"><p>Chưa kiểm tra được hóa đơn và hồ sơ thanh lý của hợp đồng này.</p><p>{readError}</p><button type="button" onClick={()=>setReadAttempt(n=>n+1)}>Tải lại</button></div> : checking ? (
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" />
                   <span>Đang kiểm tra dữ liệu liên quan...</span>
@@ -128,6 +144,7 @@ export function DeleteContractDialog({
             </div>
           </AlertDialogDescription>
         </AlertDialogHeader>
+        {saveError && <p role="alert" className="text-sm text-destructive">{saveError}</p>}
         <AlertDialogFooter>
           <AlertDialogCancel>Hủy</AlertDialogCancel>
           {canDelete && (

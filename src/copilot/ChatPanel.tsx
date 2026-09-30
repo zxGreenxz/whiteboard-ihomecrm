@@ -1,9 +1,11 @@
+import {FinancialWorkflowError,workflowFeedbackDescription} from '@/lib/financialWorkflowError';
+import {focusFirstError} from '@/lib/formErrors';
+import {hasUnconfirmedResponse} from '@/lib/operationOutcome';
 // Panel chat AI Copilot — UI tiếng Việt (F9), chat read-only Phase 2
 // + UI-control experimental Phase 3 (toggle "Điều khiển trang").
 // Giao diện "Bé Chiu" theo design "Trợ lý AI - Bé Chiu.dc.html".
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { toast } from 'sonner';
 import {
   BarChart3, Brain, Building2, FileText, ImagePlus, Mic, MicOff, Plus, Receipt, Send, Square, Trash2, X,
 } from 'lucide-react';
@@ -213,6 +215,9 @@ export default function ChatPanel({ onClose }: Props) {
   const [uiMode, setUiMode] = useState(false);
   const [threadId, setThreadId] = useState<string | null>(null);
   const [history, setHistory] = useState<Message[]>([]);
+  const [historyWarning, setHistoryWarning] = useState('');
+  const [historyBlocked,setHistoryBlocked]=useState(false);
+  const [memoryWarning, setMemoryWarning] = useState('');
   const [liveTool, setLiveTool] = useState<string | null>(null);
   /** Câu trả lời đang chảy về, chưa chốt vào history. */
   const [dangChay, setDangChay] = useState('');
@@ -235,6 +240,13 @@ export default function ChatPanel({ onClose }: Props) {
   const [moGhiNho, setMoGhiNho] = useState(false);
   const [khoaMoi, setKhoaMoi] = useState('');
   const [noiDungMoi, setNoiDungMoi] = useState('');
+  const [memoryFields,setMemoryFields]=useState<Record<string,string>>({});
+  const [memoryWriteError,setMemoryWriteError]=useState('');
+  const [memoryBlocked,setMemoryBlocked]=useState(false);
+  const [memoryLoading,setMemoryLoading]=useState(!!selectedOrganizationId);
+  const [memoryBusy,setMemoryBusy]=useState(false);
+  const memoryBusyRef=useRef(false);
+  const memoryRoot=useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const uiAgentRef = useRef<{ stop: () => Promise<void>; dispose: () => void } | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -256,6 +268,7 @@ export default function ChatPanel({ onClose }: Props) {
     touchedRef.current = false;
     setThreadId(null);
     setHistory([]);
+    setHistoryWarning('');setHistoryBlocked(false);
     setError('');
     setLiveTool(null);
     setDangChay('');
@@ -273,7 +286,7 @@ export default function ChatPanel({ onClose }: Props) {
         datNguCanhXacNhan({ organizationId: selectedOrganizationId, threadId: t.id, generation });
         setHistory(msgs);
       } catch {
-        /* chưa có thread — bỏ qua */
+        if (generation === orgGenerationRef.current) {setHistoryBlocked(true);setHistoryWarning('Chưa tải hoặc xác nhận được lịch sử trò chuyện. Nội dung cũ chưa được xác nhận; đóng và mở lại Copilot để tải lại.');}
       } finally {
         if (generation === orgGenerationRef.current) setDangTaiLichSu(false);
       }
@@ -289,6 +302,8 @@ export default function ChatPanel({ onClose }: Props) {
   useEffect(() => {
     const generation = orgGenerationRef.current;
     setGhiNho([]);
+    setMemoryWarning('');setMemoryLoading(!!selectedOrganizationId);setMemoryFields({});setMemoryWriteError('');setMemoryBlocked(false);
+    setKhoaMoi('');setNoiDungMoi('');
     setMoGhiNho(false);
     if (!selectedOrganizationId) return;
     void (async () => {
@@ -297,8 +312,8 @@ export default function ChatPanel({ onClose }: Props) {
         if (generation !== orgGenerationRef.current) return;
         setGhiNho(ds);
       } catch {
-        /* chưa có ghi nhớ nào, hoặc RPC chưa apply — chat vẫn chạy bình thường */
-      }
+        if (generation === orgGenerationRef.current) setMemoryWarning('Chưa tải được ghi nhớ của công ty này. Các câu trả lời hiện tại chưa sử dụng ghi nhớ; đóng và mở lại Copilot để tải lại.');
+      } finally {if(generation===orgGenerationRef.current)setMemoryLoading(false);}
     })();
   }, [selectedOrganizationId]);
 
@@ -314,6 +329,7 @@ export default function ChatPanel({ onClose }: Props) {
     touchedRef.current = true;
     setThreadId(null);
     setHistory([]);
+    setHistoryWarning('');setHistoryBlocked(false);
     setError('');
     setRunning(false);
   };
@@ -329,6 +345,7 @@ export default function ChatPanel({ onClose }: Props) {
   // Ghép `code: message` giữ được cả hai — bảng dịch bắt được mã đã biết, mã chưa
   // biết vẫn kéo theo câu gốc để người dùng chụp màn hình gửi đi.
   const handleError = (e: unknown) => {
+    if(e instanceof FinancialWorkflowError){setError(workflowFeedbackDescription(e));return;}
     const cau = e instanceof Error ? e.message : String(e);
     const ma = e instanceof LoiModel ? e.code : null;
     setError(dienGiaiLoiChat(ma ? `${ma}: ${cau}` : cau));
@@ -388,28 +405,13 @@ export default function ChatPanel({ onClose }: Props) {
     }
   };
 
-  /**
-   * Lưu lịch sử — thử lại ĐÚNG một lần rồi báo bằng toast.
-   *
-   * Hỏng ở đây không chặn chat (câu trả lời đã hiện rồi), nhưng nuốt im lặng
-   * thì người dùng F5 xong mất nguyên lượt vừa nói mà vẫn tưởng đã lưu.
-   * Một lần thử lại là để đỡ cú mạng chớp nhoáng — ca thường gặp nhất.
-   */
-  const luuLichSuCoThuLai = async (
-    tid: string,
-    msgs: Message[],
-    organizationId: string | null,
-  ): Promise<void> => {
-    try {
-      await saveMessages(tid, msgs, model, organizationId);
-      return;
-    } catch {
-      /* thử lại ngay bên dưới */
-    }
-    try {
-      await saveMessages(tid, msgs, model, organizationId);
-    } catch {
-      toast.error('Không lưu được lịch sử chat.');
+  // saveMessages inserts rows without an idempotency key. An unknown response must not reinsert.
+  const luuLichSu = async (tid: string, msgs: Message[], organizationId: string | null): Promise<void> => {
+    const generation = orgGenerationRef.current;
+    try { await saveMessages(tid, msgs, model, organizationId); }
+    catch (error) {
+      if (generation !== orgGenerationRef.current) return;
+      setHistoryBlocked(true);setHistoryWarning(`Chưa xác nhận được kết quả lưu lịch sử cuộc trò chuyện ${tid}. Nội dung vẫn ở trên màn hình; kiểm tra lịch sử trước khi gửi lại.${error instanceof FinancialWorkflowError?' '+workflowFeedbackDescription(error):''}`);
     }
   };
 
@@ -473,7 +475,7 @@ export default function ChatPanel({ onClose }: Props) {
     if (!isCurrentChatScope(generation, orgGenerationRef.current, organizationId, selectedOrganizationId)) return;
     setDangChay('');
     setHistory((h) => [...h.slice(0, -1), ...result.newMessages]);
-    void luuLichSuCoThuLai(tid, result.newMessages, organizationId);
+    void luuLichSu(tid, result.newMessages, organizationId);
     // Một lượt có gọi tool bộ nhớ thì danh sách trên màn hình đã cũ. Đọc lại từ server
     // chứ không đoán từ chuỗi tool trả về: server mới biết đã ghì đè hay chạm trần.
     if (organizationId && result.toolEvents.some((ev) => ev.tool === 'ghi_nho' || ev.tool === 'quen')) {
@@ -482,7 +484,7 @@ export default function ChatPanel({ onClose }: Props) {
           const ds = await layGhiNho(organizationId);
           if (generation === orgGenerationRef.current) setGhiNho(ds);
         } catch {
-          /* không đọc lại được thì danh sách trên màn hình cũ một lúc, không phải lỗi chặn */
+          if(generation===orgGenerationRef.current)setMemoryWarning('Ghi nhớ hiển thị có thể đã cũ. Đọc lại ghi nhớ trước khi chỉnh sửa.');
         }
       })();
     }
@@ -554,11 +556,12 @@ export default function ChatPanel({ onClose }: Props) {
 
   const send = async () => {
     const text = input.trim();
-    if ((!text && !anhKem.length) || running) return;
+    if ((!text && !anhKem.length) || running || historyBlocked) return;
     // Ảnh không kèm câu hỏi thì mô hình không biết phải làm gì với nó; đưa một
     // câu mặc định còn hơn để nó tự đoán ý.
     const cauHoi = text || 'Đọc giúp tôi ảnh này.';
-    const anh = anhKem.map((a) => a.dataUrl);
+    const imageDraft=[...anhKem];
+    const anh = imageDraft.map((a) => a.dataUrl);
     const generation = orgGenerationRef.current;
     touchedRef.current = true;
     setError('');
@@ -577,6 +580,7 @@ export default function ChatPanel({ onClose }: Props) {
       if (uiMode && canUiControl) await runUiControl(cauHoi, quyen.snapshot);
       else await runChat(cauHoi, anh, quyen.snapshot);
     } catch (e) {
+      if(generation===orgGenerationRef.current){setInput(cauHoi);setAnhKem(current=>current.length?current:imageDraft);}
       handleError(e);
     } finally {
       if (generation === orgGenerationRef.current) setLiveTool(null);
@@ -591,14 +595,19 @@ export default function ChatPanel({ onClose }: Props) {
   /** Nén rồi xếp vào hàng chờ. Lỗi hiện ngay cho người dùng, không nuốt. */
   const themAnh = async (files: File[]) => {
     if (!files.length) return;
-    for (const f of files.slice(0, 3)) {
+    let accepted = 0;
+    const rejected: string[] = [];
+    const remaining = Math.max(0,3 - anhKem.length);
+    for (const f of files.slice(0, remaining)) {
       try {
-        const a = await nenAnh(f);
-        setAnhKem((cu) => [...cu, a]);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
-      }
+        const image = await nenAnh(f);
+        setAnhKem(current => [...current,image]);
+        accepted++;
+      } catch { rejected.push(f.name); }
     }
+    rejected.push(...files.slice(remaining).map(file=>file.name));
+    if(rejected.length) setError(`Đã thêm ${accepted}/${files.length} ảnh. Chưa thêm: ${rejected.join(', ')}. Chọn ảnh JPG, PNG, WEBP hoặc GIF; mỗi lượt chat tối đa 3 ảnh. Các ảnh đã thêm vẫn được giữ.`);
+
   };
 
   const stopRun = () => {
@@ -606,53 +615,19 @@ export default function ChatPanel({ onClose }: Props) {
     void uiAgentRef.current?.stop();
   };
 
-  /** Bỏ MỘT ghi nhớ từ giao diện. State chỉ đổi sau khi server đã nhận. */
-  const boMotGhiNho = async (khoa: string) => {
-    const organizationId = selectedOrganizationId;
-    if (!organizationId) return;
-    const generation = orgGenerationRef.current;
-    try {
-      await boGhiNho(organizationId, khoa);
-      if (generation !== orgGenerationRef.current) return;
-      setGhiNho((cu) => cu.filter((m) => m.khoa !== khoa));
-    } catch {
-      toast.error('Không bỏ được ghi nhớ này.');
-    }
-  };
-
-  /**
-   * Thêm/sửa MỘT ghi nhớ bằng tay, nguồn `user`.
-   *
-   * VÌ SAO CẦN Ô NHẬP DÙ NÓI "nhớ giúp tôi…" ĐÃ LƯU ĐƯỢC
-   *   Hai đường ghi này khác nhau ở thứ đi vào cột `source`, và cột đó có việc:
-   *   một câu Copilot NGHE NHẦM rồi tự ghi lại không được mang cùng sức nặng với một
-   *   câu người dùng gõ tay. Không có đường gõ tay thì `source` chỉ có một giá trị
-   *   khả dĩ — một cột chết, và nhãn dựa trên nó không phân biệt được gì.
-   *
-   *   Đây cũng là đường SỬA duy nhất: gõ lại cùng một khoá là ghi đè (UNIQUE),
-   *   nên người dùng chữa được một mục Copilot nhớ sai mà không phải bỏ rồi nói lại.
-   */
-  const themGhiNhoTay = async () => {
-    const organizationId = selectedOrganizationId;
-    if (!organizationId) return;
-    const kiem = kiemGhiNho(khoaMoi, noiDungMoi);
-    if (!kiem.ok) {
-      toast.error(kiem.loi ?? '');
-      return;
-    }
-    const generation = orgGenerationRef.current;
-    try {
-      const kq = await ghiNhoLen(organizationId, kiem.khoa, kiem.noiDung, 'user');
-      if (generation !== orgGenerationRef.current) return;
-      setGhiNho((cu) => [
-        { khoa: kq.khoa, noiDung: kq.noiDung, nguon: kq.nguon, capNhat: new Date().toISOString() },
-        ...cu.filter((m) => m.khoa !== kq.khoa),
-      ]);
-      setKhoaMoi('');
-      setNoiDungMoi('');
-    } catch (e) {
-      toast.error(dienGiaiLoiGhiNho(e instanceof Error ? e.message : String(e)));
-    }
+  const memoryLocked=memoryBusy||memoryLoading||memoryBlocked||!!memoryWarning;
+  const reloadMemory=async()=>{const organizationId=selectedOrganizationId;if(!organizationId||memoryBusyRef.current)return;const generation=orgGenerationRef.current;setMemoryLoading(true);try{const rows=await layGhiNho(organizationId);if(generation!==orgGenerationRef.current)return;setGhiNho(rows);setMemoryWarning('');setMemoryWriteError('');setMemoryBlocked(false);}catch{if(generation===orgGenerationRef.current)setMemoryWarning('Chưa tải được ghi nhớ. Nội dung đang sửa vẫn được giữ; hãy đọc lại trước khi lưu.');}finally{if(generation===orgGenerationRef.current)setMemoryLoading(false);}};
+  const memoryFailure=(e:unknown)=>{const raw=e&&typeof e==='object'&&'message' in e?String(e.message):String(e);setMemoryWriteError(dienGiaiLoiGhiNho(raw));setMemoryBlocked(hasUnconfirmedResponse(e));};
+  const boMotGhiNho=async(khoa:string)=>{const organizationId=selectedOrganizationId;if(!organizationId||memoryLocked||memoryBusyRef.current)return;const generation=orgGenerationRef.current;memoryBusyRef.current=true;setMemoryBusy(true);setMemoryWriteError('');try{const result=await boGhiNho(organizationId,khoa);if(generation!==orgGenerationRef.current)return;setGhiNho(rows=>rows.filter(row=>row.khoa!==khoa));if(!result.thay)setMemoryWriteError('Ghi nhớ này đã không còn trong danh sách của công ty.');}catch(e){if(generation===orgGenerationRef.current)memoryFailure(e);}finally{memoryBusyRef.current=false;if(generation===orgGenerationRef.current)setMemoryBusy(false);}};
+  const themGhiNhoTay=async()=>{
+    if(memoryLocked||memoryBusyRef.current)return;
+    const organizationId=selectedOrganizationId;if(!organizationId){setMemoryWriteError('Chọn công ty trước khi lưu ghi nhớ.');return;}
+    const checked=kiemGhiNho(khoaMoi,noiDungMoi);
+    if(!checked.ok){const errors={[checked.khoa?'memoryContent':'memoryKey']:checked.loi??'Kiểm tra nội dung ghi nhớ.'};setMemoryFields(errors);await focusFirstError(errors,{root:memoryRoot.current,order:['memoryKey','memoryContent']});return;}
+    setMemoryFields({});setMemoryWriteError('');const generation=orgGenerationRef.current;memoryBusyRef.current=true;setMemoryBusy(true);
+    try{const result=await ghiNhoLen(organizationId,checked.khoa,checked.noiDung,'user');if(generation!==orgGenerationRef.current)return;setGhiNho(rows=>[{khoa:result.khoa,noiDung:result.noiDung,nguon:result.nguon,capNhat:new Date().toISOString()},...rows.filter(row=>row.khoa!==result.khoa)]);setKhoaMoi('');setNoiDungMoi('');}
+    catch(e){if(generation===orgGenerationRef.current)memoryFailure(e);}
+    finally{memoryBusyRef.current=false;if(generation===orgGenerationRef.current)setMemoryBusy(false);}
   };
 
   const voice = useVoiceInput((text) => setInput((cur) => (cur ? `${cur} ${text}` : text)));
@@ -740,12 +715,12 @@ export default function ChatPanel({ onClose }: Props) {
           quên một thứ mà phải tin rằng nó đã quên là đúng kiểu kiểm soát mà người dùng
           không xác minh được. */}
       {moGhiNho && (
-        <div className="max-h-40 overflow-y-auto border-b bg-muted/40 px-3 py-2" data-testid="copilot-ghi-nho">
+        <div className="max-h-40 overflow-y-auto border-b bg-muted/40 px-3 py-2" data-testid="copilot-ghi-nho" ref={memoryRoot}>
           <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground">
             <Brain className="h-3.5 w-3.5" />
             Copilot đang nhớ về bạn ({ghiNho.length}/{SO_GHI_NHO_TOI_DA})
           </div>
-          {ghiNho.length === 0 ? (
+          {memoryLoading ? <p role="status">Đang tải ghi nhớ…</p> : memoryWarning ? <p role="alert">{memoryWarning}</p> : ghiNho.length === 0 ? (
             <div className="text-[11px] italic text-muted-foreground">
               Chưa nhớ gì. Nói "nhớ giúp tôi: toà ưu tiên là DEMO A" để lưu một điều.
             </div>
@@ -765,6 +740,7 @@ export default function ChatPanel({ onClose }: Props) {
                     className="shrink-0 rounded p-0.5 text-muted-foreground transition hover:bg-red-50 hover:text-red-600"
                     title={`Bỏ ghi nhớ "${m.khoa}"`}
                     onClick={() => void boMotGhiNho(m.khoa)}
+                    disabled={memoryLocked}
                     data-testid="copilot-ghi-nho-bo"
                   >
                     <Trash2 className="h-3 w-3" />
@@ -778,17 +754,17 @@ export default function ChatPanel({ onClose }: Props) {
               SỬA duy nhất: gõ lại cùng khoá là ghi đè. */}
           <div className="mt-2 flex items-center gap-1 border-t pt-2">
             <input
-              className="w-24 shrink-0 rounded border bg-card px-1.5 py-1 text-[11px] outline-none focus:border-[hsl(var(--ring))]"
+              name="memoryKey" aria-label="Khoá ghi nhớ" aria-invalid={!!memoryFields.memoryKey} aria-describedby={memoryFields.memoryKey?'memory-key-error':undefined} className={memoryFields.memoryKey?'w-24 rounded border border-red-500 bg-card px-1.5 py-1 text-[11px]':'w-24 rounded border bg-card px-1.5 py-1 text-[11px]'}
               placeholder="khoá"
               value={khoaMoi}
-              onChange={(ev) => setKhoaMoi(ev.target.value)}
+              onChange={(ev) => {setKhoaMoi(ev.target.value);setMemoryFields(errors=>({...errors,memoryKey:''}));}}
               data-testid="copilot-ghi-nho-khoa"
             />
             <input
-              className="min-w-0 flex-1 rounded border bg-card px-1.5 py-1 text-[11px] outline-none focus:border-[hsl(var(--ring))]"
+              name="memoryContent" aria-label="Nội dung ghi nhớ" aria-invalid={!!memoryFields.memoryContent} aria-describedby={memoryFields.memoryContent?'memory-content-error':undefined} className={memoryFields.memoryContent?'min-w-0 flex-1 rounded border border-red-500 bg-card px-1.5 py-1 text-[11px]':'min-w-0 flex-1 rounded border bg-card px-1.5 py-1 text-[11px]'}
               placeholder="điều cần nhớ"
               value={noiDungMoi}
-              onChange={(ev) => setNoiDungMoi(ev.target.value)}
+              onChange={(ev) => {setNoiDungMoi(ev.target.value);setMemoryFields(errors=>({...errors,memoryContent:''}));}}
               onKeyDown={(ev) => {
                 if (ev.key === 'Enter') {
                   ev.preventDefault();
@@ -799,13 +775,17 @@ export default function ChatPanel({ onClose }: Props) {
             />
             <button
               className="shrink-0 rounded bg-primary px-2 py-1 text-[11px] font-semibold text-primary-foreground disabled:opacity-50"
-              disabled={!khoaMoi.trim() || !noiDungMoi.trim()}
+              disabled={memoryLocked}
               onClick={() => void themGhiNhoTay()}
               data-testid="copilot-ghi-nho-them"
             >
               Lưu
             </button>
           </div>
+          {memoryFields.memoryKey&&<p id="memory-key-error" role="alert" className="text-xs text-red-600">{memoryFields.memoryKey}</p>}
+          {memoryFields.memoryContent&&<p id="memory-content-error" role="alert" className="text-xs text-red-600">{memoryFields.memoryContent}</p>}
+          {memoryWriteError&&<p role="alert" className="text-xs text-red-600">{memoryWriteError}</p>}
+          {(memoryWarning||memoryBlocked)&&<button type="button" disabled={memoryBusy||memoryLoading} className="mt-1 rounded border px-2 py-1 text-xs" onClick={()=>void reloadMemory()}>Đọc lại ghi nhớ</button>}
         </div>
       )}
 
@@ -856,7 +836,9 @@ export default function ChatPanel({ onClose }: Props) {
             Đang tải lịch sử…
           </div>
         )}
-        {items.length === 0 && !running && !dangTaiLichSu && (
+        {historyWarning && <p role="alert" className="rounded border border-amber-300 bg-amber-50 p-2 text-sm text-amber-900">{historyWarning}</p>}
+        {memoryWarning && <p role="status" className="rounded border border-amber-300 bg-amber-50 p-2 text-sm text-amber-900">{memoryWarning}</p>}
+        {items.length === 0 && !running && !dangTaiLichSu && !historyWarning && (
           <div className="flex h-full flex-col items-center justify-center gap-4 p-3 text-center">
             <BeChiu size={96} animated smoke blush cuaSo shadow />
             <div className="flex flex-col gap-1.5">
@@ -1101,7 +1083,7 @@ export default function ChatPanel({ onClose }: Props) {
         ) : (
           <button
             className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[0_6px_14px_-6px_hsl(152_69%_25%/.6)] transition hover:bg-[hsl(var(--primary-600))] disabled:opacity-50"
-            disabled={!input.trim() && !anhKem.length}
+            disabled={historyBlocked||(!input.trim() && !anhKem.length)}
             onClick={() => void send()}
             title="Gửi"
             data-testid="copilot-send"

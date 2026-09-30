@@ -119,7 +119,7 @@ export async function layToaTheoToChuc(organizationId: string): Promise<string[]
     .select('id')
     .eq('organization_id', organizationId)
     .is('deleted_at', null);
-  if (error) throw new Error(`Lỗi tải phạm vi công ty: ${error.message}`);
+  if (error) throw Object.assign(new Error('Chưa tải phạm vi công ty. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
   return (data ?? [])
     .map((row: { id?: unknown }) => row.id)
     .filter((id): id is string => typeof id === 'string');
@@ -797,7 +797,7 @@ export function buildRegistryDefinitions(): DomainTool[] {
           p_query: args.tu_khoa?.trim() || null,
           p_limit: args.so_luong,
         });
-        if (error) throw new Error(`Lỗi tải khu vực: ${error.message}`);
+        if (error) throw Object.assign(new Error('Chưa tải khu vực. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
         const rows = Array.isArray(data?.khu_vuc) ? data.khu_vuc : [];
         if (!rows.length) return 'Hiện không có khu vực nào trong phạm vi bạn được xem.';
         const lines = rows.map((area) => {
@@ -831,7 +831,7 @@ export function buildRegistryDefinitions(): DomainTool[] {
           p_meter_type: args.loai ? MA_LOAI_CONG_TO[args.loai] : null,
           p_limit: args.so_luong,
         });
-        if (error) throw new Error(`Lỗi tải công tơ: ${error.message}`);
+        if (error) throw Object.assign(new Error('Chưa tải công tơ. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
         const rows = Array.isArray(data?.cong_to) ? data.cong_to : [];
         if (!rows.length) return 'Hiện không có công tơ nào trong phạm vi bạn được xem.';
         const lines = rows.map((meter) => {
@@ -872,7 +872,7 @@ export function buildRegistryDefinitions(): DomainTool[] {
           p_unread_only: args.chi_chua_doc,
           p_limit: args.so_luong,
         });
-        if (error) throw new Error('Lỗi tải thông báo: ' + error.message);
+        if (error) throw Object.assign(new Error('Chưa tải thông báo. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
         const rows = Array.isArray(data?.thong_bao) ? data.thong_bao : [];
         if (!rows.length) {
           return args.chi_chua_doc
@@ -914,7 +914,7 @@ export function buildRegistryDefinitions(): DomainTool[] {
           p_listing_kind: args.loai_danh_sach ? MA_LOAI_DANH_SACH_SALE[args.loai_danh_sach] : null,
           p_limit: args.so_luong,
         });
-        if (error) throw new Error('Lỗi tải danh sách phòng sale: ' + error.message);
+        if (error) throw Object.assign(new Error('Chưa tải danh sách phòng sale. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
         const rows = Array.isArray(data?.phong_sale) ? data.phong_sale : [];
         if (!rows.length) return 'Không có phòng sale nào trong phạm vi bạn được xem.';
         const lines = rows.map((room) => {
@@ -962,7 +962,7 @@ export function buildRegistryDefinitions(): DomainTool[] {
           p_only_without_roles: args.chi_chua_gan_vai_tro,
           p_limit: args.so_luong,
         });
-        if (error) throw new Error('Lỗi tải thành viên và vai trò: ' + error.message);
+        if (error) throw Object.assign(new Error('Chưa tải thành viên và vai trò. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
         const members = Array.isArray(data?.thanh_vien) ? data.thanh_vien : [];
         const roles = Array.isArray(data?.vai_tro) ? data.vai_tro : [];
         if (!members.length && !roles.length) return 'Không có thành viên hoặc vai trò nào trong phạm vi bạn được xem.';
@@ -1003,7 +1003,7 @@ export function buildRegistryDefinitions(): DomainTool[] {
           p_query: args.tu_khoa?.trim() || null,
           p_limit: args.so_luong,
         });
-        if (error) throw new Error('Lỗi tải danh sách kho tài sản: ' + error.message);
+        if (error) throw Object.assign(new Error('Chưa tải danh sách kho tài sản. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
         const rows = Array.isArray(data?.kho) ? data.kho : [];
         if (!rows.length) return 'Không có kho tài sản nào trong phạm vi bạn được xem.';
         const lines = rows.map((warehouse) => {
@@ -1034,7 +1034,7 @@ export function buildRegistryDefinitions(): DomainTool[] {
           p_query: args.tu_khoa?.trim() || null,
           p_limit: args.so_luong,
         });
-        if (error) throw new Error('Lỗi tải danh sách nhà cung cấp: ' + error.message);
+        if (error) throw Object.assign(new Error('Chưa tải danh sách nhà cung cấp. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
         const rows = Array.isArray(data?.nha_cung_cap) ? data.nha_cung_cap : [];
         if (!rows.length) return 'Không có nhà cung cấp nào trong phạm vi bạn được xem.';
         return 'Có ' + rows.length + ' nhà cung cấp (tối đa ' + (data?.gioi_han ?? args.so_luong) + ' dòng mỗi lần hỏi):\n' + rows.map((supplier) => '- ' + supplier.ma + ' — ' + supplier.ten).join('\n') + '\n[link: /settings/categories/suppliers]';
@@ -1061,7 +1061,7 @@ export function buildRegistryDefinitions(): DomainTool[] {
           p_query: args.tu_khoa?.trim() || null,
           p_limit: args.so_luong,
         });
-        if (error) throw new Error('Lỗi tải danh sách loại tài sản: ' + error.message);
+        if (error) throw Object.assign(new Error('Chưa tải danh sách loại tài sản. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
         const rows = Array.isArray(data?.loai_tai_san) ? data.loai_tai_san : [];
         if (!rows.length) return 'Không có loại tài sản nào trong phạm vi bạn được xem.';
         return 'Có ' + rows.length + ' loại tài sản (tối đa ' + (data?.gioi_han ?? args.so_luong) + ' dòng mỗi lần hỏi):\n' + rows.map((assetType) => '- ' + assetType.ma + ' — ' + assetType.ten).join('\n') + '\n[link: /settings/categories/asset-types]';
@@ -1088,7 +1088,7 @@ export function buildRegistryDefinitions(): DomainTool[] {
           p_query: args.tu_khoa?.trim() || null,
           p_limit: args.so_luong,
         });
-        if (error) throw new Error('Lỗi tải danh sách loại công việc: ' + error.message);
+        if (error) throw Object.assign(new Error('Chưa tải danh sách loại công việc. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
         const rows = Array.isArray(data?.loai_cong_viec) ? data.loai_cong_viec : [];
         if (!rows.length) return 'Không có loại công việc nào trong phạm vi bạn được xem.';
         const minutes = (value: number | null) => value && value > 0 ? String(value) + ' phút' : 'không quy định';
@@ -1121,7 +1121,7 @@ export function buildRegistryDefinitions(): DomainTool[] {
           p_query: args.tu_khoa?.trim() || null,
           p_limit: args.so_luong,
         });
-        if (error) throw new Error('Lỗi tải danh sách tầng: ' + error.message);
+        if (error) throw Object.assign(new Error('Chưa tải danh sách tầng. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
         const rows = Array.isArray(data?.tang) ? data.tang : [];
         if (!rows.length) return 'Không có tầng nào trong phạm vi bạn được xem.';
         const lines = rows.map((floor) => {
@@ -1153,7 +1153,7 @@ export function buildRegistryDefinitions(): DomainTool[] {
           p_query: args.tu_khoa?.trim() || null,
           p_limit: args.so_luong,
         });
-        if (error) throw new Error('Lỗi tải danh sách hotline: ' + error.message);
+        if (error) throw Object.assign(new Error('Chưa tải danh sách hotline. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
         const rows = Array.isArray(data?.hotline) ? data.hotline : [];
         if (!rows.length) return 'Không có hotline nào trong công ty đang chọn.';
         const lines = rows.map((hotline) =>
@@ -1183,7 +1183,7 @@ export function buildRegistryDefinitions(): DomainTool[] {
           p_query: args.tu_khoa?.trim() || null,
           p_limit: args.so_luong,
         });
-        if (error) throw new Error('Lỗi tải danh sách định mức dịch vụ: ' + error.message);
+        if (error) throw Object.assign(new Error('Chưa tải danh sách định mức dịch vụ. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
         const rows = Array.isArray(data?.dinh_muc) ? data.dinh_muc : [];
         if (!rows.length) return 'Không có định mức dịch vụ nào trong công ty đang chọn.';
         const lines = rows.map((quota) => {
@@ -1220,7 +1220,7 @@ export function buildRegistryDefinitions(): DomainTool[] {
           p_query: args.tu_khoa?.trim() || null,
           p_limit: args.so_luong,
         });
-        if (error) throw new Error('Lỗi tải danh sách toà nhà: ' + error.message);
+        if (error) throw Object.assign(new Error('Chưa tải danh sách toà nhà. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
         const rows = Array.isArray(data?.toa_nha) ? data.toa_nha : [];
         if (!rows.length) return 'Không có toà nhà nào trong phạm vi bạn được xem.';
         const loai: Record<string, string> = {
@@ -1263,7 +1263,7 @@ export function buildRegistryDefinitions(): DomainTool[] {
           p_organization_id: orgId,
           p_limit: args.so_luong,
         });
-        if (error) throw new Error('Lỗi tải trạng thái gạch nợ tự động: ' + error.message);
+        if (error) throw Object.assign(new Error('Chưa tải trạng thái gạch nợ tự động. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
         const rows = Array.isArray(data?.cau_hinh) ? data.cau_hinh : [];
         if (!rows.length) return 'Không có cấu hình gạch nợ tự động nào trong công ty đang chọn.';
         const phamVi: Record<string, string> = {
@@ -1300,7 +1300,7 @@ export function buildRegistryDefinitions(): DomainTool[] {
           p_query: args.tu_khoa?.trim() || null,
           p_limit: args.so_luong,
         });
-        if (error) throw new Error('Lỗi tải lịch sử bảo trì tài sản: ' + error.message);
+        if (error) throw Object.assign(new Error('Chưa tải lịch sử bảo trì tài sản. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
         const rows = Array.isArray(data?.bao_tri) ? data.bao_tri : [];
         if (!rows.length) return 'Không có lịch sử bảo trì tài sản nào trong phạm vi bạn được xem.';
         const status: Record<string, string> = {
@@ -1327,7 +1327,7 @@ export function buildRegistryDefinitions(): DomainTool[] {
       execute: async (args, ctx) => {
         const orgId = chotToChuc(ctx, 'phong_trong');
         const { data, error } = await supabase.rpc('copilot_available_rooms_v1', { p_organization_id: orgId });
-        if (error) throw new Error(`Lỗi tải phòng trống: ${error.message}`);
+        if (error) throw Object.assign(new Error('Chưa tải phòng trống. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
         let buildings = mapPayloadToBuildings(parseRoomSalePayload(data));
         if (args.toa_nha) {
           const q = args.toa_nha.toLowerCase();
@@ -1379,7 +1379,7 @@ export function buildRegistryDefinitions(): DomainTool[] {
           p_organization_id: orgId,
           p_search: kw,
         });
-        if (error) throw new Error(`Lỗi tìm khách hàng: ${error.message}`);
+        if (error) throw Object.assign(new Error('Chưa tìm khách hàng. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
         const rows = Array.isArray(data) ? data : [];
         if (!rows.length) return `Không tìm thấy khách hàng nào khớp "${kw}".`;
         return rows
@@ -1412,7 +1412,7 @@ export function buildRegistryDefinitions(): DomainTool[] {
           p_payment_status: args.trang_thai,
           ...(args.tu_khoa?.trim() ? { p_search: args.tu_khoa.trim() } : {}),
         });
-        if (error) throw new Error(`Lỗi tìm hoá đơn: ${error.message}`);
+        if (error) throw Object.assign(new Error('Chưa tìm hoá đơn. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
         const rows = Array.isArray(data) ? data.slice(0, 10) : [];
         if (!rows.length) return 'Không tìm thấy hoá đơn nào khớp điều kiện.';
         const lines = rows.map((inv: any) => {
@@ -1454,7 +1454,7 @@ export function buildRegistryDefinitions(): DomainTool[] {
           p_as_of_date: iso(today),
           p_window_days: args.so_ngay,
         });
-        if (error) throw new Error(`Lỗi tải hợp đồng: ${error.message}`);
+        if (error) throw Object.assign(new Error('Chưa tải hợp đồng. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
         const rows = Array.isArray(data) ? data : [];
         if (!rows.length) return `Không có hợp đồng nào hết hạn trong ${args.so_ngay} ngày tới.`;
         const lines = rows.map((c) => {
@@ -1494,7 +1494,7 @@ export function buildRegistryDefinitions(): DomainTool[] {
           p_end_date: end,
           p_accrual: args.accrual,
         });
-        if (error) throw new Error(`Lỗi tải P&L: ${error.message}`);
+        if (error) throw Object.assign(new Error('Chưa tải P&L. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
         const rows = (data ?? []) as any[];
         if (!rows.length) return `Không có dữ liệu KQKD tháng ${args.thang}.`;
         let rev = 0, exp = 0;

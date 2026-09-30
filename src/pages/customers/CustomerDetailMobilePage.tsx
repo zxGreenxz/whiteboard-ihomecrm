@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import {useCustomerDetailContracts} from '@/hooks/useCustomerDetailContracts';
+import {QueryRegion} from '@/components/errors/QueryRegion';
 import {
   ArrowLeft,
   Copy,
@@ -15,13 +16,12 @@ import {
   DoorOpen,
   Calendar,
 } from 'lucide-react';
-import { toast } from 'sonner';
+import { copyTextWithFeedback } from '@/lib/clipboardFeedback';
 import '@/styles/mobileApp.css';
 import { useCustomer } from '@/hooks/useCustomers';
 import { useVehicles } from '@/hooks/useVehicles';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
-import { supabase } from '@/integrations/supabase/client';
 import type { VehicleWithRelations } from '@/types/vehicle';
 import DeleteCustomerDialog from '@/components/customers/DeleteCustomerDialog';
 import ResidenceDossierSection from '@/components/residence/ResidenceDossierSection';
@@ -88,29 +88,14 @@ export default function CustomerDetailMobilePage({ id }: { id: string }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const actsRef = useRef<HTMLDivElement>(null);
 
-  const { data: customer, isLoading } = useCustomer(id);
-  const { data: vehiclesData } = useVehicles({ customer_id: id }, { page: 1, pageSize: 50 });
+  const customerQuery=useCustomer(id);
+  const { data: customer, isLoading } = customerQuery;
+  const vehiclesQuery=useVehicles({ customer_id: id }, { page: 1, pageSize: 50 });
+  const {data: vehiclesData}=vehiclesQuery;
   const vehicles = (vehiclesData?.data ?? []) as VehicleWithRelations[];
 
-  const { data: contractLinks = [] } = useQuery({
-    queryKey: ['customer-contracts', id],
-    enabled: !!id,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('contract_customers')
-        .select(
-          `id, is_representative, notes,
-           contract:contracts!contract_customers_contract_id_fkey (
-             id, contract_number, status, start_date, end_date, rent_price, deleted_at,
-             room:rooms!contracts_room_id_fkey (id, name, building:buildings!rooms_building_id_fkey(id, name))
-           )`,
-        )
-        .eq('customer_id', id)
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      return (data ?? []).filter((cc: any) => cc.contract && !cc.contract.deleted_at);
-    },
-  });
+  const contractsQuery=useCustomerDetailContracts(id);
+  const {data:contractLinks=[]}=contractsQuery;
 
   const { data: perms } = useMyPermissions();
 
@@ -124,6 +109,7 @@ export default function CustomerDetailMobilePage({ id }: { id: string }) {
       </Shell>
     );
   }
+  if(customerQuery.isError&&!customer){return <Shell onBack={()=>navigate('/customers')} title="Chi tiết khách hàng"><QueryRegion label="chi tiết khách hàng" queries={[customerQuery]}><></></QueryRegion></Shell>;}
   if (!customer) {
     return (
       <Shell onBack={() => navigate('/customers')} title="Không tìm thấy">
@@ -148,8 +134,7 @@ export default function CustomerDetailMobilePage({ id }: { id: string }) {
     ]
       .filter(Boolean)
       .join('\n');
-    navigator.clipboard.writeText(info);
-    toast.success('Đã sao chép thông tin');
+    void copyTextWithFeedback(info, 'thông tin khách hàng');
   };
 
   const acts: { key: string; ic: typeof Copy; label: string; danger?: boolean; href?: string; onClick?: () => void; ext?: boolean }[] = [
@@ -168,14 +153,15 @@ export default function CustomerDetailMobilePage({ id }: { id: string }) {
   ];
 
   return (
-    <Shell onBack={() => navigate('/customers')} title="Chi tiết khách hàng" sub={customer.full_name}>
+    <Shell onBack={() => navigate('/customers')} title="Chi tiết khách hàng" sub={customerQuery.isError?undefined:customer.full_name}>
+      <QueryRegion label="chi tiết khách hàng" queries={[customerQuery]}>
       {/* Header */}
       <div className="cdh">
         <div className="cdh-av"><User size={22} /></div>
         <div className="cdh-body">
           <h2 className="cdh-name">{customer.full_name}</h2>
           <div className="cdh-sub">
-            {headerRoom?.name && (
+            {!contractsQuery.isError && headerRoom?.name && (
               <span className="cdh-room">
                 <DoorOpen size={12} />
                 P.{headerRoom.name}{headerRoom.building?.name ? ` · ${headerRoom.building.name}` : ''}
@@ -245,6 +231,7 @@ export default function CustomerDetailMobilePage({ id }: { id: string }) {
         </div>
       </div>
 
+      <QueryRegion label="phương tiện của khách hàng" queries={[vehiclesQuery]}>
       {/* Phương tiện */}
       <div className="cd-card">
         <div className="cd-card-h">
@@ -273,6 +260,8 @@ export default function CustomerDetailMobilePage({ id }: { id: string }) {
         )}
       </div>
 
+      </QueryRegion>
+
       {/* Hồ sơ tạm trú: chụp/dán ảnh CT01 và hợp đồng đã ký ngay trên điện thoại */}
       <div className="cd-card">
         <ResidenceDossierSection customer={{
@@ -283,6 +272,7 @@ export default function CustomerDetailMobilePage({ id }: { id: string }) {
         }} />
       </div>
 
+      <QueryRegion label="hợp đồng của khách hàng" queries={[contractsQuery]}>
       {/* Hợp đồng */}
       <div className="cd-card">
         <div className="cd-card-h">
@@ -320,6 +310,8 @@ export default function CustomerDetailMobilePage({ id }: { id: string }) {
         )}
       </div>
 
+      </QueryRegion>
+
       <DeleteCustomerDialog
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
@@ -330,6 +322,7 @@ export default function CustomerDetailMobilePage({ id }: { id: string }) {
           navigate('/customers');
         }}
       />
+      </QueryRegion>
     </Shell>
   );
 }

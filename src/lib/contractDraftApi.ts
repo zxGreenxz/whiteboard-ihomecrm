@@ -1,3 +1,4 @@
+import {FinancialWorkflowError,isConfirmedFinancialRejection} from '@/lib/financialWorkflow';
 import { z } from 'zod';
 import { supabase } from '@/integrations/supabase/client';
 import type { Json } from '@/integrations/supabase/types';
@@ -113,6 +114,7 @@ export async function exportContractDraft(draft: ContractDraft, template: Docume
   const paths = draftDocumentPaths(draft, documentId);
   const [documentHash, templateHash] = await Promise.all([sha256(blob), sha256(templateBlob)]);
   let registered = false;
+  let cleanupAllowed = true;
   const uploaded: string[] = [];
   try {
     for (const [path, bytes] of [[paths.template, templateBlob], [paths.document, blob]] as const) {
@@ -120,20 +122,43 @@ export async function exportContractDraft(draft: ContractDraft, template: Docume
       if (error) throw error;
       uploaded.push(path);
     }
-    const { data: result, error } = await supabase.rpc('register_contract_draft_document', {
-      p_organization_id: draft.organization_id, p_draft_id: draft.id, p_expected_revision: draft.revision,
-      p_document_id: documentId, p_template_id: template.id,
-      p_template_snapshot: { id: template.id, name: template.name, updated_at: template.updated_at },
-      p_document_sha256: documentHash, p_template_sha256: templateHash, p_document_data: { ...data },
-    });
-    if (error) throw error;
-    const document = contractDraftDocumentSchema.parse(result);
-    registered = document.id === documentId;
+    // After dispatch, a missing receipt is not proof that registration rolled back.
+    cleanupAllowed = false;
+    let document: ContractDraftDocument;
+    try {
+      const { data: result, error } = await supabase.rpc('register_contract_draft_document', {
+        p_organization_id: draft.organization_id, p_draft_id: draft.id, p_expected_revision: draft.revision,
+        p_document_id: documentId, p_template_id: template.id,
+        p_template_snapshot: { id: template.id, name: template.name, updated_at: template.updated_at },
+        p_document_sha256: documentHash, p_template_sha256: templateHash, p_document_data: { ...data },
+      });
+      if (error) throw error;
+      document = contractDraftDocumentSchema.parse(result);
+      const confirmedPaths = draftDocumentPaths(draft, document.id);
+      if (document.draft_id !== draft.id || document.revision !== draft.revision
+        || document.document_path !== confirmedPaths.document || document.template_path !== confirmedPaths.template
+        || !/^[a-f0-9]{64}$/.test(document.document_sha256) || !/^[a-f0-9]{64}$/.test(document.template_sha256)
+        || document.id === documentId && (document.document_sha256 !== documentHash || document.template_sha256 !== templateHash)) {
+        throw new TypeError('Unconfirmed draft document registration');
+      }
+      registered = document.id === documentId;
+      // SQL can return the document already registered for this same revision.
+      // Only that positive receipt proves the newly uploaded paths are unused.
+      cleanupAllowed = !registered;
+    } catch (error) {
+      if (isConfirmedFinancialRejection(error)) { cleanupAllowed = true; throw error; }
+      throw new FinancialWorkflowError(
+        `Đã tải tệp cho bản nháp ${draft.id}, nhưng chưa xác nhận được kết quả đăng ký tài liệu. Giữ mã tài liệu ${documentId} và đọc lại bản nháp trước khi xuất tiếp. Các tệp đã tải được giữ để đối chiếu.`,
+        'partial', [{ id: documentId, label: 'Đã tải tệp bản nháp; đăng ký chưa xác nhận' }], error,
+      );
+    }
     return { document, blob: registered ? blob : await downloadContractDraftDocument(document) };
   } finally {
-    if (!registered && uploaded.length) {
-      const { error } = await supabase.storage.from(BUCKET).remove(uploaded);
-      if (error) console.error('Draft document cleanup failed', error);
+    if (cleanupAllowed && !registered && uploaded.length) {
+      try {
+        const { error } = await supabase.storage.from(BUCKET).remove(uploaded);
+        if (error) console.error('Draft document cleanup failed', error);
+      } catch (error) { console.error('Draft document cleanup failed', error); }
     }
   }
 }

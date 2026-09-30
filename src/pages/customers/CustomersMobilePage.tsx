@@ -2,9 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Plus, Search, Home, DoorOpen, Phone, MessageCircle, Copy, Car } from 'lucide-react';
-import { toast } from 'sonner';
+import { copyTextWithFeedback } from '@/lib/clipboardFeedback';
 import '@/styles/mobileApp.css';
 import { useCustomers } from '@/hooks/useCustomers';
+import { QueryRegion } from '@/components/errors/QueryRegion';
 import { useBuildings } from '@/hooks/useBuildings';
 import { useMyBuildingScope } from '@/hooks/useMyBuildingScope';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
@@ -25,8 +26,7 @@ const VEHICLE_TYPE_LABELS: Record<string, string> = {
 
 const copyPhone = (phone: string, e: React.MouseEvent) => {
   e.stopPropagation();
-  navigator.clipboard.writeText(phone);
-  toast.success('Đã sao chép SĐT');
+  void copyTextWithFeedback(phone, 'số điện thoại');
 };
 
 const fmtDate = (s: string | null | undefined) => {
@@ -77,7 +77,8 @@ export default function CustomersMobilePage() {
     [status, debounced, buildingId],
   );
 
-  const { data: paged, isLoading } = useCustomers(filters, { page: 1, pageSize });
+  const customersQuery = useCustomers(filters, { page: 1, pageSize });
+  const { data: paged, isLoading } = customersQuery;
   useCopilotPageContext('customers.list', filters);
 
   const allRows = (paged?.data ?? []) as Customer[];
@@ -87,15 +88,16 @@ export default function CustomersMobilePage() {
   // Lấy phương tiện (loại + biển số) của các KH trên trang hiện tại — 1 truy vấn
   // gộp theo customer_id, map về xe đầu tiên mỗi khách (để hiện kế bên phòng).
   const custIds = useMemo(() => allRows.map((c) => c.id), [allRows]);
-  const { data: vehMap } = useQuery({
+  const vehiclesQuery = useQuery({
     queryKey: ['customers-mobile-vehicles', custIds],
     enabled: custIds.length > 0,
     queryFn: async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('vehicles')
         .select('customer_id, vehicle_type, license_plate')
         .in('customer_id', custIds)
         .is('deleted_at', null);
+      if (error) throw error;
       const m = new Map<string, { type: string | null; plate: string | null }>();
       for (const v of (data ?? []) as any[]) {
         if (v.customer_id && !m.has(v.customer_id)) {
@@ -105,8 +107,10 @@ export default function CustomersMobilePage() {
       return m;
     },
   });
+  const { data: vehMap } = vehiclesQuery;
 
-  const { data: buildingsData } = useBuildings();
+  const buildingsQuery = useBuildings();
+  const { data: buildingsData } = buildingsQuery;
   const buildings = (Array.isArray(buildingsData) ? buildingsData : []) as unknown as BuildingWithRelations[];
 
   const { hasAnyScope } = useMyBuildingScope();
@@ -135,6 +139,7 @@ export default function CustomersMobilePage() {
           </div>
 
           <div className="mbody">
+            <QueryRegion label="danh sách khách hàng" queries={[customersQuery, buildingsQuery, ...(custIds.length ? [vehiclesQuery] : [])]}>
             <div className="lfilter">
               {STATUS_TABS.map((t) => (
                 <button
@@ -264,6 +269,7 @@ export default function CustomersMobilePage() {
                 )}
               </div>
             )}
+            </QueryRegion>
           </div>
         </div>
       </div>

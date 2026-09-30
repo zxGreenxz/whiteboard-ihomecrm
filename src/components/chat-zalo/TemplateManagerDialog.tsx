@@ -1,3 +1,6 @@
+import { QueryRegion } from '@/components/errors/QueryRegion';
+import { focusFirstError } from '@/lib/formErrors';
+import { actionErrorMessage } from '@/lib/actionFeedback';
 import { useState } from 'react';
 import { Loader2, Plus, Pencil, Trash2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -21,9 +24,12 @@ type Editing = { id?: string; title: string; body: string; color: string; isActi
 
 /** Dialog quản lý thư viện mẫu tin của công ty (CRUD — cần quyền manage_templates). */
 export default function TemplateManagerDialog({ open, onOpenChange }: Props) {
-  const { data: templates = [], isLoading } = useZaloTemplatesAdmin(open);
+  const templatesQuery = useZaloTemplatesAdmin(open);
+  const { data: templates = [], isLoading } = templatesQuery;
   const save = useSaveTemplate();
   const del = useDeleteTemplate();
+  const [errors, setErrors] = useState<Record<string,string>>({});
+  const [serverError,setServerError]=useState('');
   const [editing, setEditing] = useState<Editing>(null);
   const [deleting, setDeleting] = useState<ZaloTemplateFull | null>(null);
 
@@ -31,14 +37,19 @@ export default function TemplateManagerDialog({ open, onOpenChange }: Props) {
   const startEdit = (t: ZaloTemplateFull) => setEditing({ id: t.id, title: t.title, body: t.body, color: t.color || '#0f9960', isActive: t.isActive });
 
   const submit = () => {
-    if (!editing || !editing.title.trim() || !editing.body.trim()) return;
+    if (!editing) return;
+    const fields:Record<string,string>={};
+    if (!editing.title.trim()) fields.title='Nhập tiêu đề mẫu tin.';
+    if (!editing.body.trim()) fields.body='Nhập nội dung mẫu tin.';
+    setErrors(fields); setServerError('');
+    if(Object.keys(fields).length){void focusFirstError(fields,{order:['title','body']});return;}
     save.mutate(
       {
         id: editing.id, title: editing.title.trim(), body: editing.body,
         color: editing.color, isActive: editing.isActive,
         sortOrder: editing.id ? undefined : templates.length,
       },
-      { onSuccess: () => setEditing(null) },
+      { onSuccess: () => setEditing(null), onError: error => setServerError(actionErrorMessage(error,'Chưa lưu được mẫu tin')) },
     );
   };
 
@@ -51,15 +62,19 @@ export default function TemplateManagerDialog({ open, onOpenChange }: Props) {
             <DialogDescription>Mẫu tin dùng chung cho cả công ty — chèn nhanh bằng nút "Mẫu tin" hoặc gõ "/" trong ô soạn.</DialogDescription>
           </DialogHeader>
 
+          <QueryRegion label="Thư viện mẫu tin Zalo" queries={[templatesQuery]}>
+          {serverError && <p role="alert" className="text-sm text-destructive">{serverError}</p>}
           {editing ? (
             <div className="space-y-3">
               <div className="space-y-1.5">
-                <Label>Tiêu đề (nhãn hiển thị)</Label>
-                <Input value={editing.title} onChange={(e) => setEditing({ ...editing, title: e.target.value })} autoFocus />
+                <Label htmlFor="zalo-template-title">Tiêu đề (nhãn hiển thị)</Label>
+                <Input id="zalo-template-title" name="title" aria-invalid={!!errors.title} value={editing.title} onChange={(e) => setEditing({ ...editing, title: e.target.value })} autoFocus />
+                {errors.title && <p role="alert" className="text-sm text-destructive">{errors.title}</p>}
               </div>
               <div className="space-y-1.5">
-                <Label>Nội dung tin (thứ sẽ được chèn/gửi)</Label>
-                <Textarea rows={5} value={editing.body} onChange={(e) => setEditing({ ...editing, body: e.target.value })} />
+                <Label htmlFor="zalo-template-body">Nội dung tin (thứ sẽ được chèn/gửi)</Label>
+                <Textarea id="zalo-template-body" name="body" aria-invalid={!!errors.body} rows={5} value={editing.body} onChange={(e) => setEditing({ ...editing, body: e.target.value })} />
+                {errors.body && <p role="alert" className="text-sm text-destructive">{errors.body}</p>}
               </div>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -73,7 +88,7 @@ export default function TemplateManagerDialog({ open, onOpenChange }: Props) {
               </div>
               <div className="flex justify-end gap-2">
                 <Button variant="outline" onClick={() => setEditing(null)}>Huỷ</Button>
-                <Button onClick={submit} disabled={save.isPending || !editing.title.trim() || !editing.body.trim()}>
+                <Button onClick={submit} disabled={save.isPending}>
                   {save.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   Lưu mẫu tin
                 </Button>
@@ -107,7 +122,7 @@ export default function TemplateManagerDialog({ open, onOpenChange }: Props) {
                 ))}
               </div>
             </div>
-          )}
+          )}</QueryRegion>
         </DialogContent>
       </Dialog>
 
@@ -117,11 +132,12 @@ export default function TemplateManagerDialog({ open, onOpenChange }: Props) {
             <AlertDialogTitle>Xoá mẫu tin?</AlertDialogTitle>
             <AlertDialogDescription>"{deleting?.title}" sẽ bị xoá khỏi thư viện của công ty. Không hoàn tác được.</AlertDialogDescription>
           </AlertDialogHeader>
+          {serverError && <p role="alert" className="text-sm text-destructive">{serverError}</p>}
           <AlertDialogFooter>
             <AlertDialogCancel>Huỷ</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => { if (deleting) del.mutate(deleting.id, { onSuccess: () => setDeleting(null) }); }}
+              disabled={del.isPending} onClick={event => { event.preventDefault(); if (deleting) del.mutate(deleting.id, { onSuccess: () => setDeleting(null), onError: error => setServerError(actionErrorMessage(error,'Chưa xóa được mẫu tin')) }); }}
             >
               Xoá
             </AlertDialogAction>

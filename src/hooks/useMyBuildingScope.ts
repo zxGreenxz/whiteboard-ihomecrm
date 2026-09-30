@@ -20,6 +20,8 @@ export interface MyBuildingScope {
   hasAnyScope: boolean;
   canManageBuilding: (buildingId: string | null | undefined) => boolean;
   isLoading: boolean;
+  isError?: boolean;
+  error?: unknown;
 }
 
 const ALL: MyBuildingScope = {
@@ -39,22 +41,28 @@ const NONE: MyBuildingScope = {
 };
 
 export const useMyBuildingScope = (): MyBuildingScope => {
-  const { data: ctx, isLoading: ctxLoading } = useMyContext();
-  const { data: isAdmin, isLoading: adminLoading } = useIsAdmin();
+  const contextQuery=useMyContext();
+  const { data: ctx, isLoading: ctxLoading } = contextQuery;
+  const adminQuery=useIsAdmin();
+  const { data: isAdmin, isLoading: adminLoading } = adminQuery;
 
-  const { data: rows, isLoading: assignmentsLoading } = useQuery({
+  const assignmentsQuery = useQuery({
     queryKey: ['my-assignments'],
     queryFn: async () => {
       const { data, error } = await supabase.rpc('get_my_assignments');
       if (error) {
         console.error('get_my_assignments error:', error);
-        return [] as Array<{ user_id: string; building_id: string | null }>;
+        throw error;
       }
-      return (data || []) as Array<{ user_id: string; building_id: string | null }>;
+      if(!Array.isArray(data)) throw new TypeError("Unconfirmed building assignments");
+      return data as Array<{ user_id: string; building_id: string | null }>;
     },
     staleTime: 5 * 60 * 1000,
   });
 
+  const {data:rows,isLoading:assignmentsLoading}=assignmentsQuery;
+  const error=contextQuery.error ?? adminQuery.error ?? assignmentsQuery.error;
+  if (contextQuery.isError || adminQuery.isError || assignmentsQuery.isError) return {...NONE,isError:true,error};
   const loading = ctxLoading || adminLoading || assignmentsLoading;
 
   // Chờ đủ context trước khi quyết định — nếu mặc định ALL trong lúc loading
@@ -62,7 +70,8 @@ export const useMyBuildingScope = (): MyBuildingScope => {
   if (loading) return { ...NONE, isLoading: true };
 
   // Owner / super admin / admin / không phải staff → toàn quyền.
-  if (!ctx || isAdmin || ctx.isSuper || !ctx.isStaff) return ALL;
+  if (!ctx) return NONE;
+  if (isAdmin || ctx.isSuper || !ctx.isStaff) return ALL;
 
   const list = rows || [];
   const canAll = list.some((r) => r.building_id === null);

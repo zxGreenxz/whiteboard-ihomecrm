@@ -72,24 +72,23 @@ describe('resolveSelectedOrganizationId', () => {
 });
 
 describe('parseOrganizations', () => {
-  it('bỏ dòng thiếu id/name thay vì render undefined', () => {
-    const ra = parseOrganizations({
-      organizations: [
-        { id: 'x', name: 'Có tên', slug: 'x', member_type: 'OWNER' },
-        { id: 'y' },
-        { name: 'thiếu id' },
-        null,
-      ],
+  it('danh bạ hợp lệ giữ tên và các trường nullable đúng RPC', () => {
+    expect(parseOrganizations({ organizations: [
+      { id: 'x', name: 'Có tên', slug: 'x', member_type: 'OWNER' },
+      { id: 'y', name: 'Công ty Y', slug: null, member_type: null },
+    ] })).toEqual([
+      { id: 'x', name: 'Có tên', slug: 'x', memberType: 'OWNER' },
+      { id: 'y', name: 'Công ty Y', slug: null, memberType: null },
+    ]);
+  });
+  it('danh bạ rỗng hợp lệ vẫn là không có công ty', () => {
+    expect(parseOrganizations({ organizations: [] })).toEqual([]);
+  });
+  it.each([null, undefined, {}, { organizations: 'không phải mảng' },
+    { organizations: [{ id: 'x' }] }, { organizations: [null] }])('phản hồi hỏng %j không được kết luận không có công ty', value => {
+      expect(() => parseOrganizations(value)).toThrow();
     });
-    expect(ra).toHaveLength(1);
-    expect(ra[0]).toEqual({ id: 'x', name: 'Có tên', slug: 'x', memberType: 'OWNER' });
-  });
 
-  it('payload hỏng ⇒ mảng rỗng, không ném', () => {
-    for (const xau of [null, undefined, {}, { organizations: 'không phải mảng' }]) {
-      expect(parseOrganizations(xau)).toEqual([]);
-    }
-  });
 });
 
 describe('OrganizationProvider RPC contract', () => {

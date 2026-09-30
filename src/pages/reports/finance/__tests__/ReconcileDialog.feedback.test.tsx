@@ -1,0 +1,21 @@
+import type {ReactNode} from 'react';
+// @vitest-environment jsdom
+import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
+import {afterEach,beforeEach,expect,it,vi} from 'vitest';
+const io=vi.hoisted(()=>({rpc:vi.fn()}));
+vi.mock('@/integrations/supabase/client',()=>({supabase:{rpc:(name:string,args:unknown)=>io.rpc(name,args)}}));
+vi.mock('@/contexts/OrganizationContext',()=>({useOrganization:()=>({selectedOrganizationId:'o1'})}));
+vi.mock('@/lib/authSession',()=>({getSessionUser:async()=>({id:'u1'})}));
+vi.mock('@/hooks/useAuth',()=>({useAuth:()=>({data:{id:'u1'}})}));
+vi.mock('@/hooks/useStaffUsers',()=>({useStaffUsers:()=>({data:[],isLoading:false,isError:false,status:'success',fetchStatus:'idle',error:null,refetch:vi.fn()})}));
+vi.mock('@/hooks/useMyPermissions',()=>({useMyPermissions:()=>({data:{}})}));
+vi.mock('@/components/layout/MainLayout',()=>({default:({children}:{children:ReactNode})=>children}));
+vi.mock('sonner',()=>({toast:{success:vi.fn(),error:vi.fn()}}));
+import {ReconcileDialog} from '../BanGiaoReport';
+import type {SettlementAccount} from '@/hooks/useSettlementReport';
+const account={account_id:'test-reconcile-account',name:'Quỹ thật',current_balance:1000} as SettlementAccount;
+const renderDialog=(date:string)=>render(<QueryClientProvider client={new QueryClient({defaultOptions:{mutations:{retry:false},queries:{retry:false}}})}><ReconcileDialog account={account} asOf={date} onClose={()=>{}}/></QueryClientProvider>);
+beforeEach(()=>{vi.clearAllMocks();localStorage.clear();});afterEach(cleanup);
+it('số thực tế trống không đổi thành zero; đỏ và focus',async()=>{renderDialog('2026-09-01');const input=screen.getByLabelText('Số đếm/đối chiếu thực tế');fireEvent.change(input,{target:{value:''}});fireEvent.click(screen.getByRole('button',{name:'Chốt số'}));await waitFor(()=>expect(document.activeElement).toBe(input));expect(input.getAttribute('aria-invalid')).toBe('true');expect(io.rpc).not.toHaveBeenCalled();});
+it('timeout vẫn khóa đề nghị cùng sổ/ngày sau mở lại',async()=>{io.rpc.mockResolvedValue({data:null,error:new TypeError('Failed to fetch')});const first=renderDialog('2026-09-02');fireEvent.click(screen.getByRole('button',{name:'Chốt số'}));await waitFor(()=>expect((screen.getByRole('button',{name:'Chốt số'}) as HTMLButtonElement).disabled).toBe(true));expect(io.rpc).toHaveBeenCalledTimes(1);first.unmount();renderDialog('2026-09-02');expect((screen.getByRole('button',{name:'Chốt số'}) as HTMLButtonElement).disabled).toBe(true);expect(screen.getByRole('alert').textContent).toContain('Lần đối soát trước chưa xác nhận');});

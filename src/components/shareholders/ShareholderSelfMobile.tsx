@@ -1,3 +1,4 @@
+import { QueryRegion } from "@/components/errors/QueryRegion";
 import { useMemo, useState } from "react";
 import { HandCoins } from "lucide-react";
 import { colorAt } from "./shareholderUtils";
@@ -31,10 +32,13 @@ export default function ShareholderSelfMobile({
   onYearChange: (y: number) => void;
 }) {
   const [month, setMonth] = useState<string>(ALL); // "all" | "1".."12"
-  const { data: allocations = [] } = useProfitAllocations(); // RLS: chỉ của mình
-  const { data: distributions = [] } = useShareholderDistributions(); // RLS: chỉ của mình
+  const allocationsQuery = useProfitAllocations();
+  const { data: allocations = [] } = allocationsQuery; // RLS: chỉ của mình
+  const distributionsQuery = useShareholderDistributions();
+  const { data: distributions = [] } = distributionsQuery; // RLS: chỉ của mình
   // Tên tòa qua RPC riêng (cổ đông không có quyền đọc bảng buildings).
-  const { data: buildings = [] } = useMyShareBuildings();
+  const buildingsQuery = useMyShareBuildings();
+  const { data: buildings = [] } = buildingsQuery;
 
   const buildingName = (id?: string) => buildings.find((b) => b.id === id)?.name ?? "—";
   const monthOf = (p?: string) => Number((p ?? "").slice(5, 7));
@@ -124,6 +128,7 @@ export default function ShareholderSelfMobile({
   const kpiSub = "text-[10.5px] text-[#b6b0a3] font-semibold mt-1";
 
   return (
+    <QueryRegion label="lợi nhuận và cấu hình phân bổ" queries={[allocationsQuery, distributionsQuery, buildingsQuery]}>
     <div className="flex flex-col gap-3">
       {/* Hero */}
       <div
@@ -259,5 +264,6 @@ export default function ShareholderSelfMobile({
         ))}
       </div>
     </div>
+    </QueryRegion>
   );
 }

@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react';
+import {recordWriteBlocked,recordWriteMessage} from '@/lib/recordWriteOutcome';
+import {focusFirstError} from '@/lib/formErrors';
+import { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
@@ -43,6 +45,7 @@ import {
 } from '@/lib/incomeExpenseValidation';
 import {
   useDeleteIncomeExpenseType,
+  useIncomeExpenseTypeCategories,
   useUpdateIncomeExpenseType,
   type IncomeExpenseType,
 } from '@/hooks/useIncomeExpenseTypes';
@@ -67,6 +70,10 @@ const EditIncomeExpenseTypeDialog = ({
   const updateType = useUpdateIncomeExpenseType();
   const deleteType = useDeleteIncomeExpenseType();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [blocked,setBlocked]=useState(false);
+  const [deleteFailure,setDeleteFailure]=useState('');
+  const busy=useRef(false);
+  const draftKey=useRef<string|null>(null);
   const { data: perms } = useMyPermissions();
   // Chỉ người có quyền xem/sửa hạng mục hạn chế mới được đánh dấu "hạn chế".
   const canManageRestricted = canUse(perms, 'income_expenses', 'restricted_view');
@@ -85,7 +92,9 @@ const EditIncomeExpenseTypeDialog = ({
   });
 
   useEffect(() => {
-    if (open && type) {
+    if(open && type) {
+      if(draftKey.current===type.id && (form.formState.isDirty || form.formState.errors.root?.server || blocked || deleteFailure)) return;
+      draftKey.current=type.id;setBlocked(false);setDeleteFailure('');
       form.reset({
         name: type.name,
         type: type.type,
@@ -99,9 +108,12 @@ const EditIncomeExpenseTypeDialog = ({
   }, [open, type, form]);
 
   const watchedType = form.watch('type');
+  const categoriesQuery=useIncomeExpenseTypeCategories(watchedType);
+  const sourceBlocked=categoriesQuery.isLoading || categoriesQuery.isError;
 
   const onSubmit = async (data: IncomeExpenseTypeFormValues) => {
-    if (!type) return;
+    if(!type || blocked || busy.current || updateType.isPending || deleteType.isPending || sourceBlocked) return;
+    busy.current=true;form.clearErrors('root.server');
     try {
       await updateType.mutateAsync({
         id: type.id,
@@ -117,36 +129,41 @@ const EditIncomeExpenseTypeDialog = ({
         },
       });
       onOpenChange(false);
-    } catch {
-      // toast handled in mutation
-    }
+    } catch(error) {
+      setBlocked(recordWriteBlocked(error));
+      form.setError('root.server',{type:'server',message:recordWriteMessage(error,'cập nhật loại thu chi')});
+    } finally {busy.current=false;}
   };
 
   const handleDelete = async () => {
-    if (!type) return;
+    if(!type || blocked || busy.current || updateType.isPending || deleteType.isPending) return;
+    busy.current=true;
     try {
       await deleteType.mutateAsync(type.id);
       onDeleted?.(type.id);
       setConfirmDelete(false);
       onOpenChange(false);
-    } catch {
-      // toast handled in mutation
-      setConfirmDelete(false);
-    }
+    } catch(error) {
+      setBlocked(recordWriteBlocked(error));
+      setDeleteFailure(recordWriteMessage(error,'xoá loại thu chi'));
+    } finally {busy.current=false;}
   };
 
   return (
     <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-[480px]">
+      <Dialog open={open} onOpenChange={next=>{if(!busy.current && !updateType.isPending && !deleteType.isPending) onOpenChange(next);}}>
+        <DialogContent aria-describedby={undefined} className="sm:max-w-[480px]">
           <DialogHeader>
             <DialogTitle>Sửa hạng mục thu chi</DialogTitle>
           </DialogHeader>
           <Form {...form}>
             <form
-              onSubmit={form.handleSubmit(onSubmit)}
+              onSubmit={form.handleSubmit(onSubmit,errors=>{void focusFirstError(errors);})}
               className="space-y-3"
             >
+              {form.formState.errors.root?.server?.message && <p role="alert" className="text-destructive">{form.formState.errors.root.server.message}</p>}
+              {sourceBlocked && <div role="alert">Chưa tải đủ nhóm loại thu chi. <Button type="button" variant="outline" onClick={()=>{void categoriesQuery.refetch();}}>Tải lại dữ liệu</Button></div>}
+              <fieldset disabled={updateType.isPending || deleteType.isPending || blocked || sourceBlocked} className="space-y-3">
               <FormField
                 control={form.control}
                 name="name"
@@ -280,7 +297,7 @@ const EditIncomeExpenseTypeDialog = ({
                   variant="destructive"
                   size="sm"
                   onClick={() => setConfirmDelete(true)}
-                  disabled={deleteType.isPending}
+                  disabled={deleteType.isPending || blocked}
                 >
                   <Trash2 className="h-4 w-4 mr-1" />
                   Xoá
@@ -297,12 +314,13 @@ const EditIncomeExpenseTypeDialog = ({
                   <Button
                     type="submit"
                     size="sm"
-                    disabled={updateType.isPending}
+                    disabled={updateType.isPending || blocked || sourceBlocked}
                   >
                     {updateType.isPending ? 'Đang lưu...' : 'Lưu'}
                   </Button>
                 </div>
               </div>
+              </fieldset>
             </form>
           </Form>
         </DialogContent>
@@ -319,9 +337,10 @@ const EditIncomeExpenseTypeDialog = ({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Huỷ</AlertDialogCancel>
+            {deleteFailure && <p role="alert" className="text-destructive">{deleteFailure}</p>}
             <AlertDialogAction
-              onClick={handleDelete}
-              disabled={deleteType.isPending}
+              onClick={event=>{event.preventDefault();void handleDelete();}}
+              disabled={deleteType.isPending || blocked}
               className="bg-red-600 hover:bg-red-700"
             >
               {deleteType.isPending ? 'Đang xoá...' : 'Xoá'}

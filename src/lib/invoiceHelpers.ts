@@ -335,7 +335,8 @@ export async function computePreviousDebt(
   if (opts.excludeInvoiceId) {
     invoicesQuery = invoicesQuery.neq('id', opts.excludeInvoiceId);
   }
-  const { data: oldInvoices } = await invoicesQuery;
+  const { data: oldInvoices, error:oldInvoicesError } = await invoicesQuery;
+  if(oldInvoicesError) throw oldInvoicesError;
 
   // Build set "đã được HĐ khác carry-over" để không cộng đúp:
   //  - carriedInvoiceIds: HĐ X xuất hiện trong previous_debt_sources của HĐ Y
@@ -439,12 +440,14 @@ export async function getContractDiscountSlot(
 ): Promise<ContractDiscountSlot> {
   if (!contractId) return EMPTY_DISCOUNT_SLOT;
 
-  const { data: contract } = await (supabase
+  const { data: contract,error:contractError } = await (supabase
     .from('contracts') as any)
     .select('id, discounts')
     .eq('id', contractId)
     .maybeSingle();
 
+  if(contractError) throw contractError;
+  if(!contract) throw new Error("Không tìm thấy hợp đồng để tính khuyến mãi.");
   const discounts = (contract as any)?.discounts;
   const months = Number(discounts?.months) || 0;
   const amount = Number(discounts?.amount_per_month) || 0;
@@ -460,7 +463,9 @@ export async function getContractDiscountSlot(
   if (opts.excludeInvoiceId) {
     countQuery = countQuery.neq('id', opts.excludeInvoiceId);
   }
-  const { count } = await countQuery;
+  const { count,error:countError } = await countQuery;
+  if(countError) throw countError;
+  if(count==null) throw new Error("Chưa xác nhận được số kỳ khuyến mãi đã dùng.");
   const usedSlots = Number(count) || 0;
   const slotIndex = usedSlots + 1;
   const applicable = slotIndex <= months;

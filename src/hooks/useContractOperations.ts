@@ -1,9 +1,16 @@
+import {z} from 'zod';
+import {useRef} from 'react';
+import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
+import {workflowErrorMessage} from '@/lib/financialWorkflow';
+import {financialReadNumber} from '@/lib/financialReadValidation';
+import {readContractNoticeOperationReceipt} from '@/lib/contractNoticeOperationReceipt';
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { ExtraChargeItem, RefundItem } from "@/lib/contractValidation";
 import { rpcNullable } from "@/lib/rpcNullable";
 import { useOrganization } from '@/contexts/OrganizationContext';
+import { friendlyError } from '@/lib/friendlyError';
 import { buildRenewNoticeArgs,buildTransferRoomNoticeArgs,type RenewNoticeInput,type TransferRoomNoticeInput } from '@/lib/contract-lifecycle/noticeTransitions';
 import {
   buildForfeitWithCreditRpcArgs,
@@ -11,6 +18,11 @@ import {
   invokeCustomerCreditRpc,
   prepareCustomerCreditRequest,
 } from "@/lib/customerCreditRpc";
+
+function showContractOperationError(error: unknown, title: string, operation: string) {
+  const feedback = friendlyError(error, title, { operation, financial: true });
+  toast.error(feedback.title, { description: feedback.description });
+}
 
 // =============================================
 // useRenewContract — Gia hạn hợp đồng
@@ -20,26 +32,37 @@ import {
 export const useRenewContract = () => {
   const queryClient = useQueryClient();
   const { selectedOrganizationId } = useOrganization();
+  const workflow=useRef(persistentFinancialWorkflow('contract-notice-transition',{scope:'actor'}));
 
   return useMutation({
     retry:false,
+    meta:{handlesFeedback:true},
     mutationFn: async (params: RenewNoticeInput) => {
       if(!selectedOrganizationId) throw new Error('Chưa chọn tổ chức');
-      const { data, error } = await supabase.rpc("renew_contract_with_notice_v1",buildRenewNoticeArgs(params,selectedOrganizationId));
-
-      if (error) throw error;
-      return data;
+      const args=buildRenewNoticeArgs(params,selectedOrganizationId);
+      if(params.newRentPrice!==undefined)financialReadNumber(params.newRentPrice);
+      if(params.newDeposit!==undefined)financialReadNumber(params.newDeposit);
+      return workflow.current.run(params.contractId,"gia hạn hợp đồng",async progress=>{
+        const {data,error}=await supabase.rpc("renew_contract_with_notice_v1",{...args,p_request_id:progress.requestKey});
+        if(error)throw error;
+        const parsedId=z.string().uuid().safeParse(data);
+        if(parsedId.success)progress.completed.push({id:parsedId.data,label:`Hợp đồng cần đối chiếu: ${parsedId.data}`});
+        if(!parsedId.success||parsedId.data!==params.contractId)throw new TypeError("Unconfirmed contract operation ID");
+        const receipt=await readContractNoticeOperationReceipt(selectedOrganizationId,progress.requestKey,params,'RENEW');
+        progress.completed.push({id:receipt.eventId,label:'Đã xác nhận sự kiện gia hạn/chuyển phòng'});
+        return receipt;
+      });
     },
-    onSuccess: () => {
+    onSuccess: (receipt) => {
       queryClient.invalidateQueries({ queryKey: ["contracts"] });
       queryClient.invalidateQueries({ queryKey: ["rooms"] });
       queryClient.invalidateQueries({ queryKey: ["contract-history"] });
-      toast.success("Gia hạn hợp đồng thành công");
+      toast.success(`Đã gia hạn hợp đồng ${receipt.contractNumber} đến ${receipt.endDate.split('-').reverse().join('/')}.`);
     },
     onError: (error: any) => {
       console.error("Error renewing contract:", error);
       if(error?.code==='PT409') queryClient.invalidateQueries({queryKey:['contracts']});
-      toast.error(error?.message || "Có lỗi xảy ra khi gia hạn hợp đồng");
+      toast.error(workflowErrorMessage(error,'gia hạn hợp đồng'));
     },
   });
 };
@@ -52,26 +75,36 @@ export const useRenewContract = () => {
 export const useTransferRoom = () => {
   const queryClient = useQueryClient();
   const { selectedOrganizationId } = useOrganization();
+  const workflow=useRef(persistentFinancialWorkflow('contract-notice-transition',{scope:'actor'}));
 
   return useMutation({
     retry:false,
+    meta:{handlesFeedback:true},
     mutationFn: async (params: TransferRoomNoticeInput) => {
       if(!selectedOrganizationId) throw new Error('Chưa chọn tổ chức');
-      const { data, error } = await supabase.rpc("transfer_room_with_notice_v1",buildTransferRoomNoticeArgs(params,selectedOrganizationId));
-
-      if (error) throw error;
-      return data;
+      const args=buildTransferRoomNoticeArgs(params,selectedOrganizationId);
+      if(params.newRentPrice!==undefined)financialReadNumber(params.newRentPrice);
+      return workflow.current.run(params.contractId,"chuyển phòng",async progress=>{
+        const {data,error}=await supabase.rpc("transfer_room_with_notice_v1",{...args,p_request_id:progress.requestKey});
+        if(error)throw error;
+        const parsedId=z.string().uuid().safeParse(data);
+        if(parsedId.success)progress.completed.push({id:parsedId.data,label:`Hợp đồng cần đối chiếu: ${parsedId.data}`});
+        if(!parsedId.success||parsedId.data!==params.contractId)throw new TypeError("Unconfirmed contract operation ID");
+        const receipt=await readContractNoticeOperationReceipt(selectedOrganizationId,progress.requestKey,params,'TRANSFER_ROOM');
+        progress.completed.push({id:receipt.eventId,label:'Đã xác nhận sự kiện gia hạn/chuyển phòng'});
+        return receipt;
+      });
     },
-    onSuccess: () => {
+    onSuccess: (receipt) => {
       queryClient.invalidateQueries({ queryKey: ["contracts"] });
       queryClient.invalidateQueries({ queryKey: ["rooms"] });
       queryClient.invalidateQueries({ queryKey: ["contract-history"] });
-      toast.success("Chuyển phòng thành công");
+      toast.success(`Đã chuyển hợp đồng ${receipt.contractNumber} sang phòng ${receipt.roomName}.`);
     },
     onError: (error: any) => {
       console.error("Error transferring room:", error);
       if(error?.code==='PT409') queryClient.invalidateQueries({queryKey:['contracts']});
-      toast.error(error?.message || "Có lỗi xảy ra khi chuyển phòng");
+      toast.error(workflowErrorMessage(error,'chuyển phòng'));
     },
   });
 };
@@ -122,7 +155,7 @@ export const useTransferContract = () => {
     },
     onError: (error: any) => {
       console.error("Error transferring contract:", error);
-      toast.error(error?.message || "Có lỗi xảy ra khi nhượng hợp đồng");
+      showContractOperationError(error, 'Không nhượng được hợp đồng', 'nhượng hợp đồng');
     },
   });
 };
@@ -167,9 +200,7 @@ export const useTerminateForfeit = () => {
     },
     onError: (error: any) => {
       console.error("Error terminating contract (forfeit):", error);
-      toast.error(
-        error?.message || "Có lỗi xảy ra khi thanh lý hợp đồng"
-      );
+      showContractOperationError(error, 'Không thanh lý được hợp đồng', 'thanh lý bỏ cọc');
     },
   });
 };
@@ -226,9 +257,7 @@ export const useTerminateMoveOut = () => {
     },
     onError: (error: any) => {
       console.error("Error terminating contract (move out):", error);
-      toast.error(
-        error?.message || "Có lỗi xảy ra khi thanh lý hợp đồng"
-      );
+      showContractOperationError(error, 'Không thanh lý được hợp đồng', 'quyết toán rời phòng');
     },
   });
 };

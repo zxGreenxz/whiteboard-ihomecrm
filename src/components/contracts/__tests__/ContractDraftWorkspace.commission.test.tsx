@@ -19,7 +19,7 @@ vi.mock('@/components/contracts/contract-form/useContractFormState',async()=>{
   const {useForm}=await import('react-hook-form'); const {useState}=await import('react');
   return {useContractFormState:()=>{
     const [commissionContractId,setCommissionContractId]=useState<string|null>(null);
-    return {form:useForm(),isEditMode:false,isPending:false,blockByDepositDebt:false,selectedBuildingId:fixtures.id,
+    return {form:useForm(),sourceIssues:[],isEditMode:false,isPending:false,blockByDepositDebt:false,selectedBuildingId:fixtures.id,
       selectedCustomers:[],selectedServices:[],typedDepositTotal:0,approvedOrphanTotal:0,
       commissionContractId,setCommissionContractId,onInvalid:vi.fn()};
   }};

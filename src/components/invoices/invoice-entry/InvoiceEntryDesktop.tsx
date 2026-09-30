@@ -1,3 +1,4 @@
+import {EntryFieldError} from './EntryFieldError';
 import type { ReactNode } from 'react';
 import { Loader2, Pencil, Plus, RotateCcw, Trash2, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -248,29 +249,29 @@ export function InvoiceEntryDesktop(props: InvoiceEntryProps) {
       {!lockedDates && <div className="grid grid-cols-1 gap-2.5 px-[18px] pt-2.5 sm:grid-cols-3">
         <label className="flex flex-col gap-1">
           <span className={FIELD_LABEL}>Kỳ thanh toán *</span>
-          <Input
+          <><Input {...ctl.field?.('billing_month')}
             type="month"
             aria-label="Kỳ thanh toán"
             value={v.billing_month}
             onChange={(e) => set.billingMonth(e.target.value)}
             className={cn('h-[34px] rounded-md px-[9px] text-[13px]', LINE, FOCUS)}
-          />
+          /><EntryFieldError ctl={ctl} name={'billing_month'}/></>
         </label>
         <div className="flex flex-col gap-1">
           <span className={FIELD_LABEL}>Ngày phát hành *</span>
-          <DateInput
+          <><DateInput {...ctl.field?.('issue_date')}
             value={v.issue_date || ''}
             onChange={set.issueDate}
             inputClassName={cn('h-[34px] rounded-md text-[13px] tabular-nums', LINE, FOCUS)}
-          />
+          /><EntryFieldError ctl={ctl} name={'issue_date'}/></>
         </div>
         <div className="flex flex-col gap-1">
           <span className={FIELD_LABEL}>Hạn thanh toán *</span>
-          <DateInput
+          <><DateInput {...ctl.field?.('due_date')}
             value={v.due_date || ''}
             onChange={set.dueDate}
             inputClassName={cn('h-[34px] rounded-md text-[13px] tabular-nums', LINE, FOCUS)}
-          />
+          /><EntryFieldError ctl={ctl} name={'due_date'}/></>
         </div>
       </div>}
 
@@ -304,14 +305,14 @@ export function InvoiceEntryDesktop(props: InvoiceEntryProps) {
             </div>
             <div className="grid min-w-[760px] grid-cols-[1.25fr_.75fr_1fr_1fr_1.1fr_1fr_1.1fr]">
               <Cell first changed={changed('rent_price')}>
-                <CurrencyInput aria-label="Giá phòng" suffix={false} className={cn(CELL_INPUT, 'font-semibold')} value={v.rent_price} onChange={set.rent} />
+                <><CurrencyInput {...ctl.field?.('rent_price')} aria-label="Giá phòng" suffix={false} className={cn(CELL_INPUT, 'font-semibold')} value={v.rent_price} onChange={set.rent} /><EntryFieldError ctl={ctl} name={'rent_price'}/></>
               </Cell>
               <Cell changed={changed('occupants')}>
-                <NumberInput aria-label="Số người" className={CELL_INPUT} value={v.occupants} onChange={set.occupants} />
+                <><NumberInput {...ctl.field?.('occupants')} aria-label="Số người" className={CELL_INPUT} value={v.occupants} onChange={set.occupants} /><EntryFieldError ctl={ctl} name={'occupants'}/></>
               </Cell>
               <Cell changed={changed('prev_reading')}>
                 <div className="relative">
-                  <NumberInput
+                  <><NumberInput {...ctl.field?.('prev_reading')}
                     aria-label="Chỉ số đầu"
                     allowDecimal
                     disabled={!meterId}
@@ -320,14 +321,14 @@ export function InvoiceEntryDesktop(props: InvoiceEntryProps) {
                     className={cn(CELL_INPUT, 'bg-slate-50 text-slate-600 focus-visible:bg-white', v.prev_reading_overridden && 'pr-6')}
                     value={v.prev_reading}
                     onChange={set.prev}
-                  />
+                  /><EntryFieldError ctl={ctl} name={'prev_reading'}/></>
                   {v.prev_reading_overridden && (
                     <Pencil aria-hidden className="pointer-events-none absolute right-1.5 top-1/2 h-3 w-3 -translate-y-1/2 text-amber-600" />
                   )}
                 </div>
               </Cell>
               <Cell changed={changed('current_reading')}>
-                <NumberInput
+                <><NumberInput {...ctl.field?.('current_reading')}
                   aria-label="Chỉ số cuối"
                   allowDecimal
                   disabled={!meterId}
@@ -336,16 +337,16 @@ export function InvoiceEntryDesktop(props: InvoiceEntryProps) {
                   className={cn(CELL_INPUT, 'font-semibold')}
                   value={v.current_reading}
                   onChange={set.curr}
-                />
+                /><EntryFieldError ctl={ctl} name={'current_reading'}/></>
               </Cell>
               <Cell changed={changed('electric_amount')}>
-                <CurrencyInput aria-label="Tiền điện" suffix={false} className={CELL_INPUT} value={Math.round(v.electric_amount)} onChange={set.electric} />
+                <><CurrencyInput {...ctl.field?.('electric_amount')} aria-label="Tiền điện" suffix={false} className={CELL_INPUT} value={Math.round(v.electric_amount)} onChange={set.electric} /><EntryFieldError ctl={ctl} name={'electric_amount'}/></>
               </Cell>
               <Cell changed={changed('water_amount')}>
-                <CurrencyInput aria-label="Tiền nước" suffix={false} className={CELL_INPUT} value={Math.round(v.water_amount)} onChange={set.water} />
+                <><CurrencyInput {...ctl.field?.('water_amount')} aria-label="Tiền nước" suffix={false} className={CELL_INPUT} value={Math.round(v.water_amount)} onChange={set.water} /><EntryFieldError ctl={ctl} name={'water_amount'}/></>
               </Cell>
               <Cell changed={changed('pdv_amount')}>
-                <CurrencyInput aria-label="Phí dịch vụ" suffix={false} className={CELL_INPUT} value={v.pdv_amount} onChange={set.pdv} />
+                <><CurrencyInput {...ctl.field?.('pdv_amount')} aria-label="Phí dịch vụ" suffix={false} className={CELL_INPUT} value={v.pdv_amount} onChange={set.pdv} /><EntryFieldError ctl={ctl} name={'pdv_amount'}/></>
               </Cell>
             </div>
             <div className={cn('flex min-w-[760px] flex-wrap gap-2.5 border-t bg-slate-50 px-[9px] py-[5px] text-[11px]', LINE_SOFT, MUTED)}>
@@ -389,13 +390,13 @@ export function InvoiceEntryDesktop(props: InvoiceEntryProps) {
                   onChange={(e) => set.depositNote(e.target.value)}
                   className={cn('h-8 w-[150px] rounded-md px-2 text-[13px]', LINE, FOCUS)}
                 />
-                <CurrencyInput
+                <><CurrencyInput {...ctl.field?.(`custom_items.${ctl.depositIndex}.unit_price`)}
                   aria-label="Số tiền cọc"
                   suffix={false}
                   value={customLineAmount(deposit)}
                   onChange={set.depositAmount}
                   className={cn(CELL_INPUT, 'w-[130px] font-semibold')}
-                />
+                /><EntryFieldError ctl={ctl} name={`custom_items.${ctl.depositIndex}.unit_price`}/></>
               </div>
             )}
           </div>
@@ -415,11 +416,11 @@ export function InvoiceEntryDesktop(props: InvoiceEntryProps) {
             <div className="mt-2 grid grid-cols-1 items-end gap-[9px] sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
               <label className="flex flex-col gap-[3px]">
                 <span className={cn('text-[11px]', MUTED)}>Ngày bắt đầu</span>
-                <DateInput value={v.period_start_date || ''} onChange={set.periodStart} inputClassName={cn('h-8 rounded-md bg-white text-[13px] tabular-nums', LINE, FOCUS)} />
+                <><DateInput {...ctl.field?.('period_start_date')} value={v.period_start_date || ''} onChange={set.periodStart} inputClassName={cn('h-8 rounded-md bg-white text-[13px] tabular-nums', LINE, FOCUS)} /><EntryFieldError ctl={ctl} name={'period_start_date'}/></>
               </label>
               <label className="flex flex-col gap-[3px]">
                 <span className={cn('text-[11px]', MUTED)}>Ngày kết thúc</span>
-                <DateInput value={v.period_end_date || ''} onChange={set.periodEnd} inputClassName={cn('h-8 rounded-md bg-white text-[13px] tabular-nums', LINE, FOCUS)} />
+                <><DateInput {...ctl.field?.('period_end_date')} value={v.period_end_date || ''} onChange={set.periodEnd} inputClassName={cn('h-8 rounded-md bg-white text-[13px] tabular-nums', LINE, FOCUS)} /><EntryFieldError ctl={ctl} name={'period_end_date'}/></>
               </label>
               <button
                 type="button"
@@ -475,13 +476,13 @@ export function InvoiceEntryDesktop(props: InvoiceEntryProps) {
                         </Select>
                       </div>
                       <div className="p-[5px]">
-                        <Input aria-label="Mô tả khoản thu" placeholder="VD: phí gửi xe" value={item.description} onChange={(e) => set.extraDescription(index, e.target.value)} className={cn('h-[30px] rounded-md px-2 text-[13px]', LINE, FOCUS)} />
+                        <><Input {...ctl.field?.(`custom_items.${index}.description`)} aria-label="Mô tả khoản thu" placeholder="VD: phí gửi xe" value={item.description} onChange={(e) => set.extraDescription(index, e.target.value)} className={cn('h-[30px] rounded-md px-2 text-[13px]', LINE, FOCUS)} /><EntryFieldError ctl={ctl} name={`custom_items.${index}.description`}/></>
                       </div>
                       <div className="p-[5px]">
-                        <NumberInput aria-label="Số lượng" allowDecimal value={item.quantity} onChange={(n) => set.extraQuantity(index, n)} className={cn(CELL_INPUT, 'h-[30px] px-1.5')} />
+                        <><NumberInput {...ctl.field?.(`custom_items.${index}.quantity`)} aria-label="Số lượng" allowDecimal value={item.quantity} onChange={(n) => set.extraQuantity(index, n)} className={cn(CELL_INPUT, 'h-[30px] px-1.5')} /><EntryFieldError ctl={ctl} name={`custom_items.${index}.quantity`}/></>
                       </div>
                       <div className="p-[5px]">
-                        <CurrencyInput aria-label="Đơn giá" suffix={false} value={item.unit_price} onChange={(n) => set.extraPrice(index, n)} className={cn(CELL_INPUT, 'h-[30px]')} />
+                        <><CurrencyInput {...ctl.field?.(`custom_items.${index}.unit_price`)} aria-label="Đơn giá" suffix={false} value={item.unit_price} onChange={(n) => set.extraPrice(index, n)} className={cn(CELL_INPUT, 'h-[30px]')} /><EntryFieldError ctl={ctl} name={`custom_items.${index}.unit_price`}/></>
                       </div>
                       <div className="px-2 py-[5px] text-right text-[13px] font-semibold tabular-nums">
                         {formatVnd(customLineAmount(item))}
@@ -508,13 +509,13 @@ export function InvoiceEntryDesktop(props: InvoiceEntryProps) {
                 <span className="whitespace-nowrap text-[12.5px] font-semibold text-amber-900">Giảm trừ</span>
                 <div className="flex-1" />
                 <div className="relative w-[140px]">
-                  <CurrencyInput
+                  <><CurrencyInput {...ctl.field?.('discount_amount')}
                     aria-label="Giảm trừ"
                     suffix={false}
                     value={v.discount_amount}
                     onChange={set.discount}
                     className={cn(CELL_INPUT, 'border-amber-300 bg-white pr-8 font-semibold focus-visible:border-amber-500 focus-visible:ring-amber-500/35')}
-                  />
+                  /><EntryFieldError ctl={ctl} name={'discount_amount'}/></>
                   <DiscountNoteTrigger value={v.discount_notes || ''} onChange={set.discountNotes} disabled={v.discount_amount <= 0} />
                 </div>
               </div>

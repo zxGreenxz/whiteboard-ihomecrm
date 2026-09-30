@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { forwardRef, useState, type ButtonHTMLAttributes } from 'react';
 import { Check, ChevronsUpDown, Plus, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/popover';
 import { useIncomeExpenseTypeCategories } from '@/hooks/useIncomeExpenseTypes';
 
-interface CategoryComboboxProps {
+interface CategoryComboboxProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>,'value'|'onChange'> {
   value: string | null | undefined;
   onChange: (value: string | null) => void;
   filterType?: 'income' | 'expense';
@@ -32,16 +32,19 @@ interface CategoryComboboxProps {
  *   (lưu category là string mới ngay khi user chọn — phía form sẽ gửi lên DB
  *    khi submit, nên không cần round-trip).
  */
-const CategoryCombobox = ({
+const CategoryCombobox = forwardRef<HTMLButtonElement,CategoryComboboxProps>(({
   value,
   onChange,
   filterType,
   placeholder = 'Chọn nhóm hoặc gõ để tạo mới...',
   className,
-}: CategoryComboboxProps) => {
+  ...buttonProps
+}, ref) => {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const { data: categories = [] } = useIncomeExpenseTypeCategories(filterType);
+  const categoriesQuery=useIncomeExpenseTypeCategories(filterType);
+  const {data:categories=[]}=categoriesQuery;
+  if(categoriesQuery.isLoading || categoriesQuery.isError) return <div role="alert" className="text-sm text-destructive">Chưa tải đủ nhóm loại thu chi. <Button type="button" variant="outline" size="sm" onClick={()=>{void categoriesQuery.refetch();}}>Tải lại dữ liệu</Button></div>;
 
   const trimmedQuery = query.trim();
   const lowerCategories = categories.map((c) => c.toLowerCase());
@@ -71,12 +74,14 @@ const CategoryCombobox = ({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
+          {...buttonProps}
+          ref={ref}
           type="button"
           variant="outline"
           role="combobox"
           aria-expanded={open}
           className={cn(
-            'w-full justify-between font-normal',
+            'w-full justify-between font-normal aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive',
             !value && 'text-muted-foreground',
             className
           )}
@@ -159,6 +164,7 @@ const CategoryCombobox = ({
       </PopoverContent>
     </Popover>
   );
-};
+});
+CategoryCombobox.displayName='CategoryCombobox';
 
 export default CategoryCombobox;

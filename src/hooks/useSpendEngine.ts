@@ -1,3 +1,5 @@
+import {financialReadNumber,financialReadRows} from '@/lib/financialReadValidation';
+import {readCommitmentReceipt,readSpendSwitchReceipt,readSpendRuleReceipt} from '@/lib/spendFeedback';
 // =============================================================================
 // useSpendEngine — màn "Cam kết chi" của chủ (plan cỗ máy chi theo cam kết, 26/09/2026).
 //
@@ -77,17 +79,20 @@ export interface OrgOption { id: string; name: string }
 /** Tổ chức người đang đăng nhập thuộc về (chọn org cho màn chủ). */
 export const useMySpendOrganizations = () =>
   useQuery({
+    meta:{label:'quy tắc duyệt chi',errorDisplay:'inline'},
     queryKey: ['spend-engine', 'orgs'],
     queryFn: async (): Promise<OrgOption[]> => {
       const { data: ids, error } = await supabase.rpc('my_org_ids');
-      if (error) throw new Error(error.message);
-      const list = Array.isArray(ids) ? (ids as string[]).filter(Boolean) : [];
+      if (error) throw error;
+      if (!Array.isArray(ids) || ids.some(id=>typeof id!== 'string' || !id.trim())) throw new TypeError('Chưa tải đủ các tổ chức áp dụng quy tắc duyệt chi.');
+      const list = ids as string[];
       if (!list.length) return [];
       // Tên chỉ để HIỂN THỊ. RLS bảng organizations ẩn dòng với vai "Chủ công ty" (đo bằng
       // trình duyệt 26/09/2026: select trả []), nên id lấy từ my_org_ids là nguồn đúng; đọc
       // được tên thì dùng, không thì ghi chung chung — tuyệt đối không đánh rơi công ty.
-      const { data } = await supabase.from('organizations').select('id, name').in('id', list);
-      const names = new Map((data ?? []).map((o) => [o.id as string, o.name as string]));
+      const { data, error: nameError } = await supabase.from('organizations').select('id, name').in('id', list);
+      if (nameError) throw nameError;
+      const names = new Map(financialReadRows(data).map((o) => [o.id as string, o.name as string]));
       return list.map((id, i) => ({
         id,
         name: names.get(id) ?? (list.length > 1 ? `Công ty ${i + 1}` : 'Công ty của bạn'),
@@ -112,13 +117,19 @@ export interface SpendEngineStatus {
 export const useSpendEngineStatus = (orgId: string | null) =>
   useQuery({
     enabled: !!orgId,
+    meta:{label:'quy tắc duyệt chi',errorDisplay:'inline'},
     queryKey: ['spend-engine', 'status', orgId],
     queryFn: async (): Promise<SpendEngineStatus> => {
       const { data, error } = await supabase.rpc('get_spend_engine_status_v1', {
         p_organization_id: orgId as string,
       });
-      if (error) throw new Error(error.message);
-      return data as unknown as SpendEngineStatus;
+      if (error) throw error;
+      if (!data || typeof data !== 'object' || Array.isArray(data)) throw new TypeError('Chưa tải được trạng thái quy tắc duyệt chi.');
+      const row = data as unknown as SpendEngineStatus;
+      if (typeof row.route !== 'string' || typeof row.cashbook_route !== 'string' || !row.ledger || typeof row.ledger !== 'object' || Array.isArray(row.ledger)) throw new TypeError('Chưa tải đủ trạng thái quy tắc duyệt chi.');
+      for (const value of [row.decisions_30d,row.mismatches_30d,row.enforced_30d,row.cashbook_warn_30d,row.errors_7d,row.switches_on]) financialReadNumber(value);
+      for (const value of Object.values(row.ledger)) { financialReadNumber(value.n); financialReadNumber(value.amount); }
+      return row;
     },
   });
 
@@ -137,6 +148,7 @@ export interface SpendCommitmentRow {
 export const useSpendCommitments = (orgId: string | null, fromMonth: string, toMonth: string) =>
   useQuery({
     enabled: !!orgId,
+    meta:{label:'quy tắc duyệt chi',errorDisplay:'inline'},
     queryKey: ['spend-engine', 'commitments', orgId, fromMonth, toMonth],
     queryFn: async (): Promise<SpendCommitmentRow[]> => {
       const { data, error } = await supabase.rpc('list_spend_commitments_v1', {
@@ -144,11 +156,11 @@ export const useSpendCommitments = (orgId: string | null, fromMonth: string, toM
         p_from_month: monthToDate(fromMonth),
         p_to_month: monthToDate(toMonth),
       });
-      if (error) throw new Error(error.message);
-      return (data ?? []).map((r) => ({
+      if (error) throw error;
+      return financialReadRows(data).map((r) => ({
         ...r,
-        amount: Number(r.amount),
-        remaining: Number(r.remaining),
+        amount: financialReadNumber(r.amount),
+        remaining: financialReadNumber(r.remaining),
       })) as SpendCommitmentRow[];
     },
   });
@@ -156,6 +168,7 @@ export const useSpendCommitments = (orgId: string | null, fromMonth: string, toM
 export const useSetSpendCommitment = () => {
   const qc = useQueryClient();
   return useMutation({
+    meta:{handlesFeedback:true},
     mutationFn: async (args: {
       buildingId: string; feeCategory: SpendFeeKey; month: string; amount: number | null; note?: string;
     }) => {
@@ -167,8 +180,8 @@ export const useSetSpendCommitment = () => {
         p_amount: (args.amount ?? 0) as number,
         p_note: args.note ?? undefined,
       });
-      if (error) throw new Error(error.message);
-      return data;
+      if (error) throw error;
+      return readCommitmentReceipt(data,args.amount);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['spend-engine'] }),
   });
@@ -188,19 +201,21 @@ export interface SpendSwitchRow {
 export const useSpendSwitches = (orgId: string | null) =>
   useQuery({
     enabled: !!orgId,
+    meta:{label:'quy tắc duyệt chi',errorDisplay:'inline'},
     queryKey: ['spend-engine', 'switches', orgId],
     queryFn: async (): Promise<SpendSwitchRow[]> => {
       const { data, error } = await supabase.rpc('list_spend_policy_switches_v1', {
         p_organization_id: orgId as string,
       });
-      if (error) throw new Error(error.message);
-      return (data ?? []) as SpendSwitchRow[];
+      if (error) throw error;
+      return financialReadRows(data) as SpendSwitchRow[];
     },
   });
 
 export const useSetSpendSwitch = () => {
   const qc = useQueryClient();
   return useMutation({
+    meta:{handlesFeedback:true},
     mutationFn: async (args: {
       orgId: string; feeCategory: SpendFeeKey; fromMonth: string; toMonth?: string | null;
       buildingId?: string | null; on: boolean; note?: string;
@@ -214,8 +229,8 @@ export const useSetSpendSwitch = () => {
         p_on: args.on,
         p_note: args.note ?? undefined,
       });
-      if (error) throw new Error(error.message);
-      return data as Record<string, unknown>;
+      if (error) throw error;
+      return readSpendSwitchReceipt(data,args.on);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['spend-engine'] }),
   });
@@ -242,6 +257,7 @@ export interface SpendShadowRow {
 export const useSpendShadowReport = (orgId: string | null, from: string, to: string) =>
   useQuery({
     enabled: !!orgId,
+    meta:{label:'quy tắc duyệt chi',errorDisplay:'inline'},
     queryKey: ['spend-engine', 'shadow', orgId, from, to],
     queryFn: async (): Promise<SpendShadowRow[]> => {
       const { data, error } = await supabase.rpc('spend_shadow_report_v2', {
@@ -249,8 +265,8 @@ export const useSpendShadowReport = (orgId: string | null, from: string, to: str
         p_from: from,
         p_to: to,
       });
-      if (error) throw new Error(error.message);
-      return (data ?? []).map((r) => ({ ...r, amount: r.amount == null ? null : Number(r.amount) })) as SpendShadowRow[];
+      if (error) throw error;
+      return financialReadRows(data).map((r) => ({ ...r, amount: r.amount == null ? null : financialReadNumber(r.amount) })) as SpendShadowRow[];
     },
   });
 
@@ -270,6 +286,7 @@ export interface SelfApprovedRow {
 export const useSelfApprovedVouchers = (orgId: string | null, from: string, to: string) =>
   useQuery({
     enabled: !!orgId,
+    meta:{label:'quy tắc duyệt chi',errorDisplay:'inline'},
     queryKey: ['spend-engine', 'self-approved', orgId, from, to],
     queryFn: async (): Promise<SelfApprovedRow[]> => {
       const { data, error } = await supabase.rpc('list_self_approved_vouchers_v1', {
@@ -277,22 +294,23 @@ export const useSelfApprovedVouchers = (orgId: string | null, from: string, to: 
         p_from: from,
         p_to: to,
       });
-      if (error) throw new Error(error.message);
-      return (data ?? []).map((r) => ({ ...r, amount: Number(r.amount) })) as SelfApprovedRow[];
+      if (error) throw error;
+      return financialReadRows(data).map((r) => ({ ...r, amount: financialReadNumber(r.amount) })) as SelfApprovedRow[];
     },
   });
 
 export const useSetTypeSpendRule = () => {
   const qc = useQueryClient();
   return useMutation({
+    meta:{handlesFeedback:true},
     mutationFn: async (args: { typeId: string; mode: SpendMode; feeCategory?: SpendFeeKey | null }) => {
       const { data, error } = await supabase.rpc('set_income_expense_type_spend_rule_v1', {
         p_type_id: args.typeId,
         p_spend_mode: args.mode,
         p_fee_category: args.feeCategory ?? undefined,
       });
-      if (error) throw new Error(error.message);
-      return data;
+      if (error) throw error;
+      return readSpendRuleReceipt(data,args.typeId,args.mode);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['spend-engine'] });

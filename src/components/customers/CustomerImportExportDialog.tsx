@@ -1,3 +1,4 @@
+import {recordWriteBlocked,recordWriteMessage} from '@/lib/recordWriteOutcome';
 /**
  * CustomerImportExportDialog
  * Dialog for importing customers from Excel and exporting customer list.
@@ -37,7 +38,7 @@ import { Download, Upload, FileSpreadsheet, AlertCircle, CheckCircle2, Loader2, 
 interface CustomerImportExportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onImport: (validRows: CustomerImportRow[]) => void;
+  onImport: (validRows: CustomerImportRow[]) => Promise<void>;
 }
 
 // =============================================
@@ -52,12 +53,16 @@ export function CustomerImportExportDialog({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isParsing, setIsParsing] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [blocked,setBlocked]=useState(false);
+  const importing=useRef(false);
   const [parseResult, setParseResult] = useState<CustomerImportResult | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
 
   // ---- handlers ----
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    if(blocked || importing.current)return;
     const file = e.target.files?.[0] ?? null;
     setSelectedFile(file);
     setParseResult(null);
@@ -69,7 +74,7 @@ export function CustomerImportExportDialog({
   }
 
   async function handleParse() {
-    if (!selectedFile) return;
+    if (!selectedFile || blocked || importing.current) return;
     setIsParsing(true);
     setParseResult(null);
     setParseError(null);
@@ -83,14 +88,26 @@ export function CustomerImportExportDialog({
     }
   }
 
-  function handleConfirmImport() {
-    if (!parseResult) return;
-    onImport(parseResult.validRows);
-    handleClose();
+  async function handleConfirmImport() {
+    if (!parseResult || blocked || importing.current || isImporting) return;
+    importing.current=true;
+    setIsImporting(true);
+    try {
+      await onImport(parseResult.validRows);
+      importing.current=false;setIsImporting(false);setParseError(null);
+      handleClose(true);
+    } catch (error) {
+      setParseError(recordWriteMessage(error,'nhập khách hàng'));
+      setBlocked(recordWriteBlocked(error));
+    } finally {
+      importing.current=false;setIsImporting(false);
+    }
   }
 
-  function handleClose() {
+  function handleClose(confirmed=false) {
+    if(!confirmed && (importing.current || isImporting))return;
     onOpenChange(false);
+    if(!confirmed && (parseError || blocked))return;
     // Reset state after dialog closes
     setTimeout(() => {
       setSelectedFile(null);
@@ -106,11 +123,11 @@ export function CustomerImportExportDialog({
   const validCount = parseResult?.validRows.length ?? 0;
   const errorCount = parseResult?.errors.length ?? 0;
   const warningCount = parseResult?.warnings.length ?? 0;
-  const canConfirm = hasResult && validCount > 0;
+  const canConfirm = hasResult && validCount > 0 && !blocked;
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+    <Dialog open={open} onOpenChange={value => { if (!value && !isImporting) handleClose(); }}>
+      <DialogContent aria-describedby={undefined} className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Nhập / Xuất dữ liệu khách hàng</DialogTitle>
         </DialogHeader>
@@ -185,7 +202,7 @@ export function CustomerImportExportDialog({
             {/* Parse button */}
             <Button
               onClick={handleParse}
-              disabled={!selectedFile || isParsing}
+              disabled={!selectedFile || isParsing || blocked || isImporting}
               className="w-full"
             >
               {isParsing ? (
@@ -203,7 +220,7 @@ export function CustomerImportExportDialog({
 
             {/* Parse error */}
             {parseError && (
-              <Alert variant="destructive">
+              <Alert role="alert" variant="destructive">
                 <AlertCircle className="h-4 w-4" />
                 <AlertDescription>{parseError}</AlertDescription>
               </Alert>
@@ -284,9 +301,9 @@ export function CustomerImportExportDialog({
 
                 {/* Confirm import button */}
                 {canConfirm && (
-                  <Button onClick={handleConfirmImport} className="w-full">
+                  <Button onClick={() => { void handleConfirmImport(); }} disabled={isImporting} className="w-full">
                     <CheckCircle2 className="mr-2 h-4 w-4" />
-                    Xác nhận nhập ({validCount} dòng)
+                    {isImporting ? 'Đang nhập và kiểm tra từng dòng...' : `Xác nhận nhập (${validCount} dòng)`}
                   </Button>
                 )}
               </div>

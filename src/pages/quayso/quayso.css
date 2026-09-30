@@ -1457,3 +1457,5 @@
   }
   .qs-ticker-track { animation: none; }
 }
+
+.qs-page input[aria-invalid="true"], .qs-page [aria-invalid="true"].qs-uploadbox { border: 2px solid #dc2626; outline-color: #dc2626; }

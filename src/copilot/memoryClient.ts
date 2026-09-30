@@ -1,3 +1,4 @@
+import {requireReadRows,readString,readDate,readNumber,readRecord} from '@/lib/accountProfitReadModels';
 // Bộ nhớ dài hạn của Copilot — phần LOGIC THUẦN + ba lời gọi RPC.
 //
 // VÌ SAO TÁCH RA KHỎI TOOL VÀ KHỎI CHATPANEL
@@ -193,7 +194,9 @@ export async function layGhiNho(organizationId: string): Promise<GhiNho[]> {
     'copilot_memory_list_v1',
     { p_organization_id: organizationId },
   );
-  if (error) throw new Error(error.message);
+  if (error) throw error;
+  if(!readRecord(data))throw new TypeError('Invalid memory list');
+  requireReadRows(data.items,row=>readString(row.key)&&RE_KHOA.test(row.key)&&readString(row.value)&&row.value.length<=DAI_TOI_DA_NOI_DUNG&&['user','copilot'].includes(row.source as string)&&readDate(row.updated_at));
   return docDanhSach(data);
 }
 
@@ -203,6 +206,9 @@ export interface KetQuaGhi {
   nguon: GhiNho['nguon'];
   tong: number;
 }
+
+export class MemoryReceiptError extends TypeError {constructor(){super('Chưa xác nhận được thay đổi ghi nhớ. Đọc lại ghi nhớ trước khi thực hiện tiếp.');}}
+const receiptCount=(value:unknown):value is number=>readNumber(value)&&Number.isSafeInteger(value)&&value>=0&&value<=SO_GHI_NHO_TOI_DA;
 
 /** Ghi/ghi đè MỘT mục. Ném khi server từ chối — chỗ gọi diễn giải mã lỗi. */
 export async function ghiNhoLen(
@@ -220,13 +226,9 @@ export async function ghiNhoLen(
     p_value: noiDung,
     p_source: nguon,
   });
-  if (error) throw new Error(error.message);
-  return {
-    khoa: data?.key ?? khoa,
-    noiDung: data?.value ?? noiDung,
-    nguon: data?.source === 'user' ? 'user' : 'copilot',
-    tong: data?.total ?? 0,
-  };
+  if (error) throw error;
+  if(!data||data.key!==khoa||data.value!==noiDung||data.source!==nguon||!receiptCount(data.total))throw new MemoryReceiptError();
+  return {khoa:data.key,noiDung:data.value,nguon,tong:data.total};
 }
 
 export interface KetQuaBo {
@@ -244,8 +246,9 @@ export async function boGhiNho(organizationId: string, khoa: string): Promise<Ke
     p_organization_id: organizationId,
     p_key: khoa,
   });
-  if (error) throw new Error(error.message);
-  return { khoa: data?.key ?? khoa, thay: data?.found === true, tong: data?.total ?? 0 };
+  if (error) throw error;
+  if(!data||data.key!==khoa||typeof data.found!=='boolean'||!receiptCount(data.total))throw new MemoryReceiptError();
+  return {khoa:data.key,thay:data.found,tong:data.total};
 }
 
 /** Mã lỗi server → câu tiếng Việt mô hình và người dùng đọc được. */
@@ -264,5 +267,5 @@ export function dienGiaiLoiGhiNho(message: string): string {
   for (const [ma, cau] of Object.entries(GIAI_THICH_LOI)) {
     if (message.includes(ma)) return cau;
   }
-  return `Không lưu được ghi nhớ: ${message}`;
+  return 'Chưa xác nhận được thay đổi ghi nhớ. Kiểm tra danh sách ghi nhớ trước khi thao tác tiếp.';
 }

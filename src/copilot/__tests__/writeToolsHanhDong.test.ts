@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // Tool ghi sinh từ sổ hành động — factory, kill switch, và thẻ xác nhận
 // tổng quát hoá.
 //
@@ -12,6 +13,7 @@
 //      thấy chỉ là "bấm nút không có gì xảy ra".
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+vi.mock('@/lib/authSession',()=>({getSessionUser:async()=>({id:'actor-a'})}));
 const rpc = vi.hoisted(() => vi.fn());
 const from = vi.hoisted(() => vi.fn());
 vi.mock('@/integrations/supabase/client', () => ({ supabase: { from, rpc } }));
@@ -79,6 +81,7 @@ function ctxVoi(availability: CopilotAvailabilitySnapshot): ToolCtx {
 }
 
 beforeEach(() => {
+  localStorage.clear();localStorage.setItem('ihomecrm.selectedOrganizationId',ORG);
   rpc.mockReset();
   from.mockReset();
   xoaXacNhanDangCho();
@@ -233,7 +236,7 @@ describe('bước xem trước: nonce rẽ sang bộ nhớ, KHÔNG vào chuỗi 
     expect(dienGiaiLoiHanhDong('tenant_emergency_denied: ...', 'X')).toContain('cấm khẩn cấp');
     expect(dienGiaiLoiHanhDong('entity_not_found', 'X')).toContain('Không tìm thấy');
     // Mã lạ thì thuật lại nguyên văn kèm nhãn — không nuốt.
-    expect(dienGiaiLoiHanhDong('loi_la_hoac_moi', 'Sửa ghi chú')).toContain('loi_la_hoac_moi');
+    expect(dienGiaiLoiHanhDong('loi_la_hoac_moi', 'Sửa ghi chú')).not.toContain('loi_la_hoac_moi');
   });
 
   it('RPC trả lỗi ⇒ KHÔNG có đề xuất nào được cất', async () => {
@@ -250,7 +253,7 @@ describe('thẻ xác nhận tổng quát hoá', () => {
   it('gọi ĐÚNG executeRpc của hành động đang chờ', async () => {
     for (const khai of TOOL_GHI) {
       rpc.mockReset();
-      rpc.mockResolvedValue({ data: { status: 'da_thuc_hien' }, error: null });
+      rpc.mockResolvedValue({ data: { status: 'da_thuc_hien',entity_id:'entity-a' }, error: null });
       datNguCanhXacNhan({ organizationId: ORG, threadId: 'thread-1', generation: 3 });
       const entry = ACTION_CATALOG[khai.actionId] as ActionCatalogEntry;
 
@@ -296,7 +299,7 @@ describe('thẻ xác nhận tổng quát hoá', () => {
   });
 
   it('`da_thuc_hien_truoc_do` nói rõ là KHÔNG làm lại', async () => {
-    rpc.mockResolvedValue({ data: { status: 'da_thuc_hien_truoc_do' }, error: null });
+    rpc.mockResolvedValue({ data: { status: 'da_thuc_hien_truoc_do',entity_id:'entity-a' }, error: null });
     datNguCanhXacNhan({ organizationId: ORG, threadId: 'thread-1', generation: 3 });
     const ra = await thucThiXacNhanTheoTool('income_expense.annotate', NONCE, {}, {
       organizationId: ORG,
@@ -636,4 +639,17 @@ describe('G5-C/G5-C2/G5-C3 — 24 action L5 direct_l5_v1: KHÔNG có tool đơn 
       }
     }
   });
+});
+
+it.each([null, {}, {status:'unknown'}])('không báo thành công với kết quả thực hiện không hợp lệ %j', async data => {
+  rpc.mockResolvedValue({data,error:null});
+  datNguCanhXacNhan({organizationId:ORG,threadId:'thread-1',generation:3});
+  await expect(thucThiXacNhanTheoTool('income_expense.annotate',NONCE,{}, {organizationId:ORG,threadId:'thread-1',generation:3})).rejects.toThrow('Chưa xác nhận');
+});
+it('tiếp nhận hàng đợi không khẳng định đã thực hiện ở hệ thống ngoài', async()=>{
+  rpc.mockResolvedValue({data:{status:'da_gui',entity_id:'queue-1'},error:null});
+  datNguCanhXacNhan({organizationId:ORG,threadId:'thread-1',generation:3});
+  const message=await thucThiXacNhanTheoTool('zalo.broadcast',NONCE,{}, {organizationId:ORG,threadId:'thread-1',generation:3});
+  expect(message).toContain('Đã tiếp nhận');
+  expect(message).not.toContain('✅');
 });

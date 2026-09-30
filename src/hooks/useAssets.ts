@@ -1,3 +1,6 @@
+import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
+import {FinancialWorkflowError} from '@/lib/financialWorkflow';
+import {confirmedRecordId,recordWriteMessage} from '@/lib/recordWriteOutcome';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
@@ -6,6 +9,13 @@ import type { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { withOrg } from "@/lib/orgPayload";
+import { friendlyError } from "@/lib/friendlyError";
+
+function reportAssetFailure(error: unknown, title: string, operation: string) {
+  if(error instanceof FinancialWorkflowError){toast.error(title,{description:recordWriteMessage(error,operation)});return;}
+  const feedback = friendlyError(error, title, { operation });
+  toast.error(feedback.title, { description: feedback.description });
+}
 
 type Asset = Database["public"]["Tables"]["assets"]["Row"];
 type AssetInsert = Database["public"]["Tables"]["assets"]["Insert"];
@@ -235,11 +245,14 @@ export const useCreateAsset = () => {
   // thay vì rơi về hằng org THẬT. Client phải tự khai.
   const { selectedOrganizationId } = useOrganization();
 
+  const guard=persistentFinancialWorkflow('asset-create');
   return useMutation({
+    meta:{handlesFeedback:true},
     mutationFn: async (data: AssetInsert) => {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
+      return guard.run('create','tạo tài sản',async()=>{
       const { data: asset, error } = await supabase
         .from("assets")
         .insert(withOrg({
@@ -250,14 +263,17 @@ export const useCreateAsset = () => {
         .single();
 
       if (error) throw error;
+      confirmedRecordId(asset,'tạo tài sản');
       return asset;
+      },undefined,selectedOrganizationId??undefined);
     },
-    onSuccess: () => {
+    onSuccess: (asset) => {
       queryClient.invalidateQueries({ queryKey: ["assets"] });
-      toast.success("Tài sản đã được tạo thành công");
+      toast.success(`Đã tạo tài sản ${asset.name}`);
     },
-    onError: (error: Error) => {
-      toast.error("Có lỗi xảy ra khi tạo tài sản: " + error.message);
+    onError: (error: unknown) => {
+      queryClient.invalidateQueries({ queryKey: ["assets"] });
+      reportAssetFailure(error, "Chưa tạo được tài sản", "tạo tài sản");
     },
   });
 };
@@ -276,14 +292,16 @@ export const useUpdateAsset = () => {
         .single();
 
       if (error) throw error;
+      confirmedRecordId(asset,'cập nhật tài sản',id);
       return asset;
     },
-    onSuccess: () => {
+    onSuccess: (asset) => {
       queryClient.invalidateQueries({ queryKey: ["assets"] });
-      toast.success("Tài sản đã được cập nhật thành công");
+      toast.success(`Đã cập nhật tài sản ${asset.name}`);
     },
-    onError: (error: Error) => {
-      toast.error("Có lỗi xảy ra khi cập nhật tài sản: " + error.message);
+    onError: (error: unknown) => {
+      queryClient.invalidateQueries({ queryKey: ["assets"] });
+      reportAssetFailure(error, "Chưa cập nhật được tài sản", "cập nhật tài sản");
     },
   });
 };
@@ -294,19 +312,22 @@ export const useDeleteAsset = () => {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("assets")
         .update({ deleted_at: new Date().toISOString() })
-        .eq("id", id);
+        .eq("id", id)
+        .select("id")
+        .single();
 
       if (error) throw error;
+      confirmedRecordId(data,'xóa tài sản',id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["assets"] });
       toast.success("Tài sản đã được xóa thành công");
     },
-    onError: (error: Error) => {
-      toast.error("Có lỗi xảy ra khi xóa tài sản: " + error.message);
+    onError: (error: unknown) => {
+      reportAssetFailure(error, "Chưa xóa được tài sản", "xóa tài sản");
     },
   });
 };
@@ -343,7 +364,8 @@ export const useAssetHandovers = (contract_id?: string) => {
         throw error;
       }
 
-      return (data as AssetHandoverWithRelations[]) || [];
+      if (!Array.isArray(data)) throw new Error('Chưa xác nhận được danh sách bàn giao tài sản. Tải lại để kiểm tra.');
+      return data as AssetHandoverWithRelations[];
     },
   });
 };
@@ -351,30 +373,37 @@ export const useAssetHandovers = (contract_id?: string) => {
 // Create asset handover
 export const useCreateAssetHandover = () => {
   const queryClient = useQueryClient();
+  const {selectedOrganizationId}=useOrganization();
+  const guard=persistentFinancialWorkflow('asset-handover-create');
 
   return useMutation({
+    meta:{handlesFeedback:true},
     mutationFn: async (data: AssetHandoverInsert) => {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
+      return guard.run('create','tạo biên bản bàn giao',async()=>{
       const { data: handover, error } = await supabase
         .from("asset_handovers")
-        .insert({
+        .insert(withOrg({
           ...data,
           user_id: user.id,
-        })
+        },selectedOrganizationId))
         .select()
         .single();
 
       if (error) throw error;
+      confirmedRecordId(handover,'tạo biên bản bàn giao');
       return handover;
+      },undefined,selectedOrganizationId??undefined);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["asset-handovers"] });
       toast.success("Biên bản bàn giao đã được tạo thành công");
     },
-    onError: (error: Error) => {
-      toast.error("Có lỗi xảy ra khi tạo biên bản: " + error.message);
+    onError: (error: unknown) => {
+      queryClient.invalidateQueries({ queryKey: ["asset-handovers"] });
+      reportAssetFailure(error, "Chưa tạo được biên bản bàn giao", "tạo biên bản bàn giao");
     },
   });
 };
@@ -420,7 +449,8 @@ export const useAssetMovements = (asset_id?: string) => {
         throw error;
       }
 
-      return (data as AssetMovementWithRelations[]) || [];
+      if (!Array.isArray(data)) throw new Error('Chưa xác nhận được lịch sử di chuyển tài sản. Tải lại để kiểm tra.');
+      return data as AssetMovementWithRelations[];
     },
   });
 };
@@ -428,30 +458,37 @@ export const useAssetMovements = (asset_id?: string) => {
 // Create asset movement
 export const useCreateAssetMovement = () => {
   const queryClient = useQueryClient();
+  const {selectedOrganizationId}=useOrganization();
+  const guard=persistentFinancialWorkflow('asset-movement-create');
 
   return useMutation({
+    meta:{handlesFeedback:true},
     mutationFn: async (data: AssetMovementInsert) => {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
+      return guard.run('create','ghi di chuyển tài sản',async()=>{
       const { data: movement, error } = await supabase
         .from("asset_movements")
-        .insert({
+        .insert(withOrg({
           ...data,
           user_id: user.id,
-        })
+        },selectedOrganizationId))
         .select()
         .single();
 
       if (error) throw error;
+      confirmedRecordId(movement,'ghi di chuyển tài sản');
       return movement;
+      },undefined,selectedOrganizationId??undefined);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["asset-movements"] });
       toast.success("Di chuyển tài sản đã được ghi nhận thành công");
     },
-    onError: (error: Error) => {
-      toast.error("Có lỗi xảy ra khi ghi nhận di chuyển: " + error.message);
+    onError: (error: unknown) => {
+      queryClient.invalidateQueries({ queryKey: ["asset-movements"] });
+      reportAssetFailure(error, "Chưa ghi nhận được di chuyển tài sản", "ghi nhận di chuyển tài sản");
     },
   });
 };
@@ -494,7 +531,8 @@ export const useAssetMaintenance = (filters?: {
         throw error;
       }
 
-      return (data as AssetMaintenanceWithRelations[]) || [];
+      if (!Array.isArray(data)) throw new Error('Chưa xác nhận được lịch sử bảo trì tài sản. Tải lại để kiểm tra.');
+      return data as AssetMaintenanceWithRelations[];
     },
   });
 };
@@ -502,30 +540,37 @@ export const useAssetMaintenance = (filters?: {
 // Create asset maintenance
 export const useCreateAssetMaintenance = () => {
   const queryClient = useQueryClient();
+  const {selectedOrganizationId}=useOrganization();
+  const guard=persistentFinancialWorkflow('asset-maintenance-create');
 
   return useMutation({
+    meta:{handlesFeedback:true},
     mutationFn: async (data: AssetMaintenanceInsert) => {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
+      return guard.run('create','tạo phiếu bảo trì',async()=>{
       const { data: maintenance, error } = await supabase
         .from("asset_maintenance")
-        .insert({
+        .insert(withOrg({
           ...data,
           user_id: user.id,
-        })
+        },selectedOrganizationId))
         .select()
         .single();
 
       if (error) throw error;
+      confirmedRecordId(maintenance,'tạo phiếu bảo trì');
       return maintenance;
+      },undefined,selectedOrganizationId??undefined);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["asset-maintenance"] });
       toast.success("Phiếu bảo trì đã được tạo thành công");
     },
-    onError: (error: Error) => {
-      toast.error("Có lỗi xảy ra khi tạo phiếu bảo trì: " + error.message);
+    onError: (error: unknown) => {
+      queryClient.invalidateQueries({ queryKey: ["asset-maintenance"] });
+      reportAssetFailure(error, "Chưa tạo được phiếu bảo trì", "tạo phiếu bảo trì");
     },
   });
 };
@@ -544,14 +589,16 @@ export const useUpdateAssetMaintenance = () => {
         .single();
 
       if (error) throw error;
+      confirmedRecordId(maintenance,'cập nhật phiếu bảo trì',id);
       return maintenance;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["asset-maintenance"] });
       toast.success("Phiếu bảo trì đã được cập nhật thành công");
     },
-    onError: (error: Error) => {
-      toast.error("Có lỗi xảy ra khi cập nhật phiếu bảo trì: " + error.message);
+    onError: (error: unknown) => {
+      queryClient.invalidateQueries({ queryKey: ["asset-maintenance"] });
+      reportAssetFailure(error, "Chưa cập nhật được phiếu bảo trì", "cập nhật phiếu bảo trì");
     },
   });
 };

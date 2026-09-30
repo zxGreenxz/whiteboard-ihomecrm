@@ -1,3 +1,4 @@
+import { QueryRegion } from '@/components/errors/QueryRegion';
 import { useState } from 'react';
 import { Bell, Check, CheckCheck, Trash2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -13,6 +14,7 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   useRecentNotifications,
+  useNotificationConnectionStatus,
   useUnreadNotificationsCount,
   useMarkAsRead,
   useMarkAllAsRead,
@@ -34,8 +36,11 @@ const NotificationBell = () => {
   const { data: perms } = useMyPermissions();
 
   // Queries
-  const { data: notifications = [], isLoading } = useRecentNotifications(10);
-  const { data: unreadCount = 0 } = useUnreadNotificationsCount();
+  const recentQuery = useRecentNotifications(10);
+  const { data: notifications = [], isLoading } = recentQuery;
+  const connection = useNotificationConnectionStatus();
+  const countQuery = useUnreadNotificationsCount();
+  const { data: unreadCount = 0 } = countQuery;
 
   // Mutations
   const markAsReadMutation = useMarkAsRead();
@@ -148,7 +153,8 @@ const NotificationBell = () => {
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="relative">
+        <Button variant="ghost" size="icon" className="relative" aria-label={countQuery.isError ? "Thông báo: chưa tải được số chưa đọc" : "Thông báo"}>
+          {countQuery.isError && <span className="absolute -right-1 -top-1 text-destructive" aria-hidden>!</span>}
           <Bell className="h-5 w-5" />
           {unreadCount > 0 && (
             <Badge
@@ -195,7 +201,10 @@ const NotificationBell = () => {
 
         <DropdownMenuSeparator />
 
+        {connection === 'interrupted' && <p role="status" className="px-3 py-2 text-xs text-amber-700">Kết nối cập nhật thông báo đang gián đoạn. Dùng Tải lại để xem thông báo mới.</p>}
+        <Button type="button" variant="ghost" size="sm" onClick={() => { void recentQuery.refetch(); void countQuery.refetch(); }}>Tải lại thông báo</Button>
         {/* Notifications List */}
+        <QueryRegion label="thông báo" queries={[recentQuery, countQuery]}>
         <ScrollArea className="h-[400px]">
           {isLoading ? (
             <div className="p-4 text-center text-sm text-muted-foreground">
@@ -277,6 +286,7 @@ const NotificationBell = () => {
             </div>
           )}
         </ScrollArea>
+        </QueryRegion>
 
         {/* Footer */}
         {notifications.length > 0 && (

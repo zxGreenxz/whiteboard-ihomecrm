@@ -1,9 +1,14 @@
+import { QueryRegion } from '@/components/errors/QueryRegion';
+import { focusFirstError } from '@/lib/formErrors';
+import { actionErrorMessage } from '@/lib/actionFeedback';
+import { notifyActionError } from '@/lib/actionFeedback';
 // "NGÀY HÔM NAY CỦA TÔI" (/my-day) — màn trung tâm vòng lặp v5 phía nhân viên (Ch.7 spec).
 // Mobile-first 1 cột (desktop bó 480px giữa). GAIN-FRAMING tuyệt đối:
 // không màu đỏ phía nhân viên, không chữ "−/mất/trừ"; mọi số tiền realtime = "TẠM TÍNH".
 // Khối: A trạng thái ngày → D nhắc treo check-sau-thu → B tuyến gợi ý → C việc đến hạn
 //        → F tiến trình tiền/chuỗi → phép 1-chạm.
 import { lazy, Suspense, useMemo, useState } from "react";
+import { dayAttendanceView } from '@/lib/taskFeedback';
 import { Link } from "react-router-dom";
 import {
   ArrowLeft, Banknote, Building2, CalendarClock, CheckCircle2, ChevronRight,
@@ -34,15 +39,16 @@ const SOURCE_LABEL: Record<string, string> = {
   MANUAL_DEVICE_ISSUE: "duyệt tay (sự cố thiết bị)",
 };
 
-function useBuildingCoords(ids: string[]) {
+export function useBuildingCoords(ids: string[]) {
   return useQuery({
     queryKey: ["v5-building-coords", ids.slice().sort().join(",")],
     enabled: ids.length > 0,
     queryFn: async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("buildings")
         .select("id, name, latitude, longitude")
         .in("id", ids);
+      if (error) throw error;
       const map: Record<string, { name: string; latitude: number | null; longitude: number | null }> = {};
       for (const b of data ?? []) map[(b as any).id] = b as any;
       return map;
@@ -55,13 +61,16 @@ export default function MyDayPage() {
   const summaryQ = useMyDaySummary();
   const missionsQ = useMyMissions();
   const requestLeave = useRequestLeave();
-  const { data: uiPreferences } = useUiPreferences();
+  const preferencesQuery = useUiPreferences();
+  const { data: uiPreferences } = preferencesQuery;
 
   const [runner, setRunner] = useState<{
     buildingId: string; buildingName: string; type: "FULL" | "QUICK";
   } | null>(null);
   const [leaveOpen, setLeaveOpen] = useState(false);
   const [leaveDate, setLeaveDate] = useState("");
+  const [leaveDateError,setLeaveDateError] = useState("");
+  const [leaveServerError,setLeaveServerError] = useState("");
   const [routePlannerOpen, setRoutePlannerOpen] = useState(false);
   // Chủ nhật: mở lại tuyến gợi ý nếu muốn làm tự nguyện
   const [showRouteOnRest, setShowRouteOnRest] = useState(false);
@@ -136,7 +145,8 @@ export default function MyDayPage() {
     },
   ])), [missions]);
 
-  const ticked = s?.today.status === "ticked";
+  const dayView = dayAttendanceView(s?.today.status, summaryQ.isError);
+  const ticked = dayView === "ticked";
   const leaveToday = s?.today.status === "leave_approved" || s?.today.status === "pending_leave";
   // Chủ nhật = ngày nghỉ (dùng ngày VN từ summary, khớp "hôm nay" của hệ thống)
   const isRestDay = useMemo(() => {
@@ -154,13 +164,16 @@ export default function MyDayPage() {
     setRunner({ buildingId: m.building_id, buildingName: m.building_name ?? "toà", type });
 
   const submitLeave = async () => {
-    if (!leaveDate) return;
+    if (!leaveDate) { setLeaveDateError("Chọn ngày xin nghỉ phép."); void focusFirstError({leaveDate:"Chọn ngày xin nghỉ phép."}); return; }
+    if (s?.today.date && leaveDate < s.today.date) { setLeaveDateError("Chọn ngày hôm nay hoặc ngày sau đó."); void focusFirstError({leaveDate:"Ngày nghỉ không hợp lệ."}); return; }
+    setLeaveDateError(""); setLeaveServerError("");
     try {
-      await requestLeave.mutateAsync({ date: leaveDate });
-      toast.success(v5Copy.leaveRequested(leaveDate));
+      const result = await requestLeave.mutateAsync({ date: leaveDate });
+      if(result.status==='leave_approved')toast.info(`Đơn nghỉ ngày ${leaveDate} đã được duyệt trước đó.`);
+      else toast.success(`Đơn nghỉ ngày ${leaveDate} đang chờ duyệt. Ngày công chưa được xác nhận.`);
       setLeaveOpen(false);
     } catch (e: any) {
-      toast.info(e?.message ?? "Chưa gửi được — thử lại nhé");
+      setLeaveServerError(actionErrorMessage(e, "Chưa xác nhận được kết quả gửi đơn nghỉ phép"));
     }
   };
 
@@ -181,6 +194,7 @@ export default function MyDayPage() {
           </button>
         </div>
 
+        <QueryRegion label="Ngày công, công việc và phiên kiểm tra" queries={[summaryQ,missionsQ,preferencesQuery,jobsQ,...(s?.today.date && authUser?.id ? [openSessQ] : []),...(coordIds.length ? [coordsQ] : [])]}>
         {/* Onboarding "Tôi đã hiểu" — bắt buộc trước khi bật tiền (US-6.5) */}
         {needAck && (
           <div className="mb-3 rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm shadow-sm">
@@ -203,16 +217,18 @@ export default function MyDayPage() {
             <div className="mb-2 text-sm font-medium">Xin phép có lương (1 chạm)</div>
             <div className="flex gap-2">
               <input
-                type="date"
-                className="flex-1 rounded-md border px-2 py-1.5 text-sm"
+                type="date" name="leaveDate" aria-label="Ngày xin nghỉ phép" aria-invalid={!!leaveDateError} aria-describedby={leaveDateError ? "leave-date-error" : undefined}
+                className="flex-1 rounded-md border px-2 py-1.5 text-sm aria-[invalid=true]:border-destructive"
                 value={leaveDate}
                 min={s?.today.date}
                 onChange={(e) => setLeaveDate(e.target.value)}
               />
-              <Button size="sm" onClick={submitLeave} disabled={requestLeave.isPending || !leaveDate}>
+              <Button size="sm" onClick={submitLeave} disabled={requestLeave.isPending || summaryQ.isError}>
                 Gửi
               </Button>
             </div>
+            {leaveDateError && <p id="leave-date-error" role="alert" className="text-sm text-destructive">{leaveDateError}</p>}
+            {leaveServerError && <p role="alert" className="text-sm text-destructive">{leaveServerError}</p>}
             <p className="mt-1.5 text-[11px] text-slate-500">
               Ngày phép là ngày trung tính: chuỗi được bắc cầu, đơn giá ngày tự điều chỉnh — bạn không thiệt.
             </p>
@@ -247,6 +263,10 @@ export default function MyDayPage() {
         <div className={`mb-3 rounded-2xl p-4 shadow-sm ${ticked ? "bg-emerald-600 text-white" : "bg-white"}`}>
           {summaryQ.isLoading ? (
             <div className="h-16 animate-pulse rounded-lg bg-slate-100" />
+          ) : dayView === "unavailable" ? (
+            <div role="alert">Chưa tải được trạng thái ngày công hôm nay. <Button variant="outline" onClick={() => void summaryQ.refetch()}>Tải lại trạng thái</Button></div>
+          ) : dayView === "pending" ? (
+            <div role="status"><div className="font-semibold">Đơn nghỉ hôm nay đang chờ duyệt.</div><p className="text-sm text-slate-500">Ngày công chưa được xác nhận.</p></div>
           ) : ticked ? (
             <div className="flex items-center gap-3">
               <CheckCircle2 className="h-9 w-9" />
@@ -495,6 +515,7 @@ export default function MyDayPage() {
         <p className="text-center text-[11px] text-slate-400">
           Số tiền hiển thị là TẠM TÍNH — chốt khi khoá sổ cuối tháng.
         </p>
+        </QueryRegion>
       </div>
 
       <RoutePlannerSheet

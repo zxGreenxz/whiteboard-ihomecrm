@@ -1,3 +1,6 @@
+import { persistentFinancialWorkflow } from '@/lib/persistentFinancialWorkflow';
+import { FinancialWorkflowError } from '@/lib/financialWorkflow';
+import { recordWriteBlocked, recordWriteMessage } from '@/lib/recordWriteOutcome';
 import { useState, useCallback, useRef } from 'react';
 import { Upload, X, ImageIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -6,7 +9,6 @@ import { uploadFile, type UploadImagePolicy } from '@/lib/storage';
 import { StorageImage } from '@/components/ui/storage-image';
 import { supabase } from '@/integrations/supabase/client';
 import { getSessionUser } from "@/lib/authSession";
-import { toast } from 'sonner';
 import { useClipboardImagePaste } from '@/hooks/useClipboardImagePaste';
 
 interface ImageUploadZoneProps {
@@ -45,6 +47,11 @@ export default function ImageUploadZone({
   const [isClipboardHover, setIsClipboardHover] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const zoneRef = useRef<HTMLDivElement>(null);
+  const busy = useRef(false);
+  const guard = useRef(persistentFinancialWorkflow('image-upload-zone',{scope:'actor'}));
+  const [blocked,setBlocked]=useState(false);
+  const [failedFiles,setFailedFiles]=useState<File[]>([]);
 
   const validateFile = useCallback(
     (file: File): string | null => {
@@ -60,63 +67,42 @@ export default function ImageUploadZone({
 
   const handleUpload = useCallback(
     async (files: File[]) => {
-      // Lọc theo chế độ: single chỉ lấy file đầu.
-      const picked = multiple ? files : files.slice(0, 1);
-      if (picked.length === 0) return;
-
-      // Validate trước; báo lỗi đầu tiên nhưng vẫn upload các file hợp lệ.
-      const valid: File[] = [];
-      let firstError: string | null = null;
-      for (const f of picked) {
-        const err = validateFile(f);
-        if (err) {
-          if (!firstError) firstError = err;
-        } else {
-          valid.push(f);
-        }
-      }
-      setError(firstError);
-      if (valid.length === 0) return;
-
-      setIsUploading(true);
-      setUploadingCount(valid.length);
-
+      if(busy.current || blocked)return;
+      const picked=multiple?files:files.slice(0,1);if(!picked.length)return;
+      const valid:File[]=[];const failed:File[]=[];const messages:string[]=[];
+      for(const file of picked){const problem=validateFile(file);if(problem){failed.push(file);messages.push(`${file.name}: ${problem}`);}else valid.push(file);}
+      if(!valid.length){setFailedFiles(failed);setError(messages.join(' '));zoneRef.current?.focus();return;}
+      busy.current=true;setIsUploading(true);setUploadingCount(valid.length);setError(null);
+      const urls:string[]=[];
       try {
-        const user = await getSessionUser();
-        if (!user) throw new Error('Not authenticated');
-
-        const urls: string[] = [];
-        for (let i = 0; i < valid.length; i++) {
-          const file = valid[i];
-          const ext = file.name.split('.').pop() || 'jpg';
-          // Hậu tố index để không trùng path khi upload nhiều file trong cùng ms.
-          const path = `${user.id}/${Date.now()}-${i}.${ext}`;
-          try {
-            urls.push(imagePolicy
-              ? await uploadFile(bucket, path, file, { imagePolicy })
-              : await uploadFile(bucket, path, file));
-          } catch (err) {
-            console.error('Upload error:', err);
-            toast.error(
-              valid.length > 1
-                ? `Không thể tải lên "${file.name}".`
-                : 'Không thể tải ảnh lên. Vui lòng thử lại.'
-            );
+        for(let i=0;i<valid.length;i++){
+          const file=valid[i];
+          try{
+            const url=await guard.current.run(`${bucket}:${label}`,'tải ảnh',async(progress)=>{
+              const user=await getSessionUser();if(!user)throw new FinancialWorkflowError('Phiên đăng nhập đã hết. Đăng nhập lại trước khi tải ảnh.','failure',[]);
+              const ext=file.name.split('.').pop()||'jpg';const path=`${user.id}/${Date.now()}-${i}.${ext}`;
+              const saved=imagePolicy?await uploadFile(bucket,path,file,{imagePolicy}):await uploadFile(bucket,path,file);
+              if(typeof saved!=='string'||!saved.trim())throw new FinancialWorkflowError('Chưa xác nhận được đường dẫn ảnh. Giữ tệp để đối chiếu.','unknown',[{id:`${bucket}/${path}`,label:'Đường dẫn ảnh cần đối chiếu'}]);
+              return saved;
+            });
+            urls.push(url);
+          }catch(error){
+            failed.push(file);messages.push(`${file.name}: ${recordWriteMessage(error,'tải ảnh')}`);
+            if(recordWriteBlocked(error)){
+              setBlocked(true);const rest=valid.slice(i+1);failed.push(...rest);
+              if(rest.length)messages.push(`Chưa gửi: ${rest.map(item=>item.name).join(', ')}.`);
+              break;
+            }
           }
         }
+        if(urls.length){if(multiple&&onAddMany)onAddMany(urls);else onChange(urls[0]);}
+        setFailedFiles(failed);
+        setError(messages.length?`Đã nhận đường dẫn ${urls.length}/${picked.length} ảnh. ${messages.join(' ')}`:null);
+        if(messages.length)zoneRef.current?.focus();
+      }finally{busy.current=false;setIsUploading(false);setUploadingCount(0);}
 
-        if (urls.length === 0) return;
-        if (multiple && onAddMany) onAddMany(urls);
-        else onChange(urls[0]);
-      } catch (err) {
-        console.error('Upload error:', err);
-        toast.error('Không thể tải ảnh lên. Vui lòng thử lại.');
-      } finally {
-        setIsUploading(false);
-        setUploadingCount(0);
-      }
     },
-    [bucket, imagePolicy, multiple, onAddMany, onChange, validateFile]
+    [bucket, label, imagePolicy, multiple, onAddMany, onChange, validateFile, blocked]
   );
 
   const handleDrop = useCallback(
@@ -146,13 +132,13 @@ export default function ImageUploadZone({
   );
 
   const handleRemove = useCallback(() => {
+    if(busy.current || blocked)return;
     onChange('');
-    setError(null);
   }, [onChange]);
 
   const { onMouseEnter: onPasteMouseEnter, onMouseLeave: onPasteMouseLeave } = useClipboardImagePaste({
     onFiles: (files) => handleUpload(files),
-    enabled: !value && !isUploading,
+    enabled: !value && !isUploading && !blocked,
     multiple,
   });
   const handleClipboardMouseEnter = useCallback(() => {
@@ -184,12 +170,19 @@ export default function ImageUploadZone({
         </div>
       ) : (
         <div
+          ref={zoneRef}
+          role="button"
+          tabIndex={0}
+          aria-label={label}
+          aria-invalid={Boolean(error)}
+          aria-disabled={isUploading || blocked}
+          onKeyDown={event=>{if((event.key==='Enter'||event.key===' ')&&!busy.current&&!blocked){event.preventDefault();inputRef.current?.click();}}}
           data-clipboard-image-paste-target="upload"
           data-clipboard-image-paste-active={isClipboardHover && !isUploading ? 'true' : undefined}
           onDrop={handleDrop}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
-          onClick={() => inputRef.current?.click()}
+          onClick={() => {if(!busy.current&&!blocked)inputRef.current?.click();}}
           onMouseEnter={handleClipboardMouseEnter}
           onMouseLeave={handleClipboardMouseLeave}
           className={cn(
@@ -197,7 +190,7 @@ export default function ImageUploadZone({
             isDragOver
               ? 'border-primary bg-primary/5'
               : 'border-gray-300 hover:border-gray-400 bg-gray-50',
-            isUploading && 'pointer-events-none opacity-60'
+            (isUploading || blocked) && 'pointer-events-none opacity-60'
           )}
         >
           {isUploading ? (
@@ -222,12 +215,15 @@ export default function ImageUploadZone({
       <input
         ref={inputRef}
         type="file"
+        aria-label={`Chọn ${label}`}
+        disabled={isUploading || blocked}
         accept={accept}
         multiple={multiple}
         onChange={handleFileChange}
         className="hidden"
       />
-      {error && <p className="text-xs text-red-500">{error}</p>}
+      {error && <p role="alert" className="text-xs text-red-500">{error}</p>}
+      {failedFiles.length>0&&!blocked&&<button type="button" disabled={isUploading} onClick={()=>{void handleUpload(failedFiles);}} className="text-sm underline">Thử lại ảnh chưa tải</button>}
     </div>
   );
 }

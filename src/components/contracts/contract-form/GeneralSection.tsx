@@ -46,7 +46,7 @@ export function GeneralSection({
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Toà nhà */}
         <div className="space-y-2">
-          <Label>
+          <Label htmlFor="contract-building">
             Toà nhà <span className="text-destructive">*</span>
           </Label>
           <Select
@@ -59,7 +59,7 @@ export function GeneralSection({
             }}
             disabled={buildingDisabled}
           >
-            <SelectTrigger>
+            <SelectTrigger id="contract-building">
               <SelectValue placeholder="Chọn toà nhà" />
             </SelectTrigger>
             <SelectContent>
@@ -91,7 +91,7 @@ export function GeneralSection({
                 disabled={!selectedBuildingId}
               >
                 <FormControl>
-                  <SelectTrigger>
+                  <SelectTrigger ref={field.ref} onBlur={field.onBlur}>
                     <SelectValue placeholder="Chọn phòng" />
                   </SelectTrigger>
                 </FormControl>
@@ -123,6 +123,7 @@ export function GeneralSection({
               <FormLabel>Ngày ký</FormLabel>
               <FormControl>
                 <DateInput
+                  ref={field.ref}
                   value={field.value}
                   onChange={field.onChange}
                   onBlur={field.onBlur}
@@ -145,6 +146,7 @@ export function GeneralSection({
               </FormLabel>
               <FormControl>
                 <DateInput
+                  ref={field.ref}
                   value={field.value}
                   onChange={field.onChange}
                   onBlur={field.onBlur}
@@ -167,6 +169,7 @@ export function GeneralSection({
               </FormLabel>
               <FormControl>
                 <DateInput
+                  ref={field.ref}
                   value={field.value}
                   onChange={field.onChange}
                   onBlur={field.onBlur}

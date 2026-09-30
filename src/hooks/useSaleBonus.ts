@@ -1,3 +1,4 @@
+import {financialReadNumber} from '@/lib/financialReadValidation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { rpcNullable } from "@/lib/rpcNullable";
 import { supabase } from '@/integrations/supabase/client';
@@ -40,19 +41,20 @@ export const useSaleBonusStatus = (contractId?: string | null, enabled = true) =
       const { data, error } = await supabase.rpc('sale_bonus_status_v1', {
         p_contract_id: rpcNullable(contractId),
       });
-      if (error) throw new Error(error.message);
+      if (error) throw error;
       const d = (data ?? {}) as any;
+      if(d.contractId!==contractId || typeof d.alreadyPaid!=='boolean' || (d.alreadyPaid && (typeof d.voucherId!=='string'||!d.voucherId||d.amount==null))) throw new TypeError('Chưa xác nhận được phiếu thưởng Sale hiện có.');
       return {
         contractId: d.contractId,
-        alreadyPaid: !!d.alreadyPaid,
+        alreadyPaid: d.alreadyPaid,
         voucherId: d.voucherId ?? null,
         code: d.code ?? null,
-        amount: d.amount == null ? null : Number(d.amount),
+        amount: d.amount == null ? null : financialReadNumber(d.amount),
         voucherDate: d.voucherDate ?? null,
         createdAt: d.createdAt ?? null,
         status: d.status ?? null,
         via: d.via ?? null,
-        capAmount: d.capAmount == null ? null : Number(d.capAmount),
+        capAmount: d.capAmount == null ? null : financialReadNumber(d.capAmount),
         note: d.note ?? '',
       };
     },
@@ -77,6 +79,7 @@ export interface CreateSaleBonusFromDepositArgs {
 export const useCreateSaleBonusFromDeposit = () => {
   const qc = useQueryClient();
   return useMutation({
+    meta: {handlesFeedback: true},
     mutationFn: async (a: CreateSaleBonusFromDepositArgs) => {
       const { data, error } = await supabase.rpc('create_sale_bonus_from_deposit_v1', {
         p_deposit_voucher_id: a.depositVoucherId,
@@ -88,8 +91,10 @@ export const useCreateSaleBonusFromDeposit = () => {
         p_account_id: a.accountId ?? undefined,
         p_attachments: a.attachments ?? [],
       });
-      if (error) throw new Error(error.message);
-      return data as { voucherId: string; code: string; amount: number; note: string };
+      if (error) throw error;
+      const receipt=data as {voucherId?:unknown;code?:unknown;amount?:unknown;note?:unknown}|null;
+      if(!receipt||typeof receipt.voucherId!=='string'||!receipt.voucherId||typeof receipt.code!=='string'||!receipt.code) throw new TypeError('Chưa xác nhận được phiếu thưởng Sale vừa tạo.');
+      return {voucherId:receipt.voucherId,code:receipt.code,amount:financialReadNumber(receipt.amount),note:typeof receipt.note==='string'?receipt.note:''};
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['sale-bonus-status'] });

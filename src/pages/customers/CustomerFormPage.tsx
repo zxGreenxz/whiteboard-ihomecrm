@@ -9,6 +9,9 @@ import {
 } from '@/hooks/useCustomers';
 import { useVehicles } from '@/hooks/useVehicles';
 import type { CustomerFormData } from '@/types/customer';
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { Button } from '@/components/ui/button';
 
 /**
  * CustomerFormPage
@@ -16,34 +19,35 @@ import type { CustomerFormData } from '@/types/customer';
  * Requirements: 2.10, 2.11, 2.12, 5.1, 5.2
  */
 export default function CustomerFormPage() {
+  const [partialCustomer, setPartialCustomer] = useState<{ id: string; name: string; action: 'create' | 'update' } | null>(null);
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const isEdit = !!id;
 
   // Load existing data in edit mode
-  const { data: customer, isLoading } = useCustomer(id || '');
+  const customerQuery = useCustomer(id || '');
+  const { data: customer, isLoading } = customerQuery;
   // Xe của khách, để sửa/xoá ngay trong form thay vì phải sang trang Phương tiện.
-  const { data: vehiclesData, isLoading: isLoadingVehicles } = useVehicles(
+  const vehiclesQuery = useVehicles(
     { customer_id: id },
     undefined,
     { enabled: isEdit },
   );
+  const { data: vehiclesData, isLoading: isLoadingVehicles } = vehiclesQuery;
   const createMutation = useCreateCustomer();
   const updateMutation = useUpdateCustomer();
 
-  const handleSubmit = (data: CustomerFormData) => {
-    if (isEdit && id) {
-      updateMutation.mutate(
-        { id, data },
-        { onSuccess: () => navigate('/customers') }
-      );
-    } else {
-      createMutation.mutate(data, {
-        onSuccess: () => navigate('/customers'),
-      });
+  const handleSubmit = async (data: CustomerFormData) => {
+    if (partialCustomer) return;
+    const result = isEdit && id
+      ? await updateMutation.mutateAsync({id,data})
+      : await createMutation.mutateAsync(data);
+    if(result.vehicleError){
+      setPartialCustomer({id:result.customer.id,name:result.customer.full_name,action:isEdit?'update':'create'});
+      return;
     }
+    navigate('/customers');
   };
-
   const isSubmitting = createMutation.isPending || updateMutation.isPending;
 
   // Build default values from existing customer for edit mode
@@ -107,16 +111,26 @@ export default function CustomerFormPage() {
     );
   }
 
+  if (isEdit && (customerQuery.isError || vehiclesQuery.isError)) {
+    return <MainLayout title="Chỉnh sửa khách hàng" icon={Pencil}><div role="alert" className="rounded border border-destructive p-4 text-sm">Chưa tải được khách hàng hoặc phương tiện. Giữ dữ liệu hiện có và tải lại trước khi sửa.<Button variant="outline" onClick={() => {void customerQuery.refetch();void vehiclesQuery.refetch();}}>Tải lại dữ liệu</Button></div></MainLayout>;
+  }
+  if (isEdit && !customer) return <MainLayout title="Chỉnh sửa khách hàng" icon={Pencil}><p>Không tìm thấy khách hàng trong phạm vi bạn được phép xem.</p></MainLayout>;
   return (
     <MainLayout
       title={isEdit ? 'Chỉnh sửa khách hàng' : 'Thêm khách hàng'}
       subtitle={isEdit ? 'Cập nhật thông tin khách hàng' : 'Tạo khách hàng mới'}
       icon={isEdit ? Pencil : UserPlus}
     >
+      {partialCustomer && (
+        <div role="alert" className="mb-4 rounded border border-amber-500 bg-amber-50 p-4 text-sm text-amber-900">
+          Đã {partialCustomer.action === 'create' ? 'tạo' : 'cập nhật'} khách hàng {partialCustomer.name} (ID {partialCustomer.id}), nhưng đồng bộ phương tiện chưa hoàn tất.
+          Đối chiếu danh sách xe trước khi lưu lại. <Link className="underline" to={`/customers/${partialCustomer.id}/edit`}>Mở khách hàng để kiểm tra xe</Link>.
+        </div>
+      )}
       <CustomerForm
         defaultValues={defaultValues}
         onSubmit={handleSubmit}
-        isSubmitting={isSubmitting}
+        isSubmitting={isSubmitting || Boolean(partialCustomer)}
       />
     </MainLayout>
   );

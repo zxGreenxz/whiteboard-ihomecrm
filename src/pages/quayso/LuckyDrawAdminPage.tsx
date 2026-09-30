@@ -1,3 +1,8 @@
+import { friendlyError } from '@/lib/friendlyError';
+import { copyTextWithFeedback } from '@/lib/clipboardFeedback';
+import { PublicRequestError } from '@/lib/publicFeedback';
+import { focusFirstError } from '@/lib/formErrors';
+import { actionErrorMessage, notifyActionError } from '@/lib/actionFeedback';
 /**
  * Trang QUẢN TRỊ sự kiện vòng xoay (/quayso/admin) — trong CRM, cần đăng nhập.
  *
@@ -9,7 +14,8 @@
  * reset kết quả.
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { hasUnconfirmedResponse } from '@/lib/operationOutcome';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import MainLayout from '@/components/layout/MainLayout';
@@ -68,66 +74,85 @@ export default function LuckyDrawAdminPage() {
   const [editTeam, setEditTeam] = useState<LuckyTeamAdmin | null>(null);
   const [editDraft, setEditDraft] = useState<TeamDraft>(EMPTY_DRAFT);
 
-  const q = useQuery({ queryKey: QK, queryFn: luckyAdminApi.get, retry: 1 });
+  const [teamNameError, setTeamNameError] = useState('');
+  const [editError, setEditError] = useState('');
+  const [drawUncertain, setDrawUncertain] = useState<string | null>(null);
+  const [drawRecoveryError, setDrawRecoveryError] = useState('');
+  const [drawRecovering, setDrawRecovering] = useState(false);
+  const q = useQuery({ queryKey: QK, queryFn: luckyAdminApi.get, retry: 1, meta: { errorDisplay: 'inline', label: 'sự kiện quay số' } });
   const events = useMemo(() => q.data?.events ?? [], [q.data]);
   const event: LuckyEventAdmin | undefined =
     events.find((e) => e.id === selectedId) ?? events[0];
 
+  useEffect(() => {
+    let current = true;
+    if (event?.id) void luckyAdminApi.hasPendingAction(event.id).then(pending => {
+      if (current && pending) setDrawUncertain(event.id);
+    }).catch(error => { if (current) setDrawRecoveryError(actionErrorMessage(error, 'Chưa đọc được trạng thái yêu cầu trước đó')); });
+    return () => { current = false; };
+  }, [event?.id]);
   const invalidate = () => queryClient.invalidateQueries({ queryKey: QK });
 
   const mUpsert = useMutation({
-    mutationFn: luckyAdminApi.upsertEvent,
+    mutationFn: async (input: Parameters<typeof luckyAdminApi.upsertEvent>[0]) => {
+      const result = await luckyAdminApi.upsertEvent(input);
+      if (!result?.ok || !result.eventId) throw new PublicRequestError(0, "invalid-response");
+      return result;
+    },
     onSuccess: (r) => {
       setSelectedId(r.eventId);
       invalidate();
-      toast.success('Đã lưu sự kiện.');
+      toast.success(`Đã lưu sự kiện ${events.find(item => item.id === r.eventId)?.title ?? 'vừa tạo'}.`);
     },
-    onError: (e: Error) => toast.error(e.message || 'Không lưu được sự kiện.'),
+    onError: (e: Error) => notifyActionError(e, 'Không lưu được sự kiện.'),
   });
   const mAddTeam = useMutation({
-    mutationFn: luckyAdminApi.addTeam,
-    onSuccess: (r) => {
-      invalidate();
-      setDraft(EMPTY_DRAFT);
-      toast.success(`Đã thêm đội — mã điểm danh: ${r.code}`);
+    mutationFn: async (input: Parameters<typeof luckyAdminApi.addTeam>[0]) => {
+      const result = await luckyAdminApi.addTeam(input);
+      if (!result?.ok || !result.code) throw new PublicRequestError(0, "invalid-response");
+      return result;
     },
-    onError: (e: Error) =>
-      toast.error(/duplicate|unique/i.test(e.message) ? 'Tên đội đã tồn tại trong sự kiện.' : e.message),
+    onSuccess: (r, input) => {
+      invalidate();
+      setDraft(EMPTY_DRAFT); setTeamNameError('');
+      toast.success(`Đã thêm đội ${input.name}. Mã điểm danh: ${r.code}.`);
+    },
+    onError: (e: Error) => notifyActionError(e, `Chưa thêm được đội ${draft.name || 'mới'}.`),
   });
   const mUpdateTeam = useMutation({
     mutationFn: (args: { teamId: string; p: Parameters<typeof luckyAdminApi.updateTeam>[1] }) =>
       luckyAdminApi.updateTeam(args.teamId, args.p),
-    onSuccess: () => invalidate(),
-    onError: (e: Error) => toast.error(e.message || 'Không cập nhật được đội.'),
+    onSuccess: (_, input) => { invalidate(); toast.success(`Đã cập nhật đội ${event?.teams.find(item => item.id === input.teamId)?.name ?? "đã chọn"}.`); },
+    onError: (e: Error) => notifyActionError(e, 'Chưa cập nhật được đội.'),
   });
   const mDeleteTeam = useMutation({
     mutationFn: luckyAdminApi.deleteTeam,
-    onSuccess: () => invalidate(),
-    onError: (e: Error) => toast.error(e.message || 'Không xoá được đội.'),
+    onSuccess: (_, teamId) => { const name = event?.teams.find(item => item.id === teamId)?.name; invalidate(); toast.success(`Đã xóa đội ${name ?? "đã chọn"}.`); },
+    onError: (e: Error) => notifyActionError(e, 'Chưa xóa được đội.'),
   });
   const mForceDraw = useMutation({
     mutationFn: luckyAdminApi.forceDraw,
     onSuccess: (r) => {
       invalidate();
-      if (r.ok) toast.success('Đã quay! Mở trang công khai để xem bánh xe chạy.');
+      if (r.ok) toast.success(`Đã xác nhận kết quả sự kiện ${event?.title ?? 'đã chọn'}. Mở trang công khai để xem kết quả.`);
       else if (r.reason === 'no_checked_in_teams') toast.error('Chưa có đội nào điểm danh — không quay được.');
-      else toast.error('Không quay được.');
+      else toast.error(r.reason === 'closed' ? 'Sự kiện đã đóng.' : r.reason === 'forbidden' ? 'Bạn không có quyền quản trị sự kiện này.' : 'Sự kiện không còn khả dụng. Tải lại danh sách để kiểm tra.');
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error, eventId) => { if (hasUnconfirmedResponse(e)) setDrawUncertain(eventId); notifyActionError(e, `Chưa xác nhận được kết quả quay của ${event?.title ?? 'sự kiện'}. Tải lại trạng thái trước khi tiếp tục`); },
   });
   const mDrawRound = useMutation({
     mutationFn: (a: { eventId: string; ordinal: number }) =>
       luckyAdminApi.drawRound(a.eventId, a.ordinal),
     onSuccess: (r, a) => {
       invalidate();
-      if (r.ok) toast.success(`Đã mở lượt ${a.ordinal} — màn chiếu sẽ chạy trong ~2 giây.`);
+      if (r.ok) toast.success(`Đã chốt kết quả lượt ${a.ordinal} của sự kiện ${event?.title ?? "đã chọn"}.`);
       else if (r.reason === 'no_checked_in_teams') toast.error('Chưa vé nào điểm danh — chưa mở được.');
       else if (r.reason === 'not_time') toast.error('Chưa tới giờ mở thưởng đã hẹn.');
       else if (r.reason === 'previous_round_pending') toast.error('Lượt trước chưa xong.');
       else if (r.reason === 'forbidden') toast.error('Bạn không có quyền quản trị sự kiện này.');
-      else toast.error('Không mở được lượt.');
+      else toast.error(r.reason === 'closed' ? 'Sự kiện đã đóng.' : 'Sự kiện hoặc lượt quay không còn khả dụng. Tải lại danh sách để kiểm tra.');
     },
-    onError: (e: Error) => toast.error(e.message || 'Không mở được lượt.'),
+    onError: (e: Error, input) => { if (hasUnconfirmedResponse(e)) setDrawUncertain(input.eventId); notifyActionError(e, `Chưa xác nhận được kết quả lượt của ${event?.title ?? 'sự kiện'}. Tải lại trạng thái trước khi tiếp tục`); },
   });
   const mSetRounds = useMutation({
     mutationFn: (a: { eventId: string; rounds: LuckyRoundInput[] }) =>
@@ -136,21 +161,21 @@ export default function LuckyDrawAdminPage() {
       invalidate();
       toast.success(r.rounds ? `Đã lưu thể lệ ${r.rounds} lượt.` : 'Đã bỏ chia lượt — về một giải như cũ.');
     },
-    onError: (e: Error) => toast.error(e.message || 'Không lưu được thể lệ.'),
+    onError: (e: Error) => notifyActionError(e, 'Không lưu được thể lệ.'),
   });
   const mResetDraw = useMutation({
     mutationFn: luckyAdminApi.resetDraw,
     onSuccess: () => {
       invalidate();
-      toast.success('Đã huỷ kết quả — sự kiện mở lại.');
+      toast.success(`Đã hủy kết quả sự kiện ${event?.title ?? 'đã chọn'} và mở lại sự kiện.`);
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => notifyActionError(e, `Chưa hủy được kết quả sự kiện ${event?.title ?? 'đã chọn'}`),
   });
 
   // Bucket `lucky-proofs` là PRIVATE (anon chỉ upload được, không đọc) nên phải
   // ký URL tạm mới xem được. Mở tab mới ngay trong handler click để Safari
   // không chặn popup — điền URL sau khi ký xong.
-  const openProof = async (path: string) => {
+  const openProof = async (path: string, name: string) => {
     const tab = window.open('', '_blank');
     try {
       const { data, error } = await supabase.storage
@@ -161,17 +186,20 @@ export default function LuckyDrawAdminPage() {
       else window.location.href = data.signedUrl;
     } catch (e) {
       tab?.close();
-      toast.error((e as Error)?.message || 'Không mở được giấy cọc.');
+      notifyActionError(e, `Chưa mở được giấy cọc ${name}`);
     }
   };
 
-  const copy = async (text: string, label: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      toast.success(`Đã copy ${label}.`);
-    } catch {
-      window.prompt(`Copy ${label}:`, text);
+  const copy = copyTextWithFeedback;
+  const addTeam = () => {
+    if (!event || mAddTeam.isPending) return;
+    if (!draft.name.trim()) {
+      setTeamNameError('Nhập tên đội.');
+      document.getElementById('ld-name')?.focus();
+      return;
     }
+    setTeamNameError('');
+    mAddTeam.mutate({ eventId: event.id, ...draft, name: draft.name.trim() });
   };
 
   if (q.isError) {
@@ -180,10 +208,9 @@ export default function LuckyDrawAdminPage() {
         <div className="mx-auto max-w-xl p-6 text-center space-y-2">
           <h1 className="text-lg font-semibold">Không mở được trang quản trị sự kiện</h1>
           <p className="text-sm text-muted-foreground">
-            {(q.error as Error)?.message?.includes('42501') || /quyền/.test((q.error as Error)?.message ?? '')
-              ? 'Tài khoản của bạn không có quyền quản trị (cần OWNER/STAFF của tổ chức).'
-              : (q.error as Error)?.message}
+            {friendlyError(q.error, 'Chưa tải được danh sách sự kiện', { operation: 'xem các sự kiện quay số' }).description}
           </p>
+          <Button onClick={() => void q.refetch()}>Tải lại danh sách</Button>
         </div>
       </MainLayout>
     );
@@ -198,7 +225,7 @@ export default function LuckyDrawAdminPage() {
           <div>
             <h1 className="text-xl font-bold">🎰 Sự kiện quay số may mắn</h1>
             <p className="text-sm text-muted-foreground">
-              Cấp mã 6 số cho đội, hẹn giờ mở thưởng — sale vào /quayso điểm danh, tới giờ tự quay.
+              Cấp mã điểm danh cho đội, hẹn giờ mở thưởng — sale vào /quayso điểm danh, tới giờ tự quay.
             </p>
           </div>
           <Button
@@ -209,6 +236,16 @@ export default function LuckyDrawAdminPage() {
           </Button>
         </div>
 
+        {drawUncertain && <div role="alert" className="rounded border border-amber-500 p-3 text-sm">Chưa xác nhận được kết quả thao tác. Tải trạng thái mới trước khi mở lượt hoặc quay tiếp. <Button variant="outline" disabled={q.isFetching || drawRecovering} onClick={async () => {
+          setDrawRecovering(true); setDrawRecoveryError('');
+          try {
+            const confirmed = await luckyAdminApi.reconcileDraw(drawUncertain);
+            await q.refetch();
+            if (confirmed?.ok) setDrawUncertain(null);
+            else setDrawRecoveryError('Chưa xác nhận được kết quả yêu cầu trước. Giữ trạng thái hiện tại và đối chiếu với người quản lý trước khi tiếp tục.');
+          } catch (error) { setDrawRecoveryError(actionErrorMessage(error, 'Chưa đối chiếu được kết quả quay')); }
+          finally { setDrawRecovering(false); }
+        }}>Tải lại trạng thái</Button>{drawRecoveryError && <p role="alert">{drawRecoveryError}</p>}</div>}
         {q.isLoading && <p className="text-sm text-muted-foreground">Đang tải…</p>}
 
         {!q.isLoading && !event && (
@@ -248,7 +285,7 @@ export default function LuckyDrawAdminPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <EventForm key={event.id} event={event} onSave={(p) => mUpsert.mutate({ id: event.id, ...p })} saving={mUpsert.isPending} />
+                <EventForm key={event.id} event={event} onSave={(p) => mUpsert.mutateAsync({ id: event.id, ...p })} saving={mUpsert.isPending} />
                 <div className="space-y-1 rounded-md border bg-muted/40 px-3 py-2 text-sm">
                   <div>
                     <span className="text-muted-foreground">Link gửi sale: </span>
@@ -284,7 +321,7 @@ export default function LuckyDrawAdminPage() {
                   <Button
                     size="sm"
                     variant="destructive"
-                    disabled={event.status !== 'open' || mForceDraw.isPending}
+                    disabled={event.status !== 'open' || mForceDraw.isPending || !!drawUncertain}
                     onClick={() => {
                       if (window.confirm('Quay NGAY bây giờ (bỏ qua giờ hẹn)? Kết quả chốt một lần cho tất cả.')) {
                         mForceDraw.mutate(event.id);
@@ -323,7 +360,7 @@ export default function LuckyDrawAdminPage() {
             {event.rounds.length > 0 && (
               <RoundControlCard
                 event={event}
-                busy={mDrawRound.isPending}
+                busy={mDrawRound.isPending || !!drawUncertain}
                 onDraw={(ordinal) => mDrawRound.mutate({ eventId: event.id, ordinal })}
               />
             )}
@@ -332,14 +369,14 @@ export default function LuckyDrawAdminPage() {
             <RoundsCard
               event={event}
               saving={mSetRounds.isPending}
-              onSave={(rounds) => mSetRounds.mutate({ eventId: event.id, rounds })}
+              onSave={(rounds) => mSetRounds.mutateAsync({ eventId: event.id, rounds })}
             />
 
             {/* Danh sách vé + mã */}
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-base">
-                  Đội tham gia ({event.teams.length}) — mã 6 số chỉ trang này thấy
+                  Đội tham gia ({event.teams.length}) — mã điểm danh chỉ trang này thấy
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
@@ -420,7 +457,7 @@ export default function LuckyDrawAdminPage() {
                                       variant="link"
                                       className="h-auto p-0 text-xs"
                                       title={pr.name}
-                                      onClick={() => void openProof(pr.path)}
+                                      onClick={() => void openProof(pr.path, pr.name)}
                                     >
                                       #{i + 1}
                                     </Button>
@@ -437,6 +474,7 @@ export default function LuckyDrawAdminPage() {
                                 size="sm"
                                 variant="ghost"
                                 onClick={() => {
+                                  setEditError('');
                                   setEditTeam(t);
                                   setEditDraft({
                                     name: t.name,
@@ -480,17 +518,16 @@ export default function LuckyDrawAdminPage() {
                   <div className="min-w-40 flex-1">
                     <Label htmlFor="ld-name">Tên đội</Label>
                     <Input
-                      id="ld-name"
+                      id="ld-name" aria-invalid={!!teamNameError} aria-describedby={teamNameError ? "ld-name-error" : undefined}
                       value={draft.name}
                       placeholder="vd: Phụng Đào"
                       onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter' && draft.name.trim() && event.id) {
-                          mAddTeam.mutate({ eventId: event.id, ...draft, name: draft.name.trim() });
-                        }
+                        if (e.key === 'Enter') addTeam();
                       }}
                     />
                   </div>
+                  {teamNameError && <p id="ld-name-error" role="alert" className="text-sm text-destructive">{teamNameError}</p>}
                   <div className="w-32">
                     <Label htmlFor="ld-sale">Mã sale</Label>
                     <Input
@@ -538,8 +575,8 @@ export default function LuckyDrawAdminPage() {
                     />
                   </div>
                   <Button
-                    disabled={!draft.name.trim() || mAddTeam.isPending}
-                    onClick={() => mAddTeam.mutate({ eventId: event.id, ...draft, name: draft.name.trim() })}
+                    disabled={mAddTeam.isPending}
+                    onClick={addTeam}
                   >
                     + Thêm đội
                   </Button>
@@ -556,7 +593,7 @@ export default function LuckyDrawAdminPage() {
       </div>
 
       {/* Dialog sửa đội */}
-      <Dialog open={!!editTeam} onOpenChange={(open) => !open && setEditTeam(null)}>
+      <Dialog open={!!editTeam} onOpenChange={(open) => !open && !mUpdateTeam.isPending && setEditTeam(null)}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Sửa đội {editTeam?.name}</DialogTitle>
@@ -564,7 +601,7 @@ export default function LuckyDrawAdminPage() {
           <div className="space-y-3">
             <div>
               <Label htmlFor="ed-name">Tên vé</Label>
-              <Input id="ed-name" value={editDraft.name} onChange={(e) => setEditDraft((d) => ({ ...d, name: e.target.value }))} />
+              <Input id="ed-name" aria-invalid={!editDraft.name.trim() && !!editError} aria-describedby={editError ? "edit-team-error" : undefined} value={editDraft.name} onChange={(e) => setEditDraft((d) => ({ ...d, name: e.target.value }))} />
             </div>
             <div>
               <Label htmlFor="ed-sale">Mã sale</Label>
@@ -603,20 +640,22 @@ export default function LuckyDrawAdminPage() {
               size="sm"
               onClick={() => {
                 if (editTeam && window.confirm('Cấp lại mã mới cho đội này? Mã cũ sẽ hết hiệu lực.')) {
-                  mUpdateTeam.mutate({ teamId: editTeam.id, p: { regenCode: true } });
-                  setEditTeam(null);
+                  mUpdateTeam.mutate({ teamId: editTeam.id, p: { regenCode: true } }, { onSuccess: () => setEditTeam(null), onError: error => setEditError(actionErrorMessage(error, "Chưa cấp lại được mã điểm danh")) });
                 }
               }}
             >
-              🔑 Cấp lại mã 6 số
+              🔑 Cấp lại mã điểm danh
             </Button>
           </div>
+          {editError && <p id="edit-team-error" role="alert" className="text-sm text-destructive">{editError}</p>}
           <DialogFooter>
             <Button variant="ghost" onClick={() => setEditTeam(null)}>Huỷ</Button>
             <Button
-              disabled={!editDraft.name.trim() || mUpdateTeam.isPending}
+              disabled={mUpdateTeam.isPending}
               onClick={() => {
                 if (!editTeam) return;
+                if (!editDraft.name.trim()) { setEditError("Nhập tên đội."); document.getElementById("ed-name")?.focus(); return; }
+                setEditError('');
                 mUpdateTeam.mutate({
                   teamId: editTeam.id,
                   p: {
@@ -627,8 +666,7 @@ export default function LuckyDrawAdminPage() {
                     topPrizeAmount: editDraft.topPrize,
                     inWheel: editDraft.topRank == null ? editDraft.inWheel : false,
                   },
-                });
-                setEditTeam(null);
+                }, { onSuccess: () => setEditTeam(null), onError: error => setEditError(actionErrorMessage(error, "Chưa lưu được đội")) });
               }}
             >
               Lưu
@@ -642,7 +680,7 @@ export default function LuckyDrawAdminPage() {
 
 /* ── Form thông số sự kiện (tách để reset theo key={event.id}) ── */
 
-function EventForm({
+export function EventForm({
   event,
   onSave,
   saving,
@@ -656,23 +694,37 @@ function EventForm({
     drawAt: string | null;
     game: LuckyGame;
     raceSeconds: number;
-  }) => void;
+  }) => Promise<unknown>;
   saving: boolean;
 }) {
   const [title, setTitle] = useState(event.title);
-  const [slug, setSlug] = useState(event.slug);
+  const [slug, setSlug] = useState(event.slug ?? '');
   const [prizeLabel, setPrizeLabel] = useState(event.prizeLabel);
   const [prizeAmount, setPrizeAmount] = useState(event.prizeAmount);
   const [drawAtLocal, setDrawAtLocal] = useState(isoToLocalInput(event.drawAt));
   const [game, setGame] = useState<LuckyGame>(luckyGameOf(event.game));
   const [raceSeconds, setRaceSeconds] = useState(event.raceSeconds ?? 20);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [submitError, setSubmitError] = useState('');
+  const root = useRef<HTMLDivElement>(null);
+  const props = (name: string) => ({ name, 'aria-invalid': !!errors[name], 'aria-describedby': errors[name] ? `${name}-error` : undefined });
+  const message = (name: string) => errors[name] ? <p id={`${name}-error`} role="alert" className="text-sm text-destructive">{errors[name]}</p> : null;
+  const save = async () => {
+    const errors: Record<string, string> = {};
+    if (!title.trim()) errors.title = 'Nhập tiêu đề sự kiện.';
+    if (drawAtLocal && !Number.isFinite(new Date(drawAtLocal).getTime())) errors.drawAt = 'Chọn ngày và giờ mở thưởng hợp lệ.';
+    setErrors(errors); setSubmitError('');
+    if (Object.keys(errors).length) { void focusFirstError(errors, { root: root.current }); return; }
+    try { await onSave({ title: title.trim(), slug: slug.trim(), prizeLabel: prizeLabel.trim() || 'Giải may mắn', prizeAmount, drawAt: localInputToIso(drawAtLocal), game, raceSeconds }); }
+    catch (error) { setSubmitError(actionErrorMessage(error, `Chưa lưu được sự kiện ${title}`)); }
+  };
   const moTa = LUCKY_GAMES.find((g) => g.value === game)?.hint ?? '';
 
   return (
-    <div className="flex flex-wrap items-end gap-2">
+    <div ref={root} className="flex flex-wrap items-end gap-2">
       <div className="min-w-48 flex-1">
         <Label htmlFor="ev-title">Tiêu đề</Label>
-        <Input id="ev-title" value={title} onChange={(e) => setTitle(e.target.value)} />
+        <Input id="ev-title" {...props("title")} value={title} onChange={(e) => setTitle(e.target.value)} />{message("title")}
       </div>
       <div className="w-52">
         <Label htmlFor="ev-slug">Đường dẫn ngắn</Label>
@@ -746,28 +798,19 @@ function EventForm({
       <div className="w-56">
         <Label htmlFor="ev-drawat">Giờ mở thưởng (giờ máy bạn)</Label>
         <Input
-          id="ev-drawat"
+          id="ev-drawat" {...props("drawAt")}
           type="datetime-local"
           value={drawAtLocal}
           onChange={(e) => setDrawAtLocal(e.target.value)}
-        />
+        />{message("drawAt")}
       </div>
       <Button
-        disabled={saving || !title.trim()}
-        onClick={() =>
-          onSave({
-            title: title.trim(),
-            slug: slug.trim(),
-            prizeLabel: prizeLabel.trim() || 'Giải may mắn',
-            prizeAmount,
-            drawAt: localInputToIso(drawAtLocal),
-            game,
-            raceSeconds,
-          })
-        }
+        disabled={saving}
+        onClick={() => void save()}
       >
         Lưu
       </Button>
+      {submitError && <p role="alert" className="w-full text-sm text-destructive">{submitError}</p>}
     </div>
   );
 }
@@ -783,18 +826,34 @@ function EventForm({
  * thay luật lúc cuộc chơi đang chạy. Nút bị khoá ở đây cho khớp, kèm lời chỉ
  * đường sang "Đặt lại kết quả".
  */
-function RoundsCard({
+export function RoundsCard({
   event,
   onSave,
   saving,
 }: {
   event: LuckyEventAdmin;
-  onSave: (rounds: LuckyRoundInput[]) => void;
+  onSave: (rounds: LuckyRoundInput[]) => Promise<unknown>;
   saving: boolean;
 }) {
   const [rows, setRows] = useState<LuckyRoundInput[]>(() =>
     event.rounds.map((r) => ({ amount: r.amount, winnersCount: r.winnersCount })),
   );
+  const root = useRef<HTMLDivElement>(null);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [saveError, setSaveError] = useState('');
+  const fieldProps = (name: string) => ({ name, 'aria-invalid': !!errors[name], 'aria-describedby': errors[name] ? `${name}-error` : undefined });
+  const fieldError = (name: string) => errors[name] ? <p id={`${name}-error`} role="alert" className="text-sm text-destructive">{errors[name]}</p> : null;
+  const save = async () => {
+    const invalid: Record<string, string> = {};
+    rows.forEach((row, index) => {
+      if (!Number.isFinite(row.amount) || row.amount < 0) invalid[`rows.${index}.amount`] = `Lượt ${index + 1}: tiền mỗi suất phải từ 0 đồng.`;
+      if (!Number.isInteger(row.winnersCount) || row.winnersCount < 1 || row.winnersCount > 50) invalid[`rows.${index}.winnersCount`] = `Lượt ${index + 1}: số suất phải là số nguyên từ 1 đến 50.`;
+    });
+    setErrors(invalid); setSaveError('');
+    if (Object.keys(invalid).length) { void focusFirstError(invalid, { root: root.current }); return; }
+    try { await onSave(rows); }
+    catch (error) { setSaveError(actionErrorMessage(error, `Chưa lưu được thể lệ sự kiện ${event.title}`)); }
+  };
   const daQuay = event.rounds.some((r) => r.status === 'drawn');
   const tong = rows.reduce((sum, r) => sum + r.amount * r.winnersCount, 0);
   const soGiai = rows.reduce((sum, r) => sum + r.winnersCount, 0);
@@ -803,7 +862,7 @@ function RoundsCard({
     setRows((ds) => ds.map((r, k) => (k === i ? { ...r, ...patch } : r)));
 
   return (
-    <Card>
+    <Card ref={root}>
       <CardHeader className="pb-3">
         <CardTitle className="text-base">
           Thể lệ — {rows.length ? `${rows.length} lượt · ${soGiai} giải · ${formatVnd(tong)}` : 'một giải duy nhất'}
@@ -826,28 +885,28 @@ function RoundsCard({
             <div className="w-40">
               <Label htmlFor={`rd-amt-${i}`}>Tiền mỗi suất (đ)</Label>
               <Input
-                id={`rd-amt-${i}`}
+                id={`rd-amt-${i}`} {...fieldProps(`rows.${i}.amount`)}
                 type="number"
                 min={0}
                 step={50000}
                 value={r.amount}
                 disabled={daQuay}
-                onChange={(e) => set(i, { amount: Math.max(0, Number(e.target.value) || 0) })}
-              />
+                onChange={(e) => set(i, { amount: Number(e.target.value) })}
+              />{fieldError(`rows.${i}.amount`)}
             </div>
             <div className="w-28">
               <Label htmlFor={`rd-n-${i}`}>Số suất</Label>
               <Input
-                id={`rd-n-${i}`}
+                id={`rd-n-${i}`} {...fieldProps(`rows.${i}.winnersCount`)}
                 type="number"
                 min={1}
                 max={50}
                 value={r.winnersCount}
                 disabled={daQuay}
                 onChange={(e) =>
-                  set(i, { winnersCount: Math.min(50, Math.max(1, Number(e.target.value) || 1)) })
+                  set(i, { winnersCount: Number(e.target.value) })
                 }
-              />
+              />{fieldError(`rows.${i}.winnersCount`)}
             </div>
             <div className="flex-1 text-sm text-muted-foreground">
               = {formatVnd(r.amount * r.winnersCount)}
@@ -887,11 +946,12 @@ function RoundsCard({
             Mẫu đêm tổng kết (100K×3 → 200K×2 → 500K×1)
           </Button>
           <div className="flex-1" />
-          <Button disabled={saving || daQuay} onClick={() => onSave(rows)}>
+          <Button disabled={saving || daQuay} onClick={() => void save()}>
             Lưu thể lệ
           </Button>
         </div>
 
+        {saveError && <p role="alert" className="text-sm text-destructive">{saveError}</p>}
         {daQuay ? (
           <p className="text-xs text-amber-600">
             Sự kiện đã quay ít nhất một lượt nên thể lệ bị khoá. Bấm <b>Huỷ kết quả</b> ở khối trên

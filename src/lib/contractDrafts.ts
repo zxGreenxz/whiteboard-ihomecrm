@@ -1,3 +1,4 @@
+import {FinancialWorkflowError,workflowFeedbackDescription} from '@/lib/financialWorkflowError';
 import { z } from 'zod';
 import { todayISO } from '@/lib/collect';
 
@@ -153,6 +154,7 @@ export async function markDraftDocx(blob: Blob, revision: number): Promise<Blob>
 }
 
 export function draftErrorMessage(error: unknown): string {
+  if (error instanceof FinancialWorkflowError) return workflowFeedbackDescription(error);
   const code = typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : '';
   if (code === '40001') return 'Bản nháp đã được người khác cập nhật. Đóng và mở lại để tải phiên bản mới; nội dung đang nhập vẫn được giữ trong cửa sổ này.';
   if (code === '42501' || code === '28000') return 'Bạn không có quyền thực hiện thao tác với bản nháp này.';

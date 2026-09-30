@@ -1,3 +1,4 @@
+import { QueryRegion } from "@/components/errors/QueryRegion";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -36,15 +37,23 @@ export default function ProfitOverviewTab() {
   const [payoutOpen, setPayoutOpen] = useState(false);
   const [payoutManager, setPayoutManager] = useState<string | null>(null);
 
-  const { data: shareholders = [] } = useShareholders();
-  const { data: buildings = [] } = useBuildings();
-  const { data: profitMonthly = [] } = useProfitMonthly();
-  const { data: allocations = [] } = useProfitAllocations();
-  const { data: distributions = [] } = useShareholderDistributions();
+  const shareholdersQuery = useShareholders();
+  const { data: shareholders = [] } = shareholdersQuery;
+  const buildingsQuery = useBuildings();
+  const { data: buildings = [] } = buildingsQuery;
+  const profitMonthlyQuery = useProfitMonthly();
+  const { data: profitMonthly = [] } = profitMonthlyQuery;
+  const allocationsQuery = useProfitAllocations();
+  const { data: allocations = [] } = allocationsQuery;
+  const distributionsQuery = useShareholderDistributions();
+  const { data: distributions = [] } = distributionsQuery;
 
-  const { data: managers = [] } = useProfitManagers();
-  const { data: managerAllocations = [] } = useProfitManagerAllocations();
-  const { data: managerPayouts = [] } = useManagerSalaryPayouts();
+  const managersQuery = useProfitManagers();
+  const { data: managers = [] } = managersQuery;
+  const managerAllocationsQuery = useProfitManagerAllocations();
+  const { data: managerAllocations = [] } = managerAllocationsQuery;
+  const managerPayoutsQuery = useManagerSalaryPayouts();
+  const { data: managerPayouts = [] } = managerPayoutsQuery;
 
   const buildingName = (id: string) => buildings.find((b: any) => b.id === id)?.name ?? "—";
   const monthOf = (period?: string) => Number((period ?? "").slice(5, 7));
@@ -177,6 +186,7 @@ export default function ProfitOverviewTab() {
   const payRatio = totals.lockedProfit > 0 ? Math.round((totals.accrued / totals.lockedProfit) * 100) : null;
 
   return (
+    <QueryRegion label="lợi nhuận và cấu hình phân bổ" queries={[shareholdersQuery, buildingsQuery, profitMonthlyQuery, allocationsQuery, distributionsQuery, managersQuery, managerAllocationsQuery, managerPayoutsQuery]}>
     <>
       <ProfitHubSlot name="kpis">
         <div className="ph-kpi ph-kpi--flex">
@@ -459,5 +469,6 @@ export default function ProfitOverviewTab() {
         defaultManagerId={payoutManager}
       />
     </>
+    </QueryRegion>
   );
 }

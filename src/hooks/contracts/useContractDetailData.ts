@@ -3,6 +3,7 @@
 // (services/history — trước là useEffect + state thủ công) đặt key mới.
 // KHÁC HÀNH VI CŨ CÓ CHỦ Ý: lỗi fetch được THROW để UI hiện error state,
 // không console.error rồi giả thành []/null nữa (4 chỗ nuốt lỗi cũ).
+import { financialReadNumber, financialReadRows } from "@/lib/financialReadValidation";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { TERMINATION_REFUND_SOURCE } from "@/hooks/useDepositDashboard";
@@ -45,13 +46,16 @@ export function useContractDepositVouchers(contractId: string) {
       // phiếu cọc ĐẦU KỲ (`system_source='contract.deposit'`,
       // `posting_status='NOT_APPLICABLE'`): tiền khách đóng TRƯỚC khi dùng phần
       // mềm, lên sổ ảo, nên không hề chạy qua sổ quỹ.
-      return ((data ?? []) as unknown as Array<
+      return (financialReadRows(data) as unknown as Array<
         ContractDepositVoucher & {
           posting_status?: string | null;
           system_source?: string | null;
           income_expense_items?: Array<{ type?: { is_deposit?: boolean } | null }>;
         }
-      >).filter((v) => (v.income_expense_items ?? []).some((it) => it.type?.is_deposit));
+      >).filter((v) => {
+        financialReadNumber(v.total_amount);
+        return financialReadRows(v.income_expense_items).some((it) => it.type?.is_deposit);
+      });
     },
   });
 }
@@ -130,7 +134,7 @@ export function useContractPendingTermination(contractId: string) {
         .in("approval_status", ["UNAPPROVED", "APPROVED"])
         .is("deleted_at", null);
       if (error) throw error;
-      return classifyPendingTerminationVouchers((data ?? []) as PendingTerminationVoucher[]);
+      return classifyPendingTerminationVouchers(financialReadRows(data) as PendingTerminationVoucher[]);
     },
   });
 }
@@ -195,15 +199,18 @@ export function useContractTerminationInfo(contractId: string, status?: string) 
       // FAIL-CLOSED: không đọc được phiếu thì báo lỗi, KHÔNG hiện "chưa có phiếu
       // hoàn" (một tuyên bố sai về tiền).
       if (vouchers.error) throw vouchers.error;
+      const rows = financialReadRows(vouchers.data);
+      for (const row of rows) financialReadNumber(row.total_amount);
       if (!term.data) return null;
-
-      const rows = (vouchers.data ?? []) as Array<{ code: string | null; total_amount: number | string | null }>;
+      for (const field of ["outstanding_debt", "early_termination_fee", "total_deposit", "total_deductions", "refund_amount"] as const) {
+        if (term.data[field] != null) financialReadNumber(term.data[field]);
+      }
       return {
         ...(term.data as Omit<
           ContractTerminationInfo,
           "posted_refund" | "posted_refund_count" | "posted_refund_codes"
         >),
-        posted_refund: rows.reduce((s, v) => s + (Number(v.total_amount) || 0), 0),
+        posted_refund: rows.reduce((s, v) => s + financialReadNumber(v.total_amount), 0),
         posted_refund_count: rows.length,
         posted_refund_codes: rows.map((v) => v.code).filter((c): c is string => !!c),
       };
@@ -223,7 +230,7 @@ export function useContractVehicles(contractId: string, customerIds: string[]) {
         .in("customer_id", customerIds)
         .is("deleted_at", null);
       if (error) throw error;
-      return (data ?? []) as ContractVehicle[];
+      return financialReadRows(data) as ContractVehicle[];
     },
   });
 }
@@ -241,7 +248,12 @@ export function useContractServices(contractId: string) {
         `)
         .eq("contract_id", contractId);
       if (error) throw error;
-      return (data ?? []) as unknown as ContractServiceItem[];
+      const rows = financialReadRows(data);
+      for (const row of rows) {
+        financialReadNumber(row.unit_price);
+        if (row.initial_reading != null) financialReadNumber(row.initial_reading);
+      }
+      return rows as unknown as ContractServiceItem[];
     },
   });
 }
@@ -275,7 +287,9 @@ export function useContractHistory(contractId: string) {
       // `ContractHistoryItem[]` và bản MOBILE cũng dùng đúng mảng đó. Đổi sang
       // trả object là ép sửa cả mobile. `details` vốn là Record<string, any>
       // nên thêm khoá không đổi kiểu, không đổi query key, mobile không thấy gì khác.
-      const transfers = tra.data ?? [];
+      const extensions = financialReadRows(ext.data);
+      const transfers = financialReadRows(tra.data);
+      const terminations = financialReadRows(ter.data);
       if (transfers.length > 0) {
         const roomIds = [
           ...new Set(
@@ -306,10 +320,10 @@ export function useContractHistory(contractId: string) {
                 .in("id", tenantIds)
             : Promise.resolve({ data: [], error: null }),
         ]);
-        // Tra tên hỏng thì để dòng lịch sử tự nói "phòng khác" — KHÔNG throw:
-        // cả trang lịch sử không đáng chết chỉ vì thiếu một cái nhãn.
+        if (rooms.error) throw rooms.error;
+        if (tenants.error) throw tenants.error;
         const tenPhong = new Map<string, string>();
-        for (const r of (rooms.data ?? []) as Array<{
+        for (const r of financialReadRows<{id:string;name:string;building:{name:string}|null}>(rooms.data) as Array<{
           id: string;
           name: string;
           building?: { name?: string | null } | null;
@@ -317,7 +331,7 @@ export function useContractHistory(contractId: string) {
           tenPhong.set(r.id, r.building?.name ? `${r.name} — ${r.building.name}` : r.name);
         }
         const tenKhach = new Map<string, string>();
-        for (const c of (tenants.data ?? []) as Array<{ id: string; full_name: string | null }>) {
+        for (const c of financialReadRows<{id:string;full_name:string|null}>(tenants.data) as Array<{ id: string; full_name: string | null }>) {
           if (c.full_name) tenKhach.set(c.id, c.full_name);
         }
 
@@ -331,15 +345,15 @@ export function useContractHistory(contractId: string) {
       }
 
       const history: ContractHistoryItem[] = [
-        ...(ext.data ?? []).map((e) => ({
+        ...extensions.map((e) => ({
           id: e.id, type: "extension" as const, created_at: e.created_at,
           status: e.status, details: e as Record<string, unknown>,
         })),
-        ...(tra.data ?? []).map((t) => ({
+        ...transfers.map((t) => ({
           id: t.id, type: "transfer" as const, created_at: t.created_at,
           status: t.status, details: t as Record<string, unknown>,
         })),
-        ...(ter.data ?? []).map((t) => ({
+        ...terminations.map((t) => ({
           id: t.id, type: "termination" as const, created_at: t.created_at,
           status: t.status, details: t as Record<string, unknown>,
         })),

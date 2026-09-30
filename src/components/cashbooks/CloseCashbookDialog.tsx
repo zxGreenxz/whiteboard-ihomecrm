@@ -17,9 +17,13 @@ import {
 } from "@/components/ui/select";
 import { AlertTriangle, CheckCircle2, Loader2, Lock } from "lucide-react";
 import {
-  useClosingBlockers, useCashbookBalanceAsOf, useProposeCashbookClosing,
+  useClosingBlockers, useCashbookBalanceAsOf, useProposeCashbookClosing, useCashbookCloseConfirmers,
 } from "@/hooks/useCashbookClosing";
 import { parseMoneyInput, formatMoney as fmtVND } from "@/lib/moneyInput";
+
+import { useOperationFormFeedback } from '@/hooks/useOperationFormFeedback';
+import { QueryRegion } from '@/components/errors/QueryRegion';
+import { CASHBOOK_CLOSING_RULES } from '@/lib/cashbookClosingFeedback';
 
 const CONFIRM_WORD = "CHOT SO";
 
@@ -48,17 +52,21 @@ export default function CloseCashbookDialog({
   const [note, setNote] = useState("");
   const [typed, setTyped] = useState("");
 
-  const {
-    data: blockers = [], isLoading: loadingBlockers, isError: blockersFailed, error: blockersError,
-  } = useClosingBlockers(open ? cashbookId : null);
-  const { data: systemBalance } = useCashbookBalanceAsOf(open ? cashbookId : null);
+  const blockersQuery = useClosingBlockers(open ? cashbookId : null);
+  const {data: blockers = [], isLoading: loadingBlockers, isError: blockersFailed} = blockersQuery;
+  const balanceQuery = useCashbookBalanceAsOf(open ? cashbookId : null);
+  const {data: systemBalance} = balanceQuery;
+  const candidatesQuery = useCashbookCloseConfirmers(open ? cashbookId : null);
+  const availableCandidates = candidatesQuery.data ?? candidates;
+  const feedback = useOperationFormFeedback('gửi đề nghị chốt sổ', {rules:CASHBOOK_CLOSING_RULES});
+  const sourcesBlocked = [blockersQuery,balanceQuery,candidatesQuery].some(query => query.isError || query.isLoading) || systemBalance == null;
   const proposeMut = useProposeCashbookClosing();
 
   useEffect(() => {
-    if (!open) {
+    if (!open && !feedback.blocked) {
       setStep(1); setCounted(""); setConfirmer(""); setNote(""); setTyped("");
     }
-  }, [open]);
+  }, [open, feedback.blocked]);
 
   const hardBlockers = blockers.filter((b) => b.blocking);
   const warnings = blockers.filter((b) => !b.blocking);
@@ -69,27 +77,28 @@ export default function CloseCashbookDialog({
   // Hook lỗi thì `data` rơi về [] ⇒ nếu chỉ đếm hardBlockers sẽ hiện "sẵn sàng
   // chốt" ngay giữa lúc không đọc nổi sổ. Trạng thái không-biết KHÔNG phải
   // trạng thái tốt.
-  const canGoStep2 = hardBlockers.length === 0 && !loadingBlockers && !blockersFailed;
-  const canGoStep3 = countedNum !== null && !!confirmer;
-  const canSubmit = canGoStep3 && typed.trim().toUpperCase() === CONFIRM_WORD;
+  const canGoStep2 = hardBlockers.length === 0 && !loadingBlockers && !blockersFailed && !sourcesBlocked;
+  const formErrors = {
+    counted: countedNum === null ? 'Nhập số tiền thực kiểm đếm.' : undefined,
+    confirmer: !confirmer ? 'Chọn người xác nhận chốt sổ.' : !availableCandidates.some(candidate => candidate.user_id === confirmer) ? 'Người được chọn không còn trong danh sách. Chọn lại người xác nhận.' : undefined,
+  };
 
   const confirmerName = useMemo(
-    () => candidates.find((c) => c.user_id === confirmer)?.full_name ?? "người nhận",
-    [candidates, confirmer],
+    () => availableCandidates.find((c) => c.user_id === confirmer)?.full_name ?? "người nhận",
+    [availableCandidates, confirmer],
   );
 
   const submit = async () => {
     if (!cashbookId || countedNum === null) return;
     await proposeMut.mutateAsync({
-      cashbookId, countedBalance: countedNum, confirmerUserId: confirmer,
+      cashbookId, cashbookName, countedBalance: countedNum, confirmerUserId: confirmer,
       note: note.trim() || null,
     });
-    onOpenChange(false);
   };
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!proposeMut.isPending) onOpenChange(o); }}>
-      <DialogContent className="max-w-lg">
+    <Dialog open={open} onOpenChange={(o) => feedback.close(() => onOpenChange(o))}>
+      <DialogContent ref={feedback.root} className="max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Lock className="h-4 w-4" />
@@ -98,7 +107,9 @@ export default function CloseCashbookDialog({
           <DialogDescription>Bước {step}/3</DialogDescription>
         </DialogHeader>
 
-        {step === 1 && (
+        <QueryRegion label="dữ liệu chốt sổ" queries={[blockersQuery,balanceQuery,candidatesQuery]}><span /></QueryRegion>
+        {feedback.notice}
+        {step === 1 && !sourcesBlocked && (
           <div className="space-y-3">
             {loadingBlockers ? (
               <p className="text-sm text-muted-foreground flex items-center gap-2">
@@ -107,7 +118,7 @@ export default function CloseCashbookDialog({
             ) : blockersFailed ? (
               <div className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-800">
                 Không kiểm tra được sổ quỹ nên chưa thể chốt.
-                {blockersError instanceof Error ? ` (${blockersError.message})` : ""}
+
               </div>
             ) : hardBlockers.length === 0 ? (
               <p className="text-sm text-emerald-700 flex items-center gap-2">
@@ -145,7 +156,7 @@ export default function CloseCashbookDialog({
                 {isBank ? `Số dư trên sao kê ${bankName!.trim()}` : "Số tiền thực đếm trong két"}
               </Label>
               <Input
-                id="counted" inputMode="numeric" value={counted}
+                id="counted" {...feedback.field("counted")} inputMode="numeric" value={counted}
                 onChange={(e) => setCounted(e.target.value)}
                 placeholder={
                   isBank
@@ -153,6 +164,7 @@ export default function CloseCashbookDialog({
                     : "Đếm tiền mặt rồi nhập vào đây"
                 }
               />
+              {feedback.issue("counted")}
             </div>
             {diff !== null && (
               <p className={`text-sm ${diff === 0 ? "text-emerald-700" : "text-amber-800"}`}>
@@ -164,16 +176,17 @@ export default function CloseCashbookDialog({
             <div className="space-y-1.5">
               <Label htmlFor="confirmer">Người nhận bàn giao (sẽ ký xác nhận)</Label>
               <Select value={confirmer} onValueChange={setConfirmer}>
-                <SelectTrigger id="confirmer"><SelectValue placeholder="Chọn người nhận" /></SelectTrigger>
+                <SelectTrigger id="confirmer" {...feedback.field("confirmer")}><SelectValue placeholder="Chọn người nhận" /></SelectTrigger>
                 <SelectContent>
-                  {candidates.map((c) => (
+                  {availableCandidates.map((c) => (
                     <SelectItem key={c.user_id} value={c.user_id}>
                       {c.full_name ?? c.user_id}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              {candidates.length === 0 && (
+              {feedback.issue("confirmer")}
+              {availableCandidates.length === 0 && (
                 <p className="text-sm text-red-700">
                   Chưa có ai đủ quyền xác nhận sổ này. Nhờ quản trị cấp quyền
                   “Xác nhận nhận bàn giao” cho người nhận trước.
@@ -219,8 +232,9 @@ export default function CloseCashbookDialog({
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="typed">Gõ <b>{CONFIRM_WORD}</b> để gửi đề nghị</Label>
-              <Input id="typed" value={typed} onChange={(e) => setTyped(e.target.value)}
+              <Input id="typed" {...feedback.field("typed")} value={typed} onChange={(e) => setTyped(e.target.value)}
                      placeholder={CONFIRM_WORD} autoComplete="off" />
+              {feedback.issue("typed")}
             </div>
             <p className="text-xs text-muted-foreground">
               Bước này chỉ GỬI đề nghị. Sổ chưa khoá cho tới khi {confirmerName} đếm lại và ký nhận.
@@ -231,7 +245,7 @@ export default function CloseCashbookDialog({
         <DialogFooter className="gap-2">
           {step > 1 && (
             <Button variant="outline" onClick={() => setStep((s) => (s === 3 ? 2 : 1))}
-                    disabled={proposeMut.isPending}>
+                    disabled={feedback.saving || feedback.blocked}>
               Quay lại
             </Button>
           )}
@@ -239,10 +253,10 @@ export default function CloseCashbookDialog({
             <Button onClick={() => setStep(2)} disabled={!canGoStep2}>Tiếp tục</Button>
           )}
           {step === 2 && (
-            <Button onClick={() => setStep(3)} disabled={!canGoStep3}>Tiếp tục</Button>
+            <Button onClick={() => void feedback.run(() => undefined, () => setStep(3), formErrors)} disabled={sourcesBlocked || feedback.saving || feedback.blocked}>Tiếp tục</Button>
           )}
           {step === 3 && (
-            <Button onClick={submit} disabled={!canSubmit || proposeMut.isPending}
+            <Button onClick={() => void feedback.run(submit, () => onOpenChange(false), {...formErrors,typed:typed.trim().toUpperCase() === CONFIRM_WORD ? undefined : 'Nhập CHOT SO để xác nhận gửi đề nghị.'})} disabled={sourcesBlocked || feedback.saving || feedback.blocked}
                     className="bg-red-600 hover:bg-red-700">
               {proposeMut.isPending
                 ? (<><Loader2 className="h-4 w-4 mr-2 animate-spin" />Đang gửi…</>)

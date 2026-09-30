@@ -32,7 +32,7 @@ export interface SearchableSelectOption {
   group?: string;
 }
 
-export interface SearchableSelectProps {
+export interface SearchableSelectProps extends Omit<React.ComponentPropsWithoutRef<'button'>, 'value' | 'onChange'> {
   value?: string;
   onValueChange: (value: string) => void;
   options: SearchableSelectOption[];
@@ -95,7 +95,7 @@ const triggerBaseClass =
  * giao diện như `SelectTrigger`. Dữ liệu truyền qua `options` (cần để hiển thị
  * nhãn của value đang chọn ngay cả khi dropdown đóng).
  */
-export function SearchableSelect({
+export const SearchableSelect = React.forwardRef<HTMLButtonElement, SearchableSelectProps>(function SearchableSelect({
   value,
   onValueChange,
   options,
@@ -112,7 +112,8 @@ export function SearchableSelect({
   id,
   "aria-label": ariaLabel,
   "data-ai-safe": dataAiSafe,
-}: SearchableSelectProps) {
+  ...triggerProps
+}, forwardedRef) {
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
   const triggerRef = React.useRef<HTMLButtonElement>(null);
@@ -186,15 +187,20 @@ export function SearchableSelect({
     >
       <PopoverTrigger asChild>
         <button
+          {...triggerProps}
           type="button"
-          ref={triggerRef}
+          ref={(node) => {
+            (triggerRef as React.MutableRefObject<HTMLButtonElement | null>).current = node;
+            if (typeof forwardedRef === 'function') forwardedRef(node);
+            else if (forwardedRef) forwardedRef.current = node;
+          }}
           id={id}
           role="combobox"
           aria-expanded={open}
           aria-label={ariaLabel}
           data-ai-safe={dataAiSafe}
           disabled={disabled}
-          className={cn(triggerBaseClass, className)}
+          className={cn(triggerBaseClass, 'aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive', className)}
         >
           <span
             className={cn(
@@ -239,6 +245,6 @@ export function SearchableSelect({
       </PopoverContent>
     </Popover>
   );
-}
+});
 
 export default SearchableSelect;

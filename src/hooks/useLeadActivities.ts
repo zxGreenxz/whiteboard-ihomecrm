@@ -1,8 +1,12 @@
+import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
+import {FinancialWorkflowError} from '@/lib/financialWorkflow';
+import {confirmedRecordId,recordWriteMessage} from '@/lib/recordWriteOutcome';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
 import type { LeadActivityType } from "@/lib/leadHelpers";
+import { friendlyError } from '@/lib/friendlyError';
 
 export interface LeadActivity {
   id: string;
@@ -55,7 +59,8 @@ export const useLeadActivities = (leadId?: string) => {
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      return (data as LeadActivity[]) || [];
+      if(!Array.isArray(data) || data.some(row=>!row.id || typeof row.created_at!=='string' || !Number.isFinite(Date.parse(row.created_at)))) throw new Error('Chưa xác nhận đủ lịch sử hoạt động khách hẹn. Tải lại trước khi xem.');
+      return data as LeadActivity[];
     },
     enabled: !!leadId,
   });
@@ -70,6 +75,7 @@ export const useCreateLeadActivity = () => {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
+      return persistentFinancialWorkflow('lead-activity-create',{scope:'actor'}).run(data.lead_id,'thêm hoạt động khách hẹn',async()=>{
       const { data: activity, error } = await supabase
         .from("lead_activities")
         .insert({
@@ -81,14 +87,18 @@ export const useCreateLeadActivity = () => {
         .single();
 
       if (error) throw error;
+      confirmedRecordId(activity,'thêm hoạt động khách hẹn');
       return activity;
+      });
     },
-    onSuccess: (_, variables) => {
+    onSuccess: (_activity, variables) => {
       queryClient.invalidateQueries({ queryKey: ["lead-activities", variables.lead_id] });
-      toast.success("Hoạt động đã được thêm thành công");
+      toast.success('Đã thêm hoạt động khách hẹn');
     },
     onError: (error: Error) => {
-      toast.error("Có lỗi xảy ra khi thêm hoạt động: " + error.message);
+      if(error instanceof FinancialWorkflowError){toast.error('Chưa thêm được hoạt động',{description:recordWriteMessage(error,'thêm hoạt động khách hẹn')});return;}
+      const feedback = friendlyError(error, 'Không thể thêm hoạt động', { operation: 'thêm hoạt động khách hẹn' });
+      toast.error(feedback.title, { description: feedback.description });
     },
   });
 };
@@ -99,20 +109,25 @@ export const useDeleteLeadActivity = () => {
 
   return useMutation({
     mutationFn: async ({ activityId, leadId }: { activityId: string; leadId: string }) => {
-      const { error } = await supabase
+      return persistentFinancialWorkflow('lead-activity-delete',{scope:'actor'}).run(activityId,'xoá hoạt động khách hẹn',async()=>{
+      const { data, error } = await supabase
         .from("lead_activities")
         .delete()
-        .eq("id", activityId);
+        .eq("id", activityId).eq('lead_id',leadId).select('id').single();
 
       if (error) throw error;
+      confirmedRecordId(data,'xoá hoạt động khách hẹn',activityId);
       return { leadId };
+      });
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["lead-activities", data.leadId] });
-      toast.success("Hoạt động đã được xóa thành công");
+      toast.success('Đã xóa hoạt động khách hẹn');
     },
     onError: (error: Error) => {
-      toast.error("Có lỗi xảy ra khi xóa hoạt động: " + error.message);
+      if(error instanceof FinancialWorkflowError){toast.error('Chưa xoá được hoạt động',{description:recordWriteMessage(error,'xoá hoạt động khách hẹn')});return;}
+      const feedback = friendlyError(error, 'Không thể xóa hoạt động', { operation: 'xóa hoạt động khách hẹn' });
+      toast.error(feedback.title, { description: feedback.description });
     },
   });
 };

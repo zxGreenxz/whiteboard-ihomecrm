@@ -1,3 +1,5 @@
+import { QueryRegion } from '@/components/errors/QueryRegion';
+import { useSalaryFormFeedback } from "./useSalaryFormFeedback";
 // Tab "Quản trị viên" — bản MOBILE (QUEST). Import từ thiết kế claude.ai/design
 // "Bảng lương quản lý - Mobile.dc.html": theme tối tím-vàng, 4 tab dưới đáy
 // (Lương / Cá nhân / Bảng kê / Cấu hình). DÙNG CHUNG dữ liệu + callback với bản
@@ -16,7 +18,7 @@ import { salFmt, salShort, bigNum } from "./salaryFormat";
 import { useCountUp } from "./salaryCommon";
 import SalaryConfig from "./SalaryConfig";
 import SalarySelfMobile from "./SalarySelfMobile";
-import { usePendingLeaveRequests, useApproveLeave, type PendingLeaveRequest } from "@/hooks/useMyDay";
+import { leaveActionErrorMessage, usePendingLeaveRequests, useApproveLeave, type PendingLeaveRequest } from "@/hooks/useMyDay";
 import { isUnqualifiedContractRow, type SalManager, type SalAdjustment, type SalLedgerRow } from "@/lib/managerSalary";
 import type { SalaryAccount, SalAdjustPayload } from "./SalaryMonthly";
 
@@ -34,12 +36,12 @@ interface AdminMobileProps {
   canLock: boolean;
   canPay: boolean;
   canManageSalary: boolean;
-  onSaveAdjustment: (staffId: string, payload: SalAdjustPayload) => void;
+  onSaveAdjustment: (staffId: string, payload: SalAdjustPayload) => Promise<unknown> | void;
   onRemoveAdjustment: (adjId: string) => void;
-  onPayout: (staffId: string, staffName: string, amount: number, accountId: string, voucherDate: string, note: string) => void;
-  onBulkPayout: (rows: { staffId: string; staffName: string; amount: number }[], accountId: string) => void;
-  onLock: () => void;
-  onUnlock: () => void;
+  onPayout: (staffId: string, staffName: string, amount: number, accountId: string, voucherDate: string, note: string) => Promise<unknown> | void;
+  onBulkPayout: (rows: { staffId: string; staffName: string; amount: number }[], accountId: string) => Promise<unknown> | void;
+  onLock: () => Promise<unknown> | void;
+  onUnlock: () => Promise<unknown> | void;
   onPrevMonth: () => void;
   onNextMonth: () => void;
   onRecompute: () => void;
@@ -476,7 +478,7 @@ function ConfigScreen() {
 // ───────────────────────── SHEETS ─────────────────────────
 function BreakdownSheet({ m, canPay, locked, onClose, onPayout, onAdjust, onGoLog }: {
   m: SalManager; canPay: boolean; locked: boolean; onClose: () => void;
-  onPayout: () => void; onAdjust: () => void; onGoLog: () => void;
+  onPayout: () => Promise<unknown> | void; onAdjust: () => void; onGoLog: () => void;
 }) {
   const c = m.calc!;
   const t = avaTone(m);
@@ -520,8 +522,9 @@ function BreakdownSheet({ m, canPay, locked, onClose, onPayout, onAdjust, onGoLo
 
 function PayoutSheet({ m, accounts, period, onClose, onSave }: {
   m: SalManager; accounts: SalaryAccount[]; period: { label: string; year: number };
-  onClose: () => void; onSave: (amount: number, accountId: string, voucherDate: string, note: string) => void;
+  onClose: () => void; onSave: (amount: number, accountId: string, voucherDate: string, note: string) => Promise<unknown> | void;
 }) {
+  const feedback = useSalaryFormFeedback("lập phiếu chi lương");
   const remain = Math.max(remainOf(m), 0);
   const [amount, setAmount] = useState(String(remain));
   const [acc, setAcc] = useState(accounts[0]?.id || "");
@@ -529,30 +532,30 @@ function PayoutSheet({ m, accounts, period, onClose, onSave }: {
   const [note, setNote] = useState(`Lương ${period.label}/${period.year}`);
   const numVal = parseNum(amount);
   return (
-    <Sheet onClose={onClose}>
+    <Sheet onClose={() => feedback.close(onClose)}><div ref={feedback.root}>
       <div className="flex items-center gap-2.5 mb-3.5">
         <span className="w-10 h-10 rounded-[12px] grid place-items-center" style={{ background: "rgba(255,210,63,.16)", color: "#FFD23F" }}><HandCoins size={20} /></span>
         <div className="flex-1 min-w-0">
           <div className="text-[15px] font-extrabold text-[#EDEAF7]">Trả lương</div>
           <div className="text-[11px] text-[#9A8FC4] truncate">{m.short} · còn nhận {salFmt(remain)}</div>
         </div>
-        <button onClick={onClose} className="w-8 h-8 rounded-[10px] grid place-items-center" style={{ background: "#17132A", border: "1px solid #322A55", color: "#9A8FC4" }}><X size={16} strokeWidth={2.5} /></button>
+        <button onClick={() => feedback.close(onClose)} className="w-8 h-8 rounded-[10px] grid place-items-center" style={{ background: "#17132A", border: "1px solid #322A55", color: "#9A8FC4" }}><X size={16} strokeWidth={2.5} /></button>
       </div>
       <div className="space-y-3">
         <div>
           <label className={fieldLabel}>Số tiền</label>
           <input style={{ ...darkInput, fontFamily: "'Space Mono',monospace" }} inputMode="numeric"
-            value={numVal ? numVal.toLocaleString("vi-VN") : amount} onChange={(e) => setAmount(e.target.value)} />
+            {...feedback.field("amount")} value={numVal ? numVal.toLocaleString("vi-VN") : amount} onChange={(e) => setAmount(e.target.value)} />{feedback.issue("amount")}
         </div>
         <div>
           <label className={fieldLabel}>Chi từ sổ quỹ</label>
-          <select style={darkInput} value={acc} onChange={(e) => setAcc(e.target.value)}>
+          <select style={darkInput} {...feedback.field("account")} value={acc} onChange={(e) => setAcc(e.target.value)}>
             {accounts.length === 0 ? <option value="">— Chưa có sổ quỹ —</option> : accounts.map((b) => <option key={b.id} value={b.id} style={{ color: "#000" }}>{b.name}</option>)}
-          </select>
+          </select>{feedback.issue("account")}
         </div>
         <div>
           <label className={fieldLabel}>Ngày chi</label>
-          <input type="date" style={{ ...darkInput, fontFamily: "'Space Mono',monospace", colorScheme: "dark" }} value={date} onChange={(e) => setDate(e.target.value)} />
+          <input type="date" style={{ ...darkInput, fontFamily: "'Space Mono',monospace", colorScheme: "dark" }} {...feedback.field("date")} value={date} onChange={(e) => setDate(e.target.value)} />{feedback.issue("date")}
         </div>
         <div>
           <label className={fieldLabel}>Ghi chú</label>
@@ -561,25 +564,26 @@ function PayoutSheet({ m, accounts, period, onClose, onSave }: {
         <div className="flex items-start gap-2 text-[11.5px] text-[#9A8FC4]"><Info size={14} className="mt-0.5 shrink-0" />Tạo phiếu chi trong sổ thu chi — không tính KQKD.</div>
       </div>
       <div className="flex gap-2.5 mt-4">
-        <button onClick={onClose} className="flex-1 text-[13.5px] font-semibold rounded-[13px] py-3" style={{ color: "#CFC9E0", background: "#17132A", border: "1px solid #322A55" }}>Huỷ</button>
-        <button disabled={!numVal || !acc} onClick={() => { onSave(numVal, acc, date, note); onClose(); }}
+        <button onClick={() => feedback.close(onClose)} className="flex-1 text-[13.5px] font-semibold rounded-[13px] py-3" style={{ color: "#CFC9E0", background: "#17132A", border: "1px solid #322A55" }}>Huỷ</button>
+        <button disabled={feedback.saving || feedback.blocked} onClick={() => void feedback.run(() => onSave(numVal, acc, date, note), onClose, {amount: !numVal ? "Nhập số tiền lớn hơn 0 đồng." : undefined, account: !acc ? "Chọn sổ quỹ chi lương." : undefined, date: !date ? "Chọn ngày chi lương." : undefined})}
           className="inline-flex items-center justify-center gap-1.5 text-[13.5px] font-bold rounded-[13px] py-3" style={{ flex: 1.5, color: "#17132A", background: "#FFD23F", border: "none", opacity: !numVal || !acc ? 0.5 : 1 }}>
           <Check size={16} />Ghi phiếu chi
         </button>
       </div>
-    </Sheet>
+    {feedback.notice}</div></Sheet>
   );
 }
 
 function BatchSheet({ managers, accounts, period, onClose, onSave }: {
   managers: SalManager[]; accounts: SalaryAccount[]; period: { label: string; year: number };
-  onClose: () => void; onSave: (rows: { staffId: string; staffName: string; amount: number }[], accountId: string) => void;
+  onClose: () => void; onSave: (rows: { staffId: string; staffName: string; amount: number }[], accountId: string) => Promise<unknown> | void;
 }) {
+  const feedback = useSalaryFormFeedback("lập phiếu chi lương");
   const rows = managers.map((m) => ({ m, remain: remainOf(m) })).filter((r) => r.remain > 0);
   const total = rows.reduce((s, r) => s + r.remain, 0);
   const [acc, setAcc] = useState(accounts[0]?.id || "");
   return (
-    <Sheet onClose={onClose}>
+    <Sheet onClose={() => feedback.close(onClose)}><div ref={feedback.root}>
       <span className="w-[50px] h-[50px] rounded-[15px] grid place-items-center mb-3.5" style={{ background: "rgba(255,210,63,.16)", color: "#FFD23F" }}><HandCoins size={25} /></span>
       <div className="text-[17px] font-extrabold text-[#EDEAF7]">Trả lương hàng loạt?</div>
       <div className="text-[12.5px] text-[#9A8FC4] mt-1.5">{rows.length === 0 ? "Tất cả đã được trả đủ." : <>Tạo phiếu chi cho <b style={{ color: "#EDEAF7" }}>{rows.length} nhân sự</b>, tổng thực chi:</>}</div>
@@ -603,26 +607,27 @@ function BatchSheet({ managers, accounts, period, onClose, onSave }: {
       {rows.length > 0 && (
         <div className="mb-2">
           <label className={fieldLabel}>Chi từ sổ quỹ</label>
-          <select style={darkInput} value={acc} onChange={(e) => setAcc(e.target.value)}>
+          <select style={darkInput} {...feedback.field("account")} value={acc} onChange={(e) => setAcc(e.target.value)}>
             {accounts.length === 0 ? <option value="">— Chưa có sổ quỹ —</option> : accounts.map((b) => <option key={b.id} value={b.id} style={{ color: "#000" }}>{b.name}</option>)}
-          </select>
+          </select>{feedback.issue("account")}
         </div>
       )}
 
       <div className="flex gap-2.5 mt-3.5">
-        <button onClick={onClose} className="flex-1 text-[13.5px] font-semibold rounded-[13px] py-3" style={{ color: "#CFC9E0", background: "#17132A", border: "1px solid #322A55" }}>Huỷ</button>
-        <button disabled={!rows.length || !acc} onClick={() => { onSave(rows.map((r) => ({ staffId: r.m.id, staffName: r.m.short, amount: r.remain })), acc); onClose(); }}
+        <button onClick={() => feedback.close(onClose)} className="flex-1 text-[13.5px] font-semibold rounded-[13px] py-3" style={{ color: "#CFC9E0", background: "#17132A", border: "1px solid #322A55" }}>Huỷ</button>
+        <button disabled={!rows.length || feedback.saving || feedback.blocked} onClick={() => void feedback.run(() => onSave(rows.map((r) => ({ staffId: r.m.id, staffName: r.m.short, amount: r.remain })), acc), onClose, {account: !acc ? "Chọn sổ quỹ chi lương." : undefined})}
           className="inline-flex items-center justify-center gap-1.5 text-[13.5px] font-bold rounded-[13px] py-3" style={{ flex: 1.5, color: "#17132A", background: "#FFD23F", border: "none", opacity: !rows.length || !acc ? 0.5 : 1 }}>
           <Check size={16} />Xác nhận trả
         </button>
       </div>
-    </Sheet>
+    {feedback.notice}</div></Sheet>
   );
 }
 
 function AdjustSheet({ m, edit, onClose, onSave }: {
-  m: SalManager; edit?: SalAdjustment | null; onClose: () => void; onSave: (p: SalAdjustPayload) => void;
+  m: SalManager; edit?: SalAdjustment | null; onClose: () => void; onSave: (p: SalAdjustPayload) => Promise<unknown> | void;
 }) {
+  const feedback = useSalaryFormFeedback("lưu khoản thưởng/trừ");
   const [kind, setKind] = useState<"Thưởng" | "Trừ">(edit ? (edit.amount < 0 ? "Trừ" : "Thưởng") : "Thưởng");
   const [label, setLabel] = useState(edit ? edit.label : "");
   const [amount, setAmount] = useState(edit ? String(Math.abs(edit.amount)) : "");
@@ -630,14 +635,14 @@ function AdjustSheet({ m, edit, onClose, onSave }: {
   const numVal = parseNum(amount);
   const ok = !!label.trim() && !!numVal;
   return (
-    <Sheet onClose={onClose}>
+    <Sheet onClose={() => feedback.close(onClose)}><div ref={feedback.root}>
       <div className="flex items-center gap-2.5 mb-3.5">
         <span className="w-10 h-10 rounded-[12px] grid place-items-center" style={{ background: "rgba(255,210,63,.16)", color: "#FFD23F" }}><Gift size={20} /></span>
         <div className="flex-1 min-w-0">
           <div className="text-[15px] font-extrabold text-[#EDEAF7]">{edit ? "Sửa thưởng / trừ" : "Thêm thưởng / trừ"}</div>
           <div className="text-[11px] text-[#9A8FC4] truncate">{m.short}</div>
         </div>
-        <button onClick={onClose} className="w-8 h-8 rounded-[10px] grid place-items-center" style={{ background: "#17132A", border: "1px solid #322A55", color: "#9A8FC4" }}><X size={16} strokeWidth={2.5} /></button>
+        <button onClick={() => feedback.close(onClose)} className="w-8 h-8 rounded-[10px] grid place-items-center" style={{ background: "#17132A", border: "1px solid #322A55", color: "#9A8FC4" }}><X size={16} strokeWidth={2.5} /></button>
       </div>
       <div className="space-y-3">
         <div>
@@ -651,12 +656,12 @@ function AdjustSheet({ m, edit, onClose, onSave }: {
         </div>
         <div>
           <label className={fieldLabel}>Nội dung</label>
-          <input style={darkInput} value={label} onChange={(e) => setLabel(e.target.value)} placeholder="VD: Bonus QL, hỗ trợ xăng…" autoFocus />
+          <input style={darkInput} {...feedback.field("label")} value={label} onChange={(e) => setLabel(e.target.value)} placeholder="VD: Bonus QL, hỗ trợ xăng…" autoFocus />{feedback.issue("label")}
         </div>
         <div>
           <label className={fieldLabel}>Số tiền</label>
           <input style={{ ...darkInput, fontFamily: "'Space Mono',monospace" }} inputMode="numeric"
-            value={numVal ? numVal.toLocaleString("vi-VN") : amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" />
+            {...feedback.field("amount")} value={numVal ? numVal.toLocaleString("vi-VN") : amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" />{feedback.issue("amount")}
         </div>
         <div>
           <label className={fieldLabel}>Ghi chú</label>
@@ -664,21 +669,22 @@ function AdjustSheet({ m, edit, onClose, onSave }: {
         </div>
       </div>
       <div className="flex gap-2.5 mt-4">
-        <button onClick={onClose} className="flex-1 text-[13.5px] font-semibold rounded-[13px] py-3" style={{ color: "#CFC9E0", background: "#17132A", border: "1px solid #322A55" }}>Huỷ</button>
-        <button disabled={!ok} onClick={() => { onSave({ id: edit?.id, kind: kind === "Trừ" ? "DEDUCTION" : "BONUS", label: label.trim(), amount: numVal, note: note.trim() || null }); onClose(); }}
+        <button onClick={() => feedback.close(onClose)} className="flex-1 text-[13.5px] font-semibold rounded-[13px] py-3" style={{ color: "#CFC9E0", background: "#17132A", border: "1px solid #322A55" }}>Huỷ</button>
+        <button disabled={feedback.saving || feedback.blocked} onClick={() => void feedback.run(() => onSave({ id: edit?.id, kind: kind === "Trừ" ? "DEDUCTION" : "BONUS", label: label.trim(), amount: numVal, note: note.trim() || null }), onClose, {label: !label.trim() ? "Nhập tên khoản thưởng/trừ." : undefined, amount: !numVal ? "Nhập số tiền lớn hơn 0 đồng." : undefined})}
           className="inline-flex items-center justify-center gap-1.5 text-[13.5px] font-bold rounded-[13px] py-3" style={{ flex: 1.5, color: "#17132A", background: "#FFD23F", border: "none", opacity: ok ? 1 : 0.5 }}>
           <Check size={16} />Lưu
         </button>
       </div>
-    </Sheet>
+    {feedback.notice}</div></Sheet>
   );
 }
 
 function CloseSheet({ locked, period, unpaidCount, onClose, onConfirm }: {
-  locked: boolean; period: { label: string; year: number }; unpaidCount: number; onClose: () => void; onConfirm: () => void;
+  locked: boolean; period: { label: string; year: number }; unpaidCount: number; onClose: () => void; onConfirm: () => Promise<unknown> | void;
 }) {
+  const feedback = useSalaryFormFeedback("chốt hoặc mở khóa bảng lương");
   return (
-    <Sheet onClose={onClose}>
+    <Sheet onClose={() => feedback.close(onClose)}><div ref={feedback.root}>
       <span className="w-[50px] h-[50px] rounded-[15px] grid place-items-center mb-3.5"
         style={locked ? { background: "rgba(255,210,63,.16)", color: "#FFD23F" } : { background: "rgba(52,211,153,.16)", color: "#34D399" }}>
         {locked ? <Unlock size={25} /> : <Lock size={25} />}
@@ -695,14 +701,14 @@ function CloseSheet({ locked, period, unpaidCount, onClose, onConfirm }: {
         </div>
       )}
       <div className="flex gap-2.5 mt-3.5">
-        <button onClick={onClose} className="flex-1 text-[13.5px] font-semibold rounded-[13px] py-3" style={{ color: "#CFC9E0", background: "#17132A", border: "1px solid #322A55" }}>Huỷ</button>
-        <button onClick={() => { onConfirm(); onClose(); }}
+        <button onClick={() => feedback.close(onClose)} className="flex-1 text-[13.5px] font-semibold rounded-[13px] py-3" style={{ color: "#CFC9E0", background: "#17132A", border: "1px solid #322A55" }}>Huỷ</button>
+        <button disabled={feedback.saving || feedback.blocked} onClick={() => void feedback.run(onConfirm, onClose)}
           className="inline-flex items-center justify-center gap-1.5 text-[13.5px] font-bold rounded-[13px] py-3"
           style={{ flex: 1.5, color: "#17132A", background: locked ? "#FFD23F" : "#34D399", border: "none" }}>
           {locked ? <><Unlock size={16} />Mở khoá</> : <><Lock size={16} />Vẫn chốt</>}
         </button>
       </div>
-    </Sheet>
+    {feedback.notice}</div></Sheet>
   );
 }
 
@@ -788,15 +794,16 @@ export default function SalaryAdminMobile(props: AdminMobileProps) {
   const [recomputing, setRecomputing] = useState(false);
   const recomputeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const { data: pendingLeaves = [] } = usePendingLeaveRequests();
+  const leavesQuery = usePendingLeaveRequests();
+  const {data:pendingLeaves=[]} = leavesQuery;
   const approveLeave = useApproveLeave();
   const [decidingKey, setDecidingKey] = useState<string | null>(null);
   const onDecideLeave = (userId: string, workDate: string, approve: boolean) => {
     const key = `${userId}-${workDate}`;
     setDecidingKey(key);
     approveLeave.mutate({ user: userId, date: workDate, approve }, {
-      onSuccess: () => toast.success(approve ? "Đã duyệt phép" : "Đã từ chối phép"),
-      onError: (e: any) => toast.error(e?.message || "Có lỗi xảy ra, thử lại"),
+      onSuccess: () => toast.success(`Đã ${approve ? "duyệt" : "từ chối"} đơn nghỉ ngày ${workDate.split("-").reverse().join("/")} của ${pendingLeaves.find(row => row.user_id === userId)?.staff_name || "nhân viên"}.`),
+      onError: (error: unknown) => toast.error(leaveActionErrorMessage(error, {date:workDate,approve,employeeName:pendingLeaves.find(row=>row.user_id===userId)?.staff_name})),
       onSettled: () => setDecidingKey(null),
     });
   };
@@ -847,6 +854,7 @@ export default function SalaryAdminMobile(props: AdminMobileProps) {
         style={{ height: "100dvh", background: "radial-gradient(80% 30% at 50% 0%, #241a44 0%, transparent 55%), #17132A" }}>
         <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden"
           style={{ WebkitOverflowScrolling: "touch", paddingTop: "env(safe-area-inset-top)" }}>
+          {leavesQuery.isError && <QueryRegion label="đơn nghỉ chờ duyệt" queries={[leavesQuery]}><span /></QueryRegion>}
           {loading ? (
             <LoadingScreen period={period} {...headerNav} />
           ) : managers.length === 0 && tab !== "config" && pendingLeaves.length === 0 ? (
@@ -909,7 +917,7 @@ export default function SalaryAdminMobile(props: AdminMobileProps) {
             onConfirm={() => (locked ? onUnlock() : onLock())} />
         )}
         {sheet?.kind === "leave" && (
-          <LeaveSheet rows={pendingLeaves} decidingKey={decidingKey} onClose={() => setSheet(null)} onDecide={onDecideLeave} />
+          <QueryRegion label="đơn nghỉ chờ duyệt" queries={[leavesQuery]}><LeaveSheet rows={pendingLeaves} decidingKey={decidingKey} onClose={() => setSheet(null)} onDecide={onDecideLeave} /></QueryRegion>
         )}
       </div>
     </div>

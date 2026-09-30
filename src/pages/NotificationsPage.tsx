@@ -1,3 +1,4 @@
+import { QueryRegion } from '@/components/errors/QueryRegion';
 import { Suspense, lazy, useEffect, useMemo } from 'react';
 import MainLayout from "@/components/layout/MainLayout";
 import { usePhoneViewport } from '@/hooks/use-mobile';
@@ -113,7 +114,8 @@ const NotificationsDesktopPage = () => {
   );
 
   // Queries
-  const { data: allNotifications = [], isLoading } = useNotifications();
+  const notificationsQuery = useNotifications();
+  const { data: allNotifications = [], isLoading } = notificationsQuery;
   // Allow-list URL cần quyền của người bấm: route bị chặn sẽ được hạ về /my-day
   // thay vì ném thẳng vào một trang họ không mở được.
   const { data: perms } = useMyPermissions();
@@ -209,6 +211,7 @@ const NotificationsDesktopPage = () => {
 
   return (
     <MainLayout>
+      <QueryRegion label="thông báo" queries={[notificationsQuery]}>
       <div className="container mx-auto p-6 max-w-4xl">
         {/* Header */}
       <div className="flex items-center justify-between mb-6">
@@ -372,6 +375,7 @@ const NotificationsDesktopPage = () => {
         )}
         </div>
       </div>
+      </QueryRegion>
     </MainLayout>
   );
 };

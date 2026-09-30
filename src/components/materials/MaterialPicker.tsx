@@ -19,6 +19,7 @@ interface Props {
   placeholder?: string;
   showStock?: boolean;
   disabled?: boolean;
+  invalid?: boolean;
 }
 
 export function MaterialPicker({
@@ -27,6 +28,7 @@ export function MaterialPicker({
   placeholder = 'Chọn vật tư…',
   showStock = false,
   disabled = false,
+  invalid = false,
 }: Props) {
   const [open, setOpen] = useState(false);
   const { data: materials = [] } = useMaterials({});
@@ -40,7 +42,8 @@ export function MaterialPicker({
           type="button"
           variant="outline"
           role="combobox"
-          className="w-full justify-between font-normal"
+          aria-invalid={invalid}
+          className={cn('w-full justify-between font-normal', invalid && 'border-destructive focus-visible:ring-destructive')}
           disabled={disabled}
         >
           {selected ? (

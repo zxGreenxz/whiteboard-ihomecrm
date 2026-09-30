@@ -1,3 +1,11 @@
+import {hasUnconfirmedResponse} from '@/lib/operationOutcome';
+import {validateInputDrafts} from '@/lib/inputDraftValidation';
+import { QueryRegion } from '@/components/errors/QueryRegion';
+import { notifyActionError } from '@/lib/actionFeedback';
+import { saveCompanyLogo } from '@/lib/companyLogo';
+import { actionErrorMessage } from '@/lib/actionFeedback';
+import { useAuth } from '@/hooks/useAuth';
+import { focusFirstError } from '@/lib/formErrors';
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -326,27 +334,38 @@ function SettingsTabContent({ title, description, items, settings, onSettingChan
 // Bỏ trống = tự duyệt mọi phiếu chi thường; đặt số = chi >= ngưỡng sinh ở NHÁP.
 // =============================================
 
-function IeAutoApproveThresholdCard() {
-  const qc = useQueryClient();
-  const { data: threshold, isLoading } = useIeAutoApproveThreshold();
+export function IeAutoApproveThresholdCard() {
+  const thresholdQuery=useIeAutoApproveThreshold();
+  const {data:threshold,isLoading}=thresholdQuery;
   const luuNguong = useSetIeAutoApproveThreshold();
   const [value, setValue] = useState<number>(0);
   const [saving, setSaving] = useState(false);
+  const [failure,setFailure]=useState<string|null>(null);
+  const [blocked,setBlocked]=useState(false);
+  const edited=useRef(false);
+  const inputRoot=useRef<HTMLDivElement>(null);
   useEffect(() => {
+    if(thresholdQuery.isError || threshold===undefined || edited.current)return;
     setValue(threshold ?? 0);
-  }, [threshold]);
+  }, [threshold,thresholdQuery.isError]);
 
   const save = async (v: number | null) => {
+    if(blocked||thresholdQuery.isError||threshold===undefined||!validateInputDrafts(inputRoot.current))return;
+    if(v!==null&&(!Number.isFinite(v)||v<=0))return;
+    setFailure(null);
     setSaving(true);
     try {
       await luuNguong(v);
+      edited.current=false;
       toast.success(
         v === null
           ? 'Đã bỏ ngưỡng — mọi phiếu chi thường tự duyệt khi tạo'
           : `Đã đặt ngưỡng ${v.toLocaleString('vi-VN')}đ — phiếu chi từ mức này sinh ở CHỜ DUYỆT`,
       );
     } catch (e) {
-      toast.error((e as Error).message || 'Không lưu được ngưỡng');
+      const message=actionErrorMessage(e,"lưu ngưỡng tự duyệt phiếu chi");
+      setFailure(message);setBlocked(hasUnconfirmedResponse(e));
+      notifyActionError(e, "Chưa xác nhận được kết quả lưu ngưỡng tự duyệt phiếu chi");
     } finally {
       setSaving(false);
     }
@@ -364,12 +383,14 @@ function IeAutoApproveThresholdCard() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="flex items-center gap-3">
-          <CurrencyInput value={value} onChange={(v: number) => setValue(v)} />
+        <QueryRegion label="ngưỡng tự duyệt phiếu chi" queries={[thresholdQuery]}>
+        {failure&&<p role="alert" className="mb-3 text-sm text-destructive">{failure}</p>}
+        <div className="flex items-center gap-3" ref={inputRoot}>
+          <CurrencyInput aria-label="Ngưỡng tự duyệt phiếu chi" value={value} onChange={(v: number) => {edited.current=true;setValue(v);}} />
           <span className="text-sm text-muted-foreground">đ</span>
           <Button
             size="sm"
-            disabled={saving || isLoading || !value || value <= 0}
+            disabled={blocked || saving || isLoading || !Number.isFinite(value) || value <= 0}
             onClick={() => save(value)}
           >
             Lưu ngưỡng
@@ -377,7 +398,7 @@ function IeAutoApproveThresholdCard() {
           <Button
             size="sm"
             variant="outline"
-            disabled={saving || isLoading || threshold == null}
+            disabled={blocked || saving || isLoading || threshold == null}
             onClick={() => save(null)}
           >
             Bỏ ngưỡng (tự duyệt tất cả)
@@ -390,6 +411,8 @@ function IeAutoApproveThresholdCard() {
               ? 'Hiện chưa đặt ngưỡng — mọi phiếu chi thường đang tự duyệt.'
               : `Ngưỡng hiện tại: ${Number(threshold).toLocaleString('vi-VN')}đ.`}
         </p>
+        {value<=0&&<p className="mt-2 text-xs text-muted-foreground">Nhập ngưỡng lớn hơn 0 để lưu, hoặc chọn Bỏ ngưỡng.</p>}
+        </QueryRegion>
       </CardContent>
     </Card>
   );
@@ -403,7 +426,8 @@ function IeAutoApproveThresholdCard() {
 // =============================================
 
 function AccountingStandardCard() {
-  const { data: orgs, isLoading } = useAccountingStandard();
+  const standardQuery = useAccountingStandard();
+  const { data: orgs, isLoading } = standardQuery;
   const setStandard = useSetAccountingStandard();
 
   return (
@@ -411,15 +435,16 @@ function AccountingStandardCard() {
       <CardHeader>
         <CardTitle>Chuẩn kế toán</CardTitle>
         <CardDescription>
-          <strong>Bật</strong> — cơ chế chặt: phiếu đã ghi sổ là bất biến, muốn sửa
-          phải Huỷ rồi Tạo bản sao, huỷ khoản thu hoá đơn sẽ sinh thêm phiếu đối
-          ứng. <strong>Tắt</strong> — cơ chế linh hoạt cho mô hình nhỏ: người giữ
-          sổ tự sửa/huỷ trong kỳ chưa chốt, huỷ trừ thẳng khỏi sổ quỹ không đẻ
-          phiếu đối ứng, đổi lại kiểm soát bằng chốt & bàn giao sổ quỹ. Chỉ Chủ sở
-          hữu tổ chức thay đổi được.
+          <strong>Bật</strong>: phiếu đã ghi sổ được giữ nguyên để đối chiếu. Khi cần
+          sửa, huỷ phiếu và tạo bản sao; huỷ khoản thu hoá đơn sẽ tạo phiếu đối ứng.
+          <strong> Tắt</strong>: người giữ sổ có thể sửa hoặc huỷ phiếu trong kỳ chưa
+          chốt. Khi huỷ, sổ quỹ loại bỏ ảnh hưởng của phiếu theo loại thu hoặc chi;
+          quyền thao tác vẫn được kiểm soát bằng chốt kỳ và bàn giao sổ quỹ.
+          Chỉ chủ sở hữu tổ chức thay đổi được chế độ này.
         </CardDescription>
       </CardHeader>
       <CardContent>
+        <QueryRegion label="Chuẩn kế toán của tổ chức" queries={[standardQuery]}>
         {isLoading ? (
           <p className="text-sm text-muted-foreground">Đang tải…</p>
         ) : !orgs || orgs.length === 0 ? (
@@ -437,8 +462,8 @@ function AccountingStandardCard() {
                   <p className="truncate text-sm font-medium">{org.organization_name}</p>
                   <p className="text-xs text-muted-foreground">
                     {org.strict_mode
-                      ? 'Đang chạy cơ chế CHẶT (chuẩn kế toán).'
-                      : 'Đang chạy cơ chế LINH HOẠT.'}
+                      ? 'Phiếu đã ghi sổ được giữ nguyên để đối chiếu.'
+                      : 'Cho phép sửa, huỷ phiếu trong kỳ chưa chốt.'}
                     {!org.can_manage && ' Chỉ Chủ sở hữu tổ chức đổi được.'}
                   </p>
                 </div>
@@ -458,9 +483,10 @@ function AccountingStandardCard() {
           </div>
         )}
         <p className="mt-3 text-xs text-muted-foreground">
-          Mọi lần bật/tắt đều được ghi vào sổ append-only kèm người đổi và thời
-          điểm. Máy chủ mới là nơi quyết định chế độ — giao diện chỉ ẩn/hiện nút.
+          Mỗi lần thay đổi đều lưu người thực hiện và thời điểm để tra cứu.
+          Chế độ được áp dụng cho đúng tổ chức ghi trên từng dòng.
         </p>
+        </QueryRegion>
       </CardContent>
     </Card>
   );
@@ -492,35 +518,60 @@ const GeneralSettingsPage = () => {
   };
 
   // General settings (individual keys)
-  const { data: generalSettings, isLoading: loadingGeneral } = useGeneralSettings();
+  const generalQuery = useGeneralSettings();
+  const { data: generalSettings, isLoading: loadingGeneral } = generalQuery;
   const updateSetting = useUpdateGeneralSetting();
 
   // Company info (for logo upload in basic tab)
-  const { data: companyInfo, isLoading: loadingCompany } = useCompanyInfo();
-  const updateCompanyInfo = useUpdateCompanyInfo();
+  const companyQuery = useCompanyInfo();
+  const { data: companyInfo, isLoading: loadingCompany } = companyQuery;
+  const updateCompanyInfo = useUpdateCompanyInfo({ silent: true });
+  const { data: logoUser } = useAuth();
+  const [logoBusy, setLogoBusy] = useState(false);
+  const [logoError, setLogoError] = useState('');
+  const [uploadedLogo, setUploadedLogo] = useState<string | null>(null);
 
   // Geo-fence nghiệm thu (bật/tắt kiểm tra GPS + bán kính)
-  const { data: geofence } = useAcceptanceGeofenceSetting();
+  const geofenceQuery = useAcceptanceGeofenceSetting();
+  const { data: geofence } = geofenceQuery;
   const updateGeofence = useUpdateAcceptanceGeofenceSetting();
 
   const handleSettingChange = (key: string, value: boolean | string | number) => {
-    updateSetting.mutate({ key, value });
+    const label = [...CONTRACT_SETTINGS, ...INVOICE_SETTINGS, ...PAYMENT_SETTINGS, ...NOTIFICATION_SETTINGS].find(item => item.key === key)?.label;
+    updateSetting.mutate({ key, value, label });
   };
 
   const handleLogoUpload = () => {
     logoInputRef.current?.click();
   };
 
-  const handleLogoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLogoFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-
-    // For now, create a local URL preview. In production, upload to Supabase Storage.
-    const url = URL.createObjectURL(file);
-    if (companyInfo) {
-      updateCompanyInfo.mutate({ ...companyInfo, company_logo_url: url });
+    if (!file || logoBusy) return;
+    setLogoError('');
+    if (!/^image\/(png|jpeg|webp)$/.test(file.type) || file.size > 2 * 1024 * 1024) {
+      setLogoError('Chọn ảnh PNG, JPG hoặc WEBP không quá 2 MB.');
+      void focusFirstError({ company_logo: 'invalid' });
+      return;
     }
-    toast.success('Dữ liệu đã được CẬP NHẬT thành công');
+    if (!companyInfo || !logoUser) {
+      setLogoError('Chưa tải đủ thông tin tài khoản và công ty để lưu logo.');
+      return;
+    }
+    setLogoBusy(true);
+    try {
+      const result = await saveCompanyLogo(file, logoUser.id, (url) => updateCompanyInfo.mutateAsync({ ...companyInfo, company_logo_url: url }));
+      setUploadedLogo(result.url);
+      if (result.status === 'uploaded') {
+        setLogoError('Ảnh đã tải lên nhưng chưa xác nhận được đã lưu vào cài đặt công ty. Tải lại cài đặt để kiểm tra trước khi chọn lại ảnh.');
+      } else {
+        toast.success('Đã cập nhật logo công ty.');
+      }
+    } catch (error) {
+      setLogoError(actionErrorMessage(error, 'Chưa tải được logo công ty'));
+    } finally {
+      setLogoBusy(false);
+    }
   };
 
   const isLoading = loadingGeneral || loadingCompany;
@@ -539,6 +590,7 @@ const GeneralSettingsPage = () => {
 
   return (
     <MainLayout>
+      <QueryRegion label="cài đặt hệ thống" queries={[generalQuery, companyQuery, geofenceQuery]}>
       <div className="container mx-auto p-6 max-w-4xl">
         {/* Header */}
         <div className="flex items-center gap-3 mb-6">
@@ -590,9 +642,9 @@ const GeneralSettingsPage = () => {
                   <Label>Logo công ty</Label>
                   <div className="flex items-center gap-4">
                     <div className="h-24 w-24 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center overflow-hidden bg-gray-50">
-                      {companyInfo?.company_logo_url ? (
+                      {(uploadedLogo || companyInfo?.company_logo_url) ? (
                         <img
-                          src={companyInfo.company_logo_url}
+                          src={uploadedLogo ?? companyInfo?.company_logo_url ?? undefined}
                           alt="Logo"
                           className="h-full w-full object-contain"
                         />
@@ -601,19 +653,20 @@ const GeneralSettingsPage = () => {
                       )}
                     </div>
                     <div className="space-y-2">
-                      <Button variant="outline" onClick={handleLogoUpload}>
+                      {logoError && <p id="company-logo-error" role="alert" className="text-sm text-destructive">{logoError}</p>}
+                      <Button data-field-name="company_logo" aria-invalid={!!logoError} aria-describedby={logoError ? "company-logo-error" : undefined} disabled={logoBusy} variant="outline" onClick={handleLogoUpload}>
                         <Upload className="h-4 w-4 mr-2" />
                         Tải lên logo
                       </Button>
                       <p className="text-xs text-muted-foreground">
-                        Định dạng: PNG, JPG, SVG. Kích thước tối đa: 2MB
+                        Định dạng: PNG, JPG, WEBP. Kích thước tối đa: 2 MB
                       </p>
                       <input
                         ref={logoInputRef}
                         type="file"
-                        accept="image/png,image/jpeg,image/svg+xml"
+                        accept="image/png,image/jpeg,image/webp"
                         className="hidden"
-                        onChange={handleLogoFileChange}
+                        onChange={(e) => void handleLogoFileChange(e)}
                       />
                     </div>
                   </div>
@@ -726,6 +779,7 @@ const GeneralSettingsPage = () => {
           </TabsContent>
         </Tabs>
       </div>
+      </QueryRegion>
     </MainLayout>
   );
 };

@@ -1,3 +1,4 @@
+import { QueryRegion } from '@/components/errors/QueryRegion';
 import { Loader2, Link2, UserRound, FileSignature, DoorOpen, Target } from 'lucide-react';
 import { EMERALD } from './zaloTheme';
 import { useZaloCrmSummary } from '@/hooks/chat-zalo/useZaloCrmProfile';
@@ -39,17 +40,13 @@ function Card({ icon, title, children }: { icon: React.ReactNode; title: string;
 /** Hồ sơ CRM LIVE của hội thoại (khách hàng/lead/HĐ/phòng) — dữ liệu thật, không snapshot. */
 export default function CrmInfoCard({ conv, onLinkCrm }: Props) {
   const linked = !!(conv.customerId || conv.leadId);
-  const { data, isLoading, isError } = useZaloCrmSummary(conv.id, linked);
+  const crmQuery = useZaloCrmSummary(conv.id, linked);
+  const { data } = crmQuery;
 
   return (
     <div style={{ padding: '14px 16px' }}>
-      {isLoading && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'hsl(210 10% 50%)', fontSize: 13, padding: '8px 0' }}>
-          <Loader2 size={15} className="animate-spin" />Đang tải hồ sơ CRM…
-        </div>
-      )}
-      {isError && <div style={{ fontSize: 12.5, color: 'hsl(0 60% 45%)', padding: '6px 0' }}>Không tải được hồ sơ CRM.</div>}
-
+      <QueryRegion label="hồ sơ khách hàng của hội thoại" queries={linked ? [crmQuery] : []}>
+      {linked && !data && <p className="text-sm text-muted-foreground">Chưa có thông tin hồ sơ trong liên kết này.</p>}
       {data?.customer && (
         <Card icon={<UserRound size={14} />} title="Khách hàng">
           <Row label="Họ tên" value={data.customer.full_name} />
@@ -85,6 +82,7 @@ export default function CrmInfoCard({ conv, onLinkCrm }: Props) {
         </Card>
       )}
 
+      </QueryRegion>
       {onLinkCrm && (
         <button
           onClick={() => onLinkCrm(conv)}

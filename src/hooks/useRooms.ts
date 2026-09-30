@@ -1,3 +1,6 @@
+import { persistentFinancialWorkflow } from '@/lib/persistentFinancialWorkflow';
+import { FinancialWorkflowError } from '@/lib/financialWorkflow';
+import { confirmedRecordId, confirmedRecordBatch, recordWriteMessage } from '@/lib/recordWriteOutcome';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
@@ -7,6 +10,8 @@ import { fetchAllRows } from "@/lib/supabaseFetchAll";
 import { toast } from "sonner";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { withOrg, withOrgAll } from "@/lib/orgPayload";
+import { nullIfNotFound } from "@/hooks/readErrors";
+import { friendlyError } from "@/lib/friendlyError";
 
 type Room = Database["public"]["Tables"]["rooms"]["Row"];
 type RoomInsert = Database["public"]["Tables"]["rooms"]["Insert"];
@@ -84,8 +89,7 @@ export const useRoom = (id: string) => {
         .single();
 
       if (error) {
-        console.error('useRoom error:', error);
-        return null;
+        return nullIfNotFound(error, "useRoom");
       }
 
       return data as unknown as RoomWithRelations | null;
@@ -94,181 +98,93 @@ export const useRoom = (id: string) => {
   });
 };
 
-// Create new room
+// Room writes require positive receipts; feedback is emitted once by the hook.
+const duplicateRoomRules = [{ code: '23505', message: /idx_rooms_unique_name_per_building/, description: 'Tên căn hộ đã có trong tòa nhà này.', fieldErrors: { name: 'Tên căn hộ đã có trong tòa nhà này.' } }];
 export const useCreateRoom = () => {
   const queryClient = useQueryClient();
   const { selectedOrganizationId } = useOrganization();
-
+  const guard = persistentFinancialWorkflow('room-create');
+  const refresh = () => { queryClient.invalidateQueries({queryKey:['rooms']}); queryClient.invalidateQueries({queryKey:['buildings']}); };
   return useMutation({
+    meta: {handlesFeedback:true},
     mutationFn: async (room: RoomInsert) => {
-      const { data, error } = await supabase
-        .from("rooms")
-        .insert(withOrg(room, selectedOrganizationId))
-        .select()
-        .single();
-
-      if (error) {
-        if (error.code === "23505") {
-          toast.error("Mã căn hộ đã tồn tại");
-        } else if (error.code === "23503") {
-          toast.error("Tòa nhà không tồn tại");
-        } else {
-          toast.error("Không thể tạo căn hộ");
-        }
-        throw error;
-      }
-
-      return data;
+      const payload = withOrg(room, selectedOrganizationId);
+      return guard.run('create', 'tạo căn hộ', async () => {
+        const {data,error} = await supabase.from('rooms').insert(withOrg(room,selectedOrganizationId)).select().single();
+        if(error) throw error;
+        confirmedRecordId(data, 'tạo căn hộ');
+        return data;
+      }, undefined, payload.organization_id);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["rooms"] });
-      queryClient.invalidateQueries({ queryKey: ["buildings"] }); // Update rooms count
-      toast.success("Căn hộ đã được tạo thành công");
-    },
-    onError: (error) => {
-      console.error("Error creating room:", error);
-    },
+    onSuccess: data => { refresh(); toast.success(`Đã tạo căn hộ ${data.name || data.id}`); },
+    onError: error => { refresh(); toast.error('Chưa tạo được căn hộ', {description:recordWriteMessage(error,'tạo căn hộ',{rules:duplicateRoomRules})}); },
   });
 };
-
-// Update existing room
 export const useUpdateRoom = () => {
   const queryClient = useQueryClient();
-
+  const refresh = () => { queryClient.invalidateQueries({queryKey:['rooms']}); queryClient.invalidateQueries({queryKey:['buildings']}); };
   return useMutation({
-    mutationFn: async ({
-      id,
-      updates,
-    }: {
-      id: string;
-      updates: RoomUpdate;
-    }) => {
-      const { data, error } = await supabase
-        .from("rooms")
-        .update(updates)
-        .eq("id", id)
-        .select()
-        .single();
-
-      if (error) {
-        if (error.code === "23505") {
-          toast.error("Mã căn hộ đã tồn tại");
-        } else if (error.code === "23503") {
-          toast.error("Tòa nhà không tồn tại");
-        } else {
-          toast.error("Không thể cập nhật căn hộ");
-        }
-        throw error;
-      }
-
+    meta: {handlesFeedback:true},
+    mutationFn: async ({id,updates}: {id:string;updates:RoomUpdate}) => {
+      const {data,error} = await supabase.from('rooms').update(updates).eq('id',id).select().single();
+      if(error) throw error;
+      confirmedRecordId(data,'cập nhật căn hộ',id);
       return data;
     },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["rooms"] });
-      queryClient.invalidateQueries({ queryKey: ["rooms", data.id] });
-      queryClient.invalidateQueries({ queryKey: ["buildings"] });
-      toast.success("Căn hộ đã được cập nhật thành công");
-    },
-    onError: (error) => {
-      console.error("Error updating room:", error);
-    },
+    onSuccess: data => { refresh(); toast.success(`Đã cập nhật căn hộ ${data.name || data.id}`); },
+    onError: error => { refresh(); toast.error('Chưa cập nhật được căn hộ',{description:recordWriteMessage(error,'cập nhật căn hộ',{rules:duplicateRoomRules})}); },
   });
 };
-
-// Soft delete room
 export const useDeleteRoom = () => {
   const queryClient = useQueryClient();
-
+  const refresh = () => { queryClient.invalidateQueries({queryKey:['rooms']}); queryClient.invalidateQueries({queryKey:['buildings']}); };
   return useMutation({
-    mutationFn: async (id: string) => {
-      // Soft delete
-      const { error } = await supabase
-        .from("rooms")
-        .update({ deleted_at: new Date().toISOString() })
-        .eq("id", id);
-
-      if (error) {
-        toast.error("Không thể xóa căn hộ");
-        throw error;
-      }
+    meta: {handlesFeedback:true},
+    mutationFn: async (id:string) => {
+      const {data,error} = await supabase.from('rooms').update({deleted_at:new Date().toISOString()}).eq('id',id).select('id,name').single();
+      if(error) throw error;
+      confirmedRecordId(data,'xóa căn hộ',id);
+      return data;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["rooms"] });
-      queryClient.invalidateQueries({ queryKey: ["buildings"] });
-      toast.success("Căn hộ đã được xóa thành công");
-    },
-    onError: (error) => {
-      console.error("Error deleting room:", error);
-    },
+    onSuccess: data => { refresh(); toast.success(`Đã xóa căn hộ ${data.name || data.id}`); },
+    onError: error => { refresh(); toast.error('Chưa xóa được căn hộ',{description:recordWriteMessage(error,'xóa căn hộ')}); },
   });
 };
-
-// Bulk create rooms
 export const useBulkCreateRooms = () => {
   const queryClient = useQueryClient();
   const { selectedOrganizationId } = useOrganization();
-
+  const guard = persistentFinancialWorkflow('room-bulk-create');
+  const refresh = () => { queryClient.invalidateQueries({queryKey:['rooms']}); queryClient.invalidateQueries({queryKey:['buildings']}); };
   return useMutation({
-    mutationFn: async (rooms: RoomInsert[]) => {
-      const { data, error } = await supabase
-        .from("rooms")
-        .insert(withOrgAll(rooms, selectedOrganizationId))
-        .select();
-
-      if (error) {
-        if (error.code === "23505") {
-          toast.error("Một hoặc nhiều mã căn hộ đã tồn tại");
-        } else {
-          toast.error("Không thể tạo căn hộ hàng loạt");
-        }
-        throw error;
-      }
-
-      return data;
+    meta: {handlesFeedback:true},
+    mutationFn: async (rooms:RoomInsert[]) => {
+      if(!rooms.length) throw new Error('Chưa chọn căn hộ để tạo.');
+      const payload=withOrgAll(rooms,selectedOrganizationId);
+      if(new Set(payload.map(row=>row.organization_id)).size!==1) throw new Error('Các căn hộ phải thuộc cùng tổ chức.');
+      return guard.run('create','tạo căn hộ hàng loạt',async()=>{
+        const {data,error}=await supabase.from('rooms').insert(withOrgAll(rooms,selectedOrganizationId)).select();
+        if(error) throw error;
+        confirmedRecordBatch(data,rooms.length,'tạo căn hộ hàng loạt');
+        return data;
+      },undefined,payload[0]!.organization_id);
     },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["rooms"] });
-      queryClient.invalidateQueries({ queryKey: ["buildings"] });
-      toast.success(`Đã tạo thành công ${data.length} căn hộ`);
-    },
-    onError: (error) => {
-      console.error("Error bulk creating rooms:", error);
-    },
+    onSuccess: data => { refresh(); toast.success(`Đã tạo ${data.length} căn hộ. Mã: ${data.map(row=>row.name || row.id).join(', ')}.`); },
+    onError: error => { refresh(); toast.error('Chưa hoàn tất tạo căn hộ hàng loạt',{description:recordWriteMessage(error,'tạo căn hộ hàng loạt',{rules:duplicateRoomRules})}); },
   });
 };
-
-// Update room status
 export const useUpdateRoomStatus = () => {
   const queryClient = useQueryClient();
-
+  const refresh = () => queryClient.invalidateQueries({queryKey:['rooms']});
   return useMutation({
-    mutationFn: async ({
-      id,
-      status,
-    }: {
-      id: string;
-      status: Database["public"]["Enums"]["room_status"];
-    }) => {
-      const { data, error } = await supabase
-        .from("rooms")
-        .update({ status })
-        .eq("id", id)
-        .select()
-        .single();
-
-      if (error) {
-        toast.error("Không thể cập nhật trạng thái căn hộ");
-        throw error;
-      }
-
+    meta: {handlesFeedback:true},
+    mutationFn: async ({id,status}:{id:string;status:Database['public']['Enums']['room_status']}) => {
+      const {data,error}=await supabase.from('rooms').update({status}).eq('id',id).select().single();
+      if(error) throw error;
+      confirmedRecordId(data,'đổi trạng thái căn hộ',id);
+      if(data.status!==status) throw new FinancialWorkflowError('Chưa xác nhận được trạng thái căn hộ đã đổi. Tải lại căn hộ để đối chiếu trước khi đổi tiếp.','unknown',[{id,label:'Căn hộ cần đối chiếu'}]);
       return data;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["rooms"] });
-      toast.success("Trạng thái căn hộ đã được cập nhật thành công");
-    },
-    onError: (error) => {
-      console.error("Error updating room status:", error);
-    },
+    onSuccess: data => { refresh(); toast.success(`Đã đổi trạng thái căn hộ ${data.name || data.id}.`); },
+    onError: error => { refresh(); toast.error('Chưa đổi được trạng thái căn hộ',{description:recordWriteMessage(error,'đổi trạng thái căn hộ')}); },
   });
 };

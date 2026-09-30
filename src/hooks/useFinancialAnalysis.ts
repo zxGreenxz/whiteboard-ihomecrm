@@ -1,3 +1,4 @@
+import {financialReadNumber,financialReadRows} from '@/lib/financialReadValidation';
 /**
  * Data hooks cho trang Phân tích tài chính — gọi 6 RPC fa_* (migration
  * 20260611140000_financial_analysis_rpcs.sql).
@@ -17,7 +18,6 @@ import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { batBuoc } from "@/lib/queryGuard";
 import type { PostgrestError } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
-import { toast } from "sonner";
 import type {
   FaInvoiceCollectionRow,
   FaLeaseEventsRow,
@@ -59,15 +59,14 @@ const normIds = (ids?: string[]): string[] | undefined =>
  */
 async function callFa<Row, T>(
   run: () => PromiseLike<{ data: Row[] | null; error: PostgrestError | null }>,
-  errMsg: string,
+  _errMsg: string,
   map: (r: Row) => T,
 ): Promise<T[]> {
   const { data, error } = await run();
   if (error) {
-    toast.error(errMsg);
     throw error;
   }
-  return (data || []).map(map);
+  return financialReadRows(data).map(map);
 }
 
 export const useFaMonthlyPnl = (
@@ -77,6 +76,7 @@ export const useFaMonthlyPnl = (
   accrual = false,
 ) =>
   useQuery({
+    meta:{errorDisplay:"inline",label:"phân tích tài chính"},
     queryKey: [FA, "monthly-pnl", accrual ? "accrual" : "cash", start, end, normIds(buildingIds)],
     enabled: !!start && !!end,
     staleTime: STALE_SLOW,
@@ -103,9 +103,9 @@ export const useFaMonthlyPnl = (
           building_id: r.building_id,
           building_name: r.building_name,
           is_virtual: !!r.is_virtual,
-          revenue: Number(r.revenue) || 0,
-          expense: Number(r.expense) || 0,
-          net: Number(r.net) || 0,
+          revenue: financialReadNumber(r.revenue),
+          expense: financialReadNumber(r.expense),
+          net: financialReadNumber(r.net),
         }),
       ),
   });
@@ -117,6 +117,7 @@ export const useFaTypeBreakdown = (
   accrual = false,
 ) =>
   useQuery({
+    meta:{errorDisplay:"inline",label:"phân tích tài chính"},
     queryKey: [FA, "type-breakdown", accrual ? "accrual" : "cash", start, end, normIds(buildingIds)],
     enabled: !!start && !!end,
     staleTime: STALE_SLOW,
@@ -140,14 +141,15 @@ export const useFaTypeBreakdown = (
           type_id: r.type_id ?? null,
           type_name: r.type_name,
           category: r.category ?? null,
-          total_amount: Number(r.total_amount) || 0,
-          voucher_count: Number(r.voucher_count) || 0,
+          total_amount: financialReadNumber(r.total_amount),
+          voucher_count: financialReadNumber(r.voucher_count),
         }),
       ),
   });
 
 export const useFaOccupancyMonthly = (start?: string, end?: string, buildingIds?: string[]) =>
   useQuery({
+    meta:{errorDisplay:"inline",label:"phân tích tài chính"},
     queryKey: [FA, "occupancy", start, end, normIds(buildingIds)],
     enabled: !!start && !!end,
     staleTime: STALE_SLOW,
@@ -160,15 +162,16 @@ export const useFaOccupancyMonthly = (start?: string, end?: string, buildingIds?
           month: String(r.month),
           building_id: r.building_id,
           building_name: r.building_name,
-          total_rooms: Number(r.total_rooms) || 0,
-          occupied_rooms: Number(r.occupied_rooms) || 0,
-          occupancy_pct: Number(r.occupancy_pct) || 0,
+          total_rooms: financialReadNumber(r.total_rooms),
+          occupied_rooms: financialReadNumber(r.occupied_rooms),
+          occupancy_pct: financialReadNumber(r.occupancy_pct),
         }),
       ),
   });
 
 export const useFaLeaseEvents = (start?: string, end?: string, buildingIds?: string[]) =>
   useQuery({
+    meta:{errorDisplay:"inline",label:"phân tích tài chính"},
     queryKey: [FA, "lease-events", start, end, normIds(buildingIds)],
     enabled: !!start && !!end,
     staleTime: STALE_SLOW,
@@ -181,9 +184,9 @@ export const useFaLeaseEvents = (start?: string, end?: string, buildingIds?: str
           month: String(r.month),
           building_id: r.building_id,
           building_name: r.building_name,
-          new_contracts: Number(r.new_contracts) || 0,
-          renewals: Number(r.renewals) || 0,
-          terminations: Number(r.terminations) || 0,
+          new_contracts: financialReadNumber(r.new_contracts),
+          renewals: financialReadNumber(r.renewals),
+          terminations: financialReadNumber(r.terminations),
         }),
       ),
   });
@@ -194,6 +197,7 @@ export const useFaInvoiceCollection = (
   buildingIds?: string[],
 ) =>
   useQuery({
+    meta:{errorDisplay:"inline",label:"phân tích tài chính"},
     queryKey: [FA, "invoice-collection", startMonth, endMonth, normIds(buildingIds)],
     enabled: !!startMonth && !!endMonth,
     staleTime: STALE_LIVE,
@@ -206,22 +210,23 @@ export const useFaInvoiceCollection = (
           billing_month: r.billing_month,
           building_id: r.building_id,
           building_name: r.building_name,
-          billed: Number(r.billed) || 0,
-          collected: Number(r.collected) || 0,
-          remaining: Number(r.remaining) || 0,
-          invoice_count: Number(r.invoice_count) || 0,
-          draft_count: Number(r.draft_count) || 0,
-          pending_count: Number(r.pending_count) || 0,
-          approved_count: Number(r.approved_count) || 0,
-          paid_count: Number(r.paid_count) || 0,
-          partial_count: Number(r.partial_count) || 0,
-          overdue_count: Number(r.overdue_count) || 0,
+          billed: financialReadNumber(r.billed),
+          collected: financialReadNumber(r.collected),
+          remaining: financialReadNumber(r.remaining),
+          invoice_count: financialReadNumber(r.invoice_count),
+          draft_count: financialReadNumber(r.draft_count),
+          pending_count: financialReadNumber(r.pending_count),
+          approved_count: financialReadNumber(r.approved_count),
+          paid_count: financialReadNumber(r.paid_count),
+          partial_count: financialReadNumber(r.partial_count),
+          overdue_count: financialReadNumber(r.overdue_count),
         }),
       ),
   });
 
 export const useFaSnapshotKpis = (buildingIds?: string[]) =>
   useQuery({
+    meta:{errorDisplay:"inline",label:"phân tích tài chính"},
     queryKey: [FA, "snapshot-kpis", normIds(buildingIds)],
     staleTime: STALE_LIVE,
     placeholderData: keepPreviousData,
@@ -232,22 +237,22 @@ export const useFaSnapshotKpis = (buildingIds?: string[]) =>
         (r): FaSnapshotKpisRow => ({
           building_id: r.building_id,
           building_name: r.building_name,
-          total_rooms: Number(r.total_rooms) || 0,
-          rooms_available: Number(r.rooms_available) || 0,
-          rooms_occupied: Number(r.rooms_occupied) || 0,
-          rooms_reserved: Number(r.rooms_reserved) || 0,
-          rooms_maintenance: Number(r.rooms_maintenance) || 0,
-          rooms_unavailable: Number(r.rooms_unavailable) || 0,
-          vacancy_loss_month: Number(r.vacancy_loss_month) || 0,
-          active_contracts: Number(r.active_contracts) || 0,
-          avg_rent: Number(r.avg_rent) || 0,
-          deposit_held: Number(r.deposit_held) || 0,
-          receivable_total: Number(r.receivable_total) || 0,
-          aging_not_due: Number(r.aging_not_due) || 0,
-          aging_1_30: Number(r.aging_1_30) || 0,
-          aging_31_60: Number(r.aging_31_60) || 0,
-          aging_61_90: Number(r.aging_61_90) || 0,
-          aging_over_90: Number(r.aging_over_90) || 0,
+          total_rooms: financialReadNumber(r.total_rooms),
+          rooms_available: financialReadNumber(r.rooms_available),
+          rooms_occupied: financialReadNumber(r.rooms_occupied),
+          rooms_reserved: financialReadNumber(r.rooms_reserved),
+          rooms_maintenance: financialReadNumber(r.rooms_maintenance),
+          rooms_unavailable: financialReadNumber(r.rooms_unavailable),
+          vacancy_loss_month: financialReadNumber(r.vacancy_loss_month),
+          active_contracts: financialReadNumber(r.active_contracts),
+          avg_rent: financialReadNumber(r.avg_rent),
+          deposit_held: financialReadNumber(r.deposit_held),
+          receivable_total: financialReadNumber(r.receivable_total),
+          aging_not_due: financialReadNumber(r.aging_not_due),
+          aging_1_30: financialReadNumber(r.aging_1_30),
+          aging_31_60: financialReadNumber(r.aging_31_60),
+          aging_61_90: financialReadNumber(r.aging_61_90),
+          aging_over_90: financialReadNumber(r.aging_over_90),
         }),
       ),
   });

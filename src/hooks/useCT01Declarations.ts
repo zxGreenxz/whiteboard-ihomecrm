@@ -3,6 +3,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
 import type { CT01Declaration, CT01FormData } from "@/types/customer";
+import { persistentFinancialWorkflow } from "@/lib/persistentFinancialWorkflow";
+import { confirmedRecordId, recordWriteMessage } from "@/lib/recordWriteOutcome";
 
 // =============================================
 // useCT01Declarations - Query declarations for a customer
@@ -27,7 +29,8 @@ export const useCT01Declarations = (customerId: string) => {
         throw error;
       }
 
-      return (data || []) as CT01Declaration[];
+      if (!Array.isArray(data)) throw new Error("Chưa tải được tờ khai CT01.");
+      return data as CT01Declaration[];
     },
     enabled: !!customerId,
   });
@@ -40,6 +43,7 @@ export const useCT01Declarations = (customerId: string) => {
 
 export const useCreateCT01Declaration = () => {
   const queryClient = useQueryClient();
+  const guard = persistentFinancialWorkflow("ct01-declaration-create", { scope: "actor" });
 
   return useMutation({
     mutationFn: async ({
@@ -52,6 +56,7 @@ export const useCreateCT01Declaration = () => {
       const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
 
+      return guard.run(customerId, "lưu tờ khai CT01", async (progress) => {
       const { data, error } = await (supabase
         .from("ct01_declarations") as any)
         .insert({
@@ -63,16 +68,19 @@ export const useCreateCT01Declaration = () => {
         .single();
 
       if (error) throw error;
+      const id = confirmedRecordId(data, "lưu tờ khai CT01");
+      progress.completed.push({ id, label: "Tờ khai CT01 đã nhận mã" });
       return data as CT01Declaration;
+      });
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({
         queryKey: ["ct01-declarations", variables.customerId],
       });
-      toast.success("Dữ liệu đã được TẠO thành công");
+      toast.success("Đã lưu tờ khai CT01");
     },
-    onError: (error: any) => {
-      toast.error("Có lỗi xảy ra. Vui lòng thử lại.");
+    onError: (error: unknown) => {
+      toast.error(recordWriteMessage(error, "lưu tờ khai CT01"));
       console.error("Error creating CT01 declaration:", error);
     },
   });

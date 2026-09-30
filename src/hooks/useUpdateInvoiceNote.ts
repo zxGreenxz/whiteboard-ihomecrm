@@ -17,6 +17,7 @@ export const useUpdateInvoiceNote = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
+    meta: { handlesFeedback: true }, // CollectDrawer owns persistent inline feedback and toast.
     mutationFn: async ({ invoice_id, notes }: UpdateInvoiceNoteInput) => {
       const { data, error } = await supabase
         .from('invoices')

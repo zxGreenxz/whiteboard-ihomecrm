@@ -15,6 +15,7 @@
 //   - KHÔNG count:'exact'
 // =============================================
 
+import { financialReadNumber, financialReadRows } from '@/lib/financialReadValidation';
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -60,11 +61,22 @@ export const useThuTienInvoices = (billing_month: string) =>
             .order('created_at', { ascending: false })
             .order('id', { ascending: true }) // tiebreaker cho .range() ổn định
             .range(from, to),
-        { label: 'thu-tien.invoices' },
+        { label: 'thu-tien.invoices', throwOnError: true },
       );
       // không nuốt lỗi (pattern perf round 06-30): null từ fetchAllRows = lỗi query
       if (data === null) throw new Error('Lỗi tải hoá đơn kỳ thu tiền');
-      return data;
+      return data.map(invoice=>{
+        if(!invoice || typeof invoice.id!=="string" || !invoice.id)throw new TypeError("Chưa tải đủ thông tin hóa đơn kỳ thu tiền.");
+        return {...invoice,
+          total_amount:financialReadNumber(invoice.total_amount),
+          paid_amount:financialReadNumber(invoice.paid_amount),
+          remaining_amount:financialReadNumber(invoice.remaining_amount),
+          payments:financialReadRows(invoice.payments).map(payment=>{
+            if(!payment || typeof payment.id!=="string" || !payment.id)throw new TypeError("Chưa tải đủ khoản thanh toán của hóa đơn.");
+            return {...payment,amount:financialReadNumber(payment.amount)};
+          }),
+        };
+      });
     },
   });
 
@@ -84,7 +96,7 @@ export const useCollectionReport = ({
     const all = query.data ?? [];
     return building_id ? all.filter((i) => i.building_id === building_id) : all;
   }, [query.data, building_id]);
-  return { invoices, isLoading: query.isLoading };
+  return { ...query, invoices };
 };
 
 /** Chi tiết invoice_items cho drawer đầy đủ — chỉ fetch khi mở (lazy). */
@@ -100,6 +112,7 @@ export const useInvoiceItemsLite = (invoiceId?: string) =>
         .eq('invoice_id', invoiceId!)
         .order('sort_order', { ascending: true });
       if (error) throw error;
-      return (data || []) as { id: string; description: string | null; amount: number; type: string; accounting_class: string | null }[];
+      if (!Array.isArray(data)) throw new Error('Chưa tải được các dòng hóa đơn. Tải lại hóa đơn trước khi tiếp tục.');
+      return data.map(row=>({...row,amount:financialReadNumber(row.amount)})) as { id: string; description: string | null; amount: number; type: string; accounting_class: string | null }[];
     },
   });

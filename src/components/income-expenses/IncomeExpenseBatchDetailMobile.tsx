@@ -1,3 +1,6 @@
+import {VoucherPartialError,voucherFailureMessage,voucherOutcomeUnknown} from '@/lib/voucherFeedback';
+import {getBatchAccountIssue} from '@/hooks/income-expenses/batch';
+import {QueryRegion} from '@/components/errors/QueryRegion';
 import { useVoucherWithBatch } from "@/hooks/useVoucherDetail";
 import { useState } from "react";
 import { X, Ban, Layers, ChevronRight, Pencil, FileText } from "lucide-react";
@@ -67,8 +70,12 @@ function IncomeExpenseBatchDetailContent({
   // Xem ảnh đính kèm dùng chung ngay trên trang (overlay), KHÔNG mở tab mới.
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const { data: isAdmin = false } = useIsAdmin();
-  const { data: accounts = [] } = useAccounts();
+  const accountsQuery=useAccounts();
+  const {data:accounts=[]}=accountsQuery;
   const updateBatchAccount = useUpdateBatchAccount();
+  const [changeError,setChangeError]=useState<unknown>(null);
+  const issue=changeError||getBatchAccountIssue(batch?.id??"");
+  const blocked=issue instanceof VoucherPartialError||voucherOutcomeUnknown(issue);
   // Sổ vừa chọn, chờ người dùng gõ lý do rồi mới đổi cả đợt.
   const [pendingAccountId, setPendingAccountId] = useState<string | null>(null);
 
@@ -339,6 +346,8 @@ function IncomeExpenseBatchDetailContent({
         onIndexChange={setLightboxIdx}
       />
 
+      <QueryRegion label="sổ quỹ để đổi cả đợt" queries={[accountsQuery]}>{null}</QueryRegion>
+      {!!issue&&<div role="alert" className="text-sm text-destructive">{voucherFailureMessage(issue,"đổi sổ quỹ cả đợt")}</div>}
       <BatchAccountReasonDialog
         open={!!pendingAccountId}
         onOpenChange={(o) => {
@@ -348,11 +357,14 @@ function IncomeExpenseBatchDetailContent({
         toName={accounts.find((a) => a.id === pendingAccountId)?.name ?? null}
         voucherCount={batch.vouchers.filter((v) => v.approval_status !== "CANCELLED").length}
         pending={updateBatchAccount.isPending}
+        error={issue?voucherFailureMessage(issue,"đổi sổ quỹ cả đợt"):null}
+        blocked={blocked||accountsQuery.isError||accountsQuery.isLoading}
+        completedIds={issue instanceof VoucherPartialError?issue.completedIds:[]}
         onConfirm={(reason) => {
           if (!pendingAccountId) return;
           updateBatchAccount.mutate(
             { batchId: batch.id, accountId: pendingAccountId, reason },
-            { onSettled: () => setPendingAccountId(null) },
+            { onSuccess: () => {setChangeError(null);setPendingAccountId(null);},onError:error=>setChangeError(error) },
           );
         }}
       />

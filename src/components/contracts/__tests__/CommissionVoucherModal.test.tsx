@@ -51,8 +51,8 @@ vi.mock('@/hooks/useContractCommissionFollowup', () => ({ useContractCommissionF
 }) }));
 vi.mock("@/hooks/useSaleBonus", () => ({ useSaleBonusStatus: () => ({ data: null, refetch: async () => ({ data: null }) }) }));
 vi.mock('@/hooks/useCommissionManager', () => ({ assignCommissionManager: state.assign, invalidateAfterCommissionAssign: vi.fn(), useOptionalQueryClient: () => undefined }));
-vi.mock('@/components/income-expenses/QlManagerSelect', () => ({ QlManagerSelectForBuilding: ({ id, onPick }: { id: string; onPick: (manager: { staffId: string; displayName: string }) => void }) =>
-  <button id={id} onClick={() => onPick({ staffId: id.includes('broker') ? 'manager-broker' : 'manager-sale', displayName: 'Quản lý đã chọn' })}>Chọn quản lý</button> }));
+vi.mock('@/components/income-expenses/QlManagerSelect', () => ({ QlManagerSelectForBuilding: ({ id, name, error, onPick }: { id: string; name?:string; error?:string; onPick: (manager: { staffId: string; displayName: string }) => void }) =>
+  <div><button id={id} name={name} role="combobox" aria-label="Chọn quản lý nhận hoa hồng" aria-invalid={!!error} onClick={() => onPick({ staffId: id.includes('broker') ? 'manager-broker' : 'manager-sale', displayName: 'Quản lý đã chọn' })}>Chọn quản lý</button>{error&&<p role="alert">{error}</p>}</div> }));
 vi.mock("@/hooks/useAccounts", () => ({ useAccounts: () => ({ data: state.accounts }) }));
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ data: { id: "u1" } }) }));
 vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ selectedOrganizationId: 'org1' }) }));
@@ -297,4 +297,47 @@ it.each(['COMPLETED','ALREADY_EXISTS'])('saves both selected managers and perfor
   await waitFor(()=>expect(state.create).toHaveBeenCalledTimes(2));
   expect(state.prepare.mock.calls[0][0]).toMatchObject([{kind:'broker',manager_id:'manager-broker'},{kind:'sale',manager_id:'manager-sale'}]);
   expect(state.assign).not.toHaveBeenCalled();
+});
+
+it('D17 thiếu quản lý đỏ/focus đúng selector trước prepare/execute',async()=>{
+ render(<CommissionVoucherModal open contractId="c1" onOpenChange={()=>{}}/>);
+ fireEvent.click(screen.getAllByRole('checkbox',{name:'Người nhận là quản lý (QL)'})[0]);
+ fireEvent.click(screen.getByRole('button',{name:'Tạo phiếu chi'}));
+ const field=screen.getByRole('combobox',{name:'Chọn quản lý nhận hoa hồng'});
+ await waitFor(()=>expect(document.activeElement).toBe(field));
+ expect(field.getAttribute('aria-invalid')).toBe('true');expect(screen.getByText('Chọn quản lý nhận hoa hồng.')).toBeTruthy();
+ expect(state.prepare).not.toHaveBeenCalled();expect(state.create).not.toHaveBeenCalled();
+});
+it('D17 prepare bị từ chối quyền giữ draft và một lỗi an toàn',async()=>{
+ state.prepare.mockRejectedValue({code:'42501',message:'permission denied income_expenses SQLSTATE'});
+ const close=vi.fn();render(<CommissionVoucherModal open contractId="c1" onOpenChange={close}/>);
+ fireEvent.change(oTenMG(),{target:{value:'Giữ người nhận đang nhập'}});
+ fireEvent.click(screen.getByRole('button',{name:'Tạo phiếu chi'}));
+ const alert=await screen.findByRole('alert');expect(alert.textContent).toContain('Không đủ quyền');
+ expect(alert.textContent).not.toMatch(/SQLSTATE|income_expenses|permission denied/);
+ expect(oTenMG().value).toBe('Giữ người nhận đang nhập');expect(close).not.toHaveBeenCalled();
+ expect(state.create).not.toHaveBeenCalled();expect(toast.error).toHaveBeenCalledOnce();
+});
+it('D17 Sale timeout giữ broker receipt rồi retry chỉ request Sale đã lưu',async()=>{
+ state.create.mockResolvedValueOnce({status:'COMPLETED',id:'broker-voucher',code:'PC-BROKER'}).mockImplementationOnce(async()=>{
+  state.followups=[{kind:'broker',state:'VOUCHER_CREATED',can_manage:true},{kind:'sale',state:'UNKNOWN',can_manage:true,can_retry:true,request_id:'request-sale'}];
+  throw new TypeError('Failed to fetch');
+ }).mockResolvedValueOnce({status:'ALREADY_EXISTS',id:'sale-voucher',code:'PC-SALE'});
+ const close=vi.fn();render(<CommissionVoucherModal open contractId="c1" onOpenChange={close}/>);
+ fireEvent.change(screen.getByPlaceholderText('Để trống nếu không có'),{target:{value:'500000'}});
+ fireEvent.click(screen.getByRole('button',{name:'Tạo phiếu chi'}));
+ await waitFor(()=>expect(state.create).toHaveBeenCalledTimes(2));
+ expect((await screen.findByRole('link',{name:'Mở phiếu PC-BROKER'})).getAttribute('href')).toBe('/income-expense/voucher/broker-voucher');
+ expect(screen.getByRole('alert').textContent).toContain('Chưa xác nhận');expect(close).not.toHaveBeenCalled();
+ fireEvent.click(await screen.findByRole('button',{name:'Tạo lại thưởng Sale'}));
+ await waitFor(()=>expect(state.create).toHaveBeenCalledTimes(3));
+ expect(state.create.mock.calls[2][0]).toEqual({contract_id:'c1',kind:'sale',request_id:'request-sale'});expect(state.prepare).toHaveBeenCalledOnce();
+});
+it('D17 reload đọc unknown saved intent, không prepare hoặc execute qua nút tạo mới',()=>{
+ state.followups=[{kind:'broker',state:'UNKNOWN',can_manage:true,can_retry:true,request_id:'saved-broker'}, {kind:'sale',state:'NOT_APPLICABLE',can_manage:true}];
+ render(<CommissionVoucherModal open contractId="c1" onOpenChange={()=>{}}/>);
+ expect(screen.queryByPlaceholderText('Tên công ty / cá nhân môi giới')).toBeNull();
+ fireEvent.click(screen.getByRole('button',{name:'Tạo phiếu chi'}));
+ expect(state.prepare).not.toHaveBeenCalled();expect(state.create).not.toHaveBeenCalled();
+ expect(screen.getByRole('button',{name:'Tạo lại hoa hồng môi giới'})).toBeTruthy();
 });

@@ -22,6 +22,23 @@ const thieu = (m: CollectMethod) => `THIẾU SỔ ${m}`;
 const lastState = (spy: ReturnType<typeof vi.fn>) => spy.mock.lastCall?.[0] as PayFormState;
 
 describe('CollectPayForm — sổ nhận theo hình thức', () => {
+  it('marks and focuses zero amount on submit while keeping the form', async () => {
+    const onChange=vi.fn();
+    const view=render(<CollectPayForm remaining={0} books={BOOKS} canCredit onChange={onChange}/>);
+    view.rerender(<CollectPayForm remaining={0} books={BOOKS} canCredit onChange={onChange} validationAttempt={1}/>);
+    await waitFor(()=>expect(screen.getByLabelText('Số tiền dòng 1').getAttribute('aria-invalid')).toBe('true'));
+    await waitFor(()=>expect(document.activeElement).toBe(screen.getByLabelText('Số tiền dòng 1')));
+    expect(screen.getByText('Dòng 1: nhập số tiền lớn hơn 0 đồng.')).toBeTruthy();
+  });
+  it('marks an empty payment date and moves focus there',async()=>{
+    const onChange=vi.fn();
+    const view=render(<CollectPayForm remaining={1000} books={BOOKS} canCredit onChange={onChange}/>);
+    fireEvent.change(screen.getByLabelText('Ngày thanh toán'),{target:{value:''}});
+    view.rerender(<CollectPayForm remaining={1000} books={BOOKS} canCredit onChange={onChange} validationAttempt={1}/>);
+    await waitFor(()=>expect(document.activeElement).toBe(screen.getByLabelText('Ngày thanh toán')));
+    expect(screen.getByText('Chọn ngày thực thu hợp lệ.')).toBeTruthy();
+    expect(lastState(onChange).canSubmit).toBe(false);
+  });
   it('dòng tiền mặt đi vào sổ tiền mặt riêng, ô sổ bị khoá', async () => {
     const onChange = vi.fn();
     render(<CollectPayForm remaining={1_000_000} books={BOOKS} missingBookMessage={thieu} canCredit onChange={onChange} />);

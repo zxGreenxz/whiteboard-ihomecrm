@@ -56,3 +56,20 @@ describe('shared owner form', () => {
     await waitFor(() => expect((screen.getByLabelText('Họ tên chủ sở hữu') as HTMLInputElement).value).toBe('Nguyễn Chủ'));
   });
 });
+
+it('shows Vietnamese field error and focuses the first invalid owner field',async()=>{
+ render(<Fixture/>);
+ const field=screen.getByLabelText('Họ tên chủ sở hữu');
+ fireEvent.change(field,{target:{value:'a'.repeat(201)}});fireEvent.click(screen.getByText('Lưu thử'));
+ await screen.findByText('Họ tên chủ sở hữu không được quá 200 ký tự.');
+ await waitFor(()=>expect(document.activeElement).toBe(field));
+ expect(field.getAttribute('aria-invalid')).toBe('true');expect(backend.save).not.toHaveBeenCalled();
+});
+it('keeps server permission feedback in the form without exposing diagnostics',async()=>{
+ backend.save.mockRejectedValue({code:'42501',message:'permission denied for relation building_legal_owners'});
+ render(<Fixture/>);fireEvent.change(screen.getByLabelText('Họ tên chủ sở hữu'),{target:{value:'Chủ đúng'}});
+ fireEvent.click(screen.getByText('Lưu thử'));
+ await screen.findByText('Bạn không có quyền lưu chủ sở hữu pháp lý. Vui lòng liên hệ quản trị viên.');
+ expect(screen.queryByText(/relation building_legal_owners/)).toBeNull();
+ expect((screen.getByLabelText('Họ tên chủ sở hữu') as HTMLInputElement).value).toBe('Chủ đúng');
+});

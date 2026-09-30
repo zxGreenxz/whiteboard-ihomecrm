@@ -1,3 +1,4 @@
+import {financialReadNumber,financialReadRows} from '@/lib/financialReadValidation';
 // Đợt 6 — BIÊN BẢN chốt sổ & bàn giao quỹ (bản in được, ký tay).
 //
 // Vì sao cần trang riêng: chữ ký điện tử của nghi thức nằm trong
@@ -13,6 +14,7 @@
 // system_source = 'cashbook.closing.diff' + account_id + voucher_date.
 // Dò hụt (hoặc bị RLS chặn) thì in "—", KHÔNG bịa.
 
+import { QueryRegion } from "@/components/errors/QueryRegion";
 import { useEffect, useMemo } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -42,7 +44,7 @@ const fmtDateTime = (d: string | null | undefined) => {
 /** Cơ sở tính số dư đã đóng băng — dịch mã kỹ thuật ra tiếng người. */
 const BASIS_LABEL: Record<string, string> = {
   POSTING_TRUTH_BY_POSTED_ON:
-    "Số dư theo bút toán ĐÃ GHI SỔ, cắt theo ngày ghi sổ (posted_on)",
+    "Số dư theo bút toán ĐÃ GHI SỔ, cắt theo ngày ghi sổ",
 };
 
 interface ClosureExtras {
@@ -55,10 +57,9 @@ interface ClosureExtras {
 
 /**
  * Phần dữ liệu KHÔNG có trong list_cashbook_closings_v1: mã sổ, tên tổ chức và
- * phiếu chênh lệch. Mỗi mảnh hỏng độc lập — hỏng mảnh nào thì mảnh đó về null,
- * biên bản vẫn in được phần đã ký.
+ * phiếu chênh lệch. Chỉ in khi mọi nguồn đã đọc thành công.
  */
-const useClosureExtras = (closure: ConfirmedClosure | null | undefined) =>
+export const useClosureExtras = (closure: ConfirmedClosure | null | undefined) =>
   useQuery({
     queryKey: [
       "cashbook-closure-extras",
@@ -66,6 +67,7 @@ const useClosureExtras = (closure: ConfirmedClosure | null | undefined) =>
       closure?.cashbook_id ?? null,
     ],
     enabled: !!closure,
+    meta: { errorDisplay: "inline", label: "thông tin biên bản chốt sổ" },
     staleTime: 5 * 60_000,
     queryFn: async (): Promise<ClosureExtras> => {
       const out: ClosureExtras = {
@@ -75,37 +77,44 @@ const useClosureExtras = (closure: ConfirmedClosure | null | undefined) =>
       };
       if (!closure) return out;
 
-      const { data: acc } = await supabase
+      const { data: acc, error: accountError } = await supabase
         .from("accounts")
         .select("id, code, organization_id")
         .eq("id", closure.cashbook_id)
         .maybeSingle();
+      if (accountError) throw accountError;
+      if (!acc || acc.id!==closure.cashbook_id) throw new Error("Chưa xác nhận được đúng sổ quỹ của biên bản.");
       out.cashbook_code = (acc as { code?: string | null } | null)?.code ?? null;
 
       const orgId = (acc as { organization_id?: string | null } | null)?.organization_id ?? null;
       if (orgId) {
-        const { data: org } = await supabase
+        const { data: org, error: organizationError } = await supabase
           .from("organizations")
           .select("name")
           .eq("id", orgId)
           .maybeSingle();
+        if (organizationError) throw organizationError;
+        if (!org) throw new Error("Không tìm thấy tổ chức của biên bản");
         out.organization_name = (org as { name?: string | null } | null)?.name ?? null;
       }
 
       // Chỉ đi tìm khi biên bản THỰC SỰ có chênh lệch — lệch 0 thì hàm ký
       // không lập phiếu nào cả, hỏi thêm chỉ tổ dựng phiếu của kỳ khác lên.
-      if (Number(closure.difference) !== 0) {
-        const { data: ie } = await supabase
+      if (financialReadNumber(closure.difference) !== 0) {
+        const { data: ie, error: voucherError } = await supabase
           .from("income_expenses")
           .select("id, code, type, total_amount")
           .eq("account_id", closure.cashbook_id)
           .eq("voucher_date", closure.closed_through)
           .eq("system_source", "cashbook.closing.diff")
           .limit(1);
-        const row = (ie ?? [])[0] as
-          | { id: string; code: string | null; type: string | null; total_amount: number | null }
-          | undefined;
-        out.diff_voucher = row ?? null;
+        if (voucherError) throw voucherError;
+        const rows=financialReadRows(ie);
+        const row=rows[0];
+        if(row){
+          if(typeof row.id!=="string"||!row.id||!['INCOME','EXPENSE'].includes(row.type))throw new TypeError("Chưa xác nhận được phiếu chênh lệch của biên bản.");
+          out.diff_voucher={...row,total_amount:financialReadNumber(row.total_amount)};
+        }
       }
       return out;
     },
@@ -115,34 +124,34 @@ export default function CashbookClosureRecord() {
   const { closureId } = useParams<{ closureId: string }>();
   const navigate = useNavigate();
   const [search] = useSearchParams();
-  const { data, isLoading, isError, error } = useCashbookClosings();
+  const closuresQuery = useCashbookClosings();
+  const { data, isLoading, isError } = closuresQuery;
 
   const closure = useMemo(() => {
     const all = data?.closures ?? [];
     return all.find((c) => String(c.closure_id) === String(closureId)) ?? null;
   }, [data, closureId]);
 
-  const { data: extras } = useClosureExtras(closure);
+  const extrasQuery = useClosureExtras(closure);
+  const { data: extras } = extrasQuery;
+  const canPrint = !!closure && !!extras && !extrasQuery.isError && !extrasQuery.isLoading && !isError;
 
   // Chỉ tự bung hộp thoại in khi được gọi kèm ?print=1 (nút "In" ở danh sách).
   // Mở thẳng URL để ĐỌC mà máy in nhảy ra là phiền, và người ta sẽ in nhầm.
   const autoPrint = search.get("print") === "1";
   useEffect(() => {
-    if (closure && autoPrint) {
+    if (canPrint && autoPrint) {
       const t = setTimeout(() => window.print(), 400);
       return () => clearTimeout(t);
     }
-  }, [closure, autoPrint]);
+  }, [canPrint, autoPrint]);
 
   if (isLoading) {
     return <div className="p-8 text-center">Đang tải biên bản…</div>;
   }
   if (isError) {
     return (
-      <div className="p-8 text-center text-red-600">
-        Không đọc được danh sách biên bản chốt sổ.
-        {error instanceof Error ? ` (${error.message})` : ""}
-      </div>
+      <QueryRegion label="danh sách biên bản chốt sổ" queries={[closuresQuery]}>{null}</QueryRegion>
     );
   }
   if (!closure) {
@@ -166,6 +175,7 @@ export default function CashbookClosureRecord() {
     diff === 0 ? "Khớp sổ" : diff > 0 ? "Thừa quỹ" : "Thiếu quỹ";
 
   return (
+    <QueryRegion label="thông tin biên bản chốt sổ" queries={[extrasQuery]}>
     <div className="bg-white text-black min-h-screen">
       <style>{`
         @media print {
@@ -207,7 +217,8 @@ export default function CashbookClosureRecord() {
 
       <div className="no-print p-3 bg-zinc-100 border-b flex flex-wrap items-center gap-2">
         <button
-          onClick={() => window.print()}
+          disabled={!canPrint}
+          onClick={() => { if (canPrint) window.print(); }}
           className="px-3 py-1.5 bg-blue-600 text-white rounded text-sm"
         >
           In biên bản
@@ -276,7 +287,7 @@ export default function CashbookClosureRecord() {
             </tr>
             <tr>
               <th>Cơ sở tính số dư</th>
-              <td>{BASIS_LABEL[closure.basis] ?? closure.basis}</td>
+              <td>{BASIS_LABEL[closure.basis] ?? "Cơ sở tính số dư chưa được xác nhận"}</td>
             </tr>
             <tr>
               <th>Bên giao (đề nghị chốt)</th>
@@ -326,5 +337,6 @@ export default function CashbookClosureRecord() {
         </div>
       </div>
     </div>
+    </QueryRegion>
   );
 }

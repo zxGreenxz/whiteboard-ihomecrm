@@ -1,3 +1,4 @@
+import { QueryRegion } from "@/components/errors/QueryRegion";
 import { format } from "date-fns";
 import { ArrowRight, History } from "lucide-react";
 
@@ -69,9 +70,8 @@ export function RoomPriceHistorySection({
   roomId,
   enabled = true,
 }: RoomPriceHistorySectionProps) {
-  const { data: entries = [], isLoading } = useRoomPriceHistory(roomId, {
-    enabled,
-  });
+  const historyQuery = useRoomPriceHistory(roomId, { enabled });
+  const entries = historyQuery.data ?? [];
 
   return (
     <div className="space-y-3 pt-4 border-t">
@@ -80,9 +80,8 @@ export function RoomPriceHistorySection({
         Lịch sử giá
       </h3>
 
-      {isLoading ? (
-        <p className="text-xs text-muted-foreground">Đang tải…</p>
-      ) : entries.length === 0 ? (
+      <QueryRegion label="lịch sử giá" queries={[historyQuery]}>
+      {entries.length === 0 ? (
         <p className="text-xs text-muted-foreground">
           Chưa có thay đổi giá nào được ghi nhận cho phòng này.
         </p>
@@ -134,6 +133,7 @@ export function RoomPriceHistorySection({
           })}
         </div>
       )}
+      </QueryRegion>
     </div>
   );
 }

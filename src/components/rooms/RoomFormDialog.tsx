@@ -1,4 +1,6 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
+import { recordWriteBlocked, recordWriteMessage } from '@/lib/recordWriteOutcome';
+import { FinancialWorkflowError } from '@/lib/financialWorkflow';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
@@ -32,6 +34,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Label } from '@/components/ui/label';
 import { Plus } from 'lucide-react';
 import { toast } from 'sonner';
+import { applyFeedbackToForm, focusFirstError } from '@/lib/formErrors';
+import { friendlyError } from '@/lib/friendlyError';
 
 import { roomSchema, type RoomFormData } from '@/lib/roomValidation';
 import { useBuildings } from '@/hooks/useBuildings';
@@ -62,6 +66,11 @@ export default function RoomFormDialog({
   preselectedBuildingId,
 }: RoomFormDialogProps) {
   const isEditMode = !!room;
+  const [failure, setFailure] = useState<unknown>();
+  const [blocked, setBlocked] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const submitting = useRef(false);
+  const draftKey = useRef<string | null>(null);
 
   // Quick-create dialog states
   const [quickBuildingOpen, setQuickBuildingOpen] = useState(false);
@@ -70,7 +79,8 @@ export default function RoomFormDialog({
   // Hooks
   const createRoom = useCreateRoom();
   const updateRoom = useUpdateRoom();
-  const { data: buildingsData } = useBuildings();
+  const buildingsQuery = useBuildings();
+  const { data: buildingsData } = buildingsQuery;
   const buildings = useMemo(
     () =>
       (Array.isArray(buildingsData) ? buildingsData : []).filter(
@@ -79,8 +89,10 @@ export default function RoomFormDialog({
     [buildingsData]
   );
 
-  const { data: invoiceTemplates = [] } = useDocumentTemplatesByType('invoice');
-  const { data: leaseTemplates = [] } = useDocumentTemplatesByType('lease_contract');
+  const invoiceQuery = useDocumentTemplatesByType('invoice');
+  const { data: invoiceTemplates = [] } = invoiceQuery;
+  const leaseQuery = useDocumentTemplatesByType('lease_contract');
+  const { data: leaseTemplates = [] } = leaseQuery;
 
   // Form
   const form = useForm<RoomFormData>({
@@ -102,7 +114,8 @@ export default function RoomFormDialog({
   const selectedBuildingId = form.watch('building_id');
 
   // Floors cascading by building
-  const { data: floorsData } = useFloors(selectedBuildingId || undefined);
+  const floorsQuery = useFloors(selectedBuildingId || undefined);
+  const { data: floorsData } = floorsQuery;
   const floors = useMemo(
     () => (Array.isArray(floorsData) ? floorsData : []),
     [floorsData]
@@ -111,6 +124,10 @@ export default function RoomFormDialog({
   // Reset form when dialog opens
   useEffect(() => {
     if (open) {
+      const key = room?.id ?? 'create';
+      if (draftKey.current === key && (form.formState.isDirty || failure)) return;
+      draftKey.current = key;
+      setFailure(undefined); setBlocked(false);
       if (room) {
         form.reset({
           building_id: room.building_id,
@@ -149,6 +166,9 @@ export default function RoomFormDialog({
   }, [selectedBuildingId]);
 
   const onSubmit = async (data: RoomFormData) => {
+    if (submitting.current || blocked || sourceBlocked) return;
+    submitting.current = true; setSaving(true); setFailure(undefined);
+    form.clearErrors('root.server');
     try {
       if (isEditMode && room) {
         await updateRoom.mutateAsync({
@@ -166,7 +186,6 @@ export default function RoomFormDialog({
             lease_template_id: data.lease_template_id ?? null,
           } as any,
         });
-        toast.success('Dữ liệu đã được CẬP NHẬT thành công');
       } else {
         await createRoom.mutateAsync({
           building_id: data.building_id,
@@ -180,14 +199,16 @@ export default function RoomFormDialog({
           invoice_template_id: data.invoice_template_id ?? null,
           lease_template_id: data.lease_template_id ?? null,
         } as any);
-        toast.success('Dữ liệu đã được TẠO thành công');
       }
+      draftKey.current = null;
       onOpenChange(false);
-    } catch (error: any) {
-      if (error?.code === '23505') {
-        toast.error('Tên phòng đã tồn tại trong toà nhà này');
-      }
-      // Other errors handled by hook toasts
+    } catch (error: unknown) {
+      const feedback = friendlyError(error, 'Chưa lưu được căn hộ', { operation: 'lưu căn hộ', rules: [{ code: '23505', message: /idx_rooms_unique_name_per_building/, description: 'Tên căn hộ đã có trong tòa nhà này.', fieldErrors: { name: 'Tên căn hộ đã có trong tòa nhà này.' } }] });
+      setFailure(error); setBlocked(recordWriteBlocked(error));
+      if (error instanceof FinancialWorkflowError) form.setError('root.server', {type:'server',message:recordWriteMessage(error,'lưu căn hộ')});
+      else await applyFeedbackToForm(form, feedback);
+    } finally {
+      submitting.current = false; setSaving(false);
     }
   };
 
@@ -219,11 +240,13 @@ export default function RoomFormDialog({
     form.setValue('floor', floor.floor_number, { shouldValidate: true });
   };
 
-  const isPending = createRoom.isPending || updateRoom.isPending;
+  const sources = [buildingsQuery, floorsQuery, invoiceQuery, leaseQuery];
+  const sourceBlocked = sources.some(query => query.isError || query.isLoading);
+  const isPending = saving || form.formState.isSubmitting || createRoom.isPending || updateRoom.isPending;
 
   return (
     <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
+      <Dialog open={open} onOpenChange={value => { if (!submitting.current) onOpenChange(value); }}>
         <DialogContent className="max-w-2xl max-h-[90vh]">
           <DialogHeader>
             <DialogTitle>{isEditMode ? 'Sửa căn hộ' : 'Thêm căn hộ'}</DialogTitle>
@@ -233,7 +256,10 @@ export default function RoomFormDialog({
           </DialogHeader>
           <ScrollArea className="max-h-[calc(90vh-120px)] pr-4">
             <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              <form onSubmit={form.handleSubmit(onSubmit, errors => { void focusFirstError(errors); })} className="space-y-4">
+                {form.formState.errors.root?.server?.message && <p role="alert" className="text-sm text-destructive">{form.formState.errors.root.server.message}</p>}
+                {sourceBlocked && <div role="alert" className="rounded border border-destructive p-3 text-sm">Chưa tải đủ tòa nhà, tầng hoặc mẫu tài liệu. Tải lại các nguồn trước khi lưu căn hộ. <Button type="button" variant="outline" onClick={() => { for (const query of sources) void query.refetch(); }}>Tải lại nguồn</Button></div>}
+                <fieldset disabled={isPending || blocked || sourceBlocked} className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   {/* Toà nhà */}
                   <FormField
@@ -496,6 +522,7 @@ export default function RoomFormDialog({
                   />
                 </div>
 
+                </fieldset>
                 {/* Actions */}
                 <div className="flex justify-end gap-3 pt-4">
                   <Button
@@ -506,7 +533,7 @@ export default function RoomFormDialog({
                   >
                     Huỷ
                   </Button>
-                  <Button type="submit" disabled={isPending} className="bg-green-600 hover:bg-green-700">
+                  <Button type="submit" disabled={isPending || blocked || sourceBlocked} className="bg-green-600 hover:bg-green-700">
                     {isPending
                       ? (isEditMode ? 'Đang cập nhật...' : 'Đang tạo...')
                       : (isEditMode ? 'Cập nhật' : 'Thêm căn hộ')}

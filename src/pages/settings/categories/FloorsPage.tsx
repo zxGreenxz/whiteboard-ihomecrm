@@ -8,6 +8,7 @@ import {
 } from "@/hooks/useFloors";
 import type { Database } from "@/integrations/supabase/types";
 import { Badge } from "@/components/ui/badge";
+import { FLOOR_ERROR_RULES } from '@/lib/categoryFeedback';
 
 type Floor = Database["public"]["Tables"]["floors"]["Row"];
 
@@ -33,10 +34,10 @@ const fields: FieldDef[] = [
 ];
 
 export default function FloorsPage() {
-  const { data, isLoading } = useFloors();
-  const createMutation = useCreateFloor();
-  const updateMutation = useUpdateFloor();
-  const deleteMutation = useDeleteFloor();
+  const { data, isLoading, error, refetch } = useFloors();
+  const createMutation = useCreateFloor({inlineError:true});
+  const updateMutation = useUpdateFloor({inlineError:true});
+  const deleteMutation = useDeleteFloor({inlineError:true});
 
   return (
     <CategoryCrudPage<Floor>
@@ -45,11 +46,14 @@ export default function FloorsPage() {
       icon={Layers}
       data={data}
       isLoading={isLoading}
+      error={error}
+      onRetry={refetch}
       columns={columns}
       fields={fields}
-      onCreate={(values) => createMutation.mutate(values as any)}
-      onUpdate={(id, values) => updateMutation.mutate({ id, updates: values as any })}
-      onDelete={(id) => deleteMutation.mutate(id)}
+      errorRules={FLOOR_ERROR_RULES}
+      onCreate={(values) => createMutation.mutateAsync(values as any)}
+      onUpdate={(id, values) => updateMutation.mutateAsync({ id, updates: values as any })}
+      onDelete={(id) => deleteMutation.mutateAsync(id)}
       isCreating={createMutation.isPending}
       isUpdating={updateMutation.isPending}
       isDeleting={deleteMutation.isPending}

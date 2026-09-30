@@ -1,3 +1,4 @@
+import {readForceDeletePaymentRows} from '@/lib/invoiceRelatedRead';
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
@@ -75,7 +76,9 @@ const SuperAdminForceDeleteDialog = ({
     isLoading,
     isFetching,
     isError,
+    refetch,
   } = useQuery({
+    meta:{errorDisplay:"inline",label:"các lần thu tiền cần đối chiếu trước khi hủy"},
     queryKey: ['invoice-payments-summary', invoiceId],
     enabled: open && !!invoiceId,
     queryFn: async (): Promise<PaymentRow[]> => {
@@ -86,7 +89,8 @@ const SuperAdminForceDeleteDialog = ({
         .is('reversed_at', null)
         .order('created_at', { ascending: true });
       if (error) throw error;
-      return (data || []) as PaymentRow[];
+      if(!Array.isArray(data))throw new Error("Chưa tải đủ các lần thu tiền.");
+      return readForceDeletePaymentRows(data as PaymentRow[]);
     },
   });
 
@@ -102,6 +106,7 @@ const SuperAdminForceDeleteDialog = ({
     && !isLoading
     && !isFetching
     && !isError
+    && payments!==undefined
     && !hasActiveV5Collection;
 
   return (
@@ -113,8 +118,8 @@ const SuperAdminForceDeleteDialog = ({
             Huỷ cưỡng bức hoá đơn
           </DialogTitle>
           <DialogDescription>
-            Thao tác chỉ dành cho super admin. Collection V5 đang hoạt động phải được hoàn tác
-            trước; giao diện không xoá payment V5 để tránh phá lịch sử kế toán.
+            Thao tác chỉ dành cho super admin. Khoản thu đang hoạt động phải được hoàn tác
+            trước; lịch sử thu tiền được giữ lại để đối chiếu.
           </DialogDescription>
         </DialogHeader>
 
@@ -152,16 +157,17 @@ const SuperAdminForceDeleteDialog = ({
         </div>
 
         <div>
-          <div className="mb-2 text-sm font-medium">Payment đang hoạt động</div>
+          <div className="mb-2 text-sm font-medium">Các lần thu tiền đang hoạt động</div>
           {isError ? (
             <div className="rounded-md border border-red-200 bg-red-50 p-3 text-center text-sm text-red-700">
-              Không thể kiểm tra payment đang hoạt động. Hệ thống đã khóa thao tác huỷ.
+              Chưa tải được các lần thu tiền. Tải lại để đối chiếu trước khi hủy hoá đơn.
+              <Button variant="outline" onClick={()=>void refetch()}>Tải lại các lần thu</Button>
             </div>
           ) : isLoading ? (
             <Skeleton className="h-16 w-full" />
           ) : paymentList.length === 0 ? (
             <div className="rounded-md border border-dashed border-zinc-200 p-3 text-center text-sm text-muted-foreground">
-              Hoá đơn chưa có payment nào.
+              Hoá đơn chưa có lần thu tiền nào.
             </div>
           ) : (
             <div className="rounded-md border border-zinc-200 overflow-hidden">
@@ -202,7 +208,7 @@ const SuperAdminForceDeleteDialog = ({
                   })}
                   <tr className="bg-red-50 border-t border-red-200">
                     <td colSpan={3} className="px-3 py-2 text-right font-semibold text-red-700">
-                      Tổng payment đang liên kết ({paymentList.length} phiếu)
+                      Tổng các lần thu đang liên kết ({paymentList.length} phiếu)
                     </td>
                     <td className="px-3 py-2 text-right font-bold text-red-700">
                       {fmtVND(totalPaid)}
@@ -221,15 +227,15 @@ const SuperAdminForceDeleteDialog = ({
         }`}>
           <div className="font-semibold flex items-center gap-1.5">
             <AlertTriangle className="h-4 w-4" />
-            {hasActiveV5Collection ? 'Không thể huỷ khi collection V5 còn hoạt động' : 'Cảnh báo'}
+            {hasActiveV5Collection ? 'Hoàn tác các lần thu đang hoạt động trước khi hủy' : 'Cảnh báo'}
           </div>
           <ul className="mt-1 list-disc pl-5 space-y-0.5">
             {hasActiveV5Collection ? (
-              <li>Vào “Các lần thanh toán” và hoàn tác collection trước, rồi mới huỷ hóa đơn.</li>
+              <li>Vào “Các lần thanh toán” và hoàn tác các lần thu trước, rồi mới huỷ hóa đơn.</li>
             ) : (
               <>
-                <li>Writer huỷ sẽ từ chối nếu vẫn còn phiếu thu chưa hoàn tác.</li>
-                <li>Hoá đơn chỉ chuyển sang <b>Đã huỷ</b> sau khi chuỗi tiền đã được xử lý an toàn.</li>
+                <li>Không thể hủy nếu vẫn còn phiếu thu chưa hoàn tác.</li>
+                <li>Hoá đơn chỉ chuyển sang <b>Đã huỷ</b> sau khi đã hoàn tác các lần thu liên quan.</li>
               </>
             )}
           </ul>
@@ -255,7 +261,7 @@ const SuperAdminForceDeleteDialog = ({
           </Button>
           <Button variant="destructive" disabled={!canConfirm} onClick={onConfirm}>
             {hasActiveV5Collection
-              ? 'Hoàn tác collection trước'
+              ? 'Hoàn tác các lần thu trước'
               : isPending
                 ? 'Đang huỷ...'
                 : 'Huỷ hoá đơn'}

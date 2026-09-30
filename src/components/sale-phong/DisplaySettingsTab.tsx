@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import {QueryRegion} from "@/components/errors/QueryRegion";
+import {usePublicRoomSettingsDraft} from "./usePublicRoomSettingsDraft";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,30 +8,14 @@ import { Switch } from "@/components/ui/switch";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { useHotlines } from "@/hooks/useHotlines";
-import {
-  usePublicRoomSettings, useUpsertPublicRoomSettings, PUBLIC_ROOM_SETTINGS_DEFAULTS,
-  type PublicRoomSettings,
-} from "@/hooks/usePublicRoomSettings";
-
 const NONE = "__none__"; // Select không nhận value="" → dùng sentinel cho "Mặc định"
 
 export default function DisplaySettingsTab() {
-  const { data, isLoading } = usePublicRoomSettings();
-  const { data: hotlines } = useHotlines();
-  const upsertMut = useUpsertPublicRoomSettings();
-
-  const [form, setForm] = useState<PublicRoomSettings>(PUBLIC_ROOM_SETTINGS_DEFAULTS);
-
-  useEffect(() => { if (data) setForm(data); }, [data]);
-
-  const set = <K extends keyof PublicRoomSettings>(k: K, v: PublicRoomSettings[K]) =>
-    setForm((f) => ({ ...f, [k]: v }));
-
-  if (isLoading) return <div className="p-8 text-center text-muted-foreground">Đang tải...</div>;
+  const {settings,hotlines:hotlineQuery,mutation:upsertMut,root,form,days,errors,writeError,canSave,set,changeDays,save}=usePublicRoomSettingsDraft();
+  const hotlines=hotlineQuery.data;
 
   return (
-    <Card className="max-w-2xl">
+    <div ref={root}><QueryRegion label="cài đặt hiển thị" queries={[settings,hotlineQuery]}><Card className="max-w-2xl">
       <CardHeader>
         <CardTitle>Cài đặt hiển thị trang "Phòng trống"</CardTitle>
         <CardDescription>Áp dụng chung cho mọi link chia sẻ của tài khoản.</CardDescription>
@@ -40,10 +25,11 @@ export default function DisplaySettingsTab() {
         <div className="space-y-1.5">
           <Label htmlFor="soon-days">Số ngày báo "sắp trống"</Label>
           <Input
-            id="soon-days" type="number" min={0} max={365} className="w-40"
-            value={form.soon_days}
-            onChange={(e) => set("soon_days", Math.max(0, Math.min(365, Number(e.target.value) || 0)))}
+            id="soon-days" name="soon_days" type="text" inputMode="numeric" className={"w-40"+(errors.soon_days?" border-destructive":"")} aria-invalid={!!errors.soon_days} aria-describedby={errors.soon_days?"soon-days-error":undefined}
+            value={days}
+            onChange={(e)=>changeDays(e.target.value)}
           />
+          {errors.soon_days&&<p id="soon-days-error" role="alert" className="text-sm text-destructive">{errors.soon_days}</p>}
           <p className="text-xs text-muted-foreground">
             Phòng có hợp đồng còn hiệu lực sẽ hết hạn trong vòng số ngày này sẽ được đánh dấu
             "Sắp trống" trên trang công khai. Mặc định 30 ngày.
@@ -57,7 +43,7 @@ export default function DisplaySettingsTab() {
             value={form.hotline_id ?? NONE}
             onValueChange={(v) => set("hotline_id", v === NONE ? null : v)}
           >
-            <SelectTrigger id="hotline" className="w-full sm:w-96">
+            <SelectTrigger id="hotline" data-field-name="hotline_id" aria-invalid={!!errors.hotline_id} aria-describedby={errors.hotline_id?"hotline-error":undefined} className="w-full sm:w-96">
               <SelectValue placeholder="Mặc định (hotline đầu tiên)" />
             </SelectTrigger>
             <SelectContent>
@@ -69,6 +55,7 @@ export default function DisplaySettingsTab() {
               ))}
             </SelectContent>
           </Select>
+          {errors.hotline_id&&<p id="hotline-error" role="alert" className="text-destructive">{errors.hotline_id}</p>}
           <p className="text-xs text-muted-foreground">
             Số điện thoại/người liên hệ hiển thị trên trang. Để "Mặc định" sẽ lấy hotline đang
             hoạt động đầu tiên.
@@ -87,12 +74,13 @@ export default function DisplaySettingsTab() {
           <Switch id="show-rented" checked={form.show_rented} onCheckedChange={(v) => set("show_rented", v)} />
         </div>
 
+        {writeError&&<p role="alert" className="text-sm text-destructive">{writeError}</p>}
         <div className="flex justify-end">
-          <Button onClick={() => upsertMut.mutate(form)} disabled={upsertMut.isPending}>
+          <Button onClick={()=>void save()} disabled={upsertMut.isPending||!canSave}>
             Lưu cài đặt
           </Button>
         </div>
       </CardContent>
-    </Card>
+    </Card></QueryRegion></div>
   );
 }

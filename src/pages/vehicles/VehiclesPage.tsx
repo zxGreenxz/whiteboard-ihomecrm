@@ -11,6 +11,7 @@ import { DataTablePagination } from '@/components/ui/data-table-pagination';
 import EmptyState from '@/components/ui/EmptyState';
 import { useIsMobile, usePhoneViewport } from '@/hooks/use-mobile';
 import { useVehicles } from '@/hooks/useVehicles';
+import { QueryRegion } from '@/components/errors/QueryRegion';
 import { useMyBuildingScope } from '@/hooks/useMyBuildingScope';
 import VehicleListToolbar, { type ViewMode } from '@/components/vehicles/VehicleListToolbar';
 import VehicleListTable from '@/components/vehicles/VehicleListTable';
@@ -62,7 +63,8 @@ function VehiclesDesktopPage() {
 
   useCopilotPageContext('vehicles.list', filters);
   // Data fetching
-  const { data: vehiclesData, isLoading } = useVehicles(filters, { page, pageSize });
+  const vehiclesQuery = useVehicles(filters, { page, pageSize });
+  const { data: vehiclesData, isLoading } = vehiclesQuery;
   const vehicles = vehiclesData?.data ?? [];
   const totalCount = vehiclesData?.count ?? 0;
 
@@ -120,6 +122,7 @@ function VehiclesDesktopPage() {
 
   return (
     <MainLayout title="Quản lý Phương tiện" subtitle="Khách hàng > Phương tiện" icon={Car}>
+      <QueryRegion label="danh sách phương tiện" queries={[vehiclesQuery]}>
       <div className="space-y-4">
         {/* Search + Toolbar */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
@@ -217,6 +220,7 @@ function VehiclesDesktopPage() {
           />
         )}
       </div>
+      </QueryRegion>
     </MainLayout>
   );
 }

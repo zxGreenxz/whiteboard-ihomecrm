@@ -1,3 +1,5 @@
+import { QueryRegion } from '@/components/errors/QueryRegion';
+import { actionErrorMessage } from '@/lib/actionFeedback';
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -58,18 +60,25 @@ export default function TaskCompleteDialog({
 }: TaskCompleteDialogProps) {
   const { data: authUser } = useAuth();
   const queryClient = useQueryClient();
-  const completeJob = useCompleteJob();
+  const completeJob = useCompleteJob({ silent: true });
   const isMobile = useIsMobile();
-  const { data: geofence } = useAcceptanceGeofenceConfig();
+  const geofenceQuery = useAcceptanceGeofenceConfig();
+  const { data: geofence } = geofenceQuery;
   const [nowTick, setNowTick] = useState(() => new Date());
   const [cameraOpen, setCameraOpen] = useState(false);
   const [processing, setProcessing] = useState(false);
+  const [savedPhoto, setSavedPhoto] = useState<string | null>(null);
+  const [outcomeMessage, setOutcomeMessage] = useState<string | null>(null);
+  const [outcomeBlocked, setOutcomeBlocked] = useState(false);
 
   useEffect(() => {
     if (open) {
       setNowTick(new Date());
       setCameraOpen(false);
       setProcessing(false);
+      setSavedPhoto(null);
+      setOutcomeMessage(null);
+      setOutcomeBlocked(false);
     }
   }, [open]);
 
@@ -87,7 +96,9 @@ export default function TaskCompleteDialog({
   // Chụp ảnh xong (xác nhận "Dùng ảnh này") → upload + HOÀN THÀNH luôn.
   // Đây là con đường DUY NHẤT để hoàn thành: chưa chụp ảnh thì không xong được.
   const handleCaptured = async (result: JobCaptureResult) => {
+    if (outcomeBlocked || processing) return;
     setProcessing(true);
+    setOutcomeMessage(null);
     let url: string;
     try {
       const userId = authUser?.id ?? "anon";
@@ -96,8 +107,9 @@ export default function TaskCompleteDialog({
         `${userId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`,
         result.file,
       );
-    } catch {
-      toast.error("Không tải được ảnh lên, vui lòng thử lại");
+      setSavedPhoto(url);
+    } catch (error) {
+      setOutcomeMessage(actionErrorMessage(error, "Chưa tải được ảnh hoàn thành công việc"));
       setProcessing(false);
       return;
     }
@@ -114,24 +126,24 @@ export default function TaskCompleteDialog({
         completion_geofence_status: result.status,
         completion_address: result.address,
       });
-      onOpenChange(false);
       onSuccess();
-      // Bắn thông báo thưởng (popup nổi + Web Push) nếu loại việc có thưởng.
-      // Fire-and-forget: không chặn việc đóng dialog; lỗi được nuốt êm trong util.
-      void awardAndNotifyJobBonus(job.id).then((rows) => {
-        if (rows.length) {
-          queryClient.invalidateQueries({ queryKey: ["notifications"] });
-        }
-      });
-      // v5 (nguồn 1 — ma trận dấu chân): tick ngày-công QUA RPC, FE không tự cộng.
-      // Fire-and-forget; lỗi nuốt êm phía FE (server đã log salary_award_errors).
-      // `v5TickFromJob` tự nuốt lỗi (server đã log salary_award_errors), nên chấm
-      // công hỏng không kéo đổ lượt đóng việc.
-      void v5TickFromJob(job.id).then((daCham) => {
-        if (daCham) queryClient.invalidateQueries({ queryKey: ["v5-my-day-summary"] });
-      });
-    } catch {
-      // toast lỗi đã xử lý trong hook; giữ dialog mở để thử lại
+      const followups = await Promise.allSettled([
+        awardAndNotifyJobBonus(job.id, { throwOnError: true }),
+        v5TickFromJob(job.id, { throwOnError: true }),
+      ]);
+      void queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      void queryClient.invalidateQueries({ queryKey: ["v5-my-day-summary"] });
+      const missing = followups.flatMap((result, index) => result.status === 'rejected' ? [index === 0 ? 'thưởng' : 'ngày công'] : []);
+      if (missing.length) {
+        setOutcomeBlocked(true);
+        setOutcomeMessage(`Đã ghi nhận hoàn thành công việc ${job.code || job.id} và lưu ảnh. Chưa xác nhận được ${missing.join(' và ')}. Kiểm tra bảng lương/ngày công; không hoàn thành lại công việc.`);
+        return;
+      }
+      toast.success(`Đã ghi nhận hoàn thành công việc ${job.code || job.title}.`);
+      onOpenChange(false);
+    } catch (error) {
+      setOutcomeBlocked(true);
+      setOutcomeMessage(`Ảnh đã tải lên. Chưa xác nhận được kết quả hoàn thành công việc ${job.code || job.id}. Kiểm tra trạng thái công việc trước khi thao tác tiếp; không chụp và gửi lại chỉ vì chưa thấy phản hồi.`);
     } finally {
       setProcessing(false);
     }
@@ -145,6 +157,8 @@ export default function TaskCompleteDialog({
 
   const formBody = (
     <>
+      {outcomeMessage && <div role="alert" className="rounded border border-amber-500 p-3 text-sm">{outcomeMessage}</div>}
+      {savedPhoto && <div className="space-y-1"><p className="text-sm">Ảnh đã tải lên</p><StorageImage value={savedPhoto} className="h-24 w-24 rounded object-cover" /></div>}
       <div className="text-[12px] text-muted-foreground">
         {job.code} — {job.title}
       </div>
@@ -176,6 +190,7 @@ export default function TaskCompleteDialog({
         </div>
       )}
 
+      <QueryRegion label="cấu hình kiểm tra vị trí" queries={[geofenceQuery]}>
       <p className="text-[11px] text-muted-foreground flex items-start gap-1">
         <MapPin className="h-3 w-3 mt-0.5 shrink-0" />
         <span>
@@ -183,6 +198,7 @@ export default function TaskCompleteDialog({
           {geofence?.enabled ? `; cảnh báo nếu cách tòa quá ${geofence.radiusM}m.` : "."}
         </span>
       </p>
+      </QueryRegion>
     </>
   );
 
@@ -191,7 +207,7 @@ export default function TaskCompleteDialog({
     <Button
       type="button"
       className={`bg-green-600 hover:bg-green-700 text-white ${className}`}
-      disabled={processing}
+      disabled={processing || outcomeBlocked}
       onClick={() => setCameraOpen(true)}
     >
       {processing ? (
@@ -235,7 +251,7 @@ export default function TaskCompleteDialog({
                   type="button"
                   variant="outline"
                   onClick={() => onOpenChange(false)}
-                  disabled={processing}
+                  disabled={processing || outcomeBlocked}
                   className="w-full h-11"
                 >
                   Huỷ
@@ -255,7 +271,7 @@ export default function TaskCompleteDialog({
                   type="button"
                   variant="outline"
                   onClick={() => onOpenChange(false)}
-                  disabled={processing}
+                  disabled={processing || outcomeBlocked}
                 >
                   Huỷ
                 </Button>

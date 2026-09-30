@@ -1,3 +1,4 @@
+import { focusFirstError } from '@/lib/asyncFormErrors';
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useResetPassword } from '@/hooks/useAuth';
@@ -101,6 +102,7 @@ const ResetPassword = () => {
     }
 
     setErrors(newErrors);
+    void focusFirstError(newErrors, { order: ['password', 'confirmPassword'] });
     return Object.keys(newErrors).length === 0;
   };
 
@@ -245,7 +247,7 @@ const ResetPassword = () => {
               <Label htmlFor="password">Mật khẩu mới</Label>
               <div className="relative">
                 <Input
-                  id="password"
+                  id="password" name="password" aria-invalid={!!errors.password} aria-describedby={errors.password ? "password-error" : undefined}
                   type={showPassword ? 'text' : 'password'}
                   placeholder="Nhập mật khẩu mới"
                   value={formData.password}
@@ -286,7 +288,7 @@ const ResetPassword = () => {
                 </div>
               )}
 
-              {errors.password && <p className="text-sm text-red-500">{errors.password}</p>}
+              {errors.password && <p id="password-error" role="alert" className="text-sm text-red-500">{errors.password}</p>}
             </div>
 
             {/* Confirm Password */}
@@ -294,7 +296,7 @@ const ResetPassword = () => {
               <Label htmlFor="confirmPassword">Xác nhận mật khẩu</Label>
               <div className="relative">
                 <Input
-                  id="confirmPassword"
+                  id="confirmPassword" name="confirmPassword" aria-invalid={!!errors.confirmPassword} aria-describedby={errors.confirmPassword ? "confirmPassword-error" : undefined}
                   type={showConfirmPassword ? 'text' : 'password'}
                   placeholder="Nhập lại mật khẩu mới"
                   value={formData.confirmPassword}
@@ -333,7 +335,7 @@ const ResetPassword = () => {
               )}
 
               {errors.confirmPassword && (
-                <p className="text-sm text-red-500">{errors.confirmPassword}</p>
+                <p id="confirmPassword-error" role="alert" className="text-sm text-red-500">{errors.confirmPassword}</p>
               )}
             </div>
 

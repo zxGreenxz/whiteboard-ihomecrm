@@ -1,3 +1,4 @@
+import { QueryRegion } from "@/components/errors/QueryRegion";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ProfitHubSlot } from "@/pages/reports/finance/ProfitHubShell";
@@ -31,14 +32,20 @@ import ShareholderForm from "./ShareholderForm";
 import ProfitManagerForm from "./ProfitManagerForm";
 
 export default function ShareConfigTab() {
-  const { data: shareholders = [] } = useShareholders();
-  const { data: buildings = [] } = useBuildings();
-  const { data: shares = [] } = useBuildingShareholders();
-  const { data: users = [] } = useAdminUsers();
+  const shareholdersQuery = useShareholders();
+  const { data: shareholders = [] } = shareholdersQuery;
+  const buildingsQuery = useBuildings();
+  const { data: buildings = [] } = buildingsQuery;
+  const sharesQuery = useBuildingShareholders();
+  const { data: shares = [] } = sharesQuery;
+  const usersQuery = useAdminUsers();
+  const { data: users = [] } = usersQuery;
   const deleteSh = useDeleteShareholder();
 
-  const { data: managers = [] } = useProfitManagers();
-  const { data: salaryRules = [] } = useManagerSalaries();
+  const managersQuery = useProfitManagers();
+  const { data: managers = [] } = managersQuery;
+  const salaryRulesQuery = useManagerSalaries();
+  const { data: salaryRules = [] } = salaryRulesQuery;
   const deleteMgr = useDeleteProfitManager();
 
   const [formOpen, setFormOpen] = useState(false);
@@ -97,6 +104,7 @@ export default function ShareConfigTab() {
     });
 
   return (
+    <QueryRegion label="lợi nhuận và cấu hình phân bổ" queries={[shareholdersQuery, buildingsQuery, sharesQuery, usersQuery, managersQuery, salaryRulesQuery]}>
     <>
       <ProfitHubSlot name="kpis">
         <div className="ph-kpi ph-kpi--flex">
@@ -297,7 +305,8 @@ export default function ShareConfigTab() {
             <AlertDialogCancel>Huỷ</AlertDialogCancel>
             <AlertDialogAction
               className="bg-red-600 hover:bg-red-700"
-              onClick={async () => { if (deleteId) await deleteSh.mutateAsync(deleteId); setDeleteId(null); }}
+              onClick={(event) => { event.preventDefault(); if (deleteId) deleteSh.mutate(deleteId,{onSuccess:()=>setDeleteId(null)}); }}
+              disabled={deleteSh.isPending}
             >
               Xoá
             </AlertDialogAction>
@@ -318,7 +327,8 @@ export default function ShareConfigTab() {
             <AlertDialogCancel>Huỷ</AlertDialogCancel>
             <AlertDialogAction
               className="bg-red-600 hover:bg-red-700"
-              onClick={async () => { if (deleteMgrId) await deleteMgr.mutateAsync(deleteMgrId); setDeleteMgrId(null); }}
+              onClick={(event) => { event.preventDefault(); if (deleteMgrId) deleteMgr.mutate(deleteMgrId,{onSuccess:()=>setDeleteMgrId(null)}); }}
+              disabled={deleteMgr.isPending}
             >
               Xoá
             </AlertDialogAction>
@@ -326,5 +336,6 @@ export default function ShareConfigTab() {
         </AlertDialogContent>
       </AlertDialog>
     </>
+    </QueryRegion>
   );
 }

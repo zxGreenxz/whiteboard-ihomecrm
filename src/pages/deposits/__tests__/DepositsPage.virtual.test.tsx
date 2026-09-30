@@ -54,12 +54,12 @@ vi.mock("@/hooks/useDepositDashboard", async (importOriginal) => ({
   useHeldDeposits: () => ({ data: fx.held, isLoading: false }),
   useDepositRefundsForfeits: () => ({ data: fx.refunds, isLoading: false }),
   useHeldDepositSummary: () => ({ data: [] }),
-  useRefundForfeitSummary: () => ({ data: undefined }),
-  useReservationDepositSettlementSummary: () => ({ data: undefined }),
+  useRefundForfeitSummary: () => ({ data: {refundTotal:0,refundCount:0,forfeitTotal:0,forfeitCount:0,linkedTotal:0,linkedCount:0,linkedVoucherCount:0,orphanTotal:0,orphanCount:0,pendingTotal:0,pendingCount:0,refundDepositTotal:0,refundNonDepositTotal:0,pendingDepositTotal:0,pendingNonDepositTotal:0,netSettlementTotal:0,customerDebtTotal:0,customerDebtCount:0} }),
+  useReservationDepositSettlementSummary: () => ({ data: {retainedAmount:0,refundedAmount:0,refundRemaining:0,settlementCount:0} }),
 }));
 vi.mock("@/hooks/useDeposits", () => ({
   useReservationDeposits: () => ({ data: fx.reservations, isLoading: false }),
-  useReservationDepositSummary: () => ({ data: undefined }),
+  useReservationDepositSummary: () => ({ data: {holdingCount:0,holdingAmount:0,pendingCount:0,pendingAmount:0} }),
 }));
 vi.mock("@/hooks/useReservationHoldDeadlines", () => ({ useReservationHoldDeadlines: () => ({ data: {} }) }));
 vi.mock("@/components/buildings/BuildingFilterSelect", () => ({ BuildingFilterSelect: () => null }));

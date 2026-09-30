@@ -72,7 +72,7 @@ export interface JobWithRelations extends Job {
   buildings: JobBuildingRef | null;
   rooms: { id: string; name: string } | null;
   job_types: { id: string; name: string } | null;
-  profiles: { id: string; full_name: string } | null;
+  profiles: { id: string; full_name: string | null } | null;
 }
 
 // Filter state

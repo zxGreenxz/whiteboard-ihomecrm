@@ -1,3 +1,8 @@
+import {financialReadNumber} from '@/lib/financialReadValidation';
+import {runDurableCollection,reconcilePendingCollection} from '@/lib/pendingCollection';
+import {lookupPendingCollection} from '@/lib/collectionRecovery';
+import { collectionFailureMessage, confirmedCollection } from '@/lib/collectionFeedback';
+import { voucherOutcomeUnknown } from '@/lib/voucherFeedback';
 // =============================================
 // Bulk Record Payment Hook
 // Each invoice is exactly one record_invoice_collection_v5 call containing
@@ -55,6 +60,7 @@ export interface BulkPaymentFailure {
   invoice_number?: string;
   room_name?: string;
   message: string;
+  outcomeUnknown?: boolean;
 }
 
 export interface BulkPaymentResult {
@@ -64,6 +70,7 @@ export interface BulkPaymentResult {
 }
 
 interface PreparedAttempt {
+  organizationId:string;
   fingerprint: string;
   request: InvoiceCollectionPlanningInput;
   idempotencyKey: string;
@@ -106,7 +113,7 @@ const rpcMessage = (error: unknown): string => {
   return error instanceof Error ? error.message : 'Lỗi không xác định';
 };
 
-export const useBulkRecordPayment = () => {
+export const useBulkRecordPayment = (options?: {silentFeedback?:boolean}) => {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const attemptsRef = useRef<Map<string, PreparedAttempt>>(new Map());
@@ -122,6 +129,8 @@ export const useBulkRecordPayment = () => {
 
       for (const item of params.items) {
         try {
+          const prior=await reconcilePendingCollection(user.id,item.invoice_id,lookupPendingCollection);
+          if(prior){attemptsRef.current.delete(item.invoice_id);ok.push(item.invoice_id);continue;}
           const fingerprint = itemFingerprint(params.payment_date, item);
           const cached = attemptsRef.current.get(item.invoice_id);
           let attempt = cached?.fingerprint === fingerprint ? cached : null;
@@ -130,7 +139,7 @@ export const useBulkRecordPayment = () => {
             const { data: invoice, error: invoiceError } = await (supabase
               .from('invoices')
               .select(
-                'id, invoice_number, total_amount, paid_amount, contract_id, previous_debt_sources, invoice_items(type, description, amount, accounting_class)',
+                'id, organization_id, invoice_number, total_amount, paid_amount, contract_id, previous_debt_sources, invoice_items(type, description, amount, accounting_class)',
               )
               .eq('id', item.invoice_id)
               .single() as any);
@@ -145,8 +154,8 @@ export const useBulkRecordPayment = () => {
             ].filter((line) => line.gross_amount > 0);
             if (grossLines.length === 0) throw new Error('Số tiền thanh toán bằng 0');
 
-            const totalAmount = Number(invoice.total_amount) || 0;
-            const paidAmount = Number(invoice.paid_amount) || 0;
+            const totalAmount = financialReadNumber(invoice.total_amount);
+            const paidAmount = financialReadNumber(invoice.paid_amount);
             const remaining = Math.max(totalAmount - paidAmount, 0);
             const grossTotal = grossLines.reduce((sum, line) => sum + line.gross_amount, 0);
             const overpay = Math.max(grossTotal - remaining, 0);
@@ -254,6 +263,7 @@ export const useBulkRecordPayment = () => {
             };
             planInvoiceCollection(request);
             attempt = {
+              organizationId:invoice.organization_id,
               fingerprint,
               request,
               idempotencyKey: item.idempotency_key ?? `collect-${crypto.randomUUID()}`,
@@ -261,7 +271,7 @@ export const useBulkRecordPayment = () => {
             attemptsRef.current.set(item.invoice_id, attempt);
           }
 
-          const result = await recordInvoiceCollectionV5(
+          const result = await runDurableCollection({userId:user.id,organizationId:attempt.organizationId,invoiceId:item.invoice_id},attempt.idempotencyKey,async()=>confirmedCollection(await recordInvoiceCollectionV5(
             // Xem chú thích cùng chỗ ở useInvoicePayments.ts: hai tham số này
             // bắt buộc nhưng nhận NULL, bộ sinh không diễn đạt được.
             (fn, args) => supabase.rpc(fn, {
@@ -271,7 +281,8 @@ export const useBulkRecordPayment = () => {
             }),
             attempt.request,
             attempt.idempotencyKey,
-          );
+          )),lookupPendingCollection);
+          confirmedCollection(result);
           voucherIds.push(...resultVoucherIds(result));
           attemptsRef.current.delete(item.invoice_id);
           ok.push(item.invoice_id);
@@ -280,7 +291,8 @@ export const useBulkRecordPayment = () => {
             invoice_id: item.invoice_id,
             invoice_number: item.invoice_number,
             room_name: item.room_name,
-            message: rpcMessage(error),
+            message: collectionFailureMessage(error),
+            outcomeUnknown: voucherOutcomeUnknown(error),
           });
         }
       }
@@ -303,18 +315,20 @@ export const useBulkRecordPayment = () => {
       queryClient.invalidateQueries({ queryKey: ['contract-deposit-vouchers'] });
     },
     onSuccess: (result) => {
+      if (options?.silentFeedback) return;
       const okCount = result.ok.length;
       const failCount = result.failures.length;
       if (failCount === 0) {
-        toast({ title: 'Hoàn tất ghi nhận thanh toán', description: `Thành công ${okCount} hoá đơn` });
+        toast({ title: okCount ? 'Đã ghi nhận thu tiền' : 'Chưa có khoản thu mới', description: `Đã xác nhận ${okCount} hoá đơn.` });
       } else if (okCount === 0) {
-        toast({ variant: 'destructive', title: 'Không ghi nhận được thanh toán', description: `Lỗi ${failCount} hoá đơn` });
+        toast({ variant: 'destructive', title: 'Chưa hoàn tất thu tiền', description: `${failCount} hoá đơn cần kiểm tra. Xem lý do từng dòng; không gửi lại dòng chưa rõ kết quả.` });
       } else {
-        toast({ title: 'Hoàn tất ghi nhận thanh toán', description: `Thành công ${okCount} — Lỗi ${failCount}` });
+        toast({ title: 'Đã ghi nhận một phần', description: `Đã xác nhận ${okCount} hoá đơn; ${failCount} hoá đơn cần kiểm tra. Không thu lại các dòng đã xác nhận.` });
       }
     },
     onError: (error: Error) => {
-      toast({ variant: 'destructive', title: 'Có lỗi xảy ra', description: error.message });
+      if (options?.silentFeedback) return;
+      toast({ variant: 'destructive', title: 'Chưa hoàn tất thu tiền', description: collectionFailureMessage(error) });
     },
   });
 };

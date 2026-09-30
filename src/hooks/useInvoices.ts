@@ -1,3 +1,10 @@
+import {useRef} from 'react';
+import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
+import {FinancialWorkflowError,workflowErrorMessage} from '@/lib/financialWorkflow';
+import {financialReadNumber,financialReadRows} from '@/lib/financialReadValidation';
+import {runFinancialPending} from '@/lib/financialPendingAction';
+import { voucherOutcomeUnknown } from "@/lib/voucherFeedback";
+import { invoiceFailureMessage, invoiceLabel, invoiceLifecycleFeedback, confirmedInvoiceReceipt, InvoicePartialError } from '@/lib/invoiceFeedback';
 // =============================================
 // Invoice Module Hooks (Reimplemented)
 // TanStack Query hooks for invoice CRUD, approval, statistics, and excess amounts.
@@ -8,6 +15,7 @@ import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tansta
 import { supabase } from '@/integrations/supabase/client';
 import type { Json } from '@/integrations/supabase/types';
 import { getSessionUser } from "@/lib/authSession";
+import { readContractCreditBalance } from '@/lib/contractCreditBalance';
 import { isCanonicalFallbackSignal } from '@/lib/canonicalFallback';
 import { useToast } from '@/hooks/use-toast';
 import type { PaginatedData } from '@/hooks/usePagination';
@@ -266,7 +274,7 @@ export const invoicesListQuery = (
         throw error;
       }
 
-      const invoiceRows = ((data || []) as InvoiceWithRelations[]).map((invoice) => ({
+      const invoiceRows = financialReadRows(data as InvoiceWithRelations[] | null).map((invoice) => ({
         ...invoice,
         payments: (invoice.payments ?? []).filter(
           (payment) => !(payment as typeof payment & { reversed_at?: string | null }).reversed_at,
@@ -343,7 +351,7 @@ export const useInvoicesLegacy = (filters?: {
         console.error('useInvoicesLegacy error:', error);
         throw error;
       }
-      return (data || []) as InvoiceWithRelations[];
+      return financialReadRows(data as InvoiceWithRelations[] | null);
     },
   });
 };
@@ -370,7 +378,8 @@ export const useInvoice = (invoiceId?: string) => {
         .single();
 
       if (error) throw error;
-      return data as InvoiceWithRelations;
+      if(!data || data.id!==invoiceId)throw new TypeError('Chưa đọc được hóa đơn cần xem.');
+      return {...data,total_amount:financialReadNumber(data.total_amount),paid_amount:financialReadNumber(data.paid_amount)} as InvoiceWithRelations;
     },
     enabled: !!invoiceId,
   });
@@ -416,12 +425,12 @@ export const useInvoiceTotalsByIds = (ids: string[]) => {
           .in('id', slice)
           .is('deleted_at', null);
         if (error) throw error;
-        for (const row of (data ?? []) as any[]) {
+        for (const row of financialReadRows(data as any[] | null)) {
           map.set(row.id, {
             id: row.id,
-            total_amount: Number(row.total_amount) || 0,
-            paid_amount: Number(row.paid_amount) || 0,
-            remaining_amount: Number(row.remaining_amount) || 0,
+            total_amount: financialReadNumber(row.total_amount),
+            paid_amount: financialReadNumber(row.paid_amount),
+            remaining_amount: financialReadNumber(row.remaining_amount),
             // Không select room/building → title tự rớt phần "<phòng>/<toà>".
             displayTitle: getInvoiceTitle(row),
           });
@@ -471,7 +480,7 @@ function depositAmountInInvoice(items: any[]): number {
     const raw = String(it?.description ?? '').toLowerCase();
     const norm = raw.normalize('NFD').replace(/[̀-ͯ]/g, '');
     const isCoc = raw.includes('cọc') || raw.includes('cược') || norm.includes('coc');
-    return isCoc ? sum + (Number(it.amount) || 0) : sum;
+    return isCoc ? sum + financialReadNumber(it.amount) : sum;
   }, 0);
 }
 
@@ -479,6 +488,7 @@ export const useFirstInvoiceDetails = (ids: string[]) => {
   const sortedIds = Array.from(new Set(ids.filter(Boolean))).sort();
   return useQuery({
     queryKey: ['first-invoice-details', sortedIds],
+    meta:{errorDisplay:"inline",label:"chi tiết hoá đơn đầu"},
     enabled: sortedIds.length > 0,
     queryFn: async (): Promise<Map<string, FirstInvoiceDetail>> => {
       const map = new Map<string, FirstInvoiceDetail>();
@@ -495,8 +505,8 @@ export const useFirstInvoiceDetails = (ids: string[]) => {
           .in('id', slice)
           .is('deleted_at', null);
         if (error) throw error;
-        for (const inv of (data ?? []) as any[]) {
-          const items = (inv.invoice_items ?? []) as any[];
+        for (const inv of financialReadRows(data as any[] | null)) {
+          const items = financialReadRows(inv.invoice_items as any[] | null);
           // Item RENT có from_date sớm nhất là dòng tiền phòng tháng đầu.
           const rent =
             items
@@ -511,8 +521,8 @@ export const useFirstInvoiceDetails = (ids: string[]) => {
           // (isFirstMonthInvoice): notes "tháng đầu"/"đầu tiên" HOẶC kỳ RENT
           // bắt đầu đúng contracts.start_billing_date.
           if (!isFirstMonthInvoice(inv)) continue;
-          const invoiceTotal = Number(inv.total_amount) || 0;
-          const invoicePaid = Number(inv.paid_amount) || 0;
+          const invoiceTotal = financialReadNumber(inv.total_amount);
+          const invoicePaid = financialReadNumber(inv.paid_amount);
           // Bỏ phần cọc gộp trong HĐ → còn tiền phòng + dịch vụ (đã trừ giảm
           // trừ). Quy ước PHÒNG-TRƯỚC: tiền thu phủ phần phòng/dịch vụ TRƯỚC,
           // cọc sau — KHỚP với phân bổ hạng mục lúc thu (allocateDepositPortion).
@@ -528,8 +538,8 @@ export const useFirstInvoiceDetails = (ids: string[]) => {
             rentServiceTotal,
             invoicePaid,
             invoiceTotal,
-            depositPaid: Number(contract?.deposit_paid) || 0,
-            depositTotal: Number(contract?.total_deposit) || 0,
+            depositPaid: contract ? financialReadNumber(contract.deposit_paid) : 0,
+            depositTotal: contract ? financialReadNumber(contract.total_deposit) : 0,
             depositInInvoice,
           });
         }
@@ -569,8 +579,8 @@ export const useInvoiceRentPeriods = (ids: string[]) => {
           .in('id', slice)
           .is('deleted_at', null);
         if (error) throw error;
-        for (const inv of (data ?? []) as any[]) {
-          const rent = ((inv.invoice_items ?? []) as any[])
+        for (const inv of financialReadRows<any>(data)) {
+          const rent = financialReadRows<any>(inv.invoice_items)
             .filter((it) => it.type === 'RENT' && it.from_date && it.to_date)
             .sort((a, b) => String(a.from_date).localeCompare(String(b.from_date)))[0];
           if (!rent) continue;
@@ -623,6 +633,7 @@ export interface ContractDepositVoucher {
 export const useContractDepositVouchers = (contractId?: string | null) => {
   return useQuery({
     queryKey: ['contract-deposit-vouchers', contractId],
+    meta:{errorDisplay:"inline",label:"phiếu cọc hợp đồng"},
     enabled: !!contractId,
     queryFn: async (): Promise<ContractDepositVoucher[]> => {
       if (!contractId) return [];
@@ -646,18 +657,18 @@ export const useContractDepositVouchers = (contractId?: string | null) => {
       if (error) throw error;
       // Dedupe theo id (phòng khi 1 phiếu có >1 item cọc → !inner nhân dòng).
       const map = new Map<string, ContractDepositVoucher>();
-      for (const v of (data ?? []) as any[]) {
+      for (const v of financialReadRows(data as any[] | null)) {
         if (map.has(v.id)) continue;
         // Số CỌC = Σ item cọc (embed đã lọc is_deposit) — phiếu trộn không đếm
         // thừa phần không-cọc.
-        const depositSum = ((v.income_expense_items ?? []) as any[]).reduce(
-          (s: number, it: any) => s + (Number(it.amount) || 0),
+        const depositSum = financialReadRows(v.income_expense_items as any[] | null).reduce<number>(
+          (s: number, it: any) => s + financialReadNumber(it.amount),
           0,
         );
         map.set(v.id, {
           id: v.id,
           code: v.code ?? null,
-          totalAmount: depositSum || Number(v.total_amount) || 0,
+          totalAmount: depositSum,
           voucherDate: v.voucher_date ?? null,
           creatorName: v.creator_name ?? null,
           accountName: v.account?.name ?? null,
@@ -675,12 +686,13 @@ export const useContractDepositVouchers = (contractId?: string | null) => {
 // useCreateInvoice - Create invoice + invoice_items, status = APPROVED (mặc định đã duyệt)
 // =============================================
 
-export const useCreateInvoice = () => {
+export const useCreateInvoice = (options: {silent?:boolean} = {}) => {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { selectedOrganizationId } = useOrganization();
 
   return useMutation({
+    meta:{handlesFeedback:!!options.silent},
     mutationFn: async (formData: InvoiceFormData) => {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
@@ -770,7 +782,7 @@ export const useCreateInvoice = () => {
         rpcName,
         canonicalArgs as never,
       );
-      if (!canonical.error) return canonical.data;
+      if (!canonical.error) return confirmedInvoiceReceipt(canonical.data);
       if (appliedCredit > 0) throw canonical.error;
       if (!isCanonicalFallbackSignal(canonical.error)) throw canonical.error;
 
@@ -834,31 +846,29 @@ export const useCreateInvoice = () => {
           .from('invoice_items')
           .insert(withOrgAll(invoiceItems, selectedOrganizationId) as any);
 
-        if (itemsError) throw itemsError;
+        if (itemsError) throw new InvoicePartialError(`Đã tạo hoá đơn ${invoice.invoice_number || invoice.id} nhưng chưa lưu đủ hạng mục. Mở hoá đơn để đối chiếu; không tạo lại toàn bộ.`,invoice.id,itemsError);
       }
 
       return invoice;
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['invoices-legacy'] });
       queryClient.invalidateQueries({ queryKey: ['contracts'] });
       queryClient.invalidateQueries({ queryKey: ['excess-amount'] });
 
+      if(options.silent) return;
       toast({
-        title: 'Dữ liệu đã được TẠO thành công',
-        description: 'Hoá đơn mới đã được duyệt và sẵn sàng ghi nhận thanh toán.',
+        title: `Đã tạo ${invoiceLabel(result)}`,
+        description: 'Mở hoá đơn để xem trạng thái duyệt và số tiền phải thu.',
       });
     },
     onError: (error: Error) => {
-      const msg = error.message || '';
-      const friendly = msg.includes('idx_invoices_unique_contract_billing')
-        ? 'Hợp đồng này đã có hoá đơn cho kỳ thanh toán đã chọn. Hệ thống chỉ cho phép 1 hoá đơn / hợp đồng / kỳ.'
-        : msg;
+      if(options.silent) return;
       toast({
         variant: 'destructive',
         title: 'Có lỗi xảy ra khi tạo hoá đơn',
-        description: friendly,
+        description: invoiceFailureMessage(error, "tạo hoá đơn"),
       });
     },
   });
@@ -942,7 +952,7 @@ export const useUpdateInvoice = () => {
         p_template_id: invoiceFields.template_id || undefined,
         p_notes: invoiceFields.notes || undefined,
       });
-      if (!canonical.error) return canonical.data;
+      if (!canonical.error) return confirmedInvoiceReceipt(canonical.data);
       if (!isCanonicalFallbackSignal(canonical.error)) throw canonical.error;
 
       // Update invoice
@@ -978,7 +988,7 @@ export const useUpdateInvoice = () => {
         .delete()
         .eq('invoice_id', id);
 
-      if (deleteItemsError) throw deleteItemsError;
+      if (deleteItemsError) throw new InvoicePartialError(`Đã cập nhật thông tin hoá đơn nhưng chưa thay hạng mục. Mở hoá đơn để đối chiếu trước khi lưu tiếp.`,id,deleteItemsError);
 
       if (items.length > 0) {
         const invoiceItems = items.map((item) => ({
@@ -1002,18 +1012,18 @@ export const useUpdateInvoice = () => {
           .from('invoice_items')
           .insert(withOrgAll(invoiceItems, selectedOrganizationId) as any);
 
-        if (insertItemsError) throw insertItemsError;
+        if (insertItemsError) throw new InvoicePartialError(`Đã cập nhật thông tin hoá đơn và gỡ hạng mục cũ nhưng chưa lưu hạng mục mới. Mở hoá đơn để đối chiếu; giữ bản nháp đang nhập.`,id,insertItemsError);
       }
 
       return invoice;
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['invoices-legacy'] });
       queryClient.invalidateQueries({ queryKey: ['invoice'] });
 
       toast({
-        title: 'Dữ liệu đã được CẬP NHẬT thành công',
+        title: `Đã lưu ${invoiceLabel(result)}`,
         description: 'Hoá đơn đã được cập nhật.',
       });
     },
@@ -1021,7 +1031,7 @@ export const useUpdateInvoice = () => {
       toast({
         variant: 'destructive',
         title: 'Có lỗi xảy ra khi cập nhật hoá đơn',
-        description: error.message,
+        description: invoiceFailureMessage(error, "sửa hoá đơn"),
       });
     },
   });
@@ -1037,22 +1047,23 @@ export const useUpdateInvoice = () => {
 export const useBulkCancelInvoices = () => {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const {selectedOrganizationId}=useOrganization();
 
   return useMutation({
     mutationFn: async (invoiceIds: string[]) => {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
-      if (invoiceIds.length === 0) return { done: 0, skipped: 0, failed: 0 };
+      if (invoiceIds.length === 0) return { done: 0, skipped: 0, failed: 0, completedIds: [] as string[], failures: [] as {id:string;message:string;outcomeUnknown:boolean}[] };
 
       // RPC cancel KHÔNG guard status/paid ở DB → lọc trước bằng canCancelInvoice.
       const { data: rows, error: fetchError } = await supabase
         .from('invoices')
-        .select('id, status, paid_amount, deleted_at')
+        .select('id, organization_id, status, paid_amount, deleted_at')
         .in('id', invoiceIds);
       if (fetchError) throw fetchError;
 
-      const eligible = (rows ?? []).filter((row) =>
+      const eligible = financialReadRows(rows).filter((row) =>
         canCancelInvoice({
           status: row.status as InvoiceStatus,
           paid_amount: row.paid_amount,
@@ -1060,27 +1071,33 @@ export const useBulkCancelInvoices = () => {
         }),
       );
 
+      const completedIds:string[]=[];
+      const failures:{id:string;message:string;outcomeUnknown:boolean}[]=[];
       let done = 0;
       let failed = 0;
       for (const row of eligible) {
         try {
-          await invokeCustomerCreditRpc(
-            // Ranh giới abstraction: invoker cố ý nhận Record<string, unknown> để
-            // test inject được fake rpc, nên chữ ký không khớp overload đã typed
-            // của supabase.rpc. Cast GOM một chỗ ở đây, không rải ra từng call site.
-            (fn, args) => supabase.rpc(fn, args),
-            'cancel_invoice_with_credit_v1',
-            buildInvoiceCreditLifecycleRpcArgs(
-              row.id,
-              prepareCustomerCreditRequest('invoice-cancel'),
-            ),
-          );
-          done += 1;
-        } catch {
+          if(invoiceLifecycleUnknown.has(row.id)) throw new TypeError("Chưa đối chiếu trạng thái hoá đơn của lần thao tác trước.");
+          await runFinancialPending({
+            namespace:'invoice-cancel',userId:user.id,
+            organizationId:row.organization_id ?? selectedOrganizationId ?? '',businessKey:row.id,
+          },async progress=>{
+            const result=await invokeCustomerCreditRpc(
+              (fn,args)=>supabase.rpc(fn,args),'cancel_invoice_with_credit_v1',
+              buildInvoiceCreditLifecycleRpcArgs(row.id,prepareCustomerCreditRequest('invoice-cancel',progress.requestKey)),
+            );
+            const receipt=confirmedInvoiceReceipt(await readInvoiceLifecycleReceipt(result,row.id));
+            if(receipt.id!==row.id || receipt.status!=='CANCELLED') throw new TypeError('Chưa xác nhận được hoá đơn đã hủy sau thao tác.');
+            progress.recordCompleted([row.id]);
+          });
+          done += 1; completedIds.push(row.id);
+        } catch (error) {
+          if(voucherOutcomeUnknown(error)) invoiceLifecycleUnknown.add(row.id);
+          failures.push({id:row.id,message:invoiceFailureMessage(error,"hủy hóa đơn"),outcomeUnknown:voucherOutcomeUnknown(error)});
           failed += 1;
         }
       }
-      return { done, skipped: invoiceIds.length - eligible.length, failed };
+      return { done, skipped: invoiceIds.length - eligible.length, failed, completedIds, failures };
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
@@ -1096,7 +1113,7 @@ export const useBulkCancelInvoices = () => {
       ].filter(Boolean).join('; ');
       toast({
         variant: failed > 0 ? 'destructive' : undefined,
-        title: `Đã huỷ ${done} hoá đơn`,
+        title: done>0 ? `Đã huỷ ${done} hoá đơn` : "Chưa có hóa đơn nào được hủy",
         description: extras
           ? `${extras}.`
           : 'Các hoá đơn đã chuyển vào mục "Đã huỷ" và có thể phục hồi.',
@@ -1106,7 +1123,7 @@ export const useBulkCancelInvoices = () => {
       toast({
         variant: 'destructive',
         title: 'Có lỗi xảy ra khi huỷ hoá đơn',
-        description: error.message,
+        description: invoiceFailureMessage(error, "huỷ các hoá đơn"),
       });
     },
   });
@@ -1117,12 +1134,34 @@ export const useBulkCancelInvoices = () => {
 // Requirements: 4.1, 4.2
 // =============================================
 
+const invoiceLifecycleUnknown = new Set<string>();
+async function readInvoiceLifecycleReceipt(value:unknown,invoiceId:string):Promise<unknown> {
+  const receipt=value && typeof value==='object'?value as Record<string,unknown>:{};
+  const row=receipt.invoice && typeof receipt.invoice==='object'?receipt.invoice as Record<string,unknown>:receipt;
+  const knownStates=['DRAFT','APPROVED','PARTIAL_PAID','PAID','OVERDUE','CANCELLED'];
+  if(row.id===invoiceId && typeof row.status==='string' && knownStates.includes(row.status)) return value;
+  const {data,error}=await supabase.from('invoices').select('id, invoice_number, status').eq('id',invoiceId).single();
+  if(error || !data || data.id!==invoiceId || !knownStates.includes(data.status)) throw new TypeError('Chưa đọc được trạng thái hoá đơn sau thao tác.');
+  return {invoice:data,noop:receipt.noop};
+}
+
+async function confirmSingleInvoiceLifecycle(value:unknown,invoiceId:string,expectedStates:string[],completed:{id:string;label:string}[]):Promise<unknown> {
+  const result=await readInvoiceLifecycleReceipt(value,invoiceId);
+  const receipt=confirmedInvoiceReceipt(result);
+  if(receipt.id!==invoiceId || !expectedStates.includes(String(receipt.status)))throw new TypeError('Chưa xác nhận được trạng thái hoá đơn sau thao tác.');
+  completed.push({id:receipt.id,label:`Đã nhận trạng thái của ${invoiceLabel(receipt)}`});
+  return result;
+}
+
 export const useApproveInvoice = () => {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const {selectedOrganizationId}=useOrganization();
+  const workflow=useRef(persistentFinancialWorkflow('invoice-approve'));
 
   return useMutation({
     mutationFn: async (invoiceId: string) => {
+      return workflow.current.run(invoiceId,'duyệt hoá đơn',async progress=>{
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
@@ -1131,7 +1170,7 @@ export const useApproveInvoice = () => {
       const canonical = await supabase.rpc('approve_invoice_v1', {
         p_invoice_id: invoiceId,
       });
-      if (!canonical.error) return canonical.data;
+      if (!canonical.error) return confirmSingleInvoiceLifecycle(canonical.data,invoiceId,['APPROVED'],progress.completed);
       if (!isCanonicalFallbackSignal(canonical.error)) throw canonical.error;
 
       const { data, error } = await supabase
@@ -1147,24 +1186,22 @@ export const useApproveInvoice = () => {
         .single();
 
       if (error) throw error;
-      return data;
+      return confirmSingleInvoiceLifecycle(data,invoiceId,['APPROVED'],progress.completed);
+    },undefined,selectedOrganizationId??undefined);
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['invoices-legacy'] });
       queryClient.invalidateQueries({ queryKey: ['invoice'] });
       queryClient.invalidateQueries({ queryKey: ['invoice-statistics'] });
 
-      toast({
-        title: 'Hoá đơn đã được duyệt thành công',
-        description: 'Hoá đơn đã chuyển sang trạng thái Đã duyệt.',
-      });
+      toast(invoiceLifecycleFeedback(result,"duyệt"));
     },
-    onError: (error: Error) => {
+    onError: (error: Error, invoiceId: string) => {
       toast({
         variant: 'destructive',
         title: 'Có lỗi xảy ra khi duyệt hoá đơn',
-        description: error.message,
+        description: error instanceof FinancialWorkflowError ? workflowErrorMessage(error,"duyệt hoá đơn") : invoiceFailureMessage(error,"duyệt hoá đơn"),
       });
     },
   });
@@ -1178,16 +1215,19 @@ export const useApproveInvoice = () => {
 export const useUnapproveInvoice = () => {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const {selectedOrganizationId}=useOrganization();
+  const workflow=useRef(persistentFinancialWorkflow('invoice-unapprove'));
 
   return useMutation({
     mutationFn: async (invoiceId: string) => {
+      return workflow.current.run(invoiceId,'bỏ duyệt hoá đơn',async progress=>{
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       const canonical = await supabase.rpc('unapprove_invoice_v1', {
         p_invoice_id: invoiceId,
       });
-      if (!canonical.error) return canonical.data;
+      if (!canonical.error) return confirmSingleInvoiceLifecycle(canonical.data,invoiceId,['DRAFT'],progress.completed);
       if (!isCanonicalFallbackSignal(canonical.error)) throw canonical.error;
 
       const { data, error } = await supabase
@@ -1203,24 +1243,22 @@ export const useUnapproveInvoice = () => {
         .single();
 
       if (error) throw error;
-      return data;
+      return confirmSingleInvoiceLifecycle(data,invoiceId,['DRAFT'],progress.completed);
+    },undefined,selectedOrganizationId??undefined);
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['invoices-legacy'] });
       queryClient.invalidateQueries({ queryKey: ['invoice'] });
       queryClient.invalidateQueries({ queryKey: ['invoice-statistics'] });
 
-      toast({
-        title: 'Đã bỏ duyệt hoá đơn',
-        description: 'Hoá đơn đã chuyển về trạng thái Nháp.',
-      });
+      toast(invoiceLifecycleFeedback(result,"bỏ duyệt"));
     },
-    onError: (error: Error) => {
+    onError: (error: Error, invoiceId: string) => {
       toast({
         variant: 'destructive',
         title: 'Có lỗi xảy ra khi bỏ duyệt hoá đơn',
-        description: error.message,
+        description: error instanceof FinancialWorkflowError ? workflowErrorMessage(error,"bỏ duyệt hoá đơn") : invoiceFailureMessage(error,"bỏ duyệt hoá đơn"),
       });
     },
   });
@@ -1247,7 +1285,10 @@ export const useBulkApproveInvoices = () => {
       const canonical = await supabase.rpc('bulk_approve_invoices_v1', {
         p_invoice_ids: invoiceIds,
       });
-      if (!canonical.error) return { count: canonical.data as number };
+      if (!canonical.error) {
+        if(typeof canonical.data!=="number" || !Number.isInteger(canonical.data) || canonical.data<0) throw new TypeError("Chưa xác nhận được số hoá đơn đã duyệt.");
+        return {count:canonical.data};
+      }
       if (!isCanonicalFallbackSignal(canonical.error)) throw canonical.error;
 
       const { data, error } = await supabase
@@ -1272,15 +1313,15 @@ export const useBulkApproveInvoices = () => {
 
       const count = data?.count ?? 0;
       toast({
-        title: 'Duyệt hàng loạt thành công',
-        description: `Đã duyệt ${count} hoá đơn.`,
+        title: count > 0 ? 'Đã duyệt các hoá đơn' : 'Không có hoá đơn mới được duyệt',
+        description: `Đã duyệt ${count} hoá đơn. Xem trạng thái từng hoá đơn trong danh sách.`,
       });
     },
     onError: (error: Error) => {
       toast({
         variant: 'destructive',
         title: 'Có lỗi xảy ra khi duyệt hoá đơn',
-        description: error.message,
+        description: invoiceFailureMessage(error, "duyệt các hoá đơn"),
       });
     },
   });
@@ -1329,6 +1370,7 @@ export interface InvoiceStatistics {
 
 export const invoiceStatisticsQuery = (filters?: InvoiceStatisticsFilters) => ({
     queryKey: ['invoice-statistics', filters] as const,
+    meta:{errorDisplay:'inline',label:'thống kê hoá đơn'},
     gcTime: 15 * 60_000, // ấm lâu cho prefetch (mặc định 5')
     queryFn: async (): Promise<InvoiceStatistics> => {
       const user = await getSessionUser();
@@ -1355,22 +1397,22 @@ export const invoiceStatisticsQuery = (filters?: InvoiceStatisticsFilters) => ({
       const result = (Array.isArray(data) ? data[0] : data) as unknown as
         Record<string, number | null | undefined>;
       return {
-        total_amount: Number(result?.total_amount ?? 0),
-        total_paid: Number(result?.total_paid ?? 0),
-        total_remaining: Number(result?.total_remaining ?? 0),
-        total_refunded: Number(result?.total_refunded ?? 0),
-        total_count: Number(result?.total_count ?? 0),
-        rent_amount: Number(result?.rent_amount ?? 0),
-        electric_amount: Number(result?.electric_amount ?? 0),
-        water_amount: Number(result?.water_amount ?? 0),
-        pdv_amount: Number(result?.pdv_amount ?? 0),
-        total_collected: Number(result?.total_collected ?? 0),
-        payment_tm: Number(result?.payment_tm ?? 0),
-        payment_tk: Number(result?.payment_tk ?? 0),
-        payment_tt: Number(result?.payment_tt ?? 0),
-        payment_ct: Number(result?.payment_ct ?? 0),
-        change_amount: Number(result?.change_amount ?? 0),
-        deposit_collected: Number(result?.deposit_collected ?? 0),
+        total_amount: financialReadNumber(result?.total_amount),
+        total_paid: financialReadNumber(result?.total_paid),
+        total_remaining: financialReadNumber(result?.total_remaining),
+        total_refunded: financialReadNumber(result?.total_refunded),
+        total_count: financialReadNumber(result?.total_count),
+        rent_amount: financialReadNumber(result?.rent_amount),
+        electric_amount: financialReadNumber(result?.electric_amount),
+        water_amount: financialReadNumber(result?.water_amount),
+        pdv_amount: financialReadNumber(result?.pdv_amount),
+        total_collected: financialReadNumber(result?.total_collected),
+        payment_tm: financialReadNumber(result?.payment_tm),
+        payment_tk: financialReadNumber(result?.payment_tk),
+        payment_tt: financialReadNumber(result?.payment_tt),
+        payment_ct: financialReadNumber(result?.payment_ct),
+        change_amount: financialReadNumber(result?.change_amount),
+        deposit_collected: financialReadNumber(result?.deposit_collected),
       };
     },
   });
@@ -1466,7 +1508,7 @@ export const useExcessAmount = (contractId?: string) => {
       );
 
       if (error) throw error;
-      return Number(data) || 0;
+      return readContractCreditBalance(data);
     },
     enabled: !!contractId,
   });
@@ -1547,7 +1589,7 @@ export const useRecordMeterReading = () => {
       toast({
         variant: 'destructive',
         title: 'Có lỗi xảy ra khi ghi nhận chỉ số',
-        description: error.message,
+        description: invoiceFailureMessage(error, "ghi chỉ số công tơ"),
       });
     },
   });
@@ -1642,7 +1684,7 @@ export const useBulkCreateMeterReadings = () => {
       toast({
         variant: 'destructive',
         title: 'Có lỗi xảy ra khi ghi nhận chỉ số',
-        description: error.message,
+        description: invoiceFailureMessage(error, "ghi các chỉ số công tơ"),
       });
     },
   });
@@ -1662,13 +1704,16 @@ export const useBulkCreateMeterReadings = () => {
 export const useRestoreInvoice = () => {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const {selectedOrganizationId}=useOrganization();
+  const workflow=useRef(persistentFinancialWorkflow('invoice-restore'));
 
   return useMutation({
     mutationFn: async (invoiceId: string) => {
+      return workflow.current.run(invoiceId,'khôi phục hoá đơn',async progress=>{
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
-      return invokeCustomerCreditRpc(
+      const result=await invokeCustomerCreditRpc(
         // Generated types intentionally lag until the migration is applied.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         // Ranh giới abstraction: invoker cố ý nhận Record<string, unknown> để
@@ -1678,31 +1723,26 @@ export const useRestoreInvoice = () => {
         'restore_invoice_with_credit_v1',
         buildInvoiceCreditLifecycleRpcArgs(
           invoiceId,
-          prepareCustomerCreditRequest('invoice-restore'),
+          prepareCustomerCreditRequest('invoice-restore',progress.requestKey),
         ),
       );
+      return confirmSingleInvoiceLifecycle(result,invoiceId,['APPROVED', 'PARTIAL_PAID', 'PAID', 'OVERDUE'],progress.completed);
+      },undefined,selectedOrganizationId??undefined);
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['invoices-legacy'] });
       queryClient.invalidateQueries({ queryKey: ['invoice'] });
       queryClient.invalidateQueries({ queryKey: ['invoice-statistics'] });
       queryClient.invalidateQueries({ queryKey: ['excess-amount'] });
 
-      toast({
-        title: 'Đã phục hồi hoá đơn',
-        description: 'Hoá đơn đã chuyển về trạng thái Đã duyệt.',
-      });
+      toast(invoiceLifecycleFeedback(result,"khôi phục"));
     },
-    onError: (error: Error) => {
-      const msg = error.message || '';
-      const friendly = msg.includes('idx_invoices_unique_contract_billing')
-        ? 'Đã có hoá đơn khác cho hợp đồng + kỳ thanh toán này. Hãy huỷ hoá đơn đó trước khi phục hồi.'
-        : msg;
+    onError: (error: Error, invoiceId: string) => {
       toast({
         variant: 'destructive',
         title: 'Có lỗi xảy ra khi phục hồi hoá đơn',
-        description: friendly,
+        description: error instanceof FinancialWorkflowError ? workflowErrorMessage(error,"khôi phục hoá đơn") : invoiceFailureMessage(error,"khôi phục hoá đơn"),
       });
     },
   });
@@ -1715,10 +1755,13 @@ export const useRestoreInvoice = () => {
 export const useForceCancelInvoice = () => {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const {selectedOrganizationId}=useOrganization();
+  const workflow=useRef(persistentFinancialWorkflow('invoice-force-cancel'));
 
   return useMutation({
     mutationFn: async (invoiceId: string) => {
-      return invokeCustomerCreditRpc(
+      return workflow.current.run(invoiceId,'huỷ hoá đơn',async progress=>{
+      const result=await invokeCustomerCreditRpc(
         // Generated types intentionally lag until the migration is applied.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         // Ranh giới abstraction: invoker cố ý nhận Record<string, unknown> để
@@ -1728,11 +1771,13 @@ export const useForceCancelInvoice = () => {
         'super_admin_force_cancel_invoice_with_credit_v1',
         buildInvoiceCreditLifecycleRpcArgs(
           invoiceId,
-          prepareCustomerCreditRequest('invoice-force-cancel'),
+          prepareCustomerCreditRequest('invoice-force-cancel',progress.requestKey),
         ),
       );
+      return confirmSingleInvoiceLifecycle(result,invoiceId,['CANCELLED'],progress.completed);
+      },undefined,selectedOrganizationId??undefined);
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['invoices-legacy'] });
       queryClient.invalidateQueries({ queryKey: ['invoice'] });
@@ -1741,16 +1786,13 @@ export const useForceCancelInvoice = () => {
       queryClient.invalidateQueries({ queryKey: ['invoice-payments-summary'] });
       queryClient.invalidateQueries({ queryKey: ['excess-amount'] });
 
-      toast({
-        title: 'Đã huỷ hoá đơn',
-        description: 'Hoá đơn đã được huỷ sau khi kiểm tra payment và hoàn tác credit an toàn.',
-      });
+      toast(invoiceLifecycleFeedback(result,"huỷ"));
     },
-    onError: (error: Error) => {
+    onError: (error: Error, invoiceId: string) => {
       toast({
         variant: 'destructive',
         title: 'Có lỗi xảy ra khi huỷ hoá đơn',
-        description: error.message,
+        description: error instanceof FinancialWorkflowError ? workflowErrorMessage(error,"huỷ hoá đơn") : invoiceFailureMessage(error,"huỷ hoá đơn"),
       });
     },
   });
@@ -1759,9 +1801,12 @@ export const useForceCancelInvoice = () => {
 export const useCancelInvoice = () => {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const {selectedOrganizationId}=useOrganization();
+  const workflow=useRef(persistentFinancialWorkflow('invoice-cancel'));
 
   return useMutation({
     mutationFn: async (invoiceId: string) => {
+      return workflow.current.run(invoiceId,'huỷ hoá đơn',async progress=>{
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
@@ -1781,10 +1826,10 @@ export const useCancelInvoice = () => {
         paid_amount: current.paid_amount,
         deleted_at: current.deleted_at,
       })) {
-        throw new Error('Không thể huỷ hoá đơn ở trạng thái này (đã thu tiền hoặc đã huỷ)');
+        throw new FinancialWorkflowError('Không thể huỷ hoá đơn ở trạng thái này (đã thu tiền hoặc đã huỷ)','failure',[]);
       }
 
-      return invokeCustomerCreditRpc(
+      const result=await invokeCustomerCreditRpc(
         // Ranh giới abstraction: invoker cố ý nhận Record<string, unknown> để
         // test inject được fake rpc, nên chữ ký không khớp overload đã typed của
         // supabase.rpc. Cast GOM một chỗ ở đây, không rải ra từng call site.
@@ -1792,27 +1837,26 @@ export const useCancelInvoice = () => {
         'cancel_invoice_with_credit_v1',
         buildInvoiceCreditLifecycleRpcArgs(
           invoiceId,
-          prepareCustomerCreditRequest('invoice-cancel'),
+          prepareCustomerCreditRequest('invoice-cancel',progress.requestKey),
         ),
       );
+      return confirmSingleInvoiceLifecycle(result,invoiceId,['CANCELLED'],progress.completed);
+      },undefined,selectedOrganizationId??undefined);
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['invoices-legacy'] });
       queryClient.invalidateQueries({ queryKey: ['invoice'] });
       queryClient.invalidateQueries({ queryKey: ['invoice-statistics'] });
       queryClient.invalidateQueries({ queryKey: ['excess-amount'] });
 
-      toast({
-        title: 'Hoá đơn đã được huỷ',
-        description: 'Hoá đơn nằm trong mục "Đã huỷ" và có thể phục hồi.',
-      });
+      toast(invoiceLifecycleFeedback(result,"huỷ"));
     },
-    onError: (error: Error) => {
+    onError: (error: Error, invoiceId: string) => {
       toast({
         variant: 'destructive',
         title: 'Có lỗi xảy ra khi huỷ hoá đơn',
-        description: error.message,
+        description: error instanceof FinancialWorkflowError ? workflowErrorMessage(error,"huỷ hoá đơn") : invoiceFailureMessage(error,"huỷ hoá đơn"),
       });
     },
   });

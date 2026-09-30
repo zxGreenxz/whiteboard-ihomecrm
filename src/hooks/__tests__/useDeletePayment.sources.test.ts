@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -24,13 +25,16 @@ vi.mock("@/hooks/use-toast", () => ({
   useToast: vi.fn(() => ({ toast: mocks.toast })),
 }));
 
+vi.mock('@/contexts/OrganizationContext',()=>({useOrganization:()=>({selectedOrganizationId:'org1'})}));
+vi.mock('@/lib/authSession',()=>({getSessionUser:async()=>({id:'u1'})}));
+
 import { COLLECTION_BLOCK_TEXT, undoErrorText, useDeletePayment } from "../useDeletePayment";
 
 const LY_DO = "Thu trùng với anh Hiển lúc 14:05";
 
 beforeEach(() => {
-  vi.clearAllMocks();
-  mocks.rpc.mockResolvedValue({ data: { status: "REVERSED" }, error: null });
+  vi.clearAllMocks();localStorage.clear();localStorage.setItem('ihomecrm.selectedOrganizationId','org1');
+  mocks.rpc.mockImplementation((_name,args)=>Promise.resolve({data:{collection_id:args.p_collection_id,status:"REVERSED",reversal_mode:"COUNTER_VOUCHER"},error:null}));
 });
 
 describe("useDeletePayment source routing", () => {
@@ -58,15 +62,14 @@ describe("useDeletePayment source routing", () => {
       payment_id: null,
       collection_id: "collection-pure-credit",
       mode: "COLLECTION_REVERSED",
-      // Đợt 5: payload không có `reversal_mode` (ở đây mock trả {status}) thì
-      // FE đọc ra null và giữ nguyên câu chữ trung tính.
-      reversalMode: null,
+      // Receipt SQL nêu rõ đường counter-voucher đã chạy. Không đoán từ state thiếu mode.
+      reversalMode: "COUNTER_VOUCHER",
     });
   });
 
   it("đọc được đường server đã chạy khi payload có reversal_mode (Đợt 5)", async () => {
     mocks.rpc.mockResolvedValue({
-      data: { status: "REVERSED", reversal_mode: "IN_PLACE_CANCEL" },
+      data: {collection_id:"collection-inplace",status: "REVERSED", reversal_mode: "IN_PLACE_CANCEL" },
       error: null,
     });
     const mutation = useDeletePayment() as unknown as {

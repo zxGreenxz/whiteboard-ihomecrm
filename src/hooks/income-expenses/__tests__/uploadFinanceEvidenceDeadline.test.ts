@@ -44,7 +44,7 @@ describe("uploadFinanceEvidence", () => {
     mock.rpc.mockImplementation(async (fn: string) =>
       fn === "create_finance_evidence_upload_intent_v2"
         ? { data: { evidence_id: "ev-2", bucket_id: "finance-evidence", object_name: "v2/org/x/ev-2" }, error: null }
-        : { data: null, error: null });
+        : { data: { evidence_id: "ev-2", state: "FINALIZED" }, error: null });
     mock.upload.mockResolvedValue({ data: { path: "v2/org/x/ev-2" }, error: null });
     const file = new File([new Uint8Array(1_000)], "bill.png", { type: "image/png" });
     await expect(uploadFinanceEvidence(file, "org")).resolves.toBe("ev-2");

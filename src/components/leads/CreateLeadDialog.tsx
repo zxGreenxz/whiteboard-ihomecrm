@@ -1,6 +1,9 @@
+import {recordWriteBlocked,recordWriteMessage} from '@/lib/recordWriteOutcome';
+import { useRef, useState } from 'react';
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
+import { focusFirstError } from '@/lib/formErrors';
 import {
   Dialog,
   DialogContent,
@@ -55,9 +58,13 @@ interface CreateLeadDialogProps {
 }
 
 export function CreateLeadDialog({ open, onOpenChange }: CreateLeadDialogProps) {
+  const formRef = useRef<HTMLFormElement>(null);
+  const [blocked,setBlocked]=useState(false);
+  const busy=useRef(false);
   const createLead = useCreateLead();
-  const { data: buildings = [] } = useBuildings();
-  const { data: rooms = [] } = useRooms();
+  const buildingsQuery=useBuildings();const roomsQuery=useRooms();
+  const {data:buildings=[]}=buildingsQuery;const {data:rooms=[]}=roomsQuery;
+  const sourceBlocked=buildingsQuery.isLoading || buildingsQuery.isError || roomsQuery.isLoading || roomsQuery.isError;
 
   const form = useForm<LeadFormValues>({
     resolver: zodResolver(leadSchema),
@@ -84,6 +91,8 @@ export function CreateLeadDialog({ open, onOpenChange }: CreateLeadDialogProps) 
     : rooms;
 
   const onSubmit = async (data: LeadFormValues) => {
+    if(blocked || busy.current || createLead.isPending || sourceBlocked)return;
+    busy.current=true;form.clearErrors('root.server');
     try {
       await createLead.mutateAsync({
         ...data,
@@ -100,12 +109,13 @@ export function CreateLeadDialog({ open, onOpenChange }: CreateLeadDialogProps) 
       form.reset();
       onOpenChange(false);
     } catch (error) {
-      console.error("Failed to create lead:", error);
-    }
+      setBlocked(recordWriteBlocked(error));
+      form.setError('root.server',{type:'server',message:recordWriteMessage(error,'tạo khách hẹn')});
+    } finally {busy.current=false;}
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={next=>{if(!busy.current && !createLead.isPending)onOpenChange(next);}}>
       <DialogContent className="max-w-2xl max-h-[90vh]">
         <DialogHeader>
           <DialogTitle>Tạo khách hẹn mới</DialogTitle>
@@ -116,7 +126,10 @@ export function CreateLeadDialog({ open, onOpenChange }: CreateLeadDialogProps) 
 
         <ScrollArea className="max-h-[calc(90vh-120px)] pr-4">
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <form ref={formRef} onSubmit={form.handleSubmit(onSubmit, errors => { void focusFirstError(errors, { root: formRef.current }); })} className="space-y-4">
+              {form.formState.errors.root?.server?.message && <p role="alert" className="text-destructive">{form.formState.errors.root.server.message}</p>}
+              {sourceBlocked && <div role="alert" className="text-destructive">Chưa tải đủ toà nhà hoặc căn hộ. <Button type="button" variant="outline" onClick={()=>{void buildingsQuery.refetch();void roomsQuery.refetch();}}>Tải lại dữ liệu</Button></div>}
+              <fieldset disabled={createLead.isPending || blocked || sourceBlocked} className="space-y-4">
               {/* Tên & SĐT */}
               <div className="grid grid-cols-2 gap-4">
                 <FormField
@@ -356,10 +369,11 @@ export function CreateLeadDialog({ open, onOpenChange }: CreateLeadDialogProps) 
                 >
                   Hủy
                 </Button>
-                <Button type="submit" disabled={createLead.isPending}>
+                <Button type="submit" disabled={createLead.isPending || blocked || sourceBlocked}>
                   {createLead.isPending ? "Đang tạo..." : "Tạo khách hẹn"}
                 </Button>
               </div>
+              </fieldset>
             </form>
           </Form>
         </ScrollArea>

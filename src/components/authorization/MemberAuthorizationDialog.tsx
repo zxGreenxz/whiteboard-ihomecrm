@@ -1,3 +1,6 @@
+import { focusFirstError } from '@/lib/formErrors';
+import { actionErrorMessage } from '@/lib/actionFeedback';
+import { QueryRegion } from '@/components/errors/QueryRegion';
 // Hộp thoại phân quyền một thành viên — 3 tab:
 //
 //   ① Vai trò & phạm vi  — cấp quyền theo GÓI, áp ở đâu (99% việc thường ngày)
@@ -16,7 +19,7 @@
 //    Máy chủ so lệch thì trả 40001 và ta mời tải lại, thay vì âm thầm đè lên
 //    thay đổi của người khác.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   Check,
@@ -88,11 +91,17 @@ interface Props {
 }
 
 export function MemberAuthorizationDialog({ membershipId, open, onOpenChange }: Props) {
-  const { data: mem, isLoading, refetch } = useMemberAuthorization(open ? membershipId : null);
-  const { data: roles = [] } = useOrganizationRoles(open);
-  const { data: catalog } = useAuthorizationCatalog(open);
+  const memberQuery = useMemberAuthorization(open ? membershipId : null);
+  const { data: mem, isLoading, refetch } = memberQuery;
+  const rolesQuery = useOrganizationRoles(open);
+  const { data: roles = [] } = rolesQuery;
+  const catalogQuery = useAuthorizationCatalog(open);
+  const { data: catalog } = catalogQuery;
   const luu = useSaveMemberAuthorization();
 
+  const draftMember = useRef<string | null>(null);
+  const [serverError, setServerError] = useState('');
+  const [submitted, setSubmitted] = useState(false);
   const [tab, setTab] = useState('vaitro');
   const [rows, setRows] = useState<RoleRow[]>([]);
   const [ovs, setOvs] = useState<OverrideRow[]>([]);
@@ -145,7 +154,11 @@ export function MemberAuthorizationDialog({ membershipId, open, onOpenChange }: 
 
   // Nạp lại mỗi lần mở / đổi người — gộp binding trùng vai trò (xem đầu file).
   useEffect(() => {
-    if (!mem) return;
+    if (!open) { draftMember.current = null; return; }
+    if (!mem || draftMember.current === mem.membershipId) return;
+    draftMember.current = mem.membershipId;
+    setServerError("");
+    setSubmitted(false);
     const gop = new Map<string, Set<string>>();
     for (const b of mem.roleBindings) {
       const s = gop.get(b.roleId) ?? new Set<string>();
@@ -164,7 +177,7 @@ export function MemberAuthorizationDialog({ membershipId, open, onOpenChange }: 
     setLyDo('');
     setOvMo(null);
     setTab('vaitro');
-  }, [mem]);
+  }, [mem, open]);
 
   const soBindingGoc = mem?.roleBindings.length ?? 0;
   const seGopLai = soBindingGoc > rows.length;
@@ -242,7 +255,22 @@ export function MemberAuthorizationDialog({ membershipId, open, onOpenChange }: 
   if (!lyDo.trim() && coDoi) loiKiem.push('Hãy ghi lý do cho lần thay đổi này.');
 
   const guiLuu = async () => {
-    if (!mem || loiKiem.length) return;
+    if (!mem || serverError) return;
+    setSubmitted(true);
+    const errors: Record<string,string> = {};
+    rows.forEach((row,index) => { if(!row.scopeIds.length) errors[`roles.${index}.scopes`] = 'Chọn ít nhất một phạm vi cho vai trò này.'; });
+    ovs.forEach((row,index) => {
+      if(!row.scopeIds.length) errors[`overrides.${index}.scopes`] = 'Chọn ít nhất một phạm vi cho ngoại lệ này.';
+      if(!row.reason.trim()) errors[`overrides.${index}.reason`] = 'Nhập lý do cấp ngoại lệ.';
+    });
+    if(!lyDo.trim()) errors.lydo = 'Nhập lý do thay đổi phân quyền.';
+    if(loiKiem.length) {
+      await focusFirstError(errors,{ reveal: name => {
+        if(name.startsWith('roles.')) setTab('vaitro');
+        if(name.startsWith('overrides.')) { setTab('ngoaile'); setOvMo(Number(name.split('.')[1])); }
+      }});
+      return;
+    }
     const roleBindings: SaveRoleBinding[] = rows.map((r) => ({
       role_id: r.roleId,
       scope_ids: r.scopeIds,
@@ -267,9 +295,8 @@ export function MemberAuthorizationDialog({ membershipId, open, onOpenChange }: 
         reason: lyDo.trim(),
       });
       onOpenChange(false);
-    } catch {
-      // toast đã hiện ở hook; giữ hộp thoại để người dùng không mất thao tác.
-      refetch();
+    } catch (error) {
+      setServerError(actionErrorMessage(error, "Chưa xác nhận được kết quả lưu phân quyền"));
     }
   };
 
@@ -298,6 +325,7 @@ export function MemberAuthorizationDialog({ membershipId, open, onOpenChange }: 
           </DialogDescription>
         </DialogHeader>
 
+        <QueryRegion label="phân quyền, vai trò và phạm vi" queries={[memberQuery, rolesQuery, catalogQuery]}>
         {isLoading || !mem ? (
           <div className="space-y-3 p-6">
             <Skeleton className="h-9 w-full" />
@@ -396,6 +424,7 @@ export function MemberAuthorizationDialog({ membershipId, open, onOpenChange }: 
                           </p>
                         ) : null}
                         <Separator className="my-3" />
+                        <div data-field-name={`roles.${i}.scopes`} aria-invalid={submitted && !r.scopeIds.length} className={submitted && !r.scopeIds.length ? "rounded border border-destructive p-2" : undefined}>
                         <ScopePicker
                           scopes={scopes}
                           value={r.scopeIds}
@@ -403,6 +432,8 @@ export function MemberAuthorizationDialog({ membershipId, open, onOpenChange }: 
                             setRows((s) => s.map((x, j) => (j === i ? { ...x, scopeIds: v } : x)))
                           }
                         />
+                        {submitted && !r.scopeIds.length && <p role="alert" className="text-sm text-destructive">Chọn ít nhất một phạm vi cho vai trò này.</p>}
+                        </div>
                       </div>
                     );
                   })}
@@ -576,6 +607,7 @@ export function MemberAuthorizationDialog({ membershipId, open, onOpenChange }: 
                                           quyền này — hãy chọn tay bên dưới.
                                         </p>
                                       )}
+                                      <div data-field-name={`overrides.${i}.scopes`} aria-invalid={submitted && !o.scopeIds.length} className={submitted && !o.scopeIds.length ? "rounded border border-destructive p-2" : undefined}>
                                       <ScopePicker
                                         className="mt-2"
                                         scopes={scopes}
@@ -583,6 +615,8 @@ export function MemberAuthorizationDialog({ membershipId, open, onOpenChange }: 
                                         value={o.scopeIds}
                                         onChange={datPhamVi}
                                       />
+                                      {submitted && !o.scopeIds.length && <p role="alert" className="text-sm text-destructive">Chọn ít nhất một phạm vi cho ngoại lệ này.</p>}
+                                      </div>
                                     </>
                                   );
                                 })()}
@@ -591,6 +625,7 @@ export function MemberAuthorizationDialog({ membershipId, open, onOpenChange }: 
                                 <Label className="text-xs">Lý do (bắt buộc)</Label>
                                 <Textarea
                                   className="mt-1.5 h-24 resize-none"
+                                  name={`overrides.${i}.reason`} aria-invalid={submitted && !o.reason.trim()}
                                   value={o.reason}
                                   placeholder="Vd: tạm cấp trong thời gian chị Lan nghỉ thai sản"
                                   onChange={(e) =>
@@ -677,7 +712,7 @@ export function MemberAuthorizationDialog({ membershipId, open, onOpenChange }: 
                 Lý do thay đổi (ghi vào nhật ký, bắt buộc)
               </Label>
               <Input
-                id="lydo"
+                id="lydo" name="lydo" aria-invalid={submitted && !lyDo.trim()}
                 className="mt-1.5"
                 value={lyDo}
                 placeholder="Vd: bàn giao khu B cho anh Nam từ 01/08"
@@ -685,6 +720,7 @@ export function MemberAuthorizationDialog({ membershipId, open, onOpenChange }: 
               />
             </div>
 
+            {serverError && <div role="alert" className="mx-6 rounded border border-destructive p-3 text-sm"><p>{serverError}</p><Button type="button" variant="outline" className="mt-2" onClick={() => { draftMember.current = null; void refetch(); }}>Tải bản mới và bỏ các thay đổi đang nhập</Button></div>}
             <DialogFooter className="flex-col gap-2 border-t px-6 py-3 sm:flex-row sm:items-center">
               <div className="mr-auto min-w-0 text-xs">
                 {loiKiem.length > 0 ? (
@@ -710,7 +746,7 @@ export function MemberAuthorizationDialog({ membershipId, open, onOpenChange }: 
               <Button variant="outline" onClick={() => onOpenChange(false)}>
                 Đóng
               </Button>
-              <Button onClick={guiLuu} disabled={!coDoi || loiKiem.length > 0 || luu.isPending}>
+              <Button onClick={guiLuu} disabled={!coDoi || !!serverError || luu.isPending}>
                 {luu.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Lưu phân quyền
               </Button>
@@ -718,6 +754,7 @@ export function MemberAuthorizationDialog({ membershipId, open, onOpenChange }: 
           </>
         )}
 
+        </QueryRegion>
         {/* Chọn quyền để thêm ngoại lệ */}
         <Dialog open={themQuyen} onOpenChange={setThemQuyen}>
           <DialogContent className="max-w-2xl">

@@ -1,3 +1,5 @@
+import { parsePublicInvoice, type PublicPayload } from '@/lib/publicInvoicePayload';
+import { PublicRequestError, publicFailure } from '@/lib/publicFeedback';
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -12,46 +14,6 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Receipt, AlertCircle, CheckCircle, Building2, WifiOff } from 'lucide-react';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
-
-type Item = {
-  id: string;
-  type: string | null;
-  description: string | null;
-  unit_price: number | null;
-  quantity: number | null;
-  coefficient: number | null;
-  amount: number | null;
-  previous_reading: number | null;
-  current_reading: number | null;
-  from_date: string | null;
-  to_date: string | null;
-};
-
-type PublicInvoice = {
-  id: string;
-  invoice_number: string | null;
-  billing_month: string | null;
-  issue_date: string | null;
-  due_date: string | null;
-  status: string;
-  subtotal: number | null;
-  discount_amount: number | null;
-  total_amount: number | null;
-  paid_amount: number | null;
-  remaining_amount: number | null;
-  previous_debt: number | null;
-  items: Item[];
-};
-
-type PublicPayload = {
-  invoice: PublicInvoice | null;
-  room: { id: string; name: string; code: string | null } | null;
-  building: { id: string; name: string } | null;
-  // Số điện thoại đã bị bỏ khỏi payload ở 20260808100000: bề mặt này anon gọi
-  // được chỉ bằng một mã hợp đồng 6 ký tự, nên mọi trường ở đây là dữ liệu công
-  // khai với bất kỳ ai đoán trúng mã.
-  customer?: { full_name: string } | null;
-};
 
 const formatCurrency = (n: number | null | undefined) =>
   new Intl.NumberFormat('vi-VN', {
@@ -88,7 +50,7 @@ const statusLabel = (s: string) => {
     case 'APPROVED':
       return { label: 'Chờ thanh toán', variant: 'outline' as const };
     default:
-      return { label: s, variant: 'outline' as const };
+      return { label: 'Đang cập nhật trạng thái', variant: 'outline' as const };
   }
 };
 
@@ -127,8 +89,8 @@ async function fetchPublicInvoice(code: string): Promise<PublicPayload | null> {
     // và màn "mất kết nối" báo sai chuyện đang xảy ra. Nhiều khách chung một
     // NAT/4G có thể dính chung hạn mức nên thông điệp phải nói rõ "thử lại sau".
     if (res.status === 429) throw new RateLimitedError();
-    if (!res.ok) throw new Error(`RPC ${res.status}`);
-    return (await res.json()) as PublicPayload | null;
+    if (!res.ok) throw new PublicRequestError(res.status);
+    return parsePublicInvoice(await res.json());
   } finally {
     clearTimeout(timer);
   }
@@ -139,6 +101,7 @@ export default function PublicContractInvoicePage() {
 
   const { data, isLoading, error, refetch, isRefetching } = useQuery({
     queryKey: ['public-contract-invoice', code],
+    meta: { errorDisplay: 'inline', label: 'hóa đơn công khai' },
     enabled: !!code,
     // Thử lại khi bị giới hạn tốc độ chỉ làm khách chờ lâu hơn — hạn mức tính
     // theo cửa sổ 10 phút, ba lần gọi cách nhau vài giây không thể qua được.
@@ -186,9 +149,7 @@ export default function PublicContractInvoicePage() {
             <WifiOff className="h-10 w-10 text-orange-500 mx-auto" />
             <div className="font-medium">Không tải được hoá đơn</div>
             <p className="text-sm text-gray-600">
-              Kết nối mạng đang chập chờn hoặc trình duyệt trong ứng dụng
-              (Zalo/Messenger) gặp sự cố. Vui lòng bấm thử lại, hoặc mở liên
-              kết bằng Safari/Chrome.
+              {publicFailure(error, "tải hóa đơn")}
             </p>
             <Button onClick={() => refetch()} disabled={isRefetching}>
               {isRefetching ? 'Đang thử lại…' : 'Thử lại'}

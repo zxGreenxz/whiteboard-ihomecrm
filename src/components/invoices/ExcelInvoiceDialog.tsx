@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import {QueryRegion} from '@/components/errors/QueryRegion';
+import {invoiceFailureMessage} from '@/lib/invoiceFeedback';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { format, addMonths, endOfMonth, startOfMonth, parse } from 'date-fns';
 import { Table as TableIcon, Download, Loader2, Pencil, RotateCcw } from 'lucide-react';
 import { DiscountNoteTrigger } from './DiscountNoteTrigger';
@@ -58,7 +60,8 @@ const fmt = (n: number) =>
 
 export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
   const { toast } = useToast();
-  const { data: buildings } = useBuildings({ enabled: open });
+  const buildingsQuery = useBuildings({ enabled: open });
+  const { data: buildings } = buildingsQuery;
   const submitExcel = useSubmitExcelInvoices();
 
   const [buildingId, setBuildingId] = useState('');
@@ -68,9 +71,15 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
   const [rows, setRows] = useState<RowData[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [submitResult,setSubmitResult]=useState<Awaited<ReturnType<typeof submitExcel.submit>>|null>(null);
+  const [submitError,setSubmitError]=useState<string|null>(null);
+  const lockedContractsRef=useRef(new Set<string>());
   const [prorateRowIdx, setProrateRowIdx] = useState<number | null>(null);
 
-  const { data: bldSvc } = useBuildingServices(buildingId);
+  const servicesQuery = useBuildingServices(buildingId);
+  const { data: bldSvc } = servicesQuery;
+  const sourceQueries=buildingId?[buildingsQuery,servicesQuery]:[buildingsQuery];
+  const sourcesBlocked=sourceQueries.some(q=>q.isError||q.isLoading||q.data===undefined);
 
   // Đơn giá mặc định theo toà — logic trong lib (resolveBuildingDefaults),
   // chỉ xét dịch vụ đang BẬT, fallback hardcode khi toà chưa cấu hình.
@@ -79,7 +88,7 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
   // Load rooms + active contracts + meters + last reading for the building.
   // Fetch nằm ở hook (fetchExcelInvoiceSource), transform ở lib (buildExcelRows).
   const handleLoad = async () => {
-    if (!buildingId) return;
+    if (!buildingId||sourcesBlocked) return;
     setLoaded(false);
     try {
       const src = await fetchExcelInvoiceSource(buildingId);
@@ -97,7 +106,7 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
       toast({
         variant: 'destructive',
         title: 'Lỗi tải dữ liệu',
-        description: (err as Error)?.message || 'Không tải được danh sách phòng',
+        description: invoiceFailureMessage(err,'tải phòng và dữ liệu lập hoá đơn'),
       });
     }
   };
@@ -142,6 +151,7 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
   const reloadPreviousDebt = async (idx: number) => {
     const row = rows[idx];
     if (!row) return;
+    try {
     const { total, sources } = await fetchPreviousDebtForContract(row.contract_id);
     setRows((prev) => {
       const next = [...prev];
@@ -154,6 +164,7 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
       };
       return next;
     });
+    } catch(error){setSubmitError(invoiceFailureMessage(error,`tải lại nợ cũ của phòng ${row.room_name}`));}
   };
 
   const computeRowTotal = computeExcelRowTotal;
@@ -170,7 +181,7 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
 
   const allSelected = rows.length > 0 && rows.every((r) => r.selected);
   const toggleAll = () =>
-    setRows((prev) => prev.map((r) => ({ ...r, selected: !allSelected })));
+    setRows((prev) => prev.map((r) => ({ ...r, selected: !lockedContractsRef.current.has(`${billingMonth}:${r.contract_id}`) && !allSelected })));
 
   const handleClose = () => {
     setRows([]);
@@ -179,12 +190,18 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
   };
 
   const handleSubmit = async () => {
+    if(sourcesBlocked)return;
     const selected = rows.filter((r) => r.selected);
     if (selected.length === 0) {
       toast({ variant: 'destructive', title: 'Chưa chọn phòng nào' });
       return;
     }
+    if(selected.some(row=>lockedContractsRef.current.has(`${billingMonth}:${row.contract_id}`))) {
+      setSubmitError('Một số phòng đã tạo hoá đơn, đã lưu chỉ số hoặc chưa rõ kết quả. Kiểm tra biên nhận bên dưới trước khi thao tác tiếp.');
+      return;
+    }
     setSubmitting(true);
+    setSubmitError(null);
     const periodStart = startOfMonth(parse(billingMonth + '-01', 'yyyy-MM-dd', new Date()));
     const periodEnd = endOfMonth(periodStart);
     const ctx: SubmitContext = {
@@ -198,20 +215,17 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
     };
     // Chốt chỉ số điện + tạo hoá đơn từng phòng — orchestration ở hook, items
     // build ở lib (test chốt hành vi). Thứ tự + xử lý lỗi giữ y bản cũ.
-    const { ok, fail, readingFails } = await submitExcel.submit(selected, ctx);
-    setSubmitting(false);
-    toast({
-      title: 'Hoàn tất tạo hoá đơn',
-      description: `Thành công: ${ok}${fail > 0 ? ` — Lỗi: ${fail}` : ''}`,
-    });
-    if (readingFails.length > 0) {
-      toast({
-        variant: 'destructive',
-        title: 'Chưa lưu được chỉ số điện',
-        description: `Đã tạo hoá đơn nhưng KHÔNG lưu được chỉ số điện cho phòng: ${readingFails.join(', ')}. Vui lòng kiểm tra lại.`,
-      });
-    }
-    if (fail === 0) handleClose();
+    try {
+      const result=await submitExcel.submit(selected,ctx);
+      setSubmitResult(result);
+      result.rows.filter(row=>row.invoiceId||row.readingSaved||row.outcomeUnknown).forEach(row=>lockedContractsRef.current.add(`${billingMonth}:${row.contractId}`));
+      setRows(previous=>previous.map(row=>lockedContractsRef.current.has(`${billingMonth}:${row.contract_id}`)?{...row,selected:false}:row));
+      toast({title:result.fail>0||result.readingFails.length>0?'Đã xử lý một phần':'Đã tạo hoá đơn',description:`Đã xác nhận ${result.ok} hoá đơn; ${result.fail} phòng chưa tạo xong; ${result.readingFails.length} phòng cần kiểm tra chỉ số điện.`});
+      if(result.fail===0 && result.readingFails.length===0) handleClose();
+    } catch(error) {
+      setSubmitError('Chưa hoàn tất tạo hoá đơn. Kiểm tra danh sách hoá đơn và chỉ số điện trước khi thao tác tiếp.');
+    } finally {setSubmitting(false);}
+
   };
 
   return (
@@ -227,6 +241,7 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
           </DialogDescription>
         </DialogHeader>
 
+        <QueryRegion label="danh mục lập hoá đơn" queries={sourceQueries}><span /></QueryRegion>
         <div className="grid grid-cols-5 gap-3 py-2">
           <div className="space-y-1 col-span-2">
             <Label>Toà nhà *</Label>
@@ -262,7 +277,7 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
         </div>
 
         <div className="flex items-center gap-2 pb-2">
-          <Button onClick={handleLoad} disabled={!buildingId}>
+          <Button onClick={handleLoad} disabled={!buildingId||sourcesBlocked}>
             <Download className="h-4 w-4 mr-2" />
             Tải dữ liệu
           </Button>
@@ -311,6 +326,7 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
                     <td className="p-1 border text-center">
                       <Checkbox
                         checked={r.selected}
+                        disabled={lockedContractsRef.current.has(`${billingMonth}:${r.contract_id}`)}
                         onCheckedChange={(v) => updateRow(i, { selected: !!v })}
                       />
                     </td>
@@ -523,13 +539,18 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
           </table>
         </div>
 
+        {submitError && <p role="alert" className="text-sm text-destructive">{submitError}</p>}
+        {submitResult && <div role="status" className="text-sm space-y-1">
+          {submitResult.rows.map(row=><p key={row.contractId}>{row.roomName}: {row.invoiceId?<a className="text-primary underline" href={`/invoices/${row.invoiceId}`} target="_blank" rel="noreferrer">Đã tạo hoá đơn — xem biên nhận</a>:row.error}{row.readingSaved?' Chỉ số điện đã lưu.':''}</p>)}
+          {submitResult.readingFails.length>0 && <p className="text-destructive">Chưa lưu được chỉ số điện: {submitResult.readingFails.join(', ')}. Kiểm tra hoá đơn từng phòng ở trên; không tạo lại những hoá đơn đã có biên nhận.</p>}
+        </div>}
         <DialogFooter className="pt-2">
           <Button variant="outline" onClick={handleClose}>
             Huỷ
           </Button>
           <Button
             onClick={handleSubmit}
-            disabled={submitting || totals.count === 0}
+            disabled={submitting || totals.count === 0 || sourcesBlocked}
             className="bg-indigo-600 hover:bg-indigo-700"
           >
             {submitting ? (

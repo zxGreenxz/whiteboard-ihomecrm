@@ -1,3 +1,5 @@
+import {financialReadRows} from '@/lib/financialReadValidation';
+import { voucherFailureMessage } from "@/lib/voucherFeedback";
 // Hoa hồng của quản lý đi sổ ảo, trả qua lương (migration 20260927155251).
 // Ô "QL" ở phiếu hoa hồng chọn quản lý nhận → assign_commission_manager_v1 chuyển phiếu
 // (còn Chờ duyệt) sang sổ ảo "Hoa hồng QL chờ trả lương": duyệt sau đó vẫn tính chi phí
@@ -30,7 +32,7 @@ export const useOrganizationOfBuilding = (buildingId: string | null | undefined)
         .select("organization_id")
         .eq("id", buildingId as string)
         .maybeSingle();
-      if (error) throw new Error(error.message);
+      if (error) throw error;
       return data?.organization_id ?? null;
     },
   });
@@ -68,8 +70,8 @@ export const useCommissionManagerOptions = (organizationId: string | null | unde
       const { data, error } = await supabase.rpc("commission_manager_options_v1", {
         p_organization_id: organizationId as string,
       });
-      if (error) throw new Error(error.message);
-      return (data || []).map((r) => ({ staffId: r.staff_id, displayName: r.display_name, alias: r.alias }));
+      if (error) throw error;
+      return financialReadRows(data).map((r) => ({ staffId: r.staff_id, displayName: r.display_name, alias: r.alias }));
     },
   });
 
@@ -99,8 +101,10 @@ export async function assignCommissionManager(input: AssignCommissionManagerInpu
     // nội dung trùng liên kết đã có.
     p_idempotency_key: `hhql-${input.voucherId.slice(0, 8)}-${crypto.randomUUID()}`,
   });
-  if (error) throw new Error(error.message);
-  return data as unknown as AssignCommissionManagerResult;
+  if (error) throw error;
+  const receipt=data as unknown as AssignCommissionManagerResult|null;
+  if(!receipt||receipt.voucher_id!==input.voucherId||receipt.manager_id!==input.managerId||!receipt.account_id||!Number.isFinite(receipt.approval_version)||typeof receipt.lap_lai!=="boolean"||(!receipt.lap_lai&&typeof receipt.moved!=="boolean"))throw new TypeError("Chưa xác nhận được quản lý nhận hoa hồng của phiếu");
+  return {...receipt,moved:receipt.moved??false};
 }
 
 export const useAssignCommissionManager = () => {
@@ -111,6 +115,6 @@ export const useAssignCommissionManager = () => {
       await invalidateAfterCommissionAssign(qc);
       toast.success(r.moved ? "Đã gán quản lý — phiếu chuyển sang sổ ảo, tiền trả qua lương" : "Đã gán quản lý nhận hoa hồng");
     },
-    onError: (e: unknown) => toast.error((e as { message?: string } | null)?.message || "Không gán được quản lý"),
+    onError: (e: unknown) => toast.error(voucherFailureMessage(e, "gán quản lý nhận hoa hồng")),
   });
 };

@@ -1,3 +1,4 @@
+import {QueryRegion} from '@/components/errors/QueryRegion';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { useCollectionReport } from '@/hooks/useCollectionReport';
@@ -68,11 +69,12 @@ export function CollectionReport({ show, onClose, buildings, defaultBuildingId, 
     return () => document.removeEventListener('pointerdown', onDown);
   }, [timeOpen]);
 
-  const { invoices } = useCollectionReport({
+  const reportQuery = useCollectionReport({
     building_id: bSel === 'all' ? undefined : bSel,
     billing_month: billingMonth,
   });
 
+  const {invoices}=reportQuery;
   const scopeDay = tSel === 'today' ? todayISO() : day;
   // Đã thu trong phạm vi (thời gian + phương thức). Cả kỳ + mọi phương thức
   // dùng paid_amount (khớp hành vi cũ); còn lại cộng theo phiếu thu vì
@@ -243,6 +245,7 @@ export function CollectionReport({ show, onClose, buildings, defaultBuildingId, 
           </div>
         </div>
 
+        <QueryRegion label="báo cáo thu tiền" queries={[reportQuery]}>
         <div className="sheet-scroll rp-body">
           <div className="rp-total">
             <div className="rp-total-main">
@@ -335,6 +338,7 @@ export function CollectionReport({ show, onClose, buildings, defaultBuildingId, 
             </button>
           </div>
         </div>
+        </QueryRegion>
       </div>
     </>
   );

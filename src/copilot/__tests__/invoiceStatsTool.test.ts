@@ -102,7 +102,7 @@ Tổng phải thu: 12.001 đ; đã trả: 2.000 đ; còn nợ: 10.000 đ.
 
   it('retains RPC failures and refuses missing organization before reading', async () => {
     rpc.mockResolvedValue({ data: zero, error: { message: 'permission denied' } });
-    await expect(tool.execute({}, ctx)).rejects.toThrow('Lỗi tải thống kê hoá đơn: permission denied');
+    await expect(tool.execute({}, ctx)).rejects.toMatchObject({ message: expect.stringMatching(/^Chưa /), cause: { message: 'permission denied' } });
     rpc.mockClear();
     await expect(tool.execute({}, { ...ctx, organizationId: null })).rejects.toThrow('organization_required');
     expect(rpc).not.toHaveBeenCalled();

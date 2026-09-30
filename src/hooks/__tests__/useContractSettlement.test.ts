@@ -290,6 +290,14 @@ describe('useContractSettlement — HHMG thủ công vào Hoa hồng', () => {
     contracts: hopDong('HD-2606-01', '2026-06-12'),
   });
 
+  it('nguồn loại thu chi null là lỗi đọc, không phải danh mục trống', async () => {
+    nap([], []);
+    H.loaiThuChi = { data: null, error: null };
+    const { result } = chay();
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(result.current.error).toBeTruthy();
+  });
+
   it('phiếu hạng mục HHMG thiếu metadata xếp vào Hoa hồng, không Hoàn khách', async () => {
     nap([V()], [{ income_expense_id: V_HHMG_T6, income_expense_type_id: T_HHMG }]);
     const { result } = chay();

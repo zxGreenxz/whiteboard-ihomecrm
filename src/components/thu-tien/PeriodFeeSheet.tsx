@@ -1,3 +1,5 @@
+import { focusFirstError } from "@/lib/formErrors";
+import { voucherFailureMessage, voucherOutcomeUnknown, VoucherPartialError } from "@/lib/voucherFeedback";
 // =============================================================================
 // PeriodFeeSheet V2 — sheet MOBILE "Đóng tiền Tập trung theo Kỳ".
 // Mirror đầy đủ desktop V2: 3 trạng thái ô (chưa/CHỜ DUYỆT/đã đóng), sửa-hủy-ảnh
@@ -162,6 +164,11 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
   const [batchAtts, setBatchAtts] = useState<string[]>([]);
   const [batchUploading, setBatchUploading] = useState(false);
   const batchFileRef = useRef<HTMLInputElement>(null);
+  const batchRoot=useRef<HTMLDivElement>(null);
+  const [batchErrors,setBatchErrors]=useState<Record<string,string>>({});
+  const [batchError,setBatchError]=useState<string|null>(null);
+  const [batchLocked,setBatchLocked]=useState(false);
+  const [batchReceipts,setBatchReceipts]=useState<string[]>([]);
   const [batchLines, setBatchLines] = useState<MaintenanceBatchLine[]>([]);
   const createBatch = useCreateMaintenanceBatch(period);
   const addLine = () => setBatchLines((l) => [...l, { buildingId: buildings[0]?.id ?? '', subtype: 'ml', amount: 0 }]);
@@ -175,17 +182,32 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
     if (err) { toast.error(err); return; }
     setBatchUploading(true);
     try { const url = await uploadReceiptToStorage(file); setBatchAtts((a) => [...a, url]); toast.success('Đã thêm ảnh phiếu tổng'); }
-    catch (ex) { toast.error('Không tải được ảnh: ' + (ex as Error).message); }
+    catch { toast.error(`Chưa tải được ảnh ${file.name}. Giữ ảnh để tải lại; chưa thêm ảnh này vào phiếu tổng.`); }
     finally { setBatchUploading(false); }
   };
   const saveBatch = async () => {
     const book = batchBook ?? S.defaultBookId;
-    if (!book) { toast.error('Chọn sổ quỹ ghi chi'); return; }
+    if (batchLocked) return;
+    const errors:Record<string,string>={};
+    if (!book) errors.batchBook='Chọn sổ quỹ ghi chi';
+    if (!batchDate) errors.batchDate='Chọn ngày phiếu';
+    if (!batchLines.length) errors.batchLines='Thêm ít nhất một dòng bảo trì';
+    batchLines.forEach((line,i)=>{
+      if(!line.buildingId) errors[`batchLines.${i}.buildingId`]='Chọn tòa nhà cho dòng này';
+      if(!Number.isFinite(line.amount)||line.amount<=0)errors[`batchLines.${i}.amount`]='Nhập số tiền lớn hơn 0 cho dòng này';
+    });
+    setBatchErrors(errors);setBatchError(null);
+    if(Object.keys(errors).length){void focusFirstError(errors,{root:batchRoot.current,order:['batchDate','batchBook','batchLines']});return;}
+
     try {
-      await createBatch.mutateAsync({ payerName: payer, voucherDate: batchDate, accountId: book, lines: batchLines.filter((l) => l.buildingId && l.amount > 0), attachments: batchAtts });
-      toast.success('Đã tạo phiếu tổng bảo trì');
+      const result=await createBatch.mutateAsync({ payerName: payer, voucherDate: batchDate, accountId: book!, lines: batchLines, attachments: batchAtts });
+      toast.success(`Đã tạo đợt bảo trì gồm ${result.voucherCount} phiếu. Xem trạng thái duyệt và thu/chi của từng phiếu.`);
       setCreateOpen(false); setBatchLines([]); setPayer(''); setBatchAtts([]);
-    } catch (ex) { toast.error((ex as Error).message); }
+    } catch (ex) {
+      const message=voucherFailureMessage(ex,'tạo đợt bảo trì');setBatchError(message);toast.error(message);
+      if(ex instanceof VoucherPartialError){setBatchReceipts([...ex.completedIds]);setBatchLocked(true);}
+      else if(voucherOutcomeUnknown(ex))setBatchLocked(true);
+    }
   };
 
   const mText = (m: 'ml' | 'mg') => (m === 'ml' ? 'Máy lạnh' : 'Máy giặt');
@@ -237,10 +259,10 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
           </div>
         ) : (
           <div className="ubc-pay">
-            <input className="ub-amt" type="text" inputMode="numeric" placeholder="Số tiền" value={formatVN(amount)} onFocus={() => EN.setActiveKey(k)} onChange={(e) => EN.setAmount(k, parseVN(e.target.value))} />
+            <><input name={`utility_amount_${k}`} aria-invalid={!!EN.amountErrors?.[k]} aria-describedby={EN.amountErrors?.[k]?`${`utility_amount_${k}`}-error`:undefined} style={{borderColor:EN.amountErrors?.[k]?"hsl(var(--destructive))":undefined}} className="ub-amt" type="text" inputMode="numeric" placeholder="Số tiền" value={formatVN(amount)} onFocus={() => EN.setActiveKey(k)} onChange={(e) => EN.setAmount(k, parseVN(e.target.value))} /><span id={`${`utility_amount_${k}`}-error`} role={EN.amountErrors?.[k]?"alert":undefined} className="text-xs text-destructive">{EN.amountErrors?.[k]}</span></>
             <UtilityBookMenu accounts={EN.myBooks} valueId={EN.bookSel[k] ?? null} defaultId={EN.defaultBookId} onPick={(id) => EN.setBook(k, id)} compact disabled={!canRecordPayment} />
             <button type="button" className={'ub-attach' + (EN.attach[k] ? ' has' : '')} disabled={!canRecordPayment || EN.uploadingKey === k} onClick={() => EN.onAttachClick(k)}>{EN.uploadingKey === k ? <span className="ub-spin dark" /> : <Camera />}</button>
-            <button type="button" className="ub-paybtn" disabled={!canRecordPayment || amount <= 0 || paying} onClick={() => EN.submitPay(row, row.buildingName)}>{paying ? <span className="ub-spin" /> : <Check />}</button>
+            <button type="button" className="ub-paybtn" disabled={!canRecordPayment || paying} onClick={(e) => EN.submitPay(row, row.buildingName,e.currentTarget.closest('tr')??e.currentTarget.parentElement)}>{paying ? <span className="ub-spin" /> : <Check />}</button>
           </div>
         )}
       </div>
@@ -332,11 +354,11 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
         ) : (
           <>
             <div className="ubc-pay">
-              <input className="ub-amt" type="text" inputMode="numeric" placeholder={def ? formatVN(def * (cat!.multiPeriod ? n : 1)) : 'Số tiền'} value={formatVN(amount)} onChange={(e) => S.setAmount(b.id, parseVN(e.target.value))} />
+              <><input name={`fee_amount_${b.id}`} aria-invalid={!!S.amountErrors?.[b.id]} aria-describedby={S.amountErrors?.[b.id]?`${`fee_amount_${b.id}`}-error`:undefined} style={{borderColor:S.amountErrors?.[b.id]?"hsl(var(--destructive))":undefined}} className="ub-amt" type="text" inputMode="numeric" placeholder={def ? formatVN(def * (cat!.multiPeriod ? n : 1)) : 'Số tiền'} value={formatVN(amount)} onChange={(e) => S.setAmount(b.id, parseVN(e.target.value))} /><span id={`${`fee_amount_${b.id}`}-error`} role={S.amountErrors?.[b.id]?"alert":undefined} className="text-xs text-destructive">{S.amountErrors?.[b.id]}</span></>
               <button type="button" className="ptt-exppencil" title="Số tiền dự kiến" onClick={() => setExpectedEdit({ bId: b.id, value: def ?? 0 })}><Pencil /></button>
               <UtilityBookMenu accounts={S.myBooks} valueId={S.bookSel[b.id] ?? null} defaultId={S.defaultBookFor(b.id)} onPick={(id) => S.setBook(b.id, id)} compact disabled={!canRecordPayment} />
               <button type="button" className={'ub-attach' + (S.attach[b.id] ? ' has' : '')} disabled={!canRecordPayment || S.uploadingKey === b.id} onClick={() => S.onAttachClick(b.id)}>{S.uploadingKey === b.id ? <span className="ub-spin dark" /> : <Camera />}</button>
-              <button type="button" className="ub-paybtn" disabled={!canRecordPayment || amount <= 0 || paying} onClick={() => S.submitPay(b.id)}>{paying ? <span className="ub-spin" /> : <Check />}</button>
+              <button type="button" className="ub-paybtn" disabled={!canRecordPayment || paying} onClick={(e) => S.submitPay(b.id,e.currentTarget.closest('tr')??e.currentTarget.parentElement)}>{paying ? <span className="ub-spin" /> : <Check />}</button>
             </div>
             {cat!.multiPeriod && n > 1 && amount > 0 && <div className="ptt-total">≈ <b>{fmtFull(Math.round(amount / n))}</b>/kỳ × {n} kỳ</div>}
           </>
@@ -527,17 +549,17 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
                 <div className="ptt-batch-form m">
                   <label className="ptt-field"><span className="ptt-field-lbl">Nhà cung cấp</span><input className="ptt-field-in" value={payer} placeholder="Tên NCC" onChange={(e) => setPayer(e.target.value)} /></label>
                   <div className="ptt-edit-row">
-                    <label className="ptt-field"><span className="ptt-field-lbl">Ngày phiếu</span><input type="date" className="ptt-field-in" value={batchDate} onChange={(e) => setBatchDate(e.target.value)} /></label>
-                    <label className="ptt-field"><span className="ptt-field-lbl">Sổ quỹ</span><UtilityBookMenu accounts={S.myBooks} valueId={batchBook} defaultId={S.defaultBookId} onPick={setBatchBook} compact /></label>
+                    <label className="ptt-field"><span className="ptt-field-lbl">Ngày phiếu</span><input type="date" name="batchDate" aria-invalid={!!batchErrors.batchDate} aria-describedby="batchDate-error" className="ptt-field-in aria-[invalid=true]:border-destructive" value={batchDate} onChange={(e) => setBatchDate(e.target.value)} /></label>
+                    <label className="ptt-field"><span className="ptt-field-lbl">Sổ quỹ</span><span data-field-name="batchBook" tabIndex={-1} aria-invalid={!!batchErrors.batchBook} className={batchErrors.batchBook?"rounded border border-destructive":""}><UtilityBookMenu accounts={S.myBooks} valueId={batchBook} defaultId={S.defaultBookId} onPick={setBatchBook} compact /></span></label>
                   </div>
                   <div className="ptt-batch-lines">
                     {batchLines.map((ln, i) => (
                       <div className="ptt-batch-line" key={i}>
-                        <select className="ptt-batch-bld" value={ln.buildingId} onChange={(e) => setLine(i, { buildingId: e.target.value })}>
+                        <select name={`batchLines.${i}.buildingId`} aria-invalid={!!batchErrors[`batchLines.${i}.buildingId`]} aria-describedby={`batchLines.${i}.buildingId-error`} className="ptt-batch-bld aria-[invalid=true]:border-destructive" value={ln.buildingId} onChange={(e) => setLine(i, { buildingId: e.target.value })}>
                           {buildings.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
                         </select>
                         <select className="ptt-batch-sub" value={ln.subtype} onChange={(e) => setLine(i, { subtype: e.target.value as 'ml' | 'mg' })}><option value="ml">ML</option><option value="mg">MG</option></select>
-                        <input className="ptt-batch-amt mono" inputMode="numeric" placeholder="Tiền" value={formatVN(ln.amount)} onChange={(e) => setLine(i, { amount: parseVN(e.target.value) })} />
+                        <input name={`batchLines.${i}.amount`} aria-invalid={!!batchErrors[`batchLines.${i}.amount`]} aria-describedby={`batchLines.${i}.amount-error`} className="ptt-batch-amt mono aria-[invalid=true]:border-destructive" inputMode="numeric" placeholder="Tiền" value={formatVN(ln.amount)} onChange={(e) => setLine(i, { amount: parseVN(e.target.value) })} />
                         <button type="button" className="ptt-batch-rm" onClick={() => rmLine(i)}><Trash2 /></button>
                       </div>
                     ))}
@@ -554,7 +576,7 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
                     <span className="ptt-batch-totallbl">Tổng</span>
                     <span className="ptt-batch-total">{fmtFull(batchTotal)}</span>
                     <button type="button" className="ptt-btn ghost sm" onClick={() => setCreateOpen(false)}>Hủy</button>
-                    <button type="button" className="ptt-btn go sm" disabled={createBatch.isPending} onClick={saveBatch}>{createBatch.isPending ? <span className="ub-spin" /> : <Check />}Lưu</button>
+                    <button type="button" className="ptt-btn go sm" disabled={createBatch.isPending || batchLocked} onClick={saveBatch}>{createBatch.isPending ? <span className="ub-spin" /> : <Check />}Lưu</button>
                   </div>
                 </div>
               )}

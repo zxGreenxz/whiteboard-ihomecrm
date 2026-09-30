@@ -17,6 +17,7 @@ import type { LeadWithRelations } from "@/hooks/useLeads";
 import { useMyPermissions } from "@/hooks/useMyPermissions";
 import { canUse } from "@/lib/permissionPages";
 import { usePersistedState } from "@/hooks/usePersistedState";
+import { QueryRegion } from '@/components/errors/QueryRegion';
 
 const LEAD_STATUSES = [
   { value: "B1_LEAD", label: "Mới", color: "bg-blue-100 text-blue-800" },
@@ -48,7 +49,8 @@ const LeadsPage = () => {
   const [shown, setShown] = useState<Record<string, number>>({});
 
   useCopilotPageContext('leads.list', { search: searchTerm }, detailDialogOpen ? selectedLead : null);
-  const { data: leads = [], isLoading } = useLeads();
+  const leadQuery = useLeads();
+  const { data: leads = [], isLoading } = leadQuery;
   const deleteMutation = useDeleteLead();
   const { data: perms } = useMyPermissions();
   const canCreateLead = canUse(perms, "leads", "create");
@@ -121,6 +123,7 @@ const LeadsPage = () => {
 
   return (
     <MainLayout>
+      <QueryRegion label="danh sách khách hẹn" queries={[leadQuery]}>
       <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -264,6 +267,7 @@ const LeadsPage = () => {
           exportType="leads"
         />
       </div>
+      </QueryRegion>
     </MainLayout>
   );
 };

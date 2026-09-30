@@ -1,0 +1,8 @@
+import {expect,it,vi} from 'vitest';
+import {createFinancialPendingStore} from '../financialPending';
+import {runFinancialPending} from '../financialPendingAction';
+const scope={namespace:'batch',userId:'u1',organizationId:'o1',businessKey:'b1'};
+function fixture(){const map=new Map<string,string>();return createFinancialPendingStore({storage:{getItem:k=>map.get(k)??null,setItem:(k,v)=>{map.set(k,v)},removeItem:k=>{map.delete(k)}}});}
+it('completed step plus known later failure stays blocked across a fresh call',async()=>{const store=fixture();await expect(runFinancialPending(scope,async ctx=>{ctx.recordCompleted(['v1']);throw {code:'42501',message:'denied'};},store)).rejects.toMatchObject({code:'42501'});expect(store.read(scope)?.completedIds).toEqual(['v1']);const write=vi.fn();await expect(runFinancialPending(scope,write,store)).rejects.toThrow(/đối chiếu/);expect(write).not.toHaveBeenCalled();});
+it('unknown before receipt blocks while explicit business rejection permits corrected request',async()=>{const store=fixture();await expect(runFinancialPending(scope,async()=>{throw {code:'22023'};},store)).rejects.toMatchObject({code:'22023'});expect(store.read(scope)).toBeNull();await expect(runFinancialPending(scope,async()=>{throw new TypeError('timeout');},store)).rejects.toThrow();expect(store.read(scope)).not.toBeNull();});
+it('valid completed workflow releases its own attempt only',async()=>{const store=fixture();expect(await runFinancialPending(scope,async ctx=>{ctx.recordCompleted(['v1']);return 'confirmed';},store)).toBe('confirmed');expect(store.read(scope)).toBeNull();});

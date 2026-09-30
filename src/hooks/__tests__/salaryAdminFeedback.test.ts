@@ -1,0 +1,14 @@
+import {beforeEach,it,expect,vi} from 'vitest';
+const m=vi.hoisted(()=>({rpc:vi.fn(),getSession:vi.fn(),invalidateQueries:vi.fn(),success:vi.fn(),info:vi.fn(),warning:vi.fn(),error:vi.fn()}));
+vi.mock('@tanstack/react-query',()=>({useMutation:(o:unknown)=>o,useQuery:(o:unknown)=>o,useQueryClient:()=>({invalidateQueries:m.invalidateQueries})}));
+vi.mock('@/integrations/supabase/client',()=>({supabase:{rpc:m.rpc,auth:{getSession:m.getSession}}}));
+vi.mock('sonner',()=>({toast:{success:m.success,info:m.info,warning:m.warning,error:m.error}}));
+import {useV5ApplyLock,useV5Verdict,useV5RunJob} from '../salary-v5/useSalaryV5Admin';
+import {fetchSalaryExtras,useCreateRecurring} from '../useSalaryExtras';
+type Mutation<T=unknown>={mutationFn:(input?:unknown)=>Promise<T>;onSuccess:(data:unknown,args?:unknown)=>unknown};
+beforeEach(()=>{vi.clearAllMocks();m.getSession.mockResolvedValue({data:{session:{access_token:'fixture'}},error:null});});
+it('không ghi nhân viên nào thì thông tin, không báo đã chốt',async()=>{m.rpc.mockResolvedValue({data:{staff_applied:0,month:'2026-10-01'},error:null});const hook=useV5ApplyLock('2026-10-01') as unknown as Mutation;await hook.onSuccess(await hook.mutationFn());expect(m.info).toHaveBeenCalled();expect(m.success).not.toHaveBeenCalled();});
+it('sai ngày kết luận thì không có biên nhận thành công',async()=>{m.rpc.mockResolvedValue({data:{confirmed:true,date:'2026-10-02'},error:null});const hook=useV5Verdict() as unknown as Mutation;await expect(hook.mutationFn({user:'u',date:'2026-10-01',confirm:true})).rejects.toThrow();});
+it('HTTP lỗi vẫn giữ các bước thành công và cảnh báo lỗi một phần',async()=>{vi.stubGlobal('fetch',vi.fn().mockResolvedValue({ok:false,status:500,json:async()=>({ok:false,ran:[{job:'tier',skipped:true},{job:'digest',ok:false,error:'private'}]})}));const hook=useV5RunJob() as unknown as Mutation<Awaited<ReturnType<ReturnType<typeof useV5RunJob>['mutateAsync']>>>;const result=await hook.mutationFn('nightly');expect(result.kind).toBe('warning');expect(result.blocksRepeat).toBe(true);expect(result.message).not.toContain('private');vi.unstubAllGlobals();});
+it('RPC khoản định kỳ không trả mã thì chưa xác nhận đã lưu',async()=>{m.rpc.mockResolvedValue({data:null,error:null});const hook=useCreateRecurring() as unknown as Mutation;await expect(hook.mutationFn({staffId:'s',label:'A',category:'OTHER',amount:1,effectiveMonth:'2026-10-01',reason:'r',requestKey:'k'})).rejects.toThrow();});
+it('lỗi nguồn bổ sung không thành khoản lương 0, kể cả nguồn kia thiếu RPC',async()=>{m.rpc.mockResolvedValueOnce({data:null,error:{code:'PGRST202'}}).mockResolvedValueOnce({data:null,error:{code:'42501',message:'denied'}});await expect(fetchSalaryExtras(['o'],'2026-10-01')).rejects.toMatchObject({code:'42501'});});

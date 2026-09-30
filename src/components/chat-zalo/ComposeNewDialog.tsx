@@ -1,3 +1,5 @@
+import { isZaloActionUnconfirmed, zaloActionErrorMessage, ZaloActionUnknownError } from '@/lib/zaloActionFeedback';
+import { focusFirstError } from '@/lib/formErrors';
 import { useMemo, useState } from 'react';
 import { Loader2, MessageSquarePlus } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -13,6 +15,8 @@ interface Props {
   accounts: ZaloAccount[];
   conversations: ZaloConversation[];
   finding: boolean;
+  error?: unknown;
+  onReadPending?: () => void;
   /** tìm/tạo hội thoại theo SĐT trên account đã chọn */
   onStart: (accountId: string, phone: string) => void;
   /** mở hội thoại đã có sẵn */
@@ -20,15 +24,17 @@ interface Props {
 }
 
 const normPhone = (p: string) => {
+  if (!/^\+?[\d\s().-]*$/.test(p)) return '';
   const d = p.replace(/\D/g, '');
   return d.startsWith('84') && d.length >= 10 ? '0' + d.slice(2) : d;
 };
 
 /** Dialog "Soạn tin mới": chọn tài khoản gửi + nhập SĐT → mở/tạo hội thoại 1-1. */
-export default function ComposeNewDialog({ open, onOpenChange, accounts, conversations, finding, onStart, onOpenExisting }: Props) {
+export default function ComposeNewDialog({ open, onOpenChange, accounts, conversations, finding, error, onReadPending, onStart, onOpenExisting }: Props) {
   const connected = accounts.filter((a) => a.status === 'connected');
   const [accountId, setAccountId] = useState('');
   const [phone, setPhone] = useState('');
+  const [submitted,setSubmitted] = useState(false);
   const accId = accountId || connected[0]?.id || '';
   const digits = normPhone(phone);
   const valid = /^0\d{9}$/.test(digits);
@@ -39,6 +45,12 @@ export default function ComposeNewDialog({ open, onOpenChange, accounts, convers
     return conversations.find((c) => !c.isGroup && normPhone(c.phone) === digits && (!accId || c.accountId === accId)) || null;
   }, [conversations, digits, valid, accId]);
 
+  const submit = () => {
+    setSubmitted(true);
+    if(!valid) { void focusFirstError({'compose-phone':'Nhập số điện thoại 10 chữ số, bắt đầu bằng 0.'}); return; }
+    if(!accId || finding || isZaloActionUnconfirmed(error)) return;
+    if(existing) onOpenExisting(existing.id); else onStart(accId,digits);
+  };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
@@ -47,6 +59,10 @@ export default function ComposeNewDialog({ open, onOpenChange, accounts, convers
           <DialogDescription>Tìm khách theo số điện thoại và bắt đầu chat Zalo.</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
+          {error != null && <div role="alert" className="rounded border border-destructive/40 p-3 text-sm">
+            <p>{zaloActionErrorMessage(error,'tìm hội thoại theo số điện thoại')}</p>
+            {error instanceof ZaloActionUnknownError && error.jobId && onReadPending && <Button type="button" variant="outline" disabled={finding} onClick={onReadPending}>Tải kết quả tìm kiếm</Button>}
+          </div>}
           {connected.length === 0 ? (
             <p className="text-sm text-muted-foreground">Chưa có tài khoản Zalo nào đang kết nối — kết nối trước rồi quay lại.</p>
           ) : (
@@ -65,26 +81,23 @@ export default function ComposeNewDialog({ open, onOpenChange, accounts, convers
               <div className="space-y-1.5">
                 <Label htmlFor="compose-phone">Số điện thoại</Label>
                 <Input
-                  id="compose-phone"
+                  id="compose-phone" name="compose-phone" aria-invalid={submitted && !valid} aria-describedby={submitted && !valid ? "compose-phone-error" : undefined}
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   placeholder="0xxx xxx xxx"
                   inputMode="tel"
                   autoFocus
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' && valid && !finding) {
-                      if (existing) onOpenExisting(existing.id);
-                      else onStart(accId, digits);
-                    }
+                    if (e.key === 'Enter') submit();
                   }}
                 />
-                {phone && !valid && <p className="text-xs text-destructive">Số chưa hợp lệ (10 số, bắt đầu bằng 0).</p>}
+                {(phone || submitted) && !valid && <p id="compose-phone-error" role="alert" className="text-xs text-destructive">Số chưa hợp lệ (10 số, bắt đầu bằng 0).</p>}
                 {existing && <p className="text-xs text-muted-foreground">Đã có hội thoại với <b>{existing.name}</b> — mở lại thay vì tạo mới.</p>}
               </div>
               <Button
                 className="w-full"
-                disabled={!valid || finding || !accId}
-                onClick={() => (existing ? onOpenExisting(existing.id) : onStart(accId, digits))}
+                disabled={finding || !accId || isZaloActionUnconfirmed(error)}
+                onClick={submit}
               >
                 {finding ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <MessageSquarePlus className="mr-2 h-4 w-4" />}
                 {existing ? 'Mở hội thoại có sẵn' : finding ? 'Đang tìm trên Zalo…' : 'Bắt đầu chat'}

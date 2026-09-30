@@ -13,9 +13,10 @@
 // nằm ở planCollect (drawer → useQuickCollect); form chỉ thu input + gợi ý.
 // =============================================
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { focusFirstError } from '@/lib/formErrors';
 import { ImagePlus, Plus, X } from 'lucide-react';
-import { toast } from 'sonner';
 import { useClipboardImagePaste } from '@/hooks/useClipboardImagePaste';
 import { missingReceivingBookMessage } from '@/hooks/useReceivingCashbooks';
 import { validateReceiptFile } from '@/lib/receiptUpload';
@@ -76,6 +77,9 @@ interface Props {
   allowRounding?: boolean;
   /** Báo trạng thái lên drawer (nút xanh dưới cùng submit). */
   onChange: (state: PayFormState) => void;
+  validationAttempt?: number;
+  receiptError?: string;
+  disabled?: boolean;
 }
 
 const ALL: CollectMethod[] = ['TM', 'TK', 'TT'];
@@ -90,7 +94,16 @@ export function CollectPayForm({
   canCredit,
   allowRounding = true,
   onChange,
+  validationAttempt = 0,
+  receiptError,
+  disabled = false,
 }: Props) {
+  const validation = useForm<Record<string,string>>({shouldFocusError:false});
+  const root = useRef<HTMLFieldSetElement>(null);
+  const id = useId();
+  const issueFor = (name:string) => validation.getFieldState(name,validation.formState).error?.message;
+  const field = (name:string) => ({...validation.register(name),'aria-invalid':!!issueFor(name),'aria-describedby':issueFor(name)?`${id}-${name}`:undefined});
+  const issue = (name:string) => issueFor(name) ? <p id={`${id}-${name}`} role="alert" className="pf-hint err">{issueFor(name)}</p> : null;
   // Sổ mặc định (đầu danh sách) của một hình thức — '' nếu chưa có sổ nào.
   const defaultBookOf = (method: CollectMethod) => books[method][0]?.id ?? '';
 
@@ -151,7 +164,26 @@ export function CollectPayForm({
   const lineBlocks = lines.map((l) => (books[l.method].length ? null : missingBookMessage(l.method)));
   const booksOk = lineBlocks.every((b) => !b)
     && lines.every((l) => !!l.accountId && books[l.method].some((b) => b.id === l.accountId));
-  const canSubmit = total > 0 && checked.ok === true && booksOk;
+  const dateValid = /^\d{4}-\d{2}-\d{2}$/.test(paymentDate) && !Number.isNaN(new Date(`${paymentDate}T12:00:00`).getTime());
+  const canSubmit = total > 0 && checked.ok === true && booksOk && dateValid;
+  useEffect(() => {
+    if (!validationAttempt) return;
+    validation.clearErrors();
+    const errors:Record<string,string>={};
+    lines.forEach((line,index)=>{
+      if (!books[line.method].some(book=>book.id===line.accountId)) errors[`lines.${index}.method`]=lineBlocks[index] || `Dòng ${index+1}: chọn sổ nhận tiền.`;
+      if (total<=0 && line.amount<=0) errors[`lines.${index}.amount`]=`Dòng ${index+1}: nhập số tiền lớn hơn 0 đồng.`;
+    });
+    if (!dateValid) errors.paymentDate='Chọn ngày thực thu hợp lệ.';
+    if (error && !Object.keys(errors).length) errors['lines.0.amount']=error;
+    for (const [name,message] of Object.entries(errors)) validation.setError(name,{message});
+    void focusFirstError(errors,{root:root.current});
+  },[validationAttempt]);
+  useEffect(()=>{
+    if (!receiptError) return;
+    validation.setError('receiptFile',{message:receiptError});
+    void focusFirstError({receiptFile:receiptError},{root:root.current});
+  },[receiptError]);
 
   const methodsKey = lines.map(line => line.method).join(',');
   useEffect(() => { setCustomChange(null); }, [total, tmTotal, remaining, effectiveCredit, methodsKey]);
@@ -205,14 +237,21 @@ export function CollectPayForm({
   };
 
   const pickFile = (file?: File | null) => {
-    if (!file) return;
+    if (!file || disabled) return;
     const invalid = validateReceiptFile(file);
-    if (invalid) return toast.error(invalid);
+    if (invalid) {
+      validation.setError('receiptFile',{message:`${file.name}: ${invalid}`});
+      void focusFirstError({receiptFile:invalid},{root:root.current});
+      return;
+    }
+    validation.clearErrors('receiptFile');
     if (receiptPreview) URL.revokeObjectURL(receiptPreview);
     setReceiptFile(file);
     setReceiptPreview(URL.createObjectURL(file));
   };
   const clearFile = () => {
+    if (disabled) return;
+    validation.clearErrors('receiptFile');
     if (receiptPreview) URL.revokeObjectURL(receiptPreview);
     setReceiptFile(null);
     setReceiptPreview('');
@@ -220,13 +259,13 @@ export function CollectPayForm({
   };
   const pasteHandlers = useClipboardImagePaste({
     onFiles: (files) => pickFile(files[0]),
-    enabled: !receiptPreview,
+    enabled: !receiptPreview && !disabled,
   });
 
   const netToInvoice = Math.min(total - actualChange, remaining);
 
   return (
-    <div className="pf-form">
+    <fieldset ref={root} disabled={disabled} className="pf-form m-0 min-w-0 border-0 p-0">
       {/* Danh sách dòng thanh toán */}
       <div className="pf-lines">
         {lines.map((line, idx) => {
@@ -235,7 +274,8 @@ export function CollectPayForm({
             <div key={idx} className="pf-lines">
               <div className={'pf-line' + (list.length ? ' has-book' : '')}>
                 <select
-                  className="pf-method"
+                  {...field(`lines.${idx}.method`)}
+                  className={'pf-method'+(issueFor(`lines.${idx}.method`)?' border-red-500':'')}
                   aria-label={`Hình thức dòng ${idx + 1}`}
                   value={line.method}
                   onChange={(e) => {
@@ -264,7 +304,9 @@ export function CollectPayForm({
                   </select>
                 )}
                 <input
-                  className="pf-amt"
+                  {...field(`lines.${idx}.amount`)}
+                  aria-label={`Số tiền dòng ${idx + 1}`}
+                  className={'pf-amt'+(issueFor(`lines.${idx}.amount`)?' border-red-500':'')}
                   type="text"
                   inputMode="numeric"
                   placeholder="Số tiền"
@@ -277,7 +319,9 @@ export function CollectPayForm({
                   </button>
                 )}
               </div>
-              {lineBlocks[idx] && <p className="pf-hint err" role="alert">{lineBlocks[idx]}</p>}
+              {issue(`lines.${idx}.method`)}
+              {issue(`lines.${idx}.amount`)}
+              {lineBlocks[idx] && !issueFor(`lines.${idx}.method`) && <p className="pf-hint err" role="alert">{lineBlocks[idx]}</p>}
             </div>
           );
         })}
@@ -340,7 +384,7 @@ export function CollectPayForm({
           )}
           <p className="pf-hint">
             {keepAsCredit
-              ? `Thu đủ ${fmtFull(netToInvoice)} cho hoá đơn, giữ ${fmtFull(overpay)} làm credit trừ kỳ sau.`
+              ? `Thu đủ ${fmtFull(netToInvoice)} cho hoá đơn, giữ ${fmtFull(overpay)} để trừ kỳ sau.`
               : `Thối lại khách ${fmtFull(actualChange)}${changeAccountName ? ` · ghi sổ "${changeAccountName}"` : ''}.`}
           </p>
         </div>
@@ -352,24 +396,29 @@ export function CollectPayForm({
       <label className="pf-row">
         <span className="pf-lbl">Ngày thanh toán</span>
         <input
-          className="pf-date"
+          {...field('paymentDate')}
+          className={'pf-date'+(issueFor('paymentDate')?' border-red-500':'')}
           type="date"
           value={paymentDate}
-          onChange={(e) => e.target.value && setPaymentDate(e.target.value)}
+          onChange={(e) => setPaymentDate(e.target.value)}
         />
       </label>
+      {issue('paymentDate')}
 
       {receiptPreview ? (
         <div className="pf-preview">
           <img src={receiptPreview} alt="Ảnh chứng từ" />
-          <button type="button" className="pf-del" title="Xóa ảnh" onClick={clearFile}>
+          <button {...field('receiptFile')} type="button" className="pf-del" title="Gỡ ảnh đang chọn" onClick={clearFile}>
             <X />
           </button>
         </div>
       ) : (
         <div
-          className={'pf-drop' + (dragOver ? ' over' : '')}
-          onClick={() => fileInputRef.current?.click()}
+          {...field('receiptFile')}
+          role="button" tabIndex={disabled ? -1 : 0} aria-disabled={disabled}
+          className={'pf-drop' + (dragOver ? ' over' : '') + (issueFor('receiptFile')?' border-red-500':'')}
+          onKeyDown={event => {if (!disabled && (event.key==='Enter'||event.key===' ')) {event.preventDefault();fileInputRef.current?.click();}}}
+          onClick={() => { if (!disabled) fileInputRef.current?.click(); }}
           onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
           onDragLeave={() => setDragOver(false)}
           onDrop={(e) => { e.preventDefault(); setDragOver(false); pickFile(e.dataTransfer.files?.[0]); }}
@@ -379,8 +428,9 @@ export function CollectPayForm({
           <span>Ảnh chứng từ — bấm chọn, kéo thả hoặc Ctrl+V</span>
         </div>
       )}
+      {issue('receiptFile')}
       <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={(e) => pickFile(e.target.files?.[0])} />
-    </div>
+    </fieldset>
   );
 }
 

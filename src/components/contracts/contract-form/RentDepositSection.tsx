@@ -1,3 +1,4 @@
+import {flattenFieldErrors} from '@/lib/formErrors';
 import {
   FormControl,
   FormField,
@@ -84,6 +85,7 @@ export function RentDepositSection({
   updateDepositRow,
   removeDepositRow,
 }: RentDepositSectionProps) {
+  const rowErrors=flattenFieldErrors(form.formState.errors);
   const depositHint = depositAdjustmentHint(depositAdjustment);
   return (
     <div className="space-y-4">
@@ -101,6 +103,7 @@ export function RentDepositSection({
               <FormLabel>Tiền thuê</FormLabel>
               <FormControl>
                 <LockedCurrencyInput
+                  ref={field.ref}
                   value={field.value}
                   onChange={field.onChange}
                   onBlur={field.onBlur}
@@ -140,7 +143,7 @@ export function RentDepositSection({
                 onValueChange={field.onChange}
               >
                 <FormControl>
-                  <SelectTrigger>
+                  <SelectTrigger ref={field.ref} onBlur={field.onBlur}>
                     <SelectValue placeholder="Chọn chu kỳ" />
                   </SelectTrigger>
                 </FormControl>
@@ -171,6 +174,7 @@ export function RentDepositSection({
               <FormLabel>Ngày BĐ tính tiền</FormLabel>
               <FormControl>
                 <DateInput
+                  ref={field.ref}
                   value={field.value}
                   onChange={field.onChange}
                   onBlur={field.onBlur}
@@ -191,6 +195,7 @@ export function RentDepositSection({
               <FormLabel>Đến ngày</FormLabel>
               <FormControl>
                 <DateInput
+                  ref={field.ref}
                   value={field.value ?? ""}
                   onChange={field.onChange}
                   onBlur={field.onBlur}
@@ -215,6 +220,7 @@ export function RentDepositSection({
               <FormLabel>Tiền cọc</FormLabel>
               <FormControl>
                 <LockedCurrencyInput
+                  ref={field.ref}
                   value={field.value}
                   onChange={field.onChange}
                   onBlur={field.onBlur}
@@ -255,7 +261,10 @@ export function RentDepositSection({
           phiếu thu cọc (is_deposit) vào sổ thật. Phần cọc CÒN LẠI tự gộp
           vào hoá đơn tháng đầu (thu cùng hoá đơn, tách phiếu khi thu). */}
       {!isEditMode && (
-        <div className="space-y-3">
+        <div className="space-y-3" data-field-name="orphan_deposits">
+          {(form.formState.errors as Record<string, { message?: string }>).orphan_deposits?.message && (
+            <p role="alert" className="text-sm font-medium text-destructive">{(form.formState.errors as Record<string, { message?: string }>).orphan_deposits?.message}</p>
+          )}
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
               <Label>Đã đặt cọc (khách đã đưa tiền mặt)</Label>
@@ -298,16 +307,29 @@ export function RentDepositSection({
           ))}
 
           {/* Dòng nhập mới */}
-          {depositRows.map((r) => (
+          {depositRows.map((r,index) => (
             <div key={r.uid} className="rounded-md border p-3 space-y-2">
+              <p className="text-sm font-medium">Lần cọc {index+1}</p>
               <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_1fr_auto] gap-2 items-center">
+                <div>
                 <CurrencyInput
+                  name={`deposit_rows.${r.uid}.amount`}
+                  aria-label={`Lần cọc ${index+1}: số tiền`}
+                  aria-invalid={!!rowErrors[`deposit_rows.${r.uid}.amount`]}
+                  aria-describedby={rowErrors[`deposit_rows.${r.uid}.amount`]?`deposit-${r.uid}-amount-error`:undefined}
                   value={r.amount}
                   onChange={(v) =>
                     updateDepositRow(r.uid, { amount: v ?? 0 })
                   }
                 />
+                {rowErrors[`deposit_rows.${r.uid}.amount`]&&<p id={`deposit-${r.uid}-amount-error`} role="alert" className="mt-1 text-sm text-destructive">{rowErrors[`deposit_rows.${r.uid}.amount`]}</p>}
+                </div>
+                <div>
                 <SearchableSelect
+                  name={`deposit_rows.${r.uid}.account_id`}
+                  aria-label={`Lần cọc ${index+1}: sổ quỹ`}
+                  aria-invalid={!!rowErrors[`deposit_rows.${r.uid}.account_id`]}
+                  aria-describedby={rowErrors[`deposit_rows.${r.uid}.account_id`]?`deposit-${r.uid}-account-error`:undefined}
                   placeholder="Sổ quỹ"
                   value={r.account_id}
                   onValueChange={(v) =>
@@ -319,13 +341,23 @@ export function RentDepositSection({
                     keywords: a.code,
                   }))}
                 />
+                {rowErrors[`deposit_rows.${r.uid}.account_id`]&&<p id={`deposit-${r.uid}-account-error`} role="alert" className="mt-1 text-sm text-destructive">{rowErrors[`deposit_rows.${r.uid}.account_id`]}</p>}
+                </div>
+                <div>
                 <DateInput
+                  name={`deposit_rows.${r.uid}.received_date`}
+                  aria-label={`Lần cọc ${index+1}: ngày nhận`}
+                  aria-invalid={!!rowErrors[`deposit_rows.${r.uid}.received_date`]}
+                  aria-describedby={rowErrors[`deposit_rows.${r.uid}.received_date`]?`deposit-${r.uid}-date-error`:undefined}
                   value={r.received_date}
                   onChange={(iso) =>
                     updateDepositRow(r.uid, { received_date: iso })
                   }
                 />
+                {rowErrors[`deposit_rows.${r.uid}.received_date`]&&<p id={`deposit-${r.uid}-date-error`} role="alert" className="mt-1 text-sm text-destructive">{rowErrors[`deposit_rows.${r.uid}.received_date`]}</p>}
+                </div>
                 <Button
+                  aria-label={`Xóa lần cọc ${index+1}`}
                   type="button"
                   variant="ghost"
                   size="icon"
@@ -446,6 +478,7 @@ export function RentDepositSection({
                       <FormLabel>Hẹn bổ sung cọc</FormLabel>
                       <FormControl>
                         <DateInput
+                  ref={field.ref}
                           value={field.value ?? ""}
                           onChange={field.onChange}
                           onBlur={field.onBlur}

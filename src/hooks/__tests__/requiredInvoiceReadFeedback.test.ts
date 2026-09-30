@@ -1,0 +1,24 @@
+import {beforeEach,expect,it,vi} from 'vitest';
+const h=vi.hoisted(()=>({list:[] as unknown,invoice:{} as unknown,account:{id:'cashbook',code:'Q',organization_id:null} as {id:string;code:string;organization_id:string|null},vouchers:[] as unknown}));
+vi.mock('@tanstack/react-query',()=>({useQuery:(o:unknown)=>o}));
+vi.mock('@/lib/supabaseFetchAll',()=>({fetchAllRows:()=>Promise.resolve(h.list)}));
+vi.mock('@/hooks/useCashbookClosing',()=>({useCashbookClosings:vi.fn()}));
+vi.mock('@/integrations/supabase/client',()=>({supabase:{from:(table:string)=>{
+ type QueryFixture={select:()=>QueryFixture;eq:()=>QueryFixture;limit:()=>QueryFixture;single:()=>QueryFixture;maybeSingle:()=>QueryFixture;then:(resolve:(response:{data:unknown;error:null})=>unknown)=>Promise<unknown>};
+ const b:QueryFixture={select:()=>b,eq:()=>b,limit:()=>b,single:()=>b,maybeSingle:()=>b,then:resolve=>Promise.resolve({data:table==='invoices'?h.invoice:table==='accounts'?h.account:h.vouchers,error:null}).then(resolve)};return b;
+}}}));
+import {useThuTienInvoices} from '../useCollectionReport';
+import {useInvoiceForPrint} from '@/pages/invoices/InvoicePrintPage';
+import {useClosureExtras} from '@/pages/reports/finance/CashbookClosureRecord';
+const query=(options:unknown)=>(options as {queryFn:()=>Promise<unknown>}).queryFn();
+const listInvoice=()=>({id:'invoice',total_amount:100,paid_amount:0,remaining_amount:100,payments:[]});
+const printInvoice=()=>({...listInvoice(),subtotal:100,discount_amount:0,previous_debt:0,invoice_items:[{id:'item',unit_price:100,quantity:1,amount:100}],issue_date:'2026-09-01',due_date:'2026-09-30'});
+beforeEach(()=>{h.list=[listInvoice()];h.invoice=printInvoice();h.account={id:'cashbook',code:'Q',organization_id:null};h.vouchers=[];});
+it.each(['total_amount','paid_amount','remaining_amount'])('rejects a malformed collection invoice %s rather than aggregating it',async field=>{h.list=[{...listInvoice(),[field]:'bad'}];await expect(query(useThuTienInvoices('2026-09'))).rejects.toThrow();});
+it('requires the collection payment source rather than treating null as no payments',async()=>{h.list=[{...listInvoice(),payments:null}];await expect(query(useThuTienInvoices('2026-09'))).rejects.toThrow();});
+it('normalizes confirmed invoice and payment amounts while preserving a real empty list',async()=>{h.list=[{...listInvoice(),total_amount:'100',payments:[{id:'payment',amount:'50'}]}];await expect(query(useThuTienInvoices('2026-09'))).resolves.toMatchObject([{total_amount:100,payments:[{amount:50}]}]);h.list=[];await expect(query(useThuTienInvoices('2026-09'))).resolves.toEqual([]);});
+it.each([null,{...printInvoice(),id:'other'}, {...printInvoice(),invoice_items:null},{...printInvoice(),paid_amount:''},{...printInvoice(),payments:[{id:'p',amount:'bad'}]},{...printInvoice(),issue_date:'2026-02-30'}])('does not authorize printing an incomplete invoice receipt %j',async data=>{h.invoice=data;await expect(query(useInvoiceForPrint('invoice'))).rejects.toThrow();});
+it('normalizes all required print amounts and keeps a real zero',async()=>{h.invoice={...printInvoice(),subtotal:'100',paid_amount:'0',invoice_items:[{id:'item',quantity:'1',unit_price:'100',amount:'100'}]};await expect(query(useInvoiceForPrint('invoice'))).resolves.toMatchObject({subtotal:100,paid_amount:0,invoice_items:[{amount:100,quantity:1}]});});
+it.each([null,[{id:'voucher',type:'EXPENSE',total_amount:'bad'}]])('rejects an absent or malformed difference-voucher source %j',async rows=>{h.vouchers=rows;await expect(query(useClosureExtras({closure_id:'c',cashbook_id:'cashbook',closed_through:'2026-09-01',difference:10} as unknown as Parameters<typeof useClosureExtras>[0]))).rejects.toThrow();});
+it('does not accept the metadata of a different cashbook',async()=>{h.account={...h.account,id:'different'};await expect(query(useClosureExtras({closure_id:'c',cashbook_id:'cashbook',difference:0} as unknown as Parameters<typeof useClosureExtras>[0]))).rejects.toThrow();});
+it('keeps a confirmed empty difference lookup distinct from a failed source',async()=>{await expect(query(useClosureExtras({closure_id:'c',cashbook_id:'cashbook',closed_through:'2026-09-01',difference:10} as unknown as Parameters<typeof useClosureExtras>[0]))).resolves.toMatchObject({diff_voucher:null});});

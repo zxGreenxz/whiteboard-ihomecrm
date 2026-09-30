@@ -1,5 +1,6 @@
+import {useRoomDetailContracts,useRoomDetailTenants,useRoomDetailInvoices,useRoomDetailAssets} from '@/hooks/usePropertyDetailQueries';
 import { useParams, useNavigate } from 'react-router-dom';
-import { lazy, Suspense, useState, useEffect } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -25,7 +26,7 @@ import {
   Package,
 } from 'lucide-react';
 import { useRoom } from '@/hooks/useRooms';
-import { supabase } from '@/integrations/supabase/client';
+import { QueryRegion } from '@/components/errors/QueryRegion';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { EditRoomDialog } from '@/components/rooms/EditRoomDialog';
@@ -34,191 +35,20 @@ import { isContractInEffect } from '@/types/contract';
 
 const RoomReservationPanel = lazy(() => import('@/components/deposits/RoomReservationPanel').then(module => ({ default: module.RoomReservationPanel })));
 
-type Contract = {
-  id: string;
-  contract_number: string | null;
-  start_date: string;
-  end_date: string;
-  status: string;
-  rent_price: number;
-  tenant: { id: string; full_name: string; phone: string } | null;
-};
-
-type Invoice = {
-  id: string;
-  invoice_number: string | null;
-  due_date: string;
-  total_amount: number;
-  status: string;
-  contract: {
-    tenant: { full_name: string } | null;
-  } | null;
-};
-
-type Tenant = {
-  id: string;
-  full_name: string;
-  phone: string;
-  email: string | null;
-  status: string;
-};
-
-type Asset = {
-  id: string;
-  name: string;
-  asset_code: string | null;
-  category: string | null;
-  quantity: number;
-  condition: string | null;
-  value: number | null;
-};
-
 const RoomDetailPage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [contracts, setContracts] = useState<Contract[]>([]);
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [currentTenants, setCurrentTenants] = useState<Tenant[]>([]);
-  const [assets, setAssets] = useState<Asset[]>([]);
-  const [loadingContracts, setLoadingContracts] = useState(false);
-  const [loadingInvoices, setLoadingInvoices] = useState(false);
-  const [loadingTenants, setLoadingTenants] = useState(false);
-  const [loadingAssets, setLoadingAssets] = useState(false);
-
-  const { data: room, isLoading: loadingRoom } = useRoom(id || '');
-
-  // Fetch contracts for this room
-  useEffect(() => {
-    const fetchContracts = async () => {
-      if (!id) return;
-      setLoadingContracts(true);
-      try {
-        const { data, error } = await supabase
-          .from('contracts')
-          .select(`
-            id,
-            contract_number,
-            start_date,
-            end_date,
-            status,
-            rent_price,
-            tenant:tenants(id, full_name, phone)
-          `)
-          .eq('room_id', id)
-          .is('deleted_at', null)
-          .order('created_at', { ascending: false });
-
-        if (error) throw error;
-        setContracts((data || []) as unknown as Contract[]);
-      } catch (error) {
-        console.error('Error fetching contracts:', error);
-      } finally {
-        setLoadingContracts(false);
-      }
-    };
-
-    fetchContracts();
-  }, [id]);
-
-  // Fetch current tenants (from active contracts)
-  useEffect(() => {
-    const fetchTenants = async () => {
-      if (!id) return;
-      setLoadingTenants(true);
-      try {
-        const { data, error } = await supabase
-          .from('contracts')
-          .select(`
-            tenant:tenants(id, full_name, phone, email, status)
-          `)
-          .eq('room_id', id)
-          .in('status', ['ACTIVE'])
-          .is('deleted_at', null);
-
-        if (error) throw error;
-        const tenants = (data || [])
-          .map(c => c.tenant)
-          .filter(t => t !== null) as Tenant[];
-        setCurrentTenants(tenants);
-      } catch (error) {
-        console.error('Error fetching tenants:', error);
-      } finally {
-        setLoadingTenants(false);
-      }
-    };
-
-    fetchTenants();
-  }, [id]);
-
-  // Fetch invoices for this room
-  useEffect(() => {
-    const fetchInvoices = async () => {
-      if (!id) return;
-      setLoadingInvoices(true);
-      try {
-        const { data, error } = await supabase
-          .from('invoices')
-          .select(`
-            id,
-            invoice_number,
-            due_date,
-            total_amount,
-            status,
-            contract:contracts!inner(
-              room_id,
-              tenant:tenants(full_name)
-            )
-          `)
-          .eq('contract.room_id', id)
-          .is('deleted_at', null)
-          .order('created_at', { ascending: false })
-          .limit(50);
-
-        if (error) throw error;
-        setInvoices((data || []) as unknown as Invoice[]);
-      } catch (error) {
-        console.error('Error fetching invoices:', error);
-      } finally {
-        setLoadingInvoices(false);
-      }
-    };
-
-    fetchInvoices();
-  }, [id]);
-
-  // Fetch assets for this room
-  useEffect(() => {
-    const fetchAssets = async () => {
-      if (!id) return;
-      setLoadingAssets(true);
-      try {
-        const { data, error } = await supabase
-          .from('assets')
-          .select('id, name, code, condition, quantity, purchase_price, category_id')
-          .eq('room_id', id)
-          .is('deleted_at', null)
-          .order('name', { ascending: true });
-
-        if (error) throw error;
-        setAssets((data || []).map((a): Asset => ({
-          id: a.id,
-          name: a.name,
-          asset_code: a.code,
-          category: null,
-          quantity: a.quantity || 1,
-          condition: a.condition,
-          value: a.purchase_price,
-        })));
-      } catch (error) {
-        console.error('Error fetching assets:', error);
-      } finally {
-        setLoadingAssets(false);
-      }
-    };
-
-    fetchAssets();
-  }, [id]);
+  const roomQuery = useRoom(id || '');
+  const {data:room,isLoading:loadingRoom}=roomQuery;
+  const contractsQuery=useRoomDetailContracts(id||'');
+  const {data:contracts=[],isLoading:loadingContracts}=contractsQuery;
+  const tenantsQuery=useRoomDetailTenants(id||'');
+  const {data:currentTenants=[],isLoading:loadingTenants}=tenantsQuery;
+  const invoicesQuery=useRoomDetailInvoices(id||'');
+  const {data:invoices=[],isLoading:loadingInvoices}=invoicesQuery;
+  const assetsQuery=useRoomDetailAssets(id||'');
+  const {data:assets=[],isLoading:loadingAssets}=assetsQuery;
 
   if (loadingRoom) {
     return (
@@ -228,6 +58,12 @@ const RoomDetailPage = () => {
         </div>
       </MainLayout>
     );
+  }
+
+  if (roomQuery.isError && !room) {
+    return <MainLayout title="Chi tiết Căn hộ" icon={Home}>
+      <QueryRegion label="chi tiết căn hộ" queries={[roomQuery]}><></></QueryRegion>
+    </MainLayout>;
   }
 
   if (!room) {
@@ -334,10 +170,11 @@ const RoomDetailPage = () => {
 
   return (
     <MainLayout
-      title={`Căn hộ: ${room.name}`}
-      subtitle={room.code || undefined}
+      title={roomQuery.isError?"Chi tiết phòng":`Căn hộ: ${room.name}`}
+      subtitle={roomQuery.isError?undefined:room.code||undefined}
       icon={Home}
     >
+      <QueryRegion label="chi tiết phòng" queries={[roomQuery]}>
       {/* Header Actions */}
       <div className="flex items-center justify-between mb-6">
         <Button variant="outline" onClick={() => navigate('/rooms')}>
@@ -363,19 +200,19 @@ const RoomDetailPage = () => {
           </TabsTrigger>
           <TabsTrigger value="tenants">
             <Users className="h-4 w-4 mr-2" />
-            Khách hàng ({currentTenants.length})
+            Khách hàng ({tenantsQuery.isError||tenantsQuery.data===undefined?'…':currentTenants.length})
           </TabsTrigger>
           <TabsTrigger value="contracts">
             <FileText className="h-4 w-4 mr-2" />
-            Hợp đồng ({contracts.length})
+            Hợp đồng ({contractsQuery.isError||contractsQuery.data===undefined?'…':contracts.length})
           </TabsTrigger>
           <TabsTrigger value="assets">
             <Package className="h-4 w-4 mr-2" />
-            Tài sản ({assets.length})
+            Tài sản ({assetsQuery.isError||assetsQuery.data===undefined?'…':assets.length})
           </TabsTrigger>
           <TabsTrigger value="invoices">
             <Receipt className="h-4 w-4 mr-2" />
-            Hóa đơn ({invoices.length})
+            Hóa đơn ({invoicesQuery.isError||invoicesQuery.data===undefined?'…':invoices.length})
           </TabsTrigger>
         </TabsList>
 
@@ -480,6 +317,7 @@ const RoomDetailPage = () => {
           </Card>
 
           {/* Current Contract Info */}
+          <QueryRegion label="hợp đồng hiện tại của phòng" queries={[contractsQuery]}>
           {activeContract && (
             <Card>
               <CardHeader>
@@ -523,6 +361,7 @@ const RoomDetailPage = () => {
             </Card>
           )}
 
+          </QueryRegion>
           {/* Ghi chú — đọc `description`, KHÔNG phải `notes`.
               Khối này từng đọc `room.notes`, mà bảng `rooms` không có cột đó, nên
               nó LUÔN trống: người dùng nhập ghi chú ở đâu cũng không bao giờ thấy
@@ -543,6 +382,7 @@ const RoomDetailPage = () => {
 
         {/* Tenants Tab */}
         <TabsContent value="tenants">
+          <QueryRegion label="khách hàng đang thuê phòng" queries={[tenantsQuery]}>
           <Card>
             <CardHeader>
               <CardTitle>Khách hàng hiện tại</CardTitle>
@@ -588,10 +428,12 @@ const RoomDetailPage = () => {
               )}
             </CardContent>
           </Card>
+        </QueryRegion>
         </TabsContent>
 
         {/* Contracts Tab */}
         <TabsContent value="contracts">
+          <QueryRegion label="hợp đồng của phòng" queries={[contractsQuery]}>
           <Card>
             <CardHeader>
               <CardTitle>Lịch sử hợp đồng</CardTitle>
@@ -645,10 +487,12 @@ const RoomDetailPage = () => {
               )}
             </CardContent>
           </Card>
+        </QueryRegion>
         </TabsContent>
 
         {/* Assets Tab */}
         <TabsContent value="assets">
+          <QueryRegion label="tài sản của phòng" queries={[assetsQuery]}>
           <Card>
             <CardHeader>
               <CardTitle>Tài sản trong căn hộ</CardTitle>
@@ -696,10 +540,12 @@ const RoomDetailPage = () => {
               )}
             </CardContent>
           </Card>
+        </QueryRegion>
         </TabsContent>
 
         {/* Invoices Tab */}
         <TabsContent value="invoices">
+          <QueryRegion label="hóa đơn của phòng" queries={[invoicesQuery]}>
           <Card>
             <CardHeader>
               <CardTitle>Hóa đơn của căn hộ</CardTitle>
@@ -751,6 +597,7 @@ const RoomDetailPage = () => {
               )}
             </CardContent>
           </Card>
+        </QueryRegion>
         </TabsContent>
       </Tabs>
 
@@ -760,6 +607,7 @@ const RoomDetailPage = () => {
         onOpenChange={setEditDialogOpen}
         room={room as any}
       />
+      </QueryRegion>
     </MainLayout>
   );
 };

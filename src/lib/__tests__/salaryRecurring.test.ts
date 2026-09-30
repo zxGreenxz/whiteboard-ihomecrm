@@ -81,3 +81,5 @@ describe("ownerSupplementByBuilding — nguồn Chủ công ty cấp thêm", () 
     expect(r.rows.map((x) => [x.buildingName, x.amount, x.people.length])).toEqual([["44TL", 2000000, 2], ["481NVK", 2000000, 1]]);
   });
 });
+
+it('does not interpret a missing required salaryRecurring response as empty',()=>{expect(()=>parseRecurringRows(null)).toThrow();expect(()=>parseRecurringRows(undefined)).toThrow();expect(parseRecurringRows([])).toEqual([]);});

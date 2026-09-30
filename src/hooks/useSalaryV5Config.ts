@@ -20,7 +20,8 @@ export function useSalaryV5Config() {
   return useQuery({
     queryKey: [...KHOA_V5_CONFIG],
     queryFn: async () => {
-      const { data } = await supabase.rpc('get_salary_v5_config');
+      const { data , error: sourceError1 } = await supabase.rpc('get_salary_v5_config');
+      if (sourceError1) throw sourceError1;
       return data;
     },
     staleTime: 60_000,

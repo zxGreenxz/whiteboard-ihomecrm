@@ -1,3 +1,4 @@
+import { QueryRegion } from "@/components/errors/QueryRegion";
 import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
@@ -35,10 +36,12 @@ export default function CashFlowReport() {
   const endDate = `${year}-12-31`;
 
   useCopilotPageContext('reports.finance.cash-flow', { year, building_id: buildingId, from: startDate, to: endDate });
-  const { data: buildings = [] } = useBuildings({ includeVirtual: true });
-  const { data: byDay = [], isLoading } = useCashFlowByDay(startDate, endDate, {
+  const buildingsQuery = useBuildings({ includeVirtual: true });
+  const { data: buildings = [] } = buildingsQuery;
+  const cashFlowByDayQuery = useCashFlowByDay(startDate, endDate, {
     building_id: buildingId === "all" ? undefined : buildingId,
   });
+  const { data: byDay = [], isLoading } = cashFlowByDayQuery;
 
   // Aggregate to 12 months
   const monthly = useMemo(() => {
@@ -114,6 +117,7 @@ export default function CashFlowReport() {
           </div>
         </div>
 
+        <QueryRegion label="báo cáo dòng tiền" queries={[cashFlowByDayQuery, buildingsQuery]}>
         <div className="rounded-md border bg-card">
           <div className="border-b p-4 flex items-center justify-between flex-wrap gap-3">
             <h3 className="text-base font-semibold">Biểu đồ dòng tiền thu chi thực tế</h3>
@@ -208,6 +212,7 @@ export default function CashFlowReport() {
             </TableBody>
           </Table>
         </div>
+      </QueryRegion>
       </div>
     </MainLayout>
   );

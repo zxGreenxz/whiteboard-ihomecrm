@@ -39,6 +39,7 @@
 // nhất và KHÔNG bịa `commission_kind` để ép cái thứ hai chạy.
 // =============================================================================
 
+import { financialReadRows } from '@/lib/financialReadValidation';
 import { useCallback, useMemo } from 'react';
 import { useQueries, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
@@ -189,6 +190,7 @@ const useSettlementTypeMap = (
 ) =>
   useQuery({
     queryKey: ['contract-settlement', 'types', actorId, organizationId],
+    meta: { errorDisplay: 'inline' },
     enabled: enabled && !!organizationId,
     staleTime: 5 * 60_000,
     refetchOnWindowFocus: true,
@@ -198,9 +200,9 @@ const useSettlementTypeMap = (
         .select('id, category, name')
         .eq('organization_id', organizationId!)
         .abortSignal(signal);
-      if (error) throw new Error(error.message);
+      if (error) throw Object.assign(new Error('Không đọc được loại thu chi để đối chiếu hợp đồng.'), { code: error.code, cause: error });
       const m = new Map<string, SettlementKind>();
-      for (const t of data ?? []) {
+      for (const t of financialReadRows(data)) {
         const kind = settlementTypeMatches(t.category, t.name);
         if (kind) m.set(t.id, kind);
       }
@@ -508,7 +510,7 @@ export function useContractSettlement(a: UseContractSettlementArgs) {
       const { data, error } = await supabase.rpc('get_period_commissions', {
         p_period_month: ky, p_building_ids: buildingIds,
       }).abortSignal(signal);
-      if (error) throw new Error(error.message);
+      if (error) throw Object.assign(new Error('Không đọc được căn cứ hoa hồng để đối chiếu hợp đồng.'), { code: error.code, cause: error });
       const dong = (data ?? []) as {
         contract_id?: string | null;
         expected_amount?: number | string | null;

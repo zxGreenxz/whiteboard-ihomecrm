@@ -137,3 +137,11 @@ describe('bổ sung ảnh khi sửa công việc', () => {
     expect(mocks.upload).toHaveBeenCalledOnce();
   });
 });
+
+it('tiêu đề thiếu hiển thị đỏ và được focus khi lưu',async()=>{
+ render(<TaskEditDialog open job={job} onOpenChange={vi.fn()} onSuccess={vi.fn()} />);
+ const title=screen.getByDisplayValue(job.title);fireEvent.change(title,{target:{value:''}});
+ fireEvent.click(screen.getByRole('button',{name:'Lưu'}));
+ await waitFor(()=>expect(title.getAttribute('aria-invalid')).toBe('true'));
+ expect(document.activeElement).toBe(title);expect(mocks.save).not.toHaveBeenCalled();
+});

@@ -1,3 +1,4 @@
+import {useState,useRef} from 'react';
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -15,6 +16,8 @@ import { useRooms } from "@/hooks/useRooms";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import { todayISO } from '@/lib/collect';
+import { focusFirstError } from "@/lib/formErrors";
+import {recordWriteBlocked,recordWriteMessage} from "@/lib/recordWriteOutcome";
 
 const movementSchema = z.object({
   asset_id: z.string().min(1, "Phải chọn tài sản"),
@@ -33,10 +36,17 @@ interface AssetMovementDialogProps {
 }
 
 export function AssetMovementDialog({ open, onOpenChange }: AssetMovementDialogProps) {
+  const [failure,setFailure]=useState<unknown>();
+  const [blocked,setBlocked]=useState(false);
+  const draftKey=useRef<string|null>(null);
   const createMovement = useCreateAssetMovement();
   // CHƯA GATE: useAssets chưa nhận `enabled` (hook thuộc plan con E).
-  const { data: assets = [] } = useAssets();
-  const { data: rooms = [] } = useRooms(undefined, { enabled: open });
+  const assetsQuery=useAssets();
+  const {data:assets=[]}=assetsQuery;
+  const roomsQuery=useRooms(undefined, { enabled: open });
+  const {data:rooms=[]}=roomsQuery;
+  const sources=[assetsQuery,roomsQuery];
+  const sourceBlocked=sources.some(query=>query.isError||query.isLoading);
 
   const form = useForm<MovementFormValues>({
     resolver: zodResolver(movementSchema),
@@ -54,6 +64,9 @@ export function AssetMovementDialog({ open, onOpenChange }: AssetMovementDialogP
   const selectedAsset = assets.find(a => a.id === selectedAssetId);
 
   const onSubmit = async (data: MovementFormValues) => {
+    if(blocked||sourceBlocked)return;
+    form.clearErrors('root.server');
+    form.clearErrors('root.server');
     try {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
@@ -72,19 +85,24 @@ export function AssetMovementDialog({ open, onOpenChange }: AssetMovementDialogP
       form.reset();
       onOpenChange(false);
     } catch (error) {
+      setFailure(error);setBlocked(recordWriteBlocked(error));
       console.error("Failed to create movement:", error);
+      form.setError('root.server', { type: 'server', message: recordWriteMessage(error,'ghi nhận di chuyển tài sản') });
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+    <Dialog open={open} onOpenChange={value=>{if(!form.formState.isSubmitting)onOpenChange(value);}}>
+      <DialogContent aria-describedby={undefined} className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>Di chuyển tài sản</DialogTitle>
           <DialogDescription>Ghi nhận di chuyển tài sản giữa các căn hộ</DialogDescription>
         </DialogHeader>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={form.handleSubmit(onSubmit, errors => { void focusFirstError(errors); })} className="space-y-4">
+            {form.formState.errors.root?.server?.message && <p role="alert" className="text-sm text-destructive">{form.formState.errors.root.server.message}</p>}
+            {sourceBlocked && <div role="alert" className="rounded border border-destructive p-3 text-sm">Chưa tải đủ dữ liệu tài sản. Tải lại trước khi lưu.<Button type="button" variant="outline" onClick={()=>{for(const query of sources)void query.refetch();}}>Tải lại dữ liệu</Button></div>}
+            <fieldset disabled={blocked || sourceBlocked || form.formState.isSubmitting} className="space-y-4">
             <FormField
               control={form.control}
               name="asset_id"
@@ -218,11 +236,12 @@ export function AssetMovementDialog({ open, onOpenChange }: AssetMovementDialogP
               )}
             />
 
+            </fieldset>
             <div className="flex justify-end gap-3 pt-4">
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Hủy
               </Button>
-              <Button type="submit" disabled={createMovement.isPending}>
+              <Button type="submit" disabled={blocked || sourceBlocked || form.formState.isSubmitting || createMovement.isPending}>
                 {createMovement.isPending ? "Đang ghi nhận..." : "Ghi nhận di chuyển"}
               </Button>
             </div>

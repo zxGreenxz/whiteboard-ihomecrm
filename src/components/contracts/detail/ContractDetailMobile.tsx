@@ -1,3 +1,4 @@
+import { ContractDetailRegion, type ContractDetailQueries } from './ContractDetailRegions';
 import { useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Pencil } from 'lucide-react';
@@ -16,6 +17,7 @@ import { ContractMobileSettlementStatus, type ContractMobileSettlementStatusProp
 interface Props extends Pick<ContractMobileSettlementStatusProps,
   'terminationInfo' | 'pendingForfeitCount' | 'pendingRefundCount' | 'statusLoading' | 'sideLoadErrors'> {
   contract: ContractWithRelations;
+  queryStates?: ContractDetailQueries;
   services: ContractServiceItem[];
   invoices: InvoiceWithRelations[];
   history: ContractHistoryItem[];
@@ -97,6 +99,7 @@ export function ContractDetailMobile(props: Props) {
             </div>
 
             {tab === 'info' && (
+              <ContractDetailRegion label="dịch vụ và phiếu cọc của hợp đồng" queries={[props.queryStates?.services,props.queryStates?.deposits,props.queryStates?.buildingServices]}>
               <ContractInfoTab
                 contract={contract}
                 services={services}
@@ -104,10 +107,11 @@ export function ContractDetailMobile(props: Props) {
                 depositVouchers={depositVouchers}
                 onOpenCustomer={(id) => navigate(`/customers/${id}`)}
               />
+              </ContractDetailRegion>
             )}
-            {tab === 'invoices' && <ContractInvoicesTab invoices={invoices} />}
-            {tab === 'payments' && <ContractPaymentsTab invoices={invoices} />}
-            {tab === 'history' && <ContractHistoryTab history={history} />}
+            {tab === 'invoices' && <ContractDetailRegion label="hóa đơn của hợp đồng" queries={[props.queryStates?.invoices]}><ContractInvoicesTab invoices={invoices} /></ContractDetailRegion>}
+            {tab === 'payments' && <ContractDetailRegion label="thanh toán của hợp đồng" queries={[props.queryStates?.invoices]}><ContractPaymentsTab invoices={invoices} /></ContractDetailRegion>}
+            {tab === 'history' && <ContractDetailRegion label="lịch sử hợp đồng" queries={[props.queryStates?.history]}><ContractHistoryTab history={history} /></ContractDetailRegion>}
           </div>
         </div>
       </div>

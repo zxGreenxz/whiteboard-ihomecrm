@@ -1,3 +1,4 @@
+import { QueryRegion } from "@/components/errors/QueryRegion";
 import { useRef, useState, type ReactNode } from "react";
 import MainLayout from "@/components/layout/MainLayout";
 import ProfitHubShell, { ProfitHubTabPanel } from "@/pages/reports/finance/ProfitHubShell";
@@ -25,13 +26,18 @@ import { useProfitCloseOrganizations } from "@/hooks/useShareholderProfit";
  * Quản lý điều hành đang đăng nhập → xem giao diện tự xem lương của mình.
  */
 export default function ProfitHubPage() {
-  const { data: perms, isLoading: permsLoading } = useMyPermissions();
-  const { data: me, isLoading: meLoading } = useMyShareholder();
-  const { data: myManager, isLoading: mgrLoading } = useMyProfitManager();
+  const permissionQuery = useMyPermissions();
+  const {data:perms,isLoading:permsLoading}=permissionQuery;
+  const shareholderQuery = useMyShareholder();
+  const {data:me,isLoading:meLoading}=shareholderQuery;
+  const managerQuery = useMyProfitManager();
+  const {data:myManager,isLoading:mgrLoading}=managerQuery;
+  const closeOrganizationsQuery = useProfitCloseOrganizations();
   const {
     data: profitCloseOrganizations = [],
     isLoading: profitCloseOrganizationsLoading,
-  } = useProfitCloseOrganizations();
+  } = closeOrganizationsQuery;
+  const accessQueries = [permissionQuery,shareholderQuery,managerQuery,closeOrganizationsQuery];
   const phone = usePhoneViewport();
 
   const canReport = canUse(perms, "reports_finance", "profit_distribution");
@@ -105,17 +111,20 @@ export default function ProfitHubPage() {
   if (phone) {
     if (loading) return <ProfitMobileBoot />;
     return (
+      <QueryRegion label="quyền xem và hồ sơ lợi nhuận" queries={accessQueries}>
       <ProfitHubMobile
         canReport={canReport}
         isManager={isManager && canViewManagedProfit}
         me={me ?? null}
         myManager={myManager ?? null}
       />
+      </QueryRegion>
     );
   }
 
   return (
     <MainLayout>
+      <QueryRegion label="quyền xem và hồ sơ lợi nhuận" queries={accessQueries}>
       <ProfitHubShell
         // Chờ đủ quyền rồi mới dựng thanh tab — nếu không tab sẽ "mọc" dần theo
         // từng query (vd "Chốt LN tháng" chỉ có sau khi profitCloseOrganizations về).
@@ -141,6 +150,7 @@ export default function ProfitHubPage() {
           <p className="ph-empty">Bạn không có quyền xem báo cáo này. Liên hệ quản trị.</p>
         )}
       </ProfitHubShell>
+      </QueryRegion>
     </MainLayout>
   );
 }

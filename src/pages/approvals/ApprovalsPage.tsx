@@ -2,7 +2,7 @@
 // đăng nhập. Server (list_my_pending_approvals_v1) đã lọc theo auth.uid() nên
 // route không cần gate quyền: ai vào cũng chỉ thấy phần việc của mình.
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import MainLayout from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -55,6 +55,8 @@ import {
 } from "@/hooks/income-expenses/financeV2Mutations";
 import IncomeExpensePostingDialog from "@/components/income-expenses/IncomeExpensePostingDialog";
 import { AiSubmittedBadge } from "@/components/approvals/AiSubmittedBadge";
+import { QueryRegion } from "@/components/errors/QueryRegion";
+import { voucherFailureMessage, voucherOutcomeUnknown } from "@/lib/voucherFeedback";
 
 const typeLabel = (type: string | null) => {
   if (type === "INCOME") return { text: "Phiếu thu", className: "bg-emerald-100 text-emerald-700" };
@@ -65,7 +67,8 @@ const typeLabel = (type: string | null) => {
 const ApprovalsPage = () => {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
-  const { data: rows = [], isLoading, isFetching, refetch } = usePendingApprovals();
+  const pendingQuery = usePendingApprovals();
+  const { data: rows = [], isLoading, isFetching, isError, refetch } = pendingQuery;
   const decide = useDecideApproval();
   const { data: authUser } = useAuth();
   // Dán ảnh trong hộp thoại Thu/Chi = đính ảnh lên phiếu rồi nhận nó làm chứng
@@ -76,12 +79,20 @@ const ApprovalsPage = () => {
   // Từ chối BẮT BUỘC nhập lý do → mở dialog thay vì gọi thẳng RPC.
   const [rejecting, setRejecting] = useState<PendingApproval | null>(null);
   const [reason, setReason] = useState("");
+  const [reasonError, setReasonError] = useState(false);
+  const reasonRef = useRef<HTMLTextAreaElement>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [blockedRequests, setBlockedRequests] = useState<Set<string>>(() => new Set());
+  const reportActionError = (error: unknown, requestId: string) => {
+    setActionError(voucherFailureMessage(error, "xử lý yêu cầu duyệt"));
+    if (voucherOutcomeUnknown(error)) setBlockedRequests(previous => new Set(previous).add(requestId));
+  };
 
   // Finance V2 route-aware: resolve route theo org của từng request (phiếu subject).
   // organization_id chưa có trên RPC ⇒ null ⇒ LEGACY (flow decide cũ, không đổi).
   const v2Routes = useFinanceV2Routes();
-  const approveV2 = useApproveIncomeExpenseV2();
-  const approveAndPostV2 = useApproveAndPostIncomeExpenseV2();
+  const approveV2 = useApproveIncomeExpenseV2({scope:'target'});
+  const approveAndPostV2 = useApproveAndPostIncomeExpenseV2({scope:'target'});
   // "Duyệt và Thu/Chi…" mở Posting dialog cho request này (chỉ org CANONICAL).
   const [postTarget, setPostTarget] = useState<PendingApproval | null>(null);
   // Chỉ hỏi sổ CUSTODIAN khi có ít nhất 1 request thuộc org posting-CANONICAL.
@@ -89,7 +100,7 @@ const ApprovalsPage = () => {
     const or = v2Routes.getOrg(r.organization_id);
     return !!r.voucher_id && canWriteWorkflow(or) && canWritePosting(or);
   });
-  const { data: custodianBooks = [] } = useCustodianCashbooksV2(anyV2Posting);
+  const { data: custodianBooks = [], isError: cashbookError, refetch: retryCashbooks } = useCustodianCashbooksV2(anyV2Posting);
 
   // V2 duyệt-only áp cho request có phiếu subject (INCOME_EXPENSE) và org workflow-CANONICAL.
   const v2WorkflowFor = (row: PendingApproval) =>
@@ -103,38 +114,45 @@ const ApprovalsPage = () => {
   const closeReject = () => {
     setRejecting(null);
     setReason("");
+    setReasonError(false);
   };
 
   // Lỗi (hết quyền, request đã đóng…) đã được hook toast nguyên văn — giữ dialog
   // mở để người duyệt sửa lý do/thử lại thay vì mất nội dung vừa gõ.
   const submitReject = async () => {
-    if (!rejecting || !reason.trim()) return;
+    if (!rejecting || blockedRequests.has(rejecting.request_id)) return;
+    if (!reason.trim()) { setReasonError(true); reasonRef.current?.focus(); return; }
     try {
       await decide.mutateAsync({
         requestId: rejecting.request_id,
+        organizationId: rejecting.organization_id,
         decision: "REJECT",
         reason: reason.trim(),
       });
       closeReject();
-    } catch {
-      /* toast đã hiện trong useDecideApproval */
+    } catch (error) {
+      reportActionError(error, rejecting.request_id);
     }
   };
 
   const approve = (row: PendingApproval) => {
+    if (blockedRequests.has(row.request_id)) return;
+    setActionError(null);
     // V2 CANONICAL: duyệt-only trên PHIẾU qua RPC canonical — KHÔNG đổi tồn quỹ
     // (posting làm sau ở dialog Thu/Chi). Không fallback legacy khi RPC lỗi.
     if (v2WorkflowFor(row)) {
       approveV2.mutate(
         {
           voucherId: row.voucher_id,
+          organizationId: row.organization_id,
           expectedApprovalVersion: row.approval_version ?? 1,
         },
-        { onSuccess: () => refetch() },
+        { onSuccess: () => refetch(), onError: error => reportActionError(error, row.request_id) },
       );
       return;
     }
-    decide.mutate({ requestId: row.request_id, decision: "APPROVE", reason: null });
+    decide.mutate({ requestId: row.request_id,
+        organizationId: row.organization_id, decision: "APPROVE", reason: null }, {onError: error => reportActionError(error, row.request_id)});
   };
 
   const emptyMsg = "Không có yêu cầu nào chờ bạn duyệt";
@@ -148,7 +166,7 @@ const ApprovalsPage = () => {
       <div className="space-y-4">
         <div className="flex items-center justify-between gap-2">
           <div className="text-sm text-muted-foreground">
-            {isLoading ? "Đang tải…" : `${rows.length} yêu cầu chờ bạn duyệt`}
+            {isLoading ? "Đang tải…" : isError ? "Chưa cập nhật được yêu cầu chờ duyệt" : `${rows.length} yêu cầu chờ bạn duyệt`}
           </div>
           <Button variant="outline" onClick={() => refetch()} disabled={isFetching}>
             <RefreshCw className={`h-4 w-4 mr-2 ${isFetching ? "animate-spin" : ""}`} />
@@ -156,6 +174,8 @@ const ApprovalsPage = () => {
           </Button>
         </div>
 
+        {actionError && <p role="alert" className="text-sm text-destructive">{actionError}</p>}
+        <QueryRegion label="yêu cầu chờ duyệt" queries={[pendingQuery]}>
         {isLoading ? (
           <div className="space-y-2">
             {[0, 1, 2].map((i) => (
@@ -323,6 +343,7 @@ const ApprovalsPage = () => {
             </Table>
           </Card>
         )}
+        </QueryRegion>
       </div>
 
       {/* Finance V2: Duyệt và Chi/Thu atomic qua Posting dialog (§12.3/§12.4). */}
@@ -342,6 +363,8 @@ const ApprovalsPage = () => {
           }}
           capability={{ isCustodian: custodianBooks.length > 0, canApprove: true }}
           cashbookOptions={custodianBooks}
+          cashbookError={cashbookError}
+          onRetryCashbooks={retryCashbooks}
           expectedExecutionRevision={0}
           expectedApprovalVersion={postTarget.approval_version ?? 1}
           expectedPostingVersion={postTarget.posting_version ?? 1}
@@ -360,7 +383,7 @@ const ApprovalsPage = () => {
             uploadFinanceEvidence(file, postTarget.organization_id)
           }
           onSubmit={async (input) => {
-            await approveAndPostV2.mutateAsync(input);
+            await approveAndPostV2.mutateAsync({...input,organizationId:postTarget.organization_id});
             setPostTarget(null);
             refetch();
           }}
@@ -378,11 +401,17 @@ const ApprovalsPage = () => {
             </DialogDescription>
           </DialogHeader>
           <Textarea
+            ref={reasonRef}
+            aria-label="Lý do từ chối"
+            aria-invalid={reasonError}
+            aria-describedby={reasonError ? "reject-reason-error" : undefined}
             value={reason}
-            onChange={(e) => setReason(e.target.value)}
+            onChange={(e) => { setReason(e.target.value); if (e.target.value.trim()) setReasonError(false); }}
             placeholder="Lý do từ chối (bắt buộc)"
             rows={4}
           />
+          {reasonError && <p id="reject-reason-error" role="alert" className="text-sm text-destructive">Nhập lý do từ chối để người lập biết cần sửa gì.</p>}
+          {actionError && <p role="alert" className="text-sm text-destructive">{actionError}</p>}
           <DialogFooter>
             <Button variant="outline" onClick={closeReject} disabled={decide.isPending}>
               Đóng
@@ -390,7 +419,7 @@ const ApprovalsPage = () => {
             <Button
               variant="destructive"
               onClick={submitReject}
-              disabled={!reason.trim() || decide.isPending}
+              disabled={decide.isPending || !!rejecting && blockedRequests.has(rejecting.request_id)}
             >
               Xác nhận từ chối
             </Button>

@@ -1,7 +1,15 @@
+import {runFinancialPending} from '@/lib/financialPendingAction';
+import {useOrganization} from '@/contexts/OrganizationContext';
+import {VoucherPartialError} from '@/lib/voucherFeedback';
+import {QueryRegion} from '@/components/errors/QueryRegion';
+import { voucherFailureMessage, voucherOutcomeUnknown } from "@/lib/voucherFeedback";
 import { useIncomeExpenseDetail } from "@/hooks/income-expenses/detailRead";
 import { hasCompleteVoucherDetail } from "@/lib/incomeExpenseDetailRead";
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
+import { focusFirstError,applyFeedbackToForm } from '@/lib/formErrors';
+import {friendlyError} from '@/lib/friendlyError';
+import {VOUCHER_ERROR_RULES} from '@/lib/voucherErrorRules';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
   Dialog,
@@ -231,7 +239,10 @@ const IncomeExpenseFormInner = ({
   // revise_pending_income_expense_v1 — có lưu vết, lý do khi đổi trục tiền, và
   // kiểm phiên bản (approval_version lúc MỞ form) để không đè lên người khác.
   const [revisionReason, setRevisionReason] = useState('');
+  const [reasonError, setReasonError] = useState(false);
   const [staleVersion, setStaleVersion] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [reconcileRequired, setReconcileRequired] = useState(false);
   // Ảnh chụp form ngay sau khi đổ phiếu vào: chỉ gửi những ô khác ảnh này.
   const [editBaseline, setEditBaseline] = useState<{
     values: IncomeExpenseFormValues;
@@ -243,6 +254,7 @@ const IncomeExpenseFormInner = ({
   // Phiếu chưa có sổ: giữ được sổ trống, người duyệt chọn lúc duyệt.
   const accountOptional = !!voucher && !voucher.account_id;
   const { data: authUser } = useAuth();
+  const {selectedOrganizationId}=useOrganization();
   const { data: isAdmin = false } = useIsAdmin();
   // Chủ công ty KHÁC chủ tổ chức: xem đầu useIsCompanyOwner (vai "Chủ công ty"
   // có system_key NULL nên is_org_owner_self_v1 bỏ sót chính chủ doanh nghiệp).
@@ -256,6 +268,7 @@ const IncomeExpenseFormInner = ({
   // tạo, gán quản lý và chuyển sang sổ ảo "Hoa hồng QL chờ trả lương" (trả qua lương).
   // Không phải trường của phiếu nên ở ngoài zod schema, như forfeitReason.
   const [qlOn, setQlOn] = useState(false);
+  const [qlManagerError,setQlManagerError]=useState<string|null>(null);
   const [qlManagerId, setQlManagerId] = useState('');
   const queryClient = useOptionalQueryClient();
   const isMobile = useIsMobile();
@@ -276,27 +289,36 @@ const IncomeExpenseFormInner = ({
   // Cascade data hooks — RPC riêng cho form thu chi: mặc định chỉ toà quản lý,
   // có quyền income_expenses.all_buildings → mọi toà của chủ (managed xếp đầu).
   // Tòa "Chung" (ảo) cho chi/thu chung công ty cũng nằm trong kết quả.
-  const { data: buildings = [] } = useIncomeExpenseFormBuildings();
-  const { data: rooms = [] } = useIncomeExpenseFormRooms(selectedBuildingId);
+  const buildingsQuery = useIncomeExpenseFormBuildings();
+  const buildings=buildingsQuery.data??[];
+  const roomsQuery = useIncomeExpenseFormRooms(selectedBuildingId);
+  const rooms=roomsQuery.data??[];
 
   // Tách toà quản lý (xếp lên đầu) vs toà mở rộng (qua quyền all_buildings).
   // Chỉ chia nhóm khi có cả hai → tránh hiện nhãn nhóm thừa cho user thường.
   const managedBuildings = buildings.filter((b) => b.managed);
   const otherBuildings = buildings.filter((b) => !b.managed);
   const showBuildingGroups = managedBuildings.length > 0 && otherBuildings.length > 0;
-  const { data: accounts = [] } = useAccounts();
-  const { data: myAccess } = useMyCashbookAccessV2();
+  const accountsQuery = useAccounts();
+  const accounts=accountsQuery.data??[];
+  const { data: myAccess, isError: cashbookAccessError, refetch: retryCashbooks } = useMyCashbookAccessV2();
   // Danh sách HĐ trên phòng đã chọn — để link phiếu cọc đúng HĐ.
   // `enabled` là bắt buộc, không phải tối ưu vặt: chưa chọn phòng thì filter
   // rỗng, và query rỗng của hook này là `select *` TOÀN BỘ contracts kèm
   // `count: exact`, không range.
-  const { data: roomContracts = [] } = useContractsLegacy(
+  const roomContractsQuery = useContractsLegacy(
     selectedRoomId ? { room_id: selectedRoomId } : undefined,
     { enabled: open && !!selectedRoomId },
   );
+  const roomContracts=roomContractsQuery.data??[];
   // Lookup is_deposit cho từng type_id → biết phiếu có cọc hay không.
-  const { data: incomeTypes = [] } = useIncomeExpenseTypes('income');
-  const { data: expenseTypes = [] } = useIncomeExpenseTypes('expense');
+  const incomeTypesQuery = useIncomeExpenseTypes('income');
+  const incomeTypes=incomeTypesQuery.data??[];
+  const expenseTypesQuery = useIncomeExpenseTypes('expense');
+  const expenseTypes=expenseTypesQuery.data??[];
+
+  const requiredSources=[buildingsQuery,accountsQuery,incomeTypesQuery,expenseTypesQuery,...(selectedBuildingId?[roomsQuery]:[]),...(selectedRoomId?[roomContractsQuery]:[])];
+  const sourceUnavailable=requiredSources.some(query=>query.isError||query.isPending||query.data===undefined);
 
   // Tập type_id thuộc hạng mục "cọc" (is_deposit) — gồm cả thu (Tiền cọc) lẫn
   // chi (Hoàn cọc thanh lý) → dùng để tự suy mặc định cờ "Hạch toán KQKD".
@@ -314,7 +336,9 @@ const IncomeExpenseFormInner = ({
   const prefillPeriodEnd =
     (!voucher && defaultPrefill?.period?.end_date) || monthToEndDate(currentMonth());
 
+  const formRef = useRef<HTMLFormElement>(null);
   const form = useForm<IncomeExpenseFormValues>({
+    shouldFocusError: false,
     resolver: zodResolver(
       accountOptional ? incomeExpenseNoAccountFormSchema : incomeExpenseFormSchema,
     ),
@@ -359,6 +383,8 @@ const IncomeExpenseFormInner = ({
     return { start: starts[0], end: ends[ends.length - 1] };
   }, [itemRows]);
 
+  const slotWarningReady = !!selectedBuildingId && itemRows.some(row => !!row.income_expense_type_id)
+    && !!slotPeriod.start && !!slotPeriod.end;
   const slotWarning = useVoucherSlotWarning({
     buildingId: selectedBuildingId,
     typeIds: itemRows.map((r) => r.income_expense_type_id),
@@ -691,7 +717,13 @@ const IncomeExpenseFormInner = ({
   };
 
   const onSubmit = async (data: IncomeExpenseFormValues) => {
-    if (detailBlocked || detailConflict) return;
+    if (detailBlocked || detailConflict || reconcileRequired || cashbookAccessError || sourceUnavailable) return;
+    setSubmitError(null);
+    if ((revisionNeedsReason && !revisionReasonOk) || (forfeitKqkdMode && forfeitKqkdChanged && !forfeitReasonOk)) {
+      setReasonError(true);
+      void focusFirstError({ [forfeitKqkdMode ? 'forfeitReason' : 'revisionReason']: 'Nhập lý do có ít nhất 8 ký tự.' }, { root: formRef.current });
+      return;
+    }
     try {
       // Cửa hẹp phiếu bỏ cọc: KHÔNG đụng updateMutation. Đường thường sẽ chết ở
       // trigger writer thanh lý, và nó cũng sẽ ghi cả những cột ta cố ý không
@@ -731,23 +763,27 @@ const IncomeExpenseFormInner = ({
       } else {
         const giaoQl = showQl && qlOn;
         if (giaoQl && !qlManagerId) {
-          toast.error('Đã tích QL — hãy chọn quản lý nhận hoa hồng.');
+          setQlManagerError('Chọn quản lý nhận hoa hồng.');
+          void focusFirstError({qlManagerId:'Chọn quản lý nhận hoa hồng.'},{root:formRef.current});
           return;
         }
+        await runFinancialPending({namespace:"voucher-form-create",userId:authUser?.id??"",organizationId:selectedOrganizationId??"",businessKey:[data.type,data.building_id,data.room_id??""].join(":")},async progress=>{
         // Cả hai đường ghi (create_income_expense_v1 / ie_compat_insert_v2) trả về phiếu có id.
         const created = (await createMutation.mutateAsync(data)) as { id?: string } | null | undefined;
-        if (giaoQl && created?.id) {
+        if(!created?.id)throw new TypeError("Chưa xác nhận mã phiếu vừa tạo");
+        progress.recordCompleted([created.id]);
+        if (giaoQl) {
           // Lỗi gán không huỷ phiếu vừa tạo: phiếu ở lại sổ đã chọn, gán lại ở chi
           // tiết phiếu (nút "Gán QL") hoặc màn Lương.
           try {
             await assignCommissionManager({ voucherId: created.id, managerId: qlManagerId });
             await invalidateAfterCommissionAssign(queryClient);
           } catch (e) {
-            toast.error(
-              `Đã tạo phiếu nhưng CHƯA gán quản lý: ${e instanceof Error ? e.message : 'lỗi không xác định'}. Gán lại ở chi tiết phiếu (nút "Gán QL").`,
-            );
+            const message = `Đã tạo phiếu nhưng chưa gán được quản lý. ${voucherFailureMessage(e, 'gán quản lý nhận hoa hồng')} Mở chi tiết phiếu ${created.id} để gán bổ sung; không tạo lại phiếu.`;
+            setReconcileRequired(true); toast.warning(message); throw new VoucherPartialError(message,[created.id]);
           }
         }
+        });
         // Báo cho caller (vd ContractFormDialog) biết phiếu vừa tạo có tổng
         // bao nhiêu để cập nhật field "Đã đặt cọc" ngay tại form HĐ.
         const total = data.items.reduce(
@@ -761,6 +797,9 @@ const IncomeExpenseFormInner = ({
       // Lỗi đã được hook báo (toast). Riêng lệch phiên bản: phiếu vừa bị người
       // khác sửa/duyệt — khoá nút Lưu, bảo người dùng mở lại phiếu.
       if (isStaleVersionError(error)) setStaleVersion(true);
+      setSubmitError(voucherFailureMessage(error, isEditing ? "lưu thay đổi phiếu" : "tạo phiếu"));
+      await applyFeedbackToForm(form,friendlyError(error,"Chưa lưu được phiếu",{operation:"lưu phiếu",financial:true,rules:VOUCHER_ERROR_RULES}),{root:formRef.current});
+      if (voucherOutcomeUnknown(error)) setReconcileRequired(true);
     }
   };
 
@@ -920,7 +959,10 @@ const IncomeExpenseFormInner = ({
           )}
 
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <form ref={formRef} onSubmit={form.handleSubmit(onSubmit, (errors) => { void focusFirstError(errors, { root: formRef.current }); })} className="space-y-4">
+              <QueryRegion label="danh mục lập phiếu" queries={requiredSources}><></></QueryRegion>
+              {submitError && !staleVersion && <p role="alert" className="text-sm text-destructive">{submitError}</p>}
+              {cashbookAccessError && <div role="alert" className="text-sm text-destructive">Chưa kiểm tra được quyền sử dụng sổ quỹ. <Button type="button" variant="outline" onClick={() => retryCashbooks()}>Tải lại sổ quỹ</Button></div>}
               {/* Step 1: Voucher type tab toggle */}
               <Tabs
                 value={form.watch('type')}
@@ -969,7 +1011,7 @@ const IncomeExpenseFormInner = ({
                   control={form.control}
                   name="building_id"
                   render={({ field }) => (
-                    <FormItem>
+                    <FormItem data-field-name={field.name}>
                       <FormLabel>Tòa nhà *</FormLabel>
                       <FormControl>
                         <SearchableSelect
@@ -1008,7 +1050,7 @@ const IncomeExpenseFormInner = ({
                   control={form.control}
                   name="room_id"
                   render={({ field }) => (
-                    <FormItem>
+                    <FormItem data-field-name={field.name}>
                       <FormLabel>Phòng</FormLabel>
                       <FormControl>
                         <SearchableSelect
@@ -1035,7 +1077,7 @@ const IncomeExpenseFormInner = ({
                   control={form.control}
                   name="account_id"
                   render={({ field }) => (
-                    <FormItem>
+                    <FormItem data-field-name={field.name}>
                       <FormLabel>
                         {accountOptional ? 'Sổ quỹ (chọn lúc duyệt)' : 'Sổ quỹ *'}
                       </FormLabel>
@@ -1081,7 +1123,7 @@ const IncomeExpenseFormInner = ({
                         c.id === field.value,
                     );
                     return (
-                    <FormItem>
+                    <FormItem data-field-name={field.name}>
                       <div className="flex items-center justify-between gap-2">
                         <FormLabel>
                           Hợp đồng {hasDepositItem ? '(cọc)' : '(tuỳ chọn)'}
@@ -1156,7 +1198,7 @@ const IncomeExpenseFormInner = ({
                   control={form.control}
                   name="payer_name"
                   render={({ field }) => (
-                    <FormItem>
+                    <FormItem data-field-name={field.name}>
                       <div className="flex items-center justify-between gap-2">
                         <FormLabel>
                           {voucherType === 'EXPENSE' ? 'Tên người nhận' : 'Người gửi'}
@@ -1179,10 +1221,12 @@ const IncomeExpenseFormInner = ({
                       {showQl && qlOn ? (
                         <>
                           <QlManagerSelectForBuilding
+                            name="qlManagerId"
+                            error={qlManagerError??undefined}
                             buildingId={watchedBuildingId}
                             value={qlManagerId}
                             onPick={(m) => {
-                              setQlManagerId(m.staffId);
+                              setQlManagerId(m.staffId);setQlManagerError(null);
                               field.onChange(m.displayName);
                             }}
                           />
@@ -1214,7 +1258,7 @@ const IncomeExpenseFormInner = ({
                   control={form.control}
                   name="voucher_date"
                   render={({ field }) => (
-                    <FormItem>
+                    <FormItem data-field-name={field.name}>
                       <FormLabel>
                         {voucherType === 'EXPENSE' ? 'Ngày thực chi' : 'Ngày thực thu'} *
                       </FormLabel>
@@ -1240,7 +1284,7 @@ const IncomeExpenseFormInner = ({
                     control={form.control}
                     name="receive_bank_account"
                     render={({ field }) => (
-                      <FormItem>
+                      <FormItem data-field-name={field.name}>
                         <FormLabel>Số TK người nhận</FormLabel>
                         <FormControl>
                           <Input
@@ -1259,7 +1303,7 @@ const IncomeExpenseFormInner = ({
                     control={form.control}
                     name="receive_bank_name"
                     render={({ field }) => (
-                      <FormItem>
+                      <FormItem data-field-name={field.name}>
                         <FormLabel>Ngân hàng người nhận</FormLabel>
                         <FormControl>
                           <BankSelect
@@ -1280,7 +1324,7 @@ const IncomeExpenseFormInner = ({
                 control={form.control}
                 name="name"
                 render={({ field }) => (
-                  <FormItem>
+                  <FormItem data-field-name={field.name}>
                     <FormLabel>
                       {voucherType === 'EXPENSE' ? 'Tên phiếu chi' : 'Tên phiếu thu'} *
                     </FormLabel>
@@ -1352,6 +1396,8 @@ const IncomeExpenseFormInner = ({
                     </label>
                     <Textarea
                       id="forfeit-kqkd-reason"
+                      name="forfeitReason"
+                      aria-invalid={reasonError && !forfeitReasonOk}
                       data-testid="forfeit-kqkd-reason"
                       value={forfeitReason}
                       onChange={(e) => setForfeitReason(e.target.value)}
@@ -1359,6 +1405,7 @@ const IncomeExpenseFormInner = ({
                       rows={2}
                     />
                     <p className="text-xs text-muted-foreground">
+                      {reasonError && !forfeitReasonOk && <span role="alert" className="text-destructive">Nhập lý do có ít nhất 8 ký tự. </span>}
                       {forfeitReasonOk
                         ? 'Lý do sẽ được ghi vào nhật ký phiếu cùng người sửa và thời điểm.'
                         : `Cần ít nhất ${FORFEIT_KQKD_REASON_MIN} ký tự — đây là bằng chứng đối soát về sau.`}
@@ -1368,6 +1415,7 @@ const IncomeExpenseFormInner = ({
 
                 {/* Cảnh báo trùng ô — CHỈ thông báo, không chặn nút Lưu. Đặt ngay
                     trên bảng hạng mục để đọc được trước khi gõ số tiền. */}
+                {slotWarningReady && <QueryRegion label="các phiếu cùng hạng mục trong kỳ" queries={[slotWarning]} loading={null}>
                 {slotHits.length > 0 && (
                   <div className="rounded-md border border-amber-500/50 bg-amber-500/5 p-3 text-sm"
                        data-testid="voucher-slot-warning">
@@ -1410,6 +1458,7 @@ const IncomeExpenseFormInner = ({
                     </p>
                   </div>
                 )}
+                </QueryRegion>}
 
                 <div className="flex items-center justify-between">
                   <FormLabel>Hạng mục</FormLabel>
@@ -1418,6 +1467,9 @@ const IncomeExpenseFormInner = ({
                       type="button"
                       variant="outline"
                       size="sm"
+                      data-field-name="items"
+                      aria-invalid={!!form.formState.errors.items}
+                      className={form.formState.errors.items ? "border-destructive" : undefined}
                       onClick={() => setIsItemSelectorOpen(true)}
                     >
                       <Plus className="h-4 w-4 mr-1" />
@@ -1455,29 +1507,47 @@ const IncomeExpenseFormInner = ({
                         <p className="text-sm font-medium truncate">
                           {item.type_name}
                         </p>
+                        <div data-field-name={`items.${index}.unit_price`}>
                         <CurrencyInput
+                          name={`items.${index}.unit_price`}
+                          aria-invalid={!!form.formState.errors.items?.[index]?.unit_price}
+                          aria-describedby={`ie-item-${index}-unit_price-error`}
                           value={item.unit_price}
                           onChange={(v) => handleItemPriceChange(index, v)}
                           disabled={!canEdit}
-                          className="h-8"
+                          className={form.formState.errors.items?.[index]?.unit_price ? "h-8 border-destructive" : "h-8"}
                           placeholder="Số tiền"
                         />
+                          {form.formState.errors.items?.[index]?.unit_price && <p id={`ie-item-${index}-unit_price-error`} role="alert" className="text-xs text-destructive">{form.formState.errors.items[index]?.unit_price?.message}</p>}
+                        </div>
+                        <div data-field-name={`items.${index}.start_date`}>
                         <MonthInput
+                          name={`items.${index}.start_date`}
+                          aria-invalid={!!form.formState.errors.items?.[index]?.start_date}
+                          aria-describedby={`ie-item-${index}-start_date-error`}
                           value={dateToMonth(item.start_date)}
                           onChange={(m) =>
                             handleItemStartDateChange(index, monthToStartDate(m))
                           }
                           disabled={!canEditFrame}
-                          className="h-8"
+                          className={form.formState.errors.items?.[index]?.start_date ? "h-8 border-destructive" : "h-8"}
                         />
+                          {form.formState.errors.items?.[index]?.start_date && <p id={`ie-item-${index}-start_date-error`} role="alert" className="text-xs text-destructive">{form.formState.errors.items[index]?.start_date?.message}</p>}
+                        </div>
+                        <div data-field-name={`items.${index}.end_date`}>
                         <MonthInput
+                          name={`items.${index}.end_date`}
+                          aria-invalid={!!form.formState.errors.items?.[index]?.end_date}
+                          aria-describedby={`ie-item-${index}-end_date-error`}
                           value={dateToMonth(item.end_date)}
                           onChange={(m) =>
                             handleItemEndDateChange(index, monthToEndDate(m))
                           }
                           disabled={!canEditFrame}
-                          className="h-8"
+                          className={form.formState.errors.items?.[index]?.end_date ? "h-8 border-destructive" : "h-8"}
                         />
+                          {form.formState.errors.items?.[index]?.end_date && <p id={`ie-item-${index}-end_date-error`} role="alert" className="text-xs text-destructive">{form.formState.errors.items[index]?.end_date?.message}</p>}
+                        </div>
                         {canEditFrame && (
                           <Button
                             type="button"
@@ -1522,7 +1592,7 @@ const IncomeExpenseFormInner = ({
                     control={form.control}
                     name="repeat_cycle"
                     render={({ field }) => (
-                      <FormItem>
+                      <FormItem data-field-name={field.name}>
                         <FormLabel>Chu kỳ</FormLabel>
                         <Select
                           onValueChange={(v) => {
@@ -1570,7 +1640,7 @@ const IncomeExpenseFormInner = ({
                       const inf = form.watch('repeat_infinity');
                       const disabled = !canEditFrame || cycle === 'NONE' || inf;
                       return (
-                        <FormItem>
+                        <FormItem data-field-name={field.name}>
                           <FormLabel>Số lần lặp</FormLabel>
                           <FormControl>
                             <NumberInput
@@ -1662,7 +1732,7 @@ const IncomeExpenseFormInner = ({
                 control={form.control}
                 name="attachments"
                 render={({ field }) => (
-                  <FormItem>
+                  <FormItem data-field-name={field.name}>
                     <FormLabel>Đính kèm</FormLabel>
                     <FormControl>
                       <AttachmentUpload
@@ -1685,6 +1755,8 @@ const IncomeExpenseFormInner = ({
                   </label>
                   <Textarea
                     id="revision-reason"
+                    name="revisionReason"
+                    aria-invalid={reasonError && !revisionReasonOk}
                     data-testid="revision-reason"
                     value={revisionReason}
                     onChange={(e) => setRevisionReason(e.target.value)}
@@ -1693,6 +1765,7 @@ const IncomeExpenseFormInner = ({
                     rows={2}
                   />
                   <p className="text-xs text-muted-foreground">
+                    {reasonError && !revisionReasonOk && <span role="alert" className="text-destructive">Nhập lý do có ít nhất 8 ký tự. </span>}
                     {revisionReasonOk
                       ? 'Lý do được lưu cùng lần sửa — người duyệt sẽ thấy.'
                       : `Đổi số tiền, hạng mục, Thu/Chi, toà, sổ quỹ hoặc KQKD cần lý do (ít nhất ${REVISION_REASON_MIN} ký tự).`}
@@ -1740,10 +1813,9 @@ const IncomeExpenseFormInner = ({
                     // rồi thì phải có lý do — cùng ngưỡng với server để người
                     // dùng không bấm rồi mới ăn 22023.
                     disabled={
-                      isPending ||
+                      cashbookAccessError || sourceUnavailable || reconcileRequired || isPending ||
                       staleVersion || detailBlocked || detailConflict ||
-                      (revisionNeedsReason && !revisionReasonOk) ||
-                      (forfeitKqkdMode && (!forfeitKqkdChanged || !forfeitReasonOk))
+                      (forfeitKqkdMode && !forfeitKqkdChanged)
                     }
                     className={isMobile ? "flex-1" : ""}
                     data-testid="ie-form-save"

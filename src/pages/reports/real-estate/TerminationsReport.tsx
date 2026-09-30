@@ -27,10 +27,12 @@ export default function TerminationsReport() {
   });
 
   useCopilotPageContext('reports.real-estate.terminations', { building_id: buildingId, from: dateRange?.from, to: dateRange?.to });
-  const { data: buildings } = useBuildings();
-  const { data: reportData, isLoading } = useTerminationsReport(
+  const buildingsQuery = useBuildings();
+  const { data: buildings } = buildingsQuery;
+  const reportQuery = useTerminationsReport(
     dateRange?.from, dateRange?.to, buildingId
   );
+  const { data: reportData, isLoading } = reportQuery;
 
   const terminations = reportData?.items || [];
   const terminationRate = reportData?.terminationRate || 0;
@@ -79,6 +81,8 @@ export default function TerminationsReport() {
   return (
     <MainLayout>
       <ReportLayout
+        queries={[reportQuery]}
+        filterQueries={[buildingsQuery]}
         title="Báo cáo Bỏ trả"
         description="Danh sách hợp đồng đã thanh lý, chấm dứt"
         icon={<XCircle className="h-8 w-8" />}

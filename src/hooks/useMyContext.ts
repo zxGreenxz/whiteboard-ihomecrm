@@ -30,10 +30,10 @@ export const useMyContext = () => {
       // RLS của staff_assignments chỉ cho owner đọc — dùng RPC SECURITY DEFINER
       // để staff thấy được context của chính mình.
       const { data, error } = await supabase.rpc('get_my_context');
-      if (error || !data) {
-        return { isSuper: false, isStaff: false, ownerId: user.id, defaultAreaId: null };
-      }
+      if (error) throw error;
+      if (!data) throw new TypeError("Unconfirmed user context");
       const result = Array.isArray(data) ? data[0] : data;
+      if (typeof jsonProp(result, "is_super") !== "boolean" || typeof jsonProp(result, "is_staff") !== "boolean") throw new TypeError("Unconfirmed user context");
       const ownerId = jsonProp(result, 'owner_id');
       const defaultAreaId = jsonProp(result, 'default_area_id');
       return {

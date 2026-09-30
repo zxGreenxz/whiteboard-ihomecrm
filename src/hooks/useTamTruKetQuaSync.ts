@@ -11,8 +11,8 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ghiHoSoTamTru, maHoSoHopLe } from '@/lib/residenceRegistrations';
-import { residenceRegistrationKeys } from '@/hooks/useResidenceRegistrations';
+import { maHoSoHopLe, RegistrationError } from '@/lib/residenceRegistrationValidation';
+import { residenceRegistrationKeys } from '@/lib/residenceRegistrationKeys';
 import { layKetQuaNop, xacNhanDaGhiSo, type KetQuaNopTamTru } from '@/lib/tamTruBridge';
 
 export const TAM_TRU_TIN_HIEU = 'IHOME_TAMTRU_CO_KET_QUA';
@@ -25,6 +25,7 @@ function duDeGhi(k: KetQuaNopTamTru): k is KetQuaNopTamTru & { buildingId: strin
 export function useTamTruKetQuaSync(): void {
   const queryClient = useQueryClient();
   const dangChay = useRef(false);
+  const daBaoLoi=useRef(new Set<string>());
 
   const dongBo = useCallback(async () => {
     if (dangChay.current) return;
@@ -39,15 +40,27 @@ export function useTamTruKetQuaSync(): void {
       const daGhi: string[] = [];
       for (const k of ds.filter(duDeGhi)) {
         try {
+          const { ghiHoSoTamTru } = await import('@/lib/residenceRegistrations');
           await ghiHoSoTamTru({
             customerId: k.customerId, buildingId: k.buildingId, organizationId: k.organizationId,
             contractId: k.contractId ?? null, submCode: k.submCode, receiveOrg: k.receiveOrg,
             tempResidentFrom: k.tempResidentFrom, tempResidentTo: k.tempResidentTo, submittedAt: k.submittedAt,
           });
+          daBaoLoi.current.delete(k.submCode);
           daGhi.push(k.submCode);
           await queryClient.invalidateQueries({ queryKey: residenceRegistrationKeys.customer(k.customerId) });
-        } catch {
-          // Ghi hụt (mất mạng, hết phiên): giữ nguyên trong extension để lần sau ghi tiếp.
+        } catch (error) {
+          if (!daBaoLoi.current.has(k.submCode)) {
+            daBaoLoi.current.add(k.submCode);
+            const message = error instanceof RegistrationError ? error.message : await import('@/lib/recordWriteOutcome')
+              .then(({ recordWriteMessage }) => recordWriteMessage(error, 'ghi mã hồ sơ tạm trú'))
+              .catch(cause => {
+                console.warn('[residence] feedback unavailable', cause);
+                return 'Chưa xác nhận kết quả lưu mã hồ sơ. Giữ mã đang nhập và đối chiếu lịch sử trước khi gửi lại.';
+              });
+            toast.error(`Hồ sơ ${k.submCode}: ${message}`);
+          }
+          // Giữ dữ liệu trong extension; không xác nhận đã ghi khi server chưa xác nhận.
         }
       }
       if (daGhi.length > 0) {

@@ -1,3 +1,6 @@
+import {readJobTypes,readDepartments} from '@/lib/accountJobReadModels';
+import { requireAccountWriteReceipt } from "@/lib/accountSettingsWriteReceipt";
+import { notifyActionError } from '@/lib/actionFeedback';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
@@ -17,7 +20,7 @@ export const useJobTypes = () => {
         throw error;
       }
 
-      return data || [];
+      return readJobTypes(data);
     },
   });
 };
@@ -38,18 +41,17 @@ export const useCreateJobType = () => {
         .single();
 
       if (error) {
-        toast.error("Không thể tạo loại công việc");
         throw error;
       }
 
-      return data;
+      return requireAccountWriteReceipt(data, { ...jobType, user_id: user.id });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["job_types"] });
-      toast.success("Dữ liệu đã được TẠO thành công");
+      toast.success("Đã tạo loại công việc.");
     },
     onError: (error) => {
-      console.error("Error creating job type:", error);
+      notifyActionError(error, "Chưa xác nhận được kết quả thao tác loại công việc");
     },
   });
 };
@@ -67,18 +69,17 @@ export const useUpdateJobType = () => {
         .single();
 
       if (error) {
-        toast.error("Không thể cập nhật loại công việc");
         throw error;
       }
 
-      return data;
+      return requireAccountWriteReceipt(data, { ...updates, id });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["job_types"] });
-      toast.success("Dữ liệu đã được CẬP NHẬT thành công");
+      toast.success("Đã cập nhật loại công việc.");
     },
     onError: (error) => {
-      console.error("Error updating job type:", error);
+      notifyActionError(error, "Chưa xác nhận được kết quả thao tác loại công việc");
     },
   });
 };
@@ -96,18 +97,17 @@ export const useDeleteJobType = () => {
         .single();
 
       if (error) {
-        toast.error("Không thể xóa loại công việc");
         throw error;
       }
 
-      return data;
+      return requireAccountWriteReceipt(data, { id });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["job_types"] });
-      toast.success("Dữ liệu đã được XOÁ thành công");
+      toast.success("Đã xóa loại công việc.");
     },
     onError: (error) => {
-      console.error("Error deleting job type:", error);
+      notifyActionError(error, "Chưa xác nhận được kết quả thao tác loại công việc");
     },
   });
 };
@@ -127,7 +127,7 @@ export const useDepartments = () => {
         throw error;
       }
 
-      return data || [];
+      return readDepartments(data);
     },
   });
 };

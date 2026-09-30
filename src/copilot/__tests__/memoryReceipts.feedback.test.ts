@@ -1,0 +1,10 @@
+import {beforeEach,expect,it,vi} from 'vitest';
+const m=vi.hoisted(()=>({rpc:vi.fn()}));vi.mock('@/integrations/supabase/client',()=>({supabase:{rpc:m.rpc}}));
+import {layGhiNho,ghiNhoLen,boGhiNho} from '../memoryClient';
+beforeEach(()=>{vi.clearAllMocks();m.rpc.mockResolvedValue({data:null,error:null});});
+it.each([null,{}, {items:null},{items:[{}]},{items:[{key:'k',value:'v',source:'admin',updated_at:'2026-09-30T00:00:00Z'}]}])('memory read invalid cannot become empty/partial %j',async data=>{m.rpc.mockResolvedValue({data,error:null});await expect(layGhiNho('org-a')).rejects.toBeInstanceOf(Error);});
+it('real empty memory stays empty',async()=>{m.rpc.mockResolvedValue({data:{items:[]},error:null});await expect(layGhiNho('org-a')).resolves.toEqual([]);});
+it.each([null,{}, {key:'other',value:'v',source:'user',total:1},{key:'k',value:'old',source:'user',total:1},{key:'k',value:'v',source:'admin',total:1},{key:'k',value:'v',source:'user',total:null}])('memory upsert cannot invent requested values from absent/wrong receipt %j',async data=>{m.rpc.mockResolvedValue({data,error:null});await expect(ghiNhoLen('org-a','k','v','user')).rejects.toBeInstanceOf(Error);});
+it.each([null,{}, {key:'other',found:true,total:0},{key:'k',found:'true',total:0},{key:'k',found:true,total:null}])('memory delete requires exact key/found/count %j',async data=>{m.rpc.mockResolvedValue({data,error:null});await expect(boGhiNho('org-a','k')).rejects.toBeInstanceOf(Error);});
+it('real absent memory is unchanged; valid insert preserves returned source/count',async()=>{m.rpc.mockResolvedValueOnce({data:{key:'k',found:false,total:0},error:null}).mockResolvedValueOnce({data:{key:'k',value:'v',source:'user',total:1},error:null});await expect(boGhiNho('org-a','k')).resolves.toMatchObject({thay:false,tong:0});await expect(ghiNhoLen('org-a','k','v','user')).resolves.toMatchObject({khoa:'k',noiDung:'v',nguon:'user',tong:1});});
+it('original server permission code survives memory boundary',async()=>{const error={code:'42501',message:'SQL_PRIVATE'};m.rpc.mockResolvedValue({data:null,error});await expect(layGhiNho('org-a')).rejects.toBe(error);});

@@ -7,7 +7,7 @@
 // NGUYÊN TẮC FAIL-SAFE:
 //   - RPC chưa tồn tại (schema V2 chưa forward-apply, PostgREST PGRST202) → LEGACY.
 //     Đây là tín hiệu "schema-absent" CÓ CHỦ ĐÍCH, không phải fallback quyền (khác 42501).
-//   - Mọi lỗi khác → LEGACY + console.warn (không bao giờ đoán CANONICAL).
+//   - Mọi lỗi khác → query error để các biểu mẫu chặn lưu khi chưa tải đủ cấu hình.
 //   - FROZEN → UI coi như CANONICAL về HIỂN THỊ nhưng mọi action write phải disable
 //     (emergency stop); helper `canWrite` phản ánh điều đó.
 
@@ -56,7 +56,7 @@ function asRoute(value: string | null | undefined): FinanceRoute {
     : "LEGACY";
 }
 
-/** Fetch effective routes per org. Absent function / any error ⇒ empty map (LEGACY). */
+/** Known absent function keeps legacy support; other failures retain query error state. */
 export async function fetchFinanceV2ClientFlags(): Promise<Map<string, FinanceV2OrgRoutes>> {
   const map = new Map<string, FinanceV2OrgRoutes>();
   // RPC chưa có trong generated types cho tới lần regen sau forward-apply — cast có chủ đích.
@@ -68,11 +68,12 @@ export async function fetchFinanceV2ClientFlags(): Promise<Map<string, FinanceV2
   if (error) {
     // PGRST202 = function not found = schema V2 chưa apply → LEGACY im lặng.
     if (error.code !== "PGRST202") {
-      console.warn("[financeV2Route] flags RPC error — falling back to LEGACY:", error.message);
+      throw error;
     }
     return map;
   }
-  for (const row of data ?? []) {
+  if (!Array.isArray(data)) throw new Error('Invalid finance route response');
+  for (const row of data) {
     map.set(row.organization_id, {
       readSemantics: asRoute(row.read_semantics_route),
       workflow: asRoute(row.workflow_route),

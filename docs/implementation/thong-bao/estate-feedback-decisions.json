@@ -1,0 +1,120 @@
+{
+  "note": "Chỉ các site đã đọc mã nguồn và đối chiếu nhánh gọi; ID từ feedback-inventory.json trước lần quét kế tiếp.",
+  "decisions": {
+    "637dfc5d6a49cb9b": { "status": "fixed", "evidence": "ContractsPage.tsx export catch dùng friendlyError theo thao tác; bỏ e.message thô." },
+    "75e686e7e71b937e": { "status": "fixed", "evidence": "ContractListTable.tsx copy QR catch dùng friendlyError; bỏ e.message thô." },
+    "4475cbdd9ae8e56c": { "status": "fixed", "evidence": "useAreas.ts useAssignBuildingsToArea trả AreaMembershipPartialError kèm ID khi gỡ xong/thêm lỗi; ManageAreasDialog khóa tiếp và bắt refetch hai nguồn." },
+    "6a1fa2c06d916c53": { "status": "already-correct", "evidence": "useAreas.ts AreaMembershipPartialError.message là câu tiếng Việt dựng cục bộ từ ID/số tòa; không hiển thị cause SQL. ManageAreasDialog giữ partialAreaId." },
+    "6b145adfa4a79403": { "status": "fixed", "evidence": "useAreas.ts xóa khu trả AreaDeletePartialError khi soft-delete xong/gỡ membership lỗi; kiểm row ID trước success. areaDeletePartial.test.ts 1 pass." },
+    "dc01200b72b56ed2": { "status": "fixed", "evidence": "useBuildingServices.ts đọc authoritative set, upsert trước khi xóa stale; lỗi xóa trả BuildingServicesPartialError với buildingId. BuildingFormOwnerRetry.test.tsx 3 pass cho core/owner." },
+    "723b18cbf1e255c3": { "status": "already-correct", "evidence": "useBuildingServices.ts partial toast dùng error.message từ BuildingServicesPartialError cục bộ, không dùng SQL cause." },
+    "a3fd57883d1a7d07": { "status": "fixed", "evidence": "ResidenceDossierSection.tsx bọc tenancy, files, registration history, ownership bằng QueryRegion; ResidenceDossierSection.query.test.tsx 1 pass." },
+    "87af2430fed31901": { "status": "already-correct", "evidence": "TamTruDvcButton.tsx chỉ hiện error.message khi khớp chính xác hai câu lỗi bridge extension đã biết; TamTruDvcButton.test.tsx 7 pass." },
+    "82b5fc8dc944c29b": { "status": "fixed", "evidence": "useAssets.ts create toast dùng asset.name từ response; assetMaterialDeleteOutcome.test.ts kiểm no-row delete." },
+    "d4f03fcba4ab3ae8": { "status": "fixed", "evidence": "useAssets.ts delete `.select('id').single()` và chặn success nếu ID không khớp; assetMaterialDeleteOutcome.test.ts pass." },
+    "07b4a048ad29f1d5": { "status": "fixed", "evidence": "useMaterials.ts soft-delete `.select('id').single()` và chặn success nếu ID không khớp; assetMaterialDeleteOutcome.test.ts pass." },
+    "67e51a779811959a": { "status": "fixed", "evidence": "useMaterialCategories.ts delete kiểm row ID sau precheck vật tư; assetMaterialDeleteOutcome.test.ts pass." },
+    "14ced933475a915c": { "status": "fixed", "evidence": "useIncomeExpenseTemplates.ts đọc defaults authoritative, kiểm target ID, TemplateDefaultPartialError giữ IDs sau unset thành công; E23 existing property/org tests 22 pass." }
+    ,"14fa438173266825": { "status": "unused", "evidence": "useUploadContractFile có @deprecated; rg tên hook trong src ngoài useContracts.ts không có caller." }
+    ,"0532eb57687ae01c": { "status": "unused", "evidence": "Toast lỗi của useUploadContractFile @deprecated; rg tên hook trong src ngoài useContracts.ts không có caller." }
+    ,"af8addaa8a5d91ae": { "status": "unused", "evidence": "useApproveTermination @deprecated; rg tên hook trong src ngoài useContracts.ts không có caller." }
+    ,"786c82505f30e8ab": { "status": "unused", "evidence": "useRejectTermination @deprecated; rg tên hook trong src ngoài useContracts.ts không có caller." }
+    ,"75562423a8b47de6": { "status": "unused", "evidence": "useEstimateTerminationCosts trong useContracts.ts không có caller trong src theo rg; để nguyên compatibility export." }
+    ,"ae20ec00745e6f56": { "status": "unused", "evidence": "Toast lỗi của useEstimateTerminationCosts không có caller trong src theo rg." }
+    ,"f04184e5771fc630": { "status": "fixed", "evidence": "useServices.ts create core rồi links lỗi trả ServiceLinksPartialError(serviceId); CreateServiceDialog chặn tạo lại sau partial." }
+    ,"fba17de754e25201": { "status": "already-correct", "evidence": "useServices.ts toast partial chỉ dùng ServiceLinksPartialError.message dựng cục bộ, không hiển thị SQL cause." }
+    ,"cdf8ee626041313b": { "status": "fixed", "evidence": "useServices.ts update đọc links authoritative và reconcile; lỗi sau core trả ServiceLinksPartialError(serviceId), EditServiceDialog giữ banner." }
+    ,"f450428147ad18aa": { "status": "already-correct", "evidence": "useServices.ts update partial toast dùng ServiceLinksPartialError.message dựng cục bộ, không SQL cause." }
+    ,"605a0ebb726912dd": { "status": "fixed", "evidence": "useServices.ts quota create tier fail trả ServiceQuotaPartialError(quotaId); CreateQuotaDialog khóa gửi lại." }
+    ,"6ef6a8f14e927fd4": { "status": "already-correct", "evidence": "useServices.ts quota create partial toast dùng ServiceQuotaPartialError.message dựng cục bộ." }
+    ,"3779d59f765df7cc": { "status": "fixed", "evidence": "useServices.ts quota update đọc tiers, upsert trước khi delete stale; EditQuotaDialog.partial.test.tsx 1 pass khóa retry core." }
+    ,"58ed9a4f5a762e4d": { "status": "already-correct", "evidence": "useServices.ts quota update partial toast dùng ServiceQuotaPartialError.message dựng cục bộ." }
+    ,"773d4573219b266b": { "status": "already-correct", "evidence": "useIncomeExpenseTemplates.ts toast partial dùng TemplateDefaultPartialError.message dựng cục bộ, giữ templateId và previousDefaultIds." }
+    ,"6238563336da8519": { "status": "fixed", "evidence": "useResidenceDossierFiles.ts upload phân biệt DossierFileError cục bộ và StorageError không rõ qua friendlyError; residenceMutationFeedback.test.ts 2 pass." }
+    ,"12bf3f68cf1241a0": { "status": "fixed", "evidence": "useResidenceDossierFiles.ts upload onError không hiện raw StorageError; residenceMutationFeedback.test.ts pass." }
+    ,"2d7e93fb9c3915ed": { "status": "already-correct", "evidence": "removeDossierFile trong residenceDossierFiles.ts chuyển DB lỗi thành DossierFileError cục bộ; hook nay còn fallback friendlyError cho lỗi khác." }
+    ,"f88b70c4437a0ead": { "status": "fixed", "evidence": "useResidenceDossierFiles.ts remove onError dùng dossierError, không hiện lỗi nguồn không rõ." }
+    ,"ff487f48aa3426f2": { "status": "already-correct", "evidence": "luuHanHopDong trong residenceDossierFiles.ts chuyển DB lỗi thành DossierFileError cục bộ; hook nay còn fallback friendlyError cho lỗi khác." }
+    ,"5c244cef38990232": { "status": "fixed", "evidence": "useResidenceDossierFiles.ts luuHan onError dùng dossierError, không hiện raw error không rõ." }
+    ,"ff363009a1b97cbb": { "status": "fixed", "evidence": "useResidenceRegistrations.ts onError chỉ hiện RegistrationError cục bộ hoặc friendlyError; residenceMutationFeedback.test.ts pass." }
+    ,"0b655afe04211bd5": { "status": "already-correct", "evidence": "useAreas.ts partial delete toast dùng AreaDeletePartialError.message dựng cục bộ, không hiển thị cause SQL." }
+    ,"6f151c7ef00f7226": { "status": "fixed", "evidence": "useMaterialUsages.ts create phiếu xuất kiểm header ID, insert lines/rollback partial; materialUsageCreate.test.ts 2 pass." }
+    ,"1e70db100dd66682": { "status": "already-correct", "evidence": "useMaterialUsages.ts UnknownMaterialUsageOutcomeError.message dựng cục bộ; không hiển thị lỗi SQL." }
+    ,"cd9ce2f203c73fa7": { "status": "fixed", "evidence": "useMaterialPurchases.ts delete kiểm server trả ID và onError friendlyError; assetMaterialDeleteOutcome.test.ts no-row pass." }
+    ,"8f5279047a4dcb0a": { "status": "fixed", "evidence": "useMaterialPurchases.ts bỏ toast.error(error.message) thô, trả lỗi lên onError friendlyError; test delete no-row pass." }
+    ,"6af42978f089879d": { "status": "fixed", "evidence": "useMaterialAdjustments.ts delete kiểm server trả ID và onError friendlyError; assetMaterialDeleteOutcome.test.ts no-row pass." }
+    ,"dc3dde657b7f703e": { "status": "fixed", "evidence": "useMaterialAdjustments.ts bỏ toast.error(error.message) thô, trả lỗi lên onError friendlyError; test delete no-row pass." }
+    ,"f49528e1de21268d": { "status": "fixed", "evidence": "useCustomers.ts create giữ partial xe, success nêu tên khách; lỗi 23505 không đoán SĐT/CCCD. customerDuplicateFeedback.test.ts 2 pass." }
+    ,"fca8edefc9eb708a": { "status": "fixed", "evidence": "useCustomers.ts success tạo nêu tên khách từ result.customer.full_name." }
+    ,"1464a482972dac3b": { "status": "fixed", "evidence": "useCustomers.ts create onError dùng friendlyError, không còn thông báo chung hay đoán trường từ SQLSTATE." }
+    ,"636fde340364ceb3": { "status": "fixed", "evidence": "useCustomers.ts update giữ partial xe, success nêu tên khách; lỗi 23505 không đoán SĐT/CCCD. customerDuplicateFeedback.test.ts pass." }
+    ,"95ac7099bb8178de": { "status": "fixed", "evidence": "useCustomers.ts update success nêu tên khách từ result.customer.full_name." }
+    ,"bb98bf3b14ee64a5": { "status": "fixed", "evidence": "useCustomers.ts update onError dùng friendlyError, không đoán trường từ SQLSTATE 23505." }
+    ,"e78b69b763283f30": { "status": "already-correct", "evidence": "useCustomers.ts delete onError chỉ kiểm message để nhận CUSTOMER_HAS_ACTIVE_CONTRACT, không hiển thị raw error.message; toast lý do cục bộ." }
+    ,"5c440d6d37f060b0": { "status": "already-correct", "evidence": "useCustomers.ts delete gọi soft_delete_customer server và precheck HĐ hiệu lực; success chỉ sau RPC không lỗi. Chưa validate response void vì RPC trả void." }
+    ,"61f2d15f3d4746b2": { "status": "already-correct", "evidence": "useCustomers.ts delete onError nêu lý do HĐ hiệu lực hoặc câu an toàn, không hiện raw SQL." }
+    ,"4c6878f68b7af204": { "status": "fixed", "evidence": "useContractSettlement.ts loại thu chi query lỗi nay trả Error tiếng Việt và giữ code/cause; không chép raw SQL message vào UI." }
+    ,"ec9702fc44265e45": { "status": "already-correct", "evidence": "useContractSettlement.ts voucher query gated bởi typeMap có dữ liệu; lỗi nguồn vẫn chặn/gắn enrichmentError. useContractSettlement.test.ts 67/68 pass trước sửa test expectation, failing case rerun pass." }
+    ,"8d8ce8049a8e4c54": { "status": "fixed", "evidence": "useContractLifecycle.ts lỗi RPC lịch sử cư trú dùng câu an toàn, không nối error.message SQL vào read status; useContractLifecycle.test.ts 23 pass." }
+    ,"896765419d9e5c84": { "status": "fixed", "evidence": "useContractsLegacy queryFn ném lỗi query và nay cũng chặn success-null/malformed thay vì trả [] giả; IncomeExpenseForm caller default [] khi lỗi đã báo owner finance để thêm gate UI." }
+    ,"1f4c5b3f0ef859d2": { "status": "fixed", "evidence": "ContractSettlementSection.tsx org-of-building query lỗi dùng Error an toàn và giữ code/cause thay vì new Error(raw SQL message)." }
+    ,"54964e8a39ca2976": { "status": "fixed", "evidence": "DeleteBuildingDialog.tsx bỏ success toast lặp, hook useDeleteBuilding phát một success sau DB xác nhận." }
+    ,"893f9c32826e3a99": { "status": "fixed", "evidence": "useBuildings.ts delete kiểm danh sách căn hộ là array và update trả đúng building ID, không success no-row; assetMaterialDeleteOutcome.test.ts 6 pass." }
+    ,"0abc1ae0f70719ec": { "status": "fixed", "evidence": "useServices.ts delete dịch vụ kiểm update trả đúng ID, onError friendlyError; assetMaterialDeleteOutcome.test.ts no-row pass." }
+    ,"cac6ca58205ae019": { "status": "fixed", "evidence": "useServices.ts delete success nêu dịch vụ, bỏ toast chung 'Dữ liệu đã được XÓA'." }
+    ,"fd8bbfb11bf7949b": { "status": "fixed", "evidence": "useServices.ts delete định mức kiểm update trả đúng ID, onError friendlyError; assetMaterialDeleteOutcome.test.ts no-row pass." }
+    ,"52dbaa320b1b10a6": { "status": "fixed", "evidence": "useServices.ts list query không phát toast lỗi trùng; ném query error và chặn success-null/malformed thay vì [] giả." }
+    ,"c6ff1ac00e6c119c": { "status": "fixed", "evidence": "useServiceQuotas query chặn success-null/malformed; ServiceQuotasPage dùng QueryRegion và khóa Thêm khi nguồn lỗi/tải." }
+    ,"4aa0e4ddef5ae983": { "status": "fixed", "evidence": "useBuildingServices query lỗi ném, success-null cũng ném thay vì []; ContractFormDialog nguồn dịch vụ báo tải lại và khóa lưu. contractSourceQueries.test.ts 3 pass." }
+    ,"d940f7f6005c07dc": { "status": "background", "evidence": "useBuildingServices console.error trong queryFn để chẩn đoán; lỗi ném ra query và form HĐ hiện banner nguồn, không in log cho người dùng." }
+    ,"628f125779b7d2d8": { "status": "fixed", "evidence": "useBuildings query chặn success-null thay vì trả [] giả; ContractFormDialog giữ form và nêu nguồn tòa chưa tải. contractSourceQueries.test.ts pass." }
+    ,"b055900068cc3225": { "status": "background", "evidence": "useBuildings console.error chỉ ghi lỗi query để chẩn đoán; query ném và ContractFormDialog giữ lỗi nguồn, không hiển thị SQL log." }
+    ,"aca77c274396b8d5": { "status": "fixed", "evidence": "useAccounts query success-null ném thay vì danh sách sổ rỗng; ContractFormDialog khóa ghi cọc khi nguồn chưa xác nhận. contractSourceQueries.test.ts pass." }
+    ,"c4743542e6121926": { "status": "fixed", "evidence": "useAccountingStandard RPC list yêu cầu array, null không giả không có tổ chức; walletAccountingOutcome.test.ts pass." }
+    ,"01d2a4cf5185adc6": { "status": "fixed", "evidence": "useSetAccountingStandard kiểm tổ chức, strict_mode, changed từ RPC trước success; no-op riêng; thẻ cài đặt giữ query lỗi. Existing finance tests và walletAccountingOutcome.test.ts." }
+    ,"3e3e9a19d3bb98d2": { "status": "already-correct", "evidence": "useSetAccountingStandard chỉ toast.info khi response.changed===false được xác nhận, không gọi thành công đổi chế độ." }
+    ,"d6ee5c37ebb8e7b4": { "status": "already-correct", "evidence": "useSetAccountingStandard success text phân biệt strict_mode true/false sau khi kiểm response org/shape." }
+    ,"552fd421c3aa3336": { "status": "already-correct", "evidence": "useSetAccountingStandard onError đưa lỗi qua friendlyError(operation đổi Chuẩn kế toán, financial), không hiện SQL raw." }
+    ,"39a87fb36c4c6188": { "status": "fixed", "evidence": "useMaterialCategories query success-null ném, không trả [] giả; assetMaterialDeleteOutcome.test.ts 12 pass." }
+    ,"b22aa667fc7913d7": { "status": "background", "evidence": "useMaterialCategories console.error ghi lỗi query để chẩn đoán, query ném ra UI, không là thông báo người dùng." }
+    ,"186d6e6fee6e9c5b": { "status": "fixed", "evidence": "useCreateMaterialCategory kiểm response có ID trước success; null chặn tạo lại và hướng tải danh sách; assetMaterialDeleteOutcome.test.ts pass." }
+    ,"930e3749173d951c": { "status": "already-correct", "evidence": "Toast tạo danh mục chỉ sau mutation trả bản ghi có ID; văn bản đúng thao tác tạo danh mục." }
+    ,"343da1c05ac6e243": { "status": "already-correct", "evidence": "Lỗi tạo danh mục qua friendlyError với operation tạo danh mục vật tư, không raw SQL." }
+    ,"fee6e1f30d845ba1": { "status": "fixed", "evidence": "useUpdateMaterialCategory kiểm response ID khớp input trước success; null/no-row không success; assetMaterialDeleteOutcome.test.ts pass." }
+    ,"13f47317776c3fe8": { "status": "already-correct", "evidence": "Toast cập nhật danh mục chỉ sau response ID khớp; không phát ở nhánh lỗi." }
+    ,"26eb2b2a062bb6cd": { "status": "already-correct", "evidence": "Lỗi cập nhật danh mục qua friendlyError theo thao tác, không raw SQL." }
+    ,"bf7f488649ac9fe9": { "status": "fixed", "evidence": "Delete danh mục kiểm usage là array, chặn null/lỗi và đang dùng; delete kiểm ID trả về; assetMaterialDeleteOutcome.test.ts pass." }
+    ,"de8849649cd46533": { "status": "already-correct", "evidence": "Toast xóa danh mục chỉ sau usage check và delete ID xác nhận." }
+    ,"17c9e66f78d80357": { "status": "already-correct", "evidence": "Lỗi xóa danh mục dùng friendlyError, rule riêng cho danh mục đang được dùng." }
+    ,"465ac7ae5024d7cd": { "status": "fixed", "evidence": "usePersonalTransactions query yêu cầu array và amount finite; null không giả ví trống; walletAccountingOutcome.test.ts pass." }
+    ,"a2c299aa96f20d42": { "status": "fixed", "evidence": "Create ví chỉ success khi response có ID và user_id khớp; lỗi bất định invalidate cache; walletAccountingOutcome.test.ts." }
+    ,"c638930bce09f3ae": { "status": "already-correct", "evidence": "Toast thêm khoản chỉ sau create response có ID và user_id khớp; onError không gọi success." }
+    ,"5eb296bb5fb75c20": { "status": "already-correct", "evidence": "Create ví onError dùng friendlyError financial theo thao tác, không raw SQL; invalidate danh sách để đối chiếu." }
+    ,"6a0215434c6f2d3d": { "status": "fixed", "evidence": "Update ví `.select('id').single()` và so ID; no-row/null không success; walletAccountingOutcome.test.ts pass." }
+    ,"801fd867c0011fbf": { "status": "already-correct", "evidence": "Toast cập nhật khoản sau server trả đúng ID, không phát ở no-row." }
+    ,"69ddca5e49a305e8": { "status": "already-correct", "evidence": "Update ví onError qua friendlyError financial, invalidate cache để đối chiếu." }
+    ,"a6a0ed477b7af22e": { "status": "fixed", "evidence": "Soft-delete ví kiểm ID trả về; no-row/null không success; walletAccountingOutcome.test.ts pass." }
+    ,"1aa3b9014a585fc3": { "status": "already-correct", "evidence": "Toast xóa khoản chỉ sau response ID xác nhận." }
+    ,"29d5d7977ae131a6": { "status": "already-correct", "evidence": "Delete ví onError qua friendlyError financial và invalidate cache để đối chiếu." }
+    ,"7777896a51bc4cd6": { "status": "background", "evidence": "fetchMyOrgIds console.error chẩn đoán RPC; khi RPC lỗi/null hook ném, không cho hạng mục org khác lọt picker, không đưa log tới UI." }
+    ,"047419ea35ba861d": { "status": "fixed", "evidence": "useIncomeExpenseTypes đợi my_org_ids và list, ném khi error/null, chỉ dedup sau scope org; incomeExpenseTypeOutcome.test.ts pass." }
+    ,"24185fffaba6f0c6": { "status": "background", "evidence": "Console lỗi query hạng mục là log chẩn đoán, query ném và form nguồn có trạng thái lỗi; không hiển thị log SQL." }
+    ,"70062e37cf7b206c": { "status": "fixed", "evidence": "Query nhóm hạng mục chặn response null và lỗi my_org_ids; incomeExpenseTypeOutcome.test.ts pass." }
+    ,"355797a4cae64cba": { "status": "background", "evidence": "Console lỗi nhóm hạng mục là log chẩn đoán, query ném ra trạng thái lỗi." }
+    ,"5a0c93490bdef5e4": { "status": "fixed", "evidence": "Query hạng mục ẩn báo cáo chặn response null thay vì [] giả; incomeExpenseTypeOutcome.test.ts pass." }
+    ,"94f589efecece104": { "status": "background", "evidence": "Console lỗi hạng mục ẩn báo cáo là log chẩn đoán, query ném ra trạng thái lỗi." }
+    ,"256966bd95fe5e12": { "status": "fixed", "evidence": "Create loại thu chi kiểm response ID và name khớp trước success; lỗi chưa xác nhận hướng tải lại." }
+    ,"95180f7943a8d012": { "status": "already-correct", "evidence": "Toast tạo loại thu chi chỉ sau response được kiểm và invalidate cache." }
+    ,"61979425ca039488": { "status": "already-correct", "evidence": "Lỗi tạo loại thu chi qua friendlyError(operation tạo loại thu chi), không raw SQL." }
+    ,"f84669b056f03d7d": { "status": "background", "evidence": "Console lỗi tạo loại thu chi chỉ dùng chẩn đoán; toast người dùng đã qua friendlyError." }
+    ,"ba765de428d9971a": { "status": "fixed", "evidence": "Update loại thu chi kiểm response ID khớp input, null/no-row chặn success." }
+    ,"99bd61974c20ed38": { "status": "already-correct", "evidence": "Toast cập nhật loại thu chi chỉ sau response đúng ID và cache refresh." }
+    ,"f179e6846ad0be56": { "status": "already-correct", "evidence": "Lỗi cập nhật loại thu chi qua friendlyError theo thao tác, không raw SQL." }
+    ,"5bca47df4bfc3155": { "status": "background", "evidence": "Console lỗi cập nhật loại thu chi dùng chẩn đoán; người dùng nhận friendlyError." }
+    ,"8233737ca8051608": { "status": "fixed", "evidence": "Delete loại thu chi kiểm usage array và không được dùng rồi xác nhận ID trả về; incomeExpenseTypeOutcome.test.ts pass." }
+    ,"876e41d2b34975ee": { "status": "background", "evidence": "Console lỗi precheck usage là log chẩn đoán; mutation ném và không chạy delete." }
+    ,"99f6ec84d1fc0b37": { "status": "already-correct", "evidence": "Toast xóa loại thu chi chỉ sau usage check và server trả ID xác nhận." }
+    ,"1d71ee3d3c8f7967": { "status": "already-correct", "evidence": "Lỗi xóa loại thu chi qua friendlyError, rule riêng khi hạng mục đang dùng." }
+    ,"93cd648e4050b9c0": { "status": "background", "evidence": "Console lỗi xóa loại thu chi dùng chẩn đoán; người dùng chỉ nhận friendlyError." }
+  }
+}

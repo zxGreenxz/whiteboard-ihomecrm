@@ -1,4 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useOrganization } from '@/contexts/OrganizationContext';
+import { persistentFinancialWorkflow } from '@/lib/persistentFinancialWorkflow';
+import { FinancialWorkflowGuard, FinancialWorkflowError, workflowErrorMessage } from "@/lib/financialWorkflow";
+import { focusFirstError } from "@/lib/formErrors";
+import { QueryRegion } from "@/components/errors/QueryRegion";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -9,6 +14,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
@@ -98,7 +104,7 @@ export function useCashbookOrgId(
         .select("organization_id") as any)
         .eq("id", cashbookId)
         .maybeSingle();
-      if (error) return null;
+      if (error) throw error;
       return (data as { organization_id?: string | null } | null)?.organization_id ?? null;
     },
   });
@@ -118,8 +124,10 @@ export function useCashbookAccessAdminV2(
       const { data, error } = await rpcV2("get_cashbook_access_admin_v2", {
         p_cashbook_id: cashbookId,
       });
-      if (error) throw new Error(error.message || "Không tải được phân quyền sổ quỹ");
-      return data as CashbookAccessAdminV2;
+      if (error) throw error;
+      const value = data as Partial<CashbookAccessAdminV2> | null;
+      if (!value || value.cashbook_id !== cashbookId || !Number.isInteger(value.revision) || !Array.isArray(value.custodians) || !Array.isArray(value.knowers) || !Array.isArray(value.eligible_memberships)) throw new Error('Invalid cashbook access response');
+      return value as CashbookAccessAdminV2;
     },
   });
 }
@@ -132,10 +140,11 @@ export function useProfileLabels(userIds: string[]) {
     enabled: sorted.length > 0,
     staleTime: 60_000,
     queryFn: async (): Promise<Map<string, string>> => {
-      const { data } = await (supabase
+      const { data, error } = await (supabase
         .from("profiles")
         .select("id, full_name, email" as any) as any)
         .in("id", sorted);
+      if (error) throw error;
       const map = new Map<string, string>();
       for (const p of ((data as { id: string; full_name?: string | null; email?: string | null }[]) ?? [])) {
         map.set(p.id, p.full_name || p.email || p.id.slice(0, 8));
@@ -209,12 +218,12 @@ function MembershipChecklist({
 }
 
 const schema = z.object({
-  name: z.string().min(1, "Tên sổ quỹ bắt buộc").max(120),
+  name: z.string().trim().min(1, "Nhập tên sổ quỹ.").max(120, "Tên sổ quỹ không quá 120 ký tự."),
   initial_amount: z.coerce.number().min(0, "Số dư đầu kỳ không âm"),
-  initial_date: z.string().min(1, "Ngày chốt đầu kỳ bắt buộc"),
+  initial_date: z.string().min(1, "Chọn ngày bắt đầu ghi nhận số dư."),
   description: z.string().nullable().optional(),
   quick_default_building_id: z.string().nullable().optional(),
-  user_id: z.string().min(1, "Người phụ trách bắt buộc"),
+  user_id: z.string().min(1, "Chọn người phụ trách sổ quỹ."),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -232,16 +241,39 @@ interface CashbookFormProps {
 // giờ VN. Đây là kiểu nguy hiểm nhất: không phải thiếu helper, mà là có một bản
 // giả cùng tên. Nay import bản thật.
 
-const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
+interface CashbookBlockedDraft {
+  values: FormValues;
+  custodianIds: string[];
+  knowerIds: string[];
+  accessSnapshot: CashbookAccessAdminV2 | null;
+  failure: FinancialWorkflowError;
+}
+
+/** Keep unresolved drafts by cashbook identity while the page stays mounted. */
+const CashbookForm = (props: CashbookFormProps) => {
+  const [blockedDrafts, setBlockedDrafts] = useState<Record<string, CashbookBlockedDraft>>({});
+  const {selectedOrganizationId}=useOrganization();
+  const {data:actor}=useAuth();
+  const scope = [actor?.id??'pending-actor',props.account?.organization_id??selectedOrganizationId??'pending-org',props.account?.id??'new-cashbook'].join(':');
+  return <CashbookFormEditor key={scope} {...props} blockedDraft={blockedDrafts[scope]}
+    onBlocked={draft => setBlockedDrafts(current => ({...current,[scope]:draft}))} />;
+};
+
+const CashbookFormEditor = ({ open, onOpenChange, account, blockedDraft, onBlocked }: CashbookFormProps & {
+  blockedDraft?: CashbookBlockedDraft;
+  onBlocked: (draft: CashbookBlockedDraft) => void;
+}) => {
   const isEditing = !!account;
-  const createMut = useCreateAccount();
-  const updateMut = useUpdateAccount();
+  const createMut = useCreateAccount({silent:true});
+  const updateMut = useUpdateAccount({silent:true});
   const isMobile = useIsMobile();
   const { data: isAdmin } = useIsAdmin();
   const { data: currentUser } = useAuth();
   const { data: myPerms } = useMyPermissions();
-  const { data: staffUsers } = useStaffUsers();
-  const { data: buildings = [] } = useBuildings({ includeVirtual: true });
+  const staffQuery = useStaffUsers();
+  const {data:staffUsers} = staffQuery;
+  const buildingsQuery = useBuildings({ includeVirtual: true });
+  const {data:buildings=[]} = buildingsQuery;
 
   // Người phụ trách hiện tại của form (theo dõi để loại trừ khỏi list shared).
   const ownerId = account?.user_id ?? currentUser?.id ?? "";
@@ -271,14 +303,19 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
   );
   const access = accessQuery.data ?? null;
 
-  const [custodianIds, setCustodianIds] = useState<string[]>([]);
-  const [knowerIds, setKnowerIds] = useState<string[]>([]);
+  const accessLoaded = useRef<string | null>(blockedDraft ? account?.id ?? null : null);
+  const accessSnapshot = useRef<CashbookAccessAdminV2 | null>(blockedDraft?.accessSnapshot ?? null);
+  useEffect(() => { if (!open && !blockedRef.current) accessLoaded.current = null; }, [open]);
+  const [custodianIds, setCustodianIds] = useState<string[]>(blockedDraft?.custodianIds ?? []);
+  const [knowerIds, setKnowerIds] = useState<string[]>(blockedDraft?.knowerIds ?? []);
   useEffect(() => {
-    if (open && access) {
+    if (open && access && accessLoaded.current !== account?.id) {
+      accessLoaded.current = account?.id ?? null;
+      accessSnapshot.current = access;
       setCustodianIds(access.custodians.map((c) => c.membership_id));
       setKnowerIds(access.knowers.map((k) => k.membership_id));
     }
-  }, [open, access]);
+  }, [open, access, account?.id]);
 
   const accessUserIds = access
     ? [
@@ -287,7 +324,8 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
         ...access.knowers,
       ].map((m) => m.user_id)
     : [];
-  const { data: profileLabels } = useProfileLabels(accessUserIds);
+  const profileQuery = useProfileLabels(accessUserIds);
+  const {data:profileLabels} = profileQuery;
 
   // Membership của chính actor — server cấm tự đổi vai trò mình (42501).
   const myMembershipId =
@@ -295,6 +333,7 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
       ?.membership_id ?? null;
 
   const setAccessMut = useMutation({
+    meta: {handlesFeedback:true},
     mutationFn: async (args: {
       cashbookId: string;
       custodians: string[];
@@ -308,11 +347,11 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
         p_expected_revision: args.expectedRevision,
         p_idempotency_key: crypto.randomUUID(),
       });
-      if (error) {
-        if (error.code === "55000") {
-          throw new Error("Danh sách quyền vừa được người khác sửa — tải lại");
-        }
-        throw new Error(error.message || "Không thể cập nhật phân quyền sổ quỹ");
+      if (error) throw error;
+      const receipt = data && typeof data === 'object' ? data as Record<string,unknown> : {};
+      if (receipt.cashbook_id !== args.cashbookId || receipt.revision !== args.expectedRevision + 1 ||
+          receipt.custodian_count !== args.custodians.length || receipt.knower_count !== args.knowers.length) {
+        throw new TypeError('Unconfirmed cashbook access write');
       }
       return data;
     },
@@ -321,13 +360,7 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
         queryKey: ["cashbook-access-admin-v2", vars.cashbookId],
       });
     },
-    onError: (e: Error, vars) => {
-      toast.error(e.message);
-      // Refetch để lấy revision/danh sách mới nhất (nhất là khi stale 55000).
-      qc.invalidateQueries({
-        queryKey: ["cashbook-access-admin-v2", vars.cashbookId],
-      });
-    },
+
   });
 
   const defaults = useMemo<FormValues>(
@@ -344,19 +377,32 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: defaults,
+    defaultValues: blockedDraft?.values ?? defaults,
   });
 
+  const draftLoaded = useRef(!!blockedDraft);
+  const blockedRef = useRef(!!blockedDraft);
   // Người phụ trách user_id đang chọn (sync với form để loại khỏi list shared).
   const selectedOwnerId = form.watch("user_id") || ownerId;
 
   useEffect(() => {
-    if (open) {
-      form.reset(defaults);
-    }
+    if (open && !draftLoaded.current) {form.reset(defaults);draftLoaded.current=true;}
+    if (!open && !blockedRef.current) draftLoaded.current=false;
   }, [open, defaults, form]);
 
+  const formRoot = useRef<HTMLFormElement>(null);
+  const guard = useRef(persistentFinancialWorkflow('cashbook-form'));
+  const [failure, setFailure] = useState<unknown>(blockedDraft?.failure);
+  const [blocked, setBlocked] = useState(!!blockedDraft);
+  useEffect(() => {
+    if (blockedDraft) form.setError('root.server', {type:'server',message:workflowErrorMessage(blockedDraft.failure, `lưu sổ quỹ ${blockedDraft.values.name}`)});
+  }, [blockedDraft, form]);
+  const saveSources = [v2Routes, staffQuery, buildingsQuery, ...(isEditing && !orgFromAccount ? [orgIdQuery] : []), ...(v2AccessMode && canEditShared ? [accessQuery, ...(accessUserIds.length ? [profileQuery] : [])] : [])];
+  const sourceBlocked = saveSources.some(query => query.isError || query.isLoading);
   const onSubmit = async (values: FormValues) => {
+    if (blocked || sourceBlocked) return;
+    form.clearErrors("root.server");
+    try { await guard.current.run(account?.id ?? "new-cashbook", `lưu sổ quỹ ${values.name}`, async progress => {
     const payload: AccountFormValues = {
       name: values.name,
       initial_amount: values.initial_amount,
@@ -377,6 +423,10 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
       accountId = created?.id;
     }
 
+    if (!accountId) throw new TypeError("Unconfirmed cashbook identity");
+    progress.completed.push({id:accountId,label:`Đã lưu thông tin sổ quỹ ${values.name}`});
+    progress.stage = "lưu người giữ và người được xem sổ";
+
     // Phân quyền sổ chỉ còn MỘT đường: set_cashbook_access_v2 (CAS revision +
     // idempotency) ghi vào cashbook_possession_bindings. Đường legacy
     // account_shared_users đã bị gỡ 02/08/2026 — nó ghi vào bảng mà không còn
@@ -385,12 +435,12 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
     // Sổ TẠO MỚI không đặt phân quyền ở đây: chưa có revision để CAS, và
     // create_cashbook_v1 đã tự cấp CUSTODIAN cho người phụ trách. Giao thêm vai
     // trò thì mở lại sổ để sửa.
-    if (canEditShared && accountId && v2AccessMode && access) {
+    if (canEditShared && accountId && v2AccessMode && accessSnapshot.current) {
       const sameSet = (a: string[], b: string[]) =>
         a.length === b.length &&
         [...a].sort().join("|") === [...b].sort().join("|");
-      const origCustodians = access.custodians.map((c) => c.membership_id);
-      const origKnowers = access.knowers.map((k) => k.membership_id);
+      const origCustodians = accessSnapshot.current.custodians.map((c) => c.membership_id);
+      const origKnowers = accessSnapshot.current.knowers.map((k) => k.membership_id);
       if (
         !sameSet(custodianIds, origCustodians) ||
         !sameSet(knowerIds, origKnowers)
@@ -399,12 +449,23 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
           cashbookId: accountId,
           custodians: custodianIds,
           knowers: knowerIds,
-          expectedRevision: access.revision,
+          expectedRevision: accessSnapshot.current.revision,
         });
       }
     }
 
+    });
+    toast.success(`Đã ${isEditing ? "lưu thay đổi" : "tạo"} sổ quỹ ${values.name}.`);
     onOpenChange(false);
+    } catch (error) {
+      setFailure(error);
+      blockedRef.current = error instanceof FinancialWorkflowError && error.outcome !== "failure";
+      setBlocked(blockedRef.current);
+      if (blockedRef.current && error instanceof FinancialWorkflowError) onBlocked({
+        values: {...values}, custodianIds:[...custodianIds], knowerIds:[...knowerIds], accessSnapshot:accessSnapshot.current, failure:error,
+      });
+      form.setError("root.server", {type:"server",message:workflowErrorMessage(error, `lưu sổ quỹ ${values.name}`)});
+    }
   };
 
   const isPending =
@@ -413,7 +474,7 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
     setAccessMut.isPending;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={next => {if (!isPending) onOpenChange(next);}}>
       <DialogContent
         className={
           isMobile
@@ -425,11 +486,12 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
           <DialogTitle className="uppercase tracking-wide">
             {isEditing ? "Cập nhật sổ quỹ" : "Thêm sổ quỹ"}
           </DialogTitle>
+          <DialogDescription>Thông tin và quyền sử dụng của sổ quỹ đang chọn.</DialogDescription>
         </DialogHeader>
 
         <Form {...form}>
           <form
-            onSubmit={form.handleSubmit(onSubmit)}
+            ref={formRoot} noValidate onSubmit={form.handleSubmit(onSubmit, errors => { void focusFirstError(errors, {root:formRoot.current}); })}
             className="space-y-4"
           >
             <FormField
@@ -462,7 +524,7 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
                       onValueChange={field.onChange}
                     >
                       <FormControl>
-                        <SelectTrigger>
+                        <SelectTrigger ref={field.ref} name={field.name} onBlur={field.onBlur}>
                           <SelectValue placeholder="Chọn người phụ trách" />
                         </SelectTrigger>
                       </FormControl>
@@ -493,6 +555,7 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
                         onChange={field.onChange}
                         onBlur={field.onBlur}
                         name={field.name}
+                        ref={field.ref}
                       />
                     </FormControl>
                     <FormMessage />
@@ -511,6 +574,7 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
                         onChange={field.onChange}
                         onBlur={field.onBlur}
                         name={field.name}
+                        ref={field.ref}
                       />
                     </FormControl>
                     <FormMessage />
@@ -551,7 +615,7 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
                     }
                   >
                     <FormControl>
-                      <SelectTrigger>
+                      <SelectTrigger ref={field.ref} name={field.name} onBlur={field.onBlur}>
                         <SelectValue placeholder="— Không gán —" />
                       </SelectTrigger>
                     </FormControl>
@@ -582,13 +646,12 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
                   </p>
                 ) : accessQuery.isError || !access ? (
                   <p className="text-xs text-red-600 px-1">
-                    {(accessQuery.error as Error | null)?.message ||
-                      "Không tải được phân quyền sổ quỹ"}
+                    {workflowErrorMessage(accessQuery.error, "tải phân quyền sổ quỹ")}
                   </p>
                 ) : (
                   <>
                     <MembershipChecklist
-                      title="Người giữ sổ (CUSTODIAN)"
+                      title="Người giữ sổ"
                       hint="Trực tiếp giữ tiền — được Thu/Chi (ghi sổ) trên sổ quỹ này."
                       eligible={access.eligible_memberships}
                       selected={custodianIds}
@@ -605,7 +668,7 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
                       }
                     />
                     <MembershipChecklist
-                      title="Người biết sổ (KNOWER)"
+                      title="Người được xem sổ"
                       hint="Được xem sổ quỹ và số dư — không được Thu/Chi."
                       eligible={access.eligible_memberships}
                       selected={knowerIds}
@@ -637,6 +700,8 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
               </p>
             )}
 
+            {sourceBlocked && <QueryRegion label="danh mục và phân quyền sổ quỹ" queries={saveSources}><p>Chưa tải đủ dữ liệu để lưu sổ.</p></QueryRegion>}
+            {form.formState.errors.root?.server?.message && <div role="alert" className="rounded border border-red-300 p-3 text-sm text-red-600"><p>{form.formState.errors.root.server.message}</p>{failure instanceof FinancialWorkflowError && failure.completed.map(step => <p key={step.id}>{step.label} — mã: {step.id}</p>)}</div>}
             <DialogFooter>
               <Button
                 type="button"
@@ -646,7 +711,7 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
               >
                 Huỷ bỏ
               </Button>
-              <Button type="submit" disabled={isPending}>
+              <Button type="submit" disabled={isPending || sourceBlocked || blocked}>
                 {isPending ? "Đang lưu..." : "Lưu"}
               </Button>
             </DialogFooter>

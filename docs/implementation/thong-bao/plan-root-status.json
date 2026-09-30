@@ -1,0 +1,1411 @@
+{
+  "A01": {
+    "criterion": "Bộ chuyển đổi lỗi nghiệp vụ",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "shared.md",
+    "evidence": [
+      "QueryProvider.errorPolicy",
+      "friendlyError.feedback",
+      "formErrors",
+      "form-controls.feedback",
+      "AttachmentUpload",
+      "clipboardFeedback",
+      "CategoryCrudPage.feedback",
+      "asyncActionFeedback7; Auth/notifications83/83; converter import/sink failure and unknown financial remain safe, unchanged non-feedback AST proof",
+      "Main9aa rebase: full src11050/11050,884 src files,0 failed/pending/archive; delta copy cuối asyncActionFeedback kiểm riêng7/7 notification-fallback-copy-bundle-final.json, giữ input/state/đối chiếu/no extra financial write. Bundle và Preview đúng SHA sau delta do root kiểm riêng."
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/app/providers/__tests__/QueryProvider.errorPolicy.test.ts",
+      "src/components/income-expenses/__tests__/AttachmentUpload.test.tsx",
+      "src/components/ui/__tests__/form-controls.feedback.test.tsx",
+      "src/lib/__tests__/clipboardFeedback.test.tsx",
+      "src/lib/__tests__/formErrors.test.ts",
+      "src/lib/__tests__/friendlyError.feedback.test.ts",
+      "src/pages/settings/categories/CategoryCrudPage.feedback.test.tsx",
+      "src/lib/__tests__/asyncActionFeedback.test.ts"
+    ]
+  },
+  "A02": {
+    "criterion": "Thiếu/sai/trùng dữ liệu",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "shared.md",
+    "evidence": [
+      "QueryProvider.errorPolicy",
+      "friendlyError.feedback",
+      "formErrors",
+      "form-controls.feedback",
+      "AttachmentUpload",
+      "clipboardFeedback",
+      "CategoryCrudPage.feedback"
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/app/providers/__tests__/QueryProvider.errorPolicy.test.ts",
+      "src/components/income-expenses/__tests__/AttachmentUpload.test.tsx",
+      "src/components/ui/__tests__/form-controls.feedback.test.tsx",
+      "src/lib/__tests__/clipboardFeedback.test.tsx",
+      "src/lib/__tests__/formErrors.test.ts",
+      "src/lib/__tests__/friendlyError.feedback.test.ts",
+      "src/pages/settings/categories/CategoryCrudPage.feedback.test.tsx"
+    ]
+  },
+  "A03": {
+    "criterion": "Quyền và phiên đăng nhập",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "shared.md",
+    "evidence": [
+      "QueryProvider.errorPolicy",
+      "friendlyError.feedback",
+      "formErrors",
+      "form-controls.feedback",
+      "AttachmentUpload",
+      "clipboardFeedback",
+      "CategoryCrudPage.feedback"
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/app/providers/__tests__/QueryProvider.errorPolicy.test.ts",
+      "src/components/income-expenses/__tests__/AttachmentUpload.test.tsx",
+      "src/components/ui/__tests__/form-controls.feedback.test.tsx",
+      "src/lib/__tests__/clipboardFeedback.test.tsx",
+      "src/lib/__tests__/formErrors.test.ts",
+      "src/lib/__tests__/friendlyError.feedback.test.ts",
+      "src/pages/settings/categories/CategoryCrudPage.feedback.test.tsx"
+    ]
+  },
+  "A04": {
+    "criterion": "Lỗi hệ thống không đoán nguyên nhân",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "shared.md",
+    "evidence": [
+      "QueryProvider.errorPolicy",
+      "friendlyError.feedback",
+      "formErrors",
+      "form-controls.feedback",
+      "AttachmentUpload",
+      "clipboardFeedback",
+      "CategoryCrudPage.feedback"
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/app/providers/__tests__/QueryProvider.errorPolicy.test.ts",
+      "src/components/income-expenses/__tests__/AttachmentUpload.test.tsx",
+      "src/components/ui/__tests__/form-controls.feedback.test.tsx",
+      "src/lib/__tests__/clipboardFeedback.test.tsx",
+      "src/lib/__tests__/formErrors.test.ts",
+      "src/lib/__tests__/friendlyError.feedback.test.ts",
+      "src/pages/settings/categories/CategoryCrudPage.feedback.test.tsx"
+    ]
+  },
+  "A05": {
+    "criterion": "Lỗi truy vấn dùng nhãn dễ hiểu",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "shared.md",
+    "evidence": [
+      "QueryProvider.errorPolicy",
+      "friendlyError.feedback",
+      "formErrors",
+      "form-controls.feedback",
+      "AttachmentUpload",
+      "clipboardFeedback",
+      "CategoryCrudPage.feedback",
+      "QueryProvider query labels31/31 current-src; async label fallback/dedupe/retry-read and no raw key",
+      "Manual main9aa Provider merge: Safari Load failed and LOI_DOC_MAC_DINH export + task async labels/owner; internal invariant advises reload without false version claim. notification-main-read-recovery-green.json34/34 and independent210/210; current frozenHEAD2b9babf, no full-src PASS inference."
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/app/providers/__tests__/QueryProvider.errorPolicy.test.ts",
+      "src/components/income-expenses/__tests__/AttachmentUpload.test.tsx",
+      "src/components/ui/__tests__/form-controls.feedback.test.tsx",
+      "src/lib/__tests__/clipboardFeedback.test.tsx",
+      "src/lib/__tests__/formErrors.test.ts",
+      "src/lib/__tests__/friendlyError.feedback.test.ts",
+      "src/pages/settings/categories/CategoryCrudPage.feedback.test.tsx",
+      "src/app/providers/__tests__/QueryProvider.queryLabels.test.ts"
+    ]
+  },
+  "A06": {
+    "criterion": "Giữ dữ liệu cũ có cảnh báo; quyền khóa dữ liệu",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "shared.md",
+    "evidence": [
+      "QueryProvider.errorPolicy",
+      "friendlyError.feedback",
+      "formErrors",
+      "form-controls.feedback",
+      "AttachmentUpload",
+      "clipboardFeedback",
+      "CategoryCrudPage.feedback"
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/app/providers/__tests__/QueryProvider.errorPolicy.test.ts",
+      "src/components/income-expenses/__tests__/AttachmentUpload.test.tsx",
+      "src/components/ui/__tests__/form-controls.feedback.test.tsx",
+      "src/lib/__tests__/clipboardFeedback.test.tsx",
+      "src/lib/__tests__/formErrors.test.ts",
+      "src/lib/__tests__/friendlyError.feedback.test.ts",
+      "src/pages/settings/categories/CategoryCrudPage.feedback.test.tsx"
+    ]
+  },
+  "A07": {
+    "criterion": "Một nơi phát kết quả; lỗi form bền vững",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "shared.md",
+    "evidence": [
+      "QueryProvider.errorPolicy",
+      "friendlyError.feedback",
+      "formErrors",
+      "form-controls.feedback",
+      "AttachmentUpload",
+      "clipboardFeedback",
+      "CategoryCrudPage.feedback",
+      "bootstrap independent239/239; mutation-owner2/2; async delivery same ID bounded fallback, existing caller owner preserved",
+      "Manual main9aa Provider merge: Safari Load failed and LOI_DOC_MAC_DINH export + task async labels/owner; internal invariant advises reload without false version claim. notification-main-read-recovery-green.json34/34 and independent210/210; current frozenHEAD2b9babf, no full-src PASS inference.",
+      "Main9aa rebase: full src11050/11050,884 src files,0 failed/pending/archive; delta copy cuối asyncActionFeedback kiểm riêng7/7 notification-fallback-copy-bundle-final.json, giữ input/state/đối chiếu/no extra financial write. Bundle và Preview đúng SHA sau delta do root kiểm riêng."
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/app/providers/__tests__/QueryProvider.errorPolicy.test.ts",
+      "src/components/income-expenses/__tests__/AttachmentUpload.test.tsx",
+      "src/components/ui/__tests__/form-controls.feedback.test.tsx",
+      "src/lib/__tests__/clipboardFeedback.test.tsx",
+      "src/lib/__tests__/formErrors.test.ts",
+      "src/lib/__tests__/friendlyError.feedback.test.ts",
+      "src/pages/settings/categories/CategoryCrudPage.feedback.test.tsx",
+      "src/lib/__tests__/asyncActionFeedback.test.ts",
+      "src/app/providers/__tests__/QueryProvider.queryLabels.test.ts"
+    ]
+  },
+  "A08": {
+    "criterion": "Tải tệp: lỗi từng tệp",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "shared.md",
+    "evidence": [
+      "QueryProvider.errorPolicy",
+      "friendlyError.feedback",
+      "formErrors",
+      "form-controls.feedback",
+      "AttachmentUpload",
+      "clipboardFeedback",
+      "CategoryCrudPage.feedback"
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/app/providers/__tests__/QueryProvider.errorPolicy.test.ts",
+      "src/components/income-expenses/__tests__/AttachmentUpload.test.tsx",
+      "src/components/ui/__tests__/form-controls.feedback.test.tsx",
+      "src/lib/__tests__/clipboardFeedback.test.tsx",
+      "src/lib/__tests__/formErrors.test.ts",
+      "src/lib/__tests__/friendlyError.feedback.test.ts",
+      "src/pages/settings/categories/CategoryCrudPage.feedback.test.tsx"
+    ]
+  },
+  "A09": {
+    "criterion": "Tải nhiều tệp: kết quả tổng và thử lại riêng",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "shared.md",
+    "evidence": [
+      "QueryProvider.errorPolicy",
+      "friendlyError.feedback",
+      "formErrors",
+      "form-controls.feedback",
+      "AttachmentUpload",
+      "clipboardFeedback",
+      "CategoryCrudPage.feedback"
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/app/providers/__tests__/QueryProvider.errorPolicy.test.ts",
+      "src/components/income-expenses/__tests__/AttachmentUpload.test.tsx",
+      "src/components/ui/__tests__/form-controls.feedback.test.tsx",
+      "src/lib/__tests__/clipboardFeedback.test.tsx",
+      "src/lib/__tests__/formErrors.test.ts",
+      "src/lib/__tests__/friendlyError.feedback.test.ts",
+      "src/pages/settings/categories/CategoryCrudPage.feedback.test.tsx"
+    ]
+  },
+  "A10": {
+    "criterion": "Gỡ khỏi form khác xóa tệp",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "shared.md",
+    "evidence": [
+      "QueryProvider.errorPolicy",
+      "friendlyError.feedback",
+      "formErrors",
+      "form-controls.feedback",
+      "AttachmentUpload",
+      "clipboardFeedback",
+      "CategoryCrudPage.feedback"
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/app/providers/__tests__/QueryProvider.errorPolicy.test.ts",
+      "src/components/income-expenses/__tests__/AttachmentUpload.test.tsx",
+      "src/components/ui/__tests__/form-controls.feedback.test.tsx",
+      "src/lib/__tests__/clipboardFeedback.test.tsx",
+      "src/lib/__tests__/formErrors.test.ts",
+      "src/lib/__tests__/friendlyError.feedback.test.ts",
+      "src/pages/settings/categories/CategoryCrudPage.feedback.test.tsx"
+    ]
+  },
+  "A11": {
+    "criterion": "Xuất/tải: đã chuẩn bị tệp, không khẳng định đã lưu máy",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "shared.md",
+    "evidence": [
+      "QueryProvider.errorPolicy",
+      "friendlyError.feedback",
+      "formErrors",
+      "form-controls.feedback",
+      "AttachmentUpload",
+      "clipboardFeedback",
+      "CategoryCrudPage.feedback"
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/app/providers/__tests__/QueryProvider.errorPolicy.test.ts",
+      "src/components/income-expenses/__tests__/AttachmentUpload.test.tsx",
+      "src/components/ui/__tests__/form-controls.feedback.test.tsx",
+      "src/lib/__tests__/clipboardFeedback.test.tsx",
+      "src/lib/__tests__/formErrors.test.ts",
+      "src/lib/__tests__/friendlyError.feedback.test.ts",
+      "src/pages/settings/categories/CategoryCrudPage.feedback.test.tsx"
+    ]
+  },
+  "A12": {
+    "criterion": "Clipboard chờ hoàn tất, có fallback",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "shared.md",
+    "evidence": [
+      "QueryProvider.errorPolicy",
+      "friendlyError.feedback",
+      "formErrors",
+      "form-controls.feedback",
+      "AttachmentUpload",
+      "clipboardFeedback",
+      "CategoryCrudPage.feedback"
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/app/providers/__tests__/QueryProvider.errorPolicy.test.ts",
+      "src/components/income-expenses/__tests__/AttachmentUpload.test.tsx",
+      "src/components/ui/__tests__/form-controls.feedback.test.tsx",
+      "src/lib/__tests__/clipboardFeedback.test.tsx",
+      "src/lib/__tests__/formErrors.test.ts",
+      "src/lib/__tests__/friendlyError.feedback.test.ts",
+      "src/pages/settings/categories/CategoryCrudPage.feedback.test.tsx"
+    ]
+  },
+  "A13": {
+    "criterion": "ErrorBoundary có tên trang",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "shared.md",
+    "evidence": [
+      "QueryProvider.errorPolicy",
+      "friendlyError.feedback",
+      "formErrors",
+      "form-controls.feedback",
+      "AttachmentUpload",
+      "clipboardFeedback",
+      "CategoryCrudPage.feedback",
+      "copilot-a13-errorboundary-independent.json101/101 current-src3files; dynamic41route labels/custom/explicit/pending/failure/chunk parity"
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/app/providers/__tests__/QueryProvider.errorPolicy.test.ts",
+      "src/components/income-expenses/__tests__/AttachmentUpload.test.tsx",
+      "src/components/ui/__tests__/form-controls.feedback.test.tsx",
+      "src/lib/__tests__/clipboardFeedback.test.tsx",
+      "src/lib/__tests__/formErrors.test.ts",
+      "src/lib/__tests__/friendlyError.feedback.test.ts",
+      "src/pages/settings/categories/CategoryCrudPage.feedback.test.tsx",
+      "src/components/errors/ErrorBoundary.pageNames.test.tsx",
+      "src/lib/__tests__/errorPageNames.test.ts"
+    ]
+  },
+  "F17": {
+    "criterion": "Kho/tầng/hotline/gạch nợ chờ mutation",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "shared.md",
+    "evidence": [
+      "QueryProvider.errorPolicy",
+      "friendlyError.feedback",
+      "formErrors",
+      "form-controls.feedback",
+      "AttachmentUpload",
+      "clipboardFeedback",
+      "CategoryCrudPage.feedback"
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/app/providers/__tests__/QueryProvider.errorPolicy.test.ts",
+      "src/components/income-expenses/__tests__/AttachmentUpload.test.tsx",
+      "src/components/ui/__tests__/form-controls.feedback.test.tsx",
+      "src/lib/__tests__/clipboardFeedback.test.tsx",
+      "src/lib/__tests__/formErrors.test.ts",
+      "src/lib/__tests__/friendlyError.feedback.test.ts",
+      "src/pages/settings/categories/CategoryCrudPage.feedback.test.tsx"
+    ]
+  },
+  "B01": {
+    "criterion": "Kỳ đầu: ngày bắt đầu >= ngày bắt đầu hợp đồng",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "contracts.md",
+    "evidence": [
+      "contractBillingBounds",
+      "contractFeedback",
+      "contractInvoiceFeedback",
+      "useContractSubmit.focus",
+      "useContractFormState.draft"
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/components/contracts/contract-form/useContractFormState.draft.test.tsx",
+      "src/components/contracts/contract-form/useContractSubmit.focus.test.ts",
+      "src/lib/__tests__/contractBillingBounds.test.ts",
+      "src/lib/__tests__/contractFeedback.test.ts",
+      "src/lib/__tests__/contractInvoiceFeedback.test.ts"
+    ]
+  },
+  "B02": {
+    "criterion": "Kỳ đầu: ngày cuối <= ngày kết thúc hợp đồng",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "contracts.md",
+    "evidence": [
+      "contractBillingBounds",
+      "contractFeedback",
+      "contractInvoiceFeedback",
+      "useContractSubmit.focus",
+      "useContractFormState.draft"
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/components/contracts/contract-form/useContractFormState.draft.test.tsx",
+      "src/components/contracts/contract-form/useContractSubmit.focus.test.ts",
+      "src/lib/__tests__/contractBillingBounds.test.ts",
+      "src/lib/__tests__/contractFeedback.test.ts",
+      "src/lib/__tests__/contractInvoiceFeedback.test.ts"
+    ]
+  },
+  "B03": {
+    "criterion": "Ref/focus ngày/phòng theo thứ tự",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "contracts.md",
+    "evidence": [
+      "contractBillingBounds",
+      "contractFeedback",
+      "contractInvoiceFeedback",
+      "useContractSubmit.focus",
+      "useContractFormState.draft"
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/components/contracts/contract-form/useContractFormState.draft.test.tsx",
+      "src/components/contracts/contract-form/useContractSubmit.focus.test.ts",
+      "src/lib/__tests__/contractBillingBounds.test.ts",
+      "src/lib/__tests__/contractFeedback.test.ts",
+      "src/lib/__tests__/contractInvoiceFeedback.test.ts"
+    ]
+  },
+  "B04": {
+    "criterion": "Khách hàng thiếu đỏ/focus nút chọn",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "contracts.md",
+    "evidence": [
+      "contractBillingBounds",
+      "contractFeedback",
+      "contractInvoiceFeedback",
+      "useContractSubmit.focus",
+      "useContractFormState.draft"
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/components/contracts/contract-form/useContractFormState.draft.test.tsx",
+      "src/components/contracts/contract-form/useContractSubmit.focus.test.ts",
+      "src/lib/__tests__/contractBillingBounds.test.ts",
+      "src/lib/__tests__/contractFeedback.test.ts",
+      "src/lib/__tests__/contractInvoiceFeedback.test.ts"
+    ]
+  },
+  "B05": {
+    "criterion": "Phòng có hợp đồng/đang xử lý",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "contracts.md",
+    "evidence": [
+      "contractBillingBounds",
+      "contractFeedback",
+      "contractInvoiceFeedback",
+      "useContractSubmit.focus",
+      "useContractFormState.draft"
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/components/contracts/contract-form/useContractFormState.draft.test.tsx",
+      "src/components/contracts/contract-form/useContractSubmit.focus.test.ts",
+      "src/lib/__tests__/contractBillingBounds.test.ts",
+      "src/lib/__tests__/contractFeedback.test.ts",
+      "src/lib/__tests__/contractInvoiceFeedback.test.ts"
+    ]
+  },
+  "B06": {
+    "criterion": "Khách trùng/người đại diện",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "contracts.md",
+    "evidence": [
+      "contractBillingBounds",
+      "contractFeedback",
+      "contractInvoiceFeedback",
+      "useContractSubmit.focus",
+      "useContractFormState.draft"
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/components/contracts/contract-form/useContractFormState.draft.test.tsx",
+      "src/components/contracts/contract-form/useContractSubmit.focus.test.ts",
+      "src/lib/__tests__/contractBillingBounds.test.ts",
+      "src/lib/__tests__/contractFeedback.test.ts",
+      "src/lib/__tests__/contractInvoiceFeedback.test.ts"
+    ]
+  },
+  "B07": {
+    "criterion": "Giá thuê/cọc/dịch vụ",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "contracts.md",
+    "evidence": [
+      "contractBillingBounds",
+      "contractFeedback",
+      "contractInvoiceFeedback",
+      "useContractSubmit.focus",
+      "useContractFormState.draft"
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/components/contracts/contract-form/useContractFormState.draft.test.tsx",
+      "src/components/contracts/contract-form/useContractSubmit.focus.test.ts",
+      "src/lib/__tests__/contractBillingBounds.test.ts",
+      "src/lib/__tests__/contractFeedback.test.ts",
+      "src/lib/__tests__/contractInvoiceFeedback.test.ts"
+    ]
+  },
+  "B08": {
+    "criterion": "Mẫu không hợp lệ",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "contracts.md",
+    "evidence": [
+      "contractBillingBounds",
+      "contractFeedback",
+      "contractInvoiceFeedback",
+      "useContractSubmit.focus",
+      "useContractFormState.draft"
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/components/contracts/contract-form/useContractFormState.draft.test.tsx",
+      "src/components/contracts/contract-form/useContractSubmit.focus.test.ts",
+      "src/lib/__tests__/contractBillingBounds.test.ts",
+      "src/lib/__tests__/contractFeedback.test.ts",
+      "src/lib/__tests__/contractInvoiceFeedback.test.ts"
+    ]
+  },
+  "B09": {
+    "criterion": "Phiếu cọc cũ/trùng/đã dùng",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "contracts.md",
+    "evidence": [
+      "contractBillingBounds",
+      "contractFeedback",
+      "contractInvoiceFeedback",
+      "useContractSubmit.focus",
+      "useContractFormState.draft"
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/components/contracts/contract-form/useContractFormState.draft.test.tsx",
+      "src/components/contracts/contract-form/useContractSubmit.focus.test.ts",
+      "src/lib/__tests__/contractBillingBounds.test.ts",
+      "src/lib/__tests__/contractFeedback.test.ts",
+      "src/lib/__tests__/contractInvoiceFeedback.test.ts"
+    ]
+  },
+  "B10": {
+    "criterion": "Cọc nhận vượt hợp đồng",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "contracts.md",
+    "evidence": [
+      "contractBillingBounds",
+      "contractFeedback",
+      "contractInvoiceFeedback",
+      "useContractSubmit.focus",
+      "useContractFormState.draft"
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/components/contracts/contract-form/useContractFormState.draft.test.tsx",
+      "src/components/contracts/contract-form/useContractSubmit.focus.test.ts",
+      "src/lib/__tests__/contractBillingBounds.test.ts",
+      "src/lib/__tests__/contractFeedback.test.ts",
+      "src/lib/__tests__/contractInvoiceFeedback.test.ts"
+    ]
+  },
+  "B11": {
+    "criterion": "Cách xử lý nợ cọc/lý do/ngày hẹn",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "contracts.md",
+    "evidence": [
+      "contractBillingBounds",
+      "contractFeedback",
+      "contractInvoiceFeedback",
+      "useContractSubmit.focus",
+      "useContractFormState.draft"
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/components/contracts/contract-form/useContractFormState.draft.test.tsx",
+      "src/components/contracts/contract-form/useContractSubmit.focus.test.ts",
+      "src/lib/__tests__/contractBillingBounds.test.ts",
+      "src/lib/__tests__/contractFeedback.test.ts",
+      "src/lib/__tests__/contractInvoiceFeedback.test.ts"
+    ]
+  },
+  "B12": {
+    "criterion": "Dòng cọc hóa đơn đầu lệch",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "contracts.md",
+    "evidence": [
+      "contractBillingBounds",
+      "contractFeedback",
+      "contractInvoiceFeedback",
+      "useContractSubmit.focus",
+      "useContractFormState.draft"
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/components/contracts/contract-form/useContractFormState.draft.test.tsx",
+      "src/components/contracts/contract-form/useContractSubmit.focus.test.ts",
+      "src/lib/__tests__/contractBillingBounds.test.ts",
+      "src/lib/__tests__/contractFeedback.test.ts",
+      "src/lib/__tests__/contractInvoiceFeedback.test.ts"
+    ]
+  },
+  "B13": {
+    "criterion": "Dòng/ngày hóa đơn đầu không lộ loại nội bộ",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "contracts.md",
+    "evidence": [
+      "contractBillingBounds",
+      "contractFeedback",
+      "contractInvoiceFeedback",
+      "useContractSubmit.focus",
+      "useContractFormState.draft"
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/components/contracts/contract-form/useContractFormState.draft.test.tsx",
+      "src/components/contracts/contract-form/useContractSubmit.focus.test.ts",
+      "src/lib/__tests__/contractBillingBounds.test.ts",
+      "src/lib/__tests__/contractFeedback.test.ts",
+      "src/lib/__tests__/contractInvoiceFeedback.test.ts"
+    ]
+  },
+  "E01": {
+    "criterion": "CRUD sổ quỹ",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "salary-cashbooks.md",
+    "evidence": [
+      "salaryMutationFeedback",
+      "cashbookFeedback",
+      "cashbookDurable",
+      "salaryDurableWorkflow",
+      "receivingCashbookDurableFeedback",
+      "salaryCanEditFeedback"
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/hooks/__tests__/cashbookDurableWorkflow.test.ts",
+      "src/hooks/__tests__/cashbookFeedback.test.ts",
+      "src/hooks/__tests__/receivingCashbookDurableFeedback.test.ts",
+      "src/hooks/__tests__/salaryCanEditFeedback.test.ts",
+      "src/hooks/__tests__/salaryDurableWorkflow.test.ts",
+      "src/hooks/__tests__/salaryMutationFeedback.test.ts"
+    ]
+  },
+  "E02": {
+    "criterion": "Cấu hình sổ nhận/hình thức thu",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "salary-cashbooks.md",
+    "evidence": [
+      "salaryMutationFeedback",
+      "cashbookFeedback",
+      "cashbookDurable",
+      "salaryDurableWorkflow",
+      "receivingCashbookDurableFeedback",
+      "salaryCanEditFeedback"
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/hooks/__tests__/cashbookDurableWorkflow.test.ts",
+      "src/hooks/__tests__/cashbookFeedback.test.ts",
+      "src/hooks/__tests__/receivingCashbookDurableFeedback.test.ts",
+      "src/hooks/__tests__/salaryCanEditFeedback.test.ts",
+      "src/hooks/__tests__/salaryDurableWorkflow.test.ts",
+      "src/hooks/__tests__/salaryMutationFeedback.test.ts"
+    ]
+  },
+  "E03": {
+    "criterion": "Gửi/xác nhận/hủy chốt sổ",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "salary-cashbooks.md",
+    "evidence": [
+      "salaryMutationFeedback",
+      "cashbookFeedback",
+      "cashbookDurable",
+      "salaryDurableWorkflow",
+      "receivingCashbookDurableFeedback",
+      "salaryCanEditFeedback"
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/hooks/__tests__/cashbookDurableWorkflow.test.ts",
+      "src/hooks/__tests__/cashbookFeedback.test.ts",
+      "src/hooks/__tests__/receivingCashbookDurableFeedback.test.ts",
+      "src/hooks/__tests__/salaryCanEditFeedback.test.ts",
+      "src/hooks/__tests__/salaryDurableWorkflow.test.ts",
+      "src/hooks/__tests__/salaryMutationFeedback.test.ts"
+    ]
+  },
+  "E04": {
+    "criterion": "Chốt sổ ngày dễ đọc",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "salary-cashbooks.md",
+    "evidence": [
+      "salaryMutationFeedback",
+      "cashbookFeedback",
+      "cashbookDurable",
+      "salaryDurableWorkflow",
+      "receivingCashbookDurableFeedback",
+      "salaryCanEditFeedback"
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/hooks/__tests__/cashbookDurableWorkflow.test.ts",
+      "src/hooks/__tests__/cashbookFeedback.test.ts",
+      "src/hooks/__tests__/receivingCashbookDurableFeedback.test.ts",
+      "src/hooks/__tests__/salaryCanEditFeedback.test.ts",
+      "src/hooks/__tests__/salaryDurableWorkflow.test.ts",
+      "src/hooks/__tests__/salaryMutationFeedback.test.ts"
+    ]
+  },
+  "E05": {
+    "criterion": "Bàn giao/đối soát",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "salary-cashbooks.md",
+    "evidence": [
+      "salaryMutationFeedback",
+      "cashbookFeedback",
+      "cashbookDurable",
+      "salaryDurableWorkflow",
+      "receivingCashbookDurableFeedback",
+      "salaryCanEditFeedback"
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/hooks/__tests__/cashbookDurableWorkflow.test.ts",
+      "src/hooks/__tests__/cashbookFeedback.test.ts",
+      "src/hooks/__tests__/receivingCashbookDurableFeedback.test.ts",
+      "src/hooks/__tests__/salaryCanEditFeedback.test.ts",
+      "src/hooks/__tests__/salaryDurableWorkflow.test.ts",
+      "src/hooks/__tests__/salaryMutationFeedback.test.ts"
+    ]
+  },
+  "E06": {
+    "criterion": "Điều chỉnh lương/thưởng/trừ",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "salary-cashbooks.md",
+    "evidence": [
+      "salaryMutationFeedback",
+      "cashbookFeedback",
+      "cashbookDurable",
+      "salaryDurableWorkflow",
+      "receivingCashbookDurableFeedback",
+      "salaryCanEditFeedback"
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/hooks/__tests__/cashbookDurableWorkflow.test.ts",
+      "src/hooks/__tests__/cashbookFeedback.test.ts",
+      "src/hooks/__tests__/receivingCashbookDurableFeedback.test.ts",
+      "src/hooks/__tests__/salaryCanEditFeedback.test.ts",
+      "src/hooks/__tests__/salaryDurableWorkflow.test.ts",
+      "src/hooks/__tests__/salaryMutationFeedback.test.ts"
+    ]
+  },
+  "E07": {
+    "criterion": "Chốt/mở bảng lương kiểm từng bước",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "salary-cashbooks.md",
+    "evidence": [
+      "salaryMutationFeedback",
+      "cashbookFeedback",
+      "cashbookDurable",
+      "salaryDurableWorkflow",
+      "receivingCashbookDurableFeedback",
+      "salaryCanEditFeedback"
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/hooks/__tests__/cashbookDurableWorkflow.test.ts",
+      "src/hooks/__tests__/cashbookFeedback.test.ts",
+      "src/hooks/__tests__/receivingCashbookDurableFeedback.test.ts",
+      "src/hooks/__tests__/salaryCanEditFeedback.test.ts",
+      "src/hooks/__tests__/salaryDurableWorkflow.test.ts",
+      "src/hooks/__tests__/salaryMutationFeedback.test.ts"
+    ]
+  },
+  "E08": {
+    "criterion": "Chi lương batch giữ form partial",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "salary-cashbooks.md",
+    "evidence": [
+      "salaryMutationFeedback",
+      "cashbookFeedback",
+      "cashbookDurable",
+      "salaryDurableWorkflow",
+      "receivingCashbookDurableFeedback",
+      "salaryCanEditFeedback"
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/hooks/__tests__/cashbookDurableWorkflow.test.ts",
+      "src/hooks/__tests__/cashbookFeedback.test.ts",
+      "src/hooks/__tests__/receivingCashbookDurableFeedback.test.ts",
+      "src/hooks/__tests__/salaryCanEditFeedback.test.ts",
+      "src/hooks/__tests__/salaryDurableWorkflow.test.ts",
+      "src/hooks/__tests__/salaryMutationFeedback.test.ts"
+    ]
+  },
+  "E11": {
+    "criterion": "Duyệt/từ chối nghỉ phép",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "salary-cashbooks.md",
+    "evidence": [
+      "salaryMutationFeedback",
+      "cashbookFeedback",
+      "cashbookDurable",
+      "salaryDurableWorkflow",
+      "receivingCashbookDurableFeedback",
+      "salaryCanEditFeedback"
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/hooks/__tests__/cashbookDurableWorkflow.test.ts",
+      "src/hooks/__tests__/cashbookFeedback.test.ts",
+      "src/hooks/__tests__/receivingCashbookDurableFeedback.test.ts",
+      "src/hooks/__tests__/salaryCanEditFeedback.test.ts",
+      "src/hooks/__tests__/salaryDurableWorkflow.test.ts",
+      "src/hooks/__tests__/salaryMutationFeedback.test.ts"
+    ]
+  },
+  "I08": {
+    "criterion": "Lương/ví/lợi nhuận đủ nguồn",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "salary-cashbooks.md",
+    "evidence": [
+      "salaryMutationFeedback",
+      "cashbookFeedback",
+      "cashbookDurable",
+      "salaryDurableWorkflow",
+      "receivingCashbookDurableFeedback",
+      "salaryCanEditFeedback"
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/hooks/__tests__/cashbookDurableWorkflow.test.ts",
+      "src/hooks/__tests__/cashbookFeedback.test.ts",
+      "src/hooks/__tests__/receivingCashbookDurableFeedback.test.ts",
+      "src/hooks/__tests__/salaryCanEditFeedback.test.ts",
+      "src/hooks/__tests__/salaryDurableWorkflow.test.ts",
+      "src/hooks/__tests__/salaryMutationFeedback.test.ts"
+    ]
+  },
+  "I01": {
+    "criterion": "Dashboard từng khối",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "reports.md",
+    "evidence": [
+      "ReportLayout.feedback",
+      "useDashboard.feedback",
+      "RefundLog.feedback",
+      "reportPermissionSourceFeedback",
+      "ReportQueryCallers.feedback",
+      "InvoiceRoundingReportDialog",
+      "useOccupancyDashboard",
+      "RoomDetail.feedback",
+      "DashboardMobilePage.feedback + ContractStatsRegions.feedback + QueryRegion: root independent 21/21, 8 per-source errors/red/retry, real empty and stale/permission cache"
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/components/building-map/__tests__/RoomDetail.feedback.test.tsx",
+      "src/components/errors/__tests__/QueryRegion.test.tsx",
+      "src/components/errors/__tests__/ReportQueryCallers.feedback.test.tsx",
+      "src/components/invoices/__tests__/InvoiceRoundingReportDialog.test.tsx",
+      "src/components/reports/ReportLayout.feedback.test.tsx",
+      "src/hooks/__tests__/reportPermissionSourceFeedback.test.ts",
+      "src/hooks/__tests__/useDashboard.feedback.test.ts",
+      "src/hooks/reports/__tests__/useOccupancyDashboard.test.ts",
+      "src/pages/__tests__/DashboardMobilePage.feedback.test.tsx",
+      "src/pages/contracts/__tests__/ContractStatsRegions.feedback.test.tsx",
+      "src/pages/payments/__tests__/RefundLog.feedback.test.tsx"
+    ]
+  },
+  "I03": {
+    "criterion": "Chi tiết tòa/phòng/khách từng tab",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "reports.md",
+    "evidence": [
+      "ReportLayout.feedback",
+      "useDashboard.feedback",
+      "RefundLog.feedback",
+      "reportPermissionSourceFeedback",
+      "ReportQueryCallers.feedback",
+      "InvoiceRoundingReportDialog",
+      "useOccupancyDashboard",
+      "RoomDetail.feedback"
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/components/building-map/__tests__/RoomDetail.feedback.test.tsx",
+      "src/components/errors/__tests__/ReportQueryCallers.feedback.test.tsx",
+      "src/components/invoices/__tests__/InvoiceRoundingReportDialog.test.tsx",
+      "src/components/reports/ReportLayout.feedback.test.tsx",
+      "src/hooks/__tests__/reportPermissionSourceFeedback.test.ts",
+      "src/hooks/__tests__/useDashboard.feedback.test.ts",
+      "src/hooks/reports/__tests__/useOccupancyDashboard.test.ts",
+      "src/pages/payments/__tests__/RefundLog.feedback.test.tsx"
+    ]
+  },
+  "I07": {
+    "criterion": "In phiếu/lịch sử tiền thối",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "reports.md",
+    "evidence": [
+      "ReportLayout.feedback",
+      "useDashboard.feedback",
+      "RefundLog.feedback",
+      "reportPermissionSourceFeedback",
+      "ReportQueryCallers.feedback",
+      "InvoiceRoundingReportDialog",
+      "useOccupancyDashboard",
+      "RoomDetail.feedback"
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/components/building-map/__tests__/RoomDetail.feedback.test.tsx",
+      "src/components/errors/__tests__/ReportQueryCallers.feedback.test.tsx",
+      "src/components/invoices/__tests__/InvoiceRoundingReportDialog.test.tsx",
+      "src/components/reports/ReportLayout.feedback.test.tsx",
+      "src/hooks/__tests__/reportPermissionSourceFeedback.test.ts",
+      "src/hooks/__tests__/useDashboard.feedback.test.ts",
+      "src/hooks/reports/__tests__/useOccupancyDashboard.test.ts",
+      "src/pages/payments/__tests__/RefundLog.feedback.test.tsx"
+    ]
+  },
+  "I09": {
+    "criterion": "Báo cáo lịch thu/dư/cọc/sổ/dòng tiền/bàn giao",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "reports.md",
+    "evidence": [
+      "ReportLayout.feedback",
+      "useDashboard.feedback",
+      "RefundLog.feedback",
+      "reportPermissionSourceFeedback",
+      "ReportQueryCallers.feedback",
+      "InvoiceRoundingReportDialog",
+      "useOccupancyDashboard",
+      "RoomDetail.feedback"
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/components/building-map/__tests__/RoomDetail.feedback.test.tsx",
+      "src/components/errors/__tests__/ReportQueryCallers.feedback.test.tsx",
+      "src/components/invoices/__tests__/InvoiceRoundingReportDialog.test.tsx",
+      "src/components/reports/ReportLayout.feedback.test.tsx",
+      "src/hooks/__tests__/reportPermissionSourceFeedback.test.ts",
+      "src/hooks/__tests__/useDashboard.feedback.test.ts",
+      "src/hooks/reports/__tests__/useOccupancyDashboard.test.ts",
+      "src/pages/payments/__tests__/RefundLog.feedback.test.tsx"
+    ]
+  },
+  "I10": {
+    "criterion": "Phân tích tài chính từng khối",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "reports.md",
+    "evidence": [
+      "ReportLayout.feedback",
+      "useDashboard.feedback",
+      "RefundLog.feedback",
+      "reportPermissionSourceFeedback",
+      "ReportQueryCallers.feedback",
+      "InvoiceRoundingReportDialog",
+      "useOccupancyDashboard",
+      "RoomDetail.feedback"
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/components/building-map/__tests__/RoomDetail.feedback.test.tsx",
+      "src/components/errors/__tests__/ReportQueryCallers.feedback.test.tsx",
+      "src/components/invoices/__tests__/InvoiceRoundingReportDialog.test.tsx",
+      "src/components/reports/ReportLayout.feedback.test.tsx",
+      "src/hooks/__tests__/reportPermissionSourceFeedback.test.ts",
+      "src/hooks/__tests__/useDashboard.feedback.test.ts",
+      "src/hooks/reports/__tests__/useOccupancyDashboard.test.ts",
+      "src/pages/payments/__tests__/RefundLog.feedback.test.tsx"
+    ]
+  },
+  "I11": {
+    "criterion": "BĐS reports đủ nguồn trước tính/xuất",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "reports.md",
+    "evidence": [
+      "ReportLayout.feedback",
+      "useDashboard.feedback",
+      "RefundLog.feedback",
+      "reportPermissionSourceFeedback",
+      "ReportQueryCallers.feedback",
+      "InvoiceRoundingReportDialog",
+      "useOccupancyDashboard",
+      "RoomDetail.feedback"
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/components/building-map/__tests__/RoomDetail.feedback.test.tsx",
+      "src/components/errors/__tests__/ReportQueryCallers.feedback.test.tsx",
+      "src/components/invoices/__tests__/InvoiceRoundingReportDialog.test.tsx",
+      "src/components/reports/ReportLayout.feedback.test.tsx",
+      "src/hooks/__tests__/reportPermissionSourceFeedback.test.ts",
+      "src/hooks/__tests__/useDashboard.feedback.test.ts",
+      "src/hooks/reports/__tests__/useOccupancyDashboard.test.ts",
+      "src/pages/payments/__tests__/RefundLog.feedback.test.tsx"
+    ]
+  },
+  "I12": {
+    "criterion": "Lấp đầy/cư trú bỏ jargon",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "reports.md",
+    "evidence": [
+      "ReportLayout.feedback",
+      "useDashboard.feedback",
+      "RefundLog.feedback",
+      "reportPermissionSourceFeedback",
+      "ReportQueryCallers.feedback",
+      "InvoiceRoundingReportDialog",
+      "useOccupancyDashboard",
+      "RoomDetail.feedback"
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/components/building-map/__tests__/RoomDetail.feedback.test.tsx",
+      "src/components/errors/__tests__/ReportQueryCallers.feedback.test.tsx",
+      "src/components/invoices/__tests__/InvoiceRoundingReportDialog.test.tsx",
+      "src/components/reports/ReportLayout.feedback.test.tsx",
+      "src/hooks/__tests__/reportPermissionSourceFeedback.test.ts",
+      "src/hooks/__tests__/useDashboard.feedback.test.ts",
+      "src/hooks/reports/__tests__/useOccupancyDashboard.test.ts",
+      "src/pages/payments/__tests__/RefundLog.feedback.test.tsx"
+    ]
+  },
+  "H08": {
+    "criterion": "Network payload không hợp lệ: unknown",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "network-public.md",
+    "evidence": [
+      "networkFeedback",
+      "NetworkForms.feedback",
+      "NetworkForms.feedback",
+      "luckyAdminFeedback",
+      "luckyStateReadFeedback",
+      "QuaySoPage.feedback",
+      "luckyProofTransportFeedback",
+      "publicFeedback"
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/components/network-center/NetworkForms.feedback.test.tsx",
+      "src/lib/__tests__/luckyAdminFeedback.test.ts",
+      "src/lib/__tests__/luckyProofTransportFeedback.test.ts",
+      "src/lib/__tests__/luckyStateReadFeedback.test.ts",
+      "src/lib/__tests__/networkFeedback.test.ts",
+      "src/lib/__tests__/publicFeedback.test.ts",
+      "src/pages/quayso/QuaySoPage.feedback.test.tsx"
+    ]
+  },
+  "H09": {
+    "criterion": "Network xác nhận/bảo trì/cài đặt fields",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "network-public.md",
+    "evidence": [
+      "networkFeedback",
+      "NetworkForms.feedback",
+      "NetworkForms.feedback",
+      "luckyAdminFeedback",
+      "luckyStateReadFeedback",
+      "QuaySoPage.feedback",
+      "luckyProofTransportFeedback",
+      "publicFeedback"
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/components/network-center/NetworkForms.feedback.test.tsx",
+      "src/lib/__tests__/luckyAdminFeedback.test.ts",
+      "src/lib/__tests__/luckyProofTransportFeedback.test.ts",
+      "src/lib/__tests__/luckyStateReadFeedback.test.ts",
+      "src/lib/__tests__/networkFeedback.test.ts",
+      "src/lib/__tests__/publicFeedback.test.ts",
+      "src/pages/quayso/QuaySoPage.feedback.test.tsx"
+    ]
+  },
+  "H10": {
+    "criterion": "Sao lưu/so sánh/sự cố: tiếp nhận khác hoàn tất",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "network-public.md",
+    "evidence": [
+      "networkFeedback",
+      "NetworkForms.feedback",
+      "NetworkForms.feedback",
+      "luckyAdminFeedback",
+      "luckyStateReadFeedback",
+      "QuaySoPage.feedback",
+      "luckyProofTransportFeedback",
+      "publicFeedback"
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/components/network-center/NetworkForms.feedback.test.tsx",
+      "src/lib/__tests__/luckyAdminFeedback.test.ts",
+      "src/lib/__tests__/luckyProofTransportFeedback.test.ts",
+      "src/lib/__tests__/luckyStateReadFeedback.test.ts",
+      "src/lib/__tests__/networkFeedback.test.ts",
+      "src/lib/__tests__/publicFeedback.test.ts",
+      "src/pages/quayso/QuaySoPage.feedback.test.tsx"
+    ]
+  },
+  "H16": {
+    "criterion": "Quay số sự kiện/đội/lượt unknown",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "network-public.md",
+    "evidence": [
+      "networkFeedback",
+      "NetworkForms.feedback",
+      "NetworkForms.feedback",
+      "luckyAdminFeedback",
+      "luckyStateReadFeedback",
+      "QuaySoPage.feedback",
+      "luckyProofTransportFeedback",
+      "publicFeedback"
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/components/network-center/NetworkForms.feedback.test.tsx",
+      "src/lib/__tests__/luckyAdminFeedback.test.ts",
+      "src/lib/__tests__/luckyProofTransportFeedback.test.ts",
+      "src/lib/__tests__/luckyStateReadFeedback.test.ts",
+      "src/lib/__tests__/networkFeedback.test.ts",
+      "src/lib/__tests__/publicFeedback.test.ts",
+      "src/pages/quayso/QuaySoPage.feedback.test.tsx"
+    ]
+  },
+  "H17": {
+    "criterion": "Mã điểm danh 6–8 số",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "network-public.md",
+    "evidence": [
+      "networkFeedback",
+      "NetworkForms.feedback",
+      "NetworkForms.feedback",
+      "luckyAdminFeedback",
+      "luckyStateReadFeedback",
+      "QuaySoPage.feedback",
+      "luckyProofTransportFeedback",
+      "publicFeedback"
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/components/network-center/NetworkForms.feedback.test.tsx",
+      "src/lib/__tests__/luckyAdminFeedback.test.ts",
+      "src/lib/__tests__/luckyProofTransportFeedback.test.ts",
+      "src/lib/__tests__/luckyStateReadFeedback.test.ts",
+      "src/lib/__tests__/networkFeedback.test.ts",
+      "src/lib/__tests__/publicFeedback.test.ts",
+      "src/pages/quayso/QuaySoPage.feedback.test.tsx"
+    ]
+  },
+  "H18": {
+    "criterion": "Giấy cọc/tài khoản thưởng partial",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "network-public.md",
+    "evidence": [
+      "networkFeedback",
+      "NetworkForms.feedback",
+      "NetworkForms.feedback",
+      "luckyAdminFeedback",
+      "luckyStateReadFeedback",
+      "QuaySoPage.feedback",
+      "luckyProofTransportFeedback",
+      "publicFeedback"
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/components/network-center/NetworkForms.feedback.test.tsx",
+      "src/lib/__tests__/luckyAdminFeedback.test.ts",
+      "src/lib/__tests__/luckyProofTransportFeedback.test.ts",
+      "src/lib/__tests__/luckyStateReadFeedback.test.ts",
+      "src/lib/__tests__/networkFeedback.test.ts",
+      "src/lib/__tests__/publicFeedback.test.ts",
+      "src/pages/quayso/QuaySoPage.feedback.test.tsx"
+    ]
+  },
+  "H19": {
+    "criterion": "Public quay số/hóa đơn tải lỗi phân loại",
+    "status": "source-unit-dom-verified",
+    "scope": "Đã đối chiếu nguồn và focused unit/DOM trong phạm vi root; E2E đúng commit chốt tại verification.md, không xem mọi branch là đã E2E.",
+    "beforeAfter": "network-public.md",
+    "evidence": [
+      "networkFeedback",
+      "NetworkForms.feedback",
+      "NetworkForms.feedback",
+      "luckyAdminFeedback",
+      "luckyStateReadFeedback",
+      "QuaySoPage.feedback",
+      "luckyProofTransportFeedback",
+      "publicFeedback"
+    ],
+    "limitations": [
+      "Không đổi atomicity backend.",
+      "Các nhánh server/role/browser chưa kiểm riêng được ghi tại tài liệu phạm vi."
+    ],
+    "testFiles": [
+      "src/components/network-center/NetworkForms.feedback.test.tsx",
+      "src/lib/__tests__/luckyAdminFeedback.test.ts",
+      "src/lib/__tests__/luckyProofTransportFeedback.test.ts",
+      "src/lib/__tests__/luckyStateReadFeedback.test.ts",
+      "src/lib/__tests__/networkFeedback.test.ts",
+      "src/lib/__tests__/publicFeedback.test.ts",
+      "src/pages/quayso/QuaySoPage.feedback.test.tsx"
+    ]
+  },
+  "I16": {
+    "criterion": "Ngày công/ảnh/sự kiện",
+    "status": "source-unit-dom-verified",
+    "scope": "MyDay sources + inspection session/geofence + public lottery read state; không thay quy tắc xác nhận công/GPS/sự kiện.",
+    "beforeAfter": "network-public.md",
+    "evidence": [
+      "myDayFeedbackBoundary18 + MutationCache ownership1 + MyDayRead DOM1",
+      "acceptanceGeofenceFeedback + OrganizationContext + RoomPriceHistory33",
+      "InspectionPhoto.feedback + luckyStateReadFeedback15/QuaySoPage.feedback6"
+    ],
+    "limitations": [
+      "Chưa kiểm hết role/browser/hạ tầng thật; E2E của bản Preview ghi tại verification.md."
+    ]
+  }
+}

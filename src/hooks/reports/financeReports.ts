@@ -1,8 +1,13 @@
+import {financialReadNumber,financialReadRows} from '@/lib/financialReadValidation';
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchAllRows } from "@/lib/supabaseFetchAll";
 import { addDays, differenceInDays } from "date-fns";
 
+function summaryNumber(value:unknown):number {
+  if(value===null || value===undefined || value==='' || !['number','string'].includes(typeof value) || !Number.isFinite(Number(value))) throw new TypeError('Chưa xác nhận được số liệu tổng hợp báo cáo');
+  return Number(value);
+}
 // ==================== FINANCE REPORTS ====================
 
 /**
@@ -11,6 +16,7 @@ import { addDays, differenceInDays } from "date-fns";
  */
 export function usePaymentScheduleReport(daysAhead: number = 30) {
   return useQuery({
+    meta:{errorDisplay:"inline",label:"báo cáo tài chính"},
     queryKey: ["reports", "payment-schedule", daysAhead],
     queryFn: async () => {
       const today = new Date();
@@ -39,19 +45,19 @@ export function usePaymentScheduleReport(daysAhead: number = 30) {
 
       if (error) throw error;
 
-      return data.map((invoice: any) => {
+      return financialReadRows(data).map((invoice: any) => {
         const cust = (invoice.contract?.contract_customers || []).find((c: any) => c.is_representative)
           || invoice.contract?.contract_customers?.[0];
         return {
           ...invoice,
-          amount: invoice.total_amount,
-          amount_paid: invoice.paid_amount,
+          amount: financialReadNumber(invoice.total_amount),
+          amount_paid: financialReadNumber(invoice.paid_amount),
           tenants: cust?.customer ?? null,
           rooms: invoice.room
             ? { room_number: invoice.room.name, buildings: invoice.building }
             : null,
           days_until_due: differenceInDays(new Date(invoice.due_date), today),
-          remaining_amount: invoice.remaining_amount ?? (invoice.total_amount - (invoice.paid_amount || 0)),
+          remaining_amount: invoice.remaining_amount == null ? financialReadNumber(invoice.total_amount) - financialReadNumber(invoice.paid_amount) : financialReadNumber(invoice.remaining_amount),
         };
       });
     },
@@ -64,6 +70,7 @@ export function usePaymentScheduleReport(daysAhead: number = 30) {
  */
 export function useOverpaymentReport() {
   return useQuery({
+    meta:{errorDisplay:"inline",label:"báo cáo tài chính"},
     queryKey: ["reports", "overpayment"],
     queryFn: async () => {
       // PAGED: mọi hoá đơn từng thu đều paid_amount>0 → dễ vượt 1000 → phân trang.
@@ -95,19 +102,19 @@ export function useOverpaymentReport() {
 
       // Filter for overpayments
       return data
-        .filter((invoice: any) => (invoice.paid_amount || 0) > invoice.total_amount)
+        .filter((invoice: any) => financialReadNumber(invoice.paid_amount) > financialReadNumber(invoice.total_amount))
         .map((invoice: any) => {
           const cust = (invoice.contract?.contract_customers || []).find((c: any) => c.is_representative)
             || invoice.contract?.contract_customers?.[0];
           return {
             ...invoice,
-            amount: invoice.total_amount,
-            amount_paid: invoice.paid_amount,
+            amount: financialReadNumber(invoice.total_amount),
+            amount_paid: financialReadNumber(invoice.paid_amount),
             tenants: cust?.customer ?? null,
             rooms: invoice.room
               ? { room_number: invoice.room.name, buildings: invoice.building }
               : null,
-            overpaid_amount: (invoice.paid_amount || 0) - invoice.total_amount,
+            overpaid_amount: financialReadNumber(invoice.paid_amount) - financialReadNumber(invoice.total_amount),
           };
         });
     },
@@ -117,6 +124,7 @@ export function useOverpaymentReport() {
 /** Tổng tiền thừa — RPC SQL aggregate (miễn nhiễm cap-1000). buildingIds=[] → tất cả. */
 export function useOverpaymentSummary(buildingIds?: string[]) {
   return useQuery({
+    meta:{errorDisplay:"inline",label:"báo cáo tài chính"},
     queryKey: ["reports", "overpayment", "summary", buildingIds ?? []],
     queryFn: async (): Promise<{ total: number; count: number }> => {
       const { data, error } = await supabase.rpc("get_overpayment_summary", {
@@ -124,7 +132,7 @@ export function useOverpaymentSummary(buildingIds?: string[]) {
       });
       if (error) throw error;
       const d = (data ?? {}) as any;
-      return { total: Number(d.total) || 0, count: Number(d.count) || 0 };
+      return { total: summaryNumber(d.total), count: summaryNumber(d.count) };
     },
   });
 }
@@ -135,6 +143,7 @@ export function useOverpaymentSummary(buildingIds?: string[]) {
  */
 export function useDepositsReport() {
   return useQuery({
+    meta:{errorDisplay:"inline",label:"báo cáo tài chính"},
     queryKey: ["reports", "deposits"],
     queryFn: async () => {
       // PAGED: bảng deposits tích luỹ → phân trang (deposit_date + id tiebreaker).
@@ -165,6 +174,7 @@ export function useDepositsReport() {
 
       return data.map((deposit: any) => ({
         ...deposit,
+        amount: financialReadNumber(deposit.amount),
         tenants: deposit.tenant,
         rooms: deposit.room ? { room_number: deposit.room.name, buildings: deposit.room.building } : null,
         leads: deposit.tenant,
@@ -177,6 +187,7 @@ export function useDepositsReport() {
 /** Tổng BC tiền cọc — RPC SQL aggregate (miễn nhiễm cap-1000). */
 export function useDepositsReportSummary(status?: string, buildingIds?: string[]) {
   return useQuery({
+    meta:{errorDisplay:"inline",label:"báo cáo tài chính"},
     queryKey: ["reports", "deposits", "summary", status ?? null, buildingIds ?? []],
     queryFn: async (): Promise<{ total: number; count: number; holdingTotal: number; inInvoiceTotal: number }> => {
       const { data, error } = await supabase.rpc("get_deposits_report_summary", {
@@ -186,10 +197,10 @@ export function useDepositsReportSummary(status?: string, buildingIds?: string[]
       if (error) throw error;
       const d = (data ?? {}) as any;
       return {
-        total: Number(d.total) || 0,
-        count: Number(d.count) || 0,
-        holdingTotal: Number(d.holding_total) || 0,
-        inInvoiceTotal: Number(d.in_invoice_total) || 0,
+        total: summaryNumber(d.total),
+        count: summaryNumber(d.count),
+        holdingTotal: summaryNumber(d.holding_total),
+        inInvoiceTotal: summaryNumber(d.in_invoice_total),
       };
     },
   });

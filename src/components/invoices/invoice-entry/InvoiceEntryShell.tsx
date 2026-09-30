@@ -1,4 +1,5 @@
-import type { FormEventHandler } from 'react';
+import {useEffect,useRef,type FormEventHandler} from 'react';
+import {focusFirstError} from '@/lib/formErrors';
 import {
   Dialog,
   DialogContent,
@@ -23,6 +24,10 @@ interface Props extends InvoiceEntryProps {
  */
 export function InvoiceEntryShell({ open, onOpenChange, onSubmit, ...entry }: Props) {
   const isPhone = usePhoneViewport();
+  const formRoot=useRef<HTMLFormElement>(null);
+  useEffect(()=>{
+    if(entry.ctl.submitCount && entry.ctl.errors) void focusFirstError(entry.ctl.errors,{root:formRoot.current,order:['contract_id','billing_month','issue_date','due_date','rent_price','occupants','prev_reading','current_reading','electric_amount','water_amount','pdv_amount','custom_items','discount_amount']});
+  },[entry.ctl.submitCount,entry.ctl.errors]);
   if (!open) return null;
 
   if (isPhone) {
@@ -30,7 +35,7 @@ export function InvoiceEntryShell({ open, onOpenChange, onSubmit, ...entry }: Pr
     return (
       <div className="cm-stage ien-stage sheet-ov" role="dialog" aria-modal="true" aria-label={entry.header.title}>
         <div className="cm-app">
-          <form onSubmit={onSubmit} className="ien-form" noValidate>
+          <form ref={formRoot} onSubmit={onSubmit} className="ien-form" noValidate>
             <InvoiceEntryMobile {...entry} />
           </form>
         </div>
@@ -46,7 +51,7 @@ export function InvoiceEntryShell({ open, onOpenChange, onSubmit, ...entry }: Pr
       >
         <DialogTitle className="sr-only">{entry.header.title}</DialogTitle>
         <DialogDescription className="sr-only">{entry.header.lockNote}</DialogDescription>
-        <form onSubmit={onSubmit} className="max-h-[92vh] overflow-y-auto" noValidate>
+        <form ref={formRoot} onSubmit={onSubmit} className="max-h-[92vh] overflow-y-auto" noValidate>
           <InvoiceEntryDesktop {...entry} />
         </form>
       </DialogContent>

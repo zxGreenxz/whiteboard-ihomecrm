@@ -1,4 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { validateInputDrafts } from "@/lib/inputDraftValidation";
+import { QueryRegion } from "@/components/errors/QueryRegion";
+import { focusFirstError } from "@/lib/formErrors";
+import { FinancialWorkflowError, workflowErrorMessage } from "@/lib/financialWorkflow";
+import { validateProfitPerson, validateSalaryRules } from "@/lib/profitFeedback";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -58,12 +63,24 @@ const emptyRule = (): RuleRow => ({
 
 export default function ProfitManagerForm({ open, onOpenChange, manager }: Props) {
   const isEdit = !!manager;
-  const { data: users = [] } = useAdminUsers();
-  const { data: buildings = [] } = useBuildings(); // ẩn tòa ảo
-  const { data: managers = [] } = useProfitManagers();
-  const { data: allRules = [] } = useManagerSalaries();
+  const usersQuery = useAdminUsers();
+  const { data: users = [] } = usersQuery;
+  const buildingsQuery = useBuildings();
+  const { data: buildings = [] } = buildingsQuery; // ẩn tòa ảo
+  const managersQuery = useProfitManagers();
+  const { data: managers = [] } = managersQuery;
+  const allRulesQuery = useManagerSalaries();
+  const { data: allRules = [] } = allRulesQuery;
   const saveMut = useSaveManagerWithSalaries();
 
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const initialized = useRef<string | null>(null);
+  const entityKey = manager?.id ?? 'new';
+  const [blockedKey, setBlockedKey] = useState<string | null>(null);
+  const saveBlocked = blockedKey === entityKey;
+  const [errors, setErrors] = useState<Record<string,string>>({});
+  const [serverError, setServerError] = useState('');
+  const [savedSteps, setSavedSteps] = useState<readonly {id:string;label:string}[]>([]);
   const [authUserId, setAuthUserId] = useState("");
   const [name, setName] = useState("");
   const [note, setNote] = useState("");
@@ -71,7 +88,10 @@ export default function ProfitManagerForm({ open, onOpenChange, manager }: Props
   const [rules, setRules] = useState<RuleRow[]>([]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) { if (!saveBlocked) initialized.current = null; return; }
+    if (saveBlocked || allRulesQuery.isLoading || allRulesQuery.isError || initialized.current === entityKey) return;
+    initialized.current = entityKey;
+    setErrors({}); setServerError(''); setSavedSteps([]);
     setAuthUserId(manager?.auth_user_id ?? "");
     setName(manager?.name ?? "");
     setNote(manager?.note ?? "");
@@ -91,7 +111,7 @@ export default function ProfitManagerForm({ open, onOpenChange, manager }: Props
     } else {
       setRules([emptyRule()]);
     }
-  }, [open, manager, allRules]);
+  }, [open, manager, allRules, entityKey, saveBlocked, allRulesQuery.isLoading, allRulesQuery.isError]);
 
   // Loại user đã gán cho quản lý KHÁC (auth_user_id là UNIQUE).
   const linkedElsewhere = useMemo(() => {
@@ -132,48 +152,40 @@ export default function ProfitManagerForm({ open, onOpenChange, manager }: Props
   const setRule = (i: number, patch: Partial<RuleRow>) =>
     setRules((p) => p.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
 
-  const canSave = name.trim().length > 0 && !!authUserId && !saveMut.isPending;
-
   const handleSave = async () => {
-    if (!canSave) return;
-    await saveMut.mutateAsync({
-      id: manager?.id,
-      values: {
-        name: name.trim(),
-        note: note.trim() || null,
-        is_active: isActive,
-        auth_user_id: authUserId || null,
-      },
-      rules: rules
-        .filter((r) => r.building_ids.length > 0)
-        .map((r) => ({
-          label: r.label.trim() || null,
-          form: r.form,
-          basis: r.basis,
-          amount: r.amount,
-          percent: r.percent,
-          building_ids: r.building_ids,
-        })),
-    });
-    onOpenChange(false);
+    if (saveMut.isPending || saveBlocked) return;
+    const nextErrors = {...validateProfitPerson(name,authUserId),...validateSalaryRules(rules)};
+    setErrors(nextErrors); setServerError('');
+    if (Object.keys(nextErrors).length) { await focusFirstError(nextErrors,{root:dialogRef.current}); return; }
+    if (!validateInputDrafts(dialogRef.current)) return;
+    try {
+      await saveMut.mutateAsync({id:manager?.id,values:{name:name.trim(),note:note.trim()||null,is_active:isActive,auth_user_id:authUserId},rules:rules.map(r=>({...r,label:r.label.trim()||null}))});
+      onOpenChange(false);
+    } catch(error) {
+      setServerError(workflowErrorMessage(error,'lưu quản lý và lương điều hành'));
+      if(error instanceof FinancialWorkflowError) {setBlockedKey(entityKey);setSavedSteps(error.completed);}
+    }
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[640px] max-h-[90vh] overflow-y-auto">
+      <DialogContent ref={dialogRef} className="sm:max-w-[640px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isEdit ? "Sửa quản lý điều hành" : "Thêm quản lý điều hành"}</DialogTitle>
         </DialogHeader>
 
+        <QueryRegion label="cấu hình lương điều hành" queries={[usersQuery, buildingsQuery, managersQuery, allRulesQuery]}>
         <div className="space-y-4 py-2">
           <div className="space-y-2">
             <Label>Tài khoản (user) <span className="text-red-500">*</span></Label>
             <SearchableSelect
+              name="authUserId" aria-invalid={!!errors.authUserId} aria-describedby="profit-auth-error"
               value={authUserId}
               onValueChange={handleUserChange}
               placeholder="Chọn user để gắn quản lý"
               options={userOptions}
             />
+            {errors.authUserId && <p id="profit-auth-error" className="text-sm text-destructive">{errors.authUserId}</p>}
             <p className="text-xs text-muted-foreground">
               Quản lý đăng nhập bằng tài khoản này để tự xem lương điều hành của mình. Có thể đồng thời là cổ đông.
             </p>
@@ -181,7 +193,8 @@ export default function ProfitManagerForm({ open, onOpenChange, manager }: Props
 
           <div className="space-y-2">
             <Label>Tên hiển thị <span className="text-red-500">*</span></Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="VD: A.Phong..." />
+            <Input name="name" aria-invalid={!!errors.name} aria-describedby="profit-name-error" value={name} onChange={(e) => setName(e.target.value)} placeholder="VD: A.Phong..." />
+            {errors.name && <p id="profit-name-error" className="text-sm text-destructive">{errors.name}</p>}
           </div>
 
           <div className="space-y-2">
@@ -214,7 +227,7 @@ export default function ProfitManagerForm({ open, onOpenChange, manager }: Props
                     placeholder={`Tên quy tắc (tuỳ chọn) — VD: Lương cụm A`}
                     className="h-8"
                   />
-                  {rules.length > 1 && (
+                  {rules.length > 0 && (
                     <Button type="button" variant="ghost" size="icon" onClick={() => removeRule(i)}>
                       <Trash2 className="h-4 w-4 text-red-600" />
                     </Button>
@@ -253,16 +266,17 @@ export default function ProfitManagerForm({ open, onOpenChange, manager }: Props
                       : "Phần trăm trên LN ròng"}
                   </Label>
                   {r.form === "FIXED" ? (
-                    <CurrencyInput value={r.amount} onChange={(v) => setRule(i, { amount: v })} suffix={false} />
+                    <CurrencyInput name={`rules.${i}.amount`} aria-invalid={!!errors[`rules.${i}.amount`]} value={r.amount} onChange={(v) => setRule(i, { amount: v })} suffix={false} />
                   ) : (
                     <div className="relative w-32">
                       <Input
+                        name={`rules.${i}.percent`} aria-invalid={!!errors[`rules.${i}.percent`]}
                         type="number"
                         min={0}
                         max={100}
                         value={r.percent || ""}
                         onChange={(e) =>
-                          setRule(i, { percent: Math.max(0, Math.min(100, Number(e.target.value) || 0)) })
+                          setRule(i, { percent: Number(e.target.value) })
                         }
                         className="pr-6 text-right"
                         placeholder="0"
@@ -274,27 +288,29 @@ export default function ProfitManagerForm({ open, onOpenChange, manager }: Props
 
                 <div className="space-y-1">
                   <Label className="text-xs text-muted-foreground">Áp dụng cho nhà</Label>
+                  <div data-field-name={`rules.${i}.building_ids`} className={errors[`rules.${i}.building_ids`] ? "rounded border border-destructive [&_button]:border-destructive" : ""}>
                   <BuildingMultiSelect
                     value={r.building_ids}
                     onChange={(ids) => setRule(i, { building_ids: ids })}
                     buildings={buildingOptions}
                     placeholder="Chọn nhà áp dụng"
                   />
-                  {r.building_ids.length === 0 && (
-                    <p className="text-xs text-amber-600">Chưa chọn nhà — quy tắc này sẽ bị bỏ qua khi lưu.</p>
-                  )}
+                  </div>
+                  {['building_ids','amount','percent'].map(field=>errors[`rules.${i}.${field}`]&&<p key={field} className="text-sm text-destructive">{errors[`rules.${i}.${field}`]}</p>)}
                 </div>
               </div>
             ))}
           </div>
         </div>
 
+        {serverError && <div role="alert" className="rounded border border-destructive p-3 text-sm text-destructive">{serverError}{savedSteps.map((step,i)=><p key={`${step.id}-${i}`}>{step.label}: <code>{step.id}</code></p>)}</div>}
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Huỷ</Button>
-          <Button onClick={handleSave} disabled={!canSave}>
+          <Button onClick={handleSave} disabled={saveMut.isPending || saveBlocked}>
             {saveMut.isPending ? "Đang lưu..." : "Lưu"}
           </Button>
         </DialogFooter>
+        </QueryRegion>
       </DialogContent>
     </Dialog>
   );

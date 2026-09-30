@@ -1,3 +1,4 @@
+import {useState,useRef} from 'react';
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -17,6 +18,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import { useBuildings } from "@/hooks/useBuildings";
 import { useRooms } from "@/hooks/useRooms";
+import { focusFirstError } from "@/lib/formErrors";
+import {recordWriteBlocked,recordWriteMessage} from "@/lib/recordWriteOutcome";
 
 const assetSchema = z.object({
   code: z.string().optional(),
@@ -40,29 +43,40 @@ interface CreateAssetDialogProps {
 }
 
 export function CreateAssetDialog({ open, onOpenChange }: CreateAssetDialogProps) {
+  const [failure,setFailure]=useState<unknown>();
+  const [blocked,setBlocked]=useState(false);
+  const draftKey=useRef<string|null>(null);
   const createAsset = useCreateAsset();
-  const { data: buildings = [] } = useBuildings({ enabled: open });
-  const { data: rooms = [] } = useRooms(undefined, { enabled: open });
+  const buildingsQuery=useBuildings({ enabled: open });
+  const {data:buildings=[]}=buildingsQuery;
+  const roomsQuery=useRooms(undefined, { enabled: open });
+  const {data:rooms=[]}=roomsQuery;
 
-  const { data: categories = [] } = useQuery({
+  const categoriesQuery = useQuery({
     queryKey: ["asset-categories"],
     queryFn: async () => {
       const { data, error } = await supabase.from("asset_categories").select("*").order("name");
       if (error) throw error;
-      return data || [];
+      if(!Array.isArray(data))throw new Error('Chưa xác nhận được danh mục tài sản. Tải lại trước khi lưu.');
+      return data;
     },
     enabled: open,
   });
 
-  const { data: suppliers = [] } = useQuery({
+  const suppliersQuery = useQuery({
     queryKey: ["suppliers"],
     queryFn: async () => {
       const { data, error } = await supabase.from("suppliers").select("*").order("name");
       if (error) throw error;
-      return data || [];
+      if(!Array.isArray(data))throw new Error('Chưa xác nhận được danh mục tài sản. Tải lại trước khi lưu.');
+      return data;
     },
     enabled: open,
   });
+
+  const {data:categories=[]}=categoriesQuery;const {data:suppliers=[]}=suppliersQuery;
+  const sources=[buildingsQuery,roomsQuery,categoriesQuery,suppliersQuery];
+  const sourceBlocked=sources.some(query=>query.isError||query.isLoading);
 
   const form = useForm<AssetFormValues>({
     resolver: zodResolver(assetSchema),
@@ -82,6 +96,9 @@ export function CreateAssetDialog({ open, onOpenChange }: CreateAssetDialogProps
   });
 
   const onSubmit = async (data: AssetFormValues) => {
+    if(blocked||sourceBlocked)return;
+    form.clearErrors('root.server');
+    form.clearErrors('root.server');
     try {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
@@ -103,21 +120,26 @@ export function CreateAssetDialog({ open, onOpenChange }: CreateAssetDialogProps
       form.reset();
       onOpenChange(false);
     } catch (error) {
+      setFailure(error);setBlocked(recordWriteBlocked(error));
       console.error("Failed to create asset:", error);
+      form.setError('root.server', { type: 'server', message: recordWriteMessage(error,'tạo tài sản') });
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh]">
+    <Dialog open={open} onOpenChange={value=>{if(!form.formState.isSubmitting)onOpenChange(value);}}>
+      <DialogContent aria-describedby={undefined} className="max-w-2xl max-h-[90vh]">
         <DialogHeader>
           <DialogTitle>Tạo tài sản mới</DialogTitle>
           <DialogDescription>Thêm tài sản vào kho</DialogDescription>
         </DialogHeader>
         <ScrollArea className="max-h-[calc(90vh-120px)] pr-4">
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+            <form onSubmit={form.handleSubmit(onSubmit, errors => { void focusFirstError(errors); })} className="space-y-4">
+              {form.formState.errors.root?.server?.message && <p role="alert" className="text-sm text-destructive">{form.formState.errors.root.server.message}</p>}
+              {sourceBlocked && <div role="alert" className="rounded border border-destructive p-3 text-sm">Chưa tải đủ dữ liệu tài sản. Tải lại trước khi lưu.<Button type="button" variant="outline" onClick={()=>{for(const query of sources)void query.refetch();}}>Tải lại dữ liệu</Button></div>}
+            <fieldset disabled={blocked || sourceBlocked || form.formState.isSubmitting} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
                 <FormField control={form.control} name="code" render={({ field }) => (
                   <FormItem><FormLabel>Mã tài sản</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
                 )} />
@@ -158,9 +180,10 @@ export function CreateAssetDialog({ open, onOpenChange }: CreateAssetDialogProps
               <FormField control={form.control} name="description" render={({ field }) => (
                 <FormItem><FormLabel>Mô tả</FormLabel><FormControl><Textarea {...field} className="min-h-[60px]" /></FormControl><FormMessage /></FormItem>
               )} />
-              <div className="flex justify-end gap-3 pt-4">
+              </fieldset>
+            <div className="flex justify-end gap-3 pt-4">
                 <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Hủy</Button>
-                <Button type="submit" disabled={createAsset.isPending}>{createAsset.isPending ? "Đang tạo..." : "Tạo tài sản"}</Button>
+                <Button type="submit" disabled={blocked || sourceBlocked || form.formState.isSubmitting || createAsset.isPending}>{createAsset.isPending ? "Đang tạo..." : "Tạo tài sản"}</Button>
               </div>
             </form>
           </Form>

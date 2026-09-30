@@ -1,3 +1,7 @@
+import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
+import {FinancialWorkflowError,workflowErrorMessage} from '@/lib/financialWorkflow';
+import {financialReadRows} from '@/lib/financialReadValidation';
+import { voucherFailureMessage } from "@/lib/voucherFeedback";
 // ĐỢT A — Huỷ PHIẾU THU: một cửa duy nhất, huỷ ở đâu cũng được.
 //
 // Trước đợt này, huỷ một phiếu thu ở trang Thu chi phải đi qua thang 6 bậc của
@@ -114,9 +118,12 @@ export const useIncomeCancelEligibility = (ids: string[]) =>
         "can_cancel_income_voucher_v1",
         { p_ids: ids },
       );
-      if (error) throw new Error(error.message);
+      if (error) throw error;
       const map: Record<string, IncomeCancelEligibility> = {};
-      for (const row of (data ?? []) as IncomeCancelEligibility[]) map[row.id] = row;
+      for (const row of financialReadRows(data)) {
+        if(typeof row.id!=='string'||!row.id||typeof row.eligible!=='boolean'||(row.mode!==null&&!['MANUAL','COLLECTION','FORFEIT_PAIR'].includes(row.mode))||(row.reason_code!==null&&!Object.prototype.hasOwnProperty.call(BLOCK_TEXT,row.reason_code))||(row.blocking_voucher_code!==null&&typeof row.blocking_voucher_code!=='string'))throw new TypeError('Chưa đọc được điều kiện huỷ phiếu thu.');
+        map[row.id]={...row,mode:row.mode as IncomeCancelMode|null,reason_code:row.reason_code as IncomeCancelBlockCode|null};
+      }
       return map;
     },
   });
@@ -202,27 +209,30 @@ const INVALIDATE_KEYS = [
 ] as const;
 
 export const useCancelIncomeVoucher = () => {
+  const workflow=persistentFinancialWorkflow('voucher-lifecycle',{scope:'actor'});
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (input: CancelIncomeVoucherInput) => {
+    mutationFn: async (input: CancelIncomeVoucherInput) => workflow.run(input.voucherId,'huỷ phiếu thu',async progress=>{
       const { data, error } = await supabase.rpc(
         "cancel_income_voucher_v1",
         { p_voucher: input.voucherId, p_reason: input.reason },
       );
       if (error) {
         const msg = error.message ?? "";
-        toast.error(periodBlockMessage(msg) ?? msg ?? "Không huỷ được phiếu thu");
         throw error;
       }
+      const receipt=data as {id?:unknown;changed?:unknown;mode?:unknown}|null;
+      if(receipt?.id!==input.voucherId || typeof receipt.changed!=='boolean' || (receipt.mode!==undefined && !['MANUAL','COLLECTION','FORFEIT_PAIR'].includes(String(receipt.mode))))throw new TypeError('Chưa xác nhận được kết quả huỷ của đúng phiếu.');
+      progress.completed.push({id:input.voucherId,label:`Đã huỷ phiếu ${input.voucherId}`});
       return data as unknown as CancelIncomeVoucherResult;
-    },
+    }),
     onSuccess: (data) => {
       for (const key of INVALIDATE_KEYS) {
         queryClient.invalidateQueries({ queryKey: key as unknown as string[] });
       }
       if (data?.changed === false) {
-        toast.success("Phiếu đã ở trạng thái Đã huỷ từ trước");
+        toast.info("Phiếu đã ở trạng thái Đã huỷ từ trước. Không có thay đổi mới.");
         return;
       }
       if (data?.mode === "COLLECTION") {
@@ -235,12 +245,13 @@ export const useCancelIncomeVoucher = () => {
       }
       toast.success(
         data?.cancellation_kind === "CANCELLED_AFTER_POSTING"
-          ? "Phiếu thu đã được HUỶ — tiền đã trừ khỏi sổ quỹ"
+          ? "Đã huỷ phiếu thu. Số liệu sổ quỹ đã được cập nhật."
           : "Phiếu thu đã được HUỶ",
       );
     },
     onError: (error) => {
       console.error("Error cancelling income voucher:", error);
+      toast.error(error instanceof FinancialWorkflowError?workflowErrorMessage(error,"huỷ phiếu thu") : voucherFailureMessage(error,"huỷ phiếu thu"));
     },
   });
 };

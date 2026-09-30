@@ -368,3 +368,12 @@ describe("business-performance gated-data hooks", () => {
     await expect(query.queryFn()).rejects.toMatchObject({ field: "building_id" });
   });
 });
+
+
+it("leaves reporting-role error feedback to the inline form owner", async () => {
+  const error = { code: "42501", message: "permission denied table hidden_sql" };
+  mocks.rpc.mockResolvedValue({ data: null, error });
+  const mutation = useSetBusinessPerformanceReportingRole(filters) as unknown as MutationOptions<Parameters<ReturnType<typeof useSetBusinessPerformanceReportingRole>['mutateAsync']>[0], Awaited<ReturnType<ReturnType<typeof useSetBusinessPerformanceReportingRole>['mutateAsync']>>> & { meta?: { handlesFeedback?: boolean } };
+  expect(mutation.meta?.handlesFeedback).toBe(true);
+  await expect(mutation.mutationFn({ incomeExpenseTypeId: TYPE_ID, role: "LANDLORD_RENT_FIXED", effectiveFrom: "2026-07-01" })).rejects.toBe(error);
+});

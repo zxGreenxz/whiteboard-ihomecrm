@@ -118,7 +118,7 @@ export function PayViaBankAppSheet({ open, onOpenChange, voucher }: Props) {
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
-    toast.success("Đã tải ảnh QR về máy");
+    toast.success("Đã yêu cầu tải ảnh QR. Kiểm tra mục Tải xuống của trình duyệt.");
   };
 
   const copyAccount = async () => {

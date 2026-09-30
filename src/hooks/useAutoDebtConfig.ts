@@ -1,3 +1,4 @@
+import { friendlyError } from "@/lib/friendlyError";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
@@ -28,12 +29,13 @@ export const useAutoDebtConfigs = (buildingId?: string) => {
         throw error;
       }
 
-      return data || [];
+      if (!Array.isArray(data)) throw new TypeError("Invalid category list response");
+      return data;
     },
   });
 };
 
-export const useCreateAutoDebtConfig = () => {
+export const useCreateAutoDebtConfig = (options?: {inlineError?:boolean}) => {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -48,24 +50,25 @@ export const useCreateAutoDebtConfig = () => {
         .select()
         .single();
 
-      if (error) {
-        toast.error("Không thể tạo cấu hình gạch nợ tự động");
-        throw error;
-      }
+      if (error) throw error;
+      if (!data || typeof data.id !== "string" || !data.id) throw new TypeError("Unconfirmed category result");
 
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["auto_debt_config"] });
-      toast.success("Cấu hình gạch nợ tự động đã được tạo thành công");
+      toast.success(`Đã tạo cấu hình gạch nợ ${data.bank_account}.`);
     },
     onError: (error) => {
+      if (options?.inlineError) return;
       console.error("Error creating auto debt config:", error);
+      const feedback = friendlyError(error, "Chưa tạo được cấu hình gạch nợ", { operation: "tạo cấu hình gạch nợ" });
+      toast.error(feedback.title, { description: feedback.description });
     },
   });
 };
 
-export const useUpdateAutoDebtConfig = () => {
+export const useUpdateAutoDebtConfig = (options?: {inlineError?:boolean}) => {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -77,24 +80,25 @@ export const useUpdateAutoDebtConfig = () => {
         .select()
         .single();
 
-      if (error) {
-        toast.error("Không thể cập nhật cấu hình gạch nợ tự động");
-        throw error;
-      }
+      if (error) throw error;
+      if (!data || data.id !== id) throw new TypeError("Unconfirmed category result");
 
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["auto_debt_config"] });
-      toast.success("Cấu hình gạch nợ tự động đã được cập nhật thành công");
+      toast.success(`Đã lưu thay đổi cấu hình gạch nợ ${data.bank_account}.`);
     },
     onError: (error) => {
+      if (options?.inlineError) return;
       console.error("Error updating auto debt config:", error);
+      const feedback = friendlyError(error, "Chưa lưu thay đổi được cấu hình gạch nợ", { operation: "lưu thay đổi cấu hình gạch nợ" });
+      toast.error(feedback.title, { description: feedback.description });
     },
   });
 };
 
-export const useDeleteAutoDebtConfig = () => {
+export const useDeleteAutoDebtConfig = (options?: {inlineError?:boolean}) => {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -106,19 +110,20 @@ export const useDeleteAutoDebtConfig = () => {
         .select()
         .single();
 
-      if (error) {
-        toast.error("Không thể xóa cấu hình gạch nợ tự động");
-        throw error;
-      }
+      if (error) throw error;
+      if (!data || data.id !== id) throw new TypeError("Unconfirmed category result");
 
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["auto_debt_config"] });
-      toast.success("Cấu hình gạch nợ tự động đã được xóa thành công");
+      toast.success(`Đã xóa cấu hình gạch nợ ${data.bank_account}.`);
     },
     onError: (error) => {
+      if (options?.inlineError) return;
       console.error("Error deleting auto debt config:", error);
+      const feedback = friendlyError(error, "Chưa xóa được cấu hình gạch nợ", { operation: "xóa cấu hình gạch nợ" });
+      toast.error(feedback.title, { description: feedback.description });
     },
   });
 };

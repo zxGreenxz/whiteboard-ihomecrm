@@ -1,3 +1,8 @@
+import {runFinancialPending} from '@/lib/financialPendingAction';
+import {useOrganization} from '@/contexts/OrganizationContext';
+import {getSessionUser} from '@/lib/authSession';
+import {financialReadNumber,financialReadRows} from '@/lib/financialReadValidation';
+import { readCreatedVoucherReceipt } from '@/lib/createdVoucherReceipt';
 // =============================================
 // useUtilityBills — data layer cho "Đóng tiền Điện nước" (/thu-tien).
 //
@@ -18,7 +23,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { monthToStartDate, monthToEndDate } from '@/lib/monthPeriod';
 import { jsonProp } from '@/lib/jsonValue';
 import { fetchAllRows } from '@/lib/supabaseFetchAll';
-import { utilityRowParts, splitUtilityAmounts } from '@/lib/utilityVoucherSplit';
+import { utilityRowParts } from '@/lib/utilityVoucherSplit';
 
 export type UtilType = 'electric' | 'water';
 
@@ -28,7 +33,7 @@ const TYPE_NAME: Record<UtilType, string> = { electric: 'Đóng tiền điện',
 interface UtilityAccountRow {
   id: string;
   building_id: string;
-  utility_type: 'ELECTRIC' | 'WATER';
+  utility_type: string;
   provider_code: string | null;
   account_holder: string | null;
 }
@@ -159,8 +164,8 @@ const fetchUtilityTypeIds = async (): Promise<{ elecIds: Set<string>; waterIds: 
     .eq('type', 'expense')
     .in('name', [TYPE_NAME.electric, TYPE_NAME.water]);
   if (error) throw error;
-  const elecIds = new Set<string>((data ?? []).filter((t: any) => t.name === TYPE_NAME.electric).map((t: any) => t.id));
-  const waterIds = new Set<string>((data ?? []).filter((t: any) => t.name === TYPE_NAME.water).map((t: any) => t.id));
+  const elecIds = new Set<string>(financialReadRows(data).filter((t: any) => t.name === TYPE_NAME.electric).map((t: any) => t.id));
+  const waterIds = new Set<string>(financialReadRows(data).filter((t: any) => t.name === TYPE_NAME.water).map((t: any) => t.id));
   return { elecIds, waterIds };
 };
 
@@ -176,13 +181,15 @@ export const useUtilityAccounts = (opts?: { enabled?: boolean }) => {
         .is('deleted_at', null)
         .order('created_at', { ascending: true });
       if (error) throw error;
-      return ((data ?? []) as UtilityAccountRow[]).map((r) => ({
+      return financialReadRows<UtilityAccountRow>(data).map((r) => {
+        if(r.utility_type!=='ELECTRIC' && r.utility_type!=='WATER') throw new TypeError('Chưa đọc được loại đồng hồ điện/nước.');
+        return ({
         id: r.id,
         building_id: r.building_id,
         type: (r.utility_type === 'ELECTRIC' ? 'electric' : 'water') as UtilType,
         code: r.provider_code ?? '',
         holder: r.account_holder ?? '',
-      }));
+      });});
     },
   });
 
@@ -202,6 +209,7 @@ export const useUtilityAccounts = (opts?: { enabled?: boolean }) => {
 export const useSaveUtilityMeter = () => {
   const qc = useQueryClient();
   return useMutation({
+    meta: {handlesFeedback: true},
     mutationFn: async (args: { id?: string | null; buildingId: string; type: UtilType; code: string; holder: string }) => {
       const { data, error } = await supabase.rpc('save_utility_account', {
         p_id: rpcNullable(args.id ?? null),
@@ -210,8 +218,9 @@ export const useSaveUtilityMeter = () => {
         p_provider_code: args.code || undefined,
         p_account_holder: args.holder || undefined,
       });
-      if (error) throw new Error(error.message);
-      return data as string; // id
+      if (error) throw error;
+      if(typeof data!=='string' || !data) throw new TypeError('Chưa xác nhận được mã đồng hồ đã lưu.');
+      return data; // id
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['utility-accounts'] }),
   });
@@ -221,6 +230,7 @@ export const useSaveUtilityMeter = () => {
 export const useAddUtilityMeter = () => {
   const qc = useQueryClient();
   return useMutation({
+    meta: {handlesFeedback: true},
     mutationFn: async (args: { buildingId: string; type: UtilType }) => {
       const { data, error } = await supabase.rpc('save_utility_account', {
         // `p_id` BẮT BUỘC (không DEFAULT) nhưng nhận NULL = "tạo mới".
@@ -230,8 +240,9 @@ export const useAddUtilityMeter = () => {
         p_provider_code: undefined,
         p_account_holder: undefined,
       });
-      if (error) throw new Error(error.message);
-      return data as string;
+      if (error) throw error;
+      if(typeof data!=='string' || !data) throw new TypeError('Chưa xác nhận được mã đồng hồ đã tạo.');
+      return data;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['utility-accounts'] }),
   });
@@ -241,9 +252,11 @@ export const useAddUtilityMeter = () => {
 export const useDeleteUtilityMeter = () => {
   const qc = useQueryClient();
   return useMutation({
+    meta: {handlesFeedback: true},
     mutationFn: async (id: string) => {
-      const { error } = await supabase.rpc('delete_utility_account', { p_id: id });
-      if (error) throw new Error(error.message);
+      const { data, error } = await supabase.rpc('delete_utility_account', { p_id: id });
+      if (error) throw error;
+      if(!data || typeof data!=='object' || Array.isArray(data) || data.ok!==true) throw new TypeError('Chưa xác nhận được đồng hồ đã xóa.');
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['utility-accounts'] }),
   });
@@ -252,7 +265,9 @@ export const useDeleteUtilityMeter = () => {
 /** Tạo phiếu CHI đóng tiền điện/nước cho 1 toà + kỳ. */
 export const usePayUtilityBill = () => {
   const qc = useQueryClient();
+  const {selectedOrganizationId}=useOrganization();
   return useMutation({
+    meta: {handlesFeedback:true},
     mutationFn: async (args: {
       buildingId: string;
       type: UtilType;
@@ -265,6 +280,8 @@ export const usePayUtilityBill = () => {
       attachments?: string[];
       voucherDate?: string;
     }) => {
+      const user=await getSessionUser();
+      return runFinancialPending({namespace:'utility-pay',userId:user?.id??'',organizationId:selectedOrganizationId??'',businessKey:[args.buildingId,args.type,args.utilityAccountId??'',args.billingMonth].join(':')},async progress=>{
       const { data, error } = await supabase.rpc('pay_utility_bill', {
         p_building_id: args.buildingId,
         p_utility_type: TYPE_DB[args.type],
@@ -277,8 +294,12 @@ export const usePayUtilityBill = () => {
         p_attachments: args.attachments && args.attachments.length ? args.attachments : null,
         p_utility_account_id: args.utilityAccountId ?? undefined,
       });
-      if (error) throw new Error(error.message);
-      return data as { voucher_id: string; code: string; total_amount: number; account_id: string };
+      if (error) throw error;
+      const receipt=await readCreatedVoucherReceipt(data);
+      progress.recordCompleted([receipt.id]);
+      if(!receipt.approval_status||!receipt.posting_status)throw new TypeError("Chưa xác nhận trạng thái phiếu phí đã tạo");
+      return receipt;
+      });
     },
     onSuccess: (_d, vars) => {
       qc.invalidateQueries({ queryKey: ['utility-payments', vars.billingMonth] });
@@ -293,10 +314,17 @@ export const usePayUtilityBill = () => {
 /** Hủy (soft-delete) 1 phiếu chi điện/nước. */
 export const useCancelUtilityBill = (billingMonth: string) => {
   const qc = useQueryClient();
+  const {selectedOrganizationId}=useOrganization();
   return useMutation({
+    meta: {handlesFeedback: true},
     mutationFn: async (voucherId: string) => {
-      const { error } = await supabase.rpc('cancel_utility_bill', { p_voucher_id: voucherId });
-      if (error) throw new Error(error.message);
+      const user=await getSessionUser();
+      return runFinancialPending({namespace:'utility-cancel',userId:user?.id??'',organizationId:selectedOrganizationId??'',businessKey:voucherId},async progress=>{
+        const {data,error}=await supabase.rpc('cancel_utility_bill',{p_voucher_id:voucherId});
+        if(error)throw error;
+        if(!data || typeof data!=='object' || Array.isArray(data) || data.ok!==true || data.voucher_id!==voucherId) throw new TypeError('Chưa xác nhận được phiếu điện/nước đã hủy.');
+        progress.recordCompleted([voucherId]);
+      });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['utility-payments', billingMonth] });
@@ -373,7 +401,8 @@ export const useUtilityPayments = (billingMonth: string, opts?: { enabled?: bool
 
       const out: UtilityPaymentRow[] = [];
       for (const v of data) {
-        const items = Array.isArray(v.it) ? v.it : v.it ? [v.it] : [];
+        if(!['UNAPPROVED','APPROVED'].includes(v.approval_status))throw new TypeError('Chưa đọc được trạng thái phiếu điện/nước.');
+        const items = financialReadRows<UtilityPaymentItem>(Array.isArray(v.it) ? v.it : v.it ? [v.it] : null).map(item=>({...item,amount:financialReadNumber(item.amount)}));
         // attachments = jsonb array URL/path (chuẩn hoá string; bỏ phần tử lạ).
         const atts: string[] = (Array.isArray(v.attachments) ? v.attachments : [])
           .map((x: any) => (typeof x === 'string' ? x : x?.url))
@@ -384,7 +413,7 @@ export const useUtilityPayments = (billingMonth: string, opts?: { enabled?: bool
         const meterType: 'electric' | 'water' | null =
           v.meter?.utility_type === 'ELECTRIC' ? 'electric'
           : v.meter?.utility_type === 'WATER' ? 'water' : null;
-        for (const part of utilityRowParts(items, elecIds, waterIds, Number(v.total_amount) || 0)) {
+        for (const part of utilityRowParts(items, elecIds, waterIds, items.every(item=>item.amount===0) ? 0 : financialReadNumber(v.total_amount))) {
           out.push({
             voucher_id: v.id,
             pending: v.approval_status === 'UNAPPROVED',
@@ -573,18 +602,14 @@ export const useUtilityChart = (
         );
         if (data === null) throw new Error('Không tải được dữ liệu biểu đồ điện nước — thử lại.');
         for (const v of data) {
-          const items = Array.isArray(v.it) ? v.it : v.it ? [v.it] : [];
-          // Suy biến dữ liệu cổ (item chưa mang amount): chia lại theo splitUtilityAmounts
-          // sẽ ra 0 — khi đó rơi về total_amount cho ĐÚNG MỘT dòng đầu tiên khớp loại,
-          // để phiếu không biến mất khỏi biểu đồ (và vẫn không đếm đôi).
-          const split = splitUtilityAmounts(items, elecIds, waterIds);
-          const degenerate = split.elec === 0 && split.water === 0;
-          let degenerateUsed = false;
+
+          const items = financialReadRows<UtilityChartItem>(Array.isArray(v.it) ? v.it : v.it ? [v.it] : null).map(item=>({...item,amount:financialReadNumber(item.amount)}));
+          // Mỗi hạng mục đã được kiểm tiền; 0 thật không thay bằng tổng phiếu.
           for (const it of items) {
             const ym = (it.start_date ?? '').slice(0, 7);
             if (!paidByMonth[ym]) continue;
-            let amt = Number(it.amount) || 0;
-            if (degenerate && !degenerateUsed) { amt = Number(v.total_amount) || 0; degenerateUsed = true; }
+            const amt = financialReadNumber(it.amount);
+
             if (elecIds.has(it.income_expense_type_id)) paidByMonth[ym].elec += amt;
             else if (waterIds.has(it.income_expense_type_id)) paidByMonth[ym].water += amt;
           }
@@ -600,11 +625,11 @@ export const useUtilityChart = (
             p_building_id: buildingId ?? undefined,
             p_billing_month: ym,
           });
-          if (error) return { elecBill: 0, waterBill: 0 };
+          if (error) throw error;
           const r = Array.isArray(data) ? data[0] : data;
           return {
-            elecBill: Number(jsonProp(r, "electric_amount") ?? 0),
-            waterBill: Number(jsonProp(r, "water_amount") ?? 0),
+            elecBill: financialReadNumber(jsonProp(r, "electric_amount")),
+            waterBill: financialReadNumber(jsonProp(r, "water_amount")),
           };
         }),
       );

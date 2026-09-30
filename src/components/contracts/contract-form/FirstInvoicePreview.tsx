@@ -6,12 +6,15 @@ import { Label } from "@/components/ui/label";
 import { Plus, Trash2 } from "lucide-react";
 
 import { computeFirstBillingMonth } from "@/lib/firstInvoiceBuilder";
+import { flattenFieldErrors } from '@/lib/formErrors';
 
 import { formatVND } from "./types";
 import type { ContractFormState } from "./useContractFormState";
 
 type FirstInvoicePreviewProps = Pick<
   ContractFormState,
+  | "depositRemaining"
+  | "setInvoiceItems"
   | "form"
   | "startBilling"
   | "endBilling"
@@ -22,11 +25,14 @@ type FirstInvoicePreviewProps = Pick<
   | "addInvoiceItem"
   | "updateInvoiceItem"
   | "removeInvoiceItem"
+  | "sourceIssues"
 >;
 
 /** ===== Section 5: Xem trước hoá đơn cọc + tháng đầu ===== (JSX chuyển
  * NGUYÊN VĂN; gate `!isEditMode` giữ ở root như bản gốc) */
 export function FirstInvoicePreview({
+  depositRemaining,
+  setInvoiceItems,
   form,
   startBilling,
   endBilling,
@@ -37,9 +43,21 @@ export function FirstInvoicePreview({
   addInvoiceItem,
   updateInvoiceItem,
   removeInvoiceItem,
+  sourceIssues,
 }: FirstInvoicePreviewProps) {
+  const fieldErrors = flattenFieldErrors(form.formState.errors);
+  const rowError = (id: string, field: string) => fieldErrors[`invoice_items.${id}.${field}`];
+  const depositNeedsRepair = !!fieldErrors.first_invoice || invoiceItems.some(item=>item.accounting_class==='DEPOSIT' && !!rowError(item.id,'unit_price'));
+  const repairDeposit = () => {
+    if(sourceIssues.length || !Number.isFinite(depositRemaining) || depositRemaining < 0) return;
+    const previous=invoiceItems.find(item=>item.accounting_class==='DEPOSIT');
+    const others=invoiceItems.filter(item=>item.accounting_class!=='DEPOSIT');
+    setInvoiceItems([...others,...(depositRemaining>0?[{id:previous?.id??`deposit-${crypto.randomUUID()}`,type:'OTHER' as const,accounting_class:'DEPOSIT' as const,description:previous?.description??'Tiền cọc',unit_price:depositRemaining,quantity:1}]:[])]);
+    form.clearErrors('first_invoice' as never);
+    for(const item of invoiceItems.filter(item=>item.accounting_class==='DEPOSIT'))form.clearErrors(`invoice_items.${item.id}` as never);
+  };
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-field-name="first_invoice" tabIndex={-1} aria-invalid={!!fieldErrors.first_invoice}>
       <div className="flex items-center justify-between border-b pb-2">
         <h3 className="text-sm font-semibold text-foreground">
           Xem trước hoá đơn cọc + tháng đầu
@@ -54,6 +72,13 @@ export function FirstInvoicePreview({
           Thêm dòng
         </Button>
       </div>
+      {(form.formState.errors as Record<string, { message?: string }>).first_invoice?.message && (
+        <p role="alert" className="text-sm font-medium text-destructive">{(form.formState.errors as Record<string, { message?: string }>).first_invoice?.message}</p>
+      )}
+      {depositNeedsRepair && <Button type="button" variant="outline" onClick={repairDeposit} disabled={sourceIssues.length>0}>Cập nhật dòng tiền cọc theo phần còn thiếu</Button>}
+      {sourceIssues.length > 0 && <p role="alert" className="text-sm font-medium text-destructive">
+        Bản xem trước chưa đầy đủ vì chưa tải được {sourceIssues.map(issue => issue.label).join(', ')}. Tải lại nguồn trước khi kiểm tra số tiền và ký.
+      </p>}
 
       {(() => {
         // Kỳ thanh toán doanh thu của HĐ đầu (theo quy tắc tháng phủ
@@ -83,6 +108,7 @@ export function FirstInvoicePreview({
             {invoiceItems.map((it) => (
               <div
                 key={it.id}
+                data-field-name={`invoice_items.${it.id}.period`}
                 className="border rounded-md p-3 space-y-2 bg-card"
               >
                 <div className="flex items-start gap-2">
@@ -115,11 +141,12 @@ export function FirstInvoicePreview({
                   </Button>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
-                  <div className="space-y-1">
+                  <div className="space-y-1" data-field-name={`invoice_items.${it.id}.quantity`}>
                     <Label className="text-xs text-muted-foreground">
                       SL
                     </Label>
                     <NumberInput
+                      aria-invalid={!!rowError(it.id, 'quantity')}
                       min={1}
                       className="w-full h-9 text-right"
                       value={it.quantity}
@@ -128,12 +155,14 @@ export function FirstInvoicePreview({
                         updateInvoiceItem(it.id, "quantity", v || 1)
                       }
                     />
+                    {rowError(it.id, 'quantity') && <p role="alert" className="text-xs text-destructive">{rowError(it.id, 'quantity')}</p>}
                   </div>
-                  <div className="space-y-1">
+                  <div className={`space-y-1 ${rowError(it.id,'unit_price')?'rounded border border-destructive p-1':''}`} tabIndex={it.accounting_class==="DEPOSIT"?-1:undefined} aria-invalid={!!rowError(it.id,'unit_price')} aria-describedby={rowError(it.id,'unit_price')?`invoice-mobile-${it.id}-price-error`:undefined} data-field-name={`invoice_items.${it.id}.unit_price`}>
                     <Label className="text-xs text-muted-foreground">
                       Đơn giá
                     </Label>
                     <CurrencyInput
+                      aria-invalid={!!rowError(it.id, 'unit_price')}
                       suffix={false}
                       className="w-full h-9 text-right"
                       value={it.unit_price}
@@ -142,8 +171,10 @@ export function FirstInvoicePreview({
                         updateInvoiceItem(it.id, "unit_price", v)
                       }
                     />
+                    {rowError(it.id, 'unit_price') && <p id={`invoice-mobile-${it.id}-price-error`} role="alert" className="text-xs text-destructive">{rowError(it.id, 'unit_price')}</p>}
                   </div>
                 </div>
+                {rowError(it.id, 'period') && <p role="alert" className="text-xs text-destructive">{rowError(it.id, 'period')}</p>}
                 <div className="flex items-center justify-between pt-1 border-t">
                   <span className="text-xs text-muted-foreground">
                     Thành tiền
@@ -198,7 +229,7 @@ export function FirstInvoicePreview({
               </thead>
               <tbody className="divide-y">
                 {invoiceItems.map((it) => (
-                  <tr key={it.id}>
+                  <tr key={it.id} data-field-name={`invoice_items.${it.id}.period`}>
                     <td className="px-3 py-2">
                       <Input
                         className="h-8 text-sm"
@@ -207,9 +238,11 @@ export function FirstInvoicePreview({
                           updateInvoiceItem(it.id, "description", e.target.value)
                         }
                       />
+                      {rowError(it.id, 'period') && <p role="alert" className="text-xs text-destructive">{rowError(it.id, 'period')}</p>}
                     </td>
-                    <td className="px-3 py-2">
+                    <td className="px-3 py-2" data-field-name={`invoice_items.${it.id}.quantity`}>
                       <NumberInput
+                        aria-invalid={!!rowError(it.id, 'quantity')}
                         min={1}
                         className="w-16 h-8 text-right ml-auto"
                         value={it.quantity}
@@ -218,9 +251,11 @@ export function FirstInvoicePreview({
                           updateInvoiceItem(it.id, "quantity", v || 1)
                         }
                       />
+                      {rowError(it.id, 'quantity') && <p role="alert" className="text-xs text-destructive">{rowError(it.id, 'quantity')}</p>}
                     </td>
-                    <td className="px-3 py-2">
+                    <td className={`px-3 py-2 ${rowError(it.id,'unit_price')?'border border-destructive':''}`} tabIndex={it.accounting_class==="DEPOSIT"?-1:undefined} aria-invalid={!!rowError(it.id,'unit_price')} aria-describedby={rowError(it.id,'unit_price')?`invoice-desktop-${it.id}-price-error`:undefined} data-field-name={`invoice_items.${it.id}.unit_price`}>
                       <CurrencyInput
+                        aria-invalid={!!rowError(it.id, 'unit_price')}
                         suffix={false}
                         className="w-32 h-8 text-right ml-auto"
                         value={it.unit_price}
@@ -229,6 +264,7 @@ export function FirstInvoicePreview({
                           updateInvoiceItem(it.id, "unit_price", v)
                         }
                       />
+                      {rowError(it.id, 'unit_price') && <p id={`invoice-desktop-${it.id}-price-error`} role="alert" className="text-xs text-destructive">{rowError(it.id, 'unit_price')}</p>}
                     </td>
                     <td className="px-3 py-2 text-right font-medium tabular-nums">
                       {formatVND(it.unit_price * it.quantity)}

@@ -1,3 +1,5 @@
+import {FinancialWorkflowError,workflowFeedbackDescription} from '@/lib/financialWorkflowError';
+import { dienGiaiLoiKeHoach } from './chatErrors';
 import { useEffect, useState } from 'react';
 
 import { formatVND } from '@/lib/utils';
@@ -179,8 +181,10 @@ export default function XacNhanPhieuCard({ onXong, organizationId, threadId, gen
       setDangCho(null);
       onXong(thongBao);
     } catch (e) {
-      setLoi(e instanceof Error ? e.message : String(e));
-      // Nonce đã tiêu và không lấy lại được — nói thẳng là phải lập lại đề xuất
+      const message = e instanceof FinancialWorkflowError ? workflowFeedbackDescription(e) : dienGiaiLoiKeHoach(e instanceof Error ? e.message : "");
+      setLoi(message);
+      onXong(`⚠️ ${message}`);
+      // Nonce đã tiêu: giữ kết quả chưa xác nhận trong khung chat để đối chiếu
       // thay vì để một cái nút chết nằm đó.
       setDangCho(null);
     } finally {

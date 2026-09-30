@@ -1,3 +1,6 @@
+import {FinancialPendingError,FinancialPendingStorageError} from './financialPending';
+import { friendlyError } from "./friendlyError";
+import { voucherOutcomeUnknown, voucherFailureMessage } from "./voucherFeedback";
 import {z} from 'zod';
 import type {Json} from '@/integrations/supabase/types';
 const uuid=z.string().uuid(),date=z.string().regex(/^\d{4}-\d{2}-\d{2}$/),key=z.string().trim().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{7,199}$/);
@@ -23,11 +26,25 @@ export function buildCreateRoomReservationArgs(organizationId:string,input:Creat
 export function buildUpdateRoomReservationArgs(organizationId:string,input:UpdateRoomReservationInput){
   const v=z.object({reservationId:uuid,expectedRevision:z.number().int().positive(),idempotencyKey:key,action:z.enum(['UPDATE','TOPUP','CANCEL']),changes:z.object({holdUntil:date.nullable().optional(),intendedMoveInOn:date.nullable().optional(),topupDueOn:date.nullable().optional(),depositTarget:z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).nullable().optional(),notes:z.string().nullable().optional()}).strict().optional(),receipt:receiptSchema.optional()}).strict().parse(input);
   if((v.action==='TOPUP')!==!!v.receipt||(v.action!=='UPDATE'&&v.changes&&Object.keys(v.changes).length))throw new Error('Thao tác giữ chỗ không khớp dữ liệu');
-  const changes:Record<string,Json>={};for(const [k,value]of Object.entries(v.changes??{})){const names:Record<string,string>={holdUntil:'hold_until',intendedMoveInOn:'intended_move_in_on',topupDueOn:'topup_due_on',depositTarget:'deposit_target',notes:'notes'};changes[names[k]]=value??null;}
+  const changes:Record<string,Json>={};for(const [k,value]of Object.entries(v.changes??{})){const names:Record<keyof NonNullable<typeof v.changes>,string>={holdUntil:'hold_until',intendedMoveInOn:'intended_move_in_on',topupDueOn:'topup_due_on',depositTarget:'deposit_target',notes:'notes'};changes[names[k as keyof NonNullable<typeof v.changes>]]=value??null;}
   return{p_organization_id:uuid.parse(organizationId),p_reservation_id:v.reservationId,p_expected_revision:v.expectedRevision,p_idempotency_key:v.idempotencyKey,p_action:v.action,p_changes:changes,p_receipt:v.receipt?buildReservationReceiptPayload(v.receipt):null};
 }
 async function invoke(rpc:ReservationRpcInvoker,name:ReservationRpcName,args:Record<string,Json>){const r=await rpc(name,args);if(r.error)throw r.error;return r.data;}
-export async function createRoomReservation(rpc:ReservationRpcInvoker,organizationId:string,input:CreateRoomReservationInput):Promise<RoomReservation>{return roomReservationSchema.parse(await invoke(rpc,'create_room_reservation_v1',buildCreateRoomReservationArgs(organizationId,input)));}
-export async function updateRoomReservation(rpc:ReservationRpcInvoker,organizationId:string,input:UpdateRoomReservationInput):Promise<RoomReservation>{return roomReservationSchema.parse(await invoke(rpc,'update_room_reservation_v1',buildUpdateRoomReservationArgs(organizationId,input)));}
+export async function createRoomReservation(rpc:ReservationRpcInvoker,organizationId:string,input:CreateRoomReservationInput):Promise<RoomReservation>{const data=await invoke(rpc,'create_room_reservation_v1',buildCreateRoomReservationArgs(organizationId,input));const parsed=roomReservationSchema.safeParse(data);if(!parsed.success)throw new TypeError('Chưa xác nhận được hồ sơ giữ chỗ đã lưu');return parsed.data;}
+export async function updateRoomReservation(rpc:ReservationRpcInvoker,organizationId:string,input:UpdateRoomReservationInput):Promise<RoomReservation>{const data=await invoke(rpc,'update_room_reservation_v1',buildUpdateRoomReservationArgs(organizationId,input));const parsed=roomReservationSchema.safeParse(data);if(!parsed.success)throw new TypeError('Chưa xác nhận được hồ sơ giữ chỗ đã lưu');return parsed.data;}
 export async function listRoomReservations(rpc:ReservationRpcInvoker,organizationId:string,filters:RoomReservationFilters={}):Promise<RoomReservationList>{return roomReservationListSchema.parse(await invoke(rpc,'list_room_reservations_v1',{p_organization_id:uuid.parse(organizationId),p_room_id:filters.roomId?uuid.parse(filters.roomId):null,p_customer_id:filters.customerId?uuid.parse(filters.customerId):null,p_status:filters.status??null,p_limit:z.number().int().min(1).max(200).parse(filters.limit??100)}));}
-export function reservationErrorMessage(error:unknown):string{const e=error as {code?:string;message?:string};if(e?.code==='PT409'||e?.code==='40001')return'Hồ sơ giữ chỗ đã thay đổi. Tải lại trước khi tiếp tục.';if(e?.code==='42501')return e.message||'Bạn không có quyền thao tác giữ chỗ trong tổ chức này.';return e?.message||'Không thể lưu hồ sơ giữ chỗ.';}
+// Reasons verified in 20260928025848_room_reservation_workflow.sql.
+const reservationReasons = [
+ 'Không tìm thấy phòng trong tổ chức', 'Phải chọn khách cụ thể trong tổ chức', 'Phòng đã có khách giữ chỗ tiếp theo',
+ 'Phòng đang có khách: cần báo trả rõ ràng và ngày dự kiến vào từ ngày báo trả trở đi', 'Phòng chưa sẵn sàng để giữ chỗ',
+ 'Giữ chỗ chưa nhận tiền phải chọn hạn giữ chỗ', 'Giữ chỗ đã được xử lý', 'Giữ chỗ chưa nhận tiền phải giữ hạn do người dùng chọn',
+ 'Cọc còn hiệu lực. Xử lý phiếu nguồn bằng luồng hiện tại trước khi hủy giữ chỗ.',
+];
+export function reservationErrorMessage(error: unknown): string {
+ if(error instanceof FinancialPendingError||error instanceof FinancialPendingStorageError)return voucherFailureMessage(error,'lưu giữ chỗ/cọc');
+ const e = error as {code?: string; message?: string};
+ if (voucherOutcomeUnknown(error)) return 'Chưa xác nhận được kết quả lưu giữ chỗ/cọc. Tải lại Quản lý cọc và đối chiếu trước khi thực hiện lại.';
+ if (e?.code === 'PT409' || e?.code === '40001') return 'Hồ sơ giữ chỗ đã thay đổi. Tải lại trước khi tiếp tục.';
+ return friendlyError(error, 'Chưa lưu được giữ chỗ/cọc', {operation:'lưu giữ chỗ/cọc', financial:true,
+  rules:reservationReasons.map(message => ({message, description:message}))}).description;
+}

@@ -1,3 +1,5 @@
+import { voucherOutcomeUnknown } from "./voucherFeedback";
+import { friendlyError } from "./friendlyError";
 import { z } from "zod";
 
 export type RefundMode = "NONE" | "NOW" | "LATER";
@@ -185,6 +187,7 @@ const SETTLEMENT_ERROR_MESSAGES: ReadonlyArray<readonly [string, string]> = [
 ];
 
 export function reservationSettlementErrorMessage(error?: string | { message?: string | null; code?: string | null; details?: string | null; hint?: string | null } | null) {
+  if (voucherOutcomeUnknown(error)) return "Chưa xác nhận được kết quả xử lý cọc. Giữ nguyên thông tin, tải lại phiếu và đối chiếu trước khi thực hiện lại.";
   const message = typeof error === "string" ? error : [error?.message, error?.details, error?.hint, error?.code].filter(Boolean).join(" ");
   const matched = SETTLEMENT_ERROR_MESSAGES.find(([code]) => message.includes(code));
   if (matched) return matched[1];
@@ -195,7 +198,7 @@ export function reservationSettlementErrorMessage(error?: string | { message?: s
   if (normalized.includes("kỳ khóa") || normalized.includes("kỳ đã khóa") || normalized.includes("kỳ ghi nhận") && normalized.includes("đã khoá") || normalized.includes("sổ quỹ đã chốt tới sau ngày")) return "Ngày đã chọn nằm trong kỳ sổ quỹ đã khóa.";
   if (normalized.includes("chưa nhận tiền")) return "Phiếu chưa có bằng chứng tiền đã vào quỹ.";
   if (normalized.includes("đã được dùng") || normalized.includes("đã xử lý bỏ cọc")) return "Phiếu cọc đã được dùng cho nghiệp vụ khác.";
-  return "Không thể xử lý cọc giữ chỗ. Vui lòng thử lại.";
+  return friendlyError(error, "Chưa xử lý được cọc giữ chỗ", { operation: "xử lý cọc giữ chỗ", financial: true }).description;
 }
 
 export function createReservationIdempotencyStore(prefix: string, createId: () => string = () => crypto.randomUUID()) {
@@ -223,8 +226,8 @@ export async function invokeReservationSettlementRpc<S extends z.ZodTypeAny>(
   schema: S,
 ): Promise<z.output<S>> {
   const { data, error } = await rpc(name, args);
-  if (error) throw new Error(reservationSettlementErrorMessage(error));
+  if (error) throw Object.assign(new Error(reservationSettlementErrorMessage(error)), error, { message: reservationSettlementErrorMessage(error) });
   const parsed = schema.safeParse(data);
-  if (!parsed.success) throw new Error("Dữ liệu xử lý cọc chưa hợp lệ. Hãy tải lại và thử lại.");
+  if (!parsed.success) throw new TypeError("Chưa xác nhận được kết quả xử lý cọc. Tải lại phiếu và đối chiếu trước khi thực hiện lại.");
   return parsed.data;
 }

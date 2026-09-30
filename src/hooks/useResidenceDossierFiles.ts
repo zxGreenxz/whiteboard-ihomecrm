@@ -4,8 +4,15 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   listBuildingOwnershipFiles, listCustomerDossierFiles, luuHanHopDong, removeDossierFile, uploadDossierFile,
-  type DossierKind, type ResidenceDossierFile,
+  DossierFileError, type DossierKind, type ResidenceDossierFile,
 } from '@/lib/residenceDossierFiles';
+import { FinancialWorkflowError } from '@/lib/financialWorkflow';
+import { recordWriteMessage } from '@/lib/recordWriteOutcome';
+import { friendlyError } from '@/lib/friendlyError';
+
+const dossierError = (error: unknown, operation: string) => error instanceof FinancialWorkflowError ? recordWriteMessage(error, operation) : error instanceof DossierFileError
+  ? error.message
+  : friendlyError(error, `Chưa ${operation}`, { operation }).description;
 
 export const residenceDossierKeys = {
   customer: (customerId: string) => ['residence-dossier-files', 'customer', customerId] as const,
@@ -48,17 +55,17 @@ export function useDossierFileMutations(scope: {
       buildingName: scope.buildingName, customerName: scope.customerName,
     }),
     onSuccess: invalidate,
-    onError: (error) => toast.error(error.message),
+    onError: (error) => toast.error(dossierError(error, 'tải ảnh hồ sơ tạm trú')),
   });
   const remove = useMutation<void, Error, string>({
     mutationFn: (id) => removeDossierFile(id),
     onSuccess: invalidate,
-    onError: (error) => toast.error(error.message),
+    onError: (error) => toast.error(dossierError(error, 'xóa ảnh hồ sơ tạm trú')),
   });
   const luuHan = useMutation<void, Error, { id: string; from: string; to: string; nguon?: 'ocr' | 'manual' }>({
     mutationFn: ({ id, from, to, nguon }) => luuHanHopDong(id, from, to, nguon),
     onSuccess: invalidate,
-    onError: (error) => toast.error(error.message),
+    onError: (error) => toast.error(dossierError(error, 'lưu thời hạn hợp đồng')),
   });
   return { upload, remove, luuHan };
 }

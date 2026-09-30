@@ -1,3 +1,6 @@
+import { QueryRegion } from '@/components/errors/QueryRegion';
+import { isZaloActionUnconfirmed, zaloActionErrorMessage, ZaloActionUnknownError } from '@/lib/zaloActionFeedback';
+import { actionErrorMessage } from '@/lib/actionFeedback';
 import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
@@ -36,7 +39,8 @@ export default function ChatZaloPage() {
   const conversations = convQuery.data ?? [];
   const { data: automations = { broadcastOn: false, autoReplyOn: false } } = useZaloAutomations();
   const { data: templates = [] } = useZaloTemplates();
-  const { data: accounts = [] } = useZaloAccounts();
+  const accountsQuery = useZaloAccounts();
+  const { data: accounts = [] } = accountsQuery;
   const { data: labels = [] } = useZaloLabels();
   const { data: perms } = useMyPermissions();
   const broadcastMut = useBroadcast();
@@ -59,12 +63,16 @@ export default function ChatZaloPage() {
   const [rightTab, setRightTab] = useState<RightTab>('info');
   const [filter, setFilter] = useState<FilterKey>('all');
   const [search, setSearch] = useState('');
-  const [draft, setDraft] = useState('');
+  const [drafts,setDrafts] = useState<Record<string,string>>({});
+  const [sendErrors,setSendErrors] = useState<Record<string,string>>({});
   const [mobileView, setMobileView] = useState<'list' | 'thread'>('list');
   const [infoOpen, setInfoOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[] | null>(null);
   const seenAccounts = useRef<Set<string>>(new Set());
   const [connectingId, setConnectingId] = useState<string | null>(null);
+  const [connectFailure,setConnectFailure] = useState<unknown>(null);
+  const [recallNotices,setRecallNotices] = useState<Record<string,string>>({});
+  const [recallBlocked,setRecallBlocked] = useState<Record<string,boolean>>({});
   const [connectOpen, setConnectOpen] = useState(false);
   const [selectedLabel, setSelectedLabel] = useState<number | null>(null);
   const [broadcastOpen, setBroadcastOpen] = useState(false);
@@ -91,6 +99,8 @@ export default function ChatZaloPage() {
   const selIds = selectedIds ?? accounts.map((a) => a.id);
 
   const effectiveId = activeId || conversations[0]?.id || '';
+  const draft = drafts[effectiveId] ?? '';
+  const setDraft = (value:string) => setDrafts(previous=>({...previous,[effectiveId]:value}));
   useZaloRealtime(effectiveId || undefined);
   const msgQuery = useZaloMessages(effectiveId || undefined);
   const messages = msgQuery.data ?? [];
@@ -125,18 +135,18 @@ export default function ChatZaloPage() {
   const connectingAccount = connectingId ? accounts.find((a) => a.id === connectingId) || null : null;
 
   const onConnectNew = async () => {
-    try {
-      const acc = await requestConnect.mutateAsync({});
-      setConnectingId(acc.id);
-      setConnectOpen(true);
-    } catch { /* toast trong hook */ }
+    setConnectOpen(true);
+    if (requestConnect.isPending || isZaloActionUnconfirmed(connectFailure)) return;
+    setConnectingId(null); setConnectFailure(null);
+    try { const acc = await requestConnect.mutateAsync({}); setConnectingId(acc.id); }
+    catch(error) { setConnectFailure(error); }
   };
   const onReconnect = async (id: string) => {
-    try {
-      const acc = await requestConnect.mutateAsync({ accountId: id });
-      setConnectingId(acc.id);
-      setConnectOpen(true);
-    } catch { /* toast trong hook */ }
+    setConnectOpen(true);
+    if (requestConnect.isPending || isZaloActionUnconfirmed(connectFailure)) return;
+    setConnectingId(id); setConnectFailure(null);
+    try { const acc = await requestConnect.mutateAsync({ accountId:id }); setConnectingId(acc.id); }
+    catch(error) { setConnectFailure(error); }
   };
 
   const automationActive = (automations.broadcastOn ? 1 : 0) + (automations.autoReplyOn ? 1 : 0);
@@ -154,7 +164,7 @@ export default function ChatZaloPage() {
 
   const send = () => {
     const text = draft.trim();
-    if (!text || !active) return;
+    if (!text || !active || sendErrors[active.id]) return;
     const reply = replyTarget && replyTarget.id
       ? {
           replyToMessageId: replyTarget.id,
@@ -164,9 +174,14 @@ export default function ChatZaloPage() {
           },
         }
       : {};
-    sendMut.mutate({ conversationId: active.id, body: text, ...reply });
-    setDraft('');
-    setReplyTarget(null);
+    const conversationId=active.id;
+    sendMut.mutate({ conversationId, body: text, ...reply }, {
+      onSuccess: () => {
+        setDrafts(previous => previous[conversationId]?.trim() === text ? {...previous,[conversationId]:''} : previous);
+        setReplyTarget(null);
+      },
+      onError: error => setSendErrors(previous=>({...previous,[conversationId]:actionErrorMessage(error,'Chưa xác nhận được kết quả tiếp nhận tin nhắn. Bản soạn được giữ; kiểm tra cuộc trò chuyện trước khi gửi thêm.')})),
+    });
   };
 
   const sendMedia = async (kind: 'image' | 'file', files: File[], caption: string) => {
@@ -214,6 +229,7 @@ export default function ChatZaloPage() {
   );
 
   const switcher = (
+    <QueryRegion label="tài khoản Zalo" queries={[accountsQuery]}>
     <AccountSwitcher
       accounts={accounts}
       selectedIds={selIds}
@@ -229,6 +245,7 @@ export default function ChatZaloPage() {
       onReconnect={onReconnect}
       onDisconnect={(id) => disconnect.mutate(id)}
     />
+    </QueryRegion>
   );
 
   return (
@@ -270,6 +287,9 @@ export default function ChatZaloPage() {
             onDraft={setDraft}
             onSend={send}
             sending={sendMut.isPending}
+            sendBlocked={!!sendErrors[effectiveId]}
+            sendError={sendErrors[effectiveId]}
+            onClearUnconfirmed={() => { setSendErrors(previous=>({...previous,[effectiveId]:''}));setDraft('');setReplyTarget(null); }}
             onPickTemplate={(body) => setDraft(body)}
             onBack={() => setMobileView('list')}
             onOpenInfo={() => setInfoOpen(true)}
@@ -277,7 +297,16 @@ export default function ChatZaloPage() {
             loadingHistory={loadHistoryMut.isPending}
             onLoadHistory={() => loadHistoryMut.mutate({ conversationId: active.id })}
             onReact={(id, emoji) => reactMut.mutate({ messageId: id, emoji, conversationId: active.id })}
-            onRecall={(id) => recallMut.mutate({ messageId: id, conversationId: active.id })}
+            actionNotice={recallNotices[active.id]}
+            onRecall={(id) => {
+              if(recallMut.isPending || recallBlocked[id]) return;
+              const conversationId=active.id;
+              setRecallBlocked(previous=>({...previous,[id]:true}));
+              recallMut.mutate({messageId:id,conversationId},{
+                onSuccess:()=>setRecallNotices(previous=>({...previous,[conversationId]:'Đã tiếp nhận yêu cầu thu hồi tin nhắn. Chưa xác nhận kết quả thu hồi trên Zalo.'})),
+                onError:error=>{setRecallNotices(previous=>({...previous,[conversationId]:zaloActionErrorMessage(error,'thu hồi tin nhắn')}));if(!isZaloActionUnconfirmed(error))setRecallBlocked(previous=>({...previous,[id]:false}));},
+              });
+            }}
             onShare={(m) => {
               const content = m.text && m.text.trim() ? m.text : (m.mediaUrl || m.label || '[Nội dung]');
               setBroadcastInitial(content);
@@ -351,7 +380,9 @@ export default function ChatZaloPage() {
         open={connectOpen}
         onOpenChange={setConnectOpen}
         account={connectingAccount}
-        onRetry={() => connectingId && onReconnect(connectingId)}
+        requestError={connectFailure} pending={requestConnect.isPending}
+        onRefresh={() => void accountsQuery.refetch()}
+        onRetry={() => connectingId ? void onReconnect(connectingId) : void onConnectNew()}
       />
 
       <BroadcastDialog
@@ -361,7 +392,7 @@ export default function ChatZaloPage() {
         labels={labels}
         initialMessage={broadcastInitial}
         sending={broadcastMut.isPending}
-        onSend={(ids, body) => broadcastMut.mutate({ conversationIds: ids, body }, { onSuccess: () => setBroadcastOpen(false) })}
+        onSend={(ids, body) => broadcastMut.mutateAsync({ conversationIds: ids, body })}
       />
 
       <ComposeNewDialog
@@ -370,6 +401,11 @@ export default function ChatZaloPage() {
         accounts={accounts}
         conversations={conversations}
         finding={startChatMut.isPending}
+        error={startChatMut.error}
+        onReadPending={startChatMut.error instanceof ZaloActionUnknownError && startChatMut.error.jobId ? () => {
+          const jobId=(startChatMut.error as ZaloActionUnknownError).jobId;
+          startChatMut.mutate({accountId:startChatMut.variables?.accountId??'',phone:startChatMut.variables?.phone??'',jobId},{onSuccess:conversationId=>{setComposeOpen(false);select(conversationId);}});
+        } : undefined}
         onStart={(accountId, phone) => startChatMut.mutate({ accountId, phone }, {
           onSuccess: (conversationId) => { setComposeOpen(false); select(conversationId); },
         })}

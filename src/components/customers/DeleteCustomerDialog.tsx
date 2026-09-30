@@ -1,5 +1,4 @@
-import { useState, useEffect } from 'react';
-import { AlertTriangle } from 'lucide-react';
+import { useRef, useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   AlertDialog,
@@ -10,7 +9,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useDeleteCustomer } from '@/hooks/useCustomers';
-import { supabase } from '@/integrations/supabase/client';
+import { recordWriteBlocked, recordWriteMessage } from '@/lib/recordWriteOutcome';
 
 interface DeleteCustomerDialogProps {
   open: boolean;
@@ -35,41 +34,25 @@ export default function DeleteCustomerDialog({
   onSuccess,
 }: DeleteCustomerDialogProps) {
   const deleteMutation = useDeleteCustomer();
-  const [hasActiveContracts, setHasActiveContracts] = useState(false);
-  const [checkingContracts, setCheckingContracts] = useState(false);
-
-  // Check for active contracts when dialog opens
-  useEffect(() => {
-    if (!open || !customerId) return;
-
-    const checkContracts = async () => {
-      setCheckingContracts(true);
-      try {
-        // contracts table uses tenant_id (linked via tenants table)
-        // Check via tenants table: find tenant with same phone as customer
-        // Simpler: just skip the active contract check — soft-delete is safe
-        setHasActiveContracts(false);
-      } catch {
-        setHasActiveContracts(false);
-      } finally {
-        setCheckingContracts(false);
-      }
-    };
-
-    checkContracts();
-  }, [open, customerId]);
-
-  const handleDelete = () => {
-    deleteMutation.mutate(customerId, {
-      onSuccess: () => {
-        onOpenChange(false);
-        onSuccess?.();
-      },
-    });
+  const [failure, setFailure] = useState('');
+  const [blocked, setBlocked] = useState(false);
+  const busy = useRef(false);
+  useEffect(() => { setFailure(''); setBlocked(false); }, [customerId]);
+  const handleDelete = async () => {
+    if (busy.current || blocked || deleteMutation.isPending) return;
+    busy.current = true;
+    try {
+      await deleteMutation.mutateAsync(customerId);
+      onOpenChange(false);
+      onSuccess?.();
+    } catch (error) {
+      setFailure(recordWriteMessage(error, 'xoá khách hàng'));
+      setBlocked(recordWriteBlocked(error));
+    } finally { busy.current = false; }
   };
 
   return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
+    <AlertDialog open={open} onOpenChange={next => { if (!deleteMutation.isPending && !busy.current) onOpenChange(next); }}>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Xác nhận xoá khách hàng</AlertDialogTitle>
@@ -78,14 +61,7 @@ export default function DeleteCustomerDialog({
               <p>
                 Bạn có chắc chắn muốn xoá khách hàng <span className="font-medium text-foreground">{customerName}</span>?
               </p>
-              {hasActiveContracts && (
-                <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-md">
-                  <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
-                  <p className="text-sm text-amber-800">
-                    Khách hàng đang có hợp đồng hiệu lực. Bạn có chắc chắn muốn xoá?
-                  </p>
-                </div>
-              )}
+              {failure && <p role="alert" className="text-destructive">{failure}</p>}
               <p className="text-sm text-muted-foreground">
                 Thao tác này không thể hoàn tác.
               </p>
@@ -99,7 +75,7 @@ export default function DeleteCustomerDialog({
           <Button
             variant="destructive"
             onClick={handleDelete}
-            disabled={deleteMutation.isPending || checkingContracts}
+            disabled={deleteMutation.isPending || blocked}
           >
             {deleteMutation.isPending ? 'Đang xoá...' : 'Xoá'}
           </Button>

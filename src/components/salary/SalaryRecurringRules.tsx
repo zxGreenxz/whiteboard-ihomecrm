@@ -1,3 +1,7 @@
+import {parseSalaryAmount,formatSalaryAmountInput} from '@/lib/salaryAmountInput';
+import { QueryRegion } from "@/components/errors/QueryRegion";
+import { useSalaryFormFeedback } from "./useSalaryFormFeedback";
+import { SALARY_SETTINGS_RULES } from "@/lib/salarySettingsFeedback";
 // Tab "Khoản định kỳ" của modal Nguồn lương — phụ cấp / thưởng cố định và lương QL
 // bổ sung do chủ công ty cấp (gắn toà). Quy tắc + phiên bản, tính TRỌN kỳ (chủ chốt
 // 27/09/2026). Ghi qua salary_recurring_*_v1; chỉ super admin / chủ công ty.
@@ -18,7 +22,7 @@ import { salFmt } from "./salaryFormat";
 import { MONO, MUTED, Seg, StChip, monthShort } from "./salaryFundUi";
 
 const card: CSSProperties = { background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 12, boxShadow: "var(--shadow-sm)" };
-const parseAmt = (s: string) => parseInt((s || "").replace(/\D/g, ""), 10) || 0;
+
 const kyLabel = (p: string) => `${monthShort(p)}/${p.slice(0, 4)}`;
 
 export interface AddPreset {
@@ -55,7 +59,7 @@ export default function SalaryRecurringRules({ managers, recurring, periodMonth,
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
       {!available && (
         <div style={{ fontSize: 12.5, color: "hsl(var(--status-warning-fg))", background: "hsl(var(--status-warning-bg))", borderRadius: 8, padding: "10px 14px" }}>
-          <b>Chưa bật trên máy chủ.</b> Khoản định kỳ cần migration <code>luong_khoan_dinh_ky_va_so_ghi_de</code> được áp — tới lúc đó chưa lưu được.
+          <b>Chưa bật trên máy chủ.</b> Chức năng khoản lương định kỳ chưa sẵn sàng. Liên hệ quản trị viên để bật trước khi lưu.
         </div>
       )}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,360px),1fr))", gap: 18, alignItems: "start" }}>
@@ -152,6 +156,7 @@ function AddForm({ preset, managers, periodMonth, lockedOf, disabled, onDone }: 
   preset: AddPreset; managers: SalManager[]; periodMonth: string; lockedOf: (id: string) => boolean;
   disabled: boolean; onDone: (itemId: string | null) => void;
 }) {
+  const feedback=useSalaryFormFeedback("tạo khoản lương định kỳ",{rules:SALARY_SETTINGS_RULES});
   const create = useCreateRecurring();
   const [staffId, setStaffId] = useState(preset.staffId || managers[0]?.id || "");
   const [category, setCategory] = useState<RecurringCategory>(preset.category || "ALLOWANCE");
@@ -164,68 +169,76 @@ function AddForm({ preset, managers, periodMonth, lockedOf, disabled, onDone }: 
   const [note, setNote] = useState("");
   const [requestKey] = useState(() => newSalaryRequestKey("sal-rec"));
   const staffOrg = managers.find((m) => m.id === staffId)?.organizationId ?? null;
-  const { data: buildings = [] } = useBuildings({ enabled: category === "SUPPLEMENTARY" });
+  const buildingsQuery=useBuildings({ enabled: category === "SUPPLEMENTARY" }); const {data:buildings=[]}=buildingsQuery;
   const orgBuildings = useMemo(
     () => (buildings as { id: string; name: string; organization_id: string | null }[])
       .filter((b) => !staffOrg || b.organization_id === staffOrg)
       .sort((a, b) => a.name.localeCompare(b.name, "vi")),
     [buildings, staffOrg],
   );
-  const amount = parseAmt(amt);
-  const ok = !disabled && !create.isPending && !!staffId && label.trim() !== "" && amount > 0 && reason.trim() !== ""
-    && (category !== "SUPPLEMENTARY" || !!buildingId);
+  const parsedAmount = parseSalaryAmount(amt);
+  const amount = parsedAmount.value ?? 0;
+  const submit = () => {
+    let createdId: string | null=null;
+    void feedback.run(async()=>{const result=await create.mutateAsync({staffId,label:label.trim(),category,buildingId:category==='SUPPLEMENTARY'?buildingId:null,amount,effectiveMonth:from,reason:reason.trim(),note:note.trim()||null,requestKey});createdId=result.id;},()=>onDone(createdId),{
+      staffId:staffId?undefined:'Chọn người nhận khoản lương.',
+      label:label.trim()&&label.trim().length<=120?undefined:'Nhập tên khoản từ 1 đến 120 ký tự.',
+      amount:parsedAmount.error ?? (amount>0?undefined:'Nhập số tiền nguyên lớn hơn 0.'),
+      reason:reason.trim()?undefined:'Nhập lý do tạo khoản định kỳ.',
+      buildingId:category==='SUPPLEMENTARY'&&!buildingId?'Chọn tòa nhà được bổ sung lương.':undefined,
+    });
+  };
 
   return (
-    <>
+    <div ref={feedback.root}>
       <div style={{ padding: "14px 16px", borderBottom: "1px solid hsl(var(--border))" }}>
         <b style={{ fontSize: 14 }}>Thêm khoản định kỳ</b>
         <div style={{ fontSize: 11.5, color: MUTED }}>Nhập một lần — tự vào lương mỗi kỳ từ kỳ áp dụng.</div>
       </div>
       <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 12, opacity: disabled ? 0.55 : 1 }}>
         <div className="sal-field"><label htmlFor="rec-staff">Người nhận</label>
-          <select id="rec-staff" className="sal-select" value={staffId} onChange={(e) => setStaffId(e.target.value)} disabled={disabled}>
+          <select {...feedback.field("staffId")} id="rec-staff" className="sal-select" value={staffId} onChange={(e) => setStaffId(e.target.value)} disabled={disabled}>
             {managers.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
           </select></div>
         <div className="sal-field"><label>Loại</label>
           <Seg<RecurringCategory> small value={category} onChange={(c) => { setCategory(c); if (c === "SUPPLEMENTARY" && !label.trim()) setLabel("Lương QL bổ sung"); }}
             options={[{ key: "ALLOWANCE", label: "Phụ cấp / thưởng cố định" }, { key: "SUPPLEMENTARY", label: "Lương QL bổ sung (chủ cấp)" }]} /></div>
         {category === "SUPPLEMENTARY" && (
-          <div className="sal-field"><label htmlFor="rec-building">Nhà / toà được bù</label>
-            <select id="rec-building" className="sal-select" value={buildingId} onChange={(e) => setBuildingId(e.target.value)} disabled={disabled}>
+          <QueryRegion label="tòa nhà của người nhận lương" queries={[buildingsQuery]}><div className="sal-field"><label htmlFor="rec-building">Nhà / toà được bù</label>
+            <select {...feedback.field("buildingId")} id="rec-building" className="sal-select" value={buildingId} onChange={(e) => setBuildingId(e.target.value)} disabled={disabled}>
               <option value="">— Chọn toà (vd 481NVK, 950NK, 44TL) —</option>
               {orgBuildings.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
             <span style={{ fontSize: 11, color: MUTED }}>Dùng cho nhà không thuê-cho-thuê-lại (không có phí Quản lý). Tiền do chủ công ty cấp, không ghi vào thu chi của toà.</span>
-          </div>
+          </div></QueryRegion>
         )}
         <div className="sal-field"><label htmlFor="rec-label">Tên khoản</label>
-          <input id="rec-label" className="sal-input" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="VD: Hỗ trợ xăng, phụ cấp điện thoại…" disabled={disabled} /></div>
+          <input {...feedback.field("label")} id="rec-label" className="sal-input" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="VD: Hỗ trợ xăng, phụ cấp điện thoại…" disabled={disabled} /></div>
         <div className="sal-field"><label htmlFor="rec-amount">Mức mỗi tháng</label>
-          <input id="rec-amount" className="sal-input mono" inputMode="numeric" value={amount ? amount.toLocaleString("vi-VN") : amt} onChange={(e) => setAmt(e.target.value)} placeholder="VD: 700.000" disabled={disabled} /></div>
-        <div className="sal-field"><label>Áp dụng từ kỳ</label>
+          <input {...feedback.field("amount")} id="rec-amount" className="sal-input mono" inputMode="numeric" value={formatSalaryAmountInput(amt)} onChange={(e) => setAmt(e.target.value)} placeholder="VD: 700.000" disabled={disabled} /></div>
+        <div className="sal-field" data-field-name="effectiveMonth" aria-invalid={!!feedback.issue("effectiveMonth")}><label>Áp dụng từ kỳ</label>
           <FromPicker periodMonth={periodMonth} value={from} onChange={setFrom} locked={locked} /></div>
         <div className="sal-field"><label htmlFor="rec-reason">Lý do (bắt buộc)</label>
-          <textarea id="rec-reason" className="sal-input" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="VD: Thỏa thuận phụ trách thêm toà 44TL từ tháng 9" disabled={disabled} /></div>
+          <textarea {...feedback.field("reason")} id="rec-reason" className="sal-input" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="VD: Thỏa thuận phụ trách thêm toà 44TL từ tháng 9" disabled={disabled} /></div>
         <div className="sal-field"><label htmlFor="rec-note">Ghi chú</label>
           <input id="rec-note" className="sal-input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Tuỳ chọn" disabled={disabled} /></div>
-        <button className="sal-btn sal-btn--primary" style={{ justifyContent: "center" }} disabled={!ok}
-          onClick={() => create.mutate(
-            { staffId, label: label.trim(), category, buildingId: category === "SUPPLEMENTARY" ? buildingId : null, amount, effectiveMonth: from, reason: reason.trim(), note: note.trim() || null, requestKey },
-            { onSuccess: () => onDone(null) },
-          )}>
+        {['staffId','buildingId','label','amount','effectiveMonth','reason'].map(name=><div key={name}>{feedback.issue(name)}</div>)}
+        {feedback.notice}
+        <button className="sal-btn sal-btn--primary" style={{justifyContent:'center'}} disabled={disabled || feedback.saving || feedback.blocked || (category==='SUPPLEMENTARY' && buildingsQuery.isError)} onClick={submit}>
           {create.isPending ? "Đang lưu…" : "Tạo khoản định kỳ"}
         </button>
         <div style={{ fontSize: 11.5, color: MUTED, background: "hsl(var(--muted) / .5)", borderRadius: 8, padding: "9px 12px" }}>
           Bắt đầu / ngừng giữa tháng tính <b>trọn kỳ</b> (chủ chốt 27/09/2026). Kỳ đã chốt không bao giờ tính lại.
         </div>
       </div>
-    </>
+    </div>
   );
 }
 
 function VersionEditor({ item, periodMonth, locked, disabled, onDeleted }: {
   item: RecurringItem; periodMonth: string; locked: boolean; disabled: boolean; onDeleted: () => void;
 }) {
+  const feedback=useSalaryFormFeedback("thay đổi khoản lương định kỳ",{rules:SALARY_SETTINGS_RULES});
   const addVersion = useAddRecurringVersion();
   const del = useDeleteRecurring();
   const [kind, setKind] = useState<RecurringKind>("CHANGE");
@@ -234,7 +247,8 @@ function VersionEditor({ item, periodMonth, locked, disabled, onDeleted }: {
   const [amt, setAmt] = useState("");
   const [reason, setReason] = useState("");
   const [requestKey, setRequestKey] = useState(() => newSalaryRequestKey("sal-recv"));
-  const amount = parseAmt(amt);
+  const parsedAmount = parseSalaryAmount(amt);
+  const amount = parsedAmount.value ?? 0;
   const nextSeq = Math.max(0, ...item.versions.map((v) => v.seq)) + 1;
   const pending = { seq: nextSeq, kind, effectiveMonth: from, amount: kind === "STOP" ? null : amount };
   const prevMonth = shiftPeriodMonth(periodMonth, -1);
@@ -247,10 +261,10 @@ function VersionEditor({ item, periodMonth, locked, disabled, onDeleted }: {
     const touched = kind === "ONCE" ? p === from : p >= from;
     return { k, before, after, changed: touched && (kind === "STOP" || amount > 0) && before !== after };
   });
-  const ok = !disabled && !addVersion.isPending && reason.trim() !== "" && (kind === "STOP" || amount > 0);
+  const invalid = (deleting=false) => ({reason:reason.trim()?undefined:'Nhập lý do thay đổi khoản định kỳ.',amount:deleting||kind==='STOP'?undefined:parsedAmount.error??(amount>0?undefined:'Nhập số tiền nguyên lớn hơn 0.')});
 
   return (
-    <>
+    <div ref={feedback.root}>
       <div style={{ padding: "14px 16px", borderBottom: "1px solid hsl(var(--border))" }}>
         <b style={{ fontSize: 14 }}>{item.label}</b>
         <div style={{ fontSize: 11.5, color: MUTED }}>
@@ -261,8 +275,8 @@ function VersionEditor({ item, periodMonth, locked, disabled, onDeleted }: {
         <div className="sal-field"><label>Loại thay đổi</label>
           <Seg<RecurringKind> small value={kind} onChange={setKind} options={[{ key: "CHANGE", label: "Sửa mức từ kỳ" }, { key: "ONCE", label: "Chỉ một kỳ" }, { key: "STOP", label: "Ngừng từ kỳ" }]} /></div>
         {kind !== "STOP" && <div className="sal-field"><label htmlFor="recv-amount">Mức mới</label>
-          <input id="recv-amount" className="sal-input mono" value={amount ? amount.toLocaleString("vi-VN") : amt} onChange={(e) => setAmt(e.target.value)} inputMode="numeric" placeholder="VD: 700.000" disabled={disabled} /></div>}
-        <div className="sal-field"><label>{kind === "ONCE" ? "Kỳ được điều chỉnh" : "Áp dụng từ kỳ"}</label>
+          <input {...feedback.field("amount")} id="recv-amount" className="sal-input mono" value={formatSalaryAmountInput(amt)} onChange={(e) => setAmt(e.target.value)} inputMode="numeric" placeholder="VD: 700.000" disabled={disabled} /></div>}
+        <div className="sal-field" data-field-name="effectiveMonth" aria-invalid={!!feedback.issue("effectiveMonth")}><label>{kind === "ONCE" ? "Kỳ được điều chỉnh" : "Áp dụng từ kỳ"}</label>
           <FromPicker periodMonth={periodMonth} value={from} onChange={setFrom} locked={locked} /></div>
         <div className="sal-field"><label>Tác động</label>
           {rows.map((x, i) => (
@@ -274,12 +288,13 @@ function VersionEditor({ item, periodMonth, locked, disabled, onDeleted }: {
             </div>
           ))}</div>
         <div className="sal-field"><label htmlFor="recv-reason">Lý do (bắt buộc)</label>
-          <textarea id="recv-reason" className="sal-input" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="VD: Nhận thêm phụ trách tòa mới theo thỏa thuận ngày…" disabled={disabled} /></div>
-        <button className="sal-btn sal-btn--primary" style={{ justifyContent: "center" }} disabled={!ok}
-          onClick={() => addVersion.mutate(
+          <textarea {...feedback.field("reason")} id="recv-reason" className="sal-input" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="VD: Nhận thêm phụ trách tòa mới theo thỏa thuận ngày…" disabled={disabled} /></div>
+        {['amount','reason','effectiveMonth'].map(name=><div key={name}>{feedback.issue(name)}</div>)}
+        {feedback.notice}
+        <button className="sal-btn sal-btn--primary" style={{ justifyContent: "center" }} disabled={disabled || feedback.saving || feedback.blocked}
+          onClick={() => void feedback.run(()=>addVersion.mutateAsync(
             { itemId: item.id, kind, effectiveMonth: from, amount: kind === "STOP" ? null : amount, reason: reason.trim(), requestKey },
-            { onSuccess: () => { setAmt(""); setReason(""); setRequestKey(newSalaryRequestKey("sal-recv")); } },
-          )}>
+          ),()=>{setAmt('');setReason('');setRequestKey(newSalaryRequestKey('sal-recv'));},invalid())}>
           {addVersion.isPending ? "Đang lưu…" : "Lưu phiên bản mới"}
         </button>
 
@@ -296,12 +311,12 @@ function VersionEditor({ item, periodMonth, locked, disabled, onDeleted }: {
         </div>
         {!disabled && (
           <button className="sal-btn sal-btn--ghost" style={{ color: "hsl(var(--status-danger-fg))", justifyContent: "center" }}
-            disabled={!reason.trim() || del.isPending} title={!reason.trim() ? "Ghi lý do trước khi xoá" : undefined}
-            onClick={() => del.mutate({ itemId: item.id, reason: reason.trim() }, { onSuccess: onDeleted })}>
+            disabled={feedback.saving || feedback.blocked} title={!reason.trim() ? "Ghi lý do trước khi xoá" : undefined}
+            onClick={() => void feedback.run(()=>del.mutateAsync({ itemId:item.id,reason:reason.trim() }),onDeleted,invalid(true))}>
             Xoá khoản (nhập nhầm — chỉ khi chưa vào kỳ đã chốt)
           </button>
         )}
       </div>
-    </>
+    </div>
   );
 }

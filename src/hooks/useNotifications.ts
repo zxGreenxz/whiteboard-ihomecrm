@@ -1,4 +1,5 @@
-import { useEffect } from 'react';
+import { notifyActionError } from '@/lib/asyncActionFeedback';
+import { useEffect, useSyncExternalStore } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
@@ -201,7 +202,7 @@ export function useMarkAsRead() {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
     },
     onError: (error) => {
-      toast.error('Không đánh dấu đã đọc được: ' + error.message);
+      notifyActionError(error, 'Chưa xác nhận được kết quả đánh dấu thông báo đã đọc');
     },
   });
 }
@@ -217,21 +218,25 @@ export function useMarkAllAsRead() {
     mutationFn: async () => {
       if (!user?.id) throw new Error('User not authenticated');
 
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('notifications')
         .update({ status: 'READ' })
         .eq('user_id', user.id)
         .eq('channel', 'IN_APP')
-        .neq('status', 'READ');
+        .neq('status', 'READ')
+        .select('id');
 
       if (error) throw error;
+      if (!Array.isArray(data)) throw new Error("Chưa xác nhận được số thông báo đã thay đổi.");
+      return data;
     },
-    onSuccess: () => {
+    onSuccess: (rows) => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
-      toast.success('Đã đánh dấu tất cả là đã đọc');
+      if (rows.length) toast.success(`Đã đánh dấu ${rows.length} thông báo là đã đọc.`);
+      else toast.info('Không có thông báo chưa đọc cần thay đổi.');
     },
     onError: (error) => {
-      toast.error('Có lỗi xảy ra khi đánh dấu thông báo: ' + error.message);
+      notifyActionError(error, 'Chưa xác nhận được kết quả đánh dấu các thông báo đã đọc');
     },
   });
 }
@@ -265,7 +270,7 @@ export function useCreateNotification() {
       toast.success('Thông báo đã được tạo thành công');
     },
     onError: (error) => {
-      toast.error('Có lỗi xảy ra khi tạo thông báo: ' + error.message);
+      notifyActionError(error, 'Chưa xác nhận được kết quả tạo thông báo');
     },
   });
 }
@@ -298,7 +303,7 @@ export function useDeleteNotification() {
       else toast.info('Thông báo không còn tồn tại');
     },
     onError: (error) => {
-      toast.error('Có lỗi xảy ra khi xóa thông báo: ' + error.message);
+      notifyActionError(error, 'Chưa xác nhận được kết quả xóa thông báo');
     },
   });
 }
@@ -314,21 +319,25 @@ export function useDeleteAllRead() {
     mutationFn: async () => {
       if (!user?.id) throw new Error('User not authenticated');
 
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('notifications')
         .delete()
         .eq('user_id', user.id)
         .eq('channel', 'IN_APP')
-        .eq('status', 'READ');
+        .eq('status', 'READ')
+        .select('id');
 
       if (error) throw error;
+      if (!Array.isArray(data)) throw new Error("Chưa xác nhận được số thông báo đã thay đổi.");
+      return data;
     },
-    onSuccess: () => {
+    onSuccess: (rows) => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
-      toast.success('Đã xóa tất cả thông báo đã đọc thành công');
+      if (rows.length) toast.success(`Đã xóa ${rows.length} thông báo đã đọc.`);
+      else toast.info('Không có thông báo đã đọc để xóa.');
     },
     onError: (error) => {
-      toast.error('Có lỗi xảy ra khi xóa thông báo: ' + error.message);
+      notifyActionError(error, 'Chưa xác nhận được kết quả xóa thông báo');
     },
   });
 }
@@ -350,12 +359,25 @@ export function useDeleteAllRead() {
  * Chỉ nghe INSERT: đánh dấu đã đọc/xoá đều do chính máy này gây ra và đã invalidate
  * trong `onSuccess` của mutation.
  */
+type NotificationConnection = 'connecting' | 'connected' | 'interrupted';
+let notificationConnection: NotificationConnection = 'connecting';
+const connectionListeners = new Set<() => void>();
+function publishConnection(value: NotificationConnection) {
+  if (notificationConnection === value) return;
+  notificationConnection = value;
+  connectionListeners.forEach(listener => listener());
+}
+export function useNotificationConnectionStatus() {
+  return useSyncExternalStore(listener => { connectionListeners.add(listener); return () => { connectionListeners.delete(listener); }; }, () => notificationConnection, () => 'connecting' as NotificationConnection);
+}
+
 export function useNotificationsRealtime() {
   const queryClient = useQueryClient();
   const { data: user } = useAuth();
   const uid = user?.id ?? null;
 
   useEffect(() => {
+    publishConnection("connecting");
     if (!uid) return;
 
     // Xem chú thích cùng tên ở useRealtimeDataSync: CLOSED bắn cả khi ta chủ
@@ -378,11 +400,14 @@ export function useNotificationsRealtime() {
         },
       )
       .subscribe((status, err) => {
+        if (status === 'SUBSCRIBED') publishConnection('connected');
         if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          publishConnection('interrupted');
           console.warn(`[realtime] notif ${status}`, err?.message ?? '');
           return;
         }
         if (status === 'CLOSED' && !dangTuDon) {
+          publishConnection('interrupted');
           console.warn('[realtime] notif CLOSED ngoài ý muốn — chuông ngừng cập nhật');
         }
       });

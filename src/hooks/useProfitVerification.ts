@@ -61,6 +61,7 @@ export function useProfitVerification(opts: {
   const bIds = buildingIds?.length ? buildingIds : undefined;
 
   return useQuery({
+    meta:{label:"đối chiếu lợi nhuận",errorDisplay:"inline"},
     queryKey: ["profit-verification", ym, bIds, pnlOnly, accrualMode],
     enabled: enabled && !!ym,
     staleTime: 60_000,

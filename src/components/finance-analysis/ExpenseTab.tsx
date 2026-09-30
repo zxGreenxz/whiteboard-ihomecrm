@@ -1,3 +1,4 @@
+import { QueryRegion } from "@/components/errors/QueryRegion";
 import { useMemo } from "react";
 import {
   Bar,
@@ -41,7 +42,8 @@ interface Props {
 export function ExpenseTab({ filters }: Props) {
   const { ym, periodStart, periodEnd, t13Start, t13End, months12, buildingIds, accrual } = filters;
 
-  const { data: pnl = [], isLoading: pnlLoading } = useFaMonthlyPnl(t13Start, t13End, buildingIds, accrual);
+  const reportQuery0 = useFaMonthlyPnl(t13Start, t13End, buildingIds, accrual);
+  const { data: pnl = [], isLoading: pnlLoading } = reportQuery0;
 
   // Tỷ lệ CP/DT 12 tháng
   const ratioData = useMemo(() => {
@@ -66,10 +68,11 @@ export function ExpenseTab({ filters }: Props) {
     }),
     [buildingIds, periodStart, periodEnd],
   );
-  const { data: vouchers, isLoading: vLoading } = useIncomeExpenses(ieFilters, {
+  const reportQuery1 = useIncomeExpenses(ieFilters, {
     page: 1,
     pageSize: 100,
   });
+  const { data: vouchers, isLoading: vLoading } = reportQuery1;
   const topVouchers = useMemo(
     () =>
       [...(vouchers?.data ?? [])]
@@ -79,6 +82,7 @@ export function ExpenseTab({ filters }: Props) {
   );
 
   return (
+    <QueryRegion label="phân tích tài chính" queries={[reportQuery0, reportQuery1]}>
     <div className="space-y-4">
       <ChartCard
         title="Tỷ lệ chi phí / doanh thu — 12 tháng"
@@ -206,5 +210,6 @@ export function ExpenseTab({ filters }: Props) {
         </div>
       </ChartCard>
     </div>
+    </QueryRegion>
   );
 }

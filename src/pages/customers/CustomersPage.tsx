@@ -1,3 +1,4 @@
+import {importCustomerBatch} from '@/lib/customerImportOutcome';
 import { useState, useMemo, useCallback, useEffect, useRef, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Users } from 'lucide-react';
@@ -11,6 +12,8 @@ import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { DataTablePagination } from '@/components/ui/data-table-pagination';
 import EmptyState from '@/components/ui/EmptyState';
 import { useCustomers, useCustomerStats, useCreateCustomer } from '@/hooks/useCustomers';
+import { QueryRegion } from '@/components/errors/QueryRegion';
+import { friendlyError } from '@/lib/friendlyError';
 import type { Customer, CustomerStatus, StatFilterType, CustomerFilters } from '@/types/customer';
 import type { ViewMode } from '@/components/customers/CustomerListToolbar';
 import { exportCustomers, uploadIdImagesFromUrls, type CustomerImportRow } from '@/lib/customerExcelHelpers';
@@ -56,7 +59,9 @@ function CustomersDesktopPage() {
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [importResultOpen, setImportResultOpen] = useState(false);
   const [importResult, setImportResult] = useState<{
-    successRows: { name: string }[];
+    successRows: { name: string; id: string }[];
+    partialRows: { name: string; id: string; reason: string }[];
+    unknownRows: { name: string; reason: string }[];
     failRows: { name: string; reason: string }[];
   } | null>(null);
 
@@ -109,9 +114,11 @@ function CustomersDesktopPage() {
   );
 
   // Data fetching
-  const { data: customersData, isLoading } = useCustomers(effectiveFilters, { page, pageSize });
-  const { data: stats } = useCustomerStats(statsFilters);
-  const createCustomer = useCreateCustomer();
+  const customersQuery = useCustomers(effectiveFilters, { page, pageSize });
+  const statsQuery = useCustomerStats(statsFilters);
+  const { data: customersData, isLoading } = customersQuery;
+  const { data: stats } = statsQuery;
+  const createCustomer = useCreateCustomer({ silent: true });
 
   const customers = customersData?.data ?? [];
   const totalCount = customersData?.count ?? 0;
@@ -178,11 +185,8 @@ function CustomersDesktopPage() {
   }, []);
 
   const handleImportConfirm = useCallback(async (rows: CustomerImportRow[]) => {
-    const successRows: { name: string }[] = [];
-    const failRows: { name: string; reason: string }[] = [];
-
-    for (const row of rows) {
-      try {
+    await importCustomerBatch(rows,{
+      create:async(row)=>{
         const created = await createCustomer.mutateAsync({
           customer_type: 'INDIVIDUAL',
           full_name: row.full_name,
@@ -199,34 +203,10 @@ function CustomersDesktopPage() {
           contact_person_phone: row.contact_person_phone,
           is_foreign: !!(row.nationality && row.nationality.toLowerCase() !== 'việt nam' && row.nationality.toLowerCase() !== 'viet nam'),
         });
-
-        // Download & upload ID card images from column L URLs
-        // `created` nay là CreateCustomerResult (khách + lỗi phần xe nếu có);
-        // đường nhập Excel không gửi xe nên chỉ cần lấy `.customer`.
-        const createdId = created?.customer?.id;
-        if (row.id_image_urls && row.id_image_urls.length > 0 && createdId) {
-          try {
-            const idImages = await uploadIdImagesFromUrls(createdId, row.id_image_urls);
-            const sb = supabase as any;
-            await sb.from('customers').update({ id_images: idImages }).eq('id', createdId);
-          } catch {
-            // Non-fatal: customer was created, images just didn't upload
-          }
-        }
-
-        successRows.push({ name: row.full_name });
-      } catch (err: any) {
-        let reason = 'Lỗi không xác định';
-        if (err?.code === '23505') reason = 'Trùng SĐT hoặc CCCD';
-        else if (err?.code === '23514') reason = 'SĐT không đúng định dạng (DB constraint)';
-        else if (err?.code === '22008') reason = 'Ngày tháng không hợp lệ';
-        else if (err?.message) reason = err.message;
-        failRows.push({ name: row.full_name, reason });
-      }
-    }
-
-    setImportResult({ successRows, failRows });
-    setImportResultOpen(true);
+        return created?.customer?.id ?? '';
+      },
+      uploadImages:uploadIdImagesFromUrls,
+    },result=>{setImportResult(result);setImportResultOpen(true);});
   }, [createCustomer]);
 
   const handlePrint = useCallback(() => {
@@ -255,6 +235,7 @@ function CustomersDesktopPage() {
 
   return (
     <MainLayout title="Quản lý Khách hàng" subtitle="Quản lý thông tin khách hàng" icon={Users}>
+      <QueryRegion label="danh sách và thống kê khách hàng" queries={[customersQuery, statsQuery]}>
       <div className="space-y-4">
         {/* Status Tabs */}
         <CustomerStatusTabs activeTab={activeTab} onTabChange={handleTabChange} />
@@ -362,7 +343,31 @@ function CustomersDesktopPage() {
                       <span className="text-sm font-medium">{importResult.failRows.length} thất bại</span>
                     </div>
                   )}
+                  {importResult.partialRows.length > 0 && (
+                    <div className="flex items-center gap-2 text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 flex-1">
+                      <AlertTriangle className="h-5 w-5 shrink-0" />
+                      <span className="text-sm font-medium">{importResult.partialRows.length} đã tạo, cần kiểm tra ảnh</span>
+                    </div>
+                  )}
+                  {importResult.unknownRows.length > 0 && (
+                    <div className="flex items-center gap-2 text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 flex-1">
+                      <AlertTriangle className="h-5 w-5 shrink-0" />
+                      <span className="text-sm font-medium">{importResult.unknownRows.length} chưa xác nhận</span>
+                    </div>
+                  )}
                 </div>
+
+                {importResult.unknownRows.length > 0 && <div role="alert" className="rounded-md border border-amber-200 p-3 text-sm">
+                  <p className="font-medium">Chưa xác nhận được các dòng sau; tải lại danh sách khách để đối chiếu trước khi nhập lại.</p>
+                  {importResult.unknownRows.map((row, index) => <p key={`${row.name}-${index}`}>{row.name}: {row.reason}</p>)}
+                </div>}
+
+                {importResult.partialRows.length > 0 && <div role="alert" className="rounded-md border border-amber-200 divide-y divide-amber-100">
+                  {importResult.partialRows.map(row => <div key={row.id} className="px-3 py-2 text-sm">
+                    <p className="font-medium">{row.name} · ID {row.id}</p>
+                    <p className="text-amber-800">{row.reason} Không nhập lại dòng này.</p>
+                  </div>)}
+                </div>}
 
                 {/* Failed rows detail */}
                 {importResult.failRows.length > 0 && (
@@ -392,7 +397,7 @@ function CustomersDesktopPage() {
                     <div className="rounded-md border border-green-200 divide-y divide-green-100 max-h-40 overflow-y-auto">
                       {importResult.successRows.map((r, i) => (
                         <div key={i} className="px-3 py-1.5">
-                          <p className="text-sm">{r.name}</p>
+                          <p className="text-sm">{r.name} · ID {r.id}</p>
                         </div>
                       ))}
                     </div>
@@ -407,6 +412,7 @@ function CustomersDesktopPage() {
           </Dialog>
         )}
       </div>
+      </QueryRegion>
     </MainLayout>
   );
 }

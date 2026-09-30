@@ -1,3 +1,7 @@
+import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
+import {useOrganization} from '@/contexts/OrganizationContext';
+import {FinancialWorkflowError,workflowErrorMessage} from '@/lib/financialWorkflow';
+import {financialReadRows} from '@/lib/financialReadValidation';
 // =============================================
 // useDeletePayment
 // "Hoàn tác" KHÔNG BAO GIỜ là xoá. Không lỗi phân quyền / đóng băng / rollout
@@ -16,6 +20,7 @@
 // do vô nghĩa, không truy được vì sao tiền rời sổ.
 // =============================================
 
+import { invoiceFailureMessage } from '@/lib/invoiceFeedback';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -78,7 +83,8 @@ export function undoErrorText(message: string | null | undefined): string {
     const raw = msg.replace(/^\[[A-Z_]+\]\s*/, '').trim();
     return /mở\s+kh(?:oá|óa)\s+tháng/i.test(raw) ? raw : COLLECTION_BLOCK_TEXT.PROFIT_LOCKED;
   }
-  return periodBlockMessage(msg) ?? (msg || 'Không hoàn tác được khoản thu.');
+  if (msg === 'Chỉ người đã thu khoản này mới hoàn tác được.' || msg === UNDO_REASON_REQUIRED_TEXT) return msg;
+  return periodBlockMessage(msg) ?? invoiceFailureMessage({message:msg},'hoàn tác khoản thu');
 }
 
 /**
@@ -89,16 +95,18 @@ export const useCollectionReversalEligibility = (collectionIds: string[]) => {
   const ids = [...new Set(collectionIds.filter(Boolean))].sort();
   return useQuery({
     queryKey: ['can-reverse-collection', ids.join(',')],
+    meta:{errorDisplay:'inline',label:'điều kiện hoàn tác khoản thu'},
     enabled: ids.length > 0,
     staleTime: 30_000,
     queryFn: async (): Promise<Record<string, CollectionReversalEligibility>> => {
       const { data, error } = await supabase.rpc('can_reverse_collection_v1', {
         p_collection_ids: ids,
       });
-      if (error) throw new Error(error.message);
+      if (error) throw error;
       const map: Record<string, CollectionReversalEligibility> = {};
-      for (const row of (data ?? []) as CollectionReversalEligibility[]) {
-        map[row.collection_id] = row;
+      for (const row of financialReadRows(data)) {
+        if(typeof row.collection_id!=='string'||!row.collection_id||!['IN_PLACE_CANCEL','COUNTER_VOUCHER','BLOCKED'].includes(row.mode)||(row.reason_code!==null&&!Object.prototype.hasOwnProperty.call(COLLECTION_BLOCK_TEXT,row.reason_code)))throw new TypeError('Chưa đọc được điều kiện hoàn tác khoản thu.');
+        map[row.collection_id] = {...row,mode:row.mode as CollectionReversalEligibility['mode'],reason_code:row.reason_code as CollectionReversalBlockCode|null};
       }
       return map;
     },
@@ -108,6 +116,8 @@ export const useCollectionReversalEligibility = (collectionIds: string[]) => {
 export const useDeletePayment = () => {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const {selectedOrganizationId}=useOrganization();
+  const workflow=persistentFinancialWorkflow('collection-reversal');
 
   return useMutation({
     mutationFn: async ({
@@ -140,6 +150,7 @@ export const useDeletePayment = () => {
         collectionId = (payment as { collection_id?: string | null }).collection_id ?? null;
       }
 
+      return workflow.run(collectionId??paymentId!,'hoàn tác khoản thu',async progress=>{
       const outcome = await reverseInvoicePaymentBySource(
         (fn, args) => supabase.rpc(fn, args as never),
         {
@@ -147,12 +158,13 @@ export const useDeletePayment = () => {
           collection_id: collectionId,
           reversal_date: todayISO(),
           reason,
-          idempotency_key: collectionId
-            ? `revcollection-${collectionId}`
-            : `revpayment-${paymentId}`,
+          idempotency_key: progress.requestKey,
         },
       );
 
+      const receipt=outcome.result as {collection_id?:unknown;payment_id?:unknown;status?:unknown;mode?:unknown}|null;
+      if(collectionId ? receipt?.collection_id!==collectionId||receipt.status!=='REVERSED'||!outcome.reversalMode : receipt?.payment_id!==paymentId||receipt.mode!=='DELETED')throw new TypeError('Chưa xác nhận được nguồn và kết quả hoàn tác khoản thu.');
+      progress.completed.push({id:collectionId??paymentId!,label:`Đã hoàn tác ${collectionId?'lần thu':'thanh toán cũ'} ${collectionId??paymentId}`});
       return {
         payment_id: paymentId,
         collection_id: collectionId,
@@ -161,6 +173,7 @@ export const useDeletePayment = () => {
           : 'LEGACY_PAYMENT_REVERSED',
         reversalMode: outcome.reversalMode,
       };
+      },undefined,selectedOrganizationId??undefined);
     },
     onSuccess: (result) => {
       // Đợt 5: huỷ tại chỗ đổi TRẠNG THÁI phiếu thu gốc và rút tiền khỏi sổ
@@ -195,7 +208,7 @@ export const useDeletePayment = () => {
       }
 
       const description = result.mode !== 'COLLECTION_REVERSED'
-        ? 'Payment cũ đã được hoàn tác bằng adapter v3; lịch sử gốc được giữ nguyên.'
+        ? 'Khoản thanh toán cũ đã được xử lý hoàn tác. Kiểm tra lịch sử hoá đơn và chứng từ liên quan.'
         : result.reversalMode === 'IN_PLACE_CANCEL'
           ? 'Phiếu thu đã chuyển sang ĐÃ HUỶ và tiền đã trừ khỏi sổ quỹ. Không có phiếu đối ứng nào được sinh thêm.'
           : 'Toàn bộ các dòng TM/TK/TT trong cùng lần thu đã được hoàn tác bằng phiếu chi đối ứng.';
@@ -214,7 +227,7 @@ export const useDeletePayment = () => {
       toast({
         variant: 'destructive',
         title: 'Không thể hoàn tác khoản thu',
-        description: undoErrorText(error?.message),
+        description: error instanceof FinancialWorkflowError ? workflowErrorMessage(error,'hoàn tác khoản thu') : periodBlockMessage(error?.message) ? undoErrorText(error?.message) : invoiceFailureMessage(error,'hoàn tác khoản thu'),
       });
     },
   });

@@ -1,3 +1,4 @@
+import { QueryRegion } from '@/components/errors/QueryRegion';
 import { CreditCard, Crown, Building2, Home, Calendar, Check, Loader2 } from "lucide-react";
 import MainLayout from "@/components/layout/MainLayout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -20,8 +21,10 @@ function formatDate(dateStr: string) {
 }
 
 export default function SubscriptionPage() {
-  const { data: plans, isLoading: plansLoading } = useSubscriptionPlans();
-  const { data: currentSub, isLoading: subLoading } = useUserSubscription();
+  const plansQuery = useSubscriptionPlans();
+  const { data: plans, isLoading: plansLoading } = plansQuery;
+  const subscriptionQuery = useUserSubscription();
+  const { data: currentSub, isLoading: subLoading } = subscriptionQuery;
   const createSubscription = useCreateUserSubscription();
 
   const isLoading = plansLoading || subLoading;
@@ -60,6 +63,7 @@ export default function SubscriptionPage() {
 
   return (
     <MainLayout title="Gói cước" subtitle="Quản lý gói cước đăng ký" icon={CreditCard}>
+      <QueryRegion label="gói cước và đăng ký hiện tại" queries={[plansQuery, subscriptionQuery]}>
       <div className="space-y-6 max-w-5xl">
         {/* Current Subscription */}
         <Card>
@@ -185,6 +189,7 @@ export default function SubscriptionPage() {
           )}
         </div>
       </div>
+      </QueryRegion>
     </MainLayout>
   );
 }

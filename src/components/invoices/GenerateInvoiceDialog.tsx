@@ -1,3 +1,6 @@
+import {QueryRegion} from '@/components/errors/QueryRegion';
+import {InvoicePartialError,invoiceFailureMessage,invoiceLabel} from '@/lib/invoiceFeedback';
+import {voucherOutcomeUnknown} from '@/lib/voucherFeedback';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useForm, type Path, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -102,25 +105,33 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
   const [baseline, setBaseline] = useState<InvoiceEntryValues>(() => initialValues());
   const [debtSources, setDebtSources] = useState<PreviousDebtSource[]>([]);
 
-  const createMutation = useCreateInvoice();
+  const createMutation = useCreateInvoice({silent:true});
+  const [submitError,setSubmitError]=useState<string|null>(null);
+  const [completedInvoiceId,setCompletedInvoiceId]=useState<string|null>(null);
+  const [reconcileRequired,setReconcileRequired]=useState(false);
+  const [meterError,setMeterError]=useState<string|null>(null);
+  const [meterLoading,setMeterLoading]=useState(false);
   const { toast } = useToast();
   const { selectedOrganizationId } = useOrganization();
   // Chỉ kéo HĐ ACTIVE server-side — dialog lập hoá đơn không cần HĐ đã thanh
   // lý/nháp (filter client giữ lại như chốt chặn phụ).
   // enabled: open — dialog mounted sẵn (đóng) không fetch, đỡ kéo cả bảng HĐ
   // full-PII mỗi lần tải trang /invoices.
-  const { data: contractsData } = useContracts({ statuses: ['ACTIVE'], enabled: open });
+  const contractsQuery = useContracts({ statuses: ['ACTIVE'], enabled: open });
+  const {data:contractsData}=contractsQuery;
   const allActiveContracts = ((contractsData ?? []) as unknown as ContractOption[]).filter((c) => isContractInEffect(c.status));
   const contracts = allActiveContracts.filter((c) => {
     if (filterBuildingId && c.room?.building_id !== filterBuildingId) return false;
     if (filterRoomId && c.room_id !== filterRoomId) return false;
     return true;
   });
-  const { data: buildings = [] } = useBuildings({ enabled: open });
-  const { data: rooms = [] } = useRooms(filterBuildingId || undefined, {
+  const buildingsQuery=useBuildings({enabled:open});
+  const {data:buildings=[]}=buildingsQuery;
+  const roomsQuery = useRooms(filterBuildingId || undefined, {
     enabled: open,
   });
 
+  const {data:rooms=[]}=roomsQuery;
   const form = useForm<CreateInvoiceValues>({
     resolver: zodResolver(createInvoiceSchema) as Resolver<CreateInvoiceValues>,
     defaultValues: initialValues(),
@@ -150,14 +161,16 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
 
   const selectedContract = contracts?.find((c) => c.id === watchedContractId);
   const buildingIdOfContract = selectedContract?.room?.building_id || '';
-  const { data: bldSvc } = useBuildingServices(buildingIdOfContract);
+  const servicesQuery=useBuildingServices(buildingIdOfContract);
+  const {data:bldSvc}=servicesQuery;
   // Chỉ fetch xe của HĐ đã chọn — trước đây khi chưa chọn HĐ fetch TOÀN BỘ xe
   // (count exact) ngay lúc tải trang dù dialog đang đóng.
-  const { data: vehiclesData } = useVehicles(
+  const vehiclesQuery = useVehicles(
     watchedContractId ? { contract_id: watchedContractId } : undefined,
     undefined,
     { enabled: open && !!watchedContractId },
   );
+  const {data:vehiclesData}=vehiclesQuery;
   const vehicles = vehiclesData?.data ?? [];
 
   // Lấy đơn giá mặc định từ building_services (giống ExcelInvoiceDialog).
@@ -194,18 +207,23 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
     // Load meter điện cho phòng + chỉ số đầu (latest APPROVED).
     const roomId = selectedContract.room_id;
     if (roomId) {
+      let active=true;
+      setMeterError(null);setMeterLoading(true);
       (async () => {
-        const { data: meters } = await supabase
+        try {
+        const { data: meters, error:metersError } = await supabase
           .from('meters')
           .select('id')
           .eq('room_id', roomId)
           .eq('meter_type', 'ELECTRICITY')
           .is('deleted_at', null)
           .limit(1);
+        if(metersError) throw metersError;
+        if(!active) return;
         const mid = (meters as Array<{ id: string }> | null)?.[0]?.id ?? null;
         setMeterId(mid);
         if (mid) {
-          const { data: readings } = await supabase
+          const { data: readings, error:readingsError } = await supabase
             .from('meter_readings')
             .select('current_reading, reading_date')
             .eq('meter_id', mid)
@@ -213,11 +231,16 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
             .is('deleted_at', null)
             .order('reading_date', { ascending: false })
             .limit(1);
+          if(readingsError) throw readingsError;
+          if(!active) return;
           seed({ prev_reading: Number((readings as Array<{ current_reading: number | string | null }> | null)?.[0]?.current_reading) || 0 });
         } else {
           seed({ prev_reading: 0 });
         }
+        } catch { if(active) setMeterError('Chưa tải được công tơ hoặc chỉ số điện. Chọn lại hợp đồng để tải lại trước khi tạo hoá đơn.'); }
+        finally { if(active) setMeterLoading(false); }
       })();
+      return ()=>{active=false;};
     } else {
       setMeterId(null);
       seed({ prev_reading: 0 });
@@ -275,11 +298,12 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
   // Pre-check: HĐ + kỳ đã có invoice "đang hoạt động" (chưa huỷ, chưa xoá) chưa?
   // Tránh hit unique constraint khi submit. HĐ đã huỷ KHÔNG block tạo lại — khớp
   // partial unique index `deleted_at IS NULL AND status <> CANCELLED`.
-  const { data: existingInvoice } = useQuery({
+  const existingQuery = useQuery({
+    meta:{errorDisplay:"inline",label:"hoá đơn đã có trong kỳ"},
     queryKey: ['invoice-exists', watchedContractId, watchedBillingMonth],
     enabled: !!watchedContractId && /^\d{4}-\d{2}$/.test(watchedBillingMonth || ''),
     queryFn: async () => {
-      const { data } = await (supabase
+      const { data, error } = await (supabase
         .from('invoices')
         .select('id, invoice_number') as any)
         .eq('contract_id', watchedContractId)
@@ -290,21 +314,21 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
         .eq('kind', 'MONTHLY')
         .limit(1)
         .maybeSingle();
+      if(error) throw error;
       return data ?? null;
     },
   });
+  const {data:existingInvoice}=existingQuery;
 
   // Nợ cũ — auto-fill khi đổi contract; user chỉnh tay sẽ set overridden, không ghi đè.
-  const {
-    data: previousDebtBreakdown,
-    isFetching: isLoadingDebt,
-    refetch: refetchDebt,
-  } = useQuery({
+  const debtQuery = useQuery({
+    meta:{errorDisplay:"inline",label:"nợ cũ của hợp đồng"},
     queryKey: ['compute-previous-debt', watchedContractId],
     enabled: !!watchedContractId,
     queryFn: () => computePreviousDebt(watchedContractId),
     staleTime: 5_000,
   });
+  const {data:previousDebtBreakdown,isFetching:isLoadingDebt,refetch:refetchDebt}=debtQuery;
 
   useEffect(() => {
     if (!watchedContractId) return;
@@ -324,13 +348,19 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
   };
 
   // Credit auto-fill discount + Khuyến mãi HĐ (tháng X/Y).
-  const { data: creditBalance = 0 } = useExcessAmount(watchedContractId);
-  const { data: discountSlot } = useQuery({
+  const creditQuery=useExcessAmount(watchedContractId);
+  const {data:creditBalance=0}=creditQuery;
+  const discountQuery = useQuery({
+    meta:{errorDisplay:"inline",label:"khuyến mãi của hợp đồng"},
     queryKey: ['contract-discount-slot', watchedContractId],
     enabled: !!watchedContractId,
     queryFn: () => getContractDiscountSlot(watchedContractId),
     staleTime: 5_000,
   });
+
+  const {data:discountSlot}=discountQuery;
+  const sources=[contractsQuery,buildingsQuery,roomsQuery,...(watchedContractId?[servicesQuery,vehiclesQuery,existingQuery,debtQuery,creditQuery,discountQuery]:[])];
+  const sourcesUnavailable=sources.some(query=>query.isError||query.isLoading||query.data===undefined)||meterLoading||!!meterError;
 
   useEffect(() => {
     if (!watchedContractId) return;
@@ -358,11 +388,15 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
     setFilterBuildingId('');
     setFilterRoomId('');
     setMeterId(null);
+    if(!reconcileRequired) {setSubmitError(null);setCompletedInvoiceId(null);}
     onOpenChange(false);
   };
 
   const onSubmit = async (data: CreateInvoiceValues) => {
-    if (!selectedContract) return;
+    if (!selectedContract || reconcileRequired || sourcesUnavailable) return;
+    setSubmitError(null);
+    let readingSaved=false;
+    try {
     const roomData = selectedContract.room;
     const buildingId = roomData?.building_id || '';
     const roomId = roomData?.id || '';
@@ -378,20 +412,21 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
     // fail (unique billing_month / RLS). Báo ở đây là nói sai "đã tạo hoá đơn".
     let readingWarn: string | null = null;
     if (meterId && data.current_reading != null && consumption >= 0) {
-      const { data: existing } = await supabase
+      const { data: existing, error:readingLookupError } = await supabase
         .from('meter_readings')
         .select('id')
         .eq('meter_id', meterId)
         .eq('settlement_month', data.billing_month)
         .is('deleted_at', null)
         .limit(1);
+      if(readingLookupError) throw readingLookupError;
       if (!existing || existing.length === 0) {
         const user = await getSessionUser();
         if (!user) {
           // Trước đây im lặng tuyệt đối. Nhánh này hoá đơn cũng sẽ fail
           // (useCreateInvoice tự getSessionUser rồi throw 'Not authenticated'),
           // nên toast không bao giờ chạy — vẫn ghi log để còn dấu vết.
-          console.error('Skip ghi chỉ số: không lấy được phiên đăng nhập');
+          throw new Error('Phiên đăng nhập đã hết hạn.');
         } else {
           const { error: readingErr } = await supabase
             .from('meter_readings')
@@ -411,8 +446,8 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
             } as any, selectedOrganizationId));
           if (readingErr) {
             console.error('Ghi chỉ số điện thất bại:', readingErr);
-            readingWarn = readingErr.message;
-          }
+            readingWarn = invoiceFailureMessage(readingErr,"lưu chỉ số điện");
+          } else { readingSaved=true; }
         }
       }
     } else if (data.current_reading != null && Number(data.current_reading) > 0) {
@@ -457,24 +492,20 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
       items,
     };
 
-    createMutation.mutate(invoiceFormData, {
-      onSuccess: () => {
-        // [A5] Chỉ báo SAU khi hoá đơn đã tạo thật, nên câu "đã tạo hoá đơn" là
-        // đúng. TOAST_LIMIT = 1 (use-toast.ts) nên toast destructive này chiếm
-        // chỗ toast thành công phát trước đó — cảnh báo thắng, đúng như luồng
-        // Excel đã làm (ExcelInvoiceDialog.tsx:207-213).
-        if (readingWarn) {
-          toast({
-            variant: 'destructive',
-            title: 'Chưa lưu được chỉ số điện',
-            description:
-              `Đã tạo hoá đơn nhưng KHÔNG lưu được chỉ số điện (${readingWarn}). ` +
-              'Tiền điện trên hoá đơn và sổ chỉ số đang lệch nhau — vui lòng ghi chỉ số thủ công.',
-          });
-        }
-        handleClose();
-      },
-    });
+    const receipt=await createMutation.mutateAsync(invoiceFormData);
+    if(readingWarn) {
+      setCompletedInvoiceId(receipt.id);
+      setReconcileRequired(true);
+      setSubmitError(`Đã tạo ${invoiceLabel(receipt)} nhưng chưa ghi xong chỉ số điện. ${readingWarn} Mở hoá đơn và sổ chỉ số để đối chiếu; không tạo lại hoá đơn.`);
+      return;
+    }
+    toast({title:`Đã tạo ${invoiceLabel(receipt)}`,description:'Mở hoá đơn để xem trạng thái và số tiền phải thu.'});
+    handleClose();
+    } catch(error) {
+      if(error instanceof InvoicePartialError) setCompletedInvoiceId(error.invoiceId);
+      setSubmitError(`${readingSaved?'Đã ghi chỉ số điện. ':''}${invoiceFailureMessage(error,'tạo hoá đơn')}`);
+      if(readingSaved||error instanceof InvoicePartialError||voucherOutcomeUnknown(error)) setReconcileRequired(true);
+    }
   };
 
   const selectors = (variant: InvoiceEntryVariant): InvoiceEntrySelectors => {
@@ -527,7 +558,7 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
           value={watchedContractId || ''}
           onValueChange={(value) => setValue('contract_id', value, { shouldValidate: true })}
         >
-          <SelectTrigger className={trigger} aria-label="Hợp đồng">
+          <SelectTrigger className={trigger} name="contract_id" data-field-name="contract_id" aria-invalid={!!errors.contract_id} aria-label="Hợp đồng">
             <SelectValue placeholder="Chọn hợp đồng..." />
           </SelectTrigger>
           <SelectContent>
@@ -601,14 +632,15 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
       defaultDepositAmount={Number(selectedContract?.total_deposit) || 0}
       ready={!!selectedContract}
       validationError={firstEntryError(errors)}
+      notice={<><QueryRegion label="dữ liệu lập hoá đơn" queries={sources}>{null}</QueryRegion>{meterError&&<p role="alert" className="text-destructive">{meterError}</p>}{submitError&&<p role="alert" className="text-destructive">{submitError}</p>}{completedInvoiceId&&<a className="underline" href={`/invoices/${completedInvoiceId}`}>Mở hoá đơn đã lưu</a>}</>}
       onResetAll={() => reset({ ...baseline, contract_id: watchedContractId })}
       onCancel={handleClose}
-      footNote="Hoá đơn mới tạo ở trạng thái nháp, chờ duyệt."
+      footNote="Kiểm tra trạng thái duyệt trên hoá đơn sau khi tạo."
       submit={{
         label: 'Tạo hoá đơn',
         pendingLabel: 'Đang tạo...',
         pending: createMutation.isPending,
-        disabled: !selectedContract || !!existingInvoice,
+        disabled: !!existingInvoice || reconcileRequired || sourcesUnavailable,
       }}
     />
   );

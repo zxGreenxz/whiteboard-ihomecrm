@@ -1,3 +1,4 @@
+import { friendlyError } from '@/lib/friendlyError';
 import { z } from 'zod';
 import type { Json } from '@/integrations/supabase/types';
 import type { ExtraChargeItem } from '@/lib/contractValidation';
@@ -63,5 +64,5 @@ export async function createContractTransferCommission(invoke:TransferInvoker,in
 export function transferErrorMessage(error:unknown){const e=error as {code?:string;message?:string}|null;
   if(e?.code==='PT409')return 'Hồ sơ nhượng đã thay đổi. Vui lòng tải lại.';
   if(e?.code==='42501')return 'Bạn không có quyền xử lý hồ sơ nhượng tại tổ chức hoặc tòa nhà này.';
-  return e?.message||'Không thể xử lý hồ sơ nhượng.';
+  return friendlyError(error, 'Chưa xử lý được hồ sơ nhượng', {operation:'xử lý hồ sơ nhượng hợp đồng'}).description;
 }

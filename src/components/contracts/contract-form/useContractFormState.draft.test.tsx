@@ -1,3 +1,4 @@
+import {runContractEdit} from '@/lib/contractEditWorkflow';
 // @vitest-environment jsdom
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -5,15 +6,16 @@ import { emptyContractDraftPayload, emptyDraftOwner, type ContractDraft } from '
 import { buildContractDraftPayload } from '@/lib/contractDraftEditor';
 import { useContractFormState } from './useContractFormState';
 
-const defaults = vi.hoisted(() => ({ rows: [] as unknown[] }));
+const defaults = vi.hoisted(() => ({ rows: [] as unknown[], buildingError: false, roomError: false, serviceError: false, accountError: false, orphanError: false }));
 vi.mock('@/hooks/useContracts', () => ({ useCreateContract: () => ({ isPending: false }),
   useUpdateContract: () => ({ isPending: false }), useSyncContractCustomers: () => ({ isPending: false }),
   useSyncContractServices: () => ({ isPending: false }) }));
-vi.mock('@/hooks/useBuildings', () => ({ useBuildings: () => ({ data: [] }) }));
-vi.mock('@/hooks/useRooms', () => ({ useRooms: () => ({ data: [{ id: '11111111-1111-4111-8111-111111111111', rent_price: 9000000 }] }) }));
-vi.mock('@/hooks/useBuildingServices', () => ({ useBuildingServices: () => ({ data: defaults.rows }) }));
-vi.mock('@/hooks/useDeposits', () => ({ useOrphanDepositVouchers: () => ({ data: [], refetch: vi.fn() }) }));
-vi.mock('@/hooks/useAccounts', () => ({ useAccounts: () => ({ data: [] }) }));
+vi.mock('@/hooks/useBuildings', () => ({ useBuildings: () => ({ data: defaults.buildingError ? undefined : [], isError: defaults.buildingError, refetch: vi.fn() }) }));
+vi.mock('@/hooks/useRooms', () => ({ useRooms: () => ({ data: defaults.roomError ? undefined : [{ id: '11111111-1111-4111-8111-111111111111', rent_price: 9000000 }], isError: defaults.roomError, refetch: vi.fn() }) }));
+vi.mock('@/hooks/useBuildingServices', () => ({ useBuildingServices: () => ({ data: defaults.serviceError ? undefined : defaults.rows, isError: defaults.serviceError, refetch: vi.fn() }) }));
+vi.mock('@/hooks/useDeposits', () => ({ useOrphanDepositVouchers: () => ({ data: defaults.orphanError ? undefined : [], isError: defaults.orphanError, refetch: vi.fn() }) }));
+vi.mock('@/hooks/useAccounts', () => ({ useAccounts: () => ({ data: defaults.accountError ? undefined : [], isError: defaults.accountError, refetch: vi.fn() }) }));
+vi.mock('@/lib/authSession',()=>({getSessionUser:async()=>({id:'u1'})}));
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ data: { id: '99999999-9999-4999-8999-999999999999' } }) }));
 
 const room = '11111111-1111-4111-8111-111111111111';
@@ -31,6 +33,24 @@ const makeDraft = (notes: string): ContractDraft => ({ id: '33333333-3333-4333-8
   template_id: null, revision: 1, payload: { ...payload, form: { ...payload.form, notes } },
   created_by: '55555555-5555-4555-8555-555555555555', created_at: '2026-09-29', updated_at: '2026-09-29', documents: [] });
 afterEach(cleanup);
+
+it('giữ nháp và chặn lưu khi nguồn phòng, dịch vụ tòa hoặc sổ quỹ lỗi', async () => {
+  defaults.rows = []; defaults.roomError = true; defaults.serviceError = true; defaults.accountError = true;
+  const { result } = renderHook(() => useContractFormState({ open: true, draft: makeDraft('Nháp cần giữ') }));
+  await waitFor(() => expect(result.current.selectedBuildingId).toBe(building));
+  expect(result.current.sourceIssues.map(issue => issue.key)).toEqual(['rooms', 'buildingServices', 'accounts']);
+  expect(result.current.form.getValues('notes')).toBe('Nháp cần giữ');
+  defaults.roomError = false; defaults.serviceError = false; defaults.accountError = false;
+});
+
+it('không xem lỗi đọc cọc cũ là phòng chưa có cọc', async () => {
+  defaults.orphanError = true;
+  const { result } = renderHook(() => useContractFormState({ open: true, draft: makeDraft('Giữ dữ liệu cọc') }));
+  await waitFor(() => expect(result.current.selectedRoomId).toBe(room));
+  expect(result.current.sourceIssues.map(issue => issue.key)).toContain('orphanDeposits');
+  expect(result.current.form.getValues('notes')).toBe('Giữ dữ liệu cọc');
+  defaults.orphanError = false;
+});
 
 it('hydrates one saved draft per open/id and preserves edits against query refresh and default effects', async () => {
   defaults.rows = [];
@@ -82,4 +102,13 @@ it('preserves saved manual invoice on hydration, then rebuilds it after an actua
   const rentBeforeDateEdit = result.current.invoiceItems.find((item) => item.type === 'RENT')?.unit_price;
   act(() => result.current.form.setValue('end_billing_date', '2026-10-06', { shouldDirty: true }));
   await waitFor(() => expect(result.current.invoiceItems.find((item) => item.type === 'RENT')?.unit_price).not.toBe(rentBeforeDateEdit));
+});
+
+it('B15 tải lại form khôi phục issue/contract ID từ storage, đổi selector không mất pending',async()=>{
+ localStorage.clear();const saved={contract:{id:'edit-c1',organization_id:'actual-a',rent_price:100},customers:[],services:[]};
+ await expect(runContractEdit({contractId:'edit-c1',updates:{rent_price:200},fieldsFingerprint:'intent',customers:[{customer_id:'customer1',is_representative:true}],services:[]},{read:async()=>saved,update:async()=>null,customers:vi.fn(),services:vi.fn()})).rejects.toThrow();
+ localStorage.setItem('ihomecrm.selectedOrganizationId','selected-b');
+ const contract={id:'edit-c1',room_id:room,room:{building_id:building},signed_date:'2026-09-01',start_date:'2026-09-01',end_date:'2027-09-01',rent_price:100,total_deposit:0,contract_customers:[],contract_services:[]} as never;
+ const first=renderHook(()=>useContractFormState({open:true,contract}));await waitFor(()=>expect(first.result.current.partialSyncIssue).toContain('edit-c1'));expect(first.result.current.partialSyncRef.current).toMatchObject({corePhase:'sending',organizationId:'actual-a'});first.unmount();
+ const reopened=renderHook(()=>useContractFormState({open:true,contract}));await waitFor(()=>expect(reopened.result.current.partialSyncIssue).toContain('edit-c1'));expect(reopened.result.current.partialSyncRef.current).toMatchObject({contractId:'edit-c1',updates:{rent_price:200}});expect(reopened.result.current.isPending).toBe(false);localStorage.clear();
 });

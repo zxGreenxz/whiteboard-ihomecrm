@@ -17,12 +17,15 @@ import { useAreas } from '@/hooks/useAreas';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import type { BuildingWithRelations } from '@/types/building';
 import { useQueryClient } from '@tanstack/react-query';
+import { QueryRegion } from '@/components/errors/QueryRegion';
 
 function BuildingsDesktop() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { data: buildingsData, isLoading } = useBuildings();
-  const { data: areasData } = useAreas();
+  const buildingsQuery = useBuildings();
+  const areasQuery = useAreas();
+  const { data: buildingsData, isLoading } = buildingsQuery;
+  const { data: areasData } = areasQuery;
   const updateStatus = useUpdateBuildingStatus();
 
   const buildings = useMemo(
@@ -110,6 +113,7 @@ function BuildingsDesktop() {
 
   return (
     <MainLayout title="Toà nhà" subtitle="Danh mục dữ liệu > Toà nhà" icon={Building2}>
+      <QueryRegion label="danh sách tòa nhà và khu vực" queries={[buildingsQuery, areasQuery]}>
       <div className="space-y-4">
         {/* Stats Cards */}
         <BuildingStatsCards
@@ -238,6 +242,7 @@ function BuildingsDesktop() {
           onOpenChange={setManageAreasOpen}
         />
       </div>
+      </QueryRegion>
     </MainLayout>
   );
 }

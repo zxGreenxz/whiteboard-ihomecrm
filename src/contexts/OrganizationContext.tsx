@@ -153,17 +153,19 @@ export function resetOrgScopedQueries(queryClient: QueryClient): void {
 /** Tách riêng và export để test được mà không phải dựng cả cây React. */
 export function parseOrganizations(payload: unknown): Organization[] {
   const raw = (payload as { organizations?: unknown } | null)?.organizations;
-  if (!Array.isArray(raw)) return [];
-  return raw.flatMap((item) => {
+  if (!Array.isArray(raw)) throw new TypeError("Invalid organization directory");
+  return raw.map((item) => {
     const o = item as Record<string, unknown>;
-    // Bỏ qua dòng thiếu id/name thay vì render `undefined` lên giao diện.
-    if (typeof o?.id !== 'string' || typeof o?.name !== 'string') return [];
-    return [{
+    // Thiếu dòng không chứng minh tài khoản không có công ty; để vùng chọn báo tải lỗi.
+    if (typeof o?.id !== 'string' || typeof o?.name !== 'string') {
+      throw new TypeError('Invalid organization directory row');
+    }
+    return {
       id: o.id,
       name: o.name,
       slug: typeof o.slug === 'string' ? o.slug : null,
       memberType: typeof o.member_type === 'string' ? o.member_type : null,
-    }];
+    };
   });
 }
 

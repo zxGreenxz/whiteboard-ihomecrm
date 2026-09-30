@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { persistentFinancialWorkflow } from "@/lib/persistentFinancialWorkflow";
+import { voucherOutcomeUnknown } from "@/lib/voucherFeedback";
+import { QueryRegion } from "@/components/errors/QueryRegion";
+import { focusFirstError } from "@/lib/formErrors";
+import { FinancialWorkflowError, workflowErrorMessage } from "@/lib/financialWorkflow";
+import { validateProfitPerson, validateShareRows } from "@/lib/profitFeedback";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -39,16 +45,30 @@ interface BRow {
 
 export default function ShareholderForm({ open, onOpenChange, shareholder }: Props) {
   const isEdit = !!shareholder;
-  const { data: users = [] } = useAdminUsers();
-  const { data: buildings = [] } = useBuildings(); // ẩn tòa ảo
-  const { data: areas = [] } = useAreas();
-  const { data: shareholders = [] } = useShareholders();
-  const { data: allShares = [] } = useBuildingShareholders();
+  const usersQuery = useAdminUsers();
+  const { data: users = [] } = usersQuery;
+  const buildingsQuery = useBuildings();
+  const { data: buildings = [] } = buildingsQuery; // ẩn tòa ảo
+  const areasQuery = useAreas();
+  const { data: areas = [] } = areasQuery;
+  const shareholdersQuery = useShareholders();
+  const { data: shareholders = [] } = shareholdersQuery;
+  const allSharesQuery = useBuildingShareholders();
+  const { data: allShares = [] } = allSharesQuery;
 
+  const workflow = useRef(persistentFinancialWorkflow('shareholder-save'));
   const createMut = useCreateShareholder();
   const updateMut = useUpdateShareholder();
   const syncMut = useSyncShareholderBuildings();
 
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const initialized = useRef<string | null>(null);
+  const entityKey = shareholder?.id ?? 'new';
+  const [blockedKey, setBlockedKey] = useState<string | null>(null);
+  const saveBlocked = blockedKey === entityKey;
+  const [errors, setErrors] = useState<Record<string,string>>({});
+  const [serverError, setServerError] = useState('');
+  const [savedSteps, setSavedSteps] = useState<readonly {id:string;label:string}[]>([]);
   const [authUserId, setAuthUserId] = useState("");
   const [name, setName] = useState("");
   const [note, setNote] = useState("");
@@ -56,7 +76,10 @@ export default function ShareholderForm({ open, onOpenChange, shareholder }: Pro
   const [rows, setRows] = useState<BRow[]>([]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) { if (!saveBlocked) initialized.current = null; return; }
+    if (saveBlocked || allSharesQuery.isLoading || allSharesQuery.isError || initialized.current === entityKey) return;
+    initialized.current = entityKey;
+    setErrors({}); setServerError(''); setSavedSteps([]);
     setAuthUserId(shareholder?.auth_user_id ?? "");
     setName(shareholder?.name ?? "");
     setNote(shareholder?.note ?? "");
@@ -70,7 +93,7 @@ export default function ShareholderForm({ open, onOpenChange, shareholder }: Pro
     } else {
       setRows([]);
     }
-  }, [open, shareholder, allShares]);
+  }, [open, shareholder, allShares, entityKey, saveBlocked, allSharesQuery.isLoading, allSharesQuery.isError]);
 
   // Loại user đã gán cho cổ đông KHÁC (auth_user_id là UNIQUE).
   const linkedElsewhere = useMemo(() => {
@@ -144,45 +167,51 @@ export default function ShareholderForm({ open, onOpenChange, shareholder }: Pro
   const setRow = (i: number, patch: Partial<BRow>) =>
     setRows((p) => p.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
 
-  const canSave = name.trim().length > 0 && !!authUserId;
   const busy = createMut.isPending || updateMut.isPending || syncMut.isPending;
-
   const handleSave = async () => {
-    if (!canSave) return;
-    const values = {
-      name: name.trim(),
-      note: note.trim() || null,
-      is_active: isActive,
-      auth_user_id: authUserId || null,
-    };
-    const validRows = rows.filter((r) => r.building_id);
-    let id = shareholder?.id;
-    if (isEdit && shareholder) {
-      await updateMut.mutateAsync({ id: shareholder.id, values });
-    } else {
-      const created = await createMut.mutateAsync(values);
-      id = (created as any).id;
+    if (busy || saveBlocked) return;
+    const nextErrors = {...validateProfitPerson(name,authUserId),...validateShareRows(rows)};
+    setErrors(nextErrors); setServerError('');
+    if(Object.keys(nextErrors).length) {await focusFirstError(nextErrors,{root:dialogRef.current});return;}
+    const values={name:name.trim(),note:note.trim()||null,is_active:isActive,auth_user_id:authUserId};
+    let confirmedId: string | undefined;
+    try {
+      await workflow.current.run(shareholder?.id ?? `new:${authUserId}`, 'lưu cổ đông và tỷ lệ tòa nhà', async progress => {
+        if(shareholder){await updateMut.mutateAsync({id:shareholder.id,values});confirmedId=shareholder.id;}
+        else {const created=await createMut.mutateAsync(values);confirmedId=created.id;}
+        if (!confirmedId) throw new TypeError('Unconfirmed shareholder profile');
+        progress.completed.push({id:confirmedId,label:'Đã lưu hồ sơ cổ đông'});
+        progress.stage = 'lưu tỷ lệ tòa nhà';
+        await syncMut.mutateAsync({shareholder_id:confirmedId,rows});
+      });
+      toast.success(`Đã lưu cổ đông ${name.trim()} và tỷ lệ tại ${rows.length} tòa nhà.`);
+      onOpenChange(false);
+    } catch(error) {
+      const failure=confirmedId?new FinancialWorkflowError('Đã lưu hồ sơ cổ đông nhưng chưa hoàn tất tỷ lệ tòa nhà. Giữ mã hồ sơ và đối chiếu cấu hình trước khi thực hiện tiếp; không tạo lại cổ đông.','partial',[{id:confirmedId,label:'Đã lưu hồ sơ cổ đông'}],error):error;
+      setServerError(workflowErrorMessage(failure,'lưu cổ đông và tỷ lệ tòa nhà'));
+      if(failure instanceof FinancialWorkflowError || voucherOutcomeUnknown(error)) {setBlockedKey(entityKey);setSavedSteps(failure instanceof FinancialWorkflowError?failure.completed:[]);}
     }
-    if (id) await syncMut.mutateAsync({ shareholder_id: id, rows: validRows });
-    onOpenChange(false);
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto">
+      <DialogContent ref={dialogRef} className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isEdit ? "Sửa cổ đông" : "Thêm cổ đông"}</DialogTitle>
         </DialogHeader>
 
+        <QueryRegion label="cấu hình cổ đông" queries={[usersQuery, buildingsQuery, areasQuery, shareholdersQuery, allSharesQuery]}>
         <div className="space-y-4 py-2">
           <div className="space-y-2">
             <Label>Tài khoản (user) <span className="text-red-500">*</span></Label>
             <SearchableSelect
+              name="authUserId" aria-invalid={!!errors.authUserId} aria-describedby="profit-auth-error"
               value={authUserId}
               onValueChange={handleUserChange}
               placeholder="Chọn user để gắn cổ đông"
               options={userOptions}
             />
+            {errors.authUserId && <p id="profit-auth-error" className="text-sm text-destructive">{errors.authUserId}</p>}
             <p className="text-xs text-muted-foreground">
               Cổ đông đăng nhập bằng tài khoản này để xem đúng phần của mình. Chưa có tài khoản? Tạo ở Quản trị → Người dùng.
             </p>
@@ -190,7 +219,8 @@ export default function ShareholderForm({ open, onOpenChange, shareholder }: Pro
 
           <div className="space-y-2">
             <Label>Tên hiển thị <span className="text-red-500">*</span></Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="VD: Hiệp, Hiển..." />
+            <Input name="name" aria-invalid={!!errors.name} aria-describedby="profit-name-error" value={name} onChange={(e) => setName(e.target.value)} placeholder="VD: Hiệp, Hiển..." />
+            {errors.name && <p id="profit-name-error" className="text-sm text-destructive">{errors.name}</p>}
           </div>
 
           <div className="space-y-2">
@@ -223,9 +253,10 @@ export default function ShareholderForm({ open, onOpenChange, shareholder }: Pro
               <p className="text-xs text-muted-foreground">Cổ đông này chưa có phần ở tòa nào. Bấm "Thêm tòa".</p>
             )}
             {rows.map((r, i) => (
-              <div key={i} className="flex items-center gap-2">
+              <div key={i} className="flex flex-wrap items-center gap-2">
                 <div className="flex-1">
                   <SearchableSelect
+                    name={`rows.${i}.building_id`} aria-invalid={!!errors[`rows.${i}.building_id`]}
                     value={r.building_id}
                     onValueChange={(v) => setRow(i, { building_id: v })}
                     placeholder="Chọn tòa"
@@ -234,11 +265,12 @@ export default function ShareholderForm({ open, onOpenChange, shareholder }: Pro
                 </div>
                 <div className="w-24 relative">
                   <Input
+                    name={`rows.${i}.percent`} aria-invalid={!!errors[`rows.${i}.percent`]}
                     type="number"
                     min={0}
                     max={100}
                     value={r.percent || ""}
-                    onChange={(e) => setRow(i, { percent: Math.max(0, Math.min(100, Number(e.target.value) || 0)) })}
+                    onChange={(e) => setRow(i, { percent: Number(e.target.value) })}
                     className="pr-6 text-right"
                     placeholder="0"
                   />
@@ -247,17 +279,20 @@ export default function ShareholderForm({ open, onOpenChange, shareholder }: Pro
                 <Button type="button" variant="ghost" size="icon" onClick={() => removeRow(i)}>
                   <Trash2 className="h-4 w-4 text-red-600" />
                 </Button>
+                {['building_id','percent'].map(field=>errors[`rows.${i}.${field}`]&&<p key={field} className="w-full text-sm text-destructive">{errors[`rows.${i}.${field}`]}</p>)}
               </div>
             ))}
           </div>
         </div>
 
+        {serverError && <div role="alert" className="rounded border border-destructive p-3 text-sm text-destructive">{serverError}{savedSteps.map((step,i)=><p key={`${step.id}-${i}`}>{step.label}: <code>{step.id}</code></p>)}</div>}
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Huỷ</Button>
-          <Button onClick={handleSave} disabled={!canSave || busy}>
+          <Button onClick={handleSave} disabled={busy || saveBlocked}>
             {busy ? "Đang lưu..." : "Lưu"}
           </Button>
         </DialogFooter>
+        </QueryRegion>
       </DialogContent>
     </Dialog>
   );

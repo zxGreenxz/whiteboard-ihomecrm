@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { useForm } from 'react-hook-form';
+import { useState, useEffect, useRef } from 'react';
+import { useForm, type FieldErrors } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
   Dialog,
@@ -55,6 +55,8 @@ import IncomeExpenseItemSelector from './IncomeExpenseItemSelector';
 import AttachmentUpload from './AttachmentUpload';
 import { useAuth } from '@/hooks/useAuth';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { focusFirstError } from '@/lib/formErrors';
+import { VoucherPartialError, voucherFailureMessage, voucherOutcomeUnknown } from '@/lib/voucherFeedback';
 import { todayISO } from '@/lib/collect';
 
 interface BatchItemRow {
@@ -82,13 +84,23 @@ const ItemRow = ({
   onChange,
   onRemove,
   buildings,
+  errors,
 }: {
   index: number;
   item: BatchItemRow;
   onChange: (idx: number, patch: Partial<BatchItemRow>) => void;
   onRemove: (idx: number) => void;
   buildings: IeFormBuilding[];
+  errors?: FieldErrors<BatchItemRow>;
 }) => {
+  const fieldProps = (field: keyof BatchItemRow) => ({
+    name: `items.${index}.${field}`,
+    'data-field-name': `items.${index}.${field}`,
+    'aria-invalid': !!errors?.[field],
+    'aria-describedby': `batch-item-${index}-${field}-error`,
+    'aria-label': `${field === 'building_id' ? 'Tòa nhà' : field === 'unit_price' ? 'Số tiền' : field === 'start_date' ? 'Từ tháng' : 'Đến tháng'} hạng mục ${index + 1}`,
+  });
+  const fieldError = (field: keyof BatchItemRow) => errors?.[field]?.message && <p id={`batch-item-${index}-${field}-error`} role="alert" className="text-xs text-destructive">{String(errors[field]?.message)}</p>;
   const { data: rooms = [] } = useIncomeExpenseFormRooms(item.building_id || undefined);
 
   // Toà quản lý xếp đầu; chia nhóm khi có cả toà mở rộng (quyền all_buildings).
@@ -127,7 +139,7 @@ const ItemRow = ({
               onChange(index, { building_id: v, room_id: null })
             }
           >
-            <SelectTrigger className="h-8 text-sm">
+            <SelectTrigger {...fieldProps("building_id")} className="h-8 text-sm">
               <SelectValue placeholder="Chọn tòa" />
             </SelectTrigger>
             <SelectContent>
@@ -159,6 +171,7 @@ const ItemRow = ({
               )}
             </SelectContent>
           </Select>
+          {fieldError("building_id")}
         </div>
 
         <div className="col-span-2 sm:col-span-1">
@@ -191,11 +204,13 @@ const ItemRow = ({
             Số tiền *
           </label>
           <CurrencyInput
+              {...fieldProps("unit_price")}
             value={item.unit_price}
             onChange={(v) => onChange(index, { unit_price: v })}
             className="h-8 text-sm"
             placeholder="0"
           />
+            {fieldError("unit_price")}
         </div>
 
         <div className="grid grid-cols-2 gap-1">
@@ -204,20 +219,24 @@ const ItemRow = ({
               Từ tháng
             </label>
             <MonthInput
+              {...fieldProps("start_date")}
               value={dateToMonth(item.start_date)}
               onChange={(m) => onChange(index, { start_date: monthToStartDate(m) })}
               className="h-8 text-sm"
             />
+            {fieldError("start_date")}
           </div>
           <div>
             <label className="text-[11px] text-muted-foreground font-medium">
               Đến tháng
             </label>
             <MonthInput
+              {...fieldProps("end_date")}
               value={dateToMonth(item.end_date)}
               onChange={(m) => onChange(index, { end_date: monthToEndDate(m) })}
               className="h-8 text-sm"
             />
+            {fieldError("end_date")}
           </div>
         </div>
       </div>
@@ -253,7 +272,12 @@ const IncomeExpenseBatchForm = ({
   );
   const autoBusinessResult = !hasDepositItem;
 
+  const formRef = useRef<HTMLFormElement>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [reconcileRequired, setReconcileRequired] = useState(false);
+  const [partialIds, setPartialIds] = useState<readonly string[]>([]);
   const form = useForm<IncomeExpenseBatchFormValues>({
+    shouldFocusError: false,
     resolver: zodResolver(incomeExpenseBatchFormSchema),
     defaultValues: {
       type: defaultType ?? 'EXPENSE',
@@ -350,11 +374,15 @@ const IncomeExpenseBatchForm = ({
   };
 
   const onSubmit = async (data: IncomeExpenseBatchFormValues) => {
+    if (reconcileRequired) return;
+    setSubmitError(null);
     try {
       await createMutation.mutateAsync(data);
       onOpenChange(false);
-    } catch {
-      // toast đã hiển thị trong hook
+    } catch (error) {
+      setSubmitError(voucherFailureMessage(error, "tạo đợt phiếu"));
+      if (error instanceof VoucherPartialError) setPartialIds(error.completedIds);
+      if (error instanceof VoucherPartialError || voucherOutcomeUnknown(error)) setReconcileRequired(true);
     }
   };
 
@@ -389,7 +417,7 @@ const IncomeExpenseBatchForm = ({
           </DialogHeader>
 
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <form ref={formRef} onSubmit={form.handleSubmit(onSubmit, errors => { void focusFirstError(errors, { root: formRef.current }); })} className="space-y-4">
               {/* Tabs loại phiếu */}
               <Tabs
                 value={form.watch('type')}
@@ -566,6 +594,8 @@ const IncomeExpenseBatchForm = ({
                     type="button"
                     variant="outline"
                     size="sm"
+                    data-field-name="items"
+                    aria-invalid={!!form.formState.errors.items}
                     onClick={() => setIsItemSelectorOpen(true)}
                   >
                     <Plus className="h-4 w-4 mr-1" />
@@ -597,6 +627,7 @@ const IncomeExpenseBatchForm = ({
                         onChange={handleRowChange}
                         onRemove={handleRowRemove}
                         buildings={buildings}
+                        errors={form.formState.errors.items?.[index]}
                       />
                     ))}
 
@@ -640,6 +671,8 @@ const IncomeExpenseBatchForm = ({
                 )}
               />
 
+              {submitError && <p role="alert" className="text-sm text-destructive">{submitError}</p>}
+              {partialIds.length > 0 && <div className="text-sm"><p>Kiểm tra các phiếu đã nhận kết quả tạo:</p>{partialIds.map((id, index) => <a key={id} className="block text-primary underline" href={`/income-expense/voucher/${id}`}>Xem phiếu {index + 1}</a>)}</div>}
               {/* Action buttons */}
               <div
                 className={
@@ -666,7 +699,7 @@ const IncomeExpenseBatchForm = ({
                 </Button>
                 <Button
                   type="submit"
-                  disabled={isPending || itemRows.length === 0}
+                  disabled={isPending || reconcileRequired}
                   className={isMobile ? 'flex-1' : ''}
                 >
                   {submitLabel}

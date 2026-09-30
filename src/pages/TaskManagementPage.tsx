@@ -1,3 +1,4 @@
+import { actionErrorMessage } from '@/lib/actionFeedback';
 import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useEffect, useMemo, useRef, useState, lazy, Suspense } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -434,7 +435,7 @@ function TaskManagementDesktopPage() {
           <AlertTriangle className="h-10 w-10 text-destructive" />
           <div className="font-medium">Không tải được danh sách công việc</div>
           <div className="text-sm text-muted-foreground max-w-md break-words">
-            {(error as Error)?.message || "Lỗi kết nối hoặc máy chủ. Vui lòng thử lại."}
+            {actionErrorMessage(error,"Chưa tải được danh sách công việc")}
           </div>
           <Button variant="outline" onClick={() => refetch()}>Thử lại</Button>
         </div>

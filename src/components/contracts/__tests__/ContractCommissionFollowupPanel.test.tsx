@@ -115,3 +115,13 @@ it('read failures show load retry and never report zero success or open issuance
   expect(screen.getByRole('button', { name: 'Tạo phiếu hoa hồng' }).hasAttribute('disabled')).toBe(true);
   fireEvent.click(screen.getByRole('button', { name: 'Tải lại' })); expect(mocks.query.refetch).toHaveBeenCalledOnce();
 });
+
+it.each([{code:'42501',message:'permission denied income_expenses'},new TypeError('Failed to fetch')])('D17 retry failure safe inline một owner và giữ saved request %j',async error=>{
+ mocks.query.data={rows:[row({state:'UNKNOWN',request_id:'saved',can_retry:true})],total:1};mocks.retry.mockRejectedValue(error);
+ render(<ContractCommissionFollowupPanel contractId="contract-1"/>);
+ fireEvent.click(screen.getByRole('button',{name:'Tạo lại'}));
+ await waitFor(()=>expect(mocks.retry).toHaveBeenCalledWith({contract_id:'contract-1',kind:'broker',request_id:'saved'}));
+ await waitFor(()=>expect(screen.getAllByRole('alert').some(node=>/Không đủ quyền|Chưa xác nhận/.test(node.textContent||''))).toBe(true));
+ expect(screen.queryByText(/permission denied|income_expenses|Failed to fetch/)).toBeNull();expect(screen.queryByRole('dialog')).toBeNull();
+ expect(screen.getByRole('button',{name:'Tạo lại'})).toBeTruthy();
+});

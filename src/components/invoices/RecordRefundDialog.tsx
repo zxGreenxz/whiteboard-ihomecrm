@@ -1,4 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import {CurrencyInput} from '@/components/ui/currency-input';
+import {FinancialWorkflowError,workflowErrorMessage} from '@/lib/financialWorkflow';
+import { focusFirstError } from '@/lib/formErrors';
+import { invoiceFailureMessage } from '@/lib/invoiceFeedback';
+import { voucherOutcomeUnknown } from '@/lib/voucherFeedback';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -11,7 +16,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { DateInput } from '@/components/ui/date-input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -42,17 +46,16 @@ const formSchema = z.object({
 });
 type FormData = z.infer<typeof formSchema>;
 
-const formatVN = (n: number) => (n > 0 ? n.toLocaleString('vi-VN') : '');
-const parseVN = (s: string): number => {
-  const digits = s.replace(/\D/g, '');
-  return digits ? parseInt(digits, 10) : 0;
-};
-
 const formatCurrency = (n: number) =>
   new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(n);
 
 const RecordRefundDialog = ({ open, onOpenChange, invoice }: RecordRefundDialogProps) => {
   const refund = useRecordRefundRPC();
+  const formRef=useRef<HTMLFormElement>(null);
+  const [submitError,setSubmitError]=useState<string|null>(null);
+  const [reconcileRequired,setReconcileRequired]=useState(false);
+  const [receipts,setReceipts]=useState<readonly {id:string;label:string}[]>([]);
+  useEffect(()=>{setSubmitError(null);setReconcileRequired(false);setReceipts([]);},[invoice?.id]);
   const { data: accounts = [] } = useAccounts();
 
   // Outstanding for negative-total invoice = abs(total - paid).
@@ -77,6 +80,7 @@ const RecordRefundDialog = ({ open, onOpenChange, invoice }: RecordRefundDialogP
     formState: { errors },
   } = useForm<FormData>({
     resolver: zodResolver(formSchema),
+    shouldFocusError:false,
     defaultValues: {
       amount: 0,
       payment_date: todayISO(),
@@ -101,7 +105,9 @@ const RecordRefundDialog = ({ open, onOpenChange, invoice }: RecordRefundDialogP
   };
 
   const onSubmit = async (data: FormData) => {
-    if (!invoice) return;
+    if (!invoice || reconcileRequired) return;
+    setSubmitError(null);
+    try {
     await refund.mutateAsync({
       invoice_id: invoice.id,
       amount: data.amount,
@@ -110,6 +116,11 @@ const RecordRefundDialog = ({ open, onOpenChange, invoice }: RecordRefundDialogP
       notes: data.notes,
     });
     handleClose();
+    } catch(error) {
+      setSubmitError(error instanceof FinancialWorkflowError?workflowErrorMessage(error,'lập phiếu hoàn trả'):invoiceFailureMessage(error,"lập phiếu hoàn trả"));
+      if(error instanceof FinancialWorkflowError){setReceipts(error.completed);if(error.outcome!=='failure')setReconcileRequired(true);}
+      else if(voucherOutcomeUnknown(error))setReconcileRequired(true);
+    }
   };
 
   if (!invoice) return null;
@@ -127,7 +138,7 @@ const RecordRefundDialog = ({ open, onOpenChange, invoice }: RecordRefundDialogP
           <DialogDescription>Hoá đơn: {invoice.invoice_number}</DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <form ref={formRef} noValidate onSubmit={handleSubmit(onSubmit,errors=>{void focusFirstError(errors,{root:formRef.current});})} className="space-y-4">
           <div className="bg-orange-50 border border-orange-200 p-4 rounded-md space-y-2 text-sm">
             <div className="flex justify-between">
               <span className="text-gray-600">Tổng hoá đơn:</span>
@@ -150,14 +161,11 @@ const RecordRefundDialog = ({ open, onOpenChange, invoice }: RecordRefundDialogP
           </div>
 
           <div className="space-y-2">
-            <Label>Số tiền hoàn trả *</Label>
-            <Input
-              type="text"
-              inputMode="numeric"
-              value={formatVN(watchedAmount || 0)}
-              onChange={(e) =>
-                setValue('amount', parseVN(e.target.value), { shouldValidate: true })
-              }
+            <Label htmlFor="refund-amount">Số tiền hoàn trả *</Label>
+            <CurrencyInput
+              id="refund-amount" name="amount" aria-invalid={!!errors.amount}
+              value={watchedAmount}
+              onChange={value=>setValue('amount',value,{shouldValidate:true,shouldDirty:true})}
               placeholder="0"
             />
             {errors.amount && (
@@ -168,6 +176,7 @@ const RecordRefundDialog = ({ open, onOpenChange, invoice }: RecordRefundDialogP
           <div className="space-y-2">
             <Label htmlFor="payment_date">Ngày hoàn trả *</Label>
             <DateInput
+              id="payment_date" name="payment_date" aria-invalid={!!errors.payment_date}
               value={watch('payment_date') || ''}
               onChange={(v) => setValue('payment_date', v, { shouldValidate: true, shouldDirty: true })}
             />
@@ -182,8 +191,8 @@ const RecordRefundDialog = ({ open, onOpenChange, invoice }: RecordRefundDialogP
               value={watch('account_id')}
               onValueChange={(v) => setValue('account_id', v, { shouldValidate: true })}
             >
-              <SelectTrigger>
-                <SelectValue placeholder="Chọn sổ quỹ trừ tiền" />
+              <SelectTrigger name="account_id" aria-invalid={!!errors.account_id}>
+                <SelectValue placeholder="Chọn sổ quỹ chi" />
               </SelectTrigger>
               <SelectContent>
                 {(accounts as any[]).map((a) => (
@@ -198,7 +207,7 @@ const RecordRefundDialog = ({ open, onOpenChange, invoice }: RecordRefundDialogP
               <p className="text-sm text-red-500">{errors.account_id.message}</p>
             )}
             <p className="text-xs text-muted-foreground">
-              Sẽ tạo phiếu chi (PC) trong Thu chi của sổ quỹ này.
+              Đây là bước lập yêu cầu hoàn tiền. Chưa thực hiện chi; kiểm tra sổ quỹ khi duyệt và chi phiếu.
             </p>
           </div>
 
@@ -207,6 +216,8 @@ const RecordRefundDialog = ({ open, onOpenChange, invoice }: RecordRefundDialogP
             <Textarea id="notes" rows={2} {...register('notes')} />
           </div>
 
+          {submitError && <p role="alert" className="text-sm text-destructive">{submitError}</p>}
+          {receipts.map(receipt=><a key={receipt.id} className="block text-sm underline" href={`/income-expenses?id=${encodeURIComponent(receipt.id)}`}>Mở phiếu {receipt.id}</a>)}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={handleClose}>
               Hủy
@@ -214,7 +225,7 @@ const RecordRefundDialog = ({ open, onOpenChange, invoice }: RecordRefundDialogP
             <Button
               type="submit"
               className="bg-orange-600 hover:bg-orange-700"
-              disabled={refund.isPending}
+              disabled={refund.isPending || reconcileRequired}
             >
               {refund.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Lập phiếu chi

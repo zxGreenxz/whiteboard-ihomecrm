@@ -1,5 +1,5 @@
 import { CalendarClock } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -16,6 +16,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import type { NetworkRolloutState } from "@/lib/network-center/contracts";
 import { allowsNetworkExecution } from "@/lib/network-center/model";
+import { maintenanceFieldErrors, networkFeedback } from '@/lib/network-center/feedback';
+import { focusFirstError } from '@/lib/formErrors';
 import { ExecuteButton } from "./ExecuteGuard";
 
 interface MaintenanceDialogProps {
@@ -33,6 +35,11 @@ export function MaintenanceDialog({ buildingId, buildingName, canExecute, rollou
   const [durationMinutes, setDurationMinutes] = useState(60);
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const formRef = useRef<HTMLFormElement>(null);
+  const pending = useRef(false);
+  const [uncertain, setUncertain] = useState(false);
+  const uncertainBuildings = useRef(new Set<string>());
   const [submitting, setSubmitting] = useState(false);
   const executionAllowed = allowsNetworkExecution(canExecute, rolloutState);
 
@@ -40,29 +47,42 @@ export function MaintenanceDialog({ buildingId, buildingName, canExecute, rollou
     setDurationMinutes(60);
     setReason("");
     setError("");
+    setFieldErrors({});
     setSubmitting(false);
   }, []);
 
   useEffect(() => {
     setOpen(false);
     resetDraft();
+    setUncertain(uncertainBuildings.current.has(buildingId));
   }, [buildingId, resetDraft]);
 
   const changeOpen = (nextOpen: boolean) => {
+    if (pending.current) return;
     setOpen(nextOpen);
-    if (!nextOpen) resetDraft();
+    if (!nextOpen && !uncertain) resetDraft();
   };
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (pending.current || uncertain) return;
+    const errors = maintenanceFieldErrors({ durationMinutes, reason });
+    setFieldErrors(errors);
+    if (Object.keys(errors).length) { void focusFirstError(errors, { root: formRef.current }); return; }
+    pending.current = true;
     setError("");
     setSubmitting(true);
     try {
       await onCreate({ durationMinutes, reason });
+      pending.current = false;
       changeOpen(false);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Không thể tạo cửa sổ bảo trì");
+      const feedback = networkFeedback(caught, `tạo lịch bảo trì cho ${buildingName}`);
+      setError(feedback.description);
+      setUncertain(feedback.outcome === "unknown");
+      if (feedback.outcome === "unknown") uncertainBuildings.current.add(buildingId);
     } finally {
+      pending.current = false;
       setSubmitting(false);
     }
   };
@@ -86,34 +106,37 @@ export function MaintenanceDialog({ buildingId, buildingName, canExecute, rollou
           <DialogDescription>
             {isDemo
               ? `Chỉ cập nhật bộ nhớ demo của ${buildingName}; không thay đổi hệ thống thật.`
-              : `Tạo maintenance window cho ${buildingName}; worker vẫn ghi nhận trạng thái nhưng cảnh báo phù hợp sẽ được giảm nhiễu.`}
+              : `Tạo lịch bảo trì cho ${buildingName}; hệ thống tiếp tục ghi nhận trạng thái và giảm các cảnh báo liên quan đến bảo trì.`}
           </DialogDescription>
         </DialogHeader>
-        <form className="nc-form" onSubmit={submit}>
+        <form ref={formRef} noValidate className="nc-form" onSubmit={submit}>
           <div className="nc-field">
             <Label htmlFor="maintenance-duration">Thời lượng (phút)</Label>
             <Input
-              id="maintenance-duration"
+              id="maintenance-duration" name="durationMinutes" aria-invalid={Boolean(fieldErrors.durationMinutes)} aria-describedby={fieldErrors.durationMinutes ? "maintenance-duration-error" : undefined} disabled={submitting}
               type="number"
               min={15}
               max={480}
               value={durationMinutes}
               onChange={(event) => setDurationMinutes(Number(event.target.value))}
             />
+            {fieldErrors.durationMinutes ? <p id="maintenance-duration-error" className="nc-form-error" role="alert">{fieldErrors.durationMinutes}</p> : null}
           </div>
           <div className="nc-field">
             <Label htmlFor="maintenance-reason">Lý do</Label>
             <Textarea
-              id="maintenance-reason"
+              id="maintenance-reason" name="reason" aria-invalid={Boolean(fieldErrors.reason)} aria-describedby={fieldErrors.reason ? "maintenance-reason-error" : undefined} disabled={submitting}
               value={reason}
               onChange={(event) => setReason(event.target.value)}
               placeholder="Ví dụ: Kiểm tra kết nối định kỳ"
             />
+            {fieldErrors.reason ? <p id="maintenance-reason-error" className="nc-form-error" role="alert">{fieldErrors.reason}</p> : null}
           </div>
           {error ? <p className="nc-form-error" role="alert">{error}</p> : null}
+          {uncertain ? <p role="status">Đóng hộp thoại và tải lại trạng thái bảo trì của tòa nhà để đối chiếu trước khi tạo thêm.</p> : null}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => changeOpen(false)}>Huỷ</Button>
-            <Button type="submit" disabled={!executionAllowed || submitting}>
+            <Button type="submit" disabled={!executionAllowed || submitting || uncertain}>
               {submitting ? "Đang tạo…" : isDemo ? "Tạo mô phỏng cục bộ" : "Tạo bảo trì"}
             </Button>
           </DialogFooter>

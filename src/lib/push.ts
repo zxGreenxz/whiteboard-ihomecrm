@@ -7,6 +7,16 @@
 
 import { supabase } from '@/integrations/supabase/client';
 import { getSessionUserId } from '@/lib/authSession';
+import { FinancialWorkflowError } from '@/lib/financialWorkflowError';
+import { requireAccountWriteReceipt } from '@/lib/accountSettingsWriteReceipt';
+
+export class PushOperationError extends FinancialWorkflowError {
+  constructor(message: string, outcome: 'partial' | 'unknown', cause: unknown,
+    readonly operation: 'enable' | 'disable', readonly endpoint?: string, readonly actorId?: string) {
+    super(message, outcome, [], cause);
+  }
+}
+
 
 // Xoay khoá 29/07/2026: cặp cũ (BO7WKT9NW…) chưa từng chứng minh giao được tin nào và
 // không đối chiếu được nửa private. Vì push_subscriptions đang 0 dòng nên xoay tốn 0 đồng.
@@ -68,30 +78,73 @@ function bufToBase64Url(buf: ArrayBuffer | null): string {
   return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-/** Đăng ký service worker (idempotent). Trả registration hoặc null. */
+/* Registration errors must reach an interactive caller; bootstrap owns background logging. */
 export async function registerServiceWorker(): Promise<ServiceWorkerRegistration | null> {
   if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return null;
+  const existing = await navigator.serviceWorker.getRegistration();
+  return existing || await navigator.serviceWorker.register(SW_URL);
+}
+
+async function activeRegistration(reg: ServiceWorkerRegistration): Promise<ServiceWorkerRegistration> {
+  if (reg.active) return reg;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const existing = await navigator.serviceWorker.getRegistration();
-    if (existing) return existing;
-    return await navigator.serviceWorker.register(SW_URL);
-  } catch (e) {
-    console.warn('[push] register SW failed', e);
-    return null;
+    const active = await Promise.race([
+      navigator.serviceWorker.ready,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new PushOperationError(
+          'Trình duyệt chưa xác nhận kích hoạt thông báo. Giữ trạng thái chưa xác định và kiểm tra lại.',
+          'unknown', new TypeError('Service worker activation timed out'), 'enable')), 10000);
+      }),
+    ]);
+    if (!active?.active) throw new TypeError('Unconfirmed active service worker');
+    return active;
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
   }
 }
 
 export async function getExistingSubscription(): Promise<PushSubscription | null> {
   if (!isPushSupported()) return null;
-  const reg = await navigator.serviceWorker.ready;
-  return reg.pushManager.getSubscription();
+  const reg = await navigator.serviceWorker.getRegistration();
+  if (!reg) return null;
+  return (await activeRegistration(reg)).pushManager.getSubscription();
 }
 
-/** Đã bật push trên thiết bị này (đã cấp quyền + có subscription)? */
-export async function isSubscribed(): Promise<boolean> {
-  if (!isPushSupported() || Notification.permission !== 'granted') return false;
+async function readStoredSubscription(endpoint: string, actorId: string) {
+  const { data, error } = await supabase.from('push_subscriptions')
+    .select('id,user_id,endpoint,p256dh,auth,is_active')
+    .eq('endpoint', endpoint).eq('user_id', actorId).maybeSingle();
+  if (error) throw error;
+  if (data === null) return null;
+  requireAccountWriteReceipt(data, { user_id: actorId, endpoint });
+  if (typeof data.is_active !== 'boolean' || typeof data.p256dh !== 'string' || !data.p256dh || typeof data.auth !== 'string' || !data.auth)
+    throw new TypeError('Malformed stored push subscription');
+  return data;
+}
+
+/** Read native and own server registration; pending cleanup is never cleared from native absence alone. */
+export async function isSubscribed(pending?: unknown): Promise<boolean> {
+  if (!isPushSupported()) return false;
   const sub = await getExistingSubscription();
-  return !!sub;
+  const previous = pending instanceof PushOperationError ? pending : null;
+  if (previous?.operation === 'disable' && previous.endpoint) {
+    const actorId = await getSessionUserId();
+    if (!actorId || actorId !== previous.actorId) throw previous;
+    const stored = await readStoredSubscription(previous.endpoint, actorId);
+    if (stored || sub?.endpoint === previous.endpoint) throw previous;
+    return false;
+  }
+  if (Notification.permission !== 'granted' || !sub) return false;
+  if (!sameApplicationServerKey(sub, urlBase64ToUint8Array(VAPID_PUBLIC_KEY))) return false;
+  const actorId = await getSessionUserId();
+  if (!actorId) throw { code: 'PGRST301', message: 'Not authenticated' };
+  const stored = await readStoredSubscription(sub.endpoint, actorId);
+  const keys = extractKeys(sub);
+  if (!stored || stored.p256dh !== keys.p256dh || stored.auth !== keys.auth)
+    throw new PushOperationError('Trình duyệt có đăng ký nhưng chưa xác nhận được đăng ký tương ứng trên máy chủ. Kiểm tra lại trạng thái trước khi thay đổi tiếp.',
+      'unknown', new TypeError('Unconfirmed server push subscription'), 'enable', sub.endpoint, actorId);
+  return stored.is_active;
 }
 
 function extractKeys(sub: PushSubscription): { p256dh: string; auth: string } {
@@ -101,59 +154,57 @@ function extractKeys(sub: PushSubscription): { p256dh: string; auth: string } {
   };
 }
 
-async function saveSubscription(sub: PushSubscription): Promise<void> {
-  const userId = await getSessionUserId();
-  if (!userId) throw new Error('Bạn chưa đăng nhập');
+async function saveSubscription(sub: PushSubscription, actorId: string): Promise<void> {
+  if (await getSessionUserId() !== actorId) throw { code: 'PGRST301', message: 'User session changed' };
   const { p256dh, auth } = extractKeys(sub);
-  const { error } = await supabase.from('push_subscriptions').upsert(
-    {
-      user_id: userId,
-      endpoint: sub.endpoint,
-      p256dh,
-      auth,
-      user_agent: navigator.userAgent,
-      is_active: true,
-    },
-    { onConflict: 'endpoint' },
-  );
+  if (!sub.endpoint || !p256dh || !auth) throw new TypeError('Malformed browser push subscription');
+  const expected = { user_id: actorId, endpoint: sub.endpoint, p256dh, auth, is_active: true };
+  const { data, error } = await supabase.from('push_subscriptions').upsert(
+    { ...expected, user_agent: navigator.userAgent }, { onConflict: 'endpoint' },
+  ).select('id,user_id,endpoint,p256dh,auth,is_active').single();
   if (error) throw error;
+  requireAccountWriteReceipt(data, expected);
 }
 
-/**
- * Bật thông báo trên thiết bị này: xin quyền → subscribe → lưu Supabase.
- * Trả 'granted' | 'denied' | 'unsupported'.
- */
+async function unsubscribeConfirmed(sub: PushSubscription, operation: 'enable' | 'disable', actorId: string): Promise<void> {
+  try {
+    const result = await sub.unsubscribe();
+    if (result !== true) throw result;
+  } catch (cause) {
+    throw new PushOperationError('Chưa xác nhận được việc hủy đăng ký của trình duyệt. Không thay đổi đăng ký máy chủ; kiểm tra lại trạng thái thiết bị.',
+      'unknown', cause, operation, sub.endpoint, actorId);
+  }
+}
+
+/** Permission -> native subscription -> exact own server receipt; no provider delivery claim. */
 export async function enablePush(): Promise<NotificationPermission | 'unsupported'> {
   if (!isPushSupported()) return 'unsupported';
-
-  const reg = (await registerServiceWorker()) || (await navigator.serviceWorker.ready);
-  await navigator.serviceWorker.ready;
-
+  const actorId = await getSessionUserId();
+  if (!actorId) throw { code: 'PGRST301', message: 'Not authenticated' };
+  const registered = await registerServiceWorker();
+  if (!registered) throw new TypeError('Unconfirmed service worker registration');
+  const reg = await activeRegistration(registered);
   const permission = await Notification.requestPermission();
   if (permission !== 'granted') return permission;
-
   const wantKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
   let sub = await reg.pushManager.getSubscription();
-
-  // Subscription gắn CHẾT vào applicationServerKey lúc đăng ký. Nếu khoá VAPID đã xoay
-  // mà ta tái dùng subscription cũ thì mọi lần gửi ăn 403 vĩnh viễn và không bao giờ bị
-  // prune (send-push chỉ prune 404/410). Phải huỷ rồi đăng ký lại bằng khoá hiện tại.
+  let removedOld = false;
   if (sub && !sameApplicationServerKey(sub, wantKey)) {
-    try {
-      await sub.unsubscribe();
-    } catch (e) {
-      console.warn('[push] unsubscribe khoá cũ thất bại', e);
-    }
+    await unsubscribeConfirmed(sub, 'enable', actorId);
+    removedOld = true;
     sub = null;
   }
-
-  if (!sub) {
-    sub = await reg.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: wantKey,
-    });
+  try {
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: wantKey });
+    if (!sub || !sameApplicationServerKey(sub, wantKey)) throw new TypeError('Unconfirmed application server key');
+    await saveSubscription(sub, actorId);
+  } catch (cause) {
+    throw new PushOperationError(sub
+      ? 'Trình duyệt đã tạo đăng ký; chưa xác nhận lưu đúng đăng ký trên máy chủ. Giữ trạng thái chưa xác định và kiểm tra lại.'
+      : removedOld ? 'Đăng ký cũ đã hủy; chưa xác nhận tạo đăng ký mới. Kiểm tra lại trạng thái thiết bị.'
+      : 'Chưa xác nhận được đăng ký của trình duyệt. Kiểm tra lại trạng thái thiết bị.',
+      sub || removedOld ? 'partial' : 'unknown', cause, 'enable', sub?.endpoint, actorId);
   }
-  await saveSubscription(sub);
   return 'granted';
 }
 
@@ -169,18 +220,26 @@ function sameApplicationServerKey(sub: PushSubscription, want: Uint8Array): bool
   return true;
 }
 
-/** Tắt thông báo trên thiết bị này: huỷ subscription + dọn DB. */
-export async function disablePush(): Promise<void> {
-  if (!isPushSupported()) return;
+/** Native unsubscribe must succeed before deleting its own exact server registration. */
+export async function disablePush(): Promise<'disabled' | 'already-disabled' | 'unsupported'> {
+  if (!isPushSupported()) return 'unsupported';
   const sub = await getExistingSubscription();
-  if (!sub) return;
-  const endpoint = sub.endpoint;
+  if (!sub) return 'already-disabled';
+  const actorId = await getSessionUserId();
+  if (!actorId) throw { code: 'PGRST301', message: 'Not authenticated' };
+  await unsubscribeConfirmed(sub, 'disable', actorId);
   try {
-    await sub.unsubscribe();
-  } catch (e) {
-    console.warn('[push] unsubscribe failed', e);
+    if (await getSessionUserId() !== actorId) throw { code: 'PGRST301', message: 'User session changed' };
+    const { data, error } = await supabase.from('push_subscriptions').delete()
+      .eq('endpoint', sub.endpoint).eq('user_id', actorId).select('id,user_id,endpoint');
+    if (error) throw error;
+    if (!Array.isArray(data) || data.length !== 1) throw new TypeError('Unconfirmed push deletion receipt');
+    requireAccountWriteReceipt(data[0], { user_id: actorId, endpoint: sub.endpoint });
+  } catch (cause) {
+    throw new PushOperationError('Thiết bị đã hủy đăng ký; chưa xác nhận dọn đăng ký trên máy chủ. Giữ trạng thái chưa xác định và kiểm tra lại.',
+      'partial', cause, 'disable', sub.endpoint, actorId);
   }
-  await supabase.from('push_subscriptions').delete().eq('endpoint', endpoint);
+  return 'disabled';
 }
 
 export interface PushSendError {
@@ -208,28 +267,14 @@ export async function sendTestPush(): Promise<SendTestPushResult> {
     },
   });
 
-  if (error) {
-    // supabase-js chỉ để lại "Edge Function returned a non-2xx status code" ở .message;
-    // thân phản hồi thật nằm trong error.context và trước đây bị vứt đi.
-    const ctx = (error as { context?: Response }).context;
-    if (ctx && typeof ctx.json === 'function') {
-      try {
-        const detail = await ctx.json();
-        throw new Error(detail?.error ? String(detail.error) : JSON.stringify(detail).slice(0, 300));
-      } catch (parseErr) {
-        if (parseErr instanceof Error && parseErr.message !== 'Unexpected end of JSON input') {
-          throw parseErr;
-        }
-      }
-    }
-    throw error;
-  }
-
-  return {
-    sent: data?.sent ?? 0,
-    failed: data?.failed ?? 0,
-    total: data?.total ?? 0,
-    pruned: data?.pruned ?? 0,
-    errors: Array.isArray(data?.errors) ? (data.errors as PushSendError[]) : [],
-  };
+  if (error) throw error;
+  if (!data || typeof data !== 'object' || Array.isArray(data) ||
+      !['sent', 'failed', 'total', 'pruned'].every(key => Number.isSafeInteger(data[key]) && data[key] >= 0) ||
+      data.sent + data.failed !== data.total || data.pruned > data.failed || !Array.isArray(data.errors) ||
+      !data.errors.every((row: unknown) => row && typeof row === 'object' &&
+        typeof (row as Record<string, unknown>).host === 'string' &&
+        typeof (row as Record<string, unknown>).body === 'string'))
+    throw new PushOperationError('Chưa xác nhận được kết quả gửi thử. Kiểm tra trạng thái thiết bị trước khi gửi tiếp.',
+      'unknown', new TypeError('Malformed push test result'), 'enable');
+  return { sent: data.sent, failed: data.failed, total: data.total, pruned: data.pruned, errors: data.errors as PushSendError[] };
 }

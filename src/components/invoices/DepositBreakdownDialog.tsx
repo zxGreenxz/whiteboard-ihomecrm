@@ -1,3 +1,4 @@
+import {QueryRegion} from '@/components/errors/QueryRegion';
 import { useMemo } from 'react';
 import {
   Dialog,
@@ -63,7 +64,8 @@ function depositStatus(c: DepositBreakdownRow | null) {
 }
 
 const DepositBreakdownDialog = ({ open, onOpenChange, filters }: Props) => {
-  const { data: rows = [], isLoading } = useDepositBreakdown(filters, open);
+  const query = useDepositBreakdown(filters, open);
+  const { data: rows = [], isLoading } = query;
 
   const buildings = useMemo<BuildingGroup[]>(() => {
     const byB = new Map<string, { buildingName: string; rooms: Map<string, RoomGroup>; total: number }>();
@@ -106,6 +108,7 @@ const DepositBreakdownDialog = ({ open, onOpenChange, filters }: Props) => {
           </DialogDescription>
         </DialogHeader>
 
+        <QueryRegion queries={[query]} label="cọc đã thu trong kỳ">
         {isLoading ? (
           <div className="space-y-2">
             {Array.from({ length: 5 }).map((_, i) => (
@@ -234,6 +237,7 @@ const DepositBreakdownDialog = ({ open, onOpenChange, filters }: Props) => {
             </div>
           </div>
         )}
+        </QueryRegion>
       </DialogContent>
     </Dialog>
   );

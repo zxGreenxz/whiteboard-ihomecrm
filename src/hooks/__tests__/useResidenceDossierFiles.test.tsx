@@ -11,7 +11,8 @@ const boundary = vi.hoisted(() => ({
   removeDossierFile: vi.fn(),
   toastError: vi.fn(),
 }));
-vi.mock('@/lib/residenceDossierFiles', () => ({
+vi.mock('@/lib/residenceDossierFiles', async original => ({
+  ...await original<typeof import('@/lib/residenceDossierFiles')>(),
   listCustomerDossierFiles: boundary.listCustomerDossierFiles,
   listBuildingOwnershipFiles: boundary.listBuildingOwnershipFiles,
   uploadDossierFile: boundary.uploadDossierFile,
@@ -19,6 +20,7 @@ vi.mock('@/lib/residenceDossierFiles', () => ({
 }));
 vi.mock('sonner', () => ({ toast: { error: boundary.toastError, success: vi.fn() } }));
 
+import { DossierFileError } from '@/lib/residenceDossierFiles';
 import { useCustomerDossierFiles, useDossierFileMutations, residenceDossierKeys } from '../useResidenceDossierFiles';
 
 function wrapper(client: QueryClient) {
@@ -56,10 +58,10 @@ describe('useResidenceDossierFiles', () => {
     await act(async () => { await result.current.remove.mutateAsync('f1'); });
     expect(boundary.removeDossierFile).toHaveBeenCalledWith('f1');
 
-    boundary.uploadDossierFile.mockRejectedValueOnce(new Error('Ảnh tối đa 15MB.'));
+    boundary.uploadDossierFile.mockRejectedValueOnce(new DossierFileError('Ảnh tối đa 10MB.'));
     await act(async () => {
       await result.current.upload.mutateAsync({ kind: 'OWNERSHIP', file: new File(['x'], 'g.png', { type: 'image/png' }) }).catch(() => undefined);
     });
-    expect(boundary.toastError).toHaveBeenCalledWith('Ảnh tối đa 15MB.');
+    expect(boundary.toastError).toHaveBeenCalledWith('Ảnh tối đa 10MB.');
   });
 });

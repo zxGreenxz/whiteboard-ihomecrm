@@ -1,3 +1,4 @@
+import { QueryRegion } from "@/components/errors/QueryRegion";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts";
 import { useOccupancyChart } from "@/hooks/useDashboard";
@@ -5,7 +6,8 @@ import { useOccupancyChart } from "@/hooks/useDashboard";
 const COLORS = ["#10b981", "#ef4444"];
 
 export function OccupancyChart({ buildingId }: { buildingId?: string | null }) {
-  const { data: occupancyData = [], isLoading } = useOccupancyChart(buildingId);
+  const query = useOccupancyChart(buildingId);
+  const { data: occupancyData = [], isLoading } = query;
 
   if (isLoading) {
     return (
@@ -22,6 +24,7 @@ export function OccupancyChart({ buildingId }: { buildingId?: string | null }) {
   }
 
   return (
+    <QueryRegion label="tỷ lệ lấp đầy" queries={[query]}>
     <Card>
       <CardHeader>
         <CardTitle>Tỷ lệ lấp đầy</CardTitle>
@@ -50,5 +53,6 @@ export function OccupancyChart({ buildingId }: { buildingId?: string | null }) {
         </ResponsiveContainer>
       </CardContent>
     </Card>
+    </QueryRegion>
   );
 }

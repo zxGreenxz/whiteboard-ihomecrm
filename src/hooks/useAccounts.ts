@@ -1,3 +1,8 @@
+import {useRef} from 'react';
+import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
+import {financialReadNumber} from '@/lib/financialReadValidation';
+import { notifyActionError } from "@/lib/actionFeedback";
+import { jsonProp } from "@/lib/jsonValue";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
@@ -36,8 +41,7 @@ export interface AccountWithBalance extends Account {
   /**
    * Server có cho người đang đăng nhập xem tồn quỹ của sổ này không
    * (`list_cashbook_visibility_v2.balance_visible`, bám đúng predicate RLS của
-   * `income_expense_posting_lines`). `true` khi chưa hỏi được server — giữ
-   * hành vi cũ thay vì bôi trắng cả bảng vì một lỗi mạng.
+   * `income_expense_posting_lines`). Không đọc được quyền thì query báo lỗi.
    */
   balance_visible: boolean;
   owner_name?: string | null;  // full_name của user phụ trách (JS-merged từ profiles)
@@ -83,11 +87,11 @@ export const useAccounts = (opts?: { enabled?: boolean }) => {
       const { data, error } = await query;
 
       if (error) {
-        toast.error("Không thể tải danh sách sổ quỹ");
         throw error;
       }
 
-      return (data || []) as Account[];
+      if (!Array.isArray(data)) throw new Error('Chưa xác nhận được danh sách sổ quỹ. Tải lại trước khi ghi nhận khoản cọc.');
+      return data as Account[];
     },
   });
 };
@@ -95,17 +99,15 @@ export const useAccounts = (opts?: { enabled?: boolean }) => {
 /**
  * Sổ nào người đang đăng nhập được xem TỒN QUỸ.
  *
- * Trả `null` = CHƯA BIẾT (RPC lỗi, chưa deploy) — người gọi phải giữ hành vi
- * cũ chứ không được coi là "không sổ nào xem được": một lỗi mạng thoáng qua
- * không được làm trắng mọi số dư trên màn hình.
+ * Lỗi kiểm tra quyền được truyền ra query; không hiển thị số dư như đã xác minh.
  */
-const readBalanceVisibility = async (): Promise<Map<string, boolean> | null> => {
+const readBalanceVisibility = async (): Promise<Map<string, boolean>> => {
   const { data, error } = await supabase.rpc("list_cashbook_visibility_v2");
   if (error) {
-    console.warn("[useAccounts] list_cashbook_visibility_v2:", error.message);
-    return null;
+    throw error;
   }
-  const rows = (data ?? []) as { cashbook_id: string; balance_visible: boolean }[];
+  if (!Array.isArray(data) || data.some(row => !row || typeof row !== "object" || typeof row.cashbook_id !== "string" || typeof row.balance_visible !== "boolean")) throw new Error("Chưa kiểm tra được quyền xem số dư sổ quỹ");
+  const rows = data as { cashbook_id: string; balance_visible: boolean }[];
   return new Map(rows.map((r) => [r.cashbook_id, r.balance_visible === true]));
 };
 
@@ -120,6 +122,7 @@ export const useAccountsWithBalance = (params?: {
   const searchQuery = params?.searchQuery?.trim() ?? "";
 
   return useQuery({
+    meta: {feedback:"inline"},
     queryKey: ["accounts-with-balance", page, pageSize, searchQuery],
     queryFn: async (): Promise<{
       data: AccountWithBalance[];
@@ -147,12 +150,11 @@ export const useAccountsWithBalance = (params?: {
         .range(from, to);
 
       if (error) {
-        console.error("useAccountsWithBalance error", error);
-        toast.error("Không thể tải danh sách sổ quỹ");
-        return { data: [], totalCount: 0 };
+        throw error;
       }
 
-      const rows = (data || []) as any[];
+      if (!Array.isArray(data) || typeof count !== 'number' || !Number.isSafeInteger(count) || count<0) throw new Error('Invalid cashbook list response');
+      const rows = data as any[];
 
       // JS-merge owner profile (full_name) cho cột "Phụ trách".
       const userIds = Array.from(
@@ -160,11 +162,13 @@ export const useAccountsWithBalance = (params?: {
       ) as string[];
       const ownerById = new Map<string, { full_name: string | null }>();
       if (userIds.length > 0) {
-        const { data: profiles } = await (supabase
+        const { data: profiles, error: profilesError } = await (supabase
           .from("profiles")
           .select("id, full_name" as any) as any)
           .in("id", userIds);
-        for (const p of ((profiles as any[]) || [])) {
+        if (profilesError) throw profilesError;
+        if(!Array.isArray(profiles))throw new TypeError('Chưa đọc được người phụ trách sổ quỹ.');
+        for (const p of (profiles as any[])) {
           ownerById.set(p.id, { full_name: p.full_name ?? null });
         }
       }
@@ -181,29 +185,30 @@ export const useAccountsWithBalance = (params?: {
       const visibleById = await readBalanceVisibility();
 
       const mapped: AccountWithBalance[] = rows.map((r) => {
-        // Chưa hỏi được server (RPC lỗi/chưa deploy) ⇒ `null` ⇒ giữ hành vi cũ,
-        // theo đúng nếp của useCashbookVisibilityV2 (financeV2Mutations.ts:250).
-        const visible = visibleById ? visibleById.get(r.id) === true : true;
+        const visible = visibleById.get(r.id) === true;
+        if (r.initial_amount == null || !Number.isFinite(Number(r.initial_amount)) || (visible && (r.current_amount == null || !Number.isFinite(Number(r.current_amount))))) throw new Error("Invalid cashbook balance values");
         return {
           ...r,
-          initial_amount: Number(r.initial_amount) || 0,
-          current_amount: visible ? Number(r.current_amount) || 0 : null,
+          initial_amount: financialReadNumber(r.initial_amount),
+          current_amount: visible ? financialReadNumber(r.current_amount) : null,
           balance_visible: visible,
           owner_name: ownerById.get(r.user_id)?.full_name ?? null,
         };
       });
 
-      return { data: mapped, totalCount: count ?? 0 };
+      return { data: mapped, totalCount: count };
     },
   });
 };
 
 // --- Mutations ---
 
-export const useCreateAccount = () => {
+export const useCreateAccount = (options?: {silent?: boolean}) => {
   const qc = useQueryClient();
+  const workflow=useRef(persistentFinancialWorkflow('cashbook-create',{scope:'actor'}));
   return useMutation({
-    mutationFn: async (values: AccountFormValues) => {
+    meta:{handlesFeedback:!!options?.silent},
+    mutationFn: async (values: AccountFormValues) => workflow.current.run('new','tạo sổ quỹ',async progress => {
       const authData = { user: await getSessionUser() };
       if (!authData.user) throw new Error("User not authenticated");
 
@@ -220,27 +225,33 @@ export const useCreateAccount = () => {
         p_bank_name: rpcNullable<string>(null),
         p_account_number: rpcNullable<string>(null),
         p_quick_default_building_id: rpcNullable(values.quick_default_building_id ?? null),
-        p_idempotency_key: crypto.randomUUID(),
+        p_idempotency_key: progress.requestKey,
         p_description: values.description ?? undefined,
         p_is_default: values.is_default ?? false,
         p_owner_user_id: values.user_id || undefined,
       });
-      if (!canonical.error) return canonical.data;
-      toast.error(canonical.error.message || "Không thể tạo sổ quỹ");
+      if (!canonical.error) {
+        const id = jsonProp(canonical.data, "cashbook_id");
+        if (typeof id !== "string" || !id) throw new TypeError("Unconfirmed created cashbook");
+        return {id};
+      }
       throw canonical.error;
-    },
-    onSuccess: () => {
+    }),
+    onError: (error:unknown) => { if (!options?.silent) notifyActionError(error, "Chưa tạo sổ quỹ."); },
+    onSuccess: (_result, input) => {
       qc.invalidateQueries({ queryKey: ["accounts"] });
       qc.invalidateQueries({ queryKey: ["accounts-with-balance"] });
-      toast.success("Thông tin đã được cập nhật lưu trữ thành công");
+      if (!options?.silent) toast.success(`Đã tạo sổ quỹ ${input.name}.`);
     },
   });
 };
 
-export const useUpdateAccount = () => {
+export const useUpdateAccount = (options?: {silent?: boolean}) => {
   const qc = useQueryClient();
+  const workflow=useRef(persistentFinancialWorkflow('cashbook-lifecycle',{scope:'actor'}));
   return useMutation({
-    mutationFn: async (input: { id: string; values: AccountFormValues }) => {
+    meta:{handlesFeedback:!!options?.silent},
+    mutationFn: async (input: { id: string; values: AccountFormValues }) => workflow.current.run(input.id,'lưu thay đổi sổ quỹ',async () => {
       // Canonical update_cashbook_metadata_v1 — RPC lo phần "chỉ đổi user_id /
       // is_default khi form thực sự gửi". Không còn fallback ghi thẳng bảng
       // (xem ghi chú ở useCreateAccount).
@@ -254,33 +265,40 @@ export const useUpdateAccount = () => {
         p_is_default: rpcNullable(input.values.is_default !== undefined ? input.values.is_default : null),
         p_owner_user_id: rpcNullable(input.values.user_id || null),
       });
-      if (!canonical.error) return;
-      toast.error(canonical.error.message || "Không thể cập nhật sổ quỹ");
+      if (!canonical.error) {
+        if (jsonProp(canonical.data, 'cashbook_id') !== input.id) throw new TypeError('Unconfirmed cashbook update');
+        return;
+      }
       throw canonical.error;
-    },
-    onSuccess: () => {
+    }),
+    onError: (error:unknown) => { if (!options?.silent) notifyActionError(error, "Chưa lưu thay đổi sổ quỹ."); },
+    onSuccess: (_result, input) => {
       qc.invalidateQueries({ queryKey: ["accounts"] });
       qc.invalidateQueries({ queryKey: ["accounts-with-balance"] });
-      toast.success("Thông tin đã được cập nhật lưu trữ thành công");
+      if (!options?.silent) toast.success(`Đã lưu thay đổi sổ quỹ ${input.values.name}.`);
     },
   });
 };
 
 export const useDeleteAccount = () => {
   const qc = useQueryClient();
+  const workflow=useRef(persistentFinancialWorkflow('cashbook-lifecycle',{scope:'actor'}));
   return useMutation({
-    mutationFn: async (id: string) => {
+    mutationFn: async (id: string) => workflow.current.run(id,'xóa sổ quỹ',async () => {
       // Canonical archive_cashbook_v1 (từ chối nếu còn phiếu). Không còn
       // fallback ghi thẳng bảng (xem ghi chú ở useCreateAccount).
       const canonical = await supabase.rpc("archive_cashbook_v1", { p_cashbook_id: id });
-      if (!canonical.error) return;
-      toast.error(canonical.error.message || "Không thể xoá sổ quỹ");
+      if (!canonical.error) {
+        if (jsonProp(canonical.data, 'cashbook_id') !== id || jsonProp(canonical.data, 'archived') !== true) throw new TypeError('Unconfirmed cashbook archive');
+        return;
+      }
       throw canonical.error;
-    },
-    onSuccess: () => {
+    }),
+    onError: (error:unknown) => notifyActionError(error, "Chưa xóa sổ quỹ."),
+    onSuccess: (_result, input) => {
       qc.invalidateQueries({ queryKey: ["accounts"] });
       qc.invalidateQueries({ queryKey: ["accounts-with-balance"] });
-      toast.success("Dữ liệu đã được XOÁ thành công");
+      toast.success("Đã xóa sổ quỹ.");
     },
   });
 };

@@ -52,7 +52,7 @@ function variantOf(ctx: BonusTimeContext | undefined): BonusVariant {
  * KHÔNG throw — mọi lỗi (RPC / push) đều nuốt êm để không chặn UI hoàn thành việc.
  * Trả mảng các dòng thưởng MỚI (rỗng nếu job không thưởng / đã thưởng trước đó).
  */
-export async function awardAndNotifyJobBonus(jobId: string): Promise<AwardedBonus[]> {
+export async function awardAndNotifyJobBonus(jobId: string, options: { throwOnError?: boolean } = {}): Promise<AwardedBonus[]> {
   let rows: AwardedBonus[] = [];
   try {
     // award_job_bonus chưa có trong Database types (regen sau) → cast như pattern push.ts
@@ -60,11 +60,13 @@ export async function awardAndNotifyJobBonus(jobId: string): Promise<AwardedBonu
       p_job_id: jobId,
     });
     if (error) {
+      if (options.throwOnError) throw error;
       console.warn('[bonus] award_job_bonus error', error);
       return [];
     }
     rows = (data ?? []) as AwardedBonus[];
   } catch (e) {
+    if (options.throwOnError) throw e;
     console.warn('[bonus] award_job_bonus threw', e);
     return [];
   }

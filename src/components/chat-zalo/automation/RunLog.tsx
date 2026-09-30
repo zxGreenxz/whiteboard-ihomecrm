@@ -107,7 +107,7 @@ export default function RunLog({ runs, loading }: Props) {
                 <td style={{ ...O, textAlign: 'right', ...mono({ fontSize: 12 }) }}>{r.recipientsCount ?? 0}</td>
                 <td style={{ ...O, textAlign: 'right', ...mono({ fontSize: 12 }) }}>{r.messagesCount ?? 0}</td>
                 <td style={{ ...O, color: r.mode === 'failed' ? 'hsl(0 70% 42%)' : CHU_MO, lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                  {r.reason || '—'}
+                  {r.mode === 'failed' ? 'Lượt tự động này chưa hoàn tất. Kiểm tra kết nối tài khoản hoặc liên hệ quản trị viên.' : r.reason || '—'}
                 </td>
               </tr>
             );

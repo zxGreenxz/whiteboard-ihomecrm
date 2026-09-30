@@ -1,3 +1,4 @@
+import {financialReadNumber,financialReadRows} from '@/lib/financialReadValidation';
 import { useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -51,20 +52,20 @@ export const useFeeConfigMatrix = (buildingIds?: string[]) => {
         // `p_building_ids uuid[] DEFAULT NULL::uuid[]` ⇒ vắng mặt = NULL, y hệt.
         p_building_ids: key ?? undefined,
       });
-      if (error) throw new Error(error.message);
-      return ((data ?? []) as any[]).map((r) => ({
+      if (error) throw error;
+      return financialReadRows<any>(data).map((r) => ({
         buildingId: r.building_id,
         buildingName: r.building_name,
         feeCategory: r.fee_category,
         providerCode: r.provider_code ?? '',
         accountHolder: r.account_holder ?? '',
-        defaultAmount: r.default_amount == null ? null : Number(r.default_amount),
+        defaultAmount: r.default_amount == null ? null : financialReadNumber(r.default_amount),
         defaultAccountId: r.default_account_id ?? null,
         defaultAccountName: r.default_account_name ?? null,
         notApplicable: !!r.not_applicable,
         isDeclared: !!r.is_declared,
         lastVoucherDate: r.last_voucher_date ?? null,
-        voucherCount: Number(r.voucher_count ?? 0),
+        voucherCount: financialReadNumber(r.voucher_count),
       }));
     },
   });
@@ -113,7 +114,9 @@ export interface SaveFeeConfigArgs {
 export const useSaveFeeConfig = () => {
   const qc = useQueryClient();
   return useMutation({
+    meta:{handlesFeedback:true},
     mutationFn: async (a: SaveFeeConfigArgs) => {
+      if(a.defaultAmount!=null && (!Number.isFinite(a.defaultAmount)||a.defaultAmount<0))throw {code:'22023',message:'Số tiền phí không hợp lệ'};
       const clearAmount = a.defaultAmount === null;
       const clearProvider = a.providerCode === null;
       const { data, error } = await supabase.rpc('upsert_building_fee_account', {
@@ -130,8 +133,9 @@ export const useSaveFeeConfig = () => {
         p_clear_provider: clearProvider,
         p_clear_account: false,
       });
-      if (error) throw new Error(error.message);
-      return data as string;
+      if (error) throw error;
+      if(typeof data!=='string' || !data)throw new TypeError('Chưa xác nhận được mã cấu hình phí đã lưu.');
+      return data;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['fee-config-matrix'] });

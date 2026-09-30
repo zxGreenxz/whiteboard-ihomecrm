@@ -1,3 +1,4 @@
+import { QueryRegion } from '@/components/errors/QueryRegion';
 import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useCallback, useMemo, useState, lazy, Suspense } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -51,11 +52,12 @@ const CashbooksDesktop = () => {
   const [searchQuery, setSearchQuery] = usePersistedState("flt:cashbooks:searchQuery", "");
   const [searchInput, setSearchInput] = usePersistedState("flt:cashbooks:search", "");
 
-  const { data, isLoading } = useAccountsWithBalance({
+  const accountsQuery = useAccountsWithBalance({
     page: pagination.page,
     pageSize: pagination.pageSize,
     searchQuery,
   });
+  const {data,isLoading} = accountsQuery;
   const rows = data?.data ?? [];
   const totalCount = data?.totalCount ?? 0;
 
@@ -169,6 +171,7 @@ const CashbooksDesktop = () => {
 
       <CashbookClosingInbox autoOpenRequestId={confirmRequestId} />
 
+      <QueryRegion label="danh sách và số dư sổ quỹ" queries={[accountsQuery]}>
       <CashbookList
         rows={rows}
         isLoading={isLoading}
@@ -179,6 +182,7 @@ const CashbooksDesktop = () => {
         onDelete={(id) => setDeleteId(id)}
         onClose={handleClose}
       />
+      </QueryRegion>
     </div>
   );
 
@@ -209,6 +213,7 @@ const CashbooksDesktop = () => {
             <CashbookClosingInbox autoOpenRequestId={confirmRequestId} />
           </div>
 
+          <QueryRegion label="danh sách và số dư sổ quỹ" queries={[accountsQuery]}>
           <CashbookListMobile
             rows={rows}
             isLoading={isLoading}
@@ -217,6 +222,7 @@ const CashbooksDesktop = () => {
             onDelete={(id) => setDeleteId(id)}
             onClose={handleClose}
           />
+          </QueryRegion>
 
           {totalCount > pagination.pageSize && (
             <div className="px-3 pb-2 text-center text-xs text-muted-foreground">
@@ -312,7 +318,7 @@ const CashbooksDesktop = () => {
           <AlertDialogFooter>
             <AlertDialogCancel>Huỷ</AlertDialogCancel>
             <AlertDialogAction
-              onClick={confirmDelete}
+              disabled={deleteMut.isPending} onClick={(event) => {event.preventDefault(); void confirmDelete().catch(() => { /* useDeleteAccount owns feedback; keep confirmation open. */ });}}
               className="bg-red-600 hover:bg-red-700"
             >
               Xoá

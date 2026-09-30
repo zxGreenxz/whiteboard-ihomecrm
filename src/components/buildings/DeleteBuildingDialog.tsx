@@ -9,7 +9,6 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useDeleteBuilding } from '@/hooks/useBuildings';
-import { toast } from 'sonner';
 import type { BuildingWithRelations } from '@/types/building';
 
 interface DeleteBuildingDialogProps {
@@ -31,7 +30,6 @@ export function DeleteBuildingDialog({
     if (hasRooms) return;
     try {
       await deleteBuilding.mutateAsync(building.id);
-      toast.success('Dữ liệu đã được XOÁ thành công');
       onOpenChange(false);
     } catch {
       // Error handled by mutation hook

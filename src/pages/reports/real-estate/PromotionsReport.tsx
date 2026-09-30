@@ -22,10 +22,12 @@ export default function PromotionsReport() {
   const [dateRange, setDateRange] = usePersistedDateRange("flt:rpt-promotions:dateRange", undefined);
 
   useCopilotPageContext('reports.real-estate.promotions', { building_id: buildingId, from: dateRange?.from, to: dateRange?.to });
-  const { data: buildings } = useBuildings();
-  const { data: promotions, isLoading } = usePromotionsReport(
+  const buildingsQuery = useBuildings();
+  const { data: buildings } = buildingsQuery;
+  const reportQuery = usePromotionsReport(
     dateRange?.from, dateRange?.to, buildingId
   );
+  const { data: promotions, isLoading } = reportQuery;
 
   const formatCurrency = (amount: number) =>
     new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(amount);
@@ -72,6 +74,8 @@ export default function PromotionsReport() {
   return (
     <MainLayout>
       <ReportLayout
+        queries={[reportQuery]}
+        filterQueries={[buildingsQuery]}
         title="Báo cáo Khuyến mại"
         description="Danh sách hợp đồng có giảm giá, khuyến mại"
         icon={<Tag className="h-8 w-8" />}

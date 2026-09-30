@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { validateFirstBillingPeriod } from '@/lib/firstInvoiceBuilder';
+import { contractBillingBoundMessages } from '@/lib/contractBillingBounds';
 
 export const contractFormSchema = z.object({
   room_id: z.string().uuid('Vui lòng chọn phòng'),
@@ -28,6 +29,15 @@ export const contractFormSchema = z.object({
   (data) => new Date(data.end_date) > new Date(data.start_date),
   { message: 'Ngày kết thúc phải sau ngày bắt đầu', path: ['end_date'] }
 ).superRefine((data, ctx) => {
+  const bounds = contractBillingBoundMessages(data.start_date, data.end_date);
+  if (data.start_billing_date && data.start_date && data.start_billing_date < data.start_date) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['start_billing_date'],
+      message: bounds.start_billing_date });
+  }
+  if (data.end_billing_date && data.end_date && data.end_billing_date > data.end_date) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['end_billing_date'],
+      message: bounds.end_billing_date });
+  }
   // Kỳ tính tiền tháng đầu phải đủ tới hết tháng từ ngày bắt đầu tính tiền
   // (chỉ chặn khi quản lý đã chọn "Đến ngày").
   if (!data.end_billing_date) return;

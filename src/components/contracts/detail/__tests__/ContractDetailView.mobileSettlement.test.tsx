@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import ContractDetailView from '../ContractDetailView';
 import type { ContractTerminationInfo } from '@/hooks/contracts/useContractDetailData';
 import type { ReactNode } from 'react';
 
 const state = vi.hoisted(() => ({
+  contract: { data: { id: 'contract', contract_number: 'DEMO', status: 'TERMINATED', start_date: '2026-01-01', end_date: '2026-12-31', contract_customers: [], total_deposit: 2_000, deposit_paid: 2_000, deposit_remaining: 0 }, isLoading: false, isFetching: false, isError: false, error: null as unknown, refetch: vi.fn() },
   invoices: { data: [] as unknown[], isLoading: false, isFetching: false, isError: false },
   deposits: { data: [], isLoading: false, isFetching: false, isError: false },
   pending: { data: { refund: 0, forfeit: 0 }, isLoading: false, isFetching: false, isError: false },
@@ -22,9 +23,7 @@ vi.mock('@/hooks/useContractCommissionFollowup', () => ({
 }));
 vi.mock('@/hooks/useCommissionVoucher', () => ({ useRetryCommissionVoucher: () => ({ mutateAsync: vi.fn(), isPending: false }) }));
 vi.mock('@/hooks/useMyPermissions', () => ({ useMyPermissions: () => ({ data: {} }) }));
-vi.mock('@/hooks/useContracts', () => ({ useContract: () => ({ data: { id: 'contract', contract_number: 'DEMO',
-  status: 'TERMINATED', start_date: '2026-01-01', end_date: '2026-12-31', contract_customers: [],
-  total_deposit: 2_000, deposit_paid: 2_000, deposit_remaining: 0 }, isLoading: false }) }));
+vi.mock('@/hooks/useContracts', () => ({ useContract: () => state.contract }));
 vi.mock('@/hooks/useInvoices', () => ({ useInvoicesLegacy: () => state.invoices }));
 vi.mock('@/hooks/useBuildingServices', () => ({ useBuildingServices: () => ({ data: [], isLoading: false }) }));
 vi.mock('@/hooks/contracts/useContractDetailData', () => ({
@@ -59,6 +58,7 @@ vi.mock('@/components/contracts/DeleteContractDialog', () => ({ DeleteContractDi
 
 beforeEach(() => {
   viewport.mobile = true;
+  state.contract.error = null;
   state.invoices.data = [];
   state.pending.data = { refund: 0, forfeit: 0 };
   for (const query of Object.values(state)) { query.isLoading = false; query.isFetching = false; query.isError = false; }
@@ -148,4 +148,19 @@ it.each([true, false])('keeps commission read failures visible in the %s mobile 
   expect(within(panel).getByRole('alert').textContent).toContain('Không tải được');
   expect(within(panel).getByRole('button', { name: 'Tạo phiếu hoa hồng' }).parentElement?.nextElementSibling).toBe(within(panel).getByRole('alert'));
   if (mobile) expect(panel.closest('.mbody')).toBeTruthy();
+});
+
+it.each([true, false])('hides cached contract data after permission is revoked on mobile=%s', async mobile => {
+ viewport.mobile=mobile;state.contract.isError=true;state.contract.error={code:'42501',message:'permission denied'};
+ render(<MemoryRouter><ContractDetailView id="contract" onBack={()=>{}} /></MemoryRouter>);
+ expect(screen.getByText('Chưa tải được thông tin hợp đồng.')).toBeTruthy();
+ expect(screen.queryByText('DEMO')).toBeNull();
+ expect(screen.queryByRole('region',{name:'Nội dung thanh lý'})).toBeNull();
+ fireEvent.click(screen.getByRole('button',{name:'Tải lại'}));
+ await waitFor(()=>expect(state.contract.refetch).toHaveBeenCalled());
+});
+it('shows history read errors in its mobile tab without inventing an empty history',()=>{
+ state.history.isError=true;
+ show();fireEvent.click(screen.getByRole('button',{name:'Lịch sử'}));
+ expect(screen.getByText('Chưa tải được lịch sử hợp đồng.')).toBeTruthy();
 });

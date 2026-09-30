@@ -1,0 +1,922 @@
+{
+  "0f5833cc6cda7c7d": {
+    "status": "already-correct",
+    "file": "src/hooks/useContracts.ts",
+    "line": 127,
+    "owner": "useContracts",
+    "kind": "useQuery",
+    "evidence": "B14/I14: live GenerateInvoice dialog read is paged with created_at/id ordering, auth required, fetchAllRows fails closed on error/null; status filter preserved. Required contract source does not become empty on failed page; root contract list read regressions. Call reviewed: useQuery({ enabled: opts?.enabled ?? true, queryKey: opts?.statuses?.length ? [\"contracts\", { statuses: opts.statuses }] : [\"contracts\"], queryFn: async (): Promise<ContractWithRelations[]> => { const user = aw"
+  },
+  "21ac50eb68645223": {
+    "status": "background-only",
+    "file": "src/hooks/useContracts.ts",
+    "line": 374,
+    "owner": "fetchContractsPagedOnce",
+    "kind": "log",
+    "evidence": "B14/I14: error logged and thrown, required finite safe nonnegative count + financialReadRows; no count0/data[] fallback. Filter/ordering/RLS unchanged. Root list read tests; log is diagnostic only. Call reviewed: console.error(\"useContractsPaged error:\", error)"
+  },
+  "99f36a1625ac7865": {
+    "status": "already-correct",
+    "file": "src/hooks/useContracts.ts",
+    "line": 416,
+    "owner": "useContractsPaged",
+    "kind": "useQuery",
+    "evidence": "B14/I14: query spreads reviewed strict fetchContractsPagedOnce and keeps previous data; list UI owns loading/error/retry. Root list source tests; not a proof of every related contract DTO. Call reviewed: useQuery({ ...contractsPagedQuery(filters, pagination), // Giữ trang cũ khi đổi filter/trang để bảng không nhảy về \"Đang tải\". placeholderData: keepPreviousData, })"
+  },
+  "b3d48cb861aa8380": {
+    "status": "background-only",
+    "file": "src/hooks/useContracts.ts",
+    "line": 492,
+    "owner": "contractStatsQuery",
+    "kind": "log",
+    "evidence": "B14/I14: exact stats object and required finite money/count values, error cause thrown, never null=>0. Root23/23 stats/delete with11 RED→GREEN. Log remains diagnostic. Call reviewed: console.error(\"useContractStats error:\", error)"
+  },
+  "18d8b85ddf97df52": {
+    "status": "fixed",
+    "file": "src/hooks/useContracts.ts",
+    "line": 507,
+    "owner": "useContractStats",
+    "kind": "useQuery",
+    "evidence": "B14/I14: reviewed strict contractStatsQuery, error preserved through query; placeholder previous data not fabricated stats. Root stats/delete23/23. Call reviewed: useQuery({ ...contractStatsQuery(buildingIds), meta: { errorDisplay: 'inline', label: 'thống kê hợp đồng' }, placeholderData: keepPreviousData, })"
+  },
+  "b9af64ae92e4c292": {
+    "status": "fixed",
+    "file": "src/hooks/useContracts.ts",
+    "line": 534,
+    "owner": "useContractDashboardCounts",
+    "kind": "useQuery",
+    "evidence": "B14/I14: four authenticated exact HEAD counts, all errors thrown; confirmedContractCount rejects null/negative/unsafe values. Root stats/delete23/23, no missing count=>0. Call reviewed: useQuery({ queryKey: [\"contracts\", \"dashboard-counts\", buildingId ?? null], meta: { errorDisplay: 'inline', label: 'tổng quan hợp đồng' }, queryFn: async (): Promise<ContractDashboardCounts> => { const user = a"
+  },
+  "199a9ec3c28595a6": {
+    "status": "background-only",
+    "file": "src/hooks/useContracts.ts",
+    "line": 565,
+    "owner": "useContractDashboardCounts",
+    "kind": "log",
+    "evidence": "B14/I14: four authenticated exact HEAD counts, all errors thrown; confirmedContractCount rejects null/negative/unsafe values. Root stats/delete23/23, no missing count=>0. Call reviewed: console.error(\"useContractDashboardCounts error:\", r.error)"
+  },
+  "611aa1c18233920f": {
+    "status": "already-correct",
+    "file": "src/hooks/useContracts.ts",
+    "line": 587,
+    "owner": "useContract",
+    "kind": "useQuery",
+    "evidence": "B14: enabled exactID single-row read, auth required, RPC error logged+thrown to QueryProvider; caller cannot receive fake empty success after database error. This call decision covers feedback/error propagation, not full malformed DTO equality validation. Call reviewed: useQuery({ queryKey: [\"contracts\", id], queryFn: async (): Promise<ContractWithRelations | null> => { if (!id) return null; const user = await getSessionUser(); if (!user) throw new Error(\"Not authenticated\"); "
+  },
+  "37a70d09c2a721eb": {
+    "status": "background-only",
+    "file": "src/hooks/useContracts.ts",
+    "line": 602,
+    "owner": "useContract",
+    "kind": "log",
+    "evidence": "B14: enabled exactID single-row read, auth required, RPC error logged+thrown to QueryProvider; caller cannot receive fake empty success after database error. This call decision covers feedback/error propagation, not full malformed DTO equality validation. Call reviewed: console.error(\"useContract error:\", error)"
+  },
+  "4d0aab57ba79e07c": {
+    "status": "fixed",
+    "file": "src/hooks/useContracts.ts",
+    "line": 622,
+    "owner": "useCreateContract",
+    "kind": "useMutation",
+    "evidence": "B14: exact room/ACTIVE/ID + rent/deposit receipt at actual numeric(15,2), positive ID persisted before checks; wrong money2 RED→GREEN; create durable8 and money precision14/PGlite. Old signing requestID replay is allowed by SQL same-intent hash branch; signing regression7 includes oldkey. Call reviewed: useMutation({ mutationFn: async (request:ContractCreateRequest&{suppressErrorToast?:boolean}) => { // Local validation runs before the durable marker/writer. buildCreateContractRpcArgs(request); const roomId=re"
+  },
+  "17fd202149ea3f55": {
+    "status": "fixed",
+    "file": "src/hooks/useContracts.ts",
+    "line": 663,
+    "owner": "useCreateContract",
+    "kind": "notification",
+    "evidence": "B14: exact room/ACTIVE/ID + rent/deposit receipt at actual numeric(15,2), positive ID persisted before checks; wrong money2 RED→GREEN; create durable8 and money precision14/PGlite. Old signing requestID replay is allowed by SQL same-intent hash branch; signing regression7 includes oldkey. Call reviewed: toast.success(`Đã tạo hợp đồng ${contract.contract_number}`)"
+  },
+  "8374dabe3a7cf64a": {
+    "status": "fixed",
+    "file": "src/hooks/useContracts.ts",
+    "line": 667,
+    "owner": "useCreateContract",
+    "kind": "notification",
+    "evidence": "B14: exact room/ACTIVE/ID + rent/deposit receipt at actual numeric(15,2), positive ID persisted before checks; wrong money2 RED→GREEN; create durable8 and money precision14/PGlite. Old signing requestID replay is allowed by SQL same-intent hash branch; signing regression7 includes oldkey. Call reviewed: toast.success('Đã tạo hợp đồng')"
+  },
+  "7133077675b7b2fd": {
+    "status": "fixed",
+    "file": "src/hooks/useContracts.ts",
+    "line": 670,
+    "owner": "useCreateContract",
+    "kind": "notification",
+    "evidence": "B14: exact room/ACTIVE/ID + rent/deposit receipt at actual numeric(15,2), positive ID persisted before checks; wrong money2 RED→GREEN; create durable8 and money precision14/PGlite. Old signing requestID replay is allowed by SQL same-intent hash branch; signing regression7 includes oldkey. Call reviewed: toast.success(name?`Đã tạo hợp đồng cho phòng ${name}`:'Đã tạo hợp đồng')"
+  },
+  "9683d7f7d951d36d": {
+    "status": "background-only",
+    "file": "src/hooks/useContracts.ts",
+    "line": 676,
+    "owner": "useCreateContract",
+    "kind": "log",
+    "evidence": "B14: exact room/ACTIVE/ID + rent/deposit receipt at actual numeric(15,2), positive ID persisted before checks; wrong money2 RED→GREEN; create durable8 and money precision14/PGlite. Old signing requestID replay is allowed by SQL same-intent hash branch; signing regression7 includes oldkey. Call reviewed: console.error(\"Error creating contract:\", error)"
+  },
+  "7ce1c5440ca61472": {
+    "status": "fixed",
+    "file": "src/hooks/useContracts.ts",
+    "line": 678,
+    "owner": "useCreateContract",
+    "kind": "notification",
+    "evidence": "B14: exact room/ACTIVE/ID + rent/deposit receipt at actual numeric(15,2), positive ID persisted before checks; wrong money2 RED→GREEN; create durable8 and money precision14/PGlite. Old signing requestID replay is allowed by SQL same-intent hash branch; signing regression7 includes oldkey. Call reviewed: toast.error(fe.title, { description: fe.description, ...(isContractTemplateSettingError(error) ? { action: { label: 'Mở mẫu tài liệu', onClick: () => window.open('/settings/templates', '_blank', 'noopener,noref"
+  },
+  "137e4d58263a2f72": {
+    "status": "fixed",
+    "file": "src/hooks/useContracts.ts",
+    "line": 696,
+    "owner": "useUpdateContract",
+    "kind": "useMutation",
+    "evidence": "useUpdateContract src/hooks/useContracts.ts:687. B15: update exact core receipt; confirmed DELETE array/phase trước INSERT, exact relation ack, coordinator durable actor/contractID + authoritative read/no unknown replay. controller14 + hook8. Final12files93/93 tmp-contract-durable-final.json; E2E chưa kiểm. Call reviewed: useMutation({ mutationFn: async ({ id, updates, }: { id: string; updates: UpdateContractPayload; suppressSuccessToast?: boolean; }) => { const user = await getSessionUser(); if (!user) throw new Error(\"Not auth"
+  },
+  "d80adb4f8edb43d0": {
+    "status": "fixed",
+    "file": "src/hooks/useContracts.ts",
+    "line": 724,
+    "owner": "useUpdateContract",
+    "kind": "notification",
+    "evidence": "useUpdateContract src/hooks/useContracts.ts:715. B15: update exact core receipt; confirmed DELETE array/phase trước INSERT, exact relation ack, coordinator durable actor/contractID + authoritative read/no unknown replay. controller14 + hook8. Final12files93/93 tmp-contract-durable-final.json; E2E chưa kiểm. Call reviewed: toast.success(data.contract_number ? `Đã cập nhật hợp đồng ${data.contract_number}` : 'Đã cập nhật hợp đồng')"
+  },
+  "43dd1b299cd64dcb": {
+    "status": "background-only",
+    "file": "src/hooks/useContracts.ts",
+    "line": 728,
+    "owner": "useUpdateContract",
+    "kind": "log",
+    "evidence": "useUpdateContract src/hooks/useContracts.ts:719. B15: update exact core receipt; confirmed DELETE array/phase trước INSERT, exact relation ack, coordinator durable actor/contractID + authoritative read/no unknown replay. controller14 + hook8. Final12files93/93 tmp-contract-durable-final.json; E2E chưa kiểm. Call reviewed: console.error(\"Error updating contract:\", error)"
+  },
+  "bee3524f88014775": {
+    "status": "fixed",
+    "file": "src/hooks/useContracts.ts",
+    "line": 730,
+    "owner": "useUpdateContract",
+    "kind": "notification",
+    "evidence": "useUpdateContract src/hooks/useContracts.ts:721. B15: update exact core receipt; confirmed DELETE array/phase trước INSERT, exact relation ack, coordinator durable actor/contractID + authoritative read/no unknown replay. controller14 + hook8. Final12files93/93 tmp-contract-durable-final.json; E2E chưa kiểm. Call reviewed: toast.error(feedback.title, { description: feedback.description })"
+  },
+  "2a7e7e2613099a67": {
+    "status": "fixed",
+    "file": "src/hooks/useContracts.ts",
+    "line": 745,
+    "owner": "useSyncContractCustomers",
+    "kind": "useMutation",
+    "evidence": "useSyncContractCustomers src/hooks/useContracts.ts:736. B15: update exact core receipt; confirmed DELETE array/phase trước INSERT, exact relation ack, coordinator durable actor/contractID + authoritative read/no unknown replay. controller14 + hook8. Final12files93/93 tmp-contract-durable-final.json; E2E chưa kiểm. Call reviewed: useMutation({ mutationFn: async ({ contractId, customers, organizationId,skipDelete,onPhase, }: { contractId: string; customers: Array<{ customer_id: string; is_representative: boolean; notes?: string | null; }"
+  },
+  "349a53e00a5385d2": {
+    "status": "fixed",
+    "file": "src/hooks/useContracts.ts",
+    "line": 802,
+    "owner": "useSyncContractServices",
+    "kind": "useMutation",
+    "evidence": "useSyncContractServices src/hooks/useContracts.ts:793. B15: update exact core receipt; confirmed DELETE array/phase trước INSERT, exact relation ack, coordinator durable actor/contractID + authoritative read/no unknown replay. controller14 + hook8. Final12files93/93 tmp-contract-durable-final.json; E2E chưa kiểm. Service receipt required unit_price through financialReadNumber; null/false/blank price cannot become zero (3 RED→GREEN; writer tests11). Service receipt required unit_price through financialReadNumber; null/false/blank price cannot become zero (3 RED→GREEN; writer tests11). Service receipt required unit_price through financialReadNumber; null/false/blank price cannot become zero (3 RED→GREEN; writer tests11). Service receipt required unit_price through financialReadNumber; null/false/blank price cannot become zero (3 RED→GREEN; writer tests11). Service receipt required unit_price through financialReadNumber; null/false/blank price cannot become zero (3 RED→GREEN; writer tests11). Service receipt required unit_price through financialReadNumber; null/false/blank price cannot become zero (3 RED→GREEN; writer tests11). Call reviewed: useMutation({ mutationFn: async ({ contractId, services, organizationId,skipDelete,onPhase, }: { contractId: string; services: Array<{ service_id: string; unit_price: number; initial_reading?: number | null; }>"
+  },
+  "db7a8c504a5c39ce": {
+    "status": "fixed",
+    "file": "src/hooks/useContracts.ts",
+    "line": 855,
+    "owner": "useDeleteContract",
+    "kind": "useMutation",
+    "evidence": "B14: required preflight invoices/terminations lists; exact ID/contract number/valid deleted_at receipt precedes success; safe operation error, draft reason preserved by root DeleteContractDialog. Root23/23 stats/delete11 RED→GREEN and lateform75/75. Call reviewed: useMutation({ mutationFn: async (contractId: string) => { const user = await getSessionUser(); if (!user) throw new Error(\"Not authenticated\"); // Check for associated invoices const { data: invoices, error: in"
+  },
+  "9eeac37bbb08579c": {
+    "status": "fixed",
+    "file": "src/hooks/useContracts.ts",
+    "line": 904,
+    "owner": "useDeleteContract",
+    "kind": "notification",
+    "evidence": "B14: required preflight invoices/terminations lists; exact ID/contract number/valid deleted_at receipt precedes success; safe operation error, draft reason preserved by root DeleteContractDialog. Root23/23 stats/delete11 RED→GREEN and lateform75/75. Call reviewed: toast.success(`Đã xóa hợp đồng ${deleted.contract_number || deleted.id.slice(0, 8)}.`)"
+  },
+  "de377cf12f6eaa85": {
+    "status": "background-only",
+    "file": "src/hooks/useContracts.ts",
+    "line": 907,
+    "owner": "useDeleteContract",
+    "kind": "log",
+    "evidence": "B14: required preflight invoices/terminations lists; exact ID/contract number/valid deleted_at receipt precedes success; safe operation error, draft reason preserved by root DeleteContractDialog. Root23/23 stats/delete11 RED→GREEN and lateform75/75. Call reviewed: console.error(\"Error deleting contract:\", error)"
+  },
+  "5e2ccffc1c8bb85a": {
+    "status": "fixed",
+    "file": "src/hooks/useContracts.ts",
+    "line": 909,
+    "owner": "useDeleteContract",
+    "kind": "notification",
+    "evidence": "B14: required preflight invoices/terminations lists; exact ID/contract number/valid deleted_at receipt precedes success; safe operation error, draft reason preserved by root DeleteContractDialog. Root23/23 stats/delete11 RED→GREEN and lateform75/75. Call reviewed: toast.error(feedback.title, { description: feedback.description })"
+  },
+  "75477323f6abe662": {
+    "status": "already-correct",
+    "file": "src/hooks/useContracts.ts",
+    "line": 1056,
+    "owner": "useContractsLegacy",
+    "kind": "useQuery",
+    "evidence": "B14/I14: live IncomeExpenseForm uses room-scoped enabled read, soft-delete filter preserved; error thrown and required array rejects null instead of fabricated no-contract. Read source observed; not unused. Call reviewed: useQuery({ enabled: options?.enabled ?? true, queryKey: [\"contracts-legacy\", filters], queryFn: async (): Promise<LegacyContractWithRelations[]> => { const user = await getSessionUser(); if (!user) throw new Er"
+  },
+  "4c966c96687bf76b": {
+    "status": "background-only",
+    "file": "src/hooks/useContracts.ts",
+    "line": 1087,
+    "owner": "useContractsLegacy",
+    "kind": "log",
+    "evidence": "B14/I14: live IncomeExpenseForm uses room-scoped enabled read, soft-delete filter preserved; error thrown and required array rejects null instead of fabricated no-contract. Read source observed; not unused. Call reviewed: console.error(\"useContractsLegacy error:\", error)"
+  },
+  "764e8c651339b3db": {
+    "status": "fixed",
+    "file": "src/hooks/useContracts.ts",
+    "line": 1104,
+    "owner": "useUnpaidInvoices",
+    "kind": "useQuery",
+    "evidence": "B18: live TerminateDialog contractID-gated read; financialReadRows and required finite total/paid/remaining reject null/blank/bool, real0 allowed. Root contract list readonly tests11; incomplete debt source cannot become no debt. Call reviewed: useQuery({ queryKey: [\"unpaid-invoices\", contractId], queryFn: async () => { if (!contractId) return []; const user = await getSessionUser(); if (!user) throw new Error(\"Not authenticated\"); const { data, error"
+  },
+  "c2c6b95e7094cf6c": {
+    "status": "unused",
+    "file": "src/hooks/useContracts.ts",
+    "line": 1198,
+    "owner": "usePendingTerminations",
+    "kind": "useQuery",
+    "evidence": "B17: deprecated export definition-only in non-test src rg (same as useBulkCreateContracts); unreachable old data||[] remains explicitly unused, not repaired or counted as live coverage. Call reviewed: useQuery({ queryKey: [\"pending-terminations\"], queryFn: async () => { const user = await getSessionUser(); if (!user) throw new Error(\"Not authenticated\"); const { data, error } = await supabase .from(\"contract"
+  },
+  "19e66f6a1974175a": {
+    "status": "unused",
+    "file": "src/hooks/useContracts.ts",
+    "line": 1368,
+    "owner": "useBulkCreateContracts",
+    "kind": "useMutation",
+    "evidence": "B21 rg non-test source finds only deprecated useBulkCreateContracts definition; live import is ContractImportExportDialog now uses contractImportWorkflow. No live caller or automated completion of legacy import. Call reviewed: useMutation({ mutationFn: async ({ building_id, contracts: rows, }: { building_id: string; contracts: BulkContractImportRow[]; }) => { const user = await getSessionUser(); if (!user) throw new Error(\"Not authen"
+  },
+  "71282ab083a2e1db": {
+    "status": "unused",
+    "file": "src/hooks/useContracts.ts",
+    "line": 1515,
+    "owner": "useBulkCreateContracts",
+    "kind": "notification",
+    "evidence": "B21 rg non-test source finds only deprecated useBulkCreateContracts definition; live import is ContractImportExportDialog now uses contractImportWorkflow. No live caller or automated completion of legacy import. Call reviewed: toast.error(`Đã nhập ${results.success} hợp đồng; ${results.failed} dòng cần kiểm tra. Đối chiếu ID hợp đồng đã tạo trước khi nhập lại.`)"
+  },
+  "39f78a65b6b9094b": {
+    "status": "unused",
+    "file": "src/hooks/useContracts.ts",
+    "line": 1517,
+    "owner": "useBulkCreateContracts",
+    "kind": "notification",
+    "evidence": "B21 rg non-test source finds only deprecated useBulkCreateContracts definition; live import is ContractImportExportDialog now uses contractImportWorkflow. No live caller or automated completion of legacy import. Call reviewed: toast.success( `Đã tạo ${results.success} hợp đồng.${results.failed > 0 ? ` ${results.failed} thất bại.` : \"\"}` )"
+  },
+  "fec6cfa3fdd7ab5b": {
+    "status": "unused",
+    "file": "src/hooks/useContracts.ts",
+    "line": 1524,
+    "owner": "useBulkCreateContracts",
+    "kind": "notification",
+    "evidence": "B21 rg non-test source finds only deprecated useBulkCreateContracts definition; live import is ContractImportExportDialog now uses contractImportWorkflow. No live caller or automated completion of legacy import. Call reviewed: toast.error(feedback.title, { description: feedback.description })"
+  },
+  "c7e181004258d05a": {
+    "status": "already-correct",
+    "file": "src/hooks/contracts/useContractSigning.ts",
+    "line": 15,
+    "owner": "useContractDraftSigning",
+    "kind": "useQuery",
+    "evidence": "useContractDraftSigning src/hooks/contracts/useContractSigning.ts:15. B14: full snapshot DTO required; signing:null là true not-signed, error không giả null. Source read schema và signing API tests. Final12files93/93 tmp-contract-durable-final.json; E2E chưa kiểm. Call reviewed: useQuery({ queryKey: ['contract-draft-signing', selectedOrganizationId, draftId], enabled: enabled && !!selectedOrganizationId && !!draftId, retry: false, refetchOnWindowFocus: true, queryFn: () => { if (!selec"
+  },
+  "4780ed49c3a068d8": {
+    "status": "fixed",
+    "file": "src/hooks/contracts/useContractSigning.ts",
+    "line": 34,
+    "owner": "useContractSigning",
+    "kind": "useMutation",
+    "evidence": "useContractSigning src/hooks/contracts/useContractSigning.ts:34. B14: persisted requestKey trước writer; exact source/ID và readonly pending-key recovery, null/wrong key no replay; raw Error suppressed; real DateInput manual invalid giữ raw/focus. signing durable6 (6RED→GREEN), signing DOM14. Final12files93/93 tmp-contract-durable-final.json; E2E chưa kiểm. Call reviewed: useMutation({mutationFn:async(input?:ContractSigningInput)=>{ if(!selectedOrganizationId||selectedOrganizationId!==organizationId)throw new FinancialWorkflowError('Tổ chức đang chọn đã đổi. Mở lại bản nháp tron"
+  },
+  "aedf81c166c1ebdd": {
+    "status": "fixed",
+    "file": "src/hooks/contracts/useContractSigning.ts",
+    "line": 55,
+    "owner": "useContractSigning",
+    "kind": "notification",
+    "evidence": "useContractSigning src/hooks/contracts/useContractSigning.ts:55. B14: persisted requestKey trước writer; exact source/ID và readonly pending-key recovery, null/wrong key no replay; raw Error suppressed; real DateInput manual invalid giữ raw/focus. signing durable6 (6RED→GREEN), signing DOM14. Final12files93/93 tmp-contract-durable-final.json; E2E chưa kiểm. Call reviewed: toast.success(`Đã ghi nhận ký và nhận phòng · ${signing.contract_number}`)"
+  },
+  "fa47e8f679cbf314": {
+    "status": "fixed",
+    "file": "src/hooks/contracts/useContractSigning.ts",
+    "line": 56,
+    "owner": "useContractSigning",
+    "kind": "notification",
+    "evidence": "useContractSigning src/hooks/contracts/useContractSigning.ts:56. B14: persisted requestKey trước writer; exact source/ID và readonly pending-key recovery, null/wrong key no replay; raw Error suppressed; real DateInput manual invalid giữ raw/focus. signing durable6 (6RED→GREEN), signing DOM14. Final12files93/93 tmp-contract-durable-final.json; E2E chưa kiểm. Call reviewed: toast.error(signingErrorMessage(error))"
+  },
+  "75c626a3c267d90f": {
+    "status": "fixed",
+    "file": "src/hooks/contracts/useContractSigning.ts",
+    "line": 62,
+    "owner": "useSignedContractDocument",
+    "kind": "useMutation",
+    "evidence": "useSignedContractDocument src/hooks/contracts/useContractSigning.ts:62. B14: signed contract giữ nguyên khi artifact render/upload fail; immutable path/hash adopt read; chỉ download retry, no sign RPC. contractSigningApi5 + DOMdownload. Final12files93/93 tmp-contract-durable-final.json; E2E chưa kiểm. Call reviewed: useMutation({ mutationFn: (signing: ContractSigning) => { if (!selectedOrganizationId || selectedOrganizationId !== organizationId || signing.organization_id !== organizationId) throw new Error('Tổ chức đang ch"
+  },
+  "f179699c8d1844fa": {
+    "status": "fixed",
+    "file": "src/hooks/contracts/useContractSigning.ts",
+    "line": 68,
+    "owner": "useSignedContractDocument",
+    "kind": "notification",
+    "evidence": "useSignedContractDocument src/hooks/contracts/useContractSigning.ts:68. B14: signed contract giữ nguyên khi artifact render/upload fail; immutable path/hash adopt read; chỉ download retry, no sign RPC. contractSigningApi5 + DOMdownload. Final12files93/93 tmp-contract-durable-final.json; E2E chưa kiểm. Call reviewed: toast.error(`Hợp đồng vẫn đã ký. Chưa tạo được bản tải: ${signingErrorMessage(error)}`)"
+  },
+  "7c3c93105cfc0713": {
+    "status": "fixed",
+    "file": "src/hooks/useContractOperations.ts",
+    "line": 37,
+    "owner": "useRenewContract",
+    "kind": "useMutation",
+    "evidence": "B16 live: only RenewDialog/TransferRoomDialog call this hook. Actor/globalcontract same namespace; progress.requestKey sent as p_request_id; UUID persisted before read; exact core + request event/org/operation/notice/date/room/money required before success, no replay after unknown/remount/orgswitch. Hook10 RED→GREEN + real SQL adapter6 + RenewDialog1. Receipt comparison numeric(15,2) preserves backend rounding. tmp-contract-receipt-cross-review-final.json73/73. Call reviewed: useMutation({ retry:false, meta:{handlesFeedback:true}, mutationFn: async (params: RenewNoticeInput) => { if(!selectedOrganizationId) throw new Error('Chưa chọn tổ chức'); const args=buildRenewNoticeArgs(params"
+  },
+  "4af333ceb19e8054": {
+    "status": "fixed",
+    "file": "src/hooks/useContractOperations.ts",
+    "line": 60,
+    "owner": "useRenewContract",
+    "kind": "notification",
+    "evidence": "B16 live: only RenewDialog/TransferRoomDialog call this hook. Actor/globalcontract same namespace; progress.requestKey sent as p_request_id; UUID persisted before read; exact core + request event/org/operation/notice/date/room/money required before success, no replay after unknown/remount/orgswitch. Hook10 RED→GREEN + real SQL adapter6 + RenewDialog1. Receipt comparison numeric(15,2) preserves backend rounding. tmp-contract-receipt-cross-review-final.json73/73. Call reviewed: toast.success(`Đã gia hạn hợp đồng ${receipt.contractNumber} đến ${receipt.endDate.split('-').reverse().join('/')}.`)"
+  },
+  "4516f2263ed43651": {
+    "status": "background-only",
+    "file": "src/hooks/useContractOperations.ts",
+    "line": 63,
+    "owner": "useRenewContract",
+    "kind": "log",
+    "evidence": "B16 live: only RenewDialog/TransferRoomDialog call this hook. Actor/globalcontract same namespace; progress.requestKey sent as p_request_id; UUID persisted before read; exact core + request event/org/operation/notice/date/room/money required before success, no replay after unknown/remount/orgswitch. Hook10 RED→GREEN + real SQL adapter6 + RenewDialog1. Receipt comparison numeric(15,2) preserves backend rounding. tmp-contract-receipt-cross-review-final.json73/73. Call reviewed: console.error(\"Error renewing contract:\", error)"
+  },
+  "577e10f6f4230ad3": {
+    "status": "fixed",
+    "file": "src/hooks/useContractOperations.ts",
+    "line": 65,
+    "owner": "useRenewContract",
+    "kind": "notification",
+    "evidence": "B16 live: only RenewDialog/TransferRoomDialog call this hook. Actor/globalcontract same namespace; progress.requestKey sent as p_request_id; UUID persisted before read; exact core + request event/org/operation/notice/date/room/money required before success, no replay after unknown/remount/orgswitch. Hook10 RED→GREEN + real SQL adapter6 + RenewDialog1. Receipt comparison numeric(15,2) preserves backend rounding. tmp-contract-receipt-cross-review-final.json73/73. Call reviewed: toast.error(workflowErrorMessage(error,'gia hạn hợp đồng'))"
+  },
+  "1c79045ad95e591c": {
+    "status": "fixed",
+    "file": "src/hooks/useContractOperations.ts",
+    "line": 80,
+    "owner": "useTransferRoom",
+    "kind": "useMutation",
+    "evidence": "B16 live: only RenewDialog/TransferRoomDialog call this hook. Actor/globalcontract same namespace; progress.requestKey sent as p_request_id; UUID persisted before read; exact core + request event/org/operation/notice/date/room/money required before success, no replay after unknown/remount/orgswitch. Hook10 RED→GREEN + real SQL adapter6 + RenewDialog1. Receipt comparison numeric(15,2) preserves backend rounding. tmp-contract-receipt-cross-review-final.json73/73. Call reviewed: useMutation({ retry:false, meta:{handlesFeedback:true}, mutationFn: async (params: TransferRoomNoticeInput) => { if(!selectedOrganizationId) throw new Error('Chưa chọn tổ chức'); const args=buildTransferRoomNot"
+  },
+  "ab7401530a422ed9": {
+    "status": "fixed",
+    "file": "src/hooks/useContractOperations.ts",
+    "line": 102,
+    "owner": "useTransferRoom",
+    "kind": "notification",
+    "evidence": "B16 live: only RenewDialog/TransferRoomDialog call this hook. Actor/globalcontract same namespace; progress.requestKey sent as p_request_id; UUID persisted before read; exact core + request event/org/operation/notice/date/room/money required before success, no replay after unknown/remount/orgswitch. Hook10 RED→GREEN + real SQL adapter6 + RenewDialog1. Receipt comparison numeric(15,2) preserves backend rounding. tmp-contract-receipt-cross-review-final.json73/73. Call reviewed: toast.success(`Đã chuyển hợp đồng ${receipt.contractNumber} sang phòng ${receipt.roomName}.`)"
+  },
+  "de8666899824d5bd": {
+    "status": "background-only",
+    "file": "src/hooks/useContractOperations.ts",
+    "line": 105,
+    "owner": "useTransferRoom",
+    "kind": "log",
+    "evidence": "B16 live: only RenewDialog/TransferRoomDialog call this hook. Actor/globalcontract same namespace; progress.requestKey sent as p_request_id; UUID persisted before read; exact core + request event/org/operation/notice/date/room/money required before success, no replay after unknown/remount/orgswitch. Hook10 RED→GREEN + real SQL adapter6 + RenewDialog1. Receipt comparison numeric(15,2) preserves backend rounding. tmp-contract-receipt-cross-review-final.json73/73. Call reviewed: console.error(\"Error transferring room:\", error)"
+  },
+  "61fbc94904fe2599": {
+    "status": "fixed",
+    "file": "src/hooks/useContractOperations.ts",
+    "line": 107,
+    "owner": "useTransferRoom",
+    "kind": "notification",
+    "evidence": "B16 live: only RenewDialog/TransferRoomDialog call this hook. Actor/globalcontract same namespace; progress.requestKey sent as p_request_id; UUID persisted before read; exact core + request event/org/operation/notice/date/room/money required before success, no replay after unknown/remount/orgswitch. Hook10 RED→GREEN + real SQL adapter6 + RenewDialog1. Receipt comparison numeric(15,2) preserves backend rounding. tmp-contract-receipt-cross-review-final.json73/73. Call reviewed: toast.error(workflowErrorMessage(error,'chuyển phòng'))"
+  },
+  "cad4ae9613c8a78e": {
+    "status": "unused",
+    "file": "src/hooks/useContractOperations.ts",
+    "line": 127,
+    "owner": "useTransferContract",
+    "kind": "useMutation",
+    "evidence": "B16 rg non-test source found definition-only useContractOperations export; actual transfer/termination live flows use separate controllers/hooks. Legacy callback not part of reachable form path. No automatic completion claim for other lifecycle files. Call reviewed: useMutation({ mutationFn: async (params: { contractId: string; newCustomerId: string; newRentPrice?: number; newDeposit?: number; transferDate: string; notes?: string; }) => { const { data, error } = await supa"
+  },
+  "f9e3d62ec3a40c03": {
+    "status": "unused",
+    "file": "src/hooks/useContractOperations.ts",
+    "line": 154,
+    "owner": "useTransferContract",
+    "kind": "notification",
+    "evidence": "B16 rg non-test source found definition-only useContractOperations export; actual transfer/termination live flows use separate controllers/hooks. Legacy callback not part of reachable form path. No automatic completion claim for other lifecycle files. Call reviewed: toast.success(\"Nhượng hợp đồng thành công\")"
+  },
+  "9ea833619220d863": {
+    "status": "unused",
+    "file": "src/hooks/useContractOperations.ts",
+    "line": 157,
+    "owner": "useTransferContract",
+    "kind": "log",
+    "evidence": "B16 rg non-test source found definition-only useContractOperations export; actual transfer/termination live flows use separate controllers/hooks. Legacy callback not part of reachable form path. No automatic completion claim for other lifecycle files. Call reviewed: console.error(\"Error transferring contract:\", error)"
+  },
+  "ab7149182236674b": {
+    "status": "unused",
+    "file": "src/hooks/useContractOperations.ts",
+    "line": 171,
+    "owner": "useTerminateForfeit",
+    "kind": "useMutation",
+    "evidence": "B16 rg non-test source found definition-only useContractOperations export; actual transfer/termination live flows use separate controllers/hooks. Legacy callback not part of reachable form path. No automatic completion claim for other lifecycle files. Call reviewed: useMutation({ mutationFn: async (params: { contractId: string; forfeitDate: string; extraCharges?: ExtraChargeItem[]; }) => { const request = prepareCustomerCreditRequest(\"contract-forfeit\"); return invokeCusto"
+  },
+  "ea15f73ed7c3eab4": {
+    "status": "unused",
+    "file": "src/hooks/useContractOperations.ts",
+    "line": 195,
+    "owner": "useTerminateForfeit",
+    "kind": "notification",
+    "evidence": "B16 rg non-test source found definition-only useContractOperations export; actual transfer/termination live flows use separate controllers/hooks. Legacy callback not part of reachable form path. No automatic completion claim for other lifecycle files. Call reviewed: toast.success(\"Đã thanh lý (bỏ cọc) — xong, không cần duyệt thêm\", { description: \"Cọc khách bỏ đã vào doanh thu và hoá đơn thanh lý đã tất toán. Sổ quỹ không đổi vì đây là bút toán nội bộ.\", duration: 8000, })"
+  },
+  "bfa36d328873e206": {
+    "status": "unused",
+    "file": "src/hooks/useContractOperations.ts",
+    "line": 202,
+    "owner": "useTerminateForfeit",
+    "kind": "log",
+    "evidence": "B16 rg non-test source found definition-only useContractOperations export; actual transfer/termination live flows use separate controllers/hooks. Legacy callback not part of reachable form path. No automatic completion claim for other lifecycle files. Call reviewed: console.error(\"Error terminating contract (forfeit):\", error)"
+  },
+  "b8cd764d4c2b80c7": {
+    "status": "unused",
+    "file": "src/hooks/useContractOperations.ts",
+    "line": 216,
+    "owner": "useTerminateMoveOut",
+    "kind": "useMutation",
+    "evidence": "B16 rg non-test source found definition-only useContractOperations export; actual transfer/termination live flows use separate controllers/hooks. Legacy callback not part of reachable form path. No automatic completion claim for other lifecycle files. Call reviewed: useMutation({ mutationFn: async (params: { contractId: string; moveOutDate: string; depositRefund: number; penaltyFee?: number; excessRent?: number; outstandingDebt?: number; notes?: string; extraCharges?: Extr"
+  },
+  "c57b8d8f38fcde03": {
+    "status": "unused",
+    "file": "src/hooks/useContractOperations.ts",
+    "line": 256,
+    "owner": "useTerminateMoveOut",
+    "kind": "notification",
+    "evidence": "B16 rg non-test source found definition-only useContractOperations export; actual transfer/termination live flows use separate controllers/hooks. Legacy callback not part of reachable form path. No automatic completion claim for other lifecycle files. Call reviewed: toast.success(\"Thanh lý hợp đồng thành công\")"
+  },
+  "1850509ea5426b16": {
+    "status": "unused",
+    "file": "src/hooks/useContractOperations.ts",
+    "line": 259,
+    "owner": "useTerminateMoveOut",
+    "kind": "log",
+    "evidence": "B16 rg non-test source found definition-only useContractOperations export; actual transfer/termination live flows use separate controllers/hooks. Legacy callback not part of reachable form path. No automatic completion claim for other lifecycle files. Call reviewed: console.error(\"Error terminating contract (move out):\", error)"
+  },
+  "f8c05dbb737e3689": {
+    "status": "fixed",
+    "file": "src/components/contracts/contract-form/useContractSubmit.ts",
+    "line": 92,
+    "owner": "useContractSubmit",
+    "kind": "notification",
+    "evidence": "B14/B15 current call reviewed: form preflight source/finite/input draft/field guards precede writer; edit core+relation phase snapshots survive remount and reconcile only confirmed missing steps; single-owner create error/stale cọc branch leaves form open, exact IDs in partial feedback. Contract final93/93 original12files + receipt cross-review73/73; sourceIssues retry typing strict preserved. Each validation notification below was inspected with its enclosing condition. Call reviewed: toast.error('Chưa thể lưu hợp đồng', { description: `Cần tải lại ${labels} để đối chiếu dữ liệu.` })"
+  },
+  "0af9226956e92dc1": {
+    "status": "fixed",
+    "file": "src/components/contracts/contract-form/useContractSubmit.ts",
+    "line": 100,
+    "owner": "useContractSubmit",
+    "kind": "notification",
+    "evidence": "B14/B15 current call reviewed: form preflight source/finite/input draft/field guards precede writer; edit core+relation phase snapshots survive remount and reconcile only confirmed missing steps; single-owner create error/stale cọc branch leaves form open, exact IDs in partial feedback. Contract final93/93 original12files + receipt cross-review73/73; sourceIssues retry typing strict preserved. Each validation notification below was inspected with its enclosing condition. Call reviewed: toast.error('Chưa thể lưu hợp đồng',{description:'Kiểm tra các lần cọc và dòng dịch vụ được đánh dấu đỏ.'})"
+  },
+  "2bcee12221e40b66": {
+    "status": "fixed",
+    "file": "src/components/contracts/contract-form/useContractSubmit.ts",
+    "line": 116,
+    "owner": "useContractSubmit",
+    "kind": "notification",
+    "evidence": "B14/B15 current call reviewed: form preflight source/finite/input draft/field guards precede writer; edit core+relation phase snapshots survive remount and reconcile only confirmed missing steps; single-owner create error/stale cọc branch leaves form open, exact IDs in partial feedback. Contract final93/93 original12files + receipt cross-review73/73; sourceIssues retry typing strict preserved. Each validation notification below was inspected with its enclosing condition. Call reviewed: toast.error(\"Không thể lưu hợp đồng\", { description: \"Vui lòng chọn ít nhất một khách hàng cho hợp đồng.\", })"
+  },
+  "8f5c87b407feed66": {
+    "status": "fixed",
+    "file": "src/components/contracts/contract-form/useContractSubmit.ts",
+    "line": 189,
+    "owner": "useContractSubmit",
+    "kind": "notification",
+    "evidence": "B14/B15 current call reviewed: form preflight source/finite/input draft/field guards precede writer; edit core+relation phase snapshots survive remount and reconcile only confirmed missing steps; single-owner create error/stale cọc branch leaves form open, exact IDs in partial feedback. Contract final93/93 original12files + receipt cross-review73/73; sourceIssues retry typing strict preserved. Each validation notification below was inspected with its enclosing condition. Call reviewed: toast.success('Đã cập nhật hợp đồng và đồng bộ khách hàng, dịch vụ')"
+  },
+  "4902e0e95ec98431": {
+    "status": "fixed",
+    "file": "src/components/contracts/contract-form/useContractSubmit.ts",
+    "line": 190,
+    "owner": "useContractSubmit",
+    "kind": "notification",
+    "evidence": "B14/B15 current call reviewed: form preflight source/finite/input draft/field guards precede writer; edit core+relation phase snapshots survive remount and reconcile only confirmed missing steps; single-owner create error/stale cọc branch leaves form open, exact IDs in partial feedback. Contract final93/93 original12files + receipt cross-review73/73; sourceIssues retry typing strict preserved. Each validation notification below was inspected with its enclosing condition. Call reviewed: toast.error('Đã đồng bộ xong; thay đổi mới trong form chưa lưu',{description:`ID hợp đồng: ${contract.id}. Bấm Cập nhật để lưu các thay đổi bạn nhập sau lần trước.`})"
+  },
+  "bb3f128d0adcc891": {
+    "status": "fixed",
+    "file": "src/components/contracts/contract-form/useContractSubmit.ts",
+    "line": 193,
+    "owner": "useContractSubmit",
+    "kind": "notification",
+    "evidence": "B14/B15 current call reviewed: form preflight source/finite/input draft/field guards precede writer; edit core+relation phase snapshots survive remount and reconcile only confirmed missing steps; single-owner create error/stale cọc branch leaves form open, exact IDs in partial feedback. Contract final93/93 original12files + receipt cross-review73/73; sourceIssues retry typing strict preserved. Each validation notification below was inspected with its enclosing condition. Call reviewed: toast.error('Chưa hoàn tất cập nhật hợp đồng',{description:message})"
+  },
+  "913a4d3247659b1b": {
+    "status": "fixed",
+    "file": "src/components/contracts/contract-form/useContractSubmit.ts",
+    "line": 212,
+    "owner": "useContractSubmit",
+    "kind": "notification",
+    "evidence": "B14/B15 current call reviewed: form preflight source/finite/input draft/field guards precede writer; edit core+relation phase snapshots survive remount and reconcile only confirmed missing steps; single-owner create error/stale cọc branch leaves form open, exact IDs in partial feedback. Contract final93/93 original12files + receipt cross-review73/73; sourceIssues retry typing strict preserved. Each validation notification below was inspected with its enclosing condition. Call reviewed: toast.error(\"Không thể lưu hợp đồng\", { description: billCheck.message })"
+  },
+  "289c4c491b652a95": {
+    "status": "fixed",
+    "file": "src/components/contracts/contract-form/useContractSubmit.ts",
+    "line": 226,
+    "owner": "useContractSubmit",
+    "kind": "notification",
+    "evidence": "B14/B15 current call reviewed: form preflight source/finite/input draft/field guards precede writer; edit core+relation phase snapshots survive remount and reconcile only confirmed missing steps; single-owner create error/stale cọc branch leaves form open, exact IDs in partial feedback. Contract final93/93 original12files + receipt cross-review73/73; sourceIssues retry typing strict preserved. Each validation notification below was inspected with its enclosing condition. Call reviewed: toast.error(\"Không thể lưu hợp đồng\", { description: `Tổng tiền cọc đã nhận đang vượt ${formatCurrency(depositBalance.overpayment)} so với tiền cọc của hợp đồng.`, })"
+  },
+  "724d80c041c4b662": {
+    "status": "fixed",
+    "file": "src/components/contracts/contract-form/useContractSubmit.ts",
+    "line": 245,
+    "owner": "useContractSubmit",
+    "kind": "notification",
+    "evidence": "B14/B15 current call reviewed: form preflight source/finite/input draft/field guards precede writer; edit core+relation phase snapshots survive remount and reconcile only confirmed missing steps; single-owner create error/stale cọc branch leaves form open, exact IDs in partial feedback. Contract final93/93 original12files + receipt cross-review73/73; sourceIssues retry typing strict preserved. Each validation notification below was inspected with its enclosing condition. Call reviewed: toast.error(\"Không thể lưu hợp đồng\", { description: `Khách còn thiếu ${formatCurrency(remaining)} tiền cọc. Chọn \"Nợ cọc\" hoặc \"Đóng đủ ngay\" (thêm dòng cọc) để tiếp tục.`, })"
+  },
+  "696d4bdd3acbdaeb": {
+    "status": "fixed",
+    "file": "src/components/contracts/contract-form/useContractSubmit.ts",
+    "line": 256,
+    "owner": "useContractSubmit",
+    "kind": "notification",
+    "evidence": "B14/B15 current call reviewed: form preflight source/finite/input draft/field guards precede writer; edit core+relation phase snapshots survive remount and reconcile only confirmed missing steps; single-owner create error/stale cọc branch leaves form open, exact IDs in partial feedback. Contract final93/93 original12files + receipt cross-review73/73; sourceIssues retry typing strict preserved. Each validation notification below was inspected with its enclosing condition. Call reviewed: toast.error(\"Không thể lưu hợp đồng\", { description: \"Vui lòng nhập lý do cho nợ cọc.\", })"
+  },
+  "08edd5fe7d1a2f46": {
+    "status": "fixed",
+    "file": "src/components/contracts/contract-form/useContractSubmit.ts",
+    "line": 267,
+    "owner": "useContractSubmit",
+    "kind": "notification",
+    "evidence": "B14/B15 current call reviewed: form preflight source/finite/input draft/field guards precede writer; edit core+relation phase snapshots survive remount and reconcile only confirmed missing steps; single-owner create error/stale cọc branch leaves form open, exact IDs in partial feedback. Contract final93/93 original12files + receipt cross-review73/73; sourceIssues retry typing strict preserved. Each validation notification below was inspected with its enclosing condition. Call reviewed: toast.error(\"Không thể lưu hợp đồng\", { description: \"Vui lòng chọn hạn bổ sung cọc.\", })"
+  },
+  "92b1a49f9d4411a6": {
+    "status": "fixed",
+    "file": "src/components/contracts/contract-form/useContractSubmit.ts",
+    "line": 292,
+    "owner": "useContractSubmit",
+    "kind": "notification",
+    "evidence": "B14/B15 current call reviewed: form preflight source/finite/input draft/field guards precede writer; edit core+relation phase snapshots survive remount and reconcile only confirmed missing steps; single-owner create error/stale cọc branch leaves form open, exact IDs in partial feedback. Contract final93/93 original12files + receipt cross-review73/73; sourceIssues retry typing strict preserved. Each validation notification below was inspected with its enclosing condition. Call reviewed: toast.error('Không thể lưu hợp đồng', { description: 'Kiểm tra dòng hóa đơn đầu được đánh dấu đỏ.' })"
+  },
+  "a0748dfb6e264677": {
+    "status": "fixed",
+    "file": "src/components/contracts/contract-form/useContractSubmit.ts",
+    "line": 312,
+    "owner": "useContractSubmit",
+    "kind": "notification",
+    "evidence": "B14/B15 current call reviewed: form preflight source/finite/input draft/field guards precede writer; edit core+relation phase snapshots survive remount and reconcile only confirmed missing steps; single-owner create error/stale cọc branch leaves form open, exact IDs in partial feedback. Contract final93/93 original12files + receipt cross-review73/73; sourceIssues retry typing strict preserved. Each validation notification below was inspected with its enclosing condition. Call reviewed: toast.error(\"Chưa thể lưu hợp đồng\", {description:message})"
+  },
+  "867dd91be536b86b": {
+    "status": "fixed",
+    "file": "src/components/contracts/contract-form/useContractSubmit.ts",
+    "line": 421,
+    "owner": "useContractSubmit",
+    "kind": "notification",
+    "evidence": "B14/B15 current call reviewed: form preflight source/finite/input draft/field guards precede writer; edit core+relation phase snapshots survive remount and reconcile only confirmed missing steps; single-owner create error/stale cọc branch leaves form open, exact IDs in partial feedback. Contract final93/93 original12files + receipt cross-review73/73; sourceIssues retry typing strict preserved. Each validation notification below was inspected with its enclosing condition. Call reviewed: toast.error(feedback.title,{description:feedback.description,...(isContractTemplateSettingError(error)?{action:{label:'Mở mẫu tài liệu',onClick:()=>window.open('/settings/templates','_blank','noopener,noreferre"
+  },
+  "27757b0662ff4048": {
+    "status": "fixed",
+    "file": "src/components/contracts/contract-form/useContractSubmit.ts",
+    "line": 424,
+    "owner": "useContractSubmit",
+    "kind": "notification",
+    "evidence": "B14/B15 current call reviewed: form preflight source/finite/input draft/field guards precede writer; edit core+relation phase snapshots survive remount and reconcile only confirmed missing steps; single-owner create error/stale cọc branch leaves form open, exact IDs in partial feedback. Contract final93/93 original12files + receipt cross-review73/73; sourceIssues retry typing strict preserved. Each validation notification below was inspected with its enclosing condition. Call reviewed: toast.error(\"Danh sách cọc giữ chỗ đã thay đổi\", { description: refreshState === \"refreshed\" ? \"Đã tải lại cọc của phòng. Thông tin hợp đồng bạn nhập vẫn được giữ; hãy kiểm tra phần cọc rồi lưu lại.\" : \"Chưa tả"
+  },
+  "be5f3784a11f118f": {
+    "status": "fixed",
+    "file": "src/components/contracts/contract-form/useContractFormState.ts",
+    "line": 871,
+    "owner": "useContractFormState",
+    "kind": "notification",
+    "evidence": "B14/B15 current call reviewed: form preflight source/finite/input draft/field guards precede writer; edit core+relation phase snapshots survive remount and reconcile only confirmed missing steps; single-owner create error/stale cọc branch leaves form open, exact IDs in partial feedback. Contract final93/93 original12files + receipt cross-review73/73; sourceIssues retry typing strict preserved. Each validation notification below was inspected with its enclosing condition. Call reviewed: toast.error(\"Không thể lưu hợp đồng\", { description: lines.join(\"\\n\") + extra, })"
+  },
+  "3faf1bed9497c2b3": {
+    "status": "fixed",
+    "file": "src/components/contracts/ContractImportExportDialog.tsx",
+    "line": 187,
+    "owner": "ContractImportExportDialog",
+    "kind": "notification",
+    "evidence": "B21: original source_row from worksheet header0/3 survives blank/rejected rows; domain snapshot row/hash/stage/IDs persists before each writer. Exact core/org/room/relations and customer reads before known-rejected correction; completed rows never INSERT again, unknown/absence/read-denial do not clear marker. Source rows2 + DOMremount2 RED→GREEN, workflow6;33/33 seven files and after-mutation10/10. Two guard mutations RED and restored2cb87e090526. Not a claim of SQL atomicity or browser E2E. Call reviewed: toast.error(`Đã nhập ${result.success} hợp đồng; ${result.failed} dòng cần kiểm tra. Giữ các ID đã tạo và đối chiếu trước khi nhập lại.`)"
+  },
+  "4610f7da3e09823a": {
+    "status": "fixed",
+    "file": "src/components/contracts/ContractImportExportDialog.tsx",
+    "line": 188,
+    "owner": "ContractImportExportDialog",
+    "kind": "notification",
+    "evidence": "B21: original source_row from worksheet header0/3 survives blank/rejected rows; domain snapshot row/hash/stage/IDs persists before each writer. Exact core/org/room/relations and customer reads before known-rejected correction; completed rows never INSERT again, unknown/absence/read-denial do not clear marker. Source rows2 + DOMremount2 RED→GREEN, workflow6;33/33 seven files and after-mutation10/10. Two guard mutations RED and restored2cb87e090526. Not a claim of SQL atomicity or browser E2E. Call reviewed: toast.success(`Đã hoàn tất nhập ${result.success} hợp đồng.`)"
+  },
+  "07d0e23772e7bb5e": {
+    "status": "fixed",
+    "file": "src/components/contracts/PrintContractDialog.tsx",
+    "line": 130,
+    "owner": "PrintContractDialog",
+    "kind": "notification",
+    "evidence": "B20: awaited template render -> Blob download preparation then toast; failure catches safe friendlyError, keeps dialog/template draft. Console is diagnostic only. Read vehicle/template/null capability limits still require browser E2E. Call reviewed: toast.success(\"Đã chuẩn bị file hợp đồng để tải\")"
+  },
+  "1f99e0bb5cd6939a": {
+    "status": "background-only",
+    "file": "src/components/contracts/PrintContractDialog.tsx",
+    "line": 133,
+    "owner": "PrintContractDialog",
+    "kind": "log",
+    "evidence": "B20: awaited template render -> Blob download preparation then toast; failure catches safe friendlyError, keeps dialog/template draft. Console is diagnostic only. Read vehicle/template/null capability limits still require browser E2E. Call reviewed: console.error(\"Render contract template failed\", err)"
+  },
+  "d184446a090534f7": {
+    "status": "fixed",
+    "file": "src/components/contracts/PrintContractDialog.tsx",
+    "line": 135,
+    "owner": "PrintContractDialog",
+    "kind": "notification",
+    "evidence": "B20: awaited template render -> Blob download preparation then toast; failure catches safe friendlyError, keeps dialog/template draft. Console is diagnostic only. Read vehicle/template/null capability limits still require browser E2E. Call reviewed: toast.error(feedback.title, { description: feedback.description })"
+  },
+  "9bc6693039593b24": {
+    "status": "fixed",
+    "file": "src/components/contracts/ContractQRDialog.tsx",
+    "line": 68,
+    "owner": "ContractQRDialog",
+    "kind": "notification",
+    "evidence": "B20: QR generation guarded cancellation; copy image and clipboard link awaited before success, safe operation message on catch, download anchor catch does not claim saved-to-machine. Clipboard/browser not verified. Call reviewed: toast({ title: feedback.title, description: feedback.description, variant: 'destructive', })"
+  },
+  "bbc06a88254001f3": {
+    "status": "fixed",
+    "file": "src/components/contracts/ContractQRDialog.tsx",
+    "line": 87,
+    "owner": "ContractQRDialog",
+    "kind": "notification",
+    "evidence": "B20: QR generation guarded cancellation; copy image and clipboard link awaited before success, safe operation message on catch, download anchor catch does not claim saved-to-machine. Clipboard/browser not verified. Call reviewed: toast({ title: 'Đã copy ảnh QR vào clipboard' })"
+  },
+  "3fd1ea348efd0b66": {
+    "status": "fixed",
+    "file": "src/components/contracts/ContractQRDialog.tsx",
+    "line": 91,
+    "owner": "ContractQRDialog",
+    "kind": "notification",
+    "evidence": "B20: QR generation guarded cancellation; copy image and clipboard link awaited before success, safe operation message on catch, download anchor catch does not claim saved-to-machine. Clipboard/browser not verified. Call reviewed: toast({ title: feedback.title, description: feedback.description, variant: 'destructive', })"
+  },
+  "da9521c5df05e445": {
+    "status": "fixed",
+    "file": "src/components/contracts/ContractQRDialog.tsx",
+    "line": 108,
+    "owner": "ContractQRDialog",
+    "kind": "notification",
+    "evidence": "B20: QR generation guarded cancellation; copy image and clipboard link awaited before success, safe operation message on catch, download anchor catch does not claim saved-to-machine. Clipboard/browser not verified. Call reviewed: toast({ title: feedback.title, description: feedback.description, variant: 'destructive' })"
+  },
+  "db37eb6997ee2872": {
+    "status": "fixed",
+    "file": "src/components/contracts/ContractQRDialog.tsx",
+    "line": 115,
+    "owner": "ContractQRDialog",
+    "kind": "notification",
+    "evidence": "B20: QR generation guarded cancellation; copy image and clipboard link awaited before success, safe operation message on catch, download anchor catch does not claim saved-to-machine. Clipboard/browser not verified. Call reviewed: toast({ title: 'Đã copy link' })"
+  },
+  "a56bf3741151c808": {
+    "status": "fixed",
+    "file": "src/components/contracts/ContractQRDialog.tsx",
+    "line": 118,
+    "owner": "ContractQRDialog",
+    "kind": "notification",
+    "evidence": "B20: QR generation guarded cancellation; copy image and clipboard link awaited before success, safe operation message on catch, download anchor catch does not claim saved-to-machine. Clipboard/browser not verified. Call reviewed: toast({ title: feedback.title, description: feedback.description, variant: 'destructive' })"
+  },
+  "591e1d8c8c5dca72": {
+    "status": "fixed",
+    "file": "src/components/contracts/ContractListTable.tsx",
+    "line": 205,
+    "owner": "ContractListTable",
+    "kind": "notification",
+    "evidence": "B20: action capability guards unavailable QR, awaits copyContractQrToClipboard before success, safe friendlyError catch, finally restores copy state. No clipboard E2E claim. Call reviewed: toast({ title: 'QR không khả dụng', description: 'Hợp đồng đã thanh lý hoặc còn nháp.', variant: 'destructive', })"
+  },
+  "435a3e355a32b783": {
+    "status": "fixed",
+    "file": "src/components/contracts/ContractListTable.tsx",
+    "line": 220,
+    "owner": "ContractListTable",
+    "kind": "notification",
+    "evidence": "B20: action capability guards unavailable QR, awaits copyContractQrToClipboard before success, safe friendlyError catch, finally restores copy state. No clipboard E2E claim. Call reviewed: toast({ title: 'Đã copy ảnh QR', description: [loc.buildingCode, loc.roomName].filter(Boolean).join(' · '), })"
+  },
+  "75e686e7e71b937e": {
+    "status": "fixed",
+    "file": "src/components/contracts/ContractListTable.tsx",
+    "line": 226,
+    "owner": "ContractListTable",
+    "kind": "notification",
+    "evidence": "B20: action capability guards unavailable QR, awaits copyContractQrToClipboard before success, safe friendlyError catch, finally restores copy state. No clipboard E2E claim. Call reviewed: toast({ title: feedback.title, description: feedback.description, variant: 'destructive' })"
+  },
+  "4ae041c66a03ffbb": {
+    "status": "fixed",
+    "file": "src/components/contracts/ContractFormDialog.tsx",
+    "line": 108,
+    "owner": "ContractFormDialog",
+    "kind": "notification",
+    "evidence": "B14: only toast branch blocks changed/missing document when save/print capability unavailable; keeps signing draft and directs save/print before sign. No sign writer in this branch. Source boundary read with canSign/canExport/canSaveDraft guards. Call reviewed: toast.error('Nội dung đã đổi hoặc chưa có tài liệu. Cần lưu và in bản nháp trước khi ký.')"
+  },
+  "6f0b03c28e8ca48f": {
+    "status": "fixed",
+    "file": "src/components/contracts/contract-form/useContractDraftEditor.ts",
+    "line": 73,
+    "owner": "useContractDraftEditor",
+    "kind": "notification",
+    "evidence": "B14: snapshot validated before writer; unchanged draft returns current; successful save shows actual saved revision only when not part of signing (avoid extra success); catch persists safe inline operation error. Draft regressions existing, not whole draft hook completion. Call reviewed: toast.success(`Đã lưu bản nháp · phiên bản ${saved.revision}`)"
+  },
+  "4d53c26a5147fd12": {
+    "status": "fixed",
+    "file": "src/hooks/useSettlementActions.ts",
+    "line": 248,
+    "owner": "useSettlementActions",
+    "kind": "notification",
+    "evidence": "B17: recipient revise awaited before success; permission-specific safe message or revisionErrorMessage, stale query refresh and rethrow preserve modal draft. Caller leaves field reason intact on error; source roots lateform75/75, not whole settlement adapter completion. Call reviewed: toast.success('Đã cập nhật thông tin người nhận')"
+  },
+  "0862c84ee085bdef": {
+    "status": "fixed",
+    "file": "src/hooks/useSettlementActions.ts",
+    "line": 252,
+    "owner": "useSettlementActions",
+    "kind": "notification",
+    "evidence": "B17: recipient revise awaited before success; permission-specific safe message or revisionErrorMessage, stale query refresh and rethrow preserve modal draft. Caller leaves field reason intact on error; source roots lateform75/75, not whole settlement adapter completion. Call reviewed: toast.error( code === '42501' ? 'Bạn không có quyền sửa thông tin người nhận của phiếu này.' : revisionErrorMessage(error), )"
+  },
+  "7a3619a44a70c6d9": {
+    "status": "fixed",
+    "file": "src/components/thu-tien/contract-settlement/SettlementLifecycleModal.tsx",
+    "line": 363,
+    "owner": "SettlementLifecycleModalContent",
+    "kind": "notification",
+    "evidence": "B17/C25: reviewed three surviving calls after root removed duplicate modal cancel toast: evidence adopt/attach failure uses voucherFailureMessage plus current-voucher/live-attempt guards, locks reconciliation after partial/unknown; confirmation lane success only after awaited recipient/supplement steps; cancel result belongs to child hook; modal no longer emits duplicate success. Root lateform75/75 and late-import-owner-green.json; browser not verified. Call reviewed: toast.error(voucherFailureMessage(error, 'kiểm tra chứng từ trên phiếu'))"
+  },
+  "6516435c1a914754": {
+    "status": "fixed",
+    "file": "src/components/thu-tien/contract-settlement/SettlementLifecycleModal.tsx",
+    "line": 420,
+    "owner": "SettlementLifecycleModalContent",
+    "kind": "notification",
+    "evidence": "B17/C25: reviewed three surviving calls after root removed duplicate modal cancel toast: evidence adopt/attach failure uses voucherFailureMessage plus current-voucher/live-attempt guards, locks reconciliation after partial/unknown; confirmation lane success only after awaited recipient/supplement steps; cancel result belongs to child hook; modal no longer emits duplicate success. Root lateform75/75 and late-import-owner-green.json; browser not verified. Call reviewed: toast.error(voucherFailureMessage(error, 'đính ảnh chứng từ'))"
+  },
+  "130512a3fd07419a": {
+    "status": "fixed",
+    "file": "src/components/thu-tien/contract-settlement/SettlementLifecycleModal.tsx",
+    "line": 608,
+    "owner": "SettlementLifecycleModalContent",
+    "kind": "notification",
+    "evidence": "B17/C25: reviewed three surviving calls after root removed duplicate modal cancel toast: evidence adopt/attach failure uses voucherFailureMessage plus current-voucher/live-attempt guards, locks reconciliation after partial/unknown; confirmation lane success only after awaited recipient/supplement steps; cancel result belongs to child hook; modal no longer emits duplicate success. Root lateform75/75 and late-import-owner-green.json; browser not verified. Call reviewed: toast.success( blockerNgoaiTam.length ? 'Đã lưu. Phiếu vẫn ở Cần rà soát vì còn vướng ngoài tầm màn này.' : 'Đã xác nhận. Phiếu chuyển sang Chờ duyệt.', )"
+  },
+  "1d4df99c44ffb8c9": {
+    "status": "already-correct",
+    "file": "src/hooks/useContractDrafts.ts",
+    "line": 12,
+    "owner": "useContractDrafts",
+    "kind": "useQuery",
+    "evidence": "B14: current ContractDraftList renders loading/error+retry, Workspace/Transfer consume full query; API z.array(contractDraftSchema).parse(data), null/error throws. This covers source feedback, no new backend behavior. Call reviewed: useQuery({ queryKey: ['contract-drafts', selectedOrganizationId, buildingId ?? null], enabled: enabled && !!selectedOrganizationId, queryFn: () => { if (!selectedOrganizationId) throw new Error('Chưa chọn tổ ch"
+  },
+  "a4228d4f71aefb57": {
+    "status": "already-correct",
+    "file": "src/hooks/useContractDrafts.ts",
+    "line": 22,
+    "owner": "useSaveContractDraft",
+    "kind": "useMutation",
+    "evidence": "B14: API validates input and exact draft schema, onError uses safe draftErrorMessage; QueryProvider detects hook owner, editor persists inline reason/draft and shows one actual revision success outside signing. Copilot draft/API/editor/sign21 focused evidence; no duplicate hook success. Call reviewed: useMutation({ mutationFn: (input: SaveContractDraftInput) => saveContractDraft(input), onSuccess: () => queryClient.invalidateQueries({ queryKey: ['contract-drafts'] }), onError: error => toast.error(draftError"
+  },
+  "277122cf87402d3d": {
+    "status": "already-correct",
+    "file": "src/hooks/useContractDrafts.ts",
+    "line": 24,
+    "owner": "useSaveContractDraft",
+    "kind": "notification",
+    "evidence": "B14: API validates input and exact draft schema, onError uses safe draftErrorMessage; QueryProvider detects hook owner, editor persists inline reason/draft and shows one actual revision success outside signing. Copilot draft/API/editor/sign21 focused evidence; no duplicate hook success. Call reviewed: toast.error(draftErrorMessage(error))"
+  },
+  "e18b80783809cd15": {
+    "status": "already-correct",
+    "file": "src/hooks/useContractDrafts.ts",
+    "line": 29,
+    "owner": "useDeleteContractDraft",
+    "kind": "useMutation",
+    "evidence": "B14: API requires exact draft_id and deleted:true; hook owns one success, default QueryProvider safe error plus ContractDraftList inline draftErrorMessage retains confirmation/draft. No claim of file cleanup or new durable delete. Call reviewed: useMutation({ mutationFn: deleteContractDraft, onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['contract-drafts'] }); toast.success('Đã xóa bản nháp'); }, })"
+  },
+  "b55de7acc443688f": {
+    "status": "already-correct",
+    "file": "src/hooks/useContractDrafts.ts",
+    "line": 32,
+    "owner": "useDeleteContractDraft",
+    "kind": "notification",
+    "evidence": "B14: API requires exact draft_id and deleted:true; hook owns one success, default QueryProvider safe error plus ContractDraftList inline draftErrorMessage retains confirmation/draft. No claim of file cleanup or new durable delete. Call reviewed: toast.success('Đã xóa bản nháp')"
+  },
+  "abf6b01c12b18ade": {
+    "status": "fixed",
+    "file": "src/hooks/useContractDrafts.ts",
+    "line": 38,
+    "owner": "useExportContractDraft",
+    "kind": "useMutation",
+    "evidence": "B20: actual artifact schema/hash/source/path before download preparation; root changed success to actual .docx filename and preparation wording. Copilot cleanup only known rejection; register unknown retains bytes. Export8/API/editor/sign21 focused; no browser download E2E. Call reviewed: useMutation({ mutationFn: ({ draft, template }: { draft: ContractDraft; template: DocumentTemplate }) => exportContractDraft(draft, template), onSuccess: ({ blob, document }) => { downloadDocxBlob(blob, `BAN_NH"
+  },
+  "670d4589fc49780a": {
+    "status": "fixed",
+    "file": "src/hooks/useContractDrafts.ts",
+    "line": 41,
+    "owner": "useExportContractDraft",
+    "kind": "notification",
+    "evidence": "B20: actual artifact schema/hash/source/path before download preparation; root changed success to actual .docx filename and preparation wording. Copilot cleanup only known rejection; register unknown retains bytes. Export8/API/editor/sign21 focused; no browser download E2E. Call reviewed: toast.success(`Đã lưu bản nháp và chuẩn bị tệp BAN_NHAP_${document.draft_id.slice(0, 8)}_v${document.revision}.docx để tải xuống.`)"
+  },
+  "cef39e33a812edfa": {
+    "status": "fixed",
+    "file": "src/hooks/useContractDrafts.ts",
+    "line": 43,
+    "owner": "useExportContractDraft",
+    "kind": "notification",
+    "evidence": "B20: actual artifact schema/hash/source/path before download preparation; root changed success to actual .docx filename and preparation wording. Copilot cleanup only known rejection; register unknown retains bytes. Export8/API/editor/sign21 focused; no browser download E2E. Call reviewed: toast.error(draftErrorMessage(error))"
+  },
+  "7faba0b60c51eb84": {
+    "status": "already-correct",
+    "file": "src/hooks/useContractDrafts.ts",
+    "line": 47,
+    "owner": "useDownloadContractDraftDocument",
+    "kind": "useMutation",
+    "evidence": "B20: actual document/hash API -> Blob download preparation awaited, safe draftErrorMessage owns failure. No saved-to-machine success claim; copilot export/API21 evidence; browser download unverified. Call reviewed: useMutation({ mutationFn: async (document: ContractDraftDocument) => { const blob = await downloadContractDraftDocument(document); downloadDocxBlob(blob, `BAN_NHAP_${document.draft_id.slice(0, 8)}_v${document.r"
+  },
+  "a3297f73d55e129f": {
+    "status": "already-correct",
+    "file": "src/hooks/useContractDrafts.ts",
+    "line": 50,
+    "owner": "useDownloadContractDraftDocument",
+    "kind": "notification",
+    "evidence": "B20: actual document/hash API -> Blob download preparation awaited, safe draftErrorMessage owns failure. No saved-to-machine success claim; copilot export/API21 evidence; browser download unverified. Call reviewed: toast.error(draftErrorMessage(error))"
+  },
+  "f8a322be7e7c2459": {
+    "status": "already-correct",
+    "file": "src/hooks/contracts/useContractTransferLinks.ts",
+    "line": 22,
+    "owner": "useContractTransferLinks",
+    "kind": "useQuery",
+    "evidence": "B16: enabled real org/filter; read API parses z.array strict link schema, raw read cause thrown, UI can retry without fake empty success. Receipt parsing source inspected; no new auth/lifecycle business rule. Call reviewed: useQuery({queryKey:['contract-transfer-links',selectedOrganizationId,filter.contractId??null,filter.draftId??null,filter.exitCaseId??null], enabled:enabled&&!!selectedOrganizationId&&Object.values(filter).some("
+  },
+  "9da4b4fc592e9484": {
+    "status": "fixed",
+    "file": "src/hooks/contracts/useContractTransferLinks.ts",
+    "line": 29,
+    "owner": "useTransferMutation",
+    "kind": "useMutation",
+    "evidence": "B16: retry:false; API parses exact transfer/exit DTO before success, refresh on error; PT409 stale and42501 permissions mapped explicitly, fallback safe friendlyError now root-fixed. Describes link/history/exit, does not infer money transferred. Root spend/transfer/note38/38; remount durable lifecycle is not claimed by this generic owner. Call reviewed: useMutation({retry:false,mutationFn:(input:T)=>{if(!selectedOrganizationId)throw new Error('Chưa chọn tổ chức');return run(input,selectedOrganizationId);}, onSuccess:()=>{refresh();toast.success(message);},onEr"
+  },
+  "b662d0945d3f8191": {
+    "status": "fixed",
+    "file": "src/hooks/contracts/useContractTransferLinks.ts",
+    "line": 30,
+    "owner": "useTransferMutation",
+    "kind": "notification",
+    "evidence": "B16: retry:false; API parses exact transfer/exit DTO before success, refresh on error; PT409 stale and42501 permissions mapped explicitly, fallback safe friendlyError now root-fixed. Describes link/history/exit, does not infer money transferred. Root spend/transfer/note38/38; remount durable lifecycle is not claimed by this generic owner. Call reviewed: toast.success(message)"
+  },
+  "725cc9d6b1921bdb": {
+    "status": "fixed",
+    "file": "src/hooks/contracts/useContractTransferLinks.ts",
+    "line": 30,
+    "owner": "useTransferMutation",
+    "kind": "notification",
+    "evidence": "B16: retry:false; API parses exact transfer/exit DTO before success, refresh on error; PT409 stale and42501 permissions mapped explicitly, fallback safe friendlyError now root-fixed. Describes link/history/exit, does not infer money transferred. Root spend/transfer/note38/38; remount durable lifecycle is not claimed by this generic owner. Call reviewed: toast.error(transferErrorMessage(error))"
+  },
+  "7c08378c307bd9d5": {
+    "status": "fixed",
+    "file": "src/hooks/useContractSettlement.ts",
+    "line": 191,
+    "owner": "useSettlementTypeMap",
+    "kind": "useQuery",
+    "evidence": "B18/C27: root required financialReadRows rejects successful null; actual [] valid. Inline meta delegates sole query error to ContractSettlementSection; source/current ID read after fix. settlement-types-red-2.json1 RED to settlement-types-green.json positive, no empty type map after missing read. Call reviewed: useQuery({ queryKey: ['contract-settlement', 'types', actorId, organizationId], meta: { errorDisplay: 'inline' }, enabled: enabled && !!organizationId, staleTime: 5 * 60_000, refetchOnWindowFocus: true, queryFn"
+  },
+  "ec9702fc44265e45": {
+    "status": "already-correct",
+    "file": "src/hooks/useContractSettlement.ts",
+    "line": 379,
+    "owner": "useContractSettlement",
+    "kind": "useQuery",
+    "evidence": "B18/C27: voucher metadata/items use fetchSettlementRows fail-closed; supplements use hydrateIncomeExpenseSupplements throws batch errors. Separate typeMap/voucher/supplement errors and refresh flags block dependent totals/decision, no inferred refund/payment from settlement state. Type-map null fixed by root required-array boundary separately; not blanket completion. Call reviewed: useQuery({ queryKey: [ 'contract-settlement', 'vouchers', actorId, a.organizationId, buildingIds, cutoff, a.contractId ?? null, a.voucherId ?? null, [...(typeMap.data?.keys() ?? [])].sort(), ], enabled: enabled"
+  },
+  "fe5a0fc93a132a1b": {
+    "status": "already-correct",
+    "file": "src/hooks/useContractSettlement.ts",
+    "line": 537,
+    "owner": "useContractSettlement",
+    "kind": "useQuery",
+    "evidence": "B18/C27: voucher metadata/items use fetchSettlementRows fail-closed; supplements use hydrateIncomeExpenseSupplements throws batch errors. Separate typeMap/voucher/supplement errors and refresh flags block dependent totals/decision, no inferred refund/payment from settlement state. Type-map null fixed by root required-array boundary separately; not blanket completion. Call reviewed: useQuery({ queryKey: ['contract-settlement', 'supplements', actorId, a.organizationId, [...idsChoDuyet].sort()], enabled: enabled && idsChoDuyet.length > 0, staleTime: 60_000, refetchOnWindowFocus: true, queryF"
+  },
+  "60de11dcc9574060": {
+    "status": "fixed",
+    "file": "src/components/thu-tien/contract-settlement/ContractSettlementSection.tsx",
+    "line": 50,
+    "owner": "useOrgCuaToa",
+    "kind": "useQuery",
+    "evidence": "B18/C27: buildings exact IDs source must return organization_id; null/absence throws, read errors preserve code/cause. ContractSettlementSection renders source-failure state and retry. Root current read source inspected; no org selection rule changes. Call reviewed: useQuery({ queryKey: ['contract-settlement', 'org-of-buildings', [...buildingIds].sort()], enabled: buildingIds.length > 0, staleTime: 10 * 60_000, queryFn: async (): Promise<string | null> => { const { data, e"
+  },
+  "d828040ea95183d4": {
+    "status": "fixed",
+    "file": "src/hooks/useContractCommissionFollowup.ts",
+    "line": 9,
+    "owner": "useContractCommissionFollowups",
+    "kind": "useQuery",
+    "evidence": "D17/B14 integrated main: query keeps new kind/search/period key dimensions and existing enabled/refetch behavior; inline metadata delegates errors to actual modal/failure-list/queue region. Current strict schema/API and main request_id/can_retry preserved. Focused70/70. Call reviewed: useQuery({ queryKey: [CONTRACT_COMMISSION_FOLLOWUP_KEY, selectedOrganizationId, filter.contractId ?? null, [...(filter.buildingIds ?? [])].sort(), filter.unresolvedOnly ?? !filter.contractId, filter.page ?? 0, "
+  },
+  "277c0868762a44c9": {
+    "status": "unused",
+    "file": "src/hooks/useContractCommissionFollowup.ts",
+    "line": 25,
+    "owner": "useRecordContractCommissionEvent",
+    "kind": "useMutation",
+    "evidence": "D17 main removed old decision UI; non-test source rg after resolving panel shows definition-only hook. Kept main callback/global default safe error, not restored obsolete decision feature or silent owner. Task provider test adapted to live useRetryCommissionVoucher. This call is unused, not blanket lifecycle fixed. Call reviewed: useMutation({ mutationFn: (input: { contractId: string; kind: CommissionKind; action: 'NOT_APPLICABLE' | 'REOPENED'; reason?: string }) => { if (!selectedOrganizationId) throw new Error('Chưa xác định được tổ c"
+  },
+  "48308b1c6ed87c9d": {
+    "status": "fixed",
+    "file": "src/components/contracts/ContractCommissionFollowupPanel.tsx",
+    "line": 43,
+    "owner": "CommissionFailureList",
+    "kind": "notification",
+    "evidence": "D17 main integration: keeps exact-contract authoritative readonly before saved retry (queue-page disappearance not resolved), PROCESSING/no-manage blocked, current VOUCHER_CREATED no new writer; saved request_id + can_retry only, legacy opens onlyKind. Safe friendlyError inline is sole failure owner, current generation retains draft/row. Main10tests +2permission/transport additions; focused70/70. Unresolved source does not clear key or claim created. Call reviewed: toast.info(current.voucher_code ? `Đã có phiếu ${current.voucher_code}.` : 'Yêu cầu đã được đối chiếu; không cần tạo lại.')"
+  },
+  "653d62e0672d0edc": {
+    "status": "fixed",
+    "file": "src/components/contracts/ContractCommissionFollowupPanel.tsx",
+    "line": 49,
+    "owner": "CommissionFailureList",
+    "kind": "notification",
+    "evidence": "D17 main integration: keeps exact-contract authoritative readonly before saved retry (queue-page disappearance not resolved), PROCESSING/no-manage blocked, current VOUCHER_CREATED no new writer; saved request_id + can_retry only, legacy opens onlyKind. Safe friendlyError inline is sole failure owner, current generation retains draft/row. Main10tests +2permission/transport additions; focused70/70. Unresolved source does not clear key or claim created. Call reviewed: toast.success(`${result.status === 'ALREADY_EXISTS' ? 'Đã có phiếu' : 'Đã tạo phiếu'}${result.code ? ` ${result.code}` : ''}.`)"
+  }
+}

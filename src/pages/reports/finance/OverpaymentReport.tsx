@@ -1,3 +1,4 @@
+import { QueryRegion } from "@/components/errors/QueryRegion";
 import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
@@ -26,9 +27,11 @@ export default function OverpaymentReport() {
   const [pageSize, setPageSize] = useState<number>(10);
 
   useCopilotPageContext('reports.finance.overpayment', { building_ids: buildingIds });
-  const { data: overpayments = [], isLoading } = useOverpaymentReport();
+  const overpaymentReportQuery = useOverpaymentReport();
+  const { data: overpayments = [], isLoading } = overpaymentReportQuery;
   // Tổng tiền: RPC SQL aggregate (miễn nhiễm cap-1000), theo đúng bộ lọc toà.
-  const { data: summary } = useOverpaymentSummary(buildingIds);
+  const overpaymentSummaryQuery = useOverpaymentSummary(buildingIds);
+  const { data: summary } = overpaymentSummaryQuery;
 
   const filtered = useMemo(() => {
     let arr = [...(overpayments as any[])];
@@ -75,6 +78,7 @@ export default function OverpaymentReport() {
           />
         </div>
 
+        <QueryRegion label="báo cáo tiền dư" queries={[overpaymentReportQuery, overpaymentSummaryQuery]}>
         <div className="text-base font-semibold">Tổng: {formatCurrency(total)}</div>
 
         <div className="rounded-md border">
@@ -138,6 +142,7 @@ export default function OverpaymentReport() {
               : `${(page - 1) * pageSize + 1} - ${Math.min(page * pageSize, totalCount)} trên tổng số ${totalCount} bản ghi`}
           </div>
         </div>
+      </QueryRegion>
       </div>
     </MainLayout>
   );

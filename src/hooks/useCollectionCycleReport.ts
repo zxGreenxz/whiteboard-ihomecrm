@@ -1,3 +1,4 @@
+import {financialReadNumber,financialReadRows} from '@/lib/financialReadValidation';
 // =============================================
 // useCollectionCycleReport — báo cáo Chu kỳ Thu → Bàn giao theo tòa quản lý.
 // Gọi RPC manager_collection_cycle_report(manager, from, to) — SECURITY DEFINER:
@@ -48,6 +49,7 @@ export interface CollectionCycleReport {
 
 export const useCollectionCycleReport = (managerId: string, from: string, to: string) =>
   useQuery({
+    meta:{errorDisplay:'inline',label:'chu kỳ thu và bàn giao'},
     queryKey: ['collection-cycle', managerId, from, to],
     enabled: !!from && !!to,
     queryFn: async (): Promise<CollectionCycleReport> => {
@@ -56,7 +58,32 @@ export const useCollectionCycleReport = (managerId: string, from: string, to: st
         p_from: from,
         p_to: to,
       });
-      if (error) throw new Error(error.message);
-      return data as unknown as CollectionCycleReport;
+      if (error) throw error;
+      const row=data as unknown as CollectionCycleReport | null;
+      if(!row || !row.summary || typeof row.summary!=='object') throw new TypeError('Chưa đọc được đầy đủ báo cáo chu kỳ thu và bàn giao.');
+      return {
+        ...row,
+        building_count: financialReadNumber(row.building_count),
+        summary: {
+          collected_period: financialReadNumber(row.summary.collected_period),
+          handed_over_period: financialReadNumber(row.summary.handed_over_period),
+          outstanding_current: financialReadNumber(row.summary.outstanding_current),
+          total_billed_current: financialReadNumber(row.summary.total_billed_current),
+          collected_all: financialReadNumber(row.summary.collected_all),
+        },
+        buildings: financialReadRows(row.buildings).map(building=>({
+          ...building,
+          total_billed: financialReadNumber(building.total_billed),
+          collected: financialReadNumber(building.collected),
+          outstanding: financialReadNumber(building.outstanding),
+          unpaid_count: financialReadNumber(building.unpaid_count),
+        })),
+        timeline: financialReadRows(row.timeline).map(event=>({
+          ...event,
+          net: event.type==='CURRENT' && event.net===null ? null : financialReadNumber(event.net),
+          collected_in_segment: financialReadNumber(event.collected_in_segment),
+          outstanding_as_of: financialReadNumber(event.outstanding_as_of),
+        })),
+      };
     },
   });

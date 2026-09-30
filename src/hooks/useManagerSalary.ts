@@ -1,3 +1,9 @@
+import { financialReadNumber } from '@/lib/financialReadValidation';
+import { persistentFinancialWorkflow } from '@/lib/persistentFinancialWorkflow';
+import { useRef } from "react";
+import { FinancialWorkflowError, workflowErrorMessage, type FinancialWorkflowProgress } from "@/lib/financialWorkflow";
+import { readCreatedVoucherReceipt } from "@/lib/createdVoucherReceipt";
+import { createdVoucherFeedback } from "@/lib/voucherFeedback";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { rpcNullable } from "@/lib/rpcNullable";
 import { supabase } from "@/integrations/supabase/client";
@@ -49,7 +55,11 @@ export interface ManagerSalaryData {
   extras: SalaryExtras;
 }
 
-const num = (v: any) => Number(v) || 0;
+// Nullable optional salary amounts retain the existing zero default; malformed values never do.
+const num = (v: unknown) => v == null ? 0 : financialReadNumber(v);
+function requireSalaryRows(data: unknown): asserts data is any[] {
+  if (!Array.isArray(data)) throw new Error("Chưa tải đủ dữ liệu để tính lương. Tải lại bảng lương trước khi tiếp tục.");
+}
 function monthRange(periodMonth: string) {
   const start = periodMonth;
   const next = shiftMonth(periodMonth, 1);
@@ -82,13 +92,8 @@ async function fetchCommissionMeta(ids: string[], periodMonth: string): Promise<
       p_voucher_ids: ids.slice(i, i + 1000),
       p_period_month: periodMonth,
     });
-    if (error) {
-      throw new Error(
-        isMissingRpc(error)
-          ? `Máy chủ chưa có chức năng hoa hồng quản lý (migration ${HH_QL_MIGRATION}) — chưa tính được lương.`
-          : "Lỗi tải liên kết hoa hồng quản lý — không thể tính lương chính xác: " + (error.message || ""),
-      );
-    }
+    if (error) throw error;
+    requireSalaryRows(data);
     for (const r of (data || []) as CommissionVoucherMeta[]) out.set(r.voucher_id, r);
   }
   return out;
@@ -104,12 +109,14 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
       const period: SalPeriod = { periodMonth, label: `Tháng ${mm}`, year: yy, lockedAt: null };
 
       // 1) Cấu hình quản lý hưởng lương (hiệu lực trong tháng)
-      const { data: cfgRaw } = await (supabase
+      const { data: cfgRaw , error: sourceError1 } = await (supabase
         .from("manager_salary_config")
         .select("*") as any)
         .eq("is_active", true)
         .lte("effective_from", start)
         .order("created_at", { ascending: true });
+      if (sourceError1) throw sourceError1;
+      requireSalaryRows(cfgRaw);
       const configs = ((cfgRaw || []) as any[]).filter(
         (c) => !c.effective_to || c.effective_to >= start
       );
@@ -156,17 +163,21 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
             .neq("status", "CANCELLED")
             .order("created_at", { ascending: false }),
         ]);
+        if (rmRes.error) throw rmRes.error;
+        if (invRes.error) throw invRes.error;
+        requireSalaryRows(rmRes.data);
+        requireSalaryRows(invRes.data);
         for (const r of (rmRes.data || []) as any[]) roomNameById.set(r.id, r.name);
         for (const iv of (invRes.data || []) as any[]) {
           if (roomInvoice.has(iv.room_id)) continue; // hoá đơn mới nhất của phòng/tháng
-          const total = num(iv.total_amount);
+          const total = financialReadNumber(iv.total_amount);
           roomInvoice.set(iv.room_id, {
             amount: total,
             label: `HĐ phòng ${roomNameById.get(iv.room_id) || ""} · T${rentMm}`,
             invoiceId: iv.id,
             buildingId: iv.building_id ?? null,
             contractId: iv.contract_id ?? null,
-            remaining: iv.remaining_amount == null ? total : num(iv.remaining_amount),
+            remaining: financialReadNumber(iv.remaining_amount),
           });
         }
       }
@@ -206,6 +217,10 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
         // Khoản định kỳ + số ghi đè (super admin / chủ công ty). Server đã lọc mốc chốt kỳ.
         fetchSalaryExtras(configs.map((c) => c.organization_id), periodMonth),
       ]);
+      for (const result of [profilesRes, ledgerRes, monthlyRes, shRes, pmRes, ieRes, buildingsRes, trendRes]) {
+        if (result.error) throw result.error;
+        requireSalaryRows(result.data);
+      }
 
       const nameById = new Map<string, string>(
         ((profilesRes.data || []) as any[]).map((p) => [p.id, p.full_name])
@@ -234,7 +249,9 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
       }
       const commByStaff = new Map<string, { items: SalCommissionItem[]; flagged: SalCommissionItem[] }>();
       {
-        const { data: ctRaw } = await (supabase.from("income_expense_types").select("id, name, category") as any);
+        const { data: ctRaw , error: sourceError2 } = await (supabase.from("income_expense_types").select("id, name, category") as any);
+        if (sourceError2) throw sourceError2;
+      requireSalaryRows(ctRaw);
         const commTypeIds = ((ctRaw || []) as any[])
           .filter((t) => isCommissionType(t))
           .map((t) => t.id);
@@ -250,12 +267,12 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
                 .lte("start_date", end)
                 .order("id", { ascending: true })
                 .range(from, to),
-            { label: "salary.commissionItems" },
+            { label: "salary.commissionItems", throwOnError: true },
           );
           // FAIL-CLOSED: lỗi tải KHÔNG được biến thành hoa hồng 0 (làm lương sai
           // âm thầm). null = query lỗi → dừng cả query để hiện lỗi cho user.
           if (ciRaw === null) {
-            throw new Error("Lỗi tải dữ liệu hoa hồng (income_expense_items) — không thể tính lương chính xác.");
+            throw new Error("Chưa tải đủ dữ liệu hoa hồng để tính lương. Tải lại bảng lương trước khi tiếp tục.");
           }
           const voucherMap = new Map<string, CommissionVoucherRow>();
           for (const row of ciRaw as any[]) {
@@ -275,10 +292,12 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
       // allocations (đầu tư) cho tháng — chỉ khi có cổ đông
       let allocs: any[] = [];
       if (shIds.length) {
-        const { data: aRaw } = await (supabase
+        const { data: aRaw , error: sourceError3 } = await (supabase
           .from("profit_allocations")
           .select("shareholder_id, amount, pm:profit_monthly_id(period_month, building_id, status)") as any)
           .in("shareholder_id", shIds);
+        if (sourceError3) throw sourceError3;
+      requireSalaryRows(aRaw);
         allocs = ((aRaw || []) as any[]).filter(
           (a) => a.pm?.period_month === periodMonth && a.pm?.status === "LOCKED"
         );
@@ -315,10 +334,12 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
       // snapshot cho tháng ĐÃ CHỐT (đóng băng bảng kê)
       let snapByStaff = new Map<string, SalLedgerRow[]>();
       if (lockedMonthlyIds.length) {
-        const { data: snapRaw } = await (supabase
+        const { data: snapRaw , error: sourceError4 } = await (supabase
           .from("salary_work_ledger_snapshot")
           .select("*") as any)
           .in("salary_monthly_id", lockedMonthlyIds);
+        if (sourceError4) throw sourceError4;
+      requireSalaryRows(snapRaw);
         for (const s of (snapRaw || []) as any[]) {
           const arr = snapByStaff.get(s.staff_id) || [];
           arr.push({
@@ -339,10 +360,12 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
       const monthlyIds = ((monthlyRes.data || []) as any[]).map((r) => r.id);
       let adjByMonthly = new Map<string, SalAdjustment[]>();
       if (monthlyIds.length) {
-        const { data: adjRaw } = await (supabase
+        const { data: adjRaw , error: sourceError5 } = await (supabase
           .from("salary_adjustments")
           .select("*") as any)
           .in("salary_monthly_id", monthlyIds);
+        if (sourceError5) throw sourceError5;
+      requireSalaryRows(adjRaw);
         for (const a of (adjRaw || []) as any[]) {
           const arr = adjByMonthly.get(a.salary_monthly_id) || [];
           arr.push({
@@ -394,20 +417,23 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
             // một promise đã fulfil. Không đọc `error` ở đây thì một lời gọi bị
             // từ chối biến thành số 0 trên màn lương, im lặng.
             if (v5BulkErr) throw v5BulkErr;
+            if (!v5BulkRes || typeof v5BulkRes !== "object" || Array.isArray(v5BulkRes)) throw new Error("Chưa tải được số tiền chuyên cần và thưởng chuỗi để tính lương.");
             return v5BulkRes;
           })(),
           (supabase.from("salary_streak_state").select("user_id, current_streak") as any)
             .in("user_id", staffIds).eq("period_month", periodMonth),
         ]);
+        if (sssRes.error) throw sssRes.error;
+        requireSalaryRows(sssRes.data);
         const curByStaff = new Map<string, number>(
           ((sssRes.data || []) as any[]).map((r) => [r.user_id, num(r.current_streak)])
         );
         for (const sid of staffIds) {
+          if (!Object.prototype.hasOwnProperty.call(v5Bulk, sid)) continue;
           const mm = jsonProp(v5Bulk, sid);
-          if (mm == null) continue;
           v5ByStaff.set(sid, {
-            attend: num(jsonProp(mm, "attend_amount")), streak: num(jsonProp(mm, "streak_amount")),
-            ticked: num(jsonProp(mm, "ticked_days")), nchuan: num(jsonProp(mm, "n_chuan")),
+            attend: financialReadNumber(jsonProp(mm, "attend_amount")), streak: financialReadNumber(jsonProp(mm, "streak_amount")),
+            ticked: financialReadNumber(jsonProp(mm, "ticked_days")), nchuan: financialReadNumber(jsonProp(mm, "n_chuan")),
             cur: curByStaff.get(sid) || 0,
           });
         }
@@ -590,13 +616,14 @@ export const useMyManagerConfig = () => {
     queryFn: async () => {
       const user = await getSessionUser();
       if (!user) return null;
-      const { data } = await (supabase
+      const { data , error: sourceError6 } = await (supabase
         .from("manager_salary_config")
         .select("staff_id") as any)
         .eq("staff_id", user.id)
         .eq("is_active", true)
         .limit(1)
         .maybeSingle();
+      if (sourceError6) throw sourceError6;
       return data ? { staff_id: (data as any).staff_id } : null;
     },
   });
@@ -613,17 +640,17 @@ export const useStaffDisplayMonth = (staffId: string | null | undefined, enabled
     queryFn: async () => {
       const cur = vnYmOf(); // giờ VN, không phải giờ máy (audit 2026-07-20)
       let overrides: Record<string, boolean> = {};
-      try {
-        const { data } = await supabase.rpc("salary_staff_months");
-        if (data && typeof data === "object") overrides = data as Record<string, boolean>;
-      } catch {
-        /* RPC chưa có / lỗi → dùng mặc định lùi-tháng */
-      }
-      const { data: rows } = await (supabase
+      const {data, error} = await supabase.rpc("salary_staff_months");
+      if (error) throw error;
+      if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error("Chưa tải được tháng lương được phép xem");
+      overrides = data as Record<string, boolean>;
+      const { data: rows , error: sourceError8 } = await (supabase
         .from("salary_monthly")
         .select("period_month, status") as any)
         .eq("staff_id", staffId)
         .eq("status", "LOCKED");
+      if (sourceError8) throw sourceError8;
+      requireSalaryRows(rows);
       const locked = new Set<string>(
         ((rows || []) as any[]).map((r) => String(r.period_month).slice(0, 7)),
       );
@@ -643,7 +670,7 @@ export const useStaffDisplayMonth = (staffId: string | null | undefined, enabled
 // 4 khoản thưởng tay + 2 salary_monthly nhập ngày 27/08/2026 rơi ra NULL và làm đỏ
 // gate measure-org-leak. Thà ném lỗi còn hơn ghi một dòng tiền không có biên giới.
 async function orgOfStaff(staffId: string): Promise<string> {
-  const { data: cfg } = await supabase
+  const { data: cfg , error: sourceError9 } = await supabase
     .from("manager_salary_config")
     .select("organization_id")
     .eq("staff_id", staffId)
@@ -652,28 +679,31 @@ async function orgOfStaff(staffId: string): Promise<string> {
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
+  if (sourceError9) throw sourceError9;
   if (cfg?.organization_id) return cfg.organization_id;
 
-  const { data: mem } = await supabase
+  const { data: mem , error: sourceError10 } = await supabase
     .from("organization_memberships")
     .select("organization_id")
     .eq("user_id", staffId)
     .eq("status", "ACTIVE")
     .limit(1)
     .maybeSingle();
+  if (sourceError10) throw sourceError10;
   if (mem?.organization_id) return mem.organization_id;
 
   throw new Error("Không xác định được tổ chức của nhân viên — không thể ghi dòng lương");
 }
 
-async function ensureMonthly(ownerId: string, staffId: string, periodMonth: string): Promise<string> {
-  const { data: existing } = await (supabase
+async function ensureMonthly(ownerId: string, staffId: string, periodMonth: string, progress?: FinancialWorkflowProgress): Promise<string> {
+  const { data: existing , error: sourceError11 } = await (supabase
     .from("salary_monthly")
     .select("id") as any)
     .eq("staff_id", staffId)
     .eq("period_month", periodMonth)
     .limit(1)
     .maybeSingle();
+  if (sourceError11) throw sourceError11;
   if (existing?.id) return (existing as any).id;
   const organizationId = await orgOfStaff(staffId);
   const { data: created, error } = await supabase
@@ -688,7 +718,9 @@ async function ensureMonthly(ownerId: string, staffId: string, periodMonth: stri
     .select("id")
     .single();
   if (error) throw error;
-  return (created as any).id;
+  if (!created || typeof created.id!=="string" || !created.id) throw new TypeError("Unconfirmed salary month create");
+  progress?.completed.push({id:created.id,label:'Đã tạo dòng bảng lương tháng'});
+  return created.id;
 }
 
 export interface SaveAdjustmentInput {
@@ -704,20 +736,22 @@ export interface SaveAdjustmentInput {
 
 export const useSaveSalaryAdjustment = () => {
   const qc = useQueryClient();
+  const guard = useRef(persistentFinancialWorkflow('salary-adjustment',{scope:'actor'}));
   return useMutation({
-    mutationFn: async (input: SaveAdjustmentInput) => {
+    mutationFn: async (input: SaveAdjustmentInput) => guard.current.run(`${input.ownerId}-${input.staffId}-${input.periodMonth}-${input.id ?? 'new'}`, 'lưu khoản thưởng/trừ', async (progress) => {
       const user = await getSessionUser();
-      if (!user) throw new Error("Chưa đăng nhập");
+      if (!user) throw {code:"PGRST301",message:"Not authenticated"};
       if (input.id) {
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from("salary_adjustments")
           .update({ kind: input.kind, label: input.label, amount: Math.abs(input.amount), note: input.note ?? null })
-          .eq("id", input.id);
+          .eq("id", input.id).select('id').maybeSingle();
         if (error) throw error;
-        return;
+        if (data?.id !== input.id) throw new TypeError('Unconfirmed salary adjustment update');
+        return data;
       }
-      const monthlyId = await ensureMonthly(input.ownerId, input.staffId, input.periodMonth);
-      const { error } = await supabase.from("salary_adjustments").insert({
+      const monthlyId = await ensureMonthly(input.ownerId, input.staffId, input.periodMonth, progress);
+      const { data, error } = await supabase.from("salary_adjustments").insert({
         user_id: input.ownerId,
         salary_monthly_id: monthlyId,
         kind: input.kind,
@@ -727,14 +761,16 @@ export const useSaveSalaryAdjustment = () => {
         source: "MANUAL",
         // thiếu nhãn org = dòng thưởng tay hiện cho mọi công ty (xem orgOfStaff)
         organization_id: await orgOfStaff(input.staffId),
-      });
+      }).select('id').single();
       if (error) throw error;
-    },
-    onSuccess: () => {
+      if (!data?.id) throw new TypeError('Unconfirmed salary adjustment create');
+      return data;
+    }),
+    onSuccess: (_result, input) => {
       qc.invalidateQueries({ queryKey: ["manager-salary"] });
-      toast.success("Đã lưu khoản thưởng/trừ");
+      toast.success(`Đã lưu khoản ${input.kind === "BONUS" ? "thưởng" : "trừ"} ${input.label}.`);
     },
-    onError: (e: any) => toast.error(e?.message || "Không thể lưu"),
+    meta: {handlesFeedback:true},
   });
 };
 
@@ -742,12 +778,16 @@ export const useDeleteSalaryAdjustment = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await (supabase.from("salary_adjustments").delete() as any).eq("id", id);
+      const { data, error } = await supabase.from("salary_adjustments").delete().eq("id", id).select('id,label');
       if (error) throw error;
+      if (!Array.isArray(data) || data.length > 1 || data.some(row => row.id !== id)) throw new TypeError('Unconfirmed salary adjustment delete');
+      return {changed:data.length > 0, label:data[0]?.label};
     },
-    onSuccess: () => {
+    onError: (error:unknown) => toast.error(workflowErrorMessage(error, "xóa khoản thưởng/trừ")),
+    onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ["manager-salary"] });
-      toast.success("Đã xoá");
+      if (result.changed) toast.success(`Đã xóa khoản thưởng/trừ ${result.label ?? ''} khỏi bảng lương.`);
+      else toast.info('Không có khoản thưởng/trừ nào được xóa. Tải lại bảng lương để kiểm tra.');
     },
   });
 };
@@ -759,27 +799,30 @@ export const useToggleJobExcluded = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ jobId, excluded }: { jobId: string; excluded: boolean }) => {
-      const { error } = await (supabase.from("jobs") as any)
+      const { data, error } = await supabase.from("jobs")
         .update({ exclude_from_salary: excluded })
-        .eq("id", jobId);
+        .eq("id", jobId).select('id,exclude_from_salary').maybeSingle();
       if (error) throw error;
+      if (data?.id !== jobId || data.exclude_from_salary !== excluded) throw new TypeError('Unconfirmed job salary status');
       return excluded;
     },
     onSuccess: (excluded) => {
       qc.invalidateQueries({ queryKey: ["manager-salary"] });
       toast.success(excluded ? "Đã bỏ việc này khỏi thưởng" : "Đã tính thưởng lại cho việc này");
     },
-    onError: (e: any) => toast.error(e?.message || "Không thể cập nhật"),
+    onError: (error: unknown) => toast.error(workflowErrorMessage(error, "cập nhật cách tính thưởng của công việc")),
   });
 };
 
 // Chốt tháng: upsert salary_monthly LOCKED (đóng băng số) + snapshot bảng kê.
 export const useLockSalaryMonth = () => {
   const qc = useQueryClient();
+  const guard = useRef(persistentFinancialWorkflow('salary-lock',{scope:'actor'}));
   return useMutation({
-    mutationFn: async ({ ownerId, periodMonth, managers }: { ownerId: string; periodMonth: string; managers: SalManager[] }) => {
+    meta: { handlesFeedback: true },
+    mutationFn: async ({ ownerId, periodMonth, managers }: { ownerId: string; periodMonth: string; managers: SalManager[] }) => guard.current.run(`lock-${ownerId}-${periodMonth}`, `chốt bảng lương tháng ${periodMonth.slice(5,7)}/${periodMonth.slice(0,4)}`, async (progress) => {
       const user = await getSessionUser();
-      if (!user) throw new Error("Chưa đăng nhập");
+      if (!user) throw {code:"PGRST301",message:"Not authenticated"};
       const nowIso = new Date().toISOString();
 
       // Canonical lock_salary_month_v1: server ATOMIC + 2 guard (D2b) — chặn khi
@@ -813,14 +856,17 @@ export const useLockSalaryMonth = () => {
       const canonical = await supabase.rpc("lock_salary_month_v2", {
         p_period_month: periodMonth,
         p_managers: rpcNullable(canonicalManagers),
-        p_idempotency_key: `sal-lock-${periodMonth}-${crypto.randomUUID().slice(0, 8)}`,
+        p_idempotency_key: progress.requestKey,
       });
-      if (!canonical.error) return;
+      if (!canonical.error) {
+        const count = jsonProp(canonical.data, 'locked_count');
+        if (jsonProp(canonical.data, "state") !== "LOCKED" || jsonProp(canonical.data, 'period_month') !== periodMonth || typeof count !== 'number' || !Number.isInteger(count) || count < 0) throw new TypeError("Unconfirmed salary lock");
+        return {count};
+      }
       if (isMissingRpc(canonical.error)) {
-        throw new Error(`Máy chủ chưa có chốt lương kèm dấu hoa hồng (migration ${HH_QL_MIGRATION}).`);
+        throw canonical.error;
       }
       if (!isCanonicalFallbackSignal(canonical.error)) {
-        toast.error(canonical.error.message || "Không thể chốt lương");
         throw canonical.error;
       }
 
@@ -830,12 +876,20 @@ export const useLockSalaryMonth = () => {
         managers.flatMap((m) => (m.commissionItems || []).map((x) => x.voucherId).filter(Boolean) as string[])
       ));
       if (commVoucherIds.length) {
-        const { error: cErr } = await (supabase
+        const { data: approvedRows, error: cErr } = await supabase
           .from("income_expenses")
-          .update({ approval_status: "APPROVED", approved_at: nowIso, approved_by: user.id }) as any)
+          .update({ approval_status: "APPROVED", approved_at: nowIso, approved_by: user.id })
           .in("id", commVoucherIds)
-          .neq("approval_status", "APPROVED");
+          .neq("approval_status", "APPROVED")
+          .select("id,approval_status");
         if (cErr) throw cErr;
+        if (!Array.isArray(approvedRows) || new Set(approvedRows.map(row=>row.id)).size !== approvedRows.length || approvedRows.some(row=>!commVoucherIds.includes(row.id)||row.approval_status!=="APPROVED")) throw new FinancialWorkflowError('Chưa xác nhận được kết quả duyệt phiếu hoa hồng. Đối chiếu các phiếu trước khi chốt lại.','unknown',commVoucherIds.map(id=>({id,label:`Phiếu hoa hồng cần đối chiếu: ${id}`})));
+        progress.completed.push(...approvedRows.map(row => ({id:row.id,label: `Đã cập nhật duyệt phiếu hoa hồng ${row.id}`})));
+        if(approvedRows.length !== commVoucherIds.length){
+          const {data: currentRows,error: readError}=await supabase.from("income_expenses").select("id,approval_status").in("id",commVoucherIds);
+          if(readError)throw readError;
+          if(!Array.isArray(currentRows)||currentRows.length!==commVoucherIds.length||new Set(currentRows.map(row=>row.id)).size!==commVoucherIds.length||currentRows.some(row=>!commVoucherIds.includes(row.id)||row.approval_status!=="APPROVED")) throw new FinancialWorkflowError('Chưa xác nhận đủ phiếu hoa hồng đã duyệt. Đối chiếu các phiếu trước khi chốt lại.','unknown',commVoucherIds.map(id=>({id,label:`Phiếu hoa hồng cần đối chiếu: ${id}`})));
+        }
       }
 
       for (const m of managers) {
@@ -869,10 +923,14 @@ export const useLockSalaryMonth = () => {
           .select("id")
           .single();
         if (error) throw error;
-        const monthlyId = (row as any).id;
-        await (supabase.from("salary_work_ledger_snapshot").delete() as any).eq("salary_monthly_id", monthlyId);
+        const monthlyId = row?.id;
+        if (!monthlyId) throw new TypeError('Unconfirmed salary month write');
+        progress.completed.push({id: monthlyId, label: `Đã chốt số lương của ${m.name}`});
+        progress.stage = `lưu bảng kê của ${m.name}`;
+        const {error: removeError} = await (supabase.from("salary_work_ledger_snapshot").delete() as any).eq("salary_monthly_id", monthlyId);
+        if (removeError) throw removeError;
         if (m.ledger.length) {
-          await supabase.from("salary_work_ledger_snapshot").insert(
+          const {error: snapshotError} = await supabase.from("salary_work_ledger_snapshot").insert(
             m.ledger.map((r) => ({
               user_id: ownerId,
               salary_monthly_id: monthlyId,
@@ -895,48 +953,79 @@ export const useLockSalaryMonth = () => {
               reason: r.reason,
             }))
           );
+          if (snapshotError) throw snapshotError;
         }
+        const {data:savedSnapshot,error:readSnapshotError}=await supabase.from("salary_work_ledger_snapshot")
+          .select("item_type,source_id,occurred_date,day_label,content,place,job_type_name,is_repair,is_contract,base_amount,weekend_amount,after_amount,cash_amount,has_photo,bonus_amount,reason")
+          .eq("salary_monthly_id",monthlyId);
+        if(readSnapshotError)throw readSnapshotError;
+        if(!Array.isArray(savedSnapshot)||savedSnapshot.length!==m.ledger.length)throw new TypeError("Chưa xác nhận đủ bảng kê của nhân viên sau khi chốt lương.");
+        const snapshotKey=(value:Record<string,unknown>)=>JSON.stringify([
+          value.item_type,value.source_id,value.occurred_date,value.day_label,value.content,value.place,value.job_type_name,
+          value.is_repair,value.is_contract,financialReadNumber(value.base_amount),financialReadNumber(value.weekend_amount),
+          financialReadNumber(value.after_amount),financialReadNumber(value.cash_amount),value.has_photo,financialReadNumber(value.bonus_amount),value.reason,
+        ]);
+        if(savedSnapshot.map(snapshotKey).sort().join("\n")!==m.ledger.map(snapshotKey).sort().join("\n"))throw new TypeError("Bảng kê đã lưu chưa khớp số liệu dùng để chốt lương.");
       }
-    },
-    onSuccess: () => {
+      return {count:managers.length};
+    }),
+    onSuccess: (result, input) => {
       qc.invalidateQueries({ queryKey: ["manager-salary"] });
-      toast.success("Đã chốt lương tháng");
+      if (result.count === 0) toast.info(`Không có nhân viên nào được chốt lương trong tháng ${input.periodMonth.slice(5,7)}/${input.periodMonth.slice(0,4)}.`);
+      else toast.success(`Đã chốt lương tháng ${input.periodMonth.slice(5,7)}/${input.periodMonth.slice(0,4)} cho ${result.count} nhân viên.`);
     },
-    onError: (e: any) => toast.error(e?.message || "Không thể chốt"),
   });
 };
 
 export const useUnlockSalaryMonth = () => {
   const qc = useQueryClient();
+  const guard = useRef(persistentFinancialWorkflow('salary-unlock',{scope:'actor'}));
   return useMutation({
-    mutationFn: async ({ periodMonth, staffIds }: { periodMonth: string; staffIds: string[] }) => {
+    meta: { handlesFeedback: true },
+    mutationFn: async ({ periodMonth, staffIds }: { periodMonth: string; staffIds: string[] }) => guard.current.run(`unlock-${periodMonth}`, `mở khóa bảng lương tháng ${periodMonth.slice(5,7)}/${periodMonth.slice(0,4)}`, async (progress) => {
       // Canonical unlock (atomic + giữ organization_id); fallback legacy. v2 gỡ luôn dấu
       // "đã tính vào lương" của kỳ này để lần chốt sau tính lại được đúng các phiếu đó.
       const canonical = await supabase.rpc("unlock_salary_month_v2", {
         p_period_month: periodMonth,
         p_staff_ids: staffIds,
-        p_idempotency_key: `sal-unlock-${periodMonth}-${crypto.randomUUID().slice(0, 8)}`,
+        p_idempotency_key: progress.requestKey,
       });
-      if (!canonical.error) return;
+      if (!canonical.error) {
+        const count = jsonProp(canonical.data, 'unlocked_count');
+        if (jsonProp(canonical.data, "state") !== "DRAFT" || jsonProp(canonical.data, 'period_month') !== periodMonth || typeof count !== 'number' || !Number.isInteger(count) || count < 0) throw new TypeError("Unconfirmed salary unlock");
+        return {count};
+      }
       if (isMissingRpc(canonical.error)) {
-        throw new Error(`Máy chủ chưa có mở chốt lương kèm dấu hoa hồng (migration ${HH_QL_MIGRATION}).`);
+        throw canonical.error;
       }
       if (!isCanonicalFallbackSignal(canonical.error)) throw canonical.error;
 
-      const { data: rows } = await (supabase
+      const { data: rows, error: rowsError } = await (supabase
         .from("salary_monthly")
         .select("id") as any)
         .eq("period_month", periodMonth)
         .in("staff_id", staffIds);
-      const ids = ((rows || []) as any[]).map((r) => r.id);
+      if (rowsError) throw rowsError;
+      if (!Array.isArray(rows) || rows.some(r => typeof r?.id !== 'string')) throw new TypeError('Invalid salary month list');
+      const ids = rows.map((r) => r.id as string);
       if (ids.length) {
-        await (supabase.from("salary_work_ledger_snapshot").delete() as any).in("salary_monthly_id", ids);
-        await (supabase.from("salary_monthly").update({ status: "DRAFT", locked_at: null, locked_by: null }) as any).in("id", ids);
+        const {error: removeError} = await (supabase.from("salary_work_ledger_snapshot").delete() as any).in("salary_monthly_id", ids);
+        if (removeError) throw removeError;
+        progress.completed.push(...ids.map(id => ({id,label: `Đã gửi yêu cầu gỡ bảng kê của kỳ lương ${periodMonth}`})));
+        const {data:remainingSnapshots,error:verifyRemovalError}=await supabase.from("salary_work_ledger_snapshot").select("salary_monthly_id").in("salary_monthly_id",ids);
+        if(verifyRemovalError)throw verifyRemovalError;
+        if(!Array.isArray(remainingSnapshots)||remainingSnapshots.length!==0)throw new TypeError("Chưa xác nhận bảng kê đã được gỡ. Chưa mở khóa số lương.");
+        progress.stage = "mở khóa số lương";
+        const {data:unlocked, error: unlockError} = await supabase.from("salary_monthly").update({ status: "DRAFT", locked_at: null, locked_by: null }).in("id", ids).select('id');
+        if (unlockError) throw unlockError;
+        if (!Array.isArray(unlocked) || unlocked.length !== ids.length || new Set(unlocked.map(row=>row.id)).size!==ids.length || unlocked.some(row => !ids.includes(row.id))) throw new TypeError('Unconfirmed salary rows unlock');
       }
-    },
-    onSuccess: () => {
+      return {count:ids.length};
+    }),
+    onSuccess: (result, input) => {
       qc.invalidateQueries({ queryKey: ["manager-salary"] });
-      toast.success("Đã mở khoá tháng");
+      if (result.count === 0) toast.info(`Không có bảng lương đang khóa cần mở trong tháng ${input.periodMonth.slice(5,7)}/${input.periodMonth.slice(0,4)}.`);
+      else toast.success(`Đã mở khóa lương tháng ${input.periodMonth.slice(5,7)}/${input.periodMonth.slice(0,4)} cho ${result.count} nhân viên.`);
     },
   });
 };
@@ -963,12 +1052,18 @@ export interface SalaryPayoutInput {
   } | null;
 }
 
-export const useSalaryPayout = () => {
+function requireSalaryVoucherState(receipt:{approval_status:string|null;posting_status:string|null}):void {
+  if (!['UNAPPROVED','APPROVED','CANCELLED'].includes(receipt.approval_status ?? '') || !['UNPOSTED','POSTED','REVERSED','NOT_APPLICABLE'].includes(receipt.posting_status ?? '')) throw new TypeError("Unconfirmed salary voucher state");
+}
+
+export const useSalaryPayout = (options?: {silent?: boolean}) => {
   const qc = useQueryClient();
+  const guard = useRef(persistentFinancialWorkflow('salary-payout',{scope:'actor'}));
   return useMutation({
-    mutationFn: async (input: SalaryPayoutInput) => {
+    meta: { handlesFeedback: true },
+    mutationFn: async (input: SalaryPayoutInput) => guard.current.run(`${input.staffId}-${input.periodMonth}`, `lập phiếu chi lương cho ${input.staffName}`, async (progress) => {
       const user = await getSessionUser();
-      if (!user) throw new Error("Chưa đăng nhập");
+      if (!user) throw {code:"PGRST301",message:"Not authenticated"};
       const meta = (user.user_metadata ?? {}) as Record<string, any>;
       const creatorName: string = meta.full_name || meta.name || user.email || "Người dùng";
 
@@ -984,13 +1079,19 @@ export const useSalaryPayout = () => {
         p_account_id: input.account_id,
         p_voucher_date: input.voucher_date,
         p_note: rpcNullable(input.note ?? null),
-        p_idempotency_key: `sal-pay-${input.staffId.slice(0, 8)}-${input.periodMonth}-${crypto.randomUUID().slice(0, 8)}`,
+        p_idempotency_key: progress.requestKey,
         p_rent_invoice_id: input.rentInvoice?.invoiceId ?? undefined,
         p_rent_amount: input.rentInvoice ? num(input.rentInvoice.amount) : undefined,
       });
-      if (!canonical.error) return canonical.data;
+      if (!canonical.error) {
+        const id = jsonProp(canonical.data, "salary_voucher_id");
+        if (typeof id !== "string" || !id) throw new TypeError("Unconfirmed salary payout");
+        progress.completed.push({id,label: `Đã tạo phiếu chi lương cho ${input.staffName}`});
+        const receipt = await readCreatedVoucherReceipt({id});
+        requireSalaryVoucherState(receipt);
+        return receipt;
+      }
       if (!isCanonicalFallbackSignal(canonical.error)) {
-        toast.error(canonical.error.message || "Không thể chi lương");
         throw canonical.error;
       }
 
@@ -998,7 +1099,7 @@ export const useSalaryPayout = () => {
       let rentCollect = 0;
       let rentInv: any = null;
       if (input.rentInvoice?.invoiceId) {
-        const { data: invFresh } = await (supabase
+        const { data: invFresh, error: invoiceError } = await (supabase
           .from("invoices")
           .select(
             "id, user_id, organization_id, invoice_number, building_id, room_id, contract_id, total_amount, remaining_amount, room:rooms!invoices_room_id_fkey(name), building:buildings!invoices_building_id_fkey(name)",
@@ -1008,22 +1109,21 @@ export const useSalaryPayout = () => {
           // Không gạch nợ lên hoá đơn đã huỷ (nút Xoá đã gôm về Huỷ 09/2026).
           .neq("status", "CANCELLED")
           .single() as any);
-        if (invFresh) {
-          const remaining =
-            Number((invFresh as any).remaining_amount ??
-              (invFresh as any).total_amount) || 0;
-          rentCollect = Math.min(num(input.rentInvoice.amount), remaining);
-          if (rentCollect > 0) rentInv = invFresh;
-          else rentCollect = 0;
-        }
+        if (invoiceError) throw invoiceError;
+        if (!invFresh || invFresh.id !== input.rentInvoice.invoiceId) throw new TypeError("Chưa đọc được đúng hóa đơn tiền phòng để đối chiếu");
+        const remaining = financialReadNumber(invFresh.remaining_amount);
+        rentCollect = Math.min(num(input.rentInvoice.amount), remaining);
+        if (rentCollect > 0) rentInv = invFresh;
+        else rentCollect = 0;
       }
 
       // toà chung hệ thống (toà ảo — hiện là "Kho Văn Phòng Chung")
-      const { data: chung } = await (supabase
+      const { data: chung, error: buildingError } = await (supabase
         .from("buildings").select("id, organization_id") as any)
         .eq("user_id", input.ownerId)
         .eq("is_virtual", true).is("deleted_at", null)
         .order("created_at", { ascending: true }).limit(1).maybeSingle();
+      if (buildingError) throw buildingError;
       const organizationId = (chung as { organization_id?: string } | null)
         ?.organization_id;
       if (!chung?.id || !organizationId) {
@@ -1039,8 +1139,9 @@ export const useSalaryPayout = () => {
           .eq("organization_id", organizationId)
           .eq("type", "expense");
         if (typeLookupError) throw typeLookupError;
+        if(!Array.isArray(typeRows)||typeRows.some(row=>typeof row?.id!=='string'||!row.id||typeof row.name!=='string'))throw new TypeError('Unconfirmed salary category list');
         return (
-          ((typeRows ?? []) as Array<{ id: string; name: string }>).find(
+          (typeRows as Array<{ id: string; name: string }>).find(
             (row) => nrm(row.name) === nrm(salaryTypeName),
           )?.id ?? null
         );
@@ -1094,6 +1195,9 @@ export const useSalaryPayout = () => {
         })
         .select("id").single();
       if (vErr) throw vErr;
+      if (!voucher?.id) throw new TypeError("Unconfirmed salary voucher");
+      progress.completed.push({id:voucher.id,label:`Đã tạo phiếu chi lương cho ${input.staffName}`});
+      progress.stage = "lưu các khoản trong phiếu lương";
 
       // Phiếu chi lương: nếu gạch nợ tiền phòng → TÁCH 2 dòng (thực nhận + tiền
       // phòng) ⇒ tổng phiếu chi = gross (thực nhận + tiền phòng). Ngược lại 1 dòng.
@@ -1142,11 +1246,12 @@ export const useSalaryPayout = () => {
         }
 
         // loại thu doanh thu (không phải cọc)
-        const { data: incTypes } = await (supabase
+        const { data: incTypes, error: incomeTypesError } = await (supabase
           .from("income_expense_types")
           .select("id, is_default, name, is_deposit") as any)
           .eq("organization_id", rentOrganizationId)
           .eq("type", "income").limit(100);
+        if (incomeTypesError) throw incomeTypesError;
         const revenueTypes = ((incTypes || []) as any[]).filter((x) => !x.is_deposit);
         const incomeTypeId =
           revenueTypes.find((x) => x.is_default)?.id ||
@@ -1170,6 +1275,8 @@ export const useSalaryPayout = () => {
           } as any)
           .select("id").single();
         if (payErr) throw payErr;
+        progress.completed.push({id:payRow.id,label:"Đã ghi nhận khoản khấu trừ tiền phòng"});
+        progress.stage = "lập phiếu thu khấu trừ tiền phòng";
 
         const { data: rentVoucher, error: rvErr } = await supabase
           .from("income_expenses")
@@ -1192,6 +1299,8 @@ export const useSalaryPayout = () => {
           } as any)
           .select("id").single();
         if (rvErr) throw rvErr;
+        progress.completed.push({id:rentVoucher.id,label:"Đã tạo phiếu thu tiền phòng"});
+        progress.stage = "lưu dòng phiếu thu tiền phòng";
 
         const { error: rItErr } = await supabase.from("income_expense_items").insert({
           income_expense_id: (rentVoucher as any).id,
@@ -1208,13 +1317,20 @@ export const useSalaryPayout = () => {
       }
 
       // ghi nhận đã trả vào salary_monthly (paid = tiền thực nhận, KHÔNG gồm tiền phòng)
-      const monthlyId = await ensureMonthly(input.ownerId, input.staffId, input.periodMonth);
-      const { data: cur } = await (supabase.from("salary_monthly").select("paid").eq("id", monthlyId) as any).single();
-      const newPaid = (Number((cur as any)?.paid) || 0) + input.amount;
-      await (supabase.from("salary_monthly").update({ paid: newPaid, payout_voucher_id: (voucher as any).id }) as any).eq("id", monthlyId);
-      return voucher;
-    },
-    onSuccess: () => {
+      const monthlyId = await ensureMonthly(input.ownerId, input.staffId, input.periodMonth, progress);
+      progress.stage = "cập nhật số đã trả trong bảng lương";
+      const { data: cur, error: paidReadError } = await (supabase.from("salary_monthly").select("paid").eq("id", monthlyId) as any).single();
+      if (paidReadError) throw paidReadError;
+      if (!cur) throw new TypeError("Unconfirmed salary paid amount");
+      const newPaid = financialReadNumber(cur.paid) + input.amount;
+      const {data: paidRow,error: paidUpdateError} = await supabase.from("salary_monthly").update({ paid: newPaid, payout_voucher_id: voucher.id }).eq("id", monthlyId).select("id,paid,payout_voucher_id").maybeSingle();
+      if (paidUpdateError) throw paidUpdateError;
+      if(!paidRow||paidRow.id!==monthlyId||financialReadNumber(paidRow.paid)!==newPaid||paidRow.payout_voucher_id!==voucher.id) throw new TypeError("Unconfirmed salary paid update");
+      const receipt = await readCreatedVoucherReceipt(voucher);
+      requireSalaryVoucherState(receipt);
+      return receipt;
+    }),
+    onSuccess: (result, input) => {
       qc.invalidateQueries({ queryKey: ["manager-salary"] });
       qc.invalidateQueries({ queryKey: ["salary-pending-payouts"] });
       qc.invalidateQueries({ queryKey: ["income-expenses"] });
@@ -1222,8 +1338,7 @@ export const useSalaryPayout = () => {
       qc.invalidateQueries({ queryKey: ["invoices"] });
       qc.invalidateQueries({ queryKey: ["invoice-statistics"] });
       qc.invalidateQueries({ queryKey: ["payments"] });
-      toast.success("Đã ghi phiếu chi lương");
+      if (!options?.silent) { const feedback = createdVoucherFeedback(result); toast[feedback.kind](`${feedback.message} Người nhận: ${input.staffName}.`); }
     },
-    onError: (e: any) => toast.error(e?.message || "Không thể ghi phiếu"),
   });
 };

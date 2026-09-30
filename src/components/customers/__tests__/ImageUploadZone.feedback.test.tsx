@@ -1,0 +1,14 @@
+// @vitest-environment jsdom
+import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {afterEach,beforeEach,expect,it,vi} from 'vitest';
+const io=vi.hoisted(()=>({upload:vi.fn()}));
+vi.mock('@/lib/storage',()=>({uploadFile:io.upload}));
+vi.mock('@/lib/authSession',()=>({getSessionUser:async()=>({id:'actor'})}));
+vi.mock('@/integrations/supabase/client',()=>({supabase:{}}));
+vi.mock('@/components/ui/storage-image',()=>({StorageImage:()=>null}));
+vi.mock('@/hooks/useClipboardImagePaste',()=>({useClipboardImagePaste:()=>({onMouseEnter:vi.fn(),onMouseLeave:vi.fn()})}));
+import ImageUploadZone from '../ImageUploadZone';
+import {FinancialWorkflowError} from '@/lib/financialWorkflow';
+beforeEach(()=>{vi.resetAllMocks();localStorage.clear();});afterEach(cleanup);
+it('unknown retains file/path inline, stops remaining uploads and blocks replay after remount',async()=>{io.upload.mockRejectedValue(new FinancialWorkflowError('Chưa xác nhận ảnh.','unknown',[{id:'bucket/actor/front.webp',label:'Đường dẫn cần đối chiếu'}]));const props={label:'Ảnh CCCD',multiple:true,onChange:vi.fn(),onAddMany:vi.fn()};const view=render(<ImageUploadZone {...props}/>);const files=[new File(['x'],'front.png',{type:'image/png'}),new File(['x'],'back.png',{type:'image/png'})];fireEvent.change(view.container.querySelector('input[type=file]')!,{target:{files}});await waitFor(()=>expect(screen.getByRole('alert').textContent).toContain('bucket/actor/front.webp'));expect(screen.getByRole('alert').textContent).toContain('front.png');expect(screen.getByRole('alert').textContent).toContain('back.png');expect(props.onAddMany).not.toHaveBeenCalled();expect(io.upload).toHaveBeenCalledTimes(1);view.unmount();const next=render(<ImageUploadZone {...props}/>);fireEvent.change(next.container.querySelector('input[type=file]')!,{target:{files}});await waitFor(()=>expect(screen.getByRole('alert').textContent).toContain('front.webp'));expect(io.upload).toHaveBeenCalledTimes(1);});
+it('known rejection retries only the failed file and keeps earlier successful URLs',async()=>{io.upload.mockResolvedValueOnce('stored:first').mockRejectedValueOnce(new FinancialWorkflowError('Ảnh bị từ chối.','failure',[])).mockResolvedValueOnce('stored:second');const props={label:'Ảnh',multiple:true,onChange:vi.fn(),onAddMany:vi.fn()};const view=render(<ImageUploadZone {...props}/>);fireEvent.change(view.container.querySelector('input[type=file]')!,{target:{files:[new File(['x'],'first.png',{type:'image/png'}),new File(['x'],'second.png',{type:'image/png'})]}});await screen.findByRole('button',{name:'Thử lại ảnh chưa tải'});expect(props.onAddMany).toHaveBeenCalledWith(['stored:first']);fireEvent.click(screen.getByRole('button',{name:'Thử lại ảnh chưa tải'}));await waitFor(()=>expect(props.onAddMany).toHaveBeenLastCalledWith(['stored:second']));expect(io.upload.mock.calls.map(c=>c[2].name)).toEqual(['first.png','second.png','second.png']);});

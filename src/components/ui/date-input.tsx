@@ -3,6 +3,7 @@ import { Calendar as CalendarIcon } from "lucide-react";
 import { format, isValid, parse } from "date-fns";
 
 import { cn } from "@/lib/utils";
+import { useInputDraftGuard } from '@/lib/inputDraftValidation';
 import { Calendar } from "@/components/ui/calendar";
 import { Input } from "@/components/ui/input";
 import {
@@ -11,7 +12,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 
-interface DateInputProps {
+interface DateInputProps extends Omit<React.ComponentPropsWithoutRef<'input'>, 'value' | 'onChange' | 'onBlur'> {
   value?: string;
   onChange?: (iso: string) => void;
   onBlur?: () => void;
@@ -30,12 +31,14 @@ function isoToDisplay(iso?: string): string {
 }
 
 function displayToIso(display: string): string | null {
+  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(display)) return null;
   const d = parse(display, "dd/MM/yyyy", new Date());
-  return isValid(d) ? format(d, "yyyy-MM-dd") : null;
+  return isValid(d) && format(d,"dd/MM/yyyy") === display ? format(d, "yyyy-MM-dd") : null;
 }
 
 function maskDigits(raw: string): string {
-  const digits = raw.replace(/\D/g, "").slice(0, 8);
+  if (!/^[\d/]*$/.test(raw) || raw.replace(/\//g, "").length > 8) return raw;
+  const digits = raw.replace(/\//g, "");
   if (digits.length > 4) {
     return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
   }
@@ -56,37 +59,48 @@ export const DateInput = React.forwardRef<HTMLInputElement, DateInputProps>(
       placeholder = "dd/mm/yyyy",
       className,
       inputClassName,
+      ...inputProps
     },
     ref
   ) {
     const [text, setText] = React.useState(() => isoToDisplay(value));
     const [open, setOpen] = React.useState(false);
+    const [error, setError] = React.useState<string>();
+    const inputRef=React.useRef<HTMLInputElement|null>(null);
+    const errorId=React.useId()+'-date-error';
+    const lastEmitted=React.useRef<string>();
+    const setRef=React.useCallback((node:HTMLInputElement|null)=>{inputRef.current=node;if(typeof ref==='function')ref(node);else if(ref)ref.current=node;},[ref]);
+    useInputDraftGuard(inputRef,error);
 
     React.useEffect(() => {
-      setText(isoToDisplay(value));
+      if (value===lastEmitted.current) return;
+      setText(isoToDisplay(value));setError(undefined);
     }, [value]);
 
     const handleTextChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-      setText(maskDigits(e.target.value));
+      const next=maskDigits(e.target.value);setText(next);
+      const iso=displayToIso(next);
+      setError(!next||iso?undefined:'Nhập ngày hợp lệ theo dạng dd/mm/yyyy, ví dụ 29/10/2026.');
+      if(!next||iso){lastEmitted.current=iso??'';onChange?.(iso??'');}
     };
 
     const commit = () => {
       if (!text) {
-        onChange?.("");
+        setError(undefined);lastEmitted.current="";onChange?.("");
         return;
       }
       const iso = displayToIso(text);
       if (iso) {
-        onChange?.(iso);
+        setError(undefined);lastEmitted.current=iso;onChange?.(iso);
       } else {
-        setText(isoToDisplay(value));
+        setError("Nhập ngày hợp lệ theo dạng dd/mm/yyyy, ví dụ 29/10/2026.");
       }
     };
 
     const handleSelect = (d?: Date) => {
       if (!d) return;
       const iso = format(d, "yyyy-MM-dd");
-      onChange?.(iso);
+      setError(undefined);lastEmitted.current=iso;onChange?.(iso);
       setText(format(d, "dd/MM/yyyy"));
       setOpen(false);
     };
@@ -98,9 +112,14 @@ export const DateInput = React.forwardRef<HTMLInputElement, DateInputProps>(
     }, [value]);
 
     return (
-      <div className={cn("relative", className)}>
+      <div className={className}>
+      <div className="relative">
         <Input
-          ref={ref}
+          {...inputProps}
+          ref={setRef}
+          aria-invalid={error?true:inputProps["aria-invalid"]}
+          aria-describedby={[inputProps["aria-describedby"],error?errorId:undefined].filter(Boolean).join(" ")||undefined}
+          data-input-error={error?"true":undefined}
           name={name}
           value={text}
           onChange={handleTextChange}
@@ -133,6 +152,8 @@ export const DateInput = React.forwardRef<HTMLInputElement, DateInputProps>(
             />
           </PopoverContent>
         </Popover>
+      </div>
+      {error&&<p id={errorId} role="alert" className="mt-1 text-sm font-medium text-destructive">{error}</p>}
       </div>
     );
   }

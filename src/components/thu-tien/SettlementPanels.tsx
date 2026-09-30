@@ -1,3 +1,4 @@
+import {QueryRegion} from '@/components/errors/QueryRegion';
 import { PiggyBank } from 'lucide-react';
 import { useDepositLedger, useDepositLedgerSummary } from '@/hooks/useThanhToanLedgers';
 
@@ -24,6 +25,7 @@ export function DepositLedgerSection({ period }: { period: string }) {
   const rows = q.data ?? [];
 
   return (
+    <QueryRegion queries={[q]} label="sổ theo dõi cọc đã thu">
     <div className="ptt-scroll">
       <div className="ptt-comm-stats">
         <div className="ptt-comm-card"><div className="ptt-ov-lbl">Phiếu cọc kỳ này</div><div className="ptt-comm-num">{sum.total}</div><div className="ptt-ov-sub">theo ngày phiếu</div></div>
@@ -70,5 +72,6 @@ export function DepositLedgerSection({ period }: { period: string }) {
         </p>
       </div>
     </div>
+    </QueryRegion>
   );
 }

@@ -15,7 +15,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
 
 const boundary = vi.hoisted(() => ({ create: vi.fn() }));
-vi.mock('@/lib/contractCreateRpc', () => ({ createContractV2: boundary.create }));
+vi.mock('@/lib/contractCreateRpc', () => ({ createContractV2: boundary.create,buildCreateContractRpcArgs:vi.fn() }));
+vi.mock('@/lib/authSession',()=>({getSessionUser:async()=>({id:'u1'})}));
 vi.mock('@/integrations/supabase/client', () => ({ supabase: { rpc: vi.fn() } }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
@@ -34,7 +35,8 @@ const wrapperFor = (client: QueryClient) =>
 describe('useCreateContract — lượt invalidate thứ nhất', () => {
   beforeEach(() => {
     __resetLocalWriteEchoForTest();
-    boundary.create.mockResolvedValue({ contract: { id: 'hd-1' } });
+    localStorage.clear();localStorage.setItem('ihomecrm.selectedOrganizationId','o1');
+    boundary.create.mockResolvedValue({contract:{id:'hd-1',contract_number:'HD-1',room_id:'room-1',status:'ACTIVE',rent_price:200,total_deposit:0}});
   });
   afterEach(() => __resetLocalWriteEchoForTest());
 
@@ -59,7 +61,7 @@ describe('useCreateContract — lượt invalidate thứ nhất', () => {
     const { result, unmount } = renderHook(useCreateContract, {
       wrapper: wrapperFor(client),
     });
-    await act(() => result.current.mutateAsync({} as ContractCreateRequest));
+    await act(() => result.current.mutateAsync({payload:{contract:{room_id:'room-1',rent_price:200,total_deposit:0}},idempotencyKey:'fixture-key'} as ContractCreateRequest));
 
     for (const key of conGiu) {
       expect(client.getQueryState([key, 'ngu-canh'])?.isInvalidated, key).toBe(true);
@@ -80,7 +82,7 @@ describe('useCreateContract — lượt invalidate thứ nhất', () => {
     const { result, unmount } = renderHook(useCreateContract, {
       wrapper: wrapperFor(client),
     });
-    await act(() => result.current.mutateAsync({} as ContractCreateRequest));
+    await act(() => result.current.mutateAsync({payload:{contract:{room_id:'room-1',rent_price:200,total_deposit:0}},idempotencyKey:'fixture-key'} as ContractCreateRequest));
 
     const bayGio = Date.now();
     for (const bang of [

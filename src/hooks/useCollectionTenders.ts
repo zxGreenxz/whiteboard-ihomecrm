@@ -1,3 +1,4 @@
+import { financialReadNumber } from '@/lib/financialReadValidation';
 // =============================================
 // useCollectionTenders — đọc các DÒNG THU (invoice_payment_tenders) của khoản thu
 // hoá đơn kiểu mới (từ 28/07/2026), cho hộp "Đổi hình thức thu" và cảnh báo thu
@@ -85,7 +86,7 @@ export interface ChangeCollectionMethodTender {
 
 // ── Đọc ──────────────────────────────────────────────────────────────────────
 
-const tien = z.coerce.number();
+const tien = z.union([z.number(), z.string().trim().min(1)]).transform(financialReadNumber);
 const collectionSchema = z.object({
   id: z.string(),
   invoice_id: z.string(),
@@ -173,7 +174,7 @@ export async function fetchInvoiceTenders(invoiceId: string): Promise<Collection
     .eq('invoice_id', invoiceId)
     .order('created_at', { ascending: true });
   if (collectionError) throw collectionError;
-  const collections = z.array(collectionSchema).parse(collectionData ?? []).map(toCollection);
+  const collections = z.array(collectionSchema).parse(collectionData).map(toCollection);
   if (collections.length === 0) return [];
 
   const { data: tenderData, error: tenderError } = await supabase
@@ -188,7 +189,7 @@ export async function fetchInvoiceTenders(invoiceId: string): Promise<Collection
   const order = new Map(collections.map((c, i) => [c.id, i]));
   return z
     .array(tenderRowSchema)
-    .parse(tenderData ?? [])
+    .parse(tenderData)
     .map((row) => toTender(row, byId.get(row.collection_id) ?? null))
     .sort(
       (a, b) =>
@@ -207,7 +208,7 @@ export async function fetchTenderForVoucher(voucherId: string): Promise<VoucherC
     .order('created_at', { ascending: false })
     .limit(1);
   if (error) throw error;
-  const row = z.array(voucherTenderRowSchema).parse(data ?? [])[0];
+  const row = z.array(voucherTenderRowSchema).parse(data)[0];
   if (!row) return null;
   const c = row.collection ?? null;
   const collection = c ? toCollection(c) : null;
@@ -248,7 +249,7 @@ export async function fetchRecentInvoiceCollections(
       .gte('created_at', since)
       .order('created_at', { ascending: false });
     if (error) throw error;
-    for (const row of z.array(recentCollectionSchema).parse(data ?? [])) {
+    for (const row of z.array(recentCollectionSchema).parse(data)) {
       out.push({
         id: row.id,
         invoice_id: row.invoice_id,
@@ -276,6 +277,7 @@ export const voucherTenderQueryKey = (voucherId: string | null | undefined) =>
 export const useInvoiceTenders = (invoiceId: string | null | undefined, opts?: { enabled?: boolean }) =>
   useQuery({
     queryKey: invoiceTendersQueryKey(invoiceId),
+    meta:{errorDisplay:"inline",label:"các dòng thu của hoá đơn"},
     enabled: !!invoiceId && (opts?.enabled ?? true),
     queryFn: () => fetchInvoiceTenders(invoiceId as string),
   });

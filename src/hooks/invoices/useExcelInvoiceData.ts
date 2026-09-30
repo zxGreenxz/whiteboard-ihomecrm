@@ -1,3 +1,6 @@
+import {financialReadRows} from '@/lib/financialReadValidation';
+import { InvoicePartialError, invoiceFailureMessage } from '@/lib/invoiceFeedback';
+import { voucherOutcomeUnknown } from '@/lib/voucherFeedback';
 // Data layer cho ExcelInvoiceDialog (Phase 9C) — fetch + submit orchestration.
 // Transform thuần nằm ở src/lib/excelInvoiceRows.ts (có characterization test).
 //
@@ -54,7 +57,7 @@ export async function fetchExcelInvoiceSource(buildingId: string): Promise<Excel
     .in("status", ["ACTIVE"])
     .is("deleted_at", null);
   if (e1) throw e1;
-  const buildingContractsRaw = ((contracts ?? []) as unknown as RawContract[]).filter(
+  const buildingContractsRaw = (financialReadRows(contracts) as unknown as RawContract[]).filter(
     (c) => c.room?.building_id === buildingId,
   );
   const { contracts: buildingContracts, dupRoomNames } =
@@ -69,12 +72,12 @@ export async function fetchExcelInvoiceSource(buildingId: string): Promise<Excel
     .is("deleted_at", null);
   if (e2) throw e2;
   const meterByRoom = new Map<string, string>();
-  (meters ?? []).forEach((m) => {
+  financialReadRows(meters).forEach((m) => {
     if (m.room_id) meterByRoom.set(m.room_id, m.id);
   });
 
   // 3) Chỉ số APPROVED mới nhất per meter.
-  const meterIds = (meters ?? []).map((m) => m.id);
+  const meterIds = financialReadRows(meters).map((m) => m.id);
   let lastReading = new Map<string, number>();
   if (meterIds.length > 0) {
     const { data: readings, error: e3 } = await supabase
@@ -86,7 +89,7 @@ export async function fetchExcelInvoiceSource(buildingId: string): Promise<Excel
       .order("reading_date", { ascending: false })
       .order("created_at", { ascending: false });
     if (e3) throw e3;
-    lastReading = buildLastReadingByMeter((readings ?? []) as never);
+    lastReading = buildLastReadingByMeter(financialReadRows(readings) as never);
   }
 
   const contractIds = buildingContracts.map((c) => c.id);
@@ -99,7 +102,7 @@ export async function fetchExcelInvoiceSource(buildingId: string): Promise<Excel
       .select("contract_id, amount, source_invoice:invoices!source_invoice_id(deleted_at)")
       .in("contract_id", contractIds);
     if (e4) throw e4;
-    creditByContract = buildCreditByContract((credits ?? []) as never);
+    creditByContract = buildCreditByContract(financialReadRows(credits) as never);
   }
 
   // 5b) Đếm HĐ đã có per contract → slot khuyến mãi.
@@ -112,7 +115,7 @@ export async function fetchExcelInvoiceSource(buildingId: string): Promise<Excel
       .is("deleted_at", null)
       .neq("status", "CANCELLED");
     if (e5) throw e5;
-    invoiceCountByContract = buildInvoiceCountByContract((allInvoices ?? []) as never);
+    invoiceCountByContract = buildInvoiceCountByContract(financialReadRows(allInvoices) as never);
   }
 
   // 5) Nợ cũ per contract (carry-over 2 pass — logic trong lib).
@@ -132,7 +135,7 @@ export async function fetchExcelInvoiceSource(buildingId: string): Promise<Excel
       .is("deleted_at", null);
     if (e6) throw e6;
     previousDebtByContract = buildPreviousDebtByContract(
-      (oldInvoices ?? []) as unknown as RawOldInvoice[],
+      financialReadRows(oldInvoices) as unknown as RawOldInvoice[],
     );
   }
 
@@ -157,6 +160,7 @@ export interface SubmitExcelResult {
   fail: number;
   /** Phòng đã tạo hoá đơn nhưng KHÔNG lưu được chỉ số điện. */
   readingFails: string[];
+  rows: Array<{contractId:string;roomName:string;invoiceId?:string;readingSaved:boolean;error?:string;outcomeUnknown?:boolean}>;
 }
 
 /**
@@ -167,15 +171,17 @@ export interface SubmitExcelResult {
  * đổi sang RPC transaction là phase riêng — KHÔNG làm ở Phase 9).
  */
 export function useSubmitExcelInvoices() {
-  const createInvoice = useCreateInvoice();
+  const createInvoice = useCreateInvoice({silent:true});
   const { selectedOrganizationId } = useOrganization();
 
   const submit = async (rows: ExcelRowData[], ctx: SubmitContext): Promise<SubmitExcelResult> => {
     let ok = 0;
     let fail = 0;
     const readingFails: string[] = [];
+    const results:SubmitExcelResult["rows"]=[];
 
     for (const row of rows) {
+      let readingSaved=false;
       try {
         // 1) Chốt chỉ số điện để CHỈ SỐ ĐẦU tháng sau nối tiếp đúng.
         const consumption =
@@ -201,19 +207,23 @@ export function useSubmitExcelInvoices() {
               // KHÔNG chặn tạo hoá đơn, nhưng phải báo để không "mất" chỉ số âm thầm.
               console.error("Persist meter reading failed for", row.room_name, readingErr);
               readingFails.push(row.room_name);
-            }
-          }
+            } else { readingSaved=true; }
+          } else { readingFails.push(row.room_name); }
         }
 
         // 2) Tạo hoá đơn (items + form data build ở lib — có test).
-        await createInvoice.mutateAsync(buildInvoiceFormData(row, ctx));
+        const receipt=await createInvoice.mutateAsync(buildInvoiceFormData(row, ctx));
+        const id=(receipt as {id?:string}|null)?.id;
+        if(!id) throw new TypeError("Missing invoice creation receipt");
+        results.push({contractId:row.contract_id,roomName:row.room_name,invoiceId:id,readingSaved});
         ok++;
       } catch (err) {
         console.error("Create invoice failed for", row.room_name, err);
         fail++;
+        results.push({contractId:row.contract_id,roomName:row.room_name,invoiceId:err instanceof InvoicePartialError?err.invoiceId:undefined,readingSaved,error:`${readingSaved?"Đã lưu chỉ số điện nhưng chưa tạo xong hoá đơn. ":""}${invoiceFailureMessage(err,"tạo hoá đơn")}`,outcomeUnknown:voucherOutcomeUnknown(err)});
       }
     }
-    return { ok, fail, readingFails };
+    return { ok, fail, readingFails, rows:results };
   };
 
   return { submit, isPending: createInvoice.isPending };

@@ -1,113 +1,31 @@
 import * as React from "react";
-
-import { cn } from "@/lib/utils";
-import { Input } from "@/components/ui/input";
-
-interface NumberInputProps
-  extends Omit<
-    React.InputHTMLAttributes<HTMLInputElement>,
-    "value" | "onChange" | "type"
-  > {
-  value?: number | null;
-  onChange?: (value: number) => void;
-  /** Cho phép số thập phân. Default: false (integer) */
-  allowDecimal?: boolean;
-  /** Min/max validation hint, không cứng. */
-  min?: number;
-  max?: number;
-  className?: string;
+import {cn} from "@/lib/utils";
+import {Input} from "@/components/ui/input";
+import {useInputDraftGuard} from '@/lib/inputDraftValidation';
+interface NumberInputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>,"value"|"onChange"|"type">{
+ value?:number|null;onChange?:(value:number)=>void;allowDecimal?:boolean;min?:number;max?:number;className?:string;
 }
-
-/**
- * Input cho số (count, quantity, percent, chỉ số đồng hồ...):
- * - Không hiển thị "0" mặc định khi rỗng/undefined
- * - onChange trả về number thuần
- * - Cho phép integer hoặc decimal
- */
-export const NumberInput = React.forwardRef<HTMLInputElement, NumberInputProps>(
-  function NumberInput(
-    {
-      value,
-      onChange,
-      onBlur,
-      onFocus,
-      allowDecimal = false,
-      min,
-      max,
-      className,
-      placeholder,
-      ...rest
-    },
-    ref
-  ) {
-    const [text, setText] = React.useState<string>(() =>
-      value == null || value === 0 ? "" : String(value)
-    );
-    const [focused, setFocused] = React.useState(false);
-
-    React.useEffect(() => {
-      if (focused) return;
-      if (value == null || (typeof value === "number" && value === 0)) {
-        setText("");
-      } else {
-        setText(String(value));
-      }
-    }, [value, focused]);
-
-    const clamp = (n: number) => {
-      let v = n;
-      if (typeof min === "number" && v < min) v = min;
-      if (typeof max === "number" && v > max) v = max;
-      return v;
-    };
-
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const raw = e.target.value;
-      if (raw === "") {
-        setText("");
-        onChange?.(0);
-        return;
-      }
-      const cleaned = allowDecimal
-        ? raw.replace(/[^\d.,-]/g, "").replace(",", ".")
-        : raw.replace(/[^\d-]/g, "");
-      setText(cleaned);
-      const num = allowDecimal ? parseFloat(cleaned) : parseInt(cleaned, 10);
-      if (!Number.isNaN(num)) {
-        onChange?.(clamp(num));
-      }
-    };
-
-    const handleFocus = (e: React.FocusEvent<HTMLInputElement>) => {
-      setFocused(true);
-      if (value === 0 || value == null) {
-        setText("");
-      }
-      onFocus?.(e);
-    };
-
-    const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
-      setFocused(false);
-      if (value == null || value === 0) {
-        setText("");
-      } else {
-        setText(String(value));
-      }
-      onBlur?.(e);
-    };
-
-    return (
-      <Input
-        ref={ref}
-        inputMode={allowDecimal ? "decimal" : "numeric"}
-        placeholder={placeholder ?? "0"}
-        {...rest}
-        value={text}
-        onChange={handleChange}
-        onFocus={handleFocus}
-        onBlur={handleBlur}
-        className={cn(className)}
-      />
-    );
-  }
-);
+function display(value?:number|null){return value!=null&&Number.isFinite(value)&&value!==0?String(value):'';}
+export const NumberInput=React.forwardRef<HTMLInputElement,NumberInputProps>(function NumberInput(
+ {value,onChange,onBlur,onFocus,allowDecimal=false,min,max,className,placeholder,...rest},ref){
+ const [text,setText]=React.useState(()=>display(value));const [error,setError]=React.useState<string>();
+ const [focused,setFocused]=React.useState(false);const lastEmitted=React.useRef<number>();
+ const inputRef=React.useRef<HTMLInputElement|null>(null);const errorId=React.useId()+'-number-error';
+ const setRef=React.useCallback((node:HTMLInputElement|null)=>{inputRef.current=node;if(typeof ref==='function')ref(node);else if(ref)ref.current=node;},[ref]);
+ useInputDraftGuard(inputRef,error);
+ React.useEffect(()=>{if(focused||error||Object.is(value,lastEmitted.current)||Number.isNaN(value))return;setText(display(value));},[value,focused]);
+ const handleChange=(event:React.ChangeEvent<HTMLInputElement>)=>{
+  const raw=event.target.value;const normalized=raw.trim().replace(',','.');
+  let message:string|undefined;const valid=normalized===''||(allowDecimal?/^-?(?:\d+(?:\.\d+)?|\.\d+)$/:/^-?\d+$/).test(normalized);
+  const number=normalized===''?0:Number(normalized);
+  if(!valid||!Number.isFinite(number)||Math.abs(number)>Number.MAX_SAFE_INTEGER)message=allowDecimal?'Nhập số hợp lệ, ví dụ 12,5; không nhập chữ.':'Nhập số nguyên hợp lệ; không nhập chữ hoặc số lẻ.';
+  else if(min!==undefined&&number<min)message=`Giá trị phải từ ${min.toLocaleString('vi-VN')} trở lên.`;
+  else if(max!==undefined&&number>max)message=`Giá trị không được vượt ${max.toLocaleString('vi-VN')}.`;
+  setText(raw);setError(message);const next=message?Number.NaN:number;lastEmitted.current=next;onChange?.(next);
+ };
+ return <div><Input {...rest} ref={setRef} inputMode={allowDecimal?'decimal':'numeric'} placeholder={placeholder??'0'} value={text}
+  aria-invalid={error?true:rest['aria-invalid']} aria-describedby={[rest['aria-describedby'],error?errorId:undefined].filter(Boolean).join(' ')||undefined}
+  data-input-error={error?'true':undefined} onChange={handleChange} onFocus={e=>{setFocused(true);onFocus?.(e);}} onBlur={e=>{setFocused(false);onBlur?.(e);}} className={cn(className)}/>
+  {error&&<p id={errorId} role="alert" className="mt-1 text-sm font-medium text-destructive">{error}</p>}
+ </div>;
+});

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildCreateTransferArgs, transferBrokerFeeLine, withTransferBrokerFee } from '../transfers';
+import { buildCreateTransferArgs, transferBrokerFeeLine, withTransferBrokerFee, transferErrorMessage } from '../transfers';
 
 const org='00000000-0000-4000-8000-000000000001';
 const link='00000000-0000-4000-8000-000000000008';
@@ -20,3 +20,5 @@ describe('linked contract transfer inputs',()=>{
     expect(transferBrokerFeeLine({id:link,mode:'SELF_FOUND',broker_fee:0})).toBeNull();
   });
 });
+
+it('transfer error keeps verified status and permission, hides raw SQL/library errors',()=>{expect(transferErrorMessage({code:'PT409',message:'sql'})).toContain('đã thay đổi');expect(transferErrorMessage({code:'42501',message:'sql'})).toContain('quyền');expect(transferErrorMessage({code:'XX000',message:'SELECT secret FROM private_table'})).not.toContain('SELECT secret');});

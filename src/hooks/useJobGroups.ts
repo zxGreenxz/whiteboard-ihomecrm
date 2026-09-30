@@ -1,3 +1,6 @@
+import {readJobGroups} from '@/lib/accountJobReadModels';
+import { requireAccountWriteReceipt } from "@/lib/accountSettingsWriteReceipt";
+import { notifyActionError } from '@/lib/actionFeedback';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
@@ -17,7 +20,7 @@ export const useJobGroups = () => {
         throw error;
       }
 
-      return data || [];
+      return readJobGroups(data);
     },
   });
 };
@@ -38,18 +41,17 @@ export const useCreateJobGroup = () => {
         .single();
 
       if (error) {
-        toast.error("Không thể tạo nhóm công việc");
         throw error;
       }
 
-      return data;
+      return requireAccountWriteReceipt(data, { name, user_id: user.id });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["job_groups"] });
       toast.success("Nhóm công việc đã được tạo");
     },
     onError: (error) => {
-      console.error("Error creating job group:", error);
+      notifyActionError(error, "Chưa xác nhận được kết quả thao tác nhóm công việc");
     },
   });
 };

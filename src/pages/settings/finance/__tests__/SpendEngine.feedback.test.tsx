@@ -1,0 +1,20 @@
+// @vitest-environment jsdom
+import {render,screen,fireEvent,waitFor,cleanup} from '@testing-library/react';
+import {afterEach,it,expect,vi} from 'vitest';
+import type {ReactNode} from 'react';
+const m=vi.hoisted(()=>({save:vi.fn(),sourceError:false,info:vi.fn(),success:vi.fn()}));
+const query=(data:unknown,fail=false)=>({data,status:fail?'error':'success',fetchStatus:'idle',isLoading:false,isError:fail,error:fail?{message:'private_table'}:null,refetch:vi.fn()});
+vi.mock('@/components/layout/MainLayout',()=>({default:({children}:{children:ReactNode})=>children}));
+vi.mock('@tanstack/react-query',()=>({useQuery:()=>query([{id:'b',name:'Tòa A'}],m.sourceError)}));
+vi.mock('@/integrations/supabase/client',()=>({supabase:{}}));
+vi.mock('sonner',()=>({toast:{success:m.success,info:m.info,error:vi.fn(),warning:vi.fn()}}));
+vi.mock('@/hooks/useIncomeExpenseTypes',()=>({useIncomeExpenseTypes:()=>query([])}));
+vi.mock('@/hooks/useSpendEngine',async(importOriginal)=>{const actual=await importOriginal<typeof import('@/hooks/useSpendEngine')>();return {...actual,useMySpendOrganizations:()=>query([{id:'o',name:'O'}]),useSpendEngineStatus:()=>query({route:'SHADOW'}),useSpendCommitments:()=>query([]),useSetSpendCommitment:()=>({mutateAsync:m.save}),useSpendSwitches:()=>query([]),useSetSpendSwitch:()=>({mutateAsync:vi.fn()}),useSpendShadowReport:()=>query([]),useSelfApprovedVouchers:()=>query([]),useSetTypeSpendRule:()=>({mutateAsync:vi.fn()})};});
+import SpendEnginePage from '../SpendEnginePage';
+afterEach(()=>{cleanup();vi.clearAllMocks();m.sourceError=false;});
+it('số tiền âm không thành dương; báo đỏ và focus số tiền',async()=>{render(<SpendEnginePage/>);fireEvent.click(screen.getAllByTitle('Bấm để sửa cam kết')[0]);fireEvent.change(screen.getByLabelText('Số tiền cam kết'),{target:{value:'-100'}});fireEvent.click(screen.getByRole('button',{name:'Lưu'}));await waitFor(()=>expect(screen.getByLabelText('Số tiền cam kết').getAttribute('aria-invalid')).toBe('true'));expect(document.activeElement).toBe(screen.getByLabelText('Số tiền cam kết'));expect(m.save).not.toHaveBeenCalled();});
+it('nguồn tòa lỗi thì không cho nhập từ bảng trống',()=>{m.sourceError=true;render(<SpendEnginePage/>);expect(screen.getByRole('alert').textContent).toContain('Chưa tải được');expect(screen.queryAllByTitle('Bấm để sửa cam kết')).toHaveLength(0);});
+it('không có cam kết để thu hồi thì chỉ báo không thay đổi',async()=>{m.save.mockResolvedValue({changed:false,id:null});render(<SpendEnginePage/>);fireEvent.click(screen.getAllByTitle('Bấm để sửa cam kết')[0]);fireEvent.click(screen.getByRole('button',{name:'Lưu'}));await waitFor(()=>expect(m.info).toHaveBeenCalled());expect(m.success).not.toHaveBeenCalled();});
+
+it('kết quả chưa rõ giữ số tiền và chặn gửi lại trong hộp',async()=>{m.save.mockRejectedValue(new TypeError('Failed to fetch'));render(<SpendEnginePage/>);fireEvent.click(screen.getAllByTitle('Bấm để sửa cam kết')[0]);fireEvent.change(screen.getByLabelText('Số tiền cam kết'),{target:{value:'100000'}});fireEvent.click(screen.getByRole('button',{name:'Lưu'}));await waitFor(()=>expect((screen.getByRole('button',{name:'Lưu'}) as HTMLButtonElement).disabled).toBe(true));expect((screen.getByLabelText('Số tiền cam kết') as HTMLInputElement).value).toBe('100000');expect(screen.getByRole('alert').textContent).not.toContain('Failed to fetch');fireEvent.click(screen.getByRole('button',{name:'Lưu'}));expect(m.save).toHaveBeenCalledTimes(1);});
+it('phạm vi sai thứ tự tháng đưa focus tới tháng kết thúc',async()=>{render(<SpendEnginePage/>);fireEvent.mouseDown(screen.getByRole('tab',{name:'Bật áp dụng'}),{button:0,ctrlKey:false});fireEvent.change(screen.getByLabelText('Tới tháng (bỏ trống = không hạn)'),{target:{value:'2020-01'}});fireEvent.click(screen.getByRole('button',{name:'Bật'}));await waitFor(()=>expect(screen.getByLabelText('Tới tháng (bỏ trống = không hạn)').getAttribute('aria-invalid')).toBe('true'));expect(document.activeElement).toBe(screen.getByLabelText('Tới tháng (bỏ trống = không hạn)'));});

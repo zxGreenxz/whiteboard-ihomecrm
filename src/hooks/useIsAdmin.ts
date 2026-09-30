@@ -19,9 +19,10 @@ export const useIsAdmin = () => {
       const { data, error } = await supabase.rpc("is_admin");
       if (error) {
         console.error("useIsAdmin error:", error);
-        return false;
+        throw error;
       }
-      return !!data;
+      if (typeof data !== "boolean") throw new TypeError("Unconfirmed permission response");
+      return data;
     },
     staleTime: 5 * 60 * 1000,
     retry: 1,
@@ -44,9 +45,10 @@ export const useIsSuperAdmin = () => {
       const { data, error } = await supabase.rpc("is_super_admin");
       if (error) {
         console.error("useIsSuperAdmin error:", error);
-        return false;
+        throw error;
       }
-      return !!data;
+      if (typeof data !== "boolean") throw new TypeError("Unconfirmed permission response");
+      return data;
     },
     staleTime: 5 * 60 * 1000,
     retry: 1,

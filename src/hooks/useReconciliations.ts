@@ -1,3 +1,7 @@
+import {runFinancialPending} from '@/lib/financialPendingAction';
+import {useOrganization} from '@/contexts/OrganizationContext';
+import {getSessionUser} from '@/lib/authSession';
+import {voucherOutcomeUnknown} from '@/lib/voucherFeedback';
 // =============================================
 // useReconciliations — đối soát/chốt số sổ quỹ (dùng cho sổ chuyển khoản tkHiep).
 // 3 mutation gọi RPC SECURITY DEFINER (migration 20260701130000):
@@ -27,10 +31,29 @@ export interface ProposeReconArgs {
   note?: string;
 }
 
+export function reconciliationReceipt(data:unknown) {
+  const row=data && typeof data==='object'?data as Record<string,unknown>:{};
+  if(typeof row.id!=='string'||!row.id||!['PENDING','CONFIRMED'].includes(String(row.status))||typeof row.system_balance!=='number'||!Number.isFinite(row.system_balance)||typeof row.diff!=='number'||!Number.isFinite(row.diff)) throw new TypeError('Chưa xác nhận được kết quả đối soát.');
+  return row as {id:string;status:'PENDING'|'CONFIRMED';system_balance:number;diff:number};
+}
+
+const uncertainReconciliations=new Set<string>();
+const reconciliationKey=(accountId:string,asOf:string)=>`${accountId}:${asOf}`;
+export const isReconciliationUncertain=(accountId:string,asOf:string)=>uncertainReconciliations.has(reconciliationKey(accountId,asOf));
+function stateReceipt(data:unknown,id:string,status:string) {
+ const row=data as {id?:unknown;status?:unknown}|null;
+ if(!row||row.id!==id||row.status!==status) throw new TypeError('Chưa xác nhận được trạng thái đối soát sau thao tác.');
+ return {id,status};
+}
 export const useProposeReconciliation = () => {
   const invalidate = useInvalidateRecon();
+  const {selectedOrganizationId}=useOrganization();
   return useMutation({
+    meta:{handlesFeedback:true},
     mutationFn: async (args: ProposeReconArgs) => {
+      if(isReconciliationUncertain(args.accountId,args.asOf)) throw new TypeError("Lần đối soát trước chưa xác nhận. Tải lại danh sách để đối chiếu trước khi tạo tiếp.");
+      const user=await getSessionUser();
+      return runFinancialPending({namespace:'reconciliation-propose',userId:user?.id??'',organizationId:selectedOrganizationId??'',businessKey:reconciliationKey(args.accountId,args.asOf)},async progress=>{
       const { data, error } = await supabase.rpc('propose_reconciliation', {
         p_account_id: args.accountId,
         p_as_of: args.asOf,
@@ -38,9 +61,13 @@ export const useProposeReconciliation = () => {
         p_counterparty_id: args.counterpartyId ?? undefined,
         p_note: args.note ?? undefined,
       });
-      if (error) throw new Error(error.message);
-      return data as { id: string; status: string; system_balance: number; diff: number };
+      if (error) throw error;
+      const receipt=reconciliationReceipt(data);
+      progress.recordCompleted([receipt.id]);
+      return receipt;
+      });
     },
+    onError:(error,args)=>{if(voucherOutcomeUnknown(error))uncertainReconciliations.add(reconciliationKey(args.accountId,args.asOf));},
     onSuccess: invalidate,
   });
 };
@@ -50,8 +77,8 @@ export const useConfirmReconciliation = () => {
   return useMutation({
     mutationFn: async (id: string) => {
       const { data, error } = await supabase.rpc('confirm_reconciliation', { p_id: id });
-      if (error) throw new Error(error.message);
-      return data as { id: string; status: string };
+      if (error) throw error;
+      return stateReceipt(data,id,'CONFIRMED');
     },
     onSuccess: invalidate,
   });
@@ -74,8 +101,8 @@ export const useCancelReconciliation = () => {
   return useMutation({
     mutationFn: async (id: string) => {
       const { data, error } = await supabase.rpc('cancel_reconciliation', { p_id: id });
-      if (error) throw new Error(error.message);
-      return data as { id: string; status: string };
+      if (error) throw error;
+      return stateReceipt(data,id,'CANCELLED');
     },
     onSuccess: invalidate,
   });

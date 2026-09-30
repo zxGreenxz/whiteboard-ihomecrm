@@ -34,6 +34,7 @@ import { formatCurrency } from "@/lib/utils";
 import { useMyPermissions } from "@/hooks/useMyPermissions";
 import { canUse } from "@/lib/permissionPages";
 import { usePersistedState } from "@/hooks/usePersistedState";
+import { QueryRegion } from '@/components/errors/QueryRegion';
 
 const CONDITION_CONFIG = {
   NEW: { label: "Mới", color: "bg-green-100 text-green-800" },
@@ -160,20 +161,25 @@ const AssetsPage = () => {
   const [searchQuery, setSearchQuery] = usePersistedState("flt:assets:search", "");
 
   useCopilotPageContext('assets.list', { category_id: categoryFilter, condition: conditionFilter, building_id: buildingFilter, room_id: roomFilter, search: searchQuery });
-  const { data: buildings = [] } = useBuildings();
-  const { data: rooms = [] } = useRooms(buildingFilter !== "ALL" ? buildingFilter : undefined);
+  const buildingsQuery = useBuildings();
+  const roomsQuery = useRooms(buildingFilter !== "ALL" ? buildingFilter : undefined);
+  const { data: buildings = [] } = buildingsQuery;
+  const { data: rooms = [] } = roomsQuery;
 
-  const { data: assets = [], isLoading } = useAssets({
+  const assetsQuery = useAssets({
     category_id: categoryFilter !== "ALL" ? categoryFilter : undefined,
     condition: conditionFilter !== "ALL" ? conditionFilter : undefined,
     building_id: buildingFilter !== "ALL" ? buildingFilter : undefined,
   });
+  const { data: assets = [], isLoading } = assetsQuery;
 
-  const { data: movements = [] } = useAssetMovements();
-  const { data: maintenanceRecords = [] } = useAssetMaintenance();
+  const movementsQuery = useAssetMovements();
+  const maintenanceQuery = useAssetMaintenance();
+  const { data: movements = [] } = movementsQuery;
+  const { data: maintenanceRecords = [] } = maintenanceQuery;
 
   // Fetch categories for filter
-  const { data: categories = [] } = useQuery({
+  const categoriesQuery = useQuery({
     queryKey: ["asset-categories"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -184,6 +190,7 @@ const AssetsPage = () => {
       return data || [];
     },
   });
+  const { data: categories = [] } = categoriesQuery;
 
   const handleEdit = useCallback((asset: AssetWithRelations) => {
     setSelectedAsset(asset);
@@ -253,6 +260,7 @@ const AssetsPage = () => {
       </div>
 
       {/* Summary Cards */}
+      <QueryRegion label="tổng quan tài sản" queries={[assetsQuery]}>
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="pb-2">
@@ -287,6 +295,7 @@ const AssetsPage = () => {
           </CardContent>
         </Card>
       </div>
+      </QueryRegion>
 
       {/* Tabs: Danh sách, Lịch sử di chuyển, Lịch sử sửa chữa */}
       <Tabs defaultValue="list" className="space-y-4">
@@ -298,6 +307,7 @@ const AssetsPage = () => {
 
         {/* Tab: Danh sách tài sản */}
         <TabsContent value="list" className="space-y-4">
+          <QueryRegion label="danh sách tài sản" queries={[assetsQuery, categoriesQuery, buildingsQuery, roomsQuery]}>
           {/* Filters */}
           <div className="flex flex-wrap gap-4">
             <div className="relative flex-1 min-w-[200px]">
@@ -381,10 +391,12 @@ const AssetsPage = () => {
               )}
             />
           </Card>
+          </QueryRegion>
         </TabsContent>
 
         {/* Tab: Lịch sử di chuyển */}
         <TabsContent value="movements" className="space-y-4">
+          <QueryRegion label="lịch sử di chuyển tài sản" queries={[movementsQuery]}>
           <Card>
             <CardHeader>
               <CardTitle className="text-lg">Lịch sử di chuyển tài sản</CardTitle>
@@ -415,10 +427,12 @@ const AssetsPage = () => {
               />
             </CardContent>
           </Card>
+          </QueryRegion>
         </TabsContent>
 
         {/* Tab: Lịch sử sửa chữa */}
         <TabsContent value="maintenance" className="space-y-4">
+          <QueryRegion label="lịch sử sửa chữa tài sản" queries={[maintenanceQuery]}>
           <Card>
             <CardHeader>
               <CardTitle className="text-lg">Lịch sử sửa chữa tài sản</CardTitle>
@@ -450,6 +464,7 @@ const AssetsPage = () => {
               />
             </CardContent>
           </Card>
+          </QueryRegion>
         </TabsContent>
       </Tabs>
 

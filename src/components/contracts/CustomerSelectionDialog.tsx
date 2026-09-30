@@ -1,9 +1,11 @@
+import {QueryRegion} from '@/components/errors/QueryRegion';
 import { useState, useMemo, useEffect, useRef } from "react";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -53,10 +55,11 @@ export function CustomerSelectionDialog({
   // request chính. Cờ đặt Ở ĐÂY chứ không nhận qua prop: component này mount ở
   // hai nơi (ContractFormDialog, TransferContractDialog), và hai nơi truyền hai
   // giá trị khác nhau sẽ thành hai hình dạng dữ liệu trong CÙNG một ô cache.
-  const { data: customerData, isLoading } = useCustomers(undefined, undefined, {
+  const sourceQuery = useCustomers(undefined, undefined, {
     enabled: open,
     skipLocationEnrichment: true,
   });
+  const {data:customerData,isLoading}=sourceQuery;
   const customers = customerData?.data ?? [];
   const seedCustomerIntoPickerCache = useSeedCustomerIntoPickerCache();
 
@@ -133,6 +136,7 @@ export function CustomerSelectionDialog({
   };
 
   const handleConfirm = () => {
+    if(sourceQuery.isError||sourceQuery.data===undefined) return;
     const selected: CustomerBasic[] = customers
       .filter((c) => checkedIds.has(c.id))
       .map((c) => ({
@@ -150,6 +154,7 @@ export function CustomerSelectionDialog({
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Chọn khách hàng</DialogTitle>
+          <DialogDescription>Chọn trong danh sách đã tải. Lựa chọn hiện có được giữ khi tải lỗi.</DialogDescription>
         </DialogHeader>
 
         {/* Search + create */}
@@ -176,6 +181,7 @@ export function CustomerSelectionDialog({
         </div>
 
         {/* Customer list */}
+        <QueryRegion label="danh sách khách hàng" queries={[sourceQuery]}>
         <ScrollArea className="h-[360px] border rounded-md">
           {isLoading ? (
             <div className="flex items-center justify-center h-full py-10">
@@ -213,12 +219,13 @@ export function CustomerSelectionDialog({
             </div>
           )}
         </ScrollArea>
+        </QueryRegion>
 
         <DialogFooter className="gap-2 sm:gap-0">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Hủy
           </Button>
-          <Button onClick={handleConfirm}>
+          <Button disabled={sourceQuery.isError||sourceQuery.data===undefined} onClick={handleConfirm}>
             Xác nhận{checkedIds.size > 0 && ` (${checkedIds.size})`}
           </Button>
         </DialogFooter>

@@ -1,3 +1,4 @@
+import {financialReadNumber,financialReadRows} from '@/lib/financialReadValidation';
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
@@ -30,6 +31,7 @@ export const useCashBookSummary = (
   const buildingId = options?.building_id;
   const accountId = options?.account_id;
   return useQuery({
+    meta:{feedback:"inline"},
     queryKey: ["cash-book-summary", start_date, end_date, buildingId, accountId],
     queryFn: async () => {
       const user = await getSessionUser();
@@ -50,8 +52,8 @@ export const useCashBookSummary = (
         },
       );
       if (ptErr) throw ptErr;
-      const totalIncome = Number((periodTotals as any)?.income) || 0;
-      const totalExpense = Number((periodTotals as any)?.expense) || 0;
+      const totalIncome = financialReadNumber((periodTotals as {income?:unknown}|null)?.income);
+      const totalExpense = financialReadNumber((periodTotals as {expense?:unknown}|null)?.expense);
 
       // Số dư đầu kỳ — RPC aggregate (migration 20260610110000): trả 1 số
       // thay vì kéo TOÀN BỘ lịch sử phiếu trước start_date về client cộng
@@ -76,7 +78,7 @@ export const useCashBookSummary = (
           },
         );
         if (obErr) throw obErr;
-        openingBalance = Number(ob) || 0;
+        openingBalance = financialReadNumber(ob);
       }
 
       return {
@@ -101,6 +103,7 @@ export const useCashFlowByDay = (
   const buildingId = options?.building_id;
   const accountId = options?.account_id;
   return useQuery({
+    meta:{feedback:"inline"},
     queryKey: ["cash-flow-by-day", start_date, end_date, buildingId, accountId],
     queryFn: async () => {
       const user = await getSessionUser();
@@ -116,10 +119,10 @@ export const useCashFlowByDay = (
       });
       if (error) throw error;
 
-      return ((data ?? []) as any[]).map((r) => ({
+      return (financialReadRows(data as unknown[]) as Array<{day:string;income:unknown;expense:unknown}>).map((r) => ({
         date: r.day as string,
-        income: Number(r.income) || 0,
-        expense: Number(r.expense) || 0,
+        income: financialReadNumber(r.income),
+        expense: financialReadNumber(r.expense),
       }));
     },
     enabled: !!start_date && !!end_date,

@@ -189,7 +189,7 @@ export function useContractLifecycle(a: ContractLifecycleArgs) {
           p_contract_ids: hdIds,
         });
         if (error) {
-          return { rows: [], read: hong(`Không đọc được lịch sử cư trú: ${error.message}`) };
+          return { rows: [], read: hong('Không đọc được lịch sử cư trú. Tải lại để kiểm tra trước khi xử lý hợp đồng.') };
         } else {
           // Biên kiểm tra: `rpc` trả `Json`, ép thẳng là nhận một lời hứa chưa
           // ai kiểm. Dòng sai hình dạng bị loại VÀ đếm — thứ tự lane dựng trên

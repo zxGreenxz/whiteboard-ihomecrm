@@ -1,3 +1,6 @@
+import {validateInputDrafts} from '@/lib/inputDraftValidation';
+import {focusFirstError} from '@/lib/formErrors';
+import {voucherFailureMessage} from '@/lib/voucherFeedback';
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Dialog,
@@ -94,6 +97,7 @@ function QlRecipientField({
   onManager,
   recipient,
   onRecipient,
+  error,
 }: {
   idPrefix: string;
   buildingId: string | null | undefined;
@@ -103,6 +107,7 @@ function QlRecipientField({
   onManager: (m: CommissionManagerOption) => void;
   recipient: string;
   onRecipient: (v: string) => void;
+  error?: string;
 }) {
   return (
     <div className="space-y-1">
@@ -124,6 +129,8 @@ function QlRecipientField({
       {ql ? (
         <QlManagerSelectForBuilding
           id={`${idPrefix}-recipient`}
+          name={`${idPrefix}-recipient`}
+          error={error}
           buildingId={buildingId}
           value={managerId}
           onPick={onManager}
@@ -187,6 +194,10 @@ export function CommissionVoucherModal({
   const saleBonus = saleQuery.data;
   const salePaidElsewhere = !!saleBonus?.alreadyPaid && !existingSale;
   const followups = useContractCommissionFollowups({ contractId: contractId ?? undefined, enabled: open && !!contractId });
+  const [submitError,setSubmitError]=useState<string|null>(null);
+  const [receipts,setReceipts]=useState<{id:string;code:string|null}[]>([]);
+  const modalRef=useRef<HTMLDivElement>(null);
+  const [managerErrors,setManagerErrors]=useState<Record<string,string>>({});
   const [createdKinds, setCreatedKinds] = useState<string[]>([]);
   const [observedRows, setObservedRows] = useState<ContractCommissionFollowup[]>();
   const [savedRequests, setSavedRequests] = useState<Partial<Record<CommissionKind, PreparedCommissionRequest>>>({});
@@ -353,10 +364,12 @@ export function CommissionVoucherModal({
     setSubmitting(false);
     setSavedRequests({});
     setObservedRows(undefined);
+    setSubmitError(null); setReceipts([]); setManagerErrors({});
     return () => { activeSubmission.current = undefined; };
   }, [open, contractId, selectedOrganizationId]);
 
   const handleSubmit = async () => {
+    if (!validateInputDrafts(modalRef.current)) return;
     if (!prefill) return;
     if (submitting || activeSubmission.current) return;
     if (checkingVouchers || checkFailed || !canCreate) return;
@@ -379,7 +392,10 @@ export function CommissionVoucherModal({
     }
 
     if ((willCreateBroker && brokerQl && !brokerManagerId) || (willCreateSale && saleQl && !saleManagerId)) {
-      toast.error("Đã tích QL — hãy chọn quản lý nhận hoa hồng.");
+      const errors:Record<string,string>={};
+      if(willCreateBroker&&brokerQl&&!brokerManagerId)errors['hh-broker-recipient']='Chọn quản lý nhận hoa hồng.';
+      if(willCreateSale&&saleQl&&!saleManagerId)errors['hh-sale-recipient']='Chọn quản lý nhận hoa hồng.';
+      setManagerErrors(errors);void focusFirstError(errors,{root:modalRef.current});
       return;
     }
 
@@ -387,6 +403,7 @@ export function CommissionVoucherModal({
     const submission = Symbol('commission submission');
     activeSubmission.current = submission;
     let created = 0;
+    setSubmitError(null);
     try {
       const [liveVouchers, liveSale, liveFollowups] = await Promise.all([
         vouchersQuery.refetch(), saleQuery.refetch(), followups.refetch(),
@@ -436,6 +453,8 @@ export function CommissionVoucherModal({
       for (const input of selected) {
         const request = prepared.find(request => request.kind === input.kind)!;
         const v = await createVoucher.mutateAsync(request);
+        if (!v?.id) throw new TypeError('Chưa xác nhận mã phiếu vừa tạo.');
+        if(activeSubmission.current===submission)setReceipts(current=>current.some(item=>item.id===v.id)?current:[...current,{id:v.id!,code:v.code}]);
         if (v.status === 'ALREADY_EXISTS') toast.info(`Đã có phiếu${v.code ? ` ${v.code}` : ''}.`); else created++;
         if (activeSubmission.current === submission) setCreatedKinds(kinds => [...kinds, input.kind]);
       }
@@ -449,7 +468,10 @@ export function CommissionVoucherModal({
     } catch (error) {
       const refreshed = await followups.refetch();
       if (activeSubmission.current === submission && !refreshed.isError && refreshed.data) setObservedRows(refreshed.data.rows);
-      toast.error(error instanceof Error ? error.message : 'Chưa xác minh được kết quả tạo phiếu. Hãy kiểm tra lại trạng thái.');
+      if(activeSubmission.current===submission){
+        const message=`${created?`Đã tạo ${created} phiếu. `:''}${voucherFailureMessage(error,'tạo phiếu hoa hồng/thưởng Sale')} Giữ các phiếu đã tạo; đối chiếu rồi dùng Tạo lại cho đúng yêu cầu đã lưu.`;
+        setSubmitError(message);toast.error(message);
+      }
     } finally {
       if (activeSubmission.current === submission) {
         activeSubmission.current = undefined;
@@ -460,6 +482,7 @@ export function CommissionVoucherModal({
 
   const handleRetry = async (row: ContractCommissionFollowup) => {
     if (!contractId || !row.request_id || submitting || activeSubmission.current) return;
+    setSubmitError(null);
     const submission = Symbol('saved commission retry');
     activeSubmission.current = submission;
     setSubmitting(true);
@@ -476,7 +499,10 @@ export function CommissionVoucherModal({
       if (result.status === 'ALREADY_EXISTS') toast.info('Đã có phiếu; đối chiếu tại Thu chi.');
       else toast.success('Đã tạo phiếu theo yêu cầu đã lưu.');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Chưa xác minh được kết quả Tạo lại.');
+      if(activeSubmission.current===submission){
+        const message=voucherFailureMessage(error,'tạo lại phiếu theo yêu cầu đã lưu');
+        setSubmitError(message);toast.error(message);
+      }
     } finally {
       const fresh = await followups.refetch();
       if (activeSubmission.current === submission) {
@@ -508,7 +534,9 @@ export function CommissionVoucherModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] p-0">
+      <DialogContent ref={modalRef} className="max-w-3xl max-h-[90vh] p-0">
+        {submitError&&<p role="alert" className="px-6 pt-3 text-sm text-destructive">{submitError}</p>}
+        {receipts.map(receipt=><a key={receipt.id} className="px-6 text-sm underline" href={`/income-expense/voucher/${receipt.id}`}>Mở phiếu {receipt.code||receipt.id}</a>)}
         <DialogHeader className="px-6 pt-6 pb-2">
           <DialogTitle className="text-green-700 uppercase">
             Tạo phiếu chi hoa hồng
@@ -529,9 +557,7 @@ export function CommissionVoucherModal({
                 Không tải được thông tin hợp đồng.
               </p>
               <p className="text-muted-foreground">
-                {prefillError instanceof Error
-                  ? prefillError.message
-                  : "Lỗi không xác định."}
+                Tải lại thông tin hợp đồng trước khi lập phiếu; dữ liệu đang nhập vẫn được giữ.
               </p>
               <Button type="button" variant="outline" onClick={() => void refetchPrefill()}>
                 Tải lại
@@ -687,6 +713,7 @@ export function CommissionVoucherModal({
                   </div>
                   <QlRecipientField
                     idPrefix="hh-broker"
+                    error={managerErrors["hh-broker-recipient"]}
                     buildingId={prefill.building_id}
                     ql={brokerQl}
                     onQl={(v) => {
@@ -695,7 +722,7 @@ export function CommissionVoucherModal({
                     }}
                     managerId={brokerManagerId}
                     onManager={(m) => {
-                      setBrokerManagerId(m.staffId);
+                      setBrokerManagerId(m.staffId);setManagerErrors(current=>({...current,"hh-broker-recipient":""}));
                       setBrokerRecipient(m.displayName);
                       setBrokerName((cur) => cur || m.alias || m.displayName);
                     }}
@@ -786,6 +813,7 @@ export function CommissionVoucherModal({
                   </div>
                   <QlRecipientField
                     idPrefix="hh-sale"
+                    error={managerErrors["hh-sale-recipient"]}
                     buildingId={prefill.building_id}
                     ql={saleQl}
                     onQl={(v) => {
@@ -794,7 +822,7 @@ export function CommissionVoucherModal({
                     }}
                     managerId={saleManagerId}
                     onManager={(m) => {
-                      setSaleManagerId(m.staffId);
+                      setSaleManagerId(m.staffId);setManagerErrors(current=>({...current,"hh-sale-recipient":""}));
                       setSaleRecipient(m.displayName);
                       setSaleName((cur) => cur || m.alias || m.displayName);
                     }}

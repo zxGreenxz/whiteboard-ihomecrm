@@ -84,9 +84,9 @@ export async function runTrackedCommissionCreation<T>(input: { contractId: strin
     try {
       await operations.record({ ...attempt, action: 'FAILED', reason: detail.slice(0, 1500) });
     } catch {
-      throw new Error('Chưa xác nhận được kết quả tạo phiếu, chưa lưu được chi tiết lỗi. Yêu cầu đã được ghi nhận trên hợp đồng; kiểm tra phiếu hiện có trước khi tạo lại.');
+      throw new TypeError('Chưa xác nhận được kết quả tạo phiếu, chưa lưu được chi tiết lỗi. Yêu cầu đã được ghi nhận trên hợp đồng; kiểm tra phiếu hiện có trước khi tạo lại.');
     }
-    throw new Error(`${detail} Yêu cầu còn được theo dõi trên hợp đồng và Hợp đồng & quyết toán; kiểm tra kết quả trước khi tạo lại.`);
+    throw Object.assign(new Error(`${detail} Yêu cầu còn được theo dõi trên hợp đồng và Hợp đồng & quyết toán; kiểm tra kết quả trước khi tạo lại.`), {cause:error});
   }
 }
 

@@ -9,9 +9,10 @@ export async function readContractDraftSigning(organizationId: string, draftId: 
   return contractSigningSnapshotSchema.parse(data);
 }
 /** This call commits signing independently of browser rendering/upload. */
-export async function signAndCheckinDraft(organizationId: string, input: ContractSigningInput): Promise<ContractSigning> {
+export async function signAndCheckinDraft(organizationId: string, input: ContractSigningInput,onReceipt?:(data:unknown)=>void): Promise<ContractSigning> {
   const { data, error } = await supabase.rpc('sign_and_checkin_contract_draft_v1', buildContractSigningArgs(organizationId, input));
   if (error) throw error;
+  onReceipt?.(data);
   return contractSigningSchema.parse(data);
 }
 async function sha256(blob: Blob): Promise<string> {

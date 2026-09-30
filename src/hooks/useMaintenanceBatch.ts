@@ -27,7 +27,7 @@ async function resolveOwnType(
     .select('id, name, category')
     .eq('organization_id', organizationId)
     .eq('type', 'expense');
-  if (error) throw new Error(error.message);
+  if (error) throw error;
   const hit = (data ?? []).find((t: any) => {
     const n = nrm(t.name);
     return n.includes('bao tri ' + meta.match) || n.includes(meta.match);
@@ -47,7 +47,7 @@ async function resolveOwnType(
   if (insErr?.code === '23505') {
     return resolveOwnType(sub, organizationId, userId);
   }
-  if (insErr) throw new Error(insErr.message);
+  if (insErr) throw insErr;
   return created.id;
 }
 
@@ -59,8 +59,9 @@ export interface MaintenanceBatchLine {
 
 export function useCreateMaintenanceBatch(period: string) {
   const qc = useQueryClient();
-  const createBatch = useCreateIncomeExpenseBatch();
+  const createBatch = useCreateIncomeExpenseBatch({silent:true});
   return useMutation({
+    meta: {handlesFeedback: true},
     mutationFn: async (args: { payerName: string; voucherDate: string; accountId: string; lines: MaintenanceBatchLine[]; attachments?: string[] }) => {
       const uid = (await getSessionUser())?.id;
       if (!uid) throw new Error('Bạn chưa đăng nhập');
@@ -72,7 +73,7 @@ export function useCreateMaintenanceBatch(period: string) {
         .from('buildings')
         .select('id, organization_id')
         .in('id', buildingIds);
-      if (buildingError) throw new Error(buildingError.message);
+      if (buildingError) throw buildingError;
       if ((scopedBuildings ?? []).length !== buildingIds.length) {
         throw new Error('Không thể xác định đầy đủ tổ chức của các tòa bảo trì');
       }
@@ -92,7 +93,7 @@ export function useCreateMaintenanceBatch(period: string) {
 
       const start = monthToStartDate(period);
       const end = monthToEndDate(period);
-      await createBatch.mutateAsync({
+      return await createBatch.mutateAsync({
         type: 'EXPENSE',
         shared_name: `Bảo trì · ${args.payerName || 'NCC'}`,
         account_id: args.accountId,

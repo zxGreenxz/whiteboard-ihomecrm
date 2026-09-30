@@ -1,3 +1,5 @@
+import { ZaloActionUnknownError, zaloActionErrorMessage } from '@/lib/zaloActionFeedback';
+import { notifyActionError } from '@/lib/actionFeedback';
 // Hồ sơ CRM LIVE của hội thoại (khách hàng / lead / HĐ / phòng) — thay cho
 // snapshot jsonb `profile`. 1 roundtrip qua RPC zalo_get_crm_summary; gắn/tháo
 // thủ công qua zalo_link_conversation / zalo_unlink_conversation (DB chặn
@@ -17,6 +19,7 @@ export interface ZaloCrmSummary {
 export function useZaloCrmSummary(conversationId?: string, linked?: boolean) {
   return useQuery({
     queryKey: ['zalo', 'crm', conversationId],
+    meta: {label:'hồ sơ khách hàng của hội thoại',errorDisplay:'inline'},
     enabled: !!conversationId && !!linked,
     staleTime: 60_000,
     retry: 1,
@@ -34,19 +37,22 @@ export function useLinkConversation() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (v: { conversationId: string; customerId?: string; leadId?: string }) => {
-      const { error } = await supabase.rpc('zalo_link_conversation', {
+      const { data, error } = await supabase.rpc('zalo_link_conversation', {
         p_conversation_id: v.conversationId,
         p_customer_id: v.customerId,
         p_lead_id: v.leadId,
       });
       if (error) throw error;
+      if (!data || data.id !== v.conversationId || (v.customerId ? data.customer_id !== v.customerId : data.lead_id !== v.leadId))
+        throw new ZaloActionUnknownError('gắn hồ sơ CRM', {label:'Mã hội thoại',id:v.conversationId});
+      return data;
     },
     onSuccess: (_d, v) => {
       qc.invalidateQueries({ queryKey: QK.conversations });
       qc.invalidateQueries({ queryKey: ['zalo', 'crm', v.conversationId] });
       toast.success('Đã gắn hồ sơ CRM vào hội thoại');
     },
-    onError: (e: Error) => { toast.error(e?.message || 'Không gắn được hồ sơ'); },
+    onError: (e: Error) => { toast.error(zaloActionErrorMessage(e, 'gắn hồ sơ khách hàng')); },
   });
 }
 
@@ -54,17 +60,20 @@ export function useUnlinkConversation() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (v: { conversationId: string }) => {
-      const { error } = await supabase.rpc('zalo_unlink_conversation', {
+      const { data, error } = await supabase.rpc('zalo_unlink_conversation', {
         p_conversation_id: v.conversationId,
       });
       if (error) throw error;
+      if (!data || data.id !== v.conversationId || data.customer_id !== null || data.lead_id !== null)
+        throw new ZaloActionUnknownError('tháo liên kết CRM', {label:'Mã hội thoại',id:v.conversationId});
+      return data;
     },
     onSuccess: (_d, v) => {
       qc.invalidateQueries({ queryKey: QK.conversations });
       qc.invalidateQueries({ queryKey: ['zalo', 'crm', v.conversationId] });
       toast.success('Đã tháo liên kết hồ sơ');
     },
-    onError: (e: Error) => { toast.error(e?.message || 'Không tháo được liên kết'); },
+    onError: (e: Error) => { toast.error(zaloActionErrorMessage(e, 'tháo liên kết hồ sơ khách hàng')); },
   });
 }
 
@@ -75,6 +84,7 @@ export function useSearchCustomers(term: string, orgId: string | null) {
   const q = term.trim();
   return useQuery({
     queryKey: ['zalo', 'customer-search', orgId, q],
+    meta: {label:'khách hàng theo tên hoặc số điện thoại',errorDisplay:'inline'},
     enabled: !!orgId && q.length >= 2,
     staleTime: 30_000,
     retry: 1,

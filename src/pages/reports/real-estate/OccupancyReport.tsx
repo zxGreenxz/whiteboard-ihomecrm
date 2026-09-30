@@ -68,7 +68,7 @@ export default function OccupancyReport() {
 
   const stats = !snapshot.isLoading && !snapshot.isError && (
     <>
-      <ReportCard title="Tổng phòng" value={sum.total} icon={Building2} description={`Snapshot ${asOfDate}`} />
+      <ReportCard title="Tổng phòng" value={sum.total} icon={Building2} description={`Tại ngày ${format(new Date(asOfDate), "dd/MM/yyyy")}`} />
       <ReportCard title="Đang thuê" value={sum.occupied} icon={Home} description={`Tỷ lệ lấp đầy ${occPct}%`} />
       <ReportCard title="Đã giữ chỗ" value={sum.reserved} icon={BookmarkCheck} description={`Tỷ lệ cam kết ${comPct}%`} />
       <ReportCard title="Trống" value={sum.available} icon={DoorOpen} description={`Bỏ lỡ ${formatVND(sum.missed)}/tháng`} />
@@ -94,7 +94,7 @@ export default function OccupancyReport() {
       "Tỷ lệ lấp đầy (%)": Number(r.occupancy_pct),
       "Tỷ lệ cam kết (%)": Number(r.committed_pct),
       "Doanh thu bỏ lỡ/tháng": Number(r.missed_revenue),
-      "Ngày snapshot": asOfDate,
+      "Ngày xem số liệu": asOfDate,
       "Bộ lọc toà": filterLabel,
     })),
     {},
@@ -108,7 +108,7 @@ export default function OccupancyReport() {
         <BuildingFilterSelect value={buildingIds} onChange={setBuildingIds} />
       </div>
       <div>
-        <label className="text-xs text-muted-foreground block mb-1">Ngày snapshot</label>
+        <label className="text-xs text-muted-foreground block mb-1">Ngày xem số liệu</label>
         <Input
           type="date"
           value={asOfDate}
@@ -135,13 +135,13 @@ export default function OccupancyReport() {
     <MainLayout>
       <ReportLayout
         title="Tỉ lệ lấp đầy"
-        description="Snapshot theo toà (5 nhóm phòng), trend 12 tháng, phòng sắp trống 30/60 ngày và doanh thu bỏ lỡ — tính toàn bộ trên máy chủ"
+        description="Số liệu lấp đầy theo tòa tại ngày đã chọn, xu hướng 12 tháng, phòng sắp trống trong 30/60 ngày và doanh thu bỏ lỡ"
         icon={<TrendingUp className="h-8 w-8" />}
-        actions={<ExportButtons data={exportData} filename={`ty-le-lap-day-${asOfDate}`} />}
+        actions={!snapshot.isError && !snapshot.isLoading && snapshot.data !== undefined ? <ExportButtons data={rows.length ? exportData : []} filename={`ty-le-lap-day-${asOfDate}`} /> : undefined}
         stats={stats}
         filters={filters}
       >
-        {snapshot.isError && errorBlock("snapshot lấp đầy", () => snapshot.refetch())}
+        {snapshot.isError && errorBlock("số liệu lấp đầy tại ngày đã chọn", () => snapshot.refetch())}
         {snapshot.isLoading && (
           <div className="space-y-4">
             <Skeleton className="h-[340px] w-full" />
@@ -152,10 +152,10 @@ export default function OccupancyReport() {
         {!snapshot.isLoading && !snapshot.isError && (
           <>
             {/* Trend 12 tháng */}
-            {trend.isError ? errorBlock("trend 12 tháng", () => trend.refetch()) : (
+            {trend.isError ? errorBlock("xu hướng lấp đầy 12 tháng", () => trend.refetch()) : (
               <Card>
                 <CardHeader>
-                  <CardTitle>Trend tỷ lệ lấp đầy 12 tháng</CardTitle>
+                  <CardTitle>Xu hướng lấp đầy 12 tháng</CardTitle>
                 </CardHeader>
                 <CardContent>
                   {trend.isLoading ? <Skeleton className="h-[300px] w-full" /> : (

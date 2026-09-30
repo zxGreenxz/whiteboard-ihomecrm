@@ -1,3 +1,4 @@
+import {friendlyError} from '@/lib/friendlyError';
 import { useRef, useState } from 'react';
 import { FileText, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -47,9 +48,9 @@ export default function CT01DownloadButton({ customer, durationMonths: durationP
       if (!owner) throw new CT01InputError('Tòa nhà chưa có thông tin người đứng tên chủ quyền. Vui lòng bổ sung trong chỉnh sửa tòa nhà.');
       await downloadCT01Document(customer, tenancy.building, { durationMonths, roomNumber: tenancy.roomNumber, owner }, requestedAt);
       setTenancies([]);
-      toast.success('Đã tải CT01 và hợp đồng thuê nhà');
+      toast.success('Đã chuẩn bị tệp CT01 và hợp đồng thuê nhà để tải xuống.');
     } catch (error) {
-      toast.error(error instanceof CT01InputError ? error.message : 'Không tải được tờ khai CT01. Vui lòng thử lại.');
+      toast.error(error instanceof CT01InputError ? error.message : friendlyError(error, 'Chưa chuẩn bị được tờ khai CT01', {operation:'xuất tờ khai CT01'}).description);
     } finally {
       pending.current = false;
       setBusy(false);

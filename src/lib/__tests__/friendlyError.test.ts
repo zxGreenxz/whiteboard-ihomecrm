@@ -53,7 +53,8 @@ describe("friendlyError — 55000", () => {
     const fe = friendlyError({ code: "55000", message }, "Không lưu được hợp đồng");
 
     expect(fe.title).toBe("Thao tác bị khoá bởi hệ thống kế toán");
-    expect(fe.description).toContain("55000");
+    expect(fe.code).toBe("55000");
+    expect(fe.description).not.toContain("55000");
     expect(fe.description).not.toContain(message);
   });
 
@@ -72,7 +73,7 @@ describe("friendlyError — 55000", () => {
     const fe = friendlyError({ code: "55000", message: "" }, "Không lưu được hợp đồng");
 
     expect(fe.title).toBe("Không lưu được hợp đồng");
-    expect(fe.description).toContain("Vui lòng thử lại");
+    expect(fe.description).toContain("kiểm tra lại trạng thái");
   });
 });
 

@@ -1,3 +1,4 @@
+import {QueryRegion} from '@/components/errors/QueryRegion';
 /**
  * Mục "Lỗi" của tab Thống kê /sale-phong.
  *
@@ -79,7 +80,7 @@ export default function ErrorsSection({ f }: { f: PraFilters }) {
       : "";
 
   return (
-    <div className="space-y-4">
+    <QueryRegion label="tổng số lỗi thống kê" queries={[summary]}><div className="space-y-4">
       {/* Thanh trạng thái: nói thẳng tổng thật của kỳ đang lọc, kèm khoảng ngày,
           để không ai đọc nhầm "số dòng đang hiện" thành "tất cả lỗi từng ghi". */}
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-lg border bg-muted/30 px-3 py-2 text-sm">
@@ -135,7 +136,7 @@ export default function ErrorsSection({ f }: { f: PraFilters }) {
       )}
 
       <ChiTietDialog row={chiTiet} onClose={() => setChiTiet(null)} />
-    </div>
+    </div></QueryRegion>
   );
 }
 
@@ -144,7 +145,8 @@ function GroupsTable({
   f, source, onOpen,
 }: { f: PraFilters; source: SourceFilter; onOpen: (r: PraErrorGroupRow) => void }) {
   const LIMIT = 100;
-  const { data = [], isLoading, isPlaceholderData } = usePraErrorGroups(f, source, LIMIT);
+  const groupsQuery=usePraErrorGroups(f,source,LIMIT);
+  const {data=[],isLoading,isPlaceholderData}=groupsQuery;
   const chamTran = data.length >= LIMIT;
 
   const exportRows = data.map((r) => ({
@@ -163,7 +165,7 @@ function GroupsTable({
   }));
 
   return (
-    <ChartCard
+    <QueryRegion label="nhóm lỗi thống kê" queries={[groupsQuery]}><ChartCard
       title={`Nhóm lỗi (${data.length})`}
       loading={isLoading || isPlaceholderData}
       height={200}
@@ -229,7 +231,7 @@ function GroupsTable({
           </Table>
         </div>
       )}
-    </ChartCard>
+    </ChartCard></QueryRegion>
   );
 }
 
@@ -238,7 +240,8 @@ function TimelineTable({
   f, source, onOpen,
 }: { f: PraFilters; source: SourceFilter; onOpen: (r: PraErrorRow) => void }) {
   const LIMIT = 300;
-  const { data = [], isLoading, isPlaceholderData } = usePraErrors(f, LIMIT, source);
+  const timelineQuery=usePraErrors(f,LIMIT,source);
+  const {data=[],isLoading,isPlaceholderData}=timelineQuery;
   const chamTran = data.length >= LIMIT;
 
   const exportRows = data.map((r) => ({
@@ -261,7 +264,7 @@ function TimelineTable({
   }));
 
   return (
-    <ChartCard
+    <QueryRegion label="nhật ký lỗi thống kê" queries={[timelineQuery]}><ChartCard
       title={`Nhật ký lỗi (${data.length})`}
       loading={isLoading || isPlaceholderData}
       height={200}
@@ -329,7 +332,7 @@ function TimelineTable({
           </Table>
         </div>
       )}
-    </ChartCard>
+    </ChartCard></QueryRegion>
   );
 }
 

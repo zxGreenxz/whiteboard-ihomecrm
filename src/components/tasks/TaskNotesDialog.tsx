@@ -1,3 +1,4 @@
+import { actionErrorMessage } from '@/lib/actionFeedback';
 import { useEffect, useState } from "react";
 import {
   Dialog,
@@ -28,6 +29,7 @@ export default function TaskNotesDialog({
   const updateJob = useUpdateJob();
   const isMobile = useIsMobile();
   const [notes, setNotes] = useState("");
+  const [serverError,setServerError] = useState("");
 
   useEffect(() => {
     if (open && job) {
@@ -38,6 +40,7 @@ export default function TaskNotesDialog({
   if (!job) return null;
 
   const handleSave = async () => {
+    setServerError("");
     try {
       await updateJob.mutateAsync({
         id: job.id,
@@ -45,9 +48,7 @@ export default function TaskNotesDialog({
       });
       onOpenChange(false);
       onSuccess();
-    } catch {
-      // toast handled by hook
-    }
+    } catch (error) {setServerError(actionErrorMessage(error,`Chưa lưu được ghi chú công việc ${job.code}`));}
   };
 
   return (
@@ -59,6 +60,7 @@ export default function TaskNotesDialog({
             : "sm:max-w-[520px]"
         }
       >
+        {serverError && <p role="alert" className="text-sm text-destructive">{serverError}</p>}
         {isMobile ? (
           <>
             <div className="shrink-0 pt-2 pb-1 flex justify-center">

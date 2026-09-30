@@ -1,3 +1,5 @@
+import {QueryRegion} from '@/components/errors/QueryRegion';
+import {voucherFailureMessage} from '@/lib/voucherFeedback';
 // Lịch sử một phiếu thu/chi — vế "đánh đổi" của Đợt 4.
 //
 // Chủ chấp nhận cho huỷ thẳng (trừ luôn khỏi sổ quỹ, không sinh phiếu đối ứng)
@@ -73,10 +75,10 @@ const Milestone = ({ icon, label, value, tone, detail }: MilestoneProps) => (
 
 const VoucherHistoryDialog = ({ open, onOpenChange, voucher }: Props) => {
   const voucherId = open ? voucher?.id ?? null : null;
-  const { data: cancellation, isLoading: loadingCancel } =
-    useVoucherCancellation(voucherId);
-  const { data: changeLog, isLoading: loadingLog, error: logError } =
-    useVoucherChangeLog(voucherId);
+  const cancellationQuery=useVoucherCancellation(voucherId);
+  const { data: cancellation, isLoading: loadingCancel } = cancellationQuery;
+  const logQuery=useVoucherChangeLog(voucherId);
+  const { data: changeLog, isLoading: loadingLog, error: logError } =logQuery;
   const reservationSettlementQuery = useReservationSettlementForVoucher(voucherId, open);
   const reservationSettlement = reservationSettlementQuery.data;
   const settlementAudit = useReservationSettlementAudit(reservationSettlement?.id ?? null, open);
@@ -106,6 +108,7 @@ const VoucherHistoryDialog = ({ open, onOpenChange, voucher }: Props) => {
           </DialogDescription>
         </DialogHeader>
 
+        <QueryRegion label="lịch sử phiếu" queries={[cancellationQuery,logQuery,reservationSettlementQuery,...(reservationSettlement?.id?[settlementAudit]:[])]}>
         {/* ── Mốc lập / duyệt / huỷ ───────────────────────────────────────── */}
         <section className="space-y-3 rounded-lg border border-zinc-200 p-3">
           <h3 className="text-sm font-semibold">Mốc thời gian</h3>
@@ -194,7 +197,7 @@ const VoucherHistoryDialog = ({ open, onOpenChange, voucher }: Props) => {
           ) : logError ? (
             <p className="flex items-center gap-2 text-sm text-red-600">
               <CircleAlert className="h-4 w-4" />
-              Không đọc được nhật ký: {(logError as Error).message}
+              {voucherFailureMessage(logError,'đọc nhật ký phiếu')}
             </p>
           ) : entries.length === 0 ? (
             <p className="text-sm text-muted-foreground">
@@ -245,6 +248,7 @@ const VoucherHistoryDialog = ({ open, onOpenChange, voucher }: Props) => {
             </ol>
           )}
         </section>
+        </QueryRegion>
       </DialogContent>
     </Dialog>
   );

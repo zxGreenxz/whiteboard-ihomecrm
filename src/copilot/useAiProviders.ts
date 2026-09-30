@@ -1,3 +1,4 @@
+import {readProviders,readEntitlement} from './providerReadModels';
 // Danh sách provider/model khả dụng cho user chọn (đọc ai_providers — RLS
 // SELECT authenticated). Model user chọn lưu server per-user qua
 // profiles.ui_preferences (KHÔNG tạo bảng riêng).
@@ -27,10 +28,10 @@ export function useAiProviders() {
         .eq('enabled', true);
       if (error) throw error;
       const out: ModelOption[] = [];
-      for (const p of data ?? []) {
+      for (const p of readProviders(data)) {
         if (p.provider === 'mock') continue; // dev-only, không cho user chọn
         const localOnly = p.data_class === 'local_only';
-        let models = Array.isArray(p.models) ? (p.models as any[]) : [];
+        let models: Array<{id?:unknown;label?:unknown}> = p.models;
         // local_only (Ollama/9Router): model nằm trên MÁY user — không khai báo
         // trong DB thì tự phát hiện từ instance đang chạy; không chạy → rỗng (ẩn).
         if (localOnly && !models.length) {
@@ -40,7 +41,7 @@ export function useAiProviders() {
           // Cloud models need complete, known pricing before they can reach the proxy.
           // Local models are discovered from the user's dev-only instance instead.
           if (!localOnly && !isUsableProviderModel(m)) continue;
-          if (!m?.id) continue;
+          if (typeof m.id !== 'string' || !m.id) throw new TypeError('Invalid local model response');
           out.push({
             value: `${p.provider}:${m.id}`,
             label: `${m.label ?? m.id} — ${p.label}`,
@@ -170,7 +171,7 @@ export function useCopilotEntitlement() {
         .eq('user_id', userId)
         .maybeSingle();
       if (error) throw error;
-      return data; // null = không được dùng
+      return readEntitlement(data); // null = máy chủ xác nhận không có entitlement
     },
   });
 }

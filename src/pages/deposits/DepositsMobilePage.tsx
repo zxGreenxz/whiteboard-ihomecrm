@@ -1,3 +1,4 @@
+import { QueryRegion } from "@/components/errors/QueryRegion";
 import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -132,12 +133,18 @@ export default function DepositsMobilePage() {
 
   useCopilotPageContext('deposits.list', { view, status: view === 'ledger' ? ledgerFilter : undefined });
   const approveVoucher = useApproveVoucher();
-  const { data: held = [], isLoading: heldLoading } = useHeldDeposits();
-  const { data: reservations = [], isLoading: resvLoading } = useReservationDeposits();
-  const { data: heldAgg = [] } = useHeldDepositSummary();
-  const { data: rfSummary } = useRefundForfeitSummary();
-  const { data: settlementSummary } = useReservationDepositSettlementSummary();
-  const { data: holdTerms = {} } = useReservationHoldDeadlines();
+  const heldDepositsQuery = useHeldDeposits();
+  const { data: held = [], isLoading: heldLoading } = heldDepositsQuery;
+  const reservationDepositsQuery = useReservationDeposits();
+  const { data: reservations = [], isLoading: resvLoading } = reservationDepositsQuery;
+  const heldDepositSummaryQuery = useHeldDepositSummary();
+  const { data: heldAgg = [] } = heldDepositSummaryQuery;
+  const refundForfeitSummaryQuery = useRefundForfeitSummary();
+  const { data: rfSummary } = refundForfeitSummaryQuery;
+  const reservationDepositSettlementSummaryQuery = useReservationDepositSettlementSummary();
+  const { data: settlementSummary } = reservationDepositSettlementSummaryQuery;
+  const reservationHoldDeadlinesQuery = useReservationHoldDeadlines();
+  const { data: holdTerms = {} } = reservationHoldDeadlinesQuery;
 
   const kpi = useMemo(() => {
     const heldTotal = heldAgg.reduce((s, r) => s + r.held, 0);
@@ -244,7 +251,7 @@ export default function DepositsMobilePage() {
             <div className="mtitle">
               <h1>{view === "work" ? "Quản lý Cọc" : "Sổ cọc"}</h1>
               <p>
-                {formatMoneyShort(kpi.heldTotal)} đang giữ · {holdRows.length} phiếu giữ chỗ
+                {heldDepositSummaryQuery.isError || reservationDepositsQuery.isError ? "Chưa tải được số liệu cọc" : `${formatMoneyShort(kpi.heldTotal)} đang giữ · ${holdRows.length} phiếu giữ chỗ`}
               </p>
             </div>
             {/* Nút tạo nằm ở THANH TRÊN, không phải nút nổi góc dưới phải —
@@ -264,6 +271,7 @@ export default function DepositsMobilePage() {
 
           <div className="mbody dp-body" style={{ display: "flex", flexDirection: "column", gap: 11 }}>
             <RoomReservationPanel enabled={view === 'work'} />
+            <QueryRegion label="cọc và kỳ hạn xử lý" queries={[heldDepositsQuery, reservationDepositsQuery, heldDepositSummaryQuery, refundForfeitSummaryQuery, reservationDepositSettlementSummaryQuery, reservationHoldDeadlinesQuery]}>
             {/* Dải KPI — số viết tắt để lọt một dòng trên máy hẹp; số chính xác
                 nằm ở bảng thao tác và ở desktop. */}
             <div className="dp-kpi">
@@ -466,6 +474,7 @@ export default function DepositsMobilePage() {
                 này làm anh em của `.cm-app` sẽ biến khung điện thoại thành một
                 cột của layout hai cột — khung bị bóp còn ~200px, tiêu đề bị cắt,
                 dải KPI ba ô dính vào nhau. Đã đo trên ptcrm.vercel.app/deposits. */}
+            </QueryRegion>
             <ReservationPendingRefundList />
           </div>
 

@@ -1,3 +1,4 @@
+import { QueryRegion } from '@/components/errors/QueryRegion';
 import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useCallback, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -48,7 +49,8 @@ const fmtVnd = (n: number | null | undefined) => (n == null ? "—" : n.toLocale
  */
 export default function CashbooksMobilePage() {
   const navigate = useNavigate();
-  const { data, isLoading } = useAccountsWithBalance({ page: 1, pageSize: 100 });
+  const accountsQuery = useAccountsWithBalance({ page: 1, pageSize: 100 });
+  const {data,isLoading} = accountsQuery;
   const funds = (data?.data ?? []) as AccountWithBalance[];
 
   const [detail, setDetail] = useState<AccountWithBalance | null>(null);
@@ -88,11 +90,13 @@ export default function CashbooksMobilePage() {
   );
 
   const { data: confirmers } = useCashbookCloseConfirmers(closeBookId ?? null);
-  const { data: closingData } = useCashbookClosings();
+  const closingsQuery = useCashbookClosings();
+  const {data:closingData} = closingsQuery;
   const pendingForMe = (closingData?.pending ?? []).filter((p) => p.is_mine_to_confirm).length;
 
   // Cờ server per-sổ (parity desktop): RPC lỗi → null → giữ hành vi cũ (cho hiện).
-  const { data: visibility } = useCashbookVisibilityV2();
+  const visibilityQuery = useCashbookVisibilityV2();
+  const {data:visibility} = visibilityQuery;
   const visById = useMemo(
     () => new Map((visibility ?? []).map((v) => [v.cashbook_id, v])),
     [visibility],
@@ -108,7 +112,7 @@ export default function CashbooksMobilePage() {
     const count = realFunds.length;
     const locked = realFunds.filter((f) => !!f.lock_date).length;
     const total = realFunds.reduce((s, f) => s + (f.current_amount || 0), 0);
-    return { count, locked, total };
+    return { count, locked, total, complete:realFunds.every(f => f.balance_visible && f.current_amount != null) };
   }, [realFunds]);
 
   const openCreate = () => {
@@ -125,7 +129,7 @@ export default function CashbooksMobilePage() {
   );
 
   const detailVis = detail ? visById.get(detail.id) : undefined;
-  const detailCanManage = detailVis ? detailVis.can_manage : true;
+  const detailCanManage = !visibilityQuery.isError && !!detailVis?.can_manage;
   const detailCanClose = !!detail && detailCanManage && !detail.lock_date;
 
   return (
@@ -155,8 +159,8 @@ export default function CashbooksMobilePage() {
             <div className="mtitle">
               <h1>Sổ quỹ</h1>
               <p>
-                {stats.count} sổ · tồn {compact(stats.total)}
-                {pendingForMe > 0 ? ` · ${pendingForMe} chờ bạn ký` : ""}
+                {accountsQuery.isError || accountsQuery.isLoading ? "Chưa xác nhận được số dư" : `${stats.count} sổ · ${stats.complete ? "tồn " + compact(stats.total) : "chưa đủ quyền xem tổng tồn"}`}
+                {!closingsQuery.isError && pendingForMe > 0 ? ` · ${pendingForMe} chờ bạn ký` : ""}
               </p>
             </div>
           </div>
@@ -180,6 +184,7 @@ export default function CashbooksMobilePage() {
               </button>
             )}
 
+            <QueryRegion label="danh sách và số dư sổ quỹ" queries={[accountsQuery,visibilityQuery]}>
             <div className="iestats">
               <div className="iestat">
                 <span className="iestat-l"><Wallet />SỐ SỔ QUỸ</span>
@@ -192,8 +197,8 @@ export default function CashbooksMobilePage() {
               <div className="iediff pos">
                 <span className="iediff-l">TỔNG TỒN QUỸ</span>
                 <span className="iediff-v" style={{ color: stats.total >= 0 ? "#10b981" : "#ef4444" }}>
-                  {compact(stats.total)}
-                  <small>₫</small>
+                  {stats.complete ? compact(stats.total) : "—"}
+                  <small>{stats.complete ? "₫" : "Chưa đủ dữ liệu để tính tổng"}</small>
                 </span>
               </div>
             </div>
@@ -280,6 +285,7 @@ export default function CashbooksMobilePage() {
                 </div>
               </>
             )}
+            </QueryRegion>
           </div>
 
           <button className={"fab" + (fabOpen ? " open" : "")} onClick={() => setFabOpen((o) => !o)} aria-label="Tạo mới">

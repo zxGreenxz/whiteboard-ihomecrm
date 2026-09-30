@@ -1,3 +1,5 @@
+import { persistentFinancialWorkflow } from '@/lib/persistentFinancialWorkflow';
+import { confirmedRecordId, recordWriteMessage } from '@/lib/recordWriteOutcome';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
@@ -133,9 +135,10 @@ export const useTenant = (id: string) => {
 };
 
 // Create new tenant
-export const useCreateTenant = () => {
+export const useCreateTenant = (options: { silent?: boolean } = {}) => {
   const queryClient = useQueryClient();
   const { selectedOrganizationId } = useOrganization();
+  const guard = persistentFinancialWorkflow('tenant-legacy-create');
 
   return useMutation({
     mutationFn: async (tenant: Omit<TenantInsert, "user_id">) => {
@@ -145,6 +148,7 @@ export const useCreateTenant = () => {
         throw new Error("User not authenticated");
       }
 
+      return guard.run('create', 'tạo khách thuê', async () => {
       const { data, error } = await supabase
         .from("tenants")
         .insert(withOrg({
@@ -154,22 +158,20 @@ export const useCreateTenant = () => {
         .select()
         .single();
 
-      if (error) {
-        if (error.code === "23505") {
-          toast.error("Số điện thoại hoặc CCCD đã tồn tại");
-        } else {
-          toast.error("Không thể tạo khách hàng");
-        }
-        throw error;
-      }
-
+      if (error) throw error;
+      confirmedRecordId(data, 'tạo khách thuê');
       return data;
+      }, undefined, selectedOrganizationId);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tenants"] });
-      toast.success("Dữ liệu đã được TẠO thành công");
+      queryClient.invalidateQueries({ queryKey: ['tenants-legacy'] });
+      if (!options.silent) toast.success('Đã tạo khách thuê');
     },
     onError: (error) => {
+      queryClient.invalidateQueries({ queryKey: ['tenants'] });
+      queryClient.invalidateQueries({ queryKey: ['tenants-legacy'] });
+      if (!options.silent) toast.error('Chưa tạo được khách thuê', {description:recordWriteMessage(error, 'tạo khách thuê')});
       console.error("Error creating tenant:", error);
     },
   });

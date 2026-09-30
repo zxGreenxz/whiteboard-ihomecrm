@@ -1,3 +1,4 @@
+import { QueryRegion } from '@/components/errors/QueryRegion';
 import { useState } from "react";
 import MainLayout from "@/components/layout/MainLayout";
 import { ClipboardList, Plus, ArrowLeft } from "lucide-react";
@@ -36,9 +37,12 @@ export default function TaskTypesPage() {
   const pagination = usePagination(20);
 
   // Data hooks
-  const { data: jobTypes = [], isLoading } = useJobTypes();
-  const { data: jobGroups = [] } = useJobGroups();
-  const { data: departments = [] } = useDepartments();
+  const jobTypesQuery = useJobTypes();
+  const { data: jobTypes = [], isLoading } = jobTypesQuery;
+  const jobGroupsQuery = useJobGroups();
+  const { data: jobGroups = [] } = jobGroupsQuery;
+  const departmentsQuery = useDepartments();
+  const { data: departments = [] } = departmentsQuery;
   const createJobType = useCreateJobType();
   const updateJobType = useUpdateJobType();
   const deleteJobType = useDeleteJobType();
@@ -65,29 +69,14 @@ export default function TaskTypesPage() {
 
   const handleConfirmDelete = () => {
     if (deleteTarget) {
-      deleteJobType.mutate(deleteTarget);
-      setDeleteTarget(null);
+      deleteJobType.mutate(deleteTarget,{onSuccess:()=>setDeleteTarget(null)});
     }
   };
 
-  const handleFormSubmit = (values: JobTypeFormValues) => {
-    if (editingJobType) {
-      updateJobType.mutate(
-        { id: editingJobType.id, updates: values },
-        {
-          onSuccess: () => {
-            setIsFormOpen(false);
-            setEditingJobType(null);
-          },
-        }
-      );
-    } else {
-      createJobType.mutate(values, {
-        onSuccess: () => {
-          setIsFormOpen(false);
-        },
-      });
-    }
+  const handleFormSubmit = async (values: JobTypeFormValues) => {
+    if(editingJobType) await updateJobType.mutateAsync({id:editingJobType.id,updates:values});
+    else await createJobType.mutateAsync(values);
+    setIsFormOpen(false);setEditingJobType(null);
   };
 
   const handleCreateJobGroup = async (name: string) => {
@@ -105,6 +94,7 @@ export default function TaskTypesPage() {
       subtitle="Quản lý loại công việc vận hành"
       icon={ClipboardList}
     >
+      <QueryRegion label="Loại công việc, nhóm và bộ phận" queries={[jobTypesQuery,jobGroupsQuery,departmentsQuery]}>
       {/* Top bar */}
       <div className="flex items-center justify-between mb-4">
         <Link
@@ -162,7 +152,7 @@ export default function TaskTypesPage() {
           <AlertDialogFooter>
             <AlertDialogCancel>Huỷ</AlertDialogCancel>
             <AlertDialogAction
-              onClick={handleConfirmDelete}
+              disabled={deleteJobType.isPending} onClick={event => {event.preventDefault();handleConfirmDelete();}}
               className="bg-red-500 hover:bg-red-600 text-white"
             >
               Xoá
@@ -170,6 +160,6 @@ export default function TaskTypesPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </MainLayout>
+    </QueryRegion></MainLayout>
   );
 }

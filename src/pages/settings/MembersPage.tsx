@@ -1,3 +1,7 @@
+import { authorizationOutcomeUnknown } from '@/lib/authorizationFeedback';
+import { QueryRegion } from '@/components/errors/QueryRegion';
+import { focusFirstError } from '@/lib/formErrors';
+import { actionErrorMessage } from '@/lib/actionFeedback';
 // Màn "Thành viên" — thay hoàn toàn trang Phân quyền nhân viên cũ.
 //
 // Khác biệt cốt lõi so với trang cũ: nguồn dữ liệu là mô hình tổ chức
@@ -40,6 +44,7 @@ import { cn } from '@/lib/utils';
 import {
   useAuthorizationCatalog,
   useInviteMember,
+  authorizationErrorMessage,
   useOrganizationMembers,
   useOrganizationRoles,
   type MemberType,
@@ -60,7 +65,8 @@ const MAU_LOAI: Record<string, string> = {
 };
 
 export default function MembersPage() {
-  const { data, isLoading, error } = useOrganizationMembers();
+  const listQuery = useOrganizationMembers();
+  const { data, isLoading, error } = listQuery;
   const [tim, setTim] = useState('');
   const [dangSua, setDangSua] = useState<string | null>(null);
   const [moMoi, setMoMoi] = useState(false);
@@ -100,21 +106,7 @@ export default function MembersPage() {
           </Button>
         </div>
 
-        {error && (
-          <Card className="border-destructive/40">
-            <CardContent className="flex gap-3 p-4 text-sm">
-              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
-              <div>
-                <p className="font-medium">Không xem được danh sách thành viên.</p>
-                <p className="mt-1 text-muted-foreground">
-                  {(error as { message?: string })?.message ??
-                    'Bạn cần quyền "Vào trang phân quyền" trong tổ chức này.'}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
+        <QueryRegion label="danh sách thành viên" queries={[listQuery]}>
         {isLoading ? (
           <div className="grid gap-3 lg:grid-cols-2">
             {[0, 1, 2, 3].map((i) => (
@@ -133,6 +125,7 @@ export default function MembersPage() {
             )}
           </div>
         )}
+        </QueryRegion>
       </div>
 
       <MemberAuthorizationDialog
@@ -249,11 +242,16 @@ function TheThanhVien({ m, onSua }: { m: OrganizationMember; onSua: () => void }
 /* ─────────────────────────── Hộp thoại mời ─────────────────────────── */
 
 function HopThoaiMoi({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
-  const { data: roles = [] } = useOrganizationRoles(open);
-  const { data: catalog } = useAuthorizationCatalog(open);
+  const rolesQuery = useOrganizationRoles(open);
+  const catalogQuery = useAuthorizationCatalog(open);
+  const { data: roles = [] } = rolesQuery;
+  const { data: catalog } = catalogQuery;
   const moi = useInviteMember();
 
   const [email, setEmail] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<Record<string,string>>({});
+  const [serverError, setServerError] = useState('');
+  const [copyError, setCopyError] = useState('');
   const [loai, setLoai] = useState<MemberType>('STAFF');
   const [roleId, setRoleId] = useState<string>('');
   const [scopeIds, setScopeIds] = useState<string[]>([]);
@@ -263,6 +261,7 @@ function HopThoaiMoi({ open, onOpenChange }: { open: boolean; onOpenChange: (v: 
     onOpenChange(false);
     setTimeout(() => {
       setEmail('');
+      setFieldErrors({}); setServerError(''); setCopyError('');
       setRoleId('');
       setScopeIds([]);
       setKetQua(null);
@@ -270,6 +269,13 @@ function HopThoaiMoi({ open, onOpenChange }: { open: boolean; onOpenChange: (v: 
   };
 
   const gui = async () => {
+    const errors: Record<string,string> = {};
+    if (!email.trim()) errors.email = 'Nhập email người được mời.';
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) errors.email = 'Nhập email đúng định dạng, ví dụ ten@congty.com.';
+    if (roleId && !scopeIds.length) errors.scopeIds = 'Chọn phạm vi áp dụng cho vai trò.';
+    setFieldErrors(errors); setServerError('');
+    if (Object.keys(errors).length) { void focusFirstError(errors, {order:['email','scopeIds']}); return; }
+    try {
     const r = await moi.mutateAsync({
       email: email.trim(),
       memberType: loai,
@@ -281,7 +287,8 @@ function HopThoaiMoi({ open, onOpenChange }: { open: boolean; onOpenChange: (v: 
         link: `${window.location.origin}/invite/${r.token}`,
         expiresAt: r.expiresAt,
       });
-    }
+    } else setServerError('Chưa nhận được đường dẫn lời mời. Kiểm tra danh sách lời mời trước khi tạo thêm.');
+    } catch (error) { setServerError(authorizationErrorMessage(error, 'Chưa xác nhận được kết quả tạo lời mời.')); }
   };
 
   return (
@@ -294,6 +301,7 @@ function HopThoaiMoi({ open, onOpenChange }: { open: boolean; onOpenChange: (v: 
           </DialogDescription>
         </DialogHeader>
 
+        <QueryRegion label="Vai trò và phạm vi lời mời" queries={[rolesQuery,catalogQuery]}>
         {ketQua ? (
           <div className="space-y-3">
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-900 dark:bg-amber-950/40">
@@ -304,17 +312,18 @@ function HopThoaiMoi({ open, onOpenChange }: { open: boolean; onOpenChange: (v: 
               </p>
             </div>
             <div className="flex gap-2">
-              <Input readOnly value={ketQua.link} className="font-mono text-xs" />
+              <Input aria-label="Đường dẫn lời mời" readOnly onFocus={e => e.currentTarget.select()} value={ketQua.link} className="font-mono text-xs" />
               <Button
                 variant="outline"
-                onClick={() => {
-                  navigator.clipboard.writeText(ketQua.link);
-                  toast.success('Đã sao chép đường dẫn.');
+                onClick={async () => {
+                  try { await navigator.clipboard.writeText(ketQua.link); setCopyError(''); toast.success('Đã sao chép đường dẫn.'); }
+                  catch { setCopyError('Chưa sao chép được đường dẫn. Chọn và sao chép nội dung ô đường dẫn bên cạnh.'); }
                 }}
               >
                 <Copy className="h-4 w-4" />
               </Button>
             </div>
+            {copyError && <p role="alert" className="text-sm text-destructive">{copyError}</p>}
             <p className="text-xs text-muted-foreground">
               Hết hạn: {new Date(ketQua.expiresAt).toLocaleString('vi-VN')}
             </p>
@@ -324,13 +333,14 @@ function HopThoaiMoi({ open, onOpenChange }: { open: boolean; onOpenChange: (v: 
             <div>
               <Label htmlFor="email">Email</Label>
               <Input
-                id="email"
+                id="email" name="email" aria-invalid={!!fieldErrors.email} aria-describedby={fieldErrors.email ? "invite-email-error" : undefined}
                 type="email"
                 className="mt-1.5"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="nguoimoi@congty.com"
               />
+              {fieldErrors.email && <p id="invite-email-error" role="alert" className="text-sm text-destructive">{fieldErrors.email}</p>}
             </div>
             <div>
               <Label>Loại thành viên</Label>
@@ -369,7 +379,7 @@ function HopThoaiMoi({ open, onOpenChange }: { open: boolean; onOpenChange: (v: 
               </Select>
             </div>
             {roleId && (
-              <div>
+              <div data-field-name="scopeIds" tabIndex={-1} aria-invalid={!!fieldErrors.scopeIds} className="rounded aria-[invalid=true]:border aria-[invalid=true]:border-destructive">
                 <Label>Áp vai trò ở đâu</Label>
                 <ScopePicker
                   className="mt-1.5"
@@ -377,11 +387,13 @@ function HopThoaiMoi({ open, onOpenChange }: { open: boolean; onOpenChange: (v: 
                   value={scopeIds}
                   onChange={setScopeIds}
                 />
+                {fieldErrors.scopeIds && <p role="alert" className="text-sm text-destructive">{fieldErrors.scopeIds}</p>}
               </div>
             )}
           </div>
         )}
 
+        {serverError && <p role="alert" className="text-sm text-destructive">{serverError}</p>}
         <DialogFooter>
           {ketQua ? (
             <Button onClick={dong}>Xong</Button>
@@ -392,7 +404,7 @@ function HopThoaiMoi({ open, onOpenChange }: { open: boolean; onOpenChange: (v: 
               </Button>
               <Button
                 onClick={gui}
-                disabled={!email.trim() || moi.isPending || (!!roleId && !scopeIds.length)}
+                disabled={moi.isPending || authorizationOutcomeUnknown(moi.error) || rolesQuery.isError || catalogQuery.isError}
               >
                 {moi.isPending ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -403,7 +415,7 @@ function HopThoaiMoi({ open, onOpenChange }: { open: boolean; onOpenChange: (v: 
               </Button>
             </>
           )}
-        </DialogFooter>
+        </DialogFooter></QueryRegion>
       </DialogContent>
     </Dialog>
   );

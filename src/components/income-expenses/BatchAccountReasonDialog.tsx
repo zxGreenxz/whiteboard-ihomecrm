@@ -1,7 +1,8 @@
+import {focusFirstError} from '@/lib/formErrors';
 // Đổi sổ quỹ cả đợt = mỗi phiếu con một lần sửa có lưu vết, đổi từ sổ này sang
 // sổ khác nên máy chủ bắt lý do (≥ 8 ký tự). Hộp này hỏi lý do MỘT lần cho cả đợt.
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   AlertDialog,
@@ -25,6 +26,9 @@ interface Props {
   voucherCount: number;
   pending: boolean;
   onConfirm: (reason: string) => void;
+  error?:string|null;
+  blocked?:boolean;
+  completedIds?:readonly string[];
 }
 
 export default function BatchAccountReasonDialog({
@@ -34,17 +38,19 @@ export default function BatchAccountReasonDialog({
   toName,
   voucherCount,
   pending,
-  onConfirm,
+  onConfirm, error, blocked=false,completedIds=[],
 }: Props) {
   const [reason, setReason] = useState("");
+  const [reasonError,setReasonError]=useState<string|null>(null);
+  const root=useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (open) setReason("");
+    if (open) {setReason("");setReasonError(null);}
   }, [open]);
   const ok = reason.trim().length >= REVISION_REASON_MIN;
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
+      <AlertDialogContent ref={root}>
         <AlertDialogHeader>
           <AlertDialogTitle>Đổi sổ quỹ cả đợt</AlertDialogTitle>
           <AlertDialogDescription>
@@ -57,6 +63,7 @@ export default function BatchAccountReasonDialog({
         <div className="space-y-2">
           <Label htmlFor="batch-account-reason">Lý do đổi sổ *</Label>
           <Textarea
+            name="reason" aria-invalid={!!reasonError} aria-describedby={reasonError?"batch-reason-error":undefined}
             id="batch-account-reason"
             value={reason}
             onChange={(e) => setReason(e.target.value)}
@@ -64,15 +71,19 @@ export default function BatchAccountReasonDialog({
             rows={2}
             placeholder="Vì sao đổi sang sổ khác?"
           />
+          {reasonError&&<p id="batch-reason-error" role="alert" className="text-xs text-destructive">{reasonError}</p>}
           <p className="text-xs text-muted-foreground">Ít nhất {REVISION_REASON_MIN} ký tự.</p>
         </div>
+        {error&&<p role="alert" className="text-sm text-destructive">{error}</p>}
+        {completedIds.map(id=><a key={id} className="text-sm underline" href={`/income-expense/voucher/${id}`}>Mở phiếu đã đổi sổ {id}</a>)}
         <AlertDialogFooter>
           <AlertDialogCancel disabled={pending}>Không đổi</AlertDialogCancel>
           <AlertDialogAction
-            disabled={!ok || pending}
+            disabled={blocked || pending}
             onClick={(e) => {
               e.preventDefault();
-              onConfirm(reason.trim());
+              if(!ok){const message=`Nhập lý do đổi sổ từ ${REVISION_REASON_MIN} đến ${REVISION_REASON_MAX} ký tự.`;setReasonError(message);void focusFirstError({reason:message},{root:root.current});return;}
+              setReasonError(null);onConfirm(reason.trim());
             }}
           >
             {pending ? "Đang đổi…" : "Đổi sổ"}

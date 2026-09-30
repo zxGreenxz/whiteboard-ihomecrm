@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import {recordWriteBlocked,recordWriteMessage} from '@/lib/recordWriteOutcome';
+import { useState, useRef } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
 import IncomeExpenseTemplateList from '@/components/income-expense-templates/IncomeExpenseTemplateList';
 import IncomeExpenseTemplateForm from '@/components/income-expense-templates/IncomeExpenseTemplateForm';
@@ -11,7 +12,6 @@ import {
 import { Button } from '@/components/ui/button';
 import {
   AlertDialog,
-  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -20,13 +20,18 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Plus } from 'lucide-react';
+import { QueryRegion } from '@/components/errors/QueryRegion';
+import { TemplateDefaultPartialError } from '@/hooks/useIncomeExpenseTemplates';
 
 export default function IncomeExpenseTemplatesPage() {
+  const busy=useRef(false);
+  const [deleteFailures,setDeleteFailures]=useState<Record<string,{message:string;blocked:boolean}>>({});
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<IncomeExpenseTemplate | null>(null);
   const [deletingTemplateId, setDeletingTemplateId] = useState<string | null>(null);
 
-  const { data: templates, isLoading } = useIncomeExpenseTemplates();
+  const templatesQuery = useIncomeExpenseTemplates();
+  const { data: templates, isLoading } = templatesQuery;
   const deleteTemplate = useDeleteIncomeExpenseTemplate();
   const toggleDefault = useToggleDefaultTemplate();
 
@@ -40,15 +45,15 @@ export default function IncomeExpenseTemplatesPage() {
   };
 
   const confirmDelete = async () => {
-    if (!deletingTemplateId) return;
-    try {
-      await deleteTemplate.mutateAsync(deletingTemplateId);
-    } finally {
-      setDeletingTemplateId(null);
-    }
+    if(!deletingTemplateId || busy.current || deleteTemplate.isPending || deleteFailures[deletingTemplateId]?.blocked) return;
+    busy.current=true;
+    try {await deleteTemplate.mutateAsync(deletingTemplateId);setDeletingTemplateId(null);}
+    catch(error) {setDeleteFailures(previous=>({...previous,[deletingTemplateId]:{message:recordWriteMessage(error,'xoá mẫu in'),blocked:recordWriteBlocked(error)}}));}
+    finally {busy.current=false;}
   };
 
   const handleToggleDefault = (id: string, isDefault: boolean, isIncomeTemplate: boolean) => {
+    if (toggleDefault.isPending || recordWriteBlocked(toggleDefault.error) || toggleDefault.error instanceof TemplateDefaultPartialError) return;
     toggleDefault.mutate({ id, is_default: isDefault, is_income_template: isIncomeTemplate });
   };
 
@@ -59,6 +64,7 @@ export default function IncomeExpenseTemplatesPage() {
 
   return (
     <MainLayout>
+      <QueryRegion label="danh sách mẫu in thu chi" queries={[templatesQuery]}>
       <div className="space-y-4">
         {/* Toolbar */}
         <div className="flex items-center gap-2">
@@ -67,6 +73,13 @@ export default function IncomeExpenseTemplatesPage() {
             Thêm mới
           </Button>
         </div>
+        {(recordWriteBlocked(toggleDefault.error) || toggleDefault.error instanceof TemplateDefaultPartialError) && <div role="alert" className="rounded-md border border-amber-500 p-3 text-sm">
+          {recordWriteMessage(toggleDefault.error,'đổi mẫu mặc định')}
+          <Button type="button" variant="outline" size="sm" className="mt-2 block" onClick={async () => {
+            await templatesQuery.refetch();
+            if(toggleDefault.variables) {try {await toggleDefault.mutateAsync(toggleDefault.variables);} catch { /* Marker chỉ được giải phóng bằng đối chiếu có kết quả. */ }}
+          }}>Tải lại mẫu để đối chiếu</Button>
+        </div>}
 
         {/* Template List */}
         <IncomeExpenseTemplateList
@@ -75,6 +88,7 @@ export default function IncomeExpenseTemplatesPage() {
           onEdit={handleEdit}
           onDelete={handleDelete}
           onToggleDefault={handleToggleDefault}
+          defaultPending={toggleDefault.isPending || recordWriteBlocked(toggleDefault.error) || toggleDefault.error instanceof TemplateDefaultPartialError}
         />
 
         {/* Template Form Dialog */}
@@ -87,7 +101,7 @@ export default function IncomeExpenseTemplatesPage() {
         {/* Delete Confirmation Dialog */}
         <AlertDialog
           open={!!deletingTemplateId}
-          onOpenChange={(open) => { if (!open) setDeletingTemplateId(null); }}
+          onOpenChange={(open) => { if (!open && !busy.current && !deleteTemplate.isPending) setDeletingTemplateId(null); }}
         >
           <AlertDialogContent>
             <AlertDialogHeader>
@@ -96,19 +110,20 @@ export default function IncomeExpenseTemplatesPage() {
                 Bạn đang thực hiện thao tác xoá mẫu in thu chi. Bạn có chắc chắn muốn xoá không?
               </AlertDialogDescription>
             </AlertDialogHeader>
+            {deletingTemplateId && deleteFailures[deletingTemplateId] && <p role="alert" className="text-destructive">{deleteFailures[deletingTemplateId].message}</p>}
             <AlertDialogFooter>
               <AlertDialogCancel>Hủy</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={confirmDelete}
-                disabled={deleteTemplate.isPending}
-                className="bg-red-600 hover:bg-red-700"
+              <Button variant="destructive"
+                onClick={() => { void confirmDelete(); }}
+                disabled={deleteTemplate.isPending || !!(deletingTemplateId && deleteFailures[deletingTemplateId]?.blocked)}
               >
                 {deleteTemplate.isPending ? 'Đang xoá...' : 'Xoá'}
-              </AlertDialogAction>
+              </Button>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
       </div>
+      </QueryRegion>
     </MainLayout>
   );
 }

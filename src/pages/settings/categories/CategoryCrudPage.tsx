@@ -1,4 +1,7 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
+import { useForm } from 'react-hook-form';
+import { friendlyError, type OperationErrorRule } from '@/lib/friendlyError';
+import { applyFeedbackToForm, focusFirstError } from '@/lib/formErrors';
 import MainLayout from "@/components/layout/MainLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -17,6 +20,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
@@ -56,9 +60,12 @@ interface CategoryCrudPageProps<T> {
   isLoading: boolean;
   columns: ColumnDef<T>[];
   fields: FieldDef[];
-  onCreate: (values: Record<string, unknown>) => void;
-  onUpdate: (id: string, values: Record<string, unknown>) => void;
-  onDelete: (id: string) => void;
+  onCreate: (values: Record<string, unknown>) => Promise<unknown>;
+  onUpdate: (id: string, values: Record<string, unknown>) => Promise<unknown>;
+  onDelete: (id: string) => Promise<unknown>;
+  error?: unknown;
+  errorRules?: readonly OperationErrorRule[];
+  onRetry?: () => unknown;
   isCreating?: boolean;
   isUpdating?: boolean;
   isDeleting?: boolean;
@@ -82,51 +89,76 @@ export default function CategoryCrudPage<T>({
   isDeleting,
   getId,
   getFormValues,
+  error,
+  errorRules,
+  onRetry,
 }: CategoryCrudPageProps<T>) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<T | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [formValues, setFormValues] = useState<Record<string, unknown>>({});
+  const form = useForm<Record<string, unknown>>({ defaultValues: {} });
+  const formValues = form.watch();
+  const formRoot = useRef<HTMLFormElement>(null);
+  const busy = useRef(false);
+  const [saving, setSaving] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   const openCreate = () => {
     setEditingItem(null);
-    setFormValues({});
+    form.reset({});
     setDialogOpen(true);
   };
 
   const openEdit = (item: T) => {
     setEditingItem(item);
-    setFormValues(getFormValues ? getFormValues(item) : (item as Record<string, unknown>));
+    form.reset(getFormValues ? getFormValues(item) : (item as Record<string, unknown>));
     setDialogOpen(true);
   };
 
   const openDelete = (id: string) => {
     setDeletingId(id);
+    setDeleteError('');
     setDeleteDialogOpen(true);
   };
 
-  const handleSubmit = () => {
-    if (editingItem) {
-      onUpdate(getId(editingItem), formValues);
-    } else {
-      onCreate(formValues);
+  const handleSubmit = form.handleSubmit(async (values) => {
+    if (busy.current) return;
+    busy.current = true;
+    setSaving(true);
+    form.clearErrors('root');
+    try {
+      if (editingItem) await onUpdate(getId(editingItem), values);
+      else await onCreate(values);
+      setDialogOpen(false);
+      form.reset({});
+      setEditingItem(null);
+    } catch (cause) {
+      const feedback = friendlyError(cause, `Chưa lưu được ${title.toLocaleLowerCase('vi')}`, {operation: `lưu ${title.toLocaleLowerCase('vi')}`, rules:errorRules});
+      await applyFeedbackToForm(form, {...feedback, description: `${feedback.title}. ${feedback.description}`}, {root:formRoot.current, order:fields.map(field => field.key)});
+    } finally {
+      busy.current = false;
+      setSaving(false);
     }
-    setDialogOpen(false);
-    setFormValues({});
-    setEditingItem(null);
-  };
+  }, errors => { void focusFirstError(errors, { root: formRoot.current, order: fields.map(field => field.key) }); });
 
-  const handleDelete = () => {
-    if (deletingId) {
-      onDelete(deletingId);
-    }
-    setDeleteDialogOpen(false);
-    setDeletingId(null);
+  const handleDelete = async () => {
+    if (!deletingId || busy.current) return;
+    busy.current = true;
+    setSaving(true);
+    setDeleteError('');
+    try {
+      await onDelete(deletingId);
+      setDeleteDialogOpen(false);
+      setDeletingId(null);
+    } catch (cause) {
+      const feedback = friendlyError(cause, `Chưa xóa được ${title.toLocaleLowerCase('vi')}`);
+      setDeleteError(`${feedback.title}. ${feedback.description}`);
+    } finally { busy.current = false; setSaving(false); }
   };
 
   const updateField = (key: string, value: unknown) => {
-    setFormValues((prev) => ({ ...prev, [key]: value }));
+    form.setValue(key, value, { shouldValidate: form.formState.isSubmitted });
   };
 
   return (
@@ -140,7 +172,7 @@ export default function CategoryCrudPage<T>({
             <ArrowLeft className="h-4 w-4" />
             Quay lại Danh mục khác
           </Link>
-          <Button onClick={openCreate} size="sm">
+          <Button onClick={openCreate} size="sm" disabled={!!error}>
             <Plus className="h-4 w-4 mr-1" />
             Thêm mới
           </Button>
@@ -148,7 +180,10 @@ export default function CategoryCrudPage<T>({
 
         <Card>
           <CardContent className="p-0">
-            {isLoading ? (
+            {error ? <div role="alert" className="p-4 text-destructive">
+              <p>Chưa tải được {title.toLocaleLowerCase('vi')}.</p>
+              {onRetry && <Button variant="outline" onClick={() => void onRetry()}>Tải lại</Button>}
+            </div> : isLoading ? (
               <div className="p-8 text-center text-muted-foreground">Đang tải...</div>
             ) : !data || data.length === 0 ? (
               <div className="p-8 text-center text-muted-foreground">
@@ -198,22 +233,27 @@ export default function CategoryCrudPage<T>({
       </div>
 
       {/* Create/Edit Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <Dialog open={dialogOpen} onOpenChange={(open) => { if (!saving) setDialogOpen(open); }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{editingItem ? "Cập nhật" : "Thêm mới"}</DialogTitle>
+            <DialogDescription>Nhập thông tin {title.toLocaleLowerCase('vi')}. Các mục có dấu * cần được điền.</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-2">
+          <form id="category-edit-form" ref={formRoot} onSubmit={handleSubmit} className="space-y-4 py-2" noValidate>
+            {form.formState.errors.root?.server?.message && <p role="alert" className="text-sm text-destructive">{form.formState.errors.root.server.message}</p>}
             {fields.map((field) => (
-              <div key={field.key} className="space-y-2">
+              <div key={field.key} data-field-name={field.key} className="space-y-2">
                 <Label htmlFor={field.key}>
                   {field.label}
                   {field.required && <span className="text-destructive"> *</span>}
                 </Label>
                 {field.type === "select" ? (
                   <select
+                    {...form.register(field.key, { required: field.required ? `Chọn ${field.label.toLocaleLowerCase('vi')}.` : false })}
+                    aria-invalid={!!form.formState.errors[field.key]}
+                    aria-describedby={form.formState.errors[field.key] ? `${field.key}-error` : undefined}
                     id={field.key}
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    className="flex h-10 w-full rounded-md border border-input aria-[invalid=true]:border-destructive bg-background px-3 py-2 text-sm"
                     value={String(formValues[field.key] ?? "")}
                     onChange={(e) => updateField(field.key, e.target.value)}
                   >
@@ -226,8 +266,11 @@ export default function CategoryCrudPage<T>({
                   </select>
                 ) : field.type === "textarea" ? (
                   <textarea
+                    {...form.register(field.key, { required: field.required ? `Nhập ${field.label.toLocaleLowerCase('vi')}.` : false })}
+                    aria-invalid={!!form.formState.errors[field.key]}
+                    aria-describedby={form.formState.errors[field.key] ? `${field.key}-error` : undefined}
                     id={field.key}
-                    className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    className="flex min-h-[80px] w-full rounded-md border border-input aria-[invalid=true]:border-destructive bg-background px-3 py-2 text-sm"
                     placeholder={field.placeholder}
                     value={String(formValues[field.key] ?? "")}
                     onChange={(e) => updateField(field.key, e.target.value)}
@@ -235,6 +278,7 @@ export default function CategoryCrudPage<T>({
                 ) : field.type === "checkbox" ? (
                   <div className="flex items-center gap-2">
                     <input
+                      {...form.register(field.key)}
                       id={field.key}
                       type="checkbox"
                       className="h-4 w-4"
@@ -247,6 +291,9 @@ export default function CategoryCrudPage<T>({
                   </div>
                 ) : (
                   <Input
+                    {...form.register(field.key, { required: field.required ? `Nhập ${field.label.toLocaleLowerCase('vi')}.` : false })}
+                    aria-invalid={!!form.formState.errors[field.key]}
+                    aria-describedby={form.formState.errors[field.key] ? `${field.key}-error` : undefined}
                     id={field.key}
                     type={field.type || "text"}
                     placeholder={field.placeholder}
@@ -254,19 +301,20 @@ export default function CategoryCrudPage<T>({
                     onChange={(e) =>
                       updateField(
                         field.key,
-                        field.type === "number" ? Number(e.target.value) : e.target.value
+                        field.type === "number" && e.target.value !== '' ? Number(e.target.value) : e.target.value
                       )
                     }
                   />
                 )}
+                {form.formState.errors[field.key] && <p id={`${field.key}-error`} role="alert" className="text-sm text-destructive">{String(form.formState.errors[field.key]?.message ?? '')}</p>}
               </div>
             ))}
-          </div>
+          </form>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
+            <Button variant="outline" disabled={saving} onClick={() => setDialogOpen(false)}>
               Hủy
             </Button>
-            <Button onClick={handleSubmit} disabled={isCreating || isUpdating}>
+            <Button type="submit" form="category-edit-form" disabled={saving || isCreating || isUpdating}>
               {editingItem ? "Cập nhật" : "Thêm mới"}
             </Button>
           </DialogFooter>
@@ -274,7 +322,7 @@ export default function CategoryCrudPage<T>({
       </Dialog>
 
       {/* Delete Confirmation */}
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+      <AlertDialog open={deleteDialogOpen} onOpenChange={(open) => { if (!saving) setDeleteDialogOpen(open); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Xác nhận xóa</AlertDialogTitle>
@@ -282,9 +330,10 @@ export default function CategoryCrudPage<T>({
               Bạn có chắc chắn muốn xóa không? Hành động này không thể hoàn tác.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {deleteError && <p role="alert" className="text-sm text-destructive">{deleteError}</p>}
           <AlertDialogFooter>
-            <AlertDialogCancel>Hủy</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} disabled={isDeleting}>
+            <AlertDialogCancel disabled={saving}>Hủy</AlertDialogCancel>
+            <AlertDialogAction onClick={(event) => { event.preventDefault(); void handleDelete(); }} disabled={saving || isDeleting}>
               Xóa
             </AlertDialogAction>
           </AlertDialogFooter>

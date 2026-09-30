@@ -15,6 +15,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Copy, Download, Check, ExternalLink, Building2, DoorOpen } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
+import { friendlyError } from '@/lib/friendlyError';
 
 interface ContractQRDialogProps {
   open: boolean;
@@ -61,11 +62,12 @@ export default function ContractQRDialog({
           buildingName,
         });
         if (!cancelled) setImageUrl(composed);
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (!cancelled) {
+          const feedback = friendlyError(err, 'Không tạo được mã QR', { operation: 'tạo mã QR hợp đồng' });
           toast({
-            title: 'Lỗi tạo QR',
-            description: err?.message || String(err),
+            title: feedback.title,
+            description: feedback.description,
             variant: 'destructive',
           });
         }
@@ -84,10 +86,11 @@ export default function ContractQRDialog({
       setCopied(true);
       toast({ title: 'Đã copy ảnh QR vào clipboard' });
       setTimeout(() => setCopied(false), 2000);
-    } catch (e: any) {
+    } catch (e: unknown) {
+      const feedback = friendlyError(e, 'Không sao chép được ảnh QR', { operation: 'sao chép ảnh QR' });
       toast({
-        title: 'Không copy được',
-        description: e?.message || 'Lỗi không xác định',
+        title: feedback.title,
+        description: feedback.description,
         variant: 'destructive',
       });
     }
@@ -95,18 +98,24 @@ export default function ContractQRDialog({
 
   const handleDownload = () => {
     if (!imageUrl) return;
-    const link = document.createElement('a');
-    link.download = `QR-${contractLabel.replace(/\s+/g, '_')}.png`;
-    link.href = imageUrl;
-    link.click();
+    try {
+      const link = document.createElement('a');
+      link.download = `QR-${contractLabel.replace(/\s+/g, '_')}.png`;
+      link.href = imageUrl;
+      link.click();
+    } catch (error) {
+      const feedback = friendlyError(error, 'Không tải được ảnh QR', { operation: 'tải ảnh QR' });
+      toast({ title: feedback.title, description: feedback.description, variant: 'destructive' });
+    }
   };
 
   const handleCopyLink = async () => {
     try {
       await navigator.clipboard.writeText(publicUrl);
       toast({ title: 'Đã copy link' });
-    } catch {
-      toast({ title: 'Không copy được link', variant: 'destructive' });
+    } catch (error) {
+      const feedback = friendlyError(error, 'Không sao chép được liên kết', { operation: 'sao chép liên kết hợp đồng' });
+      toast({ title: feedback.title, description: feedback.description, variant: 'destructive' });
     }
   };
 

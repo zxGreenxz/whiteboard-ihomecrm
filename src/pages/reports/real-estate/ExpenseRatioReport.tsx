@@ -64,14 +64,17 @@ export default function ExpenseRatioReport() {
   const [buildingId, setBuildingId] = usePersistedState<string | undefined>("flt:rpt-expense-ratio:buildingId", undefined);
 
   useCopilotPageContext('reports.real-estate.expense-ratio', { building_id: buildingId, category, from: dateRange?.from, to: dateRange?.to });
-  const { data: buildings } = useBuildings({ includeVirtual: true });
-  const { data: categoriesList } = useIncomeExpenseTypeCategories("expense");
-  const { data, isLoading } = useExpenseRatioReport(
+  const buildingsQuery = useBuildings({ includeVirtual: true });
+  const { data: buildings } = buildingsQuery;
+  const categoriesListQuery = useIncomeExpenseTypeCategories("expense");
+  const { data: categoriesList } = categoriesListQuery;
+  const reportQuery = useExpenseRatioReport(
     dateRange?.from,
     dateRange?.to,
     category,
     buildingId
   );
+  const { data, isLoading } = reportQuery;
 
   const colorByCategory = useMemo(() => {
     const map: Record<string, string> = {};
@@ -104,7 +107,7 @@ export default function ExpenseRatioReport() {
         title="Tổng doanh thu"
         value={formatCurrency(data.summary.totalRevenue)}
         icon={TrendingUp}
-        description="Doanh thu ghi nhận trên invoice đã duyệt"
+        description="Doanh thu ghi nhận trên hóa đơn đã duyệt"
       />
       <ReportCard
         title="Tỉ lệ TB"
@@ -170,6 +173,8 @@ export default function ExpenseRatioReport() {
   return (
     <MainLayout>
       <ReportLayout
+        queries={[reportQuery]}
+        filterQueries={[buildingsQuery, categoriesListQuery]}
         title="Tỉ lệ chi phí / Doanh thu"
         description="Thống kê tỉ lệ chi phí theo nhóm hạng mục, phân theo tháng"
         icon={<Percent className="h-8 w-8" />}

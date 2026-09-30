@@ -1,3 +1,5 @@
+import { focusFirstError } from "@/lib/formErrors";
+import { voucherFailureMessage, voucherOutcomeUnknown, VoucherPartialError } from "@/lib/voucherFeedback";
 // =============================================================================
 // PeriodFeePanel V2 — panel DESKTOP "Đóng tiền Tập trung theo Kỳ" (cột trái).
 // Ô chọn LOẠI PHÍ → family: Tổng quan · Điện & Nước (EN) · GRID · Hợp đồng &
@@ -251,6 +253,11 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
   const [batchAtts, setBatchAtts] = useState<string[]>([]);
   const [batchUploading, setBatchUploading] = useState(false);
   const batchFileRef = useRef<HTMLInputElement>(null);
+  const batchRoot=useRef<HTMLDivElement>(null);
+  const [batchErrors,setBatchErrors]=useState<Record<string,string>>({});
+  const [batchError,setBatchError]=useState<string|null>(null);
+  const [batchLocked,setBatchLocked]=useState(false);
+  const [batchReceipts,setBatchReceipts]=useState<string[]>([]);
   const [batchLines, setBatchLines] = useState<MaintenanceBatchLine[]>([]);
   const createBatch = useCreateMaintenanceBatch(period);
   const addLine = () => setBatchLines((l) => [...l, { buildingId: buildings[0]?.id ?? '', subtype: 'ml', amount: 0 }]);
@@ -264,21 +271,36 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
     if (err) { toast.error(err); return; }
     setBatchUploading(true);
     try { const url = await uploadReceiptToStorage(file); setBatchAtts((a) => [...a, url]); toast.success('Đã thêm ảnh phiếu tổng'); }
-    catch (ex) { toast.error('Không tải được ảnh: ' + (ex as Error).message); }
+    catch { toast.error(`Chưa tải được ảnh ${file.name}. Giữ ảnh để tải lại; chưa thêm ảnh này vào phiếu tổng.`); }
     finally { setBatchUploading(false); }
   };
   const saveBatch = async () => {
     const book = batchBook ?? S.defaultBookId;
-    if (!book) { toast.error('Chọn sổ quỹ ghi chi'); return; }
+    if (batchLocked) return;
+    const errors:Record<string,string>={};
+    if (!book) errors.batchBook='Chọn sổ quỹ ghi chi';
+    if (!batchDate) errors.batchDate='Chọn ngày phiếu';
+    if (!batchLines.length) errors.batchLines='Thêm ít nhất một dòng bảo trì';
+    batchLines.forEach((line,i)=>{
+      if(!line.buildingId) errors[`batchLines.${i}.buildingId`]='Chọn tòa nhà cho dòng này';
+      if(!Number.isFinite(line.amount)||line.amount<=0)errors[`batchLines.${i}.amount`]='Nhập số tiền lớn hơn 0 cho dòng này';
+    });
+    setBatchErrors(errors);setBatchError(null);
+    if(Object.keys(errors).length){void focusFirstError(errors,{root:batchRoot.current,order:['batchDate','batchBook','batchLines']});return;}
+
     try {
-      await createBatch.mutateAsync({
-        payerName: payer, voucherDate: batchDate, accountId: book,
-        lines: batchLines.filter((l) => l.buildingId && l.amount > 0),
+      const result=await createBatch.mutateAsync({
+        payerName: payer, voucherDate: batchDate, accountId: book!,
+        lines: batchLines,
         attachments: batchAtts,
       });
-      toast.success('Đã tạo phiếu tổng bảo trì');
+      toast.success(`Đã tạo đợt bảo trì gồm ${result.voucherCount} phiếu. Xem trạng thái duyệt và thu/chi của từng phiếu.`);
       setCreateOpen(false); setBatchLines([]); setPayer(''); setBatchAtts([]);
-    } catch (ex) { toast.error((ex as Error).message); }
+    } catch (ex) {
+      const message=voucherFailureMessage(ex,'tạo đợt bảo trì');setBatchError(message);toast.error(message);
+      if(ex instanceof VoucherPartialError){setBatchReceipts([...ex.completedIds]);setBatchLocked(true);}
+      else if(voucherOutcomeUnknown(ex))setBatchLocked(true);
+    }
   };
 
   const mText = (m: 'ml' | 'mg') => (m === 'ml' ? 'Máy lạnh' : 'Máy giặt');
@@ -369,9 +391,9 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
             </span>
           ) : (
             <span className="ptt-amtwrap">
-              <input className="ud-amt" type="text" inputMode="numeric"
+              <><input name={`fee_amount_${b.id}`} aria-invalid={!!S.amountErrors?.[b.id]} aria-describedby={S.amountErrors?.[b.id]?`${`fee_amount_${b.id}`}-error`:undefined} style={{borderColor:S.amountErrors?.[b.id]?"hsl(var(--destructive))":undefined}} className="ud-amt" type="text" inputMode="numeric"
                 placeholder={def ? formatVN(def * (cat!.multiPeriod ? n : 1)) : 'Số tiền'}
-                value={formatVN(amount)} onChange={(e) => S.setAmount(b.id, parseVN(e.target.value))} />
+                value={formatVN(amount)} onChange={(e) => S.setAmount(b.id, parseVN(e.target.value))} /><span id={`${`fee_amount_${b.id}`}-error`} role={S.amountErrors?.[b.id]?"alert":undefined} className="text-xs text-destructive">{S.amountErrors?.[b.id]}</span></>
               <button type="button" className="ptt-exppencil" title={def ? `Sửa dự kiến (${formatVN(def)}/kỳ)` : 'Đặt số tiền dự kiến'} onClick={() => setExpectedEdit({ bId: b.id, value: def ?? 0 })}><Pencil /></button>
               {cat!.multiPeriod && n > 1 && amount > 0 && <span className="ptt-total">≈ <b>{fmtFull(Math.round(amount / n))}</b>/kỳ</span>}
             </span>
@@ -412,7 +434,7 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
           ) : (
             <span className="ud-acts">
               <button type="button" className={'ud-attach' + (S.attach[b.id] ? ' has' : '')} title="Đính kèm ảnh phiếu" disabled={!canRecordPayment || S.uploadingKey === b.id} onClick={() => S.onAttachClick(b.id)}>{S.uploadingKey === b.id ? <span className="ub-spin dark" /> : <Camera />}</button>
-              <button type="button" className="ud-pay" title="Đóng tiền" disabled={!canRecordPayment || amount <= 0 || paying} onClick={() => S.submitPay(b.id)}>{paying ? <span className="ub-spin" /> : <Check />}</button>
+              <button type="button" className="ud-pay" title="Đóng tiền" disabled={!canRecordPayment || paying} onClick={(e) => S.submitPay(b.id,e.currentTarget.closest('tr')??e.currentTarget.parentElement)}>{paying ? <span className="ub-spin" /> : <Check />}</button>
               <button type="button" className="ptt-nabtn" title="Tòa không áp dụng hạng mục này" disabled={!canRecordPayment} onClick={() => S.setNotApplicable(b.id, true)}><Ban /></button>
             </span>
           )}
@@ -670,21 +692,24 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
           </div>
 
           {createOpen && (
-            <div className="ptt-batch-form">
+            <div ref={batchRoot} className="ptt-batch-form">
+              {batchError && <p role="alert" className="text-sm text-destructive">{batchError}</p>}
+              {batchReceipts.map(id=><a className="block text-sm underline" key={id} href={`/income-expense/voucher/${id}`}>Mở phiếu {id}</a>)}
+              {Object.entries(batchErrors).map(([field,message])=><p id={`${field}-error`} key={field} role="alert" className="text-sm text-destructive">{message}</p>)}
               <div className="ptt-batch-formhead"><span className="ptt-batch-formic"><FeeIcon name="wrench" style={{ width: 16, height: 16 }} /></span><span>Phiếu tổng mới — 1 nhà cung cấp, nhiều tòa</span></div>
               <div className="ptt-batch-formrow">
                 <label className="ptt-field grow"><span className="ptt-field-lbl">Nhà cung cấp</span><input className="ptt-field-in" value={payer} placeholder="Tên NCC" onChange={(e) => setPayer(e.target.value)} /></label>
-                <label className="ptt-field"><span className="ptt-field-lbl">Ngày phiếu</span><input type="date" className="ptt-field-in" value={batchDate} onChange={(e) => setBatchDate(e.target.value)} /></label>
-                <label className="ptt-field"><span className="ptt-field-lbl">Sổ quỹ ghi chi</span><UtilityBookMenu accounts={S.myBooks} valueId={batchBook} defaultId={S.defaultBookId} onPick={setBatchBook} /></label>
+                <label className="ptt-field"><span className="ptt-field-lbl">Ngày phiếu</span><input type="date" name="batchDate" aria-invalid={!!batchErrors.batchDate} aria-describedby="batchDate-error" className="ptt-field-in aria-[invalid=true]:border-destructive" value={batchDate} onChange={(e) => setBatchDate(e.target.value)} /></label>
+                <label className="ptt-field"><span className="ptt-field-lbl">Sổ quỹ ghi chi</span><span data-field-name="batchBook" tabIndex={-1} aria-invalid={!!batchErrors.batchBook} className={batchErrors.batchBook?"rounded border border-destructive":""}><UtilityBookMenu accounts={S.myBooks} valueId={batchBook} defaultId={S.defaultBookId} onPick={setBatchBook} /></span></label>
               </div>
               <div className="ptt-batch-lines">
                 {batchLines.map((ln, i) => (
                   <div className="ptt-batch-line" key={i}>
-                    <select className="ptt-batch-bld" value={ln.buildingId} onChange={(e) => setLine(i, { buildingId: e.target.value })}>
+                    <select name={`batchLines.${i}.buildingId`} aria-invalid={!!batchErrors[`batchLines.${i}.buildingId`]} aria-describedby={`batchLines.${i}.buildingId-error`} className="ptt-batch-bld aria-[invalid=true]:border-destructive" value={ln.buildingId} onChange={(e) => setLine(i, { buildingId: e.target.value })}>
                       {buildings.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
                     </select>
                     <select className="ptt-batch-sub" value={ln.subtype} onChange={(e) => setLine(i, { subtype: e.target.value as 'ml' | 'mg' })}><option value="ml">Máy lạnh</option><option value="mg">Máy giặt</option></select>
-                    <input className="ptt-batch-amt mono" inputMode="numeric" placeholder="Số tiền" value={formatVN(ln.amount)} onChange={(e) => setLine(i, { amount: parseVN(e.target.value) })} />
+                    <input name={`batchLines.${i}.amount`} aria-invalid={!!batchErrors[`batchLines.${i}.amount`]} aria-describedby={`batchLines.${i}.amount-error`} className="ptt-batch-amt mono aria-[invalid=true]:border-destructive" inputMode="numeric" placeholder="Số tiền" value={formatVN(ln.amount)} onChange={(e) => setLine(i, { amount: parseVN(e.target.value) })} />
                     <button type="button" className="ptt-batch-rm" onClick={() => rmLine(i)}><Trash2 /></button>
                   </div>
                 ))}
@@ -701,7 +726,7 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
                 <span className="ptt-batch-totallbl">Tổng phiếu</span>
                 <span className="ptt-batch-total">{fmtFull(batchTotal)}</span>
                 <button type="button" className="ptt-btn ghost" onClick={() => setCreateOpen(false)}>Hủy</button>
-                <button type="button" className="ptt-btn go" disabled={createBatch.isPending} onClick={saveBatch}>{createBatch.isPending ? <span className="ub-spin" /> : <Check />}Lưu phiếu tổng · {batchLines.length} tòa</button>
+                <button type="button" className="ptt-btn go" disabled={createBatch.isPending || batchLocked} onClick={saveBatch}>{createBatch.isPending ? <span className="ub-spin" /> : <Check />}Lưu phiếu tổng · {batchLines.length} tòa</button>
               </div>
             </div>
           )}

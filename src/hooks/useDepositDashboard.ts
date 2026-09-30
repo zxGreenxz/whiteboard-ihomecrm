@@ -1,3 +1,4 @@
+import {financialReadNumber,financialReadRows} from '@/lib/financialReadValidation';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { fetchAllRows } from '@/lib/supabaseFetchAll';
@@ -6,7 +7,9 @@ export { useReservationSettlementSummary as useReservationDepositSettlementSumma
 // Ngưỡng làm tròn: chênh cọc < 10.000đ coi như đủ (khớp PREVIOUS_DEBT_ROUND_THRESHOLD).
 export const DEPOSIT_SHORTFALL_THRESHOLD = 10000;
 
-const nn = (v: unknown) => Number(v) || 0;
+const nn = financialReadNumber;
+// Older responses omit these optional breakdowns; malformed present values still fail.
+const optionalBreakdown=(v:unknown)=>v===undefined?0:financialReadNumber(v);
 
 // Tổng cọc đang giữ theo toà — RPC SQL aggregate (miễn nhiễm cap-1000). Thay cho
 // client-reduce trên danh sách HĐ (hụt tổng khi ACTIVE > 1000).
@@ -28,6 +31,7 @@ export function useHeldDepositSummary(
   threshold: number = DEPOSIT_SHORTFALL_THRESHOLD,
 ) {
   return useQuery({
+    meta:{errorDisplay:'inline',label:'thống kê cọc'},
     queryKey: ['deposit-dashboard', 'held-summary', buildingIds ?? [], threshold],
     queryFn: async (): Promise<HeldDepositBuildingAgg[]> => {
       const { data, error } = await supabase.rpc('get_held_deposit_summary', {
@@ -35,7 +39,7 @@ export function useHeldDepositSummary(
         p_threshold: threshold,
       });
       if (error) throw error;
-      return ((data ?? []) as any[]).map((r): HeldDepositBuildingAgg => ({
+      return financialReadRows(data as any[]).map((r): HeldDepositBuildingAgg => ({
         building_id: r.building_id,
         building_name: r.building_name ?? '—',
         contractCount: nn(r.contract_count),
@@ -136,6 +140,7 @@ export interface RefundForfeitServerSummary extends RefundForfeitSummary {
  */
 export function useRefundForfeitSummary(buildingIds?: string[]) {
   return useQuery({
+    meta:{errorDisplay:'inline',label:'thống kê cọc'},
     queryKey: ['deposit-dashboard', 'refund-forfeit-summary', buildingIds ?? []],
     queryFn: async (): Promise<RefundForfeitServerSummary> => {
       const { data, error } = await supabase.rpc('get_refund_forfeit_summary', {
@@ -159,10 +164,10 @@ export function useRefundForfeitSummary(buildingIds?: string[]) {
         // Server cũ (chưa apply 20260822113000) không có bốn khoá này ⇒ nn() cho
         // 0, và UI chỉ hiện dòng tách khi tổng hai phần khớp refundTotal. Nhờ vậy
         // FE mới chạy trên server cũ thì im lặng bỏ qua, không hiện số sai.
-        refundDepositTotal: nn(d.refund_deposit_total),
-        refundNonDepositTotal: nn(d.refund_non_deposit_total),
-        pendingDepositTotal: nn(d.refund_pending_deposit_total),
-        pendingNonDepositTotal: nn(d.refund_pending_non_deposit_total),
+        refundDepositTotal: optionalBreakdown(d.refund_deposit_total),
+        refundNonDepositTotal: optionalBreakdown(d.refund_non_deposit_total),
+        pendingDepositTotal: optionalBreakdown(d.refund_pending_deposit_total),
+        pendingNonDepositTotal: optionalBreakdown(d.refund_pending_non_deposit_total),
         netSettlementTotal: nn(d.refund_net_settlement_total),
         customerDebtTotal: nn(d.customer_debt_total),
         customerDebtCount: nn(d.customer_debt_count),
@@ -321,6 +326,7 @@ function repName(contractCustomers: any[] | undefined | null): string {
  */
 export function useHeldDeposits() {
   return useQuery({
+    meta:{errorDisplay:'inline',label:'thống kê cọc'},
     queryKey: ['deposit-dashboard', 'held'],
     queryFn: async (): Promise<HeldDepositRow[]> => {
       // PAGED: danh sách HĐ ACTIVE có thể > 1000 → phân trang kẻo bảng bị cắt.
@@ -348,10 +354,10 @@ export function useHeldDeposits() {
       if (data === null) throw new Error('Lỗi tải danh sách cọc đang giữ');
 
       return data.map((c: any): HeldDepositRow => {
-        const total = Number(c.total_deposit) || 0;
-        const paid = Number(c.deposit_paid) || 0;
+        const total = nn(c.total_deposit);
+        const paid = nn(c.deposit_paid);
         const remaining =
-          c.deposit_remaining != null ? Number(c.deposit_remaining) : total - paid;
+          c.deposit_remaining != null ? nn(c.deposit_remaining) : total - paid;
         const isShort = remaining >= DEPOSIT_SHORTFALL_THRESHOLD;
         const state: HeldDepositState = !isShort
           ? 'FULL'
@@ -418,6 +424,7 @@ export function summarizeByBuilding(rows: HeldDepositRow[]): BuildingDepositSumm
  */
 export function useDepositRefundsForfeits() {
   return useQuery({
+    meta:{errorDisplay:'inline',label:'thống kê cọc'},
     queryKey: ['deposit-dashboard', 'refunds-forfeits'],
     queryFn: async (): Promise<RefundForfeitRow[]> => {
       // PAGED cả hai nhánh: thanh lý và phiếu hoàn đều tích luỹ mãi → phân trang

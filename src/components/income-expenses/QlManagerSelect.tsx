@@ -13,11 +13,13 @@ interface Props {
   value: string;
   onPick: (m: CommissionManagerOption) => void;
   id?: string;
+  name?: string;
+  error?: string;
   /** Câu hiện khi chưa có công ty (vd form chưa chọn toà). */
   noOrgHint?: string;
 }
 
-export function QlManagerSelect({ organizationId, value, onPick, id, noOrgHint }: Props) {
+export function QlManagerSelect({ organizationId, value, onPick, id, name, error, noOrgHint }: Props) {
   const { data: options = [], isLoading, isError } = useCommissionManagerOptions(organizationId);
   const placeholder = !organizationId
     ? noOrgHint || "Chưa xác định công ty"
@@ -29,6 +31,7 @@ export function QlManagerSelect({ organizationId, value, onPick, id, noOrgHint }
           ? "Chọn quản lý..."
           : "Chưa có quản lý hưởng lương";
   return (
+    <>
     <Select
       value={value}
       onValueChange={(v) => {
@@ -36,7 +39,7 @@ export function QlManagerSelect({ organizationId, value, onPick, id, noOrgHint }
         if (m) onPick(m);
       }}
     >
-      <SelectTrigger id={id} aria-label="Chọn quản lý nhận hoa hồng">
+      <SelectTrigger id={id} name={name} data-field-name={name} aria-invalid={!!error} aria-describedby={error?`${id||name}-error`:undefined} aria-label="Chọn quản lý nhận hoa hồng">
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent>
@@ -48,6 +51,8 @@ export function QlManagerSelect({ organizationId, value, onPick, id, noOrgHint }
         ))}
       </SelectContent>
     </Select>
+    {error&&<p id={`${id||name}-error`} role="alert" className="text-xs text-destructive">{error}</p>}
+    </>
   );
 }
 

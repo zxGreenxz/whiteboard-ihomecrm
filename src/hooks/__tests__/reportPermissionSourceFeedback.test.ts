@@ -1,0 +1,27 @@
+import {beforeEach,it,expect,vi} from 'vitest';
+const m=vi.hoisted(()=>({rpc:vi.fn()}));
+vi.mock('@tanstack/react-query',()=>({useQuery:(o:unknown)=>o}));
+vi.mock('@/integrations/supabase/client',()=>({supabase:{rpc:m.rpc}}));
+vi.mock('@/lib/authSession',()=>({getSessionUser:async()=>({id:'user'})}));
+import {useCashBookSummary,useCashFlowByDay} from '../useCashBook';
+import {useChangeBreakdown,useDepositBreakdown} from '../useStatBreakdowns';
+import {useIsAdmin,useIsSuperAdmin} from '../useIsAdmin';
+import {useIsOrgOwner} from '../useIsOrgOwner';
+import {useIsCompanyOwner} from '../useIsCompanyOwner';
+import {useSpendEngineStatus,useSpendCommitments,useSpendSwitches,useSpendShadowReport,useSelfApprovedVouchers,useMySpendOrganizations} from '../useSpendEngine';
+import {useMyContext} from '../useMyContext';
+const read=(hook:unknown)=>(hook as {queryFn:()=>Promise<unknown>}).queryFn();
+beforeEach(()=>m.rpc.mockReset());
+it.each([null,{},false])('period totals %j cannot become zero',async(data)=>{m.rpc.mockResolvedValue({data,error:null});await expect(read(useCashBookSummary())).rejects.toThrow();});
+it('opening balance null cannot become zero',async()=>{m.rpc.mockResolvedValueOnce({data:{income:10,expense:2},error:null}).mockResolvedValueOnce({data:null,error:null});await expect(read(useCashBookSummary('2026-09-01'))).rejects.toThrow();});
+it.each([['flow',()=>useCashFlowByDay('2026-09-01','2026-09-30')],['change',useChangeBreakdown],['deposit',useDepositBreakdown]])('%s null source cannot be an empty list',async(_,hook)=>{m.rpc.mockResolvedValue({data:null,error:null});await expect(read(hook())).rejects.toThrow();});
+it.each([['flow',()=>useCashFlowByDay('2026-09-01','2026-09-30'),{day:'2026-09-01',income:null,expense:0}],['change',useChangeBreakdown,{change_amount:''}],['deposit',useDepositBreakdown,{amount:false}]])('%s malformed money cannot be zero',async(_,hook,row)=>{m.rpc.mockResolvedValue({data:[row],error:null});await expect(read(hook())).rejects.toThrow();});
+it('confirmed zero totals and empty flow keep existing meaning',async()=>{m.rpc.mockResolvedValueOnce({data:{income:0,expense:0},error:null});expect(await read(useCashBookSummary())).toMatchObject({totalIncome:0,totalExpense:0});m.rpc.mockResolvedValue({data:[],error:null});expect(await read(useCashFlowByDay('2026-09-01','2026-09-30'))).toEqual([]);});
+it.each([useIsAdmin,useIsSuperAdmin,useIsOrgOwner,useIsCompanyOwner])('permission read failure preserves cause, not false',async hook=>{const error={code:'42501',message:'denied'};m.rpc.mockResolvedValue({data:null,error});await expect(read(hook())).rejects.toBe(error);});
+it.each([useIsAdmin,useIsSuperAdmin,useIsOrgOwner,useIsCompanyOwner])('malformed permission is not confirmed false or true',async hook=>{m.rpc.mockResolvedValue({data:{},error:null});await expect(read(hook())).rejects.toThrow();});
+it('context source error never claims the current user is an owner',async()=>{const error={code:'503',message:'unavailable'};m.rpc.mockResolvedValue({data:null,error});await expect(read(useMyContext())).rejects.toBe(error);});
+it('missing context booleans cannot become a valid owner context',async()=>{m.rpc.mockResolvedValue({data:{},error:null});await expect(read(useMyContext())).rejects.toThrow();});
+it('positive false permission and valid SQL context remain accepted',async()=>{m.rpc.mockResolvedValue({data:false,error:null});expect(await read(useIsAdmin())).toBe(false);m.rpc.mockResolvedValue({data:{is_super:false,is_staff:true,owner_id:'owner',default_area_id:null},error:null});expect(await read(useMyContext())).toMatchObject({isStaff:true,ownerId:'owner'});});
+
+it.each([['status',()=>useSpendEngineStatus('o')],['commitments',()=>useSpendCommitments('o','2026-09','2026-09')],['switches',()=>useSpendSwitches('o')],['shadow',()=>useSpendShadowReport('o','2026-09-01','2026-09-30')],['approved',()=>useSelfApprovedVouchers('o','2026-09-01','2026-09-30')],['organizations',useMySpendOrganizations]])('spend %s missing source never becomes a valid empty or zero',async(_,hook)=>{m.rpc.mockResolvedValue({data:null,error:null});await expect(read(hook())).rejects.toThrow();});
+it('spend commitment amount missing never becomes zero',async()=>{m.rpc.mockResolvedValue({data:[{amount:null,remaining:2}],error:null});await expect(read(useSpendCommitments('o','2026-09','2026-09'))).rejects.toThrow();});

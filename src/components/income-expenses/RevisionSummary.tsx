@@ -1,3 +1,4 @@
+import {QueryRegion} from '@/components/errors/QueryRegion';
 // Lịch sử sửa phiếu Chờ duyệt / đổi hình thức thu (đợt 1 sửa phiếu, 25/09/2026).
 //
 // Ba mảnh dùng chung cho mọi mặt Thu chi:
@@ -68,7 +69,9 @@ export function RevisionCountBadges({
 
 /** Màn chi tiết: tự đếm từ lịch sử của phiếu (dùng chung bộ nhớ với RevisionHistory). */
 export function VoucherRevisionBadges({ voucherId }: { voucherId: string }) {
-  const { data: revisions = [] } = useIncomeExpenseRevisions(voucherId);
+  const query=useIncomeExpenseRevisions(voucherId);
+  const { data: revisions = [] }=query;
+  if(query.isError||query.data===undefined)return <QueryRegion label="lịch sử sửa phiếu" queries={[query]}><span /></QueryRegion>;
   return (
     <RevisionCountBadges
       editCount={revisions.filter((r) => r.kind === "EDIT_PENDING").length}
@@ -130,7 +133,9 @@ function RevisionEntry({ revision }: { revision: IncomeExpenseRevision }) {
 
 /** Hộp Duyệt: người duyệt thấy phiếu đã bị đổi gì so với lúc lập, ai sửa, vì sao. */
 export function RevisionComparison({ voucherId }: { voucherId: string }) {
-  const { data: revisions = [], isLoading } = useIncomeExpenseRevisions(voucherId);
+  const query=useIncomeExpenseRevisions(voucherId);
+  const { data: revisions = [], isLoading }=query;
+  if(query.isError||query.data===undefined)return <QueryRegion label="lịch sử sửa phiếu" queries={[query]}><span /></QueryRegion>;
   if (isLoading) return <Skeleton className="h-16 w-full" />;
   const tom = summarizePendingRevisions(revisions);
   if (!tom) return null;
@@ -155,7 +160,9 @@ export function RevisionComparison({ voucherId }: { voucherId: string }) {
 
 /** Màn chi tiết: mọi lần sửa / đổi hình thức thu, mỗi lần kèm các trường đã đổi. */
 export function RevisionHistory({ voucherId }: { voucherId: string }) {
-  const { data: revisions = [], isLoading, isError } = useIncomeExpenseRevisions(voucherId);
+  const query=useIncomeExpenseRevisions(voucherId);
+  const { data: revisions = [], isLoading, isError }=query;
+  if(query.isError||query.data===undefined)return <QueryRegion label="lịch sử sửa phiếu" queries={[query]}><span /></QueryRegion>;
   if (isLoading) return <Skeleton className="h-12 w-full" />;
   if (isError) return <p className="text-xs text-rose-600">Không tải được lịch sử sửa phiếu.</p>;
   if (revisions.length === 0) return null;

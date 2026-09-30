@@ -18,6 +18,7 @@
 // Bản thiết kế gốc có núm 3 mức (Thoáng / Gọn / Rất gọn) nhưng đây KHÔNG làm
 // thành tuỳ chọn cho người dùng, chỉ là hằng của màn hình.
 
+import { ContractDetailRegion, type ContractDetailQueries } from '../ContractDetailRegions';
 import type { ContractWithRelations } from '@/hooks/useContracts';
 import type { ReactNode } from 'react';
 import type { InvoiceWithRelations } from '@/hooks/useInvoices';
@@ -40,13 +41,14 @@ import { useContractMoveOutNoticeSnapshot } from '@/hooks/useContractMoveOutNoti
 export interface ContractDetailDesktopProps {
   contract: ContractWithRelations;
   commissionFollowup?: ReactNode;
+  queryStates?: ContractDetailQueries;
   perms: Parameters<typeof canUse>[0];
   isActive: boolean;
   isExpiringSoon: boolean;
   daysRemaining: number;
   totalDays: number;
   daysElapsed: number;
-  outstandingAmount: number;
+  outstandingAmount: number | null;
   sideLoadErrors: string[];
   customers: NonNullable<ContractWithRelations['contract_customers']>;
   vehiclesByCustomer: Map<string, ContractVehicle[]>;
@@ -163,6 +165,7 @@ export function ContractDetailDesktop(props: ContractDetailDesktopProps) {
           <div className="flex min-w-0 flex-col gap-4">
             <ContractTermsCard
               contract={contract}
+              queryStates={props.queryStates}
               services={services}
               servicesLoading={servicesLoading}
               buildingServices={buildingServices}
@@ -170,14 +173,17 @@ export function ContractDetailDesktop(props: ContractDetailDesktopProps) {
               history={history}
               historyLoading={historyLoading}
             />
+            <ContractDetailRegion label="phương tiện của khách trong hợp đồng" queries={[props.queryStates?.vehicles]}>
             <ContractTenantsCard
               contract={contract}
               customers={customers}
               vehiclesByCustomer={vehiclesByCustomer}
             />
+            </ContractDetailRegion>
           </div>
 
           <div className="flex min-w-0 flex-col gap-4">
+            <ContractDetailRegion label="tài chính của hợp đồng" queries={[props.queryStates?.invoices,props.queryStates?.deposits,props.queryStates?.termination]}>
             <ContractFinanceCard
               contract={contract}
               depositVouchers={depositVouchers}
@@ -185,6 +191,7 @@ export function ContractDetailDesktop(props: ContractDetailDesktopProps) {
               invoicesLoading={invoicesLoading}
               terminationInfo={terminationInfo}
             />
+            </ContractDetailRegion>
           </div>
         </div>
       </div>

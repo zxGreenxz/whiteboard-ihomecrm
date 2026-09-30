@@ -109,6 +109,6 @@ describe('useQuickCollect — sổ nhận theo hình thức (máy chủ quyết)
     const { result } = renderHook(() => useQuickCollect({ invoice }));
     await expect(
       result.current.collect({ invoice: { ...invoice, id: 'khac' }, amount: 100_000 }),
-    ).rejects.toThrow(/đóng rồi mở lại/);
+    ).rejects.toThrow(/Tải lại hóa đơn để kiểm tra/);
   });
 });

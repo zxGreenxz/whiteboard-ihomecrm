@@ -9,6 +9,7 @@ const state = vi.hoisted(() => ({
   canSettle: true,
   blockers: [] as string[],
   previewError: null as Error | null,
+  accountError: null as Error | null,
   settleCalls: [] as unknown[],
   payCalls: [] as unknown[],
   payResult: "PAID" as "PAID" | "PENDING",
@@ -51,7 +52,7 @@ vi.mock("@/hooks/useMyPermissions", () => ({
   useMyPermissions: () => ({ data: { deposits: { refund: true }, income_expenses: { approve: true } } }),
 }));
 vi.mock("@/hooks/income-expenses/financeV2Mutations", () => ({
-  useCustodianCashbooksV2: () => ({ data: [{ id: "00000000-0000-4000-8000-000000000010", name: "Sổ DEMO" }] }),
+  useCustodianCashbooksV2: () => ({ error: state.accountError, isError: !!state.accountError, refetch: vi.fn(), data: state.accountError ? [] : [{ id: "00000000-0000-4000-8000-000000000010", name: "Sổ DEMO" }] }),
 }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ data: { id: "00000000-0000-4000-8000-000000000099" } }) }));
@@ -68,7 +69,7 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
-  state.canRefundNow = true; state.canSettle = true; state.blockers = []; state.previewError = null;
+  state.canRefundNow = true; state.canSettle = true; state.blockers = []; state.previewError = null; state.accountError = null;
   state.settleCalls = []; state.payCalls = []; state.payResult = "PAID"; state.closeCalls = [];
 });
 afterEach(cleanup);
@@ -165,5 +166,34 @@ describe("ReservationRefundDialog (mock RPC transport, real UI)", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: "Xác nhận đã trả toàn bộ tiền hoàn" }));
     fireEvent.click(screen.getByRole("button", { name: "Ghi nhận hoàn tiền" }));
     expect(state.closeCalls).not.toContain(false);
+  });
+});
+
+describe("cọc: lỗi tại trường và lỗi tải nguồn", () => {
+  it("focuses and marks the refund amount when it exceeds the received deposit", async () => {
+    render(<ReservationSettlementDialog voucherId="00000000-0000-4000-8000-000000000001" open onOpenChange={() => {}} />);
+    fireEvent.change(screen.getByLabelText("Hoàn lại khách"), { target: { value: "3000001" } });
+    fireEvent.change(screen.getByLabelText("Cách hoàn"), { target: { value: "LATER" } });
+    fireEvent.click(screen.getByRole("button", { name: "Xác nhận xử lý" }));
+    await waitFor(() => expect(screen.getByLabelText("Hoàn lại khách").getAttribute("aria-invalid")).toBe("true"));
+    expect(document.activeElement).toBe(screen.getByLabelText("Hoàn lại khách"));
+    expect(screen.getByText("Tiền hoàn vượt tiền cọc")).toBeTruthy();
+    expect(state.settleCalls).toHaveLength(0);
+  });
+  it("focuses the missing cashbook after actual payment is confirmed", async () => {
+    render(<ReservationRefundDialog settlementId="00000000-0000-4000-8000-000000000002" amount={100} open onOpenChange={() => {}} />);
+    fireEvent.click(screen.getByRole("checkbox", { name: "Xác nhận đã trả toàn bộ tiền hoàn" }));
+    fireEvent.click(screen.getByRole("button", { name: "Ghi nhận hoàn tiền" }));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText("Sổ quỹ đã chi")));
+    expect(screen.getByLabelText("Sổ quỹ đã chi").getAttribute("aria-invalid")).toBe("true");
+    expect(screen.getByText("Chọn sổ quỹ đã chi")).toBeTruthy();
+    expect(state.payCalls).toHaveLength(0);
+  });
+  it("does not mistake a failed cashbook query for no custodian books", () => {
+    state.accountError = new Error("network");
+    render(<ReservationRefundDialog settlementId="00000000-0000-4000-8000-000000000002" amount={100} open onOpenChange={() => {}} />);
+    expect(screen.getByText("Chưa tải được sổ quỹ hoàn tiền. Tải lại danh sách trước khi ghi nhận.")).toBeTruthy();
+    expect(screen.queryByText("Bạn cần là Người giữ ít nhất một sổ quỹ để hoàn tiền.")).toBeNull();
+    expect(screen.getByRole("button", { name: "Ghi nhận hoàn tiền" })).toHaveProperty("disabled", true);
   });
 });

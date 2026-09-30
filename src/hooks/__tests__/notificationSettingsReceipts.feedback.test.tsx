@@ -1,0 +1,25 @@
+// @vitest-environment jsdom
+import {act,cleanup,renderHook,waitFor} from '@testing-library/react';
+import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
+import type {ReactNode} from 'react';
+import {afterEach,beforeEach,expect,it,vi} from 'vitest';
+const m=vi.hoisted(()=>({rpc:vi.fn(),success:vi.fn()}));
+vi.mock('@/integrations/supabase/client',()=>({supabase:{rpc:m.rpc}}));
+vi.mock('@/lib/authSession',()=>({getSessionUserId:async()=> 'actor-a'}));
+vi.mock('sonner',()=>({toast:{success:m.success,error:vi.fn()}}));
+import {NOTIFICATION_EVENT_KEYS,useMyOrgIds,useMyOrgOptions,useMyNotificationPreferences,useSetMyNotificationPreferences,useNotificationOrgConfig,useSetNotificationOrgConfig} from '../useNotificationSettings';
+const events=Object.fromEntries(NOTIFICATION_EVENT_KEYS.map(k=>[k,{enabled:false,min_amount:0}]));
+const preferences=Object.fromEntries(NOTIFICATION_EVENT_KEYS.map(k=>[k,{in_app:false,push:false,cadence:'OFF'}]));
+const orgData={organization_id:'org-a',events,quiet_start:0,quiet_end:7};
+const prefData={organization_id:'org-a',user_id:'actor-a',preferences};
+const wrapper=({children}:{children:ReactNode})=><QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false},mutations:{retry:false}}})}>{children}</QueryClientProvider>;
+beforeEach(()=>{vi.clearAllMocks();m.rpc.mockResolvedValue({data:null,error:null});});afterEach(cleanup);
+it.each([null,{},[null],[1],['']])('org IDs malformed is error, not no memberships: %j',async data=>{m.rpc.mockResolvedValue({data,error:null});const h=renderHook(useMyOrgIds,{wrapper});await waitFor(()=>expect(h.result.current.isError).toBe(true));});
+it('org IDs confirmed [] and duplicate valid IDs stay valid',async()=>{m.rpc.mockResolvedValue({data:['org-b','org-a','org-b'],error:null});const h=renderHook(useMyOrgIds,{wrapper});await waitFor(()=>expect(h.result.current.isSuccess).toBe(true));expect(h.result.current.data).toEqual(['org-a','org-b']);});
+it('required organization names error participates in options and retry',async()=>{const error={code:'42501',message:'SQL_PRIVATE'};m.rpc.mockImplementation(async(name:string)=>name==='my_org_ids'?{data:['org-a','org-b'],error:null}:{data:null,error});const h=renderHook(useMyOrgOptions,{wrapper});await waitFor(()=>expect(h.result.current.isError).toBe(true));expect(h.result.current.error).toBe(error);const before=m.rpc.mock.calls.length;await act(async()=>{await h.result.current.refetch();});expect(m.rpc.mock.calls.length).toBeGreaterThan(before);});
+it.each([null,{},[{}]])('required org names malformed cannot become generic names: %j',async data=>{m.rpc.mockImplementation(async(name:string)=>({data:name==='my_org_ids'?['org-a','org-b']:data,error:null}));const h=renderHook(useMyOrgOptions,{wrapper});await waitFor(()=>expect(h.result.current.isError).toBe(true));});
+it('read preserves actual zero amount rather than replacing it with null',async()=>{m.rpc.mockResolvedValue({data:orgData,error:null});const h=renderHook(useNotificationOrgConfig,{wrapper});await waitFor(()=>expect(h.result.current.isSuccess).toBe(true));expect(h.result.current.data?.events.E1.min_amount).toBe(0);expect(h.result.current.data).toHaveProperty('organizationId','org-a');});
+it('personal read verifies actual actor',async()=>{m.rpc.mockResolvedValue({data:{...prefData,user_id:'other'},error:null});const h=renderHook(()=>useMyNotificationPreferences('org-a'),{wrapper});await waitFor(()=>expect(h.result.current.isError).toBe(true));});
+it.each([{quiet_start:1},{organization_id:'org-b'},{events:{...events,E1:{enabled:true,min_amount:0}}}])('org config receipt verifies target and every submitted value %j',async patch=>{m.rpc.mockResolvedValue({data:{...orgData,...patch},error:null});const h=renderHook(useSetNotificationOrgConfig,{wrapper});await act(async()=>{await expect(h.result.current.mutateAsync({organizationId:'org-a',events,quiet_start:0,quiet_end:7} as never)).rejects.toBeInstanceOf(Error);});expect(m.success).not.toHaveBeenCalled();});
+it('org config exact receipt reports successful actual write',async()=>{m.rpc.mockResolvedValue({data:orgData,error:null});const h=renderHook(useSetNotificationOrgConfig,{wrapper});await act(async()=>{await expect(h.result.current.mutateAsync({organizationId:'org-a',events,quiet_start:0,quiet_end:7} as never)).resolves.toBeTruthy();});expect(m.success).toHaveBeenCalledOnce();});
+it.each([{user_id:'other'},{organization_id:'org-b'},{preferences:{...preferences,E1:{in_app:true,push:false,cadence:'OFF'}}}])('personal receipt verifies actor/org/full changed preferences %j',async patch=>{m.rpc.mockResolvedValue({data:{...prefData,...patch},error:null});const h=renderHook(()=>useSetMyNotificationPreferences('org-a'),{wrapper});const prefs=Object.fromEntries(NOTIFICATION_EVENT_KEYS.map(k=>[k,{event_key:k,...preferences[k]}]));await act(async()=>{await expect(h.result.current.mutateAsync(prefs as never)).rejects.toBeInstanceOf(Error);});});

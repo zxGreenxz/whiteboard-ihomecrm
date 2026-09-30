@@ -1,3 +1,4 @@
+import { QueryRegion } from "@/components/errors/QueryRegion";
 import { useMemo } from "react";
 import {
   Bar,
@@ -63,15 +64,20 @@ interface Props {
 export function OverviewTab({ filters }: Props) {
   const { ym, prevYm, yoyYm, t13Start, t13End, t13StartYm, months12, buildingIds, accrual } = filters;
 
-  const { data: pnl = [], isLoading: pnlLoading } = useFaMonthlyPnl(t13Start, t13End, buildingIds, accrual);
-  const { data: snapshot = [], isLoading: snapLoading } = useFaSnapshotKpis(buildingIds);
-  const { data: occupancy = [], isLoading: occLoading } = useFaOccupancyMonthly(
+  const reportQuery0 = useFaMonthlyPnl(t13Start, t13End, buildingIds, accrual);
+  const { data: pnl = [], isLoading: pnlLoading } = reportQuery0;
+  const reportQuery1 = useFaSnapshotKpis(buildingIds);
+  const { data: snapshot = [], isLoading: snapLoading } = reportQuery1;
+  const reportQuery2 = useFaOccupancyMonthly(
     t13Start, t13End, buildingIds,
   );
+  const { data: occupancy = [], isLoading: occLoading } = reportQuery2;
   // 2 query dưới fetch cả cửa sổ 13 tháng — tab Doanh thu/Chi phí/Vận hành
   // dùng chung query key nên không tốn thêm round-trip khi chuyển tab.
-  const { data: breakdown = [] } = useFaTypeBreakdown(t13Start, t13End, buildingIds, accrual);
-  const { data: collection = [] } = useFaInvoiceCollection(t13StartYm, ym, buildingIds);
+  const reportQuery3 = useFaTypeBreakdown(t13Start, t13End, buildingIds, accrual);
+  const { data: breakdown = [] } = reportQuery3;
+  const reportQuery4 = useFaInvoiceCollection(t13StartYm, ym, buildingIds);
+  const { data: collection = [] } = reportQuery4;
 
   const byMonth = useMemo(() => aggregatePnlByMonth(pnl), [pnl]);
   const cur = byMonth.get(ym);
@@ -208,6 +214,7 @@ export function OverviewTab({ filters }: Props) {
   const yoyMargin = yoy ? marginPct(yoy.net, yoy.revenue) : null;
 
   return (
+    <QueryRegion label="phân tích tài chính" queries={[reportQuery0, reportQuery1, reportQuery2, reportQuery3, reportQuery4]}>
     <div className="space-y-4">
       {/* KPI hàng 1 — tài chính */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
@@ -411,5 +418,6 @@ export function OverviewTab({ filters }: Props) {
         );
       })()}
     </div>
+    </QueryRegion>
   );
 }

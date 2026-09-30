@@ -1,3 +1,5 @@
+import { runPersistentCopilotAdminWrite } from './adminPersistence';
+import { actionErrorMessage } from '@/lib/actionFeedback';
 // Tab "Hành động" của trang quản trị AI Copilot — hai thứ mà G2-A dựng ở DB
 // nhưng chưa có mặt nào nhìn thấy: VAN chính sách và SỔ hành động.
 //
@@ -10,10 +12,13 @@
 // PHẦN THUẦN NẰM Ở `hanhDongCopilot.ts`
 //   File này chỉ dựng giao diện. Chuẩn hoá dữ liệu, luật CAS và câu lỗi ở file
 //   kia để đo được mà không cần DOM.
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { focusFirstError } from '@/lib/formErrors';
+import { CopilotAdminUnknownError, copilotAdminOutcomeUnknown } from './adminWrites';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
+import { QueryRegion } from '@/components/errors/QueryRegion';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useOrganization } from '@/contexts/OrganizationContext';
@@ -55,6 +60,28 @@ import {
   type DongSoHanhDong,
   type MucRuiRoChinhSach,
 } from './hanhDongCopilot';
+
+interface CardFeedback { fields: Record<string, string>; message?: string; blocked?: boolean }
+function useCardFeedback(server?: CardFeedback) {
+  const root = useRef<HTMLDivElement>(null);
+  const [local, setLocal] = useState<Record<string, string>>({});
+  const fields = { ...server?.fields, ...local };
+  const field = (name: string) => ({ name, 'aria-invalid': Boolean(fields[name]), 'aria-describedby': fields[name] ? `copilot-${name}-error` : undefined });
+  const submit = (errors: Record<string, string>, action: () => void) => {
+    setLocal(errors);
+    if (Object.keys(errors).length) { void focusFirstError(errors, { root: root.current }); return; }
+    if (!server?.blocked) action();
+  };
+  const clear = (event: React.FormEvent<HTMLDivElement>) => {
+    const name = (event.target as HTMLInputElement).name;
+    if (name) setLocal(previous => { const next = { ...previous }; delete next[name]; return next; });
+  };
+  return { root, fields, field, submit, clear };
+}
+function CardErrors({ fields, message }: { fields: Record<string, string>; message?: string }) {
+  return <>{Object.entries(fields).map(([name, text]) => <p key={name} id={`copilot-${name}-error`} role="alert" className="text-sm text-destructive">{text}</p>)}{message && <p role="alert" className="text-sm text-destructive">{message}</p>}</>;
+}
+const userIdValid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value.trim());
 
 const MUC_RUI_RO: readonly MucRuiRoChinhSach[] = ['L3', 'L4', 'L5'];
 const VAI_HOP_LE = ['superadmin', 'owner', 'manager', 'staff'] as const;
@@ -173,6 +200,7 @@ export function BangKeHoachGanDay({ dong }: { dong: readonly DongSoHanhDong[] })
 
 /** Thẻ chính sách — cũng THUẦN: mọi thứ động đi qua props. */
 export function TheChinhSachHanhDong(props: {
+  feedback?: CardFeedback;
   chinhSach: ChinhSachHanhDong | null;
   dangTai: boolean;
   ruiRo: MucRuiRoChinhSach | '';
@@ -187,9 +215,16 @@ export function TheChinhSachHanhDong(props: {
   onLuu: () => void;
 }) {
   const { chinhSach } = props;
-  const duLieuDu = Boolean(props.lyDo.trim() && props.bangChung.trim() && chinhSach);
+  const form = useCardFeedback(props.feedback);
+  const save = () => {
+    const errors: Record<string, string> = {};
+    if (!props.lyDo.trim()) errors.policyReason = 'Nhập lý do đổi chính sách.';
+    if (!props.bangChung.trim()) errors.policyEvidence = 'Nhập liên kết bằng chứng.';
+    form.submit(errors, props.onLuu);
+  };
   return (
-    <div className="space-y-3 rounded border p-3">
+    <div ref={form.root} onChangeCapture={form.clear} className="space-y-3 rounded border p-3">
+      <CardErrors fields={form.fields} message={props.feedback?.message} />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <div className="text-sm font-medium">Chính sách hành động</div>
@@ -264,6 +299,7 @@ export function TheChinhSachHanhDong(props: {
         <label className="text-sm">
           Lý do bắt buộc
           <Input
+            {...form.field('policyReason')}
             value={props.lyDo}
             disabled={!chinhSach || props.dangLuu}
             onChange={(e) => props.onDoiLyDo(e.target.value)}
@@ -273,6 +309,7 @@ export function TheChinhSachHanhDong(props: {
         <label className="text-sm">
           Liên kết bằng chứng
           <Input
+            {...form.field('policyEvidence')}
             value={props.bangChung}
             disabled={!chinhSach || props.dangLuu}
             onChange={(e) => props.onDoiBangChung(e.target.value)}
@@ -281,7 +318,7 @@ export function TheChinhSachHanhDong(props: {
         </label>
       </div>
 
-      <Button size="sm" disabled={!duLieuDu || props.dangLuu} onClick={props.onLuu}>
+      <Button size="sm" disabled={!chinhSach || props.dangLuu || props.feedback?.blocked} onClick={save}>
         {props.dangLuu ? 'Đang lưu…' : 'Đổi chính sách'}
       </Button>
     </div>
@@ -306,6 +343,7 @@ export function dienGiaiLoiPin(loi: unknown): string {
 
 /** Thẻ PIN step-up — cũng THUẦN: mọi thứ động đi qua props. */
 export function TheStepUpPin(props: {
+  feedback?: CardFeedback;
   trangThai: TrangThaiPin | null;
   dangTaiTrangThai: boolean;
   pinHienTai: string;
@@ -333,21 +371,25 @@ export function TheStepUpPin(props: {
   laMucTieuChinhMinh: boolean;
 }) {
   const { trangThai } = props;
-  const duLieuDuDatPin = Boolean(
-    /^[0-9]{4}$/.test(props.pinMoi) && props.matKhau.trim() && (!trangThai?.daDat || props.pinHienTai.trim()),
-  );
-  // Cùng hai ô (user_id/lý do) phục vụ CẢ "Mở khoá" lẫn "Reset PIN" — hai
-  // thao tác cùng nhắm một người dùng, chỉ khác hậu quả (mở khoá đếm/lock,
-  // hay xoá hẳn PIN để họ tự đặt lại). Không dựng cặp ô thứ hai cho gọn.
-  const duLieuDuMoKhoa = Boolean(props.moKhoaUserId.trim() && props.moKhoaLyDo.trim().length >= 3);
-  // F6 (review G5-C2 fix round 1): Reset PIN xoá HẲN lớp xác thực thứ hai của
-  // một người khác — đòi thêm một bước gõ tay "RESET" (không chỉ hai ô dùng
-  // chung với Mở khoá) để không ai bấm nhầm nút màu đỏ này.
-  const duLieuDuReset =
-    duLieuDuMoKhoa && props.resetXacNhan.trim() === 'RESET' && !props.laMucTieuChinhMinh;
+  const form = useCardFeedback(props.feedback);
+  const savePin = () => {
+    const errors: Record<string, string> = {};
+    if (trangThai?.daDat && !/^[0-9]{4}$/.test(props.pinHienTai)) errors.pinCurrent = 'PIN hiện tại phải gồm đúng 4 chữ số.';
+    if (!/^[0-9]{4}$/.test(props.pinMoi)) errors.pinNew = 'PIN mới phải gồm đúng 4 chữ số.';
+    if (!props.matKhau.trim()) errors.pinPassword = 'Nhập mật khẩu đăng nhập để xác thực.';
+    form.submit(errors, props.onDatPin);
+  };
+  const managePin = (reset: boolean) => {
+    const errors: Record<string, string> = {};
+    if (!userIdValid(props.moKhoaUserId)) errors.pinUser = 'Nhập mã người dùng UUID hợp lệ.';
+    if (props.moKhoaLyDo.trim().length < 3) errors.pinReason = 'Nhập lý do ít nhất 3 ký tự.';
+    if (reset && props.resetXacNhan.trim() !== 'RESET') errors.pinReset = 'Gõ đúng "RESET" để xác nhận.';
+    form.submit(errors, reset ? props.onReset : props.onMoKhoa);
+  };
   const dangKhoa = Boolean(trangThai?.lockedUntil && new Date(trangThai.lockedUntil).getTime() > Date.now());
   return (
-    <div className="space-y-3 rounded border p-3" data-testid="copilot-admin-pin-card">
+    <div ref={form.root} onChangeCapture={form.clear} className="space-y-3 rounded border p-3" data-testid="copilot-admin-pin-card">
+      <CardErrors fields={form.fields} message={props.feedback?.message} />
       <div>
         <div className="text-sm font-medium">PIN step-up</div>
         <div className="text-xs text-muted-foreground">
@@ -387,10 +429,10 @@ export function TheStepUpPin(props: {
               type="password"
               inputMode="numeric"
               maxLength={4}
-              data-testid="copilot-admin-pin-current"
+              data-testid="copilot-admin-pin-current" {...form.field('pinCurrent')}
               value={props.pinHienTai}
               disabled={props.dangDatPin}
-              onChange={(e) => props.onDoiPinHienTai(e.target.value.replace(/[^0-9]/g, '').slice(0, 4))}
+              onChange={(e) => props.onDoiPinHienTai(e.target.value)}
               placeholder="4 số"
             />
           </label>
@@ -401,10 +443,10 @@ export function TheStepUpPin(props: {
             type="password"
             inputMode="numeric"
             maxLength={4}
-            data-testid="copilot-admin-pin-new"
+            data-testid="copilot-admin-pin-new" {...form.field('pinNew')}
             value={props.pinMoi}
             disabled={props.dangDatPin}
-            onChange={(e) => props.onDoiPinMoi(e.target.value.replace(/[^0-9]/g, '').slice(0, 4))}
+            onChange={(e) => props.onDoiPinMoi(e.target.value)}
             placeholder="4 số"
           />
         </label>
@@ -412,7 +454,7 @@ export function TheStepUpPin(props: {
           Mật khẩu (re-auth)
           <Input
             type="password"
-            data-testid="copilot-admin-pin-password"
+            data-testid="copilot-admin-pin-password" {...form.field('pinPassword')}
             value={props.matKhau}
             disabled={props.dangDatPin}
             onChange={(e) => props.onDoiMatKhau(e.target.value)}
@@ -427,8 +469,8 @@ export function TheStepUpPin(props: {
       <Button
         size="sm"
         data-testid="copilot-admin-pin-submit"
-        disabled={!duLieuDuDatPin || props.dangDatPin}
-        onClick={props.onDatPin}
+        disabled={!trangThai || props.dangDatPin || props.feedback?.blocked}
+        onClick={savePin}
       >
         {props.dangDatPin ? 'Đang lưu…' : trangThai?.daDat ? 'Đổi PIN' : 'Đặt PIN'}
       </Button>
@@ -440,7 +482,7 @@ export function TheStepUpPin(props: {
             <label className="text-sm">
               Mã người dùng (user_id)
               <Input
-                data-testid="copilot-admin-pin-unlock-userid"
+                data-testid="copilot-admin-pin-unlock-userid" {...form.field('pinUser')}
                 value={props.moKhoaUserId}
                 disabled={props.dangMoKhoa}
                 onChange={(e) => props.onDoiMoKhoaUserId(e.target.value)}
@@ -450,7 +492,7 @@ export function TheStepUpPin(props: {
             <label className="text-sm">
               Lý do (bắt buộc)
               <Input
-                data-testid="copilot-admin-pin-unlock-reason"
+                data-testid="copilot-admin-pin-unlock-reason" {...form.field('pinReason')}
                 value={props.moKhoaLyDo}
                 disabled={props.dangMoKhoa}
                 onChange={(e) => props.onDoiMoKhoaLyDo(e.target.value)}
@@ -463,8 +505,8 @@ export function TheStepUpPin(props: {
               size="sm"
               variant="outline"
               data-testid="copilot-admin-pin-unlock-submit"
-              disabled={!duLieuDuMoKhoa || props.dangMoKhoa || props.dangReset}
-              onClick={props.onMoKhoa}
+              disabled={props.dangMoKhoa || props.dangReset || props.feedback?.blocked}
+              onClick={() => managePin(false)}
             >
               {props.dangMoKhoa ? 'Đang mở khoá…' : 'Mở khoá'}
             </Button>
@@ -475,7 +517,7 @@ export function TheStepUpPin(props: {
             <label className="text-sm">
               Gõ "RESET" để xác nhận
               <Input
-                data-testid="copilot-admin-pin-reset-confirm"
+                data-testid="copilot-admin-pin-reset-confirm" {...form.field('pinReset')}
                 value={props.resetXacNhan}
                 disabled={props.dangReset}
                 onChange={(e) => props.onDoiResetXacNhan(e.target.value)}
@@ -486,8 +528,8 @@ export function TheStepUpPin(props: {
               size="sm"
               variant="destructive"
               data-testid="copilot-admin-pin-reset-submit"
-              disabled={!duLieuDuReset || props.dangMoKhoa || props.dangReset}
-              onClick={props.onReset}
+              disabled={props.laMucTieuChinhMinh || props.dangMoKhoa || props.dangReset || props.feedback?.blocked}
+              onClick={() => managePin(true)}
             >
               {props.dangReset ? 'Đang reset…' : 'Reset PIN (mất PIN)'}
             </Button>
@@ -532,6 +574,7 @@ function toaSangMang(gt: string): string[] | undefined {
  *   đòi một câu lý do đủ dài vì nó ảnh hưởng tới MỌI hạn mức của cả tổ chức.
  */
 export function TheUyQuyenDung(props: {
+  feedback?: CardFeedback;
   danhSach: readonly DongGrant[];
   dangTaiDs: boolean;
   danhSachHanhDong: readonly { actionId: string; labelVi: string }[];
@@ -561,18 +604,30 @@ export function TheUyQuyenDung(props: {
   dangTaiBaoCao: boolean;
   coToChuc: boolean;
 }) {
-  const soNguyen = (gt: string) => {
-    const n = Number(gt.trim());
-    return Number.isInteger(n) && n > 0;
+  const form = useCardFeedback(props.feedback);
+  const create = () => {
+    const errors: Record<string, string> = {};
+    if (!props.actionId) errors.grantAction = 'Chọn hành động cần cấp hạn mức.';
+    const count = Number(props.maxPerDay);
+    if (!props.maxPerDay.trim() || !Number.isInteger(count) || count < 1 || count > 200) errors.grantMaxPerDay = 'Hạn mức mỗi ngày phải là số nguyên từ 1 đến 200.';
+    const hours = Number(props.gioHetHan);
+    if (!props.gioHetHan.trim() || !Number.isInteger(hours) || hours < 1 || hours > 720) errors.grantHours = 'Nhập số giờ nguyên từ 1 đến 720 (30 ngày).';
+    if (props.maxAmount.trim() && tienSangSo(props.maxAmount) === undefined) errors.grantAmount = 'Số tiền tối đa phải là số lớn hơn 0; để trống khi không giới hạn.';
+    if (props.toaNha.trim() && !props.toaNha.split(',').every(userIdValid)) errors.grantBuildings = 'Nhập mã tòa UUID hợp lệ, cách nhau bằng dấu phẩy.';
+    if (!props.lyDoTao.trim()) errors.grantReason = 'Nhập lý do cấp hạn mức.';
+    form.submit(errors, props.onTao);
   };
-  const duLieuDuTao = Boolean(
-    props.actionId && soNguyen(props.maxPerDay) && soNguyen(props.gioHetHan) && props.lyDoTao.trim(),
-  );
-  const duLieuDuThuHoiTatCa = props.lyDoThuHoiTatCa.trim().length >= 10;
+  const revoke = (grantId?: string) => {
+    const errors: Record<string, string> = {};
+    if (grantId && !props.lyDoThuHoi.trim()) errors.grantRevokeReason = 'Nhập lý do thu hồi hạn mức.';
+    if (!grantId && props.lyDoThuHoiTatCa.trim().length < 10) errors.grantRevokeAllReason = 'Nhập lý do thu hồi tất cả ít nhất 10 ký tự.';
+    form.submit(errors, () => grantId ? props.onThuHoi(grantId) : props.onThuHoiTatCa());
+  };
   const conSong = props.danhSach.filter((g) => !g.revokedAt);
 
   return (
-    <div className="space-y-3 rounded border p-3" data-testid="copilot-admin-grant-card">
+    <div ref={form.root} onChangeCapture={form.clear} className="space-y-3 rounded border p-3" data-testid="copilot-admin-grant-card">
+      <CardErrors fields={form.fields} message={props.feedback?.message} />
       <div>
         <div className="text-sm font-medium">Uỷ quyền đứng</div>
         <div className="text-xs text-muted-foreground">
@@ -591,7 +646,7 @@ export function TheUyQuyenDung(props: {
               Hành động
               <select
                 className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                data-testid="copilot-admin-grant-action"
+                data-testid="copilot-admin-grant-action" {...form.field('grantAction')}
                 value={props.actionId}
                 disabled={props.dangTao}
                 onChange={(e) => props.onDoiActionId(e.target.value)}
@@ -607,10 +662,10 @@ export function TheUyQuyenDung(props: {
             <label className="text-sm">
               Hạn mức mỗi ngày
               <Input
-                type="number"
+                type="text" inputMode="decimal"
                 min={1}
                 max={200}
-                data-testid="copilot-admin-grant-max-per-day"
+                data-testid="copilot-admin-grant-max-per-day" {...form.field('grantMaxPerDay')}
                 value={props.maxPerDay}
                 disabled={props.dangTao}
                 onChange={(e) => props.onDoiMaxPerDay(e.target.value)}
@@ -619,10 +674,10 @@ export function TheUyQuyenDung(props: {
             <label className="text-sm">
               Hết hạn sau (giờ)
               <Input
-                type="number"
+                type="text" inputMode="decimal"
                 min={1}
                 max={720}
-                data-testid="copilot-admin-grant-expires-hours"
+                data-testid="copilot-admin-grant-expires-hours" {...form.field('grantHours')}
                 value={props.gioHetHan}
                 disabled={props.dangTao}
                 onChange={(e) => props.onDoiGioHetHan(e.target.value)}
@@ -632,9 +687,9 @@ export function TheUyQuyenDung(props: {
             <label className="text-sm">
               Số tiền tối đa mỗi lần (tuỳ chọn)
               <Input
-                type="number"
+                type="text" inputMode="decimal"
                 min={1}
-                data-testid="copilot-admin-grant-max-amount"
+                data-testid="copilot-admin-grant-max-amount" {...form.field('grantAmount')}
                 value={props.maxAmount}
                 disabled={props.dangTao}
                 onChange={(e) => props.onDoiMaxAmount(e.target.value)}
@@ -644,7 +699,7 @@ export function TheUyQuyenDung(props: {
             <label className="text-sm md:col-span-2">
               Chỉ áp dụng cho toà (tuỳ chọn)
               <Input
-                data-testid="copilot-admin-grant-buildings"
+                data-testid="copilot-admin-grant-buildings" {...form.field('grantBuildings')}
                 value={props.toaNha}
                 disabled={props.dangTao}
                 onChange={(e) => props.onDoiToaNha(e.target.value)}
@@ -655,7 +710,7 @@ export function TheUyQuyenDung(props: {
           <label className="block text-sm">
             Lý do cấp (bắt buộc)
             <Input
-              data-testid="copilot-admin-grant-reason"
+              data-testid="copilot-admin-grant-reason" {...form.field('grantReason')}
               value={props.lyDoTao}
               disabled={props.dangTao}
               onChange={(e) => props.onDoiLyDoTao(e.target.value)}
@@ -665,8 +720,8 @@ export function TheUyQuyenDung(props: {
           <Button
             size="sm"
             data-testid="copilot-admin-grant-submit"
-            disabled={!duLieuDuTao || props.dangTao}
-            onClick={props.onTao}
+            disabled={props.dangTao || props.feedback?.blocked}
+            onClick={create}
           >
             {props.dangTao ? 'Đang xác thực PIN…' : 'Cấp hạn mức (cần PIN)'}
           </Button>
@@ -720,8 +775,8 @@ export function TheUyQuyenDung(props: {
                               size="sm"
                               variant="outline"
                               data-testid="copilot-admin-grant-revoke"
-                              disabled={props.dangThuHoiId === g.grantId || !props.lyDoThuHoi.trim()}
-                              onClick={() => props.onThuHoi(g.grantId)}
+                              disabled={props.dangThuHoiId !== null || props.feedback?.blocked}
+                              onClick={() => revoke(g.grantId)}
                             >
                               {props.dangThuHoiId === g.grantId ? 'Đang thu hồi…' : 'Thu hồi'}
                             </Button>
@@ -736,7 +791,7 @@ export function TheUyQuyenDung(props: {
             <label className="mt-2 block text-sm">
               Lý do thu hồi (dùng cho nút "Thu hồi" của từng dòng ở trên)
               <Input
-                data-testid="copilot-admin-grant-revoke-reason"
+                data-testid="copilot-admin-grant-revoke-reason" {...form.field('grantRevokeReason')}
                 value={props.lyDoThuHoi}
                 onChange={(e) => props.onDoiLyDoThuHoi(e.target.value)}
                 placeholder="Vì sao thu hồi hạn mức này"
@@ -751,7 +806,7 @@ export function TheUyQuyenDung(props: {
             <label className="block text-sm">
               Lý do (bắt buộc, ít nhất 10 ký tự)
               <Input
-                data-testid="copilot-admin-grant-revoke-all-reason"
+                data-testid="copilot-admin-grant-revoke-all-reason" {...form.field('grantRevokeAllReason')}
                 value={props.lyDoThuHoiTatCa}
                 disabled={props.dangThuHoiTatCa}
                 onChange={(e) => props.onDoiLyDoThuHoiTatCa(e.target.value)}
@@ -762,8 +817,8 @@ export function TheUyQuyenDung(props: {
               size="sm"
               variant="destructive"
               data-testid="copilot-admin-grant-revoke-all"
-              disabled={!duLieuDuThuHoiTatCa || props.dangThuHoiTatCa || conSong.length === 0}
-              onClick={props.onThuHoiTatCa}
+              disabled={props.dangThuHoiTatCa || props.dangThuHoiId !== null || conSong.length === 0 || props.feedback?.blocked}
+              onClick={() => revoke()}
             >
               {props.dangThuHoiTatCa ? 'Đang thu hồi…' : `Thu hồi tất cả (${conSong.length})`}
             </Button>
@@ -808,6 +863,20 @@ export default function HanhDongTab() {
   const [lyDo, setLyDo] = useState('');
   const [bangChung, setBangChung] = useState('');
 
+  const [policyFeedback, setPolicyFeedback] = useState<CardFeedback>();
+  const [pinFeedback, setPinFeedback] = useState<CardFeedback>();
+  const [grantFeedback, setGrantFeedback] = useState<CardFeedback>();
+  const reportError = (error: unknown, section: 'policy' | 'pin' | 'grant', operation: string) => {
+    const code = error instanceof Error ? error.message : '';
+    const unknown = copilotAdminOutcomeUnknown(error) || code === 'phan_hoi_khong_doc_duoc';
+    const message = unknown ? actionErrorMessage(error, 'Chưa xác nhận được kết quả. Giữ nội dung đang nhập và đối chiếu trạng thái trước khi thực hiện tiếp.') : section === 'policy' ? dienGiaiLoiChinhSach(error) : section === 'pin' ? dienGiaiLoiPin(error) : dienGiaiLoiKeHoach(code);
+    const mapping: Record<string, string> = section === 'policy' ? { policy_reason_required: !lyDo.trim() ? 'policyReason' : 'policyEvidence' } : section === 'pin' ? { reauth_failed: 'pinPassword', pin_format: 'pinNew', pin_weak: 'pinNew', pin_invalid: 'pinCurrent', user_required: 'pinUser', reason_required: 'pinReason', reset_confirm_required: 'pinReset' } : { grant_action_required: 'grantAction', grant_max_per_day_invalid: 'grantMaxPerDay', grant_expires_invalid: 'grantHours', grant_reason_required: operation === 'create' ? 'grantReason' : operation === 'revokeAll' ? 'grantRevokeAllReason' : 'grantRevokeReason' };
+    const name = mapping[code];
+    const feedback = { fields: name ? { [name]: message } : {}, message: name ? undefined : message, blocked: unknown };
+    (section === 'policy' ? setPolicyFeedback : section === 'pin' ? setPinFeedback : setGrantFeedback)(feedback);
+    if (name) void focusFirstError(feedback.fields);
+  };
+
   // ── PIN step-up (G5-A) ─────────────────────────────────────────────────
   const [pinHienTai, setPinHienTai] = useState('');
   const [pinMoi, setPinMoi] = useState('');
@@ -817,6 +886,7 @@ export default function HanhDongTab() {
   const [resetXacNhan, setResetXacNhan] = useState('');
 
   const trangThaiPinQuery = useQuery({
+    meta: { label: 'dữ liệu hành động Copilot', errorDisplay: 'inline' },
     queryKey: ['copilot-step-up-status'],
     retry: false,
     queryFn: async () => {
@@ -827,7 +897,7 @@ export default function HanhDongTab() {
   });
 
   const datPinMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async () => runPersistentCopilotAdminWrite(`pin:${nguoiDung?.id ?? ''}`, 'lưu PIN step-up', async () => {
       if (!nguoiDung?.email) throw new Error('unauthenticated');
       // Re-auth BẮT BUỘC trước khi gọi RPC đặt/đổi PIN — server không kiểm
       // được điều đó (xem chú thích ở `datPin` trong `stepUpClient.ts`).
@@ -838,30 +908,34 @@ export default function HanhDongTab() {
       if (loiReAuth) throw new Error('reauth_failed');
       const kq = await datPin(pinMoi, pinHienTai || undefined);
       if (!kq.ok) throw new Error(kq.maLoi ?? 'loi_khong_ro');
+      if (!kq.updatedAt || !Number.isFinite(Date.parse(kq.updatedAt))) throw new CopilotAdminUnknownError();
       return kq;
-    },
+    }),
     onSuccess: async () => {
+      setPinFeedback(undefined);
       toast.success('Đã lưu PIN step-up.');
       setPinHienTai('');
       setPinMoi('');
       setMatKhauReAuth('');
       await qc.invalidateQueries({ queryKey: ['copilot-step-up-status'] });
     },
-    onError: (loi) => toast.error(dienGiaiLoiPin(loi)),
+    onError: (loi) => reportError(loi, 'pin', 'set'),
   });
 
   const moKhoaMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async () => runPersistentCopilotAdminWrite(`pin:${moKhoaUserId.trim()}`, 'mở khoá PIN', async () => {
       const kq = await moKhoaPinStepUp(moKhoaUserId.trim(), moKhoaLyDo.trim());
       if (!kq.ok) throw new Error(kq.maLoi ?? 'loi_khong_ro');
+      if (!kq.daMoKhoa || kq.userId !== moKhoaUserId.trim()) throw new CopilotAdminUnknownError();
       return kq;
-    },
+    }),
     onSuccess: () => {
+      setPinFeedback(undefined);
       toast.success('Đã mở khoá PIN của người dùng.');
       setMoKhoaUserId('');
       setMoKhoaLyDo('');
     },
-    onError: (loi) => toast.error(dienGiaiLoiPin(loi)),
+    onError: (loi) => reportError(loi, 'pin', 'unlock'),
   });
 
   // Reset PIN (bổ sung G5-C2) — dùng chung ô user_id/lý do với "Mở khoá".
@@ -869,26 +943,21 @@ export default function HanhDongTab() {
   // chỉ ở nút bị disable trên UI), phòng khi ai đó gọi mutate() theo cách
   // khác (vd. qua devtools).
   const resetPinMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async () => runPersistentCopilotAdminWrite(`pin:${moKhoaUserId.trim()}`, 'reset PIN', async () => {
       if (resetXacNhan.trim() !== 'RESET') throw new Error('reset_confirm_required');
       const kq = await resetPinStepUp(moKhoaUserId.trim(), moKhoaLyDo.trim());
       if (!kq.ok) throw new Error(kq.maLoi ?? 'loi_khong_ro');
+      if (!kq.daReset) throw new CopilotAdminUnknownError();
       return kq;
-    },
+    }),
     onSuccess: () => {
+      setPinFeedback(undefined);
       toast.success('Đã xoá PIN của người dùng — họ có thể tự đặt PIN mới.');
       setMoKhoaUserId('');
       setMoKhoaLyDo('');
       setResetXacNhan('');
     },
-    onError: (loi) => {
-      const cau = loi instanceof Error ? loi.message : String(loi ?? '');
-      if (cau === 'reset_confirm_required') {
-        toast.error('Gõ đúng "RESET" để xác nhận.');
-        return;
-      }
-      toast.error(dienGiaiLoiPin(loi));
-    },
+    onError: (loi) => reportError(loi, 'pin', 'reset'),
   });
 
   // ── Uỷ quyền đứng (G5-B, điểm nối #4) ──────────────────────────────────
@@ -909,6 +978,7 @@ export default function HanhDongTab() {
   );
 
   const dsGrantQuery = useQuery({
+    meta: { label: 'dữ liệu hành động Copilot', errorDisplay: 'inline' },
     queryKey: ['copilot-standing-grants', selectedOrganizationId ?? null],
     enabled: Boolean(selectedOrganizationId),
     retry: false,
@@ -920,6 +990,7 @@ export default function HanhDongTab() {
   });
 
   const baoCaoGrantQuery = useQuery({
+    meta: { label: 'dữ liệu hành động Copilot', errorDisplay: 'inline' },
     queryKey: ['copilot-standing-grants-report', selectedOrganizationId ?? null],
     enabled: Boolean(selectedOrganizationId),
     retry: false,
@@ -936,7 +1007,7 @@ export default function HanhDongTab() {
    * KHÔNG dùng `useMutation` ở nhánh mở modal: mutation chỉ chạy SAU khi có token.
    */
   const taoGrantMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async () => runPersistentCopilotAdminWrite(`grant-create:${selectedOrganizationId}:${grantActionId}`, 'cấp hạn mức Copilot', async () => {
       if (!selectedOrganizationId) throw new Error('organization_required');
       const token = tieuTokenStepUp(selectedOrganizationId);
       if (!token) throw new Error('step_up_required');
@@ -953,10 +1024,14 @@ export default function HanhDongTab() {
         reason: grantLyDoTao.trim(),
         stepUpToken: token,
       });
-      if (!kq.ok) throw new Error(kq.maLoi ?? 'loi_khong_ro');
+      if (!kq.ok) {
+        if (kq.maLoi === 'phan_hoi_khong_doc_duoc') throw new CopilotAdminUnknownError(kq.knownGrantId ? [kq.knownGrantId] : []);
+        throw new Error(kq.maLoi ?? 'loi_khong_ro');
+      }
       return kq;
-    },
+    }),
     onSuccess: async () => {
+      setGrantFeedback(undefined);
       toast.success('Đã cấp hạn mức uỷ quyền đứng.');
       setGrantActionId('');
       setGrantMaxPerDay('1');
@@ -966,40 +1041,45 @@ export default function HanhDongTab() {
       setGrantLyDoTao('');
       await qc.invalidateQueries({ queryKey: ['copilot-standing-grants'] });
     },
-    onError: (loi) => toast.error(dienGiaiLoiKeHoach(loi instanceof Error ? loi.message : String(loi))),
+    onError: (loi) => reportError(loi, 'grant', 'create'),
   });
 
   const thuHoiGrantMutation = useMutation({
-    mutationFn: async (grantId: string) => {
+    mutationFn: async (grantId: string) => runPersistentCopilotAdminWrite(`grant:${grantId}`, 'thu hồi hạn mức Copilot', async () => {
       setGrantDangThuHoiId(grantId);
       const kq = await thuHoiGrant(grantId, grantLyDoThuHoi.trim());
       if (!kq.ok) throw new Error(kq.maLoi ?? 'loi_khong_ro');
       return kq;
-    },
+    }),
     onSuccess: async () => {
+      setGrantFeedback(undefined);
       toast.success('Đã thu hồi hạn mức.');
       await qc.invalidateQueries({ queryKey: ['copilot-standing-grants'] });
     },
-    onError: (loi) => toast.error(dienGiaiLoiKeHoach(loi instanceof Error ? loi.message : String(loi))),
+    onError: (loi) => reportError(loi, 'grant', 'revoke'),
     onSettled: () => setGrantDangThuHoiId(null),
   });
 
   const thuHoiTatCaGrantMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async () => runPersistentCopilotAdminWrite(`grants:${selectedOrganizationId}`, 'thu hồi toàn bộ hạn mức Copilot', async () => {
       if (!selectedOrganizationId) throw new Error('organization_required');
       const kq = await thuHoiTatCaGrant(selectedOrganizationId, grantLyDoThuHoiTatCa.trim());
       if (!kq.ok) throw new Error(kq.maLoi ?? 'loi_khong_ro');
+      if (kq.soLuongThuHoi === null || !Number.isSafeInteger(kq.soLuongThuHoi) || kq.soLuongThuHoi < 0) throw new CopilotAdminUnknownError();
       return kq;
-    },
+    }),
     onSuccess: async (kq) => {
-      toast.success(`Đã thu hồi ${kq.soLuongThuHoi ?? 0} hạn mức.`);
+      setGrantFeedback(undefined);
+      if (kq.soLuongThuHoi === 0) toast.info('Không có hạn mức nào được thu hồi.');
+      else toast.success(`Đã thu hồi ${kq.soLuongThuHoi} hạn mức.`);
       setGrantLyDoThuHoiTatCa('');
       await qc.invalidateQueries({ queryKey: ['copilot-standing-grants'] });
     },
-    onError: (loi) => toast.error(dienGiaiLoiKeHoach(loi instanceof Error ? loi.message : String(loi))),
+    onError: (loi) => reportError(loi, 'grant', 'revokeAll'),
   });
 
   const chinhSachQuery = useQuery({
+    meta: { label: 'dữ liệu hành động Copilot', errorDisplay: 'inline' },
     queryKey: ['copilot-action-policy'],
     retry: false,
     queryFn: docChinhSachHanhDong,
@@ -1007,6 +1087,7 @@ export default function HanhDongTab() {
   const chinhSach = chinhSachQuery.data ?? null;
 
   const soQuery = useQuery({
+    meta: { label: 'dữ liệu hành động Copilot', errorDisplay: 'inline' },
     queryKey: ['copilot-action-ledger', selectedOrganizationId ?? null],
     enabled: Boolean(selectedOrganizationId),
     retry: false,
@@ -1020,17 +1101,21 @@ export default function HanhDongTab() {
   const vaiHienTai = useMemo(() => vai ?? chinhSach?.allowedRoles ?? [], [vai, chinhSach]);
 
   const doiChinhSach = useMutation({
-    mutationFn: async () => {
+    mutationFn: async () => runPersistentCopilotAdminWrite('action-policy', 'đổi chính sách hành động Copilot', async () => {
       if (!chinhSach) throw new Error('copilot_policy_missing');
-      return doiChinhSachHanhDong({
+      const result = await doiChinhSachHanhDong({
         expectedRevision: chinhSach.revision,
         ...(ruiRoHienTai ? { maxDirectRisk: ruiRoHienTai as MucRuiRoChinhSach } : {}),
         allowedRoles: [...vaiHienTai],
         reason: lyDo.trim(),
         evidenceLink: bangChung.trim(),
       });
-    },
+      if (!result || result.revision !== chinhSach.revision + 1 || result.maxDirectRisk !== ruiRoHienTai ||
+          result.allowedRoles.length !== vaiHienTai.length || !result.allowedRoles.every(role => vaiHienTai.includes(role))) throw new CopilotAdminUnknownError();
+      return result;
+    }),
     onSuccess: async () => {
+      setPolicyFeedback(undefined);
       toast.success('Đã đổi chính sách hành động.');
       setLyDo('');
       setBangChung('');
@@ -1040,7 +1125,7 @@ export default function HanhDongTab() {
       await qc.invalidateQueries({ queryKey: ['copilot-action-ledger'] });
     },
     onError: async (loi) => {
-      toast.error(dienGiaiLoiChinhSach(loi));
+      reportError(loi, 'policy', 'save');
       // Revision cũ trong tay là thứ khiến lần bấm kế tiếp cũng hỏng — tải lại
       // ngay thay vì để người dùng tự đoán phải làm gì.
       if (String(loi instanceof Error ? loi.message : loi).includes('stale_revision')) {
@@ -1051,7 +1136,9 @@ export default function HanhDongTab() {
 
   return (
     <div className="space-y-4">
+      <QueryRegion label="chính sách hành động Copilot" queries={[chinhSachQuery]}>
       <TheChinhSachHanhDong
+        feedback={policyFeedback}
         chinhSach={chinhSach}
         dangTai={chinhSachQuery.isLoading}
         ruiRo={ruiRoHienTai}
@@ -1070,8 +1157,11 @@ export default function HanhDongTab() {
         onDoiBangChung={setBangChung}
         onLuu={() => doiChinhSach.mutate()}
       />
+      </QueryRegion>
 
+      <QueryRegion label="trạng thái PIN Copilot" queries={[trangThaiPinQuery]}>
       <TheStepUpPin
+        feedback={pinFeedback}
         trangThai={trangThaiPinQuery.data ?? null}
         dangTaiTrangThai={trangThaiPinQuery.isLoading}
         pinHienTai={pinHienTai}
@@ -1095,10 +1185,13 @@ export default function HanhDongTab() {
         onReset={() => resetPinMutation.mutate()}
         laMucTieuChinhMinh={Boolean(nguoiDung?.id) && moKhoaUserId.trim() === nguoiDung?.id}
       />
+      </QueryRegion>
 
       {laSuperAdmin ? (
         <>
+          <QueryRegion label="ủy quyền đứng Copilot" queries={selectedOrganizationId ? [dsGrantQuery, baoCaoGrantQuery] : []}>
           <TheUyQuyenDung
+            feedback={grantFeedback}
             danhSach={dsGrantQuery.data ?? []}
             dangTaiDs={dsGrantQuery.isLoading}
             danhSachHanhDong={danhSachHanhDongGrant}
@@ -1128,6 +1221,7 @@ export default function HanhDongTab() {
             dangTaiBaoCao={baoCaoGrantQuery.isLoading}
             coToChuc={Boolean(selectedOrganizationId)}
           />
+          </QueryRegion>
           {grantHienModalPin && selectedOrganizationId && (
             <StepUpPinModal
               organizationId={selectedOrganizationId}
@@ -1167,12 +1261,9 @@ export default function HanhDongTab() {
             ))}
           </select>
         </label>
-        {soQuery.error ? (
-          <div className="rounded border border-red-300 bg-red-50 p-2 text-xs text-red-700">
-            Không đọc được sổ: {String(soQuery.error instanceof Error ? soQuery.error.message : soQuery.error)}
-          </div>
-        ) : null}
-        <BangNhatKyHanhDong dong={soQuery.data ?? []} />
+        <QueryRegion label="nhật ký hành động Copilot" queries={selectedOrganizationId ? [soQuery] : []}>
+          <BangNhatKyHanhDong dong={soQuery.data ?? []} />
+        </QueryRegion>
       </div>
 
       {laSuperAdmin ? (
@@ -1184,7 +1275,7 @@ export default function HanhDongTab() {
               chính {SO_DONG_SO_MAC_DINH} dòng sổ ở trên.
             </div>
           </div>
-          <BangKeHoachGanDay dong={soQuery.data ?? []} />
+          {!soQuery.isError && <BangKeHoachGanDay dong={soQuery.data ?? []} />}
         </div>
       ) : null}
     </div>

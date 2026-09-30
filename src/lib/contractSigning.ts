@@ -1,3 +1,5 @@
+import {FinancialWorkflowError,workflowErrorMessage} from './financialWorkflow';
+import {friendlyError} from './friendlyError';
 import { z } from 'zod';
 import type { Json } from '@/integrations/supabase/types';
 import type { ContractDraft, ContractDraftDocument, ContractDraftPayload, ContractDraftSigningSource } from '@/lib/contractDrafts';
@@ -157,12 +159,13 @@ export const contractSigningSnapshotSchema = z.object({ server_today: dateOnly, 
 export type ContractSigningSnapshot = z.infer<typeof contractSigningSnapshotSchema>;
 
 export function signingErrorMessage(error: unknown): string {
+  if(error instanceof FinancialWorkflowError)return workflowErrorMessage(error,'ghi nhận ký hợp đồng');
   const code = typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : '';
   if (code === '40001') return 'Phiên bản nháp, tài liệu hoặc thông tin khách đã thay đổi. Tải lại, kiểm tra và xuất lại trước khi ký.';
   if (code === '42501' || code === '28000') return 'Bạn không có quyền thực hiện thao tác này.';
   if (code === '55P03') return 'Phòng đang có cọc hoặc giữ chỗ. Nhánh ký từ nháp chưa hỗ trợ chuyển nguồn giữ chỗ này.';
   if (code === '55000') return 'Phòng hoặc mốc chỉ số chưa đủ điều kiện nhận phòng. Tải lại và kiểm tra việc bàn giao.';
   if (code === '23505') return 'Bản nháp hoặc lần ký đã được dùng với nội dung khác. Tải lại để xem hợp đồng đã ghi nhận.';
-  if (error instanceof Error) return error.message;
-  return 'Chưa thể ghi nhận ký. Giữ nội dung và thử lại; cùng lần gửi không tạo thêm hợp đồng.';
+  const feedback=friendlyError(error,'Chưa ghi nhận được ký hợp đồng',{operation:'ghi nhận ký hợp đồng',financial:true});
+  return `${feedback.title}. ${feedback.description}`;
 }

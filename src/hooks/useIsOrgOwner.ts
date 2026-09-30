@@ -42,12 +42,12 @@ export const useIsOrgOwner = () =>
     queryFn: async (): Promise<boolean> => {
       const { data, error } = await supabase.rpc('is_org_owner_self_v1');
       if (error) {
-        // Fail-closed: không đọc được thì coi như KHÔNG phải chủ. Server vẫn là
-        // hàng rào thật, nên đoán "có" chỉ để mời bấm một nút sẽ bị từ chối.
+        // Không đọc được quyền là lỗi nguồn; không suy ra một quyết định quyền.
         console.error('useIsOrgOwner error:', error);
-        return false;
+        throw error;
       }
-      return !!data;
+      if (typeof data !== "boolean") throw new TypeError("Unconfirmed permission response");
+      return data;
     },
     staleTime: AUTHORIZATION_STALE_TIME,
     retry: 1,

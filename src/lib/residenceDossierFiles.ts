@@ -2,8 +2,11 @@
 // chứng minh chỗ ở hợp pháp (theo toà). Lưu ở bucket private residence-docs,
 // đọc qua signed URL; quyền do RLS quyết định (customers.print / buildings.edit).
 import { supabase } from '@/integrations/supabase/client';
-import { getPublicUrl, parseStorageRef, sanitizeStorageFileName, uploadFile } from '@/lib/storage';
+import { deleteFile, getPublicUrl, parseStorageRef, sanitizeStorageFileName, uploadFile } from '@/lib/storage';
 import { getSessionUser } from '@/lib/authSession';
+import { persistentFinancialWorkflow } from './persistentFinancialWorkflow';
+import { FinancialWorkflowError, isConfirmedFinancialRejection } from './financialWorkflow';
+import { confirmedRecordId } from './recordWriteOutcome';
 import type { Database } from '@/integrations/supabase/types';
 
 export type DossierKind = 'CT01' | 'LEASE' | 'OWNERSHIP';
@@ -17,7 +20,9 @@ type Row = Database['public']['Tables']['residence_dossier_files']['Row'];
 export type ResidenceDossierFile = Pick<Row, 'id' | 'organization_id' | 'building_id' | 'customer_id' | 'contract_id'
   | 'bucket_id' | 'object_name' | 'file_name' | 'content_type' | 'size_bytes' | 'sort_order' | 'created_at'
   | 'lease_term_from' | 'lease_term_to' | 'lease_term_source'> & { kind: DossierKind };
-export class DossierFileError extends Error {}
+export class DossierFileError extends Error {
+  constructor(message: string, public objectName?: string) { super(message); }
+}
 
 const COLUMNS = 'id,kind,organization_id,building_id,customer_id,contract_id,bucket_id,object_name,file_name,content_type,size_bytes,sort_order,created_at,lease_term_from,lease_term_to,lease_term_source';
 // Cổng DVC chỉ nhận pdf, jpg, jpeg, tiff, png (validFileAttachAll của cổng) — WebP bị
@@ -64,14 +69,16 @@ export async function listCustomerDossierFiles(customerId: string): Promise<Resi
   const { data, error } = await supabase.from('residence_dossier_files').select(COLUMNS)
     .eq('customer_id', customerId).is('deleted_at', null).order('kind').order('sort_order').order('created_at');
   if (error) throw new DossierFileError('Không tải được ảnh hồ sơ tạm trú. Vui lòng thử lại.');
-  return (data ?? []) as ResidenceDossierFile[];
+  if (!Array.isArray(data)) throw new DossierFileError('Chưa tải đủ ảnh hồ sơ. Vui lòng tải lại.');
+  return data as ResidenceDossierFile[];
 }
 
 export async function listBuildingOwnershipFiles(buildingId: string): Promise<ResidenceDossierFile[]> {
   const { data, error } = await supabase.from('residence_dossier_files').select(COLUMNS)
     .eq('building_id', buildingId).eq('kind', 'OWNERSHIP').is('deleted_at', null).order('sort_order').order('created_at');
   if (error) throw new DossierFileError('Không tải được giấy tờ chỗ ở hợp pháp. Vui lòng thử lại.');
-  return (data ?? []) as ResidenceDossierFile[];
+  if (!Array.isArray(data)) throw new DossierFileError('Chưa tải đủ ảnh hồ sơ. Vui lòng tải lại.');
+  return data as ResidenceDossierFile[];
 }
 
 function contentTypeOf(objectName: string, original: string): string {
@@ -95,6 +102,7 @@ export async function uploadDossierFile(input: {
   const { data: building, error: buildingError } = await supabase.from('buildings')
     .select('organization_id,name').eq('id', buildingId).single();
   if (buildingError || !building?.organization_id) throw new DossierFileError('Không xác định được toà nhà của hồ sơ.');
+  const organizationId = building.organization_id;
   // Số thứ tự tiếp theo trong cùng nhóm: ảnh chủ quyền đếm theo toà, ảnh của
   // khách đếm theo khách. Đếm trước khi tải lên nên có thể trùng khi hai người
   // cùng bấm một lúc — tên chỉ để đọc, trùng không làm hỏng gì.
@@ -115,12 +123,15 @@ export async function uploadDossierFile(input: {
     customerName: input.customerName,
   });
   const path = `${user.id}/${kind.toLowerCase()}/${Date.now()}-${sanitizeStorageFileName(displayName)}`;
-  const stored = await uploadFile(RESIDENCE_DOCS_BUCKET, path, file, { imagePolicy: 'identity-original' });
+  return persistentFinancialWorkflow('residence-dossier-upload', {scope:'actor'}).run(`${buildingId}:${customerId ?? ''}:${kind}`, 'tải ảnh hồ sơ', async (progress) => {
+  let stored: string;
+  try { stored = await uploadFile(RESIDENCE_DOCS_BUCKET, path, file, { imagePolicy: 'identity-original' }); }
+  catch (error) { throw new FinancialWorkflowError('Chưa xác nhận được kết quả tải ảnh. Giữ đường dẫn tệp và đối chiếu trước khi tải lại.', 'unknown', [{id:path,label:'Tệp cần đối chiếu'}], error); }
   const objectName = parseStorageRef(stored)?.path ?? path;
   const { data, error } = await supabase.from('residence_dossier_files').insert({
     kind,
     building_id: buildingId,
-    organization_id: building.organization_id,
+    organization_id: organizationId,
     customer_id: kind === 'OWNERSHIP' ? null : customerId ?? null,
     contract_id: contractId ?? null,
     bucket_id: RESIDENCE_DOCS_BUCKET,
@@ -131,12 +142,23 @@ export async function uploadDossierFile(input: {
     sort_order: Date.now() % 1_000_000_000,
     created_by: user.id,
   }).select(COLUMNS).single();
-  if (error || !data) {
-    throw new DossierFileError(error?.code === '42501'
-      ? 'Bạn không có quyền lưu ảnh hồ sơ tạm trú.'
-      : 'Ảnh đã tải lên nhưng chưa lưu được vào hồ sơ. Vui lòng thử lại.');
+  if (error && isConfirmedFinancialRejection(error)) {
+    try { await deleteFile(RESIDENCE_DOCS_BUCKET, objectName); }
+    catch (cleanupError) {
+      throw new FinancialWorkflowError('Ảnh đã tải lên nhưng chưa lưu được vào hồ sơ; chưa xác nhận dọn tệp. Đối chiếu đường dẫn trước khi tải lại.', 'partial', [{id:objectName,label:'Tệp cần đối chiếu'}], cleanupError);
+    }
+    throw new FinancialWorkflowError(error.code === '42501'
+      ? 'Bạn không có quyền lưu ảnh hồ sơ tạm trú. Ảnh vừa tải đã được dọn.'
+      : 'Chưa lưu được ảnh vào hồ sơ. Ảnh vừa tải đã được dọn; bạn có thể thử lại.', 'failure', [], error);
   }
+  if (error || !data?.id || data.object_name !== objectName || data.bucket_id !== RESIDENCE_DOCS_BUCKET) {
+    throw new FinancialWorkflowError('Ảnh đã tải lên; chưa xác nhận dòng hồ sơ. Giữ tệp để đối chiếu trước khi tải lại.', 'partial', [
+      {id:objectName,label:'Tệp đã tải lên'}, ...(data?.id ? [{id:data.id,label:'Ảnh hồ sơ cần đối chiếu'}] : []),
+    ], error);
+  }
+  progress.completed.push({id:data.id,label:'Ảnh hồ sơ đã lưu'});
   return data as ResidenceDossierFile;
+  });
 }
 
 /** Ảnh CT01/LEASE ưu tiên đúng hợp đồng đang chọn; không có thì lấy mọi ảnh của khách; cộng ảnh chỗ ở hợp pháp của toà. */
@@ -167,20 +189,22 @@ function ngayIso(ddmmyyyy: string): string {
 export async function luuHanHopDong(
   id: string, from: string, to: string, nguon: 'ocr' | 'manual' = 'ocr',
 ): Promise<void> {
-  const { error } = await supabase.from('residence_dossier_files')
+  return persistentFinancialWorkflow('residence-dossier-term', {scope:'actor'}).run(id, 'lưu hạn hợp đồng', async (progress) => {
+  const { data, error } = await supabase.from('residence_dossier_files')
     .update({ lease_term_from: ngayIso(from), lease_term_to: ngayIso(to), lease_term_source: nguon })
-    .eq('id', id);
-  if (error) {
-    throw new DossierFileError(error.code === '42501'
-      ? 'Bạn không có quyền sửa hạn hợp đồng của ảnh này.'
-      : 'Chưa lưu được hạn hợp đồng. Vui lòng thử lại.');
-  }
+    .eq('id', id).select('id').single();
+  if (error) throw error;
+  confirmedRecordId(data, 'lưu hạn hợp đồng', id);
+  progress.completed.push({id,label:'Ảnh hợp đồng đã cập nhật hạn'});
+  });
 }
 
 export async function removeDossierFile(id: string): Promise<void> {
-  const { error } = await supabase.from('residence_dossier_files')
-    .update({ deleted_at: new Date().toISOString() }).eq('id', id);
-  if (error) {
-    throw new DossierFileError(error.code === '42501' ? 'Bạn không có quyền xoá ảnh này.' : 'Chưa xoá được ảnh. Vui lòng thử lại.');
-  }
+  return persistentFinancialWorkflow('residence-dossier-remove', {scope:'actor'}).run(id, 'xoá ảnh hồ sơ', async (progress) => {
+  const { data, error } = await supabase.from('residence_dossier_files')
+    .update({ deleted_at: new Date().toISOString() }).eq('id', id).select('id').single();
+  if (error) throw error;
+  confirmedRecordId(data, 'xoá ảnh hồ sơ', id);
+  progress.completed.push({id,label:'Ảnh hồ sơ đã xoá'});
+  });
 }

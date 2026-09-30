@@ -51,7 +51,7 @@ beforeEach(() => {
 describe('báo cáo dùng chi tiết phiếu đầy đủ', () => {
   it('lỗi tải danh sách phải báo chưa đủ dữ liệu', async () => {
     mocks.transportError = true;
-    await expect(run()).rejects.toThrow('Không tải đủ dữ liệu báo cáo');
+    await expect(run()).rejects.toThrow('Network unavailable');
     expect(mocks.load).not.toHaveBeenCalled();
   });
   it('hiển thị đúng hạng mục và tên tòa khi quan hệ nhúng bị thiếu nhãn', async () => {

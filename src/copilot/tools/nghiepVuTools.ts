@@ -312,7 +312,7 @@ export const tyLeLapDay = dt({
       p_as_of_date: ngay,
       p_window_days: args.so_ngay_sap_trong,
     });
-    if (error) throw new Error(`Lỗi tải lấp đầy: ${error.message}`);
+    if (error) throw Object.assign(new Error('Chưa tải lấp đầy. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
     const rows = (data ?? []) as unknown as HangLapDay[];
     if (!rows.length) return `Không có dữ liệu lấp đầy tại ngày ${ngay}.`;
 
@@ -400,7 +400,7 @@ export const congNoTongQuan = dt({
       p_organization_id: orgId,
       ...(args.thang === undefined ? {} : { p_billing_month: args.thang }),
     });
-    if (error) throw new Error(`Lỗi tải thống kê hoá đơn: ${error.message}`);
+    if (error) throw Object.assign(new Error('Chưa tải thống kê hoá đơn. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
     const parsed = THONG_KE_HD_SCHEMA.safeParse(data);
     if (!parsed.success || data === null || typeof data !== 'object') {
       throw new Error('Dữ liệu thống kê hoá đơn không hợp lệ.');
@@ -447,7 +447,7 @@ export const cocDangGiu = dt({
   execute: async (_args, ctx) => {
     const orgId = chotToChuc(ctx, 'coc_dang_giu');
     const { data, error } = await supabase.rpc('copilot_deposit_summary_v1', { p_organization_id: orgId });
-    if (error) throw new Error(`Lỗi tải cọc: ${error.message}`);
+    if (error) throw Object.assign(new Error('Chưa tải cọc. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
     const rows = (data ?? []) as unknown as HangCoc[];
     if (!rows.length) return 'Không có dữ liệu cọc.';
     let giu = 0;
@@ -492,7 +492,7 @@ export const soQuy = dt({
       p_to: den,
       p_organization_id: orgId,
     });
-    if (error) throw new Error(`Lỗi tải sổ quỹ: ${error.message}`);
+    if (error) throw Object.assign(new Error('Chưa tải sổ quỹ. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
     if (!data) return `Không có dữ liệu sổ quỹ ${tu} → ${den}.`;
     return dinhDangSoQuy(data as unknown as BaoCaoSoQuy, tu, den);
   },
@@ -727,7 +727,7 @@ export const timHopDong = dt({
       p_status: args.trang_thai ? (MA_TRANG_THAI_HD[args.trang_thai] ?? null) : null,
       p_limit: args.so_luong,
     });
-    if (error) throw new Error(`Lỗi tìm hợp đồng: ${error.message}`);
+    if (error) throw Object.assign(new Error('Chưa tìm hợp đồng. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
     const rows = data?.hop_dong ?? [];
     if (!rows.length) {
       return tuKhoa
@@ -771,7 +771,7 @@ export const chiTietHopDong = dt({
       p_organization_id: orgId,
       p_contract_id: args.hop_dong_id,
     });
-    if (error) throw new Error(`Lỗi tải chi tiết hợp đồng: ${error.message}`);
+    if (error) throw Object.assign(new Error('Chưa tải chi tiết hợp đồng. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
     const hd = data?.tim_thay ? data.hop_dong : null;
     if (!hd) {
       // Server trả CÙNG một câu cho "không tồn tại" và "ngoài phạm vi của bạn".
@@ -849,7 +849,7 @@ export const timPhieuThuChi = dt({
       p_trang_thai: args.trang_thai ? (MA_TRANG_THAI_PHIEU[args.trang_thai] ?? null) : null,
       p_limit: args.so_luong,
     });
-    if (error) throw new Error(`Lỗi tìm phiếu thu chi: ${error.message}`);
+    if (error) throw Object.assign(new Error('Chưa tìm phiếu thu chi. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
     const rows = data?.phieu ?? [];
     if (!rows.length) return 'Không tìm thấy phiếu thu chi nào khớp điều kiện.\n[link: /income-expense]';
     const dong = rows.map((r) => {
@@ -891,7 +891,7 @@ export const hopChoDuyet = dt({
       p_organization_id: orgId,
       p_limit: args.so_luong,
     });
-    if (error) throw new Error(`Lỗi tải hộp chờ: ${error.message}`);
+    if (error) throw Object.assign(new Error('Chưa tải hộp chờ. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
     const rows = data?.hop_cho ?? [];
     if (!rows.length) return CAU_HOP_CHO_RONG;
     const dong = rows.map((r) => {
@@ -1096,7 +1096,7 @@ export const timKhachHen = dt({
       p_trang_thai: args.trang_thai ? (MA_TRANG_THAI_LEAD[args.trang_thai] ?? null) : null,
       p_limit: args.so_luong,
     });
-    if (error) throw new Error(`Lỗi tìm khách hẹn: ${error.message}`);
+    if (error) throw Object.assign(new Error('Chưa tìm khách hẹn. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
     const rows = data?.khach_hen ?? [];
     if (!rows.length) {
       return tuKhoa
@@ -1150,7 +1150,7 @@ export const chiSoCongTo = dt({
       p_building_id: args.toa_nha_id ?? null,
       p_limit: args.so_luong,
     });
-    if (error) throw new Error(`Lỗi tải chỉ số công tơ: ${error.message}`);
+    if (error) throw Object.assign(new Error('Chưa tải chỉ số công tơ. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
     const rows = data?.chi_so ?? [];
     if (!rows.length) return `Kỳ ${args.ky} chưa có dòng chỉ số nào trong phạm vi bạn được xem.`;
     const tongHop = (data?.tong_hop ?? [])
@@ -1202,7 +1202,7 @@ export const timXe = dt({
       p_query: tuKhoa ? tuKhoa : null,
       p_limit: args.so_luong,
     });
-    if (error) throw new Error(`Lỗi tìm xe: ${error.message}`);
+    if (error) throw Object.assign(new Error('Chưa tìm xe. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
     const rows = data?.xe ?? [];
     if (!rows.length) {
       return tuKhoa ? `Không tìm thấy xe nào khớp "${tuKhoa}".` : 'Không có xe nào trong phạm vi bạn được xem.';
@@ -1242,7 +1242,7 @@ export const danhSachTaiSan = dt({
       p_query: tuKhoa ? tuKhoa : null,
       p_limit: args.so_luong,
     });
-    if (error) throw new Error(`Lỗi tải tài sản: ${error.message}`);
+    if (error) throw Object.assign(new Error('Chưa tải tài sản. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
     const rows = data?.tai_san ?? [];
     if (!rows.length) {
       return tuKhoa ? `Không tìm thấy tài sản nào khớp "${tuKhoa}".` : 'Không có tài sản nào trong phạm vi bạn được xem.';
@@ -1285,7 +1285,7 @@ export const danhSachDichVu = dt({
       p_query: tuKhoa ? tuKhoa : null,
       p_limit: args.so_luong,
     });
-    if (error) throw new Error(`Lỗi tải dịch vụ: ${error.message}`);
+    if (error) throw Object.assign(new Error('Chưa tải dịch vụ. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
     const rows = data?.dich_vu ?? [];
     if (!rows.length) {
       return tuKhoa ? `Không tìm thấy dịch vụ nào khớp "${tuKhoa}".` : 'Không có dịch vụ nào trong phạm vi bạn được xem.';
@@ -1332,7 +1332,7 @@ export const congViec = dt({
       p_trang_thai: args.trang_thai ? (MA_TRANG_THAI_VIEC[args.trang_thai] ?? null) : null,
       p_limit: args.so_luong,
     });
-    if (error) throw new Error(`Lỗi tải công việc: ${error.message}`);
+    if (error) throw Object.assign(new Error('Chưa tải công việc. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
     const rows = data?.cong_viec ?? [];
     if (!rows.length) return 'Không có công việc nào khớp điều kiện.';
     const homNay = todayISO();
@@ -1377,7 +1377,7 @@ export const tonKhoVatTu = dt({
       p_query: tuKhoa ? tuKhoa : null,
       p_limit: args.so_luong,
     });
-    if (error) throw new Error(`Lỗi tải tồn kho vật tư: ${error.message}`);
+    if (error) throw Object.assign(new Error('Chưa tải tồn kho vật tư. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
     const rows = data?.vat_tu ?? [];
     if (!rows.length) {
       return tuKhoa ? `Không tìm thấy vật tư nào khớp "${tuKhoa}".` : 'Kho vật tư đang trống.';
@@ -1699,7 +1699,7 @@ export const baoCaoPhongTrong = dt({
       p_building_id: args.toa_nha_id ?? null,
       p_limit: args.so_luong,
     });
-    if (error) throw new Error(`Lỗi tải báo cáo phòng trống: ${error.message}`);
+    if (error) throw Object.assign(new Error('Chưa tải báo cáo phòng trống. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
     const rows = data?.phong ?? [];
     if (!rows.length) return 'Không có phòng nào đang trống trong phạm vi bạn được xem.';
     const th = data?.tong_hop;
@@ -1746,7 +1746,7 @@ export const baoCaoGiaHan = dt({
       p_den: khoang.den,
       p_limit: args.so_luong,
     });
-    if (error) throw new Error(`Lỗi tải báo cáo gia hạn: ${error.message}`);
+    if (error) throw Object.assign(new Error('Chưa tải báo cáo gia hạn. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
     const rows = data?.su_kien ?? [];
     const nhan = nhanKhoang(khoang.tu, khoang.den);
     if (!rows.length) return `Kỳ ${nhan}: không có hợp đồng nào gia hạn hay sang nhượng.`;
@@ -1795,7 +1795,7 @@ export const baoCaoThanhLy = dt({
       p_den: khoang.den,
       p_limit: args.so_luong,
     });
-    if (error) throw new Error(`Lỗi tải báo cáo thanh lý: ${error.message}`);
+    if (error) throw Object.assign(new Error('Chưa tải báo cáo thanh lý. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
     const rows = data?.ca ?? [];
     const nhan = nhanKhoang(khoang.tu, khoang.den);
     if (!rows.length) return `Kỳ ${nhan}: không có hợp đồng nào kết thúc.`;
@@ -1847,7 +1847,7 @@ export const baoCaoHopDongMoi = dt({
       p_den: khoang.den,
       p_limit: args.so_luong,
     });
-    if (error) throw new Error(`Lỗi tải báo cáo hợp đồng mới: ${error.message}`);
+    if (error) throw Object.assign(new Error('Chưa tải báo cáo hợp đồng mới. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
     const rows = data?.hop_dong ?? [];
     const nhan = nhanKhoang(khoang.tu, khoang.den);
     if (!rows.length) return `Kỳ ${nhan}: chưa ký hợp đồng mới nào.`;
@@ -1905,7 +1905,7 @@ export const baoCaoTyLeChiPhi = dt({
       p_building_id: args.toa_nha_id ?? null,
       p_limit: args.so_luong,
     });
-    if (error) throw new Error(`Lỗi tải tỉ lệ chi phí: ${error.message}`);
+    if (error) throw Object.assign(new Error('Chưa tải tỉ lệ chi phí. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
     const th = data?.tong_hop;
     const thang = data?.theo_thang ?? [];
     const hangMuc = data?.hang_muc ?? [];
@@ -1981,7 +1981,7 @@ export const baoCaoThuChiTheoNgay = dt({
       p_building_id: args.toa_nha_id ?? null,
       p_limit: args.so_luong,
     });
-    if (error) throw new Error(`Lỗi tải sổ quỹ theo ngày: ${error.message}`);
+    if (error) throw Object.assign(new Error('Chưa tải sổ quỹ theo ngày. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
     const rows = data?.theo_ngay ?? [];
     if (!rows.length) return `${tu} → ${den}: không có phát sinh nào trong sổ quỹ bạn được xem.`;
     const th = data?.tong_hop;
@@ -2046,7 +2046,7 @@ export const baoCaoDongTien = dt({
       p_building_id: args.toa_nha_id ?? null,
       p_limit: args.so_luong,
     });
-    if (error) throw new Error(`Lỗi tải dòng tiền: ${error.message}`);
+    if (error) throw Object.assign(new Error('Chưa tải dòng tiền. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
     const rows = data?.theo_thang ?? [];
     if (!rows.length) return `${tu} → ${den}: không có phát sinh nào trong sổ quỹ bạn được xem.`;
     const th = data?.tong_hop;
@@ -2102,7 +2102,7 @@ export const baoCaoLichThuTien = dt({
       p_so_ngay: args.so_ngay,
       p_limit: args.so_luong,
     });
-    if (error) throw new Error(`Lỗi tải lịch thu tiền: ${error.message}`);
+    if (error) throw Object.assign(new Error('Chưa tải lịch thu tiền. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
     const rows = data?.hoa_don ?? [];
     const soNgay = data?.so_ngay ?? args.so_ngay;
     if (!rows.length) return `Không có khoản nào phải thu trong ${soNgay} ngày tới.`;
@@ -2149,7 +2149,7 @@ export const baoCaoThuThua = dt({
       p_organization_id: orgId,
       p_limit: args.so_luong,
     });
-    if (error) throw new Error(`Lỗi tải báo cáo tiền thừa: ${error.message}`);
+    if (error) throw Object.assign(new Error('Chưa tải báo cáo tiền thừa. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
     const rows = data?.hoa_don ?? [];
     if (!rows.length) return 'Không có hoá đơn nào khách trả thừa.';
     const th = data?.tong_hop;
@@ -2194,7 +2194,7 @@ export const baoCaoDatCoc = dt({
       p_trang_thai: args.trang_thai ? (MA_TRANG_THAI_COC[args.trang_thai] ?? null) : null,
       p_limit: args.so_luong,
     });
-    if (error) throw new Error(`Lỗi tải báo cáo đặt cọc: ${error.message}`);
+    if (error) throw Object.assign(new Error('Chưa tải báo cáo đặt cọc. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
     const rows = data?.coc ?? [];
     if (!rows.length) return 'Không có phiếu đặt cọc giữ chỗ nào khớp điều kiện.';
     const th = data?.tong_hop;
@@ -2318,7 +2318,7 @@ export const bangLuongKy = dt({
       p_ky: args.ky ?? null,
       p_limit: args.so_luong,
     });
-    if (error) throw new Error(`Lỗi tải bảng lương: ${error.message}`);
+    if (error) throw Object.assign(new Error('Chưa tải bảng lương. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
     const ky = data?.ky ?? args.ky ?? '?';
     // Server tự nói phạm vi nó đã dùng. Thiếu câu này thì một dòng lương của
     // riêng người hỏi trông y hệt "cả công ty chỉ có một người".
@@ -2423,7 +2423,7 @@ export const loiNhuanCoDong = dt({
       p_ky: args.ky ?? null,
       p_limit: args.so_luong,
     });
-    if (error) throw new Error(`Lỗi tải lợi nhuận cổ đông: ${error.message}`);
+    if (error) throw Object.assign(new Error('Chưa tải lợi nhuận cổ đông. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
     const ky = data?.ky ?? args.ky ?? '?';
     // Server tự nói phạm vi nó đã dùng — cùng hợp đồng với bảng lương. Thiếu câu
     // này thì phần chia của riêng một cổ đông trông y hệt "cả công ty chỉ có một
@@ -2533,7 +2533,7 @@ export const hoiThoaiZalo = dt({
       p_query: args.tu_khoa?.trim() ? args.tu_khoa.trim() : null,
       p_limit: args.so_luong,
     });
-    if (error) throw new Error(`Lỗi tải hội thoại Zalo: ${error.message}`);
+    if (error) throw Object.assign(new Error('Chưa tải hội thoại Zalo. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
     const rows = data?.hoi_thoai ?? [];
     if (!rows.length) return 'Không có hội thoại Zalo nào khớp điều kiện.';
     const th = data?.tong_hop;
@@ -2630,7 +2630,7 @@ export const trangThaiMang = dt({
       p_building_id: args.toa_nha_id ?? null,
       p_limit: args.so_luong,
     });
-    if (error) throw new Error(`Lỗi tải trạng thái mạng: ${error.message}`);
+    if (error) throw Object.assign(new Error('Chưa tải trạng thái mạng. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
     const rows = data?.toa_nha ?? [];
     if (!rows.length) return 'Không có toà nào có dữ liệu mạng trong phạm vi của bạn.';
     const th = data?.tong_hop;
@@ -2699,7 +2699,7 @@ const baoCaoKhuyenMai = dt({
     }, GoiBaoCaoBoSung>('copilot_report_promotions_v1', {
       p_organization_id: org, p_tu: k.tu, p_den: k.den, p_building_id: args.toa_nha_id ?? null, p_limit: args.so_luong,
     });
-    if (error) throw new Error(`Lỗi tải báo cáo khuyến mại: ${error.message}`);
+    if (error) throw Object.assign(new Error('Chưa tải báo cáo khuyến mại. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
     const rows = data?.khuyen_mai ?? [];
     const th = data?.tong_hop;
     const text = rows.length ? [
@@ -2725,7 +2725,7 @@ const baoCaoBanGiao = dt({
     }, GoiBaoCaoBoSung>('copilot_report_handover_v1', {
       p_organization_id: org, p_tu: k.tu, p_den: k.den, p_limit: args.so_luong,
     });
-    if (error) throw new Error(`Lỗi tải báo cáo bàn giao: ${error.message}`);
+    if (error) throw Object.assign(new Error('Chưa tải báo cáo bàn giao. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
     const rows = data?.so_quy ?? [];
     const th = data?.tong_hop;
     const text = rows.length ? [
@@ -2753,7 +2753,7 @@ const baoCaoChuKyThu = dt({
     }, GoiBaoCaoBoSung>('copilot_report_collection_cycle_v1', {
       p_organization_id: org, p_tu: k.tu, p_den: k.den, p_limit: args.so_luong,
     });
-    if (error) throw new Error(`Lỗi tải báo cáo chu kỳ thu: ${error.message}`);
+    if (error) throw Object.assign(new Error('Chưa tải báo cáo chu kỳ thu. Dữ liệu của yêu cầu này chưa tải được.'), { cause: error });
     const rows = data?.toa_nha ?? [];
     const th = data?.tong_hop;
     const text = rows.length || data?.moc_ban_giao?.length ? [

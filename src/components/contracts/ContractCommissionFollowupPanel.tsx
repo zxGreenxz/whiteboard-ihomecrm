@@ -1,3 +1,4 @@
+import {friendlyError} from '@/lib/friendlyError';
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useContractCommissionFollowups } from '@/hooks/useContractCommissionFollowup';
@@ -49,8 +50,11 @@ export function CommissionFailureList({ query, scope, empty = false }: {
       } else if (!current.can_retry) {
         setLegacy({ contractId: current.contract_id, kind: current.kind });
       }
-    } catch {
-      if (generation.current === currentGeneration) setError('Chưa xác minh được kết quả tạo phiếu. Hãy tải lại trạng thái rồi thử lại.');
+    } catch (cause) {
+      if (generation.current === currentGeneration) {
+        const feedback=friendlyError(cause,'Chưa xác minh được kết quả tạo phiếu',{operation:'tạo phiếu hoa hồng',financial:true});
+        setError(`${feedback.title}. ${feedback.description}`);
+      }
     } finally {
       if (generation.current === currentGeneration) setBusy(false);
     }

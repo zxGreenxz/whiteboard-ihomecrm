@@ -1,3 +1,4 @@
+import { QueryRegion } from '@/components/errors/QueryRegion';
 // =============================================
 // ManagePanel — cột quản lý Thu tiền trên DESKTOP (75% trái).
 // CSS ẩn dưới 1024px (.tt-manage) — mobile vẫn chỉ thấy khung thu tiền.
@@ -57,8 +58,10 @@ export function ManagePanel({
   const [tSel, setTSel] = useState<TimeSel>('all');
   const [day, setDay] = useState(todayISO());
 
-  const { invoices, isLoading } = useCollectionReport({ billing_month: billingMonth });
-  const { data: handoverList = [], myId } = useCashHandoverList();
+  const reportQuery = useCollectionReport({ billing_month: billingMonth });
+  const { invoices, isLoading } = reportQuery;
+  const handoverQuery = useCashHandoverList();
+  const { data: handoverList = [], myId } = handoverQuery;
 
   // Phạm vi thời gian — cùng ngữ nghĩa với CollectionReport trong khung mobile.
   const scopeDay = tSel === 'today' ? todayISO() : day;
@@ -123,6 +126,7 @@ export function ManagePanel({
 
   return (
     <div className="tt-manage">
+      <QueryRegion label="báo cáo thu tiền và bàn giao" queries={[reportQuery, handoverQuery]}>
       <div className="tm-head">
         <button type="button" className="tm-back" title="Quay lại" onClick={onBack}>
           <ArrowLeft />
@@ -365,6 +369,7 @@ export function ManagePanel({
           </div>
         </div>
       )}
+      </QueryRegion>
     </div>
   );
 }

@@ -35,6 +35,8 @@ import { planCollect, type CollectMethod, type CollectPlanLine } from '@/lib/col
 import { remainingOf, todayISO } from '@/lib/collect';
 import { captureGpsAndRecord } from '@/lib/v5PaymentGps';
 import type { InvoiceWithRelations } from '@/types/invoice';
+import { QuickCollectInputError } from '@/lib/quickCollectFeedback';
+import { friendlyError } from '@/lib/friendlyError';
 
 export interface QuickCollectArgs {
   invoice: InvoiceWithRelations;
@@ -86,10 +88,8 @@ export interface ReceivingBooksState {
 const KHONG_SO: ReceivingBooksByMethod = { TM: [], TK: [], TT: [] };
 
 const loiDoc = (error: unknown): string => {
-  const msg = (error as { message?: unknown } | null)?.message;
-  return typeof msg === 'string' && msg.trim()
-    ? msg.replace(/^\[[A-Z_]+\]\s*/, '')
-    : 'Không tải được danh sách sổ nhận tiền.';
+  const feedback = friendlyError(error,'Chưa tải được danh sách sổ nhận tiền',{operation:'xem sổ nhận tiền'});
+  return feedback.recovery === 'sign-in' || feedback.recovery === 'contact-admin' ? `${feedback.title}. ${feedback.description}` : 'Chưa tải được danh sách sổ nhận tiền. Tải lại danh sách trước khi thu tiền.';
 };
 
 /**
@@ -99,10 +99,11 @@ const loiDoc = (error: unknown): string => {
 export const useQuickCollect = (opts?: { invoice?: InvoiceWithRelations | null }) => {
   const invoice = opts?.invoice ?? null;
   const enabled = !!invoice;
-  const { data: accounts = [] } = useAccounts({ enabled });
+  const accountQuery = useAccounts({ enabled });
+  const { data: accounts = [] } = accountQuery;
   const { data: currentUser } = useAuth();
   const { selectedOrganizationId } = useOrganization();
-  const bulkMutation = useBulkRecordPayment();
+  const bulkMutation = useBulkRecordPayment({silentFeedback:true});
 
   // Tổ chức của CHÍNH hoá đơn (máy chủ từ chối toà của tổ chức khác); chỉ rơi về
   // tổ chức đang chọn khi truy vấn hoá đơn không kèm cột này.
@@ -112,8 +113,8 @@ export const useQuickCollect = (opts?: { invoice?: InvoiceWithRelations | null }
   const receiving: ReceivingBooksState = useMemo(() => {
     const data = receivingQuery.data;
     return {
-      loading: enabled && !data && !receivingQuery.isError,
-      error: receivingQuery.isError
+      loading: enabled && ((!data && !receivingQuery.isError) || accountQuery.isLoading),
+      error: accountQuery.isError ? 'Chưa tải được sổ quỹ để kiểm tra tiền thối và làm tròn. Tải lại trước khi thu tiền.' : receivingQuery.isError
         ? loiDoc(receivingQuery.error)
         : enabled && !organizationId
           ? 'Chưa xác định được công ty của hoá đơn — chọn công ty rồi mở lại.'
@@ -126,7 +127,7 @@ export const useQuickCollect = (opts?: { invoice?: InvoiceWithRelations | null }
           }
         : KHONG_SO,
     };
-  }, [receivingQuery.data, receivingQuery.isError, receivingQuery.error, enabled, organizationId]);
+  }, [receivingQuery.data, receivingQuery.isError, receivingQuery.error, enabled, organizationId, accountQuery.isError, accountQuery.isLoading]);
 
   const virtualAccounts = useMemo(
     () => accounts.filter((account) => account.is_virtual === true),
@@ -174,7 +175,7 @@ export const useQuickCollect = (opts?: { invoice?: InvoiceWithRelations | null }
     // Danh sách sổ đọc theo toà của hoá đơn đang mở; hoá đơn khác thì không dám
     // đoán sổ.
     if (!invoice || target.id !== invoice.id) {
-      throw new Error('Hoá đơn vừa đổi — đóng rồi mở lại để thu.');
+      throw new QuickCollectInputError('Hoá đơn vừa đổi. Tải lại hóa đơn để kiểm tra trước khi thu tiền.');
     }
     const remaining = remainingOf(target);
     const isMulti = !!(lines && lines.length);
@@ -195,7 +196,7 @@ export const useQuickCollect = (opts?: { invoice?: InvoiceWithRelations | null }
     // strictNullChecks:false, và ở chế độ đó tsc KHÔNG phân nhánh được union
     // theo truthiness của discriminant boolean — `planned.error` sẽ báo TS2339.
     // So sánh tường minh với `false` thì narrowing chạy đúng.
-    if (planned.ok === false) throw new Error(planned.error);
+    if (planned.ok === false) throw new QuickCollectInputError(planned.error);
     const { amountTm, amountTk, amountTt, change, keepAsCredit: credit, rounding } = planned.plan;
 
     // Sổ nhận riêng từng hình thức có tiền — chỉ trong danh sách máy chủ cho phép.
@@ -207,7 +208,7 @@ export const useQuickCollect = (opts?: { invoice?: InvoiceWithRelations | null }
     ] as [CollectMethod, number][]) {
       if (amt <= 0) continue;
       const blocked = receivingBlockFor(m);
-      if (blocked) throw new Error(blocked);
+      if (blocked) throw new QuickCollectInputError(blocked);
       const allowed = receiving.books[m];
       const picked = m === 'TM' ? undefined : accountOverrides?.[m]?.trim();
       accountsMap[m] = picked && allowed.some((b) => b.id === picked) ? picked : allowed[0].id;
@@ -219,14 +220,14 @@ export const useQuickCollect = (opts?: { invoice?: InvoiceWithRelations | null }
     if (change > 0 && !credit) {
       chgAccId = changeAccountId(target);
       if (!chgAccId) {
-        throw new Error(
+        throw new QuickCollectInputError(
           'Chưa có sổ "…Thối" để ghi nhận tiền thối. Vào Cài đặt → Sổ quỹ tạo sổ tên kết thúc "Thối", hoặc tích "Nợ khách".',
         );
       }
     }
     const invoiceRoundingAccountId = roundingAccountIdFor(target);
     if (rounding > 0 && !invoiceRoundingAccountId) {
-      throw new Error(
+      throw new QuickCollectInputError(
         'Chưa có sổ ảo "Làm tròn tiền thiếu". Vào Cài đặt → Sổ quỹ để tạo/cấu hình trước khi làm tròn.',
       );
     }
@@ -264,6 +265,7 @@ export const useQuickCollect = (opts?: { invoice?: InvoiceWithRelations | null }
     collect,
     /** Sổ được nhận theo hình thức của hoá đơn đang mở + trạng thái nạp. */
     receiving,
+    reloadReceiving: () => Promise.allSettled([receivingQuery.refetch(), accountQuery.refetch()]),
     /** Câu chặn thu theo hình thức (null = thu được). */
     receivingBlockFor,
     /** Tên sổ thối của user cho 1 HĐ (org-scoped, hiển thị trong form); '' nếu chưa có. */

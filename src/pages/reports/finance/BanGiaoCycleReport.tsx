@@ -1,3 +1,4 @@
+import { QueryRegion } from "@/components/errors/QueryRegion";
 import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 // =============================================
 // Báo cáo "Chu kỳ Thu → Bàn giao" theo tòa quản lý.
@@ -40,7 +41,8 @@ const fmtDT = (d?: string | null) => {
 
 export default function BanGiaoCycleReport() {
   const { data: currentUser } = useAuth();
-  const { data: staff = [] } = useStaffUsers();
+  const staffUsersQuery = useStaffUsers();
+  const { data: staff = [] } = staffUsersQuery;
 
   const [managerId, setManagerId] = usePersistedState('flt:rpt-ban-giao-cycle:managerId', ''); // '' = self (chính mình)
   const [dateRange, setDateRange] = usePersistedDateRange('flt:rpt-ban-giao-cycle:dateRange', {
@@ -51,7 +53,8 @@ export default function BanGiaoCycleReport() {
   const to = dateRange?.to ? toDate(dateRange.to) : '';
 
   useCopilotPageContext('reports.finance.collection', { manager_id: managerId || 'self', from, to });
-  const { data, isLoading } = useCollectionCycleReport(managerId, from, to);
+  const collectionCycleReportQuery = useCollectionCycleReport(managerId, from, to);
+  const { data, isLoading } = collectionCycleReportQuery;
 
   const managerOptions = useMemo(
     () => [
@@ -113,6 +116,7 @@ export default function BanGiaoCycleReport() {
           )}
         </div>
 
+        <QueryRegion label="chu kỳ thu và bàn giao" queries={[collectionCycleReportQuery, staffUsersQuery]}>
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
           {stat('Đã thu (kỳ)', s?.collected_period, 'text-emerald-700')}
           {stat('Đã bàn giao (kỳ)', s?.handed_over_period, 'text-blue-700')}
@@ -211,6 +215,7 @@ export default function BanGiaoCycleReport() {
             </Table>
           </CardContent>
         </Card>
+      </QueryRegion>
       </div>
     </MainLayout>
   );

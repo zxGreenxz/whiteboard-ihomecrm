@@ -41,6 +41,7 @@ import {
 } from '@/hooks/useMaterialCategories';
 import type { Material, MaterialCategory } from '@/types/material';
 import { usePersistedState } from '@/hooks/usePersistedState';
+import { QueryRegion } from '@/components/errors/QueryRegion';
 
 const ALL = '__all__';
 
@@ -59,8 +60,10 @@ export default function MaterialsListContent() {
   );
 
   useCopilotPageContext('materials.list', { search: filters.search, category_id: filters.categoryId, low_stock: filters.onlyLowStock });
-  const { data: materials = [], isLoading } = useMaterials(filters);
-  const { data: categories = [] } = useMaterialCategories();
+  const materialsQuery = useMaterials(filters);
+  const categoriesQuery = useMaterialCategories();
+  const { data: materials = [], isLoading } = materialsQuery;
+  const { data: categories = [] } = categoriesQuery;
   const softDelete = useSoftDeleteMaterial();
   const deleteCat = useDeleteMaterialCategory();
 
@@ -79,6 +82,7 @@ export default function MaterialsListContent() {
   );
 
   return (
+    <QueryRegion label="danh sách vật tư và danh mục" queries={[materialsQuery, categoriesQuery]}>
     <div className="space-y-4">
       <div className="flex flex-wrap gap-2 justify-end">
         <Button
@@ -341,5 +345,6 @@ export default function MaterialsListContent() {
         </AlertDialogContent>
       </AlertDialog>
     </div>
+    </QueryRegion>
   );
 }

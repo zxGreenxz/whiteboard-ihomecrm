@@ -1,3 +1,4 @@
+import { QueryRegion } from '@/components/errors/QueryRegion';
 import { useState, useMemo } from "react";
 import MainLayout from "@/components/layout/MainLayout";
 import {
@@ -64,7 +65,8 @@ interface TemplateListProps {
 
 function TemplateList({ templateType, onEdit, onDelete }: TemplateListProps) {
   const [searchTerm, setSearchTerm] = useState("");
-  const { data: templates, isLoading } = useDocumentTemplatesByType(templateType);
+  const templatesQuery = useDocumentTemplatesByType(templateType);
+  const { data: templates, isLoading } = templatesQuery;
   const updateMutation = useUpdateDocumentTemplate();
   const downloadMutation = useDownloadTemplate();
   const viewMutation = useViewTemplate();
@@ -111,7 +113,7 @@ function TemplateList({ templateType, onEdit, onDelete }: TemplateListProps) {
   }
 
   return (
-    <div className="space-y-4">
+    <QueryRegion label="Danh sách mẫu tài liệu" queries={[templatesQuery]}><div className="space-y-4">
       {/* Search */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -243,7 +245,7 @@ function TemplateList({ templateType, onEdit, onDelete }: TemplateListProps) {
           )}
         </CardContent>
       </Card>
-    </div>
+    </div></QueryRegion>
   );
 }
 

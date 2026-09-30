@@ -1,0 +1,11 @@
+import {beforeEach,expect,it,vi} from 'vitest';
+const h=vi.hoisted(()=>({data:[] as unknown,error:null as unknown,options:null as unknown}));
+vi.mock('@tanstack/react-query',()=>({useQuery:(options:unknown)=>{h.options=options;return options;}}));
+vi.mock('@/integrations/supabase/client',()=>({supabase:{from:()=>{const q={select:()=>q,eq:()=>q,order:async()=>({data:h.data,error:h.error})};return q;}}}));
+import {useCustomerDetailContracts} from '../useCustomerDetailContracts';
+const useReadContracts=()=>{useCustomerDetailContracts('c');return (h.options as {queryFn:()=>Promise<unknown>}).queryFn();};
+const link=(deleted_at:string|null=null)=>({id:'link',is_representative:true,notes:null,contract:{id:'ct',contract_number:'HD1',status:'ACTIVE',start_date:'2026-10-01',end_date:'2027-10-01',rent_price:3000000,deleted_at,room:null}});
+beforeEach(()=>{h.data=[];h.error=null;});
+it('keeps original permission/error codes at the read boundary',async()=>{h.error={code:'42501',message:'denied'};await expect(useReadContracts()).rejects.toBe(h.error);});
+it.each([null,undefined,[null],[{}],[{...link(),contract:{...link().contract,rent_price:null}}]])('does not turn an invalid linked-contract response into empty or valid data: %j',async data=>{h.data=data;await expect(useReadContracts()).rejects.toBeInstanceOf(TypeError);});
+it('keeps genuinely empty data as empty and excludes archived links',async()=>{await expect(useReadContracts()).resolves.toEqual([]);h.data=[link('2026-10-01'),link()];await expect(useReadContracts()).resolves.toEqual([link()]);});

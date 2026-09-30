@@ -1,3 +1,4 @@
+import { notifyActionError } from '@/lib/asyncActionFeedback';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { User, Session } from '@supabase/supabase-js';
@@ -162,13 +163,15 @@ export const useLogin = () => {
       navigate('/');
     },
     onError: (error: Error) => {
-      toast({
-        variant: 'destructive',
-        title: 'Có lỗi xảy ra khi đăng nhập',
-        description: error.message === 'Invalid login credentials'
-          ? 'Tên đăng nhập / Số điện thoại / Email hoặc mật khẩu không đúng'
-          : error.message,
-      });
+      if (error.message === 'Invalid login credentials') {
+        toast({
+          variant: 'destructive',
+          title: 'Có lỗi xảy ra khi đăng nhập',
+          description: 'Tên đăng nhập / Số điện thoại / Email hoặc mật khẩu không đúng',
+        });
+      } else {
+        notifyActionError(error, 'Chưa đăng nhập được');
+      }
     },
   });
 };
@@ -208,18 +211,14 @@ export const useLogout = () => {
       queryClient.clear();
 
       toast({
-        title: 'Đăng xuất thành công',
+        title: 'Đã đăng xuất khỏi thiết bị này',
         description: 'Hẹn gặp lại bạn!',
       });
 
       navigate('/login');
     },
     onError: (error: Error) => {
-      toast({
-        variant: 'destructive',
-        title: 'Có lỗi xảy ra khi đăng xuất',
-        description: error.message,
-      });
+      notifyActionError(error, 'Chưa đăng xuất được khỏi thiết bị này');
     },
   });
 };
@@ -242,16 +241,12 @@ export const useForgotPassword = () => {
     },
     onSuccess: () => {
       toast({
-        title: 'Email đã được gửi thành công',
-        description: 'Vui lòng kiểm tra email để đặt lại mật khẩu.',
+        title: 'Đã tiếp nhận yêu cầu đặt lại mật khẩu',
+        description: 'Nếu email hợp lệ, bạn sẽ nhận được hướng dẫn đặt lại mật khẩu.',
       });
     },
     onError: (error: Error) => {
-      toast({
-        variant: 'destructive',
-        title: 'Có lỗi xảy ra khi gửi email',
-        description: error.message,
-      });
+      notifyActionError(error, 'Chưa gửi được yêu cầu đặt lại mật khẩu');
     },
   });
 };
@@ -287,11 +282,7 @@ export const useResetPassword = () => {
       });
     },
     onError: (error: Error) => {
-      toast({
-        variant: 'destructive',
-        title: 'Có lỗi xảy ra khi đổi mật khẩu',
-        description: error.message,
-      });
+      notifyActionError(error, 'Chưa đổi được mật khẩu');
     },
   });
 };

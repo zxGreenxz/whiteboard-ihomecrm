@@ -1,10 +1,12 @@
+import { QueryRegion } from "@/components/errors/QueryRegion";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { useRevenueChart } from "@/hooks/useDashboard";
 import { formatCurrency } from "@/lib/utils";
 
 export function RevenueChart({ buildingId }: { buildingId?: string | null }) {
-  const { data: revenueData = [], isLoading } = useRevenueChart(12, buildingId);
+  const query = useRevenueChart(12, buildingId);
+  const { data: revenueData = [], isLoading } = query;
 
   if (isLoading) {
     return (
@@ -21,6 +23,7 @@ export function RevenueChart({ buildingId }: { buildingId?: string | null }) {
   }
 
   return (
+    <QueryRegion label="doanh thu 12 tháng" queries={[query]}>
     <Card>
       <CardHeader>
         <CardTitle>Doanh thu 12 tháng</CardTitle>
@@ -56,5 +59,6 @@ export function RevenueChart({ buildingId }: { buildingId?: string | null }) {
         </ResponsiveContainer>
       </CardContent>
     </Card>
+    </QueryRegion>
   );
 }

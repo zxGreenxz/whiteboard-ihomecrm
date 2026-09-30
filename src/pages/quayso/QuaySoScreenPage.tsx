@@ -1,3 +1,4 @@
+import { publicFailure } from '@/lib/publicFeedback';
 /**
  * MÀN QUAY công khai — /quayso/<slug>/quay
  *
@@ -63,6 +64,8 @@ export default function QuaySoScreenPage() {
   const [spinNonce, setSpinNonce] = useState(0);
   const [revealedFor, setRevealedFor] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [uncertain, setUncertain] = useState(false);
+  const pendingSpin = useRef(false);
   const [err, setErr] = useState<string | null>(null);
   const confettiRef = useRef<HTMLCanvasElement | null>(null);
   const fs = useFullscreen();
@@ -70,6 +73,7 @@ export default function QuaySoScreenPage() {
   const queryKey = ['quayso-screen', eventParam, slug] as const;
   const stateQuery = useQuery<LuckyPublicState>({
     queryKey,
+    meta: { errorDisplay: "inline", label: "trạng thái quay số" },
     enabled: Boolean(eventParam || slug),
     queryFn: () => fetchLuckyPublicState(eventParam, null, slug),
     refetchIntervalInBackground: true,
@@ -126,7 +130,7 @@ export default function QuaySoScreenPage() {
 
   /* ── Đường CŨ: một giải, một vé trúng ── */
   const handleSpin = async () => {
-    if (busy || !event) return;
+    if (pendingSpin.current || uncertain || !event) return;
     setErr(null);
     if (drawn) {
       setRevealedFor(null);
@@ -134,6 +138,7 @@ export default function QuaySoScreenPage() {
       return;
     }
     setBusy(true);
+    pendingSpin.current = true;
     try {
       const res = await luckyDraw(event.id);
       if (!res.ok) {
@@ -145,21 +150,25 @@ export default function QuaySoScreenPage() {
               : res.reason === 'forbidden'
                 ? 'Quay tay là quyền quản trị — mở /quayso/admin rồi bấm “Quay ngay”. '
                   + 'Muốn màn này tự quay thì đặt “Giờ mở thưởng” cho sự kiện.'
-                : 'Không quay được, thử lại.',
+                : 'Chưa xác nhận được kết quả quay. Tải lại trạng thái sự kiện trước khi tiếp tục.',
         );
         return;
       }
       queryClient.setQueryData(queryKey, res);
       setRevealedFor(null);
       setSpinNonce((n) => n + 1);
-    } catch {
-      setErr('Mạng chập chờn — thử lại.');
+    } catch (error) {
+      setErr(publicFailure(error, `xác nhận kết quả sự kiện ${event.title}`));
+      setUncertain(true);
+      const current = await stateQuery.refetch();
+      if (!current.error && current.data?.ok) setUncertain(false);
     } finally {
+      pendingSpin.current = false;
       setBusy(false);
     }
   };
 
-  const canSpin = !!event && (drawn || entrants.length > 0) && !busy;
+  const canSpin = !!event && (drawn || entrants.length > 0) && !busy && !uncertain;
   const tongGiai = nhieuLuot ? totalRoundsPrize(rounds) : (event?.prizeAmount ?? 0);
 
   return (
@@ -259,7 +268,11 @@ export default function QuaySoScreenPage() {
                 </button>
               )}
 
-              {err && <p className="qs-codeerr">{err}</p>}
+              {err && <p role="alert" className="qs-codeerr">{err}</p>}
+              {uncertain && <button type="button" disabled={stateQuery.isFetching} onClick={async () => {
+                const result = await stateQuery.refetch();
+                if (!result.error && result.data?.ok) { setUncertain(false); setErr(null); }
+              }}>Tải lại trạng thái trước khi quay tiếp</button>}
               {event && entrants.length === 0 && !drawn && (
                 <p className="qs-screen-hint">
                   Chưa vé nào điểm danh — bảo anh em vào link điểm danh trước.
@@ -269,7 +282,8 @@ export default function QuaySoScreenPage() {
           </>
         )}
 
-        {!event && !stateQuery.isLoading && (
+        {stateQuery.isError && <p role="alert" className="qs-codeerr">{publicFailure(stateQuery.error, "tải trạng thái sự kiện")}<button onClick={() => void stateQuery.refetch()}>Tải lại trạng thái</button></p>}
+        {!event && !stateQuery.isError && !stateQuery.isLoading && (
           <p className="qs-codeerr">Không tìm thấy sự kiện — kiểm tra lại link.</p>
         )}
       </div>

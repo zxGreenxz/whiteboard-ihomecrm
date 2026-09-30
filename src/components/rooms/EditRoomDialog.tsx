@@ -1,4 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from 'react';
+import { recordWriteBlocked, recordWriteMessage } from '@/lib/recordWriteOutcome';
+import { FinancialWorkflowError } from '@/lib/financialWorkflow';
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -32,6 +34,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useUpdateRoom } from "@/hooks/useRooms";
+import { applyFeedbackToForm, focusFirstError } from "@/lib/formErrors";
+import { friendlyError } from "@/lib/friendlyError";
 import { useBuildings } from "@/hooks/useBuildings";
 import { useFloors } from "@/hooks/useFloors";
 import { Badge } from "@/components/ui/badge";
@@ -68,10 +72,17 @@ export function EditRoomDialog({
   onOpenChange,
   room,
 }: EditRoomDialogProps) {
+  const [failure, setFailure] = useState<unknown>();
+  const [blocked, setBlocked] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const submitting = useRef(false);
+  const draftKey = useRef<string | null>(null);
   const updateRoom = useUpdateRoom();
-  const { data: buildings } = useBuildings();
+  const buildingsQuery = useBuildings();
+  const { data: buildings } = buildingsQuery;
   const [selectedBuildingId, setSelectedBuildingId] = useState(room.building_id);
-  const { data: floorsData } = useFloors(selectedBuildingId || undefined);
+  const floorsQuery = useFloors(selectedBuildingId || undefined);
+  const { data: floorsData } = floorsQuery;
   const floors = Array.isArray(floorsData) ? floorsData : [];
   const [amenitiesList, setAmenitiesList] = useState<string[]>(() => {
     if (Array.isArray(room.amenities)) return room.amenities as string[];
@@ -111,6 +122,9 @@ export function EditRoomDialog({
   // Update form when room changes
   useEffect(() => {
     if (room) {
+      if (draftKey.current === room.id && (form.formState.isDirty || failure)) return;
+      draftKey.current = room.id;
+      setFailure(undefined); setBlocked(false);
       form.reset({
         building_id: room.building_id,
         name: room.name,
@@ -131,6 +145,9 @@ export function EditRoomDialog({
   }, [room]);
 
   const onSubmit = async (data: RoomFormValues) => {
+    if (submitting.current || blocked || sourceBlocked) return;
+    submitting.current = true; setSaving(true); setFailure(undefined);
+    form.clearErrors('root.server');
     try {
       await updateRoom.mutateAsync({
         id: room.id,
@@ -148,14 +165,23 @@ export function EditRoomDialog({
           amenities: amenitiesList.length > 0 ? amenitiesList : null,
         },
       });
+      draftKey.current = null;
       onOpenChange(false);
     } catch (error) {
-      // Error is handled by the mutation
+      const feedback = friendlyError(error, 'Chưa lưu được căn hộ', { operation: 'cập nhật căn hộ', rules: [{ code: '23505', message: /idx_rooms_unique_name_per_building/, description: 'Tên căn hộ đã có trong tòa nhà này.', fieldErrors: { name: 'Tên căn hộ đã có trong tòa nhà này.' } }] });
+      setFailure(error); setBlocked(recordWriteBlocked(error));
+      if (error instanceof FinancialWorkflowError) form.setError('root.server', {type:'server',message:recordWriteMessage(error,'cập nhật căn hộ')});
+      else await applyFeedbackToForm(form, feedback);
+    } finally {
+      submitting.current = false; setSaving(false);
     }
   };
 
+  const sources = [buildingsQuery, floorsQuery];
+  const sourceBlocked = sources.some(query => query.isError || query.isLoading);
+  const isPending = saving || updateRoom.isPending || form.formState.isSubmitting;
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={value => { if (!submitting.current) onOpenChange(value); }}>
       <DialogContent className="sm:max-w-[600px] max-h-[90vh]">
         <DialogHeader>
           <DialogTitle>Chỉnh sửa Căn hộ</DialogTitle>
@@ -166,7 +192,10 @@ export function EditRoomDialog({
 
         <ScrollArea className="max-h-[calc(90vh-120px)] pr-4">
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <form onSubmit={form.handleSubmit(onSubmit, errors => { void focusFirstError(errors); })} className="space-y-4">
+              {form.formState.errors.root?.server?.message && <p role="alert" className="text-sm text-destructive">{form.formState.errors.root.server.message}</p>}
+              {sourceBlocked && <div role="alert" className="rounded border border-destructive p-3 text-sm">Chưa tải đủ tòa nhà hoặc tầng. Tải lại trước khi lưu căn hộ. <Button type="button" variant="outline" onClick={() => {for (const query of sources) void query.refetch();}}>Tải lại nguồn</Button></div>}
+              <fieldset disabled={isPending || blocked || sourceBlocked} className="space-y-4">
               {/* Basic Info */}
               <div className="space-y-4">
                 <h3 className="font-semibold text-sm">Thông tin cơ bản</h3>
@@ -443,6 +472,7 @@ export function EditRoomDialog({
                 )}
               </div>
 
+              </fieldset>
               <div className="flex justify-end gap-3 pt-4">
                 <Button
                   type="button"
@@ -451,7 +481,7 @@ export function EditRoomDialog({
                 >
                   Hủy
                 </Button>
-                <Button type="submit" disabled={updateRoom.isPending}>
+                <Button type="submit" disabled={isPending || blocked || sourceBlocked}>
                   {updateRoom.isPending ? "Đang cập nhật..." : "Cập nhật"}
                 </Button>
               </div>

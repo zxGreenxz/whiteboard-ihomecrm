@@ -1,3 +1,8 @@
+import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
+import {FinancialWorkflowError,workflowErrorMessage} from '@/lib/financialWorkflow';
+import {z} from 'zod';
+import {financialReadRows} from '@/lib/financialReadValidation';
+import { voucherFailureMessage } from "@/lib/voucherFeedback";
 // Đợt 4 — huỷ phiếu MỘT NHÁT ở chế độ linh hoạt.
 //
 // Hiệu ứng sổ cái giống hệt đường hai bước cũ (Hoàn tác rồi Huỷ) nhưng gộp vào
@@ -108,9 +113,12 @@ export const useFlexCancelEligibility = (ids: string[]) =>
       const { data, error } = await supabase.rpc("can_flex_cancel_v1", {
         p_ids: ids,
       });
-      if (error) throw new Error(error.message);
+      if (error) throw error;
       const map: Record<string, FlexCancelEligibility> = {};
-      for (const row of (data ?? []) as FlexCancelEligibility[]) map[row.id] = row;
+      for (const row of financialReadRows(data)) {
+        if(typeof row.id!=='string'||!row.id||typeof row.eligible!=='boolean'||(row.reason_code!==null&&!Object.prototype.hasOwnProperty.call(FLEX_CANCEL_BLOCK_TEXT,row.reason_code)))throw new TypeError('Chưa đọc được điều kiện huỷ nhanh của phiếu.');
+        map[row.id] = {...row,reason_code:row.reason_code as FlexCancelBlockCode|null};
+      }
       return map;
     },
   });
@@ -123,10 +131,11 @@ export interface FlexCancelInput {
 }
 
 export const useCancelVoucherFlex = () => {
+  const workflow=persistentFinancialWorkflow('voucher-lifecycle',{scope:'actor'});
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (input: FlexCancelInput) => {
+    mutationFn: async (input: FlexCancelInput) => workflow.run(input.voucherId,'huỷ phiếu',async progress=>{
       const { data, error } = await supabase.rpc(
         "cancel_income_expense_flex_v1",
         {
@@ -150,11 +159,14 @@ export const useCancelVoucherFlex = () => {
           queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
           queryClient.invalidateQueries({ queryKey: ["flex-cancel-eligibility"] });
         }
-        toast.error(periodBlockMessage(msg) ?? msg ?? "Không huỷ được phiếu");
+
         throw error;
       }
+      const receipt=data as {id?:unknown;changed?:unknown;mode?:unknown}|null;
+      if(receipt?.id!==input.voucherId || typeof receipt.changed!=='boolean' || (receipt.mode!==undefined && !['MANUAL','COLLECTION','FORFEIT_PAIR'].includes(String(receipt.mode))))throw new TypeError('Chưa xác nhận được kết quả huỷ của đúng phiếu.');
+      progress.completed.push({id:input.voucherId,label:`Đã huỷ phiếu ${input.voucherId}`});
       return data as { id: string; changed: boolean; cancellation_kind: string };
-    },
+    }),
     onSuccess: (data) => {
       for (const key of [
         ["income-expenses"],
@@ -173,16 +185,17 @@ export const useCancelVoucherFlex = () => {
         queryClient.invalidateQueries({ queryKey: key });
       }
       if (data?.changed === false) {
-        toast.success("Phiếu đã ở trạng thái Đã huỷ từ trước");
+        toast.info("Phiếu đã ở trạng thái Đã huỷ từ trước. Không có thay đổi mới.");
         return;
       }
       toast.success(
         data?.cancellation_kind === "CANCELLED_AFTER_POSTING"
-          ? "Phiếu đã được HUỶ — tiền đã trừ khỏi sổ quỹ"
+          ? "Đã huỷ phiếu. Số liệu sổ quỹ đã được cập nhật."
           : "Phiếu đã được HUỶ",
       );
     },
     onError: (error) => {
+      toast.error(error instanceof FinancialWorkflowError?workflowErrorMessage(error,"huỷ phiếu") : voucherFailureMessage(error,"huỷ phiếu"));
       console.error("Error flex-cancelling voucher:", error);
     },
   });
@@ -209,7 +222,7 @@ export const useVoucherCancellation = (voucherId: string | null | undefined) =>
         "get_voucher_cancellation_v1",
         { p_voucher: batBuoc(voucherId, "voucherId") },
       );
-      if (error) throw new Error(error.message);
+      if (error) throw error;
       return (data ?? null) as unknown as VoucherCancellation | null;
     },
   });
@@ -245,7 +258,10 @@ export const useVoucherChangeLog = (voucherId: string | null | undefined) =>
         "get_voucher_change_log_v1",
         { p_voucher: batBuoc(voucherId, "voucherId") },
       );
-      if (error) throw new Error(error.message);
-      return (data ?? []) as unknown as VoucherChangeLogEntry[];
+      if (error) throw error;
+      return z.array(z.object({
+        at:z.string(),actor_id:z.string().nullable(),actor_name:z.string().nullable(),scope:z.string(),op:z.string(),cols:z.array(z.string()).nullable(),
+        before:z.record(z.unknown()).nullable(),after:z.record(z.unknown()).nullable(),
+      })).parse(data) as VoucherChangeLogEntry[];
     },
   });

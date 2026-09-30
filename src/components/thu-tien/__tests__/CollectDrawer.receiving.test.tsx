@@ -12,6 +12,8 @@ const mocks = vi.hoisted(() => ({
   undo: vi.fn(),
   recent: vi.fn(),
   blockTm: null as string | null,
+  file: null as File | null,
+  upload: vi.fn(),
 }));
 
 vi.mock('@/hooks/useQuickCollect', () => ({
@@ -34,7 +36,7 @@ vi.mock('@/hooks/useUpdateInvoiceNote', () => ({ useUpdateInvoiceNote: () => ({ 
 vi.mock('@/hooks/useInvoices', () => ({ useInvoice: () => ({ data: undefined, isLoading: false, isError: false }) }));
 vi.mock('@/hooks/useMyPermissions', () => ({ useMyPermissions: () => ({ data: {} }) }));
 vi.mock('@/lib/permissionPages', () => ({ canUse: () => false }));
-vi.mock('@/lib/receiptUpload', () => ({ uploadReceiptToStorage: vi.fn() }));
+vi.mock('@/lib/receiptUpload', () => ({ uploadReceiptToStorage: mocks.upload }));
 vi.mock('@/lib/paymentRecordRpc', () => ({ deriveInvoiceDepositDue: () => 0 }));
 vi.mock('../InvoiceDetailCard', () => ({ InvoiceDetailCard: () => null }));
 vi.mock('../CollectKeypad', () => ({ CollectKeypad: () => <div>BÀN PHÍM</div> }));
@@ -55,7 +57,7 @@ vi.mock('../CollectPayForm', async () => {
             keepAsCredit: false,
             changeAmount: 0,
             paymentDate: '2026-09-25',
-            receiptFile: null,
+            receiptFile: mocks.file,
           },
         }), 0);
         return () => clearTimeout(t);
@@ -88,6 +90,8 @@ afterEach(cleanup);
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.blockTm = null;
+  mocks.file = null;
+  mocks.upload.mockReset();
   mocks.collect.mockResolvedValue({ ok: ['inv'], failures: [] });
   mocks.recent.mockResolvedValue([]);
 });
@@ -136,12 +140,32 @@ describe('CollectDrawer — thu trùng', () => {
     expect(mocks.collect).not.toHaveBeenCalled();
   });
 
-  it('không đọc được lịch sử thu: vẫn hỏi chứ không lặng lẽ bỏ qua', async () => {
-    mocks.recent.mockRejectedValue(new Error('mất mạng'));
+  it('không đọc được lịch sử thu: giữ form và dừng trước khoản thu', async () => {
+    mocks.recent.mockRejectedValue(new Error('SQL secret table'));
     render(<CollectDrawer {...props} />);
     fireEvent.click(await nutThu());
-    expect(await screen.findByText(/Không kiểm tra được các khoản thu gần đây.*mất mạng/)).toBeTruthy();
+    expect(await screen.findByText(/Chưa kiểm tra được các khoản thu gần đây/)).toBeTruthy();
+    expect(screen.queryByRole('button',{name:'Vẫn thu tiếp'})).toBeNull();
+    expect(document.body.textContent).not.toContain('SQL');
     expect(mocks.collect).not.toHaveBeenCalled();
+  });
+  it('upload chứng từ lỗi không được gọi thu tiền không ảnh',async()=>{
+    mocks.file=new File(['image'],'chung-tu.png',{type:'image/png'});
+    mocks.upload.mockRejectedValue({code:'42501',message:'RLS storage bucket'});
+    render(<CollectDrawer {...props}/>);
+    fireEvent.click(await nutThu());
+    expect(await screen.findByText(/Chưa tải được chứng từ chung-tu.png/)).toBeTruthy();
+    expect(mocks.collect).not.toHaveBeenCalled();
+    expect(document.body.textContent).not.toMatch(/RLS|bucket/);
+  });
+  it('keeps an uncertain returned failure visible and blocks another collection',async()=>{
+    mocks.collect.mockResolvedValue({ok:[],failures:[{invoice_id:'inv',message:'Chưa xác nhận được kết quả thu tiền.',outcomeUnknown:true}]});
+    const onClose=vi.fn();
+    render(<CollectDrawer {...props} onClose={onClose}/>);
+    fireEvent.click(await nutThu());
+    expect(await screen.findByText(/Chưa xác nhận được kết quả thu tiền/)).toBeTruthy();
+    expect((screen.getByRole('button',{name:/^Thu /}) as HTMLButtonElement).disabled).toBe(true);
+    expect(onClose).not.toHaveBeenCalled();
   });
 });
 
@@ -156,9 +180,15 @@ describe('CollectDrawer — hoàn tác phải có lý do', () => {
     render(<CollectDrawer {...props} invoice={paid} />);
     fireEvent.click(screen.getByRole('button', { name: 'Hoàn tác' }));
     const xacNhan = screen.getByRole('button', { name: 'Xác nhận hoàn tác' }) as HTMLButtonElement;
-    expect(xacNhan.disabled).toBe(true);
-    fireEvent.change(screen.getByRole('textbox', { name: 'Lý do hoàn tác' }), { target: { value: 'ngắn' } });
-    expect(xacNhan.disabled).toBe(true);
+    expect(xacNhan.disabled).toBe(false);
+    fireEvent.click(xacNhan);
+    const reason = screen.getByRole('textbox', { name: 'Lý do hoàn tác' });
+    expect(reason.getAttribute('aria-invalid')).toBe('true');
+    expect(document.activeElement).toBe(reason);
+    expect(mocks.undo).not.toHaveBeenCalled();
+    fireEvent.change(reason, { target: { value: 'ngắn' } });
+    fireEvent.click(xacNhan);
+    expect(screen.getByRole('alert').textContent).toContain('ít nhất 8 ký tự');
     fireEvent.change(screen.getByRole('textbox', { name: 'Lý do hoàn tác' }), { target: { value: '  Thu trùng với anh Hiển  ' } });
     expect(xacNhan.disabled).toBe(false);
     fireEvent.click(xacNhan);
@@ -181,4 +211,19 @@ describe('CollectDrawer — bàn phím tiền mặt', () => {
     render(<CollectDrawer {...props} mode="keypad" />);
     expect(screen.getByText('BÀN PHÍM')).toBeTruthy();
   });
+});
+
+it('giữ ngăn và hóa đơn hiện tại khi đang chờ ghi nhận khoản thu', async () => {
+  let finish!: (value: unknown) => void;
+  mocks.collect.mockReturnValue(new Promise(resolve => { finish = resolve; }));
+  const onClose = vi.fn(); const onNavigate = vi.fn();
+  const { container } = render(<CollectDrawer {...props} onClose={onClose} onNavigate={onNavigate} next={{...invoice,id:'next'}} />);
+  fireEvent.click(await nutThu());
+  await waitFor(() => expect(mocks.collect).toHaveBeenCalledTimes(1));
+  fireEvent.click(container.querySelector('.sheet-scrim')!);
+  fireEvent.click(container.querySelector('.is-nav:not(.prev)')!);
+  expect(onClose).not.toHaveBeenCalled();
+  expect(onNavigate).not.toHaveBeenCalled();
+  finish({ok:['inv'],failures:[]});
+  await waitFor(() => expect((container.querySelector('.is-nav:not(.prev)') as HTMLButtonElement).disabled).toBe(false));
 });

@@ -1,3 +1,5 @@
+import { useEffect, useRef, useState } from 'react';
+import { recordWriteBlocked, recordWriteMessage } from '@/lib/recordWriteOutcome';
 import { Button } from '@/components/ui/button';
 import {
   AlertDialog,
@@ -31,18 +33,26 @@ export default function DeleteVehicleDialog({
   onSuccess,
 }: DeleteVehicleDialogProps) {
   const deleteMutation = useDeleteVehicle();
+  const [failure,setFailure]=useState<unknown>(null);
+  const [blocked,setBlocked]=useState(false);
+  const busy=useRef(false);
+  useEffect(()=>{setFailure(null);setBlocked(false);},[vehicleId]);
 
   const handleDelete = () => {
+    if (busy.current || deleteMutation.isPending || blocked) return;
+    busy.current=true;setFailure(null);
     deleteMutation.mutate(vehicleId, {
       onSuccess: () => {
-        onOpenChange(false);
+        busy.current=false;onOpenChange(false);
         onSuccess?.();
       },
+      onError: (error) => {busy.current=false;setFailure(error);setBlocked(recordWriteBlocked(error));},
+      onSettled: () => {busy.current=false;},
     });
   };
 
   return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
+    <AlertDialog open={open} onOpenChange={value=>{if(!busy.current&&!deleteMutation.isPending)onOpenChange(value);}}>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Xác nhận xoá phương tiện</AlertDialogTitle>
@@ -58,10 +68,11 @@ export default function DeleteVehicleDialog({
             </div>
           </AlertDialogDescription>
         </AlertDialogHeader>
+        {Boolean(failure) && <p role="alert" className="text-sm text-destructive">{recordWriteMessage(failure,'xoá phương tiện')}</p>}
         <AlertDialogFooter>
           <Button
             variant="outline"
-            onClick={() => onOpenChange(false)}
+            onClick={() => {if(!busy.current)onOpenChange(false);}}
             disabled={deleteMutation.isPending}
           >
             Huỷ
@@ -69,7 +80,7 @@ export default function DeleteVehicleDialog({
           <Button
             variant="destructive"
             onClick={handleDelete}
-            disabled={deleteMutation.isPending}
+            disabled={deleteMutation.isPending || blocked}
           >
             {deleteMutation.isPending ? 'Đang xoá...' : 'Xoá'}
           </Button>

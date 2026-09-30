@@ -1,15 +1,17 @@
+import {useRef} from 'react';
+import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
+import {FinancialWorkflowError,workflowErrorMessage,type FinancialWorkflowGuard,type FinancialWorkflowProgress} from '@/lib/financialWorkflow';
+import { VoucherPartialError, voucherFailureMessage } from "@/lib/voucherFeedback";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { isIeLifecycleFallbackSignal } from "@/lib/canonicalFallback";
-import { periodBlockMessage } from "@/lib/cashbookClosing";
 import { todayISO } from '@/lib/collect';
 import { rpcNullable } from "@/lib/rpcNullable";
-import { approvalErrorMessage } from "@/lib/incomeExpenseRevision";
 import { approveCheckedVoucher } from "@/hooks/income-expenses/revisions";
 
 type RpcError = { code?: string | null; message?: string | null };
-type RpcResult = { error: RpcError | null };
+type RpcResult = { data?: unknown; error: RpcError | null };
 
 // GOTCHA: KHÔNG gán tách `supabase.rpc` ra biến (mất `this` → "reading 'rest'").
 // Luôn gọi qua member expression để giữ binding.
@@ -21,13 +23,6 @@ const callUnregisteredRpc = (
     n: string,
     a: Record<string, unknown>,
   ) => Promise<RpcResult>)(name, args);
-
-const errorMessage = (error: unknown, fallback: string) => {
-  if (typeof error === "object" && error !== null && "message" in error) {
-    return String((error as { message?: unknown }).message || fallback);
-  }
-  return fallback;
-};
 
 const isTerminationForfeitRpcUnavailable = (error: RpcError) => {
   if (error.code === "PGRST202") return true;
@@ -151,6 +146,26 @@ const trySetTerminationForfeitStatus = async (
   throw error;
 };
 
+const runVoucherLifecycle = async <T,>(workflow:FinancialWorkflowGuard,id:string,operation:string,task:(progress:FinancialWorkflowProgress)=>Promise<T>) => {
+  try{return await workflow.run(id,operation,task);}
+  catch(error){
+    if(error instanceof FinancialWorkflowError && error.completed.length){
+      const prior=error.cause instanceof VoucherPartialError?error.cause:undefined;
+      const ids=error.completed.map(step=>step.id);
+      throw new VoucherPartialError(prior?`${prior.message} Mã đã nhận: ${ids.join(', ')}.`:workflowErrorMessage(error,operation),ids,undefined,prior?.cause??error.cause);
+    }
+    throw error;
+  }
+};
+const completedVoucher=(progress:FinancialWorkflowProgress,id:string,label:string)=>{
+  if(!progress.completed.some(step=>step.id===id))progress.completed.push({id,label});
+};
+const requireCancelReceipt=(data:unknown,id:string)=>{
+  const row=data as {id?:unknown;changed?:unknown}|null;
+  if(row?.id!==id || typeof row.changed!=='boolean')throw new TypeError('Chưa xác nhận được trạng thái huỷ của đúng phiếu.');
+  return row.changed;
+};
+
 // Duyệt phiếu thu/chi (UNAPPROVED → APPROVED). Dùng khi đã thực thanh toán
 // phiếu nháp (vd phiếu chi hoa hồng tạo cùng hợp đồng).
 //
@@ -162,35 +177,32 @@ const trySetTerminationForfeitStatus = async (
 export type ApproveVoucherInput = { id: string; expectedApprovalVersion: number };
 
 export const useApproveVoucher = () => {
+  const workflow=useRef(persistentFinancialWorkflow('voucher-lifecycle',{scope:'actor'})).current;
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (input: ApproveVoucherInput) => {
-      try {
-        const result = await approveCheckedVoucher({
-          voucherId: input.id,
-          expectedApprovalVersion: input.expectedApprovalVersion,
-        });
-        return result.mode === "FORFEIT_PAIR";
-      } catch (error: unknown) {
-        toast.error(approvalErrorMessage(error));
-        throw error;
-      }
-    },
-    onSuccess: (isTerminationForfeit) => {
+    mutationFn: async (input: ApproveVoucherInput) => runVoucherLifecycle(workflow,input.id,'duyệt phiếu',async progress=>{
+      const result=await approveCheckedVoucher({voucherId:input.id,expectedApprovalVersion:input.expectedApprovalVersion});
+      if(result.id!==input.id || result.approved!==true || (result.mode!==undefined && !['VOUCHER','FORFEIT_PAIR'].includes(result.mode)))throw new TypeError('Chưa xác nhận được kết quả duyệt của đúng phiếu.');
+      completedVoucher(progress,input.id,`Đã duyệt phiếu ${input.id}`);
+      return result;
+    }),
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
       queryClient.invalidateQueries({ queryKey: ["income-expense-batches"] });
       queryClient.invalidateQueries({ queryKey: ["income-expense"] });
       queryClient.invalidateQueries({ queryKey: ["accounts-with-balance"] });
       queryClient.invalidateQueries({ queryKey: ["voucher-with-batch"] });
       queryClient.invalidateQueries({ queryKey: ["income-expense-revisions"] });
-      if (isTerminationForfeit) {
+      if (result.mode === "FORFEIT_PAIR") {
         invalidateTerminationForfeitQueries(queryClient);
       }
-      toast.success("Phiếu đã được duyệt");
+      if (result.already) toast.info("Phiếu đã được duyệt trước đó. Không có thay đổi mới.");
+      else toast.success("Đã duyệt phiếu. Hãy xem trạng thái thu/chi trên phiếu.");
     },
     onError: (error) => {
       console.error("Error approving voucher:", error);
+      toast.error(error instanceof FinancialWorkflowError?workflowErrorMessage(error,"duyệt phiếu") : voucherFailureMessage(error,"duyệt phiếu"));
     },
   });
 };
@@ -199,15 +211,13 @@ export const useApproveVoucher = () => {
 // (hoặc người tạo) — RPC unapprove_voucher tự kiểm quyền (user_id = auth.uid()
 // OR is_super_admin()). Dùng khi cần sửa lại phiếu đã ghi nhận.
 export const useUnapproveVoucher = () => {
+  const workflow=useRef(persistentFinancialWorkflow('voucher-lifecycle',{scope:'actor'})).current;
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (id: string) => {
-      try {
-        if (await trySetTerminationForfeitStatus(id, "UNAPPROVED")) return true;
-      } catch (error: unknown) {
-        toast.error(errorMessage(error, "Không thể huỷ duyệt phiếu"));
-        throw error;
+    mutationFn: async (id: string) => runVoucherLifecycle(workflow,id,'bỏ duyệt phiếu',async progress=>{
+      if (await trySetTerminationForfeitStatus(id, "UNAPPROVED")) {
+        await readStatusReceipt(id,'UNAPPROVED');completedVoucher(progress,id,`Đã bỏ duyệt phiếu ${id}`);return true;
       }
 
       // CAS (H3.2): server khoá dòng rồi so approval_version. Trang gọi hook
@@ -234,20 +244,12 @@ export const useUnapproveVoucher = () => {
       if (error) {
         // Phiếu canonical bị đóng băng vòng đời (Phương án A): không quay về
         // Nháp được — hướng dẫn Huỷ + Tạo bản sao thay vì lỗi kỹ thuật khó hiểu.
-        const message = error.message ?? "";
-        const frozen = message.includes("frozen");
-        const stale = message.includes("approval_version mismatch");
-        toast.error(
-          frozen
-            ? "Phiếu canonical không thể huỷ duyệt — hãy Huỷ phiếu rồi bấm Tạo bản sao"
-            : stale
-              ? "Phiếu vừa được người khác thay đổi — hãy tải lại trang rồi thử lại"
-              : message || "Không thể huỷ duyệt phiếu",
-        );
+
         throw error;
       }
+      await readStatusReceipt(id,'UNAPPROVED');completedVoucher(progress,id,`Đã bỏ duyệt phiếu ${id}`);
       return false;
-    },
+    }),
     onSuccess: (isTerminationForfeit) => {
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
       queryClient.invalidateQueries({ queryKey: ["income-expense-batches"] });
@@ -261,6 +263,7 @@ export const useUnapproveVoucher = () => {
     },
     onError: (error) => {
       console.error("Error unapproving voucher:", error);
+      toast.error(error instanceof FinancialWorkflowError?workflowErrorMessage(error,"bỏ duyệt phiếu") : voucherFailureMessage(error,"bỏ duyệt phiếu"));
     },
   });
 };
@@ -269,6 +272,7 @@ export const useUnapproveVoucher = () => {
 // từ thanh toán hoá đơn (có payment_id), cũng xoá payment row tương ứng để
 // trigger recompute invoice paid_amount/status (qua trigger DB).
 export const useCancelIncomeExpense = () => {
+  const workflow=useRef(persistentFinancialWorkflow('voucher-lifecycle',{scope:'actor'})).current;
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -277,11 +281,10 @@ export const useCancelIncomeExpense = () => {
     mutationFn: async (input: string | { id: string; reason?: string | null }) => {
       const id = typeof input === "string" ? input : input.id;
       const reason = typeof input === "string" ? null : (input.reason ?? null);
-      try {
-        if (await trySetTerminationForfeitStatus(id, "CANCELLED")) return true;
-      } catch (error: unknown) {
-        toast.error(errorMessage(error, "Không thể huỷ phiếu thu/chi"));
-        throw error;
+      return runVoucherLifecycle(workflow,id,'huỷ phiếu',async progress=>{
+      let reversed=false;
+      if (await trySetTerminationForfeitStatus(id, "CANCELLED")) {
+        await readStatusReceipt(id,'CANCELLED');completedVoucher(progress,id,`Đã huỷ phiếu ${id}`);return true;
       }
 
       // Đợt 4 — NHÁNH LINH HOẠT ĐỨNG TRƯỚC. Một transaction: đảo bút toán +
@@ -300,12 +303,14 @@ export const useCancelIncomeExpense = () => {
           p_expected_approval_version: undefined,
           p_expected_posting_version: undefined,
         });
-        if (!flex.error) return false;
+        if (!flex.error) {
+          const changed=requireCancelReceipt(flex.data,id);completedVoucher(progress,id,`Đã huỷ phiếu ${id}`);return changed?false:"unchanged" as const;
+        }
         const flexMsg = flex.error.message ?? "";
         const canFallBack =
           flexMsg.includes("[STRICT_MODE]") || flexMsg.includes("[NOT_MANUAL]");
         if (!canFallBack) {
-          toast.error(periodBlockMessage(flexMsg) ?? flexMsg ?? "Không thể huỷ phiếu thu/chi");
+
           throw flex.error;
         }
       }
@@ -316,9 +321,11 @@ export const useCancelIncomeExpense = () => {
         .eq("id", id)
         .maybeSingle();
       if (fetchErr) {
-        toast.error(fetchErr.message || "Không thể đọc phiếu");
+
         throw fetchErr;
       }
+
+      if(!voucher || voucher.id!==id)throw new FinancialWorkflowError('Chưa đọc được đúng phiếu cần huỷ. Tải lại phiếu trước khi tiếp tục.','failure',[]);
 
       // Finance V2 §2.2: phiếu ĐÃ GHI SỔ không huỷ trực tiếp — HOÀN TÁC trước
       // (posting event REVERSAL trả tiền về sổ, giữ dấu vết) rồi mới huỷ.
@@ -333,18 +340,17 @@ export const useCancelIncomeExpense = () => {
             p_cashbook: voucher?.account_id ?? null,
             p_posted_on: todayISO(),
             p_reason: reason || "Hoàn tác để huỷ phiếu",
-            p_idempotency_key: `cancel-rev-${id}-${Date.now()}`,
+            p_idempotency_key: progress.requestKey,
           },
         );
-        if (rev.error) {
-          toast.error(
-            rev.error.message ||
-              "Không thể hoàn tác tiền của phiếu đã ghi sổ — chưa huỷ được",
-          );
-          throw rev.error;
-        }
+        if (rev.error) throw rev.error;
+        const receipt=rev.data as {voucherId?:unknown;postingStatus?:unknown}|null;
+        if(receipt?.voucherId!==id || receipt.postingStatus!=='REVERSED')throw new TypeError('Chưa xác nhận được hoàn tác của đúng phiếu.');
+        reversed=true;completedVoucher(progress,id,`Đã hoàn tác phiếu ${id}`);
+        progress.stage='huỷ phiếu sau hoàn tác';
       }
 
+      try {
       // Canonical cancel (phiếu flow-owned): transition + audit hash-chain
       // server-side, KHÔNG đụng payments (phiếu canonical không gắn payment).
       // Phiếu legacy → tín hiệu fallback → giữ nguyên đường cũ bên dưới.
@@ -354,7 +360,11 @@ export const useCancelIncomeExpense = () => {
         p_voucher_id: id,
         p_reason: reason ?? undefined,
       });
-      if (!canonical.error) return false;
+      if (!canonical.error) {
+        // cancel_income_expense_v1 RETURNS void: read the exact target, never invent a JSON receipt.
+        await readStatusReceipt(id,'CANCELLED');completedVoucher(progress,id,`Đã huỷ phiếu ${id}`);
+        return voucher.approval_status==='CANCELLED'?"unchanged" as const:false;
+      }
       // 7ac: phiếu do FLOW HỆ THỐNG sở hữu (vd Hoàn tiền hoá đơn) — cancel v1
       // từ chối 'owned by system flow'; huỷ qua dispatcher §8 (release
       // reservation atomic), KHÔNG rơi xuống compat.
@@ -367,13 +377,14 @@ export const useCancelIncomeExpense = () => {
             // `p_reason text` KHÔNG có DEFAULT ⇒ bắt buộc truyền, nhưng NULL là
             // giá trị hợp lệ (huỷ không kèm lý do). Bộ sinh không diễn đạt được.
             p_reason: rpcNullable(reason),
-            p_idempotency_key: `owned-cancel-${id}-${Date.now()}`,
+            p_idempotency_key: progress.requestKey,
           },
         );
         if (owned.error) {
-          toast.error(owned.error.message || "Không thể huỷ phiếu thu/chi");
+
           throw owned.error;
         }
+        await readStatusReceipt(id,'CANCELLED');completedVoucher(progress,id,`Đã huỷ phiếu ${id}`);
         return false;
       }
       // Phiếu đã duyệt/đã hoàn tác: cancel v1 từ chối (chỉ nhận pending của
@@ -383,14 +394,14 @@ export const useCancelIncomeExpense = () => {
         postingStatus === "POSTED" ||
         postingStatus === "REVERSED";
       if (!isIeLifecycleFallbackSignal(canonical.error) && !approvedShape) {
-        toast.error(canonical.error.message || "Không thể huỷ phiếu thu/chi");
+
         throw canonical.error;
       }
 
       // Stage-7 drain: huỷ phiếu legacy qua RPC ie_compat_cancel_v2 (client hết
       // UPDATE trực tiếp income_expenses). Phiếu đã POSTED (ghi sổ V2) bị server
       // từ chối 55000 — dùng reversal thay vì huỷ trực tiếp.
-      const { error } = await callUnregisteredRpc("ie_compat_cancel_v2", {
+      const { data:compatData,error } = await callUnregisteredRpc("ie_compat_cancel_v2", {
         p_ids: [id],
         p_reason: reason,
       });
@@ -405,18 +416,21 @@ export const useCancelIncomeExpense = () => {
               p_decision: "cancel",
               // Như trên: bắt buộc-nhưng-nhận-NULL.
               p_reason: rpcNullable(reason),
-              p_idempotency_key: `owned-cancel-${id}-${Date.now()}`,
+              p_idempotency_key: progress.requestKey,
             },
           );
           if (owned.error) {
-            toast.error(owned.error.message || "Không thể huỷ phiếu thu/chi");
+
             throw owned.error;
           }
+          await readStatusReceipt(id,'CANCELLED');completedVoucher(progress,id,`Đã huỷ phiếu ${id}`);
           return false;
         }
-        toast.error(error.message || "Không thể huỷ phiếu thu/chi");
         throw error;
       }
+      const cancelled=(compatData as {cancelled?:unknown}|null)?.cancelled;
+      if(cancelled!==1)await readStatusReceipt(id,'CANCELLED');
+      completedVoucher(progress,id,`Đã huỷ phiếu ${id}`);
 
       if (voucher?.type === "INCOME" && voucher?.payment_id) {
         const { error: payErr } = await supabase
@@ -424,8 +438,8 @@ export const useCancelIncomeExpense = () => {
           .delete()
           .eq("id", voucher.payment_id);
         if (payErr) {
-          toast.error(payErr.message || "Không thể rollback thanh toán hoá đơn");
-          throw payErr;
+
+          throw new VoucherPartialError("Phiếu đã huỷ nhưng chưa cập nhật được thanh toán hoá đơn. Hãy kiểm tra phiếu và hoá đơn liên quan; không huỷ lại phiếu.", [id], undefined, payErr);
         }
       }
 
@@ -439,6 +453,12 @@ export const useCancelIncomeExpense = () => {
         p_note: undefined,
       });
       return false;
+      } catch (error) {
+        if (error instanceof VoucherPartialError) throw error;
+        if (reversed) throw new VoucherPartialError("Đã hoàn tác lần thu/chi nhưng chưa xác nhận huỷ phiếu. Hãy tải lại phiếu và kiểm tra sổ quỹ trước khi thực hiện tiếp.", [id], undefined, error);
+        throw error;
+      }
+      });
     },
     onSuccess: (isTerminationForfeit) => {
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
@@ -454,15 +474,34 @@ export const useCancelIncomeExpense = () => {
       // trên thiết bị thao tác (đối xứng usePayUtilityBill.onSuccess). Hub
       // realtime lo cross-client; đây lo tức thì cho client hiện tại.
       queryClient.invalidateQueries({ queryKey: ["utility-payments"] });
-      if (isTerminationForfeit) {
+      if (isTerminationForfeit === true) {
         invalidateTerminationForfeitQueries(queryClient);
       }
-      toast.success("Phiếu đã được HUỶ");
+      if (isTerminationForfeit === "unchanged") toast.info("Phiếu đã được huỷ trước đó. Không có thay đổi mới.");
+      else toast.success("Đã huỷ phiếu.");
     },
     onError: (error) => {
+      if (error instanceof VoucherPartialError) {
+        for (const key of ["income-expenses", "income-expense", "accounts-with-balance", "invoices", "payments"]) queryClient.invalidateQueries({ queryKey: [key] });
+      }
       console.error("Error cancelling income expense:", error);
+      toast.error(error instanceof FinancialWorkflowError?workflowErrorMessage(error,"huỷ phiếu") : voucherFailureMessage(error,"huỷ phiếu"));
     },
   });
+};
+
+// Writer acknowledgement and the exact target's authoritative status are separate evidence.
+const readStatusReceipt = async (id:string,expectedApproval?:'UNAPPROVED'|'APPROVED'|'CANCELLED') => {
+  try {
+    const {data,error}=await supabase.from('income_expenses').select('id,code,approval_status,posting_status,verified_at').eq('id',id).maybeSingle();
+    if(error || !data || data.id!==id)throw new TypeError('Chưa đọc được trạng thái của đúng phiếu sau thao tác.');
+    if(expectedApproval && data.approval_status!==expectedApproval)throw new TypeError('Chưa xác nhận được trạng thái yêu cầu của phiếu.');
+    if(data.approval_status!==undefined && !['UNAPPROVED','APPROVED','CANCELLED'].includes(String(data.approval_status)))throw new TypeError('Trạng thái duyệt phiếu chưa xác định.');
+    if(data.posting_status!==undefined && !['UNPOSTED','POSTED','REVERSED','NOT_APPLICABLE'].includes(String(data.posting_status)))throw new TypeError('Trạng thái thu/chi phiếu chưa xác định.');
+    return data;
+  } catch(error) {
+    throw Object.assign(new TypeError('Đã gửi yêu cầu nhưng chưa xác nhận được trạng thái phiếu. Đối chiếu trước khi thao tác tiếp.'),{cause:error});
+  }
 };
 
 // Khôi phục phiếu thu/chi đã huỷ (CANCELLED → APPROVED). CHỈ super admin —
@@ -470,25 +509,24 @@ export const useCancelIncomeExpense = () => {
 // hoá đơn đã mất payment khi huỷ, RPC tạo lại payment (chặn trùng) để hoá đơn
 // trở lại đã thu. Thao tác được ghi vào nhật ký (income_expense_audit_log).
 export const useRestoreIncomeExpense = () => {
+  const workflow=useRef(persistentFinancialWorkflow('voucher-lifecycle',{scope:'actor'})).current;
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (id: string) => {
+    mutationFn: async (id: string) => runVoucherLifecycle(workflow,id,'khôi phục phiếu',async progress=>{
       const { error } = await supabase.rpc("restore_income_expense", {
         p_id: id,
       });
       if (error) {
         // Phiếu canonical đã huỷ là terminal (Phương án A) → dùng Tạo bản sao.
-        const frozen = (error.message ?? "").includes("frozen");
-        toast.error(
-          frozen
-            ? "Phiếu canonical đã huỷ không khôi phục được — hãy bấm Tạo bản sao để lập phiếu mới"
-            : error.message || "Không thể khôi phục phiếu",
-        );
+
         throw error;
       }
-    },
-    onSuccess: (_data, id) => {
+      const receipt=await readStatusReceipt(id);
+      if(!['UNAPPROVED','APPROVED'].includes(String(receipt.approval_status)))throw new TypeError('Chưa xác nhận trạng thái khôi phục phiếu.');
+      completedVoucher(progress,id,`Đã khôi phục phiếu ${id}`);return receipt;
+    }),
+    onSuccess: (data, id) => {
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
       queryClient.invalidateQueries({ queryKey: ["income-expense-batches"] });
       queryClient.invalidateQueries({ queryKey: ["voucher-with-batch"] });
@@ -499,10 +537,15 @@ export const useRestoreIncomeExpense = () => {
       queryClient.invalidateQueries({ queryKey: ["payments"] });
       queryClient.invalidateQueries({ queryKey: ["invoice-statistics"] });
       queryClient.invalidateQueries({ queryKey: ["ie-history", id] });
-      toast.success("Đã khôi phục phiếu");
+      if (!data) toast.warning("Đã thực hiện khôi phục nhưng chưa đọc được trạng thái phiếu. Tải lại danh sách để kiểm tra trước khi thao tác tiếp.");
+      else if (data.posting_status === "POSTED") toast.success(`Đã khôi phục phiếu ${data.code}. Phiếu đã ghi nhận thu/chi vào sổ quỹ.`);
+      else if (data.approval_status === "UNAPPROVED") toast.success(`Đã khôi phục phiếu ${data.code}. Phiếu đang chờ duyệt.`);
+      else toast.success(`Đã khôi phục phiếu ${data.code}. Hãy xem trạng thái thu/chi trong danh sách.`);
     },
     onError: (error) => {
       console.error("Error restoring income expense:", error);
+      if(error instanceof FinancialWorkflowError && error.outcome!=="failure")toast.warning(workflowErrorMessage(error,"khôi phục phiếu"));
+      else toast.error(voucherFailureMessage(error,"khôi phục phiếu"));
     },
   });
 };
@@ -510,9 +553,10 @@ export const useRestoreIncomeExpense = () => {
 // Đánh dấu "đã kiểm" / bỏ kiểm phiếu thu/chi. Toggle theo trạng thái hiện tại
 // (RPC tự xử lý logic + check quyền). Note rỗng → lưu NULL.
 export const useVerifyIncomeExpense = () => {
+  const workflow=useRef(persistentFinancialWorkflow('voucher-lifecycle',{scope:'actor'})).current;
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { id: string; note: string | null }) => {
+    mutationFn: async (input: { id: string; note: string | null }) => runVoucherLifecycle(workflow,input.id,'cập nhật trạng thái đã kiểm',async progress=>{
       // Canonical verify (phiếu flow-owned, token-wrapped); legacy fallback.
       // `p_note text DEFAULT NULL` ở cả hai RPC: bỏ ghi chú thì bỏ luôn khoá,
       // server lấy DEFAULT NULL — vẫn là "note rỗng → lưu NULL" như trước.
@@ -520,9 +564,13 @@ export const useVerifyIncomeExpense = () => {
         p_id: input.id,
         p_note: input.note ?? undefined,
       });
-      if (!canonical.error) return;
+      if (!canonical.error) {
+        const receipt=await readStatusReceipt(input.id);
+        if(receipt.verified_at!==null && (typeof receipt.verified_at!=='string' || !Number.isFinite(Date.parse(receipt.verified_at))))throw new TypeError('Chưa xác nhận được trạng thái đã kiểm.');
+        completedVoucher(progress,input.id,`Đã cập nhật trạng thái đã kiểm phiếu ${input.id}`);return receipt;
+      }
       if (!isIeLifecycleFallbackSignal(canonical.error)) {
-        toast.error(canonical.error.message || "Không thể đánh dấu đã kiểm");
+
         throw canonical.error;
       }
 
@@ -531,19 +579,25 @@ export const useVerifyIncomeExpense = () => {
         p_note: input.note ?? undefined,
       });
       if (error) {
-        toast.error(error.message || "Không thể đánh dấu đã kiểm");
+
         throw error;
       }
-    },
-    onSuccess: () => {
+      const receipt=await readStatusReceipt(input.id);
+      if(receipt.verified_at!==null && (typeof receipt.verified_at!=='string' || !Number.isFinite(Date.parse(receipt.verified_at))))throw new TypeError('Chưa xác nhận được trạng thái đã kiểm.');
+      completedVoucher(progress,input.id,`Đã cập nhật trạng thái đã kiểm phiếu ${input.id}`);return receipt;
+    }),
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
       queryClient.invalidateQueries({ queryKey: ["voucher-with-batch"] });
       queryClient.invalidateQueries({ queryKey: ["income-expense"] });
       queryClient.invalidateQueries({ queryKey: ["income-expense-batches"] });
-      toast.success("Đã cập nhật trạng thái kiểm");
+      if (!data || !("verified_at" in data)) toast.warning("Đã thực hiện cập nhật nhưng chưa đọc được trạng thái đã kiểm. Tải lại phiếu để kiểm tra, không bấm đổi trạng thái thêm lần nữa.");
+      else toast.success(data.verified_at ? `Đã đánh dấu phiếu ${data.code} là đã kiểm.` : `Đã bỏ đánh dấu đã kiểm của phiếu ${data.code}.`);
     },
     onError: (error) => {
       console.error("Error verifying income expense:", error);
+      if(error instanceof FinancialWorkflowError && error.outcome!=="failure")toast.warning(`${workflowErrorMessage(error,"cập nhật trạng thái đã kiểm")} Không bấm đổi trạng thái thêm lần nữa.`);
+      else toast.error(voucherFailureMessage(error,"cập nhật trạng thái đã kiểm"));
     },
   });
 };

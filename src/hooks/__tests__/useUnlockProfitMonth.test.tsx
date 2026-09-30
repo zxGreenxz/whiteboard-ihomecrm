@@ -5,7 +5,7 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
   goiHam: vi.fn(),
@@ -17,6 +17,7 @@ vi.mock("sonner", () => ({
   toast: { success: state.toastSuccess, error: state.toastError, info: vi.fn() },
 }));
 vi.mock("@/integrations/supabase/client", () => ({ supabase: { rpc: state.goiHam } }));
+vi.mock("@/lib/authSession", () => ({ getSessionUser: async () => ({ id: "test-owner" }) }));
 // Hook mở khoá không đụng tới danh sách toà; thay để khỏi kéo cả cây hook toà nhà.
 vi.mock("@/hooks/useBuildings", () => ({ useBuildings: () => ({ data: [] }) }));
 
@@ -48,6 +49,8 @@ const dauVao = (over: Partial<UnlockProfitMonthInput> = {}): UnlockProfitMonthIn
   reason: LY_DO,
   ...over,
 });
+
+beforeEach(() => { localStorage.clear(); localStorage.setItem("ihomecrm.selectedOrganizationId", ORG); });
 
 afterEach(() => {
   cleanup();
@@ -90,7 +93,7 @@ describe("useUnlockProfitMonth — mở khoá có lý do qua profit_unlock_v2", 
   });
 
   it("mỗi lượt gửi một khoá idempotency khác nhau", async () => {
-    state.goiHam.mockResolvedValue({ data: { affected_buildings: 1 }, error: null });
+    state.goiHam.mockResolvedValue({ data: { run_id: "run-1", affected_buildings: 1 }, error: null });
     const { result } = dungHook();
     await act(async () => {
       await result.current.mutateAsync(dauVao());
@@ -120,7 +123,7 @@ describe("useUnlockProfitMonth — mở khoá có lý do qua profit_unlock_v2", 
   });
 
   it("đúng 8 ký tự (sau khi cắt) là đủ", async () => {
-    state.goiHam.mockResolvedValue({ data: { affected_buildings: 1 }, error: null });
+    state.goiHam.mockResolvedValue({ data: { run_id: "run-1", affected_buildings: 1 }, error: null });
     const { result } = dungHook();
     await act(async () => {
       await result.current.mutateAsync(dauVao({ reason: "  12345678  " }));
@@ -157,6 +160,14 @@ describe("useUnlockProfitMonth — mở khoá có lý do qua profit_unlock_v2", 
   });
 });
 
+it('phản hồi chưa xác nhận không báo thành công và không gọi lại cùng tháng',async()=>{
+ state.goiHam.mockResolvedValue({data:null,error:null});
+ const {result}=dungHook();
+ await act(async()=>{await expect(result.current.mutateAsync(dauVao())).rejects.toThrow('Chưa xác nhận');});
+ await act(async()=>{await expect(result.current.mutateAsync(dauVao())).rejects.toThrow('Chưa xác nhận');});
+ expect(state.goiHam).toHaveBeenCalledTimes(1);expect(state.toastSuccess).not.toHaveBeenCalled();
+});
+
 describe("unlockProfitMonthErrorMessage", () => {
   it("dịch các lỗi profit_unlock_v2 người dùng có thể gặp", () => {
     expect(unlockProfitMonthErrorMessage("reason must contain 8..1000 characters")).toBe(
@@ -173,10 +184,8 @@ describe("unlockProfitMonthErrorMessage", () => {
     );
   });
 
-  it("lỗi lạ giữ nguyên văn; không có câu thì có câu mặc định", () => {
-    expect(unlockProfitMonthErrorMessage("Active organization membership required")).toBe(
-      "Active organization membership required",
-    );
-    expect(unlockProfitMonthErrorMessage(undefined)).toBe("Không thể mở khoá tháng");
+  it("lỗi lạ không lộ nội dung máy chủ, thiếu câu vẫn có hướng xử lý", () => {
+    expect(unlockProfitMonthErrorMessage("relation private_table does not exist")).not.toContain('private_table');
+    expect(unlockProfitMonthErrorMessage(undefined)).toContain("Chưa mở khóa lợi nhuận");
   });
 });

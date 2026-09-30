@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const from = vi.hoisted(() => vi.fn());
@@ -5,6 +6,8 @@ const getUser = vi.hoisted(() => vi.fn());
 vi.mock('@/integrations/supabase/client', () => ({
   supabase: { from, auth: { getUser } },
 }));
+
+vi.mock('@/lib/authSession',()=>({getSessionUser:async()=>({id:'00000000-0000-4000-8000-0000000000ff'})}));
 
 const { isCurrentChatScope, loadLatestThread, loadThreadMessages, saveMessages } = await import('../chatEngine');
 
@@ -29,6 +32,7 @@ function chain(result: QueryResult, calls: [string, unknown[]][]) {
 }
 
 beforeEach(() => {
+  localStorage.clear();localStorage.setItem('ihomecrm.selectedOrganizationId',ORG_A);
   from.mockReset();
   getUser.mockReset().mockResolvedValue({ data: { user: { id: USER } } });
 });
@@ -41,7 +45,7 @@ describe('chat persistence organization boundary', () => {
 
   it('loads only the latest thread in the selected organization', async () => {
     const calls: [string, unknown[]][] = [];
-    from.mockReturnValue(chain({ data: { id: 'thread-a', title: 'A', updated_at: 'now' }, error: null }, calls));
+    from.mockReturnValue(chain({ data: { id: 'thread-a', title: 'A', updated_at: '2026-09-30T00:00:00Z' }, error: null }, calls));
 
     await expect(loadLatestThread(ORG_A)).resolves.toMatchObject({ id: 'thread-a' });
     expect(calls).toContainEqual(['eq', ['organization_id', ORG_A]]);
@@ -74,7 +78,7 @@ describe('chat persistence organization boundary', () => {
     const insertCalls: [string, unknown[]][] = [];
     from
       .mockReturnValueOnce(chain({ data: { id: 'thread-a', user_id: USER, organization_id: ORG_A }, error: null }, parentCalls))
-      .mockReturnValueOnce(chain({ data: null, error: null }, insertCalls));
+      .mockReturnValueOnce(chain({ data: [{id:'message-a',thread_id:'thread-a',user_id:USER,organization_id:ORG_A,role:'user',content:'hello',tool_calls:null,tool_call_id:null,model:'model'}], error: null }, insertCalls));
 
     await expect(
       saveMessages('thread-a', [{ role: 'user', content: 'hello' }], 'model', ORG_A),

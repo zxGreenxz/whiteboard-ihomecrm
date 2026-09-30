@@ -112,14 +112,20 @@ export function TerminateDialog({
 
   // Query unpaid invoices — dùng cho cả move-out (tính công nợ) lẫn forfeit
   // (liệt kê các hoá đơn sẽ bị huỷ khi bỏ cọc).
-  const { data: unpaidInvoices } = useUnpaidInvoices(
+  const invoiceQuery = useUnpaidInvoices(
     step === 2 ? contract.id : undefined
   );
   // Tiền nợ khách (credit) còn dư của contract — pre-fill vào "Tiền phòng thừa"
   // ở move-out, hiển thị info ở forfeit.
-  const { data: creditBalance = 0 } = useExcessAmount(
+  const creditQuery = useExcessAmount(
     step === 2 ? contract.id : undefined
   );
+  const financeUnavailable = step === 2 && (
+    invoiceQuery.isPending || invoiceQuery.isError || creditQuery.isPending || creditQuery.isError ||
+    invoiceQuery.data === undefined || creditQuery.data === undefined
+  );
+  const unpaidInvoices = invoiceQuery.data;
+  const creditBalance = creditQuery.data;
 
   // Reset state when dialog opens/closes
   useEffect(() => {
@@ -156,6 +162,7 @@ export function TerminateDialog({
   };
   const settle = async (settlement: ExitSettlementInput) => {
     if (!kind) throw new Error('Chọn loại thanh lý trước khi quyết toán');
+    if (financeUnavailable) throw new Error('Chưa tải được công nợ và số dư khách hàng để quyết toán');
     if (exitCase) {
       if (transferUnavailable) throw new Error('Chưa tải được liên kết nhượng, vui lòng thử lại');
       const intent = { caseId: exitCase.id, expectedVersion: exitCase.version,
@@ -204,6 +211,7 @@ export function TerminateDialog({
         </DialogHeader>
 
         {transferUnavailable && <p role="status" className="text-sm">{brokerFeeUnavailable ? 'Chưa xác định được phí nhượng hợp lệ. Kiểm tra liên kết nhượng trước khi quyết toán.' : transferQuery.isError ? 'Không tải được liên kết nhượng. Đóng và mở lại hồ sơ để thử lại.' : 'Đang kiểm tra liên kết nhượng…'}</p>}
+        {financeUnavailable && <p role="alert" className="text-sm text-destructive">{invoiceQuery.isError || creditQuery.isError ? 'Không tải được công nợ và số dư khách hàng. Vui lòng tải lại trước khi quyết toán.' : 'Đang tải công nợ và số dư khách hàng…'}</p>}
 
         {step === 1 && (
           <ContractReturnStep actualDate={actualDate} onDateChange={setActualDate}
@@ -217,11 +225,11 @@ export function TerminateDialog({
           </ContractReturnStep>
         )}
 
-        {step === 2 && kind === "FORFEIT" && (
+        {step === 2 && !financeUnavailable && kind === "FORFEIT" && (
           <StepForfeit
             contract={contract}
-            creditBalance={creditBalance}
-            unpaidInvoices={unpaidInvoices || []}
+            creditBalance={creditBalance!}
+            unpaidInvoices={unpaidInvoices!}
             onBack={handleBack}
             onClose={() => onOpenChange(false)}
             isPending={isPending || transferUnavailable}
@@ -230,14 +238,14 @@ export function TerminateDialog({
           />
         )}
 
-        {step === 2 && kind && kind !== "FORFEIT" && (
+        {step === 2 && !financeUnavailable && kind && kind !== "FORFEIT" && (
           <StepMoveOut
             key={transfer?.id ?? 'ordinary'}
             contract={contract}
             customerName={customerName}
             locationDisplay={locationDisplay}
-            unpaidInvoices={unpaidInvoices || []}
-            creditBalance={creditBalance}
+            unpaidInvoices={unpaidInvoices!}
+            creditBalance={creditBalance!}
             onBack={handleBack}
             onClose={() => onOpenChange(false)}
             isPending={isPending || transferUnavailable}

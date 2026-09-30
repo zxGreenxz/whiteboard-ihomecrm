@@ -1,13 +1,13 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 876,
-  "soFileDocBangFs": 260,
-  "tongLoiGoi": 561,
+  "tongSoFileTest": 1142,
+  "soFileDocBangFs": 262,
+  "tongLoiGoi": 563,
   "khongPhanLoaiDuoc": 263,
   "theoLoai": {
     "ma-nguon": {
-      "soFile": 45,
+      "soFile": 47,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
@@ -41,6 +41,7 @@
     "scripts/__tests__/network-center-worker-scope-verifier.test.mjs",
     "scripts/__tests__/qr-csp-bindings.test.mjs",
     "scripts/org-context-repair/sealed-artifact.test.mjs",
+    "src/components/errors/ErrorBoundary.pageNames.test.tsx",
     "src/components/finance-performance/__tests__/BuildingPerformanceTab.test.tsx",
     "src/components/finance-performance/__tests__/BusinessOverviewTab.test.tsx",
     "src/components/finance-performance/__tests__/RevenueCostStructureTab.test.tsx",
@@ -65,6 +66,7 @@
     "src/lib/__tests__/copilotReportRpcMigration.test.ts",
     "src/lib/__tests__/copilotSensitiveRpcMigration.test.ts",
     "src/lib/__tests__/docsDemoSeedP3.test.ts",
+    "src/lib/__tests__/errorPageNames.test.ts",
     "src/lib/__tests__/financeV2Characterization.test.ts",
     "src/lib/__tests__/ieGuardHandoverScopeMigration.test.ts",
     "src/lib/__tests__/networkCenterDatabaseRuntimeSafety.test.ts",
@@ -1127,6 +1129,14 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": "src/components/errors/ErrorBoundary.pageNames.test.tsx",
+      "soGoi": 1,
+      "loai": {
+        "ma-nguon": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "src/components/finance-performance/__tests__/BuildingPerformanceTab.test.tsx",
       "soGoi": 1,
       "loai": {
@@ -1563,6 +1573,14 @@
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "src/lib/__tests__/errorPageNames.test.ts",
+      "soGoi": 1,
+      "loai": {
+        "ma-nguon": 1
+      },
+      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "src/lib/__tests__/financeV2AdaptersMigration.test.ts",

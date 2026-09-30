@@ -1,3 +1,4 @@
+import { salaryJobFeedback, salarySettingsErrorMessage } from "@/lib/salarySettingsFeedback";
 // Data layer cho OwnerDashboardV5 (/reports/coverage) — Phase 9A tách toàn bộ
 // query/mutation khỏi UI. GIỮ NGUYÊN query key + invalidation + hành vi (kể cả
 // toast) so với bản inline cũ; KHÔNG đổi kill-switch/lock/công thức lương.
@@ -107,6 +108,7 @@ export interface CronRunRow {
 export function useV5Coverage() {
   return useQuery({
     queryKey: ["v5-coverage-all"],
+    meta:{label:"vận hành lương",errorDisplay:"inline"},
     queryFn: async (): Promise<CoverageRow[]> => {
       const { data, error } = await supabase
         .from("building_coverage")
@@ -122,6 +124,7 @@ export function useV5Coverage() {
 export function useV5Flagged() {
   return useQuery({
     queryKey: ["v5-flagged"],
+    meta:{label:"vận hành lương",errorDisplay:"inline"},
     queryFn: async (): Promise<FlaggedDayRow[]> => {
       const { data, error } = await supabase
         .from("salary_attendance_day")
@@ -140,6 +143,7 @@ export function useV5Flagged() {
 export function useV5InspectionLog(dateFrom: string, dateTo: string) {
   return useQuery({
     queryKey: ["v5-inspection-log", dateFrom, dateTo],
+    meta:{label:"vận hành lương",errorDisplay:"inline"},
     queryFn: async (): Promise<InspectionSessionRow[]> => {
       const { data, error } = await supabase
         .from("inspection_sessions")
@@ -155,8 +159,9 @@ export function useV5InspectionLog(dateFrom: string, dateTo: string) {
       const ids = Array.from(new Set(rows.map((r) => r.user_id as string).filter(Boolean)));
       let nameById: Record<string, string> = {};
       if (ids.length) {
-        const { data: profs } = await supabase
+        const { data: profs , error: sourceError1 } = await supabase
           .from("profiles").select("id, full_name").in("id", ids);
+        if (sourceError1) throw sourceError1;
         nameById = Object.fromEntries((profs ?? []).map((p) => [p.id, p.full_name ?? "—"]));
       }
       return rows.map((r) => ({
@@ -171,6 +176,7 @@ export function useV5InspectionLog(dateFrom: string, dateTo: string) {
 export function useV5SessionPhotos(sessionId: string, enabled: boolean) {
   return useQuery({
     queryKey: ["v5-insp-photos", sessionId],
+    meta:{label:"vận hành lương",errorDisplay:"inline"},
     enabled,
     queryFn: async (): Promise<InspectionPhotoRow[]> => {
       const { data, error } = await supabase
@@ -187,6 +193,7 @@ export function useV5SessionPhotos(sessionId: string, enabled: boolean) {
 export function useV5LockAssert(month: string) {
   return useQuery({
     queryKey: ["v5-lock-assert", month],
+    meta:{label:"vận hành lương",errorDisplay:"inline"},
     queryFn: async (): Promise<LockAssertRow[]> => {
       const { data, error } = await supabase.rpc("v5_lock_assert", { p_month: month });
       if (error) throw error;
@@ -198,10 +205,12 @@ export function useV5LockAssert(month: string) {
 export function useV5ShadowReport(month: string) {
   return useQuery({
     queryKey: ["v5-shadow", month],
+    meta:{label:"vận hành lương",errorDisplay:"inline"},
     queryFn: async (): Promise<ShadowReport> => {
       const { data, error } = await supabase.rpc("v5_shadow_report", { p_month: month });
       if (error) throw error;
-      return (data ?? {}) as ShadowReport;
+      if (!data || typeof data !== "object" || !("rows" in data) || !Array.isArray(data.rows)) throw new Error("Invalid salary comparison response");
+      return data as ShadowReport;
     },
   });
 }
@@ -209,10 +218,12 @@ export function useV5ShadowReport(month: string) {
 export function useV5AdminConfig() {
   return useQuery({
     queryKey: ["v5-config-admin"],
+    meta:{label:"vận hành lương",errorDisplay:"inline"},
     queryFn: async (): Promise<V5Config> => {
       const { data, error } = await supabase.rpc("get_salary_v5_config");
       if (error) throw error;
-      return (data ?? {}) as V5Config;
+      if (!data || typeof data !== "object" || !("system_v5" in data)) throw new Error("Invalid salary configuration response");
+      return data as V5Config;
     },
   });
 }
@@ -220,12 +231,14 @@ export function useV5AdminConfig() {
 export function useV5CronRuns() {
   return useQuery({
     queryKey: ["v5-cron-runs"],
+    meta:{label:"vận hành lương",errorDisplay:"inline"},
     queryFn: async (): Promise<CronRunRow[]> => {
-      const { data } = await supabase
+      const { data , error: sourceError2 } = await supabase
         .from("cron_runs")
         .select("*")
         .order("started_at", { ascending: false })
         .limit(20);
+      if (sourceError2) throw sourceError2;
       return (data ?? []) as CronRunRow[];
     },
   });
@@ -240,15 +253,20 @@ export function useV5SetConfig() {
         p_patch: patch as never,
       });
       if (error) throw error;
+      if (!data || typeof data !== 'object' || !('system_v5' in data)) throw new TypeError('Unconfirmed salary configuration write');
+      const matches = (actual: unknown, expected: unknown): boolean => expected !== null && typeof expected === 'object' && !Array.isArray(expected)
+        ? !!actual && typeof actual === 'object' && Object.entries(expected).every(([key,value])=>matches((actual as Record<string,unknown>)[key],value))
+        : actual === expected;
+      if (patch.system_v5 && !matches(data.system_v5,patch.system_v5)) throw new TypeError('Unconfirmed salary configuration change');
       return data;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["v5-config-admin"] });
       qc.invalidateQueries({ queryKey: ["v5-config-salary-engine"] });
       qc.invalidateQueries({ queryKey: ["manager-salary"] });
-      toast.success("Đã lưu cấu hình");
+      toast.success("Đã lưu chế độ và cài đặt vận hành lương.");
     },
-    onError: (e: Error) => toast.error(e?.message ?? "Lỗi lưu cấu hình"),
+    onError: (error) => toast.error(salarySettingsErrorMessage(error,"lưu cài đặt vận hành lương")),
   });
 }
 
@@ -260,25 +278,32 @@ export function useV5Verdict() {
         p_user: args.user, p_date: args.date, p_confirm: args.confirm, p_note: null as never,
       });
       if (error) throw error;
+      if (!data || typeof data !== "object" || !("confirmed" in data) || data.confirmed !== args.confirm || !("date" in data) || data.date !== args.date) throw new TypeError("Unconfirmed attendance verdict");
       return data;
     },
-    onSuccess: () => {
+    onError: (error,args) => toast.error(salarySettingsErrorMessage(error,`kết luận ngày công ${args.date}`)),
+    onSuccess: (_data,args) => {
       qc.invalidateQueries({ queryKey: ["v5-flagged"] });
       qc.invalidateQueries({ queryKey: ["v5-lock-assert"] });
-      toast.success("Đã kết luận");
+      toast.success(args.confirm ? `Đã hủy công ngày ${args.date} và cập nhật mốc thưởng tháng.` : `Đã xác nhận ngày ${args.date} hợp lệ và trả lại công.`);
     },
   });
 }
 
 export function useV5ApplyLock(month: string) {
+  const qc=useQueryClient();
   return useMutation({
     mutationFn: async () => {
       const { data, error } = await supabase.rpc("v5_apply_lock_adjustments", { p_month: month });
       if (error) throw error;
-      return data as { staff_applied?: number } | null;
+      if(!data||typeof data!=='object'||!('staff_applied' in data)||!Number.isInteger(data.staff_applied)||Number(data.staff_applied)<0||!('month' in data)||data.month!==month)throw new TypeError('Unconfirmed salary application result');
+      return {staff_applied:Number(data.staff_applied)};
     },
-    onSuccess: (d) => toast.success(`Đã ghi tiền v5 cho ${d?.staff_applied ?? 0} nhân viên vào bảng lương`),
-    onError: (e: Error) => toast.error(e?.message ?? "Không chốt được"),
+    onSuccess: (d) => {
+      qc.invalidateQueries({queryKey:['manager-salary']});qc.invalidateQueries({queryKey:['v5-lock-assert']});
+      toast[d.staff_applied ? 'success' : 'info'](d.staff_applied ? `Đã cập nhật tiền chuyên cần và chuỗi vào bảng lương của ${d.staff_applied} nhân viên tháng ${month.slice(5,7)}/${month.slice(0,4)}.` : 'Không có nhân viên cần ghi tiền vào bảng lương trong tháng này.');
+    },
+    onError: (error) => toast.error(salarySettingsErrorMessage(error,"ghi tiền chuyên cần và chuỗi vào bảng lương")),
   });
 }
 
@@ -286,19 +311,22 @@ export function useV5RunJob() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (job: string) => {
-      const { data: session } = await supabase.auth.getSession();
+      const { data: session , error: sourceError3 } = await supabase.auth.getSession();
+      if (sourceError3) throw sourceError3;
       const token = session.session?.access_token;
+      if (!token) throw Object.assign(new Error("unauthorized"),{status:401});
       const res = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/salary-v5-jobs?job=${job}`,
         { method: "POST", headers: { Authorization: `Bearer ${token}` } },
       );
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
+      const payload: unknown = await res.json();
+      if(!res.ok && (!payload || typeof payload!=='object' || !('ran' in payload) || !Array.isArray(payload.ran) || payload.ran.length===0)) throw Object.assign(res.status>=500 ? new TypeError('Unconfirmed salary job result') : new Error('Salary job request failed'),{status:res.status});
+      return salaryJobFeedback(payload);
     },
-    onSuccess: () => {
+    onSuccess: (feedback) => {
       qc.invalidateQueries({ queryKey: ["v5-cron-runs"] });
-      toast.success("Job đã chạy");
+      toast[feedback.kind](feedback.message);
     },
-    onError: () => toast.error("Job lỗi — xem cron_runs"),
+    onError: (error) => toast.error(salarySettingsErrorMessage(error,"chạy tác vụ vận hành lương. Kiểm tra nhật ký tác vụ trước khi thực hiện tiếp")),
   });
 }

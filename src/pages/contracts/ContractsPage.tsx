@@ -1,3 +1,4 @@
+import { QueryRegion } from '@/components/errors/QueryRegion';
 import { useState, useMemo, useCallback, useEffect, useRef, lazy, Suspense } from 'react';
 import { FileText, Plus, Upload, Download, Filter, Search, AlertTriangle } from 'lucide-react';
 import MainLayout from '@/components/layout/MainLayout';
@@ -28,6 +29,7 @@ import { ContractImportExportDialog } from '@/components/contracts/ContractImpor
 import { PrintContractDialog } from '@/components/contracts/PrintContractDialog';
 import ContractQRDialog from '@/components/contracts/ContractQRDialog';
 import ContractDetailModal from '@/components/contracts/ContractDetailModal';
+import { friendlyError } from '@/lib/friendlyError';
 import { exportContracts } from '@/lib/contractExcelHelpers';
 
 import {
@@ -234,7 +236,8 @@ function ContractsDesktopPage() {
   // không còn tính từ full list. Theo bộ lọc toà nhà đang chọn.
   // =============================================
 
-  const { data: statsData } = useContractStats(buildingIds);
+  const statsQuery = useContractStats(buildingIds);
+  const { data: statsData } = statsQuery;
   const stats = useMemo<ContractStats>(
     () => statsData ?? { total: 0, expiring: 0, expired: 0, terminated: 0 },
     [statsData]
@@ -376,9 +379,8 @@ function ContractsDesktopPage() {
       await exportContracts(sorted);
     } catch (e: any) {
       console.error('Export contracts failed:', e);
-      toast.error('Không xuất được danh sách hợp đồng', {
-        description: e?.message,
-      });
+      const feedback = friendlyError(e, 'Không xuất được danh sách hợp đồng', { operation: 'xuất danh sách hợp đồng' });
+      toast.error(feedback.title, { description: feedback.description });
     } finally {
       setIsExporting(false);
     }
@@ -400,11 +402,13 @@ function ContractsDesktopPage() {
     <MainLayout title="Hợp đồng thuê" subtitle="Khách hàng > Hợp đồng" icon={FileText}>
       <Tabs value={workspaceTab} onValueChange={setWorkspaceTab} className="space-y-4">
         {/* Stats Cards */}
-        <ContractStatsCards
-          stats={stats}
-          activeFilter={activeStatFilter}
-          onFilterChange={handleStatFilterChange}
-        />
+        <QueryRegion label="thống kê hợp đồng" queries={[statsQuery]}>
+          <ContractStatsCards
+            stats={stats}
+            activeFilter={activeStatFilter}
+            onFilterChange={handleStatFilterChange}
+          />
+        </QueryRegion>
 
         {/* Filters row */}
         {showFilters && (

@@ -19,6 +19,7 @@ interface IncomeExpenseTemplateListProps {
   onEdit: (template: IncomeExpenseTemplate) => void;
   onDelete: (id: string) => void;
   onToggleDefault: (id: string, isDefault: boolean, isIncomeTemplate: boolean) => void;
+  defaultPending?: boolean;
 }
 
 const IncomeExpenseTemplateList = ({
@@ -27,6 +28,7 @@ const IncomeExpenseTemplateList = ({
   onEdit,
   onDelete,
   onToggleDefault,
+  defaultPending = false,
 }: IncomeExpenseTemplateListProps) => {
   if (isLoading) {
     return (
@@ -83,6 +85,7 @@ const IncomeExpenseTemplateList = ({
               <TableCell>
                 <Switch
                   checked={template.is_default}
+                  disabled={defaultPending}
                   onCheckedChange={(checked) =>
                     onToggleDefault(template.id, checked, template.is_income_template)
                   }

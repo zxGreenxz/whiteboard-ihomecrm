@@ -38,7 +38,7 @@ export function useExportContractDraft() {
   return useMutation({ mutationFn: ({ draft, template }: { draft: ContractDraft; template: DocumentTemplate }) => exportContractDraft(draft, template),
     onSuccess: ({ blob, document }) => {
       downloadDocxBlob(blob, `BAN_NHAP_${document.draft_id.slice(0, 8)}_v${document.revision}`);
-      toast.success('Đã lưu và tải bản nháp .docx');
+      toast.success(`Đã lưu bản nháp và chuẩn bị tệp BAN_NHAP_${document.draft_id.slice(0, 8)}_v${document.revision}.docx để tải xuống.`);
       return queryClient.invalidateQueries({ queryKey: ['contract-drafts'] });
     }, onError: error => toast.error(draftErrorMessage(error)),
   });

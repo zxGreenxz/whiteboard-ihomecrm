@@ -1,3 +1,6 @@
+import { requireAccountWriteReceipt } from "@/lib/accountSettingsWriteReceipt";
+import { AvatarProfilePartialError } from '@/lib/accountFeedback';
+import { notifyActionError } from '@/lib/actionFeedback';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
@@ -92,14 +95,14 @@ export const useUpdateProfile = () => {
         .single();
 
       if (error) throw error;
-      return profile;
+      return requireAccountWriteReceipt(profile, { ...data, id: user.id });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['profile'] });
-      toast.success('Dữ liệu đã được CẬP NHẬT thành công');
+      toast.success('Đã cập nhật thông tin cá nhân.');
     },
     onError: (error: Error) => {
-      toast.error('Có lỗi xảy ra khi cập nhật thông tin: ' + error.message);
+      notifyActionError(error, 'Chưa xác nhận được kết quả lưu thông tin cá nhân');
     },
   });
 };
@@ -129,12 +132,20 @@ export const useUploadAvatar = () => {
         .from('avatars')
         .getPublicUrl(filePath);
 
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({ avatar_url: urlData.publicUrl })
-        .eq('id', user.id);
-
-      if (updateError) throw updateError;
+      try {
+        const { data: profile, error: updateError } = await supabase
+          .from('profiles')
+          .update({ avatar_url: urlData.publicUrl })
+          .eq('id', user.id)
+          .select('id, avatar_url')
+          .single();
+        if (updateError) throw updateError;
+        if (!profile || profile.id !== user.id || profile.avatar_url !== urlData.publicUrl) {
+          throw new TypeError('Unconfirmed avatar profile receipt');
+        }
+      } catch (cause) {
+        throw new AvatarProfilePartialError(urlData.publicUrl, cause, user.id);
+      }
       return urlData.publicUrl;
     },
     onSuccess: () => {
@@ -142,7 +153,8 @@ export const useUploadAvatar = () => {
       toast.success('Ảnh đại diện đã được CẬP NHẬT thành công');
     },
     onError: (error: Error) => {
-      toast.error('Có lỗi xảy ra khi tải ảnh: ' + error.message);
+      if (error instanceof AvatarProfilePartialError) toast.warning(error.message);
+      else notifyActionError(error, 'Chưa xác nhận được kết quả cập nhật ảnh đại diện');
     },
   });
 };
@@ -163,7 +175,7 @@ export const useChangePassword = () => {
       toast.success('Mật khẩu đã được đổi thành công');
     },
     onError: (error: Error) => {
-      toast.error('Có lỗi xảy ra khi đổi mật khẩu: ' + error.message);
+      notifyActionError(error, 'Chưa xác nhận được kết quả đổi mật khẩu');
     },
   });
 };

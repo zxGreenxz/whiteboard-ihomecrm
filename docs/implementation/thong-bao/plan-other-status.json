@@ -1,0 +1,2717 @@
+{
+  "A07": {
+    "criterion": "Một nơi phát kết quả; lỗi form bền vững",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/pages/account/AccountMobilePage.tsx",
+      "src/components/notifications/PushNotificationSettings.tsx",
+      "src/hooks/useUiPreferences.ts",
+      "src/lib/push.ts",
+      "src/main.tsx"
+    ],
+    "callIds": [
+      "32b2374d9e6cf81a",
+      "d5d1bcd91e6b5af9",
+      "d051bca8c1507170",
+      "56c591f75939e0cc",
+      "5281f257ef9aa393",
+      "9e3715da1543cc3f",
+      "b40f4c47abb30754",
+      "8f9c8210053e8548",
+      "fbfd4ff4339718bc",
+      "bd02c0246655c660",
+      "867afb055f2b1157",
+      "48ca2fe80064be6e",
+      "f7393596d7099f2d",
+      "aa7997191fe84e98",
+      "40d35362c721954c",
+      "cd746925f8b251f5",
+      "cfa208a38fcb23bc",
+      "83627aa1b482e5f2",
+      "44f7294295f2084a",
+      "cb456e7be127b273",
+      "d917a9ee5dc43217",
+      "1dc7a237e8d3a633",
+      "358745e133d49305",
+      "e810ba69a7612ecf",
+      "6edc17c7e1eb4e82",
+      "992db9bcd618ef73",
+      "cf12211fe2ad7ffa"
+    ],
+    "callStatusCounts": {
+      "already-correct": 11,
+      "fixed": 15,
+      "intentional-background": 1
+    },
+    "evidence": [
+      "Native unsubscribe must return true before server deletion/key replacement. Exact own subscription ID/endpoint/keys/active receipt and original causes; no worker register catch-to-null or infinite ready (10s bound). Native/server partial becomes unknown inline in both screens, disables further toggles; readonly retry checks original actor/endpoint on disable and does not write or toast again. Tests pushLifecycle27 + realDOM10 + existingsend1 =38pass15:20:58; lifecycle RED25assertions plus one timeout, DOM6RED. No live push/provider, no new SQL/VAPID policy. Pending endpoint exists only in mounted UI; cross-reload cleanup intent not persisted. Account profile/avatar/password use existing query/error/field owners; accountTemplateReceipts53 earlier829. Install guidance is neutral client instruction.",
+      "Native unsubscribe must return true before server deletion/key replacement. Exact own subscription ID/endpoint/keys/active receipt and original causes; no worker register catch-to-null or infinite ready (10s bound). Native/server partial becomes unknown inline in both screens, disables further toggles; readonly retry checks original actor/endpoint on disable and does not write or toast again. Tests pushLifecycle27 + realDOM10 + existingsend1 =38pass15:20:58; lifecycle RED25assertions plus one timeout, DOM6RED. No live push/provider, no new SQL/VAPID policy. Pending endpoint exists only in mounted UI; cross-reload cleanup intent not persisted.",
+      "UI preference default caller has one safe onError; per-key optimistic rollback remains; RoutePlanner inlineError opt-out uses local catch. SQL set_my_ui_preference returns full non-null JSONB, require actual submitted key/value (object order normalized). Required source null/malformed rejects; real {} valid. uiPreferences14/RoutePlanner2/provider11=27pass14:06:04; 11RED→GREEN. Final focused51files829pass14:54:14."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "A10": {
+    "criterion": "Gỡ khỏi form khác xóa tệp",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/lib/contractDraftApi.ts",
+      "src/lib/storage.ts"
+    ],
+    "callIds": [
+      "b836f1e0a8484882",
+      "beccf31c3277424c",
+      "b2db42e6a3f32b31",
+      "0a12ab2f6c77cc54"
+    ],
+    "callStatusCounts": {
+      "intentional-background": 2,
+      "background-only": 2
+    },
+    "evidence": [
+      "Export register dispatch disables cleanup; null/transport/malformed/wrong path/hash keeps bytes/documentID. Only confirmed rejection or positive existing same-revision other-ID permits cleanup unused new paths. SQL replay allowed. 5RED→GREEN, export8/draft/editor/signAPI=21pass13:32:41.",
+      "Main9aa late-upload cleanup diagnostic exact2 calls inspected: no background toast/rawUI, error does not mean cleanup succeeded. rebase-storage-zalo-scope-proof keeps main compression/MIME/path/size/deadline/cleanup/writers and task queued/partial barrier; owner45/45 current9files, independent210/210 current21files. No live recipient/storage/browser proof."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "B14": {
+    "criterion": "CRUD hợp đồng có mã/phòng",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/lib/contractDraftApi.ts"
+    ],
+    "callIds": [
+      "b836f1e0a8484882",
+      "beccf31c3277424c"
+    ],
+    "callStatusCounts": {
+      "intentional-background": 2
+    },
+    "evidence": [
+      "Export register dispatch disables cleanup; null/transport/malformed/wrong path/hash keeps bytes/documentID. Only confirmed rejection or positive existing same-revision other-ID permits cleanup unused new paths. SQL replay allowed. 5RED→GREEN, export8/draft/editor/signAPI=21pass13:32:41."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "E09": {
+    "criterion": "Cấu hình lương/ngày lễ",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/hooks/useSalaryExtras.ts",
+      "src/hooks/useSalaryConfig.ts",
+      "src/components/salary/SalaryConfig.tsx"
+    ],
+    "callIds": [
+      "92bbc30308bd4e38",
+      "f49855009e544ef4",
+      "d696f5bae6e8e463",
+      "ceaf09fd0fe94df0",
+      "5498639123d2150e",
+      "fb21e358c8bd91b6",
+      "dcbdea41eb4108e8",
+      "8b5398d4d3e8a95d",
+      "894c3a20c6311a8d",
+      "f685496519106546",
+      "623a9fff4da1e74e",
+      "c9e9f6d81af54262",
+      "f940392cebd193bb",
+      "64c5d713c82dc69a",
+      "bf168e37e683a1c1",
+      "6838edce8c5f89c1",
+      "a91403b9e34c54a0",
+      "e2152eb6b1eb2f97",
+      "81ef0a55458d9a99",
+      "432a5934efd17243",
+      "52b65b0a75ee3d08",
+      "3c0ee3b1a141bf12",
+      "34ce2300381f47d1"
+    ],
+    "callStatusCounts": {
+      "fixed": 23
+    },
+    "evidence": [
+      "Salary exact IDs/replayed/counts and known rules, inline source/fields; SalarySettings7/salaryAmount2 earlier13pass; root strict/mutation proof merge separately."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "E10": {
+    "criterion": "Tác vụ lương/ngày công không jargon",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/hooks/salary-v5/useSalaryV5Admin.ts",
+      "src/hooks/useSignedUrl.ts"
+    ],
+    "callIds": [
+      "39414e775516ad15",
+      "69c97c4a7eca8745",
+      "332a2145a493dfa1",
+      "e93dbe797aece379",
+      "80186063dc3ef80a",
+      "2c305c478752074c",
+      "d202b6d048ba6487",
+      "e028cb9fdc1948ba",
+      "456764ba5427cff4",
+      "50af8c4f459dff9d",
+      "7e2b1075a8c3fa48",
+      "030d46bbef69267f",
+      "cc3faf18b1e1a933",
+      "e33a6e2c44145f59",
+      "d8956ebdfd5dfa22",
+      "665f445295210606",
+      "19b0cdd2b1bf1628",
+      "364ec3e679b51987",
+      "4209ee12422c754a"
+    ],
+    "callStatusCounts": {
+      "fixed": 18,
+      "already-correct": 1
+    },
+    "evidence": [
+      "Salary task/day receipts date/status/count, requested not completed; signedURL/image own source/error/retry. SignedURL1/InspectionPhoto2 earlier13pass, root integration separately."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "E11": {
+    "criterion": "Duyệt/từ chối nghỉ phép",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/pages/my-day/MyDayPage.tsx",
+      "src/components/inspections/InspectionRunner.tsx",
+      "src/hooks/useMyDay.ts",
+      "src/components/salary/SalaryAdminMobile.tsx",
+      "src/components/salary/SalaryLeaveRequests.tsx"
+    ],
+    "callIds": [
+      "daea07a9a9707597",
+      "264b8b36af4dc002",
+      "ffc8a54fd42f4ab4",
+      "66547ec0b4d12e97",
+      "586668825e214db0",
+      "42ce3a917737e93f",
+      "c7cdf279577af6b5",
+      "9e5eb562813257b3",
+      "37fb8ff3b2801ff9",
+      "887fb478e7080aeb",
+      "3d8a2cacddab48f6",
+      "72ba0d387031f5bc",
+      "f6ff038da5cb0a56",
+      "d3236421aa9f9bff",
+      "a63184e5ebd5cd8c",
+      "7846b5e0c6ff3ac4",
+      "4c146242bb7c17aa",
+      "5c0a0f32cd541216",
+      "bcfeb9c6e5dee0c1",
+      "eb4cf8f9348e6e54",
+      "7a3516389988b422",
+      "ef7d06dd9ad8234c",
+      "2b6916c75a7f93ec",
+      "d94c986861c512c4",
+      "7e35ec8cd80ca49f"
+    ],
+    "callStatusCounts": {
+      "fixed": 22,
+      "already-correct": 3
+    },
+    "evidence": [
+      "Root owns latest MyDay/inspection strict source/count/receipt; pending leave not approved day. Preserve session/photo IDs/URLs; root integration proof must merge; no camera/GPS live.",
+      "Leave actual approved/date outcome; pending not confirmed workday. Root MyDay/current SQL proof merge separately."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "E12": {
+    "criterion": "Điều hành/quy tắc lương partial",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/hooks/useProfitManagers.ts",
+      "src/components/shareholders/ProfitManagerForm.tsx"
+    ],
+    "callIds": [
+      "91a4611733d8a3ca",
+      "8edd3621e4f85db8",
+      "b0ec6f60689e4f63",
+      "59989152f722ffdb",
+      "0d1794e6634b4c67",
+      "e4c044f3c335327c",
+      "c26cb1d5b6c43476",
+      "55b97c97e05a191b",
+      "29fed9c3d07c44f4"
+    ],
+    "callStatusCounts": {
+      "fixed": 8,
+      "already-correct": 1
+    },
+    "evidence": [
+      "Managers/rules/building strict reads+receipts, marker and each positive ID before batch validation; remount preserves unknown; configPersist10/ProfitForms4/accountProfitReads45 focused829; backend not atomic."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "E13": {
+    "criterion": "Cổ đông/tỷ lệ/tài khoản",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/components/shareholders/ShareholderForm.tsx",
+      "src/hooks/useShareholders.ts"
+    ],
+    "callIds": [
+      "3fe7d33eb5e9c93f",
+      "35afeaf86c58f334",
+      "6db975754e6cbe2f",
+      "998f301ea1a09894",
+      "c59acd249b5d68c7",
+      "e44dad81cdb341ff",
+      "dc8645c134208e40",
+      "1e7462f8ebe6b221",
+      "2a9a48bd1ab58420",
+      "70b0f8e7cfd8c773",
+      "cc15f8b0c2270360",
+      "0a69d7a62eff66c9",
+      "b8f27227b9921cd0",
+      "e3785963d21ef5ab",
+      "9fcf7d7f59d08aba",
+      "1c8305ec66e9a043",
+      "4784f343ae341d2d",
+      "0d0d6ea6715a8199",
+      "12103ef9fb663704",
+      "e92d510ef7fe121a",
+      "cf936f3cfb26c649"
+    ],
+    "callStatusCounts": {
+      "fixed": 11,
+      "already-correct": 2,
+      "unused": 8
+    },
+    "evidence": [
+      "Shareholder full-profile/share sync exact IDs/values and persistent outer progress; no replay primary after partial, [] delete no-op; configPersist10/ProfitForms4/accountProfitReads45 focused829; unused helpers not UI acceptance."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "E14": {
+    "criterion": "Chốt/lại/mở lợi nhuận đủ nguồn",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/components/shareholders/ProfitLockTab.tsx",
+      "src/hooks/useProfitVerification.ts",
+      "src/hooks/useShareholderProfit.ts",
+      "src/components/shareholders/ProfitVerificationBar.tsx"
+    ],
+    "callIds": [
+      "1e2d1f62b47193ca",
+      "8e63fd0af37715fe",
+      "b88736e56fc5c1ba",
+      "f027bd2eeb79cabc",
+      "a62bcb464d3f8d51",
+      "d4452b967eecc6df",
+      "e3e03c5c3891f9ce",
+      "f5f17a7b6f35cbc2",
+      "dc0e2edac05a20f1",
+      "c1c42dba33c8611c",
+      "7e3e04c92bf66d01",
+      "92c64d8c27a8a5d4",
+      "8f5bc7da4f6a755b",
+      "7a5f16223daac252",
+      "11b6dccab8881fcc",
+      "99a2416aa44a96d3",
+      "2ec185cf86b28717",
+      "d295c66f05f352fc",
+      "36bf0b958239243c",
+      "ae57e409a8a92a6f",
+      "4f62ffe534483384"
+    ],
+    "callStatusCounts": {
+      "fixed": 18,
+      "already-correct": 3
+    },
+    "evidence": [
+      "Close/unlock/reset actor/org/month marker, arg5 targetorg prewriter; strict SQL preview/hash/amount/state/disposition, inline rowfocus; profitPersist10/unlock14/readBoundaries56 focused829; absence never rollback proof."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "E15": {
+    "criterion": "Chia lợi nhuận/chi lương field validation",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/hooks/income-expenses/specialized.ts",
+      "src/components/shareholders/ProfitDistributeDialog.tsx",
+      "src/components/shareholders/ManagerSalaryPayoutDialog.tsx"
+    ],
+    "callIds": [
+      "7382de7ceafdf6e6",
+      "e451bd29b1df0ad2",
+      "75726653bf6cb754",
+      "b92c729d7b618a2c"
+    ],
+    "callStatusCounts": {
+      "fixed": 4
+    },
+    "evidence": [
+      "Payout stable progress.requestKey to RPC, actual account targetorg barrier; keep positive voucherID even unknown status, no paid-success claim; payoutPersist8/PayoutDOM4 focused829."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "E22": {
+    "criterion": "Chuẩn kế toán/no-op",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/hooks/useAccountingStandard.ts"
+    ],
+    "callIds": [
+      "c4743542e6121926",
+      "373722a9e565d24c",
+      "3e3e9a19d3bb98d2",
+      "6f027ea7c867dcc8",
+      "552fd421c3aa3336"
+    ],
+    "callStatusCounts": {
+      "fixed": 4,
+      "already-correct": 1
+    },
+    "evidence": [
+      "Accounting toggle success is Đã bật/tắt chế độ Chuẩn kế toán; unchanged receipt toast.info neutral. Existing org/bool/changed receipt guard retained. 3 hook cases in passListingsFeedback26, combined40pass14:26:02; 2RED→GREEN copy cases."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "F08": {
+    "criterion": "Tòa mã trùng/one toast",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/components/onboarding/OnboardingWizard.tsx",
+      "src/components/onboarding/onboardingCompleted.ts"
+    ],
+    "callIds": [
+      "5994c099470d00e2"
+    ],
+    "callStatusCounts": {
+      "fixed": 1
+    },
+    "evidence": [
+      "Wizard markCompleted awaits exact settings receipt before cache=true/close. Pending prevents another dispatch; rejected setting keeps step/names/address and safe root error. Required building/room/service name inline red/aria-describedby plus shared focusFirstError; Currency draft validator before manual create. Hook toast owns network failure. Wizard8/legacyRead4/settingsReceipts53=65pass14:16:36; 6RED→GREEN. Final helper preserves server error, only verified absent row -> false, malformed flag rejects; 5 additionalRED→GREEN, wizard8/read9=17pass14:31:35; final focused51files829pass14:54:14. Only onboarding portion F08/F10/F11; materials owns regular forms."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "F10": {
+    "criterion": "Phòng/batch",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/components/sale-phong/SaleImagesTab.tsx",
+      "src/components/sale-phong/mobile/MobileSaleInfo.tsx",
+      "src/components/onboarding/OnboardingWizard.tsx",
+      "src/components/onboarding/onboardingCompleted.ts"
+    ],
+    "callIds": [
+      "5994c099470d00e2",
+      "e4b97a2078de595e",
+      "e1bce4776d76211f",
+      "332d9681b0641b5a",
+      "aa89d13f2b4e3c93",
+      "5ed84a071a940827",
+      "91e9cd04eb963492"
+    ],
+    "callStatusCounts": {
+      "fixed": 5,
+      "already-correct": 2
+    },
+    "evidence": [
+      "Sale image main/peer writers require exact ID/images/amenities receipts; positive verified main ID retained when batch2 fails or incomplete. Safe single-owner partial explicitly names primary room+IDs, inline persists and same-room refetch retains draft. Source server errors kept within safe friendlyError, success names primary and actual verified count. saleImagesFeedback10RED→GREEN; combined image/passDOM/mobile28pass14:52:12; final focused51files829pass14:54:14. Only sale-image portion F10/F23; no SQL/business rule.",
+      "Wizard markCompleted awaits exact settings receipt before cache=true/close. Pending prevents another dispatch; rejected setting keeps step/names/address and safe root error. Required building/room/service name inline red/aria-describedby plus shared focusFirstError; Currency draft validator before manual create. Hook toast owns network failure. Wizard8/legacyRead4/settingsReceipts53=65pass14:16:36; 6RED→GREEN. Final helper preserves server error, only verified absent row -> false, malformed flag rejects; 5 additionalRED→GREEN, wizard8/read9=17pass14:31:35; final focused51files829pass14:54:14. Only onboarding portion F08/F10/F11; materials owns regular forms."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "F11": {
+    "criterion": "Dịch vụ áp dụng tòa partial",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/components/onboarding/OnboardingWizard.tsx",
+      "src/components/onboarding/onboardingCompleted.ts"
+    ],
+    "callIds": [
+      "5994c099470d00e2"
+    ],
+    "callStatusCounts": {
+      "fixed": 1
+    },
+    "evidence": [
+      "Wizard markCompleted awaits exact settings receipt before cache=true/close. Pending prevents another dispatch; rejected setting keeps step/names/address and safe root error. Required building/room/service name inline red/aria-describedby plus shared focusFirstError; Currency draft validator before manual create. Hook toast owns network failure. Wizard8/legacyRead4/settingsReceipts53=65pass14:16:36; 6RED→GREEN. Final helper preserves server error, only verified absent row -> false, malformed flag rejects; 5 additionalRED→GREEN, wizard8/read9=17pass14:31:35; final focused51files829pass14:54:14. Only onboarding portion F08/F10/F11; materials owns regular forms."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "F23": {
+    "criterion": "Ảnh hồ sơ/công tơ",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/components/sale-phong/SaleImagesTab.tsx",
+      "src/components/sale-phong/mobile/MobileSaleInfo.tsx"
+    ],
+    "callIds": [
+      "e4b97a2078de595e",
+      "e1bce4776d76211f",
+      "332d9681b0641b5a",
+      "aa89d13f2b4e3c93",
+      "5ed84a071a940827",
+      "91e9cd04eb963492"
+    ],
+    "callStatusCounts": {
+      "already-correct": 2,
+      "fixed": 4
+    },
+    "evidence": [
+      "Sale image main/peer writers require exact ID/images/amenities receipts; positive verified main ID retained when batch2 fails or incomplete. Safe single-owner partial explicitly names primary room+IDs, inline persists and same-room refetch retains draft. Source server errors kept within safe friendlyError, success names primary and actual verified count. saleImagesFeedback10RED→GREEN; combined image/passDOM/mobile28pass14:52:12; final focused51files829pass14:54:14. Only sale-image portion F10/F23; no SQL/business rule."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "G01": {
+    "criterion": "Đăng nhập thiếu/sai thông tin focus",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/hooks/useAuth.ts",
+      "src/pages/auth/Login.tsx",
+      "src/pages/auth/ForgotPassword.tsx",
+      "src/pages/auth/ResetPassword.tsx"
+    ],
+    "callIds": [
+      "691b7e98a1d32864",
+      "05368a79a73084ab",
+      "476703f324525441",
+      "a04a3fdf4454a3cf",
+      "d7604735f3dfc58d",
+      "fba33916652bc25e",
+      "a2cf8a3f86bd6be7",
+      "db882fd6882d24a3",
+      "a23b1b7fe09eec75",
+      "bc627a0ccb1d56a4",
+      "a48725b27d9f2ecf",
+      "ae008b5faec19fd3",
+      "a31e4c917d1a9054",
+      "0d3669da8ea11de6",
+      "d4b9f0366dec7fc7",
+      "25e836470e19fb6e"
+    ],
+    "callStatusCounts": {
+      "fixed": 14,
+      "already-correct": 1,
+      "intentional-background": 1
+    },
+    "evidence": [
+      "Source evidence in other.md",
+      "Current-source async-action-feedback-regressions-final.json83/83 and async focus owner33/33 + independent33/33; four generic auth onError deferred, invalid-credentials special case/auth/API unchanged; three page imports only."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "G02": {
+    "criterion": "Quên/đặt/đổi mật khẩu giữ riêng tư",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/pages/account/AccountMobilePage.tsx",
+      "src/hooks/useProfile.ts",
+      "src/pages/auth/Login.tsx",
+      "src/pages/auth/ForgotPassword.tsx",
+      "src/pages/auth/ResetPassword.tsx",
+      "src/pages/account/ProfilePage.tsx"
+    ],
+    "callIds": [
+      "cb1d2b1bd5c041e4",
+      "069da33e70b5d9bb",
+      "675e70e25c686f1f",
+      "91df04b722b77d4a",
+      "272fbd45effe7d09",
+      "3b270bb2427d65bd",
+      "2b9e322943907491",
+      "c1e0be46716dce9b",
+      "1f19d4b5b6e97378",
+      "0038c84f164600f5",
+      "1c035221d71ae981",
+      "532ac80909f2dd77"
+    ],
+    "callStatusCounts": {
+      "already-correct": 1,
+      "fixed": 11
+    },
+    "evidence": [
+      "Native unsubscribe must return true before server deletion/key replacement. Exact own subscription ID/endpoint/keys/active receipt and original causes; no worker register catch-to-null or infinite ready (10s bound). Native/server partial becomes unknown inline in both screens, disables further toggles; readonly retry checks original actor/endpoint on disable and does not write or toast again. Tests pushLifecycle27 + realDOM10 + existingsend1 =38pass15:20:58; lifecycle RED25assertions plus one timeout, DOM6RED. No live push/provider, no new SQL/VAPID policy. Pending endpoint exists only in mounted UI; cross-reload cleanup intent not persisted. Account profile/avatar/password use existing query/error/field owners; accountTemplateReceipts53 earlier829. Install guidance is neutral client instruction.",
+      "Avatar/profile exact actor ID/url/values, partial keeps URL/profileId/cause; accountTemplateReceipts53 focused829.",
+      "Source evidence in other.md",
+      "Auth focus helper import-only parity and fallback draft/inline/focus checked33/33 owner +33/33 independent; email/password/session/writers unchanged, not browser E2E."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "G03": {
+    "criterion": "Đăng xuất theo phiên cục bộ",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/hooks/useAuth.ts",
+      "src/pages/auth/Login.tsx",
+      "src/pages/auth/ForgotPassword.tsx",
+      "src/pages/auth/ResetPassword.tsx"
+    ],
+    "callIds": [
+      "691b7e98a1d32864",
+      "05368a79a73084ab",
+      "476703f324525441",
+      "a04a3fdf4454a3cf",
+      "d7604735f3dfc58d",
+      "fba33916652bc25e",
+      "a2cf8a3f86bd6be7",
+      "db882fd6882d24a3",
+      "a23b1b7fe09eec75",
+      "bc627a0ccb1d56a4",
+      "a48725b27d9f2ecf",
+      "ae008b5faec19fd3",
+      "a31e4c917d1a9054",
+      "0d3669da8ea11de6",
+      "d4b9f0366dec7fc7",
+      "25e836470e19fb6e"
+    ],
+    "callStatusCounts": {
+      "fixed": 14,
+      "already-correct": 1,
+      "intentional-background": 1
+    },
+    "evidence": [
+      "Source evidence in other.md"
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "G04": {
+    "criterion": "Lời mời trạng thái rõ",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/pages/settings/MembersPage.tsx",
+      "src/hooks/useOrganizationAuthorization.ts",
+      "src/hooks/useAcceptInvitation.ts",
+      "src/pages/settings/RolesPage.tsx",
+      "src/pages/settings/OrganizationPage.tsx",
+      "src/components/authorization/MemberAuthorizationDialog.tsx"
+    ],
+    "callIds": [
+      "4a2202ad698f7c88",
+      "64368a97288cbcd9",
+      "e666d99f023b866e",
+      "6d98fd2b2b277dbe",
+      "9b53ac5f055e026a",
+      "5b9111fcdcd1f502",
+      "44be2a2fb1e55bb8",
+      "d1b4f7fdfd5d7715",
+      "8aa372ead6ff8f74",
+      "7ed3529d473e13c5",
+      "e37b94bd1d9d4847",
+      "618c4c0450e90e4f",
+      "e5baabdfbad2c86d",
+      "bc80eca584cb60de",
+      "26b79254587f9804",
+      "d37b31e7d5320114",
+      "2945115d91e7d423",
+      "9d5d2f6450ebcd9b",
+      "8f11513ddcbd9089",
+      "6a1d6b431f1dcd85"
+    ],
+    "callStatusCounts": {
+      "fixed": 20
+    },
+    "evidence": [
+      "Authorization5 strict SQL envelopes/nested rows/counts; exact writer receipts; form reveal/focus/draft. organizationReadModels28 focused829, AuthorizationDOM3 earlier191."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "G05": {
+    "criterion": "Hồ sơ/ảnh đại diện partial",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/pages/account/AccountMobilePage.tsx",
+      "src/hooks/useProfile.ts",
+      "src/pages/account/ProfilePage.tsx"
+    ],
+    "callIds": [
+      "cb1d2b1bd5c041e4",
+      "069da33e70b5d9bb",
+      "675e70e25c686f1f",
+      "91df04b722b77d4a",
+      "272fbd45effe7d09",
+      "3b270bb2427d65bd",
+      "2b9e322943907491",
+      "c1e0be46716dce9b",
+      "1f19d4b5b6e97378",
+      "0038c84f164600f5",
+      "1c035221d71ae981",
+      "532ac80909f2dd77"
+    ],
+    "callStatusCounts": {
+      "already-correct": 1,
+      "fixed": 11
+    },
+    "evidence": [
+      "Native unsubscribe must return true before server deletion/key replacement. Exact own subscription ID/endpoint/keys/active receipt and original causes; no worker register catch-to-null or infinite ready (10s bound). Native/server partial becomes unknown inline in both screens, disables further toggles; readonly retry checks original actor/endpoint on disable and does not write or toast again. Tests pushLifecycle27 + realDOM10 + existingsend1 =38pass15:20:58; lifecycle RED25assertions plus one timeout, DOM6RED. No live push/provider, no new SQL/VAPID policy. Pending endpoint exists only in mounted UI; cross-reload cleanup intent not persisted. Account profile/avatar/password use existing query/error/field owners; accountTemplateReceipts53 earlier829. Install guidance is neutral client instruction.",
+      "Avatar/profile exact actor ID/url/values, partial keeps URL/profileId/cause; accountTemplateReceipts53 focused829."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "G06": {
+    "criterion": "Tạo tài khoản email/password fields",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/hooks/useAdminUsers.ts",
+      "src/pages/admin/UsersPage.tsx"
+    ],
+    "callIds": [
+      "7209944448c1dd7a",
+      "b613349bff92ed33",
+      "615ef1b4051f2dff",
+      "ca596ecb03eeb8a8"
+    ],
+    "callStatusCounts": {
+      "fixed": 4
+    },
+    "evidence": [
+      "Required profiles/superadmins/assignments arrays and rows, nested errors throw; Edge wrapper requires user.id. accountProfitReads45 focused829."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "G07": {
+    "criterion": "Tổ chức/vai trò/thành viên",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/pages/settings/MembersPage.tsx",
+      "src/hooks/useOrganizationAuthorization.ts",
+      "src/hooks/useAcceptInvitation.ts",
+      "src/pages/settings/RolesPage.tsx",
+      "src/pages/settings/OrganizationPage.tsx",
+      "src/components/authorization/MemberAuthorizationDialog.tsx"
+    ],
+    "callIds": [
+      "4a2202ad698f7c88",
+      "64368a97288cbcd9",
+      "e666d99f023b866e",
+      "6d98fd2b2b277dbe",
+      "9b53ac5f055e026a",
+      "5b9111fcdcd1f502",
+      "44be2a2fb1e55bb8",
+      "d1b4f7fdfd5d7715",
+      "8aa372ead6ff8f74",
+      "7ed3529d473e13c5",
+      "e37b94bd1d9d4847",
+      "618c4c0450e90e4f",
+      "e5baabdfbad2c86d",
+      "bc80eca584cb60de",
+      "26b79254587f9804",
+      "d37b31e7d5320114",
+      "2945115d91e7d423",
+      "9d5d2f6450ebcd9b",
+      "8f11513ddcbd9089",
+      "6a1d6b431f1dcd85"
+    ],
+    "callStatusCounts": {
+      "fixed": 20
+    },
+    "evidence": [
+      "Authorization5 strict SQL envelopes/nested rows/counts; exact writer receipts; form reveal/focus/draft. organizationReadModels28 focused829, AuthorizationDOM3 earlier191."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "G08": {
+    "criterion": "Phạm vi vai trò/ngoại lệ tab/dòng",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/hooks/useAcceptInvitation.ts",
+      "src/pages/settings/RolesPage.tsx",
+      "src/pages/settings/OrganizationPage.tsx",
+      "src/components/authorization/MemberAuthorizationDialog.tsx"
+    ],
+    "callIds": [],
+    "callStatusCounts": {},
+    "evidence": [
+      "Authorization5 strict SQL envelopes/nested rows/counts; exact writer receipts; form reveal/focus/draft. organizationReadModels28 focused829, AuthorizationDOM3 earlier191."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "G09": {
+    "criterion": "Cài đặt theo tên; toggle rollback",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/pages/settings/GeneralSettingsPage.tsx",
+      "src/hooks/usePassListings.ts",
+      "src/hooks/useSettings.ts",
+      "src/hooks/useUiPreferences.ts",
+      "src/components/onboarding/OnboardingWizard.tsx",
+      "src/components/onboarding/onboardingCompleted.ts",
+      "src/components/sale-phong/PassListingsTab.tsx",
+      "src/components/sale-phong/mobile/MobilePassListings.tsx"
+    ],
+    "callIds": [
+      "0a84bba279f0139b",
+      "7ca21f8ead7c7c16",
+      "22532a48eb286e9a",
+      "91e8a21247b1263d",
+      "9b2f89cd2d48e205",
+      "999470f17ce4e10f",
+      "015aa7daa2b9a23c",
+      "58a50f640a96bad1",
+      "95ab586373266d7b",
+      "55e23efef9842ec0",
+      "f744cbdf92d024c7",
+      "f598af25ba8a5e51",
+      "40ffb46fbe1901c2",
+      "52e4fa7a1e6eb161",
+      "4779d52c13dc7c85",
+      "7be133f47c0b01a4",
+      "10b7569766465b0b",
+      "a54db823f42e3f9c",
+      "38e88bc15cf5906f",
+      "89afce8f4e348e80",
+      "94e22008ccfd5959",
+      "8df86726e464ac81",
+      "3ffd077fa67244b3",
+      "771ceef460b522dd",
+      "20d4abd06a2c7816",
+      "23e17a74cb131c89",
+      "8e64acd66506670f",
+      "bd02c0246655c660",
+      "867afb055f2b1157",
+      "48ca2fe80064be6e",
+      "5994c099470d00e2"
+    ],
+    "callStatusCounts": {
+      "fixed": 31
+    },
+    "evidence": [
+      "Settings actor/key/value shape, null only real absent row; 3 upserts exact ID/values; durable logo URL/hint accept matches PNG/JPG/WEBP≤2MB; accountJobReads49/accountTemplateReceipts53 focused829. AutoApproveThresholdCard root-owned.",
+      "Pass 3 reads require actual array/SQL rows, meta.errorDisplay inline. Desktop/mobile list+room QueryRegion, customer failure keeps draft and blocks save; page pass counter never false0 after error. Upsert and active exact affected ID/room/values; original server error preserved and one safe notifyActionError. Delete void RPC SQL already-missing no-op verifies desired absent state; both confirmations wait onSuccess and remain on error. Hook26/DOM12/page6=44pass14:43:57; 31RED→GREEN notification/queries +4RED→GREEN price cases. SQL numeric has no min/decimal restriction: shared NumberInput allowDecimal keeps signed/decimal/raw/optional-null, validateInputDrafts blocks malformed and focuses field. No new SQL/business rule.",
+      "UI preference default caller has one safe onError; per-key optimistic rollback remains; RoutePlanner inlineError opt-out uses local catch. SQL set_my_ui_preference returns full non-null JSONB, require actual submitted key/value (object order normalized). Required source null/malformed rejects; real {} valid. uiPreferences14/RoutePlanner2/provider11=27pass14:06:04; 11RED→GREEN. Final focused51files829pass14:54:14.",
+      "Wizard markCompleted awaits exact settings receipt before cache=true/close. Pending prevents another dispatch; rejected setting keeps step/names/address and safe root error. Required building/room/service name inline red/aria-describedby plus shared focusFirstError; Currency draft validator before manual create. Hook toast owns network failure. Wizard8/legacyRead4/settingsReceipts53=65pass14:16:36; 6RED→GREEN. Final helper preserves server error, only verified absent row -> false, malformed flag rejects; 5 additionalRED→GREEN, wizard8/read9=17pass14:31:35; final focused51files829pass14:54:14. Only onboarding portion F08/F10/F11; materials owns regular forms."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "G10": {
+    "criterion": "Logo URL bền vững chờ lưu",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/pages/settings/GeneralSettingsPage.tsx",
+      "src/hooks/useSettings.ts"
+    ],
+    "callIds": [
+      "0a84bba279f0139b",
+      "7ca21f8ead7c7c16",
+      "22532a48eb286e9a",
+      "7be133f47c0b01a4",
+      "10b7569766465b0b",
+      "a54db823f42e3f9c",
+      "38e88bc15cf5906f",
+      "89afce8f4e348e80",
+      "94e22008ccfd5959",
+      "8df86726e464ac81",
+      "3ffd077fa67244b3",
+      "771ceef460b522dd",
+      "20d4abd06a2c7816",
+      "23e17a74cb131c89",
+      "8e64acd66506670f"
+    ],
+    "callStatusCounts": {
+      "fixed": 15
+    },
+    "evidence": [
+      "Settings actor/key/value shape, null only real absent row; 3 upserts exact ID/values; durable logo URL/hint accept matches PNG/JPG/WEBP≤2MB; accountJobReads49/accountTemplateReceipts53 focused829. AutoApproveThresholdCard root-owned."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "G11": {
+    "criterion": "Gói cước theo tên",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/hooks/useSubscription.ts",
+      "src/pages/account/SubscriptionPage.tsx"
+    ],
+    "callIds": [
+      "82865a2a0927a429",
+      "87a3e67fa0ec2c51",
+      "4e7fbac01675e508",
+      "d8cae8288e2a341b",
+      "0a4b64a94e671b63",
+      "3c45526d9d4115bb",
+      "b425890ff23292cd",
+      "939a7fd276e51587",
+      "bd3327283ec6344c",
+      "7c0b7192fbb0d25c",
+      "611103a40e65c51e",
+      "36d3078860580292",
+      "111a5219e289eafe"
+    ],
+    "callStatusCounts": {
+      "fixed": 11,
+      "intentional-background": 2
+    },
+    "evidence": [
+      "Plans/current full SQL fields/actor/planID, null current legitimate; CRUD exact IDs/submitted values; accountJobReads49/accountTemplateReceipts53 focused829."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "G12": {
+    "criterion": "Mẫu tài liệu",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/components/document-templates/TemplateCodesDialog.tsx",
+      "src/hooks/useDocumentTemplates.ts",
+      "src/pages/settings/TemplatesPage.tsx",
+      "src/components/document-templates/CreateTemplateDialog.tsx",
+      "src/components/document-templates/EditTemplateDialog.tsx"
+    ],
+    "callIds": [
+      "6894079aee21fd73",
+      "cd00a0d865ab735c",
+      "6e5139c6cc8fa0e6",
+      "86cb356ccc2839b3",
+      "a3da083735703e10",
+      "c8219c4a3d84ae87",
+      "3174a0e26f04d059",
+      "2819940e66af2055",
+      "0bbaeb7b4f5d0822",
+      "46efa1185c26e47d",
+      "33ccdc70decbc2e3",
+      "97de3eff1a503c3b",
+      "b184eb561dfa32ac",
+      "ac1a5365e062cffc",
+      "624cee2bed787ad2",
+      "2fcadeb7e8a6da2d",
+      "f3660c1179ab57ba",
+      "81e9619a8440b7d8",
+      "593f8878a3c0f552",
+      "979de27e0bc7e8c6",
+      "896c60011acf51d4",
+      "4f4b63ebddee8f50",
+      "aaac2571f8938d7f",
+      "9d104aff08b2439a",
+      "bad467e1ce6dcceb",
+      "1177f419011643df",
+      "23fa4b0221f950e5"
+    ],
+    "callStatusCounts": {
+      "intentional-background": 3,
+      "fixed": 24
+    },
+    "evidence": [
+      "Templates/codes strict rows; exact ID/name/code/fileURL/timestamp receipts, no-op/unknown separate; keep uploaded URL and modal; cleanup only after DB proof; copy await. accountTemplateReceipts53/documentTemplateFeedback1 focused829."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "G13": {
+    "criterion": "Tệp mẫu .docx <=5MB focus nút",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/components/document-templates/TemplateCodesDialog.tsx",
+      "src/hooks/useDocumentTemplates.ts",
+      "src/pages/settings/TemplatesPage.tsx",
+      "src/components/document-templates/CreateTemplateDialog.tsx",
+      "src/components/document-templates/EditTemplateDialog.tsx"
+    ],
+    "callIds": [
+      "6894079aee21fd73",
+      "cd00a0d865ab735c",
+      "6e5139c6cc8fa0e6",
+      "86cb356ccc2839b3",
+      "a3da083735703e10",
+      "c8219c4a3d84ae87",
+      "3174a0e26f04d059",
+      "2819940e66af2055",
+      "0bbaeb7b4f5d0822",
+      "46efa1185c26e47d",
+      "33ccdc70decbc2e3",
+      "97de3eff1a503c3b",
+      "b184eb561dfa32ac",
+      "ac1a5365e062cffc",
+      "624cee2bed787ad2",
+      "2fcadeb7e8a6da2d",
+      "f3660c1179ab57ba",
+      "81e9619a8440b7d8",
+      "593f8878a3c0f552",
+      "979de27e0bc7e8c6",
+      "896c60011acf51d4",
+      "4f4b63ebddee8f50",
+      "aaac2571f8938d7f",
+      "9d104aff08b2439a",
+      "bad467e1ce6dcceb",
+      "1177f419011643df",
+      "23fa4b0221f950e5"
+    ],
+    "callStatusCounts": {
+      "intentional-background": 3,
+      "fixed": 24
+    },
+    "evidence": [
+      "Templates/codes strict rows; exact ID/name/code/fileURL/timestamp receipts, no-op/unknown separate; keep uploaded URL and modal; cleanup only after DB proof; copy await. accountTemplateReceipts53/documentTemplateFeedback1 focused829."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "G14": {
+    "criterion": "Chữ ký chưa có chức năng disable",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/pages/settings/SignaturesPage.tsx"
+    ],
+    "callIds": [],
+    "callStatusCounts": {},
+    "evidence": [
+      "Source evidence in other.md"
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "G15": {
+    "criterion": "CRUD/trạng thái công việc",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/pages/TaskManagementPage.tsx",
+      "src/components/tasks/TaskCreateDialog.tsx",
+      "src/components/tasks/TaskCompleteDialog.tsx",
+      "src/hooks/useJobs.ts",
+      "src/lib/salaryBonusNotify.ts",
+      "src/components/tasks/TaskEditDialog.tsx",
+      "src/components/tasks/TaskNotesDialog.tsx"
+    ],
+    "callIds": [
+      "f23645966d064dae",
+      "7154070a605c2d3f",
+      "a999fe1d5be84d53",
+      "4ab14ef6b4e63a93",
+      "5312cb52b3b2fd43",
+      "71c7ab79f7e74614",
+      "c473401a50469a90",
+      "e6fa51501220b5af",
+      "0bd2162d8fc4d650",
+      "a2058e529d0513f6",
+      "d254dca16f549ee1",
+      "253133d65b4496bc",
+      "7a3e20ee5e7c6abb",
+      "ddda562acd372b03",
+      "c8facf68843e4330",
+      "6ac003c9f23adc27",
+      "945ade0848291ada",
+      "d0853249676c0721",
+      "8bbc10b73ac61aa2",
+      "31e02bc22dcbc7ff",
+      "be7b51a192db8f23",
+      "c83dc679ca321352",
+      "f60cdcdac8f4bf5b"
+    ],
+    "callStatusCounts": {
+      "already-correct": 1,
+      "fixed": 19,
+      "intentional-background": 3
+    },
+    "evidence": [
+      "Jobs exact receipts/required catalogs; manual raw-input prewriter focus; materials/bonus/day partial preserve IDs/URLs. accountTemplateReceipts53/accountJobReads49/TaskCreateDOM1 focused829; TaskEdit9/jobCompletion2/taskFeedback3 earlier191."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "G16": {
+    "criterion": "Công việc nhanh lỗi danh mục không sai mã",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/components/tasks/TaskEditDialog.tsx",
+      "src/components/tasks/TaskNotesDialog.tsx"
+    ],
+    "callIds": [],
+    "callStatusCounts": {},
+    "evidence": [
+      "Jobs exact receipts/required catalogs; manual raw-input prewriter focus; materials/bonus/day partial preserve IDs/URLs. accountTemplateReceipts53/accountJobReads49/TaskCreateDOM1 focused829; TaskEdit9/jobCompletion2/taskFeedback3 earlier191."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "G17": {
+    "criterion": "Công việc+vật tư partial giữ ID",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/components/tasks/TaskEditDialog.tsx",
+      "src/components/tasks/TaskNotesDialog.tsx"
+    ],
+    "callIds": [],
+    "callStatusCounts": {},
+    "evidence": [
+      "Jobs exact receipts/required catalogs; manual raw-input prewriter focus; materials/bonus/day partial preserve IDs/URLs. accountTemplateReceipts53/accountJobReads49/TaskCreateDOM1 focused829; TaskEdit9/jobCompletion2/taskFeedback3 earlier191."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "G18": {
+    "criterion": "Hoàn việc+ảnh/thưởng/công partial",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/pages/TaskManagementPage.tsx",
+      "src/components/tasks/TaskCreateDialog.tsx",
+      "src/components/tasks/TaskCompleteDialog.tsx",
+      "src/hooks/useJobs.ts",
+      "src/lib/salaryBonusNotify.ts",
+      "src/components/tasks/TaskEditDialog.tsx",
+      "src/components/tasks/TaskNotesDialog.tsx"
+    ],
+    "callIds": [
+      "f23645966d064dae",
+      "7154070a605c2d3f",
+      "a999fe1d5be84d53",
+      "4ab14ef6b4e63a93",
+      "5312cb52b3b2fd43",
+      "71c7ab79f7e74614",
+      "c473401a50469a90",
+      "e6fa51501220b5af",
+      "0bd2162d8fc4d650",
+      "a2058e529d0513f6",
+      "d254dca16f549ee1",
+      "253133d65b4496bc",
+      "7a3e20ee5e7c6abb",
+      "ddda562acd372b03",
+      "c8facf68843e4330",
+      "6ac003c9f23adc27",
+      "945ade0848291ada",
+      "d0853249676c0721",
+      "8bbc10b73ac61aa2",
+      "31e02bc22dcbc7ff",
+      "be7b51a192db8f23",
+      "c83dc679ca321352",
+      "f60cdcdac8f4bf5b"
+    ],
+    "callStatusCounts": {
+      "already-correct": 1,
+      "fixed": 19,
+      "intentional-background": 3
+    },
+    "evidence": [
+      "Jobs exact receipts/required catalogs; manual raw-input prewriter focus; materials/bonus/day partial preserve IDs/URLs. accountTemplateReceipts53/accountJobReads49/TaskCreateDOM1 focused829; TaskEdit9/jobCompletion2/taskFeedback3 earlier191."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "G19": {
+    "criterion": "Loại/nhóm công việc",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/hooks/useJobTypes.ts",
+      "src/hooks/useJobGroups.ts",
+      "src/pages/settings/categories/TaskTypesPage.tsx",
+      "src/components/task-types/TaskTypeFormDialog.tsx"
+    ],
+    "callIds": [
+      "1913c7316e494c4e",
+      "6349b3a5d22874bb",
+      "a5ad2adb41b1441d",
+      "0d8697cb082afe91",
+      "e9ad6ee130e7b6b4",
+      "8951932750536419",
+      "b591777520910881",
+      "5e2f2963cd50e6bb",
+      "8d2fbcf55c56b009",
+      "afc0e9091505ff57",
+      "c00f9b994d839bd6",
+      "cdc054b7b75fa52f",
+      "bec8563d7eeb31c3",
+      "eabdfa572bc501cd",
+      "36dac722ab3186d0",
+      "38d772f7c0a0f69e",
+      "6cb4a00a9bcc5971",
+      "c7589c54169f722a"
+    ],
+    "callStatusCounts": {
+      "fixed": 15,
+      "intentional-background": 3
+    },
+    "evidence": [
+      "JobTypes/groups/departments strict SQL fields; exact writer rows, form catches/focus; accountJobReads49/accountTemplateReceipts53 focused829."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "G20": {
+    "criterion": "Nghỉ chờ duyệt không nói đã nghỉ; tải công lỗi",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/pages/my-day/MyDayPage.tsx",
+      "src/components/inspections/InspectionRunner.tsx",
+      "src/hooks/useMyDay.ts"
+    ],
+    "callIds": [
+      "daea07a9a9707597",
+      "264b8b36af4dc002",
+      "ffc8a54fd42f4ab4",
+      "66547ec0b4d12e97",
+      "586668825e214db0",
+      "42ce3a917737e93f",
+      "c7cdf279577af6b5",
+      "9e5eb562813257b3",
+      "37fb8ff3b2801ff9",
+      "887fb478e7080aeb",
+      "3d8a2cacddab48f6",
+      "72ba0d387031f5bc",
+      "f6ff038da5cb0a56",
+      "d3236421aa9f9bff",
+      "a63184e5ebd5cd8c",
+      "7846b5e0c6ff3ac4",
+      "4c146242bb7c17aa",
+      "5c0a0f32cd541216",
+      "bcfeb9c6e5dee0c1",
+      "eb4cf8f9348e6e54",
+      "7a3516389988b422"
+    ],
+    "callStatusCounts": {
+      "fixed": 18,
+      "already-correct": 3
+    },
+    "evidence": [
+      "Root owns latest MyDay/inspection strict source/count/receipt; pending leave not approved day. Preserve session/photo IDs/URLs; root integration proof must merge; no camera/GPS live."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "G21": {
+    "criterion": "Tuyến làm việc giữ thứ tự",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/components/my-day/RoutePlannerSheet.tsx"
+    ],
+    "callIds": [
+      "2ebb8ec8698f8156",
+      "096def7d88a8d972",
+      "108ec29ed6ebf6bf",
+      "40a071af03d854b8",
+      "cac232f87df85179",
+      "5f1ad3c118e91c87"
+    ],
+    "callStatusCounts": {
+      "already-correct": 3,
+      "fixed": 3
+    },
+    "evidence": [
+      "Route local optimization not persistence; save/readonly receipt before success, draft preserved; GPS/concurrent route not E2E."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "G22": {
+    "criterion": "Kiểm tra tòa/ảnh/sự cố",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/pages/my-day/MyDayPage.tsx",
+      "src/components/inspections/InspectionRunner.tsx",
+      "src/hooks/useMyDay.ts"
+    ],
+    "callIds": [
+      "daea07a9a9707597",
+      "264b8b36af4dc002",
+      "ffc8a54fd42f4ab4",
+      "66547ec0b4d12e97",
+      "586668825e214db0",
+      "42ce3a917737e93f",
+      "c7cdf279577af6b5",
+      "9e5eb562813257b3",
+      "37fb8ff3b2801ff9",
+      "887fb478e7080aeb",
+      "3d8a2cacddab48f6",
+      "72ba0d387031f5bc",
+      "f6ff038da5cb0a56",
+      "d3236421aa9f9bff",
+      "a63184e5ebd5cd8c",
+      "7846b5e0c6ff3ac4",
+      "4c146242bb7c17aa",
+      "5c0a0f32cd541216",
+      "bcfeb9c6e5dee0c1",
+      "eb4cf8f9348e6e54",
+      "7a3516389988b422"
+    ],
+    "callStatusCounts": {
+      "fixed": 18,
+      "already-correct": 3
+    },
+    "evidence": [
+      "Root owns latest MyDay/inspection strict source/count/receipt; pending leave not approved day. Preserve session/photo IDs/URLs; root integration proof must merge; no camera/GPS live."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "G23": {
+    "criterion": "CRUD/đọc thông báo",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/hooks/useNotifications.ts",
+      "src/pages/NotificationsPage.tsx",
+      "src/pages/NotificationsMobilePage.tsx",
+      "src/components/layout/NotificationBell.tsx"
+    ],
+    "callIds": [
+      "81f16ca9547ca07d",
+      "3ffa4b05360b22fc",
+      "02ae1f41078b9921",
+      "005e5f37a1fb4e6a",
+      "be5a23673a3655d5",
+      "9c054137cc5720fc",
+      "6f98fb2532a5ab0f",
+      "089fe5df770dac08",
+      "2ab10d1740128d26",
+      "480c89c3a0baebc5",
+      "d6f8f678829c006f",
+      "0233dc9dbde10ec1",
+      "f885af490cb8f64a",
+      "d2eed7dd25a70a78",
+      "0008969633a48b82",
+      "7760efd5eec90fa7",
+      "97f26b95ed0e6d71",
+      "e3e772b61158325f",
+      "cebc1ef24c773fd4",
+      "315c8d118a004c86",
+      "02d2b46288adeb2b",
+      "3daae9d55d159fef"
+    ],
+    "callStatusCounts": {
+      "fixed": 17,
+      "already-correct": 3,
+      "intentional-background": 2
+    },
+    "evidence": [
+      "Notifications source errors explicit; CRUD ID/count/no-op; mobile close only success, unknown unread !, realtime warning+reload. feedbackOutcomes earlier191.",
+      "useNotifications import-only async sink; same five onError args and unchanged outside-feedback AST. Regression83/83 + bootstrap239/239 source-only; no change reads/writers/meta/results or new receipt rules."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "G24": {
+    "criterion": "Tùy chọn thông báo tải lỗi không mặc định thật",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/hooks/useNotificationSettings.ts",
+      "src/components/notifications/NotificationPreferencesCard.tsx",
+      "src/components/notifications/NotificationOrgConfigCard.tsx"
+    ],
+    "callIds": [
+      "bdfd536c3a112393",
+      "d928df06605009aa",
+      "dc954d085ad5dfe8",
+      "85ab76f334635969",
+      "e4d1c60bb3608bc4",
+      "fc27487a8ade319c",
+      "091e722b220f46ae",
+      "d1f7e2a39cdaa58f",
+      "1fad54cbe49cad6b",
+      "4425ee0628bcc88a"
+    ],
+    "callStatusCounts": {
+      "intentional-background": 1,
+      "fixed": 9
+    },
+    "evidence": [
+      "Full config/prefs envelope/org/actor/keys/types; min_amount0 retained, patch equality; org IDs/names errors not defaults; raw input/draft/focus/refetch. notificationReceipt19/OrgConfigDOM5/SettingsDOM2 focused829."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "G25": {
+    "criterion": "Push/gửi thử partial không HTTP/body",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/pages/account/AccountMobilePage.tsx",
+      "src/components/notifications/PushNotificationSettings.tsx",
+      "src/lib/push.ts",
+      "src/main.tsx"
+    ],
+    "callIds": [
+      "32b2374d9e6cf81a",
+      "d5d1bcd91e6b5af9",
+      "d051bca8c1507170",
+      "56c591f75939e0cc",
+      "5281f257ef9aa393",
+      "9e3715da1543cc3f",
+      "b40f4c47abb30754",
+      "8f9c8210053e8548",
+      "fbfd4ff4339718bc",
+      "f7393596d7099f2d",
+      "aa7997191fe84e98",
+      "40d35362c721954c",
+      "cd746925f8b251f5",
+      "cfa208a38fcb23bc",
+      "83627aa1b482e5f2",
+      "44f7294295f2084a",
+      "cb456e7be127b273",
+      "d917a9ee5dc43217",
+      "1dc7a237e8d3a633",
+      "358745e133d49305",
+      "e810ba69a7612ecf",
+      "6edc17c7e1eb4e82",
+      "992db9bcd618ef73",
+      "cf12211fe2ad7ffa"
+    ],
+    "callStatusCounts": {
+      "already-correct": 11,
+      "fixed": 12,
+      "intentional-background": 1
+    },
+    "evidence": [
+      "Native unsubscribe must return true before server deletion/key replacement. Exact own subscription ID/endpoint/keys/active receipt and original causes; no worker register catch-to-null or infinite ready (10s bound). Native/server partial becomes unknown inline in both screens, disables further toggles; readonly retry checks original actor/endpoint on disable and does not write or toast again. Tests pushLifecycle27 + realDOM10 + existingsend1 =38pass15:20:58; lifecycle RED25assertions plus one timeout, DOM6RED. No live push/provider, no new SQL/VAPID policy. Pending endpoint exists only in mounted UI; cross-reload cleanup intent not persisted. Account profile/avatar/password use existing query/error/field owners; accountTemplateReceipts53 earlier829. Install guidance is neutral client instruction.",
+      "Native unsubscribe must return true before server deletion/key replacement. Exact own subscription ID/endpoint/keys/active receipt and original causes; no worker register catch-to-null or infinite ready (10s bound). Native/server partial becomes unknown inline in both screens, disables further toggles; readonly retry checks original actor/endpoint on disable and does not write or toast again. Tests pushLifecycle27 + realDOM10 + existingsend1 =38pass15:20:58; lifecycle RED25assertions plus one timeout, DOM6RED. No live push/provider, no new SQL/VAPID policy. Pending endpoint exists only in mounted UI; cross-reload cleanup intent not persisted.",
+      "Independent root-push-review.json verifies the same3 suites38/38; four live source files independently read by root. No real push/provider invocation."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned; independent root-push-review.json38passed0failed",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "G26": {
+    "criterion": "Chuông reconnect trạng thái nhỏ",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/hooks/useNotifications.ts",
+      "src/pages/NotificationsPage.tsx",
+      "src/pages/NotificationsMobilePage.tsx",
+      "src/components/layout/NotificationBell.tsx"
+    ],
+    "callIds": [
+      "81f16ca9547ca07d",
+      "3ffa4b05360b22fc",
+      "02ae1f41078b9921",
+      "005e5f37a1fb4e6a",
+      "be5a23673a3655d5",
+      "9c054137cc5720fc",
+      "6f98fb2532a5ab0f",
+      "089fe5df770dac08",
+      "2ab10d1740128d26",
+      "480c89c3a0baebc5",
+      "d6f8f678829c006f",
+      "0233dc9dbde10ec1",
+      "f885af490cb8f64a",
+      "d2eed7dd25a70a78",
+      "0008969633a48b82",
+      "7760efd5eec90fa7",
+      "97f26b95ed0e6d71",
+      "e3e772b61158325f",
+      "cebc1ef24c773fd4",
+      "315c8d118a004c86",
+      "02d2b46288adeb2b",
+      "3daae9d55d159fef"
+    ],
+    "callStatusCounts": {
+      "fixed": 17,
+      "already-correct": 3,
+      "intentional-background": 2
+    },
+    "evidence": [
+      "Notifications source errors explicit; CRUD ID/count/no-op; mobile close only success, unknown unread !, realtime warning+reload. feedbackOutcomes earlier191."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "H01": {
+    "criterion": "Zalo batch đã xếp hàng khác đã gửi",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/hooks/useZaloChat.ts",
+      "src/pages/chat-zalo/ChatZaloPage.tsx",
+      "src/components/chat-zalo/BroadcastDialog.tsx",
+      "src/components/chat-zalo/ComposeNewDialog.tsx"
+    ],
+    "callIds": [
+      "1a710f6a6d57b68b",
+      "2b0b228758bbecac",
+      "709bf8532d1b335f",
+      "f5e71dd05cc32154",
+      "53e148ad9868aa37",
+      "c94e98d53c419b48",
+      "365d7f930e9b93ba",
+      "904b6a25dc8ab1af",
+      "6514c83840ef563d",
+      "7203faebd8e6fb8c",
+      "494ce5c34924770d",
+      "2462f7f085e1cdc5",
+      "c7b4bfaa39991c54",
+      "3eeb9d0fe255ea8e",
+      "0af78c58fb339b4c",
+      "e226b48c7bdbc910",
+      "676d61033f66df13",
+      "32b4f205242ce266",
+      "d049b623ffe69e0b",
+      "bd3ece86b02005b8",
+      "6f87f9d5e823bdbb",
+      "1ba16c5952368d6a",
+      "a0c288191308e222",
+      "09a71a21d9e59159",
+      "a607c16e87994544",
+      "acd3488baa3ea20d",
+      "cc2e435af7efafec",
+      "e2f4c6ca0d772360",
+      "0c96533e54bc14fc",
+      "8bfd3db6ccaf134e",
+      "cbe014c44976cf56",
+      "f63766d152fad7fc",
+      "fe685b0dabbcac7b",
+      "ef5ace1cb27ce7d4",
+      "627cd9b3ed3e1e25",
+      "999f141f6a4a8fed",
+      "391a9efa640cdfa5",
+      "a2b0aba361efc36e",
+      "548166885e196c9c",
+      "3fd8d298219e6ff3",
+      "bd472e40583088d9",
+      "d48c54d7e9c4493f",
+      "57f414777f1d5462",
+      "54f10260ab204b89"
+    ],
+    "callStatusCounts": {
+      "fixed": 34,
+      "intentional-background": 7,
+      "already-correct": 3
+    },
+    "evidence": [
+      "Zalo queued not delivered; broadcast/stop counts/unknown safe, partial keeps recipient/body; earlier feedbackOutcomes10/zaloMedia2 in191; no real worker/recipient."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "H02": {
+    "criterion": "Tin/ảnh/tệp/sticker/cảm xúc",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/components/chat-zalo/Composer.tsx",
+      "src/components/chat-zalo/composer/VoiceRecorder.tsx",
+      "src/hooks/chat-zalo/useZaloMedia.ts",
+      "src/hooks/useZaloChat.ts",
+      "src/pages/chat-zalo/ChatZaloPage.tsx",
+      "src/components/chat-zalo/ChatThread.tsx",
+      "src/components/chat-zalo/composer/AttachmentTray.tsx",
+      "src/lib/storage.ts"
+    ],
+    "callIds": [
+      "01fb6123e0e2aca6",
+      "6fc046dfc13aa0b3",
+      "59bea91cf20b185f",
+      "c001fbddb6a921f8",
+      "9a6c23c6c6eadb4f",
+      "6f0892efdaa6ad93",
+      "29e15c680e9827b3",
+      "3b27f0c37d1deac8",
+      "1a710f6a6d57b68b",
+      "2b0b228758bbecac",
+      "709bf8532d1b335f",
+      "f5e71dd05cc32154",
+      "53e148ad9868aa37",
+      "c94e98d53c419b48",
+      "365d7f930e9b93ba",
+      "904b6a25dc8ab1af",
+      "6514c83840ef563d",
+      "7203faebd8e6fb8c",
+      "494ce5c34924770d",
+      "2462f7f085e1cdc5",
+      "c7b4bfaa39991c54",
+      "3eeb9d0fe255ea8e",
+      "0af78c58fb339b4c",
+      "e226b48c7bdbc910",
+      "676d61033f66df13",
+      "32b4f205242ce266",
+      "d049b623ffe69e0b",
+      "bd3ece86b02005b8",
+      "6f87f9d5e823bdbb",
+      "1ba16c5952368d6a",
+      "a0c288191308e222",
+      "09a71a21d9e59159",
+      "a607c16e87994544",
+      "acd3488baa3ea20d",
+      "cc2e435af7efafec",
+      "e2f4c6ca0d772360",
+      "0c96533e54bc14fc",
+      "8bfd3db6ccaf134e",
+      "cbe014c44976cf56",
+      "f63766d152fad7fc",
+      "fe685b0dabbcac7b",
+      "ef5ace1cb27ce7d4",
+      "627cd9b3ed3e1e25",
+      "999f141f6a4a8fed",
+      "391a9efa640cdfa5",
+      "a2b0aba361efc36e",
+      "548166885e196c9c",
+      "3fd8d298219e6ff3",
+      "bd472e40583088d9",
+      "d48c54d7e9c4493f",
+      "57f414777f1d5462",
+      "54f10260ab204b89",
+      "1fd535d0f81fd9d2",
+      "de622029dedb315a",
+      "b2db42e6a3f32b31",
+      "0a12ab2f6c77cc54"
+    ],
+    "callStatusCounts": {
+      "fixed": 44,
+      "intentional-background": 7,
+      "already-correct": 3,
+      "background-only": 2
+    },
+    "evidence": [
+      "Media paths/clientMessageId retained, retry only missing upload, unknown queue block/draft preserved. strict pendingBatch fixed; zaloMedia2 earlier191; no provider live.",
+      "Zalo queued not delivered; broadcast/stop counts/unknown safe, partial keeps recipient/body; earlier feedbackOutcomes10/zaloMedia2 in191; no real worker/recipient.",
+      "Main9aa late-upload cleanup diagnostic exact2 calls inspected: no background toast/rawUI, error does not mean cleanup succeeded. rebase-storage-zalo-scope-proof keeps main compression/MIME/path/size/deadline/cleanup/writers and task queued/partial barrier; owner45/45 current9files, independent210/210 current21files. No live recipient/storage/browser proof."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "H03": {
+    "criterion": "Thu hồi/tải lịch sử đúng trạng thái",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/hooks/chat-zalo/useZaloTemplatesAdmin.ts",
+      "src/hooks/chat-zalo/useZaloCrmProfile.ts",
+      "src/hooks/chat-zalo/useZaloConversationActions.ts",
+      "src/hooks/useZaloChat.ts",
+      "src/pages/chat-zalo/ChatZaloPage.tsx",
+      "src/components/chat-zalo/TemplateManagerDialog.tsx"
+    ],
+    "callIds": [
+      "8e2b15895b04e469",
+      "6776301c44c091c5",
+      "09b8608e47984f2b",
+      "e9861a41fdb2aeb9",
+      "3e360fbac08f492f",
+      "e1e1bee694764c42",
+      "62c4ff578c0f939f",
+      "3d6dc105acdb5e24",
+      "2d37b81c147b7446",
+      "227e3aee0f7bb65b",
+      "959ec3a9a87e7372",
+      "d08dd9700d95ce4f",
+      "af936bec7d1746c0",
+      "e9bdfb71927aab62",
+      "d147e4f827c0dc55",
+      "e94810b38959216c",
+      "bae2efd72487198a",
+      "b3cb7e95d150fb45",
+      "fa6323c7daf99a24",
+      "ba456cbd7ef8c7f9",
+      "57e3ba229b203de7",
+      "170c5b2f6882b0d5",
+      "43659607ce48b725",
+      "0c358ecc1e7ad8f0",
+      "1a710f6a6d57b68b",
+      "2b0b228758bbecac",
+      "709bf8532d1b335f",
+      "f5e71dd05cc32154",
+      "53e148ad9868aa37",
+      "c94e98d53c419b48",
+      "365d7f930e9b93ba",
+      "904b6a25dc8ab1af",
+      "6514c83840ef563d",
+      "7203faebd8e6fb8c",
+      "494ce5c34924770d",
+      "2462f7f085e1cdc5",
+      "c7b4bfaa39991c54",
+      "3eeb9d0fe255ea8e",
+      "0af78c58fb339b4c",
+      "e226b48c7bdbc910",
+      "676d61033f66df13",
+      "32b4f205242ce266",
+      "d049b623ffe69e0b",
+      "bd3ece86b02005b8",
+      "6f87f9d5e823bdbb",
+      "1ba16c5952368d6a",
+      "a0c288191308e222",
+      "09a71a21d9e59159",
+      "a607c16e87994544",
+      "acd3488baa3ea20d",
+      "cc2e435af7efafec",
+      "e2f4c6ca0d772360",
+      "0c96533e54bc14fc",
+      "8bfd3db6ccaf134e",
+      "cbe014c44976cf56",
+      "f63766d152fad7fc",
+      "fe685b0dabbcac7b",
+      "ef5ace1cb27ce7d4",
+      "627cd9b3ed3e1e25",
+      "999f141f6a4a8fed",
+      "391a9efa640cdfa5",
+      "a2b0aba361efc36e",
+      "548166885e196c9c",
+      "3fd8d298219e6ff3",
+      "bd472e40583088d9",
+      "d48c54d7e9c4493f",
+      "57f414777f1d5462",
+      "54f10260ab204b89"
+    ],
+    "callStatusCounts": {
+      "fixed": 56,
+      "intentional-background": 9,
+      "already-correct": 3
+    },
+    "evidence": [
+      "Conversation/CRM/templates safe, required source errors, requested-history semantics, fieldfocus/delete waits; earlier other.md partial proof, no full CRM DOM.",
+      "Zalo queued not delivered; broadcast/stop counts/unknown safe, partial keeps recipient/body; earlier feedbackOutcomes10/zaloMedia2 in191; no real worker/recipient."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "H04": {
+    "criterion": "Kết nối/ngắt Zalo",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/hooks/useZaloChat.ts",
+      "src/pages/chat-zalo/ChatZaloPage.tsx",
+      "src/components/chat-zalo/ConnectZaloDialog.tsx"
+    ],
+    "callIds": [
+      "1a710f6a6d57b68b",
+      "2b0b228758bbecac",
+      "709bf8532d1b335f",
+      "f5e71dd05cc32154",
+      "53e148ad9868aa37",
+      "c94e98d53c419b48",
+      "365d7f930e9b93ba",
+      "904b6a25dc8ab1af",
+      "6514c83840ef563d",
+      "7203faebd8e6fb8c",
+      "494ce5c34924770d",
+      "2462f7f085e1cdc5",
+      "c7b4bfaa39991c54",
+      "3eeb9d0fe255ea8e",
+      "0af78c58fb339b4c",
+      "e226b48c7bdbc910",
+      "676d61033f66df13",
+      "32b4f205242ce266",
+      "d049b623ffe69e0b",
+      "bd3ece86b02005b8",
+      "6f87f9d5e823bdbb",
+      "1ba16c5952368d6a",
+      "a0c288191308e222",
+      "09a71a21d9e59159",
+      "a607c16e87994544",
+      "acd3488baa3ea20d",
+      "cc2e435af7efafec",
+      "e2f4c6ca0d772360",
+      "0c96533e54bc14fc",
+      "8bfd3db6ccaf134e",
+      "cbe014c44976cf56",
+      "f63766d152fad7fc",
+      "fe685b0dabbcac7b",
+      "ef5ace1cb27ce7d4",
+      "627cd9b3ed3e1e25",
+      "999f141f6a4a8fed",
+      "391a9efa640cdfa5",
+      "a2b0aba361efc36e",
+      "548166885e196c9c",
+      "3fd8d298219e6ff3",
+      "bd472e40583088d9",
+      "d48c54d7e9c4493f",
+      "57f414777f1d5462",
+      "54f10260ab204b89"
+    ],
+    "callStatusCounts": {
+      "fixed": 34,
+      "intentional-background": 7,
+      "already-correct": 3
+    },
+    "evidence": [
+      "Zalo queued not delivered; broadcast/stop counts/unknown safe, partial keeps recipient/body; earlier feedbackOutcomes10/zaloMedia2 in191; no real worker/recipient.",
+      "Connect/disconnect safe feedback, draft preserved, no raw worker diagnostics. Earlier other.md partial proof; no Edge/provider receipt live acceptance."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "H05": {
+    "criterion": "Tự động/lịch/dừng gửi",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/hooks/useZaloChat.ts",
+      "src/pages/chat-zalo/ChatZaloPage.tsx",
+      "src/components/chat-zalo/AutomationPanel.tsx",
+      "src/components/chat-zalo/automation/AutomationSettingsDialog.tsx",
+      "src/components/chat-zalo/automation/RunLog.tsx"
+    ],
+    "callIds": [
+      "1a710f6a6d57b68b",
+      "2b0b228758bbecac",
+      "709bf8532d1b335f",
+      "f5e71dd05cc32154",
+      "53e148ad9868aa37",
+      "c94e98d53c419b48",
+      "365d7f930e9b93ba",
+      "904b6a25dc8ab1af",
+      "6514c83840ef563d",
+      "7203faebd8e6fb8c",
+      "494ce5c34924770d",
+      "2462f7f085e1cdc5",
+      "c7b4bfaa39991c54",
+      "3eeb9d0fe255ea8e",
+      "0af78c58fb339b4c",
+      "e226b48c7bdbc910",
+      "676d61033f66df13",
+      "32b4f205242ce266",
+      "d049b623ffe69e0b",
+      "bd3ece86b02005b8",
+      "6f87f9d5e823bdbb",
+      "1ba16c5952368d6a",
+      "a0c288191308e222",
+      "09a71a21d9e59159",
+      "a607c16e87994544",
+      "acd3488baa3ea20d",
+      "cc2e435af7efafec",
+      "e2f4c6ca0d772360",
+      "0c96533e54bc14fc",
+      "8bfd3db6ccaf134e",
+      "cbe014c44976cf56",
+      "f63766d152fad7fc",
+      "fe685b0dabbcac7b",
+      "ef5ace1cb27ce7d4",
+      "627cd9b3ed3e1e25",
+      "999f141f6a4a8fed",
+      "391a9efa640cdfa5",
+      "a2b0aba361efc36e",
+      "548166885e196c9c",
+      "3fd8d298219e6ff3",
+      "bd472e40583088d9",
+      "d48c54d7e9c4493f",
+      "57f414777f1d5462",
+      "54f10260ab204b89"
+    ],
+    "callStatusCounts": {
+      "fixed": 34,
+      "intentional-background": 7,
+      "already-correct": 3
+    },
+    "evidence": [
+      "Zalo queued not delivered; broadcast/stop counts/unknown safe, partial keeps recipient/body; earlier feedbackOutcomes10/zaloMedia2 in191; no real worker/recipient.",
+      "Automation selections/template/keywords inlinefocus, config/run errors explicit; stop processing count warning; earlier feedbackOutcomes, no schedule live."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "H06": {
+    "criterion": "Liên kết hồ sơ/mẫu/tìm phone",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/hooks/chat-zalo/useZaloTemplatesAdmin.ts",
+      "src/hooks/chat-zalo/useZaloCrmProfile.ts",
+      "src/hooks/chat-zalo/useZaloConversationActions.ts",
+      "src/hooks/useZaloChat.ts",
+      "src/pages/chat-zalo/ChatZaloPage.tsx",
+      "src/components/chat-zalo/TemplateManagerDialog.tsx"
+    ],
+    "callIds": [
+      "8e2b15895b04e469",
+      "6776301c44c091c5",
+      "09b8608e47984f2b",
+      "e9861a41fdb2aeb9",
+      "3e360fbac08f492f",
+      "e1e1bee694764c42",
+      "62c4ff578c0f939f",
+      "3d6dc105acdb5e24",
+      "2d37b81c147b7446",
+      "227e3aee0f7bb65b",
+      "959ec3a9a87e7372",
+      "d08dd9700d95ce4f",
+      "af936bec7d1746c0",
+      "e9bdfb71927aab62",
+      "d147e4f827c0dc55",
+      "e94810b38959216c",
+      "bae2efd72487198a",
+      "b3cb7e95d150fb45",
+      "fa6323c7daf99a24",
+      "ba456cbd7ef8c7f9",
+      "57e3ba229b203de7",
+      "170c5b2f6882b0d5",
+      "43659607ce48b725",
+      "0c358ecc1e7ad8f0",
+      "1a710f6a6d57b68b",
+      "2b0b228758bbecac",
+      "709bf8532d1b335f",
+      "f5e71dd05cc32154",
+      "53e148ad9868aa37",
+      "c94e98d53c419b48",
+      "365d7f930e9b93ba",
+      "904b6a25dc8ab1af",
+      "6514c83840ef563d",
+      "7203faebd8e6fb8c",
+      "494ce5c34924770d",
+      "2462f7f085e1cdc5",
+      "c7b4bfaa39991c54",
+      "3eeb9d0fe255ea8e",
+      "0af78c58fb339b4c",
+      "e226b48c7bdbc910",
+      "676d61033f66df13",
+      "32b4f205242ce266",
+      "d049b623ffe69e0b",
+      "bd3ece86b02005b8",
+      "6f87f9d5e823bdbb",
+      "1ba16c5952368d6a",
+      "a0c288191308e222",
+      "09a71a21d9e59159",
+      "a607c16e87994544",
+      "acd3488baa3ea20d",
+      "cc2e435af7efafec",
+      "e2f4c6ca0d772360",
+      "0c96533e54bc14fc",
+      "8bfd3db6ccaf134e",
+      "cbe014c44976cf56",
+      "f63766d152fad7fc",
+      "fe685b0dabbcac7b",
+      "ef5ace1cb27ce7d4",
+      "627cd9b3ed3e1e25",
+      "999f141f6a4a8fed",
+      "391a9efa640cdfa5",
+      "a2b0aba361efc36e",
+      "548166885e196c9c",
+      "3fd8d298219e6ff3",
+      "bd472e40583088d9",
+      "d48c54d7e9c4493f",
+      "57f414777f1d5462",
+      "54f10260ab204b89"
+    ],
+    "callStatusCounts": {
+      "fixed": 56,
+      "intentional-background": 9,
+      "already-correct": 3
+    },
+    "evidence": [
+      "Conversation/CRM/templates safe, required source errors, requested-history semantics, fieldfocus/delete waits; earlier other.md partial proof, no full CRM DOM.",
+      "Zalo queued not delivered; broadcast/stop counts/unknown safe, partial keeps recipient/body; earlier feedbackOutcomes10/zaloMedia2 in191; no real worker/recipient."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "H07": {
+    "criterion": "Gửi nhiều/gửi mới fields",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/components/chat-zalo/BroadcastDialog.tsx",
+      "src/components/chat-zalo/ComposeNewDialog.tsx"
+    ],
+    "callIds": [],
+    "callStatusCounts": {},
+    "evidence": [
+      "Zalo queued not delivered; broadcast/stop counts/unknown safe, partial keeps recipient/body; earlier feedbackOutcomes10/zaloMedia2 in191; no real worker/recipient."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "H11": {
+    "criterion": "Copilot tool errors safe",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/copilot/tools/registry.ts",
+      "src/copilot/tools/nghiepVuTools.ts",
+      "src/copilot/chatErrors.ts"
+    ],
+    "callIds": [],
+    "callStatusCounts": {},
+    "evidence": [
+      "Source evidence in other.md"
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "H12": {
+    "criterion": "Copilot thực hiện phiếu unknown step",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/copilot/XacNhanPhieuCard.tsx",
+      "src/copilot/tools/writeTools.ts"
+    ],
+    "callIds": [],
+    "callStatusCounts": {},
+    "evidence": [
+      "Confirmation actor/org/action/canonical marker persists across new nonce/thread, nonce memory-only; complete/replay/queued needs entityID persisted first. Readonly immutable own audit exact payload/table/ID only releases; []/malformed/deny no writer. SQL IE actor/org/tool/permission/hash replay verified. confirm14/writeTools48/race5=67pass13:48:54; 12RED→GREEN."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "H13": {
+    "criterion": "Copilot lịch sử/ghi nhớ/ảnh partial",
+    "status": "source-checked",
+    "scope": "Owned Copilot history/memory/image feedback; source/test evidence only, not browser or live-provider acceptance",
+    "files": [
+      "src/copilot/ChatPanel.tsx",
+      "src/copilot/chatEngine.ts",
+      "src/copilot/memoryClient.ts",
+      "src/copilot/chatErrors.ts",
+      "src/copilot/anh.ts"
+    ],
+    "callIds": [],
+    "callStatusCounts": {},
+    "evidence": [
+      "ChatPanel history read errors remain an inline warning and do not render an empty-history prompt. Thread ID retained; failed history save blocks automatic reinsert and next send until verified. chatEngine required actor/org/thread/message/content receipts and marker before insert; unknown does not dispatch a second insert.",
+      "Memory SQL rows and key/value/source/total receipts are required; invalid key/content has red inline fields with aria-describedby and focusFirstError. Failed/unknown write keeps draft and local warning; verified absence is separate from malformed/error.",
+      "Image aggregation retains accepted images and reports rejected names/counts; failed send restores original question and imageDraft in current organization generation. Controlled workflow errors preserve completed IDs in history feedback.",
+      "Current scanner finds no notification/useQuery/useMutation/log call sites in these files; no synthetic AST IDs. Source warnings/inline setState and pure-helper receipts are checked directly."
+    ],
+    "verification": "5 H13 suites/97 assertions passed within finish-copilot-focused-final.json, 14:54:14: ChatPanel.memory8, ChatPanel16, chatReceipts15, memory39, memoryReceipts19. Prior whole owned focused51files829pass; no source changed for this checklist correction.",
+    "notVerified": [
+      "Browser E2E or real AI/provider/RLS",
+      "Unsaved question/images/body recovery after browser reload",
+      "Every image partial case through real browser encoding/upload",
+      "Multi-window history concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "H14": {
+    "criterion": "Copilot config/quyền/provider fields",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/copilot/admin/AiCopilotAdminPage.tsx",
+      "src/copilot/admin/HanhDongTab.tsx",
+      "src/copilot/featureFlags.ts",
+      "src/copilot/useAiProviders.ts"
+    ],
+    "callIds": [
+      "04ed48773ca83855",
+      "744589649c32872f",
+      "da44ff9bbe687763",
+      "f797b4bebf3ccaea",
+      "9235c1b3cd21fcd6",
+      "1325fb2dc0c7e960",
+      "a00ff683a6c4458e",
+      "3faa990c866c97d6",
+      "9da2922db92b520c",
+      "65521cdd657ecf7a",
+      "b5a8bb837f3b8a9c",
+      "8167f1d465c99e6b",
+      "a0c4699e4dc8c227",
+      "34f88d23baa5289f",
+      "81e4083c86bd2511",
+      "78f4464895245897",
+      "9974a4c451599736",
+      "e9a2387ea42df0d5",
+      "4490e48bccb2a322",
+      "12795c992f4fb97f",
+      "5c1b0cfa5f6c0b1e",
+      "1e447cde96d57281",
+      "844108ea9cd88c2c",
+      "21318a073005a75e",
+      "da7693a5c19c0a1c",
+      "71c7179e55015862",
+      "8030d21c317f49c0",
+      "6836eb7b21fa7300",
+      "ac2ccbb1b0ed787a",
+      "b14df600f62ccdf1",
+      "27cadbfcdfad6533",
+      "7f2914a1aa4aaf51",
+      "03fe7412d53b0204",
+      "f29713466593cc1b",
+      "4d3f0e6fd6156258",
+      "73da4d30dbc2b667",
+      "c6cb74664f92cf51",
+      "2c185f6e2ee2a7cd",
+      "9aa8cf0895f64ce0",
+      "f87c0e0397f6816a",
+      "f6fcac04f2e2f353",
+      "3ed1002a28815924",
+      "bf90ee0fa1e33e75",
+      "86492aa56e36fbf5",
+      "5d483fded4c188ff"
+    ],
+    "callStatusCounts": {
+      "already-correct": 2,
+      "fixed": 43
+    },
+    "evidence": [
+      "Settings/providers/entitlements/grants/policy/PIN/ledger/report SQL shapes; usage paginate; exact returned IDs/values, actor persistent unknown, field red/reveal/focus. Admin17/HanhDong10/write7/persist5/policy10/read24/providers11 thuộc focused829."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "H15": {
+    "criterion": "PIN/xác nhận fields",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/copilot/StepUpPinModal.tsx"
+    ],
+    "callIds": [],
+    "callStatusCounts": {},
+    "evidence": [
+      "Source evidence in other.md"
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "H19": {
+    "criterion": "Public quay số/hóa đơn tải lỗi phân loại",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/components/sale-phong/ShareTokensTab.tsx",
+      "src/components/sale-phong/mobile/MobileShareTokens.tsx",
+      "src/hooks/usePublicRoomTokens.ts",
+      "src/hooks/usePublicRoomSettings.ts",
+      "src/hooks/usePublicRoomsAnalytics.ts",
+      "src/hooks/usePassListings.ts",
+      "src/components/sale-phong/DisplaySettingsTab.tsx",
+      "src/components/sale-phong/mobile/MobileDisplaySettings.tsx",
+      "src/components/sale-phong/AnalyticsTab.tsx",
+      "src/components/sale-phong/mobile/MobileAnalytics.tsx",
+      "src/pages/sale-phong/SalePhongMobilePage.tsx",
+      "src/components/sale-phong/PassListingsTab.tsx",
+      "src/components/sale-phong/mobile/MobilePassListings.tsx"
+    ],
+    "callIds": [
+      "91e8a21247b1263d",
+      "9b2f89cd2d48e205",
+      "999470f17ce4e10f",
+      "015aa7daa2b9a23c",
+      "58a50f640a96bad1",
+      "95ab586373266d7b",
+      "55e23efef9842ec0",
+      "f744cbdf92d024c7",
+      "f598af25ba8a5e51",
+      "40ffb46fbe1901c2",
+      "52e4fa7a1e6eb161",
+      "4779d52c13dc7c85",
+      "7bdc6f0aa2c0994e",
+      "267ef05dc73fa0ba",
+      "906cc3b961e0af33",
+      "4633e138ceecabc4",
+      "fd5272432fce4547",
+      "ecb242ae1e893b1c",
+      "f4028581449606c1",
+      "3ac19ca720da6727",
+      "d8f3df5a4adf7aef",
+      "905657c88dac093b",
+      "3a84b2bc3a15d906",
+      "226be1318ce42104",
+      "66ed487a6db9d3a3",
+      "1ecd8b1222e1071c",
+      "a661f14f8fd8334b",
+      "ad0a8c5ba0c3c55c",
+      "14286b4fedc4c5de",
+      "4eae6bef712949ac",
+      "923189a406790a29",
+      "9ef664c685e43dcf",
+      "08e29cc7779a7720",
+      "e3417c68ab4e3647",
+      "7099d64c7f352be7",
+      "597c3982f84dc172",
+      "c3891e4fc089b128",
+      "ce7cc02572e29e99"
+    ],
+    "callStatusCounts": {
+      "fixed": 37,
+      "already-correct": 1
+    },
+    "evidence": [
+      "Public/sale tokens/settings strict reads/exact rows, persistent unknown; required desktop/mobile query regions block defaults, draft/refetch/dayfield focus; analytics7 no false0/empty. tokenReceipt32/analytics50/saleAdmin26/regions18 focused829. H19 only public/sale assigned scope, root owns public lottery/invoice.",
+      "Pass 3 reads require actual array/SQL rows, meta.errorDisplay inline. Desktop/mobile list+room QueryRegion, customer failure keeps draft and blocks save; page pass counter never false0 after error. Upsert and active exact affected ID/room/values; original server error preserved and one safe notifyActionError. Delete void RPC SQL already-missing no-op verifies desired absent state; both confirmations wait onSuccess and remain on error. Hook26/DOM12/page6=44pass14:43:57; 31RED→GREEN notification/queries +4RED→GREEN price cases. SQL numeric has no min/decimal restriction: shared NumberInput allowDecimal keeps signed/decimal/raw/optional-null, validateInputDrafts blocks malformed and focuses field. No new SQL/business rule."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "H20": {
+    "criterion": "Voice lab lỗi từng bước",
+    "status": "archived-unused",
+    "scope": "Retired voice-lab removed from live app on main; no feature restoration or active-source acceptance",
+    "files": [],
+    "archivedFiles": [
+      "src/lib/voice-task-lab",
+      "src/pages/VoiceTaskLabPage.tsx",
+      "src/components/voice-task-lab"
+    ],
+    "callIds": [],
+    "callStatusCounts": {},
+    "evidence": [
+      "Root verified voice-lab archived on origin/main45149b9b. Independent git ls-tree at45149b9b contains no src/lib/voice-task-lab, src/pages/VoiceTaskLabPage.tsx or src/components/voice-task-lab paths. Root accepts upstream deletions and removes orphan feedback helper test during integration.",
+      "Historical other.md H20 source/test notes describe pre-archive snapshots only; they do not justify restoring a route or claiming a live voice workflow is verified. No current call IDs are fabricated."
+    ],
+    "verification": "Read-only Git tree check at45149b9b plus root integration instruction. No retired feature runtime test or source edit required.",
+    "notVerified": [
+      "Historical microphone/provider behavior was not browser-verified",
+      "No live voice-lab acceptance because feature is archived"
+    ]
+  },
+  "I08": {
+    "criterion": "Lương/ví/lợi nhuận đủ nguồn",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/components/shareholders/ProfitManagerForm.tsx",
+      "src/components/shareholders/ProfitVerificationBar.tsx",
+      "src/components/shareholders/ProfitDistributeDialog.tsx",
+      "src/components/shareholders/ManagerSalaryPayoutDialog.tsx"
+    ],
+    "callIds": [],
+    "callStatusCounts": {},
+    "evidence": [
+      "Managers/rules/building strict reads+receipts, marker and each positive ID before batch validation; remount preserves unknown; configPersist10/ProfitForms4/accountProfitReads45 focused829; backend not atomic.",
+      "Close/unlock/reset actor/org/month marker, arg5 targetorg prewriter; strict SQL preview/hash/amount/state/disposition, inline rowfocus; profitPersist10/unlock14/readBoundaries56 focused829; absence never rollback proof.",
+      "Payout stable progress.requestKey to RPC, actual account targetorg barrier; keep positive voucherID even unknown status, no paid-success claim; payoutPersist8/PayoutDOM4 focused829."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "I13": {
+    "criterion": "Tài khoản/cài đặt/danh mục không ghi mặc định",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/components/sale-phong/ShareTokensTab.tsx",
+      "src/components/sale-phong/mobile/MobileShareTokens.tsx",
+      "src/hooks/usePublicRoomTokens.ts",
+      "src/hooks/usePublicRoomSettings.ts",
+      "src/hooks/usePublicRoomsAnalytics.ts",
+      "src/hooks/usePassListings.ts",
+      "src/hooks/useUiPreferences.ts",
+      "src/components/notifications/NotificationPreferencesCard.tsx",
+      "src/components/notifications/NotificationOrgConfigCard.tsx",
+      "src/components/sale-phong/DisplaySettingsTab.tsx",
+      "src/components/sale-phong/mobile/MobileDisplaySettings.tsx",
+      "src/components/sale-phong/AnalyticsTab.tsx",
+      "src/components/sale-phong/mobile/MobileAnalytics.tsx",
+      "src/pages/sale-phong/SalePhongMobilePage.tsx",
+      "src/components/sale-phong/PassListingsTab.tsx",
+      "src/components/sale-phong/mobile/MobilePassListings.tsx"
+    ],
+    "callIds": [
+      "91e8a21247b1263d",
+      "9b2f89cd2d48e205",
+      "999470f17ce4e10f",
+      "015aa7daa2b9a23c",
+      "58a50f640a96bad1",
+      "95ab586373266d7b",
+      "55e23efef9842ec0",
+      "f744cbdf92d024c7",
+      "f598af25ba8a5e51",
+      "40ffb46fbe1901c2",
+      "52e4fa7a1e6eb161",
+      "4779d52c13dc7c85",
+      "7bdc6f0aa2c0994e",
+      "267ef05dc73fa0ba",
+      "906cc3b961e0af33",
+      "4633e138ceecabc4",
+      "fd5272432fce4547",
+      "ecb242ae1e893b1c",
+      "f4028581449606c1",
+      "3ac19ca720da6727",
+      "d8f3df5a4adf7aef",
+      "905657c88dac093b",
+      "3a84b2bc3a15d906",
+      "226be1318ce42104",
+      "66ed487a6db9d3a3",
+      "1ecd8b1222e1071c",
+      "a661f14f8fd8334b",
+      "ad0a8c5ba0c3c55c",
+      "14286b4fedc4c5de",
+      "4eae6bef712949ac",
+      "923189a406790a29",
+      "9ef664c685e43dcf",
+      "08e29cc7779a7720",
+      "e3417c68ab4e3647",
+      "bd02c0246655c660",
+      "867afb055f2b1157",
+      "48ca2fe80064be6e",
+      "7099d64c7f352be7",
+      "597c3982f84dc172",
+      "c3891e4fc089b128",
+      "ce7cc02572e29e99"
+    ],
+    "callStatusCounts": {
+      "fixed": 40,
+      "already-correct": 1
+    },
+    "evidence": [
+      "Public/sale tokens/settings strict reads/exact rows, persistent unknown; required desktop/mobile query regions block defaults, draft/refetch/dayfield focus; analytics7 no false0/empty. tokenReceipt32/analytics50/saleAdmin26/regions18 focused829. H19 only public/sale assigned scope, root owns public lottery/invoice.",
+      "Pass 3 reads require actual array/SQL rows, meta.errorDisplay inline. Desktop/mobile list+room QueryRegion, customer failure keeps draft and blocks save; page pass counter never false0 after error. Upsert and active exact affected ID/room/values; original server error preserved and one safe notifyActionError. Delete void RPC SQL already-missing no-op verifies desired absent state; both confirmations wait onSuccess and remain on error. Hook26/DOM12/page6=44pass14:43:57; 31RED→GREEN notification/queries +4RED→GREEN price cases. SQL numeric has no min/decimal restriction: shared NumberInput allowDecimal keeps signed/decimal/raw/optional-null, validateInputDrafts blocks malformed and focuses field. No new SQL/business rule.",
+      "UI preference default caller has one safe onError; per-key optimistic rollback remains; RoutePlanner inlineError opt-out uses local catch. SQL set_my_ui_preference returns full non-null JSONB, require actual submitted key/value (object order normalized). Required source null/malformed rejects; real {} valid. uiPreferences14/RoutePlanner2/provider11=27pass14:06:04; 11RED→GREEN. Final focused51files829pass14:54:14.",
+      "Full config/prefs envelope/org/actor/keys/types; min_amount0 retained, patch equality; org IDs/names errors not defaults; raw input/draft/focus/refetch. notificationReceipt19/OrgConfigDOM5/SettingsDOM2 focused829."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "I14": {
+    "criterion": "Danh mục trong form tải lỗi",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/components/sale-phong/ShareTokensTab.tsx",
+      "src/components/sale-phong/mobile/MobileShareTokens.tsx",
+      "src/hooks/usePublicRoomTokens.ts",
+      "src/hooks/usePublicRoomSettings.ts",
+      "src/hooks/usePublicRoomsAnalytics.ts",
+      "src/hooks/usePassListings.ts",
+      "src/components/sale-phong/DisplaySettingsTab.tsx",
+      "src/components/sale-phong/mobile/MobileDisplaySettings.tsx",
+      "src/components/sale-phong/AnalyticsTab.tsx",
+      "src/components/sale-phong/mobile/MobileAnalytics.tsx",
+      "src/pages/sale-phong/SalePhongMobilePage.tsx",
+      "src/components/sale-phong/PassListingsTab.tsx",
+      "src/components/sale-phong/mobile/MobilePassListings.tsx"
+    ],
+    "callIds": [
+      "91e8a21247b1263d",
+      "9b2f89cd2d48e205",
+      "999470f17ce4e10f",
+      "015aa7daa2b9a23c",
+      "58a50f640a96bad1",
+      "95ab586373266d7b",
+      "55e23efef9842ec0",
+      "f744cbdf92d024c7",
+      "f598af25ba8a5e51",
+      "40ffb46fbe1901c2",
+      "52e4fa7a1e6eb161",
+      "4779d52c13dc7c85",
+      "7bdc6f0aa2c0994e",
+      "267ef05dc73fa0ba",
+      "906cc3b961e0af33",
+      "4633e138ceecabc4",
+      "fd5272432fce4547",
+      "ecb242ae1e893b1c",
+      "f4028581449606c1",
+      "3ac19ca720da6727",
+      "d8f3df5a4adf7aef",
+      "905657c88dac093b",
+      "3a84b2bc3a15d906",
+      "226be1318ce42104",
+      "66ed487a6db9d3a3",
+      "1ecd8b1222e1071c",
+      "a661f14f8fd8334b",
+      "ad0a8c5ba0c3c55c",
+      "14286b4fedc4c5de",
+      "4eae6bef712949ac",
+      "923189a406790a29",
+      "9ef664c685e43dcf",
+      "08e29cc7779a7720",
+      "e3417c68ab4e3647",
+      "7099d64c7f352be7",
+      "597c3982f84dc172",
+      "c3891e4fc089b128",
+      "ce7cc02572e29e99"
+    ],
+    "callStatusCounts": {
+      "fixed": 37,
+      "already-correct": 1
+    },
+    "evidence": [
+      "Public/sale tokens/settings strict reads/exact rows, persistent unknown; required desktop/mobile query regions block defaults, draft/refetch/dayfield focus; analytics7 no false0/empty. tokenReceipt32/analytics50/saleAdmin26/regions18 focused829. H19 only public/sale assigned scope, root owns public lottery/invoice.",
+      "Pass 3 reads require actual array/SQL rows, meta.errorDisplay inline. Desktop/mobile list+room QueryRegion, customer failure keeps draft and blocks save; page pass counter never false0 after error. Upsert and active exact affected ID/room/values; original server error preserved and one safe notifyActionError. Delete void RPC SQL already-missing no-op verifies desired absent state; both confirmations wait onSuccess and remain on error. Hook26/DOM12/page6=44pass14:43:57; 31RED→GREEN notification/queries +4RED→GREEN price cases. SQL numeric has no min/decimal restriction: shared NumberInput allowDecimal keeps signed/decimal/raw/optional-null, validateInputDrafts blocks malformed and focuses field. No new SQL/business rule."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  },
+  "I15": {
+    "criterion": "Duyệt/thông báo/chuông số chưa biết",
+    "status": "source-checked",
+    "scope": "Owned audit_other/finish_copilot portion; merge root/finance/materials evidence for whole group",
+    "files": [
+      "src/pages/NotificationsPage.tsx",
+      "src/pages/NotificationsMobilePage.tsx",
+      "src/components/layout/NotificationBell.tsx",
+      "src/components/notifications/NotificationPreferencesCard.tsx",
+      "src/components/notifications/NotificationOrgConfigCard.tsx"
+    ],
+    "callIds": [],
+    "callStatusCounts": {},
+    "evidence": [
+      "Notifications source errors explicit; CRUD ID/count/no-op; mobile close only success, unknown unread !, realtime warning+reload. feedbackOutcomes earlier191.",
+      "Full config/prefs envelope/org/actor/keys/types; min_amount0 retained, patch equality; org IDs/names errors not defaults; raw input/draft/focus/refetch. notificationReceipt19/OrgConfigDOM5/SettingsDOM2 focused829."
+    ],
+    "verification": "G25 final 3 files/38pass15:20:58 (JSON push-final-focused.json); prior owned 51 files/829pass14:54:14 (JSON finish-copilot-focused-final.json); H12 narrowing67pass13:48:54; UiPreferences27pass14:06:04; onboarding65pass14:16:36; pass40pass14:26:02; final app gates root-owned",
+    "notVerified": [
+      "Browser E2E",
+      "SQL/RLS/Edge/provider live",
+      "Money writes/real recipients",
+      "Multi-window concurrency/CAS",
+      "Production release at subagent"
+    ]
+  }
+}

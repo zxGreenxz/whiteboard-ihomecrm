@@ -1,3 +1,6 @@
+import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
+import {FinancialWorkflowError,workflowErrorMessage} from '@/lib/financialWorkflow';
+import { voucherFailureMessage } from "@/lib/voucherFeedback";
 // Đổi cờ "tính vào kết quả kinh doanh" của phiếu DOANH THU BỎ CỌC.
 //
 // VÌ SAO PHẢI CÓ CỬA RIÊNG, KHÔNG DÙNG ĐƯỜNG SỬA PHIẾU THƯỜNG:
@@ -63,10 +66,11 @@ const INVALIDATE_KEYS = [
 ] as const;
 
 export const useSetForfeitVoucherKqkd = () => {
+  const workflow=persistentFinancialWorkflow("voucher-kqkd",{scope:"actor"});
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (input: SetForfeitKqkdInput) => {
+    mutationFn: async (input: SetForfeitKqkdInput) => workflow.run(input.voucherId,'đổi cách hạch toán phiếu',async progress=>{
       const { data, error } = await supabase.rpc("set_forfeit_voucher_kqkd_v1", {
         p_voucher: input.voucherId,
         p_kqkd: input.kqkd,
@@ -76,28 +80,35 @@ export const useSetForfeitVoucherKqkd = () => {
         const msg = error.message ?? "";
         // Server viết sẵn câu tiếng Việt; periodBlockMessage chỉ bóc tiền tố
         // máy-đọc ([PROFIT_LOCKED]…) thành câu người đọc.
-        toast.error(
-          periodBlockMessage(msg) ?? msg ?? "Không đổi được hạch toán KQKD",
-        );
+
         throw error;
       }
-      return data as unknown as SetForfeitKqkdResult;
-    },
+      const receipt=data as unknown as SetForfeitKqkdResult|null;
+      if(receipt?.id!==input.voucherId || typeof receipt.changed!=='boolean')throw new TypeError('Chưa xác nhận kết quả đổi hạch toán của đúng phiếu.');
+      progress.completed.push({id:input.voucherId,label:`Đã nhận kết quả cập nhật cách hạch toán phiếu ${input.voucherId}`});
+      if(receipt.changed && receipt.business_result_accounting!==input.kqkd)throw new TypeError('Chưa xác nhận được cách tính phiếu vào kết quả kinh doanh.');
+      return receipt;
+    }),
     onSuccess: (data, variables) => {
       for (const key of INVALIDATE_KEYS) {
         queryClient.invalidateQueries({ queryKey: key as unknown as string[] });
       }
       if (data?.changed === false) {
-        toast.success("Phiếu đã ở đúng trạng thái hạch toán này từ trước");
+        toast.info("Phiếu đã ở đúng trạng thái hạch toán này từ trước. Không có thay đổi mới.");
+        return;
+      }
+      if (typeof data.business_result_accounting !== "boolean") {
+        toast.warning("Đã cập nhật phiếu nhưng chưa xác nhận được cách tính vào kết quả kinh doanh. Hãy tải lại phiếu để kiểm tra.");
         return;
       }
       toast.success(
-        variables.kqkd
+        data.business_result_accounting === true
           ? "Đã chuyển phiếu bỏ cọc vào kết quả kinh doanh"
           : "Đã loại phiếu bỏ cọc khỏi kết quả kinh doanh",
       );
     },
     onError: (error) => {
+      toast.error(error instanceof FinancialWorkflowError?workflowErrorMessage(error,"đổi cách hạch toán phiếu"):voucherFailureMessage(error,"đổi cách hạch toán phiếu"));
       console.error("Error setting forfeit voucher KQKD flag:", error);
     },
   });

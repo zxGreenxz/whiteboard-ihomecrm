@@ -1,3 +1,4 @@
+import { QueryRegion } from "@/components/errors/QueryRegion";
 import { useMemo } from 'react';
 import {
   Dialog,
@@ -33,7 +34,8 @@ const fmtDay = (iso?: string | null) => {
 
 /** Modal thống kê TIỀN THỐI theo sổ quỹ (sổ "Thối") × kỳ hoá đơn. */
 const ChangeBreakdownDialog = ({ open, onOpenChange, filters }: Props) => {
-  const { data: rows = [], isLoading } = useChangeBreakdown(filters, open);
+  const query=useChangeBreakdown(filters,open);
+  const {data:rows=[],isLoading}=query;
 
   // Gộp theo sổ quỹ → từng kỳ (số phiếu, tổng) + subtotal mỗi sổ.
   const groups = useMemo(() => {
@@ -78,6 +80,7 @@ const ChangeBreakdownDialog = ({ open, onOpenChange, filters }: Props) => {
           </DialogDescription>
         </DialogHeader>
 
+        <QueryRegion label="lịch sử tiền thối" queries={[query]}>
         {isLoading ? (
           <div className="space-y-2">
             {Array.from({ length: 4 }).map((_, i) => (
@@ -156,6 +159,7 @@ const ChangeBreakdownDialog = ({ open, onOpenChange, filters }: Props) => {
             </div>
           </div>
         )}
+        </QueryRegion>
       </DialogContent>
     </Dialog>
   );

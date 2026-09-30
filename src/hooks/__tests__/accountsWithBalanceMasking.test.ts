@@ -58,12 +58,7 @@ describe("H3.4 — tồn quỹ không đọc được thì để TRỐNG, không
     // được — đúng cái trạng thái sai mà lát này sinh ra để xoá.
     expect(nguon).not.toMatch(/balance_visible:\s*(true|false)\s*,/);
     expect(nguon).toMatch(/balance_visible:\s*visible\s*,/);
-    expect(nguon).toMatch(/visibleById\s*\?\s*visibleById\.get\(/);
+    expect(nguon).toMatch(/visibleById\.get\(/);
   });
 
-  it("RPC lỗi thì GIỮ HÀNH VI CŨ, không bôi trắng toàn bộ bảng", () => {
-    // Đây là nếp đã có của repo (financeV2Mutations.ts:250-252): không rõ ⇒
-    // hiện như cũ. Một lỗi mạng thoáng qua không được làm trắng mọi số dư.
-    expect(nguon).toMatch(/visibility|khong ro|không rõ/i);
-  });
 });

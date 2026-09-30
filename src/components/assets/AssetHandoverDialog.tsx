@@ -1,3 +1,4 @@
+import {useState,useRef} from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useForm } from "react-hook-form";
@@ -12,6 +13,8 @@ import { useContracts } from "@/hooks/useContracts";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import { todayISO } from '@/lib/collect';
+import { focusFirstError } from "@/lib/formErrors";
+import {recordWriteBlocked,recordWriteMessage} from "@/lib/recordWriteOutcome";
 
 const handoverSchema = z.object({
   contract_id: z.string().min(1, "Phải chọn hợp đồng"),
@@ -28,13 +31,18 @@ interface AssetHandoverDialogProps {
 }
 
 export function AssetHandoverDialog({ open, onOpenChange }: AssetHandoverDialogProps) {
+  const [failure,setFailure]=useState<unknown>();
+  const [blocked,setBlocked]=useState(false);
+  const draftKey=useRef<string|null>(null);
   const createHandover = useCreateAssetHandover();
   // Bàn giao tài sản (nhận/trả) thao tác trên HĐ đang hiệu lực → chỉ kéo
   // HĐ ACTIVE server-side thay vì full bảng.
   // enabled: open — dialog mounted sẵn (đóng) không fetch, đỡ kéo cả bảng HĐ
   // full-PII mỗi lần tải trang.
-  const { data: contractsData } = useContracts({ statuses: ["ACTIVE"], enabled: open });
-  const contracts = contractsData ?? [];
+  const contractsQuery = useContracts({ statuses: ["ACTIVE"], enabled: open });
+  const contracts=contractsQuery.data??[];
+  const sources=[contractsQuery];
+  const sourceBlocked=sources.some(query=>query.isError||query.isLoading);
 
   const form = useForm<HandoverFormValues>({
     resolver: zodResolver(handoverSchema),
@@ -47,6 +55,8 @@ export function AssetHandoverDialog({ open, onOpenChange }: AssetHandoverDialogP
   });
 
   const onSubmit = async (data: HandoverFormValues) => {
+    if(blocked||sourceBlocked)return;
+    form.clearErrors('root.server');
     try {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
@@ -61,16 +71,21 @@ export function AssetHandoverDialog({ open, onOpenChange }: AssetHandoverDialogP
       form.reset();
       onOpenChange(false);
     } catch (error) {
+      setFailure(error);setBlocked(recordWriteBlocked(error));
       console.error("Failed:", error);
+      form.setError('root.server', { type: 'server', message: recordWriteMessage(error,'tạo biên bản bàn giao') });
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+    <Dialog open={open} onOpenChange={value=>{if(!form.formState.isSubmitting)onOpenChange(value);}}>
+      <DialogContent aria-describedby={undefined} className="max-w-2xl">
         <DialogHeader><DialogTitle>Biên bản bàn giao tài sản</DialogTitle></DialogHeader>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={form.handleSubmit(onSubmit, errors => { void focusFirstError(errors); })} className="space-y-4">
+            {form.formState.errors.root?.server?.message && <p role="alert" className="text-sm text-destructive">{form.formState.errors.root.server.message}</p>}
+            {sourceBlocked && <div role="alert" className="rounded border border-destructive p-3 text-sm">Chưa tải đủ dữ liệu tài sản. Tải lại trước khi lưu.<Button type="button" variant="outline" onClick={()=>{for(const query of sources)void query.refetch();}}>Tải lại dữ liệu</Button></div>}
+            <fieldset disabled={blocked || sourceBlocked || form.formState.isSubmitting} className="space-y-4">
             <FormField control={form.control} name="contract_id" render={({ field }) => (
               <FormItem><FormLabel>Hợp đồng *</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Chọn hợp đồng" /></SelectTrigger></FormControl><SelectContent>{contracts.map((c) => (<SelectItem key={c.id} value={c.id}>{c.contract_number}</SelectItem>))}</SelectContent></Select><FormMessage /></FormItem>
             )} />
@@ -85,9 +100,10 @@ export function AssetHandoverDialog({ open, onOpenChange }: AssetHandoverDialogP
             <FormField control={form.control} name="items" render={({ field }) => (
               <FormItem><FormLabel>Danh sách tài sản (JSON) *</FormLabel><FormControl><Input {...field} placeholder='{"items":[]}' /></FormControl><FormMessage /></FormItem>
             )} />
+            </fieldset>
             <div className="flex justify-end gap-3 pt-4">
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Hủy</Button>
-              <Button type="submit" disabled={createHandover.isPending}>{createHandover.isPending ? "Đang tạo..." : "Tạo biên bản"}</Button>
+              <Button type="submit" disabled={blocked || sourceBlocked || form.formState.isSubmitting || createHandover.isPending}>{createHandover.isPending ? "Đang tạo..." : "Tạo biên bản"}</Button>
             </div>
           </form>
         </Form>

@@ -569,6 +569,7 @@ describe("Network Center Supabase repository boundary", () => {
   it("rejects null, backend errors, and overfilled bounded pages without leaking raw details", async () => {
     const nullRepository = new RepositoryConstructor(createRpcHarness({ fleet: null }).rpc);
     await expect(nullRepository.listFleet()).rejects.toBeInstanceOf(NetworkCenterRepositoryError);
+    await expect(nullRepository.listFleet()).rejects.toThrow("Chưa nhận được kết quả hợp lệ cho tải danh sách thiết bị");
 
     const failedRepository = new RepositoryConstructor(createRpcHarness({
       fleetError: { code: "42501", message: "password=do-not-leak" },

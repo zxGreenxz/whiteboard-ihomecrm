@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { recordWriteBlocked, recordWriteMessage } from '@/lib/recordWriteOutcome';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
@@ -37,6 +38,8 @@ import {
 } from '@/components/ui/searchable-select';
 import ImageUploadZone from '@/components/customers/ImageUploadZone';
 import type { Vehicle } from '@/types/vehicle';
+import { focusFirstError } from '@/lib/formErrors';
+import { friendlyError } from '@/lib/friendlyError';
 
 interface VehicleFormDialogProps {
   open: boolean;
@@ -77,7 +80,8 @@ export default function VehicleFormDialog({
   const isEditMode = !!vehicle;
   const createVehicle = useCreateVehicle();
   const updateVehicle = useUpdateVehicle();
-  const { data: buildingsData = [] } = useBuildings();
+  const buildingsQuery=useBuildings({enabled:open});
+  const { data: buildingsData = [] } = buildingsQuery;
   const buildings = Array.isArray(buildingsData) ? buildingsData : [];
 
   const form = useForm<VehicleFormValues>({
@@ -99,7 +103,8 @@ export default function VehicleFormDialog({
   const selectedBuildingId = form.watch('building_id');
   const selectedRoomId = form.watch('room_id');
   const selectedCustomerId = form.watch('customer_id');
-  const { data: roomsData = [] } = useRooms(selectedBuildingId);
+  const roomsQuery=useRooms(selectedBuildingId);
+  const { data: roomsData = [] } = roomsQuery;
   const rooms = Array.isArray(roomsData) ? roomsData : [];
 
   // Đã chọn toà/phòng ⇒ mặc định chỉ hiện khách đang ở đó (theo HĐ còn hiệu
@@ -108,12 +113,13 @@ export default function VehicleFormDialog({
   const locationFilterActive =
     !showAllCustomers && !!(selectedBuildingId || selectedRoomId);
 
-  const { data: customersData, isFetching: isFetchingCustomers } = useCustomers(
+  const customersQuery = useCustomers(
     locationFilterActive
       ? { building_id: selectedBuildingId, room_id: selectedRoomId }
       : undefined,
     { page: 1, pageSize: CUSTOMER_OPTIONS_PAGE_SIZE },
   );
+  const {data:customersData,isFetching:isFetchingCustomers}=customersQuery;
   const customers = customersData?.data ?? [];
   // `count` là tổng số khách KHỚP, không phải số dòng đã tải về. Lệch nhau ⇒
   // trang đầu không chứa hết và ô chọn đang thiếu người. Xem hằng ở đầu file.
@@ -123,9 +129,17 @@ export default function VehicleFormDialog({
   // Khách đang chọn có thể nằm ngoài danh sách đã lọc (vd sửa xe cũ, hoặc khách
   // không có HĐ ở toà/phòng này) — nạp riêng để trigger vẫn hiện đúng tên.
   const selectedInList = customers.some((c) => c.id === selectedCustomerId);
-  const { data: selectedCustomer } = useCustomer(
+  const selectedCustomerQuery = useCustomer(
     selectedCustomerId && !selectedInList ? selectedCustomerId : '',
   );
+
+  const {data:selectedCustomer}=selectedCustomerQuery;
+  const sourceError=buildingsQuery.isError || roomsQuery.isError || customersQuery.isError || (!!selectedCustomerId && !selectedInList && selectedCustomerQuery.isError);
+  const sourcePending=buildingsQuery.isLoading || roomsQuery.isLoading || customersQuery.isLoading || (!!selectedCustomerId && !selectedInList && selectedCustomerQuery.isLoading);
+  const [blocked,setBlocked]=useState(false);
+  const busy=useRef(false);
+  const draftKey=useRef<string>();
+  const formRef=useRef<HTMLFormElement>(null);
 
   const customerOptions = useMemo(() => {
     const label = (c: { full_name: string | null; phone: string | null }) =>
@@ -176,6 +190,10 @@ export default function VehicleFormDialog({
   // Reset form when dialog opens/closes or vehicle changes
   useEffect(() => {
     if (open) {
+      const key=vehicle?.id ?? 'new';
+      if(draftKey.current===key && (form.formState.isDirty || form.formState.errors.root?.server || blocked))return;
+      if(draftKey.current!==key)setBlocked(false);
+      draftKey.current=key;
       setShowAllCustomers(false);
       if (vehicle) {
         form.reset({
@@ -209,12 +227,16 @@ export default function VehicleFormDialog({
 
   // Reset room when building changes
   useEffect(() => {
+    if (blocked || form.formState.errors.root?.server)return;
     if (!isEditMode || form.getValues('building_id') !== vehicle?.building_id) {
       form.setValue('room_id', undefined);
     }
   }, [selectedBuildingId]);
 
   const onSubmit = async (data: VehicleFormValues) => {
+    if(busy.current || blocked || sourceError || sourcePending || createVehicle.isPending || updateVehicle.isPending)return;
+    busy.current=true;
+    form.clearErrors('root.server');
     try {
       const formData = data as import('@/types/vehicle').VehicleFormData;
       if (isEditMode && vehicle) {
@@ -222,16 +244,19 @@ export default function VehicleFormDialog({
       } else {
         await createVehicle.mutateAsync(formData);
       }
+      draftKey.current=undefined;
       onOpenChange(false);
     } catch (error) {
       console.error('Failed to save vehicle:', error);
-    }
+      form.setError('root.server', { type: 'server', message: recordWriteMessage(error,isEditMode?'cập nhật phương tiện':'thêm phương tiện') });
+      setBlocked(recordWriteBlocked(error));
+    } finally {busy.current=false;}
   };
 
   const isPending = createVehicle.isPending || updateVehicle.isPending;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={next=>{if(!busy.current && !isPending)onOpenChange(next);}}>
       <DialogContent className="max-w-2xl max-h-[90vh]">
         <DialogHeader>
           <DialogTitle>{isEditMode ? 'Sửa phương tiện' : 'Thêm phương tiện'}</DialogTitle>
@@ -241,7 +266,12 @@ export default function VehicleFormDialog({
         </DialogHeader>
         <ScrollArea className="max-h-[calc(90vh-120px)] pr-4">
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <form ref={formRef} onSubmit={form.handleSubmit(onSubmit, errors => { void focusFirstError(errors,{root:formRef.current}); })} className="space-y-4">
+              {form.formState.errors.root?.server?.message && (
+                <p role="alert" className="text-sm text-destructive">{form.formState.errors.root.server.message}</p>
+              )}
+              {(sourceError || sourcePending) && <div role="alert" className="text-sm text-destructive">{sourceError ? 'Chưa tải đủ tòa, phòng hoặc khách để lưu phương tiện.' : 'Đang tải dữ liệu biểu mẫu.'}{sourceError && <Button type="button" variant="outline" onClick={()=>{void buildingsQuery.refetch();void roomsQuery.refetch();void customersQuery.refetch();if(selectedCustomerId && !selectedInList)void selectedCustomerQuery.refetch();}}>Tải lại dữ liệu</Button>}</div>}
+              <fieldset disabled={isPending || blocked || sourceError || sourcePending} className="space-y-4">
               {/* Image upload */}
               <FormField
                 control={form.control}
@@ -474,6 +504,7 @@ export default function VehicleFormDialog({
                 )}
               />
 
+              </fieldset>
               {/* Actions */}
               <div className="flex justify-end gap-3 pt-4">
                 <Button
@@ -484,7 +515,7 @@ export default function VehicleFormDialog({
                 >
                   Huỷ
                 </Button>
-                <Button type="submit" disabled={isPending} className="bg-green-600 hover:bg-green-700">
+                <Button type="submit" disabled={isPending || blocked || sourceError || sourcePending} className="bg-green-600 hover:bg-green-700">
                   {isPending
                     ? (isEditMode ? 'Đang cập nhật...' : 'Đang tạo...')
                     : (isEditMode ? 'Cập nhật' : 'Thêm phương tiện')}

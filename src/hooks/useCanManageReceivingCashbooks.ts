@@ -14,12 +14,14 @@
 import { useIsCompanyOwner } from "@/hooks/useIsCompanyOwner";
 import { useIsSuperAdmin } from "@/hooks/useIsAdmin";
 
-export function useCanManageReceivingCashbooks(): { allowed: boolean; isLoading: boolean } {
+export function useCanManageReceivingCashbooks() {
   const owner = useIsCompanyOwner();
   const superAdmin = useIsSuperAdmin();
-  const allowed = owner.data === true || superAdmin.data === true;
+  const allowed = (!owner.isError && owner.data === true) || (!superAdmin.isError && superAdmin.data === true);
   // Một cờ đã trả "có" là đủ kết luận; chỉ còn "đang tải" khi chưa cờ nào trả "có"
   // mà vẫn còn cờ đang hỏi.
   const isLoading = !allowed && (owner.isLoading || superAdmin.isLoading);
-  return { allowed, isLoading };
+  const error = !allowed ? owner.error || superAdmin.error || null : null;
+  const refetch = () => Promise.allSettled([owner.refetch(), superAdmin.refetch()]);
+  return { allowed, isLoading, error, refetch };
 }

@@ -10,6 +10,7 @@ import { dossierStorageValue, pickDossierFilesForContract, type ResidenceDossier
 import { buildTamTruPayload, TamTruInputError, type TamTruAttachment, type TamTruCustomerInput } from '@/lib/tamTruPayload';
 import { detectTamTruExtension, sendTamTruPayload } from '@/lib/tamTruBridge';
 import TamTruInstallDialog from './TamTruInstallDialog';
+import { friendlyError } from '@/lib/friendlyError';
 
 export interface TamTruDvcButtonProps {
   customer: TamTruCustomerInput;
@@ -52,9 +53,14 @@ export default function TamTruDvcButton({
       setInstallOpen(false);
       toast.success('Đã mở Cổng DVC ở tab mới. Đăng nhập VNeID nếu cần, bấm "Điền ngay", kiểm tra rồi nộp.');
     } catch (error) {
-      toast.error(error instanceof TamTruInputError || error instanceof Error
-        ? error.message
-        : 'Không gửi được hồ sơ sang Cổng DVC. Vui lòng thử lại.');
+      if (error instanceof TamTruInputError ||
+          (error instanceof Error && /^Extension iHome Tạm trú không phản hồi\.( Kiểm tra extension đã bật chưa rồi thử lại\.)?$/.test(error.message))) {
+        toast.error(error.message);
+      }
+      else {
+        const feedback = friendlyError(error, 'Chưa gửi được hồ sơ sang Cổng DVC', { operation: 'gửi hồ sơ sang Cổng DVC' });
+        toast.error(feedback.title, { description: feedback.description });
+      }
     } finally {
       pending.current = false;
       setBusy(false);

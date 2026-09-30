@@ -1,3 +1,7 @@
+import {validateInputDrafts} from '@/lib/inputDraftValidation';
+import {focusFirstError} from '@/lib/formErrors';
+import { feeFailureMessage } from "@/lib/feeFeedback";
+import { createdVoucherFeedback, voucherFailureMessage, voucherOutcomeUnknown } from '@/lib/voucherFeedback';
 // =============================================
 // useUtilityPayState — state + hành động dùng chung cho màn Đóng tiền Điện nước
 // (sheet mobile + panel desktop). Đơn vị là ĐỒNG HỒ (meter): 1 toà có thể nhiều
@@ -63,6 +67,7 @@ export interface MeterRow {
 // ── Chốt chống trùng dùng chung giữa MỌI instance (module-level) ─────────────
 /** `${kỳ}::${khoá dòng}` đang có RPC bay — chặn re-entry trước cả re-render. */
 const utilityInflight = new Set<string>();
+const utilityUncertain = new Set<string>();
 /** `${kỳ}::${meter id}` → số tiền vừa gửi, sống đến khi reader thấy phiếu. */
 const utilityJustPaid = new Map<string, number>();
 let utilityVersion = 0;
@@ -92,6 +97,7 @@ export function useUtilityPayState(
   const deleteMeterMut = useDeleteUtilityMeter();
 
   const [draft, setDraft] = useState<Record<string, { code: string; holder: string }>>({});
+  const [amountErrors,setAmountErrors]=useState<Record<string,string>>({});
   const [amounts, setAmounts] = useState<Record<string, number>>({});
   const [bookSel, setBookSel] = useState<Record<string, string>>({});
   const [attach, setAttach] = useState<Record<string, string>>({});
@@ -162,16 +168,16 @@ export function useUtilityPayState(
     const holder = holderOf(row).trim();
     if (row.accountId) {
       if (code === (row.persistedCode ?? '') && holder === (row.persistedHolder ?? '')) return;
-      saveMeterMut.mutate({ id: row.accountId, buildingId: row.buildingId, type: row.type, code, holder });
+      saveMeterMut.mutate({ id: row.accountId, buildingId: row.buildingId, type: row.type, code, holder }, {onError: error=>toast.error(feeFailureMessage(error,"lưu thông tin đồng hồ"))});
     } else {
       if (!code && !holder) return; // dòng synthetic trống → chưa tạo
-      saveMeterMut.mutate({ id: null, buildingId: row.buildingId, type: row.type, code, holder });
+      saveMeterMut.mutate({ id: null, buildingId: row.buildingId, type: row.type, code, holder }, {onError: error=>toast.error(feeFailureMessage(error,"lưu thông tin đồng hồ"))});
     }
   };
 
   const addMeter = (buildingId: string, type: UtilType) => {
     addMeterMut.mutate({ buildingId, type }, {
-      onError: (e) => toast.error((e as Error).message),
+      onError: (e) => toast.error(feeFailureMessage(e, "lưu đồng hồ điện/nước")),
     });
   };
 
@@ -190,7 +196,7 @@ export function useUtilityPayState(
       });
       toast.success(`Đã tạo công tơ ${typeText(row.type)} — ${row.buildingName}. Giờ mới đóng tiền được.`);
     } catch (e) {
-      toast.error((e as Error).message);
+      toast.error(feeFailureMessage(e, "lưu đồng hồ điện/nước"));
     }
   };
   const deleteMeter = async (accountId: string) => {
@@ -198,7 +204,7 @@ export function useUtilityPayState(
       await deleteMeterMut.mutateAsync(accountId);
       toast.success('Đã xoá đồng hồ');
     } catch (e) {
-      toast.error((e as Error).message);
+      toast.error(feeFailureMessage(e, "xóa đồng hồ điện/nước"));
     }
   };
 
@@ -212,7 +218,7 @@ export function useUtilityPayState(
       setAttach((a) => ({ ...a, [k]: url }));
       toast.success('Đã đính kèm ảnh phiếu');
     } catch (ex) {
-      toast.error('Không tải được ảnh: ' + (ex as Error).message);
+      toast.error(`Chưa tải được ảnh ${file.name}. Giữ ảnh và kiểm tra kết nối trước khi tải lại.`);
     } finally {
       setUploadingKey(null);
     }
@@ -255,7 +261,8 @@ export function useUtilityPayState(
     return amt;
   };
 
-  const submitPay = async (row: MeterRow, name: string) => {
+  const submitPay = async (row: MeterRow, name: string, root?:HTMLElement|null) => {
+    if(root && !validateInputDrafts(root))return;
     // §−1.5: KHÔNG BAO GIỜ gửi p_utility_account_id = null. Server (WS-B) cũng
     // từ chối, nhưng chặn ở đây mới nói được câu tiếng Việt tử tế.
     if (!row.accountId) {
@@ -266,8 +273,13 @@ export function useUtilityPayState(
       return;
     }
     const amount = amountOf(row.key);
-    if (amount <= 0) { toast.error('Nhập số tiền cần đóng'); return; }
+    if (!Number.isFinite(amount) || amount <= 0) {const message='Nhập số tiền cần đóng lớn hơn 0.';setAmountErrors(errors=>({...errors,[row.key]:message}));void focusFirstError({[`utility_amount_${row.key}`]:message},{root});return;}
+    setAmountErrors(errors=>{const next={...errors};delete next[row.key];return next;});
     const lock = `${billingMonth}::${row.key}`;
+    if (utilityUncertain.has(lock)) {
+      toast.error('Lần tạo phiếu trước chưa xác nhận được kết quả. Tải lại danh sách và kiểm tra phiếu trước khi đóng tiếp.');
+      return;
+    }
     if (utilityInflight.has(lock)) {
       toast.error('Đang gửi phiếu cho đồng hồ này — chờ kết quả rồi hãy bấm lại.');
       return;
@@ -279,7 +291,7 @@ export function useUtilityPayState(
     utilityInflight.add(lock);
     setPayingKey(row.key);
     try {
-      await payMut.mutateAsync({
+      const receipt = await payMut.mutateAsync({
         buildingId: row.buildingId, type: row.type, billingMonth, amount,
         code: codeOf(row).trim(), holder: holderOf(row).trim(),
         accountId: bookSel[row.key] ?? null,
@@ -289,9 +301,11 @@ export function useUtilityPayState(
       utilityJustPaid.set(`${billingMonth}::${row.accountId}`, amount);
       setAmounts((a) => { const n = { ...a }; delete n[row.key]; return n; });
       setAttach((a) => { const n = { ...a }; delete n[row.key]; return n; });
-      toast.success(`Đã chi ${fmtFull(amount)} tiền ${typeText(row.type)} · ${name}`);
+      const feedback = createdVoucherFeedback(receipt);
+      toast[feedback.kind](`${feedback.message} ${fmtFull(amount)} tiền ${typeText(row.type)} · ${name}`);
     } catch (ex) {
-      toast.error((ex as Error).message);
+      if (voucherOutcomeUnknown(ex)) utilityUncertain.add(lock);
+      toast.error(voucherFailureMessage(ex, "tạo phiếu điện/nước"));
     } finally {
       utilityInflight.delete(lock);
       setPayingKey(null);
@@ -326,7 +340,7 @@ export function useUtilityPayState(
       toast.success('Đã hủy phiếu thanh toán');
       setCancelTarget(null);
     } catch (ex) {
-      toast.error((ex as Error).message);
+      toast.error(feeFailureMessage(ex, "hủy phiếu điện/nước"));
     }
   };
 
@@ -338,7 +352,7 @@ export function useUtilityPayState(
     metersOf, paidThisKy, pendingThisKy, noMeterThisKy, justPaidThisKy, byDay, loadingPay, loadingAccts,
     myBooks, defaultBookId,
     // per-row getters/setters
-    codeOf, holderOf, amountOf, setField, setAmount,
+    codeOf, holderOf, amountOf, setField, setAmount, amountErrors,
     bookSel, setBook, attach, uploadingKey, saveMeter,
     payingKey, submitPay,
     // meters

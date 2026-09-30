@@ -1,6 +1,6 @@
 import { useState, lazy, Suspense } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import {useCustomerDetailContracts} from '@/hooks/useCustomerDetailContracts';
 import { usePhoneViewport } from '@/hooks/use-mobile';
 import {
   ArrowLeft,
@@ -34,11 +34,11 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { toast } from 'sonner';
+import { copyTextWithFeedback } from '@/lib/clipboardFeedback';
 import { useCustomer } from '@/hooks/useCustomers';
+import { QueryRegion } from '@/components/errors/QueryRegion';
 import { useVehicles } from '@/hooks/useVehicles';
 import type { VehicleWithRelations } from '@/types/vehicle';
-import { supabase } from '@/integrations/supabase/client';
 import DeleteCustomerDialog from '@/components/customers/DeleteCustomerDialog';
 
 const CustomerDetailMobilePage = lazy(() => import('./CustomerDetailMobilePage'));
@@ -94,33 +94,18 @@ function CustomerDetailDesktopPage() {
   const navigate = useNavigate();
   const [deleteOpen, setDeleteOpen] = useState(false);
 
-  const { data: customer, isLoading } = useCustomer(id || '');
-  const { data: vehiclesData } = useVehicles(
+  const customerQuery = useCustomer(id || '');
+  const { data: customer, isLoading } = customerQuery;
+  const vehiclesQuery = useVehicles(
     { customer_id: id },
     { page: 1, pageSize: 50 }
   );
+  const { data: vehiclesData } = vehiclesQuery;
   const vehicles = vehiclesData?.data ?? [];
 
   // Hợp đồng có khách này (qua bảng contract_customers).
-  const { data: contractLinks = [] } = useQuery({
-    queryKey: ['customer-contracts', id],
-    enabled: !!id,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('contract_customers')
-        .select(
-          `id, is_representative, notes,
-           contract:contracts!contract_customers_contract_id_fkey (
-             id, contract_number, status, start_date, end_date, rent_price, deleted_at,
-             room:rooms!contracts_room_id_fkey (id, name, building:buildings!rooms_building_id_fkey(id, name))
-           )`
-        )
-        .eq('customer_id', id!)
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      return (data ?? []).filter((cc: any) => cc.contract && !cc.contract.deleted_at);
-    },
-  });
+  const contractsQuery=useCustomerDetailContracts(id||'');
+  const { data: contractLinks = [] } = contractsQuery;
 
   if (!id) {
     return (
@@ -143,6 +128,12 @@ function CustomerDetailDesktopPage() {
         </div>
       </MainLayout>
     );
+  }
+
+  if (customerQuery.isError && !customer) {
+    return <MainLayout title="Chi tiết khách hàng" icon={User}>
+      <QueryRegion label="chi tiết khách hàng" queries={[customerQuery]}><></></QueryRegion>
+    </MainLayout>;
   }
 
   if (!customer) {
@@ -170,8 +161,7 @@ function CustomerDetailDesktopPage() {
     ]
       .filter(Boolean)
       .join('\n');
-    navigator.clipboard.writeText(info);
-    toast.success('Đã sao chép thông tin');
+    void copyTextWithFeedback(info, 'thông tin khách hàng');
   };
 
   const handleDeleteSuccess = () => {
@@ -181,10 +171,11 @@ function CustomerDetailDesktopPage() {
 
   return (
     <MainLayout
-      title={customer.full_name}
+      title={customerQuery.isError?"Chi tiết khách hàng":customer.full_name}
       subtitle="Chi tiết khách hàng"
       icon={User}
     >
+      <QueryRegion label="chi tiết khách hàng" queries={[customerQuery]}>
       {/* Header actions */}
       <div className="flex flex-wrap items-center gap-2 mb-6">
         <Button variant="outline" onClick={() => navigate('/customers')}>
@@ -315,6 +306,7 @@ function CustomerDetailDesktopPage() {
           </Card>
 
           {/* Phương tiện */}
+          <QueryRegion label="phương tiện của khách hàng" queries={[vehiclesQuery]}>
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
@@ -363,11 +355,13 @@ function CustomerDetailDesktopPage() {
               )}
             </CardContent>
           </Card>
+          </QueryRegion>
         </div>
 
         {/* Cột phải */}
         <div className="space-y-6">
           {/* Hợp đồng */}
+          <QueryRegion label="hợp đồng của khách hàng" queries={[contractsQuery]}>
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
@@ -429,6 +423,7 @@ function CustomerDetailDesktopPage() {
               )}
             </CardContent>
           </Card>
+          </QueryRegion>
 
           {/* Liên hệ khẩn cấp */}
           {(customer.emergency_contact_name ||
@@ -474,6 +469,7 @@ function CustomerDetailDesktopPage() {
         customerName={customer.full_name}
         onSuccess={handleDeleteSuccess}
       />
+      </QueryRegion>
     </MainLayout>
   );
 }

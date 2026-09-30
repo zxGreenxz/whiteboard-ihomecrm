@@ -38,6 +38,7 @@ import {
   type BusinessPerformanceFilters,
   type BusinessPerformancePnlRow,
 } from "@/lib/businessPerformance";
+import { friendlyError } from "@/lib/friendlyError";
 import { formatCurrency } from "@/lib/utils";
 
 interface BuildingPerformanceTabProps {
@@ -95,7 +96,7 @@ const SIDE_ROLES: Record<"INCOME" | "EXPENSE", FinanceReportingRole[]> = {
 };
 
 const BREAK_EVEN_REASON_LABELS: Record<string, string> = {
-  UNMAPPED_AMOUNT: "Còn số tiền chưa được mapping",
+  UNMAPPED_AMOUNT: "Còn số tiền chưa được phân loại",
   OUTSIDE_MODEL_AMOUNT: "Có số tiền được xác nhận ngoài mô hình hòa vốn",
   MISSING_LANDLORD_OR_MONTH: "Thiếu tiền thuê chủ nhà hoặc thiếu kỳ nguồn",
   CMR_CORE_NOT_POSITIVE: "Tỷ lệ đóng góp KQKD không dương",
@@ -351,7 +352,7 @@ function ReportingRoleConfiguration({
         effectiveFrom: `${filters.month}-01`,
       });
     } catch (error) {
-      setSaveError(error instanceof Error ? error.message : "Không thể lưu mapping");
+      setSaveError(friendlyError(error, "Chưa lưu được phân loại tài chính", { operation: "lưu phân loại tài chính" }).description);
     }
   };
 
@@ -363,9 +364,9 @@ function ReportingRoleConfiguration({
           Cấu hình vai trò tài chính
         </CardTitle>
         <CardDescription>
-          {mappedCount}/{roleRows.length} loại Thu/Chi đã có mapping hiệu lực cho kỳ {monthLabel(filters.month)}.
+          {mappedCount}/{roleRows.length} loại Thu/Chi đã có phân loại hiệu lực cho kỳ {monthLabel(filters.month)}.
           {canManage
-            ? " Bạn có thể xác nhận hoặc thay đổi mapping từ đầu tháng này."
+            ? " Bạn có thể xác nhận hoặc thay đổi phân loại từ đầu tháng này."
             : " Bạn đang xem ở chế độ chỉ đọc."}
         </CardDescription>
       </CardHeader>
@@ -376,14 +377,14 @@ function ReportingRoleConfiguration({
         ) : null}
         {queryState.hasBlockingError ? (
           <FinanceQueryError
-            title="Không thể tải mapping vai trò tài chính"
+            title="Không thể tải phân loại vai trò tài chính"
             error={queryState.blockingError}
             onRetry={() => void query.refetch()}
           />
         ) : null}
         {queryState.canRenderData && roleRows.length === 0 ? (
           <FinanceEmptyState
-            title="Chưa có loại Thu/Chi cần mapping"
+            title="Chưa có loại Thu/Chi cần phân loại"
             description="Tổ chức chưa có loại Thu/Chi KQKD ngoài tiền cọc trong kỳ đã chọn."
           />
         ) : null}
@@ -391,7 +392,7 @@ function ReportingRoleConfiguration({
           <div className="overflow-x-auto rounded-md border">
             <table className="w-full min-w-[44rem] caption-bottom text-sm">
               <TableCaption className="sr-only">
-                Mapping vai trò tài chính theo loại Thu/Chi cho kỳ {monthLabel(filters.month)}.
+                Phân loại vai trò tài chính theo loại Thu/Chi cho kỳ {monthLabel(filters.month)}.
               </TableCaption>
               <TableHeader>
                 <TableRow>
@@ -436,7 +437,7 @@ function ReportingRoleConfiguration({
                             ))}
                           </select>
                         ) : (
-                          <span>{row.finance_reporting_role ? ROLE_LABELS[row.finance_reporting_role] : "Chưa mapping"}</span>
+                          <span>{row.finance_reporting_role ? ROLE_LABELS[row.finance_reporting_role] : "Chưa phân loại"}</span>
                         )}
                       </TableCell>
                       <TableCell>
@@ -454,6 +455,7 @@ function ReportingRoleConfiguration({
                             <Save data-icon="inline-start" aria-hidden="true" />
                             Lưu
                           </Button>
+                          {!selected ? <p className="text-xs text-destructive">Chọn vai trò tài chính để lưu phân loại.</p> : null}
                         </TableCell>
                       ) : null}
                     </TableRow>
@@ -501,7 +503,7 @@ function BreakEvenAnalysis({
           <Info aria-hidden="true" />
           <AlertTitle>Số liệu hòa vốn có kiểm soát</AlertTitle>
           <AlertDescription>
-            RPC chỉ trả tỷ lệ khi mapping, tiền thuê chủ nhà, tỷ lệ đóng góp và công suất đều hợp lệ; nếu thiếu, bảng giữ nguyên lý do thay vì điền 0.
+            Chỉ hiển thị tỷ lệ khi số liệu phân loại, tiền thuê chủ nhà, tỷ lệ đóng góp và công suất đều hợp lệ. Nếu thiếu dữ liệu, bảng hiển thị lý do.
           </AlertDescription>
         </Alert>
         {queryState.showLoading ? <FinanceLoadingGrid count={4} /> : null}
@@ -560,7 +562,7 @@ function BreakEvenAnalysis({
                     </TableCell>
                     <TableCell>
                       {row.break_even_revenue_available && row.break_even_occupancy_available
-                        ? `Đủ dữ liệu · mapping ${formatPercent(row.mapping_coverage_pct)}`
+                        ? `Đủ dữ liệu · đã phân loại ${formatPercent(row.mapping_coverage_pct)}`
                         : breakEvenReason(row)}
                     </TableCell>
                   </TableRow>

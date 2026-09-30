@@ -116,13 +116,13 @@ describe('mounted ChatPanel G0', () => {
   it('blocks UI control when the page rollout is disabled', async () => {
     io.availability = { ...fresh(), states: { 'page:rooms.list': 'disabled' } };
     await mount(panel()); await click(byId('copilot-uimode')); await send('Lọc phòng');
-    await eventually(() => expect(document.body.textContent).toContain('page_rollout_disabled'));
+    await eventually(() => expect(document.body.textContent).toContain('Điều khiển trang này chưa được bật'));
     expect(io.uiAgent).not.toHaveBeenCalled();
   });
   it('denies UI control when the current page permission is missing', async () => {
     io.perms = { ai_copilot: { view: true, ui_control: true } };
     await mount(panel()); await click(byId('copilot-uimode')); await send('Lọc phòng');
-    await eventually(() => expect(document.body.textContent).toContain('page_permission_missing'));
+    await eventually(() => expect(document.body.textContent).toContain('Bạn chưa có quyền điều khiển trang này'));
     expect(io.uiAgent).not.toHaveBeenCalled();
   });
   it('executes and renders UI control only inside an enabled authorized page', async () => {
@@ -144,13 +144,13 @@ describe('mounted ChatPanel G0', () => {
     expect(document.body.textContent).toContain('Lịch sử tổ chức DEMO');
     expect(io.messages).toHaveBeenCalledWith('saved-thread', io.org);
   });
-  it('keeps the completed answer and renders a toast after both persistence attempts fail', async () => {
+  it('keeps the completed answer and never reinserts unknown history results', async () => {
     io.save.mockRejectedValue(new Error('offline'));
     await mount(panel()); await send();
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)); });
     expect(document.body.textContent).toContain('Có 2 phòng trống: A101, A102.');
-    expect(document.body.textContent).toContain('Không lưu được lịch sử chat.');
-    expect(io.save).toHaveBeenCalledTimes(2);
+    expect(document.body.textContent).toContain('Chưa xác nhận được kết quả lưu lịch sử');
+    expect(io.save).toHaveBeenCalledTimes(1);
   });
 });
 

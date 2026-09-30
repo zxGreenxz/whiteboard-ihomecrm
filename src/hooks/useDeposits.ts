@@ -1,3 +1,5 @@
+import {financialReadNumber,financialReadRows} from '@/lib/financialReadValidation';
+import { reservationErrorMessage } from "@/lib/reservationIdentityRpc";
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { getSessionUser } from "@/lib/authSession";
@@ -78,18 +80,19 @@ export const useOrphanDepositVouchers = (roomId?: string, startDate?: string) =>
 
       const { data, error } = await query;
       if (error) throw error;
-      return ((data ?? []) as any[]).map((v) => {
+      return financialReadRows(data).map((v: any) => {
+        if(!['UNAPPROVED','APPROVED','CANCELLED'].includes(v.approval_status)) throw new TypeError('Chưa đọc được trạng thái phiếu cọc.');
         // Số CỌC = Σ item cọc (embed đã lọc is_deposit) — phiếu thuần cọc thì
         // bằng total_amount; phiếu trộn (hiếm, nhập tay) không đếm thừa phần khác.
-        const depositSum = ((v.income_expense_items ?? []) as any[]).reduce(
-          (s, it) => s + (Number(it.amount) || 0),
+        const depositSum = financialReadRows(v.income_expense_items).reduce<number>(
+          (s: number, it: any) => s + financialReadNumber(it.amount),
           0,
         );
         return {
           id: v.id,
           code: v.code ?? null,
           name: v.name,
-          total_amount: depositSum || Number(v.total_amount) || 0,
+          total_amount: depositSum,
           voucher_date: v.voucher_date,
           approval_status: v.approval_status,
         };
@@ -200,10 +203,11 @@ export const useReservationDeposits = (buildingIds?: string[]) => {
       for (const v of (data ?? []) as any[]) {
         if (seen.has(v.id)) continue;
         seen.add(v.id);
+        if(!['UNAPPROVED','APPROVED','CANCELLED'].includes(v.approval_status)) throw new TypeError('Chưa đọc được trạng thái phiếu cọc.');
         // Số CỌC = Σ item cọc (embed đã lọc is_deposit) — không đếm thừa phần
         // không-cọc nếu phiếu trộn nhập tay.
-        const depositSum = ((v.income_expense_items ?? []) as any[]).reduce(
-          (s: number, it: any) => s + (Number(it.amount) || 0),
+        const depositSum = financialReadRows(v.income_expense_items).reduce<number>(
+          (s: number, it: any) => s + financialReadNumber(it.amount),
           0,
         );
         rows.push({
@@ -211,7 +215,7 @@ export const useReservationDeposits = (buildingIds?: string[]) => {
           code: v.code ?? null,
           name: v.name,
           payer_name: v.payer_name ?? null,
-          total_amount: depositSum || Number(v.total_amount) || 0,
+          total_amount: depositSum,
           voucher_date: v.voucher_date,
           approval_status: v.approval_status,
           approval_version: Number(v.approval_version ?? 1),
@@ -239,6 +243,7 @@ export interface ReservationDepositSummary {
 export const useReservationDepositSummary = (buildingIds?: string[]) => {
   return useQuery({
     queryKey: ['reservation-deposits', 'summary', buildingIds ?? []],
+    meta:{errorDisplay:'inline',label:'tổng cọc giữ chỗ'},
     queryFn: async (): Promise<ReservationDepositSummary> => {
       const { data, error } = await supabase.rpc('get_reservation_deposit_summary', {
         p_building_ids: buildingIds && buildingIds.length ? buildingIds : undefined,
@@ -246,10 +251,10 @@ export const useReservationDepositSummary = (buildingIds?: string[]) => {
       if (error) throw error;
       const d = (data ?? {}) as any;
       return {
-        holdingAmount: Number(d.holding_amount) || 0,
-        approvedCount: Number(d.approved_count) || 0,
-        unapprovedCount: Number(d.unapproved_count) || 0,
-        cancelledCount: Number(d.cancelled_count) || 0,
+        holdingAmount: financialReadNumber(d.holding_amount),
+        approvedCount: financialReadNumber(d.approved_count),
+        unapprovedCount: financialReadNumber(d.unapproved_count),
+        cancelledCount: financialReadNumber(d.cancelled_count),
       };
     },
   });
@@ -288,12 +293,12 @@ export const useDeposits = (filters?: {
 
       const { data, error } = await query;
       if (error) throw error;
-      return data as DepositWithRelations[];
+      return financialReadRows(data) as DepositWithRelations[];
     },
   });
 };
 
-export const useCreateDeposit = () => {
+export const useCreateDeposit = (options: { silent?: boolean } = {}) => {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { selectedOrganizationId } = useOrganization();
@@ -316,21 +321,22 @@ export const useCreateDeposit = () => {
         .single();
 
       if (error) throw error;
+      if(!deposit?.id)throw new TypeError('Chưa xác nhận được phiếu cọc đã tạo.');
       return deposit;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['deposits'] });
       queryClient.invalidateQueries({ queryKey: ['rooms'] });
-      toast({
+      if (!options.silent) toast({
         title: 'Đặt cọc đã được tạo thành công',
         description: 'Thông tin đặt cọc đã được lưu.',
       });
     },
     onError: (error: Error) => {
-      toast({
+      if (!options.silent) toast({
         variant: 'destructive',
         title: 'Có lỗi xảy ra khi tạo đặt cọc',
-        description: error.message,
+        description: reservationErrorMessage(error),
       });
     },
   });
@@ -365,7 +371,7 @@ export const useUpdateDeposit = () => {
       toast({
         variant: 'destructive',
         title: 'Có lỗi xảy ra khi cập nhật đặt cọc',
-        description: error.message,
+        description: reservationErrorMessage(error),
       });
     },
   });
@@ -397,7 +403,7 @@ export const useDeleteDeposit = () => {
       toast({
         variant: 'destructive',
         title: 'Có lỗi xảy ra khi xóa đặt cọc',
-        description: error.message,
+        description: reservationErrorMessage(error),
       });
     },
   });

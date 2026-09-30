@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { RecordPaymentRPCData } from '../useInvoicePayments';
 import type { BulkPaymentParams, BulkPaymentResult } from '../useBulkRecordPayment';
 
-const mock = vi.hoisted(() => ({ rpc: vi.fn(), from: vi.fn(), invalidateQueries: vi.fn(), depositDue: 0 }));
+const mock = vi.hoisted(() => ({ rpc: vi.fn(), from: vi.fn(), invalidateQueries: vi.fn(), depositDue: 0,recovery:null as unknown,invoicePaid:0 }));
 vi.mock('@tanstack/react-query', () => ({ useMutation: (options: unknown) => options,
   useQueryClient: () => ({ invalidateQueries: mock.invalidateQueries }) }));
 vi.mock('@/integrations/supabase/client', () => ({ supabase: { rpc: mock.rpc, from: mock.from } }));
@@ -14,12 +14,12 @@ import { useRecordPaymentRPC } from '../useInvoicePayments';
 import { useBulkRecordPayment } from '../useBulkRecordPayment';
 
 beforeEach(() => {
-  vi.clearAllMocks();
-  mock.depositDue = 0;
-  mock.rpc.mockResolvedValue({ data: { tenders: [] }, error: null });
+  vi.clearAllMocks();localStorage.clear();
+  mock.depositDue = 0;mock.recovery=null;mock.invoicePaid=0;
+  mock.rpc.mockResolvedValue({ data: { collection_id:'collection-1', invoice_id:'invoice', applied_amount:4800000, tenders:[], invoice:{id:'invoice',remaining_amount:5000} }, error: null });
   mock.from.mockImplementation((table: string) => {
-    const query = { select: () => query, eq: () => query,
-      single: async () => ({ data: { id: 'invoice', total_amount: 4_805_000, paid_amount: 0, contract_id: 'contract', invoice_items: mock.depositDue ? [{ accounting_class: 'DEPOSIT', amount: mock.depositDue }] : [] }, error: null }),
+    const query = { select: () => query, eq: () => query,maybeSingle:async()=>({data:mock.recovery,error:null}),
+      single: async () => ({ data: { id: 'invoice', organization_id:'org1', total_amount: 4_805_000, paid_amount: mock.invoicePaid, contract_id: 'contract', invoice_items: mock.depositDue ? [{ accounting_class: 'DEPOSIT', amount: mock.depositDue }] : [] }, error: null }),
       in: async () => ({ data: [{ id: 'cash', is_virtual: false }, { id: 'change', is_virtual: true }, { id: 'rounding', is_virtual: true }], error: null }) };
     return query;
   });
@@ -39,16 +39,18 @@ const params: BulkPaymentParams = { payment_date: '2026-09-08', items: [{ invoic
   amount_tm: 5_000_000, amount_tk: 0, amount_tt: 0, change_amount: 200_000,
   account_id: 'cash', change_account_id: 'change', rounding_amount: 5_000, rounding_account_id: 'rounding' }] };
 
-it('Thu tiền / bulk hook preserves gross, change, rounding and retry identity', async () => {
-  const { result } = renderHook(() => useBulkRecordPayment());
-  const mutation = result.current as unknown as { mutationFn: (input: BulkPaymentParams) => Promise<BulkPaymentResult> };
-  mock.rpc.mockResolvedValueOnce({ data: null, error: { message: 'Network timeout' } });
-  expect((await mutation.mutationFn(params)).failures).toHaveLength(1);
-  expect((await mutation.mutationFn(params)).ok).toEqual(['invoice']);
-  const [first, second] = mock.rpc.mock.calls;
-  expect(first[1]).toEqual(second[1]);
-  expect(first[1]).toMatchObject({ p_allow_rounding: true,
-    p_tenders: [{ gross_amount: 5_000_000, requested_change_amount: 200_000 }] });
+it('Thu tiền / bulk giữ khóa qua remount sau timeout, không gửi lại khi lookup chưa xác nhận',async()=>{
+ const first=renderHook(()=>useBulkRecordPayment());
+ const fn=first.result.current as unknown as {mutationFn:(input:BulkPaymentParams)=>Promise<BulkPaymentResult>};
+ mock.rpc.mockResolvedValueOnce({data:null,error:{message:'Network timeout'}});
+ expect((await fn.mutationFn(params)).failures).toHaveLength(1);
+ const originalKey=mock.rpc.mock.calls[0][1].p_idempotency_key;
+ first.unmount();
+ const second=renderHook(()=>useBulkRecordPayment());
+ const result=await(second.result.current as unknown as {mutationFn:(input:BulkPaymentParams)=>Promise<BulkPaymentResult>}).mutationFn(params);
+ expect(result.failures[0]).toMatchObject({outcomeUnknown:true,message:expect.stringContaining('chưa được đối chiếu')});
+ expect(mock.rpc).toHaveBeenCalledTimes(1);
+ expect(JSON.stringify(localStorage)).toContain(originalKey);
 });
 
 it('bulk cannot silently retain money by lowering change', async () => {
@@ -65,14 +67,14 @@ it('bảng sổ theo hình thức là nguồn duy nhất: thiếu sổ TK thì l
   const response = await mutation.mutationFn({ payment_date: '2026-09-08', items: [{ invoice_id: 'invoice',
     amount_tm: 0, amount_tk: 1_000_000, amount_tt: 0, change_amount: 0,
     account_id: 'cash', accounts: { TM: 'cash' }, change_account_id: null }] });
-  expect(response.failures).toEqual([expect.objectContaining({ message: 'Thiếu sổ quỹ nhận cho TK' })]);
+  expect(response.failures).toEqual([expect.objectContaining({ message: 'Chọn sổ nhận tiền cho hình thức Chuyển khoản.' })]);
   expect(mock.rpc).not.toHaveBeenCalled();
 });
 
 it('mỗi hình thức vào đúng sổ của nó', async () => {
   mock.from.mockImplementation(() => {
-    const query = { select: () => query, eq: () => query,
-      single: async () => ({ data: { id: 'invoice', total_amount: 4_805_000, paid_amount: 0, contract_id: 'contract', invoice_items: [] }, error: null }),
+    const query = { select: () => query, eq: () => query,maybeSingle:async()=>({data:mock.recovery,error:null}),
+      single: async () => ({ data: { id: 'invoice', organization_id:'org1', total_amount: 4_805_000, paid_amount: mock.invoicePaid, contract_id: 'contract', invoice_items: [] }, error: null }),
       in: async () => ({ data: [{ id: 'cash', is_virtual: false }, { id: 'bank', is_virtual: false }], error: null }) };
     return query;
   });
@@ -96,3 +98,5 @@ it('fresh deposit data keeps the shortage as debt while still recording actual m
   expect(mock.rpc.mock.lastCall?.[1]).toMatchObject({ p_allow_rounding: false,
     p_tenders: [{ requested_change_amount: 200_000, rounding_account_id: null }] });
 });
+
+it('đối chiếu receipt trước khi tính nợ mới đã về zero sau timeout',async()=>{const first=renderHook(()=>useBulkRecordPayment());mock.rpc.mockResolvedValueOnce({data:null,error:{message:'Network timeout'}});await(first.result.current as unknown as {mutationFn:(p:BulkPaymentParams)=>Promise<BulkPaymentResult>}).mutationFn(params);const key=mock.rpc.mock.calls[0][1].p_idempotency_key;first.unmount();mock.invoicePaid=4805000;mock.recovery={id:'collection1',invoice_id:'invoice',organization_id:'org1',actor_id:'actor',idempotency_key:key,status:'ACTIVE',applied_amount:4805000};const second=renderHook(()=>useBulkRecordPayment());const result=await(second.result.current as unknown as {mutationFn:(p:BulkPaymentParams)=>Promise<BulkPaymentResult>}).mutationFn(params);expect(result.ok).toEqual(['invoice']);expect(mock.rpc).toHaveBeenCalledTimes(1);expect(localStorage.length).toBe(0);});

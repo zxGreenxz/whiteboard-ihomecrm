@@ -24,6 +24,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { compareBuildingThenRoom } from '@/lib/roomSort';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
+import { QueryRegion } from '@/components/errors/QueryRegion';
 
 function RoomsDesktop() {
   const [searchParams] = useSearchParams();
@@ -58,13 +59,15 @@ function RoomsDesktop() {
   }, [preselectedBuildingId]);
 
   // Data
-  const { data: areasData } = useAreas();
+  const areasQuery = useAreas();
+  const { data: areasData } = areasQuery;
   const areas = useMemo(
     () => (Array.isArray(areasData) ? areasData : []),
     [areasData]
   );
 
-  const { data: buildingsData } = useBuildings();
+  const buildingsQuery = useBuildings();
+  const { data: buildingsData } = buildingsQuery;
   const buildings = useMemo(
     () => (Array.isArray(buildingsData) ? buildingsData : []) as BuildingWithRelations[],
     [buildingsData]
@@ -72,20 +75,23 @@ function RoomsDesktop() {
 
   // Tầng chỉ cascade được khi chọn ĐÚNG 1 toà (floors thuộc toà cụ thể)
   const singleBuildingId = buildingIds.length === 1 ? buildingIds[0] : undefined;
-  const { data: floorsData } = useFloors(singleBuildingId);
+  const floorsQuery = useFloors(singleBuildingId);
+  const { data: floorsData } = floorsQuery;
   const floors = useMemo(
     () => (Array.isArray(floorsData) ? floorsData : []),
     [floorsData]
   );
 
-  const { data: roomsData, isLoading } = useRooms();
+  const roomsQuery = useRooms();
+  const { data: roomsData, isLoading } = roomsQuery;
   const rooms = useMemo(
     () => (Array.isArray(roomsData) ? roomsData : []) as RoomWithRelations[],
     [roomsData]
   );
 
   // Hợp đồng đang hiệu lực (toàn bộ toà) để suy ra phòng trống / sắp hết hạn
-  const { data: roomsWithContracts = [] } = useRoomsWithActiveContracts();
+  const contractsQuery = useRoomsWithActiveContracts();
+  const { data: roomsWithContracts = [] } = contractsQuery;
   const endDateByRoomId = useMemo(() => {
     const map = new Map<string, string>();
     roomsWithContracts.forEach((r) => {
@@ -189,6 +195,7 @@ function RoomsDesktop() {
 
   return (
     <MainLayout title="Căn hộ" subtitle="Danh mục dữ liệu > Căn hộ" icon={Home}>
+      <QueryRegion label="danh sách căn hộ và trạng thái hợp đồng" queries={[roomsQuery, contractsQuery, buildingsQuery, areasQuery, ...(singleBuildingId ? [floorsQuery] : [])]}>
       <div className="space-y-4">
         <RoomTurnoverQueue buildingIds={buildingIds} />
         {/* Filters */}
@@ -326,6 +333,7 @@ function RoomsDesktop() {
           </>
         )}
       </div>
+      </QueryRegion>
     </MainLayout>
   );
 }

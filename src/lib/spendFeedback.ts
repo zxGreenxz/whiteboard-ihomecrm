@@ -1,0 +1,21 @@
+import {friendlyError,type OperationErrorRule} from './friendlyError';
+export const SPEND_ERROR_RULES:readonly OperationErrorRule[]=[
+ {message:'Thiếu tháng cam kết',description:'Chọn tháng cam kết.',fieldErrors:{month:'Chọn tháng cam kết.'}},
+ {message:'Thiếu tháng bắt đầu',description:'Chọn tháng bắt đầu áp dụng.',fieldErrors:{fromMonth:'Chọn tháng bắt đầu.'}},
+ {message:'Toà không thuộc tổ chức',description:'Chọn tòa nhà thuộc công ty đang xem.',fieldErrors:{buildingId:'Chọn tòa nhà thuộc công ty đang xem.'}},
+ {message:'Không tìm thấy toà nhà',description:'Tòa nhà không còn khả dụng. Tải lại danh sách và chọn lại tòa.'},
+ {message:'Không tìm thấy hạng mục',description:'Hạng mục không còn khả dụng. Tải lại danh sách hạng mục.'},
+ {message:'Hạng mục THU không mang luật chi',description:'Chỉ có thể đặt quy tắc duyệt chi cho hạng mục chi.'},
+ {message:'Kiểu CAM_KET cần khoá phí (tien_nha, internet, …) để gắn cam kết',description:'Hạng mục chưa được gắn loại phí. Cập nhật loại phí trước khi chọn Theo cam kết.'},
+ {message:'Kiểu TRAN chỉ dùng cho điện, nước',description:'Quy tắc Theo trần chỉ áp dụng cho hạng mục điện hoặc nước.'},
+ {message:/^Tháng \d{2}\/\d{4} của khe này đã có khoản chi hoặc phiếu đang chờ — không sửa cam kết được\. Muốn điều chỉnh thì lập phiếu riêng\.$/,description:'Tháng này đã có khoản chi hoặc phiếu chờ duyệt nên không sửa/thu hồi cam kết được. Lập phiếu riêng nếu cần điều chỉnh.'},
+ {message:/^Hạng mục [a-z_]+ chưa khai kiểu CAM_KET\/TRAN trong tổ chức — không có gì để áp$/,description:'Chọn quy tắc Theo cam kết hoặc Theo trần cho hạng mục trước khi bật.',fieldErrors:{feeCategory:'Hạng mục này chưa có quy tắc để áp dụng.'}},
+ {message:/^Chưa khai trần [a-z_]+ cho: .+ — khai trần trước rồi mới bật \(câu 03\)$/,description:'Có tòa nhà chưa được khai trần điện/nước. Hoàn thành trần của các tòa trong phạm vi trước khi bật.'},
+];
+export function spendErrorMessage(error:unknown,operation:string){const f=friendlyError(error,`Chưa ${operation}.`,{operation,financial:true,rules:SPEND_ERROR_RULES});return `${f.title} ${f.description}`;}
+const record=(v:unknown):Record<string,unknown>=>v&&typeof v==='object'&&!Array.isArray(v)?v as Record<string,unknown>:{};
+export function readCommitmentReceipt(value:unknown,amount:number|null){const r=record(value);if(amount==null||amount===0){if(typeof r.da_thu_hoi!=='boolean')throw new TypeError('Unconfirmed commitment retirement');return {changed:r.da_thu_hoi,id:null};}if(typeof r.commitment_id!=='string'||!r.commitment_id||r.so_tien!==amount)throw new TypeError('Unconfirmed commitment write');return {changed:true,id:r.commitment_id};}
+export function readSpendSwitchReceipt(value:unknown,on:boolean){const r=record(value);if(!on){if(!Number.isInteger(r.da_tat)||Number(r.da_tat)<0)throw new TypeError('Unconfirmed spend switch retirement');return {changed:Number(r.da_tat)>0,count:Number(r.da_tat),id:null,active:false,missing:[] as string[]};}if(typeof r.switch_id!=='string'||!r.switch_id||!['LEGACY','SHADOW','CANONICAL','FROZEN'].includes(String(r.co_hien_tai))||!Array.isArray(r.toa_chua_co_cam_ket)||!r.toa_chua_co_cam_ket.every(x=>typeof x==='string'))throw new TypeError('Unconfirmed spend switch write');return {changed:true,id:r.switch_id,active:r.co_hien_tai==='CANONICAL',missing:r.toa_chua_co_cam_ket as string[],count:1};}
+export function readSpendRuleReceipt(value:unknown,typeId:string,mode:string){const r=record(value);if(r.type_id!==typeId||r.spend_mode!==mode)throw new TypeError('Unconfirmed spend rule write');return {id:typeId,mode};}
+export function parseCommitmentAmount(value:string):number|null{const s=value.trim();if(!s)return null;if(!/^(?:\d+|\d{1,3}(?:[., ]\d{3})+)$/.test(s))throw new Error('Nhập số tiền nguyên không âm; bỏ trống chỉ khi muốn thu hồi cam kết.');const amount=Number(s.replace(/[., ]/g,''));if(!Number.isSafeInteger(amount))throw new Error('Số tiền quá lớn. Kiểm tra lại số tiền cam kết.');return amount;}
+export function validateSpendSwitch(from:string,to:string):Record<string,string>{if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(from))return {fromMonth:'Chọn tháng bắt đầu.'};if(to&&(!/^\d{4}-(0[1-9]|1[0-2])$/.test(to)||to<from))return {toMonth:'Tháng kết thúc phải từ tháng bắt đầu trở đi.'};return {};}

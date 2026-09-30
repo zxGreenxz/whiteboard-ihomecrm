@@ -1,3 +1,4 @@
+import {QueryRegion} from '@/components/errors/QueryRegion';
 import { useMemo, useState } from "react";
 import { format, subDays, parseISO } from "date-fns";
 import { Eye, Clock, DoorOpen, Layers, Phone, Heart } from "lucide-react";
@@ -114,6 +115,7 @@ export default function MobileAnalytics() {
         ))}
       </div>
 
+      <QueryRegion label="thống kê phòng" queries={tab==='overview'?[summary,tsDay,funnel]:tab==='rooms'?[topRooms]:tab==='hours'?[tsHour]:tab==='links'?[byToken]:[summary,errGroups]}>
       {tab === "overview" && (
         <>
           <div className="sp-kpis">
@@ -269,6 +271,6 @@ export default function MobileAnalytics() {
           )}
         </div>
       )}
-    </div>
+    </QueryRegion></div>
   );
 }

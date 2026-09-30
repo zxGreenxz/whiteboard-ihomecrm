@@ -1,3 +1,7 @@
+import { focusFirstError } from '@/lib/formErrors';
+import { passwordFieldErrors, AvatarProfilePartialError } from '@/lib/accountFeedback';
+import { actionErrorMessage, notifyActionError } from '@/lib/actionFeedback';
+import { QueryRegion } from '@/components/errors/QueryRegion';
 import { useState, useRef, lazy, Suspense } from "react";
 import { usePhoneViewport } from "@/hooks/use-mobile";
 import MainLayout from "@/components/layout/MainLayout";
@@ -16,7 +20,8 @@ import NotificationPreferencesCard from "@/components/notifications/Notification
 import AccountOrganizationCard from "@/components/account/AccountOrganizationCard";
 
 function ProfileDesktop() {
-  const { data: profile, isLoading } = useProfile();
+  const profileQuery = useProfile();
+  const { data: profile, isLoading } = profileQuery;
   const updateProfile = useUpdateProfile();
   const uploadAvatar = useUploadAvatar();
   const changePassword = useChangePassword();
@@ -30,6 +35,9 @@ function ProfileDesktop() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string,string>>({});
+  const [passwordError, setPasswordError] = useState("");
+  const [avatarError, setAvatarError] = useState("");
 
   // Initialize form when profile loads
   if (profile && !profileInitialized) {
@@ -49,10 +57,12 @@ function ProfileDesktop() {
 
   const acceptAvatarFile = (file: File) => {
     if (file.size > 2 * 1024 * 1024) {
-      toast.error("Ảnh không được vượt quá 2MB");
+      setAvatarError("Chọn ảnh không quá 2MB.");
+      void focusFirstError({ avatar: "Chọn ảnh không quá 2MB." });
       return;
     }
-    uploadAvatar.mutate(file);
+    setAvatarError("");
+    uploadAvatar.mutate(file, { onError: error => setAvatarError(error instanceof AvatarProfilePartialError ? error.message : actionErrorMessage(error, "Chưa cập nhật được ảnh đại diện")) });
   };
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -66,19 +76,12 @@ function ProfileDesktop() {
   });
 
   const handleChangePassword = () => {
-    if (!newPassword || !confirmPassword) {
-      toast.error("Vui lòng nhập đầy đủ mật khẩu mới và xác nhận");
-      return;
-    }
-    if (newPassword.length < 6) {
-      toast.error("Mật khẩu mới phải có ít nhất 6 ký tự");
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      toast.error("Mật khẩu xác nhận không khớp");
-      return;
-    }
+    const errors = passwordFieldErrors(newPassword, confirmPassword);
+    setFieldErrors(errors);
+    setPasswordError('');
+    if (Object.keys(errors).length) { void focusFirstError(errors, { order: ['newPassword', 'confirmPassword'] }); return; }
     changePassword.mutate(newPassword, {
+      onError: error => setPasswordError(actionErrorMessage(error, "Chưa xác nhận được kết quả đổi mật khẩu")),
       onSuccess: () => {
         setCurrentPassword("");
         setNewPassword("");
@@ -106,6 +109,8 @@ function ProfileDesktop() {
 
   return (
     <MainLayout title="Thông tin cá nhân" subtitle="Quản lý thông tin tài khoản của bạn" icon={User}>
+      <QueryRegion label="thông tin tài khoản" queries={[profileQuery]}>
+      {avatarError && <p role="alert" className="text-sm text-destructive">{avatarError}</p>}
       <div className="grid gap-6 max-w-2xl">
         {/* Avatar Section */}
         <Card>
@@ -113,7 +118,7 @@ function ProfileDesktop() {
             <CardTitle>Ảnh đại diện</CardTitle>
           </CardHeader>
           <CardContent className="flex items-center gap-6">
-            <div className="relative group cursor-pointer" onClick={handleAvatarClick} {...avatarPasteHandlers}>
+            <div className="relative group cursor-pointer" role="button" tabIndex={0} data-field-name="avatar" aria-invalid={!!avatarError} onKeyDown={e => { if(e.key === "Enter" || e.key === " ") handleAvatarClick(); }} onClick={handleAvatarClick} {...avatarPasteHandlers}>
               <Avatar className="h-20 w-20">
                 <AvatarImage src={profile?.avatar_url || undefined} alt={profile?.full_name || "Avatar"} />
                 <AvatarFallback className="text-lg">{initials}</AvatarFallback>
@@ -208,23 +213,26 @@ function ProfileDesktop() {
             <div className="space-y-2">
               <Label htmlFor="newPassword">Mật khẩu mới</Label>
               <Input
-                id="newPassword"
+                id="newPassword" name="newPassword" aria-invalid={!!fieldErrors.newPassword} aria-describedby={fieldErrors.newPassword ? "newPassword-error" : undefined}
                 type="password"
                 placeholder="Nhập mật khẩu mới (ít nhất 6 ký tự)"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
               />
+              {fieldErrors.newPassword && <p id="newPassword-error" role="alert" className="text-sm text-destructive">{fieldErrors.newPassword}</p>}
             </div>
             <div className="space-y-2">
               <Label htmlFor="confirmPassword">Xác nhận mật khẩu mới</Label>
               <Input
-                id="confirmPassword"
+                id="confirmPassword" name="confirmPassword" aria-invalid={!!fieldErrors.confirmPassword} aria-describedby={fieldErrors.confirmPassword ? "confirmPassword-error" : undefined}
                 type="password"
                 placeholder="Nhập lại mật khẩu mới"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
               />
+              {fieldErrors.confirmPassword && <p id="confirmPassword-error" role="alert" className="text-sm text-destructive">{fieldErrors.confirmPassword}</p>}
             </div>
+            {passwordError && <p role="alert" className="text-sm text-destructive">{passwordError}</p>}
             <Button onClick={handleChangePassword} disabled={changePassword.isPending} variant="outline">
               {changePassword.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
               Đổi mật khẩu
@@ -240,6 +248,7 @@ function ProfileDesktop() {
             cài đặt để tự tắt. /account/profile chỉ bọc ProtectedRoute. */}
         <NotificationPreferencesCard />
       </div>
+      </QueryRegion>
     </MainLayout>
   );
 }

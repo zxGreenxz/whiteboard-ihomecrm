@@ -316,3 +316,49 @@ describe('Hộp Thu/Chi — ảnh gom tới lúc xác nhận (E2)', () => {
     expect(may.anh).toEqual([ANH_CU]);
   });
 });
+
+
+describe('C26/C27 — chứng từ lỗi có trạng thái bền vững', () => {
+  it('thiếu chứng từ báo đỏ và focus đúng nút thêm chứng từ', async () => {
+    render(<Khung />);
+    fireEvent.click(screen.getByRole('button', { name: 'Chi' }));
+    await screen.findByText('Thêm ít nhất một ảnh hoặc tệp chứng từ cho lần thu/chi này.');
+    const them = screen.getByRole('button', { name: 'Thêm chứng từ' });
+    await waitFor(() => expect(document.activeElement).toBe(them));
+    expect(them.getAttribute('aria-invalid')).toBe('true');
+    expect(H.ghiSo).not.toHaveBeenCalled();
+  });
+  it('không đọc được ảnh đã có báo lỗi, không giả danh sách rỗng', async () => {
+    may.anh = [ANH_CU];
+    H.goiMayChu.mockResolvedValue({data:null,error:{code:'42501',message:'permission denied'}});
+    render(<Khung />);
+    await screen.findByText(/Chưa kiểm tra được chứng từ đã đính kèm/);
+    expect(H.ghiSo).not.toHaveBeenCalled();
+  });
+  it('timeout ghi sổ giữ hộp thoại và chặn gửi lại', async () => {
+    may.anh = [ANH_CU]; H.ghiSo.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    render(<Khung />);
+    await waitFor(() => expect(H.goiMayChu).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { name: 'Chi' }));
+    await screen.findByText(/Chưa xác nhận được kết quả ghi nhận thu\/chi/);
+    const ghi = screen.getByRole('button', { name: 'Chi' }) as HTMLButtonElement;
+    expect(ghi.disabled).toBe(true); fireEvent.click(ghi); expect(H.ghiSo).toHaveBeenCalledOnce();
+  });
+});
+
+
+describe('chứng từ đã ghi nhưng kiểm tra lại lỗi', () => {
+  it('giữ ảnh đã đính, báo phần chưa hoàn tất và không xoá ảnh khi đóng', async () => {
+    render(<Khung />);
+    const uploaded = await themAnh();
+    H.goiMayChu.mockImplementation((fn, args) => fn === 'adopt_voucher_attachments_as_evidence_v2'
+      ? Promise.resolve({data:null,error:{code:'42501',message:'permission denied'}})
+      : goiMayChuGia(fn,args));
+    fireEvent.click(screen.getByRole('button',{name:'Chi'}));
+    await screen.findByText(/Ảnh đã lưu trên phiếu nhưng chưa kiểm tra được chứng từ/);
+    expect(H.ghiSo).not.toHaveBeenCalled();
+    expect(may.anh).toContain(uploaded.url);
+    fireEvent.click(screen.getByRole('button',{name:'Huỷ bỏ'}));
+    expect(H.xoaFile).not.toHaveBeenCalled();
+  });
+});

@@ -1,3 +1,4 @@
+import { notifyActionError } from '@/lib/actionFeedback';
 // CRUD mẫu tin (zalo_message_templates) — nguồn sự thật là DB của TỔ CHỨC.
 // Guard quyền chat_zalo.manage_templates nằm ở RPC (RBAC v3 theo org).
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -53,7 +54,7 @@ export function useSaveTemplate() {
       qc.invalidateQueries({ queryKey: QK.templates });
       toast.success('Đã lưu mẫu tin');
     },
-    onError: (e: Error) => { toast.error(e?.message || 'Không lưu được mẫu tin'); },
+    onError: (e: Error) => { notifyActionError(e, 'Không lưu được mẫu tin'); },
   });
 }
 
@@ -68,6 +69,6 @@ export function useDeleteTemplate() {
       qc.invalidateQueries({ queryKey: QK.templates });
       toast.success('Đã xoá mẫu tin');
     },
-    onError: (e: Error) => { toast.error(e?.message || 'Không xoá được mẫu tin'); },
+    onError: (e: Error) => { notifyActionError(e, 'Không xoá được mẫu tin'); },
   });
 }

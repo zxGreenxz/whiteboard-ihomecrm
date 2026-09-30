@@ -42,6 +42,7 @@ export interface DepositLedgerRow {
 
 export const useDepositLedger = (period: string, enabled = true) =>
   useQuery({
+    meta:{feedback:"inline"},
     queryKey: ['tt-deposit-ledger', period],
     enabled: enabled && !!period,
     queryFn: async (): Promise<DepositLedgerRow[]> => {

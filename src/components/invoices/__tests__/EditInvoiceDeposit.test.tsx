@@ -5,20 +5,20 @@ import GenerateInvoiceDialog from '../GenerateInvoiceDialog';
 import EditInvoiceDialog from '../EditInvoiceDialog';
 import type { InvoiceWithRelations } from '@/types/invoice';
 
-const boundary = vi.hoisted(() => ({ payload: null as null | { formData: { notes: string; items: Array<{ description: string; type: string; unit_price: number; accounting_class?: string }> } } }));
+const boundary = vi.hoisted(() => ({ debt:{total:0,sources:[]},payload: null as null | { formData: { notes: string; items: Array<{ description: string; type: string; unit_price: number; accounting_class?: string }> } } }));
 // Exercise real Radix selection; jsdom has no geometry for Floating UI popper positioning.
 vi.mock('@/components/ui/select', async (importOriginal) => {
  const actual = await importOriginal<typeof import('@/components/ui/select')>();
  return { ...actual, SelectContent: (props: React.ComponentProps<typeof actual.SelectContent>) => <actual.SelectContent {...props} position='item-aligned' /> };
 });
 vi.mock('@/hooks/useInvoices', () => ({
-  useCreateInvoice: () => ({ isPending: false, mutate: (formData: NonNullable<typeof boundary.payload>['formData']) => { boundary.payload = { formData }; } }),
+  useCreateInvoice: () => ({ isPending: false, mutateAsync: async (formData: NonNullable<typeof boundary.payload>['formData']) => { boundary.payload = { formData };return {id:'new-invoice'}; } }),
   useUpdateInvoice: () => ({ isPending: false, mutate: (payload: typeof boundary.payload) => { boundary.payload = payload; } }),
   useAdjustInvoice: () => ({ isPending: false, mutate: (payload: unknown) => { boundary.payload = payload as typeof boundary.payload; } }),
   useExcessAmount: () => ({ data: 0 }),
 }));
 vi.mock('@/hooks/useBuildingServices', () => ({ useBuildingServices: () => ({ data: [] }) }));
-vi.mock('@tanstack/react-query', () => ({ useQuery: () => ({ data: undefined }) }));
+vi.mock('@tanstack/react-query', () => ({ useQuery: ({queryKey}: {queryKey:string[]}) => ({data: queryKey[0]==='compute-previous-debt'?boundary.debt:null,isError:false,isLoading:false,refetch:vi.fn()}) }));
 vi.mock('@/hooks/useContracts', () => ({ useContracts: () => ({ data: [{
   id: 'demo-contract', status: 'ACTIVE', contract_number: 'DEMO-CONTRACT', rent_price: 1000000,
   room_id: null, room: { id: 'demo-room', name: 'DEMO', building_id: 'demo-building' },

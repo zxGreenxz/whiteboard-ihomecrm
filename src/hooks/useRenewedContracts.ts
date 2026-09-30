@@ -1,3 +1,4 @@
+import { financialReadRows } from "@/lib/financialReadValidation";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -13,6 +14,7 @@ export function useRenewedContractIds(contractIds: Array<string | null | undefin
   return useQuery({
     queryKey: ["renewed-contract-ids", [...ids].sort()],
     enabled: ids.length > 0,
+    meta: { errorDisplay: "inline", label: "trạng thái gia hạn hợp đồng" },
     queryFn: async (): Promise<Set<string>> => {
       const { data, error } = await supabase
         .from("contract_extensions")
@@ -20,7 +22,7 @@ export function useRenewedContractIds(contractIds: Array<string | null | undefin
         .in("contract_id", ids)
         .in("status", ["APPROVED", "COMPLETED"]);
       if (error) throw error;
-      return new Set((data ?? []).map((r: { contract_id: string }) => r.contract_id));
+      return new Set(financialReadRows(data).map((r: { contract_id: string }) => r.contract_id));
     },
   });
 }

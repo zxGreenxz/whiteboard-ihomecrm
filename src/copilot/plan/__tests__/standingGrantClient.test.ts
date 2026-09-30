@@ -219,7 +219,7 @@ describe('baoCaoNgayGrant', () => {
   it('gửi p_date = ngày hôm nay (VN, YYYY-MM-DD) khi không truyền ngày, và dựng danh sách kế hoạch + tổng tiền', async () => {
     rpc.mockResolvedValueOnce(
       tra({
-        date: '2026-09-03',
+        date: new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }),
         plans: [
           {
             plan_id: PLAN,
@@ -263,7 +263,7 @@ describe('baoCaoNgayGrant', () => {
   });
 
   it('không kế hoạch nào trong ngày ⇒ tổng tiền 0, mảng rỗng, không lỗi', async () => {
-    rpc.mockResolvedValueOnce(tra({ date: '2026-09-03', plans: [], plan_count: 0, total_amount: 0 }));
+    rpc.mockResolvedValueOnce(tra({ date: new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }), plans: [], plan_count: 0, total_amount: 0 }));
     const kq = await baoCaoNgayGrant(ORG);
     expect(kq.ok).toBe(true);
     expect(kq.ke).toEqual([]);

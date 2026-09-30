@@ -45,11 +45,12 @@ import { mocNgayNghiepVu, type LaneSubject } from '@/lib/contractLifecycle';
 import { vnTodayISO } from '@/lib/vnDate';
 import {
   KIND_LABEL, STATUS_STYLE, fmtMoney, fmtNgay, isBlocker,
-  type SettlementRow, type ViewStatus,
+  DAU_CAN_BO_SUNG, DAU_DA_BO_SUNG, type SettlementRow, type ViewStatus,
 } from '@/lib/contractSettlement';
 import type { useSettlementActions } from '@/hooks/useSettlementActions';
 import { NHAN_VUONG_MAC } from './nhan';
 import type { ModalReadState } from './modalReadState';
+import { VoucherPartialError, voucherFailureMessage, voucherOutcomeUnknown } from '@/lib/voucherFeedback';
 
 type Actions = ReturnType<typeof useSettlementActions>;
 
@@ -82,12 +83,6 @@ function chuanHoaNganHang(tho: string | null | undefined): string {
   return RECIPIENT_BANKS.find((b) => b.code === code)?.shortName ?? s;
 }
 
-/** Câu lỗi đọc được cho người dùng; RPC trả PostgrestError, không phải Error. */
-const moTaLoi = (e: unknown): string => {
-  const m = (e as { message?: unknown } | null)?.message;
-  return typeof m === 'string' && m.trim() ? m.trim() : 'không rõ nguyên nhân';
-};
-
 export function SettlementLifecycleModal(props: Props) {
   // Draft, chứng từ và lệnh đang chạy chỉ thuộc một phiếu. Đổi phiếu tạo phiên
   // mới; completion của phiên đã unmount không được đóng/cập nhật phiên mới.
@@ -118,6 +113,9 @@ function SettlementLifecycleModalContent({ row, view, actions, onClose, onRetryS
    */
   const businessDate = mocNgayNghiepVu(row.eventDate, vnTodayISO());
   const [lyDo, setLyDo] = useState('');
+  const [loiLyDo, setLoiLyDo] = useState<string | null>(null);
+  const lyDoRef = useRef<HTMLTextAreaElement>(null);
+  const maxLyDo = 5000 - (row.supplementPending ? DAU_DA_BO_SUNG : DAU_CAN_BO_SUNG).length - 1;
   const [chuoiTuChoi, setChuoiTuChoi] = useState(false);
   const [daDoiChieu, setDaDoiChieu] = useState(false);
   const [nguoiNhan, setNguoiNhan] = useState(row.recipientName ?? '');
@@ -164,6 +162,8 @@ function SettlementLifecycleModalContent({ row, view, actions, onClose, onRetryS
   const [dangNhanAnh, setDangNhanAnh] = useState(false);
   /** Adopt không trả về id nào VÀ cũng không nói ảnh nào bị loại ⇒ đọc hỏng. */
   const [nhanAnhHong, setNhanAnhHong] = useState(false);
+  const [canDoiChieuChungTu, setCanDoiChieuChungTu] = useState(false);
+  useEffect(() => { setCanDoiChieuChungTu(false); }, [row.voucherId]);
   const [dangTaiAnh, setDangTaiAnh] = useState(false);
   const [dangGhiSo, setDangGhiSo] = useState(false);
   const lenhBoSung = useRef<{ command: string; idempotencyKey: string } | null>(null);
@@ -356,6 +356,12 @@ function SettlementLifecycleModalContent({ row, view, actions, onClose, onRetryS
         // Không id nào VÀ không lý do nào = RPC đọc hỏng, không phải "ảnh bị loại".
         setNhanAnhHong(kq.evidenceIds.length === 0 && (kq.skipped ?? []).length === 0);
       })
+      .catch((error) => {
+        if (!conHieuLuc()) return;
+        setNhanAnhHong(true);
+        setCanDoiChieuChungTu(true);
+        toast.error(voucherFailureMessage(error, 'kiểm tra chứng từ trên phiếu'));
+      })
       .finally(() => { if (conHieuLuc()) setDangNhanAnh(false); });
 
     return () => { luotNhanAnh.current += 1; setDangNhanAnh(false); };
@@ -404,6 +410,14 @@ function SettlementLifecycleModalContent({ row, view, actions, onClose, onRetryS
           setIdDuongLui((p) => [...p, ...kq.evidenceIds]);
         }
         setNhanAnhHong(false);
+      }
+    } catch (error) {
+      if (conDungPhieu(idPhieu)) {
+        if (error instanceof VoucherPartialError || voucherOutcomeUnknown(error)) {
+          setCanDoiChieuChungTu(true);
+          lamMoiHoSo();
+        }
+        toast.error(voucherFailureMessage(error, 'đính ảnh chứng từ'));
       }
     } finally {
       if (conDungPhieu(idPhieu)) setDangTaiAnh(false);
@@ -461,7 +475,7 @@ function SettlementLifecycleModalContent({ row, view, actions, onClose, onRetryS
   const khoaXacNhan =
     actions.isBusy || dangTaiAnh || dangNhanAnh || dangGhiSo || !kiemTra.ok
     || doiNguoiNhan || dangLuuNhan || !daXacMinh || dangPhatLenh
-    || !soSanSang || !soDungOrg.some((s) => s.id === soQuy);
+    || !soSanSang || !soDungOrg.some((s) => s.id === soQuy) || canDoiChieuChungTu;
 
   /**
    * Chống bấm hai lần: `actions.isBusy` chỉ đổi sau một vòng render, còn hai cú
@@ -495,7 +509,7 @@ function SettlementLifecycleModalContent({ row, view, actions, onClose, onRetryS
 
   const st = STATUS_STYLE[view];
   const chay = async (fn: () => Promise<void>) => {
-    try { await fn(); } catch { /* hook đã toast */ }
+    try { await fn(); } catch (error) { setLoiLuu(voucherFailureMessage(error, 'cập nhật phiếu')); /* mutation owns its toast */ }
   };
   const chayLenh = (fn: (conDungLuot: () => boolean) => Promise<void>) => {
     if (!daXacMinh || actions.isBusy || dangPhatLenhRef.current || dangGhiRef.current) return;
@@ -556,7 +570,7 @@ function SettlementLifecycleModalContent({ row, view, actions, onClose, onRetryS
       // Phiếu đổi giữa chừng thì kết quả này KHÔNG được gắn sang phiếu mới.
       return conDungPhieu(id);
     } catch (e) {
-      if (conDungPhieu(id)) setLoiLuu(moTaLoi(e));
+      if (conDungPhieu(id)) setLoiLuu(voucherFailureMessage(e, 'lưu thông tin người nhận'));
       return false;
     } finally {
       dangLuuRef.current = false;
@@ -565,6 +579,10 @@ function SettlementLifecycleModalContent({ row, view, actions, onClose, onRetryS
   };
 
   const boSung = async (xong: boolean, noiDung: string, conDungLuot: () => boolean) => {
+    const max = 5000 - (xong ? DAU_DA_BO_SUNG : DAU_CAN_BO_SUNG).length - 1;
+    const error = !noiDung.trim() ? 'Nhập lý do bổ sung thông tin cho phiếu.' : noiDung.length > max ? `Lý do được nhập tối đa ${max} ký tự. Hãy rút ngắn nội dung.` : null;
+    if (error) { setLoiLyDo(error); lyDoRef.current?.scrollIntoView?.({block:'center'}); lyDoRef.current?.focus(); throw new Error(error); }
+    setLoiLyDo(null);
     const command = JSON.stringify([row.voucherId, xong ? 'done' : 'request', noiDung]);
     if (lenhBoSung.current?.command !== command) {
       lenhBoSung.current = { command, idempotencyKey: khoaMoi() };
@@ -717,8 +735,7 @@ function SettlementLifecycleModalContent({ row, view, actions, onClose, onRetryS
                       lưu thì không duyệt/chi được". Câu đó khi ấy là sai. */}
                   {loiLuu && doiNguoiNhan && (
                     <div className="cs-note-s" style={{ color: 'var(--c-unpaid)' }}>
-                      Chưa lưu được thông tin người nhận: {loiLuu}. Thông tin vừa gõ vẫn còn đây —
-                      sửa rồi lưu lần nữa. Chưa lưu thì không duyệt/chi được.
+                      {loiLuu} Thông tin vừa gõ vẫn còn đây. Tải lại phiếu để đối chiếu trước khi duyệt/chi.
                     </div>
                   )}
                   <div className="cs-note-s">
@@ -877,6 +894,11 @@ function SettlementLifecycleModalContent({ row, view, actions, onClose, onRetryS
                       nhận tự động lúc mở form. Ô này chỉ để BỔ SUNG. */}
                   <div>
                     <div className="cs-lb-t">Ảnh chuyển khoản</div>
+                    {canDoiChieuChungTu && (
+                      <div role="alert" className="cs-note-s" style={{ color: 'var(--c-unpaid)' }}>
+                        Chứng từ trên phiếu chưa được xác minh sau thao tác vừa rồi. Tải lại phiếu để đối chiếu trước khi chi; không tải lại cùng ảnh.
+                      </div>
+                    )}
                     {dangNhanAnh ? (
                       <div className="cs-note-s">Đang nhận ảnh của phiếu làm chứng từ…</div>
                     ) : chungTuHopLe.length > 0 ? (
@@ -908,7 +930,7 @@ function SettlementLifecycleModalContent({ row, view, actions, onClose, onRetryS
                         style={{ textAlign: 'center', cursor: dangTaiAnh ? 'wait' : 'pointer' }}>
                         {dangTaiAnh ? 'Đang tải…' : 'Tải hoặc Dán Ảnh'}
                         <input type="file" accept="image/*" multiple style={{ display: 'none' }}
-                          disabled={dangTaiAnh}
+                          disabled={dangTaiAnh || canDoiChieuChungTu}
                           onChange={(e) => {
                             const fs = [...(e.target.files ?? [])];
                             // Xoá giá trị để chọn lại CÙNG một file vẫn kích hoạt onChange.
@@ -947,8 +969,11 @@ function SettlementLifecycleModalContent({ row, view, actions, onClose, onRetryS
                     </div>
                   )}
                   {row.supplementPending && (
-                    <textarea className="cs-ta" rows={2} value={lyDo}
-                      onChange={(e) => setLyDo(e.target.value)} placeholder="Đã bổ sung gì…" />
+                    <>
+                    <textarea ref={lyDoRef} aria-invalid={!!loiLyDo || (chuoiTuChoi && lyDo.trim().length < 8)} aria-describedby="settlement-reason-message" style={loiLyDo || (chuoiTuChoi && lyDo.trim().length < 8) ? {borderColor: "var(--c-unpaid)"} : undefined} className="cs-ta" rows={2} value={lyDo}
+                      onChange={(e) => { setLyDo(e.target.value); setLoiLyDo(null); }} placeholder="Đã bổ sung gì…" />
+                    <p id="settlement-reason-message" className={loiLyDo ? "text-sm text-destructive" : "cs-note-s"}>{loiLyDo || `Còn ${Math.max(0, maxLyDo - lyDo.length)} ký tự có thể nhập.`}</p>
+                    </>
                   )}
                   <label className="cs-note-s" style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
                     <input type="checkbox" checked={daDoiChieu} style={{ marginTop: 3, accentColor: 'var(--brand)' }}
@@ -998,8 +1023,11 @@ function SettlementLifecycleModalContent({ row, view, actions, onClose, onRetryS
                     )}
                   </div>
                   {kha.requestSupplement && (
-                    <textarea className="cs-ta" rows={2} value={lyDo}
-                      onChange={(e) => setLyDo(e.target.value)} placeholder="Cần bổ sung gì…" />
+                    <>
+                    <textarea ref={lyDoRef} aria-invalid={!!loiLyDo || (chuoiTuChoi && lyDo.trim().length < 8)} aria-describedby="settlement-reason-message" style={loiLyDo || (chuoiTuChoi && lyDo.trim().length < 8) ? {borderColor: "var(--c-unpaid)"} : undefined} className="cs-ta" rows={2} value={lyDo}
+                      onChange={(e) => { setLyDo(e.target.value); setLoiLyDo(null); }} placeholder="Cần bổ sung gì…" />
+                    <p id="settlement-reason-message" className={loiLyDo ? "text-sm text-destructive" : "cs-note-s"}>{loiLyDo || (!lyDo.trim() ? 'Nhập nội dung cần bổ sung để gửi yêu cầu.' : `Còn ${Math.max(0, maxLyDo - lyDo.length)} ký tự có thể nhập.`)}</p>
+                    </>
                   )}
                   <div className="cs-note-s">
                     <b>Duyệt &amp; Chi</b>: duyệt rồi ghi sổ ngay. <b>Duyệt Chờ Chi</b>: chuyển Chờ
@@ -1069,9 +1097,10 @@ function SettlementLifecycleModalContent({ row, view, actions, onClose, onRetryS
                   </button>
                 ) : (
                   <>
-                    <textarea className="cs-ta" rows={2} value={lyDo}
-                      onChange={(e) => setLyDo(e.target.value)}
-                      placeholder="Lý do từ chối (tối thiểu 8 ký tự)…" />
+                    <textarea ref={lyDoRef} aria-invalid={!!loiLyDo || (chuoiTuChoi && lyDo.trim().length < 8)} aria-describedby="settlement-reason-message" style={loiLyDo || (chuoiTuChoi && lyDo.trim().length < 8) ? {borderColor: "var(--c-unpaid)"} : undefined} className="cs-ta" rows={2} value={lyDo}
+                      onChange={(e) => { setLyDo(e.target.value); setLoiLyDo(null); }}
+                      placeholder="Lý do từ chối (tối thiểu 8 ký tự)…" autoFocus />
+                    <p id="settlement-reason-message" className={lyDo.trim().length < 8 ? "text-sm text-destructive" : "cs-note-s"}>{lyDo.trim().length < 8 ? "Nhập lý do từ chối phiếu, tối thiểu 8 ký tự." : loiLyDo}</p>
                     <div className="pair">
                       <button type="button" className="cs-btn sm"
                         onClick={() => { setChuoiTuChoi(false); setLyDo(''); }}>
@@ -1082,7 +1111,7 @@ function SettlementLifecycleModalContent({ row, view, actions, onClose, onRetryS
                         onClick={() => chayLenh(async (conDungLuot) => {
                           await actions.cancel(row, lyDo.trim());
                           if (!conDungLuot()) return;
-                          toast.success('Đã từ chối phiếu.');
+                          // The cancellation hook owns the confirmed result notification.
                           onClose();
                         })}>
                         Xác nhận

@@ -1,3 +1,4 @@
+import {financialReadNumber,financialReadRows} from '@/lib/financialReadValidation';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { getSessionUser } from '@/lib/authSession';
@@ -27,6 +28,7 @@ export const useChangeBreakdown = (
   enabled = true,
 ) => {
   return useQuery({
+    meta:{feedback:"inline"},
     queryKey: ['change-breakdown', filters],
     enabled,
     // Mở lại dialog cùng bộ lọc trong 60s → dùng cache, không chạy lại RPC.
@@ -45,7 +47,7 @@ export const useChangeBreakdown = (
         p_building_ids: filters?.building_ids?.length ? filters.building_ids : undefined,
       });
       if (error) throw error;
-      return ((data ?? []) as any[]).map((r) => ({
+      return (financialReadRows(data as unknown[]) as Array<Record<string, any>>).map((r) => ({
         account_id: r.account_id ?? null,
         account_name: r.account_name ?? '(chưa gán sổ thối)',
         billing_month: r.billing_month ?? '',
@@ -53,7 +55,7 @@ export const useChangeBreakdown = (
         room_name: r.room_name ?? null,
         payer_name: r.payer_name ?? '',
         voucher_date: r.voucher_date,
-        change_amount: Number(r.change_amount) || 0,
+        change_amount: financialReadNumber(r.change_amount),
         code: r.code ?? null,
       }));
     },
@@ -88,6 +90,7 @@ export const useDepositBreakdown = (
   enabled = true,
 ) => {
   return useQuery({
+    meta:{feedback:"inline"},
     queryKey: ['deposit-breakdown', filters],
     enabled,
     // Mở lại dialog cùng bộ lọc trong 60s → dùng cache, không chạy lại RPC.
@@ -104,26 +107,26 @@ export const useDepositBreakdown = (
         p_building_ids: filters?.building_ids?.length ? filters.building_ids : undefined,
       });
       if (error) throw error;
-      return ((data ?? []) as any[]).map((r) => ({
+      return (financialReadRows(data as unknown[]) as Array<Record<string, any>>).map((r) => ({
         building_id: r.building_id ?? null,
         building_name: r.building_name ?? '—',
         room_id: r.room_id ?? null,
         room_name: r.room_name ?? '—',
         contract_id: r.contract_id ?? null,
         contract_number: r.contract_number ?? null,
-        total_deposit: r.total_deposit != null ? Number(r.total_deposit) : null,
-        deposit_paid: r.deposit_paid != null ? Number(r.deposit_paid) : null,
-        deposit_remaining: r.deposit_remaining != null ? Number(r.deposit_remaining) : null,
+        total_deposit: r.total_deposit != null ? financialReadNumber(r.total_deposit) : null,
+        deposit_paid: r.deposit_paid != null ? financialReadNumber(r.deposit_paid) : null,
+        deposit_remaining: r.deposit_remaining != null ? financialReadNumber(r.deposit_remaining) : null,
         deposit_debt_mode: r.deposit_debt_mode ?? null,
         voucher_id: r.voucher_id,
         code: r.code ?? null,
         voucher_date: r.voucher_date,
-        amount: Number(r.amount) || 0,
+        amount: financialReadNumber(r.amount),
         account_name: r.account_name ?? '',
         notes: r.notes ?? null,
         invoice_id: r.invoice_id ?? null,
         invoice_number: r.invoice_number ?? null,
-        invoice_total: r.invoice_total != null ? Number(r.invoice_total) : null,
+        invoice_total: r.invoice_total != null ? financialReadNumber(r.invoice_total) : null,
       }));
     },
   });

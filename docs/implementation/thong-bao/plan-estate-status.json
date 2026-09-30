@@ -1,0 +1,1237 @@
+{
+  "F01": {
+    "criterion": "Khách hẹn/hoạt động",
+    "status": "implementation-verified-owned-scope",
+    "scope": "Source inspected + focused unit/DOM; không khẳng định toàn bộ branch đã E2E",
+    "files": [
+      "src/components/leads/LeadActivityTimeline.tsx",
+      "src/hooks/useLeadActivities.ts",
+      "src/hooks/useLeads.ts"
+    ],
+    "callIds": [
+      "2cd631f35ab5105d",
+      "76469b522c1dfb8c",
+      "848c7ee1bf6445b2",
+      "e439a54ec51b9ef7",
+      "601d32d60ea552f8",
+      "85bc4c359fd02767",
+      "91cd0d3fe749106b",
+      "c60a0e57a57378bc",
+      "42e80ed8f72a96b1",
+      "773de45987964417",
+      "96885af6993e0161",
+      "ceb3f8be0233b46c",
+      "204c1fe659a34f1b",
+      "50d5d471d8405dcf",
+      "792496c41a69dd85",
+      "3b49fdff0d272daa",
+      "e9994614fa7b1fd4",
+      "83c15e21d09f832e",
+      "f13dcbbb4a2908b1",
+      "c2c5af5dd711dabb",
+      "e38b5161d9bf3bbd",
+      "8816fc0812765413",
+      "059d8a17743f0d78",
+      "314c199d876f0456",
+      "ecaf994a845c9a34",
+      "840edd55226486c1",
+      "97bb634d62aeb79a",
+      "6456b913f5899e35"
+    ],
+    "evidence": [
+      "CRUD durable/exact IDs, query error/null không giả rỗng; Create/Edit/Timeline giữ draft/root error, source barrier và focus. Activity background chỉ tắt feedback khi caller chủ ý."
+    ],
+    "tests": "leadsWriteOutcome6; LeadForms.feedback3; leadActivityOutcome3; LeadTimeline.feedback2",
+    "pendingE2E": true,
+    "notVerified": [
+      "Browser E2E trong TEST/DEMO (root tích hợp)",
+      "App typecheck/build/gates cuối sau mọi source ổn định (root)",
+      "Database atomicity/idempotency và nhiều tab/CAS chưa xác minh; không đổi SQL/RLS",
+      "Full form/File bytes không serialize qua reload; chỉ pending identities/IDs/path/intent tối thiểu bền vững"
+    ]
+  },
+  "F02": {
+    "criterion": "Khách hẹn chuyển cọc partial giữ ID",
+    "status": "implementation-verified-owned-scope",
+    "scope": "Source inspected + focused unit/DOM; không khẳng định toàn bộ branch đã E2E",
+    "files": [
+      "src/components/leads/ConvertLeadDialog.tsx",
+      "src/hooks/useTenants.ts",
+      "src/lib/leadConversionProgress.ts"
+    ],
+    "callIds": [
+      "ac5d1f8b6510e2f1",
+      "f0a1a83fe53a981c",
+      "9b18c8c5522fe8dc",
+      "67898516e261832c",
+      "d6682a4f35014bf0",
+      "0f99239dbd57d0fa",
+      "ec0f41366fd8d8f9",
+      "8c6e3caa79264e8c",
+      "e1048116cec2d2ba",
+      "be8d2c6edb0a2555",
+      "36da071801901cac",
+      "2eb848042d1c155e",
+      "0ae7cdf97735e760",
+      "ea54b29867c9b2b1",
+      "9921e8b6016f0fe7",
+      "c2f0e8e7f8fd2cde",
+      "e10b5bb251165d4c",
+      "ebe3f3326bb7c8de",
+      "744875331365477e",
+      "9352ae9a6b10f98b",
+      "b91941fe08055c2e"
+    ],
+    "evidence": [
+      "Guard ngoài lead-conversion bền qua reload giữ tenant/deposit IDs/requestKey; positive read đúng org/tenant/deposit/link trước resume bước được chứng minh thiếu. Không replay unknown/absence. ConvertLeadDialog giữ draft/IDs và nút đối chiếu chỉ đọc."
+    ],
+    "tests": "leadConversionProgress5; ConvertLeadDialog.feedback3; legacyTenantCreateOutcome2",
+    "pendingE2E": true,
+    "notVerified": [
+      "Browser E2E trong TEST/DEMO (root tích hợp)",
+      "App typecheck/build/gates cuối sau mọi source ổn định (root)",
+      "Database atomicity/idempotency và nhiều tab/CAS chưa xác minh; không đổi SQL/RLS",
+      "Full form/File bytes không serialize qua reload; chỉ pending identities/IDs/path/intent tối thiểu bền vững"
+    ]
+  },
+  "F03": {
+    "criterion": "Khách hàng trùng phone/CCCD",
+    "status": "implementation-verified-owned-scope",
+    "scope": "Source inspected + focused unit/DOM; không khẳng định toàn bộ branch đã E2E",
+    "files": [
+      "src/components/customers/CustomerForm.tsx",
+      "src/hooks/useCustomers.ts"
+    ],
+    "callIds": [
+      "fec31d4074cf9c02",
+      "40fa2164d079d2d0",
+      "b9e6b1cf5745b3e7",
+      "cae7b87e95dab27b",
+      "bf95f251a30e5a1c",
+      "6628e68f5fc2af48",
+      "db00a4e241830bb9",
+      "4a1858a6d3b59384",
+      "633d338345139894",
+      "f0ba133bcb88616b",
+      "a344aefdd663ad9f",
+      "f9d0c8f0ad0b913a",
+      "feb42520df43d0fa",
+      "676e4074890f3dc1",
+      "a330c167d883d2c4",
+      "713cba0df55a19cb",
+      "e338ee163ceb34df",
+      "77949c5321dead73",
+      "3561c0a08394ca8e",
+      "593f05a9225c9533",
+      "6184cb89695d6ac0",
+      "35e46c8b82475d67",
+      "397f7b84bbf46ffc",
+      "85de1322ffeb0d11"
+    ],
+    "evidence": [
+      "Không gán SQLSTATE23505 chung thành SĐT/CCCD; chỉ ánh xạ constraint được xác minh. Baseline không có unique phone/CCCD xác định nên dùng thông báo trùng dữ liệu chung."
+    ],
+    "tests": "customerDuplicateFeedback2",
+    "pendingE2E": true,
+    "notVerified": [
+      "Browser E2E trong TEST/DEMO (root tích hợp)",
+      "App typecheck/build/gates cuối sau mọi source ổn định (root)",
+      "Database atomicity/idempotency và nhiều tab/CAS chưa xác minh; không đổi SQL/RLS",
+      "Full form/File bytes không serialize qua reload; chỉ pending identities/IDs/path/intent tối thiểu bền vững"
+    ]
+  },
+  "F04": {
+    "criterion": "Khách và phương tiện partial",
+    "status": "implementation-verified-owned-scope",
+    "scope": "Source inspected + focused unit/DOM; không khẳng định toàn bộ branch đã E2E",
+    "files": [
+      "src/components/customers/CustomerForm.tsx",
+      "src/components/customers/DeleteCustomerDialog.tsx",
+      "src/hooks/useCustomers.ts",
+      "src/pages/customers/CustomerFormPage.tsx"
+    ],
+    "callIds": [
+      "fec31d4074cf9c02",
+      "40fa2164d079d2d0",
+      "b9e6b1cf5745b3e7",
+      "cae7b87e95dab27b",
+      "bf95f251a30e5a1c",
+      "6628e68f5fc2af48",
+      "db00a4e241830bb9",
+      "4a1858a6d3b59384",
+      "633d338345139894",
+      "f0ba133bcb88616b",
+      "a344aefdd663ad9f",
+      "f9d0c8f0ad0b913a",
+      "feb42520df43d0fa",
+      "676e4074890f3dc1",
+      "a330c167d883d2c4",
+      "713cba0df55a19cb",
+      "e338ee163ceb34df",
+      "77949c5321dead73",
+      "3561c0a08394ca8e",
+      "593f05a9225c9533",
+      "6184cb89695d6ac0",
+      "35e46c8b82475d67",
+      "397f7b84bbf46ffc",
+      "85de1322ffeb0d11"
+    ],
+    "evidence": [
+      "Core exact ID và giữ draft/ID khi chỉ lưu một phần. Phương tiện giữ writer của main: gỡ xe cũ, cập nhật xe giữ lại, rồi thêm xe mới; không đổi payload hoặc filter. Giữ các ID đã nhận trước kiểm tra toàn lô để đối chiếu, không báo hoàn tất khi phần xe lỗi."
+    ],
+    "tests": "estateCoreWriteOutcome14; CustomerForm.feedback3; independent final-area-receipt-closure83/83",
+    "pendingE2E": true,
+    "notVerified": [
+      "Browser E2E trong TEST/DEMO (root tích hợp)",
+      "App typecheck/build/gates cuối sau mọi source ổn định (root)",
+      "Database atomicity/idempotency và nhiều tab/CAS chưa xác minh; không đổi SQL/RLS",
+      "Full form/File bytes không serialize qua reload; chỉ pending identities/IDs/path/intent tối thiểu bền vững"
+    ]
+  },
+  "F05": {
+    "criterion": "Import khách/ảnh partial",
+    "status": "implementation-verified-owned-scope",
+    "scope": "Source inspected + focused unit/DOM; không khẳng định toàn bộ branch đã E2E",
+    "files": [
+      "src/components/customers/CustomerImportExportDialog.tsx",
+      "src/lib/customerImportOutcome.ts",
+      "src/pages/customers/CustomersPage.tsx"
+    ],
+    "callIds": [],
+    "evidence": [
+      "customerImportOutcome giữ ID từng khách ngay sau receipt, ảnh update cần exact customerID. Report có success/partial/unknown/rejected; unknown dừng dòng sau, whole batch partial/unknown khóa replay bền qua reload. Dialog giữ File/preview/error qua đóng-mở; chỉ đóng sau confirmed completion.",
+      "All-known-rejected rows trả failure giữ File; không giữ pending khi chưa có ID tạo nên safe retry được phép. Regression RED→GREEN helper4 + dialog2 pass14:32:37."
+    ],
+    "tests": "customerImportOutcome4; CustomerImport.feedback2",
+    "pendingE2E": true,
+    "notVerified": [
+      "Browser E2E trong TEST/DEMO (root tích hợp)",
+      "App typecheck/build/gates cuối sau mọi source ổn định (root)",
+      "Database atomicity/idempotency và nhiều tab/CAS chưa xác minh; không đổi SQL/RLS",
+      "Full form/File bytes không serialize qua reload; chỉ pending identities/IDs/path/intent tối thiểu bền vững"
+    ]
+  },
+  "F06": {
+    "criterion": "Phương tiện",
+    "status": "implementation-verified-owned-scope",
+    "scope": "Source inspected + focused unit/DOM; không khẳng định toàn bộ branch đã E2E",
+    "files": [
+      "src/components/vehicles/DeleteVehicleDialog.tsx",
+      "src/components/vehicles/VehicleFormDialog.tsx",
+      "src/hooks/useVehicles.ts",
+      "src/lib/storage.ts"
+    ],
+    "callIds": [
+      "a45d785ef277ed31",
+      "0036a2c0661b434c",
+      "9e19344374ac35d7",
+      "1dff4242c9a19dc8",
+      "d7eba7cd6f4a6f85",
+      "4a792f02c775115b",
+      "30d1e3c8686acd81",
+      "e52d1b14cb0b3eeb",
+      "1b052b3a28612789",
+      "a6e8d4b556790833",
+      "d3cb67ca918cdfbe",
+      "7e16ea6f05c6b155",
+      "74680aa4f867374f",
+      "a9497561c873b7ad",
+      "99d0fc4730fa4533",
+      "3bc0b519f5e59a2d",
+      "3029d8ab22e3bafe",
+      "41148093a54c2087",
+      "e382917a3dff6158"
+    ],
+    "evidence": [
+      "Required list/filter/detail/search-customer source reject null/error. CRUD exact ID; durable pending chặn hook tái tạo. Form source barrier/focus/draft/ID, DeleteVehicle giữ mở và khóa unknown. Ảnh dùng ImageUploadZone giữ File/path, known rejection retry riêng."
+    ],
+    "tests": "vehicleAreaWriteOutcome12 (gồm F07); VehicleForm.feedback2; DeleteVehicle.feedback1; ImageUploadZone.feedback2",
+    "pendingE2E": true,
+    "notVerified": [
+      "Browser E2E trong TEST/DEMO (root tích hợp)",
+      "App typecheck/build/gates cuối sau mọi source ổn định (root)",
+      "Database atomicity/idempotency và nhiều tab/CAS chưa xác minh; không đổi SQL/RLS",
+      "Full form/File bytes không serialize qua reload; chỉ pending identities/IDs/path/intent tối thiểu bền vững"
+    ]
+  },
+  "F07": {
+    "criterion": "Khu vực/gán tòa partial",
+    "status": "implementation-verified-owned-scope",
+    "scope": "Source inspected + focused unit/DOM; không khẳng định toàn bộ branch đã E2E",
+    "files": [
+      "src/components/areas/ManageAreasDialog.tsx",
+      "src/hooks/useAreas.ts"
+    ],
+    "callIds": [
+      "3a2d748bab2f2973",
+      "65f1ea74afd69dd8",
+      "c4bad14e0fff4c30",
+      "6ad4bfc2a1f1eba7",
+      "cfc0778f609019f4",
+      "065f35d703f20730",
+      "6b29ec912317ee69",
+      "2e6a718debf8cc3b",
+      "471b0ded02b1043c",
+      "883ff5c0a33e57e9",
+      "a2499bbc5a347e41",
+      "bdb6e254b2fecd67",
+      "5c0d4d806c0a6d4e",
+      "6a3cdbbde284bb20",
+      "df18aad4b5e15336",
+      "da0a43e70ddcb838",
+      "f4c259a15516edff",
+      "d153e45c4049007f",
+      "aca3e546e7e4bcd5",
+      "4cead5d2c76b5db1",
+      "4211fca1031c5d3c"
+    ],
+    "evidence": [
+      "Một hook sở hữu thông báo. Giữ main DELETE liên kết cần gỡ rồi UPSERT các tòa cần thêm, kể cả mảng đầu vào có trùng hoặc giao nhau. Biên nhận null là chưa xác nhận; từng mã cặp dương được giữ trước kiểm tra cả lô. Chỉ báo gỡ/gán xong khi biên nhận đầy đủ; partial giữ ID và biểu mẫu để đối chiếu."
+    ],
+    "tests": "vehicleAreaWriteOutcome16; areaDeletePartial1; independent final-area-receipt-closure83/83",
+    "pendingE2E": true,
+    "notVerified": [
+      "Browser E2E trong TEST/DEMO (root tích hợp)",
+      "App typecheck/build/gates cuối sau mọi source ổn định (root)",
+      "Database atomicity/idempotency và nhiều tab/CAS chưa xác minh; không đổi SQL/RLS",
+      "Full form/File bytes không serialize qua reload; chỉ pending identities/IDs/path/intent tối thiểu bền vững"
+    ]
+  },
+  "F08": {
+    "criterion": "Tòa mã trùng/one toast",
+    "status": "implementation-verified-owned-scope",
+    "scope": "Source inspected + focused unit/DOM; không khẳng định toàn bộ branch đã E2E",
+    "files": [
+      "src/hooks/useBuildings.ts"
+    ],
+    "callIds": [
+      "628f125779b7d2d8",
+      "b055900068cc3225",
+      "f843fba3765cc958",
+      "c07bfc0b0a68ffee",
+      "fe5b17bf56a4ff50",
+      "7a63e2e586672fd2",
+      "06a493f5a743717a",
+      "ae12c9ff63404aba",
+      "1f138496e5eb3f89",
+      "0d09c54523d45aeb",
+      "8d3a0880e98fa7ef",
+      "f3f0bbd70d259ef1",
+      "a3df743cd4a652da",
+      "6ab2f5656c698c2f",
+      "e29b56a668decebd",
+      "002e07791e3f4ceb",
+      "66e1792c724932e7"
+    ],
+    "evidence": [
+      "Create durable target org; core/status/delete kiểm exact ID/state; đọc phòng thật trước xóa. Thành công theo thao tác, lỗi an toàn. Không gán field mã tòa từ23505 khi baseline không có unique constraint xác định."
+    ],
+    "tests": "estateCoreWriteOutcome13; assetMaterialDeleteOutcome12 (nhánh tòa)",
+    "pendingE2E": true,
+    "notVerified": [
+      "Browser E2E trong TEST/DEMO (root tích hợp)",
+      "App typecheck/build/gates cuối sau mọi source ổn định (root)",
+      "Database atomicity/idempotency và nhiều tab/CAS chưa xác minh; không đổi SQL/RLS",
+      "Full form/File bytes không serialize qua reload; chỉ pending identities/IDs/path/intent tối thiểu bền vững"
+    ]
+  },
+  "F09": {
+    "criterion": "Tòa/chủ/dịch vụ partial",
+    "status": "implementation-verified-owned-scope",
+    "scope": "Source inspected + focused unit/DOM; không khẳng định toàn bộ branch đã E2E",
+    "files": [
+      "src/components/buildings/BuildingFormDialog.tsx",
+      "src/components/buildings/EditBuildingDialog.tsx",
+      "src/hooks/useBuildingSavePending.ts",
+      "src/hooks/useBuildingServices.ts",
+      "src/lib/buildingSaveWorkflow.ts"
+    ],
+    "callIds": [
+      "4aa0e4ddef5ae983",
+      "d940f7f6005c07dc",
+      "d5601a5a3c372417",
+      "071ef9d3179aa459",
+      "2a7eb569a5de43a3",
+      "014e18708e9139de"
+    ],
+    "evidence": [
+      "Outer buildingSaveWorkflow core→owner→services durable; recovery positive core org/payload, đúng domain IDs trước bước thiếu. Owner RPC matching positive read; Dịch vụ giữ nguyên writer DELETE toàn bộ theo building_id rồi INSERT bốn trường của main; chỉ thêm biên nhận, completed IDs, thông báo partial/unknown và barrier không chạy lại toàn bộ. Partial mở đúng core ID, không tạo lại."
+    ],
+    "tests": "buildingSaveWorkflow7; buildingServiceWriteOutcome9; BuildingFormOwnerRetry6; owner feedback4; DOM full remount create1/owner1/services2",
+    "pendingE2E": true,
+    "notVerified": [
+      "Browser E2E trong TEST/DEMO (root tích hợp)",
+      "App typecheck/build/gates cuối sau mọi source ổn định (root)",
+      "Database atomicity/idempotency và nhiều tab/CAS chưa xác minh; không đổi SQL/RLS",
+      "Full form/File bytes không serialize qua reload; chỉ pending identities/IDs/path/intent tối thiểu bền vững"
+    ],
+    "verification": [
+      ".superpowers/sdd/plan/final-building-service-caller-independent.json:22/22,3files; building-services-narrow-final.json:9/9; full app compiler exit0 sau typed guard"
+    ]
+  },
+  "F10": {
+    "criterion": "Phòng/batch",
+    "status": "implementation-verified-owned-scope",
+    "scope": "Source inspected + focused unit/DOM; không khẳng định toàn bộ branch đã E2E",
+    "files": [
+      "src/components/rooms/DeleteRoomDialog.tsx",
+      "src/components/rooms/RoomFormDialog.tsx",
+      "src/hooks/useRooms.ts"
+    ],
+    "callIds": [
+      "d08db9656675b83c",
+      "30ca2693f8dc5317",
+      "f43a0e92c1ed7ec0",
+      "8abcad029326bb2a",
+      "247f7c71c0731fc2",
+      "0a34d2fb5b05acd0",
+      "c3c6c71ce7f8afc4",
+      "52bf77b4c30e77cd",
+      "b2b1bcad70457f1b",
+      "60753ba1dffc3ed2",
+      "7eb24be2c222c796",
+      "81b0c655c8b39cea",
+      "959a337f8d96400d",
+      "772bb468c50fe62f",
+      "fa978d9fb4d3c034",
+      "6307dc47a0f261ba",
+      "6255394ee13b4634",
+      "0860e7b5e8699186"
+    ],
+    "evidence": [
+      "Create/bulk create durable selected/target org; exact unique batch IDs/count, single ID/status. Form source barrier/draft/root/focus; Delete giữ dialog mở. Field name chỉ cho constraint idx_rooms_unique_name_per_building. Không có live bulkDeleteRooms caller."
+    ],
+    "tests": "roomWriteOutcome9; RoomForms.feedback4",
+    "pendingE2E": true,
+    "notVerified": [
+      "Browser E2E trong TEST/DEMO (root tích hợp)",
+      "App typecheck/build/gates cuối sau mọi source ổn định (root)",
+      "Database atomicity/idempotency và nhiều tab/CAS chưa xác minh; không đổi SQL/RLS",
+      "Full form/File bytes không serialize qua reload; chỉ pending identities/IDs/path/intent tối thiểu bền vững"
+    ]
+  },
+  "F11": {
+    "criterion": "Dịch vụ áp dụng tòa partial",
+    "status": "implementation-verified-owned-scope",
+    "scope": "Source inspected + focused unit/DOM; không khẳng định toàn bộ branch đã E2E",
+    "files": [
+      "src/components/services/EditServiceDialog.tsx",
+      "src/hooks/useServices.ts"
+    ],
+    "callIds": [
+      "0bac2efc8a9c61b1",
+      "c2d0ece6299e54d4",
+      "013d1f79eac14194",
+      "ad4f6b5f9ebe9642",
+      "7d6b4fad8e49d46c",
+      "23f866722c7121fc",
+      "cb810f9d204accd5",
+      "35563390aa5f478f",
+      "188ff503751d3528",
+      "625b6c215d64f5ad",
+      "2f0f022e8be9bf00",
+      "995d074474b3ce09",
+      "1478604ed33f7e56",
+      "7f5d9daebfab6059",
+      "a16bdde0624b5445",
+      "c1d55c981a95aa58",
+      "0d7051586d65aaf1",
+      "f56c4674b789fd37",
+      "1221ebe4bb218f69",
+      "94a2e6a048ec0f10"
+    ],
+    "evidence": [
+      "Giữ main: lưu dịch vụ, đọc liên kết, gỡ liên kết cũ, bật liên kết giữ lại, rồi thêm liên kết mới. Giữ nguyên filter và mảng đầu vào, không tự bỏ phần tử trùng. Kiểm biên nhận và giữ mã đã nhận để báo đúng phần đã lưu, giữ draft và chặn lập lại toàn bộ khi chưa rõ kết quả."
+    ],
+    "tests": "serviceQuotaWriteOutcome25 (gồm F12); independent final-area-receipt-closure83/83",
+    "pendingE2E": true,
+    "notVerified": [
+      "Browser E2E trong TEST/DEMO (root tích hợp)",
+      "App typecheck/build/gates cuối sau mọi source ổn định (root)",
+      "Database atomicity/idempotency và nhiều tab/CAS chưa xác minh; không đổi SQL/RLS",
+      "Full form/File bytes không serialize qua reload; chỉ pending identities/IDs/path/intent tối thiểu bền vững"
+    ]
+  },
+  "F12": {
+    "criterion": "Định mức/bậc giá partial",
+    "status": "implementation-verified-owned-scope",
+    "scope": "Source inspected + focused unit/DOM; không khẳng định toàn bộ branch đã E2E",
+    "files": [
+      "src/components/service-quotas/CreateQuotaDialog.tsx",
+      "src/components/service-quotas/EditQuotaDialog.tsx",
+      "src/hooks/useServices.ts"
+    ],
+    "callIds": [
+      "0bac2efc8a9c61b1",
+      "c2d0ece6299e54d4",
+      "013d1f79eac14194",
+      "ad4f6b5f9ebe9642",
+      "7d6b4fad8e49d46c",
+      "23f866722c7121fc",
+      "cb810f9d204accd5",
+      "35563390aa5f478f",
+      "188ff503751d3528",
+      "625b6c215d64f5ad",
+      "2f0f022e8be9bf00",
+      "995d074474b3ce09",
+      "1478604ed33f7e56",
+      "7f5d9daebfab6059",
+      "a16bdde0624b5445",
+      "c1d55c981a95aa58",
+      "0d7051586d65aaf1",
+      "f56c4674b789fd37",
+      "1221ebe4bb218f69",
+      "94a2e6a048ec0f10"
+    ],
+    "evidence": [
+      "Giữ main: tạo header 3 trường rồi INSERT bậc giá 5 trường; cập nhật header rồi DELETE toàn bộ bậc và INSERT bậc mới. Không thêm org payload/filter, giới hạn đầu vào hay cleanup. Mã dương được giữ trước kiểm tra giá trị cả lô; báo riêng bậc đã gỡ và bậc mới, giữ draft và chặn lặp khi partial/unknown."
+    ],
+    "tests": "serviceQuotaWriteOutcome25 (gồm F11); EditQuotaDialog.partial2; independent final-area-receipt-closure83/83",
+    "pendingE2E": true,
+    "notVerified": [
+      "Browser E2E trong TEST/DEMO (root tích hợp)",
+      "App typecheck/build/gates cuối sau mọi source ổn định (root)",
+      "Database atomicity/idempotency và nhiều tab/CAS chưa xác minh; không đổi SQL/RLS",
+      "Full form/File bytes không serialize qua reload; chỉ pending identities/IDs/path/intent tối thiểu bền vững"
+    ]
+  },
+  "F13": {
+    "criterion": "Công tơ",
+    "status": "implementation-verified-owned-scope",
+    "scope": "Source inspected + focused unit/DOM; không khẳng định toàn bộ branch đã E2E",
+    "files": [
+      "src/hooks/useMeters.ts"
+    ],
+    "callIds": [
+      "a5794d33264a9c87",
+      "6c406fafe6f3e839",
+      "c7456840df9c1617",
+      "ddcbff9e93207cef",
+      "d1d4f7891216bdb2",
+      "f3c558707303ff20",
+      "b8bd61391366731b",
+      "2143c100649851ed",
+      "1b014e126ab8e255",
+      "ca5b68ea70296243",
+      "41ccba078ceb87fa",
+      "c32bd561405681ca",
+      "ed6d73425c474788",
+      "ac53f5bf3ffca040",
+      "84981eff58e2cd3e",
+      "fe214125ae7231d6",
+      "5db0dc98a7b11be0",
+      "3e7ffac38c7bdf4b",
+      "6e5fe67be82d8b84"
+    ],
+    "evidence": [
+      "Create durable targetorg; CRUD exact ID. Duplicate code chỉ khi đúng meters_user_id_code_key; MeterServiceError là lỗi local kiểm chứng. Required sources null/error ném, form barrier/retry/draft/ID."
+    ],
+    "tests": "meterFeedback1; meterOutcome4; MeterForm.feedback2",
+    "pendingE2E": true,
+    "notVerified": [
+      "Browser E2E trong TEST/DEMO (root tích hợp)",
+      "App typecheck/build/gates cuối sau mọi source ổn định (root)",
+      "Database atomicity/idempotency và nhiều tab/CAS chưa xác minh; không đổi SQL/RLS",
+      "Full form/File bytes không serialize qua reload; chỉ pending identities/IDs/path/intent tối thiểu bền vững"
+    ]
+  },
+  "F14": {
+    "criterion": "Chỉ số lỗi từng dòng",
+    "status": "implementation-verified-owned-scope",
+    "scope": "Source inspected + focused unit/DOM; không khẳng định toàn bộ branch đã E2E",
+    "files": [
+      "src/components/meter-readings/MeterReadingActions.tsx",
+      "src/components/meter-readings/MeterReadingForm.tsx",
+      "src/hooks/useMeterReadings.ts"
+    ],
+    "callIds": [
+      "081c8a32565459e3",
+      "a0a046d960affc02",
+      "25330989280ef903",
+      "c827b7b6c7dbb4ce",
+      "9f0e68118b830b80",
+      "64f678b27721fcba",
+      "99fa13cafcffc19c",
+      "ac74f81fbf2ed931",
+      "4d31878f9c36a0de",
+      "5d00145735757a51",
+      "d6b4972d744ade6b",
+      "6e112343eec91994",
+      "bd01205642b20c46",
+      "0f2163e442728ac1",
+      "1e2b446173093912",
+      "7f44277f463d0977",
+      "83c9685110d4372e",
+      "da993070e8aee15a",
+      "ab5cbf3926dfde7d",
+      "9cc18cb6cb7d6100",
+      "ef0af74a94b09a62",
+      "8d14531a85f95e38",
+      "8a2e748e5ae3cb25",
+      "8c8e9e4c752780ad",
+      "2a81652ff195d534",
+      "243d0337ac5da01d",
+      "f902209ccc696953",
+      "bc6a7a7c6527fe1d",
+      "14abb99951245bed",
+      "55e849204a4a99d7",
+      "fcaf7d7c32fce03a",
+      "0b1b1fb020134cc3",
+      "79520d320818d08d",
+      "beaf116f48708589",
+      "d574208e44b2156a",
+      "7074540ee3614c3b",
+      "ce498bd94f785b76",
+      "2338ec113e11014d",
+      "f72ef898f5a62769",
+      "b6e9f01d8ef57d0f",
+      "b0b71ebf5b29b012",
+      "0d5dcf2364ab6760",
+      "1324d568d616b15a",
+      "22a51adf3570d356"
+    ],
+    "evidence": [
+      "Các writer durable; single receipt ID/state, batch đủ unique IDs/count; partial giữ confirmed IDs và khóa replay. Dòng sai aria-invalid/focus; form dirty không bị query refresh ghi đè, delete dialog giữ mở. Bulk approve canonical trả count-only nên chỉ báo số thực nhận, không tạo giả ID từng hàng."
+    ],
+    "tests": "meterReadingOutcome17; meterReadingCanonicalContract2; MeterReadingForms.feedback3; MeterReadingActions.feedback2; MeterReadingStats.feedback1",
+    "pendingE2E": true,
+    "notVerified": [
+      "Browser E2E trong TEST/DEMO (root tích hợp)",
+      "App typecheck/build/gates cuối sau mọi source ổn định (root)",
+      "Database atomicity/idempotency và nhiều tab/CAS chưa xác minh; không đổi SQL/RLS",
+      "Full form/File bytes không serialize qua reload; chỉ pending identities/IDs/path/intent tối thiểu bền vững"
+    ]
+  },
+  "F15": {
+    "criterion": "Import chỉ số malformed unknown",
+    "status": "implementation-verified-owned-scope",
+    "scope": "Source inspected + focused unit/DOM; không khẳng định toàn bộ branch đã E2E",
+    "files": [
+      "src/components/meter-readings/MeterReadingImportDialog.tsx",
+      "src/hooks/useMeterReadings.ts",
+      "src/lib/meterReadingImportResult.ts"
+    ],
+    "callIds": [
+      "3ee7a80f96756a04",
+      "336aea30c7fa6ea5",
+      "0ce209192df3c1e1",
+      "64f678b27721fcba",
+      "99fa13cafcffc19c",
+      "ac74f81fbf2ed931",
+      "4d31878f9c36a0de",
+      "5d00145735757a51",
+      "d6b4972d744ade6b",
+      "6e112343eec91994",
+      "bd01205642b20c46",
+      "0f2163e442728ac1",
+      "1e2b446173093912",
+      "7f44277f463d0977",
+      "83c9685110d4372e",
+      "da993070e8aee15a",
+      "ab5cbf3926dfde7d",
+      "9cc18cb6cb7d6100",
+      "ef0af74a94b09a62",
+      "8d14531a85f95e38",
+      "8a2e748e5ae3cb25",
+      "8c8e9e4c752780ad",
+      "2a81652ff195d534",
+      "243d0337ac5da01d",
+      "f902209ccc696953",
+      "bc6a7a7c6527fe1d",
+      "14abb99951245bed",
+      "55e849204a4a99d7",
+      "fcaf7d7c32fce03a",
+      "0b1b1fb020134cc3",
+      "79520d320818d08d",
+      "beaf116f48708589",
+      "d574208e44b2156a",
+      "7074540ee3614c3b",
+      "ce498bd94f785b76",
+      "2338ec113e11014d",
+      "f72ef898f5a62769",
+      "b6e9f01d8ef57d0f",
+      "b0b71ebf5b29b012",
+      "0d5dcf2364ab6760",
+      "1324d568d616b15a",
+      "22a51adf3570d356"
+    ],
+    "evidence": [
+      "Import actor durable; parser shape/count/unique IDs, null/malformed/duplicate trở thành unknown/partial giữ IDs. Dialog giữ File/preview và chặn gửi lại. SQLERRM từng dòng diễn giải an toàn."
+    ],
+    "tests": "meterReadingImportResult3; MeterReadingImport.feedback1",
+    "pendingE2E": true,
+    "notVerified": [
+      "Browser E2E trong TEST/DEMO (root tích hợp)",
+      "App typecheck/build/gates cuối sau mọi source ổn định (root)",
+      "Database atomicity/idempotency và nhiều tab/CAS chưa xác minh; không đổi SQL/RLS",
+      "Full form/File bytes không serialize qua reload; chỉ pending identities/IDs/path/intent tối thiểu bền vững"
+    ]
+  },
+  "F16": {
+    "criterion": "Tài sản/bàn giao/di chuyển/bảo trì",
+    "status": "implementation-verified-owned-scope",
+    "scope": "Source inspected + focused unit/DOM; không khẳng định toàn bộ branch đã E2E",
+    "files": [
+      "src/components/assets/AssetHandoverDialog.tsx",
+      "src/components/assets/AssetMaintenanceDialog.tsx",
+      "src/components/assets/AssetMovementDialog.tsx",
+      "src/components/assets/CreateAssetDialog.tsx",
+      "src/components/assets/EditAssetDialog.tsx",
+      "src/hooks/useAssets.ts"
+    ],
+    "callIds": [
+      "85f0f327ce19b240",
+      "a7909172c45c1387",
+      "0525217968f90678",
+      "3187629b69623dda",
+      "62d5147cefd84192",
+      "8450584a4bd3621f",
+      "0e590a6ac5232460",
+      "c542de210d3cdc35",
+      "faa51bf86adc7cd0",
+      "bc6b8bae09737014",
+      "651cafc27e94ffb4",
+      "009d7ebd4debe291",
+      "78bd3b951b91bd44",
+      "ee1ea51d7162941d",
+      "1848c6b8a21dc6c8",
+      "aae8abbbbb62ec44",
+      "1f6bd0eb67ecf26e",
+      "e3c10da3d978a5d4",
+      "19d73329e4e422e7",
+      "2bb53fd4e265b9a4",
+      "af8ee10494a71dbe",
+      "dcd70c110a3873fe",
+      "5dff4dd7bc928405",
+      "82956f80e84a5ad7",
+      "b07752caf4ac2dfc",
+      "e88355406c4618d6",
+      "26832888f17878a8",
+      "4063a8db4e9dc786",
+      "26c859999414fd74",
+      "bf22a1d5968028b8",
+      "036075d36bf645be",
+      "67e5409bcb931aa5",
+      "7d0c5b956fb8cf8a",
+      "1c57f20b39626ae8",
+      "7ebf7184b86bc14e",
+      "a4630e62025088da",
+      "87899139d18d2970"
+    ],
+    "evidence": [
+      "Writer durable; actual history/source null/error ném, create/update/delete/hand/move/maintenance exact IDs. Năm form source barrier/draft/ID/focus và khóa partial/unknown."
+    ],
+    "tests": "assetReadWriteOutcome13; assetMaterialDeleteOutcome12; AssetForms.feedback3",
+    "pendingE2E": true,
+    "notVerified": [
+      "Browser E2E trong TEST/DEMO (root tích hợp)",
+      "App typecheck/build/gates cuối sau mọi source ổn định (root)",
+      "Database atomicity/idempotency và nhiều tab/CAS chưa xác minh; không đổi SQL/RLS",
+      "Full form/File bytes không serialize qua reload; chỉ pending identities/IDs/path/intent tối thiểu bền vững"
+    ]
+  },
+  "F17": {
+    "criterion": "Kho/tầng/hotline/gạch nợ chờ mutation",
+    "status": "owner-evidence-pending",
+    "scope": "Root/owner khác: cần merge bằng chứng riêng",
+    "files": [],
+    "callIds": [],
+    "evidence": [
+      "Root/agent cấu hình sở hữu, không suy ra kết quả từ helper chung. Cần merge bằng chứng chủ sở hữu."
+    ],
+    "tests": "owner-root",
+    "pendingE2E": true,
+    "notVerified": [
+      "Browser E2E trong TEST/DEMO (root tích hợp)",
+      "App typecheck/build/gates cuối sau mọi source ổn định (root)",
+      "Database atomicity/idempotency và nhiều tab/CAS chưa xác minh; không đổi SQL/RLS",
+      "Full form/File bytes không serialize qua reload; chỉ pending identities/IDs/path/intent tối thiểu bền vững"
+    ]
+  },
+  "F18": {
+    "criterion": "Vật tư/danh mục",
+    "status": "implementation-verified-owned-scope",
+    "scope": "Source inspected + focused unit/DOM; không khẳng định toàn bộ branch đã E2E",
+    "files": [
+      "src/components/materials/MaterialAdjustmentFormDialog.tsx",
+      "src/components/materials/MaterialCategoryFormDialog.tsx",
+      "src/components/materials/MaterialFormDialog.tsx",
+      "src/components/materials/MaterialPurchaseFormDialog.tsx",
+      "src/hooks/useMaterialAdjustments.ts",
+      "src/hooks/useMaterialCategories.ts",
+      "src/hooks/useMaterialPurchases.ts",
+      "src/hooks/useMaterials.ts",
+      "src/lib/materialVoucherOutcome.ts"
+    ],
+    "callIds": [
+      "440b1958f8abaff7",
+      "11dad4213c18bafa",
+      "e6bfc19e6f474427",
+      "5610ca4df97509e2",
+      "19b8c13b468caadc",
+      "e961a7a6dcdf7161",
+      "74040926e6b4b3b5",
+      "09d35f7fca476961",
+      "e5ebfcb10b66230a",
+      "6a9d62937949580e",
+      "2412cc27092cbba3",
+      "c148a7ae3600c381",
+      "14375b0487679300",
+      "e373ec5770bd3f3a",
+      "0b3ec1c52d738f9e",
+      "1c2cfc4bdf844ad8",
+      "39a87fb36c4c6188",
+      "b22aa667fc7913d7",
+      "3ff0038b8fc703b1",
+      "930e3749173d951c",
+      "5c08500de43e2d9f",
+      "9a5c24d6d2600e75",
+      "13f47317776c3fe8",
+      "3a1c9bb743890534",
+      "813f199f6dcc9796",
+      "de8849649cd46533",
+      "343da1c05ac6e243",
+      "9da6cbc52e1bb4a8",
+      "6cd90b14f5edc48e",
+      "3249e92edb2e1d2b",
+      "505f8d4de69876f8",
+      "ebc4b2008b4c143d",
+      "cd454a1eafb53b9b",
+      "369482e78f8f8c61",
+      "c73ead23f609a910",
+      "eb39d9fe766a1c0a",
+      "617af21ac14a324f",
+      "6bd644a9d71b5593",
+      "c82f738d38ce499c",
+      "8ab3de2686b6c9a7",
+      "e985424ae62fefa7",
+      "1835eb9fd6d81278",
+      "aea4cea38376ef7f",
+      "7669208417c18c70",
+      "463270ee335d3ad1",
+      "9fc1120535becd44",
+      "0380f12e5f803c65",
+      "aed3f1360bf9eb9d"
+    ],
+    "evidence": [
+      "Vật tư/danh mục CRUD exact receipts và source danh mục in-use; hai form giữ draft/ID, không thêm durable framework cho danh mục thấp tác động.",
+      "Writer đối chiếu main45149b9b: giữ explicit projection/default server line IDs; receipts giữ header/line/deleted IDs. Partial/unknown guard durable chặn remount/reload; form giữ draft/ID và source barrier.",
+      "Update purchase giữ main UPDATE-header → DELETE-all lines → INSERT projected lines. SET giữ signed delta/IN/OUT/Math.abs/default reason và object payload; no-op sau partial vẫn blocked.",
+      "Create purchase/manual usage/adjustment/SET giữ main DELETE-header compensation chỉ khi API INSERT-lines trả error. Exact cleanup + original known rejection báo phiếu tạm đã gỡ, loại IDs đã gỡ và cho sửa/thử lại; cleanup uncertain hoặc original unknown giữ ID/barrier. Receipt thiếu không chạy thêm cleanup."
+    ],
+    "tests": "materialMainWriterParity22; materialVoucherOutcome14; MaterialVoucherForms.feedback5; assetMaterialDeleteOutcome12; materialUsageValidation4 (5files57pass17:36:54); materialCatalogReceipt2; MaterialCatalogForms.feedback3",
+    "pendingE2E": true,
+    "notVerified": [
+      "Browser E2E trong TEST/DEMO (root tích hợp)",
+      "App typecheck/build/gates cuối sau mọi source ổn định (root)",
+      "Database atomicity/idempotency và nhiều tab/CAS chưa xác minh; không đổi SQL/RLS",
+      "Full form/File bytes không serialize qua reload; chỉ pending identities/IDs/path/intent tối thiểu bền vững"
+    ]
+  },
+  "F19": {
+    "criterion": "Phiếu vật tư không lọc bỏ dòng dở",
+    "status": "implementation-verified-owned-scope",
+    "scope": "Source inspected + focused unit/DOM; không khẳng định toàn bộ branch đã E2E",
+    "files": [
+      "src/components/materials/MaterialUsageFormDialog.tsx",
+      "src/components/materials/MaterialUsageItemsEditor.tsx",
+      "src/hooks/useMaterialUsages.ts",
+      "src/lib/materialUsageValidation.ts"
+    ],
+    "callIds": [
+      "1a979a0af125ecce",
+      "865a8f3aac8fc4cb",
+      "94cab7e3627e7d9b",
+      "d21512255a87ed5a",
+      "923566a0564b6917",
+      "c2eae1ae38dfab1c",
+      "3569254d15923f6c",
+      "73f7c9a702f2d738",
+      "a11cd1204cfc515a",
+      "4e72163f0ce8c1ed",
+      "034c02b5fb1ced13"
+    ],
+    "evidence": [
+      "Form không lọc bỏ dòng nhập dở; dòng sai theo existing form rules có focus/inline. Không thêm hook constraint nghiệp vụ absent main.",
+      "Writer đối chiếu main45149b9b: giữ explicit projection/default server line IDs; receipts giữ header/line/deleted IDs. Partial/unknown guard durable chặn remount/reload; form giữ draft/ID và source barrier.",
+      "Job existing giữ main UPDATE-header → DELETE-all items → INSERT projected lines; empty giữ UPDATE-header → DELETE-items → DELETE-header. New job giữ header INSERT → line INSERT và không thêm cleanup absent main. Actual header read error không giả chưa có phiếu; prior partial chặn cả empty/no-op."
+    ],
+    "tests": "materialMainWriterParity22; materialVoucherOutcome14; MaterialVoucherForms.feedback5; materialUsageValidation4 (focused57pass17:36:54); TaskCreate.material1",
+    "pendingE2E": true,
+    "notVerified": [
+      "Browser E2E trong TEST/DEMO (root tích hợp)",
+      "App typecheck/build/gates cuối sau mọi source ổn định (root)",
+      "Database atomicity/idempotency và nhiều tab/CAS chưa xác minh; không đổi SQL/RLS",
+      "Full form/File bytes không serialize qua reload; chỉ pending identities/IDs/path/intent tối thiểu bền vững"
+    ]
+  },
+  "F20": {
+    "criterion": "Phiếu vật tư header/lines partial",
+    "status": "implementation-verified-owned-scope",
+    "scope": "Source inspected + focused unit/DOM; không khẳng định toàn bộ branch đã E2E",
+    "files": [
+      "src/components/materials/MaterialAdjustmentFormDialog.tsx",
+      "src/components/materials/MaterialPurchaseFormDialog.tsx",
+      "src/components/materials/MaterialUsageFormDialog.tsx",
+      "src/hooks/useMaterialAdjustments.ts",
+      "src/hooks/useMaterialPurchases.ts",
+      "src/hooks/useMaterialUsages.ts",
+      "src/lib/materialVoucherOutcome.ts"
+    ],
+    "callIds": [
+      "1a979a0af125ecce",
+      "865a8f3aac8fc4cb",
+      "440b1958f8abaff7",
+      "11dad4213c18bafa",
+      "e6bfc19e6f474427",
+      "5610ca4df97509e2",
+      "9da6cbc52e1bb4a8",
+      "6cd90b14f5edc48e",
+      "3249e92edb2e1d2b",
+      "505f8d4de69876f8",
+      "ebc4b2008b4c143d",
+      "cd454a1eafb53b9b",
+      "369482e78f8f8c61",
+      "c73ead23f609a910",
+      "eb39d9fe766a1c0a",
+      "617af21ac14a324f",
+      "94cab7e3627e7d9b",
+      "d21512255a87ed5a",
+      "923566a0564b6917",
+      "c2eae1ae38dfab1c",
+      "3569254d15923f6c",
+      "73f7c9a702f2d738",
+      "a11cd1204cfc515a",
+      "4e72163f0ce8c1ed",
+      "034c02b5fb1ced13",
+      "6bd644a9d71b5593",
+      "c82f738d38ce499c",
+      "8ab3de2686b6c9a7",
+      "e985424ae62fefa7",
+      "1835eb9fd6d81278",
+      "aea4cea38376ef7f",
+      "7669208417c18c70",
+      "463270ee335d3ad1",
+      "9fc1120535becd44",
+      "0380f12e5f803c65",
+      "aed3f1360bf9eb9d"
+    ],
+    "evidence": [
+      "Writer đối chiếu main45149b9b: giữ explicit projection/default server line IDs; receipts giữ header/line/deleted IDs. Partial/unknown guard durable chặn remount/reload; form giữ draft/ID và source barrier.",
+      "Create purchase/manual usage/adjustment/SET giữ main DELETE-header compensation chỉ khi API INSERT-lines trả error. Exact cleanup + original known rejection báo phiếu tạm đã gỡ, loại IDs đã gỡ và cho sửa/thử lại; cleanup uncertain hoặc original unknown giữ ID/barrier. Receipt thiếu không chạy thêm cleanup.",
+      "Không khẳng định backend atomicity; DELETE-all→INSERT vẫn có thể partial, IDs bước đã xác nhận giúp đối chiếu. Full draft/File bytes không serialize qua reload."
+    ],
+    "tests": "materialMainWriterParity22; materialVoucherOutcome14; MaterialVoucherForms.feedback5 (focused5files57pass17:36:54)",
+    "pendingE2E": true,
+    "notVerified": [
+      "Browser E2E trong TEST/DEMO (root tích hợp)",
+      "App typecheck/build/gates cuối sau mọi source ổn định (root)",
+      "Database atomicity/idempotency và nhiều tab/CAS chưa xác minh; không đổi SQL/RLS",
+      "Full form/File bytes không serialize qua reload; chỉ pending identities/IDs/path/intent tối thiểu bền vững"
+    ]
+  },
+  "F21": {
+    "criterion": "Pháp lý/CT01/cư trú",
+    "status": "implementation-verified-owned-scope",
+    "scope": "Source inspected + focused unit/DOM; không khẳng định toàn bộ branch đã E2E",
+    "files": [
+      "src/components/residence/LeaseTermBadge.tsx",
+      "src/components/residence/ResidenceDossierSection.tsx",
+      "src/components/residence/TamTruDvcButton.tsx",
+      "src/hooks/useCT01Declarations.ts",
+      "src/hooks/useResidenceDossierFiles.ts",
+      "src/hooks/useResidenceRegistrations.ts",
+      "src/hooks/useTamTruKetQuaSync.ts",
+      "src/pages/customers/CT01FormPage.tsx"
+    ],
+    "callIds": [
+      "a7d3cf70f758254d",
+      "87af2430fed31901",
+      "0adf26981f246b21",
+      "a3fd57883d1a7d07",
+      "308420eaece8ed01",
+      "9f9217b375f0eea0",
+      "fa79496ebd245462",
+      "6c993fd28196799a",
+      "4cf95149d5ec1f04",
+      "f1b49a06ba49c836",
+      "412c7a777a1866e6",
+      "62cd8c784a9ebdc0",
+      "980d2f41e8069e03",
+      "96fbf2aecd740c65",
+      "736901735b06a6f7",
+      "dd31eb90c087019b",
+      "4348863ea320de33",
+      "53a34119dc316c1c",
+      "08b643a02d6cbbb8",
+      "158fe6d68dc681ea",
+      "31fe0b1c20fc4f99",
+      "944992f55fbd99d0",
+      "83060d5f085c5cae"
+    ],
+    "evidence": [
+      "CT01 create durable ID, required source barrier; CT01 form page không print/close khi unknown. Dossier/registration strict sources; thời hạn chỉ cập nhật sau receipt, draft/date field aria-invalid/focus. Extension write error toast an toàn once/submCode, giữ payload và không acknowledge trước receipt."
+    ],
+    "tests": "residence focused14files71pass13:28; CT01Page.feedback2; residenceWrite6; LeaseTermBadge/Section/sync regressions",
+    "pendingE2E": true,
+    "notVerified": [
+      "Browser E2E trong TEST/DEMO (root tích hợp)",
+      "App typecheck/build/gates cuối sau mọi source ổn định (root)",
+      "Database atomicity/idempotency và nhiều tab/CAS chưa xác minh; không đổi SQL/RLS",
+      "Full form/File bytes không serialize qua reload; chỉ pending identities/IDs/path/intent tối thiểu bền vững"
+    ]
+  },
+  "F22": {
+    "criterion": "Mã cư trú không đóng sớm",
+    "status": "implementation-verified-owned-scope",
+    "scope": "Source inspected + focused unit/DOM; không khẳng định toàn bộ branch đã E2E",
+    "files": [
+      "src/components/residence/RegistrationHistory.tsx",
+      "src/components/residence/RegistrationManualEntry.tsx",
+      "src/hooks/useResidenceRegistrations.ts",
+      "src/lib/residenceRegistrations.ts"
+    ],
+    "callIds": [
+      "4365587fa2dd4e7f",
+      "80d49018cd5d1d60",
+      "412c7a777a1866e6",
+      "62cd8c784a9ebdc0",
+      "980d2f41e8069e03"
+    ],
+    "evidence": [
+      "Registration durable targetorg/submcode, receipt khớp ID/org/customer/building/contract/receiveorg/date; recovery readonly actual row. Manual dialog giữ code/draft/error/ID qua đóng-mở, không đóng và không upsert lại khi unknown."
+    ],
+    "tests": "residenceWrite6; ResidenceUnknownForms3; residenceRegistrations8",
+    "pendingE2E": true,
+    "notVerified": [
+      "Browser E2E trong TEST/DEMO (root tích hợp)",
+      "App typecheck/build/gates cuối sau mọi source ổn định (root)",
+      "Database atomicity/idempotency và nhiều tab/CAS chưa xác minh; không đổi SQL/RLS",
+      "Full form/File bytes không serialize qua reload; chỉ pending identities/IDs/path/intent tối thiểu bền vững"
+    ]
+  },
+  "F23": {
+    "criterion": "Ảnh hồ sơ/công tơ",
+    "status": "implementation-verified-owned-scope",
+    "scope": "Source inspected + focused unit/DOM; không khẳng định toàn bộ branch đã E2E",
+    "files": [
+      "src/components/customers/ImageUploadZone.tsx",
+      "src/components/residence/DossierImageUploader.tsx",
+      "src/components/residence/ResidenceDossierSection.tsx",
+      "src/hooks/useResidenceDossierFiles.ts",
+      "src/lib/residenceDossierFiles.ts",
+      "src/lib/storage.ts"
+    ],
+    "callIds": [
+      "a3fd57883d1a7d07",
+      "96fbf2aecd740c65",
+      "736901735b06a6f7",
+      "dd31eb90c087019b",
+      "4348863ea320de33",
+      "53a34119dc316c1c",
+      "08b643a02d6cbbb8",
+      "158fe6d68dc681ea",
+      "31fe0b1c20fc4f99"
+    ],
+    "evidence": [
+      "Dossier unknown giữ planned object path + File/từng tên; cleanup chỉ khi SQL rejection xác định, cleanup unknown giữ path. Upload sequential partial count, unknown dừng phần còn lại; perrow delete ID safe. ImageUploadZone dùng actual compressed key receipt, inline từng tệp/path, actor marker khóa remount; known rejection retry riêng tệp lỗi, positive URL giữ nguyên."
+    ],
+    "tests": "residence14files71pass; storageUploadOutcome3; ImageUploadZone.feedback2; storageIdentityPolicy4; ImageUploadZonePolicy2",
+    "pendingE2E": true,
+    "notVerified": [
+      "Browser E2E trong TEST/DEMO (root tích hợp)",
+      "App typecheck/build/gates cuối sau mọi source ổn định (root)",
+      "Database atomicity/idempotency và nhiều tab/CAS chưa xác minh; không đổi SQL/RLS",
+      "Full form/File bytes không serialize qua reload; chỉ pending identities/IDs/path/intent tối thiểu bền vững"
+    ]
+  },
+  "E21": {
+    "criterion": "Ví cá nhân",
+    "status": "implementation-verified-owned-scope",
+    "scope": "Source inspected + focused unit/DOM; không khẳng định toàn bộ branch đã E2E",
+    "files": [
+      "src/components/shareholders/PersonalTxnDialog.tsx",
+      "src/hooks/usePersonalTransactions.ts"
+    ],
+    "callIds": [
+      "c31ecb276a4a4c06",
+      "be8d7f466c9e3702",
+      "c638930bce09f3ae",
+      "3c57b6700efade78",
+      "d502d940eb624492",
+      "801fd867c0011fbf",
+      "5ee4f588782f7afb",
+      "59ccb443d215a204",
+      "1aa3b9014a585fc3",
+      "38b95f1be863d30d"
+    ],
+    "evidence": [
+      "Own actor scope durable; null/blank tiền không ép0, calendar/amount kiểm trước writer. CRUD exact IDs; manual inputDraft guard, draft/ID/error bền qua đóng-mở và khóa unknown."
+    ],
+    "tests": "personalTransactionWriteOutcome7; walletAccountingOutcome4; PersonalTxnDialog.feedback2",
+    "pendingE2E": true,
+    "notVerified": [
+      "Browser E2E trong TEST/DEMO (root tích hợp)",
+      "App typecheck/build/gates cuối sau mọi source ổn định (root)",
+      "Database atomicity/idempotency và nhiều tab/CAS chưa xác minh; không đổi SQL/RLS",
+      "Full form/File bytes không serialize qua reload; chỉ pending identities/IDs/path/intent tối thiểu bền vững"
+    ]
+  },
+  "E22": {
+    "criterion": "Chuẩn kế toán/no-op",
+    "status": "owner-evidence-pending",
+    "scope": "Root/owner khác: cần merge bằng chứng riêng",
+    "files": [],
+    "callIds": [],
+    "evidence": [
+      "RPC null/shape/orgID/bool strict và giữ lỗi gốc; no-op thông tin. Root sở hữu useFinanceV2Routes/CashbookForm gating; phần liên quan ví kiểm walletAccountingOutcome."
+    ],
+    "tests": "walletAccountingOutcome4; owner-root",
+    "pendingE2E": true,
+    "notVerified": [
+      "Browser E2E trong TEST/DEMO (root tích hợp)",
+      "App typecheck/build/gates cuối sau mọi source ổn định (root)",
+      "Database atomicity/idempotency và nhiều tab/CAS chưa xác minh; không đổi SQL/RLS",
+      "Full form/File bytes không serialize qua reload; chỉ pending identities/IDs/path/intent tối thiểu bền vững"
+    ]
+  },
+  "E23": {
+    "criterion": "Loại/mẫu thu chi partial mặc định",
+    "status": "implementation-verified-owned-scope",
+    "scope": "Source inspected + focused unit/DOM; không khẳng định toàn bộ branch đã E2E",
+    "files": [
+      "src/components/income-expense-templates/IncomeExpenseTemplateForm.tsx",
+      "src/components/income-expense-types/CategoryCombobox.tsx",
+      "src/components/income-expense-types/EditIncomeExpenseTypeDialog.tsx",
+      "src/components/income-expense-types/IncomeExpenseTypeForm.tsx",
+      "src/hooks/useIncomeExpenseTemplates.ts",
+      "src/hooks/useIncomeExpenseTypes.ts",
+      "src/lib/templateDefaultIntent.ts"
+    ],
+    "callIds": [
+      "7777896a51bc4cd6",
+      "047419ea35ba861d",
+      "24185fffaba6f0c6",
+      "70062e37cf7b206c",
+      "355797a4cae64cba",
+      "5a0c93490bdef5e4",
+      "94f589efecece104",
+      "482ec6d15c40d2dd",
+      "925bb5b9aab20eb2",
+      "ed562ac5f1956f31",
+      "61979425ca039488",
+      "f84669b056f03d7d",
+      "6cac9dcf6928e199",
+      "dcd1f3f13acf192b",
+      "e4155a759d01bc1a",
+      "f179e6846ad0be56",
+      "5bca47df4bfc3155",
+      "dcfb9f25f7e4fdc0",
+      "876e41d2b34975ee",
+      "b1ce91b9e88276bc",
+      "1ee4736884549681",
+      "1d71ee3d3c8f7967",
+      "93cd648e4050b9c0",
+      "4068cdb6febc5d63",
+      "d829a1f750dc7407",
+      "9bad922a1d03b52d",
+      "acd29f88c31a6c8b",
+      "76e2fcc1e8678618",
+      "1a62040f359ebf4f",
+      "e49f2868f88b4564",
+      "ae803ce437c00243",
+      "4a8da48d4ccfb621",
+      "8bcce9edb286614a",
+      "8b64356c15be1885",
+      "5b2422eb44905384",
+      "221ec71b716c73a6",
+      "09eeb1e88d3997d7",
+      "3a5da16180814cf2",
+      "360ae8c238ba3fed",
+      "1664959207408df2",
+      "2a60a85c7672c74f",
+      "857920d236e480ae",
+      "b9d542e803bf9c3e",
+      "7e820bcd82ab0090",
+      "773d4573219b266b",
+      "250bd90afa95b2c8",
+      "1820af4a940c838c"
+    ],
+    "evidence": [
+      "CRUD exact IDs/durable, sources null/error strict và usage read trước xóa. Forms focus/draft/root ID/block unknown. Đổi mặc định actor own group: read actual old defaults, unset exact receipts/progressIDs rồi target exact user/type/bool. Minimal intent binds requestKey; recovery readonly target+group, không refetch tự clear.",
+      "Review cuối: success nêu tên từ positive record; delete nhận id/name, fallback confirmed ID nếu thiếu tên. CategoryCombobox forwardRef/props tới button thật, giữ id/aria-invalid/describedby và class đỏ, focus lỗi đầu. Không dùng mockinput để chứng minh combobox."
+    ],
+    "tests": "incomeExpenseTypeOutcome4 + incomeExpenseTemplateOutcome9 + type/templateForms4 + incomeExpenseNamedFeedback8 + CategoryCombobox.feedback1 =6files26pass14:28:33",
+    "pendingE2E": true,
+    "notVerified": [
+      "Browser E2E trong TEST/DEMO (root tích hợp)",
+      "App typecheck/build/gates cuối sau mọi source ổn định (root)",
+      "Database atomicity/idempotency và nhiều tab/CAS chưa xác minh; không đổi SQL/RLS",
+      "Full form/File bytes không serialize qua reload; chỉ pending identities/IDs/path/intent tối thiểu bền vững"
+    ]
+  },
+  "I02": {
+    "criterion": "Danh sách khách hẹn/khu/tòa/phòng/khách/xe",
+    "status": "source-checked-owned-portion",
+    "evidence": [
+      "Query hooks owned ném required null/error; QueryRegion hoặc form source barrier/retry dùng actual query result. Legacy exports unused ghi riêng, không giả đã sửa caller không tồn tại.",
+      "Các 3 detail pages và RoomContractLifecycleDrawer/useRoomCashLifecycle/useRoomContractExtras root sở hữu; phải merge root evidence, không coi scan/helper chung là E2E."
+    ],
+    "tests": "query/source DOM regressions tại F04/F06/F07/F09–F16/F18–F23; readErrors/QueryRegion root evidence cần merge",
+    "pendingE2E": true,
+    "notVerified": [
+      "Browser E2E trong TEST/DEMO (root tích hợp)",
+      "App typecheck/build/gates cuối sau mọi source ổn định (root)",
+      "Database atomicity/idempotency và nhiều tab/CAS chưa xác minh; không đổi SQL/RLS",
+      "Full form/File bytes không serialize qua reload; chỉ pending identities/IDs/path/intent tối thiểu bền vững"
+    ]
+  },
+  "I03": {
+    "criterion": "Chi tiết tòa/phòng/khách từng tab",
+    "status": "source-checked-owned-portion",
+    "evidence": [
+      "Query hooks owned ném required null/error; QueryRegion hoặc form source barrier/retry dùng actual query result. Legacy exports unused ghi riêng, không giả đã sửa caller không tồn tại.",
+      "Các 3 detail pages và RoomContractLifecycleDrawer/useRoomCashLifecycle/useRoomContractExtras root sở hữu; phải merge root evidence, không coi scan/helper chung là E2E."
+    ],
+    "tests": "query/source DOM regressions tại F04/F06/F07/F09–F16/F18–F23; readErrors/QueryRegion root evidence cần merge",
+    "pendingE2E": true,
+    "notVerified": [
+      "Browser E2E trong TEST/DEMO (root tích hợp)",
+      "App typecheck/build/gates cuối sau mọi source ổn định (root)",
+      "Database atomicity/idempotency và nhiều tab/CAS chưa xác minh; không đổi SQL/RLS",
+      "Full form/File bytes không serialize qua reload; chỉ pending identities/IDs/path/intent tối thiểu bền vững"
+    ]
+  },
+  "I04": {
+    "criterion": "Dịch vụ/công tơ/chỉ số/tài sản/vật tư",
+    "status": "source-checked-owned-portion",
+    "evidence": [
+      "Query hooks owned ném required null/error; QueryRegion hoặc form source barrier/retry dùng actual query result. Legacy exports unused ghi riêng, không giả đã sửa caller không tồn tại.",
+      "Các 3 detail pages và RoomContractLifecycleDrawer/useRoomCashLifecycle/useRoomContractExtras root sở hữu; phải merge root evidence, không coi scan/helper chung là E2E."
+    ],
+    "tests": "query/source DOM regressions tại F04/F06/F07/F09–F16/F18–F23; readErrors/QueryRegion root evidence cần merge",
+    "pendingE2E": true,
+    "notVerified": [
+      "Browser E2E trong TEST/DEMO (root tích hợp)",
+      "App typecheck/build/gates cuối sau mọi source ổn định (root)",
+      "Database atomicity/idempotency và nhiều tab/CAS chưa xác minh; không đổi SQL/RLS",
+      "Full form/File bytes không serialize qua reload; chỉ pending identities/IDs/path/intent tối thiểu bền vững"
+    ]
+  },
+  "I14": {
+    "criterion": "Danh mục trong form tải lỗi",
+    "status": "source-checked-owned-portion",
+    "evidence": [
+      "Query hooks owned ném required null/error; QueryRegion hoặc form source barrier/retry dùng actual query result. Legacy exports unused ghi riêng, không giả đã sửa caller không tồn tại.",
+      "Các 3 detail pages và RoomContractLifecycleDrawer/useRoomCashLifecycle/useRoomContractExtras root sở hữu; phải merge root evidence, không coi scan/helper chung là E2E."
+    ],
+    "tests": "query/source DOM regressions tại F04/F06/F07/F09–F16/F18–F23; readErrors/QueryRegion root evidence cần merge",
+    "pendingE2E": true,
+    "notVerified": [
+      "Browser E2E trong TEST/DEMO (root tích hợp)",
+      "App typecheck/build/gates cuối sau mọi source ổn định (root)",
+      "Database atomicity/idempotency và nhiều tab/CAS chưa xác minh; không đổi SQL/RLS",
+      "Full form/File bytes không serialize qua reload; chỉ pending identities/IDs/path/intent tối thiểu bền vững"
+    ]
+  }
+}

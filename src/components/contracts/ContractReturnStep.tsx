@@ -49,12 +49,13 @@ export function ContractReturnStep(props: Props) {
     {!props.exitCase && <div className="space-y-2">
       <Label htmlFor={`${id}-return-note`}>Nội dung thanh lý <span className="text-destructive">*</span></Label>
       <Textarea id={`${id}-return-note`} value={props.returnNote} disabled={props.pending} required
-        aria-describedby={`${id}-return-note-help`} rows={3}
+        aria-describedby={`${id}-return-note-help`} aria-invalid={!props.returnNote.trim()} rows={3}
         onChange={event => props.onReturnNoteChange(event.target.value)}
         placeholder="Nhập lý do và nội dung cần lưu để đối chiếu" />
       <p id={`${id}-return-note-help`} className="text-xs text-muted-foreground">
         Bắt buộc ghi nội dung để đối chiếu. Có thể dùng mẫu bên dưới và bổ sung nếu cần.
       </p>
+      {!props.returnNote.trim() && <p role="alert" className="text-xs text-destructive">Nhập nội dung thanh lý trước khi tiếp tục.</p>}
       {props.kind && <div className="space-y-2 rounded-md bg-muted p-3">
         <p className="text-sm">{RETURN_NOTE_SAMPLES[props.kind]}</p>
         <Button type="button" size="sm" variant="outline" disabled={props.pending}
@@ -71,7 +72,9 @@ export function ContractReturnStep(props: Props) {
     {changingKind && <div className="space-y-2">
       <Label htmlFor={`${id}-reason`}>Lý do đổi loại thanh lý <span className="text-destructive">*</span></Label>
       <Textarea id={`${id}-reason`} value={props.changeReason} disabled={props.pending}
+        aria-invalid={!props.changeReason.trim()}
         onChange={event => props.onReasonChange(event.target.value)} placeholder="Ghi rõ lý do để đối soát sau này" />
+      {!props.changeReason.trim() && <p role="alert" className="text-xs text-destructive">Nhập lý do đổi loại thanh lý trước khi tiếp tục.</p>}
     </div>}
     {props.children}
     {!props.exitCase && <p className="rounded-md bg-muted p-3 text-sm">

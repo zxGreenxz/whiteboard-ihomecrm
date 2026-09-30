@@ -47,6 +47,13 @@ const BUILDING_A = "11111111-1111-4111-8111-111111111111";
 const BUILDING_B = "22222222-2222-4222-8222-222222222222";
 
 describe("legacy occupancy dashboard hooks", () => {
+  it('does not mistake a malformed snapshot or trend for an empty report', async () => {
+    mocks.rpc.mockResolvedValue({data:null,error:null});
+    const snapshot=useOccupancySnapshot('2026-09-30',[]) as unknown as QueryOptions<unknown>;
+    const trend=useOccupancyTrend12m([]) as unknown as QueryOptions<unknown>;
+    await expect(snapshot.queryFn()).rejects.toThrow();
+    await expect(trend.queryFn()).rejects.toThrow();
+  });
   beforeEach(() => {
     mocks.rpc.mockReset();
     mocks.useAuth.mockClear();
@@ -125,7 +132,7 @@ describe("legacy occupancy dashboard hooks", () => {
   it("uses only legacy RPCs and omits an empty building filter", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 6, 25, 12));
-    mocks.rpc.mockResolvedValue({ data: null, error: null });
+    mocks.rpc.mockResolvedValue({ data: [], error: null });
 
     const snapshot = useOccupancySnapshot(
       "2026-07-25",
@@ -178,7 +185,7 @@ describe("legacy occupancy dashboard hooks", () => {
     // gửi `"p_building_ids":null` tường minh; hai đằng cho cùng một kết quả.
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 6, 25, 12));
-    mocks.rpc.mockResolvedValue({ data: null, error: null });
+    mocks.rpc.mockResolvedValue({ data: [], error: null });
 
     const snapshot = useOccupancySnapshot(
       "2026-07-25",
@@ -223,8 +230,8 @@ describe("legacy occupancy dashboard hooks", () => {
         {
           month: "2026-03-01",
           building_id: BUILDING_A,
-          occupied_rooms: null,
-          total_rooms: null,
+          occupied_rooms: 0,
+          total_rooms: 0,
         },
       ],
       error: null,

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Dialog,
@@ -37,7 +37,9 @@ import { useCreateService } from '@/hooks/useServices';
 import { useUpdateIndividualSetting } from '@/hooks/useSettings';
 import { useAuth } from '@/hooks/useAuth';
 import { fetchOnboardingCompleted, ONBOARDING_KEY } from './onboardingCompleted';
-import { toast } from 'sonner';
+import { friendlyError } from '@/lib/friendlyError';
+import { focusFirstError } from '@/lib/formErrors';
+import { validateInputDrafts } from '@/lib/inputDraftValidation';
 import { Link } from 'react-router-dom';
 
 const STEPS = [
@@ -55,7 +57,7 @@ const STEPS = [
 // theo user (xem onboardingCompleted.ts — không lọc thì RLS multi-row làm cờ
 // đọc thành false vĩnh viễn); query chỉ bật khi đã có user id nên key ổn định
 // suốt phiên, không tái phát loop. markCompleted ghi qua mutation cũ RỒI
-// set-cache trực tiếp để UI tắt wizard tức thì.
+// set-cache chỉ sau khi máy chủ trả biên nhận đúng user/key/value.
 const onboardingQK = (userId: string | undefined) =>
   ['onboarding-completed-flag', userId] as const;
 
@@ -83,9 +85,9 @@ export function useOnboardingState() {
     // HOẶC lỗi — cả ba trường hợp đều KHÔNG được nháy wizard. (isLoading của
     // react-query v5 là false khi query disabled nên không dùng được ở đây.)
     isLoading: completed === undefined,
-    markCompleted: () => {
-      queryClient.setQueryData(onboardingQK(userId), true); // tắt wizard ngay
-      updateSetting.mutate(true); // ghi bền xuống settings
+    markCompleted: async () => {
+      await updateSetting.mutateAsync(true);
+      queryClient.setQueryData(onboardingQK(userId), true);
     },
   };
 }
@@ -94,6 +96,23 @@ export default function OnboardingWizard() {
   const [open, setOpen] = useState(true);
   const [currentStep, setCurrentStep] = useState(0);
   const { markCompleted } = useOnboardingState();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const completionInFlight = useRef(false);
+  const [finishing, setFinishing] = useState(false);
+  const [completionError, setCompletionError] = useState('');
+  const [nameErrors, setNameErrors] = useState<Record<string, string>>({});
+
+  const requireName = async (field: string, value: string, message: string) => {
+    if (value.trim()) return true;
+    const errors = { [field]: message };
+    setNameErrors(errors);
+    await focusFirstError(errors, { root: dialogRef.current });
+    return false;
+  };
+  const changeName = (field: string, value: string, setter: (value: string) => void) => {
+    setter(value);
+    setNameErrors(previous => ({ ...previous, [field]: '' }));
+  };
 
   // Form states
   const [buildingName, setBuildingName] = useState('');
@@ -114,9 +133,26 @@ export default function OnboardingWizard() {
 
   const progress = ((currentStep) / (STEPS.length - 1)) * 100;
 
-  const handleSkip = () => {
-    markCompleted();
-    setOpen(false);
+  const writing = createBuilding.isPending || createRoom.isPending || createService.isPending;
+  const busy = writing || finishing;
+
+  const handleSkip = async () => {
+    if (completionInFlight.current || writing) return;
+    completionInFlight.current = true;
+    setFinishing(true);
+    setCompletionError('');
+    try {
+      await markCompleted();
+      setOpen(false);
+    } catch (error) {
+      // The settings hook owns the toast; the dialog retains the draft and the error.
+      setCompletionError(friendlyError(error, 'Chưa xác nhận được hoàn tất thiết lập', {
+        operation: 'lưu trạng thái hoàn tất thiết lập',
+      }).description);
+    } finally {
+      completionInFlight.current = false;
+      setFinishing(false);
+    }
   };
 
   const handleNext = () => {
@@ -132,10 +168,7 @@ export default function OnboardingWizard() {
   };
 
   const handleCreateBuilding = async () => {
-    if (!buildingName.trim()) {
-      toast.error('Vui lòng nhập tên toà nhà');
-      return;
-    }
+    if (!await requireName('buildingName', buildingName, 'Vui lòng nhập tên toà nhà')) return;
     try {
       const result = await createBuilding.mutateAsync({
         name: buildingName.trim(),
@@ -153,12 +186,10 @@ export default function OnboardingWizard() {
   };
 
   const handleCreateApartment = async () => {
-    if (!apartmentName.trim()) {
-      toast.error('Vui lòng nhập tên căn hộ');
-      return;
-    }
+    if (!await requireName('apartmentName', apartmentName, 'Vui lòng nhập tên căn hộ')) return;
+    if (!validateInputDrafts(dialogRef.current)) return;
     if (!createdBuildingId) {
-      toast.error('Vui lòng tạo toà nhà trước');
+      setCompletionError('Vui lòng tạo toà nhà trước khi thêm căn hộ.');
       return;
     }
     try {
@@ -175,10 +206,8 @@ export default function OnboardingWizard() {
   };
 
   const handleCreateService = async () => {
-    if (!serviceName.trim()) {
-      toast.error('Vui lòng nhập tên dịch vụ');
-      return;
-    }
+    if (!await requireName('serviceName', serviceName, 'Vui lòng nhập tên dịch vụ')) return;
+    if (!validateInputDrafts(dialogRef.current)) return;
     try {
       await createService.mutateAsync({
         name: serviceName.trim(),
@@ -191,10 +220,7 @@ export default function OnboardingWizard() {
     }
   };
 
-  const handleFinish = () => {
-    markCompleted();
-    setOpen(false);
-  };
+  const handleFinish = handleSkip;
 
   const renderStepContent = () => {
     switch (STEPS[currentStep].id) {
@@ -205,7 +231,8 @@ export default function OnboardingWizard() {
           <BuildingStep
             name={buildingName}
             address={buildingAddress}
-            onNameChange={setBuildingName}
+            error={nameErrors.buildingName}
+            onNameChange={(value) => changeName('buildingName', value, setBuildingName)}
             onAddressChange={setBuildingAddress}
           />
         );
@@ -214,7 +241,8 @@ export default function OnboardingWizard() {
           <ApartmentStep
             name={apartmentName}
             price={apartmentPrice}
-            onNameChange={setApartmentName}
+            error={nameErrors.apartmentName}
+            onNameChange={(value) => changeName('apartmentName', value, setApartmentName)}
             onPriceChange={setApartmentPrice}
           />
         );
@@ -224,7 +252,8 @@ export default function OnboardingWizard() {
             name={serviceName}
             price={servicePrice}
             type={serviceType}
-            onNameChange={setServiceName}
+            error={nameErrors.serviceName}
+            onNameChange={(value) => changeName('serviceName', value, setServiceName)}
             onPriceChange={setServicePrice}
             onTypeChange={setServiceType}
           />
@@ -242,11 +271,11 @@ export default function OnboardingWizard() {
     if (step === 'welcome') {
       return (
         <div className="flex justify-between">
-          <Button variant="ghost" onClick={handleSkip}>
+          <Button variant="ghost" onClick={handleSkip} disabled={busy}>
             <SkipForward className="h-4 w-4 mr-2" />
             Bỏ qua
           </Button>
-          <Button onClick={handleNext}>
+          <Button onClick={handleNext} disabled={busy}>
             Bắt đầu
             <ArrowRight className="h-4 w-4 ml-2" />
           </Button>
@@ -257,7 +286,7 @@ export default function OnboardingWizard() {
     if (step === 'complete') {
       return (
         <div className="flex justify-center">
-          <Button onClick={handleFinish} size="lg">
+          <Button onClick={handleFinish} size="lg" disabled={busy}>
             <CheckCircle2 className="h-4 w-4 mr-2" />
             Hoàn thành
           </Button>
@@ -276,20 +305,20 @@ export default function OnboardingWizard() {
     return (
       <div className="flex justify-between">
         <div className="flex gap-2">
-          <Button variant="outline" onClick={handleBack}>
+          <Button variant="outline" onClick={handleBack} disabled={busy}>
             <ArrowLeft className="h-4 w-4 mr-2" />
             Quay lại
           </Button>
-          <Button variant="ghost" onClick={handleSkip}>
+          <Button variant="ghost" onClick={handleSkip} disabled={busy}>
             <SkipForward className="h-4 w-4 mr-2" />
             Bỏ qua
           </Button>
         </div>
         <div className="flex gap-2">
-          <Button variant="ghost" onClick={handleNext}>
+          <Button variant="ghost" onClick={handleNext} disabled={busy}>
             Bước tiếp
           </Button>
-          <Button onClick={action?.handler} disabled={action?.loading}>
+          <Button onClick={action?.handler} disabled={busy}>
             {action?.loading ? 'Đang tạo...' : 'Tạo & Tiếp tục'}
             <ArrowRight className="h-4 w-4 ml-2" />
           </Button>
@@ -300,7 +329,7 @@ export default function OnboardingWizard() {
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) handleSkip(); }}>
-      <DialogContent className="sm:max-w-[560px]">
+      <DialogContent ref={dialogRef} className="sm:max-w-[560px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {(() => {
@@ -350,6 +379,8 @@ export default function OnboardingWizard() {
         {/* Step content */}
         <div className="py-4 min-h-[200px]">{renderStepContent()}</div>
 
+        {completionError && <p role="alert" className="text-sm text-destructive">{completionError}</p>}
+        {finishing && <p role="status" className="text-sm text-muted-foreground">Đang lưu trạng thái thiết lập...</p>}
         {/* Actions */}
         {renderActions()}
       </DialogContent>
@@ -393,11 +424,13 @@ function WelcomeStep() {
 
 function BuildingStep({
   name,
+  error,
   address,
   onNameChange,
   onAddressChange,
 }: {
   name: string;
+  error?: string;
   address: string;
   onNameChange: (v: string) => void;
   onAddressChange: (v: string) => void;
@@ -414,10 +447,15 @@ function BuildingStep({
           </Label>
           <Input
             id="building-name"
+            name="buildingName"
+            aria-invalid={!!error}
+            aria-describedby={error ? 'building-name-error' : undefined}
+            className={error ? 'border-destructive' : undefined}
             placeholder="VD: Toà nhà A, Chung cư Sunrise..."
             value={name}
             onChange={(e) => onNameChange(e.target.value)}
           />
+          {error && <p id="building-name-error" role="alert" className="text-sm text-destructive">{error}</p>}
         </div>
         <div className="space-y-2">
           <Label htmlFor="building-address">Địa chỉ</Label>
@@ -435,11 +473,13 @@ function BuildingStep({
 
 function ApartmentStep({
   name,
+  error,
   price,
   onNameChange,
   onPriceChange,
 }: {
   name: string;
+  error?: string;
   price: string;
   onNameChange: (v: string) => void;
   onPriceChange: (v: string) => void;
@@ -456,14 +496,21 @@ function ApartmentStep({
           </Label>
           <Input
             id="apartment-name"
+            name="apartmentName"
+            aria-invalid={!!error}
+            aria-describedby={error ? 'apartment-name-error' : undefined}
+            className={error ? 'border-destructive' : undefined}
             placeholder="VD: Căn hộ 101, Căn A1..."
             value={name}
             onChange={(e) => onNameChange(e.target.value)}
           />
+          {error && <p id="apartment-name-error" role="alert" className="text-sm text-destructive">{error}</p>}
         </div>
         <div className="space-y-2">
           <Label htmlFor="apartment-price">Giá thuê (VNĐ/tháng)</Label>
           <CurrencyInput
+            id="apartment-price"
+            name="apartmentPrice"
             value={price ? Number(price) : 0}
             onChange={(v) => onPriceChange(v ? String(v) : '')}
           />
@@ -475,6 +522,7 @@ function ApartmentStep({
 
 function ServiceStep({
   name,
+  error,
   price,
   type,
   onNameChange,
@@ -482,6 +530,7 @@ function ServiceStep({
   onTypeChange,
 }: {
   name: string;
+  error?: string;
   price: string;
   type: string;
   onNameChange: (v: string) => void;
@@ -500,14 +549,21 @@ function ServiceStep({
           </Label>
           <Input
             id="service-name"
+            name="serviceName"
+            aria-invalid={!!error}
+            aria-describedby={error ? 'service-name-error' : undefined}
+            className={error ? 'border-destructive' : undefined}
             placeholder="VD: Tiền điện, Tiền nước, Internet..."
             value={name}
             onChange={(e) => onNameChange(e.target.value)}
           />
+          {error && <p id="service-name-error" role="alert" className="text-sm text-destructive">{error}</p>}
         </div>
         <div className="space-y-2">
           <Label htmlFor="service-price">Đơn giá</Label>
           <CurrencyInput
+            id="service-price"
+            name="servicePrice"
             value={price ? Number(price) : 0}
             onChange={(v) => onPriceChange(v ? String(v) : '')}
           />

@@ -14,11 +14,13 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { useMaterialUsages } from '@/hooks/useMaterialUsages';
+import { QueryRegion } from '@/components/errors/QueryRegion';
 import MaterialUsageFormDialog from '@/components/materials/MaterialUsageFormDialog';
 import { format } from 'date-fns';
 
 export default function MaterialUsagesContent() {
-  const { data: usages = [], isLoading } = useMaterialUsages();
+  const usagesQuery = useMaterialUsages();
+  const { data: usages = [], isLoading } = usagesQuery;
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   useCopilotPageContext('materials.usages', {}, expanded.size === 1 ? usages.find((row) => expanded.has(row.id)) : null);
   const [formOpen, setFormOpen] = useState(false);
@@ -31,6 +33,7 @@ export default function MaterialUsagesContent() {
     });
 
   return (
+    <QueryRegion label="danh sách phiếu xuất vật tư" queries={[usagesQuery]}>
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-3">
         <p className="text-sm text-muted-foreground">
@@ -207,5 +210,6 @@ export default function MaterialUsagesContent() {
 
       <MaterialUsageFormDialog open={formOpen} onOpenChange={setFormOpen} />
     </div>
+    </QueryRegion>
   );
 }

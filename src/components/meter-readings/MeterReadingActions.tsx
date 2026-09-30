@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import { recordWriteBlocked, recordWriteMessage } from '@/lib/recordWriteOutcome';
 import { Button } from '@/components/ui/button';
 import {
   AlertDialog,
-  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -23,17 +23,30 @@ const MeterReadingActions = ({
   onClearSelection,
 }: MeterReadingActionsProps) => {
   const [isBulkDeleteOpen, setIsBulkDeleteOpen] = useState(false);
+  const [failure, setFailure] = useState('');
+  const [blocked, setBlocked] = useState(false);
+  const busy = useRef(false);
 
   const bulkDeleteMutation = useBulkDeleteMeterReadings();
 
   if (selectedIds.length === 0) return null;
 
   const handleBulkDeleteConfirm = () => {
+    if (busy.current || blocked || bulkDeleteMutation.isPending) return;
+    busy.current = true;
+    setFailure('');
     bulkDeleteMutation.mutate(selectedIds, {
       onSuccess: () => {
         onClearSelection();
         setIsBulkDeleteOpen(false);
+        busy.current = false;
       },
+      onError: (error) => {
+        setFailure(recordWriteMessage(error, 'xoá chỉ số hàng loạt'));
+        setBlocked(recordWriteBlocked(error));
+        busy.current = false;
+      },
+      onSettled: () => { busy.current = false; },
     });
   };
 
@@ -61,7 +74,9 @@ const MeterReadingActions = ({
         </Button>
       </div>
 
-      <AlertDialog open={isBulkDeleteOpen} onOpenChange={setIsBulkDeleteOpen}>
+      <AlertDialog open={isBulkDeleteOpen} onOpenChange={(open) => {
+        if (!busy.current && !bulkDeleteMutation.isPending) setIsBulkDeleteOpen(open);
+      }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Xác nhận xoá hàng loạt</AlertDialogTitle>
@@ -69,14 +84,17 @@ const MeterReadingActions = ({
               Bạn có chắc chắn muốn xoá {selectedIds.length} chỉ số đã chọn không?
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {failure && <p role="alert" className="text-sm text-destructive">{failure}</p>}
           <AlertDialogFooter>
             <AlertDialogCancel>Hủy</AlertDialogCancel>
-            <AlertDialogAction
+            <Button
+              type="button"
               onClick={handleBulkDeleteConfirm}
+              disabled={bulkDeleteMutation.isPending || blocked}
               className="bg-red-600 hover:bg-red-700"
             >
               Xoá
-            </AlertDialogAction>
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

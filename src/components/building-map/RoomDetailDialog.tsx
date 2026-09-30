@@ -1,3 +1,4 @@
+import {QueryRegion} from '@/components/errors/QueryRegion';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -35,7 +36,8 @@ interface RoomDetailDialogProps {
 
 export function RoomDetailDialog({ open, onOpenChange, roomId }: RoomDetailDialogProps) {
   const navigate = useNavigate();
-  const { data: room, isLoading: roomLoading } = useRoom(roomId || "");
+  const roomQuery = useRoom(roomId || "");
+  const { data: room, isLoading: roomLoading } = roomQuery;
   const [contractFormOpen, setContractFormOpen] = useState(false);
 
   // Prefill stable cho ContractFormDialog (route /contracts/create không tồn tại
@@ -49,12 +51,13 @@ export function RoomDetailDialog({ open, onOpenChange, roomId }: RoomDetailDialo
   );
 
   // Get active contract for this room
-  const { data: activeContract } = useQuery({
+  const contractQuery = useQuery({
+    meta: {feedback: "inline"},
     queryKey: ["room-active-contract", roomId],
     queryFn: async () => {
       if (!roomId) return null;
 
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("contracts")
         .select(`
           id,
@@ -72,32 +75,38 @@ export function RoomDetailDialog({ open, onOpenChange, roomId }: RoomDetailDialo
         `)
         .eq("room_id", roomId)
         .in("status", ["ACTIVE"])
-        .single();
+        .maybeSingle();
 
+      if (error) throw error;
       return data;
     },
     enabled: !!roomId && open,
   });
 
+  const { data: activeContract } = contractQuery;
+
   // Get latest invoice for this contract
-  const { data: latestInvoice } = useQuery({
+  const invoiceQuery = useQuery({
+    meta: {feedback: "inline"},
     queryKey: ["room-latest-invoice", activeContract?.id],
     queryFn: async () => {
       if (!activeContract?.id) return null;
 
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("invoices")
         .select("id, invoice_number, total_amount, paid_amount, due_date, status")
         .eq("contract_id", activeContract.id)
         .order("created_at", { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
 
+      if (error) throw error;
       return data;
     },
     enabled: !!activeContract?.id && open,
   });
 
+  const { data: latestInvoice } = invoiceQuery;
   if (!roomId) return null;
 
   const handleCreateContract = () => {
@@ -122,6 +131,7 @@ export function RoomDetailDialog({ open, onOpenChange, roomId }: RoomDetailDialo
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <QueryRegion label="thông tin phòng, hợp đồng và hóa đơn" queries={[roomQuery, contractQuery, ...(activeContract?.id ? [invoiceQuery] : [])]}>
         {roomLoading ? (
           <div className="space-y-4">
             <Skeleton className="h-8 w-48" />
@@ -286,6 +296,7 @@ export function RoomDetailDialog({ open, onOpenChange, roomId }: RoomDetailDialo
             <p className="text-muted-foreground">Không tìm thấy thông tin căn hộ</p>
           </div>
         )}
+        </QueryRegion>
       </DialogContent>
     </Dialog>
 

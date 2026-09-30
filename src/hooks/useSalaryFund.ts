@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useSpecialFeePrices } from "@/hooks/useSpecialFeePrices";
+import { financialReadNumber, financialReadRows } from '@/lib/financialReadValidation';
 
 export interface FeeFundRow {
   buildingId: string;
@@ -33,7 +34,7 @@ export const useSalaryFeeFund = (periodMonth: string, enabled = true) => {
       unpublished: cells.filter((p) => p.amount == null).length,
     };
   }, [q.data]);
-  return { ...value, isLoading: q.isLoading, error: q.error as Error | null };
+  return { ...q, ...value };
 };
 
 export interface PendingPayout {
@@ -51,6 +52,7 @@ export interface PendingPayout {
 export const useSalaryPendingPayouts = (periodMonth: string, staffIds: string[]) => {
   const key = [...staffIds].sort();
   return useQuery<PendingPayout[]>({
+    meta: {feedback:'inline'},
     queryKey: ["salary-pending-payouts", periodMonth, key],
     enabled: !!periodMonth && key.length > 0,
     queryFn: async () => {
@@ -62,14 +64,19 @@ export const useSalaryPendingPayouts = (periodMonth: string, staffIds: string[])
         .not("payout_voucher_id", "is", null);
       if (error) throw error;
       const byVoucher = new Map<string, string>();
-      for (const r of rows ?? []) if (r.payout_voucher_id) byVoucher.set(r.payout_voucher_id, r.staff_id);
+      for (const r of financialReadRows(rows)) {
+        if (!r.payout_voucher_id || !r.staff_id) throw new TypeError('Invalid salary payout link');
+        byVoucher.set(r.payout_voucher_id, r.staff_id);
+      }
       if (!byVoucher.size) return [];
       const { data: vouchers, error: vErr } = await supabase
         .from("income_expenses")
         .select("id, total_amount, approval_status, voucher_date, deleted_at")
         .in("id", [...byVoucher.keys()]);
       if (vErr) throw vErr;
-      const pending = (vouchers ?? []).filter((v) => v.approval_status === "UNAPPROVED" && !v.deleted_at);
+      const verifiedVouchers = financialReadRows(vouchers);
+      if (verifiedVouchers.length !== byVoucher.size || verifiedVouchers.some(v => !byVoucher.has(v.id) || !v.approval_status)) throw new TypeError('Incomplete salary voucher source');
+      const pending = verifiedVouchers.filter((v) => v.approval_status === "UNAPPROVED" && !v.deleted_at);
       if (!pending.length) return [];
       // Cả hai đường chi (canonical + legacy) ghi dòng cấn trừ là "Tiền phòng (khấu trừ)…".
       // Trừ dòng đó ra để so được với thực nhận (take_home đã trừ tiền phòng).
@@ -79,14 +86,14 @@ export const useSalaryPendingPayouts = (periodMonth: string, staffIds: string[])
         .in("income_expense_id", pending.map((v) => v.id));
       if (iErr) throw iErr;
       const rentBy = new Map<string, number>();
-      for (const it of items ?? []) {
+      for (const it of financialReadRows(items)) {
         if (!/^Tiền phòng/i.test(it.description || "")) continue;
-        rentBy.set(it.income_expense_id, (rentBy.get(it.income_expense_id) || 0) + (Number(it.quantity) || 1) * (Number(it.unit_price) || 0));
+        rentBy.set(it.income_expense_id, (rentBy.get(it.income_expense_id) || 0) + financialReadNumber(it.quantity) * financialReadNumber(it.unit_price));
       }
       return pending.map((v) => ({
         staffId: byVoucher.get(v.id) as string,
         voucherId: v.id,
-        amount: Math.max(0, (Number(v.total_amount) || 0) - (rentBy.get(v.id) || 0)),
+        amount: Math.max(0, financialReadNumber(v.total_amount) - (rentBy.get(v.id) || 0)),
         voucherDate: v.voucher_date ?? null,
       }));
     },

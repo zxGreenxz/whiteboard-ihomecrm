@@ -1,9 +1,18 @@
+function feedbackRecordName(value:unknown,fallback?:string):string {
+ const row=value&&typeof value==='object'?value as {name?:unknown;id?:unknown}:null;
+ return typeof row?.name==='string'&&row.name.trim()?row.name: fallback?.trim()||(typeof row?.id==='string'?row.id:'bản ghi');
+}
+import {useOrganization} from '@/contexts/OrganizationContext';
+import {withOrg} from '@/lib/orgPayload';
+import { persistentFinancialWorkflow } from '@/lib/persistentFinancialWorkflow';
+import { FinancialWorkflowError } from '@/lib/financialWorkflow';
+import { confirmedRecordId, recordWriteMessage } from '@/lib/recordWriteOutcome';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import { invalidateIeTypesCache } from "@/lib/ieTypesCache";
-import { incomeExpenseTypeErrorMessage } from "@/lib/incomeExpenseTypeErrors";
 import { toast } from "sonner";
+import { friendlyError } from "@/lib/friendlyError";
 
 // --- Types ---
 
@@ -88,7 +97,8 @@ async function fetchMyOrgIds(): Promise<string[]> {
     console.error("useIncomeExpenseTypes my_org_ids error:", error);
     throw error;
   }
-  return Array.isArray(data) ? (data as string[]).filter(Boolean) : [];
+  if (!Array.isArray(data)) throw new Error('Chưa xác nhận được tổ chức của bạn. Tải lại hạng mục thu chi trước khi chọn.');
+  return (data as string[]).filter(Boolean);
 }
 
 // --- Query Hooks ---
@@ -131,7 +141,8 @@ export const useIncomeExpenseTypes = (
         throw error;
       }
 
-      const rows = (data ?? []) as unknown as IncomeExpenseType[];
+      if (!Array.isArray(data)) throw new Error('Chưa xác nhận được danh sách loại thu chi. Tải lại trước khi chọn.');
+      const rows = data as unknown as IncomeExpenseType[];
       return selectIeTypeRowsForOrgs(rows, currentUserId, myOrgIds);
     },
   });
@@ -167,8 +178,9 @@ export const useIncomeExpenseTypeCategories = (
         throw error;
       }
 
+      if (!Array.isArray(data)) throw new Error('Chưa xác nhận được nhóm loại thu chi. Tải lại trước khi chọn.');
       const set = new Set<string>();
-      for (const row of (data ?? []) as unknown as Array<{
+      for (const row of data as unknown as Array<{
         category: string | null;
         organization_id: string | null;
       }>) {
@@ -207,7 +219,8 @@ export const useHiddenInReportTypes = () => {
         console.error("useHiddenInReportTypes error:", error);
         throw error;
       }
-      return ((data ?? []) as any[]).map((r) => ({ id: r.id, name: r.name ?? "" }));
+      if (!Array.isArray(data)) throw new Error('Chưa xác nhận được loại thu chi trong báo cáo. Tải lại trước khi xem.');
+      return (data as any[]).map((r) => ({ id: r.id, name: r.name ?? "" }));
     },
   });
 };
@@ -216,6 +229,7 @@ export const useHiddenInReportTypes = () => {
 
 export const useCreateIncomeExpenseType = () => {
   const queryClient = useQueryClient();
+  const {selectedOrganizationId}=useOrganization();
 
   return useMutation({
     mutationFn: async (input: {
@@ -231,15 +245,11 @@ export const useCreateIncomeExpenseType = () => {
 
       if (!user) throw new Error("User not authenticated");
 
-      // organization_id do DB tự gắn (trigger trg_autofill_org trên
-      // income_expense_types, thêm 27/07/2026). ĐỪNG đoán org ở client: màn
-      // Thu/Chi cho chọn mọi toà khi có income_expenses.all_buildings nên client
-      // không đọc được buildings.organization_id qua RLS. Trước khi có trigger,
-      // hạng mục tạo ở đây sinh ra với organization_id = NULL → create_income_
-      // expense_v1 từ chối 42501 → phiếu rơi sang compat và kẹt "Chờ duyệt".
+      // Trigger strict yêu cầu tổ chức được chọn trong payload; không suy từ toà.
+      return persistentFinancialWorkflow('income-expense-type-create').run('create', 'tạo loại thu chi', async () => {
       const { data, error } = await supabase
         .from("income_expense_types" as any)
-        .insert({
+        .insert(withOrg({
           user_id: user.id,
           name: input.name,
           type: input.type,
@@ -248,28 +258,33 @@ export const useCreateIncomeExpenseType = () => {
           is_default: input.is_default ?? false,
           is_restricted: input.is_restricted ?? false,
           hide_in_report: input.hide_in_report ?? false,
-        })
+        },selectedOrganizationId))
         .select()
         .single();
 
-      if (error) {
-        toast.error(
-          incomeExpenseTypeErrorMessage(error, "Không thể tạo loại thu chi"),
-        );
-        throw error;
+      if (error) throw error;
+      const created = data as unknown as { id?: string; name?: string } | null;
+      if (!created?.id || created.name !== input.name) {
+        throw new FinancialWorkflowError('Chưa xác nhận được loại thu chi vừa tạo. Giữ bản nháp và đối chiếu danh sách trước khi tạo tiếp.', 'unknown', created?.id ? [{id:created.id,label:'Loại thu chi cần đối chiếu'}] : []);
       }
-
       return data;
+      },undefined,selectedOrganizationId);
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       invalidateIeTypesCache();
       queryClient.invalidateQueries({ queryKey: ["income-expense-types"] });
       queryClient.invalidateQueries({
         queryKey: ["income-expense-type-categories"],
       });
-      toast.success("Loại thu chi đã được TẠO thành công");
+      toast.success(`Đã tạo loại thu chi ${feedbackRecordName(data)}`);
     },
     onError: (error) => {
+      invalidateIeTypesCache();
+      queryClient.invalidateQueries({queryKey:['income-expense-types']});
+      queryClient.invalidateQueries({queryKey:['income-expense-type-categories']});
+      if (error instanceof FinancialWorkflowError) { toast.error('Chưa tạo được loại thu chi', {description:recordWriteMessage(error, 'tạo loại thu chi')}); return; }
+      const feedback = friendlyError(error, "Chưa tạo được loại thu chi", { operation: "tạo loại thu chi" });
+      toast.error(feedback.title, { description: feedback.description });
       console.error("Error creating income expense type:", error);
     },
   });
@@ -294,6 +309,7 @@ export const useUpdateIncomeExpenseType = () => {
         hide_in_report?: boolean;
       };
     }) => {
+      return persistentFinancialWorkflow('income-expense-type-update').run(id, 'cập nhật loại thu chi', async () => {
       const { data, error } = await supabase
         .from("income_expense_types" as any)
         .update(updates)
@@ -301,24 +317,26 @@ export const useUpdateIncomeExpenseType = () => {
         .select()
         .single();
 
-      if (error) {
-        toast.error(
-          incomeExpenseTypeErrorMessage(error, "Không thể cập nhật loại thu chi"),
-        );
-        throw error;
-      }
-
+      if (error) throw error;
+      confirmedRecordId(data, 'cập nhật loại thu chi', id);
       return data;
+      });
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       invalidateIeTypesCache();
       queryClient.invalidateQueries({ queryKey: ["income-expense-types"] });
       queryClient.invalidateQueries({
         queryKey: ["income-expense-type-categories"],
       });
-      toast.success("Loại thu chi đã được CẬP NHẬT thành công");
+      toast.success(`Đã cập nhật loại thu chi ${feedbackRecordName(data)}`);
     },
     onError: (error) => {
+      invalidateIeTypesCache();
+      queryClient.invalidateQueries({queryKey:['income-expense-types']});
+      queryClient.invalidateQueries({queryKey:['income-expense-type-categories']});
+      if (error instanceof FinancialWorkflowError) { toast.error('Chưa cập nhật được loại thu chi', {description:recordWriteMessage(error, 'cập nhật loại thu chi')}); return; }
+      const feedback = friendlyError(error, "Chưa cập nhật được loại thu chi", { operation: "cập nhật loại thu chi" });
+      toast.error(feedback.title, { description: feedback.description });
       console.error("Error updating income expense type:", error);
     },
   });
@@ -341,34 +359,43 @@ export const useDeleteIncomeExpenseType = () => {
         throw usageError;
       }
 
-      if (usageCheck && usageCheck.length > 0) {
-        toast.error(
-          "Không thể xoá loại thu chi đang được sử dụng bởi phiếu thu/chi"
-        );
+      if (!Array.isArray(usageCheck)) throw new Error('Chưa kiểm tra được phiếu đang dùng loại thu chi. Tải lại trước khi xóa.');
+      if (usageCheck.length > 0) {
         throw new Error(
           "Không thể xoá loại thu chi đang được sử dụng bởi phiếu thu/chi"
         );
       }
 
-      const { error } = await supabase
+      return persistentFinancialWorkflow('income-expense-type-delete').run(id, 'xoá loại thu chi', async () => {
+      const { data, error } = await supabase
         .from("income_expense_types" as any)
         .delete()
-        .eq("id", id);
+        .eq("id", id)
+        .select('id,name')
+        .single();
 
       if (error) {
-        toast.error(error.message || "Không thể xoá loại thu chi");
         throw error;
       }
+      confirmedRecordId(data, 'xoá loại thu chi', id);
+      return data;
+      });
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       invalidateIeTypesCache();
       queryClient.invalidateQueries({ queryKey: ["income-expense-types"] });
       queryClient.invalidateQueries({
         queryKey: ["income-expense-type-categories"],
       });
-      toast.success("Loại thu chi đã được XOÁ thành công");
+      toast.success(`Đã xóa loại thu chi ${feedbackRecordName(data)}`);
     },
     onError: (error) => {
+      invalidateIeTypesCache();
+      queryClient.invalidateQueries({queryKey:['income-expense-types']});
+      queryClient.invalidateQueries({queryKey:['income-expense-type-categories']});
+      if (error instanceof FinancialWorkflowError) { toast.error('Chưa xóa được loại thu chi', {description:recordWriteMessage(error, 'xóa loại thu chi')}); return; }
+      const feedback = friendlyError(error, "Chưa xóa được loại thu chi", { operation: "xóa loại thu chi", rules: [{ message: "Không thể xoá loại thu chi đang được sử dụng bởi phiếu thu/chi", description: "Loại thu chi đang được dùng trong phiếu thu/chi. Kiểm tra phiếu liên quan trước khi xóa." }] });
+      toast.error(feedback.title, { description: feedback.description });
       console.error("Error deleting income expense type:", error);
     },
   });

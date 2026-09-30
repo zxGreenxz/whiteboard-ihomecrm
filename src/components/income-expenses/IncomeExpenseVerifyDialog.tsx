@@ -1,3 +1,4 @@
+import { voucherFailureMessage, voucherOutcomeUnknown } from "@/lib/voucherFeedback";
 import { useEffect, useState } from "react";
 import {
   Dialog,
@@ -30,6 +31,8 @@ export function IncomeExpenseVerifyDialog({
 }: Props) {
   const verifyMutation = useVerifyIncomeExpense();
   const [note, setNote] = useState("");
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [reconcileRequired, setReconcileRequired] = useState(false);
 
   const isVerified = !!voucher?.verified_at;
 
@@ -37,14 +40,26 @@ export function IncomeExpenseVerifyDialog({
     if (open) setNote("");
   }, [open]);
 
+  useEffect(() => {
+    setSubmitError(null);
+    setReconcileRequired(false);
+  }, [voucher?.id]);
+
   if (!voucher) return null;
 
   const handleConfirm = async () => {
-    await verifyMutation.mutateAsync({
-      id: voucher.id,
-      note: note.trim() ? note.trim() : null,
-    });
-    onOpenChange(false);
+    if (reconcileRequired) return;
+    try {
+      const receipt = await verifyMutation.mutateAsync({id:voucher.id,note:note.trim() || null});
+      if (!receipt) {
+        setSubmitError("Đã thực hiện cập nhật nhưng chưa đọc được trạng thái đã kiểm. Tải lại phiếu để kiểm tra; không bấm đổi trạng thái thêm lần nữa.");
+        setReconcileRequired(true); return;
+      }
+      onOpenChange(false);
+    } catch(error) {
+      setSubmitError(voucherFailureMessage(error,"cập nhật trạng thái đã kiểm"));
+      if (voucherOutcomeUnknown(error)) setReconcileRequired(true);
+    }
   };
 
   return (
@@ -96,6 +111,7 @@ export function IncomeExpenseVerifyDialog({
           </div>
         )}
 
+        {submitError && <p role="alert" className="text-sm text-destructive">{submitError}</p>}
         <DialogFooter>
           <Button
             variant="outline"
@@ -106,7 +122,7 @@ export function IncomeExpenseVerifyDialog({
           </Button>
           <Button
             onClick={handleConfirm}
-            disabled={verifyMutation.isPending}
+            disabled={reconcileRequired || verifyMutation.isPending}
             className={
               isVerified
                 ? "bg-zinc-600 hover:bg-zinc-700"

@@ -1,3 +1,4 @@
+import { QueryRegion } from '@/components/errors/QueryRegion';
 // Đợt 6 — hộp thư "đang chờ tôi ký" + đường ra biên bản đã ký.
 //
 // Nghi thức đối soát CŨ chết đúng ở chỗ này: `propose_reconciliation` tạo được
@@ -54,7 +55,8 @@ export default function CashbookClosingInbox({
   recentLimit = 5,
   autoOpenRequestId = null,
 }: CashbookClosingInboxProps) {
-  const { data } = useCashbookClosings(cashbookId);
+  const query = useCashbookClosings(cashbookId);
+  const {data} = query;
   const [target, setTarget] = useState<PendingClosure | null>(null);
   const pending = data?.pending ?? [];
 
@@ -76,7 +78,7 @@ export default function CashbookClosingInbox({
 
   const closures: ConfirmedClosure[] = (data?.closures ?? []).slice(0, recentLimit);
 
-  if (pending.length === 0 && closures.length === 0) return null;
+  if (pending.length === 0 && closures.length === 0 && query.isSuccess) return null;
 
   const mine = pending.filter((p) => p.is_mine_to_confirm);
   const others = pending.filter((p) => !p.is_mine_to_confirm);
@@ -84,7 +86,7 @@ export default function CashbookClosingInbox({
   const bodyText = isMobile ? "text-xs" : "text-sm";
 
   return (
-    <>
+    <QueryRegion label="đề nghị và biên bản chốt sổ" queries={[query]}>
       {pending.length > 0 && (
         <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 p-3">
           <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-amber-900">
@@ -175,11 +177,11 @@ export default function CashbookClosingInbox({
         </div>
       )}
 
-      <ConfirmCashbookClosingDialog
+      <ConfirmCashbookClosingDialog key={target?.request_id ?? "none"}
         open={!!target}
         onOpenChange={(o) => { if (!o) setTarget(null); }}
         request={target}
       />
-    </>
+    </QueryRegion>
   );
 }

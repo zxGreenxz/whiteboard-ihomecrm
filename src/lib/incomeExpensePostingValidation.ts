@@ -145,9 +145,9 @@ export function validatePostFinanceExecutionInput(
 
   // 1. subjectId — luôn cần uuid hợp lệ.
   if (!input.subjectId) {
-    errors.subjectId = 'Thiếu định danh đối tượng phiếu';
+    errors.subjectId = 'Thông tin phiếu chưa đầy đủ. Đóng hộp thoại và tải lại phiếu trước khi tiếp tục.';
   } else if (!isUuid(input.subjectId)) {
-    errors.subjectId = 'Định danh đối tượng không hợp lệ';
+    errors.subjectId = 'Thông tin phiếu chưa đầy đủ. Đóng hộp thoại và tải lại phiếu trước khi tiếp tục.';
   }
 
   // 2. Sổ quỹ.
@@ -161,12 +161,12 @@ export function validatePostFinanceExecutionInput(
   if (!input.postedOn) {
     errors.postedOn = 'Vui lòng chọn ngày';
   } else if (!isValidIsoDate(input.postedOn)) {
-    errors.postedOn = 'Ngày không hợp lệ (yyyy-MM-dd)';
+    errors.postedOn = 'Ngày thu/chi không hợp lệ. Vui lòng chọn lại ngày.';
   }
 
   // 4. Chứng từ — manual Thu/Chi bắt buộc >= 1.
   if (requireEvidence && countEvidence(input.evidenceIds) < 1) {
-    errors.evidenceIds = 'Phiếu Thu/Chi thủ công cần ít nhất 1 chứng từ';
+    errors.evidenceIds = 'Thêm ít nhất một ảnh hoặc tệp chứng từ cho lần thu/chi này.';
   }
 
   // 5. Số tiền.
@@ -190,7 +190,7 @@ export function validatePostFinanceExecutionInput(
 
   // 6. Idempotency key.
   if (!input.idempotencyKey || input.idempotencyKey.trim() === '') {
-    errors.idempotencyKey = 'Thiếu idempotency key';
+    errors.idempotencyKey = 'Thông tin phiếu chưa đầy đủ. Đóng hộp thoại và tải lại phiếu trước khi tiếp tục.';
   }
 
   // 7. Version CAS — số nguyên không âm.
@@ -202,7 +202,7 @@ export function validatePostFinanceExecutionInput(
   for (const key of versionFields) {
     const v = input[key as keyof PostFinanceExecutionInput] as unknown;
     if (typeof v !== 'number' || !Number.isInteger(v) || v < 0) {
-      errors[key] = 'Thiếu hoặc sai số phiên bản';
+      errors[key] = 'Thông tin phiếu chưa đầy đủ. Đóng hộp thoại và tải lại phiếu trước khi tiếp tục.';
     }
   }
 
@@ -239,7 +239,7 @@ export function buildIncomeExpensePostingSchema(
   const postedOn = z
     .string({ required_error: 'Vui lòng chọn ngày' })
     .min(1, 'Vui lòng chọn ngày')
-    .refine(isValidIsoDate, 'Ngày không hợp lệ (yyyy-MM-dd)');
+    .refine(isValidIsoDate, 'Ngày thu/chi không hợp lệ. Vui lòng chọn lại ngày.');
 
   const cashbookId = z
     .string({ required_error: 'Vui lòng chọn sổ quỹ' })
@@ -249,7 +249,7 @@ export function buildIncomeExpensePostingSchema(
   const evidenceIds = opts.requireEvidence
     ? z
         .array(z.string().min(1))
-        .min(1, 'Phiếu Thu/Chi thủ công cần ít nhất 1 chứng từ')
+        .min(1, 'Thêm ít nhất một ảnh hoặc tệp chứng từ cho lần thu/chi này.')
     : z.array(z.string().min(1));
 
   if (opts.allowAmount) {

@@ -1,3 +1,6 @@
+import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
+import {FinancialWorkflowError} from '@/lib/financialWorkflow';
+import {confirmedRecordId,recordWriteMessage} from '@/lib/recordWriteOutcome';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
@@ -5,7 +8,31 @@ import type { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { withOrg, withOrgAll } from "@/lib/orgPayload";
+import { MeterReadingImportUnknownError, parseMeterReadingImportResult } from '@/lib/meterReadingImportResult';
+import { friendlyError } from '@/lib/friendlyError';
 
+export class MeterReadingBatchPartialError extends FinancialWorkflowError {
+  constructor(readonly confirmedIds: readonly string[], readonly requestedCount: number, action: string) {
+    super(confirmedIds.length
+      ? `Đã xác nhận ${action} ${confirmedIds.length}/${requestedCount} chỉ số; chưa xác nhận được các dòng còn lại. Tải lại danh sách và đối chiếu ID: ${confirmedIds.join(', ')}.`
+      : `Chưa xác nhận được kết quả ${action} ${requestedCount} chỉ số. Tải lại danh sách và đối chiếu từng dòng trước khi thao tác lại.`,confirmedIds.length?'partial':'unknown',[...new Set(confirmedIds)].map(id=>({id,label:'Chỉ số đã nhận mã'})));
+  }
+}
+
+function meterReadingFailure(error: unknown, action: string) {
+  if (error instanceof MeterReadingBatchPartialError) {
+    toast.error(`Chưa hoàn tất ${action}`, { description: error.message });
+    return;
+  }
+  if(error instanceof FinancialWorkflowError){toast.error(`Chưa hoàn tất ${action}`,{description:recordWriteMessage(error,`${action} chỉ số`)});return;}
+  const feedback = friendlyError(error, `Chưa ${action} được chỉ số`, { operation: `${action} chỉ số` });
+  toast.error(feedback.title, { description: feedback.description });
+}
+
+function validateReadingWrite(value:number|undefined,date?:string){
+ if(value!==undefined && (!Number.isFinite(value) || value<0))throw new FinancialWorkflowError('Nhập chỉ số hợp lệ, lớn hơn hoặc bằng 0.','failure',[]);
+ if(date!==undefined){const parsed=new Date(`${date}T00:00:00Z`);if(!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0,10)!==date)throw new FinancialWorkflowError('Chọn ngày chốt hợp lệ.','failure',[]);}
+}
 type MeterType = Database["public"]["Enums"]["meter_type"];
 
 // ============================================================================
@@ -216,12 +243,13 @@ export const useMeterReadingsList = (
 
       if (error) {
         console.error("useMeterReadingsList error:", error);
-        return { data: [] as MeterReadingDetailed[], totalCount: 0 };
+        throw error;
       }
+      if (!Array.isArray(data) || typeof count !== 'number' || !Number.isInteger(count) || count < 0) throw new Error('Chưa xác nhận được danh sách và tổng số chỉ số. Tải lại để kiểm tra.');
 
       return {
-        data: (data || []) as unknown as MeterReadingDetailed[],
-        totalCount: count || 0,
+        data: data as unknown as MeterReadingDetailed[],
+        totalCount: count,
       };
     },
   });
@@ -250,26 +278,17 @@ export const useMeterReadingStats = (
 
       if (error) {
         console.error("useMeterReadingStats error:", error);
-        return {
-          total_readings: 0,
-          unapproved_count: 0,
-          approved_count: 0,
-          electricity_consumption: null,
-          water_consumption: null,
-          gas_consumption: null,
-        } as MeterReadingStats;
+        throw error;
       }
 
       // RPC returns a single-row table result
       const row = Array.isArray(data) ? data[0] : data;
-      return (row || {
-        total_readings: 0,
-        unapproved_count: 0,
-        approved_count: 0,
-        electricity_consumption: null,
-        water_consumption: null,
-        gas_consumption: null,
-      }) as MeterReadingStats;
+      if (!row || typeof row !== 'object' || ['total_readings', 'unapproved_count', 'approved_count'].some(key =>
+        typeof row[key] !== 'number' || !Number.isFinite(row[key]) || row[key] < 0)) throw new Error('Chưa xác nhận được thống kê chỉ số. Tải lại để kiểm tra.');
+      for (const key of ['electricity_consumption', 'water_consumption', 'gas_consumption']) {
+        if (row[key] != null && (typeof row[key] !== 'number' || !Number.isFinite(row[key]))) throw new Error('Chưa xác nhận được thống kê chỉ số. Tải lại để kiểm tra.');
+      }
+      return row as MeterReadingStats;
     },
   });
 };
@@ -289,6 +308,8 @@ export const useCreateMeterReading = () => {
 
   return useMutation({
     mutationFn: async (input: CreateMeterReadingInput) => {
+      validateReadingWrite(input.current_reading,input.reading_date);
+      return persistentFinancialWorkflow('useCreateMeterReading').run('create','tạo chỉ số',async()=>{
       const user = await getSessionUser();
 
       if (!user) throw new Error("User not authenticated");
@@ -309,19 +330,19 @@ export const useCreateMeterReading = () => {
         .select()
         .single();
 
-      if (error) {
-        toast.error("Không thể tạo chỉ số");
-        throw error;
-      }
-
+      if (error) throw error;
+      confirmedRecordId(data,'tạo chỉ số');
       return data;
+      },undefined,selectedOrganizationId);
     },
     onSuccess: () => {
       invalidateMeterReadingQueries(queryClient);
-      toast.success("Dữ liệu đã được TẠO thành công");
+      toast.success("Đã ghi chỉ số công tơ");
     },
     onError: (error) => {
       console.error("Error creating meter reading:", error);
+      invalidateMeterReadingQueries(queryClient);
+      meterReadingFailure(error, 'tạo');
     },
   });
 };
@@ -337,6 +358,9 @@ export const useBulkCreateMeterReadings = () => {
 
   return useMutation({
     mutationFn: async (inputs: BulkCreateMeterReadingInput[]) => {
+      if(!inputs.length)throw new FinancialWorkflowError('Chọn ít nhất một chỉ số để ghi.','failure',[]);
+      inputs.forEach(input=>validateReadingWrite(input.current_reading,input.reading_date));
+      return persistentFinancialWorkflow('useBulkCreateMeterReadings').run('batch','tạo chỉ số hàng loạt',async()=>{
       const user = await getSessionUser();
 
       if (!user) throw new Error("User not authenticated");
@@ -359,12 +383,12 @@ export const useBulkCreateMeterReadings = () => {
         .insert(withOrgAll(readingsToInsert, selectedOrganizationId) as any)
         .select();
 
-      if (error) {
-        toast.error("Không thể tạo chỉ số hàng loạt");
-        throw error;
-      }
-
+      if (error) throw error;
+      if (!Array.isArray(data)) throw new MeterReadingBatchPartialError([], inputs.length, 'tạo');
+      const confirmedIds = data.map(row => row?.id).filter((id): id is string => typeof id === 'string' && !!id);
+      if (confirmedIds.length !== inputs.length || new Set(confirmedIds).size !== inputs.length) throw new MeterReadingBatchPartialError(confirmedIds, inputs.length, 'tạo');
       return data;
+      },undefined,selectedOrganizationId);
     },
     onSuccess: (data) => {
       invalidateMeterReadingQueries(queryClient);
@@ -372,6 +396,8 @@ export const useBulkCreateMeterReadings = () => {
     },
     onError: (error) => {
       console.error("Error bulk creating meter readings:", error);
+      invalidateMeterReadingQueries(queryClient);
+      meterReadingFailure(error, 'tạo hàng loạt');
     },
   });
 };
@@ -386,6 +412,9 @@ export const useImportMeterReadings = () => {
 
   return useMutation({
     mutationFn: async (input: ImportMeterReadingsInput) => {
+      if(!input.readings.length)throw new FinancialWorkflowError('Chọn ít nhất một dòng để nhập.','failure',[]);
+      input.readings.forEach(row=>validateReadingWrite(row.current_reading,row.reading_date));
+      return persistentFinancialWorkflow('useImportMeterReadings',{scope:'actor'}).run('import','nhập chỉ số',async()=>{
       const user = await getSessionUser();
 
       if (!user) throw new Error("User not authenticated");
@@ -401,17 +430,9 @@ export const useImportMeterReadings = () => {
         { p_readings: input.readings }
       );
 
-      if (error) {
-        toast.error("Không thể nhập dữ liệu từ Excel");
-        throw error;
-      }
-
-      return data as unknown as Array<{
-        reading_id: string | null;
-        reading_code: string | null;
-        success: boolean;
-        error_message: string | null;
-      }>;
+      if (error) throw error;
+      return parseMeterReadingImportResult(data, input.readings.length);
+      });
     },
     onSuccess: (data) => {
       invalidateMeterReadingQueries(queryClient);
@@ -427,12 +448,18 @@ export const useImportMeterReadings = () => {
             `Nhập xong: ${successCount} thành công, ${errorCount} lỗi`
           );
         }
-      } else {
-        toast.success("Dữ liệu đã được TẠO thành công");
       }
     },
     onError: (error) => {
       console.error("Error importing meter readings:", error);
+      invalidateMeterReadingQueries(queryClient);
+      if(error instanceof FinancialWorkflowError && !(error instanceof MeterReadingImportUnknownError)){toast.error('Chưa xác nhận nhập chỉ số',{description:recordWriteMessage(error,'nhập chỉ số')});return;}
+      if (error instanceof MeterReadingImportUnknownError) {
+        toast.error('Chưa xác nhận được kết quả nhập chỉ số', { description: `${error.message}${error.confirmedIds.length ? ` ID đã xác nhận: ${error.confirmedIds.join(', ')}.` : ''}` });
+      } else {
+        const feedback = friendlyError(error, 'Không thể nhập chỉ số', { operation: 'nhập chỉ số công tơ' });
+        toast.error(feedback.title, { description: feedback.description });
+      }
     },
   });
 };
@@ -447,7 +474,9 @@ export const useUpdateMeterReading = () => {
 
   return useMutation({
     mutationFn: async (input: UpdateMeterReadingInput) => {
-      const { id, ...updates } = input;
+      const {id,...updates}=input;validateReadingWrite(input.current_reading,input.reading_date);
+      return persistentFinancialWorkflow('useUpdateMeterReading',{scope:'actor'}).run(id,'cập nhật chỉ số',async()=>{
+
 
       const { data, error } = await (supabase
         .from("meter_readings")
@@ -456,19 +485,19 @@ export const useUpdateMeterReading = () => {
         .select()
         .single() as any);
 
-      if (error) {
-        toast.error("Không thể cập nhật chỉ số");
-        throw error;
-      }
-
+      if (error) throw error;
+      confirmedRecordId(data,'cập nhật chỉ số',id);
       return data;
+      });
     },
     onSuccess: () => {
       invalidateMeterReadingQueries(queryClient);
-      toast.success("Dữ liệu đã được CẬP NHẬT thành công");
+      toast.success("Đã cập nhật chỉ số công tơ");
     },
     onError: (error) => {
       console.error("Error updating meter reading:", error);
+      invalidateMeterReadingQueries(queryClient);
+      meterReadingFailure(error, 'cập nhật');
     },
   });
 };
@@ -483,22 +512,26 @@ export const useDeleteMeterReading = () => {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
+      return persistentFinancialWorkflow('useDeleteMeterReading',{scope:'actor'}).run(id,'xoá chỉ số',async()=>{
+      const { data, error } = await supabase
         .from("meter_readings")
         .update({ deleted_at: new Date().toISOString() } as any)
-        .eq("id", id);
+        .eq("id", id)
+        .select('id')
+        .single();
 
-      if (error) {
-        toast.error("Không thể xoá chỉ số");
-        throw error;
-      }
+      if (error) throw error;
+      confirmedRecordId(data,'xoá chỉ số',id);return data;
+      });
     },
     onSuccess: () => {
       invalidateMeterReadingQueries(queryClient);
-      toast.success("Dữ liệu đã được XOÁ thành công");
+      toast.success("Đã xóa chỉ số công tơ");
     },
     onError: (error) => {
       console.error("Error deleting meter reading:", error);
+      invalidateMeterReadingQueries(queryClient);
+      meterReadingFailure(error, 'xóa');
     },
   });
 };
@@ -513,18 +546,20 @@ export const useBulkDeleteMeterReadings = () => {
 
   return useMutation({
     mutationFn: async (ids: string[]) => {
+      if(!ids.length || new Set(ids).size!==ids.length)throw new FinancialWorkflowError('Chọn các chỉ số có mã khác nhau trước khi tiếp tục.','failure',[]);
+      return persistentFinancialWorkflow('useBulkDeleteMeterReadings',{scope:'actor'}).run([...ids].sort().join(','),'xoá chỉ số hàng loạt',async()=>{
       const { data, error } = await (supabase
         .from("meter_readings")
         .update({ deleted_at: new Date().toISOString() } as any)
         .in("id", ids)
         .select("id") as any);
 
-      if (error) {
-        toast.error("Không thể xoá chỉ số hàng loạt");
-        throw error;
-      }
-
-      return data as { id: string }[] | null;
+      if (error) throw error;
+      if (!Array.isArray(data)) throw new MeterReadingBatchPartialError([], ids.length, 'xóa');
+      const confirmedIds = data.map(row => row?.id).filter((id): id is string => typeof id === 'string' && !!id);
+      if (confirmedIds.length !== ids.length || new Set(confirmedIds).size !== ids.length || confirmedIds.some(id => !ids.includes(id))) throw new MeterReadingBatchPartialError(confirmedIds, ids.length, 'xóa');
+      return data as { id: string }[];
+      });
     },
     onSuccess: (data) => {
       invalidateMeterReadingQueries(queryClient);
@@ -533,6 +568,8 @@ export const useBulkDeleteMeterReadings = () => {
     },
     onError: (error) => {
       console.error("Error bulk deleting meter readings:", error);
+      invalidateMeterReadingQueries(queryClient);
+      meterReadingFailure(error, 'xóa hàng loạt');
     },
   });
 };
@@ -547,18 +584,17 @@ export const useApproveMeterReading = () => {
 
   return useMutation({
     mutationFn: async (id: string) => {
+      return persistentFinancialWorkflow('useApproveMeterReading',{scope:'actor'}).run(id,'duyệt chỉ số',async()=>{
       // Canonical approve_meter_reading_v1 (permission-checked qua building).
       // KHÔNG còn fallback sang legacy approve_meter_reading: từ migration
       // 20260902082002 _v1 nằm trong migration thật (hết drift PS04) và bản
       // legacy không authz đã bị REVOKE anon — rơi về nó khi PGRST202 chính là
       // "tự bỏ authz khi thiếu writer" (PMETER-C01, re-anchor 02/09/2026).
       const res = await supabase.rpc("approve_meter_reading_v1" as any, { p_id: id });
-      if (res.error) {
-        toast.error("Không thể duyệt chỉ số");
-        throw res.error;
-      }
-
+      if (res.error) throw res.error;
+      if (!res.data || typeof res.data !== 'object' || res.data.id !== id || res.data.status !== 'APPROVED') throw new FinancialWorkflowError('Chưa xác nhận được chỉ số đã duyệt. Tải lại danh sách trước khi thao tác tiếp.','unknown',[]);
       return res.data;
+      });
     },
     onSuccess: () => {
       invalidateMeterReadingQueries(queryClient);
@@ -566,6 +602,8 @@ export const useApproveMeterReading = () => {
     },
     onError: (error) => {
       console.error("Error approving meter reading:", error);
+      invalidateMeterReadingQueries(queryClient);
+      meterReadingFailure(error, 'duyệt');
     },
   });
 };
@@ -580,24 +618,26 @@ export const useBulkApproveMeterReadings = () => {
 
   return useMutation({
     mutationFn: async (ids: string[]) => {
+      if(!ids.length || new Set(ids).size!==ids.length)throw new FinancialWorkflowError('Chọn các chỉ số có mã khác nhau trước khi tiếp tục.','failure',[]);
+      return persistentFinancialWorkflow('useBulkApproveMeterReadings',{scope:'actor'}).run([...ids].sort().join(','),'duyệt chỉ số hàng loạt',async()=>{
       // Canonical bulk_approve_meter_readings_v1 (per-item permission), trả
       // integer số chỉ số đã duyệt. KHÔNG còn fallback legacy — xem ghi chú ở
       // useApproveMeterReading (PMETER-C01, migration 20260902082002).
       const res = await supabase.rpc("bulk_approve_meter_readings_v1" as any, { p_ids: ids });
-      if (res.error) {
-        toast.error("Không thể duyệt hàng loạt chỉ số");
-        throw res.error;
-      }
-
+      if (res.error) throw res.error;
+      if (typeof res.data !== 'number' || !Number.isInteger(res.data) || res.data < 0 || res.data > ids.length) throw new FinancialWorkflowError('Chưa xác nhận được số chỉ số đã duyệt. Tải lại danh sách để đối chiếu.','unknown',[]);
       return res.data;
+      });
     },
-    onSuccess: (data) => {
+    onSuccess: (data, ids) => {
       invalidateMeterReadingQueries(queryClient);
-      const approvedCount = typeof data === "number" ? data : 0;
-      toast.success(`Đã duyệt ${approvedCount} chỉ số thành công`);
+      if (data === ids.length) toast.success(`Đã duyệt ${data} chỉ số thành công`);
+      else toast.warning(`Đã duyệt ${data}/${ids.length} chỉ số. Tải lại danh sách để kiểm tra các dòng chưa được duyệt.`);
     },
     onError: (error) => {
       console.error("Error bulk approving meter readings:", error);
+      invalidateMeterReadingQueries(queryClient);
+      meterReadingFailure(error, 'duyệt hàng loạt');
     },
   });
 };
@@ -612,17 +652,16 @@ export const useUnapproveMeterReading = () => {
 
   return useMutation({
     mutationFn: async (id: string) => {
+      return persistentFinancialWorkflow('useUnapproveMeterReading',{scope:'actor'}).run(id,'bỏ duyệt chỉ số',async()=>{
       // Canonical unapprove_meter_reading_v1 (permission-checked theo toà). KHÔNG
       // còn fallback UPDATE thẳng meter_readings: từ migration 20260902084240 _v1
       // nằm trong migration thật — thiếu writer là lỗi phải lộ ra, không phải
       // cửa hậu bỏ kiểm quyền (PMETER-C01, re-anchor 02/09/2026).
       const res = await supabase.rpc("unapprove_meter_reading_v1" as any, { p_id: id });
-      if (res.error) {
-        toast.error("Không thể bỏ duyệt chỉ số");
-        throw res.error;
-      }
-
+      if (res.error) throw res.error;
+      if (!res.data || typeof res.data !== 'object' || res.data.id !== id || res.data.status !== 'UNAPPROVED') throw new FinancialWorkflowError('Chưa xác nhận được chỉ số đã bỏ duyệt. Tải lại danh sách trước khi thao tác tiếp.','unknown',[]);
       return res.data;
+      });
     },
     onSuccess: () => {
       invalidateMeterReadingQueries(queryClient);
@@ -630,6 +669,8 @@ export const useUnapproveMeterReading = () => {
     },
     onError: (error) => {
       console.error("Error unapproving meter reading:", error);
+      invalidateMeterReadingQueries(queryClient);
+      meterReadingFailure(error, 'bỏ duyệt');
     },
   });
 };

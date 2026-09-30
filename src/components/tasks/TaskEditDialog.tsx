@@ -1,3 +1,6 @@
+import { QueryRegion } from '@/components/errors/QueryRegion';
+import { focusFirstError } from '@/lib/formErrors';
+import { actionErrorMessage } from '@/lib/actionFeedback';
 import { useEffect, useState } from "react";
 import {
   Dialog,
@@ -47,13 +50,18 @@ export default function TaskEditDialog({
   onSuccess,
 }: TaskEditDialogProps) {
   const { data: authUser } = useAuth();
-  const { data: buildings = [] } = useBuildings();
-  const { data: jobTypes = [] } = useJobTypes();
-  const { data: profiles = [] } = useProfiles();
+  const buildingsQuery = useBuildings();
+  const {data: buildings = []} = buildingsQuery;
+  const jobTypesQuery = useJobTypes();
+  const {data: jobTypes = []} = jobTypesQuery;
+  const profilesQuery = useProfiles();
+  const {data: profiles = []} = profilesQuery;
   const updateJob = useUpdateJob();
   const isMobile = useIsMobile();
 
   const [title, setTitle] = useState("");
+  const [titleError,setTitleError] = useState("");
+  const [serverError,setServerError] = useState("");
   const [description, setDescription] = useState("");
   const [buildingId, setBuildingId] = useState<string | null>(null);
   const [roomId, setRoomId] = useState<string | null>(null);
@@ -65,11 +73,12 @@ export default function TaskEditDialog({
   const [isUploading, setIsUploading] = useState(false);
   const isBusy = isUploading || updateJob.isPending;
 
-  const { data: roomsForBuilding = [] } = useRooms(buildingId ?? undefined);
+  const roomsForBuildingQuery = useRooms(buildingId ?? undefined);
+  const {data: roomsForBuilding = []} = roomsForBuildingQuery;
 
   useEffect(() => {
     if (open && job) {
-      setTitle(job.title);
+      setTitle(job.title);setTitleError("");setServerError("");
       setDescription(job.description ?? "");
       setBuildingId(job.building_id);
       setRoomId(job.room_id);
@@ -94,7 +103,9 @@ export default function TaskEditDialog({
   };
 
   const handleSubmit = async () => {
-    if (!title.trim() || isBusy) return;
+    if (isBusy) return;
+    if (!title.trim()) {setTitleError("Nhập tiêu đề công việc.");void focusFirstError({title:"Nhập tiêu đề công việc."});return;}
+    setTitleError("");setServerError("");
     const originalAttachments = job.attachments ?? [];
     const attachmentsChanged =
       attachments.length !== originalAttachments.length ||
@@ -118,9 +129,7 @@ export default function TaskEditDialog({
       });
       onOpenChange(false);
       onSuccess();
-    } catch {
-      // toast handled by hook
-    }
+    } catch (error) {setServerError(actionErrorMessage(error,`Chưa xác nhận được kết quả lưu công việc ${job.code}`));}
   };
 
   const formBody = (
@@ -129,7 +138,8 @@ export default function TaskEditDialog({
         <label className="text-[13px] font-medium block">
           Tiêu đề <span className="text-red-500">*</span>
         </label>
-        <Input value={title} onChange={(e) => setTitle(e.target.value)} />
+        <Input name="title" aria-invalid={!!titleError} aria-describedby={titleError ? "task-title-error" : undefined} value={title} onChange={(e) => setTitle(e.target.value)} />
+        {titleError && <p id="task-title-error" role="alert" className="text-sm text-destructive">{titleError}</p>}
       </div>
 
       <div className="space-y-1">
@@ -281,6 +291,8 @@ export default function TaskEditDialog({
             : "sm:max-w-[640px] max-h-[90vh] overflow-y-auto"
         }
       >
+        <QueryRegion label="Danh mục tòa nhà, phòng, loại việc và người nhận" queries={[buildingsQuery,jobTypesQuery,profilesQuery,roomsForBuildingQuery]}>
+        {serverError && <p role="alert" className="text-sm text-destructive">{serverError}</p>}
         {isMobile ? (
           <>
             <div className="shrink-0 pt-2 pb-1 flex justify-center">
@@ -298,7 +310,7 @@ export default function TaskEditDialog({
             <DialogFooter className="shrink-0 px-4 py-3 border-t flex flex-col gap-2 bg-background">
               <Button
                 className="bg-blue-600 hover:bg-blue-700 text-white w-full h-11"
-                disabled={!title.trim() || isBusy}
+                disabled={isBusy || buildingsQuery.isError || jobTypesQuery.isError || profilesQuery.isError || roomsForBuildingQuery.isError}
                 onClick={handleSubmit}
               >
                 {isUploading ? "Đang tải ảnh..." : updateJob.isPending ? "Đang lưu..." : "Lưu"}
@@ -327,7 +339,7 @@ export default function TaskEditDialog({
               </Button>
               <Button
                 className="bg-blue-600 hover:bg-blue-700 text-white"
-                disabled={!title.trim() || isBusy}
+                disabled={isBusy || buildingsQuery.isError || jobTypesQuery.isError || profilesQuery.isError || roomsForBuildingQuery.isError}
                 onClick={handleSubmit}
               >
                 {isUploading ? "Đang tải ảnh..." : updateJob.isPending ? "Đang lưu..." : "Lưu"}
@@ -335,7 +347,7 @@ export default function TaskEditDialog({
             </DialogFooter>
           </>
         )}
-      </DialogContent>
+      </QueryRegion></DialogContent>
     </Dialog>
   );
 }

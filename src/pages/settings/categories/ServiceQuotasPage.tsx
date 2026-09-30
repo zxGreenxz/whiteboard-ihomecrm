@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import MainLayout from "@/components/layout/MainLayout";
+import { QueryRegion } from '@/components/errors/QueryRegion';
 import {
   useServiceQuotas,
   type ServiceQuotaWithTiers,
@@ -45,7 +46,8 @@ export default function ServiceQuotasPage() {
   const [pageSize, setPageSize] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
 
-  const { data: quotas, isLoading } = useServiceQuotas();
+  const quotaQuery = useServiceQuotas();
+  const { data: quotas, isLoading } = quotaQuery;
 
   const totalCount = quotas?.length || 0;
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
@@ -90,7 +92,7 @@ export default function ServiceQuotasPage() {
       <div className="space-y-4">
         {/* Toolbar */}
         <div className="flex items-center gap-2">
-          <Button size="sm" onClick={() => setCreateDialogOpen(true)}>
+          <Button size="sm" onClick={() => setCreateDialogOpen(true)} disabled={quotaQuery.isLoading || quotaQuery.isError}>
             <Plus className="h-4 w-4 mr-1" />
             Thêm
           </Button>
@@ -99,6 +101,7 @@ export default function ServiceQuotasPage() {
           </Button>
         </div>
 
+        <QueryRegion label="danh sách định mức dịch vụ" queries={[quotaQuery]}>
         {/* Table */}
         {isLoading ? (
           <div className="text-center py-8 text-muted-foreground">
@@ -230,6 +233,7 @@ export default function ServiceQuotasPage() {
           </div>
         </div>
 
+        </QueryRegion>
         {/* Dialogs */}
         <CreateQuotaDialog
           open={createDialogOpen}

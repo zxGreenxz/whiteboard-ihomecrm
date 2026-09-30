@@ -1,9 +1,9 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useId } from 'react';
 import { Upload, X, FileText, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { uploadFile, deleteFile } from '@/lib/storage';
 import { StorageImage } from '@/components/ui/storage-image';
-import { toast } from 'sonner';
+import { friendlyError } from '@/lib/friendlyError';
 import { useClipboardImagePaste } from '@/hooks/useClipboardImagePaste';
 
 const DEFAULT_BUCKET = 'income-expense-attachments';
@@ -56,6 +56,10 @@ export default function AttachmentUpload({
   const [isDragOver, setIsDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const uploadActive = useRef(false);
+  const errorId = useId();
+  const [failures, setFailures] = useState<Array<{ file: File; reason: string; retryable: boolean }>>([]);
+  const [summary, setSummary] = useState('');
+  const [removeError, setRemoveError] = useState('');
 
   /**
    * URL do CHÍNH lần mở form/hộp này tải lên — chỉ những file này X mới được xoá
@@ -80,7 +84,7 @@ export default function AttachmentUpload({
 
       const fileArray = Array.from(files);
       if (attachments.length + fileArray.length > maxFiles) {
-        toast.error(`Chỉ đính kèm tối đa ${maxFiles} tệp.`);
+        setFailures(fileArray.map(file => ({ file, reason: `Chỉ đính kèm tối đa ${maxFiles} tệp. Gỡ bớt tệp trước khi tải thêm.`, retryable: true })));
         return;
       }
       uploadActive.current = true;
@@ -89,11 +93,12 @@ export default function AttachmentUpload({
 
       try {
         const newUrls: string[] = [];
+        const failed: typeof failures = [];
 
         for (const file of fileArray) {
           const error = validateAttachmentFile(file);
           if (error) {
-            toast.error(error);
+            failed.push({ file, reason: error, retryable: false });
             continue;
           }
 
@@ -103,24 +108,18 @@ export default function AttachmentUpload({
             const publicUrl = await uploadFile(BUCKET, path, file);
             sessionUploads.current.add(publicUrl);
             newUrls.push(publicUrl);
-          } catch (err: any) {
-            const msg = err?.message || err?.error || '';
+          } catch (err: unknown) {
             console.error('[AttachmentUpload] upload failed:', err);
-            if (/bucket.*not.*found|404/i.test(msg)) {
-              toast.error(
-                `Bucket "${BUCKET}" chưa tồn tại. Hãy tạo bucket trên Supabase Storage hoặc apply migration.`
-              );
-            } else if (/row-level security|policy|permission|401|403/i.test(msg)) {
-              toast.error('Bucket chặn quyền upload (RLS). Cần policy cho thư mục theo user id.');
-            } else {
-              toast.error(`Không thể tải lên: ${msg || 'lỗi không xác định'}`);
-            }
+            const feedback = friendlyError(err, `Chưa tải được tệp ${file.name}`, { operation: 'tải chứng từ' });
+            failed.push({ file, reason: feedback.description, retryable: true });
           }
         }
 
         if (newUrls.length > 0) {
           onChange([...attachments, ...newUrls]);
         }
+        setFailures(previous => [...previous.filter(item => !fileArray.includes(item.file)), ...failed]);
+        setSummary(`Đã tải ${newUrls.length}/${fileArray.length} tệp. ${failed.length ? `${failed.length} tệp chưa tải được.` : 'Các tệp đã được thêm vào biểu mẫu.'}`);
       } finally {
         uploadActive.current = false;
         setIsUploading(false);
@@ -133,6 +132,7 @@ export default function AttachmentUpload({
   const handleRemove = useCallback(
     async (url: string) => {
       if (disabled || uploadActive.current) return;
+      setRemoveError('');
 
       // Ảnh có sẵn: chỉ gỡ khỏi danh sách của form, file giữ nguyên trong kho.
       if (deleteOnRemove && sessionUploads.current.has(url)) {
@@ -144,8 +144,11 @@ export default function AttachmentUpload({
             const path = decodeURIComponent(url.slice(idx + marker.length));
             await deleteFile(BUCKET, path);
           }
-        } catch {
-          toast.error('Không thể xóa file đính kèm');
+        } catch (error) {
+          console.error('[AttachmentUpload] delete failed:', error);
+          const name = url.split('/').pop()?.split('?')[0] || 'đính kèm';
+          setRemoveError(`Chưa xóa được tệp ${name}. Tệp vẫn được giữ trong danh sách; kiểm tra lại trước khi gỡ.`);
+          return;
         }
         sessionUploads.current.delete(url);
       }
@@ -199,10 +202,16 @@ export default function AttachmentUpload({
       {/* Drop zone */}
       {!disabled && (
         <div
+          role="button"
+          tabIndex={isUploading ? -1 : 0}
+          aria-label="Thêm chứng từ"
+          aria-invalid={failures.length > 0}
+          aria-describedby={failures.length > 0 ? errorId : undefined}
           onDrop={handleDrop}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onClick={() => inputRef.current?.click()}
+          onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); inputRef.current?.click(); } }}
           {...pasteHandlers}
           className={cn(
             'flex flex-col items-center justify-center w-full h-28 rounded-lg border-2 border-dashed cursor-pointer transition-colors',
@@ -210,6 +219,7 @@ export default function AttachmentUpload({
               ? 'border-primary bg-primary/5'
               : 'border-gray-300 hover:border-gray-400 bg-gray-50',
             isUploading && 'pointer-events-none opacity-60'
+            , failures.length > 0 && 'border-destructive'
           )}
         >
           {isUploading ? (
@@ -235,6 +245,21 @@ export default function AttachmentUpload({
         onChange={handleFileChange}
         className="hidden"
       />
+      {summary && <p role="status" className="text-sm">{summary}</p>}
+      {removeError && <p role="alert" className="text-sm text-destructive">{removeError}</p>}
+      {failures.length > 0 && (
+        <div id={errorId} role="alert" className="space-y-2 rounded-md border border-destructive p-3 text-sm text-destructive">
+          {failures.map(({ file, reason, retryable }, index) => (
+            <div key={`${file.name}-${index}`}>
+              <p>Chưa tải được tệp {file.name}. {reason}</p>
+              <div className="flex gap-3">
+                {retryable && <button type="button" disabled={disabled || isUploading} className="underline" aria-label={`Thử lại ${file.name}`} onClick={() => void handleUpload([file])}>Thử lại tệp này</button>}
+                <button type="button" disabled={isUploading} className="underline" onClick={() => setFailures(current => current.filter(item => item.file !== file))}>Bỏ khỏi danh sách chờ</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Thumbnails */}
       {attachments.length > 0 && (
@@ -260,6 +285,7 @@ export default function AttachmentUpload({
                   type="button"
                   onClick={() => handleRemove(url)}
                   aria-label="Gỡ tệp đính kèm"
+                  title={deleteOnRemove && sessionUploads.current.has(url) && url.includes(`/object/public/${BUCKET}/`) ? 'Xóa tệp vừa tải khỏi kho và biểu mẫu' : 'Gỡ khỏi biểu mẫu; tệp đã lưu vẫn được giữ'}
                   className="absolute top-0.5 right-0.5 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
                 >
                   <X className="h-3 w-3" />

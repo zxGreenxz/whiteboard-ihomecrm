@@ -1,3 +1,4 @@
+import { QueryRegion } from "@/components/errors/QueryRegion";
 import { useMemo } from "react";
 import {
   Bar,
@@ -39,7 +40,8 @@ interface Props {
 /** Tab Lợi nhuận — biên LN, ma trận LN toà × tháng, luỹ kế YTD. */
 export function ProfitTab({ filters }: Props) {
   const { ym, t13Start, t13End, months12, buildingIds, accrual } = filters;
-  const { data: pnl = [], isLoading } = useFaMonthlyPnl(t13Start, t13End, buildingIds, accrual);
+  const reportQuery0 = useFaMonthlyPnl(t13Start, t13End, buildingIds, accrual);
+  const { data: pnl = [], isLoading } = reportQuery0;
 
   const byMonth = useMemo(() => aggregatePnlByMonth(pnl), [pnl]);
 
@@ -113,6 +115,7 @@ export function ProfitTab({ filters }: Props) {
   );
 
   return (
+    <QueryRegion label="phân tích tài chính" queries={[reportQuery0]}>
     <div className="space-y-4">
       <ChartCard
         title="Lợi nhuận & biên lợi nhuận — 12 tháng"
@@ -278,5 +281,6 @@ export function ProfitTab({ filters }: Props) {
         </ResponsiveContainer>
       </ChartCard>
     </div>
+    </QueryRegion>
   );
 }

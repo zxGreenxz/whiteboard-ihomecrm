@@ -1,3 +1,4 @@
+import {QueryRegion} from '@/components/errors/QueryRegion';
 import { useMemo } from 'react';
 import { format } from 'date-fns';
 import {
@@ -548,7 +549,8 @@ const SnapshotLine = ({
 };
 
 const InvoiceHistoryDialog = ({ open, onOpenChange, invoice }: Props) => {
-  const { data: entries, isLoading } = useInvoiceHistory(invoice?.id ?? null, open);
+  const historyQuery = useInvoiceHistory(invoice?.id ?? null, open);
+  const { data: entries, isLoading } = historyQuery;
   const { data: accounts } = useAccounts({ enabled: open });
 
   const accountMap = useMemo(
@@ -577,6 +579,7 @@ const InvoiceHistoryDialog = ({ open, onOpenChange, invoice }: Props) => {
           </span>
         </div>
 
+        <QueryRegion label="lịch sử hoá đơn" queries={[historyQuery]}>
         <div className="flex-1 overflow-y-auto pr-1 -mr-1">
           {isLoading ? (
             <div className="space-y-2">
@@ -665,6 +668,7 @@ const InvoiceHistoryDialog = ({ open, onOpenChange, invoice }: Props) => {
           )}
         </div>
 
+        </QueryRegion>
         <p className="text-[11px] text-muted-foreground border-t pt-2">
           Lịch sử ghi từ 16/05/2026 (hoá đơn, mục, thanh toán) và từ 03/07/2026
           (phiếu thu/chi, nợ khách). Thao tác trước các mốc này không có dữ liệu.

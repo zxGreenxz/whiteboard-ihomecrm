@@ -83,7 +83,7 @@ const toolGhiNho: DomainTool<InputGhiNho> = {
       const kq = await ghiNhoLen(orgId, kiem.khoa, kiem.noiDung, 'copilot');
       return `${CAU_DA_NHO}: ${kq.khoa} = ${kq.noiDung} (${kq.tong}/${SO_GHI_NHO_TOI_DA}). ${CAU_NHAC_XEM}`;
     } catch (e) {
-      return dienGiaiLoiGhiNho(e instanceof Error ? e.message : String(e));
+      return dienGiaiLoiGhiNho(e && typeof e === 'object' && 'message' in e ? String(e.message) : String(e));
     }
   },
 };
@@ -109,7 +109,7 @@ const toolQuen: DomainTool<InputQuen> = {
         ? `${CAU_DA_BO}: ${kq.khoa} (còn ${kq.tong}/${SO_GHI_NHO_TOI_DA}).`
         : `${CAU_KHONG_CO} "${kq.khoa}".`;
     } catch (e) {
-      return dienGiaiLoiGhiNho(e instanceof Error ? e.message : String(e));
+      return dienGiaiLoiGhiNho(e && typeof e === 'object' && 'message' in e ? String(e.message) : String(e));
     }
   },
 };

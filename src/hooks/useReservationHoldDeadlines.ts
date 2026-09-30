@@ -1,3 +1,5 @@
+import {financialReadNumber} from '@/lib/financialReadValidation';
+import { friendlyError } from "@/lib/friendlyError";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -59,7 +61,7 @@ export function useReservationHoldDeadlines() {
         map[r.income_expense_id] = {
           holdUntil: r.hold_until,
           topupDueDate: r.topup_due_date,
-          depositTarget: r.deposit_target === null ? null : Number(r.deposit_target),
+          depositTarget: r.deposit_target === null ? null : financialReadNumber(r.deposit_target),
         };
       }
       return map;
@@ -74,7 +76,7 @@ export interface SetHoldTermsInput {
   depositTarget: number | null;
 }
 
-export function useSetReservationHoldTerms() {
+export function useSetReservationHoldTerms(options: {silent?: boolean} = {}) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (input: SetHoldTermsInput) => {
@@ -90,16 +92,19 @@ export function useSetReservationHoldTerms() {
         p_deposit_target: input.depositTarget ?? undefined,
       });
       if (error) throw error;
+      const receipt=data as {incomeExpenseId?:string;cleared?:boolean;holdUntil?:string|null;topupDueDate?:string|null;depositTarget?:unknown}|null;
+      const clear=input.holdUntil===null && input.topupDueDate===null && input.depositTarget===null;
+      if(receipt?.incomeExpenseId!==input.incomeExpenseId || (clear ? receipt.cleared!==true : receipt.holdUntil!==input.holdUntil || receipt.topupDueDate!==input.topupDueDate || (input.depositTarget===null ? receipt.depositTarget!==null : Number(receipt.depositTarget)!==input.depositTarget))) throw new TypeError('Chưa xác nhận được kỳ hạn phiếu cọc đã lưu.');
       return data;
     },
     onSuccess: (_d, vars) => {
       queryClient.invalidateQueries({ queryKey: HOLD_DEADLINE_KEY });
       const conKyHan =
         vars.holdUntil !== null || vars.topupDueDate !== null || vars.depositTarget !== null;
-      toast.success(conKyHan ? "Đã cập nhật kỳ hạn phiếu cọc" : "Đã bỏ kỳ hạn phiếu cọc");
+      if (!options.silent) toast.success(conKyHan ? "Đã cập nhật kỳ hạn phiếu cọc" : "Đã bỏ kỳ hạn phiếu cọc");
     },
     onError: (error: Error) => {
-      toast.error(error.message || "Không đặt được kỳ hạn phiếu cọc");
+      if (!options.silent) toast.error(friendlyError(error, "Chưa lưu được kỳ hạn phiếu cọc", {operation: "lưu kỳ hạn phiếu cọc"}).description);
     },
   });
 }

@@ -1,3 +1,4 @@
+import { QueryRegion } from "@/components/errors/QueryRegion";
 import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
@@ -44,19 +45,23 @@ export default function DailyCashbookReport() {
   const startDate = dateRange?.from ? toLocalDateStr(dateRange.from) : undefined;
   const endDate = dateRange?.to ? toLocalDateStr(dateRange.to) : undefined;
 
-  const { data: buildings = [] } = useBuildings({ includeVirtual: true });
-  const { data: accounts = [] } = useAccounts();
+  const buildingsQuery = useBuildings({ includeVirtual: true });
+  const { data: buildings = [] } = buildingsQuery;
+  const accountsQuery = useAccounts();
+  const { data: accounts = [] } = accountsQuery;
   const filterOpts = {
     building_id: buildingId === "all" ? undefined : buildingId,
     account_id: accountId === "all" ? undefined : accountId,
   };
   useCopilotPageContext(['reports.finance.daily-cashbook', 'reports.finance.cash-book'], { ...filterOpts, from: startDate, to: endDate });
-  const { data: byDay = [], isLoading } = useCashFlowByDay(
+  const cashFlowByDayQuery = useCashFlowByDay(
     startDate || "",
     endDate || "",
     filterOpts
   );
-  const { data: summary } = useCashBookSummary(startDate, endDate, filterOpts);
+  const { data: byDay = [], isLoading } = cashFlowByDayQuery;
+  const cashBookSummaryQuery = useCashBookSummary(startDate, endDate, filterOpts);
+  const { data: summary } = cashBookSummaryQuery;
 
   const accountName = accountId === "all"
     ? "Tất cả"
@@ -121,6 +126,7 @@ export default function DailyCashbookReport() {
           <DateRangePicker value={dateRange} onChange={setDateRange} />
         </div>
 
+        <QueryRegion label="sổ quỹ theo ngày" queries={[cashFlowByDayQuery, cashBookSummaryQuery, buildingsQuery, accountsQuery]}>
         <div className="rounded-md border bg-card">
           <Table>
             <TableHeader>
@@ -179,6 +185,7 @@ export default function DailyCashbookReport() {
             1 - {rows.length} trên tổng số {rows.length} bản ghi
           </div>
         )}
+      </QueryRegion>
       </div>
     </MainLayout>
   );

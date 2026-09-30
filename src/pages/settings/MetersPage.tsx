@@ -7,6 +7,7 @@ import { useBuildings } from '@/hooks/useBuildings';
 import { Button } from '@/components/ui/button';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { Plus } from 'lucide-react';
+import { QueryRegion } from '@/components/errors/QueryRegion';
 
 const METER_TYPE_OPTIONS = [
   { value: 'ELECTRICITY', label: 'Điện' },
@@ -20,8 +21,10 @@ export default function MetersPage() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingMeter, setEditingMeter] = useState<any | null>(null);
 
-  const { data: buildings } = useBuildings();
-  const { data: meters, isLoading } = useMetersWithLatestReading();
+  const buildingsQuery = useBuildings();
+  const metersQuery = useMetersWithLatestReading();
+  const { data: buildings } = buildingsQuery;
+  const { data: meters, isLoading } = metersQuery;
 
   // Client-side filter on the flat meters list
   const filteredMeters = (meters || []).filter((m: any) => {
@@ -42,6 +45,7 @@ export default function MetersPage() {
 
   return (
     <MainLayout>
+      <QueryRegion label="danh sách công tơ" queries={[metersQuery, buildingsQuery]}>
       <div className="space-y-4">
         {/* Toolbar */}
         <div className="flex items-center gap-2">
@@ -90,6 +94,7 @@ export default function MetersPage() {
           meter={editingMeter}
         />
       </div>
+      </QueryRegion>
     </MainLayout>
   );
 }

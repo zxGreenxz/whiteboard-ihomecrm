@@ -1,3 +1,7 @@
+import { QueryRegion } from '@/components/errors/QueryRegion';
+import { authorizationOutcomeUnknown } from '@/lib/authorizationFeedback';
+import { focusFirstError } from '@/lib/formErrors';
+import { actionErrorMessage } from '@/lib/actionFeedback';
 // Màn "Tổ chức" — chỗ mà trước đây KHÔNG có ở đâu cả.
 //
 // Đây chính là khoảng trống chủ sở hữu nêu ra: "không thấy phần cài đặt công ty
@@ -48,10 +52,18 @@ const NHAN_SU_KIEN: Record<string, string> = {
 };
 
 export default function OrganizationPage() {
-  const { data, isLoading, error } = useOrganizationProfile();
+  const organizationQuery = useOrganizationProfile();
+  const { data, isLoading, error } = organizationQuery;
   const luuTen = useUpdateOrganizationProfile();
   const thuHoi = useRevokeInvitation();
   const [ten, setTen] = useState('');
+  const [nameError, setNameError] = useState('');
+  const [serverError, setServerError] = useState('');
+  const saveName = () => {
+    if (!ten.trim()) { setNameError('Nhập tên tổ chức.'); void focusFirstError({ten:'Nhập tên tổ chức.'}); return; }
+    setNameError(''); setServerError('');
+    luuTen.mutate(ten.trim(), {onError: error => setServerError(actionErrorMessage(error, 'Chưa lưu được tên tổ chức'))});
+  };
 
   useEffect(() => {
     if (data?.name) setTen(data.name);
@@ -68,15 +80,10 @@ export default function OrganizationPage() {
     );
   }
 
-  if (error || !data) {
+  if (!data) {
     return (
       <MainLayout title="Tổ chức" icon={Landmark}>
-        <Card className="border-destructive/40">
-          <CardContent className="p-4 text-sm">
-            {(error as { message?: string })?.message ??
-              'Bạn không có quyền xem thông tin tổ chức.'}
-          </CardContent>
-        </Card>
+        <QueryRegion label="thông tin tổ chức" queries={[organizationQuery]}><></></QueryRegion>
       </MainLayout>
     );
   }
@@ -90,6 +97,7 @@ export default function OrganizationPage() {
       subtitle="Hồ sơ công ty, phạm vi phân quyền và nhật ký thay đổi"
       icon={Landmark}
     >
+      <QueryRegion label="thông tin tổ chức" queries={[organizationQuery]}>
       <div className="space-y-4">
         {/* Hồ sơ */}
         <Card>
@@ -104,17 +112,19 @@ export default function OrganizationPage() {
             <div className="grid gap-4 md:grid-cols-2">
               <div>
                 <Label htmlFor="ten">Tên tổ chức</Label>
+                {nameError && <p id="organization-name-error" role="alert" className="text-sm text-destructive">{nameError}</p>}
+                {serverError && <p role="alert" className="text-sm text-destructive">{serverError}</p>}
                 <div className="mt-1.5 flex gap-2">
                   <Input
-                    id="ten"
+                    id="ten" name="ten" aria-invalid={!!nameError} aria-describedby={nameError ? "organization-name-error" : undefined}
                     value={ten}
                     disabled={!data.canEdit}
                     onChange={(e) => setTen(e.target.value)}
                   />
                   {data.canEdit && ten.trim() !== data.name && (
                     <Button
-                      onClick={() => luuTen.mutate(ten.trim())}
-                      disabled={!ten.trim() || luuTen.isPending}
+                      onClick={saveName} aria-label="Lưu tên tổ chức"
+                      disabled={luuTen.isPending || authorizationOutcomeUnknown(luuTen.error)}
                     >
                       {luuTen.isPending ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
@@ -192,7 +202,7 @@ export default function OrganizationPage() {
                         variant="ghost"
                         size="sm"
                         onClick={() => thuHoi.mutate(i.invitationId)}
-                        disabled={thuHoi.isPending}
+                        disabled={thuHoi.isPending || authorizationOutcomeUnknown(thuHoi.error)}
                       >
                         <X className="mr-1 h-3.5 w-3.5" />
                         Thu hồi
@@ -236,6 +246,7 @@ export default function OrganizationPage() {
 
         {IS_TEST_ENV && <TheMoiTruongTest />}
       </div>
+      </QueryRegion>
     </MainLayout>
   );
 }

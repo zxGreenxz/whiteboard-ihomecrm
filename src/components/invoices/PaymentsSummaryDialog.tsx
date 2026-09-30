@@ -1,3 +1,8 @@
+import { financialReadNumber, financialReadRows } from '@/lib/financialReadValidation';
+import { QueryRegion } from '@/components/errors/QueryRegion';
+import { focusFirstError } from '@/lib/formErrors';
+import { invoiceFailureMessage } from '@/lib/invoiceFeedback';
+import { voucherOutcomeUnknown } from '@/lib/voucherFeedback';
 import { useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
@@ -161,16 +166,19 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
   const invoiceId = invoice?.id ?? '';
   // Chi tiết "hoá đơn tháng đầu" (ký HĐ): kỳ tiền phòng + đã thu/tổng HĐ & cọc.
   // Trả map rỗng nếu HĐ này không phải hoá đơn tháng đầu.
-  const { data: firstInvoiceDetails } = useFirstInvoiceDetails(
+  const firstDetailsQuery = useFirstInvoiceDetails(
     invoiceId ? [invoiceId] : [],
   );
   // Phiếu thu cọc RIÊNG (ngoài HĐ) của hợp đồng — hiện ở ô tách dưới cùng popup
   // để không lẫn với các lần thu của hoá đơn.
+  const {data:firstInvoiceDetails} = firstDetailsQuery;
   const firstDetail = firstInvoiceDetails?.get(invoiceId);
-  const { data: depositVouchers } = useContractDepositVouchers(
+  const depositVouchersQuery = useContractDepositVouchers(
     firstDetail?.contractId ?? null,
   );
-  const { data: payments, isLoading, isError } = useQuery({
+  const {data:depositVouchers} = depositVouchersQuery;
+  const paymentsQuery = useQuery({
+    meta:{errorDisplay:"inline",label:"các lần thanh toán"},
     // Keep this distinct from SuperAdminForceDeleteDialog, whose similarly
     // named query intentionally returns raw payment rows with a different shape.
     queryKey: ['invoice-payments-summary', 'active-receipts', invoiceId],
@@ -182,11 +190,28 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
         .eq('invoice_id', invoiceId)
         .order('created_at', { ascending: true });
       if (error) throw error;
-      return (data || []) as PaymentReceiptRow[];
+      return financialReadRows(data as PaymentReceiptRow[] | null).map(row => {
+        if (!row || typeof row.id !== 'string' || !row.id ||
+            typeof row.payment_date !== 'string' || !Number.isFinite(Date.parse(row.payment_date)) ||
+            typeof row.created_at !== 'string' || !Number.isFinite(Date.parse(row.created_at))) {
+          throw new TypeError('Chưa đọc được đầy đủ biên nhận thanh toán.');
+        }
+        return {
+          ...row,
+          collected_amount: financialReadNumber(row.collected_amount),
+          applied_amount: financialReadNumber(row.applied_amount),
+          credit_amount: financialReadNumber(row.credit_amount),
+        };
+      });
     },
   });
 
+  const {data:payments,isLoading,isError} = paymentsQuery;
   const deletePayment = useDeletePayment();
+  const undoRoot = useRef<HTMLDivElement>(null);
+  const [undoError,setUndoError] = useState<string|null>(null);
+  const [reasonError,setReasonError] = useState<string|null>(null);
+  const [uncertainIds,setUncertainIds] = useState<Set<string>>(()=>new Set());
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   // Lý do hoàn tác: bắt gõ lý do THẬT (≥ 8 ký tự) — thu trùng phải để lại dấu
@@ -197,7 +222,8 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
 
   // Dòng thu kiểu mới (invoice_payment_tenders) — người đã thu + sổ nhận, để mở
   // hộp "Đổi hình thức thu". Khoản thu kiểu cũ (trước 28/07) không có dòng nào.
-  const { data: tenders } = useInvoiceTenders(invoiceId, { enabled: open });
+  const tendersQuery = useInvoiceTenders(invoiceId, { enabled: open });
+  const {data:tenders} = tendersQuery;
   const tenderById = new Map((tenders ?? []).map((t) => [t.id, t]));
   const { data: me } = useAuth();
   const { data: isCompanyOwner } = useIsCompanyOwner();
@@ -218,11 +244,21 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
 
   const openUndoConfirm = (id: string) => {
     setUndoReason('');
+    setUndoError(null);
+    setReasonError(null);
     setConfirmDeleteId(id);
   };
 
   const handleConfirmDelete = () => {
-    if (!confirmDeleteId || !undoReasonOk) return;
+    if (!confirmDeleteId || uncertainIds.has(confirmDeleteId)) return;
+    if (!undoReasonOk) {
+      const message=`Nhập lý do hoàn tác từ ${REVISION_REASON_MIN} đến ${REVISION_REASON_MAX} ký tự.`;
+      setReasonError(message);
+      void focusFirstError({undoReason:message},{root:undoRoot.current});
+      return;
+    }
+    if (confirmTarget?.collection_id && (eligibilityQuery.isError || !confirmEligibility)) return;
+    setReasonError(null); setUndoError(null);
     const target = (payments ?? []).find((payment) => payment.id === confirmDeleteId);
     if (!target) return;
     setDeletingId(target.id);
@@ -237,7 +273,11 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
           setConfirmDeleteId(null);
           setUndoReason('');
         },
-        // Lỗi (vd kỳ đã chốt): giữ hộp mở cùng lý do đã gõ; toast đã nói vì sao.
+        onError: (error) => {
+          setUndoError(invoiceFailureMessage(error,'hoàn tác khoản thu'));
+          if (voucherOutcomeUnknown(error)) setUncertainIds(ids=>new Set([...ids,target.id]));
+        },
+        // Giữ hộp và lý do khi chưa xác nhận kết quả.
         onSettled: () => setDeletingId(null),
       },
     );
@@ -270,16 +310,17 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
       ? [confirmTarget]
       : [];
   const confirmAmount = confirmCollectionPayments.reduce(
-    (sum, payment) => sum + (Number(payment.collected_amount) || 0),
+    (sum, payment) => sum + payment.collected_amount,
     0,
   );
 
   // Đợt 5: hỏi server TRƯỚC để hộp xác nhận nói đúng chuyện sắp xảy ra — huỷ
   // tại chỗ (không sinh phiếu) hay sinh phiếu đối ứng — và để chặn ngay tại
   // giao diện khi kỳ đã đóng, thay vì bấm rồi mới ăn lỗi.
-  const { data: reversalEligibility } = useCollectionReversalEligibility(
+  const eligibilityQuery = useCollectionReversalEligibility(
     (payments ?? []).map((p) => p.collection_id).filter(Boolean) as string[],
   );
+  const {data:reversalEligibility} = eligibilityQuery;
   const confirmEligibility = confirmTarget?.collection_id
     ? reversalEligibility?.[confirmTarget.collection_id]
     : undefined;
@@ -290,9 +331,9 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
 
   const totals = (payments ?? []).reduce(
     (sum, payment) => ({
-      collected: sum.collected + (Number(payment.collected_amount) || 0),
-      applied: sum.applied + (Number(payment.applied_amount) || 0),
-      credit: sum.credit + (Number(payment.credit_amount) || 0),
+      collected: sum.collected + payment.collected_amount,
+      applied: sum.applied + payment.applied_amount,
+      credit: sum.credit + payment.credit_amount,
     }),
     { collected: 0, applied: 0, credit: 0 },
   );
@@ -311,6 +352,7 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
           </span>
         </div>
 
+        <QueryRegion label="các lần thanh toán và tiền cọc" queries={[paymentsQuery, firstDetailsQuery, tendersQuery, ...(firstDetail?.contractId ? [depositVouchersQuery] : []), ...((payments??[]).some(p=>p.collection_id) ? [eligibilityQuery] : [])]}>
         {(() => {
           const fd = firstInvoiceDetails?.get(invoiceId);
           if (!fd) return null;
@@ -388,9 +430,9 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
                 const timeStr = p.created_at
                   ? format(new Date(p.created_at), 'HH:mm')
                   : '';
-                const collectedAmount = Number(p.collected_amount) || 0;
-                const appliedAmount = Number(p.applied_amount) || 0;
-                const creditAmount = Number(p.credit_amount) || 0;
+                const collectedAmount = p.collected_amount;
+                const appliedAmount = p.applied_amount;
+                const creditAmount = p.credit_amount;
                 const isPureCredit = appliedAmount < 0.01 && creditAmount > 0;
                 const changeMethod = changeMethodFor(p);
                 const accountName = tenderById.get(p.id)?.account_name ?? null;
@@ -648,6 +690,7 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
           </div>
         )}
 
+        </QueryRegion>
         {/* Lightbox xem ảnh chứng từ — overlay tại chỗ, không mở tab mới */}
         <AttachmentLightbox
           attachments={lightbox.images}
@@ -662,7 +705,7 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
           if (!v && !deletePayment.isPending) setConfirmDeleteId(null);
         }}
       >
-        <AlertDialogContent>
+        <AlertDialogContent ref={undoRoot}>
           <AlertDialogHeader>
             <AlertDialogTitle>
               {confirmBlocked ? 'Không hoàn tác được khoản thu này' : 'Hoàn tác lần thu tiền?'}
@@ -693,6 +736,9 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
             <div className="space-y-1.5">
               <Label htmlFor="ly-do-hoan-tac-thu">Lý do hoàn tác *</Label>
               <Textarea
+                name="undoReason"
+                aria-invalid={!!reasonError}
+                aria-describedby={reasonError ? "undo-reason-error" : undefined}
                 id="ly-do-hoan-tac-thu"
                 rows={2}
                 maxLength={REVISION_REASON_MAX}
@@ -701,11 +747,14 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
                 placeholder="Vd: thu trùng — khoản này đã thu lúc 14:05"
                 disabled={deletePayment.isPending}
               />
+              {reasonError && <p id="undo-reason-error" role="alert" className="text-sm text-destructive">{reasonError}</p>}
               <p className={`text-xs ${undoReasonLength > 0 && !undoReasonOk ? 'text-red-600' : 'text-muted-foreground'}`}>
                 Bắt buộc, ít nhất {REVISION_REASON_MIN} ký tự — lý do được lưu cùng khoản thu đã hoàn tác.
               </p>
             </div>
           )}
+          {undoError && <p role="alert" className="text-sm text-destructive">{undoError}</p>}
+          {confirmTarget?.collection_id && (eligibilityQuery.isError || !confirmEligibility) && <p role="alert" className="text-sm text-destructive">Chưa xác minh được điều kiện hoàn tác. Tải lại các lần thanh toán trước khi tiếp tục.</p>}
           <AlertDialogFooter>
             <AlertDialogCancel disabled={deletePayment.isPending}>
               {confirmBlocked ? 'Đóng' : 'Huỷ'}
@@ -716,7 +765,7 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
                   e.preventDefault();
                   handleConfirmDelete();
                 }}
-                disabled={deletePayment.isPending || !undoReasonOk}
+                disabled={deletePayment.isPending || uncertainIds.has(confirmDeleteId??"") || (!!confirmTarget?.collection_id && (eligibilityQuery.isError || !confirmEligibility))}
                 className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
               >
                 {deletePayment.isPending ? (

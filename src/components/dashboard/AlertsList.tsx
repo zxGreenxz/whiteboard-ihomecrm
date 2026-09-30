@@ -1,3 +1,4 @@
+import { QueryRegion } from "@/components/errors/QueryRegion";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { AlertCircle, AlertTriangle, Info } from "lucide-react";
@@ -7,7 +8,8 @@ import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 
 export function AlertsList({ buildingId }: { buildingId?: string | null }) {
-  const { data: alerts = [], isLoading } = useAlerts(buildingId);
+  const query = useAlerts(buildingId);
+  const { data: alerts = [], isLoading } = query;
   const navigate = useNavigate();
 
   const getSeverityConfig = (severity: string) => {
@@ -66,6 +68,7 @@ export function AlertsList({ buildingId }: { buildingId?: string | null }) {
   }
 
   return (
+    <QueryRegion label="cảnh báo cần xử lý" queries={[query]}>
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center justify-between">
@@ -120,5 +123,6 @@ export function AlertsList({ buildingId }: { buildingId?: string | null }) {
         )}
       </CardContent>
     </Card>
+    </QueryRegion>
   );
 }

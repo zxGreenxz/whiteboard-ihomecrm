@@ -31,6 +31,8 @@ import { format, startOfMonth, endOfMonth, subMonths } from "date-fns";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { usePersistedState } from "@/hooks/usePersistedState";
 import { formatVND } from "@/lib/utils";
+import { QueryRegion } from "@/components/errors/QueryRegion";
+import { financialReadNumber, financialReadRows } from "@/lib/financialReadValidation";
 
 interface RefundRow {
   id: string;
@@ -59,6 +61,7 @@ function useRefundLog(accountId: string | null, start: string, end: string) {
   return useQuery({
     queryKey: ["refund-log", accountId, start, end],
     enabled: !!accountId,
+    meta: { feedback: "inline" },
     queryFn: async (): Promise<{
       rows: RefundRow[];
       total: number;
@@ -69,12 +72,16 @@ function useRefundLog(accountId: string | null, start: string, end: string) {
       if (!accountId)
         return { rows: [], total: 0, count: 0, accountName: null, mode: "refund" };
 
-      const { data: acc } = await supabase
+      const { data: acc, error: accountError } = await supabase
         .from("accounts")
         .select("id, name")
         .eq("id", accountId)
         .maybeSingle();
-      const mode = detectMode(acc?.name);
+      if (accountError) throw accountError;
+      if (!acc || acc.id !== accountId || typeof acc.name !== "string") {
+        throw new Error("Chưa xác nhận được thông tin sổ quỹ để tải lịch sử tiền thối.");
+      }
+      const mode = detectMode(acc.name);
       const filterColumn =
         mode === "rounding" ? "rounding_account_id" : "change_account_id";
       const amountColumn = mode === "rounding" ? "rounding_amount" : "change_amount";
@@ -96,10 +103,10 @@ function useRefundLog(accountId: string | null, start: string, end: string) {
 
       if (error) {
         console.error("useRefundLog error:", error);
-        return { rows: [], total: 0, count: 0, accountName: acc?.name ?? null, mode };
+        throw error;
       }
 
-      const rows: RefundRow[] = ((data ?? []) as any[]).map((v) => ({
+      const rows: RefundRow[] = (financialReadRows(data) as Array<Record<string, any>>).map((v) => ({
         id: v.id,
         voucher_date: v.voucher_date,
         code: v.code,
@@ -108,8 +115,8 @@ function useRefundLog(accountId: string | null, start: string, end: string) {
         building_name: v.building?.name ?? null,
         room_name: v.room?.name ?? null,
         payer_name: v.payer_name,
-        change_amount: Number(v[amountColumn] ?? 0),
-        total_amount: Number(v.total_amount ?? 0),
+        change_amount: financialReadNumber(v[amountColumn]),
+        total_amount: financialReadNumber(v.total_amount),
         notes: v.notes,
       }));
       const total = rows.reduce((s, r) => s + r.change_amount, 0);
@@ -154,7 +161,8 @@ const RefundLogPage = () => {
     return { start: customStart || "1970-01-01", end: customEnd || "2999-12-31" };
   }, [period, customStart, customEnd]);
 
-  const { data, isLoading } = useRefundLog(accountId, start, end);
+  const query = useRefundLog(accountId, start, end);
+  const { data, isLoading } = query;
   const mode: LedgerMode = data?.mode ?? "refund";
   const isRounding = mode === "rounding";
   const accountName = data?.accountName ?? (isRounding ? "Sổ làm tròn" : "Sổ tiền thối");
@@ -220,6 +228,8 @@ const RefundLogPage = () => {
           )}
         </div>
 
+        {!accountId ? <p role="status">Chọn sổ quỹ để xem lịch sử tiền thối.</p> : (
+        <QueryRegion queries={[query]} label="lịch sử tiền thối và làm tròn">
         {/* Stat cards */}
         <div className={isMobile ? "grid grid-cols-1 gap-3" : "grid grid-cols-3 gap-3"}>
           <Card className="p-4 flex items-center gap-3 border-l-4 border-l-orange-500">
@@ -329,6 +339,8 @@ const RefundLogPage = () => {
               </TableBody>
             </Table>
           </Card>
+        )}
+        </QueryRegion>
         )}
       </div>
     </MainLayout>

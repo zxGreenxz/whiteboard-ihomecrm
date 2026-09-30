@@ -1,4 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { NumberInput } from "@/components/ui/number-input";
+import { validateInputDrafts } from "@/lib/inputDraftValidation";
+import { QueryRegion } from "@/components/errors/QueryRegion";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Repeat, Phone, Tag, Calendar, Pencil, Eye, EyeOff, Trash2, ChevronDown, Users,
 } from "lucide-react";
@@ -32,36 +35,42 @@ const emptyForm: FormState = {
 };
 
 export default function MobilePassListings({ onHeaderAction }: { onHeaderAction: (a: HeaderAction | null) => void }) {
-  const { data: listings, isLoading } = usePassListings();
-  const { data: formRooms } = usePassListingFormRooms();
+  const listingQuery = usePassListings();
+  const { data: listings, isLoading } = listingQuery;
+  const roomQuery = usePassListingFormRooms();
+  const { data: formRooms } = roomQuery;
   const upsertMut = useUpsertPassListing();
   const activeMut = useSetPassListingActive();
   const deleteMut = useDeletePassListing();
 
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm);
+  const priceInput = useRef<HTMLInputElement>(null);
   const [deleting, setDeleting] = useState<PassListing | null>(null);
   const [roomSheet, setRoomSheet] = useState(false);
 
-  const { data: roomCustomers = [] } = usePassListingRoomCustomers(open ? form.roomId : null);
+  const customerQuery = usePassListingRoomCustomers(open ? form.roomId : null);
+  const { data: roomCustomers = [] } = customerQuery;
+  const sourceBlocked = listingQuery.isError || roomQuery.isError || !listings || !formRooms;
+  const customerBlocked = !!form.roomId && (customerQuery.isError || !customerQuery.data);
 
   // Đổi phòng → điền sẵn SĐT/tên khách đại diện nếu đang trống.
   useEffect(() => {
-    if (!open || !form.roomId || roomCustomers.length === 0) return;
+    if (!open || !form.roomId || customerBlocked || roomCustomers.length === 0) return;
     setForm((f) => {
       if (f.contactName.trim() || f.contactPhone.trim()) return f;
       const rep = roomCustomers.find((c) => c.is_representative) ?? roomCustomers[0];
       return { ...f, contactName: rep.full_name ?? "", contactPhone: rep.phone ?? "" };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomCustomers, form.roomId, open]);
+  }, [roomCustomers, form.roomId, open, customerBlocked]);
 
   const openCreate = () => { setForm(emptyForm); setOpen(true); };
   useEffect(() => {
-    onHeaderAction({ label: "Thêm", onClick: openCreate });
+    onHeaderAction(sourceBlocked ? null : { label: "Thêm", onClick: openCreate });
     return () => onHeaderAction(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [sourceBlocked]);
 
   const roomById = useMemo(() => {
     const m = new Map<string, PassListingFormRoom>();
@@ -97,8 +106,9 @@ export default function MobilePassListings({ onHeaderAction }: { onHeaderAction:
   };
 
   const doSave = () => {
-    if (!form.roomId) return;
-    const price = form.passPrice.replace(/[^\d]/g, "");
+    if (!form.roomId || sourceBlocked || customerBlocked) return;
+    if (!validateInputDrafts(priceInput.current?.closest('[role="dialog"]'))) return;
+    const price = form.passPrice.trim().replace(",", ".");
     upsertMut.mutate({
       id: form.id, roomId: form.roomId,
       contactName: form.contactName.trim() || null,
@@ -117,7 +127,7 @@ export default function MobilePassListings({ onHeaderAction }: { onHeaderAction:
   };
 
   return (
-    <div style={{ padding: "14px 16px 28px" }}>
+    <QueryRegion label="phòng khách nhờ sale" queries={[listingQuery, roomQuery]}><div style={{ padding: "14px 16px 28px" }}>
       <div className="sp-note pink">
         <Repeat size={17} stroke="var(--pass)" />
         <p>Phòng đang có khách thuê nhưng khách <b>nhờ sale / pass phòng</b>. Hiện trên trang công khai (màu hồng) với SĐT của khách. Tắt khi khách dừng nhờ — không ảnh hưởng hợp đồng.</p>
@@ -181,7 +191,8 @@ export default function MobilePassListings({ onHeaderAction }: { onHeaderAction:
       )}
 
       {/* create / edit */}
-      <SaleSheet open={open} onClose={() => setOpen(false)}>
+      <SaleSheet open={open} onClose={() => { if (!upsertMut.isPending) setOpen(false); }}>
+        {form.roomId && <QueryRegion label="khách thuê phòng" queries={[customerQuery]}>{null}</QueryRegion>}
         <h3>{form.id ? "Sửa phòng khách nhờ sale" : "Thêm phòng khách nhờ sale"}</h3>
         <p className="desc">Chọn phòng đang có khách, nhập SĐT + chính sách sale của khách.</p>
 
@@ -214,9 +225,10 @@ export default function MobilePassListings({ onHeaderAction }: { onHeaderAction:
 
         <div style={{ display: "flex", gap: 10, marginBottom: 13 }}>
           <div style={{ flex: 1 }}>
-            <label className="sl">Giá pass (đ/tháng)</label>
-            <input className="sp-input mono" inputMode="numeric" placeholder="Để trống = giá phòng" value={form.passPrice}
-              onChange={(e) => setForm((f) => ({ ...f, passPrice: e.target.value }))} />
+            <label className="sl" htmlFor="mobile-pass-price">Giá pass (đ/tháng)</label>
+            <NumberInput ref={priceInput} id="mobile-pass-price" name="passPrice" allowDecimal className="sp-input mono" placeholder="Để trống = giá phòng"
+              value={form.passPrice ? Number(form.passPrice.replace(",", ".")) : null}
+              onChange={(value) => setForm((f) => ({ ...f, passPrice: priceInput.current?.value ?? String(value) }))} />
           </div>
           <div style={{ flex: 1 }}>
             <label className="sl">Ngày trống</label>
@@ -248,7 +260,7 @@ export default function MobilePassListings({ onHeaderAction }: { onHeaderAction:
 
         <div className="sp-sheet-btns">
           <button className="cancel" onClick={() => setOpen(false)}>Hủy</button>
-          <button className="ok" onClick={doSave} disabled={!form.roomId || upsertMut.isPending}>{form.id ? "Lưu" : "Thêm"}</button>
+          <button className="ok" onClick={doSave} disabled={!form.roomId || sourceBlocked || customerBlocked || upsertMut.isPending}>{form.id ? "Lưu" : "Thêm"}</button>
         </div>
       </SaleSheet>
 
@@ -287,11 +299,11 @@ export default function MobilePassListings({ onHeaderAction }: { onHeaderAction:
             <p className="desc center">Phòng sẽ không còn hiển thị dạng "khách pass". Hợp đồng đang thuê KHÔNG bị ảnh hưởng. Muốn tạm ẩn thì dùng nút Ẩn.</p>
             <div className="sp-sheet-btns">
               <button className="cancel" onClick={() => setDeleting(null)}>Hủy</button>
-              <button className="ok danger" onClick={() => { deleteMut.mutate(deleting.id); setDeleting(null); }}>Xoá</button>
+              <button className="ok danger" disabled={deleteMut.isPending} onClick={() => { deleteMut.mutate(deleting.id, { onSuccess: () => setDeleting(null) }); }}>Xoá</button>
             </div>
           </>
         )}
       </SaleSheet>
-    </div>
+    </div></QueryRegion>
   );
 }

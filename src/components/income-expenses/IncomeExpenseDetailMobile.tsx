@@ -1,3 +1,4 @@
+import {QueryRegion} from '@/components/errors/QueryRegion';
 import { useIncomeExpenseDetail } from "@/hooks/income-expenses/detailRead";
 import { hasCompleteVoucherDetail } from "@/lib/incomeExpenseDetailRead";
 import { useNavigate } from "react-router-dom";
@@ -150,10 +151,12 @@ function IncomeExpenseDetailMobileContent({
   const canSettleReservation = monetaryActionsAllowed && v.type === "INCOME" && !v.contract_id &&
     v.approval_status === "APPROVED" && v.items.some((item) => item.is_deposit) &&
     canUse(perms, "deposits", "refund") && canUse(perms, "income_expenses", "approve");
-  const { data: history = [] } = useIncomeExpenseHistory(v.id);
+  const historyQuery = useIncomeExpenseHistory(v.id);
+  const history=historyQuery.data??[];
 
   const invoiceId = v.invoice_id ?? null;
-  const { data: relatedInvoice } = useQuery({
+  const relatedInvoiceQuery = useQuery({
+    meta:{errorDisplay:"inline",label:"hoá đơn liên quan"},
     queryKey: ["ie-related-invoice", invoiceId],
     enabled: !!invoiceId,
     queryFn: async (): Promise<{
@@ -170,6 +173,7 @@ function IncomeExpenseDetailMobileContent({
       return data ?? null;
     },
   });
+  const relatedInvoice=relatedInvoiceQuery.data;
 
   const isCancelled = v.approval_status === "CANCELLED";
   const isUnapproved = v.approval_status === "UNAPPROVED";
@@ -231,6 +235,8 @@ function IncomeExpenseDetailMobileContent({
           </button>
         </div>
 
+        <QueryRegion label="nhật ký phiếu" queries={[historyQuery]}><></></QueryRegion>
+        {invoiceId&&<QueryRegion label="hoá đơn liên quan" queries={[relatedInvoiceQuery]}><></></QueryRegion>}
         <div className="vd-sec">
           <span className="vd-sec-t">Thông tin chung</span>
           <div className="vd-acts">

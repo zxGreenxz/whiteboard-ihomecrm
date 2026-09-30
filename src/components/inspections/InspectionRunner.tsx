@@ -1,3 +1,7 @@
+import { QueryRegion } from '@/components/errors/QueryRegion';
+import { actionErrorMessage, notifyActionError } from '@/lib/actionFeedback';
+import { focusFirstError } from '@/lib/formErrors';
+import { StorageImage } from '@/components/ui/storage-image';
 // InspectionRunner — chạy MỘT phiên kiểm tra nhà (FULL/QUICK) theo checklist.
 // Tái dùng NGUYÊN pipeline camera JobCaptureCamera (camera-only + watermark + GPS)
 // — không fork pipeline (US-2.1). Gate chấm TẠI TOÀ, fail = gain-framing.
@@ -42,7 +46,8 @@ export default function InspectionRunner({
   open, onOpenChange, buildingId, buildingName, buildingCoords, type, pairedIncomeExpenseId, onDone,
 }: Props) {
   const { data: authUser } = useAuth();
-  const { data: geofence } = useAcceptanceGeofenceConfig();
+  const geofenceQuery = useAcceptanceGeofenceConfig();
+  const { data: geofence } = geofenceQuery;
   const startM = useStartInspection();
   const photoM = useSubmitInspectionPhoto();
   const completeM = useCompleteInspection();
@@ -57,17 +62,24 @@ export default function InspectionRunner({
   const [missing, setMissing] = useState<string[] | null>(null);
   const [nowTs, setNowTs] = useState(() => Date.now());
   /** Số ảnh đã được chấm "trong bán kính toà" — server đòi ≥1 mới chốt ngày công. */
-  const [geoOkCount, setGeoOkCount] = useState(0);
+  const [geoOkCount, setGeoOkCount] = useState<number | null>(null);
+  const [feedback, setFeedback] = useState("");
+  const [uploadedPhoto, setUploadedPhoto] = useState<string | null>(null);
+  const [unknownOutcome, setUnknownOutcome] = useState(false);
+  const [noteError, setNoteError] = useState(false);
 
   useEffect(() => {
-    if (!open) { setSess(null); setSlotCounts({}); setMissing(null); setHasIssue(false); setIssueNote(""); setGeoOkCount(0); return; }
+    if (!open) { setSess(null); setSlotCounts({}); setMissing(null); setHasIssue(false); setIssueNote(""); setGeoOkCount(null); setFeedback(""); setUploadedPhoto(null); setUnknownOutcome(false); setNoteError(false); return; }
     startM.mutateAsync({ buildingId, type, pairedIncomeExpenseId })
       .then(async (s) => {
         setSess(s);
         setSlotCounts(s.slot_counts ?? {});
-        setGeoOkCount(await fetchGeoOkCount(s.session_id)); // resume phiên dở: biết ngay còn thiếu vị trí không
+        setGeoOkCount(await fetchGeoOkCount(s.session_id).catch(() => {
+          // null means unverified: the persistent alert below offers a read-only retry; it never means zero photos.
+          return null;
+        })); // resume phiên dở: biết ngay còn thiếu vị trí không
       })
-      .catch(() => { toast.error("Không mở được phiên — thử lại nhé"); onOpenChange(false); });
+      .catch((error) => { setFeedback(actionErrorMessage(error, "Chưa xác nhận được kết quả mở phiên kiểm tra")); setUnknownOutcome(true); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, buildingId, type]);
 
@@ -101,7 +113,7 @@ export default function InspectionRunner({
     return missing
       .map((m) => {
         if (m.startsWith("Ở lại thêm")) return dwellRemainMin > 0 ? `Ở lại thêm ${dwellRemainMin} phút nữa` : null;
-        if (m === GEO_MISSING) return geoOkCount > 0 ? null : m;
+        if (m === GEO_MISSING) return geoOkCount !== null && geoOkCount > 0 ? null : m;
         if (m.startsWith("Còn ") && m.endsWith("ảnh nữa")) {
           const need = (sess?.reqs.photos_min ?? 0) - (sess?.photos_count ?? 0);
           return need > 0 ? `Còn ${need} ảnh nữa` : null;
@@ -112,25 +124,21 @@ export default function InspectionRunner({
   }, [missing, dwellRemainMin, geoOkCount, sess]);
 
   const handleCaptured = async (result: JobCaptureResult) => {
-    if (!sess || !cameraSlot) return;
+    if (!sess || !cameraSlot || unknownOutcome) return;
     setBusy(true);
     try {
       const uid = authUser?.id ?? (await getSessionUserId()) ?? "anon";
       const upload = () =>
         uploadFile("job-attachments", `${uid}/inspections/${sess.session_id}/${Date.now()}-${cameraSlot}.jpg`, result.file);
-      let url: string;
-      try {
-        url = await upload();
-      } catch {
-        url = await upload(); // mạng chập chờn: tự thử lại 1 lần (key mới theo timestamp)
-      }
+      const url = await upload();
+      setUploadedPhoto(url);
       const hash = await sha256File(result.file);
       const res = await photoM.mutateAsync({
         sessionId: sess.session_id, slot: cameraSlot, storagePath: url, sha256: hash,
         lat: result.lat, lng: result.lng,
       });
       if (!res.accepted) {
-        toast.warning(res.message ?? "Ảnh chưa được nhận — chụp ảnh mới nhé");
+        toast.warning(res.reason === "duplicate_hash" ? "Ảnh này đã dùng hôm nay. Chụp ảnh mới tại chỗ để tiếp tục." : "Ảnh này chưa được chấp nhận cho phiên kiểm tra. Chụp ảnh mới để tiếp tục.");
       } else {
         const slot = cameraSlot;
         setSlotCounts((c) => ({ ...c, [slot]: (c[slot] ?? 0) + 1 }));
@@ -142,7 +150,7 @@ export default function InspectionRunner({
         // Báo NGAY nếu ảnh không có bằng chứng vị trí — đừng để tới lúc bấm
         // Hoàn tất mới biết, khi mọi mục đã ✓ và không còn gì để bấm chụp.
         if (res.geofence_status === "ok") {
-          setGeoOkCount((n) => n + 1);
+          setGeoOkCount((n) => (n ?? 0) + 1);
         } else if (res.geofence_status === "out_of_range") {
           toast.warning(
             `Ảnh này cách toà ${Math.round(res.distance_m ?? 0)}m — ngoài bán kính. Cần ≥1 ảnh chụp sát toà để chốt ngày công.`,
@@ -156,8 +164,8 @@ export default function InspectionRunner({
         }
       }
     } catch (e: any) {
-      const detail = e?.message ? ` (${e.message})` : "";
-      toast.error(`Không tải được ảnh — kiểm tra mạng rồi thử lại, phiên vẫn còn nguyên${detail}`);
+      setFeedback(`Chưa xác nhận được toàn bộ bước lưu ảnh cho phiên ${sess.session_id}. Ảnh đã tải lên (nếu có) được giữ ở dưới. Kiểm tra lại phiên trước khi gửi thêm để tránh ảnh trùng.`);
+      setUnknownOutcome(true);
     } finally {
       setBusy(false);
       setCameraSlot(null);
@@ -165,7 +173,9 @@ export default function InspectionRunner({
   };
 
   const handleComplete = async () => {
-    if (!sess) return;
+    if (!sess || unknownOutcome) return;
+    if (hasIssue && !issueNote.trim()) { setNoteError(true); void focusFirstError({issueNote:"Mô tả vấn đề cần sửa chữa."}); return; }
+    setNoteError(false);
     setBusy(true);
     try {
       const res = await completeM.mutateAsync({
@@ -174,28 +184,30 @@ export default function InspectionRunner({
       });
       if (res.status === "passed" || res.status === "quick_done") {
         const t = res.tick;
-        if (t?.day_rate) {
-          toast.success(
-            t.streak?.next
-              ? v5Copy.tickedToast(Number(t.day_rate), Number(t.streak?.current ?? 0), Number(t.streak.next.days_to_go), Number(t.streak.next.delta))
-              : v5Copy.tickedToastNoNext(Number(t.day_rate), Number(t.streak?.current ?? 0)),
-            { duration: 6000 },
-          );
-        } else if (res.status === "quick_done") {
-          toast.success(v5Copy.quickCheckDone);
+        if (res.message === 'Phiên đã đóng trước đó') {
+          toast.info(`Phiên kiểm tra tòa ${buildingName} đã hoàn tất trước đó.`);
+        } else {
+          const resultMessage = t?.ticked && typeof t.day_rate === 'number'
+            ? t.streak?.next
+              ? v5Copy.tickedToast(t.day_rate, t.streak.current, t.streak.next.days_to_go, t.streak.next.delta)
+              : t.streak ? v5Copy.tickedToastNoNext(t.day_rate, t.streak.current)
+                : `Đã hoàn tất kiểm tra tòa ${buildingName} và ghi nhận ngày công.`
+            : res.status === 'quick_done' ? v5Copy.quickCheckDone
+              : `Đã hoàn tất kiểm tra tòa ${buildingName}. Chưa xác nhận thêm ngày công từ phiên này.`;
+          toast.success(res.spawned_job_id ? `${resultMessage} Đã tạo công việc sửa chữa ${res.spawned_job_id}.` : resultMessage, {duration:6000});
         }
-        if (res.spawned_job_id) toast.info("Đã tự tạo việc sửa chữa từ ghi nhận của bạn 🔧");
         onDone?.();
         onOpenChange(false);
       } else if (res.status === "presence") {
         setMissing(res.missing ?? []);
-        toast.info(res.message ?? v5Copy.presenceSaved, { duration: 6000 });
+        toast.info(v5Copy.presenceSaved, { duration: 6000 });
       } else {
-        toast.info(res.message ?? res.status);
-        onOpenChange(false);
+        setFeedback("Chưa xác nhận được trạng thái hoàn tất của phiên kiểm tra. Giữ phiên này và kiểm tra ngày công trước khi thao tác tiếp.");
+        setUnknownOutcome(true);
       }
-    } catch {
-      toast.error("Chưa chốt được phiên — thử lại nhé");
+    } catch (error) {
+      setFeedback(actionErrorMessage(error, "Chưa xác nhận được kết quả hoàn tất phiên kiểm tra"));
+      setUnknownOutcome(true);
     } finally {
       setBusy(false);
     }
@@ -205,9 +217,9 @@ export default function InspectionRunner({
     if (!sess) return;
     try {
       await deviceM.mutateAsync({ sessionId: sess.session_id, reason: "GPS/thiết bị trục trặc tại toà" });
-      toast.success("Đã báo sự cố thiết bị — chủ sẽ duyệt ngày công thủ công");
-    } catch {
-      toast.error("Chưa gửi được — thử lại nhé");
+      toast.success("Đã gửi báo cáo sự cố thiết bị. Ngày công đang chờ người có quyền xem xét.");
+    } catch (error) {
+      notifyActionError(error, "Chưa xác nhận được kết quả gửi báo cáo sự cố thiết bị");
     }
   };
 
@@ -221,17 +233,21 @@ export default function InspectionRunner({
             </DialogTitle>
           </DialogHeader>
 
+          <QueryRegion label="cấu hình kiểm tra vị trí" queries={[geofenceQuery]}>{null}</QueryRegion>
+          {feedback && <p role="alert" className="rounded border border-amber-500 p-3 text-sm">{feedback}</p>}
+          {uploadedPhoto && <div><p className="text-xs">Ảnh đã tải lên</p><StorageImage value={uploadedPhoto} className="h-20 w-20 rounded object-cover" /></div>}
           {!sess ? (
-            <div className="py-8 text-center text-sm text-muted-foreground">Đang mở phiên…</div>
+            <div className="py-8 text-center text-sm text-muted-foreground">{unknownOutcome ? "Chưa xác nhận được phiên kiểm tra." : "Đang mở phiên…"}</div>
           ) : (
             <div className="space-y-3">
               <div className="text-xs text-muted-foreground">
                 Cần ≥{type === "QUICK" ? 2 : sess.reqs.photos_min} ảnh
                 {type === "FULL" && <> · tại toà ≥{Math.round(sess.reqs.dwell_min_seconds / 60)} phút (đã ở {Math.floor(dwellLiveSec / 60)}p)</>}
                 {" · "}đã chụp {sess.photos_count} ảnh · {doneCount}/{sess.checklist.length} mục
-                {geoOkCount > 0 && <> · <span className="text-emerald-600">{geoOkCount} ảnh có vị trí ✓</span></>}
+                {geoOkCount !== null && geoOkCount > 0 && <> · <span className="text-emerald-600">{geoOkCount} ảnh có vị trí ✓</span></>}
               </div>
 
+              {geoOkCount === null && <div role="alert" className="rounded border p-3 text-sm">Chưa kiểm tra được số ảnh có vị trí hợp lệ. <Button size="sm" variant="outline" onClick={() => { void fetchGeoOkCount(sess.session_id).then(setGeoOkCount).catch(() => setGeoOkCount(null)); }}>Kiểm tra lại ảnh</Button></div>}
               {/* Thiếu bằng chứng vị trí — hiện NGAY từ ảnh đầu tiên, kèm việc cần làm */}
               {!missing && sess.photos_count > 0 && geoOkCount === 0 && (
                 <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm">
@@ -242,10 +258,10 @@ export default function InspectionRunner({
                     chụp thêm được.
                   </p>
                   <div className="mt-2 flex flex-wrap gap-2">
-                    <Button size="sm" disabled={busy} onClick={() => setCameraSlot(sess.checklist[0]?.key ?? "gps")}>
+                    <Button size="sm" disabled={busy || unknownOutcome} onClick={() => setCameraSlot(sess.checklist[0]?.key ?? "gps")}>
                       <Camera className="mr-1 h-3.5 w-3.5" /> Chụp ảnh có vị trí
                     </Button>
-                    <Button size="sm" variant="outline" disabled={busy} onClick={reportDevice}>
+                    <Button size="sm" variant="outline" disabled={busy || unknownOutcome} onClick={reportDevice}>
                       <ShieldAlert className="mr-1 h-3.5 w-3.5" /> GPS trục trặc — báo chủ duyệt
                     </Button>
                   </div>
@@ -259,7 +275,7 @@ export default function InspectionRunner({
                     className={`flex w-full items-center justify-between rounded-lg border px-3 py-2.5 text-left text-sm ${
                       item.done ? "border-emerald-300 bg-emerald-50" : "border-border bg-background"
                     }`}
-                    disabled={busy}
+                    disabled={busy || unknownOutcome}
                     onClick={() => setCameraSlot(item.key)}
                   >
                     <span className="flex-1 pr-2">
@@ -295,10 +311,10 @@ export default function InspectionRunner({
                       không có nút thì người dùng bí thật sự (mọi mục đã ✓). */}
                   {missingLive.includes(GEO_MISSING) && (
                     <div className="mt-2 flex flex-wrap gap-2">
-                      <Button size="sm" disabled={busy} onClick={() => setCameraSlot(sess.checklist[0]?.key ?? "gps")}>
+                      <Button size="sm" disabled={busy || unknownOutcome} onClick={() => setCameraSlot(sess.checklist[0]?.key ?? "gps")}>
                         <Camera className="mr-1 h-3.5 w-3.5" /> Chụp ảnh có vị trí
                       </Button>
-                      <Button size="sm" variant="outline" disabled={busy} onClick={reportDevice}>
+                      <Button size="sm" variant="outline" disabled={busy || unknownOutcome} onClick={reportDevice}>
                         <ShieldAlert className="mr-1 h-3.5 w-3.5" /> GPS trục trặc — báo chủ duyệt
                       </Button>
                     </div>
@@ -322,9 +338,11 @@ export default function InspectionRunner({
                       <Wrench className="mr-1 h-3.5 w-3.5" /> Có vấn đề
                     </Button>
                   </div>
+                  {noteError && <p role="alert" className="text-sm text-destructive">Mô tả vấn đề cần sửa chữa.</p>}
                   {hasIssue && (
                     <textarea
                       className="mt-2 w-full rounded-md border p-2 text-sm"
+                      name="issueNote" aria-invalid={noteError} style={noteError ? {borderColor:"hsl(var(--destructive))"} : undefined}
                       rows={2}
                       placeholder="Mô tả ngắn (sẽ tự tạo việc sửa chữa)"
                       value={issueNote}
@@ -335,10 +353,10 @@ export default function InspectionRunner({
               )}
 
               <div className="flex items-center gap-2 pt-1">
-                <Button className="flex-1" disabled={busy} onClick={handleComplete}>
+                <Button className="flex-1" disabled={busy || unknownOutcome} onClick={handleComplete}>
                   Hoàn tất
                 </Button>
-                <Button variant="ghost" size="sm" disabled={busy} onClick={reportDevice} title="GPS/máy trục trặc">
+                <Button variant="ghost" size="sm" disabled={busy || unknownOutcome} onClick={reportDevice} title="GPS/máy trục trặc">
                   <ShieldAlert className="h-4 w-4" />
                 </Button>
               </div>

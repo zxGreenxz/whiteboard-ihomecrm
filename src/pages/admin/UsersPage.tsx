@@ -1,3 +1,6 @@
+import { focusFirstError } from '@/lib/formErrors';
+import { actionErrorMessage } from '@/lib/actionFeedback';
+import { QueryRegion } from '@/components/errors/QueryRegion';
 import { useState } from 'react';
 import { useAdminUsers, useCreateAdminUser } from '@/hooks/useAdminUsers';
 import { Button } from '@/components/ui/button';
@@ -14,14 +17,25 @@ import { Badge } from '@/components/ui/badge';
 import { UserPlus, ShieldCheck, Users } from 'lucide-react';
 
 export default function AdminUsersPage() {
-  const { data: users = [], isLoading } = useAdminUsers();
+  const usersQuery = useAdminUsers();
+  const { data: users = [], isLoading } = usersQuery;
   const createMutation = useCreateAdminUser();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ email: '', password: '', full_name: '', phone: '' });
 
+  const [errors, setErrors] = useState<Record<string,string>>({});
+  const [serverError, setServerError] = useState('');
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await createMutation.mutateAsync(form);
+    const validation: Record<string,string> = {};
+    if (!form.email.trim()) validation.email = 'Nhập email đăng nhập.';
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) validation.email = 'Nhập email đúng định dạng, ví dụ ten@congty.vn.';
+    if (form.password.length < 6) validation.password = 'Mật khẩu phải có ít nhất 6 ký tự.';
+    setErrors(validation);
+    setServerError('');
+    if (Object.keys(validation).length) { void focusFirstError(validation, { order: ['email','password'] }); return; }
+    try { await createMutation.mutateAsync(form); }
+    catch (error) { setServerError(actionErrorMessage(error, 'Chưa xác nhận được kết quả tạo tài khoản')); return; }
     setForm({ email: '', password: '', full_name: '', phone: '' });
     setOpen(false);
   };
@@ -51,22 +65,24 @@ export default function AdminUsersPage() {
                 cho user qua trang Phân quyền nhân viên.
               </DialogDescription>
             </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-3">
+            <form noValidate onSubmit={handleSubmit} className="space-y-3">
               <div>
                 <Label htmlFor="email">Email *</Label>
                 <Input
-                  id="email" type="email" required
+                  id="email" name="email" aria-invalid={!!errors.email} aria-describedby={errors.email ? "email-error" : undefined} type="email" required
                   value={form.email}
                   onChange={(e) => setForm({ ...form, email: e.target.value })}
                 />
+                {errors.email && <p role="alert" id="email-error" className="text-sm text-destructive">{errors.email}</p>}
               </div>
               <div>
                 <Label htmlFor="password">Mật khẩu *</Label>
                 <Input
-                  id="password" type="password" required minLength={6}
+                  id="password" name="password" aria-invalid={!!errors.password} aria-describedby={errors.password ? "password-error" : undefined} type="password" required minLength={6}
                   value={form.password}
                   onChange={(e) => setForm({ ...form, password: e.target.value })}
                 />
+                {errors.password && <p role="alert" id="password-error" className="text-sm text-destructive">{errors.password}</p>}
               </div>
               <div>
                 <Label htmlFor="full_name">Họ tên</Label>
@@ -84,6 +100,7 @@ export default function AdminUsersPage() {
                   onChange={(e) => setForm({ ...form, phone: e.target.value })}
                 />
               </div>
+              {serverError && <p role="alert" className="text-sm text-destructive">{serverError}</p>}
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setOpen(false)}>
                   Huỷ
@@ -97,6 +114,7 @@ export default function AdminUsersPage() {
         </Dialog>
       </div>
 
+      <QueryRegion label="danh sách tài khoản và phân công" queries={[usersQuery]}>
       <Card>
         <CardHeader>
           <CardTitle>Danh sách tài khoản ({users.length})</CardTitle>
@@ -147,6 +165,7 @@ export default function AdminUsersPage() {
           )}
         </CardContent>
       </Card>
+      </QueryRegion>
     </div>
   );
 }

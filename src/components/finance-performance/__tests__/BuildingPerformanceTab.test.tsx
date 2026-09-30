@@ -263,7 +263,7 @@ describe("BuildingPerformanceTab table semantics", () => {
       />,
     );
 
-    expect(html).toContain("Còn số tiền chưa được mapping");
+    expect(html).toContain("Còn số tiền chưa được phân loại");
     expect(html).toContain("Chưa khả dụng");
     expect(html).not.toContain("Doanh thu hòa vốn</span><span>0");
   });

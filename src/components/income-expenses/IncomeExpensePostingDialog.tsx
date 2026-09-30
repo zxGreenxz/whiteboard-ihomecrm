@@ -1,3 +1,5 @@
+import { focusFirstError } from "@/lib/formErrors";
+import { voucherFailureMessage, voucherOutcomeUnknown } from "@/lib/voucherFeedback";
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -104,6 +106,8 @@ export interface IncomeExpensePostingDialogProps {
   capability: PostingCapability;
   /** Chỉ sổ actor đang là CUSTODIAN (§12.6). */
   cashbookOptions: PostingCashbookOption[];
+  cashbookError?: boolean;
+  onRetryCashbooks?: () => unknown;
   expectedExecutionRevision: number;
   expectedApprovalVersion: number;
   expectedPostingVersion: number;
@@ -195,6 +199,7 @@ function PostingEvidenceUpload({
   fallbackCount,
   pendingChanges,
   confirmLabel,
+  invalid,
 }: {
   items: PostingEvidenceItem[];
   onFiles: (files: FileList | File[] | null) => Promise<void>;
@@ -211,6 +216,7 @@ function PostingEvidenceUpload({
   pendingChanges: boolean;
   /** Chữ trên nút xác nhận ("Chi", "Duyệt và Thu"…) — để câu nhắc nói đúng nút. */
   confirmLabel: string;
+  invalid?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -248,6 +254,9 @@ function PostingEvidenceUpload({
           variant="outline"
           size="sm"
           disabled={disabled || busy}
+          data-field-name="evidenceIds"
+          aria-invalid={invalid}
+          className={invalid ? "border-destructive" : undefined}
           onClick={() => inputRef.current?.click()}
         >
           <Upload className="h-4 w-4 mr-1" />
@@ -353,6 +362,8 @@ export default function IncomeExpensePostingDialog({
   voucher,
   capability,
   cashbookOptions,
+  cashbookError = false,
+  onRetryCashbooks,
   expectedExecutionRevision,
   expectedApprovalVersion,
   expectedPostingVersion,
@@ -404,7 +415,12 @@ export default function IncomeExpensePostingDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cashbookOnVoucherAllowed, defaultCashbookId, cashbookOptions]);
 
+  const formRef = useRef<HTMLFormElement>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [adoptError, setAdoptError] = useState(false);
+  const [reconcileRequired, setReconcileRequired] = useState(false);
   const form = useForm<IncomeExpensePostingFormValues>({
+    shouldFocusError: false,
     resolver: zodResolver(schema),
     defaultValues: {
       postedOn: todayIso(),
@@ -561,12 +577,14 @@ export default function IncomeExpensePostingDialog({
 
     let cancelled = false;
     setAdopting(true);
+    setAdoptError(false);
     onAdoptAttachments(voucher.subjectId)
       .then((res) => {
         if (cancelled) return;
         setAdoptedIds(res.evidenceIds);
         setAdoptSkipped(res.skipped ?? []);
       })
+      .catch(() => { if (!cancelled) setAdoptError(true); })
       .finally(() => {
         if (!cancelled) setAdopting(false);
       });
@@ -745,6 +763,7 @@ export default function IncomeExpensePostingDialog({
         setAppliedRemovals((prev) => [...prev, ...remove]);
         setAdoptedIds(res.evidenceIds);
         setAdoptSkipped(res.skipped);
+        if (res.evidenceReadFailed) { setSubmitError(res.message); setAdoptError(true); return null; }
         return [...res.evidenceIds, ...fallbackIds];
       }
       const loi = res.message ?? 'Không ghi được ảnh lên phiếu';
@@ -762,6 +781,12 @@ export default function IncomeExpensePostingDialog({
         return null;
       }
       return await fallbackToEvidenceStore(add, loi, session);
+    } catch (error) {
+      if (voucherOutcomeUnknown(error)) {
+        setStaged(stagedRef.current.filter(u => !add.includes(u)));
+        setAppliedAdds(prev => [...prev, ...add]);
+      }
+      throw error;
     } finally {
       committingRef.current = false;
       if (sessionRef.current === session) setCommitting(false);
@@ -769,6 +794,9 @@ export default function IncomeExpensePostingDialog({
   };
 
   const submit = form.handleSubmit(async (values) => {
+    if (reconcileRequired || cashbookError) return;
+    setSubmitError(null);
+    try {
     let evidenceIds = values.evidenceIds;
     if (hasPendingAttachmentChanges) {
       const applied = await applyAttachmentChanges();
@@ -779,6 +807,7 @@ export default function IncomeExpensePostingDialog({
           type: 'manual',
           message: 'Chưa có ảnh nào tính là chứng từ cho lần ghi sổ này — hãy thêm ảnh mới.',
         });
+        void focusFirstError({ evidenceIds: "Thiếu chứng từ" }, { root: formRef.current });
         return;
       }
     }
@@ -795,7 +824,11 @@ export default function IncomeExpensePostingDialog({
       idempotencyKey: generatedKey,
     };
     await onSubmit(input);
-  });
+    } catch (error) {
+      setSubmitError(voucherFailureMessage(error, "ghi nhận thu/chi"));
+      if (voucherOutcomeUnknown(error)) setReconcileRequired(true);
+    }
+  }, errors => { void focusFirstError(errors, { root: formRef.current }); });
 
   /** Đang ghi ảnh lên phiếu thì không cho đóng: không biết phiếu đã đổi hay chưa. */
   const handleOpenChange = useCallback(
@@ -821,7 +854,7 @@ export default function IncomeExpensePostingDialog({
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={submit} className="space-y-4">
+          <form ref={formRef} onSubmit={submit} className="space-y-4">
             {/* Ngày Thu/Chi */}
             <FormField
               control={form.control}
@@ -878,6 +911,7 @@ export default function IncomeExpensePostingDialog({
               )}
             />
 
+            {cashbookError && <div role="alert" className="text-sm text-destructive">Chưa tải được danh sách sổ quỹ được phép sử dụng. <Button type="button" variant="outline" onClick={() => onRetryCashbooks?.()}>Tải lại sổ quỹ</Button></div>}
             {/* Số tiền: read-only = tổng đã duyệt, ngoại trừ MULTI_TRANCHE salary */}
             {allowAmount ? (
               <FormField
@@ -926,6 +960,7 @@ export default function IncomeExpensePostingDialog({
                   </FormLabel>
                   <FormControl>
                     <PostingEvidenceUpload
+                      invalid={!!form.formState.errors.evidenceIds}
                       items={evidenceItems}
                       onFiles={handleEvidenceFiles}
                       onRemove={
@@ -945,6 +980,8 @@ export default function IncomeExpensePostingDialog({
               )}
             />
 
+            {adoptError && <p role="alert" className="text-sm text-destructive">Chưa kiểm tra được chứng từ đã đính kèm. Đóng và mở lại phiếu để tải lại, hoặc thêm chứng từ mới.</p>}
+            {submitError && <p role="alert" className="text-sm text-destructive">{submitError}</p>}
             {!capabilityOk && (
               <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
                 {mode === 'APPROVE_AND_POST'
@@ -968,7 +1005,7 @@ export default function IncomeExpensePostingDialog({
               </Button>
               <Button
                 type="submit"
-                disabled={isSubmitting || committing || uploading || !capabilityOk}
+                disabled={cashbookError || reconcileRequired || isSubmitting || committing || uploading || !capabilityOk}
               >
                 {isSubmitting || committing ? 'Đang xử lý...' : title}
               </Button>

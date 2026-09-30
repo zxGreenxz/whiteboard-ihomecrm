@@ -1,3 +1,4 @@
+import { FinancialWorkflowError } from './financialWorkflowError';
 import { supabase } from "@/integrations/supabase/client";
 import { createSignedUrlBatched } from "./signedUrlBatcher";
 import { compressImage } from "./imageCompress";
@@ -120,20 +121,29 @@ export async function uploadFileDetailed(
   const stored = { type: toUpload.type, size: toUpload.size };
 
   // Bucket đã chuyển sang R2 → upload qua Worker (egress $0). Còn lại: Supabase.
-  if (isR2Bucket(bucket)) {
-    return { ...stored, url: await uploadToR2(bucket, key, toUpload), path: key };
+  try {
+    if (isR2Bucket(bucket)) {
+      const url = await uploadToR2(bucket, key, toUpload);
+      if (typeof url !== 'string' || !url.trim()) throw new Error('Missing upload receipt');
+      return { ...stored, url, path: key };
+    }
+
+    const { data, error } = await uploadToStorageWithDeadline(bucket, key, toUpload, {
+      cacheControl: "31536000", // 1 năm — file đặt tên theo timestamp, không đổi
+      upsert: false,
+    });
+    if (error) throw error;
+    if (!data || data.path !== key) throw new Error('Missing matching upload receipt');
+    return { ...stored, url: getPublicUrl(bucket, data.path), path: data.path };
+  } catch (error) {
+    const status = error && typeof error === 'object' && 'statusCode' in error ? Number(error.statusCode) : null;
+    const rejected = status !== null && [400,401,403,404,405,409,413,415,422,429].includes(status);
+    const message = rejected
+      ? 'Máy chủ đã từ chối tải tệp. Giữ tệp và kiểm tra quyền hoặc điều kiện tải tệp trước khi thử lại.'
+      : (error instanceof UploadTimeoutError ? 'Tải file quá lâu. ' : '') + 'Chưa xác nhận được tệp đã tải. Giữ tệp và đường dẫn để đối chiếu; không tải lại tệp này khi kết quả còn chưa rõ.';
+    throw new FinancialWorkflowError(message, rejected ? 'failure' : 'unknown',
+      rejected ? [] : [{ id: `${bucket}/${key}`, label: 'Đường dẫn tệp cần đối chiếu' }], error);
   }
-
-  const { data, error } = await uploadToStorageWithDeadline(bucket, key, toUpload, {
-    cacheControl: "31536000", // 1 năm — file đặt tên theo timestamp, không đổi
-    upsert: false,
-  });
-
-  if (error) {
-    throw error;
-  }
-
-  return { ...stored, url: getPublicUrl(bucket, data.path), path: data.path };
 }
 
 /**

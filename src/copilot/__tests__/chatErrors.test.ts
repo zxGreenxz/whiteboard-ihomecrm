@@ -66,16 +66,17 @@ describe('dienGiaiLoiChat', () => {
     );
   });
 
-  it('mã LẠ vẫn kéo theo câu gốc, không hiện trơ một token', () => {
+  it('mã lạ có phản hồi an toàn, không lộ chi tiết máy chủ', () => {
     // Đây là lý do panel gửi CẢ mã lẫn câu. Gửi mỗi `code` thì người dùng đọc
     // "Lỗi: busy" và không có gì để chụp màn hình gửi đi.
     const ra = dienGiaiLoiChat('busy: Too many concurrent requests');
-    expect(ra).toContain('Too many concurrent requests');
+    expect(ra).not.toContain('Too many concurrent requests');
+    expect(ra).toContain('chưa');
     expect(ra).not.toBe('Lỗi: busy');
   });
 
-  it('lỗi lạ vẫn hiện nguyên văn — giấu đi thì không ai gỡ được', () => {
-    expect(dienGiaiLoiChat('ECONNRESET')).toBe('Lỗi: ECONNRESET');
+  it('lỗi kết nối không hiện mã kỹ thuật', () => {
+    expect(dienGiaiLoiChat('ECONNRESET')).not.toContain('ECONNRESET');
   });
 
   it('chạm trần TOKEN nói đúng là token, không nói USD', () => {
@@ -128,7 +129,7 @@ describe('dienGiaiLoiChat', () => {
   });
 
   it('chuỗi rỗng cũng không làm vỡ định dạng', () => {
-    expect(dienGiaiLoiChat('')).toBe('Lỗi: ');
+    expect(dienGiaiLoiChat('')).toContain('chưa');
   });
 });
 
@@ -195,3 +196,5 @@ describe('dienGiaiLoiKeHoach — uỷ quyền đứng (G5-B)', () => {
     }
   });
 });
+
+ it('lỗi kế hoạch lạ không lộ SQL và không mời chạy lại khi chưa rõ kết quả', () => { const message = dienGiaiLoiKeHoach('SQLSTATE 23505 private_table'); expect(message).not.toMatch(/SQLSTATE|23505|private_table|thử lại/); expect(message).toContain('Kiểm tra'); });

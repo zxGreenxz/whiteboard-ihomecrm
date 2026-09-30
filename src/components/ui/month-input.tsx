@@ -3,7 +3,7 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 
-interface MonthInputProps {
+interface MonthInputProps extends Omit<React.ComponentPropsWithoutRef<'input'>, 'value' | 'onChange' | 'onBlur'> {
   /** Giá trị 'YYYY-MM' (rỗng = chưa chọn). */
   value?: string;
   onChange?: (month: string) => void;
@@ -18,9 +18,10 @@ interface MonthInputProps {
  * Dùng cho "kỳ áp dụng" của hạng mục thu/chi.
  */
 export const MonthInput = React.forwardRef<HTMLInputElement, MonthInputProps>(
-  function MonthInput({ value, onChange, onBlur, name, disabled, className }, ref) {
+  function MonthInput({ value, onChange, onBlur, name, disabled, className, ...props }, ref) {
     return (
       <Input
+        {...props}
         ref={ref}
         type="month"
         name={name}

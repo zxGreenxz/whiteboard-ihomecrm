@@ -23,6 +23,7 @@ import MeterReadingList from "@/components/meter-readings/MeterReadingList";
 import MeterReadingActions from "@/components/meter-readings/MeterReadingActions";
 import MeterReadingForm from "@/components/meter-readings/MeterReadingForm";
 import MeterReadingImportDialog from "@/components/meter-readings/MeterReadingImportDialog";
+import { QueryRegion } from '@/components/errors/QueryRegion';
 import {
   useMeterReadingsList,
   useDeleteMeterReading,
@@ -58,7 +59,7 @@ const MeterReadingsDesktop = () => {
   const pagination = usePagination(20);
 
   // --- Data hooks ---
-  const { data: listResult, isLoading } = useMeterReadingsList(
+  const readingsQuery = useMeterReadingsList(
     {
       building_id: filters.building_id ?? undefined,
       room_id: filters.room_id ?? undefined,
@@ -68,6 +69,7 @@ const MeterReadingsDesktop = () => {
     },
     { page: pagination.page, pageSize: pagination.pageSize }
   );
+  const { data: listResult, isLoading } = readingsQuery;
 
   const readings = listResult?.data ?? [];
   const totalCount = listResult?.totalCount ?? 0;
@@ -116,6 +118,7 @@ const MeterReadingsDesktop = () => {
 
   return (
     <MainLayout title="Ghi chỉ số" subtitle="Tài chính → Ghi chỉ số" icon={Gauge}>
+      <QueryRegion label="danh sách chỉ số công tơ" queries={[readingsQuery]}>
       <div className="space-y-4">
         {/* Header: Action buttons */}
         <div className="flex items-center justify-end gap-2">
@@ -188,6 +191,7 @@ const MeterReadingsDesktop = () => {
         </AlertDialogContent>
       </AlertDialog>
 
+      </QueryRegion>
     </MainLayout>
   );
 };

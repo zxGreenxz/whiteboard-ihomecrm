@@ -1,3 +1,10 @@
+import {readProviders,readProviderPrices,readAdminEntitlements,readProfileBrief,readAdminSettings} from '../providerReadModels';
+import { runPersistentCopilotAdminWrite } from './adminPersistence';
+import { fetchAllRows } from "@/lib/supabaseFetchAll";
+import { saveCopilotSettings, addCopilotEntitlement, changeCopilotEntitlement, removeCopilotEntitlement, saveCopilotProvider, copilotAdminOutcomeUnknown, CopilotAccountMissingError, CopilotAdminUnknownError } from './adminWrites';
+import { actionErrorMessage, notifyActionError } from '@/lib/actionFeedback';
+import { focusFirstError } from '@/lib/formErrors';
+import { QueryRegion } from '@/components/errors/QueryRegion';
 // Trang quản trị AI Copilot (Phase 4 PLAN.md) — /settings/ai-copilot
 // - SUPER ADMIN: 4 tab đầy đủ (Cài đặt / Người dùng / Providers / Sử dụng)
 // - Owner/user thường có entitlement: chỉ tab Sử dụng (RLS tự scope: user thấy
@@ -58,6 +65,7 @@ interface SettingsRow {
 
 const useSettings = () =>
   useQuery({
+    meta: { label: 'dữ liệu quản trị Copilot', errorDisplay: 'inline' },
     queryKey: ['ai-copilot-settings'],
     queryFn: async (): Promise<SettingsRow | null> => {
       const { data, error } = await supabase
@@ -75,7 +83,7 @@ const useSettings = () =>
       // THỨ TỰ PHÁT HÀNH — không đảo được: migration `20260903034632` phải APPLY
       // TRƯỚC khi web lên. Deploy web trước thì `.select()` này trả 400 "column
       // does not exist" và CẢ tab Cài đặt chết, không riêng hai ô mới.
-      return (data ?? null) as unknown as SettingsRow | null;
+      return readAdminSettings<SettingsRow>(data);
     },
   });
 
@@ -88,6 +96,7 @@ interface EntitlementRow {
 
 const useEntitlements = (enabled: boolean) =>
   useQuery({
+    meta: { label: 'dữ liệu quản trị Copilot', errorDisplay: 'inline' },
     queryKey: ['ai-copilot-entitlements-admin'],
     enabled,
     queryFn: async (): Promise<EntitlementRow[]> => {
@@ -98,13 +107,14 @@ const useEntitlements = (enabled: boolean) =>
         .select('user_id, chat_enabled, ui_control_enabled')
         .order('created_at', { ascending: true });
       if (error) throw error;
-      const rows = (data ?? []) as EntitlementRow[];
+      const rows = readAdminEntitlements(data);
       if (!rows.length) return rows;
-      const { data: profs } = await supabase
+      const { data: profs, error: profilesError } = await supabase
         .from('profiles')
         .select('id, email, full_name')
         .in('id', rows.map((r) => r.user_id));
-      const byId = new Map((profs ?? []).map((p: any) => [p.id, p]));
+      if (profilesError) throw profilesError;
+      const byId = new Map(readProfileBrief(profs).map(p => [p.id, p]));
       return rows.map((r) => ({ ...r, profile: byId.get(r.user_id) ?? null }));
     },
   });
@@ -128,6 +138,7 @@ function providerModelCost(model: ProviderModel): string {
 
 const useProvidersAdmin = (enabled: boolean) =>
   useQuery({
+    meta: { label: 'dữ liệu quản trị Copilot', errorDisplay: 'inline' },
     queryKey: ['ai-providers-admin'],
     enabled,
     queryFn: async (): Promise<ProviderRow[]> => {
@@ -136,7 +147,7 @@ const useProvidersAdmin = (enabled: boolean) =>
         .select('provider, enabled, label, models, default_model, data_class')
         .order('provider');
       if (error) throw error;
-      return (data ?? []) as ProviderRow[];
+      return readProviders(data);
     },
   });
 
@@ -153,6 +164,14 @@ interface UsageRow {
   created_at: string;
 }
 
+function validTokenRow(row: unknown): row is DongTokenHomNay {
+  if (!row || typeof row !== 'object' || Array.isArray(row)) return false;
+  const record = row as Record<string, unknown>;
+  return typeof record.user_id === 'string' && !!record.user_id
+    && (record.owner_id === null || typeof record.owner_id === 'string' && !!record.owner_id)
+    && (record.total_tokens === null || typeof record.total_tokens === 'number' && Number.isSafeInteger(record.total_tokens) && record.total_tokens >= 0);
+}
+
 function formatUsageCost(costUsd: number | null, reservedCostUsd: number | null): string {
   // A reservation is only an estimate; a missing finalized cost is unknown.
   if (costUsd === null) return 'unknown';
@@ -162,17 +181,19 @@ function formatUsageCost(costUsd: number | null, reservedCostUsd: number | null)
 
 const useUsage = () =>
   useQuery({
+    meta: { label: 'dữ liệu quản trị Copilot', errorDisplay: 'inline' },
     queryKey: ['ai-usage-7d'],
     queryFn: async (): Promise<UsageRow[]> => {
       const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
-      const { data, error } = await supabase
+      const data = await fetchAllRows<UsageRow>((from, to) => supabase
         .from('ai_usage_logs')
         .select('user_id, owner_id, provider, model, feature, total_tokens, cost_usd, reserved_cost_usd, status, created_at')
         .gte('created_at', since)
         .order('created_at', { ascending: false })
-        .limit(1000);
-      if (error) throw error;
-      return (data ?? []) as UsageRow[];
+        .order('id', { ascending: true })
+        .range(from, to), { label: 'Copilot usage 7 ngày' });
+      if (!data || data.some(row => !validTokenRow(row) || !['provider','model','feature','status','created_at'].every(key => typeof (row as unknown as Record<string, unknown>)[key] === 'string') || ![row.cost_usd,row.reserved_cost_usd].every(value => value === null || typeof value === 'number' && Number.isFinite(value) && value >= 0))) throw new TypeError('Unconfirmed Copilot usage rows');
+      return data;
     },
   });
 
@@ -194,19 +215,18 @@ const useTokenHomNay = () => {
   // hôm qua trong khi database đã reset hạn mức.
   const mocNgay = mocDauNgayVN(new Date());
   return useQuery({
+    meta: { label: 'dữ liệu quản trị Copilot', errorDisplay: 'inline' },
     queryKey: ['ai-usage-token-hom-nay', mocNgay],
     queryFn: async (): Promise<DongTokenHomNay[]> => {
-      const { data, error } = await supabase
+      const data = await fetchAllRows<DongTokenHomNay>((from, to) => supabase
         .from('ai_usage_logs')
         .select('user_id, owner_id, total_tokens')
         .gte('created_at', mocNgay)
-        // ORDER trước LIMIT: không có nó thì 5000 dòng được giữ lại là 5000 dòng
-        // TUỲ Ý, và tổng bị hụt một khoản không đoán được. Có nó thì phần bị cắt
-        // là phần CŨ NHẤT trong ngày — vẫn hụt, nhưng hụt một cách biết trước.
         .order('created_at', { ascending: false })
-        .limit(5000);
-      if (error) throw error;
-      return (data ?? []) as DongTokenHomNay[];
+        .order('id', { ascending: true })
+        .range(from, to), { label: 'Copilot token hôm nay' });
+      if (!data || data.some(row => !validTokenRow(row))) throw new TypeError('Unconfirmed Copilot token rows');
+      return data;
     },
   });
 };
@@ -214,21 +234,24 @@ const useTokenHomNay = () => {
 /** Bảng giá model — chỉ để biết model nào `self_hosted`. RLS cho mọi authenticated đọc. */
 const useProvidersGia = () =>
   useQuery({
+    meta: { label: 'dữ liệu quản trị Copilot', errorDisplay: 'inline' },
     queryKey: ['ai-providers-gia'],
     queryFn: async (): Promise<{ provider: string; models: unknown }[]> => {
       const { data, error } = await supabase.from('ai_providers').select('provider, models');
       if (error) throw error;
-      return (data ?? []) as { provider: string; models: unknown }[];
+      return readProviderPrices(data);
     },
   });
 
 const useProfileNames = (ids: string[]) =>
   useQuery({
+    meta: { label: 'dữ liệu quản trị Copilot', errorDisplay: 'inline' },
     queryKey: ['profiles-brief', [...ids].sort()],
     enabled: ids.length > 0,
     queryFn: async (): Promise<Record<string, string>> => {
-      const { data } = await supabase.from('profiles').select('id, full_name, email').in('id', ids);
-      return Object.fromEntries((data ?? []).map((p: any) => [p.id, p.full_name || p.email || p.id.slice(0, 8)]));
+      const { data, error } = await supabase.from('profiles').select('id, full_name, email').in('id', ids);
+      if (error) throw error;
+      return Object.fromEntries(readProfileBrief(data).map(p => [p.id, p.full_name || p.email || p.id.slice(0, 8)]));
     },
   });
 
@@ -236,33 +259,62 @@ const useProfileNames = (ids: string[]) =>
 
 function SettingsTab() {
   const qc = useQueryClient();
-  const { data: settings, isLoading } = useSettings();
+  const settingsQuery = useSettings();
+  const { data: settings, isLoading } = settingsQuery;
   const [draft, setDraft] = useState<SettingsRow | null>(null);
+  const [numericDraft, setNumericDraft] = useState<Record<string, string>>({});
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [saveError, setSaveError] = useState('');
   const cur = draft ?? settings ?? null;
 
   const save = useMutation({
-    mutationFn: async (s: SettingsRow) => {
-      const { error } = await supabase
-        .from('ai_copilot_settings')
-        // Cùng lý do với `useSettings`: hai cột cap token chưa có trong
-        // types.ts cho tới khi `20260903034632` được apply.
-        .update({ ...s, updated_at: new Date().toISOString() } as unknown as Record<string, never>)
-        .eq('id', true);
-      if (error) throw error;
-    },
+    mutationFn: (settings: SettingsRow) => runPersistentCopilotAdminWrite('settings', 'lưu cài đặt Copilot', () => saveCopilotSettings({...settings})),
     onSuccess: () => {
-      toast.success('Đã lưu cài đặt');
+      toast.success('Đã lưu cài đặt Copilot');
       setDraft(null);
+      setNumericDraft({});
+      setFieldErrors({});
+      setSaveError('');
       void qc.invalidateQueries({ queryKey: ['ai-copilot-settings'] });
     },
-    onError: (e: Error) => toast.error(`Lỗi lưu cài đặt: ${e.message}`),
+    onError: (e: Error) => setSaveError(actionErrorMessage(e, 'Chưa lưu được cài đặt Copilot')),
   });
 
+  if (settingsQuery.isError) return <QueryRegion label="cấu hình Copilot" queries={[settingsQuery]}><p role="alert">Chưa cập nhật được cấu hình Copilot.</p></QueryRegion>;
   if (isLoading) return <Loader2 className="h-5 w-5 animate-spin" />;
-  if (!cur) return <div className="text-sm text-red-600">Chưa có dòng cài đặt (seed migration 20260710200000).</div>;
+  if (!cur) return <div className="text-sm text-red-600">Chưa có cấu hình Copilot. Liên hệ quản trị viên để thiết lập.</div>;
 
   const set = (patch: Partial<SettingsRow>) => setDraft({ ...cur, ...patch });
-  const num = (v: string) => (Number.isFinite(parseFloat(v)) ? parseFloat(v) : 0);
+  const numberFields = ['rate_per_min', 'daily_usd_cap_user', 'daily_usd_cap_tenant', 'daily_usd_cap_global', 'daily_tokens_cap_user', 'daily_tokens_cap_tenant'] as const;
+  const numberInput = (name: typeof numberFields[number]) => ({
+    name, type: 'text', inputMode: 'decimal' as const, disabled: save.isPending,
+    value: numericDraft[name] ?? String(cur[name]),
+    'aria-invalid': Boolean(fieldErrors[name]),
+    'aria-describedby': fieldErrors[name] ? `copilot-settings-${name}-error` : undefined,
+    onChange: (event: React.ChangeEvent<HTMLInputElement>) => {
+      setDraft({ ...cur });
+      setNumericDraft(previous => ({ ...previous, [name]: event.target.value }));
+      setFieldErrors(previous => { const next = { ...previous }; delete next[name]; return next; });
+    },
+  });
+  const saveSettings = () => {
+    const errors: Record<string, string> = {};
+    const values = { ...cur };
+    for (const name of numberFields) {
+      const raw = numericDraft[name] ?? String(cur[name]);
+      const value = Number(raw);
+      const integer = name === 'rate_per_min' || name.startsWith('daily_tokens');
+      if (!raw.trim() || !Number.isFinite(value) || value < (name === 'rate_per_min' ? 1 : 0) ||
+          (integer && (!Number.isInteger(value) || value > 2147483647)) ||
+          (!integer && (value >= 1000000 || !/^\d+(?:\.\d{1,4})?$/.test(raw.trim())))) {
+        errors[name] = integer ? `Nhập số nguyên ${name === 'rate_per_min' ? 'lớn hơn 0' : 'không âm'} trong giới hạn 2.147.483.647.` : 'Nhập hạn mức USD không âm, nhỏ hơn 1.000.000 và tối đa 4 chữ số sau dấu chấm.';
+      } else values[name] = value;
+    }
+    setFieldErrors(errors);
+    if (Object.keys(errors).length) { void focusFirstError(errors, { order: numberFields }); return; }
+    setSaveError('');
+    save.mutate(values);
+  };
 
   return (
     <div className="max-w-lg space-y-4">
@@ -271,51 +323,39 @@ function SettingsTab() {
           <div className="font-medium text-sm">Chat (kill switch toàn hệ thống)</div>
           <div className="text-xs text-muted-foreground">Tắt = mọi user mất chat ngay lập tức</div>
         </div>
-        <Switch checked={cur.chat_enabled} onCheckedChange={(v) => set({ chat_enabled: v })} />
+        <Switch disabled={save.isPending} checked={cur.chat_enabled} onCheckedChange={(v) => set({ chat_enabled: v })} />
       </div>
       <div className="flex items-center justify-between rounded border p-3">
         <div>
           <div className="font-medium text-sm">Điều khiển UI (experimental)</div>
           <div className="text-xs text-muted-foreground">Tắt = mọi user mất UI-control ngay</div>
         </div>
-        <Switch checked={cur.ui_control_enabled} onCheckedChange={(v) => set({ ui_control_enabled: v })} />
+        <Switch disabled={save.isPending} checked={cur.ui_control_enabled} onCheckedChange={(v) => set({ ui_control_enabled: v })} />
       </div>
       <div className="grid grid-cols-2 gap-3">
         <label className="text-sm">
           Rate limit (request/phút/user)
-          <Input type="number" value={cur.rate_per_min} onChange={(e) => set({ rate_per_min: Math.max(1, Math.round(num(e.target.value))) })} />
+          <Input {...numberInput('rate_per_min')} />
         </label>
         <label className="text-sm">
           Cap USD/ngày mỗi USER
-          <Input type="number" step="0.1" value={cur.daily_usd_cap_user} onChange={(e) => set({ daily_usd_cap_user: num(e.target.value) })} />
+          <Input {...numberInput('daily_usd_cap_user')} />
         </label>
         <label className="text-sm">
           Cap USD/ngày mỗi TENANT
-          <Input type="number" step="0.1" value={cur.daily_usd_cap_tenant} onChange={(e) => set({ daily_usd_cap_tenant: num(e.target.value) })} />
+          <Input {...numberInput('daily_usd_cap_tenant')} />
         </label>
         <label className="text-sm">
           Cap USD/ngày TOÀN HỆ THỐNG
-          <Input type="number" step="0.1" value={cur.daily_usd_cap_global} onChange={(e) => set({ daily_usd_cap_global: num(e.target.value) })} />
+          <Input {...numberInput('daily_usd_cap_global')} />
         </label>
         <label className="text-sm">
           Cap TOKEN/ngày mỗi USER
-          <Input
-            type="number"
-            step="10000"
-            min={0}
-            value={cur.daily_tokens_cap_user}
-            onChange={(e) => set({ daily_tokens_cap_user: Math.max(0, Math.round(num(e.target.value))) })}
-          />
+          <Input {...numberInput('daily_tokens_cap_user')} />
         </label>
         <label className="text-sm">
           Cap TOKEN/ngày mỗi TENANT
-          <Input
-            type="number"
-            step="10000"
-            min={0}
-            value={cur.daily_tokens_cap_tenant}
-            onChange={(e) => set({ daily_tokens_cap_tenant: Math.max(0, Math.round(num(e.target.value))) })}
-          />
+          <Input {...numberInput('daily_tokens_cap_tenant')} />
         </label>
       </div>
       <p className="rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">
@@ -324,7 +364,10 @@ function SettingsTab() {
         $0 và ba cap USD không bao giờ chạm. Hàng rào khối lượng thật là hai ô <strong>cap
         TOKEN</strong> ở trên. Đặt <strong>0 = tắt</strong> hạn mức đó.
       </p>
-      <Button disabled={!draft || save.isPending} onClick={() => cur && save.mutate(cur)}>
+      {Object.entries(fieldErrors).map(([name, message]) => <p key={name} id={`copilot-settings-${name}-error`} role="alert" className="text-sm text-destructive">{message}</p>)}
+      {saveError && !copilotAdminOutcomeUnknown(save.error) && <p role="alert" className="text-sm text-destructive">{saveError}</p>}
+      {copilotAdminOutcomeUnknown(save.error) && <div role="alert" className="text-sm text-destructive">Chưa xác nhận được kết quả lưu cài đặt. Giữ nội dung đang nhập và đọc lại cấu hình trước khi thực hiện tiếp.<Button type="button" variant="outline" onClick={() => void settingsQuery.refetch()}>Đọc lại cấu hình</Button></div>}
+      <Button disabled={!draft || save.isPending || copilotAdminOutcomeUnknown(save.error)} onClick={saveSettings}>
         {save.isPending ? 'Đang lưu…' : 'Lưu cài đặt'}
       </Button>
     </div>
@@ -351,6 +394,9 @@ function RolloutTab() {
   const [evidenceLink, setEvidenceLink] = useState('');
   const [rollbackReference, setRollbackReference] = useState('');
   const [pending, setPending] = useState<string | null>(null);
+  const [rolloutErrors, setRolloutErrors] = useState<Record<string, string>>({});
+  const [rolloutError, setRolloutError] = useState('');
+  const [rolloutUnknown, setRolloutUnknown] = useState(false);
   const rows = rolloutRowsFromAvailability(availability);
   const nhom = nhomRolloutTheoScope(rows);
 
@@ -359,17 +405,21 @@ function RolloutTab() {
     contractId: string,
     state: CopilotFlagState,
   ) => {
-    if (!availability) {
-      toast.error('Rollout đang bị khóa: chưa có snapshot server còn hiệu lực.');
+    if (!availability || rolloutUnknown) {
+      setRolloutError('Chưa có trạng thái rollout đã xác nhận. Đọc lại cấu hình trước khi chuyển tiếp.');
       return;
     }
-    if (!reason.trim() || !evidenceLink.trim() || !rollbackReference.trim()) {
-      toast.error('Nhập lý do, liên kết bằng chứng và tham chiếu rollback trước.');
-      return;
-    }
+    const errors: Record<string, string> = {};
+    if (!reason.trim()) errors.rolloutReason = 'Nhập lý do chuyển rollout.';
+    if (!evidenceLink.trim()) errors.rolloutEvidence = 'Nhập liên kết bằng chứng.';
+    if (!rollbackReference.trim()) errors.rolloutRollback = 'Nhập tham chiếu rollback.';
+    setRolloutErrors(errors);
+    if (Object.keys(errors).length) { await focusFirstError(errors, { order: ['rolloutReason', 'rolloutEvidence', 'rolloutRollback'] }); return; }
+    setRolloutError('');
     setPending(`${scope}:${contractId}:${state}`);
     try {
-      await setCopilotFeatureFlagV2({
+      await runPersistentCopilotAdminWrite(`rollout:${scope}:${contractId}`, 'đổi trạng thái rollout Copilot', async () => {
+      const receipt = await setCopilotFeatureFlagV2({
         // Scope lấy từ CHÍNH hàng đang bấm. Chết cứng 'page' thì một contract
         // scope `action` sẽ gửi sai khoá và RPC trả `unknown_rollout_contract`
         // — thông báo đó đọc như "contract không tồn tại", không như "gửi nhầm
@@ -384,11 +434,18 @@ function RolloutTab() {
         expiresAt: null,
         rollbackReference: rollbackReference.trim(),
       });
+      const result = receipt as { scope?: unknown; contract_id?: unknown; state?: unknown; revision?: unknown } | null;
+      if (!result || result.scope !== scope || result.contract_id !== contractId || result.state !== state ||
+          !Number.isSafeInteger(result.revision) || (result.revision as number) <= availability.revision) throw new CopilotAdminUnknownError();
+      return result;
+      });
       toast.success(`Đã chuyển ${contractId} → ${state}`);
       await qc.invalidateQueries({ queryKey: ['copilot-availability'] });
       await refetch();
     } catch (error) {
-      toast.error(formatCopilotRolloutError(error));
+      const unknown = copilotAdminOutcomeUnknown(error);
+      setRolloutUnknown(unknown);
+      setRolloutError(unknown ? 'Chưa xác nhận được kết quả chuyển rollout. Giữ lý do và đối chiếu trạng thái trước khi thực hiện tiếp.' : formatCopilotRolloutError(error));
       if (String(error instanceof Error ? error.message : error).includes('stale_revision')) {
         await refetch();
       }
@@ -431,18 +488,20 @@ function RolloutTab() {
       <div className="grid gap-3 md:grid-cols-3">
         <label className="text-sm">
           Lý do bắt buộc
-          <Input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Ví dụ: pilot đã đạt acceptance" />
+          <Input name="rolloutReason" aria-invalid={!!rolloutErrors.rolloutReason} aria-describedby={rolloutErrors.rolloutReason ? "copilot-rolloutReason-error" : undefined} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Ví dụ: pilot đã đạt acceptance" />
         </label>
         <label className="text-sm">
           Liên kết bằng chứng
-          <Input value={evidenceLink} onChange={(event) => setEvidenceLink(event.target.value)} placeholder="URL / mã run / ticket" />
+          <Input name="rolloutEvidence" aria-invalid={!!rolloutErrors.rolloutEvidence} aria-describedby={rolloutErrors.rolloutEvidence ? "copilot-rolloutEvidence-error" : undefined} value={evidenceLink} onChange={(event) => setEvidenceLink(event.target.value)} placeholder="URL / mã run / ticket" />
         </label>
         <label className="text-sm">
           Tham chiếu rollback
-          <Input value={rollbackReference} onChange={(event) => setRollbackReference(event.target.value)} placeholder="SHA / ticket rollback" />
+          <Input name="rolloutRollback" aria-invalid={!!rolloutErrors.rolloutRollback} aria-describedby={rolloutErrors.rolloutRollback ? "copilot-rolloutRollback-error" : undefined} value={rollbackReference} onChange={(event) => setRollbackReference(event.target.value)} placeholder="SHA / ticket rollback" />
         </label>
       </div>
 
+      {Object.entries(rolloutErrors).map(([name, message]) => <p key={name} id={`copilot-${name}-error`} role="alert" className="text-sm text-destructive">{message}</p>)}
+      {rolloutError && <p role="alert" className="text-sm text-destructive">{rolloutError}</p>}
       {!selectedOrganizationId || availability === null || (availabilityLoading && !availability) ? (
         <div className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
           BLOCKED — chưa có snapshot rollout server hợp lệ; không cho phép thay đổi hay suy đoán trạng thái.
@@ -481,7 +540,7 @@ function RolloutTab() {
                           key={nextState}
                           size="sm"
                           variant={nextState === 'disabled' ? 'destructive' : 'outline'}
-                          disabled={!availability || pending !== null || !reason.trim() || !evidenceLink.trim() || !rollbackReference.trim()}
+                          disabled={!availability || pending !== null || rolloutUnknown}
                           onClick={() => void transition(row.scope, row.contractId, nextState)}
                         >
                           {pending === `${row.scope}:${row.contractId}:${nextState}` ? 'Đang lưu…' : nextState}
@@ -508,62 +567,50 @@ function RolloutTab() {
 
 function EntitlementsTab() {
   const qc = useQueryClient();
-  const { data: rows, isLoading } = useEntitlements(true);
+  const entitlementsQuery = useEntitlements(true);
+  const { data: rows, isLoading } = entitlementsQuery;
   const [email, setEmail] = useState('');
+  const [emailError, setEmailError] = useState('');
 
   const refresh = (): void => void qc.invalidateQueries({ queryKey: ['ai-copilot-entitlements-admin'] });
 
   const add = useMutation({
-    mutationFn: async (em: string) => {
-      const { data: prof, error: pErr } = await supabase
-        .from('profiles')
-        .select('id, email')
-        .ilike('email', em.trim())
-        .maybeSingle();
-      if (pErr) throw pErr;
-      if (!prof) throw new Error(`Không tìm thấy user với email "${em}"`);
-      const { error } = await supabase
-        .from('ai_copilot_entitlements')
-        .insert({ user_id: prof.id, chat_enabled: true, ui_control_enabled: false });
-      if (error) throw error;
-    },
+    mutationFn: (email: string) => runPersistentCopilotAdminWrite('entitlements', 'cấp quyền Copilot', () => addCopilotEntitlement(email)),
     onSuccess: () => { toast.success('Đã cấp quyền chat'); setEmail(''); refresh(); },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => {
+      if(e instanceof CopilotAccountMissingError){setEmailError(e.message);void focusFirstError({email:e.message});}
+      else notifyActionError(e, "Chưa xác nhận được kết quả cấp quyền Copilot");
+    },
   });
 
   const toggle = useMutation({
-    mutationFn: async (p: { user_id: string; field: 'chat_enabled' | 'ui_control_enabled'; value: boolean }) => {
-      // Khoá tính toán `{ [p.field]: … }` bị TypeScript nới thành `string`, nên
-      // supabase-js không còn kiểm được tên cột. Viết tường minh hai nhánh để
-      // cột sai là lỗi biên dịch chứ không phải PGRST204 lúc chạy.
-      const patch =
-        p.field === 'chat_enabled' ? { chat_enabled: p.value } : { ui_control_enabled: p.value };
-      const { error } = await supabase
-        .from('ai_copilot_entitlements')
-        .update(patch)
-        .eq('user_id', p.user_id);
-      if (error) throw error;
-    },
+    mutationFn: (input: Parameters<typeof changeCopilotEntitlement>[0]) => runPersistentCopilotAdminWrite('entitlements', 'đổi quyền Copilot', () => changeCopilotEntitlement(input)),
     onSuccess: refresh,
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => notifyActionError(e, "Chưa xác nhận được kết quả đổi quyền Copilot"),
   });
 
   const remove = useMutation({
-    mutationFn: async (user_id: string) => {
-      const { error } = await supabase.from('ai_copilot_entitlements').delete().eq('user_id', user_id);
-      if (error) throw error;
-    },
+    mutationFn: (userId: string) => runPersistentCopilotAdminWrite('entitlements', 'thu hồi quyền Copilot', () => removeCopilotEntitlement(userId)),
     onSuccess: () => { toast.success('Đã thu hồi (hiệu lực ngay)'); refresh(); },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => notifyActionError(e, "Chưa xác nhận được kết quả thu hồi quyền Copilot"),
   });
 
+  const entitlementUnknown = [add.error,toggle.error,remove.error].some(copilotAdminOutcomeUnknown);
+  const entitlementBusy = add.isPending || toggle.isPending || remove.isPending;
+  const submitEmail = () => {
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) { const message='Nhập email đã đăng ký của tài khoản cần cấp quyền.'; setEmailError(message); void focusFirstError({email:message}); return; }
+    setEmailError('');add.mutate(email);
+  };
+  if (entitlementsQuery.isError) return <QueryRegion label="quyền sử dụng Copilot" queries={[entitlementsQuery]}><p role="alert">Chưa cập nhật được quyền sử dụng Copilot.</p></QueryRegion>;
   if (isLoading) return <Loader2 className="h-5 w-5 animate-spin" />;
 
   return (
     <div className="space-y-4">
+      {entitlementUnknown && <div role="alert" className="text-sm text-destructive">Chưa xác nhận được kết quả đổi quyền Copilot. Đọc lại danh sách và đối chiếu tài khoản trước khi thực hiện tiếp.<Button type="button" variant="outline" onClick={() => void entitlementsQuery.refetch()}>Đọc lại quyền sử dụng</Button></div>}
+      {emailError && <p id="copilot-email-error" role="alert" className="text-sm text-destructive">{emailError}</p>}
       <div className="flex max-w-md gap-2">
-        <Input placeholder="Email user cần cấp quyền…" value={email} onChange={(e) => setEmail(e.target.value)} />
-        <Button disabled={!email.trim() || add.isPending} onClick={() => add.mutate(email)}>Cấp quyền</Button>
+        <Input aria-label="Email tài khoản cần cấp quyền" data-field-name="email" aria-invalid={!!emailError} aria-describedby={emailError ? "copilot-email-error" : undefined} placeholder="Email user cần cấp quyền…" value={email} onChange={(e) => setEmail(e.target.value)} />
+        <Button disabled={entitlementBusy || entitlementUnknown} onClick={submitEmail}>Cấp quyền</Button>
       </div>
       <div className="overflow-x-auto rounded border">
         <table className="w-full text-sm">
@@ -583,13 +630,13 @@ function EntitlementsTab() {
                   <div className="text-xs text-muted-foreground">{r.profile?.email ?? r.user_id}</div>
                 </td>
                 <td className="p-2">
-                  <Switch checked={r.chat_enabled} onCheckedChange={(v) => toggle.mutate({ user_id: r.user_id, field: 'chat_enabled', value: v })} />
+                  <Switch disabled={entitlementBusy || entitlementUnknown} checked={r.chat_enabled} onCheckedChange={(v) => toggle.mutate({ user_id: r.user_id, field: 'chat_enabled', value: v })} />
                 </td>
                 <td className="p-2">
-                  <Switch checked={r.ui_control_enabled} onCheckedChange={(v) => toggle.mutate({ user_id: r.user_id, field: 'ui_control_enabled', value: v })} />
+                  <Switch disabled={entitlementBusy || entitlementUnknown} checked={r.ui_control_enabled} onCheckedChange={(v) => toggle.mutate({ user_id: r.user_id, field: 'ui_control_enabled', value: v })} />
                 </td>
                 <td className="p-2 text-right">
-                  <Button variant="destructive" size="sm" onClick={() => remove.mutate(r.user_id)}>Thu hồi</Button>
+                  <Button disabled={entitlementBusy || entitlementUnknown} variant="destructive" size="sm" onClick={() => remove.mutate(r.user_id)}>Thu hồi</Button>
                 </td>
               </tr>
             ))}
@@ -610,50 +657,68 @@ function ProvidersTab() {
   // "Test key" đi qua đúng đường của người dùng thật — kể cả reserve_ai_usage —
   // nên nó cũng phải nói mình đang tiêu hạn mức của công ty nào.
   const { selectedOrganizationId } = useOrganization();
-  const { data: rows, isLoading } = useProvidersAdmin(true);
+  const providersQuery = useProvidersAdmin(true);
+  const { data: rows, isLoading } = providersQuery;
   const [editing, setEditing] = useState<string | null>(null);
   const [modelsDraft, setModelsDraft] = useState('');
+  const [modelErrors,setModelErrors] = useState<Record<string,string>>({});
+  const [modelSaveError,setModelSaveError] = useState('');
   const [defaultDraft, setDefaultDraft] = useState('');
   const [testing, setTesting] = useState<string | null>(null);
+  const [testFeedback,setTestFeedback] = useState<{provider:string;message:string}|null>(null);
 
   const refresh = (): void => void qc.invalidateQueries({ queryKey: ['ai-providers-admin'] });
 
   const update = useMutation({
-    mutationFn: async (p: { provider: string; patch: Record<string, unknown> }) => {
-      const { error } = await supabase
-        .from('ai_providers')
-        .update({ ...p.patch, updated_at: new Date().toISOString() })
-        .eq('provider', p.provider);
-      if (error) throw error;
-    },
+    mutationFn: (input: Parameters<typeof saveCopilotProvider>[0]) => runPersistentCopilotAdminWrite(`provider:${input.provider}`, 'lưu nhà cung cấp AI', () => saveCopilotProvider(input)),
     onSuccess: refresh,
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => notifyActionError(e, "Chưa xác nhận được kết quả lưu cấu hình nhà cung cấp AI"),
   });
 
-  const saveModels = (provider: string) => {
-    try {
-      const parsed = JSON.parse(modelsDraft);
-      if (!Array.isArray(parsed)) throw new Error('models phải là mảng [{id,label,input_price,output_price}]');
+  const saveModels = async (provider: string) => {
+    if(update.isPending || copilotAdminOutcomeUnknown(update.error)) return;
+    const errors: Record<string,string> = {};
+    setModelSaveError('');
+    let parsed: unknown;
+    try { parsed = JSON.parse(modelsDraft); }
+    catch { errors.models = 'Nội dung cấu hình mô hình chưa đúng định dạng JSON. Kiểm tra dấu ngoặc, dấu phẩy và dấu nháy.'; }
+    if(!errors.models && !Array.isArray(parsed)) errors.models = 'Cấu hình mô hình phải là một danh sách.';
+    if(Array.isArray(parsed)) {
       const problems = validateProviderModels(parsed);
-      if (problems.length) throw new Error(problems.join('; '));
-      if (parsed.some((model) => model?.pricing_mode === 'unknown')) {
-        throw new Error('unknown pricing không được bật; khai báo metered/free/self_hosted');
-      }
-      const defaultProblems = validateDefaultModel(parsed, defaultDraft || null);
-      if (defaultProblems.length) throw new Error(defaultProblems.join('; '));
-      update.mutate({ provider, patch: { models: parsed, default_model: defaultDraft || null } });
-      setEditing(null);
-      toast.success('Đã lưu models');
-    } catch (e) {
-      toast.error(`JSON không hợp lệ: ${e instanceof Error ? e.message : e}`);
+      if(problems.length) errors.models = 'Kiểm tra mã, tên, cách tính phí và giá của từng mô hình. Giá cần là số không âm.';
+      if(parsed.some(model => model?.pricing_mode === 'unknown')) errors.models = 'Chọn cách tính phí cho từng mô hình trước khi bật sử dụng.';
+      if(validateDefaultModel(parsed,defaultDraft || null).length) errors.defaultModel = 'Mô hình mặc định phải thuộc danh sách mô hình được khai báo và có cấu hình hợp lệ.';
     }
+    setModelErrors(errors);
+    if(Object.keys(errors).length) { await focusFirstError(errors,{order:['models','defaultModel']}); return; }
+    try {
+      await update.mutateAsync({provider,patch:{models:parsed,default_model:defaultDraft || null}});
+      setEditing(null);
+      toast.success('Đã lưu danh sách và mô hình mặc định của nhà cung cấp AI.');
+    } catch(error) { setModelSaveError(actionErrorMessage(error,'Chưa xác nhận được kết quả lưu cấu hình mô hình')); }
+  };
+
+  const revealModelErrors = (provider: ProviderRow, errors: Record<string, string>) => {
+    void focusFirstError(errors, {
+      order: ['models', 'defaultModel'],
+      reveal: () => {
+        if (editing !== provider.provider) {
+          setModelsDraft(JSON.stringify(provider.models ?? [], null, 2));
+          setDefaultDraft(provider.default_model ?? '');
+        }
+        setEditing(provider.provider);
+        setModelErrors(errors);
+        setModelSaveError('');
+      },
+    });
   };
 
   // Test key: gửi 1 completion nhỏ qua proxy (đi đủ gate + ghi usage)
   const testKey = async (r: ProviderRow) => {
     const models = Array.isArray(r.models) ? (r.models as any[]) : [];
     const modelId = r.default_model || models[0]?.id;
-    if (!modelId) { toast.error('Provider chưa khai báo model nào'); return; }
+    if (!modelId) { revealModelErrors(r,{models:'Thêm mô hình trước khi kiểm tra kết nối.'}); return; }
+    setTestFeedback(null);
     setTesting(r.provider);
     const t0 = Date.now();
     try {
@@ -667,18 +732,21 @@ function ProvidersTab() {
           max_tokens: 20,
         }),
       });
-      const body = (await res.json().catch((): null => null)) as
-        | { error?: { message?: string } }
-        | null;
-      if (res.ok) toast.success(`${r.label}: OK (${Date.now() - t0}ms)`);
-      else toast.error(`${r.label}: HTTP ${res.status} — ${body?.error?.message ?? 'lỗi'}`);
+      const body: unknown = await res.json().catch((): null => null);
+      if (!res.ok) throw {status: res.status};
+      const completion = body && typeof body === 'object' && !Array.isArray(body) ? body as Record<string, unknown> : null;
+      const choices = completion?.choices;
+      const first = Array.isArray(choices) && choices.length ? choices[0] : null;
+      if (!completion || completion.error || !first?.message || first.message.role !== 'assistant' || typeof first.message.content !== 'string' || !first.message.content.trim()) throw new TypeError('Unconfirmed provider completion receipt');
+      toast.success(`${r.label}: OK (${Date.now() - t0}ms)`);
     } catch (e) {
-      toast.error(`${r.label}: ${e instanceof Error ? e.message : e}`);
+      setTestFeedback({provider:r.provider,message:actionErrorMessage(e, `Chưa xác nhận được kết nối ${r.label}`)});
     } finally {
       setTesting(null);
     }
   };
 
+  if (providersQuery.isError) return <QueryRegion label="cấu hình nhà cung cấp AI" queries={[providersQuery]}><p role="alert">Chưa cập nhật được cấu hình nhà cung cấp AI.</p></QueryRegion>;
   if (isLoading) return <Loader2 className="h-5 w-5 animate-spin" />;
 
   return (
@@ -687,25 +755,28 @@ function ProvidersTab() {
         API key nạp qua Supabase Edge Function secrets (OPENROUTER_API_KEY, GROQ_API_KEY, GEMINI_API_KEY,
         DEEPSEEK_API_KEY, OPENAI_API_KEY, QWEN_API_KEY, ANTHROPIC_API_KEY) — bảng này chỉ bật/tắt + khai báo model/giá.
       </p>
+      {copilotAdminOutcomeUnknown(update.error) && <div role="alert" className="text-sm text-destructive">Chưa xác nhận được kết quả cập nhật nhà cung cấp AI. Giữ bản cấu hình đang nhập và đọc lại dữ liệu trước khi thực hiện tiếp.<Button type="button" variant="outline" onClick={() => void providersQuery.refetch()}>Đọc lại nhà cung cấp</Button></div>}
       {rows?.map((r) => (
         <div key={r.provider} className="rounded border p-3">
           <div className="flex flex-wrap items-center gap-3">
             <Switch
+              disabled={update.isPending || copilotAdminOutcomeUnknown(update.error)}
               checked={r.enabled}
               onCheckedChange={(v) => {
                 if (v) {
                   const problems = validateProviderModels(r.models);
                   if (problems.length || (Array.isArray(r.models) && (r.models as ProviderModel[]).some((m) => m.pricing_mode === 'unknown'))) {
-                    toast.error('Không thể bật provider: models phải có pricing hợp lệ, không unknown');
+                    revealModelErrors(r, { models: 'Kiểm tra cách tính phí và giá của từng mô hình trước khi bật nhà cung cấp.' });
                     return;
                   }
                   const defaultProblems = validateDefaultModel(r.models, r.default_model);
-                  if (defaultProblems.length) { toast.error(defaultProblems.join('; ')); return; }
+                  if (defaultProblems.length) { revealModelErrors(r, { defaultModel: 'Chọn mô hình mặc định hợp lệ trước khi bật nhà cung cấp.' }); return; }
                 }
                 update.mutate({ provider: r.provider, patch: { enabled: v } });
               }}
             />
             <span className="font-medium">{r.label}</span>
+            {testFeedback?.provider === r.provider && <p role="alert" className="text-sm text-destructive">{testFeedback.message}</p>}
             <span className="rounded bg-muted px-1.5 py-0.5 text-xs">{r.provider}</span>
             {r.data_class === 'local_only' && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800">local-only</span>}
             <span className="text-xs text-muted-foreground">
@@ -745,6 +816,8 @@ function ProvidersTab() {
           )}
           {editing === r.provider && (
             <div className="mt-3 space-y-2">
+              {Object.entries(modelErrors).map(([field,message]) => <p key={field} id={`copilot-model-${field}-error`} role="alert" className="text-sm text-destructive">{message}</p>)}
+              {modelSaveError && <p role="alert" className="text-sm text-destructive">{modelSaveError}</p>}
               {Array.isArray(r.models) && r.models.length > 0 && (
                 <div className="rounded bg-muted/40 p-2 text-xs">
                   {(r.models as ProviderModel[]).map((model) => (
@@ -757,12 +830,13 @@ function ProvidersTab() {
               )}
               <textarea
                 className="h-40 w-full rounded border bg-background p-2 font-mono text-xs"
+                name="models" aria-invalid={!!modelErrors.models} aria-describedby={modelErrors.models ? "copilot-model-models-error" : undefined} style={modelErrors.models ? {borderColor:"hsl(var(--destructive))"} : undefined}
                 value={modelsDraft}
                 onChange={(e) => setModelsDraft(e.target.value)}
               />
               <div className="flex items-center gap-2">
-                <Input className="max-w-sm" placeholder="default_model (model id)" value={defaultDraft} onChange={(e) => setDefaultDraft(e.target.value)} />
-                <Button size="sm" onClick={() => saveModels(r.provider)}>Lưu</Button>
+                <Input name="defaultModel" aria-invalid={!!modelErrors.defaultModel} aria-describedby={modelErrors.defaultModel ? "copilot-model-defaultModel-error" : undefined} className="max-w-sm" placeholder="Mã mô hình mặc định" value={defaultDraft} onChange={(e) => setDefaultDraft(e.target.value)} />
+                <Button size="sm" disabled={update.isPending} onClick={() => { void saveModels(r.provider); }}>Lưu</Button>
               </div>
             </div>
           )}
@@ -826,14 +900,19 @@ function ThanhHanMuc({
 }
 
 function UsageTab() {
-  const { data: rows, isLoading } = useUsage();
+  const usageQuery = useUsage();
+  const { data: rows, isLoading } = usageQuery;
   const userIds = useMemo(() => [...new Set((rows ?? []).map((r) => r.user_id))], [rows]);
-  const { data: names } = useProfileNames(userIds);
+  const namesQuery = useProfileNames(userIds);
+  const { data: names } = namesQuery;
   const { data: user } = useAuth();
   const { data: isSuper } = useIsSuperAdmin();
-  const { data: settings } = useSettings();
-  const { data: dongHomNay } = useTokenHomNay();
-  const { data: providersGia } = useProvidersGia();
+  const settingsQuery = useSettings();
+  const { data: settings } = settingsQuery;
+  const dongHomNayQuery = useTokenHomNay();
+  const { data: dongHomNay } = dongHomNayQuery;
+  const providersGiaQuery = useProvidersGia();
+  const { data: providersGia } = providersGiaQuery;
   const tomTat = useMemo(
     () => tomTatTokenHomNay(dongHomNay ?? [], user?.id ?? null, isSuper === true),
     [dongHomNay, user?.id, isSuper],
@@ -871,6 +950,7 @@ function UsageTab() {
   }
 
   return (
+    <QueryRegion label="thống kê sử dụng Copilot" queries={[usageQuery, settingsQuery, dongHomNayQuery, providersGiaQuery, ...(userIds.length ? [namesQuery] : [])]}>
     <div className="space-y-4">
       {settings && (
         <div className="space-y-2">
@@ -949,6 +1029,7 @@ function UsageTab() {
         luôn $0 và không xếp hạng được model nào ngốn hơn model nào.
       </p>
     </div>
+    </QueryRegion>
   );
 }
 

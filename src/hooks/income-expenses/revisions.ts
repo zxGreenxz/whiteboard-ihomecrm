@@ -1,3 +1,4 @@
+import {financialReadRows} from '@/lib/financialReadValidation';
 // Sửa phiếu thu chi Chờ duyệt có lưu vết + duyệt có kiểm phiên bản (đợt 1, 25/09/2026).
 //
 //   revise_pending_income_expense_v1   — mọi lần sửa phiếu Chờ duyệt (form Sửa, hộp
@@ -53,7 +54,7 @@ export function useIncomeExpenseRevisions(voucherId?: string | null, enabled = t
         .eq("income_expense_id", voucherId)
         .order("revision_no", { ascending: true });
       if (error) throw error;
-      return z.array(incomeExpenseRevisionSchema).parse(data ?? []);
+      return z.array(incomeExpenseRevisionSchema).parse(data);
     },
   });
 }
@@ -98,7 +99,7 @@ export function useRevisionCounts(voucherIds: readonly string[]) {
         .select("income_expense_id,kind")
         .in("income_expense_id", ids);
       if (error) throw error;
-      return countRevisionsByVoucher(data ?? []);
+      return countRevisionsByVoucher(financialReadRows(data));
     },
   });
 }
@@ -158,11 +159,8 @@ export function useReviseIncomeExpense() {
     onSuccess: async (result, input) => {
       await Promise.all(VOUCHER_QUERY_KEYS.map((key) => client.invalidateQueries({ queryKey: key })));
       if (input.silent) return;
-      toast.success(
-        result.changed
-          ? `Đã lưu thay đổi phiếu (lần sửa ${result.revision_no ?? ""}). Phiếu vẫn Chờ duyệt.`
-          : "Không có gì thay đổi.",
-      );
+      if (!result.changed) toast.info("Nội dung phiếu không có thay đổi mới.");
+      else toast.success(`Đã lưu thay đổi phiếu (lần sửa ${result.revision_no ?? ""}). Phiếu vẫn Chờ duyệt.`);
     },
     onError: (error) => {
       // Phiếu vừa bị người khác sửa/duyệt: kéo bản mới về cho mọi màn đang mở.

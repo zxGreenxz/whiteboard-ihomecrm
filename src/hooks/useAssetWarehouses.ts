@@ -1,3 +1,4 @@
+import { friendlyError } from "@/lib/friendlyError";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
@@ -28,12 +29,13 @@ export const useAssetWarehouses = (buildingId?: string) => {
         throw error;
       }
 
-      return data || [];
+      if (!Array.isArray(data)) throw new TypeError("Invalid category list response");
+      return data;
     },
   });
 };
 
-export const useCreateAssetWarehouse = () => {
+export const useCreateAssetWarehouse = (options?: {inlineError?:boolean}) => {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -48,24 +50,25 @@ export const useCreateAssetWarehouse = () => {
         .select()
         .single();
 
-      if (error) {
-        toast.error("Không thể tạo kho tài sản");
-        throw error;
-      }
+      if (error) throw error;
+      if (!data || typeof data.id !== "string" || !data.id) throw new TypeError("Unconfirmed category result");
 
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["asset_warehouses"] });
-      toast.success("Kho tài sản đã được tạo thành công");
+      toast.success(`Đã tạo kho tài sản ${data.name}.`);
     },
     onError: (error) => {
+      if (options?.inlineError) return;
       console.error("Error creating asset warehouse:", error);
+      const feedback = friendlyError(error, "Chưa tạo được kho tài sản", { operation: "tạo kho tài sản" });
+      toast.error(feedback.title, { description: feedback.description });
     },
   });
 };
 
-export const useUpdateAssetWarehouse = () => {
+export const useUpdateAssetWarehouse = (options?: {inlineError?:boolean}) => {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -77,24 +80,25 @@ export const useUpdateAssetWarehouse = () => {
         .select()
         .single();
 
-      if (error) {
-        toast.error("Không thể cập nhật kho tài sản");
-        throw error;
-      }
+      if (error) throw error;
+      if (!data || data.id !== id) throw new TypeError("Unconfirmed category result");
 
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["asset_warehouses"] });
-      toast.success("Kho tài sản đã được cập nhật thành công");
+      toast.success(`Đã lưu thay đổi kho tài sản ${data.name}.`);
     },
     onError: (error) => {
+      if (options?.inlineError) return;
       console.error("Error updating asset warehouse:", error);
+      const feedback = friendlyError(error, "Chưa lưu thay đổi được kho tài sản", { operation: "lưu thay đổi kho tài sản" });
+      toast.error(feedback.title, { description: feedback.description });
     },
   });
 };
 
-export const useDeleteAssetWarehouse = () => {
+export const useDeleteAssetWarehouse = (options?: {inlineError?:boolean}) => {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -106,19 +110,20 @@ export const useDeleteAssetWarehouse = () => {
         .select()
         .single();
 
-      if (error) {
-        toast.error("Không thể xóa kho tài sản");
-        throw error;
-      }
+      if (error) throw error;
+      if (!data || data.id !== id) throw new TypeError("Unconfirmed category result");
 
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["asset_warehouses"] });
-      toast.success("Kho tài sản đã được xóa thành công");
+      toast.success(`Đã xóa kho tài sản ${data.name}.`);
     },
     onError: (error) => {
+      if (options?.inlineError) return;
       console.error("Error deleting asset warehouse:", error);
+      const feedback = friendlyError(error, "Chưa xóa được kho tài sản", { operation: "xóa kho tài sản" });
+      toast.error(feedback.title, { description: feedback.description });
     },
   });
 };

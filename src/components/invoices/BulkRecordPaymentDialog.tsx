@@ -1,3 +1,6 @@
+import {invoiceFailureMessage} from '@/lib/invoiceFeedback';
+import { voucherOutcomeUnknown } from "@/lib/voucherFeedback";
+import { collectionFailureMessage } from '@/lib/collectionFeedback';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import {
@@ -157,6 +160,9 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
   const [loadedBuildingId, setLoadedBuildingId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [failures, setFailures] = useState<BulkPaymentFailure[]>([]);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const unknownInvoicesRef = useRef(new Set<string>());
+  const [confirmedVoucherIds,setConfirmedVoucherIds] = useState<string[]>([]);
   const [editInvoiceId, setEditInvoiceId] = useState<string | null>(null);
   const [viewPaymentsInvoiceId, setViewPaymentsInvoiceId] = useState<string | null>(null);
   // Thu trùng (đợt 1 sửa phiếu): các phòng vừa được thu cùng số tiền trong 30 phút.
@@ -281,6 +287,7 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
     if (!buildingId) return;
     setLoaded(false);
     setFailures([]);
+    setSubmitError(null);
     try {
       const { data, error } = await supabase
         .from('invoices')
@@ -352,7 +359,7 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
       toast({
         variant: 'destructive',
         title: 'Lỗi tải dữ liệu',
-        description: err.message || 'Không tải được danh sách hoá đơn',
+        description: invoiceFailureMessage(err,'tải danh sách hoá đơn cần thu'),
       });
     }
   };
@@ -446,7 +453,7 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
 
   const allSelected = rows.length > 0 && rows.every((r) => r.selected);
   const toggleAll = () =>
-    setRows((prev) => prev.map((r) => ({ ...r, selected: !allSelected })));
+    setRows((prev) => prev.map((r) => ({ ...r, selected: !unknownInvoicesRef.current.has(r.invoice_id) && !allSelected })));
 
   const handleClose = () => {
     if (submitting) return;
@@ -577,7 +584,7 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
       // KHÔNG fallback: bucket 'documents' không tồn tại trên production
       // (audit 02/09/2026) — nhánh fallback cũ chỉ che mờ lỗi thật.
       console.error('Upload error:', error);
-      return null;
+      throw error;
     }
     const { data: urlData } = supabase.storage
       .from('payment-receipts')
@@ -611,7 +618,7 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
    * tổng tiền trong 30 phút? Bỏ qua dòng đang gọi lại đúng lần gửi trước (cùng
    * idempotency key — máy chủ trả kết quả cũ, không ghi thêm). null = không trùng.
    */
-  const findBulkDuplicates = async (selected: RowData[]): Promise<string[] | null> => {
+  const findBulkDuplicates = async (selected: RowData[]): Promise<string[] | null | 'unavailable'> => {
     const toCheck = selected.filter(
       (r) => submitAttemptsRef.current.get(r.invoice_id)?.fingerprint !== rowFingerprint(r),
     );
@@ -631,7 +638,8 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
       });
       return lines.length ? lines : null;
     } catch (error) {
-      return [`Không kiểm tra được các khoản thu gần đây (${loiDoc(error, 'lỗi mạng')}).`];
+      setSubmitError('Chưa kiểm tra được các khoản thu gần đây. Chưa gửi lệnh thu tiền; dữ liệu đã nhập vẫn được giữ. Bấm ghi nhận để kiểm tra lại.');
+      return 'unavailable';
     }
   };
 
@@ -644,12 +652,19 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
     );
     if (selected.length === 0) return;
 
+    if (selected.some(row=>unknownInvoicesRef.current.has(row.invoice_id))) {
+      setSubmitError('Có hoá đơn chưa xác nhận được lần thu trước. Tải lại hoá đơn và đối chiếu các khoản thu trước khi gửi tiếp.');
+      return;
+    }
     setSubmitting(true);
     setFailures([]);
+    setSubmitError(null);
+    let moneyRequestStarted=false;
     try {
       const ackKey = JSON.stringify(selected.map(rowFingerprint));
       if (bulkDupAckRef.current !== ackKey) {
         const dupLines = await findBulkDuplicates(selected);
+        if (dupLines === 'unavailable') return;
         if (dupLines) {
           setBulkDupAsk({ lines: dupLines, ackKey });
           return;
@@ -667,11 +682,8 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
 
           let receiptUrl: string | null = null;
           if (r.receipt_image) {
-            try {
-              receiptUrl = await uploadReceipt(r.receipt_image);
-            } catch (err) {
-              console.error('Upload failed for', r.room_name, err);
-            }
+            receiptUrl = await uploadReceipt(r.receipt_image);
+            if (!receiptUrl) throw new Error('Không tải được chứng từ');
           }
           const prepared = {
             fingerprint,
@@ -719,11 +731,15 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
         };
       });
 
+      moneyRequestStarted=true;
       const result = await bulkMutation.mutateAsync({
         payment_date: paymentDate,
         items,
       });
 
+      setConfirmedVoucherIds(previous=>[...new Set([...previous,...(result.voucherIds ?? [])])]);
+      result.ok.forEach(id=>unknownInvoicesRef.current.add(id));
+      result.failures.filter(f=>f.outcomeUnknown).forEach(f=>unknownInvoicesRef.current.add(f.invoice_id));
       if (result.failures.length === 0) {
         handleClose();
       } else {
@@ -737,7 +753,7 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
               return { ...r, selected: false, error: undefined };
             }
             const failMsg = failMap.get(r.invoice_id);
-            if (failMsg) return { ...r, error: failMsg };
+            if (failMsg) return { ...r, selected:unknownInvoicesRef.current.has(r.invoice_id)?false:r.selected, error: failMsg };
             return r;
           }),
         );
@@ -745,6 +761,8 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
       }
     } catch (err: any) {
       console.error(err);
+      if(moneyRequestStarted && voucherOutcomeUnknown(err)){selected.forEach(row=>unknownInvoicesRef.current.add(row.invoice_id));setRows(previous=>previous.map(row=>unknownInvoicesRef.current.has(row.invoice_id)?{...row,selected:false}:row));}
+      setSubmitError(moneyRequestStarted ? collectionFailureMessage(err) : "Chưa gửi lệnh thu tiền. Không tải được chứng từ đã chọn; dữ liệu đã nhập vẫn được giữ để kiểm tra.");
     } finally {
       setSubmitting(false);
     }
@@ -987,6 +1005,7 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
                     <td className="p-1 border text-center">
                       <Checkbox
                         checked={r.selected}
+                        disabled={unknownInvoicesRef.current.has(r.invoice_id)}
                         onCheckedChange={(v) => updateRow(i, { selected: !!v })}
                       />
                     </td>
@@ -1234,6 +1253,8 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
           </table>
         </div>
 
+        {submitError && <p role="alert" className="text-sm text-destructive">{submitError}</p>}
+        {confirmedVoucherIds.length>0 && <div className="text-sm">Phiếu đã tạo — không thu lại các dòng này: {confirmedVoucherIds.map(id=><a key={id} className="ml-2 text-primary underline" href={`/income-expense/voucher/${id}`} target="_blank" rel="noreferrer">Xem phiếu</a>)}</div>}
         {failures.length > 0 && (
           <div className="bg-red-50 border border-red-200 rounded-md p-2 max-h-24 overflow-auto text-xs space-y-1">
             <div className="font-semibold text-red-700">

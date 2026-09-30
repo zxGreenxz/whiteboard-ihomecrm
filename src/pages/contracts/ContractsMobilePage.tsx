@@ -1,3 +1,4 @@
+import { QueryRegion } from '@/components/errors/QueryRegion';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Plus, Search, Clock } from 'lucide-react';
@@ -135,7 +136,8 @@ export default function ContractsMobilePage() {
   );
   const totalCount = paged?.count ?? 0;
 
-  const { data: statsData } = useContractStats(buildingId ? [buildingId] : []);
+  const statsQuery = useContractStats(buildingId ? [buildingId] : []);
+  const { data: statsData } = statsQuery;
   const stats: ContractStats = statsData ?? { total: 0, expiring: 0, expired: 0, terminated: 0 };
 
   const { data: buildingsData } = useBuildings();
@@ -149,7 +151,8 @@ export default function ContractsMobilePage() {
     return uniqueRoomNames(buildingId ? all.filter((r) => r.building_id === buildingId) : all);
   }, [roomsData, buildingId]);
 
-  const { data: renewedSet } = useRenewedContractIds(rows.map((r) => r.id));
+  const renewedQuery = useRenewedContractIds(rows.map((r) => r.id));
+  const { data: renewedSet } = renewedQuery;
 
   const { hasAnyScope: hasBuildingScope } = useMyBuildingScope();
   const { data: perms } = useMyPermissions();
@@ -173,7 +176,7 @@ export default function ContractsMobilePage() {
             </button>
             <div className="mtitle">
               <h1>Hợp đồng</h1>
-              <p>{stats.total} hợp đồng thuê</p>
+              {!statsQuery.isError && statsData && <p>{stats.total} hợp đồng thuê</p>}
             </div>
             {canCreate && (
               <div className="mtop-act">
@@ -189,17 +192,19 @@ export default function ContractsMobilePage() {
             <ContractExitQueue buildingIds={buildingId ? [buildingId] : []} />
             <ContractMeterFollowupQueue buildingIds={buildingId ? [buildingId] : []} />
             <ContractDraftWorkspace buildingId={buildingId || undefined} />
-            <div className="lfilter">
-              {statTabs.map((t) => (
-                <button
-                  key={t.id}
-                  className={'lchip' + (stat === t.id ? ' on' : '')}
-                  onClick={() => setStat(t.id)}
-                >
-                  {t.label}<span className="cnt">{t.n}</span>
-                </button>
-              ))}
-            </div>
+            <QueryRegion label="thống kê hợp đồng" queries={[statsQuery]}>
+              <div className="lfilter">
+                {statTabs.map((t) => (
+                  <button
+                    key={t.id}
+                    className={'lchip' + (stat === t.id ? ' on' : '')}
+                    onClick={() => setStat(t.id)}
+                  >
+                    {t.label}<span className="cnt">{t.n}</span>
+                  </button>
+                ))}
+              </div>
+            </QueryRegion>
 
             {/* Bộ lọc thường trực: dropdown Toà nhà · Phòng (1 dòng) + ô tìm kiếm
                 nhanh — chạy server như ô tìm kiếm desktop. */}
@@ -237,6 +242,7 @@ export default function ContractsMobilePage() {
               />
             </div>
 
+            {rows.length > 0 && <QueryRegion label="trạng thái gia hạn" queries={[renewedQuery]}>{null}</QueryRegion>}
             {isLoading ? (
               <div className="stub"><p>Đang tải hợp đồng…</p></div>
             ) : isError ? (
@@ -253,7 +259,7 @@ export default function ContractsMobilePage() {
                   const sc = STATUS_HEX[ds] ?? STATUS_HEX.ACTIVE;
                   const label = CONTRACT_STATUS_CONFIG[ds]?.label ?? '';
                   const dep = depositBadge(c);
-                  const renewed = !!renewedSet?.has(c.id);
+                  const renewed = !renewedQuery.isError && !!renewedSet?.has(c.id);
                   return (
                     <div
                       className="ctr"

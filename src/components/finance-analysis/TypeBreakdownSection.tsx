@@ -1,3 +1,4 @@
+import { QueryRegion } from "@/components/errors/QueryRegion";
 import { useMemo } from "react";
 import {
   Bar,
@@ -50,10 +51,12 @@ export function TypeBreakdownSection({
   filters, side, mainColor, colorFn, invert, noun, exportPrefix,
 }: Props) {
   const { ym, prevYm, t13Start, t13End, months12, buildingIds, accrual } = filters;
-  const { data: breakdown = [], isLoading: bdLoading } = useFaTypeBreakdown(
+  const reportQuery0 = useFaTypeBreakdown(
     t13Start, t13End, buildingIds, accrual,
   );
-  const { data: pnl = [], isLoading: pnlLoading } = useFaMonthlyPnl(t13Start, t13End, buildingIds, accrual);
+  const { data: breakdown = [], isLoading: bdLoading } = reportQuery0;
+  const reportQuery1 = useFaMonthlyPnl(t13Start, t13End, buildingIds, accrual);
+  const { data: pnl = [], isLoading: pnlLoading } = reportQuery1;
 
   const analysis = useMemo(
     () => analyzeTypeBreakdown(breakdown, side, months12, ym, prevYm),
@@ -118,6 +121,7 @@ export function TypeBreakdownSection({
   const sideLabel = side === "INCOME" ? "Doanh thu" : "Chi phí";
 
   return (
+    <QueryRegion label="phân tích tài chính" queries={[reportQuery0, reportQuery1]}>
     <div className="space-y-4">
       <ChartCard
         title={`${sideLabel} theo hạng mục — 12 tháng`}
@@ -322,5 +326,6 @@ export function TypeBreakdownSection({
         </div>
       </ChartCard>
     </div>
+    </QueryRegion>
   );
 }

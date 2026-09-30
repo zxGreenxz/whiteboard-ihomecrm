@@ -1,3 +1,4 @@
+import { QueryRegion } from "@/components/errors/QueryRegion";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { FileText, DollarSign, AlertCircle } from "lucide-react";
 import { useRecentActivities } from "@/hooks/useDashboard";
@@ -6,7 +7,8 @@ import { vi } from "date-fns/locale";
 import { formatCurrency } from "@/lib/utils";
 
 export function RecentActivities({ buildingId }: { buildingId?: string | null }) {
-  const { data: activities = [], isLoading } = useRecentActivities(buildingId);
+  const query = useRecentActivities(buildingId);
+  const { data: activities = [], isLoading } = query;
 
   const getActivityConfig = (type: string) => {
     switch (type) {
@@ -52,6 +54,7 @@ export function RecentActivities({ buildingId }: { buildingId?: string | null })
   }
 
   return (
+    <QueryRegion label="hoạt động gần đây" queries={[query]}>
     <Card>
       <CardHeader>
         <CardTitle>Hoạt động gần đây</CardTitle>
@@ -101,5 +104,6 @@ export function RecentActivities({ buildingId }: { buildingId?: string | null })
         )}
       </CardContent>
     </Card>
+    </QueryRegion>
   );
 }

@@ -1,3 +1,4 @@
+import { QueryRegion } from "@/components/errors/QueryRegion";
 import { Badge } from "@/components/ui/badge";
 import { useIsContractRenewed } from "@/hooks/useRenewedContracts";
 
@@ -9,11 +10,13 @@ import { useIsContractRenewed } from "@/hooks/useRenewedContracts";
  * HĐ, hãy dùng useRenewedContractIds 1 lần rồi render <Badge> theo set để khỏi N query.
  */
 export function RenewedBadge({ contractId, className }: { contractId?: string | null; className?: string }) {
-  const { isRenewed } = useIsContractRenewed(contractId);
-  if (!isRenewed) return null;
+  const query = useIsContractRenewed(contractId);
+  if (!contractId) return null;
   return (
-    <Badge className={`bg-blue-500 hover:bg-blue-600 text-white ${className ?? ""}`}>
+    <QueryRegion label="trạng thái gia hạn" queries={[query]}>
+    {query.isRenewed && <Badge className={`bg-blue-500 hover:bg-blue-600 text-white ${className ?? ""}`}>
       Đã gia hạn
-    </Badge>
+    </Badge>}
+    </QueryRegion>
   );
 }

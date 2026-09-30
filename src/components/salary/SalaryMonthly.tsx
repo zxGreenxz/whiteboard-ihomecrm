@@ -1,3 +1,5 @@
+import {parseSalaryAmount,formatSalaryAmountInput} from "@/lib/salaryAmountInput";
+import { useSalaryFormFeedback } from "./useSalaryFormFeedback";
 // Tab 1 — Bảng lương tháng. Port từ kit SalaryMonthly.jsx, nối callback thật.
 import React, { useState } from "react";
 import { todayISO } from "@/lib/collect";
@@ -12,7 +14,6 @@ const I = SAL_ICONS;
 // Ngày chi theo GIỜ LOCAL — toISOString() là UTC, chi lương lúc 00:00-07:00 VN
 // sẽ rơi vào THÁNG TRƯỚC (audit 2026-07-20). Dùng helper canonical ở lib/collect.
 const today = todayISO;
-const parseNum = (s: string) => parseInt((s || "").replace(/\D/g, ""), 10) || 0;
 
 export interface SalaryAccount { id: string; name: string; }
 
@@ -25,12 +26,12 @@ interface MonthlyProps {
   accounts: SalaryAccount[];
   canLock: boolean;
   canPay: boolean;
-  onSaveAdjustment: (staffId: string, payload: SalAdjustPayload) => void;
+  onSaveAdjustment: (staffId: string, payload: SalAdjustPayload) => Promise<unknown> | void;
   onRemoveAdjustment: (adjId: string) => void;
-  onPayout: (staffId: string, staffName: string, amount: number, accountId: string, voucherDate: string, note: string) => void;
-  onBulkPayout: (rows: { staffId: string; staffName: string; amount: number }[], accountId: string) => void;
-  onLock: () => void;
-  onUnlock: () => void;
+  onPayout: (staffId: string, staffName: string, amount: number, accountId: string, voucherDate: string, note: string) => Promise<unknown> | void;
+  onBulkPayout: (rows: { staffId: string; staffName: string; amount: number }[], accountId: string) => Promise<unknown> | void;
+  onLock: () => Promise<unknown> | void;
+  onUnlock: () => Promise<unknown> | void;
   onOpenLedger: (f: { who: string }) => void;
   onPrevMonth: () => void;
   onNextMonth: () => void;
@@ -38,23 +39,21 @@ interface MonthlyProps {
 }
 
 // ---- Dialogs ----
-export function AdjustDialog({ m, edit, onClose, onSave }: { m: SalManager; edit?: SalAdjustment | null; onClose: () => void; onSave: (p: SalAdjustPayload) => void }) {
+export function AdjustDialog({ m, edit, onClose, onSave }: { m: SalManager; edit?: SalAdjustment | null; onClose: () => void; onSave: (p: SalAdjustPayload) => Promise<unknown> | void }) {
+  const feedback = useSalaryFormFeedback("lưu khoản thưởng/trừ");
   const [kind, setKind] = useState<"Thưởng" | "Trừ">(edit ? (edit.amount < 0 ? "Trừ" : "Thưởng") : "Thưởng");
   const [label, setLabel] = useState(edit ? edit.label : "");
   const [amount, setAmount] = useState(edit ? String(Math.abs(edit.amount)) : "");
   const [note, setNote] = useState(edit?.note || "");
-  const numVal = parseNum(amount);
-  const save = () => {
-    if (!label.trim() || !numVal) return;
-    onSave({ id: edit?.id, kind: kind === "Trừ" ? "DEDUCTION" : "BONUS", label: label.trim(), amount: numVal, note: note.trim() || null });
-    onClose();
-  };
+  const parsedAmount = parseSalaryAmount(amount);
+  const numVal = parsedAmount.value ?? 0;
+  const save = () => feedback.run(() => onSave({ id: edit?.id, kind: kind === "Trừ" ? "DEDUCTION" : "BONUS", label: label.trim(), amount: numVal, note: note.trim() || null }), onClose, {label: !label.trim() ? "Nhập tên khoản thưởng/trừ." : undefined, amount: !amount.trim() ? "Nhập số tiền lớn hơn 0 đồng." : parsedAmount.error ?? (numVal <= 0 ? "Nhập số tiền lớn hơn 0 đồng." : undefined)});
   return (
-    <Modal onClose={onClose}>
+    <Modal onClose={() => feedback.close(onClose)}><div ref={feedback.root}>
       <div className="sal-modal-head">
         <span className="mic" style={{ background: "hsl(var(--status-warning-bg))", color: "hsl(var(--status-warning-fg))" }}><I.Gift size={19} /></span>
         <div><h3>{edit ? "Sửa khoản thưởng / trừ" : "Thêm thưởng / trừ"}</h3><p>{m.name}</p></div>
-        <button className="x" onClick={onClose}><I.X size={18} /></button>
+        <button className="x" onClick={() => feedback.close(onClose)}><I.X size={18} /></button>
       </div>
       <div className="sal-modal-body">
         <div className="sal-field"><label>Loại</label>
@@ -64,71 +63,74 @@ export function AdjustDialog({ m, edit, onClose, onSave }: { m: SalManager; edit
           </div>
         </div>
         <div className="sal-field"><label>Nội dung</label>
-          <input className="sal-input" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="VD: Bonus QL, fighting, hỗ trợ xăng…" autoFocus /></div>
+          <input className="sal-input" {...feedback.field("label")} value={label} onChange={(e) => setLabel(e.target.value)} placeholder="VD: Bonus QL, fighting, hỗ trợ xăng…" autoFocus />{feedback.issue("label")}</div>
         <div className="sal-field"><label>Số tiền</label>
-          <input className="sal-input mono" value={numVal ? numVal.toLocaleString("vi-VN") : amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" inputMode="numeric" /></div>
+          <input className="sal-input mono" {...feedback.field("amount")} value={formatSalaryAmountInput(amount)} onChange={(e) => setAmount(e.target.value)} placeholder="0" inputMode="numeric" />{feedback.issue("amount")}</div>
         <div className="sal-field"><label>Ghi chú</label>
           <textarea className="sal-input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Tuỳ chọn…" /></div>
       </div>
       <div className="sal-modal-foot">
-        <button className="sal-btn sal-btn--ghost" onClick={onClose}>Huỷ</button>
-        <button className="sal-btn sal-btn--primary" onClick={save} disabled={!label.trim() || !numVal}>Lưu</button>
+        <button className="sal-btn sal-btn--ghost" onClick={() => feedback.close(onClose)}>Huỷ</button>
+        <button className="sal-btn sal-btn--primary" onClick={save} disabled={feedback.saving || feedback.blocked}>Lưu</button>
       </div>
-    </Modal>
+    {feedback.notice}</div></Modal>
   );
 }
 
-function PayoutDialog({ m, accounts, period, onClose, onSave }: {
+export function PayoutDialog({ m, accounts, period, onClose, onSave }: {
   m: SalManager; accounts: SalaryAccount[]; period: { label: string; year: number };
-  onClose: () => void; onSave: (amount: number, accountId: string, voucherDate: string, note: string) => void;
+  onClose: () => void; onSave: (amount: number, accountId: string, voucherDate: string, note: string) => Promise<unknown> | void;
 }) {
+  const feedback = useSalaryFormFeedback("lập phiếu chi lương");
   const remain = (m.calc?.takehome ?? 0) - m.paid;
   const [amount, setAmount] = useState(String(Math.max(remain, 0)));
   const [acc, setAcc] = useState(accounts[0]?.id || "");
   const [date, setDate] = useState(today());
   const [note, setNote] = useState("Lương " + period.label + "/" + period.year);
-  const numVal = parseNum(amount);
+  const parsedAmount = parseSalaryAmount(amount);
+  const numVal = parsedAmount.value ?? 0;
   return (
-    <Modal onClose={onClose}>
+    <Modal onClose={() => feedback.close(onClose)}><div ref={feedback.root}>
       <div className="sal-modal-head">
         <span className="mic" style={{ background: "hsl(var(--primary) / .12)", color: "hsl(var(--primary))" }}><I.Wallet size={19} /></span>
         <div><h3>Trả lương</h3><p>{m.name} · còn nhận {salFmt(remain)}</p></div>
-        <button className="x" onClick={onClose}><I.X size={18} /></button>
+        <button className="x" onClick={() => feedback.close(onClose)}><I.X size={18} /></button>
       </div>
       <div className="sal-modal-body">
         <div className="sal-field"><label>Số tiền</label>
-          <input className="sal-input mono" value={numVal ? numVal.toLocaleString("vi-VN") : amount} onChange={(e) => setAmount(e.target.value)} inputMode="numeric" /></div>
+          <input className="sal-input mono" {...feedback.field("amount")} value={formatSalaryAmountInput(amount)} onChange={(e) => setAmount(e.target.value)} inputMode="numeric" />{feedback.issue("amount")}</div>
         <div className="sal-field"><label>Chi từ sổ quỹ</label>
-          <select className="sal-select" style={{ height: 40 }} value={acc} onChange={(e) => setAcc(e.target.value)}>
+          <select className="sal-select" style={{ height: 40 }} {...feedback.field("account")} value={acc} onChange={(e) => setAcc(e.target.value)}>
             {accounts.length === 0 ? <option value="">— Chưa có sổ quỹ —</option> : accounts.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-          </select></div>
+          </select>{feedback.issue("account")}</div>
         <div className="sal-field"><label>Ngày chi</label>
-          <input type="date" className="sal-input mono" value={date} onChange={(e) => setDate(e.target.value)} /></div>
+          <input type="date" className="sal-input mono" {...feedback.field("date")} value={date} onChange={(e) => setDate(e.target.value)} />{feedback.issue("date")}</div>
         <div className="sal-field"><label>Ghi chú</label>
           <textarea className="sal-input" value={note} onChange={(e) => setNote(e.target.value)} /></div>
         <div className="sal-helprow"><I.Info size={15} />Tạo phiếu chi trong sổ thu chi — không tính KQKD.</div>
       </div>
       <div className="sal-modal-foot">
-        <button className="sal-btn sal-btn--ghost" onClick={onClose}>Huỷ</button>
-        <button className="sal-btn sal-btn--primary" onClick={() => { onSave(numVal, acc, date, note); onClose(); }} disabled={!numVal || !acc}><I.Check size={16} />Ghi phiếu chi</button>
+        <button className="sal-btn sal-btn--ghost" onClick={() => feedback.close(onClose)}>Huỷ</button>
+        <button className="sal-btn sal-btn--primary" onClick={() => void feedback.run(() => onSave(numVal, acc, date, note), onClose, {amount: !amount.trim() ? "Nhập số tiền lớn hơn 0 đồng." : parsedAmount.error ?? (numVal <= 0 ? "Nhập số tiền lớn hơn 0 đồng." : undefined), account: !acc ? "Chọn sổ quỹ chi lương." : undefined, date: !date ? "Chọn ngày chi lương." : undefined})} disabled={feedback.saving || feedback.blocked}><I.Check size={16} />Ghi phiếu chi</button>
       </div>
-    </Modal>
+    {feedback.notice}</div></Modal>
   );
 }
 
 export function BulkPayoutDialog({ managers, accounts, period, onClose, onSave }: {
   managers: SalManager[]; accounts: SalaryAccount[]; period: { label: string; year: number };
-  onClose: () => void; onSave: (rows: { staffId: string; staffName: string; amount: number }[], accountId: string) => void;
+  onClose: () => void; onSave: (rows: { staffId: string; staffName: string; amount: number }[], accountId: string) => Promise<unknown> | void;
 }) {
+  const feedback = useSalaryFormFeedback("lập phiếu chi lương");
   const rows = managers.map((m) => ({ m, remain: (m.calc?.takehome ?? 0) - m.paid })).filter((r) => r.remain > 0);
   const total = rows.reduce((s, r) => s + r.remain, 0);
   const [acc, setAcc] = useState(accounts[0]?.id || "");
   return (
-    <Modal onClose={onClose} wide>
+    <Modal onClose={() => feedback.close(onClose)} wide><div ref={feedback.root}>
       <div className="sal-modal-head">
         <span className="mic" style={{ background: "hsl(var(--primary) / .12)", color: "hsl(var(--primary))" }}><I.Wallet size={19} /></span>
         <div><h3>Trả lương hàng loạt</h3><p>{rows.length} quản lý · {period.label}/{period.year}</p></div>
-        <button className="x" onClick={onClose}><I.X size={18} /></button>
+        <button className="x" onClick={() => feedback.close(onClose)}><I.X size={18} /></button>
       </div>
       <div className="sal-modal-body">
         {rows.length === 0 ? <p style={{ color: "hsl(var(--muted-foreground))" }}>Tất cả đã được trả đủ.</p> : rows.map((r) => (
@@ -139,41 +141,42 @@ export function BulkPayoutDialog({ managers, accounts, period, onClose, onSave }
           </div>
         ))}
         <div className="sal-field" style={{ marginTop: 6 }}><label>Chi từ sổ quỹ</label>
-          <select className="sal-select" style={{ height: 40 }} value={acc} onChange={(e) => setAcc(e.target.value)}>
-            {accounts.length === 0 ? <option value="">— Chưa có sổ quỹ —</option> : accounts.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>
+          <select className="sal-select" style={{ height: 40 }} {...feedback.field("account")} value={acc} onChange={(e) => setAcc(e.target.value)}>
+            {accounts.length === 0 ? <option value="">— Chưa có sổ quỹ —</option> : accounts.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select>{feedback.issue("account")}</div>
       </div>
       <div className="sal-modal-foot" style={{ alignItems: "center" }}>
         <div style={{ marginRight: "auto", fontSize: 13 }}>Tổng chi <b className="sal-num" style={{ color: "hsl(var(--primary))", fontSize: 16 }}>{salFmt(total)}</b></div>
-        <button className="sal-btn sal-btn--ghost" onClick={onClose}>Huỷ</button>
-        <button className="sal-btn sal-btn--primary" onClick={() => { onSave(rows.map((r) => ({ staffId: r.m.id, staffName: r.m.name, amount: r.remain })), acc); onClose(); }} disabled={!rows.length || !acc}><I.Check size={16} />Ghi {rows.length} phiếu chi</button>
+        <button className="sal-btn sal-btn--ghost" onClick={() => feedback.close(onClose)}>Huỷ</button>
+        <button className="sal-btn sal-btn--primary" onClick={() => void feedback.run(() => onSave(rows.map((r) => ({ staffId: r.m.id, staffName: r.m.name, amount: r.remain })), acc), onClose, {account: !acc ? "Chọn sổ quỹ chi lương." : undefined})} disabled={!rows.length || feedback.saving || feedback.blocked}><I.Check size={16} />Ghi {rows.length} phiếu chi</button>
       </div>
-    </Modal>
+    {feedback.notice}</div></Modal>
   );
 }
 
-export function LockDialog({ locked, period, onClose, onConfirm }: { locked: boolean; period: { label: string; year: number }; onClose: () => void; onConfirm: () => void }) {
+export function LockDialog({ locked, period, onClose, onConfirm }: { locked: boolean; period: { label: string; year: number }; onClose: () => void; onConfirm: () => Promise<unknown> | void }) {
+  const feedback = useSalaryFormFeedback("chốt hoặc mở khóa bảng lương");
   return (
-    <Modal onClose={onClose}>
+    <Modal onClose={() => feedback.close(onClose)}><div ref={feedback.root}>
       <div className="sal-modal-head">
         <span className="mic" style={locked ? { background: "hsl(var(--status-warning-bg))", color: "hsl(var(--status-warning-fg))" } : { background: "hsl(var(--status-success-bg))", color: "hsl(var(--status-success-fg))" }}>
           {locked ? <I.Unlock size={19} /> : <I.Lock size={19} />}</span>
         <div><h3>{locked ? "Mở khoá tháng?" : "Chốt tháng?"}</h3><p>{period.label}/{period.year}</p></div>
-        <button className="x" onClick={onClose}><I.X size={18} /></button>
+        <button className="x" onClick={() => feedback.close(onClose)}><I.X size={18} /></button>
       </div>
       <div className="sal-modal-body">
         <p style={{ fontSize: 13.5, lineHeight: 1.55, color: "hsl(var(--muted-foreground))" }}>
           {locked
             ? "Mở khoá cho phép sửa lại số liệu. Mọi thay đổi việc/HĐ cũ sẽ lại ảnh hưởng tháng này. Nếu đã có phiếu trả lương, hãy kiểm tra lại."
-            : "Hệ thống tính lần cuối và đóng băng toàn bộ bảng lương + bảng kê (snapshot). Sau khi chốt, sửa hay đóng việc cũ sẽ không còn ảnh hưởng tháng này."}
+            : "Hệ thống tính lần cuối và đóng băng toàn bộ bảng lương + bảng kê chi tiết. Sau khi chốt, sửa hay đóng việc cũ sẽ không còn ảnh hưởng tháng này."}
         </p>
       </div>
       <div className="sal-modal-foot">
-        <button className="sal-btn sal-btn--ghost" onClick={onClose}>Huỷ</button>
-        <button className={"sal-btn " + (locked ? "sal-btn--outline" : "sal-btn--primary")} onClick={() => { onConfirm(); onClose(); }}>
+        <button className="sal-btn sal-btn--ghost" onClick={() => feedback.close(onClose)}>Huỷ</button>
+        <button className={"sal-btn " + (locked ? "sal-btn--outline" : "sal-btn--primary")} disabled={feedback.saving || feedback.blocked} onClick={() => void feedback.run(onConfirm, onClose)}>
           {locked ? <><I.Unlock size={16} />Mở khoá</> : <><I.Lock size={16} />Chốt tháng</>}
         </button>
       </div>
-    </Modal>
+    {feedback.notice}</div></Modal>
   );
 }
 

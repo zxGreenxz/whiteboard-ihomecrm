@@ -1,3 +1,4 @@
+import { voucherFailureMessage } from "@/lib/voucherFeedback";
 // Đợt 2 — bổ sung ảnh chứng từ / ghi chú cho phiếu thu chi ở MỌI trạng thái.
 //
 // Thay cho `update_income_expense_quick` (chỉ người tạo dùng được, không ghi
@@ -64,22 +65,21 @@ export const useAnnotateIncomeExpense = () => {
       if (error) {
         // Kỳ đã đóng (Đợt 3) — nói rõ vì sao thay vì ném P0001 thô.
         const blocked = periodBlockMessage(error.message);
-        toast.error(blocked ?? error.message ?? "Không lưu được chứng từ/ghi chú");
+
         throw error;
       }
+      if (typeof (data as {changed?:unknown} | null)?.changed !== "boolean") throw new TypeError("Missing voucher change confirmation");
       return data as { id: string; changed: boolean };
     },
     onSuccess: (result) => {
       for (const key of INVALIDATE_KEYS) {
         queryClient.invalidateQueries({ queryKey: key });
       }
-      toast.success(
-        result?.changed === false
-          ? "Không có gì thay đổi"
-          : "Đã lưu chứng từ / ghi chú",
-      );
+      if (result?.changed === false) toast.info("Chứng từ và ghi chú không có thay đổi mới.");
+      else toast.success("Đã lưu chứng từ và ghi chú.");
     },
     onError: (error) => {
+      toast.error(voucherFailureMessage(error, "lưu chứng từ và ghi chú"));
       console.error("Error annotating income expense:", error);
     },
   });

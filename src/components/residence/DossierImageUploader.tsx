@@ -1,6 +1,8 @@
 // Một hàng ảnh của hồ sơ tạm trú (CT01 đã ký / hợp đồng đã ký / giấy chỗ ở hợp pháp):
 // chụp trực tiếp bằng camera (điện thoại), chọn tệp từ máy, hoặc DÁN ảnh bằng Ctrl+V
 // (ảnh chụp màn hình, ảnh sao chép từ Zalo/Telegram) — xem thumbnail, xoá.
+import { recordWriteBlocked, recordWriteMessage } from '@/lib/recordWriteOutcome';
+import { DossierFileError } from '@/lib/residenceDossierFiles';
 import { useEffect, useRef, useState } from 'react';
 import { Camera, ImagePlus, Loader2, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -44,24 +46,42 @@ export default function DossierImageUploader({ kind, files, canEdit, contractId,
   const zoneRef = useRef<HTMLDivElement>(null);
   const hovered = useRef(false);
   const [pending, setPending] = useState(0);
+  const [failure,setFailure] = useState('');
+  const [uploadBlocked,setUploadBlocked] = useState(false);
+  const [deleteFailures,setDeleteFailures] = useState<Record<string,{message:string;blocked:boolean}>>({});
+  const busy = useRef(false);
+  const errorMessage = (error:unknown, operation:string) => error instanceof DossierFileError ? error.message : recordWriteMessage(error,operation);
   const [removing, setRemoving] = useState<string | null>(null);
   const label = DOSSIER_KIND_LABEL[kind];
 
   const handleFiles = async (picked: File[], input?: HTMLInputElement | null) => {
     if (input) input.value = '';
-    if (picked.length === 0) return;
+    if (picked.length === 0 || busy.current || uploadBlocked) return;
+    busy.current = true;
+    setFailure('');
     setPending(picked.length);
+    let saved=0;
+    const errors:string[]=[];
     try {
       // Tuần tự để thứ tự ảnh giữ đúng thứ tự người dùng chọn/chụp/dán.
-      for (const file of picked) {
+      for (const [index,file] of picked.entries()) {
         try {
           await onUpload({ kind, contractId, file });
-        } catch {
-          /* mutation đã toast lỗi của tệp này; vẫn tải tiếp các tệp còn lại */
+          saved += 1;
+        } catch (error) {
+          errors.push(`${file.name}: ${errorMessage(error,'tải ảnh hồ sơ')}`);
+          if (recordWriteBlocked(error)) {
+            setUploadBlocked(true);
+            const remaining=picked.slice(index+1).map(next=>next.name);
+            if (remaining.length) errors.push(`Chưa gửi các tệp: ${remaining.join(', ')}.`);
+            break;
+          }
         }
         setPending((n) => Math.max(0, n - 1));
       }
     } finally {
+      busy.current = false;
+      if (errors.length) { setFailure(`Đã tải ${saved}/${picked.length} ảnh. ${errors.join(' ')}`); zoneRef.current?.focus(); }
       setPending(0);
     }
   };
@@ -110,10 +130,10 @@ export default function DossierImageUploader({ kind, files, canEdit, contractId,
         </p>
         {canEdit && (
           <div className="flex gap-2">
-            <Button type="button" size="sm" variant="outline" disabled={pending > 0} onClick={() => captureRef.current?.click()}>
+            <Button type="button" size="sm" variant="outline" disabled={pending > 0 || uploadBlocked} onClick={() => captureRef.current?.click()}>
               <Camera className="h-4 w-4" /> Chụp ảnh
             </Button>
-            <Button type="button" size="sm" variant="outline" disabled={pending > 0} onClick={() => pickRef.current?.click()}
+            <Button type="button" size="sm" variant="outline" disabled={pending > 0 || uploadBlocked} onClick={() => pickRef.current?.click()}
               title="Chọn tệp từ máy, hoặc đưa chuột vào đây rồi bấm Ctrl+V để dán ảnh">
               {pending > 0 ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
               {pending > 0 ? `Đang tải ${pending} ảnh…` : 'Chọn tệp'}
@@ -126,16 +146,19 @@ export default function DossierImageUploader({ kind, files, canEdit, contractId,
           {hint}{hint ? ' ' : ''}{canEdit && 'Hoặc đưa chuột vào đây rồi bấm Ctrl+V để dán ảnh.'}
         </p>
       )}
+      {failure && <p role="alert" className="text-xs text-destructive">{failure}</p>}
       {files.length > 0 ? (
         <ul className="flex flex-wrap gap-2" aria-label={`Ảnh ${label}`}>
           {files.map((file) => (
             <li key={file.id} className="relative group h-24 w-24 overflow-hidden rounded-md border">
               <StorageImage value={dossierStorageValue(file)} alt={file.file_name || label} className="h-full w-full object-cover" />
               {canEdit && (
-                <button type="button" aria-label="Xoá ảnh" disabled={removing === file.id}
+                <button type="button" aria-label="Xoá ảnh" disabled={removing !== null || deleteFailures[file.id]?.blocked}
                   onClick={() => {
                     setRemoving(file.id);
-                    onRemove(file.id).catch(() => { /* hook đã toast */ }).finally(() => setRemoving(null));
+                    onRemove(file.id).catch((error:unknown) => {
+                      setDeleteFailures(previous=>({...previous,[file.id]:{message:errorMessage(error,'xoá ảnh hồ sơ'),blocked:recordWriteBlocked(error)}}));
+                    }).finally(() => setRemoving(null));
                   }}
                   className="absolute right-1 top-1 rounded-full bg-red-600 p-1 text-white opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100 disabled:opacity-50">
                   <Trash2 className="h-3 w-3" />
@@ -147,6 +170,7 @@ export default function DossierImageUploader({ kind, files, canEdit, contractId,
       ) : (
         <p className="text-xs text-muted-foreground">Chưa có ảnh.</p>
       )}
+      {Object.entries(deleteFailures).map(([id,error])=><p key={id} role="alert" className="text-xs text-destructive">{error.message}</p>)}
       {children}
       <input ref={captureRef} type="file" accept="image/*" capture="environment" className="hidden"
         aria-label={`Chụp ảnh ${label}`} onChange={(e) => void handleFiles(Array.from(e.target.files ?? []), e.target)} />

@@ -2,19 +2,20 @@
 // Ghi mã hồ sơ vào sổ NGAY khi extension gõ cửa, không chờ người dùng chuyển tab.
 import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, waitFor } from '@testing-library/react';
+import { cleanup, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const boundary = vi.hoisted(() => ({ lay: vi.fn(), xacNhan: vi.fn(), ghi: vi.fn(), toast: vi.fn() }));
+const boundary = vi.hoisted(() => ({ lay: vi.fn(), xacNhan: vi.fn(), ghi: vi.fn(), toast: vi.fn(), error:vi.fn() }));
 vi.mock('@/lib/tamTruBridge', () => ({ layKetQuaNop: boundary.lay, xacNhanDaGhiSo: boundary.xacNhan }));
 vi.mock('@/lib/residenceRegistrations', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/residenceRegistrations')>()),
   ghiHoSoTamTru: boundary.ghi,
 }));
-vi.mock('sonner', () => ({ toast: { success: boundary.toast, error: vi.fn() } }));
+vi.mock('sonner', () => ({ toast: { success: boundary.toast, error: boundary.error } }));
 vi.mock('@/integrations/supabase/client', () => ({ supabase: {} }));
 vi.mock('@/lib/authSession', () => ({ getSessionUser: vi.fn() }));
 
+import {FinancialWorkflowError} from '@/lib/financialWorkflow';
 import { TAM_TRU_TIN_HIEU, TamTruKetQuaSync } from '@/hooks/useTamTruKetQuaSync';
 
 const ketQua = (over: Record<string, unknown> = {}) => ({
@@ -34,9 +35,9 @@ beforeEach(() => {
   boundary.lay.mockReset().mockResolvedValue([]);
   boundary.xacNhan.mockReset().mockResolvedValue(undefined);
   boundary.ghi.mockReset().mockResolvedValue({ id: 'r1' });
-  boundary.toast.mockReset();
+  boundary.toast.mockReset();boundary.error.mockReset();
 });
-afterEach(() => vi.clearAllMocks());
+afterEach(() => {cleanup();vi.clearAllMocks();});
 
 describe('TamTruKetQuaSync', () => {
   it('ghi ngay khi extension gõ cửa, rồi mới báo extension xoá', async () => {
@@ -93,4 +94,9 @@ describe('TamTruKetQuaSync', () => {
     await new Promise((r) => setTimeout(r, 20));
     expect(boundary.lay).not.toHaveBeenCalled();
   });
+});
+
+it('unknown ghi mã báo ID an toàn một lần và giữ dữ liệu extension',async()=>{
+  boundary.lay.mockResolvedValue([ketQua()]);boundary.ghi.mockRejectedValue(new FinancialWorkflowError('Chưa xác nhận ghi mã.','unknown',[{id:'reg1',label:'Hồ sơ cần đối chiếu'}]));dung();
+  await waitFor(()=>expect(boundary.error).toHaveBeenCalledTimes(1));expect(String(boundary.error.mock.lastCall?.[0])).toContain('reg1');window.dispatchEvent(new Event('focus'));await waitFor(()=>expect(boundary.ghi).toHaveBeenCalledTimes(2));expect(boundary.error).toHaveBeenCalledTimes(1);expect(boundary.xacNhan).not.toHaveBeenCalled();
 });

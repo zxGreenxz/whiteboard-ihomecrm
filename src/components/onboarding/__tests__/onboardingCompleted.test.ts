@@ -72,3 +72,16 @@ describe("fetchOnboardingCompleted", () => {
     await expect(fetchOnboardingCompleted("user-toi")).resolves.toBe(false);
   });
 });
+
+
+it.each([null, 'true', {}, undefined])('không biến cờ sai định dạng thành chưa thiết lập: %j', async value => {
+  rows = [{ user_id: 'user-toi', key: 'onboarding_completed', value }];
+  await expect(fetchOnboardingCompleted('user-toi')).rejects.toBeInstanceOf(TypeError);
+});
+it('giữ lỗi server thay vì suy ra false khi phản hồi nguồn không xác nhận được', async () => {
+  rows = [
+    { user_id: 'user-toi', key: 'onboarding_completed', value: true },
+    { user_id: 'user-toi', key: 'onboarding_completed', value: false },
+  ];
+  await expect(fetchOnboardingCompleted('user-toi')).rejects.toMatchObject({ code: 'PGRST116' });
+});

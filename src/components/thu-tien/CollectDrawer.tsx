@@ -1,4 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { quickCollectFailureMessage } from '@/lib/quickCollectFeedback';
+import { voucherOutcomeUnknown } from '@/lib/voucherFeedback';
+import type { BulkPaymentResult } from '@/hooks/useBulkRecordPayment';
 import { toast } from 'sonner';
 import { Check, ChevronRight, Phone, StickyNote, Undo2 } from 'lucide-react';
 import {
@@ -78,12 +81,14 @@ export function CollectDrawer({
 }: Props) {
   // Sổ quỹ + sổ nhận tiền chỉ tải khi sheet thực sự mở (drawer luôn mounted để
   // chạy animation); sổ nhận đọc theo toà của hoá đơn đang mở.
-  const { collect, receiving, receivingBlockFor, changeAccountNameFor, isCollecting } =
+  const { collect, receiving, receivingBlockFor, changeAccountNameFor, isCollecting, reloadReceiving } =
     useQuickCollect({ invoice });
   const deletePayment = useDeletePayment();
   // Hoàn tác phải gõ lý do thật (≥ 8 ký tự) — ô lý do mở khi bấm "Hoàn tác".
   const [undoOpen, setUndoOpen] = useState(false);
   const [undoReason, setUndoReason] = useState('');
+  const [undoReasonError, setUndoReasonError] = useState('');
+  const undoReasonRef = useRef<HTMLTextAreaElement>(null);
   // Thu trùng: hỏi lại khi hoá đơn vừa có khoản thu CÙNG số tiền trong 30 phút.
   const [dupAsk, setDupAsk] = useState<{ question: string; run: () => Promise<void> } | null>(null);
   const [checkingDup, setCheckingDup] = useState(false);
@@ -117,6 +122,14 @@ export function CollectDrawer({
   const [uploading, setUploading] = useState(false);
   // Trạng thái form thu (báo lên từ CollectPayForm) — nút xanh dưới cùng submit.
   const [payState, setPayState] = useState<PayFormState | null>(null);
+  const [failure, setFailure] = useState('');
+  const [receiptError, setReceiptError] = useState('');
+  const [validationAttempt, setValidationAttempt] = useState(0);
+  const blockedInvoices = useRef(new Map<string,string>());
+  const uploadedFiles = useRef(new WeakMap<File,string>());
+  const checkingRef = useRef(false);
+  const writingRef = useRef(false);
+  const [writing, setWriting] = useState(false);
 
   useEffect(() => {
     setEntered(null);
@@ -127,7 +140,10 @@ export function CollectDrawer({
     setEditNoteOpen(false);
     setUndoOpen(false);
     setUndoReason('');
+    setUndoReasonError('');
     setDupAsk(null);
+    setFailure(blockedInvoices.current.get(invoice?.id ?? '') ?? '');
+    setReceiptError('');
   }, [invoice?.id, mode]);
 
   // Giữ DOM khi đóng (chạy animation translateY); chỉ bỏ render khi đã unmount.
@@ -162,12 +178,35 @@ export function CollectDrawer({
   const enteredVal = pristine
     ? Math.max(0, Math.round(remaining))
     : (parseInt(entered, 10) || 0) * 1000;
+  const blocked = blockedInvoices.current.has(invoice.id);
+  const busy = writing || checkingDup || isCollecting || uploading || deletePayment.isPending || !!dupAsk;
+  const closeWhenIdle = () => { if (!busy && !writingRef.current && !checkingRef.current) onClose(); };
+  const reportFailure = (error:unknown) => {
+    const message = quickCollectFailureMessage(error);
+    setFailure(message);
+    if (voucherOutcomeUnknown(error)) blockedInvoices.current.set(invoice.id,message);
+  };
+  const readOutcome = (result:BulkPaymentResult):boolean => {
+    if (!result || !Array.isArray(result.ok) || !Array.isArray(result.failures)) {reportFailure(new TypeError('Invalid collection result'));return false;}
+    if (result.failures.length) {
+      const message=result.failures.map(item => item.message).join(' ');
+      setFailure(message);
+      if (result.failures.some(item => item.outcomeUnknown)) blockedInvoices.current.set(invoice.id,message);
+      return false;
+    }
+    if (!result.ok.includes(invoice.id)) {reportFailure(new TypeError('Unconfirmed invoice collection'));return false;}
+    toast.success(`Đã ghi nhận khoản thu cho hóa đơn ${invoice.invoice_number || fullCode}.`);
+    return true;
+  };
   /**
    * Thu trùng (đợt 1 sửa phiếu): trước khi ghi, hoá đơn vừa có khoản thu CÒN HIỆU
    * LỰC cùng tổng tiền trong 30 phút ⇒ hỏi lại, nêu giờ thu + người thu. Không đọc
-   * được lịch sử thu thì cũng hỏi (không lặng lẽ bỏ qua bước kiểm).
+   * được lịch sử thu thì dừng và yêu cầu tải lại để tránh ghi nhận trùng.
    */
   const guardDuplicate = async (grossAmount: number, run: () => Promise<void>) => {
+    if (checkingRef.current || writingRef.current || blocked) return;
+    checkingRef.current = true;
+    setFailure('');
     setCheckingDup(true);
     let question: string | null = null;
     try {
@@ -175,8 +214,11 @@ export function CollectDrawer({
       const dup = findRecentDuplicateCollection(recent, grossAmount, Date.now());
       if (dup) question = duplicateCollectionQuestion(dup);
     } catch (e) {
-      question = `Không kiểm tra được các khoản thu gần đây của hoá đơn này (${(e as Error)?.message || 'lỗi mạng'}). Vẫn thu tiếp?`;
+      console.error('Recent invoice collection check failed', e);
+      setFailure('Chưa kiểm tra được các khoản thu gần đây. Tải lại hóa đơn để tránh ghi nhận trùng.');
+      return;
     } finally {
+      checkingRef.current = false;
       setCheckingDup(false);
     }
     if (question) {
@@ -187,6 +229,8 @@ export function CollectDrawer({
   };
 
   const collectKeypad = async () => {
+    if (writingRef.current || blocked) return;
+    writingRef.current = true; setWriting(true);
     try {
       const res =
         enteredVal > remaining || (changeAmount ?? 0) > 0
@@ -199,10 +243,10 @@ export function CollectDrawer({
               notes: noteDraft,
             })
           : await collect({ invoice, amount: enteredVal, notes: noteDraft, allowRounding });
-      if (res.failures.length === 0) onClose();
+      if (readOutcome(res)) onClose();
     } catch (e) {
-      toast.error((e as Error).message);
-    }
+      reportFailure(e);
+    } finally {writingRef.current=false;setWriting(false);}
   };
   const submitKeypad = async () => {
     if (enteredVal <= 0) return;
@@ -236,10 +280,18 @@ export function CollectDrawer({
       return;
     }
     setUndoReason('');
+    setUndoReasonError('');
     setUndoOpen(true);
   };
   const doUndo = () => {
-    if (!undoTarget || undoBlock || !undoReasonOk) return;
+    if (!undoTarget || undoBlock || deletePayment.isPending) return;
+    if (!undoReasonOk) {
+      setUndoReasonError(`Nhập lý do hoàn tác, ít nhất ${REVISION_REASON_MIN} ký tự và không quá ${REVISION_REASON_MAX} ký tự.`);
+      undoReasonRef.current?.focus();
+      undoReasonRef.current?.scrollIntoView?.({block:'center'});
+      return;
+    }
+    setUndoReasonError('');
     deletePayment.mutate(
       {
         payment_id: undoTarget.id,
@@ -250,6 +302,7 @@ export function CollectDrawer({
         onSuccess: () => {
           setUndoOpen(false);
           setUndoReason('');
+    setUndoReasonError('');
         },
       },
     );
@@ -259,29 +312,32 @@ export function CollectDrawer({
     if (rep.phone) window.location.href = telUrl(rep.phone);
   };
 
-  // Form thu tiền (TM/TK/TT + ảnh): upload ảnh trước (fail → vẫn thu, báo
-  // warning — precedent RecordPaymentDialog), rồi gọi collect như Thu đủ.
+  // Chứng từ đã chọn phải tải thành công trước khi ghi nhận khoản thu.
   const submitPayForm = (payload: PayFormSubmit) => {
     const gross = payload.lines.reduce((s, l) => s + (Number(l.amount) || 0), 0);
     return guardDuplicate(gross, () => runPayForm(payload));
   };
 
   const runPayForm = async ({ lines, keepAsCredit, changeAmount, paymentDate, receiptFile }: PayFormSubmit) => {
+    if (writingRef.current || blocked) return;
+    writingRef.current=true;setWriting(true);setReceiptError('');
     try {
-      let url: string | null = null;
-      if (receiptFile) {
+      let url: string | null = receiptFile ? uploadedFiles.current.get(receiptFile) ?? null : null;
+      if (receiptFile && !url) {
         setUploading(true);
         try {
           url = await uploadReceiptToStorage(receiptFile);
-        } catch {
-          toast.warning(
-            'Không tải được ảnh chứng từ — phiếu thu sẽ ghi KHÔNG kèm ảnh (bổ sung sau ở trang Hoá đơn).',
-          );
+          if (!url) throw new TypeError('Missing receipt upload result');
+          uploadedFiles.current.set(receiptFile,url);
+        } catch (error) {
+          console.error('Collection receipt upload failed',error);
+          setReceiptError(`Chưa tải được chứng từ ${receiptFile.name}. Khoản thu chưa được gửi. Giữ ảnh và thử tải lại.`);
+          return;
         } finally {
           setUploading(false);
         }
       }
-      await collect({
+      const result = await collect({
         invoice,
         allowRounding,
         lines,
@@ -298,15 +354,16 @@ export function CollectDrawer({
             .map((line) => [line.method, line.accountId as string]),
         ),
       });
+      readOutcome(result);
       // Thu xong → invoice cập nhật (remaining 0) → form tự ẩn, hiện "Đã thu đủ".
     } catch (e) {
-      toast.error((e as Error).message);
-    }
+      reportFailure(e);
+    } finally {writingRef.current=false;setWriting(false);}
   };
 
   // Sổ nhận tiền (máy chủ): đang nạp / lỗi thì chưa cho thu, nói rõ vì sao.
   const receivingStatus = receiving.error
-    ? <p role="alert" className="pf-hint err">{receiving.error}</p>
+    ? <div role="alert" className="pf-hint err">{receiving.error}<Button variant="outline" onClick={() => void reloadReceiving?.()}>Tải lại sổ nhận tiền</Button></div>
     : receiving.loading
       ? <p role="status" className="pf-hint">Đang tải sổ nhận tiền…</p>
       : null;
@@ -329,7 +386,7 @@ export function CollectDrawer({
       canCredit={!!invoice.contract_id}
       allowRounding={allowRounding}
       changeAccountName={changeAccountName}
-      confirming={isCollecting || checkingDup}
+      confirming={isCollecting || checkingDup || writing || blocked}
       onConfirm={submitKeypad}
     />
   );
@@ -361,10 +418,11 @@ export function CollectDrawer({
   if (compact) {
     return (
       <>
-        <div className={'sheet-scrim' + (show ? ' show' : '')} onClick={onClose} />
+        <div className={'sheet-scrim' + (show ? ' show' : '')} onClick={closeWhenIdle} />
         <div className={'sheet compact' + (show ? ' show' : '')}>
           <div className="sheet-grab" />
           <div className="sheet-scroll">
+            {failure && <p role="alert" className="pf-hint err">{failure}</p>}
             <div className="qp-head">
               <div className="qp-room">{code}</div>
               <div className="qp-rem">
@@ -386,10 +444,12 @@ export function CollectDrawer({
   // ── Sheet đầy đủ (tap ô) ──
   return (
     <>
-      <div className={'sheet-scrim' + (show ? ' show' : '')} onClick={onClose} />
+      <div className={'sheet-scrim' + (show ? ' show' : '')} onClick={closeWhenIdle} />
       <div className={'sheet' + (show ? ' show' : '')}>
         <div className="sheet-grab" />
         <div className="sheet-scroll">
+          {failure && <p role="alert" className="pf-hint err">{failure}</p>}
+          {receiptError && <p role="alert" className="pf-hint err">{receiptError}</p>}
           <div className="is-head">
             <div>
               <div className="is-room">{fullCode}</div>
@@ -427,6 +487,9 @@ export function CollectDrawer({
                 canCredit={!!invoice.contract_id}
                 allowRounding={allowRounding}
                 onChange={setPayState}
+                validationAttempt={validationAttempt}
+                receiptError={receiptError}
+                disabled={busy || blocked}
               />}
             </>
           )}
@@ -447,7 +510,10 @@ export function CollectDrawer({
               {undoOpen && !undoBlock ? (
                 <div className="ho-cancelbox" style={{ flexBasis: '100%' }}>
                   <textarea
-                    className="note-input"
+                    ref={undoReasonRef}
+                    className={"note-input" + (undoReasonError ? " border-red-500" : "")}
+                    aria-invalid={!!undoReasonError}
+                    aria-describedby={undoReasonError ? "collect-undo-reason-error" : undefined}
                     rows={2}
                     aria-label="Lý do hoàn tác"
                     maxLength={REVISION_REASON_MAX}
@@ -456,11 +522,12 @@ export function CollectDrawer({
                     onChange={(e) => setUndoReason(e.target.value)}
                     disabled={deletePayment.isPending}
                   />
+                  {undoReasonError && <p id="collect-undo-reason-error" role="alert" className="pf-hint err">{undoReasonError}</p>}
                   <div className="ho-acts">
                     <button
                       type="button"
                       className="ho-btn danger"
-                      disabled={deletePayment.isPending || !undoReasonOk}
+                      disabled={deletePayment.isPending}
                       onClick={doUndo}
                     >
                       {deletePayment.isPending ? 'Đang hoàn tác…' : 'Xác nhận hoàn tác'}
@@ -498,8 +565,8 @@ export function CollectDrawer({
           <button
             type="button"
             className="is-nav prev"
-            disabled={!prev}
-            onClick={() => prev && onNavigate(prev)}
+            disabled={!prev || busy}
+            onClick={() => !busy && prev && onNavigate(prev)}
           >
             <ChevronRight />
           </button>
@@ -512,8 +579,8 @@ export function CollectDrawer({
             <button
               type="button"
               className="btn-collect"
-              disabled={!canRecordPayment || !payState?.canSubmit || isCollecting || uploading || checkingDup}
-              onClick={() => payState?.payload && submitPayForm(payState.payload)}
+              disabled={!canRecordPayment || isCollecting || uploading || checkingDup || writing || blocked || loadingItems || itemsError || !!receivingStatus}
+              onClick={() => { if (payState?.payload) void submitPayForm(payState.payload); else setValidationAttempt(value => value + 1); }}
             >
               {uploading || isCollecting ? 'Đang ghi…' : checkingDup ? 'Đang kiểm…' : `Thu ${fmtShort(payState?.total ?? remaining)}`}
               {payState && payState.overpay > 0 && (
@@ -530,8 +597,8 @@ export function CollectDrawer({
           <button
             type="button"
             className="is-nav"
-            disabled={!next}
-            onClick={() => next && onNavigate(next)}
+            disabled={!next || busy}
+            onClick={() => !busy && next && onNavigate(next)}
           >
             <ChevronRight />
           </button>

@@ -1,3 +1,5 @@
+import {normalizeDateOnly} from '@/lib/firstInvoiceBuilder';
+import { persistentFinancialWorkflow } from '@/lib/persistentFinancialWorkflow';
 // Đợt 6 — Chốt sổ & bàn giao quỹ, hai bên xác nhận.
 //
 // ĐẶT TÊN theo trục "chốt sổ / closure", CỐ Ý KHÔNG dùng chữ "bàn giao" ở tên
@@ -16,6 +18,15 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { FinancialWorkflowError, FinancialWorkflowGuard } from '@/lib/financialWorkflow';
+import { format } from 'date-fns';
+
+function unknownClosing(operation: string): never {
+  throw new FinancialWorkflowError('Chưa xác nhận được kết quả ' + operation + '. Tải lại đề nghị và đối chiếu trước khi thực hiện tiếp.', 'unknown', []);
+}
+function closingRecord(data: unknown): Record<string, unknown> {
+  return data && typeof data === 'object' && !Array.isArray(data) ? data as Record<string, unknown> : {};
+}
 
 export interface ClosingBlocker {
   code: string;
@@ -111,6 +122,7 @@ function invalidateAll(qc: ReturnType<typeof useQueryClient>) {
 /** Còn vướng gì trước khi chốt. blocking=false là nhắc nhở, không chặn. */
 export const useClosingBlockers = (cashbookId: string | null | undefined) =>
   useQuery({
+    meta: { feedback: "inline" },
     queryKey: ["cashbook-closing-blockers", cashbookId],
     enabled: !!cashbookId,
     // Không cache lâu: người dùng vừa đi duyệt phiếu xong quay lại là phải thấy sạch.
@@ -119,8 +131,9 @@ export const useClosingBlockers = (cashbookId: string | null | undefined) =>
       const { data, error } = await supabase.rpc("cashbook_closing_blockers_v1", {
         p_cashbook: rpcNullable(cashbookId),
       });
-      if (error) throw new Error(error.message);
-      return (data ?? []) as ClosingBlocker[];
+      if (error) throw error;
+      if (!Array.isArray(data)) throw new Error('Invalid closing blockers response');
+      return data as ClosingBlocker[];
     },
   });
 
@@ -130,6 +143,7 @@ export const useCashbookBalanceAsOf = (
   asOf?: string | null,
 ) =>
   useQuery({
+    meta: { feedback: "inline" },
     queryKey: ["cashbook-balance-as-of", cashbookId, asOf ?? null],
     enabled: !!cashbookId,
     staleTime: 0,
@@ -138,8 +152,9 @@ export const useCashbookBalanceAsOf = (
         p_cashbook: rpcNullable(cashbookId),
         p_as_of: asOf ?? undefined,
       });
-      if (error) throw new Error(error.message);
-      return data === null || data === undefined ? null : Number(data);
+      if (error) throw error;
+      if (typeof data !== 'number' || !Number.isFinite(data)) throw new Error('Invalid cashbook balance response');
+      return Number(data);
     },
   });
 
@@ -156,6 +171,7 @@ export const useCashbookMonthlyClosingStatus = (
   month: string | null | undefined,
 ) =>
   useQuery({
+    meta: { feedback: "inline" },
     queryKey: ["cashbook-closing-monthly", organizationId ?? null, month ?? null],
     enabled: !!organizationId && !!month,
     // Mỗi dòng là một lượt gọi atav3 × số thành viên — không rẻ. Panel không cần
@@ -169,13 +185,15 @@ export const useCashbookMonthlyClosingStatus = (
           p_month: batBuoc(month, "month"),
         },
       );
-      if (error) throw new Error(error.message);
-      return (data ?? []) as MonthlyClosingStatus[];
+      if (error) throw error;
+      if (!Array.isArray(data)) throw new Error('Invalid monthly closing response');
+      return data as MonthlyClosingStatus[];
     },
   });
 
 export const useCashbookClosings = (cashbookId?: string | null) =>
   useQuery({
+    meta: { feedback: "inline" },
     queryKey: ["cashbook-closings", cashbookId ?? null],
     // Đề nghị chốt do NGƯỜI KHÁC tạo. Mặc định toàn app là staleTime 60s +
     // refetchOnWindowFocus:false (App.tsx), nên người ký đứng sẵn trên trang sẽ
@@ -187,8 +205,10 @@ export const useCashbookClosings = (cashbookId?: string | null) =>
       const { data, error } = await supabase.rpc("list_cashbook_closings_v1", {
         p_cashbook: cashbookId ?? undefined,
       });
-      if (error) throw new Error(error.message);
-      return (data ?? { pending: [], closures: [] }) as unknown as {
+      if (error) throw error;
+      const value = closingRecord(data);
+      if (!Array.isArray(value.pending) || !Array.isArray(value.closures)) throw new Error('Invalid closings response');
+      return data as unknown as {
         pending: PendingClosure[];
         closures: ConfirmedClosure[];
       };
@@ -202,6 +222,7 @@ export const useCashbookClosings = (cashbookId?: string | null) =>
  */
 export const useCashbookCloseConfirmers = (cashbookId: string | null | undefined) =>
   useQuery({
+    meta: { feedback: "inline" },
     queryKey: ["cashbook-close-confirmers", cashbookId],
     enabled: !!cashbookId,
     staleTime: 60_000,
@@ -209,13 +230,15 @@ export const useCashbookCloseConfirmers = (cashbookId: string | null | undefined
       const { data, error } = await supabase.rpc("cashbook_close_confirmers_v1", {
         p_cashbook: rpcNullable(cashbookId),
       });
-      if (error) throw new Error(error.message);
-      return (data ?? []) as Array<{ user_id: string; full_name: string | null }>;
+      if (error) throw error;
+      if (!Array.isArray(data)) throw new Error('Invalid closing confirmers response');
+      return data as Array<{ user_id: string; full_name: string | null }>;
     },
   });
 
 export interface ProposeClosingInput {
   cashbookId: string;
+  cashbookName?: string | null;
   countedBalance: number;
   confirmerUserId: string;
   note?: string | null;
@@ -223,45 +246,44 @@ export interface ProposeClosingInput {
 
 export const useProposeCashbookClosing = () => {
   const qc = useQueryClient();
+  const guard = useRef(persistentFinancialWorkflow('closing-propose',{scope:'actor'}));
   return useMutation({
-    mutationFn: async (input: ProposeClosingInput) => {
-      const { data, error } = await supabase.rpc("propose_cashbook_closing_v1", {
-        p_cashbook: input.cashbookId,
-        p_counted_balance: input.countedBalance,
-        p_confirmer: input.confirmerUserId,
-        p_note: input.note ?? undefined,
+    meta: {handlesFeedback: true},
+    mutationFn: async (input: ProposeClosingInput) => guard.current.run(input.cashbookId, 'gửi đề nghị chốt sổ', async () => {
+      const { data, error } = await supabase.rpc('propose_cashbook_closing_v1', {
+        p_cashbook: input.cashbookId, p_counted_balance: input.countedBalance,
+        p_confirmer: input.confirmerUserId, p_note: input.note ?? undefined,
       });
-      if (error) throw new Error(error.message);
-      return data as { request_id: string; difference: number };
-    },
-    onSuccess: (res) => {
+      if (error) throw error;
+      const value = closingRecord(data);
+      if (typeof value.request_id !== 'string' || !value.request_id || value.cashbook_id!==input.cashbookId || value.status !== 'PENDING') unknownClosing('gửi đề nghị chốt sổ');
+      return value;
+    }),
+    onSuccess: (_res, input) => {
       invalidateAll(qc);
-      toast.success(
-        Number(res?.difference) === 0
-          ? "Đã gửi đề nghị chốt sổ — số đếm khớp sổ. Chờ bên nhận xác nhận."
-          : "Đã gửi đề nghị chốt sổ. Chờ bên nhận xác nhận.",
-      );
+      toast.success('Đã gửi đề nghị chốt sổ ' + (input.cashbookName || '') + '. Đang chờ người nhận xác nhận.');
     },
-    onError: (e: Error) => toast.error(e.message || "Không gửi được đề nghị chốt sổ"),
   });
 };
 
 export const useConfirmCashbookClosing = () => {
   const qc = useQueryClient();
+  const guard = useRef(persistentFinancialWorkflow('closing-request-lifecycle',{scope:'actor'}));
   return useMutation({
-    mutationFn: async (input: { requestId: string; countedBalance: number }) => {
-      const { data, error } = await supabase.rpc("confirm_cashbook_closing_v1", {
-        p_request: input.requestId,
-        p_counted_balance: input.countedBalance,
+    meta: {handlesFeedback: true},
+    mutationFn: async (input: { requestId: string; countedBalance: number; cashbookName?: string }) => guard.current.run(input.requestId, 'xác nhận chốt sổ', async () => {
+      const { data, error } = await supabase.rpc('confirm_cashbook_closing_v1', {
+        p_request: input.requestId, p_counted_balance: input.countedBalance,
       });
-      if (error) throw new Error(error.message);
-      return data as { closure_id: number; closed_through: string };
-    },
-    onSuccess: (res) => {
+      if (error) throw error;
+      const value = closingRecord(data);
+      if (value.request_id!==input.requestId || !Number.isSafeInteger(value.closure_id) || Number(value.closure_id)<=0 || value.status !== 'CONFIRMED' || typeof value.closed_through !== 'string' || normalizeDateOnly(value.closed_through)!==value.closed_through) unknownClosing('xác nhận chốt sổ');
+      return value as {closed_through: string; closure_id: number};
+    }),
+    onSuccess: (res, input) => {
       invalidateAll(qc);
-      toast.success(`Đã chốt sổ tới ${res?.closed_through}. Kỳ này khoá vĩnh viễn.`);
+      toast.success('Đã chốt sổ ' + (input.cashbookName || '') + ' đến ngày ' + format(new Date(res.closed_through), 'dd/MM/yyyy') + '. Các giao dịch đến ngày này đã khóa.');
     },
-    onError: (e: Error) => toast.error(e.message || "Không xác nhận được"),
   });
 };
 
@@ -314,19 +336,22 @@ export function useCashbookClosingDeepLink(handlers: {
 
 export const useCancelCashbookClosing = () => {
   const qc = useQueryClient();
+  const guard = useRef(persistentFinancialWorkflow('closing-request-lifecycle',{scope:'actor'}));
   return useMutation({
-    mutationFn: async (input: { requestId: string; reason: string }) => {
-      const { data, error } = await supabase.rpc("cancel_cashbook_closing_v1", {
-        p_request: input.requestId,
-        p_reason: input.reason,
+    meta: {handlesFeedback: true},
+    mutationFn: async (input: { requestId: string; reason: string; cashbookName?: string }) => guard.current.run(input.requestId, 'hủy đề nghị chốt sổ', async () => {
+      const { data, error } = await supabase.rpc('cancel_cashbook_closing_v1', {
+        p_request: input.requestId, p_reason: input.reason,
       });
-      if (error) throw new Error(error.message);
-      return data;
-    },
-    onSuccess: () => {
+      if (error) throw error;
+      const value = closingRecord(data);
+      if (value.request_id !== input.requestId || typeof value.changed !== 'boolean' || (value.changed && value.status !== 'CANCELLED')) unknownClosing('hủy đề nghị chốt sổ');
+      return value;
+    }),
+    onSuccess: (res, input) => {
       invalidateAll(qc);
-      toast.success("Đã huỷ đề nghị chốt sổ");
+      if (!res.changed) toast.info('Đề nghị chốt sổ ' + (input.cashbookName || '') + ' đã thay đổi trước đó. Danh sách đang được cập nhật.');
+      else toast.success('Đã hủy đề nghị chốt sổ ' + (input.cashbookName || '') + '.');
     },
-    onError: (e: Error) => toast.error(e.message || "Không huỷ được đề nghị"),
   });
 };

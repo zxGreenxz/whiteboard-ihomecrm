@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { friendlyError } from "@/lib/friendlyError";
+import { requireAccountWriteReceipt } from "@/lib/accountSettingsWriteReceipt";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -72,8 +74,13 @@ function RoomInfoSection({ buildingId }: { buildingId: string }) {
   // Các phòng "cùng mẫu" cần đồng bộ CÙNG bộ ảnh với phòng chính.
   const [similarIds, setSimilarIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [roomSaveError, setRoomSaveError] = useState("");
+  const errorRoomId = useRef("");
 
   useEffect(() => {
+    if (room && room.id === errorRoomId.current) return;
+    errorRoomId.current = "";
+    setRoomSaveError("");
     setAmenities(toStrArr(room?.amenities));
     setImages(toStrArr(room?.images));
     setSimilarIds([]);
@@ -122,31 +129,43 @@ function RoomInfoSection({ buildingId }: { buildingId: string }) {
   const save = async () => {
     if (!room) return;
     setSaving(true);
+    setRoomSaveError("");
+    const savedIds: string[] = [];
     try {
-      // Phòng chính: nội thất + ảnh.
-      const { error: e1 } = await supabase
-        .from("rooms")
-        .update({ amenities: amenities.length > 0 ? amenities : null, images })
-        .eq("id", room.id);
+      const mainPatch = { amenities: amenities.length > 0 ? amenities : null, images: images };
+      const { data: main, error: e1 } = await supabase.from("rooms")
+        .update(mainPatch).eq("id", room.id).select("id,images,amenities").single();
       if (e1) throw e1;
-      // Phòng tương tự: chỉ đồng bộ ảnh (giữ nguyên nội thất riêng).
+      requireAccountWriteReceipt(main, { id: room.id, ...mainPatch });
+      savedIds.push(room.id);
       if (similarIds.length > 0) {
-        const { error: e2 } = await supabase
-          .from("rooms")
-          .update({ images })
-          .in("id", similarIds);
+        const { data: peers, error: e2 } = await supabase.from("rooms")
+          .update({ images: images }).in("id", similarIds).select("id,images");
         if (e2) throw e2;
+        if (!Array.isArray(peers)) throw new TypeError("Malformed room image receipts");
+        for (const row of peers) {
+          if (!similarIds.includes(row.id)) throw new TypeError("Unexpected room image receipt");
+          requireAccountWriteReceipt(row, { id: row.id, images: images });
+          if (!savedIds.includes(row.id)) savedIds.push(row.id);
+        }
+        if (peers.length !== similarIds.length || savedIds.length !== similarIds.length + 1)
+          throw new TypeError("Incomplete room image receipts");
       }
-      toast.success(
-        similarIds.length > 0
-          ? `Đã lưu & đồng bộ ảnh cho ${similarIds.length + 1} phòng`
-          : "Đã lưu thông tin phòng",
-      );
+      errorRoomId.current = "";
+      toast.success(similarIds.length > 0
+        ? "Đã lưu phòng " + room.name + " và xác nhận đồng bộ ảnh cho " + savedIds.length + " phòng."
+        : "Đã lưu thông tin phòng " + room.name + ".");
       qc.invalidateQueries({ queryKey: ["rooms"] });
       qc.invalidateQueries({ queryKey: ["buildings"] });
       qc.invalidateQueries({ queryKey: ["my-available-rooms"] });
-    } catch (err) {
-      toast.error("Không thể lưu: " + ((err as { message?: string })?.message ?? "lỗi không xác định"));
+    } catch (error) {
+      const feedback = friendlyError(error, "Chưa xác nhận được kết quả lưu thông tin sale", { operation: "lưu thông tin sale" });
+      const description = savedIds.length
+        ? "Đã lưu phòng " + room.name + " (" + room.id + "). Chưa xác nhận đồng bộ đầy đủ ảnh; giữ nội dung và kiểm tra các phòng đã chọn. Mã phòng đã xác nhận: " + savedIds.join(", ") + ". " + feedback.description
+        : "Chưa xác nhận được kết quả lưu phòng " + room.name + " (" + room.id + "). " + feedback.description;
+      errorRoomId.current = room.id;
+      setRoomSaveError(description);
+      toast.error(savedIds.length ? "Thông tin sale mới lưu một phần" : feedback.title, { description });
     } finally {
       setSaving(false);
     }
@@ -166,7 +185,7 @@ function RoomInfoSection({ buildingId }: { buildingId: string }) {
           </Label>
           <SearchableSelect value={roomId} onValueChange={setRoomId} options={roomOpts}
             placeholder={buildingId ? "Chọn phòng" : "Chọn toà nhà trước"} emptyText="Không có phòng"
-            disabled={!buildingId} />
+            disabled={!buildingId || saving} />
         </div>
 
         {room ? (
@@ -212,6 +231,7 @@ function RoomInfoSection({ buildingId }: { buildingId: string }) {
               </div>
             </div>
 
+            {roomSaveError && <p role="alert" className="text-sm text-destructive">{roomSaveError}</p>}
             <div className="flex justify-end">
               <Button disabled={saving} onClick={save}>
                 {saving

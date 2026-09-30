@@ -1,3 +1,4 @@
+import {QueryRegion} from '@/components/errors/QueryRegion';
 import { useIncomeExpenseDetail } from "@/hooks/income-expenses/detailRead";
 import { hasCompleteVoucherDetail } from "@/lib/incomeExpenseDetailRead";
 import { useState, useEffect } from "react";
@@ -146,15 +147,18 @@ function IncomeExpenseDetailDialogContent({
   const currentUserId = authUser?.id ?? null;
 
   // Nhật ký thao tác (huỷ / khôi phục) — chỉ tải khi mở dialog.
-  const { data: history = [] } = useIncomeExpenseHistory(
+  const historyQuery = useIncomeExpenseHistory(
     voucher?.id ?? null,
     open
   );
 
+  const history=historyQuery.data??[];
+
   // Deep-link sang hoá đơn liên quan (phiếu thu sinh từ thanh toán hoá đơn).
   // Query nhỏ chỉ chạy khi mở dialog và phiếu có invoice_id.
   const invoiceId = voucher?.invoice_id ?? null;
-  const { data: relatedInvoice } = useQuery({
+  const relatedInvoiceQuery = useQuery({
+    meta:{errorDisplay:"inline",label:"hoá đơn liên quan"},
     queryKey: ["ie-related-invoice", invoiceId],
     enabled: open && !!invoiceId,
     queryFn: async (): Promise<{
@@ -172,6 +176,7 @@ function IncomeExpenseDetailDialogContent({
     },
   });
 
+  const relatedInvoice=relatedInvoiceQuery.data;
   const attachments = getVoucherDisplayAttachments(voucher ?? {});
   const [settlementLightboxOpen, setSettlementLightboxOpen] = useState(false);
   const isLightboxOpen = lightboxIdx !== null || settlementLightboxOpen;
@@ -240,6 +245,8 @@ function IncomeExpenseDetailDialogContent({
           </DialogHeader>
 
           {/* Section header với action buttons bên phải */}
+          <QueryRegion label="nhật ký phiếu" queries={[historyQuery]}><></></QueryRegion>
+          {invoiceId&&<QueryRegion label="hoá đơn liên quan" queries={[relatedInvoiceQuery]}><></></QueryRegion>}
           <div className="flex items-center justify-between mt-1">
             <SectionTitle>Thông tin chung</SectionTitle>
             <div className="flex items-center gap-1.5">
@@ -277,7 +284,7 @@ function IncomeExpenseDetailDialogContent({
                   size="icon"
                   variant="default"
                   className="h-8 w-8 bg-green-600 hover:bg-green-700"
-                  title="Duyệt phiếu (đã thanh toán)"
+                  title="Duyệt phiếu"
                   onClick={() => {
                     onApprove(voucher);
                     onOpenChange(false);

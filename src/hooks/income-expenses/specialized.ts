@@ -1,3 +1,7 @@
+import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
+import {FinancialWorkflowError} from '@/lib/financialWorkflow';
+import { readCreatedVoucherReceipt } from "@/lib/createdVoucherReceipt";
+import { createdVoucherFeedback, voucherFailureMessage } from "@/lib/voucherFeedback";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
@@ -16,6 +20,8 @@ export const useCreateProfitDistribution = () => {
       const user = await getSessionUser();
       if (!user) throw new Error("User not authenticated");
 
+      if(!input.organizationId)throw new FinancialWorkflowError('Chưa xác định được tổ chức của sổ quỹ. Tải lại sổ quỹ trước khi lập phiếu.','failure',[]);
+      return persistentFinancialWorkflow('profit-payout').run('shareholder:'+input.shareholder_id,'lập phiếu chi lợi nhuận',async progress=>{
       const { data, error } = await supabase.rpc(
         "distribute_shareholder_profit_v1",
         {
@@ -26,26 +32,28 @@ export const useCreateProfitDistribution = () => {
           // `p_note text` KHÔNG có DEFAULT ⇒ bắt buộc truyền, nhưng vẫn nhận
           // NULL (phiếu không ghi chú). Bộ sinh không diễn đạt được điều đó.
           p_note: rpcNullable(input.note ?? null),
-          p_idempotency_key: `profit-dist-${crypto.randomUUID()}`,
+          p_idempotency_key: progress.requestKey,
         },
       );
 
       // Money writers fail closed: permission, frozen and rollout errors must
       // never fall back to direct client inserts.
       if (error) {
-        toast.error(error.message || "Không thể tạo phiếu chia lợi nhuận");
         throw error;
       }
-      return data;
+      const receipt=await readCreatedVoucherReceipt(data);
+      progress.completed.push({id:receipt.id,label:'Phiếu chi lợi nhuận đã tạo'});
+      return receipt;
+      },undefined,input.organizationId);
     },
-    onSuccess: () => {
+    onSuccess: (receipt) => {
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
       queryClient.invalidateQueries({ queryKey: ["accounts-with-balance"] });
       queryClient.invalidateQueries({ queryKey: ["shareholder-distributions"] });
-      toast.success("Đã ghi phiếu chia lợi nhuận");
+      const feedback=createdVoucherFeedback(receipt); toast[feedback.kind](feedback.message);
     },
     onError: (error) => {
-      console.error("Error creating profit distribution:", error);
+      toast.error(voucherFailureMessage(error,"lập phiếu chi lợi nhuận"));
     },
   });
 };
@@ -58,6 +66,8 @@ export const useCreateManagerSalaryPayout = () => {
       const user = await getSessionUser();
       if (!user) throw new Error("User not authenticated");
 
+      if(!input.organizationId)throw new FinancialWorkflowError('Chưa xác định được tổ chức của sổ quỹ. Tải lại sổ quỹ trước khi lập phiếu.','failure',[]);
+      return persistentFinancialWorkflow('profit-payout').run('manager:'+input.manager_id,'lập phiếu chi lương điều hành',async progress=>{
       const { data, error } = await supabase.rpc(
         "manager_salary_payout_v1",
         {
@@ -67,24 +77,26 @@ export const useCreateManagerSalaryPayout = () => {
           p_voucher_date: input.voucher_date,
           // `p_note text` bắt buộc-nhưng-nhận-NULL, như trên.
           p_note: rpcNullable(input.note ?? null),
-          p_idempotency_key: `mgr-payout-${crypto.randomUUID()}`,
+          p_idempotency_key: progress.requestKey,
         },
       );
 
       if (error) {
-        toast.error(error.message || "Không thể tạo phiếu lương điều hành");
         throw error;
       }
-      return data;
+      const receipt=await readCreatedVoucherReceipt(data);
+      progress.completed.push({id:receipt.id,label:'Phiếu chi lương đã tạo'});
+      return receipt;
+      },undefined,input.organizationId);
     },
-    onSuccess: () => {
+    onSuccess: (receipt) => {
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
       queryClient.invalidateQueries({ queryKey: ["accounts-with-balance"] });
       queryClient.invalidateQueries({ queryKey: ["manager-salary-payouts"] });
-      toast.success("Đã ghi phiếu lương điều hành");
+      const feedback=createdVoucherFeedback(receipt); toast[feedback.kind](feedback.message);
     },
     onError: (error) => {
-      console.error("Error creating manager salary payout:", error);
+      toast.error(voucherFailureMessage(error,"lập phiếu chi lương điều hành"));
     },
   });
 };

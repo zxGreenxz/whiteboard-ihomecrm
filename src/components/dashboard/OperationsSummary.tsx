@@ -1,3 +1,4 @@
+import { QueryRegion } from "@/components/errors/QueryRegion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -80,7 +81,8 @@ export function OperationsSummary({ buildingId }: { buildingId?: string | null }
   // Toàn bộ số liệu từ RPC gộp get_dashboard_summary (cùng queryKey với
   // useDashboardStats → 0 request thêm). Trước đây widget này kéo TOÀN BỘ
   // bảng leads + deposits (full row + embed, không limit) chỉ để đếm 6 số.
-  const { data: summary, isLoading } = useDashboardSummary(buildingId);
+  const query = useDashboardSummary(buildingId);
+  const { data: summary, isLoading } = query;
   const leadsLoading = isLoading;
   const depositsLoading = isLoading;
   const contractsLoading = isLoading;
@@ -108,6 +110,7 @@ export function OperationsSummary({ buildingId }: { buildingId?: string | null }
   const terminatedThisMonth = summary?.contracts_terminated_month ?? 0;
 
   return (
+    <QueryRegion label="tổng quan vận hành" queries={[query]}>
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
       <StatBlock
         icon={UserPlus}
@@ -149,6 +152,7 @@ export function OperationsSummary({ buildingId }: { buildingId?: string | null }
         ]}
       />
     </div>
+    </QueryRegion>
   );
 }
 

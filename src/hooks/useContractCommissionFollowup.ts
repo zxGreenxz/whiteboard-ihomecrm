@@ -10,6 +10,7 @@ export function useContractCommissionFollowups(filter: CommissionFollowupFilter)
     queryKey: [CONTRACT_COMMISSION_FOLLOWUP_KEY, selectedOrganizationId, filter.contractId ?? null,
       [...(filter.buildingIds ?? [])].sort(), filter.unresolvedOnly ?? !filter.contractId, filter.page ?? 0,
       filter.kind ?? null, filter.search?.trim() ?? null, filter.periodFrom ?? null, filter.periodTo ?? null],
+    meta: { errorDisplay: 'inline', label: 'theo dõi hoa hồng' },
     enabled: !!selectedOrganizationId && filter.enabled !== false,
     staleTime: 10000, refetchOnWindowFocus: true, refetchInterval: 30000,
     queryFn: () => {

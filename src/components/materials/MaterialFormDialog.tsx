@@ -1,4 +1,5 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import {recordWriteBlocked,recordWriteMessage} from '@/lib/recordWriteOutcome';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -17,6 +18,7 @@ import { materialFormSchema, type MaterialFormValues } from '@/lib/materialValid
 import { useCreateMaterial, useUpdateMaterial } from '@/hooks/useMaterials';
 import { useMaterialCategories } from '@/hooks/useMaterialCategories';
 import type { Material } from '@/types/material';
+import { focusFirstError } from '@/lib/formErrors';
 
 interface Props {
   open: boolean;
@@ -29,8 +31,11 @@ const UNCATEGORIZED = '__none__';
 export default function MaterialFormDialog({ open, onOpenChange, editing }: Props) {
   const createMut = useCreateMaterial();
   const updateMut = useUpdateMaterial();
-  const { data: categories = [] } = useMaterialCategories();
+  const categoriesQuery=useMaterialCategories();
+  const categories=categoriesQuery.data??[];
+  const sourceBlocked=categoriesQuery.isError||categoriesQuery.isLoading;
   const isEditing = !!editing;
+  const [blocked,setBlocked]=useState(false);const busy=useRef(false);const draftKey=useRef<string|null>(null);
 
   const form = useForm<MaterialFormValues>({
     resolver: zodResolver(materialFormSchema),
@@ -47,6 +52,9 @@ export default function MaterialFormDialog({ open, onOpenChange, editing }: Prop
 
   useEffect(() => {
     if (open) {
+      const key=editing?.id??'new';
+      if(draftKey.current===key&&(blocked||form.formState.isDirty||form.formState.errors.root?.server))return;
+      draftKey.current=key;setBlocked(false);
       form.reset({
         code: editing?.code ?? '',
         name: editing?.name ?? '',
@@ -60,6 +68,9 @@ export default function MaterialFormDialog({ open, onOpenChange, editing }: Prop
   }, [open, editing, form]);
 
   const onSubmit = async (data: MaterialFormValues) => {
+    if(busy.current||blocked||sourceBlocked)return;
+    busy.current=true;
+    form.clearErrors('root.server');
     try {
       const payload: MaterialFormValues = {
         ...data,
@@ -70,22 +81,26 @@ export default function MaterialFormDialog({ open, onOpenChange, editing }: Prop
       } else {
         await createMut.mutateAsync(payload);
       }
-      onOpenChange(false);
-    } catch {
-      /* toast in hook */
-    }
+      draftKey.current=null;onOpenChange(false);
+    } catch (error) {
+      setBlocked(recordWriteBlocked(error));
+      form.setError('root.server', { type: 'server', message: recordWriteMessage(error,'lưu vật tư') });
+    }finally{busy.current=false;}
   };
 
   const isSubmitting = createMut.isPending || updateMut.isPending;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto">
+    <Dialog open={open} onOpenChange={value=>{if(!busy.current)onOpenChange(value);}}>
+      <DialogContent aria-describedby={undefined} className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isEditing ? 'Sửa vật tư' : 'Thêm vật tư'}</DialogTitle>
         </DialogHeader>
+        {sourceBlocked&&<div role="alert" className="text-sm text-destructive">Chưa tải được danh mục vật tư. Kiểm tra nguồn trước khi lưu. <Button type="button" variant="outline" onClick={()=>{void categoriesQuery.refetch();}}>Tải lại danh mục</Button></div>}
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-3.5">
+          <form onSubmit={form.handleSubmit(onSubmit, errors => { void focusFirstError(errors); })} className="space-y-3.5">
+            {form.formState.errors.root?.server?.message && <p role="alert" className="text-sm text-destructive">{form.formState.errors.root.server.message}</p>}
+            <fieldset disabled={isSubmitting || blocked || sourceBlocked} className="space-y-3.5">
             <div className="grid grid-cols-2 gap-3">
               <FormField
                 control={form.control}
@@ -212,10 +227,11 @@ export default function MaterialFormDialog({ open, onOpenChange, editing }: Prop
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
                 Huỷ
               </Button>
-              <Button type="submit" disabled={isSubmitting}>
+              <Button type="submit" disabled={isSubmitting || blocked}>
                 {isSubmitting ? 'Đang lưu…' : isEditing ? 'Cập nhật' : 'Tạo mới'}
               </Button>
             </DialogFooter>
+            </fieldset>
           </form>
         </Form>
       </DialogContent>

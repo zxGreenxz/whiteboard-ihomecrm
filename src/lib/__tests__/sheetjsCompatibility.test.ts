@@ -39,7 +39,7 @@ describe('SheetJS security update and legacy customer files',()=>{
   it(`keeps contract dates, cycle, rent and deposit from legacy ${format}`,async()=>{
    const result=await parseContractExcel(fixture('contracts',format),'synthetic-building');
    expect(result.errors).toEqual([]);
-   expect(result.success).toEqual([{room_name:'303',customer_name:'Khách kiểm thử',customer_phone:'0000000000',customer_id_number:'001234567890',signed_date:'2026-09-20',start_date:'2026-09-20',end_date:'2027-09-19',rent_price:4400000,payment_cycle:'MONTHLY',deposit:4400000,notes:'Hỗ trợ khách theo lịch'}]);
+   expect(result.success).toEqual([{source_row:2,room_name:'303',customer_name:'Khách kiểm thử',customer_phone:'0000000000',customer_id_number:'001234567890',signed_date:'2026-09-20',start_date:'2026-09-20',end_date:'2027-09-19',rent_price:4400000,payment_cycle:'MONTHLY',deposit:4400000,notes:'Hỗ trợ khách theo lịch'}]);
   });
   it(`keeps numeric meter readings and Vietnamese notes from legacy ${format}`,async()=>{
    expect(await parseMeterReadingExcel(fixture('meters',format))).toEqual([{meter_code:'ĐIỆN-303',reading_date:'30/09/2026',current_reading:6937,notes:'Chốt tháng 9'}]);

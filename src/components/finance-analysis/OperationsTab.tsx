@@ -1,3 +1,4 @@
+import { QueryRegion } from "@/components/errors/QueryRegion";
 import { useMemo } from "react";
 import {
   Bar,
@@ -63,16 +64,20 @@ const ROOM_STATUS_META: { key: string; label: string; color: string }[] = [
 export function OperationsTab({ filters }: Props) {
   const { ym, t13Start, t13End, t13StartYm, months12, buildingIds } = filters;
 
-  const { data: occupancy = [], isLoading: occLoading } = useFaOccupancyMonthly(
+  const reportQuery0 = useFaOccupancyMonthly(
     t13Start, t13End, buildingIds,
   );
-  const { data: leaseEvents = [], isLoading: leaseLoading } = useFaLeaseEvents(
+  const { data: occupancy = [], isLoading: occLoading } = reportQuery0;
+  const reportQuery1 = useFaLeaseEvents(
     t13Start, t13End, buildingIds,
   );
-  const { data: collection = [], isLoading: colLoading } = useFaInvoiceCollection(
+  const { data: leaseEvents = [], isLoading: leaseLoading } = reportQuery1;
+  const reportQuery2 = useFaInvoiceCollection(
     t13StartYm, ym, buildingIds,
   );
-  const { data: snapshot = [], isLoading: snapLoading } = useFaSnapshotKpis(buildingIds);
+  const { data: collection = [], isLoading: colLoading } = reportQuery2;
+  const reportQuery3 = useFaSnapshotKpis(buildingIds);
+  const { data: snapshot = [], isLoading: snapLoading } = reportQuery3;
 
   // ── Lấp đầy 12 tháng: đường "Tổng" + từng toà khi ≤ 8 toà ──────────
   const occBuildings = useMemo(
@@ -179,6 +184,7 @@ export function OperationsTab({ filters }: Props) {
   const arpu = snap.actives > 0 ? snap.rentSum / snap.actives : 0;
 
   return (
+    <QueryRegion label="phân tích tài chính" queries={[reportQuery0, reportQuery1, reportQuery2, reportQuery3]}>
     <div className="space-y-4">
       <ChartCard
         title="Tỷ lệ lấp đầy — 12 tháng"
@@ -423,5 +429,6 @@ export function OperationsTab({ filters }: Props) {
         </Card>
       </div>
     </div>
+    </QueryRegion>
   );
 }

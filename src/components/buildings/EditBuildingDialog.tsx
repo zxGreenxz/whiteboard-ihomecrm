@@ -1,4 +1,5 @@
-import { useEffect } from "react";
+import { useEffect, useState, useRef, useMemo } from 'react';
+import { recordWriteBlocked, recordWriteMessage } from '@/lib/recordWriteOutcome';
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -36,6 +37,13 @@ import { CommissionTiersField } from "./CommissionTiersField";
 import { DEFAULT_COMMISSION_TIERS, type CommissionTier } from "@/types/building";
 import { BuildingLegalOwnerFields } from './BuildingLegalOwnerFields';
 import { useBuildingLegalOwnerForm } from '@/hooks/useBuildingLegalOwnerForm';
+import { focusFirstError } from '@/lib/formErrors';
+import { persistentFinancialWorkflow } from '@/lib/persistentFinancialWorkflow';
+import { runBuildingSaveWorkflow } from '@/lib/buildingSaveWorkflow';
+import { useBuildingSavePending } from '@/hooks/useBuildingSavePending';
+import { supabase } from '@/integrations/supabase/client';
+import { useOrganization } from '@/contexts/OrganizationContext';
+import type { BuildingLegalOwner } from '@/lib/buildingLegalOwner';
 
 type Building = Database["public"]["Tables"]["buildings"]["Row"];
 
@@ -74,8 +82,18 @@ export function EditBuildingDialog({
   onOpenChange,
   building,
 }: EditBuildingDialogProps) {
-  const updateBuilding = useUpdateBuilding();
+  const {selectedOrganizationId}=useOrganization();
+  const priorSave=useBuildingSavePending(`edit:${building.id}`,selectedOrganizationId,open,'building-owner-form-save');
+  const saveGuard=useMemo(()=>persistentFinancialWorkflow('building-owner-form-save'),[]);
+  const savedOwner=useRef<BuildingLegalOwner|null>(null);
+  const updateBuilding = useUpdateBuilding({ silentSuccess: true });
   const owner = useBuildingLegalOwnerForm(building.id, open);
+  const [coreSaved, setCoreSaved] = useState(false);
+  const [coreFailure, setCoreFailure] = useState<unknown>();
+  const [coreBlocked, setCoreBlocked] = useState(false);
+  const draftKey = useRef<string | null>(null);
+  const [partialMessage, setPartialMessage] = useState<string | null>(null);
+  useEffect(() => { setCoreSaved(false); setPartialMessage(null); }, [building.id]);
 
   const form = useForm<BuildingFormValues>({
     resolver: zodResolver(buildingSchema),
@@ -98,6 +116,8 @@ export function EditBuildingDialog({
   // Update form when building changes
   useEffect(() => {
     if (building) {
+      if(draftKey.current === building.id && (coreFailure || coreSaved || form.formState.isDirty)) return;
+      draftKey.current = building.id; setCoreFailure(undefined); setCoreBlocked(false);
       form.reset({
         name: building.name,
         code: building.code || "",
@@ -117,34 +137,37 @@ export function EditBuildingDialog({
   }, [building]);
 
   const onSubmit = async (data: BuildingFormValues) => {
+    if(coreBlocked)return;
     if (!await owner.validate()) return;
-    const ownerSnapshot = owner.form.getValues();
+    form.clearErrors('root.server');
+    setPartialMessage(null);
+    const ownerSnapshot = savedOwner.current ?? owner.form.getValues();
+    let saved = coreSaved;
     try {
-      await updateBuilding.mutateAsync({
-        id: building.id,
-        updates: {
-          name: data.name,
-          code: data.code || null,
-          type: data.type,
-          status: data.status,
-          province: data.province,
-          district: data.district,
-          ward: data.ward,
-          street_address: data.street_address || null,
-          total_floors: data.total_floors ? parseInt(data.total_floors) : null,
-          description: data.description || null,
-          commission_tiers: data.commission_tiers as any,
-        },
+      if(!selectedOrganizationId)throw new Error('Chọn tổ chức trước khi lưu tòa.');
+      const corePayload={name:data.name,code:data.code||null,type:data.type,status:data.status,province:data.province,district:data.district,ward:data.ward,street_address:data.street_address||null,total_floors:data.total_floors?Number(data.total_floors):null,description:data.description||null,commission_tiers:data.commission_tiers as any};
+      await runBuildingSaveWorkflow(saveGuard,{
+        key:`edit:${building.id}`,organizationId:selectedOrganizationId,expectedCore:corePayload,
+        writeCore:()=>updateBuilding.mutateAsync({id:building.id,updates:corePayload}),
+        readCore:async ids=>{const {data:rows,error}=await supabase.from('buildings').select('*').in('id',[...ids]).eq('organization_id',selectedOrganizationId).is('deleted_at',null);if(error)throw error;return rows;},
+        onCoreConfirmed:()=>{saved=true;setCoreSaved(true);savedOwner.current=ownerSnapshot;},
+        saveRelated:async(id,_progress,recovering)=>{await owner.save(id,ownerSnapshot,recovering);},
       });
-      await owner.save(building.id, ownerSnapshot);
+      savedOwner.current=null;
+      setCoreSaved(false);
+      draftKey.current = null;
       onOpenChange(false);
     } catch (error) {
-      // Error is handled by the mutation
+      if (saved) setPartialMessage(recordWriteMessage(error,'lưu tòa và chủ sở hữu')+` Mở lại tòa có ID ${building.id} để đối chiếu; không tạo lại.`);
+      else {
+        setCoreFailure(error); setCoreBlocked(recordWriteBlocked(error));
+        form.setError('root.server', {type:'server',message:recordWriteMessage(error,'cập nhật tòa nhà')});
+      }
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={value => { if (!form.formState.isSubmitting) onOpenChange(value); }}>
+    <Dialog open={open} onOpenChange={value => { if (!form.formState.isSubmitting && (value || !coreSaved)) onOpenChange(value); }}>
       <DialogContent className="sm:max-w-[600px] max-h-[90vh]">
         <DialogHeader>
           <DialogTitle>Chỉnh sửa Tòa nhà</DialogTitle>
@@ -155,7 +178,11 @@ export function EditBuildingDialog({
 
         <ScrollArea className="max-h-[calc(90vh-120px)] pr-4">
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <form onSubmit={form.handleSubmit(onSubmit, errors => { void focusFirstError(errors); })} className="space-y-4">
+              {priorSave && <p role="alert" className="rounded border border-amber-500 p-3 text-sm">Yêu cầu lưu tòa trước chưa được xác nhận đầy đủ. {priorSave.ids.length>0?`ID cần đối chiếu: ${priorSave.ids.join(', ')}.`:'Giữ thông tin đã nhập và đối chiếu trước khi tạo lại.'} {priorSave.buildingId && <a className="underline" href={`/buildings/${priorSave.buildingId}`}>Mở tòa đã lưu</a>} Lần lưu tiếp chỉ được tiếp tục phần còn thiếu sau khi đối chiếu đúng tòa.</p>}
+              {partialMessage && <p role="alert" className="rounded-md border border-amber-500 p-3 text-sm">{partialMessage}</p>}
+              {form.formState.errors.root?.server?.message && <p role="alert" className="text-sm text-destructive">{form.formState.errors.root.server.message}</p>}
+              <fieldset disabled={coreSaved || coreBlocked || form.formState.isSubmitting}>
               {/* Basic Info */}
               <div className="space-y-4">
                 <h3 className="font-semibold text-sm">Thông tin cơ bản</h3>
@@ -367,6 +394,7 @@ export function EditBuildingDialog({
                 />
               </div>
 
+              </fieldset>
               <BuildingLegalOwnerFields {...owner} />
               <div className="flex justify-end gap-3 pt-4">
                 <Button
@@ -375,9 +403,9 @@ export function EditBuildingDialog({
                   onClick={() => onOpenChange(false)}
                   disabled={form.formState.isSubmitting}
                 >
-                  Hủy
+                  {coreSaved ? 'Đóng để đối chiếu tòa đã lưu' : 'Hủy'}
                 </Button>
-                <Button type="submit" disabled={form.formState.isSubmitting || updateBuilding.isPending || owner.saving || owner.loading || !!owner.error}>
+                <Button type="submit" disabled={coreBlocked || form.formState.isSubmitting || updateBuilding.isPending || owner.saving || owner.loading || !!owner.error}>
                   {form.formState.isSubmitting ? "Đang cập nhật..." : "Cập nhật"}
                 </Button>
               </div>

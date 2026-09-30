@@ -1,3 +1,4 @@
+import { isZaloActionUnconfirmed, zaloActionErrorMessage } from '@/lib/zaloActionFeedback';
 import { useEffect } from 'react';
 import { Loader2, CheckCircle2, AlertTriangle, QrCode } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -10,10 +11,13 @@ interface Props {
   onOpenChange: (v: boolean) => void;
   account: ZaloAccount | null;
   onRetry: () => void;
+  requestError?: unknown;
+  pending?: boolean;
+  onRefresh?: () => void;
 }
 
 /** Dialog đăng nhập Zalo cá nhân bằng QR (worker zca-js sinh mã + cập nhật trạng thái). */
-export default function ConnectZaloDialog({ open, onOpenChange, account, onRetry }: Props) {
+export default function ConnectZaloDialog({ open, onOpenChange, account, onRetry, requestError, pending, onRefresh }: Props) {
   const status = account?.status;
   const qr = account?.qrData;
 
@@ -39,7 +43,13 @@ export default function ConnectZaloDialog({ open, onOpenChange, account, onRetry
         </DialogHeader>
 
         <div className="flex flex-col items-center justify-center py-2" style={{ minHeight: 280 }}>
-          {status === 'connected' ? (
+          {requestError != null ? (
+            <div role="alert" className="space-y-3 text-center text-sm">
+              <p>{zaloActionErrorMessage(requestError,'khởi tạo kết nối Zalo')}</p>
+              {isZaloActionUnconfirmed(requestError) ? <Button variant="outline" onClick={onRefresh}>Đọc lại trạng thái</Button>
+                : <Button onClick={onRetry} disabled={pending}>Thử lại</Button>}
+            </div>
+          ) : status === 'connected' ? (
             <div className="flex flex-col items-center gap-3 text-center">
               <CheckCircle2 className="h-14 w-14" style={{ color: 'hsl(142 71% 45%)' }} />
               <div className="font-semibold text-base">Đã kết nối {account?.name}</div>
@@ -49,8 +59,8 @@ export default function ConnectZaloDialog({ open, onOpenChange, account, onRetry
             <div className="flex flex-col items-center gap-3 text-center">
               <AlertTriangle className="h-12 w-12" style={{ color: 'hsl(0 84% 60%)' }} />
               <div className="font-semibold">Kết nối thất bại</div>
-              <div className="text-sm text-muted-foreground max-w-[320px]">{account?.lastError || 'Có lỗi khi đăng nhập. Hãy thử lại.'}</div>
-              <Button onClick={onRetry} style={{ background: EMERALD }}>Thử lại</Button>
+              <div className="text-sm text-muted-foreground max-w-[320px]">Kết nối Zalo chưa hoàn tất. Kiểm tra tài khoản trên điện thoại rồi tạo mã kết nối mới.</div>
+              <Button onClick={onRetry} disabled={pending} style={{ background: EMERALD }}>Thử lại</Button>
             </div>
           ) : qr ? (
             <div className="flex flex-col items-center gap-3 text-center">
@@ -63,8 +73,7 @@ export default function ConnectZaloDialog({ open, onOpenChange, account, onRetry
               <Loader2 className="h-10 w-10 animate-spin" style={{ color: EMERALD }} />
               <div className="text-sm font-medium">Đang tạo mã QR…</div>
               <div className="text-xs text-muted-foreground max-w-[320px] leading-relaxed">
-                Cần <b>worker zca-js đang chạy</b> trên máy bạn (local) hoặc VPS để sinh mã.
-                Xem hướng dẫn: <code>docs/zalo/ZALO-WORKER-SETUP.md</code>.
+                Đang chờ dịch vụ kết nối tạo mã. Nếu chờ lâu, liên hệ người quản trị kết nối Zalo của công ty.
               </div>
             </div>
           )}

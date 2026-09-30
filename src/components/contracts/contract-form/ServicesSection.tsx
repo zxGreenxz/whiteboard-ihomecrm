@@ -1,3 +1,4 @@
+import {flattenFieldErrors} from '@/lib/formErrors';
 import { CurrencyInput } from "@/components/ui/currency-input";
 import { NumberInput } from "@/components/ui/number-input";
 import { Button } from "@/components/ui/button";
@@ -10,6 +11,7 @@ import type { ContractFormState } from "./useContractFormState";
 
 type ServicesSectionProps = Pick<
   ContractFormState,
+  | "form"
   | "useCustomServices"
   | "handleToggleCustomServices"
   | "setServiceDialogOpen"
@@ -19,10 +21,12 @@ type ServicesSectionProps = Pick<
   | "selectedServices"
   | "handleServiceFieldChange"
   | "handleRemoveService"
+  | "sourceIssues"
 >;
 
 /** ===== Section 4: Tiền phí dịch vụ ===== (JSX chuyển NGUYÊN VĂN) */
 export function ServicesSection({
+  form,
   useCustomServices,
   handleToggleCustomServices,
   setServiceDialogOpen,
@@ -31,9 +35,12 @@ export function ServicesSection({
   selectedServices,
   handleServiceFieldChange,
   handleRemoveService,
+  sourceIssues,
 }: ServicesSectionProps) {
+  const rowErrors=flattenFieldErrors(form.formState.errors);
+  const defaultServicesUnavailable = sourceIssues.some(issue => issue.key === 'buildingServices');
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-field-name="services">
       <div className="flex items-center justify-between border-b pb-2 gap-3">
         <h3 className="text-sm font-semibold text-foreground shrink-0">
           Tiền phí dịch vụ
@@ -65,11 +72,15 @@ export function ServicesSection({
           )}
         </div>
       </div>
+      {(form.formState.errors as Record<string, { message?: string }>).services?.message && (
+        <p role="alert" className="text-sm font-medium text-destructive">{(form.formState.errors as Record<string, { message?: string }>).services?.message}</p>
+      )}
 
       {!useCustomServices ? (
         /* OFF: dùng dịch vụ mặc định của toà — hiển thị mờ, chỉ xem.
            Hoá đơn sẽ tự lấy đơn giá toà cho HĐ này. */
-        buildingServicesAsSelected.length === 0 ? (
+        defaultServicesUnavailable ? <p role="alert" className="text-sm text-destructive py-4 text-center">Chưa tải được dịch vụ mặc định của tòa. Tải lại nguồn trước khi kiểm tra phí dịch vụ.</p>
+        : buildingServicesAsSelected.length === 0 ? (
           <p className="text-sm text-muted-foreground py-4 text-center">
             {selectedBuildingId
               ? "Toà chưa cấu hình dịch vụ mặc định. Bật \"Dùng dịch vụ riêng\" để thêm dịch vụ cho HĐ."
@@ -153,6 +164,10 @@ export function ServicesSection({
                       allowDecimal
                       min={0}
                       className="w-24 h-8 text-right ml-auto"
+                      name={`services.${service.id}.initial_reading`}
+                      aria-label={`${service.name}: chỉ số đầu`}
+                      aria-invalid={!!rowErrors[`services.${service.id}.initial_reading`]}
+                      aria-describedby={rowErrors[`services.${service.id}.initial_reading`]?`service-${service.id}-initial_reading-error`:undefined}
                       value={service.initial_reading}
                       onChange={(v) =>
                         handleServiceFieldChange(
@@ -162,11 +177,16 @@ export function ServicesSection({
                         )
                       }
                     />
+                    {rowErrors[`services.${service.id}.initial_reading`]&&<p id={`service-${service.id}-initial_reading-error`} role="alert" className="mt-1 text-sm text-destructive">{rowErrors[`services.${service.id}.initial_reading`]}</p>}
                   </td>
                   <td className="px-3 py-2">
                     <NumberInput
                       min={1}
                       className="w-20 h-8 text-right ml-auto"
+                      name={`services.${service.id}.quantity`}
+                      aria-label={`${service.name}: số lượng`}
+                      aria-invalid={!!rowErrors[`services.${service.id}.quantity`]}
+                      aria-describedby={rowErrors[`services.${service.id}.quantity`]?`service-${service.id}-quantity-error`:undefined}
                       value={service.quantity}
                       onChange={(v) =>
                         handleServiceFieldChange(
@@ -176,11 +196,16 @@ export function ServicesSection({
                         )
                       }
                     />
+                    {rowErrors[`services.${service.id}.quantity`]&&<p id={`service-${service.id}-quantity-error`} role="alert" className="mt-1 text-sm text-destructive">{rowErrors[`services.${service.id}.quantity`]}</p>}
                   </td>
                   <td className="px-3 py-2">
                     <CurrencyInput
                       suffix={false}
                       className="w-32 h-8 text-right ml-auto"
+                      name={`services.${service.id}.unit_price`}
+                      aria-label={`${service.name}: đơn giá`}
+                      aria-invalid={!!rowErrors[`services.${service.id}.unit_price`]}
+                      aria-describedby={rowErrors[`services.${service.id}.unit_price`]?`service-${service.id}-unit_price-error`:undefined}
                       value={service.unit_price}
                       onChange={(v) =>
                         handleServiceFieldChange(
@@ -190,6 +215,7 @@ export function ServicesSection({
                         )
                       }
                     />
+                    {rowErrors[`services.${service.id}.unit_price`]&&<p id={`service-${service.id}-unit_price-error`} role="alert" className="mt-1 text-sm text-destructive">{rowErrors[`services.${service.id}.unit_price`]}</p>}
                   </td>
                   <td className="px-3 py-2">
                     <Button

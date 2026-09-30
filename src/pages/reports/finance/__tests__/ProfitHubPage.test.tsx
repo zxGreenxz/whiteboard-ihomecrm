@@ -167,6 +167,15 @@ describe("ProfitHubPage legacy permission behavior", () => {
     harness.mobileRender.mockReset();
   });
 
+  it("failed identity source shows recoverable error, not access denied or zero profit", () => {
+    harness.shareholderHook.mockReturnValue({data:undefined,isLoading:false,isError:true,error:{message:'private_table'},refetch:vi.fn()});
+    const html=renderPage();
+    expect(html).toContain('Chưa tải được quyền xem và hồ sơ lợi nhuận');
+    expect(html).not.toContain('Bạn không có quyền');
+    expect(html).not.toContain('private_table');
+    expect(harness.overviewRender).not.toHaveBeenCalled();
+  });
+
   it("keeps the report-authorized shareholder own-share tab without shareholder_profit.view", () => {
     harness.permissionHook.mockReturnValue({
       data: {

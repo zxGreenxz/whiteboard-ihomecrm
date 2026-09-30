@@ -81,7 +81,7 @@ describe('danh_sach_khu_vuc - server RPC boundary', () => {
     rpc.mockResolvedValueOnce({ data: { gioi_han: 20, so_luong: 0, khu_vuc: [] }, error: null });
     await expect(tool('danh_sach_khu_vuc').execute({ so_luong: 20 }, ctx)).resolves.toMatch(/không có khu vực/i);
     rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
-    await expect(tool('danh_sach_khu_vuc').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+    await expect(tool('danh_sach_khu_vuc').execute({ so_luong: 20 }, ctx)).rejects.toMatchObject({ message: expect.stringMatching(/^Chưa .+Dữ liệu của yêu cầu này chưa tải được\.$/), cause: { message: 'rpc failed' } });
   });
 
   it('uses its own rollout key instead of borrowing the buildings switch', () => {
@@ -142,7 +142,7 @@ describe('danh_sach_cong_to - server RPC boundary', () => {
     rpc.mockResolvedValueOnce({ data: { gioi_han: 20, so_luong: 0, cong_to: [] }, error: null });
     await expect(tool('danh_sach_cong_to').execute({ so_luong: 20 }, ctx)).resolves.toMatch(/không có công tơ/i);
     rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
-    await expect(tool('danh_sach_cong_to').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+    await expect(tool('danh_sach_cong_to').execute({ so_luong: 20 }, ctx)).rejects.toMatchObject({ message: expect.stringMatching(/^Chưa .+Dữ liệu của yêu cầu này chưa tải được\.$/), cause: { message: 'rpc failed' } });
   });
 
   it('uses a dedicated rollout key with the meters.view permission', () => {
@@ -203,7 +203,7 @@ describe('thong_bao_gan_day - server RPC boundary', () => {
     });
     await expect(tool('thong_bao_gan_day').execute({ so_luong: 20 }, ctx)).resolves.toMatch(/không có thông báo/i);
     rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
-    await expect(tool('thong_bao_gan_day').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+    await expect(tool('thong_bao_gan_day').execute({ so_luong: 20 }, ctx)).rejects.toMatchObject({ message: expect.stringMatching(/^Chưa .+Dữ liệu của yêu cầu này chưa tải được\.$/), cause: { message: 'rpc failed' } });
   });
 
   it('uses a dedicated rollout key with the notifications.view permission', () => {
@@ -271,7 +271,7 @@ describe('danh_sach_phong_sale - server RPC boundary', () => {
       /không có phòng sale/i,
     );
     rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
-    await expect(tool('danh_sach_phong_sale').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+    await expect(tool('danh_sach_phong_sale').execute({ so_luong: 20 }, ctx)).rejects.toMatchObject({ message: expect.stringMatching(/^Chưa .+Dữ liệu của yêu cầu này chưa tải được\.$/), cause: { message: 'rpc failed' } });
   });
 
   it('uses the dedicated sale rollout key and sale_phong.view permission', () => {
@@ -343,7 +343,7 @@ describe('danh_sach_thanh_vien_vai_tro - server RPC boundary', () => {
       /không có thành viên/i,
     );
     rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
-    await expect(tool('danh_sach_thanh_vien_vai_tro').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+    await expect(tool('danh_sach_thanh_vien_vai_tro').execute({ so_luong: 20 }, ctx)).rejects.toMatchObject({ message: expect.stringMatching(/^Chưa .+Dữ liệu của yêu cầu này chưa tải được\.$/), cause: { message: 'rpc failed' } });
   });
 
   it('uses the dedicated member-role rollout key and users.view permission', () => {
@@ -393,7 +393,7 @@ describe('tim_khach_hang - server RPC boundary', () => {
     rpc.mockResolvedValueOnce({ data: [], error: null });
     await expect(tool('tim_khach_hang').execute({ tu_khoa: 'none' }, ctx)).resolves.toMatch(/kh.ng t.m th.y/i);
     rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
-    await expect(tool('tim_khach_hang').execute({ tu_khoa: 'An' }, ctx)).rejects.toThrow('rpc failed');
+    await expect(tool('tim_khach_hang').execute({ tu_khoa: 'An' }, ctx)).rejects.toMatchObject({ message: expect.stringMatching(/^Chưa .+Dữ liệu của yêu cầu này chưa tải được\.$/), cause: { message: 'rpc failed' } });
   });
 });
 
@@ -440,7 +440,7 @@ describe('hop_dong_sap_het_han - server RPC boundary', () => {
     rpc.mockResolvedValueOnce({ data: [], error: null });
     await expect(tool('hop_dong_sap_het_han').execute({ so_ngay: 7 }, ctx)).resolves.toContain('7');
     rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
-    await expect(tool('hop_dong_sap_het_han').execute({ so_ngay: 7 }, ctx)).rejects.toThrow('rpc failed');
+    await expect(tool('hop_dong_sap_het_han').execute({ so_ngay: 7 }, ctx)).rejects.toMatchObject({ message: expect.stringMatching(/^Chưa .+Dữ liệu của yêu cầu này chưa tải được\.$/), cause: { message: 'rpc failed' } });
   });
 });
 
@@ -506,7 +506,7 @@ describe('tim_hop_dong - server RPC boundary', () => {
       /kh.ng t.m th.y/i,
     );
     rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
-    await expect(tool('tim_hop_dong').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+    await expect(tool('tim_hop_dong').execute({ so_luong: 20 }, ctx)).rejects.toMatchObject({ message: expect.stringMatching(/^Chưa .+Dữ liệu của yêu cầu này chưa tải được\.$/), cause: { message: 'rpc failed' } });
   });
 });
 
@@ -652,7 +652,7 @@ describe('tim_phieu_thu_chi - server RPC boundary', () => {
 
   it('preserves RPC error behavior', async () => {
     rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
-    await expect(tool('tim_phieu_thu_chi').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+    await expect(tool('tim_phieu_thu_chi').execute({ so_luong: 20 }, ctx)).rejects.toMatchObject({ message: expect.stringMatching(/^Chưa .+Dữ liệu của yêu cầu này chưa tải được\.$/), cause: { message: 'rpc failed' } });
   });
 });
 
@@ -767,7 +767,7 @@ describe('tim_khach_hen - server RPC boundary', () => {
       /kh.ng t.m th.y/i,
     );
     rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
-    await expect(tool('tim_khach_hen').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+    await expect(tool('tim_khach_hen').execute({ so_luong: 20 }, ctx)).rejects.toMatchObject({ message: expect.stringMatching(/^Chưa .+Dữ liệu của yêu cầu này chưa tải được\.$/), cause: { message: 'rpc failed' } });
   });
 });
 
@@ -887,7 +887,7 @@ describe('tim_xe - server RPC boundary', () => {
       /kh.ng t.m th.y/i,
     );
     rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
-    await expect(tool('tim_xe').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+    await expect(tool('tim_xe').execute({ so_luong: 20 }, ctx)).rejects.toMatchObject({ message: expect.stringMatching(/^Chưa .+Dữ liệu của yêu cầu này chưa tải được\.$/), cause: { message: 'rpc failed' } });
   });
 });
 
@@ -1007,7 +1007,7 @@ describe('ton_kho_vat_tu - server RPC boundary', () => {
       /kh.ng t.m th.y/i,
     );
     rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
-    await expect(tool('ton_kho_vat_tu').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+    await expect(tool('ton_kho_vat_tu').execute({ so_luong: 20 }, ctx)).rejects.toMatchObject({ message: expect.stringMatching(/^Chưa .+Dữ liệu của yêu cầu này chưa tải được\.$/), cause: { message: 'rpc failed' } });
   });
 });
 
@@ -1066,7 +1066,7 @@ describe('danh_sach_tai_san - server RPC boundary', () => {
       /không tìm thấy tài sản/i,
     );
     rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
-    await expect(tool('danh_sach_tai_san').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+    await expect(tool('danh_sach_tai_san').execute({ so_luong: 20 }, ctx)).rejects.toMatchObject({ message: expect.stringMatching(/^Chưa .+Dữ liệu của yêu cầu này chưa tải được\.$/), cause: { message: 'rpc failed' } });
   });
 
   it('uses the existing assets page rollout and its own view permission', () => {
@@ -1129,7 +1129,7 @@ describe('danh_sach_dich_vu - server RPC boundary', () => {
       /không tìm thấy dịch vụ/i,
     );
     rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
-    await expect(tool('danh_sach_dich_vu').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+    await expect(tool('danh_sach_dich_vu').execute({ so_luong: 20 }, ctx)).rejects.toMatchObject({ message: expect.stringMatching(/^Chưa .+Dữ liệu của yêu cầu này chưa tải được\.$/), cause: { message: 'rpc failed' } });
   });
 
   it('uses the existing services page rollout and its own view permission', () => {
@@ -1205,7 +1205,7 @@ describe('bao_cao_phong_trong - server RPC boundary', () => {
       /kh.ng c. ph.ng n.o/i,
     );
     rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
-    await expect(tool('bao_cao_phong_trong').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+    await expect(tool('bao_cao_phong_trong').execute({ so_luong: 20 }, ctx)).rejects.toMatchObject({ message: expect.stringMatching(/^Chưa .+Dữ liệu của yêu cầu này chưa tải được\.$/), cause: { message: 'rpc failed' } });
   });
 });
 
@@ -1287,7 +1287,7 @@ describe('bao_cao_gia_han - server RPC boundary', () => {
       /kh.ng c. h.p ..ng n.o/i,
     );
     rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
-    await expect(tool('bao_cao_gia_han').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+    await expect(tool('bao_cao_gia_han').execute({ so_luong: 20 }, ctx)).rejects.toMatchObject({ message: expect.stringMatching(/^Chưa .+Dữ liệu của yêu cầu này chưa tải được\.$/), cause: { message: 'rpc failed' } });
   });
 });
 
@@ -1352,7 +1352,7 @@ describe('bao_cao_thanh_ly - server RPC boundary', () => {
       /kh.ng c. h.p ..ng n.o/i,
     );
     rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
-    await expect(tool('bao_cao_thanh_ly').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+    await expect(tool('bao_cao_thanh_ly').execute({ so_luong: 20 }, ctx)).rejects.toMatchObject({ message: expect.stringMatching(/^Chưa .+Dữ liệu của yêu cầu này chưa tải được\.$/), cause: { message: 'rpc failed' } });
   });
 });
 
@@ -1419,7 +1419,7 @@ describe('bao_cao_hop_dong_moi - server RPC boundary', () => {
       /ch.a k. h.p ..ng m.i n.o/i,
     );
     rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
-    await expect(tool('bao_cao_hop_dong_moi').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+    await expect(tool('bao_cao_hop_dong_moi').execute({ so_luong: 20 }, ctx)).rejects.toMatchObject({ message: expect.stringMatching(/^Chưa .+Dữ liệu của yêu cầu này chưa tải được\.$/), cause: { message: 'rpc failed' } });
   });
 });
 
@@ -1511,7 +1511,7 @@ describe('bao_cao_ty_le_chi_phi - server RPC boundary', () => {
       /kh.ng c. phi.u thu chi/i,
     );
     rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
-    await expect(tool('bao_cao_ty_le_chi_phi').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+    await expect(tool('bao_cao_ty_le_chi_phi').execute({ so_luong: 20 }, ctx)).rejects.toMatchObject({ message: expect.stringMatching(/^Chưa .+Dữ liệu của yêu cầu này chưa tải được\.$/), cause: { message: 'rpc failed' } });
   });
 });
 
@@ -1581,7 +1581,7 @@ describe('bao_cao_thu_chi_theo_ngay - server RPC boundary', () => {
       tool('bao_cao_thu_chi_theo_ngay').execute({ ky: '2099-01', so_luong: 20 }, ctx),
     ).resolves.toMatch(/kh.ng c. ph.t sinh/i);
     rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
-    await expect(tool('bao_cao_thu_chi_theo_ngay').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+    await expect(tool('bao_cao_thu_chi_theo_ngay').execute({ so_luong: 20 }, ctx)).rejects.toMatchObject({ message: expect.stringMatching(/^Chưa .+Dữ liệu của yêu cầu này chưa tải được\.$/), cause: { message: 'rpc failed' } });
   });
 });
 
@@ -1651,7 +1651,7 @@ describe('bao_cao_dong_tien - server RPC boundary', () => {
       /kh.ng c. ph.t sinh/i,
     );
     rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
-    await expect(tool('bao_cao_dong_tien').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+    await expect(tool('bao_cao_dong_tien').execute({ so_luong: 20 }, ctx)).rejects.toMatchObject({ message: expect.stringMatching(/^Chưa .+Dữ liệu của yêu cầu này chưa tải được\.$/), cause: { message: 'rpc failed' } });
   });
 });
 
@@ -1745,7 +1745,7 @@ describe('bao_cao_lich_thu_tien - server RPC boundary', () => {
     rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
     await expect(
       tool('bao_cao_lich_thu_tien').execute({ so_ngay: 30, so_luong: 20 }, ctx),
-    ).rejects.toThrow('rpc failed');
+    ).rejects.toMatchObject({ message: expect.stringMatching(/^Chưa .+Dữ liệu của yêu cầu này chưa tải được\.$/), cause: { message: 'rpc failed' } });
   });
 });
 
@@ -1805,7 +1805,7 @@ describe('bao_cao_thu_thua - server RPC boundary', () => {
       /kh.ng c. ho. ..n n.o/i,
     );
     rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
-    await expect(tool('bao_cao_thu_thua').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+    await expect(tool('bao_cao_thu_thua').execute({ so_luong: 20 }, ctx)).rejects.toMatchObject({ message: expect.stringMatching(/^Chưa .+Dữ liệu của yêu cầu này chưa tải được\.$/), cause: { message: 'rpc failed' } });
   });
 });
 
@@ -1877,7 +1877,7 @@ describe('bao_cao_dat_coc - server RPC boundary', () => {
       /kh.ng c. phi.u ..t c.c/i,
     );
     rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
-    await expect(tool('bao_cao_dat_coc').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+    await expect(tool('bao_cao_dat_coc').execute({ so_luong: 20 }, ctx)).rejects.toMatchObject({ message: expect.stringMatching(/^Chưa .+Dữ liệu của yêu cầu này chưa tải được\.$/), cause: { message: 'rpc failed' } });
   });
 });
 
@@ -2049,7 +2049,7 @@ describe('bang_luong_ky - server RPC boundary', () => {
       /ch.a c. b.ng l..ng/i,
     );
     rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
-    await expect(tool('bang_luong_ky').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+    await expect(tool('bang_luong_ky').execute({ so_luong: 20 }, ctx)).rejects.toMatchObject({ message: expect.stringMatching(/^Chưa .+Dữ liệu của yêu cầu này chưa tải được\.$/), cause: { message: 'rpc failed' } });
   });
 });
 
@@ -2138,7 +2138,7 @@ describe('loi_nhuan_co_dong - server RPC boundary', () => {
       /ch.a c. s. li.u l.i nhu.n/i,
     );
     rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
-    await expect(tool('loi_nhuan_co_dong').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+    await expect(tool('loi_nhuan_co_dong').execute({ so_luong: 20 }, ctx)).rejects.toMatchObject({ message: expect.stringMatching(/^Chưa .+Dữ liệu của yêu cầu này chưa tải được\.$/), cause: { message: 'rpc failed' } });
   });
 });
 
@@ -2212,7 +2212,7 @@ describe('hoi_thoai_zalo - server RPC boundary', () => {
       /kh.ng c. h.i tho.i/i,
     );
     rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
-    await expect(tool('hoi_thoai_zalo').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+    await expect(tool('hoi_thoai_zalo').execute({ so_luong: 20 }, ctx)).rejects.toMatchObject({ message: expect.stringMatching(/^Chưa .+Dữ liệu của yêu cầu này chưa tải được\.$/), cause: { message: 'rpc failed' } });
   });
 });
 
@@ -2315,7 +2315,7 @@ describe('trang_thai_mang - server RPC boundary', () => {
       /kh.ng c. to. n.o/i,
     );
     rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
-    await expect(tool('trang_thai_mang').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+    await expect(tool('trang_thai_mang').execute({ so_luong: 20 }, ctx)).rejects.toMatchObject({ message: expect.stringMatching(/^Chưa .+Dữ liệu của yêu cầu này chưa tải được\.$/), cause: { message: 'rpc failed' } });
   });
 });
 
@@ -2652,7 +2652,7 @@ describe('danh_sach_kho_tai_san - server RPC boundary', () => {
     rpc.mockResolvedValueOnce({ data: { gioi_han: 20, so_luong: 0, kho: [] }, error: null });
     await expect(tool('danh_sach_kho_tai_san').execute({ so_luong: 20 }, ctx)).resolves.toMatch(/không có kho/i);
     rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
-    await expect(tool('danh_sach_kho_tai_san').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+    await expect(tool('danh_sach_kho_tai_san').execute({ so_luong: 20 }, ctx)).rejects.toMatchObject({ message: expect.stringMatching(/^Chưa .+Dữ liệu của yêu cầu này chưa tải được\.$/), cause: { message: 'rpc failed' } });
   });
 
   it('uses the dedicated warehouse rollout key with warehouses.view permission', () => {
@@ -2709,7 +2709,7 @@ describe('danh_sach_nha_cung_cap - server RPC boundary', () => {
     rpc.mockResolvedValueOnce({ data: { gioi_han: 20, so_luong: 0, nha_cung_cap: [] }, error: null });
     await expect(tool('danh_sach_nha_cung_cap').execute({ so_luong: 20 }, ctx)).resolves.toMatch(/không có nhà cung cấp/i);
     rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
-    await expect(tool('danh_sach_nha_cung_cap').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+    await expect(tool('danh_sach_nha_cung_cap').execute({ so_luong: 20 }, ctx)).rejects.toMatchObject({ message: expect.stringMatching(/^Chưa .+Dữ liệu của yêu cầu này chưa tải được\.$/), cause: { message: 'rpc failed' } });
   });
 
   it('uses the dedicated supplier rollout key with suppliers.view permission', () => {
@@ -2764,7 +2764,7 @@ describe('danh_sach_loai_tai_san - server RPC boundary', () => {
     rpc.mockResolvedValueOnce({ data: { gioi_han: 20, so_luong: 0, loai_tai_san: [] }, error: null });
     await expect(tool('danh_sach_loai_tai_san').execute({ so_luong: 20 }, ctx)).resolves.toMatch(/không có loại tài sản/i);
     rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
-    await expect(tool('danh_sach_loai_tai_san').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+    await expect(tool('danh_sach_loai_tai_san').execute({ so_luong: 20 }, ctx)).rejects.toMatchObject({ message: expect.stringMatching(/^Chưa .+Dữ liệu của yêu cầu này chưa tải được\.$/), cause: { message: 'rpc failed' } });
   });
 
   it('uses the dedicated asset-type rollout key with asset_types.view permission', () => {
@@ -2827,7 +2827,7 @@ describe('danh_sach_loai_cong_viec - server RPC boundary', () => {
     rpc.mockResolvedValueOnce({ data: { gioi_han: 20, so_luong: 0, loai_cong_viec: [] }, error: null });
     await expect(tool('danh_sach_loai_cong_viec').execute({ so_luong: 20 }, ctx)).resolves.toMatch(/không có loại công việc/i);
     rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
-    await expect(tool('danh_sach_loai_cong_viec').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+    await expect(tool('danh_sach_loai_cong_viec').execute({ so_luong: 20 }, ctx)).rejects.toMatchObject({ message: expect.stringMatching(/^Chưa .+Dữ liệu của yêu cầu này chưa tải được\.$/), cause: { message: 'rpc failed' } });
   });
 
   it('uses the dedicated job-type rollout key with task_types.view permission', () => {
@@ -2886,7 +2886,7 @@ describe('danh_sach_tang - server RPC boundary', () => {
     rpc.mockResolvedValueOnce({ data: { gioi_han: 20, so_luong: 0, tang: [] }, error: null });
     await expect(tool('danh_sach_tang').execute({ so_luong: 20 }, ctx)).resolves.toMatch(/không có tầng/i);
     rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
-    await expect(tool('danh_sach_tang').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+    await expect(tool('danh_sach_tang').execute({ so_luong: 20 }, ctx)).rejects.toMatchObject({ message: expect.stringMatching(/^Chưa .+Dữ liệu của yêu cầu này chưa tải được\.$/), cause: { message: 'rpc failed' } });
   });
 
   it('uses the dedicated floor rollout key with categories.view permission', () => {
@@ -2944,7 +2944,7 @@ describe('danh_sach_hotline - server RPC boundary', () => {
     rpc.mockResolvedValueOnce({ data: { gioi_han: 20, so_luong: 0, hotline: [] }, error: null });
     await expect(tool('danh_sach_hotline').execute({ so_luong: 20 }, ctx)).resolves.toMatch(/không có hotline/i);
     rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
-    await expect(tool('danh_sach_hotline').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+    await expect(tool('danh_sach_hotline').execute({ so_luong: 20 }, ctx)).rejects.toMatchObject({ message: expect.stringMatching(/^Chưa .+Dữ liệu của yêu cầu này chưa tải được\.$/), cause: { message: 'rpc failed' } });
   });
 
   it('uses the dedicated hotline rollout key with hotline.view permission', () => {
@@ -2990,7 +2990,7 @@ describe('danh_sach_dinh_muc_dich_vu - server RPC boundary', () => {
     rpc.mockResolvedValueOnce({ data: { gioi_han: 20, so_luong: 0, dinh_muc: [] }, error: null });
     await expect(tool('danh_sach_dinh_muc_dich_vu').execute({ so_luong: 20 }, ctx)).resolves.toMatch(/không có định mức/i);
     rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
-    await expect(tool('danh_sach_dinh_muc_dich_vu').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+    await expect(tool('danh_sach_dinh_muc_dich_vu').execute({ so_luong: 20 }, ctx)).rejects.toMatchObject({ message: expect.stringMatching(/^Chưa .+Dữ liệu của yêu cầu này chưa tải được\.$/), cause: { message: 'rpc failed' } });
   });
 
   it('uses the dedicated quota rollout key with service_quotas.view permission', () => {
@@ -3035,7 +3035,7 @@ describe('danh_sach_bao_tri_tai_san - server RPC boundary', () => {
     rpc.mockResolvedValueOnce({ data: { gioi_han: 20, so_luong: 0, bao_tri: [] }, error: null });
     await expect(tool('danh_sach_bao_tri_tai_san').execute({ so_luong: 20 }, ctx)).resolves.toMatch(/không có lịch sử bảo trì/i);
     rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
-    await expect(tool('danh_sach_bao_tri_tai_san').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+    await expect(tool('danh_sach_bao_tri_tai_san').execute({ so_luong: 20 }, ctx)).rejects.toMatchObject({ message: expect.stringMatching(/^Chưa .+Dữ liệu của yêu cầu này chưa tải được\.$/), cause: { message: 'rpc failed' } });
   });
 
   it('uses the dedicated maintenance rollout key with assets.view permission', () => {
@@ -3081,7 +3081,7 @@ describe('danh_sach_toa_nha - server RPC boundary', () => {
     rpc.mockResolvedValueOnce({ data: { gioi_han: 20, so_luong: 0, toa_nha: [] }, error: null });
     await expect(tool('danh_sach_toa_nha').execute({ so_luong: 20 }, ctx)).resolves.toMatch(/không có toà nhà/i);
     rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
-    await expect(tool('danh_sach_toa_nha').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+    await expect(tool('danh_sach_toa_nha').execute({ so_luong: 20 }, ctx)).rejects.toMatchObject({ message: expect.stringMatching(/^Chưa .+Dữ liệu của yêu cầu này chưa tải được\.$/), cause: { message: 'rpc failed' } });
   });
 
   it('uses a dedicated building rollout key with buildings.view permission', () => {
@@ -3129,7 +3129,7 @@ describe('trang_thai_gach_no_tu_dong - server RPC boundary', () => {
     rpc.mockResolvedValueOnce({ data: { gioi_han: 20, so_luong: 0, cau_hinh: [] }, error: null });
     await expect(tool('trang_thai_gach_no_tu_dong').execute({ so_luong: 20 }, ctx)).resolves.toMatch(/không có cấu hình/i);
     rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
-    await expect(tool('trang_thai_gach_no_tu_dong').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+    await expect(tool('trang_thai_gach_no_tu_dong').execute({ so_luong: 20 }, ctx)).rejects.toMatchObject({ message: expect.stringMatching(/^Chưa .+Dữ liệu của yêu cầu này chưa tải được\.$/), cause: { message: 'rpc failed' } });
   });
 
   it('uses a dedicated rollout key with auto_debt.view permission', () => {
@@ -3162,7 +3162,7 @@ describe('remaining G1 reports — selected organization, period and permission'
       const t = tool(name);
       expect(() => t.inputSchema.parse({ so_luong: 51 })).toThrow();
       rpc.mockResolvedValue({ data: null, error: { message: 'not_permitted' } });
-      await expect(t.execute(t.inputSchema.parse({}), ctx)).rejects.toThrow('not_permitted');
+      await expect(t.execute(t.inputSchema.parse({}), ctx)).rejects.toMatchObject({ message: expect.stringMatching(/^Chưa /), cause: { message: 'not_permitted' } });
     });
   }
 });

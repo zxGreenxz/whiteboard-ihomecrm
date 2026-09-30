@@ -1,3 +1,5 @@
+import {invoiceFailureMessage,InvoicePartialError} from '@/lib/invoiceFeedback';
+import {voucherOutcomeUnknown} from '@/lib/voucherFeedback';
 import { useEffect, useMemo, useState } from 'react';
 import { useForm, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -61,6 +63,11 @@ function initialDebtSources(invoice: InvoiceWithRelations): PreviousDebtSource[]
  */
 const DraftInvoiceEditor = ({ open, onOpenChange, invoice }: EditInvoiceDialogProps) => {
   const updateMutation = useUpdateInvoice();
+  const [submitError,setSubmitError]=useState<string|null>(null);
+  const [reconcileRequired,setReconcileRequired]=useState(false);
+  const [meterError,setMeterError]=useState<string|null>(null);
+  const [meterLoading,setMeterLoading]=useState(!!invoice.room_id);
+  const [meterAttempt,setMeterAttempt]=useState(0);
   const [meterId, setMeterId] = useState<string | null>(null);
   const [debtSources, setDebtSources] = useState<PreviousDebtSource[]>(() => initialDebtSources(invoice));
   const [isLoadingDebt, setIsLoadingDebt] = useState(false);
@@ -93,12 +100,15 @@ const DraftInvoiceEditor = ({ open, onOpenChange, invoice }: EditInvoiceDialogPr
       setValue('previous_debt', total, { shouldDirty: true });
       setValue('previous_debt_overridden', false);
       setDebtSources(sources);
+    } catch(error) {
+      setSubmitError(invoiceFailureMessage(error,"tính lại nợ cũ"));
     } finally {
       setIsLoadingDebt(false);
     }
   };
 
-  const { data: bldSvc } = useBuildingServices(invoice.building_id);
+  const servicesQuery = useBuildingServices(invoice.building_id);
+  const bldSvc = servicesQuery.data;
   const defaults = useMemo(
     () => resolveBuildingDefaults(bldSvc as BuildingServiceRow[] | undefined),
     [bldSvc],
@@ -108,26 +118,29 @@ const DraftInvoiceEditor = ({ open, onOpenChange, invoice }: EditInvoiceDialogPr
     [defaults],
   );
 
-  // Load meter for room (chỉ số đầu)
+  // Do not use an absent meter as proof that a read failed or that no meter exists.
   useEffect(() => {
-    if (!invoice.room_id) {
-      setMeterId(null);
-      return;
-    }
-    (async () => {
-      const { data: meters } = await supabase
-        .from('meters')
-        .select('id')
-        .eq('room_id', invoice.room_id)
-        .eq('meter_type', 'ELECTRICITY')
-        .is('deleted_at', null)
-        .limit(1);
-      setMeterId((meters as Array<{ id: string }> | null)?.[0]?.id ?? null);
+    let active=true;
+    setMeterError(null);
+    if (!invoice.room_id) {setMeterId(null);setMeterLoading(false);return;}
+    setMeterLoading(true);
+    void (async()=>{
+      try {
+        const {data:meters,error}=await supabase.from('meters').select('id').eq('room_id',invoice.room_id).eq('meter_type','ELECTRICITY').is('deleted_at',null).limit(1);
+        if(error)throw error;
+        if(!Array.isArray(meters))throw new Error('Missing meter response');
+        if(active)setMeterId((meters as Array<{id:string}>)[0]?.id??null);
+      } catch {if(active)setMeterError('Chưa tải được công tơ của phòng. Tải lại trước khi lưu hoá đơn.');}
+      finally {if(active)setMeterLoading(false);}
     })();
-  }, [invoice.room_id]);
+    return ()=>{active=false;};
+  },[invoice.room_id,meterAttempt]);
 
   const ctl = useInvoiceEntry(form, { baseline: decomposed.values, baselineAmounts: decomposed.baseline, pricing });
-  const { data: creditBalance = 0 } = useExcessAmount(invoice.contract_id);
+  const creditQuery = useExcessAmount(invoice.contract_id);
+  const creditBalance=creditQuery.data??0;
+  const missingSources=servicesQuery.isError||servicesQuery.isPending||servicesQuery.data===undefined||(!!invoice.contract_id&&(creditQuery.isError||creditQuery.isPending||creditQuery.data===undefined));
+  const sourcesUnavailable=missingSources||meterLoading||!!meterError;
 
   const current: InvoiceEntryCurrent = useMemo(() => {
     const { values: b, baseline } = decomposed;
@@ -148,6 +161,8 @@ const DraftInvoiceEditor = ({ open, onOpenChange, invoice }: EditInvoiceDialogPr
   }, [decomposed, invoice.total_amount]);
 
   const onSubmit = (data: InvoiceEntryValues) => {
+    if(reconcileRequired||sourcesUnavailable) return;
+    setSubmitError(null);
     const items = buildInvoiceItems(data, {
       elecServiceId: defaults.elecServiceId,
       waterServiceId: defaults.waterServiceId,
@@ -178,7 +193,7 @@ const DraftInvoiceEditor = ({ open, onOpenChange, invoice }: EditInvoiceDialogPr
 
     updateMutation.mutate(
       { id: invoice.id, formData },
-      { onSuccess: () => onOpenChange(false) },
+      { onSuccess: () => onOpenChange(false), onError:(error)=>{setSubmitError(invoiceFailureMessage(error,"sửa hoá đơn"));if(error instanceof InvoicePartialError||voucherOutcomeUnknown(error))setReconcileRequired(true);} },
     );
   };
 
@@ -210,6 +225,12 @@ const DraftInvoiceEditor = ({ open, onOpenChange, invoice }: EditInvoiceDialogPr
       defaultDepositAmount={0}
       ready
       validationError={firstEntryError(errors)}
+      notice={<>
+        {missingSources&&<p role="alert" className="text-destructive">Chưa tải đủ giá dịch vụ hoặc số tiền thừa của khách. Tải lại trước khi lưu hoá đơn.<Button type="button" variant="outline" onClick={()=>{void servicesQuery.refetch();if(invoice.contract_id)void creditQuery.refetch();}}>Tải lại dữ liệu</Button></p>}
+        {meterError&&<p role="alert" className="text-destructive">{meterError}<Button type="button" variant="outline" onClick={()=>setMeterAttempt(value=>value+1)}>Tải lại công tơ</Button></p>}
+        {meterLoading&&<p role="status">Đang tải công tơ của phòng...</p>}
+        {submitError&&<p role="alert" className="text-destructive">{submitError}</p>}
+      </>}
       onResetAll={() => reset(decomposed.values)}
       onCancel={() => onOpenChange(false)}
       footNote="Hoá đơn nháp — lưu sẽ thay toàn bộ dòng bằng giá trị mới."
@@ -217,7 +238,7 @@ const DraftInvoiceEditor = ({ open, onOpenChange, invoice }: EditInvoiceDialogPr
         label: 'Lưu hoá đơn',
         pendingLabel: 'Đang lưu...',
         pending: updateMutation.isPending,
-        disabled: false,
+        disabled: reconcileRequired||sourcesUnavailable,
       }}
     />
   );

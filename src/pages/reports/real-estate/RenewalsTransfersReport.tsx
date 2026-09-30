@@ -26,10 +26,12 @@ export default function RenewalsTransfersReport() {
   const [endDate, setEndDate] = usePersistedState("flt:rpt-renewals:endDate", "");
 
   useCopilotPageContext('reports.real-estate.renewals', { building_id: buildingId, from: startDate, to: endDate });
-  const { data: buildings } = useBuildings();
-  const { data: contracts, isLoading } = useRenewalsTransfersReport(
+  const buildingsQuery = useBuildings();
+  const { data: buildings } = buildingsQuery;
+  const reportQuery = useRenewalsTransfersReport(
     startDate || undefined, endDate || undefined, buildingId
   );
+  const { data: contracts, isLoading } = reportQuery;
 
   const renewals = contracts?.filter((c) => c.type === "RENEWAL") || [];
   const transfers = contracts?.filter((c) => c.type === "TRANSFER") || [];
@@ -105,6 +107,8 @@ export default function RenewalsTransfersReport() {
   return (
     <MainLayout>
       <ReportLayout
+        queries={[reportQuery]}
+        filterQueries={[buildingsQuery]}
         title="Báo cáo Gia hạn & Chuyển nhượng"
         description="Danh sách hợp đồng đã gia hạn hoặc chuyển nhượng"
         icon={<RefreshCw className="h-8 w-8" />}

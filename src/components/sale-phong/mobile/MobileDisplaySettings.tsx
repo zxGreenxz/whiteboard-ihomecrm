@@ -1,24 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Calendar, Phone, Check, ChevronRight } from "lucide-react";
-import { useHotlines } from "@/hooks/useHotlines";
-import {
-  usePublicRoomSettings, useUpsertPublicRoomSettings, PUBLIC_ROOM_SETTINGS_DEFAULTS,
-  type PublicRoomSettings,
-} from "@/hooks/usePublicRoomSettings";
+import {QueryRegion} from '@/components/errors/QueryRegion';
+import {usePublicRoomSettingsDraft} from '../usePublicRoomSettingsDraft';
 import SaleSheet from "./SaleSheet";
 
 export default function MobileDisplaySettings() {
-  const { data, isLoading } = usePublicRoomSettings();
-  const { data: hotlines } = useHotlines();
-  const upsertMut = useUpsertPublicRoomSettings();
-
-  const [form, setForm] = useState<PublicRoomSettings>(PUBLIC_ROOM_SETTINGS_DEFAULTS);
-  const [hotlineSheet, setHotlineSheet] = useState(false);
-
-  useEffect(() => { if (data) setForm(data); }, [data]);
-
-  const set = <K extends keyof PublicRoomSettings>(k: K, v: PublicRoomSettings[K]) =>
-    setForm((f) => ({ ...f, [k]: v }));
+  const {settings,hotlines:hotlineQuery,mutation:upsertMut,root,form,days,errors,writeError,canSave,set,changeDays,save}=usePublicRoomSettingsDraft();
+  const hotlines=hotlineQuery.data;
+  const [hotlineSheet,setHotlineSheet]=useState(false);
 
   const list = hotlines ?? [];
   const selected = useMemo(
@@ -28,10 +17,9 @@ export default function MobileDisplaySettings() {
   const hotlineName = selected?.name ?? "Mặc định";
   const hotlinePhone = selected?.phone_number ?? "—";
 
-  if (isLoading) return <div className="stub"><p>Đang tải…</p></div>;
 
   return (
-    <div style={{ padding: "14px 16px 28px" }}>
+    <div ref={root} style={{ padding: "14px 16px 28px" }}><QueryRegion label="cài đặt hiển thị" queries={[settings,hotlineQuery]}>
       <p className="sp-hint" style={{ margin: "0 0 14px" }}>Áp dụng chung cho mọi link chia sẻ của tài khoản.</p>
 
       {/* soon_days stepper */}
@@ -40,22 +28,23 @@ export default function MobileDisplaySettings() {
           <span className="ic" style={{ width: 34, height: 34, borderRadius: 10, background: "var(--soonBg)", color: "var(--soon)", display: "grid", placeItems: "center", flexShrink: 0 }}>
             <Calendar size={18} />
           </span>
-          <div style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 700, letterSpacing: "-.2px" }}>Số ngày báo "sắp trống"</div>
+          <label htmlFor="mobile-soon-days" style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 700, letterSpacing: "-.2px" }}>Số ngày báo "sắp trống"</label>
         </div>
         <p className="sp-hint" style={{ margin: "10px 0 13px" }}>Phòng có hợp đồng sắp hết hạn trong khoảng này sẽ được gắn nhãn "Sắp trống" trên trang công khai.</p>
         <div className="sp-step">
-          <button onClick={() => set("soon_days", Math.max(0, form.soon_days - 1))}>–</button>
+          <button aria-label="Giảm số ngày" disabled={!/^\d+$/.test(days)||Number(days)<=0} onClick={()=>changeDays(String(Math.max(0,Number(days)-1)))}>–</button>
           <div className="box">
-            <input type="number" value={form.soon_days}
-              onChange={(e) => set("soon_days", Math.max(0, Math.min(365, Number(e.target.value) || 0)))} />
+            <input id="mobile-soon-days" name="soon_days" type="text" inputMode="numeric" value={days} aria-invalid={!!errors.soon_days} aria-describedby={errors.soon_days?"mobile-soon-days-error":undefined} style={errors.soon_days?{border:"1px solid var(--bad, #dc2626)"}:undefined} onChange={e=>changeDays(e.target.value)}/>
             <span>ngày</span>
           </div>
-          <button onClick={() => set("soon_days", Math.min(365, form.soon_days + 1))}>+</button>
+          <button aria-label="Tăng số ngày" disabled={!/^\d+$/.test(days)||Number(days)>=365} onClick={()=>changeDays(String(Math.min(365,Number(days)+1)))}>+</button>
         </div>
       </div>
 
+      {errors.soon_days&&<p id="mobile-soon-days-error" role="alert" className="text-destructive">{errors.soon_days}</p>}
+
       {/* hotline picker */}
-      <button className="sp-rowcard" onClick={() => setHotlineSheet(true)}>
+      <button className="sp-rowcard" data-field-name="hotline_id" aria-invalid={!!errors.hotline_id} aria-describedby={errors.hotline_id?"mobile-hotline-error":undefined} onClick={() => setHotlineSheet(true)}>
         <span className="ic brand"><Phone size={18} /></span>
         <span style={{ flex: 1, minWidth: 0 }}>
           <span className="gv">Hotline hiển thị</span>
@@ -63,6 +52,8 @@ export default function MobileDisplaySettings() {
         </span>
         <ChevronRight className="chev" size={20} />
       </button>
+
+      {errors.hotline_id&&<p id="mobile-hotline-error" role="alert" className="text-destructive">{errors.hotline_id}</p>}
 
       {/* show_rented toggle */}
       <div className="sp-rowcard">
@@ -93,7 +84,8 @@ export default function MobileDisplaySettings() {
         </div>
       </div>
 
-      <button className="sp-save" onClick={() => upsertMut.mutate(form)} disabled={upsertMut.isPending}>Lưu cài đặt</button>
+      {writeError&&<p role="alert" className="text-destructive">{writeError}</p>}
+      <button className="sp-save" onClick={()=>void save()} disabled={upsertMut.isPending||!canSave}>Lưu cài đặt</button>
 
       <SaleSheet open={hotlineSheet} onClose={() => setHotlineSheet(false)}>
         <h3>Hotline hiển thị</h3>
@@ -116,6 +108,6 @@ export default function MobileDisplaySettings() {
           })}
         </div>
       </SaleSheet>
-    </div>
+    </QueryRegion></div>
   );
 }

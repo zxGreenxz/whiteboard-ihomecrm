@@ -1,3 +1,4 @@
+import { networkFeedback } from "@/lib/network-center/feedback";
 import { FileDiff } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -73,7 +74,7 @@ export function ConfigDiffDialog({ siteId, revisions, compare }: ConfigDiffDialo
       setError("");
     } catch (caught) {
       setDiff(null);
-      setError(caught instanceof Error ? caught.message : "Không thể so sánh");
+      setError(networkFeedback(caught, `so sánh ${revisions.find(item => item.id === fromId)?.label ?? "bản gốc"} và ${revisions.find(item => item.id === toId)?.label ?? "bản đối chiếu"}`).description);
     } finally {
       setLoading(false);
     }

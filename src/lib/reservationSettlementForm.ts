@@ -26,12 +26,12 @@ export const reservationRefundAttachmentsSchema = z.array(z.string().url().max(2
 
 export const reservationSettlementFormSchema = z.object({
   depositAmount: z.number().int().safe().positive(),
-  refundAmount: z.number().int().safe().nonnegative(),
+  refundAmount: z.number({ invalid_type_error: "Nhập số tiền hoàn hợp lệ" }).int("Tiền hoàn phải là số nguyên").safe("Số tiền hoàn vượt giới hạn cho phép").nonnegative("Tiền hoàn không được âm"),
   refundMode: z.enum(["NONE", "NOW", "LATER"]),
-  settlementDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  settlementDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Chọn ngày xử lý"),
   reasonCode: z.enum(["CHANGED_MIND", "NO_SHOW", "OTHER"]),
   reasonText: z.string(),
-  refundAccountId: z.string().uuid().nullable(),
+  refundAccountId: z.string().uuid("Chọn sổ quỹ đã chi").nullable(),
   refundAttachments: reservationRefundAttachmentsSchema,
 }).superRefine((value, ctx) => {
   if (value.refundAmount > value.depositAmount) {

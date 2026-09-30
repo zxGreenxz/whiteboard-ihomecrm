@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from 'react';
-import { useFieldArray, type UseFormReturn } from 'react-hook-form';
+import { useFieldArray, type FieldErrors, type UseFormReturn } from 'react-hook-form';
 import {
   computeEntryTotals,
   diffEntryValues,
@@ -60,6 +60,9 @@ export interface InvoiceEntryController {
   deposit: EntryCustomItem | null;
   extras: ExtraRow[];
   set: InvoiceEntrySetters;
+  errors?: FieldErrors<InvoiceEntryValues>;
+  submitCount?: number;
+  field?: (name:string)=>{name:string; "aria-invalid":boolean; "aria-describedby":string|undefined};
 }
 
 interface Options {
@@ -194,7 +197,13 @@ export function useInvoiceEntry<T extends InvoiceEntryValues>(
     },
   };
 
+  const errors=f.formState.errors;
+  const field=(name:string)=>{
+    const error=name.split('.').reduce<unknown>((value,key)=>value && typeof value==='object'?(value as Record<string,unknown>)[key]:undefined,errors);
+    return {name,'aria-invalid':!!error,'aria-describedby':error?`invoice-entry-error-${name}`:undefined};
+  };
   return {
+    errors, submitCount:form.formState.submitCount, field,
     v,
     totals,
     diff,

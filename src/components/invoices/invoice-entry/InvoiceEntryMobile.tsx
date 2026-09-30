@@ -1,3 +1,4 @@
+import {EntryFieldError} from './EntryFieldError';
 import { ArrowLeft, Loader2, RotateCcw } from 'lucide-react';
 import '@/styles/mobileApp.css';
 import '@/styles/invoiceEntryMobile.css';
@@ -29,15 +30,16 @@ import type { InvoiceEntryProps } from './types';
 import { dueBadge } from './dueBadge';
 
 function Money({
-  label, value, onChange, changedFrom,
-}: { label: string; value: number; onChange: (n: number) => void; changedFrom?: string }) {
+  label, value, onChange, changedFrom, ctl, name,
+}: { label: string; value: number; onChange: (n: number) => void; changedFrom?: string; ctl:InvoiceEntryProps["ctl"]; name:string }) {
   return (
     <label className="block">
       <span className="ien-lbl">{label}</span>
       <div className="ien-money">
-        <CurrencyInput aria-label={label} suffix={false} className="ien-in num" value={value} onChange={onChange} />
+        <CurrencyInput {...ctl.field?.(name)} aria-label={label} suffix={false} className="ien-in num" value={value} onChange={onChange} />
         <i>đ</i>
       </div>
+      <EntryFieldError ctl={ctl} name={name}/>
       {changedFrom && <div className="ien-changed">đã đổi · gốc {changedFrom}</div>}
     </label>
   );
@@ -140,16 +142,16 @@ export function InvoiceEntryMobile(props: InvoiceEntryProps) {
         {!lockedDates && <div className="ien-card">
           <label className="block ien-gap">
             <span className="ien-lbl">Kỳ thanh toán *</span>
-            <Input type="month" aria-label="Kỳ thanh toán" className="ien-in month" value={v.billing_month} onChange={(e) => set.billingMonth(e.target.value)} />
+            <><Input {...ctl.field?.('billing_month')} type="month" aria-label="Kỳ thanh toán" className="ien-in month" value={v.billing_month} onChange={(e) => set.billingMonth(e.target.value)} /><EntryFieldError ctl={ctl} name={'billing_month'}/></>
           </label>
           <div className="ien-grid2">
             <div>
               <span className="ien-lbl">Ngày phát hành *</span>
-              <DateInput className="ien-datewrap" inputClassName="ien-in date" value={v.issue_date || ''} onChange={set.issueDate} />
+              <><DateInput {...ctl.field?.('issue_date')} className="ien-datewrap" inputClassName="ien-in date" value={v.issue_date || ''} onChange={set.issueDate} /><EntryFieldError ctl={ctl} name={'issue_date'}/></>
             </div>
             <div>
               <span className="ien-lbl">Hạn thanh toán *</span>
-              <DateInput className="ien-datewrap" inputClassName="ien-in date" value={v.due_date || ''} onChange={set.dueDate} />
+              <><DateInput {...ctl.field?.('due_date')} className="ien-datewrap" inputClassName="ien-in date" value={v.due_date || ''} onChange={set.dueDate} /><EntryFieldError ctl={ctl} name={'due_date'}/></>
             </div>
           </div>
         </div>}
@@ -161,13 +163,13 @@ export function InvoiceEntryMobile(props: InvoiceEntryProps) {
             <div className="ien-card">
               <div className="ien-h" style={{ marginBottom: 12 }}>Phòng &amp; người</div>
               <div className="ien-gap">
-                <Money label="Giá phòng" value={v.rent_price} onChange={set.rent} changedFrom={current && diff.fields.has('rent_price') ? formatVndSuffix(current.rentPrice) : undefined} />
+                <Money ctl={ctl} name="rent_price" label="Giá phòng" value={v.rent_price} onChange={set.rent} changedFrom={current && diff.fields.has('rent_price') ? formatVndSuffix(current.rentPrice) : undefined} />
               </div>
               <span className="ien-lbl">Số người</span>
               <div className="ien-step">
                 <button type="button" className="ien-step-btn" aria-label="Giảm số người" onClick={() => set.stepOccupants(-1)}>−</button>
                 <div className="ien-step-box">
-                  <NumberInput aria-label="Số người" value={v.occupants} onChange={set.occupants} />
+                  <><NumberInput {...ctl.field?.('occupants')} aria-label="Số người" value={v.occupants} onChange={set.occupants} /><EntryFieldError ctl={ctl} name={'occupants'}/></>
                   <span>người</span>
                 </div>
                 <button type="button" className="ien-step-btn" aria-label="Tăng số người" onClick={() => set.stepOccupants(1)}>+</button>
@@ -182,17 +184,17 @@ export function InvoiceEntryMobile(props: InvoiceEntryProps) {
               <div className="ien-grid2">
                 <label className="block">
                   <span className="ien-lbl">Chỉ số đầu</span>
-                  <NumberInput aria-label="Chỉ số đầu" allowDecimal disabled={!meterId} placeholder={meterId ? undefined : '—'} className="ien-in num soft" value={v.prev_reading} onChange={set.prev} />
+                  <><NumberInput {...ctl.field?.('prev_reading')} aria-label="Chỉ số đầu" allowDecimal disabled={!meterId} placeholder={meterId ? undefined : '—'} className="ien-in num soft" value={v.prev_reading} onChange={set.prev} /><EntryFieldError ctl={ctl} name={'prev_reading'}/></>
                 </label>
                 <label className="block">
                   <span className="ien-lbl">Chỉ số cuối</span>
-                  <NumberInput aria-label="Chỉ số cuối" allowDecimal disabled={!meterId} placeholder="—" className="ien-in num" value={v.current_reading} onChange={set.curr} />
+                  <><NumberInput {...ctl.field?.('current_reading')} aria-label="Chỉ số cuối" allowDecimal disabled={!meterId} placeholder="—" className="ien-in num" value={v.current_reading} onChange={set.curr} /><EntryFieldError ctl={ctl} name={'current_reading'}/></>
                 </label>
               </div>
               {!meterId && <div className="ien-note">Phòng chưa gắn công tơ điện — gõ thẳng tiền điện bên dưới.</div>}
               {v.prev_reading_overridden && meterId && <div className="ien-changed">Chỉ số đầu đã sửa tay</div>}
               <div style={{ marginTop: 12 }}>
-                <Money label="Tiền điện" value={Math.round(v.electric_amount)} onChange={set.electric} />
+                <Money ctl={ctl} name="electric_amount" label="Tiền điện" value={Math.round(v.electric_amount)} onChange={set.electric} />
               </div>
               <div className="ien-note mono">
                 {kwh > 0 ? `${formatVnd(kwh)} kWh × ${formatVnd(pricing.elec)} = ${formatVndSuffix(kwh * pricing.elec)}` : 'chưa có chỉ số cuối'}
@@ -204,11 +206,11 @@ export function InvoiceEntryMobile(props: InvoiceEntryProps) {
               <div className="ien-grid2">
                 <label className="block">
                   <span className="ien-lbl">Tiền nước</span>
-                  <CurrencyInput aria-label="Tiền nước" suffix={false} className="ien-in num" value={Math.round(v.water_amount)} onChange={set.water} />
+                  <><CurrencyInput {...ctl.field?.('water_amount')} aria-label="Tiền nước" suffix={false} className="ien-in num" value={Math.round(v.water_amount)} onChange={set.water} /><EntryFieldError ctl={ctl} name={'water_amount'}/></>
                 </label>
                 <label className="block">
                   <span className="ien-lbl">Phí dịch vụ</span>
-                  <CurrencyInput aria-label="Phí dịch vụ" suffix={false} className="ien-in num" value={v.pdv_amount} onChange={set.pdv} />
+                  <><CurrencyInput {...ctl.field?.('pdv_amount')} aria-label="Phí dịch vụ" suffix={false} className="ien-in num" value={v.pdv_amount} onChange={set.pdv} /><EntryFieldError ctl={ctl} name={'pdv_amount'}/></>
                 </label>
               </div>
               <div className="ien-note">
@@ -236,7 +238,7 @@ export function InvoiceEntryMobile(props: InvoiceEntryProps) {
               {deposit && (
                 <div className="grid gap-2.5" style={{ gridTemplateColumns: '1fr 132px', marginTop: 12 }}>
                   <Input aria-label="Mô tả cọc" placeholder="Mô tả cọc" className="ien-in" value={deposit.description} onChange={(e) => set.depositNote(e.target.value)} />
-                  <CurrencyInput aria-label="Số tiền cọc" suffix={false} className="ien-in num" value={customLineAmount(deposit)} onChange={set.depositAmount} />
+                  <><CurrencyInput {...ctl.field?.(`custom_items.${ctl.depositIndex}.unit_price`)} aria-label="Số tiền cọc" suffix={false} className="ien-in num" value={customLineAmount(deposit)} onChange={set.depositAmount} /><EntryFieldError ctl={ctl} name={`custom_items.${ctl.depositIndex}.unit_price`}/></>
                 </div>
               )}
             </div>
@@ -249,11 +251,11 @@ export function InvoiceEntryMobile(props: InvoiceEntryProps) {
               <div className="ien-grid2">
                 <div>
                   <span className="ien-lbl">Bắt đầu</span>
-                  <DateInput className="ien-datewrap" inputClassName="ien-in date" value={v.period_start_date || ''} onChange={set.periodStart} />
+                  <><DateInput {...ctl.field?.('period_start_date')} className="ien-datewrap" inputClassName="ien-in date" value={v.period_start_date || ''} onChange={set.periodStart} /><EntryFieldError ctl={ctl} name={'period_start_date'}/></>
                 </div>
                 <div>
                   <span className="ien-lbl">Kết thúc</span>
-                  <DateInput className="ien-datewrap" inputClassName="ien-in date" value={v.period_end_date || ''} onChange={set.periodEnd} />
+                  <><DateInput {...ctl.field?.('period_end_date')} className="ien-datewrap" inputClassName="ien-in date" value={v.period_end_date || ''} onChange={set.periodEnd} /><EntryFieldError ctl={ctl} name={'period_end_date'}/></>
                 </div>
               </div>
               {totals.isProrated && (
@@ -279,12 +281,12 @@ export function InvoiceEntryMobile(props: InvoiceEntryProps) {
                       <select aria-label="Loại khoản thu" className="ien-in ien-select sm" value={kind} onChange={(e) => set.extraKind(index, e.target.value as ExtraKind)}>
                         {extraKinds(kind).map((k) => <option key={k} value={k}>{EXTRA_KIND_LABEL[k]}</option>)}
                       </select>
-                      <Input aria-label="Mô tả khoản thu" placeholder="Mô tả" className="ien-in sm" value={item.description} onChange={(e) => set.extraDescription(index, e.target.value)} />
+                      <><Input {...ctl.field?.(`custom_items.${index}.description`)} aria-label="Mô tả khoản thu" placeholder="Mô tả" className="ien-in sm" value={item.description} onChange={(e) => set.extraDescription(index, e.target.value)} /><EntryFieldError ctl={ctl} name={`custom_items.${index}.description`}/></>
                       <button type="button" className="ien-btn del" aria-label="Xóa khoản thu" onClick={() => set.removeExtra(index)}>✕</button>
                     </div>
                     <div className="ien-extra-r2">
-                      <NumberInput aria-label="Số lượng" allowDecimal className="ien-in sm num" value={item.quantity} onChange={(n) => set.extraQuantity(index, n)} />
-                      <CurrencyInput aria-label="Đơn giá" suffix={false} className="ien-in sm num" value={item.unit_price} onChange={(n) => set.extraPrice(index, n)} />
+                      <><NumberInput {...ctl.field?.(`custom_items.${index}.quantity`)} aria-label="Số lượng" allowDecimal className="ien-in sm num" value={item.quantity} onChange={(n) => set.extraQuantity(index, n)} /><EntryFieldError ctl={ctl} name={`custom_items.${index}.quantity`}/></>
+                      <><CurrencyInput {...ctl.field?.(`custom_items.${index}.unit_price`)} aria-label="Đơn giá" suffix={false} className="ien-in sm num" value={item.unit_price} onChange={(n) => set.extraPrice(index, n)} /><EntryFieldError ctl={ctl} name={`custom_items.${index}.unit_price`}/></>
                       <span className="ien-extra-tot">{formatVndSuffix(customLineAmount(item))}{item.coefficient != null && item.coefficient !== 1 ? ` ×${item.coefficient}` : ''}</span>
                     </div>
                   </div>
@@ -296,7 +298,7 @@ export function InvoiceEntryMobile(props: InvoiceEntryProps) {
               <div className="ien-adj-row disc">
                 <b>Giảm trừ</b>
                 <div className="ien-adj-in">
-                  <CurrencyInput aria-label="Giảm trừ" suffix={false} className="ien-in" value={v.discount_amount} onChange={set.discount} />
+                  <><CurrencyInput {...ctl.field?.('discount_amount')} aria-label="Giảm trừ" suffix={false} className="ien-in" value={v.discount_amount} onChange={set.discount} /><EntryFieldError ctl={ctl} name={'discount_amount'}/></>
                   <DiscountNoteTrigger value={v.discount_notes || ''} onChange={set.discountNotes} disabled={v.discount_amount <= 0} />
                 </div>
               </div>

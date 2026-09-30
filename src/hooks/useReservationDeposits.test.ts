@@ -101,7 +101,7 @@ describe('reservation deposit management visibility', () => {
       code: 'PGRST200', message: 'Relationship is unavailable', details: null, hint: null,
     }, 400));
     try {
-      await expect(runReservationQuery()).rejects.toThrow('Lỗi tải cọc giữ chỗ');
+      await expect(runReservationQuery()).rejects.toMatchObject({code:'PGRST200',message:'Relationship is unavailable'});
     } finally {
       errorLog.mockRestore();
     }

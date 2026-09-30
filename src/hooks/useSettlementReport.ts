@@ -64,6 +64,7 @@ export interface SettlementReport {
 /** Báo cáo bàn giao theo kỳ [from, to] (ISO yyyy-mm-dd). */
 export const useSettlementReport = (from: string, to: string) =>
   useQuery({
+    meta:{feedback:"inline"},
     queryKey: ['settlement-report', from, to],
     enabled: !!from && !!to,
     queryFn: async (): Promise<SettlementReport> => {
@@ -71,7 +72,9 @@ export const useSettlementReport = (from: string, to: string) =>
         p_from: from,
         p_to: to,
       });
-      if (error) throw new Error(error.message);
-      return data as unknown as SettlementReport;
+      if (error) throw error;
+      const value=data as unknown as Partial<SettlementReport>|null;
+      if(!value || !Array.isArray(value.accounts) || !Array.isArray(value.sessions) || !Array.isArray(value.reconciliations)) throw new TypeError("Unconfirmed settlement report source");
+      return value as SettlementReport;
     },
   });

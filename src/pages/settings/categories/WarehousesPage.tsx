@@ -21,10 +21,10 @@ const fields: FieldDef[] = [
 ];
 
 export default function WarehousesPage() {
-  const { data, isLoading } = useAssetWarehouses();
-  const createMutation = useCreateAssetWarehouse();
-  const updateMutation = useUpdateAssetWarehouse();
-  const deleteMutation = useDeleteAssetWarehouse();
+  const { data, isLoading, error, refetch } = useAssetWarehouses();
+  const createMutation = useCreateAssetWarehouse({inlineError:true});
+  const updateMutation = useUpdateAssetWarehouse({inlineError:true});
+  const deleteMutation = useDeleteAssetWarehouse({inlineError:true});
 
   return (
     <CategoryCrudPage<AssetWarehouse>
@@ -33,11 +33,13 @@ export default function WarehousesPage() {
       icon={Warehouse}
       data={data}
       isLoading={isLoading}
+      error={error}
+      onRetry={refetch}
       columns={columns}
       fields={fields}
-      onCreate={(values) => createMutation.mutate(values as any)}
-      onUpdate={(id, values) => updateMutation.mutate({ id, updates: values as any })}
-      onDelete={(id) => deleteMutation.mutate(id)}
+      onCreate={(values) => createMutation.mutateAsync(values as any)}
+      onUpdate={(id, values) => updateMutation.mutateAsync({ id, updates: values as any })}
+      onDelete={(id) => deleteMutation.mutateAsync(id)}
       isCreating={createMutation.isPending}
       isUpdating={updateMutation.isPending}
       isDeleting={deleteMutation.isPending}

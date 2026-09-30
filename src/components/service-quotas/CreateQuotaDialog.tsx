@@ -1,3 +1,4 @@
+import { useState, useRef } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -22,7 +23,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Plus, X } from "lucide-react";
-import { useCreateServiceQuota } from "@/hooks/useServices";
+import { ServiceQuotaPartialError, useCreateServiceQuota } from "@/hooks/useServices";
+import { focusFirstError } from "@/lib/formErrors";
+import { recordWriteBlocked, recordWriteMessage } from "@/lib/recordWriteOutcome";
 
 const tierSchema = z.object({
   from_value: z.string().min(1, "Bắt buộc"),
@@ -44,7 +47,11 @@ interface CreateQuotaDialogProps {
 }
 
 export function CreateQuotaDialog({ open, onOpenChange }: CreateQuotaDialogProps) {
+  const [failure,setFailure]=useState<unknown>();
+  const [blocked,setBlocked]=useState(false);
+  const draftKey=useRef<string|null>(null);
   const createMutation = useCreateServiceQuota();
+  const [partialQuotaId, setPartialQuotaId] = useState<string | null>(null);
 
   const form = useForm<QuotaFormValues>({
     resolver: zodResolver(quotaSchema),
@@ -61,39 +68,48 @@ export function CreateQuotaDialog({ open, onOpenChange }: CreateQuotaDialogProps
   });
 
   const onSubmit = async (data: QuotaFormValues) => {
+    if (blocked || partialQuotaId) return;
+    form.clearErrors('root.server');
     try {
       await createMutation.mutateAsync({
         name: data.name,
         description: data.description || null,
         tiers: data.tiers.map((t, i) => ({
           tier_number: i + 1,
-          from_value: parseFloat(t.from_value) || 0,
-          to_value: t.to_value ? parseFloat(t.to_value) : null,
-          unit_price: parseFloat(t.unit_price) || 0,
+          from_value: Number(t.from_value),
+          to_value: t.to_value ? Number(t.to_value) : null,
+          unit_price: Number(t.unit_price),
         })),
       });
       form.reset();
       onOpenChange(false);
-    } catch {
-      // handled by mutation
+    } catch (error) {
+      setFailure(error);setBlocked(recordWriteBlocked(error) || error instanceof ServiceQuotaPartialError);
+      if (error instanceof ServiceQuotaPartialError) setPartialQuotaId(error.quotaId);
+      else form.setError('root.server', { type: 'server', message: recordWriteMessage(error,'tạo định mức') });
     }
   };
 
   const handleOpenChange = (value: boolean) => {
-    if (!value) form.reset();
+    if(form.formState.isSubmitting || createMutation.isPending)return;
     onOpenChange(value);
   };
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-[600px] max-h-[90vh]">
+      <DialogContent aria-describedby={undefined} className="sm:max-w-[600px] max-h-[90vh]">
         <DialogHeader>
           <DialogTitle>Thêm định mức dịch vụ</DialogTitle>
         </DialogHeader>
 
         <ScrollArea className="max-h-[calc(90vh-100px)] pr-4">
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <form onSubmit={form.handleSubmit(onSubmit, errors => { void focusFirstError(errors); })} className="space-y-4">
+              {partialQuotaId && <div role="alert" className="rounded-md border border-amber-500 p-3 text-sm">
+                Định mức đã tạo với ID {partialQuotaId}, nhưng bậc giá chưa hoàn tất. Mở định mức này trong danh sách để kiểm tra; không tạo lại.
+              </div>}
+              {form.formState.errors.root?.server?.message && <p role="alert" className="text-sm text-destructive">{form.formState.errors.root.server.message}</p>}
+              <fieldset disabled={blocked || form.formState.isSubmitting} className="space-y-4">
               <FormField
                 control={form.control}
                 name="name"
@@ -221,6 +237,7 @@ export function CreateQuotaDialog({ open, onOpenChange }: CreateQuotaDialogProps
                 </Button>
               </div>
 
+              </fieldset>
               <div className="flex justify-end gap-3 pt-4">
                 <Button
                   type="button"
@@ -229,7 +246,7 @@ export function CreateQuotaDialog({ open, onOpenChange }: CreateQuotaDialogProps
                 >
                   Hủy
                 </Button>
-                <Button type="submit" disabled={createMutation.isPending}>
+                <Button type="submit" disabled={blocked || form.formState.isSubmitting || createMutation.isPending || !!partialQuotaId}>
                   {createMutation.isPending ? "Đang lưu..." : "Lưu"}
                 </Button>
               </div>

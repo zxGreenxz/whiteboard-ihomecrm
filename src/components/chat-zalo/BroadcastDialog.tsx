@@ -1,3 +1,4 @@
+import { focusFirstError } from '@/lib/formErrors';
 import { useEffect, useMemo, useState } from 'react';
 import { Search, Send, Loader2, Check } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -15,7 +16,7 @@ interface Props {
   labels: ZaloLabel[];
   initialMessage?: string;
   sending?: boolean;
-  onSend: (ids: string[], body: string) => void;
+  onSend: (ids: string[], body: string) => Promise<number>;
 }
 
 /** Dialog "Chia sẻ / Gửi hàng loạt": chọn nhiều hội thoại (lọc theo nhãn) + gửi 1 nội dung. */
@@ -24,10 +25,13 @@ export default function BroadcastDialog({ open, onOpenChange, conversations, lab
   const [search, setSearch] = useState('');
   const [labelFilter, setLabelFilter] = useState<number | null>(null);
   const [message, setMessage] = useState('');
+  const [errors, setErrors] = useState<Record<string,string>>({});
+  const [outcome, setOutcome] = useState('');
+  const [submittedRecipients,setSubmittedRecipients] = useState<{id:string;name:string}[]>([]);
 
   // Mở dialog: nạp nội dung được chia sẻ (nếu có) + reset lựa chọn
   useEffect(() => {
-    if (open) { setMessage(initialMessage || ''); setSelected(new Set()); }
+    if (open && !outcome) { setSubmittedRecipients([]); setMessage(initialMessage || ''); setSelected(new Set()); setErrors({}); setOutcome(''); }
   }, [open, initialMessage]);
 
   const filtered = useMemo(() => {
@@ -45,9 +49,21 @@ export default function BroadcastDialog({ open, onOpenChange, conversations, lab
 
   const labelDots = (ids?: number[]) => (ids || []).slice(0, 3).map((id) => labels.find((l) => l.labelId === id)).filter(Boolean) as ZaloLabel[];
 
-  const submit = () => {
-    if (!selected.size || !message.trim()) return;
-    onSend([...selected], message.trim());
+  const submit = async () => {
+    if (outcome || sending) return;
+    const invalid: Record<string,string> = {};
+    if(!selected.size) invalid.conversations = 'Chọn ít nhất một hội thoại nhận tin.';
+    if(!message.trim()) invalid.message = 'Nhập nội dung muốn gửi.';
+    setErrors(invalid);
+    if(Object.keys(invalid).length) { await focusFirstError(invalid,{order:['conversations','message']}); return; }
+    setSubmittedRecipients([...selected].map(id=>({id,name:conversations.find(c=>c.id===id)?.name || id})));
+    try {
+      const queued = await onSend([...selected], message.trim());
+      if (queued === selected.size) onOpenChange(false);
+      else setOutcome(`Đã xếp ${queued}/${selected.size} hội thoại vào hàng đợi. Chưa xác định từng hội thoại còn lại; kiểm tra lịch sử gửi trước khi tạo đợt gửi tiếp. Nội dung và danh sách đang chọn vẫn được giữ.`);
+    } catch {
+      setOutcome('Chưa xác nhận được kết quả xếp hàng gửi. Kiểm tra lịch sử của các hội thoại đang chọn; không gửi lại toàn bộ danh sách để tránh trùng tin.');
+    }
   };
 
   return (
@@ -64,16 +80,16 @@ export default function BroadcastDialog({ open, onOpenChange, conversations, lab
             <Search size={14} />
             <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Tìm hội thoại…" style={{ flex: 1, border: 'none', background: 'transparent', fontSize: 13, outline: 'none', fontFamily: 'inherit' }} />
           </div>
-          <button onClick={selectAllVisible} style={{ fontSize: 12, fontWeight: 600, color: EMERALD, background: 'none', border: 'none', cursor: 'pointer', whiteSpace: 'nowrap' }}>Chọn tất cả</button>
+          <button disabled={sending || !!outcome} onClick={selectAllVisible} style={{ fontSize: 12, fontWeight: 600, color: EMERALD, background: 'none', border: 'none', cursor: 'pointer', whiteSpace: 'nowrap' }}>Chọn tất cả</button>
         </div>
 
-        <div className="wz-scroll" style={{ height: 260, overflowY: 'auto', border: '1px solid hsl(210 20% 90%)', borderRadius: 10 }}>
+        <div data-field-name="conversations" tabIndex={0} aria-invalid={!!errors.conversations} className="wz-scroll" style={{ outline: errors.conversations ? "2px solid hsl(var(--destructive))" : undefined, height: 260, overflowY: 'auto', border: '1px solid hsl(210 20% 90%)', borderRadius: 10 }}>
           {filtered.length === 0 ? (
             <div style={{ padding: 24, textAlign: 'center', color: 'hsl(210 10% 50%)', fontSize: 13 }}>Không có hội thoại phù hợp</div>
           ) : filtered.slice(0, 400).map((c) => {
             const on = selected.has(c.id);
             return (
-              <button key={c.id} onClick={() => toggle(c.id)} className="w-full" style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 12px', border: 'none', borderBottom: '1px solid hsl(210 20% 95%)', background: on ? 'hsl(152 30% 96%)' : 'transparent', cursor: 'pointer', textAlign: 'left' }}>
+              <button key={c.id} disabled={sending || !!outcome} onClick={() => toggle(c.id)} className="w-full" style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 12px', border: 'none', borderBottom: '1px solid hsl(210 20% 95%)', background: on ? 'hsl(152 30% 96%)' : 'transparent', cursor: 'pointer', textAlign: 'left' }}>
                 <span style={{ width: 18, height: 18, borderRadius: 5, flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', border: on ? 'none' : '1.5px solid hsl(210 20% 80%)', background: on ? EMERALD : '#fff' }}>{on && <Check size={13} color="#fff" strokeWidth={3} />}</span>
                 <ZaloAvatar url={c.avatarUrl} initials={c.initials} tone={c.tone} size={30} fontSize={12} />
                 <span style={{ flex: 1, minWidth: 0 }}>
@@ -86,16 +102,24 @@ export default function BroadcastDialog({ open, onOpenChange, conversations, lab
           })}
         </div>
 
-        <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={3} placeholder="Nhập nội dung gửi tới các hội thoại đã chọn…" style={{ width: '100%', border: '1px solid hsl(210 20% 88%)', borderRadius: 10, padding: '10px 12px', fontSize: 13.5, fontFamily: 'inherit', resize: 'none', outline: 'none' }} />
+        {errors.conversations && <p role="alert" className="text-sm text-destructive">{errors.conversations}</p>}
+        <textarea disabled={sending || !!outcome} name="message" aria-invalid={!!errors.message} value={message} onChange={(e) => setMessage(e.target.value)} rows={3} placeholder="Nhập nội dung gửi tới các hội thoại đã chọn…" style={{ width: '100%', border: errors.message ? '1px solid hsl(var(--destructive))' : '1px solid hsl(210 20% 88%)', borderRadius: 10, padding: '10px 12px', fontSize: 13.5, fontFamily: 'inherit', resize: 'none', outline: 'none' }} />
 
+        {errors.message && <p role="alert" className="text-sm text-destructive">{errors.message}</p>}
+        {outcome && <div role="alert" className="rounded border border-amber-500 p-3 text-sm">
+          <p>{outcome}</p>
+          <details className="mt-2"><summary>Danh sách trong yêu cầu này — chưa có kết quả từng hội thoại</summary>
+            <ul className="mt-2 list-disc pl-5">{submittedRecipients.map(recipient=><li key={recipient.id}>{recipient.name} · {recipient.id}</li>)}</ul>
+          </details>
+        </div>}
         <div className="flex items-center justify-between">
           <div style={{ fontSize: 12.5, color: 'hsl(210 10% 45%)' }}>
             Đã chọn <b style={{ color: EMERALD }}>{selected.size}</b> hội thoại
-            {selected.size > 0 && <button onClick={clearAll} style={{ marginLeft: 8, fontSize: 12, color: 'hsl(0 70% 50%)', background: 'none', border: 'none', cursor: 'pointer' }}>Bỏ chọn</button>}
+            {selected.size > 0 && <button disabled={sending || !!outcome} onClick={clearAll} style={{ marginLeft: 8, fontSize: 12, color: 'hsl(0 70% 50%)', background: 'none', border: 'none', cursor: 'pointer' }}>Bỏ chọn</button>}
           </div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => onOpenChange(false)}>Hủy</Button>
-            <Button onClick={submit} disabled={!selected.size || !message.trim() || sending} style={{ background: EMERALD }}>
+            <Button onClick={submit} disabled={sending || !!outcome} style={{ background: EMERALD }}>
               {sending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Send className="h-4 w-4 mr-1" />} Gửi tới {selected.size}
             </Button>
           </div>
