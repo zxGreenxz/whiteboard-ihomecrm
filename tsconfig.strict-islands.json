@@ -298,6 +298,7 @@
     "src/components/income-expenses/QuickCategoryInput.tsx",
     "src/components/income-expenses/RevisionSummary.tsx",
     "src/components/income-expenses/VoucherHistoryDialog.tsx",
+    "src/components/income-expenses/VoucherReadState.tsx",
     "src/components/income-expenses/VoucherStatusBadge.tsx",
     "src/components/income-expenses/__tests__/voucherHistoryFormat.test.ts",
     "src/components/income-expenses/batchListColumns.ts",

@@ -50,10 +50,13 @@ import {
   type IncomeExpenseWithRelations,
 } from "@/hooks/useIncomeExpenses";
 import { ReservationSettlementDialog } from "@/components/deposits/ReservationSettlementDialog";
+import { VoucherSheetReadState, useSheetStill } from "@/components/income-expenses/VoucherReadState";
 
 interface Props {
   voucher?: IncomeExpenseWithRelations;
   voucherId?: string;
+  /** Tổ chức của dòng vừa bấm — chỉ để tải chi tiết song song (loadIncomeExpenseDetail). */
+  organizationIdHint?: string | null;
   onClose: () => void;
   onEdit?: (v: IncomeExpenseWithRelations) => void;
   onQuickEdit?: (v: IncomeExpenseWithRelations) => void;
@@ -90,12 +93,27 @@ const REPEAT_LABEL: Record<string, string> = {
  * (sửa đầy đủ / sửa nhanh / duyệt / huỷ / in). Hiển thị trong khung .cm-app.
  */
 export function IncomeExpenseDetailMobile(props: Props) {
-  const detail = useIncomeExpenseDetail(props.voucherId ?? props.voucher?.id, true);
-  if (detail.isFetching || !detail.isFetchedAfterMount || !detail.isSuccess || !hasCompleteVoucherDetail(detail.data)) {
+  const detail = useIncomeExpenseDetail(
+    props.voucherId ?? props.voucher?.id,
+    true,
+    props.organizationIdHint ?? props.voucher?.organization_id,
+  );
+  const ready = !(detail.isFetching || !detail.isFetchedAfterMount || !detail.isSuccess || !hasCompleteVoucherDetail(detail.data));
+  const still = useSheetStill(ready ? "content" : "state");
+  if (!ready) {
     const message = detail.isFetching ? "Đang tải chi tiết phiếu…" : detail.isSuccess && !detail.data ? "Phiếu không còn khả dụng hoặc bạn không còn quyền xem." : "Không tải được đầy đủ chi tiết phiếu.";
-    return <div className="fixed inset-0 z-50 bg-background p-6"><p role="status">{message}</p><button onClick={() => detail.refetch()}>Thử lại</button><button onClick={props.onClose}>Đóng</button></div>;
+    return (
+      <VoucherSheetReadState
+        title="THÔNG TIN THU/CHI"
+        loading={detail.isFetching}
+        message={message}
+        onRetry={() => void detail.refetch()}
+        onClose={props.onClose}
+        still={still}
+      />
+    );
   }
-  return <IncomeExpenseDetailMobileContent {...props} voucher={detail.data!} />;
+  return <IncomeExpenseDetailMobileContent {...props} voucher={detail.data!} still={still} />;
 }
 
 function IncomeExpenseDetailMobileContent({
@@ -109,7 +127,8 @@ function IncomeExpenseDetailMobileContent({
   onCopy,
   onPostApproved,
   onReversePosting,
-}: Props & { voucher: IncomeExpenseWithRelations }) {
+  still = false,
+}: Props & { voucher: IncomeExpenseWithRelations; still?: boolean }) {
   const navigate = useNavigate();
   const attachments = getVoucherDisplayAttachments(v);
   const [paySheetOpen, setPaySheetOpen] = useState(false);
@@ -201,7 +220,7 @@ function IncomeExpenseDetailMobileContent({
     // chi tiết phiếu tổng), chạm nền KHÔNG được nổi bọt lên overlay cha → tránh
     // đóng luôn cả 2 lớp. Dialog portal vẫn nổi bọt theo cây React; chỉ chạm
     // trực tiếp nền này mới đóng chi tiết, không đóng khi thao tác dialog con.
-    <div className="sheet-ov" onClick={(e) => { e.stopPropagation(); if (e.target === e.currentTarget) onClose(); }}>
+    <div className={still ? "sheet-ov sheet-still" : "sheet-ov"} onClick={(e) => { e.stopPropagation(); if (e.target === e.currentTarget) onClose(); }}>
       <div className="sheet" onClick={(e) => e.stopPropagation()}>
         <div className="sheet-grab" />
         <div className="vd-hd">

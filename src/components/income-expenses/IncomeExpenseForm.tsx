@@ -212,7 +212,11 @@ const IncomeExpenseFormInner = ({
   // Nguồn dữ liệu đổ vào form: phiếu đang SỬA, hoặc phiếu gốc khi TẠO BẢN SAO.
   // isEditing vẫn chỉ theo `voucher` → copy mode submit qua đường TẠO MỚI.
   const sourceId = initialVoucher?.id ?? initialCopyFrom?.id;
-  const detail = useIncomeExpenseDetail(sourceId, open);
+  const detail = useIncomeExpenseDetail(
+    sourceId,
+    open,
+    (initialVoucher ?? initialCopyFrom)?.organization_id,
+  );
   const voucher = initialVoucher ? detail.data ?? initialVoucher : null;
   const copyFrom = initialCopyFrom ? detail.data ?? initialCopyFrom : null;
   const populateSource = sourceId ? detail.data : null;

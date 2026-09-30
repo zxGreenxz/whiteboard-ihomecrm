@@ -63,10 +63,21 @@ export async function enrichIncomeExpenseDetails(
     };
   });
 }
+/**
+ * Đọc đủ một phiếu: đầu phiếu (quyết định "còn thấy" + nhãn phòng/khách/sổ),
+ * chi tiết qua RPC và phần bổ sung — ba lần đọc qua RLS như trước.
+ *
+ * Trước 30/09/2026 ba lần đọc nối đuôi nhau (đo production: 570–1.870 ms mỗi lần
+ * mở phiếu từ mạng cáp). Phần bổ sung chỉ cần id nên luôn chạy song song; RPC
+ * cần tổ chức, nên khi màn gọi đã biết tổ chức (dòng danh sách vừa bấm) thì nó
+ * cũng chạy ngay. `organizationIdHint` chỉ để chạy sớm, không phải căn cứ quyền:
+ * đầu phiếu không thấy ⇒ null, tổ chức thật khác gợi ý ⇒ bỏ kết quả, đọc lại.
+ */
 export async function loadIncomeExpenseDetail(
   id: string,
+  organizationIdHint?: string | null,
 ): Promise<IncomeExpenseWithRelations | null> {
-  const { data, error } = await supabase
+  const headerRead = supabase
     .from("income_expenses")
     .select(
       "organization_id, room:rooms!income_expenses_room_id_fkey(id,name), tenant:tenants!income_expenses_tenant_id_fkey(id,full_name), account:accounts!income_expenses_account_id_fkey(id,name,is_virtual)",
@@ -74,37 +85,61 @@ export async function loadIncomeExpenseDetail(
     .eq("id", id)
     .is("deleted_at", null)
     .maybeSingle();
+  const supplementsRead = hydrateIncomeExpenseSupplements([{ id }]);
+  const earlyDetailRead = organizationIdHint
+    ? loadIncomeExpenseDetails(organizationIdHint, [id])
+    : null;
+  // allSettled: đầu phiếu phải được xét TRƯỚC — phiếu hết quyền xem trả null,
+  // không để lỗi của lần đọc song song đè lên thành "lỗi tải".
+  const [header, supplements, earlyDetail] = await Promise.allSettled([
+    headerRead,
+    supplementsRead,
+    earlyDetailRead,
+  ]);
+  if (header.status === "rejected") throw header.reason;
+  const { data, error } = header.value;
   if (error) throw error;
   if (!data) return null;
   if (!data.organization_id) throw new Error("Phiếu thiếu tổ chức.");
-  const [detail] = await loadIncomeExpenseDetails(data.organization_id, [id]);
+  let details: IncomeExpenseWithRelations[];
+  if (earlyDetailRead && organizationIdHint === data.organization_id) {
+    if (earlyDetail.status === "rejected") throw earlyDetail.reason;
+    details = earlyDetail.value ?? [];
+  } else {
+    details = await loadIncomeExpenseDetails(data.organization_id, [id]);
+  }
+  const [detail] = details;
   if (!detail) throw new Error("Không tải đủ chi tiết phiếu. Vui lòng thử lại.");
-  const [result] = await hydrateIncomeExpenseSupplements(
-    await hydrateReservationCreators([
-      {
-        ...detail,
-        room_name: data.room?.id === detail.room_id ? data.room.name : null,
-        tenant_name:
-          data.tenant?.id === detail.tenant_id ? data.tenant.full_name : null,
-        account_name:
-          data.account?.id === detail.account_id ? data.account.name : null,
-        account_is_virtual:
-          data.account?.id === detail.account_id
-            ? data.account.is_virtual
-            : null,
-      },
-    ]),
-  );
-  if (!result) throw new Error("Không tải đủ chi tiết phiếu. Vui lòng thử lại.");
-  return result;
+  if (supplements.status === "rejected") throw supplements.reason;
+  const [named] = await hydrateReservationCreators([
+    {
+      ...detail,
+      room_name: data.room?.id === detail.room_id ? data.room.name : null,
+      tenant_name:
+        data.tenant?.id === detail.tenant_id ? data.tenant.full_name : null,
+      account_name:
+        data.account?.id === detail.account_id ? data.account.name : null,
+      account_is_virtual:
+        data.account?.id === detail.account_id
+          ? data.account.is_virtual
+          : null,
+    },
+  ]);
+  if (!named) throw new Error("Không tải đủ chi tiết phiếu. Vui lòng thử lại.");
+  return { ...named, supplements: supplements.value[0]?.supplements };
 }
+/**
+ * @param organizationIdHint tổ chức của phiếu nếu màn gọi đã biết (dòng danh
+ *   sách) — chỉ để tải song song, xem loadIncomeExpenseDetail.
+ */
 export function useIncomeExpenseDetail(
   id: string | null | undefined,
   enabled = true,
+  organizationIdHint?: string | null,
 ) {
   return useQuery({
     queryKey: ["income-expense", "detail", id],
-    queryFn: () => loadIncomeExpenseDetail(id!),
+    queryFn: () => loadIncomeExpenseDetail(id!, organizationIdHint),
     enabled: enabled && !!id,
     staleTime: 0,
     refetchOnMount: "always",

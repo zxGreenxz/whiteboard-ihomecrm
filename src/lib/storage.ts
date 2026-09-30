@@ -25,6 +25,29 @@ function identityOriginal(file: File): File {
   return file;
 }
 
+/** Đuôi file theo định dạng ảnh nén ra (compressImage chỉ xuất hai loại này). */
+const COMPRESSED_EXT: Record<string, string> = {
+  "image/webp": ".webp",
+  "image/jpeg": ".jpg",
+};
+
+/**
+ * Hạn chờ một lần tải lên kho: 20 giây + 20 giây mỗi MB. Ảnh chứng từ đã nén
+ * (~100–300 KB) có 40 giây; PDF 5 MB có 2 phút. Tải thường xong trong vài giây —
+ * quá hạn nghĩa là request đã kẹt trên mạng (chủ gặp 30/09/2026: kẹt "Đang
+ * tải..." tới khi tắt app), nên báo lỗi để người dùng thử lại thay vì chờ mãi.
+ */
+export function uploadDeadlineMs(bytes: number): number {
+  return 20_000 + Math.ceil(bytes / (1024 * 1024)) * 20_000;
+}
+
+export class UploadTimeoutError extends Error {
+  constructor() {
+    super("Tải file quá lâu — mạng đang chậm hoặc chập chờn. Kiểm tra mạng rồi thử lại.");
+    this.name = "UploadTimeoutError";
+  }
+}
+
 /**
  * Upload a file to Supabase Storage
  * @param bucket - The storage bucket name
@@ -38,15 +61,16 @@ export async function uploadFile(
   file: File,
   options: UploadFileOptions = {},
 ): Promise<string> {
-  // Nén ảnh trước khi upload (giảm kho + băng thông egress). Nếu nén ra WebP thì
+  // Nén ảnh trước khi upload (giảm kho + băng thông egress). Nén ra WebP/JPEG thì
   // đổi đuôi key cho khớp content-type; non-image giữ nguyên file & key. Ảnh
   // giấy tờ được kiểm tra rồi lưu đúng bytes gốc để không làm mất chi tiết QR.
   const toUpload = options.imagePolicy === 'identity-original'
     ? identityOriginal(file)
     : await compressImage(file);
   let key = path;
-  if (toUpload !== file && toUpload.type === "image/webp") {
-    key = path.replace(/\.[^./]+$/, "") + ".webp";
+  const ext = toUpload !== file ? COMPRESSED_EXT[toUpload.type] : undefined;
+  if (ext) {
+    key = path.replace(/\.[^./]+$/, "") + ext;
   }
 
   // Bucket đã chuyển sang R2 → upload qua Worker (egress $0). Còn lại: Supabase.
@@ -54,12 +78,27 @@ export async function uploadFile(
     return uploadToR2(bucket, key, toUpload);
   }
 
-  const { data, error } = await supabase.storage
+  // storage-js không nhận AbortSignal cho upload, nên hạn chờ chỉ dừng việc CHỜ;
+  // request kẹt vẫn chạy ngầm. Nếu nó xong sau hạn thì xoá file đó — người dùng
+  // đã được báo lỗi và sẽ tải lại, file này không ai dùng nữa.
+  const request = supabase.storage
     .from(bucket)
     .upload(key, toUpload, {
       cacheControl: "31536000", // 1 năm — file đặt tên theo timestamp, không đổi
       upsert: false,
     });
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      void request.then(({ data }) =>
+        data?.path ? supabase.storage.from(bucket).remove([data.path]) : undefined,
+      ).catch((cleanupError: unknown) => {
+        console.warn("[storage] không xoá được file tải xong sau hạn:", cleanupError);
+      });
+      reject(new UploadTimeoutError());
+    }, uploadDeadlineMs(toUpload.size));
+  });
+  const { data, error } = await Promise.race([request, deadline]).finally(() => clearTimeout(timer));
 
   if (error) {
     throw error;

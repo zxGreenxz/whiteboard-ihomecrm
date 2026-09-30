@@ -143,8 +143,13 @@ const IncomeExpenseDesktopPage = () => {
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
   const [detailVoucherId, setDetailVoucherId] = useState<string | null>(null);
-  const setDetailVoucher = useCallback((value: IncomeExpenseWithRelations | null) => setDetailVoucherId(value?.id ?? null), []);
-  const selectedDetail = useIncomeExpenseDetail(detailVoucherId);
+  // Tổ chức của dòng vừa bấm: chỉ để tải chi tiết song song, không thay kiểm quyền.
+  const [detailOrgHint, setDetailOrgHint] = useState<string | null>(null);
+  const setDetailVoucher = useCallback((value: IncomeExpenseWithRelations | null) => {
+    setDetailVoucherId(value?.id ?? null);
+    setDetailOrgHint(value?.organization_id ?? null);
+  }, []);
+  const selectedDetail = useIncomeExpenseDetail(detailVoucherId, true, detailOrgHint);
   const detailVoucher = selectedDetail.isSuccess && !selectedDetail.isFetching ? selectedDetail.data ?? null : null;
   const [editingVoucher, setEditingVoucher] =
     useState<IncomeExpenseWithRelations | null>(null);
@@ -890,6 +895,7 @@ const IncomeExpenseDesktopPage = () => {
           if (!o) setDetailVoucher(null);
         }}
         voucherId={detailVoucherId}
+        organizationIdHint={detailOrgHint}
         voucher={detailVoucher}
         onCancel={handleCancelVoucher}
         onRestore={handleRestoreVoucher}

@@ -54,12 +54,15 @@ import { formatPeriod } from "@/lib/monthPeriod";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { formatVND } from "@/lib/utils";
 import { ReservationSettlementDialog } from "@/components/deposits/ReservationSettlementDialog";
+import { VoucherDialogReadState } from "@/components/income-expenses/VoucherReadState";
 
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   voucher: IncomeExpenseWithRelations | null;
   voucherId?: string | null;
+  /** Tổ chức của dòng vừa bấm — chỉ để tải chi tiết song song (loadIncomeExpenseDetail). */
+  organizationIdHint?: string | null;
   onCancel?: (id: string, type?: string | null) => void;
   onEdit?: (voucher: IncomeExpenseWithRelations) => void;
   /** Append-only narrative/evidence, independent of the financial edit form. */
@@ -97,11 +100,23 @@ const SectionTitle = ({ children }: { children: React.ReactNode }) => (
 );
 
 export function IncomeExpenseDetailDialog(props: Props) {
-  const detail = useIncomeExpenseDetail(props.voucherId ?? props.voucher?.id, props.open);
+  const detail = useIncomeExpenseDetail(
+    props.voucherId ?? props.voucher?.id,
+    props.open,
+    props.organizationIdHint ?? props.voucher?.organization_id,
+  );
   if (!props.open || (!props.voucherId && !props.voucher)) return null;
   if (detail.isFetching || !detail.isFetchedAfterMount || !detail.isSuccess || !hasCompleteVoucherDetail(detail.data)) {
     const message = detail.isFetching ? "Đang tải chi tiết phiếu…" : detail.isSuccess && !detail.data ? "Phiếu không còn khả dụng hoặc bạn không còn quyền xem." : "Không tải được đầy đủ chi tiết phiếu.";
-    return <Dialog open={props.open} onOpenChange={props.onOpenChange}><DialogContent aria-describedby={undefined}><DialogTitle>Chi tiết phiếu</DialogTitle><p role="status">{message}</p><Button onClick={() => detail.refetch()}>Thử lại</Button></DialogContent></Dialog>;
+    return (
+      <VoucherDialogReadState
+        title="Chi tiết phiếu"
+        loading={detail.isFetching}
+        message={message}
+        onRetry={() => void detail.refetch()}
+        onClose={() => props.onOpenChange(false)}
+      />
+    );
   }
   return <IncomeExpenseDetailDialogContent {...props} voucher={detail.data!} />;
 }

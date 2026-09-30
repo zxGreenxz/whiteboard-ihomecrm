@@ -14,6 +14,7 @@ import type {
 } from "@/hooks/useIncomeExpenses";
 import IncomeExpenseDetailMobile from "./IncomeExpenseDetailMobile";
 import BatchAccountReasonDialog from "./BatchAccountReasonDialog";
+import { VoucherSheetReadState, useSheetStill } from "./VoucherReadState";
 
 interface Props {
   batch: IncomeExpenseBatchSummary;
@@ -35,16 +36,22 @@ const isPdf = (url: string) => /\.pdf(\?|$)/i.test(url);
  */
 export function IncomeExpenseBatchDetailMobile(props: Props) {
   const detail = useVoucherWithBatch(props.batch.vouchers[0]?.id);
-  if (detail.isFetching || !detail.isFetchedAfterMount || !detail.isSuccess || !detail.data?.batch || detail.data.batch.id !== props.batch.id) {
+  const batchData = detail.data?.batch;
+  const ready = !detail.isFetching && detail.isFetchedAfterMount && detail.isSuccess && !!batchData && batchData.id === props.batch.id;
+  const still = useSheetStill(ready ? "content" : "state");
+  if (!ready || !batchData) {
     return (
-      <div className="sheet-ov"><div className="sheet p-6">
-        <p role="status">{detail.isFetching ? "Đang tải chi tiết đợt…" : "Không tải được đầy đủ phiếu trong đợt hoặc bạn không còn quyền xem."}</p>
-        <button onClick={() => detail.refetch()}>Thử lại</button>
-        <button onClick={props.onClose}>Đóng</button>
-      </div></div>
+      <VoucherSheetReadState
+        title="CHI TIẾT PHIẾU TỔNG"
+        loading={detail.isFetching}
+        message={detail.isFetching ? "Đang tải chi tiết đợt…" : "Không tải được đầy đủ phiếu trong đợt hoặc bạn không còn quyền xem."}
+        onRetry={() => void detail.refetch()}
+        onClose={props.onClose}
+        still={still}
+      />
     );
   }
-  return <IncomeExpenseBatchDetailContent {...props} batch={detail.data.batch} />;
+  return <IncomeExpenseBatchDetailContent {...props} batch={batchData} still={still} />;
 }
 function IncomeExpenseBatchDetailContent({
   batch,
@@ -53,7 +60,8 @@ function IncomeExpenseBatchDetailContent({
   onEditVoucher,
   onCancelVoucher,
   onApproveVoucher,
-}: Props) {
+  still = false,
+}: Props & { still?: boolean }) {
   const [child, setChild] = useState<IncomeExpenseWithRelations | null>(null);
   // Xem ảnh đính kèm dùng chung ngay trên trang (overlay), KHÔNG mở tab mới.
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
@@ -83,7 +91,7 @@ function IncomeExpenseBatchDetailContent({
 
   return (
     // stopPropagation cho nhất quán với sheet con (chống nổi bọt khi lồng sheet).
-    <div className="sheet-ov" onClick={(e) => { e.stopPropagation(); onClose(); }}>
+    <div className={still ? "sheet-ov sheet-still" : "sheet-ov"} onClick={(e) => { e.stopPropagation(); onClose(); }}>
       <div className="sheet" onClick={(e) => e.stopPropagation()}>
         <div className="sheet-grab" />
         <div className="vd-hd">
