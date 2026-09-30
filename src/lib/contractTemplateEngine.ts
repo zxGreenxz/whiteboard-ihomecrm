@@ -579,10 +579,24 @@ export async function renderContractDocxBuffer(buffer: ArrayBuffer, data: Contra
     const appendix = paragraph('Lịch hỗ trợ tiền thuê', true) + String(data.RENT_SUPPORT_SCHEDULE).split('\n').map(text => paragraph(text)).join('') + paragraph(`Tổng hỗ trợ: ${String(data.RENT_SUPPORT_TOTAL)}`, true);
     // Insert before the final body-level section properties, preserving the
     // stored template and every existing paragraph/section's formatting.
-    const section = xml.lastIndexOf('<w:sectPr');
-    const bodyEnd = xml.lastIndexOf('</w:body>');
-    const finalSection = section >= 0 && (/^<w:sectPr\b[^>]*\/>\s*<\/w:body>/.test(xml.slice(section)) || /^<w:sectPr[\s\S]*<\/w:sectPr>\s*<\/w:body>/.test(xml.slice(section)));
-    const at = finalSection ? section : bodyEnd;
+    // Section history can itself contain sectPr. Track parents rather than
+    // choosing the last textual match, which would insert inside that history.
+    const parents: string[] = [];
+    let section = -1;
+    let bodyEnd = -1;
+    const tags = /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<\?[\s\S]*?\?>|<\/?([A-Za-z_][\w:.-]*)\b(?:"[^"]*"|'[^']*'|[^'">])*>/g;
+    for (const match of xml.matchAll(tags)) {
+      const name = match[1];
+      if (!name) continue; // Comments, CDATA and processing instructions.
+      if (match[0].startsWith('</')) {
+        if (name === 'w:body') bodyEnd = match.index;
+        parents.pop();
+      } else {
+        if (name === 'w:sectPr' && parents[parents.length - 1] === 'w:body') section = match.index;
+        if (!match[0].endsWith('/>')) parents.push(name);
+      }
+    }
+    const at = section >= 0 ? section : bodyEnd;
     if (at < 0) throw new Error('Tài liệu: Mẫu không có nội dung DOCX hợp lệ.');
     output.file('word/document.xml', xml.slice(0, at) + appendix + xml.slice(at));
   }

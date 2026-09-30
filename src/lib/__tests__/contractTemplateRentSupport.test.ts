@@ -36,6 +36,13 @@ it('keeps a self-closing final sectPr after the appended customer schedule', asy
   const xml = await rendered(paragraph('Hợp đồng legacy'), '<w:sectPr/>');
   expect(xml.indexOf('Tổng hỗ trợ')).toBeLessThan(xml.indexOf('<w:sectPr/>'));
 });
+it('inserts before the body section and preserves its nested section history byte-for-byte', async () => {
+  const section = '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:sectPrChange w:id="1" w:author="Reviewer" w:date="2026-09-30T00:00:00Z"><w:sectPr><w:pgSz w:w="11906" w:h="16838"/></w:sectPr></w:sectPrChange></w:sectPr>';
+  const xml = await rendered(paragraph('Hợp đồng legacy'), section);
+  expect(xml.indexOf('Tổng hỗ trợ')).toBeLessThan(xml.indexOf('<w:sectPr>'));
+  expect(xml).toContain(section);
+  expect(xml).toContain('08/2027: 100.000');
+});
 it.each([paragraph('{RENT_SUPPORT_SCHEDULE}'), '<w:p><w:r><w:t>{RENT_SUPPORT_</w:t></w:r><w:r><w:t>SCHEDULE}</w:t></w:r></w:p>'])('renders schedule code including split Word runs without duplicate appendix', async (code) => {
   const xml = await rendered(code + paragraph('Tổng: {RENT_SUPPORT_TOTAL}'));
   expect(xml.match(/09\/2026: 300\.000/g)).toHaveLength(1);
