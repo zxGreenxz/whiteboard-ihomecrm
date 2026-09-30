@@ -2789,6 +2789,7 @@ export type Database = {
           organization_id: string
           reason: string | null
           request_id: string
+          voucher_id: string | null
         }
         Insert: {
           action: string
@@ -2804,6 +2805,7 @@ export type Database = {
           organization_id: string
           reason?: string | null
           request_id: string
+          voucher_id?: string | null
         }
         Update: {
           action?: string
@@ -2819,6 +2821,7 @@ export type Database = {
           organization_id?: string
           reason?: string | null
           request_id?: string
+          voucher_id?: string | null
         }
         Relationships: [
           {
@@ -2844,6 +2847,57 @@ export type Database = {
           },
           {
             foreignKeyName: "contract_commission_events_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contract_commission_requests: {
+        Row: {
+          actor_id: string
+          completed_at: string | null
+          contract_id: string
+          created_at: string
+          kind: string
+          organization_id: string
+          payload: Json
+          request_id: string
+          result: Json | null
+        }
+        Insert: {
+          actor_id: string
+          completed_at?: string | null
+          contract_id: string
+          created_at?: string
+          kind: string
+          organization_id: string
+          payload: Json
+          request_id: string
+          result?: Json | null
+        }
+        Update: {
+          actor_id?: string
+          completed_at?: string | null
+          contract_id?: string
+          created_at?: string
+          kind?: string
+          organization_id?: string
+          payload?: Json
+          request_id?: string
+          result?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contract_commission_requests_organization_id_contract_id_fkey"
+            columns: ["organization_id", "contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "contract_commission_requests_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
@@ -22549,6 +22603,15 @@ export type Database = {
           total_fees: number
         }[]
       }
+      execute_commission_request_v1: {
+        Args: {
+          p_contract_id: string
+          p_kind: string
+          p_organization_id: string
+          p_request_id: string
+        }
+        Returns: Json
+      }
       explain_authorization_v1: {
         Args: {
           p_building?: string
@@ -23573,6 +23636,21 @@ export type Database = {
         }
         Returns: Json
       }
+      list_contract_commission_followups_v2: {
+        Args: {
+          p_building_ids?: string[]
+          p_contract_ids?: string[]
+          p_kind?: string
+          p_limit?: number
+          p_offset?: number
+          p_organization_id: string
+          p_period_from?: string
+          p_period_to?: string
+          p_search?: string
+          p_unresolved_only?: boolean
+        }
+        Returns: Json
+      }
       list_contract_drafts: {
         Args: { p_building_id?: string; p_organization_id: string }
         Returns: Json
@@ -24563,6 +24641,10 @@ export type Database = {
           room_name: string
           total_dwell_ms: number
         }[]
+      }
+      prepare_commission_requests_v1: {
+        Args: { p_intents: Json; p_organization_id: string }
+        Returns: Json
       }
       preview_maintenance_rule_v1: {
         Args: {
