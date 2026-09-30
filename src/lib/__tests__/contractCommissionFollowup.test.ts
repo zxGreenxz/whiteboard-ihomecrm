@@ -55,8 +55,18 @@ describe('durable creation boundary',()=>{
   rpcMock.mockResolvedValueOnce({data:{status:'FAILED',id:null,code:null,operation_id:contract},error:null} as never);
   await expect(executeCommissionCreation(org,{contract_id:contract,kind:'sale',request_id:org})).rejects.toThrow(/chưa tạo/i);
  });
- it('rejects legacy COMPLETED without a voucher and accepts a complete strict legacy receipt',async()=>{
-  rpcMock.mockResolvedValueOnce({data:{status:'COMPLETED',id:null,code:null},error:null} as never);
+ it('accepts authorized server-redacted legacy completion and replay for the exact saved request',async()=>{
+  const request={contract_id:contract,kind:'sale' as const,request_id:org};
+  for(let replay=0;replay<2;replay++) {
+   rpcMock.mockResolvedValueOnce({data:{status:'COMPLETED',id:null,code:null},error:null} as never);
+   expect(await executeCommissionCreation(org,request)).toEqual({status:'COMPLETED',id:null,code:null});
+   expect(rpcMock).toHaveBeenLastCalledWith('execute_commission_request_v1',{
+    p_organization_id:org,p_contract_id:contract,p_kind:'sale',p_request_id:org,
+   });
+  }
+ });
+ it('rejects incomplete legacy redaction and accepts a complete strict legacy receipt',async()=>{
+  rpcMock.mockResolvedValueOnce({data:{status:'COMPLETED',id:null,code:'PC-LEGACY'},error:null} as never);
   await expect(executeCommissionCreation(org,{contract_id:contract,kind:'sale',request_id:org})).rejects.toThrow();
   rpcMock.mockResolvedValueOnce({data:{status:'COMPLETED',id:contract,code:'PC-LEGACY'},error:null} as never);
   expect(await executeCommissionCreation(org,{contract_id:contract,kind:'sale',request_id:org})).toEqual({status:'COMPLETED',id:contract,code:'PC-LEGACY'});

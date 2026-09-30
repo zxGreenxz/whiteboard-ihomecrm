@@ -104,8 +104,9 @@ const creationPayloadSchema = z.object({
   item_description: z.string().nullable().optional(), attachments: z.array(z.string()).optional(),
 }).strict();
 const preparedRequestSchema = z.object({ contract_id: z.string().uuid(), kind: kindSchema, request_id: z.string().uuid() }).strict();
+// Exact-request execute authenticates creation and may redact both voucher fields after COMPLETED.
 const creationResultSchema = z.object({ status: z.enum(['COMPLETED', 'ALREADY_EXISTS', 'FAILED']), id: z.string().uuid().nullable(), code: z.string().nullable() }).strict()
-  .refine(result => result.status !== 'COMPLETED' || result.id !== null, 'Kết quả hoàn tất thiếu phiếu.');
+  .refine(result => result.status !== 'COMPLETED' || result.id !== null || result.code === null, 'Kết quả hoàn tất có thông tin phiếu không đầy đủ.');
 export type CommissionCreationPayload = z.infer<typeof creationPayloadSchema>;
 export type PreparedCommissionRequest = z.infer<typeof preparedRequestSchema>;
 export interface CommissionCreationResult { status: 'COMPLETED' | 'ALREADY_EXISTS' | 'FAILED' | 'SETTLED_BY_SUPPORT'; id: string | null; code: string | null; }
