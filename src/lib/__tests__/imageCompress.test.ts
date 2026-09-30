@@ -90,6 +90,26 @@ describe('compressImage', () => {
     expect(drawn.calls).toEqual(['drawImage']);
   });
 
+  it('giải mã theo đúng chiều ảnh: ảnh camera iPhone có cờ xoay EXIF 6, vẽ lại qua canvas là mất cờ', async () => {
+    installCanvas({ webp: false });
+    const decode = vi.fn(async () => ({ width: 4032, height: 3024, close() {} }));
+    vi.stubGlobal('createImageBitmap', decode);
+    const photo = cameraJpeg();
+    await compressImage(photo);
+    expect(decode).toHaveBeenCalledWith(photo, { imageOrientation: 'from-image' });
+  });
+
+  it('trình duyệt cũ chưa biết "from-image" (TypeError): giải mã lại không tuỳ chọn, vẫn nén được', async () => {
+    installCanvas({ webp: false });
+    vi.stubGlobal('createImageBitmap', async (_f: File, opts?: { imageOrientation?: string }) => {
+      if (opts?.imageOrientation) throw new TypeError("The provided value 'from-image' is not a valid enum value");
+      return { width: 4032, height: 3024, close() {} };
+    });
+    const out = await compressImage(cameraJpeg());
+    expect(out.type).toBe('image/jpeg');
+    expect(out.size).toBe(250_000);
+  });
+
   it('bước nén bị treo: quá hạn thì trả ảnh gốc để việc tải vẫn đi tiếp, không kẹt "Đang tải..."', async () => {
     vi.useFakeTimers();
     vi.stubGlobal('createImageBitmap', () => new Promise(() => {}));

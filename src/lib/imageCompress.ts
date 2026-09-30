@@ -59,7 +59,7 @@ async function compressNow(file: File, opts: CompressOpts): Promise<File> {
     const quality = opts.quality ?? QUALITY;
     const outType: OutType = (await canEncode('image/webp')) ? 'image/webp' : 'image/jpeg';
 
-    const bitmap = await createImageBitmap(file);
+    const bitmap = await decodeUpright(file);
     let canvas: AnyCanvas | null = null;
     try {
       const { width, height } = bitmap;
@@ -91,6 +91,22 @@ async function compressNow(file: File, opts: CompressOpts): Promise<File> {
     }
   } catch {
     return file;                                                  // mọi lỗi → giữ file gốc
+  }
+}
+
+/**
+ * Giải mã theo ĐÚNG CHIỀU ảnh. Ảnh chụp thẳng từ camera iPhone (`image.jpg`) có
+ * điểm ảnh nằm ngang 4032×3024 kèm cờ xoay EXIF 6 (soi kho 30/09/2026); vẽ lại
+ * qua canvas làm mất cờ đó, nên phải xoay ngay lúc giải mã. Nói rõ `from-image`
+ * thay vì trông vào mặc định (bản spec cũ mặc định 'none').
+ */
+async function decodeUpright(file: File): Promise<ImageBitmap> {
+  try {
+    return await createImageBitmap(file, { imageOrientation: 'from-image' });
+  } catch {
+    // Trình duyệt cũ chưa biết giá trị 'from-image' ⇒ TypeError: giải mã lại theo
+    // mặc định của nó. Ảnh hỏng thật thì lần này cũng ném, và compressNow trả ảnh gốc.
+    return createImageBitmap(file);
   }
 }
 

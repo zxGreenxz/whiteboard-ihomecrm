@@ -297,7 +297,9 @@ async function openMobileDetail(page: Page, name: string) {
   const card = page.locator('.vch', { hasText: name });
   await expect(card).toBeVisible({ timeout: 30_000 });
   await card.click();
-  await expect(page.getByText('THÔNG TIN THU/CHI')).toBeVisible({ timeout: 15_000 });
+  // Màn chờ (VoucherReadState) cũng mang tiêu đề "THÔNG TIN THU/CHI" — đợi mục
+  // chỉ có ở nội dung đã tải xong.
+  await expect(page.getByText('Thông tin chung')).toBeVisible({ timeout: 15_000 });
 }
 
 // ---- TEST 1: MOBILE huỷ phiếu ĐÃ CHI (posted-aware) -------------------------

@@ -13,6 +13,7 @@ import type { ReactNode } from "react";
 
 const detail = vi.hoisted(() => ({
   data: null as unknown,
+  error: null as unknown,
   isFetching: true,
   isFetchedAfterMount: false,
   isSuccess: false,
@@ -49,7 +50,7 @@ function wrap(node: ReactNode) {
   );
 }
 function setState(next: Partial<typeof detail>) {
-  Object.assign(detail, { data: null, isFetching: false, isFetchedAfterMount: true, isSuccess: false }, next);
+  Object.assign(detail, { data: null, error: null, isFetching: false, isFetchedAfterMount: true, isSuccess: false }, next);
 }
 const batch = {
   id: "batch", name: "Đợt thử", type: "EXPENSE", total_amount: 100, voucher_count: 1, building_names: [],
@@ -82,6 +83,26 @@ describe("chi tiết phiếu trên điện thoại — trạng thái đọc", ()
     expect(retry.className).toContain("invbtn");
     fireEvent.click(retry);
     expect(detail.refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("đọc quá hạn: nói rõ là mạng chậm và mời Thử lại", () => {
+    const timeout = Object.assign(new Error("Mạng chậm — quá 20 giây chưa tải xong. Kiểm tra mạng rồi bấm Thử lại."), { name: "DetailReadTimeoutError" });
+    setState({ isSuccess: false, error: timeout } as Partial<typeof detail>);
+    render(wrap(<IncomeExpenseDetailMobile voucherId="v" onClose={() => {}} />));
+    expect(screen.getByRole("status").textContent).toContain("Mạng chậm");
+    expect(screen.getByRole("button", { name: "Thử lại" })).toBeTruthy();
+  });
+
+  it("đang tải: chạm nền không đóng (tránh chạm đúp vào dòng phiếu đóng luôn tấm vừa mở); hỏng rồi thì chạm nền đóng", () => {
+    setState({ isFetching: true, isFetchedAfterMount: false });
+    const onClose = vi.fn();
+    const view = render(wrap(<IncomeExpenseDetailMobile voucherId="v" onClose={onClose} />));
+    fireEvent.click(view.container.querySelector(".sheet-ov")!);
+    expect(onClose).not.toHaveBeenCalled();
+    setState({ isSuccess: false });
+    view.rerender(wrap(<IncomeExpenseDetailMobile voucherId="v" onClose={onClose} />));
+    fireEvent.click(view.container.querySelector(".sheet-ov")!);
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   it("hết quyền xem: nói rõ lý do, vẫn trong khung tấm phiếu", () => {

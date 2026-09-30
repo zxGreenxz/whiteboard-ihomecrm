@@ -8,6 +8,7 @@
 
 import { supabase } from '@/integrations/supabase/client';
 import { STORAGE_GATEWAY, r2PublicUrl } from './r2Config';
+import { uploadDeadlineMs, UploadTimeoutError } from '../uploadDeadline';
 
 async function authHeader(): Promise<Record<string, string>> {
   const { data } = await supabase.auth.getSession();
@@ -22,20 +23,34 @@ async function authHeader(): Promise<Record<string, string>> {
 export async function uploadToR2(bucket: string, path: string, file: File): Promise<string> {
   if (!STORAGE_GATEWAY) throw new Error('VITE_STORAGE_GATEWAY chưa cấu hình');
   const key = `${bucket}/${path}`;
-  const res = await fetch(`${STORAGE_GATEWAY}/upload?key=${encodeURIComponent(key)}`, {
-    method: 'PUT',
-    headers: {
-      ...(await authHeader()),
-      'Content-Type': file.type || 'application/octet-stream',
-      'X-Cache-Control': 'public, max-age=31536000, immutable',
-    },
-    body: file,
+  // Hạn chờ bao cả bước lấy token lẫn request; quá hạn thì huỷ request thật (fetch
+  // nhận AbortSignal) và báo lỗi rõ — không để "Đang tải..." treo tới khi tắt app.
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      reject(new UploadTimeoutError());
+    }, uploadDeadlineMs(file.size));
   });
-  if (!res.ok) {
-    const detail = await res.text().catch(() => '');
-    throw new Error(`R2 upload failed (${res.status}): ${detail}`);
-  }
-  return r2PublicUrl(bucket, path);
+  const upload = (async () => {
+    const res = await fetch(`${STORAGE_GATEWAY}/upload?key=${encodeURIComponent(key)}`, {
+      method: 'PUT',
+      headers: {
+        ...(await authHeader()),
+        'Content-Type': file.type || 'application/octet-stream',
+        'X-Cache-Control': 'public, max-age=31536000, immutable',
+      },
+      body: file,
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '');
+      throw new Error(`R2 upload failed (${res.status}): ${detail}`);
+    }
+    return r2PublicUrl(bucket, path);
+  })();
+  return Promise.race([upload, deadline]).finally(() => clearTimeout(timer));
 }
 
 /**

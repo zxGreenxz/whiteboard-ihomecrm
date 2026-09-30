@@ -50,7 +50,8 @@ import {
   type IncomeExpenseWithRelations,
 } from "@/hooks/useIncomeExpenses";
 import { ReservationSettlementDialog } from "@/components/deposits/ReservationSettlementDialog";
-import { VoucherSheetReadState, useSheetStill } from "@/components/income-expenses/VoucherReadState";
+import { VoucherSheetReadState } from "@/components/income-expenses/VoucherReadState";
+import { detailReadErrorMessage, useSheetStill } from "@/components/income-expenses/voucherSheetState";
 
 interface Props {
   voucher?: IncomeExpenseWithRelations;
@@ -101,7 +102,7 @@ export function IncomeExpenseDetailMobile(props: Props) {
   const ready = !(detail.isFetching || !detail.isFetchedAfterMount || !detail.isSuccess || !hasCompleteVoucherDetail(detail.data));
   const still = useSheetStill(ready ? "content" : "state");
   if (!ready) {
-    const message = detail.isFetching ? "Đang tải chi tiết phiếu…" : detail.isSuccess && !detail.data ? "Phiếu không còn khả dụng hoặc bạn không còn quyền xem." : "Không tải được đầy đủ chi tiết phiếu.";
+    const message = detail.isFetching ? "Đang tải chi tiết phiếu…" : detail.isSuccess && !detail.data ? "Phiếu không còn khả dụng hoặc bạn không còn quyền xem." : detailReadErrorMessage(detail.error, "Không tải được đầy đủ chi tiết phiếu.");
     return (
       <VoucherSheetReadState
         title="THÔNG TIN THU/CHI"

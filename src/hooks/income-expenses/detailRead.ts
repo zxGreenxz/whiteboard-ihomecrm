@@ -129,6 +129,30 @@ export async function loadIncomeExpenseDetail(
   return { ...named, supplements: supplements.value[0]?.supplements };
 }
 /**
+ * Hạn chờ một lần đọc chi tiết phiếu/đợt. Đọc thường xong dưới 2 giây (đo
+ * production 30/09/2026: 570–1.870 ms kể cả khi ba lần đọc còn nối đuôi). Request
+ * kẹt mà không có hạn thì vòng quay chạy mãi: màn chờ không mời "Thử lại", đóng
+ * mở lại cũng dính vào đúng lần đọc đang treo (queryFn không huỷ được request).
+ */
+export const DETAIL_READ_TIMEOUT_MS = 20_000;
+
+export class DetailReadTimeoutError extends Error {
+  constructor() {
+    super("Mạng chậm — quá 20 giây chưa tải xong. Kiểm tra mạng rồi bấm Thử lại.");
+    this.name = "DetailReadTimeoutError";
+  }
+}
+
+/** Đọc quá DETAIL_READ_TIMEOUT_MS ⇒ lỗi DetailReadTimeoutError (màn hình hiện nút Thử lại). */
+export function withDetailReadDeadline<T>(read: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new DetailReadTimeoutError()), DETAIL_READ_TIMEOUT_MS);
+  });
+  return Promise.race([read, deadline]).finally(() => clearTimeout(timer));
+}
+
+/**
  * @param organizationIdHint tổ chức của phiếu nếu màn gọi đã biết (dòng danh
  *   sách) — chỉ để tải song song, xem loadIncomeExpenseDetail.
  */
@@ -139,7 +163,11 @@ export function useIncomeExpenseDetail(
 ) {
   return useQuery({
     queryKey: ["income-expense", "detail", id],
-    queryFn: () => loadIncomeExpenseDetail(id!, organizationIdHint),
+    queryFn: () => withDetailReadDeadline(loadIncomeExpenseDetail(id!, organizationIdHint)),
+    // Mọi màn dùng query này (tấm phiếu, hộp chi tiết, form sửa, trang in) tự hiện
+    // lỗi + Thử lại tại chỗ. Toast chung của QueryProvider in cả queryKey và đè lên
+    // nút Thử lại trên điện thoại — im với người dùng, vẫn ghi nhật ký lỗi.
+    meta: { silent: true },
     enabled: enabled && !!id,
     staleTime: 0,
     refetchOnMount: "always",

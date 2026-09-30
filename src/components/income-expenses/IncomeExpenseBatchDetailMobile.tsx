@@ -14,7 +14,8 @@ import type {
 } from "@/hooks/useIncomeExpenses";
 import IncomeExpenseDetailMobile from "./IncomeExpenseDetailMobile";
 import BatchAccountReasonDialog from "./BatchAccountReasonDialog";
-import { VoucherSheetReadState, useSheetStill } from "./VoucherReadState";
+import { VoucherSheetReadState } from "./VoucherReadState";
+import { detailReadErrorMessage, useSheetStill } from "./voucherSheetState";
 
 interface Props {
   batch: IncomeExpenseBatchSummary;
@@ -44,7 +45,7 @@ export function IncomeExpenseBatchDetailMobile(props: Props) {
       <VoucherSheetReadState
         title="CHI TIẾT PHIẾU TỔNG"
         loading={detail.isFetching}
-        message={detail.isFetching ? "Đang tải chi tiết đợt…" : "Không tải được đầy đủ phiếu trong đợt hoặc bạn không còn quyền xem."}
+        message={detail.isFetching ? "Đang tải chi tiết đợt…" : detailReadErrorMessage(detail.error, "Không tải được đầy đủ phiếu trong đợt hoặc bạn không còn quyền xem.")}
         onRetry={() => void detail.refetch()}
         onClose={props.onClose}
         still={still}

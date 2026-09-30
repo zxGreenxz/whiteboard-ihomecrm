@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Loader2, X } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -24,25 +23,6 @@ interface ReadStateProps {
 /** Độ dài giả của từng dòng khung xương — lệch nhau cho giống bảng thật. */
 const SKELETON_WIDTHS = ["62%", "48%", "70%", "40%", "56%"];
 
-/**
- * Tấm phiếu chỉ trượt lên MỘT lần mỗi lần mở. Khung chờ và nội dung là hai cây
- * DOM khác nhau, để mặc định thì tấm thứ hai trượt lại từ đáy — đo WebKit khung
- * iPhone 30/09/2026: khung chờ trượt 302→75 px, nội dung về thì bật xuống 666 px
- * rồi trượt lên lần nữa. Tấm đầu tiên giữ hiệu ứng; mọi lần đổi sau (kể cả tải
- * lại khi realtime báo phiếu đổi) trả `true` để gắn lớp `sheet-still`.
- *
- * @param phase trạng thái đang vẽ, vd "state" (chờ/lỗi) hoặc "content".
- */
-export function useSheetStill(phase: string): boolean {
-  const [firstPhase] = useState(phase);
-  const [swapped, setSwapped] = useState(false);
-  const changed = phase !== firstPhase;
-  // Cập nhật trong lúc render (mẫu "state suy từ render trước" của React): tấm
-  // mới được vẽ ngay với lớp đứng yên, không có khung hình nào trượt từ đáy.
-  if (changed && !swapped) setSwapped(true);
-  return swapped || changed;
-}
-
 /** Bản điện thoại: bottom-sheet trong khung .cm-app (financeMobile.css). */
 export function VoucherSheetReadState({
   title,
@@ -58,7 +38,9 @@ export function VoucherSheetReadState({
       onClick={(e) => {
         // Lồng trong sheet khác (phiếu con của đợt): chạm nền không đóng lớp cha.
         e.stopPropagation();
-        if (e.target === e.currentTarget) onClose();
+        // Đang tải thì chạm nền KHÔNG đóng: tấm vừa bật lên ngay dưới ngón tay, một
+        // cú chạm đúp vào dòng phiếu sẽ đóng nó ngay. Muốn đóng thì bấm X.
+        if (!loading && e.target === e.currentTarget) onClose();
       }}
     >
       <div className="sheet" aria-busy={loading} onClick={(e) => e.stopPropagation()}>

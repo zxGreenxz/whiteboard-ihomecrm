@@ -197,7 +197,9 @@ async function openMobileDetail(page: Page, name: string) {
   const card = page.locator('.vch', { hasText: name });
   await expect(card).toBeVisible({ timeout: 30_000 });
   await card.click();
-  await expect(page.getByText('THÔNG TIN THU/CHI')).toBeVisible({ timeout: 15_000 });
+  // Màn chờ (VoucherReadState) cũng mang tiêu đề "THÔNG TIN THU/CHI" — đợi mục
+  // chỉ có ở nội dung đã tải xong.
+  await expect(page.getByText('Thông tin chung')).toBeVisible({ timeout: 15_000 });
 }
 
 // Tổ hợp từng LỌT lưới (P0002 prod 24/07): writer canonical create v1 sinh phiếu

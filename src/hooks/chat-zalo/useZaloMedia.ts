@@ -8,7 +8,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
-import { uploadFile, getPublicUrl, sanitizeStorageFileName } from '@/lib/storage';
+import { uploadFileDetailed, sanitizeStorageFileName } from '@/lib/storage';
 import { QK, mapMsg } from '@/hooks/useZaloChat';
 import type { ZaloMessage } from '@/components/chat-zalo/types';
 
@@ -23,16 +23,25 @@ export interface OutgoingAttachment {
   durationMs?: number;
 }
 
+/** Tên file mang đuôi của file THẬT trong kho (ảnh nén đổi .jpeg/.png → .jpg/.webp). */
+function withStoredExtension(name: string, storedPath: string): string {
+  const ext = /\.[^./]+$/.exec(storedPath)?.[0];
+  if (!ext) return name;
+  return /\.[^./]+$/.test(name) ? name.replace(/\.[^./]+$/, ext) : name + ext;
+}
+
 async function uploadOne(accountId: string, conversationId: string, a: OutgoingAttachment) {
   const key = `${accountId}/${conversationId}/${Date.now()}_${sanitizeStorageFileName(a.file.name || 'file.bin')}`;
-  await uploadFile(BUCKET, key, a.file);
+  // Nén ảnh có thể đổi đuôi key: worker tải ĐÚNG `path` của job (worker/lib/media.js),
+  // nên job phải mang đường dẫn/định dạng/cỡ của file thật, không phải key tự tính.
+  const stored = await uploadFileDetailed(BUCKET, key, a.file);
   return {
     bucket: BUCKET,
-    path: key,
-    url: getPublicUrl(BUCKET, key),
-    filename: a.file.name || 'file.bin',
-    mime: a.file.type || 'application/octet-stream',
-    size: a.file.size,
+    path: stored.path,
+    url: stored.url,
+    filename: withStoredExtension(a.file.name || 'file.bin', stored.path),
+    mime: stored.type || a.file.type || 'application/octet-stream',
+    size: stored.size,
     ...(a.width ? { width: a.width } : {}),
     ...(a.height ? { height: a.height } : {}),
     ...(a.durationMs ? { duration_ms: Math.round(a.durationMs) } : {}),

@@ -18,7 +18,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import type { PostFinanceExecutionInput } from "@/lib/incomeExpensePostingValidation";
 import { todayISO } from '@/lib/collect';
-import { uploadFile, deleteFile, sanitizeStorageFileName } from "@/lib/storage";
+import { uploadFile, deleteFile, sanitizeStorageFileName, uploadToStorageWithDeadline } from "@/lib/storage";
 import { validateAttachmentFile } from "@/components/income-expenses/AttachmentUpload";
 import { periodBlockMessage } from "@/lib/cashbookClosing";
 import { approvalErrorMessage, isStaleVersionError } from "@/lib/incomeExpenseRevision";
@@ -178,7 +178,10 @@ export async function uploadFinanceEvidence(
   const { evidence_id, bucket_id, object_name } = intent.data as {
     evidence_id: string; bucket_id: string; object_name: string;
   };
-  const up = await supabase.storage.from(bucket_id).upload(object_name, file, {
+  // Có hạn chờ: hàm này là đường lùi chạy trong bước "đang ghi ảnh" của hộp Thu/Chi,
+  // lúc hộp KHOÁ không cho đóng — upload kẹt không hạn là khoá hộp tới khi tắt app.
+  // Quá hạn thì `up.error` là UploadTimeoutError, đi chung nhánh báo lỗi bên dưới.
+  const up = await uploadToStorageWithDeadline(bucket_id, object_name, file, {
     contentType: file.type || "application/octet-stream",
     upsert: false,
   });

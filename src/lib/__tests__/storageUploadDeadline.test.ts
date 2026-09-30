@@ -84,6 +84,22 @@ describe('uploadFile trên iPhone', () => {
     expect(storage.remove).toHaveBeenCalledWith(['u/1-bill.pdf']);
   });
 
+  it('xoá file tải xong sau hạn bị từ chối: có cảnh báo, không im lặng', async () => {
+    vi.useFakeTimers();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    storage.remove.mockResolvedValue({ data: null, error: { message: 'new row violates row-level security policy' } });
+    let finish!: (v: { data: { path: string }; error: null }) => void;
+    storage.upload.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    const pdf = new File([new Uint8Array(300_000)], 'bill.pdf', { type: 'application/pdf' });
+    const settled = uploadFile('income-expense-attachments', 'u/1-bill.pdf', pdf).catch(() => 'loi');
+    await vi.advanceTimersByTimeAsync(uploadDeadlineMs(pdf.size));
+    await settled;
+    finish({ data: { path: 'u/1-bill.pdf' }, error: null });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('không xoá được'), 'new row violates row-level security policy');
+    warn.mockRestore();
+  });
+
   it('hạn chờ tăng theo cỡ file: ảnh nhỏ không phải đợi như PDF lớn', () => {
     expect(uploadDeadlineMs(120_000)).toBeLessThan(uploadDeadlineMs(5 * 1024 * 1024));
     expect(uploadDeadlineMs(120_000)).toBeGreaterThanOrEqual(20_000);

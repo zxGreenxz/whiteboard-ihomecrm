@@ -30,6 +30,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import IncomeExpenseDetailDialog from './IncomeExpenseDetailDialog';
 import BatchAccountReasonDialog from './BatchAccountReasonDialog';
 import { VoucherDialogReadState } from './VoucherReadState';
+import { detailReadErrorMessage } from './voucherSheetState';
 import {
   Select,
   SelectContent,
@@ -79,7 +80,7 @@ const SectionTitle = ({ children }: { children: React.ReactNode }) => (
 export function IncomeExpenseBatchDetailDialog(props:Props) {
   const detail=useVoucherWithBatch(props.open ? props.batch?.vouchers[0]?.id : undefined);
   if(!props.open || !props.batch) return null;
-  if(detail.isFetching || !detail.isFetchedAfterMount || !detail.isSuccess || !detail.data?.batch || detail.data.batch.id!==props.batch.id) return <VoucherDialogReadState title="Chi tiết đợt" loading={detail.isFetching} message={detail.isFetching ? "Đang tải chi tiết đợt…" : "Không tải được đầy đủ phiếu trong đợt hoặc bạn không còn quyền xem."} onRetry={()=>void detail.refetch()} onClose={()=>props.onOpenChange(false)}/>;
+  if(detail.isFetching || !detail.isFetchedAfterMount || !detail.isSuccess || !detail.data?.batch || detail.data.batch.id!==props.batch.id) return <VoucherDialogReadState title="Chi tiết đợt" loading={detail.isFetching} message={detail.isFetching ? "Đang tải chi tiết đợt…" : detailReadErrorMessage(detail.error, "Không tải được đầy đủ phiếu trong đợt hoặc bạn không còn quyền xem.")} onRetry={()=>void detail.refetch()} onClose={()=>props.onOpenChange(false)}/>;
   return <IncomeExpenseBatchDetailContent {...props} batch={detail.data.batch}/>;
 }
 function IncomeExpenseBatchDetailContent({

@@ -34,7 +34,12 @@ vi.mock("@/hooks/income-expenses/supplements", () => ({
 vi.mock("@/hooks/income-expenses/reservationCreators", () => ({
   hydrateReservationCreators: async (rows: unknown[]) => rows,
 }));
-import { loadIncomeExpenseDetail, useIncomeExpenseDetail } from "../income-expenses/detailRead";
+import {
+  loadIncomeExpenseDetail,
+  useIncomeExpenseDetail,
+  DetailReadTimeoutError,
+  DETAIL_READ_TIMEOUT_MS,
+} from "../income-expenses/detailRead";
 
 const id = "00000000-0000-4000-8000-000000000001";
 const org = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -102,12 +107,41 @@ describe("tải chi tiết phiếu song song", () => {
 
   it("tổ chức gợi ý sai: đọc lại theo tổ chức thật của phiếu, không dùng kết quả đọc sai", async () => {
     const header = setup();
+    // Lần đọc theo tổ chức gợi ý trả dữ liệu HỢP LỆ của tổ chức đó — bản sửa sai kiểu
+    // "RPC song song có dữ liệu là dùng" sẽ lộ tên này ra thay vì tên phiếu thật.
+    mock.rpc.mockImplementation(async (_name: string, args: { p_organization_id: string }) => ({
+      data: {
+        rows: [
+          args.p_organization_id === org
+            ? rpcRow
+            : { ...rpcRow, header: { ...rpcRow.header, organization_id: otherOrg, name: "Dữ liệu tổ chức khác" } },
+        ],
+      },
+      error: null,
+    }));
     const pending = loadIncomeExpenseDetail(id, otherOrg);
     header.resolve(visibleHeader);
     const v = await pending;
     expect(mock.rpc).toHaveBeenCalledTimes(2);
     expect(mock.rpc.mock.calls[1][1]).toMatchObject({ p_organization_id: org });
-    expect(v?.code).toBe("PC2609006");
+    expect(v?.name).toBe("Hoa hồng 303/44TL");
+    expect(v?.organization_id).toBe(org);
+  });
+
+  it("đầu phiếu lỗi: báo đúng lỗi đầu phiếu, không bị lỗi RPC song song che mất", async () => {
+    const header = setup();
+    mock.rpc.mockImplementation(async () => ({ data: null, error: { message: "rpc lỗi song song", code: "XX000" } }));
+    const pending = loadIncomeExpenseDetail(id, org);
+    header.resolve({ data: null, error: { message: "đầu phiếu lỗi", code: "57014" } });
+    await expect(pending).rejects.toMatchObject({ message: "đầu phiếu lỗi" });
+  });
+
+  it("đầu phiếu thấy được mà RPC song song lỗi: báo lỗi, KHÔNG trả null như hết quyền", async () => {
+    const header = setup();
+    mock.rpc.mockImplementation(async () => ({ data: null, error: { message: "rpc hỏng", code: "XX000" } }));
+    const pending = loadIncomeExpenseDetail(id, org);
+    header.resolve(visibleHeader);
+    await expect(pending).rejects.toBeTruthy();
   });
 
   it("đầu phiếu không còn thấy: trả null (hết quyền) dù RPC chạy song song đã lỗi", async () => {
@@ -126,6 +160,28 @@ describe("tải chi tiết phiếu song song", () => {
     expect(mock.rpc).not.toHaveBeenCalled();
     header.resolve(visibleHeader);
     expect((await pending)?.code).toBe("PC2609006");
+  });
+
+  it("đọc bị kẹt: quá hạn thì hook báo lỗi (để có nút Thử lại), không quay mãi", async () => {
+    // Màn chờ không mời "Thử lại"; đóng mở lại cũng dính vào đúng lần đọc đang treo
+    // (queryFn không huỷ được) — nên lần đọc PHẢI tự kết thúc bằng lỗi.
+    setup(); // đầu phiếu không bao giờ trả lời
+    vi.useFakeTimers();
+    try {
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const wrapper = ({ children }: { children: ReactNode }) =>
+        createElement(QueryClientProvider, { client }, children);
+      const { result } = renderHook(() => useIncomeExpenseDetail(id, true, org), { wrapper });
+      await vi.advanceTimersByTimeAsync(DETAIL_READ_TIMEOUT_MS + 50);
+      expect(result.current.isError).toBe(true);
+      expect(result.current.error).toBeInstanceOf(DetailReadTimeoutError);
+      expect(result.current.isFetching).toBe(false);
+      // Mọi màn dùng query này tự hiện lỗi + Thử lại tại chỗ; toast chung của
+      // QueryProvider (in cả queryKey) đè lên nút Thử lại trên điện thoại — im nó.
+      expect(client.getQueryCache().find({ queryKey: ["income-expense", "detail", id] })?.meta).toMatchObject({ silent: true });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("hook nhận gợi ý tổ chức và chuyển xuống bộ tải", async () => {

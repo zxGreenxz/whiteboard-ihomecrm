@@ -55,6 +55,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { formatVND } from "@/lib/utils";
 import { ReservationSettlementDialog } from "@/components/deposits/ReservationSettlementDialog";
 import { VoucherDialogReadState } from "@/components/income-expenses/VoucherReadState";
+import { detailReadErrorMessage } from "@/components/income-expenses/voucherSheetState";
 
 interface Props {
   open: boolean;
@@ -107,7 +108,7 @@ export function IncomeExpenseDetailDialog(props: Props) {
   );
   if (!props.open || (!props.voucherId && !props.voucher)) return null;
   if (detail.isFetching || !detail.isFetchedAfterMount || !detail.isSuccess || !hasCompleteVoucherDetail(detail.data)) {
-    const message = detail.isFetching ? "Đang tải chi tiết phiếu…" : detail.isSuccess && !detail.data ? "Phiếu không còn khả dụng hoặc bạn không còn quyền xem." : "Không tải được đầy đủ chi tiết phiếu.";
+    const message = detail.isFetching ? "Đang tải chi tiết phiếu…" : detail.isSuccess && !detail.data ? "Phiếu không còn khả dụng hoặc bạn không còn quyền xem." : detailReadErrorMessage(detail.error, "Không tải được đầy đủ chi tiết phiếu.");
     return (
       <VoucherDialogReadState
         title="Chi tiết phiếu"
