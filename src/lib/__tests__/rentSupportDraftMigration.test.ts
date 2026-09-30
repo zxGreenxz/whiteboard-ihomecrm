@@ -21,8 +21,8 @@ beforeAll(async()=>{
     CREATE SCHEMA auth;CREATE SCHEMA app_private;CREATE SCHEMA storage;
     GRANT USAGE ON SCHEMA public,auth,app_private,storage TO authenticated;
     CREATE FUNCTION public.my_org_ids() RETURNS uuid[] LANGUAGE sql STABLE AS $$ SELECT ARRAY['${org}'::uuid] $$;
-    CREATE FUNCTION public.can_access_building(uuid) RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT $1='${building}'::uuid $$;
-    CREATE FUNCTION app_private.authorized_scope_v3(text,uuid) RETURNS TABLE(org_wide boolean,building_ids uuid[],cashbook_ids uuid[]) LANGUAGE sql STABLE AS $$ SELECT false,CASE WHEN current_setting('test.finance_off',true)='yes' AND $1 LIKE 'income_expenses.%' THEN '{}'::uuid[] ELSE ARRAY['${building}'::uuid] END,'{}'::uuid[] $$;
+    CREATE FUNCTION public.can_access_building(uuid) RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT $1=ANY(ARRAY['${building}'::uuid,'${uid(70)}'::uuid,'${uid(71)}'::uuid]) $$;
+    CREATE FUNCTION app_private.authorized_scope_v3(text,uuid) RETURNS TABLE(org_wide boolean,building_ids uuid[],cashbook_ids uuid[]) LANGUAGE sql STABLE AS $$ SELECT false,CASE WHEN current_setting('test.finance_off',true)='yes' AND $1 LIKE 'income_expenses.%' THEN '{}'::uuid[] ELSE ARRAY['${building}'::uuid,'${uid(70)}'::uuid,'${uid(71)}'::uuid] END,'{}'::uuid[] $$;
     CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT '${actor}'::uuid $$;
     CREATE FUNCTION public.org_today_v1(uuid) RETURNS date LANGUAGE sql STABLE AS $$ SELECT DATE '2026-09-28' $$;
     CREATE FUNCTION public.is_super_admin() RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT false $$;
@@ -63,6 +63,7 @@ beforeAll(async()=>{
     ALTER TABLE public.contract_draft_versions ADD COLUMN organization_id uuid,ADD COLUMN building_id uuid,ADD COLUMN room_id uuid,ADD COLUMN template_id uuid,ADD COLUMN created_by uuid,ADD COLUMN created_at timestamptz DEFAULT now(),ADD COLUMN request_id uuid;
     ALTER TABLE public.contract_draft_documents ADD COLUMN created_by uuid,ADD COLUMN created_at timestamptz DEFAULT now();`);
   const draftWorkflow=readFileSync('supabase/migrations/20260928013253_contract_drafts_workflow.sql','utf8');
+  await db.exec(draftWorkflow.slice(draftWorkflow.indexOf('CREATE OR REPLACE FUNCTION app_private.contract_draft_scope_allowed('),draftWorkflow.indexOf('REVOKE ALL ON FUNCTION app_private.contract_draft_scope_allowed(')));
   await db.exec(draftWorkflow.slice(draftWorkflow.indexOf('CREATE OR REPLACE FUNCTION public.list_contract_drafts('),draftWorkflow.indexOf('REVOKE ALL ON FUNCTION public.save_contract_draft(')));
   for(const name of ['20260929151043_contract_rent_support_plans.sql','20260929151415_contract_rent_support_draft_signing.sql','20260929154150_contract_rent_support_draft_privacy.sql']) {const migration=readFileSync('supabase/migrations/'+name,'utf8');await db.exec(migration);await db.exec(migration);}
 },30000);
@@ -99,6 +100,38 @@ it('SQL draft round trip separates customer document identity from funding revis
    await expect(save({...initial,rent_support:{...support,sale_party_id:uid(32)}},2,uid(40))).rejects.toMatchObject({code:'42501'});
    await expect(save(terms,2,uid(41))).rejects.toMatchObject({code:'42501'});
  }finally{await db.exec("SELECT set_config('test.finance_off','',false)");}
+ // Keep the established public projection readable across a mixed organization list.
+ const inactive=uid(70),maintenance=uid(71),mixedIds=[uid(60),uid(61),uid(62),uid(63),uid(64)];
+ const publicTerms={...terms,form:{...terms.form,room_id:''},customers:[]};
+ await db.query('INSERT INTO public.buildings VALUES($1,$3,NULL,$4),($2,$3,NULL,$5)',[inactive,maintenance,org,'INACTIVE','MAINTENANCE']);
+ const mixed=[{id:mixedIds[0],building:inactive,support:false},{id:mixedIds[1],building:maintenance,support:false},
+   {id:mixedIds[2],building:inactive,support:true},{id:mixedIds[3],building:maintenance,support:true},
+   {id:mixedIds[4],building,support:false}];
+ for(const row of mixed){
+   const payload={...publicTerms,...(row.support?{rent_support:support}:{})};
+   await db.query('INSERT INTO public.contract_drafts(id,organization_id,building_id,room_id,payload,revision) VALUES($1,$2,$3,NULL,$4,1)',[row.id,org,row.building,JSON.stringify(payload)]);
+   await db.query('INSERT INTO public.contract_draft_versions(draft_id,revision,payload,organization_id,building_id,created_by) SELECT id,revision,payload,organization_id,building_id,$2 FROM public.contract_drafts WHERE id=$1',[row.id,actor]);
+   if(row.support)await db.query('INSERT INTO app_private.contract_draft_rent_support_funding VALUES($1,$2,1,app_private.rent_support_draft_funding_fields_v1($3::jsonb))',[org,row.id,JSON.stringify(support)]);
+ }
+ for(const financeOff of ['', 'yes']){
+   await db.query("SELECT set_config('test.finance_off',$1,false)",[financeOff]);
+   const result=(await db.query<{result:{id:string;building_id:string;payload:Record<string,unknown>}[]}>('SELECT public.list_contract_drafts($1,NULL) result',[org])).rows[0].result;
+   expect(result.map(row=>row.id).sort()).toEqual([draft,...mixedIds].sort());
+   for(const fixture of mixed){
+     const row=result.find(value=>value.id===fixture.id)!;expect(row.building_id).toBe(fixture.building);
+     if(fixture.support)expect(row.payload.rent_support).toEqual({version:2,start_billing_month:'2026-09',segments:support.segments});
+     else expect(row.payload).toEqual(publicTerms);
+     for(const key of ['payer','sale_party_id','deduction_policy','collection_mode'])expect(JSON.stringify(row.payload)).not.toContain(key);
+   }
+   const active=result.find(row=>row.id===draft)!;
+   if(financeOff){for(const key of ['payer','sale_party_id','deduction_policy','collection_mode'])expect(JSON.stringify(active.payload)).not.toContain(key);}
+   else expect(active.payload.rent_support).toEqual(support);
+ }
+ await db.exec("SELECT set_config('test.finance_off','',false)");
+ for(const fixture of mixed.filter(row=>row.support)){
+   await expect(db.query('SELECT app_private.rent_support_draft_payload_v1($1,$2,1,payload,true) FROM public.contract_drafts WHERE id=$2',[org,fixture.id])).rejects.toMatchObject({code:'42501'});
+   await expect(db.query('SELECT public.save_contract_draft($1,$2,NULL,$3,NULL,$4,1,$5)',[org,fixture.building,JSON.stringify({...publicTerms,rent_support:support}),fixture.id,uid(90)])).rejects.toMatchObject({code:'42501'});
+ }
  await expect(db.exec("UPDATE app_private.contract_draft_rent_support_funding SET funding='{}'")).rejects.toMatchObject({code:'42501'});
  await db.exec('SET ROLE authenticated');
  try{await expect(db.query('SELECT * FROM app_private.contract_draft_rent_support_funding')).rejects.toMatchObject({code:'42501'});}finally{await db.exec('RESET ROLE');}

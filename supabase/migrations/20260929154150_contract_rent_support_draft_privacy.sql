@@ -36,7 +36,8 @@ CREATE OR REPLACE FUNCTION app_private.rent_support_draft_payload_v1(p_org uuid,
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog AS $$
 DECLARE b uuid; f jsonb; BEGIN
  SELECT building_id INTO b FROM public.contract_drafts WHERE organization_id=p_org AND id=p_draft;
- IF b IS NULL OR NOT app_private.rent_support_scope_v1(p_org,b,'contracts.view') THEN RAISE EXCEPTION 'Draft scope denied' USING ERRCODE='42501';END IF;
+ -- Preserve the established public draft read scope across building lifecycle states.
+ IF b IS NULL OR NOT COALESCE(app_private.contract_draft_scope_allowed(p_org,b,'contracts.view'),false) THEN RAISE EXCEPTION 'Draft scope denied' USING ERRCODE='42501';END IF;
  IF NOT(p_payload ? 'rent_support') THEN RETURN p_payload;END IF;
  IF NOT app_private.rent_support_scope_v1(p_org,b,'income_expenses.view') THEN
    IF p_require_finance THEN RAISE EXCEPTION 'Financial view permission required for support configuration' USING ERRCODE='42501';END IF;
