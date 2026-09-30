@@ -393,17 +393,27 @@ BEGIN
  'item_description',items->0->>'description','attachments',COALESCE(v.attachments,'[]'));
 END $$;
 
+-- Identity validity is shared by new sources and existing deposit adoption.
+CREATE OR REPLACE FUNCTION app_private.rent_support_party_in_building_v1(p_org uuid,p_building uuid,p_party uuid)
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog AS $$
+ SELECT EXISTS(SELECT 1 FROM app_private.rent_support_parties p
+ WHERE p.organization_id=p_org AND p.id=p_party AND (p.kind='INTERNAL' OR p.building_id=p_building)
+ AND app_private.rent_support_party_valid_v1(p_org,p.id))
+$$;
+ALTER FUNCTION app_private.rent_support_party_in_building_v1(uuid,uuid,uuid) OWNER TO postgres;
+REVOKE ALL ON FUNCTION app_private.rent_support_party_in_building_v1(uuid,uuid,uuid) FROM PUBLIC,anon,authenticated,service_role;
+
 CREATE OR REPLACE FUNCTION public.read_rent_support_deposit_candidate_v1(p_organization_id uuid,p_contract_id uuid)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog AS $$
-DECLARE f jsonb;p app_private.contract_rent_support_plans;b app_private.rent_support_deposit_payee_bindings;verification jsonb;template jsonb;issue text;BEGIN
- PERFORM app_private.rent_support_subject_v1(p_organization_id,p_contract_id,NULL,false);
+DECLARE f jsonb;p app_private.contract_rent_support_plans;b app_private.rent_support_deposit_payee_bindings;verification jsonb;template jsonb;issue text;building uuid;BEGIN
+ building:=app_private.rent_support_subject_v1(p_organization_id,p_contract_id,NULL,false);
  SELECT * INTO p FROM app_private.contract_rent_support_plans WHERE organization_id=p_organization_id AND contract_id=p_contract_id AND state='ACTIVE' ORDER BY revision DESC LIMIT 1;
  IF p.id IS NULL THEN RAISE EXCEPTION 'Không có lịch hỗ trợ hiện hành' USING ERRCODE='PT409';END IF;
  f:=app_private.rent_support_deposit_facts_v1(p_organization_id,p_contract_id);issue:=f->>'issue';
  IF issue IS NOT NULL THEN RETURN jsonb_build_object('version',1,'plan_revision',p.revision,'state',CASE WHEN issue='NO_CANDIDATE' THEN 'NO_CANDIDATE' ELSE 'NEEDS_REVIEW' END,'candidate',NULL,'verification',NULL,'issues',jsonb_build_array(jsonb_build_object('code',issue,'message','Nguồn thưởng cọc cần đối chiếu trước khi xử lý.')));END IF;
  verification:=f-ARRAY['issue','current_net','already_paid','voucher_date','account_id','payer_name','recipient_bank','recipient_account','item_description','attachments'];
  SELECT * INTO b FROM app_private.rent_support_deposit_payee_bindings WHERE organization_id=p_organization_id AND claim_id=(f->>'claim_id')::uuid;
- IF b.id IS NULL OR b.proof_hash<>f->>'proof_hash' OR NOT app_private.rent_support_party_valid_v1(p_organization_id,b.party_id) THEN
+ IF b.id IS NULL OR b.proof_hash<>f->>'proof_hash' OR NOT app_private.rent_support_party_in_building_v1(p_organization_id,building,b.party_id) THEN
  RETURN jsonb_build_object('version',1,'plan_revision',p.revision,'state','NEEDS_REVIEW','candidate',NULL,'verification',verification,'issues',jsonb_build_array(jsonb_build_object('code','PAYEE_UNVERIFIED','message','Xác nhận người hưởng thưởng cọc từ danh sách bên nhận trước khi tiếp nhận nguồn.')));END IF;
  template:=jsonb_build_object('action','ADOPT_DEPOSIT_BONUS','source_id',f->>'source_id','kind','BONUS','party_id',b.party_id,'gross_amount',f->>'gross',
  'route','CASHBOOK','manager_id',NULL,'account_id',f->'account_id','voucher_date',f->>'voucher_date','payer_name',f->'payer_name','recipient_name',NULL,
@@ -421,7 +431,7 @@ RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_cata
 DECLARE f jsonb;b app_private.rent_support_deposit_payee_bindings;h text;building uuid;BEGIN
  building:=app_private.rent_support_payout_lock_v1(p_organization_id,p_contract_id);
  IF p_reason IS NULL OR length(btrim(p_reason)) NOT BETWEEN 1 AND 2000 OR p_request_id IS NULL THEN RAISE EXCEPTION 'Cần lý do và mã xác nhận' USING ERRCODE='22023';END IF;
- IF NOT app_private.rent_support_party_scope_v1(p_organization_id,building,true) OR NOT app_private.rent_support_party_valid_v1(p_organization_id,p_party_id)
+ IF NOT app_private.rent_support_party_scope_v1(p_organization_id,building,true) OR NOT app_private.rent_support_party_in_building_v1(p_organization_id,building,p_party_id)
  OR NOT app_private.ie_supplement_can_read_v1(p_bonus_voucher_id) OR NOT public.can_access_building(building) THEN RAISE EXCEPTION 'Không có quyền xác minh người hưởng' USING ERRCODE='42501';END IF;
  IF NOT EXISTS(SELECT 1 FROM public.income_expenses v CROSS JOIN LATERAL app_private.authorize_tenant_action_v3(auth.uid(),p_organization_id,'income_expenses.edit',v.building_id,v.account_id) a WHERE v.id=p_bonus_voucher_id AND v.organization_id=p_organization_id AND a.allowed) THEN RAISE EXCEPTION 'Không có quyền sửa phiếu thưởng' USING ERRCODE='42501';END IF;
  h:=md5(jsonb_build_object('contract',p_contract_id,'claim',p_claim_id,'deposit',p_deposit_voucher_id,'bonus',p_bonus_voucher_id,'party',p_party_id,'approval',p_expected_approval_version,'posting',p_expected_posting_version,'proof',p_source_facts_hash,'reason',btrim(p_reason))::text);
@@ -516,6 +526,7 @@ RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_cata
 DECLARE o app_private.rent_support_funding_operations;v public.income_expenses;it public.income_expense_items;r jsonb;sid uuid;BEGIN
  SELECT * INTO o FROM app_private.rent_support_funding_operations WHERE organization_id=p_org AND id=p_operation AND state='READY';
  sid:=(p_intent->>'source_id')::uuid;
+ IF NOT app_private.rent_support_party_in_building_v1(p_org,app_private.rent_support_subject_v1(p_org,o.contract_id,NULL,true),(p_intent->>'party_id')::uuid) THEN RAISE EXCEPTION 'Không có quyền dùng người hưởng tại tòa này' USING ERRCODE='42501';END IF;
  IF o.id IS NULL OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(o.payload->'intents') x WHERE x=p_intent)
  OR NOT EXISTS(SELECT 1 FROM app_private.rent_support_payout_sources WHERE organization_id=p_org AND id=sid AND evidence->>'operation_id'=o.id::text)
  OR p_before->>'proof_hash' IS DISTINCT FROM p_intent->>'source_facts_hash' THEN RAISE EXCEPTION 'Adoption operation mismatch' USING ERRCODE='PT409';END IF;
@@ -555,7 +566,9 @@ DECLARE o app_private.rent_support_funding_operations;v public.income_expenses;i
  RETURN jsonb_build_object('id',v.id,'code',v.code);
 END $$;
 
-CREATE OR REPLACE FUNCTION app_private.rent_support_source_quote_salary_v1(p_org uuid,p_contract uuid,p_draft uuid,p_plan jsonb,p_due numeric,p_context jsonb)
+-- One authority for source evidence, scope, capacity and fingerprints. The flag
+-- preserves the pre-bridge adapter behavior without duplicating money checks.
+CREATE OR REPLACE FUNCTION app_private.rent_support_source_quote_core_v1(p_org uuid,p_contract uuid,p_draft uuid,p_plan jsonb,p_due numeric,p_context jsonb,p_salary_bridge boolean)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog AS $$
 DECLARE b uuid;ctx jsonb;i jsonb;facts jsonb:='[]';issues jsonb:='[]';fingerprints jsonb:='[]';s record;v record;
  f jsonb;cash jsonb;allocated jsonb;party app_private.rent_support_parties%ROWTYPE;source_kind text;live_ids uuid[];sid uuid;
@@ -564,7 +577,7 @@ BEGIN
  b:=app_private.rent_support_subject_v1(p_org,p_contract,p_draft,true);ctx:=app_private.rent_support_payout_context_v1(p_context);
  IF p_contract IS NOT NULL THEN SELECT c.status::text<>'DRAFT' INTO signed FROM public.contracts c WHERE c.id=p_contract AND c.organization_id=p_org AND c.deleted_at IS NULL;END IF;
  IF NOT COALESCE(signed,false) THEN issues:=issues||jsonb_build_array(jsonb_build_object('code','UNSIGNED_ENTITLEMENT','message','Quyền lợi cần hợp đồng đã ký.'));END IF;
- IF p_plan->>'payer'='SALE' AND NOT app_private.rent_support_party_valid_v1(p_org,(p_plan->>'sale_party_id')::uuid) THEN issues:=issues||jsonb_build_array(jsonb_build_object('code','PARTY_UNVERIFIED','message','Cần xác minh người chịu hỗ trợ.'));END IF;
+ IF p_plan->>'payer'='SALE' AND NOT app_private.rent_support_party_in_building_v1(p_org,b,(p_plan->>'sale_party_id')::uuid) THEN issues:=issues||jsonb_build_array(jsonb_build_object('code','PARTY_UNVERIFIED','message','Cần xác minh người chịu hỗ trợ.'));END IF;
  FOR source_kind IN SELECT unnest(ARRAY['COMMISSION','BONUS']) LOOP
   i:=NULL;SELECT value INTO i FROM jsonb_array_elements(ctx->'intents') WHERE value->>'kind'=source_kind;
   SELECT COALESCE(array_agg(DISTINCT ie.id ORDER BY ie.id),'{}'::uuid[]) INTO live_ids FROM public.income_expenses ie
@@ -576,7 +589,7 @@ BEGIN
   fingerprints:=fingerprints||jsonb_build_array(jsonb_build_object('kind',source_kind,'live_ids',live_ids,'source_id',s.id));
 
   -- Existing deposit liability is eligible only under the explicit adoption action.
-  IF source_kind='BONUS' AND i->>'action'='ADOPT_DEPOSIT_BONUS' THEN
+  IF p_salary_bridge AND source_kind='BONUS' AND i->>'action'='ADOPT_DEPOSIT_BONUS' THEN
    f:=public.read_rent_support_deposit_candidate_v1(p_org,p_contract);
    IF f->>'state'<>'READY' OR (i-ARRAY['intent_id','reason']) IS DISTINCT FROM f->'candidate'->'intent_template' THEN
     issues:=issues||jsonb_build_array(jsonb_build_object('code','DEPOSIT_ADOPTION_REVIEW','message','Nguồn thưởng cọc cần xác minh hoặc đã đổi.'));CONTINUE;END IF;
@@ -585,7 +598,7 @@ BEGIN
     'already_paid','0','prior_withheld','0','reserved','0','verified',true,'locked',false,'route','CASHBOOK','origin','EXISTING','intent_id',i->>'intent_id'));
    fingerprints:=fingerprints||jsonb_build_array(jsonb_build_object('deposit',f,'intent',i));CONTINUE;
   END IF;
-  IF source_kind='BONUS' AND i IS NULL AND s.id IS NULL AND cardinality(live_ids)>0 THEN
+  IF p_salary_bridge AND source_kind='BONUS' AND i IS NULL AND s.id IS NULL AND cardinality(live_ids)>0 THEN
    IF p_plan->>'deduction_policy'='COMMISSION_ONLY' THEN
     -- An unselected bonus outside this policy is not a funding source.
     CONTINUE;
@@ -624,11 +637,14 @@ BEGIN
    fingerprints:=fingerprints||jsonb_build_array(jsonb_build_object('source',to_jsonb(s),'funding',f,'cash',cash,'locked',locked,'voucher',to_jsonb(v)-ARRAY['notes','payer_name','receive_bank_name','receive_bank_account']));
   ELSIF i IS NOT NULL THEN
    IF i->>'source_id' IS NOT NULL THEN RAISE EXCEPTION 'Source identity changed' USING ERRCODE='PT409';END IF;
-   IF i->>'route'='MANAGER_PAYROLL' AND (i->>'kind'<>'COMMISSION' OR i->>'account_id' IS NOT NULL) THEN RAISE EXCEPTION 'Payroll route requires commission and server-owned book' USING ERRCODE='22023';END IF;
+   IF i->>'route'='MANAGER_PAYROLL' THEN
+    IF NOT p_salary_bridge THEN issues:=issues||jsonb_build_array(jsonb_build_object('code','PAYROLL_BRIDGE_PENDING','message','Luồng lương cần được đối chiếu trước khi chi.'));
+    ELSIF i->>'kind'<>'COMMISSION' OR i->>'account_id' IS NOT NULL THEN RAISE EXCEPTION 'Payroll route requires commission and server-owned book' USING ERRCODE='22023';END IF;
+   END IF;
    IF source_kind='BONUS' AND app_private.sale_bonus_cap_for_v1(p_org,b,public.org_today_v1(p_org)) < (i->>'gross_amount')::numeric THEN issues:=issues||jsonb_build_array(jsonb_build_object('code','BONUS_CAP_EXCEEDED','message','Thưởng vượt mức đã công bố.'));END IF;
    IF NOT app_private.rent_support_party_scope_v1(p_org,b,true) OR NOT(app_private.rent_support_scope_v1(p_org,b,'contracts.create') OR app_private.rent_support_scope_v1(p_org,b,'contracts.edit')) THEN RAISE EXCEPTION 'Không có quyền đề xuất nguồn chi.' USING ERRCODE='42501';END IF;
-   SELECT * INTO party FROM app_private.rent_support_parties WHERE id=(i->>'party_id')::uuid AND organization_id=p_org AND (rent_support_parties.kind='INTERNAL' OR building_id=b);
-   IF party.id IS NULL OR NOT app_private.rent_support_party_valid_v1(p_org,party.id) THEN issues:=issues||jsonb_build_array(jsonb_build_object('code','PARTY_UNVERIFIED','message','Cần xác minh bên nhận.'));CONTINUE;END IF;
+   SELECT * INTO party FROM app_private.rent_support_parties WHERE id=(i->>'party_id')::uuid AND organization_id=p_org;
+   IF party.id IS NULL OR NOT app_private.rent_support_party_in_building_v1(p_org,b,party.id) THEN issues:=issues||jsonb_build_array(jsonb_build_object('code','PARTY_UNVERIFIED','message','Cần xác minh bên nhận.'));CONTINUE;END IF;
    IF i->>'route'='MANAGER_PAYROLL' AND (party.profile_id IS DISTINCT FROM (i->>'manager_id')::uuid OR NOT EXISTS(SELECT 1 FROM public.manager_salary_config m WHERE m.organization_id=p_org AND m.staff_id=party.profile_id AND m.is_active)) THEN issues:=issues||jsonb_build_array(jsonb_build_object('code','PAYEE_MISMATCH','message','Bên nhận không khớp quản lý hưởng lương.'));CONTINUE;END IF;
    IF i->>'account_id' IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.accounts a WHERE a.id=(i->>'account_id')::uuid AND a.organization_id=p_org AND a.deleted_at IS NULL AND (a.user_id=auth.uid() OR EXISTS(
     SELECT 1 FROM public.cashbook_possession_bindings cb JOIN public.organization_memberships m ON m.id=cb.membership_id AND m.organization_id=cb.organization_id
@@ -646,6 +662,14 @@ BEGIN
  issues:=issues||(allocated->'issues');
  RETURN allocated||jsonb_build_object('sources',facts,'issues',issues,'state',CASE WHEN EXISTS(SELECT 1 FROM jsonb_array_elements(issues) x WHERE x->>'code'='LEGACY_REVIEW') THEN 'LEGACY_REVIEW' WHEN jsonb_array_length(issues)>0 THEN 'NEEDS_REVIEW' ELSE allocated->>'state' END,'facts_hash',md5(jsonb_build_object('facts',fingerprints,'context',ctx)::text));
 END $$;
+CREATE OR REPLACE FUNCTION app_private.rent_support_source_quote_before_salary_v1(p_org uuid,p_contract uuid,p_draft uuid,p_plan jsonb,p_due numeric,p_context jsonb)
+RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog AS $$
+ SELECT app_private.rent_support_source_quote_core_v1(p_org,p_contract,p_draft,p_plan,p_due,p_context,false)
+$$;
+CREATE OR REPLACE FUNCTION app_private.rent_support_source_quote_salary_v1(p_org uuid,p_contract uuid,p_draft uuid,p_plan jsonb,p_due numeric,p_context jsonb)
+RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog AS $$
+ SELECT app_private.rent_support_source_quote_core_v1(p_org,p_contract,p_draft,p_plan,p_due,p_context,true)
+$$;
 CREATE OR REPLACE FUNCTION public.prepare_contract_payouts_with_support_v1(p_organization_id uuid,p_contract_id uuid,p_plan_revision bigint,p_quote_hash text,p_payload jsonb,p_request_id uuid)
 RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog AS $$
 DECLARE b uuid;p app_private.contract_rent_support_plans;o app_private.rent_support_funding_operations;h text;q jsonb;i jsonb;k text;ctx jsonb;
@@ -757,7 +781,7 @@ BEGIN
  RETURN app_private.rent_support_source_quote_before_salary_v1(p_org,p_contract,p_draft,p_plan,p_due,p_context);
 END $$;
 DO $$ DECLARE f record;BEGIN
- FOR f IN SELECT p.oid::regprocedure signature FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app_private' AND p.proname IN('rent_support_payout_context_before_salary_v2','rent_support_payout_context_v1','rent_support_source_quote_before_salary_v1','rent_support_source_quote_salary_v1','rent_support_source_quote_v1','rent_support_adopt_deposit_v1') LOOP
+ FOR f IN SELECT p.oid::regprocedure signature FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app_private' AND p.proname IN('rent_support_payout_context_before_salary_v2','rent_support_payout_context_v1','rent_support_source_quote_before_salary_v1','rent_support_source_quote_salary_v1','rent_support_source_quote_core_v1','rent_support_source_quote_v1','rent_support_adopt_deposit_v1') LOOP
  EXECUTE format('ALTER FUNCTION %s OWNER TO postgres',f.signature);EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC,anon,authenticated,service_role',f.signature);END LOOP;
 END $$;
 
