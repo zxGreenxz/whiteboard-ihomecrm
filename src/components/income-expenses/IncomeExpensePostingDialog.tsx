@@ -167,8 +167,8 @@ export interface IncomeExpensePostingDialogProps {
 const COMMIT_ATTACHMENTS_TIMEOUT_MS = 20_000;
 
 /**
- * @param chuaGhiSo câu nói tiền chưa đi, theo chế độ + loại phiếu ("Chưa chi tiền",
- *   "Phiếu chưa duyệt, chưa ghi nhận thu vào sổ quỹ"…).
+ * @param chuaGhiSo câu nói lệnh của hộp chưa được gửi, theo chế độ + loại phiếu
+ *   ("Chưa gửi lệnh chi tiền", "Chưa gửi lệnh duyệt và thu"…).
  */
 function withCommitDeadline<T>(commit: Promise<T>, chuaGhiSo: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -828,14 +828,15 @@ export default function IncomeExpensePostingDialog({
     committingRef.current = true;
     setCommitting(true);
     try {
-      // Lệnh duyệt + ghi sổ chỉ chạy SAU bước này ⇒ quá hạn ở đây thì chắc chắn chưa duyệt
-      // (chế độ Duyệt và Chi/Thu) và chưa có tiền đi.
-      const tienChuaDi = isExpense ? 'chưa chi tiền' : 'chưa ghi nhận thu vào sổ quỹ';
+      // Lệnh duyệt/ghi sổ của hộp này chỉ gửi SAU bước này ⇒ quá hạn ở đây thì chắc chắn
+      // hộp CHƯA GỬI lệnh đó. Không khẳng định trạng thái phiếu trên máy chủ: người khác
+      // có thể vừa duyệt song song.
+      const lenh = mode === 'APPROVE_AND_POST'
+        ? `duyệt và ${isExpense ? 'chi' : 'thu'}`
+        : isExpense ? 'chi tiền' : 'ghi nhận thu';
       const res = await withCommitDeadline(
         commitDraft(voucher.subjectId, { add, remove }),
-        mode === 'APPROVE_AND_POST'
-          ? `Phiếu chưa duyệt, ${tienChuaDi}`
-          : tienChuaDi.charAt(0).toUpperCase() + tienChuaDi.slice(1),
+        `Chưa gửi lệnh ${lenh}`,
       );
       if (sessionRef.current !== session) {
         // Hộp bị đóng giữa chừng: ghi được thì file đã thuộc phiếu — giữ; không

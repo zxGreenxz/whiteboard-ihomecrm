@@ -500,13 +500,14 @@ describe('bước ghi ảnh lên phiếu kẹt mạng', () => {
       await waitFor(() => expect(lenhGhiAnh()).toHaveLength(1));
       const huy = () => screen.getByRole('button', { name: 'Huỷ bỏ' }) as HTMLButtonElement;
       expect(huy().disabled).toBe(true);
-      // Chưa tới 20 giây: vẫn khoá (chừa 1 giây cho đồng hồ giả chạy theo giờ thật).
-      await vi.advanceTimersByTimeAsync(19_000);
+      // Chưa tới 20 giây: vẫn khoá. Đồng hồ giả còn chạy theo giờ thật (shouldAdvanceTime)
+      // nên chừa 5 giây cho máy chạy đầy tải; vẫn bắt được hạn bị rút còn ≤ 15 giây.
+      await vi.advanceTimersByTimeAsync(15_000);
       expect(huy().disabled).toBe(true);
-      await vi.advanceTimersByTimeAsync(1_000);
+      await vi.advanceTimersByTimeAsync(5_000);
       await waitFor(() => expect(huy().disabled).toBe(false));
       expect(screen.getByRole('alert').textContent).toMatch(/quá 20 giây/);
-      expect(screen.getByRole('alert').textContent).toMatch(/Chưa chi tiền/);
+      expect(screen.getByRole('alert').textContent).toMatch(/Chưa gửi lệnh chi tiền/);
       // Kết quả chưa rõ ⇒ không cho bấm Chi lần nữa trong hộp này (ảnh chụp phiếu đã cũ).
       expect((screen.getByRole('button', { name: 'Chi' }) as HTMLButtonElement).disabled).toBe(true);
       expect(H.ghiSo).not.toHaveBeenCalled();
@@ -529,7 +530,7 @@ describe('bước ghi ảnh lên phiếu kẹt mạng', () => {
       await waitFor(() => expect(lenhGhiAnh()).toHaveLength(1));
       await vi.advanceTimersByTimeAsync(20_000);
       await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/quá 20 giây/));
-      expect(screen.getByRole('alert').textContent).toMatch(/Chưa ghi nhận thu vào sổ quỹ/);
+      expect(screen.getByRole('alert').textContent).toMatch(/Chưa gửi lệnh ghi nhận thu/);
       expect(screen.getByRole('alert').textContent).not.toMatch(/chi tiền/);
       expect(H.ghiSo).not.toHaveBeenCalled();
     } finally {
@@ -537,7 +538,7 @@ describe('bước ghi ảnh lên phiếu kẹt mạng', () => {
     }
   });
 
-  it('Duyệt và Chi: câu báo nói rõ phiếu CHƯA DUYỆT, chưa chi tiền', async () => {
+  it('Duyệt và Chi: câu báo nói rõ CHƯA GỬI lệnh duyệt và chi (không khẳng định trạng thái phiếu)', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
       render(<Khung che="APPROVE_AND_POST" />);
@@ -548,7 +549,7 @@ describe('bước ghi ảnh lên phiếu kẹt mạng', () => {
       await waitFor(() => expect(lenhGhiAnh()).toHaveLength(1));
       await vi.advanceTimersByTimeAsync(20_000);
       await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/quá 20 giây/));
-      expect(screen.getByRole('alert').textContent).toMatch(/Phiếu chưa duyệt, chưa chi tiền/);
+      expect(screen.getByRole('alert').textContent).toMatch(/Chưa gửi lệnh duyệt và chi\./);
       expect(H.ghiSo).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();

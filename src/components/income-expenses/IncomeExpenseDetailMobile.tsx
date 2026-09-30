@@ -652,7 +652,10 @@ function IncomeExpenseDetailMobileContent({
         voucher={v}
       />
 
-      {canSettleReservation && <ReservationSettlementDialog voucherId={v.id} open={settlementOpen} onOpenChange={setSettlementOpen} />}
+      {/* Đọc lại ⇒ UNMOUNT hộp (như main), không chỉ đóng: hộp tự chặn đóng khi đang tải
+          ảnh/đang gửi; đóng từ ngoài sẽ đi vòng chốt đó và lần tải dở về muộn ghi vào form
+          vừa reset. Ngoài lúc đọc lại vẫn giữ instance — cờ "kết quả chưa rõ" sống theo nó. */}
+      {canSettleReservation && !locked && <ReservationSettlementDialog voucherId={v.id} open={settlementOpen} onOpenChange={setSettlementOpen} />}
 
       <AttachmentLightbox
         attachments={attachments}

@@ -18,8 +18,19 @@ const detail = vi.hoisted(() => ({
   isFetchedAfterMount: false,
   isSuccess: false,
   isPlaceholderData: false,
+  isPaused: false,
   refetch: vi.fn(),
 }));
+// Không để bài thử bắn request thật: .env của worktree trỏ Supabase production. Mọi chuỗi
+// truy vấn trả { data: null, error: null }.
+vi.mock("@/integrations/supabase/client", () => {
+  const ketQua = Promise.resolve({ data: null, error: null });
+  const chuoi: unknown = new Proxy(function () {}, {
+    get: (_t, p) => (p === "then" ? ketQua.then.bind(ketQua) : chuoi),
+    apply: () => chuoi,
+  });
+  return { supabase: chuoi };
+});
 vi.mock("@/hooks/income-expenses/detailRead", () => ({ useIncomeExpenseDetail: () => detail }));
 vi.mock("@/hooks/useVoucherDetail", () => ({ useVoucherWithBatch: () => detail }));
 vi.mock("@/hooks/useIncomeExpenses", () => ({
@@ -43,7 +54,19 @@ vi.mock("@/components/income-expenses/PayViaBankAppSheet", () => {
   return { default: Tam, PayViaBankAppSheet: Tam };
 });
 vi.mock("@/components/ui/storage-image", () => ({ StorageImage: ({ alt }: { alt: string }) => <span>{alt}</span> }));
-vi.mock("@/components/deposits/ReservationSettlementDialog", () => ({ ReservationSettlementDialog: () => null }));
+// Dấu data-open phân biệt "đã gỡ hẳn" (không có dấu) với "chỉ đóng" (data-open=false).
+vi.mock("@/components/deposits/ReservationSettlementDialog", () => ({
+  ReservationSettlementDialog: ({ open }: { open: boolean }) => <div data-testid="hop-bo-coc" data-open={String(open)} />,
+}));
+vi.mock("@/components/income-expenses/QlManagerSelect", () => ({ QlManagerSelect: () => null }));
+const dongThu = vi.hoisted(() => ({ data: null as unknown }));
+vi.mock("@/hooks/useCollectionTenders", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/hooks/useCollectionTenders")>()),
+  useTenderForVoucher: () => ({ data: dongThu.data }),
+}));
+vi.mock("@/components/invoices/ChangeCollectionMethodDialog", () => ({
+  default: ({ open }: { open: boolean }) => (open ? <div>hop-doi-hinh-thuc</div> : null),
+}));
 
 import IncomeExpenseDetailMobile from "../IncomeExpenseDetailMobile";
 import { IncomeExpenseDetailDialog } from "../IncomeExpenseDetailDialog";
@@ -58,7 +81,7 @@ function wrap(node: ReactNode) {
   );
 }
 function setState(next: Partial<typeof detail>) {
-  Object.assign(detail, { data: null, error: null, isFetching: false, isFetchedAfterMount: true, isSuccess: false, isPlaceholderData: false }, next);
+  Object.assign(detail, { data: null, error: null, isFetching: false, isFetchedAfterMount: true, isSuccess: false, isPlaceholderData: false, isPaused: false }, next);
 }
 /** Phiếu chờ duyệt đầy đủ hạng mục — như dòng danh sách đã làm giàu bằng RPC chi tiết. */
 const listRow = {
@@ -213,6 +236,85 @@ describe("chi tiết phiếu hiện ngay từ dòng danh sách", () => {
       expect(screen.queryByText("tam-chi-qua-app")).toBeNull();
     } finally {
       manHinh.dienThoai = false;
+    }
+  });
+
+  it("đọc lại bị tạm dừng vì mất mạng: nội dung vẫn hiện, nút vẫn khoá (dữ liệu có thể đã cũ)", () => {
+    setState({ data: listRow, isSuccess: true, isFetching: false, isFetchedAfterMount: true, isPaused: true });
+    render(open());
+    expect(screen.getByText("PC-TEST")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Duyệt" }).matches(":disabled")).toBe(true);
+  });
+});
+
+// Hộp con render qua portal nên fieldset không khoá được: tấm phiếu phải truyền `locked`
+// xuống / tự đóng khi phiếu đọc lại. Chạy cho cả tấm phiếu điện thoại và hộp chi tiết.
+describe.each([
+  ["tấm phiếu điện thoại", false],
+  ["hộp chi tiết", true],
+])("%s: hộp con đóng khi phiếu đọc lại", (_ten, hopChiTiet) => {
+  const ve = () => (hopChiTiet
+    ? wrap(<IncomeExpenseDetailDialog open voucherId="v" voucher={null} onOpenChange={() => {}} />)
+    : wrap(<IncomeExpenseDetailMobile voucherId="v" onClose={() => {}} />));
+  const banMoi = (data: unknown) => setState({ data, isSuccess: true, isFetching: false, isFetchedAfterMount: true });
+  const docLai = (data: unknown) => setState({ data, isSuccess: true, isFetching: true, isFetchedAfterMount: true });
+
+  it("Gán QL nhận hoa hồng", () => {
+    const hoaHong = {
+      ...listRow, organization_id: "o1", approval_version: 1, posting_status: "UNPOSTED",
+      items: [{ id: "i1", type_name: "Hoa hồng 303/44TL", category: "HOA HỒNG", amount: 100 }],
+      detail_read: { complete: true, expected_item_count: 1 },
+    };
+    banMoi(hoaHong);
+    const view = render(ve());
+    fireEvent.click(screen.getByTestId("ie-assign-commission-manager"));
+    expect(screen.getByText("Gán quản lý nhận hoa hồng")).toBeTruthy();
+    docLai(hoaHong);
+    view.rerender(ve());
+    expect(screen.queryByText("Gán quản lý nhận hoa hồng")).toBeNull();
+  });
+
+  it("Đổi hình thức thu", () => {
+    dongThu.data = {
+      id: "t1", collection_id: "c1", organization_id: "o1", line_index: 0, payment_method: "TK", account_id: "a1",
+      account_name: "MBHIEP", gross_amount: 100, change_amount: 0, rounding_amount: 0, voucher_id: "v",
+      collector_name: "NATHAN", building_id: "b1", building_name: "102LVT",
+      collection: { id: "c1", invoice_id: "i1", status: "ACTIVE", actor_id: "u", created_at: "2026-09-25T08:00:00Z", collection_date: "2026-09-25" },
+    };
+    try {
+      const thu = { ...listRow, type: "INCOME", invoice_id: "i1", approval_status: "APPROVED", organization_id: "o1" };
+      banMoi(thu);
+      const view = render(ve());
+      fireEvent.click(screen.getByTestId("ie-change-collection-method"));
+      expect(screen.getByText("hop-doi-hinh-thuc")).toBeTruthy();
+      docLai(thu);
+      view.rerender(ve());
+      expect(screen.queryByText("hop-doi-hinh-thuc")).toBeNull();
+    } finally {
+      dongThu.data = null;
+    }
+  });
+
+  it("Xử lý bỏ cọc: đọc lại thì hộp bị GỠ HẲN (như main), bản mới về không tự mở lại", () => {
+    quyen.data = { __superadmin: true };
+    try {
+      const coc = {
+        ...listRow, type: "INCOME", approval_status: "APPROVED", contract_id: null,
+        items: [{ id: "i1", type_name: "Cọc giữ phòng", amount: 1000000, is_deposit: true }],
+        detail_read: { complete: true, expected_item_count: 1 },
+      };
+      banMoi(coc);
+      const view = render(ve());
+      fireEvent.click(screen.getByRole("button", { name: "Xử lý bỏ cọc" }));
+      expect(screen.getByTestId("hop-bo-coc").dataset.open).toBe("true");
+      docLai(coc);
+      view.rerender(ve());
+      expect(screen.queryByTestId("hop-bo-coc")).toBeNull(); // gỡ hẳn — lần tải dở không ghi vào hộp
+      banMoi(coc);
+      view.rerender(ve());
+      expect(screen.getByTestId("hop-bo-coc").dataset.open).toBe("false");
+    } finally {
+      quyen.data = {};
     }
   });
 });

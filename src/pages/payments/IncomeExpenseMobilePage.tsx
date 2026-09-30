@@ -219,7 +219,8 @@ export default function IncomeExpenseMobilePage() {
     setDetailPreview(value);
   }, []);
   const selectedDetail = useIncomeExpenseDetail(detailVoucherId, true, detailOrgHint);
-  const detailVoucher = selectedDetail.isSuccess && !selectedDetail.isFetching ? selectedDetail.data ?? null : null;
+  // 'idle' = không đang đọc và không tạm dừng vì mất mạng (lúc đó dữ liệu có thể đã cũ).
+  const detailVoucher = selectedDetail.isSuccess && selectedDetail.fetchStatus === "idle" ? selectedDetail.data ?? null : null;
   const [shareVoucher, setShareVoucher] =
     useState<IncomeExpenseWithRelations | null>(null);
   const [editingVoucher, setEditingVoucher] =

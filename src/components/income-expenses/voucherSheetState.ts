@@ -27,6 +27,11 @@ export interface VoucherDetailReadState {
   isFetchedAfterMount: boolean;
   isSuccess: boolean;
   isPlaceholderData?: boolean;
+  /**
+   * Lần đọc lại bị tạm dừng vì mất mạng (fetchStatus 'paused'): isFetching = false nhưng
+   * dữ liệu đang giữ có thể đã bị realtime báo cũ — không được coi là bản mới.
+   */
+  isPaused?: boolean;
 }
 
 /**
@@ -34,7 +39,8 @@ export interface VoucherDetailReadState {
  * - HIỆN: bản xem trước từ dòng danh sách, hoặc bản đọc thành công — kể cả lúc
  *   đang làm mới ngầm (realtime), để tấm phiếu không chớp về màn chờ;
  * - MỞ KHOÁ: chỉ khi bản đọc đầy đủ vừa tải xong sau khi mở (ràng buộc 28/09:
- *   thao tác tiền/sửa/in phải dựa trên bản đọc mới, không dựa bản xem trước).
+ *   thao tác tiền/sửa/in phải dựa trên bản đọc mới, không dựa bản xem trước), và
+ *   không có lần đọc nào đang chạy hay đang tạm dừng vì mất mạng.
  * Bản mới báo hết quyền (null) hoặc lỗi ⇒ không hiện gì của bản cũ.
  */
 export function voucherDetailView(
@@ -44,7 +50,7 @@ export function voucherDetailView(
   const hasComplete = complete(detail.data);
   const show = hasComplete && (detail.isPlaceholderData === true || detail.isSuccess);
   const fresh = hasComplete && detail.isSuccess && detail.isPlaceholderData !== true
-    && detail.isFetchedAfterMount && !detail.isFetching;
+    && detail.isFetchedAfterMount && !detail.isFetching && detail.isPaused !== true;
   return { show, locked: show && !fresh };
 }
 

@@ -156,7 +156,8 @@ const IncomeExpenseDesktopPage = () => {
     setDetailPreview(value);
   }, []);
   const selectedDetail = useIncomeExpenseDetail(detailVoucherId, true, detailOrgHint);
-  const detailVoucher = selectedDetail.isSuccess && !selectedDetail.isFetching ? selectedDetail.data ?? null : null;
+  // 'idle' = không đang đọc và không tạm dừng vì mất mạng (lúc đó dữ liệu có thể đã cũ).
+  const detailVoucher = selectedDetail.isSuccess && selectedDetail.fetchStatus === "idle" ? selectedDetail.data ?? null : null;
   const [editingVoucher, setEditingVoucher] =
     useState<IncomeExpenseWithRelations | null>(null);
   // Tạo bản sao từ phiếu đã huỷ: mở form TẠO MỚI prefill toàn bộ (kể cả ảnh).
