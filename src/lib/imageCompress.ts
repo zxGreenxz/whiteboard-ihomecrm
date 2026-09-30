@@ -60,6 +60,7 @@ async function compressNow(file: File, opts: CompressOpts): Promise<File> {
     const outType: OutType = (await canEncode('image/webp')) ? 'image/webp' : 'image/jpeg';
 
     const bitmap = await decodeUpright(file);
+    if (!bitmap) return file;
     let canvas: AnyCanvas | null = null;
     try {
       const { width, height } = bitmap;
@@ -95,19 +96,25 @@ async function compressNow(file: File, opts: CompressOpts): Promise<File> {
 }
 
 /**
- * Giải mã theo ĐÚNG CHIỀU ảnh. Ảnh chụp thẳng từ camera iPhone (`image.jpg`) có
- * điểm ảnh nằm ngang 4032×3024 kèm cờ xoay EXIF 6 (soi kho 30/09/2026); vẽ lại
- * qua canvas làm mất cờ đó, nên phải xoay ngay lúc giải mã. Nói rõ `from-image`
- * thay vì trông vào mặc định (bản spec cũ mặc định 'none').
+ * Giải mã theo ĐÚNG CHIỀU ảnh; `null` = không nén được an toàn, giữ ảnh gốc.
+ *
+ * Ảnh chụp thẳng từ camera iPhone (`image.jpg`) có điểm ảnh nằm ngang 4032×3024
+ * kèm cờ xoay EXIF 6 (soi kho 30/09/2026); vẽ lại qua canvas làm mất cờ đó, nên
+ * phải xoay ngay lúc giải mã. Nói rõ `from-image` thay vì trông vào mặc định (bản
+ * spec cũ mặc định 'none'). Trình duyệt cũ chưa biết giá trị này ném TypeError:
+ * JPEG có thể mang cờ xoay mà mặc định cũ bỏ qua ⇒ giữ ảnh gốc (đúng như trước khi
+ * nén); PNG/WebP không có cờ xoay ⇒ giải mã lại theo mặc định. Lỗi khác (ảnh hỏng)
+ * ⇒ giữ ảnh gốc.
  */
-async function decodeUpright(file: File): Promise<ImageBitmap> {
-  try {
-    return await createImageBitmap(file, { imageOrientation: 'from-image' });
-  } catch {
-    // Trình duyệt cũ chưa biết giá trị 'from-image' ⇒ TypeError: giải mã lại theo
-    // mặc định của nó. Ảnh hỏng thật thì lần này cũng ném, và compressNow trả ảnh gốc.
-    return createImageBitmap(file);
-  }
+async function decodeUpright(file: File): Promise<ImageBitmap | null> {
+  const upright = await createImageBitmap(file, { imageOrientation: 'from-image' }).then(
+    (bitmap) => ({ bitmap, error: null as unknown }),
+    (error: unknown) => ({ bitmap: null, error }),
+  );
+  if (upright.bitmap) return upright.bitmap;
+  const mayCarryExifRotation = /^image\/jpe?g$/i.test(file.type);
+  if (!(upright.error instanceof TypeError) || mayCarryExifRotation) return null;
+  return createImageBitmap(file);
 }
 
 /** Trình duyệt có mã hoá được `type` không — thử trên canvas 1×1 (~1 ms). */

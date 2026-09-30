@@ -60,17 +60,21 @@ interface TruyVanLoi {
  * Điều người đọc cần biết gọn trong hai ý: có phải do quyền không, và có đáng
  * thử lại không.
  */
+/** Câu chung khi không phân loại được lỗi đọc — màn nào có câu riêng thì so với nó. */
+export const LOI_DOC_MAC_DINH = "Không tải được dữ liệu";
+
 export function thongDiepLoiDoc(error: unknown): string {
   const loi = error as { message?: unknown } | null;
   const tin = typeof loi?.message === "string" ? loi.message : "";
-  if (/Failed to fetch|NetworkError|network error|ERR_INTERNET/i.test(tin)) {
+  // "Load failed" là cách Safari/iPhone báo mất mạng (Chrome nói "Failed to fetch").
+  if (/Failed to fetch|Load failed|NetworkError|network error|ERR_INTERNET/i.test(tin)) {
     return "Mất kết nối — chưa tải được dữ liệu";
   }
   const nhom: ErrorCategory = classifyDbError(error);
   if (nhom === "permission") return "Không có quyền xem dữ liệu này";
   if (nhom === "concurrency" || nhom === "rate_limit") return "Hệ thống đang bận — thử lại sau giây lát";
   if (nhom === "internal_invariant") return "Trang đang cũ hơn máy chủ — tải lại trang";
-  return "Không tải được dữ liệu";
+  return LOI_DOC_MAC_DINH;
 }
 
 /**

@@ -86,11 +86,25 @@ describe("chi tiết phiếu trên điện thoại — trạng thái đọc", ()
   });
 
   it("đọc quá hạn: nói rõ là mạng chậm và mời Thử lại", () => {
-    const timeout = Object.assign(new Error("Mạng chậm — quá 20 giây chưa tải xong. Kiểm tra mạng rồi bấm Thử lại."), { name: "DetailReadTimeoutError" });
+    const timeout = Object.assign(new Error("Mạng chậm — quá 30 giây chưa tải xong. Kiểm tra mạng rồi bấm Thử lại."), { name: "DetailReadTimeoutError" });
     setState({ isSuccess: false, error: timeout } as Partial<typeof detail>);
     render(wrap(<IncomeExpenseDetailMobile voucherId="v" onClose={() => {}} />));
     expect(screen.getByRole("status").textContent).toContain("Mạng chậm");
     expect(screen.getByRole("button", { name: "Thử lại" })).toBeTruthy();
+  });
+
+  it("lỗi đọc có phân loại: hết quyền, trang cũ hơn máy chủ, mất mạng — không gộp thành một câu chung", () => {
+    // Query chi tiết im toast chung (meta.silent) nên câu tại chỗ phải tự nói được
+    // điều toast từng nói: có đáng thử lại không, hay phải tải lại trang.
+    setState({ isSuccess: false, error: { code: "42703", message: "column does not exist" } } as Partial<typeof detail>);
+    const view = render(wrap(<IncomeExpenseDetailMobile voucherId="v" onClose={() => {}} />));
+    expect(screen.getByRole("status").textContent).toMatch(/tải lại trang/i);
+    setState({ isSuccess: false, error: new TypeError("Load failed") } as Partial<typeof detail>);
+    view.rerender(wrap(<IncomeExpenseDetailMobile voucherId="v" onClose={() => {}} />));
+    expect(screen.getByRole("status").textContent).toMatch(/kết nối/i);
+    setState({ isSuccess: false, error: new Error("Không tải đủ chi tiết phiếu. Vui lòng thử lại.") } as Partial<typeof detail>);
+    view.rerender(wrap(<IncomeExpenseDetailMobile voucherId="v" onClose={() => {}} />));
+    expect(screen.getByRole("status").textContent).toContain("Không tải được đầy đủ chi tiết phiếu.");
   });
 
   it("đang tải: chạm nền không đóng (tránh chạm đúp vào dòng phiếu đóng luôn tấm vừa mở); hỏng rồi thì chạm nền đóng", () => {

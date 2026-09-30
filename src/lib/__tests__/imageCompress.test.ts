@@ -99,15 +99,26 @@ describe('compressImage', () => {
     expect(decode).toHaveBeenCalledWith(photo, { imageOrientation: 'from-image' });
   });
 
-  it('trình duyệt cũ chưa biết "from-image" (TypeError): giải mã lại không tuỳ chọn, vẫn nén được', async () => {
+  it('trình duyệt cũ chưa biết "from-image": ảnh JPEG giữ nguyên bản — giải mã theo mặc định cũ có thể bỏ cờ xoay', async () => {
     installCanvas({ webp: false });
     vi.stubGlobal('createImageBitmap', async (_f: File, opts?: { imageOrientation?: string }) => {
       if (opts?.imageOrientation) throw new TypeError("The provided value 'from-image' is not a valid enum value");
       return { width: 4032, height: 3024, close() {} };
     });
-    const out = await compressImage(cameraJpeg());
+    const photo = cameraJpeg();
+    await expect(compressImage(photo)).resolves.toBe(photo);
+  });
+
+  it('trình duyệt cũ chưa biết "from-image": ảnh PNG (không có cờ xoay) vẫn giải mã lại và nén', async () => {
+    installCanvas({ webp: false, pngFallbackBytes: 225_000 });
+    vi.stubGlobal('createImageBitmap', async (_f: File, opts?: { imageOrientation?: string }) => {
+      if (opts?.imageOrientation) throw new TypeError("The provided value 'from-image' is not a valid enum value");
+      return { width: 1290, height: 2796, close() {} };
+    });
+    const png = new File([new Uint8Array(900_000)], 'IMG_1083.png', { type: 'image/png' });
+    const out = await compressImage(png);
     expect(out.type).toBe('image/jpeg');
-    expect(out.size).toBe(250_000);
+    expect(out.name).toBe('IMG_1083.jpg');
   });
 
   it('bước nén bị treo: quá hạn thì trả ảnh gốc để việc tải vẫn đi tiếp, không kẹt "Đang tải..."', async () => {

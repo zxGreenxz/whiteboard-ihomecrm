@@ -36,8 +36,9 @@ export { uploadDeadlineMs, UploadTimeoutError } from "./uploadDeadline";
 
 /**
  * Tải lên Supabase Storage có hạn chờ `uploadDeadlineMs`. Cùng khuôn kết quả với
- * storage-js — `{ data, error }`, không ném: quá hạn ⇒ `error` là UploadTimeoutError
- * thay vì treo "Đang tải..." mãi.
+ * storage-js — `{ data, error }`: quá hạn KHÔNG ném mà trả `error` là
+ * UploadTimeoutError, thay vì treo "Đang tải..." mãi. (storage-js tự ném — hiếm,
+ * nó đã gói lỗi mạng thành StorageUnknownError — thì lỗi đó vẫn lan ra như cũ.)
  *
  * storage-js không nhận AbortSignal cho upload, nên hạn chờ chỉ dừng việc CHỜ;
  * request kẹt vẫn chạy ngầm. Nếu nó xong sau hạn thì xoá file đó — người dùng đã

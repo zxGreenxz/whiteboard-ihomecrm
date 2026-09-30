@@ -129,25 +129,29 @@ export async function loadIncomeExpenseDetail(
   return { ...named, supplements: supplements.value[0]?.supplements };
 }
 /**
- * Hạn chờ một lần đọc chi tiết phiếu/đợt. Đọc thường xong dưới 2 giây (đo
- * production 30/09/2026: 570–1.870 ms kể cả khi ba lần đọc còn nối đuôi). Request
- * kẹt mà không có hạn thì vòng quay chạy mãi: màn chờ không mời "Thử lại", đóng
- * mở lại cũng dính vào đúng lần đọc đang treo (queryFn không huỷ được request).
+ * Hạn chờ một lần đọc chi tiết phiếu. Đọc thường xong dưới 2 giây (đo production
+ * 30/09/2026: 570–1.870 ms kể cả khi ba lần đọc còn nối đuôi). Request kẹt mà
+ * không có hạn thì vòng quay chạy mãi: màn chờ không mời "Thử lại", đóng mở lại
+ * cũng dính vào đúng lần đọc đang treo — các lần đọc chưa nhận `signal` của React
+ * Query nên chưa huỷ được request (việc sau: `.abortSignal()` cho từng lần đọc).
+ * Hạn rộng tay để mạng chậm-mà-vẫn-chạy không bị báo lỗi oan.
  */
-export const DETAIL_READ_TIMEOUT_MS = 20_000;
+export const DETAIL_READ_TIMEOUT_MS = 30_000;
+/** Chi tiết đợt nối ~10 lần đọc (phiếu, liên kết, đợt, phiếu con, nhãn…) — hạn rộng hơn. */
+export const BATCH_DETAIL_READ_TIMEOUT_MS = 45_000;
 
 export class DetailReadTimeoutError extends Error {
-  constructor() {
-    super("Mạng chậm — quá 20 giây chưa tải xong. Kiểm tra mạng rồi bấm Thử lại.");
+  constructor(ms: number) {
+    super(`Mạng chậm — quá ${Math.round(ms / 1000)} giây chưa tải xong. Kiểm tra mạng rồi bấm Thử lại.`);
     this.name = "DetailReadTimeoutError";
   }
 }
 
-/** Đọc quá DETAIL_READ_TIMEOUT_MS ⇒ lỗi DetailReadTimeoutError (màn hình hiện nút Thử lại). */
-export function withDetailReadDeadline<T>(read: Promise<T>): Promise<T> {
+/** Đọc quá `ms` ⇒ lỗi DetailReadTimeoutError (màn hình hiện nút Thử lại). */
+export function withDetailReadDeadline<T>(read: Promise<T>, ms = DETAIL_READ_TIMEOUT_MS): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const deadline = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new DetailReadTimeoutError()), DETAIL_READ_TIMEOUT_MS);
+    timer = setTimeout(() => reject(new DetailReadTimeoutError(ms)), ms);
   });
   return Promise.race([read, deadline]).finally(() => clearTimeout(timer));
 }

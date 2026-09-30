@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { LOI_DOC_MAC_DINH, thongDiepLoiDoc } from "@/app/providers/QueryProvider";
 
 /**
  * Tấm phiếu chỉ trượt lên MỘT lần mỗi lần mở. Khung chờ và nội dung là hai cây
@@ -20,10 +21,15 @@ export function useSheetStill(phase: string): boolean {
 }
 
 /**
- * Câu báo khi đọc chi tiết hỏng: quá hạn (DetailReadTimeoutError) thì nói rõ là
- * mạng chậm; lỗi khác dùng câu mặc định của màn. So theo `name` để màn hình không
- * phải import module đọc dữ liệu (test mock cả module đó).
+ * Câu báo khi đọc chi tiết hỏng. Query chi tiết im toast chung (meta.silent) nên
+ * câu tại chỗ phải tự nói được điều toast từng nói, cùng một bộ phân loại
+ * (thongDiepLoiDoc): mất mạng, hết quyền, hệ thống bận, trang cũ hơn máy chủ.
+ * Quá hạn (DetailReadTimeoutError) nói rõ là mạng chậm; không phân loại được thì
+ * dùng câu riêng của màn. So theo `name` để màn hình không phải import module đọc
+ * dữ liệu (test mock cả module đó).
  */
 export function detailReadErrorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error && error.name === "DetailReadTimeoutError" ? error.message : fallback;
+  if (error instanceof Error && error.name === "DetailReadTimeoutError") return error.message;
+  const categorized = thongDiepLoiDoc(error);
+  return categorized === LOI_DOC_MAC_DINH ? fallback : categorized;
 }

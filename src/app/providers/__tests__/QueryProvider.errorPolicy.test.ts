@@ -59,6 +59,11 @@ describe("thongDiepLoiDoc — nói đúng hai điều người đọc cần bi�
     expect(thongDiepLoiDoc({ message: "TypeError: Failed to fetch" })).toMatch(/kết nối/i);
   });
 
+  it("mất mạng trên Safari/iPhone ('Load failed') cũng là chuyện kết nối", () => {
+    // Safari không nói "Failed to fetch" như Chrome — nó ném TypeError "Load failed".
+    expect(thongDiepLoiDoc(new TypeError("Load failed"))).toMatch(/kết nối/i);
+  });
+
   it("42883 / 42703 (client cũ hơn schema) → bảo tải lại trang", () => {
     expect(thongDiepLoiDoc({ code: "42883" })).toMatch(/tải lại trang/i);
   });
