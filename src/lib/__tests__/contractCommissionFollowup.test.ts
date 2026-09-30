@@ -51,6 +51,17 @@ describe('commission creation retains a server-side recovery trail', () => {
 describe('durable creation boundary',()=>{
  const org='11111111-1111-4111-8111-111111111111', contract='22222222-2222-4222-8222-222222222222';
  const payload={contract_id:contract,kind:'broker' as const,amount:100,voucher_date:'2026-09-29'};
+ it('accepts a canonical net-zero support receipt on the existing saved-request retry path',async()=>{
+  rpcMock.mockResolvedValueOnce({data:{source_id:org,operation_id:contract,kind:'sale',status:'SETTLED_BY_SUPPORT',gross:'500000',withheld:'500000',net:'0',voucher_id:null,id:null,code:null},error:null} as never);
+  expect(await executeCommissionCreation(org,{contract_id:contract,kind:'sale',request_id:org})).toMatchObject({status:'SETTLED_BY_SUPPORT',id:null,code:null});
+ });
+ it('rejects a fake settled receipt with nonzero net or a fake voucher',async()=>{
+  for(const data of [{source_id:org,operation_id:contract,kind:'sale',status:'SETTLED_BY_SUPPORT',gross:'500000',withheld:'400000',net:'100000',voucher_id:null,id:null,code:null},
+    {source_id:org,operation_id:contract,kind:'sale',status:'SETTLED_BY_SUPPORT',gross:'500000',withheld:'500000',net:'0',voucher_id:org,id:org,code:'PC-0'}]) {
+    rpcMock.mockResolvedValueOnce({data,error:null} as never);
+    await expect(executeCommissionCreation(org,{contract_id:contract,kind:'sale',request_id:org})).rejects.toThrow();
+  }
+ });
  it('persists both selected intents in a single request before any execute',async()=>{
   rpcMock.mockImplementationOnce(async(_name,args)=>({data:(args as {p_intents:{contract_id:string;kind:string;request_id:string}[]}).p_intents.map(i=>({contract_id:i.contract_id,kind:i.kind,request_id:i.request_id})),error:null}) as never);
   const receipts=await prepareCommissionCreations(org,[payload,{...payload,kind:'sale'}]);

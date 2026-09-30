@@ -36,6 +36,9 @@ import {
 } from "@/hooks/useCommissionVoucher";
 import { useSaleBonusStatus } from "@/hooks/useSaleBonus";
 import { useContractCommissionFollowups } from "@/hooks/useContractCommissionFollowup";
+import { useContractRentSupport } from '@/hooks/useContractRentSupport';
+import { RentSupportPayoutForm } from './RentSupportPayoutForm';
+import { safeCommissionReason } from '@/lib/contractCommissionFollowup';
 import type { CommissionKind, PreparedCommissionRequest, ContractCommissionFollowup } from '@/lib/contractCommissionFollowup';
 import { useAccounts } from "@/hooks/useAccounts";
 import { useAuth } from "@/hooks/useAuth";
@@ -208,15 +211,18 @@ export function CommissionVoucherModal({
   const hasSavedIntent = (row: ContractCommissionFollowup | undefined) => !!row?.request_id && (!!row.can_retry || row.state === 'PROCESSING');
   const brokerSaved = !!savedRequests.broker || hasSavedIntent(brokerFollowup);
   const saleSaved = !!savedRequests.sale || hasSavedIntent(saleFollowup);
-  const resolved = (row: typeof brokerFollowup) => row?.state === 'VOUCHER_CREATED' || row?.state === 'NOT_APPLICABLE';
+  const resolved = (row: typeof brokerFollowup) => row?.state === 'VOUCHER_CREATED' || row?.state === 'NOT_APPLICABLE' || row?.state === 'SETTLED_BY_SUPPORT';
   const brokerDone = !!existingBroker || resolved(brokerFollowup) || createdKinds.includes('broker');
-  const saleDone = !!existingSale || salePaidElsewhere || resolved(saleFollowup) || createdKinds.includes('sale');
+  const saleDone = !!existingSale || salePaidElsewhere || saleBonus?.settledBySupport || resolved(saleFollowup) || createdKinds.includes('sale');
   const brokerEditable = onlyKind !== 'sale' && !brokerDone && !brokerSaved;
   const saleEditable = onlyKind !== 'broker' && !saleDone && !saleSaved;
   const checkingVouchers = vouchersQuery.isLoading || saleQuery.isLoading || followups.isLoading;
   const checkFailed = vouchersQuery.isError || saleQuery.isError || followups.isError;
   const canCreate = onlyKind === 'broker' ? !!brokerFollowup?.can_manage : onlyKind === 'sale' ? !!saleFollowup?.can_manage
     : !!brokerFollowup?.can_manage && !!saleFollowup?.can_manage;
+  const supportRead = useContractRentSupport({ contractIds: contractId ? [contractId] : [], enabled: open && !!contractId && canCreate });
+  const supportPlan = supportRead.data?.rows.find(row => row.contract_id === contractId);
+  const supportUnavailable = open && canCreate && (supportRead.isLoading || supportRead.isError || !supportPlan);
   const statusSources = useRef({ vouchersQuery, saleQuery, followups });
   statusSources.current = { vouchersQuery, saleQuery, followups };
   useEffect(() => {
@@ -372,7 +378,7 @@ export function CommissionVoucherModal({
     if (!validateInputDrafts(modalRef.current)) return;
     if (!prefill) return;
     if (submitting || activeSubmission.current) return;
-    if (checkingVouchers || checkFailed || !canCreate) return;
+    if (checkingVouchers || checkFailed || !canCreate || supportUnavailable || supportPlan?.kind === 'V2') return;
 
     const saleAmt = typeof saleAmount === "number" ? saleAmount : 0;
     // Loại đã có phiếu sống → skip (RPC + unique index vẫn chặn nếu lách)
@@ -497,7 +503,7 @@ export function CommissionVoucherModal({
       const result = await createVoucher.mutateAsync({ contract_id: contractId, kind: row.kind, request_id: row.request_id });
       if (activeSubmission.current === submission) setCreatedKinds(kinds => [...kinds, row.kind]);
       if (result.status === 'ALREADY_EXISTS') toast.info('Đã có phiếu; đối chiếu tại Thu chi.');
-      else toast.success('Đã tạo phiếu theo yêu cầu đã lưu.');
+      else toast.success(result.status === 'SETTLED_BY_SUPPORT' ? 'Đã xử lý bằng hỗ trợ tiền thuê; không tạo phiếu chi 0.' : 'Đã tạo phiếu theo yêu cầu đã lưu.');
     } catch (error) {
       if(activeSubmission.current===submission){
         const message=voucherFailureMessage(error,'tạo lại phiếu theo yêu cầu đã lưu');
@@ -518,7 +524,7 @@ export function CommissionVoucherModal({
     <div className="rounded-md border bg-muted/40 p-3 space-y-2 text-sm">
       <p>Yêu cầu đã được lưu. Tạo lại dùng đúng nội dung đã lưu, gồm lựa chọn quản lý trả qua lương nếu có.</p>
       {row?.attempted_amount != null && <p>Số tiền đã ghi nhận: {formatVND(row.attempted_amount)}</p>}
-      {row?.last_reason && <p>{row.last_reason}</p>}
+      {row?.last_reason && <p>{safeCommissionReason(row.last_reason)}</p>}
       {row?.can_retry && row.request_id && ['FAILED', 'UNKNOWN'].includes(row.state)
         ? <Button type="button" variant="outline" disabled={isPending} onClick={() => void handleRetry(row)}>
           Tạo lại {kind === 'broker' ? 'hoa hồng môi giới' : 'thưởng Sale'}
@@ -531,6 +537,17 @@ export function CommissionVoucherModal({
     </div>
   );
 
+  if (open && canCreate && prefill && !checkingVouchers && !checkFailed && (supportUnavailable || supportPlan?.kind === 'V2')) return (
+    <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-w-3xl max-h-[90vh] overflow-auto p-0">
+      <DialogHeader className="px-6 pt-6"><DialogTitle>Tạo phiếu hoa hồng và hỗ trợ tiền thuê</DialogTitle>
+        <DialogDescription>Đối chiếu toàn bộ cam kết, nguồn chi và thực nhận trước khi lưu yêu cầu.</DialogDescription></DialogHeader>
+      {supportUnavailable ? <div className="px-6 text-sm space-y-2"><p role={supportRead.isLoading ? 'status' : 'alert'}>{supportRead.isLoading ? 'Đang đọc lịch hỗ trợ…' : 'Chưa đọc được lịch hỗ trợ; tải lại trước khi lập phiếu.'}</p>
+        <Button variant="outline" onClick={() => void supportRead.refetch()}>Tải lại lịch hỗ trợ</Button></div>
+        : supportPlan && selectedOrganizationId && contractId && <RentSupportPayoutForm key={`${selectedOrganizationId}:${contractId}`} organizationId={selectedOrganizationId} contractId={contractId}
+          plan={supportPlan} prefill={prefill} rows={rows ?? []} refetchRows={followups.refetch} onlyKind={onlyKind} userId={authUser?.id} />}
+      <DialogFooter className="px-6 pb-6"><Button variant="outline" onClick={() => onOpenChange(false)}>Để xử lý sau</Button></DialogFooter>
+    </DialogContent></Dialog>
+  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -902,7 +919,7 @@ export function CommissionVoucherModal({
             className="bg-green-600 hover:bg-green-700"
             onClick={handleSubmit}
             disabled={
-              isPending || !prefill || checkingVouchers || checkFailed || !canCreate || (!brokerEditable && !saleEditable)
+              isPending || !prefill || checkingVouchers || checkFailed || !canCreate || supportUnavailable || (!brokerEditable && !saleEditable)
             }
           >
             {isPending

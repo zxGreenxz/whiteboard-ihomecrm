@@ -22,6 +22,7 @@ export interface SaleBonusStatus {
   alreadyPaid: boolean;
   /** Có phiếu còn sống; không chứng minh đã trả tiền. */
   hasVoucher: boolean;
+  settledBySupport: boolean;
   cashPaymentStatus: 'UNVERIFIED';
   voucherId: string | null;
   code: string | null;

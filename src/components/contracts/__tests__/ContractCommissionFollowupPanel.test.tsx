@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   query: { data: undefined as { rows: ContractCommissionFollowup[]; total: number } | undefined, isPending: false, isError: false, refetch: vi.fn() },
   retry: vi.fn(), read: vi.fn(),
 }));
-vi.mock('@/lib/contractCommissionFollowup', () => ({ readContractCommissionFollowups: (...args: unknown[]) => mocks.read(...args) }));
+vi.mock('@/lib/contractCommissionFollowup', async original => ({ ...await original<typeof import('@/lib/contractCommissionFollowup')>(), readContractCommissionFollowups: (...args: unknown[]) => mocks.read(...args) }));
 vi.mock('@/hooks/useContractCommissionFollowup', () => ({ useContractCommissionFollowups: () => mocks.query,
   useRecordContractCommissionEvent: () => ({ mutateAsync: vi.fn(), isPending: false }) }));
 vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ selectedOrganizationId: 'org-1' }) }));
@@ -18,6 +18,12 @@ vi.mock('@/components/contracts/CommissionVoucherModal', () => ({
     open ? <div role="dialog" aria-label="Tạo phiếu hoa hồng">{contractId} {onlyKind}<button onClick={() => onOpenChange(false)}>Đóng popup</button></div> : null,
 }));
 import { ContractCommissionFollowupPanel } from '../ContractCommissionFollowupPanel';
+it('shows a zero-net completed support outcome without a voucher or failure retry', () => {
+  mocks.query.data = { rows: [row({ state: 'SETTLED_BY_SUPPORT', voucher_id: null })], total: 1 };
+  render(<ContractCommissionFollowupPanel contractId="contract-1" />);
+  expect(screen.getByText(/Đã xử lý bằng hỗ trợ tiền thuê/)).toBeTruthy();
+  expect(screen.queryByRole('alert')).toBeNull(); expect(screen.queryByRole('button', { name: 'Tạo lại' })).toBeNull();
+});
 const row = (overrides: Partial<ContractCommissionFollowup> = {}): ContractCommissionFollowup => ({
   contract_id: 'contract-1', contract_number: 'HD-001', building_id: 'building-1', building_name: 'Toà A', room_name: '101',
   kind: 'broker', state: 'PENDING', last_reason: null, last_actor: null, last_at: null, attempted_amount: null,

@@ -28,8 +28,14 @@ const state = vi.hoisted(() => ({
   accounts: [] as unknown[],
   voucherError: false,
   voucherLoading: false,
-  followups: [] as { kind: string; state: string; can_manage: boolean; request_id?: string; can_retry?: boolean }[],
+  supportKind: 'LEGACY', supportReadEnabled: false,
+  followups: [] as { kind: string; state: string; can_manage: boolean; request_id?: string; can_retry?: boolean; last_reason?: string }[],
 }));
+vi.mock('@/hooks/useContractRentSupport', () => ({ useContractRentSupport: (filter: { enabled?: boolean; contractIds?: string[] }) => {
+  state.supportReadEnabled = !!filter.enabled;
+  return { data: { rows: [{ contract_id: filter.contractIds?.[0], kind: state.supportKind, financial: { payload: {} } }] }, isLoading: false, isError: false, refetch: vi.fn() };
+} }));
+vi.mock('../RentSupportPayoutForm', () => ({ RentSupportPayoutForm: () => <div>Phiếu hỗ trợ ròng canonical</div> }));
 
 vi.mock("@/hooks/useCommissionVoucher", () => ({
   useCommissionPrefill: () => ({
@@ -91,6 +97,7 @@ beforeEach(() => {
   state.isError = false;
   state.voucherError = false;
   state.voucherLoading = false;
+  state.supportKind = 'LEGACY'; state.supportReadEnabled = false;
   state.followups = ['broker', 'sale'].map(kind => ({ kind, state: 'PENDING', can_manage: true }));
   state.refetch.mockReset();
   state.refetch.mockImplementation(async () => ({ data: { rows: state.followups }, isError: state.voucherError }));
@@ -105,6 +112,22 @@ beforeEach(() => {
   state.accounts = [{ id: "acc-toa-a", name: "Toà A", is_default: false }, { id: "acc-khac", name: "Sổ khác", is_default: true }];
 });
 afterEach(cleanup);
+it('routes a v2 support contract to the net payout form instead of legacy prepare', () => {
+  state.supportKind = 'V2';
+  render(<CommissionVoucherModal open contractId="c1" onOpenChange={() => {}} />);
+  expect(screen.getByText('Phiếu hỗ trợ ròng canonical')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Tạo phiếu chi' })).toBeNull(); expect(state.prepare).not.toHaveBeenCalled();
+});
+it('does not request financial support detail or render the net form for a contract-only viewer', () => {
+  state.supportKind = 'V2'; state.followups = state.followups.map(row => ({ ...row, can_manage: false }));
+  render(<CommissionVoucherModal open contractId="c1" onOpenChange={() => {}} />);
+  expect(state.supportReadEnabled).toBe(false); expect(screen.queryByText('Phiếu hỗ trợ ròng canonical')).toBeNull();
+});
+it('redacts raw database diagnostics from a saved modal request reason', () => {
+  state.followups[0] = { kind: 'broker', state: 'FAILED', can_manage: true, can_retry: true, request_id: 'saved', last_reason: 'insert constraint app_private.finance 11111111-1111-4111-8111-111111111111' };
+  render(<CommissionVoucherModal open contractId="c1" onOpenChange={() => {}} />);
+  expect(screen.queryByText(/insert constraint/)).toBeNull(); expect(screen.getByText(/kiểm tra sổ quỹ hoặc dữ liệu/)).toBeTruthy();
+});
 
 it("refetch prefill (object mới) KHÔNG xoá ô người dùng đang gõ", () => {
   const { rerender } = render(<CommissionVoucherModal open contractId="c1" onOpenChange={() => {}} />);

@@ -3,16 +3,13 @@ import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useContractCommissionFollowups } from '@/hooks/useContractCommissionFollowup';
 import { useRetryCommissionVoucher } from '@/hooks/useCommissionVoucher';
-import { readContractCommissionFollowups, type ContractCommissionFollowup, type CommissionKind } from '@/lib/contractCommissionFollowup';
+import { readContractCommissionFollowups, safeCommissionReason, type ContractCommissionFollowup, type CommissionKind } from '@/lib/contractCommissionFollowup';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { Button } from '@/components/ui/button';
 
 const CommissionModal = lazy(() => import('./CommissionVoucherModal').then(module => ({ default: module.CommissionVoucherModal })));
 const KIND_LABEL = { broker: 'Hoa hồng môi giới', sale: 'Thưởng Sale' } as const;
 const isFailure = (row: ContractCommissionFollowup) => ['FAILED', 'UNKNOWN', 'PROCESSING'].includes(row.state);
-const safeReason = (reason: string) => /\b(?:insert|update|delete|constraint|foreign key|SQLSTATE|relation|column|public\.|app_private\.)\b/i.test(reason)
-  || /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(reason)
-  ? 'Tạo phiếu chưa thành công; hãy kiểm tra sổ quỹ hoặc dữ liệu rồi tạo lại.' : reason;
 type FollowupQuery = ReturnType<typeof useContractCommissionFollowups>;
 
 /** Lỗi tạo đã ghi nhận là hồ sơ riêng, không phải phiếu chi hoặc khoản nợ. */
@@ -38,15 +35,15 @@ export function CommissionFailureList({ query, scope, empty = false }: {
       if (generation.current !== currentGeneration) return;
       const current = fresh.rows.find(r => r.contract_id === row.contract_id && r.kind === row.kind);
       if (!current) throw new Error('missing');
-      if (current.state === 'VOUCHER_CREATED') {
+      if (current.state === 'VOUCHER_CREATED' || current.state === 'SETTLED_BY_SUPPORT') {
         await query.refetch();
-        toast.info(current.voucher_code ? `Đã có phiếu ${current.voucher_code}.` : 'Yêu cầu đã được đối chiếu; không cần tạo lại.');
+        toast.info(current.state === 'SETTLED_BY_SUPPORT' ? 'Đã xử lý bằng hỗ trợ tiền thuê; không cần tạo phiếu chi.' : current.voucher_code ? `Đã có phiếu ${current.voucher_code}.` : 'Yêu cầu đã được đối chiếu; không cần tạo lại.');
         return;
       }
       if (!isFailure(current) || !current.can_manage || current.state === 'PROCESSING') return;
       if (current.can_retry && current.request_id) {
         const result = await retry.mutateAsync({ contract_id: current.contract_id, kind: current.kind, request_id: current.request_id });
-        toast.success(`${result.status === 'ALREADY_EXISTS' ? 'Đã có phiếu' : 'Đã tạo phiếu'}${result.code ? ` ${result.code}` : ''}.`);
+        toast.success(result.status === 'SETTLED_BY_SUPPORT' ? 'Đã xử lý bằng hỗ trợ tiền thuê; không tạo phiếu chi 0.' : `${result.status === 'ALREADY_EXISTS' ? 'Đã có phiếu' : 'Đã tạo phiếu'}${result.code ? ` ${result.code}` : ''}.`);
       } else if (!current.can_retry) {
         setLegacy({ contractId: current.contract_id, kind: current.kind });
       }
@@ -67,7 +64,7 @@ export function CommissionFailureList({ query, scope, empty = false }: {
         className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950 space-y-1">
         <p className="font-medium">{row.building_name} · {row.room_name} · {row.contract_number || row.contract_id.slice(0, 8)} · {KIND_LABEL[row.kind]}</p>
         {row.can_manage && row.last_reason && row.state !== 'PROCESSING'
-          ? <p className="break-words">{safeReason(row.last_reason)}</p>
+          ? <p className="break-words">{safeCommissionReason(row.last_reason)}</p>
           : <p>{row.state === 'PROCESSING' ? 'Yêu cầu tạo phiếu đang được xử lý. Hãy kiểm tra lại trạng thái.'
             : row.state === 'UNKNOWN' ? 'Chưa xác minh được kết quả tạo phiếu.' : 'Lần tạo phiếu trước báo lỗi.'}</p>}
         {row.can_manage && row.state !== 'PROCESSING' &&
@@ -93,6 +90,8 @@ export function ContractCommissionFollowupPanel({ contractId }: { contractId: st
     <CommissionFailureList query={query} scope={contractId} />
     {!query.isError && rows.filter(row => row.state === 'VOUCHER_CREATED').map(row =>
       <p key={row.kind} className="text-xs text-muted-foreground">{KIND_LABEL[row.kind]}: Đã có phiếu{row.voucher_code ? ` ${row.voucher_code}` : ''}.</p>)}
+    {!query.isError && rows.filter(row => row.state === 'SETTLED_BY_SUPPORT').map(row =>
+      <p key={row.kind} className="text-xs text-muted-foreground">{KIND_LABEL[row.kind]}: Đã xử lý bằng hỗ trợ tiền thuê.</p>)}
     {open && <Suspense fallback={<p role="status">Đang mở phiếu hoa hồng…</p>}><CommissionModal open contractId={contractId}
       onOpenChange={setOpen} /></Suspense>}
   </div>;

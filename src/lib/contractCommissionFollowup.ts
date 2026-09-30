@@ -1,5 +1,10 @@
 import { z } from 'zod';
 import { supabase } from '@/integrations/supabase/client';
+import { payoutSourceReceiptSchema } from '@/lib/rentSupportFunding';
+
+export const safeCommissionReason = (reason: string) => /\b(?:insert|update|delete|constraint|foreign key|SQLSTATE|relation|column|public\.|app_private\.)\b/i.test(reason)
+  || /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(reason)
+  ? 'Tạo phiếu chưa thành công; hãy kiểm tra sổ quỹ hoặc dữ liệu rồi tạo lại.' : reason;
 
 const kindSchema = z.enum(['broker', 'sale']);
 const eventSchema = z.object({
@@ -10,7 +15,7 @@ const eventSchema = z.object({
 export const commissionFollowupSchema = z.object({
   contract_id: z.string().uuid(), contract_number: z.string().nullable(),
   building_id: z.string().uuid(), building_name: z.string(), room_name: z.string(), kind: kindSchema,
-  state: z.enum(['PENDING', 'UNKNOWN', 'FAILED', 'NOT_APPLICABLE', 'VOUCHER_CREATED', 'PROCESSING']),
+  state: z.enum(['PENDING', 'UNKNOWN', 'FAILED', 'NOT_APPLICABLE', 'VOUCHER_CREATED', 'PROCESSING', 'SETTLED_BY_SUPPORT']),
   last_reason: z.string().nullable(), last_at: z.string().nullable(), last_actor: z.string().nullable(),
   attempted_amount: z.number().finite().nonnegative().nullable(), can_manage: z.boolean(),
   voucher_id: z.string().uuid().nullable(), voucher_code: z.string().nullable(), voucher_status: z.string().nullable(),
@@ -102,7 +107,7 @@ const preparedRequestSchema = z.object({ contract_id: z.string().uuid(), kind: k
 const creationResultSchema = z.object({ status: z.enum(['COMPLETED', 'ALREADY_EXISTS', 'FAILED']), id: z.string().uuid().nullable(), code: z.string().nullable() });
 export type CommissionCreationPayload = z.infer<typeof creationPayloadSchema>;
 export type PreparedCommissionRequest = z.infer<typeof preparedRequestSchema>;
-export interface CommissionCreationResult { status: 'COMPLETED' | 'ALREADY_EXISTS' | 'FAILED'; id: string | null; code: string | null; }
+export interface CommissionCreationResult { status: 'COMPLETED' | 'ALREADY_EXISTS' | 'FAILED' | 'SETTLED_BY_SUPPORT'; id: string | null; code: string | null; }
 
 /** Save ALL selected positive intents atomically, before executing the first kind. */
 export async function prepareCommissionCreations(organizationId: string, inputs: CommissionCreationPayload[]): Promise<PreparedCommissionRequest[]> {
@@ -125,7 +130,7 @@ export async function executeCommissionCreation(organizationId: string, input: P
     p_organization_id: organizationId, p_contract_id: request.contract_id, p_kind: request.kind, p_request_id: request.request_id,
   });
   if (error) throw error;
-  const result = creationResultSchema.parse(data);
+  const result = z.union([payoutSourceReceiptSchema, creationResultSchema]).parse(data);
   if (result.status === 'FAILED') throw new Error('Máy chủ chưa tạo được phiếu. Yêu cầu đã được lưu; xem chi tiết và bấm Tạo lại khi sẵn sàng.');
   return { status: result.status, id: result.id, code: result.code };
 }

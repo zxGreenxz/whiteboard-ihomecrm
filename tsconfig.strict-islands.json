@@ -16,6 +16,8 @@
   },
   "include": [],
   "files": [
+    "src/components/contracts/RentSupportPayoutForm.tsx",
+    "src/hooks/useRentSupportPayout.ts",
     "src/components/contracts/contract-form/RentSupportScheduleEditor.tsx",
     "src/components/contracts/contract-form/ConnectedRentSupportScheduleEditor.tsx",
     "src/hooks/useRentSupportParties.ts",
