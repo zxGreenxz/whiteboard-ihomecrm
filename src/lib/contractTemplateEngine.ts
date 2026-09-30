@@ -12,6 +12,7 @@ import {
   numberToVietnameseWords,
 } from "@/lib/invoiceTemplateEngine";
 import { supabase } from "@/integrations/supabase/client";
+import { buildCustomerSupportMonths, sumCustomerSupportCommitment, supportCustomerScheduleSchema, type SupportCustomerSchedule } from './rentSupport';
 
 // docxtemplater + pizzip khá nặng và chỉ chạy khi in hợp đồng — dynamic
 // import để không vào bundle đầu. Cả 2 là CJS (export =) nên import() trả
@@ -164,6 +165,8 @@ export type ContractTemplateSource = Pick<ContractWithRelations,
 
 export interface BuildContractDataInput {
   contract: ContractTemplateSource;
+  /** Customer-only projection from the scoped read API or draft snapshot. */
+  rentSupport?: SupportCustomerSchedule;
   /** Owner profile fed in by the page (typically derived from auth + profile). */
   owner?: OwnerInfo;
   /** Vehicles linked to the contract's tenants (optional, defaults to []). */
@@ -185,6 +188,7 @@ export function buildContractTemplateData({
   owner,
   vehicles = [],
   assets = [],
+  rentSupport,
 }: BuildContractDataInput): ContractTemplateData {
   const room = contract.room;
   const building = room?.building;
@@ -203,8 +207,11 @@ export function buildContractTemplateData({
   const cycleMonths = paymentCycleMonths(contract.payment_cycle);
   const depositMonths =
     rent > 0 ? Math.round((deposit / rent) * 100) / 100 : 0;
-  const promoMonths = contract.discounts?.months ?? 0;
-  const promoPerMonth = contract.discounts?.amount_per_month ?? 0;
+  const support = rentSupport ? supportCustomerScheduleSchema.parse({ version: rentSupport.version, start_billing_month: rentSupport.start_billing_month, segments: rentSupport.segments }) : null;
+  const supportMonths = support ? buildCustomerSupportMonths(support) : [];
+  const uniform = support && new Set(support.segments.map(segment => segment.monthly_amount)).size === 1;
+  const promoMonths = support ? supportMonths.length : contract.discounts?.months ?? 0;
+  const promoPerMonth = support ? uniform ? Number(support.segments[0].monthly_amount) : null : contract.discounts?.amount_per_month ?? 0;
 
   // Cast rep to a richer shape — the joined select returns more than the
   // narrow `{full_name, phone, id_number}` declared on ContractCustomer.
@@ -388,7 +395,9 @@ export function buildContractTemplateData({
     DEPOSIT_DATE: fmtDate(contract.signed_date),
     DEPOSIT_NOTE: contract.notes ?? "",
     PROMOTION_MONTH: promoMonths,
-    PROMOTION_PRICE_PER_MONTH: formatCurrencyVND(promoPerMonth),
+    PROMOTION_PRICE_PER_MONTH: promoPerMonth === null ? 'xem lịch hỗ trợ tiền thuê' : formatCurrencyVND(promoPerMonth),
+    RENT_SUPPORT_SCHEDULE: supportMonths.map(month => `${month.billing_month.slice(5)}/${month.billing_month.slice(0, 4)}: ${formatCurrencyVND(Number(month.agreed_amount))}đ`).join('\n'),
+    RENT_SUPPORT_TOTAL: support ? `${formatCurrencyVND(Number(sumCustomerSupportCommitment(support)))}đ` : '',
 
     // ===== Khách thuê (representative) =====
     REPRESENT_CODE: repStr("id"),
@@ -545,6 +554,13 @@ export async function renderContractDocxBuffer(buffer: ArrayBuffer, data: Contra
     ]);
 
   const zip = new PizZip(buffer);
+  // Word may split a placeholder across multiple w:t runs. Inspect joined
+  // text per part before rendering, never only the raw XML substring.
+  const hasScheduleCode = Object.keys(zip.files).filter(path => /^word\/.*\.xml$/.test(path)).some(path => {
+    const xml = zip.file(path)?.asText() ?? '';
+    const text = [...xml.matchAll(/<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>/g)].map(match => match[1]).join('');
+    return text.includes('{RENT_SUPPORT_SCHEDULE}');
+  });
   const doc = new Docxtemplater(zip, {
     paragraphLoop: true,
     linebreaks: true,
@@ -553,6 +569,23 @@ export async function renderContractDocxBuffer(buffer: ArrayBuffer, data: Contra
   });
 
   doc.render(data);
+
+  if (data.RENT_SUPPORT_SCHEDULE && !hasScheduleCode) {
+    const output = doc.getZip();
+    const xml = output.file('word/document.xml')?.asText();
+    if (!xml) throw new Error('Tài liệu: Mẫu không có nội dung DOCX hợp lệ.');
+    const escape = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const paragraph = (text: string, bold = false) => `<w:p><w:pPr><w:spacing w:after="80"/><w:keepLines/></w:pPr><w:r><w:rPr>${bold ? '<w:b/>' : ''}<w:sz w:val="22"/></w:rPr><w:t xml:space="preserve">${escape(text)}</w:t></w:r></w:p>`;
+    const appendix = paragraph('Lịch hỗ trợ tiền thuê', true) + String(data.RENT_SUPPORT_SCHEDULE).split('\n').map(text => paragraph(text)).join('') + paragraph(`Tổng hỗ trợ: ${String(data.RENT_SUPPORT_TOTAL)}`, true);
+    // Insert before the final body-level section properties, preserving the
+    // stored template and every existing paragraph/section's formatting.
+    const section = xml.lastIndexOf('<w:sectPr');
+    const bodyEnd = xml.lastIndexOf('</w:body>');
+    const finalSection = section >= 0 && (/^<w:sectPr\b[^>]*\/>\s*<\/w:body>/.test(xml.slice(section)) || /^<w:sectPr[\s\S]*<\/w:sectPr>\s*<\/w:body>/.test(xml.slice(section)));
+    const at = finalSection ? section : bodyEnd;
+    if (at < 0) throw new Error('Tài liệu: Mẫu không có nội dung DOCX hợp lệ.');
+    output.file('word/document.xml', xml.slice(0, at) + appendix + xml.slice(at));
+  }
 
   return doc.getZip().generate({
     type: "blob",

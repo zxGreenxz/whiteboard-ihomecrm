@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
-import type { ContractDraft } from '@/lib/contractDrafts';
+import { compatibleDraftDocument, type ContractDraft } from '@/lib/contractDrafts';
 import { buildPreparedSigningCreation, type PreparedSigningCreation } from '@/lib/contractSigning';
 import { Form } from "@/components/ui/form";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -79,10 +79,10 @@ export function ContractFormDialog({
   const { data: permissions } = useMyPermissions();
   const canExport = (canExportProp ?? true) && canUse(permissions, 'contracts', 'print', state.selectedBuildingId || undefined);
   const canSign = canUse(permissions, 'contracts', 'create', state.selectedBuildingId || undefined);
-  const canSaveDraft = canUse(permissions, 'contracts', editor.current ? 'edit' : 'create', state.selectedBuildingId || undefined);
+  const canSaveDraft = !state.readonlySupportSchedule && canUse(permissions, 'contracts', editor.current ? 'edit' : 'create', state.selectedBuildingId || undefined);
   const [choiceOpen, setChoiceOpen] = useState(false);
-  const [signing, setSigning] = useState<{ draft: ContractDraft; prepared: PreparedSigningCreation }>();
-  const [printBeforeSigning, setPrintBeforeSigning] = useState<{ draft: ContractDraft; prepared: PreparedSigningCreation }>();
+  const [signing, setSigning] = useState<{ draft: ContractDraft; prepared?: PreparedSigningCreation }>();
+  const [printBeforeSigning, setPrintBeforeSigning] = useState<{ draft: ContractDraft; prepared?: PreparedSigningCreation }>();
   useEffect(() => { if (!open) { setChoiceOpen(false); setSigning(undefined); setPrintBeforeSigning(undefined); } }, [open]);
   const pending = state.isPending || editor.pending;
   const saveDraft = async () => {
@@ -100,7 +100,7 @@ export function ContractFormDialog({
     onCreateRequest: editor.current ? async request => {
       if (!canSign) return;
       const current = editor.current;
-      if (current && editor.matchesSavedDocument(request) && current.documents.some(document => document.revision === current.revision)) {
+      if (current && editor.matchesSavedDocument(request) && compatibleDraftDocument(current)) {
         setSigning({ draft: current, prepared: buildPreparedSigningCreation(request, state.typedDepositTotal + state.approvedOrphanTotal) });
         return;
       }
@@ -155,7 +155,7 @@ export function ContractFormDialog({
                 <div className="mt-2 flex flex-wrap gap-2">{state.sourceIssues.map(issue => <Button key={issue.key} type="button" variant="outline" size="sm" onClick={issue.retry}>Tải lại {issue.label}</Button>)}</div>
               </AlertDescription></Alert>}
               {state.partialSyncIssue && <Alert variant="destructive" role="alert"><AlertDescription>{state.partialSyncIssue}</AlertDescription></Alert>}
-              <fieldset disabled={pending || !!signing || !!printBeforeSigning} className="space-y-6">
+              <fieldset disabled={pending || !!signing || !!printBeforeSigning || !!state.readonlySupportSchedule} className="space-y-6">
               {/* ===== Section 1: Thông tin chung ===== */}
               <GeneralSection {...state} buildingDisabled={!!editor.current} />
 
@@ -203,7 +203,14 @@ export function ContractFormDialog({
           <div className="flex flex-wrap justify-end gap-2">
             <Button type="button" variant="outline" disabled={pending || !canSaveDraft || state.sourceIssues.length > 0} onClick={() => void saveDraft()}>Lưu nháp</Button>
             <Button type="button" disabled={pending || !canSign || state.sourceIssues.length > 0} onClick={() => {
-              setChoiceOpen(false); void form.handleSubmit(onSubmit, onInvalid)();
+              setChoiceOpen(false);
+              if (state.readonlySupportSchedule && editor.current) {
+                if (compatibleDraftDocument(editor.current)) setSigning({ draft: editor.current });
+                else if (canExport) setPrintBeforeSigning({ draft: editor.current, prepared: undefined });
+                else toast.error('Cần xuất bản nháp đúng nội dung khách trước khi ký.');
+                return;
+              }
+              void form.handleSubmit(onSubmit, onInvalid)();
             }}>Xác nhận ký</Button>
           </div>
         </div>

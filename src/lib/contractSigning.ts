@@ -64,7 +64,8 @@ export function buildSigningCreationOptions(payload: ContractDraftPayload, choic
     const validity = validateFirstBillingPeriod(form.start_billing_date, form.end_billing_date);
     if (!validity.ok) throw new Error(validity.message);
     const period = normalizeFirstBillingPeriod(form.start_billing_date, form.end_billing_date, form.start_date);
-    const builder = { rent_support: payload.rent_support, rent_price: form.rent_price, total_deposit: form.total_deposit, deposit_paid: paid,
+    const support = payload.rent_support;
+    const builder = { rent_support: support ? { version: support.version, start_billing_month: support.start_billing_month, segments: support.segments } : undefined, rent_price: form.rent_price, total_deposit: form.total_deposit, deposit_paid: paid,
       include_deposit: choice.depositMode === 'FIRST_INVOICE', start_billing_date: period.start_date ?? undefined,
       end_billing_date: period.end_date ?? undefined, discount_months: form.discount_months,
       discount_amount_per_month: form.discount_amount_per_month, services: payload.services.map(service => ({
@@ -165,7 +166,11 @@ export function signingErrorMessage(error: unknown): string {
   if (code === '40001') return 'Phiên bản nháp, tài liệu hoặc thông tin khách đã thay đổi. Tải lại, kiểm tra và xuất lại trước khi ký.';
   if (code === '42501' || code === '28000') return 'Bạn không có quyền thực hiện thao tác này.';
   if (code === '55P03') return 'Phòng đang có cọc hoặc giữ chỗ. Nhánh ký từ nháp chưa hỗ trợ chuyển nguồn giữ chỗ này.';
-  if (code === '55000') return 'Phòng hoặc mốc chỉ số chưa đủ điều kiện nhận phòng. Tải lại và kiểm tra việc bàn giao.';
+  if (code === '55000') {
+    const message = typeof error === 'object' && error !== null && 'message' in error ? String(error.message) : '';
+    if (message.includes('RENT_SUPPORT_WRITERS_DISABLED')) return 'Chức năng lưu lịch hỗ trợ tiền thuê chưa được bật. Nội dung đang nhập vẫn được giữ; chưa ghi nhận ký.';
+    return 'Phòng hoặc mốc chỉ số chưa đủ điều kiện nhận phòng. Tải lại và kiểm tra việc bàn giao.';
+  }
   if (code === '23505') return 'Bản nháp hoặc lần ký đã được dùng với nội dung khác. Tải lại để xem hợp đồng đã ghi nhận.';
   const feedback=friendlyError(error,'Chưa ghi nhận được ký hợp đồng',{operation:'ghi nhận ký hợp đồng',financial:true});
   return `${feedback.title}. ${feedback.description}`;

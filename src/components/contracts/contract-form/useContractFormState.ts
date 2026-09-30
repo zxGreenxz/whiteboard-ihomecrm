@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { contractFormSchema } from "@/lib/contractValidation";
 import { focusFirstError } from "@/lib/formErrors";
+import { supportCustomerScheduleSchema, type SupportCustomerSchedule } from '@/lib/rentSupport';
 import type { ContractFormData } from "@/lib/contractValidation";
 import { calculateContractDepositBalance } from "@/lib/contractCreateRpc";
 import { describeDepositAdjustment } from "@/lib/contractPriceAdjustment";
@@ -92,6 +93,8 @@ export function useContractFormState({
 }: UseContractFormStateParams) {
   const isEditMode = !!contract;
   const isDraftMode = !!draft && !contract;
+  const hasPersistedRentSupport = !!contract && (contract.discounts as unknown as { version?: number })?.version === 2;
+  const [readonlySupportSchedule, setReadonlySupportSchedule] = useState<SupportCustomerSchedule | undefined>();
   const hydratedDraftId = useRef<string | null>(null);
   const draftInvoiceBaseline = useRef<{ draftId: string; signature: string | null } | null>(null);
   const draftInvoiceEditRevision = useRef(0);
@@ -354,7 +357,9 @@ export function useContractFormState({
       hydratedDraftId.current = draft.id;
       draftInvoiceBaseline.current = { draftId: draft.id, signature: null };
       draftInvoiceEditRevision.current = 0;
-      const restored = restoreContractDraftEditorState(draft);
+      const redacted = draft.payload.rent_support && !('payer' in draft.payload.rent_support);
+      setReadonlySupportSchedule(redacted ? supportCustomerScheduleSchema.parse(draft.payload.rent_support) : undefined);
+      const restored = restoreContractDraftEditorState(redacted ? { ...draft, payload: { ...draft.payload, rent_support: undefined } } : draft);
       setSelectedBuildingId(draft.building_id);
       setSelectedRoomId(draft.room_id ?? '');
       setSelectedCustomers(restored.selectedCustomers);
@@ -370,6 +375,7 @@ export function useContractFormState({
     }
     hydratedDraftId.current = null;
     draftInvoiceBaseline.current = null;
+    setReadonlySupportSchedule(undefined);
     setSavedDraftDefaultServices(null);
 
     if (contract) {
@@ -577,6 +583,10 @@ export function useContractFormState({
   const totalDepositWatch = form.watch("total_deposit") ?? 0;
   const discountMonthsWatch = form.watch("discount_months") ?? 0;
   const discountAmtWatch = form.watch("discount_amount_per_month") ?? 0;
+  const rentSupportWatch = form.watch('rent_support');
+  const customerSupport = useMemo(() => readonlySupportSchedule ?? (rentSupportWatch ? {
+    version: rentSupportWatch.version, start_billing_month: rentSupportWatch.start_billing_month, segments: rentSupportWatch.segments,
+  } : undefined), [readonlySupportSchedule, rentSupportWatch]);
 
   // Cọc lệch tiền thuê → hint dưới ô cọc + dòng ghi chú "[Điều chỉnh cọc]" khi
   // lưu. Cùng một nguồn tính để 2 chỗ không bao giờ nói khác nhau.
@@ -602,7 +612,7 @@ export function useContractFormState({
   // fields in this open editor rebuild it; background receipt reads do not.
   const draftInvoiceSignature = JSON.stringify([
     rentPriceWatch, totalDepositWatch, typedDepositTotal, depositDebtMode,
-    startBilling, endBilling, discountMonthsWatch, discountAmtWatch, servicesKey,
+    startBilling, endBilling, discountMonthsWatch, discountAmtWatch, customerSupport, servicesKey,
     draftInvoiceEditRevision.current,
   ]);
   useEffect(() => {
@@ -614,7 +624,7 @@ export function useContractFormState({
       const userChangedInvoiceField = (
         ['rent_price', 'total_deposit', 'deposit_debt_mode', 'start_date',
           'start_billing_date', 'end_billing_date', 'discount_months',
-          'discount_amount_per_month'] as const
+          'discount_amount_per_month', 'rent_support'] as const
       ).some((field) => form.getFieldState(field).isDirty);
       if (!userChangedInvoiceField && draftInvoiceEditRevision.current === 0) return;
       if (baseline.signature === draftInvoiceSignature) return;
@@ -631,6 +641,7 @@ export function useContractFormState({
       end_billing_date: endBilling || undefined,
       discount_months: discountMonthsWatch,
       discount_amount_per_month: discountAmtWatch,
+      rent_support: customerSupport,
       // Contract-specific services are persisted only when the toggle is ON,
       // but the first invoice still snapshots building defaults when it is OFF.
       services: invoiceServices.map((s) => ({
@@ -676,6 +687,9 @@ export function useContractFormState({
         deposit_paid: depositPaidTotal,
         discount_months: discountMonthsWatch,
         discount_amount_per_month: discountAmtWatch,
+        rent_support: customerSupport,
+        start_billing_date: startBilling,
+        end_billing_date: endBilling,
         services: [],
       }, invoiceItems),
     [
@@ -685,6 +699,9 @@ export function useContractFormState({
       discountMonthsWatch,
       discountAmtWatch,
       invoiceItems,
+      customerSupport,
+      startBilling,
+      endBilling,
     ],
   );
   const invoiceTotal = Math.max(0, invoiceSubtotal - firstInvoiceDiscount.amount);
@@ -883,6 +900,9 @@ export function useContractFormState({
   return {
     isEditMode,
     isDraftMode,
+    hasPersistedRentSupport,
+    readonlySupportSchedule,
+    contractId: contract?.id,
     // mutations (submit orchestration dùng)
     createContract,
     updateContract,
@@ -964,10 +984,10 @@ export function useContractFormState({
     handleServicesSelected,
     handleRemoveService,
     handleServiceFieldChange,
-    getDraftPayload: (owner: DraftOwner = draft?.payload.owner ?? emptyDraftOwner()) => buildContractDraftPayload({
+    getDraftPayload: (owner: DraftOwner = draft?.payload.owner ?? emptyDraftOwner()) => ({ ...buildContractDraftPayload({
       form: form.getValues(), selectedCustomers, selectedServices, buildingServices: buildingServicesAsSelected,
       useCustomServices, depositRows, invoiceItems, rentUnlocked, depositUnlocked,
-    }, owner),
+    }, owner), ...(readonlySupportSchedule ? { rent_support: readonlySupportSchedule } : {}) }),
     onInvalid,
   };
 }

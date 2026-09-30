@@ -43,6 +43,7 @@ export function friendlyError(error: unknown, fallbackTitle = 'Chưa thực hi�
   };
   const result = (change: Partial<FriendlyError>): FriendlyError => ({ ...base, ...change });
   if(error instanceof FinancialWorkflowError)return result({description:workflowFeedbackDescription(error),outcome:error.outcome,recovery:error.outcome==='failure'?'reload':'reconcile'});
+  if (code === '55000' && raw.includes('RENT_SUPPORT_WRITERS_DISABLED')) return result({ description: 'Chức năng lưu lịch hỗ trợ tiền thuê chưa được bật. Nội dung đang nhập vẫn được giữ; chưa ghi nhận thay đổi.' });
   if (status === 401 || ['PGRST301','PGRST302','JWT_EXPIRED'].includes(code) || /jwt.*expired|not authenticated|unauthorized|refresh token.*(invalid|not found)/i.test(raw)) {
     return result({ title: 'Phiên đăng nhập đã hết hạn', description: 'Đăng nhập lại để tiếp tục.', recovery: 'sign-in' });
   }

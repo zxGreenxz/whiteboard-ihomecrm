@@ -6,7 +6,7 @@ import { useOrganization } from '@/contexts/OrganizationContext';
 import { useContract } from '@/hooks/useContracts';
 import { useDocumentTemplatesByType, type DocumentTemplate } from '@/hooks/useDocumentTemplates';
 import { useDownloadContractDraftDocument, useExportContractDraft, useSaveContractDraft } from '@/hooks/useContractDrafts';
-import { draftErrorMessage, type ContractDraft } from '@/lib/contractDrafts';
+import { compatibleDraftDocument, draftErrorMessage, type ContractDraft } from '@/lib/contractDrafts';
 import { ContractTemplatePicker, type ContractTemplateOption } from './ContractTemplatePicker';
 import { PrintContractDialog } from './PrintContractDialog';
 
@@ -54,7 +54,7 @@ export function PrintContractDraftDialog({ open, onOpenChange, draft, canEdit, o
   const intent = useRef<{ key: string; requestId: string } | null>(null);
   const activeTemplates = useMemo(() => (templatesQuery.data ?? []).filter(template =>
     template.is_active && template.organization_id === draft.organization_id), [templatesQuery.data, draft.organization_id]);
-  const currentDocument = current.documents.find(document => document.revision === current.revision);
+  const currentDocument = compatibleDraftDocument(current);
   const options = useMemo<ContractTemplateOption[]>(() => {
     const choices: ContractTemplateOption[] = [...activeTemplates];
     // An old template can no longer issue a new draft document, but its

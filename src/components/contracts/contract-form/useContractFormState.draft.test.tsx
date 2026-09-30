@@ -33,6 +33,25 @@ const makeDraft = (notes: string): ContractDraft => ({ id: '33333333-3333-4333-8
   template_id: null, revision: 1, payload: { ...payload, form: { ...payload.form, notes } },
   created_by: '55555555-5555-4555-8555-555555555555', created_at: '2026-09-29', updated_at: '2026-09-29', documents: [] });
 afterEach(cleanup);
+it('hydrates exact private v2 funding and updates support when the invoice period changes', async () => {
+  const draft = makeDraft('Hỗ trợ'); draft.payload.form = { ...draft.payload.form, start_billing_date: '2026-09-20', end_billing_date: '2026-10-05' };
+  draft.payload.rent_support = { version: 2, start_billing_month: '2026-09', payer: 'SALE', sale_party_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', deduction_policy: 'BONUS_THEN_COMMISSION', collection_mode: 'UPFRONT_COMMITTED', segments: [{ month_count: 1, monthly_amount: '300000' }, { month_count: 1, monthly_amount: '100000' }] };
+  const { result } = renderHook(() => useContractFormState({ open: true, draft }));
+  expect(result.current.form.getValues('rent_support')).toEqual(draft.payload.rent_support);
+  act(() => result.current.form.setValue('rent_price', 4000000, { shouldDirty: true }));
+  await waitFor(() => expect(result.current.firstInvoiceDiscount.amount).toBe(300000));
+  act(() => result.current.form.setValue('end_billing_date', '2026-10-31', { shouldDirty: true }));
+  await waitFor(() => expect(result.current.firstInvoiceDiscount.amount).toBe(100000));
+  expect(result.current.getDraftPayload().rent_support).toEqual(draft.payload.rent_support);
+});
+it('keeps redacted customer schedule readonly without inventing funding identity', () => {
+  const draft = makeDraft('Chỉ xem'); const schedule = { version: 2 as const, start_billing_month: '2026-09', segments: [{ month_count: 3, monthly_amount: '300000' }] };
+  draft.payload.rent_support = schedule;
+  const { result } = renderHook(() => useContractFormState({ open: true, draft }));
+  expect(result.current.readonlySupportSchedule).toEqual(schedule);
+  expect(result.current.form.getValues('rent_support')).toBeUndefined();
+  expect(result.current.getDraftPayload().rent_support).toEqual(schedule);
+});
 
 it('giữ nháp và chặn lưu khi nguồn phòng, dịch vụ tòa hoặc sổ quỹ lỗi', async () => {
   defaults.rows = []; defaults.roomError = true; defaults.serviceError = true; defaults.accountError = true;

@@ -116,6 +116,50 @@ describe("useContractSubmit", () => {
     useContractSubmit({state,contract:{id:'contract-1'} as never,onOpenChange:vi.fn()})({} as ContractFormData);
     await vi.waitFor(()=>expect(setPartialSyncIssue).toHaveBeenCalledWith(expect.stringContaining('contract-1')));expect(setError).toHaveBeenCalledWith('root.server',expect.objectContaining({type:'server'}));expect(syncCustomers.mutateAsync).not.toHaveBeenCalled();expect(syncServices.mutateAsync).not.toHaveBeenCalled();
   });
+  it('preserves a signed v2 marker during unrelated legacy contract updates', async () => {
+    const id = '11111111-1111-4111-8111-111111111111', customer = '22222222-2222-4222-8222-222222222222';
+    const actual = { contract: { id, organization_id: 'o1', discounts: { version: 2 } } as Record<string, unknown>,
+      customers: [{ customer_id: customer, is_representative: true, notes: undefined }], services: [] };
+    vi.mocked(readContractEditSnapshot).mockImplementation(async () => structuredClone(actual) as never);
+    const update = vi.fn(async ({ updates }: { updates: Record<string, unknown> }) => { Object.assign(actual.contract, updates); return actual.contract; });
+    const close = vi.fn();
+    const state = { isEditMode: true, hasPersistedRentSupport: true, form: { setError: vi.fn() }, partialSyncRef: { current: null },
+      selectedCustomers: [{ id: customer, is_representative: true }], selectedServices: [], useCustomServices: false,
+      updateContract: { mutateAsync: update }, syncCustomers: { mutateAsync: vi.fn() }, syncServices: { mutateAsync: vi.fn() } } as unknown as ContractFormState;
+    useContractSubmit({ state, contract: { id } as never, onOpenChange: close })({ room_id: '33333333-3333-4333-8333-333333333333',
+      signed_date: '2026-09-01', start_date: '2026-09-01', end_date: '2027-08-31', payment_cycle: 'MONTHLY',
+      notes: 'Ghi chú mới', rent_price: 4000000, total_deposit: 0 } as ContractFormData);
+    await vi.waitFor(() => expect(close).toHaveBeenCalledWith(false));
+    expect(update).toHaveBeenCalledOnce();
+    expect(update.mock.calls[0]![0].updates).not.toHaveProperty('discounts');
+    expect(actual.contract.discounts).toEqual({ version: 2 });
+  });
+  it('blocks submission when support exceeds eligible first-invoice revenue', () => {
+    const mutate = vi.fn();
+    const state = { isEditMode: false, selectedCustomers: [{ id: '22222222-2222-4222-8222-222222222222' }], selectedServices: [], useCustomServices: false,
+      form: { setError: vi.fn() }, typedDepositTotal: 0, approvedOrphanTotal: 0, orphanDepositVouchers: [], depositRows: [], invoiceItems: [],
+      createContract: { mutate }, firstInvoiceDiscount: { amount: 0, state: 'NEEDS_REVIEW', notes: 'Hỗ trợ vượt doanh thu' } } as unknown as ContractFormState;
+    useContractSubmit({ state, onOpenChange: vi.fn() })({ room_id: '11111111-1111-4111-8111-111111111111', signed_date: '2026-09-20', start_date: '2026-09-20', end_date: '2027-09-20', start_billing_date: '2026-09-20', end_billing_date: '2026-10-05', rent_price: 0, total_deposit: 0, payment_cycle: 'MONTHLY', rent_support: { version: 2, start_billing_month: '2026-09', payer: 'BUILDING', sale_party_id: null, deduction_policy: 'COMMISSION_ONLY', collection_mode: 'UPFRONT_COMMITTED', segments: [{ month_count: 1, monthly_amount: '300000' }] } } as ContractFormData);
+    expect(mutate).not.toHaveBeenCalled();
+  });
+  it.each([false, true])('persists v2 without legacy double reduction (draft=%s)', (draft) => {
+    const mutate = vi.fn(), prepared = vi.fn();
+    const plan = { version: 2, start_billing_month: '2026-09', payer: 'BUILDING', sale_party_id: null,
+      deduction_policy: 'COMMISSION_ONLY', collection_mode: 'UPFRONT_COMMITTED',
+      segments: [{ month_count: 3, monthly_amount: '300000' }, { month_count: 9, monthly_amount: '100000' }] };
+    const state = { isEditMode: false, form: { setError: vi.fn() }, selectedCustomers: [{ id: '22222222-2222-4222-8222-222222222222' }],
+      selectedServices: [], useCustomServices: false, createContract: { mutate }, typedDepositTotal: 0, approvedOrphanTotal: 0,
+      orphanDepositVouchers: [], invoiceItems: [{ id: 'r', type: 'RENT', accounting_class: 'REVENUE', unit_price: 4000000, quantity: 1, description: 'Thuê' }],
+      firstInvoiceDiscount: { amount: 300000, notes: 'Hỗ trợ' }, depositRows: [] } as unknown as ContractFormState;
+    useContractSubmit({ state, onOpenChange: vi.fn(), ...(draft ? { onCreateRequest: prepared } : {}) })({
+      room_id: '11111111-1111-4111-8111-111111111111', signed_date: '2026-09-20', start_date: '2026-09-20', end_date: '2027-09-20',
+      start_billing_date: '2026-09-20', end_billing_date: '2026-10-05', rent_price: 4000000, total_deposit: 0,
+      payment_cycle: 'MONTHLY', rent_support: plan, discount_months: 3, discount_amount_per_month: 300000 } as ContractFormData);
+    const request = (draft ? prepared : mutate).mock.calls[0][0];
+    expect(request.payload.contract.rent_support).toEqual(plan);
+    expect(request.payload.contract.discounts).toBeNull();
+    expect(request.payload.first_invoice).toMatchObject({ discount_amount: 0, manual_discount_amount: '0' });
+  });
   it("passes the validated official request to draft signing without creating a second contract", () => {
     const createContract = { mutate: vi.fn() };
     const prepared = vi.fn();

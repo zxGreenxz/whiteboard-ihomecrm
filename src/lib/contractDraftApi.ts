@@ -90,7 +90,7 @@ async function buildDraftDocumentData(draft: ContractDraft): Promise<ContractTem
   };
   const representative = contract.contract_customers?.find(c => c.is_representative)?.customer;
   if (!representative?.full_name?.trim() || !representative.id_number?.trim()) throw new Error('Tài liệu: Khách đại diện cần có họ tên và số CCCD/hộ chiếu.');
-  return { ...buildContractTemplateData({ contract, owner: { ...draft.payload.owner,
+  return { ...buildContractTemplateData({ contract, rentSupport: draft.payload.rent_support, owner: { ...draft.payload.owner,
     name: draft.payload.owner?.name || ownerResult.data?.full_name,
     phone: draft.payload.owner?.phone || ownerResult.data?.phone } }),
     DRAFT_TITLE: 'BẢN NHÁP', DRAFT_REVISION: draft.revision };

@@ -2,10 +2,20 @@ import { describe, expect, it } from 'vitest';
 import PizZip from 'pizzip';
 import {
   contractDraftPayloadSchema, emptyContractDraftPayload, validateDraftForExport,
-  draftDocumentPaths, markDraftDocx, draftErrorMessage, validateDraftTemplateData,
+  draftDocumentPaths, markDraftDocx, draftErrorMessage, validateDraftTemplateData, compatibleDraftDocument,
 } from '../contractDrafts';
 
 describe('persisted contract drafts', () => {
+  it('rejects document snapshots older than customer revision while reusing compatible funding revisions', () => {
+    const document = { revision: 1 } as never;
+    expect(compatibleDraftDocument({ documents: [document], revision: 3, customer_revision: 1 })).toBe(document);
+    expect(compatibleDraftDocument({ documents: [document], revision: 3, customer_revision: 2 })).toBeUndefined();
+    expect(compatibleDraftDocument({ documents: [document], revision: 3 })).toBeUndefined();
+  });
+  it('distinguishes disabled support writers from signed or deleted drafts', () => {
+    expect(draftErrorMessage({ code: '55000', message: 'RENT_SUPPORT_WRITERS_DISABLED' })).toContain('chưa được bật');
+    expect(draftErrorMessage({ code: '55000', message: 'already signed' })).toContain('đã ký hoặc đã xóa');
+  });
   it('allows incomplete drafting without collecting deposit or generating an invoice', () => {
     expect(contractDraftPayloadSchema.safeParse(emptyContractDraftPayload()).success).toBe(true);
     const unsafe = { ...emptyContractDraftPayload(), deposit_receipts: [{ amount: 100 }] };

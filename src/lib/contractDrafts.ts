@@ -70,6 +70,11 @@ export const contractDraftDocumentSchema = z.object({
   created_at: z.string(),
 });
 export type ContractDraftDocument = z.infer<typeof contractDraftDocumentSchema>;
+export function compatibleDraftDocument(draft: Pick<ContractDraft, 'documents' | 'revision' | 'customer_revision'>) {
+  if (typeof draft.revision !== 'number') return undefined;
+  const revision = draft.revision;
+  return draft.documents?.find(document => typeof document.revision === 'number' && document.revision >= (draft.customer_revision ?? revision) && document.revision <= revision);
+}
 export const contractDraftSchema = z.object({
   id: z.string().uuid(), organization_id: z.string().uuid(), building_id: z.string().uuid(),
   room_id: z.string().uuid().nullable(), payload: contractDraftPayloadSchema,
@@ -168,6 +173,7 @@ export function draftErrorMessage(error: unknown): string {
   if (code === '22023' || error instanceof z.ZodError) return 'Thông tin bản nháp chưa hợp lệ. Kiểm tra lại các trường đã nhập.';
   if (code === '55000') {
     const message = typeof error === 'object' && error !== null && 'message' in error ? String(error.message) : '';
+    if (message.includes('RENT_SUPPORT_WRITERS_DISABLED')) return 'Chức năng lưu lịch hỗ trợ tiền thuê chưa được bật. Nội dung đang nhập vẫn được giữ; chưa ghi nhận thay đổi.';
     if (message === 'Hủy liên kết nhượng trước khi xoá bản nháp') return 'Hủy liên kết nhượng trước khi xóa bản nháp này.';
     return 'Bản nháp đã ký hoặc đã xóa. Tải lại danh sách để kiểm tra trạng thái mới nhất.';
   }

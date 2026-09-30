@@ -13,7 +13,7 @@ import { useContractDraftSigning, useContractSigning, useSignedContractDocument 
 import { useRoomReservations } from '@/hooks/useRoomReservations';
 import type { RoomReservation } from '@/lib/reservationIdentityRpc';
 import { buildSigningCreationOptions, matchingSigningReservations, signingReservationReady, signingErrorMessage, validateSigningConfirmation, type ContractSigning, type PreparedSigningCreation, type SigningReservationIdentity } from '@/lib/contractSigning';
-import type { ContractDraft } from '@/lib/contractDrafts';
+import { compatibleDraftDocument, type ContractDraft } from '@/lib/contractDrafts';
 import type { MeterBoundaryInput } from '@/lib/contractMeterBoundaries';
 
 // Preserve the validated DTO's required signing fields even under the app's legacy non-strict Zod inference.
@@ -61,7 +61,7 @@ export function ConfirmContractSigningDialog({ open, onOpenChange, draft, canSig
     setCreateFirstInvoice(true); setDepositMode(undefined); setDebtReason(''); setTopupDueOn('');
     setLocalSigning(null); setSelectedReservation(null); setErrors([]);setUnconfirmed(false);intent.current = null; continuedRequest.current = null;reconcilingRequest.current=null;
   }, [open, draft.id, draft.revision, draft.payload.form.start_date]);
-  const document = draft.documents.find(item => item.revision === draft.revision);
+  const document = compatibleDraftDocument(draft);
   const signed = localSigning ?? snapshot.data?.signing;
   useEffect(() => {
     const requestId = signingMutation.pendingRequestId??intent.current?.requestId;

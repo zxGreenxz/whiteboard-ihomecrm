@@ -21,6 +21,7 @@ import { validateFirstInvoiceRows } from '@/lib/contractInvoiceFeedback';
 import { applyFeedbackToForm, focusFirstError } from '@/lib/formErrors';
 import {runContractEdit,readContractEditSnapshot} from '@/lib/contractEditWorkflow';
 import {workflowErrorMessage} from '@/lib/financialWorkflow';
+import { supportPlanInputSchema } from '@/lib/rentSupport';
 import type { ContractFormState } from "./useContractFormState";
 
 interface UseContractSubmitParams {
@@ -149,6 +150,10 @@ export function useContractSubmit({
     );
 
     if (isEditMode && contract) {
+      if (data.rent_support) {
+        toast.error('Lịch hỗ trợ đã ký cần điều chỉnh có phiên bản và lý do. Dùng luồng điều chỉnh lịch hỗ trợ để tiếp tục.');
+        return;
+      }
       // Edit mode: update contract fields
       const updates = {
         room_id: data.room_id,
@@ -167,13 +172,13 @@ export function useContractSubmit({
         contract_template_id: data.contract_template_id || null,
         invoice_template_id: data.invoice_template_id || null,
         notes: notesWithAdjustment,
-        discounts:
+        ...(state.hasPersistedRentSupport ? {} : { discounts:
           data.discount_months && data.discount_amount_per_month
             ? {
                 months: data.discount_months,
                 amount_per_month: data.discount_amount_per_month,
               }
-            : null,
+            : null }),
       };
 
       state.setEditSubmitting?.(true);
@@ -194,6 +199,10 @@ export function useContractSubmit({
       }).finally(()=>state.setEditSubmitting?.(false));
     } else {
       // Create mode
+      if (data.rent_support && 'state' in firstInvoiceDiscount && firstInvoiceDiscount.state === 'NEEDS_REVIEW') {
+        toast.error('Chưa thể tạo hóa đơn đầu', { description: firstInvoiceDiscount.notes || 'Kiểm tra kỳ hóa đơn và doanh thu đủ điều kiện của lịch hỗ trợ.' });
+        return;
+      }
 
       const billingPeriod = normalizeFirstBillingPeriod(
         data.start_billing_date,
@@ -272,7 +281,7 @@ export function useContractSubmit({
       }
 
       const discounts =
-        data.discount_months && data.discount_amount_per_month
+        !data.rent_support && data.discount_months && data.discount_amount_per_month
           ? {
               months: data.discount_months,
               amount_per_month: data.discount_amount_per_month,
@@ -352,6 +361,7 @@ export function useContractSubmit({
           invoice_template_id: data.invoice_template_id || null,
           notes: notesWithAdjustment,
           discounts: discounts ?? null,
+          ...(data.rent_support ? { rent_support: supportPlanInputSchema.parse(data.rent_support) } : {}),
           deposit_debt_mode: effectiveDebtMode,
           deposit_debt_reason:
             effectiveDebtMode === "DEBT"
@@ -386,7 +396,8 @@ export function useContractSubmit({
                   from_date: item.from_date ?? null,
                   to_date: item.to_date ?? null,
                 })),
-                discount_amount: discountAmount,
+                discount_amount: data.rent_support ? 0 : discountAmount,
+                ...(data.rent_support ? { manual_discount_amount: '0' } : {}),
                 discount_notes:
                   discountAmount > 0 ? firstInvoiceDiscount.notes : null,
                 issue_date: data.signed_date,

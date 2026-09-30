@@ -150,6 +150,25 @@ async function openChoice(page: Page, dialog: ReturnType<Page['getByRole']>) {
   return choice;
 }
 
+async function enterSupportSchedule(page: Page, dialog: ReturnType<Page['getByRole']>) {
+  await dialog.getByRole('combobox').first().click();
+  await page.getByRole('option').first().click();
+  for (const [name, value] of [['start_date', '20/09/2026'], ['end_date', '20/09/2027'], ['start_billing_date', '20/09/2026'], ['end_billing_date', '05/10/2026']]) {
+    await dialog.locator(`input[name="${name}"]`).fill(value); await dialog.locator(`input[name="${name}"]`).blur();
+  }
+  await dialog.getByLabel('Số tháng giai đoạn 1', { exact: true }).fill('3');
+  await dialog.getByLabel('Hỗ trợ mỗi tháng giai đoạn 1', { exact: true }).fill('300000');
+  await dialog.getByRole('button', { name: 'Thêm giai đoạn kế tiếp' }).click();
+  await dialog.getByLabel('Số tháng giai đoạn 2', { exact: true }).fill('9');
+  await dialog.getByLabel('Hỗ trợ mỗi tháng giai đoạn 2', { exact: true }).fill('100000');
+  await expect(dialog.getByText('09/2026 · 10/2026 · 11/2026')).toBeVisible();
+  await expect(dialog.getByText(/Tổng hỗ trợ khách: 1.800.000/)).toBeVisible();
+  await dialog.locator('input[name="end_billing_date"]').fill('31/10/2026');
+  await dialog.locator('input[name="end_billing_date"]').blur();
+  await expect(dialog.getByText(/09\/2026 chưa có kỳ hóa đơn đủ điều kiện/)).toBeVisible();
+  await expect(dialog.getByText(/Kỳ đầu dự kiến: 10\/2026/)).toBeVisible();
+}
+
 for (const role of ['chunha', 'quanly'] as const) {
   test(`TEST DEMO ${role}: official create and draft use one form without financial writers`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
@@ -163,6 +182,7 @@ for (const role of ['chunha', 'quanly'] as const) {
     const create = page.getByRole('dialog', { name: /Tạo hợp đồng mới/ });
     await expect(create).toBeVisible();
     await assertSharedSections(create);
+    await enterSupportSchedule(page, create);
     if (role === 'chunha') await create.screenshot({ path: testInfo.outputPath('owner-official-create.png'), animations: 'disabled' });
     const createChoice = await openChoice(page, create);
     await createChoice.getByRole('button', { name: 'Close' }).click();
@@ -177,14 +197,13 @@ for (const role of ['chunha', 'quanly'] as const) {
     const draft = page.getByRole('dialog', { name: /Tạo hợp đồng mới/ });
     await expect(draft).toBeVisible();
     await assertSharedSections(draft);
+    await enterSupportSchedule(page, draft);
     if (role === 'chunha') await draft.screenshot({ path: testInfo.outputPath('owner-draft-same-editor.png'), animations: 'disabled' });
     const choice = await openChoice(page, draft);
 
     if (role === 'chunha') {
       await choice.getByRole('button', { name: 'Close' }).click();
       await expect(choice).toHaveCount(0);
-      await draft.getByRole('combobox').first().click();
-      await page.getByRole('option').first().click();
       const marker = `E2E UI-only draft ${crypto.randomUUID()}`;
       await draft.getByPlaceholder('Ghi chú hợp đồng...').fill(marker);
       await draft.getByRole('button', { name: 'Sửa tiền thuê' }).click();
@@ -195,6 +214,8 @@ for (const role of ['chunha', 'quanly'] as const) {
       const savedPayload = audit.savedPayload();
       expect(savedPayload?.form).toMatchObject({ room_id: '', notes: marker, rent_price: 1234567 });
       expect(savedPayload?.customers).toEqual([]);
+      expect(savedPayload?.rent_support).toMatchObject({ version: 2, start_billing_month: '2026-09', payer: 'BUILDING',
+        segments: [{ month_count: 3, monthly_amount: '300000' }, { month_count: 9, monthly_amount: '100000' }] });
       expect(savedPayload?.editor_state).toMatchObject({ version: 1, rent_unlocked: true });
       expect(savedPayload).not.toHaveProperty('deposit_receipts');
       expect(savedPayload).not.toHaveProperty('first_invoice');
@@ -208,6 +229,7 @@ for (const role of ['chunha', 'quanly'] as const) {
       const reopened = page.getByRole('dialog', { name: /Tạo hợp đồng mới/ });
       await expect(reopened.getByPlaceholder('Ghi chú hợp đồng...')).toHaveValue(marker);
       await expect(reopened.locator('input[name="rent_price"]')).toHaveValue('1.234.567');
+      await expect(reopened.getByText(/Tổng hỗ trợ khách: 1.800.000/)).toBeVisible();
       await reopened.getByRole('button', { name: 'Hủy', exact: true }).click();
       const savedRow = row.locator('..').locator('..');
       await expect(savedRow.getByRole('button', { name: 'Xuất nháp', exact: true })).toHaveCount(0);

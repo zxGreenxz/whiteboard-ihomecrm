@@ -80,6 +80,8 @@ export const CONTRACT_TEMPLATE_CODE_SECTIONS: TemplateCodeSection[] = [
       { code: "{DEPOSIT_DATE}", label: "Ngày đặt cọc" },
       { code: "{DEPOSIT_NOTE}", label: "Ghi chú cọc" },
       { code: "{PROMOTION_MONTH}", label: "Số tháng khuyến mãi" },
+      { code: "{RENT_SUPPORT_SCHEDULE}", label: "Lịch hỗ trợ tiền thuê khách hưởng (từng tháng/năm và mức tiền)" },
+      { code: "{RENT_SUPPORT_TOTAL}", label: "Tổng hỗ trợ tiền thuê khách hưởng" },
       { code: "{PROMOTION_PRICE_PER_MONTH}", label: "Giá KM/tháng" },
     ],
   },

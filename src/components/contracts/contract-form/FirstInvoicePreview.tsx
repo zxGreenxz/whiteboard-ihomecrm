@@ -58,6 +58,7 @@ export function FirstInvoicePreview({
   };
   return (
     <div className="space-y-4" data-field-name="first_invoice" tabIndex={-1} aria-invalid={!!fieldErrors.first_invoice}>
+      {'state' in firstInvoiceDiscount && firstInvoiceDiscount.state === 'NEEDS_REVIEW' && <p role="alert" className="text-sm text-destructive">{firstInvoiceDiscount.notes || 'Nhập đủ ngày để xác định kỳ hỗ trợ. Chưa thể ghi nhận hóa đơn.'}</p>}
       <div className="flex items-center justify-between border-b pb-2">
         <h3 className="text-sm font-semibold text-foreground">
           Xem trước hoá đơn cọc + tháng đầu

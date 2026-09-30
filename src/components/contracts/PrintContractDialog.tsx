@@ -23,6 +23,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { ContractTemplatePicker } from './ContractTemplatePicker';
 import { friendlyError } from '@/lib/friendlyError';
+import { useContractRentSupport } from '@/hooks/useContractRentSupport';
 
 const VEHICLE_TYPE_LABELS: Record<string, string> = {
   MOTORBIKE: "Xe máy",
@@ -43,6 +44,8 @@ export function PrintContractDialog({
   onOpenChange,
   contract,
 }: PrintContractDialogProps) {
+  const needsSupport = (contract?.discounts as unknown as { version?: number })?.version === 2;
+  const support = useContractRentSupport({ contractIds: contract ? [contract.id] : [], enabled: open && !!contract && needsSupport });
   // For now we surface contract templates (lease_contract). Later this could
   // branch by action — termination/extension/transfer — but the dialog stays
   // simple and works off the contract type the user is most likely to print.
@@ -121,7 +124,10 @@ export function PrintContractDialog({
         }));
       }
 
-      const data = buildContractTemplateData({ contract, vehicles });
+      if (needsSupport && (support.isPending || support.isError)) throw new Error('Chưa đọc được lịch hỗ trợ. Thử lại sau khi tải dữ liệu.');
+      const row = support.data?.rows.find(row => row.contract_id === contract.id);
+      if (needsSupport && !row?.schedule) throw new Error('Chưa xác minh được lịch hỗ trợ của hợp đồng.');
+      const data = buildContractTemplateData({ contract, vehicles, rentSupport: row?.schedule ?? undefined });
       const blob = await renderContractDocx(selected.file_url, data);
       const safeName = `${selected.name}_${
         contract.contract_number ?? contract.id.slice(0, 8)

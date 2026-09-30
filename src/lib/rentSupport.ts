@@ -10,7 +10,7 @@ const ZERO: Decimal = { units: 0n, scale: 0 };
 
 function normalizeMoney(value: string): Money {
   const [integer, fraction = ''] = value.split('.');
-  const whole = integer.replace(/^0+(?=\d)/, '');
+  const whole = integer!.replace(/^0+(?=\d)/, ''); // A validated decimal always has its integer part.
   const decimals = fraction.replace(/0+$/, '');
   return decimals ? `${whole}.${decimals}` : whole;
 }
@@ -121,7 +121,7 @@ const dateSchema = z.string().regex(/^(?!0000)\d{4}-(?:0[1-9]|1[0-2])-\d{2}$/).r
   const day = Number(value.slice(8, 10));
   const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
   const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-  return day >= 1 && day <= days[month - 1];
+  return day >= 1 && day <= days[month - 1]!; // The schema constrains month to 01..12.
 }, 'Ngày hợp đồng phải là ngày hợp lệ theo YYYY-MM-DD.');
 
 const billingContextSchema = z.object({
@@ -175,6 +175,11 @@ export function buildCustomerSupportMonths(input: unknown, billingContext: Suppo
 
 export function sumSupportCommitment(input: unknown): Money {
   const plan = supportPlanInputSchema.parse(input);
+  return sumCustomerSupportCommitment({ version: plan.version, start_billing_month: plan.start_billing_month, segments: plan.segments });
+}
+
+export function sumCustomerSupportCommitment(input: unknown): Money {
+  const plan = supportCustomerScheduleSchema.parse(input);
   return serialize(plan.segments.reduce((total, segment) => {
     const amount = decimal(segment.monthly_amount);
     return add(total, { units: amount.units * BigInt(segment.month_count), scale: amount.scale });
@@ -279,7 +284,7 @@ export function allocateSupportQuote(input: unknown, fundingContext: SupportFund
       issues.push({ code: 'PAYEE_MISMATCH', message: 'Nguồn khấu trừ thuộc người hưởng khác Sale chịu hỗ trợ.' });
     }
     if (source.legacy_unreconciled) issues.push({ code: 'LEGACY_REVIEW', message: 'Nguồn legacy cần chứng từ đối chiếu gross, đã giữ và net.' });
-    if (compare(decimal(source.available_to_withhold), decimal(sources[index].remaining_payable)) < 0) {
+    if (compare(decimal(source.available_to_withhold), decimal(sources[index]!.remaining_payable)) < 0) { // sources maps this same context array one-to-one.
       issues.push({ code: 'SOURCE_UNAVAILABLE', message: 'Nguồn còn bị khóa hoặc giữ chỗ; cần xử lý trước khi lập phiếu ròng.' });
     }
   });

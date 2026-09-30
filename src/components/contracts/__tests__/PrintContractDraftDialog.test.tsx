@@ -36,6 +36,13 @@ function draft(status: 'EDITABLE' | 'SIGNED' = 'EDITABLE'): ContractDraft {
 }
 beforeEach(() => { actions.save.mockReset(); actions.export.mockReset(); actions.download.mockReset().mockResolvedValue(undefined); actions.official.mockReset(); });
 afterEach(cleanup);
+it('downloads compatible customer document after funding-only revision without exporting new bytes', async () => {
+  const current = { ...draft(), revision: 3, customer_revision: 1 };
+  render(<PrintContractDraftDialog open onOpenChange={vi.fn()} draft={current} canEdit />);
+  fireEvent.click(screen.getByRole('button', { name: 'Tải xuống .docx' }));
+  await waitFor(() => expect(actions.download).toHaveBeenCalledWith(document));
+  expect(actions.export).not.toHaveBeenCalled();
+});
 
 it('uses the official template picker and downloads an existing current revision without a save', async () => {
   const current = draft();

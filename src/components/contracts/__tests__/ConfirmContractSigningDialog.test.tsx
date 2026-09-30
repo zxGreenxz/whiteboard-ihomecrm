@@ -15,6 +15,17 @@ function ready(){fireEvent.click(screen.getByLabelText(/Khách đã ký đúng/)
 beforeEach(()=>{vi.clearAllMocks();mocks.pendingRequestId=null;mocks.query.data={server_today:'2026-09-28',signing:null};mocks.query.isError=false;mocks.reservations.data={reservations:[]};mocks.reservations.isError=false;mocks.sign.mockResolvedValue(result);});
 afterEach(cleanup);
 describe('confirm persisted document signing',()=>{
+  it('signs exact saved bytes after funding-only revision and rejects customer-changed bytes', async () => {
+    const current = { ...draft, revision: 3, customer_revision: 1 };
+    const { rerender } = render(<ConfirmContractSigningDialog open onOpenChange={vi.fn()} draft={current}/>);
+    ready(); fireEvent.click(screen.getByRole('button', { name: 'Xác nhận đã ký và nhận phòng' }));
+    await waitFor(() => expect(mocks.sign).toHaveBeenCalledOnce());
+    expect(mocks.sign.mock.calls[0][0].source).toEqual({ draftId: id, revision: 3, documentId: id, documentSha256: 'a'.repeat(64) });
+    cleanup(); mocks.sign.mockClear();
+    render(<ConfirmContractSigningDialog open onOpenChange={vi.fn()} draft={{ ...current, customer_revision: 2 }}/>);
+    ready();
+    expect(screen.getByRole('button', { name: 'Xác nhận đã ký và nhận phòng' }).hasAttribute('disabled')).toBe(true);
+  });
   it('requires all confirmations/physical readings and sends the exact artifact source once',async()=>{
     render(<ConfirmContractSigningDialog open onOpenChange={vi.fn()} draft={draft}/>);
     expect(screen.getByRole('button',{name:'Xác nhận đã ký và nhận phòng'}).hasAttribute('disabled')).toBe(true);ready();

@@ -16,6 +16,9 @@
   },
   "include": [],
   "files": [
+    "src/components/contracts/contract-form/RentSupportScheduleEditor.tsx",
+    "src/components/contracts/contract-form/ConnectedRentSupportScheduleEditor.tsx",
+    "src/hooks/useRentSupportParties.ts",
     "src/app/capabilities/__tests__/capabilityContract.test.ts",
     "src/app/capabilities/__tests__/capabilityContractDisabled.test.ts",
     "src/app/capabilities/__tests__/navRoutesExist.test.ts",

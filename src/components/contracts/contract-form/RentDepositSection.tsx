@@ -37,10 +37,17 @@ import { depositAdjustmentHint } from "@/lib/contractPriceAdjustment";
 
 import { formatVND } from "./types";
 import type { ContractFormState } from "./useContractFormState";
+import { ConnectedRentSupportScheduleEditor } from './ConnectedRentSupportScheduleEditor';
+import { useMyPermissions } from '@/hooks/useMyPermissions';
+import { canUse } from '@/lib/permissionPages';
 
 type RentDepositSectionProps = Pick<
   ContractFormState,
   | "form"
+  | "selectedBuildingId"
+  | "contractId"
+  | "hasPersistedRentSupport"
+  | "readonlySupportSchedule"
   | "isEditMode"
   | "roomDefaultRent"
   | "rentDiffersFromRoom"
@@ -65,6 +72,10 @@ type RentDepositSectionProps = Pick<
 /** ===== Section 3: Tiền thuê & Tiền cọc ===== (JSX chuyển NGUYÊN VĂN) */
 export function RentDepositSection({
   form,
+  selectedBuildingId,
+  contractId,
+  hasPersistedRentSupport,
+  readonlySupportSchedule,
   isEditMode,
   roomDefaultRent,
   rentDiffersFromRoom,
@@ -86,6 +97,8 @@ export function RentDepositSection({
   removeDepositRow,
 }: RentDepositSectionProps) {
   const rowErrors=flattenFieldErrors(form.formState.errors);
+  const { data: permissions } = useMyPermissions();
+  const canConvertSupport = canUse(permissions, 'income_expenses', 'view', selectedBuildingId) && canUse(permissions, 'income_expenses', 'create', selectedBuildingId);
   const depositHint = depositAdjustmentHint(depositAdjustment);
   return (
     <div className="space-y-4">
@@ -495,7 +508,8 @@ export function RentDepositSection({
         </Alert>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {(form.watch('discount_months') ?? 0) > 0 && !hasPersistedRentSupport && !form.watch('rent_support') ? <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <p className="text-xs md:col-span-2">Giảm tiền thuê cũ (LEGACY). Chuyển sang lịch mới cần kiểm tra tháng/kỳ trước khi lưu.</p>
         {/* Số tháng giảm */}
         <FormField
           control={form.control}
@@ -536,7 +550,11 @@ export function RentDepositSection({
             </FormItem>
           )}
         />
-      </div>
+        {!isEditMode && canConvertSupport && <Button type="button" variant="outline" onClick={() => {
+          form.setValue('rent_support', { version: 2, start_billing_month: (form.getValues('start_billing_date') || form.getValues('start_date') || '').slice(0, 7), payer: 'BUILDING', sale_party_id: null, deduction_policy: 'COMMISSION_ONLY', collection_mode: 'UPFRONT_COMMITTED', segments: [{ month_count: form.getValues('discount_months') || 1, monthly_amount: String(form.getValues('discount_amount_per_month') || 0) }] }, { shouldDirty: true });
+          form.setValue('discount_months', 0, { shouldDirty: true }); form.setValue('discount_amount_per_month', 0, { shouldDirty: true });
+        }}>Đối chiếu và chuyển sang lịch hỗ trợ</Button>}
+      </div> : <ConnectedRentSupportScheduleEditor form={form} buildingId={selectedBuildingId} contractId={contractId} readonlySchedule={readonlySupportSchedule} signed={hasPersistedRentSupport || isEditMode}/>}
     </div>
   );
 }

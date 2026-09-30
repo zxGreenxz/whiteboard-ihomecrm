@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import { friendlyError } from "../friendlyError";
+it('reports rent support disabled without implying a contract was saved', () => {
+  expect(friendlyError({ code: '55000', message: 'RENT_SUPPORT_WRITERS_DISABLED' }).description).toContain('chưa được bật');
+});
 
 describe("friendlyError — 42501", () => {
   it("giữ nguyên message nghiệp vụ của RPC thay vì nuốt thành 'Không đủ quyền'", () => {

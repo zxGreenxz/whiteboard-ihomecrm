@@ -28,7 +28,7 @@ export async function quoteInvoiceRentSupport(organizationId: string, contractId
   if (!Number.isFinite(credit) || credit < 0) throw new Error('Credit không hợp lệ.');
   const { supabase } = await import('@/integrations/supabase/client');
   const { data, error } = await supabase.rpc('quote_contract_rent_support_v1', { p_organization_id: organizationId, p_contract_id: contractId,
-    p_draft_id: rpcNullable(null), p_payload: null, p_payout_context: null,
+    p_draft_id: rpcNullable<string>(null), p_payload: null, p_payout_context: null,
     p_invoice_context: { version: 1, billing_month: billingMonth, kind: 'MONTHLY', items,
       manual_discount_amount: parsed.manual_discount_amount, credit_discount_amount: String(credit), expected_plan_revision: parsed.expected_plan_revision } });
   if (error) throw error;
