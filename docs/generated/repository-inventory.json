@@ -1,17 +1,17 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 868,
-  "soFileDocBangFs": 258,
-  "tongLoiGoi": 559,
-  "khongPhanLoaiDuoc": 262,
+  "tongSoFileTest": 869,
+  "soFileDocBangFs": 260,
+  "tongLoiGoi": 561,
+  "khongPhanLoaiDuoc": 263,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 45,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
-      "soFile": 33,
+      "soFile": 34,
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
@@ -993,6 +993,14 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": "scripts/__tests__/check-forward-migration-idempotent-pinned.test.mjs",
+      "soGoi": 1,
+      "loai": {
+        "manifest": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "scripts/__tests__/check-risk-classifier.test.mjs",
       "soGoi": 1,
       "loai": {
@@ -1870,6 +1878,12 @@
     },
     {
       "file": "src/lib/__tests__/securityRemediationMigrations20260902.test.ts",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "src/lib/__tests__/sheetjsCompatibility.test.ts",
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1

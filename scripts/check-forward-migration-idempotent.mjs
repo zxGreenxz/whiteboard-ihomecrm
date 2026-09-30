@@ -285,6 +285,22 @@ function retirementShape(group) {
   if (triggers.some((t) => !/^[a-z_]+\.[a-z_0-9]+$/.test(t.relation) || !/^[a-z_0-9]+$/.test(t.name) || !/^[a-f0-9]{32}$/.test(t.md5) || !['O', 'A', 'R', 'D'].includes(t.enabled)) || new Set(triggers.map(triggerKey)).size !== triggers.length) return 'retirement trigger witness sai hoặc trùng';
   const files = group.migrations.map((m) => m.file);
   if (new Set(files).size !== files.length || files.includes(group.compensation?.file)) return 'retirement file trùng hoặc tự retire compensation';
+  const successions = group.forwardSuccessions ?? [];
+  if (!Array.isArray(successions) || successions.length !== (group.expectedCounts?.forwardSuccessions ?? 0)) return 'retirement forward succession sai số lượng đã pin';
+  const expected = new Map(w.functions.map((f) => [f.signature, f.after]));
+  let previousFile = group.compensation?.file;
+  for (const succession of successions) {
+    if (!/^\d{14}_[^/\\]+\.sql$/.test(succession?.file) || !previousFile || succession.file.slice(0, 14) <= previousFile.slice(0, 14)
+      || files.includes(succession.file)) return 'retirement forward succession không nằm sau compensation/bước trước';
+    if (!Array.isArray(succession.functions) || succession.functions.length === 0 || succession.functions.length !== succession.expectedCounts?.functions
+      || new Set(succession.functions.map((f) => f?.signature)).size !== succession.functions.length) return 'retirement forward function witness rỗng, trùng hoặc sai số lượng đã pin';
+    for (const f of succession.functions) {
+      const before = expected.get(f?.signature);
+      if (!before || !metaOk(f.before) || !metaOk(f.after) || ['md5', 'owner', 'acl'].some((k) => f.before[k] !== before[k])) return 'retirement forward definition/owner/ACL không khớp witness bước trước';
+      expected.set(f.signature, f.after);
+    }
+    previousFile = succession.file;
+  }
   return null;
 }
 
@@ -304,7 +320,7 @@ function retirementReceipt(migration, { root, read, actualProjectRef, optional =
   return receipt;
 }
 
-function retirementCatalogMatches(group, catalog, restored) {
+function retirementCatalogMatches(group, catalog, restored, forwardDefinitions = new Map()) {
   const w = group.witness;
   if (!catalog || !Array.isArray(catalog.functions) || !Array.isArray(catalog.triggers) || catalog.rolePresent !== !restored) return false;
   const functions = new Map(catalog.functions.map((f) => [f.signature, f]));
@@ -319,27 +335,37 @@ function retirementCatalogMatches(group, catalog, restored) {
     const actual = triggers.get(triggerKey(expected));
     return actual && actual.md5 === (absent ? null : expected.md5) && actual.enabled === (absent ? null : expected.enabled);
   };
-  return w.functions.every((f) => fnMatches(f.signature, restored ? f.after : f.before))
+  return w.functions.every((f) => fnMatches(f.signature, restored ? (forwardDefinitions.get(f.signature) ?? f.after) : f.before))
     && w.removedFunctions.every((f) => fnMatches(f.signature, restored ? { md5: null, owner: null, acl: null } : f))
     && w.removedTriggers.every((t) => triggerMatches(t, restored))
     && w.retainedTriggers.every((t) => triggerMatches(t));
 }
 
-/** Không có receipt mới chỉ hợp lệ khi catalog còn ĐÚNG trạng thái trước phục hồi. */
+/** Receipt chọn đúng trạng thái catalog; forward không đổi witness lịch sử hoặc phép đo SQL. */
 export async function danhGiaRetirement({ group, actualProjectRef, query, root = repoRoot, read = readFileSync }) {
   const shapeError = retirementShape(group);
   if (shapeError) return { ok: false, vi: shapeError };
   let receipts; let compensation;
+  const forwardDefinitions = new Map();
   try {
     receipts = group.migrations.map((m) => retirementReceipt(m, { root, read, actualProjectRef }));
     compensation = retirementReceipt(group.compensation, { root, read, actualProjectRef, optional: true });
     if (group.migrations.some((m) => m.file.slice(0, 14) >= group.compensation.file.slice(0, 14))
       || (compensation && receipts.some((r) => Date.parse(r.appliedAt) >= Date.parse(compensation.appliedAt)))) return { ok: false, vi: 'retirement compensation không nằm sau migration gốc' };
+    let previousReceipt = compensation;
+    let missingReceipt = false;
+    for (const succession of group.forwardSuccessions ?? []) {
+      const receipt = retirementReceipt(succession, { root, read, actualProjectRef, optional: true });
+      if (!receipt) { missingReceipt = true; continue; }
+      if (!previousReceipt || missingReceipt || Date.parse(receipt.appliedAt) <= Date.parse(previousReceipt.appliedAt)) return { ok: false, vi: 'retirement forward receipt thiếu bước trước hoặc không nằm sau compensation/bước trước' };
+      for (const f of succession.functions) forwardDefinitions.set(f.signature, f.after);
+      previousReceipt = receipt;
+    }
   } catch (error) { return { ok: false, vi: error.message }; }
   // Transport failures propagate as KHÔNG KIỂM ĐƯỢC, never fall back to replay.
   const catalog = await query(taoTruyVanRetirement(group));
   if (compensation) {
-    return retirementCatalogMatches(group, catalog, true)
+    return retirementCatalogMatches(group, catalog, true, forwardDefinitions)
       ? { ok: true, state: 'retired', files: group.migrations.map((m) => m.file) }
       : { ok: false, vi: 'retirement receipt có nhưng catalog phục hồi không khớp; không replay lịch sử' };
   }

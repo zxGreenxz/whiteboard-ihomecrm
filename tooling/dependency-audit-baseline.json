@@ -20,11 +20,6 @@
       "vanTay": "co-the-vao-bundle|react-router|high",
       "lyDo": "Cùng advisory với @remix-run/router — cùng một bản vá major. Xem mục trên.",
       "hetHan": "2026-11-30"
-    },
-    {
-      "vanTay": "co-the-vao-bundle|xlsx|high",
-      "lyDo": "Prototype pollution + ReDoS trong SheetJS. KHÔNG có bản vá trên npm: registry đứng ở 0.18.5, SheetJS chỉ phát hành 0.20.x qua cdn.sheetjs.com. Đây là lỗ hổng DUY NHẤT vừa chắc chắn tới trình duyệt (chunk lazy dist/assets/xlsx-*.js, 420KB, nạp bằng import() động ở 5 file) vừa không vá được bằng npm. Cách chữa là đổi nguồn cài sang CDN ngoài npm — một quyết định chuỗi cung ứng, đang chờ user chốt.",
-      "hetHan": "2026-09-30"
     }
   ]
 }

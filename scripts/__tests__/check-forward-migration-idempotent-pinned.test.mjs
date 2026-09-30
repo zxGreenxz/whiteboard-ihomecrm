@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 import { danhGiaMienTruPinned, docLoiSql, kiemMienTruPinned } from "../check-forward-migration-idempotent.mjs";
 import { danhGiaRetirement, taoTruyVanRetirement, loaiRetiredKhoiSo, keHoachDoMigration } from "../check-forward-migration-idempotent.mjs";
@@ -154,6 +157,125 @@ function retirementFixture() {
 async function evaluateRetirement(f, catalog = f.restoredCatalog) {
   return danhGiaRetirement({ group: f.group, root: '/fixture', read: f.read, actualProjectRef, query: async () => catalog });
 }
+
+function successionFixture() {
+  const f = retirementFixture();
+  const successor = {
+    file: '20260929154941_commission_retry.sql', sha256: sqlDigest('reviewed forward sql'),
+    appliedEvidencePath: 'docs/generated/schema-change-evidence/forward.json',
+    expectedCounts: { functions: 1 },
+    functions: [{ signature: 'public.old_fn()',
+      before: { md5: 'b'.repeat(32), owner: 'postgres', acl: '{postgres=X/postgres}' },
+      after: { md5: 'e'.repeat(32), owner: 'postgres', acl: '{postgres=X/postgres}' } }],
+  };
+  f.group.forwardSuccessions = [successor];
+  f.group.expectedCounts.forwardSuccessions = 1;
+  f.storage.set(`supabase/migrations/${successor.file}`, 'reviewed forward sql');
+  f.storage.set(successor.appliedEvidencePath, JSON.stringify({ ...evidence,
+    file: `supabase/migrations/${successor.file}`, sha256: successor.sha256, appliedAt: '2026-09-30T02:43:44.875Z' }));
+  f.successorCatalog = structuredClone(f.restoredCatalog);
+  f.successorCatalog.functions[0].md5 = 'e'.repeat(32);
+  return f;
+}
+
+describe('retirement với definition forward đã review và apply', () => {
+  it('receipt forward hợp lệ bắt definition mới, giữ retired lịch sử và không cấp PASS', async () => {
+    const f = successionFixture();
+    expect(await evaluateRetirement(f, f.successorCatalog)).toEqual({ ok: true, state: 'retired', files: [originalFile] });
+  });
+  it('receipt forward hợp lệ không chấp nhận catalog phục hồi cũ', async () => {
+    expect(await evaluateRetirement(successionFixture())).toMatchObject({ ok: false });
+  });
+  it('chưa apply forward: chỉ catalog phục hồi cũ hợp lệ', async () => {
+    const f = successionFixture(); f.storage.delete(f.group.forwardSuccessions[0].appliedEvidencePath);
+    expect(await evaluateRetirement(f)).toMatchObject({ ok: true, state: 'retired' });
+    expect(await evaluateRetirement(f, f.successorCatalog)).toMatchObject({ ok: false });
+  });
+  it.each(['digest', 'receipt-digest', 'project', 'authorization', 'timestamp', 'before-compensation', 'missing-compensation'])('forward %s không hợp lệ phải đỏ kể cả catalog cũ', async (kind) => {
+    const f = successionFixture(); const s = f.group.forwardSuccessions[0];
+    const receipt = JSON.parse(f.storage.get(s.appliedEvidencePath));
+    if (kind === 'digest') f.storage.set(`supabase/migrations/${s.file}`, 'unreviewed sql');
+    if (kind === 'receipt-digest') receipt.sha256 = '0'.repeat(64);
+    if (kind === 'project') receipt.projectRef = 'another-project';
+    if (kind === 'authorization') receipt.authorization = { loai: 'tu-khai', chiTiet: 'manual' };
+    if (kind === 'timestamp') receipt.appliedAt = 'invalid';
+    if (kind === 'before-compensation') receipt.appliedAt = '2026-09-20T23:59:59Z';
+    if (kind === 'missing-compensation') f.storage.delete(f.group.compensation.appliedEvidencePath);
+    f.storage.set(s.appliedEvidencePath, JSON.stringify(receipt));
+    expect(await evaluateRetirement(f)).toMatchObject({ ok: false });
+    expect(await evaluateRetirement(f, f.successorCatalog)).toMatchObject({ ok: false });
+  });
+  it.each(['count', 'empty', 'duplicate-signature', 'removed-signature', 'before-hash', 'before-owner', 'before-acl', 'metadata', 'path', 'version', 'duplicate-file'])('forward shape %s không được bỏ kiểm', async (kind) => {
+    const f = successionFixture(); const s = f.group.forwardSuccessions[0];
+    if (kind === 'count') f.group.expectedCounts.forwardSuccessions = 2;
+    if (kind === 'empty') s.functions = [];
+    if (kind === 'duplicate-signature') { s.functions.push(structuredClone(s.functions[0])); s.expectedCounts.functions = 2; }
+    if (kind === 'removed-signature') s.functions[0].signature = 'public.removed_fn()';
+    if (kind === 'before-hash') s.functions[0].before.md5 = 'f'.repeat(32);
+    if (kind === 'before-owner') s.functions[0].before.owner = 'another-owner';
+    if (kind === 'before-acl') s.functions[0].before.acl = null;
+    if (kind === 'metadata') delete s.functions[0].after.acl;
+    if (kind === 'path') s.appliedEvidencePath = '../forward.json';
+    if (kind === 'version') s.file = originalFile;
+    if (kind === 'duplicate-file') { f.group.forwardSuccessions.push(structuredClone(s)); f.group.expectedCounts.forwardSuccessions = 2; }
+    expect(await evaluateRetirement(f)).toMatchObject({ ok: false });
+    expect(await evaluateRetirement(f, f.successorCatalog)).toMatchObject({ ok: false });
+  });
+  it.each(['hash', 'owner', 'acl', 'helper', 'trigger', 'retained', 'role', 'empty'])('forward vẫn bắt catalog drift %s', async (kind) => {
+    const f = successionFixture(); const c = f.successorCatalog;
+    if (kind === 'hash') c.functions[0].md5 = 'f'.repeat(32);
+    if (kind === 'owner') c.functions[0].owner = 'another-owner';
+    if (kind === 'acl') c.functions[0].acl = '{postgres=X/postgres,anon=X/postgres}';
+    if (kind === 'helper') c.functions[1] = f.activeCatalog.functions[1];
+    if (kind === 'trigger') c.triggers[0] = f.activeCatalog.triggers[0];
+    if (kind === 'retained') c.triggers[1].enabled = 'D';
+    if (kind === 'role') c.rolePresent = true;
+    if (kind === 'empty') c.functions = [];
+    expect(await evaluateRetirement(f, c)).toMatchObject({ ok: false });
+  });
+  it('chain không nhảy qua receipt trước và chỉ nhận definition của bước cuối đã apply', async () => {
+    const f = successionFixture(); const first = f.group.forwardSuccessions[0];
+    const second = { ...first, file: '20260930120000_commission_retry_next.sql', sha256: sqlDigest('next reviewed sql'),
+      appliedEvidencePath: 'docs/generated/schema-change-evidence/next.json',
+      functions: [{ signature: 'public.old_fn()', before: { ...first.functions[0].after },
+        after: { md5: 'f'.repeat(32), owner: 'postgres', acl: '{postgres=X/postgres}' } }] };
+    f.group.forwardSuccessions.push(second); f.group.expectedCounts.forwardSuccessions = 2;
+    f.storage.set(`supabase/migrations/${second.file}`, 'next reviewed sql');
+    f.storage.set(second.appliedEvidencePath, JSON.stringify({ ...evidence, file: `supabase/migrations/${second.file}`,
+      sha256: second.sha256, appliedAt: '2026-10-01T01:00:00Z' }));
+    const latest = structuredClone(f.successorCatalog); latest.functions[0].md5 = 'f'.repeat(32);
+    expect(await evaluateRetirement(f, latest)).toMatchObject({ ok: true, state: 'retired' });
+    expect(await evaluateRetirement(f, f.successorCatalog)).toMatchObject({ ok: false });
+    f.storage.delete(first.appliedEvidencePath);
+    expect(await evaluateRetirement(f)).toMatchObject({ ok: false });
+    expect(await evaluateRetirement(f, latest)).toMatchObject({ ok: false });
+  });
+  it('forward không loại candidate hoặc compensation khỏi kế hoạch đo full/explicit', () => {
+    const f = successionFixture(); const successor = f.group.forwardSuccessions[0];
+    const files = [originalFile, compensationFile, successor.file];
+    const digest = new Map([[originalFile, f.group.migrations[0].sha256], [compensationFile, f.group.compensation.sha256], [successor.file, successor.sha256]]);
+    for (const explicit of [false, true]) {
+      const plan = keHoachDoMigration({ files, digest, so: {}, mienTru: new Map(), retired: new Set([originalFile]), explicit });
+      expect(plan.dsChay).toEqual([compensationFile, successor.file]);
+      expect(plan.daChung).toEqual([]);
+    }
+  });
+  it('full CLI vẫn đỏ khi compensation immutable từ chối definition mới; không gọi database', () => {
+    const catalog = JSON.parse(readFileSync(new URL('../../docs/audits/2026-09-21-restore-settlement/production-catalog-verification.json', import.meta.url), 'utf8')).catalog;
+    catalog.functions.find(f => f.signature === 'public.create_commission_voucher(uuid,text,numeric,date,uuid,text,text,text,text,text,jsonb)').md5 = 'b65e6b702fdf0a8fc0f15a36a519f453';
+    const shim = `globalThis.fetch=async (_url,{body})=>{const {query}=JSON.parse(body);return query.startsWith('SELECT jsonb_build_object(')
+      ?new Response(JSON.stringify([{catalog:${JSON.stringify(catalog)}}]),{status:200})
+      :new Response(JSON.stringify({code:'P0001',message:query.includes('Restore: function definition drift:')?'Restore: function definition drift: public.create_commission_voucher':'offline migration rejected'}),{status:400});};`;
+    const result = spawnSync(process.execPath, ['--import', `data:text/javascript;base64,${Buffer.from(shim).toString('base64')}`,
+      fileURLToPath(new URL('../check-forward-migration-idempotent.mjs', import.meta.url))],
+    { cwd: fileURLToPath(new URL('../../', import.meta.url)), env: { ...process.env, SUPABASE_PAT: 'offline-test-no-credential' }, encoding: 'utf8', windowsHide: true });
+    const output = (result.stdout ?? '') + (result.stderr ?? '');
+    expect(result.status).toBe(1);
+    expect(output).toContain('Idempotency:');
+    expect(output).toContain('20260921085952_restore_before_contract_settlement.sql');
+    expect(output).toContain('Restore: function definition drift: public.create_commission_voucher');
+  });
+});
 
 describe('retirement theo compensation receipt và catalog sống', () => {
   it('RETIRE chỉ khi lịch sử, biên nhận mới và catalog khớp; không kết luận idempotent', async () => {
