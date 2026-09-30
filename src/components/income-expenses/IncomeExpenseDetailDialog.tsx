@@ -144,6 +144,14 @@ function IncomeExpenseDetailDialogContent({
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const [paySheetOpen, setPaySheetOpen] = useState(false);
   const [settlementOpen, setSettlementOpen] = useState(false);
+  // Tấm chi qua app / hộp bỏ cọc nằm NGOÀI fieldset khoá nút. Phiếu đọc lại (realtime,
+  // Thử lại) ⇒ đóng chúng: QR không được đứng trên số liệu có thể vừa đổi / phiếu vừa
+  // huỷ. Trước 30/09 phần nội dung unmount lúc đọc lại nên chúng tự đóng.
+  useEffect(() => {
+    if (!locked) return;
+    setPaySheetOpen(false);
+    setSettlementOpen(false);
+  }, [locked]);
   const isMobile = useIsMobile();
   const { data: isAdmin = false } = useIsAdmin();
   const { data: perms } = useMyPermissions();
@@ -248,20 +256,23 @@ function IncomeExpenseDetailDialogContent({
             <DialogTitle className="text-primary uppercase tracking-wide">
               Thông tin thu/chi
             </DialogTitle>
+            {/* Trên thanh tiêu đề để bật/tắt không đẩy nội dung; mr-8 chừa nút đóng. */}
+            {locked && (
+              <p role="status" className="!mt-0 mr-8 flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                Đang cập nhật…
+              </p>
+            )}
           </DialogHeader>
 
-          {locked && (
-            <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-              Đang cập nhật bản mới nhất — tạm khoá nút thao tác.
-            </p>
-          )}
-          {/* Chủ chốt 30/09/2026: nội dung hiện ngay (bản xem trước / làm mới ngầm) nhưng
-              MỌI nút khoá tới khi bản đọc mới về; nút đóng của hộp nằm ngoài fieldset. */}
-          <fieldset className="m-0 min-w-0 border-0 p-0" disabled={locked}>
-          {/* Section header với action buttons bên phải */}
           <QueryRegion label="nhật ký phiếu" queries={[historyQuery]}><></></QueryRegion>
           {invoiceId&&<QueryRegion label="hoá đơn liên quan" queries={[relatedInvoiceQuery]}><></></QueryRegion>}
+          {/* Chủ chốt 30/09/2026: nội dung hiện ngay (bản xem trước / làm mới ngầm) nhưng
+              MỌI nút thao tác khoá tới khi bản đọc mới về. Ngoài fieldset chỉ còn phần CHỈ
+              ĐỂ XEM: nút đóng, Thử lại của vùng đọc phụ, ô ảnh đính kèm, lịch sử. `grid
+              gap-4` giữ khoảng cách như khi các khối là con trực tiếp của DialogContent. */}
+          <fieldset className="m-0 grid min-w-0 gap-4 border-0 p-0" disabled={locked}>
+          {/* Section header với action buttons bên phải */}
           <div className="flex items-center justify-between mt-1">
             <SectionTitle>Thông tin chung</SectionTitle>
             <div className="flex items-center gap-1.5">
@@ -456,6 +467,7 @@ function IncomeExpenseDetailDialogContent({
             <CollectionMethodAction
               voucher={voucher}
               row={(label, value) => <Row label={label} value={value} />}
+              locked={locked}
             />
             <Row
               label={isExpense ? "Người nhận" : "Người nộp"}
@@ -465,6 +477,7 @@ function IncomeExpenseDetailDialogContent({
             <CommissionManagerAction
               voucher={voucher}
               row={(label, value) => <Row label={label} value={value} />}
+              locked={locked}
             />
             {isExpense && voucher.receive_bank_account && (
               <Row label="Số TK nhận" value={voucher.receive_bank_account} />
@@ -591,7 +604,9 @@ function IncomeExpenseDetailDialogContent({
             </>
           )}
 
-          {/* Đính kèm */}
+          </fieldset>
+
+          {/* Đính kèm — chỉ để xem, không khoá: mạng chậm vẫn mở được ảnh trong lúc chờ bản mới. */}
           {attachments.length > 0 && (
             <>
               <SectionTitle>Đính kèm</SectionTitle>
@@ -672,8 +687,11 @@ function IncomeExpenseDetailDialogContent({
               </div>
             </>
           )}
-          {canSettleReservation && <Button variant="outline" className="mt-4 w-full" onClick={() => setSettlementOpen(true)}>Xử lý bỏ cọc</Button>}
-          </fieldset>
+          {canSettleReservation && (
+            <fieldset className="m-0 min-w-0 border-0 p-0" disabled={locked}>
+              <Button variant="outline" className="mt-4 w-full" onClick={() => setSettlementOpen(true)}>Xử lý bỏ cọc</Button>
+            </fieldset>
+          )}
         </DialogContent>
       </Dialog>
 

@@ -27,16 +27,22 @@ vi.mock("@/hooks/useIncomeExpenses", () => ({
   useUpdateBatchAccount: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 vi.mock("@/hooks/useIsAdmin", () => ({ useIsAdmin: () => ({ data: false }), useIsSuperAdmin: () => ({ data: false }) }));
-vi.mock("@/hooks/useMyPermissions", () => ({ useMyPermissions: () => ({ data: {} }) }));
+const quyen = vi.hoisted(() => ({ data: {} as Record<string, unknown> }));
+vi.mock("@/hooks/useMyPermissions", () => ({ useMyPermissions: () => ({ data: quyen.data }) }));
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ data: { id: "u" } }) }));
 vi.mock("@/hooks/useAccounts", () => ({ useAccounts: () => ({ data: [] }) }));
-vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => false }));
+const manHinh = vi.hoisted(() => ({ dienThoai: false }));
+vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => manHinh.dienThoai }));
 vi.mock("@/hooks/useIsCompanyOwner", () => ({ useIsCompanyOwner: () => ({ data: false }) }));
 vi.mock("@/hooks/useReservationSettlement", () => ({
   useReservationSettlementForVoucher: () => ({ data: null, error: null, isSuccess: true, isLoading: false }),
 }));
 vi.mock("@/lib/financeV2Route", () => ({ useFinanceV2Routes: () => ({ getOrg: () => null }), isCanonicalRead: () => false }));
-vi.mock("@/components/income-expenses/PayViaBankAppSheet", () => ({ default: () => null, PayViaBankAppSheet: () => null }));
+vi.mock("@/components/income-expenses/PayViaBankAppSheet", () => {
+  const Tam = ({ open }: { open: boolean }) => (open ? <div>tam-chi-qua-app</div> : null);
+  return { default: Tam, PayViaBankAppSheet: Tam };
+});
+vi.mock("@/components/ui/storage-image", () => ({ StorageImage: ({ alt }: { alt: string }) => <span>{alt}</span> }));
 vi.mock("@/components/deposits/ReservationSettlementDialog", () => ({ ReservationSettlementDialog: () => null }));
 
 import IncomeExpenseDetailMobile from "../IncomeExpenseDetailMobile";
@@ -137,6 +143,77 @@ describe("chi tiết phiếu hiện ngay từ dòng danh sách", () => {
     render(wrap(<IncomeExpenseDetailDialog open voucherId="v" voucher={null} onOpenChange={() => {}} onApprove={() => {}} />));
     expect(screen.getByText("PC-TEST")).toBeTruthy();
     expect(screen.getByTitle("Duyệt phiếu").matches(":disabled")).toBe(true);
+    // Các khối vẫn cách nhau như khi là con trực tiếp của lưới DialogContent (gap-4).
+    expect(document.querySelector("fieldset")?.className).toMatch(/(^|\s)grid(\s|$)/);
+    expect(document.querySelector("fieldset")?.className).toMatch(/(^|\s)gap-4(\s|$)/);
+  });
+
+  // Phiếu chi đã duyệt, có số TK nhận và ảnh — hiện đủ nút thao tác, nút chi qua app, ô ảnh.
+  const payable = {
+    ...listRow, approval_status: "APPROVED", receive_bank_account: "0123456789", receive_bank_name: "MB",
+    attachments: ["https://kho.test/a.png"],
+  };
+  const openAll = () =>
+    wrap(<IncomeExpenseDetailMobile voucherId="v" onClose={() => {}} onApprove={vi.fn()} onEdit={vi.fn()}
+      onQuickEdit={vi.fn()} onCancel={vi.fn()} onRestore={vi.fn()} onCopy={vi.fn()} onPostApproved={vi.fn()}
+      onReversePosting={vi.fn()} />);
+
+  it("đang khoá: MỌI nút thao tác khoá; chỉ nút Đóng và ô ảnh đính kèm (chỉ để xem) còn bấm được", () => {
+    setState({ data: payable, isPlaceholderData: true, isSuccess: true, isFetching: true, isFetchedAfterMount: false });
+    render(openAll());
+    const nut = Array.from(document.querySelectorAll<HTMLButtonElement>(".sheet button"));
+    const chiDeXem = (b: HTMLButtonElement) => b.classList.contains("sheet-x") || b.classList.contains("vd-att");
+    expect(nut.filter(chiDeXem).length).toBeGreaterThanOrEqual(2); // Đóng + 1 ô ảnh
+    expect(nut.filter(chiDeXem).every((b) => !b.matches(":disabled"))).toBe(true);
+    const thaoTac = nut.filter((b) => !chiDeXem(b));
+    expect(thaoTac.some((b) => /Chi tiền qua app/.test(b.textContent ?? ""))).toBe(true);
+    expect(thaoTac.filter((b) => !b.matches(":disabled")).map((b) => b.textContent || b.title)).toEqual([]);
+  });
+
+  it("đang khoá: nút Xử lý bỏ cọc (nằm sau phần ảnh, vùng khoá riêng) cũng khoá", () => {
+    quyen.data = { __superadmin: true }; // đủ quyền bỏ cọc + duyệt
+    try {
+      const coc = {
+        ...listRow, type: "INCOME", approval_status: "APPROVED", contract_id: null,
+        items: [{ id: "i1", type_name: "Cọc giữ phòng", amount: 1000000, is_deposit: true }],
+        detail_read: { complete: true, expected_item_count: 1 },
+      };
+      setState({ data: coc, isPlaceholderData: true, isSuccess: true, isFetching: true, isFetchedAfterMount: false });
+      render(openAll());
+      expect(screen.getByRole("button", { name: "Xử lý bỏ cọc" }).matches(":disabled")).toBe(true);
+    } finally {
+      quyen.data = {};
+    }
+  });
+
+  it("đang mở tấm chi qua app mà phiếu đọc lại: tấm đóng, bản mới về cũng không tự mở lại", () => {
+    setState({ data: payable, isSuccess: true, isFetching: false, isFetchedAfterMount: true });
+    const view = render(openAll());
+    fireEvent.click(screen.getByRole("button", { name: /Chi tiền qua app/ }));
+    expect(screen.getByText("tam-chi-qua-app")).toBeTruthy();
+    // Realtime báo có đổi ⇒ đọc lại: QR không được đứng trên số liệu có thể vừa đổi.
+    setState({ data: payable, isSuccess: true, isFetching: true, isFetchedAfterMount: true });
+    view.rerender(openAll());
+    expect(screen.queryByText("tam-chi-qua-app")).toBeNull();
+    setState({ data: payable, isSuccess: true, isFetching: false, isFetchedAfterMount: true });
+    view.rerender(openAll());
+    expect(screen.queryByText("tam-chi-qua-app")).toBeNull();
+  });
+
+  it("hộp chi tiết (bố cục điện thoại): đang mở tấm chi qua app mà phiếu đọc lại thì tấm đóng", () => {
+    manHinh.dienThoai = true; // nút chi qua app của hộp này chỉ hiện ở bố cục điện thoại
+    try {
+      setState({ data: payable, isSuccess: true, isFetching: false, isFetchedAfterMount: true });
+      const dlg = () => wrap(<IncomeExpenseDetailDialog open voucherId="v" voucher={null} onOpenChange={() => {}} />);
+      const view = render(dlg());
+      fireEvent.click(screen.getByRole("button", { name: /Chi tiền qua app/ }));
+      expect(screen.getByText("tam-chi-qua-app")).toBeTruthy();
+      setState({ data: payable, isSuccess: true, isFetching: true, isFetchedAfterMount: true });
+      view.rerender(dlg());
+      expect(screen.queryByText("tam-chi-qua-app")).toBeNull();
+    } finally {
+      manHinh.dienThoai = false;
+    }
   });
 });
 

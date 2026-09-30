@@ -401,8 +401,10 @@ async function uploadPostingAttachmentFile(file: File, userId: string): Promise<
       : null;
     // Ảnh nén dưới 1 MB chờ 20 giây; PDF lớn được chờ lâu hơn — nói đúng số đã chờ.
     const daCho = quaHan?.ms ? `quá ${Math.round(quaHan.ms / 1000)} giây` : 'quá lâu';
+    // Không gọi tên nút: hàm này phục vụ cả hộp Thu/Chi ("Thêm chứng từ") lẫn màn thanh
+    // lý hợp đồng ("Tải hoặc Dán Ảnh").
     toast.error(quaHan
-      ? `Mạng chậm — ${daCho} chưa tải xong “${file.name}”. Ảnh chưa gắn vào phiếu; bấm Thêm chứng từ để tải lại.`
+      ? `Mạng chậm — ${daCho} chưa tải xong “${file.name}”. Ảnh chưa gắn vào phiếu — tải lại ảnh này.`
       : voucherFailureMessage(loiTai, `tải chứng từ “${file.name}”`));
     return null;
   }

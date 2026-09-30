@@ -6,7 +6,7 @@
 // duyệt, chưa ghi sổ, phiếu tay hoặc phiếu HH hợp đồng). Quyền thật do
 // assign_commission_manager_v1 quyết — thiếu quyền thì lỗi hiện nguyên văn.
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -39,9 +39,11 @@ interface Props {
     items?: { type_name?: string | null; category?: string | null }[];
   };
   row: (label: string, value: ReactNode) => ReactNode;
+  /** Chi tiết phiếu đang đọc lại, chưa phải bản mới ⇒ đóng hộp gán (xem effect bên dưới). */
+  locked?: boolean;
 }
 
-export function CommissionManagerAction({ voucher, row }: Props) {
+export function CommissionManagerAction({ voucher, row, locked = false }: Props) {
   const onBook = !!voucher.account_is_virtual && voucher.account_name === COMMISSION_MANAGER_BOOK_NAME;
   const isCommission =
     voucher.type === "EXPENSE" &&
@@ -55,6 +57,12 @@ export function CommissionManagerAction({ voucher, row }: Props) {
   const [open, setOpen] = useState(false);
   const [managerId, setManagerId] = useState("");
   const assign = useAssignCommissionManager();
+  // Hộp gán render qua portal nên fieldset khoá nút của tấm phiếu không chạm tới nó.
+  // Phiếu đọc lại (realtime, Thử lại) ⇒ đóng hộp, mở lại theo bản mới — trước 30/09
+  // phần nội dung unmount lúc đọc lại nên hộp tự đóng.
+  useEffect(() => {
+    if (locked) setOpen(false);
+  }, [locked]);
 
   if (!isCommission || (!assignable && !onBook)) return null;
 

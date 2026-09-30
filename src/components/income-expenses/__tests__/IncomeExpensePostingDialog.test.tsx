@@ -95,7 +95,15 @@ function goiMayChuGia(fn: string, args: Record<string, unknown>) {
 const lenhGhiAnh = () =>
   H.goiMayChu.mock.calls.filter(([fn]) => fn === 'annotate_income_expense_v1');
 
-function Khung({ giuKhiDong = false, loai = 'EXPENSE' }: { giuKhiDong?: boolean; loai?: 'INCOME' | 'EXPENSE' }) {
+function Khung({
+  giuKhiDong = false,
+  loai = 'EXPENSE',
+  che = 'POST_APPROVED',
+}: {
+  giuKhiDong?: boolean;
+  loai?: 'INCOME' | 'EXPENSE';
+  che?: 'POST_APPROVED' | 'APPROVE_AND_POST';
+}) {
   const [mo, setMo] = useState(true);
   const [client] = useState(() => new QueryClient({ defaultOptions: { queries: { retry: false } } }));
   // Như các trang: phiếu truyền vào là ẢNH CHỤP lúc bấm mở, không tự đổi theo máy chủ.
@@ -112,9 +120,9 @@ function Khung({ giuKhiDong = false, loai = 'EXPENSE' }: { giuKhiDong?: boolean;
     <IncomeExpensePostingDialog
       open={mo}
       onOpenChange={setMo}
-      mode="POST_APPROVED"
+      mode={che}
       voucher={phieu}
-      capability={{ isCustodian: true, canApprove: false }}
+      capability={{ isCustodian: true, canApprove: che === 'APPROVE_AND_POST' }}
       cashbookOptions={[{ id: SO, name: 'Tiền mặt Hiệp' }]}
       expectedExecutionRevision={0}
       expectedApprovalVersion={2}
@@ -413,6 +421,18 @@ describe('ô ảnh vừa thêm hiện ngay từ máy', () => {
     expect(thuHoi).toHaveBeenCalledWith('blob:anh-tren-may-1');
   });
 
+  it('không tạo được URL tạm: ảnh vẫn vào danh sách chờ, ô ảnh đọc từ kho, không vỡ luồng tải', async () => {
+    taoUrlTam.mockImplementation(() => { throw new Error('không tạo được URL tạm'); });
+    render(<Khung />);
+    const { url } = await themAnh();
+    expect(oAnh(url)).not.toBeNull();
+    expect(coAnh(url)).toBe(true); // StorageImage (giả) vẽ bằng URL kho
+    // Ảnh vẫn đi cùng lần xác nhận như mọi ảnh chờ ghi.
+    fireEvent.click(screen.getByRole('button', { name: 'Chi' }));
+    await waitFor(() => expect(lenhGhiAnh()).toHaveLength(1));
+    expect(lenhGhiAnh()[0][1]).toMatchObject({ p_add_attachments: [url] });
+  });
+
   it('ảnh trên máy không vẽ được thì ô ảnh quay về đọc từ kho', async () => {
     render(<Khung />);
     chonAnh();
@@ -446,7 +466,7 @@ describe('ảnh chứng từ tải quá hạn', () => {
     await waitFor(() => expect(H.toastLoi).toHaveBeenCalled());
     const loi = String(H.toastLoi.mock.calls[0][0]);
     expect(loi).toMatch(/Mạng chậm — quá 20 giây chưa tải xong “bill\.png”/);
-    expect(loi).toMatch(/bấm Thêm chứng từ để tải lại/);
+    expect(loi).toMatch(/Ảnh chưa gắn vào phiếu — tải lại ảnh này/);
     expect(loi).not.toMatch(/không tải lại/);
     await waitFor(() => expect(screen.getByRole('button', { name: 'Thêm chứng từ' })).toBeTruthy());
   });
@@ -461,7 +481,7 @@ describe('ảnh chứng từ tải quá hạn', () => {
     await waitFor(() => expect(H.toastLoi).toHaveBeenCalled());
     const loi = String(H.toastLoi.mock.calls[0][0]);
     expect(loi).toMatch(/Mạng chậm — quá 60 giây chưa tải xong “hoa-don\.pdf”/);
-    expect(loi).toMatch(/bấm Thêm chứng từ để tải lại/);
+    expect(loi).toMatch(/tải lại ảnh này/);
   });
 });
 
@@ -478,11 +498,17 @@ describe('bước ghi ảnh lên phiếu kẹt mạng', () => {
         fn === 'annotate_income_expense_v1' ? new Promise(() => {}) : goiMayChuGia(fn, args));
       fireEvent.click(screen.getByRole('button', { name: 'Chi' }));
       await waitFor(() => expect(lenhGhiAnh()).toHaveLength(1));
-      expect((screen.getByRole('button', { name: 'Huỷ bỏ' }) as HTMLButtonElement).disabled).toBe(true);
-      await vi.advanceTimersByTimeAsync(20_000);
-      await waitFor(() => expect((screen.getByRole('button', { name: 'Huỷ bỏ' }) as HTMLButtonElement).disabled).toBe(false));
+      const huy = () => screen.getByRole('button', { name: 'Huỷ bỏ' }) as HTMLButtonElement;
+      expect(huy().disabled).toBe(true);
+      // Chưa tới 20 giây: vẫn khoá (chừa 1 giây cho đồng hồ giả chạy theo giờ thật).
+      await vi.advanceTimersByTimeAsync(19_000);
+      expect(huy().disabled).toBe(true);
+      await vi.advanceTimersByTimeAsync(1_000);
+      await waitFor(() => expect(huy().disabled).toBe(false));
       expect(screen.getByRole('alert').textContent).toMatch(/quá 20 giây/);
       expect(screen.getByRole('alert').textContent).toMatch(/Chưa chi tiền/);
+      // Kết quả chưa rõ ⇒ không cho bấm Chi lần nữa trong hộp này (ảnh chụp phiếu đã cũ).
+      expect((screen.getByRole('button', { name: 'Chi' }) as HTMLButtonElement).disabled).toBe(true);
       expect(H.ghiSo).not.toHaveBeenCalled();
       fireEvent.click(screen.getByRole('button', { name: 'Huỷ bỏ' }));
       await vi.advanceTimersByTimeAsync(50);
@@ -505,6 +531,24 @@ describe('bước ghi ảnh lên phiếu kẹt mạng', () => {
       await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/quá 20 giây/));
       expect(screen.getByRole('alert').textContent).toMatch(/Chưa ghi nhận thu vào sổ quỹ/);
       expect(screen.getByRole('alert').textContent).not.toMatch(/chi tiền/);
+      expect(H.ghiSo).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('Duyệt và Chi: câu báo nói rõ phiếu CHƯA DUYỆT, chưa chi tiền', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      render(<Khung che="APPROVE_AND_POST" />);
+      await themAnh();
+      H.goiMayChu.mockImplementation((fn: string, args: Record<string, unknown>) =>
+        fn === 'annotate_income_expense_v1' ? new Promise(() => {}) : goiMayChuGia(fn, args));
+      fireEvent.click(screen.getByRole('button', { name: 'Duyệt và Chi' }));
+      await waitFor(() => expect(lenhGhiAnh()).toHaveLength(1));
+      await vi.advanceTimersByTimeAsync(20_000);
+      await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/quá 20 giây/));
+      expect(screen.getByRole('alert').textContent).toMatch(/Phiếu chưa duyệt, chưa chi tiền/);
       expect(H.ghiSo).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();

@@ -2,7 +2,7 @@
 // Nút "Đổi hình thức thu" trên chi tiết phiếu Thu chi (đợt 1 sửa phiếu, 25/09/2026):
 // chỉ khoản thu hoá đơn kiểu mới còn hiệu lực; nút chỉ cho người đã thu / chủ công ty /
 // super admin; có tiền thối thì nút khoá kèm lý do.
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const h = vi.hoisted(() => ({
@@ -26,7 +26,9 @@ vi.mock('@/hooks/useCollectionTenders', async (importOriginal) => {
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ data: { id: h.userId } }) }));
 vi.mock('@/hooks/useIsAdmin', () => ({ useIsAdmin: () => ({ data: h.isAdmin }) }));
 vi.mock('@/hooks/useIsCompanyOwner', () => ({ useIsCompanyOwner: () => ({ data: h.isOwner }) }));
-vi.mock('@/components/invoices/ChangeCollectionMethodDialog', () => ({ default: () => null }));
+vi.mock('@/components/invoices/ChangeCollectionMethodDialog', () => ({
+  default: ({ open }: { open: boolean }) => (open ? <div>hop-doi-hinh-thuc</div> : null),
+}));
 
 import { CollectionMethodAction } from '../CollectionMethodAction';
 
@@ -83,5 +85,19 @@ describe('Đổi hình thức thu trên chi tiết phiếu', () => {
     ve({ ...phieuThu, type: 'EXPENSE' });
     ve({ ...phieuThu, invoice_id: null });
     expect(h.enabledSeen.every((x) => x === false)).toBe(true);
+  });
+
+  // Hộp đổi render qua portal: fieldset khoá nút của tấm phiếu không chạm tới nó.
+  it('chi tiết phiếu đọc lại (locked) ⇒ hộp đổi đóng, bản mới về cũng không tự mở lại', () => {
+    const khung = (locked: boolean) => (
+      <CollectionMethodAction voucher={phieuThu} row={(label, value) => <div><span>{label}</span>{value}</div>} locked={locked} />
+    );
+    const view = render(khung(false));
+    fireEvent.click(screen.getByTestId('ie-change-collection-method'));
+    expect(screen.getByText('hop-doi-hinh-thuc')).toBeTruthy();
+    view.rerender(khung(true));
+    expect(screen.queryByText('hop-doi-hinh-thuc')).toBeNull();
+    view.rerender(khung(false));
+    expect(screen.queryByText('hop-doi-hinh-thuc')).toBeNull();
   });
 });

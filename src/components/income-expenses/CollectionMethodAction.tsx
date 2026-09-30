@@ -5,7 +5,7 @@
 // công ty, super admin); nút chỉ hiện cho đúng ba vai đó để khỏi mời người khác bấm
 // rồi ăn lỗi. Khoản thu kiểu cũ (trước 28/07, không có dòng thu) không hiện gì.
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import ChangeCollectionMethodDialog from "@/components/invoices/ChangeCollectionMethodDialog";
@@ -29,9 +29,11 @@ interface Props {
   };
   /** Mỗi mặt (bảng máy tính / thẻ điện thoại) tự vẽ dòng nhãn–giá trị của nó. */
   row: (label: string, value: ReactNode) => ReactNode;
+  /** Chi tiết phiếu đang đọc lại, chưa phải bản mới ⇒ đóng hộp đổi (xem effect bên dưới). */
+  locked?: boolean;
 }
 
-export function CollectionMethodAction({ voucher, row }: Props) {
+export function CollectionMethodAction({ voucher, row, locked = false }: Props) {
   const applies =
     voucher.type === "INCOME" && !!voucher.invoice_id && voucher.approval_status !== "CANCELLED";
   const { data: tender } = useTenderForVoucher(voucher.id, { enabled: applies });
@@ -39,6 +41,11 @@ export function CollectionMethodAction({ voucher, row }: Props) {
   const { data: isAdmin = false } = useIsAdmin();
   const { data: isCompanyOwner = false } = useIsCompanyOwner();
   const [open, setOpen] = useState(false);
+  // Hộp đổi render qua portal nên fieldset khoá nút của tấm phiếu không chạm tới nó.
+  // Phiếu đọc lại (realtime, Thử lại) ⇒ đóng hộp, mở lại theo bản mới.
+  useEffect(() => {
+    if (locked) setOpen(false);
+  }, [locked]);
 
   if (!applies || !tender || tender.collection?.status !== "ACTIVE") return null;
 

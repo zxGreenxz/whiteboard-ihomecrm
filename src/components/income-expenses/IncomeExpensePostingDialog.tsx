@@ -166,12 +166,17 @@ export interface IncomeExpensePostingDialogProps {
  */
 const COMMIT_ATTACHMENTS_TIMEOUT_MS = 20_000;
 
-/** @param chuaGhiSo câu nói tiền chưa đi, theo loại phiếu ("Chưa chi tiền" / "Chưa ghi nhận thu…"). */
+/**
+ * @param chuaGhiSo câu nói tiền chưa đi, theo chế độ + loại phiếu ("Chưa chi tiền",
+ *   "Phiếu chưa duyệt, chưa ghi nhận thu vào sổ quỹ"…).
+ */
 function withCommitDeadline<T>(commit: Promise<T>, chuaGhiSo: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const deadline = new Promise<never>((_, reject) => {
     timer = setTimeout(() => reject(new FinancialWorkflowError(
-      `Mạng chậm — quá 20 giây chưa xác nhận đã ghi ảnh lên phiếu. ${chuaGhiSo}. Đóng hộp, mở lại phiếu để xem ảnh rồi làm lại.`,
+      // "Các hộp": hộp Duyệt vẫn mở dưới hộp này; mở lại chính hộp này vẫn chặn gửi
+      // (reconcileRequired) vì ảnh chụp phiếu đã cũ — phải mở lại phiếu.
+      `Mạng chậm — quá ${COMMIT_ATTACHMENTS_TIMEOUT_MS / 1000} giây chưa xác nhận đã ghi ảnh lên phiếu. ${chuaGhiSo}. Đóng các hộp đang mở, mở lại phiếu để xem ảnh đã lên phiếu chưa rồi làm lại.`,
       'unknown',
       [],
     )), COMMIT_ATTACHMENTS_TIMEOUT_MS);
@@ -580,7 +585,15 @@ export default function IncomeExpensePostingDialog({
   const localPreviewsRef = useRef(new Map<string, string>());
   const addLocalPreview = useCallback((url: string, file: File) => {
     if (!file.type.startsWith('image/') || typeof URL.createObjectURL !== 'function') return;
-    localPreviewsRef.current.set(url, URL.createObjectURL(file));
+    let blobUrl: string;
+    try {
+      blobUrl = URL.createObjectURL(file);
+    } catch {
+      // Chỉ là ảnh xem trước: không tạo được URL tạm thì ô ảnh đọc từ kho như cũ — không
+      // được làm hỏng việc đưa ảnh vừa tải vào danh sách chờ.
+      return;
+    }
+    localPreviewsRef.current.set(url, blobUrl);
     setLocalPreviews(Object.fromEntries(localPreviewsRef.current));
   }, []);
   /** Không truyền `urls` ⇒ thu hồi tất cả. */
@@ -718,8 +731,8 @@ export default function IncomeExpensePostingDialog({
             }
             if (!url) continue;
             stagedFilesRef.current.set(url, file);
-            addLocalPreview(url, file);
             setStaged([...stagedRef.current, url]);
+            addLocalPreview(url, file);
             continue;
           }
           if (onUploadEvidence) {
@@ -815,9 +828,14 @@ export default function IncomeExpensePostingDialog({
     committingRef.current = true;
     setCommitting(true);
     try {
+      // Lệnh duyệt + ghi sổ chỉ chạy SAU bước này ⇒ quá hạn ở đây thì chắc chắn chưa duyệt
+      // (chế độ Duyệt và Chi/Thu) và chưa có tiền đi.
+      const tienChuaDi = isExpense ? 'chưa chi tiền' : 'chưa ghi nhận thu vào sổ quỹ';
       const res = await withCommitDeadline(
         commitDraft(voucher.subjectId, { add, remove }),
-        isExpense ? 'Chưa chi tiền' : 'Chưa ghi nhận thu vào sổ quỹ',
+        mode === 'APPROVE_AND_POST'
+          ? `Phiếu chưa duyệt, ${tienChuaDi}`
+          : tienChuaDi.charAt(0).toUpperCase() + tienChuaDi.slice(1),
       );
       if (sessionRef.current !== session) {
         // Hộp bị đóng giữa chừng: ghi được thì file đã thuộc phiếu — giữ; không

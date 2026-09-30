@@ -19,7 +19,7 @@ import {
   CopyPlus,
   Loader2,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { format } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { batBuoc } from "@/lib/queryGuard";
@@ -140,6 +140,14 @@ function IncomeExpenseDetailMobileContent({
   const attachments = getVoucherDisplayAttachments(v);
   const [paySheetOpen, setPaySheetOpen] = useState(false);
   const [settlementOpen, setSettlementOpen] = useState(false);
+  // Tấm chi qua app / hộp bỏ cọc nằm NGOÀI fieldset khoá nút. Phiếu đọc lại (realtime,
+  // Thử lại) ⇒ đóng chúng: QR không được đứng trên số liệu có thể vừa đổi / phiếu vừa
+  // huỷ. Trước 30/09 phần nội dung unmount lúc đọc lại nên chúng tự đóng.
+  useEffect(() => {
+    if (!locked) return;
+    setPaySheetOpen(false);
+    setSettlementOpen(false);
+  }, [locked]);
   // Xem ảnh đính kèm ngay trên trang (overlay), KHÔNG mở tab mới.
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const { data: isAdmin = false } = useIsAdmin();
@@ -235,23 +243,25 @@ function IncomeExpenseDetailMobileContent({
         <div className="sheet-grab" />
         <div className="vd-hd">
           <span className="vd-hd-t">THÔNG TIN THU/CHI</span>
+          {/* Nằm trên thanh tiêu đề để bật/tắt không đẩy nội dung (realtime đọc lại thường xuyên). */}
+          {locked && (
+            <span role="status" className="vd-hd-st">
+              <Loader2 size={13} className="vd-state-spin" aria-hidden="true" />
+              Đang cập nhật…
+            </span>
+          )}
           <button className="sheet-x" onClick={onClose} aria-label="Đóng">
             <X size={18} />
           </button>
         </div>
 
-        {locked && (
-          <p role="status" className="vd-state">
-            <Loader2 size={15} className="vd-state-spin" aria-hidden="true" />
-            Đang cập nhật bản mới nhất — tạm khoá nút thao tác.
-          </p>
-        )}
-        {/* Chủ chốt 30/09/2026: nội dung hiện ngay (bản xem trước / làm mới ngầm) nhưng
-            MỌI nút trong tấm phiếu khoá tới khi bản đọc mới về — fieldset disabled khoá
-            cả nút của component con (Đổi hình thức thu, gán QL…). Nút Đóng ở trên vẫn dùng được. */}
-        <fieldset className="vd-lock" disabled={locked}>
         <QueryRegion label="nhật ký phiếu" queries={[historyQuery]}><></></QueryRegion>
         {invoiceId&&<QueryRegion label="hoá đơn liên quan" queries={[relatedInvoiceQuery]}><></></QueryRegion>}
+        {/* Chủ chốt 30/09/2026: nội dung hiện ngay (bản xem trước / làm mới ngầm) nhưng
+            MỌI nút thao tác khoá tới khi bản đọc mới về — fieldset disabled khoá cả nút của
+            component con (Đổi hình thức thu, gán QL…). Ngoài fieldset chỉ còn phần CHỈ ĐỂ
+            XEM: nút Đóng, Thử lại của vùng đọc phụ, ô ảnh đính kèm, lịch sử. */}
+        <fieldset className="vd-lock" disabled={locked}>
         <div className="vd-sec">
           <span className="vd-sec-t">Thông tin chung</span>
           <div className="vd-acts">
@@ -457,6 +467,7 @@ function IncomeExpenseDetailMobileContent({
           <CollectionMethodAction
             voucher={v}
             row={(label, value) => <Row label={label} value={value} />}
+            locked={locked}
           />
           <Row
             label={isExpense ? "Người nhận" : "Người nộp"}
@@ -466,6 +477,7 @@ function IncomeExpenseDetailMobileContent({
           <CommissionManagerAction
             voucher={v}
             row={(label, value) => <Row label={label} value={value} />}
+            locked={locked}
           />
           {isExpense && v.receive_bank_account && (
             <Row label="Số TK nhận" value={v.receive_bank_account} mono />
@@ -555,6 +567,9 @@ function IncomeExpenseDetailMobileContent({
           </>
         )}
 
+        </fieldset>
+
+        {/* Chỉ để xem — không khoá: mạng chậm vẫn mở được ảnh bill trong lúc chờ bản mới. */}
         {attachments.length > 0 && (
           <>
             <div className="vd-sec">
@@ -624,8 +639,11 @@ function IncomeExpenseDetailMobileContent({
             </div>
           </>
         )}
-        {canSettleReservation && <button className="vd-pay" onClick={() => setSettlementOpen(true)}>Xử lý bỏ cọc</button>}
-        </fieldset>
+        {canSettleReservation && (
+          <fieldset className="vd-lock" disabled={locked}>
+            <button className="vd-pay" onClick={() => setSettlementOpen(true)}>Xử lý bỏ cọc</button>
+          </fieldset>
+        )}
       </div>
 
       <PayViaBankAppSheet
