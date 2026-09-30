@@ -161,3 +161,28 @@ it('checks private parent despite invoice RLS hiding the v2 invoice', async () =
     await expect(db.query("INSERT INTO public.invoice_items(invoice_id,organization_id,accounting_class,amount) VALUES($1,$2,'REVENUE',1)", [uid(21), org])).rejects.toMatchObject({ code: '42501' });
   } finally { await db.exec('RESET ROLE'); }
 });
+
+// Removing the live-claim replay check makes this resolve READY after release.
+it('rejects replay of a released claim identity and rolls the release back', async () => {
+  const id = uid(50);
+  await invoice(id, '2027-04', 'MONTHLY', 1_000_000, 100_000);
+  await db.query('UPDATE public.invoices SET rent_support_plan_revision=2 WHERE id=$1', [id]);
+  await claim(id, '2027-04', 2);
+  await db.exec('BEGIN');
+  try {
+    await db.query('SELECT app_private.invoice_rent_support_release_v1($1,$2)', [id, 'Canonical draft invoice update']);
+    await expect(claim(id, '2027-04', 2)).rejects.toMatchObject({ code: 'PT409' });
+  } finally { await db.exec('ROLLBACK'); }
+  expect((await db.query('SELECT * FROM app_private.rent_support_invoice_claims WHERE invoice_id=$1 AND released_at IS NULL', [id])).rows).toHaveLength(1);
+  expect((await db.query("SELECT * FROM app_private.rent_support_invoice_events WHERE invoice_id=$1 AND action='RELEASED'", [id])).rows).toHaveLength(0);
+});
+it('rejects an old released identity after restore creates a new live claim', async () => {
+  const id = uid(51);
+  await invoice(id, '2027-05', 'MONTHLY', 1_000_000, 100_000);
+  await db.query('UPDATE public.invoices SET rent_support_plan_revision=2 WHERE id=$1', [id]);
+  await claim(id, '2027-05', 2);
+  await db.query("UPDATE public.invoices SET status='CANCELLED' WHERE id=$1", [id]);
+  await db.query("UPDATE public.invoices SET status='DRAFT' WHERE id=$1", [id]);
+  await expect(claim(id, '2027-05', 2)).rejects.toMatchObject({ code: 'PT409' });
+  expect((await db.query('SELECT claimed_amount::text amount FROM app_private.rent_support_invoice_claims WHERE invoice_id=$1 AND released_at IS NULL', [id])).rows).toEqual([{ amount: '100000' }]);
+});

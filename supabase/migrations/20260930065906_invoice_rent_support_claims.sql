@@ -149,7 +149,18 @@ DECLARE inv public.invoices%ROWTYPE; c app_private.rent_support_invoice_claims%R
  IF (q->>'invoice_support')::numeric=0 THEN RETURN result;END IF;
  h:=md5(jsonb_build_object('org',p_org,'contract',p_contract,'invoice',p_invoice,'month',p_billing_month,'revision',p_expected_plan_revision,'invoice_revision',inv.adjustment_revision,'items',items,'discount',inv.discount_amount,'manual',inv.manual_discount_amount,'credit',inv.credit_discount_amount)::text);
  SELECT * INTO e FROM app_private.rent_support_invoice_events WHERE organization_id=p_org AND actor_id=auth.uid() AND request_id=p_request_id AND action='CLAIMED';
- IF FOUND THEN IF e.payload_hash<>h THEN RAISE EXCEPTION 'Claim request changed' USING ERRCODE='PT409';END IF;RETURN e.after_snapshot;END IF;
+ IF FOUND THEN
+   IF e.payload_hash<>h THEN RAISE EXCEPTION 'Claim request changed' USING ERRCODE='PT409';END IF;
+   -- Historical CLAIMED events are not live reservations. In particular, a draft
+   -- update releases before resolving: reusing its create key must roll back.
+   SELECT * INTO c FROM app_private.rent_support_invoice_claims
+   WHERE id=e.claim_id AND organization_id=p_org AND contract_id=p_contract
+     AND invoice_id=p_invoice AND billing_month=p_billing_month AND released_at IS NULL
+     AND invoice_revision=inv.adjustment_revision AND claimed_amount=(q->>'invoice_support')::numeric
+   FOR UPDATE;
+   IF NOT FOUND THEN RAISE EXCEPTION 'Claim request no longer has its live claim' USING ERRCODE='PT409';END IF;
+   RETURN e.after_snapshot;
+ END IF;
  SELECT * INTO c FROM app_private.rent_support_invoice_claims WHERE organization_id=p_org AND contract_id=p_contract AND billing_month=p_billing_month AND released_at IS NULL FOR UPDATE;
  IF FOUND THEN RAISE EXCEPTION 'Support month already claimed' USING ERRCODE='PT409';END IF;
  SELECT m.id INTO mid FROM app_private.contract_rent_support_months m JOIN app_private.contract_rent_support_plans p ON p.id=m.plan_id
