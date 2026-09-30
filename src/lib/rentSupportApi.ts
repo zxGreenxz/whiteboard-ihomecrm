@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { Database, Json } from '@/integrations/supabase/types';
 import { rpcNullable } from './rpcNullable';
-import { fundingSourceQuoteSchema, payoutPreviewContextSchema, supportPartyListSchema, supportPartySchema, type PayoutPreviewContext } from './rentSupportFunding';
+import { fundingSourceQuoteSchema, payoutPreviewContextSchema, payoutContextSchema, payoutOperationSchema, payoutPreparationSchema, supportPartyListSchema, supportPartySchema, type PayoutPreviewContext, type PayoutContext, type PayoutOperation, type PayoutPreparation } from './rentSupportFunding';
 import { supportPlanInputSchema, type SupportPlanInput } from './rentSupport';
 const uuid = z.string().uuid();
 const money = z.string().regex(/^\d+(?:\.\d+)?$/);
@@ -32,7 +32,7 @@ export const supportRevisionSchema = z.object({ id: uuid, revision: z.number().i
 }).strict();
 export type SupportRevision = z.infer<typeof supportRevisionSchema>;
 export interface SupportReadFilter { contractIds?: string[]; buildingIds?: string[]; offset?: number; limit?: number; enabled?: boolean }
-export interface SupportQuoteInput { contractId?: string; draftId?: string; payload: SupportPlanInput; payoutContext?: PayoutPreviewContext }
+export interface SupportQuoteInput { contractId?: string; draftId?: string; payload: SupportPlanInput; payoutContext?: PayoutPreviewContext | PayoutContext }
 export interface SupportReviseInput { contractId: string; expectedRevision: number; payload: SupportPlanInput; reason: string; requestId: string }
 export function supportPlanJson(input: SupportPlanInput): Json {
   const p = supportPlanInputSchema.parse(input);
@@ -44,7 +44,7 @@ export function buildSupportQuoteArgs(organizationId: string, input: SupportQuot
   if (input.contractId) uuid.parse(input.contractId);
   if (input.draftId) uuid.parse(input.draftId);
   return { p_organization_id: organizationId, p_contract_id: rpcNullable(input.contractId ?? null), p_draft_id: rpcNullable(input.draftId ?? null),
-    p_payload: supportPlanJson(input.payload), p_invoice_context: null, p_payout_context: input.payoutContext ? payoutPreviewContextSchema.parse(input.payoutContext) : null };
+    p_payload: supportPlanJson(input.payload), p_invoice_context: null, p_payout_context: input.payoutContext ? z.union([payoutPreviewContextSchema,payoutContextSchema]).parse(input.payoutContext) : null };
 }
 export async function quoteContractRentSupport(organizationId: string, input: SupportQuoteInput): Promise<SupportQuote> {
   const { supabase } = await import('@/integrations/supabase/client');
@@ -86,4 +86,31 @@ export async function registerRentSupportParty(organizationId:string,buildingId:
  const {supabase}=await import('@/integrations/supabase/client');
  const {data,error}=await supabase.rpc('register_rent_support_party_v1',{p_organization_id:organizationId,p_building_id:buildingId,p_profile_id:rpcNullable(input.profileId),p_display_name:label,p_reason:reason,p_request_id:input.requestId});
  if(error)throw error;return supportPartySchema.extend({party_id:uuid}).parse(data);
+}
+
+export interface SupportPayoutInput {contractId:string;planRevision:number;quoteHash:string;payload:PayoutContext;requestId:string}
+export function buildSupportPayoutArgs(organizationId:string,input:SupportPayoutInput): Database['public']['Functions']['prepare_contract_payouts_with_support_v1']['Args'] {
+ return {p_organization_id:uuid.parse(organizationId),p_contract_id:uuid.parse(input.contractId),p_plan_revision:z.number().int().positive().parse(input.planRevision),
+  p_quote_hash:z.string().min(1).parse(input.quoteHash),p_payload:payoutContextSchema.parse(input.payload),p_request_id:uuid.parse(input.requestId)};
+}
+export async function prepareContractPayoutsWithSupport(organizationId:string,input:SupportPayoutInput):Promise<PayoutPreparation> {
+ const args=buildSupportPayoutArgs(organizationId,input),{supabase}=await import('@/integrations/supabase/client');
+ const {data,error}=await supabase.rpc('prepare_contract_payouts_with_support_v1',args);if(error)throw error;return payoutPreparationSchema.parse(data);
+}
+export async function createContractPayoutsWithSupport(organizationId:string,input:SupportPayoutInput):Promise<PayoutOperation> {
+ const args=buildSupportPayoutArgs(organizationId,input),{supabase}=await import('@/integrations/supabase/client');
+ const {data,error}=await supabase.rpc('create_contract_payouts_with_support_v1',args);if(error)throw error;return payoutOperationSchema.parse(data);
+}
+/** Retry uses the persisted operation identity even when the current operator changes. */
+export async function executeContractPayoutOperation(organizationId:string,operationId:string):Promise<PayoutOperation> {
+ const args={p_organization_id:uuid.parse(organizationId),p_operation_id:uuid.parse(operationId)},{supabase}=await import('@/integrations/supabase/client');
+ const {data,error}=await supabase.rpc('execute_contract_payout_operation_v1',args);if(error)throw error;return payoutOperationSchema.parse(data);
+}
+export async function readContractPayoutOperation(organizationId:string,operationId:string):Promise<PayoutOperation> {
+ const args={p_organization_id:uuid.parse(organizationId),p_operation_id:uuid.parse(operationId)},{supabase}=await import('@/integrations/supabase/client');
+ const {data,error}=await supabase.rpc('read_contract_payout_operation_v1',args);if(error)throw error;return payoutOperationSchema.parse(data);
+}
+export async function readContractPayoutRequest(organizationId:string,requestId:string):Promise<PayoutOperation> {
+ const args={p_organization_id:uuid.parse(organizationId),p_request_id:uuid.parse(requestId)},{supabase}=await import('@/integrations/supabase/client');
+ const {data,error}=await supabase.rpc('read_contract_payout_request_v1',args);if(error)throw error;return payoutOperationSchema.parse(data);
 }

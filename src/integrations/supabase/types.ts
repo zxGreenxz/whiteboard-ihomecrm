@@ -22184,6 +22184,17 @@ export type Database = {
         }
         Returns: Json
       }
+      create_contract_payouts_with_support_v1: {
+        Args: {
+          p_contract_id: string
+          p_organization_id: string
+          p_payload: Json
+          p_plan_revision: number
+          p_quote_hash: string
+          p_request_id: string
+        }
+        Returns: Json
+      }
       create_contract_transfer_commission_v1: {
         Args: {
           p_account_id?: string
@@ -22640,6 +22651,10 @@ export type Database = {
           p_organization_id: string
           p_request_id: string
         }
+        Returns: Json
+      }
+      execute_contract_payout_operation_v1: {
+        Args: { p_operation_id: string; p_organization_id: string }
         Returns: Json
       }
       explain_authorization_v1: {
@@ -24690,6 +24705,17 @@ export type Database = {
         Args: { p_intents: Json; p_organization_id: string }
         Returns: Json
       }
+      prepare_contract_payouts_with_support_v1: {
+        Args: {
+          p_contract_id: string
+          p_organization_id: string
+          p_payload: Json
+          p_plan_revision: number
+          p_quote_hash: string
+          p_request_id: string
+        }
+        Returns: Json
+      }
       preview_maintenance_rule_v1: {
         Args: {
           p_amount: number
@@ -24849,6 +24875,14 @@ export type Database = {
           p_meter_id: string
           p_organization_id: string
         }
+        Returns: Json
+      }
+      read_contract_payout_operation_v1: {
+        Args: { p_operation_id: string; p_organization_id: string }
+        Returns: Json
+      }
+      read_contract_payout_request_v1: {
+        Args: { p_organization_id: string; p_request_id: string }
         Returns: Json
       }
       read_contract_rent_support_v1: {
