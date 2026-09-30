@@ -157,6 +157,47 @@ it('accepts explicit attestation backed by exact signed document identity and en
  expect((await db.query('SELECT count(*)::int n FROM app_private.rent_support_withholding_events WHERE source_id=$1',[f.entry.source_id])).rows[0]).toEqual({n:0});
  expect((await db.query<{r:{due_upfront:string}}> ('SELECT quote_contract_rent_support_v1($1,$2,NULL,$3,NULL,NULL) r',[org,f.contract,JSON.stringify(f.plan)])).rows[0].r.due_upfront).toBe('0');
 });
+async function reusedDocumentFixture() {
+ const f=await legacyFixture(),signing=crypto.randomUUID(),document=crypto.randomUUID(),draft=crypto.randomUUID(),sha='c'.repeat(64);
+ // Canonical signer may reuse customer DOCX revision 2 after private finance save 3.
+ await db.query('INSERT INTO contract_draft_documents VALUES($1,$2,$3,2,$4,auth.uid())',[document,org,draft,sha]);
+ await db.query('INSERT INTO contract_draft_signings VALUES($1,$2,$3,$4,$5,$6,3,auth.uid())',[signing,org,f.contract,document,sha,draft]);
+ f.entry.documents=[{signing_id:signing,document_id:document,sha256:sha}];f.entry.confirmed=true;
+ return {...f,signing,document,draft,sha};
+}
+it('reused signed DOCX lineage stays selectable when document revision is older than signing',async()=>{
+ const f=await reusedDocumentFixture();
+ const r=(await db.query<{r:{documents:unknown[]}}>('SELECT read_rent_support_reconciliation_context_v1($1,$2,$3) r',[org,f.contract,f.entry.voucher_id])).rows[0].r;
+ expect(r.documents).toEqual(f.entry.documents);
+});
+it('reused signed DOCX lineage reconciles exact immutable evidence and rejects wrong document or digest',async()=>{
+ const f=await reusedDocumentFixture();
+ const read=()=>db.query<{r:{state:string,batch_hash:string,rows:Array<{issue:string}>}}>('SELECT dry_run_rent_support_reconciliation_v1($1,$2) r',[org,JSON.stringify([f.entry])]);
+ const q=(await read()).rows[0].r;expect(q.state).toBe('READY');
+ const wrongDocument=crypto.randomUUID();
+ await db.query('INSERT INTO contract_draft_documents VALUES($1,$2,$3,2,$4,auth.uid())',[wrongDocument,org,f.draft,f.sha]);
+ f.entry.documents[0]!.document_id=wrongDocument;
+ expect((await read()).rows[0].r.rows[0].issue).toBe('EVIDENCE_REVIEW');
+ f.entry.documents[0]!.document_id=f.document;f.entry.documents[0]!.sha256='d'.repeat(64);
+ expect((await read()).rows[0].r.rows[0].issue).toBe('EVIDENCE_REVIEW');
+ f.entry.documents[0]!.sha256=f.sha;
+ const args=[org,q.batch_hash,JSON.stringify([f.entry]),'Attest canonical reused customer document',crypto.randomUUID()];
+ const apply=()=>db.query<{r:{state:string}}>('SELECT apply_rent_support_reconciliation_v1($1,$2,$3,$4,$5) r',args);
+ const result=(await apply()).rows[0].r;expect(result.state).toBe('COMPLETED');expect((await apply()).rows[0].r).toEqual(result);
+ expect((await db.query('SELECT gross::text,withheld::text,net::text,provenance FROM app_private.rent_support_reconciliations WHERE source_id=$1',[f.entry.source_id])).rows[0]).toEqual({gross:'3000000',withheld:'1800000',net:'1200000',provenance:'MANUALLY_ATTESTED'});
+ expect((await db.query('SELECT count(*)::int n FROM income_expenses WHERE contract_id=$1',[f.contract])).rows[0]).toEqual({n:1});
+});
+it.each(['future revision','wrong organization','wrong draft'] as const)('reused signed DOCX lineage excludes %s from context and attestation',async(mismatch)=>{
+ const f=await reusedDocumentFixture();
+ if(mismatch==='future revision')await db.query('UPDATE contract_draft_documents SET revision=4 WHERE id=$1',[f.document]);
+ if(mismatch==='wrong organization')await db.query('UPDATE contract_draft_documents SET organization_id=$2 WHERE id=$1',[f.document,crypto.randomUUID()]);
+ if(mismatch==='wrong draft')await db.query('UPDATE contract_draft_documents SET draft_id=$2 WHERE id=$1',[f.document,crypto.randomUUID()]);
+ const context=(await db.query<{r:{documents:unknown[]}}>('SELECT read_rent_support_reconciliation_context_v1($1,$2,$3) r',[org,f.contract,f.entry.voucher_id])).rows[0].r;
+ expect(context.documents).toEqual([]);
+ const q=(await db.query<{r:{rows:Array<{issue:string}>}}>('SELECT dry_run_rent_support_reconciliation_v1($1,$2) r',[org,JSON.stringify([f.entry])])).rows[0].r;
+ expect(q.rows[0].issue).toBe('EVIDENCE_REVIEW');
+ expect((await db.query('SELECT count(*)::int n FROM app_private.rent_support_reconciliations WHERE contract_id=$1',[f.contract])).rows[0]).toEqual({n:0});
+});
 it('provides canonical candidate IDs without guessing a source or party in the client',async()=>{
  const f=await legacyFixture();
  const r=(await db.query<{r:Record<string,unknown>}>('SELECT read_rent_support_reconciliation_context_v1($1,$2,$3) r',[org,f.contract,f.entry.voucher_id])).rows[0].r;

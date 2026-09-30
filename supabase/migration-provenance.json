@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-09-30T14:22:37.639Z",
+  "generatedAt": "2026-09-30T15:11:35.737Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
@@ -10984,7 +10984,7 @@
       "version": "20260930113158",
       "name": "rent_support_lifecycle_reconciliation",
       "scheme": "timestamp14",
-      "sha256": "5c67ceb0c2227ab5371f9c64315c8c8cb3aa9c0b4e5f2859bd454a2340433c55",
+      "sha256": "ff629bf64ba3dd3dde8a3bf48c19278cc431be960f9e2e3a0217991b691890ae",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [

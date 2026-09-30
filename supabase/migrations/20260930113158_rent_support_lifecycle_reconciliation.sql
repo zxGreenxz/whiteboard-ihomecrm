@@ -302,10 +302,11 @@ DECLARE v public.income_expenses;p app_private.contract_rent_support_plans;d jso
  IF jsonb_typeof(d) IS DISTINCT FROM 'object' OR NOT(d ?& ARRAY['signing_id','document_id','sha256'])
  OR EXISTS(SELECT 1 FROM jsonb_object_keys(d) x WHERE x<>ALL(ARRAY['signing_id','document_id','sha256']))
  OR d->>'sha256' !~ '^[0-9a-f]{64}$' THEN RAISE EXCEPTION 'Exact evidence document required' USING ERRCODE='22023';END IF;
+ -- Canonical signing can reuse an older customer DOCX after a private finance save.
  -- Stored signed lineage verifies subject/digest. Amounts remain the authorized
  -- actor's explicit attestation; no text, filename or document-data extraction.
  IF NOT EXISTS(SELECT 1 FROM public.contract_draft_signings s JOIN public.contract_draft_documents doc
- ON doc.id=s.document_id AND doc.organization_id=s.organization_id AND doc.draft_id=s.draft_id AND doc.revision=s.revision
+ ON doc.id=s.document_id AND doc.organization_id=s.organization_id AND doc.draft_id=s.draft_id AND doc.revision<=s.revision
  WHERE s.organization_id=p_org AND s.contract_id=v.contract_id AND s.id=(d->>'signing_id')::uuid
  AND s.document_id=(d->>'document_id')::uuid AND s.document_sha256=d->>'sha256' AND doc.document_sha256=d->>'sha256'
  AND s.signed_by IS NOT NULL AND doc.created_by IS NOT NULL) THEN issue:='EVIDENCE_REVIEW';END IF;
@@ -428,7 +429,7 @@ DECLARE v public.income_expenses;p app_private.contract_rent_support_plans;k tex
  IF NOT app_private.rent_support_party_in_building_v1(p_organization_id,b,p.sale_party_id) THEN RAISE EXCEPTION 'Party subject denied' USING ERRCODE='42501';END IF;
  k:=CASE WHEN v.commission_kind='broker' THEN 'COMMISSION' ELSE 'BONUS' END;
  SELECT COALESCE(jsonb_agg(jsonb_build_object('signing_id',s.id,'document_id',s.document_id,'sha256',s.document_sha256) ORDER BY s.id),'[]') INTO docs
- FROM public.contract_draft_signings s JOIN public.contract_draft_documents d ON d.id=s.document_id AND d.organization_id=s.organization_id AND d.draft_id=s.draft_id AND d.revision=s.revision
+ FROM public.contract_draft_signings s JOIN public.contract_draft_documents d ON d.id=s.document_id AND d.organization_id=s.organization_id AND d.draft_id=s.draft_id AND d.revision<=s.revision
  WHERE s.organization_id=p_organization_id AND s.contract_id=p_contract_id AND s.document_sha256=d.document_sha256 AND s.document_sha256 ~ '^[0-9a-f]{64}$';
  RETURN jsonb_build_object('source_id',app_private.rent_support_source_id_v1(p_organization_id,p_contract_id,k),'contract_id',p_contract_id,'voucher_id',v.id,'party_id',p.sale_party_id,'kind',k,
  'engine_net',trim_scale(v.total_amount)::text,'expected_approval_version',v.approval_version,'expected_posting_version',v.posting_version,'documents',docs);
