@@ -166,11 +166,12 @@ export interface IncomeExpensePostingDialogProps {
  */
 const COMMIT_ATTACHMENTS_TIMEOUT_MS = 20_000;
 
-function withCommitDeadline<T>(commit: Promise<T>): Promise<T> {
+/** @param chuaGhiSo câu nói tiền chưa đi, theo loại phiếu ("Chưa chi tiền" / "Chưa ghi nhận thu…"). */
+function withCommitDeadline<T>(commit: Promise<T>, chuaGhiSo: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const deadline = new Promise<never>((_, reject) => {
     timer = setTimeout(() => reject(new FinancialWorkflowError(
-      'Mạng chậm — quá 20 giây chưa xác nhận đã ghi ảnh lên phiếu. Chưa chi tiền. Đóng hộp, mở lại phiếu để xem ảnh rồi làm lại.',
+      `Mạng chậm — quá 20 giây chưa xác nhận đã ghi ảnh lên phiếu. ${chuaGhiSo}. Đóng hộp, mở lại phiếu để xem ảnh rồi làm lại.`,
       'unknown',
       [],
     )), COMMIT_ATTACHMENTS_TIMEOUT_MS);
@@ -814,7 +815,10 @@ export default function IncomeExpensePostingDialog({
     committingRef.current = true;
     setCommitting(true);
     try {
-      const res = await withCommitDeadline(commitDraft(voucher.subjectId, { add, remove }));
+      const res = await withCommitDeadline(
+        commitDraft(voucher.subjectId, { add, remove }),
+        isExpense ? 'Chưa chi tiền' : 'Chưa ghi nhận thu vào sổ quỹ',
+      );
       if (sessionRef.current !== session) {
         // Hộp bị đóng giữa chừng: ghi được thì file đã thuộc phiếu — giữ; không
         // ghi được thì chúng là rác.

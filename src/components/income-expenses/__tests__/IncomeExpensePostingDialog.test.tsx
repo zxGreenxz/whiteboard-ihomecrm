@@ -95,14 +95,14 @@ function goiMayChuGia(fn: string, args: Record<string, unknown>) {
 const lenhGhiAnh = () =>
   H.goiMayChu.mock.calls.filter(([fn]) => fn === 'annotate_income_expense_v1');
 
-function Khung({ giuKhiDong = false }: { giuKhiDong?: boolean }) {
+function Khung({ giuKhiDong = false, loai = 'EXPENSE' }: { giuKhiDong?: boolean; loai?: 'INCOME' | 'EXPENSE' }) {
   const [mo, setMo] = useState(true);
   const [client] = useState(() => new QueryClient({ defaultOptions: { queries: { retry: false } } }));
   // Như các trang: phiếu truyền vào là ẢNH CHỤP lúc bấm mở, không tự đổi theo máy chủ.
   const [phieu] = useState(() => ({
     subjectKind: 'VOUCHER' as const,
     subjectId: PHIEU,
-    type: 'EXPENSE' as const,
+    type: loai,
     approvedTotal: 1_500_000,
     name: 'Sửa máy bơm',
     defaultCashbookId: SO,
@@ -487,6 +487,25 @@ describe('bước ghi ảnh lên phiếu kẹt mạng', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Huỷ bỏ' }));
       await vi.advanceTimersByTimeAsync(50);
       expect(H.xoaFile).not.toHaveBeenCalledWith(BUCKET, path);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('phiếu thu: câu báo nói chưa ghi nhận thu, không nói "chi tiền"', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      render(<Khung loai="INCOME" />);
+      await themAnh();
+      H.goiMayChu.mockImplementation((fn: string, args: Record<string, unknown>) =>
+        fn === 'annotate_income_expense_v1' ? new Promise(() => {}) : goiMayChuGia(fn, args));
+      fireEvent.click(screen.getByRole('button', { name: 'Thu' }));
+      await waitFor(() => expect(lenhGhiAnh()).toHaveLength(1));
+      await vi.advanceTimersByTimeAsync(20_000);
+      await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/quá 20 giây/));
+      expect(screen.getByRole('alert').textContent).toMatch(/Chưa ghi nhận thu vào sổ quỹ/);
+      expect(screen.getByRole('alert').textContent).not.toMatch(/chi tiền/);
+      expect(H.ghiSo).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }
