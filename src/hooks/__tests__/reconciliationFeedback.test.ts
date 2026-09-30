@@ -3,7 +3,7 @@ vi.mock('@/contexts/OrganizationContext',()=>({useOrganization:()=>({selectedOrg
 vi.mock('@/lib/authSession',()=>({getSessionUser:async()=>({id:'user1'})}));
 import {beforeEach,describe,expect,it,vi} from 'vitest';
 const io=vi.hoisted(()=>({rpc:vi.fn()}));
-vi.mock('@/integrations/supabase/client',()=>({supabase:{rpc:(name:string,args:unknown)=>io.rpc(name,args)}}));
+vi.mock('@/integrations/supabase/client',()=>({supabase:{rpc:io.rpc}}));
 vi.mock('@tanstack/react-query',()=>({useMutation:(options:unknown)=>options,useQueryClient:()=>({invalidateQueries:vi.fn()})}));
 import {useProposeReconciliation} from '../useReconciliations';
 const useReconciliationCall=(input:unknown={accountId:'a1',asOf:'2026-09-01',countedBalance:0})=>(useProposeReconciliation() as unknown as {mutationFn:(input:unknown)=>Promise<unknown>}).mutationFn(input);

@@ -4,7 +4,7 @@ import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 const io=vi.hoisted(()=>({rpc:vi.fn()}));
-vi.mock('@/integrations/supabase/client',()=>({supabase:{rpc:(name:string,args:unknown)=>io.rpc(name,args)}}));
+vi.mock('@/integrations/supabase/client',()=>({supabase:{rpc:io.rpc}}));
 vi.mock('@/contexts/OrganizationContext',()=>({useOrganization:()=>({selectedOrganizationId:'o1'})}));
 vi.mock('@/lib/authSession',()=>({getSessionUser:async()=>({id:'u1'})}));
 vi.mock('@/hooks/useAuth',()=>({useAuth:()=>({data:{id:'u1'}})}));
