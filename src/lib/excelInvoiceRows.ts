@@ -14,9 +14,14 @@ import {
 import { PREVIOUS_DEBT_ROUND_THRESHOLD } from "@/lib/invoiceHelpers";
 import { getInvoiceTitle } from "@/lib/invoiceUtils";
 import type { InvoiceFormData, PreviousDebtSource } from "@/types/invoice";
+import { previewInvoiceRentSupport, invoiceRentSupportContextSchema } from './invoiceRentSupport';
+import type { SupportCustomerSchedule } from './rentSupport';
 
 // ── Kiểu dữ liệu ─────────────────────────────────────────────────────────────
 export interface ExcelRowData {
+  invoice_support_amount?: number;
+  support_plan_revision?: number;
+  support_billing_month?: string;
   contract_id: string;
   room_id: string;
   room_name: string;
@@ -56,11 +61,13 @@ export interface ExcelRowData {
 export type BuildingPriceDefaults = BuildingDefaults;
 
 export interface RawContract {
+  organization_id?: string;
+  rent_support?: { schedule: SupportCustomerSchedule; revision: number };
   id: string;
   rent_price: number | null;
   room_id: string;
   status?: string;
-  discounts?: { months?: number; amount_per_month?: number } | null;
+  discounts?: { months?: number; amount_per_month?: number; version?: number } | null;
   start_date?: string | null;
   created_at?: string | null;
   room?: { id: string; name: string; building_id: string } | null;
@@ -243,6 +250,7 @@ export function buildInvoiceCountByContract(
 
 // ── 7. Ghép contract → RowData (kèm khuyến mãi slot, credit, nợ cũ, pricing) ─
 export function buildExcelRows(args: {
+  billingMonth?: string;
   contracts: RawContract[];
   meterByRoom: Map<string, string>;
   lastReading: Map<string, number>;
@@ -264,17 +272,23 @@ export function buildExcelRows(args: {
       const debtEntry = previousDebtByContract.get(c.id);
       const previousDebt = debtEntry?.total ?? 0;
       const previousDebtSources = debtEntry?.sources ?? [];
+      const servicesRaw = (c.contract_services ?? []) as ContractServiceInput[];
+      const pricing = resolveInvoicePricing(servicesRaw, defaults);
+      const previewRevenue = Number(c.rent_price) + (pricing.waterApplicable ? occupants * pricing.water : 0) + (pricing.pdvApplicable ? pricing.pdv : 0);
 
       // Khuyến mãi HĐ (tháng X/Y): slot = số HĐ đã có + 1.
       const promoMonths = Number(c.discounts?.months) || 0;
       const promoPer = Number(c.discounts?.amount_per_month) || 0;
       const used = invoiceCountByContract.get(c.id) || 0;
       const slotIndex = used + 1;
-      const promoApplicable = promoMonths > 0 && promoPer > 0 && slotIndex <= promoMonths;
-      const promoAmount = promoApplicable ? promoPer : 0;
-      const promoNote = promoApplicable
+      const promoApplicable = !c.rent_support && promoMonths > 0 && promoPer > 0 && slotIndex <= promoMonths;
+      if (c.discounts?.version === 2 && !c.rent_support) throw new Error('Chưa tải được lịch hỗ trợ của hợp đồng.');
+      const support = c.rent_support ? previewInvoiceRentSupport(c.rent_support.schedule, args.billingMonth ?? '', Math.max(0, previewRevenue - credit)) : undefined;
+      if (support?.state === 'NEEDS_REVIEW') throw new Error(support.notes || 'Chọn tháng hóa đơn để tính hỗ trợ.');
+      const promoAmount = support?.amount ?? (promoApplicable ? promoPer : 0);
+      const promoNote = support?.notes ?? (promoApplicable
         ? `Khuyến mãi HĐ — tháng ${slotIndex}/${promoMonths} × ${promoPer.toLocaleString("vi-VN")}đ`
-        : "";
+        : "");
 
       const totalDiscount = credit + promoAmount;
       const noteParts = [
@@ -283,10 +297,8 @@ export function buildExcelRows(args: {
       ].filter(Boolean);
       const combinedNotes = noteParts.join(" — ");
 
-      const servicesRaw = (c.contract_services ?? []) as ContractServiceInput[];
-      const pricing = resolveInvoicePricing(servicesRaw, defaults);
-
       return {
+        ...(c.rent_support ? { invoice_support_amount: promoAmount, support_plan_revision: c.rent_support.revision, support_billing_month: args.billingMonth } : {}),
         contract_id: c.id,
         room_id: c.room_id,
         room_name: c.room?.name ?? "?",
@@ -453,7 +465,13 @@ export function buildInvoiceFormData(
     Math.max(0, row.applied_credit || 0),
     Math.max(0, row.discount || 0),
   );
+  if (row.support_plan_revision && row.support_billing_month !== ctx.billingMonth) throw new Error('Tháng hóa đơn đã đổi; tải lại lịch hỗ trợ.');
+  const supportContext = row.support_plan_revision ? invoiceRentSupportContextSchema.parse({
+    version: 1, expected_plan_revision: row.support_plan_revision,
+    manual_discount_amount: String(row.discount - (row.invoice_support_amount ?? 0) - appliedCredit), request_id: globalThis.crypto.randomUUID(),
+  }) : undefined;
   return {
+    ...(supportContext ? { rent_support_context: supportContext } : {}),
     building_id: ctx.buildingId,
     room_id: row.room_id,
     contract_id: row.contract_id,

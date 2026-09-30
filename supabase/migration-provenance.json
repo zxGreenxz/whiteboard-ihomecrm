@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-09-30T06:39:20.018Z",
+  "generatedAt": "2026-09-30T08:20:02.416Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 637,
-    "unknown": 83,
+    "unknown": 84,
     "catalog-proven": 205,
     "superseded": 15
   },
@@ -10913,6 +10913,22 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-09-30T02:43:44.875Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260930065906_invoice_rent_support_claims.sql",
+      "version": "20260930065906",
+      "name": "invoice_rent_support_claims",
+      "scheme": "timestamp14",
+      "sha256": "b4e9b54e1433785078c342fe3e5b8ebb1d3e1dbec92ee102b9ba265bd1c95e92",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "table:app_private.invoice_rent_support_item_capabilities",
+        "table:app_private.rent_support_invoice_claims",
+        "table:app_private.rent_support_invoice_update_requests",
+        "table:app_private.rent_support_invoice_events",
+        "function:app_private.invoice_rent_support_items_open_v1"
       ]
     },
     {

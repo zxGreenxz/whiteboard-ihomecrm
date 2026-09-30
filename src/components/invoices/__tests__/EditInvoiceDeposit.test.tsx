@@ -6,6 +6,7 @@ import EditInvoiceDialog from '../EditInvoiceDialog';
 import type { InvoiceWithRelations } from '@/types/invoice';
 
 const boundary = vi.hoisted(() => ({ debt:{total:0,sources:[]},payload: null as null | { formData: { notes: string; items: Array<{ description: string; type: string; unit_price: number; accounting_class?: string }> } } }));
+const support = vi.hoisted(() => ({ enabled: false, pending: false, queries: [] as unknown[][] }));
 // Exercise real Radix selection; jsdom has no geometry for Floating UI popper positioning.
 vi.mock('@/components/ui/select', async (importOriginal) => {
  const actual = await importOriginal<typeof import('@/components/ui/select')>();
@@ -18,9 +19,17 @@ vi.mock('@/hooks/useInvoices', () => ({
   useExcessAmount: () => ({ data: 0 }),
 }));
 vi.mock('@/hooks/useBuildingServices', () => ({ useBuildingServices: () => ({ data: [] }) }));
-vi.mock('@tanstack/react-query', () => ({ useQuery: ({queryKey}: {queryKey:string[]}) => ({data: queryKey[0]==='compute-previous-debt'?boundary.debt:null,isError:false,isLoading:false,refetch:vi.fn()}) }));
+vi.mock('@tanstack/react-query', () => ({ useQuery: ({ queryKey }: { queryKey: unknown[] }) => {
+  const state = { isError: false, isLoading: false, isPending: false, refetch: vi.fn() };
+  if (queryKey[0] === 'compute-previous-debt') return { ...state, data: boundary.debt };
+  if (queryKey[0] !== 'contract-discount-slot' || !support.enabled) return { ...state, data: null };
+  support.queries.push(queryKey);
+  const amount = queryKey[2] === '2026-12' ? 100000 : 300000;
+  return { ...state, isLoading: support.pending, isPending: support.pending, data: support.pending ? undefined : { supportRevision: 2, billingMonth: queryKey[2], amountPerMonth: amount, applicable: true, label: 'Hỗ trợ' } };
+} }));
 vi.mock('@/hooks/useContracts', () => ({ useContracts: () => ({ data: [{
   id: 'demo-contract', status: 'ACTIVE', contract_number: 'DEMO-CONTRACT', rent_price: 1000000,
+  discounts: support.enabled ? { version: 2 } : null,
   room_id: null, room: { id: 'demo-room', name: 'DEMO', building_id: 'demo-building' },
 }] }) }));
 vi.mock('@/hooks/useBuildings', () => ({ useBuildings: () => ({ data: [] }) }));
@@ -34,6 +43,7 @@ vi.mock('@/integrations/supabase/client', () => ({ supabase: new Proxy({}, { get
 afterEach(cleanup);
 beforeEach(() => {
   boundary.payload = null;
+  support.enabled = false; support.pending = false; support.queries = [];
   vi.stubGlobal('PointerEvent', MouseEvent);
   HTMLElement.prototype.scrollIntoView = vi.fn();
   HTMLElement.prototype.hasPointerCapture = vi.fn(() => false);
@@ -159,4 +169,25 @@ it('creates a new deposit using the actual create form toggle', async () => {
   expect(boundary.payload!.formData.items.find(item => item.description === 'Tiền cọc')).toMatchObject({
     type: 'OTHER', accounting_class: 'DEPOSIT', unit_price: 2200000,
   });
+});
+
+it('refreshes v2 support when the actual create form billing month changes', async () => {
+  support.enabled = true;
+  const view = render(<GenerateInvoiceDialog open onOpenChange={() => {}} />);
+  fireEvent.keyDown(screen.getAllByRole('combobox')[2]!, { key: 'ArrowDown' });
+  fireEvent.keyDown(screen.getByRole('option', { name: 'DEMO-CONTRACT - DEMO' }), { key: 'Enter' });
+  fireEvent.change(view.container.ownerDocument.querySelector('input[type="month"]')!, { target: { value: '2026-12' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Tạo hoá đơn' }));
+  await waitFor(() => expect(boundary.payload).not.toBeNull());
+  expect(support.queries).toContainEqual(['contract-discount-slot', 'demo-contract', '2026-12']);
+  expect(boundary.payload!.formData).toMatchObject({ billing_month: '2026-12', discount_amount: 100000, rent_support_context: { expected_plan_revision: 2, manual_discount_amount: '0' } });
+});
+it('does not submit a v2 invoice while the selected month support is still loading', async () => {
+  support.enabled = true; support.pending = true;
+  render(<GenerateInvoiceDialog open onOpenChange={() => {}} />);
+  fireEvent.keyDown(screen.getAllByRole('combobox')[2]!, { key: 'ArrowDown' });
+  fireEvent.keyDown(screen.getByRole('option', { name: 'DEMO-CONTRACT - DEMO' }), { key: 'Enter' });
+  fireEvent.click(screen.getByRole('button', { name: 'Tạo hoá đơn' }));
+  await new Promise(resolve => setTimeout(resolve, 20));
+  expect(boundary.payload).toBeNull();
 });

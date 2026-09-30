@@ -1,6 +1,6 @@
 import {QueryRegion} from '@/components/errors/QueryRegion';
 import {invoiceFailureMessage} from '@/lib/invoiceFeedback';
-import { useEffect, useMemo, useState, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { format, addMonths, endOfMonth, startOfMonth, parse } from 'date-fns';
 import { Table as TableIcon, Download, Loader2, Pencil, RotateCcw } from 'lucide-react';
 import { DiscountNoteTrigger } from './DiscountNoteTrigger';
@@ -75,6 +75,8 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
   const [submitError,setSubmitError]=useState<string|null>(null);
   const lockedContractsRef=useRef(new Set<string>());
   const [prorateRowIdx, setProrateRowIdx] = useState<number | null>(null);
+  const loadRevision = useRef(0);
+  const invalidateRows = () => { loadRevision.current++; setRows([]); setLoaded(false); };
 
   const servicesQuery = useBuildingServices(buildingId);
   const { data: bldSvc } = servicesQuery;
@@ -89,9 +91,11 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
   // Fetch nằm ở hook (fetchExcelInvoiceSource), transform ở lib (buildExcelRows).
   const handleLoad = async () => {
     if (!buildingId||sourcesBlocked) return;
+    const revision = ++loadRevision.current;
     setLoaded(false);
     try {
       const src = await fetchExcelInvoiceSource(buildingId);
+      if (revision !== loadRevision.current) return;
       if (src.dupRoomNames.length > 0) {
         toast({
           variant: 'destructive',
@@ -99,9 +103,10 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
           description: `Phòng ${src.dupRoomNames.join(', ')} đang có 2 hợp đồng hiệu lực — đã chọn HĐ mới nhất để lập hoá đơn. Vui lòng thanh lý hợp đồng cũ.`,
         });
       }
-      setRows(buildExcelRows({ ...src, defaults }));
+      setRows(buildExcelRows({ ...src, defaults, billingMonth }));
       setLoaded(true);
     } catch (err) {
+      if (revision !== loadRevision.current) return;
       console.error(err);
       toast({
         variant: 'destructive',
@@ -184,6 +189,7 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
     setRows((prev) => prev.map((r) => ({ ...r, selected: !lockedContractsRef.current.has(`${billingMonth}:${r.contract_id}`) && !allSelected })));
 
   const handleClose = () => {
+    loadRevision.current++;
     setRows([]);
     setLoaded(false);
     onOpenChange(false);
@@ -245,7 +251,7 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
         <div className="grid grid-cols-5 gap-3 py-2">
           <div className="space-y-1 col-span-2">
             <Label>Toà nhà *</Label>
-            <Select value={buildingId} onValueChange={setBuildingId}>
+            <Select value={buildingId} onValueChange={(value) => { setBuildingId(value); invalidateRows(); }}>
               <SelectTrigger>
                 <SelectValue placeholder="Chọn toà..." />
               </SelectTrigger>
@@ -263,7 +269,7 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
             <Input
               type="month"
               value={billingMonth}
-              onChange={(e) => setBillingMonth(e.target.value)}
+              onChange={(e) => { setBillingMonth(e.target.value); invalidateRows(); }}
             />
           </div>
           <div className="space-y-1">

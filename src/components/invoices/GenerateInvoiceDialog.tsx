@@ -25,6 +25,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { getSessionUser } from "@/lib/authSession";
 import { useToast } from '@/hooks/use-toast';
 import { computePreviousDebt, getContractDiscountSlot } from '@/lib/invoiceHelpers';
+import { invoiceRentSupportContextSchema } from '@/lib/invoiceRentSupport';
 import { format, addMonths } from 'date-fns';
 import { resolveInvoicePricing, type ContractServiceInput } from '@/lib/contractServicePricing';
 import { todayISO } from '@/lib/collect';
@@ -57,6 +58,7 @@ type CreateInvoiceValues = InvoiceEntryValues & { contract_id: string };
 /** Hình dạng HĐ trả về từ useContracts (CONTRACT_DIALOG_SELECT) — chỉ các cột dialog dùng. */
 interface ContractOption {
   id: string;
+  discounts?: { version?: number } | null;
   status: string;
   contract_number?: string | null;
   rent_price?: number | string | null;
@@ -352,9 +354,9 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
   const {data:creditBalance=0}=creditQuery;
   const discountQuery = useQuery({
     meta:{errorDisplay:"inline",label:"khuyến mãi của hợp đồng"},
-    queryKey: ['contract-discount-slot', watchedContractId],
+    queryKey: ['contract-discount-slot', watchedContractId, watchedBillingMonth],
     enabled: !!watchedContractId,
-    queryFn: () => getContractDiscountSlot(watchedContractId),
+    queryFn: () => getContractDiscountSlot(watchedContractId, { billingMonth: watchedBillingMonth }),
     staleTime: 5_000,
   });
 
@@ -364,7 +366,7 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
 
   useEffect(() => {
     if (!watchedContractId) return;
-    if (watchedDiscount > 0) return; // user đã chỉnh hoặc đã auto-fill rồi
+    if (watchedDiscount > 0 && !discountSlot?.supportRevision) return;
     const promoAmount = discountSlot?.applicable ? discountSlot.amountPerMonth : 0;
     const promoNote = discountSlot?.applicable ? discountSlot.label : '';
     const creditAmount = creditBalance > 0 ? creditBalance : 0;
@@ -372,12 +374,12 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
       creditAmount > 0 ? `Nợ ${creditAmount.toLocaleString('vi-VN')} Tiền Thối` : '';
 
     const total = promoAmount + creditAmount;
-    if (total <= 0) return;
+    if (total <= 0 && !discountSlot?.supportRevision) return;
 
     const notes = [promoNote, creditNote].filter(Boolean).join(' — ');
     seed({ discount_amount: total, discount_notes: notes, applied_credit: creditAmount });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [watchedContractId, creditBalance, discountSlot?.applicable]);
+  }, [watchedContractId, watchedBillingMonth, creditBalance, discountSlot?.applicable, discountSlot?.amountPerMonth, discountSlot?.supportRevision]);
 
   const ctl = useInvoiceEntry(form, { baseline, pricing, active: !!selectedContract });
 
@@ -401,6 +403,20 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
     const buildingId = roomData?.building_id || '';
     const roomId = roomData?.id || '';
     if (!buildingId || !roomId) return;
+    const marker = selectedContract.discounts;
+    const isSupport = marker && typeof marker === 'object' && !Array.isArray(marker) && marker.version === 2;
+    if (isSupport && (!discountSlot?.supportRevision || discountSlot.billingMonth !== data.billing_month)) {
+      toast({ variant: 'destructive', title: 'Chưa tải được lịch hỗ trợ', description: 'Đợi lịch hỗ trợ của tháng đã chọn trước khi tạo hóa đơn.' });
+      return;
+    }
+    const discountAmount = data.discount_amount || 0;
+    const appliedCredit = Math.min(Math.max(0, data.applied_credit || 0), Math.max(0, discountAmount));
+    const parsedSupport = discountSlot?.supportRevision ? invoiceRentSupportContextSchema.safeParse({ version: 1,
+      expected_plan_revision: discountSlot.supportRevision, manual_discount_amount: String(discountAmount - discountSlot.amountPerMonth - appliedCredit), request_id: globalThis.crypto.randomUUID() }) : undefined;
+    if (parsedSupport && !parsedSupport.success) {
+      toast({ variant: 'destructive', title: 'Giảm trừ không hợp lệ', description: 'Giảm trừ phải đủ phần hỗ trợ và credit đã chọn.' });
+      return;
+    }
 
     // 1) Ghi chỉ số mới (nếu user nhập) — APPROVED ngay.
     //    Skip nếu đã có chỉ số APPROVED cho meter này trong cùng kỳ
@@ -467,13 +483,8 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
       rentDescription: `Tiền thuê căn hộ ${roomData?.name || ''}`.trim(),
     });
 
-    const discountAmount = data.discount_amount || 0;
-    const appliedCredit = Math.min(
-      Math.max(0, data.applied_credit || 0),
-      Math.max(0, discountAmount),
-    );
-
     const invoiceFormData: InvoiceFormData = {
+      ...(parsedSupport?.success ? { rent_support_context: parsedSupport.data } : {}),
       building_id: buildingId,
       room_id: roomId,
       contract_id: data.contract_id,

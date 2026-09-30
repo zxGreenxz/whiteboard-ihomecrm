@@ -208,6 +208,7 @@ export interface InvoiceTotals {
 
 /** Form data shape for react-hook-form (create/edit invoice) */
 export interface InvoiceFormData {
+  rent_support_context?: import('@/lib/invoiceRentSupport').InvoiceRentSupportContext;
   building_id: string;
   room_id: string;
   contract_id: string;

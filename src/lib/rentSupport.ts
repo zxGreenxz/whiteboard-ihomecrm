@@ -145,6 +145,12 @@ const billingContextSchema = z.object({
 
 export function buildSupportMonths(input: unknown, billingContext: SupportBillingContext = {}): SupportMonth[] {
   const plan = supportPlanInputSchema.parse(input);
+  return buildCustomerSupportMonths({ version: plan.version, start_billing_month: plan.start_billing_month, segments: plan.segments }, billingContext);
+}
+
+/** Customer-only preview; shares month arithmetic without inventing funding identity. */
+export function buildCustomerSupportMonths(input: unknown, billingContext: SupportBillingContext = {}): SupportMonth[] {
+  const plan = supportCustomerScheduleSchema.parse(input);
   const context = billingContextSchema.parse(billingContext);
   const periods = new Map(context.invoice_periods?.map((period) => [period.billing_month, period]));
   const latestPeriod = context.invoice_periods?.reduce((latest, period) => period.billing_month > latest ? period.billing_month : latest, '');

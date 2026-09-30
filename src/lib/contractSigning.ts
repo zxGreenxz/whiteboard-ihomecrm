@@ -64,7 +64,7 @@ export function buildSigningCreationOptions(payload: ContractDraftPayload, choic
     const validity = validateFirstBillingPeriod(form.start_billing_date, form.end_billing_date);
     if (!validity.ok) throw new Error(validity.message);
     const period = normalizeFirstBillingPeriod(form.start_billing_date, form.end_billing_date, form.start_date);
-    const builder = { rent_price: form.rent_price, total_deposit: form.total_deposit, deposit_paid: paid,
+    const builder = { rent_support: payload.rent_support, rent_price: form.rent_price, total_deposit: form.total_deposit, deposit_paid: paid,
       include_deposit: choice.depositMode === 'FIRST_INVOICE', start_billing_date: period.start_date ?? undefined,
       end_billing_date: period.end_date ?? undefined, discount_months: form.discount_months,
       discount_amount_per_month: form.discount_amount_per_month, services: payload.services.map(service => ({
@@ -73,8 +73,9 @@ export function buildSigningCreationOptions(payload: ContractDraftPayload, choic
       })) };
     const items = buildFirstInvoiceItems(builder);
     const discount = buildFirstInvoiceDiscount(builder, items);
+    if ('state' in discount && discount.state === 'NEEDS_REVIEW') throw new Error(discount.notes || 'Lịch hỗ trợ cần đối chiếu.');
     if (items.length) options.first_invoice = { items: items.map(({ id: _id, ...item }) => item),
-      discount_amount: discount.amount, discount_notes: discount.notes, issue_date: form.signed_date,
+      discount_amount: discount.amount, ...(payload.rent_support ? { manual_discount_amount: '0' } : {}), discount_notes: discount.notes, issue_date: form.signed_date,
       due_date: period.end_date ?? form.start_date };
   }
   return options;

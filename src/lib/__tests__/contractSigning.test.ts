@@ -87,3 +87,8 @@ describe('sign exact persisted draft, without automatic money',()=>{
     expect(signingErrorMessage({code:'55000'})).toMatch(/nhận phòng/);
   });
 });
+
+it('signing first invoice carries full customer support and explicit zero manual discount', () => {
+  const scheduled = { ...payload, rent_support: { version: 2 as const, start_billing_month: '2026-09', segments: [{ month_count: 3, monthly_amount: '300000' }] } };
+  expect(buildSigningCreationOptions(scheduled, { createFirstInvoice: true }).first_invoice).toMatchObject({ discount_amount: 300000, manual_discount_amount: '0' });
+});

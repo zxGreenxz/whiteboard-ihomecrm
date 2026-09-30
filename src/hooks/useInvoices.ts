@@ -17,6 +17,7 @@ import type { Json } from '@/integrations/supabase/types';
 import { getSessionUser } from "@/lib/authSession";
 import { readContractCreditBalance } from '@/lib/contractCreditBalance';
 import { isCanonicalFallbackSignal } from '@/lib/canonicalFallback';
+import { invoiceRentSupportContextSchema, quoteInvoiceRentSupport } from '@/lib/invoiceRentSupport';
 import { useToast } from '@/hooks/use-toast';
 import type { PaginatedData } from '@/hooks/usePagination';
 import type {
@@ -721,7 +722,8 @@ export const useCreateInvoice = (options: {silent?:boolean} = {}) => {
         + (invoiceFields.previous_debt || 0),
       );
 
-      const request = prepareCustomerCreditRequest('invoice-create');
+      const supportContext = invoiceFields.rent_support_context ? invoiceRentSupportContextSchema.parse(invoiceFields.rent_support_context) : undefined;
+      const request = prepareCustomerCreditRequest('invoice-create', supportContext?.request_id);
       const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
       const creatorName: string =
         (typeof meta.full_name === 'string' && meta.full_name)
@@ -729,6 +731,7 @@ export const useCreateInvoice = (options: {silent?:boolean} = {}) => {
         || user.email
         || 'Người dùng';
       const canonicalBaseArgs = {
+        p_rent_support_context: supportContext ? { ...supportContext } : null,
         p_contract_id: invoiceFields.contract_id,
         p_building_id: invoiceFields.building_id,
         p_room_id: invoiceFields.room_id ?? null,
@@ -763,6 +766,12 @@ export const useCreateInvoice = (options: {silent?:boolean} = {}) => {
         p_notes: invoiceFields.notes || null,
         p_creator_name: creatorName,
       };
+      if (supportContext) {
+        if (!selectedOrganizationId) throw new Error('Chưa chọn tổ chức.');
+        const quote = await quoteInvoiceRentSupport(selectedOrganizationId, invoiceFields.contract_id, invoiceFields.billing_month, canonicalBaseArgs.p_items, appliedCredit, supportContext);
+        if (quote.state !== 'READY') throw new Error('Hỗ trợ vượt doanh thu đủ điều kiện; cần đối chiếu trước khi tạo hóa đơn.');
+        if (discountAmount !== Number(quote.invoice_support) + Number(supportContext.manual_discount_amount) + appliedCredit) throw new Error('Giảm trừ đã thay đổi; tải lại lịch hỗ trợ.');
+      }
       const rpcName = selectInvoiceCreateRpc(appliedCredit);
       const canonicalArgs = appliedCredit > 0
         ? buildCreditInvoiceCreateRpcArgs(canonicalBaseArgs, appliedCredit, request)
@@ -783,8 +792,12 @@ export const useCreateInvoice = (options: {silent?:boolean} = {}) => {
         canonicalArgs as never,
       );
       if (!canonical.error) return confirmedInvoiceReceipt(canonical.data);
-      if (appliedCredit > 0) throw canonical.error;
+      if (appliedCredit > 0 || supportContext) throw canonical.error;
       if (!isCanonicalFallbackSignal(canonical.error)) throw canonical.error;
+      const fallbackContract = await supabase.from('contracts').select('discounts').eq('id', invoiceFields.contract_id).single();
+      if (fallbackContract.error) throw fallbackContract.error;
+      const fallbackDiscount = fallbackContract.data.discounts;
+      if (fallbackDiscount && typeof fallbackDiscount === 'object' && !Array.isArray(fallbackDiscount) && fallbackDiscount.version === 2) throw canonical.error;
 
       // Generate invoice number
       const { generateInvoiceNumber } = await import('@/lib/invoiceUtils');
@@ -892,7 +905,7 @@ export const useUpdateInvoice = () => {
       // Fetch current invoice to check status
       const { data: current, error: fetchError } = await supabase
         .from('invoices')
-        .select('status, paid_amount, deleted_at, adjustment_revision')
+        .select('status, paid_amount, deleted_at, adjustment_revision, rent_support_plan_revision')
         .eq('id', id)
         .single();
 
@@ -919,6 +932,7 @@ export const useUpdateInvoice = () => {
       // Canonical update_invoice_v1: guard server (DRAFT|APPROVED, paid=0) + replace
       // items atomic; fallback legacy khi chưa deploy/coexistence.
       const canonical = await supabase.rpc('update_invoice_v1', {
+        p_rent_support_context: invoiceFields.rent_support_context ? { ...invoiceRentSupportContextSchema.parse(invoiceFields.rent_support_context) } : null,
         p_invoice_id: id,
         p_contract_id: invoiceFields.contract_id,
         p_building_id: invoiceFields.building_id,
@@ -953,6 +967,7 @@ export const useUpdateInvoice = () => {
         p_notes: invoiceFields.notes || undefined,
       });
       if (!canonical.error) return confirmedInvoiceReceipt(canonical.data);
+      if (current.rent_support_plan_revision || invoiceFields.rent_support_context) throw canonical.error;
       if (!isCanonicalFallbackSignal(canonical.error)) throw canonical.error;
 
       // Update invoice

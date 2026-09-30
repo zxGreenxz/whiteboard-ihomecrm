@@ -60,6 +60,7 @@ export interface ContractCreateFirstInvoiceItemInput {
 }
 
 export interface ContractCreateFirstInvoiceInput {
+  manual_discount_amount?: string;
   items: ContractCreateFirstInvoiceItemInput[];
   discount_amount?: number;
   discount_notes?: string | null;
@@ -253,6 +254,7 @@ export function buildCreateContractRpcArgs(
           optionalDateOnly(item.to_date, "first_invoice.item.to_date") ?? null,
       })),
       discount_amount: Math.max(0, payload.first_invoice.discount_amount ?? 0),
+      ...(payload.first_invoice.manual_discount_amount !== undefined ? { manual_discount_amount: payload.first_invoice.manual_discount_amount } : {}),
       discount_notes: payload.first_invoice.discount_notes?.trim() || null,
       issue_date:
         optionalDateOnly(payload.first_invoice.issue_date, "first_invoice.issue_date") ??

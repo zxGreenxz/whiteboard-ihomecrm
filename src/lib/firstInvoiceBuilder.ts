@@ -12,6 +12,9 @@
 //     phiếu thu lẻ ngoài HĐ). Bỏ qua nếu include_deposit=false (mode Nợ cọc).
 // =============================================
 
+import type { SupportCustomerSchedule } from './rentSupport';
+import { previewInvoiceRentSupport, type InvoiceSupportPreview } from './invoiceRentSupport';
+
 export type FirstInvoiceItemType = "RENT" | "SERVICE" | "DISCOUNT" | "OTHER";
 export type FirstInvoiceAccountingClass = "REVENUE" | "DEPOSIT";
 
@@ -29,6 +32,7 @@ export interface FirstInvoiceItem {
 }
 
 export interface FirstInvoiceBuilderInput {
+  rent_support?: SupportCustomerSchedule;
   rent_price: number;
   total_deposit: number;
   deposit_paid: number;
@@ -251,7 +255,11 @@ export function buildFirstInvoiceItems(
 export function buildFirstInvoiceDiscount(
   input: FirstInvoiceBuilderInput,
   items: readonly FirstInvoiceItem[],
-): { amount: number; notes: string } {
+): { amount: number; notes: string } | InvoiceSupportPreview {
+  if (input.rent_support) {
+    const revenue = items.filter(item => item.accounting_class === 'REVENUE').reduce((sum, item) => sum + item.unit_price * item.quantity, 0);
+    return previewInvoiceRentSupport(input.rent_support, computeFirstBillingMonth(input.start_billing_date, input.end_billing_date), revenue);
+  }
   const months = Math.max(0, Math.floor(input.discount_months ?? 0));
   const perMonth = Math.max(0, input.discount_amount_per_month ?? 0);
   if (months <= 0 || perMonth <= 0) return { amount: 0, notes: '' };

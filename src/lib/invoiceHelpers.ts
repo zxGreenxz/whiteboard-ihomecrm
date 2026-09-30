@@ -10,6 +10,8 @@
 import { supabase } from '@/integrations/supabase/client';
 import { generateInvoiceNumber } from './codeGenerator';
 import type { PreviousDebtSource } from '@/types/invoice';
+import { readInvoiceRentSupportPlan } from './invoiceRentSupport';
+import { buildCustomerSupportMonths } from './rentSupport';
 
 /**
  * Generate invoice number if auto-generation is enabled
@@ -409,6 +411,8 @@ export async function getPreviousDebt(
 // =============================================
 
 export interface ContractDiscountSlot {
+  supportRevision?: number;
+  billingMonth?: string;
   /** True nếu HĐ này còn được áp khuyến mãi (slotIndex <= totalMonths). */
   applicable: boolean;
   /** Slot thứ mấy (1-based) — VD slotIndex=2 nghĩa "tháng 2/Y". */
@@ -436,19 +440,29 @@ const EMPTY_DISCOUNT_SLOT: ContractDiscountSlot = {
  */
 export async function getContractDiscountSlot(
   contractId: string,
-  opts: { excludeInvoiceId?: string } = {},
+  opts: { excludeInvoiceId?: string; billingMonth?: string } = {},
 ): Promise<ContractDiscountSlot> {
   if (!contractId) return EMPTY_DISCOUNT_SLOT;
 
-  const { data: contract,error:contractError } = await (supabase
-    .from('contracts') as any)
-    .select('id, discounts')
+  const { data: contract, error } = await supabase
+    .from('contracts')
+    .select('id, organization_id, discounts')
     .eq('id', contractId)
     .maybeSingle();
 
-  if(contractError) throw contractError;
-  if(!contract) throw new Error("Không tìm thấy hợp đồng để tính khuyến mãi.");
-  const discounts = (contract as any)?.discounts;
+  if (error) throw error;
+  if (!contract) throw new Error('Không tìm thấy hợp đồng để tính khuyến mãi.');
+  const discounts = contract.discounts && typeof contract.discounts === 'object' && !Array.isArray(contract.discounts) ? contract.discounts : {};
+  if (discounts.version === 2) {
+    if (!contract?.organization_id || !opts.billingMonth) throw new Error('Chọn tháng hóa đơn để đọc lịch hỗ trợ.');
+    const plan = await readInvoiceRentSupportPlan(contract.organization_id, contractId);
+    if (!plan) throw new Error('Không tìm thấy lịch hỗ trợ v2.');
+    const months = buildCustomerSupportMonths(plan.schedule);
+    const month = months.find(value => value.billing_month === opts.billingMonth);
+    const amount = Number(month?.agreed_amount ?? 0);
+    return { applicable: amount > 0, slotIndex: 0, totalMonths: months.length, amountPerMonth: amount,
+      label: amount > 0 ? `Hỗ trợ tiền thuê ${opts.billingMonth} — ${amount.toLocaleString('vi-VN')}đ` : '', supportRevision: plan.revision, billingMonth: opts.billingMonth };
+  }
   const months = Number(discounts?.months) || 0;
   const amount = Number(discounts?.amount_per_month) || 0;
   if (months <= 0 || amount <= 0) return EMPTY_DISCOUNT_SLOT;
@@ -617,4 +631,3 @@ export async function saveInvoiceSettings(
 
 // NOTE (cũ, đã sai): "autoCreateInvoiceForContract đã hợp nhất vào contractHelpers.ts".
 // File đó không còn tồn tại — xem khối giải thích phía trên.
-

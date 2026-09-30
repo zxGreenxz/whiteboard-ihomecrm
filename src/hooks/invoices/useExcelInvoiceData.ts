@@ -27,6 +27,7 @@ import {
   type SubmitContext,
 } from "@/lib/excelInvoiceRows";
 import type { PreviousDebtSource } from "@/types/invoice";
+import { readInvoiceRentSupportPlan } from '@/lib/invoiceRentSupport';
 
 export interface ExcelInvoiceSource {
   /** HĐ ACTIVE của toà, đã gom 1 phòng 1 HĐ (giữ HĐ mới nhất). */
@@ -46,7 +47,7 @@ export async function fetchExcelInvoiceSource(buildingId: string): Promise<Excel
   const { data: contracts, error: e1 } = await supabase
     .from("contracts")
     .select(
-      `id, rent_price, room_id, status, total_deposit, deposit_paid, deposit_remaining, discounts, start_date, created_at,
+      `id, organization_id, rent_price, room_id, status, total_deposit, deposit_paid, deposit_remaining, discounts, start_date, created_at,
        room:rooms!contracts_room_id_fkey (id, name, building_id),
        contract_customers!contract_customers_contract_id_fkey (id),
        contract_services (
@@ -62,6 +63,13 @@ export async function fetchExcelInvoiceSource(buildingId: string): Promise<Excel
   );
   const { contracts: buildingContracts, dupRoomNames } =
     dedupeContractsByRoom(buildingContractsRaw);
+  for (const contract of buildingContracts) {
+    if (contract.discounts?.version !== 2) continue;
+    if (!contract.organization_id) throw new Error('Hợp đồng thiếu tổ chức.');
+    const plan = await readInvoiceRentSupportPlan(contract.organization_id, contract.id);
+    if (!plan) throw new Error('Chưa có lịch hỗ trợ hợp lệ.');
+    contract.rent_support = plan;
+  }
 
   // 2) Đồng hồ điện của toà.
   const { data: meters, error: e2 } = await supabase

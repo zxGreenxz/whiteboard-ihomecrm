@@ -348,3 +348,23 @@ describe("buildInvoiceCountByContract", () => {
     expect(m.get("c2")).toBe(1);
   });
 });
+
+describe('v2 Excel support uses the requested month', () => {
+  const schedule = { version: 2 as const, start_billing_month: '2026-09', segments: [{ month_count: 3, monthly_amount: '300000' }, { month_count: 9, monthly_amount: '100000' }] };
+  it('counts actual service revenue toward the support cap', () => {
+    const rows = buildExcelRows({ contracts: [{ id: 'c1', room_id: 'r1', rent_price: 200000, discounts: { version: 2 }, rent_support: { schedule, revision: 1 } }], billingMonth: '2026-10',
+      meterByRoom: new Map(), lastReading: new Map(), creditByContract: new Map(), invoiceCountByContract: new Map(), previousDebtByContract: new Map(), defaults: DEFAULTS });
+    expect(rows[0].discount).toBe(300000);
+  });
+  it('rejects a row loaded for a different month before submission', () => {
+    expect(() => buildInvoiceFormData(baseRow({ support_plan_revision: 1, support_billing_month: '2026-10', invoice_support_amount: 300000, discount: 300000 }), CTX)).toThrow(/Tháng hóa đơn đã đổi/);
+  });
+  it.each([['2026-11', 300000], ['2026-10', 300000], ['2026-12', 100000]])('month %s ignores any invoice count', (billingMonth, support) => {
+    const rows = buildExcelRows({ contracts: [{ id: 'c1', room_id: 'r1', rent_price: 3000000, discounts: { version: 2 }, rent_support: { schedule, revision: 2 } }], billingMonth,
+      meterByRoom: new Map(), lastReading: new Map(), creditByContract: new Map([['c1', 50000]]), invoiceCountByContract: new Map([['c1', 99]]), previousDebtByContract: new Map(), defaults: DEFAULTS });
+    expect(rows[0].discount).toBe(support + 50000);
+    expect(rows[0]).toMatchObject({ invoice_support_amount: support, support_billing_month: billingMonth, support_plan_revision: 2, applied_credit: 50000 });
+    const form = buildInvoiceFormData(rows[0], { ...CTX, billingMonth });
+    expect(form.rent_support_context).toMatchObject({ version: 1, expected_plan_revision: 2, manual_discount_amount: '0' });
+  });
+});

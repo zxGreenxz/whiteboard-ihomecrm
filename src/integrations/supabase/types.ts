@@ -8902,6 +8902,7 @@ export type Database = {
           contract_id: string
           created_at: string
           creator_name: string | null
+          credit_discount_amount: number | null
           deleted_at: string | null
           discount_amount: number
           discount_notes: string | null
@@ -8909,8 +8910,10 @@ export type Database = {
           electricity_prev_overridden: boolean
           id: string
           invoice_number: string | null
+          invoice_support_amount: number
           issue_date: string
           kind: string
+          manual_discount_amount: number | null
           notes: string | null
           organization_id: string
           paid_amount: number
@@ -8919,6 +8922,8 @@ export type Database = {
           previous_debt: number
           previous_debt_sources: Json
           remaining_amount: number | null
+          rent_support_plan_revision: number | null
+          rent_support_request_id: string | null
           room_id: string
           status: Database["public"]["Enums"]["invoice_status"]
           subtotal: number
@@ -8938,6 +8943,7 @@ export type Database = {
           contract_id: string
           created_at?: string
           creator_name?: string | null
+          credit_discount_amount?: number | null
           deleted_at?: string | null
           discount_amount?: number
           discount_notes?: string | null
@@ -8945,8 +8951,10 @@ export type Database = {
           electricity_prev_overridden?: boolean
           id?: string
           invoice_number?: string | null
+          invoice_support_amount?: number
           issue_date?: string
           kind?: string
+          manual_discount_amount?: number | null
           notes?: string | null
           organization_id: string
           paid_amount?: number
@@ -8955,6 +8963,8 @@ export type Database = {
           previous_debt?: number
           previous_debt_sources?: Json
           remaining_amount?: number | null
+          rent_support_plan_revision?: number | null
+          rent_support_request_id?: string | null
           room_id: string
           status?: Database["public"]["Enums"]["invoice_status"]
           subtotal?: number
@@ -8973,6 +8983,7 @@ export type Database = {
           contract_id?: string
           created_at?: string
           creator_name?: string | null
+          credit_discount_amount?: number | null
           deleted_at?: string | null
           discount_amount?: number
           discount_notes?: string | null
@@ -8980,8 +8991,10 @@ export type Database = {
           electricity_prev_overridden?: boolean
           id?: string
           invoice_number?: string | null
+          invoice_support_amount?: number
           issue_date?: string
           kind?: string
+          manual_discount_amount?: number | null
           notes?: string | null
           organization_id?: string
           paid_amount?: number
@@ -8990,6 +9003,8 @@ export type Database = {
           previous_debt?: number
           previous_debt_sources?: Json
           remaining_amount?: number | null
+          rent_support_plan_revision?: number | null
+          rent_support_request_id?: string | null
           room_id?: string
           status?: Database["public"]["Enums"]["invoice_status"]
           subtotal?: number
@@ -20541,6 +20556,7 @@ export type Database = {
           contract_id: string
           created_at: string
           creator_name: string | null
+          credit_discount_amount: number | null
           deleted_at: string | null
           discount_amount: number
           discount_notes: string | null
@@ -20548,8 +20564,10 @@ export type Database = {
           electricity_prev_overridden: boolean
           id: string
           invoice_number: string | null
+          invoice_support_amount: number
           issue_date: string
           kind: string
+          manual_discount_amount: number | null
           notes: string | null
           organization_id: string
           paid_amount: number
@@ -20558,6 +20576,8 @@ export type Database = {
           previous_debt: number
           previous_debt_sources: Json
           remaining_amount: number | null
+          rent_support_plan_revision: number | null
+          rent_support_request_id: string | null
           room_id: string
           status: Database["public"]["Enums"]["invoice_status"]
           subtotal: number
@@ -21076,6 +21096,7 @@ export type Database = {
           contract_id: string
           created_at: string
           creator_name: string | null
+          credit_discount_amount: number | null
           deleted_at: string | null
           discount_amount: number
           discount_notes: string | null
@@ -21083,8 +21104,10 @@ export type Database = {
           electricity_prev_overridden: boolean
           id: string
           invoice_number: string | null
+          invoice_support_amount: number
           issue_date: string
           kind: string
+          manual_discount_amount: number | null
           notes: string | null
           organization_id: string
           paid_amount: number
@@ -21093,6 +21116,8 @@ export type Database = {
           previous_debt: number
           previous_debt_sources: Json
           remaining_amount: number | null
+          rent_support_plan_revision: number | null
+          rent_support_request_id: string | null
           room_id: string
           status: Database["public"]["Enums"]["invoice_status"]
           subtotal: number
@@ -22355,6 +22380,7 @@ export type Database = {
           p_prepaid_amount?: number
           p_previous_debt: number
           p_previous_debt_sources?: Json
+          p_rent_support_context?: Json
           p_room_id: string
           p_subtotal: number
           p_template_id?: string
@@ -22382,6 +22408,7 @@ export type Database = {
           p_prepaid_amount?: number
           p_previous_debt: number
           p_previous_debt_sources?: Json
+          p_rent_support_context?: Json
           p_room_id: string
           p_subtotal: number
           p_template_id?: string
@@ -23517,6 +23544,7 @@ export type Database = {
           contract_id: string
           created_at: string
           creator_name: string | null
+          credit_discount_amount: number | null
           deleted_at: string | null
           discount_amount: number
           discount_notes: string | null
@@ -23524,8 +23552,10 @@ export type Database = {
           electricity_prev_overridden: boolean
           id: string
           invoice_number: string | null
+          invoice_support_amount: number
           issue_date: string
           kind: string
+          manual_discount_amount: number | null
           notes: string | null
           organization_id: string
           paid_amount: number
@@ -23534,6 +23564,8 @@ export type Database = {
           previous_debt: number
           previous_debt_sources: Json
           remaining_amount: number | null
+          rent_support_plan_revision: number | null
+          rent_support_request_id: string | null
           room_id: string
           status: Database["public"]["Enums"]["invoice_status"]
           subtotal: number
@@ -25067,6 +25099,7 @@ export type Database = {
           contract_id: string
           created_at: string
           creator_name: string | null
+          credit_discount_amount: number | null
           deleted_at: string | null
           discount_amount: number
           discount_notes: string | null
@@ -25074,8 +25107,10 @@ export type Database = {
           electricity_prev_overridden: boolean
           id: string
           invoice_number: string | null
+          invoice_support_amount: number
           issue_date: string
           kind: string
+          manual_discount_amount: number | null
           notes: string | null
           organization_id: string
           paid_amount: number
@@ -25084,6 +25119,8 @@ export type Database = {
           previous_debt: number
           previous_debt_sources: Json
           remaining_amount: number | null
+          rent_support_plan_revision: number | null
+          rent_support_request_id: string | null
           room_id: string
           status: Database["public"]["Enums"]["invoice_status"]
           subtotal: number
@@ -25928,6 +25965,7 @@ export type Database = {
           contract_id: string
           created_at: string
           creator_name: string | null
+          credit_discount_amount: number | null
           deleted_at: string | null
           discount_amount: number
           discount_notes: string | null
@@ -25935,8 +25973,10 @@ export type Database = {
           electricity_prev_overridden: boolean
           id: string
           invoice_number: string | null
+          invoice_support_amount: number
           issue_date: string
           kind: string
+          manual_discount_amount: number | null
           notes: string | null
           organization_id: string
           paid_amount: number
@@ -25945,6 +25985,8 @@ export type Database = {
           previous_debt: number
           previous_debt_sources: Json
           remaining_amount: number | null
+          rent_support_plan_revision: number | null
+          rent_support_request_id: string | null
           room_id: string
           status: Database["public"]["Enums"]["invoice_status"]
           subtotal: number
@@ -26064,6 +26106,7 @@ export type Database = {
           p_prepaid_amount?: number
           p_previous_debt: number
           p_previous_debt_sources?: Json
+          p_rent_support_context?: Json
           p_room_id: string
           p_subtotal: number
           p_template_id?: string
@@ -26079,6 +26122,7 @@ export type Database = {
           contract_id: string
           created_at: string
           creator_name: string | null
+          credit_discount_amount: number | null
           deleted_at: string | null
           discount_amount: number
           discount_notes: string | null
@@ -26086,8 +26130,10 @@ export type Database = {
           electricity_prev_overridden: boolean
           id: string
           invoice_number: string | null
+          invoice_support_amount: number
           issue_date: string
           kind: string
+          manual_discount_amount: number | null
           notes: string | null
           organization_id: string
           paid_amount: number
@@ -26096,6 +26142,8 @@ export type Database = {
           previous_debt: number
           previous_debt_sources: Json
           remaining_amount: number | null
+          rent_support_plan_revision: number | null
+          rent_support_request_id: string | null
           room_id: string
           status: Database["public"]["Enums"]["invoice_status"]
           subtotal: number
