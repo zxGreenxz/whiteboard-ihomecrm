@@ -2,6 +2,7 @@ import {financialReadNumber} from '@/lib/financialReadValidation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { rpcNullable } from "@/lib/rpcNullable";
 import { supabase } from '@/integrations/supabase/client';
+import { parseSaleBonusStatus } from '@/lib/rentSupportFunding';
 
 /**
  * THƯỞNG NÓNG SALE — trạng thái theo hợp đồng, và đường tạo từ PHIẾU CỌC.
@@ -19,6 +20,9 @@ export interface SaleBonusStatus {
   contractId: string;
   /** true ⇒ ô nhập thưởng phải TÔ XÁM. */
   alreadyPaid: boolean;
+  /** Có phiếu còn sống; không chứng minh đã trả tiền. */
+  hasVoucher: boolean;
+  cashPaymentStatus: 'UNVERIFIED';
   voucherId: string | null;
   code: string | null;
   amount: number | null;
@@ -42,21 +46,11 @@ export const useSaleBonusStatus = (contractId?: string | null, enabled = true) =
         p_contract_id: rpcNullable(contractId),
       });
       if (error) throw error;
-      const d = (data ?? {}) as any;
-      if(d.contractId!==contractId || typeof d.alreadyPaid!=='boolean' || (d.alreadyPaid && (typeof d.voucherId!=='string'||!d.voucherId||d.amount==null))) throw new TypeError('Chưa xác nhận được phiếu thưởng Sale hiện có.');
-      return {
-        contractId: d.contractId,
-        alreadyPaid: d.alreadyPaid,
-        voucherId: d.voucherId ?? null,
-        code: d.code ?? null,
-        amount: d.amount == null ? null : financialReadNumber(d.amount),
-        voucherDate: d.voucherDate ?? null,
-        createdAt: d.createdAt ?? null,
-        status: d.status ?? null,
-        via: d.via ?? null,
-        capAmount: d.capAmount == null ? null : financialReadNumber(d.capAmount),
-        note: d.note ?? '',
-      };
+      const status = parseSaleBonusStatus(data);
+      if (status.contractId !== contractId || (status.hasVoucher && status.amount == null)) {
+        throw new TypeError('Chưa xác nhận được phiếu thưởng Sale hiện có.');
+      }
+      return status;
     },
   });
 

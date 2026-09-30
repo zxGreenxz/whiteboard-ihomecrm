@@ -23813,6 +23813,15 @@ export type Database = {
         Args: { p_organization_id: string }
         Returns: Json
       }
+      list_rent_support_parties_v1: {
+        Args: {
+          p_building_id: string
+          p_limit?: number
+          p_offset?: number
+          p_organization_id: string
+        }
+        Returns: Json
+      }
       list_room_reservations_v1: {
         Args: {
           p_customer_id?: string
@@ -24987,6 +24996,17 @@ export type Database = {
           p_document_sha256: string
           p_organization_id: string
           p_signing_id: string
+        }
+        Returns: Json
+      }
+      register_rent_support_party_v1: {
+        Args: {
+          p_building_id: string
+          p_display_name: string
+          p_organization_id: string
+          p_profile_id: string
+          p_reason: string
+          p_request_id: string
         }
         Returns: Json
       }

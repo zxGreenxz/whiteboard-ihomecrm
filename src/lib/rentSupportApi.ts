@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { Database, Json } from '@/integrations/supabase/types';
 import { rpcNullable } from './rpcNullable';
+import { fundingSourceQuoteSchema, payoutPreviewContextSchema, supportPartyListSchema, supportPartySchema, type PayoutPreviewContext } from './rentSupportFunding';
 import { supportPlanInputSchema, type SupportPlanInput } from './rentSupport';
 const uuid = z.string().uuid();
 const money = z.string().regex(/^\d+(?:\.\d+)?$/);
@@ -8,10 +9,7 @@ const month = z.string().regex(/^(?!0000)\d{4}-(?:0[1-9]|1[0-2])$/);
 const schedule = z.object({ version: z.literal(2), start_billing_month: month,
   segments: z.array(z.object({ month_count: z.number().int().positive(), monthly_amount: money }).strict()).min(1),
 }).strict();
-const source = z.object({ source_id: uuid, kind: z.enum(['COMMISSION', 'BONUS']), gross_original: money,
-  already_paid: money, prior_withheld: money, remaining_payable: money, available_to_withhold: money,
-  current_withheld: money, net_this_operation: money, route: z.enum(['CASHBOOK', 'MANAGER_PAYROLL']),
-}).strict();
+const source = fundingSourceQuoteSchema;
 export const supportQuoteSchema = z.object({ quote_hash: z.string().min(1), payload_hash: z.string().min(1),
   plan_revision: z.number().int().nonnegative(), payload: supportPlanInputSchema,
   committed_total: money, due_upfront: money, sources: z.array(source), unallocated: money,
@@ -34,7 +32,7 @@ export const supportRevisionSchema = z.object({ id: uuid, revision: z.number().i
 }).strict();
 export type SupportRevision = z.infer<typeof supportRevisionSchema>;
 export interface SupportReadFilter { contractIds?: string[]; buildingIds?: string[]; offset?: number; limit?: number; enabled?: boolean }
-export interface SupportQuoteInput { contractId?: string; draftId?: string; payload: SupportPlanInput }
+export interface SupportQuoteInput { contractId?: string; draftId?: string; payload: SupportPlanInput; payoutContext?: PayoutPreviewContext }
 export interface SupportReviseInput { contractId: string; expectedRevision: number; payload: SupportPlanInput; reason: string; requestId: string }
 export function supportPlanJson(input: SupportPlanInput): Json {
   const p = supportPlanInputSchema.parse(input);
@@ -46,7 +44,7 @@ export function buildSupportQuoteArgs(organizationId: string, input: SupportQuot
   if (input.contractId) uuid.parse(input.contractId);
   if (input.draftId) uuid.parse(input.draftId);
   return { p_organization_id: organizationId, p_contract_id: rpcNullable(input.contractId ?? null), p_draft_id: rpcNullable(input.draftId ?? null),
-    p_payload: supportPlanJson(input.payload), p_invoice_context: null, p_payout_context: null };
+    p_payload: supportPlanJson(input.payload), p_invoice_context: null, p_payout_context: input.payoutContext ? payoutPreviewContextSchema.parse(input.payoutContext) : null };
 }
 export async function quoteContractRentSupport(organizationId: string, input: SupportQuoteInput): Promise<SupportQuote> {
   const { supabase } = await import('@/integrations/supabase/client');
@@ -74,4 +72,18 @@ export async function reviseContractRentSupport(organizationId: string, input: S
     p_reason: reason, p_request_id: input.requestId });
   if (error) throw error;
   return supportRevisionSchema.parse(data);
+}
+
+export async function listRentSupportParties(organizationId: string, buildingId: string, offset = 0, limit = 50) {
+ uuid.parse(organizationId);uuid.parse(buildingId);z.number().int().nonnegative().parse(offset);z.number().int().min(1).max(200).parse(limit);
+ const {supabase}=await import('@/integrations/supabase/client');
+ const {data,error}=await supabase.rpc('list_rent_support_parties_v1',{p_organization_id:organizationId,p_building_id:buildingId,p_offset:offset,p_limit:limit});
+ if(error)throw error;return supportPartyListSchema.parse(data);
+}
+export async function registerRentSupportParty(organizationId:string,buildingId:string,input:{profileId:string|null;displayName:string;reason:string;requestId:string}) {
+ uuid.parse(organizationId);uuid.parse(buildingId);uuid.nullable().parse(input.profileId);uuid.parse(input.requestId);
+ const label=z.string().trim().min(1).max(200).parse(input.displayName),reason=z.string().trim().min(1).max(2000).parse(input.reason);
+ const {supabase}=await import('@/integrations/supabase/client');
+ const {data,error}=await supabase.rpc('register_rent_support_party_v1',{p_organization_id:organizationId,p_building_id:buildingId,p_profile_id:rpcNullable(input.profileId),p_display_name:label,p_reason:reason,p_request_id:input.requestId});
+ if(error)throw error;return supportPartySchema.extend({party_id:uuid}).parse(data);
 }
