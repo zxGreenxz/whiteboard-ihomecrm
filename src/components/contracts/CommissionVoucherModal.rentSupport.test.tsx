@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { RentSupportPayoutForm } from './RentSupportPayoutForm';
@@ -21,11 +21,49 @@ const prefill = { contract_id: contract, contract_number: 'HD1', building_id: 'b
 const receipt = (net = '1200000') => ({ operation_id: operation, status: 'COMPLETED', sources: [{ source_id: party, operation_id: operation, kind: 'broker', gross: net === '0' ? '1800000' : '3000000', withheld: '1800000', net, status: net === '0' ? 'SETTLED_BY_SUPPORT' : 'COMPLETED', id: net === '0' ? null : contract, voucher_id: net === '0' ? null : contract, code: net === '0' ? null : 'PC-NET' }] });
 function quote(_org: string, input: { payoutContext: PayoutContext }) { return { quote_hash: 'hash', payload_hash: 'payload', plan_revision: 2, payload: plan.financial!.payload, committed_total: '1800000', due_upfront: '1800000', unallocated: '0', state: 'READY', issues: [], months: [], sources: input.payoutContext.intents.map(intent => ({ source_id: party, kind: intent.kind, gross_original: intent.gross_amount, already_paid: '0', prior_withheld: '0', remaining_payable: intent.gross_amount, available_to_withhold: intent.gross_amount, current_withheld: '1800000', net_this_operation: intent.gross_amount === '1800000' ? '0' : '1200000', origin: 'PROPOSED', intent_id: intent.intent_id, route: intent.route })) }; }
 function setup() { return render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><RentSupportPayoutForm organizationId="org1" contractId={contract} plan={plan} prefill={prefill} rows={rows as never} refetchRows={api.refresh} /></QueryClientProvider>); }
+function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done; }); return { promise, resolve }; }
 async function selectParty() { fireEvent.change(screen.getByLabelText('Người hưởng hoa hồng'), { target: { value: party } }); await waitFor(() => expect((screen.getByRole('button', { name: 'Tạo phiếu ròng' }) as HTMLButtonElement).disabled).toBe(false)); }
 beforeEach(() => { vi.clearAllMocks(); api.quote.mockReset(); api.prepare.mockReset(); api.execute.mockReset(); api.read.mockReset();
   api.quote.mockImplementation(quote); api.prepare.mockResolvedValue({ operation_id: operation, status: 'READY' }); api.execute.mockResolvedValue(receipt()); api.read.mockResolvedValue(receipt());
   api.refresh.mockResolvedValue({ data: { rows }, isError: false }); });
 afterEach(cleanup);
+it.each(['amount', 'party'])('does not submit an old %s intent after a deferred preflight and locks duplicate clicks', async field => {
+  const refreshed = deferred<{ data: { rows: typeof rows }; isError: boolean }>(); api.refresh.mockReturnValue(refreshed.promise);
+  setup(); await selectParty(); fireEvent.click(screen.getByRole('button', { name: 'Tạo phiếu ròng' }));
+  await waitFor(() => expect(api.refresh).toHaveBeenCalledTimes(1));
+  const submit = screen.getByRole('button', { name: 'Tạo phiếu ròng' }) as HTMLButtonElement;
+  expect(submit.disabled).toBe(true); fireEvent.click(submit); expect(api.refresh).toHaveBeenCalledTimes(1);
+  // Programmatic changes also exercise the fingerprint guard even with a disabled fieldset.
+  if (field === 'amount') fireEvent.change(screen.getByLabelText('Gross hoa hồng'), { target: { value: '1800000' } });
+  else fireEvent.change(screen.getByLabelText('Người hưởng hoa hồng'), { target: { value: '' } });
+  await act(async () => { refreshed.resolve({ data: { rows }, isError: false }); });
+  expect(api.prepare).not.toHaveBeenCalled(); expect(api.execute).not.toHaveBeenCalled();
+});
+it('does not start prepare after closing the form while authoritative preflight is pending', async () => {
+  const refreshed = deferred<{ data: { rows: typeof rows }; isError: boolean }>(); api.refresh.mockReturnValue(refreshed.promise);
+  const { unmount } = setup(); await selectParty(); fireEvent.click(screen.getByRole('button', { name: 'Tạo phiếu ròng' }));
+  await waitFor(() => expect(api.refresh).toHaveBeenCalledTimes(1)); unmount();
+  await act(async () => { refreshed.resolve({ data: { rows }, isError: false }); });
+  expect(api.prepare).not.toHaveBeenCalled(); expect(api.execute).not.toHaveBeenCalled();
+});
+it('does not submit a previous quote after the support plan revision changes during preflight', async () => {
+  const refreshed = deferred<{ data: { rows: typeof rows }; isError: boolean }>(); api.refresh.mockReturnValue(refreshed.promise);
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const form = (revision: number) => <QueryClientProvider client={client}><RentSupportPayoutForm organizationId="org1" contractId={contract} plan={{ ...plan, revision }} prefill={prefill} rows={rows as never} refetchRows={api.refresh} /></QueryClientProvider>;
+  const { rerender } = render(form(2)); await selectParty(); fireEvent.click(screen.getByRole('button', { name: 'Tạo phiếu ròng' }));
+  await waitFor(() => expect(api.refresh).toHaveBeenCalledTimes(1)); rerender(form(3));
+  await act(async () => { refreshed.resolve({ data: { rows }, isError: false }); });
+  expect(api.prepare).not.toHaveBeenCalled(); expect(api.execute).not.toHaveBeenCalled();
+});
+it('does not execute a prepared old operation after a parent keyed scope remount', async () => {
+  const prepared = deferred<{ operation_id: string; status: string }>(); api.prepare.mockReturnValue(prepared.promise);
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const form = (org: string) => <QueryClientProvider client={client}><RentSupportPayoutForm key={org} organizationId={org} contractId={contract} plan={plan} prefill={prefill} rows={rows as never} refetchRows={api.refresh} /></QueryClientProvider>;
+  const { rerender } = render(form('org1')); await selectParty(); fireEvent.click(screen.getByRole('button', { name: 'Tạo phiếu ròng' }));
+  await waitFor(() => expect(api.prepare).toHaveBeenCalledTimes(1)); rerender(form('org2'));
+  await act(async () => { prepared.resolve({ operation_id: operation, status: 'READY' }); });
+  expect(api.execute).not.toHaveBeenCalled(); expect(screen.queryByText(/PC-NET/)).toBeNull();
+});
 it('blocks a stale quote after changing revenue intent until the matching quote resolves', async () => {
   let first!: () => void, second!: () => void;
   api.quote.mockImplementationOnce((org, input) => new Promise(resolve => { first = () => resolve(quote(org, input)); }))

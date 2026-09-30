@@ -51,6 +51,25 @@ describe('commission creation retains a server-side recovery trail', () => {
 describe('durable creation boundary',()=>{
  const org='11111111-1111-4111-8111-111111111111', contract='22222222-2222-4222-8222-222222222222';
  const payload={contract_id:contract,kind:'broker' as const,amount:100,voucher_date:'2026-09-29'};
+ it('keeps a linked canonical FAILED envelope as a safe failure, never a receipt',async()=>{
+  rpcMock.mockResolvedValueOnce({data:{status:'FAILED',id:null,code:null,operation_id:contract},error:null} as never);
+  await expect(executeCommissionCreation(org,{contract_id:contract,kind:'sale',request_id:org})).rejects.toThrow(/chưa tạo/i);
+ });
+ it('rejects legacy COMPLETED without a voucher and accepts a complete strict legacy receipt',async()=>{
+  rpcMock.mockResolvedValueOnce({data:{status:'COMPLETED',id:null,code:null},error:null} as never);
+  await expect(executeCommissionCreation(org,{contract_id:contract,kind:'sale',request_id:org})).rejects.toThrow();
+  rpcMock.mockResolvedValueOnce({data:{status:'COMPLETED',id:contract,code:'PC-LEGACY'},error:null} as never);
+  expect(await executeCommissionCreation(org,{contract_id:contract,kind:'sale',request_id:org})).toEqual({status:'COMPLETED',id:contract,code:'PC-LEGACY'});
+ });
+ it.each([
+  {status:'COMPLETED',gross:'500000',withheld:'500000',net:'0',voucher_id:null,id:null,code:null},
+  {status:'COMPLETED',gross:'500000',withheld:'400000',net:'200000',voucher_id:contract,id:contract,code:'PC'},
+  {status:'COMPLETED',gross:'500000',withheld:'400000',net:'100000',voucher_id:org,id:contract,code:'PC'},
+  {status:'COMPLETED',gross:'500000',withheld:'400000',net:'100000',voucher_id:contract,id:contract,code:'PC',operation_id:'invalid'},
+ ])('rejects malformed canonical COMPLETED instead of stripping fields through legacy fallback: %j',async malformed=>{
+  rpcMock.mockResolvedValueOnce({data:{source_id:org,operation_id:contract,kind:'sale',...malformed},error:null} as never);
+  await expect(executeCommissionCreation(org,{contract_id:contract,kind:'sale',request_id:org})).rejects.toThrow();
+ });
  it('accepts a canonical net-zero support receipt on the existing saved-request retry path',async()=>{
   rpcMock.mockResolvedValueOnce({data:{source_id:org,operation_id:contract,kind:'sale',status:'SETTLED_BY_SUPPORT',gross:'500000',withheld:'500000',net:'0',voucher_id:null,id:null,code:null},error:null} as never);
   expect(await executeCommissionCreation(org,{contract_id:contract,kind:'sale',request_id:org})).toMatchObject({status:'SETTLED_BY_SUPPORT',id:null,code:null});

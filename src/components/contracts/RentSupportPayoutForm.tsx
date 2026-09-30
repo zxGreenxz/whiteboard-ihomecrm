@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { quoteContractRentSupport, type SupportRead } from '@/lib/rentSupportApi';
 import { payoutContextSchema, type PayoutContext } from '@/lib/rentSupportFunding';
@@ -39,6 +39,13 @@ export function RentSupportPayoutForm({ organizationId, contractId, plan, prefil
   const [error, setError] = useState<string | null>(null);
   const [recovered, setRecovered] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  const [preflighting, setPreflighting] = useState(false);
+  const mounted = useRef(false);
+  const active = useRef<symbol | null>(null);
+  useEffect(() => {
+    mounted.current = true; active.current = null; setPreflighting(false); setRetrying(false);
+    return () => { mounted.current = false; active.current = null; };
+  }, [organizationId, contractId]);
   const initial = (amount: number): SourceForm => ({ partyId: '', amount, route: 'CASHBOOK', accountId: '', payer: '', recipient: '', bank: '', accountNumber: '', attachments: [] });
   const [forms, setForms] = useState({ broker: initial(prefill.matched_tier ? Math.round(prefill.rent_price * prefill.matched_tier.rate_percent / 100) : 0), sale: initial(0) });
   const update = (kind: CommissionKind, patch: Partial<SourceForm>) => setForms(current => ({ ...current, [kind]: { ...current[kind], ...patch } }));
@@ -63,31 +70,48 @@ export function RentSupportPayoutForm({ organizationId, contractId, plan, prefil
     }, retry: false, staleTime: 0 });
   const ready = !!context && !!financial && !financial.review && !parties.isFetching && !parties.isError && !query.isFetching && !query.isError && query.data?.state === 'READY'
     && query.data.plan_revision === plan.revision && selected.every(kind => query.data?.sources.some(source => source.intent_id === intentIds.current[kind]));
+  const fingerprint = JSON.stringify([organizationId, contractId, onlyKind, plan.revision, financial, context, query.data?.quote_hash, query.data?.payload_hash]);
+  const latest = useRef({ fingerprint, ready }); latest.current = { fingerprint, ready };
   const run = async (action: 'submit' | 'retry' | 'read') => {
+    if (active.current || payout.isPending || retrying) return;
+    const submission = Symbol('payout preflight'); active.current = submission;
+    const current = () => mounted.current && active.current === submission;
+    const confirmedFingerprint = fingerprint;
+    setPreflighting(true);
     setError(null);
     try {
       if (action === 'submit') {
         if (!ready || !context || !query.data || !plan.revision) return;
         const fresh = await refetchRows();
+        if (!current()) return;
+        if (latest.current.fingerprint !== confirmedFingerprint || !latest.current.ready)
+          throw new Error('Nội dung hoặc lịch hỗ trợ đã thay đổi trong lúc đối chiếu. Kiểm tra lại khoản thực nhận rồi tạo phiếu.');
         if (fresh.isError || !fresh.data?.rows || selected.some(kind => !fresh.data?.rows?.some(row => row.kind === kind && row.can_manage && !done(row) && !(row.request_id && (row.can_retry || row.state === 'PROCESSING')))))
           throw new Error('Trạng thái tạo phiếu đã thay đổi. Đối chiếu yêu cầu đã lưu trước khi tiếp tục.');
         const result = await payout.submit({ contractId, planRevision: plan.revision, quoteHash: query.data.quote_hash, payload: context });
+        if (!current()) return;
         setRecovered(result.recovered);
       } else {
-        const result = action === 'retry' ? await payout.retry() : await payout.reconcile(); setRecovered(result.recovered);
+        const result = action === 'retry' ? await payout.retry() : await payout.reconcile();
+        if (current()) setRecovered(result.recovered);
       }
-    } catch (failure) { setError(safeCommissionReason(failure instanceof Error ? failure.message : 'Chưa xác minh được kết quả tạo phiếu.')); }
+    } catch (failure) { if (current()) setError(safeCommissionReason(failure instanceof Error ? failure.message : 'Chưa xác minh được kết quả tạo phiếu.')); }
+    finally { if (current()) { active.current = null; setPreflighting(false); } }
   };
   const retrySaved = async (row: ContractCommissionFollowup) => {
-    if (!row.request_id || retrying) return;
+    if (!row.request_id || retrying || active.current || payout.isPending) return;
+    const submission = Symbol('saved request preflight'); active.current = submission;
+    const current = () => mounted.current && active.current === submission;
     setRetrying(true); setError(null);
     try {
       const fresh = await refetchRows(), live = fresh.data?.rows?.find(item => item.kind === row.kind);
+      if (!current()) return;
       if (fresh.isError || !live?.can_manage || !live.can_retry || live.request_id !== row.request_id || !['FAILED', 'UNKNOWN'].includes(live.state)) throw new Error('Yêu cầu đã thay đổi; hãy đối chiếu lại.');
       await legacyRetry.mutateAsync({ contract_id: contractId, kind: row.kind, request_id: row.request_id });
+      if (!current()) return;
       await refetchRows();
-    } catch { setError('Chưa xác minh được kết quả Tạo lại. Yêu cầu vẫn được theo dõi trên hợp đồng.'); }
-    finally { setRetrying(false); }
+    } catch { if (current()) setError('Chưa xác minh được kết quả Tạo lại. Yêu cầu vẫn được theo dõi trên hợp đồng.'); }
+    finally { if (current()) { active.current = null; setRetrying(false); } }
   };
   if (!financial || !plan.revision) return <p role="alert">Chưa đọc được thông tin tài chính của lịch hỗ trợ. Không thể tạo phiếu; hãy kiểm tra quyền và tải lại.</p>;
   const months = buildSupportMonths(financial.payload);
@@ -102,10 +126,10 @@ export function RentSupportPayoutForm({ organizationId, contractId, plan, prefil
     {savedRows.map(row => <div key={row.kind} className="rounded border p-3 text-sm space-y-2">
       <p>Yêu cầu {labels[row.kind]} đã lưu. Tạo lại sử dụng đúng nội dung trước đó.</p>
       {row.last_reason && <p>{safeCommissionReason(row.last_reason)}</p>}
-      {row.can_retry && ['FAILED', 'UNKNOWN'].includes(row.state) ? <Button disabled={retrying || payout.isPending} onClick={() => void retrySaved(row)}>Tạo lại {labels[row.kind]}</Button>
+      {row.can_retry && ['FAILED', 'UNKNOWN'].includes(row.state) ? <Button disabled={preflighting || retrying || payout.isPending} onClick={() => void retrySaved(row)}>Tạo lại {labels[row.kind]}</Button>
         : <Button onClick={() => void refetchRows()}>Đối chiếu lại yêu cầu</Button>}
     </div>)}
-    <fieldset disabled={payout.isPending || !!payout.pending || !!payout.receipt} className="space-y-4">
+    <fieldset disabled={preflighting || retrying || payout.isPending || !!payout.pending || !!payout.receipt} className="space-y-4">
       <label className="block text-sm">Ngày phiếu<DateInput value={date} onChange={setDate} /></label>
       {(['broker', 'sale'] as const).filter(kind => onlyKind !== (kind === 'broker' ? 'sale' : 'broker') && rows.some(row => row.kind === kind && row.can_manage && !done(row)) && !savedRows.some(row => row.kind === kind)).map(kind => {
         const form = forms[kind];
@@ -137,13 +161,13 @@ export function RentSupportPayoutForm({ organizationId, contractId, plan, prefil
       <tbody>{query.data.sources.map(source => <tr key={source.source_id}><td>{source.kind === 'COMMISSION' ? 'Hoa hồng' : 'Thưởng'}{source.route === 'MANAGER_PAYROLL' ? ' qua lương' : ''}</td><td>{vnd(source.gross_original)}</td><td>Đã trả: {vnd(source.already_paid)}<br />Đã giữ: {vnd(source.prior_withheld)}</td><td>{vnd(source.current_withheld)}</td><td>{vnd(source.net_this_operation)}</td></tr>)}</tbody></table></div>}
     {(error || payout.error) && <p role="alert" className="text-destructive">{error || payout.error}</p>}
     {payout.pending && <div className="rounded border p-3 text-sm space-y-2"><p>Yêu cầu đã lưu; chưa hoàn tất. Không gửi nội dung form mới.</p>
-      <Button variant="outline" disabled={payout.isPending} onClick={() => void run('read')}>Đối chiếu kết quả đã lưu</Button>{' '}
-      <Button disabled={payout.isPending} onClick={() => void run('retry')}>Tạo lại yêu cầu đã lưu</Button>
+      <Button variant="outline" disabled={preflighting || payout.isPending} onClick={() => void run('read')}>Đối chiếu kết quả đã lưu</Button>{' '}
+      <Button disabled={preflighting || payout.isPending} onClick={() => void run('retry')}>Tạo lại yêu cầu đã lưu</Button>
     </div>}
     {payout.receipt?.status === 'COMPLETED' && <div role="status" className="rounded border border-emerald-300 p-3 text-sm">
       {recovered && <p>Đã tìm thấy kết quả yêu cầu trước. Nội dung đang nhập chưa được gửi thêm.</p>}
       {payout.receipt.sources.map(source => <p key={source.source_id}>{source.status === 'SETTLED_BY_SUPPORT' ? 'Đã xử lý bằng hỗ trợ tiền thuê; không tạo phiếu chi 0.' : `Đã có phiếu ${source.code ?? ''}; duyệt không đồng nghĩa đã thanh toán.`} Theo thỏa thuận: {vnd(source.gross)}; khấu trừ: {vnd(source.withheld)}; thực nhận: {vnd(source.net)}.</p>)}
     </div>}
-    {!payout.pending && !payout.receipt && <Button disabled={!ready || payout.isPending || retrying} onClick={() => void run('submit')}>Tạo phiếu ròng</Button>}
+    {!payout.pending && !payout.receipt && <Button disabled={!ready || preflighting || payout.isPending || retrying} onClick={() => void run('submit')}>Tạo phiếu ròng</Button>}
   </div>;
 }

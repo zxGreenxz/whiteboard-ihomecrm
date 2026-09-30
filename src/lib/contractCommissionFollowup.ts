@@ -104,7 +104,8 @@ const creationPayloadSchema = z.object({
   item_description: z.string().nullable().optional(), attachments: z.array(z.string()).optional(),
 }).strict();
 const preparedRequestSchema = z.object({ contract_id: z.string().uuid(), kind: kindSchema, request_id: z.string().uuid() }).strict();
-const creationResultSchema = z.object({ status: z.enum(['COMPLETED', 'ALREADY_EXISTS', 'FAILED']), id: z.string().uuid().nullable(), code: z.string().nullable() });
+const creationResultSchema = z.object({ status: z.enum(['COMPLETED', 'ALREADY_EXISTS', 'FAILED']), id: z.string().uuid().nullable(), code: z.string().nullable() }).strict()
+  .refine(result => result.status !== 'COMPLETED' || result.id !== null, 'Kết quả hoàn tất thiếu phiếu.');
 export type CommissionCreationPayload = z.infer<typeof creationPayloadSchema>;
 export type PreparedCommissionRequest = z.infer<typeof preparedRequestSchema>;
 export interface CommissionCreationResult { status: 'COMPLETED' | 'ALREADY_EXISTS' | 'FAILED' | 'SETTLED_BY_SUPPORT'; id: string | null; code: string | null; }
@@ -130,7 +131,12 @@ export async function executeCommissionCreation(organizationId: string, input: P
     p_organization_id: organizationId, p_contract_id: request.contract_id, p_kind: request.kind, p_request_id: request.request_id,
   });
   if (error) throw error;
-  const result = z.union([payoutSourceReceiptSchema, creationResultSchema]).parse(data);
+  if (typeof data === 'object' && data !== null && 'status' in data && data.status === 'FAILED')
+    throw new Error('Máy chủ chưa tạo được phiếu. Yêu cầu đã được lưu; xem chi tiết và bấm Tạo lại khi sẵn sàng.');
+  // Canonical markers select one parser. Malformed canonical money cannot be stripped into legacy success.
+  const canonical = typeof data === 'object' && data !== null && ['source_id', 'operation_id', 'gross', 'withheld', 'net', 'voucher_id', 'kind'].some(key => key in data);
+  const result = canonical ? payoutSourceReceiptSchema.parse(data) : creationResultSchema.parse(data);
+  if ('kind' in result && result.kind !== request.kind) throw new Error('Nguồn kết quả không khớp yêu cầu đã lưu.');
   if (result.status === 'FAILED') throw new Error('Máy chủ chưa tạo được phiếu. Yêu cầu đã được lưu; xem chi tiết và bấm Tạo lại khi sẵn sàng.');
   return { status: result.status, id: result.id, code: result.code };
 }
