@@ -26,12 +26,13 @@ export async function uploadToR2(bucket: string, path: string, file: File): Prom
   // Hạn chờ bao cả bước lấy token lẫn request; quá hạn thì huỷ request thật (fetch
   // nhận AbortSignal) và báo lỗi rõ — không để "Đang tải..." treo tới khi tắt app.
   const controller = new AbortController();
+  const ms = uploadDeadlineMs(file.size);
   let timer: ReturnType<typeof setTimeout> | undefined;
   const deadline = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
       controller.abort();
-      reject(new UploadTimeoutError());
-    }, uploadDeadlineMs(file.size));
+      reject(new UploadTimeoutError(ms));
+    }, ms);
   });
   const upload = (async () => {
     const res = await fetch(`${STORAGE_GATEWAY}/upload?key=${encodeURIComponent(key)}`, {

@@ -40,6 +40,7 @@ import {
   DetailReadTimeoutError,
   DETAIL_READ_TIMEOUT_MS,
 } from "../income-expenses/detailRead";
+import { useVoucherWithBatch } from "../useVoucherDetail";
 
 const id = "00000000-0000-4000-8000-000000000001";
 const org = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -172,6 +173,7 @@ describe("tải chi tiết phiếu song song", () => {
       const wrapper = ({ children }: { children: ReactNode }) =>
         createElement(QueryClientProvider, { client }, children);
       const { result } = renderHook(() => useIncomeExpenseDetail(id, true, org), { wrapper });
+      expect(DETAIL_READ_TIMEOUT_MS).toBe(20_000); // chủ chốt 30/09/2026: chờ tối đa 20 giây
       await vi.advanceTimersByTimeAsync(DETAIL_READ_TIMEOUT_MS + 50);
       expect(result.current.isError).toBe(true);
       expect(result.current.error).toBeInstanceOf(DetailReadTimeoutError);
@@ -182,6 +184,53 @@ describe("tải chi tiết phiếu song song", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("chi tiết phiếu tổng (đợt) đọc bị kẹt: cũng dừng đúng 20 giây, không quay mãi", async () => {
+    setup(); // đầu phiếu không bao giờ trả lời
+    vi.useFakeTimers();
+    try {
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const wrapper = ({ children }: { children: ReactNode }) =>
+        createElement(QueryClientProvider, { client }, children);
+      const { result } = renderHook(() => useVoucherWithBatch(id), { wrapper });
+      await vi.advanceTimersByTimeAsync(DETAIL_READ_TIMEOUT_MS - 50);
+      expect(result.current.isError).toBe(false); // chưa tới 20 giây: vẫn chờ
+      await vi.advanceTimersByTimeAsync(100);
+      expect(result.current.isError).toBe(true);
+      expect(result.current.error).toBeInstanceOf(DetailReadTimeoutError);
+      expect(client.getQueryCache().find({ queryKey: ["voucher-with-batch", id] })?.meta).toMatchObject({ silent: true });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("dòng danh sách đầy đủ: hook trả NGAY làm bản xem trước, rồi bản đọc mới thay vào", async () => {
+    const header = setup();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client }, children);
+    const preview = { id, code: "PC2609006", name: "Dòng danh sách", organization_id: org, items: [],
+      detail_read: { complete: true, expected_item_count: 0 } } as never;
+    const { result } = renderHook(() => useIncomeExpenseDetail(id, true, org, preview), { wrapper });
+    expect(result.current.isPlaceholderData).toBe(true);
+    expect(result.current.data?.name).toBe("Dòng danh sách");
+    header.resolve(visibleHeader);
+    await waitFor(() => expect(result.current.isPlaceholderData).toBe(false));
+    expect(result.current.data?.name).toBe("Hoa hồng 303/44TL");
+  });
+
+  it("dòng danh sách thiếu hạng mục hoặc khác phiếu: KHÔNG dùng làm bản xem trước", () => {
+    setup();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client }, children);
+    const incomplete = { id, items: [], detail_read: { complete: false, expected_item_count: 2 } } as never;
+    const other = { id: "khac", items: [], detail_read: { complete: true, expected_item_count: 0 } } as never;
+    const a = renderHook(() => useIncomeExpenseDetail(id, true, org, incomplete), { wrapper });
+    expect(a.result.current.data).toBeUndefined();
+    const b = renderHook(() => useIncomeExpenseDetail(id, true, org, other), { wrapper });
+    expect(b.result.current.data).toBeUndefined();
   });
 
   it("hook nhận gợi ý tổ chức và chuyển xuống bộ tải", async () => {

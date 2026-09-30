@@ -20,6 +20,34 @@ export function useSheetStill(phase: string): boolean {
   return swapped || changed;
 }
 
+/** Phần kết quả đọc chi tiết cần để quyết định vẽ gì — tập con của kết quả useQuery. */
+export interface VoucherDetailReadState {
+  data: unknown;
+  isFetching: boolean;
+  isFetchedAfterMount: boolean;
+  isSuccess: boolean;
+  isPlaceholderData?: boolean;
+}
+
+/**
+ * Hiện nội dung phiếu khi nào, khoá nút thao tác khi nào (chủ chốt 30/09/2026):
+ * - HIỆN: bản xem trước từ dòng danh sách, hoặc bản đọc thành công — kể cả lúc
+ *   đang làm mới ngầm (realtime), để tấm phiếu không chớp về màn chờ;
+ * - MỞ KHOÁ: chỉ khi bản đọc đầy đủ vừa tải xong sau khi mở (ràng buộc 28/09:
+ *   thao tác tiền/sửa/in phải dựa trên bản đọc mới, không dựa bản xem trước).
+ * Bản mới báo hết quyền (null) hoặc lỗi ⇒ không hiện gì của bản cũ.
+ */
+export function voucherDetailView(
+  detail: VoucherDetailReadState,
+  complete: (data: unknown) => boolean,
+): { show: boolean; locked: boolean } {
+  const hasComplete = complete(detail.data);
+  const show = hasComplete && (detail.isPlaceholderData === true || detail.isSuccess);
+  const fresh = hasComplete && detail.isSuccess && detail.isPlaceholderData !== true
+    && detail.isFetchedAfterMount && !detail.isFetching;
+  return { show, locked: show && !fresh };
+}
+
 /**
  * Câu báo khi đọc chi tiết hỏng. Query chi tiết im toast chung (meta.silent) nên
  * câu tại chỗ phải tự nói được điều toast từng nói, cùng một bộ phân loại

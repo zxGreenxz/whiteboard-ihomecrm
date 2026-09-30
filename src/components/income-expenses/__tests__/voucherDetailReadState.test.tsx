@@ -17,6 +17,7 @@ const detail = vi.hoisted(() => ({
   isFetching: true,
   isFetchedAfterMount: false,
   isSuccess: false,
+  isPlaceholderData: false,
   refetch: vi.fn(),
 }));
 vi.mock("@/hooks/income-expenses/detailRead", () => ({ useIncomeExpenseDetail: () => detail }));
@@ -29,6 +30,7 @@ vi.mock("@/hooks/useIsAdmin", () => ({ useIsAdmin: () => ({ data: false }), useI
 vi.mock("@/hooks/useMyPermissions", () => ({ useMyPermissions: () => ({ data: {} }) }));
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ data: { id: "u" } }) }));
 vi.mock("@/hooks/useAccounts", () => ({ useAccounts: () => ({ data: [] }) }));
+vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => false }));
 vi.mock("@/hooks/useIsCompanyOwner", () => ({ useIsCompanyOwner: () => ({ data: false }) }));
 vi.mock("@/hooks/useReservationSettlement", () => ({
   useReservationSettlementForVoucher: () => ({ data: null, error: null, isSuccess: true, isLoading: false }),
@@ -50,8 +52,14 @@ function wrap(node: ReactNode) {
   );
 }
 function setState(next: Partial<typeof detail>) {
-  Object.assign(detail, { data: null, error: null, isFetching: false, isFetchedAfterMount: true, isSuccess: false }, next);
+  Object.assign(detail, { data: null, error: null, isFetching: false, isFetchedAfterMount: true, isSuccess: false, isPlaceholderData: false }, next);
 }
+/** Phiếu chờ duyệt đầy đủ hạng mục — như dòng danh sách đã làm giàu bằng RPC chi tiết. */
+const listRow = {
+  id: "v", type: "EXPENSE", code: "PC-TEST", name: "Phiếu thử", total_amount: 100, user_id: "u",
+  approval_status: "UNAPPROVED", attachments: [], items: [], contract_id: null, invoice_id: null,
+  system_source: null, detail_read: { complete: true, expected_item_count: 0 },
+};
 const batch = {
   id: "batch", name: "Đợt thử", type: "EXPENSE", total_amount: 100, voucher_count: 1, building_names: [],
   attachments: [], vouchers: [{ id: "v", items: [], total_amount: 100, approval_status: "UNAPPROVED", account_id: "a" }],
@@ -61,6 +69,75 @@ const batch = {
 afterEach(() => {
   cleanup();
   detail.refetch.mockReset();
+});
+
+// Chủ chốt 30/09/2026: bấm phiếu là hiện NGAY từ dòng danh sách; nút thao tác khoá
+// tới khi bản đọc mới về; bản mới báo hết quyền hoặc lỗi thì ẩn nội dung.
+describe("chi tiết phiếu hiện ngay từ dòng danh sách", () => {
+  const open = (onApprove = vi.fn()) =>
+    wrap(<IncomeExpenseDetailMobile voucherId="v" onClose={() => {}} onApprove={onApprove} />);
+
+  it("có bản xem trước: nội dung hiện ngay, nút thao tác khoá, báo đang cập nhật", () => {
+    setState({ data: listRow, isPlaceholderData: true, isSuccess: true, isFetching: true, isFetchedAfterMount: false });
+    render(open());
+    expect(screen.getByText("PC-TEST")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Duyệt" }).matches(":disabled")).toBe(true);
+    expect(screen.getByText(/Đang cập nhật/)).toBeTruthy();
+    expect(screen.queryByText("Thử lại")).toBeNull();
+  });
+
+  it("bản xem trước KHÔNG BAO GIỜ mở khoá nút — kể cả khi các cờ khác báo đã tải xong", () => {
+    // Nút duyệt/chi chỉ mở theo bản đọc mới. Cờ isPlaceholderData là hàng rào cuối,
+    // không dựa vào việc thư viện luôn kèm isFetching=true cho bản xem trước.
+    setState({ data: listRow, isPlaceholderData: true, isSuccess: true, isFetching: false, isFetchedAfterMount: true });
+    render(open());
+    expect(screen.getByText("PC-TEST")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Duyệt" }).matches(":disabled")).toBe(true);
+    expect(screen.getByText(/Đang cập nhật/)).toBeTruthy();
+  });
+
+  it("bản đọc mới về: mở khoá nút, hết dòng đang cập nhật", () => {
+    setState({ data: listRow, isPlaceholderData: true, isSuccess: true, isFetching: true, isFetchedAfterMount: false });
+    const onApprove = vi.fn();
+    const view = render(open(onApprove));
+    setState({ data: listRow, isSuccess: true, isFetching: false, isFetchedAfterMount: true });
+    view.rerender(open(onApprove));
+    const approve = screen.getByRole("button", { name: "Duyệt" });
+    expect(approve.matches(":disabled")).toBe(false);
+    expect(screen.queryByText(/Đang cập nhật/)).toBeNull();
+    fireEvent.click(approve);
+    expect(onApprove).toHaveBeenCalledTimes(1);
+  });
+
+  it("bản đọc mới báo hết quyền: ẩn nội dung đang xem trước", () => {
+    setState({ data: listRow, isPlaceholderData: true, isSuccess: true, isFetching: true, isFetchedAfterMount: false });
+    const view = render(open());
+    setState({ data: null, isSuccess: true, isFetching: false, isFetchedAfterMount: true });
+    view.rerender(open());
+    expect(screen.queryByText("PC-TEST")).toBeNull();
+    expect(screen.getByRole("status").textContent).toContain("không còn quyền xem");
+  });
+
+  it("làm mới ngầm (realtime) sau khi đã có bản mới: vẫn hiện nội dung, khoá nút tới khi xong", () => {
+    setState({ data: listRow, isSuccess: true, isFetching: true, isFetchedAfterMount: true });
+    render(open());
+    expect(screen.getByText("PC-TEST")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Duyệt" }).matches(":disabled")).toBe(true);
+  });
+
+  it("làm mới hỏng: không giữ nội dung cũ, báo lỗi kèm Thử lại", () => {
+    setState({ data: listRow, isSuccess: false, isFetching: false, isFetchedAfterMount: true, error: new Error("x") });
+    render(open());
+    expect(screen.queryByText("PC-TEST")).toBeNull();
+    expect(screen.getByRole("button", { name: "Thử lại" })).toBeTruthy();
+  });
+
+  it("máy tính: bản xem trước hiện ngay, nút Duyệt khoá tới khi bản mới về", () => {
+    setState({ data: listRow, isPlaceholderData: true, isSuccess: true, isFetching: true, isFetchedAfterMount: false });
+    render(wrap(<IncomeExpenseDetailDialog open voucherId="v" voucher={null} onOpenChange={() => {}} onApprove={() => {}} />));
+    expect(screen.getByText("PC-TEST")).toBeTruthy();
+    expect(screen.getByTitle("Duyệt phiếu").matches(":disabled")).toBe(true);
+  });
 });
 
 describe("chi tiết phiếu trên điện thoại — trạng thái đọc", () => {

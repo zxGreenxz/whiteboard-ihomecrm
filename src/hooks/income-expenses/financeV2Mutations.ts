@@ -392,7 +392,18 @@ async function uploadPostingAttachmentFile(file: File, userId: string): Promise<
     loiTai = e;
   }
   if (!url) {
-    toast.error(voucherFailureMessage(loiTai, `tải chứng từ “${file.name}”`));
+    // Ảnh chỉ mới TẢI LÊN KHO, chưa gắn vào phiếu nào: quá hạn thì lần tải lại dùng
+    // tên file mới và file lỡ tải xong muộn bị xoá (uploadToStorageWithDeadline) ⇒ tải
+    // lại an toàn. Câu chung "không tải lại khi kết quả còn chưa rõ" dành cho giao dịch;
+    // áp vào đây thì người chi kẹt, không có ảnh để chi.
+    const quaHan = loiTai instanceof UploadTimeoutError ? loiTai
+      : loiTai instanceof FinancialWorkflowError && loiTai.cause instanceof UploadTimeoutError ? loiTai.cause
+      : null;
+    // Ảnh nén dưới 1 MB chờ 20 giây; PDF lớn được chờ lâu hơn — nói đúng số đã chờ.
+    const daCho = quaHan?.ms ? `quá ${Math.round(quaHan.ms / 1000)} giây` : 'quá lâu';
+    toast.error(quaHan
+      ? `Mạng chậm — ${daCho} chưa tải xong “${file.name}”. Ảnh chưa gắn vào phiếu; bấm Thêm chứng từ để tải lại.`
+      : voucherFailureMessage(loiTai, `tải chứng từ “${file.name}”`));
     return null;
   }
   return url;

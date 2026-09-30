@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { loadIncomeExpenseDetails } from "@/lib/incomeExpenseDetailRpc";
+import { hasCompleteVoucherDetail } from "@/lib/incomeExpenseDetailRead";
 export { loadIncomeExpenseDetails } from "@/lib/incomeExpenseDetailRpc";
 import type { IncomeExpenseWithRelations } from "./types";
 import { hydrateReservationCreators } from "./reservationCreators";
@@ -134,11 +135,10 @@ export async function loadIncomeExpenseDetail(
  * không có hạn thì vòng quay chạy mãi: màn chờ không mời "Thử lại", đóng mở lại
  * cũng dính vào đúng lần đọc đang treo — các lần đọc chưa nhận `signal` của React
  * Query nên chưa huỷ được request (việc sau: `.abortSignal()` cho từng lần đọc).
- * Hạn rộng tay để mạng chậm-mà-vẫn-chạy không bị báo lỗi oan.
+ * Chủ chốt 30/09/2026: chờ tối đa 20 giây — cho cả chi tiết phiếu lẻ lẫn phiếu
+ * tổng (đợt ~7 lần đọc nối đuôi, thường ~3 giây).
  */
-export const DETAIL_READ_TIMEOUT_MS = 30_000;
-/** Chi tiết đợt nối ~10 lần đọc (phiếu, liên kết, đợt, phiếu con, nhãn…) — hạn rộng hơn. */
-export const BATCH_DETAIL_READ_TIMEOUT_MS = 45_000;
+export const DETAIL_READ_TIMEOUT_MS = 20_000;
 
 export class DetailReadTimeoutError extends Error {
   constructor(ms: number) {
@@ -164,10 +164,19 @@ export function useIncomeExpenseDetail(
   id: string | null | undefined,
   enabled = true,
   organizationIdHint?: string | null,
+  /**
+   * Dòng danh sách vừa bấm — chủ chốt 30/09/2026: hiện NGAY làm bản xem trước
+   * (`isPlaceholderData`), màn gọi khoá nút thao tác tới khi bản đọc mới về. Chỉ
+   * nhận khi đúng phiếu và đã đủ hạng mục (dòng danh sách được làm giàu bằng cùng
+   * RPC chi tiết); bản mới báo hết quyền/lỗi thì bản xem trước bị bỏ.
+   */
+  preview?: IncomeExpenseWithRelations | null,
 ) {
+  const placeholder = preview && preview.id === id && hasCompleteVoucherDetail(preview) ? preview : undefined;
   return useQuery({
     queryKey: ["income-expense", "detail", id],
     queryFn: () => withDetailReadDeadline(loadIncomeExpenseDetail(id!, organizationIdHint)),
+    placeholderData: placeholder,
     // Mọi màn dùng query này (tấm phiếu, hộp chi tiết, form sửa, trang in) tự hiện
     // lỗi + Thử lại tại chỗ. Toast chung của QueryProvider in cả queryKey và đè lên
     // nút Thử lại trên điện thoại — im với người dùng, vẫn ghi nhật ký lỗi.

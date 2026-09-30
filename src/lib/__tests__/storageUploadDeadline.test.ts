@@ -66,9 +66,12 @@ describe('uploadFile trên iPhone', () => {
     storage.upload.mockImplementation(() => new Promise(() => {}));
     const pdf = new File([new Uint8Array(300_000)], 'bill.pdf', { type: 'application/pdf' });
     const pending = uploadFile('income-expense-attachments', 'u/1-bill.pdf', pdf);
-    const settled = pending.then(() => 'xong', (e: Error) => e.message);
+    const settled = pending.then(() => null, (e: Error & { cause?: { ms?: number } }) => e);
     await vi.advanceTimersByTimeAsync(uploadDeadlineMs(pdf.size));
-    await expect(settled).resolves.toMatch(/quá lâu/);
+    const loi = await settled;
+    expect(loi?.message).toMatch(/quá lâu/);
+    // Lỗi mang đúng hạn đã chờ để câu báo nói đúng số giây (tệp lớn chờ lâu hơn 20 giây).
+    expect(loi?.cause?.ms).toBe(20_000);
   });
 
   it('request xong SAU hạn: xoá đúng file đó, không để rác trong kho', async () => {
@@ -103,5 +106,13 @@ describe('uploadFile trên iPhone', () => {
   it('hạn chờ tăng theo cỡ file: ảnh nhỏ không phải đợi như PDF lớn', () => {
     expect(uploadDeadlineMs(120_000)).toBeLessThan(uploadDeadlineMs(5 * 1024 * 1024));
     expect(uploadDeadlineMs(120_000)).toBeGreaterThanOrEqual(20_000);
+  });
+
+  it('ảnh chứng từ đã nén (dưới 1 MB) chờ tối đa 20 giây — chủ chốt 30/09/2026', () => {
+    expect(uploadDeadlineMs(73_024)).toBe(20_000); // bill chụp màn hình sau nén
+    expect(uploadDeadlineMs(344_318)).toBe(20_000); // ảnh camera sau nén
+    expect(uploadDeadlineMs(1024 * 1024)).toBe(20_000);
+    // Tệp lớn thật (PDF nhiều MB, tệp Zalo) mới được thêm 20 giây mỗi MB vượt quá.
+    expect(uploadDeadlineMs(2 * 1024 * 1024)).toBe(40_000);
   });
 });

@@ -210,11 +210,13 @@ export default function IncomeExpenseMobilePage() {
   const [createOpen, setCreateOpen] = useState(false);
 
   const [detailVoucherId, setDetailVoucherId] = useState<string | null>(null);
-  // Tổ chức của dòng vừa bấm: chỉ để tải chi tiết song song, không thay kiểm quyền.
-  const [detailOrgHint, setDetailOrgHint] = useState<string | null>(null);
+  // Dòng danh sách vừa bấm: hiện NGAY làm bản xem trước (nút khoá tới khi bản đọc
+  // mới về — chủ chốt 30/09/2026), và cho biết tổ chức để đọc song song. Không thay kiểm quyền.
+  const [detailPreview, setDetailPreview] = useState<IncomeExpenseWithRelations | null>(null);
+  const detailOrgHint = detailPreview?.organization_id ?? null;
   const setDetailVoucher = useCallback((value: IncomeExpenseWithRelations | null) => {
     setDetailVoucherId(value?.id ?? null);
-    setDetailOrgHint(value?.organization_id ?? null);
+    setDetailPreview(value);
   }, []);
   const selectedDetail = useIncomeExpenseDetail(detailVoucherId, true, detailOrgHint);
   const detailVoucher = selectedDetail.isSuccess && !selectedDetail.isFetching ? selectedDetail.data ?? null : null;
@@ -1006,6 +1008,7 @@ export default function IncomeExpenseMobilePage() {
             <IncomeExpenseDetailMobile
               voucherId={detailVoucherId}
               organizationIdHint={detailOrgHint}
+              previewVoucher={detailPreview}
               voucher={detailVoucher ?? undefined}
               onClose={() => setDetailVoucher(null)}
               onEdit={(v) => setEditingVoucher(v)}

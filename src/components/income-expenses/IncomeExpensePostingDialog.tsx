@@ -1,5 +1,6 @@
 import { focusFirstError } from "@/lib/formErrors";
 import { voucherFailureMessage, voucherOutcomeUnknown } from "@/lib/voucherFeedback";
+import { FinancialWorkflowError } from "@/lib/financialWorkflowError";
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -156,6 +157,27 @@ export interface IncomeExpensePostingDialogProps {
   ) => Promise<{ evidenceIds: string[]; skipped: { url: string; reason: string }[] } | null>;
 }
 
+/**
+ * Bước ghi ảnh lên phiếu (annotate + adopt) KHOÁ hộp vì chưa rõ phiếu đã đổi hay
+ * chưa — chủ chốt 30/09/2026: chờ tối đa 20 giây. Quá hạn ném lỗi "chưa xác nhận
+ * kết quả" (outcome 'unknown'): nhánh catch sẵn có coi ảnh là có thể đã nằm trên
+ * phiếu (không xoá khi đóng), báo lỗi và chặn chi tiếp cho tới khi mở lại phiếu.
+ * Tiền chưa đi: lệnh ghi sổ chỉ chạy SAU bước này.
+ */
+const COMMIT_ATTACHMENTS_TIMEOUT_MS = 20_000;
+
+function withCommitDeadline<T>(commit: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new FinancialWorkflowError(
+      'Mạng chậm — quá 20 giây chưa xác nhận đã ghi ảnh lên phiếu. Chưa chi tiền. Đóng hộp, mở lại phiếu để xem ảnh rồi làm lại.',
+      'unknown',
+      [],
+    )), COMMIT_ATTACHMENTS_TIMEOUT_MS);
+  });
+  return Promise.race([commit, deadline]).finally(() => clearTimeout(timer));
+}
+
 /** Sinh idempotency key khi server không cấp (chống double-post lúc retry UI). */
 function genIdempotencyKey(): string {
   if (
@@ -200,6 +222,8 @@ function PostingEvidenceUpload({
   pendingChanges,
   confirmLabel,
   invalid,
+  localPreviews,
+  onLocalPreviewError,
 }: {
   items: PostingEvidenceItem[];
   onFiles: (files: FileList | File[] | null) => Promise<void>;
@@ -217,6 +241,10 @@ function PostingEvidenceUpload({
   /** Chữ trên nút xác nhận ("Chi", "Duyệt và Thu"…) — để câu nhắc nói đúng nút. */
   confirmLabel: string;
   invalid?: boolean;
+  /** URL tạm `blob:` của ảnh vừa chọn, theo URL kho — ô ảnh vẽ ngay từ máy. */
+  localPreviews?: Record<string, string>;
+  /** Ảnh trên máy không vẽ được ⇒ bỏ URL tạm, ô ảnh quay về đọc từ kho. */
+  onLocalPreviewError?: (url: string) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -276,6 +304,8 @@ function PostingEvidenceUpload({
           {items.map((item) => (
             <div
               key={item.url}
+              // Ô ảnh có thể vẽ từ URL tạm trên máy — URL kho nằm ở đây để tra.
+              data-evidence-url={item.url}
               className={cn(
                 'relative group h-20 w-20 overflow-hidden rounded-lg border bg-muted/40',
                 !item.usable && 'opacity-40 grayscale',
@@ -292,6 +322,13 @@ function PostingEvidenceUpload({
                 <div className="flex h-full w-full items-center justify-center">
                   <FileText className="h-8 w-8 text-muted-foreground" />
                 </div>
+              ) : localPreviews?.[item.url] ? (
+                <img
+                  src={localPreviews[item.url]}
+                  alt="Chứng từ"
+                  className="h-full w-full object-cover"
+                  onError={() => onLocalPreviewError?.(item.url)}
+                />
               ) : (
                 <StorageImage
                   value={item.url}
@@ -532,6 +569,32 @@ export default function IncomeExpensePostingDialog({
   }, []);
 
   /**
+   * Ô ảnh của file tải lên trong lần mở này vẽ thẳng từ file trên máy (URL tạm
+   * `blob:`), không phải ký URL rồi tải ngược cả ảnh từ kho về mới thấy (chủ chốt
+   * 30/09/2026). Chỉ để xem — thứ ghi lên phiếu vẫn là URL kho. Hết lần mở thì thu
+   * hồi hết. Trình duyệt không có `createObjectURL` hoặc không vẽ được file ⇒ ô ảnh
+   * đọc từ kho như cũ.
+   */
+  const [localPreviews, setLocalPreviews] = useState<Record<string, string>>({});
+  const localPreviewsRef = useRef(new Map<string, string>());
+  const addLocalPreview = useCallback((url: string, file: File) => {
+    if (!file.type.startsWith('image/') || typeof URL.createObjectURL !== 'function') return;
+    localPreviewsRef.current.set(url, URL.createObjectURL(file));
+    setLocalPreviews(Object.fromEntries(localPreviewsRef.current));
+  }, []);
+  /** Không truyền `urls` ⇒ thu hồi tất cả. */
+  const dropLocalPreviews = useCallback((urls?: string[]) => {
+    const previews = localPreviewsRef.current;
+    for (const url of urls ?? [...previews.keys()]) {
+      const blobUrl = previews.get(url);
+      if (!blobUrl) continue;
+      previews.delete(url);
+      URL.revokeObjectURL(blobUrl);
+    }
+    setLocalPreviews(Object.fromEntries(previews));
+  }, []);
+
+  /**
    * Xoá khỏi kho mọi file tải lên trong lần mở này mà chưa ghi lên phiếu. Đang
    * ghi ảnh dở dang thì KHÔNG xoá ở đây — file có thể vừa nằm trên phiếu; bước
    * ghi tự dọn nếu nó hỏng (xem `applyAttachmentChanges`).
@@ -552,12 +615,13 @@ export default function IncomeExpensePostingDialog({
     return () => {
       sessionRef.current += 1;
       discardStaged();
+      dropLocalPreviews();
       setStagedUrls([]);
       setRemovedUrls([]);
       setAppliedAdds([]);
       setAppliedRemovals([]);
     };
-  }, [open, voucher.subjectId, mode, discardStaged]);
+  }, [open, voucher.subjectId, mode, discardStaged, dropLocalPreviews]);
 
   useEffect(() => {
     if (!open) {
@@ -653,6 +717,7 @@ export default function IncomeExpensePostingDialog({
             }
             if (!url) continue;
             stagedFilesRef.current.set(url, file);
+            addLocalPreview(url, file);
             setStaged([...stagedRef.current, url]);
             continue;
           }
@@ -666,7 +731,7 @@ export default function IncomeExpensePostingDialog({
         if (sessionRef.current === session) setUploading(false);
       }
     },
-    [stageUploads, uploadDraft, discardDraft, onUploadEvidence, setStaged],
+    [stageUploads, uploadDraft, discardDraft, onUploadEvidence, setStaged, addLocalPreview],
   );
 
   const handleEvidenceRemove = useCallback(
@@ -675,6 +740,7 @@ export default function IncomeExpensePostingDialog({
         // Ảnh vừa thêm trong lần mở này, chưa từng nằm trên phiếu: xoá file luôn.
         setStaged(stagedRef.current.filter((u) => u !== url));
         stagedFilesRef.current.delete(url);
+        dropLocalPreviews([url]);
         await discardDraft([url]);
         return;
       }
@@ -682,7 +748,7 @@ export default function IncomeExpensePostingDialog({
       // Ảnh đang có trên phiếu: chỉ ẩn đi, KHÔNG xoá file — gỡ thật lúc xác nhận.
       setRemovedUrls((prev) => (prev.includes(url) ? prev : [...prev, url]));
     },
-    [canRemoveExisting, discardDraft, setStaged],
+    [canRemoveExisting, discardDraft, setStaged, dropLocalPreviews],
   );
 
   const canRemoveItem = useCallback(
@@ -721,6 +787,7 @@ export default function IncomeExpensePostingDialog({
     if (moved.length > 0) {
       setStaged(stagedRef.current.filter((u) => !moved.includes(u)));
       for (const u of moved) stagedFilesRef.current.delete(u);
+      dropLocalPreviews(moved);
       void discardDraft(moved);
       setFallbackIds((prev) => [...prev, ...ids]);
     }
@@ -747,7 +814,7 @@ export default function IncomeExpensePostingDialog({
     committingRef.current = true;
     setCommitting(true);
     try {
-      const res = await commitDraft(voucher.subjectId, { add, remove });
+      const res = await withCommitDeadline(commitDraft(voucher.subjectId, { add, remove }));
       if (sessionRef.current !== session) {
         // Hộp bị đóng giữa chừng: ghi được thì file đã thuộc phiếu — giữ; không
         // ghi được thì chúng là rác.
@@ -973,6 +1040,8 @@ export default function IncomeExpensePostingDialog({
                       fallbackCount={fallbackIds.length}
                       pendingChanges={hasPendingAttachmentChanges}
                       confirmLabel={title}
+                      localPreviews={localPreviews}
+                      onLocalPreviewError={(url) => dropLocalPreviews([url])}
                     />
                   </FormControl>
                   <FormMessage />

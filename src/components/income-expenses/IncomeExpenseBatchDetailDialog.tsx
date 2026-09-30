@@ -440,6 +440,7 @@ function IncomeExpenseBatchDetailContent({
           if (!o) setChildVoucher(null);
         }}
         voucher={childVoucher}
+        previewVoucher={childVoucher}
         onEdit={
           onEditVoucher
             ? (v) => {

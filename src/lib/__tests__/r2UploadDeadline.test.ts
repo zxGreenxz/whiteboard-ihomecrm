@@ -37,7 +37,9 @@ describe('uploadToR2', () => {
     const photo = new File([new Uint8Array(150_000)], 'phong.webp', { type: 'image/webp' });
     const settled = uploadToR2('room-sale-images', 'r/1-phong.webp', photo).then(() => null, (e: unknown) => e);
     await vi.advanceTimersByTimeAsync(uploadDeadlineMs(photo.size));
-    expect(await settled).toBeInstanceOf(UploadTimeoutError);
+    const loi = await settled;
+    expect(loi).toBeInstanceOf(UploadTimeoutError);
+    expect((loi as { ms?: number }).ms).toBe(20_000); // để câu báo nói đúng số giây đã chờ
     expect(seenSignal?.aborted).toBe(true);
   });
 

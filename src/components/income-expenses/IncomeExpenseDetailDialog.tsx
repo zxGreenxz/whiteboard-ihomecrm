@@ -24,6 +24,7 @@ import {
   RotateCcw,
   History,
   CopyPlus,
+  Loader2,
 } from "lucide-react";
 import { PayViaBankAppSheet } from "@/components/income-expenses/PayViaBankAppSheet";
 import {
@@ -56,7 +57,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { formatVND } from "@/lib/utils";
 import { ReservationSettlementDialog } from "@/components/deposits/ReservationSettlementDialog";
 import { VoucherDialogReadState } from "@/components/income-expenses/VoucherReadState";
-import { detailReadErrorMessage } from "@/components/income-expenses/voucherSheetState";
+import { detailReadErrorMessage, voucherDetailView } from "@/components/income-expenses/voucherSheetState";
 
 interface Props {
   open: boolean;
@@ -65,6 +66,8 @@ interface Props {
   voucherId?: string | null;
   /** Tổ chức của dòng vừa bấm — chỉ để tải chi tiết song song (loadIncomeExpenseDetail). */
   organizationIdHint?: string | null;
+  /** Dòng danh sách vừa bấm: hiện ngay làm bản xem trước, nút khoá tới khi bản đọc mới về. */
+  previewVoucher?: IncomeExpenseWithRelations | null;
   onCancel?: (id: string, type?: string | null) => void;
   onEdit?: (voucher: IncomeExpenseWithRelations) => void;
   /** Append-only narrative/evidence, independent of the financial edit form. */
@@ -105,10 +108,12 @@ export function IncomeExpenseDetailDialog(props: Props) {
   const detail = useIncomeExpenseDetail(
     props.voucherId ?? props.voucher?.id,
     props.open,
-    props.organizationIdHint ?? props.voucher?.organization_id,
+    props.organizationIdHint ?? props.previewVoucher?.organization_id ?? props.voucher?.organization_id,
+    props.previewVoucher,
   );
+  const view = voucherDetailView(detail, (data) => hasCompleteVoucherDetail(data as IncomeExpenseWithRelations | null));
   if (!props.open || (!props.voucherId && !props.voucher)) return null;
-  if (detail.isFetching || !detail.isFetchedAfterMount || !detail.isSuccess || !hasCompleteVoucherDetail(detail.data)) {
+  if (!view.show) {
     const message = detail.isFetching ? "Đang tải chi tiết phiếu…" : detail.isSuccess && !detail.data ? "Phiếu không còn khả dụng hoặc bạn không còn quyền xem." : detailReadErrorMessage(detail.error, "Không tải được đầy đủ chi tiết phiếu.");
     return (
       <VoucherDialogReadState
@@ -120,7 +125,7 @@ export function IncomeExpenseDetailDialog(props: Props) {
       />
     );
   }
-  return <IncomeExpenseDetailDialogContent {...props} voucher={detail.data!} />;
+  return <IncomeExpenseDetailDialogContent {...props} voucher={detail.data!} locked={view.locked} />;
 }
 
 function IncomeExpenseDetailDialogContent({
@@ -134,7 +139,8 @@ function IncomeExpenseDetailDialogContent({
   onUnapprove,
   onRestore,
   onCopy,
-}: Props) {
+  locked = false,
+}: Props & { locked?: boolean }) {
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const [paySheetOpen, setPaySheetOpen] = useState(false);
   const [settlementOpen, setSettlementOpen] = useState(false);
@@ -244,6 +250,15 @@ function IncomeExpenseDetailDialogContent({
             </DialogTitle>
           </DialogHeader>
 
+          {locked && (
+            <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              Đang cập nhật bản mới nhất — tạm khoá nút thao tác.
+            </p>
+          )}
+          {/* Chủ chốt 30/09/2026: nội dung hiện ngay (bản xem trước / làm mới ngầm) nhưng
+              MỌI nút khoá tới khi bản đọc mới về; nút đóng của hộp nằm ngoài fieldset. */}
+          <fieldset className="m-0 min-w-0 border-0 p-0" disabled={locked}>
           {/* Section header với action buttons bên phải */}
           <QueryRegion label="nhật ký phiếu" queries={[historyQuery]}><></></QueryRegion>
           {invoiceId&&<QueryRegion label="hoá đơn liên quan" queries={[relatedInvoiceQuery]}><></></QueryRegion>}
@@ -658,6 +673,7 @@ function IncomeExpenseDetailDialogContent({
             </>
           )}
           {canSettleReservation && <Button variant="outline" className="mt-4 w-full" onClick={() => setSettlementOpen(true)}>Xử lý bỏ cọc</Button>}
+          </fieldset>
         </DialogContent>
       </Dialog>
 

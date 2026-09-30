@@ -310,6 +310,7 @@ function IncomeExpenseBatchDetailContent({
       {child && (
         <IncomeExpenseDetailMobile
           voucher={child}
+          previewVoucher={child}
           onClose={() => setChild(null)}
           onEdit={
             onEditVoucher

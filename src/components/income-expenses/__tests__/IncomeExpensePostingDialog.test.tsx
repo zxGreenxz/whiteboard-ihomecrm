@@ -133,9 +133,13 @@ function Khung({ giuKhiDong = false }: { giuKhiDong?: boolean }) {
   return <QueryClientProvider client={client}>{giuKhiDong || mo ? hop : null}</QueryClientProvider>;
 }
 
+/** Ô ảnh theo URL kho — ảnh vừa thêm vẽ từ URL tạm trên máy nên không tra theo src. */
 function oAnh(url: string) {
-  const anh = screen.queryAllByRole('img').find((i) => i.getAttribute('src') === url);
-  return anh?.parentElement ?? null;
+  return (
+    Array.from(document.querySelectorAll<HTMLElement>('[data-evidence-url]')).find(
+      (o) => o.dataset.evidenceUrl === url,
+    ) ?? null
+  );
 }
 
 /** Chọn một ảnh mới qua ô "Thêm chứng từ"; trả URL + đường dẫn trong kho. */
@@ -360,5 +364,131 @@ describe('chứng từ đã ghi nhưng kiểm tra lại lỗi', () => {
     expect(may.anh).toContain(uploaded.url);
     fireEvent.click(screen.getByRole('button',{name:'Huỷ bỏ'}));
     expect(H.xoaFile).not.toHaveBeenCalled();
+  });
+});
+
+// Ảnh vừa chọn vẽ NGAY từ file trên máy (URL tạm), không phải ký URL rồi tải ngược
+// cả ảnh từ kho mới hiện được ô 80×80. Đóng hộp thì thu hồi URL tạm.
+describe('ô ảnh vừa thêm hiện ngay từ máy', () => {
+  const taoUrlTam = vi.fn();
+  const thuHoi = vi.fn();
+  beforeEach(() => {
+    let dem = 0;
+    taoUrlTam.mockReset().mockImplementation(() => `blob:anh-tren-may-${++dem}`);
+    thuHoi.mockReset();
+    // URL tạm đoán trước được + theo dõi thu hồi. Lớp con giữ `new URL(...)` chạy được
+    // (stub bằng object thường như `{...URL}` làm hỏng nó).
+    class UrlCoXemTruoc extends URL {
+      static createObjectURL = taoUrlTam;
+      static revokeObjectURL = thuHoi;
+    }
+    vi.stubGlobal('URL', UrlCoXemTruoc);
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  const coAnh = (src: string) => screen.queryAllByRole('img').some((i) => i.getAttribute('src') === src);
+  const chonAnh = () => {
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [new File(['x'], 'bill.png', { type: 'image/png' })] } });
+  };
+
+  it('vẽ bằng URL tạm của file trên máy, đóng hộp thì thu hồi', async () => {
+    render(<Khung />);
+    chonAnh();
+    await waitFor(() => expect(coAnh('blob:anh-tren-may-1')).toBe(true));
+    // Không ô nào phải chờ ký URL kho cho ảnh vừa thêm.
+    expect(screen.queryAllByRole('img').some((i) => (i.getAttribute('src') ?? '').startsWith(KHO))).toBe(false);
+    expect(thuHoi).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Huỷ bỏ' }));
+    await waitFor(() => expect(thuHoi).toHaveBeenCalledWith('blob:anh-tren-may-1'));
+  });
+
+  it('bấm X trên ảnh vừa thêm thì thu hồi URL tạm của đúng ảnh đó', async () => {
+    render(<Khung />);
+    chonAnh();
+    await waitFor(() => expect(coAnh('blob:anh-tren-may-1')).toBe(true));
+    const o = screen.queryAllByRole('img').find((i) => i.getAttribute('src') === 'blob:anh-tren-may-1')!.parentElement!;
+    fireEvent.click(within(o).getByRole('button', { name: 'Gỡ chứng từ' }));
+    await waitFor(() => expect(coAnh('blob:anh-tren-may-1')).toBe(false));
+    expect(thuHoi).toHaveBeenCalledWith('blob:anh-tren-may-1');
+  });
+
+  it('ảnh trên máy không vẽ được thì ô ảnh quay về đọc từ kho', async () => {
+    render(<Khung />);
+    chonAnh();
+    await waitFor(() => expect(coAnh('blob:anh-tren-may-1')).toBe(true));
+    const [, duongDan] = H.taiLen.mock.calls[0] as [string, string];
+    const anh = screen.queryAllByRole('img').find((i) => i.getAttribute('src') === 'blob:anh-tren-may-1')!;
+    fireEvent.error(anh);
+    await waitFor(() => expect(coAnh(`${KHO}${duongDan}`)).toBe(true));
+    expect(coAnh('blob:anh-tren-may-1')).toBe(false);
+    expect(thuHoi).toHaveBeenCalledWith('blob:anh-tren-may-1');
+  });
+});
+
+// Ảnh trong hộp mới chỉ TẢI LÊN KHO, chưa gắn vào phiếu nào: tải quá hạn thì lần
+// tải lại dùng tên file mới, file lỡ tải xong muộn bị xoá (uploadToStorageWithDeadline)
+// ⇒ tải lại an toàn. Câu báo chung "không tải lại tệp này khi kết quả còn chưa rõ"
+// (dành cho giao dịch) sai với ca này và khiến người chi kẹt, không chi được.
+describe('ảnh chứng từ tải quá hạn', () => {
+  it('báo mạng chậm và mời tải lại — không bảo "đừng tải lại"', async () => {
+    const { FinancialWorkflowError } = await import('@/lib/financialWorkflowError');
+    const { UploadTimeoutError } = await import('@/lib/uploadDeadline');
+    // Đúng hình dạng storage.ts ném: lỗi giao dịch "chưa rõ" bọc UploadTimeoutError.
+    H.taiLen.mockImplementationOnce(async () => {
+      throw new FinancialWorkflowError(
+        'Tải file quá lâu. Chưa xác nhận được tệp đã tải. Giữ tệp và đường dẫn để đối chiếu; không tải lại tệp này khi kết quả còn chưa rõ.',
+        'unknown', [], new UploadTimeoutError(20_000));
+    });
+    render(<Khung />);
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [new File(['x'], 'bill.png', { type: 'image/png' })] } });
+    await waitFor(() => expect(H.toastLoi).toHaveBeenCalled());
+    const loi = String(H.toastLoi.mock.calls[0][0]);
+    expect(loi).toMatch(/Mạng chậm — quá 20 giây chưa tải xong “bill\.png”/);
+    expect(loi).toMatch(/bấm Thêm chứng từ để tải lại/);
+    expect(loi).not.toMatch(/không tải lại/);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Thêm chứng từ' })).toBeTruthy());
+  });
+
+  it('tệp lớn được chờ lâu hơn: câu báo nói đúng số giây đã chờ', async () => {
+    const { UploadTimeoutError } = await import('@/lib/uploadDeadline');
+    // PDF 2,5 MB: 20 giây + 20 giây mỗi MB vượt 1 MB = 60 giây (uploadDeadlineMs).
+    H.taiLen.mockImplementationOnce(async () => { throw new UploadTimeoutError(60_000); });
+    render(<Khung />);
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [new File(['x'], 'hoa-don.pdf', { type: 'application/pdf' })] } });
+    await waitFor(() => expect(H.toastLoi).toHaveBeenCalled());
+    const loi = String(H.toastLoi.mock.calls[0][0]);
+    expect(loi).toMatch(/Mạng chậm — quá 60 giây chưa tải xong “hoa-don\.pdf”/);
+    expect(loi).toMatch(/bấm Thêm chứng từ để tải lại/);
+  });
+});
+
+// Chủ chốt 30/09/2026: bước ghi ảnh lên phiếu (annotate + adopt) KHOÁ hộp vì chưa
+// rõ phiếu đã đổi hay chưa — nhưng chỉ chờ tối đa 20 giây. Quá hạn: mở khoá hộp,
+// báo chưa xác nhận, KHÔNG chi tiền; ảnh có thể đã nằm trên phiếu nên không xoá.
+describe('bước ghi ảnh lên phiếu kẹt mạng', () => {
+  it('quá 20 giây: mở khoá hộp, báo chưa xác nhận, không chi tiền, không xoá ảnh khi đóng', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      render(<Khung />);
+      const { path } = await themAnh();
+      H.goiMayChu.mockImplementation((fn: string, args: Record<string, unknown>) =>
+        fn === 'annotate_income_expense_v1' ? new Promise(() => {}) : goiMayChuGia(fn, args));
+      fireEvent.click(screen.getByRole('button', { name: 'Chi' }));
+      await waitFor(() => expect(lenhGhiAnh()).toHaveLength(1));
+      expect((screen.getByRole('button', { name: 'Huỷ bỏ' }) as HTMLButtonElement).disabled).toBe(true);
+      await vi.advanceTimersByTimeAsync(20_000);
+      await waitFor(() => expect((screen.getByRole('button', { name: 'Huỷ bỏ' }) as HTMLButtonElement).disabled).toBe(false));
+      expect(screen.getByRole('alert').textContent).toMatch(/quá 20 giây/);
+      expect(screen.getByRole('alert').textContent).toMatch(/Chưa chi tiền/);
+      expect(H.ghiSo).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole('button', { name: 'Huỷ bỏ' }));
+      await vi.advanceTimersByTimeAsync(50);
+      expect(H.xoaFile).not.toHaveBeenCalledWith(BUCKET, path);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -52,6 +52,7 @@ export async function uploadToStorageWithDeadline(
   fileOptions: { cacheControl?: string; contentType?: string; upsert?: boolean },
 ) {
   const request = supabase.storage.from(bucket).upload(key, body, fileOptions);
+  const ms = uploadDeadlineMs(body.size);
   let timer: ReturnType<typeof setTimeout> | undefined;
   const deadline = new Promise<{ data: null; error: UploadTimeoutError }>((resolve) => {
     timer = setTimeout(() => {
@@ -65,8 +66,8 @@ export async function uploadToStorageWithDeadline(
         .catch((cleanupError: unknown) => {
           console.warn("[storage] không xoá được file tải xong sau hạn:", cleanupError);
         });
-      resolve({ data: null, error: new UploadTimeoutError() });
-    }, uploadDeadlineMs(body.size));
+      resolve({ data: null, error: new UploadTimeoutError(ms) });
+    }, ms);
   });
   return Promise.race([request, deadline]).finally(() => clearTimeout(timer));
 }

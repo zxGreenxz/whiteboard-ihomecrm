@@ -125,6 +125,12 @@
 /* Khung chờ → nội dung (hoặc ngược lại khi tải lại) là hai tấm DOM khác nhau:
    tấm thứ hai hiện tại chỗ, không bật về đáy trượt lại (useSheetStill). */
 .cm-app .sheet-ov.sheet-still, .cm-app .sheet-ov.sheet-still > .sheet { animation: none; }
+/* Nội dung phiếu hiện ngay nhưng khoá nút tới khi bản đọc mới về (chủ chốt 30/09/2026):
+   fieldset chỉ để khoá, không mang kiểu mặc định (viền, lề, min-width gây tràn ngang). */
+.cm-app .vd-lock { border: 0; margin: 0; padding: 0; min-width: 0; }
+.cm-app .vd-lock:disabled .vd-act,
+.cm-app .vd-lock:disabled .vd-pay,
+.cm-app .vd-lock:disabled .vd-link { opacity: .45; cursor: default; }
 .cm-app .vd-state-acts { display: flex; gap: 10px; margin-top: 4px; }
 .cm-app .vd-state-acts .invbtn { flex: 1; justify-content: center; }
 .cm-app .vd-atts { display: flex; flex-wrap: wrap; gap: 10px; }

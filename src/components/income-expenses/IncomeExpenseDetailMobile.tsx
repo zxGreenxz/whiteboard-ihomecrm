@@ -17,6 +17,7 @@ import {
   RotateCcw,
   History,
   CopyPlus,
+  Loader2,
 } from "lucide-react";
 import { useState } from "react";
 import { format } from "date-fns";
@@ -52,13 +53,15 @@ import {
 } from "@/hooks/useIncomeExpenses";
 import { ReservationSettlementDialog } from "@/components/deposits/ReservationSettlementDialog";
 import { VoucherSheetReadState } from "@/components/income-expenses/VoucherReadState";
-import { detailReadErrorMessage, useSheetStill } from "@/components/income-expenses/voucherSheetState";
+import { detailReadErrorMessage, useSheetStill, voucherDetailView } from "@/components/income-expenses/voucherSheetState";
 
 interface Props {
   voucher?: IncomeExpenseWithRelations;
   voucherId?: string;
   /** Tổ chức của dòng vừa bấm — chỉ để tải chi tiết song song (loadIncomeExpenseDetail). */
   organizationIdHint?: string | null;
+  /** Dòng danh sách vừa bấm: hiện ngay làm bản xem trước, nút khoá tới khi bản đọc mới về. */
+  previewVoucher?: IncomeExpenseWithRelations | null;
   onClose: () => void;
   onEdit?: (v: IncomeExpenseWithRelations) => void;
   onQuickEdit?: (v: IncomeExpenseWithRelations) => void;
@@ -98,11 +101,12 @@ export function IncomeExpenseDetailMobile(props: Props) {
   const detail = useIncomeExpenseDetail(
     props.voucherId ?? props.voucher?.id,
     true,
-    props.organizationIdHint ?? props.voucher?.organization_id,
+    props.organizationIdHint ?? props.previewVoucher?.organization_id ?? props.voucher?.organization_id,
+    props.previewVoucher,
   );
-  const ready = !(detail.isFetching || !detail.isFetchedAfterMount || !detail.isSuccess || !hasCompleteVoucherDetail(detail.data));
-  const still = useSheetStill(ready ? "content" : "state");
-  if (!ready) {
+  const view = voucherDetailView(detail, (data) => hasCompleteVoucherDetail(data as IncomeExpenseWithRelations | null));
+  const still = useSheetStill(view.show ? "content" : "state");
+  if (!view.show) {
     const message = detail.isFetching ? "Đang tải chi tiết phiếu…" : detail.isSuccess && !detail.data ? "Phiếu không còn khả dụng hoặc bạn không còn quyền xem." : detailReadErrorMessage(detail.error, "Không tải được đầy đủ chi tiết phiếu.");
     return (
       <VoucherSheetReadState
@@ -115,7 +119,7 @@ export function IncomeExpenseDetailMobile(props: Props) {
       />
     );
   }
-  return <IncomeExpenseDetailMobileContent {...props} voucher={detail.data!} still={still} />;
+  return <IncomeExpenseDetailMobileContent {...props} voucher={detail.data!} still={still} locked={view.locked} />;
 }
 
 function IncomeExpenseDetailMobileContent({
@@ -130,7 +134,8 @@ function IncomeExpenseDetailMobileContent({
   onPostApproved,
   onReversePosting,
   still = false,
-}: Props & { voucher: IncomeExpenseWithRelations; still?: boolean }) {
+  locked = false,
+}: Props & { voucher: IncomeExpenseWithRelations; still?: boolean; locked?: boolean }) {
   const navigate = useNavigate();
   const attachments = getVoucherDisplayAttachments(v);
   const [paySheetOpen, setPaySheetOpen] = useState(false);
@@ -235,6 +240,16 @@ function IncomeExpenseDetailMobileContent({
           </button>
         </div>
 
+        {locked && (
+          <p role="status" className="vd-state">
+            <Loader2 size={15} className="vd-state-spin" aria-hidden="true" />
+            Đang cập nhật bản mới nhất — tạm khoá nút thao tác.
+          </p>
+        )}
+        {/* Chủ chốt 30/09/2026: nội dung hiện ngay (bản xem trước / làm mới ngầm) nhưng
+            MỌI nút trong tấm phiếu khoá tới khi bản đọc mới về — fieldset disabled khoá
+            cả nút của component con (Đổi hình thức thu, gán QL…). Nút Đóng ở trên vẫn dùng được. */}
+        <fieldset className="vd-lock" disabled={locked}>
         <QueryRegion label="nhật ký phiếu" queries={[historyQuery]}><></></QueryRegion>
         {invoiceId&&<QueryRegion label="hoá đơn liên quan" queries={[relatedInvoiceQuery]}><></></QueryRegion>}
         <div className="vd-sec">
@@ -610,6 +625,7 @@ function IncomeExpenseDetailMobileContent({
           </>
         )}
         {canSettleReservation && <button className="vd-pay" onClick={() => setSettlementOpen(true)}>Xử lý bỏ cọc</button>}
+        </fieldset>
       </div>
 
       <PayViaBankAppSheet

@@ -8,7 +8,7 @@
 // được vì 2 hook kia query theo bộ lọc danh sách, không theo 1 id).
 // =============================================
 
-import { loadIncomeExpenseDetail, loadIncomeExpenseDetails, hydrateIncomeExpenseDetailRelations, withDetailReadDeadline, BATCH_DETAIL_READ_TIMEOUT_MS } from "@/hooks/income-expenses/detailRead";
+import { loadIncomeExpenseDetail, loadIncomeExpenseDetails, hydrateIncomeExpenseDetailRelations, withDetailReadDeadline } from "@/hooks/income-expenses/detailRead";
 import { fetchAllRows } from "@/lib/supabaseFetchAll";
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -32,8 +32,8 @@ export const useVoucherWithBatch = (voucherId?: string) => {
     staleTime: 0,
     refetchOnMount: "always",
     retry: false,
-    // Đọc kẹt ⇒ lỗi + Thử lại, không quay mãi; hạn rộng hơn phiếu lẻ vì nối ~10 lần đọc.
-    queryFn: () => withDetailReadDeadline(loadVoucherWithBatch(voucherId), BATCH_DETAIL_READ_TIMEOUT_MS),
+    // Đọc kẹt ⇒ lỗi + Thử lại sau 20 giây như phiếu lẻ (chủ chốt 30/09/2026), không quay mãi.
+    queryFn: () => withDetailReadDeadline(loadVoucherWithBatch(voucherId)),
     // Màn đợt và trang phiếu riêng tự hiện lỗi + Thử lại; toast chung chỉ che nút.
     meta: { silent: true },
   });
