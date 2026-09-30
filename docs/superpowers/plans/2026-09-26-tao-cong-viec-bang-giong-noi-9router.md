@@ -1,5 +1,7 @@
 # Tạo công việc bằng giọng nói qua 9Router — kế hoạch đề xuất
 
+> **[LỊCH SỬ — ĐÃ CẤT KHO 30/09/2026]** Chủ quyết định dừng, không phát triển tiếp. Trang `/voice-task-lab`, API `api/voice-task-lab.js`, `tools/voice-task-lab/` và job CI `voice-lab-tests` đã gỡ khỏi app. Bản cuối còn đủ tính năng nằm ở tag Git `archive/voice-task-lab-20260930`; muốn làm lại thì bắt đầu từ tag đó và hỏi chủ trước. Giữ làm bằng chứng, không cập nhật nữa.
+
 > **For agentic workers:** Khi được giao triển khai, dùng `superpowers:subagent-driven-development` hoặc `superpowers:executing-plans` theo từng hạng mục. Các bước có checkbox để theo dõi.
 
 **Goal:** Người dùng nói tiếng Việt, kiểm tra và sửa bản nháp, rồi bấm Tạo để lưu đúng một công việc trong iHomeCRM.

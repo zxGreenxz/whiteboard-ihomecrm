@@ -1,5 +1,7 @@
 # Trang thử giọng nói trên điện thoại
 
+> **[LỊCH SỬ — ĐÃ CẤT KHO 30/09/2026]** Chủ quyết định dừng, không phát triển tiếp. Trang `/voice-task-lab`, API `api/voice-task-lab.js`, `tools/voice-task-lab/` và job CI `voice-lab-tests` đã gỡ khỏi app. Bản cuối còn đủ tính năng nằm ở tag Git `archive/voice-task-lab-20260930`; muốn làm lại thì bắt đầu từ tag đó và hỏi chủ trước. Giữ làm bằng chứng, không cập nhật nữa.
+
 > Thiết kế lab độc lập ban đầu. Yêu cầu sau đã chuyển sang [trang trong webapp](2026-09-26-voice-task-webapp.md); trạng thái bên dưới là lịch sử trước tích hợp.
 
 Yêu cầu tiếp nối: người dùng muốn tự ghi âm trên điện thoại, xem công việc tương ứng và chấm mức chính xác/hữu ích. Phạm vi lượt này là phòng thử độc lập; không ghi jobs vào CRM.

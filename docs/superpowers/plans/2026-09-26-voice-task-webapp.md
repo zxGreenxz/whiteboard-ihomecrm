@@ -1,5 +1,7 @@
 # Trang thử giọng nói trong webapp
 
+> **[LỊCH SỬ — ĐÃ CẤT KHO 30/09/2026]** Chủ quyết định dừng, không phát triển tiếp. Trang `/voice-task-lab`, API `api/voice-task-lab.js`, `tools/voice-task-lab/` và job CI `voice-lab-tests` đã gỡ khỏi app. Bản cuối còn đủ tính năng nằm ở tag Git `archive/voice-task-lab-20260930`; muốn làm lại thì bắt đầu từ tag đó và hỏi chủ trước. Giữ làm bằng chứng, không cập nhật nữa.
+
 **Mục tiêu:** Người dùng mở trang thử trên webapp mobile đã đăng nhập, nói việc cần làm, xem bản nháp từ 9Router và chấm kết quả.
 
 **Phạm vi đã được yêu cầu:** Thay đường thử qua tunnel bằng route `/voice-task-lab` trong app. Giữ bản lab độc lập để kiểm thử. Không tạo công việc thật, không đổi schema hay quyền nghiệp vụ.

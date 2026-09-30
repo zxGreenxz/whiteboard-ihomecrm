@@ -41,7 +41,6 @@ const routeLabels: Record<string, string> = {
 
   // Công việc
   '/tasks': 'Công việc',
-  '/voice-task-lab': 'Thử giọng nói',
 
   // Thông báo
   '/notifications': 'Thông báo',
