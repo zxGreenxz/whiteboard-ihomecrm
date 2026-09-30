@@ -1,3 +1,4 @@
+import type { SalarySourceMeta } from '@/lib/rentSupportSalary';
 // Bảng lương quản lý — kiểu dữ liệu + hàm thuần (testable).
 // Quy tắc thưởng nằm ở RPC salary_work_ledger; các hàm ở đây chỉ TỔNG HỢP
 // các dòng ledger + cấu hình thành đối tượng cho UI (giống salCalc trong design kit).
@@ -63,6 +64,8 @@ export interface SalAppliedOverride {
 
 export interface SalInvestBy { b: string; amount: number; }
 export interface SalCommissionItem {
+  itemIds?: string[];
+  support?: SalarySourceMeta;
   label: string;
   amount: number;
   approved: boolean;
@@ -309,6 +312,7 @@ export function isCommissionType(t: { category?: string | null; name?: string | 
 
 /** Dòng mô tả ngắn cho một phiếu hoa hồng — dùng chung mọi màn lương. */
 export function commissionItemNote(c: SalCommissionItem, locked: boolean): string {
+  if(c.support?.part) return `Đã giữ hỗ trợ ${fmtPlain(Number(c.support.part.withheld))}đ · thực nhận ${fmtPlain(Number(c.support.part.net))}đ${locked ? ' · đã chốt' : ''}`;
   const book = c.paidFrom || "sổ quỹ khác";
   const fromBook = (c.paidElsewhere || 0) > 0;
   if (locked) return fromBook ? `đã chốt · đã chi từ sổ ${book}` : "đã chốt cùng bảng lương";
@@ -340,6 +344,8 @@ export interface CommissionVoucherMeta {
 
 /** Một phiếu hoa hồng đã gộp các dòng item trong tháng. */
 export interface CommissionVoucherRow {
+  itemIds?: string[];
+  support?: SalarySourceMeta;
   id: string;
   name: string;
   status: string; // approval_status
@@ -371,12 +377,14 @@ export function classifyCommissionVouchers(
     const linked = mt?.manager_id && staffIds.has(mt.manager_id) ? mt.manager_id : null;
     // Phiếu đã gán cho một quản lý KHÁC (ngoài danh sách tháng này) thì không được
     // rơi về khớp tên — liên kết thắng tên.
-    const staff = linked ?? (mt?.manager_id ? null : aliasToStaff.get(v.payerName.trim().toLowerCase()) ?? null);
+    if(v.support && (v.support.state!=='READY' || !v.support.part || v.support.part.period_month!==periodMonth || Number(v.support.part.net)!==v.amount || v.itemIds?.length!==1 || v.itemIds[0]!==v.support.part.item_id || (linked && linked!==v.support.staff_id))) throw new Error('Nguồn hoa hồng đã đổi hoặc cần đối chiếu trước khi tính lương.');
+    const staff = v.support ? (v.support.staff_id && staffIds.has(v.support.staff_id) ? v.support.staff_id : null) : linked ?? (mt?.manager_id ? null : aliasToStaff.get(v.payerName.trim().toLowerCase()) ?? null);
     if (!staff) continue;
     const entry = out.get(staff) || { items: [], flagged: [] };
     const onBook = !!mt?.on_manager_book;
     const item: SalCommissionItem = {
       label: v.name,
+      itemIds:v.itemIds,support:v.support,
       amount: v.amount,
       approved: v.status === "APPROVED",
       voucherId: v.id,

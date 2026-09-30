@@ -30,15 +30,53 @@ export const payoutPreviewIntentSchema = z.object({
  voucher_date: z.string().date(),
 }).strict().refine(value => (value.route === 'MANAGER_PAYROLL') === (value.manager_id !== null), 'Quản lý không khớp luồng chi');
 export const payoutPreviewContextSchema = z.object({version:z.literal(1),intents:z.array(payoutPreviewIntentSchema).max(2)}).strict()
- .refine(value => new Set(value.intents.map(x=>x.kind)).size === value.intents.length && new Set(value.intents.map(x=>x.intent_id)).size === value.intents.length,'Trùng ý định chi');
+ .refine(value => new Set((value.intents??[]).map(x=>x.kind)).size === (value.intents??[]).length && new Set((value.intents??[]).map(x=>x.intent_id)).size === (value.intents??[]).length,'Trùng ý định chi');
 /** Funding preview only. The actionable Task6 quote must also hash the full canonical payout payload. */
 export type PayoutPreviewContext = z.infer<typeof payoutPreviewContextSchema>;
-export const payoutContextSchema = z.object({version:z.literal(2),intents:z.array(payoutPreviewIntentSchema.innerType().extend({
+const payoutIntentFieldsSchema = payoutPreviewIntentSchema.innerType().extend({
  source_id:uuid.nullable(),payer_name:z.string().nullable(),recipient_name:z.string().nullable(),
  recipient_bank:z.string().nullable(),recipient_account:z.string().nullable(),item_description:z.string().nullable(),attachments:z.array(z.string()),
-}).strict().refine(value => (value.route==='MANAGER_PAYROLL')===(value.manager_id!==null),'Quản lý không khớp luồng chi')).min(1).max(2)}).strict()
- .refine(value => new Set(value.intents.map(x=>x.kind)).size===value.intents.length && new Set(value.intents.map(x=>x.intent_id)).size===value.intents.length,'Trùng ý định chi');
-export type PayoutContext = z.infer<typeof payoutContextSchema>;
+}).strict();
+const routeMatches=(value:{route?:string;manager_id?:string|null})=>(value.route==='MANAGER_PAYROLL')===(value.manager_id!=null);
+const uniqueIntents=(value:{intents?:Array<{kind?:string;intent_id?:string}>})=>{const intents=value.intents??[];return new Set(intents.map(x=>x.kind)).size===intents.length && new Set(intents.map(x=>x.intent_id)).size===intents.length;};
+export const payoutContextV2Schema=z.object({version:z.literal(2),intents:z.array(payoutIntentFieldsSchema.refine(routeMatches,'Quản lý không khớp luồng chi')).min(1).max(2)}).strict().refine(uniqueIntents,'Trùng ý định chi');
+export const depositAdoptionIntentFieldsSchema=payoutIntentFieldsSchema.extend({
+ action:z.literal('ADOPT_DEPOSIT_BONUS'),kind:z.literal('BONUS'),source_id:uuid,
+ route:z.literal('CASHBOOK'),manager_id:z.null(),
+ deposit_claim_id:uuid,deposit_voucher_id:uuid,bonus_voucher_id:uuid,
+ expected_approval_version:z.number().int().nonnegative(),expected_posting_version:z.number().int().nonnegative(),
+ item_ids:z.array(uuid).min(1).refine(ids=>new Set(ids).size===ids.length,'Trùng phần quyền lợi'),
+ source_facts_hash:z.string().min(1),reason:z.string().trim().min(8).max(1000),
+}).strict();
+export const payoutContextV3Schema=z.object({version:z.literal(3),intents:z.array(z.union([
+ payoutIntentFieldsSchema.extend({action:z.literal('ISSUE_NEW'),source_id:z.null()}).strict().refine(routeMatches,'Quản lý không khớp luồng chi'),
+ depositAdoptionIntentFieldsSchema,
+])).min(1).max(2)}).strict().refine(uniqueIntents,'Trùng ý định chi');
+export const payoutContextSchema=z.union([payoutContextV2Schema,payoutContextV3Schema]);
+export type PayoutContext=z.infer<typeof payoutContextSchema>;
+export const depositPayeeVerificationFactsSchema=z.object({
+ source_id:uuid,claim_id:uuid,deposit_voucher_id:uuid,bonus_voucher_id:uuid,item_ids:z.array(uuid).min(1),
+ approval_version:z.number().int().nonnegative(),posting_version:z.number().int().nonnegative(),gross:money,proof_hash:z.string().min(1),
+}).strict();
+export const depositPayeeVerificationSchema=z.object({binding_id:uuid,party_id:uuid,status:z.literal('MANUALLY_VERIFIED'),proof_hash:z.string().min(1)}).strict();
+export const depositAdoptionCandidateSchema=z.object({
+ verification:depositPayeeVerificationFactsSchema.nullable().optional(),
+
+ version:z.literal(1),state:z.enum(['READY','NO_CANDIDATE','NEEDS_REVIEW']),plan_revision:z.number().int().positive(),
+ candidate:z.object({source_id:uuid,claim_id:uuid,deposit_voucher_id:uuid,bonus_voucher_id:uuid,item_ids:z.array(uuid).min(1),
+ approval_version:z.number().int().nonnegative(),posting_version:z.number().int().nonnegative(),
+ gross:money,current_net:money,already_paid:money,proof_hash:z.string().min(1),
+ intent_template:depositAdoptionIntentFieldsSchema.omit({intent_id:true,reason:true}),
+ }).strict().nullable(),issues:z.array(z.object({code:z.string(),message:z.string()}).strict()),
+}).strict().refine(r=>(r.state==='READY')===(r.candidate!==null),'Nguồn chưa sẵn sàng để tiếp nhận')
+ .refine(r=>{
+ const c=r.candidate;if(!c)return true;const t=c.intent_template;
+ return c.source_id===t.source_id&&c.claim_id===t.deposit_claim_id&&c.deposit_voucher_id===t.deposit_voucher_id&&c.bonus_voucher_id===t.bonus_voucher_id
+ &&c.approval_version===t.expected_approval_version&&c.posting_version===t.expected_posting_version&&c.proof_hash===t.source_facts_hash
+ &&c.gross===t.gross_amount&&!/[1-9]/.test(c.already_paid)&&c.item_ids.join('|')===t.item_ids.join('|');
+ },'Bằng chứng nguồn không khớp ý định tiếp nhận');
+
+export type DepositAdoptionCandidate=z.infer<typeof depositAdoptionCandidateSchema>;
 /** Compare decimal money without losing precision through Number conversion. */
 function moneyBalances(gross:string,held:string,net:string) {
  const values=[gross,held,net],scale=Math.max(...values.map(x=>(x.split('.')[1]??'').length));

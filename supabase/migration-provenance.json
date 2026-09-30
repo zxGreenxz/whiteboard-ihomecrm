@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-09-30T11:14:23.500Z",
+  "generatedAt": "2026-09-30T13:02:54.788Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 637,
-    "unknown": 86,
+    "unknown": 87,
     "catalog-proven": 205,
     "superseded": 15
   },
@@ -10961,6 +10961,22 @@
         "table:app_private.rent_support_payout_results",
         "table:app_private.rent_support_withholding_events",
         "table:app_private.rent_support_payout_executions"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260930112705_rent_support_salary_source_bridge.sql",
+      "version": "20260930112705",
+      "name": "rent_support_salary_source_bridge",
+      "scheme": "timestamp14",
+      "sha256": "6adc464c2f015034d6c63fdbd2ca3610dbae04bce630d53099dc9c5c56a43724",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "table:app_private.rent_support_salary_parts",
+        "table:app_private.rent_support_salary_payments",
+        "table:app_private.rent_support_salary_part_events",
+        "table:app_private.rent_support_salary_authorizations",
+        "table:app_private.rent_support_deposit_payee_bindings"
       ]
     },
     {

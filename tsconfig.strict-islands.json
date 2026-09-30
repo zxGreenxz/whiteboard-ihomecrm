@@ -1216,6 +1216,7 @@
     "src/lib/managementSalary.ts",
     "src/lib/managerSalary.ts",
     "src/lib/materialUsageValidation.ts",
+    "src/lib/rentSupportSalary.ts",
     "src/lib/materialValidation.ts",
     "src/lib/materialVoucherOutcome.ts",
     "src/lib/meterFeedback.ts",

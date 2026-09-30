@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { Database, Json } from '@/integrations/supabase/types';
 import { rpcNullable } from './rpcNullable';
-import { fundingSourceQuoteSchema, payoutPreviewContextSchema, payoutContextSchema, payoutOperationSchema, payoutPreparationSchema, supportPartyListSchema, supportPartySchema, type PayoutPreviewContext, type PayoutContext, type PayoutOperation, type PayoutPreparation } from './rentSupportFunding';
+import { depositAdoptionCandidateSchema, depositPayeeVerificationSchema, type DepositAdoptionCandidate, fundingSourceQuoteSchema, payoutPreviewContextSchema, payoutContextSchema, payoutOperationSchema, payoutPreparationSchema, supportPartyListSchema, supportPartySchema, type PayoutPreviewContext, type PayoutContext, type PayoutOperation, type PayoutPreparation } from './rentSupportFunding';
 import { supportPlanInputSchema, type SupportPlanInput } from './rentSupport';
 const uuid = z.string().uuid();
 const money = z.string().regex(/^\d+(?:\.\d+)?$/);
@@ -113,4 +113,24 @@ export async function readContractPayoutOperation(organizationId:string,operatio
 export async function readContractPayoutRequest(organizationId:string,requestId:string):Promise<PayoutOperation> {
  const args={p_organization_id:uuid.parse(organizationId),p_request_id:uuid.parse(requestId)},{supabase}=await import('@/integrations/supabase/client');
  const {data,error}=await supabase.rpc('read_contract_payout_request_v1',args);if(error)throw error;return payoutOperationSchema.parse(data);
+}
+
+export async function readRentSupportDepositCandidate(organizationId:string,contractId:string):Promise<DepositAdoptionCandidate> {
+ const {supabase}=await import('@/integrations/supabase/client');
+ const {data,error}=await supabase.rpc('read_rent_support_deposit_candidate_v1',{p_organization_id:uuid.parse(organizationId),p_contract_id:uuid.parse(contractId)});
+ if(error)throw error;return depositAdoptionCandidateSchema.parse(data);
+}
+export interface VerifyDepositPayeeInput {
+ contractId:string;claimId:string;depositVoucherId:string;bonusVoucherId:string;partyId:string;
+ expectedApprovalVersion:number;expectedPostingVersion:number;sourceFactsHash:string;reason:string;requestId:string;
+}
+export async function verifyRentSupportDepositPayee(organizationId:string,input:VerifyDepositPayeeInput) {
+ const args={p_organization_id:uuid.parse(organizationId),p_contract_id:uuid.parse(input.contractId),p_claim_id:uuid.parse(input.claimId),
+ p_deposit_voucher_id:uuid.parse(input.depositVoucherId),p_bonus_voucher_id:uuid.parse(input.bonusVoucherId),p_party_id:uuid.parse(input.partyId),
+ p_expected_approval_version:z.number().int().nonnegative().parse(input.expectedApprovalVersion),
+ p_expected_posting_version:z.number().int().nonnegative().parse(input.expectedPostingVersion),p_source_facts_hash:z.string().min(1).parse(input.sourceFactsHash),
+ p_reason:z.string().trim().min(1).max(2000).parse(input.reason),p_request_id:uuid.parse(input.requestId)};
+ const {supabase}=await import('@/integrations/supabase/client');
+ const {data,error}=await supabase.rpc('verify_rent_support_deposit_payee_v1',args);
+ if(error)throw error;return depositPayeeVerificationSchema.parse(data);
 }

@@ -1,5 +1,7 @@
 import {financialReadRows} from '@/lib/financialReadValidation';
 import { voucherFailureMessage } from "@/lib/voucherFeedback";
+import { z } from 'zod';
+import { readSalarySourceParts } from '@/lib/rentSupportSalary';
 // Hoa hồng của quản lý đi sổ ảo, trả qua lương (migration 20260927155251).
 // Ô "QL" ở phiếu hoa hồng chọn quản lý nhận → assign_commission_manager_v1 chuyển phiếu
 // (còn Chờ duyệt) sang sổ ảo "Hoa hồng QL chờ trả lương": duyệt sau đó vẫn tính chi phí
@@ -46,6 +48,7 @@ export async function invalidateAfterCommissionAssign(qc: QueryClient | undefine
   if (!qc) return;
   await Promise.all([
     qc.invalidateQueries({ queryKey: ["manager-salary"] }),
+    qc.invalidateQueries({ queryKey: ['commission-support'] }),
     qc.invalidateQueries({ queryKey: ["income-expenses"] }),
     qc.invalidateQueries({ queryKey: ["accounts-with-balance"] }),
   ]);
@@ -102,9 +105,9 @@ export async function assignCommissionManager(input: AssignCommissionManagerInpu
     p_idempotency_key: `hhql-${input.voucherId.slice(0, 8)}-${crypto.randomUUID()}`,
   });
   if (error) throw error;
-  const receipt=data as unknown as AssignCommissionManagerResult|null;
-  if(!receipt||receipt.voucher_id!==input.voucherId||receipt.manager_id!==input.managerId||!receipt.account_id||!Number.isFinite(receipt.approval_version)||typeof receipt.lap_lai!=="boolean"||(!receipt.lap_lai&&typeof receipt.moved!=="boolean"))throw new TypeError("Chưa xác nhận được quản lý nhận hoa hồng của phiếu");
-  return {...receipt,moved:receipt.moved??false};
+  const parsed=z.object({voucher_id:z.string().uuid(),manager_id:z.string().uuid(),account_id:z.string().uuid(),approval_version:z.number().finite(),moved:z.boolean().optional(),lap_lai:z.boolean()}).passthrough().refine(row=>row.lap_lai||row.moved!==undefined).parse(data);
+  if(parsed.voucher_id!==input.voucherId||parsed.manager_id!==input.managerId)throw new TypeError("Chưa xác nhận được quản lý nhận hoa hồng của phiếu");
+  return {voucher_id:parsed.voucher_id,manager_id:parsed.manager_id,account_id:parsed.account_id,approval_version:parsed.approval_version,moved:parsed.moved??false,lap_lai:parsed.lap_lai};
 }
 
 export const useAssignCommissionManager = () => {
@@ -118,3 +121,8 @@ export const useAssignCommissionManager = () => {
     onError: (e: unknown) => toast.error(voucherFailureMessage(e, "gán quản lý nhận hoa hồng")),
   });
 };
+
+export const useCommissionSupport = (voucherId:string,enabled:boolean) => useQuery({
+ queryKey:['commission-support',voucherId],enabled,
+ queryFn:async()=> (await readSalarySourceParts([voucherId])).get(voucherId) ?? null,
+});

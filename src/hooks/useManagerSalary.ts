@@ -4,6 +4,7 @@ import { useRef } from "react";
 import { FinancialWorkflowError, workflowErrorMessage, type FinancialWorkflowProgress } from "@/lib/financialWorkflow";
 import { readCreatedVoucherReceipt } from "@/lib/createdVoucherReceipt";
 import { createdVoucherFeedback } from "@/lib/voucherFeedback";
+import { readSalarySourceParts, salaryBridgeRequired } from '@/lib/rentSupportSalary';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { rpcNullable } from "@/lib/rpcNullable";
 import { supabase } from "@/integrations/supabase/client";
@@ -279,9 +280,11 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
             const ie = (row as any).income_expenses;
             if (!ie || ie.type !== "EXPENSE" || ie.deleted_at || ie.approval_status === "CANCELLED") continue;
             const ex = voucherMap.get(ie.id);
-            if (ex) ex.amount += num(row.amount);
-            else voucherMap.set(ie.id, { id: ie.id, name: ie.name || "Hoa hồng", status: ie.approval_status, amount: num(row.amount), payerName: ie.payer_name || "", version: ie.approval_version == null ? undefined : num(ie.approval_version) });
+            if (ex) { ex.amount += num(row.amount); ex.itemIds?.push(row.id); }
+            else voucherMap.set(ie.id, { itemIds:[row.id], id: ie.id, name: ie.name || "Hoa hồng", status: ie.approval_status, amount: num(row.amount), payerName: ie.payer_name || "", version: ie.approval_version == null ? undefined : num(ie.approval_version) });
           }
+          const support = await readSalarySourceParts([...voucherMap.keys()],periodMonth);
+          for(const [id,row] of voucherMap) row.support=support.get(id);
           const meta = await fetchCommissionMeta([...voucherMap.keys()], periodMonth);
           for (const [staff, entry] of classifyCommissionVouchers(
             [...voucherMap.values()], meta, aliasToStaff, new Set(staffIds), periodMonth,
@@ -847,6 +850,7 @@ export const useLockSalaryMonth = () => {
           commission_voucher_ids: (m.commissionItems || [])
             .map((x) => x.voucherId)
             .filter((id): id is string => !!id),
+          support_parts:(m.commissionItems || []).flatMap(x=>x.support?.part ? [{source_id:x.support.part.source_id,item_id:x.support.part.item_id,proof_hash:x.support.part.proof_hash}] : []),
           ledger: m.ledger,
         };
       });
@@ -870,6 +874,7 @@ export const useLockSalaryMonth = () => {
         throw canonical.error;
       }
 
+      if(await salaryBridgeRequired(managers.map(m=>m.id),periodMonth)) throw canonical.error;
       // Chốt lương → DUYỆT (đã thanh toán) luôn các phiếu hoa hồng CHƯA DUYỆT đang
       // tính vào HH Sale (commissionItems mang voucherId của phiếu nháp).
       const commVoucherIds = Array.from(new Set(
@@ -1000,6 +1005,7 @@ export const useUnlockSalaryMonth = () => {
       }
       if (!isCanonicalFallbackSignal(canonical.error)) throw canonical.error;
 
+      if(await salaryBridgeRequired(staffIds,periodMonth)) throw canonical.error;
       const { data: rows, error: rowsError } = await (supabase
         .from("salary_monthly")
         .select("id") as any)
@@ -1095,6 +1101,7 @@ export const useSalaryPayout = (options?: {silent?: boolean}) => {
         throw canonical.error;
       }
 
+      if(await salaryBridgeRequired([input.staffId],input.periodMonth)) throw canonical.error;
       // --- Tiền phòng gạch nợ: đọc lại hoá đơn (remaining tươi) để chốt số thu ---
       let rentCollect = 0;
       let rentInv: any = null;

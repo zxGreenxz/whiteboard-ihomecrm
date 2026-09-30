@@ -136,3 +136,15 @@ describe("dòng mô tả", () => {
     expect(commissionFlaggedNote({ label: "", amount: 1, approved: true, includedElsewhere: { staffId: "x", period: "2026-08-01" } })).toBe("đã tính vào lương người khác kỳ 08/2026 — không cộng lại");
   });
 });
+
+describe('rent support payroll source identity',()=>{
+ const support={voucher_id:'v-rent',state:'READY' as const,source_id:'source',staff_id:NATHAN,part:{source_id:'source',operation_id:'op',party_id:'party',voucher_id:'v-rent',item_id:'item',period_month:KY,gross:'3000000',withheld:'1800000',net:'1200000',proof_hash:'proof'},issue:null};
+ it('uses registered staff identity rather than a payer name and keeps net only',()=>{
+ const result=chia([row('v-rent',{payerName:'joey',amount:1200000,itemIds:['item'],support})],[meta('v-rent',{on_manager_book:true})]);
+ expect(result.get(JOEY)).toBeUndefined();expect(result.get(NATHAN)?.items[0]).toMatchObject({amount:1200000,support});
+ expect(commissionItemNote(result.get(NATHAN)!.items[0],false)).toContain('1.800.000');
+ });
+ it('does not silently recalculate a stale part from net proportions',()=>{
+ expect(()=>chia([row('v-rent',{amount:1000000,itemIds:['item'],support})],[meta('v-rent',{manager_id:NATHAN,on_manager_book:true})])).toThrow();
+ });
+});

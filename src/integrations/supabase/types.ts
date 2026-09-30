@@ -24908,6 +24908,14 @@ export type Database = {
         Args: { p_organization_id: string; p_voucher_ids: string[] }
         Returns: Json
       }
+      read_rent_support_deposit_candidate_v1: {
+        Args: { p_contract_id: string; p_organization_id: string }
+        Returns: Json
+      }
+      read_rent_support_salary_parts_v1: {
+        Args: { p_period_month?: string; p_voucher_ids: string[] }
+        Returns: Json
+      }
       read_room_turnover_v1: {
         Args: { p_organization_id: string; p_room_id: string }
         Returns: Json
@@ -25092,6 +25100,10 @@ export type Database = {
           p_request_id: string
         }
         Returns: string
+      }
+      rent_support_salary_bridge_required_v1: {
+        Args: { p_period_month: string; p_staff_ids: string[] }
+        Returns: boolean
       }
       report_device_issue: {
         Args: { p_reason: string; p_session: string }
@@ -26564,6 +26576,22 @@ export type Database = {
       verify_income_expense_v1: {
         Args: { p_id: string; p_note?: string }
         Returns: undefined
+      }
+      verify_rent_support_deposit_payee_v1: {
+        Args: {
+          p_bonus_voucher_id: string
+          p_claim_id: string
+          p_contract_id: string
+          p_deposit_voucher_id: string
+          p_expected_approval_version: number
+          p_expected_posting_version: number
+          p_organization_id: string
+          p_party_id: string
+          p_reason: string
+          p_request_id: string
+          p_source_facts_hash: string
+        }
+        Returns: Json
       }
       vn_local_date: { Args: { ts: string }; Returns: string }
       vn_local_dow: { Args: { ts: string }; Returns: number }
