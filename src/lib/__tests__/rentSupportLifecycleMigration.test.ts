@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { PGlite } from '@electric-sql/pglite';
 import { beforeAll, afterAll, expect, it } from 'vitest';
-import { setupPayoutDb, org, room, building } from './fixtures/rentSupportPayoutDb';
+import { setupPayoutDb, org, room, building, actor, uuid } from './fixtures/rentSupportPayoutDb';
 
 const db = new PGlite();
 const migration = 'supabase/migrations/20260930113158_rent_support_lifecycle_reconciliation.sql';
@@ -19,9 +19,30 @@ beforeAll(async () => {
  CREATE OR REPLACE FUNCTION app_private.ie_supplement_can_read_v1(uuid) RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT current_setting('test.deny',true) IS DISTINCT FROM 'yes' AND current_setting('test.parent_deny',true) IS DISTINCT FROM 'yes' $$;
  `);
  await db.exec(readFileSync('supabase/migrations/20260930065906_invoice_rent_support_claims.sql','utf8').split('-- Replacing signatures')[0]);
+ // Reuse the actual Task7 scope predicate, not an org-only fixture double.
+ const salary=readFileSync('supabase/migrations/20260930112705_rent_support_salary_source_bridge.sql','utf8');
+ await db.exec(salary.slice(salary.indexOf('CREATE OR REPLACE FUNCTION app_private.rent_support_party_in_building_v1('),salary.indexOf('CREATE OR REPLACE FUNCTION public.read_rent_support_deposit_candidate_v1(')));
  if(existsSync(migration))await db.exec(readFileSync(migration,'utf8'));
 },30000);
 afterAll(async()=>db.close());
+it('fix1 upgrades existing org-only request keys without changing saved audit rows',async()=>{
+ const f=await fixture(),proof=(await db.query<{r:{proof_hash:string}}>('SELECT app_private.rent_support_lifecycle_source_v1($1,$2) r',[org,f.source_id])).rows[0].r.proof_hash;
+ await db.query('SELECT request_rent_support_source_lifecycle_v1($1,$2,$3,$4,$5,$6)',[org,f.source_id,'CANCEL',proof,'Preserve prior saved audit',crypto.randomUUID()]);
+ const legacy=await legacyFixture(),entries=JSON.stringify([legacy.entry]);
+ const q=(await db.query<{r:{batch_hash:string}}>('SELECT dry_run_rent_support_reconciliation_v1($1,$2) r',[org,entries])).rows[0].r;
+ await db.query('SELECT apply_rent_support_reconciliation_v1($1,$2,$3,$4,$5)',[org,q.batch_hash,entries,'Preserve prior saved batch',crypto.randomUUID()]);
+ const audit=()=>db.query(`SELECT (SELECT jsonb_agg(to_jsonb(r)) FROM app_private.rent_support_lifecycle_requests r) requests,(SELECT jsonb_agg(to_jsonb(b)) FROM app_private.rent_support_reconciliation_batches b) batches`);
+ const before=(await audit()).rows;
+ for(const table of ['rent_support_lifecycle_requests','rent_support_reconciliation_batches']) {
+  const constraints=(await db.query<{conname:string}>(`SELECT c.conname FROM pg_constraint c WHERE c.conrelid=$1::regclass AND c.contype='u' AND pg_get_constraintdef(c.oid) LIKE '%request_id%'`,['app_private.'+table])).rows;
+  for(const c of constraints)await db.exec(`ALTER TABLE app_private.${table} DROP CONSTRAINT "${c.conname}"`);
+  await db.exec(`ALTER TABLE app_private.${table} ADD UNIQUE(organization_id,request_id)`);
+ }
+ await db.exec(readFileSync(migration,'utf8'));
+ expect((await audit()).rows).toEqual(before);
+ const keys=(await db.query<{d:string}>(`SELECT pg_get_constraintdef(oid) d FROM pg_constraint WHERE conrelid IN ('app_private.rent_support_lifecycle_requests'::regclass,'app_private.rent_support_reconciliation_batches'::regclass) AND contype='u' AND pg_get_constraintdef(oid) LIKE '%request_id%'`)).rows;
+ expect(keys).toEqual([{d:'UNIQUE (organization_id, actor_id, request_id)'},{d:'UNIQUE (organization_id, actor_id, request_id)'}]);
+});
 async function fixture() {
  const contract=crypto.randomUUID(),request=crypto.randomUUID();
  await db.query(`INSERT INTO contracts(id,organization_id,room_id,start_date,end_date,discounts,status) VALUES($1,$2,$3,'2026-09-01','2027-09-01','{}','ACTIVE')`,[contract,org,room]);
@@ -77,6 +98,42 @@ async function legacyFixture() {
  const sid=(await db.query<{s:string}>("SELECT app_private.rent_support_source_id_v1($1,$2,'COMMISSION') s",[org,contract])).rows[0].s;
  return {contract,plan,entry:{source_id:sid,contract_id:contract,voucher_id:voucher,party_id:party,kind:'COMMISSION',gross:'3000000',previous_withheld:'1800000',net:'1200000',documents:[] as Array<{signing_id:string,document_id:string,sha256:string}>,confirmed:false,expected_approval_version:1,expected_posting_version:1,reason:'Historical declaration'}};
 }
+it('fix1 denies external party from another building in context and attestation without authority',async()=>{
+ const f=await legacyFixture();
+ const context=()=>db.query('SELECT read_rent_support_reconciliation_context_v1($1,$2,$3)',[org,f.contract,f.entry.voucher_id]);
+ await context();
+ // Local pre-existing wrong-building binding fixture; never a product writer.
+ await db.exec('BEGIN;SET LOCAL session_replication_role=replica');
+ await db.query('UPDATE app_private.rent_support_parties SET building_id=$1 WHERE id=$2',[uuid(999),f.entry.party_id]);
+ await db.exec('COMMIT');
+ await expect(context()).rejects.toMatchObject({code:'42501'});
+ await expect(db.query('SELECT dry_run_rent_support_reconciliation_v1($1,$2)',[org,JSON.stringify([f.entry])])).rejects.toMatchObject({code:'42501'});
+ expect((await db.query('SELECT count(*)::int n FROM app_private.rent_support_payout_sources WHERE contract_id=$1',[f.contract])).rows[0]).toEqual({n:0});
+});
+it('fix1 isolates lifecycle request identity and replay conflicts by authorized actor',async()=>{
+ const f=await fixture(),request=crypto.randomUUID();
+ const proof=(await db.query<{r:{proof_hash:string}}>('SELECT app_private.rent_support_lifecycle_source_v1($1,$2) r',[org,f.source_id])).rows[0].r.proof_hash;
+ const call=(reason='Same lifecycle intent')=>db.query('SELECT request_rent_support_source_lifecycle_v1($1,$2,$3,$4,$5,$6)',[org,f.source_id,'CANCEL',proof,reason,request]);
+ await call();await call();await expect(call('Same actor changed reason')).rejects.toMatchObject({code:'PT409'});
+ await db.query("SELECT set_config('test.actor',$1,false)",[uuid(104)]);
+ try {await call();await call();await expect(call('Other actor changed reason')).rejects.toMatchObject({code:'PT409'});}finally{await db.query("SELECT set_config('test.actor',$1,false)",[actor]);}
+ expect((await db.query('SELECT actor_id FROM app_private.rent_support_lifecycle_requests WHERE request_id=$1 ORDER BY actor_id',[request])).rows).toEqual([{actor_id:actor},{actor_id:uuid(104)}]);
+ const second=crypto.randomUUID();await db.query('SELECT request_rent_support_source_lifecycle_v1($1,$2,$3,$4,$5,$6)',[org,f.source_id,'REVISE',proof,'First actor separate intent',second]);
+ await db.query("SELECT set_config('test.actor',$1,false)",[uuid(104)]);
+ try{await db.query('SELECT request_rent_support_source_lifecycle_v1($1,$2,$3,$4,$5,$6)',[org,f.source_id,'RESTORE',proof,'Second actor separate intent',second]);}finally{await db.query("SELECT set_config('test.actor',$1,false)",[actor]);}
+ expect((await db.query('SELECT count(*)::int n FROM app_private.rent_support_lifecycle_requests WHERE request_id=$1',[second])).rows[0]).toEqual({n:2});
+});
+it('fix1 isolates reconciliation batch receipts and changed intent by authorized actor',async()=>{
+ const f=await legacyFixture(),entries=JSON.stringify([f.entry]),request=crypto.randomUUID();
+ const q=(await db.query<{r:{batch_hash:string}}>('SELECT dry_run_rent_support_reconciliation_v1($1,$2) r',[org,entries])).rows[0].r;
+ const call=(id=request,reason='Same batch intent')=>db.query<{r:{batch_id:string}}>('SELECT apply_rent_support_reconciliation_v1($1,$2,$3,$4,$5) r',[org,q.batch_hash,entries,reason,id]);
+ const first=(await call()).rows[0].r;expect((await call()).rows[0].r).toEqual(first);await expect(call(request,'Changed actor A intent')).rejects.toMatchObject({code:'PT409'});
+ await db.query("SELECT set_config('test.actor',$1,false)",[uuid(104)]);
+ try{const second=(await call()).rows[0].r;expect(second.batch_id).not.toBe(first.batch_id);expect((await call()).rows[0].r).toEqual(second);await expect(call(request,'Changed actor B intent')).rejects.toMatchObject({code:'PT409'});}finally{await db.query("SELECT set_config('test.actor',$1,false)",[actor]);}
+ const separate=crypto.randomUUID();await call(separate,'Actor A distinct intent');await db.query("SELECT set_config('test.actor',$1,false)",[uuid(104)]);
+ try{await call(separate,'Actor B distinct intent');}finally{await db.query("SELECT set_config('test.actor',$1,false)",[actor]);}
+ expect((await db.query('SELECT count(*)::int n FROM app_private.rent_support_reconciliation_batches WHERE request_id=ANY($1::uuid[])',[[request,separate]])).rows[0]).toEqual({n:4});
+});
 it('keeps legacy net-only declarations in review without a new source or withholding',async()=>{
  const f=await legacyFixture(),entries=[f.entry];
  const q=(await db.query<{r:{state:string,batch_hash:string}}>('SELECT dry_run_rent_support_reconciliation_v1($1,$2) r',[org,JSON.stringify(entries)])).rows[0].r;

@@ -4,15 +4,29 @@ CREATE TABLE IF NOT EXISTS app_private.rent_support_lifecycle_requests (
  source_id uuid NOT NULL,actor_id uuid NOT NULL REFERENCES auth.users(id),request_id uuid NOT NULL,
  action text NOT NULL CHECK(action IN ('CANCEL','RESTORE','REVISE')),payload_hash text NOT NULL,
  reason text NOT NULL,proof_hash text NOT NULL,result jsonb NOT NULL,created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
- UNIQUE(organization_id,request_id),FOREIGN KEY(organization_id,source_id) REFERENCES app_private.rent_support_payout_sources(organization_id,id),
+ CONSTRAINT rent_support_lifecycle_actor_request_key UNIQUE(organization_id,actor_id,request_id),FOREIGN KEY(organization_id,source_id) REFERENCES app_private.rent_support_payout_sources(organization_id,id),
  FOREIGN KEY(organization_id,contract_id) REFERENCES public.contracts(organization_id,id)
 );
 CREATE TABLE IF NOT EXISTS app_private.rent_support_reconciliation_batches (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),organization_id uuid NOT NULL REFERENCES public.organizations(id),
  actor_id uuid NOT NULL REFERENCES auth.users(id),request_id uuid NOT NULL,payload_hash text NOT NULL,
  entries jsonb NOT NULL,reason text NOT NULL,result jsonb NOT NULL,created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
- UNIQUE(organization_id,request_id),UNIQUE(organization_id,id)
+ CONSTRAINT rent_support_reconciliation_actor_request_key UNIQUE(organization_id,actor_id,request_id),UNIQUE(organization_id,id)
 );
+-- Upgrade an already-applied prerelease table too; keep all saved receipts and actors.
+DO $request_identity$ DECLARE t text;k text;c record;BEGIN
+ FOR t,k IN SELECT * FROM (VALUES
+ ('rent_support_lifecycle_requests','rent_support_lifecycle_actor_request_key'),
+ ('rent_support_reconciliation_batches','rent_support_reconciliation_actor_request_key')) keys(table_name,key_name) LOOP
+  FOR c IN SELECT conname FROM pg_constraint WHERE conrelid=format('app_private.%I',t)::regclass
+   AND contype='u' AND pg_get_constraintdef(oid)='UNIQUE (organization_id, request_id)' LOOP
+   EXECUTE format('ALTER TABLE app_private.%I DROP CONSTRAINT %I',t,c.conname);
+  END LOOP;
+  IF NOT EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid=format('app_private.%I',t)::regclass AND conname=k) THEN
+   EXECUTE format('ALTER TABLE app_private.%I ADD CONSTRAINT %I UNIQUE(organization_id,actor_id,request_id)',t,k);
+  END IF;
+ END LOOP;
+END $request_identity$;
 CREATE TABLE IF NOT EXISTS app_private.rent_support_reconciliations (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),organization_id uuid NOT NULL,contract_id uuid NOT NULL,source_id uuid NOT NULL,
  voucher_id uuid NOT NULL,party_id uuid NOT NULL,plan_id uuid NOT NULL,kind text NOT NULL CHECK(kind IN ('COMMISSION','BONUS')),
@@ -168,7 +182,7 @@ DECLARE s app_private.rent_support_payout_sources;r app_private.rent_support_lif
  PERFORM 1 FROM public.contracts WHERE organization_id=p_organization_id AND id=s.contract_id FOR UPDATE;
  PERFORM 1 FROM app_private.rent_support_payout_sources WHERE organization_id=p_organization_id AND id=s.id FOR UPDATE;
  h:=md5(jsonb_build_object('source',p_source_id,'action',p_action,'proof',p_expected_facts_hash,'reason',p_reason)::text);
- SELECT * INTO r FROM app_private.rent_support_lifecycle_requests WHERE organization_id=p_organization_id AND request_id=p_request_id;
+ SELECT * INTO r FROM app_private.rent_support_lifecycle_requests WHERE organization_id=p_organization_id AND actor_id=auth.uid() AND request_id=p_request_id;
  IF FOUND THEN IF r.payload_hash<>h THEN RAISE EXCEPTION 'Request changed' USING ERRCODE='PT409';END IF;RETURN r.result;END IF;
  facts:=app_private.rent_support_lifecycle_source_v1(p_organization_id,s.id);
  IF facts->>'proof_hash'<>p_expected_facts_hash THEN RAISE EXCEPTION 'Source changed' USING ERRCODE='PT409';END IF;
@@ -249,10 +263,11 @@ CREATE TRIGGER a00_rent_support_lifecycle BEFORE INSERT OR UPDATE OR DELETE ON p
 
 CREATE OR REPLACE FUNCTION app_private.rent_support_reconciliation_entry_v1(p_org uuid,e jsonb)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog AS $$
-DECLARE v public.income_expenses;p app_private.contract_rent_support_plans;d jsonb;g numeric;h numeric;n numeric;items numeric;cash jsonb;issue text;facts jsonb;profile uuid;k text;BEGIN
+DECLARE v public.income_expenses;p app_private.contract_rent_support_plans;d jsonb;g numeric;h numeric;n numeric;items numeric;cash jsonb;issue text;facts jsonb;profile uuid;k text;b uuid;BEGIN
  IF jsonb_typeof(e) IS DISTINCT FROM 'object' OR NOT(e ?& ARRAY['source_id','contract_id','voucher_id','party_id','kind','gross','previous_withheld','net','documents','confirmed','expected_approval_version','expected_posting_version','reason'])
  OR EXISTS(SELECT 1 FROM jsonb_object_keys(e) x WHERE x<>ALL(ARRAY['source_id','contract_id','voucher_id','party_id','kind','gross','previous_withheld','net','documents','confirmed','expected_approval_version','expected_posting_version','reason'])) THEN RAISE EXCEPTION 'Complete reconciliation entry required' USING ERRCODE='22023';END IF;
- PERFORM app_private.rent_support_lifecycle_authorize_v1(p_org,(e->>'contract_id')::uuid,true);
+ b:=app_private.rent_support_lifecycle_authorize_v1(p_org,(e->>'contract_id')::uuid,true);
+ IF NOT app_private.rent_support_party_in_building_v1(p_org,b,(e->>'party_id')::uuid) THEN RAISE EXCEPTION 'Party subject denied' USING ERRCODE='42501';END IF;
  IF NOT app_private.ie_supplement_can_read_v1((e->>'voucher_id')::uuid) THEN RAISE EXCEPTION 'Evidence denied' USING ERRCODE='42501';END IF;
  FOREACH k IN ARRAY ARRAY['gross','previous_withheld','net'] LOOP
  IF jsonb_typeof(e->k) IS DISTINCT FROM 'string' OR e->>k !~ '^[0-9]+(\.[0-9]+)?$' THEN RAISE EXCEPTION 'Invalid decimal money' USING ERRCODE='22023';END IF;END LOOP;
@@ -269,7 +284,6 @@ DECLARE v public.income_expenses;p app_private.contract_rent_support_plans;d jso
  OR v.commission_kind IS DISTINCT FROM (CASE WHEN e->>'kind'='COMMISSION' THEN 'broker' ELSE 'sale' END) THEN RAISE EXCEPTION 'Voucher identity denied' USING ERRCODE='42501';END IF;
  SELECT * INTO p FROM app_private.contract_rent_support_plans WHERE organization_id=p_org AND contract_id=v.contract_id AND state='ACTIVE' ORDER BY revision DESC LIMIT 1;
  IF p.id IS NULL OR p.payer<>'SALE' OR p.sale_party_id IS DISTINCT FROM (e->>'party_id')::uuid
- OR NOT app_private.rent_support_party_valid_v1(p_org,(e->>'party_id')::uuid)
  OR (h>0 AND p.deduction_policy='COMMISSION_ONLY' AND e->>'kind'<>'COMMISSION') THEN issue:='PAYEE_MISMATCH';END IF;
  IF EXISTS(SELECT 1 FROM app_private.rent_support_payout_sources WHERE organization_id=p_org AND id=(e->>'source_id')::uuid)
  OR EXISTS(SELECT 1 FROM app_private.rent_support_source_aliases WHERE organization_id=p_org AND alias_kind='VOUCHER' AND alias_id=v.id) THEN issue:='SOURCE_ALREADY_ISSUED';END IF;
@@ -331,7 +345,7 @@ DECLARE e jsonb;r jsonb;q jsonb;result jsonb;batch uuid:=gen_random_uuid();h tex
  IF NOT app_private.ie_supplement_can_read_v1(vid) THEN RAISE EXCEPTION 'Evidence denied' USING ERRCODE='42501';END IF;END LOOP;
  PERFORM app_private.lock_org_for_decision_v1(p_organization_id);
  h:=md5(jsonb_build_object('entries',p_entries,'batch_hash',p_batch_hash,'reason',p_reason)::text);
- SELECT * INTO old FROM app_private.rent_support_reconciliation_batches WHERE organization_id=p_organization_id AND request_id=p_request_id;
+ SELECT * INTO old FROM app_private.rent_support_reconciliation_batches WHERE organization_id=p_organization_id AND actor_id=auth.uid() AND request_id=p_request_id;
  IF FOUND THEN IF old.payload_hash<>h THEN RAISE EXCEPTION 'Reconciliation request changed' USING ERRCODE='PT409';END IF;RETURN old.result;END IF;
  IF NOT app_private.rent_support_writers_enabled_v1() THEN RAISE EXCEPTION 'RENT_SUPPORT_WRITERS_DISABLED' USING ERRCODE='55000';END IF;
  FOR cid IN SELECT DISTINCT (x->>'contract_id')::uuid FROM jsonb_array_elements(p_entries) x ORDER BY 1 LOOP
@@ -403,14 +417,15 @@ DECLARE q jsonb;t jsonb;issues jsonb;frozen boolean;BEGIN
 END $$;
 CREATE OR REPLACE FUNCTION public.read_rent_support_reconciliation_context_v1(p_organization_id uuid,p_contract_id uuid,p_voucher_id uuid)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog AS $$
-DECLARE v public.income_expenses;p app_private.contract_rent_support_plans;k text;docs jsonb;BEGIN
- PERFORM app_private.rent_support_lifecycle_authorize_v1(p_organization_id,p_contract_id,true);
+DECLARE v public.income_expenses;p app_private.contract_rent_support_plans;k text;docs jsonb;b uuid;BEGIN
+ b:=app_private.rent_support_lifecycle_authorize_v1(p_organization_id,p_contract_id,true);
  IF NOT app_private.ie_supplement_can_read_v1(p_voucher_id) THEN RAISE EXCEPTION 'Evidence denied' USING ERRCODE='42501';END IF;
  SELECT * INTO v FROM public.income_expenses WHERE organization_id=p_organization_id AND id=p_voucher_id AND contract_id=p_contract_id;
  IF v.id IS NULL THEN RAISE EXCEPTION 'Voucher subject denied' USING ERRCODE='42501';END IF;
  IF v.type<>'EXPENSE' OR v.commission_kind IS NULL OR v.commission_kind NOT IN ('broker','sale') THEN RETURN NULL;END IF;
  SELECT * INTO p FROM app_private.contract_rent_support_plans WHERE organization_id=p_organization_id AND contract_id=p_contract_id AND state='ACTIVE' ORDER BY revision DESC LIMIT 1;
  IF p.id IS NULL OR p.payer<>'SALE' OR EXISTS(SELECT 1 FROM app_private.rent_support_source_aliases WHERE organization_id=p_organization_id AND alias_kind='VOUCHER' AND alias_id=v.id) THEN RETURN NULL;END IF;
+ IF NOT app_private.rent_support_party_in_building_v1(p_organization_id,b,p.sale_party_id) THEN RAISE EXCEPTION 'Party subject denied' USING ERRCODE='42501';END IF;
  k:=CASE WHEN v.commission_kind='broker' THEN 'COMMISSION' ELSE 'BONUS' END;
  SELECT COALESCE(jsonb_agg(jsonb_build_object('signing_id',s.id,'document_id',s.document_id,'sha256',s.document_sha256) ORDER BY s.id),'[]') INTO docs
  FROM public.contract_draft_signings s JOIN public.contract_draft_documents d ON d.id=s.document_id AND d.organization_id=s.organization_id AND d.draft_id=s.draft_id AND d.revision=s.revision
