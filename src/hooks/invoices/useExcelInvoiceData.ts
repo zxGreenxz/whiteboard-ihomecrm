@@ -171,7 +171,7 @@ export interface SubmitExcelResult {
   readingFails: string[];
   rows: Array<{contractId:string;roomName:string;invoiceId?:string;readingSaved:boolean;error?:string;outcomeUnknown?:boolean;supportRecoveryPending?:boolean}>;
   errors: Array<{ contractId: string; message: string }>;
-  recovered: Array<{ contractId: string; billingMonth: string; invoiceNumber: string }>;
+  recovered: Array<{ contractId: string; billingMonth: string; invoiceNumber: string; matchesCurrentIntent: boolean }>;
 }
 
 /**
@@ -205,9 +205,16 @@ export function useSubmitExcelInvoices() {
           if (saved) {
             old.completed = true;
             old.invoiceId = saved.id;
-            recovered.push({ contractId: row.contract_id, billingMonth: saved.billing_month, invoiceNumber: saved.invoice_number || saved.id });
+            let matchesCurrentIntent = false;
+            try {
+              const currentPayload = buildInvoiceFormData(row, ctx, '00000000-0000-4000-8000-000000000001');
+              matchesCurrentIntent = old.fingerprint === JSON.stringify([selectedOrganizationId, currentPayload]);
+            } catch {
+              // A stale month/quote cannot establish that the current edits were saved.
+            }
+            recovered.push({ contractId: row.contract_id, billingMonth: saved.billing_month, invoiceNumber: saved.invoice_number || saved.id, matchesCurrentIntent });
             results.push({contractId:row.contract_id,roomName:row.room_name,invoiceId:saved.id,readingSaved});
-            ok++; continue;
+            continue;
           }
           if (old.recoveryOnly) throw new Error('Chưa xác minh được lần lưu trước. Đối chiếu hóa đơn và chỉ số điện trước khi tạo tiếp.');
         }

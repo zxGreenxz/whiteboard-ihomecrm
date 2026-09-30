@@ -1,7 +1,7 @@
 import {QueryRegion} from '@/components/errors/QueryRegion';
 import {invoiceFailureMessage} from '@/lib/invoiceFeedback';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { format, addMonths, endOfMonth, startOfMonth, parse } from 'date-fns';
+import { format, addMonths, endOfMonth, startOfMonth, parse, isValid } from 'date-fns';
 import { Table as TableIcon, Download, Loader2, Pencil, RotateCcw } from 'lucide-react';
 import { DiscountNoteTrigger } from './DiscountNoteTrigger';
 import { calcProratedDays, prorateAmount } from '@/lib/prorateCalculation';
@@ -21,6 +21,7 @@ import {
   fetchExcelInvoiceSource,
   fetchPreviousDebtForContract,
   useSubmitExcelInvoices,
+  type SubmitExcelResult,
 } from '@/hooks/invoices/useExcelInvoiceData';
 
 import {
@@ -59,6 +60,7 @@ interface Props {
 
 const fmt = (n: number) =>
   new Intl.NumberFormat('vi-VN').format(Math.round(n || 0));
+const BILLING_MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
   const { toast } = useToast();
@@ -76,6 +78,7 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
   const [submitResult,setSubmitResult]=useState<Awaited<ReturnType<typeof submitExcel.submit>>|null>(null);
   const [submitError,setSubmitError]=useState<string|null>(null);
   const lockedContractsRef=useRef(new Set<string>());
+  const [recoveryResult, setRecoveryResult] = useState<{ billingMonth: string; rows: SubmitExcelResult['recovered'] } | null>(null);
   const [prorateRowIdx, setProrateRowIdx] = useState<number | null>(null);
   const loadRevision = useRef(0);
   const invalidateRows = () => { loadRevision.current++; setRows([]); setLoaded(false); };
@@ -88,15 +91,15 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
   // Đơn giá mặc định theo toà — logic trong lib (resolveBuildingDefaults),
   // chỉ xét dịch vụ đang BẬT, fallback hardcode khi toà chưa cấu hình.
   const defaults = useMemo(() => resolveBuildingDefaults(bldSvc), [bldSvc]);
-  const periodStart = startOfMonth(parse(billingMonth + '-01', 'yyyy-MM-dd', new Date()));
-  const submitContext: SubmitContext = { buildingId, billingMonth, issueDate, dueDate, periodStart,
-    fromDate: format(periodStart, 'yyyy-MM-dd'), toDate: format(endOfMonth(periodStart), 'yyyy-MM-dd') };
+  const periodStart = BILLING_MONTH_PATTERN.test(billingMonth) ? startOfMonth(parse(billingMonth + '-01', 'yyyy-MM-dd', new Date())) : null;
+  const submitContext: SubmitContext | null = periodStart && isValid(periodStart) ? { buildingId, billingMonth, issueDate, dueDate, periodStart,
+    fromDate: format(periodStart, 'yyyy-MM-dd'), toDate: format(endOfMonth(periodStart), 'yyyy-MM-dd') } : null;
   const supportQuotes = useExcelInvoiceSupportQuotes(rows, submitContext);
 
   // Load rooms + active contracts + meters + last reading for the building.
   // Fetch nằm ở hook (fetchExcelInvoiceSource), transform ở lib (buildExcelRows).
   const handleLoad = async () => {
-    if (!buildingId||sourcesBlocked) return;
+    if (!buildingId || sourcesBlocked || !submitContext) return;
     const revision = ++loadRevision.current;
     setLoaded(false);
     try {
@@ -127,7 +130,10 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
   // toà mới). Tôn trọng override tay của user.
   useEffect(() => {
     if (!loaded) return;
-    setRows((prev) => prev.map((r) => requoteExcelRowSupport(reresolveRowPricing(r, defaults), billingMonth)));
+    setRows((prev) => prev.map((r) => {
+      const repriced = reresolveRowPricing(r, defaults);
+      return submitContext ? requoteExcelRowSupport(repriced, billingMonth) : repriced;
+    }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [defaults.elec, defaults.water, defaults.pdv]);
 
@@ -153,7 +159,7 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
           ? (Number(row.occupants) || 0) * row.water_rate
           : 0;
       }
-      next[idx] = requoteExcelRowSupport(row, billingMonth);
+      next[idx] = submitContext ? requoteExcelRowSupport(row, billingMonth) : row;
       return next;
     });
   };
@@ -198,11 +204,12 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
     loadRevision.current++;
     setRows([]);
     setLoaded(false);
+    setRecoveryResult(null);
     onOpenChange(false);
   };
 
   const handleSubmit = async () => {
-    if(sourcesBlocked || !supportQuotes.ready)return;
+    if (sourcesBlocked || !submitContext || !supportQuotes.ready) return;
     const selected = rows.filter((r) => r.selected);
     if (selected.some(row => row.support_error)) {
       toast({ variant: 'destructive', title: 'Cần kiểm tra hỗ trợ', description: 'Sửa các dòng báo lỗi trước khi tạo hóa đơn.' }); return;
@@ -217,27 +224,24 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
     }
     setSubmitting(true);
     setSubmitError(null);
-    const periodStart = startOfMonth(parse(billingMonth + '-01', 'yyyy-MM-dd', new Date()));
-    const periodEnd = endOfMonth(periodStart);
-    const ctx: SubmitContext = {
-      buildingId,
-      billingMonth,
-      issueDate,
-      dueDate,
-      periodStart,
-      fromDate: format(periodStart, 'yyyy-MM-dd'),
-      toDate: format(periodEnd, 'yyyy-MM-dd'),
-    };
     // Chốt chỉ số điện + tạo hoá đơn từng phòng — orchestration ở hook, items
     // build ở lib (test chốt hành vi). Thứ tự + xử lý lỗi giữ y bản cũ.
     try {
-      const result=await submitExcel.submit(selected,ctx);
+      const result=await submitExcel.submit(selected,submitContext);
       setSubmitResult(result);
-      result.rows.filter(row=>!row.supportRecoveryPending && (row.invoiceId||row.readingSaved||row.outcomeUnknown)).forEach(row=>lockedContractsRef.current.add(`${billingMonth}:${row.contractId}`));
+      result.rows.filter(row=>!row.supportRecoveryPending && !result.recovered.some(recovered=>recovered.contractId===row.contractId&&!recovered.matchesCurrentIntent) && (row.invoiceId||row.readingSaved||row.outcomeUnknown)).forEach(row=>lockedContractsRef.current.add(`${billingMonth}:${row.contractId}`));
       setRows(previous=>previous.map(row=>({...row,selected:lockedContractsRef.current.has(`${billingMonth}:${row.contract_id}`)?false:row.selected,submit_error:result.errors.find(error=>error.contractId===row.contract_id)?.message})));
-      if (result.recovered.length) toast({ title: 'Đã tìm thấy kết quả lần tạo trước', description: result.recovered.map(row => `${row.invoiceNumber} — kỳ ${row.billingMonth}`).join(', ') });
-      toast({title:result.fail>0||result.readingFails.length>0?'Đã xử lý một phần':'Đã tạo hoá đơn',description:`Đã xác nhận ${result.ok} hoá đơn; ${result.fail} phòng chưa tạo xong; ${result.readingFails.length} phòng cần kiểm tra chỉ số điện.`});
-      if(result.fail===0 && result.readingFails.length===0) handleClose();
+      setRecoveryResult(result.recovered.length ? { billingMonth: submitContext.billingMonth, rows: result.recovered } : null);
+      toast({
+        variant: result.readingFails.length ? 'destructive' : 'default',
+        title: result.recovered.length ? 'Đã tìm thấy kết quả lần tạo trước' : result.fail>0||result.readingFails.length>0?'Đã xử lý một phần':'Đã tạo hoá đơn',
+        description: [
+          `Kỳ ${submitContext.billingMonth}: ${result.ok} hóa đơn đã tạo hoặc xác nhận${result.fail > 0 ? ` — Lỗi: ${result.fail}` : ''}.`,
+          ...result.recovered.map(row => `${row.invoiceNumber} — kỳ ${row.billingMonth}.${row.matchesCurrentIntent ? ' Đã xác minh ý định trước.' : ' Nội dung đang nhập chưa được lưu cho dòng này.'}`),
+          ...(result.readingFails.length ? [`Chưa lưu được chỉ số điện cho phòng: ${result.readingFails.join(', ')}. Vui lòng kiểm tra lại.`] : []),
+        ].join(' '),
+      });
+      if(result.fail===0 && result.readingFails.length===0 && result.recovered.length===0) handleClose();
     } catch(error) {
       setSubmitError('Chưa hoàn tất tạo hoá đơn. Kiểm tra danh sách hoá đơn và chỉ số điện trước khi thao tác tiếp.');
     } finally {setSubmitting(false);}
@@ -278,13 +282,15 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
             <Input
               type="month"
               value={billingMonth}
+              aria-invalid={!submitContext}
               onChange={(e) => {
                 const month = e.target.value;
                 loadRevision.current++;
                 setBillingMonth(month);
-                if (loaded) setRows(previous => previous.map(row => requoteExcelRowSupport(row, month)));
+                if (loaded && BILLING_MONTH_PATTERN.test(month)) setRows(previous => previous.map(row => requoteExcelRowSupport(row, month)));
               }}
             />
+            {!submitContext && <p role="alert" className="text-xs text-red-700">Kỳ thanh toán không hợp lệ. Vui lòng chọn tháng.</p>}
           </div>
           <div className="space-y-1">
             <Label>Ngày phát hành</Label>
@@ -297,7 +303,7 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
         </div>
 
         <div className="flex items-center gap-2 pb-2">
-          <Button onClick={handleLoad} disabled={!buildingId||sourcesBlocked}>
+          <Button onClick={handleLoad} disabled={!buildingId || sourcesBlocked || !submitContext}>
             <Download className="h-4 w-4 mr-2" />
             Tải dữ liệu
           </Button>
@@ -309,6 +315,17 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
             </span>
           )}
         </div>
+
+        {recoveryResult && <div role="status" className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm">
+          <p className="font-medium">Đã xác minh kết quả lần tạo trước</p>
+          {recoveryResult.rows.map(row => <p key={row.contractId}>
+            {row.invoiceNumber} — kỳ {row.billingMonth}. {row.matchesCurrentIntent
+              ? 'Ý định trước đã được lưu.'
+              : row.billingMonth !== recoveryResult.billingMonth
+                ? `Kỳ ${recoveryResult.billingMonth} chưa được tạo cho dòng này. Nội dung đang nhập chưa được lưu.`
+                : 'Nội dung đang nhập chưa được lưu cho dòng này.'}
+          </p>)}
+        </div>}
 
         <div className="flex-1 overflow-auto border rounded-md">
           <table className="min-w-full text-sm">
