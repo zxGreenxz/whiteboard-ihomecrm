@@ -36,3 +36,12 @@ it('rejects simultaneous legacy discount and v2 schedule instead of silently los
  expect(contractDraftPayloadSchema.safeParse({...payload,form:{...payload.form,discount_months:3,discount_amount_per_month:300000}}).success).toBe(false);
  expect(()=>buildCreateContractRpcArgs({idempotencyKey:'rent-support-mixed',payload:{contract:{room_id:id,signed_date:'2026-09-29',start_date:'2026-09-01',end_date:'2027-09-01',rent_price:3000000,total_deposit:0,payment_cycle:'MONTHLY',rent_support:supportPlanInputSchema.parse(plan),discounts:{months:3,amount_per_month:300000}},customers:[],services:[]}})).toThrow();
 });
+
+it('parses customer-only schedule without inventing a funding identity, and refuses editing it as a full plan',()=>{
+ const customerSchedule={version:2,start_billing_month:'2026-09',segments:plan.segments};
+ const payload=contractDraftPayloadSchema.parse({...emptyContractDraftPayload(),rent_support:customerSchedule});
+ expect(payload.rent_support).toEqual(customerSchedule);expect(payload.rent_support).not.toHaveProperty('payer');
+ for(const invalid of [{...customerSchedule,payer:'BUILDING'},{...customerSchedule,extra:1},{...customerSchedule,segments:[{month_count:1,monthly_amount:'Infinity'}]}])expect(contractDraftPayloadSchema.safeParse({...payload,rent_support:invalid}).success).toBe(false);
+ const draft=contractDraftSchema.parse({id,organization_id:id,building_id:id,room_id:id,payload,template_id:null,revision:1,created_by:id,created_at:'2026-09-29',updated_at:'2026-09-29'});
+ expect(()=>restoreContractDraftEditorState(draft)).toThrow(/quyền/);
+});

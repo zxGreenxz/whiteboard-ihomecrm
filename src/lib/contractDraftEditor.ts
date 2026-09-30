@@ -1,4 +1,5 @@
 import type { ContractFormData } from '@/lib/contractValidation';
+import { supportPlanInputSchema } from '@/lib/rentSupport';
 import type { FirstInvoiceItem } from '@/lib/firstInvoiceBuilder';
 import type { DepositRow, SelectedCustomer, SelectedService } from '@/components/contracts/contract-form/types';
 import { contractDraftPayloadSchema, type ContractDraft, type ContractDraftPayload,
@@ -54,7 +55,7 @@ export function buildContractDraftPayload(input: ContractDraftEditorInput, owner
       discount_months: form.discount_months ?? 0,
       discount_amount_per_month: form.discount_amount_per_month ?? 0,
     },
-    ...(form.rent_support ? { rent_support: form.rent_support } : {}),
+    ...(form.rent_support ? { rent_support: supportPlanInputSchema.parse(form.rent_support) } : {}),
     customers: input.selectedCustomers.map(customer => ({
       id: customer.id, full_name: customer.full_name, phone: customer.phone,
       id_number: customer.id_number, is_representative: customer.is_representative, notes: customer.notes,
@@ -101,9 +102,11 @@ export interface RestoredContractDraftEditorState {
 export function restoreContractDraftEditorState(draft: ContractDraft): RestoredContractDraftEditorState {
   const payload = draft.payload;
   const editor = payload.editor_state;
+  const support = payload.rent_support ? supportPlanInputSchema.safeParse(payload.rent_support) : null;
+  if (support && !support.success) throw new Error('Bạn cần quyền tài chính để sửa bản nháp có lịch hỗ trợ.');
   return {
     form: {
-      ...(payload.rent_support ? { rent_support: payload.rent_support } : {}),
+      ...(support?.success ? { rent_support: support.data } : {}),
       ...payload.form, room_id: draft.room_id ?? payload.form.room_id,
       deposit_paid: 0, deposit_account_id: null,
       contract_template_id: draft.template_id,

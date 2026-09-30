@@ -17,7 +17,9 @@ beforeAll(async()=>{
  CREATE FUNCTION app_private.authorized_scope_v3(text,uuid) RETURNS TABLE(org_wide boolean,building_ids uuid[],cashbook_ids uuid[]) LANGUAGE sql STABLE AS $$ SELECT false, CASE WHEN current_setting('test.deny',true) IS DISTINCT FROM $1 THEN ARRAY['${building}'::uuid] ELSE '{}'::uuid[] END,'{}'::uuid[] $$;
  CREATE FUNCTION app_private.lock_org_for_decision_v1(uuid) RETURNS void LANGUAGE plpgsql AS $$ BEGIN RETURN;END $$;
  CREATE FUNCTION app_private.authorize_tenant_action_v3(uuid,uuid,text,uuid,uuid) RETURNS TABLE(allowed boolean) LANGUAGE sql AS $$ SELECT $2='${org}'::uuid AND $4='${building}'::uuid $$;
- CREATE TABLE public.organizations(id uuid PRIMARY KEY);INSERT INTO public.organizations VALUES('${org}'),('${other}');
+ CREATE TABLE public.organizations(id uuid PRIMARY KEY,status text);INSERT INTO public.organizations VALUES('${org}','ACTIVE'),('${other}','ACTIVE');
+ CREATE TABLE public.buildings(id uuid PRIMARY KEY,organization_id uuid,deleted_at timestamptz,status text DEFAULT 'ACTIVE');
+ INSERT INTO public.buildings VALUES('${building}','${org}',NULL,'ACTIVE'),('${uid(51)}','${other}',NULL,'ACTIVE'),('${uid(52)}','${org}',now(),'ACTIVE'),('${uid(53)}','${org}',NULL,'INACTIVE');
  CREATE TABLE public.rooms(id uuid PRIMARY KEY,organization_id uuid,building_id uuid,deleted_at timestamptz);
  INSERT INTO public.rooms VALUES('${room}','${org}','${building}',NULL);
  CREATE TABLE public.contracts(id uuid PRIMARY KEY,organization_id uuid,room_id uuid,start_date date,end_date date,discounts jsonb,deleted_at timestamptz,UNIQUE(organization_id,id));
@@ -26,6 +28,7 @@ beforeAll(async()=>{
  INSERT INTO public.contract_drafts VALUES('${draft}','${org}','${building}','{}',1);`);
  const files=readdirSync('supabase/migrations').filter(x=>x.endsWith('_contract_rent_support_plans.sql'));
  for(const name of files){const sql=readFileSync(`supabase/migrations/${name}`,'utf8');await db.exec(sql);await db.exec(sql);}
+ const scope=readFileSync('supabase/migrations/20260929154150_contract_rent_support_draft_privacy.sql','utf8').split('-- Private versioned funding input')[0];await db.exec(scope);await db.exec(scope);
 },30000);
 afterAll(async()=>{await db.close();});
 it('quotes literal twelve months, never trusts supplied payout evidence or pretends enabled writers',async()=>{
@@ -84,4 +87,15 @@ it('reads legacy explicitly and calculates total independently of pagination',as
 it('denies an organization outside membership even with a permitted building and permission',async()=>{
  const result=(await db.query<{allowed:boolean}>('SELECT app_private.rent_support_scope_v1($1,$2,$3) allowed',[other,building,'contracts.view'])).rows[0];
  expect(result.allowed).toBe(false);
+});
+
+it('rejects an explicit building belonging to another org even with access to both orgs',async()=>{
+ await db.exec(`CREATE OR REPLACE FUNCTION public.my_org_ids() RETURNS uuid[] LANGUAGE sql STABLE AS $$ SELECT ARRAY['${org}'::uuid,'${other}'::uuid] $$;
+ CREATE OR REPLACE FUNCTION public.can_access_building(uuid) RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT true $$;
+ CREATE OR REPLACE FUNCTION app_private.authorized_scope_v3(text,uuid) RETURNS TABLE(org_wide boolean,building_ids uuid[],cashbook_ids uuid[]) LANGUAGE sql STABLE AS $$ SELECT true,'{}'::uuid[],'{}'::uuid[] $$;`);
+ await expect(db.query('SELECT public.read_contract_rent_support_v1($1,NULL,$2,0,50)',[org,[uid(51)]])).rejects.toMatchObject({code:'42501'});
+ await expect(db.query('SELECT public.read_contract_rent_support_v1($1,NULL,$2,0,50)',[org,[uid(52)]])).rejects.toMatchObject({code:'42501'});
+ await expect(db.query('SELECT public.read_contract_rent_support_v1($1,NULL,$2,0,50)',[org,[uid(53)]])).rejects.toMatchObject({code:'42501'});
+ await db.query('UPDATE public.organizations SET status=$1 WHERE id=$2',['SUSPENDED',org]);
+ try {await expect(db.query('SELECT public.read_contract_rent_support_v1($1,NULL,$2,0,50)',[org,[building]])).rejects.toMatchObject({code:'42501'});}finally{await db.query('UPDATE public.organizations SET status=$1 WHERE id=$2',['ACTIVE',org]);}
 });

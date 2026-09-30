@@ -1,4 +1,5 @@
 import { expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import { emptyContractDraftPayload } from '../contractDrafts';
 import { saveContractDraft } from '../contractDraftApi';
 
@@ -28,4 +29,15 @@ it('forwards versioned editor input with draft save, without derived paid or rec
   expect(args.p_payload.editor_state).toEqual(payload.editor_state);
   expect(args.p_payload).not.toHaveProperty('deposit_paid');
   expect(args.p_payload).not.toHaveProperty('deposit_receipts');
+});
+
+it('refuses a customer-only schedule at the financial save boundary', async () => {
+  mocks.rpc.mockClear();
+  const id = '11111111-1111-4111-8111-111111111111';
+  const payload = { ...emptyContractDraftPayload(), rent_support: {
+    version: 2 as const, start_billing_month: '2026-09', segments: [{ month_count: 12, monthly_amount: '100000' }],
+  } };
+  await expect(saveContractDraft({ organizationId: id, buildingId: id, payload, templateId: null,
+    draftId: id, requestId: id })).rejects.toBeInstanceOf(z.ZodError);
+  expect(mocks.rpc).not.toHaveBeenCalled();
 });

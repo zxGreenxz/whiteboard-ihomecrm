@@ -85,6 +85,16 @@ export const supportPlanInputSchema = z.object({
   }
 });
 
+/** Public customer agreement. Funding identity is loaded only through a financial read. */
+export const supportCustomerScheduleSchema = supportPlanInputSchema.innerType().pick({
+  version: true, start_billing_month: true, segments: true,
+}).strict().superRefine((schedule, ctx) => {
+  const count = schedule.segments.reduce((total, segment) => total + segment.month_count, 0);
+  if (monthIndex(schedule.start_billing_month) + count - 1 > monthIndex('9999-12')) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['segments'], message: 'Lịch hỗ trợ vượt năm 9999.' });
+  }
+});
+export type SupportCustomerSchedule = z.infer<typeof supportCustomerScheduleSchema>;
 export type SupportPlanInput = z.infer<typeof supportPlanInputSchema>;
 export type SupportMonth = {
   billing_month: BillingMonth;

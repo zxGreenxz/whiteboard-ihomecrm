@@ -1,6 +1,6 @@
 import {FinancialWorkflowError,workflowFeedbackDescription} from '@/lib/financialWorkflowError';
 import { z } from 'zod';
-import { supportPlanInputSchema } from './rentSupport';
+import { supportCustomerScheduleSchema, supportPlanInputSchema } from './rentSupport';
 import { todayISO } from '@/lib/collect';
 
 const customerSchema = z.object({
@@ -55,7 +55,7 @@ export const contractDraftPayloadSchema = z.object({
   customers: z.array(customerSchema), services: z.array(serviceSchema), use_custom_services: z.boolean(),
   owner: draftOwnerSchema.default(emptyDraftOwner),
   editor_state: contractDraftEditorStateSchema.optional(),
-  rent_support: supportPlanInputSchema.optional(),
+  rent_support: z.union([supportPlanInputSchema, supportCustomerScheduleSchema]).optional(),
 }).strict().superRefine((payload, ctx) => {
   if (payload.rent_support && (payload.form.discount_months !== 0 || payload.form.discount_amount_per_month !== 0)) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['rent_support'], message: 'Lịch hỗ trợ không dùng đồng thời với giảm tiền thuê cũ.' });

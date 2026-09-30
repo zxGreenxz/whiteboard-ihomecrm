@@ -1,5 +1,6 @@
 import {FinancialWorkflowError,isConfirmedFinancialRejection} from '@/lib/financialWorkflow';
 import { z } from 'zod';
+import { supportPlanInputSchema } from '@/lib/rentSupport';
 import { supabase } from '@/integrations/supabase/client';
 import type { Json } from '@/integrations/supabase/types';
 import type { DocumentTemplate } from '@/hooks/useDocumentTemplates';
@@ -35,6 +36,7 @@ export interface SaveContractDraftInput {
 }
 export async function saveContractDraft(input: SaveContractDraftInput): Promise<ContractDraft> {
   const payload = contractDraftPayloadSchema.parse(input.payload);
+  if (payload.rent_support) supportPlanInputSchema.parse(payload.rent_support);
   const json: Json = { ...(payload.rent_support ? { rent_support: { ...payload.rent_support, segments: payload.rent_support.segments.map(segment => ({ ...segment })) } } : {}), form: { ...payload.form }, customers: payload.customers.map(c => ({ ...c })),
     services: payload.services.map(s => ({ ...s })), use_custom_services: payload.use_custom_services, owner: { ...payload.owner },
     ...(payload.editor_state ? { editor_state: {
