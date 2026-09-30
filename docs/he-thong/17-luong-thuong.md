@@ -188,6 +188,18 @@ Các nguồn ghép trong 1 query tổng:
 - **Tiền phòng theo tháng T+1**: lương tháng T trả vào tháng kế → khấu trừ hoá đơn phòng ở của `billing_month` = **tháng T+1** (ưu tiên hoá đơn thật của `room_id`; fallback `default_room_rent`).
 - Tháng đã LOCKED: toàn bộ số đọc từ `salary_monthly` + `salary_work_ledger_snapshot` (đóng băng), không tính lại.
 
+### 4.2a. Nguồn hỗ trợ tiền thuê v2 — chờ phát hành
+
+Các quy tắc dưới đây đã có kiểm chứng local và JWT thực trên TEST; chưa có bằng chứng bật writer v2 trên production. Mô tả HH Sale theo alias ở mục 4.2 là luồng legacy. Với nguồn v2, **duyệt phiếu không đồng nghĩa đã trả tiền**; tiền thực trả cần bằng chứng posting vào sổ tiền thật.
+
+Người chịu hỗ trợ là toà nhà hoặc Sale đã được xác minh danh tính. Toà nhà chịu thì không khấu trừ vào quyền lợi Sale. Sale chịu thì giữ **toàn bộ cam kết** ngay khi thực hiện chi v2: chính sách `COMMISSION_ONLY` chỉ dùng hoa hồng; `BONUS_THEN_COMMISSION` dùng thưởng Sale trước rồi hoa hồng của cùng người chịu hỗ trợ. Không lấy quyền lợi người khác bù thiếu. Ví dụ cam kết 1.800.000đ, hoa hồng 3.000.000đ: giữ 1.800.000đ, thực nhận 1.200.000đ. Nếu dùng thưởng 500.000đ trước, thưởng thực nhận 0đ và hoa hồng giữ 1.300.000đ, thực nhận 1.700.000đ. Tiền đã posting không còn là nguồn khấu trừ; thưởng đã trả có capacity 0 nhưng không chặn hoa hồng còn đủ. Nguồn hợp lệ thiếu hoặc đang bị giữ/khoá phải đối chiếu; không ghi một phần rồi báo hoàn tất.
+
+Thao tác lưu biên nhận có gross/giữ lại/net và danh tính nguồn. Net bằng 0 được ghi nhận là **đã tất toán bằng hỗ trợ**, không tạo phiếu chi 0đ. Phản hồi bị mất hoặc người có quyền khác đối chiếu lại phải trả đúng biên nhận/phiếu cũ, không phát sinh quyền lợi thứ hai.
+
+Nguồn chuyển vào lương quản lý giữ cùng source, phiếu và phần quyền lợi đã xác minh; không ghép theo tên hay tự chia tiền theo tỷ lệ khi thiếu bằng chứng từng phần/kỳ. Chốt lương dùng **net một lần**, không trừ hỗ trợ lần nữa. Ví dụ gross 3.000.000đ đã giữ 1.800.000đ thì phần hoa hồng vào lương là 1.200.000đ. Phần đã chốt đóng băng; yêu cầu chi đang chờ và tiền đã posting cùng chịu giới hạn đó. Không mở khoá để giải phóng nguồn khi còn nghĩa vụ tiền hoặc trường hợp cần đối chiếu.
+
+Nguồn: [rentSupportFunding.ts](../../src/lib/rentSupportFunding.ts), [rentSupportSalary.ts](../../src/lib/rentSupportSalary.ts), [rentSupportSalaryMigration.test.ts](../../src/lib/__tests__/rentSupportSalaryMigration.test.ts). Browser luồng lương/cọc và lifecycle còn chờ kiểm chứng tích hợp; không suy trạng thái đã triển khai từ tài liệu này.
+
 ### 4.3. Chốt tháng (LOCK) & mở khoá — [useLockSalaryMonth / useUnlockSalaryMonth](src/hooks/useManagerSalary.ts)
 
 Chốt (quyền `salary.lock`): (1) tự DUYỆT các phiếu HH Sale còn nháp đang tính vào lương; (2) upsert `salary_monthly` `LOCKED` với đầy đủ số đóng băng (tách `work_bonus` vs `contract_bonus` theo icon nhóm thưởng); (3) xoá + ghi lại `salary_work_ledger_snapshot` từ ledger hiện hành. Mở khoá (quyền `salary.unlock`): xoá snapshot + trả `DRAFT`. **Invariant:** tháng LOCKED không bao giờ đọc RPC live.

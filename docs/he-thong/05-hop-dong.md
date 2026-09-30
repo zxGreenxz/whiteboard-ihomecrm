@@ -61,7 +61,7 @@ Các cột chủ chốt:
 | | `start_billing_date`, `end_billing_date` | Mốc tính hoá đơn (khác `start/end_date` nếu lệch chu kỳ). |
 | Tiền thuê | `rent_price` (NOT NULL) | Giá thuê/tháng. |
 | | `payment_cycle` (`payment_cycle`, default `MONTHLY`) | Chu kỳ: `MONTHLY/QUARTERLY/SEMI_ANNUAL/ANNUAL`. |
-| | `discounts` (jsonb) | Cấu hình giảm trừ định kỳ `{months, amount_per_month}`. |
+| | `discounts` (jsonb) | Legacy: giảm trừ định kỳ `{months, amount_per_month}`. Lịch hỗ trợ v2 có phiên bản, tháng bắt đầu và các chặng; xem mục hỗ trợ tiền thuê bên dưới. |
 | Cọc | `total_deposit` (NOT NULL), `deposit_paid`, `deposit_remaining` | Tổng cọc / đã thu / còn lại. **`deposit_paid` được recompute từ phiếu IE `is_deposit`** (xem domain Thu chi) qua `recompute_contract_deposit_paid`. |
 | | `deposit_debt_acknowledged`, `deposit_debt_mode`, `deposit_debt_reason`, `deposit_topup_due_date` | Xử lý **ký thiếu cọc**: mode `DEBT` (cho nợ, kèm lý do + hẹn ngày) hoặc `FIRST_INVOICE` (thu đủ trong hoá đơn đầu). Chặn ký nếu thiếu mà chưa "đồng ý cho nợ". |
 | Chỉ số đầu | `initial_electricity_reading`, `initial_water_reading` | Chỉ số điện/nước lúc nhận phòng (mốc cho kỳ chỉ số đầu tiên). |
@@ -346,7 +346,17 @@ flowchart TD
     R --> P["invalidate contracts/rooms/invoices"]
 ```
 
-Chi tiết các bước mới so với mô tả cũ:
+#### Lịch hỗ trợ tiền thuê v2 — chờ phát hành
+
+Phần này mô tả source đã tích hợp và bằng chứng TEST của tính năng mới; chưa có bằng chứng bật writer v2 trên production. Không hướng dẫn người dùng coi v2 là luồng đang chạy. Cấu hình legacy `{months, amount_per_month}` vẫn dùng luồng cũ, không tự đổi thành lịch v2 hay tự suy ra người chịu hỗ trợ.
+
+Lịch v2 neo vào **tháng tính tiền**, gồm tháng bắt đầu và các chặng liên tiếp. Ví dụ bắt đầu 09/2026, 3 tháng hỗ trợ 300.000đ/tháng rồi 9 tháng 100.000đ/tháng: 09–11/2026 là 300.000đ, 12/2026–08/2027 là 100.000đ. Bảng xem trước hiển thị từng tháng, tiền hỗ trợ và trạng thái đối chiếu với kỳ hoá đơn; kỳ ngắn không tự chia tỷ lệ hỗ trợ. Khi đổi ngày hoặc kỳ tính tiền, phải kiểm tra lại kỳ thực tế.
+
+Bản nháp lưu lịch để mở lại và ký đúng phiên bản. Bản in hợp đồng thể hiện lịch khách được hưởng; không đưa nguồn hoa hồng/thưởng, phần giữ lại, số tiền thực nhận hoặc dữ liệu người nhận tiền vào bản in. Phần nguồn và khấu trừ nội bộ chỉ được đọc/thao tác theo quyền tài chính, không suy quyền đó từ quyền sửa hợp đồng. Xem [hoá đơn](07-hoa-don-thanh-toan.md#31-hỗ-trợ-tiền-thuê-v2--chờ-phát-hành) và [nguồn lương](17-luong-thuong.md#42a-nguồn-hỗ-trợ-tiền-thuê-v2--chờ-phát-hành).
+
+Nguồn: [rentSupport.ts](../../src/lib/rentSupport.ts), [ContractFormDialog.tsx](../../src/components/contracts/ContractFormDialog.tsx), [contractTemplateRentSupport.test.ts](../../src/lib/__tests__/contractTemplateRentSupport.test.ts). Kiểm chứng browser save/export/reopen/sign còn chờ fixture tích hợp; không coi test local là bằng chứng browser đã chạy.
+
+Chi tiết các bước mới so với mô tả cũ (luồng legacy):
 
 - **Toggle "Dùng dịch vụ riêng cho HĐ"** (`useCustomServices` trong [ContractFormDialog.tsx](../../src/components/contracts/ContractFormDialog.tsx)): **OFF** (mặc định khi tạo) = KHÔNG lưu `contract_services` — hoá đơn về sau fallback **đơn giá dịch vụ của toà** (khớp `resolveInvoicePricing`); **ON** = seed danh sách từ dịch vụ đang bật của toà (`useBuildingServices`) rồi thêm/bớt/sửa giá. "Số lượng" của dịch vụ tính theo người (`pricing_type = DON_GIA_THEO_NGUOI`) tự bump theo số khách đã chọn.
 - **Preview hoá đơn cọc + tháng đầu chỉnh được**: items tự sinh bởi `buildFirstInvoiceItems` ([firstInvoiceBuilder.ts](../../src/lib/firstInvoiceBuilder.ts)) và user **chỉnh trực tiếp** (sửa mô tả/đơn giá/số lượng, thêm/xoá dòng) trước khi lưu — hook insert đúng payload, không tự tính lại. Giảm trừ **"Khuyến mãi tháng đầu"** (`firstInvoiceDiscount`) KHÔNG trộn vào items mà ghi vào `invoices.discount_amount + discount_notes` (slot `1/Y`; các tháng `2..Y` auto-fill qua `getContractDiscountSlot` khi tạo hoá đơn tháng kế).
