@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { quoteContractRentSupport, type SupportRead } from '@/lib/rentSupportApi';
+import { quoteContractRentSupport, readRentSupportDepositCandidate, verifyRentSupportDepositPayee, type SupportRead, type VerifyDepositPayeeInput } from '@/lib/rentSupportApi';
 import { payoutContextSchema, type PayoutContext } from '@/lib/rentSupportFunding';
 import { buildSupportMonths } from '@/lib/rentSupport';
 import { safeCommissionReason, type CommissionKind, type ContractCommissionFollowup } from '@/lib/contractCommissionFollowup';
@@ -26,6 +26,14 @@ const issues: Record<string, string> = {
   PARTY_UNVERIFIED: 'Cần xác minh danh tính người chịu hoặc người hưởng trong danh mục.',
   LEGACY_REVIEW: 'Nguồn cũ cần đối chiếu gross, khoản đã giữ và thực trả bằng chứng từ trước khi lập phiếu.',
   PAYEE_UNVERIFIED: 'Thưởng cọc chưa xác minh người hưởng. Xác nhận danh tính với bằng chứng trước khi sử dụng nguồn.',
+  DEPOSIT_ALREADY_PAID: 'Thưởng cọc đã trả; sức chứa khấu trừ bằng 0. Phần cam kết còn thiếu chỉ lấy từ hoa hồng hợp lệ theo chính sách.',
+  AMBIGUOUS_DEPOSIT_CLAIM: 'Có nhiều yêu cầu thưởng cọc; đối chiếu đúng quyền lợi và chứng từ trước khi tiếp nhận.',
+  DEPOSIT_LINKAGE_REVIEW: 'Liên kết hợp đồng, yêu cầu thưởng và phiếu cọc cần đối chiếu.',
+  PAYMENT_EVIDENCE_REVIEW: 'Chưa xác minh được tiền thực trả của thưởng cọc; kiểm tra chứng từ thanh toán.',
+  PARTIAL_PAYMENT_REVIEW: 'Thưởng cọc đã trả một phần; cần đối chiếu phần còn lại trước khi khấu trừ.',
+  DEPOSIT_GROSS_REVIEW: 'Gross trên yêu cầu thưởng và dòng phiếu cọc chưa khớp; đối chiếu quyền lợi gốc.',
+  DEPOSIT_NOT_MUTABLE: 'Phiếu thưởng cọc đã duyệt, ghi sổ hoặc thuộc kỳ khóa; cần xử lý chứng từ trước khi tiếp nhận.',
+  SOURCE_ALREADY_ISSUED: 'Nguồn thưởng đã được xử lý; đối chiếu kết quả hiện có, không tạo nguồn thay thế.',
 };
 
 export function RentSupportPayoutForm({ organizationId, contractId, plan, prefill, rows, refetchRows, onlyKind, userId }: Props) {
@@ -40,10 +48,20 @@ export function RentSupportPayoutForm({ organizationId, contractId, plan, prefil
   const [recovered, setRecovered] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [preflighting, setPreflighting] = useState(false);
+  const [adopt, setAdopt] = useState(false);
+  const [adoptionReason, setAdoptionReason] = useState('');
+  const [verificationParty, setVerificationParty] = useState('');
+  const [verificationReason, setVerificationReason] = useState('');
+  const [verificationConfirmed, setVerificationConfirmed] = useState(false);
+  const confirmedVerification = useRef<string | null>(null);
+  const [verificationPending, setVerificationPending] = useState(false);
+  const savedVerification = useRef<VerifyDepositPayeeInput | null>(null);
   const mounted = useRef(false);
   const active = useRef<symbol | null>(null);
   useEffect(() => {
     mounted.current = true; active.current = null; setPreflighting(false); setRetrying(false);
+    savedVerification.current = null; setVerificationPending(false); setAdopt(false); setAdoptionReason('');
+    setVerificationParty(''); setVerificationReason(''); setVerificationConfirmed(false); confirmedVerification.current = null;
     return () => { mounted.current = false; active.current = null; };
   }, [organizationId, contractId]);
   const initial = (amount: number): SourceForm => ({ partyId: '', amount, route: 'CASHBOOK', accountId: '', payer: '', recipient: '', bank: '', accountNumber: '', attachments: [] });
@@ -51,11 +69,21 @@ export function RentSupportPayoutForm({ organizationId, contractId, plan, prefil
   const update = (kind: CommissionKind, patch: Partial<SourceForm>) => setForms(current => ({ ...current, [kind]: { ...current[kind], ...patch } }));
   const done = (row: ContractCommissionFollowup) => ['VOUCHER_CREATED', 'SETTLED_BY_SUPPORT', 'NOT_APPLICABLE'].includes(row.state);
   const savedRows = rows.filter(row => row.request_id && (row.can_retry || row.state === 'PROCESSING') && !done(row));
+  const deposit = useQuery({ queryKey: ['rent-support-deposit-candidate', organizationId, contractId, plan.revision],
+    queryFn: () => readRentSupportDepositCandidate(organizationId, contractId), enabled: !!financial, retry: false, staleTime: 0 });
+  const candidate = deposit.data?.state === 'READY' ? deposit.data.candidate : null;
+  const candidateCurrent = !!deposit.data && deposit.data.plan_revision === plan.revision && !deposit.isFetching && !deposit.isError;
+  const verificationFingerprint = JSON.stringify([organizationId, contractId, plan.revision, deposit.data?.verification, verificationParty, verificationReason]);
+  const confirmationMatches = verificationConfirmed && confirmedVerification.current === verificationFingerprint;
+  const saleAllowed = onlyKind !== 'broker' && rows.some(row => row.kind === 'sale' && row.can_manage) && !savedRows.some(row => row.kind === 'sale');
+  const adopting = adopt && !!candidate && saleAllowed;
   const selected = (['broker', 'sale'] as const).filter(kind => onlyKind !== (kind === 'broker' ? 'sale' : 'broker')
-    && rows.some(row => row.kind === kind && row.can_manage && !done(row)) && !savedRows.some(row => row.kind === kind) && forms[kind].amount > 0);
-  const parsed = payoutContextSchema.safeParse({ version: 2, intents: selected.map(kind => {
+    && rows.some(row => row.kind === kind && row.can_manage && (kind === 'sale' && adopting || !done(row))) && !savedRows.some(row => row.kind === kind)
+    && (kind === 'sale' ? adopting || deposit.data?.state === 'NO_CANDIDATE' && forms.sale.amount > 0 : forms.broker.amount > 0));
+  const parsed = payoutContextSchema.safeParse({ version: 3, intents: selected.map(kind => {
+    if (kind === 'sale' && adopting && candidate) return { ...candidate.intent_template, intent_id: intentIds.current.sale, reason: adoptionReason.trim() };
     const form = forms[kind], party = parties.data?.find(party => party.party_id === form.partyId);
-    return { intent_id: intentIds.current[kind], source_id: null, kind: kind === 'broker' ? 'COMMISSION' : 'BONUS', party_id: form.partyId,
+    return { action: 'ISSUE_NEW', intent_id: intentIds.current[kind], source_id: null, kind: kind === 'broker' ? 'COMMISSION' : 'BONUS', party_id: form.partyId,
       gross_amount: String(form.amount), route: form.route, manager_id: form.route === 'MANAGER_PAYROLL' ? party?.profile_id ?? null : null,
       account_id: form.route === 'MANAGER_PAYROLL' ? null : form.accountId || null, voucher_date: date, payer_name: form.payer || null,
       recipient_name: form.recipient || null, recipient_bank: form.bank || null, recipient_account: form.accountNumber || null,
@@ -63,17 +91,18 @@ export function RentSupportPayoutForm({ organizationId, contractId, plan, prefil
   }) });
   const context: PayoutContext | null = parsed.success ? parsed.data : null;
   const query = useQuery({ queryKey: ['support-payout-quote', organizationId, contractId, plan.revision, financial?.payload, context],
-    enabled: !!context && !!financial && !parties.isFetching && !parties.isError && !payout.pending,
+    enabled: !!context && !!financial && candidateCurrent && !parties.isFetching && !parties.isError && !payout.pending && !verificationPending,
     queryFn: () => {
       if (!context || !financial) throw new Error('context');
       return quoteContractRentSupport(organizationId, { contractId, payload: financial.payload, payoutContext: context });
     }, retry: false, staleTime: 0 });
-  const ready = !!context && !!financial && !financial.review && !parties.isFetching && !parties.isError && !query.isFetching && !query.isError && query.data?.state === 'READY'
+  const ready = !!context && !!financial && !financial.review && candidateCurrent && !verificationPending && !(adopt && !adopting) && !parties.isFetching && !parties.isError && !query.isFetching && !query.isError && query.data?.state === 'READY'
     && query.data.plan_revision === plan.revision && selected.every(kind => query.data?.sources.some(source => source.intent_id === intentIds.current[kind]));
-  const fingerprint = JSON.stringify([organizationId, contractId, onlyKind, plan.revision, financial, context, query.data?.quote_hash, query.data?.payload_hash]);
-  const latest = useRef({ fingerprint, ready }); latest.current = { fingerprint, ready };
+  const depositFingerprint = JSON.stringify(deposit.data);
+  const fingerprint = JSON.stringify([organizationId, contractId, onlyKind, plan.revision, financial, context, deposit.data, query.data?.quote_hash, query.data?.payload_hash]);
+  const latest = useRef({ fingerprint, ready, revision: plan.revision, depositFingerprint }); latest.current = { fingerprint, ready, revision: plan.revision, depositFingerprint };
   const run = async (action: 'submit' | 'retry' | 'read') => {
-    if (active.current || payout.isPending || retrying) return;
+    if (active.current || payout.isPending || retrying || verificationPending) return;
     const submission = Symbol('payout preflight'); active.current = submission;
     const current = () => mounted.current && active.current === submission;
     const confirmedFingerprint = fingerprint;
@@ -86,7 +115,11 @@ export function RentSupportPayoutForm({ organizationId, contractId, plan, prefil
         if (!current()) return;
         if (latest.current.fingerprint !== confirmedFingerprint || !latest.current.ready)
           throw new Error('Nội dung hoặc lịch hỗ trợ đã thay đổi trong lúc đối chiếu. Kiểm tra lại khoản thực nhận rồi tạo phiếu.');
-        if (fresh.isError || !fresh.data?.rows || selected.some(kind => !fresh.data?.rows?.some(row => row.kind === kind && row.can_manage && !done(row) && !(row.request_id && (row.can_retry || row.state === 'PROCESSING')))))
+        const freshDeposit = await deposit.refetch();
+        if (!current()) return;
+        if (freshDeposit.isError || JSON.stringify(freshDeposit.data) !== depositFingerprint || latest.current.fingerprint !== confirmedFingerprint)
+          throw new Error('Nguồn thưởng cọc đã thay đổi hoặc chưa đọc được. Đối chiếu lại nguồn trước khi tạo phiếu.');
+        if (fresh.isError || !fresh.data?.rows || selected.some(kind => !fresh.data?.rows?.some(row => row.kind === kind && row.can_manage && (kind === 'sale' && adopting || !done(row)) && !(row.request_id && (row.can_retry || row.state === 'PROCESSING')))))
           throw new Error('Trạng thái tạo phiếu đã thay đổi. Đối chiếu yêu cầu đã lưu trước khi tiếp tục.');
         const result = await payout.submit({ contractId, planRevision: plan.revision, quoteHash: query.data.quote_hash, payload: context });
         if (!current()) return;
@@ -99,7 +132,7 @@ export function RentSupportPayoutForm({ organizationId, contractId, plan, prefil
     finally { if (current()) { active.current = null; setPreflighting(false); } }
   };
   const retrySaved = async (row: ContractCommissionFollowup) => {
-    if (!row.request_id || retrying || active.current || payout.isPending) return;
+    if (!row.request_id || retrying || active.current || payout.isPending || verificationPending) return;
     const submission = Symbol('saved request preflight'); active.current = submission;
     const current = () => mounted.current && active.current === submission;
     setRetrying(true); setError(null);
@@ -113,6 +146,35 @@ export function RentSupportPayoutForm({ organizationId, contractId, plan, prefil
     } catch { if (current()) setError('Chưa xác minh được kết quả Tạo lại. Yêu cầu vẫn được theo dõi trên hợp đồng.'); }
     finally { if (current()) { active.current = null; setRetrying(false); } }
   };
+  const verifyPayee = async () => {
+    if (active.current || payout.isPending || retrying || payout.pending || payout.receipt) return;
+    const facts = deposit.data?.verification;
+    let input = savedVerification.current;
+    if (!input) {
+      if (!candidateCurrent || !facts || !deposit.data?.issues.some(issue => issue.code === 'PAYEE_UNVERIFIED') || !confirmationMatches
+        || !verificationReason.trim() || verificationReason.trim().length > 2000 || !parties.data?.some(party => party.party_id === verificationParty) || parties.isError || parties.isFetching) return;
+      input = { contractId, claimId: facts.claim_id, depositVoucherId: facts.deposit_voucher_id, bonusVoucherId: facts.bonus_voucher_id, partyId: verificationParty,
+        expectedApprovalVersion: facts.approval_version, expectedPostingVersion: facts.posting_version, sourceFactsHash: facts.proof_hash, reason: verificationReason.trim(), requestId: crypto.randomUUID() };
+      savedVerification.current = input;
+    }
+    const saved = input, revision = plan.revision, confirmedDeposit = depositFingerprint;
+    const token = Symbol('verify deposit payee'); active.current = token;
+    const current = () => mounted.current && active.current === token;
+    setVerificationPending(true); setPreflighting(true); setError(null);
+    try {
+      const binding = await verifyRentSupportDepositPayee(organizationId, saved);
+      if (!current()) return;
+      if (latest.current.revision !== revision || latest.current.depositFingerprint !== confirmedDeposit || binding.party_id !== saved.partyId)
+        throw new Error('verification context changed');
+      const observed = await deposit.refetch();
+      if (!current()) return;
+      if (observed.isError || latest.current.revision !== revision || observed.data?.plan_revision !== revision || !observed.data.candidate
+        || observed.data.candidate.claim_id !== saved.claimId || observed.data.candidate.bonus_voucher_id !== saved.bonusVoucherId || observed.data.candidate.intent_template.party_id !== saved.partyId)
+        throw new Error('verification needs review');
+      savedVerification.current = null; setVerificationPending(false); setVerificationConfirmed(false);
+    } catch { if (current()) setError('Chưa xác minh được kết quả xác nhận người hưởng. Thử lại đúng yêu cầu đã lưu; chưa gửi tạo phiếu hoặc khấu trừ.'); }
+    finally { if (current()) { active.current = null; setPreflighting(false); } }
+  };
   if (!financial || !plan.revision) return <p role="alert">Chưa đọc được thông tin tài chính của lịch hỗ trợ. Không thể tạo phiếu; hãy kiểm tra quyền và tải lại.</p>;
   const months = buildSupportMonths(financial.payload);
   return <div className="space-y-4 px-6 pb-6">
@@ -123,15 +185,39 @@ export function RentSupportPayoutForm({ organizationId, contractId, plan, prefil
       <details><summary>Lịch giảm tiền thuê của khách</summary><ul>{months.map(month => <li key={month.billing_month}>{month.invoice_period_label}: {vnd(month.agreed_amount)}</li>)}</ul></details>
     </div>
     {financial.review && <p role="alert">Lịch hỗ trợ đang cần đối chiếu điều chỉnh tài chính. Chưa thể lập phiếu ròng.</p>}
+    {deposit.isFetching && <p role="status">Đang đọc thưởng cọc và bằng chứng người hưởng…</p>}
+    {deposit.isError && <div role="alert"><p>Chưa đọc được thưởng cọc. Tải lại trước khi lập phiếu; không coi lỗi đọc là không có nguồn.</p><Button variant="outline" disabled={preflighting} onClick={() => void deposit.refetch()}>Đọc lại thưởng cọc</Button></div>}
+    {deposit.data && deposit.data.plan_revision !== plan.revision && <p role="alert">Thưởng cọc chưa khớp phiên bản lịch hỗ trợ. Tải lại hợp đồng trước khi tiếp tục.</p>}
+    {deposit.data?.issues.filter(issue => issue.code !== 'NO_CANDIDATE').map(issue => <p role="alert" key={issue.code}>{issues[issue.code] ?? 'Thưởng cọc cần đối chiếu chứng từ hoặc quyền lợi. Không tạo thưởng mới để thay thế nguồn chưa rõ; hoa hồng hợp lệ vẫn được đối chiếu riêng.'}</p>)}
+    {saleAllowed && deposit.data?.verification && deposit.data.issues.some(issue => issue.code === 'PAYEE_UNVERIFIED') && <section className="rounded border p-3 space-y-2">
+      <h3 className="font-medium">Xác nhận người hưởng thưởng cọc</h3>
+      <p className="text-sm">Yêu cầu: {deposit.data.verification.claim_id}. Phiếu cọc: {deposit.data.verification.deposit_voucher_id}. Phiếu thưởng: {deposit.data.verification.bonus_voucher_id}. Gross: {vnd(deposit.data.verification.gross)}.</p>
+      <fieldset disabled={preflighting || verificationPending || payout.isPending || !!payout.pending || !!payout.receipt} className="space-y-2">
+        <label className="block text-sm">Người hưởng thưởng cọc<select aria-label="Người hưởng thưởng cọc" className="block w-full rounded border p-2" value={verificationParty} onChange={event => { setVerificationParty(event.target.value); setVerificationConfirmed(false); }}>
+          <option value="">Chọn danh tính đã xác minh</option>{(parties.data ?? []).filter(party => party.party_id).map(party => <option key={party.party_id} value={party.party_id!}>{party.display_name}</option>)}
+        </select></label>
+        <label className="block text-sm">Lý do xác nhận người hưởng<Input aria-label="Lý do xác nhận người hưởng" value={verificationReason} maxLength={2000} onChange={event => { setVerificationReason(event.target.value); setVerificationConfirmed(false); }} /></label>
+        <label className="block text-sm"><input type="checkbox" aria-label="Đã đối chiếu đúng yêu cầu và phiếu cọc" checked={confirmationMatches} onChange={event => { confirmedVerification.current = event.target.checked ? verificationFingerprint : null; setVerificationConfirmed(event.target.checked); }} /> Đã đối chiếu đúng yêu cầu và phiếu cọc ở trên với danh tính được chọn.</label>
+      </fieldset>
+      <p className="text-sm">Xác nhận chỉ lưu danh tính người hưởng; chưa tạo phiếu, chưa khấu trừ hỗ trợ.</p>
+      {!verificationPending && <Button disabled={!candidateCurrent || !confirmationMatches || !verificationReason.trim() || !verificationParty || parties.isFetching || parties.isError || preflighting || payout.isPending || !!payout.pending || !!payout.receipt} onClick={() => void verifyPayee()}>Xác nhận người hưởng thưởng cọc</Button>}
+    </section>}
+    {verificationPending && <div role="status" className="rounded border p-3 text-sm"><p>Yêu cầu xác nhận đã lưu; chưa xác minh kết quả. Giữ nguyên danh tính và chứng từ đã chọn.</p><Button disabled={preflighting || payout.isPending} onClick={() => void verifyPayee()}>Thử lại xác nhận đã lưu</Button></div>}
+    {saleAllowed && candidate && <fieldset disabled={preflighting || verificationPending || payout.isPending || !!payout.pending || !!payout.receipt} className="rounded border p-3 space-y-2">
+      <p className="text-sm">Thưởng cọc hiện có: {vnd(candidate.gross)}; đã trả: {vnd(candidate.already_paid)}; khoản ròng hiện tại: {vnd(candidate.current_net)}. Sử dụng đúng phiếu thưởng {candidate.bonus_voucher_id}; không tạo thưởng trùng.</p>
+      <p className="text-sm">Người hưởng đã xác minh: {parties.data?.find(party => party.party_id === candidate.intent_template.party_id)?.display_name ?? 'danh tính đã xác minh trên nguồn'}.</p>
+      <label className="block text-sm"><input type="checkbox" aria-label="Sử dụng thưởng cọc hiện có" checked={adopt} onChange={event => setAdopt(event.target.checked)} /> Sử dụng thưởng cọc hiện có theo chính sách đã lưu.</label>
+      {adopt && <label className="block text-sm">Lý do tiếp nhận thưởng cọc<Input aria-label="Lý do tiếp nhận thưởng cọc" value={adoptionReason} minLength={8} maxLength={1000} onChange={event => setAdoptionReason(event.target.value)} /><span>Nhập lý do đối chiếu từ 8 đến 1000 ký tự.</span></label>}
+    </fieldset>}
     {savedRows.map(row => <div key={row.kind} className="rounded border p-3 text-sm space-y-2">
       <p>Yêu cầu {labels[row.kind]} đã lưu. Tạo lại sử dụng đúng nội dung trước đó.</p>
       {row.last_reason && <p>{safeCommissionReason(row.last_reason)}</p>}
-      {row.can_retry && ['FAILED', 'UNKNOWN'].includes(row.state) ? <Button disabled={preflighting || retrying || payout.isPending} onClick={() => void retrySaved(row)}>Tạo lại {labels[row.kind]}</Button>
+      {row.can_retry && ['FAILED', 'UNKNOWN'].includes(row.state) ? <Button disabled={preflighting || verificationPending || retrying || payout.isPending} onClick={() => void retrySaved(row)}>Tạo lại {labels[row.kind]}</Button>
         : <Button onClick={() => void refetchRows()}>Đối chiếu lại yêu cầu</Button>}
     </div>)}
-    <fieldset disabled={preflighting || retrying || payout.isPending || !!payout.pending || !!payout.receipt} className="space-y-4">
+    <fieldset disabled={preflighting || verificationPending || retrying || payout.isPending || !!payout.pending || !!payout.receipt} className="space-y-4">
       <label className="block text-sm">Ngày phiếu<DateInput value={date} onChange={setDate} /></label>
-      {(['broker', 'sale'] as const).filter(kind => onlyKind !== (kind === 'broker' ? 'sale' : 'broker') && rows.some(row => row.kind === kind && row.can_manage && !done(row)) && !savedRows.some(row => row.kind === kind)).map(kind => {
+      {(['broker', 'sale'] as const).filter(kind => onlyKind !== (kind === 'broker' ? 'sale' : 'broker') && (kind !== 'sale' || candidateCurrent && deposit.data?.state === 'NO_CANDIDATE') && rows.some(row => row.kind === kind && row.can_manage && !done(row)) && !savedRows.some(row => row.kind === kind)).map(kind => {
         const form = forms[kind];
         return <section key={kind} className="rounded border p-3 space-y-2">
           <h3 className="font-medium">{kind === 'broker' ? 'Hoa hồng môi giới' : 'Thưởng Sale (chỉ chọn khi cần tạo)'}</h3>
