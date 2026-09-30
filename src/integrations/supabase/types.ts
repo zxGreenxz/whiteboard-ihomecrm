@@ -20520,6 +20520,16 @@ export type Database = {
         }
         Returns: Json
       }
+      apply_rent_support_reconciliation_v1: {
+        Args: {
+          p_batch_hash: string
+          p_entries: Json
+          p_organization_id: string
+          p_reason: string
+          p_request_id: string
+        }
+        Returns: Json
+      }
       approve_and_post_income_expense_v2: {
         Args: { input: Json }
         Returns: Json
@@ -22612,6 +22622,10 @@ export type Database = {
           p_shareholder_id: string
           p_voucher_date: string
         }
+        Returns: Json
+      }
+      dry_run_rent_support_reconciliation_v1: {
+        Args: { p_entries: Json; p_organization_id: string }
         Returns: Json
       }
       effective_perms_v2: {
@@ -24885,6 +24899,10 @@ export type Database = {
         Args: { p_organization_id: string; p_request_id: string }
         Returns: Json
       }
+      read_contract_rent_support_lifecycle_v1: {
+        Args: { p_contract_id: string; p_organization_id: string }
+        Returns: Json
+      }
       read_contract_rent_support_v1: {
         Args: {
           p_building_ids: string[]
@@ -24910,6 +24928,14 @@ export type Database = {
       }
       read_rent_support_deposit_candidate_v1: {
         Args: { p_contract_id: string; p_organization_id: string }
+        Returns: Json
+      }
+      read_rent_support_reconciliation_context_v1: {
+        Args: {
+          p_contract_id: string
+          p_organization_id: string
+          p_voucher_id: string
+        }
         Returns: Json
       }
       read_rent_support_salary_parts_v1: {
@@ -25134,6 +25160,17 @@ export type Database = {
       }
       request_paid_leave: {
         Args: { p_date: string; p_reason?: string }
+        Returns: Json
+      }
+      request_rent_support_source_lifecycle_v1: {
+        Args: {
+          p_action: string
+          p_expected_facts_hash: string
+          p_organization_id: string
+          p_reason: string
+          p_request_id: string
+          p_source_id: string
+        }
         Returns: Json
       }
       reserve_ai_usage: {

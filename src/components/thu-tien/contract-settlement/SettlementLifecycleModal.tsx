@@ -40,6 +40,7 @@ import { useAccounts } from '@/hooks/useAccounts';
 import { useIncomeExpenseSupplements } from '@/hooks/income-expenses/supplements';
 import { formatSupplementAuthor } from '@/lib/incomeExpenseSupplement';
 import { ContractLifecycleBand } from './ContractLifecycleBand';
+import { RentSupportReconciliationPanel } from '@/components/contracts/RentSupportReconciliationPanel';
 import { SettlementVoucherDetails } from './SettlementVoucherDetails';
 import { mocNgayNghiepVu, type LaneSubject } from '@/lib/contractLifecycle';
 import { vnTodayISO } from '@/lib/vnDate';
@@ -675,6 +676,9 @@ function SettlementLifecycleModalContent({ row, view, actions, onClose, onRetryS
           } : null}
         />
 
+        {row.organizationId && row.contractId && <RentSupportReconciliationPanel
+          organizationId={row.organizationId} contractId={row.contractId} voucherId={row.voucherId}
+        />}
         {/* ── Hai cột ────────────────────────────────────────────────────── */}
         <div className="cs-body">
           <div className="cs-notes">
