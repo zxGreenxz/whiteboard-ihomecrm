@@ -94,7 +94,10 @@ describe("bất biến khai báo của test-matrix.json", () => {
     expect(suite.ciJobs).toEqual([{ workflow: CI, job: "vitest-tests" }]);
     const job = doc.jobs[suite.ciJobs[0].job];
     expect(job, "declared Vitest owner must exist").toBeDefined();
-    expect(job.needs, "Vitest must not wait for quality-gates").toBeUndefined();
+    // Waiting for `preflight` (~10 s, reads `pr_da_xanh`) is allowed since 01/10/2026;
+    // waiting for quality-gates is not.
+    expect([job.needs].flat(), "Vitest must not wait for quality-gates").not.toContain("quality-gates");
+    expect([undefined, "preflight"]).toContain(job.needs);
     const run = lenhCuaBuoc(doc, suite.ciJobs[0].job, suite.ciVitestStep);
     expect(run, "declared Vitest owner must execute its test step").not.toBeNull();
     expect(run.split(/\s+--exclude\s+/)[0].trim()).toBe(suite.command);

@@ -179,6 +179,68 @@ describe("GitHub evidence readiness", () => {
   });
 });
 
+// ── CI main không chạy lại phần tĩnh khi PR cùng bản đã xanh (01/10/2026) ──
+//
+// Trên main, quality-gates / vitest-tests / secret-scan bị BỎ QUA khi chính SHA
+// đó đã có lượt pull_request xanh. Bằng chứng xanh khi ấy nằm ở lượt PR. Chốt
+// dưới đây đòi bằng chứng đó: job tĩnh chỉ toàn "skipped" ở mọi lượt của commit
+// thì chưa được phát hành.
+describe("bằng chứng job tĩnh khi main bỏ chạy lại", () => {
+  const runMain = { id: 1, name: "CI Gates", path: ".github/workflows/ci-gates.yml", head_branch: "main", status: "completed", conclusion: "success" };
+  const runPr = { id: 2, name: "CI Gates", path: ".github/workflows/ci-gates.yml", head_branch: "feat/x", status: "completed", conclusion: "success" };
+  const xanh = (ten) => job(ten, "success", [buoc("chạy", "success")]);
+  const bo = (ten) => job(ten, "skipped", []);
+  const jobsMainBoQua = [xanh("preflight"), xanh("security-gates"), bo("quality-gates"), bo("vitest-tests"), bo("secret-scan")];
+  const jobsPr = [xanh("preflight"), xanh("quality-gates"), xanh("vitest-tests"), xanh("secret-scan")];
+  const doc = (runs, jobsTheoRun) => readGateEvidence("owner/repo", "abc123", "test-token", async (path) => {
+    if (path === "/repos/owner/repo/actions/runs?head_sha=abc123&per_page=100") return { total_count: runs.length, workflow_runs: runs };
+    const m = /\/actions\/runs\/(\d+)\/jobs/.exec(path);
+    if (m) { const jobs = jobsTheoRun[m[1]] ?? []; return { total_count: jobs.length, jobs }; }
+    throw new Error(`Unexpected API request: ${path}`);
+  });
+
+  it("main bỏ qua job tĩnh, lượt PR cùng SHA có chúng xanh ⇒ đủ điều kiện", async () => {
+    const kq = await doc([runMain, runPr], { 1: jobsMainBoQua, 2: jobsPr });
+    expect(kq.verdict.datDieuKien).toBe(true);
+  });
+
+  it("main bỏ qua job tĩnh mà không lượt nào của commit có chúng xanh ⇒ chặn", async () => {
+    const kq = await doc([runMain], { 1: jobsMainBoQua });
+    expect(kq.verdict.datDieuKien).toBe(false);
+    const thieu = kq.verdict.dangChay.join(" | ");
+    expect(thieu).toContain("quality-gates");
+    expect(thieu).toContain("vitest-tests");
+    expect(thieu).toContain("secret-scan");
+  });
+
+  it("lượt PR CŨNG bỏ qua job tĩnh ⇒ không có bằng chứng ⇒ chặn (chính chốt mới, không nhờ run đỏ)", async () => {
+    const prBoQua = [xanh("preflight"), bo("quality-gates"), bo("vitest-tests"), bo("secret-scan")];
+    const kq = await doc([runMain, runPr], { 1: jobsMainBoQua, 2: prBoQua });
+    expect(kq.verdict.doGate).toEqual([]);
+    expect(kq.verdict.datDieuKien).toBe(false);
+    expect(kq.verdict.dangChay.join(" | ")).toContain("vitest-tests");
+  });
+
+  it("job cùng tên ở workflow KHÁC không được tính là bằng chứng của CI Gates", async () => {
+    const runKhac = { ...runPr, id: 3, name: "External Controls", path: ".github/workflows/external-controls.yml", head_branch: "main" };
+    const kq = await doc([runMain, runKhac], { 1: jobsMainBoQua, 3: jobsPr });
+    expect(kq.verdict.datDieuKien).toBe(false);
+  });
+
+  it("lượt main chỉ có preflight xanh, mọi job khác bỏ qua ⇒ chưa phải 'CI Gates trên main hoàn tất'", async () => {
+    const chiPreflight = [xanh("preflight"), bo("security-gates"), bo("quality-gates"), bo("vitest-tests"), bo("secret-scan")];
+    const kq = await doc([runMain, runPr], { 1: chiPreflight, 2: jobsPr });
+    expect(kq.verdict.datDieuKien).toBe(false);
+    expect(kq.verdict.dangChay.join(" | ")).toContain("Chưa có CI Gates trên main hoàn tất");
+  });
+
+  it("lượt PR có job tĩnh ĐỎ thì không thành bằng chứng", async () => {
+    const prDo = [xanh("preflight"), job("quality-gates", "failure", [buoc("lint", "failure")]), xanh("vitest-tests"), xanh("secret-scan")];
+    const kq = await doc([runMain, { ...runPr, conclusion: "failure" }], { 1: jobsMainBoQua, 2: prDo });
+    expect(kq.verdict.datDieuKien).toBe(false);
+  });
+});
+
 describe("promotion CLI exit codes", () => {
   const script = fileURLToPath(new URL("../promote-to-production.mjs", import.meta.url));
   const successfulJob = job("ci", "success", [buoc("test", "success")]);

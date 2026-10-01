@@ -66,7 +66,11 @@ Docs có project riêng, lấy nội dung từ `docs/huong-dan-su-dung/`; quy t�
 - `realtime-gates` kiểm publication thật ngoài nhánh production, gồm cả PR; cần PAT hợp lệ.
   Nhóm security, types, cross-tenant và reconcile trên main còn phụ thuộc preflight/credential.
   Job bị skip vì thiếu credential không phải bằng chứng đã kiểm database.
-- Production dùng kết quả CI của đúng SHA trên main; không chạy lại toàn bộ test của main.
+- Push main một SHA đã có lượt PR xanh trong 24 giờ (cùng repo, PR vào main): lượt main đầu tiên
+  bỏ vitest, strict, timezone và secret scan; quality-gates, realtime và nhóm database vẫn chạy.
+  Chạy lại lượt main thì chạy đủ.
+- Production dùng kết quả CI của đúng SHA (main, và lượt PR cho phần main đã bỏ); promote đòi
+  bằng chứng xanh của quality-gates, vitest và secret scan, không chạy lại toàn bộ test của main.
 - Network Center có [workflow riêng](../../.github/workflows/network-center-validation.yml).
   Chọn runner và môi trường theo manifest, không chạy lại suite bằng runner khác.
 

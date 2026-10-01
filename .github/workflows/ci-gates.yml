@@ -29,6 +29,11 @@ jobs:
     if: github.ref != 'refs/heads/production'
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # `actions: read` cho bước `pr` đọc danh sách run của chính workflow này.
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
     outputs:
       has_pat: ${{ steps.check.outputs.has_pat }}
       has_cli_token: ${{ steps.check.outputs.has_cli_token }}
@@ -37,6 +42,8 @@ jobs:
       # base để so), output của nó là chuỗi rỗng — và '' != 'false' cho ra `true`,
       # tức chạy đủ. Bộ lọc chỉ được phép BỚT việc khi nó đã thật sự nhìn thấy diff.
       ma_nguon: ${{ steps.loc.outputs.ma_nguon != 'false' }}
+      # 'true' chỉ khi push main mà chính SHA này đã có lượt pull_request xanh.
+      pr_da_xanh: ${{ steps.pr.outputs.pr_da_xanh }}
     steps:
       - id: check
         env:
@@ -98,6 +105,38 @@ jobs:
               - 'vercel.json'
               - 'deno.lock'
 
+      # CI main KHÔNG chạy lại phần tĩnh khi chính SHA này đã có lượt pull_request
+      # xanh (01/10/2026). Đo: lượt main chạy lại y hệt PR mất 7–10 phút, job chậm
+      # nhất là timezone-gate. Phần tĩnh khi ấy đã chạy trên đúng cây mã này (push
+      # main chỉ fast-forward, nên merge commit của PR trùng cây với SHA). Các job
+      # đọc database thật vẫn chạy. promote-to-production.mjs đòi bằng chứng xanh
+      # của job tĩnh từ một lượt của commit (thieuBangChungTinh).
+      # API lỗi ⇒ 0 ⇒ chạy đủ: hỏng thì chạy thừa, không bao giờ bỏ sót.
+      #
+      # Chỉ tin lượt PR khi: xanh trong 24 giờ qua (gate theo thời gian như mã test
+      # ngày tháng không cũ), chạy từ chính repo này (không phải fork), và commit
+      # thuộc một PR nhắm vào main (PR xếp chồng thử trên cây khác). Lần chạy lại
+      # (run_attempt > 1) luôn chạy đủ — xem điều kiện ở từng job.
+      - id: pr
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tu=$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ)
+          n=$(timeout 30 gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci-gates.yml/runs?event=pull_request&status=success&head_sha=${GITHUB_SHA}&created=%3E%3D${tu}&per_page=20" \
+                --jq "[.workflow_runs[] | select(.head_repository.full_name == \"${GITHUB_REPOSITORY}\")] | length" 2>/dev/null || echo 0)
+          base=$(timeout 30 gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls" \
+                --jq '[.[] | select(.base.ref == "main")] | length' 2>/dev/null || echo 0)
+          echo "Lượt pull_request xanh (24 giờ, cùng repo) của ${GITHUB_SHA}: ${n:-0}; PR vào main chứa SHA này: ${base:-0}"
+          if [ "${n:-0}" -gt 0 ] 2>/dev/null && [ "${base:-0}" -gt 0 ] 2>/dev/null; then
+            echo "pr_da_xanh=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "pr_da_xanh=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # quality-gates LUÔN chạy cả trên main: nhiều gate trong đó phụ thuộc thời gian
+  # hoặc database thật (giấy miễn lỗ hổng có hạn, negative-proofs 14 ngày...), nên
+  # lượt PR xanh không chứng minh được hôm nay vẫn xanh.
   quality-gates:
     runs-on: ubuntu-latest
     if: github.ref != 'refs/heads/production'
@@ -330,13 +369,17 @@ jobs:
 
   # KHÔNG gắn bộ lọc đường dẫn vào đây, dù PR chỉ-docs không cần chạy test.
   # `tooling/test-matrix.json` khai job này là chủ sở hữu ĐỘC LẬP của suite
-  # `app-unit`, và check-test-matrix-declarations khoá `job.needs` phải trống:
-  # bộ test lớn nhất repo không được nằm sau bất kỳ job nào, kẻo một job khác
-  # hỏng là kết quả test biến mất mà trang Checks vẫn trông như đã chạy.
-  # Vài phút CI cho PR chỉ-docs rẻ hơn cái bất biến đó.
+  # `app-unit`: bộ test lớn nhất repo không được để một job khác hỏng làm kết quả
+  # test biến mất. Từ 01/10/2026 nó chờ `preflight` (~10 s) chỉ để đọc
+  # `pr_da_xanh`; `!cancelled()` giữ nó chạy cả khi preflight hỏng, và
+  # check-test-matrix-declarations khoá việc nó không bao giờ chờ quality-gates.
   vitest-tests:
     runs-on: ubuntu-latest
-    if: github.ref != 'refs/heads/production'
+    needs: preflight
+    if: >-
+      !cancelled() &&
+      github.ref != 'refs/heads/production' &&
+      !(github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == '1' && needs.preflight.outputs.pr_da_xanh == 'true')
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -420,7 +463,8 @@ jobs:
     needs: preflight
     if: >-
       github.ref != 'refs/heads/production' &&
-      needs.preflight.outputs.ma_nguon == 'true'
+      needs.preflight.outputs.ma_nguon == 'true' &&
+      !(github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == '1' && needs.preflight.outputs.pr_da_xanh == 'true')
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -450,7 +494,8 @@ jobs:
     needs: preflight
     if: >-
       github.ref != 'refs/heads/production' &&
-      needs.preflight.outputs.ma_nguon == 'true'
+      needs.preflight.outputs.ma_nguon == 'true' &&
+      !(github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == '1' && needs.preflight.outputs.pr_da_xanh == 'true')
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -683,7 +728,11 @@ jobs:
 
   secret-scan:
     runs-on: ubuntu-latest
-    if: github.ref != 'refs/heads/production'
+    needs: preflight
+    if: >-
+      !cancelled() &&
+      github.ref != 'refs/heads/production' &&
+      !(github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == '1' && needs.preflight.outputs.pr_da_xanh == 'true')
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2

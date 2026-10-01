@@ -3,8 +3,9 @@
 //
 // VÌ SAO
 //   Từ 06/08/2026 Vercel theo dõi nhánh `production`, nên push vào đó = PHÁT HÀNH
-//   THẲNG cho người dùng thật. Mô hình đã chốt là promote: main chạy hết gate,
-//   rồi production fast-forward tới đúng commit đó.
+//   THẲNG cho người dùng thật. Mô hình đã chốt là promote: commit qua đủ gate
+//   (job tĩnh có thể đã chạy ở lượt PR của đúng SHA — promote-to-production.mjs
+//   đòi bằng chứng đó), rồi production fast-forward tới đúng commit đó.
 //
 //   Một commit chỉ tồn tại trên `production` là mã CHƯA TỪNG qua CI của main, đang
 //   chạy trên dữ liệu tiền thật. Nó không nhất thiết là hành vi xấu — thường là

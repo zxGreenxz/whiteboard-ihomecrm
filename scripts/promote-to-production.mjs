@@ -59,6 +59,38 @@ export function locRunsDanhGia(workflowRuns) {
   return (workflowRuns ?? []).filter((r) => r.head_branch !== 'production');
 }
 
+/**
+ * Job tĩnh của CI Gates không bao giờ bị bộ lọc đường dẫn bỏ qua. vitest-tests và
+ * secret-scan được BỎ QUA trên main khi chính SHA đó đã có lượt pull_request xanh
+ * (ci-gates.yml, output `pr_da_xanh` của preflight), nên bằng chứng xanh có thể
+ * nằm ở lượt PR. quality-gates hiện luôn chạy trên main; giữ trong danh sách để
+ * chốt vẫn đứng nếu ai đó cho nó nghỉ. Chốt so theo TÊN HIỂN THỊ mà API GitHub
+ * trả về; check-workflow-paths.test.mjs khoá rằng các job này không có `name:` riêng
+ * (nên tên hiển thị = id), không dính bộ lọc đường dẫn, và mọi job được nghỉ trên
+ * main đều nằm trong danh sách.
+ */
+export const JOB_TINH = ['quality-gates', 'vitest-tests', 'secret-scan'];
+
+/**
+ * Job tĩnh xuất hiện mà KHÔNG có lượt xanh nào trong các run CI Gates của commit
+ * (chỉ toàn bỏ qua, hoặc còn đang chạy) ⇒ chưa đủ bằng chứng. Job không xuất hiện
+ * thì không đòi: run cũ hoặc fixture không có nó.
+ *
+ * @param cacLuot [{ run, jobs }] — run đã lọc khỏi nhánh production
+ */
+export function thieuBangChungTinh(cacLuot) {
+  const thieu = [];
+  for (const ten of JOB_TINH) {
+    const lan = cacLuot
+      .filter(({ run }) => run.path === '.github/workflows/ci-gates.yml')
+      .flatMap(({ jobs }) => (jobs ?? []).filter((j) => j.name === ten));
+    if (lan.length > 0 && !lan.some((j) => j.status === 'completed' && j.conclusion === 'success')) {
+      thieu.push(`CI Gates / ${ten}: chưa có lượt xanh nào cho commit này (main bỏ qua, chờ lượt PR cùng SHA)`);
+    }
+  }
+  return thieu;
+}
+
 export function danhGiaJobs(jobs) {
   const doGate = [];
   const nuot = [];
@@ -117,6 +149,7 @@ export async function readGateEvidence(repo, sha, token, request = goiGitHub) {
   }
   const selected = locRunsDanhGia(runs.workflow_runs);
   const jobs = [];
+  const cacLuot = [];
   const pendingRuns = [];
   const failedRuns = [];
   let hasCompletedMainCi = false;
@@ -140,12 +173,16 @@ export async function readGateEvidence(repo, sha, token, request = goiGitHub) {
     if (
       run.path === '.github/workflows/ci-gates.yml' && run.head_branch === 'main' &&
       run.status === 'completed' && run.conclusion === 'success' &&
-      result.jobs.some((job) => job.status === 'completed' && job.conclusion === 'success' &&
+      // `preflight` chỉ đọc cấu hình, không kiểm gì: không được một mình nó làm
+      // lượt main thành "hoàn tất" khi mọi job khác bị bỏ qua.
+      result.jobs.some((job) => job.name !== 'preflight' && job.status === 'completed' && job.conclusion === 'success' &&
         job.steps?.some((step) => step.status === 'completed' && step.conclusion === 'success'))
     ) hasCompletedMainCi = true;
+    cacLuot.push({ run, jobs: result.jobs });
     jobs.push(...result.jobs.map((j) => ({ ...j, name: `${run.name} / ${j.name}` })));
   }
   if (!hasCompletedMainCi) pendingRuns.push('Chưa có CI Gates trên main hoàn tất với bằng chứng bước đã chạy');
+  pendingRuns.push(...thieuBangChungTinh(cacLuot));
   const verdict = danhGiaJobs(jobs);
   verdict.dangChay.push(...pendingRuns);
   verdict.doGate.push(...failedRuns);
