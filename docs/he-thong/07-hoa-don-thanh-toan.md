@@ -58,15 +58,15 @@ Giữ credit/nợ khách để trừ kỳ sau. V5 tạo credit cùng transaction
 - Sinh hàng loạt vẫn là nhiều operation; phải báo lỗi theo từng hoá đơn và không tuyên bố cả batch atomic.
 - Hợp đồng/cọc/nợ cũ phải giữ đủ field parity. Không chuyển UI sang writer thiếu field vì sẽ mất dữ liệu im lặng.
 
-### 3.1. Hỗ trợ tiền thuê v2 — chờ phát hành
+### 3.1. Hỗ trợ tiền thuê v2
 
-Source v2 đã có kiểm chứng local/TEST; writer v2 chưa được xác nhận bật trên production. Hoá đơn từ hợp đồng legacy giữ cách giảm trừ cũ.
+Hỗ trợ tiền thuê v2 đã phát hành và bật trên production ngày 01/10/2026. Hoá đơn từ hợp đồng legacy giữ cách giảm trừ cũ.
 
 Hoá đơn tháng của hợp đồng v2 lấy hỗ trợ theo `billing_month` trong lịch đã lưu, không đếm số hoá đơn từng tạo. Ví dụ lịch 3 tháng 300.000đ rồi 9 tháng 100.000đ bắt đầu 09/2026: đổi kỳ 11/2026 sang 12/2026 phải tính lại từ 300.000đ thành 100.000đ, kể cả trong bảng nhập Excel. Ngoài lịch không có hỗ trợ; hoá đơn quyết toán không tự nhận phần hỗ trợ tháng.
 
 Phần hỗ trợ, giảm trừ nhập tay và credit khách là ba thành phần riêng (`invoice_support_amount`, `manual_discount_amount`, `credit_discount_amount`). Đổi kỳ giữ giảm trừ nhập tay và tính lại phần hỗ trợ. Nếu hỗ trợ vượt doanh thu đủ điều kiện, hệ thống yêu cầu đối chiếu, không tự cắt hỗ trợ để báo thành công. Hoá đơn tháng chỉ hưởng một lần qua claim canonical; server kiểm phiên bản lịch và tính lại khi lưu. Nếu phản hồi lưu bị mất, đối chiếu đúng request đã lưu trước khi thử tiếp; không suy thành công chỉ vì có hoá đơn cùng kỳ/số tiền.
 
-Việc giảm hoá đơn từng tháng không giữ thêm tiền nguồn: cam kết được khấu trừ trước trong thao tác chi v2. Nguồn: `src/lib/invoiceRentSupport.ts`, `src/lib/__tests__/invoiceRentSupportMigration.test.ts`. Browser đổi kỳ và Excel đã kiểm chứng trên TEST; kiểm tra production thực hiện sau khi phát hành ứng dụng và bật writer.
+Việc giảm hoá đơn từng tháng không giữ thêm tiền nguồn: cam kết được khấu trừ trước trong thao tác chi v2. Nguồn: `src/lib/invoiceRentSupport.ts`, `src/lib/__tests__/invoiceRentSupportMigration.test.ts`. Browser đổi kỳ và Excel đã kiểm chứng trên TEST; production đã kiểm giao diện và RPC đọc sau khi bật writer, không tạo hoá đơn thử trong dữ liệu thật.
 
 ## 4. Ghi nhận thanh toán hiện hành
 

@@ -50,7 +50,7 @@
       "file": "05-hop-dong.md",
       "copilotIngest": true,
       "reviewed": null,
-      "why": "Lịch hỗ trợ v2 là phần chờ phát hành; ngày review toàn tài liệu legacy vẫn chưa xác nhận. Phần khách đọc không chứa số nguồn/khấu trừ nội bộ."
+      "why": "Lịch hỗ trợ v2 đã phát hành 01/10/2026; ngày review toàn tài liệu legacy vẫn chưa xác nhận. Phần khách đọc không chứa số nguồn/khấu trừ nội bộ."
     },
     {
       "file": "06-cong-to-chi-so.md",
@@ -61,7 +61,7 @@
       "file": "07-hoa-don-thanh-toan.md",
       "copilotIngest": true,
       "reviewed": "2026-09-02",
-      "why": "Giữ review baseline; bổ sung hỗ trợ tiền thuê v2 ở mục chờ phát hành, không xác nhận writer production đã bật."
+      "why": "Giữ review baseline; bổ sung hỗ trợ tiền thuê v2 đã phát hành và xác minh writer production bật ngày 01/10/2026."
     },
     {
       "file": "08-thu-chi-so-quy.md",
@@ -117,7 +117,7 @@
       "file": "16-thanh-ly-hop-dong.md",
       "copilotIngest": true,
       "reviewed": null,
-      "why": "Giữ nợ review của tài liệu cũ; mục lịch hỗ trợ v2 chờ phát hành chỉ bổ sung cutoff thực trả, phần chưa dùng cần đối chiếu và giữ nguồn/lương theo Task8 đã kiểm chứng TEST."
+      "why": "Giữ nợ review của tài liệu cũ; lịch hỗ trợ v2 phát hành 01/10/2026 bổ sung cutoff thực trả, phần chưa dùng cần đối chiếu và giữ nguồn/lương theo Task8 đã kiểm chứng TEST."
     },
     {
       "file": "17-luong-thuong.md",
@@ -127,7 +127,7 @@
         "module": "salary",
         "action": "view"
       },
-      "why": "công thức lương/thưởng nhân sự; nguồn net hỗ trợ v2 ở mục chờ phát hành, giữ salary.view và review baseline"
+      "why": "công thức lương/thưởng nhân sự; nguồn net hỗ trợ v2 đã phát hành 01/10/2026, giữ salary.view và review baseline"
     },
     {
       "file": "18-zalo-chat.md",

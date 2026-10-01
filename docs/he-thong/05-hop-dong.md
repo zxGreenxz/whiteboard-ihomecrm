@@ -346,15 +346,15 @@ flowchart TD
     R --> P["invalidate contracts/rooms/invoices"]
 ```
 
-#### Lịch hỗ trợ tiền thuê v2 — chờ phát hành
+#### Lịch hỗ trợ tiền thuê v2
 
-Phần này mô tả source đã tích hợp và bằng chứng TEST của tính năng mới; chưa có bằng chứng bật writer v2 trên production. Không hướng dẫn người dùng coi v2 là luồng đang chạy. Cấu hình legacy `{months, amount_per_month}` vẫn dùng luồng cũ, không tự đổi thành lịch v2 hay tự suy ra người chịu hỗ trợ.
+Lịch hỗ trợ v2 đã phát hành và bật trên production ngày 01/10/2026. Cấu hình legacy `{months, amount_per_month}` vẫn dùng luồng cũ, không tự đổi thành lịch v2 hay tự suy ra người chịu hỗ trợ.
 
 Lịch v2 neo vào **tháng tính tiền**, gồm tháng bắt đầu và các chặng liên tiếp. Ví dụ bắt đầu 09/2026, 3 tháng hỗ trợ 300.000đ/tháng rồi 9 tháng 100.000đ/tháng: 09–11/2026 là 300.000đ, 12/2026–08/2027 là 100.000đ. Bảng xem trước hiển thị từng tháng, tiền hỗ trợ và trạng thái đối chiếu với kỳ hoá đơn; kỳ ngắn không tự chia tỷ lệ hỗ trợ. Khi đổi ngày hoặc kỳ tính tiền, phải kiểm tra lại kỳ thực tế.
 
-Bản nháp lưu lịch để mở lại và ký đúng phiên bản. Bản in hợp đồng thể hiện lịch khách được hưởng; không đưa nguồn hoa hồng/thưởng, phần giữ lại, số tiền thực nhận hoặc dữ liệu người nhận tiền vào bản in. Phần nguồn và khấu trừ nội bộ chỉ được đọc/thao tác theo quyền tài chính, không suy quyền đó từ quyền sửa hợp đồng. Xem [hoá đơn](07-hoa-don-thanh-toan.md#31-hỗ-trợ-tiền-thuê-v2--chờ-phát-hành) và [nguồn lương](17-luong-thuong.md#42a-nguồn-hỗ-trợ-tiền-thuê-v2--chờ-phát-hành).
+Bản nháp lưu lịch để mở lại và ký đúng phiên bản. Bản in hợp đồng thể hiện lịch khách được hưởng; không đưa nguồn hoa hồng/thưởng, phần giữ lại, số tiền thực nhận hoặc dữ liệu người nhận tiền vào bản in. Phần nguồn và khấu trừ nội bộ chỉ được đọc/thao tác theo quyền tài chính, không suy quyền đó từ quyền sửa hợp đồng. Xem [hoá đơn](07-hoa-don-thanh-toan.md#31-hỗ-trợ-tiền-thuê-v2) và [nguồn lương](17-luong-thuong.md#42a-nguồn-hỗ-trợ-tiền-thuê-v2).
 
-Nguồn: [rentSupport.ts](../../src/lib/rentSupport.ts), [ContractFormDialog.tsx](../../src/components/contracts/ContractFormDialog.tsx), [contractTemplateRentSupport.test.ts](../../src/lib/__tests__/contractTemplateRentSupport.test.ts). Kiểm chứng browser save/export/reopen/sign còn chờ fixture tích hợp; không coi test local là bằng chứng browser đã chạy.
+Nguồn: [rentSupport.ts](../../src/lib/rentSupport.ts), [ContractFormDialog.tsx](../../src/components/contracts/ContractFormDialog.tsx), [contractTemplateRentSupport.test.ts](../../src/lib/__tests__/contractTemplateRentSupport.test.ts). Browser trên TEST đã kiểm save/export DOCX/reopen/ký đúng tài liệu và tự mở popup hoa hồng. Production đã kiểm form, đọc lịch và vị trí theo dõi lỗi; không tạo hợp đồng hoặc phiếu thử trong dữ liệu thật.
 
 Chi tiết các bước mới so với mô tả cũ (luồng legacy):
 

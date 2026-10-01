@@ -12,7 +12,7 @@ Quyết toán cũ sau khi khách mới vào **không thay đổi hợp đồng m
 
 Nhượng liên kết không có nghĩa tiền đã chuyển. Lựa chọn cấn cọc cũ sang hợp đồng mới chưa hỗ trợ chuyển/cấn phiếu và chặn ký; phải đối soát chứng từ hiện hành. Xem [05 — Nháp/ký và nhượng](05-hop-dong.md), [04 — Giữ chỗ](04-coc-giu-cho.md), [06 — Chỉ số bàn giao](06-cong-to-chi-so.md).
 
-## Hỗ trợ tiền thuê theo lịch v2 (chờ phát hành)
+## Hỗ trợ tiền thuê theo lịch v2 (từ 01/10/2026)
 
 Ngày trả phòng thực tế và hồ sơ thanh lý đã được duyệt quyết định thời điểm ngừng áp dụng hỗ trợ. Chỉ báo ngày dự kiến trả phòng chưa cắt lịch. Phần hỗ trợ đã dùng giữ nguyên lịch sử; phần đã cam kết nhưng chưa dùng chuyển sang đối chiếu, chưa tự hoàn tiền, tạo nợ hoặc mở lại nguồn chi.
 
