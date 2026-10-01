@@ -291,6 +291,13 @@ jobs:
           set -euo pipefail
           deno test --config supabase/functions/llm-proxy/deno.json \
             supabase/functions/llm-proxy/index.test.ts --allow-env
+
+      - name: Deno test — supabase/functions/quick-entry
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          deno test --config supabase/functions/quick-entry/deno.json \
+            supabase/functions/quick-entry/index.test.ts --allow-env
       - name: Module mới phải strict ngay từ đầu
         if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
         run: node scripts/check-new-modules-strict.mjs

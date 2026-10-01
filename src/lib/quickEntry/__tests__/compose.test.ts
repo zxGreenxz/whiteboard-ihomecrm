@@ -138,6 +138,13 @@ describe("enrichFromAi — AI chỉ điền ô còn trống", () => {
     expect(out.draft.lines[0]).toMatchObject({ categoryId: "t-vt", amount: 350_000 });
   });
 
+  it("AI trả số tiền ÂM cho dòng thiếu tiền ⇒ không điền (dòng vẫn báo thiếu tiền)", () => {
+    const [s] = draftsFromText("102LVT giảm giá", ctx());
+    const out = enrichFromAi(s, ai({ items: [{ desc: "giảm giá", amount_vnd: -5_000, category: null, confidence: 0.7 }] }), ctx());
+    expect(out.draft.lines[0].amount).toBe(0);
+    expect(out.flags).toContain("missing_amount");
+  });
+
   it("điền số tiền còn thiếu khi AI trả đúng số dòng", () => {
     const [s] = draftsFromText("102LVT mua sơn", ctx());
     const out = enrichFromAi(s, ai({ items: [{ desc: "sơn", amount_vnd: 300_000, category: null, confidence: 0.7 }] }), ctx());
@@ -252,6 +259,26 @@ describe("draftFromBill — ảnh hoá đơn", () => {
     expect(s.draft.lines).toHaveLength(1);
     expect(s.draft.lines[0].amount).toBe(0);
     expect(s.flags).toContain("missing_amount");
+  });
+
+  it("bill có dòng GIẢM GIÁ âm ⇒ một dòng = số thực trả + cờ kiểm lại; mô tả không gồm dòng âm", () => {
+    const s = draftFromBill(
+      ai({
+        items: [
+          { desc: "Bóng LED 9W x2", amount_vnd: 90_000, category: "c3", confidence: 0.99 },
+          { desc: "Băng keo điện", amount_vnd: 15_000, category: "c3", confidence: 0.99 },
+          { desc: "Phí giao hàng", amount_vnd: 10_000, category: null, confidence: 0.99 },
+          { desc: "Giảm giá", amount_vnd: -5_000, category: null, confidence: 0.99 },
+        ],
+        total_vnd: 110_000,
+        vendor: "Minh Phát",
+      }),
+      ctx(),
+    );
+    expect(s.draft.lines).toHaveLength(1);
+    expect(s.draft.lines[0].amount).toBe(110_000);
+    expect(s.draft.lines[0].description).not.toContain("Giảm giá");
+    expect(s.flags).toContain("check_total");
   });
 
   it("ngày hoá đơn tương lai ⇒ lấy hôm nay", () => {

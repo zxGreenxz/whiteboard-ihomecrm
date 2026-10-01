@@ -9,6 +9,7 @@
 | `admin-create-user` | **Tạo** user mới qua Supabase Admin API; không phải endpoint update | JWT hợp lệ + caller là `super_admin` |
 | `demo-reset` | Reset dữ liệu demo có cooldown/tripwire | POST + header `x-demo-secret` (không dùng admin JWT) |
 | `llm-proxy` | Proxy model cho AI Copilot, quota/reservation/usage | JWT + entitlement + cấu hình provider |
+| `quick-entry` | AI của trang Báo chi nhanh `/chi-tieu`: chép giọng (OpenRouter) + đọc chữ/ảnh bill (9router) | JWT + quyền ghi chi + công tắc `QUICK_ENTRY_MODE` |
 | `salary-v5-jobs` | Chạy job V5 (`nightly`, `digest`, `close_period`...) | cron secret, service role hoặc JWT admin |
 | `send-push` | Gửi Web Push từ notification pipeline | JWT/service caller theo implementation |
 | `network-center-worker` | API hẹp cho worker MikroTik/Aruba trên Vultr | `x-network-worker-secret`, không nhận JWT trình duyệt |
@@ -77,6 +78,38 @@ npx --yes deno test --config supabase/functions/network-center-worker/deno.json 
 - Proxy kiểm provider/entitlement/quota server-side và ghi usage theo schema hiện hành.
 - Model không nằm trong metadata giá có thể bị hạch toán cost 0; xem [AI Copilot current status](../../docs/ai-copilot/README.md) trước khi mở model/provider mới.
 - Browser local/Ollama là nhánh riêng; không giả định mọi request đều qua Edge Function.
+
+## Báo chi nhanh (`quick-entry`)
+
+Hàm riêng của trang `/chi-tieu`, tách khỏi `llm-proxy` để không đụng hạn mức/manifest phát hành
+của Copilot. Hai đường, mỗi đường một nhà cung cấp:
+
+| Đường | Nhà cung cấp | Chuỗi mô hình mặc định (lỗi thì thử mô hình kế) |
+|---|---|---|
+| `POST …/quick-entry/audio/transcriptions` — chép giọng nói | OpenRouter | `openai/gpt-4o-transcribe` → `openai/gpt-4o-mini-transcribe` → `google/gemini-3.5-transcribe` |
+| `POST …/quick-entry/chat/completions` — đọc chữ/ảnh bill ra JSON | 9router | `cx/gpt-6-luna(low)` → `cx/gpt-5.6-luna(low)` |
+
+Thứ tự kiểm: phương thức/đường → cỡ body → công tắc + khoá → JWT (`/auth/v1/user`) → header
+`x-organization-id` → `get_my_permissions_v2` dưới JWT người gọi (cần `income_expenses.create`
+hoặc `personal_finance.create`) → chế độ `pilot` đòi `ai_copilot_entitlements.chat_enabled` →
+trần lượt/ngày (đếm `task_id` khác nhau trong `ai_usage_logs`, feature `quick_entry`; đọc không
+được thì chặn). Mỗi lần thử một mô hình ghi một dòng `ai_usage_logs`; âm thanh, ảnh và bản chữ
+không được lưu hay ghi log. 401/402 từ nhà cung cấp là lỗi khoá/số dư ⇒ dừng, không thử tiếp.
+
+Secret (thiếu khoá của đường nào thì đường đó trả `quick_entry_disabled`, trang vẫn nhập tay được):
+
+| Secret | Ý nghĩa |
+|---|---|
+| `QUICK_ENTRY_MODE` | `off` (mặc định) · `pilot` (chỉ người có Copilot) · `all` — công tắc tắt khẩn |
+| `QUICK_ENTRY_OPENROUTER_KEY` | Khoá OpenRouter riêng cho chép giọng (đặt hạn mức chi trên openrouter.ai) |
+| `QUICK_ENTRY_NINEROUTER_BASE_URL` / `QUICK_ENTRY_NINEROUTER_KEY` | 9router; vắng thì dùng `NINEROUTER_BASE_URL` / `NINEROUTER_API_KEY` của Copilot. Chỉ nhận `https://` |
+| `QUICK_ENTRY_STT_MODELS` / `QUICK_ENTRY_READ_MODELS` | Tuỳ chọn: đổi chuỗi mô hình, phân tách bằng dấu phẩy, ≤5 |
+| `QUICK_ENTRY_DAILY_CALLS` | Tuỳ chọn: trần lượt/người/ngày (mặc định 150; một lần nói = 2 lượt) |
+
+```powershell
+npx --yes deno@2.9.4 test --config supabase/functions/quick-entry/deno.json `
+  supabase/functions/quick-entry/index.test.ts --allow-env
+```
 
 ## Salary V5 (`salary-v5-jobs`)
 

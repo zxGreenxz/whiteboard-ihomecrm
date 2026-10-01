@@ -4,6 +4,9 @@ import { supabase } from '@/integrations/supabase/client';
 /** baseURL proxy — client OpenAI-compat sẽ gọi {base}/chat/completions. */
 export const LLM_PROXY_BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/llm-proxy`;
 
+/** Hàm riêng của trang Báo chi nhanh (/chi-tieu): chép giọng (OpenRouter) + AI đọc (9router). */
+export const QUICK_ENTRY_BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/quick-entry`;
+
 /**
  * Provider LOCAL (data_class 'local_only') — KHÔNG đi qua proxy, browser gọi
  * thẳng localhost trên máy người dùng. Muốn thêm provider local mới: thêm 1

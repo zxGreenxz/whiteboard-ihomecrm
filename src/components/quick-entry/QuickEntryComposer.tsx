@@ -1,23 +1,20 @@
 // Ô nhập của trang "Báo chi nhanh": gõ chữ, nói, chụp/chọn/dán ảnh bill.
-// Giọng nói (chủ chốt 01/10: dùng trình duyệt trước, API sau): nhận giọng của TRÌNH DUYỆT là đường chính
-// (miễn phí — Chrome gửi tới Google); máy chủ chỉ dùng khi trình duyệt không có nhận giọng hoặc bị chặn
-// hẳn (app thêm ra màn hình chính iPhone báo "service-not-allowed"); không còn đường nào thì gợi ý mic
-// trên bàn phím. Chữ từ giọng nói ĐỔ VÀO Ô để người dùng soát/sửa rồi mới gửi — nghe nhầm số tiền hay
-// tên toà thì sửa ngay tại đây.
+// Giọng nói (chủ chốt 01/10: "chuyển hoàn toàn qua OpenRouter"): mic LUÔN ghi âm trong trang rồi gửi
+// máy chủ chép lời qua OpenRouter — không dùng nhận giọng của trình duyệt, kể cả khi trình duyệt có.
+// Máy không ghi âm được hoặc giọng nói tắt cho phiên ⇒ gợi ý mic trên bàn phím (của hệ điều hành, luôn
+// có). Chữ từ giọng nói ĐỔ VÀO Ô để người dùng soát/sửa rồi mới gửi — nghe nhầm số tiền hay tên toà
+// thì sửa ngay tại đây.
 
-import { useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
+import { useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 import { Camera, ImagePlus, Loader2, Mic, Send, Square, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { MAX_RECORD_SECONDS, useVoiceRecorder, type RecordedAudio } from "@/hooks/quick-entry/useVoiceRecorder";
-import { useSpeechInput } from "@/hooks/quick-entry/useSpeechInput";
 import type { TranscribeResult } from "@/hooks/quick-entry/quickEntryAi";
 import type { DraftMode } from "@/lib/quickEntry/draft";
 
 const KEYBOARD_MIC_HINT = "Dùng nút micro trên bàn phím điện thoại để nói.";
-/** Lỗi nói rằng trình duyệt KHÔNG BAO GIỜ nhận giọng được ở đây — thôi dùng nó, chuyển đường khác. */
-const BROWSER_BLOCKED = new Set(["service-not-allowed", "language-not-supported"]);
 const MODE_LABEL: Record<DraftMode, string> = { company: "Công ty", personal: "Cá nhân" };
 const PLACEHOLDER: Record<DraftMode, string> = {
   company: "Vd: 102LVT sơn 300k, keo 20k",
@@ -31,7 +28,7 @@ export interface QuickEntryComposerProps {
   onModeChange: (mode: DraftMode) => void;
   onSubmitText: (text: string) => void;
   onPhoto: (file: File) => void;
-  /** null ⇒ đường máy chủ không dùng được (AI tắt cho phiên này) — mic đi thẳng đường dự phòng. */
+  /** null ⇒ chép giọng tắt cho phiên này — mic chỉ gợi ý dùng mic trên bàn phím. */
   transcribe: ((audio: RecordedAudio) => Promise<TranscribeResult>) | null;
 }
 
@@ -41,8 +38,6 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
   const [text, setText] = useState("");
   const [note, setNote] = useState<string | null>(null);
   const [transcribing, setTranscribing] = useState(false);
-  /** Lời báo lỗi của trình duyệt chỉ hiện tới lần chạm mic kế tiếp (sau đó có thể đã đổi đường). */
-  const [speechErrorVisible, setSpeechErrorVisible] = useState(false);
   const box = useRef<HTMLTextAreaElement>(null);
   const camera = useRef<HTMLInputElement>(null);
   const gallery = useRef<HTMLInputElement>(null);
@@ -52,7 +47,6 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
     box.current?.focus();
   };
 
-  const speech = useSpeechInput(appendText);
   const recorder = useVoiceRecorder((audio) => {
     const transcribe = p.transcribe;
     if (!transcribe) return;
@@ -71,13 +65,9 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
       .finally(() => setTranscribing(false));
   });
 
-  useEffect(() => setSpeechErrorVisible(speech.errorCode !== null), [speech.errorCode]);
-
-  // Thứ tự xét ở onMic: trình duyệt ⇒ máy chủ ⇒ gợi ý mic bàn phím.
-  const browserVoice = speech.supported && !BROWSER_BLOCKED.has(speech.errorCode ?? "");
   const serverVoice = p.transcribe !== null && recorder.supported;
   const recording = recorder.state === "recording" || recorder.state === "requesting";
-  const voiceError = recorder.error ?? (speechErrorVisible ? speech.error : null);
+  const voiceError = recorder.error;
 
   const send = () => {
     const t = text.trim();
@@ -89,9 +79,7 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
 
   const onMic = () => {
     setNote(null);
-    setSpeechErrorVisible(false);
-    if (browserVoice) speech.start();
-    else if (serverVoice) recorder.start();
+    if (serverVoice) recorder.start();
     else setNote(KEYBOARD_MIC_HINT);
   };
 
@@ -133,12 +121,6 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
             </Button>
           ))}
         </div>
-      )}
-
-      {speech.listening && (
-        <p className="flex items-center gap-2 text-xs text-red-700" aria-live="polite">
-          <span className="h-2 w-2 animate-pulse rounded-full bg-red-600" /> Đang nghe… nói xong sẽ tự dừng.
-        </p>
       )}
 
       {(note || voiceError) && (
@@ -199,10 +181,6 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
           {text.trim() ? (
             <Button type="button" size="icon" aria-label="Gửi" onClick={send}>
               <Send className="h-5 w-5" />
-            </Button>
-          ) : speech.listening ? (
-            <Button type="button" size="icon" variant="destructive" aria-label="Dừng nghe" onClick={speech.stop}>
-              <Square className="h-4 w-4" />
             </Button>
           ) : (
             <Button

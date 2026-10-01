@@ -1,23 +1,25 @@
-// Gọi AI cho trang "Báo chi nhanh" qua llm-proxy (feature `quick_entry`).
+// Gọi AI cho trang "Báo chi nhanh" qua hàm máy chủ riêng `quick-entry` (supabase/functions/quick-entry).
 //
-//   readWithAi      — chữ/ảnh ⇒ JSON (aiSchema). Non-stream; model do MÁY CHỦ chọn theo chuỗi dự
-//                     phòng (gửi "quick_entry:auto"). Trả sai khuôn ⇒ thử lại MỘT lần với header
-//                     `x-quick-entry-skip` để proxy nhảy sang mô hình kế; lỗi thuộc người dùng (tắt,
+//   readWithAi      — chữ/ảnh ⇒ JSON (aiSchema) qua 9router. Non-stream; model do MÁY CHỦ chọn theo
+//                     chuỗi dự phòng (gửi "quick_entry:auto"). Trả sai khuôn ⇒ thử lại MỘT lần với header
+//                     `x-quick-entry-skip` để máy chủ nhảy sang mô hình kế; lỗi thuộc người dùng (tắt,
 //                     hết lượt, không quyền) thì dừng ngay.
 //   transcribeAudio — ghi âm ⇒ chữ (OpenRouter qua /audio/transcriptions, language "vi").
 //
 // `fetchImpl` là fetch đã gắn JWT + x-organization-id + x-copilot-feature (makeCopilotFetch) —
 // truyền vào để test không cần mạng. AI hỏng KHÔNG chặn ghi chi: mọi lỗi trả về AiErrorView.
 
-import { LLM_PROXY_BASE } from "@/copilot/copilotConfig";
+import { QUICK_ENTRY_BASE } from "@/copilot/copilotConfig";
 import { parseAiResult, type AiResult } from "@/lib/quickEntry/aiSchema";
 import { classifyAiError, type AiErrorView } from "@/lib/quickEntry/errors";
 import type { ChatMessage } from "@/lib/quickEntry/prompt";
 import type { AudioFormat } from "./useVoiceRecorder";
 
 export const QUICK_ENTRY_MAX_TOKENS = 1500;
-/** Âm thanh thô tối đa (~30 giây webm/mp4) — base64 vẫn dưới trần body 512 KiB của proxy. */
-export const MAX_AUDIO_BYTES = 400_000;
+/** Âm thanh thô tối đa — đúng bằng TRAN_AM_THANH_BYTES của hàm máy chủ (có test giữ hai số khớp).
+ *  Đủ cho 30 giây kể cả khi trình duyệt bỏ qua gợi ý bitrate của bộ ghi âm. */
+export const MAX_AUDIO_BYTES = 560_000;
+const AUDIO_TOO_LONG = "Đoạn ghi âm quá dài để gửi. Nói ngắn hơn rồi thử lại.";
 
 type FetchLike = (input: string, init: RequestInit) => Promise<Response>;
 
@@ -49,7 +51,7 @@ export async function readWithAi(opts: {
     if (skip !== null) headers.set("x-quick-entry-skip", String(skip));
     let res: Response;
     try {
-      res = await opts.fetchImpl(`${LLM_PROXY_BASE}/chat/completions`, {
+      res = await opts.fetchImpl(`${QUICK_ENTRY_BASE}/chat/completions`, {
         method: "POST",
         headers,
         signal: opts.signal,
@@ -92,13 +94,15 @@ export async function transcribeAudio(opts: {
   fetchImpl: FetchLike;
   signal?: AbortSignal;
 }): Promise<TranscribeResult> {
+  // Câu báo "quá lớn" mặc định nói về ảnh — ở đường giọng nói phải nói về đoạn ghi âm.
+  const audioError = (e: AiErrorView): AiErrorView => (e.kind === "too_large" ? { ...e, message: AUDIO_TOO_LONG } : e);
   if (opts.audio.blob.size > MAX_AUDIO_BYTES) {
-    return { ok: false, error: classifyAiError({ status: 413, code: "payload_too_large" }) };
+    return { ok: false, error: audioError(classifyAiError({ status: 413, code: "payload_too_large" })) };
   }
   const data = await toBase64(opts.audio.blob);
   let res: Response;
   try {
-    res = await opts.fetchImpl(`${LLM_PROXY_BASE}/audio/transcriptions`, {
+    res = await opts.fetchImpl(`${QUICK_ENTRY_BASE}/audio/transcriptions`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       signal: opts.signal,
@@ -108,7 +112,7 @@ export async function transcribeAudio(opts: {
     if (isAbort(e)) throw e;
     return { ok: false, error: classifyAiError({ status: 0, code: null }) };
   }
-  if (!res.ok) return { ok: false, error: await errorOf(res) };
+  if (!res.ok) return { ok: false, error: audioError(await errorOf(res)) };
   let text = "";
   try {
     const body = (await res.json()) as { text?: unknown } | null;

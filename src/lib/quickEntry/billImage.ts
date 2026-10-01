@@ -1,5 +1,6 @@
 // Cỡ ảnh bill gửi AI: đủ nét để đọc chữ nhỏ trên hoá đơn, nhưng cả gói JSON (ảnh base64 + prompt)
-// phải nằm dưới trần body 512 KiB của llm-proxy. Thử lần lượt các nấc (cạnh dài, chất lượng JPEG)
+// phải nằm dưới trần body của hàm máy chủ `quick-entry` (768 KiB; ngân sách ảnh vẫn giữ theo mốc 512
+// KiB cũ — cỡ này đã đọc đúng bill khi đo 01/10). Thử lần lượt các nấc (cạnh dài, chất lượng JPEG)
 // tới khi vừa ngân sách. Phần vẽ canvas chạy trên trình duyệt và được truyền vào dưới dạng
 // `encode` — nhờ vậy thứ tự thử và ngân sách test được không cần canvas.
 //
@@ -16,7 +17,7 @@ export const BILL_IMAGE_LADDER: readonly LadderStep[] = [
   { maxEdge: 1280, quality: 0.6 },
 ];
 
-/** Byte ảnh thô tối đa: base64 ~480 KB + prompt vẫn dưới 512 KiB. */
+/** Byte ảnh thô tối đa: base64 ~480 KB + prompt dưới 512 KiB, dư xa trần 768 KiB của máy chủ. */
 export const MAX_BILL_IMAGE_BYTES = 360_000;
 
 /** Độ dài base64 (không xuống dòng) của `bytes` byte. */

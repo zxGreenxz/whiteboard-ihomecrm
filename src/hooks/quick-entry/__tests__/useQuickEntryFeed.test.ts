@@ -13,7 +13,7 @@ const h = vi.hoisted(() => ({
   savePersonal: vi.fn(),
 }));
 vi.mock("@/integrations/supabase/client", () => ({ supabase: {} }));
-vi.mock("@/copilot/copilotConfig", () => ({ makeCopilotFetch: () => vi.fn(), newTaskId: () => "qe-test", LLM_PROXY_BASE: "https://proxy.test" }));
+vi.mock("@/copilot/copilotConfig", () => ({ makeCopilotFetch: () => vi.fn(), newTaskId: () => "qe-test", QUICK_ENTRY_BASE: "https://proxy.test" }));
 vi.mock("@/lib/imageCompress", () => ({ compressImage: async (f: File) => f }));
 vi.mock("../quickEntryAi", () => ({ readWithAi: h.readWithAi, transcribeAudio: h.transcribeAudio }));
 vi.mock("../useQuickEntrySave", () => ({
@@ -121,15 +121,40 @@ describe("useQuickEntryFeed — tin chữ", () => {
     expect(cardsOf(result)[0].state.draft.lines[0].categoryId).toBe("t-an");
   });
 
-  it("máy chủ báo AI tắt ⇒ báo một lần, phiên này KHÔNG gọi AI nữa, giọng nói chuyển dự phòng", async () => {
+  it("AI ĐỌC báo tắt (9router) ⇒ phiên này không gọi AI đọc nữa; GIỌNG NÓI (OpenRouter) vẫn dùng được", async () => {
     h.readWithAi.mockResolvedValue({ ok: false, error: classifyAiError({ status: 403, code: "quick_entry_disabled" }) });
     const { result } = mount();
     await act(async () => result.current.submitText("102LVT sơn 300k", "company"));
     expect(result.current.aiOff?.kind).toBe("disabled");
-    expect(result.current.transcribe).toBeNull();
+    expect(result.current.transcribe).not.toBeNull();
     await act(async () => result.current.submitText("102LVT keo 20k", "company"));
     expect(h.readWithAi).toHaveBeenCalledTimes(1);
     expect(cardsOf(result)).toHaveLength(2);
+  });
+
+  it("CHÉP GIỌNG báo tắt (thiếu khoá OpenRouter) ⇒ chỉ giọng nói tắt; AI đọc vẫn chạy", async () => {
+    h.transcribeAudio.mockResolvedValue({ ok: false, error: classifyAiError({ status: 403, code: "quick_entry_disabled" }) });
+    h.readWithAi.mockResolvedValue(ok(ai()));
+    const { result } = mount();
+    await act(async () => {
+      await result.current.transcribe?.({ blob: new Blob(["a"]), mimeType: "audio/webm", format: "webm", seconds: 2 });
+    });
+    expect(result.current.transcribe).toBeNull();
+    expect(result.current.aiOff).toBeNull();
+    await act(async () => result.current.submitText("102LVT sơn 300k", "company"));
+    expect(h.readWithAi).toHaveBeenCalledTimes(1);
+  });
+
+  it("chép giọng lỗi tạm ba lần liền ⇒ chỉ giọng nói tạm tắt, không đụng AI đọc", async () => {
+    h.transcribeAudio.mockResolvedValue({ ok: false, error: classifyAiError({ status: 503, code: "quick_entry_all_failed" }) });
+    const { result } = mount();
+    for (let i = 0; i < 3; i += 1) {
+      await act(async () => {
+        await result.current.transcribe?.({ blob: new Blob(["a"]), mimeType: "audio/webm", format: "webm", seconds: 2 });
+      });
+    }
+    expect(result.current.transcribe).toBeNull();
+    expect(result.current.aiOff).toBeNull();
   });
 
   it("lỗi tạm thời ba lần liền ⇒ tạm tắt AI cho phiên", async () => {
@@ -156,7 +181,20 @@ describe("useQuickEntryFeed — tin chữ", () => {
     expect(result.current.aiOff).toBeNull();
   });
 
-  it("nhận giọng báo hết lượt ⇒ tắt AI cho phiên", async () => {
+  it("lỗi tạm của đường đọc và đường giọng KHÔNG cộng dồn (2 + 1 ⇒ chưa tắt đường nào)", async () => {
+    const fail = { ok: false, error: classifyAiError({ status: 503, code: "quick_entry_all_failed" }) };
+    h.readWithAi.mockResolvedValue(fail);
+    h.transcribeAudio.mockResolvedValue(fail);
+    const { result } = mount();
+    for (const t of ["102LVT a 10k", "102LVT b 10k"]) await act(async () => result.current.submitText(t, "company"));
+    await act(async () => {
+      await result.current.transcribe?.({ blob: new Blob(["a"]), mimeType: "audio/webm", format: "webm", seconds: 2 });
+    });
+    expect(result.current.aiOff).toBeNull();
+    expect(result.current.transcribe).not.toBeNull();
+  });
+
+  it("nhận giọng báo hết lượt ⇒ tắt CẢ HAI đường (máy chủ đếm lượt chung)", async () => {
     h.transcribeAudio.mockResolvedValue({ ok: false, error: classifyAiError({ status: 429, code: "quick_entry_daily_cap" }) });
     const { result } = mount();
     await act(async () => {

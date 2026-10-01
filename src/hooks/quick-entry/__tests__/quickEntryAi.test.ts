@@ -1,6 +1,9 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("@/copilot/copilotConfig", () => ({ LLM_PROXY_BASE: "https://proxy.test/functions/v1/llm-proxy" }));
+vi.mock("@/copilot/copilotConfig", () => ({
+  QUICK_ENTRY_BASE: "https://proxy.test/functions/v1/quick-entry",
+}));
 
 import { MAX_AUDIO_BYTES, readWithAi, transcribeAudio } from "../quickEntryAi";
 
@@ -19,7 +22,7 @@ describe("readWithAi", () => {
     expect(("value" in r ? r.value.items[0].amount_vnd : null)).toBe(120_000);
     expect(("model" in r ? r.model : null)).toBe("9router:cx/gpt-6-luna(low)");
     const [url, init] = fetchImpl.mock.calls[0];
-    expect(url).toBe("https://proxy.test/functions/v1/llm-proxy/chat/completions");
+    expect(url).toBe("https://proxy.test/functions/v1/quick-entry/chat/completions");
     expect(JSON.parse(init.body)).toMatchObject({ model: "quick_entry:auto", stream: false, response_format: { type: "json_object" } });
   });
 
@@ -66,7 +69,7 @@ describe("transcribeAudio", () => {
     const r = await transcribeAudio({ audio: audio(3), fetchImpl });
     expect(r).toEqual({ ok: true, text: "mua bóng đèn một trăm hai mươi nghìn" });
     const [url, init] = fetchImpl.mock.calls[0];
-    expect(url).toBe("https://proxy.test/functions/v1/llm-proxy/audio/transcriptions");
+    expect(url).toBe("https://proxy.test/functions/v1/quick-entry/audio/transcriptions");
     expect(JSON.parse(init.body)).toEqual({ format: "mp4", data: "AAAA", language: "vi" });
   });
 
@@ -75,6 +78,26 @@ describe("transcribeAudio", () => {
     const r = await transcribeAudio({ audio: audio(MAX_AUDIO_BYTES + 1), fetchImpl });
     expect(("error" in r ? r.error.kind : null)).toBe("too_large");
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("quá cỡ — ở máy hay do máy chủ báo — câu báo nói về ghi âm, không nói về ảnh", async () => {
+    const local = await transcribeAudio({ audio: audio(MAX_AUDIO_BYTES + 1), fetchImpl: vi.fn() });
+    const server = await transcribeAudio({
+      audio: audio(3),
+      fetchImpl: vi.fn().mockResolvedValueOnce(jsonResponse(413, { error: { code: "payload_too_large" } })),
+    });
+    for (const r of [local, server]) {
+      const message = "error" in r ? r.error.message : "";
+      expect(message).toMatch(/ghi âm/i);
+      expect(message).not.toMatch(/ảnh/i);
+    }
+  });
+
+  it("trần âm thanh của trang đúng bằng trần của hàm máy chủ", () => {
+    const server = readFileSync(new URL("../../../../supabase/functions/quick-entry/index.ts", import.meta.url), "utf8");
+    const m = server.match(/export const TRAN_AM_THANH_BYTES = ([\d_]+);/);
+    expect(m).not.toBeNull();
+    expect(Number(m![1].replace(/_/g, ""))).toBe(MAX_AUDIO_BYTES);
   });
 
   it("máy chủ báo hết lượt ⇒ 'daily_cap'; trả chữ rỗng ⇒ 'unknown'", async () => {

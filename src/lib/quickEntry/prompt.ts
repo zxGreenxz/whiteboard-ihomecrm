@@ -1,4 +1,4 @@
-// Dựng message gửi AI (feature `quick_entry` qua llm-proxy) cho một tin nhắn / một ảnh bill.
+// Dựng message gửi AI (hàm máy chủ `quick-entry` ⇒ 9router) cho một tin nhắn / một ảnh bill.
 //
 // Không tools, chỉ xin JSON (khuôn ở aiSchema.ts). Lời người dùng — kể cả bản chữ giọng nói và
 // chữ đọc từ ảnh — là DỮ LIỆU: bọc giữa hai dấu phân cách, dấu phân cách giả trong lời người dùng

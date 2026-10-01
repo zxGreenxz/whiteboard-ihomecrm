@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, renderHook } from "@testing-library/react";
-import { formatOf, MAX_RECORD_SECONDS, pickMimeType, useVoiceRecorder } from "../useVoiceRecorder";
+import { MAX_AUDIO_BYTES } from "../quickEntryAi";
+import { AUDIO_BITS_PER_SECOND, formatOf, MAX_RECORD_SECONDS, pickMimeType, useVoiceRecorder } from "../useVoiceRecorder";
 
 describe("pickMimeType / formatOf", () => {
   it("ưu tiên webm/opus; Safari đời cũ chỉ có mp4 ⇒ mp4", () => {
@@ -26,7 +27,7 @@ class FakeRecorder {
   onstop: (() => void) | null = null;
   constructor(
     public stream: unknown,
-    public opts: { mimeType: string },
+    public opts: { mimeType: string; audioBitsPerSecond?: number },
   ) {
     FakeRecorder.instances.push(this);
   }
@@ -71,6 +72,15 @@ describe("useVoiceRecorder", () => {
     expect(onDone.mock.calls[0][0]).toMatchObject({ mimeType: "audio/mp4", format: "mp4" });
     expect(track.stop).toHaveBeenCalled();
     expect(result.current.state).toBe("idle");
+  });
+
+  it("gợi ý bitrate vừa giọng nói ⇒ ghi đủ thời lượng vẫn nằm xa dưới trần gửi", async () => {
+    const { result } = renderHook(() => useVoiceRecorder(vi.fn()));
+    await act(async () => {
+      await result.current.start();
+    });
+    expect(FakeRecorder.instances[0].opts).toEqual({ mimeType: "audio/mp4", audioBitsPerSecond: AUDIO_BITS_PER_SECOND });
+    expect((AUDIO_BITS_PER_SECOND / 8) * MAX_RECORD_SECONDS).toBeLessThan(MAX_AUDIO_BYTES / 2);
   });
 
   it(`tự dừng ở ${MAX_RECORD_SECONDS} giây`, async () => {

@@ -138,7 +138,7 @@ export const COPILOT_PAGE_EXEMPTIONS = [
   { route: "/network-center/*", reason: "infrastructure surface is deferred" },
   { route: "/notifications", reason: "notification surface is deferred" },
   { route: "/finance/personal-wallet", reason: "personal finance surface is deferred" },
-  { route: "/chi-tieu", reason: "quick-entry page has its own AI path (llm-proxy feature quick_entry); Copilot launcher is hidden there" },
+  { route: "/chi-tieu", reason: "quick-entry page calls its own edge function quick-entry (voice: OpenRouter, reading: 9router); Copilot launcher is hidden there" },
   { route: "/finance/salary", reason: "salary surface is deferred" },
   { route: "/finance/my-salary", reason: "salary self-service surface is deferred" },
 ];

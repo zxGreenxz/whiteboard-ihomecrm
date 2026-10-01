@@ -2,12 +2,12 @@
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1205,
-  "soFileDocBangFs": 272,
-  "tongLoiGoi": 593,
+  "soFileDocBangFs": 273,
+  "tongLoiGoi": 594,
   "khongPhanLoaiDuoc": 271,
   "theoLoai": {
     "ma-nguon": {
-      "soFile": 48,
+      "soFile": 49,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
@@ -62,6 +62,7 @@
     "src/hooks/__tests__/useMeterReadings.noLegacyFallback.test.ts",
     "src/hooks/__tests__/useMeters.serviceResolve.test.ts",
     "src/hooks/__tests__/useMyPermissionsOrgScope.test.tsx",
+    "src/hooks/quick-entry/__tests__/quickEntryAi.test.ts",
     "src/lib/__tests__/accountingCompatibilityGuardsMigration.test.ts",
     "src/lib/__tests__/accountingHistoryResolutionMigration.test.ts",
     "src/lib/__tests__/copilotReportRpcMigration.test.ts",
@@ -1337,6 +1338,14 @@
     },
     {
       "file": "src/hooks/__tests__/useMyPermissionsOrgScope.test.tsx",
+      "soGoi": 1,
+      "loai": {
+        "ma-nguon": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/hooks/quick-entry/__tests__/quickEntryAi.test.ts",
       "soGoi": 1,
       "loai": {
         "ma-nguon": 1

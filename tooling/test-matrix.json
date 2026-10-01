@@ -162,6 +162,26 @@
       "timeoutMinutes": 60
     },
     {
+      "id": "edge-deno-quick-entry",
+      "runner": "deno",
+      "ciJob": "ci-gates / quality-gates",
+      "command": "deno test --config supabase/functions/quick-entry/deno.json supabase/functions/quick-entry/index.test.ts --allow-env  (máy dev chưa cài Deno thì thay `deno` bằng `npx --yes deno@2.9.4`)",
+      "runtime": "deno 2.9.4",
+      "risk": "normal",
+      "includes": [
+        "supabase/functions/quick-entry/index.test.ts"
+      ],
+      "note": "Hàm AI của trang Báo chi nhanh /chi-tieu: công tắc, JWT, quyền ghi chi, chế độ thử, trần lượt/ngày giờ VN, chuỗi mô hình dự phòng, chép giọng qua OpenRouter, đọc chữ/ảnh qua 9router, trần âm thanh. Nối vào ci-gates.yml ngày 01/10/2026, ngay sau bước llm-proxy (cùng bước cài Deno).",
+      "ciJobs": [
+        {
+          "workflow": ".github/workflows/ci-gates.yml",
+          "job": "quality-gates"
+        }
+      ],
+      "environment": "ci",
+      "timeoutMinutes": 60
+    },
+    {
       "id": "e2e-fleet-copilot",
       "runner": "playwright",
       "ciJob": "copilot-e2e / copilot-e2e",

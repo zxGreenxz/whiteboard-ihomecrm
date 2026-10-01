@@ -1547,7 +1547,6 @@
     "src/hooks/quick-entry/useQuickEntrySave.ts",
     "src/lib/quickEntry/cashbook.ts",
     "src/hooks/quick-entry/useQuickEntryRefs.ts",
-    "src/hooks/quick-entry/useSpeechInput.ts",
     "src/lib/quickEntry/cardStatus.ts",
     "src/components/quick-entry/DraftCard.tsx",
     "src/components/quick-entry/QuickEntryComposer.tsx",

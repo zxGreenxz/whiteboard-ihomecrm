@@ -12,6 +12,8 @@
 //   - OPENROUTER_API_KEY (từ vault) — Copilot trên TEST gọi được mô hình.
 //   - CRON_SECRET, DEMO_RESET_SECRET — sinh MỚI cho TEST, khác production.
 //   - KHÔNG VAPID ⇒ send-push trên TEST không bao giờ đẩy được tới thiết bị thật.
+//   - quick-entry: các QUICK_ENTRY_* nạp tay (xem supabase/functions/README.md) — thiếu thì hàm
+//     trả quick_entry_disabled, trang /chi-tieu vẫn nhập tay được.
 // network-center-worker cố ý bỏ: không worker nào của TEST.
 
 import { randomBytes } from "node:crypto";
@@ -20,7 +22,11 @@ import { join } from "node:path";
 
 import { PROD_REF, credential, docVault, ghiLog, mgmt, repoRoot } from "./lib.mjs";
 
-export const DANH_SACH = ["admin-create-user", "llm-proxy", "salary-v5-jobs", "demo-reset", "send-push"];
+export const DANH_SACH = ["admin-create-user", "llm-proxy", "salary-v5-jobs", "demo-reset", "send-push", "quick-entry"];
+
+// Hàm MỚI chưa từng lên production thì chưa có cờ verify_jwt để chép ⇒ khai sẵn ở đây. Lên production
+// rồi thì cờ production thắng (vòng dưới đọc production trước) — hai bên vẫn phải khớp.
+export const CHUA_CO_O_PRODUCTION = { "quick-entry": { verify_jwt: true } };
 
 function tepFunction(slug) {
   const goc = join(repoRoot, "supabase", "functions", slug);
@@ -41,7 +47,7 @@ async function main(argv) {
   const cauHinhProd = new Map(prodFns.map((f) => [f.slug, f]));
 
   for (const slug of slugs) {
-    const prod = cauHinhProd.get(slug);
+    const prod = cauHinhProd.get(slug) ?? CHUA_CO_O_PRODUCTION[slug];
     if (!prod) throw new Error(`Production không có function ${slug}.`);
     const files = tepFunction(slug);
     const metadata = { name: slug, entrypoint_path: "index.ts", verify_jwt: prod.verify_jwt };
@@ -56,7 +62,8 @@ async function main(argv) {
     if (!res.ok) throw new Error(`Deploy ${slug} lỗi ${res.status}: ${text.slice(0, 600)}`);
     const d = JSON.parse(text);
     if (d.verify_jwt !== prod.verify_jwt) throw new Error(`${slug}: verify_jwt TEST=${d.verify_jwt} ≠ production=${prod.verify_jwt}`);
-    ghiLog("edge", `${slug} v${d.version} · verify_jwt=${d.verify_jwt} (giống production) · ${files.length} file`);
+    const nguon = cauHinhProd.has(slug) ? "giống production" : "chưa có ở production — cờ khai sẵn";
+    ghiLog("edge", `${slug} v${d.version} · verify_jwt=${d.verify_jwt} (${nguon}) · ${files.length} file`);
   }
 
   // Secret: chỉ nạp cái chưa có (giữ nguyên giá trị đã đặt ở lần trước).

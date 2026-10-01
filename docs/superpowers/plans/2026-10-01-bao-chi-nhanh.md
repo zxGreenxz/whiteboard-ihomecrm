@@ -3,6 +3,14 @@
 > Soạn 01/10/2026 · Mã đọc từ `origin/main` (= production `f2712d59`) · Thư mục chính đang chậm ~96 commit ⇒ thi công
 > trên **worktree mới từ `origin/main`**, không động vào thư mục chính.
 
+> **Đã đổi khi thi công (chủ chốt 01/10/2026) — phần dưới về máy chủ là thiết kế ban đầu, không còn đúng:**
+> - Máy chủ là hàm edge **riêng** `supabase/functions/quick-entry`, không phải nhánh `quick_entry` trong `llm-proxy`;
+>   không migration, không đổi `reserve_ai_usage`. Công tắc/chuỗi mô hình/trần lượt là secret `QUICK_ENTRY_*`
+>   (xem `supabase/functions/README.md`), không phải cột `ai_copilot_settings` + thẻ quản trị.
+> - **Giọng nói chỉ qua OpenRouter** (`gpt-4o-transcribe` đầu chuỗi); bỏ hẳn nhận giọng của trình duyệt
+>   (`useSpeechInput` đã xoá). **Đọc chữ/ảnh chỉ qua 9router** (`cx/gpt-6-luna(low)` → `cx/gpt-5.6-luna(low)`).
+> - Trang mở bằng đường dẫn, chưa có capability/menu/ô màn hình chính. Mô tả hiện hành: `docs/he-thong/08` mục 5.13.
+
 ## 1. Bối cảnh
 
 Chủ muốn một trang giống rollyapp.ai: gõ "bún bò 50k", nói, hoặc chụp bill là ghi xong khoản chi, AI tự phân loại.

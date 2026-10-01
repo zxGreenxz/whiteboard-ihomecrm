@@ -136,7 +136,8 @@ export function useQuickEntryFeed(opts: { refs: QuickEntryRefs; userId: string |
   feedRef.current = feed;
   const [aiOff, setAiOff] = useState<AiErrorView | null>(null);
   const aiOffRef = useRef<AiErrorView | null>(null);
-  const failures = useRef(0);
+  const [voiceOff, setVoiceOff] = useState<AiErrorView | null>(null);
+  const failures = useRef({ read: 0, voice: 0 });
   const inflight = useRef(new Set<string>());
   const urls = useRef(new Set<string>());
 
@@ -213,19 +214,30 @@ export function useQuickEntryFeed(opts: { refs: QuickEntryRefs; userId: string |
     }));
   }, []);
 
-  const noteAiError = useCallback((e: AiErrorView) => {
-    if (e.kind === "disabled" || e.kind === "not_permitted" || e.kind === "daily_cap") {
-      aiOffRef.current = e;
-      setAiOff(e);
-      return;
-    }
-    failures.current += 1;
-    if (failures.current >= MAX_AI_FAILURES) {
-      const off: AiErrorView = { ...e, message: AI_STOPPED };
-      aiOffRef.current = off;
-      setAiOff(off);
-    }
+  // Hai đường AI chạy trên hai nhà cung cấp (đọc: 9router; giọng: OpenRouter) nên tắt RIÊNG: một bên
+  // hỏng không kéo bên kia. Chỉ "không có quyền" và "hết lượt" tắt cả hai — máy chủ xét chung.
+  const offRead = useCallback((e: AiErrorView) => {
+    aiOffRef.current = e;
+    setAiOff(e);
   }, []);
+  const offVoice = useCallback((e: AiErrorView) => setVoiceOff(e), []);
+  const noteAiError = useCallback(
+    (e: AiErrorView, channel: "read" | "voice") => {
+      const both = e.kind === "not_permitted" || e.kind === "daily_cap";
+      if (both || e.kind === "disabled") {
+        if (both || channel === "read") offRead(e);
+        if (both || channel === "voice") offVoice(e);
+        return;
+      }
+      failures.current[channel] += 1;
+      if (failures.current[channel] >= MAX_AI_FAILURES) {
+        const off: AiErrorView = { ...e, message: AI_STOPPED };
+        if (channel === "read") offRead(off);
+        else offVoice(off);
+      }
+    },
+    [offRead, offVoice],
+  );
 
   const fetchImpl = useCallback(
     (input: string, init: RequestInit) => makeCopilotFetch("quick_entry", newTaskId("qe"), orgId)(input, init),
@@ -258,12 +270,12 @@ export function useQuickEntryFeed(opts: { refs: QuickEntryRefs; userId: string |
     try {
       const r = await readWithAi({ messages, categoryCount: categories.length, fetchImpl, signal: timeout(AI_TIMEOUT_MS) });
       // Thu hẹp bằng `in`: tsconfig.app.json không bật strictNullChecks nên `r.ok` không thu hẹp được.
-      if ("error" in r) noteAiError(r.error);
-      else failures.current = 0;
+      if ("error" in r) noteAiError(r.error, "read");
+      else failures.current.read = 0;
       return r;
     } catch {
       const error = classifyAiError({ status: 0, code: null });
-      noteAiError(error);
+      noteAiError(error, "read");
       return { ok: false, error };
     }
   };
@@ -439,22 +451,24 @@ export function useQuickEntryFeed(opts: { refs: QuickEntryRefs; userId: string |
 
   const transcribe = async (audio: RecordedAudio): Promise<TranscribeResult> => {
     const r = await transcribeAudio({ audio, fetchImpl, signal: timeout(STT_TIMEOUT_MS) });
-    if ("error" in r) noteAiError(r.error);
-    else failures.current = 0;
+    if ("error" in r) noteAiError(r.error, "voice");
+    else failures.current.voice = 0;
     return r;
   };
 
   return {
     messages: feed.messages,
     cards: feed.cards,
+    /** AI ĐỌC (9router) đã tắt cho phiên — thẻ chỉ còn bộ đọc máy + nhập tay. */
     aiOff,
+    voiceOff,
     submitText,
     submitPhoto,
     saveCard,
     changeCard,
     discardCard,
     retryAi,
-    /** null ⇒ AI đã tắt cho phiên — mic đi thẳng đường dự phòng. */
-    transcribe: aiOff ? null : transcribe,
+    /** null ⇒ CHÉP GIỌNG (OpenRouter) đã tắt cho phiên — mic gợi ý dùng mic trên bàn phím. */
+    transcribe: voiceOff ? null : transcribe,
   };
 }

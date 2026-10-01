@@ -14,7 +14,7 @@ const h = vi.hoisted(() => ({
   savePersonal: vi.fn(),
 }));
 vi.mock("@/integrations/supabase/client", () => ({ supabase: {} }));
-vi.mock("@/copilot/copilotConfig", () => ({ makeCopilotFetch: () => vi.fn(), newTaskId: () => "qe-t", LLM_PROXY_BASE: "https://p.test" }));
+vi.mock("@/copilot/copilotConfig", () => ({ makeCopilotFetch: () => vi.fn(), newTaskId: () => "qe-t", QUICK_ENTRY_BASE: "https://p.test" }));
 vi.mock("@/hooks/use-mobile", () => ({ usePhoneViewport: () => h.phone }));
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ data: { id: "u1" } }) }));
 vi.mock("@/hooks/useVoucherSlotWarning", () => ({ useVoucherSlotWarning: () => ({ data: [] }) }));

@@ -65,6 +65,17 @@ describe("parseAiResult", () => {
     expect(parseAiResult(JSON.stringify(payload), 5)).toEqual({ ok: false, reason: "invalid" });
   });
 
+  it("dòng giảm giá / voucher ÂM trên bill ⇒ vẫn ok, giữ nguyên số âm (bộ dựng thẻ tự bỏ dòng ≤ 0)", () => {
+    const bill = {
+      ...valid,
+      items: [valid.items[0], { desc: "Giảm giá", amount_vnd: -5_000, category: null, confidence: 0.9 }],
+      total_vnd: 115_000,
+    };
+    const r = parseAiResult(JSON.stringify(bill), 5);
+    expect(r.ok).toBe(true);
+    expect(r.ok && r.value.items[1].amount_vnd).toBe(-5_000);
+  });
+
   it("không có JSON ⇒ no_json", () => {
     expect(parseAiResult("xin lỗi, tôi không đọc được", 5)).toEqual({ ok: false, reason: "no_json" });
   });

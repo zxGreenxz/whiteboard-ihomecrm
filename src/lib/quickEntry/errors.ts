@@ -1,4 +1,4 @@
-// Mã lỗi của llm-proxy / reserve_ai_usage (feature quick_entry) ⇒ trạng thái giao diện.
+// Mã lỗi của hàm máy chủ `quick-entry` (supabase/functions/quick-entry) ⇒ trạng thái giao diện.
 // Nguyên tắc: AI hỏng KHÔNG bao giờ chặn việc ghi chi — mọi trạng thái đều cho nhập tay.
 
 export type AiErrorKind =

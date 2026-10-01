@@ -280,7 +280,8 @@ export function enrichFromAi(state: DraftState, ai: AiResult, ctx: ComposeContex
     const item = pairOf(i);
     const next = { ...l };
     if (item) {
-      if (l.amount <= 0 && item.amount_vnd && free(`lines.${i}.amount`)) next.amount = item.amount_vnd;
+      // Chỉ nhận số DƯƠNG: dòng âm của AI (giảm giá) không bao giờ thành tiền của một dòng chi.
+      if (l.amount <= 0 && item.amount_vnd && item.amount_vnd > 0 && free(`lines.${i}.amount`)) next.amount = item.amount_vnd;
       if (company) {
         const mapped = fromIndex(item.category, ctx.categories);
         if (mapped && free(`lines.${i}.categoryId`)) next.categoryId = mapped.id;

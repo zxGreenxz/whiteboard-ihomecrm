@@ -1,6 +1,6 @@
-// Ghi âm ngay trong trang "Báo chi nhanh" (đường CHÍNH của giọng nói; nhận giọng của trình duyệt
-// chỉ là dự phòng). Chạm để nói, chạm lần nữa để gửi, tự dừng ở 30 giây. Không giữ âm thanh: bản
-// ghi chỉ đi một lần tới llm-proxy /audio/transcriptions rồi bỏ.
+// Ghi âm ngay trong trang "Báo chi nhanh" — đường DUY NHẤT của giọng nói (không dùng nhận giọng của
+// trình duyệt). Chạm để nói, chạm lần nữa để gửi, tự dừng ở 30 giây. Không giữ âm thanh: bản ghi chỉ
+// đi một lần tới hàm máy chủ `quick-entry` /audio/transcriptions (OpenRouter) rồi bỏ.
 //
 // Bài học ghi âm iPhone (chép có chọn lọc từ trang thử giọng nói đã cất kho
 // `archive/voice-task-lab-20260930`): Safari đời cũ chỉ ghi được audio/mp4 (AAC), Safari 18.4+ và
@@ -10,6 +10,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 export const MAX_RECORD_SECONDS = 30;
+/** Gợi ý bitrate: 48 kbps đủ rõ cho nhận giọng, 30 giây ≈ 180 KB — gửi nhanh trên 4G. Trình duyệt được
+ *  phép bỏ qua gợi ý (mặc định thường ~128 kbps) nên trần gửi vẫn chừa chỗ cho trường hợp đó. */
+export const AUDIO_BITS_PER_SECOND = 48_000;
 
 const MIME_PREFERENCE = ["audio/webm;codecs=opus", "audio/mp4", "audio/webm", "audio/ogg;codecs=opus"];
 
@@ -110,7 +113,7 @@ export function useVoiceRecorder(onDone: (audio: RecordedAudio) => void) {
       setError(friendlyError(e));
       return;
     }
-    const recorder = new MediaRecorder(stream, { mimeType });
+    const recorder = new MediaRecorder(stream, { mimeType, audioBitsPerSecond: AUDIO_BITS_PER_SECOND });
     const rec: Recording = { recorder, stream, chunks: [], mimeType, startedAt: Date.now(), cancelled: false };
     current.current = rec;
     recorder.ondataavailable = (e: BlobEvent) => {
