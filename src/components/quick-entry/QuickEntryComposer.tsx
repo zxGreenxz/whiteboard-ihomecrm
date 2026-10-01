@@ -135,6 +135,12 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
         </div>
       )}
 
+      {speech.listening && (
+        <p className="flex items-center gap-2 text-xs text-red-700" aria-live="polite">
+          <span className="h-2 w-2 animate-pulse rounded-full bg-red-600" /> Đang nghe… nói xong sẽ tự dừng.
+        </p>
+      )}
+
       {(note || voiceError) && (
         <p className="text-xs text-amber-800" role="status">
           {note ?? voiceError}

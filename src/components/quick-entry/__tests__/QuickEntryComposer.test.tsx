@@ -129,6 +129,15 @@ describe("QuickEntryComposer — giọng nói (trình duyệt trước, máy ch�
     expect(screen.queryByText("Trình duyệt không cho nhận giọng ở đây.")).toBeNull();
   });
 
+  it("trình duyệt đang nghe ⇒ có dòng báo 'Đang nghe' và nút dừng", () => {
+    sp.supported = true;
+    sp.listening = true;
+    setup();
+    expect(screen.getByText(/Đang nghe… nói xong sẽ tự dừng/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Dừng nghe" }));
+    expect(sp.stop).toHaveBeenCalledTimes(1);
+  });
+
   it("lỗi tạm của trình duyệt (no-speech) ⇒ vẫn dùng trình duyệt, không chuyển sang máy chủ", () => {
     sp.supported = true;
     sp.errorCode = "no-speech";
