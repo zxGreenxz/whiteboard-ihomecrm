@@ -36,10 +36,9 @@ Production có hai tổ chức dùng chung database. Bản sao để thử tính
   mật khẩu TEST riêng trong vault; web là Preview của nhánh `test-env`.
   Đồng bộ bằng `npm run test-env:sync`; thử migration bằng `npm run test-env:thu-sql -- <file>`.
   Xem [test-env/README](../../scripts/test-env/README.md).
-- Org TEST cũ `cccc0000-0000-4000-8000-000000000001` (chung database, cơ chế clone-org)
-  đã xoá 08/08/2026; dữ liệu sót, schema `clone_org`, tài khoản `test.*` và script
-  `scripts/clone-org/` gỡ 23/09/2026. Còn lại chờ dọn: `sandbox_org_ids()` (vẫn trả id cccc).
-  Tới khi dọn, bảng mới có `organization_id` và RLS vẫn có policy `<bảng>_hide_sandbox_admin`,
+- Không dựng lại org sao chép (cơ chế `clone-org`) trong database production; thử ở môi trường TEST.
+  `sandbox_org_ids()` vẫn trả id org TEST cũ `cccc0000-0000-4000-8000-000000000001` (org đã xoá).
+  Cho tới khi gỡ hàm này, bảng mới có `organization_id` cần policy `<bảng>_hide_sandbox_admin`,
   bọc phép so sandbox bằng `COALESCE(…, false)` để xử lý đúng dòng NULL.
 - SECURITY DEFINER cần tự kiểm quyền: lọc toà qua `can_access_building()` /
   `accessible_building_ids()`; không tự thêm lối tắt `is_super_admin() OR …`.
@@ -57,7 +56,9 @@ Production có hai tổ chức dùng chung database. Bản sao để thử tính
 - Push thường dùng `git push origin HEAD:main`; kiểm trước bằng
   `git merge-base --is-ancestor origin/main HEAD`. Không force-push để vượt conflict.
 - Thay đổi tiền, phân quyền, lịch sử migration cần draft PR để review trước khi vào main.
-  Review độc lập theo `crossReview` của risk-map.
+  Review độc lập theo `crossReview` của risk-map: một lượt trên diff cuối của nhánh. Reviewer chỉ đọc
+  diff và biên nhận gate, không chạy lại gate; báo mọi phát hiện kèm mức độ và độ tin cậy, tác giả lọc.
+  Sau khi sửa, re-review chỉ phần vừa sửa. Tier không có `crossReview` không cần agent review.
   PR ghi số đo và gate đã chạy; chưa mở được PR thì báo rõ, không tuyên bố đã mở.
 - App phát hành từ nhánh `production`; `main` tạo Preview.
   Docs có cấu hình deploy riêng: kiểm `npm run check:external-controls` khi thay đổi phát hành,
@@ -129,8 +130,8 @@ Normalizer bỏ partition runtime theo [generated-types-policy.json](../../supab
 
 ## 7. TypeScript
 
-- Dùng `npm run typecheck:baseline`: không thêm fingerprint vào `ts-baseline.json`.
-- Typecheck app trực tiếp: `npx tsc --noEmit -p tsconfig.app.json`.
+- Kiểm kiểu bằng `npm run typecheck:baseline`: nó chạy tsc trên `tsconfig.app.json` có cache tăng dần
+  rồi so với `ts-baseline.json`; không thêm fingerprint vào baseline.
   Root `tsc --noEmit` không đi theo project references nên không kiểm app.
 - Module mới phải strict-clean; tăng strict theo island, không flip toàn repo hoặc tăng baseline để né lỗi.
 - Listener `src/app/providers/AuthCacheSync.tsx` chỉ chạy đồng bộ:
@@ -177,7 +178,8 @@ Chạy `npm run gate:copilot-docs` khi sửa corpus hoặc registry.
 ## 10. Hoàn tất thay đổi
 
 1. Xác định scope/risk, đọc source và phụ thuộc liên quan; sửa đúng nguyên nhân.
-2. Chạy test/gate theo §5–8 và risk-map; sửa lỗi rồi kiểm lại.
+2. Trong lúc sửa, chạy test của phần đang sửa và `npm run typecheck:baseline`, cộng phép kiểm
+   §5–8 và risk-map của tier bị đụng. Bộ vitest đầy đủ do CI chạy.
 3. Stage đúng file source/test của thay đổi trước khi chạy `npm run gate:truoc-push` để generator
    đọc đủ đầu vào của commit; docs/script thuần có thể dùng `-- --khong-dao-strict`.
    Ba bước: (1) tự sinh và stage artifact theo allowlist; (2) gate tĩnh, kèm nhóm nặng
@@ -186,11 +188,14 @@ Chạy `npm run gate:copilot-docs` khi sửa corpus hoặc registry.
    thiếu credential là ⚠, nhưng thiếu credential MÀ staged diff đụng `supabase/migrations/**`
    là ❌ — migration đổi được ranh giới tổ chức nên đó đúng là lượt không được bỏ đo.
    Kiểm cả diff được stage; cảnh báo thiếu credential không chứng minh schema đã khớp.
+   Gate đã gồm đảo strict và lint ratchet, nên không chạy riêng chúng trước gate. Gate đỏ thì sửa,
+   chạy lại đúng script đỏ (`node scripts/<tên>.mjs`), rồi chạy gate đầy đủ một lần trước push.
 4. Báo kết quả cụ thể và phần chưa kiểm; commit/push/review/phát hành theo §3.
 
 Gate có lock theo worktree; không xoá lock của tiến trình còn sống.
 File untracked của mình có cảnh báo phải xử lý trước khi stage.
-Không mở rộng kiểm thử lặp lại khi không có thay đổi, lỗi mới hoặc nghi vấn chưa giải quyết.
+Kết quả xanh của gate và test trên đúng bản đang commit là bằng chứng kiểm. Chỉ chạy lại khi file
+đã đổi sau lượt đó, có lỗi mới hoặc còn nghi vấn chưa giải quyết.
 
 ## 11. Điều kiện dừng
 
