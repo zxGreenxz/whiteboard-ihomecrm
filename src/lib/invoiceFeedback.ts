@@ -21,10 +21,29 @@ export class InvoicePartialError extends Error {
 }
 
 export function confirmedInvoiceReceipt(value:unknown): Record<string,unknown> & {id:string} {
-  const result=value && typeof value==='object'? value as Record<string,unknown>:{};
-  const row=result.invoice && typeof result.invoice==='object'?result.invoice as Record<string,unknown>:result;
-  if(typeof row.id!=='string'||!row.id) throw new TypeError('Chưa xác nhận được hoá đơn sau khi gửi yêu cầu.');
-  return row as Record<string,unknown> & {id:string};
+  const fail = (): never => { throw new TypeError('Chưa xác nhận được hoá đơn sau khi gửi yêu cầu.'); };
+  const record = (input: unknown): Record<string, unknown> => {
+    if (!input || typeof input !== 'object' || Array.isArray(input)) return fail();
+    return input as Record<string, unknown>;
+  };
+  const result = record(value);
+  const row = 'invoice' in result ? record(result.invoice) : result;
+  if (!('id' in row) && !('invoice_id' in row)) return fail();
+  const ids: string[] = [];
+  // The canonical create RPC returns invoice_id; existing row/nested receipts use id.
+  // Every supplied identity must agree, so an alias cannot hide a malformed receipt.
+  for (const part of row === result ? [row] : [result, row]) {
+    for (const key of ['id', 'invoice_id'] as const) {
+      if (!(key in part)) continue;
+      const id = part[key];
+      if (typeof id !== 'string' || !id.trim() || id !== id.trim()) return fail();
+      if (key === 'invoice_id' && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return fail();
+      ids.push(id);
+    }
+  }
+  const id = ids[0];
+  if (!id || ids.some(candidate => candidate !== id)) return fail();
+  return { ...row, id };
 }
 
 export function invoiceLifecycleFeedback(value:unknown,operation:string):{title:string;description:string} {
