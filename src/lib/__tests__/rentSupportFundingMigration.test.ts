@@ -6,21 +6,28 @@ import { beforeAll, afterAll, expect, it } from 'vitest';
 const db = new PGlite();
 // Historical registry bootstrap supplies dependencies; the funding provider under
 // test always comes from the last CREATE in the complete migration corpus.
-function liveDefinitionOf(name: string, corpus?: Array<{file: string; sql: string}>): string {
+function definitionsOf(name: string, corpus?: Array<{file: string; sql: string}>): string[] {
  const directory = join(process.cwd(), 'supabase', 'migrations');
  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
  const pattern = new RegExp(`CREATE\\s+(?:OR\\s+REPLACE\\s+)?FUNCTION\\s+${escaped}\\s*\\([\\s\\S]*?\\bAS\\s+(\\$[a-zA-Z0-9_]*\\$)[\\s\\S]*?\\1\\s*;`, 'gi');
- let definition: string | undefined;
+ const definitions: string[] = [];
  const migrations = corpus ?? readdirSync(directory).filter(file => file.endsWith('.sql'))
   .map(file => ({file,sql:readFileSync(join(directory,file),'utf8')}));
  for (const migration of [...migrations].sort((a,b)=>a.file.localeCompare(b.file))) {
   const sql = boChuThichSql(migration.sql);
-  for (const match of sql.matchAll(pattern)) definition = match[0];
+  for (const match of sql.matchAll(pattern)) definitions.push(match[0]);
  }
- if (!definition) throw new Error(`Missing live definition: ${name}`);
- return definition;
+ if (!definitions.length) throw new Error(`Missing live definition: ${name}`);
+ return definitions;
 }
-const liveFundingProvider = liveDefinitionOf('app_private.rent_support_source_funding_evidence_v1');
+function liveDefinitionOf(name: string, corpus?: Array<{file: string; sql: string}>) {
+ return definitionsOf(name,corpus).at(-1)!;
+}
+const fundingDefinitions = definitionsOf('app_private.rent_support_source_funding_evidence_v1');
+const liveFundingProvider = fundingDefinitions.at(-1)!;
+// Task8 renames the previous real provider and wraps it for attested sources.
+// Load that exact preceding body under its real delegate name, not a mock.
+const liveFundingDelegate = fundingDefinitions.at(-2)!.replace('FUNCTION app_private.rent_support_source_funding_evidence_v1(', 'FUNCTION app_private.rent_support_source_funding_before_lifecycle_v1(');
 const party = '00000000-0000-4000-8000-000000000001';
 const source = (kind: 'COMMISSION' | 'BONUS', gross: string, extras = {}) => ({
  source_id: kind === 'COMMISSION' ? '00000000-0000-4000-8000-000000000002' : '00000000-0000-4000-8000-000000000003',
@@ -134,7 +141,9 @@ beforeAll(async()=>{
  CREATE TABLE app_private.rent_support_funding_operations(id uuid PRIMARY KEY,organization_id uuid,state text);
  CREATE TABLE app_private.rent_support_payout_results(organization_id uuid,operation_id uuid,source_id uuid,gross numeric,withheld numeric,net numeric,voucher_id uuid,status text);
  CREATE TABLE app_private.rent_support_withholding_events(organization_id uuid,operation_id uuid,source_id uuid,action text,amount numeric);
+ CREATE TABLE app_private.rent_support_reconciliations(id uuid,organization_id uuid,source_id uuid,withheld numeric,provenance text);
  `);
+ await registry.exec(liveFundingDelegate);
  await registry.exec(liveFundingProvider);
 },30000);
 afterAll(async()=>registry.close());
@@ -266,6 +275,16 @@ it('live funding evidence keeps full support settlement cashless and clamps rele
  const {sid,operation}=await fundedSource(500000,500000,'BONUS');
  await registry.query(`INSERT INTO app_private.rent_support_withholding_events VALUES($1,$2,$3,'RESERVED',500000),($1,$2,$3,'COMMITTED',500000),($1,$2,$3,'RELEASED',1)`,[org,operation,sid]);
  expect(await fundingEvidence(sid)).toMatchObject({verified:true,prior_withheld:'500000',reserved:'0',settled_by_support:true,operation_id:operation});
+});
+it('live lifecycle provider reads same-org attestation and preserves delegated funding evidence',async()=>{
+ const person=await register(party),sid=crypto.randomUUID(),c=crypto.randomUUID(),reconciliation=crypto.randomUUID();
+ await registry.query(`INSERT INTO public.contracts VALUES($1,$2,'ACTIVE',NULL)`,[c,org]);
+ await registry.query(`INSERT INTO app_private.rent_support_payout_sources(id,organization_id,contract_id,party_id,kind,gross_original,evidence,created_by) VALUES($1,$2,$3,$4,'COMMISSION',3000000,'{}',$5)`,[sid,org,c,person.party_id,party]);
+ await registry.query(`INSERT INTO app_private.rent_support_reconciliations VALUES($1,$2,$3,1800000,'MANUALLY_ATTESTED')`,[reconciliation,org,sid]);
+ expect(await fundingEvidence(sid)).toMatchObject({verified:true,provenance:'MANUALLY_ATTESTED',prior_withheld:'1800000',reserved:'0',settled_by_support:false,reconciliation_id:reconciliation,facts_hash:expect.any(String)});
+ expect(await fundingEvidence(sid,crypto.randomUUID())).toEqual({verified:false});
+ const delegated=await fundedSource(3000000,0);
+ expect(await fundingEvidence(delegated.sid)).toMatchObject({verified:true,prior_withheld:'0',operation_id:delegated.operation});
 });
 it('rejects duplicate typed alias independently of helper conflict behavior',async()=>{
  const c=crypto.randomUUID(),person=await register(party),first=crypto.randomUUID(),second=crypto.randomUUID(),alias=crypto.randomUUID();

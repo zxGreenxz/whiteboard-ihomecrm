@@ -12,6 +12,12 @@ Quyết toán cũ sau khi khách mới vào **không thay đổi hợp đồng m
 
 Nhượng liên kết không có nghĩa tiền đã chuyển. Lựa chọn cấn cọc cũ sang hợp đồng mới chưa hỗ trợ chuyển/cấn phiếu và chặn ký; phải đối soát chứng từ hiện hành. Xem [05 — Nháp/ký và nhượng](05-hop-dong.md), [04 — Giữ chỗ](04-coc-giu-cho.md), [06 — Chỉ số bàn giao](06-cong-to-chi-so.md).
 
+## Hỗ trợ tiền thuê theo lịch v2 (chờ phát hành)
+
+Ngày trả phòng thực tế và hồ sơ thanh lý đã được duyệt quyết định thời điểm ngừng áp dụng hỗ trợ. Chỉ báo ngày dự kiến trả phòng chưa cắt lịch. Phần hỗ trợ đã dùng giữ nguyên lịch sử; phần đã cam kết nhưng chưa dùng chuyển sang đối chiếu, chưa tự hoàn tiền, tạo nợ hoặc mở lại nguồn chi.
+
+Hủy, khôi phục hoặc sửa nguồn chi đang gắn với hỗ trợ cần lý do và đối chiếu tài chính. Trong khi chờ xử lý, nguồn cùng phần lương liên quan bị giữ để tránh trả thêm. Kết quả đã lưu và khoản đã giữ trước đó vẫn được bảo toàn. Người có quyền tài chính xác nhận chứng từ, nguồn hưởng và số tiền thực nhận qua mục đối chiếu trong hồ sơ; không suy ra số đã giữ từ tên phiếu hoặc chênh lệch tiền. Các bước trả phòng, quyết toán cọc và duyệt phiếu hiện hành tiếp tục dùng luồng cũ.
+
 ## Tham chiếu cơ chế quyết toán hiện hành
 
 > Đào sâu **logic & dòng tiền** của 2 luồng thanh lý. Bổ sung cho [05 — Hợp đồng](05-hop-dong.md)

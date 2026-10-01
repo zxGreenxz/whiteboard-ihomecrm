@@ -116,7 +116,8 @@
     {
       "file": "16-thanh-ly-hop-dong.md",
       "copilotIngest": true,
-      "reviewed": null
+      "reviewed": null,
+      "why": "Giữ nợ review của tài liệu cũ; mục lịch hỗ trợ v2 chờ phát hành chỉ bổ sung cutoff thực trả, phần chưa dùng cần đối chiếu và giữ nguồn/lương theo Task8 đã kiểm chứng TEST."
     },
     {
       "file": "17-luong-thuong.md",
