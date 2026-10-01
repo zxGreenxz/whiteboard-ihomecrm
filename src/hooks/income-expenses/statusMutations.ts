@@ -497,7 +497,8 @@ const readStatusReceipt = async (id:string,expectedApproval?:'UNAPPROVED'|'APPRO
     if(error || !data || data.id!==id)throw new TypeError('Chưa đọc được trạng thái của đúng phiếu sau thao tác.');
     if(expectedApproval && data.approval_status!==expectedApproval)throw new TypeError('Chưa xác nhận được trạng thái yêu cầu của phiếu.');
     if(data.approval_status!==undefined && !['UNAPPROVED','APPROVED','CANCELLED'].includes(String(data.approval_status)))throw new TypeError('Trạng thái duyệt phiếu chưa xác định.');
-    if(data.posting_status!==undefined && !['UNPOSTED','POSTED','REVERSED','NOT_APPLICABLE'].includes(String(data.posting_status)))throw new TypeError('Trạng thái thu/chi phiếu chưa xác định.');
+    // posting_status NULL hợp lệ ở phiếu cũ (CHECK: posting_status IS NULL OR …; prod 01/10/2026 còn 13 phiếu).
+    if(data.posting_status!==undefined && data.posting_status!==null && !['UNPOSTED','POSTED','REVERSED','NOT_APPLICABLE'].includes(String(data.posting_status)))throw new TypeError('Trạng thái thu/chi phiếu chưa xác định.');
     return data;
   } catch(error) {
     throw Object.assign(new TypeError('Đã gửi yêu cầu nhưng chưa xác nhận được trạng thái phiếu. Đối chiếu trước khi thao tác tiếp.'),{cause:error});
