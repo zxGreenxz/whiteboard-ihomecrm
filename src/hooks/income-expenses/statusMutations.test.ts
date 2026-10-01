@@ -81,6 +81,7 @@ const getInvalidatedRoots = () =>
     ([filters]) => (filters as { queryKey: readonly unknown[] }).queryKey[0],
   );
 
+let readbackPostingStatus: string | null = 'UNPOSTED';
 const mockVoucherRead = (result: {
   data: Record<string, unknown> | null;
   error: Record<string, unknown> | null;
@@ -92,7 +93,7 @@ const mockVoucherRead = (result: {
   builder.maybeSingle=vi.fn(async()=>{
     if(columns==='id,code,approval_status,posting_status,verified_at'){
       const status=[...mocks.rpc.mock.calls].reverse().find(([name])=>name==='set_termination_forfeit_status_v1')?.[1]?.p_status??'UNAPPROVED';
-      return {data:{id,code:'PT01',approval_status:status,posting_status:'UNPOSTED',verified_at:null},error:null};
+      return {data:{id,code:'PT01',approval_status:status,posting_status:readbackPostingStatus,verified_at:null},error:null};
     }
     return result;
   });
@@ -101,7 +102,7 @@ const mockVoucherRead = (result: {
 };
 
 beforeEach(() => {
-  vi.clearAllMocks();localStorage.clear();
+  vi.clearAllMocks();localStorage.clear();readbackPostingStatus='UNPOSTED';
   mocks.from.mockReset();
   mocks.rpc.mockReset();mockVoucherRead({data:{},error:null});
 });
@@ -161,6 +162,20 @@ describe("termination forfeit status rollout fallback", () => {
     expect(voucherQuery.select).toHaveBeenCalledWith("system_source, notes");
     expect(voucherQuery.eq).toHaveBeenCalledWith("id", "voucher-1");
     expect(mocks.toastError).not.toHaveBeenCalled();
+  });
+
+  // Phiếu cũ có posting_status NULL (CHECK cho phép; prod 01/10/2026 còn 13 phiếu): thao tác đã
+  // thành công thì không được báo "chưa xác nhận được trạng thái phiếu".
+  it("confirms a status change on a legacy voucher whose posting_status is NULL", async () => {
+    readbackPostingStatus = null;
+    mockVoucherRead({ data: { system_source: null, notes: "Phiếu nhập tay", approval_version: 2 }, error: null });
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === "set_termination_forfeit_status_v1") return { data: null, error: { code: "PGRST202", message: "Could not find the function public.set_termination_forfeit_status_v1 in the schema cache" } };
+      if (name === "unapprove_voucher") return { data: null, error: null };
+      throw new Error(`Unexpected RPC ${name}`);
+    });
+    const mutation = renderHook(()=>useUnapproveVoucher()).result.current as unknown as StatusMutation;
+    await expect(mutation.mutationFn("voucher-1")).resolves.toBe(false);
   });
 
   it.each([
