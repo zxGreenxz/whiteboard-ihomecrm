@@ -626,7 +626,9 @@ export function useContractFormState({
           'start_billing_date', 'end_billing_date', 'discount_months',
           'discount_amount_per_month', 'rent_support'] as const
       ).some((field) => form.getFieldState(field).isDirty);
-      if (!userChangedInvoiceField && draftInvoiceEditRevision.current === 0) return;
+      // Preserve saved rows until the first user edit. Once generated, returning
+      // to defaults is still a change even though RHF clears the dirty flags.
+      if (baseline.signature === null && !userChangedInvoiceField && draftInvoiceEditRevision.current === 0) return;
       if (baseline.signature === draftInvoiceSignature) return;
       baseline.signature = draftInvoiceSignature;
     }

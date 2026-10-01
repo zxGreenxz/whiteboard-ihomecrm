@@ -123,6 +123,57 @@ it('preserves saved manual invoice on hydration, then rebuilds it after an actua
   await waitFor(() => expect(result.current.invoiceItems.find((item) => item.type === 'RENT')?.unit_price).not.toBe(rentBeforeDateEdit));
 });
 
+it('recomputes the rent period after edited dates return to saved defaults and RHF clears dirty flags', async () => {
+  defaults.rows = [];
+  const draft = makeDraft('Kỳ đã lưu');
+  draft.payload.form = { ...draft.payload.form, rent_price: 3100000, start_date: '2026-09-20',
+    start_billing_date: '2026-09-20', end_billing_date: '2026-10-05' };
+  draft.payload.rent_support = { version: 2, start_billing_month: '2026-09', payer: 'SALE',
+    sale_party_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', deduction_policy: 'COMMISSION_ONLY',
+    collection_mode: 'UPFRONT_COMMITTED', segments: [{ month_count: 3, monthly_amount: '300000' }, { month_count: 9, monthly_amount: '100000' }] };
+  const { result } = renderHook(() => useContractFormState({ open: true, draft }));
+  // Merely opening a draft must retain its saved/custom rows.
+  expect(result.current.invoiceItems).toEqual(draft.payload.editor_state?.invoice_items);
+  act(() => {
+    result.current.form.setValue('start_billing_date', '2026-09-28', { shouldDirty: true });
+    result.current.form.setValue('end_billing_date', '2026-10-31', { shouldDirty: true });
+  });
+  await waitFor(() => expect(result.current.invoiceItems.find(item => item.type === 'RENT')).toMatchObject({
+    from_date: '2026-09-28', to_date: '2026-10-31', unit_price: 3410000,
+  }));
+  act(() => {
+    result.current.form.setValue('start_billing_date', '2026-09-20', { shouldDirty: true });
+    result.current.form.setValue('end_billing_date', '2026-10-05', { shouldDirty: true });
+  });
+  expect(result.current.form.getFieldState('start_billing_date').isDirty).toBe(false);
+  expect(result.current.form.getFieldState('end_billing_date').isDirty).toBe(false);
+  // 11 September days / 30 + 5 October days / 31, rounded once, at 3.1m/month.
+  await waitFor(() => expect(result.current.invoiceItems.find(item => item.type === 'RENT')).toMatchObject({
+    from_date: '2026-09-20', to_date: '2026-10-05', description: 'Tiền thuê tháng đầu (16 ngày)', unit_price: 1636667,
+  }));
+  const saved = result.current.getDraftPayload();
+  expect(saved.rent_support).toEqual(draft.payload.rent_support);
+  expect(saved.form).toMatchObject({ start_billing_date: '2026-09-20', end_billing_date: '2026-10-05' });
+  expect(saved.editor_state?.invoice_items.find(item => item.type === 'RENT')).toMatchObject({
+    from_date: saved.form.start_billing_date, to_date: saved.form.end_billing_date, unit_price: 1636667,
+  });
+});
+
+it('keeps manual invoice row edits after generation when only notes or the same-id draft refresh changes', async () => {
+  defaults.rows = [];
+  const draft = makeDraft('Ghi chú đã lưu');
+  const { result, rerender } = renderHook(({ value }) => useContractFormState({ open: true, draft: value }),
+    { initialProps: { value: draft } });
+  act(() => result.current.form.setValue('end_billing_date', '2026-10-06', { shouldDirty: true }));
+  await waitFor(() => expect(result.current.invoiceItems.some(item => item.type === 'RENT')).toBe(true));
+  const rent = result.current.invoiceItems.find(item => item.type === 'RENT')!;
+  act(() => result.current.updateInvoiceItem(rent.id, 'unit_price', 123456));
+  act(() => result.current.form.setValue('notes', 'Chỉ sửa ghi chú', { shouldDirty: true }));
+  rerender({ value: { ...draft, revision: 2 } });
+  expect(result.current.invoiceItems.find(item => item.id === rent.id)?.unit_price).toBe(123456);
+  expect(result.current.getDraftPayload().editor_state?.invoice_items.find(item => item.id === rent.id)?.unit_price).toBe(123456);
+});
+
 it('B15 tải lại form khôi phục issue/contract ID từ storage, đổi selector không mất pending',async()=>{
  localStorage.clear();const saved={contract:{id:'edit-c1',organization_id:'actual-a',rent_price:100},customers:[],services:[]};
  await expect(runContractEdit({contractId:'edit-c1',updates:{rent_price:200},fieldsFingerprint:'intent',customers:[{customer_id:'customer1',is_representative:true}],services:[]},{read:async()=>saved,update:async()=>null,customers:vi.fn(),services:vi.fn()})).rejects.toThrow();
