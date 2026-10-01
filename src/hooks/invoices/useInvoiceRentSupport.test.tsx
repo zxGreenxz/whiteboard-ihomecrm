@@ -9,7 +9,7 @@ import { useInvoiceRentSupport } from './useInvoiceRentSupport';
 
 const api=vi.hoisted(()=>({plan:vi.fn(),quote:vi.fn(),read:vi.fn()}));
 vi.mock('@/lib/invoiceRentSupport',async original=>({...await original<typeof import('@/lib/invoiceRentSupport')>(),readInvoiceRentSupportPlan:api.plan,quoteInvoiceRentSupport:api.quote,readSavedInvoiceSupportRequest:api.read}));
-const items:InvoiceFormData['items']=[{type:'RENT',accounting_class:'REVENUE',description:'Rent',unit_price:1000000,quantity:1,coefficient:1}];
+const items:InvoiceFormData['items']=[{type:'RENT',accounting_class:'REVENUE',description:'Rent',unit_price:1000000,quantity:1,coefficient:1,sort_order:0}];
 afterEach(()=>{cleanup();vi.restoreAllMocks();});
 beforeEach(()=>{
  api.read.mockReset().mockResolvedValue(null);
