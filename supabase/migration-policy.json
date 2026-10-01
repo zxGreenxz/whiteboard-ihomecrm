@@ -341,7 +341,7 @@
         "removedFunctions": 30,
         "removedTriggers": 3,
         "retainedTriggers": 2,
-        "forwardSuccessions": 1
+        "forwardSuccessions": 2
       },
       "witness": {
         "functions": [
@@ -764,6 +764,42 @@
               },
               "after": {
                 "md5": "b65e6b702fdf0a8fc0f15a36a519f453",
+                "owner": "postgres",
+                "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+              }
+            }
+          ]
+        },
+        {
+          "file": "20260930101338_rent_support_upfront_payouts.sql",
+          "sha256": "2de1a98bfeda05d5b362a88fe09a3f071df810e8fda91fd5d98ed9b5a5198bf8",
+          "appliedEvidencePath": "docs/generated/schema-change-evidence/20260930101338_rent_support_upfront_payouts.json",
+          "expectedCounts": {
+            "functions": 2
+          },
+          "functions": [
+            {
+              "signature": "public.create_sale_bonus_from_deposit_v1(uuid,numeric,text,text,text,date,uuid,jsonb)",
+              "before": {
+                "md5": "fbaed9b582feab422372165eb55a8288",
+                "owner": "postgres",
+                "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+              },
+              "after": {
+                "md5": "c4509ba56079f7c60b8ed3581714f27f",
+                "owner": "postgres",
+                "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+              }
+            },
+            {
+              "signature": "public.create_commission_voucher(uuid,text,numeric,date,uuid,text,text,text,text,text,jsonb)",
+              "before": {
+                "md5": "b65e6b702fdf0a8fc0f15a36a519f453",
+                "owner": "postgres",
+                "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+              },
+              "after": {
+                "md5": "26100576d7adde1bba05cb84ca8ffdc0",
                 "owner": "postgres",
                 "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
               }
