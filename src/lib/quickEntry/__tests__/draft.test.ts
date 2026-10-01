@@ -24,9 +24,10 @@ const personal = (over: Partial<QuickDraft> = {}): QuickDraft => ({
   ...over,
 });
 
-const issues = (d: QuickDraft) => {
+// `"issues" in r` thay cho thu hẹp theo r.ok: tsconfig.app.json không bật strictNullChecks.
+const issues = (d: QuickDraft): Record<string, string> => {
   const r = validateDraft(d);
-  return r.ok ? {} : r.issues;
+  return "issues" in r ? r.issues : {};
 };
 
 describe("validateDraft — khoản công ty", () => {
