@@ -665,9 +665,9 @@ async function main(argv) {
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   main(process.argv)
-    .then((c) => process.exit(c))
+    .then((c) => { process.exitCode = c; })
     .catch((e) => {
       console.error(`❌ ${e.message}`);
-      process.exit(1);
+      process.exitCode = 1;
     });
 }

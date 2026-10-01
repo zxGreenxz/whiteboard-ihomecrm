@@ -1,6 +1,39 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 
 import { buildTransaction } from "../apply-reviewed-migration.mjs";
+
+describe("CLI completion drains pending I/O without losing its exit status", () => {
+  it.each([
+    ["success", "return 0;", 0],
+    ["rejected migration", "return 1;", 1],
+    ["unexpected exception", "throw new Error('terminal-fixture-error');", 1],
+  ])("%s", (_name, outcome, expectedCode) => {
+    const source = readFileSync(new URL("../apply-reviewed-migration.mjs", import.meta.url), "utf8");
+    const entryStart = source.lastIndexOf("if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {");
+    expect(entryStart).toBeGreaterThan(0);
+    // Execute the actual terminal block in a real child process. Stub only main:
+    // no migration, credential, backup, filesystem write or network call runs.
+    const result = spawnSync(process.execPath, ["--input-type=module", "-e", `
+      import { fileURLToPath } from 'node:url';
+      process.argv[1] = fileURLToPath(import.meta.url);
+      async function main() { ${outcome} }
+      setImmediate(() => {
+        process.stdout.write('stdout-drained:' + process.exitCode + '\\n');
+        process.stderr.write('stderr-drained:' + process.exitCode + '\\n');
+      });
+      ${source.slice(entryStart)}
+    `], { encoding: "utf8", timeout: 10000,
+      env: { SystemRoot: process.env.SystemRoot, TEMP: process.env.TEMP, TMP: process.env.TMP } });
+    expect(result.error).toBeUndefined();
+    expect(result.signal).toBeNull();
+    expect(result.status).toBe(expectedCode);
+    expect(result.stdout).toContain(`stdout-drained:${expectedCode}`);
+    expect(result.stderr).toContain(`stderr-drained:${expectedCode}`);
+    if (outcome.includes("throw")) expect(result.stderr).toContain("❌ terminal-fixture-error");
+  });
+});
 
 // SỰ CỐ 07/08/2026: `npm run migrate:forward <file>` KHÔNG kèm --apply được
 // quảng cáo là DRY-RUN ("bọc ROLLBACK") nhưng đã GHI THẬT lên production một
