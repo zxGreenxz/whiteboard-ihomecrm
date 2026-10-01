@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { QueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { syncAuthQueryCache } from "@/lib/authQueryCache";
+import { refetchFailedActiveQueries, syncAuthQueryCache } from "@/lib/authQueryCache";
 
 /**
  * Đăng ký listener auth và trả về hàm huỷ.
@@ -20,7 +20,17 @@ export function subscribeAuthCacheSync(queryClient: QueryClient): () => void {
     syncAuthQueryCache(queryClient, event, session);
   });
 
-  return () => data.subscription.unsubscribe();
+  // Tab hiện lại (mở lại app trên điện thoại): đọc lại khu vực đang báo lỗi tải.
+  const doc = typeof document === "undefined" ? null : document;
+  const onVisible = () => {
+    if (doc?.visibilityState === "visible") void refetchFailedActiveQueries(queryClient);
+  };
+  doc?.addEventListener("visibilitychange", onVisible);
+
+  return () => {
+    data.subscription.unsubscribe();
+    doc?.removeEventListener("visibilitychange", onVisible);
+  };
 }
 
 /**

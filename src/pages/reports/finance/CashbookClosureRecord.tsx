@@ -20,6 +20,7 @@ import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchMyOrganizations } from "@/lib/myOrganizations";
 import { useCashbookClosings, type ConfirmedClosure } from "@/hooks/useCashbookClosing";
 
 const fmtVND = (n: number | string | null | undefined) => {
@@ -88,14 +89,11 @@ export const useClosureExtras = (closure: ConfirmedClosure | null | undefined) =
 
       const orgId = (acc as { organization_id?: string | null } | null)?.organization_id ?? null;
       if (orgId) {
-        const { data: org, error: organizationError } = await supabase
-          .from("organizations")
-          .select("name")
-          .eq("id", orgId)
-          .maybeSingle();
-        if (organizationError) throw organizationError;
+        // Tên công ty lấy qua danh bạ công ty của người xem, không select bảng organizations
+        // (RLS trả [] cho cả Chủ công ty — xem fetchMyOrganizations).
+        const org = (await fetchMyOrganizations()).find((o) => o.id === orgId);
         if (!org) throw new Error("Không tìm thấy tổ chức của biên bản");
-        out.organization_name = (org as { name?: string | null } | null)?.name ?? null;
+        out.organization_name = org.name;
       }
 
       // Chỉ đi tìm khi biên bản THỰC SỰ có chênh lệch — lệch 0 thì hàm ký

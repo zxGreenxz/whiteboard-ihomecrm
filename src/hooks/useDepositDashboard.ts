@@ -46,7 +46,9 @@ export function useHeldDepositSummary(
         expected: nn(r.expected),
         held: nn(r.held),
         shortfallAll: nn(r.shortfall_all),
-        shortfallShort: nn(r.shortfall_short),
+        // SQL tính cột này bằng `SUM(...) FILTER (WHERE st = 'SHORT')`: toà không có HĐ thiếu cọc
+        // trả NULL (tổng rỗng), tức đúng 0đ. Chỉ NULL tường minh được đọc là 0; thiếu khoá vẫn báo lỗi.
+        shortfallShort: r.shortfall_short === null ? 0 : nn(r.shortfall_short),
         fullCount: nn(r.full_count),
         shortCount: nn(r.short_count),
         firstInvoiceCount: nn(r.first_invoice_count),

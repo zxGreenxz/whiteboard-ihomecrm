@@ -1233,6 +1233,7 @@
     "src/lib/moneyInput.ts",
     "src/lib/monthPeriod.ts",
     "src/lib/moveOutNoticeQueue.ts",
+    "src/lib/myOrganizations.ts",
     "src/lib/network-center/actorIdentity.ts",
     "src/lib/network-center/authCacheIsolation.ts",
     "src/lib/network-center/contracts.ts",

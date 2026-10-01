@@ -398,7 +398,9 @@ const GENERAL_SETTINGS_DEFAULTS: GeneralSettingsMap = {
   contract_asset_inspection: false,
   contract_auto_create_on_renewal: false,
   contract_e_signing_enabled: false,
-  contract_payment_date_setting: '1',
+  // Ô này là công tắc (GeneralSettingsPage) nên lưu true/false. Mặc định cũ là chuỗi '1' (seed
+  // 20250101000012) làm lần đọc sau khi gạt từ chối cả bộ cài đặt — '1' vốn hiển thị là TẮT.
+  contract_payment_date_setting: false,
   contract_show_expiring_status: true,
   contract_overdue_notification: false,
   // Invoice tab
@@ -439,7 +441,13 @@ export function useGeneralSettings() {
 
       if (error) throw error;
 
-      return readGeneralSettings(data,GENERAL_SETTINGS_DEFAULTS);
+      // Dòng seed cũ lưu công tắc ngày thanh toán dạng chuỗi ('"1"'); quy về boolean như trang vẫn hiển thị.
+      const rows = Array.isArray(data)
+        ? data.map((row) => row.key === 'contract_payment_date_setting' && typeof row.value === 'string'
+          ? { ...row, value: row.value === 'true' }
+          : row)
+        : data;
+      return readGeneralSettings(rows,GENERAL_SETTINGS_DEFAULTS);
     },
     enabled: !!user?.id,
     staleTime: 1000 * 60 * 5,

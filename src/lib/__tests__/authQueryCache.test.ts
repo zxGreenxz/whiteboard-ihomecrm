@@ -327,6 +327,41 @@ describe("syncAuthQueryCache", () => {
     );
   });
 
+  // Báo lỗi 01/10/2026: màn Tài khoản báo "Chưa tải được" sau khi mở lại tab, bấm Tải lại mới được.
+  it("re-reads only failed active queries after a same-user token refresh", async () => {
+    const client = queryClient();
+    const sessionA = session("user-a", "token-a");
+    client.setQueryData(["auth", "user"], sessionA.user);
+    client.setQueryData(["auth", "session"], sessionA);
+    const profileFn = vi.fn().mockRejectedValueOnce(new Error("Load failed")).mockResolvedValue("profile-a");
+    const healthyFn = vi.fn().mockResolvedValue("healthy");
+    const profile = new QueryObserver(client, { queryKey: ["profile", "user-a"], queryFn: profileFn });
+    const healthy = new QueryObserver(client, { queryKey: ["healthy"], queryFn: healthyFn, staleTime: Infinity });
+    const offProfile = profile.subscribe(() => {});
+    const offHealthy = healthy.subscribe(() => {});
+    await vi.waitFor(() => expect(profile.getCurrentResult().status).toBe("error"));
+    await vi.waitFor(() => expect(healthy.getCurrentResult().status).toBe("success"));
+
+    const scheduled: Array<() => void> = [];
+    syncAuthQueryCache(client, "TOKEN_REFRESHED", session("user-a", "token-a2"), null, (cb) => scheduled.push(cb));
+    expect(scheduled).toHaveLength(1);
+    scheduled.forEach((run) => run());
+
+    await vi.waitFor(() => expect(profile.getCurrentResult().data).toBe("profile-a"));
+    expect(profileFn).toHaveBeenCalledTimes(2);
+    expect(healthyFn).toHaveBeenCalledTimes(1);
+    offProfile();
+    offHealthy();
+  });
+
+  it("does not schedule a failed-query re-read when signed out", () => {
+    const client = queryClient();
+    client.setQueryData(["auth", "user"], session("user-a").user);
+    const schedule = vi.fn();
+    syncAuthQueryCache(client, "SIGNED_OUT", null, null, schedule, () => false);
+    expect(schedule).not.toHaveBeenCalled();
+  });
+
   it("treats INITIAL_SESSION without prior auth query state as bootstrap", () => {
     const client = queryClient();
     const sessionA = session("user-a");

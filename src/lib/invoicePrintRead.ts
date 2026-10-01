@@ -6,13 +6,16 @@ const date=z.string().refine(value=>{
  const parsed=new Date(`${value}T00:00:00Z`);
  return Number.isFinite(parsed.getTime())&&parsed.toISOString().slice(0,10)===value;
 },'Chưa xác nhận được ngày của hóa đơn.');
+const person=z.object({full_name:z.string().nullable().optional(),phone:z.string().nullable().optional()});
 const invoicePrintSchema=z.object({
  id:z.string().min(1),invoice_number:z.string().nullable().optional(),billing_month:z.string().nullable().optional(),
  total_amount:money,paid_amount:money,subtotal:money,discount_amount:money,previous_debt:money,
  issue_date:date.nullable().optional(),due_date:date.nullable().optional(),creator_name:z.string().nullable().optional(),
  invoice_items:z.array(z.object({id:z.string().min(1),type:z.string().optional(),description:z.string().nullable().optional(),unit_price:money,quantity:money,amount:money,sort_order:money.optional()})),
  payments:z.array(z.object({id:z.string().min(1),amount:money})),
- contract:z.object({contract_number:z.string().nullable().optional(),tenant:z.object({full_name:z.string().nullable().optional(),phone:z.string().nullable().optional()}).nullable().optional()}).nullable().optional(),
+ contract:z.object({contract_number:z.string().nullable().optional(),tenant:person.nullable().optional(),
+  // Hợp đồng hiện hành để khách ở contract_customers (contracts.tenant_id = NULL).
+  contract_customers:z.array(z.object({is_representative:z.boolean().nullable().optional(),customer:person.nullable().optional()})).nullable().optional()}).nullable().optional(),
  building:z.object({name:z.string().nullable().optional(),address:z.string().nullable().optional()}).nullable().optional(),
  room:z.object({name:z.string().nullable().optional()}).nullable().optional(),
 });

@@ -78,6 +78,22 @@ export function clearBusinessPerformanceReportFilters(
   }
 }
 
+/**
+ * Đọc lại các khu vực ĐANG HIỆN mà lần tải trước đã lỗi.
+ *
+ * Gọi khi có lý do mới để tin lần đọc sau sẽ được: token vừa làm mới, hoặc tab vừa hiện lại
+ * (iPhone treo tab nền, mở lại thì request đầu có thể hỏng trước khi mạng/phiên kịp hồi).
+ * Trước đây người dùng phải tự bấm "Tải lại" (báo lỗi 01/10/2026 ở màn Tài khoản).
+ * Chỉ đụng query đang lỗi — query đang có dữ liệu tươi không bị gọi lại.
+ */
+export function refetchFailedActiveQueries(queryClient: QueryClient): Promise<void> {
+  return queryClient.refetchQueries({
+    type: "active",
+    predicate: (query) =>
+      query.state.status === "error" && !isLiveAuthQueryKey(query.queryKey),
+  });
+}
+
 export function didAuthPrincipalChange(
   event: AuthChangeEvent,
   previousPrincipalKnown: boolean,
@@ -149,6 +165,16 @@ export function syncAuthQueryCache(
     } catch {
       reloadInitiated = false;
     }
+  }
+
+  if (
+    !principalChanged &&
+    nextUserId !== null &&
+    (event === "TOKEN_REFRESHED" || event === "SIGNED_IN")
+  ) {
+    schedule(() => {
+      void refetchFailedActiveQueries(queryClient);
+    });
   }
 
   if (!reloadInitiated && resetQueryHashes.size > 0) {

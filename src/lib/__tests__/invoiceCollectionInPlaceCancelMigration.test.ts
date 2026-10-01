@@ -163,7 +163,8 @@ describe("Đợt 5 — mặt tiền FE", () => {
     // Mã đến từ can_reverse_collection_v1; thiếu một mã là người dùng thấy
     // "undefined" đúng lúc đang lo mất tiền.
     for (const code of [
-      "ALREADY_REVERSED", "CASHBOOK_CLOSED", "HANDOVER_LOCKED", "PROFIT_LOCKED", "UNKNOWN",
+      "ALREADY_REVERSED", "NOT_COLLECTOR", "NOT_LIFO", "CREDIT_USED",
+      "CASHBOOK_CLOSED", "HANDOVER_LOCKED", "PROFIT_LOCKED", "UNKNOWN",
     ] as const) {
       expect(COLLECTION_BLOCK_TEXT[code]).toBeTruthy();
     }

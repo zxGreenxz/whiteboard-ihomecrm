@@ -19,7 +19,9 @@ import { rpcNullable } from "@/lib/rpcNullable";
 
 export type ReceivingMethod = "TM" | "TK" | "TT";
 
-const bookSchema = z.object({ id: z.string(), name: z.string(), isDefault: z.boolean().optional() });
+// SQL dựng `'isDefault', a.id = v_default_tk`: toà chưa chọn sổ mặc định (NULL) mà có sổ phụ thì so
+// với NULL ra null — nghĩa là "không phải mặc định", không phải phản hồi hỏng.
+const bookSchema = z.object({ id: z.string(), name: z.string(), isDefault: z.boolean().nullish().transform((v) => v ?? undefined) });
 export type ReceivingBook = z.infer<typeof bookSchema>;
 
 export const receivingCashbooksSchema = z.object({

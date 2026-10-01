@@ -21,9 +21,13 @@ export const useInvoiceForPrint = (id: string | undefined) =>
           *,
           contract:contracts!invoices_contract_id_fkey (
             id, contract_number,
-            tenant:tenants!contracts_tenant_id_fkey ( id, full_name, phone )
+            tenant:tenants!contracts_tenant_id_fkey ( id, full_name, phone ),
+            contract_customers!contract_customers_contract_id_fkey (
+              is_representative,
+              customer:customers!contract_customers_customer_id_fkey ( id, full_name, phone )
+            )
           ),
-          building:buildings!invoices_building_id_fkey ( id, name, address ),
+          building:buildings!invoices_building_id_fkey ( id, name ),
           room:rooms!invoices_room_id_fkey ( id, name ),
           invoice_items ( id, type, description, unit_price, quantity, amount, sort_order ),
           payments ( id, amount, payment_date, payment_method )
@@ -54,7 +58,9 @@ const InvoicePrintPage = () => {
   const items = inv.invoice_items.slice().sort(
     (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)
   );
-  const tenant = inv.contract?.tenant;
+  // Hợp đồng hiện hành để khách ở contract_customers (tenant_id = NULL); tenant chỉ còn ở hợp đồng đời cũ.
+  const linked = inv.contract?.contract_customers ?? [];
+  const tenant = (linked.find((c) => c.is_representative) ?? linked[0])?.customer ?? inv.contract?.tenant;
   const remaining = inv.total_amount - inv.paid_amount;
 
   return (

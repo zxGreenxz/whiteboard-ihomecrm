@@ -573,16 +573,17 @@ export function useExpenseRatioReport(
       }
 
       // PAGED: cộng chi theo hạng mục qua nhiều tháng/toà — phân trang kẻo cap 1000.
+      // Chỉ lấy MÃ loại chi rồi ghép với bảng loại đọc riêng bên dưới: nhúng
+      // `income_expense_type:income_expense_type_id(...)` cho từng dòng chi bắt RLS của
+      // income_expense_types chạy lại trên mỗi dòng — 6 tháng trên prod vượt statement
+      // timeout (57014, đo 01/10/2026: >8s; bỏ nhúng còn ~2s).
       const vouchers = await fetchAllRows<any>(
         (from, to) => {
           let q = supabase
             .from("income_expenses" as any)
             .select(
               `id, voucher_date, building_id, type, approval_status,
-               income_expense_items (
-                 amount,
-                 income_expense_type:income_expense_type_id (id, name, category, type)
-               )`
+               income_expense_items ( amount, income_expense_type_id )`
             )
             .eq("type", "EXPENSE")
             .eq("approval_status", "APPROVED")
@@ -596,6 +597,20 @@ export function useExpenseRatioReport(
       );
       if (vouchers === null) throw new Error("Lỗi tải chi phí (income_expenses)");
 
+      // Bảng loại thu chi nhỏ (vài trăm dòng): đọc một lượt, có phân trang cho chắc.
+      // Loại mà RLS không trả về thì vắng trong map ⇒ bị bỏ qua, đúng như khi nhúng trả null.
+      type ExpenseTypeRow = { id: string; name: string | null; category: string | null; type: string | null };
+      const typeRows = await fetchAllRows<ExpenseTypeRow>(
+        (from, to) => supabase
+          .from("income_expense_types")
+          .select("id, name, category, type")
+          .order("id", { ascending: true })
+          .range(from, to),
+        { label: "expenseRatio.types" },
+      );
+      if (typeRows === null) throw new Error("Lỗi tải loại thu chi (income_expense_types)");
+      const typeById = new Map<string, ExpenseTypeRow>(typeRows.map((t) => [t.id, t]));
+
       const UNCATEGORIZED = "(Chưa phân nhóm)";
       const expensesByMonthCategory: Record<string, Record<string, number>> = {};
       const byTypeNameMap: Record<string, { category: string; typeName: string; total: number }> = {};
@@ -608,10 +623,10 @@ export function useExpenseRatioReport(
         if (!month || expensesByMonthCategory[month] === undefined) continue;
         const items = (voucher.income_expense_items ?? []) as Array<{
           amount: number | null;
-          income_expense_type: { name: string | null; category: string | null; type: string | null } | null;
+          income_expense_type_id: string | null;
         }>;
         for (const item of items) {
-          const typeRow = item.income_expense_type;
+          const typeRow = item.income_expense_type_id ? typeById.get(item.income_expense_type_id) : undefined;
           if (!typeRow || typeRow.type !== "expense") continue;
           const cat = (typeRow.category ?? "").trim() || UNCATEGORIZED;
           if (category !== undefined && cat !== category) continue;

@@ -46,9 +46,15 @@ type DeletePaymentResult = {
   reversalMode: ReversalMode | null;
 };
 
-/** Vì sao không hoàn tác được — mã ổn định từ can_reverse_collection_v1. */
+/**
+ * Vì sao không hoàn tác được — mã ổn định từ can_reverse_collection_v1 (đủ bộ đo trên prod 01/10/2026:
+ * ALREADY_REVERSED, NOT_COLLECTOR, NOT_LIFO, CREDIT_USED + mã khoá kỳ của period_block_code_v1).
+ */
 export type CollectionReversalBlockCode =
   | 'ALREADY_REVERSED'
+  | 'NOT_COLLECTOR'
+  | 'NOT_LIFO'
+  | 'CREDIT_USED'
   | 'CASHBOOK_CLOSED'
   | 'HANDOVER_LOCKED'
   | 'PROFIT_LOCKED'
@@ -62,6 +68,9 @@ export interface CollectionReversalEligibility {
 
 export const COLLECTION_BLOCK_TEXT: Record<CollectionReversalBlockCode, string> = {
   ALREADY_REVERSED: 'Khoản thu này đã được hoàn tác trước đó.',
+  NOT_COLLECTOR: 'Chỉ người đã thu khoản này mới hoàn tác được.',
+  NOT_LIFO: 'Phải hoàn tác lần thu mới nhất của hoá đơn trước, rồi mới tới lần thu này.',
+  CREDIT_USED: 'Tiền thừa của lần thu này đã được dùng trả hoá đơn khác — hoàn tác khoản dùng tiền thừa đó trước.',
   CASHBOOK_CLOSED:
     'Sổ quỹ chứa khoản thu này đã chốt & bàn giao — kỳ đó khoá vĩnh viễn. Muốn điều chỉnh, hãy nhờ quản trị lập phiếu chi đối ứng ở kỳ hiện tại.',
   HANDOVER_LOCKED:

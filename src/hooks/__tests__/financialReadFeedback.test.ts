@@ -36,6 +36,10 @@ it.each([null,{}, {total_amount:'not-a-number'}])('thống kê hoá đơn không
 
 it('tổng phiếu thu chi thiếu phản hồi không thành zero',async()=>{io.rpc.mockResolvedValue({data:null,error:null});await expect(incomeExpenseStatsQuery({},false).queryFn()).rejects.toThrow();});
 it('danh sách chờ duyệt null không thành không có phiếu',async()=>{io.rpc.mockResolvedValue({data:null,error:null});await expect((usePendingApprovals() as unknown as {queryFn:()=>Promise<unknown>}).queryFn()).rejects.toThrow();});
+// get_held_deposit_summary: `SUM(...) FILTER (WHERE st='SHORT')` trả NULL cho toà không có HĐ thiếu cọc — prod 01/10/2026: 17/18 toà.
+const heldRow={building_id:'b1',building_name:'331PHI',contract_count:5,expected:25000000,held:25000000,shortfall_all:0,full_count:5,short_count:0,first_invoice_count:0};
+it('toà không có HĐ thiếu cọc (SUM FILTER rỗng = NULL) đọc là 0đ, không làm hỏng cả trang cọc',async()=>{io.rpc.mockResolvedValue({data:[{...heldRow,shortfall_short:null}],error:null});await expect((useHeldDepositSummary() as unknown as {queryFn:()=>Promise<unknown>}).queryFn()).resolves.toMatchObject([{shortfallShort:0,held:25000000}]);});
+it('thiếu hẳn khoá shortfall_short vẫn là phản hồi hỏng',async()=>{io.rpc.mockResolvedValue({data:[heldRow],error:null});await expect((useHeldDepositSummary() as unknown as {queryFn:()=>Promise<unknown>}).queryFn()).rejects.toThrow('Chưa đọc');});
 it.each([useHeldDepositSummary,useRefundForfeitSummary])('tổng cọc trên dashboard thiếu phản hồi không thành zero',async hook=>{io.rpc.mockResolvedValue({data:null,error:null});await expect((hook() as unknown as {queryFn:()=>Promise<unknown>}).queryFn()).rejects.toThrow();});
 
 const cycleFixture={manager:{id:'u1',name:null},from:'2026-09-01',to:'2026-09-30',building_count:0,
