@@ -10,6 +10,7 @@ import {
   modelLabel,
   normalizeChoice,
   readModelId,
+  requestedModels,
   saveChoice,
 } from "../models";
 
@@ -28,9 +29,13 @@ describe("danh sách ô chọn khớp danh sách cho phép của hàm máy chủ
     expect([...READ_UNSUPPORTED]).toEqual(serverList("READ_UNSUPPORTED"));
   });
 
-  it("mặc định của trang là mô hình đầu chuỗi mặc định của máy chủ", () => {
-    expect(DEFAULT_CHOICE.stt).toBe(serverList("STT_MODELS_MAC_DINH")[0]);
-    expect(readModelId(DEFAULT_CHOICE)).toBe(serverList("READ_MODELS_MAC_DINH")[0]);
+  it("mặc định của trang = để MÁY CHỦ chọn: không gửi model ⇒ chuỗi biến môi trường vận hành đặt vẫn quyết định", () => {
+    expect(requestedModels(DEFAULT_CHOICE)).toEqual({});
+    expect(requestedModels({ stt: "deepgram/nova-3", readModel: "cx/gpt-6-sol", effort: "high" })).toEqual({
+      stt: "deepgram/nova-3",
+      read: "cx/gpt-6-sol(high)",
+    });
+    expect(requestedModels({ stt: "", readModel: "cx/gpt-6-luna", effort: "" })).toEqual({ read: "cx/gpt-6-luna" });
   });
 });
 
@@ -38,6 +43,7 @@ describe("readModelId / normalizeChoice", () => {
   it("mức tự động ⇒ id gốc; có mức ⇒ hậu tố (mức) như 9router", () => {
     expect(readModelId({ readModel: "cx/gpt-6.1-sol", effort: "" })).toBe("cx/gpt-6.1-sol");
     expect(readModelId({ readModel: "cx/gpt-6.1-sol", effort: "high" })).toBe("cx/gpt-6.1-sol(high)");
+    expect(readModelId({ readModel: "", effort: "low" })).toBe("");
   });
 
   it("lựa chọn hỏng/cũ ⇒ mặc định; hợp lệ ⇒ giữ nguyên", () => {

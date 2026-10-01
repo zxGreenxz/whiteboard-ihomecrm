@@ -17,7 +17,7 @@ import { useQuickEntryFeed, type FeedMessage } from "@/hooks/quick-entry/useQuic
 import { useQuickEntryRefs } from "@/hooks/quick-entry/useQuickEntryRefs";
 import { PERSONAL_CATEGORIES } from "@/lib/personalCategories";
 import type { DraftMode } from "@/lib/quickEntry/draft";
-import { loadChoice, readModelId, saveChoice, type ModelChoice } from "@/lib/quickEntry/models";
+import { loadChoice, requestedModels, saveChoice, type ModelChoice } from "@/lib/quickEntry/models";
 import { vnTodayISO } from "@/lib/vnDate";
 
 const TITLE = "Báo chi nhanh";
@@ -89,12 +89,7 @@ export default function QuickEntryPage() {
     setPicked({ userId, choice });
     saveChoice(userId, choice);
   };
-  const feed = useQuickEntryFeed({
-    refs,
-    userId,
-    today,
-    models: { stt: modelChoice.stt, read: readModelId(modelChoice) },
-  });
+  const feed = useQuickEntryFeed({ refs, userId, today, models: requestedModels(modelChoice) });
 
   const modes = useMemo<DraftMode[]>(
     () => [...(refs.canCompany ? (["company"] as const) : []), ...(refs.canPersonal ? (["personal"] as const) : [])],

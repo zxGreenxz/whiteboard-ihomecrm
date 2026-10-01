@@ -5,7 +5,7 @@ vi.mock("@/copilot/copilotConfig", () => ({
   QUICK_ENTRY_BASE: "https://proxy.test/functions/v1/quick-entry",
 }));
 
-import { MAX_AUDIO_BYTES, readWithAi, transcribeAudio } from "../quickEntryAi";
+import { MAX_AUDIO_BYTES, QUICK_ENTRY_MAX_TOKENS, readWithAi, transcribeAudio } from "../quickEntryAi";
 
 const good = JSON.stringify({ items: [{ desc: "bóng đèn", amount_vnd: 120_000, category: "c1", confidence: 0.9 }] });
 const completion = (content: string) => ({ choices: [{ message: { content } }] });
@@ -115,6 +115,13 @@ describe("transcribeAudio", () => {
     const m = server.match(/export const TRAN_AM_THANH_BYTES = ([\d_]+);/);
     expect(m).not.toBeNull();
     expect(Number(m![1].replace(/_/g, ""))).toBe(MAX_AUDIO_BYTES);
+  });
+
+  it("trần token xin cho lần đọc đúng bằng trần máy chủ kẹp — mức suy nghĩ cao tiêu token suy nghĩ, xin thiếu là cụt JSON", () => {
+    const server = readFileSync(new URL("../../../../supabase/functions/quick-entry/index.ts", import.meta.url), "utf8");
+    const m = server.match(/export const TRAN_MAX_TOKENS = ([\d_]+);/);
+    expect(m).not.toBeNull();
+    expect(Number(m![1].replace(/_/g, ""))).toBe(QUICK_ENTRY_MAX_TOKENS);
   });
 
   it("máy chủ báo hết lượt ⇒ 'daily_cap'; trả chữ rỗng ⇒ 'unknown'", async () => {

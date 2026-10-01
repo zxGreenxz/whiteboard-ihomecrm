@@ -41,19 +41,28 @@ export const READ_EFFORTS: readonly ModelOption[] = [
 /** Tổ hợp 9router từ chối (đo 01/10/2026: Astra trả 400 với minimal). */
 export const READ_UNSUPPORTED: readonly string[] = ["cx/gpt-6-astra(minimal)"];
 
+/** "" = để máy chủ chọn (không gửi `model` ⇒ chuỗi biến môi trường vận hành đặt quyết định). */
 export interface ModelChoice {
   stt: string;
   readModel: string;
+  /** Chỉ có nghĩa khi đã chọn mô hình đọc. */
   effort: string;
 }
 
-export const DEFAULT_CHOICE: ModelChoice = { stt: "google/chirp-3", readModel: "cx/gpt-6-luna", effort: "low" };
+/** Mặc định: máy chủ chọn — đổi chuỗi qua secret QUICK_ENTRY_*_MODELS có hiệu lực ngay với mọi người. */
+export const DEFAULT_CHOICE: ModelChoice = { stt: "", readModel: "", effort: "low" };
+export const SERVER_DEFAULT_LABEL = "Mặc định (máy chủ chọn)";
 
 export const readModelId = (c: Pick<ModelChoice, "readModel" | "effort">): string =>
-  c.effort ? `${c.readModel}(${c.effort})` : c.readModel;
+  c.readModel && c.effort ? `${c.readModel}(${c.effort})` : c.readModel;
 
 export const isSupported = (readModel: string, effort: string): boolean =>
   !READ_UNSUPPORTED.includes(readModelId({ readModel, effort }));
+
+/** Mô hình gửi máy chủ — CHỈ những gì người dùng tự chọn; còn lại để máy chủ quyết. */
+export function requestedModels(c: ModelChoice): { stt?: string; read?: string } {
+  return { ...(c.stt ? { stt: c.stt } : {}), ...(c.readModel ? { read: readModelId(c) } : {}) };
+}
 
 const pick = (v: unknown, list: readonly ModelOption[], fallback: string): string =>
   typeof v === "string" && list.some((o) => o.id === v) ? v : fallback;

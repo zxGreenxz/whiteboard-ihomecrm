@@ -52,6 +52,10 @@ interface Kich {
   upstream?: Array<{ status: number; body: unknown } | "network">;
   /** Mỗi lần gọi nhà cung cấp làm đồng hồ chạy thêm chừng này mili-giây. */
   upstreamMs?: number;
+  /** QUICK_ENTRY_CHOICES — "off" tắt lựa chọn mô hình của người dùng. */
+  choices?: string;
+  /** QUICK_ENTRY_STT_MODELS — chuỗi chép giọng do vận hành đặt. */
+  sttModels?: string;
 }
 
 function setup(k: Kich = {}) {
@@ -73,6 +77,8 @@ function setup(k: Kich = {}) {
     SUPABASE_SERVICE_ROLE_KEY: "service-role",
     SUPABASE_ANON_KEY: "anon-key",
     QUICK_ENTRY_DAILY_CALLS: k.dailyCalls,
+    QUICK_ENTRY_CHOICES: k.choices,
+    QUICK_ENTRY_STT_MODELS: k.sttModels,
   };
   const fetchImpl = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
@@ -383,7 +389,7 @@ Deno.test("AI đọc đi 9ROUTER (không OpenRouter): chỉ chuyển khoá cho p
   const sent = upstreamBodies[0];
   assertEquals(Object.keys(sent).sort(), ["max_tokens", "messages", "model", "response_format", "stream"]);
   assertEquals(sent.model, "cx/gpt-6-luna(low)");
-  assertEquals(sent.max_tokens, 1500);
+  assertEquals(sent.max_tokens, 4000);
   assertEquals(sent.response_format, { type: "json_object" });
   assertEquals(logs[0].provider, "9router");
   assertEquals(logs[0].total_tokens, 940);
@@ -505,11 +511,24 @@ Deno.test("đã chọn mô hình đọc + header thử lại ⇒ bỏ qua mô h�
   assertEquals(s.upstreamBodies[0].model, "cx/gpt-6-luna(low)");
 });
 
-Deno.test("đường đọc: một lần thử được tới 40 s (mức suy nghĩ cao, ảnh bill); đường giọng vẫn 25 s", () => {
-  assertEquals(thoiGianLanThu(NGAN_SACH_MS.read, 0, MOI_LAN_MS.read), 40_000);
-  assertEquals(thoiGianLanThu(NGAN_SACH_MS.read, 40_000, MOI_LAN_MS.read), 15_000);
+Deno.test("đường đọc: một lần thử được tới 35 s (mức suy nghĩ cao, ảnh bill); đường giọng vẫn 25 s", () => {
+  assertEquals(thoiGianLanThu(NGAN_SACH_MS.read, 0, MOI_LAN_MS.read), 35_000);
+  assertEquals(thoiGianLanThu(NGAN_SACH_MS.read, 40_000, MOI_LAN_MS.read), 10_000);
   assertEquals(thoiGianLanThu(NGAN_SACH_MS.stt, 0, MOI_LAN_MS.stt), 25_000);
-  assert(NGAN_SACH_MS.read < 60_000 && NGAN_SACH_MS.stt < 45_000, "ngân sách phải dưới thời gian client chờ");
+  // Mốc chờ của client: đọc 60 s, giọng 45 s (AI_TIMEOUT_MS / STT_TIMEOUT_MS ở useQuickEntryFeed.ts).
+  assert(NGAN_SACH_MS.read <= 50_000 && NGAN_SACH_MS.stt <= 35_000, "ngân sách chừa >=10 s cho tải lên/kiểm quyền dưới mốc chờ của client");
+});
+
+Deno.test("không gửi model ⇒ chuỗi vận hành đặt qua biến môi trường quyết định mô hình đầu", async () => {
+  const { deps, upstreamBodies } = setup({ sttModels: "openai/whisper-1,google/chirp-3" });
+  await xuLy(sttReq({ format: "webm", data: AUDIO }), deps);
+  assertEquals(upstreamBodies[0].model, "openai/whisper-1");
+});
+
+Deno.test("QUICK_ENTRY_CHOICES=off ⇒ bỏ qua lựa chọn của người dùng (vận hành ép chuỗi khi một mô hình hỏng)", async () => {
+  const { deps, upstreamBodies } = setup({ choices: "off", sttModels: "openai/whisper-1" });
+  await xuLy(sttReq({ format: "webm", data: AUDIO, model: "google/chirp-3" }), deps);
+  assertEquals(upstreamBodies[0].model, "openai/whisper-1");
 });
 
 Deno.test("danh sách lựa chọn: 5 mô hình giọng nói; mặc định nằm trong danh sách", () => {

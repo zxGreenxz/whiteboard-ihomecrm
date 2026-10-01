@@ -163,6 +163,14 @@ describe("QuickEntryPage", () => {
     expect(screen.getByRole("button", { name: /Mô hình AI/ }).textContent).toContain("GPT-6.1 Sol · cao");
   });
 
+  it("chưa tự chọn mô hình ⇒ không gửi model: máy chủ dùng chuỗi vận hành đặt qua biến môi trường", async () => {
+    h.readWithAi.mockResolvedValue({ ok: false, error: { kind: "network", message: "x", retryable: true, allowManual: true } });
+    page();
+    await type("102LVT keo 20k");
+    expect(h.readWithAi).toHaveBeenCalled();
+    expect(h.readWithAi.mock.calls.at(-1)?.[0].model).toBeUndefined();
+  });
+
   it("không có quyền nào ⇒ báo rõ, không có ô nhập", () => {
     h.refs = baseRefs({ canCompany: false, canPersonal: false });
     page();

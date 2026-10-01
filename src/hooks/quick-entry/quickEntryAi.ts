@@ -15,7 +15,9 @@ import { classifyAiError, type AiErrorView } from "@/lib/quickEntry/errors";
 import type { ChatMessage } from "@/lib/quickEntry/prompt";
 import type { AudioFormat } from "./useVoiceRecorder";
 
-export const QUICK_ENTRY_MAX_TOKENS = 1500;
+/** Đúng bằng TRAN_MAX_TOKENS của hàm máy chủ (có test giữ hai số khớp): mức suy nghĩ cao/tối đa tiêu
+ *  token suy nghĩ trong cùng trần này, xin ít là JSON bị cụt giữa chừng. */
+export const QUICK_ENTRY_MAX_TOKENS = 4000;
 /** Âm thanh thô tối đa — đúng bằng TRAN_AM_THANH_BYTES của hàm máy chủ (có test giữ hai số khớp).
  *  Đủ cho 30 giây kể cả khi trình duyệt bỏ qua gợi ý bitrate của bộ ghi âm. */
 export const MAX_AUDIO_BYTES = 560_000;

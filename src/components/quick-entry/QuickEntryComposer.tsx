@@ -16,6 +16,7 @@ import type { DraftMode } from "@/lib/quickEntry/draft";
 import {
   READ_EFFORTS,
   READ_MODELS,
+  SERVER_DEFAULT_LABEL,
   STT_OPTIONS,
   isSupported,
   modelLabel,
@@ -24,7 +25,9 @@ import {
   type ModelChoice,
 } from "@/lib/quickEntry/models";
 
-const SELECT_CLASS = "h-8 w-full rounded-md border bg-background px-2 text-xs";
+const SELECT_CLASS = "h-8 w-full rounded-md border bg-background px-2 text-xs disabled:opacity-50";
+/** "" = máy chủ chọn theo chuỗi vận hành đặt. */
+const shortLabel = (id: string) => modelLabel(id) || "mặc định";
 
 const KEYBOARD_MIC_HINT = "Dùng nút micro trên bàn phím điện thoại để nói.";
 const MODE_LABEL: Record<DraftMode, string> = { company: "Công ty", personal: "Cá nhân" };
@@ -159,7 +162,7 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
           >
             <SlidersHorizontal className="h-3 w-3 shrink-0" />
             <span className="truncate">
-              Mô hình AI: {modelLabel(choice.stt)} · {modelLabel(readModelId(choice))}
+              Mô hình AI: {shortLabel(choice.stt)} · {shortLabel(readModelId(choice))}
             </span>
           </button>
           {showModels && (
@@ -172,6 +175,7 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
                   value={choice.stt}
                   onChange={(e) => changeChoice({ stt: e.target.value })}
                 >
+                  <option value="">{SERVER_DEFAULT_LABEL}</option>
                   {STT_OPTIONS.map((o) => (
                     <option key={o.id} value={o.id}>
                       {o.label} — {o.hint}
@@ -187,6 +191,7 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
                   value={choice.readModel}
                   onChange={(e) => changeChoice({ readModel: e.target.value })}
                 >
+                  <option value="">{SERVER_DEFAULT_LABEL}</option>
                   {READ_MODELS.map((o) => (
                     <option key={o.id} value={o.id}>
                       {o.label} — {o.hint}
@@ -199,6 +204,7 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
                 <select
                   aria-label="Mức suy nghĩ"
                   className={SELECT_CLASS}
+                  disabled={!choice.readModel}
                   value={choice.effort}
                   onChange={(e) => changeChoice({ effort: e.target.value })}
                 >
@@ -271,6 +277,8 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
             aria-label="Nội dung khoản chi"
             className="min-h-[40px] flex-1 resize-none"
             onChange={(e) => setText(e.target.value)}
+            // Bảng chọn mở + bàn phím điện thoại bật ⇒ che gần hết thẻ nháp; gõ là xong việc chọn.
+            onFocus={() => setShowModels(false)}
             onKeyDown={onKeyDown}
             onPaste={onPaste}
           />

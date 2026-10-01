@@ -180,10 +180,12 @@ describe("QuickEntryComposer — chọn mô hình AI để so sánh", () => {
     expect(onModelChoiceChange).toHaveBeenLastCalledWith({ ...choice, effort: "ultra" });
   });
 
-  it("đủ 5 mô hình giọng nói; mức 9router không nhận với mô hình đang chọn bị khoá (Astra + Tối thiểu)", () => {
+  it("đủ 5 mô hình giọng nói + 'Mặc định' đứng đầu; mức 9router không nhận với mô hình đang chọn bị khoá", () => {
     setup({ modelChoice: { ...choice, readModel: "cx/gpt-6-astra" }, onModelChoiceChange: vi.fn() });
     fireEvent.click(screen.getByRole("button", { name: /Mô hình AI/ }));
-    expect((screen.getByLabelText("Mô hình giọng nói") as HTMLSelectElement).options).toHaveLength(5);
+    const stt = screen.getByLabelText("Mô hình giọng nói") as HTMLSelectElement;
+    expect(stt.options).toHaveLength(6);
+    expect(stt.options[0].value).toBe("");
     const minimal = [...(screen.getByLabelText("Mức suy nghĩ") as HTMLSelectElement).options].find((o) => o.value === "minimal");
     expect(minimal?.disabled).toBe(true);
   });
@@ -203,6 +205,26 @@ describe("QuickEntryComposer — chọn mô hình AI để so sánh", () => {
       rec.onDone?.(audio);
     });
     expect(screen.getByText(/Chép bằng Deepgram Nova 3/)).toBeTruthy();
+  });
+
+  it("chưa chọn mô hình đọc (máy chủ chọn) ⇒ nhãn ghi 'mặc định', ô mức suy nghĩ bị khoá", () => {
+    setup({ modelChoice: { stt: "", readModel: "", effort: "low" }, onModelChoiceChange: vi.fn() });
+    const nut = screen.getByRole("button", { name: /Mô hình AI/ });
+    expect(nut.textContent).toBe("Mô hình AI: mặc định · mặc định");
+    fireEvent.click(nut);
+    const read = screen.getByLabelText("Mô hình đọc chữ") as HTMLSelectElement;
+    // Thiếu lựa chọn "" thì React tự hiện mô hình đầu danh sách trong khi máy chủ mới là bên chọn.
+    expect(read.value).toBe("");
+    expect(read.options[0].textContent).toBe("Mặc định (máy chủ chọn)");
+    expect((screen.getByLabelText("Mức suy nghĩ") as HTMLSelectElement).disabled).toBe(true);
+  });
+
+  it("chạm vào ô nhập ⇒ bảng chọn tự thu gọn (bàn phím điện thoại không che hết thẻ)", () => {
+    const { box } = setup({ modelChoice: choice, onModelChoiceChange: vi.fn() });
+    fireEvent.click(screen.getByRole("button", { name: /Mô hình AI/ }));
+    expect(screen.getByLabelText("Mô hình giọng nói")).toBeTruthy();
+    fireEvent.focus(box);
+    expect(screen.queryByLabelText("Mô hình giọng nói")).toBeNull();
   });
 
   it("không truyền lựa chọn mô hình ⇒ không có nút Mô hình AI", () => {

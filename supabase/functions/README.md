@@ -94,11 +94,14 @@ số tiền của trang): chirp-3 64/64 > nova-3 62 = whisper-1 62 > gemini-3.5-
 whisper-large-v3 59. `gpt-4o-transcribe` bị loại: đúng hết khi sạch nhưng gặp tiếng ồn thì BỊA câu tiếng
 khác dù `language=vi` và vẫn trả 200 (chuỗi không dự phòng được).
 
-**Người dùng chọn mô hình** (ô "Mô hình AI" trên trang, để tự so sánh): body gửi `model`. Máy chủ CHỈ nhận
-id trong danh sách cho phép (`STT_CHOICES` — 5 mô hình chép giọng tốt nhất; `READ_MODEL_CHOICES` ×
-`READ_EFFORTS` — GPT-6.1 Sol, GPT-6 Astra, GPT-6 Sol, GPT-6 Luna, GPT-5.6 Luna với mức tự động/minimal/
-low/medium/high/xhigh/max/ultra, trừ `READ_UNSUPPORTED` = Astra + minimal), thử nó TRƯỚC rồi tới chuỗi
-mặc định; id lạ ⇒ chuỗi mặc định. Danh sách ô chọn ở `src/lib/quickEntry/models.ts` — test giữ khớp.
+**Người dùng chọn mô hình** (ô "Mô hình AI" trên trang, để tự so sánh): mặc định của ô là "Mặc định (máy
+chủ chọn)" — trang KHÔNG gửi `model`, chuỗi ở bảng trên (hoặc `QUICK_ENTRY_*_MODELS`) quyết định. Chỉ khi
+người dùng tự chọn một mô hình thì body mới có `model`. Máy chủ CHỈ nhận id trong danh sách cho phép
+(`STT_CHOICES` — 5 mô hình chép giọng tốt nhất; `READ_MODEL_CHOICES` × `READ_EFFORTS` — GPT-6.1 Sol,
+GPT-6 Astra, GPT-6 Sol, GPT-6 Luna, GPT-5.6 Luna với mức tự động/minimal/low/medium/high/xhigh/max/ultra,
+trừ `READ_UNSUPPORTED` = Astra + minimal), thử nó TRƯỚC rồi tới chuỗi mặc định; id lạ ⇒ chuỗi mặc định.
+`QUICK_ENTRY_CHOICES=off` bỏ qua mọi lựa chọn của người dùng (một mô hình đang trả sai mà người dùng đã
+lưu lựa chọn trên máy họ). Danh sách ô chọn ở `src/lib/quickEntry/models.ts` — test giữ khớp.
 
 Thứ tự kiểm: phương thức/đường → cỡ body → công tắc + khoá → JWT (`/auth/v1/user`) → header
 `x-organization-id` → `get_my_permissions_v2` dưới JWT người gọi (cần `income_expenses.create`
@@ -108,8 +111,10 @@ kiểm đầu vào (≤1 ảnh, chữ ≤32.000 ký tự) → **giữ chỗ** m�
 `quick_entry`, ĐÃ gồm dòng vừa giữ — gọi song song không cùng lọt; vượt hoặc đọc không được ⇒ xoá
 dòng giữ chỗ, 429). Mỗi lần thử một mô hình ghi một dòng (lần đầu điền vào dòng giữ chỗ); âm thanh,
 ảnh và bản chữ không được lưu hay ghi log. 401/402 từ nhà cung cấp là lỗi khoá/số dư ⇒ dừng, không
-thử tiếp. Ngân sách thời gian cả lượt: chép giọng 40 s, đọc 55 s (dưới thời gian client chờ); một lần
-thử tối đa 25 s (chép giọng) / 40 s (đọc — mức suy nghĩ cao + ảnh bill có thể mất 15–20 s).
+thử tiếp. Ngân sách thời gian cả lượt: chép giọng 35 s, đọc 50 s (chừa ≥10 s dưới thời gian client chờ
+45 s / 60 s); một lần thử tối đa 25 s (chép giọng) / 35 s (đọc — mức suy nghĩ cao + ảnh bill có thể mất
+15–20 s). `max_tokens` kẹp ở 4000: mức suy nghĩ cao tính cả token suy nghĩ vào trần này, xin ít là JSON
+bị cụt.
 
 Lưu ý hạn mức: `reserve_ai_usage` của Copilot cộng token/USD theo ngày của **mọi** dòng
 `ai_usage_logs` của người dùng, không lọc feature — dùng nhiều Báo chi nhanh (nhất là ảnh) có thể
@@ -123,6 +128,7 @@ Secret (thiếu khoá của đường nào thì đường đó trả `quick_entr
 | `QUICK_ENTRY_OPENROUTER_KEY` | Khoá OpenRouter riêng cho chép giọng (đặt hạn mức chi trên openrouter.ai) |
 | `QUICK_ENTRY_NINEROUTER_BASE_URL` / `QUICK_ENTRY_NINEROUTER_KEY` | 9router; vắng thì dùng `NINEROUTER_BASE_URL` / `NINEROUTER_API_KEY` của Copilot. Chỉ nhận `https://` |
 | `QUICK_ENTRY_STT_MODELS` / `QUICK_ENTRY_READ_MODELS` | Tuỳ chọn: đổi chuỗi mô hình, phân tách bằng dấu phẩy, ≤5 |
+| `QUICK_ENTRY_CHOICES` | Tuỳ chọn: `off` ⇒ bỏ qua mô hình người dùng tự chọn, mọi người dùng chuỗi trên |
 | `QUICK_ENTRY_DAILY_CALLS` | Tuỳ chọn: trần lượt/người/ngày (mặc định 150; một lần nói = 2 lượt) |
 
 ```powershell

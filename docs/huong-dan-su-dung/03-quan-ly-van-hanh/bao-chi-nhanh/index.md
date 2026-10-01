@@ -78,13 +78,13 @@ Thẻ chưa lưu được giữ lại khi bạn tải lại trang (trong 48 gi�
 
 ## Chọn mô hình AI (để tự so sánh)
 
-Bấm dòng **Mô hình AI** ngay trên ô nhập để mở ba ô chọn:
+Bấm dòng **Mô hình AI** ngay trên ô nhập để mở ba ô chọn. Chưa chọn gì thì cả hai ô để **Mặc định (máy chủ chọn)** — dùng bộ mô hình công ty đặt sẵn, không cần chỉnh nếu chỉ nhập chi bình thường.
 
-- **Giọng nói (chép lời)** — 5 mô hình chép tiếng Việt tốt nhất. Mặc định **Google Chirp 3** (chính xác nhất, ~3 giây); **Deepgram Nova 3** và **OpenAI Whisper** nhanh hơn (~1,4 giây).
-- **Đọc chữ / ảnh để lập phiếu** — GPT-6.1 Sol, GPT-6 Astra, GPT-6 Sol, GPT-6 Luna (mặc định, nhanh nhất), GPT-5.6 Luna.
-- **Mức suy nghĩ** — từ Tự động, Tối thiểu, Thấp (mặc định)… đến Ultra. Mức càng cao càng chậm (mức cao nhất có thể 15–20 giây).
+- **Giọng nói (chép lời)** — Mặc định hoặc 1 trong 5 mô hình chép tiếng Việt tốt nhất: **Google Chirp 3** (chính xác nhất, ~3 giây); **Deepgram Nova 3** và **OpenAI Whisper** nhanh hơn (~1,4 giây)…
+- **Đọc chữ / ảnh để lập phiếu** — Mặc định hoặc GPT-6.1 Sol, GPT-6 Astra, GPT-6 Sol, GPT-6 Luna (nhanh nhất), GPT-5.6 Luna.
+- **Mức suy nghĩ** — chỉ chọn được sau khi chọn một mô hình đọc: từ Tự động, Tối thiểu, Thấp… đến Ultra. Mức càng cao càng chậm (mức cao nhất có thể 15–20 giây).
 
-Màn nhớ lựa chọn của bạn cho lần sau. Mỗi lần nói, dưới ô nhập hiện **Chép bằng …**; mỗi thẻ AI đọc hiện **AI đọc · <mô hình>** — đó là mô hình thật đã trả lời (mô hình bạn chọn lỗi thì máy tự dùng mô hình dự phòng và nhãn ghi đúng mô hình đó).
+Bấm vào ô nhập là bảng chọn tự thu gọn. Màn nhớ lựa chọn của bạn cho lần sau. Mỗi lần nói, dưới ô nhập hiện **Chép bằng …**; mỗi thẻ AI đọc hiện **AI đọc · <mô hình>** — đó là mô hình thật đã trả lời (mô hình bạn chọn lỗi thì máy tự dùng mô hình dự phòng và nhãn ghi đúng mô hình đó).
 
 ## Khi AI không giúp được
 

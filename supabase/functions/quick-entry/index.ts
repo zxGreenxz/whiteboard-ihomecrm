@@ -57,14 +57,17 @@ export const TRAN_BODY_BYTES = 768 * 1024;
 /** Byte âm thanh THÔ. Client gợi ý 48 kbps (30 giây ≈ 180 KB) nhưng trình duyệt được phép bỏ qua gợi ý:
  *  30 giây ở 128 kbps = 480 KB + vỏ mp4 vẫn phải lọt. Client dùng đúng số này (MAX_AUDIO_BYTES). */
 export const TRAN_AM_THANH_BYTES = 560_000;
-export const TRAN_MAX_TOKENS = 1500;
+/** Trần token trả lời. Mức suy nghĩ cao (xhigh/max/ultra) tính cả token suy nghĩ vào đây — 1500 có thể
+ *  cạn trước khi ra JSON (trả rỗng ⇒ rơi sang dự phòng). 9router tính theo thuê bao nên trần cao không tốn. */
+export const TRAN_MAX_TOKENS = 4000;
 /** Tổng ký tự chữ gửi AI đọc. Prompt thật tối đa ~18k (150 hạng mục + mã toà + câu người dùng) — trần
  *  này chặn việc dùng hàm làm proxy LLM đa dụng với prompt tuỳ ý. */
 export const TRAN_CHU_KY_TU = 32_000;
 /** Trần MỘT lần thử: đường đọc rộng hơn vì người dùng có thể chọn mức suy nghĩ cao + ảnh bill. */
-export const MOI_LAN_MS: Record<"stt" | "read", number> = { stt: 25_000, read: 40_000 };
-/** Ngân sách cả lượt theo đường, dưới thời gian client chờ (chép giọng 45 s, đọc 60 s). */
-export const NGAN_SACH_MS: Record<"stt" | "read", number> = { stt: 40_000, read: 55_000 };
+export const MOI_LAN_MS: Record<"stt" | "read", number> = { stt: 25_000, read: 35_000 };
+/** Ngân sách cả lượt theo đường — chừa ≥10 s dưới thời gian client chờ (chép giọng 45 s, đọc 60 s) cho
+ *  tải lên, kiểm quyền, giữ chỗ và ghi sổ; vượt thì client bỏ mà lượt vẫn bị tính. */
+export const NGAN_SACH_MS: Record<"stt" | "read", number> = { stt: 35_000, read: 50_000 };
 const TOI_THIEU_MS = 3_000;
 
 /** Thời gian cho lần thử kế: kẹp theo ngân sách còn lại; còn dưới mức tối thiểu ⇒ 0 (không thử nữa). */
@@ -388,7 +391,10 @@ export async function xuLy(req: Request, deps: PhuThuoc = {}): Promise<Response>
     ? chuoiMoHinh(env("QUICK_ENTRY_STT_MODELS"), STT_MODELS_MAC_DINH)
     : chuoiMoHinh(env("QUICK_ENTRY_READ_MODELS"), READ_MODELS_MAC_DINH);
   // Người dùng chọn mô hình trên trang (để tự so sánh) ⇒ thử nó TRƯỚC, hỏng thì tới chuỗi mặc định.
-  const chon = moHinhDuocChon(route, body.model);
+  // QUICK_ENTRY_CHOICES=off: vận hành ép mọi người về chuỗi biến môi trường (một mô hình đang trả chữ sai mà
+  // vẫn 200 — kiểu lỗi chuỗi dự phòng không tự bắt được) mà không phải deploy lại web.
+  const choChon = (env("QUICK_ENTRY_CHOICES") ?? "").trim().toLowerCase() !== "off";
+  const chon = choChon ? moHinhDuocChon(route, body.model) : null;
   const models = chon ? [chon, ...macDinh.filter((m) => m !== chon)] : macDinh;
   const skipRaw = Number(req.headers.get("x-quick-entry-skip") ?? 0);
   const skip = route === "read" && Number.isInteger(skipRaw) ? Math.min(Math.max(skipRaw, 0), models.length - 1) : 0;

@@ -3,7 +3,7 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1206,
   "soFileDocBangFs": 274,
-  "tongLoiGoi": 595,
+  "tongLoiGoi": 596,
   "khongPhanLoaiDuoc": 271,
   "theoLoai": {
     "ma-nguon": {
@@ -763,6 +763,14 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": "src/hooks/quick-entry/__tests__/quickEntryAi.test.ts",
+      "soGoi": 2,
+      "loai": {
+        "ma-nguon": 2
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "src/lib/__tests__/accountingLegacyPaymentSemantics.test.ts",
       "soGoi": 2,
       "loai": {
@@ -1339,14 +1347,6 @@
     },
     {
       "file": "src/hooks/__tests__/useMyPermissionsOrgScope.test.tsx",
-      "soGoi": 1,
-      "loai": {
-        "ma-nguon": 1
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "src/hooks/quick-entry/__tests__/quickEntryAi.test.ts",
       "soGoi": 1,
       "loai": {
         "ma-nguon": 1

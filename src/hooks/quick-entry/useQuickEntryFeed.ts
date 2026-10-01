@@ -139,8 +139,8 @@ export function useQuickEntryFeed(opts: {
   refs: QuickEntryRefs;
   userId: string | null;
   today: string;
-  /** Mô hình người dùng chọn trên trang (id gửi máy chủ); vắng ⇒ máy chủ dùng chuỗi mặc định. */
-  models?: { stt: string; read: string };
+  /** Mô hình người dùng TỰ chọn trên trang (id gửi máy chủ); vắng ⇒ máy chủ dùng chuỗi vận hành đặt. */
+  models?: { stt?: string; read?: string };
 }) {
   const { refs, userId, today } = opts;
   const orgId = refs.orgId;
