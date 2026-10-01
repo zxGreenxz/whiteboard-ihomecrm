@@ -20,6 +20,7 @@ import {
   FileText,
   HandCoins,
   Receipt,
+  ReceiptText,
   Gauge,
   CreditCard,
   BarChart3,
@@ -94,6 +95,9 @@ export const LAUNCHER_SECTIONS: LauncherSection[] = [
     label: 'Tài chính',
     items: [
       ...launcherFieldsFor('thu-tien').map((x) => ({ ...x, icon: HandCoins, accent: '#1f9d57', hot: true }) satisfies LauncherTile),
+      // Báo chi nhanh: gõ/nói/chụp bill ⇒ thẻ nháp phiếu chi. Ô gác theo income_expenses.create
+      // (registry); người chỉ có Ví cá nhân vẫn mở được /chi-tieu bằng đường dẫn.
+      ...launcherFieldsFor('chi-tieu').map((x) => ({ ...x, icon: ReceiptText, accent: '#db2777' }) satisfies LauncherTile),
       // Đóng tiền Tập trung theo Kỳ — gate `thu_tien.collect` khớp đúng route
       // guard /thanh-toan (người chỉ có quyền xem không thấy ô này).
       { id: 'thanh-toan', title: 'Thanh toán', href: '/thanh-toan', icon: Banknote, accent: '#ea580c', module: 'thu_tien', action: 'collect' },

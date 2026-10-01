@@ -80,6 +80,7 @@ export const sidebar: DefaultTheme.Sidebar = [
           { text: 'Thu tiền tại hoá đơn', link: '/03-quan-ly-van-hanh/thu-tien-hoa-don/' },
           { text: 'Thu tiền tại phòng (điện thoại)', link: '/03-quan-ly-van-hanh/thu-tien-mobile/' },
           { text: 'Thu chi — tạo phiếu', link: '/03-quan-ly-van-hanh/thu-chi/' },
+          { text: 'Báo chi nhanh (gõ, nói, chụp bill)', link: '/03-quan-ly-van-hanh/bao-chi-nhanh/' },
           { text: 'Sổ quỹ', link: '/03-quan-ly-van-hanh/so-quy/' },
           { text: 'Bàn giao & đối soát', link: '/03-quan-ly-van-hanh/ban-giao-doi-soat/' },
           { text: 'Tiền thừa', link: '/03-quan-ly-van-hanh/tien-thua/' },

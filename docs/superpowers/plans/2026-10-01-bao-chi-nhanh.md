@@ -9,7 +9,8 @@
 >   (xem `supabase/functions/README.md`), không phải cột `ai_copilot_settings` + thẻ quản trị.
 > - **Giọng nói chỉ qua OpenRouter** (`gpt-4o-transcribe` đầu chuỗi); bỏ hẳn nhận giọng của trình duyệt
 >   (`useSpeechInput` đã xoá). **Đọc chữ/ảnh chỉ qua 9router** (`cx/gpt-6-luna(low)` → `cx/gpt-5.6-luna(low)`).
-> - Trang mở bằng đường dẫn, chưa có capability/menu/ô màn hình chính. Mô tả hiện hành: `docs/he-thong/08` mục 5.13.
+> - Capability `chi-tieu` bật luôn (`release.enabled: true`): menu Tài chính + ô màn hình chính điện thoại, gác
+>   `income_expenses.create`; E2E khói còn nợ (khai `e2e.mienTruVi`). Mô tả hiện hành: `docs/he-thong/08` mục 5.13.
 
 ## 1. Bối cảnh
 

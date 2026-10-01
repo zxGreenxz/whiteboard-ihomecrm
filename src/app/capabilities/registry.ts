@@ -265,6 +265,33 @@ export const CAPABILITIES: readonly CapabilityDefinition[] = [
     risk: "financial",
   },
   {
+    id: "chi-tieu",
+    primaryRoute: "/chi-tieu",
+    label: "Báo chi nhanh",
+    release: { enabled: true, runtimeModule: null },
+    permission: {
+      module: "income_expenses",
+      action: "create",
+      // QuickEntryPage tự rẽ theo quyền: income_expenses.create ⇒ phiếu chi công ty,
+      // personal_finance.create ⇒ Ví cá nhân; không quyền nào thì trang báo và không có ô nhập.
+      // Bọc RequirePermission income_expenses.create sẽ chặn người chỉ có Ví cá nhân. Ô nav/tile
+      // gác theo income_expenses.create vì mỗi bề mặt chỉ mang được một cặp quyền.
+      guardMienTruVi:
+        "Trang phục vụ hai nhóm quyền và tự rẽ: income_expenses.create ghi phiếu chi công ty, personal_finance.create ghi Ví cá nhân; gác ở router sẽ chặn người chỉ có Ví cá nhân. Chặn thật ở writer create_income_expense_v1 và RLS personal_transactions.",
+    },
+    surfaces: { desktopNav: true, mobileLauncher: true, permissionPage: "/income-expense" },
+    docs: {
+      systemDoc: "docs/he-thong/08-thu-chi-so-quy.md",
+      userDoc: "docs/huong-dan-su-dung/03-quan-ly-van-hanh/bao-chi-nhanh/index.md",
+      visibility: "public",
+    },
+    e2e: {
+      spec: null,
+      mienTruVi: "Chưa có spec khói .e2e-fleet: ngày 01/10/2026 đã kiểm bằng Playwright trên web TEST (khung Pixel 7 và desktop). Spec bao-chi-nhanh-mobile làm ở đợt sau theo plan bước 6.",
+    },
+    risk: "financial",
+  },
+  {
     id: "funds",
     primaryRoute: "/finance/cashbooks",
     label: "Sổ quỹ",

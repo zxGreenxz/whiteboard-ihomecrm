@@ -20,6 +20,7 @@ export const USER_DOC_MODULES = import.meta.glob(
     '/docs/huong-dan-su-dung/02-theo-doi-nhanh/so-do-toa-nha/index.md',
     '/docs/huong-dan-su-dung/02-theo-doi-nhanh/thong-bao/index.md',
     '/docs/huong-dan-su-dung/03-quan-ly-van-hanh/bang-luong/index.md',
+    '/docs/huong-dan-su-dung/03-quan-ly-van-hanh/bao-chi-nhanh/index.md',
     '/docs/huong-dan-su-dung/03-quan-ly-van-hanh/can-ho-phong/index.md',
     '/docs/huong-dan-su-dung/03-quan-ly-van-hanh/chat-zalo/index.md',
     '/docs/huong-dan-su-dung/03-quan-ly-van-hanh/cong-viec/index.md',
