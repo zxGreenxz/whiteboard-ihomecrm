@@ -86,6 +86,17 @@ describe("draftsFromText", () => {
     expect(s.flags).not.toContain("total_mismatch");
   });
 
+  it("lưới an toàn: một dòng bằng đúng tổng các dòng khác ⇒ GIỮ mọi dòng nhưng gắn cờ có thể là dòng tổng", () => {
+    const [noLien] = draftsFromText("102LVT sơn 300k keo 20k cộng 320k", ctx());
+    expect(noLien.draft.lines.map((l) => l.amount)).toEqual([300_000, 20_000, 320_000]);
+    expect(noLien.flags).toContain("maybe_total");
+    // Khoản thật trùng tổng (100k + 100k = 200k) vẫn giữ — chỉ nhắc, không tự bỏ tiền.
+    const [that] = draftsFromText("102LVT sơn 100k, keo 100k, công thợ 200k", ctx());
+    expect(that.draft.lines.map((l) => l.amount)).toEqual([100_000, 100_000, 200_000]);
+    expect(that.flags).toContain("maybe_total");
+    expect(draftsFromText("102LVT sơn 300k, keo 20k", ctx())[0].flags).not.toContain("maybe_total");
+  });
+
   it("tin chỉ có dòng tổng ⇒ vẫn là một khoản (không bỏ số tiền duy nhất)", () => {
     const [s] = draftsFromText("102LVT tổng 320k", ctx());
     expect(s.draft.lines.map((l) => l.amount)).toEqual([320_000]);

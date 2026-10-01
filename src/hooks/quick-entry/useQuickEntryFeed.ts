@@ -333,9 +333,12 @@ export function useQuickEntryFeed(opts: { refs: QuickEntryRefs; userId: string |
           return;
         }
         const model = r.model ?? "AI";
-        patchCard(s.draft.id, (c) =>
-          editable(c) ? { ...c, state: syncName(enrichFromAi(c.state, r.value, ctx)), aiModel: model } : c,
-        );
+        patchCard(s.draft.id, (c) => {
+          if (!editable(c)) return c;
+          // AI không đổi được gì (vd thẻ đã bỏ/thêm dòng trong lúc đọc) ⇒ không gắn nhãn "AI đọc".
+          const next = syncName(enrichFromAi(c.state, r.value, ctx));
+          return next === c.state ? c : { ...c, state: next, aiModel: model };
+        });
       }),
     );
     const error = outcome.error;

@@ -79,6 +79,20 @@ describe("segmentMessage — câu nói liền không dấu ngăn", () => {
     expect(segmentMessage("đèn 60k, keo 30k, tất cả hết 90k").map((s) => s.isTotal)).toEqual([false, false, true]);
   });
 
+  it("dòng tổng viết kiểu chat, thêm chữ, không dấu, 'cộng:' ⇒ vẫn là dòng tổng", () => {
+    for (const msg of [
+      "sơn 300k, keo 20k, tổng 320k nhé",
+      "sơn 300k, keo 20k, tổng chi 320k",
+      "sơn 300k, keo 20k, tổng tất cả 320k",
+      "sơn 300k, keo 20k, tổng số tiền 320k",
+      "son 300k, keo 20k, tong 320k",
+      "son 300k, keo 20k, tat ca 320k",
+      "sơn 300k, keo 20k, cộng: 320k",
+    ]) {
+      expect(segmentMessage(msg).map((s) => s.isTotal), msg).toEqual([false, false, true]);
+    }
+  });
+
   it("'cộng' = cộng thêm, 'tất cả/tổng' đứng đầu tên khoản, 'tong' không dấu ⇒ KHÔNG phải dòng tổng", () => {
     for (const msg of [
       "sơn 300k cộng keo 20k",

@@ -107,6 +107,25 @@ describe("useQuickEntryFeed — tin chữ", () => {
     expect(result.current.messages[0]).toMatchObject({ kind: "text", text: "102LVT sơn 300k", reading: false });
   });
 
+  it("AI về mà không đổi được gì trên thẻ (đã bỏ dòng trong lúc đọc) ⇒ KHÔNG gắn nhãn 'AI đọc'", async () => {
+    let resolve!: (r: AiRead) => void;
+    h.readWithAi.mockImplementationOnce(() => new Promise<AiRead>((r) => (resolve = r)));
+    const { result } = mount();
+    let pending: Promise<void> = Promise.resolve();
+    act(() => {
+      pending = result.current.submitText("102LVT mua sơn", "company");
+    });
+    await waitFor(() => expect(cardsOf(result)).toHaveLength(1));
+    const c = cardsOf(result)[0];
+    act(() => result.current.changeCard(c.id, { ...c.state, touched: [...c.state.touched, "lines"] }));
+    await act(async () => {
+      resolve(ok(ai({ items: [{ desc: "sơn", amount_vnd: 300_000, category: "c1", confidence: 0.9 }] })));
+      await pending;
+    });
+    expect(cardsOf(result)[0].aiModel).toBeNull();
+    expect(cardsOf(result)[0].state.draft.lines[0].amount).toBe(0);
+  });
+
   it("người dùng sửa ô trong lúc AI đang đọc ⇒ AI không đè ô đó", async () => {
     let resolve!: (r: AiRead) => void;
     h.readWithAi.mockReturnValue(new Promise<AiRead>((r) => (resolve = r)));

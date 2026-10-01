@@ -42,14 +42,18 @@ interface Range {
 
 const SEPARATOR_RE = /\n|;|\+|(?<!\d),|,(?!\d)|\s+và\s+/gu;
 const EDGE_RE = /[\s,;+.:\-–—]/u;
-// Từ báo TỔNG. "cộng" đứng một mình là CỘNG THÊM ("sơn 300k cộng keo 20k", "cộng thêm tiền công")
-// và "tong" không dấu có thể là "tông đơ" ⇒ không nằm trong danh sách.
-const TOTAL_WORDS = "tổng cộng|tổng tiền|tổng số|tổng|tất cả|cộng lại|tong cong";
-const TOTAL_CUE_RE = new RegExp(`(?:${TOTAL_WORDS})\\s*(?:là|hết|=)?\\s*:?\\s*$`, "u");
-// Dòng tổng đứng riêng CHỈ gồm từ báo tổng + số tiền ("tổng 320k", "tổng cộng: 320.000đ", "tất cả hết
-// 90k"). "tất cả đồ điện 500k", "tổng vệ sinh 800k" là tên khoản chi, không phải dòng tổng.
-const TOTAL_LINE_HEAD_RE = new RegExp(`^(?:${TOTAL_WORDS})\\s*(?:là|hết|=)?\\s*:?\\s*$`, "u");
-const TOTAL_LINE_TAIL_RE = /^\s*(?:đ|đồng|vnđ|vnd)?\s*[.!]?\s*$/u;
+// Từ báo TỔNG (có dấu và không dấu). "cộng" đứng một mình là CỘNG THÊM ("sơn 300k cộng keo 20k") — chỉ
+// thành từ tổng khi có dấu ":"/"=" ngay sau ("cộng: 320k"). Chữ báo tổng phải đứng SÁT số tiền nên
+// "tong do 200k" (tông đơ) hay "tất cả đồ điện 500k" không khớp.
+const TOTAL_WORDS =
+  "tổng số tiền|tổng tất cả|tổng cộng|tổng tiền|tổng chi|tổng số|tổng|tất cả|cộng lại|" +
+  "tong so tien|tong tat ca|tong cong|tong tien|tong chi|tong so|tong|tat ca|cong lai";
+const TOTAL_HEAD = `(?:(?:${TOTAL_WORDS})\\s*(?:là|la|hết|het|=)?\\s*:?|(?:cộng|cong)\\s*[:=])\\s*`;
+const TOTAL_CUE_RE = new RegExp(`${TOTAL_HEAD}$`, "u");
+// Dòng tổng đứng riêng CHỈ gồm từ báo tổng + số tiền (+ đơn vị, + đuôi câu chat): "tổng 320k", "tổng
+// cộng: 320.000đ", "tất cả hết 90k", "tổng 320k nhé". "tổng vệ sinh 800k" là tên khoản chi.
+const TOTAL_LINE_HEAD_RE = new RegExp(`^${TOTAL_HEAD}$`, "u");
+const TOTAL_LINE_TAIL_RE = /^\s*(?:đ|đồng|vnđ|vnd)?\s*(?:nhé|nha|nhe|nhá|ạ|á|thôi|luôn|nè|đó)?\s*[.!]?\s*$/u;
 const RANK: MoneyKind[] = ["explicit", "slang", "bare"];
 
 function trim(norm: string, r: Range): Range | null {

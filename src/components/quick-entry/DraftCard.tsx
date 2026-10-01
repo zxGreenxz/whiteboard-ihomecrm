@@ -2,7 +2,7 @@
 // Thẻ không tự gọi máy chủ để ghi — trang cha lo lưu; thẻ chỉ báo thay đổi (đánh dấu ô người dùng đã
 // sửa để AI không đè, dựng lại tên phiếu theo nội dung) và hiện đúng trạng thái máy chủ trả về.
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { AlertTriangle, CheckCircle2, Loader2, Plus, RotateCcw, Sparkles, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,7 @@ import { DateInput } from "@/components/ui/date-input";
 import { SearchableSelect, type SearchableSelectOption } from "@/components/ui/searchable-select";
 import { useVoucherSlotWarning } from "@/hooks/useVoucherSlotWarning";
 import { addDaysISO, formatISODateVN } from "@/lib/vnDate";
-import { markTouched, removeLineAt, syncName, type DraftFlag, type DraftState } from "@/lib/quickEntry/compose";
+import { LINES_EDITED, markTouched, removeLineAt, syncName, type DraftFlag, type DraftState } from "@/lib/quickEntry/compose";
 import { MAX_PAYER_NAME, validateDraft, type DraftLine, type QuickDraft } from "@/lib/quickEntry/draft";
 import type { CategoryRef } from "@/lib/quickEntry/categorySuggest";
 import type { IeFormBuilding, IeFormRoom } from "@/hooks/useIncomeExpenseFormScope";
@@ -29,6 +29,7 @@ const FLAG_TEXT: Record<DraftFlag, string> = {
   building_choice: "Câu nhắc nhiều toà — chọn đúng toà.",
   check_total: "Tổng các món khác số thực trả trên bill — đã ghi theo số thực trả, kiểm lại.",
   total_mismatch: "Tổng bạn ghi khác cộng các dòng — kiểm lại số tiền.",
+  maybe_total: "Có dòng bằng đúng tổng các dòng khác — nếu đó là dòng tổng thì bỏ dòng đó.",
 };
 
 const vnd = (n: number) => `${n.toLocaleString("vi-VN")}đ`;
@@ -58,7 +59,12 @@ function visibleFlags(state: DraftState): DraftFlag[] {
   if (state.draft.lines.some((l) => !(l.amount > 0))) out.push("missing_amount");
   for (const f of state.flags) {
     if (f === "missing_amount") continue;
-    if ((f === "small_amount" || f === "ambiguous_amount" || f === "check_total" || f === "total_mismatch") && amountTouched) continue;
+    if (
+      (f === "small_amount" || f === "ambiguous_amount" || f === "check_total" || f === "total_mismatch" || f === "maybe_total") &&
+      amountTouched
+    ) {
+      continue;
+    }
     if (f === "building_choice" && state.draft.buildingId) continue;
     out.push(f);
   }
@@ -103,6 +109,7 @@ function Field({ label, className, children }: { label: string; className?: stri
 
 export function DraftCard(props: DraftCardProps) {
   const { state, status, today } = props;
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
   const d = state.draft;
   const company = d.mode === "company";
   const locked = isLocked(status);
@@ -122,7 +129,8 @@ export function DraftCard(props: DraftCardProps) {
         ...d,
         lines: [...d.lines, { description: "", amount: 0, categoryId: null, personalCategory: null, periodStart: null, periodEnd: null }],
       },
-      `lines.${d.lines.length}`,
+      // Đổi số dòng ⇒ câu gốc AI đọc không còn khớp các dòng; AI không ghép vào thẻ nữa.
+      LINES_EDITED,
     );
   const removeLine = (i: number) => props.onChange(syncName(removeLineAt(state, i)));
   const clearPeriod = (i: number) =>
@@ -408,11 +416,28 @@ export function DraftCard(props: DraftCardProps) {
               <Link to={reviewHref}>{company ? "Kiểm tra trong Thu chi" : "Xem ví cá nhân"}</Link>
             </Button>
             {/* Bỏ thẻ chỉ gỡ thẻ khỏi màn này, không đụng phiếu/khoản đã ghi — thẻ chưa rõ mà bị từ
-                chối lặp lại (vd ví đã ghi một phần) không phải nằm kẹt suốt 48 giờ. */}
-            <Button type="button" size="sm" variant="ghost" onClick={props.onDiscard}>
-              Bỏ thẻ
-            </Button>
+                chối lặp lại (vd ví đã ghi một phần) không phải nằm kẹt suốt 48 giờ. Thẻ CHƯA RÕ phải xác
+                nhận lần hai: bỏ rồi gõ lại là khoá chống trùng mới ⇒ phiếu đôi nếu lần đầu đã lưu. */}
+            {status.kind === "unknown" && !confirmDiscard ? (
+              <Button type="button" size="sm" variant="ghost" onClick={() => setConfirmDiscard(true)}>
+                Bỏ thẻ
+              </Button>
+            ) : status.kind === "unknown" ? null : (
+              <Button type="button" size="sm" variant="ghost" onClick={props.onDiscard}>
+                Bỏ thẻ
+              </Button>
+            )}
           </div>
+          {status.kind === "unknown" && confirmDiscard && (
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="flex-1">
+                Thẻ này có thể đã được lưu. {company ? "Kiểm tra trong Thu chi" : "Xem Ví cá nhân"} trước khi lập lại.
+              </p>
+              <Button type="button" size="sm" variant="destructive" onClick={props.onDiscard}>
+                Bỏ hẳn
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </article>

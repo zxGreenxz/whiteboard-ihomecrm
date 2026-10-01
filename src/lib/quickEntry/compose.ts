@@ -27,7 +27,9 @@ export type DraftFlag =
   | "building_choice"
   | "check_total"
   /** Người dùng gõ dòng "tổng …" khác cộng các dòng. */
-  | "total_mismatch";
+  | "total_mismatch"
+  /** Một dòng bằng đúng tổng các dòng khác — có thể là dòng tổng viết kiểu lạ ("… cộng 320k"). */
+  | "maybe_total";
 
 export interface DraftState {
   draft: QuickDraft;
@@ -167,7 +169,11 @@ export function draftsFromText(text: string, ctx: ComposeContext): DraftState[] 
     ? groupByPlace(items.map((it) => ({ buildingId: it.buildingId, roomId: it.roomId, line: it.line })))
     : [{ buildingId: null, roomId: null, lines: items.map((it) => it.line) }];
   // Tổng gõ là tổng CẢ TIN (mọi thẻ) — lệch thì mọi thẻ của tin đều nhắc kiểm lại.
-  const totalMismatch = declaredTotal !== null && items.reduce((s, it) => s + it.line.amount, 0) !== declaredTotal;
+  const sumAll = items.reduce((s, it) => s + it.line.amount, 0);
+  const totalMismatch = declaredTotal !== null && sumAll !== declaredTotal;
+  // Lưới an toàn cho dòng tổng viết kiểu lạ: một dòng (trong ≥3 dòng) bằng đúng tổng các dòng còn lại
+  // (2a = cộng tất cả). KHÔNG tự bỏ — khoản thật cũng có thể trùng tổng — chỉ nhắc kiểm lại.
+  const maybeTotal = items.length >= 3 && items.some((it) => it.line.amount > 0 && it.line.amount * 2 === sumAll);
 
   return groups.map((g) => {
     const members = items.filter((it) => g.lines.includes(it.line));
@@ -175,6 +181,7 @@ export function draftsFromText(text: string, ctx: ComposeContext): DraftState[] 
     const flags = unique(members.flatMap((m) => m.flags));
     if (!g.buildingId && candidates.length > 1 && company) flags.push("building_choice");
     if (totalMismatch) flags.push("total_mismatch");
+    if (maybeTotal) flags.push("maybe_total");
     const locked: string[] = [];
     if (date) locked.push("date");
     g.lines.forEach((l, i) => {
