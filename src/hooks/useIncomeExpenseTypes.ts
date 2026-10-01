@@ -36,6 +36,11 @@ export interface IncomeExpenseType {
   hide_in_report: boolean;
   // NULL trên dữ liệu cũ chưa backfill; row mới do trigger trg_autofill_org gắn.
   organization_id: string | null;
+  // Hạng mục chỉ hệ thống dùng: create_income_expense_v1 từ chối (0A000) rồi phiếu rơi im sang
+  // đường compat luôn Chờ duyệt — ô chọn của người dùng phải loại ra. Query `select('*')` đã trả.
+  system_only?: boolean;
+  // Khoá phí cố định (tien_nha, dien, nuoc, …), duy nhất mỗi org từ 26/09/2026.
+  fee_category?: string | null;
   created_at: string;
   updated_at: string;
 }

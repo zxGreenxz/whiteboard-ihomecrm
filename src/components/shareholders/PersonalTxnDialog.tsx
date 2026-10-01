@@ -18,8 +18,7 @@ import {
   useUpdatePersonalTransaction,
   type PersonalTransaction,
 } from "@/hooks/usePersonalTransactions";
-
-const CATEGORIES = ["Ăn uống", "Nhà cửa", "Cá nhân", "Ứng công ty", "Khác"];
+import { PERSONAL_CATEGORIES } from "@/lib/personalCategories";
 
 interface Props {
   open: boolean;
@@ -139,7 +138,7 @@ export default function PersonalTxnDialog({ open, onOpenChange, txn }: Props) {
               placeholder="VD: Ăn uống, Nhà cửa..."
             />
             <datalist id="personal-categories">
-              {CATEGORIES.map((c) => <option key={c} value={c} />)}
+              {PERSONAL_CATEGORIES.map((c) => <option key={c} value={c} />)}
             </datalist>
           </div>
 

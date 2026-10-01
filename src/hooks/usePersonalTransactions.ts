@@ -57,6 +57,13 @@ export const usePersonalTransactions = () => {
   });
 };
 
+/** Bảng không có trong types sinh tự động — khai đúng phần chuỗi lọc mà bước đối chiếu dùng. */
+interface PersonalRowsQuery extends PromiseLike<{ data: Array<Record<string, unknown>> | null; error: unknown }> {
+  eq(column: string, value: unknown): PersonalRowsQuery;
+  is(column: string, value: null): PersonalRowsQuery;
+  gte(column: string, value: string): PersonalRowsQuery;
+}
+
 export const useCreatePersonalTransaction = () => {
   const qc = useQueryClient();
   const guard=personalGuard('personal-transaction-create');
@@ -67,7 +74,7 @@ export const useCreatePersonalTransaction = () => {
       const auth = { user: await getSessionUser() };
       if (!auth.user) throw new Error("User not authenticated");
       const user = auth.user;
-      return guard.run('create','thêm khoản vào ví cá nhân',async()=>{
+      const insert = async () => {
       const { data, error } = await supabase
         .from("personal_transactions" as any)
         .insert({
@@ -84,7 +91,30 @@ export const useCreatePersonalTransaction = () => {
       confirmedRecordId(data,'thêm khoản vào ví cá nhân');
       if((data as unknown as {user_id?:string}).user_id!==user.id)throw new FinancialWorkflowError('Chưa xác nhận khoản này thuộc ví của bạn. Đối chiếu trước khi tạo tiếp.','unknown',[]);
       return data;
-      });
+      };
+      // Đối chiếu lần trước chưa rõ kết quả (rớt mạng): có khoản GIỐNG HỆT của mình tạo từ lúc đó ⇒
+      // chính là nó, không ghi lại; không có ⇒ lần trước không ghi được (hoặc là khoản khác) ⇒ ghi
+      // khoản đang lưu. Lỗi ở đây giữ nguyên dấu "đang chờ" để lần sau đối chiếu tiếp. Thiếu bước
+      // này thì MỘT lần rớt mạng chặn mọi khoản cá nhân sau đó trên máy, vĩnh viễn.
+      const reconcile = async (pending: { startedAt: string }) => {
+        const since = new Date(Date.parse(pending.startedAt) - 120_000).toISOString();
+        const query = supabase.from("personal_transactions" as never).select("*") as unknown as PersonalRowsQuery;
+        const { data, error } = await query
+          .eq("user_id", user.id)
+          .is("deleted_at", null)
+          .gte("created_at", since)
+          .eq("type", values.type)
+          .eq("txn_date", values.txn_date);
+        if (error) throw error;
+        const same = (data ?? []).find(
+          (r) =>
+            Number(r.amount) === values.amount &&
+            (r.category ?? null) === (values.category ?? null) &&
+            (r.description ?? null) === (values.description ?? null),
+        );
+        return { result: same ?? (await insert()) };
+      };
+      return guard.run('create','thêm khoản vào ví cá nhân',insert,reconcile);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["personal-transactions"] });
