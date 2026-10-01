@@ -22,7 +22,12 @@ type ReceiptSource = { source_id: string; kind: string; gross: string; withheld:
 type Receipt = { operation_id: string; status: string; sources: ReceiptSource[] };
 type ReadSupport = { rows: { contract_id: string; financial?: unknown; months: { billing_month: string; agreed_amount: string }[] }[] };
 const numeric = (value: string) => value.replace(/\D/g, '');
+async function openSupport(dialog: Locator) {
+  const header = dialog.getByRole('button', { name: /^Lịch hỗ trợ tiền thuê/ });
+  if (await header.getAttribute('aria-expanded') === 'false') await header.click();
+}
 async function assertSchedule(dialog: Locator) {
+  await openSupport(dialog);
   const section = dialog.getByRole('region', { name: 'Lịch hỗ trợ tiền thuê', exact: true });
   await expect(section.getByRole('row')).toHaveCount(13);
   await expect(section.getByText(/Tổng hỗ trợ khách: 1.800.000/)).toBeVisible();
@@ -64,6 +69,7 @@ test('TEST owner: preview3+9 → real saved draft → DOCX bytes → reopen → 
   for (const [name, value] of [['start_date', '20/09/2026'], ['end_date', '20/09/2027'], ['start_billing_date', '20/09/2026'], ['end_billing_date', '05/10/2026']]) {
     await editor.locator(`input[name="${name}"]`).fill(value); await editor.locator(`input[name="${name}"]`).blur();
   }
+  await openSupport(editor);
   await editor.getByLabel('Tháng bắt đầu hỗ trợ', { exact: true }).fill('2026-09');
   await editor.getByLabel('Số tháng giai đoạn 1', { exact: true }).fill('3');
   await editor.getByLabel('Hỗ trợ mỗi tháng giai đoạn 1', { exact: true }).fill('300000');

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { useForm } from 'react-hook-form';
 import { Form } from '@/components/ui/form';
 import type { ContractFormData } from '@/lib/contractValidation';
@@ -17,8 +17,9 @@ function Harness() {
 }
 beforeEach(() => { mocks.register.mockReset(); mocks.view = true; mocks.create = true; mocks.read = undefined; });
 afterEach(cleanup);
+const toggle = () => fireEvent.click(screen.getByRole('button', { name: /Lịch hỗ trợ tiền thuê/ }));
 it('configures Sale support without selecting or registering a recipient', () => {
-  render(<Harness/>);
+  render(<Harness/>); toggle();
   expect(screen.queryByLabelText('Sale chịu hỗ trợ')).toBeNull();
   expect(screen.queryByLabelText('Tên người nhận ngoài nhân sự')).toBeNull();
   expect(screen.queryByText('Chọn và xác minh danh tính Sale trước khi lưu.')).toBeNull();
@@ -26,7 +27,7 @@ it('configures Sale support without selecting or registering a recipient', () =>
   expect(mocks.register).not.toHaveBeenCalled();
 });
 it('hides funding controls for a contract-only reader', () => {
-  mocks.view = false; render(<Harness/>);
+  mocks.view = false; render(<Harness/>); toggle();
   expect(screen.queryByLabelText('Người chịu hỗ trợ')).toBeNull(); expect(screen.queryByLabelText('Nguồn khấu trừ')).toBeNull();
   expect(screen.getByText(/Cần quyền tài chính/)).toBeTruthy();
 });

@@ -150,12 +150,18 @@ async function openChoice(page: Page, dialog: ReturnType<Page['getByRole']>) {
   return choice;
 }
 
+async function openSupport(dialog: ReturnType<Page['getByRole']>) {
+  const header = dialog.getByRole('button', { name: /^Lịch hỗ trợ tiền thuê/ });
+  if (await header.getAttribute('aria-expanded') === 'false') await header.click();
+}
+
 async function enterSupportSchedule(page: Page, dialog: ReturnType<Page['getByRole']>) {
   await dialog.getByRole('combobox').first().click();
   await page.getByRole('option').first().click();
   for (const [name, value] of [['start_date', '20/09/2026'], ['end_date', '20/09/2027'], ['start_billing_date', '20/09/2026'], ['end_billing_date', '05/10/2026']]) {
     await dialog.locator(`input[name="${name}"]`).fill(value); await dialog.locator(`input[name="${name}"]`).blur();
   }
+  await openSupport(dialog);
   await dialog.getByLabel('Số tháng giai đoạn 1', { exact: true }).fill('3');
   await dialog.getByLabel('Hỗ trợ mỗi tháng giai đoạn 1', { exact: true }).fill('300000');
   await dialog.getByRole('button', { name: 'Thêm giai đoạn kế tiếp' }).click();
@@ -229,6 +235,7 @@ for (const role of ['chunha', 'quanly'] as const) {
       const reopened = page.getByRole('dialog', { name: /Tạo hợp đồng mới/ });
       await expect(reopened.getByPlaceholder('Ghi chú hợp đồng...')).toHaveValue(marker);
       await expect(reopened.locator('input[name="rent_price"]')).toHaveValue('1.234.567');
+      await openSupport(reopened);
       await expect(reopened.getByText(/Tổng hỗ trợ khách: 1.800.000/)).toBeVisible();
       await reopened.getByRole('button', { name: 'Hủy', exact: true }).click();
       const savedRow = row.locator('..').locator('..');
