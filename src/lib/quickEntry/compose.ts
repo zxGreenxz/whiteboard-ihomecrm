@@ -10,7 +10,8 @@
 // theo cụm phí/mã khách hàng). Hạng mục đoán theo trùng từ là đoán yếu nên AI được thay.
 // ID toà/hạng mục luôn do bộ dò cục bộ tra.
 
-import { segmentMessage } from "./segment";
+import { normalizeForParse } from "./amount";
+import { segmentMessage, type Segment } from "./segment";
 import { findDateHint, findPeriodHint } from "./dateWords";
 import { resolveBuildingMention, resolveBuildingRoom, type ResolveRefs, type ResolveResult } from "./resolve";
 import { suggestCategory, type CategoryRef } from "./categorySuggest";
@@ -28,6 +29,9 @@ export interface DraftState {
   flags: DraftFlag[];
   buildingCandidates: string[];
   source: "text" | "photo";
+  /** Đoạn câu dựng nên thẻ (rỗng với thẻ ảnh) — AI bổ sung gọi RIÊNG từng thẻ bằng chuỗi này, vì thẻ
+   *  gom theo toà/phòng nên thứ tự dòng giữa các thẻ không trùng thứ tự câu. */
+  sourceText: string;
 }
 
 export interface ComposeContext {
@@ -56,6 +60,11 @@ function nameOf(lines: DraftLine[]): string {
     .slice(0, 120);
 }
 
+/** Tên phiếu: bill có cửa hàng thì lấy tên cửa hàng, còn lại ghép mô tả các dòng. */
+function nameFor(source: DraftState["source"], vendor: string | null, lines: DraftLine[]): string {
+  return source === "photo" && vendor ? vendor.slice(0, 120) : nameOf(lines);
+}
+
 /** "cN" ⇒ phần tử thứ N của danh sách đã gửi AI (trong trần prompt). */
 function fromIndex<T>(code: string | null, list: readonly T[]): T | null {
   if (!code) return null;
@@ -76,12 +85,19 @@ const emptyResolve: ResolveResult = {
 export function draftsFromText(text: string, ctx: ComposeContext): DraftState[] {
   const segments = segmentMessage(text);
   if (segments.length === 0) return [];
+  // Vị trí đoạn câu tính trên bản NFC + chữ thường. Hạ chữ thường không đổi độ dài với chữ Việt ⇒ cắt
+  // bản NFC gốc đúng các vị trí đó để giữ chữ hoa người dùng gõ ("Bóng LED"). Lệch độ dài (ký tự lạ
+  // như "İ") ⇒ dùng bản chữ thường cho chắc.
+  const nfc = (text ?? "").normalize("NFC");
+  const keepCase = nfc.length === normalizeForParse(text ?? "").length;
+  const casedText = (seg: Segment): string => (keepCase ? nfc.slice(seg.textStart, seg.textEnd) : seg.text);
   const company = ctx.mode === "company";
   const date = findDateHint(text, ctx.today);
   const period = findPeriodHint(text, ctx.today);
   const msg = company ? resolveBuildingRoom(text, ctx.refs) : emptyResolve;
 
   interface Item {
+    text: string;
     buildingId: string | null;
     roomId: string | null;
     line: DraftLine;
@@ -98,11 +114,12 @@ export function draftsFromText(text: string, ctx: ComposeContext): DraftState[] 
     const roomId = place.room?.id ?? (place.roomMentioned ? null : msg.room?.id ?? null);
     const candidates = buildingId ? [] : place.buildingCandidates.length ? place.buildingCandidates : msg.buildingCandidates;
 
-    let description = seg.text;
+    const segText = casedText(seg);
+    let description = segText;
     if (seg.amount) {
       const a = seg.amount.candidate.start - seg.textStart;
       const b = seg.amount.candidate.end - seg.textStart;
-      description = `${seg.text.slice(0, a)} ${seg.text.slice(b)}`;
+      description = `${segText.slice(0, a)} ${segText.slice(b)}`;
     }
     description = tidy(description);
 
@@ -118,6 +135,7 @@ export function draftsFromText(text: string, ctx: ComposeContext): DraftState[] 
     }
 
     return {
+      text: tidy(segText),
       buildingId: company ? buildingId : null,
       roomId: company ? roomId : null,
       line: {
@@ -166,6 +184,7 @@ export function draftsFromText(text: string, ctx: ComposeContext): DraftState[] 
       flags,
       buildingCandidates: g.buildingId ? [] : candidates,
       source: "text" as const,
+      sourceText: members.map((m) => m.text).join("; "),
     };
   });
 }
@@ -220,7 +239,7 @@ export function draftFromBill(ai: AiResult, ctx: ComposeContext): DraftState {
       id: ctx.newId(),
       mode: ctx.mode,
       date: ai.date && ai.date <= ctx.today ? ai.date : ctx.today,
-      name: ai.vendor ? ai.vendor.slice(0, 120) : nameOf(lines),
+      name: nameFor("photo", ai.vendor, lines),
       vendor: ai.vendor,
       buildingId,
       roomId: buildingId ? roomFromMention(ai.room_mention, buildingId, ctx.refs) : null,
@@ -233,11 +252,21 @@ export function draftFromBill(ai: AiResult, ctx: ComposeContext): DraftState {
     flags,
     buildingCandidates: [],
     source: "photo",
+    sourceText: "",
   };
 }
 
 export function markTouched(state: DraftState, path: string): DraftState {
   return state.touched.includes(path) ? state : { ...state, touched: [...state.touched, path] };
+}
+
+/**
+ * Thẻ không có ô "tên phiếu": tên luôn dựng lại từ nội dung đang hiện (cùng luật lúc dựng thẻ), để
+ * sửa mô tả hay cửa hàng trên thẻ không để lại tên cũ trên phiếu. Không đổi gì ⇒ trả đúng object cũ.
+ */
+export function syncName(state: DraftState): DraftState {
+  const name = nameFor(state.source, state.draft.vendor, state.draft.lines);
+  return name === state.draft.name ? state : { ...state, draft: { ...state.draft, name } };
 }
 
 export function enrichFromAi(state: DraftState, ai: AiResult, ctx: ComposeContext): DraftState {

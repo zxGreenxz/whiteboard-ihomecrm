@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { draftFromBill, draftsFromText, enrichFromAi, markTouched, type ComposeContext } from "../compose";
+import { draftFromBill, draftsFromText, enrichFromAi, markTouched, syncName, type ComposeContext } from "../compose";
 import type { AiResult } from "../aiSchema";
 import type { CategoryRef } from "../categorySuggest";
 
@@ -50,7 +50,7 @@ describe("draftsFromText", () => {
       buildingId: "b102",
       roomId: "r301",
       accountId: "acc-b102",
-      lines: [{ amount: 350_000, categoryId: "t-sua", description: "sửa điện 102lvt p301" }],
+      lines: [{ amount: 350_000, categoryId: "t-sua", description: "sửa điện 102LVT p301" }],
     });
     expect(s.flags).toEqual([]);
   });
@@ -256,5 +256,95 @@ describe("draftFromBill — ảnh hoá đơn", () => {
 
   it("ngày hoá đơn tương lai ⇒ lấy hôm nay", () => {
     expect(draftFromBill({ ...bill, date: "2026-12-01" }, ctx()).draft.date).toBe("2026-10-01");
+  });
+});
+
+describe("sourceText — đoạn câu dựng nên thẻ (để gọi AI RIÊNG từng thẻ)", () => {
+  it("tin nhắc hai toà ⇒ mỗi thẻ chỉ mang đoạn câu của mình", () => {
+    const cards = draftsFromText("102LVT sơn 300k; 405PVB keo 20k", ctx());
+    expect(cards).toHaveLength(2);
+    const of102 = cards.find((c) => c.draft.buildingId === "b102")!;
+    const of405 = cards.find((c) => c.draft.buildingId === "b405")!;
+    expect(of102.sourceText).toContain("sơn 300k");
+    expect(of102.sourceText).not.toContain("keo");
+    expect(of405.sourceText).toContain("keo 20k");
+    expect(of405.sourceText).not.toContain("sơn");
+  });
+
+  it("đoạn câu xen kẽ toà ⇒ thẻ gom đúng đoạn, giữ thứ tự dòng", () => {
+    const cards = draftsFromText("102LVT sơn 300k; 405PVB keo 20k; 102LVT chổi 15k", ctx());
+    const of102 = cards.find((c) => c.draft.buildingId === "b102")!;
+    expect(of102.draft.lines.map((l) => l.amount)).toEqual([300_000, 15_000]);
+    expect(of102.sourceText).toBe("102LVT sơn 300k; 102LVT chổi 15k");
+  });
+
+  it("giữ nguyên chữ hoa người dùng gõ trong mô tả, tên phiếu và đoạn câu", () => {
+    const [s] = draftsFromText("102LVT mua Bóng LED Rạng Đông 90k", ctx());
+    expect(s.draft.lines[0].description).toBe("102LVT mua Bóng LED Rạng Đông");
+    expect(s.draft.name).toBe("102LVT mua Bóng LED Rạng Đông");
+    expect(s.sourceText).toBe("102LVT mua Bóng LED Rạng Đông 90k");
+  });
+
+  it("chữ tổ hợp (NFD, bàn phím Mac) ⇒ mô tả ra dạng dựng sẵn (NFC), không vỡ dấu", () => {
+    const [s] = draftsFromText("Sơn tường 300k".normalize("NFD"), ctx({ mode: "personal" }));
+    expect(s.draft.lines[0].description).toBe("Sơn tường".normalize("NFC"));
+    expect(s.draft.lines[0].amount).toBe(300_000);
+  });
+
+  it("ký tự đổi độ dài khi hạ chữ thường (İ) ⇒ dùng bản chữ thường, mô tả và tiền không lệch vị trí", () => {
+    const [s] = draftsFromText("Ống İnox 50k", ctx({ mode: "personal" }));
+    expect(s.draft.lines[0].description).toBe("Ống İnox".toLowerCase());
+    expect(s.draft.lines[0].amount).toBe(50_000);
+  });
+
+  it("thẻ từ ảnh ⇒ không có đoạn câu (AI đã đọc ảnh)", () => {
+    expect(draftFromBill(ai({ total_vnd: 50_000 }), ctx()).sourceText).toBe("");
+  });
+});
+
+describe("syncName — tên phiếu đi theo nội dung đang hiện trên thẻ", () => {
+  const withLine0 = (s: ReturnType<typeof draftsFromText>[number], description: string) => ({
+    ...s,
+    draft: { ...s.draft, lines: s.draft.lines.map((l, i) => (i === 0 ? { ...l, description } : l)) },
+  });
+
+  it("thẻ chữ: sửa mô tả ⇒ tên phiếu đổi theo (không còn giữ chữ cũ)", () => {
+    const [s] = draftsFromText("bún bò 50k", ctx({ mode: "personal" }));
+    expect(syncName(withLine0(s, "cơm tấm")).draft.name).toBe("cơm tấm");
+  });
+
+  it("thẻ chữ có cửa hàng (gõ ở thẻ hoặc AI điền) ⇒ tên vẫn theo mô tả, cửa hàng chỉ là người nhận", () => {
+    const [s] = draftsFromText("102LVT mua sơn 300k", ctx());
+    const enriched = enrichFromAi(
+      s,
+      ai({ items: [{ desc: "sơn", amount_vnd: 300_000, category: null, confidence: 0.9 }], vendor: "Minh Phát" }),
+      ctx(),
+    );
+    expect(enriched.draft.vendor).toBe("Minh Phát");
+    expect(syncName(enriched).draft.name).toBe(s.draft.name);
+  });
+
+  it("thẻ chữ nhiều dòng: tên ghép mọi mô tả", () => {
+    const [s] = draftsFromText("102LVT sơn 300k, keo 20k", ctx());
+    expect(syncName(withLine0(s, "sơn nước")).draft.name).toBe("sơn nước; keo");
+  });
+
+  it("bill có cửa hàng: tên là cửa hàng, sửa dòng không đổi tên; sửa cửa hàng thì đổi theo", () => {
+    const s = draftFromBill(
+      ai({ items: [{ desc: "Bóng LED", amount_vnd: 90_000, category: null, confidence: 0.9 }], total_vnd: 90_000, vendor: "Minh Phát" }),
+      ctx(),
+    );
+    expect(syncName(withLine0(s, "Bóng LED 9W")).draft.name).toBe("Minh Phát");
+    expect(syncName({ ...s, draft: { ...s.draft, vendor: "Điện nước Minh Phát" } }).draft.name).toBe("Điện nước Minh Phát");
+    expect(syncName({ ...s, draft: { ...s.draft, vendor: null } }).draft.name).toBe("Bóng LED");
+  });
+
+  it("thẻ vừa dựng ⇒ trả lại đúng object cũ (không render thừa)", () => {
+    const fresh = [
+      ...draftsFromText("102LVT sơn 300k, keo 20k; bún bò 50k", ctx()),
+      draftFromBill(ai({ items: [{ desc: "Cà phê", amount_vnd: 30_000, category: null, confidence: 0.9 }], total_vnd: 30_000 }), ctx()),
+      draftFromBill(ai({ items: [], total_vnd: 50_000, vendor: "Bách hoá" }), ctx()),
+    ];
+    for (const s of fresh) expect(syncName(s)).toBe(s);
   });
 });
