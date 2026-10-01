@@ -128,7 +128,7 @@ const FILLER_WORDS = new Set(["linh", "lẻ"]);
 /** Từ đứng ngay trước khiến số trần sau nó là số phòng/ngày/mã, không phải tiền. */
 const CUE_WORDS = new Set([
   "phòng", "phong", "p", "ph", "tầng", "lầu", "tháng", "ngày", "năm", "số", "lần", "mã", "kỳ",
-  "đợt", "căn", "tòa", "toà", "toa", "nhà", "khu", "lô", "xe", "biển", "tuần", "lúc", "đơn",
+  "đợt", "căn", "tòa", "toà", "toa", "nhà", "khu", "lô", "biển", "tuần", "lúc", "đơn",
 ]);
 
 /** Danh từ đếm / đơn vị đo đứng ngay sau ⇒ số trần là SỐ LƯỢNG. */

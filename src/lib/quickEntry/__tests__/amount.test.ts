@@ -103,6 +103,11 @@ describe("pickAmount — số trần", () => {
     expect(value("120000")).toBe(120_000);
   });
 
+  it("'gửi xe 5000' là tiền gửi xe, không phải số xe (biển số luôn dính chữ cái)", () => {
+    expect(value("gửi xe 5000")).toBe(5_000);
+    expect(pickAmount("gửi xe 5000")?.warning).toBe("small_amount");
+  });
+
   it("số trần nhỏ hơn 10.000 đồng có cảnh báo, số có đơn vị thì không", () => {
     expect(pickAmount("5000")?.warning).toBe("small_amount");
     expect(pickAmount("gửi xe 5k")?.warning).toBeNull();
