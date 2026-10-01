@@ -67,12 +67,18 @@ export function ContractFormDialog({
 }: ContractFormDialogProps) {
   const formRoot=useRef<HTMLFormElement>(null);
   const [savedDraft, setSavedDraft] = useState(draft);
+  const draftSession = useRef({ open, draftId: draft?.id });
+  const changedSession = draftSession.current.open !== open || draftSession.current.draftId !== draft?.id;
+  // Hydration locks a draft ID on its first open render, so supply the new
+  // session's input synchronously. Within that session retain local saves/prints.
+  const activeDraft = changedSession ? draft : savedDraft;
   useEffect(() => {
+    draftSession.current = { open, draftId: draft?.id };
     setSavedDraft(draft);
     // Reopening replaces the editor; a background refresh of the same draft does not.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, draft?.id]);
-  const state = useContractFormState({ open, contract, prefill, draft: savedDraft });
+  const state = useContractFormState({ open, contract, prefill, draft: activeDraft });
   const editor = useContractDraftEditor({ open, draft, state, onSaved: value => {
     setSavedDraft(value); onSaved?.(value);
   } });
