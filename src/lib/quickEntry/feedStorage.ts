@@ -13,6 +13,9 @@ export const DRAFTS_PREFIX = "ihome:quick-entry:drafts:";
 export const DRAFT_TTL_MS = 48 * 60 * 60 * 1000;
 export const UNKNOWN_AFTER_RELOAD =
   "Trang đã tải lại khi thẻ đang lưu nên chưa rõ đã lưu chưa. Bấm “Gửi lại y nguyên” — máy chủ tự chống trùng — hoặc kiểm tra trước.";
+/** Ví không có khoá phía máy chủ: gửi lại dựa vào bước đối chiếu của hook ví. */
+const UNKNOWN_AFTER_RELOAD_PERSONAL =
+  "Trang đã tải lại khi thẻ đang lưu nên chưa rõ đã ghi chưa. Bấm “Gửi lại y nguyên” — máy đối chiếu với ví trước khi ghi — hoặc xem Ví cá nhân.";
 
 export interface StoredCard {
   state: DraftState;
@@ -37,15 +40,17 @@ function keepable(c: StoredCard): boolean {
   return c.state.source === "text" || d.mode === "personal" || d.attachmentUrls.length > 0;
 }
 
-function onReload(status: CardStatus): CardStatus {
-  if (status.kind === "saving") return { kind: "unknown", message: UNKNOWN_AFTER_RELOAD };
-  if (status.kind === "rejected") return { kind: "draft" };
-  return status;
+function onReload(c: StoredCard): CardStatus {
+  if (c.status.kind === "saving") {
+    return { kind: "unknown", message: c.state.draft.mode === "personal" ? UNKNOWN_AFTER_RELOAD_PERSONAL : UNKNOWN_AFTER_RELOAD };
+  }
+  if (c.status.kind === "rejected") return { kind: "draft" };
+  return c.status;
 }
 
 /** null ⇒ không còn gì để giữ (trang xoá khoá lưu). */
 export function serializeCards(cards: StoredCard[], now: number): string | null {
-  const kept = cards.filter(keepable).map((c) => ({ ...c, status: onReload(c.status) }));
+  const kept = cards.filter(keepable).map((c) => ({ ...c, status: onReload(c) }));
   if (kept.length === 0) return null;
   const stored: Stored = { v: 1, savedAt: now, cards: kept };
   return JSON.stringify(stored);

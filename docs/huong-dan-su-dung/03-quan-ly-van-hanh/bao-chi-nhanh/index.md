@@ -40,6 +40,8 @@ Gõ như nhắn tin rồi bấm **Gửi** (hoặc Enter). Ví dụ:
 
 Máy đọc được `50k`, `1tr2` (1,2 triệu), `1 triệu 2`, `1.200.000`, `một trăm hai mươi nghìn`, `ba lít` (300 nghìn), `hôm qua`, `25/9`, `tháng 9`, mã toà và số phòng. Một câu nhắc nhiều toà hoặc nhiều phòng thì tách thành nhiều thẻ — mỗi thẻ một phiếu.
 
+Gõ thêm một dòng tổng riêng (`sơn 300k, keo 20k, tổng 320k`) thì dòng đó chỉ dùng để đối chiếu, không thành khoản chi; tổng khác cộng các dòng thì thẻ nhắc kiểm lại. Chữ "cộng" giữa hai khoản (`sơn 300k cộng keo 20k`) được hiểu là hai khoản.
+
 ## Cách 2 — Nói
 
 1. Ô nhập đang trống thì nút bên phải là **micro** — chạm vào và cho phép trình duyệt dùng micro (lần đầu).

@@ -407,11 +407,11 @@ export function DraftCard(props: DraftCardProps) {
             <Button type="button" size="sm" variant="outline" asChild>
               <Link to={reviewHref}>{company ? "Kiểm tra trong Thu chi" : "Xem ví cá nhân"}</Link>
             </Button>
-            {status.kind === "maybe_saved" && (
-              <Button type="button" size="sm" variant="ghost" onClick={props.onDiscard}>
-                Bỏ thẻ
-              </Button>
-            )}
+            {/* Bỏ thẻ chỉ gỡ thẻ khỏi màn này, không đụng phiếu/khoản đã ghi — thẻ chưa rõ mà bị từ
+                chối lặp lại (vd ví đã ghi một phần) không phải nằm kẹt suốt 48 giờ. */}
+            <Button type="button" size="sm" variant="ghost" onClick={props.onDiscard}>
+              Bỏ thẻ
+            </Button>
           </div>
         </div>
       )}

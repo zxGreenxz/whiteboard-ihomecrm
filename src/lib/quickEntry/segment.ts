@@ -7,7 +7,7 @@
 //      cùng hạng cao nhất. Câu mở đầu bằng số tiền ("60k bóng đèn 80k ống nước") ⇒ cắt
 //      TRƯỚC mỗi số tiếp theo; ngược lại cắt SAU mỗi số. Số trần không dùng để cắt (dễ là số
 //      lượng). Có chữ "tổng" trước một số ⇒ cả đoạn là một khoản với số tổng đó.
-// Đoạn đứng riêng MỞ ĐẦU bằng "tổng" (sau dấu ngăn) được đánh dấu `isTotal` — dòng đối chiếu.
+// Đoạn đứng riêng CHỈ gồm "tổng … <số tiền>" (sau dấu ngăn) được đánh dấu `isTotal` — dòng đối chiếu.
 // Đoạn không có số tiền nhập vào đoạn liền trước (hoặc đoạn có tiền đầu tiên nếu nó đứng
 // đầu) — "điện và nước 500k" là MỘT khoản.
 
@@ -29,8 +29,8 @@ export interface Segment {
   /** Vị trí `amount.candidate` cũng tính trên cả tin nhắn. */
   amount: AmountPick | null;
   /**
-   * Đoạn MỞ ĐẦU bằng "tổng/cộng/tất cả" và có số tiền ("…, keo 20k, tổng 320k"): dòng tổng người gõ
-   * để đối chiếu, không phải một khoản chi. Bộ dựng thẻ bỏ nó khỏi các dòng và so với tổng các dòng.
+   * Đoạn CHỈ gồm từ báo tổng + số tiền ("…, keo 20k, tổng 320k"): dòng tổng người gõ để đối chiếu,
+   * không phải một khoản chi. Bộ dựng thẻ bỏ nó khỏi các dòng và so với tổng các dòng.
    */
   isTotal: boolean;
 }
@@ -42,9 +42,14 @@ interface Range {
 
 const SEPARATOR_RE = /\n|;|\+|(?<!\d),|,(?!\d)|\s+và\s+/gu;
 const EDGE_RE = /[\s,;+.:\-–—]/u;
-const TOTAL_CUE_RE = /(?:tổng cộng|tổng|cộng|tất cả|tong cong|tong)\s*:?\s*$/u;
-// \b của JS chỉ hiểu chữ ASCII ("tất cả" kết thúc bằng "ả") ⇒ ranh giới viết bằng lookahead.
-const TOTAL_START_RE = /^(?:tổng cộng|tổng|cộng|tất cả|tong cong|tong)(?=[\s:]|\d|$)/u;
+// Từ báo TỔNG. "cộng" đứng một mình là CỘNG THÊM ("sơn 300k cộng keo 20k", "cộng thêm tiền công")
+// và "tong" không dấu có thể là "tông đơ" ⇒ không nằm trong danh sách.
+const TOTAL_WORDS = "tổng cộng|tổng tiền|tổng số|tổng|tất cả|cộng lại|tong cong";
+const TOTAL_CUE_RE = new RegExp(`(?:${TOTAL_WORDS})\\s*(?:là|hết|=)?\\s*:?\\s*$`, "u");
+// Dòng tổng đứng riêng CHỈ gồm từ báo tổng + số tiền ("tổng 320k", "tổng cộng: 320.000đ", "tất cả hết
+// 90k"). "tất cả đồ điện 500k", "tổng vệ sinh 800k" là tên khoản chi, không phải dòng tổng.
+const TOTAL_LINE_HEAD_RE = new RegExp(`^(?:${TOTAL_WORDS})\\s*(?:là|hết|=)?\\s*:?\\s*$`, "u");
+const TOTAL_LINE_TAIL_RE = /^\s*(?:đ|đồng|vnđ|vnd)?\s*[.!]?\s*$/u;
 const RANK: MoneyKind[] = ["explicit", "slang", "bare"];
 
 function trim(norm: string, r: Range): Range | null {
@@ -141,6 +146,10 @@ export function segmentMessage(message: string): Segment[] {
   return merged.map((r) => {
     const text = norm.slice(r.start, r.end);
     const amount = pickSegmentAmount(norm, r);
-    return { text, textStart: r.start, textEnd: r.end, amount, isTotal: amount !== null && TOTAL_START_RE.test(text) };
+    const isTotal =
+      amount !== null &&
+      TOTAL_LINE_HEAD_RE.test(norm.slice(r.start, amount.candidate.start)) &&
+      TOTAL_LINE_TAIL_RE.test(norm.slice(amount.candidate.end, r.end));
+    return { text, textStart: r.start, textEnd: r.end, amount, isTotal };
   });
 }

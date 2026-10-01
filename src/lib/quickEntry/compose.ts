@@ -307,6 +307,9 @@ export function markTouched(state: DraftState, path: string): DraftState {
  * dòng bị xoá — không thì dấu rơi sang dòng khác: AI về sau đè hạng mục người dùng đã chọn ở dòng bị
  * dồn lên, hoặc ô chưa ai sửa lại bị coi là đã sửa.
  */
+/** Dấu "đã bỏ dòng": câu gốc (`sourceText`) không còn khớp các dòng ⇒ AI không ghép theo chỉ số nữa. */
+export const LINES_EDITED = "lines";
+
 export function removeLineAt(state: DraftState, i: number): DraftState {
   const shift = (paths: string[]) =>
     paths.flatMap((p) => {
@@ -316,10 +319,11 @@ export function removeLineAt(state: DraftState, i: number): DraftState {
       if (k === i) return [];
       return [k > i ? `lines.${k - 1}${m[2] ?? ""}` : p];
     });
+  const touched = shift(state.touched);
   return {
     ...state,
     draft: { ...state.draft, lines: state.draft.lines.filter((_, j) => j !== i) },
-    touched: shift(state.touched),
+    touched: touched.includes(LINES_EDITED) ? touched : [...touched, LINES_EDITED],
     locked: shift(state.locked),
   };
 }
@@ -334,6 +338,8 @@ export function syncName(state: DraftState): DraftState {
 }
 
 export function enrichFromAi(state: DraftState, ai: AiResult, ctx: ComposeContext): DraftState {
+  // Người dùng đã bỏ dòng: AI đọc câu GỐC nên ghép theo chỉ số/gộp món sẽ rót tiền sai dòng.
+  if (state.touched.includes(LINES_EDITED)) return state;
   const company = state.draft.mode === "company";
   const free = (path: string) => !state.touched.includes(path) && !state.locked.includes(path);
   const lines = state.draft.lines;

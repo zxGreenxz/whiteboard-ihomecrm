@@ -80,6 +80,12 @@ describe("draftsFromText", () => {
     expect(s.flags).toContain("total_mismatch");
   });
 
+  it("'cộng' nối hai khoản ⇒ GIỮ cả hai khoản, không coi khoản sau là dòng tổng", () => {
+    const [s] = draftsFromText("102LVT sơn 300k cộng keo 20k", ctx());
+    expect(s.draft.lines.map((l) => l.amount)).toEqual([300_000, 20_000]);
+    expect(s.flags).not.toContain("total_mismatch");
+  });
+
   it("tin chỉ có dòng tổng ⇒ vẫn là một khoản (không bỏ số tiền duy nhất)", () => {
     const [s] = draftsFromText("102LVT tổng 320k", ctx());
     expect(s.draft.lines.map((l) => l.amount)).toEqual([320_000]);
@@ -154,8 +160,20 @@ describe("removeLineAt — bỏ dòng dồn lại dấu đã sửa/đã khoá th
     const st = { ...s, touched: ["lines.0.amount", "lines.2.categoryId", "vendor"], locked: ["lines.1.categoryId", "date"] };
     const out = removeLineAt(st, 1);
     expect(out.draft.lines.map((l) => l.amount)).toEqual([60_000, 20_000]);
-    expect(out.touched).toEqual(["lines.0.amount", "lines.1.categoryId", "vendor"]);
+    expect(out.touched).toEqual(["lines.0.amount", "lines.1.categoryId", "vendor", "lines"]);
     expect(out.locked).toEqual(["date"]);
+  });
+
+  it("đã bỏ dòng ⇒ AI (đọc câu gốc) không ghép vào thẻ nữa — kể cả 'Thử AI lại' sau đó", () => {
+    const [built] = draftsFromText("102LVT sơn 300k, keo 20k", ctx());
+    // Hai dòng chưa có tiền (vd chữ từ giọng nói bộ đọc máy không ra số).
+    const s = { ...built, draft: { ...built.draft, lines: built.draft.lines.map((l) => ({ ...l, amount: 0 })) } };
+    const out = removeLineAt(s, 1);
+    const items = [
+      { desc: "sơn", amount_vnd: 300_000, category: "c3", confidence: 0.9 },
+      { desc: "keo", amount_vnd: 20_000, category: "c3", confidence: 0.9 },
+    ];
+    expect(enrichFromAi(out, ai({ items }), ctx()).draft.lines.map((l) => l.amount)).toEqual([0]);
   });
 
   it("AI về sau khi bỏ dòng KHÔNG đè hạng mục người dùng đã chọn ở dòng bị dồn lên", () => {

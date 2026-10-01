@@ -76,7 +76,24 @@ describe("segmentMessage — câu nói liền không dấu ngăn", () => {
       [320_000, true],
     ]);
     expect(segmentMessage("bóng đèn 60k\ntổng cộng: 60k").map((s) => s.isTotal)).toEqual([false, true]);
-    expect(segmentMessage("tất cả 90k; cảm ơn").map((s) => s.isTotal)).toEqual([true]);
+    expect(segmentMessage("đèn 60k, keo 30k, tất cả hết 90k").map((s) => s.isTotal)).toEqual([false, false, true]);
+  });
+
+  it("'cộng' = cộng thêm, 'tất cả/tổng' đứng đầu tên khoản, 'tong' không dấu ⇒ KHÔNG phải dòng tổng", () => {
+    for (const msg of [
+      "sơn 300k cộng keo 20k",
+      "sơn ba trăm nghìn cộng tiền công hai trăm nghìn",
+      "sơn 300k, cộng thêm tiền công 200k",
+      "tất cả đồ điện 500k, sơn 300k",
+      "son 300k, tong do 200k",
+      "tổng vệ sinh 800k, mua chổi 50k",
+    ]) {
+      expect(segmentMessage(msg).some((s) => s.isTotal), msg).toBe(false);
+    }
+  });
+
+  it("'cộng' ngay trước số tiền là CỘNG THÊM, không phải số tổng của đoạn", () => {
+    expect(segmentMessage("sơn 300k cộng 20k").map((s) => s.amount?.value)).toEqual([300_000, 20_000]);
   });
 
   it("số trần không dùng để cắt khoản (dễ là số lượng)", () => {

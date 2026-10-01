@@ -82,6 +82,15 @@ describe("needsAi — chỉ gọi AI khi thẻ còn chỗ mơ hồ", () => {
     expect(needsAi({ ...strong, draft: { ...strong.draft, buildingId: null } })).toBe(true);
     expect(needsAi({ ...strong, draft: { ...strong.draft, lines: [{ ...strong.draft.lines[0], amount: 0 }] } })).toBe(true);
   });
+
+  it("thẻ đã bỏ dòng (dấu 'lines') ⇒ không gọi AI nữa — câu gốc không còn khớp các dòng", async () => {
+    h.readWithAi.mockResolvedValue(ok(ai()));
+    const { result } = mount();
+    await act(async () => result.current.submitText("102LVT mua sơn", "company"));
+    const [c] = cardsOf(result);
+    expect(needsAi(c.state)).toBe(true);
+    expect(needsAi({ ...c.state, touched: [...c.state.touched, "lines"] })).toBe(false);
+  });
 });
 
 describe("useQuickEntryFeed — tin chữ", () => {

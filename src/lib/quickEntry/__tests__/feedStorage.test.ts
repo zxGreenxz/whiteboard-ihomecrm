@@ -57,6 +57,13 @@ describe("feedStorage — giữ thẻ qua lần tải lại trang", () => {
     expect(b.status).toEqual({ kind: "draft" });
   });
 
+  it("thẻ VÍ đang lưu lúc tải lại ⇒ lời báo không hứa 'máy chủ chống trùng' (ví không có khoá) và trỏ về Ví", () => {
+    const [a] = deserializeCards(serializeCards([card({ mode: "personal", status: { kind: "saving" } })], NOW), NOW);
+    expect(a.status.kind).toBe("unknown");
+    expect(a.status.message).not.toContain("máy chủ");
+    expect(a.status.message).toContain("Ví cá nhân");
+  });
+
   it("giữ 'chưa rõ' và 'có thể đã lưu' cùng số khoản cá nhân đã ghi; bỏ thẻ đã lưu", () => {
     const unknown = card({ mode: "personal", status: { kind: "unknown", message: "x" }, done: 1 });
     const maybe = card({ status: { kind: "maybe_saved", message: "y" } });

@@ -17,7 +17,15 @@ import { PERSONAL_CATEGORIES } from "@/lib/personalCategories";
 import type { AiResult } from "@/lib/quickEntry/aiSchema";
 import { encodeWithinBudget } from "@/lib/quickEntry/billImage";
 import type { CardStatus } from "@/lib/quickEntry/cardStatus";
-import { draftFromBill, draftsFromText, enrichFromAi, syncName, type ComposeContext, type DraftState } from "@/lib/quickEntry/compose";
+import {
+  draftFromBill,
+  draftsFromText,
+  enrichFromAi,
+  LINES_EDITED,
+  syncName,
+  type ComposeContext,
+  type DraftState,
+} from "@/lib/quickEntry/compose";
 import { validateDraft, type DraftMode } from "@/lib/quickEntry/draft";
 import { classifyAiError, type AiErrorView } from "@/lib/quickEntry/errors";
 import { deserializeCards, draftsKey, otherUsersKeys, serializeCards } from "@/lib/quickEntry/feedStorage";
@@ -84,6 +92,8 @@ interface Feed {
  * mục. Hạng mục "chắc" = khoá theo cụm phí/mã khách hàng (`locked`) hoặc người dùng tự chọn (`touched`).
  */
 export function needsAi(s: DraftState): boolean {
+  // Đã bỏ dòng ⇒ câu gốc không còn khớp các dòng, AI không ghép vào thẻ nữa (enrichFromAi) — đừng gọi.
+  if (s.touched.includes(LINES_EDITED)) return false;
   const d = s.draft;
   if (d.lines.some((l) => !(l.amount > 0))) return true;
   if (d.mode === "company") {

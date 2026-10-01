@@ -198,6 +198,13 @@ describe("DraftCard — trạng thái máy chủ", () => {
     expect(onSave).toHaveBeenCalledTimes(1);
   });
 
+  it("chưa rõ đã lưu ⇒ vẫn bỏ được thẻ (thẻ bị từ chối lặp lại không kẹt suốt 48 giờ)", () => {
+    const onDiscard = vi.fn();
+    render(<Harness initial={state()} status={{ kind: "unknown", message: "Đã ghi 1/2 khoản" }} onDiscard={onDiscard} />);
+    fireEvent.click(screen.getByRole("button", { name: "Bỏ thẻ" }));
+    expect(onDiscard).toHaveBeenCalledTimes(1);
+  });
+
   it("có thể đã lưu (23505) ⇒ không có nút gửi lại, chỉ kiểm tra hoặc bỏ thẻ", () => {
     const onDiscard = vi.fn();
     render(<Harness initial={state()} status={{ kind: "maybe_saved", message: "Có thể đã lưu" }} onDiscard={onDiscard} />);
