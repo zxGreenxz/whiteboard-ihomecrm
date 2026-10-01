@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-01T03:53:53.811Z",
+  "generatedAt": "2026-10-01T04:00:27.935Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 640,
-    "unknown": 85,
+    "ledger-applied": 641,
+    "unknown": 84,
     "catalog-proven": 206,
     "superseded": 15
   },
@@ -10908,14 +10908,9 @@
       "name": "invoice_rent_support_claims",
       "scheme": "timestamp14",
       "sha256": "7ed30113bd0b8b85407bbc8390573a855c32058ad2ab50d90a07871cfef1e3db",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "table:app_private.invoice_rent_support_item_capabilities",
-        "table:app_private.rent_support_invoice_claims",
-        "table:app_private.rent_support_invoice_update_requests",
-        "table:app_private.rent_support_invoice_events",
-        "function:app_private.invoice_rent_support_items_open_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-01T03:59:01.923Z|bien-nhan-backup"
       ]
     },
     {
@@ -10979,7 +10974,7 @@
         "table:app_private.rent_support_reconciliation_batches",
         "table:app_private.rent_support_reconciliations",
         "function:app_private.rent_support_termination_v1",
-        "function:app_private.invoice_rent_support_quote_v1"
+        "function:app_private.rent_support_lifecycle_authorize_v1"
       ]
     },
     {
