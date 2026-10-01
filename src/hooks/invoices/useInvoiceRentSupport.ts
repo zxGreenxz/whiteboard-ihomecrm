@@ -65,13 +65,16 @@ export function useInvoiceRentSupport<T extends InvoiceEntryValues>(form: UseFor
   const error = !enabled ? null : plan.isError || quote.isError ? 'Không kiểm tra được hỗ trợ; vui lòng tải lại trước khi lưu.' : manual < 0 ? 'Giảm trừ phải đủ phần hỗ trợ và credit đã chọn.' : preview?.state === 'NEEDS_REVIEW' || quote.data?.value.state === 'NEEDS_REVIEW' ? 'Hỗ trợ vượt doanh thu đủ điều kiện; cần đối chiếu.' : !ready ? 'Đang kiểm tra hỗ trợ của tháng và các khoản thu...' : null;
   const intent = useRef<{ fingerprint: string; requestId: string; organizationId: string; contractId: string; invoiceId?: string } | null>(null);
   const [hasPending, setHasPending] = useState(false);
-  const prepare = async (payload: InvoiceFormData) => {
+  const prepare = async (payload: InvoiceFormData, { readbackOnly = false }: { readbackOnly?: boolean } = {}) => {
     // Resolve the previous attempt even when the user has changed month/form/org.
     if (intent.current) {
       const old = intent.current;
       const saved = await readSavedInvoiceSupportRequest(old.organizationId, old.contractId, old.requestId, old.invoiceId);
       if (saved) return { context: undefined, saved };
     }
+    // A blocked form may verify the durable attempt, never replace its identity
+    // or prepare a new write just because the edited payload quotes as READY.
+    if (readbackOnly) return { context: undefined, saved: null };
     if (!enabled) return { context: undefined, saved: null };
     if (!ready || !context || !organizationId) throw new Error(error ?? 'Chưa kiểm tra được hỗ trợ.');
     const nextFingerprint = JSON.stringify([organizationId, invoiceId, payload, context.expected_plan_revision, context.manual_discount_amount]);

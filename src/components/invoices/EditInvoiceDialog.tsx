@@ -205,7 +205,7 @@ const DraftInvoiceEditor = ({ open, onOpenChange, invoice }: EditInvoiceDialogPr
     };
 
     try {
-      const prepared = await support.prepare(formData);
+      const prepared = await support.prepare(formData, { readbackOnly: reconcileRequired || sourcesUnavailable });
       if (prepared.saved) {
         toast({ title: 'Đã xác minh lần lưu trước', description: `Hóa đơn ${prepared.saved.invoice_number || prepared.saved.id} — kỳ ${prepared.saved.billing_month}.` });
         support.clear(); onOpenChange(false); return;

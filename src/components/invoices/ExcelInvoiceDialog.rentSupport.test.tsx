@@ -9,7 +9,8 @@ vi.mock('@/hooks/invoices/useExcelInvoiceData', async original => ({ ...await or
 vi.mock('@/hooks/useInvoices', () => ({ useCreateInvoice: () => ({ mutateAsync: api.create, isPending: false }) }));
 vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ selectedOrganizationId: 'org1' }) }));
 vi.mock('@/hooks/useBuildings', () => ({ useBuildings: () => ({ data: [{ id: 'b1', name: 'Building' }] }) }));
-vi.mock('@/hooks/useBuildingServices', () => ({ useBuildingServices: () => ({ data: undefined }) }));
+// Loaded empty services are valid; undefined now correctly means source unavailable.
+vi.mock('@/hooks/useBuildingServices', () => ({ useBuildingServices: () => ({ data: [] }) }));
 vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: api.toast }) }));
 vi.mock('@/components/ui/select', async original => { const actual = await original<typeof import('@/components/ui/select')>(); return { ...actual, SelectContent: (props: React.ComponentProps<typeof actual.SelectContent>) => <actual.SelectContent {...props} position="item-aligned" /> }; });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });

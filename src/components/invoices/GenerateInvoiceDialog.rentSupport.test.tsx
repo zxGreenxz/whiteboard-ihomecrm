@@ -8,11 +8,11 @@ vi.mock('@/components/ui/select', async original => {
   return { ...actual, SelectContent: (props: React.ComponentProps<typeof actual.SelectContent>) => <actual.SelectContent {...props} position="item-aligned" /> };
 });
 
-const api = vi.hoisted(() => ({ create: vi.fn(), plan: vi.fn(), quote: vi.fn(), read: vi.fn() }));
-vi.mock('@/hooks/useInvoices', () => ({ useCreateInvoice: () => ({ mutate: api.create, isPending: false }), useExcessAmount: () => ({ data: 50000 }) }));
+const api = vi.hoisted(() => ({ create: vi.fn(), plan: vi.fn(), quote: vi.fn(), read: vi.fn(), sourceBlocked: false }));
+vi.mock('@/hooks/useInvoices', () => ({ useCreateInvoice: () => ({ mutate: api.create, mutateAsync: api.create, isPending: false }), useExcessAmount: () => ({ data: 50000 }) }));
 vi.mock('@/lib/invoiceRentSupport', async original => ({ ...await original<typeof import('@/lib/invoiceRentSupport')>(), readInvoiceRentSupportPlan: api.plan, quoteInvoiceRentSupport: api.quote, readSavedInvoiceSupportRequest: api.read }));
 vi.mock('@/hooks/useContracts', () => ({ useContracts: () => ({ data: [{ id: 'c1', status: 'ACTIVE', discounts: { version: 2 }, rent_price: 1000000, room: { id: 'r1', name: 'Room', building_id: 'b1' } }] }) }));
-vi.mock('@/hooks/useBuildings', () => ({ useBuildings: () => ({ data: [] }) }));
+vi.mock('@/hooks/useBuildings', () => ({ useBuildings: () => ({ data: [], isError: api.sourceBlocked }) }));
 vi.mock('@/hooks/useRooms', () => ({ useRooms: () => ({ data: [] }) }));
 vi.mock('@/hooks/useVehicles', () => ({ useVehicles: () => ({ data: { data: [] } }) }));
 vi.mock('@/hooks/useBuildingServices', () => ({ useBuildingServices: () => ({ data: [] }) }));
@@ -25,7 +25,8 @@ afterEach(cleanup);
 beforeEach(() => {
   vi.stubGlobal('PointerEvent', MouseEvent);
   HTMLElement.prototype.scrollIntoView = vi.fn(); HTMLElement.prototype.hasPointerCapture = vi.fn(() => false); HTMLElement.prototype.releasePointerCapture = vi.fn();
-  api.create.mockReset(); api.read.mockResolvedValue(null);
+  api.sourceBlocked = false;
+  api.create.mockReset().mockResolvedValue({ id: 'created1', invoice_number: 'INV-CREATED', billing_month: '2026-09' }); api.read.mockReset().mockResolvedValue(null);
   api.plan.mockResolvedValue({ revision: 2, schedule: { version: 2, start_billing_month: '2026-09', segments: [{ month_count: 3, monthly_amount: '300000' }, { month_count: 9, monthly_amount: '100000' }] } });
   api.quote.mockImplementation(async (_org, _contract, month) => ({ state: 'READY', plan_revision: 2, billing_month: month, invoice_support: month === '2026-12' ? '100000' : '300000', quote_hash: 'quote' }));
 });
@@ -48,6 +49,7 @@ it('preserves manual discount and credit when November changes to December', asy
   expect(api.create.mock.calls[0][0]).toMatchObject({ discount_amount: 170000, applied_credit: 50000, rent_support_context: { version: 1, manual_discount_amount: '20000', expected_plan_revision: 2 } });
 });
 it('retains the request UUID across an unchanged failed attempt and reads its saved result', async () => {
+  api.create.mockRejectedValue(new Error('definitive rejection'));
   open();
   await waitFor(() => expect((screen.getByLabelText('Giảm trừ') as HTMLInputElement).value).toBe('350000'));
   fireEvent.click(screen.getByRole('button', { name: 'Tạo' }));
@@ -65,6 +67,7 @@ it('blocks writes and shows a check error when the support quote fails', async (
   expect(api.create).not.toHaveBeenCalled();
 });
 it('reports a saved old request after the form changes instead of writing a second invoice', async () => {
+  api.create.mockRejectedValue(new TypeError('Failed to fetch'));
   open();
   await waitFor(() => expect((screen.getByRole('button', { name: 'Tạo' }) as HTMLButtonElement).disabled).toBe(false));
   fireEvent.click(screen.getByRole('button', { name: 'Tạo' }));
@@ -78,6 +81,7 @@ it('reports a saved old request after the form changes instead of writing a seco
   expect(api.create).toHaveBeenCalledTimes(1);
 });
 it('does not replace the pending request when its exact readback fails', async () => {
+  api.create.mockRejectedValue(new Error('definitive rejection'));
   open();
   await waitFor(() => expect((screen.getByRole('button', { name: 'Tạo' }) as HTMLButtonElement).disabled).toBe(false));
   fireEvent.click(screen.getByRole('button', { name: 'Tạo' }));
@@ -87,5 +91,27 @@ it('does not replace the pending request when its exact readback fails', async (
   await waitFor(() => expect((screen.getByLabelText('Giảm trừ') as HTMLInputElement).value).toBe('150000'));
   fireEvent.click(screen.getByRole('button', { name: 'Tạo' }));
   await waitFor(() => expect(api.read).toHaveBeenCalled());
+  expect(api.create).toHaveBeenCalledTimes(1);
+});
+it.each(['reconcile', 'source'])('keeps only the old readback when %s blocks a changed ready create form', async block => {
+  api.create.mockRejectedValue(block === 'reconcile' ? new TypeError('Failed to fetch') : new Error('definitive rejection'));
+  open();
+  await waitFor(() => expect((screen.getByRole('button', { name: 'Tạo' }) as HTMLButtonElement).disabled).toBe(false));
+  fireEvent.click(screen.getByRole('button', { name: 'Tạo' }));
+  await waitFor(() => expect(api.create).toHaveBeenCalledTimes(1));
+  const request = api.create.mock.calls[0][0].rent_support_context.request_id;
+  api.sourceBlocked = block === 'source';
+  fireEvent.change(screen.getByLabelText('Tháng'), { target: { value: '2026-12' } });
+  await waitFor(() => expect((screen.getByLabelText('Giảm trừ') as HTMLInputElement).value).toBe('150000'));
+  fireEvent.click(screen.getByRole('button', { name: 'Tạo' }));
+  await waitFor(() => expect(api.read).toHaveBeenCalledTimes(1));
+  expect(api.create).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getByRole('button', { name: 'Tạo' }));
+  await waitFor(() => expect(api.read).toHaveBeenCalledTimes(2));
+  expect(api.read.mock.calls).toEqual([['org1', 'c1', request, undefined], ['org1', 'c1', request, undefined]]);
+  api.read.mockResolvedValue({ id: 'old11', invoice_number: 'INV-NOVEMBER', billing_month: '2026-11' });
+  fireEvent.click(screen.getByRole('button', { name: 'Tạo' }));
+  await waitFor(() => expect(api.read).toHaveBeenCalledTimes(3));
+  expect(api.read).toHaveBeenLastCalledWith('org1', 'c1', request, undefined);
   expect(api.create).toHaveBeenCalledTimes(1);
 });

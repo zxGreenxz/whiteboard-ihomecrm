@@ -403,7 +403,7 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
   };
 
   const onSubmit = async (data: CreateInvoiceValues) => {
-    if (!selectedContract || (reconcileRequired && !support.hasPending) || sourcesUnavailable) return;
+    if (!selectedContract || ((reconcileRequired || sourcesUnavailable) && !support.hasPending)) return;
     setSubmitError(null);
     let readingSaved=false;
     try {
@@ -430,10 +430,14 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
       previous_debt_sources: data.previous_debt_overridden ? [] : debtSources, items,
     };
     try {
-      const prepared = await support.prepare(invoiceFormData);
+      const prepared = await support.prepare(invoiceFormData, { readbackOnly: reconcileRequired || sourcesUnavailable });
       if (prepared.saved) {
         toast({ title: 'Đã tìm thấy hóa đơn đã lưu', description: `Hóa đơn ${prepared.saved.invoice_number || prepared.saved.id} — kỳ ${prepared.saved.billing_month}.` });
         support.clear(); handleClose(); return;
+      }
+      if (reconcileRequired || sourcesUnavailable) {
+        setSubmitError('Chưa xác minh được lần lưu trước hoặc dữ liệu nguồn. Đối chiếu trước khi lưu tiếp.');
+        return;
       }
       if (prepared.context) invoiceFormData.rent_support_context = prepared.context;
     } catch (error) {
@@ -646,7 +650,7 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
         label: 'Tạo hoá đơn',
         pendingLabel: 'Đang tạo...',
         pending: createMutation.isPending || form.formState.isSubmitting,
-        disabled: !selectedContract || sourcesUnavailable || (reconcileRequired && !support.hasPending) || (!!existingInvoice && !support.hasPending) || (!support.ready && !support.hasPending),
+        disabled: !selectedContract || ((sourcesUnavailable || reconcileRequired) && !support.hasPending) || (!!existingInvoice && !support.hasPending) || (!support.ready && !support.hasPending),
       }}
     />
   );
