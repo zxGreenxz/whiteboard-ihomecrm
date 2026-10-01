@@ -185,7 +185,14 @@ export interface IncomeExpenseWithRelations {
 
 // --- Mutation Input Types ---
 
-export interface CreateIncomeExpenseInput extends IncomeExpenseFormValues {}
+export interface CreateIncomeExpenseInput extends IncomeExpenseFormValues {
+  /**
+   * Khoá chống trùng do NGƯỜI GỌI giữ cố định (vd trang Báo chi nhanh: `qe-<id thẻ>`), để gửi lại
+   * y nguyên sau khi rớt mạng không sinh phiếu đôi. Vắng ⇒ sinh ngẫu nhiên mỗi lần như cũ.
+   * Chỉ đi đường create_income_expense_v1; đường compat không có chống trùng.
+   */
+  idempotency_key?: string;
+}
 
 export interface ImportIncomeExpenseRow extends ExcelImportRow {
   /** Actual Excel row position, including header and rejected rows. */

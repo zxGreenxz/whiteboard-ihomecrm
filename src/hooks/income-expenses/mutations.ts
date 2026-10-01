@@ -43,7 +43,7 @@ const compatRpc = (
 const V1_CASHBOOK_FALLBACK_MESSAGE =
   /(Không có quyền sử dụng sổ quỹ này|Quyền sử dụng sổ quỹ đã bị thu hồi)/;
 
-const isCanonicalCreateEligible = (input: CreateIncomeExpenseInput): boolean => {
+export const isCanonicalCreateEligible = (input: CreateIncomeExpenseInput): boolean => {
   if ((input.repeat_cycle ?? "NONE") !== "NONE") return false;
   if (input.repeat_infinity) return false;
   if ((input.repeat_count ?? 0) !== 0) return false;
@@ -92,7 +92,7 @@ export const useCreateIncomeExpense = () => {
             start_date: item.start_date,
             end_date: item.end_date,
           })),
-          p_idempotency_key: `ie-create-${crypto.randomUUID()}`,
+          p_idempotency_key: input.idempotency_key ?? `ie-create-${crypto.randomUUID()}`,
         });
         if (!canonical.error) {
           if (!(canonical.data as {id?:string} | null)?.id) throw new TypeError("Missing voucher creation confirmation");
