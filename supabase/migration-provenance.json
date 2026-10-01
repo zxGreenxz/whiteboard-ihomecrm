@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-01T04:08:18.340Z",
+  "generatedAt": "2026-10-01T04:12:16.025Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 643,
-    "unknown": 82,
+    "ledger-applied": 644,
+    "unknown": 81,
     "catalog-proven": 206,
     "superseded": 15
   },
@@ -10941,14 +10941,9 @@
       "name": "rent_support_salary_source_bridge",
       "scheme": "timestamp14",
       "sha256": "d7c92b6de0171aeb0f5d7a42dd9b3a251da5cdea3cf85e4f23bb59cf5d489223",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "table:app_private.rent_support_salary_parts",
-        "table:app_private.rent_support_salary_payments",
-        "table:app_private.rent_support_salary_part_events",
-        "table:app_private.rent_support_salary_authorizations",
-        "table:app_private.rent_support_deposit_payee_bindings"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-01T04:11:55.774Z|bien-nhan-backup"
       ]
     },
     {

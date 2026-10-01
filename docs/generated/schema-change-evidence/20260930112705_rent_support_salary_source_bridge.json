@@ -1,0 +1,36 @@
+{
+  "file": "supabase/migrations/20260930112705_rent_support_salary_source_bridge.sql",
+  "sha256": "d7c92b6de0171aeb0f5d7a42dd9b3a251da5cdea3cf85e4f23bb59cf5d489223",
+  "appliedAt": "2026-10-01T04:11:55.774Z",
+  "projectRef": "tryymsxyyckgbrmmvozx",
+  "lockName": "ihomecrm:forward-migration:v1",
+  "statementTimeout": "120s",
+  "authorization": {
+    "loai": "bien-nhan-backup",
+    "chiTiet": "3bf4e23e46010cdc",
+    "backupFile": "C:\\Users\\Nguyen Tam\\ihomecrm-backups\\ihomecrm-full-2026-10-01T04-08-57-285Z.dump",
+    "backupSha256": "0a1649c76e7b7692ba1af3541109cd99542d6c3ee8958f4a91ee7e06fe877dc2",
+    "backupCreatedAt": "2026-10-01T04:11:50.118Z",
+    "backupTablesWithData": 586
+  },
+  "actor": "nguyentamca165@gmail.com",
+  "repoCommit": "04b6b96e2ff99c9946136b73c441f4597eef694c",
+  "reviewedBlob": "4ce1eeefb57d998b6658d70a10d8874c40a79a5c",
+  "statementBytes": 95143,
+  "normalizedDigest": "ffd6c387e627d323ae8b1fd0017572ff89cdea61a27fb5ec0ef1e07e42400068",
+  "catalog": {
+    "before": "fdd108e9366d7752af5a9a469ffb2d5645c58ddd9201952499d968e8a32f7b9c",
+    "after": "4b1b448be309024be00fbe70b2471e8df6e39edae4553ef8976a61fdc45a66ef",
+    "changed": true,
+    "countsAfter": {
+      "logicalTables": 270,
+      "childPartitions": 92,
+      "views": 12,
+      "functions": 1825,
+      "securityDefinerFunctions": 1326,
+      "enums": 30,
+      "realtimeTables": 27
+    }
+  },
+  "note": "Apply qua forward-only lane. Ledger supabase_migrations KHÔNG bị backfill — nguồn sự thật là manifest provenance + file evidence này."
+}
