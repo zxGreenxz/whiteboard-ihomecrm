@@ -60,7 +60,8 @@ export function parseProviderModel(raw: string): { provider: string; modelId: st
  * `organization_required` thì người dùng đọc được một câu nói đúng chuyện.
  */
 export function makeCopilotFetch(
-  feature: 'chat' | 'ui_control',
+  // 'quick_entry': trang Báo chi nhanh (/chi-tieu) — cổng AI riêng, không cần quyền Copilot.
+  feature: 'chat' | 'ui_control' | 'quick_entry',
   taskId: string,
   organizationId: string | null,
 ): typeof fetch {
