@@ -38,7 +38,7 @@ import {
   Car,
   Gauge,
   Receipt,
-  ReceiptText,
+  MessageSquarePlus,
   HandCoins,
   Banknote,
   CreditCard,
@@ -173,7 +173,7 @@ export const navigationGroups: NavGroup[] = [
           // Đóng tiền Tập trung theo Kỳ (tách khỏi overlay của /thu-tien).
           { title: 'Thanh toán', href: '/thanh-toan', icon: Banknote, module: 'thu_tien', action: 'collect' },
           ...navFieldsFor('cashbook').map((x) => ({ ...x, icon: CreditCard }) satisfies NavItem),
-          ...navFieldsFor('chi-tieu').map((x) => ({ ...x, icon: ReceiptText }) satisfies NavItem),
+          ...navFieldsFor('chi-tieu').map((x) => ({ ...x, icon: MessageSquarePlus }) satisfies NavItem),
           // Hộp thư duyệt: không khai `module` → luôn hiện, khớp route /approvals
           // (không bọc RequirePermission). RPC lọc theo auth.uid() nên người không
           // phải bước duyệt nào chỉ thấy danh sách rỗng.
