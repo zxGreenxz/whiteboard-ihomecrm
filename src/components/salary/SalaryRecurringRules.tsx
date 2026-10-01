@@ -1,4 +1,4 @@
-import {parseSalaryAmount,formatSalaryAmountInput} from '@/lib/salaryAmountInput';
+import {parseSalaryAmount,formatSalaryAmountInput,typedSalaryAmount} from '@/lib/salaryAmountInput';
 import { QueryRegion } from "@/components/errors/QueryRegion";
 import { useSalaryFormFeedback } from "./useSalaryFormFeedback";
 import { SALARY_SETTINGS_RULES } from "@/lib/salarySettingsFeedback";
@@ -215,7 +215,7 @@ function AddForm({ preset, managers, periodMonth, lockedOf, disabled, onDone }: 
         <div className="sal-field"><label htmlFor="rec-label">Tên khoản</label>
           <input {...feedback.field("label")} id="rec-label" className="sal-input" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="VD: Hỗ trợ xăng, phụ cấp điện thoại…" disabled={disabled} /></div>
         <div className="sal-field"><label htmlFor="rec-amount">Mức mỗi tháng</label>
-          <input {...feedback.field("amount")} id="rec-amount" className="sal-input mono" inputMode="numeric" value={formatSalaryAmountInput(amt)} onChange={(e) => setAmt(e.target.value)} placeholder="VD: 700.000" disabled={disabled} /></div>
+          <input {...feedback.field("amount")} id="rec-amount" className="sal-input mono" inputMode="numeric" value={formatSalaryAmountInput(amt)} onChange={(e) => setAmt(typedSalaryAmount(amt, e))} placeholder="VD: 700.000" disabled={disabled} /></div>
         <div className="sal-field" data-field-name="effectiveMonth" aria-invalid={!!feedback.issue("effectiveMonth")}><label>Áp dụng từ kỳ</label>
           <FromPicker periodMonth={periodMonth} value={from} onChange={setFrom} locked={locked} /></div>
         <div className="sal-field"><label htmlFor="rec-reason">Lý do (bắt buộc)</label>
@@ -275,7 +275,7 @@ function VersionEditor({ item, periodMonth, locked, disabled, onDeleted }: {
         <div className="sal-field"><label>Loại thay đổi</label>
           <Seg<RecurringKind> small value={kind} onChange={setKind} options={[{ key: "CHANGE", label: "Sửa mức từ kỳ" }, { key: "ONCE", label: "Chỉ một kỳ" }, { key: "STOP", label: "Ngừng từ kỳ" }]} /></div>
         {kind !== "STOP" && <div className="sal-field"><label htmlFor="recv-amount">Mức mới</label>
-          <input {...feedback.field("amount")} id="recv-amount" className="sal-input mono" value={formatSalaryAmountInput(amt)} onChange={(e) => setAmt(e.target.value)} inputMode="numeric" placeholder="VD: 700.000" disabled={disabled} /></div>}
+          <input {...feedback.field("amount")} id="recv-amount" className="sal-input mono" value={formatSalaryAmountInput(amt)} onChange={(e) => setAmt(typedSalaryAmount(amt, e))} inputMode="numeric" placeholder="VD: 700.000" disabled={disabled} /></div>}
         <div className="sal-field" data-field-name="effectiveMonth" aria-invalid={!!feedback.issue("effectiveMonth")}><label>{kind === "ONCE" ? "Kỳ được điều chỉnh" : "Áp dụng từ kỳ"}</label>
           <FromPicker periodMonth={periodMonth} value={from} onChange={setFrom} locked={locked} /></div>
         <div className="sal-field"><label>Tác động</label>

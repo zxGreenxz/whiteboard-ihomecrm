@@ -1,4 +1,4 @@
-import {parseSalaryAmount,formatSalaryAmountInput} from '@/lib/salaryAmountInput';
+import {parseSalaryAmount,formatSalaryAmountInput,typedSalaryAmount} from '@/lib/salaryAmountInput';
 import { useSalaryFormFeedback } from "./useSalaryFormFeedback";
 import { SALARY_SETTINGS_RULES } from "@/lib/salarySettingsFeedback";
 // Hộp "Sửa số tiền" một khoản lương — chỉ super admin / chủ công ty (server chặn
@@ -66,7 +66,7 @@ export default function SalaryAmountEditDialog({ m, line, periodMonth, onClose }
         <div className="sal-field"><label htmlFor="sal-ovr-amount">Số tiền mới</label>
           <input {...feedback.field("amount")} id="sal-ovr-amount" className="sal-input mono" inputMode={allowNegative ? "text" : "numeric"} autoFocus
             value={formatSalaryAmountInput(amt,{allowNegative})}
-            onChange={(e) => setAmt(e.target.value)} placeholder="0" />{feedback.issue("amount")}</div>
+            onChange={(e) => setAmt(typedSalaryAmount(amt, e, {allowNegative}))} placeholder="0" />{feedback.issue("amount")}</div>
         {val != null && diff !== 0 && (
           <div style={{ fontSize: 12, color: diff > 0 ? "hsl(var(--status-danger-fg))" : "hsl(var(--status-success-fg))" }}>
             {diff > 0 ? "Tăng " : "Giảm "}{salFmt(Math.abs(diff))} so với số máy tính

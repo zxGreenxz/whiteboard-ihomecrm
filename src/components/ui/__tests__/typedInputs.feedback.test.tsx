@@ -21,6 +21,46 @@ it('clears local amount error after correction and forwards the real ref and exi
  fireEvent.change(ref.current!,{target:{value:'abc100'}});expect(ref.current?.getAttribute('aria-describedby')).toContain('hint');
  fireEvent.change(ref.current!,{target:{value:'1.200.000'}});expect(ref.current?.value).toBe('1.200.000');expect(change).toHaveBeenLastCalledWith(1200000);expect(screen.queryByRole('alert')).toBeNull();expect(ref.current?.validity.valid).toBe(true);
 });
+/** Writes what the browser would after one edit at the caret, bypassing React's value tracker like a real keystroke. */
+function typeInto(input:HTMLInputElement,next:string,caret=next.length,inputType='insertText',data?:string|null){
+ Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(input,next);input.setSelectionRange(caret,caret);fireEvent.input(input,{inputType,data});
+}
+function TypedAmount({initial=0,onValue=vi.fn()}:{initial?:number;onValue?:(n:number)=>void}){const [v,set]=useState(initial);return <CurrencyInput aria-label="Tiền" value={v} onChange={n=>{onValue(n);set(n);}}/>;}
+it('regroups thousands on every keystroke instead of rejecting 1.0000',()=>{
+ const change=vi.fn();render(<TypedAmount onValue={change}/>);const input=screen.getByLabelText('Tiền') as HTMLInputElement;input.focus();
+ for(const digit of '1000000')typeInto(input,input.value+digit);
+ expect(input.value).toBe('1.000.000');expect(change).toHaveBeenLastCalledWith(1000000);expect(screen.queryByRole('alert')).toBeNull();
+});
+it('keeps the caret after the same digit when a middle edit regroups the amount',async()=>{
+ const change=vi.fn();render(<TypedAmount initial={100000} onValue={change}/>);const input=screen.getByLabelText('Tiền') as HTMLInputElement;input.focus();
+ typeInto(input,'1500.000',2);await Promise.resolve();expect(input.value).toBe('1.500.000');expect(input.selectionStart).toBe(3);
+ typeInto(input,'1.5500.000',4);await Promise.resolve();expect(input.value).toBe('15.500.000');expect(input.selectionStart).toBe(4);
+ typeInto(input,'15.00.000',3);await Promise.resolve();expect(input.value).toBe('1.500.000');expect(input.selectionStart).toBe(3);
+ expect(change).toHaveBeenLastCalledWith(1500000);expect(screen.queryByRole('alert')).toBeNull();
+});
+it.each([[1000000,'.000.000',2000000,'2.000.000'],[10000,'0.000',20000,'20.000']])('deleting the leading digit of %s keeps %s for the replacement digit instead of shrinking the amount',async(initial,afterDelete,expected,shown)=>{
+ const change=vi.fn();render(<TypedAmount initial={initial} onValue={change}/>);const input=screen.getByLabelText('Tiền') as HTMLInputElement;input.focus();
+ typeInto(input,afterDelete,0,'deleteContentBackward',null);await Promise.resolve();expect(input.value).toBe(afterDelete);
+ typeInto(input,'2'+afterDelete,1,'insertText','2');await Promise.resolve();
+ expect(input.value).toBe(shown);expect(change).toHaveBeenLastCalledWith(expected);expect(screen.queryByRole('alert')).toBeNull();
+});
+it('moves Delete past a thousands dot instead of sticking in front of it',async()=>{
+ const change=vi.fn();render(<TypedAmount initial={1000} onValue={change}/>);const input=screen.getByLabelText('Tiền') as HTMLInputElement;input.focus();
+ typeInto(input,'1000',1,'deleteContentForward',null);await Promise.resolve();expect(input.value).toBe('1.000');expect(input.selectionStart).toBe(2);
+ typeInto(input,'1.00',2,'deleteContentForward',null);await Promise.resolve();expect(input.value).toBe('100');expect(input.selectionStart).toBe(1);
+ expect(change).toHaveBeenLastCalledWith(100);
+});
+it('treats a leading zero as a placeholder or keeps the caret before it',async()=>{
+ const change=vi.fn();render(<TypedAmount initial={100} onValue={change}/>);const input=screen.getByLabelText('Tiền') as HTMLInputElement;input.focus();
+ typeInto(input,'0100',1,'insertText','0');await Promise.resolve();expect(input.value).toBe('100');expect(input.selectionStart).toBe(0);
+ typeInto(input,'0',1,'deleteContentBackward',null);typeInto(input,'05',2,'insertText','5');await Promise.resolve();
+ expect(input.value).toBe('5');expect(change).toHaveBeenLastCalledWith(5);
+});
+it.each([['1.5','insertFromPaste',undefined],['1.000.','insertText','.'],['1.000,5','insertText',',5'],['1.5','insertText','1.5'],['1.5','insertReplacementText',null]])('does not regroup separators the user supplied: %s via %s',(next,inputType,data)=>{
+ const change=vi.fn();render(<TypedAmount initial={1000} onValue={change}/>);const input=screen.getByLabelText('Tiền') as HTMLInputElement;input.focus();
+ typeInto(input,next,next.length,inputType,data);
+ expect(input.value).toBe(next);expect(input.getAttribute('aria-invalid')).toBe('true');expect(Number.isNaN(change.mock.calls.at(-1)?.[0])).toBe(true);
+});
 it.each(['31/02/2026','01/13/2026','10/10/20','abc'])('keeps invalid date %s rather than restoring a previous date',raw=>{
  const save=vi.fn();const change=vi.fn();
  function Form(){const [value,setValue]=useState('2026-10-10');return <form noValidate onSubmit={e=>{e.preventDefault();save(value);}}><DateInput aria-label="Ngày" value={value} onChange={v=>{change(v);setValue(v);}}/><button type="submit">Lưu</button></form>;}

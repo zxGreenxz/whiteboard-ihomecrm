@@ -1,4 +1,4 @@
-import {parseSalaryAmount,formatSalaryAmountInput} from "@/lib/salaryAmountInput";
+import {parseSalaryAmount,formatSalaryAmountInput,typedSalaryAmount} from "@/lib/salaryAmountInput";
 import { useSalaryFormFeedback } from "./useSalaryFormFeedback";
 // Tab 1 — Bảng lương tháng. Port từ kit SalaryMonthly.jsx, nối callback thật.
 import React, { useState } from "react";
@@ -65,7 +65,7 @@ export function AdjustDialog({ m, edit, onClose, onSave }: { m: SalManager; edit
         <div className="sal-field"><label>Nội dung</label>
           <input className="sal-input" {...feedback.field("label")} value={label} onChange={(e) => setLabel(e.target.value)} placeholder="VD: Bonus QL, fighting, hỗ trợ xăng…" autoFocus />{feedback.issue("label")}</div>
         <div className="sal-field"><label>Số tiền</label>
-          <input className="sal-input mono" {...feedback.field("amount")} value={formatSalaryAmountInput(amount)} onChange={(e) => setAmount(e.target.value)} placeholder="0" inputMode="numeric" />{feedback.issue("amount")}</div>
+          <input className="sal-input mono" {...feedback.field("amount")} value={formatSalaryAmountInput(amount)} onChange={(e) => setAmount(typedSalaryAmount(amount, e))} placeholder="0" inputMode="numeric" />{feedback.issue("amount")}</div>
         <div className="sal-field"><label>Ghi chú</label>
           <textarea className="sal-input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Tuỳ chọn…" /></div>
       </div>
@@ -98,7 +98,7 @@ export function PayoutDialog({ m, accounts, period, onClose, onSave }: {
       </div>
       <div className="sal-modal-body">
         <div className="sal-field"><label>Số tiền</label>
-          <input className="sal-input mono" {...feedback.field("amount")} value={formatSalaryAmountInput(amount)} onChange={(e) => setAmount(e.target.value)} inputMode="numeric" />{feedback.issue("amount")}</div>
+          <input className="sal-input mono" {...feedback.field("amount")} value={formatSalaryAmountInput(amount)} onChange={(e) => setAmount(typedSalaryAmount(amount, e))} inputMode="numeric" />{feedback.issue("amount")}</div>
         <div className="sal-field"><label>Chi từ sổ quỹ</label>
           <select className="sal-select" style={{ height: 40 }} {...feedback.field("account")} value={acc} onChange={(e) => setAcc(e.target.value)}>
             {accounts.length === 0 ? <option value="">— Chưa có sổ quỹ —</option> : accounts.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}

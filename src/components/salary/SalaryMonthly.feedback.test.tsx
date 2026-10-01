@@ -34,6 +34,13 @@ it.each(['-100','abc100','1.5'])('rejects invalid adjustment amount %s without r
  expect(field.value).toBe(value);expect(field.getAttribute('aria-invalid')).toBe('true');
  await waitFor(()=>expect(document.activeElement).toBe(field));expect(save).not.toHaveBeenCalled();
 });
+it('regroups a payout amount typed past the first thousands dot',async()=>{
+ const save=vi.fn();const {container}=render(<PayoutDialog m={manager} accounts={[{id:'a',name:'Sổ A'}]} period={{label:'Tháng 9',year:2026}} onClose={vi.fn()} onSave={save}/>);
+ const field=container.querySelector('[name="amount"]') as HTMLInputElement;field.focus();
+ for(let i=0;i<3;i++){Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(field,field.value+'0');fireEvent.input(field,{inputType:'insertText'});}
+ expect(field.value).toBe('100.000');fireEvent.click(screen.getByText('Ghi phiếu chi'));
+ await waitFor(()=>expect(save).toHaveBeenCalled());expect(save.mock.calls[0][0]).toBe(100000);
+});
 it.each(['-100','abc100','1.5'])('rejects invalid payout amount %s without sending a positive value',async value=>{
  const save=vi.fn();const {container}=render(<PayoutDialog m={manager} accounts={[{id:'a',name:'Sổ A'}]} period={{label:'Tháng 9',year:2026}} onClose={vi.fn()} onSave={save}/>);
  const field=container.querySelector('[name="amount"]') as HTMLInputElement;

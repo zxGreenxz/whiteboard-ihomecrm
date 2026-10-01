@@ -1,4 +1,4 @@
-import {parseSalaryAmount,formatSalaryAmountInput} from '@/lib/salaryAmountInput';
+import {parseSalaryAmount,formatSalaryAmountInput,typedSalaryAmount} from '@/lib/salaryAmountInput';
 import { QueryRegion } from "@/components/errors/QueryRegion";
 import { useSalaryFormFeedback } from "./useSalaryFormFeedback";
 import { loadHolidayPreset, SALARY_SETTINGS_RULES } from "@/lib/salarySettingsFeedback";
@@ -88,7 +88,7 @@ function ManagerDialog({ row, onClose }: { row?: ManagerConfigRow | null; onClos
           <div className="sal-field"><label>Biệt danh nội bộ</label><input className="sal-input" value={alias} onChange={(e) => setAlias(e.target.value)} placeholder="Joey" /></div>
           <div className="sal-field"><label>Chức vụ</label><input className="sal-input" value={role} onChange={(e) => setRole(e.target.value)} /></div>
         </div>
-        <div className="sal-field"><label htmlFor="salary-config-base">Lương tháng</label><input id="salary-config-base" {...feedback.field("base")} className="sal-input mono" value={formatSalaryAmountInput(base)} onChange={(e) => setBase(e.target.value)} placeholder="8.000.000" inputMode="numeric" /></div>
+        <div className="sal-field"><label htmlFor="salary-config-base">Lương tháng</label><input id="salary-config-base" {...feedback.field("base")} className="sal-input mono" value={formatSalaryAmountInput(base)} onChange={(e) => setBase(typedSalaryAmount(base, e))} placeholder="8.000.000" inputMode="numeric" /></div>
         <div className="sal-field"><label>Phòng nhân viên ở (giá ưu đãi)</label>
           <select className="sal-select" style={{ height: 40 }} value={roomId} onChange={(e) => setRoomId(e.target.value)}>
             <option value="">— Không gán phòng (dùng số cố định) —</option>
@@ -96,8 +96,8 @@ function ManagerDialog({ row, onClose }: { row?: ManagerConfigRow | null; onClos
           </select>
         </div>
         <div className="sal-two" style={{ gap: 12 }}>
-          <div className="sal-field"><label htmlFor="salary-config-room">Tiền phòng cố định {roomId ? "(khi tháng chưa có HĐ)" : ""}</label><input id="salary-config-room" {...feedback.field("room")} className="sal-input mono" value={formatSalaryAmountInput(room)} onChange={(e) => setRoom(e.target.value)} inputMode="numeric" /></div>
-          <div className="sal-field"><label htmlFor="salary-config-goal">Mục tiêu thu nhập tháng (tuỳ chọn)</label><input id="salary-config-goal" {...feedback.field("goal")} className="sal-input mono" value={formatSalaryAmountInput(goal)} onChange={(e) => setGoal(e.target.value)} placeholder="14.000.000" inputMode="numeric" /></div>
+          <div className="sal-field"><label htmlFor="salary-config-room">Tiền phòng cố định {roomId ? "(khi tháng chưa có HĐ)" : ""}</label><input id="salary-config-room" {...feedback.field("room")} className="sal-input mono" value={formatSalaryAmountInput(room)} onChange={(e) => setRoom(typedSalaryAmount(room, e))} inputMode="numeric" /></div>
+          <div className="sal-field"><label htmlFor="salary-config-goal">Mục tiêu thu nhập tháng (tuỳ chọn)</label><input id="salary-config-goal" {...feedback.field("goal")} className="sal-input mono" value={formatSalaryAmountInput(goal)} onChange={(e) => setGoal(typedSalaryAmount(goal, e))} placeholder="14.000.000" inputMode="numeric" /></div>
         </div>
         <div className="sal-helprow"><I.Home size={15} />{roomId ? "Tiền phòng = hoá đơn của phòng này theo từng tháng (giá ưu đãi), tự trừ vào lương." : "Cấp tài khoản đăng nhập để quản lý tự xem lương realtime ở mục \"Lương của tôi\"."}</div>
       </div>
@@ -285,11 +285,11 @@ export default function SalaryConfig() {
             {ruleFeedback.notice}
             {rules && <>
               <div className="sal-rulerow"><div className="rl"><b>Thưởng mỗi việc sửa chữa</b><small>mức mặc định (đặt riêng từng loại ở trang Loại công việc)</small></div>
-                <span className="sal-ruleinput"><input {...ruleFeedback.field("repair")} value={formatSalaryAmountInput(ruleAmounts.repair)} onChange={(e) => changeRuleAmount("repair", e.target.value)} /><span className="unit">đ</span></span></div>
+                <span className="sal-ruleinput"><input {...ruleFeedback.field("repair")} value={formatSalaryAmountInput(ruleAmounts.repair)} onChange={(e) => changeRuleAmount("repair", typedSalaryAmount(ruleAmounts.repair, e))} /><span className="unit">đ</span></span></div>
               <div className="sal-rulerow"><div className="rl"><b>Thưởng cả ngày nếu có sửa chữa CN/Lễ</b><small>áp dụng Chủ nhật HOẶC ngày lễ</small></div>
-                <span className="sal-ruleinput"><input {...ruleFeedback.field("weekendRepair")} value={formatSalaryAmountInput(ruleAmounts.weekendRepair)} onChange={(e) => changeRuleAmount("weekendRepair", e.target.value)} /><span className="unit">đ</span></span></div>
+                <span className="sal-ruleinput"><input {...ruleFeedback.field("weekendRepair")} value={formatSalaryAmountInput(ruleAmounts.weekendRepair)} onChange={(e) => changeRuleAmount("weekendRepair", typedSalaryAmount(ruleAmounts.weekendRepair, e))} /><span className="unit">đ</span></span></div>
               <div className="sal-rulerow"><div className="rl"><b>Thưởng mỗi HĐ làm sau giờ / CN / Lễ</b></div>
-                <span className="sal-ruleinput"><input {...ruleFeedback.field("afterHourContract")} value={formatSalaryAmountInput(ruleAmounts.afterHourContract)} onChange={(e) => changeRuleAmount("afterHourContract", e.target.value)} /><span className="unit">đ</span></span></div>
+                <span className="sal-ruleinput"><input {...ruleFeedback.field("afterHourContract")} value={formatSalaryAmountInput(ruleAmounts.afterHourContract)} onChange={(e) => changeRuleAmount("afterHourContract", typedSalaryAmount(ruleAmounts.afterHourContract, e))} /><span className="unit">đ</span></span></div>
               <div className="sal-rulerow"><div className="rl"><b>Mốc "sau giờ"</b></div>
                 <span className="sal-ruleinput"><input {...ruleFeedback.field("afterHourMark")} style={{ width: 72, fontFamily: "var(--font-mono)" }} value={rules.afterHourMark} onChange={(e) => onRule("afterHourMark", e.target.value)} /></span></div>
               <div className="sal-rulerow"><div className="rl"><b>Ngày nghỉ tính cuối tuần</b></div>

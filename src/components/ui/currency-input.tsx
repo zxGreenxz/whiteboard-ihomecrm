@@ -1,7 +1,7 @@
 import * as React from "react";
 import {cn} from "@/lib/utils";
 import {Input} from "@/components/ui/input";
-import {parseCurrencyAmount} from '@/lib/currencyAmountInput';
+import {parseCurrencyAmount,typedAmountText} from '@/lib/currencyAmountInput';
 import {useInputDraftGuard} from '@/lib/inputDraftValidation';
 
 interface CurrencyInputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>,"value"|"onChange"|"type">{
@@ -22,7 +22,7 @@ export const CurrencyInput=React.forwardRef<HTMLInputElement,CurrencyInputProps>
   setText(display(value));setError(undefined);
  },[value,focused]);
  const handleChange=(e:React.ChangeEvent<HTMLInputElement>)=>{
-  const raw=e.target.value;const parsed=parseCurrencyAmount(raw,{allowNegative,emptyAsZero:true});
+  const raw=e.target.value;const parsed=parseCurrencyAmount(typedAmountText(text,e,{allowNegative}),{allowNegative,emptyAsZero:true});
   setText(parsed.value==null?raw:raw.trim()===''?'':parsed.value.toLocaleString('vi-VN'));setError(parsed.error);
   const next=parsed.value??Number.NaN;lastEmitted.current=next;onChange?.(next);
  };
