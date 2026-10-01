@@ -35,6 +35,7 @@ vi.mock("sonner", () => ({
 import {
   useApproveVoucher,
   useCancelIncomeExpense,
+  useRestoreIncomeExpense,
   useUnapproveVoucher,
 } from "./statusMutations";
 
@@ -176,6 +177,17 @@ describe("termination forfeit status rollout fallback", () => {
     });
     const mutation = renderHook(()=>useUnapproveVoucher()).result.current as unknown as StatusMutation;
     await expect(mutation.mutationFn("voucher-1")).resolves.toBe(false);
+  });
+
+  it("confirms restoring a legacy voucher whose posting_status is NULL", async () => {
+    readbackPostingStatus = null;
+    mockVoucherRead({ data: null, error: null });
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === "restore_income_expense") return { data: null, error: null };
+      throw new Error(`Unexpected RPC ${name}`);
+    });
+    const mutation = renderHook(()=>useRestoreIncomeExpense()).result.current as unknown as { mutationFn: (id: string) => Promise<unknown> };
+    await expect(mutation.mutationFn("voucher-1")).resolves.toMatchObject({ id: "voucher-1", approval_status: "UNAPPROVED", posting_status: null });
   });
 
   it.each([
