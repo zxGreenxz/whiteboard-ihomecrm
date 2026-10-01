@@ -1,9 +1,17 @@
 import { readFileSync, readdirSync } from 'node:fs';
+import { boChuThichSql } from '../../../scripts/lib/bo-chu-thich.mjs';
 import { PGlite } from '@electric-sql/pglite';
 import { beforeAll, afterAll, expect, it } from 'vitest';
 
 // Auth helpers are fixture doubles. Actual JWT/connection proofs run on guarded TEST.
 const db = new PGlite();
+// Use the current release flag, not a fixture override that would hide a later
+// migration disabling writers. Schema bootstrap below supplies dependencies.
+const writerFlagDefinition = readdirSync('supabase/migrations').filter(file => file.endsWith('.sql')).sort()
+  .flatMap(file => [...boChuThichSql(readFileSync(`supabase/migrations/${file}`, 'utf8')).matchAll(
+    /CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+app_private\.rent_support_writers_enabled_v1\s*\(\s*\)[\s\S]*?\bAS\s+(\$[a-zA-Z0-9_]*\$)[\s\S]*?\1\s*;/gi,
+  )].map(match => match[0])).at(-1);
+if (!writerFlagDefinition) throw new Error('Missing live rent support writer flag');
 const uid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const org = uid(1), actor = uid(2), building = uid(3), room = uid(4), contract = uid(5);
 const plan = { version: 2, start_billing_month: '2026-09', payer: 'BUILDING', sale_party_id: null,
@@ -50,7 +58,7 @@ beforeAll(async () => {
     await db.exec(sql); await db.exec(sql);
   }
   await db.query('SELECT app_private.persist_contract_rent_support_v1($1,$2,$3)', [org, contract, JSON.stringify(plan)]);
-  await db.exec('CREATE OR REPLACE FUNCTION app_private.rent_support_writers_enabled_v1() RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT true $$');
+  await db.exec(writerFlagDefinition);
 }, 30000);
 afterAll(async () => { await db.close(); });
 

@@ -17,20 +17,20 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 
 | Chỉ số | Giá trị |
 |---|---|
-| RPC được gọi từ mã nguồn | 341 |
-| Hàm trong catalog (public + api) | 1232 |
-| File mã nguồn đã quét | 2252 |
-| SECURITY DEFINER | 325 |
+| RPC được gọi từ mã nguồn | 360 |
+| Hàm trong catalog (public + api) | 1251 |
+| File mã nguồn đã quét | 2298 |
+| SECURITY DEFINER | 344 |
 | **Gọi mà server KHÔNG CÓ** | **0** |
 
 ## Theo mức rủi ro
 
 | Mức | Số RPC | Nghĩa là |
 |---|---|---|
-| thường | 246 | còn lại |
-| tiền | 95 | có nơi gọi nằm trong màn tiền — sai là sai sổ sách |
+| thường | 262 | còn lại |
+| tiền | 98 | có nơi gọi nằm trong màn tiền — sai là sai sổ sách |
 
-## 95 RPC chạm TIỀN
+## 98 RPC chạm TIỀN
 
 Đây là danh sách đáng đọc nhất trong trang này: mỗi dòng là một đường ghi hoặc
 đọc có thể làm lệch số trên sổ.
@@ -96,8 +96,11 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 | `notify_settle_push_batch_v1` | ✔ | supabase/functions/salary-v5-jobs/index.ts |
 | `prepare_commission_requests_v1` | ✔ | lib/contractCommissionFollowup.ts |
 | `propose_cashbook_closing_v1` | ✔ | hooks/useCashbookClosing.ts |
+| `quote_contract_rent_support_v1` | ✔ | lib/invoiceRentSupport.ts, lib/rentSupportApi.ts |
+| `read_rent_support_salary_parts_v1` | ✔ | lib/rentSupportSalary.ts |
 | `record_contract_commission_event_v1` | ✔ | lib/contractCommissionFollowup.ts |
 | `record_payment_gps` | ✔ | lib/v5PaymentGps.ts |
+| `rent_support_salary_bridge_required_v1` | ✔ | lib/rentSupportSalary.ts |
 | `restore_income_expense` | ✔ | hooks/income-expenses/statusMutations.ts |
 | `reverse_posted_income_expense_v2` | ✔ | hooks/income-expenses/statusMutations.ts |
 | `review_invoice_adjustment_v2` | ✔ | lib/invoiceAdjustmentRpc.ts |

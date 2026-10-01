@@ -16,6 +16,11 @@
   },
   "include": [],
   "files": [
+    "src/hooks/useContractRentSupport.ts",
+    "src/lib/invoiceRentSupport.ts",
+    "src/lib/rentSupport.ts",
+    "src/lib/rentSupportApi.ts",
+    "src/lib/rentSupportFunding.ts",
     "src/components/contracts/RentSupportPayoutForm.tsx",
     "src/hooks/useRentSupportPayout.ts",
     "src/components/contracts/contract-form/RentSupportScheduleEditor.tsx",

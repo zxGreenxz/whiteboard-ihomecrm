@@ -1,17 +1,17 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1143,
-  "soFileDocBangFs": 262,
-  "tongLoiGoi": 563,
-  "khongPhanLoaiDuoc": 263,
+  "tongSoFileTest": 1173,
+  "soFileDocBangFs": 271,
+  "tongLoiGoi": 590,
+  "khongPhanLoaiDuoc": 270,
   "theoLoai": {
     "ma-nguon": {
-      "soFile": 47,
+      "soFile": 48,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
-      "soFile": 34,
+      "soFile": 35,
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
@@ -23,12 +23,13 @@
       "moTa": "Đọc script PowerShell. Hợp lệ vì lý do như SQL."
     },
     "sql": {
-      "soFile": 85,
+      "soFile": 92,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     }
   },
   "testDocMaNguon": [
     ".e2e-fleet/controlled/copilot-approval-readback.test.mjs",
+    "scripts/__tests__/apply-reviewed-migration.test.mjs",
     "scripts/__tests__/business-performance-gated-data-rollout.test.mjs",
     "scripts/__tests__/check-copilot-docs-manifest.test.mjs",
     "scripts/__tests__/copilot-g1-acceptance.test.mjs",
@@ -260,6 +261,22 @@
       "khongPhanLoaiDuoc": 2
     },
     {
+      "file": "src/lib/__tests__/rentSupportDraftMigration.test.ts",
+      "soGoi": 5,
+      "loai": {
+        "sql": 4
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "src/lib/__tests__/rentSupportLifecycleMigration.test.ts",
+      "soGoi": 5,
+      "loai": {
+        "sql": 5
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": ".e2e-fleet/controlled/golden-provider-stop.test.mjs",
       "soGoi": 4,
       "loai": {
@@ -272,6 +289,14 @@
       "soGoi": 4,
       "loai": {},
       "khongPhanLoaiDuoc": 4
+    },
+    {
+      "file": ".e2e-fleet/specs/rent-support-schedule.spec.ts",
+      "soGoi": 4,
+      "loai": {
+        "manifest": 1
+      },
+      "khongPhanLoaiDuoc": 3
     },
     {
       "file": "scripts/__tests__/check-copilot-forbidden-actions.test.mjs",
@@ -493,6 +518,22 @@
       "soGoi": 3,
       "loai": {},
       "khongPhanLoaiDuoc": 3
+    },
+    {
+      "file": "src/lib/__tests__/rentSupportFundingMigration.test.ts",
+      "soGoi": 3,
+      "loai": {
+        "sql": 2
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "src/lib/__tests__/rentSupportPayoutMigration.test.ts",
+      "soGoi": 3,
+      "loai": {
+        "sql": 3
+      },
+      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "src/lib/__tests__/suaPhieuDot1Migrations.test.ts",
@@ -815,6 +856,14 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": "src/lib/__tests__/invoiceRentSupportMigration.test.ts",
+      "soGoi": 2,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": "src/lib/__tests__/networkCenterSettingsBoundsMatchDatabase.test.ts",
       "soGoi": 2,
       "loai": {
@@ -843,6 +892,22 @@
         "sql": 1
       },
       "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "src/lib/__tests__/rentSupportPlanMigration.test.ts",
+      "soGoi": 2,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "src/lib/__tests__/rentSupportSalaryMigration.test.ts",
+      "soGoi": 2,
+      "loai": {
+        "sql": 2
+      },
+      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "src/lib/__tests__/roomReservationMigration.test.ts",
@@ -949,6 +1014,14 @@
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "scripts/__tests__/apply-reviewed-migration.test.mjs",
+      "soGoi": 1,
+      "loai": {
+        "ma-nguon": 1
+      },
+      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "scripts/__tests__/building-legal-owner-rls.test.mjs",

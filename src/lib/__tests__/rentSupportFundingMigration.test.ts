@@ -4,6 +4,14 @@ import { boChuThichSql } from '../../../scripts/lib/bo-chu-thich.mjs';
 import { PGlite } from '@electric-sql/pglite';
 import { beforeAll, afterAll, expect, it } from 'vitest';
 const db = new PGlite();
+type FundingResult = {
+ state: string;
+ unallocated: string;
+ facts_hash?: string;
+ sources: Array<{ source_id: string; kind: string; [key: string]: unknown }>;
+ issues: Array<{ code: string }>;
+};
+type RegisteredParty = { party_id: string; kind: string; profile_id: string | null };
 // Historical registry bootstrap supplies dependencies; the funding provider under
 // test always comes from the last CREATE in the complete migration corpus.
 function definitionsOf(name: string, corpus?: Array<{file: string; sql: string}>): string[] {
@@ -35,7 +43,7 @@ const source = (kind: 'COMMISSION' | 'BONUS', gross: string, extras = {}) => ({
  route: 'CASHBOOK', verified: true, locked: false, ...extras,
 });
 async function allocate(payer: string, policy: string, sources: unknown[], total = '1800000', committed = '0') {
- return (await db.query<{ result: any }>('SELECT app_private.rent_support_allocate_funding_v1($1,$2,$3,$4,$5,$6) result',
+ return (await db.query<{ result: FundingResult }>('SELECT app_private.rent_support_allocate_funding_v1($1,$2,$3,$4,$5,$6) result',
   [payer, party, policy, total, committed, JSON.stringify(sources)])).rows[0].result;
 }
 beforeAll(async () => {
@@ -66,8 +74,8 @@ it.each([
 ])('allocates %s %s with %s commission and %s bonus atomically',async(payer,policy,commission,bonus,state,cHold,bHold,cNet,bNet,shortfall)=>{
  const result=await allocate(payer,policy,[source('COMMISSION',commission),source('BONUS',bonus)]);
  expect(result.state).toBe(state);expect(result.unallocated).toBe(shortfall);
- expect(result.sources.find((s: any)=>s.kind==='COMMISSION')).toMatchObject({current_withheld:cHold,net_this_operation:cNet});
- expect(result.sources.find((s: any)=>s.kind==='BONUS')).toMatchObject({current_withheld:bHold,net_this_operation:bNet});
+ expect(result.sources.find(s=>s.kind==='COMMISSION')).toMatchObject({current_withheld:cHold,net_this_operation:cNet});
+ expect(result.sources.find(s=>s.kind==='BONUS')).toMatchObject({current_withheld:bHold,net_this_operation:bNet});
 });
 it('excludes cash already paid and previous withholding from both capacity and net',async()=>{
  const rows=[source('COMMISSION','3000000',{already_paid:'700000',prior_withheld:'300000'})];
@@ -77,8 +85,8 @@ it('excludes cash already paid and previous withholding from both capacity and n
 });
 it('paid deposit bonus contributes no capacity and falls through to commission',async()=>{
  const result=await allocate('SALE','BONUS_THEN_COMMISSION',[source('COMMISSION','3000000'),source('BONUS','500000',{already_paid:'500000'})]);
- expect(result.sources.find((s:any)=>s.kind==='BONUS')).toMatchObject({available_to_withhold:'0',current_withheld:'0'});
- expect(result.sources.find((s:any)=>s.kind==='COMMISSION')).toMatchObject({current_withheld:'1800000'});
+ expect(result.sources.find(s=>s.kind==='BONUS')).toMatchObject({available_to_withhold:'0',current_withheld:'0'});
+ expect(result.sources.find(s=>s.kind==='COMMISSION')).toMatchObject({current_withheld:'1800000'});
 });
 it.each([
  [{party_id:'00000000-0000-4000-8000-000000000099'},'PAYEE_MISMATCH','NEEDS_REVIEW'],
@@ -87,12 +95,12 @@ it.each([
  [{verified:false},'LEGACY_REVIEW','LEGACY_REVIEW'],
 ])('blocks unsafe source %j',async(extras,code,state)=>{
  const result=await allocate('SALE','COMMISSION_ONLY',[source('COMMISSION','3000000',extras)]);
- expect(result.state).toBe(state);expect(result.issues.map((x:any)=>x.code)).toContain(code);
+ expect(result.state).toBe(state);expect(result.issues.map(x=>x.code)).toContain(code);
  expect(result.sources[0].current_withheld).toBe('0');
 });
 it('never credits prior funding from a reduced commitment',async()=>{
  const result=await allocate('SALE','COMMISSION_ONLY',[source('COMMISSION','3000000')],'100000','300000');
- expect(result.state).toBe('NEEDS_REVIEW');expect(result.issues.map((x:any)=>x.code)).toContain('FUNDING_REVERSAL_REVIEW');
+ expect(result.state).toBe('NEEDS_REVIEW');expect(result.issues.map(x=>x.code)).toContain('FUNDING_REVERSAL_REVIEW');
 });
 it('rejects duplicate source identities so aliases cannot multiply entitlement',async()=>{
  await expect(allocate('SALE','COMMISSION_ONLY',[source('COMMISSION','3000000'),source('COMMISSION','3000000')])).rejects.toMatchObject({code:'22023'});
@@ -160,10 +168,10 @@ async function fundedSource(gross: number, withheld: number, kind='COMMISSION', 
  return {sid,operation};
 }
 async function fundingEvidence(sourceId: string, organization=org) {
- return (await registry.query<{result:any}>('SELECT app_private.rent_support_source_funding_evidence_v1($1,$2) result',[organization,sourceId])).rows[0].result;
+ return (await registry.query<{result:Record<string,unknown>}>('SELECT app_private.rent_support_source_funding_evidence_v1($1,$2) result',[organization,sourceId])).rows[0].result;
 }
 async function register(profile:string|null,requestId=crypto.randomUUID(),label='External broker'){
- return (await registry.query<{result:any}>('SELECT public.register_rent_support_party_v1($1,$2,$3,$4,$5,$6) result',[org,building,profile,label,'Explicit identity verification',requestId])).rows[0].result;
+ return (await registry.query<{result:RegisteredParty}>('SELECT public.register_rent_support_party_v1($1,$2,$3,$4,$5,$6) result',[org,building,profile,label,'Explicit identity verification',requestId])).rows[0].result;
 }
 it('registers internal current membership and replays exact external request',async()=>{
  const internal=await register(party);expect(internal.kind).toBe('INTERNAL');expect(internal.profile_id).toBe(party);
@@ -197,7 +205,7 @@ it('reads actual cash posting lines, ignores reversed payments, and never treats
  const voucher=crypto.randomUUID(),account=crypto.randomUUID(),posted=crypto.randomUUID(),reversed=crypto.randomUUID();
  await registry.query(`INSERT INTO public.accounts(id,organization_id,is_virtual,deleted_at) VALUES($1,$2,false,NULL)`,[account,org]);
  await registry.query(`INSERT INTO public.income_expenses(id,organization_id,contract_id,commission_kind,type,deleted_at,approval_status) VALUES($1,$2,$3,'broker','EXPENSE',NULL,'APPROVED')`,[voucher,org,contract]);
- const paid=async()=> (await registry.query<{result:any}>('SELECT app_private.rent_support_voucher_cash_v1($1,$2) result',[org,voucher])).rows[0].result;
+ const paid=async()=> (await registry.query<{result:Record<string,unknown>}>('SELECT app_private.rent_support_voucher_cash_v1($1,$2) result',[org,voucher])).rows[0].result;
  expect(await paid()).toMatchObject({verified:true,already_paid:'0'});
  await registry.query(`INSERT INTO public.income_expense_postings VALUES($1,$2,$3,'VOUCHER',$3,'POSTING',NULL,-700000,$4,'EXPENSE')`,[posted,org,voucher,account]);
  await registry.query(`INSERT INTO public.income_expense_posting_lines VALUES($1,$2,$3,$4,-700000)`,[crypto.randomUUID(),org,posted,account]);
@@ -211,24 +219,24 @@ it('does not count virtual or mismatched posting line evidence as verified cash'
  await registry.query(`INSERT INTO public.income_expenses(id,organization_id,contract_id,commission_kind,type,deleted_at,approval_status) VALUES($1,$2,$3,'broker','EXPENSE',NULL,'APPROVED')`,[voucher,org,contract]);
  await registry.query(`INSERT INTO public.income_expense_postings VALUES($1,$2,$3,'VOUCHER',$3,'POSTING',NULL,-500000,$4,'EXPENSE')`,[posted,org,voucher,account]);
  await registry.query(`INSERT INTO public.income_expense_posting_lines VALUES($1,$2,$3,$4,-400000)`,[crypto.randomUUID(),org,posted,account]);
- const cash=(await registry.query<{result:any}>('SELECT app_private.rent_support_voucher_cash_v1($1,$2) result',[org,voucher])).rows[0].result;
+ const cash=(await registry.query<{result:Record<string,unknown>}>('SELECT app_private.rent_support_voucher_cash_v1($1,$2) result',[org,voucher])).rows[0].result;
  expect(cash.verified).toBe(false);expect(cash).not.toHaveProperty('already_paid');
 });
 it('quotes signed proposals without creating entitlements and UUID retries retain source identity',async()=>{
  const c=crypto.randomUUID(),person=await register(party);await registry.query(`INSERT INTO public.contracts VALUES($1,$2,'ACTIVE',NULL)`,[c,org]);
  const intent={intent_id:crypto.randomUUID(),kind:'COMMISSION',party_id:person.party_id,gross_amount:'3000000',route:'CASHBOOK',manager_id:null,account_id:null,voucher_date:'2026-09-30'};
  const plan={payer:'SALE',sale_party_id:person.party_id,deduction_policy:'COMMISSION_ONLY'};
- const quote=async(next=intent)=> (await registry.query<{result:any}>('SELECT app_private.rent_support_source_quote_v1($1,$2,NULL,$3,1800000,$4) result',[org,c,JSON.stringify(plan),JSON.stringify({version:1,intents:[next]})])).rows[0].result;
+ const quote=async(next=intent)=> (await registry.query<{result:FundingResult}>('SELECT app_private.rent_support_source_quote_v1($1,$2,NULL,$3,1800000,$4) result',[org,c,JSON.stringify(plan),JSON.stringify({version:1,intents:[next]})])).rows[0].result;
  const first=await quote();expect(first).toMatchObject({state:'READY',sources:[{origin:'PROPOSED',gross_original:'3000000',current_withheld:'1800000',net_this_operation:'1200000'}]});
  const changed=await quote({...intent,intent_id:crypto.randomUUID()});expect(changed.sources[0].source_id).toBe(first.sources[0].source_id);expect(changed.facts_hash).not.toBe(first.facts_hash);
  expect((await registry.query('SELECT count(*)::int count FROM app_private.rent_support_payout_sources WHERE contract_id=$1',[c])).rows[0]).toEqual({count:0});
- await registry.query(`UPDATE public.contracts SET status='DRAFT' WHERE id=$1`,[c]);expect((await quote()).issues.map((x:any)=>x.code)).toContain('UNSIGNED_ENTITLEMENT');
+ await registry.query(`UPDATE public.contracts SET status='DRAFT' WHERE id=$1`,[c]);expect((await quote()).issues.map(x=>x.code)).toContain('UNSIGNED_ENTITLEMENT');
 });
 it('existing free-name voucher cannot be replaced by a new gross proposal',async()=>{
  const c=crypto.randomUUID(),person=await register(party),voucher=crypto.randomUUID();await registry.query(`INSERT INTO public.contracts VALUES($1,$2,'ACTIVE',NULL)`,[c,org]);
  await registry.query(`INSERT INTO public.income_expenses(id,organization_id,contract_id,commission_kind,type,deleted_at,approval_status) VALUES($1,$2,$3,'broker','EXPENSE',NULL,'UNAPPROVED')`,[voucher,org,c]);
  const plan={payer:'SALE',sale_party_id:person.party_id,deduction_policy:'COMMISSION_ONLY'},intent={intent_id:crypto.randomUUID(),kind:'COMMISSION',party_id:person.party_id,gross_amount:'3000000',route:'CASHBOOK',manager_id:null,account_id:null,voucher_date:'2026-09-30'};
- const quote=(await registry.query<{result:any}>('SELECT app_private.rent_support_source_quote_v1($1,$2,NULL,$3,1800000,$4) result',[org,c,JSON.stringify(plan),JSON.stringify({version:1,intents:[intent]})])).rows[0].result;
+ const quote=(await registry.query<{result:FundingResult}>('SELECT app_private.rent_support_source_quote_v1($1,$2,NULL,$3,1800000,$4) result',[org,c,JSON.stringify(plan),JSON.stringify({version:1,intents:[intent]})])).rows[0].result;
  expect(quote).toMatchObject({state:'LEGACY_REVIEW',sources:[]});
 });
 it('rejects null kind and non-string nullable identities at the payout boundary',async()=>{
@@ -245,9 +253,9 @@ it('keeps manager salary inclusion on the same source and unavailable without pr
   await registry.query(`INSERT INTO app_private.salary_commission_inclusions VALUES($1,$2,$3,'2026-09-01')`,[voucher,org,party]);
   await registry.query(`SELECT app_private.rent_support_link_source_alias_v1($1,$2,'VOUCHER',$3,'')`,[org,row.id,voucher]);
   const plan={payer:'SALE',sale_party_id:row.party_id,deduction_policy:'BONUS_THEN_COMMISSION'};
-  const quote=(await registry.query<{result:any}>('SELECT app_private.rent_support_source_quote_v1($1,$2,NULL,$3,300000,NULL) result',[org,c,JSON.stringify(plan)])).rows[0].result;
-  expect(quote.state).toBe('NEEDS_REVIEW');expect(quote.issues.map((x:any)=>x.code)).toContain('SOURCE_LOCKED');
-  expect(quote.sources.find((x:any)=>x.source_id===row.id)).toMatchObject({route:'MANAGER_PAYROLL',available_to_withhold:'0',current_withheld:'0'});
+  const quote=(await registry.query<{result:FundingResult}>('SELECT app_private.rent_support_source_quote_v1($1,$2,NULL,$3,300000,NULL) result',[org,c,JSON.stringify(plan)])).rows[0].result;
+  expect(quote.state).toBe('NEEDS_REVIEW');expect(quote.issues.map(x=>x.code)).toContain('SOURCE_LOCKED');
+  expect(quote.sources.find(x=>x.source_id===row.id)).toMatchObject({route:'MANAGER_PAYROLL',available_to_withhold:'0',current_withheld:'0'});
 });
 it('live funding evidence reconciles committed/reversed and reserved/released ledger amounts',async()=>{
  const {sid,operation}=await fundedSource(3000000,300000);
