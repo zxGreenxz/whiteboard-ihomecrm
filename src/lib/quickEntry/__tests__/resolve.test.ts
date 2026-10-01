@@ -87,6 +87,12 @@ describe("resolveBuildingRoom — phòng", () => {
     expect(r.building).toBeNull();
   });
 
+  it("roomMentioned: có chữ báo phòng (kể cả phòng không tồn tại) ⇒ true; không nhắc phòng ⇒ false", () => {
+    expect(resolveBuildingRoom("102lvt p999 sơn", refs).roomMentioned).toBe(true);
+    expect(resolveBuildingRoom("102lvt p999 sơn", refs).room).toBeNull();
+    expect(resolveBuildingRoom("102lvt sơn", refs).roomMentioned).toBe(false);
+  });
+
   it("'tn' / 'cả toà' ⇒ khoản cho cả toà", () => {
     expect(resolveBuildingRoom("102lvt tn tiền rác", refs).buildingWide).toBe(true);
     expect(resolveBuildingRoom("102lvt cả toà sơn lại", refs).buildingWide).toBe(true);

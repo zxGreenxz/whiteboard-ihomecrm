@@ -36,6 +36,8 @@ export interface ResolveResult {
   /** Nhắc nhiều toà khác nhau ⇒ để người dùng chọn. */
   buildingCandidates: string[];
   room: { id: string } | null;
+  /** Câu có chữ báo phòng ("p999") — kể cả khi không tìm ra phòng nào. */
+  roomMentioned: boolean;
   /** "tn", "cả toà", "toàn toà": khoản cho cả toà, không phòng. */
   buildingWide: boolean;
   /** Hạng mục phí suy từ mã khách hàng (vd "dien", "nuoc"). */
@@ -134,7 +136,8 @@ export function resolveBuildingRoom(text: string, refs: ResolveRefs): ResolveRes
   }
 
   let room: { id: string } | null = null;
-  for (const key of roomMentions(words, loose)) {
+  const roomKeys = roomMentions(words, loose);
+  for (const key of roomKeys) {
     if (!key) continue;
     if (building) {
       const hit = refs.rooms.find((r) => r.building_id === building?.id && (roomKey(r.name) === key || roomKey(r.code) === key));
@@ -153,6 +156,7 @@ export function resolveBuildingRoom(text: string, refs: ResolveRefs): ResolveRes
     building,
     buildingCandidates,
     room,
+    roomMentioned: roomKeys.some(Boolean),
     buildingWide: BUILDING_WIDE_RE.test(loose),
     feeCategory,
   };

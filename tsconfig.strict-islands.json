@@ -1537,7 +1537,8 @@
     "src/lib/quickEntry/draft.ts",
     "src/lib/quickEntry/convert.ts",
     "src/lib/quickEntry/aiSchema.ts",
-    "src/lib/quickEntry/prompt.ts"
+    "src/lib/quickEntry/prompt.ts",
+    "src/lib/quickEntry/compose.ts"
   ],
   "$comment3": "LÔ 100 — nở 1025 → 1145 file sau khi gỡ ba chỗ chặn cuối: khối \"Ghi chú\" ở Room/BuildingDetailPage đọc cột notes không tồn tại (ánh xạ sang description), fixture useOccupancyDashboard khoá payload ở null (đổi sang undefined), và OrganizationContext tự hết khi sinh lại types.ts. CÒN LẠI ngoài đảo: chỉ 40 file thuộc bao đóng-ngược của HAI file openclaw-zalo — cấm đụng theo yêu cầu user, nên đó là trần thật của đảo lúc này."
 }
