@@ -172,8 +172,12 @@ export function draftsFromText(text: string, ctx: ComposeContext): DraftState[] 
   const sumAll = items.reduce((s, it) => s + it.line.amount, 0);
   const totalMismatch = declaredTotal !== null && sumAll !== declaredTotal;
   // Lưới an toàn cho dòng tổng viết kiểu lạ: một dòng (trong ≥3 dòng) bằng đúng tổng các dòng còn lại
-  // (2a = cộng tất cả). KHÔNG tự bỏ — khoản thật cũng có thể trùng tổng — chỉ nhắc kiểm lại.
-  const maybeTotal = items.length >= 3 && items.some((it) => it.line.amount > 0 && it.line.amount * 2 === sumAll);
+  // (2a = cộng tất cả). KHÔNG tự bỏ — khoản thật cũng có thể trùng tổng — chỉ nhắc kiểm lại. Người dùng
+  // đã gõ dòng tổng và tổng đó khớp ⇒ không nhắc.
+  const maybeTotal =
+    declaredTotal !== sumAll &&
+    items.length >= 3 &&
+    items.some((it) => it.line.amount > 0 && it.line.amount * 2 === sumAll);
 
   return groups.map((g) => {
     const members = items.filter((it) => g.lines.includes(it.line));

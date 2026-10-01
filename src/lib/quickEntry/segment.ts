@@ -42,17 +42,19 @@ interface Range {
 
 const SEPARATOR_RE = /\n|;|\+|(?<!\d),|,(?!\d)|\s+và\s+/gu;
 const EDGE_RE = /[\s,;+.:\-–—]/u;
-// Từ báo TỔNG (có dấu và không dấu). "cộng" đứng một mình là CỘNG THÊM ("sơn 300k cộng keo 20k") — chỉ
-// thành từ tổng khi có dấu ":"/"=" ngay sau ("cộng: 320k"). Chữ báo tổng phải đứng SÁT số tiền nên
-// "tong do 200k" (tông đơ) hay "tất cả đồ điện 500k" không khớp.
-const TOTAL_WORDS =
-  "tổng số tiền|tổng tất cả|tổng cộng|tổng tiền|tổng chi|tổng số|tổng|tất cả|cộng lại|" +
-  "tong so tien|tong tat ca|tong cong|tong tien|tong chi|tong so|tong|tat ca|cong lai";
-const TOTAL_HEAD = `(?:(?:${TOTAL_WORDS})\\s*(?:là|la|hết|het|=)?\\s*:?|(?:cộng|cong)\\s*[:=])\\s*`;
-const TOTAL_CUE_RE = new RegExp(`${TOTAL_HEAD}$`, "u");
+// Từ báo TỔNG. "cộng" đứng một mình là CỘNG THÊM ("sơn 300k cộng keo 20k") — chỉ thành từ tổng khi có
+// ":"/"=" ngay sau ("cộng: 320k"). Chữ báo tổng phải đứng SÁT số tiền nên "tong do 200k" (tông đơ) hay
+// "tất cả đồ điện 500k" không khớp.
+const TOTAL_WORDS_VI = "tổng số tiền|tổng tất cả|tổng cộng|tổng tiền|tổng chi|tổng số|tổng|tất cả|cộng lại";
+// Bản KHÔNG DẤU chỉ dùng cho dòng tổng ĐỨNG RIÊNG (từ tổng phải mở đầu đoạn). Trong một đoạn liền, chữ
+// không dấu đứng trước số tiền thường là chữ khác: "be tong 300k" (bê tông), "cong: 200k" (công) — nên
+// luật trong đoạn chỉ nhận chữ có dấu, và "cong:" không dấu không bao giờ là từ tổng.
+const TOTAL_WORDS_ASCII = "tong so tien|tong tat ca|tong cong|tong tien|tong chi|tong so|tong|tat ca|cong lai";
+const totalHead = (words: string) => `(?:(?:${words})\\s*(?:là|la|hết|het|=)?\\s*:?|cộng\\s*[:=])\\s*`;
+const TOTAL_CUE_RE = new RegExp(`${totalHead(TOTAL_WORDS_VI)}$`, "u");
 // Dòng tổng đứng riêng CHỈ gồm từ báo tổng + số tiền (+ đơn vị, + đuôi câu chat): "tổng 320k", "tổng
-// cộng: 320.000đ", "tất cả hết 90k", "tổng 320k nhé". "tổng vệ sinh 800k" là tên khoản chi.
-const TOTAL_LINE_HEAD_RE = new RegExp(`^${TOTAL_HEAD}$`, "u");
+// cộng: 320.000đ", "tất cả hết 90k", "tổng 320k nhé", "tong 320k". "tổng vệ sinh 800k" là tên khoản chi.
+const TOTAL_LINE_HEAD_RE = new RegExp(`^${totalHead(`${TOTAL_WORDS_VI}|${TOTAL_WORDS_ASCII}`)}$`, "u");
 const TOTAL_LINE_TAIL_RE = /^\s*(?:đ|đồng|vnđ|vnd)?\s*(?:nhé|nha|nhe|nhá|ạ|á|thôi|luôn|nè|đó)?\s*[.!]?\s*$/u;
 const RANK: MoneyKind[] = ["explicit", "slang", "bare"];
 

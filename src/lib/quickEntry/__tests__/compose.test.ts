@@ -95,6 +95,10 @@ describe("draftsFromText", () => {
     expect(that.draft.lines.map((l) => l.amount)).toEqual([100_000, 100_000, 200_000]);
     expect(that.flags).toContain("maybe_total");
     expect(draftsFromText("102LVT sơn 300k, keo 20k", ctx())[0].flags).not.toContain("maybe_total");
+    // Đã có dòng tổng và tổng khớp ⇒ không nhắc nữa.
+    const khop = draftsFromText("102LVT sơn 200k, keo 100k, cọ 100k, tổng 400k", ctx())[0];
+    expect(khop.draft.lines.map((l) => l.amount)).toEqual([200_000, 100_000, 100_000]);
+    expect(khop.flags).not.toContain("maybe_total");
   });
 
   it("tin chỉ có dòng tổng ⇒ vẫn là một khoản (không bỏ số tiền duy nhất)", () => {

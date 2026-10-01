@@ -106,6 +106,14 @@ describe("segmentMessage — câu nói liền không dấu ngăn", () => {
     }
   });
 
+  it("gõ không dấu: 'be tong' (bê tông), 'cong:' (công:) KHÔNG phải từ tổng — không mất khoản nào", () => {
+    const tien = (msg: string) => segmentMessage(msg).map((s) => s.amount?.value);
+    expect(tien("cat 200k be tong 300k")).toEqual([200_000, 300_000]);
+    expect(tien("xi mang 150k be tong 300k")).toEqual([150_000, 300_000]);
+    expect(tien("vat tu 300k cong: 200k")).toEqual([300_000, 200_000]);
+    expect(segmentMessage("vat tu 300k, cong: 200k").some((s) => s.isTotal)).toBe(false);
+  });
+
   it("'cộng' ngay trước số tiền là CỘNG THÊM, không phải số tổng của đoạn", () => {
     expect(segmentMessage("sơn 300k cộng 20k").map((s) => s.amount?.value)).toEqual([300_000, 20_000]);
   });
