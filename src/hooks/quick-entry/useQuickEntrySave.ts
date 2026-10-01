@@ -19,11 +19,12 @@ import type { QuickDraft } from "@/lib/quickEntry/draft";
 
 export const ATTACHMENT_BUCKET = "income-expense-attachments";
 
+/** `done` = số khoản đã chắc chắn ghi (cộng dồn qua các lần gửi) — gửi lại thì bỏ qua chừng đó khoản. */
 export type SaveOutcome =
-  | { kind: "saved"; code: string | null; approvalStatus: string | null; ids: string[]; message: string }
-  | { kind: "unknown"; ids: string[]; message: string }
-  | { kind: "maybe_saved"; ids: string[]; message: string }
-  | { kind: "rejected"; ids: string[]; message: string };
+  | { kind: "saved"; code: string | null; approvalStatus: string | null; ids: string[]; done: number; message: string }
+  | { kind: "unknown"; ids: string[]; done: number; message: string }
+  | { kind: "maybe_saved"; ids: string[]; done: number; message: string }
+  | { kind: "rejected"; ids: string[]; done: number; message: string };
 
 const UNKNOWN_MESSAGE =
   "Chưa rõ đã lưu chưa (mất kết nối). Bấm “Gửi lại y nguyên” — máy chủ tự chống trùng — hoặc kiểm tra trong Thu chi.";
@@ -32,6 +33,10 @@ const MAYBE_SAVED_MESSAGE =
 
 const codeOf = (e: unknown) => String((e as { code?: unknown } | null)?.code ?? "");
 
+// uploadFileDetailed tự đổi đuôi khi nén có lợi; khi giữ file gốc (ảnh chụp màn hình PNG…) thì đuôi
+// phải đúng loại ảnh ngay từ đầu.
+const EXT: Record<string, string> = { "image/png": ".png", "image/webp": ".webp" };
+
 export function useQuickEntrySave() {
   const createIE = useCreateIncomeExpense();
   const createPersonal = useCreatePersonalTransaction();
@@ -39,7 +44,8 @@ export function useQuickEntrySave() {
   const uploadPhoto = async (file: File, draftId: string): Promise<string> => {
     const user = await getSessionUser();
     if (!user) throw new Error("Phiên đăng nhập đã hết, hãy đăng nhập lại.");
-    const stored = await uploadFileDetailed(ATTACHMENT_BUCKET, `${user.id}/${Date.now()}-qe-${draftId}.jpg`, file);
+    const ext = EXT[file.type] ?? ".jpg";
+    const stored = await uploadFileDetailed(ATTACHMENT_BUCKET, `${user.id}/${Date.now()}-qe-${draftId}${ext}`, file);
     return stored.url;
   };
 
@@ -53,27 +59,34 @@ export function useQuickEntrySave() {
         code: row?.code ?? null,
         approvalStatus: row?.approval_status ?? null,
         ids: row?.id ? [row.id] : [],
+        done: 1,
         message: createdVoucherFeedback(row).message,
       };
     } catch (e) {
-      if (codeOf(e) === "23505") return { kind: "maybe_saved", ids: [], message: MAYBE_SAVED_MESSAGE };
-      if (hasUnconfirmedResponse(e)) return { kind: "unknown", ids: [], message: UNKNOWN_MESSAGE };
-      return { kind: "rejected", ids: [], message: voucherFailureMessage(e, "tạo phiếu") };
+      if (codeOf(e) === "23505") return { kind: "maybe_saved", ids: [], done: 0, message: MAYBE_SAVED_MESSAGE };
+      if (hasUnconfirmedResponse(e)) return { kind: "unknown", ids: [], done: 0, message: UNKNOWN_MESSAGE };
+      return { kind: "rejected", ids: [], done: 0, message: voucherFailureMessage(e, "tạo phiếu") };
     }
   };
 
-  const savePersonal = async (draft: QuickDraft): Promise<SaveOutcome> => {
+  /**
+   * Ví cá nhân KHÔNG có khoá chống trùng; `reconcile` của hook ví chỉ cứu khoản đang treo. Nên khi gửi
+   * lại, bỏ qua `alreadyDone` khoản đầu đã chắc chắn ghi — nếu không, khoản đầu bị ghi hai lần.
+   */
+  const savePersonal = async (draft: QuickDraft, alreadyDone = 0): Promise<SaveOutcome> => {
     const ids: string[] = [];
-    for (const values of toPersonalTransactionValues(draft)) {
+    let done = alreadyDone;
+    for (const values of toPersonalTransactionValues(draft).slice(alreadyDone)) {
       try {
         const row = (await createPersonal.mutateAsync(values)) as { id?: string } | null;
         if (row?.id) ids.push(row.id);
+        done += 1;
       } catch (e) {
-        if (hasUnconfirmedResponse(e)) return { kind: "unknown", ids, message: UNKNOWN_MESSAGE };
-        return { kind: "rejected", ids, message: recordWriteMessage(e, "thêm khoản vào ví cá nhân") };
+        if (hasUnconfirmedResponse(e)) return { kind: "unknown", ids, done, message: UNKNOWN_MESSAGE };
+        return { kind: "rejected", ids, done, message: recordWriteMessage(e, "thêm khoản vào ví cá nhân") };
       }
     }
-    return { kind: "saved", code: null, approvalStatus: null, ids, message: "Đã ghi vào Ví cá nhân." };
+    return { kind: "saved", code: null, approvalStatus: null, ids, done, message: "Đã ghi vào Ví cá nhân." };
   };
 
   return { uploadPhoto, saveCompany, savePersonal };
