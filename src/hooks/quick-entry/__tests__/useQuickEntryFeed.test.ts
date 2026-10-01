@@ -78,6 +78,7 @@ describe("needsAi — chỉ gọi AI khi thẻ còn chỗ mơ hồ", () => {
     const strong = { ...c.state, locked: ["lines.0.categoryId"], draft: { ...c.state.draft, lines: [{ ...c.state.draft.lines[0], categoryId: "t-vt" }] } };
     expect(needsAi(strong)).toBe(false);
     expect(needsAi({ ...strong, locked: [] })).toBe(true);
+    expect(needsAi({ ...strong, locked: [], touched: ["lines.0.categoryId"] })).toBe(false);
     expect(needsAi({ ...strong, draft: { ...strong.draft, buildingId: null } })).toBe(true);
     expect(needsAi({ ...strong, draft: { ...strong.draft, lines: [{ ...strong.draft.lines[0], amount: 0 }] } })).toBe(true);
   });
@@ -163,6 +164,45 @@ describe("useQuickEntryFeed — tin chữ", () => {
     });
     expect(result.current.aiOff?.kind).toBe("daily_cap");
     expect(result.current.transcribe).toBeNull();
+  });
+
+  it("AI lỗi tạm thời ⇒ tin mời thử lại; thử lại thành công ⇒ điền hạng mục và hết lời mời", async () => {
+    h.readWithAi
+      .mockResolvedValueOnce({ ok: false, error: classifyAiError({ status: 0, code: null }) })
+      .mockResolvedValueOnce(ok(ai({ items: [{ desc: "sơn", amount_vnd: 300_000, category: "c1", confidence: 0.9 }] })));
+    const { result } = mount();
+    await act(async () => result.current.submitText("102LVT sơn 300k", "company"));
+    const msg = result.current.messages[0];
+    expect(msg).toMatchObject({ aiRetry: true });
+    expect(msg.note).toMatch(/Mất kết nối/);
+    await act(async () => result.current.retryAi(msg.id));
+    expect(h.readWithAi).toHaveBeenCalledTimes(2);
+    expect(JSON.stringify(h.readWithAi.mock.calls[1][0].messages)).toContain("102LVT sơn 300k");
+    expect(cardsOf(result)[0].state.draft.lines[0].categoryId).toBe("t-vt");
+    expect(result.current.messages[0]).toMatchObject({ aiRetry: false, note: null, reading: false });
+  });
+
+  it("AI bị tắt (không phải lỗi tạm thời) ⇒ không mời thử lại", async () => {
+    h.readWithAi.mockResolvedValue({ ok: false, error: classifyAiError({ status: 403, code: "quick_entry_disabled" }) });
+    const { result } = mount();
+    await act(async () => result.current.submitText("102LVT sơn 300k", "company"));
+    expect(result.current.messages[0].aiRetry).toBe(false);
+  });
+
+  it("người dùng đã tự chọn hạng mục trước khi thử lại ⇒ không gọi AI nữa", async () => {
+    h.readWithAi.mockResolvedValueOnce({ ok: false, error: classifyAiError({ status: 0, code: null }) });
+    const { result } = mount();
+    await act(async () => result.current.submitText("102LVT sơn 300k", "company"));
+    const c = cardsOf(result)[0];
+    act(() =>
+      result.current.changeCard(c.id, {
+        ...c.state,
+        touched: [...c.state.touched, "lines.0.categoryId"],
+        draft: { ...c.state.draft, lines: [{ ...c.state.draft.lines[0], categoryId: "t-vt" }] },
+      }),
+    );
+    await act(async () => result.current.retryAi(result.current.messages[0].id));
+    expect(h.readWithAi).toHaveBeenCalledTimes(1);
   });
 
   it("câu không có khoản nào ⇒ chỉ có lời nhắc, không thẻ, không gọi AI", async () => {

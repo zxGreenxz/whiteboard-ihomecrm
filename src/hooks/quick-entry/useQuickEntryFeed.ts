@@ -57,6 +57,8 @@ export interface FeedMessage {
   cardIds: string[];
   reading: boolean;
   note: string | null;
+  /** Lần đọc AI gần nhất của tin chữ hỏng vì lỗi tạm thời ⇒ hiện nút "Thử AI lại". */
+  aiRetry: boolean;
 }
 
 export interface FeedCard {
@@ -77,12 +79,16 @@ interface Feed {
   cards: Record<string, FeedCard>;
 }
 
-/** Thẻ còn chỗ cho AI giúp: thiếu tiền; công ty thiếu toà hoặc hạng mục chưa chắc; cá nhân thiếu danh mục. */
+/**
+ * Thẻ còn chỗ cho AI giúp: thiếu tiền; công ty thiếu toà hoặc hạng mục chưa chắc; cá nhân thiếu danh
+ * mục. Hạng mục "chắc" = khoá theo cụm phí/mã khách hàng (`locked`) hoặc người dùng tự chọn (`touched`).
+ */
 export function needsAi(s: DraftState): boolean {
   const d = s.draft;
   if (d.lines.some((l) => !(l.amount > 0))) return true;
   if (d.mode === "company") {
-    return !d.buildingId || d.lines.some((l, i) => !l.categoryId || !s.locked.includes(`lines.${i}.categoryId`));
+    const settled = (i: number) => s.locked.includes(`lines.${i}.categoryId`) || s.touched.includes(`lines.${i}.categoryId`);
+    return !d.buildingId || d.lines.some((l, i) => !l.categoryId || !settled(i));
   }
   return d.lines.some((l) => !l.personalCategory);
 }
@@ -166,6 +172,7 @@ export function useQuickEntryFeed(opts: { refs: QuickEntryRefs; userId: string |
             cardIds: Object.keys(cards),
             reading: false,
             note: "Các thẻ chưa lưu từ lần trước.",
+            aiRetry: false,
           },
         ]
       : [];
@@ -286,17 +293,21 @@ export function useQuickEntryFeed(opts: { refs: QuickEntryRefs; userId: string |
         cardIds: cards.map((c) => c.id),
         reading: targets.length > 0,
         note: states.length === 0 ? NOTHING_FOUND : mentionsBuilding ? BUILDING_HINT : null,
+        aiRetry: false,
       },
       cards,
     );
-    if (targets.length === 0) return;
+    if (targets.length > 0) await enrichCards(messageId, ctx, targets);
+  };
 
-    let note: string | null = null;
+  /** AI bổ sung cho các thẻ của một tin chữ — mỗi thẻ một lượt bằng đoạn câu của nó. */
+  const enrichCards = async (messageId: string, ctx: ComposeContext, targets: DraftState[]): Promise<void> => {
+    const outcome: { error: AiErrorView | null } = { error: null };
     await Promise.all(
       targets.map(async (s) => {
         const r = await askAi(ctx, { text: s.sourceText });
         if ("error" in r) {
-          note = r.error.message;
+          outcome.error = r.error;
           return;
         }
         const model = r.model ?? "AI";
@@ -305,7 +316,26 @@ export function useQuickEntryFeed(opts: { refs: QuickEntryRefs; userId: string |
         );
       }),
     );
-    patchMessage(messageId, (m) => ({ ...m, reading: false, note: note ?? m.note }));
+    const error = outcome.error;
+    patchMessage(messageId, (m) => ({
+      ...m,
+      reading: false,
+      note: error ? error.message : m.note,
+      aiRetry: !!error && error.retryable,
+    }));
+  };
+
+  /** Nút "Thử AI lại" của tin chữ: chỉ đọc lại thẻ còn sửa được và còn chỗ cho AI giúp. */
+  const retryAi = async (messageId: string): Promise<void> => {
+    const message = feedRef.current.messages.find((m) => m.id === messageId);
+    if (!message || message.kind !== "text" || message.reading || aiOffRef.current) return;
+    const targets = message.cardIds
+      .map((id) => feedRef.current.cards[id])
+      .filter((c): c is FeedCard => !!c && editable(c) && needsAi(c.state))
+      .map((c) => c.state);
+    patchMessage(messageId, (m) => ({ ...m, note: null, aiRetry: false, reading: targets.length > 0 }));
+    if (targets.length === 0) return;
+    await enrichCards(messageId, ctxFor(targets[0].draft.mode), targets);
   };
 
   const submitPhoto = async (file: File, mode: DraftMode): Promise<void> => {
@@ -313,7 +343,7 @@ export function useQuickEntryFeed(opts: { refs: QuickEntryRefs; userId: string |
     const messageId = crypto.randomUUID();
     const previewUrl = objectUrl(file);
     if (previewUrl) urls.current.add(previewUrl);
-    addEntry({ id: messageId, kind: "photo", text: null, previewUrl, cardIds: [], reading: true, note: null }, []);
+    addEntry({ id: messageId, kind: "photo", text: null, previewUrl, cardIds: [], reading: true, note: null, aiRetry: false }, []);
 
     let result = EMPTY_AI;
     let model: string | null = null;
@@ -423,6 +453,7 @@ export function useQuickEntryFeed(opts: { refs: QuickEntryRefs; userId: string |
     saveCard,
     changeCard,
     discardCard,
+    retryAi,
     /** null ⇒ AI đã tắt cho phiên — mic đi thẳng đường dự phòng. */
     transcribe: aiOff ? null : transcribe,
   };

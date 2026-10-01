@@ -108,6 +108,18 @@ describe("QuickEntryPage", () => {
     expect(screen.getByTestId("saved-receipt").textContent).toContain("PC2610001 · Chờ duyệt");
   });
 
+  it("AI lỗi tạm thời ⇒ có nút 'Thử AI lại'; bấm thì AI điền hạng mục, nút biến mất", async () => {
+    h.readWithAi.mockResolvedValueOnce({ ok: false, error: { kind: "network", message: "Mất kết nối khi gọi AI.", retryable: true, allowManual: true } });
+    page();
+    await type("102LVT keo 20k");
+    expect(screen.getByLabelText("Hạng mục dòng 1").textContent).toBe("Chọn hạng mục");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Thử AI lại" }));
+    });
+    expect(screen.getByLabelText("Hạng mục dòng 1").textContent).toBe("Sơn sửa");
+    expect(screen.queryByRole("button", { name: "Thử AI lại" })).toBeNull();
+  });
+
   it("?che-do=ca-nhan ⇒ ghi vào Ví cá nhân", async () => {
     h.savePersonal.mockResolvedValue({ kind: "saved", code: null, approvalStatus: null, ids: ["p1"], done: 1, message: "" });
     page("/chi-tieu?che-do=ca-nhan");

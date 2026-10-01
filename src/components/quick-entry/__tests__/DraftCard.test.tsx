@@ -50,6 +50,8 @@ function Harness(p: {
   initial: DraftState;
   status?: CardStatus;
   photoUrl?: string;
+  cashbookList?: typeof cashbooks;
+  buildingList?: typeof buildings;
   onSave?: () => void;
   onDiscard?: () => void;
   spy?: (s: DraftState) => void;
@@ -61,10 +63,10 @@ function Harness(p: {
         state={s}
         status={p.status ?? { kind: "draft" }}
         today={today}
-        buildings={buildings}
+        buildings={p.buildingList ?? buildings}
         rooms={rooms}
         categories={categories}
-        cashbooks={cashbooks}
+        cashbooks={p.cashbookList ?? cashbooks}
         personalCategories={PERSONAL_CATEGORIES}
         photoUrl={p.photoUrl}
         defaultAccountFor={(b) => (b ? `acc-${b}` : null)}
@@ -101,6 +103,25 @@ describe("DraftCard — lưu", () => {
     render(<Harness initial={state({ lines: [{ ...base.draft.lines[0], categoryId: null }] })} />);
     expect(screen.getByRole("button", { name: "Lưu phiếu chi" })).toHaveProperty("disabled", true);
     expect(screen.getByText(/Chọn hạng mục chi\./)).toBeTruthy();
+  });
+
+  it("người dùng không được giao sổ quỹ nào ⇒ nói rõ lý do, không bảo 'chọn sổ' khi không có gì để chọn", () => {
+    render(<Harness initial={state({ accountId: null })} cashbookList={[]} />);
+    expect(screen.getByTestId("no-cashbook").textContent).toMatch(/chưa được giao sổ quỹ/);
+    expect(screen.queryByText(/Chọn sổ quỹ chi tiền\./)).toBeNull();
+    expect(screen.getByRole("button", { name: "Lưu phiếu chi" })).toHaveProperty("disabled", true);
+  });
+
+  it("có sổ nhưng chưa chọn ⇒ vẫn nhắc chọn sổ, không có lời 'chưa được giao'", () => {
+    render(<Harness initial={state({ accountId: null })} />);
+    expect(screen.getByText(/Chọn sổ quỹ chi tiền\./)).toBeTruthy();
+    expect(screen.queryByTestId("no-cashbook")).toBeNull();
+  });
+
+  it("toà có tên trùng mã ⇒ hiện một lần, không lặp '102LVT — 102LVT'", () => {
+    const same = [{ ...buildings[0], name: "102LVT" }];
+    render(<Harness initial={state()} buildingList={same} />);
+    expect(screen.getByLabelText("Toà").textContent).toBe("102LVT");
   });
 
   it("chưa có tiền ⇒ cờ 'Chưa có số tiền', không nhắc thêm câu số tiền lần hai", () => {

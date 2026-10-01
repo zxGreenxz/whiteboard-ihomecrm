@@ -5,9 +5,10 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowLeft, Loader2, MessageSquarePlus, Sparkles } from "lucide-react";
+import { ArrowLeft, Loader2, MessageSquarePlus, RotateCcw, Sparkles } from "lucide-react";
 import "@/styles/mobileApp.css";
 import MainLayout from "@/components/layout/MainLayout";
+import { Button } from "@/components/ui/button";
 import { DraftCard } from "@/components/quick-entry/DraftCard";
 import { QuickEntryComposer } from "@/components/quick-entry/QuickEntryComposer";
 import { useAuth } from "@/hooks/useAuth";
@@ -127,7 +128,16 @@ export default function QuickEntryPage() {
               <Loader2 className="h-3 w-3 animate-spin" /> AI đang đọc…
             </p>
           )}
-          {m.note && <p className="text-xs text-amber-700">{m.note}</p>}
+          {m.note && (
+            <p className="flex flex-wrap items-center gap-2 text-xs text-amber-700">
+              <span>{m.note}</span>
+              {m.aiRetry && !feed.aiOff && (
+                <Button type="button" size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => void feed.retryAi(m.id)}>
+                  <RotateCcw className="mr-1 h-3 w-3" /> Thử AI lại
+                </Button>
+              )}
+            </p>
+          )}
           {m.cardIds.map((id) => {
             const c = feed.cards[id];
             if (!c) return null;

@@ -64,17 +64,31 @@ function visibleFlags(state: DraftState): DraftFlag[] {
   return out;
 }
 
-/** Lời nhắc còn thiếu gì (gộp câu trùng; dòng chưa có tiền đã có cờ riêng nên không nhắc hai lần). */
-function issueTexts(d: QuickDraft): string[] {
+/**
+ * Lời nhắc còn thiếu gì (gộp câu trùng). Không nhắc lại thứ đã có lời riêng: dòng chưa có tiền (cờ
+ * "Chưa có số tiền") và sổ quỹ khi người dùng không được giao sổ nào (bảo "chọn sổ" là sai — không
+ * có gì để chọn).
+ */
+function issueTexts(d: QuickDraft, noCashbook: boolean): string[] {
   const v = validateDraft(d);
   if (!("issues" in v)) return [];
   const texts = Object.entries(v.issues)
     .filter(([path]) => {
+      if (path === "accountId" && noCashbook) return false;
       const m = AMOUNT_PATH.exec(path);
       return !m || (d.lines[Number(m[1])]?.amount ?? 0) > 0;
     })
     .map(([, text]) => text);
   return [...new Set(texts)];
+}
+
+const NO_CASHBOOK =
+  "Bạn chưa được giao sổ quỹ nào để chi, nên chưa lưu được phiếu chi ở đây. Nhờ chủ sổ hoặc chủ công ty giao sổ cho bạn.";
+
+/** "102LVT — Toà 102 Lê Văn Thọ"; tên trùng mã thì chỉ hiện một lần. */
+function buildingLabel(b: IeFormBuilding): string {
+  if (!b.code || b.code.trim().toLowerCase() === b.name.trim().toLowerCase()) return b.name;
+  return `${b.code} — ${b.name}`;
 }
 
 function Field({ label, className, children }: { label: string; className?: string; children: ReactNode }) {
@@ -92,7 +106,8 @@ export function DraftCard(props: DraftCardProps) {
   const company = d.mode === "company";
   const locked = isLocked(status);
   const canSave = validateDraft(d).ok;
-  const issues = issueTexts(d);
+  const noCashbook = company && props.cashbooks.length === 0;
+  const issues = issueTexts(d, noCashbook);
   const total = d.lines.reduce((s, l) => s + (l.amount > 0 ? l.amount : 0), 0);
 
   const emit = (draft: QuickDraft, path: string) =>
@@ -133,7 +148,7 @@ export function DraftCard(props: DraftCardProps) {
 
   const buildingOptions: SearchableSelectOption[] = props.buildings.map((b) => ({
     value: b.id,
-    label: b.code ? `${b.code} — ${b.name}` : b.name,
+    label: buildingLabel(b),
     keywords: [b.code ?? "", b.name],
   }));
   const roomOptions: SearchableSelectOption[] = [
@@ -336,6 +351,11 @@ export function DraftCard(props: DraftCardProps) {
               <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
               Kỳ này toà đã có phiếu cùng hạng mục: {slotHits.map((h) => `${h.code} (${vnd(h.totalAmount)})`).join(", ")}. Kiểm tra để không
               chi trùng.
+            </p>
+          )}
+          {noCashbook && (
+            <p className="flex items-start gap-1 text-xs text-amber-700" data-testid="no-cashbook">
+              <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" /> {NO_CASHBOOK}
             </p>
           )}
           {status.kind === "rejected" && status.message && (
