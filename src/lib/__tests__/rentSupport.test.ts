@@ -95,7 +95,7 @@ describe('rent support schedule', () => {
   });
 
   it('requires stable Sale identity and rejects old policy, version, unknown fields', () => {
-    for (const patch of [{ sale_party_id: null }, { sale_party_id: 'Sale A' }, { version: 1 }, { deduction_policy: 'BONUS_ONLY' }, { collection_mode: 'MONTHLY' }, { payment_cycle: 3 }]) {
+    for (const patch of [{ sale_party_id: 'Sale A' }, { version: 1 }, { deduction_policy: 'BONUS_ONLY' }, { collection_mode: 'MONTHLY' }, { payment_cycle: 3 }]) {
       expect(supportPlanInputSchema.safeParse({ ...plan, ...patch }).success).toBe(false);
     }
     expect(supportPlanInputSchema.safeParse({ ...plan, payer: 'BUILDING', sale_party_id: null }).success).toBe(true);
@@ -278,4 +278,26 @@ describe('rent support funding preview', () => {
     allocateSupportQuote(frozenPlan, { sources: frozenSources });
     expect(JSON.stringify({ frozenPlan, frozenSources })).toBe(snapshot);
   });
+});
+
+
+it('allows a contract-bound Sale schedule before voucher recipients are entered', () => {
+  const unbound = { ...plan, sale_party_id: null };
+  expect(supportPlanInputSchema.parse(unbound).sale_party_id).toBeNull();
+  expect(sumSupportCommitment(unbound)).toBe('1800000');
+  const quote = allocateSupportQuote({ ...unbound, deduction_policy: 'BONUS_THEN_COMMISSION' }, {
+    sources: [commission, { ...bonus, sale_party_id: otherSale }],
+  });
+  expect(quote.state).toBe('READY');
+  expect(quote.sources.find(x => x.kind === 'BONUS')?.current_withheld).toBe('500000');
+  expect(quote.sources.find(x => x.kind === 'COMMISSION')?.current_withheld).toBe('1300000');
+});
+it('does not withhold a contract-bound commitment twice', () => {
+  const unbound = { ...plan, sale_party_id: null };
+  const quote = allocateSupportQuote(unbound, { sources: [], previous_funding: {
+    payer: 'SALE', sale_party_id: null, deduction_policy: 'COMMISSION_ONLY',
+    committed_total: '1800000', net_committed_withholding: '1800000',
+  } });
+  expect(quote.state).toBe('READY');
+  expect(quote.due_upfront).toBe('0');
 });

@@ -68,6 +68,7 @@ export const supportPlanInputSchema = z.object({
   version: z.literal(2),
   start_billing_month: monthSchema,
   payer: payerSchema,
+  // null: deduct from this contract's canonical vouchers; non-null: preserve an existing payee binding.
   sale_party_id: uuidSchema.nullable(),
   deduction_policy: policySchema,
   collection_mode: z.literal('UPFRONT_COMMITTED'),
@@ -76,9 +77,6 @@ export const supportPlanInputSchema = z.object({
     monthly_amount: moneySchema,
   }).strict()).min(1),
 }).strict().superRefine((plan, ctx) => {
-  if (plan.payer === 'SALE' && !plan.sale_party_id) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['sale_party_id'], message: 'Phải chọn danh tính Sale chịu hỗ trợ.' });
-  }
   const count = plan.segments.reduce((total, segment) => total + segment.month_count, 0);
   if (monthIndex(plan.start_billing_month) + count - 1 > monthIndex('9999-12')) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['segments'], message: 'Lịch hỗ trợ vượt năm 9999.' });
@@ -210,9 +208,7 @@ const previousFundingSchema = z.object({
   deduction_policy: policySchema,
   committed_total: moneySchema,
   net_committed_withholding: moneySchema,
-}).strict().superRefine((funding, ctx) => {
-  if (funding.payer === 'SALE' && !funding.sale_party_id) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['sale_party_id'], message: 'Funding cũ thiếu danh tính Sale.' });
-});
+}).strict();
 const fundingContextSchema = z.object({
   sources: z.array(payoutSourceSchema),
   previous_funding: previousFundingSchema.optional(),
@@ -280,7 +276,7 @@ export function allocateSupportQuote(input: unknown, fundingContext: SupportFund
   // An unavailable source cannot produce a net voucher. Paid sources with
   // zero remaining are safe; locked/reserved remaining amounts require review.
   context.sources.forEach((source, index) => {
-    if (source.sale_party_id !== plan.sale_party_id && (source.kind === 'COMMISSION' || plan.deduction_policy === 'BONUS_THEN_COMMISSION')) {
+    if (plan.sale_party_id !== null && source.sale_party_id !== plan.sale_party_id && (source.kind === 'COMMISSION' || plan.deduction_policy === 'BONUS_THEN_COMMISSION')) {
       issues.push({ code: 'PAYEE_MISMATCH', message: 'Nguồn khấu trừ thuộc người hưởng khác Sale chịu hỗ trợ.' });
     }
     if (source.legacy_unreconciled) issues.push({ code: 'LEGACY_REVIEW', message: 'Nguồn legacy cần chứng từ đối chiếu gross, đã giữ và net.' });

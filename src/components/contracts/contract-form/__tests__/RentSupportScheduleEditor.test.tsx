@@ -8,7 +8,7 @@ import { RentSupportScheduleEditor } from '../RentSupportScheduleEditor';
 afterEach(cleanup);
 function Harness({ start = '2026-09-20', end = '2026-10-05' }) {
   const form = useForm<ContractFormData>({ defaultValues: { start_date: start, end_date: '2027-09-20', start_billing_date: start, end_billing_date: end, rent_price: 4000000 } });
-  return <Form {...form}><RentSupportScheduleEditor form={form} parties={[]} /><button onClick={() => form.setValue('end_billing_date', '2026-10-31')}>Đổi kỳ đầu</button></Form>;
+  return <Form {...form}><RentSupportScheduleEditor form={form} /><button onClick={() => form.setValue('end_billing_date', '2026-10-31')}>Đổi kỳ đầu</button></Form>;
 }
 it('shows consecutive month/year segments and 1.8m total before saving', () => {
   render(<Harness />);

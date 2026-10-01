@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import { useForm } from 'react-hook-form';
 import { Form } from '@/components/ui/form';
 import type { ContractFormData } from '@/lib/contractValidation';
@@ -17,27 +17,16 @@ function Harness() {
 }
 beforeEach(() => { mocks.register.mockReset(); mocks.view = true; mocks.create = true; mocks.read = undefined; });
 afterEach(cleanup);
-it('explicitly registers a candidate and persists the returned party identity, never the profile UUID', async () => {
-  mocks.register.mockResolvedValue({ party_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' });
+it('configures Sale support without selecting or registering a recipient', () => {
   render(<Harness/>);
-  fireEvent.change(screen.getByLabelText('Sale chịu hỗ trợ'), { target: { value: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' } });
-  await waitFor(() => expect(screen.getByLabelText('Party được lưu').textContent).toBe('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'));
-  expect(mocks.register.mock.calls[0][0].profileId).toBe('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
-});
-it('never persists a candidate when verification permission is missing or revoked', async () => {
-  mocks.create = false; render(<Harness/>);
-  fireEvent.change(screen.getByLabelText('Sale chịu hỗ trợ'), { target: { value: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' } });
-  await screen.findByText(/cần quyền tạo thu chi/);
-  expect(screen.getByLabelText('Party được lưu').textContent).toBe('chưa chọn'); expect(mocks.register).not.toHaveBeenCalled();
+  expect(screen.queryByLabelText('Sale chịu hỗ trợ')).toBeNull();
+  expect(screen.queryByLabelText('Tên người nhận ngoài nhân sự')).toBeNull();
+  expect(screen.queryByText('Chọn và xác minh danh tính Sale trước khi lưu.')).toBeNull();
+  expect(screen.getByLabelText('Nguồn khấu trừ')).toBeTruthy();
+  expect(mocks.register).not.toHaveBeenCalled();
 });
 it('hides funding controls for a contract-only reader', () => {
   mocks.view = false; render(<Harness/>);
   expect(screen.queryByLabelText('Người chịu hỗ trợ')).toBeNull(); expect(screen.queryByLabelText('Nguồn khấu trừ')).toBeNull();
   expect(screen.getByText(/Cần quyền tài chính/)).toBeTruthy();
-});
-it('reports permission rejection and keeps the candidate unset', async () => {
-  mocks.register.mockRejectedValue({ code: '42501' }); render(<Harness/>);
-  fireEvent.change(screen.getByLabelText('Sale chịu hỗ trợ'), { target: { value: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' } });
-  await screen.findByText(/Không có quyền xác minh danh tính/);
-  expect(screen.getByLabelText('Party được lưu').textContent).toBe('chưa chọn');
 });

@@ -33,9 +33,9 @@ const makeDraft = (notes: string): ContractDraft => ({ id: '33333333-3333-4333-8
   template_id: null, revision: 1, payload: { ...payload, form: { ...payload.form, notes } },
   created_by: '55555555-5555-4555-8555-555555555555', created_at: '2026-09-29', updated_at: '2026-09-29', documents: [] });
 afterEach(cleanup);
-it('hydrates exact private v2 funding and updates support when the invoice period changes', async () => {
+it.each(['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', null])('hydrates private v2 funding (%s) and retains it on draft save', async saleParty => {
   const draft = makeDraft('Hỗ trợ'); draft.payload.form = { ...draft.payload.form, start_billing_date: '2026-09-20', end_billing_date: '2026-10-05' };
-  draft.payload.rent_support = { version: 2, start_billing_month: '2026-09', payer: 'SALE', sale_party_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', deduction_policy: 'BONUS_THEN_COMMISSION', collection_mode: 'UPFRONT_COMMITTED', segments: [{ month_count: 1, monthly_amount: '300000' }, { month_count: 1, monthly_amount: '100000' }] };
+  draft.payload.rent_support = { version: 2, start_billing_month: '2026-09', payer: 'SALE', sale_party_id: saleParty, deduction_policy: 'BONUS_THEN_COMMISSION', collection_mode: 'UPFRONT_COMMITTED', segments: [{ month_count: 1, monthly_amount: '300000' }, { month_count: 1, monthly_amount: '100000' }] };
   const { result } = renderHook(() => useContractFormState({ open: true, draft }));
   expect(result.current.form.getValues('rent_support')).toEqual(draft.payload.rent_support);
   act(() => result.current.form.setValue('rent_price', 4000000, { shouldDirty: true }));

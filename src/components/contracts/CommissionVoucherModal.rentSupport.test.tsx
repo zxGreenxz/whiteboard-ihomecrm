@@ -5,10 +5,10 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { RentSupportPayoutForm } from './RentSupportPayoutForm';
 import type { SupportRead } from '@/lib/rentSupportApi';
 import type { PayoutContext } from '@/lib/rentSupportFunding';
-const api = vi.hoisted(() => ({ quote: vi.fn(), prepare: vi.fn(), execute: vi.fn(), read: vi.fn(), readRequest: vi.fn(), retry: vi.fn(), refresh: vi.fn(), candidate: vi.fn(), verify: vi.fn() }));
+const api = vi.hoisted(() => ({ quote: vi.fn(), prepare: vi.fn(), execute: vi.fn(), read: vi.fn(), readRequest: vi.fn(), retry: vi.fn(), refresh: vi.fn(), candidate: vi.fn(), verify: vi.fn(), register: vi.fn() }));
 vi.mock('@/lib/rentSupportApi', async original => ({ ...await original<typeof import('@/lib/rentSupportApi')>(), quoteContractRentSupport: api.quote,
   prepareContractPayoutsWithSupport: api.prepare, executeContractPayoutOperation: api.execute, readContractPayoutOperation: api.read, readContractPayoutRequest: api.readRequest,
-  readRentSupportDepositCandidate: api.candidate, verifyRentSupportDepositPayee: api.verify }));
+  readRentSupportDepositCandidate: api.candidate, verifyRentSupportDepositPayee: api.verify, registerRentSupportParty: api.register }));
 vi.mock('@/hooks/useRentSupportParties', () => ({ useRentSupportParties: () => ({ data: [{ party_id: '11111111-1111-4111-8111-111111111111', kind: 'EXTERNAL', profile_id: null, display_name: 'Sale đã xác minh' }], isFetching: false, isError: false }) }));
 vi.mock('@/hooks/useAccounts', () => ({ useAccounts: () => ({ data: [{ id: '22222222-2222-4222-8222-222222222222', name: 'Sổ quỹ' }] }) }));
 vi.mock('@/hooks/useCommissionVoucher', () => ({ useRetryCommissionVoucher: () => ({ mutateAsync: api.retry, isPending: false }) }));
@@ -215,4 +215,86 @@ it('does not apply late verification candidate read to a remounted organization 
  const {rerender}=render(form('org1'));fireEvent.change(await screen.findByLabelText('Người hưởng thưởng cọc'),{target:{value:party}});fireEvent.change(screen.getByLabelText('Lý do xác nhận người hưởng'),{target:{value:'Đã đối chiếu người hưởng'}});fireEvent.click(screen.getByLabelText('Đã đối chiếu đúng yêu cầu và phiếu cọc'));
  fireEvent.click(screen.getByRole('button',{name:'Xác nhận người hưởng thưởng cọc'}));await waitFor(()=>expect(api.candidate).toHaveBeenCalledTimes(2));rerender(form('org2'));await act(async()=>{reading.resolve(candidateReady);});
  expect(screen.queryByLabelText('Sử dụng thưởng cọc hiện có')).toBeNull();expect(screen.queryByRole('button',{name:'Thử lại xác nhận đã lưu'})).toBeNull();expect(api.prepare).not.toHaveBeenCalled();
+});
+
+it('uses ordinary voucher recipient details without another identity selector for a new schedule', async () => {
+  const current = { ...plan, financial: { ...plan.financial!, payload: { ...plan.financial!.payload, sale_party_id: null } } };
+  api.register.mockResolvedValue({ party_id: party, kind: 'EXTERNAL', profile_id: null, display_name: 'Môi giới A' });
+  setup(rows, current);
+  expect(screen.queryByLabelText('Người hưởng hoa hồng')).toBeNull();
+  fireEvent.change(screen.getByLabelText('recipient broker'), { target: { value: 'Môi giới A' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Xem khấu trừ và thực nhận' }));
+  await waitFor(() => expect(api.register).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect((screen.getByRole('button', { name: 'Tạo phiếu ròng' }) as HTMLButtonElement).disabled).toBe(false));
+  expect(api.register.mock.calls[0][2]).toMatchObject({ profileId: null, displayName: 'Môi giới A' });
+  fireEvent.click(screen.getByRole('button', { name: 'Tạo phiếu ròng' }));
+  await screen.findByText(/Đã có phiếu PC-NET/);
+  expect(api.prepare.mock.calls[0][1].payload.intents[0]).toMatchObject({ party_id: party, recipient_name: 'Môi giới A' });
+});
+
+it('reuses the recipient request after a lost registration response and blocks stale recipient changes', async () => {
+  const current = { ...plan, financial: { ...plan.financial!, payload: { ...plan.financial!.payload, sale_party_id: null } } };
+  api.register.mockReset(); api.register.mockRejectedValueOnce(new Error('Mất phản hồi'));
+  api.register.mockResolvedValue({ party_id: party, kind: 'EXTERNAL', profile_id: null, display_name: 'Môi giới A' });
+  setup(rows, current);
+  fireEvent.change(screen.getByLabelText('recipient broker'), { target: { value: 'Môi giới A' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Xem khấu trừ và thực nhận' }));
+  await screen.findByText('Mất phản hồi');
+  fireEvent.click(screen.getByRole('button', { name: 'Xem khấu trừ và thực nhận' }));
+  await waitFor(() => expect(api.register).toHaveBeenCalledTimes(2));
+  expect(api.register.mock.calls[1]).toEqual(api.register.mock.calls[0]);
+  await waitFor(() => expect((screen.getByRole('button', { name: 'Tạo phiếu ròng' }) as HTMLButtonElement).disabled).toBe(false));
+  fireEvent.change(screen.getByLabelText('recipient broker'), { target: { value: 'Người mới' } });
+  expect((screen.getByRole('button', { name: 'Tạo phiếu ròng' }) as HTMLButtonElement).disabled).toBe(true);
+  expect(api.prepare).not.toHaveBeenCalled();
+});
+
+it('binds the ordinary recipient of an existing deposit bonus without a pre-registered party', async () => {
+  const current = { ...plan, financial: { ...plan.financial!, payload: { ...plan.financial!.payload, sale_party_id: null, deduction_policy: 'BONUS_THEN_COMMISSION' as const } } };
+  api.candidate.mockResolvedValueOnce(candidateUnverified).mockResolvedValue(candidateReady);
+  api.register.mockResolvedValue({ party_id: party, kind: 'EXTERNAL', profile_id: null, display_name: 'Người nhận thưởng cọc' });
+  setup(rows, current);
+  fireEvent.change(await screen.findByLabelText('Tên người nhận thưởng cọc'), { target: { value: 'Người nhận thưởng cọc' } });
+  expect(screen.queryByLabelText('Người hưởng thưởng cọc')).toBeNull();
+  fireEvent.change(screen.getByLabelText('Lý do xác nhận người hưởng'), { target: { value: 'Đúng người nhận trên phiếu thưởng cọc' } });
+  fireEvent.click(screen.getByLabelText('Đã đối chiếu đúng yêu cầu và phiếu cọc'));
+  fireEvent.click(screen.getByRole('button', { name: 'Xác nhận người hưởng thưởng cọc' }));
+  await screen.findByLabelText('Sử dụng thưởng cọc hiện có');
+  expect(api.register).toHaveBeenCalledTimes(1);
+  expect(api.verify.mock.calls[0][1]).toMatchObject({ partyId: party, claimId, bonusVoucherId: bonusId, sourceFactsHash: facts.proof_hash });
+  expect(api.prepare).not.toHaveBeenCalled();
+});
+
+it('retries deposit recipient registration after a lost response using the same request', async () => {
+  const current = { ...plan, financial: { ...plan.financial!, payload: { ...plan.financial!.payload, sale_party_id: null } } };
+  api.candidate.mockResolvedValueOnce(candidateUnverified).mockResolvedValue(candidateReady);
+  api.register.mockReset(); api.register.mockRejectedValueOnce(new Error('lost response')).mockResolvedValue({ party_id: party });
+  setup(rows, current);
+  fireEvent.change(await screen.findByLabelText('Tên người nhận thưởng cọc'), { target: { value: 'Sale nhận thưởng' } });
+  fireEvent.change(screen.getByLabelText('Lý do xác nhận người hưởng'), { target: { value: 'Đã đối chiếu phiếu thưởng cọc' } });
+  fireEvent.click(screen.getByLabelText('Đã đối chiếu đúng yêu cầu và phiếu cọc'));
+  fireEvent.click(screen.getByRole('button', { name: 'Xác nhận người hưởng thưởng cọc' }));
+  await screen.findByText(/Chưa xác minh được kết quả xác nhận/);
+  expect(api.verify).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Thử lại xác nhận đã lưu' }));
+  await screen.findByLabelText('Sử dụng thưởng cọc hiện có');
+  expect(api.register.mock.calls[1]).toEqual(api.register.mock.calls[0]);
+  expect(api.verify).toHaveBeenCalledTimes(1); expect(api.prepare).not.toHaveBeenCalled();
+});
+it('does not bind a deposit recipient when the voucher proof changes while registration is pending', async () => {
+  const current = { ...plan, financial: { ...plan.financial!, payload: { ...plan.financial!.payload, sale_party_id: null } } };
+  const registration = deferred<{ party_id: string }>(); api.register.mockReturnValue(registration.promise);
+  api.candidate.mockResolvedValueOnce(candidateUnverified).mockResolvedValue({ ...candidateUnverified, verification: { ...facts, proof_hash: 'new-proof' } });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(<QueryClientProvider client={client}><RentSupportPayoutForm organizationId="org1" contractId={contract} plan={current} prefill={prefill} rows={rows as never} refetchRows={api.refresh}/></QueryClientProvider>);
+  fireEvent.change(await screen.findByLabelText('Tên người nhận thưởng cọc'), { target: { value: 'Sale nhận thưởng' } });
+  fireEvent.change(screen.getByLabelText('Lý do xác nhận người hưởng'), { target: { value: 'Đã đối chiếu phiếu thưởng cọc' } });
+  fireEvent.click(screen.getByLabelText('Đã đối chiếu đúng yêu cầu và phiếu cọc'));
+  fireEvent.click(screen.getByRole('button', { name: 'Xác nhận người hưởng thưởng cọc' }));
+  await waitFor(() => expect(api.register).toHaveBeenCalledTimes(1));
+  await act(async () => { await client.invalidateQueries({ queryKey: ['rent-support-deposit-candidate'] }); });
+  await waitFor(() => expect((screen.getByLabelText('Đã đối chiếu đúng yêu cầu và phiếu cọc') as HTMLInputElement).checked).toBe(false));
+  await act(async () => { registration.resolve({ party_id: party }); });
+  expect(api.verify).not.toHaveBeenCalled(); expect(api.prepare).not.toHaveBeenCalled();
+  expect((screen.getByRole('button', { name: 'Xác nhận người hưởng thưởng cọc' }) as HTMLButtonElement).disabled).toBe(true);
 });

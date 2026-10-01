@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-01T05:01:03.601Z",
+  "generatedAt": "2026-10-01T08:44:51.872Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 646,
     "unknown": 80,
-    "catalog-proven": 205,
+    "catalog-proven": 206,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -10966,6 +10966,18 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-01T05:00:30.310Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261001082829_rent_support_contract_vouchers.sql",
+      "version": "20261001082829",
+      "name": "rent_support_contract_vouchers",
+      "scheme": "timestamp14",
+      "sha256": "d1d527c0b4da4d04cf203a74a3a0bc2c4d916972cae4a2a4efbe78ffa5219bc4",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:app_private.validate_rent_support_v1",
+        "catalog:function:app_private.rent_support_allocate_funding_v1"
       ]
     },
     {

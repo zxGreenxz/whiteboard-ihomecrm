@@ -371,6 +371,13 @@ Chi tiết các bước mới so với mô tả cũ (luồng legacy):
 - Trong popup, loại đã có yêu cầu được lưu hiển thị riêng với nút **Tạo lại**, không mở các ô sửa số tiền/sổ quỹ/ngân hàng/người nhận của lần đó. Loại còn mới vẫn nhập và tạo riêng được. Nếu trạng thái đổi trong lúc nhập, hệ thống dừng gửi phần nhập xung đột và chuyển sang yêu cầu đã lưu.
 - Lựa chọn **QL** và quản lý nhận tiền được lưu cùng yêu cầu. Với phiếu mới, tạo phiếu và gán quản lý qua luồng sổ ảo hiện hành phải cùng hoàn tất mới báo thành công; lỗi gán không để lại phiếu ở sổ trả tiền sai. Khi chỉ đối chiếu phiếu đã có hoặc phát lại biên nhận thành công, hệ thống không lấy lựa chọn QL ở form khác để đổi quản lý/sổ của phiếu đó.
 
+**Hỗ trợ tiền thuê theo kỳ:**
+
+- Form hợp đồng chỉ chọn lịch giảm, bên chịu (Tòa/Sale) và nguồn khấu trừ. Không cần chọn hoặc xác minh người nhận ở đây.
+- Sale chịu: mặc định trừ hoa hồng; có thể chọn trừ thưởng trước rồi chuyển phần thiếu sang hoa hồng. Trừ toàn bộ cam kết khi lập phiếu của chính hợp đồng sau ký; hóa đơn khách vẫn giảm từng kỳ.
+- Nhập tên người nhận/ngân hàng trên phiếu như thông thường, rồi bấm **Xem khấu trừ và thực nhận**. Bảng hiển thị quyền lợi gốc, hỗ trợ và số thực nhận. Người nhận QL được chọn ở phiếu để khoản ròng đi qua lương.
+- Tòa chịu không trừ vào phiếu Sale. Thiếu nguồn thì chưa tạo phiếu; tạo lại yêu cầu đã lưu không tạo trùng hoặc trừ lặp. Hợp đồng cũ đã gắn người chịu cụ thể vẫn giữ ràng buộc đã lưu.
+
 **Validate (zod `contractFormSchema`)**: `room_id` là uuid, các ngày bắt buộc, `end_date > start_date`, giá/cọc ≥ 0, `deposit_debt_mode ∈ {DEBT, FIRST_INVOICE}`.
 
 **Edge case**:
