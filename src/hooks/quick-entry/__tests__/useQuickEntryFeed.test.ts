@@ -69,6 +69,27 @@ beforeEach(() => {
 });
 afterEach(() => vi.useRealTimers());
 
+describe("mô hình người dùng chọn trên trang", () => {
+  it("đọc chữ gửi mô hình đọc đã chọn; chép giọng gửi mô hình giọng đã chọn; đổi lựa chọn có hiệu lực ngay", async () => {
+    h.readWithAi.mockResolvedValue(ok(ai()));
+    h.transcribeAudio.mockResolvedValue({ ok: true, text: "sơn 300k", model: "openai/whisper-1" });
+    const { result, rerender } = renderHook(
+      (p: { models: { stt: string; read: string } }) =>
+        useQuickEntryFeed({ refs: refs(), userId: USER, today: "2026-10-01", models: p.models }),
+      { initialProps: { models: { stt: "openai/whisper-1", read: "cx/gpt-6.1-sol(high)" } } },
+    );
+    await act(async () => result.current.submitText("102LVT mua sơn", "company"));
+    expect(h.readWithAi.mock.calls[0][0].model).toBe("cx/gpt-6.1-sol(high)");
+    await act(async () => {
+      await result.current.transcribe?.({ blob: new Blob(["a"]), mimeType: "audio/webm", format: "webm", seconds: 2 });
+    });
+    expect(h.transcribeAudio.mock.calls[0][0].model).toBe("openai/whisper-1");
+    rerender({ models: { stt: "deepgram/nova-3", read: "cx/gpt-6-astra" } });
+    await act(async () => result.current.submitText("102LVT mua keo", "company"));
+    expect(h.readWithAi.mock.calls.at(-1)?.[0].model).toBe("cx/gpt-6-astra");
+  });
+});
+
 describe("needsAi — chỉ gọi AI khi thẻ còn chỗ mơ hồ", () => {
   it("công ty: thiếu toà, thiếu tiền, hạng mục đoán yếu ⇒ cần; đủ và hạng mục chắc ⇒ không", async () => {
     h.readWithAi.mockResolvedValue(ok(ai()));

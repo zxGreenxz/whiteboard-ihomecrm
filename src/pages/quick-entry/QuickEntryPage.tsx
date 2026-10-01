@@ -17,6 +17,7 @@ import { useQuickEntryFeed, type FeedMessage } from "@/hooks/quick-entry/useQuic
 import { useQuickEntryRefs } from "@/hooks/quick-entry/useQuickEntryRefs";
 import { PERSONAL_CATEGORIES } from "@/lib/personalCategories";
 import type { DraftMode } from "@/lib/quickEntry/draft";
+import { loadChoice, readModelId, saveChoice, type ModelChoice } from "@/lib/quickEntry/models";
 import { vnTodayISO } from "@/lib/vnDate";
 
 const TITLE = "Báo chi nhanh";
@@ -79,7 +80,21 @@ export default function QuickEntryPage() {
   const userId = user?.id ?? null;
   const refs = useQuickEntryRefs();
   const today = vnTodayISO();
-  const feed = useQuickEntryFeed({ refs, userId, today });
+  // Mô hình AI người dùng chọn để tự so sánh — nhớ theo người dùng trên máy; lựa chọn trong phiên gắn với
+  // đúng người đã chọn (đăng nhập người khác thì đọc lại lựa chọn của người đó).
+  const storedChoice = useMemo(() => loadChoice(userId), [userId]);
+  const [picked, setPicked] = useState<{ userId: string | null; choice: ModelChoice } | null>(null);
+  const modelChoice = picked && picked.userId === userId ? picked.choice : storedChoice;
+  const changeModelChoice = (choice: ModelChoice) => {
+    setPicked({ userId, choice });
+    saveChoice(userId, choice);
+  };
+  const feed = useQuickEntryFeed({
+    refs,
+    userId,
+    today,
+    models: { stt: modelChoice.stt, read: readModelId(modelChoice) },
+  });
 
   const modes = useMemo<DraftMode[]>(
     () => [...(refs.canCompany ? (["company"] as const) : []), ...(refs.canPersonal ? (["personal"] as const) : [])],
@@ -179,6 +194,8 @@ export default function QuickEntryPage() {
       onSubmitText={(text) => void feed.submitText(text, mode)}
       onPhoto={(file) => void feed.submitPhoto(file, mode)}
       transcribe={feed.transcribe}
+      modelChoice={modelChoice}
+      onModelChoiceChange={changeModelChoice}
     />
   );
 

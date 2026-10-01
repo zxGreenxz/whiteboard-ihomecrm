@@ -16,7 +16,7 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 26,
+      "version": 27,
       "verifyJwt": true,
       "callers": []
     },
@@ -24,7 +24,7 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 22,
+      "version": 23,
       "verifyJwt": false,
       "callers": []
     },
@@ -32,7 +32,7 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 2,
+      "version": 3,
       "verifyJwt": true,
       "callers": []
     },
@@ -40,7 +40,7 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 36,
+      "version": 37,
       "verifyJwt": true,
       "callers": []
     },
@@ -48,7 +48,7 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 11,
+      "version": 12,
       "verifyJwt": false,
       "callers": []
     },
@@ -64,7 +64,7 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 1,
+      "version": 2,
       "verifyJwt": true,
       "callers": []
     },
@@ -72,7 +72,7 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 25,
+      "version": 26,
       "verifyJwt": false,
       "callers": []
     },
@@ -80,7 +80,7 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 27,
+      "version": 28,
       "verifyJwt": true,
       "callers": [
         "src/lib/push.ts",

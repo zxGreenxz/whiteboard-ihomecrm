@@ -14,6 +14,7 @@ import { useVoucherSlotWarning } from "@/hooks/useVoucherSlotWarning";
 import { addDaysISO, formatISODateVN } from "@/lib/vnDate";
 import { LINES_EDITED, markTouched, removeLineAt, syncName, type DraftFlag, type DraftState } from "@/lib/quickEntry/compose";
 import { MAX_PAYER_NAME, validateDraft, type DraftLine, type QuickDraft } from "@/lib/quickEntry/draft";
+import { modelLabel } from "@/lib/quickEntry/models";
 import type { CategoryRef } from "@/lib/quickEntry/categorySuggest";
 import type { IeFormBuilding, IeFormRoom } from "@/hooks/useIncomeExpenseFormScope";
 import type { PickerOption } from "@/hooks/quick-entry/useQuickEntryRefs";
@@ -186,7 +187,7 @@ export function DraftCard(props: DraftCardProps) {
         <span className="rounded-full bg-muted px-2 py-0.5 font-medium">{company ? "Công ty" : "Cá nhân"}</span>
         {props.aiModel && (
           <span className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2 py-0.5 text-violet-700">
-            <Sparkles className="h-3 w-3" /> AI đọc — soát lại
+            <Sparkles className="h-3 w-3" /> AI đọc · {modelLabel(props.aiModel)} — soát lại
           </span>
         )}
         <span className="ml-auto text-sm font-semibold tabular-nums" data-testid="draft-total">

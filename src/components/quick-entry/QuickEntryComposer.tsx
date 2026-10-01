@@ -6,13 +6,25 @@
 // thì sửa ngay tại đây.
 
 import { useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
-import { Camera, ImagePlus, Loader2, Mic, Send, Square, X } from "lucide-react";
+import { Camera, ImagePlus, Loader2, Mic, Send, SlidersHorizontal, Square, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { MAX_RECORD_SECONDS, useVoiceRecorder, type RecordedAudio } from "@/hooks/quick-entry/useVoiceRecorder";
 import type { TranscribeResult } from "@/hooks/quick-entry/quickEntryAi";
 import type { DraftMode } from "@/lib/quickEntry/draft";
+import {
+  READ_EFFORTS,
+  READ_MODELS,
+  STT_OPTIONS,
+  isSupported,
+  modelLabel,
+  normalizeChoice,
+  readModelId,
+  type ModelChoice,
+} from "@/lib/quickEntry/models";
+
+const SELECT_CLASS = "h-8 w-full rounded-md border bg-background px-2 text-xs";
 
 const KEYBOARD_MIC_HINT = "Dùng nút micro trên bàn phím điện thoại để nói.";
 const MODE_LABEL: Record<DraftMode, string> = { company: "Công ty", personal: "Cá nhân" };
@@ -30,6 +42,9 @@ export interface QuickEntryComposerProps {
   onPhoto: (file: File) => void;
   /** null ⇒ chép giọng tắt cho phiên này — mic chỉ gợi ý dùng mic trên bàn phím. */
   transcribe: ((audio: RecordedAudio) => Promise<TranscribeResult>) | null;
+  /** Lựa chọn mô hình AI (chủ muốn tự thử và so sánh); vắng ⇒ không hiện ô chọn. */
+  modelChoice?: ModelChoice;
+  onModelChoiceChange?: (choice: ModelChoice) => void;
 }
 
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
@@ -38,6 +53,9 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
   const [text, setText] = useState("");
   const [note, setNote] = useState<string | null>(null);
   const [transcribing, setTranscribing] = useState(false);
+  const [showModels, setShowModels] = useState(false);
+  /** Mô hình máy chủ báo ĐÃ chép lần nói gần nhất — hiện để so sánh các mô hình. */
+  const [heardBy, setHeardBy] = useState<string | null>(null);
   const box = useRef<HTMLTextAreaElement>(null);
   const camera = useRef<HTMLInputElement>(null);
   const gallery = useRef<HTMLInputElement>(null);
@@ -57,6 +75,7 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
         // Thu hẹp bằng `in`: tsconfig.app.json không bật strictNullChecks nên `r.ok` không thu hẹp được.
         if ("text" in r) {
           appendText(r.text);
+          setHeardBy(r.model);
           return;
         }
         setNote(`${r.error.message} ${KEYBOARD_MIC_HINT}`);
@@ -75,6 +94,13 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
     p.onSubmitText(t);
     setText("");
     setNote(null);
+    setHeardBy(null);
+  };
+
+  const choice = p.modelChoice;
+  const changeChoice = (patch: Partial<ModelChoice>) => {
+    // normalizeChoice đưa mức về mặc định khi mô hình mới không nhận mức đang chọn (Astra + Tối thiểu).
+    if (choice && p.onModelChoiceChange) p.onModelChoiceChange(normalizeChoice({ ...choice, ...patch }));
   };
 
   const onMic = () => {
@@ -123,9 +149,79 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
         </div>
       )}
 
+      {choice && p.onModelChoiceChange && (
+        <div className="space-y-2">
+          <button
+            type="button"
+            className="flex max-w-full items-center gap-1 truncate text-xs text-muted-foreground hover:text-foreground"
+            aria-expanded={showModels}
+            onClick={() => setShowModels((v) => !v)}
+          >
+            <SlidersHorizontal className="h-3 w-3 shrink-0" />
+            <span className="truncate">
+              Mô hình AI: {modelLabel(choice.stt)} · {modelLabel(readModelId(choice))}
+            </span>
+          </button>
+          {showModels && (
+            <div className="grid gap-2 rounded-lg border bg-muted/30 p-2 text-xs sm:grid-cols-3">
+              <label className="space-y-1">
+                <span className="text-muted-foreground">Giọng nói (chép lời)</span>
+                <select
+                  aria-label="Mô hình giọng nói"
+                  className={SELECT_CLASS}
+                  value={choice.stt}
+                  onChange={(e) => changeChoice({ stt: e.target.value })}
+                >
+                  {STT_OPTIONS.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.label} — {o.hint}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-1">
+                <span className="text-muted-foreground">Đọc chữ / ảnh để lập phiếu</span>
+                <select
+                  aria-label="Mô hình đọc chữ"
+                  className={SELECT_CLASS}
+                  value={choice.readModel}
+                  onChange={(e) => changeChoice({ readModel: e.target.value })}
+                >
+                  {READ_MODELS.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.label} — {o.hint}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-1">
+                <span className="text-muted-foreground">Mức suy nghĩ</span>
+                <select
+                  aria-label="Mức suy nghĩ"
+                  className={SELECT_CLASS}
+                  value={choice.effort}
+                  onChange={(e) => changeChoice({ effort: e.target.value })}
+                >
+                  {READ_EFFORTS.map((o) => (
+                    <option key={o.id || "auto"} value={o.id} disabled={!isSupported(choice.readModel, o.id)}>
+                      {o.hint ? `${o.label} — ${o.hint}` : o.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          )}
+        </div>
+      )}
+
       {(note || voiceError) && (
         <p className="text-xs text-amber-800" role="status">
           {note ?? voiceError}
+        </p>
+      )}
+      {heardBy && !note && !voiceError && (
+        <p className="text-xs text-muted-foreground" aria-live="polite">
+          Chép bằng {modelLabel(heardBy)}
         </p>
       )}
 

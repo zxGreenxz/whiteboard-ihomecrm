@@ -30,8 +30,24 @@ export const corsHeaders: Record<string, string> = {
   "Access-Control-Expose-Headers": "x-quick-entry-model, x-quick-entry-index, x-quick-entry-attempts",
 };
 
-/** Đo 01/10/2026 trên 8 câu báo chi tiếng Việt: gpt-4o-transcribe 8/8 số tiền đúng, ~0,9 s. */
-export const STT_MODELS_MAC_DINH = ["openai/gpt-4o-transcribe", "openai/gpt-4o-mini-transcribe", "google/gemini-3.5-transcribe"];
+/** Xếp hạng chép giọng tiếng Việt (đo 01/10/2026: 16 câu báo chi × 2 giọng × sạch/ồn SNR 10 dB, chấm bằng
+ *  bộ đọc số tiền của trang): chirp-3 64/64 > nova-3 62 = whisper-1 62 > gemini-3.5-transcribe 60 >
+ *  whisper-large-v3 59. gpt-4o-transcribe đúng 32/32 khi sạch nhưng 0/32 khi ồn — BỊA câu tiếng khác dù
+ *  language=vi và vẫn trả 200 (chuỗi không dự phòng được) ⇒ không nằm trong danh sách cho chọn. */
+export const STT_CHOICES = [
+  "google/chirp-3",
+  "deepgram/nova-3",
+  "openai/whisper-1",
+  "google/gemini-3.5-transcribe",
+  "openai/whisper-large-v3",
+];
+export const STT_MODELS_MAC_DINH = ["google/chirp-3", "deepgram/nova-3", "openai/whisper-1"];
+/** Mô hình ĐỌC người dùng được chọn trên trang (9router) + mức suy nghĩ (hậu tố "(mức)"; rỗng = tự
+ *  động). Đo 01/10/2026 bằng prompt thật: mọi tổ hợp đọc đúng tiền 3/3; Astra không nhận "minimal" (400);
+ *  mức cao chậm (Sol/Astra max ~15–17 s một câu ngắn). */
+export const READ_MODEL_CHOICES = ["cx/gpt-6.1-sol", "cx/gpt-6-astra", "cx/gpt-6-sol", "cx/gpt-6-luna", "cx/gpt-5.6-luna"];
+export const READ_EFFORTS = ["", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"];
+export const READ_UNSUPPORTED = ["cx/gpt-6-astra(minimal)"];
 /** 9router, đo 01/10/2026 bằng prompt thật: cx/gpt-6-luna(low) đọc đúng chữ + bill có giảm giá, ~5 s.
  *  ag/* trả nội dung RỖNG với khuôn JSON nên không đưa vào chuỗi. */
 export const READ_MODELS_MAC_DINH = ["cx/gpt-6-luna(low)", "cx/gpt-5.6-luna(low)"];
@@ -45,15 +61,30 @@ export const TRAN_MAX_TOKENS = 1500;
 /** Tổng ký tự chữ gửi AI đọc. Prompt thật tối đa ~18k (150 hạng mục + mã toà + câu người dùng) — trần
  *  này chặn việc dùng hàm làm proxy LLM đa dụng với prompt tuỳ ý. */
 export const TRAN_CHU_KY_TU = 32_000;
-const MOI_LAN_MS = 25_000;
+/** Trần MỘT lần thử: đường đọc rộng hơn vì người dùng có thể chọn mức suy nghĩ cao + ảnh bill. */
+export const MOI_LAN_MS: Record<"stt" | "read", number> = { stt: 25_000, read: 40_000 };
 /** Ngân sách cả lượt theo đường, dưới thời gian client chờ (chép giọng 45 s, đọc 60 s). */
-const NGAN_SACH_MS: Record<"stt" | "read", number> = { stt: 40_000, read: 55_000 };
+export const NGAN_SACH_MS: Record<"stt" | "read", number> = { stt: 40_000, read: 55_000 };
 const TOI_THIEU_MS = 3_000;
 
 /** Thời gian cho lần thử kế: kẹp theo ngân sách còn lại; còn dưới mức tối thiểu ⇒ 0 (không thử nữa). */
-export function thoiGianLanThu(nganSach: number, daQua: number): number {
+export function thoiGianLanThu(nganSach: number, daQua: number, moiLan = MOI_LAN_MS.stt): number {
   const con = nganSach - daQua;
-  return con >= TOI_THIEU_MS ? Math.min(MOI_LAN_MS, con) : 0;
+  return con >= TOI_THIEU_MS ? Math.min(moiLan, con) : 0;
+}
+
+/**
+ * Mô hình người dùng chọn trên trang — CHỈ nhận id trong danh sách cho phép của đường đó (không thì ai có
+ * JWT cũng gọi được mô hình tuỳ ý bằng khoá của công ty). Ngoài danh sách ⇒ null (dùng chuỗi mặc định).
+ */
+export function moHinhDuocChon(route: "stt" | "read", raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  if (route === "stt") return STT_CHOICES.includes(raw) ? raw : null;
+  const m = /^([^()]+)(?:\(([a-z]+)\))?$/.exec(raw);
+  if (!m) return null;
+  const [, base, muc = ""] = m;
+  if (!READ_MODEL_CHOICES.includes(base) || !READ_EFFORTS.includes(muc)) return null;
+  return READ_UNSUPPORTED.includes(raw) ? null : raw;
 }
 export const OPENROUTER = "https://openrouter.ai/api/v1";
 
@@ -353,9 +384,12 @@ export async function xuLy(req: Request, deps: PhuThuoc = {}): Promise<Response>
   const dauVao = route === "stt" ? dauVaoNhanGiong(body) : dauVaoDocChu(body);
   if (!dauVao.ok) return dauVao.res;
 
-  const models = route === "stt"
+  const macDinh = route === "stt"
     ? chuoiMoHinh(env("QUICK_ENTRY_STT_MODELS"), STT_MODELS_MAC_DINH)
     : chuoiMoHinh(env("QUICK_ENTRY_READ_MODELS"), READ_MODELS_MAC_DINH);
+  // Người dùng chọn mô hình trên trang (để tự so sánh) ⇒ thử nó TRƯỚC, hỏng thì tới chuỗi mặc định.
+  const chon = moHinhDuocChon(route, body.model);
+  const models = chon ? [chon, ...macDinh.filter((m) => m !== chon)] : macDinh;
   const skipRaw = Number(req.headers.get("x-quick-entry-skip") ?? 0);
   const skip = route === "read" && Number.isInteger(skipRaw) ? Math.min(Math.max(skipRaw, 0), models.length - 1) : 0;
   const taskId = `qe:${newId()}`;
@@ -418,7 +452,7 @@ export async function xuLy(req: Request, deps: PhuThuoc = {}): Promise<Response>
   let attempts = 0;
 
   for (let i = skip; i < models.length; i += 1) {
-    const han = thoiGianLanThu(NGAN_SACH_MS[route], now() - batDau);
+    const han = thoiGianLanThu(NGAN_SACH_MS[route], now() - batDau, MOI_LAN_MS[route]);
     if (han === 0) break;
     attempts += 1;
     const t0 = now();

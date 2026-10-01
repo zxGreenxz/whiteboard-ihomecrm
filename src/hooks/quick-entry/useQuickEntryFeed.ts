@@ -135,11 +135,20 @@ function objectUrl(file: File): string | null {
   return url;
 }
 
-export function useQuickEntryFeed(opts: { refs: QuickEntryRefs; userId: string | null; today: string }) {
+export function useQuickEntryFeed(opts: {
+  refs: QuickEntryRefs;
+  userId: string | null;
+  today: string;
+  /** Mô hình người dùng chọn trên trang (id gửi máy chủ); vắng ⇒ máy chủ dùng chuỗi mặc định. */
+  models?: { stt: string; read: string };
+}) {
   const { refs, userId, today } = opts;
   const orgId = refs.orgId;
   const scope = userId && orgId ? draftsKey(userId, orgId) : null;
   const save = useQuickEntrySave();
+  // Đọc lựa chọn MỚI NHẤT lúc gọi (đổi ô chọn giữa chừng thì lần gọi kế dùng ngay, không dựng lại hàm).
+  const modelsRef = useRef(opts.models);
+  modelsRef.current = opts.models;
 
   const [feed, setFeed] = useState<Feed>({ scope: null, messages: [], cards: {} });
   const feedRef = useRef(feed);
@@ -278,7 +287,13 @@ export function useQuickEntryFeed(opts: { refs: QuickEntryRefs; userId: string |
       imageDataUrl: input.imageDataUrl ?? null,
     });
     try {
-      const r = await readWithAi({ messages, categoryCount: categories.length, fetchImpl, signal: timeout(AI_TIMEOUT_MS) });
+      const r = await readWithAi({
+        messages,
+        categoryCount: categories.length,
+        fetchImpl,
+        signal: timeout(AI_TIMEOUT_MS),
+        model: modelsRef.current?.read,
+      });
       // Thu hẹp bằng `in`: tsconfig.app.json không bật strictNullChecks nên `r.ok` không thu hẹp được.
       if ("error" in r) noteAiError(r.error, "read");
       else failures.current.read = 0;
@@ -467,7 +482,7 @@ export function useQuickEntryFeed(opts: { refs: QuickEntryRefs; userId: string |
   }, []);
 
   const transcribe = async (audio: RecordedAudio): Promise<TranscribeResult> => {
-    const r = await transcribeAudio({ audio, fetchImpl, signal: timeout(STT_TIMEOUT_MS) });
+    const r = await transcribeAudio({ audio, fetchImpl, signal: timeout(STT_TIMEOUT_MS), model: modelsRef.current?.stt });
     if ("error" in r) noteAiError(r.error, "voice");
     else failures.current.voice = 0;
     return r;

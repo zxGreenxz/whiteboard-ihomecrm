@@ -24,7 +24,8 @@ const AUDIO_TOO_LONG = "Đoạn ghi âm quá dài để gửi. Nói ngắn hơn 
 type FetchLike = (input: string, init: RequestInit) => Promise<Response>;
 
 export type AiRead = { ok: true; value: AiResult; model: string | null } | { ok: false; error: AiErrorView };
-export type TranscribeResult = { ok: true; text: string } | { ok: false; error: AiErrorView };
+/** `model` = mô hình máy chủ báo đã chép (header) — hiện cho người dùng so sánh các mô hình. */
+export type TranscribeResult = { ok: true; text: string; model: string | null } | { ok: false; error: AiErrorView };
 
 const isAbort = (e: unknown) => (e as { name?: string } | null)?.name === "AbortError";
 
@@ -44,6 +45,8 @@ export async function readWithAi(opts: {
   categoryCount: number;
   fetchImpl: FetchLike;
   signal?: AbortSignal;
+  /** Mô hình người dùng chọn (id 9router kèm mức); máy chủ tự kiểm danh sách, id lạ ⇒ chuỗi mặc định. */
+  model?: string;
 }): Promise<AiRead> {
   let skip: number | null = null;
   for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -56,7 +59,7 @@ export async function readWithAi(opts: {
         headers,
         signal: opts.signal,
         body: JSON.stringify({
-          model: "quick_entry:auto",
+          model: opts.model ?? "quick_entry:auto",
           messages: opts.messages,
           stream: false,
           max_tokens: QUICK_ENTRY_MAX_TOKENS,
@@ -93,6 +96,8 @@ export async function transcribeAudio(opts: {
   audio: { blob: Blob; format: AudioFormat };
   fetchImpl: FetchLike;
   signal?: AbortSignal;
+  /** Mô hình chép giọng người dùng chọn; máy chủ tự kiểm danh sách, id lạ ⇒ chuỗi mặc định. */
+  model?: string;
 }): Promise<TranscribeResult> {
   // Câu báo "quá lớn" mặc định nói về ảnh — ở đường giọng nói phải nói về đoạn ghi âm.
   const audioError = (e: AiErrorView): AiErrorView => (e.kind === "too_large" ? { ...e, message: AUDIO_TOO_LONG } : e);
@@ -106,7 +111,7 @@ export async function transcribeAudio(opts: {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       signal: opts.signal,
-      body: JSON.stringify({ format: opts.audio.format, data, language: "vi" }),
+      body: JSON.stringify({ format: opts.audio.format, data, language: "vi", ...(opts.model ? { model: opts.model } : {}) }),
     });
   } catch (e) {
     if (isAbort(e)) throw e;
@@ -120,5 +125,7 @@ export async function transcribeAudio(opts: {
   } catch {
     // thân không phải JSON
   }
-  return text ? { ok: true, text } : { ok: false, error: classifyAiError({ status: 500, code: null }) };
+  return text
+    ? { ok: true, text, model: res.headers.get("x-quick-entry-model") }
+    : { ok: false, error: classifyAiError({ status: 500, code: null }) };
 }

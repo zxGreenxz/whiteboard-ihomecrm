@@ -150,6 +150,19 @@ describe("QuickEntryPage", () => {
     expect(screen.getByText("Ghi vào Ví cá nhân")).toBeTruthy();
   });
 
+  it("chọn mô hình đọc + mức ⇒ AI đọc bằng đúng id đó; lựa chọn được nhớ cho lần mở sau", async () => {
+    h.readWithAi.mockResolvedValue({ ok: false, error: { kind: "network", message: "x", retryable: true, allowManual: true } });
+    const first = page();
+    fireEvent.click(screen.getByRole("button", { name: /Mô hình AI/ }));
+    fireEvent.change(screen.getByLabelText("Mô hình đọc chữ"), { target: { value: "cx/gpt-6.1-sol" } });
+    fireEvent.change(screen.getByLabelText("Mức suy nghĩ"), { target: { value: "high" } });
+    await type("102LVT keo 20k");
+    expect(h.readWithAi.mock.calls.at(-1)?.[0].model).toBe("cx/gpt-6.1-sol(high)");
+    first.unmount();
+    page();
+    expect(screen.getByRole("button", { name: /Mô hình AI/ }).textContent).toContain("GPT-6.1 Sol · cao");
+  });
+
   it("không có quyền nào ⇒ báo rõ, không có ô nhập", () => {
     h.refs = baseRefs({ canCompany: false, canPersonal: false });
     page();

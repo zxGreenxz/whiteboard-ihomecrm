@@ -55,6 +55,7 @@ function Harness(p: {
   onSave?: () => void;
   onDiscard?: () => void;
   spy?: (s: DraftState) => void;
+  aiModel?: string | null;
 }) {
   const [s, setS] = useState(p.initial);
   return (
@@ -69,6 +70,7 @@ function Harness(p: {
         cashbooks={p.cashbookList ?? cashbooks}
         personalCategories={PERSONAL_CATEGORIES}
         photoUrl={p.photoUrl}
+        aiModel={p.aiModel}
         defaultAccountFor={(b) => (b ? `acc-${b}` : null)}
         onChange={(n) => {
           p.spy?.(n);
@@ -183,6 +185,18 @@ describe("DraftCard — sửa", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "102LVT" }));
     expect(lastOf(spy).draft).toMatchObject({ buildingId: "b102", accountId: "acc-rieng" });
+  });
+});
+
+describe("DraftCard — nhãn AI ghi tên mô hình đã đọc (để so sánh)", () => {
+  it("thẻ AI đọc ⇒ nhãn có tên mô hình + mức suy nghĩ", () => {
+    render(<Harness initial={state()} aiModel="cx/gpt-6.1-sol(high)" />);
+    expect(screen.getByText(/AI đọc · GPT-6\.1 Sol · cao/)).toBeTruthy();
+  });
+
+  it("thẻ không qua AI ⇒ không có nhãn", () => {
+    render(<Harness initial={state()} aiModel={null} />);
+    expect(screen.queryByText(/AI đọc/)).toBeNull();
   });
 });
 

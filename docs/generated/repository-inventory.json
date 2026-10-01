@@ -1,13 +1,13 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1205,
-  "soFileDocBangFs": 273,
-  "tongLoiGoi": 594,
+  "tongSoFileTest": 1206,
+  "soFileDocBangFs": 274,
+  "tongLoiGoi": 595,
   "khongPhanLoaiDuoc": 271,
   "theoLoai": {
     "ma-nguon": {
-      "soFile": 49,
+      "soFile": 50,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
@@ -76,6 +76,7 @@
     "src/lib/__tests__/permissionPages.test.ts",
     "src/lib/__tests__/profitClose.test.ts",
     "src/lib/__tests__/salaryCompletionDate.test.ts",
+    "src/lib/quickEntry/__tests__/models.test.ts",
     "src/pages/reports/finance/__tests__/BusinessPerformanceReportPage.test.tsx"
   ],
   "chiTiet": [
@@ -2071,6 +2072,14 @@
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "src/lib/quickEntry/__tests__/models.test.ts",
+      "soGoi": 1,
+      "loai": {
+        "ma-nguon": 1
+      },
+      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "src/pages/reports/finance/__tests__/BusinessPerformanceReportPage.test.tsx",

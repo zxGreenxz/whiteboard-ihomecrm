@@ -2,7 +2,13 @@
 import {
   coQuyen,
   dauNgayVN,
+  MOI_LAN_MS,
+  NGAN_SACH_MS,
   nenThuMoHinhKe,
+  READ_EFFORTS,
+  READ_MODEL_CHOICES,
+  STT_CHOICES,
+  STT_MODELS_MAC_DINH,
   thoiGianLanThu,
   TRAN_AM_THANH_BYTES,
   TRAN_CHU_KY_TU,
@@ -238,8 +244,8 @@ Deno.test("nhận giọng: tiếng Việt, mp4 của iPhone gửi thành m4a, tr
   const r = await xuLy(sttReq({ format: "mp4", data: AUDIO }), deps);
   assertEquals(r.status, 200);
   assertEquals(await r.json(), { text: "mua sơn ba trăm nghìn" });
-  assertEquals(r.headers.get("x-quick-entry-model"), "openai/gpt-4o-transcribe");
-  assertEquals(upstreamBodies[0], { model: "openai/gpt-4o-transcribe", language: "vi", input_audio: { data: AUDIO, format: "m4a" } });
+  assertEquals(r.headers.get("x-quick-entry-model"), "google/chirp-3");
+  assertEquals(upstreamBodies[0], { model: "google/chirp-3", language: "vi", input_audio: { data: AUDIO, format: "m4a" } });
   assertEquals(logs.length, 1);
   assertEquals(logs[0].feature, "quick_entry");
   assertEquals(logs[0].status, "ok");
@@ -279,7 +285,7 @@ Deno.test("mô hình đầu lỗi tạm (503) ⇒ mô hình kế; sổ ghi hai d
   const { deps, logs } = setup({ upstream: [{ status: 503, body: {} }, { status: 200, body: { text: "keo hai mươi nghìn" } }] });
   const r = await xuLy(sttReq(), deps);
   assertEquals(r.status, 200);
-  assertEquals(r.headers.get("x-quick-entry-model"), "openai/gpt-4o-mini-transcribe");
+  assertEquals(r.headers.get("x-quick-entry-model"), "deepgram/nova-3");
   assertEquals(r.headers.get("x-quick-entry-attempts"), "2");
   assertEquals(logs.map((l) => l.status), ["upstream_error", "ok"]);
   assertEquals(new Set(logs.map((l) => l.task_id)).size, 1);
@@ -451,4 +457,63 @@ Deno.test("thân không phải JSON ⇒ invalid_json", async () => {
     body: "{không phải json",
   });
   assertEquals(await codeOf(await xuLy(req, setup().deps)), "invalid_json");
+});
+
+// ---------------------------------------------------------------------------------------------------
+// Ô chọn mô hình trên trang (chủ muốn tự thử và so sánh): client gửi `model`; máy chủ CHỈ nhận id trong
+// danh sách cho phép, thử nó TRƯỚC rồi mới tới chuỗi mặc định (bỏ trùng).
+
+Deno.test("chọn mô hình giọng nói trong danh sách ⇒ thử nó trước, lỗi thì tới chuỗi mặc định (không lặp lại)", async () => {
+  const { deps, upstreamBodies } = setup({ upstream: [{ status: 503, body: {} }, { status: 200, body: { text: "ok" } }] });
+  const r = await xuLy(sttReq({ format: "webm", data: AUDIO, model: "openai/whisper-1" }), deps);
+  assertEquals(r.status, 200);
+  assertEquals(upstreamBodies.map((b) => b.model), ["openai/whisper-1", "google/chirp-3"]);
+  assertEquals(r.headers.get("x-quick-entry-model"), "google/chirp-3");
+  const { deps: d2, upstreamBodies: u2 } = setup();
+  await xuLy(sttReq({ format: "webm", data: AUDIO, model: "deepgram/nova-3" }), d2);
+  assertEquals(u2[0].model, "deepgram/nova-3");
+});
+
+Deno.test("mô hình giọng nói NGOÀI danh sách (kể cả gpt-4o bịa chữ khi ồn) ⇒ bỏ qua, dùng chuỗi mặc định", async () => {
+  for (const model of ["openai/gpt-4o-transcribe", "anthropic/claude-opus", 123, ""]) {
+    const { deps, upstreamBodies } = setup();
+    await xuLy(sttReq({ format: "webm", data: AUDIO, model }), deps);
+    assertEquals(upstreamBodies[0].model, "google/chirp-3", String(model));
+  }
+});
+
+Deno.test("chọn mô hình đọc + mức suy nghĩ hợp lệ ⇒ gọi đúng id đó trước; header báo đúng mô hình trả lời", async () => {
+  for (const model of ["cx/gpt-6.1-sol(high)", "cx/gpt-6-astra", "cx/gpt-6-luna(ultra)", "cx/gpt-5.6-luna(minimal)"]) {
+    const s = setup({ upstream: [{ status: 200, body: { choices: [{ message: { content: "{}" } }] } }] });
+    const r = await xuLy(readReq({ model, messages }), s.deps);
+    assertEquals(s.upstreamBodies[0].model, model);
+    assertEquals(r.headers.get("x-quick-entry-model"), model);
+  }
+});
+
+Deno.test("mô hình đọc ngoài danh sách / tổ hợp không hỗ trợ (Astra + minimal) / mức lạ ⇒ chuỗi mặc định", async () => {
+  for (const model of ["cx/gpt-6-astra(minimal)", "cx/gpt-reserve", "cx/gpt-6-luna(turbo)", "ag/gemini-3.8-flash", "quick_entry:auto"]) {
+    const s = setup({ upstream: [{ status: 200, body: { choices: [{ message: { content: "{}" } }] } }] });
+    await xuLy(readReq({ model, messages }), s.deps);
+    assertEquals(s.upstreamBodies[0].model, "cx/gpt-6-luna(low)", model);
+  }
+});
+
+Deno.test("đã chọn mô hình đọc + header thử lại ⇒ bỏ qua mô hình đã chọn, sang chuỗi mặc định", async () => {
+  const s = setup({ upstream: [{ status: 200, body: { choices: [{ message: { content: "{}" } }] } }] });
+  await xuLy(readReq({ model: "cx/gpt-6-sol(low)", messages }, { "x-quick-entry-skip": "1" }), s.deps);
+  assertEquals(s.upstreamBodies[0].model, "cx/gpt-6-luna(low)");
+});
+
+Deno.test("đường đọc: một lần thử được tới 40 s (mức suy nghĩ cao, ảnh bill); đường giọng vẫn 25 s", () => {
+  assertEquals(thoiGianLanThu(NGAN_SACH_MS.read, 0, MOI_LAN_MS.read), 40_000);
+  assertEquals(thoiGianLanThu(NGAN_SACH_MS.read, 40_000, MOI_LAN_MS.read), 15_000);
+  assertEquals(thoiGianLanThu(NGAN_SACH_MS.stt, 0, MOI_LAN_MS.stt), 25_000);
+  assert(NGAN_SACH_MS.read < 60_000 && NGAN_SACH_MS.stt < 45_000, "ngân sách phải dưới thời gian client chờ");
+});
+
+Deno.test("danh sách lựa chọn: 5 mô hình giọng nói; mặc định nằm trong danh sách", () => {
+  assertEquals(STT_CHOICES.length, 5);
+  assert(STT_MODELS_MAC_DINH.every((m) => STT_CHOICES.includes(m)));
+  assert(READ_MODEL_CHOICES.includes("cx/gpt-6-luna") && READ_EFFORTS.includes("low"));
 });

@@ -54,6 +54,14 @@ describe("readWithAi", () => {
     expect(fetchImpl).toHaveBeenCalledOnce();
   });
 
+  it("có mô hình người dùng chọn ⇒ gửi đúng id đó (máy chủ tự kiểm danh sách); không có ⇒ quick_entry:auto", async () => {
+    const fetchImpl = vi.fn().mockImplementation(async () => jsonResponse(200, completion(good)));
+    await readWithAi({ messages, categoryCount: 3, fetchImpl, model: "cx/gpt-6.1-sol(high)" });
+    expect(JSON.parse(fetchImpl.mock.calls[0][1].body).model).toBe("cx/gpt-6.1-sol(high)");
+    await readWithAi({ messages, categoryCount: 3, fetchImpl });
+    expect(JSON.parse(fetchImpl.mock.calls[1][1].body).model).toBe("quick_entry:auto");
+  });
+
   it("mất mạng ⇒ 'network'", async () => {
     const fetchImpl = vi.fn().mockRejectedValueOnce(new TypeError("Failed to fetch"));
     const r = await readWithAi({ messages, categoryCount: 3, fetchImpl });
@@ -67,10 +75,19 @@ describe("transcribeAudio", () => {
   it("gửi base64 + định dạng + language vi tới /audio/transcriptions; trả bản chữ", async () => {
     const fetchImpl = vi.fn().mockResolvedValueOnce(jsonResponse(200, { text: "mua bóng đèn một trăm hai mươi nghìn" }));
     const r = await transcribeAudio({ audio: audio(3), fetchImpl });
-    expect(r).toEqual({ ok: true, text: "mua bóng đèn một trăm hai mươi nghìn" });
+    expect(r).toEqual({ ok: true, text: "mua bóng đèn một trăm hai mươi nghìn", model: null });
     const [url, init] = fetchImpl.mock.calls[0];
     expect(url).toBe("https://proxy.test/functions/v1/quick-entry/audio/transcriptions");
     expect(JSON.parse(init.body)).toEqual({ format: "mp4", data: "AAAA", language: "vi" });
+  });
+
+  it("gửi kèm mô hình người dùng chọn; trả về mô hình THẬT đã chép (header) để hiện cho người dùng so sánh", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { text: "bún bò 50k" }, { "x-quick-entry-model": "deepgram/nova-3" }));
+    const r = await transcribeAudio({ audio: audio(3), fetchImpl, model: "openai/whisper-1" });
+    expect(JSON.parse(fetchImpl.mock.calls[0][1].body)).toMatchObject({ model: "openai/whisper-1" });
+    expect(r).toEqual({ ok: true, text: "bún bò 50k", model: "deepgram/nova-3" });
   });
 
   it(`âm thanh quá ${MAX_AUDIO_BYTES} byte ⇒ 'too_large', không gửi`, async () => {

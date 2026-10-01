@@ -34,7 +34,7 @@ function setup(over: Partial<QuickEntryComposerProps> = {}) {
     onModeChange: vi.fn(),
     onSubmitText: vi.fn(),
     onPhoto: vi.fn(),
-    transcribe: vi.fn(async (): Promise<TranscribeResult> => ({ ok: true, text: "sơn ba trăm nghìn" })),
+    transcribe: vi.fn(async (): Promise<TranscribeResult> => ({ ok: true, text: "sơn ba trăm nghìn", model: null })),
     ...over,
   };
   render(<QuickEntryComposer {...props} />);
@@ -161,5 +161,52 @@ describe("QuickEntryComposer — ảnh và chế độ", () => {
     setup({ modes: ["personal"], mode: "personal" });
     expect(screen.queryByRole("group", { name: "Ghi vào" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Cá nhân" })).toBeNull();
+  });
+});
+
+describe("QuickEntryComposer — chọn mô hình AI để so sánh", () => {
+  const choice = { stt: "google/chirp-3", readModel: "cx/gpt-6-luna", effort: "low" };
+
+  it("bấm 'Mô hình AI' mở 3 ô chọn; đổi ô nào báo đúng lựa chọn mới", () => {
+    const onModelChoiceChange = vi.fn();
+    setup({ modelChoice: choice, onModelChoiceChange });
+    expect(screen.queryByLabelText("Mô hình giọng nói")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Mô hình AI/ }));
+    fireEvent.change(screen.getByLabelText("Mô hình giọng nói"), { target: { value: "deepgram/nova-3" } });
+    expect(onModelChoiceChange).toHaveBeenLastCalledWith({ ...choice, stt: "deepgram/nova-3" });
+    fireEvent.change(screen.getByLabelText("Mô hình đọc chữ"), { target: { value: "cx/gpt-6.1-sol" } });
+    expect(onModelChoiceChange).toHaveBeenLastCalledWith({ ...choice, readModel: "cx/gpt-6.1-sol" });
+    fireEvent.change(screen.getByLabelText("Mức suy nghĩ"), { target: { value: "ultra" } });
+    expect(onModelChoiceChange).toHaveBeenLastCalledWith({ ...choice, effort: "ultra" });
+  });
+
+  it("đủ 5 mô hình giọng nói; mức 9router không nhận với mô hình đang chọn bị khoá (Astra + Tối thiểu)", () => {
+    setup({ modelChoice: { ...choice, readModel: "cx/gpt-6-astra" }, onModelChoiceChange: vi.fn() });
+    fireEvent.click(screen.getByRole("button", { name: /Mô hình AI/ }));
+    expect((screen.getByLabelText("Mô hình giọng nói") as HTMLSelectElement).options).toHaveLength(5);
+    const minimal = [...(screen.getByLabelText("Mức suy nghĩ") as HTMLSelectElement).options].find((o) => o.value === "minimal");
+    expect(minimal?.disabled).toBe(true);
+  });
+
+  it("đổi sang mô hình không nhận mức đang chọn ⇒ mức về mặc định", () => {
+    const onModelChoiceChange = vi.fn();
+    setup({ modelChoice: { ...choice, effort: "minimal" }, onModelChoiceChange });
+    fireEvent.click(screen.getByRole("button", { name: /Mô hình AI/ }));
+    fireEvent.change(screen.getByLabelText("Mô hình đọc chữ"), { target: { value: "cx/gpt-6-astra" } });
+    expect(onModelChoiceChange).toHaveBeenLastCalledWith({ ...choice, readModel: "cx/gpt-6-astra", effort: "low" });
+  });
+
+  it("chép giọng xong ⇒ hiện tên mô hình ĐÃ chép (để so sánh)", async () => {
+    const transcribe = vi.fn(async (): Promise<TranscribeResult> => ({ ok: true, text: "bún bò 50k", model: "deepgram/nova-3" }));
+    setup({ transcribe, modelChoice: choice, onModelChoiceChange: vi.fn() });
+    await act(async () => {
+      rec.onDone?.(audio);
+    });
+    expect(screen.getByText(/Chép bằng Deepgram Nova 3/)).toBeTruthy();
+  });
+
+  it("không truyền lựa chọn mô hình ⇒ không có nút Mô hình AI", () => {
+    setup();
+    expect(screen.queryByRole("button", { name: /Mô hình AI/ })).toBeNull();
   });
 });
