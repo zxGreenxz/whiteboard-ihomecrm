@@ -9,7 +9,7 @@
 // https; khoá chống trùng cố định theo thẻ để gửi lại y nguyên không sinh phiếu đôi.
 // Kiểu đầu ra khai cục bộ cho thư viện thuần; hook nhận nó sẽ được TypeScript so khớp.
 
-import { MAX_DESCRIPTION, MAX_NAME, type DraftLine, type QuickDraft } from "./draft";
+import { MAX_DESCRIPTION, MAX_NAME, MAX_PAYER_NAME, type DraftLine, type QuickDraft } from "./draft";
 
 export interface CompanyVoucherItem {
   income_expense_type_id: string;
@@ -85,7 +85,7 @@ export function toCreateIncomeExpenseInput(d: QuickDraft): CompanyVoucherInput {
     room_id: d.roomId,
     tenant_id: null,
     contract_id: null,
-    payer_name: clean(d.vendor, MAX_NAME),
+    payer_name: clean(d.vendor, MAX_PAYER_NAME),
     receive_bank_account: null,
     receive_bank_name: null,
     account_id: d.accountId,

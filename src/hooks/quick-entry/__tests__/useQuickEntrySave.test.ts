@@ -58,6 +58,13 @@ describe("useQuickEntrySave — công ty", () => {
     expect(await save().saveCompany(company)).toMatchObject({ kind: "unknown", done: 0 });
   });
 
+  it("rớt mạng ở đường compat (không có khoá chống trùng) ⇒ 'maybe_saved', KHÔNG cho gửi lại y nguyên", async () => {
+    h.createIE.mockRejectedValueOnce(Object.assign(new TypeError("Failed to fetch"), { ieCreatePath: "compat" }));
+    const out = await save().saveCompany(company);
+    expect(out.kind).toBe("maybe_saved");
+    expect(out.message).toContain("Thu chi");
+  });
+
   it("23505 cùng khoá ⇒ 'maybe_saved' (có thể đã lưu ở lần trước)", async () => {
     h.createIE.mockRejectedValueOnce({ code: "23505", message: "duplicate key" });
     expect((await save().saveCompany(company)).kind).toBe("maybe_saved");
@@ -86,6 +93,15 @@ describe("useQuickEntrySave — cá nhân", () => {
     expect(out).toMatchObject({ kind: "unknown", ids: ["p1"], done: 1 });
   });
 
+  it("rớt mạng ở ví: lời báo không hứa 'máy chủ chống trùng' (ví không có khoá) và trỏ về Ví cá nhân", async () => {
+    h.createPersonal.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    const out = await save().savePersonal(personal);
+    expect(out.kind).toBe("unknown");
+    expect(out.message).not.toContain("máy chủ");
+    expect(out.message).not.toContain("Thu chi");
+    expect(out.message).toContain("Ví cá nhân");
+  });
+
   it("gửi lại sau khi khoản thứ hai rớt mạng ⇒ KHÔNG ghi lại khoản đầu đã lưu (ví không có khoá chống trùng)", async () => {
     h.createPersonal.mockResolvedValueOnce({ id: "p1" }).mockRejectedValueOnce(new TypeError("Failed to fetch"));
     const first = await save().savePersonal(personal);
@@ -95,6 +111,25 @@ describe("useQuickEntrySave — cá nhân", () => {
     expect(h.createPersonal).toHaveBeenCalledTimes(1);
     expect(h.createPersonal.mock.calls[0][0]).toMatchObject({ amount: 85_000, category: "Cá nhân" });
     expect(retry).toMatchObject({ kind: "saved", ids: ["p2"], done: 2 });
+  });
+
+  it("báo tiến độ ngay sau TỪNG khoản — tải lại trang giữa vòng vẫn biết khoản nào đã ghi", async () => {
+    const seen: number[] = [];
+    h.createPersonal.mockResolvedValueOnce({ id: "p1" }).mockImplementationOnce(async () => {
+      expect(seen).toEqual([1]);
+      return { id: "p2" };
+    });
+    await save().savePersonal(personal, 0, (done) => seen.push(done));
+    expect(seen).toEqual([1, 2]);
+  });
+
+  it("đã ghi một phần rồi khoản kế bị từ chối ⇒ KHOÁ thẻ (chỉ gửi tiếp y nguyên), không về nháp để sửa", async () => {
+    h.createPersonal
+      .mockResolvedValueOnce({ id: "p1" })
+      .mockRejectedValueOnce(Object.assign(new Error("permission denied"), { code: "42501" }));
+    const out = await save().savePersonal(personal);
+    expect(out).toMatchObject({ kind: "unknown", ids: ["p1"], done: 1 });
+    expect(out.message).toContain("1/2");
   });
 
   it("máy chủ từ chối khoản đầu ⇒ 'rejected', done = 0", async () => {

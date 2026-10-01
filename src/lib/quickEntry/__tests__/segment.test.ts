@@ -68,6 +68,17 @@ describe("segmentMessage — câu nói liền không dấu ngăn", () => {
     expect(segs[0].amount?.ambiguous).toBe(false);
   });
 
+  it("đoạn MỞ ĐẦU bằng 'tổng' sau dấu ngăn là dòng tổng để đối chiếu, không phải một khoản", () => {
+    const segs = segmentMessage("sơn 300k, keo 20k, tổng 320k");
+    expect(segs.map((s) => [s.amount?.value, s.isTotal])).toEqual([
+      [300_000, false],
+      [20_000, false],
+      [320_000, true],
+    ]);
+    expect(segmentMessage("bóng đèn 60k\ntổng cộng: 60k").map((s) => s.isTotal)).toEqual([false, true]);
+    expect(segmentMessage("tất cả 90k; cảm ơn").map((s) => s.isTotal)).toEqual([true]);
+  });
+
   it("số trần không dùng để cắt khoản (dễ là số lượng)", () => {
     expect(parts("mua 2 đèn 120")).toEqual([["mua 2 đèn 120", 120_000]]);
   });

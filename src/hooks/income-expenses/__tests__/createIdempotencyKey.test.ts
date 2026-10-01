@@ -67,6 +67,25 @@ describe("useCreateIncomeExpense — khoá chống trùng", () => {
     expect(Object.keys(argsOf(h.rpc.mock.calls[1]).p_row as object)).not.toContain("idempotency_key");
   });
 
+  it("lỗi của CHÍNH lời gọi compat mang nhãn đường compat (compat không có khoá ⇒ người gọi không được gửi lại y nguyên)", async () => {
+    const net = { code: "", message: "TypeError: Failed to fetch", details: "", hint: "" };
+    h.rpc
+      .mockResolvedValueOnce({ data: null, error: { code: "PGRST202", message: "not found" } })
+      .mockResolvedValueOnce({ data: null, error: net });
+    await expect(
+      (useCreateIncomeExpense() as unknown as Mutation).mutationFn(input({ idempotency_key: STABLE })),
+    ).rejects.toMatchObject({ ieCreatePath: "compat" });
+  });
+
+  it("lỗi ở đường canonical (có khoá) KHÔNG mang nhãn compat", async () => {
+    const net = { code: "", message: "TypeError: Failed to fetch", details: "", hint: "" };
+    h.rpc.mockResolvedValueOnce({ data: null, error: net });
+    const err = await (useCreateIncomeExpense() as unknown as Mutation)
+      .mutationFn(input({ idempotency_key: STABLE }))
+      .catch((e: unknown) => e);
+    expect((err as { ieCreatePath?: string }).ieCreatePath).toBeUndefined();
+  });
+
   it("23505 (cùng khoá, khác nội dung) là lỗi thật, KHÔNG rơi sang đường compat", async () => {
     const err = { code: "23505", message: "duplicate key value violates unique constraint" };
     h.rpc.mockResolvedValueOnce({ data: null, error: err });

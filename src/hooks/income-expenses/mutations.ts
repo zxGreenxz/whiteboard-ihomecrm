@@ -178,11 +178,14 @@ export const useCreateIncomeExpense = () => {
         })),
       });
 
+      // Nhãn đường compat: compat KHÔNG nhận khoá chống trùng, nên lỗi chưa rõ kết quả ở đây mà người
+      // gọi gửi lại y nguyên (Báo chi nhanh) có thể ra phiếu đôi. Chỉ gắn nhãn, không đổi hành vi.
+      const viaCompat = <E extends object>(e: E): E => Object.assign(e, { ieCreatePath: "compat" as const });
       if (compat.error) {
-        throw compat.error;
+        throw viaCompat(compat.error);
       }
 
-      if (!(compat.data as {id?:string} | null)?.id) throw new TypeError("Missing voucher creation confirmation");
+      if (!(compat.data as {id?:string} | null)?.id) throw viaCompat(new TypeError("Missing voucher creation confirmation"));
       return compat.data;
     },
     onSuccess: (data) => {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { draftFromBill, draftsFromText, enrichFromAi, markTouched, syncName, type ComposeContext } from "../compose";
+import { draftFromBill, draftsFromText, enrichFromAi, markTouched, removeLineAt, syncName, type ComposeContext } from "../compose";
 import type { AiResult } from "../aiSchema";
 import type { CategoryRef } from "../categorySuggest";
 
@@ -67,6 +67,24 @@ describe("draftsFromText", () => {
     ]);
   });
 
+  it("dòng 'tổng' sau dấu phẩy chỉ để đối chiếu — KHÔNG cộng thành một khoản chi", () => {
+    const [s] = draftsFromText("102LVT sơn 300k, keo 20k, tổng 320k", ctx());
+    expect(s.draft.lines.map((l) => l.amount)).toEqual([300_000, 20_000]);
+    expect(s.flags).toEqual([]);
+    expect(s.sourceText).not.toContain("tổng");
+  });
+
+  it("tổng gõ khác cộng các dòng ⇒ giữ các dòng, gắn cờ lệch tổng", () => {
+    const [s] = draftsFromText("102LVT sơn 300k, keo 20k, tổng 330k", ctx());
+    expect(s.draft.lines.map((l) => l.amount)).toEqual([300_000, 20_000]);
+    expect(s.flags).toContain("total_mismatch");
+  });
+
+  it("tin chỉ có dòng tổng ⇒ vẫn là một khoản (không bỏ số tiền duy nhất)", () => {
+    const [s] = draftsFromText("102LVT tổng 320k", ctx());
+    expect(s.draft.lines.map((l) => l.amount)).toEqual([320_000]);
+  });
+
   it("phòng nói một lần áp cho các khoản cùng toà", () => {
     const [s] = draftsFromText("102LVT p301: bóng đèn 60k\nống nước 80k", ctx());
     expect([s.draft.buildingId, s.draft.roomId, s.draft.lines.length]).toEqual(["b102", "r301", 2]);
@@ -130,6 +148,28 @@ describe("draftsFromText", () => {
   });
 });
 
+describe("removeLineAt — bỏ dòng dồn lại dấu đã sửa/đã khoá theo chỉ số", () => {
+  it("dấu của dòng sau dồn lên; dấu của dòng bị bỏ mất theo; dấu ngoài dòng giữ nguyên", () => {
+    const [s] = draftsFromText("102LVT bóng đèn 60k, ống nước 80k, keo 20k", ctx());
+    const st = { ...s, touched: ["lines.0.amount", "lines.2.categoryId", "vendor"], locked: ["lines.1.categoryId", "date"] };
+    const out = removeLineAt(st, 1);
+    expect(out.draft.lines.map((l) => l.amount)).toEqual([60_000, 20_000]);
+    expect(out.touched).toEqual(["lines.0.amount", "lines.1.categoryId", "vendor"]);
+    expect(out.locked).toEqual(["date"]);
+  });
+
+  it("AI về sau khi bỏ dòng KHÔNG đè hạng mục người dùng đã chọn ở dòng bị dồn lên", () => {
+    const [s] = draftsFromText("102LVT bóng đèn 60k, ống nước 80k, keo 20k", ctx());
+    const chon = { ...s, draft: { ...s.draft, lines: s.draft.lines.map((l, i) => (i === 2 ? { ...l, categoryId: "t-sua" } : l)) } };
+    const out = removeLineAt(markTouched(chon, "lines.2.categoryId"), 1);
+    const items = [
+      { desc: "bóng đèn", amount_vnd: 60_000, category: "c3", confidence: 0.9 },
+      { desc: "keo", amount_vnd: 20_000, category: "c3", confidence: 0.9 },
+    ];
+    expect(enrichFromAi(out, ai({ items }), ctx()).draft.lines[1].categoryId).toBe("t-sua");
+  });
+});
+
 describe("enrichFromAi — AI chỉ điền ô còn trống", () => {
   it("điền hạng mục còn trống theo chỉ số cN đã gửi; KHÔNG đè số tiền đã gõ", () => {
     const [s] = draftsFromText("102LVT mua đồ 350k", ctx());
@@ -150,6 +190,27 @@ describe("enrichFromAi — AI chỉ điền ô còn trống", () => {
     const out = enrichFromAi(s, ai({ items: [{ desc: "sơn", amount_vnd: 300_000, category: null, confidence: 0.7 }] }), ctx());
     expect(out.draft.lines[0].amount).toBe(300_000);
     expect(out.flags).not.toContain("missing_amount");
+  });
+
+  it("thẻ MỘT dòng thiếu tiền mà AI tách nhiều món ⇒ dòng nhận cả tổng, không chỉ món đầu", () => {
+    const [s] = draftsFromText("102LVT mua sơn với cọ", ctx());
+    const items = [
+      { desc: "sơn", amount_vnd: 250_000, category: "c3", confidence: 0.8 },
+      { desc: "cọ", amount_vnd: 50_000, category: "c3", confidence: 0.8 },
+    ];
+    expect(enrichFromAi(s, ai({ items }), ctx()).draft.lines[0]).toMatchObject({ amount: 300_000, categoryId: "t-vt" });
+    expect(enrichFromAi(s, ai({ items, total_vnd: 320_000 }), ctx()).draft.lines[0].amount).toBe(320_000);
+    const mixed = [items[0], { ...items[1], category: "c2" }];
+    expect(enrichFromAi(s, ai({ items: mixed }), ctx()).draft.lines[0].categoryId).not.toBe("t-vt");
+  });
+
+  it("kỳ AI đảo ngược hoặc ở thẻ cá nhân ⇒ không điền kỳ", () => {
+    const [co] = draftsFromText("102LVT tiền điện 1tr2", ctx());
+    const nguoc = enrichFromAi(co, ai({ period_start: "2026-09-30", period_end: "2026-09-01" }), ctx());
+    expect([nguoc.draft.lines[0].periodStart, nguoc.draft.lines[0].periodEnd]).toEqual([null, null]);
+    const [cn] = draftsFromText("tiền điện 300k", ctx({ mode: "personal" }));
+    const canhan = enrichFromAi(cn, ai({ period_start: "2026-09-01", period_end: "2026-09-30" }), ctx({ mode: "personal" }));
+    expect(canhan.draft.lines[0].periodStart).toBeNull();
   });
 
   it("AI cũng không ra số ⇒ cờ thiếu tiền vẫn còn", () => {
@@ -239,6 +300,35 @@ describe("draftFromBill — ảnh hoá đơn", () => {
     expect(s.flags).toContain("check_total");
   });
 
+  it("bill có dòng giảm giá mà AI KHÔNG đọc được tổng ⇒ số thực trả = cộng mọi dòng (cả dòng âm) + cờ kiểm lại", () => {
+    const s = draftFromBill(
+      ai({
+        items: [
+          { desc: "Gạch lát", amount_vnd: 500_000, category: "c3", confidence: 0.9 },
+          { desc: "Giảm giá", amount_vnd: -50_000, category: null, confidence: 0.9 },
+        ],
+        total_vnd: null,
+      }),
+      ctx(),
+    );
+    expect(s.draft.lines.map((l) => l.amount)).toEqual([450_000]);
+    expect(s.flags).toContain("check_total");
+  });
+
+  it("bill có dòng giảm giá mà tổng AI trả BẰNG cộng các dòng dương ⇒ vẫn bắt kiểm lại", () => {
+    const s = draftFromBill(
+      ai({
+        items: [
+          { desc: "Gạch lát", amount_vnd: 500_000, category: "c3", confidence: 0.9 },
+          { desc: "Giảm giá", amount_vnd: -50_000, category: null, confidence: 0.9 },
+        ],
+        total_vnd: 500_000,
+      }),
+      ctx(),
+    );
+    expect(s.flags).toContain("check_total");
+  });
+
   it("mã khách hàng trên bill điện ⇒ toà + hạng mục phí điện + kỳ", () => {
     const s = draftFromBill(
       ai({
@@ -252,6 +342,20 @@ describe("draftFromBill — ảnh hoá đơn", () => {
     );
     expect(s.draft.buildingId).toBe("b405");
     expect(s.draft.lines[0]).toMatchObject({ categoryId: "t-dien", periodStart: "2026-09-01", periodEnd: "2026-09-30" });
+  });
+
+  it("kỳ AI thiếu một đầu, đảo ngược, hoặc ở thẻ cá nhân ⇒ bỏ kỳ (thẻ không có ô nào để sửa kỳ hỏng)", () => {
+    const item = { desc: "Tiền điện", amount_vnd: 1_200_000, category: null, confidence: 0.9 };
+    const cases: Array<[Partial<AiResult>, ComposeContext]> = [
+      [{ period_start: "2026-09-01", period_end: null }, ctx()],
+      [{ period_start: null, period_end: "2026-09-30" }, ctx()],
+      [{ period_start: "2026-09-30", period_end: "2026-09-01" }, ctx()],
+      [{ period_start: "2026-09-01", period_end: "2026-09-30" }, ctx({ mode: "personal" })],
+    ];
+    for (const [over, c] of cases) {
+      const s = draftFromBill(ai({ items: [item], total_vnd: 1_200_000, ...over }), c);
+      expect(s.draft.lines.map((l) => [l.periodStart, l.periodEnd])).toEqual([[null, null]]);
+    }
   });
 
   it("ảnh không đọc được ⇒ thẻ trống báo thiếu tiền", () => {

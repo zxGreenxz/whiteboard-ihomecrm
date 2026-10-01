@@ -12,8 +12,8 @@ import { DateInput } from "@/components/ui/date-input";
 import { SearchableSelect, type SearchableSelectOption } from "@/components/ui/searchable-select";
 import { useVoucherSlotWarning } from "@/hooks/useVoucherSlotWarning";
 import { addDaysISO, formatISODateVN } from "@/lib/vnDate";
-import { markTouched, syncName, type DraftFlag, type DraftState } from "@/lib/quickEntry/compose";
-import { validateDraft, type DraftLine, type QuickDraft } from "@/lib/quickEntry/draft";
+import { markTouched, removeLineAt, syncName, type DraftFlag, type DraftState } from "@/lib/quickEntry/compose";
+import { MAX_PAYER_NAME, validateDraft, type DraftLine, type QuickDraft } from "@/lib/quickEntry/draft";
 import type { CategoryRef } from "@/lib/quickEntry/categorySuggest";
 import type { IeFormBuilding, IeFormRoom } from "@/hooks/useIncomeExpenseFormScope";
 import type { PickerOption } from "@/hooks/quick-entry/useQuickEntryRefs";
@@ -28,6 +28,7 @@ const FLAG_TEXT: Record<DraftFlag, string> = {
   ambiguous_amount: "Câu có nhiều con số — kiểm lại số tiền.",
   building_choice: "Câu nhắc nhiều toà — chọn đúng toà.",
   check_total: "Tổng các món khác số thực trả trên bill — đã ghi theo số thực trả, kiểm lại.",
+  total_mismatch: "Tổng bạn ghi khác cộng các dòng — kiểm lại số tiền.",
 };
 
 const vnd = (n: number) => `${n.toLocaleString("vi-VN")}đ`;
@@ -57,7 +58,7 @@ function visibleFlags(state: DraftState): DraftFlag[] {
   if (state.draft.lines.some((l) => !(l.amount > 0))) out.push("missing_amount");
   for (const f of state.flags) {
     if (f === "missing_amount") continue;
-    if ((f === "small_amount" || f === "ambiguous_amount" || f === "check_total") && amountTouched) continue;
+    if ((f === "small_amount" || f === "ambiguous_amount" || f === "check_total" || f === "total_mismatch") && amountTouched) continue;
     if (f === "building_choice" && state.draft.buildingId) continue;
     out.push(f);
   }
@@ -123,7 +124,7 @@ export function DraftCard(props: DraftCardProps) {
       },
       `lines.${d.lines.length}`,
     );
-  const removeLine = (i: number) => emit({ ...d, lines: d.lines.filter((_, j) => j !== i) }, `lines.${i}`);
+  const removeLine = (i: number) => props.onChange(syncName(removeLineAt(state, i)));
   const clearPeriod = (i: number) =>
     emit({ ...d, lines: d.lines.map((l, j) => (j === i ? { ...l, periodStart: null, periodEnd: null } : l)) }, `lines.${i}.period`);
   const chooseBuilding = (buildingId: string) => {
@@ -215,6 +216,7 @@ export function DraftCard(props: DraftCardProps) {
                   value={d.vendor ?? ""}
                   placeholder="Không bắt buộc"
                   aria-label="Người nhận"
+                  maxLength={MAX_PAYER_NAME}
                   onChange={(e) => update("vendor", { vendor: e.target.value || null })}
                 />
               </Field>

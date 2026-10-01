@@ -348,6 +348,34 @@ describe("useQuickEntryFeed — lưu", () => {
     expect(h.savePersonal.mock.calls[1][1]).toBe(1);
   });
 
+  it("cá nhân: tiến độ ghi vào thẻ (và nháp đã lưu) ngay sau TỪNG khoản, trước khi lưu xong", async () => {
+    h.readWithAi.mockResolvedValue(
+      ok(ai({ items: [{ desc: "bún", amount_vnd: 50_000, category: "c1", confidence: 0.9 }, { desc: "xăng", amount_vnd: 100_000, category: "c5", confidence: 0.9 }] })),
+    );
+    let release: (v: unknown) => void = () => {};
+    h.savePersonal.mockImplementationOnce(async (_draft: unknown, _done: number, onProgress?: (n: number) => void) => {
+      onProgress?.(1);
+      return new Promise((r) => {
+        release = r;
+      });
+    });
+    const { result } = mount();
+    await act(async () => result.current.submitText("bún 50k, xăng 100k", "personal"));
+    const id = cardsOf(result)[0].id;
+    let pending: Promise<void> = Promise.resolve();
+    act(() => {
+      pending = result.current.saveCard(id);
+    });
+    await waitFor(() => expect(result.current.cards[id].personalDone).toBe(1));
+    expect(result.current.cards[id].status.kind).toBe("saving");
+    await waitFor(() => expect(localStorage.getItem(draftsKey(USER, ORG)) ?? "").toContain('"personalDone":1'));
+    await act(async () => {
+      release({ kind: "saved", code: null, approvalStatus: null, ids: ["p1", "p2"], done: 2, message: "" });
+      await pending;
+    });
+    expect(result.current.cards[id].personalDone).toBe(2);
+  });
+
   it("thẻ chưa hợp lệ (thiếu hạng mục) ⇒ không gửi máy chủ", async () => {
     h.readWithAi.mockResolvedValue(ok(ai()));
     const { result } = mount();

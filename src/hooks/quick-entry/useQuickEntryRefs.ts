@@ -13,7 +13,7 @@ import { useCustodianCashbooksV2 } from "@/hooks/income-expenses/financeV2Mutati
 import { useFeeAccounts } from "@/hooks/usePeriodFees";
 import { useUtilityAccounts } from "@/hooks/useUtilityBills";
 import { usableExpenseCategories, type CategoryRef } from "@/lib/quickEntry/categorySuggest";
-import { pickDefaultAccount } from "@/lib/quickEntry/cashbook";
+import { expenseCashbooksForOrg, pickDefaultAccount } from "@/lib/quickEntry/cashbook";
 import type { FeeAccountRef, ResolveRefs } from "@/lib/quickEntry/resolve";
 
 const lastAccountKey = (orgId: string) => `ihome:quick-entry:last-account:${orgId}`;
@@ -63,9 +63,13 @@ export function useQuickEntryRefs() {
 
   const buildings = useMemo(() => (canCompany ? buildingsQ.data ?? [] : []), [canCompany, buildingsQ.data]);
   const rooms = useMemo(() => (canCompany ? roomsQ.data ?? [] : []), [canCompany, roomsQ.data]);
+  // Chỉ sổ của CÔNG TY đang chọn (RPC trả sổ của mọi công ty người dùng thuộc về), bỏ sổ ảo.
   const cashbooks = useMemo<PickerOption[]>(
-    () => (canCompany ? (cashbooksQ.data ?? []).map((c) => ({ id: c.id, label: c.name })) : []),
-    [canCompany, cashbooksQ.data],
+    () =>
+      canCompany
+        ? expenseCashbooksForOrg(cashbooksQ.data ?? [], accountsQ.data, orgId).map((c) => ({ id: c.id, label: c.name }))
+        : [],
+    [canCompany, cashbooksQ.data, accountsQ.data, orgId],
   );
 
   const categories = useMemo<CategoryRef[]>(() => {
@@ -118,7 +122,8 @@ export function useQuickEntryRefs() {
   );
 
   const loading =
-    permsQ.isLoading || (canCompany && (buildingsQ.isLoading || typesQ.isLoading || cashbooksQ.isLoading));
+    permsQ.isLoading ||
+    (canCompany && (buildingsQ.isLoading || typesQ.isLoading || cashbooksQ.isLoading || accountsQ.isLoading));
 
   return {
     orgId,

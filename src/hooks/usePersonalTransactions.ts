@@ -64,6 +64,18 @@ interface PersonalRowsQuery extends PromiseLike<{ data: Array<Record<string, unk
   gte(column: string, value: string): PersonalRowsQuery;
 }
 
+/**
+ * Khoá dấu "đang chờ" theo CHÍNH khoản đang lưu. Khoá chung 'create' từng để khoản B (lưu xong) xoá
+ * dấu của khoản A đang treo ⇒ gửi lại A không còn gì để đối chiếu ⇒ A ghi hai lần. Băm FNV-1a 32 bit:
+ * chỉ cần phân biệt các khoản đang treo trên một máy, không phải định danh toàn cục.
+ */
+const personalCreateKey = (v: PersonalTransactionFormValues): string => {
+  const s = JSON.stringify([v.type, v.amount, v.txn_date, v.category ?? null, v.description ?? null]);
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i += 1) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193) >>> 0;
+  return `create:${h.toString(16).padStart(8, "0")}`;
+};
+
 export const useCreatePersonalTransaction = () => {
   const qc = useQueryClient();
   const guard=personalGuard('personal-transaction-create');
@@ -93,9 +105,9 @@ export const useCreatePersonalTransaction = () => {
       return data;
       };
       // Đối chiếu lần trước chưa rõ kết quả (rớt mạng): có khoản GIỐNG HỆT của mình tạo từ lúc đó ⇒
-      // chính là nó, không ghi lại; không có ⇒ lần trước không ghi được (hoặc là khoản khác) ⇒ ghi
-      // khoản đang lưu. Lỗi ở đây giữ nguyên dấu "đang chờ" để lần sau đối chiếu tiếp. Thiếu bước
-      // này thì MỘT lần rớt mạng chặn mọi khoản cá nhân sau đó trên máy, vĩnh viễn.
+      // chính là nó, không ghi lại; không có ⇒ lần trước không ghi được ⇒ ghi khoản đang lưu. Lỗi ở
+      // đây giữ nguyên dấu "đang chờ" để lần sau đối chiếu tiếp. Dấu khoá theo CHÍNH khoản này
+      // (personalCreateKey) nên chỉ lần gửi lại đúng khoản đó mới đối chiếu; khoản khác ghi thẳng.
       const reconcile = async (pending: { startedAt: string }) => {
         const since = new Date(Date.parse(pending.startedAt) - 120_000).toISOString();
         const query = supabase.from("personal_transactions" as never).select("*") as unknown as PersonalRowsQuery;
@@ -114,7 +126,7 @@ export const useCreatePersonalTransaction = () => {
         );
         return { result: same ?? (await insert()) };
       };
-      return guard.run('create','thêm khoản vào ví cá nhân',insert,reconcile);
+      return guard.run(personalCreateKey(values),'thêm khoản vào ví cá nhân',insert,reconcile);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["personal-transactions"] });

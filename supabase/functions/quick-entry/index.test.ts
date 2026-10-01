@@ -1,5 +1,14 @@
 // Test hàm quick-entry: fetch giả mô phỏng Auth, RPC quyền, bảng entitlement, sổ ai_usage_logs và OpenRouter.
-import { coQuyen, dauNgayVN, nenThuMoHinhKe, TRAN_AM_THANH_BYTES, xuLy, type PhuThuoc } from "./index.ts";
+import {
+  coQuyen,
+  dauNgayVN,
+  nenThuMoHinhKe,
+  thoiGianLanThu,
+  TRAN_AM_THANH_BYTES,
+  TRAN_CHU_KY_TU,
+  xuLy,
+  type PhuThuoc,
+} from "./index.ts";
 
 function assert(condition: unknown, message = "Assertion failed"): asserts condition {
   if (!condition) throw new Error(message);
@@ -29,14 +38,21 @@ interface Kich {
   entitled?: boolean;
   usedTasks?: string[];
   usageReadFails?: boolean;
+  /** Ghi dòng giữ chỗ ('pending', trước khi gọi nhà cung cấp) hỏng. */
+  reserveFails?: boolean;
+  /** Ghi kết quả SAU khi gọi (PATCH dòng giữ chỗ / POST lần thử sau) hỏng. */
   logFails?: boolean;
   dailyCalls?: string;
   upstream?: Array<{ status: number; body: unknown } | "network">;
+  /** Mỗi lần gọi nhà cung cấp làm đồng hồ chạy thêm chừng này mili-giây. */
+  upstreamMs?: number;
 }
 
 function setup(k: Kich = {}) {
   const calls: Array<{ url: string; init?: RequestInit; body?: unknown }> = [];
   const logs: Array<Record<string, unknown>> = [];
+  let clock = Date.UTC(2026, 9, 1, 3, 0, 0);
+  let seq = 0;
   const upstreamBodies: Array<Record<string, unknown>> = [];
   const upstreamUrls: string[] = [];
   const queue = [...(k.upstream ?? [{ status: 200, body: { text: "mua sơn ba trăm nghìn", usage: { cost: 0.0002, input_tokens: 40, output_tokens: 10 } } }])];
@@ -64,23 +80,43 @@ function setup(k: Kich = {}) {
     if (url.includes("/rest/v1/ai_copilot_entitlements")) return j(200, k.entitled ? [{ chat_enabled: true }] : []);
     if (url.includes("/rest/v1/ai_usage_logs") && (init?.method ?? "GET") === "GET") {
       if (k.usageReadFails) return j(500, { message: "boom" });
-      return j(200, (k.usedTasks ?? []).map((t) => ({ task_id: t })));
+      // Đếm cả dòng đã có từ trước lẫn dòng các lượt (kể cả song song) vừa giữ chỗ.
+      return j(200, [...(k.usedTasks ?? []).map((t) => ({ task_id: t })), ...logs.map((l) => ({ task_id: l.task_id }))]);
     }
     if (url.includes("/rest/v1/ai_usage_logs") && init?.method === "POST") {
-      if (k.logFails) throw new Error("db down");
-      logs.push(body as Record<string, unknown>);
-      return new Response(null, { status: 201 });
+      const row = body as Record<string, unknown>;
+      if (row.status === "pending" ? k.reserveFails : k.logFails) throw new Error("db down");
+      const id = `log-${++seq}`;
+      logs.push({ ...row, id });
+      const prefer = new Headers(init?.headers).get("Prefer") ?? "";
+      return prefer.includes("return=representation") ? j(201, [{ id }]) : new Response(null, { status: 201 });
+    }
+    if (url.includes("/rest/v1/ai_usage_logs") && (init?.method === "PATCH" || init?.method === "DELETE")) {
+      if (init.method === "PATCH" && k.logFails) throw new Error("db down");
+      const id = new URL(url).searchParams.get("id")?.replace(/^eq\./, "");
+      const at = logs.findIndex((l) => l.id === id);
+      if (at < 0) return j(404, {});
+      if (init.method === "DELETE") logs.splice(at, 1);
+      else logs[at] = { ...logs[at], ...(body as Record<string, unknown>) };
+      return new Response(null, { status: 204 });
     }
     if (url.startsWith("https://openrouter.ai/api/v1/") || url.includes("router.example/v1/")) {
       upstreamUrls.push(url);
       upstreamBodies.push(body as Record<string, unknown>);
+      clock += k.upstreamMs ?? 0;
       const next = queue.shift() ?? { status: 500, body: {} };
       if (next === "network") throw new TypeError("network");
       return j(next.status, next.body);
     }
     return j(404, { message: `unexpected ${url}` });
   }) as typeof fetch;
-  const deps: PhuThuoc = { getEnv: (key) => env[key], fetchImpl, now: () => Date.UTC(2026, 9, 1, 3, 0, 0), newId: () => "11111111-2222-4333-8444-555555555555" };
+  let idSeq = 0;
+  const deps: PhuThuoc = {
+    getEnv: (key) => env[key],
+    fetchImpl,
+    now: () => clock,
+    newId: () => `11111111-2222-4333-8444-${String(555555555555 + idSeq++).padStart(12, "0")}`,
+  };
   return { deps, calls, logs, upstreamBodies, upstreamUrls };
 }
 
@@ -265,9 +301,61 @@ Deno.test("hết tiền (402) / khoá sai (401) ⇒ dừng ngay, không đốt m
   assert(!nenThuMoHinhKe(402) && !nenThuMoHinhKe(401) && nenThuMoHinhKe(429) && nenThuMoHinhKe(0) && nenThuMoHinhKe(503));
 });
 
-Deno.test("ghi sổ hỏng không làm hỏng câu trả lời", async () => {
-  const { deps } = setup({ logFails: true });
+Deno.test("ghi KẾT QUẢ hỏng (sau khi gọi) không làm hỏng câu trả lời — dòng giữ chỗ vẫn tính lượt", async () => {
+  const { deps, logs } = setup({ logFails: true });
   assertEquals((await xuLy(sttReq(), deps)).status, 200);
+  assertEquals(logs.map((l) => l.status), ["pending"]);
+});
+
+Deno.test("giữ chỗ TRƯỚC khi gọi nhà cung cấp: dòng 'pending' ghi trước, rồi mới gọi", async () => {
+  const { deps, calls, logs } = setup();
+  assertEquals((await xuLy(sttReq(), deps)).status, 200);
+  const giu = calls.findIndex((c) => c.url.includes("/rest/v1/ai_usage_logs") && c.init?.method === "POST");
+  const goi = calls.findIndex((c) => c.url.startsWith("https://openrouter.ai"));
+  assert(giu >= 0 && giu < goi, `giữ chỗ ở ${giu}, gọi ở ${goi}`);
+  assertEquals((calls[giu].body as { status: string }).status, "pending");
+  assertEquals(logs.map((l) => l.status), ["ok"]);
+});
+
+Deno.test("không ghi được dòng giữ chỗ ⇒ 503, KHÔNG gọi nhà cung cấp (trần không bị lách)", async () => {
+  const { deps, calls } = setup({ reserveFails: true });
+  const r = await xuLy(sttReq(), deps);
+  assertEquals(r.status, 503);
+  assertEquals(await codeOf(r), "quick_entry_unavailable");
+  assertEquals(openrouterCalls(calls), 0);
+});
+
+Deno.test("vượt trần SAU khi giữ chỗ ⇒ 429 và xoá dòng giữ chỗ của mình (không ăn lượt)", async () => {
+  const { deps, logs, calls } = setup({ dailyCalls: "3", usedTasks: ["a", "b", "c"] });
+  assertEquals(await codeOf(await xuLy(sttReq(), deps)), "quick_entry_daily_cap");
+  assertEquals(logs.length, 0);
+  assertEquals(openrouterCalls(calls), 0);
+});
+
+Deno.test("hai lượt SONG SONG khi chỉ còn một chỗ ⇒ nhiều nhất một lượt được gọi nhà cung cấp", async () => {
+  const s = setup({ dailyCalls: "3", usedTasks: ["a", "b"], upstream: [{ status: 200, body: { text: "một" } }, { status: 200, body: { text: "hai" } }] });
+  const [r1, r2] = await Promise.all([xuLy(sttReq(), s.deps), xuLy(sttReq(), s.deps)]);
+  assert([r1.status, r2.status].filter((x) => x === 200).length <= 1, `${r1.status} ${r2.status}`);
+  assert(openrouterCalls(s.calls) <= 1, `${openrouterCalls(s.calls)} lần gọi`);
+});
+
+Deno.test("chữ gửi AI quá dài ⇒ 400, không gọi nhà cung cấp (hàm không thành proxy LLM đa dụng)", async () => {
+  const { deps, calls } = setup();
+  const dai = [{ role: "system", content: "x".repeat(TRAN_CHU_KY_TU + 1) }, { role: "user", content: "đọc" }];
+  assertEquals((await xuLy(readReq({ messages: dai }), deps)).status, 400);
+  assertEquals(openrouterCalls(calls), 0);
+});
+
+Deno.test("ngân sách thời gian: lần thử kẹp theo phần còn lại; còn quá ít thì không mở lần mới", () => {
+  assertEquals(thoiGianLanThu(40_000, 0), 25_000);
+  assertEquals(thoiGianLanThu(40_000, 30_000), 10_000);
+  assertEquals(thoiGianLanThu(40_000, 38_000), 0);
+});
+
+Deno.test("chép giọng hết ngân sách (khớp client chờ 45 s) ⇒ dừng, không thử mô hình thứ ba", async () => {
+  const s = setup({ upstreamMs: 20_000, upstream: [{ status: 503, body: {} }, { status: 503, body: {} }, { status: 200, body: { text: "muộn" } }] });
+  assertEquals((await xuLy(sttReq(), s.deps)).status, 502);
+  assertEquals(openrouterCalls(s.calls), 2);
 });
 
 const messages = [

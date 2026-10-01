@@ -98,6 +98,10 @@ describe("toCreateIncomeExpenseInput", () => {
     expect(toCreateIncomeExpenseInput(company({ name: "x".repeat(600) })).name).toHaveLength(500);
   });
 
+  it("người nhận quá dài cắt còn 255 ký tự (writer: c_max_short_text_length = 255)", () => {
+    expect(toCreateIncomeExpenseInput(company({ vendor: "v".repeat(300) })).payer_name).toHaveLength(255);
+  });
+
   it("mô tả dòng rỗng ⇒ null, quá dài cắt còn 1000 ký tự", () => {
     const out = toCreateIncomeExpenseInput(company({ lines: [line({ description: "" }), line({ description: "y".repeat(1200) })] }));
     expect(out.items[0].description).toBeNull();

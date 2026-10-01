@@ -422,7 +422,11 @@ export function useQuickEntryFeed(opts: { refs: QuickEntryRefs; userId: string |
           return;
         }
       }
-      const out = draft.mode === "company" ? await save.saveCompany(draft) : await save.savePersonal(draft, card.personalDone);
+      // Cá nhân: ghi tiến độ vào thẻ (và nháp lưu máy) sau TỪNG khoản — tải lại trang giữa vòng thì lần
+      // gửi lại bỏ qua đúng số khoản đã ghi, không ghi lặp.
+      const progress = (done: number) => patchCard(id, (c) => ({ ...c, personalDone: done }));
+      const out =
+        draft.mode === "company" ? await save.saveCompany(draft) : await save.savePersonal(draft, card.personalDone, progress);
       patchCard(id, (c) => ({ ...c, status: statusOf(out), personalDone: draft.mode === "personal" ? out.done : c.personalDone }));
       if (out.kind === "saved" && draft.mode === "company") rememberAccount(orgId, draft.accountId);
     } finally {

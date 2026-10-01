@@ -20,7 +20,14 @@ import { MAX_DESCRIPTION, type DraftLine, type DraftMode, type QuickDraft } from
 import { MAX_PROMPT_CATEGORIES } from "./prompt";
 import type { AiItem, AiResult } from "./aiSchema";
 
-export type DraftFlag = "missing_amount" | "small_amount" | "ambiguous_amount" | "building_choice" | "check_total";
+export type DraftFlag =
+  | "missing_amount"
+  | "small_amount"
+  | "ambiguous_amount"
+  | "building_choice"
+  | "check_total"
+  /** Người dùng gõ dòng "tổng …" khác cộng các dòng. */
+  | "total_mismatch";
 
 export interface DraftState {
   draft: QuickDraft;
@@ -83,8 +90,12 @@ const emptyResolve: ResolveResult = {
 };
 
 export function draftsFromText(text: string, ctx: ComposeContext): DraftState[] {
-  const segments = segmentMessage(text);
-  if (segments.length === 0) return [];
+  const all = segmentMessage(text);
+  if (all.length === 0) return [];
+  // Dòng "tổng …" đứng riêng chỉ để đối chiếu, không thành khoản chi. Tin CHỈ có dòng tổng ⇒ nó
+  // chính là khoản (không bỏ số tiền duy nhất người dùng gõ).
+  const segments = all.some((s) => !s.isTotal) ? all.filter((s) => !s.isTotal) : all;
+  const declaredTotal = segments === all ? null : ([...all].reverse().find((s) => s.isTotal)?.amount?.value ?? null);
   // Vị trí đoạn câu tính trên bản NFC + chữ thường. Hạ chữ thường không đổi độ dài với chữ Việt ⇒ cắt
   // bản NFC gốc đúng các vị trí đó để giữ chữ hoa người dùng gõ ("Bóng LED"). Lệch độ dài (ký tự lạ
   // như "İ") ⇒ dùng bản chữ thường cho chắc.
@@ -155,12 +166,15 @@ export function draftsFromText(text: string, ctx: ComposeContext): DraftState[] 
   const groups = company
     ? groupByPlace(items.map((it) => ({ buildingId: it.buildingId, roomId: it.roomId, line: it.line })))
     : [{ buildingId: null, roomId: null, lines: items.map((it) => it.line) }];
+  // Tổng gõ là tổng CẢ TIN (mọi thẻ) — lệch thì mọi thẻ của tin đều nhắc kiểm lại.
+  const totalMismatch = declaredTotal !== null && items.reduce((s, it) => s + it.line.amount, 0) !== declaredTotal;
 
   return groups.map((g) => {
     const members = items.filter((it) => g.lines.includes(it.line));
     const candidates = unique(members.flatMap((m) => m.candidates));
     const flags = unique(members.flatMap((m) => m.flags));
     if (!g.buildingId && candidates.length > 1 && company) flags.push("building_choice");
+    if (totalMismatch) flags.push("total_mismatch");
     const locked: string[] = [];
     if (date) locked.push("date");
     g.lines.forEach((l, i) => {
@@ -202,15 +216,41 @@ function lineCategory(item: AiItem | undefined, description: string, feeCategory
   return suggestCategory(ctx.categories, description, { feeCategory })?.id ?? null;
 }
 
+/**
+ * Kỳ AI đọc chỉ dùng khi đủ HAI đầu, đầu ≤ cuối, và là thẻ công ty: thẻ chỉ có nút bỏ kỳ khi kỳ đủ
+ * hai đầu, nên kỳ hỏng sẽ làm thẻ không lưu được mà cũng không có ô nào để sửa. Ví cá nhân không có kỳ.
+ */
+function aiPeriod(ai: AiResult, company: boolean): { periodStart: string; periodEnd: string } | null {
+  if (!company || !ai.period_start || !ai.period_end || ai.period_start > ai.period_end) return null;
+  return { periodStart: ai.period_start, periodEnd: ai.period_end };
+}
+
+/** Thẻ MỘT dòng mà AI tách nhiều món: dòng đó là cả tin — tiền = tổng AI (hoặc cộng mọi món, kể cả
+ *  dòng âm); hạng mục chỉ nhận khi mọi món có tiền cùng một hạng mục. */
+function mergedItem(ai: AiResult): AiItem {
+  const sum = ai.items.reduce((s, i) => s + (i.amount_vnd ?? 0), 0);
+  const cats = unique(ai.items.filter((i) => (i.amount_vnd ?? 0) > 0).map((i) => i.category));
+  return {
+    desc: ai.items.map((i) => i.desc).join("; "),
+    amount_vnd: ai.total_vnd ?? (sum > 0 ? sum : null),
+    category: cats.length === 1 ? cats[0] : null,
+    confidence: Math.min(...ai.items.map((i) => i.confidence)),
+  };
+}
+
 export function draftFromBill(ai: AiResult, ctx: ComposeContext): DraftState {
   const company = ctx.mode === "company";
   const priced = ai.items.filter((i) => (i.amount_vnd ?? 0) > 0);
   const sum = priced.reduce((s, i) => s + (i.amount_vnd ?? 0), 0);
+  // Dòng âm (giảm giá, voucher) không thành dòng phiếu nhưng làm số thực trả nhỏ hơn cộng các món:
+  // AI không đọc được tổng ⇒ thực trả = cộng mọi dòng kể cả dòng âm; có dòng âm là luôn bắt kiểm lại.
+  const discount = ai.items.reduce((s, i) => s + Math.min(0, i.amount_vnd ?? 0), 0);
+  const paid = ai.total_vnd ?? (discount < 0 ? sum + discount : null);
   const fee = company && ai.customer_code ? resolveBuildingRoom(ai.customer_code, ctx.refs) : emptyResolve;
   const buildingId = company
     ? resolveBuildingMention(ai.building_mention, ctx.refs.buildings) ?? fee.building?.id ?? null
     : null;
-  const period = { periodStart: ai.period_start, periodEnd: ai.period_end };
+  const period = aiPeriod(ai, company) ?? { periodStart: null, periodEnd: null };
   const flags: DraftFlag[] = [];
 
   const build = (description: string, amount: number, item: AiItem | undefined): DraftLine => ({
@@ -225,11 +265,13 @@ export function draftFromBill(ai: AiResult, ctx: ComposeContext): DraftState {
   if (priced.length === 0) {
     lines = [build(ai.vendor ?? "", ai.total_vnd ?? 0, undefined)];
     if (!ai.total_vnd) flags.push("missing_amount");
-  } else if (ai.total_vnd && sum !== ai.total_vnd) {
+  } else if (discount < 0 || (paid && sum !== paid)) {
     // Ship, giảm giá, làm tròn… ⇒ ghi đúng số thực trả, liệt kê món trong mô tả, bắt kiểm lại.
     const sameCategory = unique(priced.map((i) => i.category)).length === 1 ? priced[0] : undefined;
-    lines = [build(priced.map((i) => i.desc).join("; "), ai.total_vnd, sameCategory)];
+    const amount = paid && paid > 0 ? paid : 0;
+    lines = [build(priced.map((i) => i.desc).join("; "), amount, sameCategory)];
     flags.push("check_total");
+    if (amount === 0) flags.push("missing_amount");
   } else {
     lines = priced.map((i) => build(i.desc, i.amount_vnd ?? 0, i));
   }
@@ -261,6 +303,28 @@ export function markTouched(state: DraftState, path: string): DraftState {
 }
 
 /**
+ * Bỏ dòng i. Dấu "đã sửa/đã khoá" lưu theo CHỈ SỐ dòng nên phải dồn chỉ số các dòng sau và bỏ dấu của
+ * dòng bị xoá — không thì dấu rơi sang dòng khác: AI về sau đè hạng mục người dùng đã chọn ở dòng bị
+ * dồn lên, hoặc ô chưa ai sửa lại bị coi là đã sửa.
+ */
+export function removeLineAt(state: DraftState, i: number): DraftState {
+  const shift = (paths: string[]) =>
+    paths.flatMap((p) => {
+      const m = /^lines\.(\d+)(\..*)?$/.exec(p);
+      if (!m) return [p];
+      const k = Number(m[1]);
+      if (k === i) return [];
+      return [k > i ? `lines.${k - 1}${m[2] ?? ""}` : p];
+    });
+  return {
+    ...state,
+    draft: { ...state.draft, lines: state.draft.lines.filter((_, j) => j !== i) },
+    touched: shift(state.touched),
+    locked: shift(state.locked),
+  };
+}
+
+/**
  * Thẻ không có ô "tên phiếu": tên luôn dựng lại từ nội dung đang hiện (cùng luật lúc dựng thẻ), để
  * sửa mô tả hay cửa hàng trên thẻ không để lại tên cũ trên phiếu. Không đổi gì ⇒ trả đúng object cũ.
  */
@@ -273,8 +337,10 @@ export function enrichFromAi(state: DraftState, ai: AiResult, ctx: ComposeContex
   const company = state.draft.mode === "company";
   const free = (path: string) => !state.touched.includes(path) && !state.locked.includes(path);
   const lines = state.draft.lines;
+  const merged = lines.length === 1 && ai.items.length > 1 ? mergedItem(ai) : undefined;
   const pairOf = (i: number): AiItem | undefined =>
-    ai.items.length === lines.length ? ai.items[i] : lines.length === 1 ? ai.items[0] : undefined;
+    ai.items.length === lines.length ? ai.items[i] : lines.length === 1 ? merged : undefined;
+  const period = aiPeriod(ai, company);
 
   const nextLines = lines.map((l, i) => {
     const item = pairOf(i);
@@ -290,9 +356,9 @@ export function enrichFromAi(state: DraftState, ai: AiResult, ctx: ComposeContex
         if (mapped && free(`lines.${i}.personalCategory`)) next.personalCategory = mapped;
       }
     }
-    if (ai.period_start && ai.period_end && l.periodStart === null && free(`lines.${i}.period`)) {
-      next.periodStart = ai.period_start;
-      next.periodEnd = ai.period_end;
+    if (period && l.periodStart === null && free(`lines.${i}.period`)) {
+      next.periodStart = period.periodStart;
+      next.periodEnd = period.periodEnd;
     }
     return next;
   });

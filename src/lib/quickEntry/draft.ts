@@ -41,6 +41,8 @@ export interface QuickDraft {
 
 export const MAX_NAME = 500;
 export const MAX_DESCRIPTION = 1000;
+/** Người nộp/nhận: writer dùng c_max_short_text_length = 255 (khác tên phiếu 500). */
+export const MAX_PAYER_NAME = 255;
 export const MAX_LINES = 200;
 export const MAX_ATTACHMENTS = 20;
 

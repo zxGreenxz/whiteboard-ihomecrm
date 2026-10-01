@@ -99,6 +99,15 @@ describe("useCreatePersonalTransaction — đối chiếu sau lần lưu không 
     await expect(useCreate().mutationFn(xang)).resolves.toMatchObject({ id: "x1" });
   });
 
+  it("lưu khoản KHÁC không xoá dấu của khoản đang treo ⇒ gửi lại khoản treo vẫn đối chiếu, không ghi trùng", async () => {
+    await failOnce(useCreate(), pho); // phở: rớt mạng — thật ra máy chủ đã ghi
+    h.selectResult.mockResolvedValue({ data: [row(pho, "p1")], error: null });
+    h.insertSingle.mockResolvedValueOnce({ data: row(xang, "x1"), error: null });
+    await expect(useCreate().mutationFn(xang)).resolves.toMatchObject({ id: "x1" });
+    await expect(useCreate().mutationFn(pho)).resolves.toMatchObject({ id: "p1" });
+    expect(h.inserted.map((r) => (r as { description: string }).description)).toEqual(["phở", "xăng"]);
+  });
+
   it("khoản giống mọi thứ trừ SỐ TIỀN không phải là nó ⇒ vẫn ghi khoản đang lưu", async () => {
     await failOnce(useCreate(), pho);
     h.selectResult.mockResolvedValueOnce({ data: [row({ ...pho, amount: 45_000 }, "p0")], error: null });

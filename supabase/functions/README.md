@@ -81,8 +81,8 @@ npx --yes deno test --config supabase/functions/network-center-worker/deno.json 
 
 ## Báo chi nhanh (`quick-entry`)
 
-Hàm riêng của trang `/chi-tieu`, tách khỏi `llm-proxy` để không đụng hạn mức/manifest phát hành
-của Copilot. Hai đường, mỗi đường một nhà cung cấp:
+Hàm riêng của trang `/chi-tieu`, tách khỏi `llm-proxy` để không đụng mã và manifest phát hành của
+Copilot. Hai đường, mỗi đường một nhà cung cấp:
 
 | Đường | Nhà cung cấp | Chuỗi mô hình mặc định (lỗi thì thử mô hình kế) |
 |---|---|---|
@@ -92,9 +92,16 @@ của Copilot. Hai đường, mỗi đường một nhà cung cấp:
 Thứ tự kiểm: phương thức/đường → cỡ body → công tắc + khoá → JWT (`/auth/v1/user`) → header
 `x-organization-id` → `get_my_permissions_v2` dưới JWT người gọi (cần `income_expenses.create`
 hoặc `personal_finance.create`) → chế độ `pilot` đòi `ai_copilot_entitlements.chat_enabled` →
-trần lượt/ngày (đếm `task_id` khác nhau trong `ai_usage_logs`, feature `quick_entry`; đọc không
-được thì chặn). Mỗi lần thử một mô hình ghi một dòng `ai_usage_logs`; âm thanh, ảnh và bản chữ
-không được lưu hay ghi log. 401/402 từ nhà cung cấp là lỗi khoá/số dư ⇒ dừng, không thử tiếp.
+kiểm đầu vào (≤1 ảnh, chữ ≤32.000 ký tự) → **giữ chỗ** một dòng `ai_usage_logs` trạng thái
+`pending` (ghi không được ⇒ 503, không gọi) → trần lượt/ngày (đếm `task_id` khác nhau, feature
+`quick_entry`, ĐÃ gồm dòng vừa giữ — gọi song song không cùng lọt; vượt hoặc đọc không được ⇒ xoá
+dòng giữ chỗ, 429). Mỗi lần thử một mô hình ghi một dòng (lần đầu điền vào dòng giữ chỗ); âm thanh,
+ảnh và bản chữ không được lưu hay ghi log. 401/402 từ nhà cung cấp là lỗi khoá/số dư ⇒ dừng, không
+thử tiếp. Ngân sách thời gian cả lượt: chép giọng 40 s, đọc 55 s (dưới thời gian client chờ).
+
+Lưu ý hạn mức: `reserve_ai_usage` của Copilot cộng token/USD theo ngày của **mọi** dòng
+`ai_usage_logs` của người dùng, không lọc feature — dùng nhiều Báo chi nhanh (nhất là ảnh) có thể
+làm người đó chạm trần Copilot trong ngày sớm hơn.
 
 Secret (thiếu khoá của đường nào thì đường đó trả `quick_entry_disabled`, trang vẫn nhập tay được):
 

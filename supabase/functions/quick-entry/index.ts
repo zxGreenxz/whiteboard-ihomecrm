@@ -14,8 +14,11 @@
 //   - quyền   = get_my_permissions_v2(p_org) gọi bằng JWT của chính người dùng — cùng nguồn giao diện đọc;
 //               cần income_expenses.create HOẶC personal_finance.create ở công ty đang chọn;
 //   - sổ phí  = ai_usage_logs, feature 'quick_entry', mỗi lần gọi mô hình một dòng (service role);
-//   - trần    = số LƯỢT (task) trong ngày giờ VN đếm trên chính bảng đó (QUICK_ENTRY_DAILY_CALLS);
+//   - trần    = số LƯỢT (task) trong ngày giờ VN đếm trên chính bảng đó (QUICK_ENTRY_DAILY_CALLS),
+//               đếm SAU khi giữ chỗ bằng một dòng 'pending' (gọi song song không cùng lọt trần);
 //   - công tắc = QUICK_ENTRY_MODE: off (mặc định) | pilot (chỉ người có Copilot) | all.
+// Dòng sổ phí này cũng nằm trong tổng token/USD/ngày mà reserve_ai_usage của Copilot cộng theo người
+// dùng (hàm đó không lọc feature) — người dùng nhiều Báo chi nhanh có thể chạm trần Copilot sớm hơn.
 //
 // Không lưu, không ghi log nội dung âm thanh hay chữ của người dùng.
 
@@ -39,8 +42,19 @@ export const TRAN_BODY_BYTES = 768 * 1024;
  *  30 giây ở 128 kbps = 480 KB + vỏ mp4 vẫn phải lọt. Client dùng đúng số này (MAX_AUDIO_BYTES). */
 export const TRAN_AM_THANH_BYTES = 560_000;
 export const TRAN_MAX_TOKENS = 1500;
+/** Tổng ký tự chữ gửi AI đọc. Prompt thật tối đa ~18k (150 hạng mục + mã toà + câu người dùng) — trần
+ *  này chặn việc dùng hàm làm proxy LLM đa dụng với prompt tuỳ ý. */
+export const TRAN_CHU_KY_TU = 32_000;
 const MOI_LAN_MS = 25_000;
-const NGAN_SACH_MS = 50_000;
+/** Ngân sách cả lượt theo đường, dưới thời gian client chờ (chép giọng 45 s, đọc 60 s). */
+const NGAN_SACH_MS: Record<"stt" | "read", number> = { stt: 40_000, read: 55_000 };
+const TOI_THIEU_MS = 3_000;
+
+/** Thời gian cho lần thử kế: kẹp theo ngân sách còn lại; còn dưới mức tối thiểu ⇒ 0 (không thử nữa). */
+export function thoiGianLanThu(nganSach: number, daQua: number): number {
+  const con = nganSach - daQua;
+  return con >= TOI_THIEU_MS ? Math.min(MOI_LAN_MS, con) : 0;
+}
 export const OPENROUTER = "https://openrouter.ai/api/v1";
 
 /** Định dạng client gửi ⇒ định dạng OpenRouter nhận (iPhone ghi ra mp4 = AAC, OpenRouter gọi là m4a). */
@@ -129,14 +143,21 @@ interface KetQuaGoi {
 
 const so = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : 0);
 
-async function goiNhaCungCap(f: typeof fetch, base: string, key: string, path: string, payload: unknown): Promise<KetQuaGoi> {
+async function goiNhaCungCap(
+  f: typeof fetch,
+  base: string,
+  key: string,
+  path: string,
+  payload: unknown,
+  timeoutMs: number,
+): Promise<KetQuaGoi> {
   let res: Response;
   try {
     res = await f(`${base}${path}`, {
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
       body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(MOI_LAN_MS),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   } catch {
     return { ok: false, status: 0, body: null, cost: 0, tokens: { prompt: 0, completion: 0, total: 0 } };
@@ -217,6 +238,12 @@ export function dauVaoDocChu(body: Record<string, unknown>): DauVao {
     messages.push({ role, content: parts });
   }
   if (anh > 1) return { ok: false, res: loi(400, "too_many_images", "Mỗi lần chỉ gửi một ảnh.") };
+  const soKyTu = messages.reduce(
+    (n, m) =>
+      n + (typeof m.content === "string" ? m.content.length : m.content.reduce((k, p) => k + (p.type === "text" ? p.text.length : 0), 0)),
+    0,
+  );
+  if (soKyTu > TRAN_CHU_KY_TU) return { ok: false, res: loi(400, "bad_request", "Nội dung gửi AI quá dài.") };
   const max = Number(body.max_tokens);
   const maxTokens = Number.isInteger(max) && max > 0 ? Math.min(max, TRAN_MAX_TOKENS) : TRAN_MAX_TOKENS;
   return {
@@ -312,26 +339,6 @@ export async function xuLy(req: Request, deps: PhuThuoc = {}): Promise<Response>
     if (!entitled) return loi(403, "not_entitled", "Giai đoạn thử: AI chỉ mở cho tài khoản có Copilot.");
   }
 
-  // Trần LƯỢT/ngày: đếm task khác nhau (mỗi lượt có thể thử nhiều mô hình). Không đọc được ⇒ chặn.
-  const cap = Number(env("QUICK_ENTRY_DAILY_CALLS") ?? LUOT_NGAY_MAC_DINH);
-  let used = Number.POSITIVE_INFINITY;
-  try {
-    const r = await f(
-      `${supabaseUrl}/rest/v1/ai_usage_logs?select=task_id&user_id=eq.${userId}&feature=eq.quick_entry` +
-        `&created_at=gte.${encodeURIComponent(dauNgayVN(now()))}&limit=5000`,
-      { headers: { ...svc, "Accept-Profile": "public" } },
-    );
-    if (r.ok) {
-      const rows = (await r.json()) as Array<{ task_id?: unknown }>;
-      used = new Set(rows.map((x) => String(x.task_id ?? ""))).size;
-    }
-  } catch {
-    used = Number.POSITIVE_INFINITY;
-  }
-  if (!(Number.isFinite(cap) && cap > 0) || used >= cap) {
-    return loi(429, "quick_entry_daily_cap", "Hôm nay đã dùng hết lượt AI. Bạn vẫn nhập tay được.");
-  }
-
   let body: Record<string, unknown>;
   try {
     const text = await req.text();
@@ -352,40 +359,104 @@ export async function xuLy(req: Request, deps: PhuThuoc = {}): Promise<Response>
   const skipRaw = Number(req.headers.get("x-quick-entry-skip") ?? 0);
   const skip = route === "read" && Number.isInteger(skipRaw) ? Math.min(Math.max(skipRaw, 0), models.length - 1) : 0;
   const taskId = `qe:${newId()}`;
+  const logUrl = `${supabaseUrl}/rest/v1/ai_usage_logs`;
+  const ghi = { ...svc, "Content-Type": "application/json", "Content-Profile": "public" };
+
+  // GIỮ CHỖ trước khi gọi nhà cung cấp: ghi dòng 'pending' của lượt này rồi mới đếm, nên các lượt chạy
+  // song song thấy dòng của nhau và không cùng lọt trần. Không ghi được ⇒ không gọi (trần không bị lách,
+  // vd super admin gửi công ty không tồn tại làm hỏng khoá ngoại).
+  let reservedId: string | null = null;
+  try {
+    const r = await f(`${logUrl}?select=id`, {
+      method: "POST",
+      headers: { ...ghi, Prefer: "return=representation" },
+      body: JSON.stringify({
+        user_id: userId,
+        organization_id: org,
+        provider: ncc.ten,
+        model: models[skip],
+        feature: "quick_entry",
+        task_id: taskId,
+        status: "pending",
+      }),
+    });
+    const rows = r.ok ? ((await r.json()) as Array<{ id?: unknown }>) : [];
+    reservedId = typeof rows[0]?.id === "string" ? rows[0].id : null;
+  } catch {
+    reservedId = null;
+  }
+  if (!reservedId) return loi(503, "quick_entry_unavailable", "Chưa ghi được sổ dùng AI — thử lại sau, hoặc nhập tay.");
+  const reservedFilter = `id=eq.${encodeURIComponent(reservedId)}`;
+
+  // Trần LƯỢT/ngày: đếm task khác nhau (mỗi lượt có thể thử nhiều mô hình), ĐÃ GỒM dòng vừa giữ chỗ.
+  // Vượt trần hoặc không đọc được ⇒ trả chỗ (xoá dòng của mình) rồi chặn.
+  const cap = Number(env("QUICK_ENTRY_DAILY_CALLS") ?? LUOT_NGAY_MAC_DINH);
+  let used = Number.POSITIVE_INFINITY;
+  try {
+    const r = await f(
+      `${logUrl}?select=task_id&user_id=eq.${userId}&feature=eq.quick_entry` +
+        `&created_at=gte.${encodeURIComponent(dauNgayVN(now()))}&limit=5000`,
+      { headers: { ...svc, "Accept-Profile": "public" } },
+    );
+    if (r.ok) {
+      const rows = (await r.json()) as Array<{ task_id?: unknown }>;
+      used = new Set(rows.map((x) => String(x.task_id ?? ""))).size;
+    }
+  } catch {
+    used = Number.POSITIVE_INFINITY;
+  }
+  if (!(Number.isFinite(cap) && cap > 0) || used > cap) {
+    try {
+      await f(`${logUrl}?${reservedFilter}`, { method: "DELETE", headers: { ...ghi, Prefer: "return=minimal" } });
+    } catch (e) {
+      console.error("quick-entry: trả chỗ ai_usage_logs lỗi", String(e).slice(0, 200));
+    }
+    return loi(429, "quick_entry_daily_cap", "Hôm nay đã dùng hết lượt AI. Bạn vẫn nhập tay được.");
+  }
+
   const batDau = now();
   let attempts = 0;
 
   for (let i = skip; i < models.length; i += 1) {
-    if (i > skip && now() - batDau > NGAN_SACH_MS) break;
+    const han = thoiGianLanThu(NGAN_SACH_MS[route], now() - batDau);
+    if (han === 0) break;
     attempts += 1;
     const t0 = now();
-    const r = await goiNhaCungCap(f, ncc.base, ncc.key, route === "stt" ? "/audio/transcriptions" : "/chat/completions", dauVao.payload(models[i]));
+    const r = await goiNhaCungCap(
+      f,
+      ncc.base,
+      ncc.key,
+      route === "stt" ? "/audio/transcriptions" : "/chat/completions",
+      dauVao.payload(models[i]),
+      han,
+    );
     const text = route === "stt"
       ? String(r.body?.text ?? "").trim()
       : String(((r.body?.choices as Array<{ message?: { content?: unknown } }> | undefined)?.[0]?.message?.content) ?? "").trim();
     const thanhCong = r.ok && text.length > 0;
 
-    // Sổ phí: một dòng mỗi lần gọi mô hình. Ghi hỏng không làm hỏng câu trả lời của người dùng.
+    // Sổ phí: một dòng mỗi lần gọi mô hình — lần đầu điền vào dòng giữ chỗ, lần sau thêm dòng mới cùng
+    // task. Ghi hỏng không làm hỏng câu trả lời (dòng giữ chỗ vẫn tính lượt).
+    const ketQua = {
+      provider: ncc.ten,
+      model: models[i],
+      prompt_tokens: Math.round(r.tokens.prompt),
+      completion_tokens: Math.round(r.tokens.completion),
+      total_tokens: Math.round(r.tokens.total),
+      cost_usd: Number(r.cost.toFixed(6)),
+      latency_ms: Math.round(now() - t0),
+      status: thanhCong ? "ok" : "upstream_error",
+      error_detail: thanhCong ? null : `${route}:${r.status}`,
+    };
     try {
-      await f(`${supabaseUrl}/rest/v1/ai_usage_logs`, {
-        method: "POST",
-        headers: { ...svc, "Content-Type": "application/json", "Content-Profile": "public", Prefer: "return=minimal" },
-        body: JSON.stringify({
-          user_id: userId,
-          organization_id: org,
-          provider: ncc.ten,
-          model: models[i],
-          feature: "quick_entry",
-          task_id: taskId,
-          prompt_tokens: Math.round(r.tokens.prompt),
-          completion_tokens: Math.round(r.tokens.completion),
-          total_tokens: Math.round(r.tokens.total),
-          cost_usd: Number(r.cost.toFixed(6)),
-          latency_ms: Math.round(now() - t0),
-          status: thanhCong ? "ok" : "upstream_error",
-          error_detail: thanhCong ? null : `${route}:${r.status}`,
-        }),
-      });
+      const res = attempts === 1
+        ? await f(`${logUrl}?${reservedFilter}`, { method: "PATCH", headers: { ...ghi, Prefer: "return=minimal" }, body: JSON.stringify(ketQua) })
+        : await f(logUrl, {
+          method: "POST",
+          headers: { ...ghi, Prefer: "return=minimal" },
+          body: JSON.stringify({ user_id: userId, organization_id: org, feature: "quick_entry", task_id: taskId, ...ketQua }),
+        });
+      if (!res.ok) console.error("quick-entry: ghi ai_usage_logs bị từ chối", res.status);
     } catch (e) {
       console.error("quick-entry: ghi ai_usage_logs lỗi", String(e).slice(0, 200));
     }
