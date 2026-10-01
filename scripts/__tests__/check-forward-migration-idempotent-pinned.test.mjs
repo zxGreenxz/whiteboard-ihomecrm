@@ -262,7 +262,15 @@ describe('retirement với definition forward đã review và apply', () => {
   });
   it('full CLI vẫn đỏ khi compensation immutable từ chối definition mới; không gọi database', () => {
     const catalog = JSON.parse(readFileSync(new URL('../../docs/audits/2026-09-21-restore-settlement/production-catalog-verification.json', import.meta.url), 'utf8')).catalog;
-    catalog.functions.find(f => f.signature === 'public.create_commission_voucher(uuid,text,numeric,date,uuid,text,text,text,text,text,jsonb)').md5 = 'b65e6b702fdf0a8fc0f15a36a519f453';
+    const policy = JSON.parse(readFileSync(new URL('../../supabase/migration-policy.json', import.meta.url), 'utf8'));
+    const group = policy.idempotencyRetirements.find(g => g.forwardSuccessions?.length);
+    for (const succession of group.forwardSuccessions) {
+      for (const witness of succession.functions) {
+        const row = catalog.functions.find(f => f.signature === witness.signature);
+        if (!row) throw new Error(`Missing retirement catalog witness ${witness.signature}`);
+        Object.assign(row, witness.after);
+      }
+    }
     const shim = `globalThis.fetch=async (_url,{body})=>{const {query}=JSON.parse(body);return query.startsWith('SELECT jsonb_build_object(')
       ?new Response(JSON.stringify([{catalog:${JSON.stringify(catalog)}}]),{status:200})
       :new Response(JSON.stringify({code:'P0001',message:query.includes('Restore: function definition drift:')?'Restore: function definition drift: public.create_commission_voucher':'offline migration rejected'}),{status:400});};`;

@@ -4,9 +4,9 @@ import { afterEach, expect, it, vi } from 'vitest';
 import ExcelInvoiceDialog from '../ExcelInvoiceDialog';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 const source = vi.hoisted(() => ({ load: vi.fn() }));
-vi.mock('@/hooks/invoices/useExcelInvoiceData', () => ({ fetchExcelInvoiceSource: source.load, fetchPreviousDebtForContract: vi.fn(), useSubmitExcelInvoices: () => vi.fn() }));
+vi.mock('@/hooks/invoices/useExcelInvoiceData', () => ({ fetchExcelInvoiceSource: source.load, fetchPreviousDebtForContract: vi.fn(), useSubmitExcelInvoices: () => ({ submit: vi.fn(), isPending: false }) }));
 vi.mock('@/hooks/useBuildings', () => ({ useBuildings: () => ({ data: [{ id: 'b1', name: 'Building' }] }) }));
-vi.mock('@/hooks/useBuildingServices', () => ({ useBuildingServices: () => ({ data: undefined }) }));
+vi.mock('@/hooks/useBuildingServices', () => ({ useBuildingServices: () => ({ data: [], isLoading: false, isError: false }) }));
 vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock('@/components/ui/select', async (importOriginal) => {
  const actual = await importOriginal<typeof import('@/components/ui/select')>();

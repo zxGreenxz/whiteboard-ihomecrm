@@ -1,12 +1,15 @@
 import type {ComponentProps} from 'react';
 // @vitest-environment jsdom
-import {cleanup,render,screen,waitFor} from '@testing-library/react';
+import {cleanup,render as renderUI,screen,waitFor} from '@testing-library/react';
+import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
+const render = (ui: React.ReactNode) => renderUI(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}>{ui}</QueryClientProvider>);
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 import EditInvoiceDialog from '../EditInvoiceDialog';
 import type {InvoiceWithRelations} from '@/types/invoice';
 const io=vi.hoisted(()=>({meter:vi.fn(), services:{data:[] as unknown[]|undefined,isError:false,isPending:false,refetch:vi.fn()},credit:{data:0 as number|undefined,isError:false,isPending:false,refetch:vi.fn()}}));
 vi.mock('@/hooks/useInvoices',()=>({useUpdateInvoice:()=>({mutate:vi.fn(),isPending:false}),useExcessAmount:()=>io.credit,useInvoice:vi.fn()}));
 vi.mock('@/hooks/useBuildingServices',()=>({useBuildingServices:()=>io.services}));
+vi.mock('@/contexts/OrganizationContext',()=>({useOrganization:()=>({selectedOrganizationId:'org-1'})}));
 vi.mock('@/integrations/supabase/client',()=>({supabase:{from:()=>{const q={select:()=>q,eq:()=>q,is:()=>q,limit:()=>io.meter()};return q;}}}));
 vi.mock('../invoice-entry/InvoiceEntryShell',()=>({InvoiceEntryShell:(p:ComponentProps<typeof import('../invoice-entry/InvoiceEntryShell')['InvoiceEntryShell']>)=><div>{p.notice}<button disabled={p.submit.disabled}>Lưu</button></div>}));
 vi.mock('../IssuedInvoiceEditor',()=>({default:()=>null}));

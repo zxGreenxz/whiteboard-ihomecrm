@@ -66,7 +66,7 @@ Hoá đơn tháng của hợp đồng v2 lấy hỗ trợ theo `billing_month` t
 
 Phần hỗ trợ, giảm trừ nhập tay và credit khách là ba thành phần riêng (`invoice_support_amount`, `manual_discount_amount`, `credit_discount_amount`). Đổi kỳ giữ giảm trừ nhập tay và tính lại phần hỗ trợ. Nếu hỗ trợ vượt doanh thu đủ điều kiện, hệ thống yêu cầu đối chiếu, không tự cắt hỗ trợ để báo thành công. Hoá đơn tháng chỉ hưởng một lần qua claim canonical; server kiểm phiên bản lịch và tính lại khi lưu. Nếu phản hồi lưu bị mất, đối chiếu đúng request đã lưu trước khi thử tiếp; không suy thành công chỉ vì có hoá đơn cùng kỳ/số tiền.
 
-Việc giảm hoá đơn từng tháng không giữ thêm tiền nguồn: cam kết được khấu trừ trước trong thao tác chi v2. Nguồn: [invoiceRentSupport.ts](../../src/lib/invoiceRentSupport.ts), [invoiceRentSupportMigration.test.ts](../../src/lib/__tests__/invoiceRentSupportMigration.test.ts). Browser đổi kỳ và Excel còn chờ fixture; bằng chứng nguồn tiền/hoá đơn TEST không thay thế kiểm chứng UI.
+Việc giảm hoá đơn từng tháng không giữ thêm tiền nguồn: cam kết được khấu trừ trước trong thao tác chi v2. Nguồn: `src/lib/invoiceRentSupport.ts`, `src/lib/__tests__/invoiceRentSupportMigration.test.ts`. Browser đổi kỳ và Excel đã kiểm chứng trên TEST; kiểm tra production thực hiện sau khi phát hành ứng dụng và bật writer.
 
 ## 4. Ghi nhận thanh toán hiện hành
 

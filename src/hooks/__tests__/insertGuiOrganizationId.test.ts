@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+// These mutation-only tests call each hook once; preserve its per-instance ref.
+vi.mock('react', async original => ({
+  ...await original<typeof import('react')>(),
+  useRef: <T,>(initial: T) => ({ current: initial }),
+}));
+
 /**
  * Plan I3 (rà soát 15/09/2026): trigger BEFORE INSERT của 33 bảng chuyển sang
  * app_private.autofill_org_strict — fail-closed với người thuộc hai tổ chức.

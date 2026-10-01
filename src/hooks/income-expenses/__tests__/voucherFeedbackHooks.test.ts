@@ -28,7 +28,14 @@ const input = {type:'EXPENSE',name:'Sửa nước', shared_name:'Sửa nước',
 beforeEach(() => { const values=new Map<string,string>();vi.stubGlobal("localStorage",{getItem:(k:string)=>values.get(k)??null,setItem:(k:string,v:string)=>{values.set(k,v)},removeItem:(k:string)=>{values.delete(k)}}); localStorage.setItem("ihomecrm.selectedOrganizationId","o1"); vi.clearAllMocks(); h.rpc.mockReset(); h.from.mockReset(); });
 it('danh mục riêng của form phải giữ lỗi đọc để UI chặn lưu',async()=>{const error={code:'42501',message:'denied'};h.rpc.mockResolvedValue({data:null,error});for(const hook of [useIncomeExpenseFormBuildings,useIncomeExpenseFormRooms])await expect((hook() as unknown as {queryFn:()=>Promise<unknown>}).queryFn()).rejects.toBe(error);});
 it('sinh phiếu định kỳ null không phải không có phiếu mới',async()=>{h.rpc.mockResolvedValue({data:null,error:null});await expect((useGenerateRecurringVouchers() as unknown as Mutation).mutationFn(null)).rejects.toThrow(/Chưa xác nhận/);});
-it('gán QL trả sai phiếu hoặc thiếu kết quả không được thành công',async()=>{h.rpc.mockResolvedValue({data:{voucher_id:'wrong',manager_id:'m1',account_id:'a1',approval_version:1,lap_lai:false,moved:true},error:null});await expect(assignCommissionManager({voucherId:'v1',managerId:'m1'})).rejects.toBeInstanceOf(TypeError);});
+it('gán QL trả sai phiếu không được thành công',async()=>{
+  const voucherId='11111111-1111-4111-8111-111111111111';
+  const wrongVoucherId='22222222-2222-4222-8222-222222222222';
+  const managerId='33333333-3333-4333-8333-333333333333';
+  const accountId='44444444-4444-4444-8444-444444444444';
+  h.rpc.mockResolvedValue({data:{voucher_id:wrongVoucherId,manager_id:managerId,account_id:accountId,approval_version:1,lap_lai:false,moved:true},error:null});
+  await expect(assignCommissionManager({voucherId,managerId})).rejects.toBeInstanceOf(TypeError);
+});
 
 describe('C01/C02/C09 — một thông báo đúng kết quả', () => {
   it('tạo chờ duyệt báo đúng trạng thái, transport exception do onError báo một lần', async () => {

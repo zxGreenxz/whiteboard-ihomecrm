@@ -13,6 +13,9 @@
 // vì hiện màn trắng.
 import { lazyWithRetry as lazy } from "@/lib/lazyWithRetry";
 
+// Password recovery is only needed when its route is opened.
+export const ResetPassword = lazy(() => import("../pages/auth/ResetPassword"));
+
 // ===== Lazy imports — code-split theo route =====
 // Bundle chính từng là 3.8 MB (1.05 MB gzip) vì ~80 page import tĩnh kéo theo
 // xlsx/docxtemplater/recharts. Mỗi page lazy thành chunk riêng; <Suspense>

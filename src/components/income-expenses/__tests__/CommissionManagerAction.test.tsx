@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/hooks/useCommissionManager', () => ({
   useAssignCommissionManager: () => ({ mutate: vi.fn(), isPending: false }),
+  useCommissionSupport: () => ({ data: null, isLoading: false, isError: false }),
 }));
 vi.mock('../QlManagerSelect', () => ({ QlManagerSelect: () => <div>chon-quan-ly</div> }));
 

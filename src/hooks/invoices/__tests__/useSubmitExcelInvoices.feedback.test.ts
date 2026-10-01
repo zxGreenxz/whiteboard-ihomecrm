@@ -1,4 +1,9 @@
 import {beforeEach,describe,expect,it,vi} from 'vitest';
+// One hook instance per case, retaining the same ref throughout submit.
+vi.mock('react', async original => ({
+ ...await original<typeof import('react')>(),
+ useRef: <T,>(initial: T) => ({current: initial}),
+}));
 const io=vi.hoisted(()=>({create:vi.fn(),insert:vi.fn(),options:vi.fn()}));
 vi.mock('@/hooks/useInvoices',()=>({useCreateInvoice:(options:unknown)=>{io.options(options);return {mutateAsync:io.create,isPending:false};}}));
 vi.mock('@/contexts/OrganizationContext',()=>({useOrganization:()=>({selectedOrganizationId:'org-1'})}));

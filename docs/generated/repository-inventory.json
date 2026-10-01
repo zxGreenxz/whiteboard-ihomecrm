@@ -3,7 +3,7 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1173,
   "soFileDocBangFs": 271,
-  "tongLoiGoi": 591,
+  "tongLoiGoi": 592,
   "khongPhanLoaiDuoc": 271,
   "theoLoai": {
     "ma-nguon": {
@@ -598,6 +598,14 @@
       "khongPhanLoaiDuoc": 1
     },
     {
+      "file": "scripts/__tests__/check-forward-migration-idempotent-pinned.test.mjs",
+      "soGoi": 2,
+      "loai": {
+        "manifest": 2
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "scripts/__tests__/check-raw-rpc-callers.test.mjs",
       "soGoi": 2,
       "loai": {
@@ -1064,14 +1072,6 @@
       "soGoi": 1,
       "loai": {
         "sql": 1
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "scripts/__tests__/check-forward-migration-idempotent-pinned.test.mjs",
-      "soGoi": 1,
-      "loai": {
-        "manifest": 1
       },
       "khongPhanLoaiDuoc": 0
     },

@@ -66,9 +66,49 @@ function bodyOf(sql: string, schema: string, fnName: string): string {
   return rest.slice(0, close + tag![1].length);
 }
 
-describe("create_commission_voucher — tên theo phòng, không rơi chốt nào khi chép khối", () => {
-  const live = () => liveDefinitionOf("public", "create_commission_voucher");
 
+/** Resolve only an executable canonical copy and its public delegation. */
+function canonicalDelegate(fnName: string, helper: string, corpus = migrationCorpus()): { file: string; sql: string } {
+  const declaration = new RegExp(`CREATE\\s+(?:OR\\s+REPLACE\\s+)?FUNCTION\\s+public\\.${fnName}\\s*\\(`, "i");
+  const wrapperIndex = corpus.map(m => declaration.test(m.sql)).lastIndexOf(true);
+  const wrapper = corpus[wrapperIndex];
+  if (!wrapper) throw new Error(`Missing public function ${fnName}`);
+  const start = wrapper.sql.search(declaration);
+  const rest = wrapper.sql.slice(start);
+  const tag = /AS\s+(\$[a-z_]*\$)/i.exec(rest);
+  if (!tag) throw new Error("Missing wrapper body");
+  const open = rest.indexOf(tag[1]) + tag[1].length;
+  const body = rest.slice(0, rest.indexOf(tag[1], open));
+  if (!body.includes(`RETURN ${helper}(`)) return wrapper;
+  // The copy must read the prior live catalog definition, rename that exact
+  // source, execute it and revoke direct access; a historical body alone is insufficient.
+  expect(wrapper.sql).toContain(`ARRAY['public.${fnName}(`);
+  expect(wrapper.sql).toContain(`','${helper}']`);
+  for (const mark of ["f:=pg_get_functiondef(pair[1]::regprocedure)",
+    "f:=replace(f,split_part(pair[1],'(',1)||'(',pair[2]||'(')",
+    "EXECUTE f;", "REVOKE ALL ON FUNCTION ", "FROM PUBLIC,anon,authenticated,service_role"]) {
+    expect(wrapper.sql, `${wrapper.file}: canonical copy contract`).toContain(mark);
+  }
+  const helperDeclaration = new RegExp(`CREATE\\s+(?:OR\\s+REPLACE\\s+)?FUNCTION\\s+${helper.replace(".", "\\.")}\\s*\\(`, "i");
+  const replacedHelper = [...corpus.slice(wrapperIndex)].reverse().find(m => helperDeclaration.test(m.sql));
+  if (replacedHelper) return { file: replacedHelper.file, sql: replacedHelper.sql.replace(helperDeclaration,
+    `CREATE FUNCTION public.${fnName}(`) };
+  const prior = [...corpus.slice(0, wrapperIndex)].reverse().find(m => declaration.test(m.sql));
+  if (!prior) throw new Error(`Missing canonical source ${fnName}`);
+  return prior;
+}
+
+describe("create_commission_voucher — tên theo phòng, không rơi chốt nào khi chép khối", () => {
+  const live = () => canonicalDelegate("create_commission_voucher", "app_private.rent_support_legacy_commission_v1");
+
+
+  it("canonical copy phải thực thi; helper định nghĩa lại sau wrapper phải được kiểm", () => {
+    const broken = migrationCorpus().map(m => ({ ...m, sql: m.sql.replace("EXECUTE f;", "PERFORM f;") }));
+    expect(() => canonicalDelegate("create_commission_voucher", "app_private.rent_support_legacy_commission_v1", broken)).toThrow();
+    const drift = [...migrationCorpus(), { file: "future-helper-drift.sql", sql:
+      "CREATE FUNCTION app_private.rent_support_legacy_commission_v1(p_id uuid) RETURNS jsonb LANGUAGE sql AS $$ SELECT '{}'::jsonb $$;" }];
+    expect(canonicalDelegate("create_commission_voucher", "app_private.rent_support_legacy_commission_v1", drift).file).toBe("future-helper-drift.sql");
+  });
   it("đặt v_name qua commission_voucher_name_v1, có fallback tên cũ", () => {
     const { file, sql } = live();
     const body = bodyOf(sql, "public", "create_commission_voucher");

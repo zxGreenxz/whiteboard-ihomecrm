@@ -22,8 +22,8 @@ import { Suspense } from "react";
 import PublicRoute from "../../components/auth/PublicRoute";
 import Login from "../../pages/auth/Login";
 import ForgotPassword from "../../pages/auth/ForgotPassword";
-import ResetPassword from "../../pages/auth/ResetPassword";
 import {
+  ResetPassword,
   PublicContractInvoicePage,
   PhongTrongPage,
   QuaySoPage,
