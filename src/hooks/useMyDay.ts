@@ -9,13 +9,15 @@ import { financialReadRows } from '@/lib/financialReadValidation';
 
 const dayCount = z.number().int().nonnegative();
 const dayAmount = z.number().finite();
+// Điểm Chủ nhật V5.1 tích 0,5 mỗi ngày (streak_v5.sunday_point) nên số dư có thể lẻ.
+const dayPoints = z.number().finite().nonnegative();
 const dayDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const dayTime = z.string().datetime({offset:true});
 const daySummaryReceipt = z.object({
   today:z.object({date:dayDate,status:z.string().min(1),tick_source:z.string().nullable()}),
   attend:z.object({n_chuan:dayCount,day_rate:dayAmount,ticked_days:dayCount,tam_tinh:dayAmount,budget:dayAmount}),
   streak:z.object({current:dayCount,best:dayCount,breaks_no_leave:dayCount,shields_free_left:dayCount,shields_reserve_left:z.number().int(),
-    shields_perfect_left:dayCount.optional(),sunday_points_left:dayCount.optional(),
+    shields_perfect_left:dayCount.optional(),sunday_points_left:dayPoints.optional(),
     banked:z.array(z.object({milestone:z.union([dayCount,z.literal('full_month')]),delta:dayAmount,top:z.boolean().optional()})),
     next:z.object({milestone:dayCount,delta:dayAmount,days_to_go:z.number().int()}).nullable()}),
   pending_checks:z.array(z.object({building_id:z.string().min(1),building_name:z.string().nullable()})),

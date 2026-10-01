@@ -493,10 +493,10 @@ export default function MyDayPage() {
                   </span>
                 )}
               </span>
-              <span className="flex items-center gap-1 text-xs text-slate-500" title="Khiên: miễn phí · tháng-hoàn-hảo · điểm CN">
+              <span className="flex shrink-0 items-center gap-1 whitespace-nowrap text-xs text-slate-500" title="Khiên: miễn phí · tháng-hoàn-hảo · điểm CN">
                 <Shield className="h-3.5 w-3.5" />
                 {s.streak.sunday_points_left !== undefined
-                  ? `${s.streak.shields_free_left} · ${s.streak.shields_perfect_left ?? 0} · CN ${s.streak.sunday_points_left}`
+                  ? `${s.streak.shields_free_left} · ${s.streak.shields_perfect_left ?? 0} · CN ${s.streak.sunday_points_left.toLocaleString("vi-VN")}`
                   : `${s.streak.shields_free_left}+${s.streak.shields_reserve_left}`}
               </span>
             </div>

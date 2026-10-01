@@ -30,6 +30,15 @@ it('accepts confirmed summary values including no next milestone',async()=>{
  const data={today:{date:'2026-09-30',status:'pending_leave',tick_source:null},attend:{n_chuan:26,day_rate:100000,ticked_days:1,tam_tinh:100000,budget:2600000},streak:{current:1,best:2,breaks_no_leave:0,shields_free_left:1,shields_reserve_left:0,banked:[],next:null},pending_checks:[],leave:{quota:9,used:2,left:7},stage:'live'};
  m.rpc.mockResolvedValue({data,error:null});expect(await read(useMyDaySummary())).toMatchObject(data);
 });
+// Điểm Chủ nhật V5.1 tích 0,5/ngày (streak_v5.sunday_point) nên số dư là số lẻ — dữ liệu prod 01/10/2026.
+it('accepts a half-day Sunday point balance from the V5.1 shield bank',async()=>{
+ const data={today:{date:'2026-10-01',status:'pending',tick_source:null},attend:{n_chuan:27,day_rate:222222,ticked_days:0,tam_tinh:0,budget:6000000},streak:{current:0,best:0,breaks_no_leave:0,shields_free_left:1,shields_reserve_left:2,shields_perfect_left:2,sunday_points_left:1.5,banked:[],next:{milestone:4,delta:300000,days_to_go:4}},pending_checks:[],leave:{quota:10,used:0,left:10},stage:'live'};
+ m.rpc.mockResolvedValue({data,error:null});expect(await read(useMyDaySummary())).toMatchObject(data);
+});
+it('still rejects a negative Sunday point balance',async()=>{
+ const data={today:{date:'2026-10-01',status:'pending',tick_source:null},attend:{n_chuan:27,day_rate:222222,ticked_days:0,tam_tinh:0,budget:6000000},streak:{current:0,best:0,breaks_no_leave:0,shields_free_left:1,shields_reserve_left:0,shields_perfect_left:0,sunday_points_left:-0.5,banked:[],next:null},pending_checks:[],leave:{quota:10,used:0,left:10},stage:'live'};
+ m.rpc.mockResolvedValue({data,error:null});await expect(read(useMyDaySummary())).rejects.toThrow();
+});
 it('preserves a confirmed completion without claiming a new day tick from a closed-session replay',async()=>{
  m.rpc.mockResolvedValue({data:{status:'passed',message:'Phiên đã đóng trước đó'},error:null});
  expect(await mutate(useCompleteInspection(),{sessionId:'s',conditionNote:'OK'})).toMatchObject({status:'passed',message:'Phiên đã đóng trước đó'});
