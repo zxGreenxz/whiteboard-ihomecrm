@@ -7,6 +7,9 @@ import type { ContractFormData } from "@/lib/contractValidation";
 import { isStaleOrphanDepositError, refreshStaleOrphanDeposits, useContractSubmit } from "./useContractSubmit";
 import type { ContractFormState } from "./useContractFormState";
 import {readContractEditSnapshot,runContractEdit} from '@/lib/contractEditWorkflow';
+import { buildFirstInvoiceDiscount, buildFirstInvoiceItems } from '@/lib/firstInvoiceBuilder';
+import { buildContractSigningArgs, buildPreparedSigningCreation } from '@/lib/contractSigning';
+import type { ContractCreateRequest } from '@/lib/contractCreateRpc';
 vi.mock('@/lib/authSession',()=>({getSessionUser:async()=>({id:'u1'})}));
 beforeEach(()=>localStorage.clear());
 
@@ -142,23 +145,38 @@ describe("useContractSubmit", () => {
     useContractSubmit({ state, onOpenChange: vi.fn() })({ room_id: '11111111-1111-4111-8111-111111111111', signed_date: '2026-09-20', start_date: '2026-09-20', end_date: '2027-09-20', start_billing_date: '2026-09-20', end_billing_date: '2026-10-05', rent_price: 0, total_deposit: 0, payment_cycle: 'MONTHLY', rent_support: { version: 2, start_billing_month: '2026-09', payer: 'BUILDING', sale_party_id: null, deduction_policy: 'COMMISSION_ONLY', collection_mode: 'UPFRONT_COMMITTED', segments: [{ month_count: 1, monthly_amount: '300000' }] } } as ContractFormData);
     expect(mutate).not.toHaveBeenCalled();
   });
-  it.each([false, true])('persists v2 without legacy double reduction (draft=%s)', (draft) => {
+  it.each([false, true])('carries full partial-month support through the official form request and signing payload (draft=%s)', (draft) => {
     const mutate = vi.fn(), prepared = vi.fn();
-    const plan = { version: 2, start_billing_month: '2026-09', payer: 'BUILDING', sale_party_id: null,
+    const plan: NonNullable<ContractFormData['rent_support']> = { version: 2, start_billing_month: '2026-09', payer: 'BUILDING', sale_party_id: null,
       deduction_policy: 'COMMISSION_ONLY', collection_mode: 'UPFRONT_COMMITTED',
       segments: [{ month_count: 3, monthly_amount: '300000' }, { month_count: 9, monthly_amount: '100000' }] };
+    const builder = { rent_support: { version: plan.version, start_billing_month: plan.start_billing_month, segments: plan.segments },
+      rent_price: 5000000, total_deposit: 0, deposit_paid: 0,
+      start_billing_date: '2026-09-20', end_billing_date: '2026-10-05', services: [] };
+    const invoiceItems = buildFirstInvoiceItems(builder);
+    const firstInvoiceDiscount = buildFirstInvoiceDiscount(builder, invoiceItems);
+    expect(invoiceItems[0]).toMatchObject({ unit_price: 2639785, from_date: '2026-09-20', to_date: '2026-10-05' });
+    expect(firstInvoiceDiscount).toMatchObject({ amount: 300000, state: 'READY' });
     const state = { isEditMode: false, form: { setError: vi.fn() }, selectedCustomers: [{ id: '22222222-2222-4222-8222-222222222222' }],
       selectedServices: [], useCustomServices: false, createContract: { mutate }, typedDepositTotal: 0, approvedOrphanTotal: 0,
-      orphanDepositVouchers: [], invoiceItems: [{ id: 'r', type: 'RENT', accounting_class: 'REVENUE', unit_price: 4000000, quantity: 1, description: 'Thuê' }],
-      firstInvoiceDiscount: { amount: 300000, notes: 'Hỗ trợ' }, depositRows: [] } as unknown as ContractFormState;
+      orphanDepositVouchers: [], invoiceItems, firstInvoiceDiscount, depositRows: [] } as unknown as ContractFormState;
     useContractSubmit({ state, onOpenChange: vi.fn(), ...(draft ? { onCreateRequest: prepared } : {}) })({
       room_id: '11111111-1111-4111-8111-111111111111', signed_date: '2026-09-20', start_date: '2026-09-20', end_date: '2027-09-20',
-      start_billing_date: '2026-09-20', end_billing_date: '2026-10-05', rent_price: 4000000, total_deposit: 0,
+      start_billing_date: '2026-09-20', end_billing_date: '2026-10-05', rent_price: 5000000, total_deposit: 0,
       payment_cycle: 'MONTHLY', rent_support: plan, discount_months: 3, discount_amount_per_month: 300000 } as ContractFormData);
-    const request = (draft ? prepared : mutate).mock.calls[0][0];
+    const request: ContractCreateRequest = (draft ? prepared : mutate).mock.calls[0][0];
     expect(request.payload.contract.rent_support).toEqual(plan);
     expect(request.payload.contract.discounts).toBeNull();
-    expect(request.payload.first_invoice).toMatchObject({ discount_amount: 0, manual_discount_amount: '0' });
+    expect(request.payload.first_invoice).toMatchObject({ discount_amount: 300000, manual_discount_amount: '0',
+      discount_notes: firstInvoiceDiscount.notes, items: [{ unit_price: 2639785, quantity: 1 }] });
+    expect(draft ? mutate : prepared).not.toHaveBeenCalled();
+    const creation = buildPreparedSigningCreation(request, 0);
+    const id = '33333333-3333-4333-8333-333333333333';
+    const args = buildContractSigningArgs(id, { source: { draftId: id, revision: 5, documentId: id, documentSha256: 'a'.repeat(64) },
+      requestId: id, receivedOn: '2026-09-20', roomReady: true, termsConfirmed: true,
+      boundary: { state: 'VERIFIED', readings: [] }, creationOptions: creation.options });
+    expect(args.p_creation_options).toMatchObject({ first_invoice: request.payload.first_invoice });
+    expect(args).toMatchObject({ p_expected_revision: 5, p_document_id: id, p_document_sha256: 'a'.repeat(64), p_received_on: '2026-09-20' });
   });
   it("passes the validated official request to draft signing without creating a second contract", () => {
     const createContract = { mutate: vi.fn() };

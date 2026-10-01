@@ -396,7 +396,7 @@ export function useContractSubmit({
                   from_date: item.from_date ?? null,
                   to_date: item.to_date ?? null,
                 })),
-                discount_amount: data.rent_support ? 0 : discountAmount,
+                discount_amount: discountAmount,
                 ...(data.rent_support ? { manual_discount_amount: '0' } : {}),
                 discount_notes:
                   discountAmount > 0 ? firstInvoiceDiscount.notes : null,
