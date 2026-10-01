@@ -32,6 +32,8 @@
         "src/lib/paymentRecordRpc.ts",
         "src/lib/customerCreditRpc.ts",
         "src/lib/quickEntry/convert.ts",
+        "src/hooks/quick-entry/useQuickEntrySave.ts",
+        "src/hooks/quick-entry/useQuickEntryFeed.ts",
         "api/salary-v5-cron.js"
       ]
     },

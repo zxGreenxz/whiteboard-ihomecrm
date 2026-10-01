@@ -33,9 +33,11 @@ export interface IeFormRoom {
 }
 
 /** Toà cho dropdown form thu chi, đã sắp managed lên đầu rồi theo tên (vi). */
-export const useIncomeExpenseFormBuildings = (opts?: { failOnError?: boolean }) =>
+export const useIncomeExpenseFormBuildings = (opts?: { failOnError?: boolean; enabled?: boolean }) =>
   useQuery({
     queryKey: opts?.failOnError ? ["ie-form-buildings", "required"] : ["ie-form-buildings"],
+    // Trang Báo chi nhanh tắt khi người dùng chỉ có quyền ví cá nhân.
+    enabled: opts?.enabled ?? true,
     queryFn: async () => {
       // RPC chưa có trong types generated → cast any.
       const { data, error } = await supabase.rpc("ie_form_buildings");

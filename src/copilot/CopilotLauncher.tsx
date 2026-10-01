@@ -11,9 +11,11 @@ import { BeChiu, TEN_LINH_THU } from './BeChiu';
 
 const ChatPanel = lazy(() => import('./ChatPanel'));
 
+// '/chi-tieu' (Báo chi nhanh): trang có AI riêng và ô nhập dính đáy — nút nổi ở góc trái dưới sẽ đè
+// lên nút chụp bill trên điện thoại.
 const HIDDEN_PREFIXES = [
   '/login', '/register', '/forgot-password', '/reset-password',
-  '/c/', '/r/', '/phongtrong', '/network-center',
+  '/c/', '/r/', '/phongtrong', '/network-center', '/chi-tieu',
 ];
 
 export default function CopilotLauncher() {

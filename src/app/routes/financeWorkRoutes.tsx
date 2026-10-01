@@ -17,6 +17,7 @@ import {
   MeterReadingsPage,
   MyDayPage,
   OwnerDashboardV5,
+  QuickEntryPage,
   RefundLogPage,
   TaskManagementPage,
   ThanhToan,
@@ -48,6 +49,11 @@ export const financeWorkRoutes = (
     {/* Hộp thư duyệt: KHÔNG gate RequirePermission — RPC đã lọc theo auth.uid(),
         ai vào cũng chỉ thấy yêu cầu chờ chính mình duyệt (rỗng nếu không phải người duyệt). */}
     <Route path="/approvals" element={<ProtectedRoute><ApprovalsPage /></ProtectedRoute>} />
+    {/* Báo chi nhanh: KHÔNG gate RequirePermission — trang phục vụ HAI nhóm quyền
+        (income_expenses.create ⇒ phiếu chi; personal_finance.create ⇒ Ví cá nhân) và tự rẽ
+        bên trong; người không có quyền nào thấy câu báo. Chặn thật ở writer: phiếu chi qua
+        create_income_expense_v1, khoản cá nhân qua RLS của personal_transactions. */}
+    <Route path="/chi-tieu" element={<ProtectedRoute><QuickEntryPage /></ProtectedRoute>} />
     <Route path="/payments" element={<Navigate to="/income-expense" replace />} />
     <Route path="/payments/income-expenses" element={<Navigate to="/income-expense" replace />} />
     <Route path="/payments/income-expense" element={<Navigate to="/income-expense" replace />} />

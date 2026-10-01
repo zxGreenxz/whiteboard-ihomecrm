@@ -107,6 +107,7 @@ export const CashbooksPage = lazy(() => import("../pages/settings/finance/Cashbo
 export const FixedFeesPage = lazy(() => import("../pages/settings/finance/FixedFeesPage"));
 export const SpendEnginePage = lazy(() => import("../pages/settings/finance/SpendEnginePage"));
 export const PersonalWalletPage = lazy(() => import("../pages/finance/PersonalWalletPage"));
+export const QuickEntryPage = lazy(() => import("../pages/quick-entry/QuickEntryPage"));
 export const ManagerSalaryPage = lazy(() => import("../pages/finance/ManagerSalaryPage"));
 export const MySalaryPage = lazy(() => import("../pages/finance/MySalaryPage"));
 export const SuppliersPage = lazy(() => import("../pages/settings/categories/SuppliersPage"));

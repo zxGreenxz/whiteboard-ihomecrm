@@ -38,6 +38,7 @@ const routeLabels: Record<string, string> = {
   '/invoices': 'Hoá đơn',
   '/income-expense': 'Thu chi',
   '/payments': 'Thu chi',
+  '/chi-tieu': 'Báo chi nhanh',
 
   // Công việc
   '/tasks': 'Công việc',
@@ -129,6 +130,7 @@ const routeParentGroups: Record<string, { label: string; path?: string }[]> = {
   '/invoices': [{ label: 'Tài chính' }],
   '/income-expense': [{ label: 'Tài chính' }],
   '/payments': [{ label: 'Tài chính' }],
+  '/chi-tieu': [{ label: 'Tài chính' }],
 };
 
 /**

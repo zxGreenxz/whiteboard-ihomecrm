@@ -10,7 +10,7 @@ describe('mounted CopilotLauncher G0', () => {
     io.user = undefined; await mount(<CopilotLauncher />);
     expect(launcher()).toBeNull(); expect(io.entitlementQuery).not.toHaveBeenCalled(); expect(io.permissionQuery).not.toHaveBeenCalled();
   });
-  it.each(['/login', '/register', '/forgot-password', '/reset-password', '/c/public', '/r/public', '/phongtrong', '/network-center/router'])('stays absent on public or excluded route %s', async path => {
+  it.each(['/login', '/register', '/forgot-password', '/reset-password', '/c/public', '/r/public', '/phongtrong', '/network-center/router', '/chi-tieu'])('stays absent on public or excluded route %s', async path => {
     await mount(<CopilotLauncher />, path);
     expect(launcher()).toBeNull(); expect(io.entitlementQuery).not.toHaveBeenCalled(); expect(io.permissionQuery).not.toHaveBeenCalled();
   });
