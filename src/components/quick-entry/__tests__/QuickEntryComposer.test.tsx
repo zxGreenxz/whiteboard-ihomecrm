@@ -18,6 +18,8 @@ const rec = vi.hoisted(() => ({
 const sp = vi.hoisted(() => ({
   supported: false,
   listening: false,
+  errorCode: null as string | null,
+  error: null as string | null,
   onText: null as ((t: string) => void) | null,
   start: vi.fn(),
   stop: vi.fn(),
@@ -32,7 +34,7 @@ vi.mock("@/hooks/quick-entry/useVoiceRecorder", () => ({
 vi.mock("@/hooks/quick-entry/useSpeechInput", () => ({
   useSpeechInput: (onText: (t: string) => void) => {
     sp.onText = onText;
-    return { supported: sp.supported, listening: sp.listening, error: null, start: sp.start, stop: sp.stop };
+    return { supported: sp.supported, listening: sp.listening, error: sp.error, errorCode: sp.errorCode, start: sp.start, stop: sp.stop };
   },
 }));
 
@@ -63,7 +65,7 @@ function setup(over: Partial<QuickEntryComposerProps> = {}) {
 afterEach(() => {
   cleanup();
   Object.assign(rec, { supported: true, state: "idle", error: null, onDone: null });
-  Object.assign(sp, { supported: false, listening: false, onText: null });
+  Object.assign(sp, { supported: false, listening: false, errorCode: null, error: null, onText: null });
   vi.clearAllMocks();
 });
 
@@ -91,8 +93,52 @@ describe("QuickEntryComposer — gõ chữ", () => {
   });
 });
 
-describe("QuickEntryComposer — giọng nói", () => {
-  it("chạm mic ⇒ ghi âm; nói xong ⇒ máy chủ chuyển chữ VÀO Ô để soát, KHÔNG tự gửi", async () => {
+describe("QuickEntryComposer — giọng nói (trình duyệt trước, máy chủ sau)", () => {
+  it("trình duyệt có nhận giọng (Chrome) ⇒ dùng trình duyệt TRƯỚC, không ghi âm gửi máy chủ; chữ vào ô, không tự gửi", () => {
+    sp.supported = true;
+    const { props, box } = setup();
+    fireEvent.click(screen.getByRole("button", { name: "Nói" }));
+    expect(sp.start).toHaveBeenCalledTimes(1);
+    expect(rec.start).not.toHaveBeenCalled();
+    act(() => sp.onText?.("keo hai mươi nghìn"));
+    expect(box.value).toBe("keo hai mươi nghìn");
+    expect(props.onSubmitText).not.toHaveBeenCalled();
+    expect(props.transcribe).not.toHaveBeenCalled();
+  });
+
+  it("trình duyệt bị chặn hẳn (app màn hình chính iPhone: service-not-allowed) ⇒ lần chạm sau ghi âm gửi máy chủ", async () => {
+    sp.supported = true;
+    sp.errorCode = "service-not-allowed";
+    const { props, box } = setup();
+    fireEvent.click(screen.getByRole("button", { name: "Nói" }));
+    expect(sp.start).not.toHaveBeenCalled();
+    expect(rec.start).toHaveBeenCalledTimes(1);
+    await act(async () => rec.onDone?.(audio));
+    expect(props.transcribe).toHaveBeenCalledWith(audio);
+    expect(box.value).toBe("sơn ba trăm nghìn");
+  });
+
+  it("lời báo trình duyệt bị chặn hiện ngay; chạm mic lần sau (đi máy chủ) thì lời cũ biến mất", () => {
+    sp.supported = true;
+    sp.errorCode = "service-not-allowed";
+    sp.error = "Trình duyệt không cho nhận giọng ở đây.";
+    setup();
+    expect(screen.getByRole("status").textContent).toContain("Trình duyệt không cho nhận giọng ở đây.");
+    fireEvent.click(screen.getByRole("button", { name: "Nói" }));
+    expect(rec.start).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("Trình duyệt không cho nhận giọng ở đây.")).toBeNull();
+  });
+
+  it("lỗi tạm của trình duyệt (no-speech) ⇒ vẫn dùng trình duyệt, không chuyển sang máy chủ", () => {
+    sp.supported = true;
+    sp.errorCode = "no-speech";
+    setup();
+    fireEvent.click(screen.getByRole("button", { name: "Nói" }));
+    expect(sp.start).toHaveBeenCalledTimes(1);
+    expect(rec.start).not.toHaveBeenCalled();
+  });
+
+  it("trình duyệt không có nhận giọng ⇒ ghi âm gửi máy chủ; chữ vào ô để soát, KHÔNG tự gửi", async () => {
     const { props, box } = setup();
     fireEvent.click(screen.getByRole("button", { name: "Nói" }));
     expect(rec.start).toHaveBeenCalledTimes(1);
@@ -102,25 +148,22 @@ describe("QuickEntryComposer — giọng nói", () => {
     expect(props.onSubmitText).not.toHaveBeenCalled();
   });
 
-  it("máy chủ lỗi + trình duyệt nhận giọng được ⇒ báo lỗi và mời dùng nhận giọng của trình duyệt", async () => {
-    sp.supported = true;
+  it("máy chủ lỗi ⇒ báo lỗi kèm gợi ý mic trên bàn phím", async () => {
     const transcribe = vi.fn(async (): Promise<TranscribeResult> => ({ ok: false, error: classifyAiError({ status: 503, code: "quick_entry_all_failed" }) }));
-    const { box } = setup({ transcribe });
+    setup({ transcribe });
     fireEvent.click(screen.getByRole("button", { name: "Nói" }));
     await act(async () => rec.onDone?.(audio));
-    expect(screen.getByText(/Các mô hình AI đều đang lỗi/)).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Dùng nhận giọng của trình duyệt" }));
-    expect(sp.start).toHaveBeenCalledTimes(1);
-    act(() => sp.onText?.("keo hai mươi nghìn"));
-    expect(box.value).toBe("keo hai mươi nghìn");
+    expect(screen.getByRole("status").textContent).toMatch(/Các mô hình AI đều đang lỗi.*micro trên bàn phím/);
   });
 
-  it("AI tắt cho phiên (transcribe = null) ⇒ mic đi thẳng nhận giọng của trình duyệt", () => {
+  it("trình duyệt bị chặn và máy chủ chưa dùng được (AI tắt) ⇒ gợi ý mic trên bàn phím", () => {
     sp.supported = true;
+    sp.errorCode = "service-not-allowed";
     setup({ transcribe: null });
     fireEvent.click(screen.getByRole("button", { name: "Nói" }));
+    expect(sp.start).not.toHaveBeenCalled();
     expect(rec.start).not.toHaveBeenCalled();
-    expect(sp.start).toHaveBeenCalledTimes(1);
+    expect(screen.getByText(/micro trên bàn phím/)).toBeTruthy();
   });
 
   it("không đường nào nhận giọng được ⇒ gợi ý mic trên bàn phím", () => {

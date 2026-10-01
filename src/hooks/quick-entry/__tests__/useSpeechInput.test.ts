@@ -54,5 +54,17 @@ describe("useSpeechInput (dự phòng: nhận giọng của trình duyệt)", ()
     act(() => FakeRecognition.last!.onend?.());
     expect(onText).not.toHaveBeenCalled();
     expect(result.current.error).toMatch(/micro/);
+    expect(result.current.errorCode).toBe("not-allowed");
+  });
+
+  it("lần nghe sau xoá mã lỗi cũ", () => {
+    vi.stubGlobal("webkitSpeechRecognition", FakeRecognition);
+    const { result } = renderHook(() => useSpeechInput(vi.fn()));
+    act(() => result.current.start());
+    act(() => FakeRecognition.last!.onerror?.({ error: "no-speech" }));
+    act(() => FakeRecognition.last!.onend?.());
+    expect(result.current.errorCode).toBe("no-speech");
+    act(() => result.current.start());
+    expect(result.current.errorCode).toBeNull();
   });
 });

@@ -25,17 +25,21 @@ function recognitionCtor(): RecognitionCtor | null {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
 }
 
+// "network" cũng là lỗi trình duyệt nhân Chromium KHÔNG có dịch vụ nhận giọng của Google trả về (dịch vụ đó
+// Google chỉ cấp cho Chrome) — nên câu báo nói cả hai khả năng, không chỉ bảo kiểm tra mạng.
 const ERROR_TEXT: Record<string, string> = {
   "not-allowed": "Bạn chưa cho phép dùng micro cho trang này.",
   "service-not-allowed": "Trình duyệt không cho nhận giọng ở đây. Hãy dùng micro trên bàn phím.",
   "no-speech": "Chưa nghe thấy gì. Nói gần micro hơn rồi thử lại.",
-  network: "Nhận giọng của trình duyệt cần mạng. Kiểm tra kết nối.",
+  network: "Chưa nhận được giọng qua trình duyệt: mất mạng, hoặc trình duyệt này không có dịch vụ nhận giọng. Thử Chrome, hoặc dùng micro trên bàn phím.",
 };
 
 export function useSpeechInput(onText: (text: string) => void) {
   const Ctor = recognitionCtor();
   const [listening, setListening] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Mã lỗi gốc của trình duyệt ("service-not-allowed", "network"…) để nơi gọi chọn đường dự phòng. */
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   const rec = useRef<RecognitionLike | null>(null);
   const finalText = useRef("");
   const onTextRef = useRef(onText);
@@ -44,6 +48,7 @@ export function useSpeechInput(onText: (text: string) => void) {
   const start = useCallback(() => {
     if (!Ctor || rec.current) return;
     setError(null);
+    setErrorCode(null);
     finalText.current = "";
     const r = new Ctor();
     r.lang = "vi-VN";
@@ -57,7 +62,10 @@ export function useSpeechInput(onText: (text: string) => void) {
       }
       finalText.current = parts.join(" ").trim();
     };
-    r.onerror = (e) => setError(ERROR_TEXT[e.error] ?? "Không nhận được giọng nói. Hãy dùng micro trên bàn phím.");
+    r.onerror = (e) => {
+      setErrorCode(e.error);
+      setError(ERROR_TEXT[e.error] ?? "Không nhận được giọng nói. Hãy dùng micro trên bàn phím.");
+    };
     r.onend = () => {
       rec.current = null;
       setListening(false);
@@ -72,5 +80,5 @@ export function useSpeechInput(onText: (text: string) => void) {
 
   useEffect(() => () => rec.current?.stop(), []);
 
-  return { supported: !!Ctor, listening, error, start, stop };
+  return { supported: !!Ctor, listening, error, errorCode, start, stop };
 }
