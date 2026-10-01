@@ -91,19 +91,25 @@ export function tenHamExport(source) {
   return [...ra];
 }
 
-export function timExportChiTestDung(files) {
+/**
+ * Mỗi file sản xuất đọc MỘT lần rồi giữ trong bộ nhớ. Bản cũ đọc lại mọi file
+ * cho từng tên hàm cần dò: đo 01/10/2026 mất 51 s khi máy đã ấm, chậm nhất gate.
+ * `docFile` thay được để test đếm số lần đọc mà không cần file thật.
+ */
+export function timExportChiTestDung(files, docFile = (f) => readFileSync(f, "utf8")) {
   const helpers = locFileHelper(files);
   const nguonSanXuat = files.filter((f) => !laTest(f));
+  const noiDung = new Map(nguonSanXuat.map((f) => [f, docFile(f)]));
   const ket = [];
 
   for (const h of helpers) {
-    const ten = tenHamExport(readFileSync(h, "utf8"));
+    const ten = tenHamExport(noiDung.get(h) ?? docFile(h));
     if (ten.length === 0) continue;
 
     const chet = [];
     for (const t of ten) {
       const re = new RegExp(`\\b${t}\\b`);
-      const dung = nguonSanXuat.some((f) => f !== h && re.test(readFileSync(f, "utf8")));
+      const dung = nguonSanXuat.some((f) => f !== h && re.test(noiDung.get(f)));
       if (!dung) chet.push(t);
     }
     if (chet.length > 0) {

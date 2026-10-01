@@ -37,7 +37,7 @@
 // =============================================================================
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -60,6 +60,24 @@ export const BO_QUA = [
 
 /** Sàn chống-xanh-rỗng: lint 0 file thì "0 lỗi mới" là câu đúng mà vô nghĩa. */
 export const TOI_THIEU_FILE = 500;
+
+/**
+ * Cache của ESLint, đường dẫn tương đối vì npx trên Windows chạy qua shell mà
+ * không bọc nháy, còn đường dẫn repo có dấu cách.
+ *
+ * Đo 01/10/2026: lượt đầu 42 s, lượt sau 2 s, đầu ra JSON trùng khớp tuyệt đối
+ * (2642 file, 1181 thông báo, cả dòng:cột). Cache an toàn ở đây vì config không
+ * có rule đọc kiểu chéo file (không typed linting): kết quả của một file chỉ phụ
+ * thuộc nội dung của chính nó và config, mà ESLint tự bỏ cache khi config đổi.
+ * Chiến lược `content` chứ không `metadata`: đổi nhánh git làm sai giờ sửa file.
+ */
+export const FILE_CACHE = '.tscache/eslint-baseline.cache';
+
+export function thamSoEslint() {
+  const args = ['eslint', '.', '--format', 'json', '--cache', '--cache-strategy', 'content', '--cache-location', FILE_CACHE];
+  for (const p of BO_QUA) args.push('--ignore-pattern', p);
+  return args;
+}
 
 /**
  * Dựng multiset fingerprint từ kết quả JSON của ESLint.
@@ -115,10 +133,8 @@ export function soMultiset(hienTai, nen) {
 }
 
 function main(argv) {
-  const args = ['eslint', '.', '--format', 'json'];
-  for (const p of BO_QUA) args.push('--ignore-pattern', p);
-
-  const kq = spawnSync('npx', args, {
+  mkdirSync(join(repoRoot, '.tscache'), { recursive: true });
+  const kq = spawnSync('npx', thamSoEslint(), {
     cwd: repoRoot,
     encoding: 'utf8',
     shell: process.platform === 'win32',

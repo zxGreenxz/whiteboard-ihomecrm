@@ -10,9 +10,12 @@ import { describe, expect, it } from "vitest";
 import {
   GATE_NANG,
   GATE_NHANH,
+  chayGioiHan,
   danhGiaLock,
+  danhSachChay,
   dungMigration,
   quyetDinhDoRoOrg,
+  soLuongSongSong,
   thuocSoHuu,
   tinhTapStage,
 } from "../kiem-nhanh-truoc-push.mjs";
@@ -129,5 +132,71 @@ describe("danh sách gate", () => {
   it("không có gate nào khai hai lần", () => {
     const ten = [...GATE_NHANH, ...GATE_NANG].map((m) => (Array.isArray(m) ? m.join(" ") : m));
     expect(ten.length).toBe(new Set(ten).size);
+  });
+});
+
+// ── Chạy song song (01/10/2026) ──────────────────────────────────────────────
+//
+// Đo 01/10: 41 cửa tĩnh chạy lần lượt 72 s, chạy 8 cửa cùng lúc 42 s; nhóm nặng
+// (kiểm kiểu + đảo strict + lint) có cache thì mỗi cửa còn vài giây đến 16 s.
+// Song song không được đổi KẾT LUẬN: kết quả in theo đúng thứ tự khai, và mỗi cửa
+// vẫn chạy đủ một lần.
+describe("soLuongSongSong", () => {
+  it("chừa 2 luồng cho máy, tối thiểu 2, tối đa 8", () => {
+    expect(soLuongSongSong(16)).toBe(8);
+    expect(soLuongSongSong(6)).toBe(4);
+    expect(soLuongSongSong(2)).toBe(2);
+    expect(soLuongSongSong(1)).toBe(2);
+  });
+});
+
+describe("chayGioiHan", () => {
+  it("chạy đủ mọi việc, trả kết quả đúng thứ tự khai dù xong lệch nhau", async () => {
+    const tre = [30, 5, 20, 1, 10];
+    const kq = await chayGioiHan(
+      tre.map((ms, i) => () => new Promise((r) => setTimeout(() => r(i), ms))),
+      3,
+    );
+    expect(kq).toEqual([0, 1, 2, 3, 4]);
+  });
+
+  it("không bao giờ vượt giới hạn số việc chạy cùng lúc", async () => {
+    let dangChay = 0;
+    let caoNhat = 0;
+    const viec = Array.from({ length: 9 }, () => async () => {
+      dangChay += 1;
+      caoNhat = Math.max(caoNhat, dangChay);
+      await new Promise((r) => setTimeout(r, 5));
+      dangChay -= 1;
+      return true;
+    });
+    const kq = await chayGioiHan(viec, 3);
+    expect(kq).toHaveLength(9);
+    expect(caoNhat).toBe(3);
+  });
+});
+
+describe("danhSachChay", () => {
+  it("đủ bộ: nhóm nặng xếp TRƯỚC để việc dài khởi động sớm, rồi tới nhóm tĩnh", () => {
+    const ds = danhSachChay({ boDaoStrict: false });
+    expect(ds.slice(0, GATE_NANG.length)).toEqual(GATE_NANG);
+    expect(ds.slice(GATE_NANG.length)).toEqual(GATE_NHANH);
+  });
+
+  it("--khong-dao-strict: chỉ nhóm tĩnh", () => {
+    expect(danhSachChay({ boDaoStrict: true })).toEqual(GATE_NHANH);
+  });
+
+  it("kiểm kiểu (typecheck:baseline) nằm trong nhóm nặng — CI có chạy nó, gate máy phải có", () => {
+    expect(GATE_NANG).toContain("check-ts-baseline");
+    expect(GATE_NHANH).not.toContain("check-ts-baseline");
+  });
+});
+
+describe("đảo strict trong gate", () => {
+  it("mỗi đảo một cửa riêng (chạy song song), phủ đủ mọi đảo, không chạy gộp thêm lần nữa", async () => {
+    const { DAO } = await import("../check-strict-islands.mjs");
+    for (const d of DAO) expect(GATE_NANG).toContainEqual(["check-strict-islands", "--dao", d.ten]);
+    expect(GATE_NANG).not.toContain("check-strict-islands");
   });
 });

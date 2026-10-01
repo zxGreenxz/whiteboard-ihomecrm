@@ -13,12 +13,14 @@
 // Thiếu bằng chứng live không được tính là schema đã khớp.
 // Thoát 0 = gate tĩnh đạt; 1 = có lỗi, xem phần tổng hợp.
 
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { closeSync, openSync, readFileSync, unlinkSync, writeSync } from "node:fs";
+import { availableParallelism } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { readPat } from "./capture-production-catalog.mjs";
+import { DAO } from "./check-strict-islands.mjs";
 import { DANH_SACH_VIEW } from "./generate-docs-views.mjs";
 import { FILE_SINH as FILE_CORPUS_HUONG_DAN } from "./generate-copilot-guide-corpus.mjs";
 
@@ -113,19 +115,67 @@ export const GATE_NHANH = [
   "check-new-modules-strict",
 ];
 
-// Nhóm NẶNG: mỗi cái vài phút, và cả hai chỉ đo MÃ NGUỒN — tách riêng để
-// `--khong-dao-strict` còn đường chạy 40 giây khi chỉ sửa docs/script.
+// Nhóm NẶNG: chỉ đo MÃ NGUỒN — tách riêng để `--khong-dao-strict` còn đường chạy
+// nhanh khi chỉ sửa docs/script.
 //
 // `check-eslint-baseline` vào đây 15/09/2026: nó là bước "Lint root-owned code
 // (ratchet)" của job quality-gates, tức một trong những cửa đỏ SAU KHI push mà
-// người ngồi máy không hề được cảnh báo trước. Đo trong worktree này: 3 phút 31
-// giây trên 1954 file — quá đắt cho nhóm nhanh, nhưng vẫn rẻ hơn một vòng CI.
-export const GATE_NANG = ["check-strict-islands", "check-eslint-baseline"];
+// người ngồi máy không hề được cảnh báo trước. `check-ts-baseline` vào 01/10/2026
+// cùng lý do (bước "Typecheck baseline" của quality-gates), để agent khỏi chạy
+// riêng nó trước gate. Cả ba đều có cache (đo 01/10, lượt sau): đảo strict 7 s
+// mỗi đảo, kiểm kiểu 14 s, lint 2 s. Đảo strict tách MỖI ĐẢO MỘT CỬA (sinh từ
+// bảng DAO, nên đảo mới tự vào gate) để hai lượt tsc nguội chạy song song.
+export const GATE_NANG = [
+  ...DAO.map((d) => ["check-strict-islands", "--dao", d.ten]),
+  "check-ts-baseline",
+  "check-eslint-baseline",
+];
+
+/**
+ * Số cửa chạy cùng lúc: chừa 2 luồng cho máy, tối thiểu 2, tối đa 8.
+ * Đo 01/10/2026 trên máy 16 luồng: 41 cửa tĩnh lần lượt 72 s, 8 cùng lúc 42 s.
+ */
+export const soLuongSongSong = (soLuong) => Math.max(2, Math.min(8, soLuong - 2));
+
+/** Nhóm nặng xếp trước để việc dài khởi động sớm; `--khong-dao-strict` bỏ hẳn nhóm nặng. */
+export const danhSachChay = ({ boDaoStrict }) => (boDaoStrict ? [...GATE_NHANH] : [...GATE_NANG, ...GATE_NHANH]);
+
+/**
+ * Chạy các việc bất đồng bộ với tối đa `gioiHan` việc cùng lúc.
+ * Kết quả trả về ĐÚNG THỨ TỰ KHAI, không theo thứ tự xong — để bảng kết quả và
+ * phần in lỗi không đổi chỗ giữa các lượt chạy.
+ */
+export async function chayGioiHan(cacViec, gioiHan) {
+  const ketQua = new Array(cacViec.length);
+  let tiep = 0;
+  const tho = async () => {
+    while (tiep < cacViec.length) {
+      const i = tiep;
+      tiep += 1;
+      ketQua[i] = await cacViec[i]();
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(gioiHan, cacViec.length) }, tho));
+  return ketQua;
+}
 
 const chay = (args) => spawnSync("node", args.map((a, i) => (i === 0 ? join(repoRoot, a) : a)), {
   cwd: repoRoot,
   encoding: "utf8",
 });
+
+/** Bản bất đồng bộ của `chay`, trả cùng dạng { status, stdout, stderr } kèm số giây. */
+const chayNen = (args) =>
+  new Promise((resolve) => {
+    const t0 = Date.now();
+    const p = spawn("node", args.map((a, i) => (i === 0 ? join(repoRoot, a) : a)), { cwd: repoRoot });
+    let stdout = "";
+    let stderr = "";
+    p.stdout.setEncoding("utf8").on("data", (d) => { stdout += d; });
+    p.stderr.setEncoding("utf8").on("data", (d) => { stderr += d; });
+    p.on("error", (e) => resolve({ status: null, stdout, stderr: `${stderr}${e.message}`, giay: (Date.now() - t0) / 1000 }));
+    p.on("close", (status) => resolve({ status, stdout, stderr, giay: (Date.now() - t0) / 1000 }));
+  });
 
 const goiGit = (args) =>
   (spawnSync("git", args, { cwd: repoRoot, encoding: "utf8" }).stdout ?? "")
@@ -253,7 +303,7 @@ function chiemLock() {
   }
 }
 
-function main() {
+async function main() {
   const boDaoStrict = process.argv.includes("--khong-dao-strict");
   const boDoRoOrg = process.argv.includes("--khong-do-ro-org");
   const t0 = Date.now();
@@ -359,25 +409,11 @@ function main() {
       }
     }
 
-    console.log(`\n── Bước 2/3: gate tĩnh (${boDaoStrict ? "bỏ" : "kèm"} nhóm nặng) ──`);
-    const doSo = [];
-    const danhSach = boDaoStrict ? GATE_NHANH : [...GATE_NHANH, ...GATE_NANG];
-    for (const muc of danhSach) {
-      const args = Array.isArray(muc) ? muc : [muc];
-      const ten = args.join(" ");
-      const r = chay([`scripts/${args[0]}.mjs`, ...args.slice(1)]);
-      if (r.status === 0) {
-        console.log(`  ✅ ${ten}`);
-      } else {
-        // exit 3 = "không kiểm được" (thiếu tiền đề) — tin KHÁC "kiểm rồi thấy vi
-        // phạm", in nhãn riêng nhưng vẫn tính là chưa sạch: chưa nhìn thấy thì
-        // chưa được coi là đạt (Contract §3).
-        console.log(`  ${r.status === 3 ? "⚠" : "❌"} ${ten} (exit ${r.status})`);
-        doSo.push([ten, r]);
-      }
-    }
+    console.log(`  (bước 1: ${Math.round((Date.now() - t0) / 1000)}s)`);
 
-    // ── Bước 3/3: rò chéo tổ chức — cần mạng + PAT, nên KHÔNG bao giờ giả xanh ──
+    // Bước 3 chỉ đọc staged diff (đã chốt sau Bước 1) và chờ mạng (~50 s), không
+    // phụ thuộc Bước 2 — nên khởi động ngay, chạy song song; kết quả vẫn in sau
+    // Bước 2 như cũ.
     const stagedFiles = goiGit(["diff", "--cached", "--name-only"]);
     const coMigration = dungMigration(stagedFiles);
     const quyet = quyetDinhDoRoOrg({
@@ -385,6 +421,37 @@ function main() {
       coCredential: Boolean(readPat()),
       dungMigration: coMigration,
     });
+    const huaDoRo = quyet === "chay" ? chayNen(["scripts/measure-org-leak.mjs"]) : null;
+
+    const tBuoc2 = Date.now();
+    const doSo = [];
+    const danhSach = danhSachChay({ boDaoStrict });
+    const gioiHan = soLuongSongSong(availableParallelism());
+    console.log(`\n── Bước 2/3: gate tĩnh (${boDaoStrict ? "bỏ" : "kèm"} nhóm nặng), ${gioiHan} cửa cùng lúc ──`);
+    const cacKetQua = await chayGioiHan(
+      danhSach.map((muc) => () => {
+        const args = Array.isArray(muc) ? muc : [muc];
+        return chayNen([`scripts/${args[0]}.mjs`, ...args.slice(1)]);
+      }),
+      gioiHan,
+    );
+    danhSach.forEach((muc, i) => {
+      const ten = Array.isArray(muc) ? muc.join(" ") : muc;
+      const r = cacKetQua[i];
+      const giay = r.giay >= 10 ? ` (${Math.round(r.giay)}s)` : "";
+      if (r.status === 0) {
+        console.log(`  ✅ ${ten}${giay}`);
+      } else {
+        // exit 3 = "không kiểm được" (thiếu tiền đề) — tin KHÁC "kiểm rồi thấy vi
+        // phạm", in nhãn riêng nhưng vẫn tính là chưa sạch: chưa nhìn thấy thì
+        // chưa được coi là đạt (Contract §3).
+        console.log(`  ${r.status === 3 ? "⚠" : "❌"} ${ten} (exit ${r.status})${giay}`);
+        doSo.push([ten, r]);
+      }
+    });
+
+    // ── Bước 3/3: rò chéo tổ chức — cần mạng + PAT, nên KHÔNG bao giờ giả xanh ──
+    console.log(`  (bước 2: ${Math.round((Date.now() - tBuoc2) / 1000)}s)`);
     console.log("\n── Bước 3/3: không rò dữ liệu xuyên tổ chức (đo bằng vai người dùng thật) ──");
     if (quyet === "bo-qua") {
       console.log("  ⚠ bỏ theo cờ --khong-do-ro-org — CI (job security-gates) vẫn đo, và nó mới là bản đếm.");
@@ -400,11 +467,12 @@ function main() {
       console.log("     Chạy lại kèm SUPABASE_PAT=… (chỉ đọc, mọi truy vấn bọc ROLLBACK).");
       doSo.push(["measure-org-leak (thiếu credential, có migration)", { stdout: "", stderr: "" }]);
     } else {
-      const r = chay(["scripts/measure-org-leak.mjs"]);
+      const r = await huaDoRo;
+      const giay = `${Math.round(r.giay)}s, song song với bước 2`;
       if (r.status === 0) {
-        console.log("  ✅ measure-org-leak");
+        console.log(`  ✅ measure-org-leak (${giay})`);
       } else {
-        console.log(`  ${r.status === 3 ? "⚠" : "❌"} measure-org-leak (exit ${r.status})`);
+        console.log(`  ${r.status === 3 ? "⚠" : "❌"} measure-org-leak (exit ${r.status}; ${giay})`);
         doSo.push(["measure-org-leak", r]);
       }
     }
@@ -430,5 +498,8 @@ function main() {
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  main();
+  main().catch((e) => {
+    console.error(`❌ gate:truoc-push hỏng giữa chừng: ${e?.stack ?? e}`);
+    process.exitCode = 1;
+  });
 }

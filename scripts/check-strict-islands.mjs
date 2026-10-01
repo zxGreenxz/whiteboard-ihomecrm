@@ -22,9 +22,9 @@
 //
 // Thoát: 0 đạt · 1 vi phạm · 3 không kiểm được.
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -128,6 +128,27 @@ export function docDao(text) {
 export function locDao(include) {
   return include.map((p) => p.replace(/\\/g, "/")).filter((p) => !p.endsWith(".d.ts"));
 }
+
+/**
+ * Đối số tsc cho phép đo chính, có cache tăng dần.
+ *
+ * Đo 01/10/2026: đảo "strict" lượt đầu 108 s, lượt sau 7 s. tsc ghi phiên bản
+ * compiler, option và băm từng file vào buildinfo rồi tự dựng lại khi lệch, nên
+ * cache cũ không cho ra kết luận cũ; lỗi cũng được ghi trong buildinfo và báo lại
+ * ở lượt sau. Mỗi đảo một file buildinfo, đường dẫn tương đối (xem chú thích ở
+ * phép đo chính về npx + shell trên Windows).
+ */
+export function thamSoTsc(tsconfig) {
+  const buildInfo = `.tscache/${basename(tsconfig, ".json")}.tsbuildinfo`;
+  return ["tsc", "-p", tsconfig, "--noEmit", "--incremental", "--tsBuildInfoFile", buildInfo];
+}
+
+/**
+ * `--dao <tên>`: chỉ kiểm một đảo. gate:truoc-push chạy mỗi đảo một cửa để hai
+ * lượt tsc nguội chạy song song (đo 01/10/2026: hai đảo nối tiếp 209 s khi máy
+ * bận). Không chỉ định ⇒ mọi đảo, đúng như CI gọi.
+ */
+export const locDaoTheoTen = (dao, ten) => (ten ? dao.filter((d) => d.ten === ten) : dao);
 
 /** Đảo có trong baseline mà KHÔNG còn trong include ⇒ thoái lui. */
 export function timDaoBiRut(baseline, hienTai) {
@@ -257,7 +278,8 @@ function kiemMotDao(caiDao, viet) {
   // npx trên Windows là npx.cmd — Node từ chối spawn .cmd khi shell:false (vá
   // CVE-2024-27980), mà shell:true lại không bọc nháy đối số; đường dẫn repo này
   // có dấu cách nên phải dùng đường dẫn TƯƠNG ĐỐI. Cùng bẫy với ba gate khác.
-  const r = spawnSync("npx", ["tsc", "-p", TSCONFIG, "--noEmit"], {
+  mkdirSync(join(repoRoot, ".tscache"), { recursive: true });
+  const r = spawnSync("npx", thamSoTsc(TSCONFIG), {
     cwd: repoRoot,
     encoding: "utf8",
     shell: true,
@@ -330,8 +352,15 @@ function main() {
     console.error("❌ Bảng đảo rỗng — không có vùng nào để kiểm.");
     process.exit(3);
   }
-  for (const caiDao of DAO) kiemMotDao(caiDao, viet);
-  console.log(`\n✅ ${DAO.length} đảo đều đạt.`);
+  const i = process.argv.indexOf("--dao");
+  const chiDao = i >= 0 ? process.argv[i + 1] : null;
+  const cacDao = locDaoTheoTen(DAO, chiDao);
+  if (cacDao.length === 0) {
+    console.error(`❌ Không có đảo tên "${chiDao}". Có: ${DAO.map((d) => d.ten).join(", ")}.`);
+    process.exit(3);
+  }
+  for (const caiDao of cacDao) kiemMotDao(caiDao, viet);
+  console.log(`\n✅ ${cacDao.length} đảo đều đạt.`);
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) main();

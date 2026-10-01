@@ -12,7 +12,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { BO_QUA, TOI_THIEU_FILE, dungFingerprint, soMultiset } from '../check-eslint-baseline.mjs';
+import { BO_QUA, FILE_CACHE, TOI_THIEU_FILE, dungFingerprint, soMultiset, thamSoEslint } from '../check-eslint-baseline.mjs';
 
 const goc = '/repo';
 const ketQua = (duongDan, ...tin) => ({
@@ -96,5 +96,27 @@ test('sàn chống-xanh-rỗng và bộ ignore khớp CI', () => {
   // Bộ ignore phải trùng bước "Lint root-owned code" trong ci-gates.yml.
   for (const p of ['services/**', 'infra/**', 'supabase/functions/**', '.e2e-fleet/**']) {
     assert.ok(BO_QUA.includes(p), `thiếu ignore ${p}`);
+  }
+});
+
+// Cache lint (01/10/2026): lượt đầu 42 s, lượt sau 2 s, đầu ra JSON trùng khớp
+// tuyệt đối (2642 file, 1181 thông báo, cả dòng:cột). Cache theo NỘI DUNG chứ
+// không theo giờ sửa file, vì đổi nhánh git làm sai giờ sửa; và nằm trong
+// `.tscache/` đã gitignore, mỗi worktree một bản.
+test('thamSoEslint bật cache theo nội dung, cache nằm trong .tscache/', () => {
+  const args = thamSoEslint();
+  assert.deepEqual(args.slice(0, 4), ['eslint', '.', '--format', 'json']);
+  const i = args.indexOf('--cache');
+  assert.ok(i > 0, 'thiếu --cache');
+  assert.equal(args[args.indexOf('--cache-strategy') + 1], 'content');
+  assert.equal(args[args.indexOf('--cache-location') + 1], FILE_CACHE);
+  assert.ok(FILE_CACHE.startsWith('.tscache/'), 'cache phải nằm trong .tscache/ (gitignore)');
+});
+
+test('thamSoEslint vẫn mang đủ bộ ignore của CI', () => {
+  const args = thamSoEslint();
+  for (const p of BO_QUA) {
+    const i = args.indexOf(p);
+    assert.ok(i > 0 && args[i - 1] === '--ignore-pattern', `thiếu --ignore-pattern ${p}`);
   }
 });

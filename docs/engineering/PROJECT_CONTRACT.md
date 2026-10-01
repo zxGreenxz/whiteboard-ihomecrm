@@ -182,13 +182,14 @@ Chạy `npm run gate:copilot-docs` khi sửa corpus hoặc registry.
    §5–8 và risk-map của tier bị đụng. Bộ vitest đầy đủ do CI chạy.
 3. Stage đúng file source/test của thay đổi trước khi chạy `npm run gate:truoc-push` để generator
    đọc đủ đầu vào của commit; docs/script thuần có thể dùng `-- --khong-dao-strict`.
-   Ba bước: (1) tự sinh và stage artifact theo allowlist; (2) gate tĩnh, kèm nhóm nặng
-   (đảo strict + lint ratchet) khi không có `--khong-dao-strict`; (3) đo rò chéo tổ chức
-   (`measure-org-leak`) khi có `SUPABASE_PAT`. Bước 3 bỏ được bằng `-- --khong-do-ro-org`;
+   Ba bước: (1) tự sinh và stage artifact theo allowlist; (2) gate tĩnh chạy song song, kèm nhóm
+   nặng có cache (kiểm kiểu + đảo strict + lint ratchet) khi không có `--khong-dao-strict`;
+   (3) đo rò chéo tổ chức (`measure-org-leak`, chạy cùng lúc với bước 2) khi có `SUPABASE_PAT`.
+   Bước 3 bỏ được bằng `-- --khong-do-ro-org`;
    thiếu credential là ⚠, nhưng thiếu credential MÀ staged diff đụng `supabase/migrations/**`
    là ❌ — migration đổi được ranh giới tổ chức nên đó đúng là lượt không được bỏ đo.
    Kiểm cả diff được stage; cảnh báo thiếu credential không chứng minh schema đã khớp.
-   Gate đã gồm đảo strict và lint ratchet, nên không chạy riêng chúng trước gate. Gate đỏ thì sửa,
+   Gate đã gồm kiểm kiểu, đảo strict và lint ratchet, nên không chạy riêng chúng trước gate. Gate đỏ thì sửa,
    chạy lại đúng script đỏ (`node scripts/<tên>.mjs`), rồi chạy gate đầy đủ một lần trước push.
 4. Báo kết quả cụ thể và phần chưa kiểm; commit/push/review/phát hành theo §3.
 

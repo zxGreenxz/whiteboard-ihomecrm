@@ -18,6 +18,8 @@ import {
   docDao,
   locDao,
   timConNgoaiCha,
+  locDaoTheoTen,
+  thamSoTsc,
   timCoBiTat,
   timDaoBiRut,
 } from "../check-strict-islands.mjs";
@@ -132,5 +134,42 @@ describe("bảng DAO — khai báo phải khớp file thật", () => {
         expect(opts[co], `${d.ten}: khai coThem ${co} nhưng tsconfig không bật`).toBe(true);
       }
     }
+  });
+});
+
+// Cache tăng dần (01/10/2026): đảo "strict" lượt đầu 108 s, lượt sau 7 s. tsc
+// ghi phiên bản compiler, option và băm từng file vào buildinfo rồi tự dựng lại
+// khi lệch, nên cache cũ không cho ra kết luận cũ. Mỗi đảo một file buildinfo
+// riêng: hai đảo dùng chung một file thì lượt này ghi đè cache của lượt kia.
+describe("thamSoTsc", () => {
+  it("bật --incremental, buildinfo nằm trong .tscache/ và vẫn --noEmit", () => {
+    const args = thamSoTsc("tsconfig.strict-islands.json");
+    expect(args.slice(0, 3)).toEqual(["tsc", "-p", "tsconfig.strict-islands.json"]);
+    expect(args).toContain("--noEmit");
+    expect(args).toContain("--incremental");
+    const buildInfo = args[args.indexOf("--tsBuildInfoFile") + 1];
+    expect(buildInfo.startsWith(".tscache/")).toBe(true);
+  });
+
+  it("mỗi đảo một file buildinfo riêng", () => {
+    const files = DAO.map((d) => {
+      const args = thamSoTsc(d.tsconfig);
+      return args[args.indexOf("--tsBuildInfoFile") + 1];
+    });
+    expect(new Set(files).size).toBe(DAO.length);
+  });
+});
+
+// `--dao <tên>` (01/10/2026): gate:truoc-push chạy MỖI ĐẢO MỘT CỬA để hai lượt
+// tsc nguội chạy song song. Đo: hai đảo nối tiếp mất 209 s khi máy đang bận.
+// CI vẫn gọi không kèm cờ ⇒ kiểm đủ mọi đảo như cũ.
+describe("locDaoTheoTen", () => {
+  it("không chỉ định ⇒ mọi đảo", () => {
+    expect(locDaoTheoTen(DAO, null)).toEqual(DAO);
+  });
+
+  it("đúng tên ⇒ đúng một đảo; tên lạ ⇒ rỗng để main thoát 3, không xanh rỗng", () => {
+    for (const d of DAO) expect(locDaoTheoTen(DAO, d.ten)).toEqual([d]);
+    expect(locDaoTheoTen(DAO, "khong-co")).toEqual([]);
   });
 });
