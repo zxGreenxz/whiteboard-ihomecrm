@@ -106,7 +106,7 @@ const CONTRACT_SELECT = `
 // AssetHandoverDialog): đúng cột dialog đọc, bỏ full-PII khách (CMND/STK/
 // địa chỉ…) của CONTRACT_SELECT. Cần thêm cột → dùng useContract(id) (select đủ).
 const CONTRACT_DIALOG_SELECT = `
-  id, status, room_id, rent_price, contract_number,
+  id, status, room_id, rent_price, contract_number, discounts,
   room:rooms!contracts_room_id_fkey ( id, name, building_id ),
   contract_customers!contract_customers_contract_id_fkey (
     id, is_representative,
