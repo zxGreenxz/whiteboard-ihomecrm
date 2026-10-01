@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-01T03:22:23.478Z",
+  "generatedAt": "2026-10-01T03:33:33.985Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 637,
-    "unknown": 89,
-    "catalog-proven": 205,
+    "ledger-applied": 638,
+    "unknown": 87,
+    "catalog-proven": 206,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -10864,14 +10864,9 @@
       "name": "contract_rent_support_plans",
       "scheme": "timestamp14",
       "sha256": "0b697ce2873de97f3322c119a0bf4acd39ae8e6603d28a5c92552047b9234c71",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "table:app_private.contract_rent_support_plans",
-        "table:app_private.contract_rent_support_months",
-        "table:app_private.rent_support_revision_requests",
-        "function:app_private.rent_support_immutable_v1",
-        "function:app_private.rent_support_scope_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-01T03:32:59.351Z|bien-nhan-backup"
       ]
     },
     {
@@ -10898,10 +10893,10 @@
       "evidence": [],
       "missingObjects": [
         "table:app_private.contract_draft_rent_support_funding",
-        "function:app_private.rent_support_scope_v1",
         "function:app_private.rent_support_draft_funding_fields_v1",
         "function:app_private.rent_support_draft_payload_v1",
-        "function:app_private.rent_support_draft_revision_v1"
+        "function:app_private.rent_support_draft_revision_v1",
+        "function:app_private.rent_support_draft_public_snapshot_v1"
       ]
     },
     {
@@ -11001,10 +10996,9 @@
       "name": "enable_rent_support_writers",
       "scheme": "timestamp14",
       "sha256": "c46ba2a040a5757bdf7146037881f699aa06c59d5770ad89dd1e8af069caf3e0",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.rent_support_writers_enabled_v1"
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:app_private.rent_support_writers_enabled_v1"
       ]
     },
     {
