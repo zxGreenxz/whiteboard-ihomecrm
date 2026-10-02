@@ -1,6 +1,7 @@
 import React, { Component, ErrorInfo, ReactNode } from "react";
 import { AlertTriangle, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { RefreshBar } from "@/components/loading/LoadingState";
 import {
   isChunkLoadError,
   reloadOnceForStaleChunk,
@@ -91,17 +92,14 @@ class ErrorBoundary extends Component<Props, State> {
         return this.props.fallback;
       }
 
-      // Đang tự cứu (retry import / bust-cache + reload đã lên lịch): hiện
-      // spinner trung tính thay vì chớp thẻ lỗi. `isReloadPending()` bắt cả khi
-      // reload được lên lịch từ vite:preloadError (main.tsx) mà một lỗi khác
-      // vẫn nổi lên boundary trong lúc chờ reload.
+      // Đang tự cứu (retry import / bust-cache + reload đã lên lịch): nền trơn
+      // + vạch mảnh mép trên thay vì chớp thẻ lỗi; chữ chỉ cho trình đọc màn hình
+      // (chủ chốt 02/10/2026). `isReloadPending()` bắt cả khi reload được lên lịch
+      // từ vite:preloadError (main.tsx) mà một lỗi khác vẫn nổi lên boundary.
       if (this.state.willAutoReload || isReloadPending()) {
         return (
-          <div className="min-h-screen flex items-center justify-center bg-gray-50">
-            <div className="text-center">
-              <RefreshCw className="h-8 w-8 animate-spin text-blue-600 mx-auto" />
-              <p className="mt-3 text-sm text-gray-600">Đang tải…</p>
-            </div>
+          <div className="relative min-h-screen bg-gray-50">
+            <RefreshBar active label="Đang tải…" />
           </div>
         );
       }
