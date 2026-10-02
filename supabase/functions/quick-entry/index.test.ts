@@ -61,16 +61,23 @@ interface Kich {
   choices?: string;
   /** QUICK_ENTRY_STT_MODELS — chuỗi chép giọng do vận hành đặt. */
   sttModels?: string;
-  /** Dữ liệu các bảng nguồn cụm từ ưu tiên (đọc bằng JWT người dùng); vắng ⇒ 404 như bảng chưa có. */
-  nguon?: Partial<Record<"buildings" | "building_common_names" | "rooms" | "income_expense_types", unknown[]>>;
+  /** Dữ liệu các nguồn cụm từ ưu tiên (đọc bằng JWT người dùng); vắng ⇒ 404 như bảng chưa có. */
+  nguon?: Partial<Record<NguonTen, unknown[]>>;
   /** Đọc nguồn cụm từ ném lỗi mạng. */
   nguonFails?: boolean;
+  /** Đọc nguồn chờ promise này rồi mới trả (thử "chờ lười"). */
+  nguonCho?: Promise<void>;
+  /** Đọc nguồn treo tới khi bị huỷ bằng signal (thử hạn 3 s). */
+  nguonTreo?: boolean;
   /** QUICK_ENTRY_STT_HINTS. */
   hints?: string;
 }
 
+type NguonTen = "ie_form_buildings" | "building_common_names" | "rooms" | "income_expense_types";
+const NGUON_RE = /\/rest\/v1\/(?:rpc\/)?(ie_form_buildings|building_common_names|rooms|income_expense_types)\?/;
+
 const NGUON_MAU: Kich["nguon"] = {
-  buildings: [
+  ie_form_buildings: [
     { id: "b102", name: "102LVT", code: "102LVT" },
     { id: "b1392", name: "1392QT", code: "1392qt, QT, 1392" },
     { id: "b111", name: "111PVC", code: "111" },
@@ -117,11 +124,13 @@ function setup(k: Kich = {}) {
       return j(200, k.perms ?? { income_expenses: { create: { org_wide: false, building_ids: ["b1"], cashbook_ids: [] } } });
     }
     if (url.includes("/rest/v1/ai_copilot_entitlements")) return j(200, k.entitled ? [{ chat_enabled: true }] : []);
-    const bangNguon = /\/rest\/v1\/(buildings|building_common_names|rooms|income_expense_types)\?/.exec(url)?.[1] as
-      | keyof NonNullable<Kich["nguon"]>
-      | undefined;
+    const bangNguon = NGUON_RE.exec(url)?.[1] as NguonTen | undefined;
     if (bangNguon) {
       if (k.nguonFails) throw new TypeError("network");
+      if (k.nguonTreo) {
+        await new Promise((_, reject) => init?.signal?.addEventListener("abort", () => reject(new DOMException("timeout", "TimeoutError"))));
+      }
+      if (k.nguonCho) await k.nguonCho;
       const rows = k.nguon?.[bangNguon];
       return rows ? j(200, rows) : j(404, { code: "PGRST205", message: "relation does not exist" });
     }
@@ -581,11 +590,11 @@ const phrasesOf = (b: Record<string, unknown>) =>
   (b as PhraseBody).provider?.options?.["google-vertex"]?.config?.adaptation?.phraseSets?.[0]?.inlinePhraseSet?.phrases?.map((p) => p.value) ??
     null;
 const docNguon = (calls: Array<{ url: string; init?: RequestInit }>) =>
-  calls.filter((c) => /\/rest\/v1\/(buildings|building_common_names|rooms|income_expense_types)\?/.test(c.url));
+  calls.filter((c) => NGUON_RE.test(c.url));
 
 Deno.test("dungCumTu: mã in hoa, bỏ mã toàn số, tên toà, tên thường gọi + 'số nhà + tên', hạng mục, phòng", () => {
   const out = dungCumTu({
-    buildings: NGUON_MAU!.buildings as never,
+    buildings: NGUON_MAU!.ie_form_buildings as never,
     commonNames: NGUON_MAU!.building_common_names as never,
     rooms: NGUON_MAU!.rooms as never,
     categories: NGUON_MAU!.income_expense_types as never,
@@ -633,6 +642,27 @@ Deno.test("dungCumTu: cắt đúng ở TRAN_CUM_TU (dưới trần 1.000 đo đ�
   assertEquals(out.slice(0, 3), ["102LVT", "Lê Văn Thọ", "102 Lê Văn Thọ"]);
 });
 
+Deno.test("dungCumTu: tên đường mở đầu bằng MỘT từ chỉ số vẫn được ghép số nhà; cách đọc số (≥2 từ) thì không", () => {
+  const out = dungCumTu({
+    buildings: [{ id: "b", name: "102HBT", code: "102HBT" }],
+    commonNames: ["Hai Bà Trưng", "Ba Tháng Hai", "Nam Kỳ Khởi Nghĩa", "một lẻ hai Hai Bà Trưng", "mười lăm KV"].map((name) => ({ building_id: "b", name })),
+    rooms: [],
+    categories: [],
+  });
+  for (const ten of ["Hai Bà Trưng", "Ba Tháng Hai", "Nam Kỳ Khởi Nghĩa"]) assert(out.includes(`102 ${ten}`), ten);
+  assert(!out.includes("102 một lẻ hai Hai Bà Trưng") && !out.includes("102 mười lăm KV"));
+});
+
+Deno.test("dungCumTu: tên thường gọi của toà KHÔNG có trong danh sách toà (đã xoá, ngoài phạm vi) ⇒ bỏ", () => {
+  const out = dungCumTu({
+    buildings: [{ id: "b102", name: "102LVT", code: "102LVT" }],
+    commonNames: [{ building_id: "b102", name: "Lê Văn Thọ" }, { building_id: "b-da-xoa", name: "Gò Vấp" }],
+    rooms: [],
+    categories: [],
+  });
+  assertEquals(out, ["102LVT", "Lê Văn Thọ", "102 Lê Văn Thọ"]);
+});
+
 Deno.test("chirp-3: gửi cụm từ đúng dạng OpenRouter chuyển tiếp (google-vertex.config.adaptation), header báo số cụm", async () => {
   const { deps, upstreamBodies, calls } = setup({ nguon: NGUON_MAU });
   const r = await xuLy(sttReq(), deps);
@@ -645,15 +675,69 @@ Deno.test("chirp-3: gửi cụm từ đúng dạng OpenRouter chuyển tiếp (g
   assert(r.headers.get("Access-Control-Expose-Headers")!.includes("x-quick-entry-hints"));
   // Không gửi boost: đo 02/10 boost 10/20 ra y hệt không boost.
   assert(!JSON.stringify(upstreamBodies[0]).includes("boost"));
-  // Bốn nguồn đọc bằng JWT CỦA NGƯỜI DÙNG, lọc đúng công ty đang chọn.
+  // Bốn nguồn đọc bằng JWT CỦA NGƯỜI DÙNG; toà qua đúng RPC của trang; lọc công ty ở mọi nguồn có cột công ty
+  // (ie_form_buildings không trả cột này — giống trang).
   const doc = docNguon(calls);
   assertEquals(doc.length, 4);
   for (const c of doc) {
     assertEquals((c.init!.headers as Record<string, string>).Authorization, "Bearer user-jwt");
-    assert(c.url.includes(`organization_id=eq.${ORG}`), c.url);
+    if (!c.url.includes("/rpc/ie_form_buildings?")) assert(c.url.includes(`organization_id=eq.${ORG}`), c.url);
   }
+  assert(doc.some((c) => c.url.includes("/rest/v1/rpc/ie_form_buildings?") && c.init?.method === "POST"));
+  assert(doc.some((c) => c.url.includes("/rest/v1/rooms?") && c.url.includes("deleted_at=is.null")));
   assert(doc.some((c) => c.url.includes("/rest/v1/building_common_names?")));
-  assert(doc.some((c) => c.url.includes("income_expense_types?") && c.url.includes("type=eq.expense") && c.url.includes("system_only=is.false")));
+  // Không có restricted_create ⇒ bỏ hạng mục hạn chế (như danh sách của trang).
+  assert(doc.some((c) =>
+    c.url.includes("income_expense_types?") && c.url.includes("type=eq.expense") && c.url.includes("system_only=is.false") &&
+    c.url.includes("is_restricted=is.false")
+  ));
+  // Đọc nguồn bắt đầu TRƯỚC khi giữ chỗ ai_usage_logs (song song với bước giữ chỗ/đếm trần).
+  const giuCho = calls.findIndex((c) => c.url.includes("/rest/v1/ai_usage_logs") && c.init?.method === "POST");
+  assert(calls.findIndex((c) => NGUON_RE.test(c.url)) < giuCho, "đọc nguồn phải bắt đầu trước bước giữ chỗ");
+});
+
+Deno.test("có restricted_create ⇒ gửi cả hạng mục hạn chế", async () => {
+  const perms = { income_expenses: { create: { org_wide: true }, restricted_create: { org_wide: true } } };
+  const { deps, calls } = setup({ nguon: NGUON_MAU, perms });
+  await xuLy(sttReq(), deps);
+  const cat = docNguon(calls).find((c) => c.url.includes("income_expense_types?"))!;
+  assert(!cat.url.includes("is_restricted"), cat.url);
+});
+
+Deno.test("chỉ có quyền Ví cá nhân ⇒ không đọc dữ liệu công ty, chép như cũ", async () => {
+  const { deps, calls, upstreamBodies } = setup({ nguon: NGUON_MAU, perms: { personal_finance: { create: true } } });
+  assertEquals((await xuLy(sttReq(), deps)).status, 200);
+  assertEquals(docNguon(calls).length, 0);
+  assertEquals(phrasesOf(upstreamBodies[0]), null);
+});
+
+Deno.test("chọn nova-3 ⇒ không chờ đọc cụm từ (chỉ chờ trước lần gọi chirp-3)", async () => {
+  let mo: () => void = () => {};
+  const cho = new Promise<void>((r) => (mo = r));
+  const s = setup({ nguon: NGUON_MAU, nguonCho: cho });
+  let hen: ReturnType<typeof setTimeout> | undefined;
+  const ketQua = await Promise.race([
+    xuLy(sttReq({ format: "webm", data: AUDIO, model: "deepgram/nova-3" }), s.deps),
+    new Promise<"treo">((r) => (hen = setTimeout(() => r("treo"), 500))),
+  ]);
+  clearTimeout(hen);
+  mo();
+  assert(ketQua !== "treo", "lần thử nova-3 bị chặn chờ đọc cụm từ");
+  assertEquals((ketQua as Response).status, 200);
+  assertEquals(s.upstreamBodies[0].model, "deepgram/nova-3");
+});
+
+Deno.test("đọc nguồn treo ⇒ bỏ sau 3 s, chép chirp-3 không gợi ý", async () => {
+  const s = setup({ nguonTreo: true, nguon: NGUON_MAU });
+  let hen: ReturnType<typeof setTimeout> | undefined;
+  const ketQua = await Promise.race([
+    xuLy(sttReq(), s.deps),
+    new Promise<"treo">((r) => (hen = setTimeout(() => r("treo"), 6_000))),
+  ]);
+  clearTimeout(hen);
+  assert(ketQua !== "treo", "đọc nguồn không có hạn");
+  assertEquals((ketQua as Response).status, 200);
+  assertEquals(s.upstreamBodies[0], { model: MO_HINH_CUM_TU, language: "vi", input_audio: { data: AUDIO, format: "webm" } });
 });
 
 Deno.test("mô hình khác chirp-3 KHÔNG nhận cụm từ (payload cũ); chirp-3 dự phòng phía sau thì có", async () => {
@@ -703,7 +787,7 @@ Deno.test("lỗi thường của chirp-3 (503) khi có cụm từ ⇒ sang mô h
 });
 
 Deno.test("đọc nguồn hỏng (mạng / bảng chưa có) ⇒ chép như cũ, không chặn", async () => {
-  for (const k of [{ nguonFails: true }, {}, { nguon: { buildings: NGUON_MAU!.buildings } }] as Kich[]) {
+  for (const k of [{ nguonFails: true }, {}, { nguon: { ie_form_buildings: NGUON_MAU!.ie_form_buildings } }] as Kich[]) {
     const s = setup(k);
     const r = await xuLy(sttReq(), s.deps);
     assertEquals(r.status, 200);

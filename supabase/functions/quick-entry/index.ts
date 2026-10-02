@@ -11,7 +11,7 @@
 // hình của đường nào thì CHỈ đường đó tắt.
 //
 // Cụm từ ưu tiên: chép giọng bằng google/chirp-3 thì gửi kèm mã/tên toà, tên thường gọi của toà, tên phòng
-// và tên hạng mục chi mà NGƯỜI DÙNG XEM ĐƯỢC (đọc bằng JWT của họ, RLS lọc) — xem dungCumTu.
+// và tên hạng mục chi mà trang dò được cho NGƯỜI DÙNG (đọc bằng JWT của họ) — xem docCumTu, dungCumTu.
 //
 // KHÔNG cần migration:
 //   - quyền   = get_my_permissions_v2(p_org) gọi bằng JWT của chính người dùng — cùng nguồn giao diện đọc;
@@ -133,8 +133,22 @@ export interface NguonCumTu {
   categories: Array<{ name?: unknown }>;
 }
 
-const SO_DOC_DAU = /^(mot|hai|ba|bon|tu|nam|sau|bay|tam|chin|muoi|khong)\b/;
-const boDau = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/g, "d").replace(/Đ/g, "D").toLowerCase();
+/** Từ chỉ số khi ĐỌC số nhà — giữ dấu, vì "Bà" trong "Hai Bà Trưng" không phải số. */
+const TU_SO = new Set([
+  "không", "một", "mốt", "hai", "ba", "bốn", "tư", "năm", "lăm", "nhăm", "sáu", "bảy", "tám", "chín",
+  "mười", "mươi", "trăm", "nghìn", "ngàn", "lẻ", "linh",
+]);
+
+/**
+ * Tên mở đầu bằng cách ĐỌC một số ("một lẻ hai Lê Văn Thọ", "mười lăm KV") = từ hai từ chỉ số liền nhau.
+ * Một từ chỉ số đứng đầu là tên đường bình thường: "Hai Bà Trưng", "Ba Tháng Hai", "Nam Kỳ Khởi Nghĩa".
+ */
+function moDauBangSoDoc(ten: string): boolean {
+  const tu = ten.toLowerCase().split(" ");
+  let n = 0;
+  while (n < tu.length && TU_SO.has(tu[n])) n += 1;
+  return n >= 2;
+}
 
 /** Chuẩn một cụm: NFC, gộp khoảng trắng, bỏ ký tự điều khiển; ngoài 2…100 ký tự ⇒ null. */
 export function chuanCum(raw: unknown): string | null {
@@ -187,12 +201,14 @@ export function dungCumTu(src: NguonCumTu): string[] {
     if (typeof b.id === "string") soCuaToa.set(b.id, soNha(b));
   }
   for (const n of src.commonNames) {
+    // Chỉ tên của toà nằm trong danh sách toà ở trên (toà còn sống, người dùng dùng được trên trang).
+    const so = soCuaToa.get(String(n.building_id));
     const ten = chuanCum(n.name);
-    if (!ten) continue;
+    if (!so || !ten) continue;
     them(ten);
     // "Lê Văn Thọ" của toà 102LVT ⇒ thêm "102 Lê Văn Thọ"; tên đã mở đầu bằng số (chữ số hay lời đọc) thì thôi.
-    if (/^\d/.test(ten) || SO_DOC_DAU.test(boDau(ten))) continue;
-    for (const so of soCuaToa.get(String(n.building_id)) ?? []) them(`${so} ${ten}`);
+    if (/^\d/.test(ten) || moDauBangSoDoc(ten)) continue;
+    for (const s of so) them(`${s} ${ten}`);
   }
   for (const c of src.categories) them(c.name);
   for (const r of src.rooms) {
@@ -205,14 +221,35 @@ export function dungCumTu(src: NguonCumTu): string[] {
 }
 
 /**
- * Đọc nguồn cụm từ bằng JWT CỦA NGƯỜI DÙNG (RLS chỉ trả toà/phòng/hạng mục họ xem được), lọc đúng công
- * ty đang chọn. Mọi lỗi (mạng, quá hạn, bảng chưa có) ⇒ phần đó rỗng — gợi ý không bao giờ chặn chép giọng.
+ * Đọc nguồn cụm từ bằng JWT CỦA NGƯỜI DÙNG, theo những gì trang Báo chi nhanh dò được:
+ *   - toà = RPC ie_form_buildings (cùng nguồn ô chọn của trang — gồm toà quản lý VÀ toà được chi nhờ
+ *     income_expenses.all_buildings; đã bỏ toà xoá mềm). RPC không trả cột công ty nên không lọc được theo
+ *     công ty — y như trang;
+ *   - phòng = bảng rooms qua RLS, lọc công ty. KHÔNG dùng ie_form_rooms: đo trên TEST 02/10/2026 RPC đó mất
+ *     1,9–2,8 s (kiểm quyền từng dòng) — sát hạn 3 s — còn bảng ~0,16 s. Đổi lại người được chi mọi toà mà chỉ
+ *     quản lý vài toà thì thiếu phòng của toà còn lại (joey: 103/286 phòng);
+ *   - tên thường gọi (RLS can_access_building), hạng mục chi (bỏ system_only; bỏ hạng mục hạn chế khi người
+ *     dùng thiếu restricted_create — như categorySuggest.ts): lọc đúng công ty đang chọn.
+ * Mỗi nguồn lỗi (mạng, quá 3 s, bảng chưa có) ⇒ nguồn đó rỗng, các nguồn khác vẫn dùng; gợi ý không bao giờ
+ * chặn chép giọng. Trần dòng của PostgREST (mặc định 1.000) đủ cho dữ liệu hiện tại (~300 phòng, ~90 hạng mục).
  */
-export async function docCumTu(f: typeof fetch, supabaseUrl: string, apikey: string, token: string, org: string): Promise<string[]> {
-  const headers = { Authorization: `Bearer ${token}`, apikey, "Accept-Profile": "public" };
-  const get = async (path: string): Promise<Array<Record<string, unknown>>> => {
+export async function docCumTu(
+  f: typeof fetch,
+  supabaseUrl: string,
+  apikey: string,
+  token: string,
+  org: string,
+  opts: { boHanChe: boolean },
+): Promise<string[]> {
+  const headers = { Authorization: `Bearer ${token}`, apikey, "Accept-Profile": "public", "Content-Profile": "public", "Content-Type": "application/json" };
+  const doc = async (path: string, rpc = false): Promise<Array<Record<string, unknown>>> => {
     try {
-      const r = await f(`${supabaseUrl}/rest/v1/${path}`, { headers, signal: AbortSignal.timeout(HAN_DOC_CUM_TU_MS) });
+      const r = await f(`${supabaseUrl}/rest/v1/${path}`, {
+        method: rpc ? "POST" : "GET",
+        headers,
+        body: rpc ? "{}" : undefined,
+        signal: AbortSignal.timeout(HAN_DOC_CUM_TU_MS),
+      });
       if (!r.ok) return [];
       const rows = (await r.json()) as unknown;
       return Array.isArray(rows) ? (rows as Array<Record<string, unknown>>) : [];
@@ -221,10 +258,13 @@ export async function docCumTu(f: typeof fetch, supabaseUrl: string, apikey: str
     }
   };
   const [buildings, commonNames, rooms, categories] = await Promise.all([
-    get(`buildings?select=id,name,code&organization_id=eq.${org}&deleted_at=is.null&order=name&limit=500`),
-    get(`building_common_names?select=building_id,name&organization_id=eq.${org}&order=created_at&limit=2000`),
-    get(`rooms?select=name&organization_id=eq.${org}&deleted_at=is.null&order=name&limit=5000`),
-    get(`income_expense_types?select=name&organization_id=eq.${org}&type=eq.expense&system_only=is.false&order=name&limit=1000`),
+    doc(`rpc/ie_form_buildings?select=id,name,code&order=name`, true),
+    doc(`building_common_names?select=building_id,name&organization_id=eq.${org}&order=created_at`),
+    doc(`rooms?select=name&organization_id=eq.${org}&deleted_at=is.null&order=name`),
+    doc(
+      `income_expense_types?select=name&organization_id=eq.${org}&type=eq.expense&system_only=is.false` +
+        `${opts.boHanChe ? "&is_restricted=is.false" : ""}&order=name`,
+    ),
   ]);
   return dungCumTu({ buildings, commonNames, rooms, categories });
 }
@@ -549,11 +589,15 @@ export async function xuLy(req: Request, deps: PhuThuoc = {}): Promise<Response>
   const models = chon ? [chon, ...macDinh.filter((m) => m !== chon)] : macDinh;
   const skipRaw = Number(req.headers.get("x-quick-entry-skip") ?? 0);
   const skip = route === "read" && Number.isInteger(skipRaw) ? Math.min(Math.max(skipRaw, 0), models.length - 1) : 0;
-  // Cụm từ ưu tiên đọc SONG SONG với bước giữ chỗ/đếm trần bên dưới, chỉ khi chuỗi có chirp-3.
+  // Cụm từ ưu tiên: bắt đầu đọc NGAY (song song với bước giữ chỗ/đếm trần bên dưới), chỉ chờ kết quả ngay
+  // trước lần gọi chirp-3 đầu tiên — người chọn nova-3 không phải chờ. Chỉ khi chuỗi có chirp-3 và người dùng
+  // lập được phiếu chi công ty (người chỉ có Ví cá nhân không đụng dữ liệu công ty — như trang).
   // QUICK_ENTRY_STT_HINTS=off: vận hành tắt gợi ý mà không phải deploy lại (gợi ý làm chép tệ đi chẳng hạn).
-  const goiYBat = route === "stt" && models.includes(MO_HINH_CUM_TU) &&
+  const goiYBat = route === "stt" && models.includes(MO_HINH_CUM_TU) && coQuyen(perms, "income_expenses", "create") &&
     (env("QUICK_ENTRY_STT_HINTS") ?? "").trim().toLowerCase() !== "off";
-  const cumTuSan: Promise<string[]> = goiYBat ? docCumTu(f, supabaseUrl, apikey, token, org) : Promise.resolve([]);
+  const cumTuSan: Promise<string[]> | null = goiYBat
+    ? docCumTu(f, supabaseUrl, apikey, token, org, { boHanChe: !coQuyen(perms, "income_expenses", "restricted_create") })
+    : null;
   const taskId = `qe:${newId()}`;
   const logUrl = `${supabaseUrl}/rest/v1/ai_usage_logs`;
   const ghi = { ...svc, "Content-Type": "application/json", "Content-Profile": "public" };
@@ -610,17 +654,20 @@ export async function xuLy(req: Request, deps: PhuThuoc = {}): Promise<Response>
     return loi(429, "quick_entry_daily_cap", "Hôm nay đã dùng hết lượt AI. Bạn vẫn nhập tay được.");
   }
 
-  const cumTu = await cumTuSan;
   const batDau = now();
   let attempts = 0;
   let boGoiY = false;
+  let cumTu: string[] | null = null;
 
   for (let i = skip; i < models.length; i += 1) {
+    const dungGoiY = models[i] === MO_HINH_CUM_TU && !boGoiY && cumTuSan !== null;
+    // Chờ đọc cụm từ (≤3 s) nằm TRONG ngân sách lượt: thời gian lần thử tính sau khi chờ xong.
+    if (dungGoiY && cumTu === null && cumTuSan) cumTu = await cumTuSan;
     const han = thoiGianLanThu(NGAN_SACH_MS[route], now() - batDau, MOI_LAN_MS[route]);
     if (han === 0) break;
     attempts += 1;
     const t0 = now();
-    const goiY = models[i] === MO_HINH_CUM_TU && !boGoiY ? cumTu : [];
+    const goiY = dungGoiY ? cumTu ?? [] : [];
     const r = await goiNhaCungCap(
       f,
       ncc.base,

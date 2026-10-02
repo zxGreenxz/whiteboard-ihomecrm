@@ -116,17 +116,22 @@ thử tiếp. Ngân sách thời gian cả lượt: chép giọng 35 s, đọc 5
 15–20 s). `max_tokens` kẹp ở 4000: mức suy nghĩ cao tính cả token suy nghĩ vào trần này, xin ít là JSON
 bị cụt.
 
-**Cụm từ ưu tiên (chỉ `google/chirp-3`):** song song với bước giữ chỗ, hàm đọc bằng JWT CỦA NGƯỜI DÙNG
-(RLS lọc, đúng `organization_id` đang chọn) mã + tên toà (`buildings`), tên thường gọi của toà
-(`building_common_names`, kèm cụm ghép "số nhà + tên" như "102 Lê Văn Thọ"), hạng mục chi
-(`income_expense_types`, bỏ `system_only`) và tên phòng ("phòng 301", "phòng MADRID 3"); bỏ trùng, tối
-đa 900 cụm × 100 ký tự, gửi trong `provider.options["google-vertex"].config.adaptation` — dạng DUY NHẤT
-OpenRouter chuyển tiếp cho Google (đo 02/10/2026: `adaptation` đặt thẳng trong options, khoá `google`,
-snake_case và `prompt` đều bị bỏ im lặng; 1.000 cụm đạt, 1.001 cụm bị 400). Không gửi boost (10/20 ra y
-hệt không boost). Tác dụng đo bằng giọng máy: "1392 cute" ⇒ "1392QT", "bắn form … 80 DS3" ⇒
-"bắn foam … 80DS3", "417 LVT" ⇒ "417LVT". Đọc nguồn lỗi/quá 3 s ⇒ chép không gợi ý; Google trả 400 với bộ
-cụm từ ⇒ thử lại chirp-3 một lần không kèm cụm từ rồi mới tới mô hình kế. Header `x-quick-entry-hints` = số
-cụm đã gửi ở lần thử trả lời.
+**Cụm từ ưu tiên (chỉ `google/chirp-3`, chỉ người có `income_expenses.create`):** hàm bắt đầu đọc ngay
+(song song với bước giữ chỗ) bằng JWT CỦA NGƯỜI DÙNG theo những gì trang dò được — toà qua RPC
+`ie_form_buildings` (cùng nguồn ô chọn của trang; RPC không có cột công ty nên không lọc được theo công ty,
+như trang), phòng đọc bảng `rooms` qua RLS lọc công ty (`ie_form_rooms` đo trên TEST mất 1,9–2,8 s, sát hạn
+3 s; người được chi mọi toà mà chỉ quản lý vài toà vì thế thiếu phòng của toà còn lại), tên thường gọi của toà (`building_common_names` — bảng ở migration
+`20261002050652`, chưa có thì nguồn này rỗng; chỉ lấy tên của toà có trong danh sách toà, kèm cụm ghép "số nhà
++ tên" như "102 Lê Văn Thọ"), hạng mục chi (`income_expense_types`, bỏ `system_only`, bỏ hạng mục hạn chế khi
+thiếu `restricted_create`) và tên phòng ("phòng 301", "phòng MADRID 3"); bỏ trùng, tối đa 900 cụm × 100 ký
+tự, gửi trong `provider.options["google-vertex"].config.adaptation` — dạng DUY NHẤT OpenRouter chuyển tiếp cho
+Google (đo 02/10/2026: `adaptation` đặt thẳng trong options, khoá `google`, snake_case và `prompt` đều bị bỏ
+im lặng; 1.000 cụm đạt, 1.001 cụm bị 400). Không gửi boost (10/20 ra y hệt không boost). Tác dụng đo bằng
+giọng máy trên 5 câu: "1392 cute" ⇒ "1392QT", "bắn form … 80 DS3" ⇒ "bắn foam … 80DS3", "417 LVT" ⇒
+"417LVT". Chỉ chờ kết quả đọc ngay trước lần gọi chirp-3 (người chọn nova-3 không chờ), thời gian chờ tính
+trong ngân sách lượt; nguồn nào lỗi/quá 3 s thì bỏ nguồn đó. Google trả 400 với bộ cụm từ ⇒ thử lại chirp-3
+một lần không kèm cụm từ rồi mới tới mô hình kế. Header `x-quick-entry-hints` = số cụm đã gửi ở lần thử trả
+lời.
 
 Lưu ý hạn mức: `reserve_ai_usage` của Copilot cộng token/USD theo ngày của **mọi** dòng
 `ai_usage_logs` của người dùng, không lọc feature — dùng nhiều Báo chi nhanh (nhất là ảnh) có thể
