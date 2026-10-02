@@ -11,8 +11,18 @@
 //
 // So trên chuỗi "lỏng" (bỏ dấu, chữ thường — normalizeLoose) nên "Lê Vân Thọ" = "Lê Văn Thọ".
 // Thuần, không I/O, không bao giờ ném lỗi.
+//
+// Tên đường thường KHÔNG có trong dữ liệu toà (đo 02/10/2026: 18/19 toà có tên = mã, vd "102LVT";
+// nhiều toà mã chỉ là số "417" còn chữ nằm ở tên "417LVT"). Nên ngoài mã và tên, mỗi toà còn mang
+// `commonNames` — tên thường gọi trong bảng building_common_names ("Lê Văn Thọ", "102 Lê Văn Thọ",
+// "một lẻ hai Lê Văn Thọ"): tên chưa có số nhà thì ghép với số nhà của toà, tên có số thì dùng nguyên.
 
 import { normalizeLoose, splitAliases, type BuildingRef } from "../textMatch";
+
+/** Toà kèm tên thường gọi (bảng building_common_names) — vắng thì dò như trước. */
+export interface SpokenBuildingRef extends BuildingRef {
+  commonNames?: readonly string[] | null;
+}
 
 export interface LooseToken {
   s: string;
@@ -208,19 +218,71 @@ function streetFor(words: string[], letters: string | null): string[] | null {
   return head.map((w) => w[0]).join("") === letters ? head : null;
 }
 
-function keysFor(b: BuildingRef): SpokenKey[] {
+const NUM_RE = /^[1-9]\d{0,3}$/;
+const initials = (words: string[]): string | null =>
+  words.length >= 2 && words.every((w) => /^\p{L}/u.test(w)) ? words.map((w) => w[0]).join("") : null;
+
+/**
+ * Một tên thường gọi ⇒ khoá dò. Bỏ chữ mở đầu "toà/nhà…"; mở đầu bằng chữ số ("102 Lê Văn Thọ") hoặc
+ * bằng cách ĐỌC một số nhà của toà ("một lẻ hai Lê Văn Thọ") ⇒ số đó + phần còn lại làm tên đường;
+ * không có số ⇒ tên đứng sau MỌI số nhà của toà, và đứng một mình thì chỉ là đoán (như tên đường).
+ */
+function commonNameKeys(id: string, raw: string, nums: string[]): SpokenKey[] {
+  let toks = looseTokens(normalizeLoose(raw.normalize("NFC"))).map((t) => t.s);
+  while (toks.length > 1 && NAME_PREFIX.has(toks[0])) toks = toks.slice(1);
+  if (toks.length === 0) return [];
+  const asTokens = toks.map((s, i) => ({ s, start: i, end: i + 1 }));
+  let num: string | null = null;
+  let rest = toks;
+  if (NUM_RE.test(toks[0])) {
+    num = toks[0];
+    let i = 1;
+    while (i < toks.length && /^\d+$/.test(toks[i])) i += 1; // "45/3 Trần Thái Tông" ⇒ bỏ "3"
+    rest = toks.slice(i);
+  } else {
+    // Cách đọc dài nhất trong các số nhà của toà ("một lẻ hai" ⇒ 102).
+    let best = 0;
+    for (const n of nums) {
+      const end = matchSpokenNumber(asTokens, 0, n);
+      if (end > best) {
+        best = end;
+        num = n;
+      }
+    }
+    rest = toks.slice(best);
+  }
+  const street = rest.length > 0 ? rest : null;
+  if (num) return [{ id, num, letters: street ? initials(street) : null, street }];
+  if (!street) return [];
+  return nums.length > 0 ? nums.map((n) => ({ id, num: n, letters: null, street })) : [{ id, num: null, letters: null, street }];
+}
+
+function keysFor(b: SpokenBuildingRef): SpokenKey[] {
   const out: SpokenKey[] = [];
   const name = splitName(b.name);
-  for (const alias of splitAliases(b.code)) {
+  // Tên toà viết như mã ("417LVT" khi mã chỉ là "417") cũng là một mã.
+  const codeLike = [...splitAliases(b.code), ...(b.name && !name.num ? [b.name] : [])];
+  for (const alias of codeLike) {
     const m = CODE_RE.exec(compact(alias));
     if (!m) continue;
     const [, num, letters] = m;
+    if (out.some((k) => k.num === num && k.letters === letters)) continue;
     out.push({ id: b.id, num, letters, street: name.num === num ? streetFor(name.words, letters) : null });
   }
   if (name.num && !out.some((k) => k.num === name.num)) {
     // Tên có số nhà nhưng mã không theo kiểu "số + chữ": dùng chữ đầu tên đường làm phần chữ.
     const street = name.words.length >= 2 ? name.words.slice(0, Math.min(4, name.words.length)) : null;
     out.push({ id: b.id, num: name.num, letters: street ? street.map((w) => w[0]).join("") : null, street });
+  }
+  if (b.commonNames?.length) {
+    // Số nhà của toà: từ các khoá trên và từ bí danh toàn số của mã ("417").
+    const nums = [
+      ...new Set([
+        ...out.map((k) => k.num).filter((n): n is string => !!n),
+        ...splitAliases(b.code).map(compact).filter((a) => NUM_RE.test(a)),
+      ]),
+    ];
+    for (const cn of b.commonNames) if (typeof cn === "string") out.push(...commonNameKeys(b.id, cn, nums));
   }
   return out;
 }
@@ -243,7 +305,7 @@ const STREET_WORD = "duong";
  * Mọi toà được nhắc bằng lời trong `loose` (chuỗi đã qua normalizeLoose). Một toà có thể vừa trúng
  * chắc vừa trúng đoán — người gọi gộp theo `strength`.
  */
-export function findSpokenBuildings(loose: string, buildings: BuildingRef[]): SpokenHit[] {
+export function findSpokenBuildings(loose: string, buildings: SpokenBuildingRef[]): SpokenHit[] {
   const tokens = looseTokens(loose);
   if (tokens.length === 0) return [];
   const keys = buildings.flatMap(keysFor);
@@ -292,7 +354,7 @@ export interface SpokenResolve {
 }
 
 /** Gộp các lượt trúng thành kết luận: chắc + duy nhất ⇒ toà; còn lại ⇒ ứng viên để người dùng chọn. */
-export function resolveSpokenBuilding(loose: string, buildings: BuildingRef[]): SpokenResolve {
+export function resolveSpokenBuilding(loose: string, buildings: SpokenBuildingRef[]): SpokenResolve {
   const hits = findSpokenBuildings(loose, buildings);
   const strong = [...new Set(hits.filter((h) => h.strength === "strong").map((h) => h.id))];
   if (strong.length === 1) return { building: strong[0], candidates: [], guessed: false };
@@ -301,9 +363,16 @@ export function resolveSpokenBuilding(loose: string, buildings: BuildingRef[]): 
   return { building: null, candidates: weak, guessed: weak.length > 0 };
 }
 
-/** Mã hiển thị của toà: bí danh đầu của `code`, không có thì tên. */
+/**
+ * Mã hiển thị của toà: bí danh đầu CÓ CHỮ của `code`; mã chỉ là số ("417") mà tên viết như mã
+ * ("417LVT") thì lấy tên — "417" một mình không cho người đọc biết toà nào. Không có gì thì tên.
+ */
 export function primaryCode(b: BuildingRef): string {
-  return splitAliases(b.code)[0] ?? b.name ?? "";
+  const aliases = splitAliases(b.code);
+  const lettered = aliases.find((a) => /\p{L}/u.test(a));
+  if (lettered) return lettered;
+  if (b.name && CODE_RE.test(compact(b.name))) return b.name;
+  return aliases[0] ?? b.name ?? "";
 }
 
 /**
@@ -311,7 +380,7 @@ export function primaryCode(b: BuildingRef): string {
  * mua bóng đèn" ⇒ "102LVT mua bóng đèn" — mô tả phiếu giống hệt khi gõ mã. Giữ nguyên chữ hoa/dấu của
  * phần còn lại; chuỗi có ký tự làm lệch độ dài khi bỏ dấu ⇒ trả nguyên văn.
  */
-export function canonicalizeSpoken(text: string, buildings: BuildingRef[]): string {
+export function canonicalizeSpoken(text: string, buildings: SpokenBuildingRef[]): string {
   const nfc = (text ?? "").normalize("NFC");
   const loose = normalizeLoose(nfc);
   if (!nfc || loose.length !== nfc.length) return text;

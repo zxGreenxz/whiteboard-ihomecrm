@@ -7,7 +7,9 @@ import {
   matchSpokenNumber,
   looseTokens,
   numberPatterns,
+  primaryCode,
   resolveSpokenBuilding,
+  type SpokenBuildingRef,
 } from "../spokenBuilding";
 
 // Mã toà thật của công ty: "số nhà + chữ đầu tên đường". 102LVT và 417LVT CÙNG đường Lê Văn Thọ.
@@ -165,6 +167,100 @@ describe("canonicalizeSpoken — mô tả phiếu dùng mã toà như khi gõ", 
   it("chỉ đoán ⇒ giữ nguyên chữ người nói", () => {
     expect(canonicalizeSpoken("Một lá hai sơn", buildings)).toBe("Một lá hai sơn");
     expect(canonicalizeSpoken("thay bóng đèn", buildings)).toBe("thay bóng đèn");
+  });
+});
+
+// Đúng hình dạng dữ liệu thật (đo 02/10/2026): tên = mã, nhiều toà mã chỉ là số, tên đường không có ở
+// đâu — tên thường gọi (bảng building_common_names) mới mang "Lê Văn Thọ".
+const real: SpokenBuildingRef[] = [
+  { id: "r102", name: "102LVT", code: "102LVT" },
+  { id: "r417", name: "417LVT", code: "417" },
+  { id: "r1392", name: "1392QT", code: "1392qt, QT, 1392" },
+  { id: "r111", name: "111PVC", code: "111" },
+  { id: "r950", name: "950NK", code: "950NK,950" },
+  { id: "rkho", name: "Kho Văn Phòng Chung", code: "Chung, VP" },
+];
+const named: SpokenBuildingRef[] = real.map((b) => ({
+  ...b,
+  commonNames: {
+    r102: ["Lê Văn Thọ", "một lẻ hai Lê Văn Thọ"],
+    r417: ["Lê Văn Thọ"],
+    r1392: ["Quang Trung"],
+    r950: ["Gò Vấp"],
+    rkho: ["kho chung"],
+  }[b.id],
+}));
+const said = (text: string, list = named) => resolveSpokenBuilding(normalizeLoose(text), list);
+
+describe("dữ liệu thật — tên toà viết như mã cũng là mã", () => {
+  it.each([
+    ["bốn một bảy LVT thay khoá", "r417"],
+    ["417 LVT thay khoá", "r417"],
+    ["bốn trăm mười bảy Lê Văn Thọ", "r417"],
+    ["một một một PVC tiền rác", "r111"],
+    ["1392 QT tiền rác", "r1392"],
+  ])("%s ⇒ %s (không cần tên thường gọi)", (text, want) => {
+    expect(said(text, real)).toEqual({ building: want, candidates: [], guessed: false });
+  });
+});
+
+describe("tên thường gọi (building_common_names)", () => {
+  it("tên không trùng chữ của mã: số nhà + tên thường gọi ⇒ chắc; thiếu tên thường gọi chỉ là đoán", () => {
+    expect(said("chín năm không Gò Vấp mua sơn")).toEqual({ building: "r950", candidates: [], guessed: false });
+    expect(said("chín năm không Gò Vấp mua sơn", real)).toEqual({ building: null, candidates: ["r950"], guessed: true });
+  });
+
+  it("chỉ nói tên thường gọi ⇒ đoán; hai toà cùng tên đường ⇒ cả hai là ứng viên", () => {
+    expect(said("nhà Quang Trung thay bóng đèn")).toEqual({ building: null, candidates: ["r1392"], guessed: true });
+    const r = said("nhà Lê Văn Thọ thay bóng đèn");
+    expect(r.building).toBeNull();
+    expect(r.guessed).toBe(true);
+    expect(r.candidates.sort()).toEqual(["r102", "r417"]);
+    expect(said("nhà Lê Văn Thọ thay bóng đèn", real)).toEqual({ building: null, candidates: [], guessed: false });
+  });
+
+  it("tên đã có cách đọc số nhà ('một lẻ hai Lê Văn Thọ') ⇒ chắc, không kéo toà cùng đường", () => {
+    expect(said("một lẻ hai Lê Văn Thọ sơn")).toEqual({ building: "r102", candidates: [], guessed: false });
+    expect(said("Một lá hai Lê Vân Thọ sửa vòi")).toEqual({ building: "r102", candidates: [], guessed: false });
+  });
+
+  it("toà không có số nhà: tên thường gọi đứng một mình chỉ là đoán", () => {
+    expect(said("mua thùng cho kho chung")).toEqual({ building: null, candidates: ["rkho"], guessed: true });
+  });
+
+  it("tên có chữ số riêng ('Toà 45 Trần Thái Tông') ⇒ dùng số đó", () => {
+    const b: SpokenBuildingRef[] = [{ id: "r45", name: "45TTT", code: "45", commonNames: ["Toà 45/3 Trần Thái Tông"] }];
+    expect(said("bốn lăm Trần Thái Tông sửa cửa", b)).toEqual({ building: "r45", candidates: [], guessed: false });
+  });
+
+  it("tên rác (rỗng, chỉ chữ mở đầu, không phải chuỗi) không làm hỏng gì", () => {
+    const b = [{ id: "rx", name: "102LVT", code: "102LVT", commonNames: ["", "toà", "  ", 42 as unknown as string] }];
+    expect(said("một lẻ hai LVT", b)).toEqual({ building: "rx", candidates: [], guessed: false });
+    expect(said("toà sơn", b)).toEqual({ building: null, candidates: [], guessed: false });
+  });
+
+  it("tiền/số lượng vẫn không thành toà dù có tên thường gọi", () => {
+    for (const text of ["950 nghìn tiền rác", "mua 102 cái ốc", "chín trăm năm mươi nghìn"]) {
+      expect(said(text)).toEqual({ building: null, candidates: [], guessed: false });
+    }
+  });
+
+  it("mô tả phiếu ghi mã toà thay cho cụm đọc bằng tên thường gọi", () => {
+    expect(canonicalizeSpoken("chín năm không Gò Vấp mua sơn", named)).toBe("950NK mua sơn");
+    expect(canonicalizeSpoken("Bốn một bảy Lê Văn Thọ thay khoá", named)).toBe("417LVT thay khoá");
+  });
+});
+
+describe("primaryCode — mã hiển thị", () => {
+  it.each([
+    [{ id: "a", name: "417LVT", code: "417" }, "417LVT"],
+    [{ id: "b", name: "1392QT", code: "1392qt, QT, 1392" }, "1392qt"],
+    [{ id: "c", name: "950NK", code: "950, 950NK" }, "950NK"],
+    [{ id: "d", name: "Kho Văn Phòng Chung", code: "Chung, VP" }, "Chung"],
+    [{ id: "e", name: "Toà 15", code: "15" }, "15"],
+    [{ id: "f", name: "Nhà mới", code: null }, "Nhà mới"],
+  ])("%o ⇒ %s", (b, want) => {
+    expect(primaryCode(b)).toBe(want);
   });
 });
 

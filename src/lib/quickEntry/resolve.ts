@@ -14,9 +14,9 @@
 
 import { normalizeLoose, splitAliases, type BuildingRef, type RoomRef } from "../textMatch";
 import { normalizeForParse } from "./amount";
-import { matchSpokenNumber, resolveSpokenBuilding } from "./spokenBuilding";
+import { matchSpokenNumber, resolveSpokenBuilding, type SpokenBuildingRef } from "./spokenBuilding";
 
-export type { BuildingRef, RoomRef };
+export type { BuildingRef, RoomRef, SpokenBuildingRef };
 
 export interface FeeAccountRef {
   building_id: string;
@@ -25,7 +25,8 @@ export interface FeeAccountRef {
 }
 
 export interface ResolveRefs {
-  buildings: BuildingRef[];
+  /** Kèm tên thường gọi (`commonNames`, bảng building_common_names) để dò toà đọc bằng lời. */
+  buildings: SpokenBuildingRef[];
   rooms: RoomRef[];
   feeAccounts?: FeeAccountRef[];
 }
@@ -235,7 +236,7 @@ export function resolveBuildingRoom(text: string, refs: ResolveRefs): ResolveRes
  * duy nhất; không thì thử cách đọc bằng lời (chỉ nhận trúng chắc). Không khớp ⇒ null — AI bịa tên
  * thì người dùng tự chọn.
  */
-export function resolveBuildingMention(mention: string | null | undefined, buildings: BuildingRef[]): string | null {
+export function resolveBuildingMention(mention: string | null | undefined, buildings: SpokenBuildingRef[]): string | null {
   const m = compact(mention);
   if (!m) return null;
   const hits = buildings.filter(

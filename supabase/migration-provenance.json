@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-01T08:55:32.465Z",
+  "generatedAt": "2026-10-02T05:33:05.063Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 647,
-    "unknown": 80,
+    "unknown": 81,
     "catalog-proven": 205,
     "superseded": 15
   },
@@ -10977,6 +10977,22 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-01T08:55:06.313Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261002050652_building_common_names.sql",
+      "version": "20261002050652",
+      "name": "building_common_names",
+      "scheme": "timestamp14",
+      "sha256": "2c21b2069b354b9c4e4024994e68408c700cde465ab9a4f8035fc04537f59797",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "table:public.building_common_names",
+        "index:public.building_common_names_building_name_uidx",
+        "index:public.building_common_names_org_idx",
+        "policy:public.building_common_names.building_common_names_select",
+        "policy:public.building_common_names.building_common_names_insert"
       ]
     },
     {
