@@ -21,12 +21,16 @@ export function QueryRegion({ label, queries, children, loading }: {
   children: ReactNode;
   loading?: ReactNode;
 }) {
+  const chuaChay = (query: RegionQuery) =>
+    query.data === undefined && !query.isLoading && query.fetchStatus === 'idle' && !query.isError;
+  // Nguồn chưa chạy trong lúc nguồn khác đang tải thường là query tắt chờ nguồn đó;
+  // chỉ khi không còn gì đang tải mà nó vẫn chưa chạy thì mới là thiếu nguồn thật.
+  const dangTai = queries.some(query => query.isLoading || query.fetchStatus === 'fetching');
   const states = queries.map(query => deriveFinanceQueryState(query,
-    query.data === undefined && !query.isLoading && query.fetchStatus !== 'fetching' && query.fetchStatus !== 'paused' && !query.isError
-      ? new Error('Required source has not been loaded') : null));
+    chuaChay(query) && !dangTai ? new Error('Required source has not been loaded') : null));
   const blocked = states.some(state => state.hasBlockingError);
   const stale = states.some(state => state.showStaleWarning);
-  const pending = states.some(state => state.showLoading);
+  const pending = states.some(state => state.showLoading) || (dangTai && queries.some(chuaChay));
   const retry = () => { void Promise.allSettled(queries.map(query => Promise.resolve().then(() => query.refetch()))); };
   const timestamps = queries.map(query => query.dataUpdatedAt ?? 0).filter(time => time > 0);
   const lastRead = timestamps.length ? new Date(Math.min(...timestamps)).toLocaleString('vi-VN') : null;

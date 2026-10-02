@@ -9,6 +9,25 @@ it.each(['pending','success'] as const)('does not render an absent required %s s
   expect(screen.queryByText('Tổng 0 đồng')).toBeNull();
   expect(screen.getByRole('alert').textContent).toContain('Chưa tải được bảng lương');
 });
+// Đo 02/10/2026 trên production: /finance/salary chớp "Chưa tải được bảng lương…" 2,4 s
+// mỗi lần mở, vì nguồn đang tắt chờ nguồn khác (pending/idle) bị tính là lỗi trước cả
+// nguồn đang tải.
+it.each([
+  ['đang tải lần đầu', { status: 'pending', fetchStatus: 'fetching', isLoading: true }],
+  ['đang nạp lại', { data: 3, status: 'success', fetchStatus: 'fetching', isLoading: false }],
+] as const)('source waiting on another that is %s shows loading, not an error', (_ten, dangChay) => {
+  const cho = query({ status: 'pending', isError: false, error: null });
+  render(<QueryRegion label="bảng lương" queries={[query({ isError: false, error: null, ...dangChay }), cho]}><p>Tổng 0 đồng</p></QueryRegion>);
+  expect(screen.queryByText('Tổng 0 đồng')).toBeNull();
+  expect(screen.queryByRole('alert')).toBeNull();
+  expect(screen.getByRole('status').textContent).toContain('Đang tải bảng lương');
+});
+it('source that never starts after the others settle is still reported', () => {
+  const xong = query({ data: 1, status: 'success', isError: false, error: null });
+  render(<QueryRegion label="bảng lương" queries={[xong, query({ status: 'pending', isError: false, error: null })]}><p>Tổng 0 đồng</p></QueryRegion>);
+  expect(screen.queryByText('Tổng 0 đồng')).toBeNull();
+  expect(screen.getByRole('alert').textContent).toContain('Chưa tải được bảng lương');
+});
 it('initial failure hides empty/success data and retries only its source', async () => {
   const source = query();
   render(<QueryRegion label="danh sách phòng" queries={[source]}><p>Không có phòng</p></QueryRegion>);
