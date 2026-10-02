@@ -1,6 +1,6 @@
-// Dữ liệu nền cho trang "Báo chi nhanh": quyền, toà/phòng, hạng mục chi dùng được, sổ quỹ đang giữ,
-// mã khách hàng điện nước. Chỉ ghép các hook có sẵn — không truy vấn mới. Phần công ty chỉ tải khi
-// người dùng có quyền lập phiếu chi (người chỉ có ví cá nhân không đụng dữ liệu thu chi).
+// Dữ liệu nền cho trang "Báo chi nhanh": quyền, toà/phòng (kèm tên thường gọi của toà cho bộ dò đọc bằng
+// lời), hạng mục chi dùng được, sổ quỹ đang giữ, mã khách hàng điện nước. Chỉ ghép các hook có sẵn. Phần
+// công ty chỉ tải khi người dùng có quyền lập phiếu chi (người chỉ có ví cá nhân không đụng dữ liệu thu chi).
 
 import { useCallback, useMemo } from "react";
 import { useOrganization } from "@/contexts/OrganizationContext";
@@ -12,6 +12,7 @@ import { useAccounts } from "@/hooks/useAccounts";
 import { useCustodianCashbooksV2 } from "@/hooks/income-expenses/financeV2Mutations";
 import { useFeeAccounts } from "@/hooks/usePeriodFees";
 import { useUtilityAccounts } from "@/hooks/useUtilityBills";
+import { useBuildingCommonNames } from "@/hooks/useBuildingCommonNames";
 import { usableExpenseCategories, type CategoryRef } from "@/lib/quickEntry/categorySuggest";
 import { expenseCashbooksForOrg, pickDefaultAccount } from "@/lib/quickEntry/cashbook";
 import type { FeeAccountRef, ResolveRefs } from "@/lib/quickEntry/resolve";
@@ -60,6 +61,8 @@ export function useQuickEntryRefs() {
   const cashbooksQ = useCustodianCashbooksV2(canCompany);
   const feeQ = useFeeAccounts({ enabled: canCompany });
   const utilQ = useUtilityAccounts({ enabled: canCompany });
+  // Thiếu tên thường gọi (lỗi/đang tải) chỉ làm bộ dò toà yếu hơn — không chặn trang, không vào `loading`.
+  const namesQ = useBuildingCommonNames({ enabled: canCompany });
 
   const buildings = useMemo(() => (canCompany ? buildingsQ.data ?? [] : []), [canCompany, buildingsQ.data]);
   const rooms = useMemo(() => (canCompany ? roomsQ.data ?? [] : []), [canCompany, roomsQ.data]);
@@ -98,12 +101,13 @@ export function useQuickEntryRefs() {
       fee_category: m.type === "electric" ? "dien" : "nuoc",
       provider_code: m.code || null,
     }));
+    const names = namesQ.data;
     return {
-      buildings: buildings.map((b) => ({ id: b.id, name: b.name, code: b.code })),
+      buildings: buildings.map((b) => ({ id: b.id, name: b.name, code: b.code, commonNames: names?.get(b.id) ?? null })),
       rooms: rooms.map((r) => ({ id: r.id, name: r.name, code: r.code, building_id: r.building_id })),
       feeAccounts: [...fees, ...meters],
     };
-  }, [buildings, rooms, feeQ.data, utilQ.meters]);
+  }, [buildings, rooms, feeQ.data, utilQ.meters, namesQ.data]);
 
   const accounts = accountsQ.data;
   const defaultAccountFor = useCallback(

@@ -1412,6 +1412,7 @@
     "src/types/jobs.ts",
     "src/types/material.ts",
     "src/types/room.ts",
-    "src/types/vehicle.ts"
+    "src/types/vehicle.ts",
+    "src/hooks/useBuildingCommonNames.ts"
   ]
 }
