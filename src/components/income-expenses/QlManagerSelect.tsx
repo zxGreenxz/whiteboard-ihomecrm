@@ -1,7 +1,9 @@
 // Ô chọn quản lý nhận hoa hồng (ô QL, migration 20260927155251). Chỉ mount khi người
 // dùng đã tích QL ⇒ danh sách quản lý tải lười. Công ty lấy theo TOÀ của phiếu
 // (QlManagerSelectForBuilding), không theo công ty đang chọn ở thanh chuyển.
+import type { ReactNode } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { InlineSkeleton } from "@/components/loading/LoadingState";
 import {
   useCommissionManagerOptions,
   useOrganizationOfBuilding,
@@ -15,16 +17,17 @@ interface Props {
   id?: string;
   name?: string;
   error?: string;
-  /** Câu hiện khi chưa có công ty (vd form chưa chọn toà). */
-  noOrgHint?: string;
+  /** Câu hiện khi chưa có công ty (vd form chưa chọn toà); đang nạp thì là vạch xám. */
+  noOrgHint?: ReactNode;
 }
 
 export function QlManagerSelect({ organizationId, value, onPick, id, name, error, noOrgHint }: Props) {
   const { data: options = [], isLoading, isError } = useCommissionManagerOptions(organizationId);
-  const placeholder = !organizationId
+  // Đang nạp danh sách: ô chọn để trống kèm vạch xám, không chữ "Đang tải…" (chủ chốt 02/10/2026).
+  const placeholder: ReactNode = !organizationId
     ? noOrgHint || "Chưa xác định công ty"
     : isLoading
-      ? "Đang tải…"
+      ? <InlineSkeleton label="danh sách quản lý" width="8rem" />
       : isError
         ? "Không tải được danh sách quản lý"
         : options.length
@@ -65,7 +68,7 @@ export function QlManagerSelectForBuilding({
   return (
     <QlManagerSelect
       organizationId={organizationId}
-      noOrgHint={!buildingId ? "Chọn tòa nhà trước" : isLoading ? "Đang tải…" : "Không xác định được công ty của tòa"}
+      noOrgHint={!buildingId ? "Chọn tòa nhà trước" : isLoading ? <InlineSkeleton label="công ty của tòa" width="8rem" /> : "Không xác định được công ty của tòa"}
       {...props}
     />
   );

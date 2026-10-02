@@ -960,7 +960,7 @@ const IncomeExpenseFormInner = ({
 
           <Form {...form}>
             <form ref={formRef} onSubmit={form.handleSubmit(onSubmit, (errors) => { void focusFirstError(errors, { root: formRef.current }); })} className="space-y-4">
-              <QueryRegion label="danh mục lập phiếu" queries={requiredSources}><></></QueryRegion>
+              <QueryRegion label="danh mục lập phiếu" queries={requiredSources} skeleton="none"><></></QueryRegion>
               {submitError && !staleVersion && <p role="alert" className="text-sm text-destructive">{submitError}</p>}
               {cashbookAccessError && <div role="alert" className="text-sm text-destructive">Chưa kiểm tra được quyền sử dụng sổ quỹ. <Button type="button" variant="outline" onClick={() => retryCashbooks()}>Tải lại sổ quỹ</Button></div>}
               {/* Step 1: Voucher type tab toggle */}

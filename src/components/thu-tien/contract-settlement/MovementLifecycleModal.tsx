@@ -13,6 +13,7 @@ import { useContractLifecycle } from '@/hooks/useContractLifecycle';
 import { CHUA_DU_DU_LIEU, mocNgayNghiepVu } from '@/lib/contractLifecycle';
 import { vnTodayISO } from '@/lib/vnDate';
 import { ContractLifecycleBand } from './ContractLifecycleBand';
+import { LoadingState, SkeletonBar } from '@/components/loading/LoadingState';
 import { MOVEMENT_LABEL, type MovementRow } from '@/hooks/useContractMovements';
 import {
   KIND_LABEL, STATUS_STYLE, VIEC_CHUA_XONG, fmtMoney, fmtNgay, viewStatusOf,
@@ -54,7 +55,13 @@ export function MovementLifecycleModal({ ev, lienQuan, readState = 'ready', onRe
     .reduce((s, r) => s + r.amount, 0);
   const chuaXacMinh = readState !== 'ready' || lienQuan.some((r) => viewStatusOf(r) === 'unknown');
   const nguonSanSang = readState === 'ready';
-  const trangThaiDoc = readState === 'loading' ? 'Đang tải khoản chi liên quan…' : 'Không đọc được khoản chi liên quan.';
+  const dangDoc = readState === 'loading';
+  const trangThaiDoc = 'Không đọc được khoản chi liên quan.';
+  // Đang đọc: vạch xám ngay chỗ số (chủ chốt 02/10/2026); đọc hỏng / có phiếu không xác
+  // định mới ghi "Chưa xác minh". Không bao giờ in số 0 khi chưa đủ nguồn.
+  const choSo = (width: string, className = 'h-4') => dangDoc
+    ? <SkeletonBar className={`inline-block align-middle ${className}`} style={{ width }} />
+    : 'Chưa xác minh';
 
   // Portal ra document.body vì `.tt-stage` là stacking context — xem chú thích
   // dài ở SettlementLifecycleModal, cùng một lý do.
@@ -80,7 +87,7 @@ export function MovementLifecycleModal({ ev, lienQuan, readState = 'ready', onRe
           <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', flexShrink: 0 }}>
             <div className="cs-m-amt">
               <div className="cap">{!nguonSanSang ? 'Khoản chi liên quan' : lienQuan.length ? 'Chi phát sinh từ biến động' : 'Không phát sinh chi'}</div>
-              <div className="val">{nguonSanSang ? fmtMoney(tong) : 'Chưa xác minh'}</div>
+              <div className="val">{nguonSanSang ? fmtMoney(tong) : choSo('8rem', 'h-6')}</div>
             </div>
             <button type="button" className="cs-x" onClick={onClose} aria-label="Đóng">×</button>
           </div>
@@ -144,7 +151,7 @@ export function MovementLifecycleModal({ ev, lienQuan, readState = 'ready', onRe
                 </>
               ) : (
                 <div className="cs-note-s">
-                  {vd.isLoading ? 'Đang tra hợp đồng…'
+                  {vd.isLoading ? <LoadingState label="hợp đồng" rows={3} />
                     : vd.isError ? 'Không đọc được hợp đồng.'
                     : ev.contractId ? `${CHUA_DU_DU_LIEU} về hợp đồng của biến động này.`
                     : 'Biến động này chưa gắn hợp đồng.'}
@@ -157,31 +164,33 @@ export function MovementLifecycleModal({ ev, lienQuan, readState = 'ready', onRe
                 <span>
                   <b>{!nguonSanSang ? 'Khoản chi liên quan' : lienQuan.length ? 'Khoản chi phát sinh' : 'Không phát sinh khoản chi'}</b>
                   <span className="sub">
-                    {!nguonSanSang ? trangThaiDoc : lienQuan.length
+                    {!nguonSanSang ? (dangDoc ? choSo('9rem', 'h-3') : trangThaiDoc) : lienQuan.length
                       ? `${lienQuan.length} phiếu · đã chi ${fmtMoney(daChi)}`
                       : 'Biến động này không kéo theo phiếu chi nào'}
                   </span>
                 </span>
-                <b className="val">{nguonSanSang ? fmtMoney(tong) : 'Chưa xác minh'}</b>
+                <b className="val">{nguonSanSang ? fmtMoney(tong) : choSo('6rem')}</b>
               </div>
             </div>
 
             <div className="cs-payout">
-              <div><div className="k">Đã chi</div><b>{nguonSanSang ? fmtMoney(daChi) : 'Chưa xác minh'}</b></div>
+              <div><div className="k">Đã chi</div><b>{nguonSanSang ? fmtMoney(daChi) : choSo('5rem')}</b></div>
               <div>
                 <div className="k">Còn phải chi</div>
                 <b style={{ color: chuaXacMinh || conPhaiChi ? 'var(--c-partial)' : 'var(--c-paid)' }}>
-                  {chuaXacMinh ? 'Chưa xác minh' : fmtMoney(conPhaiChi)}
+                  {chuaXacMinh ? choSo('5rem') : fmtMoney(conPhaiChi)}
                 </b>
               </div>
-              <div><div className="k">Số phiếu</div><b>{nguonSanSang ? lienQuan.length : 'Chưa xác minh'}</b></div>
+              <div><div className="k">Số phiếu</div><b>{nguonSanSang ? lienQuan.length : choSo('2rem')}</b></div>
             </div>
           </div>
 
           <div className="cs-side">
             <div>
               <h4>Khoản chi phát sinh</h4>
-              {!nguonSanSang ? (
+              {dangDoc ? (
+                <LoadingState label="khoản chi liên quan" rows={3} />
+              ) : !nguonSanSang ? (
                 <div className="cs-note-s" role="status">
                   {trangThaiDoc}
                   {readState === 'error' && onRetry && (

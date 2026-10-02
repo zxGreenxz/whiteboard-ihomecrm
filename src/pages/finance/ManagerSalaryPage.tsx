@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { FinancialWorkflowError, workflowErrorMessage } from "@/lib/financialWorkflow";
 import { createdVoucherFeedback } from "@/lib/voucherFeedback";
 import { QueryRegion } from "@/components/errors/QueryRegion";
+import { LoadingState, SkeletonBar } from "@/components/loading/LoadingState";
 import { todayISO } from "@/lib/collect";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
@@ -57,12 +58,20 @@ function MobileSalaryShell({ children }: { children: ReactNode }) {
     </div>
   );
 }
+// Chờ: khối xám (tông tối của shell) thay vòng xoay + chữ — chủ chốt 02/10/2026.
+const SAL_SK = "rgba(255,255,255,.08)";
 function MobileSalaryBoot() {
   return (
     <MobileSalaryShell>
-      <div className="w-14 h-14 rounded-full border-[3px] animate-spin"
-        style={{ borderColor: "rgba(255,210,63,.2)", borderTopColor: "#FFD23F" }} />
-      <div className="mt-4 text-[15px] font-extrabold" style={{ color: "#FFD23F" }}>Đang tải bảng lương…</div>
+      <div role="status" className="w-full">
+        <span className="sr-only">Đang tải bảng lương…</span>
+        <div className="ld-appear flex w-full flex-col gap-3" aria-hidden="true">
+          <SkeletonBar className="h-5 rounded-lg" style={{ width: "40%", background: SAL_SK }} />
+          <SkeletonBar className="h-28 rounded-2xl" style={{ width: "100%", background: SAL_SK }} />
+          <SkeletonBar className="h-16 rounded-2xl" style={{ width: "100%", background: SAL_SK }} />
+          <SkeletonBar className="h-16 rounded-2xl" style={{ width: "100%", background: SAL_SK }} />
+        </div>
+      </div>
     </MobileSalaryShell>
   );
 }
@@ -238,7 +247,7 @@ export default function ManagerSalaryPage() {
 
   // ===== Render =====
   const sources = [...(!isAdmin && myMgr?.staff_id ? [displayMonthQuery] : []), permissionQuery, managerConfigQuery, engineQuery, salaryQuery, rulesQuery, ...(isAdmin ? [accountsQuery, ...(managers.length ? [pendingPayoutQuery] : [])] : [])];
-  if (sources.some(query => query.isError || query.isLoading)) return <MainLayout title="Bảng lương"><QueryRegion label="bảng lương và sổ quỹ chi lương" queries={sources}><p>Chưa tải đủ dữ liệu tính lương. Tải lại để tiếp tục.</p></QueryRegion></MainLayout>;
+  if (sources.some(query => query.isError || query.isLoading)) return <MainLayout title="Bảng lương"><QueryRegion label="bảng lương và sổ quỹ chi lương" queries={sources} skeleton="table" rows={6}><p>Chưa tải đủ dữ liệu tính lương. Tải lại để tiếp tục.</p></QueryRegion></MainLayout>;
   // PHONE: gộp TOÀN BỘ nhánh mobile — KHÔNG bao giờ dùng MainLayout desktop,
   // kể cả lúc quyền đang tải. Trước đây khi useMyPermissions còn tải, isAdmin
   // tạm = false → admin lẫn nhân viên đều RƠI xuống nhánh desktop MainLayout
@@ -287,7 +296,7 @@ export default function ManagerSalaryPage() {
   // Không phải admin: hiện self-view nếu là quản lý hưởng lương
   if (!isAdmin) {
     if (myLoading || isLoading) {
-      return <MainLayout title="Bảng lương" subtitle="Tài chính → Lương" icon={Wallet}><p className="text-muted-foreground">Đang tải...</p></MainLayout>;
+      return <MainLayout title="Bảng lương" subtitle="Tài chính → Lương" icon={Wallet}><LoadingState label="bảng lương" variant="cards" rows={3} /></MainLayout>;
     }
     if (!myMgr || managers.length === 0) {
       return <MainLayout title="Bảng lương" subtitle="Tài chính → Lương" icon={Wallet}>
@@ -369,7 +378,7 @@ export default function ManagerSalaryPage() {
             </div>
 
             {isLoading ? (
-              <div className="sal-card"><div style={{ padding: 40, textAlign: "center", color: "hsl(var(--muted-foreground))" }}>Đang tải bảng lương...</div></div>
+              <div className="sal-card"><LoadingState label="bảng lương" variant="table" rows={6} className="p-4" /></div>
             ) : tab === "leave" ? (
               <SalaryLeaveRequests />
             ) : tab === "config" ? (
@@ -381,7 +390,7 @@ export default function ManagerSalaryPage() {
                 <p>Vào tab Cấu hình để thêm quản lý vào diện hưởng lương, đặt lương cứng và tiền phòng.</p>
               </div></div>
             ) : tab === "overview" ? (
-              <QueryRegion label="cơ cấu quỹ lương" queries={[prev1Query,prev2Query,fee0,fee1,fee2]}>
+              <QueryRegion label="cơ cấu quỹ lương" queries={[prev1Query,prev2Query,fee0,fee1,fee2]} skeleton="cards" rows={3}>
               <SalaryFundOverview
                 periods={fundPeriods} feeBuildings={fee0.rows.length} feeUnpublished={fee0.unpublished}
                 pending={pendingPayouts} onOpenFund={setFundModal} onOpenPerson={openPerson}
@@ -419,7 +428,7 @@ export default function ManagerSalaryPage() {
           </>
         )}
 
-        {fundModal && (<QueryRegion label="nguồn quỹ lương" queries={[fee0]}>
+        {fundModal && (<QueryRegion label="nguồn quỹ lương" queries={[fee0]} skeleton="none">
           <SalaryFundModal tab={fundModal} onTab={setFundModal} onClose={() => setFundModal(null)}
             periodMonth={periodMonth} locked={monthLocked} fee={fee0} managers={managers}
             recurring={data?.extras.recurring ?? []} extrasAvailable={data?.extras.available ?? false} canEdit={canEditAmounts} />

@@ -184,14 +184,16 @@ describe('ContractLifecycleBand — nhiều lane và chân dải', () => {
 });
 
 describe('ContractLifecycleBand — lỗi và thiếu dữ liệu KHÁC số 0', () => {
-  it('cached lifecycle đang refetch vẫn hiện đang tra lịch sử', () => {
+  // Chủ chốt 02/10/2026: lúc chờ là vạch xám, câu "Đang tải …" chỉ còn trong role=status
+  // (sr-only) cho trình đọc màn hình — dò câu đó thay cho chữ "Đang tra…" cũ.
+  it('cached lifecycle đang refetch vẫn báo đang tải lịch sử', () => {
     H.ket = { data: viewCaThat(), isLoading: false, isFetching: true, isError: false };
-    expect(ve(<ContractLifecycleBand {...props} />)).toContain('Đang tra lịch sử phòng');
+    expect(ve(<ContractLifecycleBand {...props} />)).toContain('Đang tải lịch sử phòng');
   });
   it('đang tải: không in số nào', () => {
     H.ket = { data: null, isLoading: true, isError: false };
     const html = ve(<ContractLifecycleBand {...props} />);
-    expect(html).toContain('Đang tra');
+    expect(html).toContain('Đang tải lịch sử phòng');
     expect(html).not.toContain('0 đ');
   });
 

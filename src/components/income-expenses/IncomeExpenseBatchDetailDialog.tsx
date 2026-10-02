@@ -476,7 +476,7 @@ function IncomeExpenseBatchDetailContent({
         onIndexChange={setLightboxIdx}
       />
 
-      <QueryRegion label="sổ quỹ để đổi cả đợt" queries={[accountsQuery]}>{null}</QueryRegion>
+      <QueryRegion label="sổ quỹ để đổi cả đợt" queries={[accountsQuery]} skeleton="none">{null}</QueryRegion>
       {issue&&<div role="alert" className="text-sm text-destructive">{voucherFailureMessage(issue,"đổi sổ quỹ cả đợt")}</div>}
       <BatchAccountReasonDialog
         open={!!pendingAccountId}

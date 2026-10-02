@@ -37,6 +37,7 @@ import { DepositLedgerSection } from './SettlementPanels';
 import { BookIcon } from './utilityIcons';
 import { AttachmentLightbox } from '@/components/ui/attachment-lightbox';
 import { usePersistedState } from '@/hooks/usePersistedState';
+import { LoadingState } from '@/components/loading/LoadingState';
 
 interface Props {
   show: boolean;
@@ -454,7 +455,7 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
                   Không đọc được dữ liệu điện nước.
                   <button type="button" className="ptt-btn ghost sm" onClick={() => { void EN.refetchDetails(); }}>Thử lại dữ liệu điện nước</button>
                 </div> : EN.loadingAccts || EN.loadingPay || EN.detailsLoading
-                  ? <div className="c-empty" role="status">Đang tải dữ liệu điện nước…</div> : buildings.map((b) => {
+                  ? <LoadingState label="dữ liệu điện nước" variant="list" rows={4} /> : buildings.map((b) => {
                   // Ô đã có phiếu (duyệt HOẶC chờ duyệt) không còn là việc phải làm.
                   const done = (r: MeterRow) => !!EN.paidThisKy(r.accountId) || !!EN.pendingThisKy(r.accountId);
                   const rows = EN.metersOf(b.id).filter((r) => (enType === 'all' || r.type === enType) && !(onlyDue && done(r)));
@@ -494,7 +495,7 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
                       void feeAccounts.refetch(); void S.refetchDetails();
                     }}>Thử lại dữ liệu phí</button>
                   </div> : feeAccounts.isLoading || S.detailsLoading || feeStatus.isLoading
-                    ? <div className="c-empty" role="status">Đang tải dữ liệu phí…</div> : <>
+                    ? <LoadingState label="dữ liệu phí" variant="list" rows={4} /> : <>
                   {gridBlds.map(renderGridCard)}
                   {naRows.length > 0 && (
                     <div className="ptt-nagroup">

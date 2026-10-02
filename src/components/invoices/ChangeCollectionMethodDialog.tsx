@@ -21,6 +21,7 @@ import {voucherFailureMessage,voucherOutcomeUnknown} from '@/lib/voucherFeedback
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { ArrowRightLeft, Loader2 } from 'lucide-react';
+import { InlineSkeleton } from '@/components/loading/LoadingState';
 
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -253,10 +254,7 @@ export default function ChangeCollectionMethodDialog({
             {chan ? (
               <p className="text-sm text-muted-foreground">—</p>
             ) : booksLoading ? (
-              <p className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Đang tải danh sách sổ nhận tiền…
-              </p>
+              <div className="flex h-10 items-center"><InlineSkeleton label="danh sách sổ nhận tiền" width="14rem" /></div>
             ) : thieuSo ? (
               <p className="text-sm text-red-600" role="alert">{thieuSo}</p>
             ) : method === 'TM' ? (

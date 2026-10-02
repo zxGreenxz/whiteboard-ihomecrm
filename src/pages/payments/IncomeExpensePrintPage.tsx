@@ -6,6 +6,7 @@ import { format } from "date-fns";
 import { formatVND } from "@/lib/utils";
 import { getVoucherDisplayAttachments } from '@/lib/incomeExpenseSupplement';
 import { StorageImage } from '@/components/ui/storage-image';
+import { InlineSkeleton, LoadingState } from '@/components/loading/LoadingState';
 import {
   VoucherNote,
   coGhiChuHeThong,
@@ -33,7 +34,8 @@ const IncomeExpensePrintPage = () => {
   }, [voucher, imagesReady]);
 
   if (detail.isLoading || detail.isFetching || !detail.isFetchedAfterMount) {
-    return <div className="p-8 text-center">Đang tải...</div>;
+    // Chờ: khối xám trên màn, KHÔNG in ra giấy (print:hidden); hộp in chỉ tự mở khi phiếu + ảnh đã đủ.
+    return <div className="mx-auto max-w-[720px] p-8 print:hidden"><LoadingState label="phiếu để in" variant="detail" rows={8} onRetry={() => void detail.refetch()} /></div>;
   }
   if (!voucher) {
     return <div className="p-8 text-center text-red-600">Không tải được đầy đủ chi tiết phiếu hoặc bạn không còn quyền xem. <button onClick={() => detail.refetch()}>Thử lại</button></div>;
@@ -120,8 +122,9 @@ const IncomeExpensePrintPage = () => {
         >
           Đóng
         </button>
+        {/* Thanh này không in (no-print). Ảnh chứng từ chưa về: vạch xám thay chữ chờ. */}
         <span className="ml-auto text-xs text-zinc-500">
-          {imagesReady ? '(Trang sẽ tự động mở hộp thoại in.)' : 'Đang tải chứng từ để in…'}
+          {imagesReady ? '(Trang sẽ tự động mở hộp thoại in.)' : <InlineSkeleton label="chứng từ để in" width="9rem" />}
         </span>
       </div>
 

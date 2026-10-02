@@ -75,6 +75,7 @@ import { deriveOverpayPolicy, planCollect } from '@/lib/collectPlan';
 import type { InvoiceStatus } from '@/types/invoice';
 import EditInvoiceDialog from './EditInvoiceDialog';
 import PaymentsSummaryDialog from './PaymentsSummaryDialog';
+import { InlineSkeleton } from '@/components/loading/LoadingState';
 
 interface Props {
   open: boolean;
@@ -848,7 +849,7 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
           <span className="ml-auto text-sm text-muted-foreground">
             Sổ nhận:{' '}
             {receivingLoading ? (
-              <span className="font-medium text-foreground">đang tải…</span>
+              <InlineSkeleton label="sổ nhận tiền" width="10rem" />
             ) : receivingError ? (
               <span className="font-medium text-red-600">{receivingError}</span>
             ) : receivingBuildingId ? (
@@ -872,7 +873,7 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
             <div className="space-y-1">
               <Label>Sổ nhận TM (sổ tiền mặt riêng)</Label>
               {receivingLoading ? (
-                <p className="flex h-10 items-center text-sm text-muted-foreground">Đang tải…</p>
+                <div className="flex h-10 items-center"><InlineSkeleton label="sổ nhận TM" width="12rem" /></div>
               ) : tmBook ? (
                 <div className="flex h-10 items-center rounded-md border bg-muted/40 px-3 text-sm">{tmBook.name}</div>
               ) : (
@@ -885,7 +886,7 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
                 <div key={m} className="space-y-1">
                   <Label>{m === 'TK' ? 'Sổ nhận TK (chuyển khoản) chung' : 'Sổ nhận TT (thanh toán) chung'}</Label>
                   {receivingLoading ? (
-                    <p className="flex h-10 items-center text-sm text-muted-foreground">Đang tải…</p>
+                    <div className="flex h-10 items-center"><InlineSkeleton label={`sổ nhận ${m}`} width="12rem" /></div>
                   ) : list.length === 0 ? (
                     <p className="text-xs text-red-600">
                       {receivingError || missingReceivingBookMessage(m, receivingBuildingName)}

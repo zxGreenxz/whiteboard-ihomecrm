@@ -33,6 +33,7 @@ import { COMMISSION_FOLLOWUP_PAGE_SIZE } from '@/lib/contractCommissionFollowup'
 const SettlementLifecycleModal = lazy(() => import('./SettlementLifecycleModal').then((m) => ({ default: m.SettlementLifecycleModal })));
 const MovementLifecycleModal = lazy(() => import('./MovementLifecycleModal').then((m) => ({ default: m.MovementLifecycleModal })));
 import { NHAN_VUONG_MAC } from './nhan';
+import { InlineSkeleton, LoadingState, RefreshBar, SkeletonBar } from '@/components/loading/LoadingState';
 import './contract-settlement.css';
 
 interface Props {
@@ -135,10 +136,13 @@ function ModalLoading({ onClose, error = false, onRetry }: {
   return createPortal(<div className="cs-scrim" onClick={onClose}>
     <div className="cs-modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
       <div className="cs-m-head">
-        <span>{error ? 'Không tải được hồ sơ phiếu' : 'Đang tải hồ sơ…'}</span>
+        <span>{error ? 'Không tải được hồ sơ phiếu' : ''}</span>
         <button type="button" className="cs-x" aria-label="Đóng" onClick={onClose}>×</button>
       </div>
-      {error && <button type="button" className="cs-btn" onClick={onRetry}>Thử lại</button>}
+      {/* Đang tải: khối xám dạng bảng nhãn/giá trị, không chữ (chủ chốt 02/10/2026). */}
+      {error
+        ? <button type="button" className="cs-btn" onClick={onRetry}>Thử lại</button>
+        : <div style={{ padding: '14px 22px 18px' }}><LoadingState label="hồ sơ" variant="detail" rows={5} /></div>}
     </div>
   </div>, document.body);
 }
@@ -506,7 +510,7 @@ export function ContractSettlementSection({ buildingIds, period, buildingsLoadin
                 <button type="button" className={`cs-stat ${on ? 'on' : ''}`}
                   onClick={() => datLoc({ status: on ? 'open' : t.key })}>
                   <div className="cs-stat-lbl"><span className="cs-dot" style={{ background: t.dot }} />{t.label}</div>
-                  <div className="cs-stat-num">{dangTai || hong ? '…' : t.so}</div>
+                  <div className="cs-stat-num">{dangTai ? <SkeletonBar className="h-6" style={{ width: '3rem' }} /> : hong ? '…' : t.so}</div>
                   <div className="cs-stat-meta">{dangTai || hong ? 'Chưa tải đủ phiếu; xem lỗi tạo đã ghi nhận' : t.meta}</div>
                   <span className="cs-stat-cta">{on ? 'Đang lọc' : 'Lọc'}</span>
                 </button>
@@ -544,7 +548,9 @@ export function ContractSettlementSection({ buildingIds, period, buildingsLoadin
           <div className="cs-stats" style={{ gridTemplateColumns: 'repeat(3, minmax(0,1fr))' }}>
             {[0, 1, 2].map((i) => <div className="cs-skel" key={i} />)}
           </div>
-          <div className="cs-load"><span className="cs-spin" />Đang tải {mv ? 'biến động' : 'khoản chi'}…</div>
+          {/* Chỗ bảng: dòng xám thay vòng xoay + chữ (chủ chốt 02/10/2026). */}
+          <LoadingState label={mv ? 'biến động' : 'khoản chi'} variant="table" rows={5} />
+
         </>
       )}
 
@@ -562,10 +568,13 @@ export function ContractSettlementSection({ buildingIds, period, buildingsLoadin
       )}
 
       {((!dangTai && !hong) || (!mv && failureEnabled && !org.isLoading && !org.isError)) && (
-        <section className="cs-surface">
-          {(dangDoiChieu || loiDoiChieu) && <div className="cs-notice" role="status">
-            <span>{loiDoiChieu ? 'Chưa đọc đủ dữ liệu đối chiếu. Các khoản liên quan chưa thể duyệt hoặc chi.' : 'Đang đối chiếu căn cứ và yêu cầu bổ sung. Các khoản liên quan chưa thể duyệt hoặc chi.'}</span>
-            {loiDoiChieu && <button type="button" className="cs-btn" onClick={() => chi.refetch()}>Thử lại</button>}
+        <section className="cs-surface" style={{ position: 'relative' }}>
+          {/* Đang đối chiếu: vạch mảnh mép trên thay câu chữ (chủ chốt 02/10/2026); các khoản
+              liên quan vẫn khoá duyệt/chi như cũ cho tới khi đối chiếu xong. Lỗi mới hiện câu. */}
+          <RefreshBar active={dangDoiChieu && !loiDoiChieu} label="Đang đối chiếu căn cứ và yêu cầu bổ sung" />
+          {loiDoiChieu && <div className="cs-notice" role="status">
+            <span>Chưa đọc đủ dữ liệu đối chiếu. Các khoản liên quan chưa thể duyệt hoặc chi.</span>
+            <button type="button" className="cs-btn" onClick={() => chi.refetch()}>Thử lại</button>
           </div>}
           {/* ── Thanh công cụ ────────────────────────────────────────────── */}
           <div className="cs-tools">
@@ -762,7 +771,9 @@ export function ContractSettlementSection({ buildingIds, period, buildingsLoadin
                       </div>
                     </div>
                     <div>
-                      <span className="cs-tag" style={{ background: st.bg, color: st.fg }}>{r.validationState === 'loading' ? 'Đang đối chiếu' : st.nhan}</span>
+                      {r.validationState === 'loading'
+                        ? <InlineSkeleton label="trạng thái đối chiếu" width="5rem" />
+                        : <span className="cs-tag" style={{ background: st.bg, color: st.fg }}>{st.nhan}</span>}
                       {r.issues.length > 0 && (
                         <div className="cs-issue">{NHAN_VUONG_MAC.vuong[r.issues[0]].nhan}
                           {r.issues.length > 1 ? ` +${r.issues.length - 1}` : ''}</div>

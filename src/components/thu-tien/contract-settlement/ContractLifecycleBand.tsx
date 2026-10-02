@@ -18,6 +18,7 @@ import { useEffect } from 'react';
 import { useContractLifecycle } from '@/hooks/useContractLifecycle';
 import type { LaneSubject, SectionStatus } from '@/lib/contractLifecycle';
 import type { ModalReadState } from './modalReadState';
+import { InlineSkeleton } from '@/components/loading/LoadingState';
 
 interface Props {
   organizationId: string | null;
@@ -74,7 +75,7 @@ export function ContractLifecycleBand({
       <div className="cs-life-top">
         <b>Vòng đời hợp đồng của phòng</b>
         <span>
-          {q.isLoading || q.isFetching ? 'Đang tra lịch sử phòng…'
+          {q.isLoading || q.isFetching ? <InlineSkeleton label="lịch sử phòng" width="14rem" />
             : q.isError ? 'Không đọc được lịch sử phòng — số liệu bên dưới chưa đầy đủ.'
             : !contractId ? 'Chưa gắn hợp đồng nên không dựng được vòng đời.'
             : !v ? 'Không tìm thấy hợp đồng.'

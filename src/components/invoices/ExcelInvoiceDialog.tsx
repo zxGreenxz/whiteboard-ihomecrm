@@ -1,4 +1,5 @@
 import {QueryRegion} from '@/components/errors/QueryRegion';
+import { InlineSkeleton } from '@/components/loading/LoadingState';
 import {invoiceFailureMessage} from '@/lib/invoiceFeedback';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { format, addMonths, endOfMonth, startOfMonth, parse, isValid } from 'date-fns';
@@ -260,7 +261,7 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
           </DialogDescription>
         </DialogHeader>
 
-        <QueryRegion label="danh mục lập hoá đơn" queries={sourceQueries}><span /></QueryRegion>
+        <QueryRegion label="danh mục lập hoá đơn" queries={sourceQueries} skeleton="none"><span /></QueryRegion>
         <div className="grid grid-cols-5 gap-3 py-2">
           <div className="space-y-1 col-span-2">
             <Label>Toà nhà *</Label>
@@ -479,7 +480,7 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
                       {r.support_error && <div role="alert" className="text-xs text-red-700">{r.support_error}</div>}
                       {r.submit_error && <div role="alert" className="text-xs text-red-700">{r.submit_error}</div>}
                       {supportQuotes.states[i]?.error && !r.support_error && <div role="alert" className="text-xs text-red-700">{supportQuotes.states[i].error}</div>}
-                      {r.support_plan_revision && r.selected && !supportQuotes.states[i]?.ready && !supportQuotes.states[i]?.error && <div className="text-xs text-slate-600">Đang kiểm tra hỗ trợ...</div>}
+                      {r.support_plan_revision && r.selected && !supportQuotes.states[i]?.ready && !supportQuotes.states[i]?.error && <InlineSkeleton label="hỗ trợ của phòng" width="6rem" className="mt-0.5" />}
                     </td>
                     <td className="p-1 border bg-red-50/30">
                       <HoverCard openDelay={0} closeDelay={100}>

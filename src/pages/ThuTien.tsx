@@ -1,4 +1,5 @@
 import { QueryRegion } from '@/components/errors/QueryRegion';
+import { LoadingState, SkeletonBar } from '@/components/loading/LoadingState';
 import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -296,12 +297,59 @@ const ThuTien = () => {
 
   const buildingOpts = buildings.map((b: any) => ({ id: b.id, name: b.name }));
 
+  // Lúc chờ dữ liệu (chủ chốt 02/10/2026): khung (dải tổng, bộ lọc, nút) hiện ngay với vạch
+  // xám thay số — không in 0 khi chưa đủ nguồn; chỗ ô phòng là thẻ xám. Lỗi vẫn do
+  // QueryRegion thay cả vùng bằng thẻ "Chưa tải được … / Tải lại" như cũ.
+  const choToaNha = (
+    <div className="bld-row" role="status">
+      <span className="sr-only">Đang tải danh sách tòa nhà…</span>
+      <span className="ld-appear flex gap-2" aria-hidden="true">
+        {[0, 1, 2, 3].map((i) => <SkeletonBar key={i} className="h-[34px] w-[72px] shrink-0 rounded-full" />)}
+      </span>
+    </div>
+  );
+  const choSoLieu = (
+    <>
+      <CollectSummaryBar loading collectedSum={0} paidRooms={0} remainingSum={0} dueRooms={0} onOpenReport={openReport} />
+      <TimeFilter value={timeFilter} counts={timeCounts} onChange={setTimeFilter} loading />
+      <InvoiceRoundingReportButton billingMonth={billingMonth} buildingId={buildingId} className="mb-3 w-full" />
+      {timeFilter === 'date' && (
+        <DatePanel
+          mode={dateMode}
+          onModeChange={setDateMode}
+          value={dateRange}
+          onChange={setDateRange}
+          resultText={<SkeletonBar className="inline-block h-3 align-middle" style={{ width: '9rem' }} />}
+        />
+      )}
+      <StatusFilter value={statusFilter} counts={statusCounts} onChange={setStatusFilter} loading />
+      <LoadingState
+        label="số liệu thu tiền và người thu"
+        variant="cards"
+        rows={6}
+        onRetry={() => { requiredQueries.forEach((query) => { void query.refetch(); }); }}
+      />
+    </>
+  );
+
   return (
     <div className="tt-stage">
       {/* Desktop ≥1024px: cột trái 75% là panel quản lý/báo cáo; CSS ẩn trên mobile.
           Nút "Điện nước" điều hướng sang page /thanh-toan. Dùng chung billingMonth
           qua sessionStorage nên đi qua lại giữ nguyên kỳ đang xem. */}
-      <QueryRegion label="danh sách tòa nhà" queries={[buildingsQuery]}>
+      {/* Lúc chờ: khối xám nằm trong khung .tt-manage (ẩn dưới 1024px như panel thật) để
+          khung điện thoại không bị đẩy — chủ chốt 02/10/2026. */}
+      <QueryRegion
+        label="danh sách tòa nhà"
+        queries={[buildingsQuery]}
+        loading={
+          <div className="tt-manage">
+            <div style={{ padding: '22px 28px 0' }}>
+              <LoadingState label="danh sách tòa nhà" variant="cards" rows={3} onRetry={() => { void buildingsQuery.refetch(); }} />
+            </div>
+          </div>
+        }
+      >
       <ManagePanel
         buildings={buildingOpts}
         billingMonth={billingMonth}
@@ -358,12 +406,12 @@ const ThuTien = () => {
               />
             </div>
           </div>
-          <QueryRegion label="danh sách tòa nhà" queries={[buildingsQuery]}><BuildingPills buildings={buildingOpts} value={buildingId} onChange={setBuildingId} /></QueryRegion>
+          <QueryRegion label="danh sách tòa nhà" queries={[buildingsQuery]} loading={choToaNha}><BuildingPills buildings={buildingOpts} value={buildingId} onChange={setBuildingId} /></QueryRegion>
         </div>
 
         <div className="scroll">
           <div className="scroll-pad">
-            <QueryRegion label="số liệu thu tiền và người thu" queries={requiredQueries}>
+            <QueryRegion label="số liệu thu tiền và người thu" queries={requiredQueries} loading={choSoLieu}>
             <CollectSummaryBar
               collectedSum={summary.collectedSum}
               paidRooms={summary.paidRooms}
@@ -389,10 +437,7 @@ const ThuTien = () => {
             <StatusFilter value={statusFilter} counts={statusCounts} onChange={setStatusFilter} />
 
             {isLoading ? (
-              <div className="c-empty">
-                <div className="e-ic">⏳</div>
-                <p>Đang tải hoá đơn…</p>
-              </div>
+              <LoadingState label="hoá đơn" variant="cards" rows={6} />
             ) : (
               <RoomCellGrid
                 list={list}

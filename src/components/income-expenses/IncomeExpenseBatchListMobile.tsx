@@ -1,6 +1,7 @@
 import { Building2, Layers } from "lucide-react";
 import { format } from "date-fns";
 import type { IncomeExpenseBatchSummary } from "@/hooks/useIncomeExpenses";
+import { LoadingState } from "@/components/loading/LoadingState";
 
 interface Props {
   batches: IncomeExpenseBatchSummary[];
@@ -38,11 +39,7 @@ export function IncomeExpenseBatchListMobile({
   onLoadMore,
 }: Props) {
   if (isLoading) {
-    return (
-      <div className="stub">
-        <p>Đang tải phiếu tổng…</p>
-      </div>
-    );
+    return <LoadingState label="phiếu tổng" variant="list" />;
   }
   if (batches.length === 0) {
     return (

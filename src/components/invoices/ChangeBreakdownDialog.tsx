@@ -80,7 +80,7 @@ const ChangeBreakdownDialog = ({ open, onOpenChange, filters }: Props) => {
           </DialogDescription>
         </DialogHeader>
 
-        <QueryRegion label="lịch sử tiền thối" queries={[query]}>
+        <QueryRegion label="lịch sử tiền thối" queries={[query]} skeleton="table" rows={4}>
         {isLoading ? (
           <div className="space-y-2">
             {Array.from({ length: 4 }).map((_, i) => (

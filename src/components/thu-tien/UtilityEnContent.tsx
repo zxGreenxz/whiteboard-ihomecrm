@@ -25,6 +25,7 @@ import { UtilityBookMenu } from './UtilityBookMenu';
 import { UtilityCancelModal } from './UtilityCancelModal';
 import { UtilityReceiptThumb } from './UtilityReceiptThumb';
 import { BookIcon } from './utilityIcons';
+import { LoadingState } from '@/components/loading/LoadingState';
 
 interface Props {
   billingMonth: string;
@@ -214,7 +215,7 @@ export function UtilityEnContent({ billingMonth, buildings, canRecordPayment, lo
 
           <div className="ud-body">
             {loading ? (
-              <div className="ud-empty">⏳ Đang tải dữ liệu điện nước…</div>
+              <LoadingState label="dữ liệu điện nước" variant="table" rows={6} />
             ) : buildings.length === 0 ? (
               <div className="ud-empty">🏢 Chưa có tòa nhà nào trong phạm vi của bạn.</div>
             ) : tblRows.length === 0 ? (
@@ -407,7 +408,7 @@ export function UtilityEnContent({ billingMonth, buildings, canRecordPayment, lo
             <div className="ud-chart-t">Chi điện nước qua các tháng</div>
             <div className="ud-chart-s">Tổng tiền đã chi cho EVN / cấp nước theo từng kỳ · {chartBld === 'all' ? 'toàn bộ tòa trong phạm vi' : buildings.find((b) => b.id === chartBld)?.name}</div>
             <div className="ud-chart-card">
-              {chart.isLoading ? <div className="ud-empty">⏳ Đang tải biểu đồ…</div> : <UtilityChart months={chart.data ?? []} />}
+              {chart.isLoading ? <LoadingState label="biểu đồ" rows={5} className="p-4" /> : <UtilityChart months={chart.data ?? []} />}
             </div>
           </div>
         </>

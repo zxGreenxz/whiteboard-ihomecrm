@@ -13,6 +13,7 @@ import { X } from 'lucide-react';
 import { useRooms } from '@/hooks/useRooms';
 import { useRoomCashLifecycle } from '@/hooks/useRoomCashLifecycle';
 import { LifecycleTimeline } from './LifecycleTimeline';
+import { LoadingState } from '@/components/loading/LoadingState';
 
 interface Props {
   show: boolean;
@@ -74,13 +75,13 @@ export function RoomLifecycleSheet({ show, onClose, buildingId, buildings }: Pro
             <label className="rp-dd">
               <span className="rp-dd-l">Phòng</span>
               <div className="rp-dd-sel">
+                {/* Đang nạp danh sách phòng: giữ chữ gợi ý trung tính, không "Đang tải…" (chủ chốt 02/10/2026). */}
                 <select
                   value={effRoom ?? ''}
                   onChange={(e) => setRoomId(e.target.value || null)}
+                  aria-busy={roomsLoading}
                 >
-                  <option value="">
-                    {roomsLoading ? 'Đang tải phòng…' : '— chọn phòng —'}
-                  </option>
+                  <option value="">— chọn phòng —</option>
                   {rooms.map((r: { id: string; name: string }) => (
                     <option key={r.id} value={r.id}>{r.name}</option>
                   ))}
@@ -92,7 +93,7 @@ export function RoomLifecycleSheet({ show, onClose, buildingId, buildings }: Pro
           {!effRoom ? (
             <div className="rl-empty">Chọn một phòng để xem chu trình.</div>
           ) : lifecycle.isLoading ? (
-            <div className="rl-empty">Đang dựng timeline…</div>
+            <LoadingState label="chu trình phòng" rows={5} className="px-3 py-6" />
           ) : lifecycle.isError ? (
             // 42501 (không có quyền xem toà) phải hiện nguyên văn — RPC fail-closed,
             // client không được dịch thành "phòng trống trơn".

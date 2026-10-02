@@ -5,6 +5,7 @@
 // mất thông tin nào.
 // =============================================================================
 
+import { InlineSkeleton } from "@/components/loading/LoadingState";
 import { useTerminationRefundFacts } from "@/hooks/useTerminationRefundFacts";
 import {
   buildTerminationCard,
@@ -112,7 +113,7 @@ export function TerminationRefundNote({ voucher, fallbackNotes, enabled = true, 
   return (
     <div className="space-y-2">
       {isLoading ? (
-        <div className="text-muted-foreground">Đang tính bản quyết toán…</div>
+        <InlineSkeleton label="bản quyết toán" width="14rem" />
       ) : isError ? (
         <div className="text-muted-foreground">Không đọc được hồ sơ thanh lý.</div>
       ) : header ? (

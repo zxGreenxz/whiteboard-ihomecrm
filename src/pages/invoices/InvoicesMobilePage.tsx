@@ -1,4 +1,5 @@
 import { QueryRegion } from "@/components/errors/QueryRegion";
+import { LoadingState, SkeletonBar } from "@/components/loading/LoadingState";
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Plus, Search, ChevronDown, X, BarChart3 } from "lucide-react";
@@ -176,7 +177,7 @@ export default function InvoicesMobilePage() {
                   <ChevronDown size={17} />
                 </h1>
               </button>
-              <p>{totalCount} hoá đơn</p>
+              <p>{isLoading ? <SkeletonBar className="inline-block h-3 align-middle" style={{ width: "5rem" }} /> : <>{totalCount} hoá đơn</>}</p>
             </div>
             {canCreate && (
               <div className="mtop-act">
@@ -251,11 +252,9 @@ export default function InvoicesMobilePage() {
               />
             </div>
 
-            <QueryRegion label="danh sách hóa đơn" queries={[invoicesQuery]}>
+            <QueryRegion label="danh sách hóa đơn" queries={[invoicesQuery]} skeleton="list">
             {isLoading || resolvedSearch.pending ? (
-              <div className="stub">
-                <p>Đang tải hoá đơn…</p>
-              </div>
+              <LoadingState label="hoá đơn" variant="list" />
             ) : rows.length === 0 ? (
               <div className="stub">
                 <p>Không có hoá đơn nào phù hợp bộ lọc.</p>

@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback, useEffect, useRef, lazy, Suspense } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
+import { LoadingState } from '@/components/loading/LoadingState';
 import { usePagination, calculatePaginationInfo } from '@/hooks/usePagination';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
@@ -374,7 +375,7 @@ const InvoicesDesktopPage = () => {
           {/* Table */}
           <div className="bg-white rounded-lg border">
             {isLoading ? (
-              <div className="p-8 text-center text-muted-foreground">Đang tải dữ liệu...</div>
+              <LoadingState label="dữ liệu" variant="table" rows={8} className="px-2" onRetry={() => void refetch()} />
             ) : isError ? (
               // Phân biệt LỖI (RLS/timeout/5xx) vs RỖNG THẬT: trước đây hook nuốt lỗi
               // và rơi vào EmptyState "Chưa có hoá đơn" GIẢ. Nay hiện lỗi + nút thử lại.

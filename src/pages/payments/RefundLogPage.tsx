@@ -229,7 +229,7 @@ const RefundLogPage = () => {
         </div>
 
         {!accountId ? <p role="status">Chọn sổ quỹ để xem lịch sử tiền thối.</p> : (
-        <QueryRegion queries={[query]} label="lịch sử tiền thối và làm tròn">
+        <QueryRegion queries={[query]} label="lịch sử tiền thối và làm tròn" skeleton="cards" rows={3}>
         {/* Stat cards */}
         <div className={isMobile ? "grid grid-cols-1 gap-3" : "grid grid-cols-3 gap-3"}>
           <Card className="p-4 flex items-center gap-3 border-l-4 border-l-orange-500">

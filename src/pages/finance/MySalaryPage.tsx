@@ -5,7 +5,7 @@ import { QueryRegion } from "@/components/errors/QueryRegion";
 // Dùng chung dữ liệu SalManager + lùi-tháng-theo-chốt với trang Bảng lương quản lý.
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
+import { SkeletonBar } from "@/components/loading/LoadingState";
 import { useManagerSalary, useMyManagerConfig, useStaffDisplayMonth } from "@/hooks/useManagerSalary";
 import { usePhoneViewport } from "@/hooks/use-mobile";
 import { useSalaryV5Config } from "@/hooks/useSalaryV5Config";
@@ -14,6 +14,9 @@ import SalarySelfMobile from "@/components/salary/SalarySelfMobile";
 import { currentPeriodMonth, shiftPeriodMonth as shiftMonth } from "@/lib/salaryPeriod";
 import { resolveSalaryEngine } from "@/lib/managerSalary";
 import { useBonusRules } from "@/hooks/useSalaryConfig";
+
+/** Màu khối xám trên nền tối của Shell. */
+const SAL_SK = "rgba(255,255,255,.08)";
 
 // Khung trọn-màn nền tối cho trạng thái tải / chưa cấu hình (đồng bộ theme QUEST).
 function Shell({ children }: { children: React.ReactNode }) {
@@ -52,7 +55,18 @@ export default function MySalaryPage() {
   const sources = [...(myMgr?.staff_id ? [displayMonthQuery] : []), managerConfigQuery, engineQuery, salaryQuery, rulesQuery];
   if (sources.some(query => query.isError)) return <Shell><QueryRegion label="bảng lương cá nhân" queries={sources}><p>Chưa tải đủ dữ liệu bảng lương.</p></QueryRegion></Shell>;
   if (sources.some(query => query.isLoading) || myLoading || (!data && isLoading)) {
-    return <Shell><div><Loader2 className="animate-spin" style={{ margin: "0 auto 10px", color: "#FFD23F" }} /><p style={{ fontSize: 14, color: "#9A8FC4" }}>Đang tải bảng lương…</p></div></Shell>;
+    // Chờ: khối xám tông tối thay vòng xoay + chữ (chủ chốt 02/10/2026); câu chờ chỉ cho trình đọc màn hình.
+    return <Shell>
+      <div role="status" style={{ width: "100%", maxWidth: 420 }}>
+        <span className="sr-only">Đang tải bảng lương…</span>
+        <div className="ld-appear flex w-full flex-col gap-3" aria-hidden="true">
+          <SkeletonBar className="h-5 rounded-lg" style={{ width: "40%", background: SAL_SK }} />
+          <SkeletonBar className="h-28 rounded-2xl" style={{ width: "100%", background: SAL_SK }} />
+          <SkeletonBar className="h-16 rounded-2xl" style={{ width: "100%", background: SAL_SK }} />
+          <SkeletonBar className="h-16 rounded-2xl" style={{ width: "100%", background: SAL_SK }} />
+        </div>
+      </div>
+    </Shell>;
   }
 
   const managers = data?.managers || [];

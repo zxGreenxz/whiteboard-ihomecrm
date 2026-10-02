@@ -41,6 +41,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useInvoiceRentSupport } from '@/hooks/invoices/useInvoiceRentSupport';
 
 import IssuedInvoiceEditor from './IssuedInvoiceEditor';
+import { InlineSkeleton, LoadingState } from '@/components/loading/LoadingState';
 
 interface EditInvoiceDialogProps {
   open: boolean;
@@ -251,11 +252,13 @@ const DraftInvoiceEditor = ({ open, onOpenChange, invoice }: EditInvoiceDialogPr
       creditBalance={creditBalance}
       defaultDepositAmount={0}
       ready
-      validationError={support.error || firstEntryError(errors)}
+      validationError={(support.checking ? null : support.error) || firstEntryError(errors)}
       notice={<>
+        {/* Đang kiểm hỗ trợ: vạch xám thay câu "Đang kiểm tra…"; nút lưu vẫn khoá theo support.ready. */}
+        {support.checking&&<InlineSkeleton label="hỗ trợ của tháng và các khoản thu" width="14rem" />}
         {missingSources&&<p role="alert" className="text-destructive">Chưa tải đủ giá dịch vụ hoặc số tiền thừa của khách. Tải lại trước khi lưu hoá đơn.<Button type="button" variant="outline" onClick={()=>{void servicesQuery.refetch();if(invoice.contract_id)void creditQuery.refetch();}}>Tải lại dữ liệu</Button></p>}
         {meterError&&<p role="alert" className="text-destructive">{meterError}<Button type="button" variant="outline" onClick={()=>setMeterAttempt(value=>value+1)}>Tải lại công tơ</Button></p>}
-        {meterLoading&&<p role="status">Đang tải công tơ của phòng...</p>}
+        {meterLoading&&<InlineSkeleton label="công tơ của phòng" width="12rem" />}
         {submitError&&<p role="alert" className="text-destructive">{submitError}</p>}
       </>}
       onResetAll={() => { support.resetParts(); reset(decomposed.values); }}
@@ -299,8 +302,10 @@ const OpenIssuedInvoiceEditor = ({ invoice, onOpenChange }: EditInvoiceDialogPro
     <DialogContent>
       <DialogHeader>
         <DialogTitle>Điều chỉnh hóa đơn</DialogTitle>
-        <DialogDescription>{loadError ?? 'Đang tải hóa đơn mới nhất...'}</DialogDescription>
+        {/* Đang tải: câu chỉ cho trình đọc màn hình, trên màn là khối xám (chủ chốt 02/10/2026). */}
+        <DialogDescription className={loadError ? undefined : 'sr-only'}>{loadError ?? 'Đang tải hóa đơn mới nhất...'}</DialogDescription>
       </DialogHeader>
+      {!loadError && <LoadingState label="hóa đơn mới nhất" variant="detail" rows={5} onRetry={() => setAttempt(value => value + 1)} />}
       {loadError && <Button onClick={() => { setLoadError(null); setAttempt(value => value + 1); }}>Thử tải lại</Button>}
     </DialogContent>
   </Dialog>;

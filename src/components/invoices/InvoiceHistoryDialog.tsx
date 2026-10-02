@@ -579,7 +579,7 @@ const InvoiceHistoryDialog = ({ open, onOpenChange, invoice }: Props) => {
           </span>
         </div>
 
-        <QueryRegion label="lịch sử hoá đơn" queries={[historyQuery]}>
+        <QueryRegion label="lịch sử hoá đơn" queries={[historyQuery]} skeleton="list" rows={3}>
         <div className="flex-1 overflow-y-auto pr-1 -mr-1">
           {isLoading ? (
             <div className="space-y-2">

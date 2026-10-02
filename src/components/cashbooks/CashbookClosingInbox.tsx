@@ -86,7 +86,9 @@ export default function CashbookClosingInbox({
   const bodyText = isMobile ? "text-xs" : "text-sm";
 
   return (
-    <QueryRegion label="đề nghị và biên bản chốt sổ" queries={[query]}>
+    // Hộp báo thường vắng (không có đề nghị/biên bản thì ẩn hẳn) ⇒ lúc chờ không dựng
+    // khối xám để rồi biến mất; chỉ báo cho trình đọc màn hình — chủ chốt 02/10/2026.
+    <QueryRegion label="đề nghị và biên bản chốt sổ" queries={[query]} skeleton="none">
       {pending.length > 0 && (
         <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 p-3">
           <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-amber-900">

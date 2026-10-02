@@ -41,6 +41,7 @@ import { UtilityEnContent } from './UtilityEnContent';
 import { AttachmentLightbox } from '@/components/ui/attachment-lightbox';
 import { BookIcon } from './utilityIcons';
 import { usePersistedState } from '@/hooks/usePersistedState';
+import { LoadingState } from '@/components/loading/LoadingState';
 
 interface Props {
   billingMonth: string;
@@ -606,7 +607,7 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
                     void feeAccounts.refetch(); void S.refetchDetails();
                   }}>Thử lại dữ liệu phí</button>
                 </div> : loadingBld || feeStatus.isLoading || feeAccounts.isLoading || S.detailsLoading
-                  ? <div className="ud-empty" role="status">Đang tải dữ liệu phí…</div> : gridRows.length === 0 && naRows.length === 0 ? <div className="ud-empty">🏢 Không có tòa nào cho hạng mục này.</div> : (
+                  ? <LoadingState label="dữ liệu phí" variant="table" rows={6} /> : gridRows.length === 0 && naRows.length === 0 ? <div className="ud-empty">🏢 Không có tòa nào cho hạng mục này.</div> : (
                   <div className="ud-tablewrap">
                     <table className="ud-table">
                       <thead><tr>
@@ -732,7 +733,7 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
           )}
 
           <div className="ud-body">
-            {maintenance.isLoading ? <div className="ud-empty">⏳ Đang tải…</div> : (
+            {maintenance.isLoading ? <LoadingState label="phiếu tổng" variant="list" rows={3} /> : (
               <div className="ptt-batch-list">
                 {maintenance.groups.map((bt) => (
                   <div className="ptt-batch-group" key={bt.batchId}>

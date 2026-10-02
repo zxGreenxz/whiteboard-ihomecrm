@@ -12,6 +12,7 @@ import { useInvoiceRoundingReport } from '@/hooks/useInvoiceRoundingReport';
 import { canUse } from '@/lib/permissionPages';
 import { currentMonthVN, fmtBillingMonth } from '@/lib/collect';
 import { ROUNDING_REASON_LABELS, RoundingReportError } from '@/lib/invoiceRoundingReport';
+import { LoadingState } from '@/components/loading/LoadingState';
 
 const filtersSchema = z.object({
   billingMonth: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
@@ -78,7 +79,7 @@ export default function InvoiceRoundingReportDialog({ open, onOpenChange, billin
           {!validPeriod ? <p role="alert">Vui lòng chọn kỳ hóa đơn hợp lệ.</p> : report.isError ? <div role="alert" className="space-y-3 rounded-lg border p-4 text-sm">
             <p>{report.error instanceof RoundingReportError ? report.error.message : 'Chưa tải được báo cáo khoản bỏ qua. Vui lòng thử lại.'}</p>
             <Button variant="outline" onClick={() => void report.refetch()}><RefreshCw className="mr-2 h-4 w-4" />Thử lại</Button>
-          </div> : report.isPending ? <p role="status">Đang tải báo cáo…</p> : data && <>
+          </div> : report.isPending ? <LoadingState label="báo cáo" variant="cards" rows={2} onRetry={() => void report.refetch()} /> : data && <>
             <div className="grid shrink-0 grid-cols-2 gap-3" aria-live="polite">
               <div aria-label="Tổng khoản bỏ qua" className="rounded-lg border bg-amber-50 p-3"><p className="text-sm text-muted-foreground">Tổng khoản bỏ qua</p><p className="break-words text-xl font-semibold text-amber-800">{money(data.total_amount)}</p></div>
               <div aria-label="Số hóa đơn có khoản bỏ qua" className="rounded-lg border p-3"><p className="text-sm text-muted-foreground">Số hóa đơn</p><p className="text-xl font-semibold">{data.invoice_count.toLocaleString('vi-VN')}</p><p className="text-xs text-muted-foreground">{data.total_count.toLocaleString('vi-VN')} lần bỏ qua</p></div>

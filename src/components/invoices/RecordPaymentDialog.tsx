@@ -61,6 +61,7 @@ import { toast } from 'sonner';
 import { deriveInvoiceDepositDue } from '@/lib/paymentRecordRpc';
 import { deriveOverpayPolicy, planCollect } from '@/lib/collectPlan';
 import { todayISO } from '@/lib/collect';
+import { InlineSkeleton } from '@/components/loading/LoadingState';
 
 interface RecordPaymentDialogProps {
   open: boolean;
@@ -742,10 +743,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
       <div className="space-y-2 min-w-0">
         <Label>{method === 'TM' ? 'Sổ tiền mặt riêng *' : 'Sổ quỹ nhận *'}</Label>
         {receivingLoading ? (
-          <p className="flex h-10 items-center gap-2 text-sm text-muted-foreground" role="status">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Đang tải sổ nhận tiền…
-          </p>
+          <div className="flex h-10 items-center"><InlineSkeleton label="sổ nhận tiền" width="12rem" /></div>
         ) : block ? (
           <p className="text-sm text-red-600" role="alert">{block}</p>
         ) : method === 'TM' ? (

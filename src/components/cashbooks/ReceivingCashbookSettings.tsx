@@ -87,9 +87,13 @@ function tomTatSoPhu(ids: string[], theoId: Map<string, Account>): string {
 
 function KhungDangTai() {
   return (
-    <div className="space-y-3" aria-busy="true" aria-label="Đang tải sổ nhận tiền">
-      <Skeleton className="h-40" />
-      <Skeleton className="h-64" />
+    // Khối xám hiện sau 0,3 s (ld-appear), câu chờ chỉ cho trình đọc màn hình — chủ chốt 02/10/2026.
+    <div role="status" aria-busy="true">
+      <span className="sr-only">Đang tải sổ nhận tiền…</span>
+      <div className="ld-appear space-y-3" aria-hidden="true">
+        <Skeleton className="h-40" />
+        <Skeleton className="h-64" />
+      </div>
     </div>
   );
 }

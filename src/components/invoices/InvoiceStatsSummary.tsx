@@ -86,7 +86,7 @@ const InvoiceStatsSummary = ({
 
   if (isMobile) {
     return (
-      <QueryRegion label="thống kê hóa đơn" queries={[invoiceStatisticsQuery]}><MobileStats
+      <QueryRegion label="thống kê hóa đơn" queries={[invoiceStatisticsQuery]} skeleton="cards" rows={4}><MobileStats
         s={s}
         isLoading={isLoading}
         hideAggregateRow={hideAggregateRow}
@@ -99,7 +99,7 @@ const InvoiceStatsSummary = ({
   }
 
   return (
-    <QueryRegion label="thống kê hóa đơn" queries={[invoiceStatisticsQuery]}><DesktopStats
+    <QueryRegion label="thống kê hóa đơn" queries={[invoiceStatisticsQuery]} skeleton="cards" rows={3}><DesktopStats
       s={s}
       isLoading={isLoading}
       hideAggregateRow={hideAggregateRow}

@@ -16,6 +16,7 @@ import { useFinanceV2Routes, isCanonicalAccess } from "@/lib/financeV2Route";
 import { format } from "date-fns";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { formatVND } from "@/lib/utils";
+import { InlineSkeleton } from "@/components/loading/LoadingState";
 
 interface Props {
   open: boolean;
@@ -134,7 +135,16 @@ export function CashbookDetailDialog({
                 />
               </>
             ) : (
-              <Row label="Phân quyền sổ:" value="Đang tải…" />
+              // Đang chờ: vạch xám trong ô (chủ chốt 02/10/2026); không còn chờ mà vẫn chưa
+              // có phân quyền (route chưa CANONICAL / đọc hỏng) thì để "—" thay vì treo chữ.
+              <Row
+                label="Phân quyền sổ:"
+                value={
+                  v2Routes.isLoading || orgIdQuery.isLoading || accessQuery.isLoading
+                    ? <InlineSkeleton label="phân quyền sổ" width="8rem" />
+                    : "—"
+                }
+              />
             )}
             <Row
               label="Ngày chốt số dư đầu kỳ:"

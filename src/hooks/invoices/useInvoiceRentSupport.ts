@@ -9,6 +9,7 @@ import {
 } from '@/lib/invoiceRentSupport';
 
 const PREVIEW_REQUEST = '00000000-0000-4000-8000-000000000001';
+const SUPPORT_CHECKING = 'Đang kiểm tra hỗ trợ của tháng và các khoản thu...';
 interface Options {
   organizationId: string | null;
   contractId: string;
@@ -62,7 +63,10 @@ export function useInvoiceRentSupport<T extends InvoiceEntryValues>(form: UseFor
     staleTime: 0,
   });
   const ready = !enabled || (!!quote.data && quote.data.fingerprint === fingerprint && quote.data.value.state === 'READY' && Number(quote.data.value.invoice_support) === preview?.amount && quote.data.value.plan_revision === plan.data?.revision && quote.data.value.billing_month === values.billing_month && !quote.isFetching && !plan.isFetching && !plan.isError && !quote.isError && preview?.state === 'READY');
-  const error = !enabled ? null : plan.isError || quote.isError ? 'Không kiểm tra được hỗ trợ; vui lòng tải lại trước khi lưu.' : manual < 0 ? 'Giảm trừ phải đủ phần hỗ trợ và credit đã chọn.' : preview?.state === 'NEEDS_REVIEW' || quote.data?.value.state === 'NEEDS_REVIEW' ? 'Hỗ trợ vượt doanh thu đủ điều kiện; cần đối chiếu.' : !ready ? 'Đang kiểm tra hỗ trợ của tháng và các khoản thu...' : null;
+  const error = !enabled ? null : plan.isError || quote.isError ? 'Không kiểm tra được hỗ trợ; vui lòng tải lại trước khi lưu.' : manual < 0 ? 'Giảm trừ phải đủ phần hỗ trợ và credit đã chọn.' : preview?.state === 'NEEDS_REVIEW' || quote.data?.value.state === 'NEEDS_REVIEW' ? 'Hỗ trợ vượt doanh thu đủ điều kiện; cần đối chiếu.' : !ready ? SUPPORT_CHECKING : null;
+  /** Chỉ là đang chờ kiểm hỗ trợ (không phải lỗi): giao diện hiện vạch xám thay câu chữ
+   *  (chủ chốt 02/10/2026). `error` giữ nguyên để chặn lưu và làm câu báo khi bấm lưu. */
+  const checking = error === SUPPORT_CHECKING;
   const intent = useRef<{ fingerprint: string; requestId: string; organizationId: string; contractId: string; invoiceId?: string } | null>(null);
   const [hasPending, setHasPending] = useState(false);
   const prepare = async (payload: InvoiceFormData, { readbackOnly = false }: { readbackOnly?: boolean } = {}) => {
@@ -82,7 +86,7 @@ export function useInvoiceRentSupport<T extends InvoiceEntryValues>(form: UseFor
     setHasPending(true);
     return { context: { ...context, request_id: intent.current.requestId }, saved: null };
   };
-  return { ready, error, manual, support: preview?.amount ?? parts.current.support, credit, prepare, hasPending,
+  return { ready, error, checking, manual, support: preview?.amount ?? parts.current.support, credit, prepare, hasPending,
     resetParts: () => { parts.current = { subject, support: options.initialSupport ?? 0, credit: options.initialCredit ?? 0 }; },
     clear: () => { intent.current = null; setHasPending(false); }, refetch: async () => { await plan.refetch(); await quote.refetch(); } };
 }

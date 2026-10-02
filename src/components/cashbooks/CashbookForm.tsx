@@ -3,6 +3,7 @@ import { persistentFinancialWorkflow } from '@/lib/persistentFinancialWorkflow';
 import { FinancialWorkflowGuard, FinancialWorkflowError, workflowErrorMessage } from "@/lib/financialWorkflow";
 import { focusFirstError } from "@/lib/formErrors";
 import { QueryRegion } from "@/components/errors/QueryRegion";
+import { LoadingState } from "@/components/loading/LoadingState";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -641,10 +642,8 @@ const CashbookFormEditor = ({ open, onOpenChange, account, blockedDraft, onBlock
             {canEditShared && v2AccessMode && (
               <div className="space-y-3">
                 {accessQuery.isLoading ? (
-                  <p className="text-xs text-muted-foreground italic px-1">
-                    Đang tải phân quyền sổ quỹ...
-                  </p>
-                ) : accessQuery.isError || !access ? (
+                  <LoadingState label="phân quyền sổ quỹ" rows={4} />
+                ) :accessQuery.isError || !access ? (
                   <p className="text-xs text-red-600 px-1">
                     {workflowErrorMessage(accessQuery.error, "tải phân quyền sổ quỹ")}
                   </p>
@@ -700,7 +699,7 @@ const CashbookFormEditor = ({ open, onOpenChange, account, blockedDraft, onBlock
               </p>
             )}
 
-            {sourceBlocked && <QueryRegion label="danh mục và phân quyền sổ quỹ" queries={saveSources}><p>Chưa tải đủ dữ liệu để lưu sổ.</p></QueryRegion>}
+            {sourceBlocked && <QueryRegion label="danh mục và phân quyền sổ quỹ" queries={saveSources} skeleton="none"><p>Chưa tải đủ dữ liệu để lưu sổ.</p></QueryRegion>}
             {form.formState.errors.root?.server?.message && <div role="alert" className="rounded border border-red-300 p-3 text-sm text-red-600"><p>{form.formState.errors.root.server.message}</p>{failure instanceof FinancialWorkflowError && failure.completed.map(step => <p key={step.id}>{step.label} — mã: {step.id}</p>)}</div>}
             <DialogFooter>
               <Button

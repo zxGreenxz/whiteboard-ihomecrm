@@ -14,6 +14,7 @@ import type { IncomeExpenseWithRelations } from '@/hooks/useIncomeExpenses';
 import { useAppendIncomeExpenseSupplement, useIncomeExpenseSupplements } from '@/hooks/income-expenses/supplements';
 import { getVoucherDisplayAttachments, supplementFormSchema, type SupplementFormValues } from '@/lib/incomeExpenseSupplement';
 import { useAuth } from '@/hooks/useAuth';
+import { LoadingState } from '@/components/loading/LoadingState';
 
 interface Props { open: boolean; onOpenChange: (open: boolean) => void; voucher: IncomeExpenseWithRelations | null; }
 
@@ -69,7 +70,7 @@ export function IncomeExpenseQuickEditDialog({ open, onOpenChange, voucher }: Pr
             <button type="button" key={url} className="h-20 w-20 rounded border overflow-hidden" aria-label={`Xem chứng từ đã có ${index + 1}`} onClick={() => setLightbox(index)}>
               {/\.pdf(?:$|[?#])/i.test(url) ? <FileText className="m-auto h-8 w-8" /> : <StorageImage value={url} alt={`Chứng từ đã có ${index + 1}`} className="h-full w-full object-cover" />}
             </button>)}</div> : <p className="text-sm text-muted-foreground">Chưa có ảnh đính kèm.</p>}
-          {previous.isLoading && <p className="text-xs text-muted-foreground">Đang tải các lần bổ sung…</p>}
+          {previous.isLoading && <LoadingState label="các lần bổ sung" rows={2} className="py-0" />}
           {previous.isError && <p role="alert" className="text-sm text-destructive">Chưa tải được các lần bổ sung. Hãy đóng và mở lại phiếu.</p>}
         </section>
         <div className="space-y-2"><Label>Ảnh / chứng từ bổ sung</Label>

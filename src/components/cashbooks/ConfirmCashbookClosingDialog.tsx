@@ -26,6 +26,7 @@ import { parseMoneyInput, formatMoney as fmtVND, sameMoney } from "@/lib/moneyIn
 
 import { useOperationFormFeedback } from '@/hooks/useOperationFormFeedback';
 import { QueryRegion } from '@/components/errors/QueryRegion';
+import { InlineSkeleton } from '@/components/loading/LoadingState';
 import { CASHBOOK_CLOSING_RULES } from '@/lib/cashbookClosingFeedback';
 import { format } from 'date-fns';
 
@@ -79,13 +80,13 @@ export default function ConfirmCashbookClosingDialog({
         </DialogHeader>
 
         {feedback.notice}
-        <QueryRegion label="số dư sổ quỹ để đối chiếu" queries={[balanceQuery]}><span /></QueryRegion>
+        <QueryRegion label="số dư sổ quỹ để đối chiếu" queries={[balanceQuery]} skeleton="none"><span /></QueryRegion>
         <div className="space-y-3">
           <div className="rounded-md border p-3 text-sm space-y-1">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Số dư theo sổ (tính lại lúc này)</span>
               <span className="tabular-nums">
-                {loadingFresh ? "đang tính…" : freshFailed ? "không đọc được" : fmtVND(freshSystem)}
+                {loadingFresh ? <InlineSkeleton label="số dư theo sổ" width="6rem" /> : freshFailed ? "không đọc được" : fmtVND(freshSystem)}
               </span>
             </div>
             <div className="flex justify-between">

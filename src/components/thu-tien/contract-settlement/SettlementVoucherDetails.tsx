@@ -33,6 +33,7 @@
 
 import { useEffect } from 'react';
 import type { ModalReadState } from './modalReadState';
+import { InlineSkeleton } from '@/components/loading/LoadingState';
 import {
   VoucherNote,
   type VoucherNoteRef,
@@ -128,7 +129,7 @@ function TrangThaiCanCu({ st }: { st: BasisReadState }) {
   if (st.kind === 'loading') {
     return (
       <div className="cs-note-s" data-testid="settlement-basis-state" data-state="loading">
-        Đang tải căn cứ…
+        <InlineSkeleton label="căn cứ" width="12rem" />
       </div>
     );
   }

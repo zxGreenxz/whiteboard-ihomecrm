@@ -23,6 +23,7 @@ import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
 import IncomeExpenseTypeForm from '@/components/income-expense-types/IncomeExpenseTypeForm';
 import EditIncomeExpenseTypeDialog from '@/components/income-expense-types/EditIncomeExpenseTypeDialog';
+import { LoadingState } from '@/components/loading/LoadingState';
 
 interface IncomeExpenseItemSelectorProps {
   open: boolean;
@@ -137,10 +138,8 @@ const IncomeExpenseItemSelector = ({
           {/* Type list with checkboxes */}
           <div className="max-h-[300px] overflow-y-auto space-y-2">
             {isLoading ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">
-                Đang tải...
-              </p>
-            ) : visibleTypes.length === 0 ? (
+              <LoadingState label={`hạng mục ${voucherType === 'INCOME' ? 'thu' : 'chi'}`} rows={5} />
+            ) :visibleTypes.length === 0 ? (
               <p className="text-sm text-muted-foreground py-4 text-center">
                 Chưa có loại {voucherType === 'INCOME' ? 'thu' : 'chi'} nào.
                 Hãy thêm mới.

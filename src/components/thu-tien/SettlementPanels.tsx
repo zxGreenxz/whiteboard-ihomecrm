@@ -1,4 +1,5 @@
 import {QueryRegion} from '@/components/errors/QueryRegion';
+import { LoadingState } from '@/components/loading/LoadingState';
 import { PiggyBank } from 'lucide-react';
 import { useDepositLedger, useDepositLedgerSummary } from '@/hooks/useThanhToanLedgers';
 
@@ -25,7 +26,16 @@ export function DepositLedgerSection({ period }: { period: string }) {
   const rows = q.data ?? [];
 
   return (
-    <QueryRegion queries={[q]} label="sổ theo dõi cọc đã thu">
+    <QueryRegion
+      queries={[q]}
+      label="sổ theo dõi cọc đã thu"
+      // Lúc chờ: thẻ số xám đúng chỗ thẻ thật (lề như .ptt-comm-stats) — chủ chốt 02/10/2026.
+      loading={
+        <div style={{ padding: '16px 28px 0' }}>
+          <LoadingState label="sổ theo dõi cọc đã thu" variant="cards" rows={3} onRetry={() => { void q.refetch(); }} />
+        </div>
+      }
+    >
     <div className="ptt-scroll">
       <div className="ptt-comm-stats">
         <div className="ptt-comm-card"><div className="ptt-ov-lbl">Phiếu cọc kỳ này</div><div className="ptt-comm-num">{sum.total}</div><div className="ptt-ov-sub">theo ngày phiếu</div></div>
@@ -36,7 +46,7 @@ export function DepositLedgerSection({ period }: { period: string }) {
 
       <div className="ud-body">
         {q.isLoading ? (
-          <div className="ud-empty">⏳ Đang tải…</div>
+          <LoadingState label="phiếu cọc" variant="table" rows={6} />
         ) : rows.length === 0 ? (
           <div className="ud-empty">📄 Kỳ này không có phiếu thu cọc nào.</div>
         ) : (

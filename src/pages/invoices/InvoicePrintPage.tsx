@@ -7,6 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { batBuoc } from "@/lib/queryGuard";
 import { format } from "date-fns";
 import { formatVND } from "@/lib/utils";
+import { LoadingState } from "@/components/loading/LoadingState";
 
 export const useInvoiceForPrint = (id: string | undefined) =>
   useQuery({
@@ -51,7 +52,8 @@ const InvoicePrintPage = () => {
     }
   }, [inv,isError]);
 
-  if (isLoading) return <div className="p-8 text-center">Đang tải...</div>;
+  // Chờ: khối xám trên màn, KHÔNG in ra giấy (print:hidden); hộp in chỉ tự mở khi đã có hoá đơn.
+  if (isLoading) return <div className="mx-auto max-w-[720px] p-8 print:hidden"><LoadingState label="hoá đơn để in" variant="detail" rows={8} onRetry={() => void refetch()} /></div>;
   if (isError) return <div role="alert" className="p-8 text-center">Chưa tải được hóa đơn để in. Không in khi dữ liệu chưa được xác nhận.<Button variant="outline" onClick={()=>void refetch()}>Tải lại</Button></div>;
   if (!inv) return <div className="p-8 text-center text-red-600">Không tìm thấy hoá đơn</div>;
 

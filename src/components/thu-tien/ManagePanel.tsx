@@ -1,4 +1,5 @@
 import { QueryRegion } from '@/components/errors/QueryRegion';
+import { LoadingState } from '@/components/loading/LoadingState';
 // =============================================
 // ManagePanel — cột quản lý Thu tiền trên DESKTOP (75% trái).
 // CSS ẩn dưới 1024px (.tt-manage) — mobile vẫn chỉ thấy khung thu tiền.
@@ -126,7 +127,6 @@ export function ManagePanel({
 
   return (
     <div className="tt-manage">
-      <QueryRegion label="báo cáo thu tiền và bàn giao" queries={[reportQuery, handoverQuery]}>
       <div className="tm-head">
         <button type="button" className="tm-back" title="Quay lại" onClick={onBack}>
           <ArrowLeft />
@@ -185,6 +185,21 @@ export function ManagePanel({
         )}
       </div>
 
+      {/* Khung (tiêu đề, kỳ, bộ lọc) hiện ngay; chỉ phần số liệu chờ dữ liệu — chủ chốt 02/10/2026. */}
+      <QueryRegion
+        label="báo cáo thu tiền và bàn giao"
+        queries={[reportQuery, handoverQuery]}
+        loading={
+          <div style={{ padding: '18px 28px 0' }}>
+            <LoadingState
+              label="báo cáo thu tiền và bàn giao"
+              variant="cards"
+              rows={3}
+              onRetry={() => { void reportQuery.refetch(); void handoverQuery.refetch(); }}
+            />
+          </div>
+        }
+      >
       <div className="tm-kpis">
         <div className="tm-kpi">
           <span className="tm-kpi-l">Đã thu · {timeName}</span>
@@ -210,7 +225,9 @@ export function ManagePanel({
       </div>
 
       {isLoading ? (
-        <div className="tm-empty">⏳ Đang tải hoá đơn kỳ {fmtBillingMonth(billingMonth)}…</div>
+        <div className="tm-body">
+          <LoadingState label={`hoá đơn kỳ ${fmtBillingMonth(billingMonth)}`} variant="table" rows={6} />
+        </div>
       ) : invoices.length === 0 ? (
         <div className="tm-empty">🔍 Không có hoá đơn nào trong kỳ {fmtBillingMonth(billingMonth)}.</div>
       ) : (

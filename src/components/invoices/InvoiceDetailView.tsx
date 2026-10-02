@@ -1,6 +1,7 @@
 import {readInvoiceRelatedVouchers} from '@/lib/invoiceRelatedRead';
 import {QueryRegion} from '@/components/errors/QueryRegion';
-import { useState, Suspense, lazy } from 'react';
+import { LoadingState } from '@/components/loading/LoadingState';
+import { useState, Suspense, lazy, type ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Table,
@@ -196,15 +197,33 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
   });
 
   const relatedVouchers=vouchersQuery.data??[];
+  // Chưa có chi tiết: dựng khung thẻ (nút quay lại) ngay, thân là khối xám dạng nhãn/giá
+  // trị — không chữ "Đang tải…" (chủ chốt 02/10/2026). Thẻ lỗi cũng nằm trong khung này.
+  const khungCho = (body: ReactNode) => (
+    <div className="flex w-full flex-col gap-[18px] text-foreground">
+      <section className={CARD}>
+        {showBackButton && (
+          <div className="flex items-center gap-2.5 border-b border-[hsl(210_20%_93%)] px-5 py-3.5">
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-10 w-10 shrink-0 rounded-lg"
+              onClick={onBack}
+              title="Quay lại danh sách"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
+        <div className="px-5 py-4">{body}</div>
+      </section>
+    </div>
+  );
   if (!id) return null;
-  if(invoiceQuery.isError||vouchersQuery.isError||vouchersQuery.isPending||vouchersQuery.data===undefined) return <QueryRegion label="chi tiết hoá đơn và các phiếu liên quan" queries={[invoiceQuery,vouchersQuery]}><></></QueryRegion>;
+  if(invoiceQuery.isError||vouchersQuery.isError||vouchersQuery.isPending||vouchersQuery.data===undefined) return khungCho(<QueryRegion label="chi tiết hoá đơn và các phiếu liên quan" queries={[invoiceQuery,vouchersQuery]} skeleton="detail" rows={8}><></></QueryRegion>);
 
   if (isLoading) {
-    return (
-      <div className="text-center py-12 text-gray-500">
-        Đang tải thông tin hóa đơn...
-      </div>
-    );
+    return khungCho(<LoadingState label="thông tin hóa đơn" variant="detail" rows={8} />);
   }
 
   if (!invoice) {

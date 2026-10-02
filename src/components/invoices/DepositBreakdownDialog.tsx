@@ -108,7 +108,7 @@ const DepositBreakdownDialog = ({ open, onOpenChange, filters }: Props) => {
           </DialogDescription>
         </DialogHeader>
 
-        <QueryRegion queries={[query]} label="cọc đã thu trong kỳ">
+        <QueryRegion queries={[query]} label="cọc đã thu trong kỳ" skeleton="table" rows={5}>
         {isLoading ? (
           <div className="space-y-2">
             {Array.from({ length: 5 }).map((_, i) => (

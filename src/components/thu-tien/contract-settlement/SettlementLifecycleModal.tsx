@@ -42,6 +42,7 @@ import { formatSupplementAuthor } from '@/lib/incomeExpenseSupplement';
 import { ContractLifecycleBand } from './ContractLifecycleBand';
 import { RentSupportReconciliationPanel } from '@/components/contracts/RentSupportReconciliationPanel';
 import { SettlementVoucherDetails } from './SettlementVoucherDetails';
+import { InlineSkeleton, LoadingState } from '@/components/loading/LoadingState';
 import { mocNgayNghiepVu, type LaneSubject } from '@/lib/contractLifecycle';
 import { vnTodayISO } from '@/lib/vnDate';
 import {
@@ -686,7 +687,7 @@ function SettlementLifecycleModalContent({ row, view, actions, onClose, onRetryS
 
             <h3 style={{ marginTop: 16 }}>Lịch sử bổ sung</h3>
             {supplements.isLoading ? (
-              <div className="cs-note-s">Đang tải…</div>
+              <LoadingState label="lịch sử bổ sung" rows={2} />
             ) : supplements.isError ? (
               <div className="cs-note-s" style={{ color: 'var(--c-unpaid)' }}>
                 Không đọc được ghi chú bổ sung. Chưa kết luận được là phiếu không có yêu cầu nào.
@@ -833,11 +834,14 @@ function SettlementLifecycleModalContent({ row, view, actions, onClose, onRetryS
 
             {/* ── Nút ──────────────────────────────────────────────────── */}
             <div className="cs-acts">
-              {!daXacMinh && (
+              {/* Còn đang đọc nguồn: vạch xám thay câu "Đang xác minh…" (chủ chốt 02/10/2026) —
+                  mọi nút tiền bên dưới VẪN khoá theo daXacMinh như cũ. Nguồn lỗi mới hiện câu. */}
+              {!daXacMinh && !coNguonLoi && (
+                <InlineSkeleton label="dữ liệu phiếu để duyệt hoặc chi" width="16rem" />
+              )}
+              {!daXacMinh && coNguonLoi && (
                 <div className="cs-warnbox" role="status">
-                  {!coNguonLoi
-                    ? 'Đang xác minh dữ liệu phiếu. Chưa thể duyệt hoặc chi.'
-                    : 'Chưa xác minh được dữ liệu phiếu. Hãy thử lại nguồn bị lỗi trước khi duyệt hoặc chi.'}
+                  Chưa xác minh được dữ liệu phiếu. Hãy thử lại nguồn bị lỗi trước khi duyệt hoặc chi.
                   {row.validationState === 'error' && onRetrySources && (
                     <button type="button" className="cs-btn sm" onClick={onRetrySources}>Thử lại dữ liệu phiếu</button>
                   )}
@@ -876,8 +880,9 @@ function SettlementLifecycleModalContent({ row, view, actions, onClose, onRetryS
                       }}>Thử lại sổ quỹ</button>
                     </div>
                   ) : soDangTai ? (
-                    <div className="cs-note-s" role="status">Đang tải sổ quỹ…</div>
-                  ) : soDungOrg.length === 0 && (
+                    // Vạch xám thay chữ (chủ chốt 02/10/2026); nút ghi chi vẫn khoá tới khi sổ về.
+                    <InlineSkeleton label="sổ quỹ" width="10rem" />
+                  ) :soDungOrg.length === 0 && (
                     <div className="cs-note-s" style={{ color: 'var(--c-unpaid)' }}>
                       Bạn không giữ sổ quỹ nào của tổ chức này nên không ghi chi được.
                     </div>

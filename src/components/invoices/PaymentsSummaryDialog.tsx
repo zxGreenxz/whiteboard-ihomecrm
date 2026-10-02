@@ -352,7 +352,7 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
           </span>
         </div>
 
-        <QueryRegion label="các lần thanh toán và tiền cọc" queries={[paymentsQuery, firstDetailsQuery, tendersQuery, ...(firstDetail?.contractId ? [depositVouchersQuery] : []), ...((payments??[]).some(p=>p.collection_id) ? [eligibilityQuery] : [])]}>
+        <QueryRegion label="các lần thanh toán và tiền cọc" queries={[paymentsQuery, firstDetailsQuery, tendersQuery, ...(firstDetail?.contractId ? [depositVouchersQuery] : []), ...((payments??[]).some(p=>p.collection_id) ? [eligibilityQuery] : [])]} skeleton="list" rows={3}>
         {(() => {
           const fd = firstInvoiceDetails?.get(invoiceId);
           if (!fd) return null;

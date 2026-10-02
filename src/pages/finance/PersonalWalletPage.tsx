@@ -33,6 +33,7 @@ import {
 } from "@/hooks/useShareholderProfit";
 import { usePersistedState } from "@/hooks/usePersistedState";
 import { QueryRegion } from "@/components/errors/QueryRegion";
+import { LoadingState } from "@/components/loading/LoadingState";
 
 export default function PersonalWalletPage() {
   const [year, setYear] = usePersistedState("flt:personal-wallet:year", currentYear());
@@ -94,11 +95,33 @@ export default function PersonalWalletPage() {
 
   const years = [currentYear() + 1, currentYear(), currentYear() - 1, currentYear() - 2];
 
+  const toolbar = (
+    <div className="flex items-center gap-2">
+      <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
+        <SelectTrigger className="w-[120px]"><SelectValue /></SelectTrigger>
+        <SelectContent>{years.map((y) => <SelectItem key={y} value={String(y)}>Năm {y}</SelectItem>)}</SelectContent>
+      </Select>
+      <Button className="ml-auto" onClick={() => { setEditing(null); setDialogOpen(true); }}>
+        <Plus className="h-4 w-4 mr-2" /> Thêm khoản
+      </Button>
+    </div>
+  );
+  // Lúc chờ: chọn năm + nút Thêm khoản hiện ngay, chỗ số tổng / bảng là khối xám (không
+  // in 0đ) — chủ chốt 02/10/2026. Lỗi vẫn do QueryRegion thay cả vùng như cũ.
+  const choGiaoDich = (
+    <div className="space-y-4">
+      <LoadingState label="số tổng ví cá nhân" variant="cards" rows={3} className="py-0" />
+      {toolbar}
+      <LoadingState label="giao dịch ví cá nhân" variant="table" rows={6} onRetry={() => { void txnsQuery.refetch(); }} />
+    </div>
+  );
+
   return (
     <MainLayout title="Ví thu chi cá nhân" subtitle="Tài chính → Cá nhân" icon={Wallet}>
-      <QueryRegion label="giao dịch ví cá nhân" queries={[txnsQuery]}>
+      <QueryRegion label="giao dịch ví cá nhân" queries={[txnsQuery]} loading={choGiaoDich}>
       <div className="space-y-4">
-        <QueryRegion label="phần lợi nhuận cổ đông" queries={[shareholderQuery, allocationsQuery, distributionsQuery]}>
+        {/* Thẻ "Từ công ty" chỉ có với cổ đông ⇒ chờ thì không dựng khối xám để rồi biến mất. */}
+        <QueryRegion label="phần lợi nhuận cổ đông" queries={[shareholderQuery, allocationsQuery, distributionsQuery]} skeleton="none">
         {companyRemaining && (
           <Card className="border-blue-200 bg-blue-50">
             <CardContent className="p-4 flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
@@ -117,15 +140,7 @@ export default function PersonalWalletPage() {
           <StatCard label="Số dư" value={formatCurrency(totals.balance)} icon={Scale} tone={totals.balance >= 0 ? "blue" : "red"} />
         </div>
 
-        <div className="flex items-center gap-2">
-          <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
-            <SelectTrigger className="w-[120px]"><SelectValue /></SelectTrigger>
-            <SelectContent>{years.map((y) => <SelectItem key={y} value={String(y)}>Năm {y}</SelectItem>)}</SelectContent>
-          </Select>
-          <Button className="ml-auto" onClick={() => { setEditing(null); setDialogOpen(true); }}>
-            <Plus className="h-4 w-4 mr-2" /> Thêm khoản
-          </Button>
-        </div>
+        {toolbar}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <Card>
@@ -215,8 +230,6 @@ export default function PersonalWalletPage() {
         </Card>
       </div>
 
-      <PersonalTxnDialog open={dialogOpen} onOpenChange={(o) => { setDialogOpen(o); if (!o) setEditing(null); }} txn={editing} />
-
       <AlertDialog open={!!deleteId} onOpenChange={(o) => { if (!o) setDeleteId(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -233,6 +246,8 @@ export default function PersonalWalletPage() {
         </AlertDialogContent>
       </AlertDialog>
       </QueryRegion>
+      {/* Ngoài vùng chờ: nút "Thêm khoản" đã hiện ngay khi giao dịch còn đang tải. */}
+      <PersonalTxnDialog open={dialogOpen} onOpenChange={(o) => { setDialogOpen(o); if (!o) setEditing(null); }} txn={editing} />
     </MainLayout>
   );
 }

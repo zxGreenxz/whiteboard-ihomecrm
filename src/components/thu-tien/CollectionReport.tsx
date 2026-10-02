@@ -1,4 +1,5 @@
 import {QueryRegion} from '@/components/errors/QueryRegion';
+import { LoadingState } from '@/components/loading/LoadingState';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { useCollectionReport } from '@/hooks/useCollectionReport';
@@ -245,7 +246,16 @@ export function CollectionReport({ show, onClose, buildings, defaultBuildingId, 
           </div>
         </div>
 
-        <QueryRegion label="báo cáo thu tiền" queries={[reportQuery]}>
+        {/* Lúc chờ: thẻ xám trong thân tấm trượt, lề như nội dung thật — chủ chốt 02/10/2026. */}
+        <QueryRegion
+          label="báo cáo thu tiền"
+          queries={[reportQuery]}
+          loading={
+            <div className="sheet-scroll rp-body" style={{ padding: '14px 18px 0' }}>
+              <LoadingState label="báo cáo thu tiền" variant="list" rows={5} onRetry={() => { void reportQuery.refetch(); }} />
+            </div>
+          }
+        >
         <div className="sheet-scroll rp-body">
           <div className="rp-total">
             <div className="rp-total-main">

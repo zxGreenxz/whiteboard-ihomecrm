@@ -1,4 +1,5 @@
 import {QueryRegion} from '@/components/errors/QueryRegion';
+import { InlineSkeleton } from '@/components/loading/LoadingState';
 import {InvoicePartialError,invoiceFailureMessage,invoiceLabel} from '@/lib/invoiceFeedback';
 import {voucherOutcomeUnknown} from '@/lib/voucherFeedback';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -641,8 +642,8 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
       creditBalance={watchedContractId ? creditBalance : 0}
       defaultDepositAmount={Number(selectedContract?.total_deposit) || 0}
       ready={!!selectedContract}
-      validationError={support.error || firstEntryError(errors)}
-      notice={<><QueryRegion label="dữ liệu lập hoá đơn" queries={sources}>{null}</QueryRegion>{meterError&&<p role="alert" className="text-destructive">{meterError}</p>}{submitError&&<p role="alert" className="text-destructive">{submitError}</p>}{completedInvoiceId&&<a className="underline" href={`/invoices/${completedInvoiceId}`}>Mở hoá đơn đã lưu</a>}</>}
+      validationError={(support.checking ? null : support.error) || firstEntryError(errors)}
+      notice={<><QueryRegion label="dữ liệu lập hoá đơn" queries={sources} skeleton="none">{null}</QueryRegion>{support.checking&&<InlineSkeleton label="hỗ trợ của tháng và các khoản thu" width="14rem" />}{meterError&&<p role="alert" className="text-destructive">{meterError}</p>}{submitError&&<p role="alert" className="text-destructive">{submitError}</p>}{completedInvoiceId&&<a className="underline" href={`/invoices/${completedInvoiceId}`}>Mở hoá đơn đã lưu</a>}</>}
       onResetAll={() => { support.resetParts(); reset({ ...baseline, contract_id: watchedContractId }); }}
       onCancel={handleClose}
       footNote={isSupportSummary(selectedContract?.discounts?.version === 2, support)}

@@ -33,6 +33,7 @@ import { duplicateCollectionQuestion, findRecentDuplicateCollection } from '@/li
 import { REVISION_REASON_MAX, REVISION_REASON_MIN } from '@/lib/incomeExpenseRevision';
 import EditInvoiceDialog from '@/components/invoices/EditInvoiceDialog';
 import { Button } from '@/components/ui/button';
+import { InlineSkeleton, LoadingState } from '@/components/loading/LoadingState';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -361,18 +362,20 @@ export function CollectDrawer({
     } finally {writingRef.current=false;setWriting(false);}
   };
 
-  // Sổ nhận tiền (máy chủ): đang nạp / lỗi thì chưa cho thu, nói rõ vì sao.
+  // Sổ nhận tiền (máy chủ): đang nạp / lỗi thì chưa cho thu, nói rõ vì sao. Đang nạp:
+  // khối xám thay chỗ bàn phím/form thu (chủ chốt 02/10/2026) — vẫn chưa cho thu.
   const receivingStatus = receiving.error
     ? <div role="alert" className="pf-hint err">{receiving.error}<Button variant="outline" onClick={() => void reloadReceiving?.()}>Tải lại sổ nhận tiền</Button></div>
     : receiving.loading
-      ? <p role="status" className="pf-hint">Đang tải sổ nhận tiền…</p>
+      ? <LoadingState label="sổ nhận tiền" rows={4} className="px-[18px] pt-3" />
       : null;
   // Bàn phím chỉ thu tiền mặt ⇒ thiếu sổ tiền mặt riêng thì thay bằng câu hướng dẫn.
   const keypadBlock = receivingStatus ? null : receivingBlockFor('TM');
+  const itemsStatus = itemsError
+    ? <p role="status" className="pf-hint">Không tải được chi tiết hóa đơn. Vui lòng đóng và mở lại.</p>
+    : <LoadingState label="chi tiết hóa đơn" rows={4} className="px-[18px] pt-3" />;
 
-  const keypad = loadingItems || itemsError ? (
-    <p role="status" className="pf-hint">{itemsError ? 'Không tải được chi tiết hóa đơn. Vui lòng đóng và mở lại.' : 'Đang tải chi tiết hóa đơn…'}</p>
-  ) : receivingStatus ? receivingStatus : keypadBlock ? (
+  const keypad = loadingItems || itemsError ? itemsStatus : receivingStatus ? receivingStatus : keypadBlock ? (
     <p role="alert" className="pf-hint err">{keypadBlock}</p>
   ) : (
     <CollectKeypad
@@ -467,7 +470,7 @@ export function CollectDrawer({
             <div className="ib-lbl">Ghi chú hóa đơn</div>
             <p>{invoice.notes || 'Chưa có ghi chú'}</p>
             {canEditInvoice && <Button type="button" variant="link" disabled={loadingInvoice} onClick={() => setEditNoteOpen(true)}>Điều chỉnh ghi chú hóa đơn</Button>}
-            {loadingInvoice && <p role="status">Đang tải hóa đơn đầy đủ…</p>}
+            {loadingInvoice && <InlineSkeleton label="hóa đơn đầy đủ" width="10rem" />}
             {invoiceError && <p role="alert">Chưa tải được hóa đơn. Đóng và mở lại để thử lại.</p>}
           </div>}
 
@@ -478,7 +481,7 @@ export function CollectDrawer({
                 <NoteEditor value={noteDraft} onChange={setNoteDraft} onBlur={saveNote} />
                 {getInvoiceEditMode(invoice) !== 'draft' && <p className="text-xs text-muted-foreground">Ghi chú này được lưu cùng khoản thu khi bấm Thu.</p>}
               </div>
-              {loadingItems || itemsError ? <p role="status" className="pf-hint">{itemsError ? 'Không tải được chi tiết hóa đơn. Vui lòng đóng và mở lại.' : 'Đang tải chi tiết hóa đơn…'}</p> : receivingStatus ?? <CollectPayForm
+              {loadingItems || itemsError ? itemsStatus : receivingStatus ?? <CollectPayForm
                 key={invoice.id}
                 remaining={remaining}
                 books={receiving.books}

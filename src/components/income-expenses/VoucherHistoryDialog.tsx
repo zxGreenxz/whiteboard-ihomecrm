@@ -108,7 +108,7 @@ const VoucherHistoryDialog = ({ open, onOpenChange, voucher }: Props) => {
           </DialogDescription>
         </DialogHeader>
 
-        <QueryRegion label="lịch sử phiếu" queries={[cancellationQuery,logQuery,reservationSettlementQuery,...(reservationSettlement?.id?[settlementAudit]:[])]}>
+        <QueryRegion label="lịch sử phiếu" queries={[cancellationQuery,logQuery,reservationSettlementQuery,...(reservationSettlement?.id?[settlementAudit]:[])]} skeleton="detail" rows={4}>
         {/* ── Mốc lập / duyệt / huỷ ───────────────────────────────────────── */}
         <section className="space-y-3 rounded-lg border border-zinc-200 p-3">
           <h3 className="text-sm font-semibold">Mốc thời gian</h3>

@@ -23,6 +23,7 @@ import { parseMoneyInput, formatMoney as fmtVND } from "@/lib/moneyInput";
 
 import { useOperationFormFeedback } from '@/hooks/useOperationFormFeedback';
 import { QueryRegion } from '@/components/errors/QueryRegion';
+import { InlineSkeleton } from '@/components/loading/LoadingState';
 import { CASHBOOK_CLOSING_RULES } from '@/lib/cashbookClosingFeedback';
 
 const CONFIRM_WORD = "CHOT SO";
@@ -107,14 +108,12 @@ export default function CloseCashbookDialog({
           <DialogDescription>Bước {step}/3</DialogDescription>
         </DialogHeader>
 
-        <QueryRegion label="dữ liệu chốt sổ" queries={[blockersQuery,balanceQuery,candidatesQuery]}><span /></QueryRegion>
+        <QueryRegion label="dữ liệu chốt sổ" queries={[blockersQuery,balanceQuery,candidatesQuery]} skeleton="lines" rows={3}><span /></QueryRegion>
         {feedback.notice}
         {step === 1 && !sourcesBlocked && (
           <div className="space-y-3">
             {loadingBlockers ? (
-              <p className="text-sm text-muted-foreground flex items-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin" /> Đang kiểm tra sổ…
-              </p>
+              <InlineSkeleton label="kết quả kiểm tra sổ" width="12rem" />
             ) : blockersFailed ? (
               <div className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-800">
                 Không kiểm tra được sổ quỹ nên chưa thể chốt.

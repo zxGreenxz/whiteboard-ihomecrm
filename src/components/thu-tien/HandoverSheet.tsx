@@ -1,5 +1,6 @@
 import { useOperationFormFeedback } from '@/hooks/useOperationFormFeedback';
 import { QueryRegion } from '@/components/errors/QueryRegion';
+import { LoadingState, SkeletonBar } from '@/components/loading/LoadingState';
 // =============================================
 // HandoverSheet — full sheet "Bàn giao tiền mặt" trong khung điện thoại.
 // Khuôn sheet/scrim + mount→rAF .show y hệt CollectionReport.
@@ -382,6 +383,14 @@ export function HandoverSheet({ show, onClose }: Props) {
     );
   };
 
+  // Lúc chờ dữ liệu: thẻ xám lùi lề như .ho-cards (thân tấm trượt không có lề riêng),
+  // không chữ "Đang tải…" — chủ chốt 02/10/2026.
+  const choThe = (label: string, queries: readonly { refetch: () => unknown }[], rows = 3) => (
+    <div style={{ padding: '14px 18px 0' }}>
+      <LoadingState label={label} variant="list" rows={rows} onRetry={() => { queries.forEach((query) => { void query.refetch(); }); }} />
+    </div>
+  );
+
   return (
     <>
       <div className={'sheet-scrim' + (show ? ' show' : '')} onClick={() => feedback.close(onClose)} />
@@ -400,10 +409,10 @@ export function HandoverSheet({ show, onClose }: Props) {
         <style>{'.ho-form [aria-invalid="true"],.ho-cancelbox [aria-invalid="true"],.ho-vlist[aria-invalid="true"]{border:1px solid #dc2626!important;outline-color:#dc2626}'}</style>
         <div className="ho-tabs">
           <button type="button" className={'cchip' + (tab === 'create' ? ' on' : '')} onClick={() => setTab('create')}>
-            Bàn giao <span className="cnt">{vouchersQuery.isError || vouchersQuery.isLoading ? "—" : vouchers.length}</span>
+            Bàn giao <span className="cnt">{vouchersQuery.isLoading ? <SkeletonBar className="inline-block h-3 align-middle" style={{ width: '0.9rem' }} /> : vouchersQuery.isError ? "—" : vouchers.length}</span>
           </button>
           <button type="button" className={'cchip' + (tab === 'open' ? ' on' : '')} onClick={() => setTab('open')}>
-            Phiên chờ <span className="cnt">{handoversQuery.isError || handoversQuery.isLoading ? "—" : openList.length}</span>
+            Phiên chờ <span className="cnt">{handoversQuery.isLoading ? <SkeletonBar className="inline-block h-3 align-middle" style={{ width: '0.9rem' }} /> : handoversQuery.isError ? "—" : openList.length}</span>
             {actionCount > 0 && <span className="ho-dot" />}
           </button>
           <button type="button" className={'cchip' + (tab === 'history' ? ' on' : '')} onClick={() => setTab('history')}>
@@ -413,7 +422,7 @@ export function HandoverSheet({ show, onClose }: Props) {
 
         <div className="sheet-scroll rp-body">
           {tab === 'create' && (
-            <QueryRegion label="phiếu và danh mục bàn giao" queries={[accountsQuery,staffQuery,receiving,...(effectiveSource ? [vouchersQuery] : [])]}>
+            <QueryRegion label="phiếu và danh mục bàn giao" queries={[accountsQuery,staffQuery,receiving,...(effectiveSource ? [vouchersQuery] : [])]} loading={choThe("phiếu và danh mục bàn giao", [accountsQuery,staffQuery,receiving,...(effectiveSource ? [vouchersQuery] : [])], 4)}>
               {/* Chọn sổ nguồn — hiện khi tôi có >1 sổ (vd Hiệp: "Hiệp Thu"
                   tiền mặt + "TKHIEP" chuyển khoản), hoặc khi chưa có sổ tiền mặt
                   riêng mà vẫn có sổ khác để chọn. Đổi sổ → tải lại phiếu. */}
@@ -436,7 +445,7 @@ export function HandoverSheet({ show, onClose }: Props) {
                 </div>
               )}
               {!accountId && personalLoading ? (
-                <div className="c-empty"><div className="e-ic">⏳</div><p>Đang tải sổ tiền mặt riêng…</p></div>
+                choThe("sổ tiền mặt riêng", [receiving])
               ) : !accountId ? (
                 <div className="c-empty">
                   <div className="e-ic">📒</div>
@@ -446,7 +455,7 @@ export function HandoverSheet({ show, onClose }: Props) {
                   </p>
                 </div>
               ) : loadingVouchers ? (
-                <div className="c-empty"><div className="e-ic">⏳</div><p>Đang tải phiếu thu…</p></div>
+                choThe("phiếu thu", [vouchersQuery], 4)
               ) : vouchers.length === 0 ? (
                 <div className="c-empty">
                   <div className="e-ic">🎉</div>
@@ -524,7 +533,7 @@ export function HandoverSheet({ show, onClose }: Props) {
             </QueryRegion>
           )}
 
-          {tab === 'open' && (<QueryRegion label="phiên bàn giao đang chờ" queries={[handoversQuery,accountsQuery,receiving]}>
+          {tab === 'open' && (<QueryRegion label="phiên bàn giao đang chờ" queries={[handoversQuery,accountsQuery,receiving]} loading={choThe("phiên bàn giao đang chờ", [handoversQuery,accountsQuery,receiving])}>
             {openList.length === 0 ? (
               <div className="c-empty"><div className="e-ic">🤝</div><p>Không có phiên bàn giao nào đang chờ.</p></div>
             ) : (
@@ -532,7 +541,7 @@ export function HandoverSheet({ show, onClose }: Props) {
             )}</QueryRegion>
           )}
 
-          {tab === 'history' && (<QueryRegion label="lịch sử bàn giao" queries={[handoversQuery,accountsQuery,receiving]}>
+          {tab === 'history' && (<QueryRegion label="lịch sử bàn giao" queries={[handoversQuery,accountsQuery,receiving]} loading={choThe("lịch sử bàn giao", [handoversQuery,accountsQuery,receiving])}>
             {historyList.length === 0 ? (
               <div className="c-empty"><div className="e-ic">🗂️</div><p>Chưa có phiên bàn giao nào hoàn tất.</p></div>
             ) : (
