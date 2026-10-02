@@ -2,6 +2,7 @@ import { useState, type ComponentType } from "react";
 import { useNavigate } from "react-router-dom";
 import { BarChart3, PieChart, CircleUserRound } from "lucide-react";
 import { usePersistedState } from "@/hooks/usePersistedState";
+import { LoadingState, SkeletonBar } from "@/components/loading/LoadingState";
 import type { Shareholder } from "@/hooks/useShareholders";
 import type { ProfitManager } from "@/hooks/useProfitManagers";
 import { currentYear } from "@/components/shareholders/shareholderUtils";
@@ -29,15 +30,17 @@ function MobileShell({ children }: { children: React.ReactNode }) {
   );
 }
 
+// Chờ quyền/hồ sơ: shell kem giữ nguyên, tiêu đề + thẻ số là khối xám — không vòng xoay
+// + chữ "Đang tải báo cáo…" (chủ chốt 02/10/2026); câu đó chỉ cho trình đọc màn hình.
 export function ProfitMobileBoot() {
   return (
     <MobileShell>
-      <div className="flex-1 flex flex-col items-center justify-center gap-4">
-        <div
-          className="w-12 h-12 rounded-full border-[3px] animate-spin"
-          style={{ borderColor: "rgba(31,122,82,.18)", borderTopColor: "#1f7a52" }}
-        />
-        <div className="text-[14px] font-bold text-[#1a6645]">Đang tải báo cáo…</div>
+      <div className="flex-1 overflow-hidden px-4 pt-5">
+        <div className="ld-appear mb-3 flex flex-col gap-2" aria-hidden="true">
+          <SkeletonBar className="h-5" style={{ width: "42%" }} />
+          <SkeletonBar className="h-3" style={{ width: "28%" }} />
+        </div>
+        <LoadingState label="báo cáo" variant="cards" rows={4} />
       </div>
     </MobileShell>
   );

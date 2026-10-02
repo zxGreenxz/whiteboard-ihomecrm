@@ -1,4 +1,5 @@
 import { QueryRegion } from "@/components/errors/QueryRegion";
+import { ChartSkeleton } from "@/components/dashboard/ChartSkeleton";
 import { useMemo } from "react";
 import {
   Bar,
@@ -82,7 +83,7 @@ export function ExpenseTab({ filters }: Props) {
   );
 
   return (
-    <QueryRegion label="phân tích tài chính" queries={[reportQuery0, reportQuery1]}>
+    <QueryRegion label="phân tích tài chính" queries={[reportQuery0, reportQuery1]} loading={<ChartSkeleton label="phân tích tài chính" height={320} onRetry={() => { void reportQuery0.refetch(); void reportQuery1.refetch(); }} />}>
     <div className="space-y-4">
       <ChartCard
         title="Tỷ lệ chi phí / doanh thu — 12 tháng"

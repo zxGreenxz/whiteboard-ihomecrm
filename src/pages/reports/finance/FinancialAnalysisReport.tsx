@@ -135,7 +135,6 @@ export default function FinancialAnalysisReport() {
           </div>
         </div>
 
-        <QueryRegion label="toà nhà của báo cáo" queries={[buildingsQuery]}>
         <Tabs defaultValue="overview" className="space-y-4">
           <TabsList className="flex w-full h-auto justify-start overflow-x-auto">
             <TabsTrigger value="overview">Tổng quan</TabsTrigger>
@@ -144,6 +143,8 @@ export default function FinancialAnalysisReport() {
             <TabsTrigger value="profit">Lợi nhuận</TabsTrigger>
             <TabsTrigger value="operations">Vận hành</TabsTrigger>
           </TabsList>
+          {/* Thanh tab hiện ngay; chỉ phần nội dung tab chờ danh sách toà (chủ chốt 02/10/2026). */}
+          <QueryRegion label="toà nhà của báo cáo" queries={[buildingsQuery]} skeleton="cards" rows={4}>
           <TabsContent value="overview">
             <OverviewTab filters={filters} />
           </TabsContent>
@@ -159,8 +160,8 @@ export default function FinancialAnalysisReport() {
           <TabsContent value="operations">
             <OperationsTab filters={filters} />
           </TabsContent>
+          </QueryRegion>
         </Tabs>
-        </QueryRegion>
       </div>
     </MainLayout>
   );

@@ -1,4 +1,5 @@
 import {QueryRegion} from '@/components/errors/QueryRegion';
+import { InlineSkeleton } from '@/components/loading/LoadingState';
 import { useEffect, useState } from "react";
 import { ShieldCheck, AlertTriangle, ChevronDown, Info } from "lucide-react";
 import { useProfitVerification } from "@/hooks/useProfitVerification";
@@ -148,7 +149,7 @@ export function ProfitVerificationBar(props: ProfitVerificationBarProps) {
             Chưa tải được số liệu đối chiếu
           </span>
         ) : visualState === "LOADING" ? (
-          <span className="font-medium text-amber-700">Đang tải số liệu đối chiếu…</span>
+          <InlineSkeleton label="số liệu đối chiếu" width="12rem" />
         ) : capWarning ? (
           <span className="text-amber-700">
             ⚠ Danh sách chạm trần {capWarning.shown}/{capWarning.total} dòng — tổng ở thẻ vẫn đủ (server tính)
@@ -177,7 +178,8 @@ export function ProfitVerificationBar(props: ProfitVerificationBarProps) {
 
         <ChevronDown className={`h-4 w-4 ml-auto shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
-      <QueryRegion label="số liệu đối chiếu lợi nhuận" queries={[verificationQuery]}>
+      {/* Lúc chờ: vạch xám ngay trên thanh (ô kết quả) là đủ, vùng dưới không vẽ thêm. */}
+      <QueryRegion label="số liệu đối chiếu lợi nhuận" queries={[verificationQuery]} skeleton="none">
 
       {/* Hàng 2a (§2.3): phiếu CHỜ DUYỆT nằm TRONG tổng — counter riêng. */}
       {pendingCount > 0 && (

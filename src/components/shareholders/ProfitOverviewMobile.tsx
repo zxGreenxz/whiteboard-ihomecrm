@@ -188,7 +188,7 @@ export default function ProfitOverviewMobile({
   const kpiSub = "text-[10px] text-[#b6b0a3] font-semibold mt-0.5";
 
   return (
-    <QueryRegion label="lợi nhuận và cấu hình phân bổ" queries={[shareholdersQuery, buildingsQuery, profitMonthlyQuery, allocationsQuery, distributionsQuery, managersQuery, managerAllocationsQuery, managerPayoutsQuery]}>
+    <QueryRegion label="lợi nhuận và cấu hình phân bổ" queries={[shareholdersQuery, buildingsQuery, profitMonthlyQuery, allocationsQuery, distributionsQuery, managersQuery, managerAllocationsQuery, managerPayoutsQuery]} skeleton="cards" rows={4}>
     <div className="flex flex-col gap-2.5">
       {/* KPI 2×2 */}
       <div className="grid grid-cols-2 gap-2">

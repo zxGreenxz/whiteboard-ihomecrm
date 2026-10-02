@@ -14,6 +14,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { ArrowLeft, ChevronLeft, ChevronRight, LogIn, LogOut, X } from 'lucide-react';
 import { useOrganization } from '@/contexts/OrganizationContext';
+import { LoadingState } from '@/components/loading/LoadingState';
 import { useRoomCashLifecycle } from '@/hooks/useRoomCashLifecycle';
 import { useContractLifecycle } from '@/hooks/useContractLifecycle';
 import { useRoomContractExtras } from '@/hooks/useRoomContractExtras';
@@ -215,7 +216,7 @@ export default function RoomContractLifecycleDrawer({ roomId, roomName, initialY
 
           <div className="rcl-scroll" ref={scrollRef}>
             <div className="rcl-stack">
-              {room.isLoading && <div className="rcl-empty">Đang tải vòng đời hợp đồng…</div>}
+              {room.isLoading && <LoadingState label="vòng đời hợp đồng" variant="detail" rows={5} onRetry={() => void room.refetch()} />}
               {room.isError && (
                 <div className="rcl-alert">
                   Chưa tải được vòng đời hợp đồng của phòng {roomName}. {friendlyError(room.error, 'Chưa tải được vòng đời hợp đồng').description}

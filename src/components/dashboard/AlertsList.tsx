@@ -1,4 +1,5 @@
 import { QueryRegion } from "@/components/errors/QueryRegion";
+import { LoadingState } from "@/components/loading/LoadingState";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { AlertCircle, AlertTriangle, Info } from "lucide-react";
@@ -61,14 +62,14 @@ export function AlertsList({ buildingId }: { buildingId?: string | null }) {
           <CardDescription>Các vấn đề cần xử lý</CardDescription>
         </CardHeader>
         <CardContent>
-          <p className="text-center text-muted-foreground py-8">Đang tải...</p>
+          <LoadingState label="cảnh báo cần xử lý" variant="list" rows={3} onRetry={() => void query.refetch()} />
         </CardContent>
       </Card>
     );
   }
 
   return (
-    <QueryRegion label="cảnh báo cần xử lý" queries={[query]}>
+    <QueryRegion label="cảnh báo cần xử lý" queries={[query]} skeleton="list" rows={3}>
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center justify-between">

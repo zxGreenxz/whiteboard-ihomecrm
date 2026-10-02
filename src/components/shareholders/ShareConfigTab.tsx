@@ -104,7 +104,7 @@ export default function ShareConfigTab() {
     });
 
   return (
-    <QueryRegion label="lợi nhuận và cấu hình phân bổ" queries={[shareholdersQuery, buildingsQuery, sharesQuery, usersQuery, managersQuery, salaryRulesQuery]}>
+    <QueryRegion label="lợi nhuận và cấu hình phân bổ" queries={[shareholdersQuery, buildingsQuery, sharesQuery, usersQuery, managersQuery, salaryRulesQuery]} skeleton="table" rows={6}>
     <>
       <ProfitHubSlot name="kpis">
         <div className="ph-kpi ph-kpi--flex">

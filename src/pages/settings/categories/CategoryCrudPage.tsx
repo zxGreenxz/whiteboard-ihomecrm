@@ -3,6 +3,7 @@ import { useForm } from 'react-hook-form';
 import { friendlyError, type OperationErrorRule } from '@/lib/friendlyError';
 import { applyFeedbackToForm, focusFirstError } from '@/lib/formErrors';
 import MainLayout from "@/components/layout/MainLayout";
+import { LoadingState } from "@/components/loading/LoadingState";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -184,7 +185,7 @@ export default function CategoryCrudPage<T>({
               <p>Chưa tải được {title.toLocaleLowerCase('vi')}.</p>
               {onRetry && <Button variant="outline" onClick={() => void onRetry()}>Tải lại</Button>}
             </div> : isLoading ? (
-              <div className="p-8 text-center text-muted-foreground">Đang tải...</div>
+              <LoadingState label={title.toLocaleLowerCase('vi')} variant="table" rows={6} className="px-4" onRetry={onRetry ? () => void onRetry() : undefined} />
             ) : !data || data.length === 0 ? (
               <div className="p-8 text-center text-muted-foreground">
                 Chưa có dữ liệu. Hãy thêm mới.

@@ -1,4 +1,5 @@
 import { QueryRegion } from "@/components/errors/QueryRegion";
+import { InlineSkeleton, SkeletonBar } from "@/components/loading/LoadingState";
 import { salarySettingsErrorMessage, SALARY_JOB_LABELS } from "@/lib/salarySettingsFeedback";
 import { voucherOutcomeUnknown } from "@/lib/voucherFeedback";
 // OwnerDashboardV5 (/reports/coverage) — TRUNG TÂM v5 của CHỦ, 5 tab:
@@ -42,6 +43,20 @@ const STATUS_META: Record<string, { label: string; cls: string }> = {
   presence: { label: "Có mặt", cls: "bg-amber-100 text-amber-700" },
 };
 
+/** Lưới ô ảnh xám lúc chờ ảnh — không chữ "Đang tải ảnh…" (chủ chốt 02/10/2026). */
+function PhotoGridSkeleton({ label, count = 6 }: { label: string; count?: number }) {
+  return (
+    <div role="status">
+      <span className="sr-only">Đang tải {label}…</span>
+      <div className="ld-appear grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6" aria-hidden="true">
+        {Array.from({ length: count }, (_, i) => (
+          <SkeletonBar key={i} className="aspect-square h-auto w-full rounded-lg" />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function InspPhoto({ p }: { p: InspectionPhotoRow }) {
   const source=useSignedUrlQuery(p.storage_path,undefined,{errorDisplay:"inline"});
   const url=source.data;
@@ -53,7 +68,12 @@ export function InspPhoto({ p }: { p: InspectionPhotoRow }) {
   const geoColor =
     geo === "inside" ? "text-emerald-600" : geo === "outside" ? "text-red-600" : "text-muted-foreground";
   return (
-    <QueryRegion label={`ảnh kiểm tra ${p.slot}`} queries={[source]}>
+    <QueryRegion label={`ảnh kiểm tra ${p.slot}`} queries={[source]} loading={
+      <div role="status">
+        <span className="sr-only">Đang tải ảnh kiểm tra {p.slot}…</span>
+        <SkeletonBar className="ld-appear aspect-square h-auto w-full rounded-lg" />
+      </div>
+    }>
       <div>
         {imageFailed ? <div role="alert" className="rounded border border-destructive/40 p-3 text-sm">
           <p>Chưa tải được ảnh kiểm tra {p.slot}. Kiểm tra kết nối rồi tải lại ảnh.</p>
@@ -111,9 +131,9 @@ function InspSessionCard({ s }: { s: InspectionSessionRow }) {
       </button>
       {open && (
         <div className="mt-3 border-t pt-3">
-          <QueryRegion label="ảnh của phiên kiểm tra" queries={[photos]}>
+          <QueryRegion label="ảnh của phiên kiểm tra" queries={[photos]} loading={<PhotoGridSkeleton label="ảnh của phiên kiểm tra" />}>
           {photos.isLoading ? (
-            <div className="text-xs text-muted-foreground">Đang tải ảnh…</div>
+            <PhotoGridSkeleton label="ảnh của phiên kiểm tra" />
           ) : (photos.data ?? []).length === 0 ? (
             <div className="text-xs text-muted-foreground">Phiên này không có ảnh.</div>
           ) : (
@@ -218,7 +238,7 @@ export default function OwnerDashboardV5() {
 
         {/* TAB 1 — Coverage map (grid màu theo D) */}
         <TabsContent value="coverage">
-          <QueryRegion label="lịch ghé kiểm tra nhà" queries={[coverage]}>
+          <QueryRegion label="lịch ghé kiểm tra nhà" queries={[coverage]} skeleton="cards" rows={8}>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
             {(coverage.data ?? []).map((b) => (
               <div key={b.building_id} className="rounded-xl border p-3">
@@ -239,7 +259,7 @@ export default function OwnerDashboardV5() {
 
         {/* TAB 1b — Nhật ký kiểm tra nhà: chi tiết từng phiên của quản lý */}
         <TabsContent value="insplog">
-          <QueryRegion label="nhật ký kiểm tra" queries={[logQ]}>
+          {/* Bộ lọc hiện ngay; chỉ phần đếm + danh sách phiên chờ dữ liệu (chủ chốt 02/10/2026). */}
           <div className="mb-3 flex flex-wrap items-end gap-3">
             <label className="text-xs">
               <span className="mb-1 block text-muted-foreground">Từ ngày</span>
@@ -312,9 +332,10 @@ export default function OwnerDashboardV5() {
             </div>
           </div>
 
+          <QueryRegion label="nhật ký kiểm tra" queries={[logQ]} skeleton="list" rows={4}>
           <div className="mb-2 text-xs text-muted-foreground">
             {logQ.isLoading
-              ? "Đang tải…"
+              ? <InlineSkeleton label="số phiên kiểm tra" width="12rem" />
               : `${logFiltered.length} phiên · ${logFiltered.filter((r) => r.status === "passed").length} đạt · ${logFiltered.filter((r) => r.status === "expired").length} hết giờ`}
           </div>
 
@@ -344,7 +365,7 @@ export default function OwnerDashboardV5() {
 
         {/* TAB 2 — Nghi án (máy flag, chủ kết án, due process C2) */}
         <TabsContent value="fraud">
-          <QueryRegion label="ngày công cần xem xét" queries={[flagged]}>
+          <QueryRegion label="ngày công cần xem xét" queries={[flagged]} skeleton="list" rows={3}>
           {verdict.isError && <p role="alert" className="mb-2 text-sm text-destructive">{salarySettingsErrorMessage(verdict.error,'kết luận ngày công')}</p>}
           {(flagged.data ?? []).length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">Không có nghi án nào đang mở.</p>
@@ -373,7 +394,7 @@ export default function OwnerDashboardV5() {
 
         {/* TAB 3 — Đối soát tháng: 3 ASSERT + nút chốt tiền v5 */}
         <TabsContent value="recon">
-          <QueryRegion label="đối soát lương tháng" queries={[assertQ,cfgQ]}>
+          <QueryRegion label="đối soát lương tháng" queries={[assertQ,cfgQ]} skeleton="table" rows={6}>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead><tr className="border-b text-left text-xs text-muted-foreground">
@@ -412,7 +433,7 @@ export default function OwnerDashboardV5() {
 
         {/* TAB 4 — Shadow report + gates */}
         <TabsContent value="shadow">
-          <QueryRegion label="bảng tính thử lương" queries={[shadowQ,cfgQ]}>
+          <QueryRegion label="bảng tính thử lương" queries={[shadowQ,cfgQ]} skeleton="table" rows={6}>
           <div className="mb-2 text-sm text-muted-foreground">
             Stage hiện tại: <b>{cfgQ.data?.system_v5?.stage ?? "off"}</b> · Gate thoát xem V5-HE-THONG Ch.11.
           </div>
@@ -439,7 +460,7 @@ export default function OwnerDashboardV5() {
 
         {/* TAB 5 — Cài đặt v5: chế độ lương/flags/stage/jobs/cron_runs */}
         <TabsContent value="settings">
-          <QueryRegion label="cài đặt vận hành lương" queries={[cfgQ]}>
+          <QueryRegion label="cài đặt vận hành lương" queries={[cfgQ]} skeleton="detail" rows={6}>
           <div className="max-w-xl space-y-4">
             {setCfg.isError && <p role="alert" className="text-sm text-destructive">{salarySettingsErrorMessage(setCfg.error,'lưu cấu hình lương')}</p>}
             {runJob.isError && <p role="alert" className="text-sm text-destructive">{salarySettingsErrorMessage(runJob.error,'chạy tác vụ. Kiểm tra nhật ký trước khi thực hiện tiếp')}</p>}

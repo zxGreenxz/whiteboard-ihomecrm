@@ -9,6 +9,7 @@ import {
 } from "@/lib/salaryFundReport";
 import type { PendingPayout } from "@/hooks/useSalaryFund";
 import { salFmt } from "./salaryFormat";
+import { LoadingState, SkeletonBar } from "@/components/loading/LoadingState";
 import { MONO, MUTED, PanelHead, Seg, StChip, Switch, monthShort, type ChipTone } from "./salaryFundUi";
 
 export interface FundPeriod {
@@ -175,7 +176,7 @@ export default function SalaryFundOverview({ periods, feeBuildings, feeUnpublish
             options={periods.map((p, i) => ({ key: String(i), label: monthShort(p.periodMonth) + (p.locked ? " · đã chốt" : " · tạm tính") }))} />
         </>} />
         <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14, borderBottom: "1px solid hsl(var(--border) / .6)" }}>
-          {sel.loading ? <p style={{ margin: 0, color: MUTED }}>Đang tải số liệu {monthShort(sel.periodMonth)}…</p> : <>
+          {sel.loading ? <LoadingState label={`số liệu ${monthShort(sel.periodMonth)}`} rows={3} /> : <>
             <p style={{ margin: 0, fontSize: 18, lineHeight: 1.5, fontWeight: 600 }}>{headA} <span style={{ color: headColor, fontWeight: 800 }}>{headB}</span></p>
             <div style={{ position: "relative", paddingTop: 22 }}>
               <div style={{ display: "flex", height: 34, borderRadius: 8, overflow: "hidden", background: "hsl(var(--muted))" }}>
@@ -244,7 +245,11 @@ export default function SalaryFundOverview({ periods, feeBuildings, feeUnpublish
               return (
                 <button key={r.p.periodMonth} onClick={() => setCmpIdx(i)}
                   style={{ border: 0, background: "transparent", padding: 0, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 6, flex: 1, maxWidth: 110, height: "100%", justifyContent: "flex-end", opacity: a ? 1 : .55 }}>
-                  {r.p.loading ? <span style={{ fontSize: 11, color: MUTED }}>Đang tải…</span> : <>
+                  {/* Cột tháng chưa có số: cột xám thay chữ "Đang tải…" (chủ chốt 02/10/2026). */}
+                  {r.p.loading ? <span role="status" style={{ width: "100%", height: "45%", display: "flex" }}>
+                    <span className="sr-only">Đang tải số liệu {monthShort(r.p.periodMonth)}…</span>
+                    <SkeletonBar className="ld-appear h-full w-full rounded-b-none" />
+                  </span> : <>
                     <span style={{ ...MONO, fontWeight: 800, fontSize: 13 }}>{fmtMillion(r.total)}</span>
                     <span style={{ fontSize: 11, fontWeight: 700, color: r.total > f ? "hsl(var(--status-danger-fg))" : "hsl(var(--status-success-fg))" }}>{f > 0 ? Math.round((r.total / f) * 100) + "% nguồn" : "chưa có nguồn"}</span>
                     <span style={{ width: "100%", height: Math.round((Math.max(0, r.total) / cMax) * CH), display: "flex", flexDirection: "column-reverse", borderRadius: "6px 6px 0 0", overflow: "hidden" }}>

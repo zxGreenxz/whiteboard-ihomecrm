@@ -136,8 +136,11 @@ describe('mounted ChatPanel G0', () => {
     io.messages.mockResolvedValue([{ role: 'assistant', content: 'Lịch sử tổ chức DEMO' }]);
     await mount(panel());
     expect(byId<HTMLSelectElement>('copilot-model-select').disabled).toBe(true);
-    expect(byId('copilot-model-select').textContent).toContain('Đang tải');
-    expect(byId('copilot-dang-tai-lich-su').textContent).toContain('Đang tải lịch sử');
+    // Chủ chốt 02/10/2026: không chữ "Đang tải…" trên màn hình — ô chọn để trống kèm
+    // vạch xám; câu "Đang tải …" chỉ còn trong role="status" cho trình đọc màn hình.
+    expect(byId('copilot-model-select').textContent).not.toContain('Đang tải');
+    expect(byId('copilot-model-select').parentElement?.querySelector('[role="status"]')?.textContent).toContain('Đang tải danh sách mô hình');
+    expect(byId('copilot-dang-tai-lich-su').querySelector('[role="status"]')?.textContent).toContain('Đang tải lịch sử');
     expect(document.querySelector('[data-testid="copilot-chip"]')).toBeNull();
     await act(async () => latest.resolve({ id: 'saved-thread' }));
     expect(document.querySelector('[data-testid="copilot-dang-tai-lich-su"]')).toBeNull();

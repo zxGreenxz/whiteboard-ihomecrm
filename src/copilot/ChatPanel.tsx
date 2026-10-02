@@ -5,6 +5,7 @@ import {hasUnconfirmedResponse} from '@/lib/operationOutcome';
 // + UI-control experimental Phase 3 (toggle "Điều khiển trang").
 // Giao diện "Bé Chiu" theo design "Trợ lý AI - Bé Chiu.dc.html".
 import { useEffect, useRef, useState } from 'react';
+import { InlineSkeleton, LoadingState } from '@/components/loading/LoadingState';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   BarChart3, Brain, Building2, FileText, ImagePlus, Mic, MicOff, Plus, Receipt, Send, Square, Trash2, X,
@@ -650,15 +651,17 @@ export default function ChatPanel({ onClose }: Props) {
           <span className="text-[11px] leading-snug text-muted-foreground">Trợ lý nhỏ xinh của bạn</span>
         </div>
         {/* Danh sách provider chưa về thì ô này không chọn được gì có nghĩa;
-            để mở là mời người dùng bấm vào một danh sách rỗng. */}
+            để mở là mời người dùng bấm vào một danh sách rỗng. Lúc chờ: ô chọn để
+            trống kèm vạch xám trong ô, không chữ "Đang tải…" (chủ chốt 02/10/2026). */}
+        <span className="relative ml-auto">
         <select
-          className="ml-auto max-w-[132px] cursor-pointer truncate rounded-full border border-[hsl(var(--primary-100))] bg-card px-2.5 py-1 text-[11px] font-semibold text-accent-foreground shadow-sm"
+          className={`max-w-[132px] cursor-pointer truncate rounded-full border border-[hsl(var(--primary-100))] bg-card px-2.5 py-1 text-[11px] font-semibold text-accent-foreground shadow-sm${providers ? '' : ' min-w-[96px]'}`}
           value={model}
           onChange={(e) => setModel(e.target.value)}
           disabled={!providers}
           data-testid="copilot-model-select"
         >
-          {!providers && <option value={model}>Đang tải…</option>}
+          {!providers && <option value={model}></option>}
           {/* `model` đã được useCopilotModel thay thế nếu preference lỗi thời, nên
               nhánh này chỉ còn cho ca hiếm: danh sách đã về mà model đang chọn
               không nằm trong đó. */}
@@ -671,6 +674,14 @@ export default function ChatPanel({ onClose }: Props) {
             </option>
           ))}
         </select>
+        {!providers && (
+          <InlineSkeleton
+            label="danh sách mô hình"
+            width="4.5rem"
+            className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2"
+          />
+        )}
+        </span>
         {/* Ghi nhớ dài hạn. Nút luôn hiện, kể cả khi chưa có mục nào: người dùng
             phải có một chỗ cố định để hỏi "Copilot đang nhớ gì về tôi", và câu trả
             lời "chưa nhớ gì" cũng là một câu trả lời. */}
@@ -720,7 +731,7 @@ export default function ChatPanel({ onClose }: Props) {
             <Brain className="h-3.5 w-3.5" />
             Copilot đang nhớ về bạn ({ghiNho.length}/{SO_GHI_NHO_TOI_DA})
           </div>
-          {memoryLoading ? <p role="status">Đang tải ghi nhớ…</p> : memoryWarning ? <p role="alert">{memoryWarning}</p> : ghiNho.length === 0 ? (
+          {memoryLoading ? <LoadingState label="ghi nhớ" rows={2} className="py-1" /> : memoryWarning ? <p role="alert">{memoryWarning}</p> : ghiNho.length === 0 ? (
             <div className="text-[11px] italic text-muted-foreground">
               Chưa nhớ gì. Nói "nhớ giúp tôi: toà ưu tiên là DEMO A" để lưu một điều.
             </div>
@@ -829,11 +840,10 @@ export default function ChatPanel({ onClose }: Props) {
       {/* Messages */}
       <div className="flex-1 space-y-2.5 overflow-y-auto px-3 py-3.5 text-sm leading-relaxed">
         {dangTaiLichSu && items.length === 0 && (
-          <div
-            className="flex h-full items-center justify-center text-xs italic text-muted-foreground"
-            data-testid="copilot-dang-tai-lich-su"
-          >
-            Đang tải lịch sử…
+          // Lịch sử chưa về: khối xám dòng tin, không chữ "Đang tải lịch sử…" (chủ chốt
+          // 02/10/2026) — câu đó chỉ còn cho trình đọc màn hình.
+          <div data-testid="copilot-dang-tai-lich-su">
+            <LoadingState label="lịch sử" rows={4} />
           </div>
         )}
         {historyWarning && <p role="alert" className="rounded border border-amber-300 bg-amber-50 p-2 text-sm text-amber-900">{historyWarning}</p>}

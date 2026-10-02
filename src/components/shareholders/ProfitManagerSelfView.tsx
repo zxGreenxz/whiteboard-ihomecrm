@@ -79,7 +79,7 @@ export default function ProfitManagerSelfView({ me }: { me: ProfitManager }) {
   const paidTotal = payouts.reduce((s, p) => s + p.total_amount, 0);
 
   return (
-    <QueryRegion label="lợi nhuận và cấu hình phân bổ" queries={[allocationsQuery, payoutsQuery, buildingsQuery]}>
+    <QueryRegion label="lợi nhuận và cấu hình phân bổ" queries={[allocationsQuery, payoutsQuery, buildingsQuery]} skeleton="table" rows={6}>
     <>
       <ProfitHubSlot name="kpis">
         <div className="ph-kpi ph-kpi--flex">

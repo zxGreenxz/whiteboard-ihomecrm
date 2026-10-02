@@ -1,4 +1,5 @@
 import { QueryRegion } from "@/components/errors/QueryRegion";
+import { LoadingState } from "@/components/loading/LoadingState";
 import { useRef, useState, type ReactNode } from "react";
 import MainLayout from "@/components/layout/MainLayout";
 import ProfitHubShell, { ProfitHubTabPanel } from "@/pages/reports/finance/ProfitHubShell";
@@ -111,7 +112,7 @@ export default function ProfitHubPage() {
   if (phone) {
     if (loading) return <ProfitMobileBoot />;
     return (
-      <QueryRegion label="quyền xem và hồ sơ lợi nhuận" queries={accessQueries}>
+      <QueryRegion label="quyền xem và hồ sơ lợi nhuận" queries={accessQueries} loading={<ProfitMobileBoot />}>
       <ProfitHubMobile
         canReport={canReport}
         isManager={isManager && canViewManagedProfit}
@@ -124,7 +125,7 @@ export default function ProfitHubPage() {
 
   return (
     <MainLayout>
-      <QueryRegion label="quyền xem và hồ sơ lợi nhuận" queries={accessQueries}>
+      <QueryRegion label="quyền xem và hồ sơ lợi nhuận" queries={accessQueries} skeleton="cards" rows={4}>
       <ProfitHubShell
         // Chờ đủ quyền rồi mới dựng thanh tab — nếu không tab sẽ "mọc" dần theo
         // từng query (vd "Chốt LN tháng" chỉ có sau khi profitCloseOrganizations về).
@@ -136,7 +137,7 @@ export default function ProfitHubPage() {
         onIconClick={handleIconClick}
       >
         {loading ? (
-          <p className="ph-empty">Đang tải...</p>
+          <LoadingState label="báo cáo lợi nhuận" variant="table" rows={6} />
         ) : visibleTabs.length > 0 ? (
           visibleTabs.map((t) => (
             <ProfitHubTabPanel key={t.value} value={t.value}>

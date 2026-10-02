@@ -1,6 +1,6 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
-import { Loader2 } from 'lucide-react';
+import { LoadingState } from '@/components/loading/LoadingState';
 import { isAuthBootstrapTimeoutError } from '@/lib/authBootstrap';
 
 interface ProtectedRouteProps {
@@ -21,12 +21,12 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
   if (user) return <>{children}</>;
 
   if (isLoading) {
+    // Đang khôi phục phiên: khối xám, không vòng xoay + chữ "Đang tải…" (chủ chốt
+    // 02/10/2026); câu đó chỉ còn cho trình đọc màn hình. Hết hạn chờ thì useAuth
+    // trả lỗi và màn "Chưa thể kiểm tra phiên đăng nhập" bên dưới hiện ra.
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
-          <p className="mt-2 text-sm text-gray-600">Đang tải...</p>
-        </div>
+      <div className="min-h-screen p-6">
+        <LoadingState label="phiên đăng nhập" variant="detail" rows={6} className="mx-auto w-full max-w-4xl" onRetry={() => void refetch()} />
       </div>
     );
   }

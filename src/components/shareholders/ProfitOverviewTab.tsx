@@ -186,7 +186,7 @@ export default function ProfitOverviewTab() {
   const payRatio = totals.lockedProfit > 0 ? Math.round((totals.accrued / totals.lockedProfit) * 100) : null;
 
   return (
-    <QueryRegion label="lợi nhuận và cấu hình phân bổ" queries={[shareholdersQuery, buildingsQuery, profitMonthlyQuery, allocationsQuery, distributionsQuery, managersQuery, managerAllocationsQuery, managerPayoutsQuery]}>
+    <QueryRegion label="lợi nhuận và cấu hình phân bổ" queries={[shareholdersQuery, buildingsQuery, profitMonthlyQuery, allocationsQuery, distributionsQuery, managersQuery, managerAllocationsQuery, managerPayoutsQuery]} skeleton="table" rows={6}>
     <>
       <ProfitHubSlot name="kpis">
         <div className="ph-kpi ph-kpi--flex">

@@ -1,5 +1,6 @@
 import { QueryRegion, type RegionQuery } from '@/components/errors/QueryRegion';
 import { deriveFinanceQueryState } from '@/lib/financeQueryState';
+import { SkeletonBar } from '@/components/loading/LoadingState';
 import { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -33,7 +34,13 @@ export function ReportLayout({
   filterQueries = [],
 }: ReportLayoutProps) {
   const navigate = useNavigate();
-  const canRender = queries.every(query => deriveFinanceQueryState(query).canRenderData);
+  const queryStates = queries.map(query => deriveFinanceQueryState(query));
+  const canRender = queryStates.every(state => state.canRenderData);
+  // Thẻ tổng đang chờ (chưa lỗi): giữ chỗ bằng thẻ xám để bố cục không nhảy khi số về
+  // (chủ chốt 02/10/2026). Chỉ để nhìn — câu cho trình đọc màn hình nằm ở vùng nội dung.
+  const statsPending = !canRender
+    && queryStates.some(state => state.showLoading)
+    && !queryStates.some(state => state.hasBlockingError);
   const exportBlocked = queries.some(query => query.isError || query.isLoading || query.status === "pending");
 
   return (
@@ -76,6 +83,19 @@ export function ReportLayout({
           <Separator />
         </>
       )}
+      {stats && statsPending && (
+        <>
+          <div aria-hidden="true" className="ld-appear grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            {[0, 1, 2, 3].map(i => (
+              <div key={i} className="flex flex-col gap-2.5 rounded-xl border bg-card p-4">
+                <SkeletonBar className="h-3" style={{ width: '45%' }} />
+                <SkeletonBar className="h-6" style={{ width: '70%' }} />
+              </div>
+            ))}
+          </div>
+          <Separator />
+        </>
+      )}
 
       {/* Filters (if provided) */}
       {filters && (
@@ -90,7 +110,7 @@ export function ReportLayout({
       )}
 
       {/* Main Content */}
-      <div className="space-y-4">{queries.length ? <QueryRegion label={title} queries={queries}>{children}</QueryRegion> : children}</div>
+      <div className="space-y-4">{queries.length ? <QueryRegion label={title} queries={queries} skeleton="table" rows={8}>{children}</QueryRegion> : children}</div>
     </div>
   );
 }

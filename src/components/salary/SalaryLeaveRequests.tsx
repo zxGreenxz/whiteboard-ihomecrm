@@ -1,4 +1,5 @@
 import { QueryRegion } from '@/components/errors/QueryRegion';
+import { LoadingState } from '@/components/loading/LoadingState';
 // Tab "Đơn xin nghỉ" — chủ duyệt/từ chối phép có lương của nhân viên.
 import { toast } from "sonner";
 import { leaveActionErrorMessage, usePendingLeaveRequests, useApproveLeave } from "@/hooks/useMyDay";
@@ -26,11 +27,22 @@ export default function SalaryLeaveRequests() {
     );
   };
 
-  if (query.isError) return <QueryRegion label="đơn nghỉ chờ duyệt" queries={[query]}><span /></QueryRegion>;
+  const head = (
+    <div className="sal-cfg-head">
+      <span className="ic" style={{ background: "hsl(var(--status-warning-bg))", color: "hsl(var(--status-warning-fg))" }}><I.Calendar size={18} /></span>
+      <div style={{ flex: 1 }}><h3>Đơn xin nghỉ có lương</h3><p>Duyệt hoặc từ chối — nhân viên sẽ nhận thông báo kết quả</p></div>
+    </div>
+  );
+
+  if (query.isError) return <QueryRegion label="đơn nghỉ chờ duyệt" queries={[query]} skeleton="none"><span /></QueryRegion>;
   if (isLoading) {
+    // Khung thẻ hiện ngay, danh sách đơn là khối xám — không chữ "Đang tải…" (chủ chốt 02/10/2026).
     return (
       <div className="sal-card">
-        <div style={{ padding: 40, textAlign: "center", color: "hsl(var(--muted-foreground))" }}>Đang tải...</div>
+        {head}
+        <div className="sal-cfg-body">
+          <LoadingState label="đơn nghỉ chờ duyệt" variant="list" rows={3} onRetry={() => void query.refetch()} />
+        </div>
       </div>
     );
   }
@@ -49,10 +61,7 @@ export default function SalaryLeaveRequests() {
 
   return (
     <div className="sal-card">
-      <div className="sal-cfg-head">
-        <span className="ic" style={{ background: "hsl(var(--status-warning-bg))", color: "hsl(var(--status-warning-fg))" }}><I.Calendar size={18} /></span>
-        <div style={{ flex: 1 }}><h3>Đơn xin nghỉ có lương</h3><p>Duyệt hoặc từ chối — nhân viên sẽ nhận thông báo kết quả</p></div>
-      </div>
+      {head}
       <div className="sal-cfg-body" style={{ paddingTop: 4, paddingBottom: 4 }}>
         {rows.map((r) => {
           const isThisPending =

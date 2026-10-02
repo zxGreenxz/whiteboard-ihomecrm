@@ -1,4 +1,5 @@
 import { QueryRegion } from '@/components/errors/QueryRegion';
+import { LoadingState } from '@/components/loading/LoadingState';
 import { useState, useMemo } from "react";
 import MainLayout from "@/components/layout/MainLayout";
 import {
@@ -106,14 +107,12 @@ function TemplateList({ templateType, onEdit, onDelete }: TemplateListProps) {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-32">
-        <p className="text-muted-foreground">Đang tải...</p>
-      </div>
+      <LoadingState label="Danh sách mẫu tài liệu" variant="table" rows={6} onRetry={() => void templatesQuery.refetch()} />
     );
   }
 
   return (
-    <QueryRegion label="Danh sách mẫu tài liệu" queries={[templatesQuery]}><div className="space-y-4">
+    <QueryRegion label="Danh sách mẫu tài liệu" queries={[templatesQuery]} skeleton="table" rows={6}><div className="space-y-4">
       {/* Search */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />

@@ -1,4 +1,5 @@
 import { QueryRegion } from "@/components/errors/QueryRegion";
+import { ChartSkeleton } from "@/components/dashboard/ChartSkeleton";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { useRevenueChart } from "@/hooks/useDashboard";
@@ -15,15 +16,15 @@ export function RevenueChart({ buildingId }: { buildingId?: string | null }) {
           <CardTitle>Doanh thu 12 tháng</CardTitle>
           <CardDescription>Biểu đồ xu hướng doanh thu</CardDescription>
         </CardHeader>
-        <CardContent className="h-[300px] flex items-center justify-center">
-          <p className="text-muted-foreground">Đang tải...</p>
+        <CardContent>
+          <ChartSkeleton label="doanh thu 12 tháng" bars={12} onRetry={() => void query.refetch()} />
         </CardContent>
       </Card>
     );
   }
 
   return (
-    <QueryRegion label="doanh thu 12 tháng" queries={[query]}>
+    <QueryRegion label="doanh thu 12 tháng" queries={[query]} loading={<ChartSkeleton label="doanh thu 12 tháng" bars={12} onRetry={() => void query.refetch()} />}>
     <Card>
       <CardHeader>
         <CardTitle>Doanh thu 12 tháng</CardTitle>

@@ -204,13 +204,16 @@ function AddForm({ preset, managers, periodMonth, lockedOf, disabled, onDone }: 
           <Seg<RecurringCategory> small value={category} onChange={(c) => { setCategory(c); if (c === "SUPPLEMENTARY" && !label.trim()) setLabel("Lương QL bổ sung"); }}
             options={[{ key: "ALLOWANCE", label: "Phụ cấp / thưởng cố định" }, { key: "SUPPLEMENTARY", label: "Lương QL bổ sung (chủ cấp)" }]} /></div>
         {category === "SUPPLEMENTARY" && (
-          <QueryRegion label="tòa nhà của người nhận lương" queries={[buildingsQuery]}><div className="sal-field"><label htmlFor="rec-building">Nhà / toà được bù</label>
+          <div className="sal-field"><label htmlFor="rec-building">Nhà / toà được bù</label>
+            {/* Nhãn hiện ngay; chỉ ô chọn chờ danh sách toà (vạch xám trong ô). */}
+            <QueryRegion label="tòa nhà của người nhận lương" queries={[buildingsQuery]} skeleton="inline">
             <select {...feedback.field("buildingId")} id="rec-building" className="sal-select" value={buildingId} onChange={(e) => setBuildingId(e.target.value)} disabled={disabled}>
               <option value="">— Chọn toà (vd 481NVK, 950NK, 44TL) —</option>
               {orgBuildings.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
+            </QueryRegion>
             <span style={{ fontSize: 11, color: MUTED }}>Dùng cho nhà không thuê-cho-thuê-lại (không có phí Quản lý). Tiền do chủ công ty cấp, không ghi vào thu chi của toà.</span>
-          </div></QueryRegion>
+          </div>
         )}
         <div className="sal-field"><label htmlFor="rec-label">Tên khoản</label>
           <input {...feedback.field("label")} id="rec-label" className="sal-input" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="VD: Hỗ trợ xăng, phụ cấp điện thoại…" disabled={disabled} /></div>

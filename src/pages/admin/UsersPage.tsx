@@ -1,6 +1,7 @@
 import { focusFirstError } from '@/lib/formErrors';
 import { actionErrorMessage } from '@/lib/actionFeedback';
 import { QueryRegion } from '@/components/errors/QueryRegion';
+import { LoadingState, SkeletonBar } from '@/components/loading/LoadingState';
 import { useState } from 'react';
 import { useAdminUsers, useCreateAdminUser } from '@/hooks/useAdminUsers';
 import { Button } from '@/components/ui/button';
@@ -114,17 +115,24 @@ export default function AdminUsersPage() {
         </Dialog>
       </div>
 
-      <QueryRegion label="danh sách tài khoản và phân công" queries={[usersQuery]}>
+      {/* Khung thẻ + tiêu đề hiện ngay; chỉ phần bảng chờ dữ liệu (khối xám dòng bảng,
+          số đếm là vạch xám) — chủ chốt 02/10/2026, không chữ "Đang tải…". */}
       <Card>
         <CardHeader>
-          <CardTitle>Danh sách tài khoản ({users.length})</CardTitle>
+          <CardTitle>
+            Danh sách tài khoản
+            {usersQuery.data !== undefined ? ` (${users.length})` : isLoading ? (
+              <SkeletonBar className="ml-2 inline-block h-4 align-middle" style={{ width: '2rem' }} />
+            ) : null}
+          </CardTitle>
           <CardDescription>
             Phân quyền chi tiết được thiết lập qua trang "Nhân viên" (assign role + building).
           </CardDescription>
         </CardHeader>
         <CardContent>
+          <QueryRegion label="danh sách tài khoản và phân công" queries={[usersQuery]} skeleton="table" rows={6}>
           {isLoading ? (
-            <div className="text-center py-8 text-muted-foreground">Đang tải…</div>
+            <LoadingState label="danh sách tài khoản và phân công" variant="table" rows={6} />
           ) : (
             <Table>
               <TableHeader>
@@ -163,9 +171,9 @@ export default function AdminUsersPage() {
               </TableBody>
             </Table>
           )}
+          </QueryRegion>
         </CardContent>
       </Card>
-      </QueryRegion>
     </div>
   );
 }

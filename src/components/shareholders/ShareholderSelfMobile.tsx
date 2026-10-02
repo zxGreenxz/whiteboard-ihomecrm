@@ -128,7 +128,7 @@ export default function ShareholderSelfMobile({
   const kpiSub = "text-[10.5px] text-[#b6b0a3] font-semibold mt-1";
 
   return (
-    <QueryRegion label="lợi nhuận và cấu hình phân bổ" queries={[allocationsQuery, distributionsQuery, buildingsQuery]}>
+    <QueryRegion label="lợi nhuận và cấu hình phân bổ" queries={[allocationsQuery, distributionsQuery, buildingsQuery]} skeleton="list" rows={4}>
     <div className="flex flex-col gap-3">
       {/* Hero */}
       <div

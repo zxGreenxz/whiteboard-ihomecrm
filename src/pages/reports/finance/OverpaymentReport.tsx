@@ -78,7 +78,7 @@ export default function OverpaymentReport() {
           />
         </div>
 
-        <QueryRegion label="báo cáo tiền dư" queries={[overpaymentReportQuery, overpaymentSummaryQuery]}>
+        <QueryRegion label="báo cáo tiền dư" queries={[overpaymentReportQuery, overpaymentSummaryQuery]} skeleton="table" rows={8}>
         <div className="text-base font-semibold">Tổng: {formatCurrency(total)}</div>
 
         <div className="rounded-md border">

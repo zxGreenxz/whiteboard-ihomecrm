@@ -1,4 +1,5 @@
 import { QueryRegion } from '@/components/errors/QueryRegion';
+import { LoadingState } from '@/components/loading/LoadingState';
 import { useState } from "react";
 import MainLayout from "@/components/layout/MainLayout";
 import { ClipboardList, Plus, ArrowLeft } from "lucide-react";
@@ -88,14 +89,9 @@ export default function TaskTypesPage() {
     pagination.setPage(1);
   };
 
-  return (
-    <MainLayout
-      title="Loại công việc"
-      subtitle="Quản lý loại công việc vận hành"
-      icon={ClipboardList}
-    >
-      <QueryRegion label="Loại công việc, nhóm và bộ phận" queries={[jobTypesQuery,jobGroupsQuery,departmentsQuery]}>
-      {/* Top bar */}
+  // Thanh trên (quay lại + Thêm) dùng cho cả lúc chờ: khung trang hiện ngay, nút Thêm
+  // chỉ khoá trong lúc chờ (form cần nhóm/bộ phận) — chủ chốt 02/10/2026.
+  const topBar = (waiting: boolean) => (
       <div className="flex items-center justify-between mb-4">
         <Link
           to="/settings/categories"
@@ -107,11 +103,31 @@ export default function TaskTypesPage() {
         <Button
           className="bg-green-600 hover:bg-green-700 text-white"
           onClick={handleAdd}
+          disabled={waiting}
         >
           <Plus className="h-4 w-4 mr-1" />
           Thêm loại công việc
         </Button>
       </div>
+  );
+
+  return (
+    <MainLayout
+      title="Loại công việc"
+      subtitle="Quản lý loại công việc vận hành"
+      icon={ClipboardList}
+    >
+      <QueryRegion label="Loại công việc, nhóm và bộ phận" queries={[jobTypesQuery,jobGroupsQuery,departmentsQuery]} loading={<>
+        {topBar(true)}
+        <LoadingState
+          label="Loại công việc, nhóm và bộ phận"
+          variant="table"
+          rows={6}
+          onRetry={() => { void jobTypesQuery.refetch(); void jobGroupsQuery.refetch(); void departmentsQuery.refetch(); }}
+        />
+      </>}>
+      {/* Top bar */}
+      {topBar(false)}
 
       {/* Table */}
       <TaskTypeTable

@@ -1,4 +1,5 @@
 import { QueryRegion } from "@/components/errors/QueryRegion";
+import { ChartSkeleton } from "@/components/dashboard/ChartSkeleton";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { useQuery } from "@tanstack/react-query";
@@ -71,9 +72,7 @@ export function DebtChart() {
           <CardDescription>6 tháng gần nhất</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="h-[300px] flex items-center justify-center">
-            <p className="text-muted-foreground">Đang tải...</p>
-          </div>
+          <ChartSkeleton label="công nợ theo tháng" bars={6} onRetry={() => void query.refetch()} />
         </CardContent>
       </Card>
     );
@@ -88,7 +87,7 @@ export function DebtChart() {
   };
 
   return (
-    <QueryRegion label="công nợ theo tháng" queries={[query]}>
+    <QueryRegion label="công nợ theo tháng" queries={[query]} loading={<ChartSkeleton label="công nợ theo tháng" bars={6} onRetry={() => void query.refetch()} />}>
     <Card>
       <CardHeader>
         <CardTitle>Công nợ theo tháng</CardTitle>

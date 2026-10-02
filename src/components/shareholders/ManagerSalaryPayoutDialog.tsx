@@ -95,7 +95,7 @@ export default function ManagerSalaryPayoutDialog({
           <DialogTitle>Chi lương điều hành</DialogTitle>
         </DialogHeader>
 
-        <QueryRegion label="sổ quỹ chi" queries={[accountsQuery]}>
+        <QueryRegion label="sổ quỹ chi" queries={[accountsQuery]} skeleton="detail" rows={5}>
         <div className="space-y-4 py-2">
           <div className="space-y-2">
             <Label>Quản lý <span className="text-red-500">*</span></Label>

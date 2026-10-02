@@ -2,6 +2,7 @@ import { focusFirstError } from '@/lib/formErrors';
 import { passwordFieldErrors, AvatarProfilePartialError } from '@/lib/accountFeedback';
 import { actionErrorMessage, notifyActionError } from '@/lib/actionFeedback';
 import { QueryRegion } from '@/components/errors/QueryRegion';
+import { LoadingState } from '@/components/loading/LoadingState';
 import { useState, useRef, lazy, Suspense } from "react";
 import { usePhoneViewport } from "@/hooks/use-mobile";
 import MainLayout from "@/components/layout/MainLayout";
@@ -100,16 +101,14 @@ function ProfileDesktop() {
   if (isLoading) {
     return (
       <MainLayout title="Thông tin cá nhân" subtitle="Quản lý thông tin tài khoản của bạn" icon={User}>
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </div>
+        <LoadingState label="thông tin tài khoản" variant="detail" rows={6} className="max-w-2xl" onRetry={() => void profileQuery.refetch()} />
       </MainLayout>
     );
   }
 
   return (
     <MainLayout title="Thông tin cá nhân" subtitle="Quản lý thông tin tài khoản của bạn" icon={User}>
-      <QueryRegion label="thông tin tài khoản" queries={[profileQuery]}>
+      <QueryRegion label="thông tin tài khoản" queries={[profileQuery]} skeleton="detail" rows={6}>
       {avatarError && <p role="alert" className="text-sm text-destructive">{avatarError}</p>}
       <div className="grid gap-6 max-w-2xl">
         {/* Avatar Section */}

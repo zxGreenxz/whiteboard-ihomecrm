@@ -116,7 +116,7 @@ export default function BanGiaoCycleReport() {
           )}
         </div>
 
-        <QueryRegion label="chu kỳ thu và bàn giao" queries={[collectionCycleReportQuery, staffUsersQuery]}>
+        <QueryRegion label="chu kỳ thu và bàn giao" queries={[collectionCycleReportQuery, staffUsersQuery]} skeleton="cards" rows={4}>
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
           {stat('Đã thu (kỳ)', s?.collected_period, 'text-emerald-700')}
           {stat('Đã bàn giao (kỳ)', s?.handed_over_period, 'text-blue-700')}

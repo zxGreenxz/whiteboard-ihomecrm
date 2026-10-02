@@ -1,4 +1,5 @@
 import { QueryRegion } from "@/components/errors/QueryRegion";
+import { LoadingState, RefreshBar } from "@/components/loading/LoadingState";
 import { focusFirstError } from "@/lib/formErrors";
 import { profitActionErrorMessage } from "@/lib/profitFeedback";
 import { FinancialWorkflowError } from "@/lib/financialWorkflow";
@@ -801,7 +802,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
     );
 
   return (
-    <QueryRegion label="số liệu chốt lợi nhuận" queries={organizationId ? querySources : []}>
+    <QueryRegion label="số liệu chốt lợi nhuận" queries={organizationId ? querySources : []} skeleton="table" rows={8}>
     <>
       <ProfitHubSlot name="kpis">
         <div className="ph-kpi ph-kpi--flex">
@@ -1032,7 +1033,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
 
       {previewSourceError&&<div role="alert" className="rounded-md border border-destructive p-3 text-sm text-destructive"><p>{previewSourceError}</p><Button type="button" variant="outline" data-field-name="profitPreviewSource" onClick={()=>void previewQuery.refetch()}>Tải lại số liệu</Button></div>}
       {selectionError && <p role="alert" id="profitBuildings-error" className="text-sm text-destructive">{selectionError}</p>}
-      {organizationId && <QueryRegion label="trạng thái chốt sổ quỹ" queries={[closingStatusQuery]}><></></QueryRegion>}
+      {organizationId && <QueryRegion label="trạng thái chốt sổ quỹ" queries={[closingStatusQuery]} skeleton="none"><></></QueryRegion>}
       {closeErrorMessage && (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
@@ -1189,7 +1190,11 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
             </span>
           </div>
         </div>
-        <div>
+        <div className="relative">
+          {/* Đang đọc lại preview sau khi sửa điều chỉnh: số giữ nguyên, chỉ vạch mảnh mép
+              trên thay cho chữ "Đang kiểm tra lại…" từng ô (chủ chốt 02/10/2026). Nút chốt
+              vẫn chặn tới khi preview mới về (xem openCloseConfirmation). */}
+          <RefreshBar active={(previewInputPending || previewQuery.isFetching) && !dataLoading} label="Đang kiểm tra lại số liệu chốt" />
           <div className="ph-tblwrap">
             <Table>
               <TableHeader>
@@ -1238,8 +1243,8 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
               <TableBody>
                 {dataLoading && (
                   <TableRow>
-                    <TableCell colSpan={12} className="py-8 text-center text-muted-foreground">
-                      Đang tải preview canonical…
+                    <TableCell colSpan={12} className="py-2">
+                      <LoadingState label="preview canonical" variant="table" rows={5} />
                     </TableCell>
                   </TableRow>
                 )}
@@ -1389,9 +1394,6 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
                       </TableCell>
                       <TableCell className={`align-top text-right font-semibold tabular-nums ${displayedDistributable < 0 ? "text-red-600" : ""}`}>
                         {formatCurrency(displayedDistributable)}
-                        {(previewInputPending || previewQuery.isFetching) && (
-                          <p className="mt-1 text-[11px] font-normal text-muted-foreground">Đang kiểm tra lại…</p>
-                        )}
                       </TableCell>
                       <TableCell className="align-top text-right tabular-nums">
                         <span

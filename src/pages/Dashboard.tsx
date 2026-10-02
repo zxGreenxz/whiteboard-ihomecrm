@@ -81,7 +81,7 @@ const Dashboard = () => {
           </div>
           <div className="flex gap-2 items-center">
             {/* Building Filter */}
-            <QueryRegion label="danh sách tòa nhà" queries={[buildingsQuery]}>
+            <QueryRegion label="danh sách tòa nhà" queries={[buildingsQuery]} skeleton="inline">
             <SearchableSelect
               value={selectedBuilding || 'all'}
               onValueChange={(value) => setSelectedBuilding(value === 'all' ? null : value)}
@@ -103,7 +103,7 @@ const Dashboard = () => {
         </div>
 
         {/* Stats Grid - 5 cards */}
-        <QueryRegion label="số liệu tổng quan phòng, doanh thu và công nợ" queries={[statsQuery]}>
+        <QueryRegion label="số liệu tổng quan phòng, doanh thu và công nợ" queries={[statsQuery]} skeleton="cards" rows={5}>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
           {/* Total Rooms */}
           <Card className="border-l-4 border-l-primary hover:shadow-md transition-shadow">
@@ -359,7 +359,7 @@ const Dashboard = () => {
             </DialogDescription>
           </DialogHeader>
 
-          <QueryRegion label="danh sách phòng trống" queries={[vacantQuery]}>
+          <QueryRegion label="danh sách phòng trống" queries={[vacantQuery]} skeleton="table" rows={5}>
           <div className="max-h-[60vh] overflow-y-auto rounded-md border">
             {vacantLoading ? (
               <div className="space-y-2 p-4">

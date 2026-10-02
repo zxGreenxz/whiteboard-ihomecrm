@@ -1,4 +1,5 @@
 import { QueryRegion } from "@/components/errors/QueryRegion";
+import { ChartSkeleton } from "@/components/dashboard/ChartSkeleton";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts";
 import { useOccupancyChart } from "@/hooks/useDashboard";
@@ -16,15 +17,15 @@ export function OccupancyChart({ buildingId }: { buildingId?: string | null }) {
           <CardTitle>Tỷ lệ lấp đầy</CardTitle>
           <CardDescription>Phân bố căn hộ trống/đã thuê</CardDescription>
         </CardHeader>
-        <CardContent className="h-[300px] flex items-center justify-center">
-          <p className="text-muted-foreground">Đang tải...</p>
+        <CardContent>
+          <ChartSkeleton label="tỷ lệ lấp đầy" kind="pie" onRetry={() => void query.refetch()} />
         </CardContent>
       </Card>
     );
   }
 
   return (
-    <QueryRegion label="tỷ lệ lấp đầy" queries={[query]}>
+    <QueryRegion label="tỷ lệ lấp đầy" queries={[query]} loading={<ChartSkeleton label="tỷ lệ lấp đầy" kind="pie" onRetry={() => void query.refetch()} />}>
     <Card>
       <CardHeader>
         <CardTitle>Tỷ lệ lấp đầy</CardTitle>

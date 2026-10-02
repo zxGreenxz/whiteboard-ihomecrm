@@ -1,4 +1,5 @@
 import { QueryRegion } from "@/components/errors/QueryRegion";
+import { LoadingState } from "@/components/loading/LoadingState";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { FileText, DollarSign, AlertCircle } from "lucide-react";
 import { useRecentActivities } from "@/hooks/useDashboard";
@@ -47,14 +48,14 @@ export function RecentActivities({ buildingId }: { buildingId?: string | null })
           <CardDescription>7 ngày qua</CardDescription>
         </CardHeader>
         <CardContent>
-          <p className="text-center text-muted-foreground py-8">Đang tải...</p>
+          <LoadingState label="hoạt động gần đây" variant="list" rows={4} onRetry={() => void query.refetch()} />
         </CardContent>
       </Card>
     );
   }
 
   return (
-    <QueryRegion label="hoạt động gần đây" queries={[query]}>
+    <QueryRegion label="hoạt động gần đây" queries={[query]} skeleton="list" rows={4}>
     <Card>
       <CardHeader>
         <CardTitle>Hoạt động gần đây</CardTitle>

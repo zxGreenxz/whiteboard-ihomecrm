@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import MainLayout from "@/components/layout/MainLayout";
 import { QueryRegion } from '@/components/errors/QueryRegion';
+import { LoadingState } from '@/components/loading/LoadingState';
 import {
   useServiceQuotas,
   type ServiceQuotaWithTiers,
@@ -101,12 +102,10 @@ export default function ServiceQuotasPage() {
           </Button>
         </div>
 
-        <QueryRegion label="danh sách định mức dịch vụ" queries={[quotaQuery]}>
+        <QueryRegion label="danh sách định mức dịch vụ" queries={[quotaQuery]} skeleton="table" rows={6}>
         {/* Table */}
         {isLoading ? (
-          <div className="text-center py-8 text-muted-foreground">
-            Đang tải...
-          </div>
+          <LoadingState label="danh sách định mức dịch vụ" variant="table" rows={6} />
         ) : (
           <div className="rounded-md border">
             <Table>

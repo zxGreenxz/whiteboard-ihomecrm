@@ -1,4 +1,5 @@
 import { QueryRegion } from "@/components/errors/QueryRegion";
+import { ChartSkeleton } from "@/components/dashboard/ChartSkeleton";
 import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
@@ -117,7 +118,7 @@ export default function CashFlowReport() {
           </div>
         </div>
 
-        <QueryRegion label="báo cáo dòng tiền" queries={[cashFlowByDayQuery, buildingsQuery]}>
+        <QueryRegion label="báo cáo dòng tiền" queries={[cashFlowByDayQuery, buildingsQuery]} loading={<ChartSkeleton label="báo cáo dòng tiền" height={360} bars={12} onRetry={() => { void cashFlowByDayQuery.refetch(); void buildingsQuery.refetch(); }} />}>
         <div className="rounded-md border bg-card">
           <div className="border-b p-4 flex items-center justify-between flex-wrap gap-3">
             <h3 className="text-base font-semibold">Biểu đồ dòng tiền thu chi thực tế</h3>

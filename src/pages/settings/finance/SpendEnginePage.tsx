@@ -1,4 +1,5 @@
 import {QueryRegion} from '@/components/errors/QueryRegion';
+import { SkeletonBar } from '@/components/loading/LoadingState';
 import {useOperationFormFeedback} from '@/hooks/useOperationFormFeedback';
 import {SPEND_ERROR_RULES,parseCommitmentAmount,validateSpendSwitch} from '@/lib/spendFeedback';
 import { useMemo, useState } from 'react';
@@ -99,7 +100,7 @@ function CommitmentsTab({ orgId }: { orgId: string }) {
   };
 
   return (
-    <QueryRegion label="cam kết chi" queries={[q,buildings]}><div className="space-y-3">
+    <div className="space-y-3">
       <div className="flex flex-wrap items-end gap-3">
         <div className="space-y-1">
           <Label htmlFor="ck-thang">Tháng</Label>
@@ -108,9 +109,11 @@ function CommitmentsTab({ orgId }: { orgId: string }) {
         <p className="text-sm text-muted-foreground max-w-2xl">
           Mỗi ô là số tiền bạn <strong>ký trước</strong> cho toà × hạng mục trong tháng. Phiếu chi nằm trong phần
           còn lại thì máy duyệt; vượt thì chờ bạn duyệt và cam kết <strong>không tự nới</strong>. Tháng đã có khoản
-          chi thì không sửa được nữa (không hồi tố). Tổng tiền nhà tháng này: <strong>{fmt(tong)}</strong>.
+          chi thì không sửa được nữa (không hồi tố). Tổng tiền nhà tháng này: <strong>{q.data !== undefined ? fmt(tong) : q.isLoading ? <SkeletonBar className="inline-block h-3.5 align-middle" style={{ width: '6rem' }} /> : '—'}</strong>.
         </p>
       </div>
+      {/* Tháng + mô tả hiện ngay; chỉ bảng cam kết chờ dữ liệu (chủ chốt 02/10/2026). */}
+      <QueryRegion label="cam kết chi" queries={[q,buildings]} skeleton="table" rows={6}>
       {q.isLoading || buildings.isLoading ? <Skeleton className="h-64 w-full" /> : (
         <div className="overflow-x-auto rounded-md border">
           <Table>
@@ -159,6 +162,7 @@ function CommitmentsTab({ orgId }: { orgId: string }) {
           </Table>
         </div>
       )}
+      </QueryRegion>
       <p className="text-xs text-muted-foreground">
         <AlertTriangle className="inline h-3 w-3 mr-1 text-amber-600" />
         Ô vàng: số dưới {fmt(SO_NHO_BAT_THUONG)} — thường là số sót từ lần đóng cũ; nên kiểm lại trước khi bật áp dụng.
@@ -193,7 +197,7 @@ function CommitmentsTab({ orgId }: { orgId: string }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div></QueryRegion>
+    </div>
   );
 }
 
@@ -217,7 +221,7 @@ function RulesTab({ orgId }: { orgId: string }) {
   };
 
   return (
-    <QueryRegion label="quy tắc hạng mục chi" queries={[types]}><div ref={feedback.root} className="space-y-3">{feedback.notice}
+    <div ref={feedback.root} className="space-y-3">{feedback.notice}
       <p className="text-sm text-muted-foreground max-w-3xl">
         Luật chi khai <strong>trên hạng mục</strong>: <strong>Theo cam kết</strong> (tiền nhà, internet, quản lý…) —
         so với số đã ký của tháng; <strong>Theo trần</strong> (điện, nước) — so với trần đã công bố;
@@ -228,6 +232,8 @@ function RulesTab({ orgId }: { orgId: string }) {
         <Checkbox checked={chiCoLuat} onCheckedChange={(v) => setChiCoLuat(v === true)} />
         Chỉ hiện hạng mục đã gắn khoá phí hoặc có luật riêng
       </label>
+      {/* Mô tả + bộ lọc hiện ngay; chỉ bảng hạng mục chờ dữ liệu (chủ chốt 02/10/2026). */}
+      <QueryRegion label="quy tắc hạng mục chi" queries={[types]} skeleton="table" rows={6}>
       {types.isLoading ? <Skeleton className="h-48 w-full" /> : (
         <div className="rounded-md border">
           <Table>
@@ -261,7 +267,8 @@ function RulesTab({ orgId }: { orgId: string }) {
           </Table>
         </div>
       )}
-    </div></QueryRegion>
+      </QueryRegion>
+    </div>
   );
 }
 
@@ -302,7 +309,7 @@ function SwitchesTab({ orgId, route }: { orgId: string; route: string | undefine
   };
 
   return (
-    <QueryRegion label="phạm vi áp dụng quy tắc chi" queries={[q,buildings]}><div ref={feedback.root} className="space-y-3">{feedback.notice}
+    <QueryRegion label="phạm vi áp dụng quy tắc chi" queries={[q,buildings]} skeleton="detail" rows={5}><div ref={feedback.root} className="space-y-3">{feedback.notice}
       <div className={`rounded-md border p-3 text-sm ${route === 'CANONICAL' ? 'border-primary/40 bg-primary/5' : 'bg-muted/40'}`}>
         {route === 'CANONICAL'
           ? <>Bộ máy <strong>đang áp dụng</strong>: hạng mục × toà × tháng nào có công tắc dưới đây thì phiếu chi được máy quyết theo luật; còn lại đi như cũ.</>
@@ -378,7 +385,7 @@ function ShadowTab({ orgId }: { orgId: string }) {
   const canhBaoSo = (q.data ?? []).filter((r) => r.cashbook_ok === false).length;
 
   return (
-    <QueryRegion label="kết quả đối chiếu duyệt chi" queries={[q]}><div className="space-y-3">
+    <div className="space-y-3">
       <p className="text-sm text-muted-foreground max-w-3xl">
         Mỗi phiếu sinh ra, máy chấm ngay lúc đó: <strong>thực tế</strong> phiếu đã duyệt hay chờ, và <strong>máy</strong> sẽ
         quyết thế nào theo luật hạng mục. Lệch là chỗ cần xem: hoặc đó chính là thay đổi bạn muốn (vd quản lý trả tiền nhà
@@ -389,8 +396,12 @@ function ShadowTab({ orgId }: { orgId: string }) {
         <div className="space-y-1"><Label htmlFor="sh-tu">Từ ngày</Label><Input id="sh-tu" type="date" value={from} onChange={(e) => e.target.value && setFrom(e.target.value)} className="w-40" /></div>
         <div className="space-y-1"><Label htmlFor="sh-toi">Tới ngày</Label><Input id="sh-toi" type="date" value={to} onChange={(e) => e.target.value && setTo(e.target.value)} className="w-40" /></div>
         <label className="flex items-center gap-2 text-sm pb-2"><Checkbox checked={chiLech} onCheckedChange={(v) => setChiLech(v === true)} />Chỉ phiếu lệch / cảnh báo sổ</label>
-        <div className="text-sm pb-2 text-muted-foreground">{tong} phiếu · <span className={lech ? 'text-amber-600 font-medium' : ''}>{lech} lệch</span> · {canhBaoSo} cảnh báo sổ</div>
+        {q.data !== undefined ? (
+          <div className="text-sm pb-2 text-muted-foreground">{tong} phiếu · <span className={lech ? 'text-amber-600 font-medium' : ''}>{lech} lệch</span> · {canhBaoSo} cảnh báo sổ</div>
+        ) : q.isLoading ? <div className="pb-2"><SkeletonBar className="inline-block h-3.5 align-middle" style={{ width: '12rem' }} /></div> : null}
       </div>
+      {/* Mô tả + bộ lọc ngày hiện ngay; chỉ bảng phiếu chờ dữ liệu (chủ chốt 02/10/2026). */}
+      <QueryRegion label="kết quả đối chiếu duyệt chi" queries={[q]} skeleton="table" rows={6}>
       {q.isLoading ? <Skeleton className="h-48 w-full" /> : (
         <div className="overflow-x-auto rounded-md border">
           <Table>
@@ -427,7 +438,8 @@ function ShadowTab({ orgId }: { orgId: string }) {
           </Table>
         </div>
       )}
-    </div></QueryRegion>
+      </QueryRegion>
+    </div>
   );
 }
 
@@ -438,7 +450,7 @@ function SelfApprovedTab({ orgId }: { orgId: string }) {
   const q = useSelfApprovedVouchers(orgId, from, to);
   const tong = (q.data ?? []).reduce((s, r) => s + r.amount, 0);
   return (
-    <QueryRegion label="phiếu tự duyệt" queries={[q]}><div className="space-y-3">
+    <div className="space-y-3">
       <p className="text-sm text-muted-foreground max-w-3xl">
         Phiếu mà <strong>người lập có quyền duyệt</strong> nên được duyệt luôn (giữ nguyên, không thêm thao tác) — ở đây chỉ
         để bạn lọc và đếm được: tự duyệt lúc lập, hoặc người lập tự bấm duyệt phiếu của mình.
@@ -446,8 +458,12 @@ function SelfApprovedTab({ orgId }: { orgId: string }) {
       <div className="flex flex-wrap items-end gap-3">
         <div className="space-y-1"><Label htmlFor="td-tu">Từ ngày</Label><Input id="td-tu" type="date" value={from} onChange={(e) => e.target.value && setFrom(e.target.value)} className="w-40" /></div>
         <div className="space-y-1"><Label htmlFor="td-toi">Tới ngày</Label><Input id="td-toi" type="date" value={to} onChange={(e) => e.target.value && setTo(e.target.value)} className="w-40" /></div>
-        <div className="text-sm pb-2 text-muted-foreground">{q.data?.length ?? 0} phiếu · {fmt(tong)}</div>
+        {q.data !== undefined ? (
+          <div className="text-sm pb-2 text-muted-foreground">{q.data.length} phiếu · {fmt(tong)}</div>
+        ) : q.isLoading ? <div className="pb-2"><SkeletonBar className="inline-block h-3.5 align-middle" style={{ width: '10rem' }} /></div> : null}
       </div>
+      {/* Mô tả + bộ lọc ngày hiện ngay; chỉ bảng phiếu chờ dữ liệu (chủ chốt 02/10/2026). */}
+      <QueryRegion label="phiếu tự duyệt" queries={[q]} skeleton="table" rows={6}>
       {q.isLoading ? <Skeleton className="h-48 w-full" /> : (
         <div className="overflow-x-auto rounded-md border">
           <Table>
@@ -473,7 +489,8 @@ function SelfApprovedTab({ orgId }: { orgId: string }) {
           </Table>
         </div>
       )}
-    </div></QueryRegion>
+      </QueryRegion>
+    </div>
   );
 }
 
@@ -511,7 +528,7 @@ export default function SpendEnginePage() {
           </div>
         </div>
 
-        <QueryRegion label="công ty và trạng thái quy tắc duyệt chi" queries={orgId?[orgs,status]:[orgs]}>
+        <QueryRegion label="công ty và trạng thái quy tắc duyệt chi" queries={orgId?[orgs,status]:[orgs]} skeleton="detail" rows={4}>
         {status.data && (
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-md border p-3 text-sm">
             <div className="flex items-center gap-2">Bộ máy: {r ? <Badge variant={r.tone}>{r.text}</Badge> : 'Chưa xác định trạng thái'}</div>

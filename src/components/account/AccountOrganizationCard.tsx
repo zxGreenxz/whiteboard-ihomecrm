@@ -5,6 +5,7 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useOrganization } from '@/contexts/OrganizationContext';
+import { InlineSkeleton } from '@/components/loading/LoadingState';
 
 /** Cùng lựa chọn với Copilot; đổi tại Tài khoản là lưu ngay trên trình duyệt. */
 export default function AccountOrganizationCard({ variant = 'desktop' }: { variant?: 'desktop' | 'mobile' }) {
@@ -14,29 +15,37 @@ export default function AccountOrganizationCard({ variant = 'desktop' }: { varia
     organizations, selectedOrganizationId, selectOrganization,
     isLoading, isError, isOrphan, refetchOrganizations,
   } = useOrganization();
-  const placeholder = isLoading ? 'Đang tải công ty…' : isError ? 'Chưa tải được công ty' : isOrphan ? 'Chưa có công ty' : 'Chọn công ty';
+  const placeholder = isError ? 'Chưa tải được công ty' : isOrphan ? 'Chưa có công ty' : 'Chọn công ty';
+  // Đang nạp danh sách công ty: ô chọn để trống kèm vạch xám trong ô, không chữ
+  // "Đang tải…" (chủ chốt 02/10/2026); câu đó chỉ còn cho trình đọc màn hình.
+  const loadingBar = <InlineSkeleton label="công ty" width="9rem" />;
   const disabled = isLoading || isError || organizations.length === 0;
   const helpId = `${id}-help`;
   const content = (
     <div className={mobile ? 'ff' : 'space-y-2'}>
       <Label htmlFor={id} className={mobile ? 'ff-lbl' : undefined}>Công ty đang chọn</Label>
       {mobile ? (
-        <select
-          id={id}
-          className="ff-input"
-          value={selectedOrganizationId ?? ''}
-          onChange={(event) => selectOrganization(event.target.value)}
-          disabled={disabled}
-          aria-describedby={helpId}
-          data-testid="account-organization-select"
-        >
-          <option value="" disabled>{placeholder}</option>
-          {organizations.map((org) => <option key={org.id} value={org.id}>{org.name}</option>)}
-        </select>
+        <div className="relative">
+          <select
+            id={id}
+            className="ff-input"
+            value={selectedOrganizationId ?? ''}
+            onChange={(event) => selectOrganization(event.target.value)}
+            disabled={disabled}
+            aria-describedby={helpId}
+            data-testid="account-organization-select"
+          >
+            <option value="" disabled>{isLoading ? '' : placeholder}</option>
+            {organizations.map((org) => <option key={org.id} value={org.id}>{org.name}</option>)}
+          </select>
+          {isLoading && (
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2">{loadingBar}</span>
+          )}
+        </div>
       ) : (
         <Select value={selectedOrganizationId ?? ''} onValueChange={selectOrganization} disabled={disabled}>
           <SelectTrigger id={id} aria-describedby={helpId} data-testid="account-organization-select">
-            <SelectValue placeholder={placeholder} />
+            <SelectValue placeholder={isLoading ? loadingBar : placeholder} />
           </SelectTrigger>
           <SelectContent>
             {organizations.map((org) => <SelectItem key={org.id} value={org.id}>{org.name}</SelectItem>)}

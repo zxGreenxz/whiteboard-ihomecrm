@@ -214,7 +214,7 @@ export function OverviewTab({ filters }: Props) {
   const yoyMargin = yoy ? marginPct(yoy.net, yoy.revenue) : null;
 
   return (
-    <QueryRegion label="phân tích tài chính" queries={[reportQuery0, reportQuery1, reportQuery2, reportQuery3, reportQuery4]}>
+    <QueryRegion label="phân tích tài chính" queries={[reportQuery0, reportQuery1, reportQuery2, reportQuery3, reportQuery4]} skeleton="cards" rows={4}>
     <div className="space-y-4">
       {/* KPI hàng 1 — tài chính */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">

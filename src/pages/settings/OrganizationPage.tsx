@@ -83,7 +83,7 @@ export default function OrganizationPage() {
   if (!data) {
     return (
       <MainLayout title="Tổ chức" icon={Landmark}>
-        <QueryRegion label="thông tin tổ chức" queries={[organizationQuery]}><></></QueryRegion>
+        <QueryRegion label="thông tin tổ chức" queries={[organizationQuery]} skeleton="detail" rows={6}><></></QueryRegion>
       </MainLayout>
     );
   }
@@ -97,7 +97,7 @@ export default function OrganizationPage() {
       subtitle="Hồ sơ công ty, phạm vi phân quyền và nhật ký thay đổi"
       icon={Landmark}
     >
-      <QueryRegion label="thông tin tổ chức" queries={[organizationQuery]}>
+      <QueryRegion label="thông tin tổ chức" queries={[organizationQuery]} skeleton="detail" rows={6}>
       <div className="space-y-4">
         {/* Hồ sơ */}
         <Card>

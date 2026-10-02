@@ -1,6 +1,7 @@
 import { focusFirstError } from '@/lib/formErrors';
 import { actionErrorMessage } from '@/lib/actionFeedback';
 import { QueryRegion } from '@/components/errors/QueryRegion';
+import { LoadingState } from '@/components/loading/LoadingState';
 // Hộp thoại phân quyền một thành viên — 3 tab:
 //
 //   ① Vai trò & phạm vi  — cấp quyền theo GÓI, áp ở đâu (99% việc thường ngày)
@@ -325,7 +326,19 @@ export function MemberAuthorizationDialog({ membershipId, open, onOpenChange }: 
           </DialogDescription>
         </DialogHeader>
 
-        <QueryRegion label="phân quyền, vai trò và phạm vi" queries={[memberQuery, rolesQuery, catalogQuery]}>
+        <QueryRegion
+          label="phân quyền, vai trò và phạm vi"
+          queries={[memberQuery, rolesQuery, catalogQuery]}
+          loading={
+            <LoadingState
+              label="phân quyền, vai trò và phạm vi"
+              variant="detail"
+              rows={6}
+              className="px-6 py-4"
+              onRetry={() => { void memberQuery.refetch(); void rolesQuery.refetch(); void catalogQuery.refetch(); }}
+            />
+          }
+        >
         {isLoading || !mem ? (
           <div className="space-y-3 p-6">
             <Skeleton className="h-9 w-full" />

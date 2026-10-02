@@ -174,7 +174,7 @@ export default function ProfitManagerForm({ open, onOpenChange, manager }: Props
           <DialogTitle>{isEdit ? "Sửa quản lý điều hành" : "Thêm quản lý điều hành"}</DialogTitle>
         </DialogHeader>
 
-        <QueryRegion label="cấu hình lương điều hành" queries={[usersQuery, buildingsQuery, managersQuery, allRulesQuery]}>
+        <QueryRegion label="cấu hình lương điều hành" queries={[usersQuery, buildingsQuery, managersQuery, allRulesQuery]} skeleton="detail" rows={6}>
         <div className="space-y-4 py-2">
           <div className="space-y-2">
             <Label>Tài khoản (user) <span className="text-red-500">*</span></Label>

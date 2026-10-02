@@ -86,7 +86,7 @@ export default function ShareholderSelfView({ me }: { me: Shareholder }) {
   const paidTotal = distributions.reduce((s, d) => s + d.total_amount, 0);
 
   return (
-    <QueryRegion label="lợi nhuận và cấu hình phân bổ" queries={[allocationsQuery, distributionsQuery, buildingsQuery]}>
+    <QueryRegion label="lợi nhuận và cấu hình phân bổ" queries={[allocationsQuery, distributionsQuery, buildingsQuery]} skeleton="table" rows={6}>
     <>
       <ProfitHubSlot name="kpis">
         <div className="ph-kpi ph-kpi--flex">

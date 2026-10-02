@@ -1,4 +1,5 @@
 import { QueryRegion } from '@/components/errors/QueryRegion';
+import { LoadingState } from '@/components/loading/LoadingState';
 import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useCallback, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -184,7 +185,7 @@ export default function CashbooksMobilePage() {
               </button>
             )}
 
-            <QueryRegion label="danh sách và số dư sổ quỹ" queries={[accountsQuery,visibilityQuery]}>
+            <QueryRegion label="danh sách và số dư sổ quỹ" queries={[accountsQuery,visibilityQuery]} skeleton="list" rows={4}>
             <div className="iestats">
               <div className="iestat">
                 <span className="iestat-l"><Wallet />SỐ SỔ QUỸ</span>
@@ -209,7 +210,7 @@ export default function CashbooksMobilePage() {
             </div>
 
             {isLoading ? (
-              <div className="stub"><p>Đang tải sổ quỹ…</p></div>
+              <LoadingState label="sổ quỹ" variant="list" />
             ) : funds.length === 0 ? (
               <div className="stub"><p>Chưa có sổ quỹ nào. Tạo sổ mới qua nút (+).</p></div>
             ) : (

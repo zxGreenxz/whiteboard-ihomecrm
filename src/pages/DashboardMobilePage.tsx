@@ -1,4 +1,5 @@
 import { QueryRegion } from '@/components/errors/QueryRegion';
+import { ChartSkeleton } from '@/components/dashboard/ChartSkeleton';
 import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -203,7 +204,7 @@ export default function DashboardMobilePage() {
                 <Calendar size={15} />
                 <span>{period}</span>
               </div>
-              <QueryRegion label="danh sách tòa nhà" queries={[buildingsQuery]}>
+              <QueryRegion label="danh sách tòa nhà" queries={[buildingsQuery]} skeleton="inline">
                 <select
                   className="cm-select dash-bld"
                   value={building}
@@ -221,7 +222,7 @@ export default function DashboardMobilePage() {
             </div>
 
             {/* KPI */}
-            <QueryRegion label="số liệu bảng tin" queries={[statsQuery]}>
+            <QueryRegion label="số liệu bảng tin" queries={[statsQuery]} skeleton="cards" rows={4}>
               <div className="kgrid">
                 {kpis.map((k) => {
                   const Ico = k.Icon;
@@ -242,7 +243,7 @@ export default function DashboardMobilePage() {
             </QueryRegion>
 
             {/* Tỷ lệ lấp đầy */}
-            <QueryRegion label="tỷ lệ lấp đầy" queries={[occupancyQuery, statsQuery]}>
+            <QueryRegion label="tỷ lệ lấp đầy" queries={[occupancyQuery, statsQuery]} skeleton="detail" rows={3}>
               <div className="cd-card">
                 <div className="cd-card-h">
                   <span className="cd-card-t">
@@ -281,7 +282,7 @@ export default function DashboardMobilePage() {
             </QueryRegion>
 
             {/* Doanh thu theo tháng */}
-            <QueryRegion label="doanh thu theo tháng" queries={[revenueQuery]}>
+            <QueryRegion label="doanh thu theo tháng" queries={[revenueQuery]} loading={<ChartSkeleton label="doanh thu theo tháng" height={160} bars={12} onRetry={() => void revenueQuery.refetch()} />}>
               <div className="cd-card">
                 <div className="cd-card-h">
                   <span className="cd-card-t">
@@ -331,7 +332,7 @@ export default function DashboardMobilePage() {
                         <ChevronRight size={13} />
                       </button>
                     </div>
-                    <QueryRegion label={b.title.toLowerCase()} queries={b.queries}>
+                    <QueryRegion label={b.title.toLowerCase()} queries={b.queries} skeleton="cards" rows={4}>
                       <div className="opsb-grid">
                         {b.stats.map((s) => (
                           <div className="opsb-stat" key={s.label}>
@@ -349,7 +350,7 @@ export default function DashboardMobilePage() {
             </div>
 
             {/* Cảnh báo & Thông báo */}
-            <QueryRegion label="cảnh báo" queries={[alertsQuery]}>
+            <QueryRegion label="cảnh báo" queries={[alertsQuery]} skeleton="list" rows={3}>
               <div className="cd-card">
                 <div className="cd-card-h">
                   <span className="cd-card-t">
@@ -397,7 +398,7 @@ export default function DashboardMobilePage() {
             </QueryRegion>
 
             {/* Hoạt động gần đây */}
-            <QueryRegion label="hoạt động gần đây" queries={[activitiesQuery]}>
+            <QueryRegion label="hoạt động gần đây" queries={[activitiesQuery]} skeleton="list" rows={3}>
               <div className="cd-card">
                 <div className="cd-card-h">
                   <span className="cd-card-t">

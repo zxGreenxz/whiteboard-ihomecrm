@@ -11,6 +11,7 @@ import { ownerSupplementByBuilding, type RecurringItem } from "@/lib/salaryRecur
 import type { SalManager } from "@/lib/managerSalary";
 import type { FeeFundRow } from "@/hooks/useSalaryFund";
 import { salFmt } from "./salaryFormat";
+import { LoadingState, SkeletonBar } from "@/components/loading/LoadingState";
 import { MONO, MUTED, Seg, StChip, monthShort } from "./salaryFundUi";
 import SalaryRecurringRules, { type AddPreset } from "./SalaryRecurringRules";
 
@@ -62,8 +63,14 @@ function Funding({ fee, periodMonth, recurring, available, canEdit, onAddSupplem
       <div style={{ ...card, padding: "16px 20px", display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
         <div style={{ flex: 1, minWidth: 220 }}>
           <div style={{ fontSize: 12.5, color: MUTED, fontWeight: 600 }}>Nguồn lương mỗi tháng · {monthShort(periodMonth)}/{periodMonth.slice(0, 4)}</div>
-          <div style={{ ...MONO, fontWeight: 800, fontSize: 24, color: "hsl(var(--primary))" }}>{salFmt(fee.total + owner.total)}</div>
-          <div style={{ fontSize: 12, color: MUTED }}>Phí quản lý {fee.rows.length} tòa {salFmt(fee.total)}{owner.rows.length ? ` · chủ cấp thêm ${owner.rows.length} tòa ${salFmt(owner.total)}` : ""}</div>
+          {/* Giá phí chưa về: vạch xám thay cho số 0 (chủ chốt 02/10/2026). */}
+          {fee.isLoading ? <>
+            <SkeletonBar className="my-1.5 h-6" style={{ width: "10rem" }} />
+            <SkeletonBar className="h-3" style={{ width: "16rem", maxWidth: "100%" }} />
+          </> : <>
+            <div style={{ ...MONO, fontWeight: 800, fontSize: 24, color: "hsl(var(--primary))" }}>{salFmt(fee.total + owner.total)}</div>
+            <div style={{ fontSize: 12, color: MUTED }}>Phí quản lý {fee.rows.length} tòa {salFmt(fee.total)}{owner.rows.length ? ` · chủ cấp thêm ${owner.rows.length} tòa ${salFmt(owner.total)}` : ""}</div>
+          </>}
         </div>
         <Link to="/settings/finance/fixed-fees" className="sal-btn sal-btn--outline" style={{ color: "hsl(var(--primary))", textDecoration: "none" }}>+ Công bố giá phí Quản lý</Link>
       </div>
@@ -73,7 +80,7 @@ function Funding({ fee, periodMonth, recurring, available, canEdit, onAddSupplem
           <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>Phí quản lý từ tòa</h3>
           <p style={{ margin: 0, fontSize: 11.5, color: MUTED }}>Giá công bố của hạng mục Quản lý trong phí cố định từng tòa, áp cho tháng đang xem.</p>
         </div>
-        {fee.isLoading && <div style={{ padding: 20, fontSize: 12.5, color: MUTED }}>Đang tải…</div>}
+        {fee.isLoading && <LoadingState label="giá phí quản lý" variant="table" rows={3} className="px-5 py-3" />}
         {fee.error && <div style={{ padding: 20, fontSize: 12.5, color: "hsl(var(--status-danger-fg))" }}>Không tải được giá phí: {fee.error.message}</div>}
         {!fee.isLoading && !fee.error && fee.rows.length === 0 && <div style={{ padding: 20, fontSize: 12.5, color: MUTED }}>Chưa tòa nào công bố giá phí Quản lý cho tháng này.</div>}
         {fee.rows.map((r) => (
@@ -85,7 +92,7 @@ function Funding({ fee, periodMonth, recurring, available, canEdit, onAddSupplem
         ))}
         {fee.unpublished > 0 && <div style={{ padding: "10px 20px", fontSize: 12, color: "hsl(var(--status-warning-fg))", background: "hsl(var(--status-warning-bg))" }}>{fee.unpublished} tòa có hạng mục Quản lý nhưng chưa công bố giá — không cộng vào nguồn lương.</div>}
         <div style={{ display: "flex", justifyContent: "space-between", padding: "12px 20px", background: "hsl(var(--muted) / .6)", fontWeight: 700, borderRadius: "0 0 12px 12px" }}>
-          <span style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: ".05em", color: MUTED }}>Cộng</span><span style={MONO}>{salFmt(fee.total)}</span>
+          <span style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: ".05em", color: MUTED }}>Cộng</span>{fee.isLoading ? <SkeletonBar style={{ width: "6rem" }} /> : <span style={MONO}>{salFmt(fee.total)}</span>}
         </div>
       </div>
 

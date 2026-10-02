@@ -96,7 +96,7 @@ export default function ProfitDistributeDialog({
           <DialogTitle>Chi lợi nhuận cổ đông</DialogTitle>
         </DialogHeader>
 
-        <QueryRegion label="sổ quỹ chi" queries={[accountsQuery]}>
+        <QueryRegion label="sổ quỹ chi" queries={[accountsQuery]} skeleton="detail" rows={5}>
         <div className="space-y-4 py-2">
           <div className="space-y-2">
             <Label>Cổ đông <span className="text-red-500">*</span></Label>

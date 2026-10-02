@@ -126,7 +126,7 @@ export default function DailyCashbookReport() {
           <DateRangePicker value={dateRange} onChange={setDateRange} />
         </div>
 
-        <QueryRegion label="sổ quỹ theo ngày" queries={[cashFlowByDayQuery, cashBookSummaryQuery, buildingsQuery, accountsQuery]}>
+        <QueryRegion label="sổ quỹ theo ngày" queries={[cashFlowByDayQuery, cashBookSummaryQuery, buildingsQuery, accountsQuery]} skeleton="table" rows={8}>
         <div className="rounded-md border bg-card">
           <Table>
             <TableHeader>

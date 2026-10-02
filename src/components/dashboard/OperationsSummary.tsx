@@ -110,7 +110,7 @@ export function OperationsSummary({ buildingId }: { buildingId?: string | null }
   const terminatedThisMonth = summary?.contracts_terminated_month ?? 0;
 
   return (
-    <QueryRegion label="tổng quan vận hành" queries={[query]}>
+    <QueryRegion label="tổng quan vận hành" queries={[query]} skeleton="cards" rows={3}>
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
       <StatBlock
         icon={UserPlus}

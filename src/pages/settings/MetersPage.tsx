@@ -45,7 +45,6 @@ export default function MetersPage() {
 
   return (
     <MainLayout>
-      <QueryRegion label="danh sách công tơ" queries={[metersQuery, buildingsQuery]}>
       <div className="space-y-4">
         {/* Toolbar */}
         <div className="flex items-center gap-2">
@@ -81,11 +80,14 @@ export default function MetersPage() {
         </div>
 
         {/* Meter List */}
+        {/* Thanh công cụ + bộ lọc hiện ngay; chỉ danh sách chờ dữ liệu (chủ chốt 02/10/2026). */}
+        <QueryRegion label="danh sách công tơ" queries={[metersQuery, buildingsQuery]} skeleton="table" rows={8}>
         <MeterList
           meters={filteredMeters}
           onEdit={handleEdit}
           isLoading={isLoading}
         />
+        </QueryRegion>
 
         {/* Meter Form Dialog */}
         <MeterForm
@@ -94,7 +96,6 @@ export default function MetersPage() {
           meter={editingMeter}
         />
       </div>
-      </QueryRegion>
     </MainLayout>
   );
 }

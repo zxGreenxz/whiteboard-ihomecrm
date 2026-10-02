@@ -5,6 +5,7 @@ import { saveCopilotSettings, addCopilotEntitlement, changeCopilotEntitlement, r
 import { actionErrorMessage, notifyActionError } from '@/lib/actionFeedback';
 import { focusFirstError } from '@/lib/formErrors';
 import { QueryRegion } from '@/components/errors/QueryRegion';
+import { LoadingState, SkeletonBar } from '@/components/loading/LoadingState';
 // Trang quản trị AI Copilot (Phase 4 PLAN.md) — /settings/ai-copilot
 // - SUPER ADMIN: 4 tab đầy đủ (Cài đặt / Người dùng / Providers / Sử dụng)
 // - Owner/user thường có entitlement: chỉ tab Sử dụng (RLS tự scope: user thấy
@@ -13,7 +14,6 @@ import { QueryRegion } from '@/components/errors/QueryRegion';
 // server mới là gate thật.
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useIsSuperAdmin } from '@/hooks/useIsAdmin';
@@ -280,8 +280,8 @@ function SettingsTab() {
     onError: (e: Error) => setSaveError(actionErrorMessage(e, 'Chưa lưu được cài đặt Copilot')),
   });
 
-  if (settingsQuery.isError) return <QueryRegion label="cấu hình Copilot" queries={[settingsQuery]}><p role="alert">Chưa cập nhật được cấu hình Copilot.</p></QueryRegion>;
-  if (isLoading) return <Loader2 className="h-5 w-5 animate-spin" />;
+  if (settingsQuery.isError) return <QueryRegion label="cấu hình Copilot" queries={[settingsQuery]} skeleton="detail" rows={6}><p role="alert">Chưa cập nhật được cấu hình Copilot.</p></QueryRegion>;
+  if (isLoading) return <LoadingState label="cấu hình Copilot" variant="detail" rows={6} onRetry={() => void settingsQuery.refetch()} />;
   if (!cur) return <div className="text-sm text-red-600">Chưa có cấu hình Copilot. Liên hệ quản trị viên để thiết lập.</div>;
 
   const set = (patch: Partial<SettingsRow>) => setDraft({ ...cur, ...patch });
@@ -601,8 +601,8 @@ function EntitlementsTab() {
     if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) { const message='Nhập email đã đăng ký của tài khoản cần cấp quyền.'; setEmailError(message); void focusFirstError({email:message}); return; }
     setEmailError('');add.mutate(email);
   };
-  if (entitlementsQuery.isError) return <QueryRegion label="quyền sử dụng Copilot" queries={[entitlementsQuery]}><p role="alert">Chưa cập nhật được quyền sử dụng Copilot.</p></QueryRegion>;
-  if (isLoading) return <Loader2 className="h-5 w-5 animate-spin" />;
+  if (entitlementsQuery.isError) return <QueryRegion label="quyền sử dụng Copilot" queries={[entitlementsQuery]} skeleton="table" rows={5}><p role="alert">Chưa cập nhật được quyền sử dụng Copilot.</p></QueryRegion>;
+  if (isLoading) return <LoadingState label="quyền sử dụng Copilot" variant="table" rows={5} onRetry={() => void entitlementsQuery.refetch()} />;
 
   return (
     <div className="space-y-4">
@@ -746,8 +746,8 @@ function ProvidersTab() {
     }
   };
 
-  if (providersQuery.isError) return <QueryRegion label="cấu hình nhà cung cấp AI" queries={[providersQuery]}><p role="alert">Chưa cập nhật được cấu hình nhà cung cấp AI.</p></QueryRegion>;
-  if (isLoading) return <Loader2 className="h-5 w-5 animate-spin" />;
+  if (providersQuery.isError) return <QueryRegion label="cấu hình nhà cung cấp AI" queries={[providersQuery]} skeleton="table" rows={6}><p role="alert">Chưa cập nhật được cấu hình nhà cung cấp AI.</p></QueryRegion>;
+  if (isLoading) return <LoadingState label="cấu hình nhà cung cấp AI" variant="table" rows={6} onRetry={() => void providersQuery.refetch()} />;
 
   return (
     <div className="space-y-3">
@@ -919,7 +919,7 @@ function UsageTab() {
   );
   const modelSelfHosted = useMemo(() => tapModelSelfHosted(providersGia ?? []), [providersGia]);
 
-  if (isLoading) return <Loader2 className="h-5 w-5 animate-spin" />;
+  if (isLoading) return <LoadingState label="thống kê sử dụng Copilot" variant="table" rows={6} onRetry={() => void usageQuery.refetch()} />;
   const list = rows ?? [];
   const cost = (r: UsageRow): number | null => {
     if (r.cost_usd === null) return null;
@@ -950,7 +950,7 @@ function UsageTab() {
   }
 
   return (
-    <QueryRegion label="thống kê sử dụng Copilot" queries={[usageQuery, settingsQuery, dongHomNayQuery, providersGiaQuery, ...(userIds.length ? [namesQuery] : [])]}>
+    <QueryRegion label="thống kê sử dụng Copilot" queries={[usageQuery, settingsQuery, dongHomNayQuery, providersGiaQuery, ...(userIds.length ? [namesQuery] : [])]} skeleton="table" rows={6}>
     <div className="space-y-4">
       {settings && (
         <div className="space-y-2">
@@ -1038,8 +1038,18 @@ function UsageTab() {
 export default function AiCopilotAdminPage() {
   const { data: isSuper, isLoading } = useIsSuperAdmin();
 
+  // Chờ xác định vai trò: tiêu đề trang hiện ngay, phần còn lại là khối xám — không
+  // vòng xoay (chủ chốt 02/10/2026).
   if (isLoading) {
-    return <div className="p-6"><Loader2 className="h-5 w-5 animate-spin" /></div>;
+    return (
+      <div className="mx-auto max-w-5xl space-y-4 p-4 md:p-6">
+        <div>
+          <h1 className="text-xl font-bold">AI Copilot</h1>
+          <SkeletonBar className="ld-appear mt-1.5 h-3.5" style={{ width: '18rem', maxWidth: '100%' }} />
+        </div>
+        <LoadingState label="trang quản trị AI Copilot" variant="detail" rows={6} />
+      </div>
+    );
   }
 
   return (

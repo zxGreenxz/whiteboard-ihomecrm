@@ -171,7 +171,7 @@ const CashbooksDesktop = () => {
 
       <CashbookClosingInbox autoOpenRequestId={confirmRequestId} />
 
-      <QueryRegion label="danh sách và số dư sổ quỹ" queries={[accountsQuery]}>
+      <QueryRegion label="danh sách và số dư sổ quỹ" queries={[accountsQuery]} skeleton="table" rows={8}>
       <CashbookList
         rows={rows}
         isLoading={isLoading}
@@ -213,7 +213,7 @@ const CashbooksDesktop = () => {
             <CashbookClosingInbox autoOpenRequestId={confirmRequestId} />
           </div>
 
-          <QueryRegion label="danh sách và số dư sổ quỹ" queries={[accountsQuery]}>
+          <QueryRegion label="danh sách và số dư sổ quỹ" queries={[accountsQuery]} skeleton="list" rows={5}>
           <CashbookListMobile
             rows={rows}
             isLoading={isLoading}

@@ -192,7 +192,7 @@ export default function AccountMobilePage() {
           </div>
 
           <div className="mbody">
-          <QueryRegion label="thông tin tài khoản" queries={[profileQuery]}>
+          <QueryRegion label="thông tin tài khoản" queries={[profileQuery]} skeleton="detail" rows={6}>
           {avatarError && <p role="alert" className="text-sm text-destructive">{avatarError}</p>}
             <div className="acc-hero">
               <div className="acc-av" role="button" tabIndex={0} data-field-name="avatar" aria-invalid={!!avatarError} onKeyDown={e => { if(e.key === "Enter" || e.key === " ") fileRef.current?.click(); }} onClick={() => fileRef.current?.click()} style={{ cursor: "pointer", overflow: "hidden" }}>

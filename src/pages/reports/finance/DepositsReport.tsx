@@ -91,7 +91,7 @@ export default function DepositsReport() {
           />
         </div>
 
-        <QueryRegion label="báo cáo tiền cọc" queries={[depositsReportQuery, depositsReportSummaryQuery]}>
+        <QueryRegion label="báo cáo tiền cọc" queries={[depositsReportQuery, depositsReportSummaryQuery]} skeleton="table" rows={8}>
         <div className="text-base font-semibold">Tổng: {formatCurrency(total)}</div>
 
         <div className="rounded-md border">

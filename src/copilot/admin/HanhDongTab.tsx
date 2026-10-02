@@ -19,6 +19,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
 import { QueryRegion } from '@/components/errors/QueryRegion';
+import { InlineSkeleton, LoadingState } from '@/components/loading/LoadingState';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useOrganization } from '@/contexts/OrganizationContext';
@@ -239,7 +240,7 @@ export function TheChinhSachHanhDong(props: {
       </div>
 
       {props.dangTai && !chinhSach ? (
-        <div className="text-sm text-muted-foreground">Đang tải chính sách…</div>
+        <LoadingState label="chính sách" rows={2} />
       ) : null}
       {!props.dangTai && !chinhSach ? (
         <div className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
@@ -399,7 +400,7 @@ export function TheStepUpPin(props: {
 
       <div className="text-sm" data-testid="copilot-admin-pin-status">
         {props.dangTaiTrangThai && !trangThai ? (
-          <span className="text-muted-foreground">Đang tải trạng thái PIN…</span>
+          <InlineSkeleton label="trạng thái PIN" width="10rem" />
         ) : trangThai ? (
           <>
             <span className={trangThai.daDat ? 'text-emerald-700' : 'text-amber-700'}>
@@ -745,7 +746,7 @@ export function TheUyQuyenDung(props: {
                 <tbody>
                   {props.dangTaiDs && props.danhSach.length === 0 ? (
                     <tr>
-                      <td className="p-3 text-muted-foreground" colSpan={6}>Đang tải…</td>
+                      <td className="p-2" colSpan={6}><LoadingState label="danh sách hạn mức" variant="table" rows={3} /></td>
                     </tr>
                   ) : props.danhSach.length === 0 ? (
                     <tr>
@@ -827,7 +828,7 @@ export function TheUyQuyenDung(props: {
           <div className="border-t pt-3">
             <div className="mb-2 text-sm font-medium">Báo cáo ngày</div>
             {props.dangTaiBaoCao && !props.baoCao ? (
-              <div className="text-sm text-muted-foreground">Đang tải báo cáo…</div>
+              <LoadingState label="báo cáo" rows={2} />
             ) : props.baoCao ? (
               <div className="text-sm" data-testid="copilot-admin-grant-report">
                 <div>
@@ -1136,7 +1137,7 @@ export default function HanhDongTab() {
 
   return (
     <div className="space-y-4">
-      <QueryRegion label="chính sách hành động Copilot" queries={[chinhSachQuery]}>
+      <QueryRegion label="chính sách hành động Copilot" queries={[chinhSachQuery]} skeleton="detail" rows={6}>
       <TheChinhSachHanhDong
         feedback={policyFeedback}
         chinhSach={chinhSach}
@@ -1159,7 +1160,7 @@ export default function HanhDongTab() {
       />
       </QueryRegion>
 
-      <QueryRegion label="trạng thái PIN Copilot" queries={[trangThaiPinQuery]}>
+      <QueryRegion label="trạng thái PIN Copilot" queries={[trangThaiPinQuery]} skeleton="detail" rows={4}>
       <TheStepUpPin
         feedback={pinFeedback}
         trangThai={trangThaiPinQuery.data ?? null}
@@ -1189,7 +1190,7 @@ export default function HanhDongTab() {
 
       {laSuperAdmin ? (
         <>
-          <QueryRegion label="ủy quyền đứng Copilot" queries={selectedOrganizationId ? [dsGrantQuery, baoCaoGrantQuery] : []}>
+          <QueryRegion label="ủy quyền đứng Copilot" queries={selectedOrganizationId ? [dsGrantQuery, baoCaoGrantQuery] : []} skeleton="table" rows={4}>
           <TheUyQuyenDung
             feedback={grantFeedback}
             danhSach={dsGrantQuery.data ?? []}
@@ -1261,7 +1262,7 @@ export default function HanhDongTab() {
             ))}
           </select>
         </label>
-        <QueryRegion label="nhật ký hành động Copilot" queries={selectedOrganizationId ? [soQuery] : []}>
+        <QueryRegion label="nhật ký hành động Copilot" queries={selectedOrganizationId ? [soQuery] : []} skeleton="table" rows={6}>
           <BangNhatKyHanhDong dong={soQuery.data ?? []} />
         </QueryRegion>
       </div>

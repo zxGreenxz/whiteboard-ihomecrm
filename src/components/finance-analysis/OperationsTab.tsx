@@ -1,4 +1,5 @@
 import { QueryRegion } from "@/components/errors/QueryRegion";
+import { ChartSkeleton } from "@/components/dashboard/ChartSkeleton";
 import { useMemo } from "react";
 import {
   Bar,
@@ -184,7 +185,7 @@ export function OperationsTab({ filters }: Props) {
   const arpu = snap.actives > 0 ? snap.rentSum / snap.actives : 0;
 
   return (
-    <QueryRegion label="phân tích tài chính" queries={[reportQuery0, reportQuery1, reportQuery2, reportQuery3]}>
+    <QueryRegion label="phân tích tài chính" queries={[reportQuery0, reportQuery1, reportQuery2, reportQuery3]} loading={<ChartSkeleton label="phân tích tài chính" height={320} onRetry={() => { void reportQuery0.refetch(); void reportQuery1.refetch(); void reportQuery2.refetch(); void reportQuery3.refetch(); }} />}>
     <div className="space-y-4">
       <ChartCard
         title="Tỷ lệ lấp đầy — 12 tháng"

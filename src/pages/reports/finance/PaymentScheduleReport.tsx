@@ -124,7 +124,7 @@ export default function PaymentScheduleReport() {
           </div>
         </div>
 
-        <QueryRegion label="lịch thanh toán" queries={[paymentScheduleReportQuery]}>
+        <QueryRegion label="lịch thanh toán" queries={[paymentScheduleReportQuery]} skeleton="table" rows={8}>
         <div className="rounded-md border">
           <Table>
             <TableHeader>

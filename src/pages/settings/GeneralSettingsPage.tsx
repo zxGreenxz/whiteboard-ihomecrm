@@ -1,6 +1,7 @@
 import {hasUnconfirmedResponse} from '@/lib/operationOutcome';
 import {validateInputDrafts} from '@/lib/inputDraftValidation';
 import { QueryRegion } from '@/components/errors/QueryRegion';
+import { InlineSkeleton, LoadingState } from '@/components/loading/LoadingState';
 import { notifyActionError } from '@/lib/actionFeedback';
 import { saveCompanyLogo } from '@/lib/companyLogo';
 import { actionErrorMessage } from '@/lib/actionFeedback';
@@ -406,7 +407,7 @@ export function IeAutoApproveThresholdCard() {
         </div>
         <p className="mt-2 text-xs text-muted-foreground">
           {isLoading
-            ? 'Đang tải…'
+            ? <InlineSkeleton label="ngưỡng tự duyệt" width="14rem" />
             : threshold == null
               ? 'Hiện chưa đặt ngưỡng — mọi phiếu chi thường đang tự duyệt.'
               : `Ngưỡng hiện tại: ${Number(threshold).toLocaleString('vi-VN')}đ.`}
@@ -444,9 +445,9 @@ function AccountingStandardCard() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <QueryRegion label="Chuẩn kế toán của tổ chức" queries={[standardQuery]}>
+        <QueryRegion label="Chuẩn kế toán của tổ chức" queries={[standardQuery]} skeleton="list" rows={2}>
         {isLoading ? (
-          <p className="text-sm text-muted-foreground">Đang tải…</p>
+          <LoadingState label="Chuẩn kế toán của tổ chức" variant="list" rows={2} />
         ) : !orgs || orgs.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             Bạn chưa thuộc tổ chức nào.
@@ -576,23 +577,9 @@ const GeneralSettingsPage = () => {
 
   const isLoading = loadingGeneral || loadingCompany;
 
-  if (isLoading) {
-    return (
-      <MainLayout>
-        <div className="container mx-auto p-6">
-          <p className="text-center text-muted-foreground">Đang tải cài đặt...</p>
-        </div>
-      </MainLayout>
-    );
-  }
-
-  const settings = generalSettings ?? {};
-
-  return (
-    <MainLayout>
-      <QueryRegion label="cài đặt hệ thống" queries={[generalQuery, companyQuery, geofenceQuery]}>
-      <div className="container mx-auto p-6 max-w-4xl">
-        {/* Header */}
+  // Tiêu đề trang hiện ngay cả lúc chờ; chỗ nội dung là khối xám — không chữ
+  // "Đang tải cài đặt…" (chủ chốt 02/10/2026).
+  const pageHeader = (
         <div className="flex items-center gap-3 mb-6">
           <div className="h-10 w-10 rounded-lg bg-gray-100 flex items-center justify-center">
             <Settings className="h-5 w-5 text-gray-600" />
@@ -604,6 +591,33 @@ const GeneralSettingsPage = () => {
             </p>
           </div>
         </div>
+  );
+
+  if (isLoading) {
+    return (
+      <MainLayout>
+        <div className="container mx-auto p-6 max-w-4xl">
+          {pageHeader}
+          <LoadingState
+            label="cài đặt"
+            variant="detail"
+            rows={8}
+            onRetry={() => { void generalQuery.refetch(); void companyQuery.refetch(); }}
+          />
+        </div>
+      </MainLayout>
+    );
+  }
+
+  const settings = generalSettings ?? {};
+
+  return (
+    <MainLayout>
+      <div className="container mx-auto p-6 max-w-4xl">
+        {/* Header */}
+        {pageHeader}
+
+        <QueryRegion label="cài đặt hệ thống" queries={[generalQuery, companyQuery, geofenceQuery]} skeleton="detail" rows={8}>
 
         {/* 5 Tabs */}
         <Tabs value={activeTab} onValueChange={handleTabChange}>
@@ -778,8 +792,8 @@ const GeneralSettingsPage = () => {
             </div>
           </TabsContent>
         </Tabs>
+        </QueryRegion>
       </div>
-      </QueryRegion>
     </MainLayout>
   );
 };

@@ -106,7 +106,7 @@ export default function MembersPage() {
           </Button>
         </div>
 
-        <QueryRegion label="danh sách thành viên" queries={[listQuery]}>
+        <QueryRegion label="danh sách thành viên" queries={[listQuery]} skeleton="list" rows={4}>
         {isLoading ? (
           <div className="grid gap-3 lg:grid-cols-2">
             {[0, 1, 2, 3].map((i) => (
@@ -301,7 +301,7 @@ function HopThoaiMoi({ open, onOpenChange }: { open: boolean; onOpenChange: (v: 
           </DialogDescription>
         </DialogHeader>
 
-        <QueryRegion label="Vai trò và phạm vi lời mời" queries={[rolesQuery,catalogQuery]}>
+        <QueryRegion label="Vai trò và phạm vi lời mời" queries={[rolesQuery,catalogQuery]} skeleton="detail" rows={4}>
         {ketQua ? (
           <div className="space-y-3">
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-900 dark:bg-amber-950/40">

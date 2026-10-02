@@ -177,7 +177,6 @@ export default function IncomeExpenseTypesPage() {
 
   return (
     <MainLayout>
-      <QueryRegion label="danh sách loại thu chi" queries={[typesQuery]}>
       <div className="space-y-4">
         {/* Toolbar */}
         <div className="flex items-center gap-2">
@@ -188,12 +187,15 @@ export default function IncomeExpenseTypesPage() {
         </div>
 
         {/* Type List */}
+        {/* Thanh công cụ hiện ngay; chỉ danh sách chờ dữ liệu (chủ chốt 02/10/2026). */}
+        <QueryRegion label="danh sách loại thu chi" queries={[typesQuery]} skeleton="table" rows={8}>
         <IncomeExpenseTypeList
           types={types || []}
           isLoading={isLoading}
           onEdit={handleEdit}
           onDelete={handleDelete}
         />
+        </QueryRegion>
 
         {/* Type Form Dialog */}
         <Dialog open={isFormOpen} onOpenChange={handleFormClose}>
@@ -360,7 +362,6 @@ export default function IncomeExpenseTypesPage() {
           </AlertDialogContent>
         </AlertDialog>
       </div>
-      </QueryRegion>
     </MainLayout>
   );
 }

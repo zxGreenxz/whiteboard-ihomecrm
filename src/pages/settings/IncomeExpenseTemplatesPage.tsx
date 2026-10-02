@@ -64,7 +64,6 @@ export default function IncomeExpenseTemplatesPage() {
 
   return (
     <MainLayout>
-      <QueryRegion label="danh sách mẫu in thu chi" queries={[templatesQuery]}>
       <div className="space-y-4">
         {/* Toolbar */}
         <div className="flex items-center gap-2">
@@ -82,6 +81,8 @@ export default function IncomeExpenseTemplatesPage() {
         </div>}
 
         {/* Template List */}
+        {/* Thanh công cụ hiện ngay; chỉ danh sách chờ dữ liệu (chủ chốt 02/10/2026). */}
+        <QueryRegion label="danh sách mẫu in thu chi" queries={[templatesQuery]} skeleton="table" rows={5}>
         <IncomeExpenseTemplateList
           templates={templates || []}
           isLoading={isLoading}
@@ -90,6 +91,7 @@ export default function IncomeExpenseTemplatesPage() {
           onToggleDefault={handleToggleDefault}
           defaultPending={toggleDefault.isPending || recordWriteBlocked(toggleDefault.error) || toggleDefault.error instanceof TemplateDefaultPartialError}
         />
+        </QueryRegion>
 
         {/* Template Form Dialog */}
         <IncomeExpenseTemplateForm
@@ -123,7 +125,6 @@ export default function IncomeExpenseTemplatesPage() {
           </AlertDialogContent>
         </AlertDialog>
       </div>
-      </QueryRegion>
     </MainLayout>
   );
 }

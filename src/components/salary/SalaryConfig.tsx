@@ -1,5 +1,6 @@
 import {parseSalaryAmount,formatSalaryAmountInput,typedSalaryAmount} from '@/lib/salaryAmountInput';
 import { QueryRegion } from "@/components/errors/QueryRegion";
+import { LoadingState } from "@/components/loading/LoadingState";
 import { useSalaryFormFeedback } from "./useSalaryFormFeedback";
 import { loadHolidayPreset, SALARY_SETTINGS_RULES } from "@/lib/salarySettingsFeedback";
 import { toast } from "sonner";
@@ -75,7 +76,11 @@ function ManagerDialog({ row, onClose }: { row?: ManagerConfigRow | null; onClos
         <div><h3>{row ? "Sửa quản lý" : "Thêm quản lý hưởng lương"}</h3><p>{row ? row.full_name : "Đăng ký vào diện hưởng lương"}</p></div>
         <button className="x" onClick={onClose}><I.X size={18} /></button>
       </div>
-      <QueryRegion label="nhân viên và phòng ở" queries={row?[roomsQuery]:[profilesQuery,roomsQuery]}>
+      <QueryRegion label="nhân viên và phòng ở" queries={row?[roomsQuery]:[profilesQuery,roomsQuery]} loading={
+        <div className="sal-modal-body">
+          <LoadingState label="nhân viên và phòng ở" variant="detail" rows={5} onRetry={() => { void roomsQuery.refetch(); if (!row) void profilesQuery.refetch(); }} />
+        </div>
+      }>
       <div ref={feedback.root} className="sal-modal-body">
         {!row && (
           <div className="sal-field"><label htmlFor="salary-config-staff">Nhân viên</label>
@@ -134,13 +139,14 @@ function StaffMonthsCard() {
   const months = Array.from({ length: 6 }, (_, i) => shiftYm(cur, -i)); // cur … cur-5
 
   return (
-    <QueryRegion label="tháng lương được hiển thị" queries={[overridesQuery,monthsQuery]}>
     <div className="sal-card">
       <div className="sal-cfg-head">
         <span className="ic" style={{ background: "hsl(var(--status-info-bg))", color: "hsl(var(--status-info-fg))" }}><I.Calendar size={18} /></span>
         <div style={{ flex: 1 }}><h3>Tháng hiển thị cho nhân viên</h3><p>Bật/tắt từng tháng nhân viên được xem ở "Lương của tôi"</p></div>
       </div>
       <div className="sal-cfg-body">
+        {/* Tiêu đề thẻ hiện ngay; chỉ phần tháng chờ dữ liệu (chủ chốt 02/10/2026). */}
+        <QueryRegion label="tháng lương được hiển thị" queries={[overridesQuery,monthsQuery]} skeleton="detail" rows={6}>
         <div className="sal-note" style={{ marginTop: 0, marginBottom: 8 }}>
           <I.Info size={14} style={{ marginTop: 1, flexShrink: 0 }} />
           Mặc định nhân viên vào thẳng <b>{ymLabel(cur)}</b> (tháng hiện tại) và bấm lùi để xem kỳ cũ. Tắt tháng nào thì tháng đó bị ẩn. Nhân viên đang xem: <b style={{ color: "hsl(var(--primary))" }}>{ymLabel(staffViewing)}</b>.
@@ -168,9 +174,9 @@ function StaffMonthsCard() {
             </div>
           );
         })}
+        </QueryRegion>
       </div>
     </div>
-    </QueryRegion>
   );
 }
 
@@ -250,7 +256,7 @@ export default function SalaryConfig() {
 
   return (
     <>
-      <QueryRegion label="cấu hình lương và ngày lễ" queries={[configQuery,rulesQuery,holidaysQuery]}>
+      <QueryRegion label="cấu hình lương và ngày lễ" queries={[configQuery,rulesQuery,holidaysQuery]} skeleton="list" rows={4}>
       <div className="sal-cfg-grid">
         {/* Card 1 — Managers */}
         <div className="sal-card">

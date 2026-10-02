@@ -200,7 +200,7 @@ export default function ShareholderForm({ open, onOpenChange, shareholder }: Pro
           <DialogTitle>{isEdit ? "Sửa cổ đông" : "Thêm cổ đông"}</DialogTitle>
         </DialogHeader>
 
-        <QueryRegion label="cấu hình cổ đông" queries={[usersQuery, buildingsQuery, areasQuery, shareholdersQuery, allSharesQuery]}>
+        <QueryRegion label="cấu hình cổ đông" queries={[usersQuery, buildingsQuery, areasQuery, shareholdersQuery, allSharesQuery]} skeleton="detail" rows={6}>
         <div className="space-y-4 py-2">
           <div className="space-y-2">
             <Label>Tài khoản (user) <span className="text-red-500">*</span></Label>

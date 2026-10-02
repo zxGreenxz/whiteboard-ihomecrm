@@ -15,6 +15,7 @@ import {financialReadNumber,financialReadRows} from '@/lib/financialReadValidati
 // Dò hụt (hoặc bị RLS chặn) thì in "—", KHÔNG bịa.
 
 import { QueryRegion } from "@/components/errors/QueryRegion";
+import { LoadingState } from "@/components/loading/LoadingState";
 import { useEffect, useMemo } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -145,11 +146,16 @@ export default function CashbookClosureRecord() {
   }, [canPrint, autoPrint]);
 
   if (isLoading) {
-    return <div className="p-8 text-center">Đang tải biên bản…</div>;
+    // Khối xám dạng trang biên bản — không chữ "Đang tải…" (chủ chốt 02/10/2026).
+    return (
+      <div className="mx-auto max-w-[780px] p-8">
+        <LoadingState label="biên bản" variant="detail" rows={8} onRetry={() => void closuresQuery.refetch()} />
+      </div>
+    );
   }
   if (isError) {
     return (
-      <QueryRegion label="danh sách biên bản chốt sổ" queries={[closuresQuery]}>{null}</QueryRegion>
+      <QueryRegion label="danh sách biên bản chốt sổ" queries={[closuresQuery]} skeleton="none">{null}</QueryRegion>
     );
   }
   if (!closure) {
@@ -173,7 +179,11 @@ export default function CashbookClosureRecord() {
     diff === 0 ? "Khớp sổ" : diff > 0 ? "Thừa quỹ" : "Thiếu quỹ";
 
   return (
-    <QueryRegion label="thông tin biên bản chốt sổ" queries={[extrasQuery]}>
+    <QueryRegion label="thông tin biên bản chốt sổ" queries={[extrasQuery]} loading={
+      <div className="mx-auto max-w-[780px] p-8">
+        <LoadingState label="thông tin biên bản chốt sổ" variant="detail" rows={8} onRetry={() => void extrasQuery.refetch()} />
+      </div>
+    }>
     <div className="bg-white text-black min-h-screen">
       <style>{`
         @media print {

@@ -1,4 +1,5 @@
 import { QueryRegion } from '@/components/errors/QueryRegion';
+import { LoadingState } from '@/components/loading/LoadingState';
 import { CreditCard, Crown, Building2, Home, Calendar, Check, Loader2 } from "lucide-react";
 import MainLayout from "@/components/layout/MainLayout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -54,16 +55,14 @@ export default function SubscriptionPage() {
   if (isLoading) {
     return (
       <MainLayout title="Gói cước" subtitle="Quản lý gói cước đăng ký" icon={CreditCard}>
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </div>
+        <LoadingState label="gói cước và đăng ký hiện tại" variant="cards" rows={3} className="max-w-5xl" onRetry={() => { void plansQuery.refetch(); void subscriptionQuery.refetch(); }} />
       </MainLayout>
     );
   }
 
   return (
     <MainLayout title="Gói cước" subtitle="Quản lý gói cước đăng ký" icon={CreditCard}>
-      <QueryRegion label="gói cước và đăng ký hiện tại" queries={[plansQuery, subscriptionQuery]}>
+      <QueryRegion label="gói cước và đăng ký hiện tại" queries={[plansQuery, subscriptionQuery]} skeleton="cards" rows={3}>
       <div className="space-y-6 max-w-5xl">
         {/* Current Subscription */}
         <Card>

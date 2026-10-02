@@ -183,7 +183,7 @@ export default function FixedFeesPage() {
           </div>
         )}
 
-        <QueryRegion label="cấu hình và giá phí" queries={[configQuery,prices]}>
+        <QueryRegion label="cấu hình và giá phí" queries={[configQuery,prices]} skeleton="cards" rows={5}>
         {isLoading ? (
           <div className="space-y-2">
             <Skeleton className="h-16 w-full" />

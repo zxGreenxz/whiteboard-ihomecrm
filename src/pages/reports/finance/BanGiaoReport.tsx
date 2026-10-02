@@ -108,7 +108,7 @@ export default function BanGiaoReport() {
           <DateRangePicker value={dateRange} onChange={setDateRange} />
         </div>
 
-        <QueryRegion label="báo cáo bàn giao và đối soát" queries={[settlementReportQuery]}>
+        <QueryRegion label="báo cáo bàn giao và đối soát" queries={[settlementReportQuery]} skeleton="cards" rows={4}>
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
           {stat('Đã thu (kỳ)', totals.collected, 'text-emerald-700')}
           {stat('Đã chi (kỳ)', totals.spent, 'text-red-700')}
@@ -331,9 +331,10 @@ export function ReconcileDialog({
             viễn, cần cả hai bên ký), làm ở màn <b>Sổ quỹ</b>.
           </p>
 
-          <QueryRegion label="người xác nhận đối soát" queries={[staffQuery]}>
           <div>
             <Label className="text-xs">Người xác nhận cùng (không bắt buộc)</Label>
+            {/* Nhãn hiện ngay; chỉ ô chọn chờ danh sách người (vạch xám trong ô). */}
+            <QueryRegion label="người xác nhận đối soát" queries={[staffQuery]} skeleton="inline">
             <SearchableSelect
               value={counterparty}
               onValueChange={setCounterparty}
@@ -343,9 +344,8 @@ export function ReconcileDialog({
                 ...others.map((u: any) => ({ value: u.id, label: u.full_name || u.email })),
               ]}
             />
+            </QueryRegion>
           </div>
-
-          </QueryRegion>
           <div>
             <Label className="text-xs">Ghi chú</Label>
             <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="vd: đối chiếu sao kê ngân hàng" />

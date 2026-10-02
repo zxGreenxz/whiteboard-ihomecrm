@@ -1,4 +1,5 @@
 import { QueryRegion } from '@/components/errors/QueryRegion';
+import { SlowNotice, useSlowFlag } from '@/components/loading/LoadingState';
 import { useSalaryFormFeedback } from "./useSalaryFormFeedback";
 // Tab "Quản trị viên" — bản MOBILE (QUEST). Import từ thiết kế claude.ai/design
 // "Bảng lương quản lý - Mobile.dc.html": theme tối tím-vàng, 4 tab dưới đáy
@@ -12,7 +13,7 @@ import { toast } from "sonner";
 import {
   Wallet, User, Zap, Settings, ChevronLeft, ChevronRight, RefreshCw, BarChart3,
   Lock, Unlock, HandCoins, X, Check, Info, AlertTriangle, Plus, Minus, Gift,
-  Wrench, CalendarCheck, FileText, Banknote, TrendingUp, Trophy, Coins, type LucideIcon,
+  Wrench, CalendarCheck, FileText, Banknote, TrendingUp, Trophy, type LucideIcon,
 } from "lucide-react";
 import { salFmt, salShort, bigNum } from "./salaryFormat";
 import { useCountUp } from "./salaryCommon";
@@ -135,24 +136,30 @@ function LoadingScreen({ period, onBack, onRecompute, onPrevMonth, onNextMonth, 
   period: { label: string; year: number }; onBack: () => void; onRecompute: () => void;
   onPrevMonth: () => void; onNextMonth: () => void; recomputing: boolean;
 }) {
+  // Chờ bảng lương: khung tổng quỹ giữ nguyên, số/chip là khối xám tông tối, không vòng
+  // xoay + chữ "Đang tính bảng lương…" (chủ chốt 02/10/2026) — câu đó chỉ cho trình đọc
+  // màn hình. Khối xám hiện sau 0,3 s (ld-appear); quá 8 giây có một dòng báo mạng chậm.
+  const slow = useSlowFlag(true);
   return (
     <div className="pb-5">
       <AdminHeader period={period} onBack={onBack} onRecompute={onRecompute} onPrevMonth={onPrevMonth} onNextMonth={onNextMonth} recomputing={recomputing} />
-      <div className="relative mx-3.5 rounded-[28px] overflow-hidden p-8 flex flex-col items-center"
+      <span role="status" className="sr-only">Đang tính bảng lương {period.label} · {period.year}…</span>
+      <div className="relative mx-3.5 rounded-[28px] overflow-hidden p-[22px]" aria-hidden="true"
         style={{ background: "radial-gradient(110% 120% at 90% -10%, #5B3AA8 0%, transparent 55%), radial-gradient(100% 120% at -5% 115%, #7A4F12 0%, transparent 58%), #251C46" }}>
         <div className="absolute inset-0 pointer-events-none opacity-60"
           style={{ backgroundImage: "radial-gradient(rgba(255,210,63,.10) 1px, transparent 1px)", backgroundSize: "16px 16px" }} />
-        <div className="relative w-[92px] h-[92px]">
-          <svg className="animate-spin" width={92} height={92} viewBox="0 0 92 92" style={{ filter: "drop-shadow(0 0 10px rgba(255,210,63,.45))" }}>
-            <circle cx={46} cy={46} r={40} fill="none" stroke="rgba(255,255,255,.08)" strokeWidth={8} />
-            <circle cx={46} cy={46} r={40} fill="none" stroke="#FFD23F" strokeWidth={8} strokeLinecap="round" strokeDasharray="70 200" />
-          </svg>
-          <span className="absolute inset-0 grid place-items-center animate-pulse" style={{ color: "#FFD23F" }}><Coins size={30} /></span>
+        <div className="ld-appear relative">
+          <div className="h-3 w-[55%] rounded-md animate-pulse" style={{ background: "rgba(255,255,255,.12)" }} />
+          <div className="mt-3 h-10 w-[68%] rounded-lg animate-pulse" style={{ background: "rgba(255,210,63,.20)" }} />
+          <div className="mt-4 flex gap-1.5">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="h-6 w-16 rounded-full animate-pulse" style={{ background: "rgba(255,255,255,.10)" }} />
+            ))}
+          </div>
         </div>
-        <div className="relative mt-4 text-[15px] font-extrabold" style={{ color: "#FFD23F" }}>Đang tính bảng lương…</div>
-        <div className="relative mt-1 text-[12px]" style={{ color: "#9A8FC4" }}>{period.label} · {period.year}</div>
       </div>
-      <div className="mx-3.5 mt-3.5 flex flex-col gap-[9px]">
+      {slow && <SlowNotice className="mx-3.5 mt-3.5 border-[#322A55] bg-[#221C3E] text-[#9A8FC4]" />}
+      <div className="ld-appear mx-3.5 mt-3.5 flex flex-col gap-[9px]" aria-hidden="true">
         {[0, 1, 2].map((i) => (
           <div key={i} className="h-[66px] rounded-[18px] animate-pulse"
             style={{ background: "#221C3E", border: "1px solid #322A55", animationDelay: `${i * 140}ms` }} />
@@ -854,7 +861,7 @@ export default function SalaryAdminMobile(props: AdminMobileProps) {
         style={{ height: "100dvh", background: "radial-gradient(80% 30% at 50% 0%, #241a44 0%, transparent 55%), #17132A" }}>
         <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden"
           style={{ WebkitOverflowScrolling: "touch", paddingTop: "env(safe-area-inset-top)" }}>
-          {leavesQuery.isError && <QueryRegion label="đơn nghỉ chờ duyệt" queries={[leavesQuery]}><span /></QueryRegion>}
+          {leavesQuery.isError && <QueryRegion label="đơn nghỉ chờ duyệt" queries={[leavesQuery]} skeleton="none"><span /></QueryRegion>}
           {loading ? (
             <LoadingScreen period={period} {...headerNav} />
           ) : managers.length === 0 && tab !== "config" && pendingLeaves.length === 0 ? (
@@ -917,7 +924,7 @@ export default function SalaryAdminMobile(props: AdminMobileProps) {
             onConfirm={() => (locked ? onUnlock() : onLock())} />
         )}
         {sheet?.kind === "leave" && (
-          <QueryRegion label="đơn nghỉ chờ duyệt" queries={[leavesQuery]}><LeaveSheet rows={pendingLeaves} decidingKey={decidingKey} onClose={() => setSheet(null)} onDecide={onDecideLeave} /></QueryRegion>
+          <QueryRegion label="đơn nghỉ chờ duyệt" queries={[leavesQuery]} skeleton="list" rows={3}><LeaveSheet rows={pendingLeaves} decidingKey={decidingKey} onClose={() => setSheet(null)} onDecide={onDecideLeave} /></QueryRegion>
         )}
       </div>
     </div>

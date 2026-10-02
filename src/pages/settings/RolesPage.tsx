@@ -60,7 +60,7 @@ export default function RolesPage() {
           </Button>
         </div>
 
-        <QueryRegion label="danh sách vai trò" queries={[listQuery]}>
+        <QueryRegion label="danh sách vai trò" queries={[listQuery]} skeleton="cards" rows={3}>
         {isLoading ? (
           <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
             {[0, 1, 2].map((i) => (
@@ -205,7 +205,7 @@ function HopThoaiVaiTro({
           </DialogDescription>
         </DialogHeader>
 
-        <QueryRegion label="Danh mục quyền" queries={[catalogQuery]}><div className="min-h-0 flex-1 space-y-3 overflow-auto">
+        <QueryRegion label="Danh mục quyền" queries={[catalogQuery]} skeleton="detail" rows={6}><div className="min-h-0 flex-1 space-y-3 overflow-auto">
           <div>
             <Label htmlFor="ten">Tên vai trò</Label>
             <Input
