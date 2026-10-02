@@ -661,6 +661,9 @@ Deno.test("dungCumTu: tên thường gọi của toà KHÔNG có trong danh sác
     categories: [],
   });
   assertEquals(out, ["102LVT", "Lê Văn Thọ", "102 Lê Văn Thọ"]);
+  // Không đọc được danh sách toà ⇒ vẫn gửi tên thường gọi, chỉ thiếu cụm ghép số nhà.
+  const khongDs = dungCumTu({ buildings: [], commonNames: [{ building_id: "b102", name: "Lê Văn Thọ" }], rooms: [], categories: [] });
+  assertEquals(khongDs, ["Lê Văn Thọ"]);
 });
 
 Deno.test("chirp-3: gửi cụm từ đúng dạng OpenRouter chuyển tiếp (google-vertex.config.adaptation), header báo số cụm", async () => {
@@ -683,7 +686,12 @@ Deno.test("chirp-3: gửi cụm từ đúng dạng OpenRouter chuyển tiếp (g
     assertEquals((c.init!.headers as Record<string, string>).Authorization, "Bearer user-jwt");
     if (!c.url.includes("/rpc/ie_form_buildings?")) assert(c.url.includes(`organization_id=eq.${ORG}`), c.url);
   }
-  assert(doc.some((c) => c.url.includes("/rest/v1/rpc/ie_form_buildings?") && c.init?.method === "POST"));
+  // RPC phải nói rõ schema public (schema REST mặc định là api ⇒ thiếu header là 404 im lặng, mất nguồn toà).
+  assert(doc.some((c) =>
+    c.url.includes("/rest/v1/rpc/ie_form_buildings?") && c.init?.method === "POST" &&
+    (c.init.headers as Record<string, string>)["Content-Profile"] === "public"
+  ));
+  for (const c of doc) assertEquals((c.init!.headers as Record<string, string>)["Accept-Profile"], "public");
   assert(doc.some((c) => c.url.includes("/rest/v1/rooms?") && c.url.includes("deleted_at=is.null")));
   assert(doc.some((c) => c.url.includes("/rest/v1/building_common_names?")));
   // Không có restricted_create ⇒ bỏ hạng mục hạn chế (như danh sách của trang).

@@ -200,15 +200,17 @@ export function dungCumTu(src: NguonCumTu): string[] {
     if (typeof b.name === "string" && /\p{L}/u.test(b.name)) them(b.name);
     if (typeof b.id === "string") soCuaToa.set(b.id, soNha(b));
   }
+  // Đọc được danh sách toà ⇒ chỉ lấy tên của toà trong đó (toà còn sống, dùng được trên trang). Không đọc
+  // được (lỗi/quá hạn) ⇒ vẫn gửi tên thường gọi (RLS đã lọc theo quyền xem), chỉ thiếu cụm ghép số nhà.
+  const coDsToa = soCuaToa.size > 0;
   for (const n of src.commonNames) {
-    // Chỉ tên của toà nằm trong danh sách toà ở trên (toà còn sống, người dùng dùng được trên trang).
     const so = soCuaToa.get(String(n.building_id));
     const ten = chuanCum(n.name);
-    if (!so || !ten) continue;
+    if (!ten || (coDsToa && !so)) continue;
     them(ten);
     // "Lê Văn Thọ" của toà 102LVT ⇒ thêm "102 Lê Văn Thọ"; tên đã mở đầu bằng số (chữ số hay lời đọc) thì thôi.
     if (/^\d/.test(ten) || moDauBangSoDoc(ten)) continue;
-    for (const s of so) them(`${s} ${ten}`);
+    for (const s of so ?? []) them(`${s} ${ten}`);
   }
   for (const c of src.categories) them(c.name);
   for (const r of src.rooms) {

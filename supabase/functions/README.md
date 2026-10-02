@@ -129,7 +129,8 @@ Google (đo 02/10/2026: `adaptation` đặt thẳng trong options, khoá `google
 im lặng; 1.000 cụm đạt, 1.001 cụm bị 400). Không gửi boost (10/20 ra y hệt không boost). Tác dụng đo bằng
 giọng máy trên 5 câu: "1392 cute" ⇒ "1392QT", "bắn form … 80 DS3" ⇒ "bắn foam … 80DS3", "417 LVT" ⇒
 "417LVT". Chỉ chờ kết quả đọc ngay trước lần gọi chirp-3 (người chọn nova-3 không chờ), thời gian chờ tính
-trong ngân sách lượt; nguồn nào lỗi/quá 3 s thì bỏ nguồn đó. Google trả 400 với bộ cụm từ ⇒ thử lại chirp-3
+trong ngân sách lượt; nguồn nào lỗi/quá 3 s thì bỏ nguồn đó (nguồn toà hỏng thì tên thường gọi vẫn gửi,
+chỉ thiếu cụm ghép số nhà). Google trả 400 với bộ cụm từ ⇒ thử lại chirp-3
 một lần không kèm cụm từ rồi mới tới mô hình kế. Header `x-quick-entry-hints` = số cụm đã gửi ở lần thử trả
 lời.
 
