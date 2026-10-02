@@ -60,7 +60,12 @@ export const VACANCY_LABEL: Record<EndKind, string> = {
 /** Tông màu — UI tự ánh xạ sang bảng màu. */
 export type Tone = 'green' | 'red' | 'amber' | 'neutral' | 'purple' | 'pink';
 
-export interface Chip { text: string; tone: Tone }
+export interface Chip {
+  text: string;
+  tone: Tone;
+  /** Đang đọc: màn vẽ vạch xám thay chữ, `text` chỉ còn cho trình đọc màn hình (chủ chốt 02/10/2026). */
+  loading?: true;
+}
 
 /** Đọc phụ cho sang nhượng / gia hạn / khách — xem `useRoomContractExtras`. */
 export interface RoomContractExtras {
@@ -262,7 +267,7 @@ export function buildBalances(a: {
   const dang = (text: string): Chip => ({ text, tone: 'neutral' });
   const chips: Chip[] = [];
   if (loading) {
-    chips.push(dang('Đang tải cọc & công nợ…'));
+    chips.push({ ...dang('Đang tải cọc & công nợ…'), loading: true });
   } else {
     chips.push(
       kind === 'forfeit' ? { text: 'Cọc đã chuyển thành doanh thu', tone: 'neutral' }
@@ -291,7 +296,7 @@ export function buildBalances(a: {
 
   // ── Dòng tóm tắt ─────────────────────────────────────────────────────
   const summary: Chip = loading
-    ? dang('Đang tải cọc & công nợ…')
+    ? { ...dang('Đang tải cọc & công nợ…'), loading: true }
     : kind === 'active'
       ? tenantOwe === null ? dang(`Công nợ: ${CHUA_DU_DU_LIEU}`)
         : tenantOwe > 0 ? { text: `Khách còn nợ ${fmtMoney(tenantOwe)} · chủ nhà đang giữ cọc ${money(depositHeld)}`, tone: 'amber' }

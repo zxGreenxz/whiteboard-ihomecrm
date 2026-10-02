@@ -14,7 +14,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { ArrowLeft, ChevronLeft, ChevronRight, LogIn, LogOut, X } from 'lucide-react';
 import { useOrganization } from '@/contexts/OrganizationContext';
-import { LoadingState } from '@/components/loading/LoadingState';
+import { InlineSkeleton, LoadingState } from '@/components/loading/LoadingState';
 import { useRoomCashLifecycle } from '@/hooks/useRoomCashLifecycle';
 import { useContractLifecycle } from '@/hooks/useContractLifecycle';
 import { useRoomContractExtras } from '@/hooks/useRoomContractExtras';
@@ -304,9 +304,10 @@ export default function RoomContractLifecycleDrawer({ roomId, roomName, initialY
                             Giá thuê {it.card.rentText}/tháng · Cọc {it.card.depositText} · {it.card.invoiceCount} hoá đơn
                           </div>
                           <div className="rcl-chips">
-                            {it.card.chips.map((ch) => (
-                              <span key={ch.text} style={{ color: TONE[ch.tone].ink, background: TONE[ch.tone].bg }}>{ch.text}</span>
-                            ))}
+                            {it.card.chips.map((ch) => ch.loading
+                              ? <InlineSkeleton key={ch.text} label="cọc & công nợ" width="9rem" />
+                              : <span key={ch.text} style={{ color: TONE[ch.tone].ink, background: TONE[ch.tone].bg }}>{ch.text}</span>,
+                            )}
                           </div>
                         </div>
                         <div className="rcl-contract__side">
@@ -351,9 +352,13 @@ export default function RoomContractLifecycleDrawer({ roomId, roomName, initialY
 
                   <div className="rcl-card">
                     <div className="rcl-card__head"><div className="rcl-h">Cọc &amp; công nợ hai chiều</div></div>
-                    <div className="rcl-summary" style={{ color: TONE[detail.balances.summary.tone].ink, background: TONE[detail.balances.summary.tone].bg }}>
-                      {detail.balances.summary.text}
-                    </div>
+                    {detail.balances.summary.loading ? (
+                      <div className="rcl-summary"><InlineSkeleton label="cọc & công nợ" width="16rem" /></div>
+                    ) : (
+                      <div className="rcl-summary" style={{ color: TONE[detail.balances.summary.tone].ink, background: TONE[detail.balances.summary.tone].bg }}>
+                        {detail.balances.summary.text}
+                      </div>
+                    )}
                     <div className="rcl-bal">
                       {([['KHÁCH → CHỦ NHÀ', detail.balances.tenantRows], ['CHỦ NHÀ → KHÁCH', detail.balances.landRows]] as const).map(([h, rows]) => (
                         <div key={h} className="rcl-bal__box">

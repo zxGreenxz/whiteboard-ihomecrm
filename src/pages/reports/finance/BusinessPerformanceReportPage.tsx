@@ -186,9 +186,8 @@ function ReportLoadingState({ onRetry }: { onRetry?: () => void }) {
       aria-label="Đang xác minh quyền truy cập báo cáo"
       className="flex flex-col gap-4"
     >
-      <p className="text-sm text-muted-foreground">
-        Đang xác minh quyền truy cập báo cáo…
-      </p>
+      {/* Chữ chỉ cho trình đọc màn hình; phần nhìn là khối xám bên dưới (chủ chốt 02/10/2026). */}
+      <p className="sr-only">Đang xác minh quyền truy cập báo cáo…</p>
       {onRetry ? (
         <Button
           type="button"

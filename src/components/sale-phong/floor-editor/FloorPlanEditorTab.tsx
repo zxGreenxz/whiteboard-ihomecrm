@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
+import { LoadingState } from "@/components/loading/LoadingState";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -192,7 +193,7 @@ export default function FloorPlanEditorTab() {
       ) : !floors.length ? (
         <Card><CardContent className="p-8 text-center text-muted-foreground">Toà nhà này chưa có phòng nào.</CardContent></Card>
       ) : !draft ? (
-        <Card><CardContent className="p-8 text-center text-muted-foreground">Đang dựng sơ đồ…</CardContent></Card>
+        <Card><CardContent className="p-6"><LoadingState label="sơ đồ" variant="lines" rows={4} /></CardContent></Card>
       ) : (
         <>
           {/* Palette thiết bị */}
