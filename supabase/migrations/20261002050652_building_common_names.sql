@@ -3,9 +3,10 @@
 --
 -- Mã toà là "số nhà + chữ đầu tên đường" (102LVT, 417LVT, 1392QT) và phần lớn
 -- toà có tên = mã (đo trên dữ liệu 02/10/2026: 18/19 toà không có tên đường
--- trong `name`). Người dùng lại NÓI tên đường: "một lẻ hai Lê Văn Thọ". Không
--- có nơi nào ghi "LVT = Lê Văn Thọ" nên máy không nhận ra được. Bảng này giữ
--- những cách gọi đó:
+-- trong `name`; `street_address` có tên đường ở 12/19 toà, 7 toà còn lại chỉ
+-- ghi lại mã như "417LVT"). Người dùng lại NÓI tên đường hoặc tên quen gọi:
+-- "một lẻ hai Lê Văn Thọ". Bảng này giữ những cách gọi đó, do người quản lý
+-- toà khai — không suy tự động từ địa chỉ:
 --   - trang Báo chi nhanh (src/lib/quickEntry/spokenBuilding.ts) dò cả các tên
 --     này khi đọc câu chép từ giọng nói;
 --   - hàm edge quick-entry gửi chúng làm cụm từ ưu tiên cho máy chép giọng.
@@ -13,11 +14,13 @@
 -- Quyền:
 --   - đọc  = ai xem được toà (`can_access_building`) — đúng phạm vi toà mà
 --     người đó vẫn thấy ở mọi màn hình khác;
---   - thêm / xoá = ai xem được VÀ được sửa toà (`buildings.edit`, cùng khoá
---     với policy buildings_update_rbac). Không có UPDATE: đổi tên = xoá + thêm.
---   - organization_id tự điền theo toà (public._autofill_org, dùng chung với
---     các bảng khác) và policy thêm bắt nó bằng đúng org của toà — người thuộc
---     hai công ty không gắn được tên cho toà của công ty này dưới org kia.
+--   - thêm / xoá = ai xem được VÀ được sửa toà (khoá quyền `buildings.edit`
+--     như policy buildings_update_rbac, nhưng KHÔNG có lối tắt is_super_admin).
+--     Không có UPDATE: đổi tên = xoá + thêm. created_by phải là người đang ghi.
+--   - organization_id tự điền theo toà bằng app_private.autofill_org_strict
+--     (fail-closed: không suy được thì nổ 23502, không đoán — bất biến I3.1)
+--     và policy thêm bắt nó bằng đúng org của toà — người thuộc hai công ty
+--     không gắn được tên cho toà của công ty này dưới org kia.
 --   - RESTRICTIVE *_org_boundary và *_hide_sandbox_admin theo Contract §2.
 --
 -- Idempotent: IF NOT EXISTS, DROP … IF EXISTS rồi CREATE; khối kiểm cuối chỉ
@@ -44,10 +47,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS building_common_names_building_name_uidx
 CREATE INDEX IF NOT EXISTS building_common_names_org_idx
   ON public.building_common_names (organization_id);
 
-DROP TRIGGER IF EXISTS trg_autofill_org ON public.building_common_names;
-CREATE TRIGGER trg_autofill_org
+DROP TRIGGER IF EXISTS trg_autofill_org_strict ON public.building_common_names;
+CREATE TRIGGER trg_autofill_org_strict
   BEFORE INSERT ON public.building_common_names
-  FOR EACH ROW EXECUTE FUNCTION public._autofill_org();
+  FOR EACH ROW EXECUTE FUNCTION app_private.autofill_org_strict();
 
 ALTER TABLE public.building_common_names ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.building_common_names FROM PUBLIC, anon, authenticated, service_role;
@@ -64,7 +67,11 @@ CREATE POLICY building_common_names_insert ON public.building_common_names
   WITH CHECK (
     public.can_access_building(building_id)
     AND app_private.can_v3('buildings.edit', building_id)
-    AND organization_id = (SELECT b.organization_id FROM public.buildings b WHERE b.id = building_id AND b.deleted_at IS NULL)
+    AND organization_id = (
+      SELECT b.organization_id FROM public.buildings b
+      WHERE b.id = building_common_names.building_id AND b.deleted_at IS NULL
+    )
+    AND created_by IS NOT DISTINCT FROM auth.uid()
   );
 
 DROP POLICY IF EXISTS building_common_names_delete ON public.building_common_names;
@@ -107,9 +114,11 @@ BEGIN
     RAISE EXCEPTION 'building_common_names: policy biên giới phải là RESTRICTIVE';
   END IF;
 
-  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgrelid = v_rel AND tgname = 'trg_autofill_org'
-                   AND tgfoid = 'public._autofill_org()'::regprocedure AND NOT tgisinternal) THEN
-    RAISE EXCEPTION 'building_common_names: thiếu trigger tự điền organization_id';
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgrelid = v_rel AND tgname = 'trg_autofill_org_strict'
+                   AND tgfoid = 'app_private.autofill_org_strict()'::regprocedure AND NOT tgisinternal)
+     OR EXISTS (SELECT 1 FROM pg_trigger WHERE tgrelid = v_rel AND NOT tgisinternal
+                  AND tgname <> 'trg_autofill_org_strict') THEN
+    RAISE EXCEPTION 'building_common_names: trigger phải đúng một trg_autofill_org_strict (fail-closed)';
   END IF;
 
   IF has_table_privilege('anon', v_rel, 'SELECT,INSERT,UPDATE,DELETE')

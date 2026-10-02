@@ -12,10 +12,12 @@
 // So trên chuỗi "lỏng" (bỏ dấu, chữ thường — normalizeLoose) nên "Lê Vân Thọ" = "Lê Văn Thọ".
 // Thuần, không I/O, không bao giờ ném lỗi.
 //
-// Tên đường thường KHÔNG có trong dữ liệu toà (đo 02/10/2026: 18/19 toà có tên = mã, vd "102LVT";
-// nhiều toà mã chỉ là số "417" còn chữ nằm ở tên "417LVT"). Nên ngoài mã và tên, mỗi toà còn mang
-// `commonNames` — tên thường gọi trong bảng building_common_names ("Lê Văn Thọ", "102 Lê Văn Thọ",
-// "một lẻ hai Lê Văn Thọ"): tên chưa có số nhà thì ghép với số nhà của toà, tên có số thì dùng nguyên.
+// Tên đường thường KHÔNG có trong tên/mã toà mà trang tải (đo 02/10/2026: 18/19 toà có tên = mã, vd
+// "102LVT"; nhiều toà mã chỉ là số "417" còn chữ nằm ở tên "417LVT"; tên đường có ở cột street_address
+// của 12/19 toà nhưng ô chọn toà không tải cột đó). Nên ngoài mã và tên, mỗi toà còn mang `commonNames`
+// — tên thường gọi trong bảng building_common_names ("Lê Văn Thọ", "102 Lê Văn Thọ", "một lẻ hai Lê Văn
+// Thọ"): tên chưa có số nhà thì phải đứng ngay sau số nhà của toà, tên có số thì dùng số đó. Tên thường
+// gọi chỉ khớp ĐÚNG TỪNG TỪ (không suy chữ đầu như mã) — hai chữ đầu như "tk" quá dễ trùng câu thường.
 
 import { normalizeLoose, splitAliases, type BuildingRef } from "../textMatch";
 
@@ -120,17 +122,27 @@ function digitByDigit(num: string): Pattern {
   });
 }
 
-/** Mọi cách đọc số nhà `num` (chuỗi chữ số, không số 0 đầu). */
+const patternCache = new Map<string, Pattern[]>();
+
+/** Mọi cách đọc số nhà `num` (chuỗi chữ số, không số 0 đầu). Kết quả dùng chung — đừng sửa. */
 export function numberPatterns(num: string): Pattern[] {
-  if (!/^[1-9]\d{0,3}$/.test(num)) return /^\d+$/.test(num) ? [[[num]]] : [];
-  const out: Pattern[] = [[[num]], digitByDigit(num), ...formalReadings(Number(num))];
-  const seen = new Set<string>();
-  return out.filter((p) => {
-    const key = p.map((s) => s.join("|")).join(" ");
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  const cached = patternCache.get(num);
+  if (cached) return cached;
+  let result: Pattern[];
+  if (!/^[1-9]\d{0,3}$/.test(num)) {
+    result = /^\d+$/.test(num) ? [[[num]]] : [];
+  } else {
+    const out: Pattern[] = [[[num]], digitByDigit(num), ...formalReadings(Number(num))];
+    const seen = new Set<string>();
+    result = out.filter((p) => {
+      const key = p.map((s) => s.join("|")).join(" ");
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+  if (patternCache.size < 2000) patternCache.set(num, result);
+  return result;
 }
 
 function matchPattern(tokens: LooseToken[], i: number, p: Pattern): number {
@@ -219,56 +231,66 @@ function streetFor(words: string[], letters: string | null): string[] | null {
 }
 
 const NUM_RE = /^[1-9]\d{0,3}$/;
-const initials = (words: string[]): string | null =>
-  words.length >= 2 && words.every((w) => /^\p{L}/u.test(w)) ? words.map((w) => w[0]).join("") : null;
+/** Trần tên thường gọi dùng cho MỘT toà (bảng không giới hạn; mỗi tên nhân số khoá dò). */
+const MAX_COMMON_NAMES = 20;
 
 /**
- * Một tên thường gọi ⇒ khoá dò. Bỏ chữ mở đầu "toà/nhà…"; mở đầu bằng chữ số ("102 Lê Văn Thọ") hoặc
- * bằng cách ĐỌC một số nhà của toà ("một lẻ hai Lê Văn Thọ") ⇒ số đó + phần còn lại làm tên đường;
- * không có số ⇒ tên đứng sau MỌI số nhà của toà, và đứng một mình thì chỉ là đoán (như tên đường).
+ * Một tên thường gọi ⇒ khoá dò. Mở đầu bằng chữ số ("102 Lê Văn Thọ", "Toà 45/3 Trần Thái Tông") hoặc
+ * bằng cách ĐỌC một số nhà của toà ("một lẻ hai Lê Văn Thọ") ⇒ số đó + phần còn lại làm tên đường; chữ
+ * "toà/nhà/khu/căn" chỉ bỏ khi đứng trước số ("Nhà Bè", "Cần Thơ" là tên). Không có số ⇒ tên phải đứng
+ * ngay sau MỘT số nhà của toà; đứng một mình (từ hai từ) thì chỉ là đoán, như tên đường.
  */
 function commonNameKeys(id: string, raw: string, nums: string[]): SpokenKey[] {
-  let toks = looseTokens(normalizeLoose(raw.normalize("NFC"))).map((t) => t.s);
-  while (toks.length > 1 && NAME_PREFIX.has(toks[0])) toks = toks.slice(1);
-  if (toks.length === 0) return [];
+  const toks = looseTokens(normalizeLoose(raw.normalize("NFC"))).map((t) => t.s);
   const asTokens = toks.map((s, i) => ({ s, start: i, end: i + 1 }));
+  const soNhaDoc = (i: number): number => {
+    let best = -1;
+    for (const n of nums) best = Math.max(best, matchSpokenNumber(asTokens, i, n));
+    return best;
+  };
+  let start = 0;
+  while (start < toks.length - 1 && NAME_PREFIX.has(toks[start]) && (NUM_RE.test(toks[start + 1]) || soNhaDoc(start + 1) > 0)) {
+    start += 1;
+  }
+  if (start >= toks.length) return [];
   let num: string | null = null;
-  let rest = toks;
-  if (NUM_RE.test(toks[0])) {
-    num = toks[0];
-    let i = 1;
-    while (i < toks.length && /^\d+$/.test(toks[i])) i += 1; // "45/3 Trần Thái Tông" ⇒ bỏ "3"
-    rest = toks.slice(i);
+  let restAt = start;
+  if (NUM_RE.test(toks[start])) {
+    num = toks[start];
+    restAt = start + 1;
+    while (restAt < toks.length && /^\d+$/.test(toks[restAt])) restAt += 1; // "45/3 Trần Thái Tông" ⇒ bỏ "3"
   } else {
     // Cách đọc dài nhất trong các số nhà của toà ("một lẻ hai" ⇒ 102).
-    let best = 0;
+    let best = start;
     for (const n of nums) {
-      const end = matchSpokenNumber(asTokens, 0, n);
+      const end = matchSpokenNumber(asTokens, start, n);
       if (end > best) {
         best = end;
         num = n;
       }
     }
-    rest = toks.slice(best);
+    restAt = best;
   }
-  const street = rest.length > 0 ? rest : null;
-  if (num) return [{ id, num, letters: street ? initials(street) : null, street }];
-  if (!street) return [];
+  const street = toks.slice(restAt);
+  if (street.length === 0) return [];
+  if (num) return [{ id, num, letters: null, street }];
   return nums.length > 0 ? nums.map((n) => ({ id, num: n, letters: null, street })) : [{ id, num: null, letters: null, street }];
 }
 
 function keysFor(b: SpokenBuildingRef): SpokenKey[] {
   const out: SpokenKey[] = [];
   const name = splitName(b.name);
-  // Tên toà viết như mã ("417LVT" khi mã chỉ là "417") cũng là một mã.
-  const codeLike = [...splitAliases(b.code), ...(b.name && !name.num ? [b.name] : [])];
-  for (const alias of codeLike) {
+  const push = (alias: string, minLetters: number) => {
     const m = CODE_RE.exec(compact(alias));
-    if (!m) continue;
+    if (!m || m[2].length < minLetters) return;
     const [, num, letters] = m;
-    if (out.some((k) => k.num === num && k.letters === letters)) continue;
+    if (out.some((k) => k.num === num && k.letters === letters)) return;
     out.push({ id: b.id, num, letters, street: name.num === num ? streetFor(name.words, letters) : null });
-  }
+  };
+  for (const alias of splitAliases(b.code)) push(alias, 1);
+  // Tên toà viết như mã ("417LVT" khi mã chỉ là "417") cũng là một mã — nhưng đòi ≥2 chữ: tên "12A" mà
+  // nhận phần chữ "a" thì mọi từ mở đầu bằng nguyên âm ("anh", "ăn") đều thành toà chắc chắn.
+  if (b.name && !name.num) push(b.name, 2);
   if (name.num && !out.some((k) => k.num === name.num)) {
     // Tên có số nhà nhưng mã không theo kiểu "số + chữ": dùng chữ đầu tên đường làm phần chữ.
     const street = name.words.length >= 2 ? name.words.slice(0, Math.min(4, name.words.length)) : null;
@@ -282,7 +304,9 @@ function keysFor(b: SpokenBuildingRef): SpokenKey[] {
         ...splitAliases(b.code).map(compact).filter((a) => NUM_RE.test(a)),
       ]),
     ];
-    for (const cn of b.commonNames) if (typeof cn === "string") out.push(...commonNameKeys(b.id, cn, nums));
+    for (const cn of b.commonNames.slice(0, MAX_COMMON_NAMES)) {
+      if (typeof cn === "string") out.push(...commonNameKeys(b.id, cn, nums));
+    }
   }
   return out;
 }
@@ -318,17 +342,21 @@ export function findSpokenBuildings(loose: string, buildings: SpokenBuildingRef[
       if (k.num) {
         const j = matchSpokenNumber(tokens, i, k.num);
         if (j < 0) continue;
-        const skip = tokens[j]?.s === STREET_WORD && k.letters?.[0] !== "d" ? j + 1 : j;
+        const next = tokens[j]?.s;
+        // Ngay sau số là đơn vị tiền/số lượng ("chín trăm năm mươi NGHÌN khoá cửa") ⇒ số đó là tiền: không
+        // suy chữ đầu của mã từ các từ phía sau (nghìn + khoá = "nk" của 950NK). Đúng nguyên tên đường thì vẫn nhận.
+        const unitNext = next !== undefined && NOT_ADDRESS_NEXT.has(next);
+        const skip = next === STREET_WORD && k.letters?.[0] !== "d" ? j + 1 : j;
         const tail = Math.max(
-          k.letters ? matchLetters(tokens, skip, k.letters) : -1,
-          k.street ? matchWords(tokens, skip, k.street) : -1,
+          k.letters && !unitNext ? matchLetters(tokens, skip, k.letters) : -1,
+          // Tên đường thử cả có lẫn không chữ "đường" phía trước (tên thường gọi "Đường số 3" giữ chữ đó).
+          k.street ? Math.max(matchWords(tokens, j, k.street), matchWords(tokens, skip, k.street)) : -1,
         );
         if (tail > 0) {
           hit(k, i, tail, "strong");
           continue;
         }
         const atHead = i === 0 || PLACE_CUE.has(tokens[i - 1].s);
-        const next = tokens[j]?.s;
         // Số trơ (không có chữ của mã) chỉ là ĐOÁN, và chỉ khi đứng đầu câu/sau "nhà": "102 sơn" ổn;
         // "mua 102 cái", "102 nghìn", "102.000" thì không.
         if (atHead && (!next || (!NOT_ADDRESS_NEXT.has(next) && !/^\d/.test(next)))) hit(k, i, j, "weak");
@@ -364,15 +392,17 @@ export function resolveSpokenBuilding(loose: string, buildings: SpokenBuildingRe
 }
 
 /**
- * Mã hiển thị của toà: bí danh đầu CÓ CHỮ của `code`; mã chỉ là số ("417") mà tên viết như mã
- * ("417LVT") thì lấy tên — "417" một mình không cho người đọc biết toà nào. Không có gì thì tên.
+ * Mã hiển thị của toà, theo thứ tự: bí danh dạng "số + chữ" của `code` ("1392qt" hơn "QT"); tên một từ
+ * viết như mã khi mã chỉ là số ("417LVT" thay vì "417" — một con số không cho người đọc biết toà nào); bí
+ * danh có chữ ("Chung"); bí danh đầu; tên.
  */
 export function primaryCode(b: BuildingRef): string {
   const aliases = splitAliases(b.code);
-  const lettered = aliases.find((a) => /\p{L}/u.test(a));
-  if (lettered) return lettered;
-  if (b.name && CODE_RE.test(compact(b.name))) return b.name;
-  return aliases[0] ?? b.name ?? "";
+  const codeLike = aliases.find((a) => CODE_RE.test(compact(a)));
+  if (codeLike) return codeLike;
+  const name = (b.name ?? "").trim();
+  if (name && !/\s/.test(name) && CODE_RE.test(compact(name))) return name;
+  return aliases.find((a) => /\p{L}/u.test(a)) ?? aliases[0] ?? b.name ?? "";
 }
 
 /**

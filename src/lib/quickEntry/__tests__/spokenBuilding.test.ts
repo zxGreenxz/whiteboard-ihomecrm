@@ -245,6 +245,54 @@ describe("tên thường gọi (building_common_names)", () => {
     }
   });
 
+  it("đơn vị tiền ngay sau số không được tính làm chữ của mã (nghìn + khoá ≠ NK, triệu + tiền + thuê ≠ TTT)", () => {
+    expect(said("chín trăm năm mươi nghìn khoá cửa", real)).toEqual({ building: null, candidates: [], guessed: false });
+    const b45: SpokenBuildingRef[] = [{ id: "r45", name: "45TTT", code: "45", commonNames: ["Tân Kỳ"] }];
+    expect(said("bốn mươi lăm triệu tiền thuê nhà", b45)).toEqual({ building: null, candidates: [], guessed: false });
+    expect(said("bốn lăm triệu không có hoá đơn", b45)).toEqual({ building: null, candidates: [], guessed: false });
+    // Đúng mã/tên đường sau số thì vẫn chắc.
+    expect(said("bốn lăm Tân Kỳ sửa điện", b45)).toEqual({ building: "r45", candidates: [], guessed: false });
+    expect(said("chín trăm năm mươi NK khoá cửa", real)).toEqual({ building: "r950", candidates: [], guessed: false });
+  });
+
+  it("chỉ tên thường gọi mới nối được số nhà với tên đường (toà tên/mã không mang chữ)", () => {
+    const base: SpokenBuildingRef[] = [
+      { id: "nA", name: "Nhà A", code: "102" },
+      { id: "nB", name: "Nhà B", code: "45" },
+    ];
+    const withNames: SpokenBuildingRef[] = [
+      { ...base[0], commonNames: ["một lẻ hai Lê Văn Thọ"] },
+      { ...base[1], commonNames: ["Toà 45/3 Trần Thái Tông"] },
+    ];
+    expect(said("một lẻ hai Lê Văn Thọ sơn", withNames)).toEqual({ building: "nA", candidates: [], guessed: false });
+    expect(said("bốn lăm Trần Thái Tông sửa cửa", withNames)).toEqual({ building: "nB", candidates: [], guessed: false });
+    // Mã toàn số + tên không mang số: không có khoá đọc nào ⇒ không nhận ra gì.
+    expect(said("một lẻ hai Lê Văn Thọ sơn", base)).toEqual({ building: null, candidates: [], guessed: false });
+    expect(said("bốn lăm Trần Thái Tông sửa cửa", base)).toEqual({ building: null, candidates: [], guessed: false });
+  });
+
+  it("tên thường gọi khớp đúng từng từ, không suy chữ đầu", () => {
+    const b: SpokenBuildingRef[] = [{ id: "nA", name: "Nhà A", code: "102", commonNames: ["Lê Văn Thọ"] }];
+    expect(said("một lẻ hai Lê Văn Thọ", b).building).toBe("nA");
+    expect(said("một lẻ hai lờ vờ tờ", b).building).toBeNull();
+  });
+
+  it("'Nhà Bè', 'Cần Thơ' là tên, không bỏ chữ đầu; 'Đường số 3' khớp cả chữ 'đường'", () => {
+    const b: SpokenBuildingRef[] = [
+      { id: "kho", name: "Kho", code: "VP", commonNames: ["Nhà Bè"] },
+      { id: "ct", name: "Nhà C", code: "20", commonNames: ["Cần Thơ"] },
+      { id: "ds", name: "Nhà D", code: "80", commonNames: ["Đường số 3"] },
+    ];
+    expect(said("mua sơn cho kho Nhà Bè", b)).toEqual({ building: null, candidates: ["kho"], guessed: true });
+    expect(said("hai mươi Cần Thơ sửa điện", b)).toEqual({ building: "ct", candidates: [], guessed: false });
+    expect(said("tám mươi đường số 3 thay khoá", b)).toEqual({ building: "ds", candidates: [], guessed: false });
+  });
+
+  it("tên toà dạng mã một chữ ('12A') không thành mã — 'anh', 'ăn' không là toà", () => {
+    const b: SpokenBuildingRef[] = [{ id: "r12", name: "12A", code: "12" }];
+    expect(said("mười hai anh em ăn trưa", b).building).toBeNull();
+  });
+
   it("mô tả phiếu ghi mã toà thay cho cụm đọc bằng tên thường gọi", () => {
     expect(canonicalizeSpoken("chín năm không Gò Vấp mua sơn", named)).toBe("950NK mua sơn");
     expect(canonicalizeSpoken("Bốn một bảy Lê Văn Thọ thay khoá", named)).toBe("417LVT thay khoá");
@@ -259,6 +307,8 @@ describe("primaryCode — mã hiển thị", () => {
     [{ id: "d", name: "Kho Văn Phòng Chung", code: "Chung, VP" }, "Chung"],
     [{ id: "e", name: "Toà 15", code: "15" }, "15"],
     [{ id: "f", name: "Nhà mới", code: null }, "Nhà mới"],
+    [{ id: "g", name: "1392QT", code: "QT, 1392qt" }, "1392qt"],
+    [{ id: "h", name: "417 Lê Văn Thọ", code: "417" }, "417"],
   ])("%o ⇒ %s", (b, want) => {
     expect(primaryCode(b)).toBe(want);
   });
