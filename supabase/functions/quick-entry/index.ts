@@ -10,6 +10,9 @@
 // thử mô hình kế; lỗi thuộc tài khoản (401/402) thì mô hình nào cũng hỏng nên dừng ngay. Thiếu cấu
 // hình của đường nào thì CHỈ đường đó tắt.
 //
+// Cụm từ ưu tiên: chép giọng bằng google/chirp-3 thì gửi kèm mã/tên toà, tên thường gọi của toà, tên phòng
+// và tên hạng mục chi mà NGƯỜI DÙNG XEM ĐƯỢC (đọc bằng JWT của họ, RLS lọc) — xem dungCumTu.
+//
 // KHÔNG cần migration:
 //   - quyền   = get_my_permissions_v2(p_org) gọi bằng JWT của chính người dùng — cùng nguồn giao diện đọc;
 //               cần income_expenses.create HOẶC personal_finance.create ở công ty đang chọn;
@@ -27,7 +30,7 @@ export const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, x-copilot-feature, x-task-id, x-organization-id, x-quick-entry-skip",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Expose-Headers": "x-quick-entry-model, x-quick-entry-index, x-quick-entry-attempts",
+  "Access-Control-Expose-Headers": "x-quick-entry-model, x-quick-entry-index, x-quick-entry-attempts, x-quick-entry-hints",
 };
 
 /** Xếp hạng chép giọng tiếng Việt (đo 01/10/2026: 16 câu báo chi × 2 giọng × sạch/ồn SNR 10 dB, chấm bằng
@@ -101,6 +104,143 @@ export const DINH_DANG_AM_THANH: Record<string, string> = {
   mp4: "m4a",
   aac: "aac",
 };
+
+// ---------------------------------------------------------------------------------------------------
+// Cụm từ ưu tiên cho máy chép giọng (Google speech adaptation).
+//
+// Đo 02/10/2026 qua OpenRouter (hàm thăm dò tạm trên project TEST, khoá QUICK_ENTRY_OPENROUTER_KEY):
+//   - OpenRouter CHỈ chuyển tiếp `provider.options["google-vertex"].config` vào RecognitionConfig của Google;
+//     `adaptation` đặt thẳng trong options, khoá "google", dạng snake_case và `prompt` đều bị bỏ im lặng
+//     (giá trị sai vẫn trả 200). Dạng đúng: config.adaptation.phraseSets[].inlinePhraseSet.phrases[].value.
+//   - 1.000 cụm ⇒ 200, 1.001 cụm ⇒ 400 (tài liệu Google ghi 1.200 — sai với đường này).
+//   - Tác dụng (giọng máy, 5 câu): "1392 cute" ⇒ "1392QT", "bắn form … 80 DS3" ⇒ "bắn foam … 80DS3",
+//     "Madrid"/"Berlin" ⇒ đúng tên phòng; boost 10/20 ra y hệt không boost ⇒ không gửi boost.
+// Chỉ chirp-3 nhận (nova-3/whisper không có đường này) — mô hình khác gửi đúng payload cũ.
+
+export const MO_HINH_CUM_TU = "google/chirp-3";
+/** Dưới trần 1.000 đo được của Google — chừa chỗ, và quá trần là cả lượt chép bị từ chối. */
+export const TRAN_CUM_TU = 900;
+/** Trần độ dài một cụm của Google speech adaptation. */
+export const TRAN_KY_TU_CUM = 100;
+/** Đọc nguồn cụm từ không được kéo dài lượt chép giọng: quá hạn thì chép không có gợi ý. */
+const HAN_DOC_CUM_TU_MS = 3_000;
+
+export interface NguonCumTu {
+  buildings: Array<{ id?: unknown; name?: unknown; code?: unknown }>;
+  /** Bảng building_common_names: tên thường gọi của toà ("Lê Văn Thọ", "một lẻ hai Lê Văn Thọ"). */
+  commonNames: Array<{ building_id?: unknown; name?: unknown }>;
+  rooms: Array<{ name?: unknown }>;
+  categories: Array<{ name?: unknown }>;
+}
+
+const SO_DOC_DAU = /^(mot|hai|ba|bon|tu|nam|sau|bay|tam|chin|muoi|khong)\b/;
+const boDau = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/g, "d").replace(/Đ/g, "D").toLowerCase();
+
+/** Chuẩn một cụm: NFC, gộp khoảng trắng, bỏ ký tự điều khiển; ngoài 2…100 ký tự ⇒ null. */
+export function chuanCum(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const s = raw.normalize("NFC").replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim();
+  return s.length >= 2 && s.length <= TRAN_KY_TU_CUM ? s : null;
+}
+
+/** Bí danh trong `buildings.code` (cách nhau dấu phẩy) có chữ cái; "1392qt" ⇒ "1392QT" (dạng mã in hoa). */
+function maToa(code: unknown): string[] {
+  if (typeof code !== "string") return [];
+  return code
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => /\p{L}/u.test(s))
+    .map((s) => (/^\d+[a-z][a-z0-9]*$/i.test(s) ? s.toUpperCase() : s));
+}
+
+/** Số nhà của toà lấy từ mã/tên ("102LVT", "45/3 Trần Thái Tông", "111") — để ghép "102 Lê Văn Thọ". */
+function soNha(b: NguonCumTu["buildings"][number]): string[] {
+  const out = new Set<string>();
+  const nguon = [...(typeof b.code === "string" ? b.code.split(",") : []), typeof b.name === "string" ? b.name : ""];
+  for (const s of nguon) {
+    const m = /^\s*(?:toà|tòa|toa|nhà|nha)?\s*([1-9]\d{0,3})(?!\d)/i.exec(s);
+    if (m) out.add(m[1]);
+  }
+  return [...out];
+}
+
+/**
+ * Danh sách cụm từ ưu tiên, theo thứ tự quan trọng: mã + tên toà, tên thường gọi (kèm "số nhà + tên" khi
+ * tên chưa có số), hạng mục chi, phòng. Bỏ trùng không phân biệt hoa/thường; cắt ở TRAN_CUM_TU.
+ * Thuần — nguồn thiếu/sai kiểu thì bỏ qua phần đó.
+ */
+export function dungCumTu(src: NguonCumTu): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const them = (raw: unknown) => {
+    const c = chuanCum(raw);
+    if (!c || out.length >= TRAN_CUM_TU) return;
+    const key = c.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(c);
+  };
+  const soCuaToa = new Map<string, string[]>();
+  for (const b of src.buildings) {
+    for (const m of maToa(b.code)) them(m);
+    if (typeof b.name === "string" && /\p{L}/u.test(b.name)) them(b.name);
+    if (typeof b.id === "string") soCuaToa.set(b.id, soNha(b));
+  }
+  for (const n of src.commonNames) {
+    const ten = chuanCum(n.name);
+    if (!ten) continue;
+    them(ten);
+    // "Lê Văn Thọ" của toà 102LVT ⇒ thêm "102 Lê Văn Thọ"; tên đã mở đầu bằng số (chữ số hay lời đọc) thì thôi.
+    if (/^\d/.test(ten) || SO_DOC_DAU.test(boDau(ten))) continue;
+    for (const so of soCuaToa.get(String(n.building_id)) ?? []) them(`${so} ${ten}`);
+  }
+  for (const c of src.categories) them(c.name);
+  for (const r of src.rooms) {
+    const ten = typeof r.name === "string" ? r.name.trim() : "";
+    if (!ten) continue;
+    // "P204" đã là cách gọi phòng; "301", "MADRID 3" ⇒ "phòng 301", "phòng MADRID 3".
+    them(/^(p|ph|phòng)\s*\d/i.test(ten) ? ten : `phòng ${ten}`);
+  }
+  return out;
+}
+
+/**
+ * Đọc nguồn cụm từ bằng JWT CỦA NGƯỜI DÙNG (RLS chỉ trả toà/phòng/hạng mục họ xem được), lọc đúng công
+ * ty đang chọn. Mọi lỗi (mạng, quá hạn, bảng chưa có) ⇒ phần đó rỗng — gợi ý không bao giờ chặn chép giọng.
+ */
+export async function docCumTu(f: typeof fetch, supabaseUrl: string, apikey: string, token: string, org: string): Promise<string[]> {
+  const headers = { Authorization: `Bearer ${token}`, apikey, "Accept-Profile": "public" };
+  const get = async (path: string): Promise<Array<Record<string, unknown>>> => {
+    try {
+      const r = await f(`${supabaseUrl}/rest/v1/${path}`, { headers, signal: AbortSignal.timeout(HAN_DOC_CUM_TU_MS) });
+      if (!r.ok) return [];
+      const rows = (await r.json()) as unknown;
+      return Array.isArray(rows) ? (rows as Array<Record<string, unknown>>) : [];
+    } catch {
+      return [];
+    }
+  };
+  const [buildings, commonNames, rooms, categories] = await Promise.all([
+    get(`buildings?select=id,name,code&organization_id=eq.${org}&deleted_at=is.null&order=name&limit=500`),
+    get(`building_common_names?select=building_id,name&organization_id=eq.${org}&order=created_at&limit=2000`),
+    get(`rooms?select=name&organization_id=eq.${org}&deleted_at=is.null&order=name&limit=5000`),
+    get(`income_expense_types?select=name&organization_id=eq.${org}&type=eq.expense&system_only=is.false&order=name&limit=1000`),
+  ]);
+  return dungCumTu({ buildings, commonNames, rooms, categories });
+}
+
+/** Phần payload gửi cụm từ cho Google qua OpenRouter (chỉ dạng này được chuyển tiếp — xem đo đạc ở trên). */
+export function goiYGoogle(cumTu: readonly string[]): Record<string, unknown> {
+  return {
+    provider: {
+      options: {
+        "google-vertex": {
+          config: { adaptation: { phraseSets: [{ inlinePhraseSet: { phrases: cumTu.map((value) => ({ value })) } }] } },
+        },
+      },
+    },
+  };
+}
 
 type Route = "stt" | "read";
 type Perms = Record<string, unknown> | null;
@@ -217,7 +357,9 @@ async function goiNhaCungCap(
 // ---------------------------------------------------------------------------------------------------
 // Kiểm đầu vào từng route. Chỉ chuyển tiếp những khoá cần — khoá lạ của client không tới upstream.
 
-type DauVao = { ok: true; payload: (model: string) => Record<string, unknown> } | { ok: false; res: Response };
+type DauVao =
+  | { ok: true; payload: (model: string, cumTu?: readonly string[]) => Record<string, unknown> }
+  | { ok: false; res: Response };
 
 export function dauVaoNhanGiong(body: Record<string, unknown>): DauVao {
   const fmt = DINH_DANG_AM_THANH[String(body.format ?? "").toLowerCase()];
@@ -232,7 +374,16 @@ export function dauVaoNhanGiong(body: Record<string, unknown>): DauVao {
     return { ok: false, res: loi(413, "payload_too_large", "Đoạn ghi âm quá dài.") };
   }
   const lang = typeof body.language === "string" && /^[a-z]{2}$/.test(body.language) ? body.language : "vi";
-  return { ok: true, payload: (model) => ({ model, language: lang, input_audio: { data, format: fmt } }) };
+  return {
+    ok: true,
+    payload: (model, cumTu = []) => ({
+      model,
+      language: lang,
+      input_audio: { data, format: fmt },
+      // Người gọi (vòng thử mô hình trong xuLy) chỉ truyền cụm từ cho chirp-3.
+      ...(cumTu.length > 0 ? goiYGoogle(cumTu) : {}),
+    }),
+  };
 }
 
 type Part = { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } };
@@ -398,6 +549,11 @@ export async function xuLy(req: Request, deps: PhuThuoc = {}): Promise<Response>
   const models = chon ? [chon, ...macDinh.filter((m) => m !== chon)] : macDinh;
   const skipRaw = Number(req.headers.get("x-quick-entry-skip") ?? 0);
   const skip = route === "read" && Number.isInteger(skipRaw) ? Math.min(Math.max(skipRaw, 0), models.length - 1) : 0;
+  // Cụm từ ưu tiên đọc SONG SONG với bước giữ chỗ/đếm trần bên dưới, chỉ khi chuỗi có chirp-3.
+  // QUICK_ENTRY_STT_HINTS=off: vận hành tắt gợi ý mà không phải deploy lại (gợi ý làm chép tệ đi chẳng hạn).
+  const goiYBat = route === "stt" && models.includes(MO_HINH_CUM_TU) &&
+    (env("QUICK_ENTRY_STT_HINTS") ?? "").trim().toLowerCase() !== "off";
+  const cumTuSan: Promise<string[]> = goiYBat ? docCumTu(f, supabaseUrl, apikey, token, org) : Promise.resolve([]);
   const taskId = `qe:${newId()}`;
   const logUrl = `${supabaseUrl}/rest/v1/ai_usage_logs`;
   const ghi = { ...svc, "Content-Type": "application/json", "Content-Profile": "public" };
@@ -454,20 +610,23 @@ export async function xuLy(req: Request, deps: PhuThuoc = {}): Promise<Response>
     return loi(429, "quick_entry_daily_cap", "Hôm nay đã dùng hết lượt AI. Bạn vẫn nhập tay được.");
   }
 
+  const cumTu = await cumTuSan;
   const batDau = now();
   let attempts = 0;
+  let boGoiY = false;
 
   for (let i = skip; i < models.length; i += 1) {
     const han = thoiGianLanThu(NGAN_SACH_MS[route], now() - batDau, MOI_LAN_MS[route]);
     if (han === 0) break;
     attempts += 1;
     const t0 = now();
+    const goiY = models[i] === MO_HINH_CUM_TU && !boGoiY ? cumTu : [];
     const r = await goiNhaCungCap(
       f,
       ncc.base,
       ncc.key,
       route === "stt" ? "/audio/transcriptions" : "/chat/completions",
-      dauVao.payload(models[i]),
+      dauVao.payload(models[i], goiY),
       han,
     );
     const text = route === "stt"
@@ -486,7 +645,7 @@ export async function xuLy(req: Request, deps: PhuThuoc = {}): Promise<Response>
       cost_usd: Number(r.cost.toFixed(6)),
       latency_ms: Math.round(now() - t0),
       status: thanhCong ? "ok" : "upstream_error",
-      error_detail: thanhCong ? null : `${route}:${r.status}`,
+      error_detail: thanhCong ? null : `${route}:${r.status}${goiY.length > 0 ? `:cum_tu=${goiY.length}` : ""}`,
     };
     try {
       const res = attempts === 1
@@ -505,10 +664,18 @@ export async function xuLy(req: Request, deps: PhuThuoc = {}): Promise<Response>
       "x-quick-entry-model": models[i],
       "x-quick-entry-index": String(i),
       "x-quick-entry-attempts": String(attempts),
+      "x-quick-entry-hints": String(goiY.length),
     };
     if (thanhCong) {
       if (route === "stt") return json(200, { text }, meta);
       return json(200, { model: models[i], choices: [{ index: 0, message: { role: "assistant", content: text } }] }, meta);
+    }
+    // Google từ chối BỘ CỤM TỪ (400) ⇒ thử lại chính mô hình đó một lần không kèm cụm từ trước khi tụt
+    // xuống mô hình kém hơn: một tên toà/hạng mục lạ không được làm mất mô hình chép tốt nhất.
+    if (goiY.length > 0 && r.status === 400) {
+      boGoiY = true;
+      i -= 1;
+      continue;
     }
     if (r.ok || nenThuMoHinhKe(r.status)) continue;
     break;

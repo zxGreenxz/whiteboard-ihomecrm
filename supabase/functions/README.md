@@ -116,6 +116,18 @@ thử tiếp. Ngân sách thời gian cả lượt: chép giọng 35 s, đọc 5
 15–20 s). `max_tokens` kẹp ở 4000: mức suy nghĩ cao tính cả token suy nghĩ vào trần này, xin ít là JSON
 bị cụt.
 
+**Cụm từ ưu tiên (chỉ `google/chirp-3`):** song song với bước giữ chỗ, hàm đọc bằng JWT CỦA NGƯỜI DÙNG
+(RLS lọc, đúng `organization_id` đang chọn) mã + tên toà (`buildings`), tên thường gọi của toà
+(`building_common_names`, kèm cụm ghép "số nhà + tên" như "102 Lê Văn Thọ"), hạng mục chi
+(`income_expense_types`, bỏ `system_only`) và tên phòng ("phòng 301", "phòng MADRID 3"); bỏ trùng, tối
+đa 900 cụm × 100 ký tự, gửi trong `provider.options["google-vertex"].config.adaptation` — dạng DUY NHẤT
+OpenRouter chuyển tiếp cho Google (đo 02/10/2026: `adaptation` đặt thẳng trong options, khoá `google`,
+snake_case và `prompt` đều bị bỏ im lặng; 1.000 cụm đạt, 1.001 cụm bị 400). Không gửi boost (10/20 ra y
+hệt không boost). Tác dụng đo bằng giọng máy: "1392 cute" ⇒ "1392QT", "bắn form … 80 DS3" ⇒
+"bắn foam … 80DS3", "417 LVT" ⇒ "417LVT". Đọc nguồn lỗi/quá 3 s ⇒ chép không gợi ý; Google trả 400 với bộ
+cụm từ ⇒ thử lại chirp-3 một lần không kèm cụm từ rồi mới tới mô hình kế. Header `x-quick-entry-hints` = số
+cụm đã gửi ở lần thử trả lời.
+
 Lưu ý hạn mức: `reserve_ai_usage` của Copilot cộng token/USD theo ngày của **mọi** dòng
 `ai_usage_logs` của người dùng, không lọc feature — dùng nhiều Báo chi nhanh (nhất là ảnh) có thể
 làm người đó chạm trần Copilot trong ngày sớm hơn.
@@ -129,6 +141,7 @@ Secret (thiếu khoá của đường nào thì đường đó trả `quick_entr
 | `QUICK_ENTRY_NINEROUTER_BASE_URL` / `QUICK_ENTRY_NINEROUTER_KEY` | 9router; vắng thì dùng `NINEROUTER_BASE_URL` / `NINEROUTER_API_KEY` của Copilot. Chỉ nhận `https://` |
 | `QUICK_ENTRY_STT_MODELS` / `QUICK_ENTRY_READ_MODELS` | Tuỳ chọn: đổi chuỗi mô hình, phân tách bằng dấu phẩy, ≤5 |
 | `QUICK_ENTRY_CHOICES` | Tuỳ chọn: `off` ⇒ bỏ qua mô hình người dùng tự chọn, mọi người dùng chuỗi trên |
+| `QUICK_ENTRY_STT_HINTS` | Tuỳ chọn: `off` ⇒ không đọc/gửi cụm từ ưu tiên cho chirp-3 |
 | `QUICK_ENTRY_DAILY_CALLS` | Tuỳ chọn: trần lượt/người/ngày (mặc định 150; một lần nói = 2 lượt) |
 
 ```powershell
