@@ -245,11 +245,16 @@ describe("tên thường gọi (building_common_names)", () => {
     }
   });
 
-  it("đơn vị tiền ngay sau số không được tính làm chữ của mã (nghìn + khoá ≠ NK, triệu + tiền + thuê ≠ TTT)", () => {
-    expect(said("chín trăm năm mươi nghìn khoá cửa", real)).toEqual({ building: null, candidates: [], guessed: false });
+  it("đơn vị tiền ngay sau số: chữ suy từ các từ phía sau chỉ là ĐOÁN, không tự điền toà", () => {
+    // nghìn + khoá = "nk" của 950NK; triệu + tiền + thuê = "ttt" của 45TTT ⇒ không bao giờ thành toà chắc.
+    expect(said("chín trăm năm mươi nghìn khoá cửa", real).building).toBeNull();
     const b45: SpokenBuildingRef[] = [{ id: "r45", name: "45TTT", code: "45", commonNames: ["Tân Kỳ"] }];
-    expect(said("bốn mươi lăm triệu tiền thuê nhà", b45)).toEqual({ building: null, candidates: [], guessed: false });
+    expect(said("bốn mươi lăm triệu tiền thuê nhà", b45).building).toBeNull();
     expect(said("bốn lăm triệu không có hoá đơn", b45)).toEqual({ building: null, candidates: [], guessed: false });
+    // Chữ đánh vần / đầu tên đường trùng từ đơn vị ("P", "Đồng") vẫn được GỢI Ý, không mất hẳn.
+    expect(said("một một một P V C tiền rác", real)).toEqual({ building: null, candidates: ["r111"], guessed: true });
+    const dk: SpokenBuildingRef[] = [{ id: "dk", name: "102DK", code: "102DK" }];
+    expect(said("một trăm lẻ hai Đồng Khởi sửa điện", dk)).toEqual({ building: null, candidates: ["dk"], guessed: true });
     // Đúng mã/tên đường sau số thì vẫn chắc.
     expect(said("bốn lăm Tân Kỳ sửa điện", b45)).toEqual({ building: "r45", candidates: [], guessed: false });
     expect(said("chín trăm năm mươi NK khoá cửa", real)).toEqual({ building: "r950", candidates: [], guessed: false });
@@ -286,6 +291,9 @@ describe("tên thường gọi (building_common_names)", () => {
     expect(said("mua sơn cho kho Nhà Bè", b)).toEqual({ building: null, candidates: ["kho"], guessed: true });
     expect(said("hai mươi Cần Thơ sửa điện", b)).toEqual({ building: "ct", candidates: [], guessed: false });
     expect(said("tám mươi đường số 3 thay khoá", b)).toEqual({ building: "ds", candidates: [], guessed: false });
+    // "Nhà Lê Văn Thọ" dò cả dạng bỏ chữ "nhà": "102 Lê Văn Thọ" vẫn chắc.
+    const nha: SpokenBuildingRef[] = [{ id: "nA", name: "Nhà A", code: "102", commonNames: ["Nhà Lê Văn Thọ"] }];
+    expect(said("một lẻ hai Lê Văn Thọ sơn", nha)).toEqual({ building: "nA", candidates: [], guessed: false });
   });
 
   it("tên toà dạng mã một chữ ('12A') không thành mã — 'anh', 'ăn' không là toà", () => {

@@ -237,8 +237,9 @@ const MAX_COMMON_NAMES = 20;
 /**
  * Một tên thường gọi ⇒ khoá dò. Mở đầu bằng chữ số ("102 Lê Văn Thọ", "Toà 45/3 Trần Thái Tông") hoặc
  * bằng cách ĐỌC một số nhà của toà ("một lẻ hai Lê Văn Thọ") ⇒ số đó + phần còn lại làm tên đường; chữ
- * "toà/nhà/khu/căn" chỉ bỏ khi đứng trước số ("Nhà Bè", "Cần Thơ" là tên). Không có số ⇒ tên phải đứng
- * ngay sau MỘT số nhà của toà; đứng một mình (từ hai từ) thì chỉ là đoán, như tên đường.
+ * "toà/nhà/khu/căn" đứng trước số thì bỏ. Không có số ⇒ tên phải đứng ngay sau MỘT số nhà của toà; đứng
+ * một mình (từ hai từ) thì chỉ là đoán, như tên đường. Tên mở đầu "Nhà/Toà…" không kèm số dò cả hai dạng:
+ * có chữ đó ("Nhà Bè", "Cần Thơ" là tên) và bỏ chữ đó ("Nhà Lê Văn Thọ" ⇒ "102 Lê Văn Thọ").
  */
 function commonNameKeys(id: string, raw: string, nums: string[]): SpokenKey[] {
   const toks = looseTokens(normalizeLoose(raw.normalize("NFC"))).map((t) => t.s);
@@ -253,6 +254,13 @@ function commonNameKeys(id: string, raw: string, nums: string[]): SpokenKey[] {
     start += 1;
   }
   if (start >= toks.length) return [];
+  const out = keysFromToken(id, toks, asTokens, start, nums);
+  if (start < toks.length - 1 && NAME_PREFIX.has(toks[start])) out.push(...keysFromToken(id, toks, asTokens, start + 1, nums));
+  return out;
+}
+
+/** Khoá dò của một tên thường gọi, đọc từ token `start` (đã bỏ hay chưa bỏ chữ mở đầu). */
+function keysFromToken(id: string, toks: string[], asTokens: LooseToken[], start: number, nums: string[]): SpokenKey[] {
   let num: string | null = null;
   let restAt = start;
   if (NUM_RE.test(toks[start])) {
@@ -343,17 +351,20 @@ export function findSpokenBuildings(loose: string, buildings: SpokenBuildingRef[
         const j = matchSpokenNumber(tokens, i, k.num);
         if (j < 0) continue;
         const next = tokens[j]?.s;
-        // Ngay sau số là đơn vị tiền/số lượng ("chín trăm năm mươi NGHÌN khoá cửa") ⇒ số đó là tiền: không
-        // suy chữ đầu của mã từ các từ phía sau (nghìn + khoá = "nk" của 950NK). Đúng nguyên tên đường thì vẫn nhận.
-        const unitNext = next !== undefined && NOT_ADDRESS_NEXT.has(next);
         const skip = next === STREET_WORD && k.letters?.[0] !== "d" ? j + 1 : j;
-        const tail = Math.max(
-          k.letters && !unitNext ? matchLetters(tokens, skip, k.letters) : -1,
-          // Tên đường thử cả có lẫn không chữ "đường" phía trước (tên thường gọi "Đường số 3" giữ chữ đó).
-          k.street ? Math.max(matchWords(tokens, j, k.street), matchWords(tokens, skip, k.street)) : -1,
-        );
-        if (tail > 0) {
-          hit(k, i, tail, "strong");
+        // Tên đường thử cả có lẫn không chữ "đường" phía trước (tên thường gọi "Đường số 3" giữ chữ đó).
+        const streetEnd = k.street ? Math.max(matchWords(tokens, j, k.street), matchWords(tokens, skip, k.street)) : -1;
+        const lettersEnd = k.letters ? matchLetters(tokens, skip, k.letters) : -1;
+        // Ngay sau số là từ đơn vị tiền/số lượng ("chín trăm năm mươi NGHÌN khoá cửa") ⇒ chữ đầu suy từ các từ
+        // phía sau (nghìn + khoá = "nk" của 950NK) chỉ là ĐOÁN, không tự điền. Từ đó cũng có thể là chữ đánh vần
+        // ("một một một P V C") hay đầu tên đường ("Đồng Khởi") nên vẫn gợi ý. Đúng nguyên tên đường thì chắc.
+        const unitNext = next !== undefined && NOT_ADDRESS_NEXT.has(next);
+        if (streetEnd > 0 || (lettersEnd > 0 && !unitNext)) {
+          hit(k, i, Math.max(streetEnd, unitNext ? -1 : lettersEnd), "strong");
+          continue;
+        }
+        if (lettersEnd > 0) {
+          hit(k, i, lettersEnd, "weak");
           continue;
         }
         const atHead = i === 0 || PLACE_CUE.has(tokens[i - 1].s);
