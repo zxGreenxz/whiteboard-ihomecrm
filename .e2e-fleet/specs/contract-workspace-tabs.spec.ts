@@ -168,7 +168,8 @@ for (const role of ['chunha', 'quanly'] as const) {
     const meterRegion = page.getByRole('region', { name: 'Chờ bổ sung chỉ số bàn giao' });
     await expect(meterRegion).toHaveCount(0);
     await expect(exits).toContainText('Chỉ số 1');
-    await expect(page.getByText('Đang tải dữ liệu...', { exact: true })).toHaveCount(0);
+    // Khối xám từ 02/10/2026; câu chờ chỉ còn sr-only trong role="status".
+    await expect(page.getByText('Đang tải danh sách hợp đồng…', { exact: true })).toHaveCount(0);
     await expect(page.getByText('Không tải được danh sách hợp đồng', { exact: true })).toHaveCount(0);
     if (role === 'chunha') await page.screenshot({ path: testInfo.outputPath('owner-contract-list.png'), animations: 'disabled' });
 

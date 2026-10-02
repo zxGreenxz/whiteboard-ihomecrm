@@ -135,14 +135,16 @@ export function CashbookDetailDialog({
                 />
               </>
             ) : (
-              // Đang chờ: vạch xám trong ô (chủ chốt 02/10/2026); không còn chờ mà vẫn chưa
-              // có phân quyền (route chưa CANONICAL / đọc hỏng) thì để "—" thay vì treo chữ.
+              // Đang chờ: vạch xám trong ô (chủ chốt 02/10/2026). Đọc hỏng thì nói rõ là chưa
+              // tải được — "—" dễ bị đọc thành "sổ không ai có quyền". Route chưa CANONICAL: "—".
               <Row
                 label="Phân quyền sổ:"
                 value={
                   v2Routes.isLoading || orgIdQuery.isLoading || accessQuery.isLoading
                     ? <InlineSkeleton label="phân quyền sổ" width="8rem" />
-                    : "—"
+                    : orgIdQuery.isError || accessQuery.isError
+                      ? <span className="text-destructive">Chưa tải được phân quyền sổ</span>
+                      : "—"
                 }
               />
             )}

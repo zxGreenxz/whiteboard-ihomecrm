@@ -26,7 +26,9 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
     // trả lỗi và màn "Chưa thể kiểm tra phiên đăng nhập" bên dưới hiện ra.
     return (
       <div className="min-h-screen p-6">
-        <LoadingState label="phiên đăng nhập" variant="detail" rows={6} className="mx-auto w-full max-w-4xl" onRetry={() => void refetch()} />
+        {/* Không có nút Thử lại lúc 8 s: bấm sẽ huỷ lượt getSession đang chạy và đếm lại hạn chờ;
+            quá hạn thì màn "Chưa thể kiểm tra phiên" bên dưới đã có nút riêng (review PR #116). */}
+        <LoadingState label="phiên đăng nhập" variant="detail" rows={6} className="mx-auto w-full max-w-4xl" />
       </div>
     );
   }

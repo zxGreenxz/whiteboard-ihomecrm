@@ -38,7 +38,11 @@ export function QueryRegion({ label, queries, children, loading, skeleton = 'lin
   const blocked = states.some(state => state.hasBlockingError);
   const stale = states.some(state => state.showStaleWarning);
   const pending = states.some(state => state.showLoading) || (dangTai && queries.some(chuaChay));
-  const retry = () => { void Promise.allSettled(queries.map(query => Promise.resolve().then(() => query.refetch()))); };
+  const refetchAll = (list: readonly RegionQuery[]) => { void Promise.allSettled(list.map(query => Promise.resolve().then(() => query.refetch()))); };
+  const retry = () => refetchAll(queries);
+  // "Thử lại" lúc chờ (báo mạng chậm sau 8 giây): refetch() của TanStack v5 chạy cả query
+  // đang tắt, nên bỏ qua nguồn chưa chạy — nó đang chờ nguồn khác, ép chạy sẽ báo lỗi giả.
+  const retryPending = () => refetchAll(queries.filter(query => !chuaChay(query)));
   const timestamps = queries.map(query => query.dataUpdatedAt ?? 0).filter(time => time > 0);
   const lastRead = timestamps.length ? new Date(Math.min(...timestamps)).toLocaleString('vi-VN') : null;
   if (blocked) {
@@ -50,7 +54,7 @@ export function QueryRegion({ label, queries, children, loading, skeleton = 'lin
       <Button type="button" variant="outline" size="sm" className="mt-2" onClick={retry}>Tải lại</Button>
     </div>;
   }
-  if (pending) return <>{loading ?? <LoadingState label={label} variant={skeleton} rows={rows} onRetry={retry} />}</>;
+  if (pending) return <>{loading ?? <LoadingState label={label} variant={skeleton} rows={rows} onRetry={retryPending} />}</>;
   return <>
     {stale && <div role="alert" className="mb-3 rounded-md border border-amber-400 p-3 text-sm">
       <p>Chưa cập nhật được {label}. {lastRead ? `Đang hiển thị kết quả tải lúc ${lastRead}.` : 'Đang hiển thị kết quả của lần tải trước.'}</p>

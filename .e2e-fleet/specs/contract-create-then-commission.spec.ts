@@ -367,11 +367,12 @@ test('tạo HĐ qua UI → modal hoa hồng giữ nguyên thứ người dùng �
     ).toBe(1);
 
     // ── 5. Hệ quả: không mất chữ, không quay về dòng chờ ─────────────────────
+    // Từ 02/10/2026 dòng chờ là khối xám; câu chờ chỉ còn trong role="status" (sr-only).
     await expect(
-      modal.getByText('Đang tải thông tin hợp đồng...'),
+      modal.getByRole('status').filter({ hasText: 'Đang tải thông tin hợp đồng…' }),
       'một lượt tải lại hỏng KHÔNG được đẩy modal về dòng chờ — đó là cách nó kẹt ' +
         'vĩnh viễn ở bản cũ (lỗi bị nuốt thành data rỗng trong trạng thái thành công)',
-    ).toBeHidden();
+    ).toHaveCount(0);
     await expect(oTenMG, 'tên đơn vị môi giới bị xoá = bug 15/09 tái phát').toHaveValue(
       TEN_MOI_GIOI,
     );

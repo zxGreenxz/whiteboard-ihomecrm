@@ -60,3 +60,18 @@ it('failed blocked readback keeps the durable request for the next verification'
  await act(async()=>{await result.current.support.prepare(payload('2026-12'),{readbackOnly:true});});
  expect(api.read.mock.calls).toEqual([['org1','contract1',first.context!.request_id,'invoice1'],['org1','contract1',first.context!.request_id,'invoice1']]);
 });
+// Review PR #116: vạch xám "đang kiểm" chỉ khi còn lượt đọc chạy. Số máy chủ lệch số trên
+// màn (không còn gì chạy) thì phải hiện câu chữ, không để nút Lưu khoá mà không lời giải thích.
+it('checking is only shown while a read is in flight, not for a settled mismatch',async()=>{
+ let tra:()=>void=()=>{};
+ api.quote.mockClear();
+ api.quote.mockImplementationOnce((_org,_contract,month)=>new Promise(resolve=>{tra=()=>resolve({state:'READY',plan_revision:2,billing_month:month,invoice_support:'999',quote_hash:'quote'});}));
+ const {result}=open();
+ await waitFor(()=>expect(api.quote).toHaveBeenCalledOnce());
+ expect(result.current.support.checking).toBe(true);
+ expect(result.current.support.ready).toBe(false);
+ await act(async()=>{tra();});
+ await waitFor(()=>expect(result.current.support.checking).toBe(false));
+ expect(result.current.support.ready).toBe(false);
+ expect(result.current.support.error).toBe('Đang kiểm tra hỗ trợ của tháng và các khoản thu...');
+});

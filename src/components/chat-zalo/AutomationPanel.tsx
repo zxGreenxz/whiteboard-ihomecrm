@@ -1,5 +1,5 @@
 import { QueryRegion } from '@/components/errors/QueryRegion';
-import { LoadingState, SkeletonBar } from '@/components/loading/LoadingState';
+import { InlineSkeleton, LoadingState, SkeletonBar } from '@/components/loading/LoadingState';
 import { actionErrorMessage } from '@/lib/actionFeedback';
 // =============================================================================
 // AutomationPanel.tsx — tóm tắt tự động hoá ở cột phải (tab "Tự động hoá").
@@ -31,7 +31,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { useZaloAutomationConfigs, useZaloAutomationRuns, useEmergencyStop } from '@/hooks/useZaloChat';
+import { useZaloAutomationConfigs, useZaloAutomationRuns, useEmergencyStop, useZaloAutomations } from '@/hooks/useZaloChat';
 import type { ZaloAutomationRun } from '@/hooks/useZaloChat';
 import { chuanHoaBroadcast, chuanHoaAutoReply, KHOA_NGAY } from './automationConfig';
 import { nhanCuaNgay, nhanCuaLuot } from './automation/nhanCheDo';
@@ -47,11 +47,12 @@ interface Props {
 }
 
 /** Công tắc gạt (toggle switch) port từ design. */
-function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
+function Toggle({ on, onClick, disabled = false }: { on: boolean; onClick: () => void; disabled?: boolean }) {
   return (
     <button
       onClick={onClick}
-      style={{ position: 'relative', width: 38, height: 22, borderRadius: 11, border: 'none', cursor: 'pointer', flex: 'none', padding: 0, background: on ? 'hsl(152 69% 38%)' : 'hsl(210 16% 80%)', transition: 'background .15s' }}
+      disabled={disabled}
+      style={{ position: 'relative', width: 38, height: 22, borderRadius: 11, border: 'none', cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.45 : 1, flex: 'none', padding: 0, background: on ? 'hsl(152 69% 38%)' : 'hsl(210 16% 80%)', transition: 'background .15s' }}
     >
       <span style={{ position: 'absolute', top: 2, left: on ? 18 : 2, width: 18, height: 18, borderRadius: '50%', background: '#fff', boxShadow: '0 1px 2px rgba(0,0,0,.25)', transition: 'left .15s' }} />
     </button>
@@ -138,6 +139,9 @@ export default function AutomationPanel({ automations, onToggle, templates, conv
   const luotCuoi: ZaloAutomationRun | undefined = runsQuery.data?.[0];
   const nhanLuot = luotCuoi ? nhanCuaLuot(luotCuoi.mode) : null;
 
+  // Trạng thái bật/tắt thật chưa đọc được (đang tải/lỗi) thì prop là mặc định "tắt" của trang:
+  // khoá công tắc + vạch xám, không để công tắc nói sai (review PR #116).
+  const daBietBatTat = useZaloAutomations().data !== undefined;
   const dangTaiCfg = cfgQuery.isLoading;
   const loiCfg = cfgQuery.isError;
 
@@ -153,10 +157,10 @@ export default function AutomationPanel({ automations, onToggle, templates, conv
             <span style={{ width: 28, height: 28, borderRadius: 8, background: EMERALD, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}><ImageIcon size={15} /></span>
             <div>
               <div style={{ fontSize: 13.5, fontWeight: 700 }}>Gửi ảnh phòng trống định kỳ</div>
-              <div style={{ fontSize: 11, color: 'hsl(152 50% 35%)', fontWeight: 600 }}>{automations.broadcastOn ? 'Đang chạy' : 'Đã tắt'}</div>
+              <div style={{ fontSize: 11, color: 'hsl(152 50% 35%)', fontWeight: 600 }}>{!daBietBatTat ? <InlineSkeleton label="trạng thái gửi ảnh" width="3.5rem" /> : automations.broadcastOn ? 'Đang chạy' : 'Đã tắt'}</div>
             </div>
           </div>
-          <Toggle on={automations.broadcastOn} onClick={() => onToggle('broadcastOn')} />
+          <Toggle on={automations.broadcastOn} disabled={!daBietBatTat} onClick={() => onToggle('broadcastOn')} />
         </div>
 
         <div style={{ marginTop: 11, display: 'flex', flexDirection: 'column', gap: 7, fontSize: 12.5 }}>
@@ -203,7 +207,7 @@ export default function AutomationPanel({ automations, onToggle, templates, conv
               <div style={{ fontSize: 11, color: 'hsl(210 10% 45%)' }}>Chỉ hội thoại đã đánh dấu sale</div>
             </div>
           </div>
-          <Toggle on={automations.autoReplyOn} onClick={() => onToggle('autoReplyOn')} />
+          <Toggle on={automations.autoReplyOn} disabled={!daBietBatTat} onClick={() => onToggle('autoReplyOn')} />
         </div>
 
         <div style={{ marginTop: 11, display: 'flex', flexDirection: 'column', gap: 7, fontSize: 12.5 }}>

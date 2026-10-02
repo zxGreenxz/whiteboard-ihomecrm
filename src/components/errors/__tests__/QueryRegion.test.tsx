@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { QueryRegion } from '../QueryRegion';
 afterEach(cleanup);
@@ -54,4 +54,21 @@ it('true empty data is allowed only after a successful load', () => {
   render(<QueryRegion label="danh sách phòng" queries={[query({data:[],isError:false,status:'success'})]}><p>Không có phòng</p></QueryRegion>);
   expect(screen.getByText('Không có phòng')).toBeTruthy();
   expect(screen.queryByRole('alert')).toBeNull();
+});
+// Review PR #116: "Thử lại" ở báo mạng chậm không được ép chạy nguồn đang tắt chờ nguồn
+// khác (refetch() của TanStack v5 chạy cả query tắt ⇒ queryFn ném "source not loaded").
+it('slow-network retry refetches only sources that already started', async () => {
+  vi.useFakeTimers();
+  try {
+    const dangTai = query({ status: 'pending', fetchStatus: 'fetching', isLoading: true, isError: false, error: null });
+    const cho = query({ status: 'pending', isError: false, error: null });
+    render(<QueryRegion label="hóa đơn của tòa nhà" queries={[dangTai, cho]}><p>Bảng</p></QueryRegion>);
+    act(() => { vi.advanceTimersByTime(8000); });
+    fireEvent.click(screen.getByRole('button', { name: 'Thử lại' }));
+    await act(async () => { await Promise.resolve(); });
+    expect(dangTai.refetch).toHaveBeenCalledOnce();
+    expect(cho.refetch).not.toHaveBeenCalled();
+  } finally {
+    vi.useRealTimers();
+  }
 });

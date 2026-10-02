@@ -196,11 +196,12 @@ export default function MaterialsListContent() {
           <Tabs value={stockTab} onValueChange={(v) => setStockTab(v as 'all' | 'low')}>
             <TabsList>
               <TabsTrigger value="all">
-                Tất cả <Badge variant="outline" className="ml-1.5">
+                {/* Đọc hỏng mà chưa có dữ liệu: không in 0 cạnh thẻ lỗi (review PR #116). */}
+                Tất cả {(isLoading || materialsQuery.data !== undefined) && <Badge variant="outline" className="ml-1.5">
                   {isLoading
                     ? <span className="ld-appear" aria-hidden="true"><SkeletonBar className="h-3" style={{ width: '1rem' }} /></span>
                     : materials.length}
-                </Badge>
+                </Badge>}
               </TabsTrigger>
               <TabsTrigger value="low">
                 Sắp hết
