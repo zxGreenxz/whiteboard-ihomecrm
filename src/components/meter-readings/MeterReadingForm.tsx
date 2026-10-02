@@ -65,6 +65,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { uploadFile, sanitizeStorageFileName } from '@/lib/storage';
 import { toast } from 'sonner';
 import { ImagePlus, Loader2 } from 'lucide-react';
+import { LoadingState } from '@/components/loading/LoadingState';
 import { todayISO } from '@/lib/collect';
 import { focusFirstError } from '@/lib/formErrors';
 import {recordWriteBlocked,recordWriteMessage} from '@/lib/recordWriteOutcome';
@@ -542,12 +543,9 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
                 </div>
               )}
 
-              {/* Loading indicator */}
+              {/* Đang nạp công tơ: khối xám dạng dòng bảng (chủ chốt 02/10/2026). */}
               {isLoadingMeters && !isEditing && (
-                <div className="flex items-center justify-center py-4">
-                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground mr-2" />
-                  <span className="text-sm text-muted-foreground">Đang tải danh sách công tơ...</span>
-                </div>
+                <LoadingState label="danh sách công tơ" variant="table" rows={3} />
               )}
 
               {/* Meters table */}

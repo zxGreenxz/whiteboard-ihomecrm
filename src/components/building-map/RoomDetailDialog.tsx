@@ -1,4 +1,5 @@
 import {QueryRegion} from '@/components/errors/QueryRegion';
+import { LoadingState } from '@/components/loading/LoadingState';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -131,7 +132,22 @@ export function RoomDetailDialog({ open, onOpenChange, roomId }: RoomDetailDialo
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <QueryRegion label="thông tin phòng, hợp đồng và hóa đơn" queries={[roomQuery, contractQuery, ...(activeContract?.id ? [invoiceQuery] : [])]}>
+        {/* Lúc chờ: tiêu đề hộp thoại hiện ngay, chi tiết là khối xám (chủ chốt 02/10/2026). */}
+        <QueryRegion
+          label="thông tin phòng, hợp đồng và hóa đơn"
+          queries={[roomQuery, contractQuery, ...(activeContract?.id ? [invoiceQuery] : [])]}
+          loading={
+            <>
+              <DialogHeader>
+                <DialogTitle className="text-2xl flex items-center gap-2">
+                  <Home className="w-6 h-6" />
+                  Chi tiết căn hộ
+                </DialogTitle>
+              </DialogHeader>
+              <LoadingState label="thông tin phòng, hợp đồng và hóa đơn" variant="detail" rows={6} />
+            </>
+          }
+        >
         {roomLoading ? (
           <div className="space-y-4">
             <Skeleton className="h-8 w-48" />
@@ -190,7 +206,7 @@ export function RoomDetailDialog({ open, onOpenChange, roomId }: RoomDetailDialo
 
               {/* Current Contract */}
               {open && <RoomTurnoverPanel roomId={roomId} />}
-              {open && <Suspense fallback={<p className="text-sm">Đang tải giữ chỗ…</p>}><RoomReservationPanel roomId={roomId} buildingId={room.building_id} /></Suspense>}
+              {open && <Suspense fallback={<LoadingState label="giữ chỗ" rows={2} />}><RoomReservationPanel roomId={roomId} buildingId={room.building_id} /></Suspense>}
               {activeContract ? (
                 <div className="space-y-4">
                   <h3 className="font-semibold text-lg flex items-center gap-2">

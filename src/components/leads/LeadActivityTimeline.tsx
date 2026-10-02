@@ -69,7 +69,7 @@ export function LeadActivityTimeline({ leadId }: LeadActivityTimelineProps) {
   const [scheduledAt, setScheduledAt] = useState("");
 
   const activitiesQuery=useLeadActivities(leadId);
-  const {data:activities=[],isLoading}=activitiesQuery;
+  const {data:activities=[]}=activitiesQuery;
   const [failure,setFailure]=useState('');
   const [blocked,setBlocked]=useState(false);
   const [deleteFailures,setDeleteFailures]=useState<Record<string,{message:string;blocked:boolean}>>({});
@@ -118,19 +118,10 @@ export function LeadActivityTimeline({ leadId }: LeadActivityTimelineProps) {
     return colors[config?.color || "gray"];
   };
 
-  if (isLoading) {
-    return (
-      <Card>
-        <CardContent className="p-6">
-          <p className="text-muted-foreground text-center">Đang tải...</p>
-        </CardContent>
-      </Card>
-    );
-  }
-
+  // Chủ chốt 02/10/2026: khung thẻ (tiêu đề + nút Thêm) hiện ngay, lịch sử là khối xám;
+  // form thêm vẫn khoá tới khi lịch sử về (fieldset bên dưới).
   return (
     <>
-      <QueryRegion label="lịch sử hoạt động khách hẹn" queries={[activitiesQuery]}>
       <Card>
         <CardHeader className="flex flex-row items-center justify-between pb-2">
           <CardTitle className="text-lg">Lịch sử hoạt động</CardTitle>
@@ -140,6 +131,7 @@ export function LeadActivityTimeline({ leadId }: LeadActivityTimelineProps) {
           </Button>
         </CardHeader>
         <CardContent>
+          <QueryRegion label="lịch sử hoạt động khách hẹn" queries={[activitiesQuery]} skeleton="list" rows={3}>
           {activities.length === 0 ? (
             <p className="text-muted-foreground text-center py-8">
               Chưa có hoạt động nào
@@ -203,9 +195,9 @@ export function LeadActivityTimeline({ leadId }: LeadActivityTimelineProps) {
               })}
             </div>
           )}
+          </QueryRegion>
         </CardContent>
       </Card>
-      </QueryRegion>
 
       {/* Add Activity Dialog */}
       <Dialog open={addDialogOpen} onOpenChange={next=>{if(!busy.current && !createActivity.isPending)setAddDialogOpen(next);}}>

@@ -80,7 +80,7 @@ export default function ErrorsSection({ f }: { f: PraFilters }) {
       : "";
 
   return (
-    <QueryRegion label="tổng số lỗi thống kê" queries={[summary]}><div className="space-y-4">
+    <QueryRegion label="tổng số lỗi thống kê" queries={[summary]} skeleton="cards" rows={4}><div className="space-y-4">
       {/* Thanh trạng thái: nói thẳng tổng thật của kỳ đang lọc, kèm khoảng ngày,
           để không ai đọc nhầm "số dòng đang hiện" thành "tất cả lỗi từng ghi". */}
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-lg border bg-muted/30 px-3 py-2 text-sm">
@@ -165,7 +165,7 @@ function GroupsTable({
   }));
 
   return (
-    <QueryRegion label="nhóm lỗi thống kê" queries={[groupsQuery]}><ChartCard
+    <QueryRegion label="nhóm lỗi thống kê" queries={[groupsQuery]} skeleton="table" rows={5}><ChartCard
       title={`Nhóm lỗi (${data.length})`}
       loading={isLoading || isPlaceholderData}
       height={200}
@@ -264,7 +264,7 @@ function TimelineTable({
   }));
 
   return (
-    <QueryRegion label="nhật ký lỗi thống kê" queries={[timelineQuery]}><ChartCard
+    <QueryRegion label="nhật ký lỗi thống kê" queries={[timelineQuery]} skeleton="table" rows={5}><ChartCard
       title={`Nhật ký lỗi (${data.length})`}
       loading={isLoading || isPlaceholderData}
       height={200}

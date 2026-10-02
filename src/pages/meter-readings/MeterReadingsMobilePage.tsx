@@ -13,6 +13,7 @@ import { usePersistedState } from "@/hooks/usePersistedState";
 import MeterReadingForm from "@/components/meter-readings/MeterReadingForm";
 import MeterReadingImportDialog from "@/components/meter-readings/MeterReadingImportDialog";
 import type { BuildingWithRelations } from "@/types/building";
+import { InlineSkeleton, LoadingState } from "@/components/loading/LoadingState";
 
 const currentMonth = new Date().toISOString().slice(0, 7);
 
@@ -104,7 +105,15 @@ export default function MeterReadingsMobilePage() {
             </button>
             <div className="mtitle">
               <h1>Ghi chỉ số</h1>
-              <p>{monthLabel} · {readingsQuery.isError || !listResult ? 'đang kiểm tra chỉ số' : `${totalCount} chỉ số`}</p>
+              {/* Đang chờ: vạch xám thay số (chủ chốt 02/10/2026); lỗi giữ câu cũ. */}
+              <p>
+                {monthLabel} ·{' '}
+                {readingsQuery.isError
+                  ? 'đang kiểm tra chỉ số'
+                  : listResult
+                    ? `${totalCount} chỉ số`
+                    : <><InlineSkeleton label="số chỉ số" width="2rem" /> chỉ số</>}
+              </p>
             </div>
             <div className="mtop-act">
               <button className="mtop-btn ghost" onClick={() => setIsImportOpen(true)} aria-label="Nhập từ Excel">
@@ -140,18 +149,18 @@ export default function MeterReadingsMobilePage() {
             </div>
 
             {statsQuery.isError ? <div role="alert" className="stub"><p>Không tải được thống kê chỉ số. <button type="button" onClick={() => void statsQuery.refetch()}>Tải lại thống kê</button></p></div>
-            : !stats ? <div role="status" className="stub"><p>Đang tải thống kê chỉ số…</p></div>
+            // Chưa có thống kê: khung thẻ số hiện ngay, ô số là vạch xám (chủ chốt 02/10/2026).
             : <div className="bm-stats">
               <div className="bm-stat" style={{ "--bmc": "#15803d" } as React.CSSProperties}>
-                <div className="n">{approved}</div>
+                <div className="n">{stats ? approved : <InlineSkeleton label="số chỉ số đã duyệt" width="1.75rem" />}</div>
                 <div className="l">Đã duyệt</div>
               </div>
               <div className="bm-stat" style={{ "--bmc": "#b45309" } as React.CSSProperties}>
-                <div className="n">{unapproved}</div>
+                <div className="n">{stats ? unapproved : <InlineSkeleton label="số chỉ số chưa duyệt" width="1.75rem" />}</div>
                 <div className="l">Chưa duyệt</div>
               </div>
               <div className="bm-stat" style={{ "--bmc": "#2563eb" } as React.CSSProperties}>
-                <div className="n">{compactNum(elec)}</div>
+                <div className="n">{stats ? compactNum(elec) : <InlineSkeleton label="số kWh điện" width="2.5rem" />}</div>
                 <div className="l">kWh điện</div>
               </div>
             </div>}
@@ -171,7 +180,7 @@ export default function MeterReadingsMobilePage() {
             {readingsQuery.isError ? (
               <div role="alert" className="stub"><p>Không tải được danh sách chỉ số. <button type="button" onClick={() => void readingsQuery.refetch()}>Tải lại chỉ số</button></p></div>
             ) : isLoading || !listResult ? (
-              <div className="stub"><p>Đang tải chỉ số…</p></div>
+              <LoadingState label="chỉ số" variant="list" rows={5} onRetry={() => void readingsQuery.refetch()} />
             ) : readings.length === 0 ? (
               <div className="stub"><p>Chưa có chỉ số nào cho bộ lọc này. Thêm chỉ số qua nút (+).</p></div>
             ) : (

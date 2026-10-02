@@ -1,6 +1,7 @@
 import { NumberInput } from "@/components/ui/number-input";
 import { validateInputDrafts } from "@/lib/inputDraftValidation";
 import { QueryRegion } from "@/components/errors/QueryRegion";
+import { LoadingState } from "@/components/loading/LoadingState";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Repeat, Phone, Tag, Calendar, Pencil, Eye, EyeOff, Trash2, ChevronDown, Users,
@@ -127,14 +128,14 @@ export default function MobilePassListings({ onHeaderAction }: { onHeaderAction:
   };
 
   return (
-    <QueryRegion label="phòng khách nhờ sale" queries={[listingQuery, roomQuery]}><div style={{ padding: "14px 16px 28px" }}>
+    <QueryRegion label="phòng khách nhờ sale" queries={[listingQuery, roomQuery]} skeleton="list" rows={4}><div style={{ padding: "14px 16px 28px" }}>
       <div className="sp-note pink">
         <Repeat size={17} stroke="var(--pass)" />
         <p>Phòng đang có khách thuê nhưng khách <b>nhờ sale / pass phòng</b>. Hiện trên trang công khai (màu hồng) với SĐT của khách. Tắt khi khách dừng nhờ — không ảnh hưởng hợp đồng.</p>
       </div>
 
       {isLoading ? (
-        <div className="stub"><p>Đang tải…</p></div>
+        <LoadingState label="phòng khách nhờ sale" variant="list" rows={4} />
       ) : !listings || listings.length === 0 ? (
         <div className="sp-empty pink">
           <span className="ic"><Repeat size={24} /></span>
@@ -192,7 +193,7 @@ export default function MobilePassListings({ onHeaderAction }: { onHeaderAction:
 
       {/* create / edit */}
       <SaleSheet open={open} onClose={() => { if (!upsertMut.isPending) setOpen(false); }}>
-        {form.roomId && <QueryRegion label="khách thuê phòng" queries={[customerQuery]}>{null}</QueryRegion>}
+        {form.roomId && <QueryRegion label="khách thuê phòng" queries={[customerQuery]} skeleton="none">{null}</QueryRegion>}
         <h3>{form.id ? "Sửa phòng khách nhờ sale" : "Thêm phòng khách nhờ sale"}</h3>
         <p className="desc">Chọn phòng đang có khách, nhập SĐT + chính sách sale của khách.</p>
 

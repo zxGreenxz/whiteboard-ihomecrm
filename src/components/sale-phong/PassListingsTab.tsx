@@ -1,6 +1,7 @@
 import { NumberInput } from "@/components/ui/number-input";
 import { validateInputDrafts } from "@/lib/inputDraftValidation";
 import { QueryRegion } from "@/components/errors/QueryRegion";
+import { LoadingState } from "@/components/loading/LoadingState";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -158,7 +159,7 @@ export default function PassListingsTab() {
   };
 
   return (
-    <QueryRegion label="phòng khách nhờ sale" queries={[listingQuery, roomQuery]}><div className="space-y-4">
+    <QueryRegion label="phòng khách nhờ sale" queries={[listingQuery, roomQuery]} skeleton="table" rows={4}><div className="space-y-4">
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">
           Phòng đang có khách thuê nhưng khách <b>nhờ sale / pass phòng</b>. Phòng sẽ hiện trên
@@ -173,7 +174,7 @@ export default function PassListingsTab() {
       <Card>
         <CardContent className="p-0">
           {isLoading ? (
-            <div className="p-8 text-center text-muted-foreground">Đang tải...</div>
+            <LoadingState label="phòng khách nhờ sale" variant="table" rows={4} />
           ) : !listings || listings.length === 0 ? (
             <div className="p-8 text-center text-muted-foreground">
               Chưa có phòng khách nhờ sale nào. Bấm "Thêm phòng pass" để bắt đầu.
@@ -246,7 +247,7 @@ export default function PassListingsTab() {
               Chọn phòng đang có khách, nhập SĐT khách + chính sách sale để hiển thị trên trang công khai.
             </DialogDescription>
           </DialogHeader>
-          {form.roomId && <QueryRegion label="khách thuê phòng" queries={[customerQuery]}>{null}</QueryRegion>}
+          {form.roomId && <QueryRegion label="khách thuê phòng" queries={[customerQuery]} skeleton="none">{null}</QueryRegion>}
           <div className="space-y-3 py-1">
             <div className="space-y-1.5">
               <Label>Phòng</Label>

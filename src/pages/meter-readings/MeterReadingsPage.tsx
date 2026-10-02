@@ -118,7 +118,8 @@ const MeterReadingsDesktop = () => {
 
   return (
     <MainLayout title="Ghi chỉ số" subtitle="Tài chính → Ghi chỉ số" icon={Gauge}>
-      <QueryRegion label="danh sách chỉ số công tơ" queries={[readingsQuery]}>
+      {/* Chủ chốt 02/10/2026: nút, thẻ số (tự có khối xám), bộ lọc hiện ngay; chỉ danh sách
+          chờ. Bộ lọc từng nằm trong vùng chờ: đổi lọc ⇒ cả bộ lọc thành khung chờ. */}
       <div className="space-y-4">
         {/* Header: Action buttons */}
         <div className="flex items-center justify-end gap-2">
@@ -148,6 +149,7 @@ const MeterReadingsDesktop = () => {
         />
 
         {/* List */}
+        <QueryRegion label="danh sách chỉ số công tơ" queries={[readingsQuery]} skeleton="table" rows={8}>
         <MeterReadingList
           readings={readings}
           isLoading={isLoading}
@@ -158,6 +160,7 @@ const MeterReadingsDesktop = () => {
           pagination={pagination}
           totalCount={totalCount}
         />
+        </QueryRegion>
       </div>
 
       {/* Form Dialog */}
@@ -190,8 +193,6 @@ const MeterReadingsDesktop = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      </QueryRegion>
     </MainLayout>
   );
 };

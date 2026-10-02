@@ -35,6 +35,7 @@ import { useMyPermissions } from "@/hooks/useMyPermissions";
 import { canUse } from "@/lib/permissionPages";
 import { usePersistedState } from "@/hooks/usePersistedState";
 import { QueryRegion } from '@/components/errors/QueryRegion';
+import { InlineSkeleton } from '@/components/loading/LoadingState';
 
 const CONDITION_CONFIG = {
   NEW: { label: "Mới", color: "bg-green-100 text-green-800" },
@@ -171,7 +172,7 @@ const AssetsPage = () => {
     condition: conditionFilter !== "ALL" ? conditionFilter : undefined,
     building_id: buildingFilter !== "ALL" ? buildingFilter : undefined,
   });
-  const { data: assets = [], isLoading } = assetsQuery;
+  const { data: assets = [] } = assetsQuery;
 
   const movementsQuery = useAssetMovements();
   const maintenanceQuery = useAssetMaintenance();
@@ -215,15 +216,12 @@ const AssetsPage = () => {
     [filteredAssets],
   );
 
-  if (isLoading) {
-    return (
-      <div className="p-6">
-        <div className="flex items-center justify-center h-96">
-          <p className="text-muted-foreground">Đang tải...</p>
-        </div>
-      </div>
-    );
-  }
+  // Chủ chốt 02/10/2026: khung trang (nút, tab, bộ lọc) hiện ngay; chỉ phần dữ liệu chờ.
+  // Trước đây cả trang thành "Đang tải..." (ngoài MainLayout) mỗi lần đổi lọc vì key đổi.
+  // Ô lọc có nguồn riêng (toà/căn/loại) khoá + vạch xám tới khi danh sách về.
+  const buildingsLoading = buildingsQuery.data === undefined && !buildingsQuery.isError;
+  const roomsLoading = roomsQuery.data === undefined && !roomsQuery.isError;
+  const categoriesLoading = categoriesQuery.data === undefined && !categoriesQuery.isError;
 
   return (
     <MainLayout
@@ -259,42 +257,16 @@ const AssetsPage = () => {
         )}
       </div>
 
-      {/* Summary Cards */}
-      <QueryRegion label="tổng quan tài sản" queries={[assetsQuery]}>
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Tổng số tài sản</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalAssets}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Giá trị tổng</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-blue-600">{formatCurrency(totalValue)}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Tốt / Mới</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">{(byCondition.GOOD || 0) + (byCondition.NEW || 0)}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Hỏng / Kém</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-red-600">{(byCondition.BROKEN || 0) + (byCondition.POOR || 0)}</div>
-          </CardContent>
-        </Card>
-      </div>
+      {/* Summary Cards — chưa có số thì khung thẻ hiện, ô số là vạch xám. */}
+      <QueryRegion label="tổng quan tài sản" queries={[assetsQuery]} loading={<AssetSummaryCards summary={null} />}>
+        <AssetSummaryCards
+          summary={{
+            total: totalAssets,
+            value: formatCurrency(totalValue),
+            good: (byCondition.GOOD || 0) + (byCondition.NEW || 0),
+            bad: (byCondition.BROKEN || 0) + (byCondition.POOR || 0),
+          }}
+        />
       </QueryRegion>
 
       {/* Tabs: Danh sách, Lịch sử di chuyển, Lịch sử sửa chữa */}
@@ -307,7 +279,6 @@ const AssetsPage = () => {
 
         {/* Tab: Danh sách tài sản */}
         <TabsContent value="list" className="space-y-4">
-          <QueryRegion label="danh sách tài sản" queries={[assetsQuery, categoriesQuery, buildingsQuery, roomsQuery]}>
           {/* Filters */}
           <div className="flex flex-wrap gap-4">
             <div className="relative flex-1 min-w-[200px]">
@@ -323,7 +294,8 @@ const AssetsPage = () => {
               value={buildingFilter}
               onValueChange={(val) => { setBuildingFilter(val); setRoomFilter("ALL"); }}
               className="w-[180px]"
-              placeholder="Toà nhà"
+              disabled={buildingsLoading}
+              placeholder={buildingsLoading ? <InlineSkeleton label="danh sách toà nhà" width="6rem" /> : "Toà nhà"}
               options={[
                 { value: 'ALL', label: 'Tất cả toà nhà' },
                 ...buildings.map((b) => ({ value: b.id, label: b.name })),
@@ -333,7 +305,8 @@ const AssetsPage = () => {
               value={roomFilter}
               onValueChange={setRoomFilter}
               className="w-[180px]"
-              placeholder="Căn hộ"
+              disabled={roomsLoading}
+              placeholder={roomsLoading ? <InlineSkeleton label="danh sách căn hộ" width="6rem" /> : "Căn hộ"}
               options={[
                 { value: 'ALL', label: 'Tất cả căn hộ' },
                 ...rooms.map((r) => ({ value: r.id, label: r.name })),
@@ -343,7 +316,8 @@ const AssetsPage = () => {
               value={categoryFilter}
               onValueChange={setCategoryFilter}
               className="w-[180px]"
-              placeholder="Loại tài sản"
+              disabled={categoriesLoading}
+              placeholder={categoriesLoading ? <InlineSkeleton label="loại tài sản" width="6rem" /> : "Loại tài sản"}
               options={[
                 { value: 'ALL', label: 'Tất cả loại' },
                 ...categories.map((cat) => ({ value: cat.id, label: cat.name })),
@@ -361,7 +335,11 @@ const AssetsPage = () => {
             />
           </div>
 
+          {/* Nguồn của ô lọc chỉ báo lỗi ở đây; bảng chờ riêng danh sách tài sản. */}
+          <QueryRegion label="toà nhà, căn hộ và loại tài sản" queries={[categoriesQuery, buildingsQuery, roomsQuery]} skeleton="none"><></></QueryRegion>
+
           {/* Assets Table — ảo hoá từ 50 dòng (VirtualTable) */}
+          <QueryRegion label="danh sách tài sản" queries={[assetsQuery]} skeleton="table" rows={8}>
           <Card>
             <VirtualTable
               rows={filteredAssets}
@@ -396,12 +374,12 @@ const AssetsPage = () => {
 
         {/* Tab: Lịch sử di chuyển */}
         <TabsContent value="movements" className="space-y-4">
-          <QueryRegion label="lịch sử di chuyển tài sản" queries={[movementsQuery]}>
           <Card>
             <CardHeader>
               <CardTitle className="text-lg">Lịch sử di chuyển tài sản</CardTitle>
             </CardHeader>
             <CardContent>
+              <QueryRegion label="lịch sử di chuyển tài sản" queries={[movementsQuery]} skeleton="table" rows={5}>
               <VirtualTable
                 rows={movements}
                 header={
@@ -425,19 +403,19 @@ const AssetsPage = () => {
                   <MovementRow key={m.id} m={m} index={index} measureRef={measureRef} />
                 )}
               />
+              </QueryRegion>
             </CardContent>
           </Card>
-          </QueryRegion>
         </TabsContent>
 
         {/* Tab: Lịch sử sửa chữa */}
         <TabsContent value="maintenance" className="space-y-4">
-          <QueryRegion label="lịch sử sửa chữa tài sản" queries={[maintenanceQuery]}>
           <Card>
             <CardHeader>
               <CardTitle className="text-lg">Lịch sử sửa chữa tài sản</CardTitle>
             </CardHeader>
             <CardContent>
+              <QueryRegion label="lịch sử sửa chữa tài sản" queries={[maintenanceQuery]} skeleton="table" rows={5}>
               <VirtualTable
                 rows={maintenanceRecords}
                 header={
@@ -462,9 +440,9 @@ const AssetsPage = () => {
                   <MaintenanceRow key={rec.id} rec={rec} index={index} measureRef={measureRef} />
                 )}
               />
+              </QueryRegion>
             </CardContent>
           </Card>
-          </QueryRegion>
         </TabsContent>
       </Tabs>
 
@@ -479,5 +457,31 @@ const AssetsPage = () => {
     </MainLayout>
   );
 };
+
+/** Bốn thẻ tổng quan; `null` = chưa có số — khung thẻ hiện, ô số là vạch xám. */
+function AssetSummaryCards({ summary }: { summary: { total: number; value: string; good: number; bad: number } | null }) {
+  const items = [
+    { key: 'total', title: 'Tổng số tài sản', cls: '', value: summary?.total },
+    { key: 'value', title: 'Giá trị tổng', cls: 'text-blue-600', value: summary?.value },
+    { key: 'good', title: 'Tốt / Mới', cls: 'text-green-600', value: summary?.good },
+    { key: 'bad', title: 'Hỏng / Kém', cls: 'text-red-600', value: summary?.bad },
+  ] as const;
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      {items.map((item) => (
+        <Card key={item.key}>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">{item.title}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className={`text-2xl font-bold ${item.cls}`}>
+              {summary ? item.value : <InlineSkeleton label={item.title.toLowerCase()} width={item.key === 'value' ? '7rem' : '2.5rem'} />}
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
 
 export default AssetsPage;

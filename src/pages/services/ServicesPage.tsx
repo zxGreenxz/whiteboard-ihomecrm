@@ -34,6 +34,7 @@ import { DeleteServiceDialog } from "@/components/services/DeleteServiceDialog";
 import { useQueryClient } from "@tanstack/react-query";
 import { usePersistedState } from "@/hooks/usePersistedState";
 import { QueryRegion } from '@/components/errors/QueryRegion';
+import { InlineSkeleton, LoadingState } from '@/components/loading/LoadingState';
 
 export default function ServicesPage() {
   const queryClient = useQueryClient();
@@ -55,6 +56,8 @@ export default function ServicesPage() {
   const { data: services, isLoading } = servicesQuery;
   const buildingsQuery = useBuildings();
   const { data: buildings } = buildingsQuery;
+  // Danh sách toà chưa về: ô lọc toà khoá + vạch xám (không hiện nhầm nhãn khi đang lọc toà đã lưu).
+  const buildingsLoading = buildings === undefined && !buildingsQuery.isError;
 
   const totalCount = services?.length || 0;
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
@@ -101,7 +104,8 @@ export default function ServicesPage() {
 
   return (
     <MainLayout>
-      <QueryRegion label="danh sách dịch vụ và tòa áp dụng" queries={[servicesQuery, buildingsQuery]}>
+      {/* Chủ chốt 02/10/2026: thanh công cụ + bộ lọc hiện ngay; chỉ bảng + phân trang chờ.
+          Bộ lọc từng nằm trong vùng chờ: đổi lọc ⇒ cả bộ lọc thành khung chờ. */}
       <div className="space-y-4">
         {/* Toolbar */}
         <div className="flex items-center gap-2">
@@ -120,7 +124,8 @@ export default function ServicesPage() {
             value={buildingFilter}
             onValueChange={(v) => { setBuildingFilter(v === "ALL" ? "" : v); setCurrentPage(1); }}
             className="w-[200px]"
-            placeholder="Chọn tòa nhà"
+            disabled={buildingsLoading}
+            placeholder={buildingsLoading ? <InlineSkeleton label="danh sách tòa nhà" width="7rem" /> : "Chọn tòa nhà"}
             options={[
               { value: 'ALL', label: 'Tất cả tòa nhà' },
               ...(buildings || []).map((b) => ({ value: b.id, label: b.name })),
@@ -139,9 +144,12 @@ export default function ServicesPage() {
           />
         </div>
 
+        <QueryRegion label="danh sách tòa nhà" queries={[buildingsQuery]} skeleton="none"><></></QueryRegion>
+
         {/* Table */}
+        <QueryRegion label="danh sách dịch vụ" queries={[servicesQuery]} skeleton="table" rows={6}>
         {isLoading ? (
-          <div className="text-center py-8 text-muted-foreground">Đang tải...</div>
+          <LoadingState label="danh sách dịch vụ" variant="table" rows={6} />
         ) : (
           <div className="rounded-md border">
             <Table>
@@ -259,6 +267,7 @@ export default function ServicesPage() {
             </Button>
           </div>
         </div>
+        </QueryRegion>
 
         {/* Dialogs */}
         <CreateServiceDialog
@@ -280,7 +289,6 @@ export default function ServicesPage() {
           </>
         )}
       </div>
-      </QueryRegion>
     </MainLayout>
   );
 }

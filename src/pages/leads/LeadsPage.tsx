@@ -18,6 +18,7 @@ import { useMyPermissions } from "@/hooks/useMyPermissions";
 import { canUse } from "@/lib/permissionPages";
 import { usePersistedState } from "@/hooks/usePersistedState";
 import { QueryRegion } from '@/components/errors/QueryRegion';
+import { InlineSkeleton, LoadingState } from '@/components/loading/LoadingState';
 
 const LEAD_STATUSES = [
   { value: "B1_LEAD", label: "Mới", color: "bg-blue-100 text-blue-800" },
@@ -50,7 +51,7 @@ const LeadsPage = () => {
 
   useCopilotPageContext('leads.list', { search: searchTerm }, detailDialogOpen ? selectedLead : null);
   const leadQuery = useLeads();
-  const { data: leads = [], isLoading } = leadQuery;
+  const { data: leads = [] } = leadQuery;
   const deleteMutation = useDeleteLead();
   const { data: perms } = useMyPermissions();
   const canCreateLead = canUse(perms, "leads", "create");
@@ -111,19 +112,10 @@ const LeadsPage = () => {
     setShown((prev) => ({ ...prev, [status]: (prev[status] ?? THE_MOI_TRANG) + THE_MOI_TRANG }));
   }, []);
 
-  if (isLoading) {
-    return (
-      <MainLayout>
-        <div className="flex items-center justify-center h-96">
-          <p className="text-muted-foreground">Đang tải...</p>
-        </div>
-      </MainLayout>
-    );
-  }
-
+  // Chủ chốt 02/10/2026: tiêu đề, nút, ô tìm hiện ngay; thẻ số + bảng kanban chờ dữ liệu
+  // (khung thẻ số hiện, ô số vạch xám; cột kanban là khối xám) — bỏ màn trắng "Đang tải...".
   return (
     <MainLayout>
-      <QueryRegion label="danh sách khách hẹn" queries={[leadQuery]}>
       <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -160,22 +152,19 @@ const LeadsPage = () => {
           />
         </div>
 
+        <QueryRegion
+          label="danh sách khách hẹn"
+          queries={[leadQuery]}
+          loading={
+            <div className="space-y-6">
+              <LeadStatusCards counts={null} />
+              <LoadingState label="danh sách khách hẹn" variant="list" rows={4} />
+            </div>
+          }
+        >
+        <div className="space-y-6">
         {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-          {LEAD_STATUSES.map((status) => {
-            const count = (leadsByStatus[status.value] ?? []).length;
-            return (
-              <Card key={status.value}>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium">{status.label}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{count}</div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
+        <LeadStatusCards counts={leadsByStatus} />
 
         {/* Kanban Board */}
         {leads.length === 0 && !searchTerm ? (
@@ -234,6 +223,8 @@ const LeadsPage = () => {
             })}
           </div>
         )}
+        </div>
+        </QueryRegion>
 
         {/* Dialogs */}
         <CreateLeadDialog
@@ -267,9 +258,28 @@ const LeadsPage = () => {
           exportType="leads"
         />
       </div>
-      </QueryRegion>
     </MainLayout>
   );
 };
+
+/** Năm thẻ số theo trạng thái; `null` = chưa có số — khung thẻ hiện, ô số là vạch xám. */
+function LeadStatusCards({ counts }: { counts: Record<string, LeadWithRelations[]> | null }) {
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+      {LEAD_STATUSES.map((status) => (
+        <Card key={status.value}>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">{status.label}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {counts ? (counts[status.value] ?? []).length : <InlineSkeleton label={`số khách ${status.label.toLowerCase()}`} width="2.5rem" />}
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
 
 export default LeadsPage;

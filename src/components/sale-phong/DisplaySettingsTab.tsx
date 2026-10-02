@@ -15,7 +15,7 @@ export default function DisplaySettingsTab() {
   const hotlines=hotlineQuery.data;
 
   return (
-    <div ref={root}><QueryRegion label="cài đặt hiển thị" queries={[settings,hotlineQuery]}><Card className="max-w-2xl">
+    <div ref={root}><QueryRegion label="cài đặt hiển thị" queries={[settings,hotlineQuery]} skeleton="detail" rows={4}><Card className="max-w-2xl">
       <CardHeader>
         <CardTitle>Cài đặt hiển thị trang "Phòng trống"</CardTitle>
         <CardDescription>Áp dụng chung cho mọi link chia sẻ của tài khoản.</CardDescription>

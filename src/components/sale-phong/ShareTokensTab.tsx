@@ -1,4 +1,5 @@
 import {QueryRegion} from '@/components/errors/QueryRegion';
+import {LoadingState} from '@/components/loading/LoadingState';
 import {actionErrorMessage} from '@/lib/actionFeedback';
 import {FinancialWorkflowError} from '@/lib/financialWorkflow';
 import { useState } from "react";
@@ -66,22 +67,25 @@ export default function ShareTokensTab() {
   const errorNotice=writeError?<p role="alert" className="text-sm text-destructive">{writeError}</p>:null;
 
   return (
-    <div className="space-y-4"><QueryRegion label="link chia sẻ" queries={[tokenQuery]}>
+    <div className="space-y-4">
+      {/* Chủ chốt 02/10/2026: mô tả + nút hiện ngay, chỉ bảng chờ (khối xám dạng dòng bảng).
+          Nút tạo vẫn chỉ mở khi danh sách đã về — như khi còn nằm trong vùng chờ. */}
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">
           Mỗi link hiển thị tất cả toà của bạn đang có phòng trống. Gửi link cho khách/sale —
           không cần đăng nhập. Thu hồi link bất cứ lúc nào.
         </p>
-        <Button size="sm" disabled={!canWrite||busy} onClick={() => {setWriteError('');setNewLabel("");setCreateOpen(true);}}>
+        <Button size="sm" disabled={!canWrite||busy||tokens===undefined} onClick={() => {setWriteError('');setNewLabel("");setCreateOpen(true);}}>
           <Plus className="h-4 w-4 mr-1" />Tạo link mới
         </Button>
       </div>
 
       {!createOpen&&!editing&&!revoking&&!deleting&&errorNotice}
+      <QueryRegion label="link chia sẻ" queries={[tokenQuery]} skeleton="table" rows={4}>
       <Card>
         <CardContent className="p-0">
           {isLoading ? (
-            <div className="p-8 text-center text-muted-foreground">Đang tải...</div>
+            <LoadingState label="link chia sẻ" variant="table" rows={4} />
           ) : !tokens || tokens.length === 0 ? (
             <div className="p-8 text-center text-muted-foreground">
               Chưa có link chia sẻ nào. Bấm "Tạo link mới" để bắt đầu.
@@ -144,6 +148,7 @@ export default function ShareTokensTab() {
           )}
         </CardContent>
       </Card>
+      </QueryRegion>
 
       {/* Tạo link */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
@@ -217,6 +222,6 @@ export default function ShareTokensTab() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </QueryRegion></div>
+    </div>
   );
 }

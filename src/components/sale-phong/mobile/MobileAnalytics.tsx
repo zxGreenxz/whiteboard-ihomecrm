@@ -115,7 +115,7 @@ export default function MobileAnalytics() {
         ))}
       </div>
 
-      <QueryRegion label="thống kê phòng" queries={tab==='overview'?[summary,tsDay,funnel]:tab==='rooms'?[topRooms]:tab==='hours'?[tsHour]:tab==='links'?[byToken]:[summary,errGroups]}>
+      <QueryRegion label="thống kê phòng" queries={tab==='overview'?[summary,tsDay,funnel]:tab==='rooms'?[topRooms]:tab==='hours'?[tsHour]:tab==='links'?[byToken]:[summary,errGroups]} skeleton={tab==='overview'?'cards':'list'} rows={4}>
       {tab === "overview" && (
         <>
           <div className="sp-kpis">

@@ -1,4 +1,5 @@
 import {QueryRegion} from '@/components/errors/QueryRegion';
+import {LoadingState} from '@/components/loading/LoadingState';
 import {actionErrorMessage} from '@/lib/actionFeedback';
 import {FinancialWorkflowError} from '@/lib/financialWorkflow';
 import { useEffect, useState } from "react";
@@ -60,7 +61,7 @@ export default function MobileShareTokens({ onHeaderAction }: { onHeaderAction: 
   const errorNotice=writeError?<p role="alert" className="text-destructive">{writeError}</p>:null;
 
   return (
-    <div style={{ padding: "14px 16px 28px" }}><QueryRegion label="link chia sẻ" queries={[tokenQuery]}>
+    <div style={{ padding: "14px 16px 28px" }}><QueryRegion label="link chia sẻ" queries={[tokenQuery]} skeleton="list" rows={4}>
       <div className="sp-note blue">
         <Info size={17} stroke="var(--acc-blue)" />
         <p>Mỗi link hiển thị tất cả toà đang có phòng trống. Gửi cho khách/sale — không cần đăng nhập, thu hồi bất cứ lúc nào.</p>
@@ -68,7 +69,7 @@ export default function MobileShareTokens({ onHeaderAction }: { onHeaderAction: 
 
       {!sheetOpen&&!confirm&&errorNotice}
       {isLoading ? (
-        <div className="stub"><p>Đang tải…</p></div>
+        <LoadingState label="link chia sẻ" variant="list" rows={4} />
       ) : !tokens || tokens.length === 0 ? (
         <div className="sp-empty">
           <span className="ic"><Share2 size={24} /></span>

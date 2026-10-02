@@ -19,7 +19,7 @@ export default function MobileDisplaySettings() {
 
 
   return (
-    <div ref={root} style={{ padding: "14px 16px 28px" }}><QueryRegion label="cài đặt hiển thị" queries={[settings,hotlineQuery]}>
+    <div ref={root} style={{ padding: "14px 16px 28px" }}><QueryRegion label="cài đặt hiển thị" queries={[settings,hotlineQuery]} skeleton="detail" rows={4}>
       <p className="sp-hint" style={{ margin: "0 0 14px" }}>Áp dụng chung cho mọi link chia sẻ của tài khoản.</p>
 
       {/* soon_days stepper */}

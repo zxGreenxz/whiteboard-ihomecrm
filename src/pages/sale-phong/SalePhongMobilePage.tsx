@@ -1,4 +1,5 @@
 import {QueryRegion} from '@/components/errors/QueryRegion';
+import { LoadingState, SkeletonBar } from '@/components/loading/LoadingState';
 import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -79,6 +80,8 @@ export default function SalePhongMobilePage() {
     if (key === 'pass' && passListings && !passQuery.isError && passQuery.status === 'success') return `${passListings.length} phòng`;
     return null;
   };
+  const statLoading = (key: TabKey) =>
+    (key === 'tokens' && tokenQuery.isLoading) || (key === 'pass' && passQuery.isLoading);
   const statColor = (key: TabKey) =>
     key === 'tokens' ? 'rgba(37,99,235,.09)' : 'rgba(217,119,6,.1)';
 
@@ -128,13 +131,14 @@ export default function SalePhongMobilePage() {
           {/* Nội dung */}
           {openTab ? (
             <div className="mbody" style={{ padding: 0 }}>
-              <Suspense fallback={<div className="stub"><p>Đang tải…</p></div>}>
+              <Suspense fallback={<div style={{ padding: "14px 16px" }}><LoadingState label="mục quản lý" variant="list" rows={4} /></div>}>
                 {renderTab(openTab, setHeaderAction)}
               </Suspense>
             </div>
           ) : mode === 'browse' ? (
             isLoading ? (
-              <div className="mbody"><div className="stub"><p>Đang tải danh sách phòng…</p></div></div>
+              // Khối xám dạng thẻ phòng thay chữ "Đang tải…" (chủ chốt 02/10/2026).
+              <div className="mbody"><LoadingState label="danh sách phòng" variant="list" rows={6} onRetry={() => { void refetch(); }} /></div>
             ) : isError ? (
               <div className="mbody"><div className="stub">
                 <p>Chưa tải được danh sách phòng. Thử lại để xem tình trạng hiện tại.</p>
@@ -147,8 +151,9 @@ export default function SalePhongMobilePage() {
             )
           ) : (
             <div className="mbody">
-              <QueryRegion label="số link chia sẻ" queries={[tokenQuery]}>{null}</QueryRegion>
-              <QueryRegion label="số phòng khách nhờ sale" queries={[passQuery]}>{null}</QueryRegion>
+              {/* Chỉ báo lỗi ở đây; lúc chờ thì ô số trên hàng là vạch xám. */}
+              <QueryRegion label="số link chia sẻ" queries={[tokenQuery]} skeleton="none">{null}</QueryRegion>
+              <QueryRegion label="số phòng khách nhờ sale" queries={[passQuery]} skeleton="none">{null}</QueryRegion>
               {adminTabs.length === 0 ? (
                 <div className="stub">
                   <p>
@@ -168,9 +173,13 @@ export default function SalePhongMobilePage() {
                         <span className="tx">
                           <b>{t.label}</b>
                           <span>{t.desc}</span>
-                          {stat && (
+                          {stat ? (
                             <span className="statpill" style={{ background: statColor(t.key), color: t.accent }}>{stat}</span>
-                          )}
+                          ) : statLoading(t.key) ? (
+                            <span className="statpill ld-appear" aria-hidden="true" style={{ background: statColor(t.key) }}>
+                              <SkeletonBar className="h-3" style={{ width: '3rem' }} />
+                            </span>
+                          ) : null}
                         </span>
                         <ChevronRight className="chev" />
                       </button>

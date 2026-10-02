@@ -78,7 +78,7 @@ export default function AnalyticsTab() {
   };
 
   return (
-    <QueryRegion label="danh sách link thống kê" queries={[tokenQuery]}><div className="space-y-4">
+    <QueryRegion label="danh sách link thống kê" queries={[tokenQuery]} skeleton="cards" rows={4}><div className="space-y-4">
       {/* Filter bar */}
       <div className="flex flex-wrap items-end gap-3 rounded-lg border bg-muted/30 p-3">
         <div className="grid gap-1">
@@ -135,7 +135,7 @@ function OverviewSection({ f }: { f: PraFilters }) {
   const tsData = (ts.data || []).map((r) => ({ ...r, label: fmtDay(r.bucket) }));
 
   return (
-    <QueryRegion label="tổng quan thống kê" queries={[summary,ts,funnel]}><div className="space-y-4">
+    <QueryRegion label="tổng quan thống kê" queries={[summary,ts,funnel]} skeleton="cards" rows={4}><div className="space-y-4">
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <KpiCard label="Lượt xem trang" value={String(s?.total_sessions ?? 0)} icon={Eye} accent="blue" loading={loading} />
         <KpiCard label="Thời gian xem TB" value={fmtDuration(s?.avg_session_ms ?? 0)} icon={Clock} accent="emerald" loading={loading} sub="phút:giây / phiên" />
@@ -245,7 +245,7 @@ function TopRoomsSection({ f }: { f: PraFilters }) {
   };
 
   return (
-    <QueryRegion label="phòng được xem nhiều" queries={[roomsQuery]}><div className="space-y-4">
+    <QueryRegion label="phòng được xem nhiều" queries={[roomsQuery]} skeleton="table" rows={6}><div className="space-y-4">
       <ChartCard
         title={`Top 10 phòng theo ${metricLabel[sortBy]}`}
         loading={isLoading}
@@ -348,7 +348,7 @@ function TrafficSection({ f }: { f: PraFilters }) {
   }, [hour.data]);
 
   return (
-    <QueryRegion label="lưu lượng thống kê" queries={[day,hour]}><div className="space-y-4">
+    <QueryRegion label="lưu lượng thống kê" queries={[day,hour]} skeleton="lines" rows={6}><div className="space-y-4">
       <ChartCard title="Lưu lượng theo ngày" loading={day.isLoading} empty={!dayData.length} height={320}>
         <ResponsiveContainer width="100%" height={320}>
           <LineChart data={dayData} margin={{ top: 8, right: 16, bottom: 8, left: -8 }}>
@@ -399,7 +399,7 @@ function ByTokenSection({ f }: { f: PraFilters }) {
   }));
 
   return (
-    <QueryRegion label="thống kê theo link" queries={[tokenStatsQuery]}><div className="space-y-4">
+    <QueryRegion label="thống kê theo link" queries={[tokenStatsQuery]} skeleton="table" rows={6}><div className="space-y-4">
       <ChartCard title="Lượt xem theo link chia sẻ" loading={isLoading} empty={!rows.length} height={320}>
         <ResponsiveContainer width="100%" height={320}>
           <BarChart data={chartData} margin={{ top: 8, right: 16, bottom: 8, left: -8 }}>

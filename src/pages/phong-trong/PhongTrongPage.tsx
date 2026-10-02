@@ -12,6 +12,7 @@ import { useSession } from "@/hooks/useAuth";
 import { useMyPermissions, can } from "@/hooks/useMyPermissions";
 import { useTracking, TrackingProvider } from "./useTracking";
 import { usePersistedState } from "@/hooks/usePersistedState";
+import { LoadingState } from "@/components/loading/LoadingState";
 
 /** Giá trị đặc biệt cho chip "Tổng hợp" trong hàng chọn tòa nhà (xem tất cả tòa). */
 const OVERVIEW = "__overview__";
@@ -236,9 +237,11 @@ export default function PhongTrongPage(props: PhongTrongPageProps = {}) {
   // isFetching`, nên khi đã có dữ liệu và đang refetch nền thì `isLoading` vốn đã là false —
   // đúng thứ mà vế kia định bảo vệ. Giữ lại thì TS thu hẹp `data` xuống `never` và báo lỗi.
   if (token && isLoading) {
+    // Khối xám dạng thẻ phòng thay "⏳ Đang tải…" (chủ chốt 02/10/2026); câu cũ chỉ còn cho
+    // trình đọc màn hình. Quá 8 giây mới có dòng "Mạng đang chậm" + Thử lại.
     return (
-      <div id="stage"><div className="app"><div className="empty" style={{ marginTop: 80 }}>
-        <div className="e-ic">⏳</div><p>Đang tải danh sách phòng…</p>
+      <div id="stage"><div className="app"><div style={{ padding: 16, marginTop: 24 }}>
+        <LoadingState label="danh sách phòng" variant="list" rows={6} onRetry={() => void refetch()} />
       </div></div></div>
     );
   }
