@@ -1,5 +1,5 @@
 import { useOperationFormFeedback } from '@/hooks/useOperationFormFeedback';
-import { QueryRegion } from '@/components/errors/QueryRegion';
+import { QueryRegion, refetchStartedSources, type RegionQuery } from '@/components/errors/QueryRegion';
 import { LoadingState, SkeletonBar } from '@/components/loading/LoadingState';
 // =============================================
 // HandoverSheet — full sheet "Bàn giao tiền mặt" trong khung điện thoại.
@@ -385,9 +385,9 @@ export function HandoverSheet({ show, onClose }: Props) {
 
   // Lúc chờ dữ liệu: thẻ xám lùi lề như .ho-cards (thân tấm trượt không có lề riêng),
   // không chữ "Đang tải…" — chủ chốt 02/10/2026.
-  const choThe = (label: string, queries: readonly { refetch: () => unknown }[], rows = 3) => (
+  const choThe = (label: string, queries: readonly RegionQuery[], rows = 3) => (
     <div style={{ padding: '14px 18px 0' }}>
-      <LoadingState label={label} variant="list" rows={rows} onRetry={() => { queries.forEach((query) => { void query.refetch(); }); }} />
+      <LoadingState label={label} variant="list" rows={rows} onRetry={() => refetchStartedSources(queries)} />
     </div>
   );
 

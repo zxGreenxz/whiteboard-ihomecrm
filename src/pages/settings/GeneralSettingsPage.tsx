@@ -1,6 +1,6 @@
 import {hasUnconfirmedResponse} from '@/lib/operationOutcome';
 import {validateInputDrafts} from '@/lib/inputDraftValidation';
-import { QueryRegion } from '@/components/errors/QueryRegion';
+import { QueryRegion, refetchStartedSources } from '@/components/errors/QueryRegion';
 import { InlineSkeleton, LoadingState } from '@/components/loading/LoadingState';
 import { notifyActionError } from '@/lib/actionFeedback';
 import { saveCompanyLogo } from '@/lib/companyLogo';
@@ -602,7 +602,7 @@ const GeneralSettingsPage = () => {
             label="cài đặt"
             variant="detail"
             rows={8}
-            onRetry={() => { void generalQuery.refetch(); void companyQuery.refetch(); }}
+            onRetry={() => refetchStartedSources([generalQuery, companyQuery])}
           />
         </div>
       </MainLayout>

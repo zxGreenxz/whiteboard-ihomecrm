@@ -13,6 +13,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { LoadingState } from '@/components/loading/LoadingState';
+import { refetchStartedSources } from '@/components/errors/QueryRegion';
 
 /**
  * CustomerFormPage
@@ -112,7 +113,7 @@ export default function CustomerFormPage() {
           label="dữ liệu khách hàng"
           variant="detail"
           rows={10}
-          onRetry={() => { void customerQuery.refetch(); void vehiclesQuery.refetch(); }}
+          onRetry={() => refetchStartedSources([customerQuery, vehiclesQuery])}
         />
       </MainLayout>
     );

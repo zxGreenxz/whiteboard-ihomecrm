@@ -1,4 +1,4 @@
-import { QueryRegion } from '@/components/errors/QueryRegion';
+import { QueryRegion, refetchStartedSources } from '@/components/errors/QueryRegion';
 import { LoadingState } from '@/components/loading/LoadingState';
 import { useState } from "react";
 import MainLayout from "@/components/layout/MainLayout";
@@ -123,7 +123,7 @@ export default function TaskTypesPage() {
           label="Loại công việc, nhóm và bộ phận"
           variant="table"
           rows={6}
-          onRetry={() => { void jobTypesQuery.refetch(); void jobGroupsQuery.refetch(); void departmentsQuery.refetch(); }}
+          onRetry={() => refetchStartedSources([jobTypesQuery, jobGroupsQuery, departmentsQuery])}
         />
       </>}>
       {/* Top bar */}

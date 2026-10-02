@@ -1,4 +1,4 @@
-import { QueryRegion } from '@/components/errors/QueryRegion';
+import { QueryRegion, refetchStartedSources } from '@/components/errors/QueryRegion';
 import { LoadingState } from '@/components/loading/LoadingState';
 // =============================================
 // ManagePanel — cột quản lý Thu tiền trên DESKTOP (75% trái).
@@ -195,7 +195,7 @@ export function ManagePanel({
               label="báo cáo thu tiền và bàn giao"
               variant="cards"
               rows={3}
-              onRetry={() => { void reportQuery.refetch(); void handoverQuery.refetch(); }}
+              onRetry={() => refetchStartedSources([reportQuery, handoverQuery])}
             />
           </div>
         }

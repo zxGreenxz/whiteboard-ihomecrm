@@ -1,4 +1,4 @@
-import { QueryRegion } from "@/components/errors/QueryRegion";
+import { QueryRegion, refetchStartedSources } from "@/components/errors/QueryRegion";
 import { ChartSkeleton } from "@/components/dashboard/ChartSkeleton";
 import { useMemo } from "react";
 import {
@@ -122,7 +122,7 @@ export function TypeBreakdownSection({
   const sideLabel = side === "INCOME" ? "Doanh thu" : "Chi phí";
 
   return (
-    <QueryRegion label="phân tích tài chính" queries={[reportQuery0, reportQuery1]} loading={<ChartSkeleton label="phân tích tài chính" height={360} onRetry={() => { void reportQuery0.refetch(); void reportQuery1.refetch(); }} />}>
+    <QueryRegion label="phân tích tài chính" queries={[reportQuery0, reportQuery1]} loading={<ChartSkeleton label="phân tích tài chính" height={360} onRetry={() => refetchStartedSources([reportQuery0, reportQuery1])} />}>
     <div className="space-y-4">
       <ChartCard
         title={`${sideLabel} theo hạng mục — 12 tháng`}

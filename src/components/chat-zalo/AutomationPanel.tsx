@@ -141,7 +141,12 @@ export default function AutomationPanel({ automations, onToggle, templates, conv
 
   // Trạng thái bật/tắt thật chưa đọc được (đang tải/lỗi) thì prop là mặc định "tắt" của trang:
   // khoá công tắc + vạch xám, không để công tắc nói sai (review PR #116).
-  const daBietBatTat = useZaloAutomations().data !== undefined;
+  const batTatQuery = useZaloAutomations();
+  const daBietBatTat = batTatQuery.data !== undefined;
+  // Đọc lỗi (hoặc chưa có công ty nên không đọc) thì nói thẳng, không để vạch xám mãi.
+  const trangThaiBatTat = (dangChay: boolean) => daBietBatTat ? (dangChay ? 'Đang chạy' : 'Đã tắt')
+    : batTatQuery.isError ? <button type="button" onClick={() => void batTatQuery.refetch()} style={{ border: 0, background: 'none', padding: 0, color: 'hsl(0 72% 42%)', fontWeight: 600, fontSize: 11, cursor: 'pointer', textDecoration: 'underline' }}>Chưa tải được trạng thái · Tải lại</button>
+    : batTatQuery.isLoading ? <InlineSkeleton label="trạng thái tự động hoá" width="3.5rem" /> : '—';
   const dangTaiCfg = cfgQuery.isLoading;
   const loiCfg = cfgQuery.isError;
 
@@ -157,7 +162,7 @@ export default function AutomationPanel({ automations, onToggle, templates, conv
             <span style={{ width: 28, height: 28, borderRadius: 8, background: EMERALD, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}><ImageIcon size={15} /></span>
             <div>
               <div style={{ fontSize: 13.5, fontWeight: 700 }}>Gửi ảnh phòng trống định kỳ</div>
-              <div style={{ fontSize: 11, color: 'hsl(152 50% 35%)', fontWeight: 600 }}>{!daBietBatTat ? <InlineSkeleton label="trạng thái gửi ảnh" width="3.5rem" /> : automations.broadcastOn ? 'Đang chạy' : 'Đã tắt'}</div>
+              <div style={{ fontSize: 11, color: 'hsl(152 50% 35%)', fontWeight: 600 }}>{trangThaiBatTat(automations.broadcastOn)}</div>
             </div>
           </div>
           <Toggle on={automations.broadcastOn} disabled={!daBietBatTat} onClick={() => onToggle('broadcastOn')} />

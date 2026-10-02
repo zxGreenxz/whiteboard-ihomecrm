@@ -1,6 +1,6 @@
 import { focusFirstError } from '@/lib/formErrors';
 import { actionErrorMessage } from '@/lib/actionFeedback';
-import { QueryRegion } from '@/components/errors/QueryRegion';
+import { QueryRegion, refetchStartedSources } from '@/components/errors/QueryRegion';
 import { LoadingState } from '@/components/loading/LoadingState';
 // Hộp thoại phân quyền một thành viên — 3 tab:
 //
@@ -335,7 +335,7 @@ export function MemberAuthorizationDialog({ membershipId, open, onOpenChange }: 
               variant="detail"
               rows={6}
               className="px-6 py-4"
-              onRetry={() => { void memberQuery.refetch(); void rolesQuery.refetch(); void catalogQuery.refetch(); }}
+              onRetry={() => refetchStartedSources([memberQuery, rolesQuery, catalogQuery])}
             />
           }
         >

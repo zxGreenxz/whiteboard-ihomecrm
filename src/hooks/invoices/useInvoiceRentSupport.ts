@@ -10,6 +10,8 @@ import {
 
 const PREVIEW_REQUEST = '00000000-0000-4000-8000-000000000001';
 const SUPPORT_CHECKING = 'Đang kiểm tra hỗ trợ của tháng và các khoản thu...';
+/** Hết lượt đọc mà vẫn chưa sẵn sàng (vd. số máy chủ lệch số trên màn): không còn là "đang kiểm". */
+const SUPPORT_UNCONFIRMED = 'Chưa xác nhận được hỗ trợ của tháng và các khoản thu; vui lòng tải lại trước khi lưu.';
 interface Options {
   organizationId: string | null;
   contractId: string;
@@ -63,12 +65,12 @@ export function useInvoiceRentSupport<T extends InvoiceEntryValues>(form: UseFor
     staleTime: 0,
   });
   const ready = !enabled || (!!quote.data && quote.data.fingerprint === fingerprint && quote.data.value.state === 'READY' && Number(quote.data.value.invoice_support) === preview?.amount && quote.data.value.plan_revision === plan.data?.revision && quote.data.value.billing_month === values.billing_month && !quote.isFetching && !plan.isFetching && !plan.isError && !quote.isError && preview?.state === 'READY');
-  const error = !enabled ? null : plan.isError || quote.isError ? 'Không kiểm tra được hỗ trợ; vui lòng tải lại trước khi lưu.' : manual < 0 ? 'Giảm trừ phải đủ phần hỗ trợ và credit đã chọn.' : preview?.state === 'NEEDS_REVIEW' || quote.data?.value.state === 'NEEDS_REVIEW' ? 'Hỗ trợ vượt doanh thu đủ điều kiện; cần đối chiếu.' : !ready ? SUPPORT_CHECKING : null;
+  const error = !enabled ? null : plan.isError || quote.isError ? 'Không kiểm tra được hỗ trợ; vui lòng tải lại trước khi lưu.' : manual < 0 ? 'Giảm trừ phải đủ phần hỗ trợ và credit đã chọn.' : preview?.state === 'NEEDS_REVIEW' || quote.data?.value.state === 'NEEDS_REVIEW' ? 'Hỗ trợ vượt doanh thu đủ điều kiện; cần đối chiếu.' : !ready ? (plan.isFetching || quote.isFetching ? SUPPORT_CHECKING : SUPPORT_UNCONFIRMED) : null;
   /** Chỉ là đang chờ kiểm hỗ trợ (không phải lỗi): giao diện hiện vạch xám thay câu chữ
    *  (chủ chốt 02/10/2026). `error` giữ nguyên để chặn lưu và làm câu báo khi bấm lưu.
    *  Không còn lượt đọc nào chạy mà vẫn chưa sẵn sàng (vd. số máy chủ lệch số trên màn) thì
-   *  KHÔNG phải đang chờ: hiện lại câu chữ để biết vì sao nút Lưu khoá (review PR #116). */
-  const checking = error === SUPPORT_CHECKING && (plan.isFetching || quote.isFetching);
+   *  KHÔNG phải đang chờ: `error` là SUPPORT_UNCONFIRMED và hiện thành câu chữ (review PR #116). */
+  const checking = error === SUPPORT_CHECKING;
   const intent = useRef<{ fingerprint: string; requestId: string; organizationId: string; contractId: string; invoiceId?: string } | null>(null);
   const [hasPending, setHasPending] = useState(false);
   const prepare = async (payload: InvoiceFormData, { readbackOnly = false }: { readbackOnly?: boolean } = {}) => {

@@ -1,4 +1,4 @@
-import { QueryRegion } from '@/components/errors/QueryRegion';
+import { QueryRegion, refetchStartedSources } from '@/components/errors/QueryRegion';
 import { LoadingState, SkeletonBar } from '@/components/loading/LoadingState';
 import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -327,7 +327,7 @@ const ThuTien = () => {
         label="số liệu thu tiền và người thu"
         variant="cards"
         rows={6}
-        onRetry={() => { requiredQueries.forEach((query) => { void query.refetch(); }); }}
+        onRetry={() => refetchStartedSources(requiredQueries)}
       />
     </>
   );

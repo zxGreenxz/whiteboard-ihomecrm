@@ -15,6 +15,19 @@ export interface RegionQuery {
   refetch: () => unknown;
 }
 
+/** Nguồn chưa chạy: chưa có dữ liệu, không đang tải, không lỗi — thường là query tắt chờ nguồn khác. */
+const chuaChay = (query: RegionQuery) =>
+  query.data === undefined && !query.isLoading && query.fetchStatus === 'idle' && !query.isError;
+
+/**
+ * "Thử lại" lúc chờ (báo mạng chậm sau 8 giây), dùng cả cho ô chờ tự viết: refetch() của
+ * TanStack v5 chạy cả query đang tắt, nên bỏ qua nguồn chưa chạy — nó đang chờ nguồn khác,
+ * ép chạy sẽ báo lỗi giả (review PR #116).
+ */
+export function refetchStartedSources(queries: readonly RegionQuery[]) {
+  void Promise.allSettled(queries.filter(query => !chuaChay(query)).map(query => Promise.resolve().then(() => query.refetch())));
+}
+
 /**
  * Keep every required source explicit; missing data must not enter totals as zero.
  * Lúc chờ: khối xám đúng hình nội dung (`skeleton`), không chữ "Đang tải…" — xem
@@ -28,8 +41,6 @@ export function QueryRegion({ label, queries, children, loading, skeleton = 'lin
   skeleton?: LoadingVariant;
   rows?: number;
 }) {
-  const chuaChay = (query: RegionQuery) =>
-    query.data === undefined && !query.isLoading && query.fetchStatus === 'idle' && !query.isError;
   // Nguồn chưa chạy trong lúc nguồn khác đang tải thường là query tắt chờ nguồn đó;
   // chỉ khi không còn gì đang tải mà nó vẫn chưa chạy thì mới là thiếu nguồn thật.
   const dangTai = queries.some(query => query.isLoading || query.fetchStatus === 'fetching');
@@ -38,11 +49,8 @@ export function QueryRegion({ label, queries, children, loading, skeleton = 'lin
   const blocked = states.some(state => state.hasBlockingError);
   const stale = states.some(state => state.showStaleWarning);
   const pending = states.some(state => state.showLoading) || (dangTai && queries.some(chuaChay));
-  const refetchAll = (list: readonly RegionQuery[]) => { void Promise.allSettled(list.map(query => Promise.resolve().then(() => query.refetch()))); };
-  const retry = () => refetchAll(queries);
-  // "Thử lại" lúc chờ (báo mạng chậm sau 8 giây): refetch() của TanStack v5 chạy cả query
-  // đang tắt, nên bỏ qua nguồn chưa chạy — nó đang chờ nguồn khác, ép chạy sẽ báo lỗi giả.
-  const retryPending = () => refetchAll(queries.filter(query => !chuaChay(query)));
+  const retry = () => { void Promise.allSettled(queries.map(query => Promise.resolve().then(() => query.refetch()))); };
+  const retryPending = () => refetchStartedSources(queries);
   const timestamps = queries.map(query => query.dataUpdatedAt ?? 0).filter(time => time > 0);
   const lastRead = timestamps.length ? new Date(Math.min(...timestamps)).toLocaleString('vi-VN') : null;
   if (blocked) {

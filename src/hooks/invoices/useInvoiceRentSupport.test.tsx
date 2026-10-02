@@ -73,5 +73,5 @@ it('checking is only shown while a read is in flight, not for a settled mismatch
  await act(async()=>{tra();});
  await waitFor(()=>expect(result.current.support.checking).toBe(false));
  expect(result.current.support.ready).toBe(false);
- expect(result.current.support.error).toBe('Đang kiểm tra hỗ trợ của tháng và các khoản thu...');
+ expect(result.current.support.error).toBe('Chưa xác nhận được hỗ trợ của tháng và các khoản thu; vui lòng tải lại trước khi lưu.');
 });
