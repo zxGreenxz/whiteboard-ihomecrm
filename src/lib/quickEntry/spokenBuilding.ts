@@ -255,7 +255,11 @@ function commonNameKeys(id: string, raw: string, nums: string[]): SpokenKey[] {
   }
   if (start >= toks.length) return [];
   const out = keysFromToken(id, toks, asTokens, start, nums);
-  if (start < toks.length - 1 && NAME_PREFIX.has(toks[start])) out.push(...keysFromToken(id, toks, asTokens, start + 1, nums));
+  // Biến thể bỏ MỌI chữ mở đầu ("Toà nhà Lê Văn Thọ" ⇒ "le van tho"), chỉ khi còn ≥2 từ: "Cần Giờ" mà còn
+  // "gio" thì "mười lăm giờ" (3 giờ chiều) thành toà 15 chắc chắn.
+  let bo = start;
+  while (bo < toks.length - 1 && NAME_PREFIX.has(toks[bo])) bo += 1;
+  if (bo > start && toks.length - bo >= 2) out.push(...keysFromToken(id, toks, asTokens, bo, nums));
   return out;
 }
 
@@ -330,6 +334,9 @@ const NOT_ADDRESS_NEXT = new Set([
   "bo", "cay", "tam", "thanh", "soi", "met", "m", "cm", "kg", "ky", "ki", "lang", "g", "nguoi", "lan",
   "ngay", "thang", "nam", "tuan", "gio", "phut", "h", "phong", "p", "ph", "tang", "lau", "tram", "muoi",
 ]);
+/** Đơn vị TIỀN ngay sau số: chữ suy từ các từ phía sau không đáng cả một gợi ý ("sáu mươi lăm nghìn tiền ga"
+ *  ≠ 65NTG). Không có "dong" — "Đồng Khởi" là tên đường. */
+const MONEY_UNIT = new Set(["k", "nghin", "ngan", "ng", "trieu", "tr", "ty", "ti", "vnd"]);
 /** "102 đường Lê Văn Thọ": bỏ qua chữ "đường" nằm giữa số và tên đường (trừ khi mã cần chữ "d"). */
 const STREET_WORD = "duong";
 
@@ -363,7 +370,7 @@ export function findSpokenBuildings(loose: string, buildings: SpokenBuildingRef[
           hit(k, i, Math.max(streetEnd, unitNext ? -1 : lettersEnd), "strong");
           continue;
         }
-        if (lettersEnd > 0) {
+        if (lettersEnd > 0 && !MONEY_UNIT.has(next ?? "")) {
           hit(k, i, lettersEnd, "weak");
           continue;
         }

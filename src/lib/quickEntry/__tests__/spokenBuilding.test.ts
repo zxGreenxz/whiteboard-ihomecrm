@@ -246,10 +246,13 @@ describe("tên thường gọi (building_common_names)", () => {
   });
 
   it("đơn vị tiền ngay sau số: chữ suy từ các từ phía sau chỉ là ĐOÁN, không tự điền toà", () => {
-    // nghìn + khoá = "nk" của 950NK; triệu + tiền + thuê = "ttt" của 45TTT ⇒ không bao giờ thành toà chắc.
-    expect(said("chín trăm năm mươi nghìn khoá cửa", real).building).toBeNull();
+    // nghìn + khoá = "nk" của 950NK; triệu + tiền + thuê = "ttt" của 45TTT ⇒ không thành toà, kể cả gợi ý
+    // (đơn vị TIỀN không phải chữ đánh vần hay đầu tên đường).
+    expect(said("chín trăm năm mươi nghìn khoá cửa", real)).toEqual({ building: null, candidates: [], guessed: false });
     const b45: SpokenBuildingRef[] = [{ id: "r45", name: "45TTT", code: "45", commonNames: ["Tân Kỳ"] }];
-    expect(said("bốn mươi lăm triệu tiền thuê nhà", b45).building).toBeNull();
+    expect(said("bốn mươi lăm triệu tiền thuê nhà", b45)).toEqual({ building: null, candidates: [], guessed: false });
+    const b65: SpokenBuildingRef[] = [{ id: "r65", name: "65NTG", code: "65" }];
+    expect(said("sáu mươi lăm nghìn tiền ga", b65)).toEqual({ building: null, candidates: [], guessed: false });
     expect(said("bốn lăm triệu không có hoá đơn", b45)).toEqual({ building: null, candidates: [], guessed: false });
     // Chữ đánh vần / đầu tên đường trùng từ đơn vị ("P", "Đồng") vẫn được GỢI Ý, không mất hẳn.
     expect(said("một một một P V C tiền rác", real)).toEqual({ building: null, candidates: ["r111"], guessed: true });
@@ -294,6 +297,13 @@ describe("tên thường gọi (building_common_names)", () => {
     // "Nhà Lê Văn Thọ" dò cả dạng bỏ chữ "nhà": "102 Lê Văn Thọ" vẫn chắc.
     const nha: SpokenBuildingRef[] = [{ id: "nA", name: "Nhà A", code: "102", commonNames: ["Nhà Lê Văn Thọ"] }];
     expect(said("một lẻ hai Lê Văn Thọ sơn", nha)).toEqual({ building: "nA", candidates: [], guessed: false });
+    // Bỏ được nhiều chữ mở đầu liền nhau.
+    const toaNha: SpokenBuildingRef[] = [{ id: "nA", name: "Nhà A", code: "102", commonNames: ["Toà nhà Lê Văn Thọ"] }];
+    expect(said("một lẻ hai Lê Văn Thọ sơn", toaNha)).toEqual({ building: "nA", candidates: [], guessed: false });
+    // Bỏ chữ mở đầu mà chỉ còn một từ ("Cần Giờ" ⇒ "giờ") thì không dùng: "mười lăm giờ" là giờ giấc.
+    const canGio: SpokenBuildingRef[] = [{ id: "nE", name: "Nhà E", code: "15", commonNames: ["Cần Giờ"] }];
+    expect(said("mười lăm giờ chiều sửa điện", canGio).building).toBeNull();
+    expect(said("mười lăm Cần Giờ sửa điện", canGio)).toEqual({ building: "nE", candidates: [], guessed: false });
   });
 
   it("tên toà dạng mã một chữ ('12A') không thành mã — 'anh', 'ăn' không là toà", () => {
