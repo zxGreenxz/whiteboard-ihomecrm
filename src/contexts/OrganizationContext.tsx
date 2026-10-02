@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   notifyManager,
   useQuery,
@@ -135,19 +135,31 @@ export function isOrgAgnosticQueryKey(queryKey: QueryKey): boolean {
  *   duyệt từ trước.
  *
  * Cách dọn theo đúng khuôn `syncAuthQueryCache` (src/lib/authQueryCache.ts:121):
- *   - còn observer → `reset()`: giữ observer để màn đang mở tự nạp lại ngay;
+ *   - còn observer → `reset()`: giữ observer, nhưng `Query.reset()` KHÔNG tự nạp
+ *     lại — query nằm ở pending/idle cho tới khi có người gọi fetch;
  *   - không ai xem → bỏ hẳn khỏi cache, khỏi tốn bộ nhớ và khỏi sống lại sau.
  * Gói trong `notifyManager.batch` để cả đợt chỉ gây một lần render.
+ *
+ * Trả về hash của các query đang hiển thị đã reset. Bên gọi PHẢI nạp lại tập này
+ * sau khi công ty mới đã commit (xem `OrganizationProvider`). Thiếu bước đó, màn
+ * đang mở kẹt ở "Chưa tải được…" cho tới khi tải lại trang — đo 02/10/2026 ở
+ * /account/profile khi chọn công ty ngay sau đăng nhập.
  */
-export function resetOrgScopedQueries(queryClient: QueryClient): void {
+export function resetOrgScopedQueries(queryClient: QueryClient): Set<string> {
   const cache = queryClient.getQueryCache();
+  const dangHienThi = new Set<string>();
   notifyManager.batch(() => {
     for (const query of cache.getAll()) {
       if (isOrgAgnosticQueryKey(query.queryKey)) continue;
-      if (query.getObserversCount() > 0) query.reset();
-      else cache.remove(query);
+      if (query.getObserversCount() > 0) {
+        if (query.isActive()) dangHienThi.add(query.queryHash);
+        query.reset();
+      } else {
+        cache.remove(query);
+      }
     }
   });
+  return dangHienThi;
 }
 
 /** Tách riêng và export để test được mà không phải dựng cả cây React. */
@@ -209,6 +221,8 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
 
   const organizations = useMemo(() => data ?? [], [data]);
   const selectedOrganizationId = resolveSelectedOrganizationId(organizations, luuId);
+  // Query đang hiển thị đã bị dọn khi đổi công ty, chờ nạp lại sau commit.
+  const choNapLai = useRef<Set<string> | null>(null);
 
   // Chỉ lưu/dọn sau khi tải THÀNH CÔNG. Mất mạng hoặc đăng xuất không có
   // nghĩa công ty đã lưu bị gỡ khỏi danh bạ. Lưu cả lựa chọn tự động khi chỉ
@@ -235,11 +249,26 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
       } catch { /* xem chú thích khởi tạo */ }
       // Dọn TRƯỚC khi đổi state: sau `datLuuId` là render ngay, và render đó
       // phải không còn đọc được dữ liệu công ty cũ. Xem resetOrgScopedQueries.
-      resetOrgScopedQueries(queryClient);
+      choNapLai.current = resetOrgScopedQueries(queryClient);
       datLuuId(id);
     },
     [organizations, selectedOrganizationId, queryClient],
   );
+
+  // Nạp lại SAU commit chứ không ngay trong selectOrganization: effect của màn con
+  // chạy trước effect này và đã gắn queryFn mới vào observer, nên lượt nạp đọc
+  // công ty mới. Nạp ngay lúc dọn thì queryFn còn giữ công ty cũ và ghi dữ liệu
+  // công ty A vào đúng khoá vừa dọn.
+  useEffect(() => {
+    const hashes = choNapLai.current;
+    if (!hashes) return;
+    choNapLai.current = null;
+    if (hashes.size === 0) return;
+    void queryClient.refetchQueries({
+      type: 'active',
+      predicate: (query) => hashes.has(query.queryHash),
+    });
+  }, [queryClient, selectedOrganizationId]);
 
   const value = useMemo<OrganizationState>(() => {
     return {
