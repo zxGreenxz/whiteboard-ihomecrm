@@ -12,6 +12,7 @@ import { formatAmount } from '@/components/contracts/detail/formatCurrency';
 import { dungDongLichSu } from './contractHistoryLines';
 import { dichVuHieuLuc, type DichVuToaLite } from './effectiveServices';
 import { DauThe, DongKV, NhanMuc, The } from './ui';
+import { LoadingState } from '@/components/loading/LoadingState';
 
 const CHU_KY: Record<string, string> = {
   MONTHLY: 'Hàng tháng',
@@ -92,7 +93,16 @@ export function ContractTermsCard({
           )}
         </div>
 
-        <ContractDetailRegion label="dịch vụ của hợp đồng" queries={[queryStates?.services,queryStates?.buildingServices]}>
+        <ContractDetailRegion label="dịch vụ của hợp đồng" queries={[queryStates?.services,queryStates?.buildingServices]}
+          loading={
+            // Giữ nền trắng + nhãn cột khi chờ: thiếu nền thì cả cột lộ màu khe lưới xám.
+            <div className="min-w-0 bg-white">
+              <NhanMuc>Dịch vụ</NhanMuc>
+              <div className="border-t border-[#f2f4f6] px-[var(--px)]">
+                <LoadingState label="dịch vụ của hợp đồng" variant="table" rows={4} />
+              </div>
+            </div>
+          }>
         {/* ── Cột con: Dịch vụ ────────────────────────────────── */}
         <div className="min-w-0 bg-white">
           {/* Chip NGUỒN GIÁ là phần quan trọng nhất của khối này. HĐ không khai
@@ -145,8 +155,8 @@ export function ContractTermsCard({
           </div>
 
           {dangTaiDichVu ? (
-            <div className="border-t border-[#f2f4f6] px-[var(--px)] py-[var(--rp)] text-[length:var(--fs-sm)] text-[#67737E]">
-              Đang tải dịch vụ…
+            <div className="border-t border-[#f2f4f6] px-[var(--px)]">
+              <LoadingState label="dịch vụ" variant="table" rows={3} />
             </div>
           ) : dichVu.dong.length === 0 ? (
             <div className="border-t border-[#f2f4f6] px-[var(--px)] py-[var(--rp)] text-[length:var(--fs-sm)] text-[#67737E]">
@@ -202,13 +212,21 @@ export function ContractTermsCard({
         </div>
       )}
 
-      <ContractDetailRegion label="lịch sử hợp đồng" queries={[queryStates?.history]}>
+      <ContractDetailRegion label="lịch sử hợp đồng" queries={[queryStates?.history]}
+        loading={
+          <div className="border-t border-[#eef0f3]">
+            <NhanMuc>Lịch sử hợp đồng</NhanMuc>
+            <div className="border-t border-[#f2f4f6] px-[var(--px)]">
+              <LoadingState label="lịch sử hợp đồng" variant="lines" rows={4} />
+            </div>
+          </div>
+        }>
       {/* ── Lịch sử ───────────────────────────────────────────── */}
       <div className="border-t border-[#eef0f3]">
         <NhanMuc>Lịch sử hợp đồng</NhanMuc>
         {historyLoading ? (
-          <div className="border-t border-[#f2f4f6] px-[var(--px)] py-[var(--rp)] text-[length:var(--fs-sm)] text-[#67737E]">
-            Đang tải lịch sử…
+          <div className="border-t border-[#f2f4f6] px-[var(--px)]">
+            <LoadingState label="lịch sử" variant="lines" rows={4} />
           </div>
         ) : (
           dongLichSu.map((d) => (

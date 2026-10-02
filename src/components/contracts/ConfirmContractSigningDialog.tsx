@@ -2,6 +2,7 @@ import {validateInputDrafts} from '@/lib/inputDraftValidation';
 import {isConfirmedFinancialRejection} from '@/lib/financialWorkflow';
 import { useEffect, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
+import { LoadingState } from '@/components/loading/LoadingState';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { DateInput } from '@/components/ui/date-input';
@@ -137,7 +138,7 @@ export function ConfirmContractSigningDialog({ open, onOpenChange, draft, canSig
         <Alert><AlertDescription>Đã ghi nhận ký và nhận phòng · {signed.contract_number}</AlertDescription></Alert>
         <p className="text-sm">Hợp đồng chính thức đã được tạo từ nháp phiên bản {signed.revision}. Có thể tải lại đúng bản này.</p>
         {canPrint && <Button type="button" disabled={pending} onClick={() => void handleDownload()}>{documentMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}{signed.official_document_sha256 ? 'Tải hợp đồng đã ký' : 'Tạo lại bản tải'}</Button>}
-      </div> : snapshot.isPending ? <p role="status">Đang kiểm tra nguồn hợp đồng…</p> : snapshot.isError ? <Alert variant="destructive"><AlertDescription>Không thể kiểm tra hợp đồng đã được ký hay chưa. <Button type="button" variant="link" onClick={() => void snapshot.refetch()}>Tải lại</Button></AlertDescription></Alert> : <div className="space-y-4">
+      </div> : snapshot.isPending ? <LoadingState label="nguồn hợp đồng" rows={4} /> : snapshot.isError ? <Alert variant="destructive"><AlertDescription>Không thể kiểm tra hợp đồng đã được ký hay chưa. <Button type="button" variant="link" onClick={() => void snapshot.refetch()}>Tải lại</Button></AlertDescription></Alert> : <div className="space-y-4">
         <div className="rounded-md bg-muted p-3 text-sm space-y-1">
           <p>Nháp phiên bản {draft.revision} · {document?.template_snapshot.name ?? 'Chưa xuất tài liệu phiên bản này'}</p>
           <p>Thời hạn: {draft.payload.form.start_date} → {draft.payload.form.end_date}</p>
@@ -152,7 +153,7 @@ export function ConfirmContractSigningDialog({ open, onOpenChange, draft, canSig
           <div className="rounded-md border p-3 space-y-3 text-sm">
             <p className="font-medium">Nguồn giữ chỗ/cọc của khách</p>
             <label className="flex gap-2"><input type="radio" name="signing-reservation" checked={!selectedReservation} onChange={() => selectReservation(null)}/>Không chuyển nguồn giữ chỗ; kiểm tra phòng còn nhận được khi ký</label>
-            {reservationsQuery.isPending ? <p role="status">Đang tải nguồn giữ chỗ…</p> : reservationsQuery.isError ? <p role="alert" className="text-destructive">Không tải được nguồn giữ chỗ theo quyền hiện tại. <Button type="button" variant="link" onClick={() => void reservationsQuery.refetch()}>Tải lại nguồn giữ chỗ</Button></p>
+            {reservationsQuery.isPending ? <LoadingState label="nguồn giữ chỗ" rows={2} /> : reservationsQuery.isError ? <p role="alert" className="text-destructive">Không tải được nguồn giữ chỗ theo quyền hiện tại. <Button type="button" variant="link" onClick={() => void reservationsQuery.refetch()}>Tải lại nguồn giữ chỗ</Button></p>
               : reservations.length ? reservations.map(reservation => <label key={reservation.id} className="flex gap-2 items-start"><input type="radio" name="signing-reservation" disabled={!signingReservationReady(reservation)} checked={selectedReservation?.id === reservation.id && selectedReservation.revision === reservation.revision} onChange={() => selectReservation(reservation)}/><span>{reservation.customer_name || draft.payload.customers.find(customer => customer.id === reservation.customer_id)?.full_name} · Đã nhận {reservation.received_amount.toLocaleString('vi-VN')} đ · phiên bản {reservation.revision}{!signingReservationReady(reservation) && ' · Chờ nhận/duyệt tiền'}</span></label>)
                 : <p className="text-muted-foreground">Không có giữ chỗ đang hiệu lực khớp phòng và khách của bản nháp.</p>}
             {selectedReservation && !reservationValid && <p role="alert" className="text-destructive">Nguồn đã chọn chưa xác minh được hoặc đã đổi. Tải lại và chọn đúng phiên bản trước khi ký.</p>}

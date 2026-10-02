@@ -22,6 +22,7 @@ import {
   type PhieuCocChoBang,
 } from './contractFinanceRows';
 import { DauThe, NutTron, The } from './ui';
+import { LoadingState } from '@/components/loading/LoadingState';
 
 /** Ô tiền: null thì để trống hẳn, 0 thì in "0" màu nhạt. */
 function OTien({
@@ -203,8 +204,8 @@ export function ContractFinanceCard({
 
                 {g.khoa === 'HOA_DON' && invoicesLoading && (
                   <tr>
-                    <td colSpan={6} className="px-[var(--px)] py-4 text-[length:var(--fs-sm)] text-[#67737E]">
-                      Đang tải hoá đơn…
+                    <td colSpan={6} className="px-[var(--px)] py-1">
+                      <LoadingState label="hoá đơn" variant="table" rows={3} />
                     </td>
                   </tr>
                 )}

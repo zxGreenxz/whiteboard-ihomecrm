@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { ChevronDown, FilePenLine, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { LoadingState } from '@/components/loading/LoadingState';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { useMyBuildingScope } from '@/hooks/useMyBuildingScope';
@@ -61,13 +62,13 @@ export function ContractDraftWorkspace({ buildingId, buildingIds, alwaysExpanded
         <Plus className="mr-1 h-4 w-4" />Soạn nháp
       </Button>}
     </div>
-    {(alwaysExpanded || expanded) && <Suspense fallback={<p className="p-4 text-sm text-muted-foreground">Đang tải bản nháp…</p>}>
+    {(alwaysExpanded || expanded) && <Suspense fallback={<LoadingState label="bản nháp" variant="table" rows={3} className="px-3" />}>
       <DraftList key={`${selectedOrganizationId}:${buildingId ?? ''}`} buildingId={buildingId} buildingIds={buildingIds} canEdit={canEdit} canExport={canExport} canSign={canCreate}
         canDelete={value => canUse(permissions, 'contracts', 'delete', value.building_id)}
         onEdit={editDraft} onPrint={setPrintDraft} onSign={editDraft} onTransfer={setTransferDraft} />
     </Suspense>}
     {transferDraft && <div className="p-3"><Button variant="ghost" size="sm" onClick={() => setTransferDraft(undefined)}>Đóng liên kết nhượng</Button>
-      <Suspense fallback={<p className="text-sm">Đang tải liên kết nhượng…</p>}><TransferPanel key={transferDraft.id} draft={transferDraft} canEdit={canEdit} /></Suspense>
+      <Suspense fallback={<LoadingState label="liên kết nhượng" rows={3} />}><TransferPanel key={transferDraft.id} draft={transferDraft} canEdit={canEdit} /></Suspense>
     </div>}
     {printDraft && <Suspense fallback={<p role="status" className="p-4 text-sm">Đang mở hộp thoại In…</p>}>
       <PrintDraftDialog key={`${selectedOrganizationId}:${printDraft.id}`} open draft={printDraft}

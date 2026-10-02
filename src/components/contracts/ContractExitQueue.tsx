@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import { LoadingState } from '@/components/loading/LoadingState';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { useContract } from '@/hooks/useContracts';
 import { useContractExitCase, useContractExitCases } from '@/hooks/useContractExitCases';
@@ -23,7 +24,9 @@ export function ContractExitQueue({ buildingIds = [], showEmpty = false }: { bui
   useEffect(() => {
     if (query.data && page > 0 && !query.data.items.length) setPage(value => value - 1);
   }, [query.data, page]);
-  if (query.isLoading) return <p className="text-sm text-muted-foreground">Đang tải hồ sơ chờ quyết toán…</p>;
+  // Ở danh sách hợp đồng khung này chỉ hiện khi có hồ sơ → chờ thì không vẽ gì; ở tab
+  // "Chờ quyết toán" (showEmpty) nó là nội dung chính → khối xám dạng dòng.
+  if (query.isLoading) return <LoadingState label="hồ sơ chờ quyết toán" variant={showEmpty ? 'table' : 'none'} rows={3} />;
   if (query.isError) return <div role="alert" className="rounded-md border p-3 text-sm">
     Không tải được hồ sơ chờ quyết toán. <Button variant="link" onClick={() => void query.refetch()}>Thử lại</Button>
   </div>;

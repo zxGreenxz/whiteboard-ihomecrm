@@ -17,6 +17,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { LoadingState } from "@/components/loading/LoadingState";
 import {
   Select,
   SelectContent,
@@ -541,8 +542,11 @@ export function CommissionVoucherModal({
     <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-w-3xl max-h-[90vh] overflow-auto p-0">
       <DialogHeader className="px-6 pt-6"><DialogTitle>Tạo phiếu hoa hồng và hỗ trợ tiền thuê</DialogTitle>
         <DialogDescription>Đối chiếu toàn bộ cam kết, nguồn chi và thực nhận trước khi lưu yêu cầu.</DialogDescription></DialogHeader>
-      {supportUnavailable ? <div className="px-6 text-sm space-y-2"><p role={supportRead.isLoading ? 'status' : 'alert'}>{supportRead.isLoading ? 'Đang đọc lịch hỗ trợ…' : 'Chưa đọc được lịch hỗ trợ; tải lại trước khi lập phiếu.'}</p>
-        <Button variant="outline" onClick={() => void supportRead.refetch()}>Tải lại lịch hỗ trợ</Button></div>
+      {supportUnavailable ? <div className="px-6 text-sm space-y-2">{supportRead.isLoading
+        // Chờ đọc lịch hỗ trợ: khối xám (chủ chốt 02/10/2026); quá 8 giây tự có "Mạng đang chậm" + Thử lại.
+        ? <LoadingState label="lịch hỗ trợ" rows={3} onRetry={() => void supportRead.refetch()} />
+        : <><p role="alert">Chưa đọc được lịch hỗ trợ; tải lại trước khi lập phiếu.</p>
+          <Button variant="outline" onClick={() => void supportRead.refetch()}>Tải lại lịch hỗ trợ</Button></>}</div>
         : supportPlan && selectedOrganizationId && contractId && <RentSupportPayoutForm key={`${selectedOrganizationId}:${contractId}`} organizationId={selectedOrganizationId} contractId={contractId}
           plan={supportPlan} prefill={prefill} rows={rows ?? []} refetchRows={followups.refetch} onlyKind={onlyKind} userId={authUser?.id} />}
       <DialogFooter className="px-6 pb-6"><Button variant="outline" onClick={() => onOpenChange(false)}>Để xử lý sau</Button></DialogFooter>
@@ -581,17 +585,16 @@ export function CommissionVoucherModal({
               </Button>
             </div>
           ) : !prefill ? (
-            <div className="py-8 text-center text-sm text-muted-foreground">
-              Đang tải thông tin hợp đồng...
-            </div>
+            // Chờ thông tin hợp đồng: khối xám dạng bảng chi tiết (chủ chốt 02/10/2026).
+            <LoadingState label="thông tin hợp đồng" variant="detail" rows={5} className="py-4" />
           ) : checkingVouchers || checkFailed || !canCreate ? <div className="p-6 text-sm space-y-2">
-            {checkingVouchers ? <p role="status">Đang đối chiếu phiếu hiện có...</p> : checkFailed ? <>
+            {checkingVouchers ? <LoadingState label="phiếu hiện có để đối chiếu" rows={3} /> : checkFailed ? <>
               <p role="alert">Chưa đối chiếu được phiếu hiện có. Hãy tải lại trước khi tạo để tránh trùng phiếu.</p>
               <Button variant="outline" onClick={() => { void vouchersQuery.refetch(); void saleQuery.refetch(); void followups.refetch(); }}>Đối chiếu lại</Button>
             </> : <p>Bạn chưa có quyền xử lý hoa hồng của hợp đồng này.</p>}
           </div> : (
             <div className="space-y-6 pb-2">
-              {checkingVouchers ? <p role="status" className="text-sm text-muted-foreground">Đang đối chiếu phiếu hiện có...</p>
+              {checkingVouchers ? <LoadingState label="phiếu hiện có để đối chiếu" rows={2} />
                 : checkFailed ? <div role="alert" className="text-sm text-destructive space-y-2">
                   <p>Chưa đối chiếu được phiếu hiện có. Hãy tải lại trước khi tạo để tránh trùng phiếu.</p>
                   <Button variant="outline" onClick={() => { void vouchersQuery.refetch(); void saleQuery.refetch(); void followups.refetch(); }}>Đối chiếu lại</Button>

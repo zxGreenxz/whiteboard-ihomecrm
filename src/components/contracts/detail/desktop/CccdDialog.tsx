@@ -19,6 +19,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { StorageImage } from '@/components/ui/storage-image';
+import { SkeletonBar } from '@/components/loading/LoadingState';
 import type { AnhCccd } from './tenantMetaLines';
 import { thongTinGiayTo, type KhachChoGiayTo } from './idCardInfo';
 
@@ -44,9 +45,13 @@ function Mat({ nhan, value }: { nhan: string; value: string }) {
         // gửi ảnh chụp bằng điện thoại) mà ép rộng hết ô thì hai bên là hai dải
         // xám to hơn cả tấm ảnh.
         className="mx-auto max-h-[72vh] w-auto max-w-full rounded-lg border border-[#e2e5ea] object-contain"
+        // Chờ ký URL ảnh: khối xám đúng chỗ ảnh, chữ chỉ cho trình đọc màn hình.
         fallback={
-          <div className="flex h-[40vh] items-center justify-center rounded-lg border border-[#e2e5ea] bg-[#f4f6f8] text-[13px] text-[#67737E]">
-            Đang tải ảnh…
+          <div role="status" className="h-[40vh] overflow-hidden rounded-lg border border-[#e2e5ea]">
+            <span className="sr-only">Đang tải ảnh…</span>
+            <div className="ld-appear h-full" aria-hidden="true">
+              <SkeletonBar className="h-full w-full rounded-none" />
+            </div>
           </div>
         }
       />

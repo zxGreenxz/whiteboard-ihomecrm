@@ -4,6 +4,7 @@ import type { MeterBoundaryInput } from '@/lib/contractMeterBoundaries';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
+import { LoadingState } from '@/components/loading/LoadingState';
 
 const MISSING_REASON = 'Chưa đủ chỉ số khi nhận bàn giao, bổ sung sau';
 function localDateTime(value = new Date()) {
@@ -44,7 +45,7 @@ export function ContractMeterBoundaryFields({ roomId, allowMissing = false, disa
       <span>Chưa đủ chỉ số, bổ sung sau. Vẫn ghi nhận khách đã trả phòng.</span>
     </label>}
     {!missing && <>
-      {query.isPending ? <p role="status" className="text-sm">Đang tải đồng hồ của phòng…</p>
+      {query.isPending ? <LoadingState label="đồng hồ của phòng" variant="detail" rows={2} />
         : query.isError ? <p role="alert" className="text-sm text-destructive">Không tải được đồng hồ. <Button variant="link" type="button" onClick={() => void query.refetch()}>Thử lại</Button></p>
         : <>
           {!meters.length && <p className="text-sm text-muted-foreground">Phòng chưa có đồng hồ đang hoạt động.</p>}

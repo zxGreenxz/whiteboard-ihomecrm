@@ -11,6 +11,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { AlertTriangle, Loader2 } from "lucide-react";
+import { LoadingState } from "@/components/loading/LoadingState";
 import { supabase } from "@/integrations/supabase/client";
 import { useDeleteContract } from "@/hooks/useContracts";
 import type { ContractWithRelations } from "@/types/contract";
@@ -112,10 +113,9 @@ export function DeleteContractDialog({
           <AlertDialogDescription asChild>
             <div className="space-y-3">
               {readError ? <div role="alert" className="text-destructive"><p>Chưa kiểm tra được hóa đơn và hồ sơ thanh lý của hợp đồng này.</p><p>{readError}</p><button type="button" onClick={()=>setReadAttempt(n=>n+1)}>Tải lại</button></div> : checking ? (
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span>Đang kiểm tra dữ liệu liên quan...</span>
-                </div>
+                // Chờ đọc hoá đơn/thanh lý liên quan: khối xám đúng chỗ câu xác nhận; nút Xoá
+                // vẫn khoá tới khi đọc xong (canDelete) — chủ chốt 02/10/2026.
+                <LoadingState label="dữ liệu liên quan" rows={2} />
               ) : hasFinancialRecords ? (
                 <div className="flex items-start gap-2 rounded-md border border-yellow-200 bg-yellow-50 p-3">
                   <AlertTriangle className="h-5 w-5 text-yellow-600 mt-0.5 shrink-0" />

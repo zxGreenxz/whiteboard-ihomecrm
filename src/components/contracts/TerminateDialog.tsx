@@ -31,6 +31,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Loader2, ArrowLeft, ReceiptText, Undo2 } from "lucide-react";
+import { LoadingState } from "@/components/loading/LoadingState";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -210,8 +211,14 @@ export function TerminateDialog({
           <DialogDescription className="sr-only">Ghi nhận ngày trả phòng và loại thanh lý; chọn quyết toán ngay hoặc xử lý hồ sơ sau.</DialogDescription>
         </DialogHeader>
 
-        {transferUnavailable && <p role="status" className="text-sm">{brokerFeeUnavailable ? 'Chưa xác định được phí nhượng hợp lệ. Kiểm tra liên kết nhượng trước khi quyết toán.' : transferQuery.isError ? 'Không tải được liên kết nhượng. Đóng và mở lại hồ sơ để thử lại.' : 'Đang kiểm tra liên kết nhượng…'}</p>}
-        {financeUnavailable && <p role="alert" className="text-sm text-destructive">{invoiceQuery.isError || creditQuery.isError ? 'Không tải được công nợ và số dư khách hàng. Vui lòng tải lại trước khi quyết toán.' : 'Đang tải công nợ và số dư khách hàng…'}</p>}
+        {/* Chờ đọc: vạch/khối xám thay chữ "Đang …" (chủ chốt 02/10/2026); nút vẫn khoá như cũ
+            (transferUnavailable / financeUnavailable). Câu báo lỗi giữ nguyên. */}
+        {transferUnavailable && (brokerFeeUnavailable || transferQuery.isError
+          ? <p role="status" className="text-sm">{brokerFeeUnavailable ? 'Chưa xác định được phí nhượng hợp lệ. Kiểm tra liên kết nhượng trước khi quyết toán.' : 'Không tải được liên kết nhượng. Đóng và mở lại hồ sơ để thử lại.'}</p>
+          : <LoadingState label="liên kết nhượng" variant="inline" />)}
+        {financeUnavailable && (invoiceQuery.isError || creditQuery.isError
+          ? <p role="alert" className="text-sm text-destructive">Không tải được công nợ và số dư khách hàng. Vui lòng tải lại trước khi quyết toán.</p>
+          : <LoadingState label="công nợ và số dư khách hàng" rows={5} />)}
 
         {step === 1 && (
           <ContractReturnStep actualDate={actualDate} onDateChange={setActualDate}

@@ -1,5 +1,6 @@
-import { FileText, Loader2 } from 'lucide-react';
+import { FileText } from 'lucide-react';
 import { Label } from '@/components/ui/label';
+import { LoadingState } from '@/components/loading/LoadingState';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import type { DocumentTemplate } from '@/hooks/useDocumentTemplates';
 
@@ -12,9 +13,7 @@ export function ContractTemplatePicker({ templates, selectedId, onSelect, isLoad
 }) {
   return <div>
     <Label className="text-sm font-medium">Chọn mẫu hợp đồng</Label>
-    {isLoading ? <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
-      <Loader2 className="h-4 w-4 animate-spin" /> Đang tải mẫu…
-    </div> : isError ? <p role="alert" className="py-4 text-sm text-destructive">Không thể tải danh sách mẫu hợp đồng.</p>
+    {isLoading ? <LoadingState label="mẫu" rows={3} className="mt-2" /> : isError ? <p role="alert" className="py-4 text-sm text-destructive">Không thể tải danh sách mẫu hợp đồng.</p>
       : templates.length === 0 ? <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground text-center">
         Chưa có mẫu HĐ thuê. Vào <span className="font-medium">Cài đặt → Mẫu biểu</span> để tải lên.
       </div> : <RadioGroup value={selectedId} onValueChange={onSelect} className="mt-2 space-y-1 max-h-64 overflow-auto">

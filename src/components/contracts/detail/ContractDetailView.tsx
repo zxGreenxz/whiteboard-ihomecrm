@@ -33,6 +33,7 @@ import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { usePhoneViewport } from '@/hooks/use-mobile';
 import { useBuildingServices } from '@/hooks/useBuildingServices';
 import { ContractDetailMobile } from '@/components/contracts/detail/ContractDetailMobile';
+import { ContractDetailLoadingFrame } from './ContractDetailLoadingFrame';
 // Types dùng chung với nhánh mobile (trước đây khai cục bộ ở đây).
 import type { ContractServiceItem as ContractService, ContractHistoryItem } from '@/components/contracts/detail/types';
 // UI desktop: một trang hai cột, không tab (12/09/2026). State/handler vẫn ở
@@ -46,6 +47,8 @@ interface ContractDetailViewProps {
   onBack: () => void;
   /** Ẩn nút "Quay lại" ở đầu (modal đã có nút X riêng). */
   showBackButton?: boolean;
+  /** Mã HĐ nơi mở đã biết (dòng danh sách) — làm tiêu đề khung chờ trước khi dữ liệu về. */
+  title?: string | null;
 }
 
 /**
@@ -53,7 +56,7 @@ interface ContractDetailViewProps {
  * Dùng chung cho route /contracts/:id (deep-link) và modal full-screen mở từ
  * danh sách (giữ nguyên bộ lọc đang dò).
  */
-const ContractDetailView = ({ id, onBack, showBackButton = true }: ContractDetailViewProps) => {
+const ContractDetailView = ({ id, onBack, showBackButton = true, title }: ContractDetailViewProps) => {
   const { data: perms } = useMyPermissions();
   // Khởi tạo ĐỒNG BỘ (matchMedia) để render thẳng bản mobile ở frame đầu — không
   // nháy 1 frame bản desktop rồi mới đổi (useIsMobile bị undefined→false).
@@ -72,7 +75,7 @@ const ContractDetailView = ({ id, onBack, showBackButton = true }: ContractDetai
 
   // Fetch contract with relations
   const contractQuery = useContract(id || '');
-  const { data: contract, isLoading: contractLoading } = contractQuery;
+  const { data: contract } = contractQuery;
 
   // Fetch invoices for this contract
   const invoicesQuery = useInvoicesLegacy({
@@ -149,6 +152,12 @@ const ContractDetailView = ({ id, onBack, showBackButton = true }: ContractDetai
     terminationInfoQ.isError && 'quyết toán thanh lý',
   ].filter(Boolean) as string[];
 
+  // Trang đã đi qua khung chờ (chưa có hợp đồng) thì lúc dữ liệu về KHÔNG chạy lại hiệu
+  // ứng vào trang (route-anim: mờ → rõ) — chạy lại là cả trang nhạt đi thêm một nhịp
+  // ngay khi vừa hiện, trên điện thoại chậm nhìn như "cả trang bị mờ".
+  const [frameShownFor, setFrameShownFor] = useState<string | null>(null);
+  if (id && contract === undefined && frameShownFor !== id) setFrameShownFor(id);
+
   // Error states
   if (!id) {
     return (
@@ -161,15 +170,14 @@ const ContractDetailView = ({ id, onBack, showBackButton = true }: ContractDetai
     );
   }
 
-  if (contract === undefined && !contractLoading) {
-    return <QueryRegion label="thông tin hợp đồng" queries={[contractQuery]}><></></QueryRegion>;
-  }
-
-  if (contractLoading) {
+  // Chưa có hợp đồng (đang tải, mạng tạm dừng, hoặc lỗi đọc): khung trang hiện ngay —
+  // nút quay lại + tiêu đề — chỗ dữ liệu là khối xám dạng bảng chi tiết; lỗi thật vẫn
+  // là thẻ "Chưa tải được … / Tải lại" của QueryRegion, nằm trong khung (chủ chốt 02/10/2026).
+  if (contract === undefined) {
     return (
-      <div className="text-center py-12 text-gray-500">
-        Đang tải thông tin hợp đồng...
-      </div>
+      <ContractDetailLoadingFrame isMobile={isMobile} title={title} onBack={onBack}>
+        <QueryRegion label="thông tin hợp đồng" queries={[contractQuery]} skeleton="detail" rows={8}><></></QueryRegion>
+      </ContractDetailLoadingFrame>
     );
   }
 
@@ -229,10 +237,11 @@ const ContractDetailView = ({ id, onBack, showBackButton = true }: ContractDetai
   // CSS .cdt-* scope riêng nên không ảnh hưởng desktop.
   if (isMobile) {
     return (
-      <QueryRegion label="thông tin hợp đồng" queries={[contractQuery]}>
+      <QueryRegion label="thông tin hợp đồng" queries={[contractQuery]} skeleton="detail" rows={8}>
         {contract.status !== 'TERMINATED' && <Suspense fallback={null}><TransferPanel key={contract.id} contractId={contract.id} /></Suspense>}
         <ContractDetailMobile
           contract={contract}
+          animateEntry={frameShownFor !== id}
           queryStates={queryStates}
           commissionFollowup={<ContractCommissionFollowupPanel key={`commission:${contract.id}`} contractId={contract.id} />}
           exitCasePanel={contract.status === 'TERMINATED' ? <ContractExitCasePanel key={`exit:${contract.id}`} contract={contract} /> : null}
@@ -265,7 +274,7 @@ const ContractDetailView = ({ id, onBack, showBackButton = true }: ContractDetai
   }
 
   return (
-    <QueryRegion label="thông tin hợp đồng" queries={[contractQuery]}>
+    <QueryRegion label="thông tin hợp đồng" queries={[contractQuery]} skeleton="detail" rows={8}>
       {contract.status === 'TERMINATED' && <ContractExitCasePanel key={`exit:${contract.id}`} contract={contract} />}
       {contract.status !== 'TERMINATED' && <Suspense fallback={null}><TransferPanel key={contract.id} contractId={contract.id} /></Suspense>}
       <ContractDetailDesktop
@@ -279,6 +288,7 @@ const ContractDetailView = ({ id, onBack, showBackButton = true }: ContractDetai
         totalDays={totalDays}
         daysElapsed={daysElapsed}
         outstandingAmount={invoicesError || invoices === undefined ? null : outstandingAmount}
+        outstandingPending={!invoicesError && invoices === undefined}
         sideLoadErrors={sideLoadErrors}
         customers={contractCustomers}
         vehiclesByCustomer={vehiclesByCustomer}

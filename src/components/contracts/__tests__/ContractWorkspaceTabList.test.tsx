@@ -69,10 +69,11 @@ it('shows loading and query errors instead of false zero badges', () => {
   show();
   const pending = screen.getByRole('tab', { name: /Chờ quyết toán/ });
   const drafts = screen.getByRole('tab', { name: /Hợp đồng nháp/ });
-  expect(within(pending).getByText('…')).toBeTruthy();
+  // Đang chờ: vạch xám trong ô đếm, câu "Đang tải …" chỉ cho trình đọc màn hình (chủ chốt 02/10/2026).
+  expect(within(pending).getByRole('status').textContent).toMatch(/Đang tải hồ sơ chờ quyết toán/);
+  expect(within(pending).queryByText('…')).toBeNull();
   expect(within(drafts).getByText('!')).toBeTruthy();
   expect(within(pending).getByText('Chỉ số !')).toBeTruthy();
-  expect(pending.getAttribute('title')).toMatch(/Đang tải/);
   expect(drafts.getAttribute('title')).toMatch(/Không tải/);
   expect(within(pending).queryByText('0')).toBeNull();
   expect(within(drafts).queryByText('0')).toBeNull();

@@ -1,5 +1,6 @@
 import { useEffect,useRef,useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { InlineSkeleton } from '@/components/loading/LoadingState';
 import { Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -35,11 +36,11 @@ export function ContractTransferLinkDialog({open,onOpenChange,exitCase:fixedExit
     try{await save.mutateAsync({...fields,requestId:request.current!.id});onOpenChange(false);}catch{/* rendered below */}
   };
   return <Dialog open={open} onOpenChange={value=>{if(!save.isPending)onOpenChange(value);}}><DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto"><DialogHeader><DialogTitle>Liên kết hai hợp đồng nhượng</DialogTitle><DialogDescription>Hồ sơ cũ giữ nguyên khách và lịch sử. Chọn nháp của khách mới cùng phòng; sửa ngày nhận, hạn và tiền cọc trong nháp trước khi liên kết.</DialogDescription></DialogHeader>
-    {(drafts.isLoading||exits.isLoading)&&<p role="status">Đang tải hồ sơ nguồn…</p>}
+    {/* Đang nạp danh sách cho hai ô chọn: vạch xám ngay sau nhãn ô đó, không chữ "Đang tải" (chủ chốt 02/10/2026). */}
     {(drafts.isError||exits.isError)&&<p role="alert" className="text-destructive">Không tải được hồ sơ nguồn. <Button variant="link" onClick={()=>{void drafts.refetch();void exits.refetch();}}>Thử lại</Button></p>}
-    <label className="space-y-1 text-sm"><span>Hồ sơ trả phòng cũ</span><select aria-label="Hồ sơ trả phòng cũ" className="flex h-10 w-full rounded-md border bg-background px-3" disabled={!!fixedExit||save.isPending} value={exitId} onChange={event=>setExitId(event.target.value)}>
+    <label className="space-y-1 text-sm"><span>Hồ sơ trả phòng cũ</span>{!fixedExit&&exits.isLoading&&<InlineSkeleton label="hồ sơ trả phòng chờ quyết toán" width="5rem" className="ml-2" />}<select aria-label="Hồ sơ trả phòng cũ" className="flex h-10 w-full rounded-md border bg-background px-3" disabled={!!fixedExit||save.isPending} value={exitId} onChange={event=>setExitId(event.target.value)}>
       <option value="">Chọn hồ sơ chờ quyết toán</option>{(fixedExit?[fixedExit]:pendingExits).map(x=><option key={x.id} value={x.id}>{x.contract_number??x.id.slice(0,8)} · {x.customer_name??'Khách cũ'} · {x.room_name}</option>)}</select></label>
-    <label className="space-y-1 text-sm"><span>Nháp hợp đồng khách mới</span><select aria-label="Nháp hợp đồng khách mới" className="flex h-10 w-full rounded-md border bg-background px-3" disabled={!!fixedDraft||save.isPending} value={draftId} onChange={event=>setDraftId(event.target.value)}>
+    <label className="space-y-1 text-sm"><span>Nháp hợp đồng khách mới</span>{!fixedDraft&&drafts.isLoading&&<InlineSkeleton label="nháp hợp đồng" width="5rem" className="ml-2" />}<select aria-label="Nháp hợp đồng khách mới" className="flex h-10 w-full rounded-md border bg-background px-3" disabled={!!fixedDraft||save.isPending} value={draftId} onChange={event=>setDraftId(event.target.value)}>
       <option value="">Chọn nháp cùng phòng</option>{(fixedDraft?[fixedDraft]:editableDrafts).map(x=><option key={x.id} value={x.id}>{x.payload.customers.find(c=>c.is_representative)?.full_name||'Chưa có khách'} · v{x.revision} · {x.payload.form.start_date}</option>)}</select></label>
     {draft&&<p className="text-sm">Ngày nhận: {draft.payload.form.start_date||'Chưa có'} · Hạn: {draft.payload.form.end_date||'Chưa có'} · Cọc mới: {draft.payload.form.total_deposit.toLocaleString('vi-VN')} đ</p>}
     <label className="space-y-1 text-sm"><span>Nguồn khách mới</span><select aria-label="Nguồn khách mới" className="flex h-10 w-full rounded-md border bg-background px-3" value={mode} disabled={save.isPending} onChange={event=>{setMode(event.target.value as typeof mode);setDeposit('NEW_PAYMENT');}}><option value="SELF_FOUND">Khách tự tìm người nhận</option><option value="BROKER">Qua môi giới</option></select></label>

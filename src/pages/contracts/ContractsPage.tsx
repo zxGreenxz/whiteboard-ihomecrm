@@ -1,4 +1,5 @@
 import { QueryRegion } from '@/components/errors/QueryRegion';
+import { LoadingState } from '@/components/loading/LoadingState';
 import { useState, useMemo, useCallback, useEffect, useRef, lazy, Suspense } from 'react';
 import { FileText, Plus, Upload, Download, Filter, Search, AlertTriangle } from 'lucide-react';
 import MainLayout from '@/components/layout/MainLayout';
@@ -402,7 +403,9 @@ function ContractsDesktopPage() {
     <MainLayout title="Hợp đồng thuê" subtitle="Khách hàng > Hợp đồng" icon={FileText}>
       <Tabs value={workspaceTab} onValueChange={setWorkspaceTab} className="space-y-4">
         {/* Stats Cards */}
-        <QueryRegion label="thống kê hợp đồng" queries={[statsQuery]}>
+        {/* Chờ số: bốn thẻ lọc vẫn hiện (bấm lọc được), con số là vạch xám — chủ chốt 02/10/2026. */}
+        <QueryRegion label="thống kê hợp đồng" queries={[statsQuery]}
+          loading={<ContractStatsCards stats={stats} activeFilter={activeStatFilter} onFilterChange={handleStatFilterChange} loading />}>
           <ContractStatsCards
             stats={stats}
             activeFilter={activeStatFilter}
@@ -492,7 +495,7 @@ function ContractsDesktopPage() {
         {/* Table */}
         <div className="bg-white rounded-lg border">
           {isLoading ? (
-            <div className="p-8 text-center text-muted-foreground">Đang tải dữ liệu...</div>
+            <LoadingState label="danh sách hợp đồng" variant="table" rows={8} className="px-2" />
           ) : isError ? (
             <div className="p-8 flex flex-col items-center gap-3 text-center">
               <AlertTriangle className="h-10 w-10 text-destructive" />

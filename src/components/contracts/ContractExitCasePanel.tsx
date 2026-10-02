@@ -1,5 +1,6 @@
 import { lazy, Suspense, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { LoadingState } from '@/components/loading/LoadingState';
 import { useContractExitCases } from '@/hooks/useContractExitCases';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
@@ -14,7 +15,9 @@ export function ContractExitCasePanel({ contract }: { contract: ContractWithRela
   const query = useContractExitCases({ contractId: contract.id, limit: 1 });
   const { data: permissions } = useMyPermissions();
   const [open, setOpen] = useState(false);
-  if (query.isLoading) return <p className="p-3 text-sm text-muted-foreground">Đang tải hồ sơ trả phòng…</p>;
+  // Khung hồ sơ chỉ có khi hợp đồng đã có hồ sơ trả phòng — chờ thì không vẽ gì để
+  // khỏi hiện rồi biến (chủ chốt 02/10/2026: không chữ "Đang tải…").
+  if (query.isLoading) return <LoadingState label="hồ sơ trả phòng" variant="none" />;
   if (query.isError) return <p role="alert" className="p-3 text-sm">Không tải được hồ sơ trả phòng. <Button variant="link" onClick={() => void query.refetch()}>Thử lại</Button></p>;
   const exitCase = query.data?.items[0];
   if (!exitCase) return null;
@@ -37,7 +40,7 @@ export function ContractExitCasePanel({ contract }: { contract: ContractWithRela
       </li>)}</ol>
     </details>}
     {exitCase.state === 'FINALIZED' && <p className="text-xs text-muted-foreground">Theo dõi tiền khách trả và tiền hoàn trên các chứng từ hiện có của hợp đồng.</p>}
-    <Suspense fallback={<p className="text-sm">Đang tải liên kết nhượng…</p>}><TransferPanel exitCase={exitCase} /></Suspense>
+    <Suspense fallback={<LoadingState label="liên kết nhượng" variant="none" />}><TransferPanel exitCase={exitCase} /></Suspense>
     <ContractMeterBoundaryPanel key={contract.id} contractId={contract.id} roomId={exitCase.room_at_handover_id}
       canEdit={canUse(permissions, 'contracts', 'edit')} />
     {open && exitCase.state === 'PENDING' && <TerminateDialog open={open} onOpenChange={setOpen} contract={contract} exitCase={exitCase} />}

@@ -17,6 +17,8 @@ import { ContractMobileSettlementStatus, type ContractMobileSettlementStatusProp
 interface Props extends Pick<ContractMobileSettlementStatusProps,
   'terminationInfo' | 'pendingForfeitCount' | 'pendingRefundCount' | 'statusLoading' | 'sideLoadErrors'> {
   contract: ContractWithRelations;
+  /** false khi trang vừa thay khung chờ (ContractDetailLoadingFrame) — khỏi chạy lại hiệu ứng vào trang. */
+  animateEntry?: boolean;
   queryStates?: ContractDetailQueries;
   services: ContractServiceItem[];
   invoices: InvoiceWithRelations[];
@@ -58,7 +60,7 @@ export function ContractDetailMobile(props: Props) {
   return (
     <div className="cdt-stage">
       <div className="cdt-app">
-        <div className="route route-anim">
+        <div className={props.animateEntry === false ? 'route' : 'route route-anim'}>
           <div className="mtop">
             <button className="mback" onClick={props.onBack} aria-label="Quay lại"><ArrowLeft /></button>
             <div className="mtitle">
@@ -98,20 +100,22 @@ export function ContractDetailMobile(props: Props) {
               ))}
             </div>
 
+            {/* Tab Thông tin: phần đọc từ hợp đồng (số HĐ, khách, phòng, cọc, thời hạn) hiện
+                ngay; chỉ thẻ dịch vụ và danh sách phiếu cọc chờ nguồn riêng của chúng —
+                khối xám ngay tại chỗ, lỗi đọc vẫn chặn đúng khu đó (chủ chốt 02/10/2026). */}
             {tab === 'info' && (
-              <ContractDetailRegion label="dịch vụ và phiếu cọc của hợp đồng" queries={[props.queryStates?.services,props.queryStates?.deposits,props.queryStates?.buildingServices]}>
               <ContractInfoTab
                 contract={contract}
                 services={services}
                 customers={customers}
                 depositVouchers={depositVouchers}
+                queryStates={props.queryStates}
                 onOpenCustomer={(id) => navigate(`/customers/${id}`)}
               />
-              </ContractDetailRegion>
             )}
-            {tab === 'invoices' && <ContractDetailRegion label="hóa đơn của hợp đồng" queries={[props.queryStates?.invoices]}><ContractInvoicesTab invoices={invoices} /></ContractDetailRegion>}
-            {tab === 'payments' && <ContractDetailRegion label="thanh toán của hợp đồng" queries={[props.queryStates?.invoices]}><ContractPaymentsTab invoices={invoices} /></ContractDetailRegion>}
-            {tab === 'history' && <ContractDetailRegion label="lịch sử hợp đồng" queries={[props.queryStates?.history]}><ContractHistoryTab history={history} /></ContractDetailRegion>}
+            {tab === 'invoices' && <ContractDetailRegion label="hóa đơn của hợp đồng" queries={[props.queryStates?.invoices]} skeleton="list" rows={4}><ContractInvoicesTab invoices={invoices} /></ContractDetailRegion>}
+            {tab === 'payments' && <ContractDetailRegion label="thanh toán của hợp đồng" queries={[props.queryStates?.invoices]} skeleton="list" rows={4}><ContractPaymentsTab invoices={invoices} /></ContractDetailRegion>}
+            {tab === 'history' && <ContractDetailRegion label="lịch sử hợp đồng" queries={[props.queryStates?.history]} skeleton="lines" rows={5}><ContractHistoryTab history={history} /></ContractDetailRegion>}
           </div>
         </div>
       </div>

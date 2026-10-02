@@ -8,6 +8,7 @@
 
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { LoadingState, type LoadingVariant } from '@/components/loading/LoadingState';
 
 export function The({
   id,
@@ -49,6 +50,34 @@ export function DauThe({
       </span>
       {children ? <div className="ml-auto flex items-center gap-2">{children}</div> : null}
     </div>
+  );
+}
+
+/**
+ * Thẻ đang chờ dữ liệu: khung thẻ + đầu thẻ hiện ngay, thân là khối xám đúng hình
+ * (chủ chốt 02/10/2026 — không chữ "Đang tải…"). Dùng làm `loading` của vùng đọc.
+ */
+export function TheCho({
+  icon,
+  nhan,
+  label,
+  skeleton,
+  rows,
+}: {
+  icon: LucideIcon;
+  nhan: string;
+  /** Tên khu cho trình đọc màn hình: "Đang tải {label}…". */
+  label: string;
+  skeleton: LoadingVariant;
+  rows?: number;
+}) {
+  return (
+    <The>
+      <DauThe icon={icon} nhan={nhan} />
+      <div className="px-[var(--px)]">
+        <LoadingState label={label} variant={skeleton} rows={rows} />
+      </div>
+    </The>
   );
 }
 

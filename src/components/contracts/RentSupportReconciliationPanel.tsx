@@ -1,5 +1,6 @@
 import {useRef,useState} from 'react';
 import {Button} from '@/components/ui/button';
+import {LoadingState} from '@/components/loading/LoadingState';
 import {Input} from '@/components/ui/input';
 import {Textarea} from '@/components/ui/textarea';
 import {useRentSupportLifecycle,useRentSupportLifecycleActions,useRentSupportReconciliationContext} from '@/hooks/useRentSupportLifecycle';
@@ -30,7 +31,7 @@ function PanelContent({organizationId,contractId,voucherId}:Props) {
  const requestId=(key:string)=>{if(request.current?.key!==key)request.current={key,id:crypto.randomUUID()};return request.current.id;};
  const changed=()=>{editVersion.current+=1;setPrepared(null);setError(null);setMessage(null);};
  const fail=(e:unknown)=>setError(friendlyError(e,'Không lưu được đối chiếu').description);
- if(read.isLoading)return <p role="status">Đang đọc lịch hỗ trợ…</p>;
+ if(read.isLoading)return <LoadingState label="lịch hỗ trợ" variant="cards" rows={3}/>;
  if(read.error)return <div role="alert">Không tải được thông tin hỗ trợ. <Button variant="link" onClick={()=>void read.refetch()}>Thử lại</Button></div>;
  if(!read.data?.plan_revision)return <p>Hợp đồng chưa có lịch hỗ trợ theo tháng được xác nhận.</p>;
  const data=read.data;
@@ -62,7 +63,7 @@ function PanelContent({organizationId,contractId,voucherId}:Props) {
    <label className="block">Lý do<Textarea value={reason} onChange={e=>{setReason(e.target.value);changed();}}/></label>
    <Button disabled={reason.trim().length<8||actions.request.isPending} onClick={()=>void askReview()}>Lưu đề nghị rà soát</Button>
   </div>}
-  {!source&&candidate.isLoading&&<p role="status">Đang đọc chứng từ đối chiếu…</p>}
+  {!source&&candidate.isLoading&&<LoadingState label="chứng từ đối chiếu" rows={3}/>}
   {!source&&candidate.error&&<p role="alert">Không đọc được căn cứ đối chiếu của phiếu này.</p>}
   {!source&&candidate.data&&<div className="space-y-2">
    <p>Đối chiếu phiếu cũ · Thực nhận trên phiếu: {money(candidate.data.engine_net)}</p>

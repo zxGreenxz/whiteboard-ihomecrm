@@ -1,6 +1,7 @@
 import { useEffect,useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import { LoadingState } from '@/components/loading/LoadingState';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { useContractMeterFollowups } from '@/hooks/useContractMeterFollowups';
 
@@ -9,7 +10,8 @@ export function ContractMeterFollowupQueue({buildingIds=[]}:{buildingIds?:string
   const scope=[...buildingIds].sort().join(',');const query=useContractMeterFollowups(buildingIds,page);
   useEffect(()=>setPage(0),[scope,selectedOrganizationId]);
   useEffect(()=>{if(page>0&&query.data&&!query.data.items.length)setPage(value=>value-1);},[page,query.data]);
-  if(query.isLoading)return <p className="text-sm">Đang tải mốc chỉ số còn thiếu…</p>;
+  // Khung này chỉ hiện khi có hồ sơ chờ chỉ số → chờ thì không vẽ gì (chủ chốt 02/10/2026).
+  if(query.isLoading)return <LoadingState label="mốc chỉ số còn thiếu" variant="none" />;
   if(query.isError)return <p role="alert" className="text-sm">Không tải được hồ sơ chờ chỉ số. <Button variant="link" onClick={()=>void query.refetch()}>Thử lại</Button></p>;
   if(!query.data?.total)return null;
   return <section aria-label="Chờ bổ sung chỉ số bàn giao" className="rounded-lg border p-3">

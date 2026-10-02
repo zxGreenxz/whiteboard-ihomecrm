@@ -4,6 +4,7 @@ import type { ContractTerminationInfo } from '@/hooks/contracts/useContractDetai
 import type { ContractDepositVoucher } from './types';
 import { formatCurrency } from './formatCurrency';
 import { dungBangTaiChinh } from './desktop/contractFinanceRows';
+import { LoadingState } from '@/components/loading/LoadingState';
 
 export interface ContractMobileSettlementStatusProps {
   contract: ContractWithRelations;
@@ -34,9 +35,8 @@ export function ContractMobileSettlementStatus(props: ContractMobileSettlementSt
     <p className="mt-1 text-muted-foreground">Khách đã trả phòng</p>
     {props.sideLoadErrors.length > 0 ? <p role="alert" className="mt-2 text-destructive">
       Không tải được: {props.sideLoadErrors.join(', ')}. Chưa thể xác nhận trạng thái thanh lý.
-    </p> : props.statusLoading ? <p role="status" className="mt-2 text-muted-foreground">
-      Đang tải trạng thái thanh lý…
-    </p> : <div className="mt-2 space-y-1">
+    </p> : props.statusLoading ? <LoadingState label="trạng thái thanh lý" rows={2} className="mt-1" />
+      : <div className="mt-2 space-y-1">
       {!props.terminationInfo && <p className="text-amber-800">Chưa chốt quyết toán</p>}
       {tong.noHoaDon > 0 && <p className="font-medium text-red-700">Nợ hoá đơn {formatCurrency(tong.noHoaDon)}</p>}
       {tong.thieuCoc > 0 && <p className="font-medium text-orange-700">Thiếu cọc {formatCurrency(tong.thieuCoc)}</p>}

@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { useContractMeterBoundaries, useReviseContractMeterBoundaries } from '@/hooks/useContractMeterBoundaries';
 import type { MeterBoundaryInput } from '@/lib/contractMeterBoundaries';
 import { Button } from '@/components/ui/button';
+import { LoadingState } from '@/components/loading/LoadingState';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ContractMeterBoundaryFields } from './ContractMeterBoundaryFields';
@@ -13,7 +14,8 @@ export function ContractMeterBoundaryPanel({ contractId, roomId, canEdit }: { co
   const [boundary, setBoundary] = useState<MeterBoundaryInput | null>(null);
   const [reason, setReason] = useState('');
   const request = useRef<{ intent: string; key: string } | null>(null);
-  if (query.isPending) return <p className="text-sm text-muted-foreground">Đang tải chỉ số bàn giao…</p>;
+  // Khu này chỉ có khi đã có mốc bàn giao → chờ thì không vẽ gì (chủ chốt 02/10/2026).
+  if (query.isPending) return <LoadingState label="chỉ số bàn giao" variant="none" />;
   if (query.isError) return <p role="alert" className="text-sm">Không tải được chỉ số bàn giao. <Button variant="link" onClick={() => void query.refetch()}>Thử lại</Button></p>;
   const value = query.data;
   if (!value) return null;

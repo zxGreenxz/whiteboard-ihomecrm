@@ -75,6 +75,7 @@ export default function ContractDetailModal({
               id={contractId}
               onBack={() => onOpenChange(false)}
               showBackButton={false}
+              title={title}
             />
           )}
         </div>

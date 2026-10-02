@@ -37,6 +37,8 @@ import { ContractTermsCard } from './ContractTermsCard';
 import { ContractTenantsCard } from './ContractTenantsCard';
 import { ContractFinanceCard } from './ContractFinanceCard';
 import { useContractMoveOutNoticeSnapshot } from '@/hooks/useContractMoveOutNotice';
+import { DollarSign, User } from 'lucide-react';
+import { TheCho } from './ui';
 
 export interface ContractDetailDesktopProps {
   contract: ContractWithRelations;
@@ -49,6 +51,8 @@ export interface ContractDetailDesktopProps {
   totalDays: number;
   daysElapsed: number;
   outstandingAmount: number | null;
+  /** Hoá đơn còn đang tải lần đầu — chip công nợ ở header là vạch xám. */
+  outstandingPending?: boolean;
   sideLoadErrors: string[];
   customers: NonNullable<ContractWithRelations['contract_customers']>;
   vehiclesByCustomer: Map<string, ContractVehicle[]>;
@@ -124,6 +128,7 @@ export function ContractDetailDesktop(props: ContractDetailDesktopProps) {
         perms={perms}
         isActive={isActive}
         outstandingAmount={outstandingAmount}
+        outstandingPending={props.outstandingPending}
         daysRemaining={daysRemaining}
         totalDays={totalDays}
         daysElapsed={daysElapsed}
@@ -173,7 +178,8 @@ export function ContractDetailDesktop(props: ContractDetailDesktopProps) {
               history={history}
               historyLoading={historyLoading}
             />
-            <ContractDetailRegion label="phương tiện của khách trong hợp đồng" queries={[props.queryStates?.vehicles]}>
+            <ContractDetailRegion label="phương tiện của khách trong hợp đồng" queries={[props.queryStates?.vehicles]}
+              loading={<TheCho icon={User} nhan="Khách thuê" label="phương tiện của khách trong hợp đồng" skeleton="list" rows={2} />}>
             <ContractTenantsCard
               contract={contract}
               customers={customers}
@@ -183,7 +189,8 @@ export function ContractDetailDesktop(props: ContractDetailDesktopProps) {
           </div>
 
           <div className="flex min-w-0 flex-col gap-4">
-            <ContractDetailRegion label="tài chính của hợp đồng" queries={[props.queryStates?.invoices,props.queryStates?.deposits,props.queryStates?.termination]}>
+            <ContractDetailRegion label="tài chính của hợp đồng" queries={[props.queryStates?.invoices,props.queryStates?.deposits,props.queryStates?.termination]}
+              loading={<TheCho icon={DollarSign} nhan="Tài chính" label="tài chính của hợp đồng" skeleton="table" rows={6} />}>
             <ContractFinanceCard
               contract={contract}
               depositVouchers={depositVouchers}

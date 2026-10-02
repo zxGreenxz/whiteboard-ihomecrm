@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { Pencil, Loader2, FileCheck2, Printer, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { LoadingState } from '@/components/loading/LoadingState';
 import { useContractDrafts, useDeleteContractDraft } from '@/hooks/useContractDrafts';
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel } from '@/components/ui/alert-dialog';
 import { draftErrorMessage, type ContractDraft } from '@/lib/contractDrafts';
@@ -25,7 +26,7 @@ export function ContractDraftList({ buildingId, buildingIds, canEdit, canExport,
     catch (error) { setDeleteError(draftErrorMessage(error)); }
     finally { inFlight.current = false; }
   };
-  if (query.isLoading) return <p className="flex gap-2 p-4 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Đang tải bản nháp…</p>;
+  if (query.isLoading) return <LoadingState label="bản nháp" variant="table" rows={3} className="px-3" />;
   if (query.isError) return <div role="alert" className="p-4 text-sm text-destructive">{draftErrorMessage(query.error)}<Button variant="link" onClick={() => void query.refetch()}>Thử lại</Button></div>;
   const drafts = query.data?.filter(draft => !buildingIds?.length || buildingIds.includes(draft.building_id)) ?? [];
   if (!drafts.length) return <p className="p-6 text-sm text-muted-foreground text-center">Chưa có bản nháp. Chọn “Soạn nháp” để lưu thông tin trước khi ký.</p>;

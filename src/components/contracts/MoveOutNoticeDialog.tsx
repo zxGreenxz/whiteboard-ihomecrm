@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Loader2 } from 'lucide-react';
+import { LoadingState } from '@/components/loading/LoadingState';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { DateInput } from '@/components/ui/date-input';
@@ -86,7 +87,7 @@ export function MoveOutNoticeDialog({ open, onOpenChange, contract }: MoveOutNot
             <Button variant="outline" onClick={reload}>Thử tải lại</Button>
           </div>
         ) : !snapshot ? (
-          <p role="status" className="flex items-center gap-2 text-sm"><Loader2 className="h-4 w-4 animate-spin" />Đang tải báo trả phòng...</p>
+          <LoadingState label="báo trả phòng" rows={3} />
         ) : snapshot.status !== 'ACTIVE' ? (
           <p role="alert" className="text-sm text-destructive">Hợp đồng không còn đang ở. Vui lòng tải lại danh sách hợp đồng.</p>
         ) : (

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CalendarClock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { LoadingState } from '@/components/loading/LoadingState';
 import { useContract } from '@/hooks/useContracts';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { useOrganization } from '@/contexts/OrganizationContext';
@@ -63,7 +64,7 @@ export function MoveOutNoticeQueue({ buildingIds = [] }: { buildingIds?: string[
           <Button size="sm" variant="ghost" disabled={(page + 1) * NOTICE_QUEUE_PAGE_SIZE >= queue.data.total} onClick={() => setPage(page + 1)}>Sau</Button>
         </div>
       )}
-      {selectedId && selected.isPending && <p role="status" className="mt-2">Đang tải hợp đồng…</p>}
+      {selectedId && selected.isPending && <LoadingState label="hợp đồng" rows={2} className="mt-1" />}
       {selectedId && selected.isError && <p role="alert" className="mt-2">Chưa tải được hợp đồng. <Button variant="link" onClick={() => void selected.refetch()}>Thử lại</Button></p>}
       {selectedId && selected.data?.id === selectedId && (
         <MoveOutDialog open onOpenChange={(open) => { if (!open) setSelectedId(undefined); }} contract={selected.data} />

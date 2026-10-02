@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, Printer } from 'lucide-react';
+import { LoadingState } from '@/components/loading/LoadingState';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { useOrganization } from '@/contexts/OrganizationContext';
@@ -32,8 +33,8 @@ function SignedDraftPrint({ open, onOpenChange, draft }: Pick<PrintContractDraft
   </Dialog>;
   if (contract.isPending) return <Dialog open={open} onOpenChange={onOpenChange}>
     <DialogContent className="max-w-lg"><DialogHeader><DialogTitle>In hợp đồng</DialogTitle>
-      <DialogDescription>Đang tải dữ liệu hợp đồng chính thức.</DialogDescription></DialogHeader>
-      <p role="status" className="flex items-center gap-2 text-sm"><Loader2 className="h-4 w-4 animate-spin" />Đang tải hợp đồng đã ký…</p>
+      <DialogDescription className="sr-only">Đang tải dữ liệu hợp đồng chính thức.</DialogDescription></DialogHeader>
+      <LoadingState label="hợp đồng đã ký" rows={3} />
     </DialogContent>
   </Dialog>;
   return <PrintContractDialog open={open} onOpenChange={onOpenChange} contract={contract.data} />;

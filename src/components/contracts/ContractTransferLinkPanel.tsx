@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import { InlineSkeleton, LoadingState } from '@/components/loading/LoadingState';
 import { Input } from '@/components/ui/input';
 import { Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription } from '@/components/ui/dialog';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
@@ -21,8 +22,8 @@ function TransferCommissionDialog({link,onClose}:{link:ContractTransferLink;onCl
   const {selectedOrganizationId}=useOrganization();const accounts=useAccounts();const save=useCreateContractTransferCommission();
   const [accountId,setAccountId]=useState('');const [bank,setBank]=useState('');const [number,setNumber]=useState('');const [request]=useState(()=>crypto.randomUUID());
   return <Dialog open onOpenChange={open=>{if(!open&&!save.isPending)onClose();}}><DialogContent><DialogHeader><DialogTitle>Nối phiếu môi giới</DialogTitle><DialogDescription>{link.broker_name} · {link.broker_fee?.toLocaleString('vi-VN')} đ. Phiếu được tạo hoặc nối qua nghiệp vụ hiện hành; trạng thái duyệt và chi theo chứng từ.</DialogDescription></DialogHeader>
-    <label className="space-y-1 text-sm"><span>Sổ quỹ (tùy chọn)</span><select aria-label="Sổ quỹ" className="flex h-10 w-full rounded-md border bg-background px-3" value={accountId} onChange={event=>setAccountId(event.target.value)} disabled={save.isPending}><option value="">Theo nghiệp vụ hiện hành</option>{accounts.data?.filter(x=>x.organization_id===selectedOrganizationId&&!x.is_virtual).map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
-    {accounts.isLoading&&<p role="status" className="text-sm">Đang tải sổ quỹ…</p>}{accounts.isError&&<p role="alert" className="text-sm">Không tải được sổ quỹ. <Button variant="link" onClick={()=>void accounts.refetch()}>Thử lại</Button></p>}
+    <label className="space-y-1 text-sm"><span>Sổ quỹ (tùy chọn)</span>{accounts.isLoading&&<InlineSkeleton label="sổ quỹ" width="5rem" className="ml-2"/>}<select aria-label="Sổ quỹ" className="flex h-10 w-full rounded-md border bg-background px-3" value={accountId} onChange={event=>setAccountId(event.target.value)} disabled={save.isPending}><option value="">Theo nghiệp vụ hiện hành</option>{accounts.data?.filter(x=>x.organization_id===selectedOrganizationId&&!x.is_virtual).map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
+    {accounts.isError&&<p role="alert" className="text-sm">Không tải được sổ quỹ. <Button variant="link" onClick={()=>void accounts.refetch()}>Thử lại</Button></p>}
     <label className="space-y-1 text-sm"><span>Ngân hàng người nhận (tùy chọn)</span><Input value={bank} onChange={event=>setBank(event.target.value)} maxLength={200}/></label>
     <label className="space-y-1 text-sm"><span>Số tài khoản người nhận (tùy chọn)</span><Input value={number} onChange={event=>setNumber(event.target.value)} maxLength={200}/></label>
     {save.isError&&<p role="alert" className="text-sm text-destructive">{transferErrorMessage(save.error)}</p>}
@@ -51,7 +52,9 @@ export function ContractTransferLinkPanel({contractId,draftId,exitCaseId,exitCas
   const {selectedOrganizationId}=useOrganization();const {data:permissions}=useMyPermissions();const canEdit=editable??canUse(permissions,'contracts','edit');
   const filter:TransferFilter=contractId?{contractId}:draftId||draft?{draftId:draftId??draft!.id}:{exitCaseId:exitCaseId??exitCase?.id};
   const query=useContractTransferLinks(filter);const [createOpen,setCreateOpen]=useState(false);
-  if(query.isLoading)return <p role="status" className="p-3 text-sm">Đang tải liên kết nhượng…</p>;
+  // Ở hợp đồng / hồ sơ trả phòng khung này chỉ hiện khi đã có liên kết → chờ thì không vẽ
+  // gì; mở từ bản nháp (bấm "Liên kết nhượng") thì là khối xám (chủ chốt 02/10/2026).
+  if(query.isLoading)return <LoadingState label="liên kết nhượng" variant={draft?'lines':'none'} rows={3} className="p-3"/>;
   if(query.isError)return <p role="alert" className="p-3 text-sm">{transferErrorMessage(query.error)}<Button variant="link" onClick={()=>void query.refetch()}>Thử lại</Button></p>;
   const canCreate=canEdit&&!query.data?.some(x=>x.state==='LINKED')&&((exitCase&&exitCase.state==='PENDING')||(draft&&draft.status!=='SIGNED'));
   if(!canCreate&&!query.data?.length)return null;

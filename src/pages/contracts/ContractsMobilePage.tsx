@@ -1,4 +1,5 @@
 import { QueryRegion } from '@/components/errors/QueryRegion';
+import { InlineSkeleton, LoadingState, SkeletonBar } from '@/components/loading/LoadingState';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Plus, Search, Clock } from 'lucide-react';
@@ -165,6 +166,23 @@ export default function ContractsMobilePage() {
     { id: 'EXPIRED', label: 'Quá hạn', n: stats.expired },
     { id: 'TERMINATED', label: 'Đã thanh lý', n: stats.terminated },
   ];
+  const statChips = (waiting: boolean) => (
+    <div className="lfilter">
+      {waiting && <span role="status" className="sr-only">Đang tải thống kê hợp đồng…</span>}
+      {statTabs.map((t) => (
+        <button
+          key={t.id}
+          className={'lchip' + (stat === t.id ? ' on' : '')}
+          onClick={() => setStat(t.id)}
+        >
+          {t.label}
+          {waiting
+            ? <span className="ld-appear inline-flex" aria-hidden="true"><SkeletonBar className="inline-block h-3 w-4" /></span>
+            : <span className="cnt">{t.n}</span>}
+        </button>
+      ))}
+    </div>
+  );
 
   return (
     <div className="cm-stage">
@@ -177,6 +195,7 @@ export default function ContractsMobilePage() {
             <div className="mtitle">
               <h1>Hợp đồng</h1>
               {!statsQuery.isError && statsData && <p>{stats.total} hợp đồng thuê</p>}
+              {statsQuery.isLoading && <p><InlineSkeleton label="số hợp đồng" width="6.5rem" /></p>}
             </div>
             {canCreate && (
               <div className="mtop-act">
@@ -192,18 +211,10 @@ export default function ContractsMobilePage() {
             <ContractExitQueue buildingIds={buildingId ? [buildingId] : []} />
             <ContractMeterFollowupQueue buildingIds={buildingId ? [buildingId] : []} />
             <ContractDraftWorkspace buildingId={buildingId || undefined} />
-            <QueryRegion label="thống kê hợp đồng" queries={[statsQuery]}>
-              <div className="lfilter">
-                {statTabs.map((t) => (
-                  <button
-                    key={t.id}
-                    className={'lchip' + (stat === t.id ? ' on' : '')}
-                    onClick={() => setStat(t.id)}
-                  >
-                    {t.label}<span className="cnt">{t.n}</span>
-                  </button>
-                ))}
-              </div>
+            {/* Chờ số: hàng chip lọc vẫn hiện (bấm được), chỗ số đếm là vạch xám — không in 0
+                (chủ chốt 02/10/2026). Đọc hỏng vẫn là thẻ báo lỗi + Tải lại. */}
+            <QueryRegion label="thống kê hợp đồng" queries={[statsQuery]} loading={statChips(true)}>
+              {statChips(false)}
             </QueryRegion>
 
             {/* Bộ lọc thường trực: dropdown Toà nhà · Phòng (1 dòng) + ô tìm kiếm
@@ -242,9 +253,9 @@ export default function ContractsMobilePage() {
               />
             </div>
 
-            {rows.length > 0 && <QueryRegion label="trạng thái gia hạn" queries={[renewedQuery]}>{null}</QueryRegion>}
+            {rows.length > 0 && <QueryRegion label="trạng thái gia hạn" queries={[renewedQuery]} skeleton="none">{null}</QueryRegion>}
             {isLoading ? (
-              <div className="stub"><p>Đang tải hợp đồng…</p></div>
+              <LoadingState label="hợp đồng" variant="list" rows={5} />
             ) : isError ? (
               <div className="stub">
                 <p>Không tải được hợp đồng.</p>
@@ -265,7 +276,7 @@ export default function ContractsMobilePage() {
                       className="ctr"
                       key={c.id}
                       style={{ borderColor: sc.line }}
-                      onClick={() => navigate('/contracts/' + c.id)}
+                      onClick={() => navigate('/contracts/' + c.id, { state: { contractNumber: c.contract_number || undefined } })}
                     >
                       <span className="ctr-bar" style={{ background: sc.c }} />
                       <div className="ctr-body">

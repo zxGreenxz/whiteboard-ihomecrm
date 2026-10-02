@@ -13,7 +13,8 @@ export function RenewedBadge({ contractId, className }: { contractId?: string | 
   const query = useIsContractRenewed(contractId);
   if (!contractId) return null;
   return (
-    <QueryRegion label="trạng thái gia hạn" queries={[query]}>
+    // Chip chỉ có khi HĐ đã gia hạn — chờ thì không vẽ gì (chủ chốt 02/10/2026); lỗi vẫn báo.
+    <QueryRegion label="trạng thái gia hạn" queries={[query]} skeleton="none">
     {query.isRenewed && <Badge className={`bg-blue-500 hover:bg-blue-600 text-white ${className ?? ""}`}>
       Đã gia hạn
     </Badge>}

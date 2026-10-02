@@ -12,7 +12,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Search, Loader2 } from "lucide-react";
+import { Search } from "lucide-react";
+import { LoadingState } from "@/components/loading/LoadingState";
 import { useServices } from "@/hooks/useServices";
 
 export interface ServiceBasic {
@@ -123,12 +124,14 @@ export function ServiceSelectionDialog({
         </div>
 
         {/* Service list */}
-        <QueryRegion label="danh sách dịch vụ" queries={[sourceQuery]}>
+        {/* Chờ danh sách: giữ đúng khung 360px, bên trong là dòng xám (chủ chốt 02/10/2026). */}
+        <QueryRegion label="danh sách dịch vụ" queries={[sourceQuery]}
+          loading={<div className="h-[360px] overflow-hidden rounded-md border px-3">
+            <LoadingState label="danh sách dịch vụ" variant="table" rows={7} onRetry={() => void sourceQuery.refetch()} />
+          </div>}>
         <ScrollArea className="h-[360px] border rounded-md">
           {isLoading ? (
-            <div className="flex items-center justify-center h-full py-10">
-              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-            </div>
+            <LoadingState label="danh sách dịch vụ" variant="table" rows={7} className="px-3" />
           ) : filtered.length === 0 ? (
             <div className="flex items-center justify-center h-full py-10 text-sm text-muted-foreground">
               Không tìm thấy dịch vụ

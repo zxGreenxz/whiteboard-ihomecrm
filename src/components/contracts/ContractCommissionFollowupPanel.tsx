@@ -6,6 +6,7 @@ import { useRetryCommissionVoucher } from '@/hooks/useCommissionVoucher';
 import { readContractCommissionFollowups, safeCommissionReason, type ContractCommissionFollowup, type CommissionKind } from '@/lib/contractCommissionFollowup';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { Button } from '@/components/ui/button';
+import { LoadingState } from '@/components/loading/LoadingState';
 
 const CommissionModal = lazy(() => import('./CommissionVoucherModal').then(module => ({ default: module.CommissionVoucherModal })));
 const KIND_LABEL = { broker: 'Hoa hồng môi giới', sale: 'Thưởng Sale' } as const;
@@ -59,7 +60,11 @@ export function CommissionFailureList({ query, scope, empty = false }: {
   return <>
     {query.isError ? <div role="alert" className="text-sm text-destructive">Không tải được trạng thái tạo hoa hồng và thưởng Sale.
       <Button type="button" variant="link" onClick={() => void query.refetch()}>Tải lại</Button>
-    </div> : query.isPending ? <p role="status" className="text-sm text-muted-foreground">Đang kiểm tra trạng thái tạo phiếu…</p> : <>
+    </div> : query.isPending
+      // Chờ đọc trạng thái: không hiện chữ (chủ chốt 02/10/2026). Dưới nút "Tạo phiếu
+      // hoa hồng" danh sách này thường rỗng nên không vẽ gì — nút vẫn khoá tới khi đọc
+      // xong; nơi hiện cả danh sách (`empty`) thì là khối xám.
+      ? <LoadingState label="trạng thái tạo phiếu" variant={empty ? 'lines' : 'none'} rows={2} /> : <>
       {rows.map(row => <div key={`${row.contract_id}:${row.kind}`} role={row.state === 'PROCESSING' ? 'status' : 'alert'}
         className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950 space-y-1">
         <p className="font-medium">{row.building_name} · {row.room_name} · {row.contract_number || row.contract_id.slice(0, 8)} · {KIND_LABEL[row.kind]}</p>

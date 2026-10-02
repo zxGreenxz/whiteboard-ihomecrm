@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { DateInput } from '@/components/ui/date-input';
 import { Button } from '@/components/ui/button';
+import { LoadingState, RefreshBar } from '@/components/loading/LoadingState';
 import { QlManagerSelectForBuilding } from '@/components/income-expenses/QlManagerSelect';
 import AttachmentUpload from '@/components/income-expenses/AttachmentUpload';
 
@@ -240,7 +241,10 @@ export function RentSupportPayoutForm({ organizationId, contractId, plan, prefil
       <details><summary>Lịch giảm tiền thuê của khách</summary><ul>{months.map(month => <li key={month.billing_month}>{month.invoice_period_label}: {vnd(month.agreed_amount)}</li>)}</ul></details>
     </div>
     {financial.review && <p role="alert">Lịch hỗ trợ đang cần đối chiếu điều chỉnh tài chính. Chưa thể lập phiếu ròng.</p>}
-    {deposit.isFetching && <p role="status">Đang đọc thưởng cọc và bằng chứng người hưởng…</p>}
+    {/* Chờ đọc thưởng cọc: khối xám khi chưa có, vạch mảnh mép trên hộp thoại khi đọc lại —
+        không chữ (chủ chốt 02/10/2026). Các nút vẫn khoá theo điều kiện riêng như cũ. */}
+    {deposit.isFetching && !deposit.data && <LoadingState label="thưởng cọc và bằng chứng người hưởng" rows={2} />}
+    <RefreshBar active={deposit.isFetching && !!deposit.data} label="Đang đọc lại thưởng cọc và bằng chứng người hưởng" />
     {deposit.isError && <div role="alert"><p>Chưa đọc được thưởng cọc. Tải lại trước khi lập phiếu; không coi lỗi đọc là không có nguồn.</p><Button variant="outline" disabled={preflighting} onClick={() => void deposit.refetch()}>Đọc lại thưởng cọc</Button></div>}
     {deposit.data && deposit.data.plan_revision !== plan.revision && <p role="alert">Thưởng cọc chưa khớp phiên bản lịch hỗ trợ. Tải lại hợp đồng trước khi tiếp tục.</p>}
     {deposit.data?.issues.filter(issue => issue.code !== 'NO_CANDIDATE').map(issue => <p role="alert" key={issue.code}>{issues[issue.code] ?? 'Thưởng cọc cần đối chiếu chứng từ hoặc quyền lợi. Không tạo thưởng mới để thay thế nguồn chưa rõ; hoa hồng hợp lệ vẫn được đối chiếu riêng.'}</p>)}
@@ -301,7 +305,8 @@ export function RentSupportPayoutForm({ organizationId, contractId, plan, prefil
     </Button>}
     {parties.isError && <p role="alert">Chưa tải được danh tính trong tòa; hãy tải lại trước khi chọn người hưởng.</p>}
     {!context && <p className="text-sm">Nhập số tiền và thông tin người nhận trên phiếu để xem khoản khấu trừ và thực nhận.</p>}
-    {query.isFetching && <p role="status">Đang đối chiếu nguồn và khoản khấu trừ…</p>}
+    {query.isFetching && !query.data && <LoadingState label="nguồn và khoản khấu trừ" variant="table" rows={2} />}
+    <RefreshBar active={query.isFetching && !!query.data} label="Đang đối chiếu lại nguồn và khoản khấu trừ" />
     {query.isError && <div role="alert"><p>Chưa đối chiếu được nguồn chi. Tải lại trước khi tạo; chưa ghi nhận yêu cầu tạo phiếu.</p><Button variant="outline" onClick={() => void query.refetch()}>Đối chiếu lại nguồn chi</Button></div>}
     {query.data?.state !== 'READY' && query.data?.issues.map(issue => <p role="alert" key={issue.code}>{issues[issue.code] ?? 'Nguồn chi cần đối chiếu trước khi tạo phiếu. Kiểm tra quyền lợi, tiền đã trả và danh tính theo chứng từ.'}</p>)}
     {query.data && <div className="overflow-auto"><table className="w-full text-sm"><thead><tr><th>Nguồn</th><th>Theo thỏa thuận</th><th>Đã trả hoặc giữ trước</th><th>Khấu trừ lần này</th><th>Thực nhận lần này</th></tr></thead>

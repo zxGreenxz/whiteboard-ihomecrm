@@ -25,6 +25,7 @@ import type { ContractWithRelations } from '@/hooks/useContracts';
 import { canUse } from '@/lib/permissionPages';
 import { formatAmount } from '@/components/contracts/detail/formatCurrency';
 import { chipTrangThai, nhanThoiHan, tienDoHopDong } from './contractHeaderStats';
+import { SkeletonBar } from '@/components/loading/LoadingState';
 
 /**
  * Khung căn giữa DÙNG CHUNG cho cả hai tầng header và thân trang.
@@ -106,6 +107,8 @@ interface Props {
   perms: Parameters<typeof canUse>[0];
   isActive: boolean;
   outstandingAmount: number | null;
+  /** Hoá đơn còn đang tải lần đầu (không phải lỗi) — chip công nợ là vạch xám. */
+  outstandingPending?: boolean;
   daysRemaining: number;
   totalDays: number;
   daysElapsed: number;
@@ -126,6 +129,7 @@ export function ContractTopBar({
   perms,
   isActive,
   outstandingAmount,
+  outstandingPending = false,
   daysRemaining,
   totalDays,
   daysElapsed,
@@ -188,7 +192,17 @@ export function ContractTopBar({
                 />
                 {chip.nhan}
               </span>
-              {outstandingAmount == null && <span role="status" className="text-sm text-amber-200">Chưa xác minh được công nợ</span>}
+              {/* Hoá đơn còn đang tải: vạch xám đúng chỗ chip công nợ, không báo "chưa
+                  xác minh" khi chỉ là đang chờ (chủ chốt 02/10/2026). */}
+              {outstandingAmount == null && outstandingPending && (
+                <span role="status" className="inline-flex items-center">
+                  <span className="sr-only">Đang tải công nợ…</span>
+                  <span className="ld-appear inline-flex" aria-hidden="true">
+                    <SkeletonBar className="h-[26px] w-32 rounded-md bg-white/[.12]" />
+                  </span>
+                </span>
+              )}
+              {outstandingAmount == null && !outstandingPending && <span role="status" className="text-sm text-amber-200">Chưa xác minh được công nợ</span>}
               {/* Công nợ là chip RIÊNG, không đè chip trạng thái: một HĐ đang
                   chạy vẫn có thể còn nợ, giấu một trong hai là nói thiếu. */}
               {outstandingAmount != null && outstandingAmount > 0 && (

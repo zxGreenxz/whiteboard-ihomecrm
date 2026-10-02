@@ -1,11 +1,14 @@
 import { FileText, Clock, AlertTriangle, FileX } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { SkeletonBar } from '@/components/loading/LoadingState';
 import type { ContractStats, ContractStatFilter } from '@/types/contract';
 
 interface ContractStatsCardsProps {
   stats: ContractStats;
   activeFilter: ContractStatFilter;
   onFilterChange: (filter: ContractStatFilter) => void;
+  /** Chưa có số: thẻ (cũng là nút lọc) hiện ngay, chỗ con số là vạch xám — không in 0. */
+  loading?: boolean;
 }
 
 const STAT_CARDS: {
@@ -59,9 +62,11 @@ export default function ContractStatsCards({
   stats,
   activeFilter,
   onFilterChange,
+  loading = false,
 }: ContractStatsCardsProps) {
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      {loading && <span role="status" className="sr-only">Đang tải thống kê hợp đồng…</span>}
       {STAT_CARDS.map((card) => {
         const Icon = card.icon;
         const isActive = activeFilter === card.key;
@@ -81,7 +86,13 @@ export default function ContractStatsCards({
               <Icon className={cn('h-5 w-5', card.iconColor)} />
             </div>
             <div>
-              <p className={cn('text-2xl font-bold', card.textColor)}>{stats[card.statKey]}</p>
+              {loading ? (
+                <span className="ld-appear flex h-8 items-center" aria-hidden="true">
+                  <SkeletonBar className="h-6 w-10" />
+                </span>
+              ) : (
+                <p className={cn('text-2xl font-bold', card.textColor)}>{stats[card.statKey]}</p>
+              )}
               <p className="text-xs text-muted-foreground">{card.label}</p>
             </div>
           </button>

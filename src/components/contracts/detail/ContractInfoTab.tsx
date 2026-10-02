@@ -8,6 +8,7 @@ import {
   type ContractDisplayStatus,
 } from '@/types/contract';
 import type { ContractServiceItem, ContractDepositVoucher } from './types';
+import { ContractDetailRegion, type ContractDetailQueries } from './ContractDetailRegions';
 
 const fmtNum = (n: number) => new Intl.NumberFormat('vi-VN').format(Math.round(n || 0));
 const fmtDate = (d?: string | null) => (d ? format(new Date(d), 'dd/MM/yyyy', { locale: vi }) : '—');
@@ -29,14 +30,18 @@ const KV = ({ label, value, accent }: { label: string; value: React.ReactNode; a
 );
 
 export function ContractInfoTab({
-  contract, services, customers, depositVouchers, onOpenCustomer,
+  contract, services, customers, depositVouchers, queryStates, onOpenCustomer,
 }: {
   contract: ContractWithRelations;
   services: ContractServiceItem[];
   customers: NonNullable<ContractWithRelations['contract_customers']>;
   depositVouchers: ContractDepositVoucher[];
+  /** Nguồn của thẻ dịch vụ và danh sách phiếu cọc — chờ/lỗi chỉ chặn đúng khu đó. */
+  queryStates?: ContractDetailQueries;
   onOpenCustomer: (customerId: string) => void;
 }) {
+  // Số dịch vụ ở đầu thẻ chỉ hiện khi đã đọc xong — chưa đọc thì không phải "0".
+  const servicesRead = !queryStates || queryStates.services.data !== undefined;
   const ds = getContractDisplayStatus(contract);
   const sc = STATUS_HEX[ds] ?? STATUS_HEX.ACTIVE;
   const label = CONTRACT_STATUS_CONFIG[ds]?.label ?? '';
@@ -130,6 +135,7 @@ export function ContractInfoTab({
           {depLeft > 0 ? <AlertCircle size={15} /> : <CheckCircle size={15} />}
           {depLeft > 0 ? `Còn thiếu ${fmtNum(depLeft)}₫ tiền cọc` : 'Đã thu đủ tiền cọc'}
         </div>
+        <ContractDetailRegion label="phiếu cọc của hợp đồng" queries={[queryStates?.deposits]} skeleton="lines" rows={2}>
         {depositVouchers.length > 0 && (
           <>
             <div className="cd-rcpt-h">Phiếu thu cọc đã ghi nhận</div>
@@ -144,10 +150,12 @@ export function ContractInfoTab({
             ))}
           </>
         )}
+        </ContractDetailRegion>
       </div>
 
       <div className="cd-card">
-        <div className="cd-card-h"><span className="cd-card-t"><Package size={16} />Dịch vụ áp dụng</span><span className="cd-count">{services.length}</span></div>
+        <div className="cd-card-h"><span className="cd-card-t"><Package size={16} />Dịch vụ áp dụng</span>{servicesRead && <span className="cd-count">{services.length}</span>}</div>
+        <ContractDetailRegion label="dịch vụ của hợp đồng" queries={[queryStates?.services, queryStates?.buildingServices]} skeleton="lines" rows={3}>
         {services.length ? (
           <div className="cd-svc-list">
             {services.map((sv) => {
@@ -163,6 +171,7 @@ export function ContractInfoTab({
             })}
           </div>
         ) : <div className="cd-svc-meta">Không có dịch vụ.</div>}
+        </ContractDetailRegion>
       </div>
 
       <div className="cd-card" style={{ marginBottom: 4 }}>
