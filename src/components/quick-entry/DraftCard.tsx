@@ -19,6 +19,7 @@ import type { CategoryRef } from "@/lib/quickEntry/categorySuggest";
 import type { IeFormBuilding, IeFormRoom } from "@/hooks/useIncomeExpenseFormScope";
 import type { PickerOption } from "@/hooks/quick-entry/useQuickEntryRefs";
 import { isLocked, type CardStatus } from "@/lib/quickEntry/cardStatus";
+import { primaryCode } from "@/lib/quickEntry/spokenBuilding";
 
 const WHOLE_BUILDING = "__ca_toa__";
 const AMOUNT_PATH = /^lines\.(\d+)\.amount$/;
@@ -28,6 +29,7 @@ const FLAG_TEXT: Record<DraftFlag, string> = {
   small_amount: "Số tiền dưới 10.000đ — có phải thiếu chữ “k”?",
   ambiguous_amount: "Câu có nhiều con số — kiểm lại số tiền.",
   building_choice: "Câu nhắc nhiều toà — chọn đúng toà.",
+  building_guess: "Nghe giống toà gợi ý bên dưới — bấm để chọn nếu đúng.",
   check_total: "Tổng các món khác số thực trả trên bill — đã ghi theo số thực trả, kiểm lại.",
   total_mismatch: "Tổng bạn ghi khác cộng các dòng — kiểm lại số tiền.",
   maybe_total: "Có dòng bằng đúng tổng các dòng khác — nếu đó là dòng tổng thì bỏ dòng đó.",
@@ -66,7 +68,7 @@ function visibleFlags(state: DraftState): DraftFlag[] {
     ) {
       continue;
     }
-    if (f === "building_choice" && state.draft.buildingId) continue;
+    if ((f === "building_choice" || f === "building_guess") && state.draft.buildingId) continue;
     out.push(f);
   }
   return out;
@@ -243,13 +245,13 @@ export function DraftCard(props: DraftCardProps) {
                   searchPlaceholder="Tìm toà…"
                   aria-label="Toà"
                 />
-                {!d.buildingId && state.buildingCandidates.length > 1 && (
+                {!d.buildingId && state.buildingCandidates.length > 0 && (
                   <span className="mt-1 flex flex-wrap gap-1">
                     {state.buildingCandidates.map((id) => {
                       const b = props.buildings.find((x) => x.id === id);
                       return (
                         <Button key={id} type="button" variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => chooseBuilding(id)}>
-                          {b?.code ?? b?.name ?? "Toà"}
+                          {b ? primaryCode(b) || "Toà" : "Toà"}
                         </Button>
                       );
                     })}

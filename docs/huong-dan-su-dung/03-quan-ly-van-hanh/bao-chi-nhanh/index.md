@@ -48,6 +48,8 @@ Gõ thêm một dòng tổng riêng (`sơn 300k, keo 20k, tổng 320k`) thì dò
 2. Nói câu như khi gõ (tối đa 30 giây), rồi chạm **Xong**. Chạm **✕** để huỷ.
 3. Chữ hiện vào ô nhập — **soát lại số tiền và tên toà**, sửa nếu nghe nhầm, rồi bấm **Gửi**.
 
+Nói tên toà theo cách quen gọi, ví dụ `nhà một lẻ hai Lê Văn Thọ, phòng ba lẻ một, sơn ba trăm nghìn`. Máy nhận cả `một trăm lẻ hai LVT`, `102 Lê Văn Thọ` và các chữ máy hay nghe lệch (`một lá hai`, `1 L 2`, `lọ VT`); mô tả phiếu ghi mã toà như khi gõ (`102LVT sơn`). Máy chỉ nghe ra số nhà (vd `một lá hai sơn`) hoặc chỉ tên đường thì thẻ **gợi ý** toà để bạn bấm chọn — không tự điền.
+
 Âm thanh chỉ dùng để chuyển thành chữ, **không được lưu**. Máy không ghi âm được (hoặc giọng nói đang tắt) thì màn gợi ý dùng **nút micro trên bàn phím điện thoại**.
 
 ## Cách 3 — Chụp hoặc chọn ảnh bill

@@ -512,3 +512,49 @@ describe("syncName — tên phiếu đi theo nội dung đang hiện trên thẻ
     for (const s of fresh) expect(syncName(s)).toBe(s);
   });
 });
+
+describe("draftsFromText — toà đọc bằng lời (máy chép giọng)", () => {
+  it("số nhà + tên đường ⇒ điền toà, mô tả ghi mã toà như khi gõ", () => {
+    const [s] = draftsFromText("Một lẻ hai Lê Văn Thọ sơn 30 nghìn", ctx());
+    expect(s.draft.buildingId).toBe("b102");
+    expect(s.draft.accountId).toBe("acc-b102");
+    expect(s.draft.lines).toMatchObject([{ amount: 30_000, description: "102LVT sơn" }]);
+    expect(s.flags).toEqual([]);
+  });
+
+  it("đúng câu trong ảnh chụp: '102 Lê Văn Thọ mua bóng đèn' ⇒ có toà", () => {
+    const [s] = draftsFromText("102 Lê Văn Thọ mua bóng đèn 40k", ctx());
+    expect(s.draft.buildingId).toBe("b102");
+    expect(s.draft.lines[0].description).toBe("102LVT mua bóng đèn");
+  });
+
+  it("chữ máy nghe lệch ('lá', 'lọ VT', '1 L 2') vẫn ra toà", () => {
+    for (const text of ["Một lá hai Lê Vân Thọ sửa vòi 30k", "Một lẻ hai lọ VT sơn 30k", "1 L 2 LVT bóng đèn 40k"]) {
+      expect(draftsFromText(text, ctx())[0].draft.buildingId).toBe("b102");
+    }
+  });
+
+  it("cả câu mẫu: toà + phòng đọc bằng lời, hai khoản ⇒ một phiếu hai dòng", () => {
+    const cards = draftsFromText("Nhà một lẻ hai Lê Văn Thọ, phòng ba lẻ một. Sơn ba trăm nghìn, keo hai mươi nghìn", ctx());
+    expect(cards).toHaveLength(1);
+    expect(cards[0].draft).toMatchObject({ buildingId: "b102", roomId: "r301" });
+    expect(cards[0].draft.lines.map((l) => l.amount)).toEqual([300_000, 20_000]);
+    expect(cards[0].draft.lines[0].description).toBe("Nhà 102LVT, phòng 301. Sơn");
+  });
+
+  it("máy chép mất tên đường ('Một lá hai sơn') ⇒ không tự điền, gợi ý toà để bấm", () => {
+    const [s] = draftsFromText("Một lá hai sơn 30 nghìn", ctx());
+    expect(s.draft.buildingId).toBeNull();
+    expect(s.buildingCandidates).toEqual(["b102"]);
+    expect(s.flags).toContain("building_guess");
+    expect(s.draft.lines[0].description).toBe("Một lá hai sơn");
+  });
+
+  it("AI chép nguyên văn cách đọc toà ⇒ bổ sung toà cho thẻ còn trống, bỏ cờ gợi ý", () => {
+    const [s] = draftsFromText("Một lá hai sơn 30 nghìn", ctx());
+    const next = enrichFromAi(s, ai({ items: [{ desc: "sơn", amount_vnd: 30_000, category: null, confidence: 0.9 }], building_mention: "102 Lê Văn Thọ" }), ctx());
+    expect(next.draft.buildingId).toBe("b102");
+    expect(next.flags).not.toContain("building_guess");
+    expect(next.buildingCandidates).toEqual([]);
+  });
+});

@@ -3,6 +3,9 @@
 // Khác parser Tạo phiếu nhanh (đọc theo vị trí "phòng toà …"): câu ở đây tự do, nên:
 //   - Toà khớp khi một từ trùng mã/bí danh toà (`buildings.code`, nhiều bí danh cách phẩy),
 //     hoặc tên toà xuất hiện nguyên cụm. "405k" là tiền, không phải toà "405".
+//   - Không trúng mã/tên đúng chữ ⇒ thử cách ĐỌC tên toà (spokenBuilding.ts): "một lẻ hai Lê Văn Thọ",
+//     "1 L 2 LVT"… trúng chắc thì nhận; chỉ đoán (số nhà trơ, chỉ tên đường) thì làm ứng viên gợi ý.
+//     Số phòng đọc bằng lời sau chữ báo phòng ("phòng ba lẻ một") cũng nhận.
 //   - Phòng CHỈ nhận khi có chữ báo "p", "ph", "phòng", "p." đứng trước — số 301 đứng trơ
 //     trọi dễ là tiền. Nhắc phòng mà không nhắc toà ⇒ chỉ suy ra toà khi tên phòng duy nhất.
 //   - Mã khách hàng in trên bill điện nước khớp `building_fee_accounts.provider_code` ⇒ ra cả
@@ -11,6 +14,7 @@
 
 import { normalizeLoose, splitAliases, type BuildingRef, type RoomRef } from "../textMatch";
 import { normalizeForParse } from "./amount";
+import { matchSpokenNumber, resolveSpokenBuilding } from "./spokenBuilding";
 
 export type { BuildingRef, RoomRef };
 
@@ -28,13 +32,19 @@ export interface ResolveRefs {
 
 export interface ResolvedBuilding {
   id: string;
-  via: "code" | "name" | "provider_code" | "room";
+  /** spoken = đọc bằng lời: số nhà + tên đường/chữ của mã ("một lẻ hai Lê Văn Thọ") — spokenBuilding.ts. */
+  via: "code" | "name" | "provider_code" | "room" | "spoken";
 }
 
 export interface ResolveResult {
   building: ResolvedBuilding | null;
   /** Nhắc nhiều toà khác nhau ⇒ để người dùng chọn. */
   buildingCandidates: string[];
+  /**
+   * Ứng viên chỉ là ĐOÁN từ lời đọc (số nhà trơ ở đầu câu — máy chép mất tên đường — hoặc chỉ tên
+   * đường): có thể chỉ một ứng viên; trang gợi ý để người dùng bấm, không tự điền.
+   */
+  buildingGuessed: boolean;
   room: { id: string } | null;
   /** Câu có chữ báo phòng ("p999") — kể cả khi không tìm ra phòng nào. */
   roomMentioned: boolean;
@@ -89,6 +99,41 @@ function buildingsByCode(words: Word[], loose: string, buildings: BuildingRef[])
   return found;
 }
 
+/** Vị trí từ ngay sau chữ báo phòng ("phòng ba lẻ một" ⇒ chỉ số của "ba") — để đọc số phòng bằng lời. */
+function roomCueEnds(words: Word[]): number[] {
+  const out: number[] = [];
+  words.forEach((w, i) => {
+    if (ROOM_CUE.has(w.s) && words[i + 1]) out.push(i + 1);
+  });
+  return out;
+}
+
+/**
+ * Phòng đọc bằng lời sau chữ báo phòng: "phòng ba lẻ một", "phòng ba trăm linh một" ⇒ phòng "301" (chỉ
+ * phòng có tên/mã là SỐ). Nhiều phòng cùng khớp (khác toà) ⇒ trả hết, người gọi lọc theo toà.
+ */
+function spokenRooms(words: Word[], rooms: RoomRef[]): RoomRef[] {
+  const tokens = words.map((w) => ({ s: w.s, start: w.start, end: w.end }));
+  const out: RoomRef[] = [];
+  for (const at of roomCueEnds(words)) {
+    let best = -1;
+    let hits: RoomRef[] = [];
+    for (const r of rooms) {
+      const num = [roomKey(r.name), roomKey(r.code)].find((k) => /^[1-9]\d{0,3}$/.test(k));
+      if (!num) continue;
+      const end = matchSpokenNumber(tokens, at, num);
+      // Cần ít nhất hai từ: một chữ số đứng riêng ("phòng ba") đã do luật cũ xử lý.
+      if (end - at < 2) continue;
+      if (end > best) {
+        best = end;
+        hits = [r];
+      } else if (end === best) hits.push(r);
+    }
+    out.push(...hits);
+  }
+  return out;
+}
+
 function roomMentions(words: Word[], loose: string): string[] {
   const keys: string[] = [];
   for (let i = 0; i < words.length; i += 1) {
@@ -113,6 +158,13 @@ export function resolveBuildingRoom(text: string, refs: ResolveRefs): ResolveRes
   const loose = looseOf(text);
   const words = wordsOf(loose);
   const byCode = buildingsByCode(words, loose, refs.buildings);
+  // Không gõ mã/tên đúng chữ ⇒ thử cách ĐỌC tên toà ("một lẻ hai Lê Văn Thọ"). Trúng chắc ⇒ coi như
+  // nhắc toà đó; chỉ đoán ⇒ để làm ứng viên gợi ý ở dưới.
+  const spoken =
+    byCode.size === 0
+      ? resolveSpokenBuilding(normalizeLoose(loose), refs.buildings)
+      : { building: null, candidates: [] as string[], guessed: false };
+  if (spoken.building) byCode.set(spoken.building, "spoken");
 
   let feeCategory: string | null = null;
   const textCompact = compact(loose);
@@ -128,11 +180,15 @@ export function resolveBuildingRoom(text: string, refs: ResolveRefs): ResolveRes
 
   let building: ResolvedBuilding | null = null;
   let buildingCandidates: string[] = [];
+  let buildingGuessed = false;
   if (byCode.size === 1) {
     const [[id, via]] = [...byCode.entries()];
     building = { id, via };
   } else if (byCode.size > 1) {
     buildingCandidates = [...byCode.keys()];
+  } else if (spoken.candidates.length > 0) {
+    buildingCandidates = spoken.candidates;
+    buildingGuessed = spoken.guessed;
   }
 
   let room: { id: string } | null = null;
@@ -152,9 +208,21 @@ export function resolveBuildingRoom(text: string, refs: ResolveRefs): ResolveRes
     if (room) break;
   }
 
+  if (!room && roomKeys.length > 0) {
+    const said = spokenRooms(words, refs.rooms);
+    if (building) {
+      const hit = said.find((r) => r.building_id === building?.id);
+      if (hit) room = { id: hit.id };
+    } else if (buildingCandidates.length === 0 && said.length === 1 && said[0].building_id) {
+      room = { id: said[0].id };
+      building = { id: said[0].building_id, via: "room" };
+    }
+  }
+
   return {
     building,
-    buildingCandidates,
+    buildingCandidates: building ? [] : buildingCandidates,
+    buildingGuessed: building ? false : buildingGuessed,
     room,
     roomMentioned: roomKeys.some(Boolean),
     buildingWide: BUILDING_WIDE_RE.test(loose),
@@ -163,8 +231,9 @@ export function resolveBuildingRoom(text: string, refs: ResolveRefs): ResolveRes
 }
 
 /**
- * Chuỗi nhắc toà (thường do AI trả) ⇒ id toà, chỉ khi khớp ĐÚNG mã/bí danh hoặc tên (dạng gọn)
- * và khớp duy nhất. Không khớp ⇒ null — AI bịa tên thì người dùng tự chọn.
+ * Chuỗi nhắc toà (thường do AI trả) ⇒ id toà, khi khớp ĐÚNG mã/bí danh hoặc tên (dạng gọn) và khớp
+ * duy nhất; không thì thử cách đọc bằng lời (chỉ nhận trúng chắc). Không khớp ⇒ null — AI bịa tên
+ * thì người dùng tự chọn.
  */
 export function resolveBuildingMention(mention: string | null | undefined, buildings: BuildingRef[]): string | null {
   const m = compact(mention);
@@ -172,5 +241,7 @@ export function resolveBuildingMention(mention: string | null | undefined, build
   const hits = buildings.filter(
     (b) => compact(b.name) === m || splitAliases(b.code).some((a) => compact(a) === m),
   );
-  return hits.length === 1 ? hits[0].id : null;
+  if (hits.length > 0) return hits.length === 1 ? hits[0].id : null;
+  // AI chép nguyên văn cách đọc ("102 Lê Văn Thọ", "một lẻ hai LVT") ⇒ chỉ nhận lượt trúng CHẮC, duy nhất.
+  return resolveSpokenBuilding(normalizeLoose(normalizeForParse(mention ?? "")), buildings).building;
 }

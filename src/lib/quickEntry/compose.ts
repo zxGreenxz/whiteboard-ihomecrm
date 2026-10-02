@@ -14,6 +14,7 @@ import { normalizeForParse } from "./amount";
 import { segmentMessage, type Segment } from "./segment";
 import { findDateHint, findPeriodHint } from "./dateWords";
 import { resolveBuildingMention, resolveBuildingRoom, type ResolveRefs, type ResolveResult } from "./resolve";
+import { canonicalizeSpoken, canonicalizeSpokenRooms } from "./spokenBuilding";
 import { suggestCategory, type CategoryRef } from "./categorySuggest";
 import { groupByPlace } from "./convert";
 import { MAX_DESCRIPTION, type DraftLine, type DraftMode, type QuickDraft } from "./draft";
@@ -25,6 +26,8 @@ export type DraftFlag =
   | "small_amount"
   | "ambiguous_amount"
   | "building_choice"
+  /** Toà chỉ ĐOÁN từ lời đọc (số nhà trơ — máy chép mất tên đường — hoặc chỉ tên đường): gợi ý để bấm. */
+  | "building_guess"
   | "check_total"
   /** Người dùng gõ dòng "tổng …" khác cộng các dòng. */
   | "total_mismatch"
@@ -85,6 +88,7 @@ function fromIndex<T>(code: string | null, list: readonly T[]): T | null {
 const emptyResolve: ResolveResult = {
   building: null,
   buildingCandidates: [],
+  buildingGuessed: false,
   room: null,
   roomMentioned: false,
   buildingWide: false,
@@ -116,6 +120,7 @@ export function draftsFromText(text: string, ctx: ComposeContext): DraftState[] 
     line: DraftLine;
     flags: DraftFlag[];
     candidates: string[];
+    guessed: boolean;
     lockCategory: boolean;
   }
 
@@ -125,7 +130,9 @@ export function draftsFromText(text: string, ctx: ComposeContext): DraftState[] 
     // Phòng nói một lần cho cả tin chỉ áp cho khoản KHÔNG tự nhắc phòng nào. (Tin đã ra được
     // phòng thì cả tin chỉ nhắc đúng một toà, nên khoản thừa hưởng luôn cùng toà với phòng đó.)
     const roomId = place.room?.id ?? (place.roomMentioned ? null : msg.room?.id ?? null);
-    const candidates = buildingId ? [] : place.buildingCandidates.length ? place.buildingCandidates : msg.buildingCandidates;
+    const fromPlace = place.buildingCandidates.length > 0;
+    const candidates = buildingId ? [] : fromPlace ? place.buildingCandidates : msg.buildingCandidates;
+    const guessed = candidates.length > 0 && (fromPlace ? place.buildingGuessed : msg.buildingGuessed);
 
     const segText = casedText(seg);
     let description = segText;
@@ -135,6 +142,11 @@ export function draftsFromText(text: string, ctx: ComposeContext): DraftState[] 
       description = `${segText.slice(0, a)} ${segText.slice(b)}`;
     }
     description = tidy(description);
+    // Toà/phòng đọc bằng lời ("một lẻ hai Lê Văn Thọ, phòng ba lẻ một") ⇒ ghi như khi gõ ("102LVT, phòng 301").
+    if (company) {
+      description = canonicalizeSpoken(description, ctx.refs.buildings);
+      if (buildingId) description = canonicalizeSpokenRooms(description, ctx.refs.rooms.filter((r) => r.building_id === buildingId));
+    }
 
     const suggestion = company
       ? suggestCategory(ctx.categories, description, { feeCategory: place.feeCategory ?? msg.feeCategory })
@@ -161,6 +173,7 @@ export function draftsFromText(text: string, ctx: ComposeContext): DraftState[] 
       },
       flags,
       candidates,
+      guessed,
       lockCategory: suggestion !== null && suggestion.reason !== "name_overlap",
     };
   });
@@ -183,7 +196,11 @@ export function draftsFromText(text: string, ctx: ComposeContext): DraftState[] 
     const members = items.filter((it) => g.lines.includes(it.line));
     const candidates = unique(members.flatMap((m) => m.candidates));
     const flags = unique(members.flatMap((m) => m.flags));
-    if (!g.buildingId && candidates.length > 1 && company) flags.push("building_choice");
+    if (!g.buildingId && candidates.length > 0 && company) {
+      // Ứng viên chỉ là đoán (có thể một) ⇒ nhắc "nghe giống"; nhiều toà nhắc rõ ⇒ nhắc chọn.
+      if (members.some((m) => m.guessed)) flags.push("building_guess");
+      else if (candidates.length > 1) flags.push("building_choice");
+    }
     if (totalMismatch) flags.push("total_mismatch");
     if (maybeTotal) flags.push("maybe_total");
     const locked: string[] = [];
@@ -394,7 +411,9 @@ export function enrichFromAi(state: DraftState, ai: AiResult, ctx: ComposeContex
   if (ai.date && ai.date <= ctx.today && free("date")) draft.date = ai.date;
   if (!draft.vendor && ai.vendor && free("vendor")) draft.vendor = ai.vendor;
 
-  const flags = state.flags.filter((f) => f !== "missing_amount" && !(f === "building_choice" && draft.buildingId));
+  const flags = state.flags.filter(
+    (f) => f !== "missing_amount" && !((f === "building_choice" || f === "building_guess") && draft.buildingId),
+  );
   if (nextLines.some((l) => l.amount <= 0)) flags.push("missing_amount");
   return { ...state, draft, flags, buildingCandidates: draft.buildingId ? [] : state.buildingCandidates };
 }

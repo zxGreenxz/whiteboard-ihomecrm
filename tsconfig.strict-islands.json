@@ -1533,6 +1533,7 @@
     "src/lib/quickEntry/dateWords.ts",
     "src/lib/quickEntry/segment.ts",
     "src/lib/quickEntry/resolve.ts",
+    "src/lib/quickEntry/spokenBuilding.ts",
     "src/lib/quickEntry/categorySuggest.ts",
     "src/lib/quickEntry/draft.ts",
     "src/lib/quickEntry/convert.ts",

@@ -175,6 +175,30 @@ describe("DraftCard — sửa", () => {
     expect(screen.queryByText(/Câu nhắc nhiều toà/)).toBeNull();
   });
 
+  it("toà chỉ đoán từ lời đọc (một ứng viên) ⇒ vẫn hiện chip gợi ý; bấm là chọn", () => {
+    const spy = vi.fn();
+    render(
+      <Harness
+        initial={state({ buildingId: null, accountId: null }, { buildingCandidates: ["b102"], flags: ["building_guess"] })}
+        spy={spy}
+      />,
+    );
+    expect(screen.getByText(/Nghe giống toà gợi ý/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "102LVT" }));
+    expect(lastOf(spy).draft).toMatchObject({ buildingId: "b102", accountId: "acc-b102" });
+    expect(screen.queryByText(/Nghe giống toà gợi ý/)).toBeNull();
+  });
+
+  it("chip toà ghi mã chính, không ghi cả chuỗi bí danh", () => {
+    render(
+      <Harness
+        initial={state({ buildingId: null, accountId: null }, { buildingCandidates: ["b405"], flags: ["building_guess"] })}
+        buildingList={[...buildings.slice(0, 1), { ...buildings[1], code: "405PVB, 405" }]}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "405PVB" })).toBeTruthy();
+  });
+
   it("đã tự chọn sổ ⇒ đổi toà KHÔNG đổi sổ", () => {
     const spy = vi.fn();
     render(

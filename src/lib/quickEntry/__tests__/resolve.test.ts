@@ -148,3 +148,42 @@ describe("resolveBuildingMention — chuỗi nhắc do AI trả về", () => {
     expect(resolveBuildingMention("", refs.buildings)).toBeNull();
   });
 });
+
+describe("resolveBuildingRoom — đọc bằng lời (spokenBuilding)", () => {
+  it("số nhà + tên đường ⇒ toà, via spoken", () => {
+    const r = resolveBuildingRoom("một lẻ hai Lê Văn Thọ thay bóng đèn", refs);
+    expect(r.building).toEqual({ id: "b102", via: "spoken" });
+    expect(r.buildingGuessed).toBe(false);
+  });
+
+  it("số phòng đọc bằng lời sau chữ báo phòng", () => {
+    expect(resolveBuildingRoom("102lvt phòng ba lẻ một sửa vòi", refs).room?.id).toBe("r102-301");
+    expect(resolveBuildingRoom("một lẻ hai Lê Văn Thọ phòng ba trăm linh một", refs).room?.id).toBe("r102-301");
+  });
+
+  it("chỉ số nhà ở đầu câu ⇒ một ứng viên đoán, không tự chọn", () => {
+    const r = resolveBuildingRoom("Một lá hai sơn", refs);
+    expect(r.building).toBeNull();
+    expect(r.buildingCandidates).toEqual(["b102"]);
+    expect(r.buildingGuessed).toBe(true);
+  });
+
+  it("gõ mã đúng chữ vẫn đi đường cũ (via code)", () => {
+    expect(resolveBuildingRoom("102lvt sơn", refs).building).toEqual({ id: "b102", via: "code" });
+  });
+});
+
+describe("resolveBuildingMention — AI chép nguyên văn cách đọc", () => {
+  it.each([
+    ["102 Lê Văn Thọ", "b102"],
+    ["một lẻ hai LVT", "b102"],
+    ["Một lá hai Lê Vân Thọ", "b102"],
+    ["bốn không năm Phan Văn Bảy", "b405"],
+  ])("%s → %s", (mention, want) => {
+    expect(resolveBuildingMention(mention, refs.buildings)).toBe(want);
+  });
+
+  it("chỉ số nhà (đoán) ⇒ null, không tự điền", () => {
+    expect(resolveBuildingMention("một lá hai", refs.buildings)).toBeNull();
+  });
+});
