@@ -2,6 +2,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Eye, Trash2, ClipboardList, CheckCircle2, Pencil, MessageSquarePlus } from "lucide-react";
 import { DataTablePagination } from "@/components/ui/data-table-pagination";
+import { LoadingState } from "@/components/loading/LoadingState";
 import { calculatePaginationInfo } from "@/hooks/usePagination";
 import { format } from "date-fns";
 import type { JobWithRelations } from "@/types/jobs";
@@ -70,8 +71,8 @@ export default function TaskTable({
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center py-10 text-muted-foreground">
-                  Đang tải...
+                <TableCell colSpan={7} className="p-0">
+                  <LoadingState label="công việc" variant="table" rows={6} />
                 </TableCell>
               </TableRow>
             ) : data.length === 0 ? (

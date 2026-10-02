@@ -1,4 +1,5 @@
 import { QueryRegion } from '@/components/errors/QueryRegion';
+import { LoadingState } from '@/components/loading/LoadingState';
 import { actionErrorMessage, notifyActionError } from '@/lib/actionFeedback';
 import { focusFirstError } from '@/lib/formErrors';
 import { StorageImage } from '@/components/ui/storage-image';
@@ -233,11 +234,15 @@ export default function InspectionRunner({
             </DialogTitle>
           </DialogHeader>
 
-          <QueryRegion label="cấu hình kiểm tra vị trí" queries={[geofenceQuery]}>{null}</QueryRegion>
+          <QueryRegion label="cấu hình kiểm tra vị trí" queries={[geofenceQuery]} skeleton="none">{null}</QueryRegion>
           {feedback && <p role="alert" className="rounded border border-amber-500 p-3 text-sm">{feedback}</p>}
           {uploadedPhoto && <div><p className="text-xs">Ảnh đã tải lên</p><StorageImage value={uploadedPhoto} className="h-20 w-20 rounded object-cover" /></div>}
           {!sess ? (
-            <div className="py-8 text-center text-sm text-muted-foreground">{unknownOutcome ? "Chưa xác nhận được phiên kiểm tra." : "Đang mở phiên…"}</div>
+            unknownOutcome
+              ? <div className="py-8 text-center text-sm text-muted-foreground">Chưa xác nhận được phiên kiểm tra.</div>
+              // Chờ mở/nối lại phiên: khối xám đúng chỗ danh sách mục kiểm, không chữ
+              // "Đang mở phiên…" — chủ chốt 02/10/2026.
+              : <LoadingState label="phiên kiểm tra" variant="lines" rows={5} className="py-6" />
           ) : (
             <div className="space-y-3">
               <div className="text-xs text-muted-foreground">

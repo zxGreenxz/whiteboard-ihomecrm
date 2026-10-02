@@ -1,4 +1,5 @@
 import { QueryRegion } from '@/components/errors/QueryRegion';
+import { LoadingState } from '@/components/loading/LoadingState';
 import { useState } from 'react';
 import { Bell, Check, CheckCheck, Trash2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -204,12 +205,10 @@ const NotificationBell = () => {
         {connection === 'interrupted' && <p role="status" className="px-3 py-2 text-xs text-amber-700">Kết nối cập nhật thông báo đang gián đoạn. Dùng Tải lại để xem thông báo mới.</p>}
         <Button type="button" variant="ghost" size="sm" onClick={() => { void recentQuery.refetch(); void countQuery.refetch(); }}>Tải lại thông báo</Button>
         {/* Notifications List */}
-        <QueryRegion label="thông báo" queries={[recentQuery, countQuery]}>
+        <QueryRegion label="thông báo" queries={[recentQuery, countQuery]} skeleton="list" rows={4}>
         <ScrollArea className="h-[400px]">
           {isLoading ? (
-            <div className="p-4 text-center text-sm text-muted-foreground">
-              Đang tải...
-            </div>
+            <LoadingState label="thông báo" variant="list" rows={4} className="p-2" />
           ) : notifications.length === 0 ? (
             <div className="p-8 text-center">
               <Bell className="h-12 w-12 mx-auto mb-3 text-muted-foreground/50" />

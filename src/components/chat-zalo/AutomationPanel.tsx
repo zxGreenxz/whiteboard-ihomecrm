@@ -1,4 +1,5 @@
 import { QueryRegion } from '@/components/errors/QueryRegion';
+import { LoadingState, SkeletonBar } from '@/components/loading/LoadingState';
 import { actionErrorMessage } from '@/lib/actionFeedback';
 // =============================================================================
 // AutomationPanel.tsx — tóm tắt tự động hoá ở cột phải (tab "Tự động hoá").
@@ -66,11 +67,11 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   );
 }
 
-/** Dòng thay cho các Row khi chưa có dữ liệu — nói rõ vì sao trống. */
-function DongTrong({ children, dangTai }: { children: React.ReactNode; dangTai?: boolean }) {
+/** Dòng thay cho các Row khi chưa có dữ liệu — nói rõ vì sao trống. Lúc đang chờ
+ *  dữ liệu thì không dùng dòng này mà là khối xám (chủ chốt 02/10/2026). */
+function DongTrong({ children }: { children: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: 'hsl(210 10% 50%)', lineHeight: 1.5 }}>
-      {dangTai ? <Loader2 size={12} className="animate-spin" style={{ flex: 'none' }} /> : null}
       <span>{children}</span>
     </div>
   );
@@ -140,8 +141,11 @@ export default function AutomationPanel({ automations, onToggle, templates, conv
   const dangTaiCfg = cfgQuery.isLoading;
   const loiCfg = cfgQuery.isError;
 
+  // Khung panel (tiêu đề thẻ, công tắc, Dừng khẩn cấp, Cài đặt chi tiết) hiện ngay; chỉ
+  // phần số liệu trong từng thẻ chờ dữ liệu — chủ chốt 02/10/2026. Trước đây cả panel nằm
+  // trong một QueryRegion nên lúc tải/lỗi mất luôn nút Dừng khẩn cấp.
   return (
-    <QueryRegion label="Tự động hóa Zalo và nhật ký" queries={[cfgQuery,runsQuery]}>    <div className="wz-scroll" style={{ flex: 1, overflowY: 'auto', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <div className="wz-scroll" style={{ flex: 1, overflowY: 'auto', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
       {/* ------------------------------------------- Gửi ảnh phòng trống */}
       <div style={{ border: '1px solid hsl(152 35% 84%)', background: 'hsl(152 40% 98%)', borderRadius: 12, padding: '13px 14px' }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
@@ -156,8 +160,9 @@ export default function AutomationPanel({ automations, onToggle, templates, conv
         </div>
 
         <div style={{ marginTop: 11, display: 'flex', flexDirection: 'column', gap: 7, fontSize: 12.5 }}>
+          <QueryRegion label="cấu hình gửi phòng trống" queries={[cfgQuery]} skeleton="lines" rows={3}>
           {dangTaiCfg ? (
-            <DongTrong dangTai>Đang tải cấu hình…</DongTrong>
+            <LoadingState label="cấu hình" variant="lines" rows={3} />
           ) : loiCfg ? (
             <DongTrong>Không tải được cấu hình — số liệu bên dưới bị ẩn để khỏi hiện nhầm.</DongTrong>
           ) : !rowBc ? (
@@ -184,6 +189,7 @@ export default function AutomationPanel({ automations, onToggle, templates, conv
               </div>
             </>
           )}
+          </QueryRegion>
         </div>
       </div>
 
@@ -201,8 +207,9 @@ export default function AutomationPanel({ automations, onToggle, templates, conv
         </div>
 
         <div style={{ marginTop: 11, display: 'flex', flexDirection: 'column', gap: 7, fontSize: 12.5 }}>
+          <QueryRegion label="cấu hình tự động trả lời" queries={[cfgQuery]} skeleton="lines" rows={3}>
           {dangTaiCfg ? (
-            <DongTrong dangTai>Đang tải cấu hình…</DongTrong>
+            <LoadingState label="cấu hình" variant="lines" rows={3} />
           ) : loiCfg ? (
             <DongTrong>Không tải được cấu hình — số liệu bên dưới bị ẩn để khỏi hiện nhầm.</DongTrong>
           ) : !rowAr ? (
@@ -229,6 +236,7 @@ export default function AutomationPanel({ automations, onToggle, templates, conv
               <Row label="Trần mỗi ngày"><span style={{ fontWeight: 600, ...mono() }}>{ar.dailyCap} tin</span></Row>
             </>
           )}
+          </QueryRegion>
         </div>
       </div>
 
@@ -237,13 +245,18 @@ export default function AutomationPanel({ automations, onToggle, templates, conv
         <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: luotCuoi ? 7 : 0 }}>
           <History size={14} color="hsl(210 10% 45%)" style={{ flex: 'none' }} />
           <span style={{ fontSize: 12.5, fontWeight: 700, flex: 1 }}>Lần chạy cuối</span>
-          {runsQuery.isLoading ? <Loader2 size={13} className="animate-spin" color="hsl(210 10% 55%)" /> : null}
+          {/* Chờ dữ liệu: vạch xám ngay chỗ trạng thái (câu cho trình đọc màn hình nằm ở
+              QueryRegion bên dưới). */}
+          {runsQuery.isLoading ? (
+            <span className="ld-appear" aria-hidden="true"><SkeletonBar className="h-3" style={{ width: '4.5rem' }} /></span>
+          ) : null}
           {!runsQuery.isLoading && !luotCuoi && (
             <span style={{ fontSize: 11.5, color: 'hsl(210 10% 50%)' }}>
               {runsQuery.isError ? 'Không tải được' : 'Chưa chạy lần nào'}
             </span>
           )}
         </div>
+        <QueryRegion label="lần chạy cuối" queries={[runsQuery]} skeleton="none">
         {luotCuoi && nhanLuot && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12.5 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
@@ -262,6 +275,7 @@ export default function AutomationPanel({ automations, onToggle, templates, conv
             ) : null}
           </div>
         )}
+        </QueryRegion>
       </div>
 
       {/* ------------------------------------------------ Dừng khẩn cấp */}
@@ -293,7 +307,6 @@ export default function AutomationPanel({ automations, onToggle, templates, conv
         </div>
       </div>
     </div>
-    </QueryRegion>
   );
 }
 

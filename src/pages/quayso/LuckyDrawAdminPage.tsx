@@ -22,6 +22,7 @@ import MainLayout from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { LoadingState } from '@/components/loading/LoadingState';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -246,7 +247,8 @@ export default function LuckyDrawAdminPage() {
           } catch (error) { setDrawRecoveryError(actionErrorMessage(error, 'Chưa đối chiếu được kết quả quay')); }
           finally { setDrawRecovering(false); }
         }}>Tải lại trạng thái</Button>{drawRecoveryError && <p role="alert">{drawRecoveryError}</p>}</div>}
-        {q.isLoading && <p className="text-sm text-muted-foreground">Đang tải…</p>}
+        {/* Chờ dữ liệu: khối xám, không chữ "Đang tải" — chủ chốt 02/10/2026. */}
+        {q.isLoading && <LoadingState label="sự kiện quay số" variant="detail" rows={5} onRetry={() => { void q.refetch(); }} />}
 
         {!q.isLoading && !event && (
           <Card>

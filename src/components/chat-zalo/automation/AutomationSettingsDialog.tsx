@@ -1,4 +1,5 @@
 import { QueryRegion } from '@/components/errors/QueryRegion';
+import { LoadingState } from '@/components/loading/LoadingState';
 import { focusFirstError } from '@/lib/formErrors';
 import { actionErrorMessage } from '@/lib/actionFeedback';
 // =============================================================================
@@ -155,12 +156,11 @@ export default function AutomationSettingsDialog({ open, onOpenChange, conversat
           </DialogDescription>
         </DialogHeader>
 
-        <QueryRegion label="Cài đặt tự động hóa Zalo" queries={[configQuery]}>
+        {/* Chỉ phần cấu hình chờ dữ liệu; chân hộp (Đóng/Lưu) hiện ngay — Lưu vẫn khoá
+            theo isLoading/isError như cũ. Chủ chốt 02/10/2026: khối xám, không chữ "Đang tải". */}
+        <QueryRegion label="Cài đặt tự động hóa Zalo" queries={[configQuery]} skeleton="detail" rows={6}>
         {isLoading && !daNap.current ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '34px 0', justifyContent: 'center', fontSize: 12.5, color: CHU_MO }}>
-            <Loader2 size={15} className="animate-spin" />
-            Đang tải cấu hình…
-          </div>
+          <LoadingState label="cấu hình" variant="detail" rows={6} />
         ) : (
           <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)}>
             <TabsList className="grid w-full grid-cols-3">
@@ -283,11 +283,12 @@ export default function AutomationSettingsDialog({ open, onOpenChange, conversat
                   Nhật ký trống nhiều ngày trong khi tính năng đang bật là dấu hiệu tài khoản Zalo
                   đã rớt phiên — lúc đó tự động hoá ngừng trong im lặng.
                 </p>
-                <QueryRegion label="Nhật ký tự động hóa Zalo" queries={[runsQuery]}><RunLog runs={runs} loading={dangTaiRuns} /></QueryRegion>
+                <QueryRegion label="Nhật ký tự động hóa Zalo" queries={[runsQuery]} skeleton="table" rows={4}><RunLog runs={runs} loading={dangTaiRuns} /></QueryRegion>
               </div>
             </TabsContent>
           </Tabs>
         )}
+        </QueryRegion>
 
         {serverError && <p role="alert" className="text-sm text-destructive">{serverError}</p>}
         <DialogFooter className="items-center gap-2 sm:justify-between">
@@ -307,7 +308,7 @@ export default function AutomationSettingsDialog({ open, onOpenChange, conversat
               </Button>
             )}
           </span>
-        </DialogFooter></QueryRegion>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

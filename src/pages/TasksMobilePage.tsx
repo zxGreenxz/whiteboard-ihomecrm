@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { ArrowLeft, Plus, Search, SlidersHorizontal, Clock, CheckCircle2, ArrowUpDown, Check, CalendarClock, CalendarPlus } from 'lucide-react';
 import '@/styles/mobileApp.css';
+import { LoadingState, SkeletonBar } from '@/components/loading/LoadingState';
 import {
   Sheet,
   SheetContent,
@@ -151,6 +152,17 @@ export default function TasksMobilePage() {
   };
   const doing = tabFiltered.filter((j) => j.status === 'IN_PROGRESS').length;
   const done = tabFiltered.filter((j) => j.status === 'COMPLETED').length;
+  // Đang tải lần đầu: số đếm là vạch xám thay vì "0" — chủ chốt 02/10/2026.
+  const demCho = (
+    <span className="ld-appear inline-flex align-middle" aria-hidden="true">
+      <SkeletonBar className="h-2.5" style={{ width: '0.9rem' }} />
+    </span>
+  );
+  const soCho = (
+    <span className="ld-appear inline-flex" aria-hidden="true">
+      <SkeletonBar className="h-5" style={{ width: '2.25rem' }} />
+    </span>
+  );
 
   const q = search.trim().toLowerCase();
   const rows = useMemo(() => {
@@ -247,7 +259,7 @@ export default function TasksMobilePage() {
                   className={'tkseg-b' + (activeTab === s.id ? ' on' : '')}
                   onClick={() => { setActiveTab(s.id); setVisible(40); }}
                 >
-                  {s.label}<span className="tkseg-n">{tabCounts[s.id]}</span>
+                  {s.label}<span className="tkseg-n">{isLoading ? demCho : tabCounts[s.id]}</span>
                 </button>
               ))}
             </div>
@@ -261,7 +273,7 @@ export default function TasksMobilePage() {
                   <span className="tk2c-l"><Clock size={14} />Đang làm</span>
                   {statusFilter === 'IN_PROGRESS' ? <span className="tk2c-flt">Đang lọc</span> : null}
                 </div>
-                <div className="tk2c-n">{doing}</div>
+                <div className="tk2c-n">{isLoading ? soCho : doing}</div>
               </button>
               <button
                 className={'tk2c done' + (statusFilter === 'COMPLETED' ? ' on' : '')}
@@ -271,12 +283,12 @@ export default function TasksMobilePage() {
                   <span className="tk2c-l"><CheckCircle2 size={14} />Hoàn thành</span>
                   {statusFilter === 'COMPLETED' ? <span className="tk2c-flt">Đang lọc</span> : null}
                 </div>
-                <div className="tk2c-n">{done}</div>
+                <div className="tk2c-n">{isLoading ? soCho : done}</div>
               </button>
             </div>
 
             {isLoading ? (
-              <div className="stub"><p>Đang tải công việc…</p></div>
+              <LoadingState label="công việc" variant="list" rows={5} onRetry={() => void refetch()} />
             ) : isError ? (
               <div className="stub">
                 <p>Không tải được công việc.</p>

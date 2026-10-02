@@ -1,6 +1,7 @@
 import { actionErrorMessage } from '@/lib/actionFeedback';
 import { hasUnconfirmedResponse } from '@/lib/operationOutcome';
 import { QueryRegion } from '@/components/errors/QueryRegion';
+import { LoadingState } from '@/components/loading/LoadingState';
 import { useEffect, useMemo, useState } from "react";
 import {
   closestCenter,
@@ -435,7 +436,14 @@ export default function RoutePlannerSheet({
           </div>
         </SheetHeader>
 
-        <QueryRegion label="tuyến đường đã lưu" queries={[preferencesQuery]}>
+        <QueryRegion
+          label="tuyến đường đã lưu"
+          queries={[preferencesQuery]}
+          // Chờ tuyến đã lưu: thẻ xám đúng chỗ danh sách toà (có lề như nội dung thật).
+          loading={<div className="min-h-0 flex-1 px-4 py-4">
+            <LoadingState label="tuyến đường đã lưu" variant="list" rows={4} onRetry={() => { void preferencesQuery.refetch(); }} />
+          </div>}
+        >
         {saveError && <div role="alert" className="mx-4 mt-3 rounded-md border border-destructive/40 p-3 text-sm text-destructive">
           {saveError}
           {pendingRoute && <Button type="button" variant="outline" className="mt-2" disabled={readingSavedRoute} onClick={readSavedRoute}>Đọc lại tuyến đã lưu</Button>}

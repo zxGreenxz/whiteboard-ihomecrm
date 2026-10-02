@@ -194,7 +194,7 @@ export default function MyDayPage() {
           </button>
         </div>
 
-        <QueryRegion label="Ngày công, công việc và phiên kiểm tra" queries={[summaryQ,missionsQ,preferencesQuery,jobsQ,...(s?.today.date && authUser?.id ? [openSessQ] : []),...(coordIds.length ? [coordsQ] : [])]}>
+        <QueryRegion label="Ngày công, công việc và phiên kiểm tra" skeleton="list" rows={4} queries={[summaryQ,missionsQ,preferencesQuery,jobsQ,...(s?.today.date && authUser?.id ? [openSessQ] : []),...(coordIds.length ? [coordsQ] : [])]}>
         {/* Onboarding "Tôi đã hiểu" — bắt buộc trước khi bật tiền (US-6.5) */}
         {needAck && (
           <div className="mb-3 rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm shadow-sm">

@@ -1,4 +1,5 @@
 import { QueryRegion } from '@/components/errors/QueryRegion';
+import { LoadingState } from '@/components/loading/LoadingState';
 import { focusFirstError } from '@/lib/formErrors';
 import { actionErrorMessage } from '@/lib/actionFeedback';
 import { useState } from 'react';
@@ -62,7 +63,7 @@ export default function TemplateManagerDialog({ open, onOpenChange }: Props) {
             <DialogDescription>Mẫu tin dùng chung cho cả công ty — chèn nhanh bằng nút "Mẫu tin" hoặc gõ "/" trong ô soạn.</DialogDescription>
           </DialogHeader>
 
-          <QueryRegion label="Thư viện mẫu tin Zalo" queries={[templatesQuery]}>
+          <QueryRegion label="Thư viện mẫu tin Zalo" queries={[templatesQuery]} skeleton="lines" rows={4}>
           {serverError && <p role="alert" className="text-sm text-destructive">{serverError}</p>}
           {editing ? (
             <div className="space-y-3">
@@ -100,7 +101,7 @@ export default function TemplateManagerDialog({ open, onOpenChange }: Props) {
                 <Plus className="mr-2 h-4 w-4" />Thêm mẫu tin
               </Button>
               <div className="max-h-80 overflow-y-auto rounded-md border">
-                {isLoading && <div className="flex items-center gap-2 p-3 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Đang tải…</div>}
+                {isLoading && <LoadingState label="mẫu tin" variant="lines" rows={3} className="p-3" />}
                 {!isLoading && templates.length === 0 && <div className="p-3 text-sm text-muted-foreground">Chưa có mẫu tin nào.</div>}
                 {templates.map((t) => (
                   <div key={t.id} className="flex items-start gap-2 border-b p-3 last:border-0">

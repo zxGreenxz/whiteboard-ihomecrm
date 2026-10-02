@@ -11,6 +11,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { LoadingState, SkeletonBar } from '@/components/loading/LoadingState';
 import { Receipt, AlertCircle, CheckCircle, Building2, WifiOff } from 'lucide-react';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
@@ -110,10 +111,20 @@ export default function PublicContractInvoicePage() {
   });
   const biGioiHan = error instanceof RateLimitedError;
 
+  // Đang tải: khung trang hoá đơn với khối xám (hiện sau 0,3 s), không chữ "Đang tải" —
+  // chủ chốt 02/10/2026. Quá 8 giây LoadingState tự báo mạng chậm + Thử lại.
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="text-gray-500">Đang tải hoá đơn...</div>
+      <div className="min-h-screen bg-gray-50 py-4 px-3 sm:py-8 sm:px-4">
+        <div className="max-w-2xl mx-auto space-y-4">
+          <div className="flex items-center gap-2 text-emerald-700">
+            <Receipt className="h-6 w-6" />
+            <span className="ld-appear flex-1" aria-hidden="true">
+              <SkeletonBar className="h-5" style={{ width: '14rem', maxWidth: '100%' }} />
+            </span>
+          </div>
+          <LoadingState label="hoá đơn" variant="detail" rows={6} onRetry={() => void refetch()} />
+        </div>
       </div>
     );
   }

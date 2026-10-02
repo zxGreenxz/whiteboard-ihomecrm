@@ -8,6 +8,7 @@ import {
   NetworkCenterError,
   NetworkCenterLoading,
   NetworkCenterNotFound,
+  NetworkCenterSectionLoading,
 } from "@/components/network-center/NetworkCenterStates";
 import { useNetworkCenter, type NetworkCenterController } from "@/hooks/network-center/useNetworkCenter";
 import "./networkCenter.css";
@@ -58,7 +59,8 @@ export default function NetworkCenterApp() {
 }
 
 function BuildingRoute({ controller }: { controller: NetworkCenterController }) {
-  if (controller.buildingQuery.isLoading) return <NetworkCenterLoading />;
+  // Đã nằm trong NetworkCenterShell (đầu trang đã hiện) ⇒ chỉ khối xám ở vùng nội dung.
+  if (controller.buildingQuery.isLoading) return <NetworkCenterSectionLoading />;
   if (controller.buildingQuery.isError) {
     return <NetworkCenterError retry={() => void controller.buildingQuery.refetch()} />;
   }

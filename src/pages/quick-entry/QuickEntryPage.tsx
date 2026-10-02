@@ -9,6 +9,7 @@ import { ArrowLeft, Loader2, MessageSquarePlus, RotateCcw, Sparkles } from "luci
 import "@/styles/mobileApp.css";
 import MainLayout from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
+import { LoadingState } from "@/components/loading/LoadingState";
 import { DraftCard } from "@/components/quick-entry/DraftCard";
 import { QuickEntryComposer } from "@/components/quick-entry/QuickEntryComposer";
 import { useAuth } from "@/hooks/useAuth";
@@ -177,10 +178,12 @@ export default function QuickEntryPage() {
     </div>
   );
 
+  // Chờ toà/hạng mục/sổ quỹ: ô soạn là khối xám (chưa cho nhập để khỏi lập thẻ thiếu dữ
+  // liệu nền), không chữ "Đang tải…" — chủ chốt 02/10/2026.
   const composer: ReactNode = refs.loading ? (
-    <p className="flex items-center gap-2 border-t p-3 text-sm text-muted-foreground">
-      <Loader2 className="h-4 w-4 animate-spin" /> Đang tải toà, hạng mục và sổ quỹ…
-    </p>
+    <div className="border-t p-3">
+      <LoadingState label="toà, hạng mục và sổ quỹ" variant="lines" rows={2} />
+    </div>
   ) : noAccess ? null : (
     <QuickEntryComposer
       mode={mode}

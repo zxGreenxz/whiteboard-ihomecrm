@@ -2,6 +2,7 @@ import { Clock, CheckCircle, type LucideIcon } from 'lucide-react';
 import { JobWithRelations, JOB_STATUSES, STATUS_LABELS, type JobStatus } from '@/types/jobs';
 import { computeTaskStats, getStatusColor } from '@/lib/jobValidation';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { SkeletonBar } from '@/components/loading/LoadingState';
 
 const STATUS_ICONS: Record<JobStatus, LucideIcon> = {
   IN_PROGRESS: Clock,
@@ -17,12 +18,15 @@ interface TaskStatusStatsProps {
   jobs: JobWithRelations[];
   activeFilter?: JobStatus | null;
   onFilterChange?: (status: JobStatus) => void;
+  /** Đang tải lần đầu: số đếm là vạch xám thay vì "0" — chủ chốt 02/10/2026. */
+  loading?: boolean;
 }
 
 export function TaskStatusStats({
   jobs,
   activeFilter = null,
   onFilterChange,
+  loading = false,
 }: TaskStatusStatsProps) {
   const stats = computeTaskStats(jobs);
   const isMobile = useIsMobile();
@@ -59,7 +63,11 @@ export function TaskStatusStats({
               )}
             </div>
             <div className={`font-bold ${isMobile ? "text-lg" : "text-2xl"}`}>
-              {stats[status]}
+              {loading ? (
+                <span className="ld-appear inline-flex align-middle" aria-hidden="true">
+                  <SkeletonBar className={isMobile ? "h-5" : "h-7"} style={{ width: '2.5rem' }} />
+                </span>
+              ) : stats[status]}
             </div>
           </button>
         );

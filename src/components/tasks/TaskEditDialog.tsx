@@ -1,4 +1,5 @@
 import { QueryRegion } from '@/components/errors/QueryRegion';
+import { LoadingState } from '@/components/loading/LoadingState';
 import { focusFirstError } from '@/lib/formErrors';
 import { actionErrorMessage } from '@/lib/actionFeedback';
 import { useEffect, useState } from "react";
@@ -27,6 +28,8 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { useAuth } from "@/hooks/useAuth";
 import AttachmentUpload from "@/components/income-expenses/AttachmentUpload";
 import { JOB_PRIORITIES, PRIORITY_LABELS, type JobWithRelations, type JobPriority } from "@/types/jobs";
+
+const DANH_MUC_LABEL = "Danh mục tòa nhà, phòng, loại việc và người nhận";
 
 interface TaskEditDialogProps {
   open: boolean;
@@ -75,6 +78,8 @@ export default function TaskEditDialog({
 
   const roomsForBuildingQuery = useRooms(buildingId ?? undefined);
   const {data: roomsForBuilding = []} = roomsForBuildingQuery;
+  const danhMucQueries = [buildingsQuery, jobTypesQuery, profilesQuery, roomsForBuildingQuery];
+  const taiLaiDanhMuc = () => { danhMucQueries.forEach(query => { void query.refetch(); }); };
 
   useEffect(() => {
     if (open && job) {
@@ -291,7 +296,8 @@ export default function TaskEditDialog({
             : "sm:max-w-[640px] max-h-[90vh] overflow-y-auto"
         }
       >
-        <QueryRegion label="Danh mục tòa nhà, phòng, loại việc và người nhận" queries={[buildingsQuery,jobTypesQuery,profilesQuery,roomsForBuildingQuery]}>
+        {/* Tiêu đề hộp hiện ngay; thân form + nút Lưu chờ danh mục (khối xám) như trước —
+            Lưu vẫn chỉ bấm được khi danh mục đã về. Chủ chốt 02/10/2026. */}
         {serverError && <p role="alert" className="text-sm text-destructive">{serverError}</p>}
         {isMobile ? (
           <>
@@ -304,6 +310,13 @@ export default function TaskEditDialog({
               </DialogTitle>
               <p className="text-xs text-muted-foreground">{job.code}</p>
             </DialogHeader>
+            <QueryRegion
+              label={DANH_MUC_LABEL}
+              queries={danhMucQueries}
+              loading={<div className="flex-1 px-4 py-3">
+                <LoadingState label={DANH_MUC_LABEL} variant="detail" rows={6} onRetry={taiLaiDanhMuc} />
+              </div>}
+            >
             <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
               {formBody}
             </div>
@@ -324,6 +337,7 @@ export default function TaskEditDialog({
                 Huỷ
               </Button>
             </DialogFooter>
+            </QueryRegion>
           </>
         ) : (
           <>
@@ -332,6 +346,7 @@ export default function TaskEditDialog({
                 SỬA CÔNG VIỆC - {job.code}
               </DialogTitle>
             </DialogHeader>
+            <QueryRegion label={DANH_MUC_LABEL} queries={danhMucQueries} skeleton="detail" rows={6}>
             <div className="space-y-4">{formBody}</div>
             <DialogFooter>
               <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={isBusy}>
@@ -345,9 +360,10 @@ export default function TaskEditDialog({
                 {isUploading ? "Đang tải ảnh..." : updateJob.isPending ? "Đang lưu..." : "Lưu"}
               </Button>
             </DialogFooter>
+            </QueryRegion>
           </>
         )}
-      </QueryRegion></DialogContent>
+      </DialogContent>
     </Dialog>
   );
 }

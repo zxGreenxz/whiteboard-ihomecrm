@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/table';
 import { useMaterialUsages } from '@/hooks/useMaterialUsages';
 import { QueryRegion } from '@/components/errors/QueryRegion';
+import { LoadingState } from '@/components/loading/LoadingState';
 import MaterialUsageFormDialog from '@/components/materials/MaterialUsageFormDialog';
 import { format } from 'date-fns';
 
@@ -32,8 +33,8 @@ export default function MaterialUsagesContent() {
       return next;
     });
 
+  // Lời giải thích và nút tạo phiếu hiện ngay; chỉ bảng chờ dữ liệu — chủ chốt 02/10/2026.
   return (
-    <QueryRegion label="danh sách phiếu xuất vật tư" queries={[usagesQuery]}>
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-3">
         <p className="text-sm text-muted-foreground">
@@ -48,6 +49,7 @@ export default function MaterialUsagesContent() {
 
       <Card>
         <CardContent className="p-0">
+          <QueryRegion label="danh sách phiếu xuất vật tư" queries={[usagesQuery]} skeleton="table" rows={6}>
           <Table>
             <TableHeader>
               <TableRow>
@@ -63,8 +65,8 @@ export default function MaterialUsagesContent() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
-                    Đang tải…
+                  <TableCell colSpan={7} className="p-0">
+                    <LoadingState label="phiếu xuất" variant="table" rows={4} />
                   </TableCell>
                 </TableRow>
               ) : usages.length === 0 ? (
@@ -205,11 +207,11 @@ export default function MaterialUsagesContent() {
               )}
             </TableBody>
           </Table>
+          </QueryRegion>
         </CardContent>
       </Card>
 
       <MaterialUsageFormDialog open={formOpen} onOpenChange={setFormOpen} />
     </div>
-    </QueryRegion>
   );
 }

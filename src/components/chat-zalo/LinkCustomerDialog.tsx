@@ -1,4 +1,5 @@
 import { QueryRegion } from '@/components/errors/QueryRegion';
+import { LoadingState, RefreshBar } from '@/components/loading/LoadingState';
 import { isZaloActionUnconfirmed, zaloActionErrorMessage } from '@/lib/zaloActionFeedback';
 import { useState } from 'react';
 import { Loader2, Link2, Unlink, Search } from 'lucide-react';
@@ -52,9 +53,12 @@ export default function LinkCustomerDialog({ open, onOpenChange, conv }: Props) 
           </div>
           {failure != null && <p role="alert" className="text-sm text-destructive">{zaloActionErrorMessage(failure,'thay đổi liên kết hồ sơ khách hàng')}</p>}
           {term.trim().length < 2 && <p className="text-sm text-muted-foreground">Nhập ít nhất 2 ký tự tên hoặc số điện thoại để tìm khách hàng.</p>}
-          <QueryRegion label="kết quả tìm khách hàng" queries={term.trim().length>=2 && orgId ? [searchQuery] : []}>
-          <div className="max-h-64 overflow-y-auto rounded-md border">
-            {isFetching && <div className="flex items-center gap-2 p-3 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Đang tìm…</div>}
+          <QueryRegion label="kết quả tìm khách hàng" queries={term.trim().length>=2 && orgId ? [searchQuery] : []} skeleton="lines" rows={3}>
+          {/* Đang tìm: chưa có kết quả thì dòng xám; đã có kết quả thì giữ nguyên danh sách,
+              chỉ vạch mảnh mép trên — chủ chốt 02/10/2026. */}
+          <div className="relative max-h-64 overflow-y-auto rounded-md border">
+            <RefreshBar active={isFetching && hits.length > 0} label="Đang tìm khách hàng" />
+            {isFetching && hits.length === 0 && <LoadingState label="kết quả tìm khách hàng" variant="lines" rows={3} className="p-3" />}
             {!isFetching && term.trim().length >= 2 && hits.length === 0 && (
               <div className="p-3 text-sm text-muted-foreground">Không tìm thấy khách hàng nào.</div>
             )}

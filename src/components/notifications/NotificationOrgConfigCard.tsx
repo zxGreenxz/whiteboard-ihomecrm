@@ -20,6 +20,7 @@ import { Label } from "@/components/ui/label";
 import { NumberInput } from "@/components/ui/number-input";
 import { CurrencyInput } from "@/components/ui/currency-input";
 import { BellRing } from "lucide-react";
+import { LoadingState } from "@/components/loading/LoadingState";
 import { useMyPermissions } from "@/hooks/useMyPermissions";
 import { canUse } from "@/lib/permissionPages";
 import {
@@ -107,7 +108,7 @@ export default function NotificationOrgConfigCard() {
         )}
 
         {isLoading || !events ? (
-          <p className="text-sm text-muted-foreground">Đang tải…</p>
+          <LoadingState label="cấu hình thông báo" variant="lines" rows={6} />
         ) : (
           <>
             <div className="divide-y">

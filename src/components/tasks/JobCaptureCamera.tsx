@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { InlineSkeleton } from '@/components/loading/LoadingState';
 import { Camera, X, MapPin, Loader2, RotateCcw, Check, AlertTriangle } from 'lucide-react';
 import {
   buildWatermarkLines,
@@ -90,7 +91,9 @@ function WatermarkOverlay({
         </div>
       </div>
       <div className="mt-1.5 text-sm text-zinc-100 leading-snug min-h-[1.1rem]">
-        {model.address || (addrLoading ? 'Đang lấy địa chỉ…' : '')}
+        {/* Chờ địa chỉ: vạch xám ngay dòng địa chỉ, không chữ "Đang lấy…" (chủ chốt 02/10/2026).
+            Overlay chỉ để xem; bản đóng dấu vào ảnh dựng riêng từ model. */}
+        {model.address || (addrLoading ? <InlineSkeleton label="địa chỉ" width="12rem" /> : '')}
       </div>
       {model.gpsLine && (
         <div

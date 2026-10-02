@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Search, MessageSquarePlus, Zap, Megaphone } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { LoadingState, SkeletonBar } from '@/components/loading/LoadingState';
 import { EMERALD } from './zaloTheme';
 import ConversationRow from './ConversationRow';
 import LabelFilter from './LabelFilter';
@@ -39,6 +40,9 @@ interface Props {
   onLinkCrm?: (c: ZaloConversation) => void;
   /** banner lỗi tải danh sách (giữ data cũ nếu có) */
   errorBanner?: ReactNode;
+  /** Đang tải lần đầu (chưa có dữ liệu): số đếm và danh sách là khối xám, không phải "0" /
+   *  "Không có hội thoại phù hợp" — chủ chốt 02/10/2026. */
+  loading?: boolean;
 }
 
 /** Cột 1: danh sách hội thoại + tìm + lọc + footer tự động hoá. */
@@ -46,8 +50,9 @@ export default function ConversationList({
   conversations, totalCount, activeId, filter, search, automationActive, automationRuns,
   onFilter, onSearch, onSelect, className, topSlot,
   labels = [], selectedLabel = null, onSelectLabel, onBroadcast,
-  onComposeNew, onTogglePin, onToggleMute, onToggleUnread, onLinkCrm, errorBanner,
+  onComposeNew, onTogglePin, onToggleMute, onToggleUnread, onLinkCrm, errorBanner, loading = false,
 }: Props) {
+  const choDuLieu = loading && conversations.length === 0;
   return (
     <section className={cn('flex-col flex-none bg-white border-r', className)}>
       {topSlot}
@@ -56,7 +61,11 @@ export default function ConversationList({
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
             <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700, letterSpacing: '-.01em' }}>Hội thoại</h2>
-            <span style={{ background: 'hsl(152 30% 94%)', color: 'hsl(152 69% 28%)', fontSize: 11.5, fontWeight: 700, padding: '2px 8px', borderRadius: 8 }}>{totalCount}</span>
+            {choDuLieu ? (
+              <span className="ld-appear" aria-hidden="true"><SkeletonBar className="h-4 rounded-lg" style={{ width: '1.75rem' }} /></span>
+            ) : (
+              <span style={{ background: 'hsl(152 30% 94%)', color: 'hsl(152 69% 28%)', fontSize: 11.5, fontWeight: 700, padding: '2px 8px', borderRadius: 8 }}>{totalCount}</span>
+            )}
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
             <button onClick={onBroadcast} title="Chia sẻ / Gửi hàng loạt" style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid hsl(210 20% 88%)', background: '#fff', color: EMERALD, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
@@ -101,7 +110,9 @@ export default function ConversationList({
 
       {/* List (giới hạn render để mượt với danh bạ lớn; lọc/tìm để thu hẹp) */}
       <div className="wz-scroll" style={{ flex: 1, overflowY: 'auto' }}>
-        {conversations.length === 0 ? (
+        {choDuLieu ? (
+          <LoadingState label="hội thoại" variant="list" rows={6} className="px-3" />
+        ) : conversations.length === 0 ? (
           <div style={{ padding: '40px 16px', textAlign: 'center', color: 'hsl(210 10% 50%)', fontSize: 13 }}>
             Không có hội thoại phù hợp
           </div>

@@ -1,4 +1,5 @@
 import { QueryRegion } from '@/components/errors/QueryRegion';
+import { LoadingState } from '@/components/loading/LoadingState';
 import { isZaloActionUnconfirmed, zaloActionErrorMessage, ZaloActionUnknownError } from '@/lib/zaloActionFeedback';
 import { actionErrorMessage } from '@/lib/actionFeedback';
 import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
@@ -229,7 +230,14 @@ export default function ChatZaloPage() {
   );
 
   const switcher = (
-    <QueryRegion label="tài khoản Zalo" queries={[accountsQuery]}>
+    <QueryRegion
+      label="tài khoản Zalo"
+      queries={[accountsQuery]}
+      // Khối xám đúng chỗ thanh chọn tài khoản (cùng lề/nền với AccountSwitcher).
+      loading={<div style={{ padding: '10px 12px', borderBottom: '1px solid hsl(210 20% 93%)', background: 'hsl(152 35% 98%)' }}>
+        <LoadingState label="tài khoản Zalo" variant="list" rows={1} className="py-0" onRetry={() => { void accountsQuery.refetch(); }} />
+      </div>}
+    >
     <AccountSwitcher
       accounts={accounts}
       selectedIds={selIds}
@@ -255,6 +263,7 @@ export default function ChatZaloPage() {
           className={cn('w-full lg:w-[322px] lg:flex', mobileView === 'list' ? 'flex' : 'hidden')}
           conversations={filtered}
           totalCount={conversations.length}
+          loading={convQuery.isLoading}
           activeId={effectiveId}
           filter={filter}
           search={search}
@@ -330,7 +339,8 @@ export default function ChatZaloPage() {
           />
         ) : (
           <section className="flex-1 min-w-0 hidden lg:flex items-center justify-center text-muted-foreground" style={{ background: 'hsl(160 20% 98.5%)' }}>
-            {convQuery.isLoading ? 'Đang tải hội thoại…'
+            {/* Đang tải: cột danh sách đã hiện khối xám, khung chat để trống — không chữ "Đang tải". */}
+            {convQuery.isLoading ? null
               : convQuery.isError ? 'Không tải được hội thoại — kiểm tra kết nối rồi thử lại'
               : 'Chưa có hội thoại — kết nối Zalo để bắt đầu'}
           </section>

@@ -1,16 +1,42 @@
-import { AlertTriangle, Building2, LoaderCircle } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Building2, Network } from "lucide-react";
 import { Link } from "react-router-dom";
 
+import { LoadingState } from "@/components/loading/LoadingState";
 import { Button } from "@/components/ui/button";
 
+/**
+ * Chờ dữ liệu lần đầu (quyền, toà nhà, đội máy): khung trang — nút về iHomeCRM + tiêu đề —
+ * hiện ngay, phần dữ liệu là khối xám; không chữ "Đang tải" (chủ chốt 02/10/2026).
+ * Chưa dựng được NetworkCenterShell vì nó cần danh sách toà nhà.
+ */
 export function NetworkCenterLoading() {
   return (
-    <main className="network-center nc-state-page" aria-busy="true">
-      <LoaderCircle className="nc-spin" aria-hidden="true" />
-      <h1>Đang tải Trung tâm mạng</h1>
-      <p>Đang lấy danh sách toà nhà theo quyền RLS hiện tại.</p>
-    </main>
+    <div className="network-center" aria-busy="true">
+      <header className="nc-header">
+        <div className="nc-header-brand">
+          <Link to="/" className="nc-back-link">
+            <ArrowLeft aria-hidden="true" />
+            Về iHomeCRM
+          </Link>
+          <div className="nc-title-row">
+            <span className="nc-brand-icon"><Network aria-hidden="true" /></span>
+            <div>
+              <p className="nc-eyebrow">iHomeCRM / vận hành</p>
+              <h1>Trung tâm mạng</h1>
+            </div>
+          </div>
+        </div>
+      </header>
+      <main className="nc-main">
+        <LoadingState label="Trung tâm mạng" variant="table" rows={8} />
+      </main>
+    </div>
   );
+}
+
+/** Chờ dữ liệu một toà (đã ở trong NetworkCenterShell): chỉ khối xám trong vùng nội dung. */
+export function NetworkCenterSectionLoading() {
+  return <LoadingState label="dữ liệu toà nhà" variant="detail" rows={6} />;
 }
 
 export function NetworkCenterError({ retry }: { retry: () => void }) {

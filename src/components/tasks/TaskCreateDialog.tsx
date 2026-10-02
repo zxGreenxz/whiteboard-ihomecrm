@@ -241,7 +241,7 @@ export default function TaskCreateDialog({
   }, [parsed.deadline, parsed.deadlineSource]);
 
   const formBody = (
-    <QueryRegion label="danh mục tạo công việc" queries={[buildingsQuery, roomsQuery, typesQuery, peopleQuery, materialsQuery]}>
+    <QueryRegion label="danh mục tạo công việc" queries={[buildingsQuery, roomsQuery, typesQuery, peopleQuery, materialsQuery]} skeleton="detail" rows={5}>
       {saveOutcome && <div role="alert" tabIndex={-1} className="rounded border border-amber-500 p-3 text-sm">
         {saveOutcome.status === 'partial'
           ? `Đã tạo công việc. Mã công việc: ${saveOutcome.jobId}. Chưa xác nhận được toàn bộ vật tư đã lưu. Giữ thông tin này và kiểm tra phiếu vật tư trước khi thao tác tiếp; không tạo lại công việc.`

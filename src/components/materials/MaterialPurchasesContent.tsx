@@ -35,6 +35,7 @@ import {
 } from '@/hooks/useMaterialPurchases';
 import { format } from 'date-fns';
 import { QueryRegion } from '@/components/errors/QueryRegion';
+import { LoadingState } from '@/components/loading/LoadingState';
 
 export default function MaterialPurchasesContent() {
   const purchasesQuery = useMaterialPurchases();
@@ -56,8 +57,8 @@ export default function MaterialPurchasesContent() {
     });
   };
 
+  // Nút thêm phiếu hiện ngay; chỉ bảng chờ dữ liệu (dòng bảng xám) — chủ chốt 02/10/2026.
   return (
-    <QueryRegion label="danh sách phiếu nhập vật tư" queries={[purchasesQuery]}>
     <div className="space-y-4">
       <div className="flex justify-end">
         <Button
@@ -74,6 +75,7 @@ export default function MaterialPurchasesContent() {
 
       <Card>
         <CardContent className="p-0">
+          <QueryRegion label="danh sách phiếu nhập vật tư" queries={[purchasesQuery]} skeleton="table" rows={6}>
           <Table>
             <TableHeader>
               <TableRow>
@@ -89,8 +91,8 @@ export default function MaterialPurchasesContent() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
-                    Đang tải…
+                  <TableCell colSpan={7} className="p-0">
+                    <LoadingState label="phiếu nhập" variant="table" rows={4} />
                   </TableCell>
                 </TableRow>
               ) : purchases.length === 0 ? (
@@ -209,6 +211,7 @@ export default function MaterialPurchasesContent() {
               )}
             </TableBody>
           </Table>
+          </QueryRegion>
         </CardContent>
       </Card>
 
@@ -238,6 +241,5 @@ export default function MaterialPurchasesContent() {
         </AlertDialogContent>
       </AlertDialog>
     </div>
-    </QueryRegion>
   );
 }

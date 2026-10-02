@@ -36,6 +36,7 @@ import {
 } from '@/hooks/useMaterialAdjustments';
 import { format } from 'date-fns';
 import { QueryRegion } from '@/components/errors/QueryRegion';
+import { LoadingState } from '@/components/loading/LoadingState';
 
 export default function MaterialAdjustmentsContent() {
   const adjustmentsQuery = useMaterialAdjustments();
@@ -56,8 +57,8 @@ export default function MaterialAdjustmentsContent() {
     });
   };
 
+  // Nút tạo phiếu hiện ngay; chỉ bảng chờ dữ liệu (dòng bảng xám) — chủ chốt 02/10/2026.
   return (
-    <QueryRegion label="danh sách phiếu kiểm kê vật tư" queries={[adjustmentsQuery]}>
     <div className="space-y-4">
       <div className="flex justify-end">
         <Button onClick={() => setFormOpen(true)} className="gap-1.5">
@@ -68,6 +69,7 @@ export default function MaterialAdjustmentsContent() {
 
       <Card>
         <CardContent className="p-0">
+          <QueryRegion label="danh sách phiếu kiểm kê vật tư" queries={[adjustmentsQuery]} skeleton="table" rows={6}>
           <Table>
             <TableHeader>
               <TableRow>
@@ -82,8 +84,8 @@ export default function MaterialAdjustmentsContent() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
-                    Đang tải…
+                  <TableCell colSpan={6} className="p-0">
+                    <LoadingState label="phiếu kiểm kê" variant="table" rows={4} />
                   </TableCell>
                 </TableRow>
               ) : adjustments.length === 0 ? (
@@ -190,6 +192,7 @@ export default function MaterialAdjustmentsContent() {
               )}
             </TableBody>
           </Table>
+          </QueryRegion>
         </CardContent>
       </Card>
 
@@ -219,6 +222,5 @@ export default function MaterialAdjustmentsContent() {
         </AlertDialogContent>
       </AlertDialog>
     </div>
-    </QueryRegion>
   );
 }

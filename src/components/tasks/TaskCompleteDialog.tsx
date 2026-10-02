@@ -190,7 +190,7 @@ export default function TaskCompleteDialog({
         </div>
       )}
 
-      <QueryRegion label="cấu hình kiểm tra vị trí" queries={[geofenceQuery]}>
+      <QueryRegion label="cấu hình kiểm tra vị trí" queries={[geofenceQuery]} skeleton="inline">
       <p className="text-[11px] text-muted-foreground flex items-start gap-1">
         <MapPin className="h-3 w-3 mt-0.5 shrink-0" />
         <span>

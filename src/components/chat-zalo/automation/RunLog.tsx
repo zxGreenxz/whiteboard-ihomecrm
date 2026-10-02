@@ -9,7 +9,8 @@
 // thêm một chỗ để nói sai.
 // =============================================================================
 
-import { Loader2, History } from 'lucide-react';
+import { History } from 'lucide-react';
+import { LoadingState } from '@/components/loading/LoadingState';
 import { tagStyle } from '../zaloTheme';
 import { mono } from '../infoCards';
 import { nhanCuaLuot } from './nhanCheDo';
@@ -53,14 +54,8 @@ const O_TIEU_DE = {
 const O = { padding: '8px 10px', fontSize: 12, verticalAlign: 'top' as const };
 
 export default function RunLog({ runs, loading }: Props) {
-  if (loading) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '18px 12px', fontSize: 12, color: CHU_MO }}>
-        <Loader2 size={14} className="animate-spin" />
-        Đang tải nhật ký…
-      </div>
-    );
-  }
+  // Chờ dữ liệu: dòng bảng xám, không chữ "Đang tải" — chủ chốt 02/10/2026.
+  if (loading) return <LoadingState label="nhật ký" variant="table" rows={4} />;
 
   const ds = Array.isArray(runs) ? runs : [];
 

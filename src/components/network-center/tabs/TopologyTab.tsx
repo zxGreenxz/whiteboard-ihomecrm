@@ -1,5 +1,6 @@
 import { Eye, Network } from "lucide-react";
 
+import { LoadingState } from "@/components/loading/LoadingState";
 import { Button } from "@/components/ui/button";
 import type { NetworkCenterController } from "@/hooks/network-center/useNetworkCenter";
 import type { NetworkBuilding } from "@/lib/network-center/contracts";
@@ -56,8 +57,9 @@ export function TopologyTab({
             </article>
           ))}
         </div>
+        {/* Chờ dữ liệu: thẻ xám đúng chỗ thẻ AP, không chữ "Đang tải" (chủ chốt 02/10/2026). */}
         {controller?.isLoadingAruba && arubaNodes.length === 0
-          ? <p className="nc-empty-copy">Đang tải danh sách Aruba…</p>
+          ? <LoadingState label="danh sách Aruba" variant="cards" rows={3} className="px-[18px] pb-6" />
           : null}
         {/*
           Chỉ dựng khối này khi toà THẬT SỰ có H196A. 950NK có H196A và không có

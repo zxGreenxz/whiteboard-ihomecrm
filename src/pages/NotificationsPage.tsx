@@ -1,4 +1,5 @@
 import { QueryRegion } from '@/components/errors/QueryRegion';
+import { LoadingState, SkeletonBar } from '@/components/loading/LoadingState';
 import { Suspense, lazy, useEffect, useMemo } from 'react';
 import MainLayout from "@/components/layout/MainLayout";
 import { usePhoneViewport } from '@/hooks/use-mobile';
@@ -209,9 +210,18 @@ const NotificationsDesktopPage = () => {
     }
   }, [selectedType, setSelectedType, isLoading, allNotifications.length, typeCounts]);
 
+  // Khung trang (tiêu đề, tab, bộ lọc) hiện ngay; chỉ danh sách nằm trong QueryRegion. Khi
+  // chưa có dữ liệu đáng tin (đang tải lần đầu / đọc lỗi) thì không hiện số đếm và nút thao
+  // tác hàng loạt; đang tải thì số đếm là vạch xám — chủ chốt 02/10/2026.
+  const chuaCoDuLieu = notificationsQuery.data === undefined || notificationsQuery.isError;
+  const demCho = isLoading ? (
+    <span className="ld-appear inline-flex align-middle" aria-hidden="true">
+      <SkeletonBar className="h-3" style={{ width: '1rem' }} />
+    </span>
+  ) : null;
+
   return (
     <MainLayout>
-      <QueryRegion label="thông báo" queries={[notificationsQuery]}>
       <div className="container mx-auto p-6 max-w-4xl">
         {/* Header */}
       <div className="flex items-center justify-between mb-6">
@@ -222,15 +232,19 @@ const NotificationsDesktopPage = () => {
           <div>
             <h1 className="text-2xl font-bold">Thông báo</h1>
             <p className="text-sm text-muted-foreground">
-              {unreadCount > 0
-                ? `${unreadCount} thông báo chưa đọc`
-                : 'Không có thông báo chưa đọc'}
+              {chuaCoDuLieu
+                ? isLoading
+                  ? <span className="ld-appear block py-1" aria-hidden="true"><SkeletonBar className="h-3" style={{ width: '10rem' }} /></span>
+                  : null
+                : unreadCount > 0
+                  ? `${unreadCount} thông báo chưa đọc`
+                  : 'Không có thông báo chưa đọc'}
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          {unreadCount > 0 && (
+          {!chuaCoDuLieu && unreadCount > 0 && (
             <Button
               variant="outline"
               size="sm"
@@ -241,7 +255,7 @@ const NotificationsDesktopPage = () => {
               Đánh dấu đã đọc
             </Button>
           )}
-          {allNotifications.some((n) => n.status === 'READ') && (
+          {!chuaCoDuLieu && allNotifications.some((n) => n.status === 'READ') && (
             <Button
               variant="outline"
               size="sm"
@@ -262,9 +276,9 @@ const NotificationsDesktopPage = () => {
         <Tabs value={selectedTab} onValueChange={(v) => setSelectedTab(v as any)}>
           <TabsList>
             <TabsTrigger value="all">
-              Tất cả ({allNotifications.length})
+              Tất cả{' '}{chuaCoDuLieu ? demCho : `(${allNotifications.length})`}
             </TabsTrigger>
-            <TabsTrigger value="unread">Chưa đọc ({unreadCount})</TabsTrigger>
+            <TabsTrigger value="unread">Chưa đọc{' '}{chuaCoDuLieu ? demCho : `(${unreadCount})`}</TabsTrigger>
           </TabsList>
         </Tabs>
 
@@ -286,11 +300,10 @@ const NotificationsDesktopPage = () => {
       </div>
 
       {/* Notifications List */}
+      <QueryRegion label="thông báo" queries={[notificationsQuery]} skeleton="list" rows={5}>
       <div className="space-y-3">
         {isLoading ? (
-          <Card className="p-8 text-center">
-            <p className="text-muted-foreground">Đang tải thông báo...</p>
-          </Card>
+          <LoadingState label="thông báo" variant="list" rows={5} />
         ) : filteredNotifications.length === 0 ? (
           <Card className="p-12 text-center">
             <Bell className="h-16 w-16 mx-auto mb-4 text-muted-foreground/30" />
@@ -374,8 +387,8 @@ const NotificationsDesktopPage = () => {
           ))
         )}
         </div>
-      </div>
       </QueryRegion>
+      </div>
     </MainLayout>
   );
 };

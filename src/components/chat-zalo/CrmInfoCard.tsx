@@ -45,7 +45,7 @@ export default function CrmInfoCard({ conv, onLinkCrm }: Props) {
 
   return (
     <div style={{ padding: '14px 16px' }}>
-      <QueryRegion label="hồ sơ khách hàng của hội thoại" queries={linked ? [crmQuery] : []}>
+      <QueryRegion label="hồ sơ khách hàng của hội thoại" queries={linked ? [crmQuery] : []} skeleton="detail" rows={4}>
       {linked && !data && <p className="text-sm text-muted-foreground">Chưa có thông tin hồ sơ trong liên kết này.</p>}
       {data?.customer && (
         <Card icon={<UserRound size={14} />} title="Khách hàng">

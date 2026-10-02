@@ -4,6 +4,7 @@ import { AppProviders } from "@/app/providers/AppProviders";
 import TestEnvironmentBanner from "@/components/layout/TestEnvironmentBanner";
 import { AppRoutes } from "@/app/routes";
 import { CopilotLauncher } from "@/app/lazyPages";
+import { LoadingState } from "@/components/loading/LoadingState";
 
 /**
  * App còn đúng hai việc: dựng provider và dựng cây route (P1.2 của plan).
@@ -18,10 +19,14 @@ import { CopilotLauncher } from "@/app/lazyPages";
  *   lazy page → src/app/lazyPages.ts
  */
 
-/** Fallback khi đang tải chunk của route lazy. */
+/**
+ * Fallback khi đang tải chunk của route lazy: khối xám dạng trang (hiện sau 0,3 s),
+ * không chữ "Đang tải…" — chủ chốt 02/10/2026. Chữ chỉ còn cho trình đọc màn hình.
+ * Splash khởi động (lib/appSplash + pwa-entry-watchdog) là lớp riêng, không đi qua đây.
+ */
 const RouteFallback = () => (
-  <div className="flex h-screen items-center justify-center text-sm text-muted-foreground">
-    Đang tải…
+  <div className="mx-auto min-h-screen w-full max-w-5xl px-4 py-6 md:px-6">
+    <LoadingState label="trang" variant="lines" rows={6} />
   </div>
 );
 

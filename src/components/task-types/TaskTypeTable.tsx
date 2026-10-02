@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Pencil, Trash2, Search } from "lucide-react";
 import { DataTablePagination } from "@/components/ui/data-table-pagination";
+import { LoadingState } from "@/components/loading/LoadingState";
 import { calculatePaginationInfo } from "@/hooks/usePagination";
 import type { PaginationState } from "@/hooks/usePagination";
 import type { JobTypeWithRelations } from "@/types/jobTypes";
@@ -68,8 +69,8 @@ export default function TaskTypeTable({
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                  Đang tải...
+                <TableCell colSpan={8} className="p-0">
+                  <LoadingState label="loại công việc" variant="table" rows={5} />
                 </TableCell>
               </TableRow>
             ) : data.length === 0 ? (

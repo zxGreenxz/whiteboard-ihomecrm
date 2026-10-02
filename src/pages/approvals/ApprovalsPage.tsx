@@ -26,6 +26,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
+import { SkeletonBar } from "@/components/loading/LoadingState";
 import { Check, ClipboardCheck, RefreshCw, X } from "lucide-react";
 import { format } from "date-fns";
 import { formatVND } from "@/lib/utils";
@@ -166,7 +167,11 @@ const ApprovalsPage = () => {
       <div className="space-y-4">
         <div className="flex items-center justify-between gap-2">
           <div className="text-sm text-muted-foreground">
-            {isLoading ? "Đang tải…" : isError ? "Chưa cập nhật được yêu cầu chờ duyệt" : `${rows.length} yêu cầu chờ bạn duyệt`}
+            {/* Đang tải: vạch xám chỗ số yêu cầu (câu cho trình đọc màn hình nằm ở vùng danh
+                sách bên dưới) — chủ chốt 02/10/2026. */}
+            {isLoading
+              ? <span className="ld-appear block" aria-hidden="true"><SkeletonBar className="h-3" style={{ width: '10rem' }} /></span>
+              : isError ? "Chưa cập nhật được yêu cầu chờ duyệt" : `${rows.length} yêu cầu chờ bạn duyệt`}
           </div>
           <Button variant="outline" onClick={() => refetch()} disabled={isFetching}>
             <RefreshCw className={`h-4 w-4 mr-2 ${isFetching ? "animate-spin" : ""}`} />
@@ -175,7 +180,7 @@ const ApprovalsPage = () => {
         </div>
 
         {actionError && <p role="alert" className="text-sm text-destructive">{actionError}</p>}
-        <QueryRegion label="yêu cầu chờ duyệt" queries={[pendingQuery]}>
+        <QueryRegion label="yêu cầu chờ duyệt" queries={[pendingQuery]} skeleton={isMobile ? "list" : "table"} rows={isMobile ? 4 : 6}>
         {isLoading ? (
           <div className="space-y-2">
             {[0, 1, 2].map((i) => (

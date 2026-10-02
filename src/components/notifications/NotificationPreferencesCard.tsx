@@ -19,6 +19,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Bell } from "lucide-react";
 import { Button } from '@/components/ui/button';
+import { LoadingState } from '@/components/loading/LoadingState';
 import {
   NotificationSettingsReceiptError,
   NOTIFICATION_EVENT_KEYS,
@@ -128,8 +129,8 @@ export default function NotificationPreferencesCard({ variant = "desktop" }: Pro
         )}
 
         {noOrg ? null : busy ? (
-          <div style={{ padding: "12px 14px", fontSize: 13, color: "var(--ink-2, #52525b)" }}>
-            Đang tải…
+          <div style={{ padding: "4px 14px 10px" }}>
+            <LoadingState label="tùy chọn thông báo" variant="lines" rows={5} onRetry={() => void (loadingOrgs ? retryOrgs() : refetch())} />
           </div>
         ) : (
           <div className="acc-rows" style={{ padding: "4px 0 10px" }}>
@@ -212,7 +213,7 @@ export default function NotificationPreferencesCard({ variant = "desktop" }: Pro
         {notice && <p className="text-xs text-muted-foreground">{notice}</p>}
 
         {noOrg ? null : busy ? (
-          <p className="text-sm text-muted-foreground">Đang tải…</p>
+          <LoadingState label="tùy chọn thông báo" variant="lines" rows={5} onRetry={() => void (loadingOrgs ? retryOrgs() : refetch())} />
         ) : (
           <div className="divide-y">
             <div className="flex items-center justify-end gap-6 pb-2 text-xs text-muted-foreground">

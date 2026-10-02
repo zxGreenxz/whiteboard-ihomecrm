@@ -7,6 +7,7 @@ import MainLayout from "@/components/layout/MainLayout";
 import { ClipboardList, Plus, SlidersHorizontal, Search, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SkeletonBar } from "@/components/loading/LoadingState";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -370,7 +371,12 @@ function TaskManagementDesktopPage() {
                     : "bg-zinc-100 text-zinc-600"
                 }`}
               >
-                {tabCounts[key]}
+                {/* Đang tải lần đầu: vạch xám thay vì "0" — chủ chốt 02/10/2026. */}
+                {isLoading ? (
+                  <span className="ld-appear inline-flex py-1" aria-hidden="true">
+                    <SkeletonBar className="h-2.5" style={{ width: '0.9rem' }} />
+                  </span>
+                ) : tabCounts[key]}
               </span>
             </button>
           );
@@ -382,6 +388,7 @@ function TaskManagementDesktopPage() {
               jobs={tabFiltered}
               activeFilter={statusFilter}
               onFilterChange={handleStatusCardClick}
+              loading={isLoading}
             />
 
       {/* Toolbar */}

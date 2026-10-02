@@ -42,6 +42,7 @@ import {
 import type { Material, MaterialCategory } from '@/types/material';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { QueryRegion } from '@/components/errors/QueryRegion';
+import { LoadingState, SkeletonBar } from '@/components/loading/LoadingState';
 
 const ALL = '__all__';
 
@@ -81,8 +82,9 @@ export default function MaterialsListContent() {
     [materials],
   );
 
+  // Khung trang (nút, ô tìm, bộ lọc, tab) hiện ngay và KHÔNG bị gỡ khi gõ tìm (khoá query đổi
+  // theo ô tìm ⇒ mỗi lần gõ là một lượt tải mới); chỉ bảng chờ dữ liệu — chủ chốt 02/10/2026.
   return (
-    <QueryRegion label="danh sách vật tư và danh mục" queries={[materialsQuery, categoriesQuery]}>
     <div className="space-y-4">
       <div className="flex flex-wrap gap-2 justify-end">
         <Button
@@ -121,6 +123,7 @@ export default function MaterialsListContent() {
             </Button>
           </CardHeader>
           <CardContent>
+            <QueryRegion label="danh mục vật tư" queries={[categoriesQuery]} skeleton="lines" rows={2}>
             {categories.length === 0 ? (
               <p className="text-sm text-muted-foreground py-4">
                 Chưa có danh mục nào. Tạo danh mục để gom nhóm vật tư.
@@ -161,6 +164,7 @@ export default function MaterialsListContent() {
                 ))}
               </div>
             )}
+            </QueryRegion>
           </CardContent>
         </Card>
       )}
@@ -192,7 +196,11 @@ export default function MaterialsListContent() {
           <Tabs value={stockTab} onValueChange={(v) => setStockTab(v as 'all' | 'low')}>
             <TabsList>
               <TabsTrigger value="all">
-                Tất cả <Badge variant="outline" className="ml-1.5">{materials.length}</Badge>
+                Tất cả <Badge variant="outline" className="ml-1.5">
+                  {isLoading
+                    ? <span className="ld-appear" aria-hidden="true"><SkeletonBar className="h-3" style={{ width: '1rem' }} /></span>
+                    : materials.length}
+                </Badge>
               </TabsTrigger>
               <TabsTrigger value="low">
                 Sắp hết
@@ -205,6 +213,7 @@ export default function MaterialsListContent() {
             </TabsList>
           </Tabs>
 
+          <QueryRegion label="danh sách vật tư và danh mục" queries={[materialsQuery, categoriesQuery]} skeleton="table" rows={6}>
           <div className="border rounded-md overflow-x-auto">
             <Table>
               <TableHeader>
@@ -221,8 +230,8 @@ export default function MaterialsListContent() {
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
-                      Đang tải…
+                    <TableCell colSpan={7} className="p-0">
+                      <LoadingState label="vật tư" variant="table" rows={4} />
                     </TableCell>
                   </TableRow>
                 ) : materials.length === 0 ? (
@@ -281,6 +290,7 @@ export default function MaterialsListContent() {
               </TableBody>
             </Table>
           </div>
+          </QueryRegion>
         </CardContent>
       </Card>
 
@@ -345,6 +355,5 @@ export default function MaterialsListContent() {
         </AlertDialogContent>
       </AlertDialog>
     </div>
-    </QueryRegion>
   );
 }

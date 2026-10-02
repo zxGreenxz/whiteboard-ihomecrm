@@ -1,4 +1,5 @@
 import { QueryRegion } from '@/components/errors/QueryRegion';
+import { SkeletonBar } from '@/components/loading/LoadingState';
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -168,7 +169,15 @@ export default function NotificationsMobilePage() {
     setSel(n.id);
   };
 
-  if (notificationsQuery.isLoading || notificationsQuery.isError) return <div className="cm-stage"><div className="cm-app p-4"><QueryRegion label="Danh sách thông báo" queries={[notificationsQuery]}><p>Dữ liệu thông báo chưa được cập nhật.</p></QueryRegion></div></div>;
+  // Chưa có dữ liệu đáng tin (đang tải lần đầu hoặc đọc lỗi): khung màn (nút về, tiêu đề, tab,
+  // bộ lọc) vẫn hiện nhưng không hiện số đếm / nút "Đã đọc"; số đếm là vạch xám khi đang tải.
+  // Danh sách nằm trong QueryRegion bên dưới (khối xám / thẻ lỗi + Tải lại) — chủ chốt 02/10/2026.
+  const chuaCoDuLieu = notificationsQuery.data === undefined || notificationsQuery.isError;
+  const demCho = notificationsQuery.isLoading ? (
+    <span className="ld-appear inline-flex align-middle" aria-hidden="true">
+      <SkeletonBar className="h-2.5" style={{ width: "0.9rem" }} />
+    </span>
+  ) : null;
 
   // ---- Chi tiết bản tin ----
   if (current) {
@@ -249,9 +258,15 @@ export default function NotificationsMobilePage() {
             </button>
             <div className="mtitle">
               <h1>Bản tin</h1>
-              <p>{unread > 0 ? `${unread} thông báo chưa đọc` : "Đã đọc hết thông báo"}</p>
+              <p>
+                {chuaCoDuLieu
+                  ? notificationsQuery.isLoading
+                    ? <span className="ld-appear block py-0.5" aria-hidden="true"><SkeletonBar className="h-3" style={{ width: "8rem" }} /></span>
+                    : null
+                  : unread > 0 ? `${unread} thông báo chưa đọc` : "Đã đọc hết thông báo"}
+              </p>
             </div>
-            {unread > 0 && (
+            {unread > 0 && !chuaCoDuLieu && (
               <div className="mtop-act">
                 <button
                   className="mtop-btn ghost"
@@ -269,11 +284,11 @@ export default function NotificationsMobilePage() {
             <div className="ntseg">
               <button className={"ntseg-b" + (tab === "all" ? " on" : "")} onClick={() => setTab("all")}>
                 Tất cả
-                <span className="ntseg-n">{list.length}</span>
+                <span className="ntseg-n">{chuaCoDuLieu ? demCho : list.length}</span>
               </button>
               <button className={"ntseg-b" + (tab === "unread" ? " on" : "")} onClick={() => setTab("unread")}>
                 Chưa đọc
-                <span className="ntseg-n">{unread}</span>
+                <span className="ntseg-n">{chuaCoDuLieu ? demCho : unread}</span>
               </button>
             </div>
 
@@ -289,6 +304,7 @@ export default function NotificationsMobilePage() {
               ))}
             </div>
 
+            <QueryRegion label="Danh sách thông báo" queries={[notificationsQuery]} skeleton="list" rows={5}>
             {rows.length === 0 ? (
               <div className="stub" style={{ padding: "52px 24px" }}>
                 <Bell size={26} style={{ color: "var(--ink-faint)" }} />
@@ -335,6 +351,7 @@ export default function NotificationsMobilePage() {
                 })}
               </div>
             )}
+            </QueryRegion>
           </div>
         </div>
       </div>

@@ -83,15 +83,19 @@ export function NetworkCenterShell({
           {/* Router được hỏi thăm 30 phút một lần (migration 20260830165629) và
               sự kiện realtime còn bị gom 5 giây, nên đây là đường tắt cho người
               muốn số liệu ngay. */}
+          {/* `isRefreshing` bật cả khi truy vấn tự chạy nền (realtime, hỏi thăm định kỳ), nên
+              nút giữ nguyên chữ "Làm mới": chỉ biểu tượng quay + khoá nút, không chữ "Đang nạp…"
+              (chủ chốt 02/10/2026 — làm mới dữ liệu đang hiển thị không hiện chữ chờ). */}
           <button
             type="button"
             className="nc-refresh-button"
             onClick={() => { void onRefresh(); }}
             disabled={isRefreshing}
+            aria-busy={isRefreshing}
             title="Nạp lại số liệu Trung tâm mạng"
           >
             <RefreshCw aria-hidden="true" className={isRefreshing ? "nc-refresh-spinning" : undefined} />
-            {isRefreshing ? "Đang nạp…" : "Làm mới"}
+            Làm mới
           </button>
           <NetworkStatus
             kind={canExecute && (selectedBuildingId
