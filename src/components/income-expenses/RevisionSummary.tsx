@@ -71,7 +71,7 @@ export function RevisionCountBadges({
 export function VoucherRevisionBadges({ voucherId }: { voucherId: string }) {
   const query=useIncomeExpenseRevisions(voucherId);
   const { data: revisions = [] }=query;
-  if(query.isError||query.data===undefined)return <QueryRegion label="lịch sử sửa phiếu" queries={[query]}><span /></QueryRegion>;
+  if(query.isError||query.data===undefined)return <QueryRegion label="lịch sử sửa phiếu" queries={[query]} skeleton="inline"><span /></QueryRegion>;
   return (
     <RevisionCountBadges
       editCount={revisions.filter((r) => r.kind === "EDIT_PENDING").length}
@@ -135,7 +135,7 @@ function RevisionEntry({ revision }: { revision: IncomeExpenseRevision }) {
 export function RevisionComparison({ voucherId }: { voucherId: string }) {
   const query=useIncomeExpenseRevisions(voucherId);
   const { data: revisions = [], isLoading }=query;
-  if(query.isError||query.data===undefined)return <QueryRegion label="lịch sử sửa phiếu" queries={[query]}><span /></QueryRegion>;
+  if(query.isError||query.data===undefined)return <QueryRegion label="lịch sử sửa phiếu" queries={[query]} skeleton="inline"><span /></QueryRegion>;
   if (isLoading) return <Skeleton className="h-16 w-full" />;
   const tom = summarizePendingRevisions(revisions);
   if (!tom) return null;
@@ -162,7 +162,7 @@ export function RevisionComparison({ voucherId }: { voucherId: string }) {
 export function RevisionHistory({ voucherId }: { voucherId: string }) {
   const query=useIncomeExpenseRevisions(voucherId);
   const { data: revisions = [], isLoading, isError }=query;
-  if(query.isError||query.data===undefined)return <QueryRegion label="lịch sử sửa phiếu" queries={[query]}><span /></QueryRegion>;
+  if(query.isError||query.data===undefined)return <QueryRegion label="lịch sử sửa phiếu" queries={[query]} skeleton="inline"><span /></QueryRegion>;
   if (isLoading) return <Skeleton className="h-12 w-full" />;
   if (isError) return <p className="text-xs text-rose-600">Không tải được lịch sử sửa phiếu.</p>;
   if (revisions.length === 0) return null;

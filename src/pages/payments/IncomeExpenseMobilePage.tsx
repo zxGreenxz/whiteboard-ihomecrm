@@ -2,6 +2,7 @@ import {useIncomeExpenseRevisions} from '@/hooks/income-expenses/revisions';
 import { focusFirstError } from "@/lib/formErrors";
 import { voucherFailureMessage, voucherOutcomeUnknown, VoucherPartialError } from "@/lib/voucherFeedback";
 import { QueryRegion } from "@/components/errors/QueryRegion";
+import { LoadingState } from "@/components/loading/LoadingState";
 import { useIncomeExpenseDetail } from "@/hooks/income-expenses/detailRead";
 import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
@@ -685,7 +686,7 @@ export default function IncomeExpenseMobilePage() {
             </div>
 
             {/* Chỉ số tổng thu / tổng chi / chênh lệch */}
-            <QueryRegion label="thống kê thu chi" queries={[statsQuery]}>
+            <QueryRegion label="thống kê thu chi" queries={[statsQuery]} skeleton="cards" rows={2}>
             <div className="iestats">
               <div className="iestat">
                 <span className="iestat-l">
@@ -778,12 +779,10 @@ export default function IncomeExpenseMobilePage() {
               </button>
             </div>
 
-            <QueryRegion label="danh sách phiếu thu chi" queries={[viewMode === "individual" ? listQuery : batchQuery]}>
+            <QueryRegion label="danh sách phiếu thu chi" queries={[viewMode === "individual" ? listQuery : batchQuery]} skeleton="list">
         {viewMode === "individual" ? (
               isLoading || parsed.pending ? (
-                <div className="stub">
-                  <p>Đang tải phiếu…</p>
-                </div>
+                <LoadingState label="phiếu" variant="list" />
               ) : vouchers.length === 0 ? (
                 <div className="stub">
                   <p>

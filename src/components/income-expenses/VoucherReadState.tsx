@@ -1,4 +1,4 @@
-import { Loader2, X } from "lucide-react";
+import { X } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -51,12 +51,13 @@ export function VoucherSheetReadState({
             <X size={18} />
           </button>
         </div>
-        <p role="status" className="vd-state">
-          {loading && <Loader2 size={15} className="vd-state-spin" aria-hidden="true" />}
+        {/* Đang tải: chỉ khối xám (hiện sau 0,3 s), câu chữ chỉ cho trình đọc màn hình —
+            chủ chốt 02/10/2026. Đọc hỏng mới hiện câu báo và nút. */}
+        <p role="status" className={loading ? "sr-only" : "vd-state"}>
           {message}
         </p>
         {loading ? (
-          <div className="vd-table" aria-hidden="true">
+          <div className="vd-table ld-appear" aria-hidden="true">
             {SKELETON_WIDTHS.map((width, i) => (
               <div className="vd-row" key={i}>
                 <div className="vd-row-l">
@@ -89,12 +90,11 @@ export function VoucherDialogReadState({ title, loading, message, onRetry, onClo
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent aria-describedby={undefined} aria-busy={loading}>
         <DialogTitle>{title}</DialogTitle>
-        <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
-          {loading && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
+        <p role="status" className={loading ? "sr-only" : "text-sm text-muted-foreground"}>
           {message}
         </p>
         {loading ? (
-          <div className="space-y-3" aria-hidden="true">
+          <div className="ld-appear space-y-3" aria-hidden="true">
             {SKELETON_WIDTHS.map((width, i) => (
               <Skeleton key={i} className="h-4" style={{ width }} />
             ))}

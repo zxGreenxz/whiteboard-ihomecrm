@@ -1,4 +1,5 @@
 import {QueryRegion} from '@/components/errors/QueryRegion';
+import { RefreshBar } from '@/components/loading/LoadingState';
 import { useIncomeExpenseDetail } from "@/hooks/income-expenses/detailRead";
 import { hasCompleteVoucherDetail } from "@/lib/incomeExpenseDetailRead";
 import { useNavigate } from "react-router-dom";
@@ -17,7 +18,6 @@ import {
   RotateCcw,
   History,
   CopyPlus,
-  Loader2,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { format } from "date-fns";
@@ -240,23 +240,18 @@ function IncomeExpenseDetailMobileContent({
     // trực tiếp nền này mới đóng chi tiết, không đóng khi thao tác dialog con.
     <div className={still ? "sheet-ov sheet-still" : "sheet-ov"} onClick={(e) => { e.stopPropagation(); if (e.target === e.currentTarget) onClose(); }}>
       <div className="sheet" onClick={(e) => e.stopPropagation()}>
+        {/* Đọc lại phiếu: vạch mảnh mép trên thay chữ "Đang cập nhật…" (chủ chốt 02/10/2026). */}
+        <RefreshBar active={locked} label="Đang cập nhật phiếu" />
         <div className="sheet-grab" />
         <div className="vd-hd">
           <span className="vd-hd-t">THÔNG TIN THU/CHI</span>
-          {/* Nằm trên thanh tiêu đề để bật/tắt không đẩy nội dung (realtime đọc lại thường xuyên). */}
-          {locked && (
-            <span role="status" className="vd-hd-st">
-              <Loader2 size={13} className="vd-state-spin" aria-hidden="true" />
-              Đang cập nhật…
-            </span>
-          )}
           <button className="sheet-x" onClick={onClose} aria-label="Đóng">
             <X size={18} />
           </button>
         </div>
 
-        <QueryRegion label="nhật ký phiếu" queries={[historyQuery]}><></></QueryRegion>
-        {invoiceId&&<QueryRegion label="hoá đơn liên quan" queries={[relatedInvoiceQuery]}><></></QueryRegion>}
+        <QueryRegion label="nhật ký phiếu" queries={[historyQuery]} skeleton="none"><></></QueryRegion>
+        {invoiceId&&<QueryRegion label="hoá đơn liên quan" queries={[relatedInvoiceQuery]} skeleton="none"><></></QueryRegion>}
         {/* Chủ chốt 30/09/2026: nội dung hiện ngay (bản xem trước / làm mới ngầm) nhưng
             MỌI nút thao tác khoá tới khi bản đọc mới về — fieldset disabled khoá cả nút của
             component con (Đổi hình thức thu, gán QL…). Ngoài fieldset chỉ còn phần CHỈ ĐỂ

@@ -7,6 +7,7 @@
 // đọc nó cho nút chi tiền qua app ngân hàng, và nó là thứ người tạo phiếu gõ.
 // =============================================================================
 
+import { InlineSkeleton } from "@/components/loading/LoadingState";
 import { useCommissionVoucherFacts } from "@/hooks/useCommissionVoucher";
 import { buildCommissionNoteLines } from "@/lib/commissionVoucherNote";
 
@@ -45,7 +46,7 @@ export function CommissionVoucherNote({ voucher, fallbackNotes, enabled = true }
   return (
     <div className="space-y-1">
       {isLoading ? (
-        <div className="text-muted-foreground">Đang tính thông tin hợp đồng…</div>
+        <InlineSkeleton label="thông tin hợp đồng" width="14rem" />
       ) : isError ? (
         <div className="text-muted-foreground">Không đọc được thông tin hợp đồng.</div>
       ) : lines ? (

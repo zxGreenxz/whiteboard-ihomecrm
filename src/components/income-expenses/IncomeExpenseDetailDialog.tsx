@@ -1,4 +1,5 @@
 import {QueryRegion} from '@/components/errors/QueryRegion';
+import { RefreshBar } from '@/components/loading/LoadingState';
 import { useIncomeExpenseDetail } from "@/hooks/income-expenses/detailRead";
 import { hasCompleteVoucherDetail } from "@/lib/incomeExpenseDetailRead";
 import { useState, useEffect } from "react";
@@ -24,7 +25,6 @@ import {
   RotateCcw,
   History,
   CopyPlus,
-  Loader2,
 } from "lucide-react";
 import { PayViaBankAppSheet } from "@/components/income-expenses/PayViaBankAppSheet";
 import {
@@ -245,6 +245,9 @@ function IncomeExpenseDetailDialogContent({
             if (isLightboxOpen) e.preventDefault();
           }}
         >
+          {/* Đọc lại phiếu (realtime / bản mới sau khi mở): vạch mảnh mép trên thay cho chữ
+              "Đang cập nhật…" — chủ chốt 02/10/2026; nút thao tác vẫn khoá theo `locked`. */}
+          <RefreshBar active={locked} label="Đang cập nhật phiếu" />
           {isMobile && (
             <div className="absolute top-2 left-1/2 -translate-x-1/2 w-10 h-1 bg-zinc-300 rounded-full" />
           )}
@@ -256,17 +259,10 @@ function IncomeExpenseDetailDialogContent({
             <DialogTitle className="text-primary uppercase tracking-wide">
               Thông tin thu/chi
             </DialogTitle>
-            {/* Trên thanh tiêu đề để bật/tắt không đẩy nội dung; mr-8 chừa nút đóng. */}
-            {locked && (
-              <p role="status" className="!mt-0 mr-8 flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                Đang cập nhật…
-              </p>
-            )}
           </DialogHeader>
 
-          <QueryRegion label="nhật ký phiếu" queries={[historyQuery]}><></></QueryRegion>
-          {invoiceId&&<QueryRegion label="hoá đơn liên quan" queries={[relatedInvoiceQuery]}><></></QueryRegion>}
+          <QueryRegion label="nhật ký phiếu" queries={[historyQuery]} skeleton="none"><></></QueryRegion>
+          {invoiceId&&<QueryRegion label="hoá đơn liên quan" queries={[relatedInvoiceQuery]} skeleton="none"><></></QueryRegion>}
           {/* Chủ chốt 30/09/2026: nội dung hiện ngay (bản xem trước / làm mới ngầm) nhưng
               MỌI nút thao tác khoá tới khi bản đọc mới về. Ngoài fieldset chỉ còn phần CHỈ
               ĐỂ XEM: nút đóng, Thử lại của vùng đọc phụ, ô ảnh đính kèm, lịch sử. `grid

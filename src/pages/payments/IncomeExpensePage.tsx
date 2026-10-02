@@ -770,7 +770,7 @@ const IncomeExpenseDesktopPage = () => {
           onChange={handleFiltersChange}
         />
 
-        <QueryRegion label="thống kê thu chi" queries={[statsQuery]}>
+        <QueryRegion label="thống kê thu chi" queries={[statsQuery]} skeleton="cards" rows={3}>
         <IncomeExpenseStats
           stats={statsData}
           isLoading={isStatsLoading}
@@ -847,7 +847,7 @@ const IncomeExpenseDesktopPage = () => {
           </div>
         </div>
 
-        <QueryRegion label="danh sách phiếu thu chi" queries={[viewMode === "individual" ? listQuery : batchQuery]}>
+        <QueryRegion label="danh sách phiếu thu chi" queries={[viewMode === "individual" ? listQuery : batchQuery]} skeleton="table" rows={8}>
         {viewMode === "individual" ? (
           <IncomeExpenseList
             vouchers={vouchers}

@@ -2,6 +2,7 @@ import { friendlyError } from '@/lib/friendlyError';
 import type { ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { deriveFinanceQueryState } from '@/lib/financeQueryState';
+import { LoadingState, type LoadingVariant } from '@/components/loading/LoadingState';
 
 export interface RegionQuery {
   data: unknown;
@@ -14,12 +15,18 @@ export interface RegionQuery {
   refetch: () => unknown;
 }
 
-/** Keep every required source explicit; missing data must not enter totals as zero. */
-export function QueryRegion({ label, queries, children, loading }: {
+/**
+ * Keep every required source explicit; missing data must not enter totals as zero.
+ * Lúc chờ: khối xám đúng hình nội dung (`skeleton`), không chữ "Đang tải…" — xem
+ * components/loading/LoadingState. Vùng chỉ để theo dõi trạng thái (con rỗng) dùng `none`.
+ */
+export function QueryRegion({ label, queries, children, loading, skeleton = 'lines', rows }: {
   label: string;
   queries: readonly RegionQuery[];
   children: ReactNode;
   loading?: ReactNode;
+  skeleton?: LoadingVariant;
+  rows?: number;
 }) {
   const chuaChay = (query: RegionQuery) =>
     query.data === undefined && !query.isLoading && query.fetchStatus === 'idle' && !query.isError;
@@ -43,7 +50,7 @@ export function QueryRegion({ label, queries, children, loading }: {
       <Button type="button" variant="outline" size="sm" className="mt-2" onClick={retry}>Tải lại</Button>
     </div>;
   }
-  if (pending) return <>{loading ?? <p role="status" className="p-4 text-sm text-muted-foreground">Đang tải {label}…</p>}</>;
+  if (pending) return <>{loading ?? <LoadingState label={label} variant={skeleton} rows={rows} onRetry={retry} />}</>;
   return <>
     {stale && <div role="alert" className="mb-3 rounded-md border border-amber-400 p-3 text-sm">
       <p>Chưa cập nhật được {label}. {lastRead ? `Đang hiển thị kết quả tải lúc ${lastRead}.` : 'Đang hiển thị kết quả của lần tải trước.'}</p>

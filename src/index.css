@@ -572,3 +572,19 @@ All colors MUST be HSL.
     animation: none !important;
   }
 }
+
+/* ===== Hiển thị lúc chờ dữ liệu (src/components/loading/LoadingState.tsx) =====
+   Khối xám chỉ hiện sau 0,3 s (LOADING_APPEAR_DELAY_MS) để dữ liệu về nhanh thì màn
+   hình không chớp; vạch làm mới chạy ngang ở mép trên. */
+@keyframes ld-appear { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ld-bar { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
+.ld-appear { animation: ld-appear .2s ease-out .3s both; }
+.ld-bar { animation: ld-bar 1.1s ease-in-out infinite; }
+/* Trong bộ giao diện điện thoại (.cm-app), khối xám theo tông ấm của bộ đó. */
+.cm-app .ld-sk { background-color: var(--line-2, #efece4); }
+.cm-app .ld-card { background-color: var(--surface, #fff); border-color: var(--line, #e7e3da); }
+.cm-app .ld-bar { background-color: var(--brand, #1f7a52); }
+@media (prefers-reduced-motion: reduce) {
+  .ld-appear { animation-duration: 1ms; }
+  .ld-bar { animation: none; width: 100%; opacity: .5; }
+}
