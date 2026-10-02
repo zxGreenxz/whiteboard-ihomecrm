@@ -37,6 +37,7 @@ import {
   type SearchableSelectOption,
 } from '@/components/ui/searchable-select';
 import ImageUploadZone from '@/components/customers/ImageUploadZone';
+import { InlineSkeleton, LoadingState } from '@/components/loading/LoadingState';
 import type { Vehicle } from '@/types/vehicle';
 import { focusFirstError } from '@/lib/formErrors';
 import { friendlyError } from '@/lib/friendlyError';
@@ -161,7 +162,7 @@ export default function VehicleFormDialog({
       opts.push({
         value: '__empty__',
         label: isFetchingCustomers
-          ? 'Đang tải...'
+          ? <InlineSkeleton label="danh sách khách" width="8rem" />
           : 'Không có khách trong toà/phòng này',
         disabled: true,
       });
@@ -270,7 +271,10 @@ export default function VehicleFormDialog({
               {form.formState.errors.root?.server?.message && (
                 <p role="alert" className="text-sm text-destructive">{form.formState.errors.root.server.message}</p>
               )}
-              {(sourceError || sourcePending) && <div role="alert" className="text-sm text-destructive">{sourceError ? 'Chưa tải đủ tòa, phòng hoặc khách để lưu phương tiện.' : 'Đang tải dữ liệu biểu mẫu.'}{sourceError && <Button type="button" variant="outline" onClick={()=>{void buildingsQuery.refetch();void roomsQuery.refetch();void customersQuery.refetch();if(selectedCustomerId && !selectedInList)void selectedCustomerQuery.refetch();}}>Tải lại dữ liệu</Button>}</div>}
+              {/* Đang nạp nguồn: form vẫn khoá (fieldset bên dưới), chỉ báo cho trình đọc màn hình —
+                  không in chữ đỏ "Đang tải…" (chủ chốt 02/10/2026). Lỗi thật giữ nguyên. */}
+              {!sourceError && sourcePending && <LoadingState label="dữ liệu biểu mẫu" variant="none" />}
+              {sourceError && <div role="alert" className="text-sm text-destructive">Chưa tải đủ tòa, phòng hoặc khách để lưu phương tiện.{sourceError && <Button type="button" variant="outline" onClick={()=>{void buildingsQuery.refetch();void roomsQuery.refetch();void customersQuery.refetch();if(selectedCustomerId && !selectedInList)void selectedCustomerQuery.refetch();}}>Tải lại dữ liệu</Button>}</div>}
               <fieldset disabled={isPending || blocked || sourceError || sourcePending} className="space-y-4">
               {/* Image upload */}
               <FormField
@@ -491,8 +495,9 @@ export default function VehicleFormDialog({
                         placeholder="Chọn khách hàng"
                         searchPlaceholder="Gõ tên hoặc SĐT để tìm..."
                         emptyText={
+                          // emptyText chỉ nhận chữ: lúc đang nạp để dấu trung tính, không in "Đang tải".
                           isFetchingCustomers
-                            ? 'Đang tải...'
+                            ? '…'
                             : locationFilterActive
                               ? 'Không có khách trong toà/phòng này'
                               : 'Không tìm thấy khách hàng'

@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/table';
 import type { VehicleWithRelations } from '@/types/vehicle';
 import { useMyBuildingScope } from '@/hooks/useMyBuildingScope';
+import { LoadingState } from '@/components/loading/LoadingState';
 
 const VEHICLE_TYPE_LABELS: Record<string, string> = {
   MOTORBIKE: 'Xe máy',
@@ -43,7 +44,7 @@ export default function VehicleListTable({
 
   if (isLoading) {
     return (
-      <div className="p-8 text-center text-muted-foreground">Đang tải dữ liệu...</div>
+      <LoadingState label="danh sách phương tiện" variant="table" rows={8} />
     );
   }
 

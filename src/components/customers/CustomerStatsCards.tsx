@@ -1,9 +1,11 @@
 import { Users, Globe } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { InlineSkeleton } from '@/components/loading/LoadingState';
 import type { CustomerStats, StatFilterType } from '@/types/customer';
 
 interface CustomerStatsCardsProps {
-  stats: CustomerStats;
+  /** Chưa có số (đang tải) thì truyền null — ô số là vạch xám, không in 0. */
+  stats: CustomerStats | null;
   activeFilter: StatFilterType;
   onFilterChange: (filter: StatFilterType) => void;
 }
@@ -60,7 +62,9 @@ export default function CustomerStatsCards({
               <Icon className={cn('h-5 w-5', card.iconColor)} />
             </div>
             <div>
-              <p className="text-2xl font-bold">{stats[card.statKey]}</p>
+              <p className="text-2xl font-bold">
+                {stats ? stats[card.statKey] : <InlineSkeleton label={`số ${card.label.toLowerCase()}`} width="3rem" />}
+              </p>
               <p className="text-xs text-muted-foreground">{card.label}</p>
             </div>
           </button>

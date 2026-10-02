@@ -2,6 +2,7 @@ import { FormProvider, type UseFormReturn } from 'react-hook-form';
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { LoadingState } from '@/components/loading/LoadingState';
 import type { BuildingLegalOwner } from '@/lib/buildingLegalOwner';
 
 interface Props {
@@ -15,7 +16,7 @@ export function BuildingLegalOwnerFields({ form, loading, error, retry }: Props)
     {form.formState.errors.root?.server?.message && <p role="alert" className="text-sm text-destructive">{form.formState.errors.root.server.message}</p>}
     <h3 className="font-semibold text-sm">Chủ sở hữu pháp lý (bên cho thuê)</h3>
     <p className="text-sm text-muted-foreground">Người đứng tên sở hữu tòa nhà, dùng làm bên A trong hợp đồng thuê.</p>
-    {loading ? <p role="status">Đang tải chủ sở hữu...</p> : error ? <div role="alert">{error} <Button type="button" variant="outline" onClick={retry}>Tải lại</Button></div> :
+    {loading ? <LoadingState label="chủ sở hữu" variant="detail" rows={3} onRetry={retry} /> : error ? <div role="alert">{error} <Button type="button" variant="outline" onClick={retry}>Tải lại</Button></div> :
       <FormProvider {...form}><div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {([
           ['full_name', 'Họ tên chủ sở hữu', 'text'],

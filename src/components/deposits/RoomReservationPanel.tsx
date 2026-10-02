@@ -1,6 +1,7 @@
 import {useRef,useState} from 'react';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
+import {LoadingState} from '@/components/loading/LoadingState';
 import {useRoomReservations,useUpdateRoomReservation} from '@/hooks/useRoomReservations';
 import {useMyPermissions} from '@/hooks/useMyPermissions';
 import {useAccounts} from '@/hooks/useAccounts';
@@ -18,7 +19,7 @@ export function RoomReservationPanel({roomId,buildingId,enabled=true}:{roomId?:s
  return<section className="space-y-3 rounded-lg border p-4" aria-label="Hồ sơ giữ chỗ">
   <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="font-semibold">Giữ chỗ / Cọc trước hợp đồng</h2><select aria-label="Trạng thái hồ sơ giữ chỗ" value={status} onChange={e=>setStatus(e.target.value as typeof status)} className="rounded border p-1"><option value="HOLD">Đang giữ chỗ</option><option value="CONVERTED">Đã ký hợp đồng</option><option value="CANCELLED">Đã hủy</option><option value="">Tất cả</option></select></div>
   <p className="text-xs text-muted-foreground">Hạn giữ chỉ nhắc xử lý, không tự nhả phòng hoặc xử lý cọc.</p>
-  {query.isLoading?<p>Đang tải giữ chỗ…</p>:query.isError?<p role="alert">Không tải được hồ sơ giữ chỗ. <Button variant="link" onClick={()=>void query.refetch()}>Thử lại</Button></p>:
+  {query.isLoading?<LoadingState label="giữ chỗ" rows={2} onRetry={()=>void query.refetch()}/>:query.isError?<p role="alert">Không tải được hồ sơ giữ chỗ. <Button variant="link" onClick={()=>void query.refetch()}>Thử lại</Button></p>:
    query.data?.reservations.length?<div className="space-y-3">{query.data.reservations.map(r=><ReservationRow key={r.id+':'+r.revision} reservation={r} onMoneyClosed={()=>void query.refetch()}/>)}</div>:<p className="text-sm text-muted-foreground">Chưa có giữ chỗ</p>}
   {(query.data?.reservations.length??0)>=200&&<p className="text-xs">Đang hiện 200 hồ sơ. Mở theo từng phòng để xem hồ sơ cụ thể.</p>}
  </section>;

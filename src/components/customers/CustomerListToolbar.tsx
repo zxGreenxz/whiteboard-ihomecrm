@@ -13,6 +13,8 @@ interface CustomerListToolbarProps {
   onSearchChange: (query: string) => void;
   onAdd: () => void;
   onExport: () => void;
+  /** Danh sách chưa về (thanh công cụ hiện trước dữ liệu) thì khoá xuất — không xuất file rỗng. */
+  exportDisabled?: boolean;
   onImport: () => void;
   onPrint: () => void;
   viewMode: ViewMode;
@@ -24,6 +26,7 @@ export default function CustomerListToolbar({
   onSearchChange,
   onAdd,
   onExport,
+  exportDisabled,
   onImport,
   onPrint,
   viewMode,
@@ -53,7 +56,7 @@ export default function CustomerListToolbar({
           </Button>
         )}
         {canUse(perms, 'customers', 'export') && (
-          <Button size="sm" variant="outline" onClick={onExport}>
+          <Button size="sm" variant="outline" onClick={onExport} disabled={exportDisabled}>
             <Download className="h-4 w-4" />
           </Button>
         )}

@@ -64,7 +64,7 @@ function VehiclesDesktopPage() {
   useCopilotPageContext('vehicles.list', filters);
   // Data fetching
   const vehiclesQuery = useVehicles(filters, { page, pageSize });
-  const { data: vehiclesData, isLoading } = vehiclesQuery;
+  const { data: vehiclesData } = vehiclesQuery;
   const vehicles = vehiclesData?.data ?? [];
   const totalCount = vehiclesData?.count ?? 0;
 
@@ -122,7 +122,8 @@ function VehiclesDesktopPage() {
 
   return (
     <MainLayout title="Quản lý Phương tiện" subtitle="Khách hàng > Phương tiện" icon={Car}>
-      <QueryRegion label="danh sách phương tiện" queries={[vehiclesQuery]}>
+      {/* Chủ chốt 02/10/2026: ô tìm + thanh công cụ hiện ngay, chỉ bảng chờ dữ liệu. Ô tìm
+          từng nằm trong vùng chờ: mỗi phím đổi key ⇒ cả vùng (kể cả ô tìm) thành khung chờ. */}
       <div className="space-y-4">
         {/* Search + Toolbar */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
@@ -160,9 +161,8 @@ function VehiclesDesktopPage() {
 
         {/* Table */}
         <div className="bg-white rounded-lg border">
-          {isLoading ? (
-            <div className="p-8 text-center text-muted-foreground">Đang tải dữ liệu...</div>
-          ) : vehicles.length === 0 ? (
+          <QueryRegion label="danh sách phương tiện" queries={[vehiclesQuery]} skeleton="table" rows={8}>
+          {vehicles.length === 0 ? (
             <EmptyState
               icon={Car}
               title="Chưa có phương tiện nào"
@@ -176,7 +176,6 @@ function VehiclesDesktopPage() {
                 vehicles={vehicles}
                 onEdit={handleEdit}
                 onDelete={handleDelete}
-                isLoading={isLoading}
               />
               <DataTablePagination
                 paginationInfo={paginationInfo}
@@ -187,6 +186,7 @@ function VehiclesDesktopPage() {
               />
             </>
           )}
+          </QueryRegion>
         </div>
 
         {/* Form Dialog (Add/Edit) */}
@@ -220,7 +220,6 @@ function VehiclesDesktopPage() {
           />
         )}
       </div>
-      </QueryRegion>
     </MainLayout>
   );
 }

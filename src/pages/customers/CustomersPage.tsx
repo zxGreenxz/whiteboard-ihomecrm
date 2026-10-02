@@ -13,6 +13,7 @@ import { DataTablePagination } from '@/components/ui/data-table-pagination';
 import EmptyState from '@/components/ui/EmptyState';
 import { useCustomers, useCustomerStats, useCreateCustomer } from '@/hooks/useCustomers';
 import { QueryRegion } from '@/components/errors/QueryRegion';
+import { RefreshBar } from '@/components/loading/LoadingState';
 import { friendlyError } from '@/lib/friendlyError';
 import type { Customer, CustomerStatus, StatFilterType, CustomerFilters } from '@/types/customer';
 import type { ViewMode } from '@/components/customers/CustomerListToolbar';
@@ -116,13 +117,12 @@ function CustomersDesktopPage() {
   // Data fetching
   const customersQuery = useCustomers(effectiveFilters, { page, pageSize });
   const statsQuery = useCustomerStats(statsFilters);
-  const { data: customersData, isLoading } = customersQuery;
+  const { data: customersData } = customersQuery;
   const { data: stats } = statsQuery;
   const createCustomer = useCreateCustomer({ silent: true });
 
   const customers = customersData?.data ?? [];
   const totalCount = customersData?.count ?? 0;
-  const customerStats = stats ?? { total: 0, individual: 0, organization: 0, foreign: 0 };
 
   // Pagination info
   const paginationInfo = useMemo(
@@ -235,17 +235,30 @@ function CustomersDesktopPage() {
 
   return (
     <MainLayout title="Quản lý Khách hàng" subtitle="Quản lý thông tin khách hàng" icon={Users}>
-      <QueryRegion label="danh sách và thống kê khách hàng" queries={[customersQuery, statsQuery]}>
+      {/* Chủ chốt 02/10/2026: tab, bộ lọc, thanh công cụ hiện ngay; thẻ thống kê và bảng
+          là hai vùng chờ riêng (hai nguồn độc lập) — mỗi vùng tự báo lỗi của nó. */}
       <div className="space-y-4">
         {/* Status Tabs */}
         <CustomerStatusTabs activeTab={activeTab} onTabChange={handleTabChange} />
 
-        {/* Stats Cards */}
-        <CustomerStatsCards
-          stats={customerStats}
-          activeFilter={activeStatFilter}
-          onFilterChange={handleStatFilterChange}
-        />
+        {/* Stats Cards — chưa có số thì ô số là vạch xám, không in 0. */}
+        <QueryRegion
+          label="thống kê khách hàng"
+          queries={[statsQuery]}
+          loading={
+            <CustomerStatsCards
+              stats={null}
+              activeFilter={activeStatFilter}
+              onFilterChange={handleStatFilterChange}
+            />
+          }
+        >
+          <CustomerStatsCards
+            stats={stats ?? null}
+            activeFilter={activeStatFilter}
+            onFilterChange={handleStatFilterChange}
+          />
+        </QueryRegion>
 
         {/* Location Filters */}
         <CustomerListFilters
@@ -261,17 +274,18 @@ function CustomersDesktopPage() {
           onSearchChange={handleSearch}
           onAdd={handleAdd}
           onExport={handleExport}
+          exportDisabled={customersData === undefined || customersQuery.isError}
           onImport={handleImport}
           onPrint={handlePrint}
           viewMode={viewMode}
           onViewModeChange={setViewMode}
         />
 
-        {/* Table */}
-        <div className="bg-white rounded-lg border">
-          {isLoading ? (
-            <div className="p-8 text-center text-muted-foreground">Đang tải dữ liệu...</div>
-          ) : customers.length === 0 ? (
+        {/* Table — đổi trang/bộ lọc giữ bảng cũ (keepPreviousData), chỉ vạch mảnh mép trên. */}
+        <div className="relative bg-white rounded-lg border">
+          <QueryRegion label="danh sách khách hàng" queries={[customersQuery]} skeleton="table" rows={8}>
+          <RefreshBar active={customersQuery.isFetching && customersData !== undefined} label="Đang cập nhật danh sách khách hàng" />
+          {customers.length === 0 ? (
             <EmptyState
               icon={Users}
               title="Chưa có khách hàng nào"
@@ -284,7 +298,6 @@ function CustomersDesktopPage() {
                 onView={handleView}
                 onEdit={handleEdit}
                 onDelete={handleDelete}
-                isLoading={isLoading}
               />
               <DataTablePagination
                 paginationInfo={paginationInfo}
@@ -295,6 +308,7 @@ function CustomersDesktopPage() {
               />
             </>
           )}
+          </QueryRegion>
         </div>
 
         {/* Customer Detail Modal */}
@@ -412,7 +426,6 @@ function CustomersDesktopPage() {
           </Dialog>
         )}
       </div>
-      </QueryRegion>
     </MainLayout>
   );
 }

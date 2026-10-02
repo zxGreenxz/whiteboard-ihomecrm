@@ -5,6 +5,7 @@ import { useReservationSettlementAudit } from "@/hooks/useReservationSettlement"
 import { useReservationRefundEvidence } from "@/hooks/useReservationRefundEvidence";
 import { StorageImage } from "@/components/ui/storage-image";
 import { AttachmentLightbox } from "@/components/ui/attachment-lightbox";
+import { InlineSkeleton } from "@/components/loading/LoadingState";
 import { formatCurrency } from "@/lib/utils";
 import type { ReservationSettlement } from "@/lib/reservationSettlementRpc";
 
@@ -31,7 +32,7 @@ export function ReservationSettlementDetails({ settlement, onImageOpenChange }: 
     </dl>
     {settlement.refundAmount === 0 && <p>Giữ lại toàn bộ cọc, không hoàn tiền.</p>}
     {settlement.retainedAmount === 0 && <p>Hoàn toàn bộ cọc, không ghi nhận doanh thu.</p>}
-    {audit.isLoading ? <p>Đang tải thông tin người xử lý…</p> : audit.error ? <p role="alert">Không tải được thông tin người xử lý và lý do. <button type="button" className="underline" onClick={()=>void audit.refetch()}>Tải lại</button></p> : audit.data && <div className="space-y-1">
+    {audit.isLoading ? <p><InlineSkeleton label="thông tin người xử lý" width="14rem" /></p> : audit.error ? <p role="alert">Không tải được thông tin người xử lý và lý do. <button type="button" className="underline" onClick={()=>void audit.refetch()}>Tải lại</button></p> : audit.data && <div className="space-y-1">
       <p>Ngày xử lý: {audit.data.settlementDate.split("-").reverse().join("/")} · Người xử lý: <b>{audit.data.actorName || "Chưa có tên"}</b></p>
       <p>Lý do: {[reason, audit.data.reason_text].filter(Boolean).join(" — ") || "Khác"}</p>
     </div>}
@@ -40,7 +41,7 @@ export function ReservationSettlementDetails({ settlement, onImageOpenChange }: 
       {settlement.revenueVoucherId && <Link className="text-blue-700 underline" to={`/income-expense/voucher/${settlement.revenueVoucherId}`}>Phiếu doanh thu</Link>}
       {settlement.offsetVoucherId && <Link className="text-blue-700 underline" to={`/income-expense/voucher/${settlement.offsetVoucherId}`}>Phiếu cấn cọc</Link>}
     </div>
-    {evidence.isLoading ? <p>Đang tải chứng từ hoàn tiền…</p> : evidence.error ? <p role="alert">Không tải được chứng từ hoàn tiền. <button type="button" className="underline" onClick={() => void evidence.refetch()}>Thử lại</button></p> : evidence.data?.map((refund) => <div key={refund.id} className="space-y-2 border-t border-amber-200 pt-2">
+    {evidence.isLoading ? <p><InlineSkeleton label="chứng từ hoàn tiền" width="12rem" /></p> : evidence.error ? <p role="alert">Không tải được chứng từ hoàn tiền. <button type="button" className="underline" onClick={() => void evidence.refetch()}>Thử lại</button></p> : evidence.data?.map((refund) => <div key={refund.id} className="space-y-2 border-t border-amber-200 pt-2">
       <p><Link className="text-blue-700 underline" to={`/income-expense/voucher/${refund.id}`}>Phiếu hoàn tiền {refund.code || ""}</Link> · {refund.voucher_date.split("-").reverse().join("/")}
         {(refund.approval_status !== "APPROVED" || refund.posting_status !== "POSTED") && <span className="ml-1 font-medium text-amber-800">(Đã hoàn tác / chưa ghi sổ)</span>}</p>
       {!!refund.attachments?.length && <div className="flex flex-wrap gap-2">{refund.attachments.map((url, index) => <button type="button" key={`${index}:${url}`} className="h-20 w-20 overflow-hidden rounded border bg-white" aria-label={`Xem chứng từ hoàn tiền ${index + 1}`}

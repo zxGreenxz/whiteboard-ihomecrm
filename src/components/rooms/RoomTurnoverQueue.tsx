@@ -6,6 +6,7 @@ import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { useRoomTurnoverQueue } from '@/hooks/rooms/useRoomTurnover';
 import { canUse } from '@/lib/permissionPages';
 import { Button } from '@/components/ui/button';
+import { LoadingState } from '@/components/loading/LoadingState';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { RoomTurnoverPanel } from './RoomTurnoverPanel';
 
@@ -27,7 +28,9 @@ export function RoomTurnoverQueue({ buildingIds = [] }: { buildingIds?: string[]
   }, [queue.data, page]);
 
   if (!selectedOrganizationId) return null;
-  if (queue.isPending) return <p role="status" className="text-sm">Đang tải việc dọn/sửa cần cập nhật...</p>;
+  // Hàng đợi thường rỗng (không hiện gì) — lúc chờ không dựng khối xám để khỏi chớp ô
+  // rồi biến mất; chỉ báo cho trình đọc màn hình (chủ chốt 02/10/2026).
+  if (queue.isPending) return <LoadingState label="việc dọn/sửa cần cập nhật" variant="none" />;
   if (queue.isError || !queue.data) return <div role="alert" className="rounded-lg border p-3 text-sm">
     Chưa tải được việc dọn/sửa cần cập nhật.
     <Button variant="link" onClick={() => void queue.refetch()}>Thử tải lại</Button>

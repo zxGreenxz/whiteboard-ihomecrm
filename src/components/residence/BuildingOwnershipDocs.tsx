@@ -20,7 +20,7 @@ export default function BuildingOwnershipDocs({ buildingId, buildingName }: Buil
 
   return (
     <section className="space-y-2 rounded-md border p-3" aria-label="Giấy tờ chứng minh chỗ ở hợp pháp">
-      <QueryRegion label="giấy tờ chỗ ở hợp pháp" queries={[files]}>
+      <QueryRegion label="giấy tờ chỗ ở hợp pháp" queries={[files]} skeleton="lines" rows={2}>
       <DossierImageUploader kind="OWNERSHIP" files={files.data ?? []} canEdit={canEdit}
         onUpload={upload.mutateAsync} onRemove={remove.mutateAsync}
         hint="Dùng cho hồ sơ Đăng ký tạm trú trên Cổng DVC: tải một lần, đính kèm cho mọi khách của toà." />

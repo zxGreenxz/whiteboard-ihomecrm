@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { LoadingState } from "@/components/loading/LoadingState";
 import { formatCurrency } from "@/lib/utils";
 import { formatISODateVN, formatISODayMonth } from "@/lib/vnDate";
 import {
@@ -195,11 +196,8 @@ export function DepositWorkQueuePanel({
   ledgerCount: number;
 }) {
   if (isLoading) {
-    return (
-      <div className="rounded-xl bg-card p-8 text-center text-sm text-muted-foreground shadow-sm">
-        Đang tải hàng đợi...
-      </div>
-    );
+    // Khối xám dạng thẻ việc thay chữ "Đang tải hàng đợi..." (chủ chốt 02/10/2026).
+    return <LoadingState label="hàng đợi" variant="list" rows={4} />;
   }
 
   if (groups.length === 0) {

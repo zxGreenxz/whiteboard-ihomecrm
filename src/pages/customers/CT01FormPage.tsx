@@ -9,6 +9,7 @@ import CT01PrintLayout from '@/components/customers/CT01PrintLayout';
 import { toCT01FormData, type CT01FormValues } from '@/lib/ct01Validation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { LoadingState } from '@/components/loading/LoadingState';
 
 export default function CT01FormPage() {
   const { id } = useParams<{ id: string }>();
@@ -44,9 +45,16 @@ export default function CT01FormPage() {
   };
 
   if (isLoading) {
+    // Khung trang (quay lại + tiêu đề) hiện ngay, tờ khai là khối xám (chủ chốt 02/10/2026).
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <p className="text-muted-foreground">Đang tải...</p>
+      <div className="container mx-auto py-6 space-y-6">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="icon" onClick={() => navigate('/customers')} aria-label="Quay lại">
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <h1 className="text-xl font-semibold">Tờ khai thay đổi thông tin cư trú (CT01)</h1>
+        </div>
+        <LoadingState label="thông tin khách hàng" variant="detail" rows={8} onRetry={() => void customerQuery.refetch()} />
       </div>
     );
   }

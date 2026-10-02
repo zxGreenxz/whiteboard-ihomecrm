@@ -1,4 +1,5 @@
 import { QueryRegion } from "@/components/errors/QueryRegion";
+import { LoadingState } from "@/components/loading/LoadingState";
 import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { memo, useCallback, useState, useMemo, lazy, Suspense } from "react";
 import { Link } from "react-router-dom";
@@ -608,7 +609,9 @@ const DepositsDesktop = () => {
           </div>
         </div>
 
-        <QueryRegion label="cọc và kỳ hạn xử lý" queries={[heldDepositsQuery, depositRefundsForfeitsQuery, reservationDepositsQuery, heldDepositSummaryQuery, reservationHoldDeadlinesQuery, reservationDepositSummaryQuery, refundForfeitSummaryQuery, reservationDepositSettlementSummaryQuery]}>
+        {/* Màn tiền: dải KPI cộng từ nhiều nguồn nên vẫn chờ đủ tám nguồn (thiếu một nguồn
+            không được thành số 0); lúc chờ là khối xám dạng thẻ số (chủ chốt 02/10/2026). */}
+        <QueryRegion label="cọc và kỳ hạn xử lý" queries={[heldDepositsQuery, depositRefundsForfeitsQuery, reservationDepositsQuery, heldDepositSummaryQuery, reservationHoldDeadlinesQuery, reservationDepositSummaryQuery, refundForfeitSummaryQuery, reservationDepositSettlementSummaryQuery]} skeleton="cards" rows={4}>
         {/* ===== DẢI KPI — luôn hiện, không nằm trong tab nào ===== */}
         <Card className="flex flex-wrap items-center gap-y-4 px-5 py-4">
           <KpiCell
@@ -687,7 +690,7 @@ const DepositsDesktop = () => {
           </button>
         </div>
 
-        <Suspense fallback={<p className="text-sm">Đang tải hồ sơ giữ chỗ…</p>}>
+        <Suspense fallback={<LoadingState label="hồ sơ giữ chỗ" rows={2} />}>
           <RoomReservationPanel />
         </Suspense>
 
@@ -791,8 +794,8 @@ const DepositsDesktop = () => {
                 <TableBody>
                   {heldLoading ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                        Đang tải...
+                      <TableCell colSpan={6}>
+                        <LoadingState label="cọc theo toà nhà" variant="table" rows={4} />
                       </TableCell>
                     </TableRow>
                   ) : byBuilding.length === 0 ? (
@@ -855,8 +858,8 @@ const DepositsDesktop = () => {
                 }
                 emptyRow={
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                      {heldLoading ? "Đang tải..." : "Tất cả hợp đồng đã thu đủ cọc 🎉"}
+                    <TableCell colSpan={8} className={heldLoading ? undefined : "text-center py-8 text-muted-foreground"}>
+                      {heldLoading ? <LoadingState label="cọc theo phòng" variant="table" rows={4} /> : "Tất cả hợp đồng đã thu đủ cọc 🎉"}
                     </TableCell>
                   </TableRow>
                 }
@@ -899,8 +902,8 @@ const DepositsDesktop = () => {
                 }
                 emptyRow={
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
-                      {refundsLoading ? "Đang tải..." : "Chưa có hợp đồng thanh lý nào"}
+                    <TableCell colSpan={9} className={refundsLoading ? undefined : "text-center py-8 text-muted-foreground"}>
+                      {refundsLoading ? <LoadingState label="hoàn / bỏ cọc" variant="table" rows={4} /> : "Chưa có hợp đồng thanh lý nào"}
                     </TableCell>
                   </TableRow>
                 }
@@ -982,7 +985,7 @@ const DepositsDesktop = () => {
                 emptyRow={
                   resvLoading ? (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Đang tải...</TableCell>
+                      <TableCell colSpan={9}><LoadingState label="phiếu giữ chỗ" variant="table" rows={4} /></TableCell>
                     </TableRow>
                   ) : (
                     <TableRow>

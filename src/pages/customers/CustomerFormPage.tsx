@@ -12,6 +12,7 @@ import type { CustomerFormData } from '@/types/customer';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import { LoadingState } from '@/components/loading/LoadingState';
 
 /**
  * CustomerFormPage
@@ -103,10 +104,16 @@ export default function CustomerFormPage() {
 
   // CustomerForm chỉ đọc defaultValues lúc mount ⇒ phải chờ cả xe về, kẻo
   // form mount với danh sách xe rỗng rồi lưu đè thành "xoá hết xe".
+  // Lúc chờ: khung trang + khối xám dạng form (chủ chốt 02/10/2026), vẫn không mount form.
   if (isEdit && (isLoading || isLoadingVehicles)) {
     return (
-      <MainLayout title="Đang tải..." icon={Pencil}>
-        <div className="p-8 text-center text-muted-foreground">Đang tải dữ liệu khách hàng...</div>
+      <MainLayout title="Chỉnh sửa khách hàng" subtitle="Cập nhật thông tin khách hàng" icon={Pencil}>
+        <LoadingState
+          label="dữ liệu khách hàng"
+          variant="detail"
+          rows={10}
+          onRetry={() => { void customerQuery.refetch(); void vehiclesQuery.refetch(); }}
+        />
       </MainLayout>
     );
   }

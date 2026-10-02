@@ -390,7 +390,7 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
                 </FormControl><FormMessage/></FormItem>
               )}/>
 
-              <QueryRegion label="phòng và sổ quỹ nhận cọc" queries={[roomsQuery,accountsQuery]}>{null}</QueryRegion>
+              <QueryRegion label="phòng và sổ quỹ nhận cọc" queries={[roomsQuery,accountsQuery]} skeleton="none">{null}</QueryRegion>
               {/* Room Selection */}
               <FormField
                 control={form.control}

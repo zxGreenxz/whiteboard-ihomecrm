@@ -11,6 +11,8 @@ import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import VehicleFormDialog from '@/components/vehicles/VehicleFormDialog';
+import { QueryRegion } from '@/components/errors/QueryRegion';
+import { InlineSkeleton } from '@/components/loading/LoadingState';
 import type { VehicleWithRelations, VehicleFilters, VehicleType } from '@/types/vehicle';
 import type { BuildingWithRelations } from '@/types/building';
 import type { RoomWithRelations } from '@/types/room';
@@ -64,7 +66,8 @@ export default function VehiclesMobilePage() {
   );
 
   useCopilotPageContext('vehicles.list', filters);
-  const { data: paged, isLoading } = useVehicles(filters, { page: 1, pageSize });
+  const vehiclesQuery = useVehicles(filters, { page: 1, pageSize });
+  const { data: paged } = vehiclesQuery;
   const rows = (paged?.data ?? []) as VehicleWithRelations[];
   const totalCount = paged?.count ?? 0;
 
@@ -108,7 +111,10 @@ export default function VehiclesMobilePage() {
             </button>
             <div className="mtitle">
               <h1>Phương tiện</h1>
-              <p>{totalCount} xe đăng ký</p>
+              {/* Chưa có số thật thì vạch xám, không in "0 xe" (chủ chốt 02/10/2026). */}
+              <p>
+                {paged ? totalCount : vehiclesQuery.isError ? '—' : <InlineSkeleton label="số xe đăng ký" width="2rem" />} xe đăng ký
+              </p>
             </div>
             <div className="mtop-act">
               <button
@@ -198,9 +204,8 @@ export default function VehiclesMobilePage() {
               </div>
             )}
 
-            {isLoading ? (
-              <div className="stub"><p>Đang tải phương tiện…</p></div>
-            ) : rows.length === 0 ? (
+            <QueryRegion label="phương tiện" queries={[vehiclesQuery]} skeleton="list" rows={5}>
+            {rows.length === 0 ? (
               <div className="stub"><p>Không có phương tiện nào phù hợp.</p></div>
             ) : (
               <div className="rowlist">
@@ -240,6 +245,7 @@ export default function VehiclesMobilePage() {
                 )}
               </div>
             )}
+            </QueryRegion>
           </div>
         </div>
       </div>

@@ -22,7 +22,8 @@ export interface BuildingFilterSelectProps {
    * Bỏ qua khi truyền sẵn `buildings`.
    */
   includeVirtual?: boolean;
-  placeholder?: string;
+  /** Chữ (hoặc vạch xám khi danh sách toà chưa về) hiện khi chưa chọn / giá trị chưa khớp. */
+  placeholder?: React.ReactNode;
   className?: string;
   /** Class cho dropdown (vd nới rộng hơn trigger để không xén tên toà). */
   contentClassName?: string;

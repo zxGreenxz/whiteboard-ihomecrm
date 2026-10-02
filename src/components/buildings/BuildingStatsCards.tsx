@@ -1,10 +1,13 @@
 import { Building2, CheckCircle2, XCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { InlineSkeleton } from '@/components/loading/LoadingState';
 
 interface BuildingStatsCardsProps {
   total: number;
   active: number;
   inactive: number;
+  /** Chưa có số: khung thẻ hiện, ô số là vạch xám — không in 0 (chủ chốt 02/10/2026). */
+  loading?: boolean;
 }
 
 const STAT_CARDS = [
@@ -34,7 +37,7 @@ const STAT_CARDS = [
   },
 ];
 
-export default function BuildingStatsCards({ total, active, inactive }: BuildingStatsCardsProps) {
+export default function BuildingStatsCards({ total, active, inactive, loading }: BuildingStatsCardsProps) {
   const values = { total, active, inactive };
 
   return (
@@ -53,7 +56,9 @@ export default function BuildingStatsCards({ total, active, inactive }: Building
               <Icon className={cn('h-5 w-5', card.iconColor)} />
             </div>
             <div>
-              <p className="text-2xl font-bold">{values[card.key]}</p>
+              <p className="text-2xl font-bold">
+                {loading ? <InlineSkeleton label={`số ${card.label.toLowerCase()}`} width="2.5rem" /> : values[card.key]}
+              </p>
               <p className="text-xs text-muted-foreground">{card.label}</p>
             </div>
           </div>

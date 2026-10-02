@@ -6,6 +6,7 @@ import { copyTextWithFeedback } from '@/lib/clipboardFeedback';
 import '@/styles/mobileApp.css';
 import { useCustomers } from '@/hooks/useCustomers';
 import { QueryRegion } from '@/components/errors/QueryRegion';
+import { InlineSkeleton, RefreshBar, SkeletonBar } from '@/components/loading/LoadingState';
 import { useBuildings } from '@/hooks/useBuildings';
 import { useMyBuildingScope } from '@/hooks/useMyBuildingScope';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
@@ -78,7 +79,7 @@ export default function CustomersMobilePage() {
   );
 
   const customersQuery = useCustomers(filters, { page: 1, pageSize });
-  const { data: paged, isLoading } = customersQuery;
+  const { data: paged } = customersQuery;
   useCopilotPageContext('customers.list', filters);
 
   const allRows = (paged?.data ?? []) as Customer[];
@@ -108,6 +109,9 @@ export default function CustomersMobilePage() {
     },
   });
   const { data: vehMap } = vehiclesQuery;
+  // Xe là phần phụ của thẻ khách: thẻ hiện ngay khi danh sách về, ô xe là vạch xám
+  // tới khi nguồn xe về (quy tắc 2). Nguồn xe hỏng thì thẻ báo lỗi riêng phía trên.
+  const vehPending = custIds.length > 0 && vehMap === undefined && !vehiclesQuery.isError;
 
   const buildingsQuery = useBuildings();
   const { data: buildingsData } = buildingsQuery;
@@ -127,7 +131,15 @@ export default function CustomersMobilePage() {
             </button>
             <div className="mtitle">
               <h1>Khách hàng</h1>
-              <p>{totalCount} khách · {STATUS_TABS.find((t) => t.id === status)?.label.toLowerCase()}</p>
+              {/* Chưa có số thật thì vạch xám, không in "0 khách" (chủ chốt 02/10/2026). */}
+              <p>
+                {paged ? (
+                  <>{totalCount} khách · </>
+                ) : customersQuery.isError ? null : (
+                  <><InlineSkeleton label="số khách" width="2rem" /> khách · </>
+                )}
+                {STATUS_TABS.find((t) => t.id === status)?.label.toLowerCase()}
+              </p>
             </div>
             {canCreate && (
               <div className="mtop-act">
@@ -139,7 +151,9 @@ export default function CustomersMobilePage() {
           </div>
 
           <div className="mbody">
-            <QueryRegion label="danh sách khách hàng" queries={[customersQuery, buildingsQuery, ...(custIds.length ? [vehiclesQuery] : [])]}>
+            {/* Chủ chốt 02/10/2026: tab + ô lọc + ô tìm hiện ngay; chỉ phần dữ liệu chờ.
+                Ba nguồn tách vùng: toà nhà chỉ nuôi ô chọn toà, xe là phần phụ trong thẻ,
+                danh sách khách (kèm phòng/toà đang ở) đi chung một nguồn. */}
             <div className="lfilter">
               {STATUS_TABS.map((t) => (
                 <button
@@ -152,19 +166,33 @@ export default function CustomersMobilePage() {
               ))}
             </div>
 
-            <div className="cm-filterbar">
-              <select
-                className="cm-select"
-                value={buildingId}
-                onChange={(e) => setBuildingId(e.target.value)}
-                aria-label="Toà nhà"
-              >
-                <option value="">Tất cả toà</option>
-                {buildings.map((b) => (
-                  <option key={b.id} value={b.id}>{b.name}</option>
-                ))}
-              </select>
-            </div>
+            {/* Ô chọn toà chờ danh sách toà: chưa về thì giữ chỗ đúng hình ô chọn — không
+                dựng select rỗng, vì toà đã lưu từ lần trước sẽ hiện nhầm "Tất cả toà". */}
+            <QueryRegion
+              label="danh sách toà nhà"
+              queries={[buildingsQuery]}
+              loading={
+                <div className="cm-filterbar">
+                  <div className="cm-select" style={{ cursor: 'default' }}>
+                    <InlineSkeleton label="danh sách toà nhà" width="7rem" />
+                  </div>
+                </div>
+              }
+            >
+              <div className="cm-filterbar">
+                <select
+                  className="cm-select"
+                  value={buildingId}
+                  onChange={(e) => setBuildingId(e.target.value)}
+                  aria-label="Toà nhà"
+                >
+                  <option value="">Tất cả toà</option>
+                  {buildings.map((b) => (
+                    <option key={b.id} value={b.id}>{b.name}</option>
+                  ))}
+                </select>
+              </div>
+            </QueryRegion>
 
             {/* Cùng control id với ô tìm của desktop (CustomerListToolbar) —
                 cùng ngữ nghĩa, hai biến thể không mount cùng lúc. */}
@@ -178,9 +206,15 @@ export default function CustomersMobilePage() {
               />
             </div>
 
-            {isLoading ? (
-              <div className="stub"><p>Đang tải khách hàng…</p></div>
-            ) : rows.length === 0 ? (
+            {/* Nguồn xe chỉ báo lỗi ở đây; lúc chờ thì ô xe trong từng thẻ là vạch xám. */}
+            {custIds.length > 0 && (
+              <QueryRegion label="phương tiện của khách hàng" queries={[vehiclesQuery]} skeleton="none"><></></QueryRegion>
+            )}
+
+            <QueryRegion label="danh sách khách hàng" queries={[customersQuery]} skeleton="list" rows={5}>
+            <div className="relative">
+            <RefreshBar active={customersQuery.isFetching && paged !== undefined} label="Đang cập nhật danh sách khách hàng" />
+            {rows.length === 0 ? (
               <div className="stub"><p>Không tìm thấy khách hàng phù hợp.</p></div>
             ) : (
               <div className="rowlist">
@@ -241,12 +275,17 @@ export default function CustomersMobilePage() {
                             <span>{addr}</span>
                           </div>
                         )}
-                        {(room || bld || veh?.plate || veh?.type) && (
+                        {(room || bld || veh?.plate || veh?.type || vehPending) && (
                           <div className="cust-l3">
                             {(room || bld) && (
                               <span className="cust-room">
                                 <DoorOpen size={12} />
                                 {room ? `P.${room}` : ''}{room && bld ? ' · ' : ''}{bld || ''}
+                              </span>
+                            )}
+                            {vehPending && (
+                              <span className="ld-appear" aria-hidden="true">
+                                <SkeletonBar className="h-3" style={{ width: '5.5rem' }} />
                               </span>
                             )}
                             {veh?.type && (
@@ -269,6 +308,7 @@ export default function CustomersMobilePage() {
                 )}
               </div>
             )}
+            </div>
             </QueryRegion>
           </div>
         </div>

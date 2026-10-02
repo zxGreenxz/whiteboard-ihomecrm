@@ -142,7 +142,8 @@ export function ManageAreasDialog({ open, onOpenChange }: ManageAreasDialogProps
           }}>Tải lại để đối chiếu</Button>
         </div>}
 
-        <QueryRegion label="khu vực và tòa nhà" queries={[areasQuery, buildingsQuery]}>
+        {/* Ô thêm khu vực cố ý nằm trong vùng chờ: tạo/gán khu cần danh sách khu + toà đã về. */}
+        <QueryRegion label="khu vực và tòa nhà" queries={[areasQuery, buildingsQuery]} skeleton="detail" rows={4}>
 
         {/* Thêm khu vực mới */}
         <div className="flex items-center gap-2">

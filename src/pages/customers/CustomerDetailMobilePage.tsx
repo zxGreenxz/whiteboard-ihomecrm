@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {useCustomerDetailContracts} from '@/hooks/useCustomerDetailContracts';
 import {QueryRegion} from '@/components/errors/QueryRegion';
+import { InlineSkeleton, LoadingState } from '@/components/loading/LoadingState';
 import {
   ArrowLeft,
   Copy,
@@ -104,12 +105,13 @@ export default function CustomerDetailMobilePage({ id }: { id: string }) {
 
   if (isLoading) {
     return (
-      <Shell onBack={() => navigate('/customers')} title="Đang tải…">
-        <div className="stub"><p>Đang tải thông tin khách hàng…</p></div>
+      // Khung trang hiện ngay, phần chi tiết là khối xám (chủ chốt 02/10/2026).
+      <Shell onBack={() => navigate('/customers')} title="Chi tiết khách hàng">
+        <LoadingState label="thông tin khách hàng" variant="detail" rows={8} onRetry={() => void customerQuery.refetch()} />
       </Shell>
     );
   }
-  if(customerQuery.isError&&!customer){return <Shell onBack={()=>navigate('/customers')} title="Chi tiết khách hàng"><QueryRegion label="chi tiết khách hàng" queries={[customerQuery]}><></></QueryRegion></Shell>;}
+  if(customerQuery.isError&&!customer){return <Shell onBack={()=>navigate('/customers')} title="Chi tiết khách hàng"><QueryRegion label="chi tiết khách hàng" queries={[customerQuery]} skeleton="detail"><></></QueryRegion></Shell>;}
   if (!customer) {
     return (
       <Shell onBack={() => navigate('/customers')} title="Không tìm thấy">
@@ -154,13 +156,14 @@ export default function CustomerDetailMobilePage({ id }: { id: string }) {
 
   return (
     <Shell onBack={() => navigate('/customers')} title="Chi tiết khách hàng" sub={customerQuery.isError?undefined:customer.full_name}>
-      <QueryRegion label="chi tiết khách hàng" queries={[customerQuery]}>
+      <QueryRegion label="chi tiết khách hàng" queries={[customerQuery]} skeleton="detail">
       {/* Header */}
       <div className="cdh">
         <div className="cdh-av"><User size={22} /></div>
         <div className="cdh-body">
           <h2 className="cdh-name">{customer.full_name}</h2>
           <div className="cdh-sub">
+            {contractsQuery.isLoading && <InlineSkeleton label="phòng đang thuê" width="6.5rem" />}
             {!contractsQuery.isError && headerRoom?.name && (
               <span className="cdh-room">
                 <DoorOpen size={12} />
@@ -231,7 +234,11 @@ export default function CustomerDetailMobilePage({ id }: { id: string }) {
         </div>
       </div>
 
-      <QueryRegion label="phương tiện của khách hàng" queries={[vehiclesQuery]}>
+      <QueryRegion
+        label="phương tiện của khách hàng"
+        queries={[vehiclesQuery]}
+        loading={<CardLoading icon={Car} title="Phương tiện" label="phương tiện của khách hàng" onRetry={() => void vehiclesQuery.refetch()} />}
+      >
       {/* Phương tiện */}
       <div className="cd-card">
         <div className="cd-card-h">
@@ -272,7 +279,11 @@ export default function CustomerDetailMobilePage({ id }: { id: string }) {
         }} />
       </div>
 
-      <QueryRegion label="hợp đồng của khách hàng" queries={[contractsQuery]}>
+      <QueryRegion
+        label="hợp đồng của khách hàng"
+        queries={[contractsQuery]}
+        loading={<CardLoading icon={FileText} title="Hợp đồng" label="hợp đồng của khách hàng" onRetry={() => void contractsQuery.refetch()} />}
+      >
       {/* Hợp đồng */}
       <div className="cd-card">
         <div className="cd-card-h">
@@ -324,6 +335,16 @@ export default function CustomerDetailMobilePage({ id }: { id: string }) {
       />
       </QueryRegion>
     </Shell>
+  );
+}
+
+/** Thẻ mục đang chờ dữ liệu: tiêu đề thẻ hiện ngay, thân thẻ là khối xám. */
+function CardLoading({ icon: Ico, title, label, onRetry }: { icon: typeof Car; title: string; label: string; onRetry: () => void }) {
+  return (
+    <div className="cd-card">
+      <div className="cd-card-h"><span className="cd-card-t"><Ico size={16} />{title}</span></div>
+      <LoadingState label={label} rows={2} onRetry={onRetry} className="py-0" />
+    </div>
   );
 }
 

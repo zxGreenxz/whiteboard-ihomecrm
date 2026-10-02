@@ -24,6 +24,7 @@ import { useCustomer } from '@/hooks/useCustomers';
 import { useVehicles } from '@/hooks/useVehicles';
 import type { VehicleWithRelations } from '@/types/vehicle';
 import DeleteCustomerDialog from './DeleteCustomerDialog';
+import { LoadingState } from '@/components/loading/LoadingState';
 
 interface CustomerDetailModalProps {
   open: boolean;
@@ -106,7 +107,7 @@ export default function CustomerDetailModal({
           </DialogHeader>
 
           {isLoading ? (
-            <div className="p-8 text-center text-muted-foreground">Đang tải...</div>
+            <LoadingState label="thông tin khách hàng" variant="detail" rows={6} />
           ) : !customer ? (
             <div className="p-8 text-center text-muted-foreground">Không tìm thấy khách hàng</div>
           ) : (

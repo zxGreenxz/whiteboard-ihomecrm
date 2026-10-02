@@ -80,7 +80,7 @@ export function RoomPriceHistorySection({
         Lịch sử giá
       </h3>
 
-      <QueryRegion label="lịch sử giá" queries={[historyQuery]}>
+      <QueryRegion label="lịch sử giá" queries={[historyQuery]} skeleton="lines" rows={3}>
       {entries.length === 0 ? (
         <p className="text-xs text-muted-foreground">
           Chưa có thay đổi giá nào được ghi nhận cho phòng này.

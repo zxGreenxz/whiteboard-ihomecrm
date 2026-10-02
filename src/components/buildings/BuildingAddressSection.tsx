@@ -16,6 +16,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { useProvinces, useDistricts, useWards } from '@/hooks/useAddressData';
+import { InlineSkeleton } from '@/components/loading/LoadingState';
 import type { BuildingFormData } from '@/types/building';
 
 interface BuildingAddressSectionProps {
@@ -123,7 +124,7 @@ export default function BuildingAddressSection({
               <Select value={currentProvinceCode} onValueChange={handleProvinceChange}>
                 <FormControl>
                   <SelectTrigger>
-                    <SelectValue placeholder={loadingProvinces ? 'Đang tải...' : 'Chọn Tỉnh/TP'} />
+                    <SelectValue placeholder={loadingProvinces ? <InlineSkeleton label="danh sách tỉnh/thành phố" width="6rem" /> : 'Chọn Tỉnh/TP'} />
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
@@ -154,7 +155,7 @@ export default function BuildingAddressSection({
               >
                 <FormControl>
                   <SelectTrigger>
-                    <SelectValue placeholder={loadingDistricts ? 'Đang tải...' : 'Chọn Quận/Huyện'} />
+                    <SelectValue placeholder={loadingDistricts ? <InlineSkeleton label="danh sách quận/huyện" width="6rem" /> : 'Chọn Quận/Huyện'} />
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
@@ -188,7 +189,7 @@ export default function BuildingAddressSection({
               >
                 <FormControl>
                   <SelectTrigger>
-                    <SelectValue placeholder={loadingWards ? 'Đang tải...' : 'Chọn Xã/Phường'} />
+                    <SelectValue placeholder={loadingWards ? <InlineSkeleton label="danh sách xã/phường" width="6rem" /> : 'Chọn Xã/Phường'} />
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>

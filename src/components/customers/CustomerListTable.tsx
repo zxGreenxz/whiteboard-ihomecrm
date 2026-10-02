@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/table';
 import type { Customer } from '@/types/customer';
 import { useMyBuildingScope } from '@/hooks/useMyBuildingScope';
+import { LoadingState } from '@/components/loading/LoadingState';
 
 interface CustomerListTableProps {
   customers: Customer[];
@@ -76,9 +77,7 @@ export default function CustomerListTable({
   };
 
   if (isLoading) {
-    return (
-      <div className="p-8 text-center text-muted-foreground">Đang tải dữ liệu...</div>
-    );
+    return <LoadingState label="danh sách khách hàng" variant="table" rows={8} />;
   }
 
   if (customers.length === 0) {

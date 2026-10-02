@@ -25,6 +25,7 @@ import { compareBuildingThenRoom } from '@/lib/roomSort';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { QueryRegion } from '@/components/errors/QueryRegion';
+import { InlineSkeleton, RefreshBar } from '@/components/loading/LoadingState';
 
 function RoomsDesktop() {
   const [searchParams] = useSearchParams();
@@ -83,7 +84,7 @@ function RoomsDesktop() {
   );
 
   const roomsQuery = useRooms();
-  const { data: roomsData, isLoading } = roomsQuery;
+  const { data: roomsData } = roomsQuery;
   const rooms = useMemo(
     () => (Array.isArray(roomsData) ? roomsData : []) as RoomWithRelations[],
     [roomsData]
@@ -195,7 +196,9 @@ function RoomsDesktop() {
 
   return (
     <MainLayout title="Căn hộ" subtitle="Danh mục dữ liệu > Căn hộ" icon={Home}>
-      <QueryRegion label="danh sách căn hộ và trạng thái hợp đồng" queries={[roomsQuery, contractsQuery, buildingsQuery, areasQuery, ...(singleBuildingId ? [floorsQuery] : [])]}>
+      {/* Chủ chốt 02/10/2026: hàng đợi, bộ lọc, thanh công cụ hiện ngay; chỉ phần dữ
+          liệu chờ. Nguồn của bộ lọc (toà/khu/tầng) báo lỗi riêng; thẻ số chờ phòng +
+          hợp đồng (trạng thái trống/sắp hết hạn suy từ hợp đồng); bảng chờ phòng. */}
       <div className="space-y-4">
         <RoomTurnoverQueue buildingIds={buildingIds} />
         {/* Filters */}
@@ -211,35 +214,25 @@ function RoomsDesktop() {
           areas={areas}
           buildings={buildings}
           floors={floors}
+          buildingsLoading={buildingsQuery.data === undefined && !buildingsQuery.isError}
+          floorsLoading={!!singleBuildingId && floorsQuery.data === undefined && !floorsQuery.isError}
         />
+        <QueryRegion
+          label="danh sách toà nhà, khu vực và tầng"
+          queries={[buildingsQuery, areasQuery, ...(singleBuildingId ? [floorsQuery] : [])]}
+          skeleton="none"
+        >
+          <></>
+        </QueryRegion>
 
         {/* Stat cards */}
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Card>
-            <CardContent className="pt-6">
-              <div className="text-2xl font-bold">{roomStats.total}</div>
-              <p className="text-xs text-muted-foreground">Tổng phòng</p>
-            </CardContent>
-          </Card>
-          <Card className="border-l-4 border-l-red-500">
-            <CardContent className="pt-6">
-              <div className="text-2xl font-bold text-red-700">{roomStats.available}</div>
-              <p className="text-xs text-muted-foreground">Tổng phòng trống</p>
-            </CardContent>
-          </Card>
-          <Card className="border-l-4 border-l-orange-500">
-            <CardContent className="pt-6">
-              <div className="text-2xl font-bold text-orange-700">{roomStats.reserved}</div>
-              <p className="text-xs text-muted-foreground">Đã đặt cọc</p>
-            </CardContent>
-          </Card>
-          <Card className="border-l-4 border-l-purple-500">
-            <CardContent className="pt-6">
-              <div className="text-2xl font-bold text-purple-700">{roomStats.expiring}</div>
-              <p className="text-xs text-muted-foreground">Sắp hết hạn</p>
-            </CardContent>
-          </Card>
-        </div>
+        <QueryRegion
+          label="thống kê căn hộ"
+          queries={[roomsQuery, contractsQuery]}
+          loading={<RoomStatCards stats={null} />}
+        >
+          <RoomStatCards stats={roomStats} />
+        </QueryRegion>
 
         {/* Toolbar */}
         <div className="flex items-center justify-between">
@@ -283,11 +276,11 @@ function RoomsDesktop() {
           </div>
         </div>
 
-        {/* Table / Content */}
-        <div className="bg-white rounded-lg border">
-          {isLoading ? (
-            <div className="p-8 text-center text-muted-foreground">Đang tải dữ liệu...</div>
-          ) : filteredRooms.length === 0 ? (
+        {/* Table / Content — Làm mới giữ bảng, chỉ vạch mảnh mép trên. */}
+        <div className="relative bg-white rounded-lg border">
+          <QueryRegion label="danh sách căn hộ" queries={[roomsQuery]} skeleton="table" rows={8}>
+          <RefreshBar active={roomsQuery.isFetching && roomsData !== undefined} label="Đang cập nhật danh sách căn hộ" />
+          {filteredRooms.length === 0 ? (
             hasFilters ? (
               <div className="p-8 text-center text-muted-foreground">
                 Không tìm thấy căn hộ nào
@@ -309,6 +302,7 @@ function RoomsDesktop() {
               onToggleStatus={handleToggleStatus}
             />
           )}
+          </QueryRegion>
         </div>
 
         {/* Room Form Dialog */}
@@ -333,8 +327,41 @@ function RoomsDesktop() {
           </>
         )}
       </div>
-      </QueryRegion>
     </MainLayout>
+  );
+}
+
+/** Bốn thẻ số; chưa có số (`null`) thì ô số là vạch xám — khung thẻ hiện ngay, không in 0. */
+function RoomStatCards({ stats }: { stats: { total: number; available: number; reserved: number; expiring: number } | null }) {
+  const num = (n: number | undefined, label: string) =>
+    stats ? n : <InlineSkeleton label={label} width="2.5rem" />;
+  return (
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <Card>
+        <CardContent className="pt-6">
+          <div className="text-2xl font-bold">{num(stats?.total, 'tổng phòng')}</div>
+          <p className="text-xs text-muted-foreground">Tổng phòng</p>
+        </CardContent>
+      </Card>
+      <Card className="border-l-4 border-l-red-500">
+        <CardContent className="pt-6">
+          <div className="text-2xl font-bold text-red-700">{num(stats?.available, 'tổng phòng trống')}</div>
+          <p className="text-xs text-muted-foreground">Tổng phòng trống</p>
+        </CardContent>
+      </Card>
+      <Card className="border-l-4 border-l-orange-500">
+        <CardContent className="pt-6">
+          <div className="text-2xl font-bold text-orange-700">{num(stats?.reserved, 'số phòng đã đặt cọc')}</div>
+          <p className="text-xs text-muted-foreground">Đã đặt cọc</p>
+        </CardContent>
+      </Card>
+      <Card className="border-l-4 border-l-purple-500">
+        <CardContent className="pt-6">
+          <div className="text-2xl font-bold text-purple-700">{num(stats?.expiring, 'số phòng sắp hết hạn')}</div>
+          <p className="text-xs text-muted-foreground">Sắp hết hạn</p>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 

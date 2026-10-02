@@ -2,6 +2,7 @@ import { Input } from '@/components/ui/input';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import BuildingFilterSelect from '@/components/buildings/BuildingFilterSelect';
 import { Search } from 'lucide-react';
+import { InlineSkeleton } from '@/components/loading/LoadingState';
 import type { BuildingWithRelations } from '@/types/building';
 
 interface Floor {
@@ -29,6 +30,12 @@ interface RoomListFiltersProps {
   areas: Area[];
   buildings: BuildingWithRelations[];
   floors: Floor[];
+  /**
+   * Danh sách toà / tầng chưa về: ô chọn khoá + vạch xám thay nhãn — danh sách rỗng
+   * sẽ hiện nhầm "Tất cả toà nhà" / "Tầng" khi đang lọc giá trị đã lưu (chủ chốt 02/10/2026).
+   */
+  buildingsLoading?: boolean;
+  floorsLoading?: boolean;
 }
 
 export default function RoomListFilters({
@@ -42,6 +49,8 @@ export default function RoomListFilters({
   onStatusChange,
   buildings,
   floors,
+  buildingsLoading,
+  floorsLoading,
 }: RoomListFiltersProps) {
   // Tầng chỉ lọc được khi đang chọn ĐÚNG 1 toà (tầng thuộc toà cụ thể)
   const floorEnabled = buildingIds.length === 1;
@@ -64,13 +73,15 @@ export default function RoomListFilters({
         onChange={onBuildingIdsChange}
         buildings={buildings}
         className="w-full sm:w-[260px]"
+        disabled={buildingsLoading}
+        placeholder={buildingsLoading ? <InlineSkeleton label="danh sách toà nhà" width="8rem" /> : undefined}
       />
       <SearchableSelect
-        value={floorEnabled ? floorFilter : undefined}
+        value={floorEnabled && !floorsLoading ? floorFilter : undefined}
         onValueChange={onFloorChange}
-        disabled={!floorEnabled}
+        disabled={!floorEnabled || floorsLoading}
         className="w-full sm:w-[180px]"
-        placeholder={floorEnabled ? 'Tầng' : 'Tầng (chọn 1 toà)'}
+        placeholder={floorsLoading ? <InlineSkeleton label="danh sách tầng" width="5rem" /> : floorEnabled ? 'Tầng' : 'Tầng (chọn 1 toà)'}
         options={[
           { value: 'all', label: 'Tất cả tầng' },
           ...floors.map((floor) => ({

@@ -18,13 +18,14 @@ import { usePersistedState } from '@/hooks/usePersistedState';
 import type { BuildingWithRelations } from '@/types/building';
 import { useQueryClient } from '@tanstack/react-query';
 import { QueryRegion } from '@/components/errors/QueryRegion';
+import { RefreshBar } from '@/components/loading/LoadingState';
 
 function BuildingsDesktop() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const buildingsQuery = useBuildings();
   const areasQuery = useAreas();
-  const { data: buildingsData, isLoading } = buildingsQuery;
+  const { data: buildingsData } = buildingsQuery;
   const { data: areasData } = areasQuery;
   const updateStatus = useUpdateBuildingStatus();
 
@@ -113,14 +114,21 @@ function BuildingsDesktop() {
 
   return (
     <MainLayout title="Toà nhà" subtitle="Danh mục dữ liệu > Toà nhà" icon={Building2}>
-      <QueryRegion label="danh sách tòa nhà và khu vực" queries={[buildingsQuery, areasQuery]}>
+      {/* Chủ chốt 02/10/2026: bộ lọc + thanh công cụ hiện ngay; thẻ số và bảng chờ danh
+          sách toà (khối xám), nguồn khu vực chỉ báo lỗi riêng. */}
       <div className="space-y-4">
         {/* Stats Cards */}
-        <BuildingStatsCards
-          total={stats.total}
-          active={stats.active}
-          inactive={stats.inactive}
-        />
+        <QueryRegion
+          label="thống kê tòa nhà"
+          queries={[buildingsQuery]}
+          loading={<BuildingStatsCards total={0} active={0} inactive={0} loading />}
+        >
+          <BuildingStatsCards
+            total={stats.total}
+            active={stats.active}
+            inactive={stats.inactive}
+          />
+        </QueryRegion>
 
         {/* Filters */}
         <BuildingListFilters
@@ -132,7 +140,9 @@ function BuildingsDesktop() {
           onBuildingIdsChange={setBuildingIds}
           areas={areas}
           buildings={buildings}
+          buildingsLoading={buildingsData === undefined && !buildingsQuery.isError}
         />
+        <QueryRegion label="danh sách khu vực" queries={[areasQuery]} skeleton="none"><></></QueryRegion>
 
         {/* Toolbar */}
         <div className="flex items-center justify-between">
@@ -185,11 +195,11 @@ function BuildingsDesktop() {
           </div>
         </div>
 
-        {/* Table / Content */}
-        <div className="bg-white rounded-lg border">
-          {isLoading ? (
-            <div className="p-8 text-center text-muted-foreground">Đang tải dữ liệu...</div>
-          ) : filteredBuildings.length === 0 ? (
+        {/* Table / Content — Làm mới giữ bảng, chỉ vạch mảnh mép trên. */}
+        <div className="relative bg-white rounded-lg border">
+          <QueryRegion label="danh sách tòa nhà" queries={[buildingsQuery]} skeleton="table" rows={8}>
+          <RefreshBar active={buildingsQuery.isFetching && buildingsData !== undefined} label="Đang cập nhật danh sách tòa nhà" />
+          {filteredBuildings.length === 0 ? (
             searchTerm || statusFilter !== 'all' || buildingIds.length > 0 ? (
               <div className="p-8 text-center text-muted-foreground">
                 Không tìm thấy toà nhà nào
@@ -212,6 +222,7 @@ function BuildingsDesktop() {
               onViewRooms={handleViewRooms}
             />
           )}
+          </QueryRegion>
         </div>
 
         {/* Delete Dialog */}
@@ -242,7 +253,6 @@ function BuildingsDesktop() {
           onOpenChange={setManageAreasOpen}
         />
       </div>
-      </QueryRegion>
     </MainLayout>
   );
 }

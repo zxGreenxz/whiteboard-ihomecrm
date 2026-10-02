@@ -1,6 +1,7 @@
 import { useId } from 'react';
 import { SearchableSelect, type SearchableSelectOption } from '@/components/ui/searchable-select';
 import { useDistricts, useProvinces, useWards } from '@/hooks/useAddressData';
+import { InlineSkeleton } from '@/components/loading/LoadingState';
 
 interface AddressCascadingDropdownsProps {
   provinceValue?: string | null;
@@ -58,7 +59,7 @@ function AddressField({
         onValueChange={onChange}
         options={options}
         disabled={disabled || loading}
-        placeholder={loading ? 'Đang tải...' : placeholder}
+        placeholder={loading ? <InlineSkeleton label={label.toLocaleLowerCase('vi-VN')} width="6rem" /> : placeholder}
         searchPlaceholder={searchPlaceholder}
         contentClassName="z-[100]"
       />

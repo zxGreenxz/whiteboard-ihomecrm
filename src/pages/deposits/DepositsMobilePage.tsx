@@ -1,4 +1,5 @@
 import { QueryRegion } from "@/components/errors/QueryRegion";
+import { InlineSkeleton, LoadingState } from "@/components/loading/LoadingState";
 import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -251,7 +252,12 @@ export default function DepositsMobilePage() {
             <div className="mtitle">
               <h1>{view === "work" ? "Quản lý Cọc" : "Sổ cọc"}</h1>
               <p>
-                {heldDepositSummaryQuery.isError || reservationDepositsQuery.isError ? "Chưa tải được số liệu cọc" : `${formatMoneyShort(kpi.heldTotal)} đang giữ · ${holdRows.length} phiếu giữ chỗ`}
+                {heldDepositSummaryQuery.isError || reservationDepositsQuery.isError
+                  ? "Chưa tải được số liệu cọc"
+                  : heldDepositSummaryQuery.data === undefined || reservationDepositsQuery.data === undefined
+                    // Chưa có số thật thì vạch xám, không in "0 đang giữ · 0 phiếu" (chủ chốt 02/10/2026).
+                    ? <InlineSkeleton label="số liệu cọc" width="9rem" />
+                    : `${formatMoneyShort(kpi.heldTotal)} đang giữ · ${holdRows.length} phiếu giữ chỗ`}
               </p>
             </div>
             {/* Nút tạo nằm ở THANH TRÊN, không phải nút nổi góc dưới phải —
@@ -271,7 +277,9 @@ export default function DepositsMobilePage() {
 
           <div className="mbody dp-body" style={{ display: "flex", flexDirection: "column", gap: 11 }}>
             <RoomReservationPanel enabled={view === 'work'} />
-            <QueryRegion label="cọc và kỳ hạn xử lý" queries={[heldDepositsQuery, reservationDepositsQuery, heldDepositSummaryQuery, refundForfeitSummaryQuery, reservationDepositSettlementSummaryQuery, reservationHoldDeadlinesQuery]}>
+            {/* Màn tiền: dải KPI cộng từ nhiều nguồn nên vẫn chờ đủ nguồn (thiếu một nguồn
+                không được thành số 0); lúc chờ là khối xám dạng thẻ (chủ chốt 02/10/2026). */}
+            <QueryRegion label="cọc và kỳ hạn xử lý" queries={[heldDepositsQuery, reservationDepositsQuery, heldDepositSummaryQuery, refundForfeitSummaryQuery, reservationDepositSettlementSummaryQuery, reservationHoldDeadlinesQuery]} skeleton="list" rows={5}>
             {/* Dải KPI — số viết tắt để lọt một dòng trên máy hẹp; số chính xác
                 nằm ở bảng thao tác và ở desktop. */}
             <div className="dp-kpi">
@@ -343,11 +351,7 @@ export default function DepositsMobilePage() {
 
             {view === "work" && (
               <>
-                {loading && (
-                  <div className="stub">
-                    <p>Đang tải hàng đợi…</p>
-                  </div>
-                )}
+                {loading && <LoadingState label="hàng đợi" variant="list" rows={4} />}
                 {!loading && groups.length === 0 && (
                   <div className="dp-clear">
                     <b>Hết việc cần xử lý hôm nay</b>

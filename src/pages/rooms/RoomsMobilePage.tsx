@@ -14,6 +14,8 @@ import { compareBuildingThenRoom } from "@/lib/roomSort";
 import { usePersistedState } from "@/hooks/usePersistedState";
 import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import RoomFormDialog from "@/components/rooms/RoomFormDialog";
+import { QueryRegion } from "@/components/errors/QueryRegion";
+import { InlineSkeleton } from "@/components/loading/LoadingState";
 import type { RoomWithRelations } from "@/types/room";
 import type { BuildingWithRelations } from "@/types/building";
 
@@ -60,11 +62,21 @@ export default function RoomsMobilePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preselected]);
 
-  const { data: roomsData = [], isLoading } = useRooms();
+  const roomsQuery = useRooms();
+  const { data: roomsData = [] } = roomsQuery;
   const rooms = roomsData as RoomWithRelations[];
-  const { data: buildingsData = [] } = useBuildings();
+  const buildingsQuery = useBuildings();
+  const { data: buildingsData = [] } = buildingsQuery;
   const buildings = buildingsData as BuildingWithRelations[];
-  const { data: roomsWithContracts = [] } = useRoomsWithActiveContracts();
+  const contractsQuery = useRoomsWithActiveContracts();
+  const { data: roomsWithContracts = [] } = contractsQuery;
+  // Số chưa có thì vạch xám, nguồn hỏng thì "—" — không in 0 lúc đang chờ (chủ chốt 02/10/2026).
+  // Trạng thái hiển thị / phòng trống / sắp hết hạn cần cả hợp đồng đang hiệu lực.
+  const roomsReady = roomsQuery.data !== undefined;
+  const statsReady = roomsReady && contractsQuery.data !== undefined;
+  const statsFailed = roomsQuery.isError || contractsQuery.isError;
+  const countCell = (ready: boolean, failed: boolean, n: number, label: string) =>
+    ready ? n : failed ? '—' : <InlineSkeleton label={label} width="1.75rem" />;
 
   const contractByRoom = useMemo(() => {
     const map = new Map<string, { end?: string; tenant?: string; rent?: number | null }>();
@@ -127,7 +139,10 @@ export default function RoomsMobilePage() {
             </button>
             <div className="mtitle">
               <h1>Căn hộ</h1>
-              <p>{stats.total} căn{buildingId ? "" : ` · ${buildings.length} toà`}</p>
+              <p>
+                {countCell(roomsReady, roomsQuery.isError, stats.total, "số căn hộ")} căn
+                {buildingId ? null : <> · {countCell(buildingsQuery.data !== undefined, buildingsQuery.isError, buildings.length, "số toà nhà")} toà</>}
+              </p>
             </div>
             <div className="mtop-act">
               <button className="mtop-btn" onClick={() => setCreateOpen(true)}>
@@ -147,16 +162,30 @@ export default function RoomsMobilePage() {
               ))}
             </div>
 
-            <div className="cm-filterbar">
-              <select className="cm-select" aria-label="Toà nhà" value={buildingId} onChange={(e) => setBuildingId(e.target.value)}>
-                <option value="">Tất cả toà</option>
-                {buildings.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.code || b.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {/* Ô chọn toà chờ danh sách toà: chưa về thì giữ chỗ đúng hình ô chọn — select
+                rỗng sẽ hiện nhầm "Tất cả toà" khi đang lọc một toà đã lưu. */}
+            <QueryRegion
+              label="danh sách toà nhà"
+              queries={[buildingsQuery]}
+              loading={
+                <div className="cm-filterbar">
+                  <div className="cm-select" style={{ cursor: "default" }}>
+                    <InlineSkeleton label="danh sách toà nhà" width="7rem" />
+                  </div>
+                </div>
+              }
+            >
+              <div className="cm-filterbar">
+                <select className="cm-select" aria-label="Toà nhà" value={buildingId} onChange={(e) => setBuildingId(e.target.value)}>
+                  <option value="">Tất cả toà</option>
+                  {buildings.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.code || b.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </QueryRegion>
 
             {/* Cùng control id với ô tìm của desktop (RoomListFilters): cùng ngữ
                 nghĩa, và hai biến thể KHÔNG bao giờ mount cùng lúc (RoomsPage
@@ -175,22 +204,23 @@ export default function RoomsMobilePage() {
 
             <div className="bm-stats">
               <div className="bm-stat" style={{ "--bmc": "#1b1813" } as React.CSSProperties}>
-                <div className="n">{stats.total}</div>
+                <div className="n">{countCell(roomsReady, roomsQuery.isError, stats.total, "tổng phòng")}</div>
                 <div className="l">Tổng phòng</div>
               </div>
               <div className="bm-stat" style={{ "--bmc": "#dc2626" } as React.CSSProperties}>
-                <div className="n">{stats.available}</div>
+                <div className="n">{countCell(statsReady, statsFailed, stats.available, "số phòng trống")}</div>
                 <div className="l">Trống</div>
               </div>
               <div className="bm-stat" style={{ "--bmc": "#7c3aed" } as React.CSSProperties}>
-                <div className="n">{stats.expiring}</div>
+                <div className="n">{countCell(statsReady, statsFailed, stats.expiring, "số phòng sắp hết hạn")}</div>
                 <div className="l">Sắp hết hạn</div>
               </div>
             </div>
 
-            {isLoading ? (
-              <div className="stub"><p>Đang tải căn hộ…</p></div>
-            ) : filtered.length === 0 ? (
+            {/* Trạng thái + giá của từng phòng lấy từ hợp đồng đang hiệu lực, nên danh sách
+                chờ đủ hai nguồn (khối xám dạng thẻ) — hiện sớm sẽ ra trạng thái/giá sai. */}
+            <QueryRegion label="danh sách căn hộ và trạng thái hợp đồng" queries={[roomsQuery, contractsQuery]} skeleton="list" rows={6}>
+            {filtered.length === 0 ? (
               <div className="stub"><p>Không tìm thấy căn hộ nào khớp bộ lọc.</p></div>
             ) : (
               <div className="rowlist">
@@ -225,6 +255,7 @@ export default function RoomsMobilePage() {
                 })}
               </div>
             )}
+            </QueryRegion>
           </div>
 
           {detail && detailStatus && detailPrice && (

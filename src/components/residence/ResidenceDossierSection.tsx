@@ -138,7 +138,7 @@ export default function ResidenceDossierSection({ customer }: ResidenceDossierSe
   return (
     <section className="space-y-3" aria-label="Hồ sơ tạm trú">
       <h3 className="text-sm font-semibold">Hồ sơ tạm trú (Cổng DVC Bộ Công an)</h3>
-      <QueryRegion label="hồ sơ tạm trú" queries={[tenancies, customerFiles, dangKy, ...(tenancy ? [ownershipFiles] : [])]}>
+      <QueryRegion label="hồ sơ tạm trú" queries={[tenancies, customerFiles, dangKy, ...(tenancy ? [ownershipFiles] : [])]} skeleton="detail" rows={4}>
       {tenancies.data && tenancies.data.length === 0 && (
         <p className="text-xs text-muted-foreground">Khách chưa có hợp đồng đang ở, chưa thể lập hồ sơ tạm trú.</p>
       )}

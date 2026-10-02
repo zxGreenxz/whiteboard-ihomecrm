@@ -2,6 +2,7 @@ import { Input } from '@/components/ui/input';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import BuildingFilterSelect from '@/components/buildings/BuildingFilterSelect';
 import { Search } from 'lucide-react';
+import { InlineSkeleton } from '@/components/loading/LoadingState';
 import type { BuildingWithRelations } from '@/types/building';
 
 interface Area {
@@ -20,6 +21,8 @@ interface BuildingListFiltersProps {
   onBuildingIdsChange: (ids: string[]) => void;
   areas: Area[];
   buildings: BuildingWithRelations[];
+  /** Danh sách toà chưa về: ô chọn toà khoá + vạch xám, không hiện nhầm "Tất cả toà nhà". */
+  buildingsLoading?: boolean;
 }
 
 export default function BuildingListFilters({
@@ -30,6 +33,7 @@ export default function BuildingListFilters({
   buildingIds,
   onBuildingIdsChange,
   buildings,
+  buildingsLoading,
 }: BuildingListFiltersProps) {
   return (
     <div className="flex flex-col sm:flex-row gap-3">
@@ -59,6 +63,8 @@ export default function BuildingListFilters({
         onChange={onBuildingIdsChange}
         buildings={buildings}
         className="w-full sm:w-[260px]"
+        disabled={buildingsLoading}
+        placeholder={buildingsLoading ? <InlineSkeleton label="danh sách toà nhà" width="8rem" /> : undefined}
       />
     </div>
   );

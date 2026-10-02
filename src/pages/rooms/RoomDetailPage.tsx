@@ -1,6 +1,6 @@
 import {useRoomDetailContracts,useRoomDetailTenants,useRoomDetailInvoices,useRoomDetailAssets} from '@/hooks/usePropertyDetailQueries';
 import { useParams, useNavigate } from 'react-router-dom';
-import { lazy, Suspense, useState } from 'react';
+import { lazy, Suspense, useState, type ReactNode } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { useRoom } from '@/hooks/useRooms';
 import { QueryRegion } from '@/components/errors/QueryRegion';
+import { InlineSkeleton, LoadingState } from '@/components/loading/LoadingState';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { EditRoomDialog } from '@/components/rooms/EditRoomDialog';
@@ -35,6 +36,13 @@ import { isContractInEffect } from '@/types/contract';
 
 const RoomReservationPanel = lazy(() => import('@/components/deposits/RoomReservationPanel').then(module => ({ default: module.RoomReservationPanel })));
 
+/** Số trên tab: đang chờ thì vạch xám nhỏ (không in 0); nguồn hỏng giữ "…", lỗi hiện trong tab. */
+function tabCount(query: { data: unknown; isError: boolean }, count: number, label: string): ReactNode {
+  if (query.isError) return '…';
+  if (query.data === undefined) return <InlineSkeleton label={label} width="1.25rem" />;
+  return count;
+}
+
 const RoomDetailPage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -42,27 +50,32 @@ const RoomDetailPage = () => {
   const roomQuery = useRoom(id || '');
   const {data:room,isLoading:loadingRoom}=roomQuery;
   const contractsQuery=useRoomDetailContracts(id||'');
-  const {data:contracts=[],isLoading:loadingContracts}=contractsQuery;
+  const {data:contracts=[]}=contractsQuery;
   const tenantsQuery=useRoomDetailTenants(id||'');
-  const {data:currentTenants=[],isLoading:loadingTenants}=tenantsQuery;
+  const {data:currentTenants=[]}=tenantsQuery;
   const invoicesQuery=useRoomDetailInvoices(id||'');
-  const {data:invoices=[],isLoading:loadingInvoices}=invoicesQuery;
+  const {data:invoices=[]}=invoicesQuery;
   const assetsQuery=useRoomDetailAssets(id||'');
-  const {data:assets=[],isLoading:loadingAssets}=assetsQuery;
+  const {data:assets=[]}=assetsQuery;
 
   if (loadingRoom) {
+    // Khung trang (quay lại + tiêu đề) hiện ngay, chi tiết là khối xám (chủ chốt 02/10/2026).
     return (
       <MainLayout title="Chi tiết Căn hộ" icon={Home}>
-        <div className="flex items-center justify-center h-64">
-          <p className="text-muted-foreground">Đang tải...</p>
+        <div className="mb-6">
+          <Button variant="outline" onClick={() => navigate('/rooms')}>
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Quay lại
+          </Button>
         </div>
+        <LoadingState label="chi tiết căn hộ" variant="detail" rows={8} onRetry={() => void roomQuery.refetch()} />
       </MainLayout>
     );
   }
 
   if (roomQuery.isError && !room) {
     return <MainLayout title="Chi tiết Căn hộ" icon={Home}>
-      <QueryRegion label="chi tiết căn hộ" queries={[roomQuery]}><></></QueryRegion>
+      <QueryRegion label="chi tiết căn hộ" queries={[roomQuery]} skeleton="detail"><></></QueryRegion>
     </MainLayout>;
   }
 
@@ -174,7 +187,7 @@ const RoomDetailPage = () => {
       subtitle={roomQuery.isError?undefined:room.code||undefined}
       icon={Home}
     >
-      <QueryRegion label="chi tiết phòng" queries={[roomQuery]}>
+      <QueryRegion label="chi tiết phòng" queries={[roomQuery]} skeleton="detail">
       {/* Header Actions */}
       <div className="flex items-center justify-between mb-6">
         <Button variant="outline" onClick={() => navigate('/rooms')}>
@@ -191,7 +204,7 @@ const RoomDetailPage = () => {
 
       {/* Tabs */}
       <div className="mb-4"><RoomTurnoverPanel roomId={room.id} /></div>
-      <div className="mb-4"><Suspense fallback={<p className="text-sm">Đang tải giữ chỗ…</p>}><RoomReservationPanel roomId={room.id} buildingId={room.building_id} /></Suspense></div>
+      <div className="mb-4"><Suspense fallback={<LoadingState label="giữ chỗ" rows={2} />}><RoomReservationPanel roomId={room.id} buildingId={room.building_id} /></Suspense></div>
       <Tabs defaultValue="general" className="space-y-4">
         <TabsList>
           <TabsTrigger value="general">
@@ -200,19 +213,19 @@ const RoomDetailPage = () => {
           </TabsTrigger>
           <TabsTrigger value="tenants">
             <Users className="h-4 w-4 mr-2" />
-            Khách hàng ({tenantsQuery.isError||tenantsQuery.data===undefined?'…':currentTenants.length})
+            Khách hàng ({tabCount(tenantsQuery, currentTenants.length, 'số khách hàng')})
           </TabsTrigger>
           <TabsTrigger value="contracts">
             <FileText className="h-4 w-4 mr-2" />
-            Hợp đồng ({contractsQuery.isError||contractsQuery.data===undefined?'…':contracts.length})
+            Hợp đồng ({tabCount(contractsQuery, contracts.length, 'số hợp đồng')})
           </TabsTrigger>
           <TabsTrigger value="assets">
             <Package className="h-4 w-4 mr-2" />
-            Tài sản ({assetsQuery.isError||assetsQuery.data===undefined?'…':assets.length})
+            Tài sản ({tabCount(assetsQuery, assets.length, 'số tài sản')})
           </TabsTrigger>
           <TabsTrigger value="invoices">
             <Receipt className="h-4 w-4 mr-2" />
-            Hóa đơn ({invoicesQuery.isError||invoicesQuery.data===undefined?'…':invoices.length})
+            Hóa đơn ({tabCount(invoicesQuery, invoices.length, 'số hóa đơn')})
           </TabsTrigger>
         </TabsList>
 
@@ -317,7 +330,7 @@ const RoomDetailPage = () => {
           </Card>
 
           {/* Current Contract Info */}
-          <QueryRegion label="hợp đồng hiện tại của phòng" queries={[contractsQuery]}>
+          <QueryRegion label="hợp đồng hiện tại của phòng" queries={[contractsQuery]} skeleton="detail" rows={4}>
           {activeContract && (
             <Card>
               <CardHeader>
@@ -382,17 +395,13 @@ const RoomDetailPage = () => {
 
         {/* Tenants Tab */}
         <TabsContent value="tenants">
-          <QueryRegion label="khách hàng đang thuê phòng" queries={[tenantsQuery]}>
           <Card>
             <CardHeader>
               <CardTitle>Khách hàng hiện tại</CardTitle>
             </CardHeader>
             <CardContent>
-              {loadingTenants ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  Đang tải...
-                </div>
-              ) : currentTenants.length > 0 ? (
+              <QueryRegion label="khách hàng đang thuê phòng" queries={[tenantsQuery]} skeleton="table" rows={3}>
+              {currentTenants.length > 0 ? (
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -426,24 +435,20 @@ const RoomDetailPage = () => {
                   Căn hộ chưa có khách hàng
                 </div>
               )}
+              </QueryRegion>
             </CardContent>
           </Card>
-        </QueryRegion>
         </TabsContent>
 
         {/* Contracts Tab */}
         <TabsContent value="contracts">
-          <QueryRegion label="hợp đồng của phòng" queries={[contractsQuery]}>
           <Card>
             <CardHeader>
               <CardTitle>Lịch sử hợp đồng</CardTitle>
             </CardHeader>
             <CardContent>
-              {loadingContracts ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  Đang tải...
-                </div>
-              ) : contracts.length > 0 ? (
+              <QueryRegion label="hợp đồng của phòng" queries={[contractsQuery]} skeleton="table" rows={4}>
+              {contracts.length > 0 ? (
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -485,24 +490,20 @@ const RoomDetailPage = () => {
                   Chưa có hợp đồng nào cho căn hộ này
                 </div>
               )}
+              </QueryRegion>
             </CardContent>
           </Card>
-        </QueryRegion>
         </TabsContent>
 
         {/* Assets Tab */}
         <TabsContent value="assets">
-          <QueryRegion label="tài sản của phòng" queries={[assetsQuery]}>
           <Card>
             <CardHeader>
               <CardTitle>Tài sản trong căn hộ</CardTitle>
             </CardHeader>
             <CardContent>
-              {loadingAssets ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  Đang tải...
-                </div>
-              ) : assets.length > 0 ? (
+              <QueryRegion label="tài sản của phòng" queries={[assetsQuery]} skeleton="table" rows={4}>
+              {assets.length > 0 ? (
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -538,24 +539,20 @@ const RoomDetailPage = () => {
                   Chưa có tài sản nào trong căn hộ này
                 </div>
               )}
+              </QueryRegion>
             </CardContent>
           </Card>
-        </QueryRegion>
         </TabsContent>
 
         {/* Invoices Tab */}
         <TabsContent value="invoices">
-          <QueryRegion label="hóa đơn của phòng" queries={[invoicesQuery]}>
           <Card>
             <CardHeader>
               <CardTitle>Hóa đơn của căn hộ</CardTitle>
             </CardHeader>
             <CardContent>
-              {loadingInvoices ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  Đang tải...
-                </div>
-              ) : invoices.length > 0 ? (
+              <QueryRegion label="hóa đơn của phòng" queries={[invoicesQuery]} skeleton="table" rows={4}>
+              {invoices.length > 0 ? (
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -595,9 +592,9 @@ const RoomDetailPage = () => {
                   Chưa có hóa đơn nào cho căn hộ này
                 </div>
               )}
+              </QueryRegion>
             </CardContent>
           </Card>
-        </QueryRegion>
         </TabsContent>
       </Tabs>
 

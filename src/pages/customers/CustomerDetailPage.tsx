@@ -37,6 +37,7 @@ import {
 import { copyTextWithFeedback } from '@/lib/clipboardFeedback';
 import { useCustomer } from '@/hooks/useCustomers';
 import { QueryRegion } from '@/components/errors/QueryRegion';
+import { LoadingState } from '@/components/loading/LoadingState';
 import { useVehicles } from '@/hooks/useVehicles';
 import type { VehicleWithRelations } from '@/types/vehicle';
 import DeleteCustomerDialog from '@/components/customers/DeleteCustomerDialog';
@@ -121,18 +122,23 @@ function CustomerDetailDesktopPage() {
   }
 
   if (isLoading) {
+    // Khung trang (quay lại + tiêu đề) hiện ngay, chi tiết là khối xám (chủ chốt 02/10/2026).
     return (
-      <MainLayout title="Đang tải..." subtitle="Vui lòng đợi" icon={User}>
-        <div className="text-center py-12 text-gray-500">
-          Đang tải thông tin khách hàng...
+      <MainLayout title="Chi tiết khách hàng" icon={User}>
+        <div className="mb-6">
+          <Button variant="outline" onClick={() => navigate('/customers')}>
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Quay lại
+          </Button>
         </div>
+        <LoadingState label="thông tin khách hàng" variant="detail" rows={8} onRetry={() => void customerQuery.refetch()} />
       </MainLayout>
     );
   }
 
   if (customerQuery.isError && !customer) {
     return <MainLayout title="Chi tiết khách hàng" icon={User}>
-      <QueryRegion label="chi tiết khách hàng" queries={[customerQuery]}><></></QueryRegion>
+      <QueryRegion label="chi tiết khách hàng" queries={[customerQuery]} skeleton="detail"><></></QueryRegion>
     </MainLayout>;
   }
 
@@ -175,7 +181,7 @@ function CustomerDetailDesktopPage() {
       subtitle="Chi tiết khách hàng"
       icon={User}
     >
-      <QueryRegion label="chi tiết khách hàng" queries={[customerQuery]}>
+      <QueryRegion label="chi tiết khách hàng" queries={[customerQuery]} skeleton="detail">
       {/* Header actions */}
       <div className="flex flex-wrap items-center gap-2 mb-6">
         <Button variant="outline" onClick={() => navigate('/customers')}>
@@ -306,7 +312,11 @@ function CustomerDetailDesktopPage() {
           </Card>
 
           {/* Phương tiện */}
-          <QueryRegion label="phương tiện của khách hàng" queries={[vehiclesQuery]}>
+          <QueryRegion
+            label="phương tiện của khách hàng"
+            queries={[vehiclesQuery]}
+            loading={<CardLoading icon={Car} title="Phương tiện" label="phương tiện của khách hàng" onRetry={() => void vehiclesQuery.refetch()} />}
+          >
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
@@ -361,7 +371,11 @@ function CustomerDetailDesktopPage() {
         {/* Cột phải */}
         <div className="space-y-6">
           {/* Hợp đồng */}
-          <QueryRegion label="hợp đồng của khách hàng" queries={[contractsQuery]}>
+          <QueryRegion
+            label="hợp đồng của khách hàng"
+            queries={[contractsQuery]}
+            loading={<CardLoading icon={FileText} title="Hợp đồng" label="hợp đồng của khách hàng" onRetry={() => void contractsQuery.refetch()} />}
+          >
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
@@ -471,6 +485,23 @@ function CustomerDetailDesktopPage() {
       />
       </QueryRegion>
     </MainLayout>
+  );
+}
+
+/** Thẻ mục đang chờ dữ liệu: tiêu đề thẻ hiện ngay, thân thẻ là khối xám. */
+function CardLoading({ icon: Icon, title, label, onRetry }: { icon: React.ElementType; title: string; label: string; onRetry: () => void }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Icon className="h-4 w-4" />
+          {title}
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <LoadingState label={label} rows={3} onRetry={onRetry} className="py-0" />
+      </CardContent>
+    </Card>
   );
 }
 
