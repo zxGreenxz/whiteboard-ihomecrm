@@ -1461,7 +1461,7 @@ export default function IncomeExpensePostingDialog({
                       canRemove={canRemoveItem}
                       busy={legacyUploading}
                       adopting={adopting}
-                      disabled={committing || waitingUploads}
+                      disabled={committing || waitingUploads || isSubmitting}
                       fallbackCount={fallbackIds.length}
                       pendingChanges={hasPendingAttachmentChanges}
                       confirmLabel={title}
@@ -1472,7 +1472,7 @@ export default function IncomeExpensePostingDialog({
                       onRemovePending={handlePendingRemove}
                       uploadStats={uploadStats}
                       onWarm={warmUploadConnection}
-                      pendingLocked={committing}
+                      pendingLocked={committing || isSubmitting}
                     />
                   </FormControl>
                   <FormMessage />

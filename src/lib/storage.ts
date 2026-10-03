@@ -5,7 +5,7 @@ import { compressImage } from "./imageCompress";
 import { isR2Bucket, isR2PublicBucket, parseR2Ref } from "./storage/r2Config";
 import { uploadToR2, signR2 } from "./storage/r2Client";
 import { uploadResilient, type ResilientUploadOptions } from "./storage/resilientUpload";
-import { isAbortError, uploadDeadlineMs, UploadRejectedError, UploadTimeoutError, UploadTooLargeError } from "./uploadDeadline";
+import { isAbortError, uploadAbortError, uploadDeadlineMs, UploadRejectedError, UploadTimeoutError, UploadTooLargeError } from "./uploadDeadline";
 
 export { sanitizeStorageFileName } from "./storageKey";
 
@@ -146,6 +146,9 @@ export async function uploadFileDetailed(
         signal: options.resilient?.signal,
       });
   const compressMs = Date.now() - compressStarted;
+  // Ảnh đã bị gỡ trong lúc chờ nén: hàng đợi trả nguyên ảnh gốc — dừng ở đây, đừng
+  // báo nhầm "sau khi nén vẫn quá 5 MB" cho ảnh người dùng đã bỏ.
+  if (options.resilient?.signal?.aborted) throw uploadAbortError();
   if (options.maxBytes !== undefined && toUpload.size > options.maxBytes) {
     throw new UploadTooLargeError(toUpload.size, options.maxBytes);
   }

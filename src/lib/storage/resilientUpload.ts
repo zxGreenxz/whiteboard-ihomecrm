@@ -189,7 +189,13 @@ async function attemptOnce(
   url: string,
   file: File,
   token: string | null,
+  /** Lần gửi thứ mấy — chỉ để báo % theo lần. */
   attempt: number,
+  /**
+   * Lượt cuối không cắt vì "đứng": mạng rất yếu mà vẫn nhích thì cho chạy tới hạn
+   * tổng, khỏi tải lại từ 0 byte lần nữa.
+   */
+  lastAttempt: boolean,
   outer: AbortSignal,
   deadlineAt: number,
   onProgress: ((progress: UploadProgress) => void) | undefined,
@@ -201,9 +207,6 @@ async function attemptOnce(
   outer.addEventListener('abort', onOuterAbort, { once: true });
   let stalled = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  // Lượt cuối không cắt vì "đứng": mạng rất yếu mà vẫn nhích thì cho chạy tới hạn tổng,
-  // khỏi tải lại từ 0 byte lần nữa.
-  const lastAttempt = attempt >= MAX_ATTEMPTS;
   const arm = (ms: number) => {
     clearTimeout(timer);
     const remaining = deadlineAt - Date.now();
@@ -278,11 +281,17 @@ export async function uploadResilient(
   };
 
   let lastStatus: number | null = null;
+  /**
+   * Số lần ĐÃ THẬT SỰ gửi tệp đi. Khác `attempt` (số lượt bị tính): mất sóng rồi có
+   * mạng lại thì không tính lượt, nhưng tệp có thể đã lên ở lần gửi trước — luật 409
+   * và nhịp nghỉ phải dựa vào số lần gửi thật.
+   */
+  let sends = 0;
   try {
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-      if (attempt > 1) {
-        report?.({ loaded: 0, total: file.size, attempt, phase: 'retrying' });
-        await sleep(Math.min(BACKOFF_MS[attempt - 2] ?? 1_500, deadlineAt - Date.now()), outer);
+      if (sends > 0) {
+        report?.({ loaded: 0, total: file.size, attempt: sends + 1, phase: 'retrying' });
+        await sleep(Math.min(BACKOFF_MS[Math.min(sends, BACKOFF_MS.length) - 1] ?? 1_500, deadlineAt - Date.now()), outer);
       }
       if (!deps.isOnline()) {
         report?.({ loaded: 0, total: file.size, attempt, phase: 'offline' });
@@ -295,19 +304,20 @@ export async function uploadResilient(
         lastStatus = null; // lấy phiên kẹt: tính như một lượt đứng mạng
         continue;
       }
-      const outcome = await attemptOnce(deps, url, file, token, attempt, outer, deadlineAt, report);
-      if (outcome.kind === 'ok') return { path: key, attempts: attempt, elapsedMs: Date.now() - started };
+      sends += 1;
+      const outcome = await attemptOnce(deps, url, file, token, sends, attempt >= MAX_ATTEMPTS, outer, deadlineAt, report);
+      if (outcome.kind === 'ok') return { path: key, attempts: sends, elapsedMs: Date.now() - started };
       if (outcome.kind === 'reject') throw outcome.error;
       if (outcome.kind === 'conflict') {
-        // Lượt đầu mà trùng khoá (có đuôi ngẫu nhiên) là chuyện lạ: không nhận vơ.
-        if (attempt === 1) throw new UploadRejectedError(409, 'Đã có tệp khác cùng tên trong kho');
-        // Từ lượt 2: trùng nghĩa là CHÍNH tệp này đã lên ở lượt trước mà mất trả lời.
+        // Lần gửi ĐẦU TIÊN mà trùng khoá (có đuôi ngẫu nhiên) là chuyện lạ: không nhận vơ.
+        if (sends === 1) throw new UploadRejectedError(409, 'Đã có tệp khác cùng tên trong kho');
+        // Từ lần gửi thứ 2: trùng nghĩa là CHÍNH tệp này đã lên ở lần trước mà mất trả lời.
         const size = await within(
           deps.storedSize(bucket, key).catch((): null => null),
           Math.min(CONNECT_MS, deadlineAt - Date.now()),
           outer,
         );
-        if (size === file.size) return { path: key, attempts: attempt, elapsedMs: Date.now() - started };
+        if (size === file.size) return { path: key, attempts: sends, elapsedMs: Date.now() - started };
         // Chưa đọc được cỡ (mạng chập chờn): hỏi lại ở lượt sau; hết lượt thì dọn khoá.
         if (size === null || size === TIMED_OUT) {
           lastStatus = null;
@@ -319,7 +329,7 @@ export async function uploadResilient(
       // Rớt mạng mà máy cũng báo đang mất mạng: chờ có mạng tới hết hạn tổng, KHÔNG tính
       // lượt — đi qua thang máy, vùng mất sóng 15 giây vẫn tự tải tiếp.
       if (outcome.status === null && !deps.isOnline()) {
-        report?.({ loaded: 0, total: file.size, attempt, phase: 'offline' });
+        report?.({ loaded: 0, total: file.size, attempt: sends, phase: 'offline' });
         await deps.waitOnline(deadlineAt - Date.now(), outer);
         if (deps.isOnline()) attempt -= 1;
       }

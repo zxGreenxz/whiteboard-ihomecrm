@@ -87,6 +87,18 @@ describe('uploadFileDetailed — đường chịu mạng chập chờn', () => {
     expect((loi as FinancialWorkflowError).message).not.toMatch(/không tải lại/);
   });
 
+  it('ảnh bị gỡ trong lúc chờ nén (hàng đợi trả ảnh gốc to): báo huỷ, KHÔNG báo nhầm "quá 5 MB"', async () => {
+    const ctl = new AbortController();
+    ctl.abort();
+    const loi = await uploadFileDetailed('b', 'u/a.png', anh(6 * 1024 * 1024), {
+      resilient: { signal: ctl.signal },
+      maxBytes: 5 * 1024 * 1024,
+    }).catch((e: unknown) => e);
+    expect((loi as DOMException).name).toBe('AbortError');
+    expect(loi).not.toBeInstanceOf(UploadTooLargeError);
+    expect(h.resilient).not.toHaveBeenCalled();
+  });
+
   it('5 MB tính SAU khi nén: vượt thì từ chối trước khi gửi byte nào', async () => {
     const loi = await uploadFileDetailed('b', 'u/a.png', anh(6 * 1024 * 1024), {
       resilient: {},

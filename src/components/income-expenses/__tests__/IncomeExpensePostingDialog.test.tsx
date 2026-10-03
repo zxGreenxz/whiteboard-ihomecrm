@@ -109,10 +109,13 @@ function Khung({
   giuKhiDong = false,
   loai = 'EXPENSE',
   che = 'POST_APPROVED',
+  dangGhiSo = false,
 }: {
   giuKhiDong?: boolean;
   loai?: 'INCOME' | 'EXPENSE';
   che?: 'POST_APPROVED' | 'APPROVE_AND_POST';
+  /** Như trang truyền `isPending` của lệnh ghi sổ. */
+  dangGhiSo?: boolean;
 }) {
   const [mo, setMo] = useState(true);
   const [client] = useState(() => new QueryClient({ defaultOptions: { queries: { retry: false } } }));
@@ -145,6 +148,7 @@ function Khung({
         await H.ghiSo(input);
         setMo(false); // như các trang: ghi sổ xong thì đóng hộp
       }}
+      isSubmitting={dangGhiSo}
     />
   );
   // Trang Thu chi có chỗ gỡ hẳn hộp khi đóng, có chỗ giữ lại với open=false.
@@ -711,6 +715,12 @@ describe('tải ảnh nhanh và chịu mạng chập chờn', () => {
     tai.xong();
     await waitFor(() => expect(H.ghiSo).toHaveBeenCalledTimes(1));
     expect(H.ghiSo.mock.calls[0][0]).toMatchObject({ cashbookId: SO });
+  });
+
+  it('lệnh ghi sổ đang chạy: khoá cả ô tiền LẪN nút thêm ảnh — ảnh thêm lúc này không đi kèm lệnh chi', () => {
+    render(<Khung dangGhiSo />);
+    expect((screen.getByRole('combobox') as HTMLButtonElement).matches(':disabled')).toBe(true);
+    expect((screen.getByRole('button', { name: 'Thêm chứng từ' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('phiếu chưa có ảnh, ảnh duy nhất tải hỏng: bấm Chi ra đúng câu "còn ảnh chưa tải được"', async () => {

@@ -303,10 +303,31 @@ describe('uploadResilient', () => {
     const tien: UploadProgress[] = [];
     const { d, sent } = deps([rotRoiMatSong, ok], { isOnline: () => online, waitOnline });
     const p = uploadResilient('b', KEY, FILE, { onProgress: (x) => tien.push(x) }, d);
-    await vi.advanceTimersByTimeAsync(15_000);
-    await expect(p).resolves.toMatchObject({ attempts: 1 });
+    await vi.advanceTimersByTimeAsync(15_500);
+    await expect(p).resolves.toMatchObject({ attempts: 2 }); // 2 lần gửi thật
     expect(sent).toHaveLength(2);
     expect(tien.some((x) => x.phase === 'offline')).toBe(true);
+  });
+
+  it('mất sóng đúng lúc chờ trả lời mà máy chủ ĐÃ lưu: có mạng lại, gửi lại nhận 409 đúng cỡ ⇒ xong, không báo "từ chối"', async () => {
+    let online = true;
+    const daLuuMaMatTraLoi: Kich = async () => {
+      online = false;
+      throw new TypeError('Network request failed');
+    };
+    const waitOnline = vi.fn((ms: number) => new Promise<void>((r) => {
+      setTimeout(() => { online = true; r(); }, Math.min(ms, 10_000));
+    }));
+    const storedSize = vi.fn(async () => FILE.size);
+    const { d } = deps(
+      [daLuuMaMatTraLoi, traLoi(400, { statusCode: '409', error: 'Duplicate' })],
+      { isOnline: () => online, waitOnline, storedSize },
+    );
+    const p = uploadResilient('b', KEY, FILE, {}, d);
+    await vi.advanceTimersByTimeAsync(10_500);
+    await expect(p).resolves.toMatchObject({ path: KEY, attempts: 2 });
+    expect(storedSize).toHaveBeenCalledWith('b', KEY);
+    expect(d.remove).not.toHaveBeenCalled();
   });
 
   it('máy chủ lỗi 5xx cả 3 lượt: báo máy chủ lỗi, không đổ cho mạng chậm', async () => {
