@@ -17,6 +17,10 @@
   "include": [],
   "files": [
     "src/lib/personal-tasks/model.ts",
+    "src/lib/personal-tasks/reminders.ts",
+    "src/lib/personal-tasks/reminderAudio.ts",
+    "src/hooks/usePersonalTaskReminders.ts",
+    "src/components/personal-tasks/ReminderSheet.tsx",
     "src/lib/personal-tasks/storage.ts",
     "src/lib/personal-tasks/calendar.ts",
     "src/hooks/usePersonalTasks.ts",

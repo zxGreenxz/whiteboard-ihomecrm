@@ -12,7 +12,10 @@ thử và lưu việc cá nhân, thêm icon mobile, không nối dữ liệu ngh
 - Mobile <=600px ba tab; rộng hơn ba cột. CSS cô lập để giữ breakpoint, sheet,
   cử chỉ và safe area theo đặc tả. Không mount shell có dữ liệu nghiệp vụ.
 - Tạo, hẹn/đổi/xóa hẹn, xong, trả lại; vuốt 72px, pointercancel không xác nhận.
-  Dùng nút tương đương khi chuột và menu thao tác khi chạm để dễ tiếp cận.
+  Trên mobile/cảm ứng ẩn icon thao tác; desktop dùng chuột giữ các nút tương đương.
+- Theo yêu cầu bổ sung: giữ dòng việc 600ms mở xác nhận xóa, Hủy giữ nguyên,
+  Xóa chỉ cập nhật UI khi ghi thành công. Vuốt/cuộn/hủy pointer/rời trang hủy timer.
+  Phím Delete và nút desktop mở cùng xác nhận; xóa theo ID ở mọi vùng hiển thị.
 - Ngày UTC+7; âm lịch dùng đúng gói 2.0.1 của nguồn. Cập nhật phút/foreground.
 - Ghi thành công rồi mới cập nhật UI; đọc bản mới nhất trong Web Lock khi ghi.
   Lỗi storage hiển thị và giữ dữ liệu, không âm thầm thay dữ liệu hỏng bằng rỗng.
@@ -36,3 +39,11 @@ thử và lưu việc cá nhân, thêm icon mobile, không nối dữ liệu ngh
 Cùng tài khoản ở trình duyệt/thiết bị/tên miền khác sẽ có kho khác. Xóa dữ liệu
 trình duyệt sẽ xóa kho; JSON tải xuống là bản sao dự phòng. Không tuyên bố local
 storage là kho dữ liệu bí mật hoặc cơ chế bảo vệ trước người dùng chung máy.
+# Nhắc hẹn cục bộ (bổ sung theo yêu cầu)
+
+- Nút chuông mở sheet: trước hạn (tắt/5/10/15/30/60 phút), đúng hạn hoặc sau 15/30/60 phút, điểm việc sáng 06:00–09:00, âm thanh và nghe thử.
+- Chỉ xin quyền khi người dùng bấm Bật thông báo. Đăng ký service worker để hiện thông báo trên mobile; không tạo push subscription, không lưu công việc hoặc cài đặt lên máy chủ.
+- Cài đặt và sổ nhắc tách theo tài khoản trong localStorage. Web Lock tuần tự hóa lưu cài đặt/giao thông báo giữa các tab. Lỗi lưu không báo thành công; lỗi giao tạm dừng và cho thử lại.
+- Quét mỗi 15 giây khi trang Việc của tôi còn chạy; chỉ nhắc bù trong một phút. Giờ Việt Nam; việc xong/xóa/hủy hẹn không nhắc. Sổ nhắc giữ hai ngày để tránh phát lại khi tải trang.
+- UI nêu rõ đóng trang/khóa máy chưa bảo đảm nhắc nền. Chuông tùy chọn chỉ khi trang hiện trên màn hình và âm thanh đã được mở khóa bằng thao tác người dùng.
+- Kiểm thử: giờ Việt Nam, trạng thái/hẹn lại, tắt các chế độ, quyền bị từ chối, lỗi lưu/giao, chống trùng, unmount; E2E trình duyệt nhận thông báo từ service worker, lựa chọn lưu bền và không gọi API push máy chủ.

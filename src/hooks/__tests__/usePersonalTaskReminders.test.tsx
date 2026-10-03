@@ -1,0 +1,80 @@
+// @vitest-environment jsdom
+import { act, cleanup, renderHook } from '@testing-library/react';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { usePersonalTaskReminders } from '../usePersonalTaskReminders';
+import { createTask, transitionTask } from '@/lib/personal-tasks/model';
+import { serializeTasks, storageKey } from '@/lib/personal-tasks/storage';
+import { defaultReminders, readReminders, saveReminders } from '@/lib/personal-tasks/reminders';
+
+vi.mock('sonner', () => ({ toast: Object.assign(vi.fn(), { error: vi.fn() }) }));
+vi.mock('@/lib/personal-tasks/reminderAudio', () => ({ createReminderAudio: () => ({ unlock: vi.fn().mockResolvedValue(undefined), play: vi.fn().mockReturnValue(false), close: vi.fn() }) }));
+const show = vi.fn().mockResolvedValue(undefined);
+const request = vi.fn().mockResolvedValue('granted');
+const getRegistration = vi.fn().mockResolvedValue({ active: true, showNotification: show });
+let access: NotificationPermission;
+const now = new Date('2026-10-04T07:30:20+07:00');
+beforeEach(() => {
+  vi.useFakeTimers(); vi.setSystemTime(now); vi.clearAllMocks(); access = 'default';
+  vi.stubGlobal('isSecureContext', true);
+  vi.stubGlobal('Notification', { get permission() { return access; }, requestPermission: request });
+  Object.defineProperty(navigator, 'serviceWorker', { configurable: true, value: { getRegistration } });
+  const task = transitionTask(createTask('a', 'Uống nước'), { type: 'due', due: { iso: '2026-10-04', time: '07:30' } });
+  localStorage.setItem(storageKey('a'), serializeTasks([task]));
+});
+afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); localStorage.clear(); });
+const flush = async () => { await act(async () => { await vi.advanceTimersByTimeAsync(0); }); };
+it('không tự xin quyền; từ chối không bật; chỉ bật và lưu sau khi người dùng cho phép', async () => {
+  const { result } = renderHook(() => usePersonalTaskReminders('a'));
+  expect(request).not.toHaveBeenCalled();
+  request.mockResolvedValueOnce('denied');
+  await act(async () => { await result.current.enable(); });
+  expect(result.current.settings.enabled).toBe(false);
+  expect(getRegistration).not.toHaveBeenCalled();
+  await act(async () => { await result.current.enable(); });
+  expect(request).toHaveBeenCalledTimes(2);
+  expect(readReminders(localStorage, 'a').enabled).toBe(true);
+  expect(readReminders(localStorage, 'b').enabled).toBe(false);
+});
+it('gửi bằng service worker đúng nội dung, không gửi lại sau remount, hủy timer khi unmount', async () => {
+  access = 'granted';
+  saveReminders(localStorage, 'a', { ...defaultReminders, enabled: true, enabledAt: now.getTime() - 60_000, sound: false });
+  const first = renderHook(() => usePersonalTaskReminders('a'));
+  await flush();
+  expect(show).toHaveBeenCalledWith('Việc của tôi · Đã đến giờ hẹn', expect.objectContaining({ body: 'Uống nước', silent: true, data: { url: '/viec-cua-toi' } }));
+  first.unmount();
+  const second = renderHook(() => usePersonalTaskReminders('a'));
+  await flush();
+  expect(show).toHaveBeenCalledTimes(1);
+  second.unmount();
+  expect(vi.getTimerCount()).toBe(0);
+});
+it('lỗi giao hiện trạng thái tạm dừng; thử lại thành công', async () => {
+  access = 'granted';
+  saveReminders(localStorage, 'a', { ...defaultReminders, enabled: true, enabledAt: now.getTime() - 60_000 });
+  show.mockRejectedValueOnce(new Error('blocked'));
+  const { result } = renderHook(() => usePersonalTaskReminders('a'));
+  await flush();
+  expect(result.current.error).toContain('tạm dừng');
+  await act(async () => { await vi.advanceTimersByTimeAsync(15_000); });
+  expect(show).toHaveBeenCalledTimes(1);
+  act(() => result.current.retry());
+  await flush();
+  expect(show).toHaveBeenCalledTimes(2);
+  expect(result.current.error).toBeNull();
+});
+it('lỗi lưu giữ nguyên lựa chọn; dừng giao khi tài khoản đã unmount trong lúc chờ worker', async () => {
+  const first = renderHook(() => usePersonalTaskReminders('a'));
+  vi.spyOn(Storage.prototype, 'setItem').mockImplementationOnce(() => { throw new Error('quota'); });
+  await act(async () => { await first.result.current.save({ before: 5 }); });
+  expect(first.result.current.settings.before).toBeNull();
+  expect(first.result.current.error).toContain('Chưa lưu');
+  first.unmount();
+  access = 'granted';
+  saveReminders(localStorage, 'a', { ...defaultReminders, enabled: true, enabledAt: now.getTime() - 60_000 });
+  let resolve: (value: unknown) => void = () => {};
+  getRegistration.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+  const second = renderHook(() => usePersonalTaskReminders('a'));
+  await flush(); second.unmount();
+  await act(async () => { resolve({ active: true, showNotification: show }); });
+  expect(show).not.toHaveBeenCalled();
+});

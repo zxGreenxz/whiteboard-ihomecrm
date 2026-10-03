@@ -11,7 +11,11 @@
 .ptask-title h1 { margin: 0; font-size: 19px; font-weight: 800; letter-spacing: -.5px; }
 .ptask-title p { margin: 3px 0 0; color: #61738e; font-size: 11px; font-weight: 600; line-height: 1.6; }
 .ptask-title p span { white-space: nowrap; }
-.ptask-home, .ptask-download { display: flex; align-items: center; justify-content: center; flex-shrink: 0; height: 36px; width: 32px; border-radius: 10px; }
+.ptask-home, .ptask-download, .ptask-bell { display: flex; align-items: center; justify-content: center; flex-shrink: 0; height: 36px; width: 32px; border-radius: 10px; }
+.ptask-bell { position: relative; border: 1px solid #e7edf6; color: #788aa3; background: white; }
+.ptask-bell.enabled { color: #087bff; background: #eaf4ff; border-color: #cce3ff; }
+.ptask-bell.enabled::after, .ptask-bell.has-error::after { content: ''; position: absolute; top: 5px; right: 5px; width: 5px; height: 5px; border-radius: 50%; background: #087bff; }
+.ptask-bell.has-error::after { background: #dc2626; }
 .ptask-home { color: #5e718e; }
 .ptask-download { border: 1px solid #cfe3ff; background: #f5faff; color: var(--pt-blue); }
 .ptask-total { white-space: nowrap; font-size: 11px; font-weight: 700; color: #0674ef; background: #eaf4ff; border: 1px solid #cce3ff; border-radius: 99px; padding: 5px 9px; }
@@ -47,6 +51,7 @@
 .ptask-action.due, .ptask-clock, .ptask-due-chip { color: #b45309; background: #fef3c7; border-color: #fde68a; }
 .ptask-action.done { color: #15803d; background: #dcfce7; border-color: #bbf7d0; }
 .ptask-action.undo { color: #74849c; background: #f0f4f9; }
+.ptask-action.delete { color: #dc2626; background: #fff1f2; }
 .ptask-clock { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 38px; height: 38px; border-radius: 12px; }
 .ptask-due-chip { padding: 3px 7px; border-radius: 6px; font-size: 11px; font-weight: 600; }
 .ptask-clock.late, .ptask-due-chip.late { color: #dc2626; background: #fee2e2; }
@@ -55,8 +60,13 @@
 .ptask-swipe.right { color: white; background: #16a34a; }
 .ptask-swipe.left { justify-content: flex-end; color: #92400e; background: #fde68a; }
 .ptask-swipe.undo { justify-content: flex-end; color: #475569; background: #e2e8f0; }
-.ptask-touch-menu { display: none; }
-.ptask-more { width: 32px; height: 36px; display: flex; align-items: center; justify-content: center; color: #a2aec0; }
+.ptask-row-face { -webkit-touch-callout: none; user-select: none; }
+.ptask-delete-dialog { width: calc(100% - 32px); max-width: 380px; border-radius: 18px; padding: 24px; }
+.ptask-delete-text { max-height: 160px; overflow-y: auto; overflow-wrap: anywhere; white-space: pre-wrap; padding: 12px; background: #f4f7fb; border-radius: 10px; font-size: 14px; }
+.ptask-delete-footer { display: flex; gap: 10px; }
+.ptask-delete-footer button { flex: 1; margin-top: 0; min-height: 44px; }
+.ptask-delete-confirm { background: #dc2626; color: white; }
+.ptask-delete-confirm:hover { background: #b91c1c; }
 .ptask-empty { display: flex; align-items: center; flex-direction: column; text-align: center; color: #8b99ad; padding: 65px 8px; gap: 9px; }
 .ptask-empty > svg { width: 36px; height: 36px; stroke-width: 1.2; color: #acc3df; margin-bottom: 5px; }
 .ptask-empty strong { font-size: 13px; font-weight: 600; color: #6d7f97; }
@@ -98,11 +108,34 @@
 .ptask-time-chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .ptask-time-chips button { min-height: 36px; padding: 6px 15px; border-radius: 99px; background: #f1f5fa; color: #788aa3; font-size: 12px; font-weight: 700; }
 .ptask-time-chips button[aria-pressed=true] { background: #e4f1ff; color: #087bff; box-shadow: inset 0 0 0 1px #c1ddff; }
-@media (pointer: coarse) {
-  .ptask-row-actions { display: none; }
-  .ptask-touch-menu { display: block; }
+.ptask-notification-status { padding: 12px; border-radius: 14px; background: #f3f6fb; font-size: 12px; color: #71829c; }
+.ptask-notification-status button { margin-top: 9px; padding: 10px 14px; border-radius: 10px; font-weight: 700; min-height: 40px; }
+.ptask-reminder-group { min-width: 0; }
+.ptask-reminder-group legend, .ptask-sound-toggle label { margin-bottom: 6px; color: #536680; font-size: 12px; font-weight: 800; }
+.ptask-reminder-chips { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 5px; }
+.ptask-reminder-chips button, .ptask-preview-sound { min-height: 36px; padding: 6px 10px; border: 1px solid #e4ebf5; border-radius: 99px; background: white; color: #6b7e9a; font-size: 11px; font-weight: 700; }
+.ptask-reminder-chips button[aria-pressed=true] { color: #0075ff; background: #eaf4ff; border-color: #5fa7ff; }
+.ptask-sound-toggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.ptask-sound-toggle label { margin-bottom: 0; }
+.ptask-sound-toggle button[data-state=checked] { background: #087bff; }
+.ptask-reminder-sound { display: flex; justify-content: flex-end; align-items: center; gap: 5px; }
+.ptask-reminder-sound legend { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); }
+.ptask-preview-sound { border-radius: 10px; color: #536680; }
+.ptask-reminder-note { color: #72839c; font-size: 11px; line-height: 1.5; }
+.ptask-reminder-error { color: #b91c1c; font-size: 12px; background: #fff1f2; border-radius: 10px; padding: 10px; }
+.ptask-reminder-error button { text-decoration: underline; margin-top: 6px; }
+@media (max-width: 400px) {
+  .ptask-title-row { gap: 6px; }
+  .ptask-title p { font-size: 10px; }
+  .ptask-home { width: 24px; }
+  .ptask-total { font-size: 10px; padding: 4px 6px; }
+  .ptask-header { padding-left: 12px; padding-right: 12px; }
+  .ptask-sheet { padding-left: 14px; padding-right: 14px; }
 }
-@media (pointer: fine) { .ptask-gesture-hint { display: none; } }
+@media (max-width: 600px), (pointer: coarse) {
+  .ptask-row-actions, .ptask-clock, .ptask-done-check { display: none; }
+}
+@media (pointer: fine) and (min-width: 601px) { .ptask-gesture-hint { display: none; } }
 @media (min-width: 601px) {
   .ptask-header { padding: 22px 24px 12px; }
   .ptask-title p { font-size: 12px; }

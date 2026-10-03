@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, renderHook, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { usePersonalTasks } from '../usePersonalTasks';
 import { createTask } from '@/lib/personal-tasks/model';
@@ -28,4 +28,16 @@ it('nhận thay đổi từ tab khác của cùng tài khoản', async () => {
     window.dispatchEvent(new StorageEvent('storage', { key: storageKey('a') }));
   });
   await waitFor(() => expect(screen.queryByText('Việc từ tab khác')).not.toBeNull());
+});
+it('xóa đúng ID và lưu bền; lỗi ghi vẫn giữ công việc', async () => {
+  const task = createTask('a', 'Công việc');
+  localStorage.setItem(storageKey('a'), serializeTasks([task, createTask('b', 'Giữ lại')]));
+  const { result } = renderHook(() => usePersonalTasks('a'));
+  const write = vi.spyOn(Storage.prototype, 'setItem').mockImplementationOnce(() => { throw new Error('quota'); });
+  await act(async () => { expect(await result.current.remove('a')).toBe(false); });
+  expect(result.current.tasks).toHaveLength(2);
+  write.mockRestore();
+  await act(async () => { expect(await result.current.remove('a')).toBe(true); });
+  expect(result.current.tasks.map(t => t.id)).toEqual(['b']);
+  expect(JSON.parse(localStorage.getItem(storageKey('a'))!).tasks.map((t: { id: string }) => t.id)).toEqual(['b']);
 });

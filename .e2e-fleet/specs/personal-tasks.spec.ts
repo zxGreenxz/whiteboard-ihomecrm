@@ -2,7 +2,8 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import { credentials, trackConsoleErrors } from './auth';
 
 // Only browser-local fixtures; the existing DEMO account is used for sign-in.
-test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
+// Full Chromium in new headless mode supports notifications; headless-shell reports permission=denied.
+test.use({ channel: 'chromium', viewport: { width: 390, height: 844 }, hasTouch: true });
 async function login(page: Page, role: 'quanly' | 'chunha' = 'quanly') {
   const user = credentials(role);
   await page.goto('/login');
@@ -47,14 +48,15 @@ test('mobile launcher, lịch hẹn, hoàn thành, trả lại, lưu offline và
   await page.getByRole('button', { name: /^Lưu · 20:00/ }).click();
   await page.getByRole('tab', { name: 'Đang xử lý 1' }).click();
   await expect(page.locator('.ptask-column.active .ptask-due-chip')).toContainText('20:00');
-  await page.getByRole('button', { name: 'Thao tác: Gọi điện cho gia đình' }).click();
-  await page.getByRole('menuitem', { name: 'Đánh dấu xong' }).click();
+  await expect(page.getByRole('button', { name: 'Đánh dấu xong' })).toBeHidden();
+  await gesture(activeRow(page), 90);
   await expect(page.locator('.ptask-total')).toHaveText('còn 1 việc');
   await page.getByRole('tab', { name: 'Cần làm 1' }).click();
   await expect(page.locator('.ptask-column.active .ptask-row')).toHaveCount(2);
   await expect(page.locator('.ptask-column.active .ptask-done-check')).toHaveCount(0);
   await page.getByRole('tab', { name: 'Đã xử lý 1' }).click();
   await expect(page.locator('.ptask-column.active .ptask-done-check')).toHaveCount(1);
+  await expect(page.locator('.ptask-column.active .ptask-done-check')).toBeHidden();
   await gesture(activeRow(page), -90);
   await page.getByRole('tab', { name: 'Cần làm 2' }).click();
   await context.setOffline(true);
@@ -166,12 +168,14 @@ test('sheet hủy, bàn phím Enter, focus và hẹn lại đúng dữ liệu c�
 
 test.describe('chuột và bàn phím', () => {
   test.use({ hasTouch: false, viewport: { width: 390, height: 844 } });
-  test('cửa sổ hẹp có nút thao tác, lịch không cần vuốt', async ({ page }) => {
+  test('cửa sổ hẹp dùng bàn phím; desktop vẫn có nút thao tác', async ({ page }) => {
     const errors = trackConsoleErrors(page);
     await login(page);
     await page.goto('/viec-cua-toi');
     await add(page, 'Việc thao tác bằng chuột');
-    await page.getByRole('button', { name: 'Hẹn giờ', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Hẹn giờ', exact: true })).toBeHidden();
+    await activeRow(page).focus();
+    await page.keyboard.press('ArrowLeft');
     await page.getByRole('button', { name: 'Tháng sau', exact: true }).click();
     const date = page.locator('.ptask-day:not(.outside)').nth(5);
     const selected = await date.getAttribute('aria-label');
@@ -183,10 +187,117 @@ test.describe('chuột và bàn phím', () => {
     await page.getByRole('tab', { name: 'Cần làm 0' }).focus();
     await page.keyboard.press('ArrowRight');
     await expect(page.getByRole('tab', { name: 'Đang xử lý 1' })).toBeFocused();
-    await page.getByRole('button', { name: 'Đánh dấu xong', exact: true }).click();
+    await activeRow(page).focus();
+    await page.keyboard.press('ArrowRight');
     await page.getByRole('tab', { name: 'Đã xử lý 1' }).click();
-    await page.getByRole('button', { name: 'Trả lại Cần làm', exact: true }).click();
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.locator('#task-panel-done').getByRole('button', { name: 'Trả lại Cần làm', exact: true }).click();
     await expect(page.locator('.ptask-total')).toHaveText('còn 1 việc');
+    await page.locator('#task-panel-todo').getByRole('button', { name: 'Xóa công việc', exact: true }).click();
+    await page.getByRole('button', { name: 'Hủy', exact: true }).click();
     expect(errors).toEqual([]);
   });
+});
+
+test('nhấn giữ cảm ứng mở xác nhận; hủy giữ dữ liệu, xác nhận xóa bền cả hai danh sách', async ({ page }) => {
+  const errors = trackConsoleErrors(page);
+  await login(page);
+  await page.goto('/viec-cua-toi');
+  await add(page, 'Việc nhấn giữ');
+  const touch = await page.context().newCDPSession(page);
+  const box = await activeRow(page).boundingBox();
+  if (!box) throw new Error('Missing row');
+  await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: box.x + 60, y: box.y + box.height / 2 }] });
+  await expect(page.getByRole('alertdialog')).toBeVisible();
+  await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await touch.detach();
+  await page.getByRole('button', { name: 'Hủy', exact: true }).click();
+  await expect(page.locator('.ptask-total')).toHaveText('còn 1 việc');
+  await gesture(activeRow(page), 90);
+  await activeRow(page).focus();
+  await page.keyboard.press('Delete');
+  await page.getByRole('alertdialog').evaluate(async element => { await Promise.all(element.getAnimations().map(animation => animation.finished)); });
+  await page.screenshot({ path: 'test-results/personal-tasks-delete.png' });
+  await page.getByRole('button', { name: 'Xóa việc', exact: true }).click();
+  await expect(page.getByRole('alertdialog')).toHaveCount(0);
+  await expect(page.locator('.ptask-row')).toHaveCount(0);
+  await page.reload();
+  await expect(page.locator('.ptask-row')).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test('xóa lỗi ghi giữ modal và việc, không xóa giả', async ({ page }) => {
+  await login(page);
+  await page.goto('/viec-cua-toi');
+  await add(page, 'Giữ nguyên khi lỗi ghi');
+  await page.evaluate(() => {
+    const original = Storage.prototype.setItem;
+    Storage.prototype.setItem = function(key, value) {
+      if (key.startsWith('ihomecrm:personal-tasks:')) throw new DOMException('Quota', 'QuotaExceededError');
+      original.call(this, key, value);
+    };
+  });
+  await activeRow(page).focus();
+  await page.keyboard.press('Delete');
+  await page.getByRole('button', { name: 'Xóa việc', exact: true }).click();
+  await expect(page.getByRole('alertdialog')).toContainText('Chưa xóa được');
+  await page.getByRole('button', { name: 'Hủy', exact: true }).click();
+  await expect(activeRow(page)).toContainText('Giữ nguyên khi lỗi ghi');
+  await page.reload();
+  await expect(activeRow(page)).toContainText('Giữ nguyên khi lỗi ghi');
+});
+
+test('cài nhắc hẹn lưu bền, gửi thông báo cục bộ đúng giờ và không đăng ký push máy chủ', async ({ page, context }) => {
+  const errors = trackConsoleErrors(page);
+  await context.grantPermissions(['notifications']);
+  await login(page);
+  await page.goto('/viec-cua-toi');
+  const requests: string[] = [];
+  page.on('request', request => { if (/push_subscriptions|send-push|personal_tasks/.test(request.url())) requests.push(request.url()); });
+  await page.getByRole('button', { name: 'Cài đặt nhắc hẹn' }).click();
+  await expect(page.getByRole('heading', { name: 'Nhắc hẹn', exact: true })).toBeVisible();
+  await page.getByRole('group', { name: 'Nhắc trước giờ hẹn', exact: true }).getByRole('button', { name: '5 phút', exact: true }).click();
+  await page.getByRole('group', { name: 'Điểm việc buổi sáng', exact: true }).getByRole('button', { name: '07:30', exact: true }).click();
+  await page.getByRole('button', { name: 'Ding dong', exact: true }).click();
+  await page.getByRole('button', { name: 'Nghe thử', exact: true }).click();
+  await page.getByRole('button', { name: 'Bật thông báo', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Tắt thông báo', exact: true })).toBeEnabled();
+  await page.screenshot({ path: 'test-results/personal-tasks-reminders.png' });
+  await page.getByRole('button', { name: 'Xong', exact: true }).click();
+  await page.reload();
+  await page.getByRole('button', { name: 'Cài đặt nhắc hẹn' }).click();
+  await expect(page.getByRole('button', { name: 'Ding dong', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('button', { name: '5 phút', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('button', { name: '07:30', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('switch', { name: 'Âm thanh', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Nghe thử', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: 'Xong', exact: true }).click();
+  await add(page, 'Nhắc hẹn E2E');
+  await page.clock.setFixedTime(new Date(Math.floor(Date.now() / 60_000) * 60_000 + 10_000));
+  await page.evaluate(() => {
+    const key = Object.keys(localStorage).find(key => key.startsWith('ihomecrm:personal-tasks:'))!;
+    const tasks = JSON.parse(localStorage.getItem(key)!);
+    const clock = new Date(Date.now() + 7 * 3600_000).toISOString();
+    tasks.tasks[0].status = 'doing'; tasks.tasks[0].due = { iso: clock.slice(0, 10), time: clock.slice(11, 16) };
+    localStorage.setItem(key, JSON.stringify(tasks));
+    const settingsKey = Object.keys(localStorage).find(key => key.startsWith('ihomecrm:personal-reminders:') && !key.endsWith(':delivered'))!;
+    const settings = JSON.parse(localStorage.getItem(settingsKey)!);
+    settings.settings.enabledAt = Date.now() - 120_000;
+    localStorage.setItem(settingsKey, JSON.stringify(settings));
+    window.dispatchEvent(new StorageEvent('storage', { key: settingsKey }));
+  });
+  // Real browser service worker delivery; no Notification/PushManager mocks.
+  await expect.poll(() => page.evaluate(async () => {
+    const reg = await navigator.serviceWorker.ready;
+    return (await reg.getNotifications()).filter(n => n.body === 'Nhắc hẹn E2E').length;
+  })).toBe(1);
+  await page.reload();
+  await expect(page.locator('.ptask-bell')).toHaveClass(/enabled/);
+  expect(await page.evaluate(async () => (await (await navigator.serviceWorker.ready).getNotifications()).filter(n => n.body === 'Nhắc hẹn E2E').length)).toBe(1);
+  await page.getByRole('button', { name: 'Cài đặt nhắc hẹn' }).click();
+  await page.getByRole('button', { name: 'Tắt thông báo', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Bật thông báo', exact: true })).toBeVisible();
+  await page.evaluate(async () => { for (const n of await (await navigator.serviceWorker.ready).getNotifications()) n.close(); });
+  expect(requests).toEqual([]);
+  expect(errors).toEqual([]);
 });

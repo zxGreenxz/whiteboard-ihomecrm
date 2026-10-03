@@ -48,6 +48,7 @@ export function usePersonalTasks(userId: string) {
   };
   return { tasks, error, loading, busy, refresh,
     add: (text: string) => mutate(value => [...value, createTask(crypto.randomUUID(), text)]),
+    remove: (id: string) => mutate(value => value.filter(task => task.id !== id)),
     change: (id: string, action: TaskAction) => mutate(value => {
       if (!value.some(task => task.id === id)) throw new Error('Task no longer exists');
       return value.map(task => task.id === id ? transitionTask(task, action) : task);
