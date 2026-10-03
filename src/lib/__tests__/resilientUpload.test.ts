@@ -277,16 +277,36 @@ describe('uploadResilient', () => {
     expect(d.remove).toHaveBeenCalledWith('b', KEY);
   });
 
-  it('mất mạng thật cả 3 lượt: không đợi đủ 45 giây mới báo', async () => {
+  it('mất mạng thật (gửi lỗi và máy báo mất mạng): chờ có mạng tới hạn tổng, không gửi dồn 3 lượt vô ích', async () => {
     const rot: Kich = async () => { throw new TypeError('Network request failed'); };
     const waitOnline = vi.fn((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
-    const { d, sent } = deps([rot, rot, rot], { isOnline: () => false, waitOnline });
+    const { d, sent } = deps([rot], { isOnline: () => false, waitOnline });
     const p = uploadResilient('b', KEY, FILE, {}, d).catch((e: unknown) => e);
-    await vi.advanceTimersByTimeAsync(3_000 * 3 + 2_000);
+    await vi.advanceTimersByTimeAsync(46_000);
     const loi = await p;
     expect(loi).toBeInstanceOf(UploadTimeoutError);
-    expect(sent).toHaveLength(3);
-    expect((loi as UploadTimeoutError).ms).toBe(11_000);
+    expect(sent).toHaveLength(1);
+    // ≈ hạn tổng 45 giây (đồng hồ giả tính vài nhịp 0 ms thành 1 ms).
+    expect((loi as UploadTimeoutError).ms).toBeGreaterThanOrEqual(45_000);
+    expect((loi as UploadTimeoutError).ms).toBeLessThan(45_100);
+  });
+
+  it('đi qua vùng mất sóng 15 giây (thang máy): có mạng lại thì tự tải tiếp, không đốt lượt', async () => {
+    let online = true;
+    const rotRoiMatSong: Kich = async () => {
+      online = false;
+      throw new TypeError('Network request failed');
+    };
+    const waitOnline = vi.fn((ms: number) => new Promise<void>((r) => {
+      setTimeout(() => { online = true; r(); }, Math.min(ms, 15_000));
+    }));
+    const tien: UploadProgress[] = [];
+    const { d, sent } = deps([rotRoiMatSong, ok], { isOnline: () => online, waitOnline });
+    const p = uploadResilient('b', KEY, FILE, { onProgress: (x) => tien.push(x) }, d);
+    await vi.advanceTimersByTimeAsync(15_000);
+    await expect(p).resolves.toMatchObject({ attempts: 1 });
+    expect(sent).toHaveLength(2);
+    expect(tien.some((x) => x.phase === 'offline')).toBe(true);
   });
 
   it('máy chủ lỗi 5xx cả 3 lượt: báo máy chủ lỗi, không đổ cho mạng chậm', async () => {

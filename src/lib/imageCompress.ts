@@ -72,6 +72,8 @@ export interface CompressOpts {
   profile?: 'evidence';
   /** Có phải máy cảm ứng không; mặc định tự dò (`pointer: coarse`). */
   touchDevice?: boolean;
+  /** Ảnh đã bị gỡ khi tới lượt nén thì bỏ lượt (trả nguyên tệp), không giữ hàng đợi. */
+  signal?: AbortSignal;
 }
 
 /**
@@ -87,7 +89,7 @@ let compressQueue: Promise<unknown> = Promise.resolve();
  * KHÔNG ném lỗi — luôn trả về một File dùng được, kể cả khi bước nén treo.
  */
 export function compressImage(file: File, opts: CompressOpts = {}): Promise<File> {
-  const turn = compressQueue.then(() => compressWithTimeout(file, opts));
+  const turn = compressQueue.then(() => (opts.signal?.aborted ? file : compressWithTimeout(file, opts)));
   compressQueue = turn;
   return turn;
 }

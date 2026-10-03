@@ -768,6 +768,12 @@ export default function IncomeExpensePostingDialog({
   const [uploadStats, setUploadStats] = useState<Record<string, EvidenceUploadStat>>({});
   /** Đã bấm xác nhận trong lúc ảnh còn đang tải — chờ ảnh xong rồi tự đi tiếp. */
   const [waitingUploads, setWaitingUploads] = useState(false);
+  /**
+   * Trong lúc chờ ảnh mà người dùng gỡ một ảnh đang tải: KHÔNG tự chi tiếp bằng phần
+   * ảnh còn lại — lệnh tiền phải theo đúng bộ ảnh lúc bấm (re-review PR #117).
+   */
+  const waitingRef = useRef(false);
+  const removedWhileWaitingRef = useRef(false);
   /** Đang ghi ảnh lên phiếu (bước đầu của xác nhận) — khoá Huỷ bỏ/đóng hộp. */
   const [committing, setCommitting] = useState(false);
 
@@ -1012,6 +1018,7 @@ export default function IncomeExpensePostingDialog({
 
   const handlePendingRemove = useCallback(
     (id: string) => {
+      if (waitingRef.current) removedWhileWaitingRef.current = true;
       inFlightRef.current.get(id)?.controller.abort();
       inFlightRef.current.delete(id);
       pendingFilesRef.current.delete(id);
@@ -1198,19 +1205,24 @@ export default function IncomeExpensePostingDialog({
     }
   };
 
-  /** Chặn bấm đúp trong khe trước khi trạng thái "đang xử lý" kịp vẽ lại. */
-  const submitLockRef = useRef(false);
+  /**
+   * Chặn bấm đúp trong khe trước khi trạng thái "đang xử lý" kịp vẽ lại. Ghi theo
+   * lần mở hộp: đóng hộp giữa chừng rồi mở lại thì lần mới bấm được ngay.
+   */
+  const submitLockRef = useRef<number | null>(null);
 
   const submit = form.handleSubmit(async (values) => {
-    if (reconcileRequired || cashbookError || submitLockRef.current) return;
-    submitLockRef.current = true;
+    const session = sessionRef.current;
+    if (reconcileRequired || cashbookError || submitLockRef.current === session) return;
+    submitLockRef.current = session;
     setSubmitError(null);
     try {
     // Bấm xác nhận khi ảnh còn đang tải (03/10/2026): không bắt người dùng canh ảnh
     // xong mới bấm — chờ ở đây rồi tự đi tiếp. Lệnh ghi ảnh/ghi sổ chỉ gửi SAU đó.
     if (inFlightRef.current.size > 0) {
-      const session = sessionRef.current;
       setWaitingUploads(true);
+      waitingRef.current = true;
+      removedWhileWaitingRef.current = false;
       try {
         while (inFlightRef.current.size > 0 && sessionRef.current === session) {
           const changed = new Promise<void>((wake) => inFlightWaitersRef.current.add(wake));
@@ -1220,9 +1232,16 @@ export default function IncomeExpensePostingDialog({
           ]);
         }
       } finally {
+        waitingRef.current = false;
         if (sessionRef.current === session) setWaitingUploads(false);
       }
       if (sessionRef.current !== session) return; // hộp đã đóng trong lúc chờ
+      if (removedWhileWaitingRef.current) {
+        // Bộ ảnh đã khác lúc bấm: không tự chi bằng phần còn lại.
+        removedWhileWaitingRef.current = false;
+        setSubmitError(`Bạn vừa gỡ ảnh trong lúc chờ tải — kiểm tra lại ảnh chứng từ rồi bấm “${title}” lần nữa.`);
+        return;
+      }
     }
     const failedUploads = pendingUploadsRef.current.filter((u) => u.phase === 'failed').length;
     if (failedUploads > 0) {
@@ -1247,9 +1266,11 @@ export default function IncomeExpensePostingDialog({
         return;
       }
     } else {
-      // Không còn thay đổi ảnh nào (vd ảnh đang tải đã bị gỡ trong lúc chờ): giá trị lúc
-      // bấm toàn mã tạm — dùng đúng mã chứng từ thật của ảnh đang có trên phiếu.
-      evidenceIds = [...adoptedIds, ...fallbackIds];
+      // Không đổi ảnh: đúng mã chứng từ đã có lúc bấm. Bỏ mã tạm — nếu chỉ còn mã tạm
+      // thì dừng ở bước kiểm thiếu chứng từ bên dưới, không gửi gì chưa xác nhận.
+      evidenceIds = values.evidenceIds.filter(
+        (id) => !id.startsWith('dang-tai:') && !id.startsWith('cho-ghi:'),
+      );
     }
     if (requireEvidence && evidenceIds.length === 0) {
       form.setError('evidenceIds', {
@@ -1288,7 +1309,7 @@ export default function IncomeExpensePostingDialog({
       setSubmitError(voucherFailureMessage(error, "ghi nhận thu/chi"));
       if (voucherOutcomeUnknown(error)) setReconcileRequired(true);
     } finally {
-      submitLockRef.current = false;
+      if (submitLockRef.current === session) submitLockRef.current = null;
     }
   }, errors => { void focusFirstError(errors, { root: formRef.current }); });
 
@@ -1320,7 +1341,7 @@ export default function IncomeExpensePostingDialog({
             {/* Ngày, sổ quỹ, số tiền KHOÁ khi đã bấm xác nhận (đang chờ ảnh / đang ghi ảnh):
                 lệnh tiền đi theo giá trị lúc bấm, sửa ở đây lúc đó là sửa không có tác dụng. */}
             <fieldset
-              disabled={waitingUploads || committing}
+              disabled={waitingUploads || committing || isSubmitting}
               className="m-0 min-w-0 space-y-4 border-0 p-0"
             >
             {/* Ngày Thu/Chi */}
@@ -1336,7 +1357,7 @@ export default function IncomeExpensePostingDialog({
                       onChange={field.onChange}
                       onBlur={field.onBlur}
                       name={field.name}
-                      disabled={waitingUploads || committing}
+                      disabled={waitingUploads || committing || isSubmitting}
                     />
                   </FormControl>
                   <FormMessage />
@@ -1395,7 +1416,7 @@ export default function IncomeExpensePostingDialog({
                         onChange={field.onChange}
                         onBlur={field.onBlur}
                         placeholder="Nhập số tiền đợt này"
-                        disabled={waitingUploads || committing}
+                        disabled={waitingUploads || committing || isSubmitting}
                       />
                     </FormControl>
                     {remaining != null && (

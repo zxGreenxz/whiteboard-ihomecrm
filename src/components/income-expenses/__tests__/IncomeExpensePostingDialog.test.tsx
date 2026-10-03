@@ -724,7 +724,7 @@ describe('tải ảnh nhanh và chịu mạng chập chờn', () => {
     expect(H.ghiSo).not.toHaveBeenCalled();
   });
 
-  it('đang chờ ảnh mà gỡ ảnh đó: hộp thôi chờ, chi bằng chứng từ còn lại, không ghi ảnh đã gỡ', async () => {
+  it('đang chờ ảnh mà gỡ ảnh đó: hộp thôi chờ nhưng KHÔNG tự chi bằng ảnh còn lại — phải bấm lại', async () => {
     may.anh = [ANH_CU];
     const tai = taiCho();
     render(<Khung />);
@@ -735,8 +735,12 @@ describe('tải ảnh nhanh và chịu mạng chập chờn', () => {
     await screen.findByRole('button', { name: 'Đang chờ ảnh tải xong...' });
     fireEvent.click(screen.getByRole('button', { name: 'Gỡ ảnh bill.png' }));
     expect(tai.opts().resilient?.signal?.aborted).toBe(true);
-    await waitFor(() => expect(H.ghiSo).toHaveBeenCalledTimes(1));
+    await screen.findByText(/Bạn vừa gỡ ảnh trong lúc chờ tải/);
+    expect(H.ghiSo).not.toHaveBeenCalled();
     expect(lenhGhiAnh()).toHaveLength(0);
+    // Người dùng xem lại rồi bấm lần nữa: chi bằng chứng từ của ảnh còn trên phiếu.
+    fireEvent.click(screen.getByRole('button', { name: 'Chi' }));
+    await waitFor(() => expect(H.ghiSo).toHaveBeenCalledTimes(1));
     expect(H.ghiSo.mock.calls[0][0].evidenceIds).toEqual([EV_CU]);
   });
 

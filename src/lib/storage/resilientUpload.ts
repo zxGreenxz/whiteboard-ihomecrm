@@ -316,6 +316,13 @@ export async function uploadResilient(
         throw new UploadRejectedError(409, 'Đã có tệp khác cùng tên trong kho');
       }
       lastStatus = outcome.status;
+      // Rớt mạng mà máy cũng báo đang mất mạng: chờ có mạng tới hết hạn tổng, KHÔNG tính
+      // lượt — đi qua thang máy, vùng mất sóng 15 giây vẫn tự tải tiếp.
+      if (outcome.status === null && !deps.isOnline()) {
+        report?.({ loaded: 0, total: file.size, attempt, phase: 'offline' });
+        await deps.waitOnline(deadlineAt - Date.now(), outer);
+        if (deps.isOnline()) attempt -= 1;
+      }
     }
   } catch (error) {
     // Huỷ giữa chừng: lần gửi cuối có thể đã kịp lên — dọn cho khỏi rác.

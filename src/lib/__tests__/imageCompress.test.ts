@@ -220,6 +220,17 @@ describe('compressImage', () => {
     expect(caoNhat).toBe(1);
   });
 
+  it('ảnh đã bị gỡ khi tới lượt nén: bỏ lượt ngay, không giữ hàng đợi', async () => {
+    installCanvas({ webp: true });
+    const decode = vi.fn(async () => ({ width: 4032, height: 3024, close() {} }));
+    vi.stubGlobal('createImageBitmap', decode);
+    const ctl = new AbortController();
+    ctl.abort();
+    const goc = cameraJpeg();
+    await expect(compressImage(goc, { signal: ctl.signal })).resolves.toBe(goc);
+    expect(decode).not.toHaveBeenCalled();
+  });
+
   it('bước nén bị treo: quá hạn thì trả ảnh gốc để việc tải vẫn đi tiếp, không kẹt "Đang tải..."', async () => {
     vi.useFakeTimers();
     vi.stubGlobal('createImageBitmap', () => new Promise(() => {}));

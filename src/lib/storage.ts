@@ -141,7 +141,10 @@ export async function uploadFileDetailed(
   const compressStarted = Date.now();
   const toUpload = options.imagePolicy === 'identity-original'
     ? identityOriginal(file)
-    : await compressImage(file, options.imagePolicy === 'evidence' ? { profile: 'evidence' } : {});
+    : await compressImage(file, {
+        ...(options.imagePolicy === 'evidence' ? { profile: 'evidence' as const } : {}),
+        signal: options.resilient?.signal,
+      });
   const compressMs = Date.now() - compressStarted;
   if (options.maxBytes !== undefined && toUpload.size > options.maxBytes) {
     throw new UploadTooLargeError(toUpload.size, options.maxBytes);
