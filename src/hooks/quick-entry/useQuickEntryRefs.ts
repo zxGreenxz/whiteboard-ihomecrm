@@ -86,6 +86,14 @@ export function useQuickEntryRefs() {
       is_restricted: t.is_restricted,
       system_only: t.system_only ?? false,
       fee_category: t.fee_category ?? null,
+      // Danh mục chi chuẩn (03/10/2026): lọc/xếp + "dùng cho"/"hay nói" gửi AI + neo luật chọn.
+      description: t.description ?? null,
+      keywords: t.keywords ?? [],
+      rule_key: t.rule_key ?? null,
+      archived_at: t.archived_at ?? null,
+      manual_hidden: t.manual_hidden ?? false,
+      quick_entry_hidden: t.quick_entry_hidden ?? false,
+      sort_order: t.sort_order ?? null,
     }));
     return usableExpenseCategories(rows, { organizationId: orgId, canUseRestricted: canRestricted });
   }, [canCompany, orgId, typesQ.data, canRestricted]);

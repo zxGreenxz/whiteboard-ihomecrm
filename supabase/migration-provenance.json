@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-02T07:39:30.578Z",
+  "generatedAt": "2026-10-03T17:28:16.349Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 648,
-    "unknown": 80,
-    "catalog-proven": 205,
+    "unknown": 82,
+    "catalog-proven": 206,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -10988,6 +10988,46 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-02T07:20:11.461Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261003151606_danh_muc_chi_cau_truc.sql",
+      "version": "20261003151606",
+      "name": "danh_muc_chi_cau_truc",
+      "scheme": "timestamp14",
+      "sha256": "f7b8a6ed24b100ddf55ce46f49d9ff341938e9ee8d47d9b79879c0f3e6842c71",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.ie_type_merge_one_level_guard",
+        "function:public.ie_type_report_root_v1",
+        "index:public.income_expense_types_org_rule_key_uq",
+        "index:public.income_expense_types_merged_into_idx",
+        "policy:public.income_expense_types.income_expense_types_editor_insert"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261003151608_danh_muc_chi_du_lieu.sql",
+      "version": "20261003151608",
+      "name": "danh_muc_chi_du_lieu",
+      "scheme": "timestamp14",
+      "sha256": "f0ee665f9dea6a1e1d8c2e76e33ac741ba20a7e09eac2c19dd18eb711bf7c2ba",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "(file không CREATE object nào — chỉ ALTER/DML)"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261003152559_danh_muc_chi_bao_cao_cong_gop.sql",
+      "version": "20261003152559",
+      "name": "danh_muc_chi_bao_cao_cong_gop",
+      "scheme": "timestamp14",
+      "sha256": "f3e7a7da5eebe01f7646e5c231d9410003040e5fadd8344fb3fce7a13661214e",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:public.fa_type_breakdown",
+        "catalog:function:public.copilot_report_expense_ratio_v1"
       ]
     },
     {

@@ -4,10 +4,12 @@
 //                    mục), nhóm theo toà + phòng ⇒ mỗi nhóm một phiếu.
 //   draftFromBill  — kết quả AI đọc ảnh hoá đơn ⇒ một thẻ.
 //   enrichFromAi   — AI bổ sung cho thẻ từ chữ: CHỈ điền ô còn trống.
+//   applyAiCategories — như trên, chỉ hạng mục (câu lệnh rút gọn khi thẻ chỉ còn thiếu hạng mục).
 //
 // AI chỉ điền ô còn TRỐNG (số tiền 0, toà null, kỳ null). Hai ô luôn có giá trị nên cần khoá riêng:
 // `touched` (người dùng đã sửa — không gì được đè) và `locked` (ngày nói rõ trong chữ; hạng mục
-// theo cụm phí/mã khách hàng). Hạng mục đoán theo trùng từ là đoán yếu nên AI được thay.
+// theo cụm phí/mã khách hàng/luật categoryRules). Hạng mục đoán theo trùng từ là đoán yếu nên AI
+// được thay.
 // ID toà/hạng mục luôn do bộ dò cục bộ tra.
 
 import { normalizeForParse } from "./amount";
@@ -166,7 +168,9 @@ export function draftsFromText(text: string, ctx: ComposeContext): DraftState[] 
       line: {
         description,
         amount: seg.amount?.value ?? 0,
-        categoryId: suggestion?.id ?? null,
+        // Gợi ý yếu của luật dòng tiền (nội bộ / hoàn cọc thiếu neo chắc) KHÔNG điền sẵn: AI chọn; AI null /
+        // lỗi thì ô trống và người dùng phải chọn — điền sẵn mà lưu luôn là khoản chi thật thành INTERNAL.
+        categoryId: suggestion && suggestion.reason !== "rule_weak" ? suggestion.id : null,
         personalCategory: null,
         periodStart: period?.start ?? null,
         periodEnd: period?.end ?? null,
@@ -174,7 +178,8 @@ export function draftsFromText(text: string, ctx: ComposeContext): DraftState[] 
       flags,
       candidates,
       guessed,
-      lockCategory: suggestion !== null && suggestion.reason !== "name_overlap",
+      // Đoán yếu (trùng chữ) ⇒ điền nhưng không khoá: AI được thay.
+      lockCategory: suggestion !== null && suggestion.reason !== "name_overlap" && suggestion.reason !== "rule_weak",
     };
   });
 
@@ -241,7 +246,9 @@ function roomFromMention(mention: string | null, buildingId: string, refs: Resol
 function lineCategory(item: AiItem | undefined, description: string, feeCategory: string | null, ctx: ComposeContext): string | null {
   const mapped = fromIndex(item?.category ?? null, ctx.categories);
   if (mapped) return mapped.id;
-  return suggestCategory(ctx.categories, description, { feeCategory })?.id ?? null;
+  const s = suggestCategory(ctx.categories, description, { feeCategory });
+  // Ảnh bill không có lượt AI sau ⇒ gợi ý yếu của luật dòng tiền để trống cho người dùng chọn.
+  return s && s.reason !== "rule_weak" ? s.id : null;
 }
 
 /**
@@ -363,6 +370,24 @@ export function removeLineAt(state: DraftState, i: number): DraftState {
 export function syncName(state: DraftState): DraftState {
   const name = nameFor(state.source, state.draft.vendor, state.draft.lines);
   return name === state.draft.name ? state : { ...state, draft: { ...state.draft, name } };
+}
+
+/**
+ * Kết quả câu lệnh rút gọn (buildCategoryOnlyMessages) ⇒ hạng mục từng dòng, cùng luật "chỉ điền ô
+ * trống/đoán yếu" như enrichFromAi. Lệch số dòng (người dùng thêm/bỏ dòng trong lúc chờ) ⇒ bỏ cả kết quả.
+ */
+export function applyAiCategories(state: DraftState, codes: ReadonlyArray<string | null>, ctx: ComposeContext): DraftState {
+  if (state.draft.mode !== "company" || state.touched.includes(LINES_EDITED)) return state;
+  if (codes.length !== state.draft.lines.length) return state;
+  const free = (path: string) => !state.touched.includes(path) && !state.locked.includes(path);
+  let changed = false;
+  const lines = state.draft.lines.map((l, i) => {
+    const mapped = fromIndex(codes[i], ctx.categories);
+    if (!mapped || mapped.id === l.categoryId || !free(`lines.${i}.categoryId`)) return l;
+    changed = true;
+    return { ...l, categoryId: mapped.id };
+  });
+  return changed ? { ...state, draft: { ...state.draft, lines } } : state;
 }
 
 export function enrichFromAi(state: DraftState, ai: AiResult, ctx: ComposeContext): DraftState {

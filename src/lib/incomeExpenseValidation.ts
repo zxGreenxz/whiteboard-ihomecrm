@@ -98,6 +98,16 @@ export const incomeExpenseTypeFormSchema = z.object({
   is_restricted: z.boolean().optional().default(false),
   // Cờ "hạng mục đặc biệt" — cho phép ẩn dòng khỏi báo cáo Phân bổ lợi nhuận.
   hide_in_report: z.boolean().optional().default(false),
+  // Danh mục chi chuẩn 03/10/2026 (chỉ superadmin / chủ công ty sửa) — chuỗi thô, đổi
+  // sang cột thật ở lib/ieTypeCatalogDraft.ts và chỉ gửi khi người dùng đổi.
+  keywords_text: z.string().optional(),
+  sort_order_text: z
+    .string()
+    .optional()
+    .refine((v) => !v?.trim() || /^-?\d{1,9}$/.test(v.trim()), 'Thứ tự phải là số nguyên'),
+  quick_entry_hidden: z.boolean().optional(),
+  archived: z.boolean().optional(),
+  merged_into_id: z.string().nullable().optional(),
 });
 
 export type IncomeExpenseTypeFormValues = z.infer<typeof incomeExpenseTypeFormSchema>;

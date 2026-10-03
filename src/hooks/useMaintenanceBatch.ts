@@ -1,54 +1,45 @@
 // =============================================================================
 // useCreateMaintenanceBatch — tạo phiếu TỔNG bảo trì máy lạnh/máy giặt (1 NCC,
 // nhiều tòa) qua useCreateIncomeExpenseBatch. Resolve type ml/mg trong đúng tổ
-// chức của các tòa — tái dùng nếu có, tạo nếu thiếu.
+// chức của các tòa — CHỈ dùng hạng mục có sẵn, KHÔNG tự tạo.
+//
+// Danh mục chi chuẩn (chủ duyệt 03/10/2026): chỉ superadmin / chủ công ty tạo hạng
+// mục (RLS chặn người khác). "vệ sinh máy lạnh/giặt" giữ tên, chỉ ẩn khỏi ô chọn tay
+// để công cụ này nhận diện; mục đã lưu trữ (gộp vào "Điện lạnh") không được chọn.
+// Thiếu hạng mục ⇒ báo người dùng nhờ chủ công ty tạo/khôi phục.
 // =============================================================================
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { getSessionUser } from '@/lib/authSession';
-import { nrm } from '@/lib/fixedExpenseCategories';
+import { FinancialWorkflowError } from '@/lib/financialWorkflowError';
+import {
+  MAINTENANCE_IE_TYPES,
+  maintenanceIeTypeMissingMessage,
+  pickMaintenanceIeType,
+  type MaintenanceSubtype,
+} from '@/lib/ieTypeLookup';
 import { useCreateIncomeExpenseBatch } from '@/hooks/useIncomeExpenses';
 import { monthToStartDate, monthToEndDate } from '@/lib/monthPeriod';
 
-const SUBTYPE_META = {
-  ml: { name: 'Bảo trì máy lạnh', match: 'may lanh' },
-  mg: { name: 'Bảo trì máy giặt', match: 'may giat' },
-} as const;
+type MaintenanceTypeRow = { id: string; name: string; archived_at?: string | null };
 
 async function resolveOwnType(
-  sub: 'ml' | 'mg',
+  sub: MaintenanceSubtype,
   organizationId: string,
-  userId: string,
 ): Promise<string> {
-  const meta = SUBTYPE_META[sub];
+  // select('*'): cột archived_at chỉ có sau migration danh mục chuẩn; môi trường chưa áp
+  // thì không trả cột ⇒ coi như chưa lưu trữ (chọn cột tường minh sẽ lỗi 42703).
   const { data, error } = await supabase
     .from('income_expense_types')
-    .select('id, name, category')
+    .select('*')
     .eq('organization_id', organizationId)
     .eq('type', 'expense');
   if (error) throw error;
-  const hit = (data ?? []).find((t: any) => {
-    const n = nrm(t.name);
-    return n.includes('bao tri ' + meta.match) || n.includes(meta.match);
-  });
-  if (hit) return hit.id;
-  const { data: created, error: insErr } = await supabase
-    .from('income_expense_types')
-    .insert({
-      user_id: userId,
-      organization_id: organizationId,
-      name: meta.name,
-      category: 'Bảo Trì',
-      type: 'expense',
-    })
-    .select('id')
-    .single();
-  if (insErr?.code === '23505') {
-    return resolveOwnType(sub, organizationId, userId);
-  }
-  if (insErr) throw insErr;
-  return created.id;
+  const hit = pickMaintenanceIeType((data ?? []) as unknown as MaintenanceTypeRow[], sub);
+  // FinancialWorkflowError 'failure': voucherFailureMessage hiện nguyên câu, không khoá form.
+  if (!hit) throw new FinancialWorkflowError(maintenanceIeTypeMissingMessage(sub), 'failure', []);
+  return hit.id;
 }
 
 export interface MaintenanceBatchLine {
@@ -89,7 +80,7 @@ export function useCreateMaintenanceBatch(period: string) {
 
       const need = new Set(args.lines.map((l) => l.subtype));
       const typeIds: Record<'ml' | 'mg', string> = {} as any;
-      for (const s of need) typeIds[s] = await resolveOwnType(s, organizationId, uid);
+      for (const s of need) typeIds[s] = await resolveOwnType(s, organizationId);
 
       const start = monthToStartDate(period);
       const end = monthToEndDate(period);
@@ -105,8 +96,8 @@ export function useCreateMaintenanceBatch(period: string) {
         items: args.lines.map((l) => ({
           building_id: l.buildingId,
           income_expense_type_id: typeIds[l.subtype],
-          type_name: SUBTYPE_META[l.subtype].name,
-          description: `${SUBTYPE_META[l.subtype].name} kỳ ${period}`,
+          type_name: MAINTENANCE_IE_TYPES[l.subtype].label,
+          description: `${MAINTENANCE_IE_TYPES[l.subtype].label} kỳ ${period}`,
           quantity: 1,
           unit_price: l.amount,
           start_date: start,

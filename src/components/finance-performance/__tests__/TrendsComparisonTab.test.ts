@@ -90,7 +90,7 @@ function renderTrends(rows: BusinessPerformancePnlRow[]) {
 }
 
 function getLabelledScrollRegion(html: string, labelledBy: string) {
-  const regions = html.match(/<div[^>]*role="region"[^>]*>/g) ?? [];
+  const regions: string[] = html.match(/<div[^>]*role="region"[^>]*>/g) ?? [];
   return regions.find((region) =>
     region.includes(`aria-labelledby="${labelledBy}"`),
   );

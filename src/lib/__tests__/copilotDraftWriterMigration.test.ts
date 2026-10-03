@@ -1,16 +1,33 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const migrationPath =
-  'supabase/migrations/20260830183259_copilot_draft_writer_v1.sql';
+const MIG_DIR = 'supabase/migrations';
 const hardeningPath =
   'supabase/migrations/20260830171108_copilot_income_expense_rpc_hardening_v1.sql';
-const migration = existsSync(migrationPath)
-  ? readFileSync(migrationPath, 'utf8').replace(/\r\n/g, '\n')
-  : '';
 const hardening = existsSync(hardeningPath)
   ? readFileSync(hardeningPath, 'utf8').replace(/\r\n/g, '\n')
   : '';
+
+/**
+ * Định nghĩa SỐNG của public.ie_compat_insert_v2 = lần CREATE cuối cùng theo thứ tự timestamp
+ * (khuôn liveDefinitionOf — salaryCompletionDate.test.ts). Hàm được forward-fix nhiều lần
+ * (20260830183259 bật chế độ nháp Copilot; 20261003151606 chặn lập tay hạng mục chi hệ thống);
+ * soi file đã đóng băng thì test xanh vĩnh viễn kể cả khi hàm thật đổi hành vi.
+ */
+function liveCompatWriter(): string {
+  const re = /CREATE\s+OR\s+REPLACE\s+FUNCTION\s+public\.ie_compat_insert_v2\s*\(/i;
+  let sql = '';
+  for (const f of readdirSync(MIG_DIR).filter((x) => x.endsWith('.sql')).sort()) {
+    const text = readFileSync(join(MIG_DIR, f), 'utf8').replace(/\r\n/g, '\n');
+    const start = text.search(re);
+    if (start < 0) continue;
+    const end = text.indexOf('$function$;', start);
+    sql = text.slice(start, end < 0 ? undefined : end);
+  }
+  return sql;
+}
+const migration = liveCompatWriter();
 
 function functionBody(sql: string, name: string): string {
   const start = sql.search(new RegExp(`CREATE OR REPLACE FUNCTION ${name}\\s*\\(`, 'i'));
@@ -22,7 +39,6 @@ describe('Copilot draft writer migration', () => {
     expect(migration).toMatch(
       /CREATE OR REPLACE FUNCTION public\.ie_compat_insert_v2/i,
     );
-    expect(migration).toMatch(/copilot_writer_context/i);
     expect(migration).toMatch(/v_draft_marker\s+text/i);
     expect(migration).toMatch(
       /approval_status[\s\S]{0,700}v_copilot_draft[\s\S]{0,700}UNAPPROVED/i,
@@ -79,22 +95,17 @@ describe('Copilot draft writer migration', () => {
     expect(migration).toMatch(/jsonb_build_object\([\s\S]{0,500}income_expense_type_id/i);
   });
 
-  it('enables the private capability only after replacing the shared writer', () => {
+  it('nhánh thường (không phải nháp Copilot) chặn lập tay hạng mục CHI system_only trước mọi lệnh ghi', () => {
+    // Danh mục chi chuẩn 03/10/2026: trang Thu chi rơi sang đây khi writer chính trả 0A000.
     expect(migration).toMatch(
-      /UPDATE app_private\.copilot_ie_writer_capabilities_v1[\s\S]{0,500}enabled\s*=\s*true/i,
+      /IF NOT v_copilot_draft AND EXISTS[\s\S]{0,400}system_only[\s\S]{0,200}'expense'[\s\S]{0,400}ie_system_only_manual_blocked/i,
     );
-    expect(migration).toMatch(/writer_version\s*=\s*'draft-v1'/i);
+    const guard = migration.search(/ie_system_only_manual_blocked/);
+    const firstInsert = migration.search(/INSERT INTO public\.income_expenses\b/i);
+    expect(guard).toBeGreaterThan(0);
+    expect(firstInsert).toBeGreaterThan(guard);
   });
 
-  it('can replay the writer migration without relying on the preceding migration transaction', () => {
-    expect(migration).toMatch(
-      /CREATE TABLE IF NOT EXISTS app_private\.copilot_ie_writer_context_v1/i,
-    );
-    expect(migration).toMatch(
-      /CREATE TABLE IF NOT EXISTS app_private\.copilot_ie_writer_capabilities_v1/i,
-    );
-    expect(migration).toMatch(
-      /CREATE OR REPLACE FUNCTION app_private\.copilot_ie_writer_ready_v1/i,
-    );
-  });
+  // Hai bài về CẤU TRÚC của migration bật chế độ nháp (bảng ngữ cảnh, cờ capability, phát lại
+  // được) nằm ở copilotDraftWriterReplay.test.ts — chúng đo chính file đó, không đo hàm writer.
 });

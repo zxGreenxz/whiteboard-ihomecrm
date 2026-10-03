@@ -1,5 +1,5 @@
 {
-  "$comment": "Hồ sơ RÀ SOÁT THỦ CÔNG cho các file state=unknown có CREATE object nhưng object KHÔNG có trong catalog production. reviewModel trong migration-policy.json bắt \"mọi file state=unknown\" phải được review đầy đủ — đây là kết quả review đó, kèm trích dẫn. LƯU Ý VỀ SỨC MẠNH BẰNG CHỨNG: hồ sơ này KHÔNG chứng minh file đã chạy. Nó chứng minh việc object VẮNG MẶT đã được GIẢI THÍCH (một migration sau đó DROP/đổi tên object), tức vắng mặt không còn là bằng chứng NGƯỢC. Đây là mức yếu hơn cả catalog-proven. Đừng nâng các file này lên trạng thái đã-chứng-minh. | Bổ sung 15/09/2026: 2 file của plan con F (20260915144507_so_hop_dong_chong_dua.sql, 20260915144634_index_hop_dong_org_status.sql) — cả hai là file MỚI chưa qua lane apply, ketLuan `chua-ap-dung-cho-y` theo đúng tiền lệ 20260814004500; bằng chứng là dry-run ROLLBACK + kiểm idempotent hai lượt trên chính catalog production. | Bổ sung 16/09/2026 lúc gộp: 5 file của plan con H1/I1/I3 (org_autofill_strict, buildings_insert_v3, bien_gioi_ho_so_va_toa) — cùng diện `chua-ap-dung-cho-y` như 2 file của plan F. | Bổ sung 25/09/2026: 5 file đợt 1 sửa phiếu thu chi (20260925072852 … 20260925083655) — cùng diện `chua-ap-dung-cho-y`, bằng chứng là chạy hai lượt trên môi trường TEST. | Bổ sung 27/09/2026: 20260927155251_hoa_hong_quan_ly_so_ao.sql — cùng diện `chua-ap-dung-cho-y`, bằng chứng là chạy hai lượt trên TEST + harness 28/28 ca.",
+  "$comment": "Hồ sơ RÀ SOÁT THỦ CÔNG cho các file state=unknown có CREATE object nhưng object KHÔNG có trong catalog production. reviewModel trong migration-policy.json bắt \"mọi file state=unknown\" phải được review đầy đủ — đây là kết quả review đó, kèm trích dẫn. LƯU Ý VỀ SỨC MẠNH BẰNG CHỨNG: hồ sơ này KHÔNG chứng minh file đã chạy. Nó chứng minh việc object VẮNG MẶT đã được GIẢI THÍCH (một migration sau đó DROP/đổi tên object), tức vắng mặt không còn là bằng chứng NGƯỢC. Đây là mức yếu hơn cả catalog-proven. Đừng nâng các file này lên trạng thái đã-chứng-minh. | Bổ sung 15/09/2026: 2 file của plan con F (20260915144507_so_hop_dong_chong_dua.sql, 20260915144634_index_hop_dong_org_status.sql) — cả hai là file MỚI chưa qua lane apply, ketLuan `chua-ap-dung-cho-y` theo đúng tiền lệ 20260814004500; bằng chứng là dry-run ROLLBACK + kiểm idempotent hai lượt trên chính catalog production. | Bổ sung 16/09/2026 lúc gộp: 5 file của plan con H1/I1/I3 (org_autofill_strict, buildings_insert_v3, bien_gioi_ho_so_va_toa) — cùng diện `chua-ap-dung-cho-y` như 2 file của plan F. | Bổ sung 25/09/2026: 5 file đợt 1 sửa phiếu thu chi (20260925072852 … 20260925083655) — cùng diện `chua-ap-dung-cho-y`, bằng chứng là chạy hai lượt trên môi trường TEST. | Bổ sung 27/09/2026: 20260927155251_hoa_hong_quan_ly_so_ao.sql — cùng diện `chua-ap-dung-cho-y`, bằng chứng là chạy hai lượt trên TEST + harness 28/28 ca. | Bổ sung 03/10/2026: 20261003151606_danh_muc_chi_cau_truc.sql — cùng diện `chua-ap-dung-cho-y`, bằng chứng là chạy hai lượt trên TEST (md5 trạng thái trùng) + bộ thử quyền 6/6 ca + 4 đột biến.",
   "schemaVersion": 1,
   "reviewedAt": "2026-09-02",
   "method": "10 điều tra độc lập song song, mỗi file một agent, bắt buộc trích dẫn file+SQL cho kết luận (A); kết luận \"chưa từng chạy\" sẽ bị một agent phản biện riêng cố bác bỏ. Kết quả: 10/10 giải thích được, 0 file chưa-từng-chạy. Ba trích dẫn được người kiểm lại thủ công (DROP ở 20260528000003:158, CREATE ở 20260527000009:372, và frontend gọi clone_org_request_sync_v1 chứ không phải clone_org_sync_v1). | Bổ sung 12/08/2026: 1 file (20260729150000_notification_config_tables_rpc.sql) — đối chiếu catalog production thật với migration ALTER POLICY ... RENAME, kết luận đổi tên chứ không phải chưa chạy. | Bổ sung 12/08/2026: thêm 1 file (20260729150000_notification_config_tables_rpc.sql). Phương pháp: đối chiếu catalog production THẬT với migration `ALTER POLICY ... RENAME` thay vì suy từ tên file; kết luận là ĐỔI TÊN, không phải chưa-từng-chạy. | Bổ sung 28/08/2026: 1 file (20260731100000_termination_refund_writer.sql) — index ux_tro_voucher bị 20260828090000 DROP có chủ ý vì là ràng buộc giả trên PK; đối chiếu pg_indexes production trước/sau apply.",
@@ -850,6 +850,29 @@
       ],
       "raSoatBoi": "Claude Code — hoa hồng quản lý sổ ảo 27/09/2026",
       "sha256": "f4bef1760957aa276377203c9ee19e09823094b0b7a3359f39f3f8712d0716c7"
+    },
+    "supabase/migrations/20261003151606_danh_muc_chi_cau_truc.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261003151606_danh_muc_chi_cau_truc.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.ie_type_merge_one_level_guard / public.ie_type_report_root_v1; CREATE UNIQUE INDEX IF NOT EXISTS income_expense_types_org_rule_key_uq; CREATE INDEX IF NOT EXISTS income_expense_types_merged_into_idx; CREATE POLICY income_expense_types_editor_insert/update/delete (RESTRICTIVE)"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects đủ 5 object trên — sinh 03/10/2026 ngay sau khi tạo file"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 03/10/2026 (danh mục chi chuẩn — cấu trúc), chưa đi qua lane apply — 5 object vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Đã chạy trên TEST cùng hai file đi kèm (20261003151608 dữ liệu, 20261003152559 báo cáo cộng gộp) HAI lượt trong một giao dịch ROLLBACK: lượt hai không lỗi và trạng thái income_expense_types giống hệt lượt một (md5 trùng). Bộ thử quyền bằng JWT người dùng thật trên TEST 7/7 ca (quản lý không tạo/sửa/xoá hạng mục; chủ công ty tạo được, hạng mục tự gắn đúng công ty; compat chặn lập tay hoa hồng; dòng Chuyển tiền nội bộ ép INTERNAL) và 5 đột biến (tắt chặn compat, nới policy INSERT/UPDATE, tắt ép INTERNAL, tắt kiểm gộp cùng chiều/chưa lưu trữ) đều bị bắt. Sửa 04/10 theo review độc lập PR #118 (trigger gộp khoá dòng đích + kiểm cùng chiều) rồi chạy lại hai lượt trên TEST: md5 trạng thái trùng. Sẽ áp qua npm run migrate:forward (người dùng chạy, có backup) sau khi PR được duyệt; khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "missingObjects": [
+        "function:app_private.ie_type_merge_one_level_guard",
+        "function:public.ie_type_report_root_v1",
+        "index:public.income_expense_types_org_rule_key_uq",
+        "index:public.income_expense_types_merged_into_idx",
+        "policy:public.income_expense_types.income_expense_types_editor_insert"
+      ],
+      "raSoatBoi": "Claude Code — danh mục chi chuẩn 03/10/2026",
+      "sha256": "f7b8a6ed24b100ddf55ce46f49d9ff341938e9ee8d47d9b79879c0f3e6842c71"
     }
   }
 }

@@ -33,6 +33,10 @@ import {
   useCreateIncomeExpenseType,
 } from "@/hooks/useIncomeExpenseTypes";
 import { useCreateIncomeExpense } from "@/hooks/useIncomeExpenses";
+import { useMyPermissions } from "@/hooks/useMyPermissions";
+import { useCanManageIeTypes } from "@/hooks/useCanManageIeTypes";
+import { canUse } from "@/lib/permissionPages";
+import { pickableIeTypes, sortIeTypesForPicker } from "@/lib/ieTypeCatalog";
 import { normalizeLoose } from "@/lib/textMatch";
 import {
   parseIncomeExpenseQuickInput,
@@ -85,6 +89,16 @@ const IncomeExpenseQuickCreateDialog = ({
   const { data: typeRows = [] } = useIncomeExpenseTypes(modeLower);
   const createIE = useCreateIncomeExpense();
   const createType = useCreateIncomeExpenseType();
+  const { data: perms } = useMyPermissions();
+  const canPickRestricted = canUse(perms, "income_expenses", "restricted_create");
+  // Tạo hạng mục mới: chỉ superadmin / chủ công ty (chủ duyệt 03/10/2026).
+  const { canManage } = useCanManageIeTypes();
+  // Danh mục chi chuẩn: chỉ mục chọn được (không lưu trữ / system_only / ẩn lập tay; mục hạn
+  // chế cần restricted_create), theo thứ tự của danh mục.
+  const pickableRows = useMemo(
+    () => sortIeTypesForPicker(pickableIeTypes(typeRows, { canPickRestricted })),
+    [typeRows, canPickRestricted],
+  );
 
   const buildingRefs = useMemo<BuildingRef[]>(
     () => buildings.map((b: any) => ({ id: b.id, name: b.name, code: b.code })),
@@ -102,13 +116,17 @@ const IncomeExpenseQuickCreateDialog = ({
   );
   const types = useMemo<IeTypeRef[]>(
     () =>
-      typeRows.map((t) => ({
+      pickableRows.map((t) => ({
         id: t.id,
         name: t.name,
         category: t.category,
         type: t.type,
       })),
-    [typeRows],
+    [pickableRows],
+  );
+  const keywordsById = useMemo(
+    () => new Map(pickableRows.map((t) => [t.id, (t.keywords ?? []).map(normalizeLoose)])),
+    [pickableRows],
   );
 
   const parsed = useMemo(
@@ -124,7 +142,7 @@ const IncomeExpenseQuickCreateDialog = ({
     [raw, buildingRefs, roomRefs, types, lockedTypeId, categoryEndIndex],
   );
 
-  // Gợi ý hạng mục: lọc theo categorySearch, xếp hạng startsWith > includes > nhóm.
+  // Gợi ý hạng mục: lọc theo categorySearch, xếp hạng startsWith > includes > cụm từ hay nói > nhóm.
   const suggestions = useMemo<IeTypeRef[]>(() => {
     if (parsed.categoryLocked || parsed.categorySearch == null) return [];
     const q = normalizeLoose(parsed.categorySearch);
@@ -136,7 +154,8 @@ const IncomeExpenseQuickCreateDialog = ({
         let score = -1;
         if (n.startsWith(q)) score = 0;
         else if (n.includes(q)) score = 1;
-        else if (cat.includes(q)) score = 2;
+        else if ((keywordsById.get(t.id) ?? []).some((k) => k.includes(q))) score = 2;
+        else if (cat.includes(q)) score = 3;
         return { t, score };
       })
       .filter((x) => x.score >= 0)
@@ -147,7 +166,7 @@ const IncomeExpenseQuickCreateDialog = ({
       )
       .slice(0, 8)
       .map((x) => x.t);
-  }, [types, parsed.categorySearch, parsed.categoryLocked]);
+  }, [types, keywordsById, parsed.categorySearch, parsed.categoryLocked]);
 
   // Reset khi mở
   useEffect(() => {
@@ -205,13 +224,14 @@ const IncomeExpenseQuickCreateDialog = ({
   };
 
   const handleCreateNew = (query: string) => {
+    if (!canManage) return;
     setCreating({ name: query });
     setNewCategory(null);
   };
 
   const handleConfirmCreate = async () => {
     const cat = newCategory?.trim();
-    if (!creating || !cat) return;
+    if (!canManage || !creating || !cat) return;
     try {
       const created: any = await createType.mutateAsync({
         name: creating.name,
@@ -326,7 +346,7 @@ const IncomeExpenseQuickCreateDialog = ({
           suggestions={suggestions}
           lockedTypeId={lockedTypeId}
           onSelect={handleSelectCategory}
-          onCreateNew={handleCreateNew}
+          onCreateNew={canManage ? handleCreateNew : undefined}
           inputRef={inputRef}
           autoFocus
           placeholder="201 1392qt tiền điện tháng 5 200"
@@ -340,7 +360,7 @@ const IncomeExpenseQuickCreateDialog = ({
       </div>
 
       {/* Bước tạo hạng mục mới */}
-      {creating && (
+      {creating && canManage && (
         <div className="rounded-md border border-primary/40 bg-primary/5 p-3 space-y-2">
           <div className="text-[13px] font-medium">
             Tạo hạng mục mới:{" "}

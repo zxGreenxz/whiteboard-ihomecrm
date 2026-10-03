@@ -27,6 +27,23 @@ function details(error: unknown): Record<string, unknown> {
   }
   return record;
 }
+/**
+ * Danh mục chi chuẩn (03/10/2026): ie_compat_insert_v2 từ chối lập tay hạng mục CHI system_only
+ * (hoa hồng, thưởng sale, cọc, thanh lý) bằng 42501 + HINT 'ie_system_only_manual_blocked'.
+ * Không phải lỗi quyền — người dùng phải lập từ hợp đồng / phiếu cọc / thanh lý.
+ */
+export const SYSTEM_ONLY_MANUAL_BLOCKED_FEEDBACK = {
+  title: 'Không lập tay được hạng mục này',
+  description: 'Hoa hồng, thưởng sale và các khoản cọc/thanh lý chỉ tạo từ hợp đồng, phiếu cọc hoặc thanh lý.',
+} as const;
+export function isSystemOnlyManualBlocked(error: unknown): boolean {
+  const record = details(error);
+  if (String(record.code ?? '').trim() !== '42501') return false;
+  const hint = String(record.hint ?? '');
+  const raw = String(record.message ?? '');
+  return hint.includes('ie_system_only_manual_blocked') || raw.includes('ie_system_only_manual_blocked')
+    || /chỉ được tạo từ luồng nghiệp vụ/i.test(raw);
+}
 const LEGACY_REASONS: Record<string, readonly string[]> = {
   '42501': ['Sổ quỹ cọc không thuộc tổ chức', 'Không có quyền tạo hợp đồng', 'Không có quyền ghi tiền cọc vào sổ đã chọn', 'Khách hàng không thuộc tổ chức'],
   '55000': ['Phiếu cọc được chọn không hợp lệ hoặc đã được dùng', 'Số tiền cọc phải lớn hơn 0', 'Phòng đang có hợp đồng hiệu lực'],
@@ -47,6 +64,7 @@ export function friendlyError(error: unknown, fallbackTitle = 'Chưa thực hi�
   if (status === 401 || ['PGRST301','PGRST302','JWT_EXPIRED'].includes(code) || /jwt.*expired|not authenticated|unauthorized|refresh token.*(invalid|not found)/i.test(raw)) {
     return result({ title: 'Phiên đăng nhập đã hết hạn', description: 'Đăng nhập lại để tiếp tục.', recovery: 'sign-in' });
   }
+  if (isSystemOnlyManualBlocked(error)) return result({ ...SYSTEM_ONLY_MANUAL_BLOCKED_FEEDBACK, recovery: 'correct-fields' });
   if (options.operation) {
     const rule = options.rules?.find(item => (!item.code || item.code === code) &&
       (typeof item.message === 'string' ? item.message === raw : new RegExp(item.message.source, item.message.flags.replace('g', '')).test(raw)));

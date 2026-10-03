@@ -4,6 +4,7 @@ import { getSessionUser } from "@/lib/authSession";
 import { rpcNullable } from "@/lib/rpcNullable";
 import { toast } from "sonner";
 import { createdVoucherFeedback, voucherFailureMessage } from "@/lib/voucherFeedback";
+import { SYSTEM_ONLY_MANUAL_BLOCKED_FEEDBACK, isSystemOnlyManualBlocked } from "@/lib/friendlyError";
 import { addCycle, type RepeatCycle } from "@/lib/recurring";
 import { isIeCreateFallbackSignal } from "@/lib/canonicalFallback";
 import type {
@@ -195,6 +196,11 @@ export const useCreateIncomeExpense = () => {
     },
     onError: (error) => {
       console.error("Error creating income expense:", error);
+      // Hạng mục CHI hệ thống (hoa hồng, thưởng sale, cọc, thanh lý) bị máy chủ chặn lập tay.
+      if (isSystemOnlyManualBlocked(error)) {
+        toast.error(SYSTEM_ONLY_MANUAL_BLOCKED_FEEDBACK.title, { description: SYSTEM_ONLY_MANUAL_BLOCKED_FEEDBACK.description });
+        return;
+      }
       toast.error(voucherFailureMessage(error, "tạo phiếu"));
     },
   });

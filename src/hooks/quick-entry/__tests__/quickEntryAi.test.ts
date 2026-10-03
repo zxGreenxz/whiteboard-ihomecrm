@@ -5,7 +5,14 @@ vi.mock("@/copilot/copilotConfig", () => ({
   QUICK_ENTRY_BASE: "https://proxy.test/functions/v1/quick-entry",
 }));
 
-import { MAX_AUDIO_BYTES, QUICK_ENTRY_MAX_TOKENS, readWithAi, transcribeAudio } from "../quickEntryAi";
+import {
+  CATEGORY_ONLY_MAX_TOKENS,
+  MAX_AUDIO_BYTES,
+  QUICK_ENTRY_MAX_TOKENS,
+  readCategoriesWithAi,
+  readWithAi,
+  transcribeAudio,
+} from "../quickEntryAi";
 
 const good = JSON.stringify({ items: [{ desc: "bóng đèn", amount_vnd: 120_000, category: "c1", confidence: 0.9 }] });
 const completion = (content: string) => ({ choices: [{ message: { content } }] });
@@ -66,6 +73,31 @@ describe("readWithAi", () => {
     const fetchImpl = vi.fn().mockRejectedValueOnce(new TypeError("Failed to fetch"));
     const r = await readWithAi({ messages, categoryCount: 3, fetchImpl });
     expect(("error" in r ? r.error.kind : null)).toBe("network");
+  });
+});
+
+describe("readCategoriesWithAi — câu lệnh rút gọn", () => {
+  it("xin ít token, đúng khuôn ⇒ mã từng dòng + mô hình đã trả lời", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, completion('{"categories":["c2",null]}'), { "x-quick-entry-model": "9router:cx/gpt-5.6-terra(low)" }));
+    const r = await readCategoriesWithAi({ messages, categoryCount: 3, lineCount: 2, fetchImpl });
+    expect(r).toEqual({ ok: true, value: ["c2", null], model: "9router:cx/gpt-5.6-terra(low)" });
+    expect(JSON.parse(fetchImpl.mock.calls[0][1].body)).toMatchObject({
+      model: "quick_entry:auto",
+      max_tokens: CATEGORY_ONLY_MAX_TOKENS,
+      response_format: { type: "json_object" },
+    });
+  });
+
+  it("lệch số dòng ⇒ thử mô hình kế một lần", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, completion('{"categories":["c2"]}'), { "x-quick-entry-index": "0" }))
+      .mockResolvedValueOnce(jsonResponse(200, completion('{"categories":["c2","c3"]}'), { "x-quick-entry-index": "1" }));
+    const r = await readCategoriesWithAi({ messages, categoryCount: 3, lineCount: 2, fetchImpl });
+    expect(r.ok).toBe(true);
+    expect(new Headers(fetchImpl.mock.calls[1][1].headers).get("x-quick-entry-skip")).toBe("1");
   });
 });
 

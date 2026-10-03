@@ -8,13 +8,11 @@ import { login, trackConsoleErrors } from './auth';
  *      "Tiền cọc" mang system_only + force_approval nên phiếu thu cọc luôn nằm
  *      "Chờ duyệt" bất kể số tiền (phiếu cọc 1đ cũng phải chờ). Bài này đi UI thật.
  *
- *   2. Hạng mục tạo mới phải được gắn tổ chức. Trước đây nó sinh ra với
- *      organization_id = NULL → create_income_expense_v1 raise 42501 "Loại hạng
- *      mục 1 không thuộc tổ chức hoặc sai chiều thu/chi" → FE nuốt lỗi, rơi sang
- *      ie_compat_insert_v2 (ép "Chờ duyệt", KHÔNG chạy thang ngưỡng). Bài này đi
- *      thẳng PostgREST với ĐÚNG payload mà useCreateIncomeExpenseType gửi (không
- *      có organization_id) rồi dựng phiếu chi dưới ngưỡng — nếu trigger
- *      trg_autofill_org mất, hạng mục lại mồ côi và writer sẽ từ chối ngay.
+ *   2. (đổi 03/10/2026 — danh mục chi chuẩn) Quản lý KHÔNG tạo được hạng mục
+ *      mới — chỉ superadmin và chủ công ty. Bài này đi thẳng PostgREST với ĐÚNG
+ *      payload useCreateIncomeExpenseType gửi và đòi 403; rồi dựng phiếu chi dưới
+ *      ngưỡng bằng hạng mục có sẵn: phải tự duyệt (không rơi sang compat "Chờ
+ *      duyệt").
  */
 
 const CANONICAL = /\/rest\/v1\/rpc\/create_income_expense_v1\b/;
@@ -84,7 +82,11 @@ test('thu-tien-coc-tu-duyet-ngay', async ({ page }) => {
   expect(errs, `console: ${errs.join(' | ')}`).toEqual([]);
 });
 
-test('hang-muc-moi-duoc-gan-to-chuc-va-chi-duoi-nguong-tu-duyet', async ({ page }) => {
+// Danh mục chi chuẩn 03/10/2026 (migration 20261003151606): chỉ superadmin + chủ công ty tạo/sửa/xoá hạng
+// mục (policy RESTRICTIVE income_expense_types_editor_*). demo.chunha KHÔNG phải chủ công ty của org DEMO
+// (đo trên TEST 03/10) ⇒ tạo hạng mục phải bị từ chối. Phần "hạng mục mới được gắn tổ chức" (trigger
+// trg_autofill_org) không còn kiểm được bằng tài khoản DEMO — kiểm ở bộ thử RLS trên TEST bằng chủ công ty.
+test('quan-ly-khong-tao-duoc-hang-muc-va-chi-duoi-nguong-tu-duyet', async ({ page }) => {
   const stamp = Date.now();
   const typeName = `E2E phao bom ${stamp}`;
   let typeId: string | null = null;
@@ -111,16 +113,22 @@ test('hang-muc-moi-duoc-gan-to-chuc-va-chi-duoi-nguong-tu-duyet', async ({ page 
         hide_in_report: false,
       }),
     });
-    expect(created.status, `tạo hạng mục: ${await created.clone().text()}`).toBe(201);
-    const [typeRow] = (await created.json()) as { id: string; organization_id: string | null }[];
-    typeId = typeRow.id;
-    expect(typeRow.organization_id, 'hạng mục mới phải được gắn tổ chức').not.toBeNull();
+    if (created.ok) typeId = ((await created.clone().json()) as { id: string }[])[0]?.id ?? null;
+    expect(created.status, `quản lý tạo hạng mục phải bị chặn: ${await created.clone().text()}`).toBe(403);
+    expect(await sbGet(auth, `income_expense_types?select=id&name=eq.${encodeURIComponent(typeName)}`)).toEqual([]);
 
     const [b] = await sbGet(
       auth,
       'buildings?select=id,organization_id&name=eq.T%C3%B2a%20DEMO%20A&limit=1',
     );
-    expect(typeRow.organization_id, 'phải gắn đúng tổ chức đang làm việc').toBe(b.organization_id);
+    // Hạng mục chi có sẵn mà quản lý được chọn tay (ô chọn Thu chi lọc y như vậy).
+    const [t] = await sbGet(
+      auth,
+      `income_expense_types?select=id&organization_id=eq.${b.organization_id}&type=eq.expense` +
+        '&system_only=is.false&is_restricted=is.false&archived_at=is.null&manual_hidden=is.false' +
+        '&internal_transfer=is.false&order=name&limit=1',
+    );
+    expect(t, 'DEMO phải có hạng mục chi lập tay được').toBeTruthy();
 
     // Sổ quỹ nào cũng được, miễn thuộc org DEMO và chunha đọc được qua RLS.
     const [acc] = await sbGet(
@@ -150,7 +158,7 @@ test('hang-muc-moi-duoc-gan-to-chuc-va-chi-duoi-nguong-tu-duyet', async ({ page 
         // 100.000đ — dưới ngưỡng tự duyệt của org DEMO (5.000.000đ).
         p_items: [
           {
-            income_expense_type_id: typeId,
+            income_expense_type_id: t.id,
             description: 'e2e duoi nguong',
             quantity: 1,
             unit_price: 100_000,

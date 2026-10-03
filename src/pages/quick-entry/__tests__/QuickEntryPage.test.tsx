@@ -30,7 +30,17 @@ vi.mock("@/hooks/quick-entry/useQuickEntryRefs", () => ({
   useQuickEntryRefs: () => h.refs,
   rememberAccount: vi.fn(),
 }));
-vi.mock("@/hooks/quick-entry/quickEntryAi", () => ({ readWithAi: h.readWithAi, transcribeAudio: vi.fn() }));
+vi.mock("@/hooks/quick-entry/quickEntryAi", () => ({
+  readWithAi: h.readWithAi,
+  // Thẻ đủ tiền + toà đi câu lệnh rút gọn: dùng chung bản giả readWithAi (kết quả, lỗi, mô hình gửi đi).
+  readCategoriesWithAi: async (opts: { lineCount: number }) => {
+    const r = await h.readWithAi(opts);
+    if (!r.ok) return r;
+    const items = r.value.items as Array<{ category: string | null }>;
+    return { ok: true, model: r.model, value: Array.from({ length: opts.lineCount }, (_, i) => items[i]?.category ?? null) };
+  },
+  transcribeAudio: vi.fn(),
+}));
 vi.mock("@/hooks/quick-entry/useQuickEntrySave", () => ({
   useQuickEntrySave: () => ({ uploadPhoto: vi.fn(), saveCompany: h.saveCompany, savePersonal: h.savePersonal }),
 }));

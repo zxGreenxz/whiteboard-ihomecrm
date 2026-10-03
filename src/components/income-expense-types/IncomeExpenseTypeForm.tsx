@@ -34,6 +34,8 @@ import {
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
 import CategoryCombobox from './CategoryCombobox';
+import IeTypeCatalogFormFields from './IeTypeCatalogFormFields';
+import { catalogFormDefaults, catalogUpdatesFromForm } from '@/lib/ieTypeCatalogDraft';
 
 interface IncomeExpenseTypeFormProps {
   defaultType?: 'income' | 'expense';
@@ -66,6 +68,7 @@ const IncomeExpenseTypeForm = ({
       is_default: false,
       is_restricted: false,
       hide_in_report: false,
+      ...catalogFormDefaults(null),
     },
   });
 
@@ -81,6 +84,7 @@ const IncomeExpenseTypeForm = ({
       is_default: false,
       is_restricted: false,
       hide_in_report: false,
+      ...catalogFormDefaults(null),
     });
   }, [defaultType, form]);
 
@@ -97,6 +101,8 @@ const IncomeExpenseTypeForm = ({
         is_default: data.is_default ?? false,
         is_restricted: canManageRestricted ? (data.is_restricted ?? false) : false,
         hide_in_report: data.hide_in_report ?? false,
+        // Cột danh mục chỉ gửi khi đã điền (môi trường chưa áp migration không có cột).
+        ...catalogUpdatesFromForm(data, null, new Date().toISOString()),
       });
       form.reset();
       onCreated?.(result as unknown as IncomeExpenseType);
@@ -237,6 +243,8 @@ const IncomeExpenseTypeForm = ({
             </FormItem>
           )}
         />
+
+        <IeTypeCatalogFormFields control={form.control} />
 
         <div className="flex justify-end gap-2 pt-1">
           {onCancel && (

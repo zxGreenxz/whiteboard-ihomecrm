@@ -51,6 +51,9 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Plus } from 'lucide-react';
 import CategoryCombobox from '@/components/income-expense-types/CategoryCombobox';
+import IeTypeCatalogFormFields from '@/components/income-expense-types/IeTypeCatalogFormFields';
+import { useCanManageIeTypes } from '@/hooks/useCanManageIeTypes';
+import { catalogFormDefaults, catalogUpdatesFromForm } from '@/lib/ieTypeCatalogDraft';
 import { QueryRegion } from '@/components/errors/QueryRegion';
 import { focusFirstError } from '@/lib/formErrors';
 import { recordWriteBlocked, recordWriteMessage } from '@/lib/recordWriteOutcome';
@@ -66,6 +69,9 @@ export default function IncomeExpenseTypesPage() {
   const updateType = useUpdateIncomeExpenseType();
   const deleteType = useDeleteIncomeExpenseType();
 
+  // Chỉ superadmin / chủ công ty thêm, sửa, lưu trữ, gộp, xoá (chủ duyệt 03/10/2026).
+  // Người khác xem danh mục ở chế độ chỉ đọc; RLS máy chủ vẫn là hàng rào thật.
+  const { canManage, isLoading: manageLoading } = useCanManageIeTypes();
   const isEditing = !!editingType;
   const [blocked,setBlocked]=useState(false);
   const [deleteFailures,setDeleteFailures]=useState<Record<string,{message:string;blocked:boolean}>>({});
@@ -81,6 +87,7 @@ export default function IncomeExpenseTypesPage() {
       description: '',
       is_default: false,
       hide_in_report: false,
+      ...catalogFormDefaults(null),
     },
   });
 
@@ -101,6 +108,7 @@ export default function IncomeExpenseTypesPage() {
         description: editingType.description ?? '',
         is_default: editingType.is_default ?? false,
         hide_in_report: editingType.hide_in_report ?? false,
+        ...catalogFormDefaults(editingType),
       });
     } else if (!editingType && isFormOpen) {
       form.reset({
@@ -110,17 +118,20 @@ export default function IncomeExpenseTypesPage() {
         description: '',
         is_default: false,
         hide_in_report: false,
+        ...catalogFormDefaults(null),
       });
     }
   }, [editingType, isFormOpen, form]);
 
   const onSubmit = async (data: IncomeExpenseTypeFormValues) => {
-    if(blocked || busy.current || createType.isPending || updateType.isPending || sourceBlocked) return;
+    if(!canManage || blocked || busy.current || createType.isPending || updateType.isPending || sourceBlocked) return;
     busy.current=true;form.clearErrors('root.server');
     try {
       const normalizedCategory = data.category?.trim()
         ? data.category.trim()
         : null;
+      // Cột danh mục chỉ gửi khi đổi — môi trường chưa áp migration không có các cột này.
+      const catalog = catalogUpdatesFromForm(data, editingType, new Date().toISOString());
       if (isEditing) {
         await updateType.mutateAsync({
           id: editingType.id,
@@ -131,6 +142,7 @@ export default function IncomeExpenseTypesPage() {
             description: data.description || null,
             is_default: data.is_default ?? false,
             hide_in_report: data.hide_in_report ?? false,
+            ...catalog,
           },
         });
       } else {
@@ -141,6 +153,7 @@ export default function IncomeExpenseTypesPage() {
           description: data.description || null,
           is_default: data.is_default ?? false,
           hide_in_report: data.hide_in_report ?? false,
+          ...catalog,
         });
       }
       draftKey.current=null;form.reset();setIsFormOpen(false);setEditingType(null);
@@ -153,11 +166,13 @@ export default function IncomeExpenseTypesPage() {
   const isPending = createType.isPending || updateType.isPending;
 
   const handleEdit = (type: IncomeExpenseType) => {
+    if (!canManage) return;
     setEditingType(type);
     setIsFormOpen(true);
   };
 
   const handleDelete = (typeId: string) => {
+    if (!canManage) return;
     setDeletingTypeId(typeId);
   };
 
@@ -180,10 +195,14 @@ export default function IncomeExpenseTypesPage() {
       <div className="space-y-4">
         {/* Toolbar */}
         <div className="flex items-center gap-2">
-          <Button size="sm" onClick={() => { setEditingType(null); setIsFormOpen(true); }}>
-            <Plus className="h-4 w-4 mr-1" />
-            Thêm loại
-          </Button>
+          {canManage ? (
+            <Button size="sm" onClick={() => { setEditingType(null); setIsFormOpen(true); }}>
+              <Plus className="h-4 w-4 mr-1" />
+              Thêm loại
+            </Button>
+          ) : !manageLoading && (
+            <p className="text-sm text-muted-foreground">Cần hạng mục mới? Báo chủ công ty thêm.</p>
+          )}
         </div>
 
         {/* Type List */}
@@ -192,13 +211,13 @@ export default function IncomeExpenseTypesPage() {
         <IncomeExpenseTypeList
           types={types || []}
           isLoading={isLoading}
-          onEdit={handleEdit}
-          onDelete={handleDelete}
+          onEdit={canManage ? handleEdit : undefined}
+          onDelete={canManage ? handleDelete : undefined}
         />
         </QueryRegion>
 
         {/* Type Form Dialog */}
-        <Dialog open={isFormOpen} onOpenChange={handleFormClose}>
+        <Dialog open={isFormOpen && canManage} onOpenChange={handleFormClose}>
           <DialogContent aria-describedby={undefined} className="sm:max-w-[480px]">
             <DialogHeader>
               <DialogTitle>
@@ -319,6 +338,11 @@ export default function IncomeExpenseTypesPage() {
                     </FormItem>
                   )}
                 />
+                <IeTypeCatalogFormFields
+                  control={form.control}
+                  editing={editingType}
+                  allTypes={types ?? []}
+                />
                 <div className="flex justify-end gap-3 pt-4">
                   <Button
                     type="button"
@@ -339,7 +363,7 @@ export default function IncomeExpenseTypesPage() {
 
         {/* Delete Confirmation Dialog */}
         <AlertDialog
-          open={!!deletingTypeId}
+          open={!!deletingTypeId && canManage}
           onOpenChange={(open) => { if (!open && !busy.current && !deleteType.isPending) setDeletingTypeId(null); }}
         >
           <AlertDialogContent>
