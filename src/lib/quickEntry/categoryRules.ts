@@ -1,7 +1,7 @@
 // Lớp LUẬT chọn hạng mục chi cho "Báo chi nhanh" — chạy TRƯỚC AI, chỉ chốt khi chắc.
 //
 // Đo trên 414 câu chi thật (fixture __tests__/fixtures/cau-chi-that-2026-10.json, 03/10/2026):
-// chọn 293 câu (71%; 1 câu chỉ gợi ý), sai 0; đo đầu-cuối qua suggestCategory (gồm cụm phí) khoá 292, sai 0 —
+// chọn 293 câu (71%; 1 câu chỉ gợi ý), sai 0; đo đầu-cuối qua suggestCategory (gồm cụm phí) khoá 292, sai 0 (04/10) —
 // đo trên chính bộ câu dùng để viết luật, nên có thêm bộ câu phủ định
 // (khoản chi thật không được rơi vào mục dòng tiền); phần còn lại mới gọi AI.
 // Ưu tiên ĐÚNG hơn PHỦ: không chắc ⇒ trả null để AI (hoặc người dùng) chọn.
@@ -55,10 +55,11 @@ const STRONG: Readonly<
     weakIf: / tiền (điện|nước|rác|internet|mạng|nhà)| điện nước | rác | công an | internet /,
     weakIfBare: / tien (dien|nuoc|rac|internet|mang|nha)| dien nuoc | rac | cong an | internet /,
     // Đúng mẫu chủ hay ghi, CẢ CÂU chỉ có vậy: "bàn giao (tiền) (mã toà) (cho) <người> <tên> (mã/số)" hoặc
-    // "(chuyển|chi|đóng) tiền X dùm/hộ <người> <tên>" ⇒ luôn khoá (review lượt 4: câu chuẩn không mất khoá).
+    // "(chuyển|chi|đóng) tiền NHÀ dùm/hộ <người> <tên>" ⇒ luôn khoá (review lượt 4: câu chuẩn không mất khoá).
+    // Chỉ "tiền nhà": "chuyển tiền điện dùm a Long", "chi tiền xăng hộ em Tuấn" là chi phí thật (review lượt 5).
     canonical: new RegExp(
       "^ bàn giao (tiền )?(\\S*\\d\\S* )*(cho )?(a|anh|chị|c|em) \\p{L}+ (\\S*\\d\\S* )*$" +
-        "|^ (chuyển|chi|đóng) tiền \\S+ (dùm|giùm|hộ) (a|anh|chị|c|em) \\p{L}+ $",
+        "|^ (chuyển|chi|đóng) tiền nhà (dùm|giùm|hộ) (a|anh|chị|c|em) \\p{L}+ $",
       "u",
     ),
   },
@@ -149,7 +150,10 @@ const OWNER_RULES: readonly OwnerRule[] = [
 const PHRASE_NOT: Readonly<Record<string, readonly string[]>> = {
   dien: ["điện lạnh"],
   // "trả cọc thuê nhà mới" là tiền cọc thu hồi được, không phải tiền nhà tháng.
-  tien_nha: ["hợp đồng thuê nhà", "dùm", "giùm", "hộ", "cọc"],
+  // "hộ <người>" (chi hộ ai đó) — không phải "căn hộ" (review lượt 5).
+  tien_nha: [
+    "hợp đồng thuê nhà", "dùm", "giùm", "cọc", "hộ a", "hộ anh", "hộ chị", "hộ c", "hộ em", "hộ cô", "hộ chú",
+  ],
   noi_that_decor: ["rác"],
   dien_lanh: ["mua máy", "mua tủ"],
   // "mua keo dán nút nhấn thang máy" là vật tư, không phải phí bảo trì thang máy hằng tháng.

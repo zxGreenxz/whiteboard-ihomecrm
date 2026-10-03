@@ -35,9 +35,15 @@ export interface CategoryRef {
   sort_order?: number | null;
 }
 
+/** Hạng mục dòng tiền (không phải chi phí thường): đoán yếu vào đây thì không điền sẵn. */
+const MONEY_FLOW = new Set(["noi_bo", "bo_sung_hoan_coc", "tra_tien_thua_khach", "chia_loi_nhuan"]);
+
 export interface CategorySuggestion {
   id: string;
-  /** `rule_weak` / `name_overlap` = đoán yếu: thẻ không khoá ô hạng mục, AI được thay. */
+  /**
+   * Đoán yếu — thẻ không khoá ô hạng mục, AI được thay. `name_overlap` (trùng chữ, hạng mục thường) vẫn điền
+   * sẵn; `rule_weak` (đoán vào hạng mục dòng tiền) KHÔNG điền sẵn — AI chọn, không thì người dùng chọn.
+   */
   reason: "fee_phrase" | "provider_code" | "rule" | "rule_weak" | "name_overlap";
 }
 
@@ -156,5 +162,8 @@ export function suggestCategory(
       tie = true;
     }
   }
-  return best && !tie ? { id: best.id, reason: "name_overlap" } : null;
+  if (!best || tie) return null;
+  // Trùng chữ vào hạng mục DÒNG TIỀN ("bổ sung tiền mua đồ" ⇒ Bổ sung hoàn cọc, "tiền nội bộ" ⇒ nội bộ) xử
+  // như gợi ý yếu của luật: không điền sẵn — lưu nhầm là khoản chi biến khỏi KQKD / lọt khu rà soát hoàn khách.
+  return { id: best.id, reason: best.rule_key && MONEY_FLOW.has(best.rule_key) ? "rule_weak" : "name_overlap" };
 }

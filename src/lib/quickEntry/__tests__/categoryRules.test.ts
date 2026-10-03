@@ -230,6 +230,33 @@ describe("ruleCategory — ca dễ nhầm", () => {
     expect(strongKey(text)).toBe("noi_bo");
   });
 
+  // Re-review lượt 5: mẫu "chuyển/chi/đóng tiền X dùm <người>" chỉ khoá khi X là "nhà".
+  it.each([
+    "chuyển tiền điện dùm a Long",
+    "chuyển tiền nước giùm chị Mai",
+    "đóng tiền rác hộ anh Vinh",
+    "chuyển tiền camera dùm a Long",
+    "chuyển tiền công dùm anh Hùng",
+    "chi tiền xăng hộ em Tuấn",
+    "chuyển tiền gas hộ chị Lan",
+    "chuyển tiền cọc dùm a Long",
+  ])("chuyển/chi tiền khoản khác dùm người ⇒ KHÔNG khoá nội bộ: %s", (text) => {
+    expect(strongKey(text)).not.toBe("noi_bo");
+  });
+
+  it.each([
+    ["bổ sung tiền mua đồ", "bo_sung_hoan_coc"],
+    ["hoàn tiền cho anh Hùng", "bo_sung_hoan_coc"],
+    ["trả tiền cho khách", "tra_tien_thua_khach"],
+    ["tiền nội bộ", "noi_bo"],
+  ])("đoán trùng chữ vào hạng mục dòng tiền ⇒ rule_weak (không điền sẵn): %s", (text, id) => {
+    expect(suggestCategory(rows, text)).toEqual({ id, reason: "rule_weak" });
+  });
+
+  it("'tiền nhà căn hộ 302' vẫn là Tiền nhà (loại trừ 'hộ <người>' không chặn 'căn hộ')", () => {
+    expect(suggestCategory(rows, "tiền nhà căn hộ 302 tháng 10")?.id).toBe("tien_nha");
+  });
+
   it.each([
     "kết sổ điện nước tháng 9",
     "kết sổ tiền rác",
