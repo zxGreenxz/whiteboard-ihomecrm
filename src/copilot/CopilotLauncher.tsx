@@ -16,6 +16,7 @@ const ChatPanel = lazy(() => import('./ChatPanel'));
 const HIDDEN_PREFIXES = [
   '/login', '/register', '/forgot-password', '/reset-password',
   '/c/', '/r/', '/phongtrong', '/network-center', '/chi-tieu',
+  '/viec-cua-toi',
 ];
 
 export default function CopilotLauncher() {

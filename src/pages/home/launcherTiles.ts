@@ -28,6 +28,7 @@ import {
   Settings,
   UserCircle,
   ClipboardList,
+  ListTodo,
   Car,
   Wallet,
   Coins,
@@ -67,6 +68,7 @@ export const LAUNCHER_SECTIONS: LauncherSection[] = [
     label: 'Vận hành',
     items: [
       { id: 'my-day', title: 'Hôm nay', href: '/my-day', icon: Sun, accent: '#f59e0b', hot: true },
+      { id: 'personal-tasks', title: 'Việc của tôi', href: '/viec-cua-toi', icon: ListTodo, accent: '#087bff' },
       { id: 'dashboard', title: 'Bảng tin', href: '/dashboard', icon: LayoutDashboard, accent: '#1f7a52' },
       ...launcherFieldsFor('map').map((x) => ({ ...x, icon: Map, accent: '#2563eb' }) satisfies LauncherTile),
       ...launcherFieldsFor('buildings').map((x) => ({ ...x, icon: Building2, accent: '#6366f1' }) satisfies LauncherTile),

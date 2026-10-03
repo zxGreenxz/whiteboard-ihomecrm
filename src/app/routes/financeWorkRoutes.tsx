@@ -16,6 +16,7 @@ import {
   InvoicesPage,
   MeterReadingsPage,
   MyDayPage,
+  PersonalTasksPage,
   OwnerDashboardV5,
   QuickEntryPage,
   RefundLogPage,
@@ -61,6 +62,7 @@ export const financeWorkRoutes = (
     {/* === CÔNG VIỆC === */}
     <Route path="/tasks" element={<ProtectedRoute><RequirePermission module="tasks"><TaskManagementPage /></RequirePermission></ProtectedRoute>} />
     <Route path="/my-day" element={<ProtectedRoute><MyDayPage /></ProtectedRoute>} />
+    <Route path="/viec-cua-toi" element={<ProtectedRoute><PersonalTasksPage /></ProtectedRoute>} />
     <Route path="/reports/coverage" element={<ProtectedRoute><AdminOnlyRoute><OwnerDashboardV5 /></AdminOnlyRoute></ProtectedRoute>} />
 
   </>
