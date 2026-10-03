@@ -163,13 +163,30 @@ describe('AttachmentUpload — tải nhanh, chịu mạng chập chờn', () => 
     expect(validateAttachmentFile({ type: 'image/jpeg', size: 8 * 1024 * 1024 })).toBe('Kích thước file tối đa 5MB');
   });
 
-  it('kho khác (ảnh công việc): vẫn đi đường cũ, không đổi tham số tải', async () => {
+  it('kho khác (ảnh công việc): vẫn đi đường cũ, không đổi tham số tải, tải LẦN LƯỢT như cũ', async () => {
+    const xong: Array<() => void> = [];
+    H.taiLen.mockImplementation((_b: string, path: string) =>
+      new Promise<string>((r) => { xong.push(() => r(`${KHO}${path}`)); }));
     render(
       <AttachmentUpload attachments={[]} onChange={() => {}} userId={USER} bucket="job-attachments" />,
     );
-    chon([anh('cua.png')]);
+    chon([anh('cua.png'), anh('tuong.png')]);
     await waitFor(() => expect(H.taiLen).toHaveBeenCalledTimes(1));
     expect(H.taiLen.mock.calls[0]).toHaveLength(3);
+    await act(() => new Promise((r) => setTimeout(r, 30)));
+    expect(H.taiLen).toHaveBeenCalledTimes(1); // đường cũ có hạn cứng mỗi lệnh: không chia băng thông
+    act(() => xong[0]());
+    await waitFor(() => expect(H.taiLen).toHaveBeenCalledTimes(2));
+    act(() => xong[1]());
+  });
+
+  it('ảnh sau nén vẫn quá 5 MB: báo rõ lý do, KHÔNG mời "Thử lại" vô ích', async () => {
+    const { UploadTooLargeError } = await import('@/lib/uploadDeadline');
+    H.taiLen.mockRejectedValueOnce(new UploadTooLargeError(6 * 1024 * 1024, 5 * 1024 * 1024));
+    render(<Khung dau={[]} />);
+    chon([anh('to.png')]);
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('sau khi nén vẫn lớn hơn 5MB'));
+    expect(screen.queryByRole('button', { name: 'Thử lại to.png' })).toBeNull();
   });
 
   it('tải bằng đường chịu mạng chập chờn: nén kiểu chứng từ, chặn 5 MB sau nén, có %', async () => {

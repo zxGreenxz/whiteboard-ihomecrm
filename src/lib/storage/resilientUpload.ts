@@ -21,6 +21,7 @@ import {
   isAbortError,
   resilientUploadDeadlineMs,
   uploadAbortError,
+  UploadRejectedError,
   UploadTimeoutError,
 } from '../uploadDeadline';
 
@@ -62,15 +63,7 @@ export interface ResilientUploadResult {
   elapsedMs: number;
 }
 
-/** Máy chủ từ chối hẳn (quyền, định dạng…) — tải lại cũng vô ích. */
-export class UploadRejectedError extends Error {
-  readonly statusCode: number;
-  constructor(statusCode: number, message: string) {
-    super(message);
-    this.name = 'UploadRejectedError';
-    this.statusCode = statusCode;
-  }
-}
+export { UploadRejectedError };
 
 export interface SendActivity {
   loaded: number;
@@ -151,6 +144,46 @@ function objectUrl(baseUrl: string, bucket: string, key: string): string {
   return `${baseUrl.replace(/\/+$/, '')}/storage/v1/object/${encodeURIComponent(bucket)}/${path}`;
 }
 
+const TIMED_OUT = Symbol('timed-out');
+
+/**
+ * Chờ `work` tối đa `ms`, dừng ngay khi `signal` huỷ. Dùng cho các bước KHÔNG tự có
+ * hạn (lấy phiên — auth-js chờ khoá không giới hạn; hỏi cỡ tệp): kẹt ở đó thì ô ảnh
+ * đứng "0%" mãi và chiếm chỗ tải.
+ */
+function within<T>(work: Promise<T>, ms: number, signal: AbortSignal): Promise<T | typeof TIMED_OUT> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(uploadAbortError());
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(uploadAbortError());
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve(TIMED_OUT);
+    }, Math.max(0, ms));
+    signal.addEventListener('abort', onAbort, { once: true });
+    work.then(
+      (value) => {
+        clearTimeout(timer);
+        signal.removeEventListener('abort', onAbort);
+        resolve(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        signal.removeEventListener('abort', onAbort);
+        reject(error);
+      },
+    );
+  });
+}
+
+/** `navigator.onLine` có thể báo sai (WebView, VPN): chỉ chờ có mạng chừng này rồi vẫn gửi. */
+const OFFLINE_WAIT_MS = 3_000;
+
 async function attemptOnce(
   deps: UploadDeps,
   url: string,
@@ -161,17 +194,23 @@ async function attemptOnce(
   deadlineAt: number,
   onProgress: ((progress: UploadProgress) => void) | undefined,
 ): Promise<AttemptOutcome> {
+  // Listener gắn lên signal ĐÃ huỷ không bao giờ chạy ⇒ phải kiểm trước.
+  if (outer.aborted) throw uploadAbortError();
   const controller = new AbortController();
   const onOuterAbort = () => controller.abort();
   outer.addEventListener('abort', onOuterAbort, { once: true });
   let stalled = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  // Lượt cuối không cắt vì "đứng": mạng rất yếu mà vẫn nhích thì cho chạy tới hạn tổng,
+  // khỏi tải lại từ 0 byte lần nữa.
+  const lastAttempt = attempt >= MAX_ATTEMPTS;
   const arm = (ms: number) => {
     clearTimeout(timer);
+    const remaining = deadlineAt - Date.now();
     timer = setTimeout(() => {
       stalled = true;
       controller.abort();
-    }, Math.max(0, Math.min(ms, deadlineAt - Date.now())));
+    }, Math.max(0, lastAttempt ? remaining : Math.min(ms, remaining)));
   };
   arm(CONNECT_MS);
 
@@ -247,18 +286,33 @@ export async function uploadResilient(
       }
       if (!deps.isOnline()) {
         report?.({ loaded: 0, total: file.size, attempt, phase: 'offline' });
-        await deps.waitOnline(deadlineAt - Date.now(), outer);
+        await deps.waitOnline(Math.min(OFFLINE_WAIT_MS, deadlineAt - Date.now()), outer);
       }
       if (Date.now() >= deadlineAt) break;
 
-      const token = await deps.getToken();
+      const token = await within(deps.getToken(), Math.min(CONNECT_MS, deadlineAt - Date.now()), outer);
+      if (token === TIMED_OUT) {
+        lastStatus = null; // lấy phiên kẹt: tính như một lượt đứng mạng
+        continue;
+      }
       const outcome = await attemptOnce(deps, url, file, token, attempt, outer, deadlineAt, report);
       if (outcome.kind === 'ok') return { path: key, attempts: attempt, elapsedMs: Date.now() - started };
       if (outcome.kind === 'reject') throw outcome.error;
       if (outcome.kind === 'conflict') {
-        // Khoá có ngẫu nhiên nên trùng nghĩa là CHÍNH tệp này đã lên ở lần trước.
-        const size = await deps.storedSize(bucket, key).catch((): null => null);
+        // Lượt đầu mà trùng khoá (có đuôi ngẫu nhiên) là chuyện lạ: không nhận vơ.
+        if (attempt === 1) throw new UploadRejectedError(409, 'Đã có tệp khác cùng tên trong kho');
+        // Từ lượt 2: trùng nghĩa là CHÍNH tệp này đã lên ở lượt trước mà mất trả lời.
+        const size = await within(
+          deps.storedSize(bucket, key).catch((): null => null),
+          Math.min(CONNECT_MS, deadlineAt - Date.now()),
+          outer,
+        );
         if (size === file.size) return { path: key, attempts: attempt, elapsedMs: Date.now() - started };
+        // Chưa đọc được cỡ (mạng chập chờn): hỏi lại ở lượt sau; hết lượt thì dọn khoá.
+        if (size === null || size === TIMED_OUT) {
+          lastStatus = null;
+          continue;
+        }
         throw new UploadRejectedError(409, 'Đã có tệp khác cùng tên trong kho');
       }
       lastStatus = outcome.status;
@@ -345,7 +399,9 @@ function browserDeps(): UploadDeps {
       return typeof data.size === 'number' ? data.size : null;
     },
     remove: async (bucket, key) => {
-      await supabase.storage.from(bucket).remove([key]);
+      // remove() báo lỗi qua `error`, không ném — phải đọc mới biết dọn hỏng.
+      const { error } = await supabase.storage.from(bucket).remove([key]);
+      if (error) throw error;
     },
     baseUrl: import.meta.env.VITE_SUPABASE_URL ?? '',
     apiKey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? '',

@@ -713,7 +713,7 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
                 <div className="text-sm font-medium">
                   Ảnh chứng từ{" "}
                   <span className="text-xs font-normal text-muted-foreground">
-                    (tuỳ chọn — JPG/PNG/PDF, tối đa 5MB)
+                    (tuỳ chọn — ảnh JPG/PNG tự nén, PDF tối đa 5MB)
                   </span>
                 </div>
                 <AttachmentUpload

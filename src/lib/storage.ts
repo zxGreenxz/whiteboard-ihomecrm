@@ -5,7 +5,7 @@ import { compressImage } from "./imageCompress";
 import { isR2Bucket, isR2PublicBucket, parseR2Ref } from "./storage/r2Config";
 import { uploadToR2, signR2 } from "./storage/r2Client";
 import { uploadResilient, type ResilientUploadOptions } from "./storage/resilientUpload";
-import { isAbortError, uploadDeadlineMs, UploadTimeoutError, UploadTooLargeError } from "./uploadDeadline";
+import { isAbortError, uploadDeadlineMs, UploadRejectedError, UploadTimeoutError, UploadTooLargeError } from "./uploadDeadline";
 
 export { sanitizeStorageFileName } from "./storageKey";
 
@@ -93,6 +93,11 @@ export interface StoredUpload {
   size: number;
   /** Số đo lần tải — chỉ có ở đường chịu mạng chập chờn (`resilient`). */
   stats?: UploadStats;
+  /**
+   * Đúng tệp đã nằm trong kho (sau nén) — chỉ có ở đường `resilient`. Cần khi phải
+   * tải lại chính ảnh này nơi khác (đường lùi kho chứng từ) mà không gửi ảnh gốc.
+   */
+  file?: File;
 }
 
 export interface UploadStats {
@@ -163,6 +168,7 @@ export async function uploadFileDetailed(
         url: getPublicUrl(bucket, done.path),
         path: done.path,
         stats: { originalBytes: file.size, compressMs, uploadMs: done.elapsedMs, attempts: done.attempts },
+        file: toUpload,
       };
     }
 
@@ -181,6 +187,12 @@ export async function uploadFileDetailed(
     if (options.resilient && error instanceof UploadTimeoutError) {
       throw new FinancialWorkflowError(
         `Mạng chậm — quá ${Math.round((error.ms ?? 0) / 1000)} giây chưa tải xong tệp. Tệp chưa được lưu; bấm Thử lại khi mạng ổn hơn.`,
+        'failure', [], error);
+    }
+    // Máy chủ lưu trữ lỗi cả 3 lượt: lần gửi dở đã được dọn, tải lại (tên mới) an toàn.
+    if (options.resilient && error instanceof UploadRejectedError && error.statusCode >= 500) {
+      throw new FinancialWorkflowError(
+        'Máy chủ lưu trữ đang lỗi — tệp chưa được lưu. Bấm Thử lại sau ít phút.',
         'failure', [], error);
     }
     const status = error && typeof error === 'object' && 'statusCode' in error ? Number(error.statusCode) : null;

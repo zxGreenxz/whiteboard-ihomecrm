@@ -70,6 +70,23 @@ describe('uploadFileDetailed — đường chịu mạng chập chờn', () => {
     expect((loi as FinancialWorkflowError).cause).toBeInstanceOf(UploadTimeoutError);
   });
 
+  it('trả kèm ĐÚNG tệp đã nằm trong kho (để đường lùi không phải tải ảnh gốc)', async () => {
+    h.resilient.mockResolvedValue({ path: 'u/a.png', attempts: 1, elapsedMs: 10 });
+    const goc = anh();
+    const out = await uploadFileDetailed('b', 'u/a.png', goc, { resilient: {} });
+    expect(out.file).toBe(goc); // compressImage giả trả nguyên tệp
+  });
+
+  it('máy chủ lưu trữ lỗi 5xx cả 3 lượt: "failure" mời Thử lại, không bảo "đừng tải lại"', async () => {
+    const { UploadRejectedError } = await import('../uploadDeadline');
+    h.resilient.mockRejectedValue(new UploadRejectedError(503, 'Máy chủ lưu trữ đang lỗi'));
+    const loi = await uploadFileDetailed('b', 'u/a.png', anh(), { resilient: {} }).catch((e: unknown) => e);
+    expect(loi).toBeInstanceOf(FinancialWorkflowError);
+    expect(loi).toMatchObject({ outcome: 'failure' });
+    expect((loi as FinancialWorkflowError).message).toMatch(/Bấm Thử lại/);
+    expect((loi as FinancialWorkflowError).message).not.toMatch(/không tải lại/);
+  });
+
   it('5 MB tính SAU khi nén: vượt thì từ chối trước khi gửi byte nào', async () => {
     const loi = await uploadFileDetailed('b', 'u/a.png', anh(6 * 1024 * 1024), {
       resilient: {},

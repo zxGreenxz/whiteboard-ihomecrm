@@ -31,11 +31,28 @@ const SCREENSHOT_QUALITY = 0.5;
 const EVIDENCE_MIN_BYTES = 48 * 1024;
 
 /**
- * Ảnh chụp màn hình ĐIỆN THOẠI: PNG dựng đứng (cao ≥ 1,6 lần rộng — máy điện
- * thoại ~2:1, iPad 4:3 không tính). Ảnh camera là JPEG nên không bao giờ vào đây.
+ * Ảnh chụp màn hình ĐIỆN THOẠI: PNG đúng khổ màn hình điện thoại dựng đứng — cao
+ * gấp 1,6–2,4 lần rộng (16:9 … 21:9). Ngoài khoảng đó KHÔNG tính: iPad 4:3, ảnh
+ * chụp cuộn dài (1080×5000 xuống 1024 px là còn 221 px bề ngang), hoá đơn điện tử
+ * dạng dải dài.
  */
 export function isPhoneScreenshot(type: string, width: number, height: number): boolean {
-  return /^image\/png$/i.test(type) && width > 0 && height >= width * 1.6;
+  if (!/^image\/png$/i.test(type) || width <= 0) return false;
+  const ratio = height / width;
+  return ratio >= 1.6 && ratio <= 2.4;
+}
+
+/**
+ * Đang dùng máy cảm ứng (điện thoại/máy tính bảng). Trên máy tính, ảnh dán bằng
+ * Ctrl+V LUÔN là PNG kể cả ảnh chụp giấy tờ copy từ Zalo — không nén mạnh ở đó
+ * (mạng máy tính cũng nhanh, lợi ít).
+ */
+function onTouchDevice(): boolean {
+  try {
+    return typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+  } catch {
+    return false; // trình duyệt không hỗ trợ truy vấn này: coi như máy tính
+  }
 }
 /**
  * Nén quá hạn này thì bỏ, tải ảnh gốc. Nén thường xong dưới 1 giây; quá hạn là
@@ -53,14 +70,30 @@ export interface CompressOpts {
   timeoutMs?: number;
   /** `evidence`: ảnh chứng từ — chụp màn hình điện thoại nén mạnh hơn (xem trên). */
   profile?: 'evidence';
+  /** Có phải máy cảm ứng không; mặc định tự dò (`pointer: coarse`). */
+  touchDevice?: boolean;
 }
+
+/**
+ * Nén LẦN LƯỢT từng ảnh: giải mã cùng lúc nhiều ảnh camera 12–48 MP trên máy yếu dễ
+ * quá hạn nén (trả ảnh gốc to) hoặc làm iOS đóng tab. Việc gửi qua mạng vẫn song song.
+ * Mỗi lượt không bao giờ ném (xem compressWithTimeout) nên hàng đợi không bị kẹt.
+ */
+let compressQueue: Promise<unknown> = Promise.resolve();
 
 /**
  * Nén 1 ảnh. Trả về File mới (WebP, hoặc JPEG khi trình duyệt không mã hoá
  * được WebP) nếu nén có lợi, ngược lại trả file gốc.
  * KHÔNG ném lỗi — luôn trả về một File dùng được, kể cả khi bước nén treo.
  */
-export async function compressImage(file: File, opts: CompressOpts = {}): Promise<File> {
+export function compressImage(file: File, opts: CompressOpts = {}): Promise<File> {
+  const turn = compressQueue.then(() => compressWithTimeout(file, opts));
+  compressQueue = turn;
+  return turn;
+}
+
+/** Hạn nén tính từ lúc tới lượt, không tính thời gian xếp hàng. */
+async function compressWithTimeout(file: File, opts: CompressOpts): Promise<File> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const giveUp = new Promise<File>((resolve) => {
     timer = setTimeout(() => resolve(file), opts.timeoutMs ?? COMPRESS_TIMEOUT_MS);
@@ -86,7 +119,9 @@ async function compressNow(file: File, opts: CompressOpts): Promise<File> {
     let canvas: AnyCanvas | null = null;
     try {
       const { width, height } = bitmap;
-      const screenshot = evidence && isPhoneScreenshot(file.type, width, height);
+      const screenshot = evidence
+        && (opts.touchDevice ?? onTouchDevice())
+        && isPhoneScreenshot(file.type, width, height);
       const maxEdge = opts.maxEdge ?? (screenshot ? SCREENSHOT_MAX_EDGE : MAX_EDGE);
       const quality = opts.quality ?? (screenshot ? SCREENSHOT_QUALITY : QUALITY);
       const scale = Math.min(1, maxEdge / Math.max(width, height));

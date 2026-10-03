@@ -378,6 +378,8 @@ export interface PostingUpload {
   /** Từ lúc bắt đầu nén tới khi máy chủ xác nhận (ms). */
   elapsedMs: number;
   attempts: number;
+  /** Đúng tệp đã nằm trong kho (sau nén) — đường lùi tải lại tệp này, không tải ảnh gốc. */
+  file: File;
 }
 
 export interface PostingUploadOptions {
@@ -413,7 +415,7 @@ async function uploadPostingAttachmentFile(
   // Bắt lỗi để BÁO, không để nuốt: giữ lại đối tượng lỗi rồi quyết định ở
   // ngoài khối catch (catch trả rỗng là mẫu bị gate error-swallow chặn).
   let url: string | null = null;
-  let stored: { size: number; attempts: number } | null = null;
+  let stored: { size: number; attempts: number; file: File } | null = null;
   let loiTai: unknown = null;
   try {
     const up = await uploadFileDetailed(POSTING_ATTACHMENT_BUCKET, path, file, {
@@ -422,14 +424,15 @@ async function uploadPostingAttachmentFile(
       resilient: { signal: options.signal, onProgress: options.onProgress },
     });
     url = up.url;
-    stored = { size: up.size, attempts: up.stats?.attempts ?? 1 };
+    stored = { size: up.size, attempts: up.stats?.attempts ?? 1, file: up.file ?? file };
   } catch (e) {
     loiTai = e;
   }
   if (url && stored) {
     const elapsedMs = Date.now() - started;
-    console.info(`[tai-anh] ${file.name}: ${Math.round(file.size / 1024)} KB → ${Math.round(stored.size / 1024)} KB, ${elapsedMs} ms, ${stored.attempts} lần`);
-    return { url, size: stored.size, elapsedMs, attempts: stored.attempts };
+    // Số đo để soi trên máy thật (không ghi tên tệp).
+    console.info(`[tai-anh] ${Math.round(file.size / 1024)} KB → ${Math.round(stored.size / 1024)} KB, ${elapsedMs} ms, ${stored.attempts} lần`);
+    return { url, size: stored.size, elapsedMs, attempts: stored.attempts, file: stored.file };
   }
   if (isAbortError(loiTai)) return null; // người dùng gỡ ảnh / đóng hộp
   if (loiTai instanceof UploadTooLargeError) {

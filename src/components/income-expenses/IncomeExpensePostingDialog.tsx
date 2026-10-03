@@ -312,6 +312,7 @@ function PostingEvidenceUpload({
   onRemovePending,
   uploadStats,
   onWarm,
+  pendingLocked = disabled,
 }: {
   items: PostingEvidenceItem[];
   onFiles: (files: FileList | File[] | null) => Promise<void>;
@@ -341,6 +342,11 @@ function PostingEvidenceUpload({
   uploadStats?: Record<string, EvidenceUploadStat>;
   /** Chuẩn bị đường tải ngay khi người dùng chạm nút (trước khi kịp chọn ảnh). */
   onWarm?: () => void;
+  /**
+   * Khoá nút gỡ / Thử lại của ảnh CHƯA vào kho. Mặc định theo `disabled`; lúc chỉ đang
+   * chờ ảnh (chưa ghi gì lên phiếu) vẫn cho gỡ ảnh hỏng hay tải lại.
+   */
+  pendingLocked?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -503,7 +509,7 @@ function PostingEvidenceUpload({
                 >
                   {pendingLabel(upload)}
                 </span>
-                {failed && onRetryPending && !disabled && (
+                {failed && onRetryPending && !pendingLocked && (
                   <button
                     type="button"
                     className="absolute inset-0 m-auto h-7 w-16 rounded bg-background/95 text-xs font-medium text-foreground shadow"
@@ -513,7 +519,7 @@ function PostingEvidenceUpload({
                     Thử lại
                   </button>
                 )}
-                {onRemovePending && !disabled && (
+                {onRemovePending && !pendingLocked && (
                   <button
                     type="button"
                     className="absolute right-0.5 top-1.5 rounded-full bg-red-500 p-0.5 text-white"
@@ -747,6 +753,16 @@ export default function IncomeExpensePostingDialog({
   const pendingFilesRef = useRef(new Map<string, File>());
   /** Lệnh tải đang chạy: huỷ thật được, và nút xác nhận chờ được tới khi xong. */
   const inFlightRef = useRef(new Map<string, { controller: AbortController; done: Promise<void> }>());
+  /**
+   * Đánh thức vòng "chờ ảnh tải xong" mỗi khi danh sách lệnh đang chạy đổi (gỡ ảnh,
+   * đóng hộp): không phụ thuộc lệnh tải đã huỷ kịp dừng hay chưa.
+   */
+  const inFlightWaitersRef = useRef(new Set<() => void>());
+  const notifyInFlightChange = useCallback(() => {
+    const waiters = [...inFlightWaitersRef.current];
+    inFlightWaitersRef.current.clear();
+    for (const wake of waiters) wake();
+  }, []);
   const slotsRef = useRef<UploadSlots>({ active: 0, queue: [] });
   const pendingSeqRef = useRef(0);
   const [uploadStats, setUploadStats] = useState<Record<string, EvidenceUploadStat>>({});
@@ -833,7 +849,8 @@ export default function IncomeExpensePostingDialog({
     inFlightRef.current.clear();
     pendingFilesRef.current.clear();
     setPendingUploads(() => []);
-  }, [setPendingUploads]);
+    notifyInFlightChange();
+  }, [setPendingUploads, notifyInFlightChange]);
 
   // Một lần mở = một phiếu + một chế độ. Hết lần mở (đóng hộp, đổi phiếu, unmount)
   // mà chưa xác nhận ⇒ file vừa tải thành rác: xoá. Phiếu không bị đụng tới.
@@ -904,10 +921,12 @@ export default function IncomeExpensePostingDialog({
     [attachments, appliedAdds, removedUrls, appliedRemovals, stagedUrls, adoptSkipped],
   );
 
-  const inFlightUploads = pendingUploads.filter((u) => u.phase !== 'failed');
-  /** Ảnh đang tải cũng là thay đổi chờ ghi: bấm xác nhận sẽ chờ nó rồi ghi cùng. */
+  /**
+   * Ảnh đang tải / tải hỏng cũng là thay đổi chờ ghi: bấm xác nhận sẽ chờ ảnh đang tải,
+   * còn ảnh hỏng thì dừng và nói rõ (xem `submit`).
+   */
   const hasPendingAttachmentChanges =
-    stagedUrls.length > 0 || removedUrls.length > 0 || inFlightUploads.length > 0;
+    stagedUrls.length > 0 || removedUrls.length > 0 || pendingUploads.length > 0;
 
   /**
    * `evidenceIds` của form LUÔN được suy ra, không bao giờ sửa tay. Không còn thay
@@ -921,11 +940,13 @@ export default function IncomeExpensePostingDialog({
       hasPendingAttachmentChanges
         ? [
             ...evidenceItems.filter((i) => i.usable).map((i) => `cho-ghi:${i.url}`),
-            ...inFlightUploads.map((u) => `dang-tai:${u.id}`),
+            // Ảnh đang tải và ảnh tải hỏng tính tạm: bấm xác nhận khi đó ra đúng câu báo
+            // ("đang chờ ảnh" / "còn ảnh chưa tải được"), không phải "thiếu chứng từ".
+            ...pendingUploads.map((u) => `dang-tai:${u.id}`),
             ...fallbackIds,
           ]
         : [...adoptedIds, ...fallbackIds],
-    [hasPendingAttachmentChanges, evidenceItems, inFlightUploads, adoptedIds, fallbackIds],
+    [hasPendingAttachmentChanges, evidenceItems, pendingUploads, adoptedIds, fallbackIds],
   );
 
   useEffect(() => {
@@ -972,18 +993,21 @@ export default function IncomeExpensePostingDialog({
           }
           pendingFilesRef.current.delete(id);
           setPendingUploads((prev) => prev.filter((u) => u.id !== id));
-          stagedFilesRef.current.set(res.url, file);
+          // Giữ bản ĐÃ NÉN: đường lùi (kho chứng từ riêng) tải lại tệp này lúc hộp đang
+          // khoá — tải ảnh gốc (tới 25 MB) ở đó là khoá hộp hàng phút.
+          stagedFilesRef.current.set(res.url, res.file);
           setStaged([...stagedRef.current, res.url]);
           movePreview(PENDING_PREVIEW(id), res.url);
           setUploadStats((prev) => ({ ...prev, [res.url]: { size: res.size, elapsedMs: res.elapsedMs } }));
         } finally {
           releaseSlot(slotsRef.current);
           if (inFlightRef.current.get(id)?.controller === controller) inFlightRef.current.delete(id);
+          notifyInFlightChange();
         }
       })();
       inFlightRef.current.set(id, { controller, done });
     },
-    [uploadDraft, discardDraft, setStaged, setPendingUploads, movePreview],
+    [uploadDraft, discardDraft, setStaged, setPendingUploads, movePreview, notifyInFlightChange],
   );
 
   const handlePendingRemove = useCallback(
@@ -993,8 +1017,9 @@ export default function IncomeExpensePostingDialog({
       pendingFilesRef.current.delete(id);
       dropLocalPreviews([PENDING_PREVIEW(id)]);
       setPendingUploads((prev) => prev.filter((u) => u.id !== id));
+      notifyInFlightChange();
     },
-    [dropLocalPreviews, setPendingUploads],
+    [dropLocalPreviews, setPendingUploads, notifyInFlightChange],
   );
 
   const handleEvidenceFiles = useCallback(
@@ -1173,8 +1198,12 @@ export default function IncomeExpensePostingDialog({
     }
   };
 
+  /** Chặn bấm đúp trong khe trước khi trạng thái "đang xử lý" kịp vẽ lại. */
+  const submitLockRef = useRef(false);
+
   const submit = form.handleSubmit(async (values) => {
-    if (reconcileRequired || cashbookError) return;
+    if (reconcileRequired || cashbookError || submitLockRef.current) return;
+    submitLockRef.current = true;
     setSubmitError(null);
     try {
     // Bấm xác nhận khi ảnh còn đang tải (03/10/2026): không bắt người dùng canh ảnh
@@ -1183,8 +1212,12 @@ export default function IncomeExpensePostingDialog({
       const session = sessionRef.current;
       setWaitingUploads(true);
       try {
-        while (inFlightRef.current.size > 0) {
-          await Promise.allSettled([...inFlightRef.current.values()].map((u) => u.done));
+        while (inFlightRef.current.size > 0 && sessionRef.current === session) {
+          const changed = new Promise<void>((wake) => inFlightWaitersRef.current.add(wake));
+          await Promise.race([
+            Promise.allSettled([...inFlightRef.current.values()].map((u) => u.done)),
+            changed,
+          ]);
         }
       } finally {
         if (sessionRef.current === session) setWaitingUploads(false);
@@ -1198,10 +1231,9 @@ export default function IncomeExpensePostingDialog({
       );
       return;
     }
-    // Mã tạm chỉ để qua bước kiểm "ít nhất một chứng từ" — không bao giờ gửi đi.
-    let evidenceIds = values.evidenceIds.filter(
-      (id) => !id.startsWith('dang-tai:') && !id.startsWith('cho-ghi:'),
-    );
+    // `values.evidenceIds` có thể chứa mã tạm (`dang-tai:`/`cho-ghi:`) chỉ để qua bước
+    // kiểm "ít nhất một chứng từ" — KHÔNG BAO GIỜ gửi đi; mã gửi đi luôn lấy dưới đây.
+    let evidenceIds: string[];
     if (stagedRef.current.length > 0 || removedUrls.length > 0) {
       const applied = await applyAttachmentChanges();
       if (!applied) return; // hộp giữ nguyên để thử lại hoặc Huỷ bỏ
@@ -1214,13 +1246,29 @@ export default function IncomeExpensePostingDialog({
         void focusFirstError({ evidenceIds: "Thiếu chứng từ" }, { root: formRef.current });
         return;
       }
-    } else if (requireEvidence && evidenceIds.length === 0) {
-      // Chỉ có mã tạm của ảnh đang tải mà ảnh không vào kho được (vd hộp đổi lần mở).
+    } else {
+      // Không còn thay đổi ảnh nào (vd ảnh đang tải đã bị gỡ trong lúc chờ): giá trị lúc
+      // bấm toàn mã tạm — dùng đúng mã chứng từ thật của ảnh đang có trên phiếu.
+      evidenceIds = [...adoptedIds, ...fallbackIds];
+    }
+    if (requireEvidence && evidenceIds.length === 0) {
       form.setError('evidenceIds', {
         type: 'manual',
         message: 'Thêm ít nhất một ảnh hoặc tệp chứng từ cho lần thu/chi này.',
       });
       void focusFirstError({ evidenceIds: "Thiếu chứng từ" }, { root: formRef.current });
+      return;
+    }
+    // Tiền đi theo sổ/ngày/số tiền TẠI LÚC BẤM, và trong lúc chờ ảnh / ghi ảnh các ô đó bị
+    // khoá. Lớp chặn thứ hai: màn hình mà khác giá trị lúc bấm thì dừng, không gửi lệnh
+    // tiền theo giá trị người dùng không còn nhìn thấy.
+    const current = form.getValues();
+    if (
+      current.cashbookId !== values.cashbookId ||
+      current.postedOn !== values.postedOn ||
+      (allowAmount && current.amount !== values.amount)
+    ) {
+      setSubmitError(`Ngày, sổ quỹ hoặc số tiền vừa đổi trong lúc chờ — kiểm tra lại rồi bấm “${title}” lần nữa.`);
       return;
     }
     const input: PostFinanceExecutionInput = {
@@ -1239,6 +1287,8 @@ export default function IncomeExpensePostingDialog({
     } catch (error) {
       setSubmitError(voucherFailureMessage(error, "ghi nhận thu/chi"));
       if (voucherOutcomeUnknown(error)) setReconcileRequired(true);
+    } finally {
+      submitLockRef.current = false;
     }
   }, errors => { void focusFirstError(errors, { root: formRef.current }); });
 
@@ -1267,6 +1317,12 @@ export default function IncomeExpensePostingDialog({
 
         <Form {...form}>
           <form ref={formRef} onSubmit={submit} className="space-y-4">
+            {/* Ngày, sổ quỹ, số tiền KHOÁ khi đã bấm xác nhận (đang chờ ảnh / đang ghi ảnh):
+                lệnh tiền đi theo giá trị lúc bấm, sửa ở đây lúc đó là sửa không có tác dụng. */}
+            <fieldset
+              disabled={waitingUploads || committing}
+              className="m-0 min-w-0 space-y-4 border-0 p-0"
+            >
             {/* Ngày Thu/Chi */}
             <FormField
               control={form.control}
@@ -1280,6 +1336,7 @@ export default function IncomeExpensePostingDialog({
                       onChange={field.onChange}
                       onBlur={field.onBlur}
                       name={field.name}
+                      disabled={waitingUploads || committing}
                     />
                   </FormControl>
                   <FormMessage />
@@ -1338,6 +1395,7 @@ export default function IncomeExpensePostingDialog({
                         onChange={field.onChange}
                         onBlur={field.onBlur}
                         placeholder="Nhập số tiền đợt này"
+                        disabled={waitingUploads || committing}
                       />
                     </FormControl>
                     {remaining != null && (
@@ -1360,6 +1418,7 @@ export default function IncomeExpensePostingDialog({
                 </p>
               </FormItem>
             )}
+            </fieldset>
 
             {/* Hình ảnh / chứng từ */}
             <FormField
@@ -1392,6 +1451,7 @@ export default function IncomeExpensePostingDialog({
                       onRemovePending={handlePendingRemove}
                       uploadStats={uploadStats}
                       onWarm={warmUploadConnection}
+                      pendingLocked={committing}
                     />
                   </FormControl>
                   <FormMessage />

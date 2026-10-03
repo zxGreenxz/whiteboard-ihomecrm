@@ -47,7 +47,9 @@ vi.mock('@/lib/storage', () => ({
   // Hộp tải bằng uploadFileDetailed (có số đo); cùng giả lập `taiLen` trả URL kho.
   uploadFileDetailed: async (bucket: string, path: string, file: File, opts?: unknown) => {
     const url = (await H.taiLen(bucket, path, file, opts)) as string;
-    return { url, path, type: file.type, size: file.size, stats: { attempts: 1 } };
+    // Như đường thật: trả kèm bản ĐÃ NÉN nằm trong kho (đổi đuôi .webp).
+    const daNen = new File([file], file.name.replace(/\.[^.]+$/, '.webp'), { type: 'image/webp' });
+    return { url, path, type: daNen.type, size: daNen.size, stats: { attempts: 1 }, file: daNen };
   },
   deleteFile: (...a: unknown[]) => H.xoaFile(...a),
   sanitizeStorageFileName: (ten: string) => ten,
@@ -311,7 +313,8 @@ describe('Hộp Thu/Chi — ảnh gom tới lúc xác nhận (E2)', () => {
     await waitFor(() => expect(H.ghiSo).toHaveBeenCalledTimes(1));
 
     expect(H.khoChungTu).toHaveBeenCalledTimes(1);
-    expect((H.khoChungTu.mock.calls[0][0] as File).name).toBe('bien-lai.png');
+    // Đường lùi tải lại BẢN ĐÃ NÉN, không phải ảnh gốc (có thể tới 25 MB) lúc hộp đang khoá.
+    expect((H.khoChungTu.mock.calls[0][0] as File).name).toBe('bien-lai.webp');
     expect(H.ghiSo.mock.calls[0][0].evidenceIds).toEqual(['ev-kho-chung-tu-rieng']);
     expect(H.xoaFile).toHaveBeenCalledWith(BUCKET, path);
     expect(H.toastCanhBao).toHaveBeenCalled();
@@ -687,6 +690,51 @@ describe('tải ảnh nhanh và chịu mạng chập chờn', () => {
     await waitFor(() => expect(H.xoaFile).toHaveBeenCalledWith(BUCKET, tai.url().slice(KHO.length)));
     await waitFor(() => expect(screen.queryByText('Đang kiểm ảnh của phiếu…')).toBeNull());
     fireEvent.click(screen.getByRole('button', { name: 'Chi' }));
+    await waitFor(() => expect(H.ghiSo).toHaveBeenCalledTimes(1));
+    expect(lenhGhiAnh()).toHaveLength(0);
+    expect(H.ghiSo.mock.calls[0][0].evidenceIds).toEqual([EV_CU]);
+  });
+
+  it('đã bấm Chi, đang chờ ảnh: ô Ngày / Sổ quỹ KHOÁ — tiền đi đúng sổ lúc bấm, không đổi được giữa chừng', async () => {
+    const tai = taiCho();
+    render(<Khung />);
+    chon();
+    await waitFor(() => expect(H.taiLen).toHaveBeenCalledTimes(1));
+    const oSo = screen.getByRole('combobox') as HTMLButtonElement;
+    expect(oSo.matches(':disabled')).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Chi' }));
+    await screen.findByRole('button', { name: 'Đang chờ ảnh tải xong...' });
+    expect(oSo.matches(':disabled')).toBe(true);
+    const oNgay = Array.from(document.querySelectorAll('fieldset input')) as HTMLInputElement[];
+    expect(oNgay.length).toBeGreaterThan(0);
+    expect(oNgay.every((i) => i.matches(':disabled'))).toBe(true);
+    tai.xong();
+    await waitFor(() => expect(H.ghiSo).toHaveBeenCalledTimes(1));
+    expect(H.ghiSo.mock.calls[0][0]).toMatchObject({ cashbookId: SO });
+  });
+
+  it('phiếu chưa có ảnh, ảnh duy nhất tải hỏng: bấm Chi ra đúng câu "còn ảnh chưa tải được"', async () => {
+    H.taiLen.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    render(<Khung />);
+    chon('bill-hong.png');
+    await waitFor(() => expect(oDangTai()?.dataset.phase).toBe('failed'));
+    fireEvent.click(screen.getByRole('button', { name: 'Chi' }));
+    await screen.findByText(/Còn 1 ảnh chưa tải được/);
+    expect(screen.queryByText('Thêm ít nhất một ảnh hoặc tệp chứng từ cho lần thu/chi này.')).toBeNull();
+    expect(H.ghiSo).not.toHaveBeenCalled();
+  });
+
+  it('đang chờ ảnh mà gỡ ảnh đó: hộp thôi chờ, chi bằng chứng từ còn lại, không ghi ảnh đã gỡ', async () => {
+    may.anh = [ANH_CU];
+    const tai = taiCho();
+    render(<Khung />);
+    await waitFor(() => expect(screen.queryByText('Đang kiểm ảnh của phiếu…')).toBeNull());
+    chon('bill.png');
+    await waitFor(() => expect(H.taiLen).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('button', { name: 'Chi' }));
+    await screen.findByRole('button', { name: 'Đang chờ ảnh tải xong...' });
+    fireEvent.click(screen.getByRole('button', { name: 'Gỡ ảnh bill.png' }));
+    expect(tai.opts().resilient?.signal?.aborted).toBe(true);
     await waitFor(() => expect(H.ghiSo).toHaveBeenCalledTimes(1));
     expect(lenhGhiAnh()).toHaveLength(0);
     expect(H.ghiSo.mock.calls[0][0].evidenceIds).toEqual([EV_CU]);

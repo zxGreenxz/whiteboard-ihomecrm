@@ -45,6 +45,19 @@ export class UploadTooLargeError extends Error {
   }
 }
 
+/**
+ * Máy chủ lưu trữ trả lỗi hẳn (quyền, định dạng… hoặc 5xx sau khi đã tự tải lại).
+ * `statusCode` là mã thật trong thân trả lời (Storage bọc 403/409 trong HTTP 400).
+ */
+export class UploadRejectedError extends Error {
+  readonly statusCode: number;
+  constructor(statusCode: number, message: string) {
+    super(message);
+    this.name = "UploadRejectedError";
+    this.statusCode = statusCode;
+  }
+}
+
 /** Lỗi do chính người dùng huỷ lệnh tải (gỡ ảnh, đóng hộp) — không phải lỗi để báo. */
 export function uploadAbortError(): DOMException {
   return new DOMException("Đã huỷ tải tệp", "AbortError");

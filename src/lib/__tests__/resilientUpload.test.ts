@@ -136,6 +136,67 @@ describe('uploadResilient', () => {
     expect(tien.filter((x) => x.phase === 'retrying').map((x) => x.attempt)).toEqual([2, 3]);
   });
 
+  it('lượt CUỐI không bị cắt vì "đứng": mạng rất yếu mà vẫn nhích thì chạy tới hạn tổng, khỏi tải lại từ 0', async () => {
+    const chamMaVanToi: Kich = (req) =>
+      new Promise((resolve, reject) => {
+        req.onActivity({ loaded: 1_000, total: 40_100, done: false });
+        // Đứng 10 giây (quá STALL_MS) rồi mới xong.
+        const t = setTimeout(() => resolve({ status: 200, text: '{}' }), 10_000);
+        req.signal.addEventListener('abort', () => { clearTimeout(t); reject(new DOMException('a', 'AbortError')); });
+      });
+    const { d, sent } = deps([dungIm, dungIm, chamMaVanToi]);
+    const p = uploadResilient('b', KEY, FILE, {}, d);
+    await vi.advanceTimersByTimeAsync(CONNECT_MS * 2 + 2_000 + 10_000);
+    await expect(p).resolves.toMatchObject({ attempts: 3 });
+    expect(sent[2].signal.aborted).toBe(false);
+  });
+
+  it('lấy phiên bị treo (auth-js chờ khoá không giới hạn): mỗi lượt chỉ chờ CONNECT_MS, hết lượt thì báo — không treo "0%" mãi', async () => {
+    const { d, sent } = deps([], { getToken: () => new Promise<string | null>(() => {}) });
+    const p = uploadResilient('b', KEY, FILE, {}, d).catch((e: unknown) => e);
+    await vi.advanceTimersByTimeAsync(CONNECT_MS * 3 + 2_000);
+    expect(await p).toBeInstanceOf(UploadTimeoutError);
+    expect(sent).toHaveLength(0);
+  });
+
+  it('gỡ ảnh đúng lúc đang lấy phiên: dừng ngay, KHÔNG gửi tệp đi', async () => {
+    const ctl = new AbortController();
+    const { d, sent } = deps([ok], { getToken: () => new Promise<string | null>(() => {}) });
+    const p = uploadResilient('b', KEY, FILE, { signal: ctl.signal }, d).catch((e: unknown) => e);
+    await vi.advanceTimersByTimeAsync(100);
+    ctl.abort();
+    expect(isAbortError(await p)).toBe(true);
+    expect(sent).toHaveLength(0);
+  });
+
+  it('409 ngay lượt đầu: không nhận vơ dù trùng cỡ', async () => {
+    const storedSize = vi.fn(async () => FILE.size);
+    const { d } = deps([traLoi(400, { statusCode: '409', error: 'Duplicate' })], { storedSize });
+    await expect(uploadResilient('b', KEY, FILE, {}, d)).rejects.toMatchObject({ statusCode: 409 });
+    expect(storedSize).not.toHaveBeenCalled();
+  });
+
+  it('409 mà chưa đọc được cỡ (mạng chập chờn): hỏi lại ở lượt sau rồi mới kết luận', async () => {
+    const rot: Kich = async () => { throw new TypeError('Network request failed'); };
+    const trung = traLoi(400, { statusCode: '409', error: 'Duplicate' });
+    const storedSize = vi.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(FILE.size);
+    const { d } = deps([rot, trung, trung], { storedSize });
+    const p = uploadResilient('b', KEY, FILE, {}, d);
+    await vi.advanceTimersByTimeAsync(2_500);
+    await expect(p).resolves.toMatchObject({ attempts: 3 });
+    expect(storedSize).toHaveBeenCalledTimes(2);
+  });
+
+  it('navigator.onLine báo sai (WebView/VPN): chỉ chờ có mạng 3 giây rồi vẫn gửi', async () => {
+    const waitOnline = vi.fn((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+    const { d, sent } = deps([ok], { isOnline: () => false, waitOnline });
+    const p = uploadResilient('b', KEY, FILE, {}, d);
+    await vi.advanceTimersByTimeAsync(3_000);
+    await expect(p).resolves.toMatchObject({ attempts: 1 });
+    expect(waitOnline).toHaveBeenCalledWith(3_000, expect.any(AbortSignal));
+    expect(sent).toHaveLength(1);
+  });
+
   it('lần trước đã lên mà mất trả lời: lần sau nhận 409, kho có đúng cỡ tệp ⇒ coi là xong, không tạo bản trùng', async () => {
     const lenRoiMatTraLoi: Kich = async () => { throw new TypeError('Network request failed'); };
     const storedSize = vi.fn(async () => FILE.size);
@@ -151,11 +212,14 @@ describe('uploadResilient', () => {
   });
 
   it('409 mà cỡ trong kho khác: KHÔNG nhận nhầm tệp khác', async () => {
+    const rot: Kich = async () => { throw new TypeError('Network request failed'); };
     const { d } = deps(
-      [traLoi(400, { statusCode: '409', error: 'Duplicate' })],
+      [rot, traLoi(400, { statusCode: '409', error: 'Duplicate' })],
       { storedSize: async () => 12 },
     );
-    await expect(uploadResilient('b', KEY, FILE, {}, d)).rejects.toMatchObject({ statusCode: 409 });
+    const p = uploadResilient('b', KEY, FILE, {}, d).catch((e: unknown) => e);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(await p).toMatchObject({ statusCode: 409 });
   });
 
   it('máy chủ từ chối hẳn (quyền): không tải lại, ném lỗi có mã', async () => {
@@ -202,26 +266,27 @@ describe('uploadResilient', () => {
     expect(d.remove).toHaveBeenCalledWith('b', KEY);
   });
 
-  it(`hết ${MAX_ATTEMPTS} lượt vì mạng đứng: ném UploadTimeoutError nói đúng số giây đã chờ, dọn lần gửi dở`, async () => {
+  it(`mạng đứng cả ${MAX_ATTEMPTS} lượt: lượt cuối chờ tới hạn tổng 45 giây rồi báo đúng số giây, dọn lần gửi dở`, async () => {
     const { d, sent } = deps([dungIm, dungIm, dungIm]);
-    const p = uploadResilient('b', KEY, FILE, {}, d).catch((e: unknown) => e);
-    await vi.advanceTimersByTimeAsync(CONNECT_MS * 3 + 2_000);
-    const loi = await p;
-    expect(loi).toBeInstanceOf(UploadTimeoutError);
-    expect(sent).toHaveLength(MAX_ATTEMPTS);
-    expect((loi as UploadTimeoutError).ms).toBe(CONNECT_MS * 3 + 2_000);
-    expect(d.remove).toHaveBeenCalledWith('b', KEY);
-  });
-
-  it('không bao giờ chờ quá hạn tổng 45 giây (ảnh dưới 1 MB), kể cả khi mất mạng mãi', async () => {
-    const rot: Kich = async () => { throw new TypeError('Network request failed'); };
-    const waitOnline = vi.fn((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
-    const { d } = deps([rot], { isOnline: () => false, waitOnline });
     const p = uploadResilient('b', KEY, FILE, {}, d).catch((e: unknown) => e);
     await vi.advanceTimersByTimeAsync(45_000);
     const loi = await p;
     expect(loi).toBeInstanceOf(UploadTimeoutError);
+    expect(sent).toHaveLength(MAX_ATTEMPTS);
     expect((loi as UploadTimeoutError).ms).toBe(45_000);
+    expect(d.remove).toHaveBeenCalledWith('b', KEY);
+  });
+
+  it('mất mạng thật cả 3 lượt: không đợi đủ 45 giây mới báo', async () => {
+    const rot: Kich = async () => { throw new TypeError('Network request failed'); };
+    const waitOnline = vi.fn((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+    const { d, sent } = deps([rot, rot, rot], { isOnline: () => false, waitOnline });
+    const p = uploadResilient('b', KEY, FILE, {}, d).catch((e: unknown) => e);
+    await vi.advanceTimersByTimeAsync(3_000 * 3 + 2_000);
+    const loi = await p;
+    expect(loi).toBeInstanceOf(UploadTimeoutError);
+    expect(sent).toHaveLength(3);
+    expect((loi as UploadTimeoutError).ms).toBe(11_000);
   });
 
   it('máy chủ lỗi 5xx cả 3 lượt: báo máy chủ lỗi, không đổ cho mạng chậm', async () => {

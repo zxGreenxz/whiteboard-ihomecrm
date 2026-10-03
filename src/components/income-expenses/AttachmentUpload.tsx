@@ -3,7 +3,7 @@ import { Upload, X, FileText, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { uploadFile, deleteFile } from '@/lib/storage';
 import { warmUploadConnection } from '@/lib/storage/resilientUpload';
-import { isAbortError } from '@/lib/uploadDeadline';
+import { isAbortError, UploadTooLargeError } from '@/lib/uploadDeadline';
 import {
   MAX_ATTACHMENT_BYTES,
   MAX_IMAGE_SOURCE_BYTES,
@@ -143,8 +143,11 @@ export default function AttachmentUpload({
           if (total > 0) setPercent(Math.min(99, Math.round((loaded / total) * 100)));
         };
 
-        // Tải cùng lúc tối đa PARALLEL_UPLOADS tệp; danh sách giữ đúng thứ tự đã chọn.
-        const results = await runLimited(fileArray, PARALLEL_UPLOADS, async (file, index): Promise<string | null> => {
+        // Kho ảnh thu chi: tải cùng lúc tối đa PARALLEL_UPLOADS tệp. Kho khác vẫn đi đường
+        // cũ có hạn cứng 20 giây MỖI lệnh — chia băng thông là dễ quá hạn ⇒ giữ lần lượt.
+        // Danh sách giữ đúng thứ tự đã chọn.
+        const limit = evidenceStore ? PARALLEL_UPLOADS : 1;
+        const results = await runLimited(fileArray, limit, async (file, index): Promise<string | null> => {
           const error = validateAttachmentFile(file, { compressFirst: evidenceStore });
           if (error) {
             failed.push({ file, reason: error, retryable: false });
@@ -172,6 +175,10 @@ export default function AttachmentUpload({
             return publicUrl;
           } catch (err: unknown) {
             if (isAbortError(err)) return null; // form đã đóng
+            if (err instanceof UploadTooLargeError) {
+              failed.push({ file, reason: 'Ảnh sau khi nén vẫn lớn hơn 5MB — chụp lại hoặc chọn tệp nhỏ hơn.', retryable: false });
+              return null;
+            }
             console.error('[AttachmentUpload] upload failed:', err);
             const feedback = friendlyError(err, `Chưa tải được tệp ${file.name}`, { operation: 'tải chứng từ' });
             failed.push({ file, reason: feedback.description, retryable: true });

@@ -144,7 +144,7 @@ describe('compressImage', () => {
 
     it('ảnh chụp màn hình điện thoại (PNG dựng đứng): cạnh dài 1024 px, chất lượng 0,5', async () => {
       const { drawn, qualities } = ghiCanvas(1080, 2400);
-      const out = await compressImage(png(900_000), { profile: 'evidence' });
+      const out = await compressImage(png(900_000), { profile: 'evidence', touchDevice: true });
       expect(drawn()).toEqual([[461, 1024]]);
       expect(qualities).toEqual([0.5]);
       expect(out.size).toBe(30_000);
@@ -152,27 +152,40 @@ describe('compressImage', () => {
 
     it('ảnh camera (JPEG) — kể cả chụp giấy tờ dọc: giữ 1600 px, chất lượng thường', async () => {
       const { drawn, qualities } = ghiCanvas(3024, 4032);
-      await compressImage(new File([new Uint8Array(2_900_000)], 'image.jpg', { type: 'image/jpeg' }), { profile: 'evidence' });
+      await compressImage(new File([new Uint8Array(2_900_000)], 'image.jpg', { type: 'image/jpeg' }), { profile: 'evidence', touchDevice: true });
       expect(drawn()).toEqual([[1200, 1600]]);
       expect(qualities).toEqual([0.82]);
     });
 
     it('ảnh chụp màn hình máy tính (PNG nằm ngang, chữ nhỏ) và iPad (4:3): giữ 1600 px', async () => {
       const mayTinh = ghiCanvas(2560, 1440);
-      await compressImage(png(900_000), { profile: 'evidence' });
+      await compressImage(png(900_000), { profile: 'evidence', touchDevice: true });
       expect(mayTinh.drawn()).toEqual([[1600, 900]]);
       const iPad = ghiCanvas(2048, 2732);
-      await compressImage(png(900_000), { profile: 'evidence' });
+      await compressImage(png(900_000), { profile: 'evidence', touchDevice: true });
       expect(iPad.drawn()).toEqual([[1199, 1600]]);
     });
 
     it('bill PNG 100–200 KB vẫn được nén (mức bỏ qua của chứng từ là 48 KB, không phải 200 KB)', async () => {
       const { drawn } = ghiCanvas(1080, 2400);
-      const out = await compressImage(png(150_000), { profile: 'evidence' });
+      const out = await compressImage(png(150_000), { profile: 'evidence', touchDevice: true });
       expect(drawn()).toHaveLength(1);
       expect(out.size).toBe(30_000);
       const nho = png(40_000);
-      await expect(compressImage(nho, { profile: 'evidence' })).resolves.toBe(nho);
+      await expect(compressImage(nho, { profile: 'evidence', touchDevice: true })).resolves.toBe(nho);
+    });
+
+    it('máy tính (không cảm ứng): ảnh dán Ctrl+V luôn là PNG, kể cả ảnh chụp giấy tờ — giữ 1600 px', async () => {
+      const { drawn, qualities } = ghiCanvas(1080, 2400);
+      await compressImage(png(900_000), { profile: 'evidence', touchDevice: false });
+      expect(drawn()).toEqual([[720, 1600]]);
+      expect(qualities).toEqual([0.82]);
+    });
+
+    it('ảnh chụp cuộn dài (1080×5000) không phải khổ màn hình: giữ 1600 px, không còn 221 px bề ngang', async () => {
+      const { drawn } = ghiCanvas(1080, 5000);
+      await compressImage(png(900_000), { profile: 'evidence', touchDevice: true });
+      expect(drawn()).toEqual([[346, 1600]]);
     });
 
     it('không truyền profile: ảnh chụp màn hình vẫn nén mức cũ (các trang khác không đổi)', async () => {
@@ -181,6 +194,30 @@ describe('compressImage', () => {
       expect(drawn()).toEqual([[720, 1600]]);
       expect(qualities).toEqual([0.82]);
     });
+  });
+
+  it('chọn nhiều ảnh: nén LẦN LƯỢT (giải mã cùng lúc nhiều ảnh 12–48 MP làm máy yếu kẹt)', async () => {
+    installCanvas({ webp: true });
+    const moGiai: Array<() => void> = [];
+    let dangGiai = 0;
+    let caoNhat = 0;
+    vi.stubGlobal('createImageBitmap', () => {
+      dangGiai += 1;
+      caoNhat = Math.max(caoNhat, dangGiai);
+      return new Promise((resolve) => {
+        moGiai.push(() => {
+          dangGiai -= 1;
+          resolve({ width: 4032, height: 3024, close() {} });
+        });
+      });
+    });
+    const ba = [cameraJpeg(), cameraJpeg(), cameraJpeg()].map((f) => compressImage(f));
+    for (let i = 0; i < 3; i++) {
+      await vi.waitFor(() => expect(moGiai.length).toBe(i + 1));
+      moGiai[i]();
+    }
+    await Promise.all(ba);
+    expect(caoNhat).toBe(1);
   });
 
   it('bước nén bị treo: quá hạn thì trả ảnh gốc để việc tải vẫn đi tiếp, không kẹt "Đang tải..."', async () => {
