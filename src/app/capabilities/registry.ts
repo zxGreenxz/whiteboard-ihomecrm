@@ -122,6 +122,7 @@ export const COPILOT_PAGE_EXEMPTIONS = [
   { route: "/thanh-toan", reason: "payment surface is deferred" },
   { route: "/approvals", reason: "approval surface is deferred" },
   { route: "/my-day", reason: "personal dashboard surface is deferred" },
+  { route: "/viec-cua-toi", reason: "device-local personal tasks are not a business-data Copilot surface" },
   { route: "/reports/coverage", reason: "coverage report is deferred" },
   { route: "/quayso/*", reason: "campaign/admin surface is deferred" },
   { route: "*", reason: "404 fallback is not a Copilot surface" },

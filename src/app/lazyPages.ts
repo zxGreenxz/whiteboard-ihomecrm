@@ -28,6 +28,7 @@ export const CopilotLauncher = lazy(() => import("../copilot/CopilotLauncher"));
 // AI Copilot — trang quản trị (super admin: full; user thường: tab Sử dụng)
 export const AiCopilotAdminPage = lazy(() => import("../copilot/admin/AiCopilotAdminPage"));
 export const NotificationsPage = lazy(() => import("../pages/NotificationsPage"));
+export const PersonalTasksPage = lazy(() => import("../pages/PersonalTasksPage"));
 export const ChatZaloPage = lazy(() => import("../pages/chat-zalo/ChatZaloPage"));
 
 // Danh mục dữ liệu

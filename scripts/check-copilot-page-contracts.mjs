@@ -264,7 +264,8 @@ function main() {
   // Them /settings/finance/cam-ket-chi (26/09/2026) dua con so len 112; trang thu giong noi
   // /voice-task-lab da cat kho 30/09/2026 (tag archive/voice-task-lab-20260930) nen khong tinh.
   // Them /chi-tieu (Bao chi nhanh, 01/10/2026) dua con so len 113 — trang co AI rieng, mien hop dong Copilot.
-  const problems = validateContracts(contracts, routes, exemptions, permissionKeys, 113, actionIds);
+  // /viec-cua-toi: kho cá nhân trên thiết bị, được khai exemption riêng, tổng 114 route.
+  const problems = validateContracts(contracts, routes, exemptions, permissionKeys, 114, actionIds);
   if (problems.length) {
     console.error(`Copilot page contracts: ${problems.length} problem(s)`);
     for (const problem of problems) console.error(`  - ${problem}`);

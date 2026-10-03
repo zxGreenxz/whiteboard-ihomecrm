@@ -16,6 +16,13 @@
   },
   "include": [],
   "files": [
+    "src/lib/personal-tasks/model.ts",
+    "src/lib/personal-tasks/storage.ts",
+    "src/lib/personal-tasks/calendar.ts",
+    "src/hooks/usePersonalTasks.ts",
+    "src/components/personal-tasks/TaskRow.tsx",
+    "src/components/personal-tasks/TaskSheets.tsx",
+    "src/pages/PersonalTasksPage.tsx",
     "src/hooks/useContractRentSupport.ts",
     "src/lib/invoiceRentSupport.ts",
     "src/lib/rentSupport.ts",

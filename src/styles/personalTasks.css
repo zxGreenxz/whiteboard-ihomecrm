@@ -1,0 +1,128 @@
+/* Scoped: the supplied design uses a 600px breakpoint and pointer-based gestures,
+   independent of the main mobile shell (which fetches business data). */
+.ptask-app, .ptask-sheet { --pt-blue: #087bff; --pt-ink: #122139; --pt-muted: #76849a; color: var(--pt-ink); font-family: 'Segoe UI', Tahoma, sans-serif; }
+.ptask-app { height: 100vh; height: 100dvh; display: flex; flex-direction: column; background: #f4f7fb; overflow: hidden; }
+.ptask-app button, .ptask-sheet button { -webkit-tap-highlight-color: transparent; }
+.ptask-app button:focus-visible, .ptask-app a:focus-visible, .ptask-sheet button:focus-visible { outline: 2px solid var(--pt-blue); outline-offset: 3px; }
+.ptask-app button:disabled, .ptask-sheet button:disabled { opacity: .45; cursor: not-allowed; }
+.ptask-header { flex-shrink: 0; padding: max(16px, env(safe-area-inset-top)) 16px 12px; border-bottom: 1px solid #e8eef6; background: white; }
+.ptask-title-row { display: flex; align-items: center; gap: 10px; }
+.ptask-title { flex: 1; min-width: 0; }
+.ptask-title h1 { margin: 0; font-size: 19px; font-weight: 800; letter-spacing: -.5px; }
+.ptask-title p { margin: 3px 0 0; color: #61738e; font-size: 11px; font-weight: 600; line-height: 1.6; }
+.ptask-title p span { white-space: nowrap; }
+.ptask-home, .ptask-download { display: flex; align-items: center; justify-content: center; flex-shrink: 0; height: 36px; width: 32px; border-radius: 10px; }
+.ptask-home { color: #5e718e; }
+.ptask-download { border: 1px solid #cfe3ff; background: #f5faff; color: var(--pt-blue); }
+.ptask-total { white-space: nowrap; font-size: 11px; font-weight: 700; color: #0674ef; background: #eaf4ff; border: 1px solid #cce3ff; border-radius: 99px; padding: 5px 9px; }
+.ptask-local-note { margin: 8px 0 10px 42px; color: #7b879a; font-size: 10px; }
+.ptask-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.ptask-tabs button { display: flex; align-items: center; justify-content: center; gap: 5px; height: 42px; padding: 0 3px; border: 1px solid #e7edf6; border-radius: 12px; color: #667790; background: white; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.ptask-tabs button[aria-selected=true] { border-color: #62a8ff; color: #0072ff; background: #e9f3ff; box-shadow: 0 0 0 1px #e8f2ff; }
+.ptask-tabs span, .ptask-column-title span { display: inline-flex; align-items: center; justify-content: center; padding: 0 5px; min-width: 17px; height: 17px; border-radius: 7px; font-size: 10px; color: #6e7d94; background: #eef3f9; }
+.ptask-tabs [aria-selected=true] span { background: #bfddff; color: #0069dc; }
+.ptask-columns { display: grid; grid-template-columns: 1fr; min-height: 0; flex: 1; }
+.ptask-column { display: none; min-width: 0; min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; }
+.ptask-column.active { display: block; }
+.ptask-column-title { display: none; }
+.ptask-list { padding: 14px 14px max(104px, calc(88px + env(safe-area-inset-bottom))); }
+.ptask-gesture-hint { margin: 0 0 14px; padding: 7px 2px; border-radius: 9px; background: #edf2f8; color: #8090a7; text-align: center; font-size: 11px; }
+.ptask-gesture-hint span { margin: 0 8px; }
+.ptask-group { margin-bottom: 16px; }
+.ptask-group-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin: 0 2px 7px; font-size: 10px; color: #6e8099; }
+.ptask-group-heading > div { display: flex; align-items: baseline; flex-wrap: wrap; gap: 5px; }
+.ptask-group-heading strong { color: #19304d; font-size: 12px; font-weight: 800; }
+.ptask-group-heading > span { flex-shrink: 0; }
+.ptask-group-heading .late, .ptask-app .late { color: #dc2626; }
+.ptask-card { overflow: hidden; background: white; border: 1px solid #e3eaf3; border-radius: 16px; box-shadow: 0 1px 3px rgb(15 23 42 / 5%); }
+.ptask-row { position: relative; overflow: hidden; }
+.ptask-row + .ptask-row { border-top: 1px solid #edf1f6; }
+.ptask-row-face { position: relative; display: flex; align-items: center; gap: 10px; padding: 12px 12px 12px 15px; min-height: 52px; background: white; touch-action: pan-y; transition: transform 200ms cubic-bezier(.16,1,.3,1); }
+.ptask-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.ptask-task-text { font-size: 14.5px; line-height: 1.35; font-weight: 600; overflow-wrap: anywhere; white-space: pre-wrap; user-select: none; }
+.ptask-row.is-done .ptask-task-text { color: #95a1b2; text-decoration: line-through; }
+.ptask-done-time { flex-shrink: 0; font-size: 11px; color: #8897a9; font-weight: 600; }
+.ptask-row-actions { display: flex; flex-shrink: 0; gap: 5px; }
+.ptask-action { display: flex; align-items: center; justify-content: center; width: 36px; height: 40px; border-radius: 12px; border: 1px solid transparent; }
+.ptask-action.due, .ptask-clock, .ptask-due-chip { color: #b45309; background: #fef3c7; border-color: #fde68a; }
+.ptask-action.done { color: #15803d; background: #dcfce7; border-color: #bbf7d0; }
+.ptask-action.undo { color: #74849c; background: #f0f4f9; }
+.ptask-clock { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 38px; height: 38px; border-radius: 12px; }
+.ptask-due-chip { padding: 3px 7px; border-radius: 6px; font-size: 11px; font-weight: 600; }
+.ptask-clock.late, .ptask-due-chip.late { color: #dc2626; background: #fee2e2; }
+.ptask-done-check { display: flex; align-items: center; justify-content: center; height: 21px; width: 21px; flex-shrink: 0; border-radius: 50%; color: white; background: #16a34a; }
+.ptask-swipe { position: absolute; inset: 0; display: flex; align-items: center; gap: 7px; padding: 0 20px; font-size: 12px; font-weight: 700; }
+.ptask-swipe.right { color: white; background: #16a34a; }
+.ptask-swipe.left { justify-content: flex-end; color: #92400e; background: #fde68a; }
+.ptask-swipe.undo { justify-content: flex-end; color: #475569; background: #e2e8f0; }
+.ptask-touch-menu { display: none; }
+.ptask-more { width: 32px; height: 36px; display: flex; align-items: center; justify-content: center; color: #a2aec0; }
+.ptask-empty { display: flex; align-items: center; flex-direction: column; text-align: center; color: #8b99ad; padding: 65px 8px; gap: 9px; }
+.ptask-empty > svg { width: 36px; height: 36px; stroke-width: 1.2; color: #acc3df; margin-bottom: 5px; }
+.ptask-empty strong { font-size: 13px; font-weight: 600; color: #6d7f97; }
+.ptask-empty p { font-size: 12px; }
+.ptask-fab { position: fixed; bottom: max(22px, calc(16px + env(safe-area-inset-bottom))); right: max(22px, env(safe-area-inset-right)); display: flex; align-items: center; justify-content: center; width: 54px; height: 54px; border-radius: 18px; color: white; background: linear-gradient(#2a96ff, #0068ff); box-shadow: 0 7px 20px rgb(0 104 255 / 28%); z-index: 20; }
+.ptask-error { margin: 18px; padding: 16px; color: #991b1b; background: #fff1f2; border-radius: 12px; font-size: 13px; }
+.ptask-error button { margin-top: 10px; text-decoration: underline; font-weight: 700; }
+.ptask-loading { padding: 24px; color: #76849a; font-size: 13px; }
+.ptask-sheet { --pt-blue: #087bff; top: auto; bottom: 0; left: 0; transform: none; max-width: none; width: 100%; max-height: 94dvh; overflow-y: auto; gap: 12px; border: 0; border-radius: 22px 22px 0 0; padding: 20px 20px max(22px, env(safe-area-inset-bottom)); background: white; }
+.ptask-sheet[data-state=open] { animation: ptask-sheet-in 180ms ease-out; }
+@keyframes ptask-sheet-in { from { opacity: 0; } to { opacity: 1; } }
+.ptask-sheet-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.ptask-sheet-heading h2 { font-size: 16px; font-weight: 800; }
+.ptask-close { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; color: #7b8ba1; border-radius: 10px; background: #f3f6fa; }
+.ptask-sheet-description { color: #7a8ba2; font-size: 12px; overflow-wrap: anywhere; max-height: 72px; overflow-y: auto; }
+.ptask-form { display: flex; flex-direction: column; gap: 12px; }
+.ptask-form label { font-size: 12px; font-weight: 700; color: #667892; }
+.ptask-form textarea { width: 100%; min-height: 92px; resize: vertical; padding: 12px; border: 1px solid #dce5f0; border-radius: 12px; background: #f9fbfd; font-size: 16px; outline-color: var(--pt-blue); color: var(--pt-ink); }
+.ptask-field-hint { display: flex; justify-content: space-between; gap: 10px; color: #94a1b2; font-size: 11px; margin-top: -5px; }
+.ptask-field-hint [role=alert], .ptask-form-error { color: #dc2626; }
+.ptask-sheet-footer { display: flex; gap: 10px; padding-top: 7px; }
+.ptask-sheet-footer button { min-height: 46px; border-radius: 12px; padding: 10px 16px; font-size: 13px; font-weight: 700; }
+.ptask-primary { flex: 1; background: linear-gradient(#2a96ff, #0068ff); color: white; }
+.ptask-secondary { border: 1px solid #dfe7f1; background: white; color: #75859c; }
+.ptask-calendar-heading { display: flex; align-items: center; gap: 3px; }
+.ptask-calendar-heading strong { flex: 1; text-align: center; font-size: 13px; }
+.ptask-calendar-heading button { display: flex; align-items: center; justify-content: center; width: 32px; height: 36px; color: #647996; border-radius: 9px; background: #f5f8fc; }
+.ptask-calendar { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.ptask-weekday { text-align: center; padding: 3px 0; font-size: 11px; font-weight: 700; color: #8291a8; }
+.ptask-day { display: flex; align-items: center; justify-content: center; flex-direction: column; min-height: 42px; border-radius: 10px; font-size: 13px; font-weight: 700; }
+.ptask-day small { font-size: 9px; font-weight: 600; line-height: 1.2; color: #94a2b7; }
+.ptask-day.outside { opacity: .4; }
+.ptask-day.today { box-shadow: inset 0 0 0 1px #68aaff; }
+.ptask-calendar .holiday { color: #e25056; }
+.ptask-day.selected { background: #087bff; color: white; opacity: 1; }
+.ptask-day.selected small { color: #d8ebff; }
+.ptask-time-row { display: flex; justify-content: space-between; align-items: center; margin-top: 5px; }
+.ptask-time-row input { width: 118px; min-height: 44px; padding: 8px 10px; border: 1px solid #dce5f0; border-radius: 10px; background: white; color: #233953; font-size: 16px; font-weight: 700; }
+.ptask-time-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.ptask-time-chips button { min-height: 36px; padding: 6px 15px; border-radius: 99px; background: #f1f5fa; color: #788aa3; font-size: 12px; font-weight: 700; }
+.ptask-time-chips button[aria-pressed=true] { background: #e4f1ff; color: #087bff; box-shadow: inset 0 0 0 1px #c1ddff; }
+@media (pointer: coarse) {
+  .ptask-row-actions { display: none; }
+  .ptask-touch-menu { display: block; }
+}
+@media (pointer: fine) { .ptask-gesture-hint { display: none; } }
+@media (min-width: 601px) {
+  .ptask-header { padding: 22px 24px 12px; }
+  .ptask-title p { font-size: 12px; }
+  .ptask-local-note { margin-bottom: 0; }
+  .ptask-tabs, .ptask-gesture-hint { display: none; }
+  .ptask-columns { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; padding: 0 8px; }
+  .ptask-column { display: block; }
+  .ptask-column-title { display: flex; align-items: center; gap: 8px; position: sticky; top: 0; z-index: 2; margin: 0; padding: 20px 12px 12px; background: #f4f7fb; font-size: 14px; font-weight: 800; }
+  .ptask-list { padding: 4px 12px 104px; }
+  .ptask-sheet { max-width: 460px; left: 50%; top: 50%; bottom: auto; transform: translate(-50%, -50%); border-radius: 22px; }
+}
+@media (min-width: 601px) and (max-width: 950px) {
+  .ptask-columns { gap: 6px; }
+  .ptask-list { padding-left: 4px; padding-right: 4px; }
+  .ptask-row-face { flex-wrap: wrap; padding: 10px; gap: 6px; }
+  .ptask-row-text { min-width: 90px; }
+  .ptask-row-actions { margin-left: auto; }
+  .ptask-group-heading { flex-wrap: wrap; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ptask-row-face { transition: none; }
+  .ptask-sheet { animation: none !important; transition: none !important; }
+}
