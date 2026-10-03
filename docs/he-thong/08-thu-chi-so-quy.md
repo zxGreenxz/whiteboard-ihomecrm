@@ -219,6 +219,12 @@ flowchart TD
   có trần từ kỳ 09/2026): trong cam kết/dưới trần ⇒ `APPROVED`, vượt ⇒ `UNAPPROVED` kể cả người có quyền
   duyệt. Bucket chưa bật vẫn theo thang cũ — người lập có quyền duyệt ⇒ `APPROVED`;
   hạng mục `force_approval` hoặc tổng ≥ ngưỡng ⇒ `UNAPPROVED` chờ duyệt. Phiếu THU tự duyệt. Huỷ phiếu = set `CANCELLED` (`UPDATE` trực tiếp ở hook, kèm ghi nhật ký qua RPC `log_income_expense_action` — §4.18); khôi phục phiếu đã huỷ CHỈ qua RPC `restore_income_expense` (super admin, §4.18).
+- **Ảnh chứng từ trong hộp Chi / Duyệt và Chi** (từ 03/10/2026): chọn ảnh là ô ảnh hiện ngay kèm %, ảnh tải lên kho
+  luôn (tối đa 3 ảnh cùng lúc), chỉ ghi lên phiếu khi bấm xác nhận. Mạng đứng thì máy tự tải lại, tối đa 3 lần trong 45
+  giây (ô ảnh ghi "Thử lại (2)"); vẫn hỏng thì ô ghi "Tải hỏng" kèm nút **Thử lại**, không phải chọn lại ảnh. Bấm xác
+  nhận lúc ảnh còn đang tải thì nút ghi "Đang chờ ảnh tải xong..." rồi tự chạy tiếp; còn ảnh hỏng thì dừng và báo. Ảnh
+  chụp màn hình điện thoại (bill chuyển khoản) nén còn khoảng 10–50 KB, ảnh camera giữ cạnh dài 1600 px; ảnh gốc tối đa
+  25MB, sau nén tối đa 5MB. Dưới ảnh vừa tải ghi cỡ và thời gian tải (vd "16 KB · 0,9s").
 
 ### 4.3 Khoá sổ (`income_expenses_check_lock`, migration `20260425000001`)
 
@@ -282,7 +288,7 @@ Toggle "đã kiểm": nếu chưa kiểm → set `verified_*` với người + n
 Ở danh sách hoặc chi tiết phiếu, bấm biểu tượng **tài liệu có dấu cộng** — **Bổ sung chứng từ / ghi chú**. Admin cũng có nút này, tách khỏi biểu tượng bút **Sửa phiếu**.
 
 - **Nội dung đã có:** ghi chú chỉ đọc; ảnh bấm để xem lớn, không có nút xoá.
-- **Ảnh / chứng từ bổ sung:** chọn, kéo thả hoặc dán ảnh mới. Mỗi lần tối đa 20 tệp JPG, PNG, PDF; mỗi tệp tối đa 5MB.
+- **Ảnh / chứng từ bổ sung:** chọn, kéo thả hoặc dán ảnh mới. Mỗi lần tối đa 20 tệp JPG, PNG, PDF. Ảnh tự nén trước khi tải (ảnh gốc tối đa 25MB, sau nén tối đa 5MB); PDF tối đa 5MB.
 - **Ghi chú bổ sung:** nhập ở ô riêng. Có thể chỉ thêm ghi chú hoặc chỉ thêm ảnh; bấm **Lưu bổ sung**.
 - Sau khi lưu, phần mới hiện dưới phần cũ, giữ xuống dòng và ghi **Người bổ sung: tên · ngày giờ**. Lần chỉ thêm ảnh cũng ghi rõ người bổ sung. Nội dung bổ sung đã lưu không sửa/xoá được.
 

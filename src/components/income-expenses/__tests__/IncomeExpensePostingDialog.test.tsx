@@ -17,7 +17,7 @@
 
 import { useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const USER = '00000000-0000-4000-8000-0000000000aa';
@@ -35,6 +35,8 @@ const H = vi.hoisted(() => ({
   ghiSo: vi.fn(),
   toastLoi: vi.fn(),
   toastCanhBao: vi.fn(),
+  /** Chuẩn bị đường tải (làm mới phiên + mở sẵn kết nối). */
+  lamAm: vi.fn(),
 }));
 
 vi.mock('@/integrations/supabase/client', () => ({
@@ -42,9 +44,15 @@ vi.mock('@/integrations/supabase/client', () => ({
 }));
 vi.mock('@/lib/storage', () => ({
   uploadFile: (...a: unknown[]) => H.taiLen(...a),
+  // Hộp tải bằng uploadFileDetailed (có số đo); cùng giả lập `taiLen` trả URL kho.
+  uploadFileDetailed: async (bucket: string, path: string, file: File, opts?: unknown) => {
+    const url = (await H.taiLen(bucket, path, file, opts)) as string;
+    return { url, path, type: file.type, size: file.size, stats: { attempts: 1 } };
+  },
   deleteFile: (...a: unknown[]) => H.xoaFile(...a),
   sanitizeStorageFileName: (ten: string) => ten,
 }));
+vi.mock('@/lib/storage/resilientUpload', () => ({ warmUploadConnection: () => H.lamAm() }));
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ data: { id: USER } }) }));
 vi.mock('@/components/ui/storage-image', () => ({
   StorageImage: ({ value, alt }: { value: string; alt: string }) => <img src={value} alt={alt} />,
@@ -183,6 +191,7 @@ beforeEach(() => {
   H.ghiSo.mockReset().mockResolvedValue(undefined);
   H.toastLoi.mockReset();
   H.toastCanhBao.mockReset();
+  H.lamAm.mockReset();
 });
 afterEach(cleanup);
 
@@ -554,5 +563,155 @@ describe('bước ghi ảnh lên phiếu kẹt mạng', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+// Chủ chốt 03/10/2026 "làm sao upload nhanh nhất": ô ảnh hiện ngay lúc chọn kèm %,
+// tải song song, mạng hỏng thì giữ tệp để Thử lại, bấm Chi lúc ảnh còn đang tải
+// thì hộp tự chờ — và gỡ ảnh / đóng hộp là huỷ THẬT lệnh tải.
+type TuyChonTai = {
+  imagePolicy?: string;
+  maxBytes?: number;
+  resilient?: { signal?: AbortSignal; onProgress?: (p: unknown) => void };
+};
+
+/** Một lệnh tải CHƯA xong: test tự báo %, tự cho xong. */
+function taiCho() {
+  let xong: (url: string) => void = () => {};
+  let opts: TuyChonTai = {};
+  let duongDan = '';
+  H.taiLen.mockImplementationOnce((_bucket: string, path: string, _file: File, o?: TuyChonTai) => {
+    opts = o ?? {};
+    duongDan = path;
+    return new Promise<string>((resolve) => { xong = resolve; });
+  });
+  return {
+    url: () => `${KHO}${duongDan}`,
+    opts: () => opts,
+    xong: () => act(() => xong(`${KHO}${duongDan}`)),
+    baoTien: (loaded: number, total: number) =>
+      act(() => opts.resilient?.onProgress?.({ loaded, total, attempt: 1, phase: 'sending' })),
+  };
+}
+
+describe('tải ảnh nhanh và chịu mạng chập chờn', () => {
+  const oDangTai = () => document.querySelector<HTMLElement>('[data-evidence-pending]');
+  const chon = (...ten: string[]) => {
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const files = (ten.length ? ten : ['bill.png']).map((t) => new File(['x'], t, { type: 'image/png' }));
+    fireEvent.change(input, { target: { files } });
+  };
+
+  it('mở hộp là chuẩn bị đường tải ngay; chạm "Thêm chứng từ" chuẩn bị lại', () => {
+    render(<Khung />);
+    expect(H.lamAm).toHaveBeenCalled();
+    const truoc = H.lamAm.mock.calls.length;
+    fireEvent.click(screen.getByRole('button', { name: 'Thêm chứng từ' }));
+    expect(H.lamAm.mock.calls.length).toBeGreaterThan(truoc);
+  });
+
+  it('ô ảnh hiện NGAY lúc chọn kèm %, tải xong hiện cỡ ảnh và thời gian; tải bằng đường chịu mạng chập chờn', async () => {
+    const tai = taiCho();
+    render(<Khung />);
+    chon();
+    expect(oDangTai()).not.toBeNull(); // chưa gửi byte nào đã thấy ô ảnh
+    await waitFor(() => expect(H.taiLen).toHaveBeenCalledTimes(1));
+    expect(tai.opts()).toMatchObject({ imagePolicy: 'evidence', maxBytes: 5 * 1024 * 1024 });
+    expect(tai.opts().resilient?.signal).toBeInstanceOf(AbortSignal);
+
+    tai.baoTien(40, 100);
+    await waitFor(() => expect(oDangTai()!.textContent).toContain('40%'));
+    expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('40');
+
+    tai.xong();
+    await waitFor(() => expect(oDangTai()).toBeNull());
+    expect(oAnh(tai.url())!.textContent).toMatch(/^1 KB · \d+,\ds$/);
+  });
+
+  it('bấm Chi khi ảnh còn đang tải: nút báo đang chờ, ảnh xong tự ghi ảnh rồi ghi sổ', async () => {
+    const tai = taiCho();
+    render(<Khung />);
+    chon();
+    await waitFor(() => expect(H.taiLen).toHaveBeenCalledTimes(1));
+    const nut = screen.getByRole('button', { name: 'Chi' }) as HTMLButtonElement;
+    expect(nut.disabled).toBe(false); // ảnh đang tải không khoá nút
+
+    fireEvent.click(nut);
+    await screen.findByRole('button', { name: 'Đang chờ ảnh tải xong...' });
+    expect(lenhGhiAnh()).toHaveLength(0);
+    expect(H.ghiSo).not.toHaveBeenCalled();
+
+    tai.xong();
+    await waitFor(() => expect(H.ghiSo).toHaveBeenCalledTimes(1));
+    expect(lenhGhiAnh()).toHaveLength(1);
+    expect(lenhGhiAnh()[0][1]).toMatchObject({ p_add_attachments: [tai.url()] });
+    expect(H.ghiSo.mock.calls[0][0].evidenceIds).toEqual([maChungTu(tai.url())]);
+  });
+
+  it('tải hỏng: giữ tệp, bấm Chi bị chặn có lý do; "Thử lại" tải lại đúng tệp đó rồi Chi được', async () => {
+    may.anh = [ANH_CU];
+    H.taiLen.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    render(<Khung />);
+    await waitFor(() => expect(screen.queryByText('Đang kiểm ảnh của phiếu…')).toBeNull());
+    chon('bill-hong.png');
+    await waitFor(() => expect(oDangTai()?.dataset.phase).toBe('failed'));
+    expect(H.toastLoi).toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Chi' }));
+    await screen.findByText(/Còn 1 ảnh chưa tải được/);
+    expect(H.ghiSo).not.toHaveBeenCalled();
+    expect(lenhGhiAnh()).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Thử lại bill-hong.png' }));
+    await waitFor(() => expect(H.taiLen).toHaveBeenCalledTimes(2));
+    expect((H.taiLen.mock.calls[1][2] as File).name).toBe('bill-hong.png');
+    await waitFor(() => expect(oDangTai()).toBeNull());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Chi' }));
+    await waitFor(() => expect(H.ghiSo).toHaveBeenCalledTimes(1));
+    const [, duongDan] = H.taiLen.mock.calls[1] as [string, string];
+    expect(lenhGhiAnh()[0][1]).toMatchObject({ p_add_attachments: [`${KHO}${duongDan}`] });
+  });
+
+  it('gỡ ảnh đang tải: huỷ THẬT lệnh tải; máy chủ lỡ nhận xong thì xoá, ảnh không lên phiếu', async () => {
+    may.anh = [ANH_CU];
+    const tai = taiCho();
+    render(<Khung />);
+    chon('bill.png');
+    await waitFor(() => expect(H.taiLen).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('button', { name: 'Gỡ ảnh bill.png' }));
+    expect(tai.opts().resilient?.signal?.aborted).toBe(true);
+    await waitFor(() => expect(oDangTai()).toBeNull());
+
+    tai.xong();
+    await waitFor(() => expect(H.xoaFile).toHaveBeenCalledWith(BUCKET, tai.url().slice(KHO.length)));
+    await waitFor(() => expect(screen.queryByText('Đang kiểm ảnh của phiếu…')).toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: 'Chi' }));
+    await waitFor(() => expect(H.ghiSo).toHaveBeenCalledTimes(1));
+    expect(lenhGhiAnh()).toHaveLength(0);
+    expect(H.ghiSo.mock.calls[0][0].evidenceIds).toEqual([EV_CU]);
+  });
+
+  it('đóng hộp khi ảnh đang tải: huỷ thật lệnh tải', async () => {
+    const tai = taiCho();
+    render(<Khung />);
+    chon();
+    await waitFor(() => expect(H.taiLen).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('button', { name: 'Huỷ bỏ' }));
+    await waitFor(() => expect(tai.opts().resilient?.signal?.aborted).toBe(true));
+    expect(H.ghiSo).not.toHaveBeenCalled();
+  });
+
+  it('chọn 4 ảnh: tải cùng lúc tối đa 3 tấm, xong một tấm thì tấm thứ tư mới đi', async () => {
+    const lenh = [taiCho(), taiCho(), taiCho(), taiCho()];
+    render(<Khung />);
+    chon('a.png', 'b.png', 'c.png', 'd.png');
+    expect(document.querySelectorAll('[data-evidence-pending]')).toHaveLength(4);
+    await waitFor(() => expect(H.taiLen).toHaveBeenCalledTimes(3));
+    await act(() => new Promise((r) => setTimeout(r, 30)));
+    expect(H.taiLen).toHaveBeenCalledTimes(3);
+    lenh[0].xong();
+    await waitFor(() => expect(H.taiLen).toHaveBeenCalledTimes(4));
+    expect((H.taiLen.mock.calls[3][2] as File).name).toBe('d.png');
   });
 });

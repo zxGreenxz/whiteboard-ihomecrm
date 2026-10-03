@@ -23,9 +23,11 @@ import { VoucherPartialError, voucherFailureMessage, voucherLifecycleFeedback } 
 import { useAuth } from "@/hooks/useAuth";
 import type { PostFinanceExecutionInput } from "@/lib/incomeExpensePostingValidation";
 import { todayISO } from '@/lib/collect';
-import { UploadTimeoutError } from '@/lib/uploadDeadline';
-import { uploadFile, deleteFile, sanitizeStorageFileName, uploadToStorageWithDeadline } from "@/lib/storage";
+import { isAbortError, UploadTimeoutError, UploadTooLargeError } from '@/lib/uploadDeadline';
+import { uploadFileDetailed, deleteFile, sanitizeStorageFileName, uploadToStorageWithDeadline } from "@/lib/storage";
+import type { UploadProgress } from "@/lib/storage/resilientUpload";
 import { validateAttachmentFile } from "@/components/income-expenses/AttachmentUpload";
+import { MAX_ATTACHMENT_BYTES, uploadToken } from "@/lib/evidenceUpload";
 import { periodBlockMessage } from "@/lib/cashbookClosing";
 import { isStaleVersionError } from "@/lib/incomeExpenseRevision";
 
@@ -368,47 +370,87 @@ export interface AttachPostingEvidenceOptions {
 /** Kho ảnh đính kèm của phiếu thu chi — cũng là kho mà adopt nhận làm chứng từ (7ai). */
 const POSTING_ATTACHMENT_BUCKET = "income-expense-attachments";
 
+/** Một ảnh đã nằm trong kho ảnh đính kèm (chưa gắn phiếu) + số đo lần tải. */
+export interface PostingUpload {
+  url: string;
+  /** Cỡ thật trong kho (sau nén). */
+  size: number;
+  /** Từ lúc bắt đầu nén tới khi máy chủ xác nhận (ms). */
+  elapsedMs: number;
+  attempts: number;
+}
+
+export interface PostingUploadOptions {
+  /** Huỷ thật (gỡ ảnh đang tải, đóng hộp): trả null, không báo lỗi. */
+  signal?: AbortSignal;
+  onProgress?: (progress: UploadProgress) => void;
+}
+
 /**
  * Tải MỘT file lên kho ảnh đính kèm, CHƯA gắn vào phiếu nào. Trả URL công khai
- * (có đuôi file ⇒ có thumbnail), hoặc null khi file không hợp lệ / tải hỏng —
- * lý do đã được toast.
+ * (có đuôi file ⇒ có thumbnail) kèm số đo, hoặc null khi file không hợp lệ / tải
+ * hỏng (lý do đã được toast) / người dùng huỷ (không toast).
+ *
+ * Từ 03/10/2026 đi đường chịu mạng chập chờn (`resilient`): có %, mạng đứng thì
+ * tự tải lại; ảnh chụp màn hình (bill) nén mạnh hơn (`evidence`); giới hạn 5 MB
+ * tính SAU khi nén.
  */
-async function uploadPostingAttachmentFile(file: File, userId: string): Promise<string | null> {
-  const invalid = validateAttachmentFile(file);
+async function uploadPostingAttachmentFile(
+  file: File,
+  userId: string,
+  options: PostingUploadOptions = {},
+): Promise<PostingUpload | null> {
+  const invalid = validateAttachmentFile(file, { compressFirst: true });
   if (invalid) {
     toast.error(invalid);
     return null;
   }
 
-  const path = `${userId}/${Date.now()}-${sanitizeStorageFileName(file.name)}`;
+  // Đuôi ngẫu nhiên: hộp tải song song nhiều ảnh, cùng mili-giây không được trùng khoá.
+  const path = `${userId}/${Date.now()}-${uploadToken()}-${sanitizeStorageFileName(file.name)}`;
+  const started = Date.now();
 
   // Bắt lỗi để BÁO, không để nuốt: giữ lại đối tượng lỗi rồi quyết định ở
   // ngoài khối catch (catch trả rỗng là mẫu bị gate error-swallow chặn).
   let url: string | null = null;
+  let stored: { size: number; attempts: number } | null = null;
   let loiTai: unknown = null;
   try {
-    url = await uploadFile(POSTING_ATTACHMENT_BUCKET, path, file);
+    const up = await uploadFileDetailed(POSTING_ATTACHMENT_BUCKET, path, file, {
+      imagePolicy: 'evidence',
+      maxBytes: MAX_ATTACHMENT_BYTES,
+      resilient: { signal: options.signal, onProgress: options.onProgress },
+    });
+    url = up.url;
+    stored = { size: up.size, attempts: up.stats?.attempts ?? 1 };
   } catch (e) {
     loiTai = e;
   }
-  if (!url) {
-    // Ảnh chỉ mới TẢI LÊN KHO, chưa gắn vào phiếu nào: quá hạn thì lần tải lại dùng
-    // tên file mới và file lỡ tải xong muộn bị xoá (uploadToStorageWithDeadline) ⇒ tải
-    // lại an toàn. Câu chung "không tải lại khi kết quả còn chưa rõ" dành cho giao dịch;
-    // áp vào đây thì người chi kẹt, không có ảnh để chi.
-    const quaHan = loiTai instanceof UploadTimeoutError ? loiTai
-      : loiTai instanceof FinancialWorkflowError && loiTai.cause instanceof UploadTimeoutError ? loiTai.cause
-      : null;
-    // Ảnh nén dưới 1 MB chờ 20 giây; PDF lớn được chờ lâu hơn — nói đúng số đã chờ.
-    const daCho = quaHan?.ms ? `quá ${Math.round(quaHan.ms / 1000)} giây` : 'quá lâu';
-    // Không gọi tên nút: hàm này phục vụ cả hộp Thu/Chi ("Thêm chứng từ") lẫn màn thanh
-    // lý hợp đồng ("Tải hoặc Dán Ảnh").
-    toast.error(quaHan
-      ? `Mạng chậm — ${daCho} chưa tải xong “${file.name}”. Ảnh chưa gắn vào phiếu — tải lại ảnh này.`
-      : voucherFailureMessage(loiTai, `tải chứng từ “${file.name}”`));
+  if (url && stored) {
+    const elapsedMs = Date.now() - started;
+    console.info(`[tai-anh] ${file.name}: ${Math.round(file.size / 1024)} KB → ${Math.round(stored.size / 1024)} KB, ${elapsedMs} ms, ${stored.attempts} lần`);
+    return { url, size: stored.size, elapsedMs, attempts: stored.attempts };
+  }
+  if (isAbortError(loiTai)) return null; // người dùng gỡ ảnh / đóng hộp
+  if (loiTai instanceof UploadTooLargeError) {
+    toast.error(`“${file.name}” sau khi nén vẫn lớn hơn 5MB — chụp lại hoặc chọn tệp nhỏ hơn.`);
     return null;
   }
-  return url;
+  // Ảnh chỉ mới TẢI LÊN KHO, chưa gắn vào phiếu nào: hết lượt tự tải lại thì lần
+  // gửi dở đã được dọn, lần tải lại dùng tên file mới ⇒ tải lại an toàn. Câu chung
+  // "không tải lại khi kết quả còn chưa rõ" dành cho giao dịch; áp vào đây thì
+  // người chi kẹt, không có ảnh để chi.
+  const quaHan = loiTai instanceof UploadTimeoutError ? loiTai
+    : loiTai instanceof FinancialWorkflowError && loiTai.cause instanceof UploadTimeoutError ? loiTai.cause
+    : null;
+  // Nói đúng số giây đã chờ (cả các lần tự tải lại).
+  const daCho = quaHan?.ms ? `quá ${Math.round(quaHan.ms / 1000)} giây` : 'quá lâu';
+  // Không gọi tên nút: hàm này phục vụ cả hộp Thu/Chi ("Thêm chứng từ") lẫn màn thanh
+  // lý hợp đồng ("Tải hoặc Dán Ảnh").
+  toast.error(quaHan
+    ? `Mạng chậm — ${daCho} chưa tải xong “${file.name}”. Ảnh chưa gắn vào phiếu — tải lại ảnh này.`
+    : voucherFailureMessage(loiTai, `tải chứng từ “${file.name}”`));
+  return null;
 }
 
 /**
@@ -445,7 +487,7 @@ export function useAttachPostingEvidence() {
       opts: AttachPostingEvidenceOptions,
     ): Promise<AttachPostingEvidenceResult | null> => {
       const bucket = POSTING_ATTACHMENT_BUCKET;
-      const url = await uploadPostingAttachmentFile(file, opts.userId);
+      const url = (await uploadPostingAttachmentFile(file, opts.userId))?.url;
       if (!url) return null;
 
       const ann = await rpc("annotate_income_expense_v1", {
@@ -647,12 +689,12 @@ export function usePostingAttachmentDraft() {
   const userId = authUser?.id ?? "";
 
   const upload = useCallback(
-    async (file: File): Promise<string | null> => {
+    async (file: File, options?: PostingUploadOptions): Promise<PostingUpload | null> => {
       if (!userId) {
         toast.error("Chưa xác định được tài khoản đăng nhập — thử lại sau giây lát.");
         return null;
       }
-      return uploadPostingAttachmentFile(file, userId);
+      return uploadPostingAttachmentFile(file, userId, options);
     },
     [userId],
   );

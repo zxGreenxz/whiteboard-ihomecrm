@@ -42,7 +42,7 @@ Trạng thái hoàn căn cứ vào bút toán chi còn hiệu lực. Nếu phi�
 
 Trong chi tiết phiếu thu cọc, khung **Khách đã bỏ cọc** hiển thị trực tiếp số cọc ban đầu, phần giữ lại thành doanh thu, đã hoàn/còn phải hoàn, ngày xử lý, người xử lý và lý do. Không cần mở lịch sử. Các phiếu phát sinh ghi tên người thực hiện tại **Người tạo**; phiếu thu gốc vẫn giữ người tạo ban đầu.
 
-Khi **Hoàn ngay** hoặc trả khoản **Hoàn sau**, có thể chọn, kéo thả hoặc dán ảnh chuyển khoản/chứng từ (tối đa 10 tệp JPG, PNG, PDF, mỗi tệp tối đa 5MB). Ảnh được lưu cùng phiếu chi và hiện trong khung bỏ cọc của phiếu thu gốc, bấm để xem lớn. Trong khi ảnh đang tải, các ô nhập và nút xác nhận tạm khóa. Ảnh của lần hoàn đã hoàn tác được ghi rõ trạng thái để phân biệt với lần hoàn còn hiệu lực.
+Khi **Hoàn ngay** hoặc trả khoản **Hoàn sau**, có thể chọn, kéo thả hoặc dán ảnh chuyển khoản/chứng từ (tối đa 10 tệp JPG, PNG, PDF; ảnh tự nén trước khi tải, ảnh gốc tối đa 25MB; PDF tối đa 5MB). Ảnh được lưu cùng phiếu chi và hiện trong khung bỏ cọc của phiếu thu gốc, bấm để xem lớn. Trong khi ảnh đang tải, các ô nhập và nút xác nhận tạm khóa. Ảnh của lần hoàn đã hoàn tác được ghi rõ trạng thái để phân biệt với lần hoàn còn hiệu lực.
 
 Sau khi đã hoàn tiền, có thể thêm chứng từ bằng nút **Bổ sung chứng từ / ghi chú** (biểu tượng tài liệu có dấu cộng) trên phiếu chi hoàn cọc; Admin cũng thấy nút này. Ảnh và ghi chú cũ chỉ xem, nội dung mới nhập riêng và lưu thêm kèm tên/thời gian người bổ sung. Ảnh mới của phiếu hoàn cũng hiện trong khung xử lý cọc của phiếu thu gốc; thao tác bổ sung không thay đổi khoản hoàn hoặc trạng thái cọc.
 

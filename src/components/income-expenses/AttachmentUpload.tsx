@@ -2,12 +2,20 @@ import { useState, useCallback, useRef, useEffect, useId } from 'react';
 import { Upload, X, FileText, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { uploadFile, deleteFile } from '@/lib/storage';
+import { warmUploadConnection } from '@/lib/storage/resilientUpload';
+import { isAbortError } from '@/lib/uploadDeadline';
+import {
+  MAX_ATTACHMENT_BYTES,
+  MAX_IMAGE_SOURCE_BYTES,
+  PARALLEL_UPLOADS,
+  runLimited,
+  uploadToken,
+} from '@/lib/evidenceUpload';
 import { StorageImage } from '@/components/ui/storage-image';
 import { friendlyError } from '@/lib/friendlyError';
 import { useClipboardImagePaste } from '@/hooks/useClipboardImagePaste';
 
 const DEFAULT_BUCKET = 'income-expense-attachments';
-const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'application/pdf'];
 const ACCEPT_STRING = 'image/jpeg,image/png,application/pdf';
 
@@ -32,11 +40,23 @@ interface AttachmentUploadProps {
  * Validates file type and size.
  * Returns error message string if invalid, null if valid.
  */
-export function validateAttachmentFile(file: { type: string; size: number }): string | null {
+export function validateAttachmentFile(
+  file: { type: string; size: number },
+  options: {
+    /**
+     * Ảnh sẽ được nén rồi mới kiểm 5 MB (`maxBytes` của lệnh tải) — kho ảnh thu chi
+     * từ 03/10/2026. Không bật: giữ luật cũ, 5 MB tính trên tệp gốc.
+     */
+    compressFirst?: boolean;
+  } = {},
+): string | null {
   if (!ACCEPTED_TYPES.includes(file.type)) {
     return 'Chỉ chấp nhận file JPG, PNG, PDF';
   }
-  if (file.size > MAX_FILE_SIZE) {
+  if (options.compressFirst && file.type.startsWith('image/')) {
+    return file.size > MAX_IMAGE_SOURCE_BYTES ? 'Ảnh gốc tối đa 25MB' : null;
+  }
+  if (file.size > MAX_ATTACHMENT_BYTES) {
     return 'Kích thước file tối đa 5MB';
   }
   return null;
@@ -60,6 +80,17 @@ export default function AttachmentUpload({
   const [failures, setFailures] = useState<Array<{ file: File; reason: string; retryable: boolean }>>([]);
   const [summary, setSummary] = useState('');
   const [removeError, setRemoveError] = useState('');
+  /** % của cả lượt đang tải (tổng byte đã gửi / tổng byte), null = chưa có số. */
+  const [percent, setPercent] = useState<number | null>(null);
+  /** Lệnh tải đang chạy — đóng form thì huỷ thật, không để tải nốt thành tệp mồ côi. */
+  const controllers = useRef(new Set<AbortController>());
+  useEffect(() => {
+    const running = controllers.current;
+    return () => {
+      for (const controller of running) controller.abort();
+      running.clear();
+    };
+  }, []);
 
   /**
    * URL do CHÍNH lần mở form/hộp này tải lên — chỉ những file này X mới được xoá
@@ -77,6 +108,12 @@ export default function AttachmentUpload({
   }, []);
 
   const BUCKET = bucket;
+  /**
+   * Kho ảnh thu chi (chứng từ tiền): đi đường tải chịu mạng chập chờn, nén kiểu
+   * chứng từ, 5 MB tính sau khi nén (03/10/2026). Kho khác (ảnh công việc…) giữ
+   * nguyên đường cũ cho tới khi được kiểm riêng.
+   */
+  const evidenceStore = BUCKET === DEFAULT_BUCKET;
 
   const handleUpload = useCallback(
     async (files: FileList | File[]) => {
@@ -89,31 +126,61 @@ export default function AttachmentUpload({
       }
       uploadActive.current = true;
       setIsUploading(true);
+      setPercent(null);
       onUploadingChange?.(true);
 
       try {
-        const newUrls: string[] = [];
         const failed: typeof failures = [];
+        // Byte đã gửi của từng tệp — gộp lại thành một % cho cả lượt.
+        const sent = new Map<number, { loaded: number; total: number }>();
+        const report = () => {
+          let loaded = 0;
+          let total = 0;
+          for (const s of sent.values()) {
+            loaded += s.loaded;
+            total += s.total;
+          }
+          if (total > 0) setPercent(Math.min(99, Math.round((loaded / total) * 100)));
+        };
 
-        for (const file of fileArray) {
-          const error = validateAttachmentFile(file);
+        // Tải cùng lúc tối đa PARALLEL_UPLOADS tệp; danh sách giữ đúng thứ tự đã chọn.
+        const results = await runLimited(fileArray, PARALLEL_UPLOADS, async (file, index): Promise<string | null> => {
+          const error = validateAttachmentFile(file, { compressFirst: evidenceStore });
           if (error) {
             failed.push({ file, reason: error, retryable: false });
-            continue;
+            return null;
           }
-
+          const controller = new AbortController();
+          controllers.current.add(controller);
           try {
-            const safeName = file.name.replace(/[^\w.\-]+/g, '_');
-            const path = `${userId}/${Date.now()}-${safeName}`;
-            const publicUrl = await uploadFile(BUCKET, path, file);
+            const safeName = file.name.replace(/[^\w.-]+/g, '_');
+            const path = `${userId}/${Date.now()}-${uploadToken()}-${safeName}`;
+            const publicUrl = evidenceStore
+              ? await uploadFile(BUCKET, path, file, {
+                  imagePolicy: 'evidence',
+                  maxBytes: MAX_ATTACHMENT_BYTES,
+                  resilient: {
+                    signal: controller.signal,
+                    onProgress: ({ loaded, total }) => {
+                      sent.set(index, { loaded, total });
+                      report();
+                    },
+                  },
+                })
+              : await uploadFile(BUCKET, path, file);
             sessionUploads.current.add(publicUrl);
-            newUrls.push(publicUrl);
+            return publicUrl;
           } catch (err: unknown) {
+            if (isAbortError(err)) return null; // form đã đóng
             console.error('[AttachmentUpload] upload failed:', err);
             const feedback = friendlyError(err, `Chưa tải được tệp ${file.name}`, { operation: 'tải chứng từ' });
             failed.push({ file, reason: feedback.description, retryable: true });
+            return null;
+          } finally {
+            controllers.current.delete(controller);
           }
-        }
+        });
+        const newUrls = results.filter((url): url is string => typeof url === 'string');
 
         if (newUrls.length > 0) {
           onChange([...attachments, ...newUrls]);
@@ -123,10 +190,11 @@ export default function AttachmentUpload({
       } finally {
         uploadActive.current = false;
         setIsUploading(false);
+        setPercent(null);
         onUploadingChange?.(false);
       }
     },
-    [attachments, disabled, onChange, userId, BUCKET, maxFiles, onUploadingChange]
+    [attachments, disabled, onChange, userId, BUCKET, evidenceStore, maxFiles, onUploadingChange]
   );
 
   const handleRemove = useCallback(
@@ -210,8 +278,9 @@ export default function AttachmentUpload({
           onDrop={handleDrop}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
-          onClick={() => inputRef.current?.click()}
-          onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); inputRef.current?.click(); } }}
+          onClick={() => { warmUploadConnection(); inputRef.current?.click(); }}
+          onPointerDown={warmUploadConnection}
+          onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); warmUploadConnection(); inputRef.current?.click(); } }}
           {...pasteHandlers}
           className={cn(
             'flex flex-col items-center justify-center w-full h-28 rounded-lg border-2 border-dashed cursor-pointer transition-colors',
@@ -225,13 +294,13 @@ export default function AttachmentUpload({
           {isUploading ? (
             <div className="flex flex-col items-center gap-1 text-muted-foreground">
               <Loader2 className="h-6 w-6 animate-spin" />
-              <span className="text-xs">Đang tải lên...</span>
+              <span className="text-xs tabular-nums">{percent === null ? 'Đang tải lên...' : `Đang tải lên... ${percent}%`}</span>
             </div>
           ) : (
             <div className="flex flex-col items-center gap-1 text-muted-foreground">
               <Upload className="h-6 w-6" />
               <span className="text-xs">Kéo thả, click hoặc Ctrl+V để chọn file</span>
-              <span className="text-[10px]">JPG, PNG, PDF — tối đa 5MB</span>
+              <span className="text-[10px]">{evidenceStore ? 'Ảnh JPG, PNG tự nén; PDF tối đa 5MB' : 'JPG, PNG, PDF — tối đa 5MB'}</span>
             </div>
           )}
         </div>

@@ -16,6 +16,27 @@ const MAX_EDGE = 1600;              // cạnh dài tối đa (px)
 const QUALITY = 0.82;              // chất lượng WebP/JPEG
 const MIN_BYTES = 200 * 1024;     // < 200KB coi như đã đủ nhỏ, bỏ qua
 const COMPRESSIBLE = /^image\/(jpeg|jpg|png|webp)$/i;
+
+/**
+ * Ảnh CHỨNG TỪ là ảnh chụp màn hình điện thoại (bill chuyển khoản): chữ app ngân
+ * hàng to, nén mạnh vẫn đọc rõ. Đo 03/10/2026 trên bill thật trong kho: 1024 px
+ * chất lượng 0,5 ra 13–43 KB (WebP) / 20–55 KB (JPEG của iPhone), số tiền và mã
+ * giao dịch vẫn rõ; 600 px thì giờ chuyển và nội dung chuyển khoản đã nhoè.
+ * Ảnh camera chụp giấy tờ thì 1024 px mất chữ nhỏ (mã số thuế, tên hàng) — giữ
+ * mức thường. Ảnh chụp màn hình máy tính (ngang, chữ nhỏ) cũng giữ mức thường.
+ */
+const SCREENSHOT_MAX_EDGE = 1024;
+const SCREENSHOT_QUALITY = 0.5;
+/** Ảnh chứng từ nhỏ hơn mức này mới bỏ qua nén (PNG bill 100–200 KB vẫn nén được ~5 lần). */
+const EVIDENCE_MIN_BYTES = 48 * 1024;
+
+/**
+ * Ảnh chụp màn hình ĐIỆN THOẠI: PNG dựng đứng (cao ≥ 1,6 lần rộng — máy điện
+ * thoại ~2:1, iPad 4:3 không tính). Ảnh camera là JPEG nên không bao giờ vào đây.
+ */
+export function isPhoneScreenshot(type: string, width: number, height: number): boolean {
+  return /^image\/png$/i.test(type) && width > 0 && height >= width * 1.6;
+}
 /**
  * Nén quá hạn này thì bỏ, tải ảnh gốc. Nén thường xong dưới 1 giây; quá hạn là
  * máy đang kẹt (bộ nhớ, bộ giải mã) — không được giữ người dùng ở "Đang tải...".
@@ -30,6 +51,8 @@ export interface CompressOpts {
   quality?: number;
   /** Hạn cho cả bước nén (ms). Mặc định COMPRESS_TIMEOUT_MS. */
   timeoutMs?: number;
+  /** `evidence`: ảnh chứng từ — chụp màn hình điện thoại nén mạnh hơn (xem trên). */
+  profile?: 'evidence';
 }
 
 /**
@@ -53,10 +76,9 @@ async function compressNow(file: File, opts: CompressOpts): Promise<File> {
   try {
     if (typeof document === 'undefined' && typeof OffscreenCanvas === 'undefined') return file;
     if (!file || !COMPRESSIBLE.test(file.type)) return file;       // gif/svg/heic… giữ nguyên
-    if (file.size <= MIN_BYTES) return file;                       // đã nhỏ
+    const evidence = opts.profile === 'evidence';
+    if (file.size <= (evidence ? EVIDENCE_MIN_BYTES : MIN_BYTES)) return file; // đã nhỏ
 
-    const maxEdge = opts.maxEdge ?? MAX_EDGE;
-    const quality = opts.quality ?? QUALITY;
     const outType: OutType = (await canEncode('image/webp')) ? 'image/webp' : 'image/jpeg';
 
     const bitmap = await decodeUpright(file);
@@ -64,6 +86,9 @@ async function compressNow(file: File, opts: CompressOpts): Promise<File> {
     let canvas: AnyCanvas | null = null;
     try {
       const { width, height } = bitmap;
+      const screenshot = evidence && isPhoneScreenshot(file.type, width, height);
+      const maxEdge = opts.maxEdge ?? (screenshot ? SCREENSHOT_MAX_EDGE : MAX_EDGE);
+      const quality = opts.quality ?? (screenshot ? SCREENSHOT_QUALITY : QUALITY);
       const scale = Math.min(1, maxEdge / Math.max(width, height));
       const w = Math.max(1, Math.round(width * scale));
       const h = Math.max(1, Math.round(height * scale));

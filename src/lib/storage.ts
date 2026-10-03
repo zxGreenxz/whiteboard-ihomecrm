@@ -4,14 +4,27 @@ import { createSignedUrlBatched } from "./signedUrlBatcher";
 import { compressImage } from "./imageCompress";
 import { isR2Bucket, isR2PublicBucket, parseR2Ref } from "./storage/r2Config";
 import { uploadToR2, signR2 } from "./storage/r2Client";
-import { uploadDeadlineMs, UploadTimeoutError } from "./uploadDeadline";
+import { uploadResilient, type ResilientUploadOptions } from "./storage/resilientUpload";
+import { isAbortError, uploadDeadlineMs, UploadTimeoutError, UploadTooLargeError } from "./uploadDeadline";
 
 export { sanitizeStorageFileName } from "./storageKey";
 
-export type UploadImagePolicy = 'default' | 'identity-original';
+/**
+ * - `identity-original`: ảnh giấy tờ tuỳ thân, giữ nguyên bytes (QR).
+ * - `evidence`: ảnh chứng từ tiền — ảnh chụp màn hình điện thoại (bill chuyển
+ *   khoản) nén mạnh hơn, ảnh camera giữ mức thường (xem imageCompress).
+ */
+export type UploadImagePolicy = 'default' | 'identity-original' | 'evidence';
 
 export interface UploadFileOptions {
   imagePolicy?: UploadImagePolicy;
+  /**
+   * Có truyền = tải bằng đường chịu mạng chập chờn (báo %, tự tải lại khi mạng
+   * đứng, huỷ thật được) — chỉ áp cho bucket Supabase, bucket R2 đi như cũ.
+   */
+  resilient?: ResilientUploadOptions;
+  /** Cỡ tối đa SAU khi nén; vượt thì ném UploadTooLargeError trước khi gửi. */
+  maxBytes?: number;
 }
 
 const IDENTITY_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
@@ -78,6 +91,15 @@ export interface StoredUpload {
   path: string;
   type: string;
   size: number;
+  /** Số đo lần tải — chỉ có ở đường chịu mạng chập chờn (`resilient`). */
+  stats?: UploadStats;
+}
+
+export interface UploadStats {
+  originalBytes: number;
+  compressMs: number;
+  uploadMs: number;
+  attempts: number;
 }
 
 /**
@@ -111,9 +133,14 @@ export async function uploadFileDetailed(
   // Nén ảnh trước khi upload (giảm kho + băng thông egress). Nén ra WebP/JPEG thì
   // đổi đuôi key cho khớp content-type; non-image giữ nguyên file & key. Ảnh
   // giấy tờ được kiểm tra rồi lưu đúng bytes gốc để không làm mất chi tiết QR.
+  const compressStarted = Date.now();
   const toUpload = options.imagePolicy === 'identity-original'
     ? identityOriginal(file)
-    : await compressImage(file);
+    : await compressImage(file, options.imagePolicy === 'evidence' ? { profile: 'evidence' } : {});
+  const compressMs = Date.now() - compressStarted;
+  if (options.maxBytes !== undefined && toUpload.size > options.maxBytes) {
+    throw new UploadTooLargeError(toUpload.size, options.maxBytes);
+  }
   let key = path;
   const ext = toUpload !== file ? COMPRESSED_EXT[toUpload.type] : undefined;
   if (ext) {
@@ -129,6 +156,16 @@ export async function uploadFileDetailed(
       return { ...stored, url, path: key };
     }
 
+    if (options.resilient) {
+      const done = await uploadResilient(bucket, key, toUpload, options.resilient);
+      return {
+        ...stored,
+        url: getPublicUrl(bucket, done.path),
+        path: done.path,
+        stats: { originalBytes: file.size, compressMs, uploadMs: done.elapsedMs, attempts: done.attempts },
+      };
+    }
+
     const { data, error } = await uploadToStorageWithDeadline(bucket, key, toUpload, {
       cacheControl: "31536000", // 1 năm — file đặt tên theo timestamp, không đổi
       upsert: false,
@@ -137,6 +174,15 @@ export async function uploadFileDetailed(
     if (!data || data.path !== key) throw new Error('Missing matching upload receipt');
     return { ...stored, url: getPublicUrl(bucket, data.path), path: data.path };
   } catch (error) {
+    // Người dùng tự huỷ (gỡ ảnh, đóng hộp): không phải lỗi giao dịch để báo.
+    if (isAbortError(error)) throw error;
+    // Đường chịu mạng chập chờn đã tự tải lại và dọn lần gửi dở: tệp chưa được ghi
+    // nhận, chọn tải lại (tên mới) là an toàn — không phải ca "kết quả chưa rõ".
+    if (options.resilient && error instanceof UploadTimeoutError) {
+      throw new FinancialWorkflowError(
+        `Mạng chậm — quá ${Math.round((error.ms ?? 0) / 1000)} giây chưa tải xong tệp. Tệp chưa được lưu; bấm Thử lại khi mạng ổn hơn.`,
+        'failure', [], error);
+    }
     const status = error && typeof error === 'object' && 'statusCode' in error ? Number(error.statusCode) : null;
     const rejected = status !== null && [400,401,403,404,405,409,413,415,422,429].includes(status);
     const message = rejected

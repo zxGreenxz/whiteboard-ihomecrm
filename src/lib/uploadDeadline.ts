@@ -13,6 +13,16 @@ export function uploadDeadlineMs(bytes: number): number {
   return 20_000 + extraMb * 20_000;
 }
 
+/**
+ * Hạn TỔNG của đường tải chịu mạng chập chờn (`storage/resilientUpload.ts`) — chủ
+ * chốt 03/10/2026: tính cả các lần tự tải lại, không quá 45 giây cho ảnh (mọi ảnh
+ * chứng từ sau nén dưới 1 MB). Tệp lớn thêm 20 giây cho mỗi MB vượt 1 MB, như trên.
+ */
+export function resilientUploadDeadlineMs(bytes: number): number {
+  const extraMb = Math.max(0, Math.ceil(bytes / (1024 * 1024)) - 1);
+  return 45_000 + extraMb * 20_000;
+}
+
 export class UploadTimeoutError extends Error {
   /** Hạn đã chờ (ms) — để câu báo nói đúng số giây (tệp lớn được chờ lâu hơn 20 giây). */
   readonly ms?: number;
@@ -21,4 +31,25 @@ export class UploadTimeoutError extends Error {
     this.name = "UploadTimeoutError";
     this.ms = ms;
   }
+}
+
+/** Tệp SAU khi nén vẫn vượt cỡ cho phép — từ chối trước khi gửi byte nào. */
+export class UploadTooLargeError extends Error {
+  readonly bytes: number;
+  readonly limit: number;
+  constructor(bytes: number, limit: number) {
+    super(`Tệp ${Math.ceil(bytes / 1024)} KB vượt giới hạn ${Math.round(limit / (1024 * 1024))} MB`);
+    this.name = "UploadTooLargeError";
+    this.bytes = bytes;
+    this.limit = limit;
+  }
+}
+
+/** Lỗi do chính người dùng huỷ lệnh tải (gỡ ảnh, đóng hộp) — không phải lỗi để báo. */
+export function uploadAbortError(): DOMException {
+  return new DOMException("Đã huỷ tải tệp", "AbortError");
+}
+
+export function isAbortError(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "name" in error && (error as { name: unknown }).name === "AbortError";
 }

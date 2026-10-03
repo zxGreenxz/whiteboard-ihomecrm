@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 const h = vi.hoisted(() => ({rpc:vi.fn(),invalidate:vi.fn(),upload:vi.fn(),remove:vi.fn()}));
 vi.mock('@tanstack/react-query',()=>({useQueryClient:()=>({invalidateQueries:h.invalidate})}));
 vi.mock('@/integrations/supabase/client',()=>({supabase:{rpc:h.rpc}}));
-vi.mock('@/lib/storage',()=>({uploadFile:h.upload,deleteFile:h.remove,sanitizeStorageFileName:(name:string)=>name}));
+vi.mock('@/lib/storage',()=>({uploadFileDetailed:async(bucket:string,path:string,file:File)=>({url:await h.upload(bucket,path,file),path,type:file.type,size:file.size}),deleteFile:h.remove,sanitizeStorageFileName:(name:string)=>name}));
 vi.mock('@/components/income-expenses/AttachmentUpload',()=>({validateAttachmentFile:()=>null}));
 import { useAttachPostingEvidence, useRemovePostingAttachment } from '../financeV2Mutations';
 import { VoucherPartialError } from '@/lib/voucherFeedback';

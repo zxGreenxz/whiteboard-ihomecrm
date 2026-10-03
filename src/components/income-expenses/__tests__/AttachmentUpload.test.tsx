@@ -9,7 +9,7 @@
 // =============================================================================
 
 import { useState } from 'react';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const H = vi.hoisted(() => ({
@@ -26,7 +26,9 @@ vi.mock('@/components/ui/storage-image', () => ({
 }));
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn(), warning: vi.fn() } }));
 
-import AttachmentUpload from '../AttachmentUpload';
+vi.mock('@/lib/storage/resilientUpload', () => ({ warmUploadConnection: vi.fn() }));
+
+import AttachmentUpload, { validateAttachmentFile } from '../AttachmentUpload';
 
 const BUCKET = 'income-expense-attachments';
 const KHO = `https://kho.test/storage/v1/object/public/${BUCKET}/`;
@@ -140,5 +142,85 @@ describe('AttachmentUpload — X chỉ xoá file tải lên trong lần mở nà
     fireEvent.click(nutGo(url));
     await waitFor(() => expect(danhSach()).toBe(''));
     expect(H.xoaFile).not.toHaveBeenCalled();
+  });
+});
+
+// Chủ chốt 03/10/2026: tải nhanh và chịu mạng chập chờn — đi đường tải mới (có %,
+// tự tải lại, huỷ thật), giới hạn 5 MB tính SAU khi nén, chọn nhiều tải song song.
+describe('AttachmentUpload — tải nhanh, chịu mạng chập chờn', () => {
+  type TuyChon = { imagePolicy?: string; maxBytes?: number; resilient?: { signal?: AbortSignal; onProgress?: (p: unknown) => void } };
+  const chon = (files: File[]) =>
+    fireEvent.change(document.querySelector('input[type="file"]')!, { target: { files } });
+  const anh = (ten: string) => new File(['x'], ten, { type: 'image/png' });
+
+  it('kho ảnh thu chi: ảnh camera gốc 8 MB không bị từ chối oan — 5 MB tính SAU khi nén', () => {
+    const nenTruoc = { compressFirst: true };
+    expect(validateAttachmentFile({ type: 'image/jpeg', size: 8 * 1024 * 1024 }, nenTruoc)).toBeNull();
+    expect(validateAttachmentFile({ type: 'image/jpeg', size: 26 * 1024 * 1024 }, nenTruoc)).toBe('Ảnh gốc tối đa 25MB');
+    expect(validateAttachmentFile({ type: 'application/pdf', size: 6 * 1024 * 1024 }, nenTruoc)).toBe('Kích thước file tối đa 5MB');
+    expect(validateAttachmentFile({ type: 'image/heic', size: 1 }, nenTruoc)).toBe('Chỉ chấp nhận file JPG, PNG, PDF');
+    // Kho khác (ảnh công việc…) giữ luật cũ: 5 MB trên tệp gốc.
+    expect(validateAttachmentFile({ type: 'image/jpeg', size: 8 * 1024 * 1024 })).toBe('Kích thước file tối đa 5MB');
+  });
+
+  it('kho khác (ảnh công việc): vẫn đi đường cũ, không đổi tham số tải', async () => {
+    render(
+      <AttachmentUpload attachments={[]} onChange={() => {}} userId={USER} bucket="job-attachments" />,
+    );
+    chon([anh('cua.png')]);
+    await waitFor(() => expect(H.taiLen).toHaveBeenCalledTimes(1));
+    expect(H.taiLen.mock.calls[0]).toHaveLength(3);
+  });
+
+  it('tải bằng đường chịu mạng chập chờn: nén kiểu chứng từ, chặn 5 MB sau nén, có %', async () => {
+    let bao: ((p: unknown) => void) | undefined;
+    let xong: (url: string) => void = () => {};
+    H.taiLen.mockImplementationOnce((_b: string, path: string, _f: File, o: TuyChon) => {
+      bao = o.resilient?.onProgress;
+      return new Promise<string>((r) => { xong = () => r(`${KHO}${path}`); });
+    });
+    render(<Khung dau={[]} />);
+    chon([anh('bill.png')]);
+    await waitFor(() => expect(H.taiLen).toHaveBeenCalledTimes(1));
+    expect(H.taiLen.mock.calls[0][3]).toMatchObject({ imagePolicy: 'evidence', maxBytes: 5 * 1024 * 1024 });
+    act(() => bao?.({ loaded: 30, total: 100, attempt: 1, phase: 'sending' }));
+    await screen.findByText('Đang tải lên... 30%');
+    act(() => xong(''));
+    await waitFor(() => expect(danhSach()).not.toBe(''));
+  });
+
+  it('chọn 4 ảnh: tải cùng lúc tối đa 3, danh sách giữ đúng thứ tự đã chọn', async () => {
+    const xong: Array<() => void> = [];
+    H.taiLen.mockImplementation((_b: string, path: string) =>
+      new Promise<string>((r) => { xong.push(() => r(`${KHO}${path}`)); }));
+    render(<Khung dau={[]} />);
+    chon(['a.png', 'b.png', 'c.png', 'd.png'].map(anh));
+    await waitFor(() => expect(H.taiLen).toHaveBeenCalledTimes(3));
+    await act(() => new Promise((r) => setTimeout(r, 30)));
+    expect(H.taiLen).toHaveBeenCalledTimes(3);
+    act(() => xong[1]());
+    await waitFor(() => expect(H.taiLen).toHaveBeenCalledTimes(4));
+    act(() => { xong[0](); xong[2](); xong[3](); });
+    await waitFor(() => expect(danhSach()!.split('|')).toHaveLength(4));
+    const thuTu = danhSach()!.split('|').map((u) => u.replace(/^.*-/, ''));
+    expect(thuTu).toEqual(['a.png', 'b.png', 'c.png', 'd.png']);
+    // Tên tệp có đuôi ngẫu nhiên: tải song song cùng mili-giây không trùng khoá.
+    const khoa = H.taiLen.mock.calls.map((c) => c[1] as string);
+    expect(new Set(khoa).size).toBe(4);
+  });
+
+  it('đóng form khi đang tải: huỷ THẬT lệnh tải, không thêm ảnh mồ côi', async () => {
+    let tin: AbortSignal | undefined;
+    H.taiLen.mockImplementationOnce((_b: string, _p: string, _f: File, o: TuyChon) => {
+      tin = o.resilient?.signal;
+      return new Promise<string>((_, reject) => {
+        tin?.addEventListener('abort', () => reject(new DOMException('huỷ', 'AbortError')));
+      });
+    });
+    const { unmount } = render(<Khung dau={[]} />);
+    chon([anh('bill.png')]);
+    await waitFor(() => expect(H.taiLen).toHaveBeenCalledTimes(1));
+    unmount();
+    expect(tin?.aborted).toBe(true);
   });
 });
