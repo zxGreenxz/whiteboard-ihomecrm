@@ -114,6 +114,17 @@ CREATE OR REPLACE FUNCTION app_private.ie_type_merge_one_level_guard()
 AS $function$
 BEGIN
   IF NEW.merged_into_id IS NOT NULL THEN
+    -- Khoá dòng đích TRƯỚC khi kiểm: hai người gộp đồng thời (A→B và B→C) bị xếp hàng, lệnh sau
+    -- thấy kết quả lệnh trước (READ COMMITTED lấy snapshot mới cho từng câu) ⇒ không thành dây hai bậc.
+    PERFORM 1 FROM public.income_expense_types t WHERE t.id = NEW.merged_into_id FOR UPDATE;
+    IF TG_OP = 'INSERT' OR NEW.merged_into_id IS DISTINCT FROM OLD.merged_into_id THEN
+      IF NOT EXISTS (SELECT 1 FROM public.income_expense_types t
+                      WHERE t.id = NEW.merged_into_id
+                        AND lower(btrim(t.type)) = lower(btrim(NEW.type))
+                        AND t.archived_at IS NULL) THEN
+        RAISE EXCEPTION 'Chỉ gộp vào hạng mục cùng chiều thu/chi và đang dùng (chưa lưu trữ)' USING ERRCODE = '23514';
+      END IF;
+    END IF;
     IF EXISTS (SELECT 1 FROM public.income_expense_types t
                 WHERE t.id = NEW.merged_into_id AND t.merged_into_id IS NOT NULL) THEN
       RAISE EXCEPTION 'Không gộp vào hạng mục đã được gộp vào mục khác' USING ERRCODE = '23514';

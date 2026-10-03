@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-03T16:15:31.056Z",
+  "generatedAt": "2026-10-03T17:13:20.329Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
@@ -10995,7 +10995,7 @@
       "version": "20261003151606",
       "name": "danh_muc_chi_cau_truc",
       "scheme": "timestamp14",
-      "sha256": "1533ea24effe6b8587cb6de30c8a456f88a6ac80d706034d6f3a8df20e34330c",
+      "sha256": "f7b8a6ed24b100ddf55ce46f49d9ff341938e9ee8d47d9b79879c0f3e6842c71",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [
@@ -11011,7 +11011,7 @@
       "version": "20261003151608",
       "name": "danh_muc_chi_du_lieu",
       "scheme": "timestamp14",
-      "sha256": "4f569a0dedf1d2635caf8681b978d439205e61639ca2ce257780831fc58c7e7a",
+      "sha256": "3a57aa60f92af1b0babae68f93fe8427cd3a84c99cabf3f67f44b83553e5bffe",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [
@@ -11023,11 +11023,11 @@
       "version": "20261003152559",
       "name": "danh_muc_chi_bao_cao_cong_gop",
       "scheme": "timestamp14",
-      "sha256": "689a73926aee035d1bfa074d534ef19d7ff141bc58c28e6617d2ff05fd2b56bd",
+      "sha256": "63904b75e96232ecea18d900ae09012f3bdcc0a46835bd1f64baa48e755cb912",
       "state": "catalog-proven",
       "evidence": [
         "catalog:function:public.fa_type_breakdown",
-        "catalog:function:public.fa_accrual_allocations"
+        "catalog:function:public.copilot_report_expense_ratio_v1"
       ]
     },
     {

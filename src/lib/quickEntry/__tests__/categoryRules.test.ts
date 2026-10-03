@@ -26,7 +26,8 @@ const allRows: CategoryRef[] = spec.map((s, i) => ({
 const rows = usableExpenseCategories(allRows, { organizationId: ORG, canUseRestricted: false });
 
 // Fixture: 414 mô tả phiếu chi thật (02/10/2026), đã bỏ số tiền cuối câu, bỏ mục hạn chế/máy tự lập,
-// tên người đã thay bằng tên chung (không đổi kết quả đo). `gold` = rule_key chủ duyệt; `alt` = mục
+// tên người đã thay bằng tên chung, địa chỉ toà thay bằng mã toà, tên phường thay bằng "phường X/Y"
+// (không đổi kết quả đo). `gold` = rule_key chủ duyệt; `alt` = mục
 // cũng chấp nhận được.
 describe("ruleCategory — 414 câu chi thật (02/10/2026)", () => {
   const cases = cauThat as Array<{ text: string; gold: string; alt?: string[] }>;
@@ -35,7 +36,8 @@ describe("ruleCategory — 414 câu chi thật (02/10/2026)", () => {
     .filter((x) => x.got !== null);
   const wrong = locks.filter((x) => x.got !== x.c.gold && !(x.c.alt ?? []).includes(x.got as string));
 
-  // Đo 03/10/2026: chốt 296/414 câu (71%), sai 0.
+  // Đo 04/10/2026 (sau khi siết luật dòng tiền theo review): chốt 295/414 câu (71%), sai 0. Đây là đo
+  // TRÊN CHÍNH bộ câu dùng để viết luật — độ đúng với câu mới do bộ câu phủ định bên dưới canh thêm.
   it("chốt đúng ≥ 99% số câu nó chốt", () => {
     const precision = (locks.length - wrong.length) / locks.length;
     const misses = wrong.map((x) => `${x.c.text} ⇒ ${x.got} (đúng: ${x.c.gold})`).join("\n");
@@ -90,6 +92,41 @@ describe("ruleCategory — ca dễ nhầm", () => {
   it("gõ không dấu cụm hai chữ vẫn nhận", () => {
     expect(pick("tien nha thang 10 512tc")).toBe("tien_nha");
     expect(pick("danh 2 chia khoa phong 304")).toBe("khoa_chia");
+  });
+
+  // Câu phủ định (review độc lập PR #118 chạy thử ra sai): khoản chi THẬT không được chốt vào mục dòng
+  // tiền — "Chuyển tiền nội bộ" ép INTERNAL làm khoản chi biến khỏi KQKD.
+  it.each([
+    "dọn vệ sinh bàn giao phòng 302",
+    "sửa điện trước khi bàn giao phòng",
+    "bàn giao phòng 302 thay ổ khoá",
+    "ứng tiền cho anh thợ sửa máy lạnh",
+    "Tạm ứng cho anh thợ hồ 2tr",
+    "Kết tiền điện nước tháng 9 cho chủ nhà",
+    "đóng tiền căn hộ 302",
+    "chuyển hộ khẩu cho khách",
+  ])("không chốt nội bộ: %s", (text) => {
+    expect(pick(text)).not.toBe("noi_bo");
+  });
+
+  it.each([
+    ["ca phe cho tho dien", "cong_an"],
+    ["ca trực đêm bảo vệ", "cong_an"],
+    ["gia hạn cap 6 tháng", "cong_an"],
+    ["mua giấy vệ sinh", "don_ve_sinh"],
+    ["chống thấm nhà vệ sinh 302", "don_ve_sinh"],
+    ["thay vòi xịt vệ sinh phòng 201", "don_ve_sinh"],
+    ["đóng dư tiền điện tháng 9", "tra_tien_thua_khach"],
+    ["trả cọc chủ nhà 512", "bo_sung_hoan_coc"],
+    ["trả cọc thợ hồ", "bo_sung_hoan_coc"],
+    ["mua trà cốc", "bo_sung_hoan_coc"],
+  ])("không chốt nhầm: %s ≠ %s", (text, key) => {
+    expect(pick(text)).not.toBe(key);
+  });
+
+  it("gõ không dấu cả câu vẫn nhận luật dòng tiền", () => {
+    expect(pick("hoan coc 402 1392qt")).toBe("bo_sung_hoan_coc");
+    expect(pick("ket tien so quy thang 5")).toBe("noi_bo");
   });
 
   it("không chắc thì null", () => {

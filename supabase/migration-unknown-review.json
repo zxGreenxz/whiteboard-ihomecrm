@@ -863,7 +863,7 @@
         }
       ],
       "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "File TẠO 03/10/2026 (danh mục chi chuẩn — cấu trúc), chưa đi qua lane apply — 5 object vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Đã chạy trên TEST cùng hai file đi kèm (20261003151608 dữ liệu, 20261003152559 báo cáo cộng gộp) HAI lượt trong một giao dịch ROLLBACK: lượt hai không lỗi và trạng thái income_expense_types giống hệt lượt một (md5 trùng). Bộ thử quyền bằng JWT người dùng thật trên TEST 6/6 ca (quản lý không tạo/sửa/xoá hạng mục; chủ công ty tạo được, hạng mục tự gắn đúng công ty; compat chặn lập tay hoa hồng; dòng Chuyển tiền nội bộ ép INTERNAL) và 4 đột biến (tắt chặn compat, nới policy INSERT/UPDATE, tắt ép INTERNAL) đều bị bắt. Sẽ áp qua npm run migrate:forward (người dùng chạy, có backup) sau khi PR được duyệt; khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "lyLe": "File TẠO 03/10/2026 (danh mục chi chuẩn — cấu trúc), chưa đi qua lane apply — 5 object vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Đã chạy trên TEST cùng hai file đi kèm (20261003151608 dữ liệu, 20261003152559 báo cáo cộng gộp) HAI lượt trong một giao dịch ROLLBACK: lượt hai không lỗi và trạng thái income_expense_types giống hệt lượt một (md5 trùng). Bộ thử quyền bằng JWT người dùng thật trên TEST 7/7 ca (quản lý không tạo/sửa/xoá hạng mục; chủ công ty tạo được, hạng mục tự gắn đúng công ty; compat chặn lập tay hoa hồng; dòng Chuyển tiền nội bộ ép INTERNAL) và 5 đột biến (tắt chặn compat, nới policy INSERT/UPDATE, tắt ép INTERNAL, tắt kiểm gộp cùng chiều/chưa lưu trữ) đều bị bắt. Sửa 04/10 theo review độc lập PR #118 (trigger gộp khoá dòng đích + kiểm cùng chiều) rồi chạy lại hai lượt trên TEST: md5 trạng thái trùng. Sẽ áp qua npm run migrate:forward (người dùng chạy, có backup) sau khi PR được duyệt; khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa — gate tự nhắc gỡ.",
       "missingObjects": [
         "function:app_private.ie_type_merge_one_level_guard",
         "function:public.ie_type_report_root_v1",
@@ -872,7 +872,7 @@
         "policy:public.income_expense_types.income_expense_types_editor_insert"
       ],
       "raSoatBoi": "Claude Code — danh mục chi chuẩn 03/10/2026",
-      "sha256": "1533ea24effe6b8587cb6de30c8a456f88a6ac80d706034d6f3a8df20e34330c"
+      "sha256": "f7b8a6ed24b100ddf55ce46f49d9ff341938e9ee8d47d9b79879c0f3e6842c71"
     }
   }
 }

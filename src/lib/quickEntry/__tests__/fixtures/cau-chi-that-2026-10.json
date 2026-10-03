@@ -111,7 +111,7 @@
   "gold": "khoa_chia"
  },
  {
-  "text": "đánh 2 chìa nhà 950 nguyễn kiệm",
+  "text": "đánh 2 chìa nhà 950NK",
   "gold": "khoa_chia"
  },
  {
@@ -664,15 +664,15 @@
   "gold": "cong_an"
  },
  {
-  "text": "tiền công an: thông tây hội (5ng) p13 tân bình (1ng)",
+  "text": "tiền công an: phường Y (5ng) phường X (1ng)",
   "gold": "cong_an"
  },
  {
-  "text": "đưa tiền công an (a Khải) phường 13 tân bình",
+  "text": "đưa tiền công an phường X",
   "gold": "cong_an"
  },
  {
-  "text": "đưa 200k tiền cà phê cho chị tiếp dân nhà 102/30lvt",
+  "text": "đưa 200k tiền cà phê cho chị tiếp dân nhà 102LVT",
   "gold": "tam_tru_giay_to"
  },
  {
@@ -688,11 +688,11 @@
   "gold": "tam_tru_giay_to"
  },
  {
-  "text": "đưa 500k cho c tiếp dân lấy 18 bộ tạm trú 102/30lvt",
+  "text": "đưa 500k cho c tiếp dân lấy 18 bộ tạm trú 102LVT",
   "gold": "tam_tru_giay_to"
  },
  {
-  "text": "tiền công an phường 13 tân bình 9-10",
+  "text": "tiền công an phường X 9-10",
   "gold": "cong_an"
  },
  {
@@ -700,7 +700,7 @@
   "gold": "cong_an"
  },
  {
-  "text": "đưa tiếp dân phường thông tây hội hồ sơ 32pvc",
+  "text": "đưa tiếp dân phường Y hồ sơ 32pvc",
   "gold": "tam_tru_giay_to"
  },
  {
@@ -791,7 +791,7 @@
   "gold": "noi_that_decor"
  },
  {
-  "text": "mua tủ lạnh 950/65 NGUYỄN KIỆM",
+  "text": "mua tủ lạnh 950NK",
   "gold": "dien_may"
  },
  {
@@ -866,7 +866,7 @@
   "gold": "pccc"
  },
  {
-  "text": "bảo hiểm PCCC 45/3 Trần Thái Tông",
+  "text": "bảo hiểm PCCC 45TTT",
   "gold": "pccc"
  },
  {
@@ -997,7 +997,7 @@
   "gold": "tien_nha"
  },
  {
-  "text": "Tiền nhà - 45/3 Trần Thái Tông. Tiền nhà hàng tháng",
+  "text": "Tiền nhà - 45TTT. Tiền nhà hàng tháng",
   "gold": "tien_nha"
  },
  {
@@ -1029,7 +1029,7 @@
   "gold": "tien_nha"
  },
  {
-  "text": "Chuyển tiền nhà 15/22KV T6",
+  "text": "Chuyển tiền nhà 15KV T6",
   "gold": "tien_nha"
  },
  {
@@ -1061,7 +1061,7 @@
   "gold": "tien_nha"
  },
  {
-  "text": "tiền nhà 102/30 Lê Văn Thọ",
+  "text": "tiền nhà 102LVT",
   "gold": "tien_nha"
  },
  {
@@ -1269,7 +1269,7 @@
   "gold": "rac"
  },
  {
-  "text": "tiền rác tháng 7 - 15/22 Khuông Việt",
+  "text": "tiền rác tháng 7 - 15KV",
   "gold": "rac"
  },
  {
@@ -1277,7 +1277,7 @@
   "gold": "rac"
  },
  {
-  "text": "rác 15/22 Khuông Việt - T8",
+  "text": "rác 15KV - T8",
   "gold": "rac"
  },
  {
@@ -1289,7 +1289,7 @@
   "gold": "bo_rac"
  },
  {
-  "text": "tiền rác 15/22kv T9",
+  "text": "tiền rác 15KV T9",
   "gold": "rac"
  },
  {
@@ -1344,7 +1344,7 @@
   "gold": "don_ve_sinh"
  },
  {
-  "text": "Vệ sinh tòa nhà - 45/3 Trần Thái Tông. Vệ sinh tòa nhà định kỳ",
+  "text": "Vệ sinh tòa nhà - 45TTT. Vệ sinh tòa nhà định kỳ",
   "gold": "don_ve_sinh"
  },
  {
@@ -1452,15 +1452,15 @@
   "gold": "noi_bo"
  },
  {
-  "text": "bàn giao tiền 45/3TTT cho a Khôi",
+  "text": "bàn giao tiền 45TTT cho a Khôi",
   "gold": "noi_bo"
  },
  {
-  "text": "bàn giao a Khôi đóng tiền 45/3TTT",
+  "text": "bàn giao a Khôi đóng tiền 45TTT",
   "gold": "noi_bo"
  },
  {
-  "text": "Dán decal cửa nhôm 950/65 Nguyễn Kiệm - tiền mặt",
+  "text": "Dán decal cửa nhôm 950NK - tiền mặt",
   "gold": "in_an_decal"
  },
  {
@@ -1472,7 +1472,7 @@
   "gold": "bo_sung_hoan_coc"
  },
  {
-  "text": "Tiền mạng internet - 45/3 Trần Thái Tông (T5/2026). Tiền mạng internet tháng 10",
+  "text": "Tiền mạng internet - 45TTT (T5/2026). Tiền mạng internet tháng 10",
   "gold": "internet"
  },
  {
@@ -1492,18 +1492,18 @@
   "gold": "dien_may"
  },
  {
-  "text": "Rác - 45/3 Trần Thái Tông (T5/2026). Rác",
+  "text": "Rác - 45TTT (T5/2026). Rác",
   "gold": "rac"
  },
  {
-  "text": "Rửa thùng rác - 45/3 Trần Thái Tông (T5/2026). Rửa thùng rác 2 lần",
+  "text": "Rửa thùng rác - 45TTT (T5/2026). Rửa thùng rác 2 lần",
   "gold": "bo_rac",
   "alt": [
    "don_ve_sinh"
   ]
  },
  {
-  "text": "Tạm trú - 45/3 Trần Thái Tông (T5/2026). Tạm trú",
+  "text": "Tạm trú - 45TTT (T5/2026). Tạm trú",
   "gold": "tam_tru_giay_to"
  },
  {
@@ -1560,7 +1560,7 @@
   "gold": "diet_con_trung"
  },
  {
-  "text": "In bảng phòng chống ma túy phường thông tây hội - 8 bản",
+  "text": "In bảng phòng chống ma túy phường Y - 8 bản",
   "gold": "in_an_decal"
  },
  {
@@ -1568,7 +1568,7 @@
   "gold": "in_an_decal"
  },
  {
-  "text": "In decal thông tây hội",
+  "text": "In decal phường Y",
   "gold": "in_an_decal"
  },
  {

@@ -34,6 +34,7 @@ import { deserializeCards, draftsKey, otherUsersKeys, serializeCards } from "@/l
 import {
   buildCategoryOnlyMessages,
   buildQuickEntryMessages,
+  MAX_CATEGORY_LINES,
   MAX_PROMPT_CATEGORIES,
   type PromptCategory,
 } from "@/lib/quickEntry/prompt";
@@ -123,7 +124,16 @@ export function needsAi(s: DraftState): boolean {
  */
 export function onlyCategoriesMissing(s: DraftState): boolean {
   const d = s.draft;
-  return d.mode === "company" && !!d.buildingId && d.lines.length > 0 && d.lines.every((l) => l.amount > 0) && needsAi(s);
+  // Câu lệnh rút gọn chỉ gửi tối đa MAX_CATEGORY_LINES dòng — thẻ dài hơn thì AI trả thiếu phần tử, luôn
+  // sai khuôn ⇒ dùng câu lệnh đầy đủ.
+  return (
+    d.mode === "company" &&
+    !!d.buildingId &&
+    d.lines.length > 0 &&
+    d.lines.length <= MAX_CATEGORY_LINES &&
+    d.lines.every((l) => l.amount > 0) &&
+    needsAi(s)
+  );
 }
 
 const editable = (c: FeedCard) => c.status.kind === "draft" || c.status.kind === "rejected";

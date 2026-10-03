@@ -25,7 +25,7 @@ vi.mock("../useQuickEntrySave", () => ({
   useQuickEntrySave: () => ({ uploadPhoto: h.uploadPhoto, saveCompany: h.saveCompany, savePersonal: h.savePersonal }),
 }));
 
-import { needsAi, useQuickEntryFeed } from "../useQuickEntryFeed";
+import { needsAi, onlyCategoriesMissing, useQuickEntryFeed } from "../useQuickEntryFeed";
 import type { QuickEntryRefs } from "../useQuickEntryRefs";
 import { draftsKey } from "@/lib/quickEntry/feedStorage";
 
@@ -123,6 +123,18 @@ describe("needsAi — chỉ gọi AI khi thẻ còn chỗ mơ hồ", () => {
     const [c] = cardsOf(result);
     expect(needsAi(c.state)).toBe(true);
     expect(needsAi({ ...c.state, touched: [...c.state.touched, "lines"] })).toBe(false);
+  });
+
+  it("câu lệnh rút gọn chỉ cho thẻ đủ tiền + toà và không quá 20 dòng", async () => {
+    h.readWithAi.mockResolvedValue(ok(ai()));
+    const { result } = mount();
+    await act(async () => result.current.submitText("102LVT sơn 300k", "company"));
+    const [c] = cardsOf(result);
+    expect(onlyCategoriesMissing(c.state)).toBe(true);
+    const line = c.state.draft.lines[0];
+    const many = { ...c.state, draft: { ...c.state.draft, lines: Array.from({ length: 21 }, () => ({ ...line })) } };
+    expect(onlyCategoriesMissing(many)).toBe(false);
+    expect(onlyCategoriesMissing({ ...c.state, draft: { ...c.state.draft, buildingId: null } })).toBe(false);
   });
 });
 

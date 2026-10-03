@@ -264,12 +264,20 @@ BEGIN
   IF v_so <> 39 THEN
     RAISE EXCEPTION 'danh_muc_chi_du_lieu: org iHome có % hạng mục mang rule_key, cần 39', v_so;
   END IF;
-  -- Ô chọn tay của quản lý: đúng 31 mục (không lưu trữ, không ẩn, không hạn chế, không hệ thống).
+  -- Ô chọn tay của quản lý: 31 mục chuẩn (không lưu trữ, không ẩn, không hạn chế, không hệ thống).
+  -- Đo 03/10/2026 ra đúng 31. Hạng mục chi MỚI tạo sau lần đo (chưa nằm trong danh sách gộp) vẫn để
+  -- nguyên cho chủ gộp tay ở trang Loại thu chi ⇒ chỉ báo, không làm hỏng cả migration; THIẾU mới là lỗi.
   SELECT count(*) INTO v_so FROM public.income_expense_types
    WHERE organization_id = v_org AND lower(btrim(type)) = 'expense'
      AND archived_at IS NULL AND NOT manual_hidden AND NOT system_only AND NOT is_restricted;
-  IF v_so <> 31 THEN
-    RAISE EXCEPTION 'danh_muc_chi_du_lieu: ô chọn của quản lý có % hạng mục chi, cần 31', v_so;
+  IF v_so < 31 THEN
+    RAISE EXCEPTION 'danh_muc_chi_du_lieu: ô chọn của quản lý có % hạng mục chi, cần ít nhất 31', v_so;
+  ELSIF v_so > 31 THEN
+    RAISE NOTICE 'danh_muc_chi_du_lieu: ô chọn của quản lý có % hạng mục chi (31 chuẩn) — mục chưa có rule_key: %',
+      v_so,
+      (SELECT string_agg(name, ', ' ORDER BY name) FROM public.income_expense_types
+        WHERE organization_id = v_org AND lower(btrim(type)) = 'expense' AND rule_key IS NULL
+          AND archived_at IS NULL AND NOT manual_hidden AND NOT system_only AND NOT is_restricted);
   END IF;
   -- Tên máy chủ tìm theo tên vẫn còn nguyên.
   IF (SELECT count(*) FROM public.income_expense_types

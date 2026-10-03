@@ -107,10 +107,22 @@ export const expenseRankOf = (
 // phiếu là ra đúng loại. Danh sách types truyền vào đã dedup + sort (hook
 // useIncomeExpenseTypes) nên phần tử đầu khớp là kết quả ổn định.
 // Không khớp / rank ngoài danh sách → undefined (caller cho user chọn tay).
+// Danh mục chi chuẩn (03/10/2026): bỏ mục đã lưu trữ / ẩn khỏi ô chọn tay; ưu tiên mục mang đúng
+// rule_key của khoản cố định (vd "Bỏ rác phát sinh" cũng chứa chữ "rác" nhưng không phải "Tiền rác").
+const FIXED_RULE_KEY: Readonly<Record<string, string>> = { ve_sinh: "ve_sinh_dinh_ky" };
+
 export function findTypeForFixedCategory<
-  T extends { name: string; category: string | null },
+  T extends {
+    name: string;
+    category: string | null;
+    archived_at?: string | null;
+    manual_hidden?: boolean | null;
+    rule_key?: string | null;
+  },
 >(types: T[], fixedRank: number): T | undefined {
   const cat = FIXED_EXPENSE_CATEGORIES[fixedRank];
   if (!cat) return undefined;
-  return types.find((t) => cat.match(nrm(t.category), nrm(t.name)));
+  const usable = types.filter((t) => !t.archived_at && !t.manual_hidden);
+  const ruleKey = FIXED_RULE_KEY[cat.key] ?? cat.key;
+  return usable.find((t) => t.rule_key === ruleKey) ?? usable.find((t) => cat.match(nrm(t.category), nrm(t.name)));
 }
