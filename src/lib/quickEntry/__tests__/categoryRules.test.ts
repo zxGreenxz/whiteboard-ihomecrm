@@ -36,7 +36,7 @@ describe("ruleCategory — 414 câu chi thật (02/10/2026)", () => {
     .filter((x) => x.got !== null);
   const wrong = locks.filter((x) => x.got !== x.c.gold && !(x.c.alt ?? []).includes(x.got as string));
 
-  // Đo 04/10/2026 (sau khi siết luật dòng tiền theo review): chốt 295/414 câu (71%), sai 0. Đây là đo
+  // Đo 04/10/2026 (sau hai lượt siết luật dòng tiền theo review): chốt 293/414 câu (71%), sai 0. Đây là đo
   // TRÊN CHÍNH bộ câu dùng để viết luật — độ đúng với câu mới do bộ câu phủ định bên dưới canh thêm.
   it("chốt đúng ≥ 99% số câu nó chốt", () => {
     const precision = (locks.length - wrong.length) / locks.length;
@@ -105,6 +105,19 @@ describe("ruleCategory — ca dễ nhầm", () => {
     "Kết tiền điện nước tháng 9 cho chủ nhà",
     "đóng tiền căn hộ 302",
     "chuyển hộ khẩu cho khách",
+    // Re-review lượt 2: gõ không dấu đi vòng qua loại trừ; "ứng … cho" người ngoài.
+    "ban giao tien nha cho chu nha",
+    "ban giao tien dien cho chu nha 417",
+    "ung tien cho anh tho son",
+    "ứng cho cô dọn vệ sinh 200k",
+    "ứng tiền cho cô lao công",
+    "ứng cho chú bảo vệ tháng 10",
+    "ứng tiền cho chú Định làm thang thoát hiểm",
+    "ứng cho anh Tuấn điện lạnh 500k",
+    "ứng cho anh Hùng sơn nước",
+    "ứng tiền cho a Long sửa máy bơm",
+    "bàn giao tiền điện cho EVN",
+    "bàn giao cô dọn phòng 302",
   ])("không chốt nội bộ: %s", (text) => {
     expect(pick(text)).not.toBe("noi_bo");
   });
@@ -120,6 +133,14 @@ describe("ruleCategory — ca dễ nhầm", () => {
     ["trả cọc chủ nhà 512", "bo_sung_hoan_coc"],
     ["trả cọc thợ hồ", "bo_sung_hoan_coc"],
     ["mua trà cốc", "bo_sung_hoan_coc"],
+    ["tra lai coc cho chu nha", "bo_sung_hoan_coc"],
+    ["hoan coc cho tho son", "bo_sung_hoan_coc"],
+    ["trả lại cọc nhà cho chủ 417", "bo_sung_hoan_coc"],
+    ["trả cọc thuê nhà mới", "bo_sung_hoan_coc"],
+    ["ca 2 bảo vệ", "cong_an"],
+    ["tiền ca 3 trực", "cong_an"],
+    ["tiền ca t9 bảo vệ", "cong_an"],
+    ["thối tiền ship", "tra_tien_thua_khach"],
   ])("không chốt nhầm: %s ≠ %s", (text, key) => {
     expect(pick(text)).not.toBe(key);
   });

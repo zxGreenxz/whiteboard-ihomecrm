@@ -133,8 +133,8 @@ DECLARE
 
    {"k":"noi_bo","g":"Tiền nội bộ","n":"Chuyển tiền nội bộ","a":["bàn giao tiền anh Tâm","bàn giao tiền anh Huy"],
     "m":["Kết tiền chi resident","Chuyen tien A.Giang"],"it":true,
-    "d":"tiền nội bộ, không phải chi phí: chủ/sếp lấy tiền, bàn giao tiền, ứng tiền cho người trong công ty, chi dùm khoản riêng của người khác, kết sổ quỹ. Đóng tiền nhà cho chủ nhà KHÔNG thuộc mục này",
-    "kw":["bàn giao tiền","ứng tiền cho","chi hộ","kết sổ quỹ"]},
+    "d":"tiền nội bộ, không phải chi phí: chủ/sếp lấy tiền, bàn giao tiền, ứng tiền cho người trong công ty, chi dùm khoản riêng của người khác, kết sổ quỹ. Đóng tiền nhà cho chủ nhà, ứng tiền cho thợ / lao công / bảo vệ KHÔNG thuộc mục này",
+    "kw":["bàn giao tiền","chi hộ","kết sổ quỹ"]},
    {"k":"chi_khac","g":"Khác","n":"Chi khác (ghi rõ)","a":["Thu chi khác"],
     "d":"chỉ dùng khi không mục nào hợp; bắt buộc ghi rõ nội dung","kw":[]}
   ]$spec$;

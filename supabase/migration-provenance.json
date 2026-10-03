@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-03T17:13:20.329Z",
+  "generatedAt": "2026-10-03T17:28:16.349Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
@@ -11011,7 +11011,7 @@
       "version": "20261003151608",
       "name": "danh_muc_chi_du_lieu",
       "scheme": "timestamp14",
-      "sha256": "3a57aa60f92af1b0babae68f93fe8427cd3a84c99cabf3f67f44b83553e5bffe",
+      "sha256": "f0ee665f9dea6a1e1d8c2e76e33ac741ba20a7e09eac2c19dd18eb711bf7c2ba",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [
@@ -11023,7 +11023,7 @@
       "version": "20261003152559",
       "name": "danh_muc_chi_bao_cao_cong_gop",
       "scheme": "timestamp14",
-      "sha256": "63904b75e96232ecea18d900ae09012f3bdcc0a46835bd1f64baa48e755cb912",
+      "sha256": "f3e7a7da5eebe01f7646e5c231d9410003040e5fadd8344fb3fce7a13661214e",
       "state": "catalog-proven",
       "evidence": [
         "catalog:function:public.fa_type_breakdown",

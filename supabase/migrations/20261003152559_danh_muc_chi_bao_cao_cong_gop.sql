@@ -10,12 +10,13 @@
 --                                 business_performance_category_breakdown_v1)
 --   - copilot_report_expense_ratio_v1 (Copilot: tỉ lệ chi theo nhóm)
 -- CỐ Ý KHÔNG đụng fa_accrual_allocations: đó là nguồn của chốt lợi nhuận —
--- _profit_close_preview_core_v2 băm type_id/type_name/category của nó vào
--- source_hash, còn current_profit_building_source_hash_v1 dựng lại hash bằng
--- cách nối thẳng hạng mục của dòng. Gộp ở đó làm mọi tháng chốt mới có dòng
--- thuộc mục đã gộp "lệch nguồn" ngay khi vừa chốt ⇒ chặn chia lợi nhuận
--- (review độc lập PR #118, 03/10/2026). Bản phân kỳ vì thế hiện mục cũ và mục
--- gốc thành hai dòng; tổng không đổi.
+-- _profit_close_preview_core_v2 đọc type_id/type_name/category của nó, còn
+-- current_profit_building_source_hash_v1 (bản đang chạy, md5 13512e71…) dựng
+-- lại hash từ snapshot lúc chốt và nối thẳng hạng mục của dòng. Review độc lập
+-- PR #118 lo gộp ở đây làm tháng chốt mới "lệch nguồn"; thử chốt tháng 9/2026
+-- trên TEST (ROLLBACK, 04/10/2026) KHÔNG tái hiện được (2/2 vẫn hiện hành cả khi
+-- gộp) — vẫn giữ nguyên nguồn chốt cho chắc. Bản phân kỳ vì thế hiện mục cũ và
+-- mục gốc thành hai dòng; tổng không đổi.
 -- Thân hàm lấy NGUYÊN từ production 03/10/2026 (pg_get_functiondef), chỉ thay
 -- phép nối hạng mục; quyền EXECUTE giữ nguyên vì CREATE OR REPLACE.
 -- Hạng mục chưa gộp: COALESCE trả về chính nó ⇒ số liệu không đổi.
