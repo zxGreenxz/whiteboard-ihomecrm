@@ -36,12 +36,30 @@ describe("ruleCategory — 414 câu chi thật (02/10/2026)", () => {
     .filter((x) => x.got !== null);
   const wrong = locks.filter((x) => x.got !== x.c.gold && !(x.c.alt ?? []).includes(x.got as string));
 
-  // Đo 04/10/2026 (sau hai lượt siết luật dòng tiền theo review): chọn 293/414 câu (71%; 7 câu chỉ gợi ý yếu), sai 0. Đây là đo
+  // Đo 04/10/2026 (sau hai lượt siết luật dòng tiền theo review): chọn 293/414 câu (71%; 1 câu chỉ gợi ý yếu), sai 0; đầu-cuối khoá 292, sai 0. Đây là đo
   // TRÊN CHÍNH bộ câu dùng để viết luật — độ đúng với câu mới do bộ câu phủ định bên dưới canh thêm.
   it("chốt đúng ≥ 99% số câu nó chốt", () => {
     const precision = (locks.length - wrong.length) / locks.length;
     const misses = wrong.map((x) => `${x.c.text} ⇒ ${x.got} (đúng: ${x.c.gold})`).join("\n");
     expect(precision, misses).toBeGreaterThanOrEqual(0.99);
+  });
+
+  // Đầu-cuối (review lượt 4): KHOÁ CỨNG qua mọi đường của suggestCategory — luật, cụm phí cố định, mã
+  // khách hàng — chứ không chỉ lớp luật. Khoá sai thì AI không sửa được.
+  it("khoá cứng đầu-cuối (luật + cụm phí) đúng ≥ 99%", () => {
+    const LOCK = new Set(["rule", "fee_phrase", "provider_code"]);
+    const locked = cases
+      .map((c) => ({ c, s: suggestCategory(rows, c.text) }))
+      .filter((x) => x.s && LOCK.has(x.s.reason));
+    const bad = locked.filter((x) => x.s?.id !== x.c.gold && !(x.c.alt ?? []).includes(x.s?.id as string));
+    const misses = bad.map((x) => `${x.c.text} ⇒ ${x.s?.id} (${x.s?.reason}; đúng: ${x.c.gold})`).join("\n");
+    expect((locked.length - bad.length) / locked.length, misses).toBeGreaterThanOrEqual(0.99);
+  });
+
+  it("cụm phí cố định áp cùng loại trừ với lớp luật", () => {
+    expect(suggestCategory(rows, "in giấy hợp đồng thuê nhà cho a Khôi")?.id ?? null).not.toBe("tien_nha");
+    expect(suggestCategory(rows, "mua keo dán nút nhấn thang máy")?.id ?? null).not.toBe("thang_may");
+    expect(suggestCategory(rows, "tiền nhà tháng 10 512TT")?.id).toBe("tien_nha");
   });
 
   it("chốt được ≥ 70% câu (phần còn lại mới gọi AI)", () => {
@@ -195,9 +213,46 @@ describe("ruleCategory — ca dễ nhầm", () => {
   });
 
   it("thiếu neo thì vẫn GỢI Ý nội bộ (không khoá)", () => {
-    expect(ruleMatch(rows, "bàn giao tiền anh Vinh")).toMatchObject({ strong: false, ref: { rule_key: "noi_bo" } });
     expect(ruleMatch(rows, "bàn giao tiền cho chủ")).toMatchObject({ strong: false, ref: { rule_key: "noi_bo" } });
+    expect(ruleMatch(rows, "chi hộ chị Hoa tiền đổ rác 417")).toMatchObject({ strong: false });
     expect(pick("chuyen tien nha dum a Vinh")).toBe("noi_bo");
+  });
+
+  // Re-review lượt 4: mẫu chủ thật sự hay ghi phải giữ KHOÁ; neo của hoàn cọc không bắt "khách sạn", "hợp đồng thuê kho".
+  it.each([
+    "bàn giao tiền anh Vinh",
+    "bàn giao tiền cho anh Vinh",
+    "Bàn Giao Tiền anh Khôi",
+    "bàn giao anh Vinh",
+    "bàn giao tiền 45TTT cho a Khôi",
+    "chuyển tiền nhà dùm a Vinh",
+  ])("câu bàn giao chuẩn vẫn KHOÁ nội bộ: %s", (text) => {
+    expect(strongKey(text)).toBe("noi_bo");
+  });
+
+  it.each([
+    "kết sổ điện nước tháng 9",
+    "kết sổ tiền rác",
+    "kết sổ công an",
+    "kết tiền quỹ đóng điện nước",
+  ])("kết sổ kèm khoản chi chỉ là gợi ý: %s", (text) => {
+    expect(strongKey(text)).not.toBe("noi_bo");
+  });
+
+  it.each([
+    "trả cọc khách sạn",
+    "trả cọc khách sạn đi du lịch công ty",
+    "trả cọc tiệc liên hoan khách hàng",
+    "trả cọc cho đối tác khách hàng",
+    "trả cọc phòng 3 khách sạn",
+    "trả cọc phòng 2 homestay team building",
+    "trả cọc hợp đồng thuê kho",
+    "trả cọc hợp đồng thuê mặt bằng",
+    "trả cọc hợp đồng camera",
+    "hoàn cọc hợp đồng internet",
+    "trả cọc thanh lý máy giặt cũ",
+  ])("không KHOÁ hoàn cọc khách: %s", (text) => {
+    expect(strongKey(text)).not.toBe("bo_sung_hoan_coc");
   });
 
   it("gõ không dấu cả câu vẫn nhận luật dòng tiền", () => {

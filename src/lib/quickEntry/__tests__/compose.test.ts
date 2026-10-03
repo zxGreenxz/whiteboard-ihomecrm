@@ -10,7 +10,7 @@ import {
   type ComposeContext,
 } from "../compose";
 import type { AiResult } from "../aiSchema";
-import type { CategoryRef } from "../categorySuggest";
+import { suggestCategory, type CategoryRef } from "../categorySuggest";
 
 const O = "org";
 const categories: CategoryRef[] = [
@@ -218,11 +218,27 @@ describe("luật dòng tiền: khoá cứng chỉ khi có neo chắc chắn", ()
     { id: "t-nb", name: "Chuyển tiền nội bộ", category: "Tiền nội bộ", type: "expense", organization_id: O, rule_key: "noi_bo", keywords: ["bàn giao tiền"] },
   ];
 
-  it("'bàn giao tiền cho anh Hùng' ⇒ gợi ý nội bộ nhưng KHÔNG khoá — AI câu lệnh rút gọn được thay", () => {
-    const [s] = draftsFromText("102LVT bàn giao tiền cho anh Hùng 2tr", ctx({ categories: cats }));
-    expect(s.draft.lines[0].categoryId).toBe("t-nb");
+  it("'chi hộ chị Hoa tiền đổ rác' ⇒ gợi ý yếu: KHÔNG điền sẵn, không khoá — AI chọn, AI không chọn thì người dùng chọn", () => {
+    expect(suggestCategory(cats, "chi hộ chị Hoa tiền đổ rác")?.reason).toBe("rule_weak");
+    const [s] = draftsFromText("102LVT chi hộ chị Hoa tiền đổ rác 200k", ctx({ categories: cats }));
+    expect(s.draft.lines[0].categoryId).toBeNull();
     expect(s.locked).not.toContain("lines.0.categoryId");
     expect(applyAiCategories(s, ["c3"], ctx({ categories: cats })).draft.lines[0].categoryId).toBe("t-vt");
+    expect(applyAiCategories(s, [null], ctx({ categories: cats })).draft.lines[0].categoryId).toBeNull();
+  });
+
+  it("ảnh bill: gợi ý yếu của luật dòng tiền cũng để trống", () => {
+    const s = draftFromBill(
+      ai({ items: [{ desc: "chi hộ chị Hoa tiền đổ rác", amount_vnd: 200_000, category: null, confidence: 0.6 }] }),
+      ctx({ categories: cats }),
+    );
+    expect(s.draft.lines[0].categoryId).not.toBe("t-nb");
+  });
+
+  it("câu bàn giao chuẩn của chủ ('bàn giao tiền 45TTT cho a Khôi') ⇒ khoá", () => {
+    const [s] = draftsFromText("bàn giao tiền 102LVT cho a Khôi 5tr", ctx({ categories: cats }));
+    expect(s.draft.lines[0].categoryId).toBe("t-nb");
+    expect(s.locked).toContain("lines.0.categoryId");
   });
 
   it("'kết sổ quỹ tháng 9' ⇒ khoá, AI không đè", () => {

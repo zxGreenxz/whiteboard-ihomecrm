@@ -11,7 +11,7 @@
 import { normalizeLoose } from "../textMatch";
 import { FIXED_EXPENSE_CATEGORIES, nrm } from "../fixedExpenseCategories";
 import { sortIeTypesForPicker } from "../ieTypeCatalog";
-import { ruleMatch } from "./categoryRules";
+import { blockedFor, ruleMatch } from "./categoryRules";
 
 export interface CategoryRef {
   id: string;
@@ -133,8 +133,10 @@ export function suggestCategory(
   const loose = normalizeLoose(description);
   for (const [feeKey, re] of FEE_PHRASES) {
     if (!re.test(loose)) continue;
-    // "trả cọc thuê nhà mới" là tiền cọc thu hồi được, không phải tiền nhà tháng.
+    // "trả cọc thuê nhà mới" là tiền cọc thu hồi được, không phải tiền nhà tháng; cùng loại trừ với lớp
+    // luật ("in giấy hợp đồng thuê nhà", "mua keo nút thang máy" không phải phí cố định).
     if (feeKey === "tien_nha" && /\bcoc\b/.test(loose)) continue;
+    if (blockedFor(feeKey, description)) continue;
     const hit = categoryForFee(rows, feeKey);
     if (hit) return { id: hit.id, reason: "fee_phrase" };
   }

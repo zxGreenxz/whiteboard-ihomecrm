@@ -168,7 +168,9 @@ export function draftsFromText(text: string, ctx: ComposeContext): DraftState[] 
       line: {
         description,
         amount: seg.amount?.value ?? 0,
-        categoryId: suggestion?.id ?? null,
+        // Gợi ý yếu của luật dòng tiền (nội bộ / hoàn cọc thiếu neo chắc) KHÔNG điền sẵn: AI chọn; AI null /
+        // lỗi thì ô trống và người dùng phải chọn — điền sẵn mà lưu luôn là khoản chi thật thành INTERNAL.
+        categoryId: suggestion && suggestion.reason !== "rule_weak" ? suggestion.id : null,
         personalCategory: null,
         periodStart: period?.start ?? null,
         periodEnd: period?.end ?? null,
@@ -176,7 +178,7 @@ export function draftsFromText(text: string, ctx: ComposeContext): DraftState[] 
       flags,
       candidates,
       guessed,
-      // Đoán yếu (trùng chữ, luật dòng tiền thiếu neo chắc) ⇒ không khoá: AI được thay.
+      // Đoán yếu (trùng chữ) ⇒ điền nhưng không khoá: AI được thay.
       lockCategory: suggestion !== null && suggestion.reason !== "name_overlap" && suggestion.reason !== "rule_weak",
     };
   });
@@ -244,7 +246,9 @@ function roomFromMention(mention: string | null, buildingId: string, refs: Resol
 function lineCategory(item: AiItem | undefined, description: string, feeCategory: string | null, ctx: ComposeContext): string | null {
   const mapped = fromIndex(item?.category ?? null, ctx.categories);
   if (mapped) return mapped.id;
-  return suggestCategory(ctx.categories, description, { feeCategory })?.id ?? null;
+  const s = suggestCategory(ctx.categories, description, { feeCategory });
+  // Ảnh bill không có lượt AI sau ⇒ gợi ý yếu của luật dòng tiền để trống cho người dùng chọn.
+  return s && s.reason !== "rule_weak" ? s.id : null;
 }
 
 /**

@@ -103,7 +103,11 @@ describe("suggestCategory — đoán từ mô tả", () => {
       { id: "nb", name: "Chuyển tiền nội bộ", category: null, type: "expense", organization_id: O, rule_key: "noi_bo" },
     ];
     // Nội bộ chỉ khoá cứng khi có neo "kết sổ / bàn giao về sổ" — còn lại là gợi ý yếu (AI được thay).
-    expect(suggestCategory(list, "chuyển tiền nhà dùm a Huy")).toEqual({ id: "nb", reason: "rule_weak" });
+    // Mẫu chuẩn chủ hay ghi (cả câu chỉ "chuyển tiền X dùm <người> <tên>") ⇒ khoá; kèm việc khác ⇒ gợi ý yếu.
+    expect(suggestCategory(list, "chuyển tiền nhà dùm a Huy")).toEqual({ id: "nb", reason: "rule" });
+    expect(suggestCategory(list, "chi hộ chị Hoa tiền đổ rác 417")).toEqual({ id: "nb", reason: "rule_weak" });
+    // Người ngoài (nhà thầu) ⇒ loại hẳn, không gợi ý nội bộ.
+    expect(suggestCategory(list, "bàn giao tiền cho anh Hùng nhà thầu")?.id ?? null).not.toBe("nb");
     expect(suggestCategory(list, "kết sổ quỹ tháng 9")).toEqual({ id: "nb", reason: "rule" });
     expect(suggestCategory(list, "tiền nhà tháng 10")).toEqual({ id: "nha", reason: "rule" });
   });

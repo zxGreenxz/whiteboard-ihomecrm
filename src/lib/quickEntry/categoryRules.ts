@@ -1,7 +1,8 @@
 // Lớp LUẬT chọn hạng mục chi cho "Báo chi nhanh" — chạy TRƯỚC AI, chỉ chốt khi chắc.
 //
 // Đo trên 414 câu chi thật (fixture __tests__/fixtures/cau-chi-that-2026-10.json, 03/10/2026):
-// chọn 293 câu (71%; 286 khoá cứng, 7 chỉ gợi ý), sai 0 — đo trên chính bộ câu dùng để viết luật, nên có thêm bộ câu phủ định
+// chọn 293 câu (71%; 1 câu chỉ gợi ý), sai 0; đo đầu-cuối qua suggestCategory (gồm cụm phí) khoá 292, sai 0 —
+// đo trên chính bộ câu dùng để viết luật, nên có thêm bộ câu phủ định
 // (khoản chi thật không được rơi vào mục dòng tiền); phần còn lại mới gọi AI.
 // Ưu tiên ĐÚNG hơn PHỦ: không chắc ⇒ trả null để AI (hoặc người dùng) chọn.
 //   1. Luật chủ công ty đặt (03/10/2026), neo theo `rule_key` của hạng mục (migration
@@ -44,20 +45,39 @@ interface OwnerRule {
  * (thẻ vẫn gọi AI, AI được thay). Review lượt 3 PR #118: danh sách loại trừ người ngoài không bao giờ đủ
  * ("bàn giao tiền cho đội xây dựng", "chi hộ chị Hoa tiền đổ rác", "trả cọc lắp camera").
  */
-const STRONG: Readonly<Record<string, { accented: RegExp; bare: RegExp }>> = {
+const STRONG: Readonly<
+  Record<string, { accented: RegExp; bare: RegExp; canonical?: RegExp; weakIf?: RegExp; weakIfBare?: RegExp }>
+> = {
   noi_bo: {
+    // Neo sổ sách. "kết sổ điện nước", "kết sổ tiền rác" là khoản chi ⇒ hạ xuống gợi ý (weakIf).
     accented: / kết tiền (resident|sổ|quỹ) | kết sổ | bàn giao (tiền )?về sổ /,
     bare: / ket tien (resident|so|quy) | ket so | ban giao (tien )?ve so /,
+    weakIf: / tiền (điện|nước|rác|internet|mạng|nhà)| điện nước | rác | công an | internet /,
+    weakIfBare: / tien (dien|nuoc|rac|internet|mang|nha)| dien nuoc | rac | cong an | internet /,
+    // Đúng mẫu chủ hay ghi, CẢ CÂU chỉ có vậy: "bàn giao (tiền) (mã toà) (cho) <người> <tên> (mã/số)" hoặc
+    // "(chuyển|chi|đóng) tiền X dùm/hộ <người> <tên>" ⇒ luôn khoá (review lượt 4: câu chuẩn không mất khoá).
+    canonical: new RegExp(
+      "^ bàn giao (tiền )?(\\S*\\d\\S* )*(cho )?(a|anh|chị|c|em) \\p{L}+ (\\S*\\d\\S* )*$" +
+        "|^ (chuyển|chi|đóng) tiền \\S+ (dùm|giùm|hộ) (a|anh|chị|c|em) \\p{L}+ $",
+      "u",
+    ),
   },
   bo_sung_hoan_coc: {
-    accented: / khách | thanh lý | hđ | hợp đồng | phòng \d| \d{3,4} \d{2,4}[a-zđ]+ /,
-    bare: / khach | thanh ly | hd | hop dong | phong \d| \d{3,4} \d{2,4}[a-z]+ /,
+    // "khách" của khách thuê — không phải "khách sạn", "khách hàng"; mã phòng-toà ("402-1392qt"), "phòng 302";
+    // "thanh lý hđ/hợp đồng" (không phải "thanh lý máy giặt cũ"). "hợp đồng" đứng riêng KHÔNG là neo
+    // ("trả cọc hợp đồng thuê kho").
+    accented: / khách(?! sạn| hàng)| thanh lý (hđ|hợp đồng)| phòng \d{3}| \d{3,4} \d{2,4}[a-zđ]+ /u,
+    bare: / khach(?! san| hang)| thanh ly (hd|hop dong)| phong \d{3}| \d{3,4} \d{2,4}[a-z]+ /,
   },
 };
 
 function strongFor(ruleKey: string | null | undefined, a: string, b: string, noAccent: boolean): boolean {
   const s = ruleKey ? STRONG[ruleKey] : undefined;
-  return !s || s.accented.test(a) || (noAccent && s.bare.test(b));
+  if (!s) return true;
+  if (s.canonical?.test(a)) return true;
+  const anchored = s.accented.test(a) || (noAccent && s.bare.test(b));
+  const weakened = (s.weakIf?.test(a) ?? false) || (noAccent && (s.weakIfBare?.test(b) ?? false));
+  return anchored && !weakened;
 }
 
 // Thứ tự = ưu tiên. Dòng tiền trước, vệ sinh sau cùng (câu hoàn cọc có chữ "vệ sinh phòng").
@@ -78,7 +98,10 @@ const OWNER_RULES: readonly OwnerRule[] = [
     ruleKey: "bo_sung_hoan_coc",
     accented: / (hoàn|trả|trả lại) cọc | bổ sung hoàn cọc /,
     bare: / hoan coc | tra lai coc /,
-    not: ["chủ nhà", "thợ", "cọc nhà", "thuê nhà", "thi công", "lắp", "công tơ", "bình", "xe"],
+    not: [
+      "chủ nhà", "thợ", "cọc nhà", "thuê nhà", "thi công", "lắp", "công tơ", "bình", "xe", "khách sạn", "homestay",
+      "mặt bằng", "kho", "khách hàng", "đối tác",
+    ],
   },
   {
     ruleKey: "tra_tien_thua_khach",
@@ -129,6 +152,8 @@ const PHRASE_NOT: Readonly<Record<string, readonly string[]>> = {
   tien_nha: ["hợp đồng thuê nhà", "dùm", "giùm", "hộ", "cọc"],
   noi_that_decor: ["rác"],
   dien_lanh: ["mua máy", "mua tủ"],
+  // "mua keo dán nút nhấn thang máy" là vật tư, không phải phí bảo trì thang máy hằng tháng.
+  thang_may: ["mua"],
 };
 
 /** Loại trừ cho cụm "hay nói" của một mục = loại trừ riêng của cụm + loại trừ của luật chủ đặt cùng mục. */
@@ -201,6 +226,16 @@ export function ruleMatch(rows: readonly CategoryRef[], text: string): RuleMatch
   if (matched.size !== 1) return null;
   const ref = [...matched.values()][0];
   return { ref, strong: strongFor(ref.rule_key, a, b, noAccent) };
+}
+
+/**
+ * Câu có cụm loại trừ của mục `ruleKey` (loại trừ cụm + loại trừ luật cùng mục). Đường cụm phí cố định của
+ * categorySuggest dùng để không khoá "in giấy hợp đồng thuê nhà" vào Tiền nhà (review lượt 4).
+ */
+export function blockedFor(ruleKey: string, text: string): boolean {
+  const a = accentedText(text);
+  const b = bareText(text);
+  return excluded(phraseNot(ruleKey), a, b, a === b);
 }
 
 /** Như ruleMatch nhưng chỉ trả hạng mục (đo độ đúng của lớp luật, không quan tâm khoá cứng/yếu). */
