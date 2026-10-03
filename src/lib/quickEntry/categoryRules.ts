@@ -1,7 +1,7 @@
 // Lớp LUẬT chọn hạng mục chi cho "Báo chi nhanh" — chạy TRƯỚC AI, chỉ chốt khi chắc.
 //
 // Đo trên 414 câu chi thật (fixture __tests__/fixtures/cau-chi-that-2026-10.json, 03/10/2026):
-// chốt 293 câu (71%), sai 0 — đo trên chính bộ câu dùng để viết luật, nên có thêm bộ câu phủ định
+// chọn 293 câu (71%; 286 khoá cứng, 7 chỉ gợi ý), sai 0 — đo trên chính bộ câu dùng để viết luật, nên có thêm bộ câu phủ định
 // (khoản chi thật không được rơi vào mục dòng tiền); phần còn lại mới gọi AI.
 // Ưu tiên ĐÚNG hơn PHỦ: không chắc ⇒ trả null để AI (hoặc người dùng) chọn.
 //   1. Luật chủ công ty đặt (03/10/2026), neo theo `rule_key` của hạng mục (migration
@@ -39,6 +39,27 @@ interface OwnerRule {
   not?: readonly string[];
 }
 
+/**
+ * Hạng mục dòng tiền chỉ KHOÁ CỨNG khi câu có neo chắc chắn; khớp mà thiếu neo thì chỉ là gợi ý YẾU
+ * (thẻ vẫn gọi AI, AI được thay). Review lượt 3 PR #118: danh sách loại trừ người ngoài không bao giờ đủ
+ * ("bàn giao tiền cho đội xây dựng", "chi hộ chị Hoa tiền đổ rác", "trả cọc lắp camera").
+ */
+const STRONG: Readonly<Record<string, { accented: RegExp; bare: RegExp }>> = {
+  noi_bo: {
+    accented: / kết tiền (resident|sổ|quỹ) | kết sổ | bàn giao (tiền )?về sổ /,
+    bare: / ket tien (resident|so|quy) | ket so | ban giao (tien )?ve so /,
+  },
+  bo_sung_hoan_coc: {
+    accented: / khách | thanh lý | hđ | hợp đồng | phòng \d| \d{3,4} \d{2,4}[a-zđ]+ /,
+    bare: / khach | thanh ly | hd | hop dong | phong \d| \d{3,4} \d{2,4}[a-z]+ /,
+  },
+};
+
+function strongFor(ruleKey: string | null | undefined, a: string, b: string, noAccent: boolean): boolean {
+  const s = ruleKey ? STRONG[ruleKey] : undefined;
+  return !s || s.accented.test(a) || (noAccent && s.bare.test(b));
+}
+
 // Thứ tự = ưu tiên. Dòng tiền trước, vệ sinh sau cùng (câu hoàn cọc có chữ "vệ sinh phòng").
 // Luật dòng tiền neo CHẶT (review PR #118, hai lượt): "Chuyển tiền nội bộ" ép dòng INTERNAL — chốt nhầm
 // một khoản chi thật vào đây là khoản đó biến khỏi KQKD. Vì thế:
@@ -47,29 +68,30 @@ interface OwnerRule {
 //   - bàn giao / chi hộ có loại trừ theo người ngoài và theo việc làm (bài kiểm câu phủ định).
 const HON = "(a|anh|chị|c|em|cô|chú)";
 /** Người ngoài công ty / việc làm thuê — câu có các cụm này không phải chuyển tiền nội bộ hay hoàn cọc khách. */
+// "chủ"/"làm" đơn lẻ KHÔNG nằm đây: "chủ/sếp lấy tiền" là nội bộ, "chủ nhật"; bản không dấu "lam" trùng tên "Lâm".
 const NGUOI_NGOAI = [
-  "thợ", "chủ nhà", "chủ", "căn hộ", "hộ khẩu", "evn", "dọn", "sửa", "sơn", "làm", "bảo vệ", "lao công",
-  "điện lạnh", "máy bơm", "ship",
+  "thợ", "chủ nhà", "căn hộ", "hộ khẩu", "evn", "dọn", "sửa", "sơn", "bảo vệ", "lao công", "điện lạnh",
+  "máy bơm", "ship", "thầu", "xây dựng", "công ty", "nhà cung cấp", "điện lực", "cấp nước",
 ];
 const OWNER_RULES: readonly OwnerRule[] = [
   {
     ruleKey: "bo_sung_hoan_coc",
     accented: / (hoàn|trả|trả lại) cọc | bổ sung hoàn cọc /,
     bare: / hoan coc | tra lai coc /,
-    not: ["chủ nhà", "chủ", "thợ", "cọc nhà", "thuê nhà"],
+    not: ["chủ nhà", "thợ", "cọc nhà", "thuê nhà", "thi công", "lắp", "công tơ", "bình", "xe"],
   },
   {
     ruleKey: "tra_tien_thua_khach",
     accented: / thối tiền | khách đóng dư | đóng dư tiền phòng | tiền phòng \d+ ngày | hoàn (lại )?(\d+ ngày )?tiền phòng | tiền phòng thừa /,
     bare: / thoi tien | khach dong du /,
-    not: ["ship"],
+    not: ["ship", "thợ"],
   },
   {
     ruleKey: "noi_bo",
     accented: new RegExp(
       ` kết tiền (resident|sổ|quỹ) | kết sổ | bàn giao (tiền|về sổ|${HON}) | (chuyển|chi|đóng) (tiền \\S+ )?(dùm|giùm|hộ) ${HON} `,
     ),
-    bare: / ket tien (resident|so|quy) | ket so | ban giao (tien|ve so|a|anh|chi) /,
+    bare: / ket tien (resident|so|quy) | ket so | ban giao (tien|ve so|a|anh|chi) | (chuyen|chi|dong) (tien \S+ )?(dum|gium) (a|anh|chi|c|em|co|chu) /,
     not: NGUOI_NGOAI,
   },
   {
@@ -103,13 +125,16 @@ const OWNER_RULES: readonly OwnerRule[] = [
 /** Cụm "hay nói" khớp nhầm hay gặp ⇒ không tính cho hạng mục đó. */
 const PHRASE_NOT: Readonly<Record<string, readonly string[]>> = {
   dien: ["điện lạnh"],
-  tien_nha: ["hợp đồng thuê nhà", "dùm", "giùm", "hộ"],
+  // "trả cọc thuê nhà mới" là tiền cọc thu hồi được, không phải tiền nhà tháng.
+  tien_nha: ["hợp đồng thuê nhà", "dùm", "giùm", "hộ", "cọc"],
   noi_that_decor: ["rác"],
   dien_lanh: ["mua máy", "mua tủ"],
-  noi_bo: NGUOI_NGOAI,
-  bo_sung_hoan_coc: ["chủ nhà", "chủ", "thợ", "cọc nhà", "thuê nhà"],
-  don_ve_sinh: OWNER_RULES.find((r) => r.ruleKey === "don_ve_sinh")?.not ?? [],
 };
+
+/** Loại trừ cho cụm "hay nói" của một mục = loại trừ riêng của cụm + loại trừ của luật chủ đặt cùng mục. */
+function phraseNot(ruleKey: string): readonly string[] {
+  return [...(PHRASE_NOT[ruleKey] ?? []), ...(OWNER_RULES.find((r) => r.ruleKey === ruleKey)?.not ?? [])];
+}
 
 /**
  * Câu chứa một cụm loại trừ. Câu có dấu so bản có dấu; câu gõ KHÔNG dấu so cả bản bỏ dấu của cụm —
@@ -140,11 +165,18 @@ function phrasesOf(rows: readonly CategoryRef[]): Phrase[] {
   return out;
 }
 
+/** Kết quả lớp luật: hạng mục + có được KHOÁ CỨNG không (xem STRONG). */
+export interface RuleMatch {
+  ref: CategoryRef;
+  strong: boolean;
+}
+
 /**
- * Hạng mục chốt bằng luật, hoặc null khi không chắc. `rows` phải là danh sách đã lọc dùng được
- * (usableExpenseCategories) — luật trỏ tới mục không có trong danh sách thì bỏ qua.
+ * Hạng mục chọn bằng luật, hoặc null khi không chắc. `rows` phải là danh sách đã lọc dùng được
+ * (usableExpenseCategories) — luật trỏ tới mục không có trong danh sách thì bỏ qua. `strong=false` ⇒ chỉ
+ * là gợi ý: thẻ không khoá ô hạng mục, AI được thay.
  */
-export function ruleCategory(rows: readonly CategoryRef[], text: string): CategoryRef | null {
+export function ruleMatch(rows: readonly CategoryRef[], text: string): RuleMatch | null {
   if (!text.trim()) return null;
   const a = accentedText(text);
   const b = bareText(text);
@@ -156,15 +188,22 @@ export function ruleCategory(rows: readonly CategoryRef[], text: string): Catego
     const hit = rule.accented.test(a) || (noAccent && rule.bare ? rule.bare.test(b) : false);
     if (!hit || excluded(rule.not, a, b, noAccent)) continue;
     const ref = byKey.get(rule.ruleKey);
-    if (ref) return ref;
+    if (ref) return { ref, strong: strongFor(rule.ruleKey, a, b, noAccent) };
   }
 
   const matched = new Map<string, CategoryRef>();
   for (const p of phrasesOf(rows)) {
     const hit = a.includes(p.accented) || (noAccent && p.bare !== null && b.includes(p.bare));
     if (!hit) continue;
-    if (p.ref.rule_key && excluded(PHRASE_NOT[p.ref.rule_key], a, b, noAccent)) continue;
+    if (p.ref.rule_key && excluded(phraseNot(p.ref.rule_key), a, b, noAccent)) continue;
     matched.set(p.ref.id, p.ref);
   }
-  return matched.size === 1 ? [...matched.values()][0] : null;
+  if (matched.size !== 1) return null;
+  const ref = [...matched.values()][0];
+  return { ref, strong: strongFor(ref.rule_key, a, b, noAccent) };
+}
+
+/** Như ruleMatch nhưng chỉ trả hạng mục (đo độ đúng của lớp luật, không quan tâm khoá cứng/yếu). */
+export function ruleCategory(rows: readonly CategoryRef[], text: string): CategoryRef | null {
+  return ruleMatch(rows, text)?.ref ?? null;
 }

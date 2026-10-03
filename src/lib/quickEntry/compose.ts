@@ -176,7 +176,8 @@ export function draftsFromText(text: string, ctx: ComposeContext): DraftState[] 
       flags,
       candidates,
       guessed,
-      lockCategory: suggestion !== null && suggestion.reason !== "name_overlap",
+      // Đoán yếu (trùng chữ, luật dòng tiền thiếu neo chắc) ⇒ không khoá: AI được thay.
+      lockCategory: suggestion !== null && suggestion.reason !== "name_overlap" && suggestion.reason !== "rule_weak",
     };
   });
 

@@ -212,6 +212,27 @@ describe("removeLineAt — bỏ dòng dồn lại dấu đã sửa/đã khoá th
   });
 });
 
+describe("luật dòng tiền: khoá cứng chỉ khi có neo chắc chắn", () => {
+  const cats: CategoryRef[] = [
+    ...categories,
+    { id: "t-nb", name: "Chuyển tiền nội bộ", category: "Tiền nội bộ", type: "expense", organization_id: O, rule_key: "noi_bo", keywords: ["bàn giao tiền"] },
+  ];
+
+  it("'bàn giao tiền cho anh Hùng' ⇒ gợi ý nội bộ nhưng KHÔNG khoá — AI câu lệnh rút gọn được thay", () => {
+    const [s] = draftsFromText("102LVT bàn giao tiền cho anh Hùng 2tr", ctx({ categories: cats }));
+    expect(s.draft.lines[0].categoryId).toBe("t-nb");
+    expect(s.locked).not.toContain("lines.0.categoryId");
+    expect(applyAiCategories(s, ["c3"], ctx({ categories: cats })).draft.lines[0].categoryId).toBe("t-vt");
+  });
+
+  it("'kết sổ quỹ tháng 9' ⇒ khoá, AI không đè", () => {
+    const [s] = draftsFromText("102LVT kết sổ quỹ tháng 9 5tr", ctx({ categories: cats }));
+    expect(s.draft.lines[0].categoryId).toBe("t-nb");
+    expect(s.locked).toContain("lines.0.categoryId");
+    expect(applyAiCategories(s, ["c3"], ctx({ categories: cats })).draft.lines[0].categoryId).toBe("t-nb");
+  });
+});
+
 describe("applyAiCategories — câu lệnh rút gọn chỉ điền hạng mục", () => {
   it("điền hạng mục đoán yếu/còn trống theo cN; không đụng tiền", () => {
     const [s] = draftsFromText("102LVT mua đồ 350k", ctx());

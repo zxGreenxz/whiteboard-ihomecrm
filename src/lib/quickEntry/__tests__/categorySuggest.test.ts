@@ -102,8 +102,17 @@ describe("suggestCategory — đoán từ mô tả", () => {
       { id: "nha", name: "Tiền nhà", category: null, type: "expense", organization_id: O, rule_key: "tien_nha", fee_category: "tien_nha", keywords: ["tiền nhà"] },
       { id: "nb", name: "Chuyển tiền nội bộ", category: null, type: "expense", organization_id: O, rule_key: "noi_bo" },
     ];
-    expect(suggestCategory(list, "chuyển tiền nhà dùm a Huy")).toEqual({ id: "nb", reason: "rule" });
+    // Nội bộ chỉ khoá cứng khi có neo "kết sổ / bàn giao về sổ" — còn lại là gợi ý yếu (AI được thay).
+    expect(suggestCategory(list, "chuyển tiền nhà dùm a Huy")).toEqual({ id: "nb", reason: "rule_weak" });
+    expect(suggestCategory(list, "kết sổ quỹ tháng 9")).toEqual({ id: "nb", reason: "rule" });
     expect(suggestCategory(list, "tiền nhà tháng 10")).toEqual({ id: "nha", reason: "rule" });
+  });
+
+  it("'trả cọc thuê nhà mới' không phải Tiền nhà tháng (cả đường cụm phí)", () => {
+    const list: CategoryRef[] = [
+      { id: "nha", name: "Tiền nhà", category: null, type: "expense", organization_id: O, rule_key: "tien_nha", fee_category: "tien_nha", keywords: ["tiền nhà", "thuê nhà"] },
+    ];
+    expect(suggestCategory(list, "trả cọc thuê nhà mới")?.id ?? null).not.toBe("nha");
   });
 
   it("'tiền điện lạnh' không phải tiền điện", () => {

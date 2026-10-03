@@ -64,7 +64,7 @@ Chạm biểu tượng **máy ảnh** để chụp, hoặc **ảnh** để chọ
 
 Thẻ công ty tự chọn **hạng mục** trong danh mục chi chuẩn của công ty (từ 03/10/2026 quản lý không tạo hạng mục mới — cần mục mới thì nhờ chủ công ty). Máy chọn theo thứ tự:
 
-1. **Luật chủ đặt** và **từ hay nói** của từng hạng mục — chắc chắn thì chọn ngay, không cần AI. Ví dụ: mọi khoản vệ sinh, dọn phòng, bTaskee ⇒ **Dọn vệ sinh theo lượt** (vệ sinh máy lạnh thì là **Điện lạnh**); camera, wifi, cửa vân tay, hộp lưu điện ⇒ **Camera, wifi, cửa vân tay**; trả lại cọc ⇒ **Bổ sung hoàn cọc**; chuyển tiền giùm, bàn giao tiền ⇒ **Chuyển tiền nội bộ**.
+1. **Luật chủ đặt** và **từ hay nói** của từng hạng mục — chắc chắn thì chọn ngay, không cần AI. Ví dụ: mọi khoản vệ sinh, dọn phòng, bTaskee ⇒ **Dọn vệ sinh theo lượt** (vệ sinh máy lạnh thì là **Điện lạnh**); camera, wifi, cửa vân tay, hộp lưu điện ⇒ **Camera, wifi, cửa vân tay**; hoàn cọc cho khách ⇒ **Bổ sung hoàn cọc**; kết sổ quỹ, bàn giao tiền về sổ ⇒ **Chuyển tiền nội bộ**. Câu bàn giao / chi hộ / trả cọc khác chỉ được máy *gợi ý* — AI xem lại, vì khoản nội bộ không tính vào lợi nhuận nên chọn nhầm là mất một khoản chi thật khỏi báo cáo.
 2. Chưa chắc thì **AI chọn** dựa trên phần "dùng cho" của từng hạng mục.
 3. AI cũng không chắc thì ô hạng mục để trống — bạn chọn tay.
 

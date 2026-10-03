@@ -11,7 +11,7 @@
 import { normalizeLoose } from "../textMatch";
 import { FIXED_EXPENSE_CATEGORIES, nrm } from "../fixedExpenseCategories";
 import { sortIeTypesForPicker } from "../ieTypeCatalog";
-import { ruleCategory } from "./categoryRules";
+import { ruleMatch } from "./categoryRules";
 
 export interface CategoryRef {
   id: string;
@@ -37,7 +37,8 @@ export interface CategoryRef {
 
 export interface CategorySuggestion {
   id: string;
-  reason: "fee_phrase" | "provider_code" | "rule" | "name_overlap";
+  /** `rule_weak` / `name_overlap` = đoán yếu: thẻ không khoá ô hạng mục, AI được thay. */
+  reason: "fee_phrase" | "provider_code" | "rule" | "rule_weak" | "name_overlap";
 }
 
 export function usableExpenseCategories(
@@ -126,12 +127,14 @@ export function suggestCategory(
 
   // Luật chủ đặt + cụm "hay nói" (categoryRules.ts) — xét trước cụm phí để "chuyển tiền nhà dùm"
   // vào Chuyển tiền nội bộ chứ không vào Tiền nhà.
-  const ruled = ruleCategory(rows, description);
-  if (ruled) return { id: ruled.id, reason: "rule" };
+  const ruled = ruleMatch(rows, description);
+  if (ruled) return { id: ruled.ref.id, reason: ruled.strong ? "rule" : "rule_weak" };
 
   const loose = normalizeLoose(description);
   for (const [feeKey, re] of FEE_PHRASES) {
     if (!re.test(loose)) continue;
+    // "trả cọc thuê nhà mới" là tiền cọc thu hồi được, không phải tiền nhà tháng.
+    if (feeKey === "tien_nha" && /\bcoc\b/.test(loose)) continue;
     const hit = categoryForFee(rows, feeKey);
     if (hit) return { id: hit.id, reason: "fee_phrase" };
   }
