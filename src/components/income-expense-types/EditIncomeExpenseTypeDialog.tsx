@@ -46,12 +46,15 @@ import {
 import {
   useDeleteIncomeExpenseType,
   useIncomeExpenseTypeCategories,
+  useIncomeExpenseTypes,
   useUpdateIncomeExpenseType,
   type IncomeExpenseType,
 } from '@/hooks/useIncomeExpenseTypes';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
 import CategoryCombobox from './CategoryCombobox';
+import IeTypeCatalogFormFields from './IeTypeCatalogFormFields';
+import { catalogFormDefaults, catalogUpdatesFromForm } from '@/lib/ieTypeCatalogDraft';
 
 interface EditIncomeExpenseTypeDialogProps {
   open: boolean;
@@ -88,6 +91,7 @@ const EditIncomeExpenseTypeDialog = ({
       is_default: false,
       is_restricted: false,
       hide_in_report: false,
+      ...catalogFormDefaults(null),
     },
   });
 
@@ -103,12 +107,15 @@ const EditIncomeExpenseTypeDialog = ({
         is_default: type.is_default ?? false,
         is_restricted: type.is_restricted ?? false,
         hide_in_report: type.hide_in_report ?? false,
+        ...catalogFormDefaults(type),
       });
     }
   }, [open, type, form]);
 
   const watchedType = form.watch('type');
   const categoriesQuery=useIncomeExpenseTypeCategories(watchedType);
+  // Danh sách cùng chiều để chọn đích "Gộp vào"; chỉ đọc khi dialog mở.
+  const { data: sameDirectionTypes = [] } = useIncomeExpenseTypes(watchedType, { enabled: open });
   const sourceBlocked=categoriesQuery.isLoading || categoriesQuery.isError;
 
   const onSubmit = async (data: IncomeExpenseTypeFormValues) => {
@@ -126,6 +133,8 @@ const EditIncomeExpenseTypeDialog = ({
           // Chỉ ghi is_restricted khi có quyền — tránh staff vô tình gỡ cờ.
           ...(canManageRestricted ? { is_restricted: data.is_restricted ?? false } : {}),
           hide_in_report: data.hide_in_report ?? false,
+          // Cột danh mục chỉ gửi khi đổi — môi trường chưa áp migration không có các cột này.
+          ...catalogUpdatesFromForm(data, type, new Date().toISOString()),
         },
       });
       onOpenChange(false);
@@ -289,6 +298,12 @@ const EditIncomeExpenseTypeDialog = ({
                     </div>
                   </FormItem>
                 )}
+              />
+
+              <IeTypeCatalogFormFields
+                control={form.control}
+                editing={type}
+                allTypes={sameDirectionTypes}
               />
 
               <div className="flex items-center justify-between pt-2">

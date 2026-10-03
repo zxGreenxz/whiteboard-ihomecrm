@@ -1,0 +1,119 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { describe, expect, it } from "vitest";
+import { ruleCategory } from "../categoryRules";
+import { suggestCategory, usableExpenseCategories, type CategoryRef } from "../categorySuggest";
+import cauThat from "./fixtures/cau-chi-that-2026-10.json";
+
+// Danh mục THẬT: đọc thẳng từ migration dữ liệu để bài kiểm đổi theo khi từ khoá đổi.
+interface SpecItem { k: string; g: string | null; n: string; d: string; kw?: string[]; hid?: boolean; qeh?: boolean }
+const MIGRATION = resolve(__dirname, "../../../../supabase/migrations/20261003151608_danh_muc_chi_du_lieu.sql");
+const spec = JSON.parse(readFileSync(MIGRATION, "utf8").split("$spec$")[1]) as SpecItem[];
+const ORG = "org-ihome";
+const allRows: CategoryRef[] = spec.map((s, i) => ({
+  id: s.k,
+  name: s.n,
+  category: s.g,
+  type: "expense",
+  organization_id: ORG,
+  description: s.d,
+  keywords: s.kw ?? [],
+  rule_key: s.k,
+  manual_hidden: s.hid ?? false,
+  quick_entry_hidden: s.qeh ?? false,
+  sort_order: (i + 1) * 10,
+}));
+const rows = usableExpenseCategories(allRows, { organizationId: ORG, canUseRestricted: false });
+
+// Fixture: 414 mô tả phiếu chi thật (02/10/2026), đã bỏ số tiền cuối câu, bỏ mục hạn chế/máy tự lập,
+// tên người đã thay bằng tên chung (không đổi kết quả đo). `gold` = rule_key chủ duyệt; `alt` = mục
+// cũng chấp nhận được.
+describe("ruleCategory — 414 câu chi thật (02/10/2026)", () => {
+  const cases = cauThat as Array<{ text: string; gold: string; alt?: string[] }>;
+  const locks = cases
+    .map((c) => ({ c, got: ruleCategory(rows, c.text)?.rule_key ?? null }))
+    .filter((x) => x.got !== null);
+  const wrong = locks.filter((x) => x.got !== x.c.gold && !(x.c.alt ?? []).includes(x.got as string));
+
+  // Đo 03/10/2026: chốt 296/414 câu (71%), sai 0.
+  it("chốt đúng ≥ 99% số câu nó chốt", () => {
+    const precision = (locks.length - wrong.length) / locks.length;
+    const misses = wrong.map((x) => `${x.c.text} ⇒ ${x.got} (đúng: ${x.c.gold})`).join("\n");
+    expect(precision, misses).toBeGreaterThanOrEqual(0.99);
+  });
+
+  it("chốt được ≥ 70% câu (phần còn lại mới gọi AI)", () => {
+    expect(locks.length / cases.length).toBeGreaterThanOrEqual(0.7);
+  });
+});
+
+describe("ruleCategory — ca dễ nhầm", () => {
+  const pick = (text: string) => ruleCategory(rows, text)?.rule_key ?? null;
+
+  it("luật chủ đặt", () => {
+    expect(pick("vệ sinh tòa nhà 512tc")).toBe("don_ve_sinh");
+    expect(pick("bTaskee dọn phòng 302")).toBe("don_ve_sinh");
+    expect(pick("thay acquy cửa vân tay 512")).toBe("camera_wifi_van_tay");
+    expect(pick("mua ổ điện và tắc kê để gắn camera khu shipper")).toBe("camera_wifi_van_tay");
+    expect(pick("in hai cuốn phương án pccc")).toBe("pccc");
+    expect(pick("Tiền CAP15 T6,7 403 405")).toBe("cong_an");
+    expect(pick("Lót người nước ngoài")).toBe("tam_tru_giay_to");
+    expect(pick("Kết tiền resident")).toBe("noi_bo");
+    expect(pick("chuyển tiền nhà dùm a Huy")).toBe("noi_bo");
+    expect(pick("trả lại cọc cho khách của best choice")).toBe("bo_sung_hoan_coc");
+    expect(pick("TIỀN PHÒNG 5 NGÀY")).toBe("tra_tien_thua_khach");
+  });
+
+  it("dòng tiền thắng vệ sinh: hoàn cọc có chữ 'vệ sinh phòng'", () => {
+    expect(pick("Bổ sung hoàn cọc do khách tự vệ sinh phòng")).toBe("bo_sung_hoan_coc");
+  });
+
+  it("vệ sinh máy lạnh / bồn nước không vào dọn vệ sinh", () => {
+    expect(pick("thợ qua vệ sinh máy lạnh 3 phòng")).not.toBe("don_ve_sinh");
+    expect(pick("vệ sinh 2 bồn nước sân thượng")).not.toBe("don_ve_sinh");
+  });
+
+  it("cước wifi tháng là internet, không phải thiết bị", () => {
+    expect(pick("tiền wifi tháng 9 FPT")).not.toBe("camera_wifi_van_tay");
+  });
+
+  it("so có dấu: 'vật tư' không khớp 'tủ', 'nem nướng' không khớp 'nệm'", () => {
+    expect(pick("mua vật tư 632k")).not.toBe("noi_that_decor");
+    expect(pick("Nem nướng Nha Trang")).not.toBe("noi_that_decor");
+  });
+
+  it("'tiền điện lạnh' không chốt Đóng tiền điện", () => {
+    expect(pick("thanh toán tiền điện lạnh T6")).not.toBe("dien");
+    expect(suggestCategory(rows, "thanh toán tiền điện lạnh T6")?.id ?? null).not.toBe("dien");
+  });
+
+  it("gõ không dấu cụm hai chữ vẫn nhận", () => {
+    expect(pick("tien nha thang 10 512tc")).toBe("tien_nha");
+    expect(pick("danh 2 chia khoa phong 304")).toBe("khoa_chia");
+  });
+
+  it("không chắc thì null", () => {
+    expect(pick("T6, T7")).toBeNull();
+    expect(pick("")).toBeNull();
+  });
+
+  it("luật trỏ tới mục không có trong danh sách thì bỏ qua", () => {
+    const noCongAn = rows.filter((r) => r.rule_key !== "cong_an");
+    expect(ruleCategory(noCongAn, "tiền công an tháng 9-10")?.rule_key ?? null).not.toBe("cong_an");
+  });
+});
+
+describe("usableExpenseCategories — danh mục chuẩn", () => {
+  it("ẩn mục lưu trữ, ẩn tay, ẩn khỏi Báo chi nhanh; giữ thứ tự danh mục", () => {
+    const keys = rows.map((r) => r.rule_key);
+    expect(keys).not.toContain("ve_sinh_dinh_ky");
+    expect(keys).not.toContain("hoa_hong_moi_gioi");
+    expect(keys).not.toContain("hhmg");
+    expect(keys.indexOf("tien_nha")).toBeLessThan(keys.indexOf("dien_lanh"));
+    const archived = usableExpenseCategories(
+      [{ ...allRows[0], id: "cu", archived_at: "2026-10-03T00:00:00Z" }],
+      { organizationId: ORG, canUseRestricted: true },
+    );
+    expect(archived).toEqual([]);
+  });
+});

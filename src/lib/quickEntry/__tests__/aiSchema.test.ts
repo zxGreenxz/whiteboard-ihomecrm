@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { extractJson, parseAiResult } from "../aiSchema";
+import { extractJson, parseAiResult, parseCategoryOnlyResult } from "../aiSchema";
 
 const valid = {
   items: [{ desc: "bóng đèn LED", amount_vnd: 120_000, category: "c2", confidence: 0.9 }],
@@ -78,5 +78,28 @@ describe("parseAiResult", () => {
 
   it("không có JSON ⇒ no_json", () => {
     expect(parseAiResult("xin lỗi, tôi không đọc được", 5)).toEqual({ ok: false, reason: "no_json" });
+  });
+});
+
+describe("parseCategoryOnlyResult", () => {
+  it("đúng số dòng, mã trong danh sách hoặc null ⇒ ok", () => {
+    expect(parseCategoryOnlyResult('```json\n{"categories":["c2",null]}\n```', 5, 2)).toEqual({ ok: true, value: ["c2", null] });
+  });
+
+  it("một dòng trả khuôn {\"category\"} vẫn nhận", () => {
+    expect(parseCategoryOnlyResult('{"category":"c5"}', 5, 1)).toEqual({ ok: true, value: ["c5"] });
+  });
+
+  it("lệch số dòng, mã ngoài danh sách, khoá lạ, mã sai dạng ⇒ invalid", () => {
+    expect(parseCategoryOnlyResult('{"categories":["c1"]}', 5, 2)).toEqual({ ok: false, reason: "invalid" });
+    expect(parseCategoryOnlyResult('{"categories":["c6"]}', 5, 1)).toEqual({ ok: false, reason: "invalid" });
+    expect(parseCategoryOnlyResult('{"categories":["c0"]}', 5, 1)).toEqual({ ok: false, reason: "invalid" });
+    expect(parseCategoryOnlyResult('{"categories":["c1"],"note":"x"}', 5, 1)).toEqual({ ok: false, reason: "invalid" });
+    expect(parseCategoryOnlyResult('{"categories":["Tiền điện"]}', 5, 1)).toEqual({ ok: false, reason: "invalid" });
+    expect(parseCategoryOnlyResult('{"category":"c1"}', 5, 2)).toEqual({ ok: false, reason: "invalid" });
+  });
+
+  it("không có JSON ⇒ no_json", () => {
+    expect(parseCategoryOnlyResult("không biết", 5, 1)).toEqual({ ok: false, reason: "no_json" });
   });
 });

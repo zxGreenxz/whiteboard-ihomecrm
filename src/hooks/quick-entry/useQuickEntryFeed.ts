@@ -2,7 +2,8 @@
 //
 //   Chữ  — bộ đọc máy dựng thẻ NGAY; thẻ nào còn mơ hồ mới gọi AI, mỗi thẻ một lượt bằng chính đoạn câu
 //          của nó (thẻ gom theo toà/phòng nên không đắp được một kết quả AI cho cả tin). AI về muộn chỉ
-//          điền ô người dùng chưa sửa.
+//          điền ô người dùng chưa sửa. Thẻ công ty đủ tiền + toà, chỉ thiếu hạng mục ⇒ câu lệnh rút gọn
+//          chỉ hỏi hạng mục (onlyCategoriesMissing).
 //   Ảnh  — nén vừa ngân sách proxy ⇒ AI đọc ⇒ một thẻ. AI hỏng vẫn ra thẻ trống để nhập tay. Ảnh khoản
 //          công ty giữ lại để tải lên làm chứng từ khi lưu; ảnh khoản cá nhân bỏ ngay.
 //   Lưu  — tải ảnh MỘT lần (URL giữ trên thẻ), khoá chống trùng theo id thẻ, chặn bấm hai lần; ví cá
@@ -18,6 +19,7 @@ import type { AiResult } from "@/lib/quickEntry/aiSchema";
 import { encodeWithinBudget } from "@/lib/quickEntry/billImage";
 import type { CardStatus } from "@/lib/quickEntry/cardStatus";
 import {
+  applyAiCategories,
   draftFromBill,
   draftsFromText,
   enrichFromAi,
@@ -29,9 +31,21 @@ import {
 import { validateDraft, type DraftMode } from "@/lib/quickEntry/draft";
 import { classifyAiError, type AiErrorView } from "@/lib/quickEntry/errors";
 import { deserializeCards, draftsKey, otherUsersKeys, serializeCards } from "@/lib/quickEntry/feedStorage";
-import { buildQuickEntryMessages } from "@/lib/quickEntry/prompt";
+import {
+  buildCategoryOnlyMessages,
+  buildQuickEntryMessages,
+  MAX_PROMPT_CATEGORIES,
+  type PromptCategory,
+} from "@/lib/quickEntry/prompt";
 import { resolveBuildingRoom } from "@/lib/quickEntry/resolve";
-import { readWithAi, transcribeAudio, type AiRead, type TranscribeResult } from "./quickEntryAi";
+import {
+  readCategoriesWithAi,
+  readWithAi,
+  transcribeAudio,
+  type AiCategories,
+  type AiRead,
+  type TranscribeResult,
+} from "./quickEntryAi";
 import { rememberAccount, type QuickEntryRefs } from "./useQuickEntryRefs";
 import { useQuickEntrySave, type SaveOutcome } from "./useQuickEntrySave";
 import type { RecordedAudio } from "./useVoiceRecorder";
@@ -101,6 +115,15 @@ export function needsAi(s: DraftState): boolean {
     return !d.buildingId || d.lines.some((l, i) => !l.categoryId || !settled(i));
   }
   return d.lines.some((l) => !l.personalCategory);
+}
+
+/**
+ * Thẻ công ty đã đủ tiền + toà, chỉ còn hạng mục chưa chắc ⇒ hỏi AI bằng câu lệnh RÚT GỌN (chỉ hạng
+ * mục — đo 02/10/2026: nhanh hơn câu lệnh đầy đủ ~0,7 giây, không kém chính xác).
+ */
+export function onlyCategoriesMissing(s: DraftState): boolean {
+  const d = s.draft;
+  return d.mode === "company" && !!d.buildingId && d.lines.length > 0 && d.lines.every((l) => l.amount > 0) && needsAi(s);
 }
 
 const editable = (c: FeedCard) => c.status.kind === "draft" || c.status.kind === "rejected";
@@ -273,11 +296,12 @@ export function useQuickEntryFeed(opts: {
     defaultAccountFor: refs.defaultAccountFor,
   });
 
+  const promptCategories = (ctx: ComposeContext): PromptCategory[] =>
+    ctx.categories.map((c) => ({ name: c.name, group: c.category, note: c.description, keywords: c.keywords }));
+
   const askAi = async (ctx: ComposeContext, input: { text?: string; imageDataUrl?: string }): Promise<AiRead> => {
     const company = ctx.mode === "company";
-    const categories = company
-      ? ctx.categories.map((c) => ({ name: c.name, group: c.category }))
-      : (ctx.personalCategories ?? []).map((name) => ({ name }));
+    const categories = company ? promptCategories(ctx) : (ctx.personalCategories ?? []).map((name) => ({ name }));
     const messages = buildQuickEntryMessages({
       today: ctx.today,
       mode: ctx.mode,
@@ -295,6 +319,28 @@ export function useQuickEntryFeed(opts: {
         model: modelsRef.current?.read,
       });
       // Thu hẹp bằng `in`: tsconfig.app.json không bật strictNullChecks nên `r.ok` không thu hẹp được.
+      if ("error" in r) noteAiError(r.error, "read");
+      else failures.current.read = 0;
+      return r;
+    } catch {
+      const error = classifyAiError({ status: 0, code: null });
+      noteAiError(error, "read");
+      return { ok: false, error };
+    }
+  };
+
+  /** Câu lệnh rút gọn: chỉ hạng mục cho từng dòng của một thẻ công ty. */
+  const askCategories = async (ctx: ComposeContext, lines: string[]): Promise<AiCategories> => {
+    const categories = promptCategories(ctx);
+    try {
+      const r = await readCategoriesWithAi({
+        messages: buildCategoryOnlyMessages({ categories, lines }),
+        categoryCount: Math.min(categories.length, MAX_PROMPT_CATEGORIES),
+        lineCount: lines.length,
+        fetchImpl,
+        signal: timeout(AI_TIMEOUT_MS),
+        model: modelsRef.current?.read,
+      });
       if ("error" in r) noteAiError(r.error, "read");
       else failures.current.read = 0;
       return r;
@@ -342,6 +388,21 @@ export function useQuickEntryFeed(opts: {
     const outcome: { error: AiErrorView | null } = { error: null };
     await Promise.all(
       targets.map(async (s) => {
+        if (onlyCategoriesMissing(s)) {
+          const lineCount = s.draft.lines.length;
+          const r = await askCategories(ctx, s.draft.lines.map((l) => l.description));
+          if ("error" in r) {
+            outcome.error = r.error;
+            return;
+          }
+          const model = r.model ?? "AI";
+          patchCard(s.draft.id, (c) => {
+            if (!editable(c) || c.state.draft.lines.length !== lineCount) return c;
+            const next = applyAiCategories(c.state, r.value, ctx);
+            return next === c.state ? c : { ...c, state: next, aiModel: model };
+          });
+          return;
+        }
         const r = await askAi(ctx, { text: s.sourceText });
         if ("error" in r) {
           outcome.error = r.error;

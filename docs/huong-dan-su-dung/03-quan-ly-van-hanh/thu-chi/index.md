@@ -40,7 +40,11 @@ Một số tổ chức legacy vẫn kết hợp duyệt và ghi sổ. Vì hệ t
 
 **Bước 2**: Chọn sổ quỹ, tòa/phòng nếu có, ngày nghiệp vụ, người gửi/nhận và ghi chú.
 
-**Bước 3**: Thêm từng hạng mục, số lượng và đơn giá. Tổng phiếu được tính từ các item.
+**Bước 3**: Thêm từng hạng mục, số lượng và đơn giá. Tổng phiếu được tính từ các item. Ô chọn hạng mục chi xếp theo nhóm của **danh mục chi chuẩn** (từ 03/10/2026); gõ vài chữ để tìm theo tên hoặc cụm từ hay nói. Chỉ chủ công ty thêm được hạng mục mới — quản lý cần mục mới thì báo chủ công ty.
+
+::: info Hạng mục không lập tay được
+**Hoa hồng môi giới** và **Thưởng nóng Sale** chỉ tạo từ hợp đồng, phiếu cọc, "Tạo phiếu hoa hồng" hoặc "Tạo lại" ở Cần rà soát — lập tay ở Thu chi sẽ bị từ chối với câu "Không lập tay được hạng mục này". **Chuyển tiền nội bộ** và **Chia lợi nhuận cổ đông** luôn ghi ngoài kết quả kinh doanh (không tính lãi lỗ).
+:::
 
 **Bước 4**: Kiểm tra tài liệu đính kèm và lưu. Nếu phiếu cần maker-checker, nó xuất hiện trong hàng chờ của người được giao duyệt.
 

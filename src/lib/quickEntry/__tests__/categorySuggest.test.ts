@@ -23,9 +23,22 @@ const ids = (list: CategoryRef[]) => list.map((c) => c.id);
 
 describe("usableExpenseCategories", () => {
   it("chỉ hạng mục CHI của đúng công ty, bỏ hạng mục hệ thống và hạng mục hạn chế khi thiếu quyền", () => {
+    // Chưa có sort_order ⇒ xếp theo tên tiếng Việt.
     expect(ids(usableExpenseCategories(rows, { organizationId: O, canUseRestricted: false }))).toEqual([
-      "t1", "t2", "t3", "t4", "t9",
+      "t3", "t1", "t2", "t9", "t4",
     ]);
+  });
+
+  it("danh mục chuẩn: bỏ mục lưu trữ / ẩn tay / ẩn khỏi Báo chi nhanh, xếp theo sort_order", () => {
+    const list: CategoryRef[] = [
+      { id: "a", name: "Văn phòng phẩm", category: null, type: "expense", organization_id: O, sort_order: 20 },
+      { id: "b", name: "Tiền nhà", category: null, type: "expense", organization_id: O, sort_order: 10 },
+      { id: "c", name: "Mục cũ", category: null, type: "expense", organization_id: O, archived_at: "2026-10-03T00:00:00Z" },
+      { id: "d", name: "Hoa hồng môi giới", category: null, type: "expense", organization_id: O, manual_hidden: true },
+      { id: "e", name: "Vệ sinh tòa nhà định kỳ", category: null, type: "expense", organization_id: O, quick_entry_hidden: true },
+      { id: "f", name: "Ăn uống", category: null, type: "expense", organization_id: O },
+    ];
+    expect(ids(usableExpenseCategories(list, { organizationId: O, canUseRestricted: true }))).toEqual(["b", "a", "f"]);
   });
 
   it("có quyền hạng mục hạn chế ⇒ được thấy", () => {
@@ -52,7 +65,7 @@ describe("searchCategories — ô chọn hạng mục", () => {
   });
 
   it("ô tìm rỗng ⇒ tối đa `limit` hạng mục đầu", () => {
-    expect(ids(searchCategories(usable, "", 2))).toEqual(["t1", "t2"]);
+    expect(ids(searchCategories(usable, "", 2))).toEqual(["t3", "t1"]);
   });
 });
 
@@ -82,6 +95,19 @@ describe("suggestCategory — đoán từ mô tả", () => {
   it("chữ 'tiền' quá chung không dùng để đoán: 'tiền phạt' không thành 'Tiền điện'", () => {
     const list = usable.filter((c) => c.id === "t1" || c.id === "t4");
     expect(suggestCategory(list, "tiền phạt")).toBeNull();
+  });
+
+  it("luật theo rule_key đứng trước cụm phí: 'chuyển tiền nhà dùm' là nội bộ, không phải Tiền nhà", () => {
+    const list: CategoryRef[] = [
+      { id: "nha", name: "Tiền nhà", category: null, type: "expense", organization_id: O, rule_key: "tien_nha", fee_category: "tien_nha", keywords: ["tiền nhà"] },
+      { id: "nb", name: "Chuyển tiền nội bộ", category: null, type: "expense", organization_id: O, rule_key: "noi_bo" },
+    ];
+    expect(suggestCategory(list, "chuyển tiền nhà dùm a Huy")).toEqual({ id: "nb", reason: "rule" });
+    expect(suggestCategory(list, "tiền nhà tháng 10")).toEqual({ id: "nha", reason: "rule" });
+  });
+
+  it("'tiền điện lạnh' không phải tiền điện", () => {
+    expect(suggestCategory(usable, "tiền điện lạnh 3 phòng")?.reason).not.toBe("fee_phrase");
   });
 
   it("không bao giờ gợi ý hạng mục ngoài danh sách được dùng", () => {

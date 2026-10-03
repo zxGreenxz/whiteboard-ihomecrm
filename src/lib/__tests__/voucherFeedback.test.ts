@@ -36,6 +36,12 @@ describe('C05 số lần lặp hữu hạn', () => {
   it.each([1,240])('giữ nguyên biên hợp lệ %s',repeat_count=>expect(incomeExpenseFormSchema.safeParse({...valid,repeat_count}).success).toBe(true));
 });
 
+it('hạng mục CHI hệ thống bị chặn lập tay: báo rõ phải lập từ luồng nghiệp vụ',()=>{
+ const message=voucherFailureMessage({code:'42501',message:'Hạng mục này chỉ được tạo từ luồng nghiệp vụ (hợp đồng, phiếu cọc, thanh lý), không lập tay ở Thu chi',hint:'ie_system_only_manual_blocked'},'tạo phiếu');
+ expect(message).toBe('Không lập tay được hạng mục này. Hoa hồng, thưởng sale và các khoản cọc/thanh lý chỉ tạo từ hợp đồng, phiếu cọc hoặc thanh lý.');
+ expect(voucherFailureMessage({code:'42501',message:'Không có quyền sử dụng sổ quỹ này'},'tạo phiếu')).toContain('Không có quyền sử dụng sổ quỹ này');
+});
+
 it.each(['partial','unknown'] as const)('keeps completed voucher IDs in %s feedback after losing the original cause',outcome=>{
  const error=new FinancialWorkflowError('Đã tạo phiếu, cần đối chiếu bước còn thiếu.',outcome,[{id:'voucher-1',label:'Đã tạo phiếu'}]);
  expect(voucherFailureMessage(error,'lập phiếu')).toContain('voucher-1');

@@ -4,13 +4,14 @@
 //                     chuỗi dự phòng (gửi "quick_entry:auto"). Trả sai khuôn ⇒ thử lại MỘT lần với header
 //                     `x-quick-entry-skip` để máy chủ nhảy sang mô hình kế; lỗi thuộc người dùng (tắt,
 //                     hết lượt, không quyền) thì dừng ngay.
+//   readCategoriesWithAi — như trên nhưng câu lệnh rút gọn chỉ hỏi hạng mục từng dòng (nhanh hơn, ít token).
 //   transcribeAudio — ghi âm ⇒ chữ (OpenRouter qua /audio/transcriptions, language "vi").
 //
 // `fetchImpl` là fetch đã gắn JWT + x-organization-id + x-copilot-feature (makeCopilotFetch) —
 // truyền vào để test không cần mạng. AI hỏng KHÔNG chặn ghi chi: mọi lỗi trả về AiErrorView.
 
 import { QUICK_ENTRY_BASE } from "@/copilot/copilotConfig";
-import { parseAiResult, type AiResult } from "@/lib/quickEntry/aiSchema";
+import { parseAiResult, parseCategoryOnlyResult, type AiResult } from "@/lib/quickEntry/aiSchema";
 import { classifyAiError, type AiErrorView } from "@/lib/quickEntry/errors";
 import type { ChatMessage } from "@/lib/quickEntry/prompt";
 import type { AudioFormat } from "./useVoiceRecorder";
@@ -42,14 +43,20 @@ async function errorOf(res: Response): Promise<AiErrorView> {
   return classifyAiError({ status: res.status, code });
 }
 
-export async function readWithAi(opts: {
+interface ChatOpts {
   messages: ChatMessage[];
-  categoryCount: number;
   fetchImpl: FetchLike;
   signal?: AbortSignal;
   /** Mô hình người dùng chọn (id 9router kèm mức); máy chủ tự kiểm danh sách, id lạ ⇒ chuỗi mặc định. */
   model?: string;
-}): Promise<AiRead> {
+}
+
+/** Một lượt hỏi AI đường đọc, kiểm khuôn bằng `parse`; sai khuôn ⇒ thử mô hình kế MỘT lần. */
+async function chatJson<T>(
+  opts: ChatOpts,
+  maxTokens: number,
+  parse: (content: string) => { ok: true; value: T } | { ok: false },
+): Promise<{ ok: true; value: T; model: string | null } | { ok: false; error: AiErrorView }> {
   let skip: number | null = null;
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const headers = new Headers({ "Content-Type": "application/json" });
@@ -64,7 +71,7 @@ export async function readWithAi(opts: {
           model: opts.model ?? "quick_entry:auto",
           messages: opts.messages,
           stream: false,
-          max_tokens: QUICK_ENTRY_MAX_TOKENS,
+          max_tokens: maxTokens,
           response_format: { type: "json_object" },
         }),
       });
@@ -80,11 +87,29 @@ export async function readWithAi(opts: {
     } catch {
       // thân không phải JSON ⇒ coi như trả sai khuôn
     }
-    const parsed = parseAiResult(content, opts.categoryCount);
+    const parsed = parse(content);
     if (parsed.ok) return { ok: true, value: parsed.value, model: res.headers.get("x-quick-entry-model") };
     skip = Number(res.headers.get("x-quick-entry-index") ?? 0) + 1;
   }
   return { ok: false, error: classifyAiError({ status: 500, code: null }) };
+}
+
+export async function readWithAi(opts: ChatOpts & { categoryCount: number }): Promise<AiRead> {
+  return chatJson(opts, QUICK_ENTRY_MAX_TOKENS, (content) => parseAiResult(content, opts.categoryCount));
+}
+
+/** Trần token câu lệnh rút gọn — đúng số đã đo 02/10/2026 (mức low: trả lời + suy nghĩ dư dả trong 1000). */
+export const CATEGORY_ONLY_MAX_TOKENS = 1000;
+
+export type AiCategories = { ok: true; value: Array<string | null>; model: string | null } | { ok: false; error: AiErrorView };
+
+/** Câu lệnh rút gọn (buildCategoryOnlyMessages) ⇒ mã cN cho từng dòng, cùng thứ tự `lineCount` dòng. */
+export async function readCategoriesWithAi(
+  opts: ChatOpts & { categoryCount: number; lineCount: number },
+): Promise<AiCategories> {
+  return chatJson(opts, CATEGORY_ONLY_MAX_TOKENS, (content) =>
+    parseCategoryOnlyResult(content, opts.categoryCount, opts.lineCount),
+  );
 }
 
 async function toBase64(blob: Blob): Promise<string> {

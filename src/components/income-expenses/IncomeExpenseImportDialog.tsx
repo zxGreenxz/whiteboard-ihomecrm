@@ -22,6 +22,7 @@ import { validateImportRows } from '@/hooks/useIncomeExpensesHelpers';
 import { useImportIncomeExpenses, type ImportIncomeExpenseRow } from '@/hooks/useIncomeExpenses';
 import { useBuildings } from '@/hooks/useBuildings';
 import { useIncomeExpenseTypes } from '@/hooks/useIncomeExpenseTypes';
+import { resolveImportIeType } from '@/lib/ieTypeLookup';
 import { toast } from 'sonner';
 import {
   Upload,
@@ -295,18 +296,14 @@ const IncomeExpenseImportDialog = ({ open, onOpenChange }: IncomeExpenseImportDi
         }
 
         const matchType = row.data.type === 'INCOME' ? 'income' : 'expense';
-        const expenseType = allTypes.find(
-          (t: any) =>
-            t.name.toLowerCase() === row.data.item_name.toLowerCase() &&
-            t.type === matchType
-        );
-        if (!expenseType) {
-          resolveErrors.push({
-            row: row.rowIndex,
-            message: `Không tìm thấy hạng mục "${row.data.item_name}" (loại ${matchType})`,
-          });
+        // Danh mục chi chuẩn: mục đã lưu trữ + gộp ⇒ dùng mục đích; mục CHI hệ thống
+        // (hoa hồng, thưởng sale, cọc, thanh lý) ⇒ lỗi dòng vì máy chủ chặn lập tay.
+        const resolved = resolveImportIeType(allTypes, row.data.item_name, matchType);
+        if (!resolved.ok) {
+          resolveErrors.push({ row: row.rowIndex, message: resolved.message });
           continue;
         }
+        const expenseType = resolved.type;
 
         sourceRows.push(row.rowIndex);
         resolvedRows.push({

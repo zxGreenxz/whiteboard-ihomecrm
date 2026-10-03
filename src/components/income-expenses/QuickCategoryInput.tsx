@@ -17,7 +17,8 @@ interface QuickCategoryInputProps {
   /** Hạng mục đang được khoá (để hiện tick). */
   lockedTypeId: string | null;
   onSelect: (type: IeTypeRef) => void;
-  onCreateNew: (query: string) => void;
+  /** Bỏ trống = người dùng không được tạo hạng mục (chỉ superadmin / chủ công ty) ⇒ hiện lời nhắc. */
+  onCreateNew?: (query: string) => void;
   inputRef: React.RefObject<HTMLInputElement>;
   placeholder?: string;
   autoFocus?: boolean;
@@ -42,8 +43,10 @@ const QuickCategoryInput = ({
   const hasExact = suggestions.some(
     (s) => normalizeLoose(s.name) === normalizeLoose(trimmed),
   );
-  const showCreate = trimmed.length > 0 && !hasExact;
-  const open = active && focused && (suggestions.length > 0 || showCreate);
+  const showCreate = !!onCreateNew && trimmed.length > 0 && !hasExact;
+  // Không có quyền tạo mà gõ không khớp mục nào ⇒ nhắc báo chủ công ty thay vì im lặng.
+  const showAskOwner = !onCreateNew && trimmed.length > 0 && suggestions.length === 0;
+  const open = active && focused && (suggestions.length > 0 || showCreate || showAskOwner);
 
   return (
     <div className="relative">
@@ -93,12 +96,18 @@ const QuickCategoryInput = ({
             </button>
           ))}
 
+          {showAskOwner && (
+            <p className="px-3 py-2.5 text-sm text-muted-foreground">
+              Không có hạng mục khớp. Cần hạng mục mới? Báo chủ công ty thêm.
+            </p>
+          )}
+
           {showCreate && (
             <button
               type="button"
               onPointerDown={(e) => {
                 e.preventDefault();
-                onCreateNew(trimmed);
+                onCreateNew?.(trimmed);
               }}
               className="flex w-full items-center gap-2 border-t px-3 py-2.5 text-left text-sm text-primary hover:bg-accent active:bg-accent"
             >

@@ -1,0 +1,1713 @@
+[
+ {
+  "text": "thay phao bơm bồn phụ 405pvb",
+  "gold": "sua_nuoc_may_bom"
+ },
+ {
+  "text": "thay phao bồn nước nhà 950nk",
+  "gold": "sua_nuoc_may_bom"
+ },
+ {
+  "text": "chi phí điện lạnh T4 cụm của Lâm",
+  "gold": "dien_lanh"
+ },
+ {
+  "text": "thu chi điện lạnh",
+  "gold": "dien_lanh"
+ },
+ {
+  "text": "thanh toán tiền điện lạnh T6",
+  "gold": "dien_lanh"
+ },
+ {
+  "text": "Chi phí điện lạnh T7 - cụm của Lâm",
+  "gold": "dien_lanh"
+ },
+ {
+  "text": "xử lý rò rỉ điện và bảo trì đường ống đồng",
+  "gold": "dien_lanh",
+  "alt": [
+   "sua_dien"
+  ]
+ },
+ {
+  "text": "thanh toán phiếu vệ sinh máy lạnh",
+  "gold": "dien_lanh"
+ },
+ {
+  "text": "báo hãng kiểm tra máy lạnh - lỗi ngoại quan",
+  "gold": "dien_lanh"
+ },
+ {
+  "text": "Thanh toán Điện Lạnh tháng 5 cụm của Lâm",
+  "gold": "dien_lanh"
+ },
+ {
+  "text": "lắp máy giặt berlin",
+  "gold": "dien_lanh"
+ },
+ {
+  "text": "thanh toán tiền điện lạnh",
+  "gold": "dien_lanh"
+ },
+ {
+  "text": "mua máy lạnh và máy giặt",
+  "gold": "dien_may"
+ },
+ {
+  "text": "mua máy lạnh 104-1392qt",
+  "gold": "dien_may"
+ },
+ {
+  "text": "Thanh toán Điện Lạnh tháng 5 cụm của Lâm - Sửa Board máy lạnh",
+  "gold": "dien_lanh"
+ },
+ {
+  "text": "sửa máy lạnh bị báo lỗi ER",
+  "gold": "dien_lanh"
+ },
+ {
+  "text": "Vệ sinh và xử lý máy lạnh chảy nước",
+  "gold": "dien_lanh"
+ },
+ {
+  "text": "vệ sinh máy lạnh",
+  "gold": "dien_lanh"
+ },
+ {
+  "text": "vệ sinh ống nước, nghẹt nhiều",
+  "gold": "sua_nuoc_may_bom"
+ },
+ {
+  "text": "vệ sinh máy lạnh, a tuấn 3 tuần chưa qua nên gọi a hùng",
+  "gold": "dien_lanh"
+ },
+ {
+  "text": "Bảo Trì Thang Máy",
+  "gold": "thang_may"
+ },
+ {
+  "text": "Bảo Trì Thang Máy 4,5,6",
+  "gold": "thang_may"
+ },
+ {
+  "text": "đánh chìa khóa",
+  "gold": "khoa_chia"
+ },
+ {
+  "text": "đánh chìa khóa nhà 102LVT",
+  "gold": "khoa_chia"
+ },
+ {
+  "text": "đánh chài khóa 206-1392qt",
+  "gold": "khoa_chia"
+ },
+ {
+  "text": "đánh 2 chìa khoá",
+  "gold": "khoa_chia"
+ },
+ {
+  "text": "đánh chìa khoá 304",
+  "gold": "khoa_chia"
+ },
+ {
+  "text": "đánh 2 chìa nhà 950 nguyễn kiệm",
+  "gold": "khoa_chia"
+ },
+ {
+  "text": "đánh chìa khóa 102 và 201 tòa nhà 102LVT",
+  "gold": "khoa_chia"
+ },
+ {
+  "text": "đánh chìa khóa L06 và 306",
+  "gold": "khoa_chia"
+ },
+ {
+  "text": "đánh 3 chìa khoá phòng",
+  "gold": "khoa_chia"
+ },
+ {
+  "text": "in decal dán ở các nhà 950NK và 481NVK",
+  "gold": "in_an_decal"
+ },
+ {
+  "text": "khoan giếng 512tc",
+  "gold": "sua_nuoc_may_bom"
+ },
+ {
+  "text": "Kiểm tra rò rỉ điện 402-44TL",
+  "gold": "sua_dien"
+ },
+ {
+  "text": "kiểm tra rò điện",
+  "gold": "sua_dien"
+ },
+ {
+  "text": "kiểm tra rò rỉ điện",
+  "gold": "sua_dien"
+ },
+ {
+  "text": "Kiểm tra rò rỉ điện vì khách báo hao điện",
+  "gold": "sua_dien"
+ },
+ {
+  "text": "thay bóng đèn led toilet loại tốt",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "Mua bóng đèn hành lang",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "hai bóng đèn âm trần",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "mua remote máy lạnh",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "mua bóng đèn led",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "đèn led dài",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "Mua quạt hút âm trần",
+  "gold": "dien_may"
+ },
+ {
+  "text": "Mua cầu dao và ống nối T cầu",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "mua ống cấp nước",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "Mua bóng đèn nhà xe",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "mua vật tư",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "mua ống cấp nước bếp",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "mua bóng đèn toilet cho 204-102lvt",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "mua acquy cửa vân tay",
+  "gold": "camera_wifi_van_tay"
+ },
+ {
+  "text": "ống cấp nc bếp",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "ống cấp nước",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "mua 5m dây 8 chấm",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "tiền cf cho anh thợ điện",
+  "gold": "sua_dien"
+ },
+ {
+  "text": "mua bóng đèn cho G00 - 2 bóng đèn 120cm và 60cm",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "mua 2 nẹp 3 phân",
+  "gold": "vat_tu_dien_nuoc",
+  "alt": [
+   "sua_xay_dung"
+  ]
+ },
+ {
+  "text": "mua nút nhấn bồn cầu",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "Mua quạt treo tường",
+  "gold": "dien_may"
+ },
+ {
+  "text": "mua đồ nhấn bồn cầu",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "mua bóng đèn nổi trần",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "mua bóng đèn toilet",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "mua bóng đèn cho Mb-512tc và kệ kính 403-331phi",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "mua ổ điện và tắc kê để gắn camera khu shipper",
+  "gold": "camera_wifi_van_tay",
+  "alt": [
+   "vat_tu_dien_nuoc"
+  ]
+ },
+ {
+  "text": "mua bóng đèn toilet 201-1392qt",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "mua dây sen",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "mua băng keo chống thấm + bột chà ron",
+  "gold": "vat_tu_dien_nuoc",
+  "alt": [
+   "sua_xay_dung"
+  ]
+ },
+ {
+  "text": "đặt quạt treo tường",
+  "gold": "dien_may"
+ },
+ {
+  "text": "mua 2 bộ nhấn xả bồn cầu",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "mua đèn led",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "mua cụm ổ điện",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "bộ vòi xịt toilet",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "mua bóng đèn và chuôi đèn cửa vân tay",
+  "gold": "camera_wifi_van_tay",
+  "alt": [
+   "vat_tu_dien_nuoc"
+  ]
+ },
+ {
+  "text": "mua cụm ổ điện hai nút",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "mua 5 bóng đèn",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "nắp bồn cầu",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "mua dư 5 bóng đèn phòng xài",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "mua 4 bộ ống xả bếp",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "mua hai bình xịt gián",
+  "gold": "diet_con_trung"
+ },
+ {
+  "text": "mua nắp bồn cầu",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "mua cụm củ sen và dây sen",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "mua hai cụm củ sen + 1 đèn led",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "mua dây rút cố định đèn nhà xe 15KV",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "mua ổ điện và bóng đèn",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "mua ấm siêu tốc",
+  "gold": "dien_may"
+ },
+ {
+  "text": "mua bóng đèn tròn đuôi vặn",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "mua 8 bóng âm trần lớn lắp nhà xe, hành lang 1 bóng 75k 8 bóng 600k",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "mua 10 bóng đèn âm trần nhà xe 1 bóng 55k 10 bóng 550k",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "mua bóng đèn led dài nhà xe",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "mua them 1 bóng đèn hành lang (bị thiếu)",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "mua tua vít nhỏ",
+  "gold": "dung_cu"
+ },
+ {
+  "text": "mua quạt treo tường - 2 cái",
+  "gold": "dien_may"
+ },
+ {
+  "text": "mua ống cấp nước và vòi lavabo",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "mua pin máy bắn vít",
+  "gold": "dung_cu"
+ },
+ {
+  "text": "mua bóng đèn toilet văn phòng",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "mua ốc nắp bồn cầu",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "mua vòng cao su gắn vòi nước",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "mua ấm siêu tốc 3 cái",
+  "gold": "dien_may"
+ },
+ {
+  "text": "mua dây sen 20 cái",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "mua acquy cửa vân tay 512tc",
+  "gold": "camera_wifi_van_tay"
+ },
+ {
+  "text": "mua phễu chống hôi 950NK",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "mua giấy nhám",
+  "gold": "dung_cu"
+ },
+ {
+  "text": "mua vật liệu chống thấm - bình foam - silicon 44TL",
+  "gold": "vat_tu_dien_nuoc",
+  "alt": [
+   "sua_xay_dung"
+  ]
+ },
+ {
+  "text": "mua lục giác bông sửa camera và silicon",
+  "gold": "camera_wifi_van_tay",
+  "alt": [
+   "dung_cu",
+   "vat_tu_dien_nuoc"
+  ]
+ },
+ {
+  "text": "Mua Tủ Đồ Gỗ",
+  "gold": "noi_that_decor"
+ },
+ {
+  "text": "2 bàn ăn madrid 3 và madrid 5",
+  "gold": "noi_that_decor"
+ },
+ {
+  "text": "ship thùng rác từ trung lang về 950NK",
+  "gold": "van_chuyen"
+ },
+ {
+  "text": "Sơn Sửa Phòng",
+  "gold": "sua_xay_dung"
+ },
+ {
+  "text": "Sửa máy bơm",
+  "gold": "sua_nuoc_may_bom"
+ },
+ {
+  "text": "Mua vật liệu điện",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "mua 4 bản lề tủ",
+  "gold": "noi_that_decor",
+  "alt": [
+   "sua_xay_dung"
+  ]
+ },
+ {
+  "text": "máy bơm bơm k lên, thợ qua kiểm tra phao và chỉnh lại",
+  "gold": "sua_nuoc_may_bom"
+ },
+ {
+  "text": "Sơn Sửa MB",
+  "gold": "sua_xay_dung"
+ },
+ {
+  "text": "tiền hộp lưu điện 1.950k tiền nhân công 250k",
+  "gold": "camera_wifi_van_tay"
+ },
+ {
+  "text": "Chống thấm phòng",
+  "gold": "sua_xay_dung",
+  "alt": [
+   "sua_xay_dung"
+  ]
+ },
+ {
+  "text": "mua 5 chai xịt sơn xám",
+  "gold": "sua_xay_dung"
+ },
+ {
+  "text": "xử lý che ống đồng trên nóc nhà 44TL",
+  "gold": "dien_lanh"
+ },
+ {
+  "text": "sửa lại ống nước lavabo 401",
+  "gold": "sua_nuoc_may_bom"
+ },
+ {
+  "text": "gắn bóng đèn nhà xe 1392qt + thay cảm biến bóng đèn nhà xe 65NTG",
+  "gold": "sua_dien"
+ },
+ {
+  "text": "bóng đèn led 18w",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "bóng đèn led",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "Làm lại định mức điện",
+  "gold": "sua_dien"
+ },
+ {
+  "text": "nẹp dây điện 417lvt",
+  "gold": "sua_dien"
+ },
+ {
+  "text": "sửa điện 111pvc - 417lvt - 8055ds3",
+  "gold": "sua_dien"
+ },
+ {
+  "text": "sửa điện 1392qt và 331phi",
+  "gold": "sua_dien"
+ },
+ {
+  "text": "chi phí: 32pvc thay đèn cảm biến 4 tầng + 9 bóng (4 bóng hành lang 4 tầng, 5 bóng tầng trệt) 162nvk thay 10 bóng nhà xe",
+  "gold": "sua_dien"
+ },
+ {
+  "text": "thay pha bơm máy bơm 162nvk",
+  "gold": "sua_nuoc_may_bom"
+ },
+ {
+  "text": "Thay phao bơm hỏa tiễn - Lắp thêm phao chống cạn - xử lý rò rỉ nước máy bơm sân thượng",
+  "gold": "sua_nuoc_may_bom"
+ },
+ {
+  "text": "thay phao bơm bồn chính",
+  "gold": "sua_nuoc_may_bom"
+ },
+ {
+  "text": "xử lý bơm sàn ở nhà xe bị nghẹt rác vô bơm và hư phao",
+  "gold": "sua_nuoc_may_bom"
+ },
+ {
+  "text": "Thay Lõi Lọc nước",
+  "gold": "sua_nuoc_may_bom"
+ },
+ {
+  "text": "thi công điện",
+  "gold": "sua_dien"
+ },
+ {
+  "text": "thông cống ban công 202-80ds3",
+  "gold": "sua_nuoc_may_bom"
+ },
+ {
+  "text": "vệ sinh 2 bồn nước và lắp tủ điện máy bơm phụ ở sân thượng",
+  "gold": "sua_nuoc_may_bom"
+ },
+ {
+  "text": "Gắn ống thông hơi bồn cầu phòng 01 và 10 tòa nhà 481NVK",
+  "gold": "sua_nuoc_may_bom"
+ },
+ {
+  "text": "xử lý bồn cầu rò rỉ nước",
+  "gold": "sua_nuoc_may_bom"
+ },
+ {
+  "text": "gửi tiền tiếp dân 500k để lấy hồ sơ, nhưng tiếp dân kêu phải tự in thì mới đóng dấu. hiện tại trang wrb lag k tải đc hình",
+  "gold": "tam_tru_giay_to"
+ },
+ {
+  "text": "Làm tạm trú 2 người (404‑405pvb)",
+  "gold": "tam_tru_giay_to"
+ },
+ {
+  "text": "làm tạm trú",
+  "gold": "tam_tru_giay_to"
+ },
+ {
+  "text": "Công An",
+  "gold": "cong_an"
+ },
+ {
+  "text": "làm tạm trú 16 bộ",
+  "gold": "tam_tru_giay_to"
+ },
+ {
+  "text": "đăng ký tạm trú",
+  "gold": "tam_tru_giay_to"
+ },
+ {
+  "text": "Tiền giấy tạm trú tiếp dân",
+  "gold": "tam_tru_giay_to"
+ },
+ {
+  "text": "làm tạm trú 2 bộ",
+  "gold": "tam_tru_giay_to"
+ },
+ {
+  "text": "Tạm trú người nước ngoài",
+  "gold": "tam_tru_giay_to"
+ },
+ {
+  "text": "làm tạm trú 2 phòng 201 và 208",
+  "gold": "tam_tru_giay_to"
+ },
+ {
+  "text": "làm tạm trú 4 bộ",
+  "gold": "tam_tru_giay_to"
+ },
+ {
+  "text": "làm tạm trú 14 bộ",
+  "gold": "tam_tru_giay_to"
+ },
+ {
+  "text": "làm tạm trú 4 bộ nhà 44tl",
+  "gold": "tam_tru_giay_to"
+ },
+ {
+  "text": "làm tạm trú nhà 481nvk 10 bộ",
+  "gold": "tam_tru_giay_to"
+ },
+ {
+  "text": "làm tạm trú 6 bộ 44tl",
+  "gold": "tam_tru_giay_to"
+ },
+ {
+  "text": "Tiền CA T5,6",
+  "gold": "cong_an"
+ },
+ {
+  "text": "Tiền Công An",
+  "gold": "cong_an"
+ },
+ {
+  "text": "tiền công an tháng 5-6",
+  "gold": "cong_an"
+ },
+ {
+  "text": "tiền công an tháng 3 4 5 6 - tiền mặt",
+  "gold": "cong_an"
+ },
+ {
+  "text": "T6, T7",
+  "gold": "cong_an"
+ },
+ {
+  "text": "Tiền CAP15 T6,7 403 405",
+  "gold": "cong_an"
+ },
+ {
+  "text": "CAKV 1392 5,6,7",
+  "gold": "cong_an"
+ },
+ {
+  "text": "CA 111 6,7",
+  "gold": "cong_an"
+ },
+ {
+  "text": "tiền công an: thông tây hội (5ng) p13 tân bình (1ng)",
+  "gold": "cong_an"
+ },
+ {
+  "text": "đưa tiền công an (a Khải) phường 13 tân bình",
+  "gold": "cong_an"
+ },
+ {
+  "text": "đưa 200k tiền cà phê cho chị tiếp dân nhà 102/30lvt",
+  "gold": "tam_tru_giay_to"
+ },
+ {
+  "text": "đưa tiền a Toàn kiểm tra pccc",
+  "gold": "pccc"
+ },
+ {
+  "text": "Công An T8",
+  "gold": "cong_an"
+ },
+ {
+  "text": "Lót Người Nước Ngoài",
+  "gold": "tam_tru_giay_to"
+ },
+ {
+  "text": "đưa 500k cho c tiếp dân lấy 18 bộ tạm trú 102/30lvt",
+  "gold": "tam_tru_giay_to"
+ },
+ {
+  "text": "tiền công an phường 13 tân bình 9-10",
+  "gold": "cong_an"
+ },
+ {
+  "text": "tiền công an tháng 9-10",
+  "gold": "cong_an"
+ },
+ {
+  "text": "đưa tiếp dân phường thông tây hội hồ sơ 32pvc",
+  "gold": "tam_tru_giay_to"
+ },
+ {
+  "text": "Chuyển lại tiền phòng cho a Khang",
+  "gold": "noi_bo"
+ },
+ {
+  "text": "mua đồ decor",
+  "gold": "noi_that_decor"
+ },
+ {
+  "text": "mua cây",
+  "gold": "noi_that_decor"
+ },
+ {
+  "text": "mua 5 chậu cây",
+  "gold": "noi_that_decor"
+ },
+ {
+  "text": "bình thuỷ tinh decor 2c",
+  "gold": "noi_that_decor"
+ },
+ {
+  "text": "sách bìa decor",
+  "gold": "noi_that_decor"
+ },
+ {
+  "text": "kệ trái cây decor",
+  "gold": "noi_that_decor"
+ },
+ {
+  "text": "lá bạc già decor",
+  "gold": "noi_that_decor"
+ },
+ {
+  "text": "nho mẫu đơn decor, sẵn ăn luôn",
+  "gold": "noi_that_decor",
+  "alt": [
+   "an_uong_phuc_loi"
+  ]
+ },
+ {
+  "text": "mua hoa khuynh diệp",
+  "gold": "noi_that_decor"
+ },
+ {
+  "text": "cây cối decor",
+  "gold": "noi_that_decor"
+ },
+ {
+  "text": "đồ decor 950nk",
+  "gold": "noi_that_decor"
+ },
+ {
+  "text": "đồ decor 950nvk",
+  "gold": "noi_that_decor"
+ },
+ {
+  "text": "mua cây decor 950nk",
+  "gold": "noi_that_decor"
+ },
+ {
+  "text": "mua chậu cây decor",
+  "gold": "noi_that_decor"
+ },
+ {
+  "text": "đồ decor",
+  "gold": "noi_that_decor"
+ },
+ {
+  "text": "ghế decor",
+  "gold": "noi_that_decor"
+ },
+ {
+  "text": "mua băng keo dán thùng",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "bàn decor",
+  "gold": "noi_that_decor"
+ },
+ {
+  "text": "đặt shopee lại (đổi giao thường thành hoả tốc) nên giá khác, + thêm 43k",
+  "gold": "van_chuyen"
+ },
+ {
+  "text": "mua ghế decor",
+  "gold": "noi_that_decor"
+ },
+ {
+  "text": "mua tủ lạnh 950/65 NGUYỄN KIỆM",
+  "gold": "dien_may"
+ },
+ {
+  "text": "mua máy giặt và tủ lạnh cho nhà 950NK",
+  "gold": "dien_may"
+ },
+ {
+  "text": "ship chìa khoá berlin qua 950nk",
+  "gold": "van_chuyen"
+ },
+ {
+  "text": "mua miếng dán cửa ngăn côn trùng l2",
+  "gold": "diet_con_trung"
+ },
+ {
+  "text": "Đóng tiền internet",
+  "gold": "internet"
+ },
+ {
+  "text": "Internet",
+  "gold": "internet"
+ },
+ {
+  "text": "Internet tháng 5",
+  "gold": "internet"
+ },
+ {
+  "text": "Tiền mạng kỳ 31/5",
+  "gold": "internet"
+ },
+ {
+  "text": "Tiền Nước",
+  "gold": "nuoc"
+ },
+ {
+  "text": "Tien nuoc bs",
+  "gold": "nuoc"
+ },
+ {
+  "text": "Nước Máy Giặt",
+  "gold": "nuoc"
+ },
+ {
+  "text": "Tiền nước T8",
+  "gold": "nuoc"
+ },
+ {
+  "text": "Tiền nước tháng 8",
+  "gold": "nuoc"
+ },
+ {
+  "text": "Tiền nước 810k kết vào t9",
+  "gold": "nuoc"
+ },
+ {
+  "text": "mua dây thoát hiểm PCCC",
+  "gold": "pccc"
+ },
+ {
+  "text": "Pccc",
+  "gold": "pccc"
+ },
+ {
+  "text": "Photo hồ sơ pccc",
+  "gold": "pccc",
+  "alt": [
+   "in_an_decal"
+  ]
+ },
+ {
+  "text": "Chi tiền PCCC 417LVT",
+  "gold": "pccc"
+ },
+ {
+  "text": "bảo hiểm PCCC 45/3 Trần Thái Tông",
+  "gold": "pccc"
+ },
+ {
+  "text": "in giấy hợp đồng thuê nhà cho a Khôi, lần 1 6k ck in, lần 2 3k",
+  "gold": "in_an_decal"
+ },
+ {
+  "text": "in hai cuốn phương pccc",
+  "gold": "pccc",
+  "alt": [
+   "in_an_decal"
+  ]
+ },
+ {
+  "text": "mở ổ khóa cửa toilet bị kẹt",
+  "gold": "khoa_chia"
+ },
+ {
+  "text": "lõi khoá bị gãy khách mắc kẹt trong phòng. qua mở + thay lõi khoá",
+  "gold": "khoa_chia"
+ },
+ {
+  "text": "Mua tay nắm cửa vân tay",
+  "gold": "camera_wifi_van_tay"
+ },
+ {
+  "text": "mua ổ khóa toilet G02-1392qt",
+  "gold": "khoa_chia"
+ },
+ {
+  "text": "mua tay nắm cửa toilet 104-102lvt",
+  "gold": "khoa_chia"
+ },
+ {
+  "text": "Mua ổ khóa tay nắm tròn cửa toilet",
+  "gold": "khoa_chia"
+ },
+ {
+  "text": "mua đồ chặn côn trung",
+  "gold": "diet_con_trung"
+ },
+ {
+  "text": "mở khoá hai cửa trên sân thượng",
+  "gold": "khoa_chia"
+ },
+ {
+  "text": "Ăn Hải Sản Thanh Sương - Nha Trang",
+  "gold": "an_uong_phuc_loi"
+ },
+ {
+  "text": "4F Mart - Nha Trang",
+  "gold": "an_uong_phuc_loi"
+ },
+ {
+  "text": "Phê La - Nha Trang",
+  "gold": "an_uong_phuc_loi"
+ },
+ {
+  "text": "Happy Beach",
+  "gold": "an_uong_phuc_loi"
+ },
+ {
+  "text": "Bánh Căn - Nha Trang",
+  "gold": "an_uong_phuc_loi"
+ },
+ {
+  "text": "Ăn Sáng - Nha Trang",
+  "gold": "an_uong_phuc_loi"
+ },
+ {
+  "text": "ăn trưa - cơm gà - Nha Trang",
+  "gold": "an_uong_phuc_loi"
+ },
+ {
+  "text": "ăn tối quán Gạch Cua - Nha Trang",
+  "gold": "an_uong_phuc_loi"
+ },
+ {
+  "text": "Highlands coffee",
+  "gold": "an_uong_phuc_loi"
+ },
+ {
+  "text": "Nem nướng Nha Trang",
+  "gold": "an_uong_phuc_loi"
+ },
+ {
+  "text": "trà Ngô Gia",
+  "gold": "an_uong_phuc_loi"
+ },
+ {
+  "text": "cơm gà cho a Khôi",
+  "gold": "an_uong_phuc_loi"
+ },
+ {
+  "text": "mua nước uống ở VP",
+  "gold": "van_phong"
+ },
+ {
+  "text": "mua pizza",
+  "gold": "an_uong_phuc_loi"
+ },
+ {
+  "text": "ăn trưa",
+  "gold": "an_uong_phuc_loi"
+ },
+ {
+  "text": "cơm tối quán Hồng Ký",
+  "gold": "an_uong_phuc_loi"
+ },
+ {
+  "text": "Viện Hải Dương Học - Nha Trang",
+  "gold": "an_uong_phuc_loi"
+ },
+ {
+  "text": "tiền khách sạn",
+  "gold": "an_uong_phuc_loi"
+ },
+ {
+  "text": "Tiền Tour Nha Trang",
+  "gold": "an_uong_phuc_loi"
+ },
+ {
+  "text": "Tiền xe đi Nha Trang chiều đi và về",
+  "gold": "an_uong_phuc_loi"
+ },
+ {
+  "text": "Tiền nhà",
+  "gold": "tien_nha"
+ },
+ {
+  "text": "Tiền nhà - 45/3 Trần Thái Tông. Tiền nhà hàng tháng",
+  "gold": "tien_nha"
+ },
+ {
+  "text": "Tiền nhà Hàng Tháng",
+  "gold": "tien_nha"
+ },
+ {
+  "text": "đóng tiền nhà",
+  "gold": "tien_nha"
+ },
+ {
+  "text": "chuyển tiền nhà - tiền nhà 405pvb",
+  "gold": "tien_nha"
+ },
+ {
+  "text": "tiền nhà 403PVB",
+  "gold": "tien_nha"
+ },
+ {
+  "text": "chuyển tiền nhà - tiền nhà 15KV",
+  "gold": "tien_nha"
+ },
+ {
+  "text": "tiền nhà 102LVT",
+  "gold": "tien_nha"
+ },
+ {
+  "text": "tiền nhà 162nvk T6",
+  "gold": "tien_nha"
+ },
+ {
+  "text": "Chuyển tiền nhà 15/22KV T6",
+  "gold": "tien_nha"
+ },
+ {
+  "text": "tiền nhà 1392qt T6",
+  "gold": "tien_nha"
+ },
+ {
+  "text": "thanh toán tiền nhà 65ntg - T6",
+  "gold": "tien_nha"
+ },
+ {
+  "text": "tiền nhà 32PVC",
+  "gold": "tien_nha"
+ },
+ {
+  "text": "tiền nhà 512TC",
+  "gold": "tien_nha"
+ },
+ {
+  "text": "tiền nhà 15KV",
+  "gold": "tien_nha"
+ },
+ {
+  "text": "tiền nhà 1392qt",
+  "gold": "tien_nha"
+ },
+ {
+  "text": "tiền nhà 405PVB",
+  "gold": "tien_nha"
+ },
+ {
+  "text": "tiền nhà 102/30 Lê Văn Thọ",
+  "gold": "tien_nha"
+ },
+ {
+  "text": "Tiền nhà T8 - (A Khôi đưa tiền mặt nhờ Lâm gửi chủ nhà)",
+  "gold": "tien_nha"
+ },
+ {
+  "text": "tiền nhà 65NTG - T8",
+  "gold": "tien_nha"
+ },
+ {
+  "text": "tiền nhà 102lvt - T9",
+  "gold": "tien_nha"
+ },
+ {
+  "text": "tiền nhà 32PVC - T9",
+  "gold": "tien_nha"
+ },
+ {
+  "text": "tiền nhà 15KV - T9",
+  "gold": "tien_nha"
+ },
+ {
+  "text": "tiền nhà 162NVK - T9",
+  "gold": "tien_nha"
+ },
+ {
+  "text": "tiền nhà 111pvc - T9",
+  "gold": "tien_nha"
+ },
+ {
+  "text": "tiền nhà 65NTG T9",
+  "gold": "tien_nha"
+ },
+ {
+  "text": "tiền nhà 403pvb - T9",
+  "gold": "tien_nha"
+ },
+ {
+  "text": "mua ba bình nước ion life , tăng 3k/bình",
+  "gold": "van_phong"
+ },
+ {
+  "text": "mua bốn chai xịt gián",
+  "gold": "diet_con_trung"
+ },
+ {
+  "text": "Bỏ nệm và các rác thải khác 512tc",
+  "gold": "bo_rac"
+ },
+ {
+  "text": "a Vinh làm vỡ bể cá, cho rác 100k đổ",
+  "gold": "bo_rac"
+ },
+ {
+  "text": "phí bỏ rác",
+  "gold": "bo_rac"
+ },
+ {
+  "text": "Bỏ Rác Thùng mút xà bần",
+  "gold": "bo_rac"
+ },
+ {
+  "text": "gửi tiền đổ rác thêm",
+  "gold": "bo_rac"
+ },
+ {
+  "text": "đổ rác bổ sung 44TL",
+  "gold": "bo_rac"
+ },
+ {
+  "text": "dọn xà bần khoan giếng 512tc",
+  "gold": "bo_rac"
+ },
+ {
+  "text": "đặt btaskee vệ sinh hai phòng trên cùng, đặt ba tiếng từ 1h30-4h30 mà 6h mới xong nên gửi cô 300k (tiền thực tế 260k)",
+  "gold": "don_ve_sinh"
+ },
+ {
+  "text": "btaskee vệ sinh",
+  "gold": "don_ve_sinh"
+ },
+ {
+  "text": "đặt btaskee",
+  "gold": "don_ve_sinh"
+ },
+ {
+  "text": "vệ sinh madrid 3,4,5 + hành lang vệ sinh 3 tiếng",
+  "gold": "don_ve_sinh"
+ },
+ {
+  "text": "đật btaskee vệ sinh phòng",
+  "gold": "don_ve_sinh"
+ },
+ {
+  "text": "btaskee vệ sinh toà nhà",
+  "gold": "don_ve_sinh"
+ },
+ {
+  "text": "vệ sinh toà nhà btaskee",
+  "gold": "don_ve_sinh"
+ },
+ {
+  "text": "vệ sinh btaskee nguyên toà nhà",
+  "gold": "don_ve_sinh"
+ },
+ {
+  "text": "đặt btaskee vệ sinh toà nhà",
+  "gold": "don_ve_sinh"
+ },
+ {
+  "text": "vệ sinh berlin",
+  "gold": "don_ve_sinh"
+ },
+ {
+  "text": "book btaskee vệ sinh 301,302,304",
+  "gold": "don_ve_sinh"
+ },
+ {
+  "text": "vệ sinh 102,lau phòng tầng 4",
+  "gold": "don_ve_sinh"
+ },
+ {
+  "text": "vệ sinh hai phòng 101 và 302",
+  "gold": "don_ve_sinh"
+ },
+ {
+  "text": "vệ sinh paris 5",
+  "gold": "don_ve_sinh"
+ },
+ {
+  "text": "vệ sinh 102 và toà nhà",
+  "gold": "don_ve_sinh"
+ },
+ {
+  "text": "vệ sinh hai phòng 101 và 301",
+  "gold": "don_ve_sinh"
+ },
+ {
+  "text": "vệ sinh L03, 103",
+  "gold": "don_ve_sinh"
+ },
+ {
+  "text": "dọn vệ sinh phòng + vệ sinh toà nhà",
+  "gold": "don_ve_sinh"
+ },
+ {
+  "text": "vệ sinh 302 và toà nhà",
+  "gold": "don_ve_sinh"
+ },
+ {
+  "text": "vệ sinh 202 và lau toà nhà",
+  "gold": "don_ve_sinh"
+ },
+ {
+  "text": "dọn vệ sinh 204 và 303, dọn lố 1 tiếng nên gửi thẳng 300k",
+  "gold": "don_ve_sinh"
+ },
+ {
+  "text": "vệ sinh paris 3 và paris 2",
+  "gold": "don_ve_sinh"
+ },
+ {
+  "text": "vệ sinh 104 và lau toàn bộ từ trên xún dưới",
+  "gold": "don_ve_sinh"
+ },
+ {
+  "text": "vệ sinh toàn bộ từ trên xuống dưới",
+  "gold": "don_ve_sinh"
+ },
+ {
+  "text": "vệ sinh 403 và toà nhà",
+  "gold": "don_ve_sinh"
+ },
+ {
+  "text": "vệ sinh lại kính + hộc tủ paris3",
+  "gold": "don_ve_sinh"
+ },
+ {
+  "text": "dọn vệ sinh london 5",
+  "gold": "don_ve_sinh"
+ },
+ {
+  "text": "đặt btaskee vệ sinh",
+  "gold": "don_ve_sinh"
+ },
+ {
+  "text": "vệ sinh hành lang 158pvc",
+  "gold": "don_ve_sinh"
+ },
+ {
+  "text": "vệ sinh hành lang 417lvt",
+  "gold": "don_ve_sinh"
+ },
+ {
+  "text": "Tiền rác",
+  "gold": "rac"
+ },
+ {
+  "text": "Tiền Rác + PVC",
+  "gold": "rac"
+ },
+ {
+  "text": "tiền rác T6",
+  "gold": "rac"
+ },
+ {
+  "text": "tiền rác tháng 7 - 15/22 Khuông Việt",
+  "gold": "rac"
+ },
+ {
+  "text": "Chi tiền rác 162NVK",
+  "gold": "rac"
+ },
+ {
+  "text": "rác 15/22 Khuông Việt - T8",
+  "gold": "rac"
+ },
+ {
+  "text": "TIền Rác Tháng 9,10,11,12",
+  "gold": "rac"
+ },
+ {
+  "text": "hỗ trợ đổ rác các phòng dọn ra",
+  "gold": "bo_rac"
+ },
+ {
+  "text": "tiền rác 15/22kv T9",
+  "gold": "rac"
+ },
+ {
+  "text": "Vệ Sinh MB",
+  "gold": "don_ve_sinh",
+  "alt": [
+   "sua_xay_dung"
+  ]
+ },
+ {
+  "text": "Dọn vệ sinh phòng 302-15KV",
+  "gold": "don_ve_sinh"
+ },
+ {
+  "text": "vệ sinh phòng 202-102lvt và tòa nhà",
+  "gold": "don_ve_sinh"
+ },
+ {
+  "text": "vệ sinh phòng 401-1392qt",
+  "gold": "don_ve_sinh"
+ },
+ {
+  "text": "Vệ sinh phòng 501 và 201 nhà 102LVT",
+  "gold": "don_ve_sinh"
+ },
+ {
+  "text": "vệ sinh phòng 103 204 305 tòa nhà 512tc",
+  "gold": "don_ve_sinh"
+ },
+ {
+  "text": "vệ sinh phòng 104 và 402 - tòa nhà 403pvb",
+  "gold": "don_ve_sinh"
+ },
+ {
+  "text": "vệ sinh phòng 505 và 302 tòa nhà 102LVT",
+  "gold": "don_ve_sinh"
+ },
+ {
+  "text": "vệ sinh phòng 401-44TL",
+  "gold": "don_ve_sinh"
+ },
+ {
+  "text": "dọn vệ sinh phòng G03-1392qt",
+  "gold": "don_ve_sinh"
+ },
+ {
+  "text": "vệ sinh phòng G04-1392qt",
+  "gold": "don_ve_sinh"
+ },
+ {
+  "text": "Vệ sinh tòa nhà định kỳ",
+  "gold": "don_ve_sinh"
+ },
+ {
+  "text": "Vệ sinh tòa nhà - 45/3 Trần Thái Tông. Vệ sinh tòa nhà định kỳ",
+  "gold": "don_ve_sinh"
+ },
+ {
+  "text": "Tiền Vệ Sinh Tòa Nhà",
+  "gold": "don_ve_sinh"
+ },
+ {
+  "text": "vệ sinh tòa nhà",
+  "gold": "don_ve_sinh"
+ },
+ {
+  "text": "vệ sinh tòa nhà và phòng 503-102LVT",
+  "gold": "don_ve_sinh"
+ },
+ {
+  "text": "vệ sinh tòa nhà 512tc",
+  "gold": "don_ve_sinh"
+ },
+ {
+  "text": "vệ sinh phòng 506-102lvt và hành lang 102LVT",
+  "gold": "don_ve_sinh"
+ },
+ {
+  "text": "vệ sinh phòng 205-512tc và vệ sinh hành lang cầu thang 512TC",
+  "gold": "don_ve_sinh"
+ },
+ {
+  "text": "Bổ sung hoàn cọc do khách tự vệ sinh phòng và bổ sung thêm tiền cọc mặt nạ",
+  "gold": "bo_sung_hoan_coc"
+ },
+ {
+  "text": "bổ sung hoàn cọc 104-405PVB",
+  "gold": "bo_sung_hoan_coc"
+ },
+ {
+  "text": "hoàn lại tiền phòng thừa 305-1392qt",
+  "gold": "tra_tien_thua_khach"
+ },
+ {
+  "text": "hoàn cọc 402-1392qt",
+  "gold": "bo_sung_hoan_coc"
+ },
+ {
+  "text": "hoàn trả cọc sau trừ chi phí thanh lý hđ",
+  "gold": "bo_sung_hoan_coc"
+ },
+ {
+  "text": "Hoàn lại tiền khách đóng dư trong tháng 6 và 7 - hóa đơn không tự trừ",
+  "gold": "tra_tien_thua_khach"
+ },
+ {
+  "text": "anh Vinh đổi tiền mặt qua tiền tk (24tr)",
+  "gold": "noi_bo"
+ },
+ {
+  "text": "bàn giao tiền anh Vinh",
+  "gold": "noi_bo"
+ },
+ {
+  "text": "chuyển tiền nhà dùm a Vinh",
+  "gold": "noi_bo"
+ },
+ {
+  "text": "bàn giao tiền cho anh Vinh",
+  "gold": "noi_bo"
+ },
+ {
+  "text": "bàn giao tiền về sổ quỹ \"Vinh thu\"",
+  "gold": "noi_bo"
+ },
+ {
+  "text": "Ứng tiền cho anh Vinh",
+  "gold": "noi_bo"
+ },
+ {
+  "text": "bàn giao anh Vinh",
+  "gold": "noi_bo"
+ },
+ {
+  "text": "Ứng cho anh Vinh 10tr tiền mặt",
+  "gold": "noi_bo"
+ },
+ {
+  "text": "rút ATM ứng anh Vinh mua vật liệu làm vách mica ở 206-1392qt",
+  "gold": "noi_bo"
+ },
+ {
+  "text": "Bàn Giao Tiền anh Khôi",
+  "gold": "noi_bo"
+ },
+ {
+  "text": "anh Khôi lấy tiền",
+  "gold": "noi_bo"
+ },
+ {
+  "text": "Anh Khôi lấy lại tiền mặt 7 phòng thu hộ",
+  "gold": "noi_bo"
+ },
+ {
+  "text": "a Khôi lấy",
+  "gold": "noi_bo"
+ },
+ {
+  "text": "Kết sổ quỹ Lâm Thu T5 + T6",
+  "gold": "noi_bo"
+ },
+ {
+  "text": "bàn giao tiền 45/3TTT cho a Khôi",
+  "gold": "noi_bo"
+ },
+ {
+  "text": "bàn giao a Khôi đóng tiền 45/3TTT",
+  "gold": "noi_bo"
+ },
+ {
+  "text": "Dán decal cửa nhôm 950/65 Nguyễn Kiệm - tiền mặt",
+  "gold": "in_an_decal"
+ },
+ {
+  "text": "Hoàn cọc cho khách - a Vinh duyệt hoàn nửa cọc do khách bị nhà nước triệu tập đi tập luyện - lý do bất khả kháng",
+  "gold": "bo_sung_hoan_coc"
+ },
+ {
+  "text": "hoàn cọc khách 205-1392qt",
+  "gold": "bo_sung_hoan_coc"
+ },
+ {
+  "text": "Tiền mạng internet - 45/3 Trần Thái Tông (T5/2026). Tiền mạng internet tháng 10",
+  "gold": "internet"
+ },
+ {
+  "text": "Kết tiền resident",
+  "gold": "noi_bo"
+ },
+ {
+  "text": "Ket tien so quy thang 5",
+  "gold": "noi_bo"
+ },
+ {
+  "text": "mua máy giặt cho 111pvc",
+  "gold": "dien_may"
+ },
+ {
+  "text": "mua máy giặt 162nvk",
+  "gold": "dien_may"
+ },
+ {
+  "text": "Rác - 45/3 Trần Thái Tông (T5/2026). Rác",
+  "gold": "rac"
+ },
+ {
+  "text": "Rửa thùng rác - 45/3 Trần Thái Tông (T5/2026). Rửa thùng rác 2 lần",
+  "gold": "bo_rac",
+  "alt": [
+   "don_ve_sinh"
+  ]
+ },
+ {
+  "text": "Tạm trú - 45/3 Trần Thái Tông (T5/2026). Tạm trú",
+  "gold": "tam_tru_giay_to"
+ },
+ {
+  "text": "thối tiền phòng 6.506k (thối 300k)",
+  "gold": "tra_tien_thua_khach"
+ },
+ {
+  "text": "thối tiền phòng 50k",
+  "gold": "tra_tien_thua_khach"
+ },
+ {
+  "text": "thối tiền phòng",
+  "gold": "tra_tien_thua_khach"
+ },
+ {
+  "text": "mua bộ xả bồn rửa mặt",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "Mua kính bồn rửa mặt",
+  "gold": "vat_tu_dien_nuoc",
+  "alt": [
+   "sua_xay_dung"
+  ]
+ },
+ {
+  "text": "Mua cánh quạt, 2 cái. Tiền mặt",
+  "gold": "dien_may",
+  "alt": [
+   "vat_tu_dien_nuoc"
+  ]
+ },
+ {
+  "text": "Mua dây điện gắn bóng đèn, 3m dây đôi, tiền mặt",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "Mang bếp điện cho 104",
+  "gold": "dien_may"
+ },
+ {
+  "text": "Mua gel thông cống sinh học",
+  "gold": "diet_con_trung"
+ },
+ {
+  "text": "Mua nam châm gắn cửa",
+  "gold": "khoa_chia",
+  "alt": [
+   "sua_xay_dung"
+  ]
+ },
+ {
+  "text": "Mua thuốc diệt gián",
+  "gold": "diet_con_trung"
+ },
+ {
+  "text": "In bảng phòng chống ma túy phường thông tây hội - 8 bản",
+  "gold": "in_an_decal"
+ },
+ {
+  "text": "decal cách nhiệt - lưu kho - thanh toán tiền mặt",
+  "gold": "in_an_decal"
+ },
+ {
+  "text": "In decal thông tây hội",
+  "gold": "in_an_decal"
+ },
+ {
+  "text": "thanh toán tiền bóng đèn và tiền sơn nhà 1392qt",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "Mua mặt ghế",
+  "gold": "noi_that_decor"
+ },
+ {
+  "text": "Mua thẻ từ dán cho khách",
+  "gold": "camera_wifi_van_tay"
+ },
+ {
+  "text": "Mua pin remote máy lạnh",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "cụm củ sen",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "mua ốc vít để sửa bồn rửa mặt",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "mua keo dán nút nhấn thang máy",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "mua chai xịt côn trùng",
+  "gold": "diet_con_trung"
+ },
+ {
+  "text": "ship grab điện thoại của Đạt",
+  "gold": "van_chuyen"
+ },
+ {
+  "text": "vận chuyển giường",
+  "gold": "van_chuyen"
+ },
+ {
+  "text": "mua thẻ nhớ cho camera gắn khu vực shipper 102LVT",
+  "gold": "camera_wifi_van_tay"
+ },
+ {
+  "text": "mua pát gắn giường",
+  "gold": "noi_that_decor"
+ },
+ {
+  "text": "in decal dán nút bấm thang máy",
+  "gold": "in_an_decal"
+ },
+ {
+  "text": "mua túi bạt đựng đồ decor",
+  "gold": "noi_that_decor"
+ },
+ {
+  "text": "hoàn 5 ngày tiền phòng 950k, trừ ra 49k tiền điện tính bị sai cho khách (tiền điện thực tế 899.500, tiền trong hóa đơn 948.500)",
+  "gold": "tra_tien_thua_khach"
+ },
+ {
+  "text": "TIỀN PHÒNG 5 NGÀY",
+  "gold": "tra_tien_thua_khach"
+ },
+ {
+  "text": "trả lại cọc cho khách của best choice",
+  "gold": "bo_sung_hoan_coc"
+ },
+ {
+  "text": "Thay bồn rửa chén 301-44TL",
+  "gold": "sua_xay_dung"
+ },
+ {
+  "text": "mua khay lăn sơn",
+  "gold": "dung_cu"
+ },
+ {
+  "text": "mua đồ bịt cống",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "mua roong cửa chống va đập",
+  "gold": "vat_tu_dien_nuoc",
+  "alt": [
+   "sua_xay_dung"
+  ]
+ },
+ {
+  "text": "giặt rèm",
+  "gold": "don_ve_sinh"
+ },
+ {
+  "text": "mua tay gặt bồn cầu và pin 3A cho remote máy lạnh",
+  "gold": "vat_tu_dien_nuoc"
+ },
+ {
+  "text": "mua thước thủy laser",
+  "gold": "dung_cu"
+ },
+ {
+  "text": "mua thang xếp inox 512tc",
+  "gold": "dung_cu"
+ },
+ {
+  "text": "mua thang xếp 6 cái - rút tiền mặt từ MBLam đưa chú Định",
+  "gold": "dung_cu"
+ },
+ {
+  "text": "mua tinh dầu 950NK",
+  "gold": "noi_that_decor"
+ },
+ {
+  "text": "mua thuốc diệt gián 5 hộp",
+  "gold": "diet_con_trung"
+ },
+ {
+  "text": "mua tấm bảo vệ nệm 16 cái - 44TL",
+  "gold": "noi_that_decor"
+ },
+ {
+  "text": "mua zalo Business cho Lâm",
+  "gold": "van_phong"
+ },
+ {
+  "text": "Làm GPKD",
+  "gold": "tam_tru_giay_to"
+ },
+ {
+  "text": "đặt 1 ấm đun siêu tốc",
+  "gold": "dien_may"
+ },
+ {
+  "text": "ứng tiền làm thang thoát hiểm mục bảo thu 9.508k đưa chú Định 9.600k a Khôi nợ 92k",
+  "gold": "pccc"
+ },
+ {
+  "text": "mua bao tay cho Bảo sửa đồ",
+  "gold": "dung_cu"
+ }
+]

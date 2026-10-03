@@ -87,7 +87,12 @@ Copilot. Hai đường, mỗi đường một nhà cung cấp:
 | Đường | Nhà cung cấp | Chuỗi mô hình mặc định (lỗi thì thử mô hình kế) |
 |---|---|---|
 | `POST …/quick-entry/audio/transcriptions` — chép giọng nói | OpenRouter | `google/chirp-3` → `deepgram/nova-3` → `openai/whisper-1` |
-| `POST …/quick-entry/chat/completions` — đọc chữ/ảnh bill ra JSON | 9router | `cx/gpt-6-luna(low)` → `cx/gpt-5.6-luna(low)` |
+| `POST …/quick-entry/chat/completions` — đọc chữ/ảnh bill ra JSON | 9router | `cx/gpt-5.6-terra(low)` → `cx/gpt-6-luna(low)` |
+
+Chuỗi đọc đổi 03/10/2026 theo lượt đo 02/10 trên 421 câu chi thật, từng mô hình chạy riêng (câu lệnh chỉ hỏi
+hạng mục mà trang dùng khi thẻ đã đủ tiền + toà): Terra low đúng 98,6%, trung vị 2,7 s, không câu nào quá
+5 s; Luna low 97,6%, 1,8 s. Gemini (`ag/…`, gói miễn phí) không vào chuỗi: không gửi chứng từ thật qua gói
+miễn phí, p90 6–28 s. Trang gửi `max_tokens` 1.000 cho câu lệnh rút gọn, 4.000 cho câu lệnh đầy đủ.
 
 Chuỗi chép giọng theo xếp hạng tiếng Việt đo 01/10/2026 (16 câu × 2 giọng × sạch/ồn, chấm bằng bộ đọc
 số tiền của trang): chirp-3 64/64 > nova-3 62 = whisper-1 62 > gemini-3.5-transcribe 60 >
@@ -98,7 +103,7 @@ khác dù `language=vi` và vẫn trả 200 (chuỗi không dự phòng được
 chủ chọn)" — trang KHÔNG gửi `model`, chuỗi ở bảng trên (hoặc `QUICK_ENTRY_*_MODELS`) quyết định. Chỉ khi
 người dùng tự chọn một mô hình thì body mới có `model`. Máy chủ CHỈ nhận id trong danh sách cho phép
 (`STT_CHOICES` — 5 mô hình chép giọng tốt nhất; `READ_MODEL_CHOICES` × `READ_EFFORTS` — GPT-6.1 Sol,
-GPT-6 Astra, GPT-6 Sol, GPT-6 Luna, GPT-5.6 Luna với mức tự động/minimal/low/medium/high/xhigh/max/ultra,
+GPT-6 Astra, GPT-6 Sol, GPT-6 Luna, GPT-5.6 Terra, GPT-5.6 Luna với mức tự động/minimal/low/medium/high/xhigh/max/ultra,
 trừ `READ_UNSUPPORTED` = Astra + minimal), thử nó TRƯỚC rồi tới chuỗi mặc định; id lạ ⇒ chuỗi mặc định.
 `QUICK_ENTRY_CHOICES=off` bỏ qua mọi lựa chọn của người dùng (một mô hình đang trả sai mà người dùng đã
 lưu lựa chọn trên máy họ). Danh sách ô chọn ở `src/lib/quickEntry/models.ts` — test giữ khớp.
@@ -122,8 +127,10 @@ bị cụt.
 như trang), phòng đọc bảng `rooms` qua RLS lọc công ty (`ie_form_rooms` đo trên TEST mất 1,9–2,8 s, sát hạn
 3 s; người được chi mọi toà mà chỉ quản lý vài toà vì thế thiếu phòng của toà còn lại), tên thường gọi của toà (`building_common_names` — bảng ở migration
 `20261002050652`, chưa có thì nguồn này rỗng; chỉ lấy tên của toà có trong danh sách toà, kèm cụm ghép "số nhà
-+ tên" như "102 Lê Văn Thọ"), hạng mục chi (`income_expense_types`, bỏ `system_only`, bỏ hạng mục hạn chế khi
-thiếu `restricted_create`) và tên phòng ("phòng 301", "phòng MADRID 3"); bỏ trùng, tối đa 900 cụm × 100 ký
++ tên" như "102 Lê Văn Thọ"), hạng mục chi (`income_expense_types`, bỏ `system_only`, mục đã lưu trữ, `manual_hidden`,
+`quick_entry_hidden`, bỏ hạng mục hạn chế khi thiếu `restricted_create` — các cột danh mục chi chuẩn có từ
+migration `20261003151606`: deploy hàm SAU khi áp, không thì nguồn hạng mục rỗng), tên phòng ("phòng 301",
+"phòng MADRID 3") và cuối cùng từ khoá "hay nói" của hạng mục (`keywords`; chạm trần thì bỏ trước); bỏ trùng, tối đa 900 cụm × 100 ký
 tự, gửi trong `provider.options["google-vertex"].config.adaptation` — dạng DUY NHẤT OpenRouter chuyển tiếp cho
 Google (đo 02/10/2026: `adaptation` đặt thẳng trong options, khoá `google`, snake_case và `prompt` đều bị bỏ
 im lặng; 1.000 cụm đạt, 1.001 cụm bị 400). Không gửi boost (10/20 ra y hệt không boost). Tác dụng đo bằng

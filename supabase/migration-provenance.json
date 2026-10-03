@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-02T07:39:30.578Z",
+  "generatedAt": "2026-10-03T16:15:31.056Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 648,
-    "unknown": 80,
-    "catalog-proven": 205,
+    "unknown": 82,
+    "catalog-proven": 206,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -10988,6 +10988,46 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-02T07:20:11.461Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261003151606_danh_muc_chi_cau_truc.sql",
+      "version": "20261003151606",
+      "name": "danh_muc_chi_cau_truc",
+      "scheme": "timestamp14",
+      "sha256": "1533ea24effe6b8587cb6de30c8a456f88a6ac80d706034d6f3a8df20e34330c",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.ie_type_merge_one_level_guard",
+        "function:public.ie_type_report_root_v1",
+        "index:public.income_expense_types_org_rule_key_uq",
+        "index:public.income_expense_types_merged_into_idx",
+        "policy:public.income_expense_types.income_expense_types_editor_insert"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261003151608_danh_muc_chi_du_lieu.sql",
+      "version": "20261003151608",
+      "name": "danh_muc_chi_du_lieu",
+      "scheme": "timestamp14",
+      "sha256": "4f569a0dedf1d2635caf8681b978d439205e61639ca2ce257780831fc58c7e7a",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "(file không CREATE object nào — chỉ ALTER/DML)"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261003152559_danh_muc_chi_bao_cao_cong_gop.sql",
+      "version": "20261003152559",
+      "name": "danh_muc_chi_bao_cao_cong_gop",
+      "scheme": "timestamp14",
+      "sha256": "689a73926aee035d1bfa074d534ef19d7ff141bc58c28e6617d2ff05fd2b56bd",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:public.fa_type_breakdown",
+        "catalog:function:public.fa_accrual_allocations"
       ]
     },
     {

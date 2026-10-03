@@ -53,9 +53,15 @@ Có `cashbooks.post` nhưng không đang giữ sổ thì vẫn không ghi sổ �
 
 ![Màn Loại thu chi với các hạng mục Thu và Chi](./images/buoc-02-loai-thu-chi.webp)
 
-**Bước 6**: Ấn **Thêm**, nhập **Tên hạng mục**, chọn **Thu/Chi**, chọn hoặc tạo **Nhóm**, điền mô tả. Người có `income_expenses.restricted_view` có thể bật **Hạng mục hạn chế**.
+::: warning Chỉ chủ công ty thêm/sửa hạng mục
+Từ 03/10/2026 công ty dùng **danh mục chi chuẩn**: chỉ **chủ công ty** (và quản trị hệ thống) thấy nút **Thêm**, nút sửa/xoá. Quản lý xem danh sách ở chế độ chỉ đọc — cần hạng mục mới thì báo chủ công ty.
+:::
+
+**Bước 6**: Ấn **Thêm**, nhập **Tên hạng mục**, chọn **Thu/Chi**, chọn hoặc tạo **Nhóm**, điền mô tả (**dùng cho** — mô tả rõ để AI của Báo chi nhanh phân biệt với mục gần giống). Người có `income_expenses.restricted_view` có thể bật **Hạng mục hạn chế**.
 
 **Bước 7**: Bật **Hạng mục đặc biệt** khi muốn báo cáo Phân bổ lợi nhuận có thể ẩn/hiện các dòng thuộc hạng mục đó. Form hiện tại không có cờ “Cọc”; không dùng tên hạng mục để suy ra cách hạch toán cọc.
+
+**Bước 8** (khối **Danh mục chuẩn**): điền **Cụm từ hay nói** (cách nhau bằng dấu phẩy, vd `bơm gas, xả giàn`) để ô tìm và Báo chi nhanh nhận ra hạng mục; **Thứ tự trong ô chọn**; bật **Ẩn khỏi Báo chi nhanh** cho mục chỉ lập ở màn Thu chi. Khi sửa một mục cũ trùng nghĩa: bật **Lưu trữ** và chọn **Gộp vào** mục chuẩn — phiếu cũ giữ nguyên, báo cáo cộng mục cũ vào mục chuẩn.
 
 ## Các tính năng và trạng thái
 
@@ -66,6 +72,8 @@ Có `cashbooks.post` nhưng không đang giữ sổ thì vẫn không ghi sổ �
 | CUSTODIAN / KNOWER | Vai trò giữ tiền hoặc chỉ biết/xem sổ trong access mode hiện hành. |
 | Hạng mục hạn chế | Chỉ người có quyền dữ liệu hạn chế mới thấy hạng mục và phiếu liên quan. |
 | Hạng mục đặc biệt | Cho phép ẩn/hiện hạng mục trong báo cáo Phân bổ lợi nhuận. |
+| Đã lưu trữ → gộp vào … | Mục cũ không còn trong ô chọn; phiếu cũ giữ nguyên, báo cáo cộng vào mục được gộp vào. |
+| Ẩn khỏi Báo chi nhanh | Mục vẫn chọn được ở màn Thu chi nhưng không có ở Báo chi nhanh. |
 | Kỳ đã xác nhận chốt | Phiếu có ngày trong kỳ bị khoá vĩnh viễn; không ai mở lại được. |
 
 ## Tình huống & lỗi thường gặp

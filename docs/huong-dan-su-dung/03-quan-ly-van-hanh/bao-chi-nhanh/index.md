@@ -60,6 +60,16 @@ Chạm biểu tượng **máy ảnh** để chụp, hoặc **ảnh** để chọ
 - Ảnh khoản **cá nhân** chỉ để AI đọc, **không lưu**.
 - Tổng các món lệch số tiền thực trả (phí ship, giảm giá…) thì thẻ ghi **một dòng bằng số thực trả** và nhắc bạn kiểm lại.
 
+## Hạng mục được chọn thế nào
+
+Thẻ công ty tự chọn **hạng mục** trong danh mục chi chuẩn của công ty (từ 03/10/2026 quản lý không tạo hạng mục mới — cần mục mới thì nhờ chủ công ty). Máy chọn theo thứ tự:
+
+1. **Luật chủ đặt** và **từ hay nói** của từng hạng mục — chắc chắn thì chọn ngay, không cần AI. Ví dụ: mọi khoản vệ sinh, dọn phòng, bTaskee ⇒ **Dọn vệ sinh theo lượt** (vệ sinh máy lạnh thì là **Điện lạnh**); camera, wifi, cửa vân tay, hộp lưu điện ⇒ **Camera, wifi, cửa vân tay**; trả lại cọc ⇒ **Bổ sung hoàn cọc**; chuyển tiền giùm, bàn giao tiền ⇒ **Chuyển tiền nội bộ**.
+2. Chưa chắc thì **AI chọn** dựa trên phần "dùng cho" của từng hạng mục.
+3. AI cũng không chắc thì ô hạng mục để trống — bạn chọn tay.
+
+Một số hạng mục **không có** ở Báo chi nhanh vì chỉ lập ở màn Thu chi hoặc do máy tự lập: **Vệ sinh tòa nhà định kỳ**, **Quản Lý**, hoa hồng môi giới, HHMG, thưởng nóng sale, lương và ứng lương, chia lợi nhuận cổ đông.
+
 ## Soát thẻ rồi Lưu
 
 Thẻ công ty có: **Ngày chi**, **Người nhận / cửa hàng**, **Toà**, **Phòng** (hoặc *Cả toà (không gắn phòng)*), **Sổ quỹ chi tiền**, các dòng (mô tả, hạng mục, số tiền). Thẻ có dấu **AI đọc — soát lại** là thẻ AI đã điền giúp — xem kỹ trước khi lưu. Ô bạn đã tự sửa thì AI không bao giờ ghi đè.
@@ -83,7 +93,7 @@ Thẻ chưa lưu được giữ lại khi bạn tải lại trang (trong 48 gi�
 Bấm dòng **Mô hình AI** ngay trên ô nhập để mở ba ô chọn. Chưa chọn gì thì cả hai ô để **Mặc định (máy chủ chọn)** — dùng bộ mô hình công ty đặt sẵn, không cần chỉnh nếu chỉ nhập chi bình thường.
 
 - **Giọng nói (chép lời)** — Mặc định hoặc 1 trong 5 mô hình chép tiếng Việt tốt nhất: **Google Chirp 3** (chính xác nhất, ~3 giây); **Deepgram Nova 3** và **OpenAI Whisper** nhanh hơn (~1,4 giây)…
-- **Đọc chữ / ảnh để lập phiếu** — Mặc định hoặc GPT-6.1 Sol, GPT-6 Astra, GPT-6 Sol, GPT-6 Luna (nhanh nhất), GPT-5.6 Luna.
+- **Đọc chữ / ảnh để lập phiếu** — Mặc định hoặc GPT-6.1 Sol, GPT-6 Astra, GPT-6 Sol, GPT-6 Luna (nhanh nhất), GPT-5.6 Terra (chọn hạng mục đúng nhất), GPT-5.6 Luna.
 - **Mức suy nghĩ** — chỉ chọn được sau khi chọn một mô hình đọc: từ Tự động, Tối thiểu, Thấp… đến Ultra. Mức càng cao càng chậm (mức cao nhất có thể 15–20 giây).
 
 Bấm vào ô nhập là bảng chọn tự thu gọn. Màn nhớ lựa chọn của bạn cho lần sau. Mỗi lần nói, dưới ô nhập hiện **Chép bằng …**; mỗi thẻ AI đọc hiện **AI đọc · <mô hình>** — đó là mô hình thật đã trả lời (mô hình bạn chọn lỗi thì máy tự dùng mô hình dự phòng và nhãn ghi đúng mô hình đó).

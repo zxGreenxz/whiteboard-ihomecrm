@@ -3,11 +3,15 @@
 // người dùng chọn.
 //
 // Lọc trước khi gửi bất cứ đâu (ô chọn, AI): đúng công ty đang chọn (RLS bảng hạng mục lộ
-// hạng mục của org khác), bỏ `system_only` (writer v1 từ chối 0A000 rồi phiếu rơi im lặng sang
-// đường compat luôn Chờ duyệt), bỏ hạng mục hạn chế khi thiếu `restricted_create`.
+// hạng mục của org khác), bỏ `system_only` (máy chủ chặn lập tay), bỏ hạng mục hạn chế khi thiếu
+// `restricted_create`, và theo danh mục chi chuẩn 03/10/2026: bỏ mục đã lưu trữ (`archived_at`),
+// mục ẩn khỏi ô chọn tay (`manual_hidden`) và mục ẩn riêng khỏi Báo chi nhanh (`quick_entry_hidden`).
+// Thứ tự = thứ tự danh mục (`sort_order`) — cũng là thứ tự mã cN gửi AI.
 
 import { normalizeLoose } from "../textMatch";
 import { FIXED_EXPENSE_CATEGORIES, nrm } from "../fixedExpenseCategories";
+import { sortIeTypesForPicker } from "../ieTypeCatalog";
+import { ruleCategory } from "./categoryRules";
 
 export interface CategoryRef {
   id: string;
@@ -19,23 +23,38 @@ export interface CategoryRef {
   system_only?: boolean | null;
   /** Khoá phí cố định (tien_nha, dien, nuoc, …) — duy nhất mỗi org từ 26/09/2026. */
   fee_category?: string | null;
+  /** "Dùng cho" — giải thích gửi AI để phân biệt các mục gần nhau. */
+  description?: string | null;
+  /** Cụm từ hay nói — lớp luật + gợi ý AI. */
+  keywords?: string[] | null;
+  /** Mã ổn định cho luật chọn hạng mục (categoryRules.ts). */
+  rule_key?: string | null;
+  archived_at?: string | null;
+  manual_hidden?: boolean | null;
+  quick_entry_hidden?: boolean | null;
+  sort_order?: number | null;
 }
 
 export interface CategorySuggestion {
   id: string;
-  reason: "fee_phrase" | "provider_code" | "name_overlap";
+  reason: "fee_phrase" | "provider_code" | "rule" | "name_overlap";
 }
 
 export function usableExpenseCategories(
   rows: CategoryRef[],
   opts: { organizationId: string; canUseRestricted: boolean },
 ): CategoryRef[] {
-  return rows.filter(
-    (r) =>
-      r.type === "expense" &&
-      r.organization_id === opts.organizationId &&
-      !r.system_only &&
-      (opts.canUseRestricted || !r.is_restricted),
+  return sortIeTypesForPicker(
+    rows.filter(
+      (r) =>
+        r.type === "expense" &&
+        r.organization_id === opts.organizationId &&
+        !r.system_only &&
+        !r.archived_at &&
+        !r.manual_hidden &&
+        !r.quick_entry_hidden &&
+        (opts.canUseRestricted || !r.is_restricted),
+    ),
   );
 }
 
@@ -62,7 +81,8 @@ export function searchCategories(rows: CategoryRef[], query: string, limit = 8):
  */
 const FEE_PHRASES: Array<[string, RegExp]> = [
   ["tien_nha", /\b(?:tien nha|thue nha|tien thue nha)\b/],
-  ["dien", /\b(?:tien dien|hoa don dien|dien thang|dien ky|evn)\b/],
+  // "tiền điện lạnh" (thợ điện lạnh) KHÔNG phải tiền điện.
+  ["dien", /\b(?:tien dien(?! lanh)|hoa don dien|dien thang|dien ky|evn)\b/],
   ["nuoc", /\b(?:tien nuoc|hoa don nuoc|nuoc thang|nuoc ky|cap nuoc)\b/],
   ["internet", /\b(?:internet|wifi|cuoc mang|tien mang)\b/],
   ["quan_ly", /\b(?:phi quan ly|tien quan ly)\b/],
@@ -103,6 +123,11 @@ export function suggestCategory(
     const hit = categoryForFee(rows, opts.feeCategory);
     if (hit) return { id: hit.id, reason: "provider_code" };
   }
+
+  // Luật chủ đặt + cụm "hay nói" (categoryRules.ts) — xét trước cụm phí để "chuyển tiền nhà dùm"
+  // vào Chuyển tiền nội bộ chứ không vào Tiền nhà.
+  const ruled = ruleCategory(rows, description);
+  if (ruled) return { id: ruled.id, reason: "rule" };
 
   const loose = normalizeLoose(description);
   for (const [feeKey, re] of FEE_PHRASES) {

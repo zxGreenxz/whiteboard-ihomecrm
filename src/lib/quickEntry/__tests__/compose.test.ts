@@ -1,5 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { draftFromBill, draftsFromText, enrichFromAi, markTouched, removeLineAt, syncName, type ComposeContext } from "../compose";
+import {
+  applyAiCategories,
+  draftFromBill,
+  draftsFromText,
+  enrichFromAi,
+  markTouched,
+  removeLineAt,
+  syncName,
+  type ComposeContext,
+} from "../compose";
 import type { AiResult } from "../aiSchema";
 import type { CategoryRef } from "../categorySuggest";
 
@@ -200,6 +209,31 @@ describe("removeLineAt — bỏ dòng dồn lại dấu đã sửa/đã khoá th
       { desc: "keo", amount_vnd: 20_000, category: "c3", confidence: 0.9 },
     ];
     expect(enrichFromAi(out, ai({ items }), ctx()).draft.lines[1].categoryId).toBe("t-sua");
+  });
+});
+
+describe("applyAiCategories — câu lệnh rút gọn chỉ điền hạng mục", () => {
+  it("điền hạng mục đoán yếu/còn trống theo cN; không đụng tiền", () => {
+    const [s] = draftsFromText("102LVT mua đồ 350k", ctx());
+    const out = applyAiCategories(s, ["c3"], ctx());
+    expect(out.draft.lines[0]).toMatchObject({ categoryId: "t-vt", amount: 350_000 });
+  });
+
+  it("dòng người dùng đã chọn hoặc luật đã khoá ⇒ giữ nguyên; null/mã ngoài danh sách ⇒ bỏ qua", () => {
+    const [s] = draftsFromText("102LVT mua đồ 350k", ctx());
+    expect(applyAiCategories(markTouched(s, "lines.0.categoryId"), ["c3"], ctx()).draft.lines[0].categoryId).toBeNull();
+    expect(applyAiCategories({ ...s, locked: ["lines.0.categoryId"] }, ["c3"], ctx()).draft.lines[0].categoryId).toBeNull();
+    expect(applyAiCategories(s, [null], ctx())).toBe(s);
+    expect(applyAiCategories(s, ["c9"], ctx())).toBe(s);
+  });
+
+  it("lệch số dòng, thẻ đã bỏ dòng, thẻ cá nhân ⇒ trả đúng object cũ", () => {
+    const [s] = draftsFromText("102LVT mua đồ 350k", ctx());
+    expect(applyAiCategories(s, ["c3", "c3"], ctx())).toBe(s);
+    const edited = markTouched(s, "lines");
+    expect(applyAiCategories(edited, ["c3"], ctx())).toBe(edited);
+    const [p] = draftsFromText("mua đồ 350k", ctx({ mode: "personal" }));
+    expect(applyAiCategories(p, ["c3"], ctx({ mode: "personal" }))).toBe(p);
   });
 });
 

@@ -41,8 +41,27 @@ export interface IncomeExpenseType {
   system_only?: boolean;
   // Khoá phí cố định (tien_nha, dien, nuoc, …), duy nhất mỗi org từ 26/09/2026.
   fee_category?: string | null;
+  // Danh mục chi chuẩn 03/10/2026 — xem src/lib/ieTypeCatalog.ts. Tuỳ chọn vì môi trường
+  // chưa áp migration 20261003151606 thì `select('*')` chưa trả các cột này.
+  archived_at?: string | null;
+  merged_into_id?: string | null;
+  keywords?: string[] | null;
+  sort_order?: number | null;
+  rule_key?: string | null;
+  manual_hidden?: boolean | null;
+  quick_entry_hidden?: boolean | null;
+  internal_transfer?: boolean | null;
   created_at: string;
   updated_at: string;
+}
+
+/** Trường danh mục mà superadmin / chủ công ty sửa được (server chặn người khác). */
+export interface IncomeExpenseTypeCatalogUpdates {
+  keywords?: string[];
+  sort_order?: number | null;
+  quick_entry_hidden?: boolean;
+  archived_at?: string | null;
+  merged_into_id?: string | null;
 }
 
 /**
@@ -245,7 +264,7 @@ export const useCreateIncomeExpenseType = () => {
       is_default?: boolean;
       is_restricted?: boolean;
       hide_in_report?: boolean;
-    }) => {
+    } & IncomeExpenseTypeCatalogUpdates) => {
       const user = await getSessionUser();
 
       if (!user) throw new Error("User not authenticated");
@@ -263,6 +282,11 @@ export const useCreateIncomeExpenseType = () => {
           is_default: input.is_default ?? false,
           is_restricted: input.is_restricted ?? false,
           hide_in_report: input.hide_in_report ?? false,
+          // Cột danh mục chỉ gửi khi có giá trị — môi trường chưa áp migration
+          // danh mục chuẩn sẽ từ chối cột lạ.
+          ...(input.keywords && input.keywords.length ? { keywords: input.keywords } : {}),
+          ...(input.sort_order != null ? { sort_order: input.sort_order } : {}),
+          ...(input.quick_entry_hidden ? { quick_entry_hidden: true } : {}),
         },selectedOrganizationId))
         .select()
         .single();
@@ -312,7 +336,7 @@ export const useUpdateIncomeExpenseType = () => {
         is_default?: boolean;
         is_restricted?: boolean;
         hide_in_report?: boolean;
-      };
+      } & IncomeExpenseTypeCatalogUpdates;
     }) => {
       return persistentFinancialWorkflow('income-expense-type-update').run(id, 'cập nhật loại thu chi', async () => {
       const { data, error } = await supabase
