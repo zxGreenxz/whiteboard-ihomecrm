@@ -449,12 +449,13 @@ export function useQuickEntryFeed(opts: {
     await enrichCards(messageId, ctxFor(targets[0].draft.mode), targets);
   };
 
-  const submitPhoto = async (file: File, mode: DraftMode): Promise<void> => {
+  const submitPhoto = async (file: File, mode: DraftMode, text = ""): Promise<void> => {
     const ctx = ctxFor(mode);
+    const caption = text.trim();
     const messageId = crypto.randomUUID();
     const previewUrl = objectUrl(file);
     if (previewUrl) urls.current.add(previewUrl);
-    addEntry({ id: messageId, kind: "photo", text: null, previewUrl, cardIds: [], reading: true, note: null, aiRetry: false }, []);
+    addEntry({ id: messageId, kind: "photo", text: caption || null, previewUrl, cardIds: [], reading: true, note: null, aiRetry: false }, []);
 
     let result = EMPTY_AI;
     let model: string | null = null;
@@ -471,7 +472,7 @@ export function useQuickEntryFeed(opts: {
           note = classifyAiError({ status: 0, code: null }).message;
         }
         if (dataUrl) {
-          const r = await askAi(ctx, { imageDataUrl: dataUrl });
+          const r = await askAi(ctx, { imageDataUrl: dataUrl, text: caption });
           if ("error" in r) {
             note = r.error.message;
           } else {

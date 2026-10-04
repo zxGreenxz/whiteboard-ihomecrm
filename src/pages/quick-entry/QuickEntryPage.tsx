@@ -41,11 +41,14 @@ function UserBubble({ m }: { m: FeedMessage }) {
   return (
     <div className="flex justify-end">
       {m.kind === "photo" ? (
-        m.previewUrl ? (
-          <img src={m.previewUrl} alt="Ảnh bill đã gửi" className="max-h-40 rounded-xl border object-cover" />
-        ) : (
-          <span className="rounded-2xl bg-primary px-3 py-2 text-sm text-primary-foreground">Ảnh bill</span>
-        )
+        <div className="flex max-w-[85%] flex-col items-end gap-1">
+          {m.previewUrl ? (
+            <img src={m.previewUrl} alt="Ảnh bill đã gửi" className="max-h-40 rounded-xl border object-cover" />
+          ) : (
+            <span className="rounded-2xl bg-primary px-3 py-2 text-sm text-primary-foreground">Ảnh bill</span>
+          )}
+          {m.text && <p className="whitespace-pre-wrap break-words rounded-2xl bg-primary px-3 py-2 text-sm text-primary-foreground">{m.text}</p>}
+        </div>
       ) : (
         <p className="max-w-[85%] whitespace-pre-wrap rounded-2xl bg-primary px-3 py-2 text-sm text-primary-foreground">{m.text}</p>
       )}
@@ -186,11 +189,12 @@ export default function QuickEntryPage() {
     </div>
   ) : noAccess ? null : (
     <QuickEntryComposer
+      key={`${userId}:${refs.orgId}`}
       mode={mode}
       modes={modes}
       onModeChange={chooseMode}
       onSubmitText={(text) => void feed.submitText(text, mode)}
-      onPhoto={(file) => void feed.submitPhoto(file, mode)}
+      onPhoto={(file, text) => void feed.submitPhoto(file, mode, text)}
       transcribe={feed.transcribe}
       modelChoice={modelChoice}
       onModelChoiceChange={changeModelChoice}

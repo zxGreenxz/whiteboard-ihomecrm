@@ -2,11 +2,10 @@
 // Giọng nói (chủ chốt 01/10: "chuyển hoàn toàn qua OpenRouter"): mic LUÔN ghi âm trong trang rồi gửi
 // máy chủ chép lời qua OpenRouter — không dùng nhận giọng của trình duyệt, kể cả khi trình duyệt có.
 // Máy không ghi âm được hoặc giọng nói tắt cho phiên ⇒ gợi ý mic trên bàn phím (của hệ điều hành, luôn
-// có). Chữ từ giọng nói ĐỔ VÀO Ô để người dùng soát/sửa rồi mới gửi — nghe nhầm số tiền hay tên toà
-// thì sửa ngay tại đây.
+// có). Dừng ghi âm ⇒ chép lời rồi gửi cùng chữ/ảnh đang soạn; người dùng soát ở thẻ nháp trước khi lưu.
 
-import { useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
-import { Camera, ImagePlus, Loader2, Mic, Send, SlidersHorizontal, Square, X } from "lucide-react";
+import { useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
+import { Camera, ImagePlus, Loader2, Mic, Paperclip, Send, SlidersHorizontal, Square, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
@@ -42,7 +41,7 @@ export interface QuickEntryComposerProps {
   modes: readonly DraftMode[];
   onModeChange: (mode: DraftMode) => void;
   onSubmitText: (text: string) => void;
-  onPhoto: (file: File) => void;
+  onPhoto: (file: File, text?: string) => void;
   /** null ⇒ chép giọng tắt cho phiên này — mic chỉ gợi ý dùng mic trên bàn phím. */
   transcribe: ((audio: RecordedAudio) => Promise<TranscribeResult>) | null;
   /** Lựa chọn mô hình AI (chủ muốn tự thử và so sánh); vắng ⇒ không hiện ô chọn. */
@@ -57,47 +56,88 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
   const [note, setNote] = useState<string | null>(null);
   const [transcribing, setTranscribing] = useState(false);
   const [showModels, setShowModels] = useState(false);
+  const [pendingPhoto, setPendingPhoto] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   /** Mô hình máy chủ báo ĐÃ chép lần nói gần nhất — hiện để so sánh các mô hình. */
   const [heardBy, setHeardBy] = useState<string | null>(null);
   const box = useRef<HTMLTextAreaElement>(null);
   const camera = useRef<HTMLInputElement>(null);
   const gallery = useRef<HTMLInputElement>(null);
+  const attachment = useRef<HTMLInputElement>(null);
+  const mounted = useRef(true);
+  const voicePending = useRef(false);
 
-  const appendText = (t: string) => {
-    setText((cur) => (cur.trim() ? `${cur.trim()} ${t}` : t));
-    box.current?.focus();
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!pendingPhoto) {
+      setPreviewUrl(null);
+      return;
+    }
+    let url: string;
+    try {
+      url = URL.createObjectURL(pendingPhoto);
+    } catch {
+      // Vẫn gửi được file khi trình duyệt không tạo được ảnh xem trước.
+      setPreviewUrl(null);
+      return;
+    }
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [pendingPhoto]);
+
+  const submit = (content: string) => {
+    const t = content.trim();
+    if (!t && !pendingPhoto) return;
+    if (pendingPhoto) p.onPhoto(pendingPhoto, t);
+    else p.onSubmitText(t);
+    setText("");
+    setPendingPhoto(null);
+    setNote(null);
+    setHeardBy(null);
   };
 
   const recorder = useVoiceRecorder((audio) => {
     const transcribe = p.transcribe;
-    if (!transcribe) return;
+    if (!transcribe || voicePending.current || !mounted.current) return;
+    voicePending.current = true;
     setTranscribing(true);
     setNote(null);
     transcribe(audio)
       .then((r) => {
+        if (!mounted.current) return;
         // Thu hẹp bằng `in`: tsconfig.app.json không bật strictNullChecks nên `r.ok` không thu hẹp được.
         if ("text" in r) {
-          appendText(r.text);
+          if (!r.text.trim()) {
+            setNote(`Chưa nghe rõ nội dung. Thử nói lại. ${KEYBOARD_MIC_HINT}`);
+            return;
+          }
+          submit([text.trim(), r.text.trim()].filter(Boolean).join(" "));
           setHeardBy(r.model);
           return;
         }
         setNote(`${r.error.message} ${KEYBOARD_MIC_HINT}`);
       })
-      .catch(() => setNote(`Chưa chuyển được giọng nói thành chữ. ${KEYBOARD_MIC_HINT}`))
-      .finally(() => setTranscribing(false));
+      .catch(() => {
+        if (mounted.current) setNote(`Chưa chuyển được giọng nói thành chữ. ${KEYBOARD_MIC_HINT}`);
+      })
+      .finally(() => {
+        voicePending.current = false;
+        if (mounted.current) setTranscribing(false);
+      });
   });
 
   const serverVoice = p.transcribe !== null && recorder.supported;
   const recording = recorder.state === "recording" || recorder.state === "requesting";
+  const busy = recording || transcribing;
   const voiceError = recorder.error;
 
   const send = () => {
-    const t = text.trim();
-    if (!t) return;
-    p.onSubmitText(t);
-    setText("");
-    setNote(null);
-    setHeardBy(null);
+    if (busy || voicePending.current) return;
+    submit(text);
   };
 
   const choice = p.modelChoice;
@@ -120,16 +160,23 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
   };
 
   const onPaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
+    if (busy || voicePending.current) return;
     const image = Array.from(e.clipboardData?.files ?? []).find((f) => f.type.startsWith("image/"));
     if (!image) return;
     e.preventDefault();
-    p.onPhoto(image);
+    if (pendingPhoto) setPendingPhoto(image);
+    else p.onPhoto(image);
   };
 
-  const pickFile = (input: HTMLInputElement | null) => {
+  const pickFile = (input: HTMLInputElement | null, withContent = false) => {
     const file = input?.files?.[0];
     if (input) input.value = "";
-    if (file) p.onPhoto(file);
+    if (!file || busy || voicePending.current) return;
+    if (withContent || pendingPhoto) {
+      setPendingPhoto(file);
+      setNote(null);
+      box.current?.focus();
+    } else p.onPhoto(file);
   };
 
   return (
@@ -143,6 +190,7 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
               size="sm"
               variant={p.mode === m ? "default" : "outline"}
               aria-pressed={p.mode === m}
+              disabled={busy}
               className="h-7 px-3 text-xs"
               onClick={() => p.onModeChange(m)}
             >
@@ -173,6 +221,7 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
                   aria-label="Mô hình giọng nói"
                   className={SELECT_CLASS}
                   value={choice.stt}
+                  disabled={busy}
                   onChange={(e) => changeChoice({ stt: e.target.value })}
                 >
                   <option value="">{SERVER_DEFAULT_LABEL}</option>
@@ -189,6 +238,7 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
                   aria-label="Mô hình đọc chữ"
                   className={SELECT_CLASS}
                   value={choice.readModel}
+                  disabled={busy}
                   onChange={(e) => changeChoice({ readModel: e.target.value })}
                 >
                   <option value="">{SERVER_DEFAULT_LABEL}</option>
@@ -204,7 +254,7 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
                 <select
                   aria-label="Mức suy nghĩ"
                   className={SELECT_CLASS}
-                  disabled={!choice.readModel}
+                  disabled={busy || !choice.readModel}
                   value={choice.effort}
                   onChange={(e) => changeChoice({ effort: e.target.value })}
                 >
@@ -231,6 +281,19 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
         </p>
       )}
 
+      {pendingPhoto && (
+        <div className="flex items-center gap-2 rounded-lg border bg-muted/30 p-2">
+          {previewUrl && <img src={previewUrl} alt="Ảnh chờ gửi" className="h-16 w-16 shrink-0 rounded-md object-cover" />}
+          <div className="min-w-0 flex-1 text-xs">
+            <p className="truncate font-medium">{pendingPhoto.name}</p>
+            <p className="text-muted-foreground">Nhập thêm nội dung hoặc bấm mic để nói và gửi cùng ảnh.</p>
+          </div>
+          <Button type="button" size="icon" variant="ghost" aria-label="Bỏ ảnh đính kèm" disabled={busy} onClick={() => setPendingPhoto(null)}>
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
+
       {recording ? (
         <div className="flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700" aria-live="polite">
           <span className="h-2 w-2 animate-pulse rounded-full bg-red-600" />
@@ -245,13 +308,25 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
           </Button>
         </div>
       ) : (
-        <div className="flex items-end gap-1">
-          <Button type="button" size="icon" variant="ghost" aria-label="Chụp bill" onClick={() => camera.current?.click()}>
+        <div className={cn("flex items-end gap-1", pendingPhoto && "flex-wrap")}>
+          <Button type="button" size="icon" variant="ghost" className="shrink-0" aria-label="Ảnh kèm nội dung" title="Ảnh kèm nội dung" disabled={busy} onClick={() => attachment.current?.click()}>
+            <Paperclip className="h-5 w-5" />
+          </Button>
+          <Button type="button" size="icon" variant="ghost" className="shrink-0" aria-label="Chụp bill" disabled={busy} onClick={() => camera.current?.click()}>
             <Camera className="h-5 w-5" />
           </Button>
-          <Button type="button" size="icon" variant="ghost" aria-label="Chọn ảnh" onClick={() => gallery.current?.click()}>
+          <Button type="button" size="icon" variant="ghost" className="shrink-0" aria-label="Chọn ảnh" disabled={busy} onClick={() => gallery.current?.click()}>
             <ImagePlus className="h-5 w-5" />
           </Button>
+          <input
+            ref={attachment}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            aria-label="Chọn ảnh kèm nội dung"
+            disabled={busy}
+            onChange={(e) => pickFile(e.currentTarget, true)}
+          />
           <input
             ref={camera}
             type="file"
@@ -259,6 +334,7 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
             capture="environment"
             className="hidden"
             aria-label="Chụp ảnh bill"
+            disabled={busy}
             onChange={(e) => pickFile(e.currentTarget)}
           />
           <input
@@ -267,38 +343,41 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
             accept="image/*"
             className="hidden"
             aria-label="Chọn ảnh bill"
+            disabled={busy}
             onChange={(e) => pickFile(e.currentTarget)}
           />
-          <Textarea
-            ref={box}
-            value={text}
-            rows={Math.min(5, Math.max(1, text.split("\n").length))}
-            placeholder={transcribing ? "Đang chuyển giọng nói thành chữ…" : PLACEHOLDER[p.mode]}
-            aria-label="Nội dung khoản chi"
-            className="min-h-[40px] flex-1 resize-none"
-            onChange={(e) => setText(e.target.value)}
-            // Bảng chọn mở + bàn phím điện thoại bật ⇒ che gần hết thẻ nháp; gõ là xong việc chọn.
-            onFocus={() => setShowModels(false)}
-            onKeyDown={onKeyDown}
-            onPaste={onPaste}
-          />
-          {text.trim() ? (
-            <Button type="button" size="icon" aria-label="Gửi" onClick={send}>
-              <Send className="h-5 w-5" />
-            </Button>
-          ) : (
+          <div className={cn("flex min-w-0 flex-1 items-end gap-1", pendingPhoto && "basis-full")}>
+            <Textarea
+              ref={box}
+              value={text}
+              rows={Math.min(5, Math.max(1, text.split("\n").length))}
+              placeholder={transcribing ? "Đang chuyển giọng nói thành chữ…" : pendingPhoto ? "Bổ sung nội dung cho ảnh…" : PLACEHOLDER[p.mode]}
+              aria-label="Nội dung khoản chi"
+              className="min-h-[40px] min-w-0 flex-1 resize-none"
+              disabled={busy}
+              onChange={(e) => setText(e.target.value)}
+              // Bảng chọn mở + bàn phím điện thoại bật ⇒ che gần hết thẻ nháp; gõ là xong việc chọn.
+              onFocus={() => setShowModels(false)}
+              onKeyDown={onKeyDown}
+              onPaste={onPaste}
+            />
             <Button
               type="button"
               size="icon"
               variant="secondary"
               aria-label="Nói"
-              disabled={transcribing}
-              className={cn(transcribing && "opacity-70")}
+              disabled={busy}
+              className={cn("shrink-0", transcribing && "opacity-70")}
               onClick={onMic}
             >
               {transcribing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Mic className="h-5 w-5" />}
             </Button>
-          )}
+            {(text.trim() || pendingPhoto) && (
+              <Button type="button" size="icon" className="shrink-0" aria-label="Gửi" disabled={busy} onClick={send}>
+                <Send className="h-5 w-5" />
+              </Button>
+            )}
+          </div>
         </div>
       )}
     </div>

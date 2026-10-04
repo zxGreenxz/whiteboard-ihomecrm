@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { RecordedAudio } from "@/hooks/quick-entry/useVoiceRecorder";
 import type { TranscribeResult } from "@/hooks/quick-entry/quickEntryAi";
@@ -37,8 +37,9 @@ function setup(over: Partial<QuickEntryComposerProps> = {}) {
     transcribe: vi.fn(async (): Promise<TranscribeResult> => ({ ok: true, text: "sơn ba trăm nghìn", model: null })),
     ...over,
   };
-  render(<QuickEntryComposer {...props} />);
+  const view = render(<QuickEntryComposer {...props} />);
   return {
+    ...view,
     props,
     // Lúc đang ghi âm ô chữ nhường chỗ cho thanh ghi âm ⇒ tìm khi cần, không tìm sẵn.
     get box() {
@@ -46,6 +47,11 @@ function setup(over: Partial<QuickEntryComposerProps> = {}) {
     },
   };
 }
+
+beforeEach(() => {
+  URL.createObjectURL = vi.fn(() => "blob:pending-bill");
+  URL.revokeObjectURL = vi.fn();
+});
 
 afterEach(() => {
   cleanup();
@@ -78,14 +84,14 @@ describe("QuickEntryComposer — gõ chữ", () => {
 });
 
 describe("QuickEntryComposer — giọng nói (chỉ OpenRouter, chủ chốt 01/10)", () => {
-  it("chạm mic ⇒ ghi âm; nói xong ⇒ OpenRouter chép chữ VÀO Ô để soát, KHÔNG tự gửi", async () => {
+  it("chạm mic ⇒ ghi âm; nói xong ⇒ tự gửi chữ đã chép và xoá ô", async () => {
     const { props, box } = setup();
     fireEvent.click(screen.getByRole("button", { name: "Nói" }));
     expect(rec.start).toHaveBeenCalledTimes(1);
     await act(async () => rec.onDone?.(audio));
     expect(props.transcribe).toHaveBeenCalledWith(audio);
-    expect(box.value).toBe("sơn ba trăm nghìn");
-    expect(props.onSubmitText).not.toHaveBeenCalled();
+    expect(box.value).toBe("");
+    expect(props.onSubmitText).toHaveBeenCalledExactlyOnceWith("sơn ba trăm nghìn");
   });
 
   it("trình duyệt CÓ nhận giọng cũng không dùng — luôn ghi âm gửi OpenRouter", () => {
@@ -139,6 +145,99 @@ describe("QuickEntryComposer — giọng nói (chỉ OpenRouter, chủ chốt 01
 });
 
 describe("QuickEntryComposer — ảnh và chế độ", () => {
+  const pickAttachment = () => {
+    const file = new File(["img"], "bill.jpg", { type: "image/jpeg" });
+    fireEvent.change(screen.getByLabelText("Chọn ảnh kèm nội dung"), { target: { files: [file] } });
+    return file;
+  };
+
+  it("nút mới đứng trước camera; ảnh chờ tới khi gửi cả caption", () => {
+    const { props, box } = setup();
+    const buttons = screen.getAllByRole("button");
+    expect(buttons.indexOf(screen.getByRole("button", { name: "Ảnh kèm nội dung" }))).toBeLessThan(
+      buttons.indexOf(screen.getByRole("button", { name: "Chụp bill" })),
+    );
+    const file = pickAttachment();
+    expect(props.onPhoto).not.toHaveBeenCalled();
+    expect(screen.getByAltText("Ảnh chờ gửi")).toBeTruthy();
+    fireEvent.change(box, { target: { value: "  102LVT sửa điện  " } });
+    fireEvent.click(screen.getByRole("button", { name: "Gửi" }));
+    expect(props.onPhoto).toHaveBeenCalledExactlyOnceWith(file, "102LVT sửa điện");
+    expect(props.onSubmitText).not.toHaveBeenCalled();
+    expect(screen.queryByAltText("Ảnh chờ gửi")).toBeNull();
+    expect(box.value).toBe("");
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:pending-bill");
+  });
+
+  it("ảnh + chữ + giọng nói ⇒ gửi chung đúng một lần, không cần bấm Gửi", async () => {
+    const { props, box } = setup();
+    const file = pickAttachment();
+    fireEvent.change(box, { target: { value: "102LVT" } });
+    fireEvent.click(screen.getByRole("button", { name: "Nói" }));
+    await act(async () => rec.onDone?.(audio));
+    expect(props.onPhoto).toHaveBeenCalledExactlyOnceWith(file, "102LVT sơn ba trăm nghìn");
+    expect(props.onSubmitText).not.toHaveBeenCalled();
+    expect(box.value).toBe("");
+  });
+
+  it("ảnh không có caption vẫn gửi được; bỏ ảnh giữ lại chữ để gửi riêng", () => {
+    const { props, box } = setup();
+    const file = pickAttachment();
+    fireEvent.click(screen.getByRole("button", { name: "Gửi" }));
+    expect(props.onPhoto).toHaveBeenCalledExactlyOnceWith(file, "");
+    pickAttachment();
+    fireEvent.change(box, { target: { value: "sơn 300k" } });
+    fireEvent.click(screen.getByRole("button", { name: "Bỏ ảnh đính kèm" }));
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(props.onSubmitText).toHaveBeenCalledExactlyOnceWith("sơn 300k");
+    expect(props.onPhoto).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["error", "empty"])("nhận dạng %s ⇒ giữ ảnh/chữ, không tự gửi", async (outcome) => {
+    const transcribe = vi.fn(async (): Promise<TranscribeResult> => outcome === "empty"
+      ? { ok: true, text: "  ", model: null }
+      : { ok: false, error: classifyAiError({ status: 503, code: "quick_entry_all_failed" }) });
+    const { props, box } = setup({ transcribe });
+    pickAttachment();
+    fireEvent.change(box, { target: { value: "102LVT" } });
+    await act(async () => rec.onDone?.(audio));
+    expect(props.onPhoto).not.toHaveBeenCalled();
+    expect(props.onSubmitText).not.toHaveBeenCalled();
+    expect(box.value).toBe("102LVT");
+    expect(screen.getByAltText("Ảnh chờ gửi")).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toBeTruthy();
+  });
+
+  it("đang chép lời khoá gửi/đổi chế độ; callback dừng lặp không gửi đôi", async () => {
+    let resolve!: (r: TranscribeResult) => void;
+    const transcribe = vi.fn(() => new Promise<TranscribeResult>((r) => { resolve = r; }));
+    const { props, box } = setup({ transcribe });
+    const file = pickAttachment();
+    fireEvent.change(box, { target: { value: "102LVT" } });
+    act(() => { rec.onDone?.(audio); rec.onDone?.(audio); });
+    expect(transcribe).toHaveBeenCalledTimes(1);
+    expect(box.disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Cá nhân" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.keyDown(box, { key: "Enter" });
+    fireEvent.click(screen.getByRole("button", { name: "Gửi" }));
+    expect(props.onPhoto).not.toHaveBeenCalled();
+    await act(async () => resolve({ ok: true, text: "sơn 300k", model: null }));
+    expect(props.onPhoto).toHaveBeenCalledExactlyOnceWith(file, "102LVT sơn 300k");
+  });
+
+  it("rời trang trong lúc chép lời ⇒ bỏ kết quả muộn, giải phóng ảnh", async () => {
+    let resolve!: (r: TranscribeResult) => void;
+    const transcribe = vi.fn(() => new Promise<TranscribeResult>((r) => { resolve = r; }));
+    const { props, unmount } = setup({ transcribe });
+    pickAttachment();
+    act(() => rec.onDone?.(audio));
+    unmount();
+    await act(async () => resolve({ ok: true, text: "sơn 300k", model: null }));
+    expect(props.onPhoto).not.toHaveBeenCalled();
+    expect(props.onSubmitText).not.toHaveBeenCalled();
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:pending-bill");
+  });
+
   it("chọn ảnh ⇒ gửi file cho trang cha", () => {
     const { props } = setup();
     const file = new File(["img"], "bill.jpg", { type: "image/jpeg" });

@@ -82,6 +82,24 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe("mô hình người dùng chọn trên trang", () => {
+  it("ảnh và nội dung bổ sung đi cùng một lượt AI và một thẻ nháp", async () => {
+    h.readWithAi.mockResolvedValue(ok(ai({ items: [{ desc: "Sửa điện", amount_vnd: 300_000, category: "c1", confidence: 0.9 }], building_mention: "102LVT" })));
+    const { result } = mount();
+    const file = new File(["image"], "bill.jpg", { type: "image/jpeg" });
+    await act(async () => result.current.submitPhoto(file, "company", "  102LVT sửa điện  "));
+    expect(h.readWithAi).toHaveBeenCalledTimes(1);
+    const userMessage = h.readWithAi.mock.calls[0][0].messages.find((m: { role: string }) => m.role === "user");
+    expect(userMessage.content).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "text", text: expect.stringContaining("102LVT sửa điện") }),
+      expect.objectContaining({ type: "image_url" }),
+    ]));
+    expect(result.current.messages).toHaveLength(1);
+    expect(result.current.messages[0]).toMatchObject({ kind: "photo", text: "102LVT sửa điện", reading: false });
+    expect(cardsOf(result)).toHaveLength(1);
+    expect(cardsOf(result)[0].photo).toBe(file);
+    expect(h.saveCompany).not.toHaveBeenCalled();
+  });
+
   it("đọc chữ gửi mô hình đọc đã chọn; chép giọng gửi mô hình giọng đã chọn; đổi lựa chọn có hiệu lực ngay", async () => {
     h.readWithAi.mockResolvedValue(ok(ai()));
     h.transcribeAudio.mockResolvedValue({ ok: true, text: "sơn 300k", model: "openai/whisper-1" });
