@@ -68,6 +68,34 @@ test('voice stop directly creates a draft and does not book until save',async({p
  expect(await page.getByTestId('month-expense').textContent()).not.toEqual(expense);
  expect((await stateOf(page)).transactions[0].amount).toBe(55000);
 });
+test('home exposes four working input actions with mobile touch targets',async({page},testInfo)=>{
+ const launcher=page.getByRole('group',{name:'Công cụ nhập nhanh',exact:true});
+ const photo={name:'quick-photo.png',mimeType:'image/png',buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6YV0AAAAASUVORK5CYII=','base64')};
+ for(const width of [320,390,452]){
+  await page.setViewportSize({width,height:884});
+  await expect(launcher.getByRole('button')).toHaveCount(4);
+  for(const label of ['Ảnh kèm nội dung','Chụp bill','Chọn ảnh','Ghi âm']){
+   const control=launcher.getByRole('button',{name:label,exact:true});await expect(control).toBeVisible();
+   const box=await control.boundingBox();expect(box!.width).toBeGreaterThanOrEqual(44);expect(box!.height).toBeGreaterThanOrEqual(44);
+  }
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ }
+ await page.screenshot({path:testInfo.outputPath('four-input-actions-452.png'),animations:'disabled'});
+ for(const [label,input] of [['Ảnh kèm nội dung','receipt-file'],['Chụp bill','camera-file'],['Chọn ảnh','gallery-file']]){
+  const choosing=page.waitForEvent('filechooser');await launcher.getByRole('button',{name:label,exact:true}).click();const chooser=await choosing;
+  expect(await chooser.element().getAttribute('id')).toBe(input);
+  expect(await chooser.element().getAttribute('capture')).toBe(input==='camera-file'?'environment':null);
+  await chooser.setFiles(photo);await expect(page.getByAltText('Ảnh bạn chọn')).toBeVisible();
+  await expect(page.getByRole('textbox',{name:'Nội dung thu chi'})).toBeVisible();
+  await page.getByRole('button',{name:'Đóng',exact:true}).click();
+ }
+ await launcher.getByRole('button',{name:'Ghi âm',exact:true}).click();
+ await page.getByRole('button',{name:'Dừng và tự gửi giọng nói mẫu',exact:true}).click();
+ await expect(page.getByText('Xem lại trước khi lưu')).toBeVisible();expect(await stateOf(page)).toBeNull();
+ await page.getByRole('button',{name:'Đóng',exact:true}).click();
+ await page.getByRole('button',{name:'Hôm nay bạn chi gì?',exact:true}).click();
+ await expect(page.getByRole('textbox',{name:'Nội dung thu chi'})).toBeVisible();
+});
 test('quick input handles multiple entries and images with a caption',async({page})=>{
  await page.getByRole('button',{name:'Ghi thu chi',exact:true}).filter({visible:true}).click();
  await page.locator('#receipt-file').setInputFiles({name:'demo-receipt.png',mimeType:'image/png',buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6YV0AAAAASUVORK5CYII=','base64')});

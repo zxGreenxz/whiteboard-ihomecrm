@@ -48,7 +48,7 @@ STT/OCR dùng luồng Quick Entry hiện có, UI phân biệt gửi để tạo 
 
 ## Kiểm chứng
 
-- Playwright: **8/8 đạt**, tạo/sửa/xóa khoản; category tùy chỉnh và chống trùng; voice tự tạo nháp; ảnh kèm hai khoản; transfer không đổi tổng tiền/thu/chi; ngân sách, góp quỹ, report drill-down; nội dung nhập không chạy HTML.
+- Playwright: **9/9 đạt**, tạo/sửa/xóa khoản; category tùy chỉnh và chống trùng; voice tự tạo nháp; ảnh kèm hai khoản; transfer không đổi tổng tiền/thu/chi; ngân sách, góp quỹ, report drill-down; nội dung nhập không chạy HTML; bốn nút nhập nhanh ở Tổng quan mở đúng bộ chọn ảnh/camera/voice.
 - Layout: **320, 390, 430, 1280px**, cả bốn màn hình và báo cáo flow; không tràn ngang toàn trang. Ảnh kiểm UI ở `test-results/` (ignored). Không có console/page error trong suite; toàn bộ request nghiệp vụ ngoài server demo bị chặn.
 - `npm run typecheck:e2e`: đạt. `npm run docs:check`: đạt.
 - `npm run build` và `npm run gate:bundle`: đạt. Demo được copy đủ 5 file vào `dist/demos/personal-finance/`.
@@ -56,3 +56,9 @@ STT/OCR dùng luồng Quick Entry hiện có, UI phân biệt gửi để tạo 
 - Chưa kiểm iPhone/Android thật, bàn phím mobile thật, mic/STT/OCR thật, đồng bộ backend hoặc production. Không dùng kết quả demo làm bằng chứng cho các phần này.
 
 Báo cáo trực quan nằm cạnh demo, không phụ thuộc Mermaid hoặc API ngoài để vẽ sơ đồ. Các gate không yêu cầu vai trò app trong demo vì không thay route được bảo vệ, quyền hay writer đang chạy; khi tích hợp dữ liệu thật phải chạy kiểm theo vai trò ở DEMO/TEST.
+
+## Bổ sung ngày 05/10/2026
+
+Ô “Hôm nay bạn chi gì?” có bốn nút giống Báo chi nhanh: Ảnh kèm nội dung (kẹp giấy), Chụp bill, Chọn ảnh, Ghi âm. Nút thao tác tách riêng khỏi nút mở nhập chữ, không lồng button trong button; vùng chạm tối thiểu 44 × 44px. Camera dùng `capture="environment"`, hai bộ chọn ảnh không ép camera. Hộp ghi nhanh cũng có đủ bốn nút này và nút Gửi. Ghi âm vẫn là mô phỏng trong demo.
+
+Kiểm đường đi của từng nút, giữ ảnh để nhập nội dung, voice mẫu tự tạo nháp sau dừng; kiểm kích thước 320/390/452px. Bản nháp không tự ghi vào dữ liệu demo.
