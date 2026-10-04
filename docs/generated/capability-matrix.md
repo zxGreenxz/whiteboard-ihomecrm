@@ -66,8 +66,8 @@ không gắn với `git push`.
 | Chỉ số | Giá trị |
 |---|---|
 | Bảng được publish | 27 |
-| Hub nghiệp vụ lắng nghe | 17 |
-| **Hub nghe mà KHÔNG publish** (subscribe câm) | **0** |
+| Hub nghiệp vụ lắng nghe | 19 |
+| **Hub nghe mà KHÔNG publish** (subscribe câm) | **2** |
 | `REPLICA IDENTITY = DEFAULT` | 27/27 |
 
 `DEFAULT` nghĩa là payload `UPDATE`/`DELETE` chỉ mang **khoá chính**. Code đọc cột

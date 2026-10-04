@@ -873,6 +873,33 @@
       ],
       "raSoatBoi": "Claude Code — danh mục chi chuẩn 03/10/2026",
       "sha256": "f7b8a6ed24b100ddf55ce46f49d9ff341938e9ee8d47d9b79879c0f3e6842c71"
+    },
+    "supabase/migrations/20261004205216_acb_email_realtime.sql": {
+      "sha256": "f84dc526a9f0018a74bc5c1c00bd9c87ff0253697af60d27268986e948b211ca",
+      "missingObjects": [
+        "table:public.bank_email_connections",
+        "table:public.bank_email_transactions",
+        "table:app_private.bank_email_sources",
+        "table:app_private.bank_email_credentials",
+        "table:app_private.bank_email_page_messages"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Migration mới nhận email ACB chưa áp dụng production có chủ ý. Catalog production chưa có các object này, không có migration sau xóa chúng. Chỉ môi trường ihomecrm-test được dùng để kiểm role/JWT, writer V5, retry và cạnh tranh khóa. Các phép thử ghi thu được rollback; fixture hóa đơn của thử REST được soft-delete theo luồng chuẩn vì snapshot bất biến. Giao qua draft PR; phải hoàn thành review, kiểm mẫu thư thật/cấu hình Google và đi qua lane migration/backup trước khi kích hoạt. Catalog/types production không chứng minh migration này đã chạy. Publication production chưa có hai bảng ACB nên gate realtime production chưa đạt.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261004205216_acb_email_realtime.sql",
+          "trich_doan": "table:public.bank_email_connections; table:public.bank_email_transactions; table:app_private.bank_email_sources; table:app_private.bank_email_credentials; table:app_private.bank_email_page_messages"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown và missingObjects của 20261004205216: catalog production chưa có object ACB email."
+        },
+        {
+          "duong_dan": "docs/engineering/ACB_EMAIL.md",
+          "trich_doan": "Điều kiện kích hoạt: schema production chỉ qua lane backup/review; kiểm RPC/ACL/realtime sau apply, cần worker/Google Cloud và email gốc thật."
+        }
+      ],
+      "raSoatBoi": "Codex — ACB Gmail 05/10/2026"
     }
   }
 }

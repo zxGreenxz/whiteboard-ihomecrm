@@ -12,6 +12,14 @@ import type { SyncEntry } from "./types";
  */
 export const FINANCE_SYNC_ENTRIES: readonly SyncEntry[] = [
   {
+    table: 'bank_email_connections',
+    keys: [['bank-email']],
+  },
+  {
+    table: 'bank_email_transactions',
+    keys: [['bank-email'], ['invoices'], ['payments'], ['income-expenses'], ['accounts-with-balance'], ['cash-book-summary']],
+  },
+  {
     table: 'income_expense_supplements',
     keys: [['income-expense-supplements'], ['income-expenses'], ['income-expense-batches'],
       ['voucher-with-batch'], ['income-expense'], ['reservation-refund-evidence'], ['ie-history'], ['voucher-change-log']],

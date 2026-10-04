@@ -3,6 +3,11 @@
   "schemaVersion": 1,
   "packages": [
     {
+      "path": "services/bank-email-worker/package.json",
+      "node": ">=22.19.0",
+      "note": "Gmail OAuth/watch và xác minh chữ ký DKIM ACB; kiểm thử synthetic trên Node 24.18.0 của quality-gates."
+    },
+    {
       "path": "package.json",
       "node": ">=20"
     },

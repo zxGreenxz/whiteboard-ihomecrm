@@ -43,6 +43,8 @@ export const REALTIME_SYNC_TABLES = [
   // Publication: 20260828130000_realtime_building_fee_tables.sql.
   "building_fee_accounts",
   "building_utility_accounts",
+  "bank_email_connections",
+  "bank_email_transactions",
 ] as const;
 
 /** Union tên bảng, suy ra TỪ danh sách — không khai hai lần rồi trôi khỏi nhau. */

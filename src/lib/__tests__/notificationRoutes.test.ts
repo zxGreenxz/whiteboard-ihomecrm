@@ -21,6 +21,13 @@ const BOOK = "f21f1cb7-e9af-4b2d-99d4-e24f2a605889";
 const REQ = "3fa85f64-5717-4562-b3fc-2c963f66afa6";
 
 describe("resolveNotificationUrl — PA4 (E6a/E6b/E6c)", () => {
+  it("ACB: mở danh sách đối soát khi có quyền; mất quyền dùng đích dự phòng", () => {
+    const url = "/settings/categories/auto-debt";
+    expect(resolveNotificationUrl(url, { auto_debt: { view: true } })).toBe(url);
+    expect(resolveNotificationUrl(url, NONE)).toBe(NOTIFICATION_FALLBACK_URL);
+    expect(resolveNotificationUrl(`${url}/unknown`, ALL)).toBeNull();
+  });
+
   it("E6a: ?close=<uuid> đi qua và giữ param", () => {
     expect(resolveNotificationUrl(`/finance/cashbooks?close=${BOOK}`, ALL)).toBe(
       `/finance/cashbooks?close=${BOOK}`,

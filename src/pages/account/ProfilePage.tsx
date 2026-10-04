@@ -19,6 +19,7 @@ import { useClipboardImagePaste } from "@/hooks/useClipboardImagePaste";
 import PushNotificationSettings from "@/components/notifications/PushNotificationSettings";
 import NotificationPreferencesCard from "@/components/notifications/NotificationPreferencesCard";
 import AccountOrganizationCard from "@/components/account/AccountOrganizationCard";
+import { BankEmailConnectionManager } from "@/components/bank-email/BankEmailConnectionManager";
 
 function ProfileDesktop() {
   const profileQuery = useProfile();
@@ -248,6 +249,7 @@ function ProfileDesktop() {
         <NotificationPreferencesCard />
       </div>
       </QueryRegion>
+      <div className="mt-6 max-w-2xl"><BankEmailConnectionManager /></div>
     </MainLayout>
   );
 }

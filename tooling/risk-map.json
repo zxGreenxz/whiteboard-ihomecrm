@@ -12,6 +12,12 @@
         "concurrency"
       ],
       "paths": [
+        "src/lib/bankEmail.ts",
+        "src/lib/bankEmailReview.ts",
+        "src/hooks/useBankEmail.ts",
+        "src/components/bank-email/**",
+        "services/bank-email-worker/**",
+        "api/bank-email/**",
         "src/hooks/income-expenses/**",
         "src/hooks/useInvoices.ts",
         "src/hooks/useCashBook*.ts",

@@ -16,6 +16,11 @@
   },
   "include": [],
   "files": [
+    "src/lib/bankEmail.ts",
+    "src/lib/bankEmailReview.ts",
+    "src/hooks/useBankEmail.ts",
+    "src/components/bank-email/BankEmailPanel.tsx",
+    "src/components/bank-email/BankEmailConnectionManager.tsx",
     "src/lib/personal-tasks/model.ts",
     "src/lib/personal-tasks/reminders.ts",
     "src/lib/personal-tasks/reminderAudio.ts",

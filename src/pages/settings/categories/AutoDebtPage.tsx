@@ -8,6 +8,7 @@ import {
 } from "@/hooks/useAutoDebtConfig";
 import type { Database } from "@/integrations/supabase/types";
 import { Badge } from "@/components/ui/badge";
+import { BankEmailPanel } from "@/components/bank-email/BankEmailPanel";
 
 type AutoDebtConfig = Database["public"]["Tables"]["auto_debt_config"]["Row"];
 
@@ -38,8 +39,14 @@ export default function AutoDebtPage() {
   return (
     <CategoryCrudPage<AutoDebtConfig>
       title="Gạch nợ tự động"
-      subtitle="Cấu hình gạch nợ tự động"
+      subtitle="Kết nối thông báo ACB và đối soát hóa đơn"
       icon={RefreshCw}
+      beforeContent={<>
+        <BankEmailPanel />
+        <div className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+          <strong className="text-foreground">Cấu hình gạch nợ khác</strong> bên dưới chưa kết nối với email ACB.
+        </div>
+      </>}
       data={data}
       isLoading={isLoading}
       error={error}

@@ -6,6 +6,7 @@ vi.mock('@/components/layout/MainLayout',()=>({default:({children}: {children:Re
 vi.mock('@/components/account/AccountOrganizationCard',()=>({default:()=>null}));
 vi.mock('@/components/notifications/PushNotificationSettings',()=>({default:()=>null}));
 vi.mock('@/components/notifications/NotificationPreferencesCard',()=>({default:()=>null}));
+vi.mock('@/components/bank-email/BankEmailConnectionManager',()=>({BankEmailConnectionManager:()=>null}));
 vi.mock('@/hooks/useClipboardImagePaste',()=>({useClipboardImagePaste:()=>({})}));
 const change=vi.hoisted(()=>vi.fn());
 vi.mock('@/hooks/useProfile',()=>({useProfile:()=>({data:{full_name:'Test',email:'test@example.com'},isLoading:false,isError:false,status:'success',fetchStatus:'idle',refetch:vi.fn()}),useUpdateProfile:()=>({mutate:vi.fn()}),useUploadAvatar:()=>({mutate:vi.fn()}),useChangePassword:()=>({mutate:change})}));
