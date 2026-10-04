@@ -4,11 +4,12 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, X } from 'lucide-react';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { formatISODayMonth } from '@/lib/vnDate';
 import { dueSchema, textSchema, type PersonalTask } from '@/lib/personal-tasks/model';
 import { holiday, lunarDate, monthCells, shiftMonth } from '@/lib/personal-tasks/calendar';
 
-function Sheet({ title, description, children, onClose }: { title: string; description: string; children: ReactNode; onClose: () => void }) {
+export function Sheet({ title, description, children, onClose }: { title: string; description: string; children: ReactNode; onClose: () => void }) {
   const previousFocus = useState(() => document.activeElement instanceof HTMLElement ? document.activeElement : null)[0];
   return <Dialog open onOpenChange={open => { if (!open) onClose(); }}>
     <DialogContent className="ptask-sheet" hideClose onPointerDownOutside={() => {}} onInteractOutside={() => {}} onEscapeKeyDown={() => {}}
@@ -24,6 +25,29 @@ function Sheet({ title, description, children, onClose }: { title: string; descr
   </Dialog>;
 }
 const addSchema = z.object({ text: textSchema });
+export function DeleteTaskDialog({ task, busy, onClose, onDelete }: {
+  task: PersonalTask; busy: boolean; onClose: () => void; onDelete: () => Promise<boolean>;
+}) {
+  const [failed, setFailed] = useState(false);
+  const [previousFocus] = useState(() => document.activeElement instanceof HTMLElement ? document.activeElement : null);
+  return <AlertDialog open onOpenChange={open => { if (!open && !busy) onClose(); }}>
+    <AlertDialogContent className="ptask-delete-dialog" onEscapeKeyDown={event => { if (busy) event.preventDefault(); }}
+      onCloseAutoFocus={event => { event.preventDefault(); (previousFocus?.isConnected ? previousFocus : document.querySelector<HTMLButtonElement>('.ptask-fab'))?.focus({ preventScroll: true }); }}>
+      <AlertDialogTitle>Xóa công việc này?</AlertDialogTitle>
+      <AlertDialogDescription>Việc sẽ bị xóa khỏi danh sách trên thiết bị này.</AlertDialogDescription>
+      <p className="ptask-delete-text">{task.text}</p>
+      {failed && <p role="alert" className="ptask-form-error">Chưa xóa được. Công việc vẫn được giữ, hãy thử lại.</p>}
+      <div className="ptask-delete-footer">
+        <AlertDialogCancel disabled={busy}>Hủy</AlertDialogCancel>
+        <AlertDialogAction disabled={busy} className="ptask-delete-confirm" onClick={async event => {
+          event.preventDefault();
+          setFailed(false);
+          if (await onDelete()) onClose(); else setFailed(true);
+        }}>{busy ? 'Đang xóa…' : 'Xóa việc'}</AlertDialogAction>
+      </div>
+    </AlertDialogContent>
+  </AlertDialog>;
+}
 export function AddTaskSheet({ onClose, onSave, busy }: { onClose: () => void; onSave: (text: string) => Promise<boolean>; busy: boolean }) {
   const { register, handleSubmit, formState: { errors }, watch } = useForm<{ text: string }>({ resolver: zodResolver(addSchema), defaultValues: { text: '' } });
   const submit = handleSubmit(async data => { if (await onSave(data.text)) onClose(); });

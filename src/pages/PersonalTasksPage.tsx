@@ -1,17 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, CheckCheck, Download, ListTodo, Plus, Clock3 } from 'lucide-react';
+import { ArrowLeft, Bell, CheckCheck, Download, ListTodo, Plus, Clock3 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { usePersonalTasks } from '@/hooks/usePersonalTasks';
+import { usePersonalTaskReminders } from '@/hooks/usePersonalTaskReminders';
+import { ReminderSheet } from '@/components/personal-tasks/ReminderSheet';
 import { TaskRow } from '@/components/personal-tasks/TaskRow';
-import { AddTaskSheet, DueTaskSheet } from '@/components/personal-tasks/TaskSheets';
+import { AddTaskSheet, DeleteTaskDialog, DueTaskSheet } from '@/components/personal-tasks/TaskSheets';
 import { deriveTasks, vnClock, type PersonalTask, type TaskStatus } from '@/lib/personal-tasks/model';
 import { dayLabel, lunarLabel } from '@/lib/personal-tasks/calendar';
 import { serializeTasks } from '@/lib/personal-tasks/storage';
 import '@/styles/personalTasks.css';
 
 const tabs: { id: TaskStatus; label: string }[] = [{ id: 'todo', label: 'Cần làm' }, { id: 'doing', label: 'Đang xử lý' }, { id: 'done', label: 'Đã xử lý' }];
-type SheetState = { type: 'add' } | { type: 'due'; id: string } | null;
+type SheetState = { type: 'add' | 'reminders' } | { type: 'due' | 'delete'; id: string } | null;
 
 export default function PersonalTasksPage() {
   const { data: user } = useAuth();
@@ -19,7 +21,8 @@ export default function PersonalTasksPage() {
 }
 
 function PersonalTasksBoard({ userId }: { userId: string }) {
-  const { tasks, error, loading, busy, refresh, add, change } = usePersonalTasks(userId);
+  const { tasks, error, loading, busy, refresh, add, change, remove } = usePersonalTasks(userId);
+  const reminders = usePersonalTaskReminders(userId);
   const [active, setActive] = useState<TaskStatus>('todo');
   const [sheet, setSheet] = useState<SheetState>(null);
   const [now, setNow] = useState(() => new Date());
@@ -37,8 +40,9 @@ function PersonalTasksBoard({ userId }: { userId: string }) {
   const today = vnClock(now).day;
   const derived = useMemo(() => deriveTasks(tasks, today), [tasks, today]);
   const dueTask = sheet?.type === 'due' ? tasks.find(task => task.id === sheet.id) : undefined;
+  const deleteTask = sheet?.type === 'delete' ? tasks.find(task => task.id === sheet.id) : undefined;
   const row = (task: PersonalTask, area: TaskStatus) => <TaskRow key={task.id} task={task} area={area} now={now} busy={busy || !!error}
-    onDue={() => setSheet({ type: 'due', id: task.id })} onDone={() => { void change(task.id, { type: 'done' }); }} onUndo={() => { void change(task.id, { type: 'todo' }); }} />;
+    onDelete={() => setSheet({ type: 'delete', id: task.id })} onDue={() => setSheet({ type: 'due', id: task.id })} onDone={() => { void change(task.id, { type: 'done' }); }} onUndo={() => { void change(task.id, { type: 'todo' }); }} />;
   const groupHeader = (day: string, count: string, overdue = false, todo = false) => <div className="ptask-group-heading">
     <div><strong className={overdue ? 'late' : ''}>{dayLabel(day, today, todo)}</strong><span>{lunarLabel(day)}</span></div><span>{count}</span>
   </div>;
@@ -52,6 +56,7 @@ function PersonalTasksBoard({ userId }: { userId: string }) {
       <div className="ptask-title-row"><Link to="/" aria-label="Về trang chủ" className="ptask-home"><ArrowLeft size={20} /></Link>
         <div className="ptask-title"><h1>Việc của tôi</h1><p>{new Intl.DateTimeFormat('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' }).format(now)} <span>· {lunarLabel(today)}</span></p></div>
         <button onClick={download} disabled={loading || !!error} className="ptask-download" aria-label="Tải bản sao công việc" title="Tải bản sao JSON"><Download size={18} /></button>
+        <button onClick={() => setSheet({ type: 'reminders' })} className={`ptask-bell ${reminders.error ? 'has-error' : reminders.settings.enabled && reminders.access === 'granted' ? 'enabled' : ''}`} aria-label="Cài đặt nhắc hẹn" title={reminders.error ? 'Nhắc hẹn cần kiểm tra' : 'Cài đặt nhắc hẹn'}><Bell size={18} /></button>
         <span className="ptask-total" aria-live="polite">còn {derived.counts.todo + derived.counts.doing} việc</span>
       </div>
       <p className="ptask-local-note">Lưu trên thiết bị này <span>· chưa đồng bộ</span></p>
@@ -71,7 +76,7 @@ function PersonalTasksBoard({ userId }: { userId: string }) {
         <h2 className="ptask-column-title">{tab.label}<span>{derived.counts[tab.id]}</span></h2>
         <div className="ptask-list">
           {tab.id === 'todo' && <>
-            {derived.counts.todo > 0 && <p className="ptask-gesture-hint">← trượt để hẹn giờ <span>·</span> trượt để xong →</p>}
+            {derived.todoGroups.length > 0 && <p className="ptask-gesture-hint">← hẹn giờ <span>·</span> xong → <span>·</span> giữ để xóa</p>}
             {derived.todoGroups.length === 0 && <div className="ptask-empty"><ListTodo /><strong>Hết việc cần làm.</strong><p>Bấm + để thêm việc mới.</p></div>}
             {derived.todoGroups.map(group => <div className="ptask-group" key={group.day}>
               {groupHeader(group.day, `${group.open.length} việc${group.completed.length ? ` · ${group.completed.length} xong` : ''}`, group.day < today && group.open.length > 0, true)}
@@ -88,5 +93,7 @@ function PersonalTasksBoard({ userId }: { userId: string }) {
     <button className="ptask-fab" aria-label="Thêm việc" disabled={loading || !!error || busy} onClick={() => setSheet({ type: 'add' })}><Plus size={29} /></button>
     {sheet?.type === 'add' && <AddTaskSheet busy={busy} onClose={() => setSheet(null)} onSave={async text => { const saved = await add(text); if (saved) setActive('todo'); return saved; }} />}
     {dueTask && <DueTaskSheet key={dueTask.id} task={dueTask} today={today} busy={busy} onClose={() => setSheet(null)} onSave={due => change(dueTask.id, { type: 'due', due })} onClear={() => change(dueTask.id, { type: 'todo' })} />}
+    {deleteTask && <DeleteTaskDialog task={deleteTask} busy={busy} onClose={() => setSheet(null)} onDelete={() => remove(deleteTask.id)} />}
+    {sheet?.type === 'reminders' && <ReminderSheet controller={reminders} onClose={() => setSheet(null)} />}
   </main>;
 }
