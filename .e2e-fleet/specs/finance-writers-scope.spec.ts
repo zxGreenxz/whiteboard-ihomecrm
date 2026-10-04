@@ -109,7 +109,9 @@ async function resolveRefs(a: SbAuth, cashbookName: string): Promise<Refs> {
   const [b] = await sbGet(a, 'buildings?select=id,organization_id&name=eq.T%C3%B2a%20DEMO%20A&limit=1');
   const [t] = await sbGet(
     a,
-    `income_expense_types?select=id&organization_id=eq.${b.organization_id}&type=eq.income&limit=1`,
+    // create_income_expense_v1 từ chối hạng mục system_only (0A000) ⇒ chỉ lấy hạng mục lập tay được.
+    `income_expense_types?select=id&organization_id=eq.${b.organization_id}&type=eq.income` +
+      '&system_only=is.false&is_deposit=is.false&order=name&limit=1',
   );
   const cashbookId = await cashbookIdByName(a, cashbookName);
   return { buildingId: b.id, orgId: b.organization_id, cashbookId, incomeTypeId: t.id };
@@ -151,25 +153,42 @@ async function seedPendingVoucher(a: SbAuth, name: string, refs: Refs): Promise<
   return (r.json?.id as string) ?? (await getVoucherId(a, name));
 }
 
-/** Tạo phiếu INCOME canonical (maker = actor) — dùng cho lát KNOWER own-visibility. */
+/**
+ * Tạo phiếu INCOME canonical (maker = actor) — dùng cho lát KNOWER own-visibility. Đi writer chính
+ * create_income_expense_v1 (trang Thu chi dùng): create_income_expense_v2 bị REVOKE khỏi authenticated
+ * ở migration danh mục chi chuẩn 20261003151606 (không trang nào gọi, nhận nhãn KQKD tuỳ ý).
+ */
 async function createIncomeVoucher(a: SbAuth, name: string, refs: Refs): Promise<string> {
-  const res = await sbRpc(a, 'create_income_expense_v2', {
-    payload: {
-      type: 'INCOME',
-      name,
-      buildingId: refs.buildingId,
-      voucherDate: new Date().toISOString().slice(0, 10),
-      totalAmount: 45000,
-      postingMode: 'CASHBOOK',
-      cashbookId: refs.cashbookId,
-      idempotencyKey: `e2e-create-${rnd()}`,
-      items: [
-        { typeId: refs.incomeTypeId, accountingClass: 'PNL', description: 'E2E own income', quantity: 1, unitPrice: 45000, amount: 45000 },
-      ],
-    },
+  const today = new Date().toISOString().slice(0, 10);
+  const res = await sbRpc(a, 'create_income_expense_v1', {
+    p_type: 'INCOME',
+    p_name: name,
+    p_building_id: refs.buildingId,
+    p_room_id: null,
+    p_tenant_id: null,
+    p_contract_id: null,
+    p_payer_name: null,
+    p_receive_bank_account: null,
+    p_receive_bank_name: null,
+    p_account_id: refs.cashbookId,
+    p_attachments: [],
+    p_business_result_accounting: null,
+    p_notes: null,
+    p_voucher_date: today,
+    p_items: [
+      {
+        income_expense_type_id: refs.incomeTypeId,
+        description: 'E2E own income',
+        quantity: 1,
+        unit_price: 45000,
+        start_date: today,
+        end_date: today,
+      },
+    ],
+    p_idempotency_key: `e2e-create-${rnd()}`,
   });
-  if (!res.ok) throw new Error(`create_income_expense_v2 → ${res.status} ${res.text}`);
-  return res.json.voucherId as string;
+  if (!res.ok) throw new Error(`create_income_expense_v1 → ${res.status} ${res.text}`);
+  return res.json.id as string;
 }
 
 async function getVoucherId(a: SbAuth, name: string): Promise<string> {

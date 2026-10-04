@@ -139,13 +139,16 @@ describe("H3.1 — writer finance-v2 thôi cắt phần lẻ của số lượng
     expect(sql).not.toMatch(/DROP\s+FUNCTION[^\n]*create_income_expense_v2/i);
   });
 
-  it("khẳng định lại ACL: anon không gọi được, authenticated gọi được", () => {
+  it("ACL: anon không gọi được; từ danh mục chi chuẩn (20261003151606) authenticated cũng không", () => {
     const { sql } = liveDefinitionOf("create_income_expense_v2");
     expect(sql).toMatch(
       /REVOKE\s+ALL\s+ON\s+FUNCTION\s+public\.create_income_expense_v2[\s\S]{0,120}?anon/i,
     );
-    expect(sql).toMatch(
-      /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+public\.create_income_expense_v2[\s\S]{0,120}?authenticated/i,
-    );
+    // Câu GRANT/REVOKE cho authenticated CUỐI CÙNG trong toàn bộ migration quyết định quyền đang chạy.
+    // Không trang nào gọi hàm này; nó nhận hạng mục bất kỳ + nhãn KQKD bất kỳ (cùng lỗ với compat).
+    const acl = /(GRANT|REVOKE)\s+(?:EXECUTE|ALL)\s+ON\s+FUNCTION\s+public\.create_income_expense_v2\s*\(\s*(?:payload\s+)?jsonb\s*\)[^;]*authenticated/gi;
+    let last: string | null = null;
+    for (const m of migrationCorpus()) for (const hit of m.sql.matchAll(acl)) last = hit[1].toUpperCase();
+    expect(last).toBe("REVOKE");
   });
 });

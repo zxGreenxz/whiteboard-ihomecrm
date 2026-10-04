@@ -1,6 +1,34 @@
 import { describe, expect, it } from "vitest";
 
-import { friendlyError } from "../friendlyError";
+import { friendlyError, isSystemOnlyManualBlocked } from "../friendlyError";
+
+describe("friendlyError — hạng mục hệ thống bị chặn lập tay (danh mục chi chuẩn 03/10/2026)", () => {
+  const blocked = {
+    code: "42501",
+    message: "Hạng mục này chỉ được tạo từ luồng nghiệp vụ (hợp đồng, phiếu cọc, thanh lý), không lập tay ở Thu chi",
+    hint: "ie_system_only_manual_blocked",
+  };
+
+  it("đổi 42501 + HINT thành lời giải thích, không phải 'Không đủ quyền'", () => {
+    const fe = friendlyError(blocked, "Không thể tạo phiếu", { operation: "tạo phiếu", financial: true });
+    expect(fe.title).toBe("Không lập tay được hạng mục này");
+    expect(fe.description).toBe(
+      "Hoa hồng, thưởng sale và các khoản cọc/thanh lý chỉ tạo từ hợp đồng, phiếu cọc hoặc thanh lý.",
+    );
+  });
+
+  it("nhận theo HINT hoặc theo câu thông báo; lỗi bọc trong cause vẫn nhận", () => {
+    expect(isSystemOnlyManualBlocked({ code: "42501", message: "x", hint: "ie_system_only_manual_blocked" })).toBe(true);
+    expect(isSystemOnlyManualBlocked({ code: "42501", message: blocked.message })).toBe(true);
+    expect(isSystemOnlyManualBlocked({ cause: blocked })).toBe(true);
+  });
+
+  it("các lỗi 42501 khác giữ nguyên cách báo cũ", () => {
+    expect(isSystemOnlyManualBlocked({ code: "42501", message: "permission denied for table x" })).toBe(false);
+    expect(isSystemOnlyManualBlocked({ code: "P0001", message: blocked.message })).toBe(false);
+    expect(friendlyError({ code: "42501", message: "permission denied for table x" }).title).toBe("Không đủ quyền");
+  });
+});
 it('reports rent support disabled without implying a contract was saved', () => {
   expect(friendlyError({ code: '55000', message: 'RENT_SUPPORT_WRITERS_DISABLED' }).description).toContain('chưa được bật');
 });

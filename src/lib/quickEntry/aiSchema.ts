@@ -81,16 +81,41 @@ export function extractJson(text: string): unknown {
   return null;
 }
 
+const categoryCode = z.string().regex(/^c\d{1,3}$/);
+const inRange = (code: string | null, categoryCount: number): boolean => {
+  if (code === null) return true;
+  const n = Number(code.slice(1));
+  return n >= 1 && n <= categoryCount;
+};
+
 /** Kiểm câu trả lời AI; `categoryCount` = số hạng mục đã gửi (c1…cN). */
 export function parseAiResult(text: string, categoryCount: number): AiParse {
   const raw = extractJson(text);
   if (raw === null) return { ok: false, reason: "no_json" };
   const parsed = resultSchema.safeParse(raw);
   if (!parsed.success) return { ok: false, reason: "invalid" };
-  for (const item of parsed.data.items) {
-    if (item.category === null) continue;
-    const n = Number(item.category.slice(1));
-    if (n < 1 || n > categoryCount) return { ok: false, reason: "invalid" };
-  }
+  if (!parsed.data.items.every((item) => inRange(item.category, categoryCount))) return { ok: false, reason: "invalid" };
   return { ok: true, value: parsed.data };
+}
+
+// Câu lệnh rút gọn (buildCategoryOnlyMessages): {"categories":["cN"|null,…]}, đúng một phần tử mỗi dòng.
+// Một dòng mà mô hình trả {"category":"cN"} (khuôn đã dùng lúc đo 02/10) cũng nhận.
+const categoryOnlySchema = z.union([
+  z.object({ categories: z.array(categoryCode.nullable()).max(AI_MAX_ITEMS) }).strict(),
+  z.object({ category: categoryCode.nullable() }).strict(),
+]);
+
+export type CategoryOnlyParse = { ok: true; value: Array<string | null> } | { ok: false; reason: "no_json" | "invalid" };
+
+/** Kiểm câu trả lời "chỉ hạng mục": sai số phần tử hoặc mã ngoài danh sách ⇒ `invalid` (thử mô hình kế). */
+export function parseCategoryOnlyResult(text: string, categoryCount: number, lineCount: number): CategoryOnlyParse {
+  const raw = extractJson(text);
+  if (raw === null) return { ok: false, reason: "no_json" };
+  const parsed = categoryOnlySchema.safeParse(raw);
+  if (!parsed.success) return { ok: false, reason: "invalid" };
+  // Không thu hẹp bằng `in`: tsconfig.app.json không bật strictNullChecks nên nhánh còn lại không thu hẹp được.
+  const data: { categories?: Array<string | null>; category?: string | null } = parsed.data;
+  const codes = data.categories ?? [data.category ?? null];
+  if (codes.length !== lineCount || !codes.every((c) => inRange(c, categoryCount))) return { ok: false, reason: "invalid" };
+  return { ok: true, value: codes };
 }

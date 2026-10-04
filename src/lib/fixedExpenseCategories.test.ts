@@ -4,8 +4,29 @@ import {
   COMMISSION_RANK,
   OTHER_EXPENSE_RANK,
   expenseRankOf,
+  findTypeForFixedCategory,
   nrm,
 } from "./fixedExpenseCategories";
+
+describe("findTypeForFixedCategory — danh mục chi chuẩn", () => {
+  const rank = (key: string) => FIXED_EXPENSE_CATEGORIES.findIndex((c) => c.key === key);
+  const types = [
+    { id: "cu", name: "Vệ Sinh Phòng", category: "Vệ sinh", archived_at: "2026-10-03T00:00:00Z", manual_hidden: false, rule_key: null },
+    { id: "bo-rac", name: "Bỏ rác phát sinh", category: "Vệ sinh phát sinh", archived_at: null, manual_hidden: false, rule_key: "bo_rac" },
+    { id: "rac", name: "Tiền rác", category: "Cố định hằng tháng", archived_at: null, manual_hidden: false, rule_key: "rac" },
+    { id: "vs", name: "Vệ sinh tòa nhà định kỳ", category: "Cố định hằng tháng", archived_at: null, manual_hidden: false, rule_key: "ve_sinh_dinh_ky" },
+  ];
+
+  it("bỏ mục đã lưu trữ, ưu tiên mục mang đúng rule_key", () => {
+    expect(findTypeForFixedCategory(types, rank("ve_sinh"))?.id).toBe("vs");
+    expect(findTypeForFixedCategory(types, rank("rac"))?.id).toBe("rac");
+  });
+
+  it("chưa có rule_key thì vẫn khớp theo tên như cũ", () => {
+    const old = [{ name: "Tiền rác", category: "Rác" }];
+    expect(findTypeForFixedCategory(old, rank("rac"))?.name).toBe("Tiền rác");
+  });
+});
 
 describe("nrm", () => {
   it("bỏ dấu + thường hoá + đ→d", () => {

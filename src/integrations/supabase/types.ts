@@ -7555,6 +7555,7 @@ export type Database = {
       }
       income_expense_types: {
         Row: {
+          archived_at: string | null
           category: string | null
           created_at: string
           description: string | null
@@ -7562,11 +7563,18 @@ export type Database = {
           force_approval: boolean
           hide_in_report: boolean
           id: string
+          internal_transfer: boolean
           is_default: boolean | null
           is_deposit: boolean
           is_restricted: boolean
+          keywords: string[]
+          manual_hidden: boolean
+          merged_into_id: string | null
           name: string
           organization_id: string
+          quick_entry_hidden: boolean
+          rule_key: string | null
+          sort_order: number | null
           spend_mode: string
           system_only: boolean
           type: string
@@ -7574,6 +7582,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          archived_at?: string | null
           category?: string | null
           created_at?: string
           description?: string | null
@@ -7581,11 +7590,18 @@ export type Database = {
           force_approval?: boolean
           hide_in_report?: boolean
           id?: string
+          internal_transfer?: boolean
           is_default?: boolean | null
           is_deposit?: boolean
           is_restricted?: boolean
+          keywords?: string[]
+          manual_hidden?: boolean
+          merged_into_id?: string | null
           name: string
           organization_id: string
+          quick_entry_hidden?: boolean
+          rule_key?: string | null
+          sort_order?: number | null
           spend_mode?: string
           system_only?: boolean
           type: string
@@ -7593,6 +7609,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          archived_at?: string | null
           category?: string | null
           created_at?: string
           description?: string | null
@@ -7600,11 +7617,18 @@ export type Database = {
           force_approval?: boolean
           hide_in_report?: boolean
           id?: string
+          internal_transfer?: boolean
           is_default?: boolean | null
           is_deposit?: boolean
           is_restricted?: boolean
+          keywords?: string[]
+          manual_hidden?: boolean
+          merged_into_id?: string | null
           name?: string
           organization_id?: string
+          quick_entry_hidden?: boolean
+          rule_key?: string | null
+          sort_order?: number | null
           spend_mode?: string
           system_only?: boolean
           type?: string
@@ -7612,6 +7636,13 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "income_expense_types_merged_into_fkey"
+            columns: ["merged_into_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "income_expense_types"
+            referencedColumns: ["id", "organization_id"]
+          },
           {
             foreignKeyName: "income_expense_types_organization_id_fkey"
             columns: ["organization_id"]
@@ -23590,6 +23621,7 @@ export type Database = {
       }
       ie_stop_recurring_v1: { Args: { p_id: string }; Returns: Json }
       ie_type_is_restricted: { Args: { _type_id: string }; Returns: boolean }
+      ie_type_report_root_v1: { Args: { p_type_id: string }; Returns: string }
       ie_type_rule_editor_ok_v1: { Args: { p_org: string }; Returns: boolean }
       invite_organization_member_v1: {
         Args: {

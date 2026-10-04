@@ -327,6 +327,13 @@ const IncomeExpenseFormInner = ({
       .filter((t) => t.is_deposit)
       .map((t) => t.id),
   );
+  // Hạng mục tiền nội bộ (Chuyển tiền nội bộ, Chia lợi nhuận cổ đông — danh mục chi chuẩn 03/10/2026):
+  // máy chủ ép dòng mới thành INTERNAL ⇒ không tính KQKD, nên mặc định hiển thị phải nói đúng như vậy.
+  const internalTypeIds = new Set(
+    [...incomeTypes, ...expenseTypes]
+      .filter((t) => t.internal_transfer)
+      .map((t) => t.id),
+  );
 
   // Kỳ áp dụng mặc định cho item (prefill + thêm mới): ưu tiên kỳ caller truyền
   // qua defaultPrefill.period (vd tháng đang xem của báo cáo), fallback tháng
@@ -581,6 +588,9 @@ const IncomeExpenseFormInner = ({
   const hasDepositItem = itemRows.some((r) =>
     depositTypeIds.has(r.income_expense_type_id),
   );
+  const hasInternalItem = itemRows.some((r) =>
+    internalTypeIds.has(r.income_expense_type_id),
+  );
 
   // HĐ do effect dưới TỰ gắn (phân biệt với user tự chọn trong dropdown) —
   // chỉ giá trị auto mới được phép tự gỡ lại khi phiếu chuyển thành phiếu cọc.
@@ -623,7 +633,7 @@ const IncomeExpenseFormInner = ({
     }
   }, [roomContracts, voucher, form, hasDepositItem]);
   // Giá trị "tự động" của cờ KQKD (khi business_result_accounting = null).
-  const autoBusinessResult = !hasDepositItem;
+  const autoBusinessResult = !hasDepositItem && !hasInternalItem;
 
   const handleAccountChange = (accountId: string) => {
     form.setValue('account_id', accountId);
@@ -1364,7 +1374,9 @@ const IncomeExpenseFormInner = ({
                             {isAuto
                               ? hasDepositItem
                                 ? 'Tự động: có hạng mục cọc → không tính vào lợi nhuận'
-                                : 'Tự động: tính vào lợi nhuận'
+                                : hasInternalItem
+                                  ? 'Tự động: tiền nội bộ → không tính vào lợi nhuận'
+                                  : 'Tự động: tính vào lợi nhuận'
                               : effective
                                 ? 'Ép tính vào lợi nhuận (override)'
                                 : 'Ép loại khỏi lợi nhuận (override)'}

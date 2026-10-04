@@ -1,11 +1,11 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-02T07:39:30.578Z",
+  "generatedAt": "2026-10-04T02:28:08.784Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 648,
+    "ledger-applied": 651,
     "unknown": 80,
     "catalog-proven": 205,
     "superseded": 15
@@ -10988,6 +10988,39 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-02T07:20:11.461Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261003151606_danh_muc_chi_cau_truc.sql",
+      "version": "20261003151606",
+      "name": "danh_muc_chi_cau_truc",
+      "scheme": "timestamp14",
+      "sha256": "f7b8a6ed24b100ddf55ce46f49d9ff341938e9ee8d47d9b79879c0f3e6842c71",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-04T02:20:24.843Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261003151608_danh_muc_chi_du_lieu.sql",
+      "version": "20261003151608",
+      "name": "danh_muc_chi_du_lieu",
+      "scheme": "timestamp14",
+      "sha256": "f0ee665f9dea6a1e1d8c2e76e33ac741ba20a7e09eac2c19dd18eb711bf7c2ba",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-04T02:23:48.190Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261003152559_danh_muc_chi_bao_cao_cong_gop.sql",
+      "version": "20261003152559",
+      "name": "danh_muc_chi_bao_cao_cong_gop",
+      "scheme": "timestamp14",
+      "sha256": "f3e7a7da5eebe01f7646e5c231d9410003040e5fadd8344fb3fce7a13661214e",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-04T02:27:12.019Z|bien-nhan-backup"
       ]
     },
     {

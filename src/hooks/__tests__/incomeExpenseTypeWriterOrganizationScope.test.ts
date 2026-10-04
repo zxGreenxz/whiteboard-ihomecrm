@@ -21,8 +21,16 @@ describe("income/expense type writers keep organization scope", () => {
   it("resolves maintenance types from the one organization owning every batch building", () => {
     expect(maintenanceSource).toMatch(/const organizationId\s*=/);
     expect(maintenanceSource).toMatch(/\.eq\(['"]organization_id['"], organizationId\)/);
-    expect(maintenanceSource).toMatch(/organization_id:\s*organizationId/);
-    expect(maintenanceSource).toMatch(/resolveOwnType\(s, organizationId, uid\)/);
+    expect(maintenanceSource).toMatch(/resolveOwnType\(s, organizationId\)/);
+  });
+
+  it("never writes income_expense_types from the maintenance tool (danh mục chi chuẩn 03/10/2026)", () => {
+    // Bất biến cũ "không ghi hạng mục sang công ty khác" nay chặt hơn: công cụ phí bảo trì
+    // KHÔNG ghi hạng mục nào cả — chỉ superadmin / chủ công ty tạo hạng mục (RLS chặn người
+    // khác). Thiếu hạng mục thì báo nhờ chủ công ty tạo/khôi phục, không tự chèn.
+    expect(maintenanceSource).not.toMatch(/\.(insert|upsert|update|delete)\(/);
+    expect(maintenanceSource).toMatch(/pickMaintenanceIeType\(/);
+    expect(maintenanceSource).toMatch(/maintenanceIeTypeMissingMessage\(sub\)/);
   });
 
   it("resolves the Copilot category inside the selected organization — now server-side", () => {

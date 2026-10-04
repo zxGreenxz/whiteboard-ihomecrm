@@ -219,7 +219,11 @@ test('finance-v2-create-v1-pending-over-threshold', async ({ browser }) => {
   const [acc] = await sbGet(auth, 'accounts?select=id&name=eq.CANARY%20renamed&limit=1');
   const [t] = await sbGet(
     auth,
-    `income_expense_types?select=id&organization_id=eq.${b.organization_id}&type=eq.expense&limit=1`,
+    // Hạng mục chi lập tay được: writer canonical từ chối system_only (0A000); danh mục chi chuẩn
+    // 03/10/2026 thêm mục lưu trữ / ẩn tay / chuyển nội bộ — bỏ hết để thứ tự dòng không chọn nhầm.
+    `income_expense_types?select=id&organization_id=eq.${b.organization_id}&type=eq.expense` +
+      '&system_only=is.false&is_restricted=is.false&archived_at=is.null&manual_hidden=is.false' +
+      '&internal_transfer=is.false&order=name&limit=1',
   );
   const today = new Date().toISOString().slice(0, 10);
   const r = await fetch(`${auth.base}/rest/v1/rpc/create_income_expense_v1`, {
