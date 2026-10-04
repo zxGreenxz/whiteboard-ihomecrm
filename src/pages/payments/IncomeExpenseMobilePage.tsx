@@ -81,6 +81,7 @@ import { voucherLayer } from "@/lib/voucherSources";
 import { buildIncomeExpenseStatCards } from "@/lib/incomeExpenseStatCards";
 import IncomeExpenseDetailMobile from "@/components/income-expenses/IncomeExpenseDetailMobile";
 import IncomeExpenseForm from "@/components/income-expenses/IncomeExpenseForm";
+import { EmailBillImportButton } from '@/components/income-expenses/EmailBillImportButton';
 import IncomeExpenseQuickCreateDialog from "@/components/income-expenses/IncomeExpenseQuickCreateDialog";
 import IncomeExpenseBatchForm from "@/components/income-expenses/IncomeExpenseBatchForm";
 import IncomeExpenseQuickEditDialog from "@/components/income-expenses/IncomeExpenseQuickEditDialog";
@@ -656,6 +657,7 @@ export default function IncomeExpenseMobilePage() {
             </div>
             {canCreate && (
               <div className="mtop-act">
+                <EmailBillImportButton compact />
                 <button className="mtop-btn" onClick={() => setCreateOpen(true)}>
                   <Plus />
                   Phiếu

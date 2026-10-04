@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { emailBillRepository, EmailBillImportError } from '@/lib/emailBills/importRpc';
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import { rpcNullable } from "@/lib/rpcNullable";
@@ -63,6 +64,10 @@ export const useCreateIncomeExpense = () => {
       const user = await getSessionUser();
 
       if (!user) throw new Error("User not authenticated");
+
+      if (input.email_bill_source) {
+        return emailBillRepository.create(input.email_bill_organization_id ?? '', input.email_bill_source, input);
+      }
 
       // Canonical trước (phiếu thường, non-recurring): writer server-side tự
       // authorize + claim + audit hash-chain. KHÔNG còn raw-INSERT fallback
@@ -191,10 +196,15 @@ export const useCreateIncomeExpense = () => {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
+      if (data && typeof data === 'object' && 'created' in data && typeof data.created === 'boolean') {
+        toast.success(data.created ? 'Đã lưu phiếu chi từ hóa đơn Gmail. Xem trạng thái duyệt và ghi sổ trong danh sách.' : 'Hóa đơn đã được nhập trước đó. Đã tìm lại phiếu hiện có.');
+        return;
+      }
       const feedback = createdVoucherFeedback(data);
       toast[feedback.kind](feedback.message);
     },
     onError: (error) => {
+      if (error instanceof EmailBillImportError) { toast.error(error.message); return; }
       console.error("Error creating income expense:", error);
       // Hạng mục CHI hệ thống (hoa hồng, thưởng sale, cọc, thanh lý) bị máy chủ chặn lập tay.
       if (isSystemOnlyManualBlocked(error)) {
@@ -205,4 +215,3 @@ export const useCreateIncomeExpense = () => {
     },
   });
 };
-

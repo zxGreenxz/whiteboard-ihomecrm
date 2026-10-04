@@ -88,6 +88,16 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('Form sửa phiếu Chờ duyệt', () => {
+  it('Gmail prefill sets name/date/amount but no account, and only supports one expense', () => {
+    render(<IncomeExpenseForm open onOpenChange={() => {}} defaultType="EXPENSE"
+      emailBillSource={{ provider: 'grab', mailbox: 'test@gmail.com', message_id: 'abc123', receipt_id: 'GRAB123' }}
+      defaultPrefill={{ name: 'Chi Grab từ Gmail', voucher_date: '2026-08-04', items: [{ income_expense_type_id: 't1', type_name: 'Đi lại', quantity: 1, unit_price: 85000 }] }} />);
+    expect(screen.getByDisplayValue('Chi Grab từ Gmail')).toBeTruthy();
+    expect(screen.getByPlaceholderText('Số tiền')).toHaveProperty('value', '85.000');
+    expect(screen.queryByText('Cài đặt lặp lại')).toBeNull();
+    expect(screen.getByRole('tab', { name: 'Phiếu thu' })).toHaveProperty('disabled', true);
+    expect(h.create).not.toHaveBeenCalled();
+  });
   it('chỉ đổi tên ⇒ gửi đúng khoá name, không gửi hạng mục, kèm phiên bản lúc mở', async () => {
     moForm(phieu());
     fireEvent.change(screen.getByDisplayValue('Chi sửa ống nước'), { target: { value: 'Chi thay vòi nước' } });

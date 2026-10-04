@@ -873,6 +873,33 @@
       ],
       "raSoatBoi": "Claude Code — danh mục chi chuẩn 03/10/2026",
       "sha256": "f7b8a6ed24b100ddf55ce46f49d9ff341938e9ee8d47d9b79879c0f3e6842c71"
+    },
+    "supabase/migrations/20261004062237_gmail_bill_income_expense.sql": {
+      "sha256": "f44c09587c2a08c50d8d4b7b02d58269ffacf53985f1991b0b8e0fdcafab7b77",
+      "missingObjects": [
+        "table:public.email_bill_imports",
+        "function:app_private.normalize_email_bill_source_v1",
+        "function:app_private.assert_email_bill_scope_v1",
+        "function:app_private.can_replay_email_bill_v1",
+        "function:public.create_income_expense_from_email_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Migration mới cho nhập hóa đơn Gmail, chưa áp dụng production có chủ ý. Catalog production chưa có bảng và các hàm này; không có migration sau xóa chúng. Chỉ môi trường ihomecrm-test đã được dùng để diễn tập và kiểm quyền/JWT, gọi writer chuẩn, retry và hai phiên chờ khóa với transaction thắng rollback. Mọi fixture tiền được rollback. Giao hàng bằng draft PR; phải hoàn thành review, cấu hình Google, kiểm mẫu thư thật và đi qua lane migration/backup trước khi phát hành. Không coi types/catalog production hiện tại là bằng chứng migration mới đã chạy.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261004062237_gmail_bill_income_expense.sql",
+          "trich_doan": "table:public.email_bill_imports; function:app_private.normalize_email_bill_source_v1; function:app_private.assert_email_bill_scope_v1; function:app_private.can_replay_email_bill_v1; function:public.create_income_expense_from_email_v1"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown và missingObjects của 20261004062237: catalog production không có object Gmail bill import."
+        },
+        {
+          "duong_dan": "docs/engineering/GMAIL_BILL_IMPORT.md",
+          "trich_doan": "Điều kiện trước khi phát hành: migration/RPC phải qua lane và kiểm quyền, chống trùng, retry/concurrency trên TEST; cần cấu hình Google và kiểm Gmail thật."
+        }
+      ],
+      "raSoatBoi": "Codex — Gmail bill Thu chi 04/10/2026"
     }
   }
 }
