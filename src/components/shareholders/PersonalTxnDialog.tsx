@@ -32,6 +32,7 @@ export default function PersonalTxnDialog({ open, onOpenChange, txn }: Props) {
   const isEdit = !!txn;
   const root=useRef<HTMLDivElement|null>(null);
   const draftKey=useRef<string|null>(null);
+  const requestKey=useRef<string|null>(null);
   const dirty=useRef(false);
   const submitting=useRef(false);
   const [saving,setSaving]=useState(false);
@@ -52,7 +53,7 @@ export default function PersonalTxnDialog({ open, onOpenChange, txn }: Props) {
     if (open) {
       const key=txn?.id??'create';
       if(draftKey.current===key && (serverError || dirty.current || blocked))return;
-      draftKey.current=key;dirty.current=false;setBlocked(false);
+      draftKey.current=key;requestKey.current=null;dirty.current=false;setBlocked(false);
       setFieldErrors({});
       setServerError(null);
       setType(txn?.type ?? "EXPENSE");
@@ -81,12 +82,13 @@ export default function PersonalTxnDialog({ open, onOpenChange, txn }: Props) {
       description: description || null,
     };
     try {
+      requestKey.current ??= crypto.randomUUID();
       if (isEdit && txn) {
         const changes = transactionChanges(txn, values);
-        if (Object.keys(changes).length) await updateMut.mutateAsync({ id: txn.id, expected_version: txn.version, original: txn, values: changes });
+        if (Object.keys(changes).length) await updateMut.mutateAsync({ id: txn.id, expected_version: txn.version, original: txn, values: changes, request_key: requestKey.current });
       }
-      else await createMut.mutateAsync(values);
-      draftKey.current=null;dirty.current=false;
+      else await createMut.mutateAsync({...values,request_key:requestKey.current});
+      draftKey.current=null;requestKey.current=null;dirty.current=false;
       onOpenChange(false);
     } catch (error) {
       setBlocked(error instanceof PersonalFinanceError ? error.outcomeUnknown : recordWriteBlocked(error));

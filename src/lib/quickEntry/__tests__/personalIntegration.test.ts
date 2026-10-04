@@ -1,5 +1,5 @@
 import { describe,it,expect } from 'vitest';
-import { draftsFromText,draftsFromBill,enrichFromAi,type ComposeContext } from '../compose';
+import { draftsFromText,draftsFromBill,enrichFromAi,splitDraftTypes,type ComposeContext } from '../compose';
 import { toPersonalBatch,toCreateIncomeExpenseInput } from '../convert';
 import { parseAiResult } from '../aiSchema';
 import { deserializeCards,serializeCards } from '../feedStorage';
@@ -37,5 +37,51 @@ describe('real personal QuickEntry',()=>{
   const d={...s.draft,buildingId:'b',accountId:'a',lines:s.draft.lines.map(l=>({...l,categoryId:'rent'}))};
   expect(toCreateIncomeExpenseInput(d)).toMatchObject({type:'INCOME'});
   expect(toCreateIncomeExpenseInput(d)).not.toHaveProperty('personalWalletId');
+ });
+});
+
+const incomeCategory='22222222-2222-4222-8222-222222222222';
+const expenseCategory='33333333-3333-4333-8333-333333333333';
+const giftCategory='44444444-4444-4444-8444-444444444444';
+const aiResult=(value:unknown)=>{const parsed=parseAiResult(JSON.stringify(value),3);if(!parsed.ok)throw new Error('Invalid test AI');return parsed.value;};
+const mixedAi=aiResult({items:[{desc:'Lương',transactionType:'INCOME',amount_vnd:10_000_000,category:'c1'},{desc:'Ăn sáng',transactionType:'EXPENSE',amount_vnd:50_000,category:'c2'}]});
+const typedContext=(mode:'personal'|'company'):ComposeContext=>({
+ ...context,mode,
+ personalCategoryRefs:[{id:incomeCategory,name:'Lương',type:'INCOME',hidden:false},{id:expenseCategory,name:'Ăn uống',type:'EXPENSE',hidden:false},{id:giftCategory,name:'Quà',type:'INCOME',hidden:false}],
+ categories:[{id:incomeCategory,name:'Lương',type:'income',category:null},{id:expenseCategory,name:'Ăn uống',type:'expense',category:null},{id:giftCategory,name:'Quà',type:'income',category:null}],
+});
+describe.each(['personal','company'] as const)('review regressions: %s',mode=>{
+ it.each([0,10_000_000])('one parsed line amount %i retains all mixed AI items before splitting',amount=>{
+  const ctx=typedContext(mode);
+  const [s]=draftsFromText('vừa nhận lương mười triệu rồi ăn sáng năm mươi nghìn',ctx);
+  expect(s.draft.lines).toHaveLength(1);s.draft.lines[0].amount=amount;
+  const result=splitDraftTypes(enrichFromAi(s,mixedAi,ctx),ctx.newId);
+  expect(result.map(r=>({type:r.draft.transactionType,amount:r.draft.lines.reduce((sum,l)=>sum+l.amount,0)}))).toEqual([{type:'INCOME',amount:10_000_000},{type:'EXPENSE',amount:50_000}]);
+  expect(result.flatMap(r=>r.draft.lines).map(l=>mode==='personal'?l.personalCategoryId:l.categoryId)).toEqual([incomeCategory,expenseCategory]);
+ });
+ it.each([false,true])('mixed expansion preserves edits with AI items reversed=%s',reverse=>{
+  const ctx=typedContext(mode);const [s]=draftsFromText('nhận lương và ăn sáng',ctx);
+  s.draft.date='2026-09-15';s.draft.lines[0]={...s.draft.lines[0],amount:9_000_000,description:'Lương đã kiểm',personalCategoryId:giftCategory,categoryId:giftCategory};
+  s.touched=['date','lines.0.amount','lines.0.description','lines.0.personalCategoryId','lines.0.categoryId'];
+  const result=splitDraftTypes(enrichFromAi(s,{...mixedAi,items:reverse?[...mixedAi.items].reverse():mixedAi.items},ctx),ctx.newId);
+  const income=result.find(r=>r.draft.transactionType==='INCOME')!;const expense=result.find(r=>r.draft.transactionType==='EXPENSE')!;
+  expect(result).toHaveLength(2);expect(income.draft.lines[0]).toMatchObject({amount:9_000_000,description:'Lương đã kiểm',personalCategoryId:giftCategory,categoryId:giftCategory});
+  expect(expense.draft.lines[0]).toMatchObject({amount:50_000,transactionType:'EXPENSE'});expect(result.every(r=>r.draft.date==='2026-09-15')).toBe(true);
+  expect(income.touched).toContain('lines.0.amount');expect(expense.touched).not.toContain('lines.0.amount');
+ });
+ it('an ambiguous edited original remains a same-direction aggregate without dropping the other direction',()=>{
+  const ctx=typedContext(mode);const [s]=draftsFromText('nhận lương và ăn sáng',ctx);
+  s.draft.lines[0].amount=9_000_000;s.touched=['lines.0.amount'];
+  const ai={...mixedAi,items:[...mixedAi.items,{...mixedAi.items[0],desc:'Quà',amount_vnd:100_000,category:'c3'}]};
+  const result=splitDraftTypes(enrichFromAi(s,ai,ctx),ctx.newId);
+  expect(result.map(r=>r.draft.lines.map(l=>[l.transactionType,l.amount]))).toEqual([[['INCOME',9_000_000]],[['EXPENSE',50_000]]]);
+  expect(result[0].draft.lines[0].description).toContain('Quà');
+ });
+ it.each(['total','discount'] as const)('income photo %s reconciliation does not derive direction from category consensus',kind=>{
+  const value=aiResult({items:[{desc:'Lương',transactionType:'INCOME',amount_vnd:10_000_000,category:'c1'},{desc:'Quà',transactionType:'INCOME',amount_vnd:100_000,category:'c3'},...(kind==='discount'?[{desc:'Giảm trừ',transactionType:'INCOME',amount_vnd:-10_000,category:null}]:[])],...(kind==='total'?{total_vnd:10_090_000}:{})});
+  const [result]=draftsFromBill(value,typedContext(mode));
+  expect(result.draft.transactionType).toBe('INCOME');expect(result.draft.lines[0]).toMatchObject({transactionType:'INCOME',amount:10_090_000});expect(result.flags).toContain('check_total');
+  const ready={...result.draft,buildingId:id,accountId:id,lines:result.draft.lines.map(l=>({...l,categoryId:incomeCategory,personalCategoryId:incomeCategory}))};
+  if(mode==='company')expect(toCreateIncomeExpenseInput(ready).type).toBe('INCOME');else expect(toPersonalBatch(ready).rows?.[0].type).toBe('INCOME');
  });
 });

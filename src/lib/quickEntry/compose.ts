@@ -295,6 +295,7 @@ function mergedItem(ai: AiResult): AiItem {
   const sum = ai.items.reduce((s, i) => s + (i.amount_vnd ?? 0), 0);
   const cats = unique(ai.items.filter((i) => (i.amount_vnd ?? 0) > 0).map((i) => i.category));
   return {
+    transactionType: ai.items.find(item => item.transactionType)?.transactionType,
     desc: ai.items.map((i) => i.desc).join("; "),
     amount_vnd: ai.total_vnd ?? (sum > 0 ? sum : null),
     category: cats.length === 1 ? cats[0] : null,
@@ -316,16 +317,21 @@ export function draftFromBill(ai: AiResult, ctx: ComposeContext): DraftState {
     : null;
   const period = aiPeriod(ai, company) ?? { periodStart: null, periodEnd: null };
   const flags: DraftFlag[] = [];
+  // The group's direction is independent of whether its categories agree.
+  const groupType = priced[0]?.transactionType ?? 'EXPENSE';
 
-  const build = (description: string, amount: number, item: AiItem | undefined): DraftLine => ({
-    transactionType:item?.transactionType??'EXPENSE',
-    personalCategoryId: company ? null : personalCategory(item,ctx)?.id??null,
-    description: description.slice(0, MAX_DESCRIPTION),
-    amount,
-    categoryId: company ? lineCategory(item, description, fee.feeCategory, ctx) : null,
-    personalCategory: company ? null : fromIndex(item?.category ?? null, ctx.personalCategories ?? []),
-    ...period,
-  });
+  const build = (description: string, amount: number, item: AiItem | undefined): DraftLine => {
+    const typedItem: AiItem = { desc: description, amount_vnd: amount, category: null, confidence: 0.5, ...item, transactionType: item?.transactionType ?? groupType };
+    return {
+      transactionType: typedItem.transactionType,
+      personalCategoryId: company ? null : personalCategory(typedItem,ctx)?.id??null,
+      description: description.slice(0, MAX_DESCRIPTION),
+      amount,
+      categoryId: company ? lineCategory(typedItem, description, fee.feeCategory, ctx) : null,
+      personalCategory: company ? null : fromIndex(item?.category ?? null, ctx.personalCategories ?? []),
+      ...period,
+    };
+  };
 
   let lines: DraftLine[];
   if (priced.length === 0) {
@@ -423,15 +429,56 @@ export function applyAiCategories(state: DraftState, codes: ReadonlyArray<string
   return changed ? { ...state, draft: { ...state.draft, lines } } : state;
 }
 
+/** Expand an aggregate parser line before mixed directions can be merged away. */
+function expandMixedLine(state: DraftState, ai: AiResult, ctx: ComposeContext): DraftState {
+  const original = state.draft.lines[0];
+  const type = original.transactionType ?? state.draft.transactionType ?? 'EXPENSE';
+  const groups = draftsFromBill(ai, { ...ctx, newId: () => state.draft.id });
+  let lines = groups.flatMap(group => group.draft.lines);
+  const candidates = lines.filter(line => line.transactionType === type);
+  // If several AI items could be the edited original, preserve it as that type's aggregate;
+  // do not arbitrarily assign the user's changed amount/category to the first AI item.
+  const exact = candidates.filter(line => line.amount === original.amount);
+  let anchor = exact.length === 1 ? exact[0] : candidates.length === 1 ? candidates[0] : undefined;
+  if (!anchor && candidates.length > 1) {
+    const common = <K extends 'categoryId' | 'personalCategoryId' | 'personalCategory'>(key: K) =>
+      unique(candidates.map(line => line[key])).length === 1 ? candidates[0][key] : null;
+    anchor = { ...candidates[0], amount: candidates.reduce((sum, line) => sum + line.amount, 0),
+      description: candidates.map(line => line.description).join('; ').slice(0, MAX_DESCRIPTION), categoryId: common('categoryId'),
+      personalCategoryId: common('personalCategoryId'), personalCategory: common('personalCategory') };
+    let inserted = false;
+    lines = lines.flatMap(line => {
+      if (line.transactionType !== type) return [line];
+      if (inserted) return [];
+      inserted = true; return [anchor!];
+    });
+  }
+  const anchorIndex = Math.max(0, lines.indexOf(anchor ?? lines[0]));
+  const changedPaths = [...state.touched, ...state.locked];
+  const edited = { ...lines[anchorIndex] };
+  for (const key of Object.keys(original) as Array<keyof DraftLine>) {
+    const path = key === 'periodStart' || key === 'periodEnd' ? 'period' : key;
+    if (changedPaths.includes(`lines.0.${key}`) || changedPaths.includes(`lines.0.${path}`)) Object.assign(edited, { [key]: original[key] });
+  }
+  lines[anchorIndex] = edited;
+  const remap = (paths: string[]) => paths.map(path => path.replace(/^lines\.0\./, `lines.${anchorIndex}.`));
+  return { ...state, touched: remap(state.touched), locked: remap(state.locked),
+    flags: unique([...state.flags, ...groups.flatMap(group => group.flags)]),
+    draft: { ...state.draft, lines } };
+}
+
 export function enrichFromAi(state: DraftState, ai: AiResult, ctx: ComposeContext): DraftState {
   // Người dùng đã bỏ dòng: AI đọc câu GỐC nên ghép theo chỉ số/gộp món sẽ rót tiền sai dòng.
   if (state.touched.includes(LINES_EDITED)) return state;
+  const mixedExpansion = state.draft.lines.length === 1 &&
+    new Set(ai.items.filter(item => (item.amount_vnd ?? 0) > 0).map(item => item.transactionType ?? 'EXPENSE')).size > 1;
+  if (mixedExpansion) state = expandMixedLine(state, ai, ctx);
   const company = state.draft.mode === "company";
   const free = (path: string) => !state.touched.includes(path) && !state.locked.includes(path);
   const lines = state.draft.lines;
   const merged = lines.length === 1 && ai.items.length > 1 ? mergedItem(ai) : undefined;
   const pairOf = (i: number): AiItem | undefined =>
-    ai.items.length === lines.length ? ai.items[i] : lines.length === 1 ? merged : undefined;
+    mixedExpansion ? undefined : ai.items.length === lines.length ? ai.items[i] : lines.length === 1 ? merged : undefined;
   const period = aiPeriod(ai, company);
 
   const nextLines = lines.map((l, i) => {

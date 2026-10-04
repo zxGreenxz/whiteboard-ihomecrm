@@ -5,23 +5,26 @@ import { usePersonalFinance, usePersonalFinanceMutation } from './personal-finan
 import { selectTransactions, selectBalance } from '@/lib/personalFinance/selectors';
 import { transactionInput, type TransactionValues } from '@/lib/personalFinance/transactionInput';
 import { PersonalFinanceError } from '@/lib/personalFinance/service';
-import type { PendingRequest } from '@/lib/personalFinance/pendingRequests';
 import type { Mutation, PersonalTransaction as Transaction } from '@/lib/personalFinance/contract';
 export type PersonalTransaction=Transaction;
 export type PersonalTransactionFormValues=TransactionValues;
 export const usePersonalTransactions=()=>{const q=usePersonalFinance();return {...q,balance:q.data?selectBalance(q.data):undefined,data:q.data?selectTransactions(q.data).map(t=>({...t,category:q.data!.categories.find(c=>c.id===t.resolved_category_id)?.name??t.category})):undefined};};
 function useWrite<T>(build:(input:T,snapshot:NonNullable<ReturnType<typeof usePersonalFinance>['data']>)=>Mutation,label:string){
- const q=usePersonalFinance();const writer=usePersonalFinanceMutation();const held=useRef<PendingRequest|null>(null);
+ const q=usePersonalFinance();const writer=usePersonalFinanceMutation();
+ const operationOwners=useRef(new Map<string,string>());
  const mutation=useMutation({retry:false,meta:{handlesFeedback:true},mutationFn:async(input:T)=>{
   if(!q.data||q.data.owner_id!==writer.ownerId)throw new PersonalFinanceError('permission','Chờ tải ví cá nhân trước khi lưu.');
   const payload=build(input,q.data);
   const key=(input as {request_key?:string}).request_key;
-  if(held.current&&held.current.ownerId!==writer.ownerId)throw new PersonalFinanceError('permission','Phiên đăng nhập đã thay đổi.',null,true);
-  const request=writer.prepare(payload,key??held.current?.requestKey);held.current=request;
-  try{const receipt=await writer.mutateAsync(request);held.current=null;return receipt.entities[0];}
-  catch(error){if(error instanceof PersonalFinanceError&&!error.outcomeUnknown&&!['network','internal'].includes(error.kind))held.current=null;throw error;}
+  if(key&&operationOwners.current.has(key)&&operationOwners.current.get(key)!==writer.ownerId)
+   throw new PersonalFinanceError('permission','Yêu cầu thuộc phiên đăng nhập trước.',null,true);
+  // A retry names its operation explicitly. An independent confirmation without a key
+  // always gets a fresh UUID, even when an earlier identical operation remains unknown.
+  const request=writer.prepare(payload,key);
+  operationOwners.current.set(request.requestKey,request.ownerId);
+  const receipt=await writer.mutateAsync(request);return receipt.entities[0];
  },onSuccess:()=>toast.success(label),onError:(error)=>toast.error(error instanceof Error?error.message:'Chưa xác nhận được thao tác.')});
- return {...mutation,pendingRequest:held.current};
+ return {...mutation,pendingRequests:writer.pending,retryPending:writer.retry};
 }
 export const useCreatePersonalTransaction=()=>useWrite<TransactionValues>((values,s)=>({action:'transaction.create',data:transactionInput(values,s)}),'Đã thêm khoản');
 export const useUpdatePersonalTransaction=()=>useWrite<{id:string;expected_version:number;values:Partial<TransactionValues>;original:Transaction;request_key?:string}>((input,s)=>({action:'transaction.update',id:input.id,expected_version:input.expected_version,data:transactionInput(input.values,s,input.original)}),'Đã cập nhật khoản');

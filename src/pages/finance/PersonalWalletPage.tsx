@@ -40,7 +40,7 @@ export default function PersonalWalletPage() {
   const [year, setYear] = usePersistedState("flt:personal-wallet:year", currentYear());
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<PersonalTransaction | null>(null);
-  const [deleteId, setDeleteId] = useState<PersonalTransaction | null>(null);
+  const [deleteId, setDeleteId] = useState<(PersonalTransaction & {request_key:string}) | null>(null);
 
   const txnsQuery = usePersonalTransactions();
   const { data: txns = [] } = txnsQuery;
@@ -218,7 +218,7 @@ export default function PersonalWalletPage() {
                           <Button variant="ghost" size="icon" onClick={() => { setEditing(t); setDialogOpen(true); }}>
                             <Pencil className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" onClick={() => setDeleteId(t)}>
+                          <Button variant="ghost" size="icon" onClick={() => setDeleteId({...t,request_key:crypto.randomUUID()})}>
                             <Trash2 className="h-4 w-4 text-red-600" />
                           </Button>
                         </div>
@@ -242,7 +242,7 @@ export default function PersonalWalletPage() {
             <AlertDialogCancel>Huỷ</AlertDialogCancel>
             <Button variant="destructive" disabled={deleteMut.isPending} onClick={async () => {
               if (!deleteId) return;
-              try { await deleteMut.mutateAsync({ id: deleteId.id, expected_version: deleteId.version }); setDeleteId(null); } catch { /* hook báo lỗi; giữ hộp thoại để đối chiếu */ }
+              try { await deleteMut.mutateAsync({ id: deleteId.id, expected_version: deleteId.version, request_key:deleteId.request_key }); setDeleteId(null); } catch { /* hook báo lỗi; giữ hộp thoại để đối chiếu */ }
             }}>{deleteMut.isPending ? 'Đang xóa...' : 'Xóa'}</Button>
           </AlertDialogFooter>
         </AlertDialogContent>
