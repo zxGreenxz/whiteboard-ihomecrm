@@ -40,6 +40,7 @@ const FLAG_TEXT: Record<DraftFlag, string> = {
 const vnd = (n: number) => `${n.toLocaleString("vi-VN")}đ`;
 
 export interface DraftCardProps {
+  inDialog?: boolean;
   state: DraftState;
   status: CardStatus;
   today: string;
@@ -178,7 +179,7 @@ export function DraftCard(props: DraftCardProps) {
   }));
   const cashbookOptions: SearchableSelectOption[] = props.cashbooks.map((c) => ({ value: c.id, label: c.label }));
   const personalOptions=(selected:string|null|undefined):SearchableSelectOption[]=>props.personalCategories.filter(c=>c.type===(d.transactionType??'EXPENSE')&&(!c.hidden||c.id===selected)).map(c=>({value:c.id,label:c.name}));
-  const walletOptions=(props.personalWallets??[]).filter(w=>!w.hidden||w.id===d.personalWalletId).map(w=>({value:w.id,label:w.name}));
+  const walletOptions=(props.personalWallets??[]).map(w=>({value:w.id,label:w.name}));
   const reviewHref = company ? "/income-expense" : "/finance/personal-wallet";
 
   return (
@@ -210,10 +211,10 @@ export function DraftCard(props: DraftCardProps) {
           <div className="flex gap-2" role="group" aria-label="Loại giao dịch">
             {(['INCOME','EXPENSE'] as const).map(type=><Button key={type} type="button" variant={(d.transactionType??'EXPENSE')===type?'default':'outline'} aria-pressed={(d.transactionType??'EXPENSE')===type} onClick={()=>update('transactionType',{transactionType:type,lines:d.lines.map(l=>({...l,transactionType:type,categoryId:null,personalCategoryId:null,personalCategory:null}))})}>{type==='INCOME'?'Thu':'Chi'}</Button>)}
           </div>
-          {!company&&<Field label="Ví cá nhân"><SearchableSelect aria-label="Ví cá nhân" value={d.personalWalletId??undefined} options={walletOptions} placeholder="Chọn ví" onValueChange={value=>update('personalWalletId',{personalWalletId:value})}/></Field>}
+          {!company&&<Field label="Ví cá nhân"><SearchableSelect modal={props.inDialog} contentClassName={props.inDialog ? "z-[70]" : undefined} aria-label="Ví cá nhân" value={d.personalWalletId??undefined} options={walletOptions} placeholder="Chọn ví" onValueChange={value=>update('personalWalletId',{personalWalletId:value})}/></Field>}
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <Field label="Ngày giao dịch">
-              <DateInput value={d.date} aria-label="Ngày chi" onChange={(iso) => update("date", { date: iso })} />
+              {props.inDialog ? <input type="date" className="h-11 w-full rounded-md border bg-background px-3" value={d.date} aria-label="Ngày chi" onChange={e=>update("date",{date:e.target.value})}/> : <DateInput value={d.date} aria-label="Ngày chi" onChange={(iso) => update("date", { date: iso })} />}
               <span className="mt-1 flex gap-1">
                 <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => update("date", { date: today })}>
                   Hôm nay
@@ -245,7 +246,7 @@ export function DraftCard(props: DraftCardProps) {
           {company && (
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
               <Field label="Toà">
-                <SearchableSelect
+                <SearchableSelect modal={props.inDialog} contentClassName={props.inDialog ? "z-[70]" : undefined}
                   value={d.buildingId ?? undefined}
                   onValueChange={chooseBuilding}
                   options={buildingOptions}
@@ -267,7 +268,7 @@ export function DraftCard(props: DraftCardProps) {
                 )}
               </Field>
               <Field label="Phòng">
-                <SearchableSelect
+                <SearchableSelect modal={props.inDialog} contentClassName={props.inDialog ? "z-[70]" : undefined}
                   value={d.roomId ?? WHOLE_BUILDING}
                   onValueChange={(v) => update("roomId", { roomId: v === WHOLE_BUILDING ? null : v })}
                   options={roomOptions}
@@ -277,7 +278,7 @@ export function DraftCard(props: DraftCardProps) {
                 />
               </Field>
               <Field label="Sổ quỹ chi tiền">
-                <SearchableSelect
+                <SearchableSelect modal={props.inDialog} contentClassName={props.inDialog ? "z-[70]" : undefined}
                   value={d.accountId ?? undefined}
                   onValueChange={(v) => update("accountId", { accountId: v })}
                   options={cashbookOptions}
@@ -315,7 +316,7 @@ export function DraftCard(props: DraftCardProps) {
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   {company ? (
-                    <SearchableSelect
+                    <SearchableSelect modal={props.inDialog} contentClassName={props.inDialog ? "z-[70]" : undefined}
                       className="min-w-[12rem] flex-1"
                       value={l.categoryId ?? undefined}
                       onValueChange={(v) => updateLine(i, "categoryId", v)}
@@ -325,7 +326,7 @@ export function DraftCard(props: DraftCardProps) {
                       aria-label={`Hạng mục dòng ${i + 1}`}
                     />
                   ) : (
-                    <SearchableSelect
+                    <SearchableSelect modal={props.inDialog} contentClassName={props.inDialog ? "z-[70]" : undefined}
                       className="min-w-[10rem] flex-1"
                       value={l.personalCategoryId ?? undefined}
                       onValueChange={(v) => updateLine(i, "personalCategoryId", v)}

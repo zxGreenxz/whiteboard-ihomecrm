@@ -36,6 +36,7 @@ const PLACEHOLDER: Record<DraftMode, string> = {
 };
 
 export interface QuickEntryComposerProps {
+  appearance?: 'personal';
   disabled?: boolean;
   placeholder?: string;
   mode: DraftMode;
@@ -183,8 +184,8 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
   };
 
   return (
-    <div className="space-y-2 border-t bg-background p-2" data-testid="quick-entry-composer">
-      {p.modes.length > 1 && (
+    <div className={p.appearance==='personal'?'pf-composer':'space-y-2 border-t bg-background p-2'} data-testid="quick-entry-composer">
+      {(p.modes.length > 1 || p.appearance==='personal') && (
         <div className="flex gap-1" role="group" aria-label="Ghi vào">
           {p.modes.map((m) => (
             <Button

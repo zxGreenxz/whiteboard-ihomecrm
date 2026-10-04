@@ -87,6 +87,14 @@ beforeEach(() => {
 });
 afterEach(() => vi.useRealTimers());
 
+it('new personal cards keep the default wallet even when hidden on home',async()=>{
+ const r=refs();r.personalWallets[0].hidden=true;
+ h.readWithAi.mockResolvedValue(ok(ai()));
+ const {result}=mount(r);
+ await act(async()=>{await result.current.submitText('cà phê 25k','personal');});
+ expect(cardsOf(result)[0].state.draft.personalWalletId).toBe(r.personalWallets[0].id);
+});
+
 describe("mô hình người dùng chọn trên trang", () => {
   it("ảnh và nội dung bổ sung đi cùng một lượt AI và một thẻ nháp", async () => {
     h.readWithAi.mockResolvedValue(ok(ai({ items: [{ desc: "Sửa điện", amount_vnd: 300_000, category: "c1", confidence: 0.9 }], building_mention: "102LVT" })));

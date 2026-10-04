@@ -8,6 +8,8 @@ import { SIDEBAR_EASING, useSidebarState } from './useSidebarState';
 import { LucideIcon } from 'lucide-react';
 
 interface MainLayoutProps {
+  /** Personal mobile surface supplies its own bottom navigation. */
+  hideMobileHeader?: boolean;
   children: React.ReactNode;
   title?: string;
   subtitle?: string;
@@ -39,7 +41,7 @@ interface MainLayoutProps {
  * - Mobile (< lg): sidebar luôn là drawer (rail 72px quá hẹp cho ngón tay), mở
  *   bằng nút ☰ trên thanh header mobile.
  */
-const MainLayout = ({ children, title, subtitle, icon: Icon, onIconClick, fullBleed = false }: MainLayoutProps) => {
+const MainLayout = ({ children, title, subtitle, icon: Icon, onIconClick, fullBleed = false, hideMobileHeader = false }: MainLayoutProps) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { data: user } = useAuth();
   const sidebar = useSidebarState(user?.id);
@@ -49,7 +51,7 @@ const MainLayout = ({ children, title, subtitle, icon: Icon, onIconClick, fullBl
   return (
     <div className="min-h-screen bg-background">
       {/* Header — chỉ còn trên mobile (desktop đã dồn hết vào sidebar) */}
-      <div className="lg:hidden">
+      <div className={hideMobileHeader ? 'hidden' : 'lg:hidden'}>
         <Header onMenuClick={toggleMobileMenu} />
       </div>
 
@@ -97,7 +99,7 @@ const MainLayout = ({ children, title, subtitle, icon: Icon, onIconClick, fullBl
             <div className="h-[calc(100vh-4rem)] overflow-hidden lg:h-screen">{children}</div>
           ) : (
             /* Page Content (breadcrumbs removed) */
-            <div className="p-4 lg:p-6">
+            <div className={hideMobileHeader ? '' : 'p-4 lg:p-6'}>
               {/* Page Header if title is provided */}
               {title && (
                 <div className="flex items-center gap-3 mb-6">

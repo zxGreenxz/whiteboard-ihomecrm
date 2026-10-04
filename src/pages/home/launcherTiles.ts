@@ -115,6 +115,12 @@ export const LAUNCHER_SECTIONS: LauncherSection[] = [
     ],
   },
   {
+    label: 'Cá nhân',
+    items: [
+      ...launcherFieldsFor('personal-wallet').map((x) => ({ ...x, icon: Wallet, accent: '#146653' }) satisfies LauncherTile),
+    ],
+  },
+  {
     label: 'Hệ thống',
     items: [
       ...launcherFieldsFor('settings').map((x) => ({ ...x, icon: Settings, accent: '#6b7280' }) satisfies LauncherTile),

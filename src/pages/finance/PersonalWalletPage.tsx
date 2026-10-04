@@ -1,255 +1,381 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
+import {
+  Home,
+  List,
+  Plus,
+  ClipboardList,
+  ChartNoAxesColumn,
+  Eye,
+  EyeOff,
+  ChevronRight,
+  ArrowDownLeft,
+  ArrowUpLeft,
+} from "lucide-react";
 import MainLayout from "@/components/layout/MainLayout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { useMyPermissions } from "@/hooks/useMyPermissions";
+import { canUse } from "@/lib/permissionPages";
+import { usePersonalFinance } from "@/hooks/personal-finance/usePersonalFinance";
+import { useQuickEntryController } from "@/hooks/quick-entry/useQuickEntryController";
 import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
+  QuickEntryInput,
+  QuickEntryDraftFeed,
+  PersonalPendingRequests,
+} from "@/components/quick-entry/EmbeddedQuickEntry";
 import {
-  AlertDialog, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell, Legend,
-} from "recharts";
-import { Wallet, Plus, Pencil, Trash2, ArrowDownCircle, ArrowUpCircle, Scale } from "lucide-react";
-import { formatCurrency } from "@/lib/utils";
-import { StatCard } from "@/components/shareholders/StatCard";
-import { colorAt, currentYear } from "@/components/shareholders/shareholderUtils";
-import PersonalTxnDialog from "@/components/shareholders/PersonalTxnDialog";
-import {
-  usePersonalTransactions,
-  useDeletePersonalTransaction,
-  type PersonalTransaction,
-} from "@/hooks/usePersonalTransactions";
+  localMonth,
+  selectBalance,
+  selectMonth,
+} from "@/lib/personalFinance/selectors";
 import { useMyShareholder } from "@/hooks/useShareholders";
 import {
   useProfitAllocations,
   useShareholderDistributions,
   computeShareholderSummary,
 } from "@/hooks/useShareholderProfit";
-import { usePersistedState } from "@/hooks/usePersistedState";
-import { QueryRegion } from "@/components/errors/QueryRegion";
-import { LoadingState } from "@/components/loading/LoadingState";
-import { PersonalPendingRequests } from '@/components/quick-entry/EmbeddedQuickEntry';
+import { FinanceEditor } from "@/components/personal-finance/FinanceEditor";
+import {
+  Budgets,
+  Goals,
+  Ledger,
+  Management,
+  MonthPicker,
+  Reports,
+} from "@/components/personal-finance/FinanceViews";
+import {
+  money,
+  emptyFilters,
+  type Editor,
+} from "@/components/personal-finance/presentation";
+import "@/components/personal-finance/personal-finance.css";
 
+function ShareholderNotice() {
+  const me = useMyShareholder();
+  const allocations = useProfitAllocations();
+  const distributions = useShareholderDistributions();
+  if (me.error) return <p role="alert">Chưa tải được thông tin cổ đông. <button onClick={()=>void me.refetch()}>Thử lại</button></p>;
+  if (!me.data) return null;
+  if (allocations.error || distributions.error)
+    return (
+      <p role="alert">
+        Chưa tải được phần lợi nhuận cổ đông.{" "}
+        <button
+          onClick={() => {
+            void allocations.refetch();
+            void distributions.refetch();
+          }}
+        >
+          Thử lại
+        </button>
+      </p>
+    );
+  if (allocations.isLoading || distributions.isLoading)
+    return <p role="status">Đang tải phần lợi nhuận cổ đông…</p>;
+  const total = computeShareholderSummary(
+    [me.data.id],
+    allocations.data ?? [],
+    distributions.data ?? [],
+  )[me.data.id];
+  return total ? (
+    <aside className="pf-card pf-muted">
+      Từ công ty: Được chia {money(total.accrued)} · Đã ứng {money(total.paid)}{" "}
+      · Còn được nhận {money(total.remaining)}
+    </aside>
+  ) : null;
+}
 export default function PersonalWalletPage() {
-  const [year, setYear] = usePersistedState("flt:personal-wallet:year", currentYear());
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editing, setEditing] = useState<PersonalTransaction | null>(null);
-  const [deleteId, setDeleteId] = useState<(PersonalTransaction & {request_key:string}) | null>(null);
-
-  const txnsQuery = usePersonalTransactions();
-  const { data: txns = [] } = txnsQuery;
-  const deleteMut = useDeletePersonalTransaction();
-
-  // Banner cổ đông (nếu user là cổ đông): còn lại được nhận từ công ty.
-  const shareholderQuery = useMyShareholder();
-  const allocationsQuery = useProfitAllocations();
-  const distributionsQuery = useShareholderDistributions();
-  const { data: me } = shareholderQuery;
-  const { data: allocations = [] } = allocationsQuery;
-  const { data: distributions = [] } = distributionsQuery;
-  const companyRemaining = useMemo(() => {
-    if (!me) return null;
-    const s = computeShareholderSummary([me.id], allocations, distributions)[me.id];
-    return s ?? null;
-  }, [me, allocations, distributions]);
-
-  const totals = useMemo(() => {
-    let income = 0, expense = 0;
-    for (const t of txns) {
-      if (t.type === "INCOME") income += t.amount;
-      else expense += t.amount;
-    }
-    return { income, expense, balance: txnsQuery.balance ?? 0 };
-  }, [txns,txnsQuery.balance]);
-
-  const txnsYear = useMemo(() => txns.filter((t) => t.txn_date.startsWith(String(year))), [txns, year]);
-
-  const monthlyChart = useMemo(
-    () =>
-      Array.from({ length: 12 }, (_, i) => {
-        const m = i + 1;
-        const rows = txnsYear.filter((t) => Number(t.txn_date.slice(5, 7)) === m);
-        return {
-          month: `T${m}`,
-          income: rows.filter((t) => t.type === "INCOME").reduce((s, t) => s + t.amount, 0),
-          expense: rows.filter((t) => t.type === "EXPENSE").reduce((s, t) => s + t.amount, 0),
-        };
-      }),
-    [txnsYear]
+  const query = usePersonalFinance();
+  const permissionQuery = useMyPermissions();
+  const permissions = {
+    create: canUse(permissionQuery.data, "personal_finance", "create"),
+    edit: canUse(permissionQuery.data, "personal_finance", "edit"),
+    delete: canUse(permissionQuery.data, "personal_finance", "delete"),
+  };
+  const controller = useQuickEntryController("personal");
+  const [tab, setTab] = useState("home");
+  const [month, setMonth] = useState(localMonth);
+  const [hidden, setHidden] = useState(false);
+  const [sheet, setSheet] = useState<"entry" | "wallet" | "category" | null>(
+    null,
   );
-
-  const expenseByCategory = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const t of txnsYear) {
-      if (t.type !== "EXPENSE") continue;
-      const key = t.category?.trim() || "Khác";
-      m.set(key, (m.get(key) ?? 0) + t.amount);
-    }
-    return Array.from(m.entries()).map(([name, value]) => ({ name, value }));
-  }, [txnsYear]);
-
-  const years = [currentYear() + 1, currentYear(), currentYear() - 1, currentYear() - 2];
-
-  const toolbar = (
-    <div className="flex items-center gap-2">
-      <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
-        <SelectTrigger className="w-[120px]"><SelectValue /></SelectTrigger>
-        <SelectContent>{years.map((y) => <SelectItem key={y} value={String(y)}>Năm {y}</SelectItem>)}</SelectContent>
-      </Select>
-      <Button className="ml-auto" onClick={() => { setEditing(null); setDialogOpen(true); }}>
-        <Plus className="h-4 w-4 mr-2" /> Thêm khoản
-      </Button>
-    </div>
-  );
-  // Lúc chờ: chọn năm + nút Thêm khoản hiện ngay, chỗ số tổng / bảng là khối xám (không
-  // in 0đ) — chủ chốt 02/10/2026. Lỗi vẫn do QueryRegion thay cả vùng như cũ.
-  const choGiaoDich = (
-    <div className="space-y-4">
-      <LoadingState label="số tổng ví cá nhân" variant="cards" rows={3} className="py-0" />
-      {toolbar}
-      <LoadingState label="giao dịch ví cá nhân" variant="table" rows={6} onRetry={() => { void txnsQuery.refetch(); }} />
-    </div>
-  );
-
+  const [editor, setEditor] = useState<Editor | null>(null);
+  const [filters, setFilters] = useState(emptyFilters);
+  const [budgetTab, setBudgetTab] = useState("budget");
+  const s = query.data;
+  const m = s ? selectMonth(s, month) : null;
+  const props = s ? { snapshot: s, permissions, edit: setEditor } : null;
   return (
-    <MainLayout title="Ví thu chi cá nhân" subtitle="Tài chính → Cá nhân" icon={Wallet}>
-      <PersonalPendingRequests/>
-      <QueryRegion label="giao dịch ví cá nhân" queries={[txnsQuery]} loading={choGiaoDich}>
-      <div className="space-y-4">
-        {/* Thẻ "Từ công ty" chỉ có với cổ đông ⇒ chờ thì không dựng khối xám để rồi biến mất. */}
-        <QueryRegion label="phần lợi nhuận cổ đông" queries={[shareholderQuery, allocationsQuery, distributionsQuery]} skeleton="none">
-        {companyRemaining && (
-          <Card className="border-blue-200 bg-blue-50">
-            <CardContent className="p-4 flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
-              <span className="font-medium text-blue-900">Từ công ty:</span>
-              <span>Được chia: <b className="tabular-nums">{formatCurrency(companyRemaining.accrued)}</b></span>
-              <span>Đã ứng: <b className="tabular-nums">{formatCurrency(companyRemaining.paid)}</b></span>
-              <span>Còn lại được nhận: <b className="tabular-nums text-blue-700">{formatCurrency(companyRemaining.remaining)}</b></span>
-            </CardContent>
-          </Card>
-        )}
-        </QueryRegion>
-
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-          <StatCard label="Tổng thu" value={formatCurrency(totals.income)} icon={ArrowDownCircle} tone="green" />
-          <StatCard label="Tổng chi" value={formatCurrency(totals.expense)} icon={ArrowUpCircle} tone="red" />
-          <StatCard label="Số dư" value={formatCurrency(totals.balance)} icon={Scale} tone={totals.balance >= 0 ? "blue" : "red"} />
-        </div>
-
-        {toolbar}
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <Card>
-            <CardHeader className="pb-2"><CardTitle className="text-base">Thu / Chi theo tháng — {year}</CardTitle></CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={260}>
-                <BarChart data={monthlyChart}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                  <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `${(v / 1_000_000).toFixed(0)}M`} />
-                  <Tooltip formatter={(v: number) => formatCurrency(v)} />
-                  <Legend />
-                  <Bar dataKey="income" fill="#10b981" name="Thu" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="expense" fill="#ef4444" name="Chi" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2"><CardTitle className="text-base">Cơ cấu chi theo danh mục — {year}</CardTitle></CardHeader>
-            <CardContent>
-              {expenseByCategory.length === 0 ? (
-                <div className="h-[260px] grid place-items-center text-muted-foreground text-sm">Chưa có dữ liệu</div>
-              ) : (
-                <ResponsiveContainer width="100%" height={260}>
-                  <PieChart>
-                    <Pie data={expenseByCategory} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90} label={(e: any) => e.name}>
-                      {expenseByCategory.map((_, i) => <Cell key={i} fill={colorAt(i)} />)}
-                    </Pie>
-                    <Tooltip formatter={(v: number) => formatCurrency(v)} />
-                  </PieChart>
-                </ResponsiveContainer>
+    <MainLayout hideMobileHeader>
+      <div className="pf-app" data-testid="personal-finance-app">
+        {query.isLoading ? (
+          <div className="pf-card pf-loading" role="status">
+            Đang tải ví cá nhân…
+          </div>
+        ) : query.error && !s ? (
+          <div className="pf-card" role="alert">
+            Không tải được ví cá nhân.
+            <Button onClick={() => void query.refetch()}>Thử lại</Button>
+          </div>
+        ) : s && m && props ? (
+          <>
+            {tab === "home" && (
+              <section className="pf-balance">
+                <div className="pf-between">
+                  <span>Tổng số dư các ví</span>
+                  <div className="pf-balance-tools">
+                    <MonthPicker month={month} onChange={setMonth} />
+                    <button
+                      aria-label={hidden ? "Hiện số tiền" : "Ẩn số tiền"}
+                      onClick={() => setHidden(!hidden)}
+                    >
+                      {hidden ? <EyeOff size={20} /> : <Eye size={20} />}
+                    </button>
+                  </div>
+                </div>
+                <strong data-testid="total-balance">
+                  {hidden ? "••••••" : money(selectBalance(s))}
+                </strong>
+                <small>Số dư hiện tại · {s.wallets.length} ví cá nhân</small>
+                <div className="pf-balance-stats">
+                  <div>
+                    <span><ArrowDownLeft size={13} className="inline-block"/> Thu trong tháng</span>
+                    <b data-testid="month-income">
+                      {hidden ? "••••" : money(m.income)}
+                    </b>
+                  </div>
+                  <div>
+                    <span><ArrowUpLeft size={13} className="inline-block"/> Chi trong tháng</span>
+                    <b data-testid="month-expense">
+                      {hidden ? "••••" : money(m.expense)}
+                    </b>
+                  </div>
+                </div>
+              </section>
+            )}
+            {/* Keep composer mounted across tabs: text, photo and recorder state survive. */}
+            <div hidden={tab !== "home"}>
+              {permissions.create && (
+                <div className="pf-quick">
+                  <QuickEntryInput
+                    controller={controller}
+                    onSubmitted={() => setSheet("entry")}
+                    appearance="personal"
+                  />
+                </div>
               )}
-            </CardContent>
-          </Card>
-        </div>
-
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-base">Giao dịch</CardTitle></CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Ngày</TableHead>
-                    <TableHead>Loại</TableHead>
-                    <TableHead>Danh mục</TableHead>
-                    <TableHead>Mô tả</TableHead>
-                    <TableHead className="text-right">Số tiền</TableHead>
-                    <TableHead></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {txnsYear.length === 0 && (
-                    <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground">Chưa có giao dịch năm {year}</TableCell></TableRow>
-                  )}
-                  {txnsYear.map((t) => (
-                    <TableRow key={t.id}>
-                      <TableCell>{t.txn_date}</TableCell>
-                      <TableCell>
-                        <span className={t.type === "INCOME" ? "text-emerald-600" : "text-red-600"}>
-                          {t.type === "INCOME" ? "Thu" : "Chi"}
-                        </span>
-                      </TableCell>
-                      <TableCell>{t.category ?? "—"}</TableCell>
-                      <TableCell className="max-w-[200px] truncate">{t.description ?? "—"}</TableCell>
-                      <TableCell className={`text-right tabular-nums ${t.type === "INCOME" ? "text-emerald-600" : "text-red-600"}`}>
-                        {t.type === "INCOME" ? "+" : "−"}{formatCurrency(t.amount)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <Button variant="ghost" size="icon" onClick={() => { setEditing(t); setDialogOpen(true); }}>
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" onClick={() => setDeleteId({...t,request_key:crypto.randomUUID()})}>
-                            <Trash2 className="h-4 w-4 text-red-600" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
             </div>
-          </CardContent>
-        </Card>
+            {tab === "home" && (
+              <>
+                <div className="pf-wallet-strip">
+                  {s.wallets
+                    .filter((w) => !w.hidden)
+                    .map((w) => (
+                      <button
+                        key={w.id}
+                        onClick={() => {
+                          setFilters({ ...emptyFilters, wallet: w.id });
+                          setTab("transactions");
+                        }}
+                      >
+                        <small>
+                          {w.icon} {w.name}
+                        </small>
+                        <b>{hidden ? "••••" : money(w.balance)}</b>
+                      </button>
+                    ))}
+                  <button onClick={() => setSheet("wallet")}>
+                    <small>Quản lý ví</small>
+                    <Plus size={22} />
+                  </button>
+                </div>
+                <section className="pf-card">
+                  <div className="pf-between">
+                    <h2>Trong tầm tay</h2>
+                    <button
+                      className="pf-link"
+                      onClick={() => setTab("budget")}
+                    >
+                      Ngân sách <ChevronRight size={18} />
+                    </button>
+                  </div>
+                  <Budgets {...props} month={month} compact />
+                </section>
+                <button
+                  className="pf-link"
+                  onClick={() => setSheet("category")}
+                >
+                  Quản lý danh mục <ChevronRight size={18} />
+                </button>
+                <ShareholderNotice />
+              </>
+            )}
+            {tab === "transactions" && (
+              <>
+                <div className="pf-top">
+                  <input
+                    aria-label="Tìm giao dịch"
+                    placeholder="Tìm giao dịch..."
+                    value={filters.search}
+                    onChange={(e) =>
+                      setFilters({ ...filters, search: e.target.value })
+                    }
+                  />
+                  <MonthPicker month={month} onChange={setMonth} />
+                </div>
+                <Ledger
+                  {...props}
+                  month={month}
+                  filters={filters}
+                  onFilters={setFilters}
+                  manage={() => setSheet("wallet")}
+                  categories={() => setSheet("category")}
+                />
+              </>
+            )}
+            {tab === "budget" && (
+              <>
+                <div className="pf-top">
+                  <h2>Ngân sách</h2>
+                  <MonthPicker month={month} onChange={setMonth} />
+                </div>
+                <div className="pf-pills">
+                  <button
+                    className={budgetTab === "budget" ? "active" : ""}
+                    onClick={() => setBudgetTab("budget")}
+                  >
+                    Hạn mức
+                  </button>
+                  <button
+                    className={budgetTab === "goal" ? "active" : ""}
+                    onClick={() => setBudgetTab("goal")}
+                  >
+                    Mục tiêu
+                  </button>
+                </div>
+                {budgetTab === "budget" ? (
+                  <Budgets {...props} month={month} />
+                ) : (
+                  <Goals {...props} />
+                )}
+              </>
+            )}
+            {tab === "reports" && (
+              <>
+                <Reports
+                  snapshot={s}
+                  month={month}
+                  onMonth={setMonth}
+                  onDrill={(category, type) => {
+                    setFilters({ ...emptyFilters, category, type });
+                    setTab("transactions");
+                  }}
+                />
+              </>
+            )}
+            <PersonalPendingRequests
+              mayRetry={(action) =>
+                permissions[
+                  action.endsWith(".delete")
+                    ? "delete"
+                    : action.endsWith(".update")
+                      ? "edit"
+                      : "create"
+                ]
+              }
+            />
+            <Dialog
+              open={sheet !== null}
+              onOpenChange={(open) => {
+                if (!open) setSheet(null);
+              }}
+            >
+              <DialogContent className="pf-dialog pf-sheet">
+                <DialogHeader>
+                  <DialogTitle>
+                    {sheet === "entry"
+                      ? "Ghi thu chi"
+                      : sheet === "wallet"
+                        ? "Quản lý ví"
+                        : "Quản lý danh mục"}
+                  </DialogTitle>
+                  <DialogDescription>
+                    {sheet === "entry"
+                      ? "Rà soát nháp trước khi lưu. Đóng vẫn giữ nháp."
+                      : "Các thay đổi áp dụng cho ví cá nhân của bạn."}
+                  </DialogDescription>
+                </DialogHeader>
+                {sheet === "entry" ? (
+                  <>
+                    <div className="pf-tools">
+                      {permissions.create && (
+                        <>
+                          <Button
+                            onClick={() => setEditor({ entity: "transaction" })}
+                          >
+                            Thêm giao dịch
+                          </Button>
+                          <Button
+                            variant="outline"
+                            onClick={() => setEditor({ entity: "transfer" })}
+                          >
+                            Chuyển ví
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                    <QuickEntryDraftFeed controller={controller} inDialog />
+                  </>
+                ) : (
+                  sheet && <Management {...props} kind={sheet} />
+                )}
+              </DialogContent>
+            </Dialog>
+            {editor && (
+              <FinanceEditor
+                key={`${editor.entity}-${editor.record?.id ?? "new"}-${editor.remove ?? false}`}
+                editor={editor}
+                snapshot={s}
+                permissions={permissions}
+                onClose={() => setEditor(null)}
+              />
+            )}
+          </>
+        ) : (
+          <p role="status">Đăng nhập để xem ví cá nhân.</p>
+        )}
+        <nav className="pf-nav" aria-label="Điều hướng ví cá nhân">
+          {[
+            { id: "home", label: "Tổng quan", Icon: Home },
+            { id: "transactions", label: "Giao dịch", Icon: List },
+            { id: "entry", label: "Ghi thu chi", Icon: Plus },
+            { id: "budget", label: "Ngân sách", Icon: ClipboardList },
+            { id: "reports", label: "Báo cáo", Icon: ChartNoAxesColumn },
+          ].map(({ id, label, Icon }) =>
+            id === "entry" && !permissions.create ? null : (
+              <button
+                key={id}
+                className={`${tab === id ? "active" : ""} ${id === "entry" ? "pf-add" : ""}`}
+                aria-label={label}
+                aria-current={tab === id ? "page" : undefined}
+                disabled={!s}
+                onClick={() =>
+                  id === "entry" ? setSheet("entry") : setTab(id)
+                }
+              >
+                <Icon size={id === "entry" ? 26 : 20} />
+                {id !== "entry" && <span>{label}</span>}
+              </button>
+            ),
+          )}
+        </nav>
       </div>
-
-      <AlertDialog open={!!deleteId} onOpenChange={(o) => { if (!o) setDeleteId(null); }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Xoá khoản này?</AlertDialogTitle>
-            <AlertDialogDescription>Thao tác này sẽ ẩn khoản khỏi ví cá nhân của bạn.</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Huỷ</AlertDialogCancel>
-            <Button variant="destructive" disabled={deleteMut.isPending} onClick={async () => {
-              if (!deleteId) return;
-              try { await deleteMut.mutateAsync({ id: deleteId.id, expected_version: deleteId.version, request_key:deleteId.request_key }); setDeleteId(null); } catch { /* hook báo lỗi; giữ hộp thoại để đối chiếu */ }
-            }}>{deleteMut.isPending ? 'Đang xóa...' : 'Xóa'}</Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-      </QueryRegion>
-      {/* Ngoài vùng chờ: nút "Thêm khoản" đã hiện ngay khi giao dịch còn đang tải. */}
-      <PersonalTxnDialog open={dialogOpen} onOpenChange={(o) => { setDialogOpen(o); if (!o) setEditing(null); }} txn={editing} />
     </MainLayout>
   );
 }

@@ -13,6 +13,7 @@ import type { CardStatus } from "@/lib/quickEntry/cardStatus";
 import type { DraftState } from "@/lib/quickEntry/compose";
 import type { QuickDraft } from "@/lib/quickEntry/draft";
 import { PERSONAL_CATEGORIES } from "@/lib/personalCategories";
+import type { Wallet } from '@/lib/personalFinance/contract';
 
 const today = "2026-10-01";
 const buildings = [
@@ -56,6 +57,7 @@ function Harness(p: {
   onDiscard?: () => void;
   spy?: (s: DraftState) => void;
   aiModel?: string | null;
+  personalWallets?: Wallet[];
 }) {
   const [s, setS] = useState(p.initial);
   return (
@@ -69,6 +71,7 @@ function Harness(p: {
         categories={categories}
         cashbooks={p.cashbookList ?? cashbooks}
         personalCategories={PERSONAL_CATEGORIES.map((name,i)=>({id:'cat-'+i,name,type:'EXPENSE',hidden:false}))}
+        personalWallets={p.personalWallets}
         photoUrl={p.photoUrl}
         aiModel={p.aiModel}
         defaultAccountFor={(b) => (b ? `acc-${b}` : null)}
@@ -288,6 +291,11 @@ describe("DraftCard — trạng thái máy chủ", () => {
 });
 
 describe("DraftCard — cá nhân", () => {
+  it('keeps a selected hidden wallet readable',()=>{
+    const hidden={id:'hidden',user_id:'u',name:'Ví ẩn',kind:'cash',icon:'wallet',hidden:true,is_default:false,opening_balance:0,balance:0,version:1} as Wallet;
+    render(<Harness initial={state({mode:'personal',personalWalletId:'hidden'})} personalWallets={[hidden]}/>);
+    expect(screen.getByRole('combobox',{name:'Ví cá nhân'}).textContent).toContain('Ví ẩn');
+  });
   it("không có toà/sổ quỹ; ảnh chỉ để AI đọc, không lưu", () => {
     const s = state({
       mode: "personal", personalWalletId:"wallet",

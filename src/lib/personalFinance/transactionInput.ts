@@ -9,8 +9,8 @@ export function transactionInput(values:Partial<TransactionValues>,s:Snapshot,ex
  const data:Record<string,unknown>={...fields};
  const type=values.type??existing?.type;
  if(!existing||values.wallet_id!==undefined){
-  const wallet=s.wallets.find(w=>w.id===(values.wallet_id??s.wallets.find(w=>w.is_default&&!w.hidden)?.id));
-  if(!wallet||wallet.hidden&&wallet.id!==existing?.resolved_wallet_id)throw new PersonalFinanceError('validation','Chọn ví cá nhân đang sử dụng.');
+  const wallet=s.wallets.find(w=>w.id===(values.wallet_id??s.wallets.find(w=>w.is_default)?.id));
+  if(!wallet)throw new PersonalFinanceError('validation','Chọn ví cá nhân đang sử dụng.');
   data.wallet_id=wallet.id;
  }
  if(!existing||category!==undefined||values.category_id!==undefined||values.type!==undefined&&values.type!==existing.type){

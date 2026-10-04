@@ -338,7 +338,7 @@ export function useQuickEntryFeed(opts: {
     refs: refs.resolveRefs,
     categories: refs.categories,
     personalCategoryRefs:(refs.personalCategories??[]).filter(c=>!c.hidden),
-    personalWalletId:(refs.personalWallets??[]).find(w=>w.is_default&&!w.hidden)?.id??null,
+    personalWalletId:(refs.personalWallets??[]).find(w=>w.is_default)?.id??null,
     newId: () => crypto.randomUUID(),
     defaultAccountFor: refs.defaultAccountFor,
   });
