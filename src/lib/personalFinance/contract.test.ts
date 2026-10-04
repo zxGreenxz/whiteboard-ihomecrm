@@ -43,6 +43,13 @@ describe('personal finance boundary', () => {
     const snapshot = { owner_id: id, schema_version: 1, wallets: [], categories: [], transfers: [], budgets: [], goals: [], transactions: [{ id, user_id: id, version: 1, ...row, amount: 12.25, description: null, category: 'legacy', resolved_wallet_id: id, resolved_category_id: id, created_at: '2026-10-05T00:00:00+00:00', updated_at: '2026-10-05T00:00:00+00:00', deleted_at: null }] };
     expect(parseSnapshot(snapshot, id).transactions[0].amount).toBe(12.25);
   });
+  it.each(['\t', '😀'.repeat(50)])('preserves PostgreSQL-valid legacy category labels verbatim: %j', legacyName => {
+    const snapshot = { owner_id: id, schema_version: 1, wallets: [], transactions: [], transfers: [], budgets: [], goals: [], categories: [{ id, user_id: id, version: 1, type: 'EXPENSE', name: legacyName, icon: '🧾', color: '#adafa7', hidden: false, seed_key: null, legacy_name: legacyName }] };
+    const category = parseSnapshot(snapshot, id).categories[0];
+    expect(category.name).toBe(legacyName);
+    expect(category.legacy_name).toBe(legacyName);
+    expect(mutationSchema.safeParse({ action: 'category.create', data: { type: 'EXPENSE', name: legacyName } }).success).toBe(false);
+  });
   it('marks malformed receipt as unknown outcome and keeps request key for retry', async () => {
     const requests: unknown[] = [];
     const client: PersonalFinanceRpcClient = { rpc: async (_name, args) => { requests.push(args); return { data: {}, error: null }; } };

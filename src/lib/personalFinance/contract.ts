@@ -45,7 +45,8 @@ export const mutationSchema = z.object({
 export const normalizeMutation = (input: unknown): Mutation => mutationSchema.parse(input);
 const base = z.object({ id: uuid, user_id: uuid, version });
 export const walletSchema = base.extend({ name, kind: z.enum(['cash', 'bank', 'ewallet', 'saving', 'other']), icon, opening_balance: z.number().finite(), hidden: z.boolean(), is_default: z.boolean(), balance: z.number().finite() });
-export const categorySchema = base.extend({ type, name, icon, color: z.string(), hidden: z.boolean(), seed_key: z.string().nullable(), legacy_name: z.string().nullable() });
+// Legacy labels use PostgreSQL character/space rules; output must not trim or apply new-input UTF-16 limits.
+export const categorySchema = base.extend({ type, name: z.string().min(1), icon, color: z.string(), hidden: z.boolean(), seed_key: z.string().nullable(), legacy_name: z.string().nullable() });
 export const transactionSchema = base.extend({ type, amount: z.number().finite().nonnegative(), txn_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), description: z.string().nullable(), category: z.string().nullable(), wallet_id: uuid.nullable(), category_id: uuid.nullable(), resolved_wallet_id: uuid, resolved_category_id: uuid.nullable(), created_at: z.string().datetime({ offset: true }), updated_at: z.string().datetime({ offset: true }), deleted_at: z.string().datetime({ offset: true }).nullable() });
 export const transferSchema = base.extend({ source_wallet_id: uuid, target_wallet_id: uuid, amount, txn_date: dateSchema, note: z.string().nullable(), goal_id: uuid.nullable(), deleted_at: z.string().nullable() });
 export const budgetSchema = base.extend({ category_id: uuid.nullable(), amount, type: z.literal('EXPENSE') });

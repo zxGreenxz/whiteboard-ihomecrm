@@ -176,7 +176,7 @@ BEGIN
   IF entity='category' AND (old->>'seed_key' IS NOT NULL OR EXISTS(SELECT 1 FROM public.personal_transactions WHERE user_id=u AND category_id=p_id) OR EXISTS(SELECT 1 FROM public.personal_legacy_category_map WHERE user_id=u AND category_id=p_id) OR EXISTS(SELECT 1 FROM public.personal_budget_limits WHERE user_id=u AND category_id=p_id)) THEN RAISE EXCEPTION 'personal_conflict: category in use' USING ERRCODE='23514'; END IF;
   IF entity='goal' AND EXISTS(SELECT 1 FROM public.personal_wallet_transfers WHERE user_id=u AND goal_id=p_id) THEN RAISE EXCEPTION 'personal_conflict: goal has contributions' USING ERRCODE='23514'; END IF;
  END IF;
- IF entity='category' AND (op='delete' OR coalesce((d->>'hidden')::boolean,false)) AND NOT coalesce((old->>'hidden')::boolean,false) AND NOT EXISTS(SELECT 1 FROM public.personal_categories WHERE user_id=u AND type=old->>'type' AND NOT hidden AND id<>p_id) THEN RAISE EXCEPTION 'personal_conflict: last visible category' USING ERRCODE='23514'; END IF;
+ IF entity='category' AND op<>'create' AND (op='delete' OR coalesce((d->>'hidden')::boolean,false)) AND NOT coalesce((old->>'hidden')::boolean,false) AND NOT EXISTS(SELECT 1 FROM public.personal_categories WHERE user_id=u AND type=old->>'type' AND NOT hidden AND id<>p_id) THEN RAISE EXCEPTION 'personal_conflict: last visible category' USING ERRCODE='23514'; END IF;
  IF op<>'delete' THEN
   IF entity='transaction' THEN
    IF op='create' AND NOT(d ?& ARRAY['type','amount','txn_date','wallet_id','category_id']) THEN RAISE EXCEPTION 'personal_validation: transaction required fields' USING ERRCODE='22023'; END IF;

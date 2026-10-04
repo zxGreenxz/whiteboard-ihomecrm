@@ -15,6 +15,7 @@ const cases = [
  { name: 'owner', from: "IF old IS NULL THEN RAISE EXCEPTION 'personal_permission: entity'", to: "IF false THEN RAISE EXCEPTION 'personal_permission: entity'", marker: 'FAIL owner isolation' },
  { name: 'idempotency', from: 'RETURN cached.result;', to: 'NULL; -- mutant: ignore successful durable replay', marker: 'FAIL idempotency' },
  { name: 'transfer', from: 'CASE WHEN target_wallet_id=w.id THEN amount ELSE -amount END', to: 'CASE WHEN target_wallet_id=w.id THEN amount ELSE amount END', marker: 'FAIL transfer balanced' },
+ { name: 'last-visible-category', from: "IF entity='category' AND op<>'create' AND", to: "IF false AND op<>'create' AND", marker: 'last visible category' },
 ];
 for (const c of cases) {
  console.log(`MUTATION ${c.name}`);
@@ -30,4 +31,4 @@ for (const c of cases) {
   console.log(`RESTORED source ${original} and TEST correct migration`);
  }
 }
-console.log('PASS 3 meaningful mutants killed; source and TEST restored');
+console.log(`PASS ${cases.length} meaningful mutants killed; source and TEST restored`);

@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { randomUUID, randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { credential, ketNoi, batBuocDichTest, psql, psqlJson, lit } from './test-env/lib.mjs';
+import { parseSnapshot } from '../src/lib/personalFinance/contract.ts';
 
 export const migrations = ['supabase/migrations/20261004212309_personal_finance_wallets.sql', 'supabase/migrations/20261004212701_personal_finance_rpc_only.sql'];
 const cred = credential(), { test } = await ketNoi(cred);
@@ -34,7 +35,7 @@ async function rest(actor, path, body, method = body === undefined ? 'GET' : 'PO
  return { ok: response.ok, status: response.status, data: text ? JSON.parse(text) : null };
 }
 async function rpc(actor, name, args = {}) { return rest(actor, `rpc/personal_finance_${name}`, args); }
-async function must(actor, name, args = {}) { const r = await rpc(actor, name, args); assert(r.ok, `${name}: HTTP ${r.status} ${r.data?.code ?? ''} ${r.data?.message ?? ''}`); return r.data; }
+async function must(actor, name, args = {}) { const r = await rpc(actor, name, args); assert(r.ok, `${name}: HTTP ${r.status} ${r.data?.code ?? ''} ${r.data?.message ?? ''}`); return name === 'snapshot' ? parseSnapshot(r.data, actor.id) : r.data; }
 const mutate = (actor, payload, key = randomUUID()) => must(actor, 'mutate', { p_request_key: key, p_payload: payload });
 const create = async (actor, entity, data) => (await mutate(actor, { action: `${entity}.create`, data })).entities[0];
 const update = (actor, entity, row, data) => mutate(actor, { action: `${entity}.update`, id: row.id, expected_version: row.version, data });
@@ -131,6 +132,11 @@ try {
   await reject(owner, { action: 'transfer.create', data: { source_wallet_id: saving.id, target_wallet_id: wallet.id, amount: 1, txn_date: txn.txn_date, goal_id: goal.id } }, 'goal wrong target');
  });
  await check('used/default category delete blocked; hidden references retained; last visible protected', async () => {
+  const archived = await create(owner, 'category', { type: 'EXPENSE', name: 'Created hidden', hidden: true });
+  assert.equal(archived.hidden, true, 'hidden create must succeed without consuming a visible category');
+  const afterHiddenCreate = await must(owner, 'snapshot');
+  assert(afterHiddenCreate.categories.some(c => c.id === archived.id && c.hidden));
+  assert.equal(afterHiddenCreate.categories.filter(c => c.type === 'EXPENSE' && !c.hidden).length, 16);
   await reject(owner, { action: 'category.delete', id: expense.id, expected_version: 1, data: {} }, 'seed category delete');
   const custom = await create(owner, 'category', { type: 'EXPENSE', name: 'TEST custom' });
   await create(owner, 'budget', { category_id: custom.id, amount: 1000 });
@@ -154,13 +160,18 @@ try {
   await mutate(owner, { action: 'transaction.batch', rows: [txn] });
  });
  await check('historical long/blank/null labels, decimals, old dates survive bootstrap', async () => {
-  const labels = ['X'.repeat(300), '   ', '', null], ids = labels.map(() => randomUUID());
+  const labels = ['X'.repeat(300), '   ', '', null, '\t', '😀'.repeat(50)], ids = labels.map(() => randomUUID());
   for (let i = 0; i < labels.length; i++) psql(test, `INSERT INTO public.personal_transactions(id,user_id,type,amount,txn_date,category,description) VALUES(${lit(ids[i])},${lit(owner.id)},'INCOME',12.25,'1800-01-01',${labels[i] === null ? 'NULL' : lit(labels[i])},${lit('long description '.repeat(100))});`);
   await must(owner,'bootstrap'); const first = await must(owner,'snapshot'); await must(owner,'bootstrap'); const again = await must(owner,'snapshot');
   for (let i = 0; i < labels.length; i++) {
    const row = again.transactions.find(t => t.id === ids[i]); assert.equal(row.category,labels[i]); assert.equal(row.amount,12.25); assert.equal(row.txn_date,'1800-01-01');
    assert.equal(row.resolved_category_id,first.transactions.find(t => t.id === ids[i]).resolved_category_id);
    if (labels[i] !== null) assert(row.resolved_category_id);
+   if (i >= 4) {
+    const category = again.categories.find(c => c.id === row.resolved_category_id);
+    assert.equal(category.name, labels[i], 'actual TS boundary must preserve PostgreSQL legacy name');
+    assert.equal(category.legacy_name, labels[i]);
+   }
   }
  });
  await check('unused CRUD, stale delete, global/category budget independence and ewallet', async () => {
