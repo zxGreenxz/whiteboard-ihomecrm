@@ -7,7 +7,7 @@ Ngày khảo sát: 04/10/2026. Mốc hiện trạng: `a9e82b66`.
 - Chạy `npm run dev -- --host 127.0.0.1`; mở `/demos/personal-finance/index.html`.
 - Báo cáo có sơ đồ: `/demos/personal-finance/flow.html`.
 - Dữ liệu giả lưu ở khóa `ihome:personal-finance-demo:v1`; Quản lý → Đặt lại dữ liệu mẫu để thử từ đầu.
-- Không đăng nhập hoặc ghi Supabase. Ảnh chỉ object URL trong phiên; không upload. Voice vẫn dùng câu mẫu, chưa có OCR. Theo yêu cầu duyệt thiết kế ngày 05/10, bỏ nhãn DEMO trên màn chính và khối nhập mẫu trong form; giới hạn bản thử còn trong Góc cá nhân và báo cáo thiết kế.
+- Không đăng nhập hoặc ghi Supabase. Ảnh chỉ object URL trong phiên; không upload. Voice vẫn dùng câu mẫu, chưa có OCR. Theo yêu cầu duyệt thiết kế ngày 05/10, bỏ nhãn DEMO trên màn chính và khối nhập mẫu trong form; giới hạn bản thử được ghi trong báo cáo thiết kế và tài liệu này.
 
 ## Hiện trạng
 
@@ -48,7 +48,7 @@ STT/OCR dùng luồng Quick Entry hiện có, UI phân biệt gửi để tạo 
 
 ## Kiểm chứng
 
-- Playwright: **11/11 đạt**, tạo/sửa/xóa khoản; category tùy chỉnh và chống trùng; voice tự tạo nháp; ảnh kèm hai khoản; transfer không đổi tổng tiền/thu/chi; ngân sách, góp quỹ, report drill-down; nội dung nhập không chạy HTML; bốn nút nhập nhanh ở Tổng quan mở đúng bộ chọn ảnh/camera/voice; đổi nơi gửi vẫn giữ ảnh/chữ/form, bản nháp giữ đúng nơi nhận và khoản công ty thử nghiệm không nhập vào ví cá nhân.
+- Playwright: **16/16 đạt**, tạo/sửa/xóa khoản; category tùy chỉnh và chống trùng; voice tự tạo nháp; ảnh kèm hai khoản; transfer không đổi tổng tiền/thu/chi; ngân sách, góp quỹ, report drill-down; nội dung nhập không chạy HTML; bốn nút nhập nhanh ở Tổng quan mở đúng bộ chọn ảnh/camera/voice; đổi nơi gửi vẫn giữ ảnh/chữ/form, bản nháp giữ đúng nơi nhận và khoản công ty thử nghiệm không nhập vào ví cá nhân; cấu hình ví, ẩn/hiện, xóa có xác nhận và giữ liên kết giao dịch; CRUD danh mục, thêm ngay trong form ngân sách, tính chi theo danh mục từ nhiều ví, loại trừ chuyển ví/công ty và bộ lọc tháng gọn trên bốn màn.
 - Layout: **320, 390, 430, 1280px**, cả bốn màn hình và báo cáo flow; không tràn ngang toàn trang. Ảnh kiểm UI ở `test-results/` (ignored). Không có console/page error trong suite; toàn bộ request nghiệp vụ ngoài server demo bị chặn.
 - `npm run typecheck:e2e`: đạt. `npm run docs:check`: đạt.
 - `npm run build` và `npm run gate:bundle`: đạt. Demo được copy đủ 5 file vào `dist/demos/personal-finance/`.
@@ -72,3 +72,37 @@ Người dùng yêu cầu chỉnh bản đang xem trước, chỉ hiện thực 
 - Nơi nhận gắn với nháp lúc bấm Gửi; đổi bộ chọn sau đó không âm thầm chuyển nháp đã tạo. Voice khóa bộ chọn trong lúc mô phỏng thu âm. Giao dịch cá nhân đã lưu và chuyển ví giữ nơi nhận ban đầu.
 - Để thử thao tác trên thiết kế, khoản Công ty lưu riêng trong `companyTransactions` dưới khóa localStorage của bản thử, không cộng vào số dư, lịch sử, ngân sách hay báo cáo cá nhân; chưa có trang sổ công ty trong prototype. Đây không phải phiếu thu/chi thật.
 - Khi được chốt thiết kế: áp dụng giao diện này trong app, dùng các quyền và luồng ghi cá nhân/công ty hiện hữu, lấy danh mục và sổ quỹ đúng nơi nhận. Không mang câu voice mẫu, dữ liệu giả hoặc localStorage prototype vào app thật.
+
+### Thu gọn đầu trang Tổng quan
+
+Bỏ tiêu đề “Tháng này của bạn” và mô tả phía trên thẻ số dư. Bộ chọn tháng chuyển vào góc phải trong thẻ, ngay bên trái nút ẩn/hiện số dư; định dạng ngắn `9.2026`. Giữ hai nút tháng trước/sau và phép lọc số liệu hiện có. Màn hẹp tự xuống dòng phần điều khiển để giữ vùng chạm 44px và không chồng lên nhãn số dư. Chỉ áp dụng cho bản thiết kế đang duyệt.
+
+Khung nhập nhanh trên Tổng quan bỏ biểu tượng trang trí, tiêu đề gợi ý, câu ví dụ và mô tả. Chỉ còn ô nhập, bốn nút thao tác và bộ chọn Cá nhân / Công ty bên dưới; bỏ nhãn “Gửi thu chi vào” trên khung này và thu gọn padding/khoảng cách.
+
+### Quản lý và cấu hình ví
+
+- Mở từ **Lọc theo ví → Thêm ví / Quản lý ví**, hoặc nút Quản lý ví cạnh các thẻ ví ở Tổng quan.
+- Mỗi ví có nút Sửa riêng. Form cấu hình gồm tên, loại (ngân hàng, tiền mặt, ví điện tử, tiết kiệm, khác), biểu tượng, số dư ban đầu và công tắc hiển thị trên Tổng quan. Hiển thị số dư hiện tại để đối chiếu.
+- Đổi tên/biểu tượng/loại giữ ID ví và toàn bộ liên kết giao dịch. Sửa số dư ban đầu chỉ thay số dư, không tính là thu nhập tháng. Chống tên trùng và số tiền không hợp lệ.
+- Ẩn chỉ bỏ thẻ ví trên Tổng quan; ví vẫn có trong bộ lọc và form giao dịch, tổng số dư và báo cáo vẫn tính đầy đủ.
+- Ví tự thêm chưa có giao dịch được xóa sau xác nhận và có đường Giữ lại. Ví đã được dùng trong thu/chi hoặc chuyển tiền, ví mặc định và ví gắn mục tiêu tiết kiệm được giữ để tránh đứt liên kết; form nêu rõ lý do và cho phép ẩn.
+- Đã kiểm thêm/sửa/ẩn/xóa và tải lại localStorage; tên ví mới xuất hiện trong giao dịch cũ; form không tràn ở 320/390/452px. Backend, quyền và cấu hình ví của ứng dụng thật vẫn chờ chốt thiết kế.
+
+### Danh mục và phạm vi ngân sách
+
+- Đổi nhãn Kế hoạch thành **Ngân sách**. Quản lý danh mục mở từ biểu tượng thẻ cạnh phần Theo danh mục; có hai nhóm Thu nhập / Chi tiêu, thêm tên và biểu tượng, sửa tên, ẩn hoặc xóa danh mục tự tạo chưa dùng.
+- Danh mục đã có giao dịch/ngân sách và danh mục gợi ý mặc định được giữ; có thể ẩn khỏi các bộ chọn mới. Giao dịch cũ và ngân sách giữ ID khi đổi tên/ẩn. Giữ ít nhất một danh mục hiển thị cho mỗi loại thu/chi. Bộ phân tích câu mẫu không chọn danh mục đã ẩn.
+- Form ngân sách có nút **Thêm danh mục**, giữ số tiền đang điền và chọn ngay danh mục vừa tạo.
+- **Ngân sách tháng** là trần tổng chi cá nhân của tháng đang xem, tính từ tất cả ví. **Theo danh mục** là hạn mức riêng cho từng danh mục, cũng tính từ tất cả ví. Hai mức độc lập; tổng hạn mức danh mục không tự thay trần tháng.
+- Chỉ khoản chi cá nhân được tính: thu nhập, chuyển ví và khoản công ty bị loại. Các hạn mức hiện lặp lại hằng tháng; chưa hỗ trợ ngân sách theo từng ví hoặc lịch sử hạn mức riêng từng tháng. Thử ngân hàng + tiền mặt, chuyển ví, khoản công ty và đổi kỳ tháng đều đạt.
+
+### Bố cục thống nhất, không header
+
+Bỏ thanh logo/tên app/cài đặt/TÔI và toàn bộ heading/mô tả đầu trang trên cả bốn màn. Điều hướng dưới vẫn có Tổng quan, Giao dịch, nút ghi thu chi, Ngân sách và Báo cáo.
+
+- Tổng quan: tháng dạng `9.2026` nằm trước con mắt trong thẻ số dư.
+- Giao dịch: bộ chọn tháng ngắn nằm bên phải ô tìm kiếm; đổi tháng giữ từ khóa đang lọc.
+- Ngân sách: tháng nằm bên phải tiêu đề trong thẻ ngân sách; phạm vi “Tất cả ví cá nhân” ngay dưới tên thẻ. Nút sửa tiền ở cạnh số tiền.
+- Báo cáo: bộ chọn tháng thay vị trí “Tiền đã đi đâu?”, bên trái nút Chi/Thu; hai stat thu/chi đứng đầu trang.
+
+Người dùng đã chốt thiết kế ngày 05/10/2026 và yêu cầu rà soát logic, hiện thực sản phẩm rồi đưa lên production. Bộ mã trong `public/demos/` vẫn là bản thử; giai đoạn tích hợp phải dùng dữ liệu thật, quyền hiện hữu và các gate tài chính/phát hành theo Project Contract. Thay đổi cuối của thiết kế: bỏ biểu tượng kính lúp và căn lại padding ô tìm giao dịch.

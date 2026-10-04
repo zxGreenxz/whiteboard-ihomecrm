@@ -165,7 +165,7 @@ test('internal transfer preserves total balance and income/expense totals',async
  expect((await stateOf(page)).transactions[0]).toMatchObject({type:'transfer',amount:100000,wallet:'bank',toWallet:'cash'});
 });
 test('budget changes, goal contribution and report drill-down are interactive',async({page})=>{
- await nav(page,'Kế hoạch');await page.getByRole('button',{name:'Sửa ngân sách Mua sắm',exact:true}).click();
+ await nav(page,'Ngân sách');await page.getByRole('button',{name:'Sửa ngân sách Mua sắm',exact:true}).click();
  await page.getByRole('textbox',{name:'Giới hạn mỗi tháng'}).fill('500k');await page.getByRole('button',{name:'Lưu ngân sách',exact:true}).click();await expect(page.getByText('Vượt 390.000 ₫ · 178% đã dùng')).toBeVisible();
  await page.getByRole('button',{name:'Mục tiêu tiết kiệm',exact:true}).click();await page.getByRole('button',{name:'Bỏ thêm vào quỹ',exact:true}).click();
  await page.getByRole('textbox',{name:'Số tiền tiết kiệm'}).fill('1tr');await page.getByRole('button',{name:'Lưu',exact:true}).click();expect((await stateOf(page)).goals[0].saved).toBe(6000000);
@@ -182,15 +182,184 @@ test('income uses income categories; category names render as text, not markup',
  await page.getByRole('button',{name:'Thêm danh mục',exact:true}).click();await page.getByRole('textbox',{name:'Tên danh mục'}).fill('<img src=x onerror=alert(1)>');await page.getByRole('button',{name:'Tạo danh mục',exact:true}).click();await expect(page.getByRole('button',{name:'🏷️ <img src=x onerror=alert(1)>',exact:true})).toBeVisible();expect(await page.locator('img[src=x]').count()).toBe(0);
  await page.getByRole('textbox',{name:'Số tiền',exact:true}).fill('2tr');await page.getByRole('button',{name:'Lưu giao dịch',exact:true}).click();expect((await stateOf(page)).transactions[0].type).toBe('income');
 });
+test('wallet configuration from filter supports create, edit, hide, reload and confirmed deletion',async({page},testInfo)=>{
+ await nav(page,'Giao dịch');await page.getByRole('button',{name:'Mọi ví',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Quản lý ví',exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'Thêm ví',exact:true}).click();
+ await page.getByRole('textbox',{name:'Tên ví',exact:true}).fill('MoMo');
+ await page.getByRole('textbox',{name:'Số dư ban đầu',exact:true}).fill('-5');
+ await page.getByRole('button',{name:'Tạo ví',exact:true}).click();await expect(page.getByRole('alert')).toContainText('Nhập tên và số dư');
+ await page.getByRole('textbox',{name:'Số dư ban đầu',exact:true}).fill('250k');
+ await page.getByRole('combobox',{name:'Loại ví',exact:true}).selectOption('ewallet');
+ await page.getByRole('radio',{name:'Biểu tượng 📱',exact:true}).check();
+ await page.getByRole('button',{name:'Tạo ví',exact:true}).click();
+ await page.getByRole('button',{name:'Sửa ví MoMo',exact:true}).click();
+ await expect(page.getByRole('textbox',{name:'Số dư ban đầu',exact:true})).toHaveValue('250000');
+ await expect(page.getByRole('radio',{name:'Biểu tượng 📱',exact:true})).toBeChecked();
+ await page.getByRole('textbox',{name:'Tên ví',exact:true}).fill('Tiền mặt');
+ await page.getByRole('button',{name:'Lưu thay đổi',exact:true}).click();await expect(page.getByRole('alert')).toContainText('Tên ví này đã có');
+ await page.getByRole('textbox',{name:'Tên ví',exact:true}).fill('Ví điện thoại');
+ await page.getByRole('textbox',{name:'Số dư ban đầu',exact:true}).fill('300k');
+ await page.getByRole('checkbox',{name:/Hiển thị trên Tổng quan/}).uncheck();
+ for(const width of [320,390,452]){
+  await page.setViewportSize({width,height:884});
+  expect(await page.getByRole('dialog').evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);
+ }
+ await page.getByRole('button',{name:'Lưu thay đổi',exact:true}).click();
+ await expect(page.getByText('Ví điện tử · Đang ẩn',{exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'Sửa ví Ví điện thoại',exact:true}).click();
+ await page.screenshot({path:testInfo.outputPath('wallet-configuration-452.png'),animations:'disabled'});
+ await page.reload();const stored=await stateOf(page),w=stored.wallets.find((w:{name:string})=>w.name==='Ví điện thoại');
+ expect(w).toMatchObject({opening:300000,kind:'ewallet',emoji:'📱',hidden:true});
+ await expect(page.locator('.wallet-mini').filter({hasText:'Ví điện thoại'})).toHaveCount(0);
+ await page.getByRole('button',{name:'Quản lý ví',exact:true}).click();
+ await page.getByRole('button',{name:'Sửa ví Ví điện thoại',exact:true}).click();
+ await page.getByRole('button',{name:'Xóa ví',exact:true}).click();
+ await page.getByRole('button',{name:'Giữ lại',exact:true}).click();expect((await stateOf(page)).wallets.some((v:{id:string})=>v.id===w.id)).toBe(true);
+ await page.getByRole('button',{name:'Xóa ví',exact:true}).click();
+ await page.getByRole('button',{name:'Xóa ví',exact:true}).click();
+ expect((await stateOf(page)).wallets.some((v:{id:string})=>v.id===w.id)).toBe(false);
+ await page.getByRole('button',{name:'Đóng',exact:true}).click();
+ await expect(page.getByTestId('total-balance')).toContainText('48.012.000');
+});
+test('used wallets keep transaction links and totals when renamed or hidden',async({page})=>{
+ const expense=await page.getByTestId('month-expense').textContent();
+ await page.getByRole('button',{name:'Quản lý ví',exact:true}).click();
+ await page.getByRole('button',{name:'Sửa ví Tài khoản ngân hàng',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Xóa ví',exact:true})).toBeDisabled();
+ await expect(page.getByText(/Ví đã có giao dịch/)).toBeVisible();
+ await page.getByRole('textbox',{name:'Tên ví',exact:true}).fill('Ngân hàng riêng');
+ await page.getByRole('textbox',{name:'Số dư ban đầu',exact:true}).fill('13tr');
+ await page.getByRole('checkbox',{name:/Hiển thị trên Tổng quan/}).uncheck();
+ await page.getByRole('button',{name:'Lưu thay đổi',exact:true}).click();
+ await page.getByRole('button',{name:'Sửa ví Ví tiết kiệm',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Xóa ví',exact:true})).toBeDisabled();
+ await expect(page.getByText(/Ví đang dùng cho mục tiêu tiết kiệm/)).toBeVisible();
+ await page.getByRole('button',{name:'Đóng',exact:true}).click();
+ await expect(page.getByTestId('total-balance')).toContainText('49.012.000');
+ await expect(page.getByTestId('month-expense')).toHaveText(expense!);
+ await expect(page.locator('.wallet-mini').filter({hasText:'Ngân hàng riêng'})).toHaveCount(0);
+ await nav(page,'Giao dịch');await page.getByRole('button',{name:'Xem Đi chợ cho tuần mới',exact:true}).click();
+ await expect(page.getByRole('combobox',{name:'Ví thanh toán',exact:true})).toHaveValue('bank');
+ await expect(page.getByRole('combobox',{name:'Ví thanh toán',exact:true})).toContainText('Ngân hàng riêng');
+ expect((await stateOf(page)).transactions.find((t:{id:string})=>t.id==='t2').wallet).toBe('bank');
+});
+test('category management supports rename, hide, reload and deleting an unused custom category',async({page},testInfo)=>{
+ await nav(page,'Ngân sách');await expect(page.getByRole('heading',{name:'Ngân sách',exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'Quản lý danh mục',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'Quản lý danh mục',exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'Thêm danh mục',exact:true}).click();
+ await page.getByRole('textbox',{name:'Tên danh mục',exact:true}).fill('Giải lao');
+ await page.getByRole('button',{name:'Biểu tượng ☕',exact:true}).click();
+ await page.getByRole('button',{name:'Tạo danh mục',exact:true}).click();
+ const created=(await stateOf(page)).categories.find((c:{name:string})=>c.name==='Giải lao');
+ await page.getByRole('button',{name:'Sửa danh mục Giải lao',exact:true}).click();
+ await page.getByRole('textbox',{name:'Tên danh mục',exact:true}).fill('Thư giãn');
+ await page.getByRole('checkbox',{name:/Hiển thị khi chọn danh mục/}).uncheck();
+ await page.getByRole('button',{name:'Lưu danh mục',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Sửa danh mục Thư giãn',exact:true})).toContainText('Đang ẩn');
+ await page.reload();await nav(page,'Ngân sách');await page.getByRole('button',{name:'Quản lý danh mục',exact:true}).click();
+ expect((await stateOf(page)).categories.find((c:{id:string})=>c.id===created.id)).toMatchObject({name:'Thư giãn',emoji:'☕',hidden:true,type:'expense'});
+ await page.screenshot({path:testInfo.outputPath('category-management.png'),animations:'disabled'});
+ await page.getByRole('button',{name:'Sửa danh mục Thư giãn',exact:true}).click();
+ await page.getByRole('button',{name:'Xóa danh mục',exact:true}).click();
+ await page.getByRole('button',{name:'Giữ lại',exact:true}).click();
+ await page.getByRole('button',{name:'Xóa danh mục',exact:true}).click();
+ await page.getByRole('button',{name:'Xóa danh mục',exact:true}).click();
+ expect((await stateOf(page)).categories.some((c:{id:string})=>c.id===created.id)).toBe(false);
+});
+test('add category within a budget preserves amount; renaming and hiding retain its budget link',async({page})=>{
+ await nav(page,'Ngân sách');await page.getByRole('button',{name:'Thêm',exact:true}).click();
+ await page.getByRole('textbox',{name:'Giới hạn mỗi tháng',exact:true}).fill('650k');
+ await page.getByRole('button',{name:'Thêm danh mục',exact:true}).click();
+ await page.getByRole('textbox',{name:'Tên danh mục',exact:true}).fill('Sở thích');
+ await page.getByRole('button',{name:'Tạo danh mục',exact:true}).click();
+ await expect(page.getByRole('textbox',{name:'Giới hạn mỗi tháng',exact:true})).toHaveValue('650k');
+ const categoryId=await page.getByRole('combobox',{name:'Danh mục ngân sách',exact:true}).inputValue();
+ await page.getByRole('button',{name:'Lưu ngân sách',exact:true}).click();
+ await page.getByRole('button',{name:'Quản lý danh mục',exact:true}).click();
+ await page.getByRole('button',{name:'Sửa danh mục Sở thích',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Xóa danh mục',exact:true})).toBeDisabled();
+ await expect(page.getByText(/Danh mục đang có giao dịch hoặc ngân sách/)).toBeVisible();
+ await page.getByRole('textbox',{name:'Tên danh mục',exact:true}).fill('Sở thích cá nhân');
+ await page.getByRole('checkbox',{name:/Hiển thị khi chọn danh mục/}).uncheck();
+ await page.getByRole('button',{name:'Lưu danh mục',exact:true}).click();
+ await page.getByRole('button',{name:'Đóng',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Sửa ngân sách Sở thích cá nhân',exact:true})).toBeVisible();
+ expect((await stateOf(page)).budgets.find((b:{category:string})=>b.category===categoryId).amount).toBe(650000);
+ await page.getByRole('button',{name:'Thêm',exact:true}).click();
+ await expect(page.getByRole('combobox',{name:'Danh mục ngân sách',exact:true})).not.toContainText('Sở thích cá nhân');
+});
+test('monthly category budgets combine personal wallets and exclude transfers and company entries',async({page},testInfo)=>{
+ for(const [wallet,amount] of [['bank','10k'],['cash','20k']]){
+  await openManual(page);await page.getByRole('textbox',{name:'Số tiền',exact:true}).fill(amount);
+  await page.getByRole('combobox',{name:'Ví thanh toán',exact:true}).selectOption(wallet);
+  await page.getByRole('button',{name:'Lưu giao dịch',exact:true}).click();
+ }
+ await nav(page,'Ngân sách');
+ const food=page.locator('.budget-item').filter({hasText:'Ăn uống'});
+ await expect(food).toContainText('270.000');await expect(page.getByText('Tất cả ví cá nhân',{exact:true})).toBeVisible();
+ const before=await food.textContent();
+ await nav(page,'Giao dịch');await page.getByRole('button',{name:'Chuyển tiền giữa ví',exact:true}).click();
+ await page.getByRole('textbox',{name:'Số tiền',exact:true}).fill('50k');await page.getByRole('button',{name:'Chuyển tiền',exact:true}).click();
+ await page.getByRole('button',{name:'Ghi thu chi',exact:true}).filter({visible:true}).click();
+ await page.getByRole('dialog').getByRole('button',{name:'Công ty',exact:true}).click();
+ await page.getByRole('textbox',{name:'Nội dung thu chi',exact:true}).fill('Cà phê 100k');
+ await page.getByRole('button',{name:'Gửi',exact:true}).click();await page.getByRole('button',{name:'Lưu 1 khoản công ty',exact:true}).click();
+ await nav(page,'Ngân sách');await expect(food).toHaveText(before!);
+ await page.getByRole('button',{name:'Tháng trước',exact:true}).click();
+ await expect(food).toContainText('2.200.000');await expect(food).toContainText('3.000.000');
+ await expect(page.getByText(/Đã chi 13.800.000/)).toBeVisible();
+ await page.screenshot({path:testInfo.outputPath('budget-scope.png'),animations:'disabled'});
+});
 test('mobile and desktop fit the viewport; flow report and screenshots',async({page},testInfo)=>{
  for(const width of [320,390,430,1280]){
   await page.setViewportSize({width,height:900});await page.goto(base+'/index.html');
+  await expect(page.getByText('Tháng này của bạn',{exact:true})).toHaveCount(0);
+  await expect(page.getByText('Chi tiêu rõ ràng. An tâm mỗi ngày.',{exact:true})).toHaveCount(0);
+  await expect(page.getByText('Ghi một câu, xong một khoản',{exact:true})).toHaveCount(0);
+  await expect(page.getByText('Gõ, nói hoặc thêm ảnh hóa đơn.',{exact:true})).toHaveCount(0);
+  await expect(page.locator('.quick-card .destination-caption')).toBeHidden();
+  const monthPicker=page.locator('.balance-card .month-picker');
+  await expect(monthPicker).toContainText('10.2026');
+  await monthPicker.getByRole('button',{name:'Tháng trước',exact:true}).click();
+  await expect(monthPicker).toContainText('9.2026');
+  await expect(page.getByTestId('month-expense')).toContainText('13.800.000');
+  const monthBox=await monthPicker.boundingBox(),eyeBox=await page.getByRole('button',{name:'Ẩn số dư',exact:true}).boundingBox();
+  expect(monthBox!.x+monthBox!.width).toBeLessThanOrEqual(eyeBox!.x);
+  expect(Math.abs(monthBox!.y-eyeBox!.y)).toBeLessThan(1);
+  // The decorative circle intentionally extends beyond the card and is clipped.
+  const cardBox=await page.locator('.balance-card').boundingBox();
+  expect(monthBox!.x).toBeGreaterThanOrEqual(cardBox!.x);
+  expect(eyeBox!.x+eyeBox!.width).toBeLessThanOrEqual(cardBox!.x+cardBox!.width);
+  await monthPicker.getByRole('button',{name:'Tháng sau',exact:true}).click();
   for(const s of ['home','transactions','plans','reports']){
    await page.locator(`[data-action=nav][data-screen=${s}]`).filter({visible:true}).first().click();
+   await expect(page.locator('.topbar')).toHaveCount(0);
+   await expect(page.locator('#main > .heading')).toHaveCount(0);
    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`${s} at ${width}px`).toBe(true);
+   if(s==='transactions'){
+    await expect(page.locator('.transaction-tools .search .icon')).toHaveCount(0);
+    const search=await page.getByRole('searchbox',{name:'Tìm giao dịch'}).boundingBox(),picker=await page.locator('.transaction-tools .month-picker').boundingBox();
+    expect(picker!.x).toBeGreaterThanOrEqual(search!.x+search!.width);
+    await page.getByRole('searchbox',{name:'Tìm giao dịch'}).fill('Cà phê');
+    await page.getByRole('button',{name:'Tháng trước',exact:true}).click();
+    await expect(page.getByRole('searchbox',{name:'Tìm giao dịch'})).toHaveValue('Cà phê');
+    await expect(page.locator('.transaction-tools .month-picker')).toContainText('9.2026');
+    await page.getByRole('button',{name:'Tháng sau',exact:true}).click();
+   }
+   if(s==='plans'){
+    await expect(page.locator('.compact-card-header .month-picker')).toContainText('10.2026');
+    await expect(page.getByRole('heading',{name:'Ngân sách',exact:true})).toBeVisible();
+   }
+   if(s==='reports'){
+    await expect(page.getByRole('heading',{name:'Tiền đã đi đâu?',exact:true})).toHaveCount(0);
+    await expect(page.locator('.section-heading .month-picker')).toContainText('10.2026');
+   }
+   if(width===390)await page.screenshot({path:testInfo.outputPath(`${s}-compact-390.png`),animations:'disabled'});
   }
   await page.locator('[data-action=nav][data-screen=home]').filter({visible:true}).first().click();await page.screenshot({path:testInfo.outputPath(`home-${width}.png`),fullPage:true,animations:'disabled'});
-  await page.getByRole('button',{name:'Quản lý ví và danh mục'}).click();await page.getByRole('button',{name:/Danh mục thu chi/}).click();expect(await page.evaluate(()=>document.querySelector('dialog')!.scrollWidth<=innerWidth)).toBe(true);
+  await page.locator('[data-action=nav][data-screen=plans]').filter({visible:true}).first().click();await page.getByRole('button',{name:'Quản lý danh mục',exact:true}).click();expect(await page.evaluate(()=>document.querySelector('dialog')!.scrollWidth<=innerWidth)).toBe(true);
   await page.screenshot({path:testInfo.outputPath(`categories-${width}.png`)});await page.getByRole('button',{name:'Đóng',exact:true}).click();
   await page.goto(base+'/flow.html');await expect(page.getByRole('heading',{name:'B. Ghi nhanh bằng chữ, giọng nói hoặc ảnh'})).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  }

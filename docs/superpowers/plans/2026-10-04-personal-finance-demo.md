@@ -33,3 +33,18 @@ Người dùng yêu cầu bỏ nhãn DEMO, dòng giải thích mô phỏng và b
 - [x] Bản nháp giữ nơi gửi tại thời điểm bấm Gửi. Trong bản thiết kế, các khoản công ty thử nghiệm nằm ở `state.companyTransactions`, không nhập vào số dư hoặc báo cáo cá nhân. Không thêm API hay sửa writer production.
 - [x] Cập nhật E2E: nơi gửi, dữ liệu nhập, nháp, không lẫn sổ cá nhân; kiểm bố cục 320/390/452px, mẫu đã bỏ và bốn nút còn hoạt động. 11/11 đạt.
 - [x] Kiểm build, bundle, typecheck E2E, docs; 46 gate xanh trong 67 giây. Mở lại đúng tab cho người dùng xem. Ghi yêu cầu tương ứng cho lần tích hợp thật, không merge/promote khi đang duyệt thiết kế.
+
+## Tinh gọn Tổng quan và cấu hình ví — 05/10/2026
+
+- Bỏ heading/mô tả trên stat; chuyển bộ chọn tháng định dạng `9.2026` sang bên trái con mắt trong thẻ số dư.
+- Bỏ đầu khung gợi ý; chỉ giữ ô nhập, bốn nút và Cá nhân / Công ty bên dưới.
+- Trong bộ lọc ví có Thêm ví và Quản lý ví. Danh sách quản lý cho sửa từng ví; form có tên, loại, biểu tượng, số dư ban đầu và hiển thị trên Tổng quan.
+- Ví chưa có giao dịch/liên kết được xóa sau xác nhận; ví đang dùng cho lịch sử, mặc định hoặc mục tiêu được giữ và có lựa chọn ẩn. Ẩn không xóa lịch sử, không loại số dư khỏi tổng.
+- Chỉ sửa prototype và tài liệu. Kiểm E2E cho tạo/sửa/ẩn/xóa, giữ liên kết giao dịch, bố cục mobile; chạy build, bundle, typecheck E2E và gate trước khi cập nhật draft PR.
+
+## Bổ sung trong lúc duyệt — danh mục, ngân sách và toàn bộ header
+
+- [x] Đổi nhãn Kế hoạch → Ngân sách; thêm quản lý danh mục (tên, biểu tượng, ẩn/xóa có điều kiện), tạo danh mục ngay trong form ngân sách và giữ số tiền đang nhập.
+- [x] Làm rõ ngân sách tổng tháng và hạn mức danh mục tính trên mọi ví cá nhân, loại chuyển ví và công ty. Kiểm nhiều ví, đổi tháng, liên kết category và hạn mức lặp lại.
+- [x] Bỏ topbar logo/cài đặt/TÔI cùng heading/mô tả trên cả bốn màn. Tháng ngắn đặt trong nội dung: cạnh tìm kiếm, tiêu đề ngân sách, phía trái Chi/Thu của báo cáo.
+- [x] Playwright 16/16 đạt trên bản cuối: không tràn 320/390/430/1280px, bộ lọc đúng vị trí và giữ từ khóa khi đổi tháng. Các chức năng ví/danh mục vẫn localStorage; người dùng chưa chốt để tích hợp thật.

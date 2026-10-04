@@ -105,7 +105,8 @@ export function parseQuick(text, state) {
     let category=type==='income'?'salary':'other';
     const rules=type==='income'?[['thuong','bonus'],['hoan tien','refund'],['duoc tang','gift']]:[['ca phe|an |com|bun|pho|tra sua','food'],['di cho|sieu thi|thuc pham','grocery'],['grab|xang|xe','transport'],['thue nha|tien nha','home'],['giay|quan ao|mua sam','shopping'],['thuoc|kham|suc khoe','health'],['dien |internet|nuoc','bills']];
     for(const [pattern,cat] of rules) if(new RegExp(pattern).test(norm)) {category=cat;break;}
-    for(const c of state.categories.filter(c=>c.type===type&&c.custom)) if(norm.includes(c.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/đ/g,'d'))) category=c.id;
+    for(const c of state.categories.filter(c=>c.type===type&&c.custom&&!c.hidden)) if(norm.includes(c.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/đ/g,'d'))) category=c.id;
+    if(!state.categories.some(c=>c.id===category&&!c.hidden))category=state.categories.find(c=>c.id===(type==='income'?'other-income':'other')&&!c.hidden)?.id??state.categories.find(c=>c.type===type&&!c.hidden)?.id;
     const date=norm.includes('hom qua')?'2026-10-03':TODAY;
     const t={id:id(),type,amount,category,note:p,date,wallet:'bank'};
     const error=validateTxn(t,state);if(error)return {error}; rows.push(t);
