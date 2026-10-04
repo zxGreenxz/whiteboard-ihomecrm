@@ -24,3 +24,12 @@
 - Ảnh chỉ preview trong phiên, không upload hoặc lưu localStorage.
 - Có đường nhập tay khi mô phỏng không hiểu câu, có trạng thái trống và xác nhận xóa/reset.
 - Không đưa chức năng chưa nối backend thành tính năng production đã xong.
+
+## Chỉnh thiết kế ngày 05/10/2026 — nơi gửi thu chi
+
+Người dùng yêu cầu bỏ nhãn DEMO, dòng giải thích mô phỏng và ba nút nhập mẫu trong giao diện; thêm nút gạt Cá nhân / Công ty dưới ô nhập. Người dùng chốt rõ: chỉ chỉnh bản thiết kế đang xem, chờ duyệt hết thiết kế mới hiện thực trong ứng dụng thật.
+
+- [x] `app.js`, `styles.css`, `index.html`: bỏ nhãn trên màn chính và khối mẫu trong form; thêm bộ chọn nơi gửi dưới bốn nút ở Tổng quan và Ghi nhanh; giữ chữ, ảnh và dữ liệu form khi chuyển.
+- [x] Bản nháp giữ nơi gửi tại thời điểm bấm Gửi. Trong bản thiết kế, các khoản công ty thử nghiệm nằm ở `state.companyTransactions`, không nhập vào số dư hoặc báo cáo cá nhân. Không thêm API hay sửa writer production.
+- [x] Cập nhật E2E: nơi gửi, dữ liệu nhập, nháp, không lẫn sổ cá nhân; kiểm bố cục 320/390/452px, mẫu đã bỏ và bốn nút còn hoạt động. 11/11 đạt.
+- [x] Kiểm build, bundle, typecheck E2E, docs; 46 gate xanh trong 67 giây. Mở lại đúng tab cho người dùng xem. Ghi yêu cầu tương ứng cho lần tích hợp thật, không merge/promote khi đang duyệt thiết kế.

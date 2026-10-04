@@ -100,11 +100,59 @@ test('quick input handles multiple entries and images with a caption',async({pag
  await page.getByRole('button',{name:'Ghi thu chi',exact:true}).filter({visible:true}).click();
  await page.locator('#receipt-file').setInputFiles({name:'demo-receipt.png',mimeType:'image/png',buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6YV0AAAAASUVORK5CYII=','base64')});
  await expect(page.getByAltText('Ảnh bạn chọn')).toBeVisible();
- await page.getByRole('button',{name:'Gửi',exact:true}).click();await expect(page.getByRole('alert')).toContainText('Demo chưa đọc số tiền từ ảnh');
+ await page.getByRole('button',{name:'Gửi',exact:true}).click();await expect(page.getByRole('alert')).toContainText('Thêm nội dung và số tiền cho ảnh');
  await page.getByRole('textbox',{name:'Nội dung thu chi'}).fill('Ăn trưa 65k, cà phê 35k');
  await page.getByRole('button',{name:'Gửi',exact:true}).click();
  await page.getByRole('button',{name:'Lưu 2 khoản',exact:true}).click();
  const s=await stateOf(page);expect(s.transactions.slice(0,2).map((t:{amount:number})=>t.amount)).toEqual([65000,35000]);
+});
+test('destination switch keeps image and text; company drafts stay outside the personal wallet',async({page},testInfo)=>{
+ const initialBalance=await page.getByTestId('total-balance').textContent();
+ const initialExpense=await page.getByTestId('month-expense').textContent();
+ await expect(page.getByText('DEMO',{exact:true})).toHaveCount(0);
+ await page.getByRole('group',{name:'Gửi thu chi vào',exact:true}).getByRole('button',{name:'Công ty',exact:true}).click();
+ await page.getByRole('button',{name:'Hôm nay bạn chi gì?',exact:true}).click();
+ const dialog=page.getByRole('dialog'),picker=dialog.getByRole('group',{name:'Gửi thu chi vào',exact:true});
+ await expect(picker.getByRole('button',{name:'Công ty',exact:true})).toHaveAttribute('aria-pressed','true');
+ await expect(dialog.getByText(/DEMO|Chi hai khoản|Nhận lương|Thử hóa đơn mẫu/)).toHaveCount(0);
+ for(const width of [320,390,452]){
+  await page.setViewportSize({width,height:884});
+  const composerBox=await dialog.locator('.quick-composer').boundingBox(),pickerBox=await picker.boundingBox();
+  expect(pickerBox!.y).toBeGreaterThan(composerBox!.y+composerBox!.height);
+  for(const label of ['Cá nhân','Công ty']){const box=await picker.getByRole('button',{name:label,exact:true}).boundingBox();expect(box!.height).toBeGreaterThanOrEqual(44);}
+  expect(await dialog.evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);
+ }
+ await page.screenshot({path:testInfo.outputPath('destination-company-452.png'),animations:'disabled'});
+ await dialog.locator('#receipt-file').setInputFiles({name:'receipt.png',mimeType:'image/png',buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6YV0AAAAASUVORK5CYII=','base64')});
+ await page.getByRole('textbox',{name:'Nội dung thu chi'}).fill('Văn phòng phẩm 150k');
+ await picker.getByRole('button',{name:'Cá nhân',exact:true}).click();
+ await expect(page.getByRole('textbox',{name:'Nội dung thu chi'})).toHaveValue('Văn phòng phẩm 150k');
+ await expect(page.getByAltText('Ảnh bạn chọn')).toBeVisible();
+ await picker.getByRole('button',{name:'Công ty',exact:true}).press('Space');
+ await page.getByRole('button',{name:'Gửi',exact:true}).click();
+ await expect(dialog.locator('.draft-label')).toHaveText('Công ty · Chi');
+ // Changing the next send destination must not reroute a draft already awaiting review.
+ await picker.getByRole('button',{name:'Cá nhân',exact:true}).click();
+ await expect(dialog.locator('.draft-label')).toHaveText('Công ty · Chi');
+ await page.getByRole('button',{name:'Lưu 1 khoản công ty',exact:true}).click();
+ await expect(page.getByTestId('total-balance')).toHaveText(initialBalance!);
+ await expect(page.getByTestId('month-expense')).toHaveText(initialExpense!);
+ await page.reload();
+ const s=await stateOf(page);expect(s.companyTransactions[0]).toMatchObject({amount:150000,note:'Văn phòng phẩm 150k'});
+ expect(s.transactions.some((t:{id:string})=>t.id===s.companyTransactions[0].id)).toBe(false);
+});
+test('manual destination changes preserve fields and existing personal entries keep their destination',async({page})=>{
+ await openManual(page);
+ await page.getByRole('textbox',{name:'Số tiền',exact:true}).fill('200k');
+ await page.getByRole('textbox',{name:'Ghi chú',exact:true}).fill('Mua giấy công ty');
+ await page.getByRole('dialog').getByRole('button',{name:'Công ty',exact:true}).click();
+ await expect(page.getByRole('textbox',{name:'Số tiền',exact:true})).toHaveValue('200k');
+ await expect(page.getByRole('textbox',{name:'Ghi chú',exact:true})).toHaveValue('Mua giấy công ty');
+ await page.getByRole('button',{name:'Lưu khoản công ty',exact:true}).click();
+ const s=await stateOf(page);expect(s.companyTransactions[0]).toMatchObject({amount:200000,note:'Mua giấy công ty'});
+ await nav(page,'Giao dịch');await page.locator('.txn').first().click();
+ await expect(page.getByRole('dialog').getByRole('group',{name:'Gửi thu chi vào',exact:true})).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'Lưu thay đổi',exact:true})).toBeVisible();
 });
 test('internal transfer preserves total balance and income/expense totals',async({page})=>{
  const before=await page.getByTestId('total-balance').textContent(),expense=await page.getByTestId('month-expense').textContent();
