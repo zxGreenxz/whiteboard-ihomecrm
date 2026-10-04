@@ -8,14 +8,14 @@
 
 import type { DraftState } from "./compose";
 import type { CardStatus, CardStatusKind } from "./cardStatus";
+import { quickDraftSchema } from './draft';
 
 export const DRAFTS_PREFIX = "ihome:quick-entry:drafts:";
 export const DRAFT_TTL_MS = 48 * 60 * 60 * 1000;
 export const UNKNOWN_AFTER_RELOAD =
   "Trang đã tải lại khi thẻ đang lưu nên chưa rõ đã lưu chưa. Bấm “Gửi lại y nguyên” — máy chủ tự chống trùng — hoặc kiểm tra trước.";
-/** Ví không có khoá phía máy chủ: gửi lại dựa vào bước đối chiếu của hook ví. */
 const UNKNOWN_AFTER_RELOAD_PERSONAL =
-  "Trang đã tải lại khi thẻ đang lưu nên chưa rõ đã ghi chưa. Bấm “Gửi lại y nguyên” — máy đối chiếu với ví trước khi ghi — hoặc xem Ví cá nhân.";
+  "Trang đã tải lại khi đang lưu. Gửi lại y nguyên với cùng mã yêu cầu để xác nhận trong Ví cá nhân.";
 
 export interface StoredCard {
   state: DraftState;
@@ -41,6 +41,7 @@ function keepable(c: StoredCard): boolean {
 }
 
 function onReload(c: StoredCard): CardStatus {
+  if(c.state.draft.mode==='personal' && !c.state.draft.personalProtocol && (c.personalDone>0||['saving','unknown','maybe_saved'].includes(c.status.kind)))return {kind:'maybe_saved',message:`Nháp cũ đã xác nhận ${c.personalDone} khoản; phần còn lại chưa rõ. Mở Ví cá nhân đối chiếu chứng từ trước khi tạo phần còn thiếu. Không tự gửi lại nháp này.`};
   if (c.status.kind === "saving") {
     return { kind: "unknown", message: c.state.draft.mode === "personal" ? UNKNOWN_AFTER_RELOAD_PERSONAL : UNKNOWN_AFTER_RELOAD };
   }
@@ -64,10 +65,11 @@ function isStoredCard(x: unknown): x is StoredCard {
   const s = c.state as Partial<DraftState> | undefined;
   const d = s?.draft;
   return (
-    typeof c.personalDone === "number" &&
+    Number.isSafeInteger(c.personalDone) && (c.personalDone ?? -1)>=0 &&
     typeof c.status?.kind === "string" &&
     KEEP.has(c.status.kind) &&
     !!d &&
+    quickDraftSchema.safeParse(d).success &&
     typeof d.id === "string" &&
     (d.mode === "company" || d.mode === "personal") &&
     Array.isArray(d.lines) &&
@@ -90,8 +92,7 @@ export function deserializeCards(raw: string | null, now: number): StoredCard[] 
     // mọi thẻ đã gửi máy chủ đều có khoá chống trùng riêng, mất nháp không sinh phiếu sai.
   }
   if (!parsed || parsed.v !== 1 || typeof parsed.savedAt !== "number" || !Array.isArray(parsed.cards)) return [];
-  if (now - parsed.savedAt > DRAFT_TTL_MS) return [];
-  return parsed.cards.filter(isStoredCard);
+  return parsed.cards.filter(isStoredCard).filter(c=>now-parsed.savedAt!<=DRAFT_TTL_MS||['unknown','maybe_saved','saving'].includes(c.status.kind)).map(c=>({...c,status:onReload(c),state:{...c.state,draft:{...c.state.draft,transactionType:c.state.draft.transactionType??'EXPENSE',...(c.state.draft.mode==='personal'&&c.personalDone===0&&['draft','rejected'].includes(c.status.kind)?{personalProtocol:1 as const}:{})}}}));
 }
 
 /** Khoá nháp của người dùng KHÁC trên cùng máy — dọn khi mở trang. */

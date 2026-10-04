@@ -16,6 +16,7 @@ import { useBuildingCommonNames } from "@/hooks/useBuildingCommonNames";
 import { usableExpenseCategories, type CategoryRef } from "@/lib/quickEntry/categorySuggest";
 import { expenseCashbooksForOrg, pickDefaultAccount } from "@/lib/quickEntry/cashbook";
 import type { FeeAccountRef, ResolveRefs } from "@/lib/quickEntry/resolve";
+import { usePersonalFinance } from '@/hooks/personal-finance/usePersonalFinance';
 
 const lastAccountKey = (orgId: string) => `ihome:quick-entry:last-account:${orgId}`;
 
@@ -53,10 +54,13 @@ export function useQuickEntryRefs() {
   const canCompany = canUse(perms, "income_expenses", "create");
   const canPersonal = canUse(perms, "personal_finance", "create");
   const canRestricted = canUse(perms, "income_expenses", "restricted_create");
+  const personalQ=usePersonalFinance();
+  const personalWallets=useMemo(()=>personalQ.data?.wallets??[],[personalQ.data]);
+  const personalCategories=useMemo(()=>personalQ.data?.categories??[],[personalQ.data]);
 
   const buildingsQ = useIncomeExpenseFormBuildings({ enabled: canCompany });
   const roomsQ = useIncomeExpenseFormRooms(undefined, { allWhenEmpty: canCompany });
-  const typesQ = useIncomeExpenseTypes("expense", { enabled: canCompany });
+  const typesQ = useIncomeExpenseTypes(undefined, { enabled: canCompany });
   const accountsQ = useAccounts({ enabled: canCompany });
   const cashbooksQ = useCustodianCashbooksV2(canCompany);
   const feeQ = useFeeAccounts({ enabled: canCompany });
@@ -95,7 +99,7 @@ export function useQuickEntryRefs() {
       quick_entry_hidden: t.quick_entry_hidden ?? false,
       sort_order: t.sort_order ?? null,
     }));
-    return usableExpenseCategories(rows, { organizationId: orgId, canUseRestricted: canRestricted });
+    return [...usableExpenseCategories(rows, { organizationId: orgId, canUseRestricted: canRestricted }),...usableExpenseCategories(rows, { organizationId: orgId, canUseRestricted: canRestricted,type:'income' })];
   }, [canCompany, orgId, typesQ.data, canRestricted]);
 
   const resolveRefs = useMemo<ResolveRefs>(() => {
@@ -140,6 +144,16 @@ export function useQuickEntryRefs() {
   return {
     orgId,
     loading,
+    permissionsLoading:permsQ.isLoading,
+    permissionsError:permsQ.error,
+    personalLoading:personalQ.isLoading,
+    personalError:personalQ.error,
+    personalReady:!!personalQ.data&&!personalQ.error,
+    personalWallets,
+    personalCategories,
+    companyLoading:canCompany&&(buildingsQ.isLoading||typesQ.isLoading||cashbooksQ.isLoading||accountsQ.isLoading),
+    companyError:buildingsQ.error??typesQ.error??cashbooksQ.error??accountsQ.error,
+    companyReady:canCompany&&!!buildingsQ.data&&!!typesQ.data&&!!cashbooksQ.data&&!!accountsQ.data,
     canCompany,
     canPersonal,
     buildings,

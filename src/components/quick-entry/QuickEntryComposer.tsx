@@ -36,6 +36,8 @@ const PLACEHOLDER: Record<DraftMode, string> = {
 };
 
 export interface QuickEntryComposerProps {
+  disabled?: boolean;
+  placeholder?: string;
   mode: DraftMode;
   /** Chế độ người dùng có quyền — một chế độ thì không hiện công tắc. */
   modes: readonly DraftMode[];
@@ -90,6 +92,7 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
   }, [pendingPhoto]);
 
   const submit = (content: string) => {
+    if(p.disabled)return;
     const t = content.trim();
     if (!t && !pendingPhoto) return;
     if (pendingPhoto) p.onPhoto(pendingPhoto, t);
@@ -221,7 +224,7 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
                   aria-label="Mô hình giọng nói"
                   className={SELECT_CLASS}
                   value={choice.stt}
-                  disabled={busy}
+                  disabled={busy || p.disabled}
                   onChange={(e) => changeChoice({ stt: e.target.value })}
                 >
                   <option value="">{SERVER_DEFAULT_LABEL}</option>
@@ -238,7 +241,7 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
                   aria-label="Mô hình đọc chữ"
                   className={SELECT_CLASS}
                   value={choice.readModel}
-                  disabled={busy}
+                  disabled={busy || p.disabled}
                   onChange={(e) => changeChoice({ readModel: e.target.value })}
                 >
                   <option value="">{SERVER_DEFAULT_LABEL}</option>
@@ -288,7 +291,7 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
             <p className="truncate font-medium">{pendingPhoto.name}</p>
             <p className="text-muted-foreground">Nhập thêm nội dung hoặc bấm mic để nói và gửi cùng ảnh.</p>
           </div>
-          <Button type="button" size="icon" variant="ghost" aria-label="Bỏ ảnh đính kèm" disabled={busy} onClick={() => setPendingPhoto(null)}>
+          <Button type="button" size="icon" variant="ghost" aria-label="Bỏ ảnh đính kèm" disabled={busy || p.disabled} onClick={() => setPendingPhoto(null)}>
             <X className="h-4 w-4" />
           </Button>
         </div>
@@ -309,13 +312,13 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
         </div>
       ) : (
         <div className={cn("flex items-end gap-1", pendingPhoto && "flex-wrap")}>
-          <Button type="button" size="icon" variant="ghost" className="shrink-0" aria-label="Ảnh kèm nội dung" title="Ảnh kèm nội dung" disabled={busy} onClick={() => attachment.current?.click()}>
+          <Button type="button" size="icon" variant="ghost" className="shrink-0" aria-label="Ảnh kèm nội dung" title="Ảnh kèm nội dung" disabled={busy || p.disabled} onClick={() => attachment.current?.click()}>
             <Paperclip className="h-5 w-5" />
           </Button>
-          <Button type="button" size="icon" variant="ghost" className="shrink-0" aria-label="Chụp bill" disabled={busy} onClick={() => camera.current?.click()}>
+          <Button type="button" size="icon" variant="ghost" className="shrink-0" aria-label="Chụp bill" disabled={busy || p.disabled} onClick={() => camera.current?.click()}>
             <Camera className="h-5 w-5" />
           </Button>
-          <Button type="button" size="icon" variant="ghost" className="shrink-0" aria-label="Chọn ảnh" disabled={busy} onClick={() => gallery.current?.click()}>
+          <Button type="button" size="icon" variant="ghost" className="shrink-0" aria-label="Chọn ảnh" disabled={busy || p.disabled} onClick={() => gallery.current?.click()}>
             <ImagePlus className="h-5 w-5" />
           </Button>
           <input
@@ -324,7 +327,7 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
             accept="image/*"
             className="hidden"
             aria-label="Chọn ảnh kèm nội dung"
-            disabled={busy}
+            disabled={busy || p.disabled}
             onChange={(e) => pickFile(e.currentTarget, true)}
           />
           <input
@@ -334,7 +337,7 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
             capture="environment"
             className="hidden"
             aria-label="Chụp ảnh bill"
-            disabled={busy}
+            disabled={busy || p.disabled}
             onChange={(e) => pickFile(e.currentTarget)}
           />
           <input
@@ -343,7 +346,7 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
             accept="image/*"
             className="hidden"
             aria-label="Chọn ảnh bill"
-            disabled={busy}
+            disabled={busy || p.disabled}
             onChange={(e) => pickFile(e.currentTarget)}
           />
           <div className={cn("flex min-w-0 flex-1 items-end gap-1", pendingPhoto && "basis-full")}>
@@ -351,10 +354,10 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
               ref={box}
               value={text}
               rows={Math.min(5, Math.max(1, text.split("\n").length))}
-              placeholder={transcribing ? "Đang chuyển giọng nói thành chữ…" : pendingPhoto ? "Bổ sung nội dung cho ảnh…" : PLACEHOLDER[p.mode]}
+              placeholder={transcribing ? "Đang chuyển giọng nói thành chữ…" : pendingPhoto ? "Bổ sung nội dung cho ảnh…" : p.placeholder ?? PLACEHOLDER[p.mode]}
               aria-label="Nội dung khoản chi"
               className="min-h-[40px] min-w-0 flex-1 resize-none"
-              disabled={busy}
+              disabled={busy || p.disabled}
               onChange={(e) => setText(e.target.value)}
               // Bảng chọn mở + bàn phím điện thoại bật ⇒ che gần hết thẻ nháp; gõ là xong việc chọn.
               onFocus={() => setShowModels(false)}
@@ -366,14 +369,14 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
               size="icon"
               variant="secondary"
               aria-label="Nói"
-              disabled={busy}
+              disabled={busy || p.disabled}
               className={cn("shrink-0", transcribing && "opacity-70")}
               onClick={onMic}
             >
               {transcribing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Mic className="h-5 w-5" />}
             </Button>
             {(text.trim() || pendingPhoto) && (
-              <Button type="button" size="icon" className="shrink-0" aria-label="Gửi" disabled={busy} onClick={send}>
+              <Button type="button" size="icon" className="shrink-0" aria-label="Gửi" disabled={busy || p.disabled} onClick={send}>
                 <Send className="h-5 w-5" />
               </Button>
             )}

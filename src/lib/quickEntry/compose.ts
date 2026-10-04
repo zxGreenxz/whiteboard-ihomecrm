@@ -22,6 +22,7 @@ import { groupByPlace } from "./convert";
 import { MAX_DESCRIPTION, type DraftLine, type DraftMode, type QuickDraft } from "./draft";
 import { MAX_PROMPT_CATEGORIES } from "./prompt";
 import type { AiItem, AiResult } from "./aiSchema";
+import { inferTransactionType, type PersonalCategoryRef } from './personalRefs';
 
 export type DraftFlag =
   | "missing_amount"
@@ -57,6 +58,8 @@ export interface ComposeContext {
   categories: CategoryRef[];
   /** Danh mục ví cá nhân — đúng danh sách đã gửi AI ở chế độ cá nhân. */
   personalCategories?: string[];
+  personalCategoryRefs?: PersonalCategoryRef[];
+  personalWalletId?: string | null;
   newId: () => string;
   defaultAccountFor: (buildingId: string | null) => string | null;
 }
@@ -96,6 +99,26 @@ const emptyResolve: ResolveResult = {
   buildingWide: false,
   feeCategory: null,
 };
+
+function personalCategory(item:AiItem|undefined,ctx:ComposeContext){
+ const candidate=fromIndex(item?.category??null,ctx.personalCategoryRefs??[]);
+ return candidate&&!candidate.hidden&&candidate.type===(item?.transactionType??'EXPENSE')?candidate:null;
+}
+
+/** A company voucher has one transaction type; personal cards also remain easy to review. */
+export function splitDraftTypes(state:DraftState,newId:()=>string):DraftState[]{
+ const groups=[...new Set(state.draft.lines.map(l=>l.transactionType??state.draft.transactionType??'EXPENSE'))];
+ return groups.map((type,index)=>{
+  const positions=state.draft.lines.map((l,i)=>(l.transactionType??state.draft.transactionType??'EXPENSE')===type?i:-1).filter(i=>i>=0);
+  const paths=(values:string[])=>values.flatMap(p=>{const match=/^lines\.(\d+)(.*)$/.exec(p);if(!match)return[p];const i=positions.indexOf(Number(match[1]));return i<0?[]:[`lines.${i}${match[2]}`];});
+  return syncName({...state,touched:paths(state.touched),locked:paths(state.locked),draft:{...state.draft,id:index?newId():state.draft.id,transactionType:type,lines:positions.map(i=>state.draft.lines[i])}});
+ });
+}
+export function draftsFromBill(ai:AiResult,ctx:ComposeContext):DraftState[]{
+ const types=new Set(ai.items.filter(i=>(i.amount_vnd??0)>0).map(i=>i.transactionType??'EXPENSE'));
+ if(types.size<2)return[draftFromBill(ai,ctx)];
+ return [...types].map(type=>draftFromBill({...ai,total_vnd:null,items:ai.items.filter(i=>(i.transactionType??'EXPENSE')===type)},ctx));
+}
 
 export function draftsFromText(text: string, ctx: ComposeContext): DraftState[] {
   const all = segmentMessage(text);
@@ -151,7 +174,7 @@ export function draftsFromText(text: string, ctx: ComposeContext): DraftState[] 
     }
 
     const suggestion = company
-      ? suggestCategory(ctx.categories, description, { feeCategory: place.feeCategory ?? msg.feeCategory })
+      ? suggestCategory(ctx.categories.filter(c=>c.type===inferTransactionType(segText).toLowerCase()), description, { feeCategory: place.feeCategory ?? msg.feeCategory })
       : null;
 
     const flags: DraftFlag[] = [];
@@ -166,6 +189,8 @@ export function draftsFromText(text: string, ctx: ComposeContext): DraftState[] 
       buildingId: company ? buildingId : null,
       roomId: company ? roomId : null,
       line: {
+        transactionType: inferTransactionType(segText),
+        personalCategoryId: null,
         description,
         amount: seg.amount?.value ?? 0,
         // Gợi ý yếu của luật dòng tiền (nội bộ / hoàn cọc thiếu neo chắc) KHÔNG điền sẵn: AI chọn; AI null /
@@ -183,9 +208,10 @@ export function draftsFromText(text: string, ctx: ComposeContext): DraftState[] 
     };
   });
 
-  const groups = company
+  const placeGroups = company
     ? groupByPlace(items.map((it) => ({ buildingId: it.buildingId, roomId: it.roomId, line: it.line })))
     : [{ buildingId: null, roomId: null, lines: items.map((it) => it.line) }];
+  const groups=placeGroups.flatMap(g=>[...new Set(g.lines.map(l=>l.transactionType??'EXPENSE'))].map(type=>({...g,lines:g.lines.filter(l=>(l.transactionType??'EXPENSE')===type)})));
   // Tổng gõ là tổng CẢ TIN (mọi thẻ) — lệch thì mọi thẻ của tin đều nhắc kiểm lại.
   const sumAll = items.reduce((s, it) => s + it.line.amount, 0);
   const totalMismatch = declaredTotal !== null && sumAll !== declaredTotal;
@@ -217,6 +243,8 @@ export function draftsFromText(text: string, ctx: ComposeContext): DraftState[] 
       draft: {
         id: ctx.newId(),
         mode: ctx.mode,
+        transactionType: g.lines[0]?.transactionType ?? 'EXPENSE',
+        ...(company ? {} : {personalWalletId:ctx.personalWalletId??null,personalProtocol:1 as const}),
         date: date?.date ?? ctx.today,
         name: nameOf(g.lines),
         vendor: null,
@@ -245,8 +273,9 @@ function roomFromMention(mention: string | null, buildingId: string, refs: Resol
 
 function lineCategory(item: AiItem | undefined, description: string, feeCategory: string | null, ctx: ComposeContext): string | null {
   const mapped = fromIndex(item?.category ?? null, ctx.categories);
-  if (mapped) return mapped.id;
-  const s = suggestCategory(ctx.categories, description, { feeCategory });
+  const type=item?.transactionType??'EXPENSE';
+  if (mapped) return mapped.type===type.toLowerCase()?mapped.id:null;
+  const s = suggestCategory(ctx.categories.filter(c=>c.type===type.toLowerCase()), description, { feeCategory });
   // Ảnh bill không có lượt AI sau ⇒ gợi ý yếu của luật dòng tiền để trống cho người dùng chọn.
   return s && s.reason !== "rule_weak" ? s.id : null;
 }
@@ -289,6 +318,8 @@ export function draftFromBill(ai: AiResult, ctx: ComposeContext): DraftState {
   const flags: DraftFlag[] = [];
 
   const build = (description: string, amount: number, item: AiItem | undefined): DraftLine => ({
+    transactionType:item?.transactionType??'EXPENSE',
+    personalCategoryId: company ? null : personalCategory(item,ctx)?.id??null,
     description: description.slice(0, MAX_DESCRIPTION),
     amount,
     categoryId: company ? lineCategory(item, description, fee.feeCategory, ctx) : null,
@@ -315,6 +346,8 @@ export function draftFromBill(ai: AiResult, ctx: ComposeContext): DraftState {
     draft: {
       id: ctx.newId(),
       mode: ctx.mode,
+      transactionType:lines[0]?.transactionType??'EXPENSE',
+      ...(company?{}:{personalWalletId:ctx.personalWalletId??null,personalProtocol:1 as const}),
       date: ai.date && ai.date <= ctx.today ? ai.date : ctx.today,
       name: nameFor("photo", ai.vendor, lines),
       vendor: ai.vendor,
@@ -383,7 +416,7 @@ export function applyAiCategories(state: DraftState, codes: ReadonlyArray<string
   let changed = false;
   const lines = state.draft.lines.map((l, i) => {
     const mapped = fromIndex(codes[i], ctx.categories);
-    if (!mapped || mapped.id === l.categoryId || !free(`lines.${i}.categoryId`)) return l;
+    if (!mapped || mapped.type!==(l.transactionType??state.draft.transactionType??'EXPENSE').toLowerCase() || mapped.id === l.categoryId || !free(`lines.${i}.categoryId`)) return l;
     changed = true;
     return { ...l, categoryId: mapped.id };
   });
@@ -405,12 +438,15 @@ export function enrichFromAi(state: DraftState, ai: AiResult, ctx: ComposeContex
     const item = pairOf(i);
     const next = { ...l };
     if (item) {
+      if(item.transactionType&&free('transactionType')&&free(`lines.${i}.transactionType`))next.transactionType=item.transactionType;
       // Chỉ nhận số DƯƠNG: dòng âm của AI (giảm giá) không bao giờ thành tiền của một dòng chi.
       if (l.amount <= 0 && item.amount_vnd && item.amount_vnd > 0 && free(`lines.${i}.amount`)) next.amount = item.amount_vnd;
       if (company) {
         const mapped = fromIndex(item.category, ctx.categories);
-        if (mapped && free(`lines.${i}.categoryId`)) next.categoryId = mapped.id;
+        if (mapped && mapped.type===(next.transactionType??state.draft.transactionType??'EXPENSE').toLowerCase() && free(`lines.${i}.categoryId`)) next.categoryId = mapped.id;
       } else {
+        const category=personalCategory({...item,transactionType:next.transactionType??state.draft.transactionType??'EXPENSE'},ctx);
+        if(free(`lines.${i}.personalCategoryId`)&&category)next.personalCategoryId=category.id;
         const mapped = fromIndex(item.category, ctx.personalCategories ?? []);
         if (mapped && free(`lines.${i}.personalCategory`)) next.personalCategory = mapped;
       }
@@ -422,7 +458,7 @@ export function enrichFromAi(state: DraftState, ai: AiResult, ctx: ComposeContex
     return next;
   });
 
-  const draft: QuickDraft = { ...state.draft, lines: nextLines };
+  const draft: QuickDraft = { ...state.draft, lines: nextLines, transactionType:free('transactionType') ? nextLines[0]?.transactionType??state.draft.transactionType : state.draft.transactionType };
   if (company && !draft.buildingId && free("buildingId")) {
     const id =
       resolveBuildingMention(ai.building_mention, ctx.refs.buildings) ??

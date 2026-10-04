@@ -23,6 +23,10 @@ createRoot(document.getElementById('root')).render(
 `;
 const refs = {
   orgId: 'dddd0000-0000-4000-8000-000000000001', loading: false, canCompany: true, canPersonal: true,
+  permissionsLoading:false,permissionsError:null,personalLoading:false,personalError:null,personalReady:true,
+  companyLoading:false,companyError:null,companyReady:true,
+  personalWallets:[{id:'11111111-1111-4111-8111-111111111111',user_id:'u1',name:'Tiền mặt',version:1,kind:'cash',icon:'wallet',is_default:true,hidden:false,opening_balance:0,balance:0}],
+  personalCategories:[{id:'22222222-2222-4222-8222-222222222222',user_id:'u1',name:'Sinh hoạt',version:1,type:'EXPENSE',icon:'wallet',color:'#123456',hidden:false,seed_key:null,legacy_name:null}],
   buildings: [{ id: 'b102', name: 'Toà 102', code: '102LVT', is_virtual: false, user_id: 'u1', managed: true }],
   rooms: [], categories: [{ id: 'c1', name: 'Sửa điện', category: 'Bảo Trì', type: 'expense' }],
   cashbooks: [{ id: 'a1', label: 'Quỹ 102' }],

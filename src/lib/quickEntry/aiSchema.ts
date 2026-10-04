@@ -21,6 +21,7 @@ const cut = (max: number) => z.string().transform((s) => s.slice(0, max));
 
 const itemSchema = z
   .object({
+    transactionType: z.enum(['INCOME','EXPENSE']).optional(),
     desc: cut(120).default(""),
     amount_vnd: lineMoney.nullable().default(null),
     category: z.string().regex(/^c\d{1,3}$/).nullable().default(null),

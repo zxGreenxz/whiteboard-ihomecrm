@@ -17,7 +17,7 @@ const card = (over: { status?: CardStatus; source?: "text" | "photo"; mode?: "co
   const state: DraftState = {
     draft: {
       id: `id-${Math.random().toString(36).slice(2)}`,
-      mode: over.mode ?? "company",
+      mode: over.mode ?? "company", transactionType:"EXPENSE",
       date: "2026-10-01",
       name: "sơn",
       vendor: null,
@@ -59,7 +59,7 @@ describe("feedStorage — giữ thẻ qua lần tải lại trang", () => {
 
   it("thẻ VÍ đang lưu lúc tải lại ⇒ lời báo không hứa 'máy chủ chống trùng' (ví không có khoá) và trỏ về Ví", () => {
     const [a] = deserializeCards(serializeCards([card({ mode: "personal", status: { kind: "saving" } })], NOW), NOW);
-    expect(a.status.kind).toBe("unknown");
+    expect(a.status.kind).toBe("maybe_saved");
     expect(a.status.message).not.toContain("máy chủ");
     expect(a.status.message).toContain("Ví cá nhân");
   });
@@ -69,7 +69,7 @@ describe("feedStorage — giữ thẻ qua lần tải lại trang", () => {
     const maybe = card({ status: { kind: "maybe_saved", message: "y" } });
     const saved = card({ status: { kind: "saved", code: "PC1" } });
     const back = deserializeCards(serializeCards([unknown, maybe, saved], NOW), NOW);
-    expect(back.map((c) => c.status.kind)).toEqual(["unknown", "maybe_saved"]);
+    expect(back.map((c) => c.status.kind)).toEqual(["maybe_saved", "maybe_saved"]);
     expect(back[0].personalDone).toBe(1);
   });
 

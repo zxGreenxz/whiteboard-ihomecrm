@@ -60,6 +60,18 @@ afterEach(() => {
 });
 
 describe("QuickEntryComposer — gõ chữ", () => {
+  it('đổi chế độ đang lỗi dữ liệu vẫn giữ ảnh và chữ; chỉ chốt nơi gửi khi gửi',()=>{
+    const h=setup({mode:'personal'});
+    fireEvent.change(h.box,{target:{value:'Nội dung giữ lại'}});
+    const file=new File(['img'],'bill.png',{type:'image/png'});
+    fireEvent.change(screen.getByLabelText('Chọn ảnh kèm nội dung'),{target:{files:[file]}});
+    h.rerender(<QuickEntryComposer {...h.props} mode="company" disabled/>);
+    expect(h.box.value).toBe('Nội dung giữ lại');expect(screen.getByText('bill.png')).toBeTruthy();
+    expect(screen.getByRole('button',{name:'Cá nhân'})).toHaveProperty('disabled',false);
+    fireEvent.keyDown(h.box,{key:'Enter'});expect(h.props.onPhoto).not.toHaveBeenCalled();
+    h.rerender(<QuickEntryComposer {...h.props} mode="personal"/>);
+    fireEvent.keyDown(h.box,{key:'Enter'});expect(h.props.onPhoto).toHaveBeenCalledWith(file,'Nội dung giữ lại');
+  });
   it("Enter ⇒ gửi chữ đã cắt khoảng trắng và xoá ô", () => {
     const { props, box } = setup();
     fireEvent.change(box, { target: { value: "  102LVT sơn 300k  " } });

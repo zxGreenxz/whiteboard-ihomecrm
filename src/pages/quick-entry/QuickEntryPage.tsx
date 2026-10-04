@@ -16,7 +16,6 @@ import { useAuth } from "@/hooks/useAuth";
 import { usePhoneViewport } from "@/hooks/use-mobile";
 import { useQuickEntryFeed, type FeedMessage } from "@/hooks/quick-entry/useQuickEntryFeed";
 import { useQuickEntryRefs } from "@/hooks/quick-entry/useQuickEntryRefs";
-import { PERSONAL_CATEGORIES } from "@/lib/personalCategories";
 import type { DraftMode } from "@/lib/quickEntry/draft";
 import { loadChoice, requestedModels, saveChoice, type ModelChoice } from "@/lib/quickEntry/models";
 import { vnTodayISO } from "@/lib/vnDate";
@@ -165,7 +164,8 @@ export default function QuickEntryPage() {
                 rooms={refs.rooms}
                 categories={refs.categories}
                 cashbooks={refs.cashbooks}
-                personalCategories={PERSONAL_CATEGORIES}
+                personalCategories={refs.personalCategories}
+                personalWallets={refs.personalWallets}
                 photoUrl={c.previewUrl}
                 aiModel={c.aiModel}
                 defaultAccountFor={refs.defaultAccountFor}
@@ -183,12 +183,13 @@ export default function QuickEntryPage() {
 
   // Chờ toà/hạng mục/sổ quỹ: ô soạn là khối xám (chưa cho nhập để khỏi lập thẻ thiếu dữ
   // liệu nền), không chữ "Đang tải…" — chủ chốt 02/10/2026.
-  const composer: ReactNode = refs.loading ? (
-    <div className="border-t p-3">
-      <LoadingState label="toà, hạng mục và sổ quỹ" variant="lines" rows={2} />
-    </div>
-  ) : noAccess ? null : (
+  const activeLoading=refs.permissionsLoading||(mode==='personal'?refs.personalLoading:refs.companyLoading);
+  const activeError=refs.permissionsError||(mode==='personal'?refs.personalError:refs.companyError);
+  const composer: ReactNode = noAccess ? null : <>
+    {activeLoading&&<LoadingState label="dữ liệu nhập khoản" variant="lines" rows={2}/>}
+    {activeError&&<p role="alert" className="p-3 text-sm text-destructive">Không tải được dữ liệu {mode==='personal'?'ví cá nhân':'thu chi công ty'}. Thử tải lại trang.</p>}
     <QuickEntryComposer
+      disabled={activeLoading||!!activeError}
       key={`${userId}:${refs.orgId}`}
       mode={mode}
       modes={modes}
@@ -199,7 +200,7 @@ export default function QuickEntryPage() {
       modelChoice={modelChoice}
       onModelChoiceChange={changeModelChoice}
     />
-  );
+  </>;
 
   if (isPhone) {
     return (

@@ -49,12 +49,12 @@ export interface CategorySuggestion {
 
 export function usableExpenseCategories(
   rows: CategoryRef[],
-  opts: { organizationId: string; canUseRestricted: boolean },
+  opts: { organizationId: string; canUseRestricted: boolean; type?: 'income'|'expense' },
 ): CategoryRef[] {
   return sortIeTypesForPicker(
     rows.filter(
       (r) =>
-        r.type === "expense" &&
+        r.type === (opts.type ?? "expense") &&
         r.organization_id === opts.organizationId &&
         !r.system_only &&
         !r.archived_at &&

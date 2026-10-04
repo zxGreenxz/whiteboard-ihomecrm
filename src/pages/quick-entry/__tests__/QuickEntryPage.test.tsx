@@ -50,6 +50,10 @@ import QuickEntryPage from "../QuickEntryPage";
 const baseRefs = (over: Partial<QuickEntryRefs> = {}): QuickEntryRefs => ({
   orgId: "org-1",
   loading: false,
+  permissionsLoading:false, permissionsError:null, personalLoading:false, personalError:null, personalReady:true,
+  personalWallets:[{id:'11111111-1111-4111-8111-111111111111',user_id:'user-1',version:1,name:'Tiền mặt',kind:'cash',icon:'wallet',hidden:false,is_default:true,opening_balance:0,balance:0}],
+  personalCategories:[{id:'22222222-2222-4222-8222-222222222222',user_id:'user-1',version:1,name:'Ăn uống',type:'EXPENSE',hidden:false,icon:'utensils',color:'#123456',seed_key:null,legacy_name:null}],
+  companyLoading:false,companyError:null,companyReady:true,
   canCompany: true,
   canPersonal: true,
   buildings: [{ id: "b102", name: "Toà 102", code: "102LVT", is_virtual: false, user_id: "u", managed: true }],
@@ -189,10 +193,10 @@ describe("QuickEntryPage", () => {
   });
 
   it("đang tải dữ liệu nền ⇒ chưa cho nhập (tránh thẻ thiếu toà/hạng mục)", () => {
-    h.refs = baseRefs({ loading: true });
+    h.refs = baseRefs({ loading: true,companyLoading:true });
     page();
-    expect(screen.queryByLabelText("Nội dung khoản chi")).toBeNull();
-    expect(screen.getByText(/Đang tải toà, hạng mục và sổ quỹ/)).toBeTruthy();
+    expect(screen.getByLabelText("Nội dung khoản chi")).toHaveProperty('disabled',true);
+    expect(screen.getByText(/Đang tải dữ liệu nhập khoản/)).toBeTruthy();
   });
 
   it("máy tính ⇒ nằm trong MainLayout, không dùng khung điện thoại", () => {
@@ -202,4 +206,11 @@ describe("QuickEntryPage", () => {
     expect(container.querySelector(".cm-app")).toBeNull();
     expect(screen.getByLabelText("Nội dung khoản chi")).toBeTruthy();
   });
+});
+
+it('personal entry remains available when unrelated company refs failed',async()=>{
+ h.refs=baseRefs({companyError:new Error('company offline'),companyReady:false});
+ page('/chi-tieu?che-do=ca-nhan');
+ expect(screen.getByLabelText('Nội dung khoản chi')).toHaveProperty('disabled',false);
+ await type('bún 50k');expect(screen.getByTestId('draft-card').getAttribute('data-mode')).toBe('personal');
 });

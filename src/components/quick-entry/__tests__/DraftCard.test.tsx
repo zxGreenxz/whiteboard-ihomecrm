@@ -68,7 +68,7 @@ function Harness(p: {
         rooms={rooms}
         categories={categories}
         cashbooks={p.cashbookList ?? cashbooks}
-        personalCategories={PERSONAL_CATEGORIES}
+        personalCategories={PERSONAL_CATEGORIES.map((name,i)=>({id:'cat-'+i,name,type:'EXPENSE',hidden:false}))}
         photoUrl={p.photoUrl}
         aiModel={p.aiModel}
         defaultAccountFor={(b) => (b ? `acc-${b}` : null)}
@@ -290,10 +290,10 @@ describe("DraftCard — trạng thái máy chủ", () => {
 describe("DraftCard — cá nhân", () => {
   it("không có toà/sổ quỹ; ảnh chỉ để AI đọc, không lưu", () => {
     const s = state({
-      mode: "personal",
+      mode: "personal", personalWalletId:"wallet",
       buildingId: null,
       accountId: null,
-      lines: [{ description: "bún bò", amount: 50_000, categoryId: null, personalCategory: "Ăn uống", periodStart: null, periodEnd: null }],
+      lines: [{ description: "bún bò", amount: 50_000, categoryId: null, personalCategoryId:"cat-0", personalCategory: "Ăn uống", periodStart: null, periodEnd: null }],
     });
     render(<Harness initial={s} photoUrl="blob:anh" />);
     expect(screen.queryByLabelText("Toà")).toBeNull();

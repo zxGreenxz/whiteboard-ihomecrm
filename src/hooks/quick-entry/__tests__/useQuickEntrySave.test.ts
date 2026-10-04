@@ -2,9 +2,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderHook } from "@testing-library/react";
 
-const h = vi.hoisted(() => ({ createIE: vi.fn(), createPersonal: vi.fn(), upload: vi.fn() }));
+const h = vi.hoisted(() => ({ createIE: vi.fn(), createPersonal: vi.fn(), prepare: vi.fn(), upload: vi.fn() }));
 vi.mock("@/hooks/income-expenses/mutations", () => ({ useCreateIncomeExpense: () => ({ mutateAsync: h.createIE }) }));
-vi.mock("@/hooks/usePersonalTransactions", () => ({ useCreatePersonalTransaction: () => ({ mutateAsync: h.createPersonal }) }));
+vi.mock("@/hooks/personal-finance/usePersonalFinance", () => ({ usePersonalFinanceMutation: () => ({ mutateAsync: h.createPersonal, prepare:h.prepare, pending:[] }) }));
 vi.mock("@/lib/storage", () => ({ uploadFileDetailed: h.upload }));
 vi.mock("@/lib/authSession", () => ({ getSessionUser: async () => ({ id: "u1" }) }));
 
@@ -26,20 +26,20 @@ const company: QuickDraft = {
 };
 const personal: QuickDraft = {
   ...company,
-  mode: "personal",
+  mode: "personal", personalProtocol:1, personalWalletId:ID,
   buildingId: null,
   accountId: null,
   attachmentUrls: [],
   name: "Đi chợ",
   lines: [
-    { description: "rau", amount: 20_000, categoryId: null, personalCategory: "Ăn uống", periodStart: null, periodEnd: null },
-    { description: "dầu gội", amount: 85_000, categoryId: null, personalCategory: "Cá nhân", periodStart: null, periodEnd: null },
+    { description: "rau", amount: 20_000, categoryId: null, personalCategoryId:ID, personalCategory: "Ăn uống", periodStart: null, periodEnd: null },
+    { description: "dầu gội", amount: 85_000, categoryId: null, personalCategoryId:ID, personalCategory: "Cá nhân", periodStart: null, periodEnd: null },
   ],
 };
 
 beforeEach(() => {
   h.createIE.mockReset();
-  h.createPersonal.mockReset();
+  h.createPersonal.mockReset(); h.prepare.mockImplementation((payload,requestKey)=>({ownerId:ID,payload,requestKey}));
   h.upload.mockReset();
 });
 
@@ -78,68 +78,40 @@ describe("useQuickEntrySave — công ty", () => {
   });
 });
 
-describe("useQuickEntrySave — cá nhân", () => {
-  it("ghi từng khoản theo danh mục, trả các id", async () => {
-    h.createPersonal.mockResolvedValueOnce({ id: "p1" }).mockResolvedValueOnce({ id: "p2" });
-    const out = await save().savePersonal(personal);
-    expect(h.createPersonal).toHaveBeenCalledTimes(2);
-    expect(h.createPersonal.mock.calls[0][0]).toMatchObject({ type: "EXPENSE", amount: 20_000, category: "Ăn uống" });
-    expect(out).toMatchObject({ kind: "saved", ids: ["p1", "p2"] });
-  });
-
-  it("khoản thứ hai rớt mạng ⇒ 'unknown' và giữ id khoản đã lưu", async () => {
-    h.createPersonal.mockResolvedValueOnce({ id: "p1" }).mockRejectedValueOnce(new TypeError("Failed to fetch"));
-    const out = await save().savePersonal(personal);
-    expect(out).toMatchObject({ kind: "unknown", ids: ["p1"], done: 1 });
-  });
-
-  it("rớt mạng ở ví: lời báo không hứa 'máy chủ chống trùng' (ví không có khoá) và trỏ về Ví cá nhân", async () => {
-    h.createPersonal.mockRejectedValueOnce(new TypeError("Failed to fetch"));
-    const out = await save().savePersonal(personal);
-    expect(out.kind).toBe("unknown");
-    expect(out.message).not.toContain("máy chủ");
-    expect(out.message).not.toContain("Thu chi");
-    expect(out.message).toContain("Ví cá nhân");
-  });
-
-  it("gửi lại sau khi khoản thứ hai rớt mạng ⇒ KHÔNG ghi lại khoản đầu đã lưu (ví không có khoá chống trùng)", async () => {
-    h.createPersonal.mockResolvedValueOnce({ id: "p1" }).mockRejectedValueOnce(new TypeError("Failed to fetch"));
-    const first = await save().savePersonal(personal);
-    h.createPersonal.mockReset();
-    h.createPersonal.mockResolvedValueOnce({ id: "p2" });
-    const retry = await save().savePersonal(personal, first.done);
+describe("useQuickEntrySave — cá nhân atomic", () => {
+  it("ghi tất cả dòng trong một batch và trả các id xác nhận", async()=>{
+    h.createPersonal.mockResolvedValue({entities:[{id:'p1'},{id:'p2'}]});
+    const out=await save().savePersonal(personal);
     expect(h.createPersonal).toHaveBeenCalledTimes(1);
-    expect(h.createPersonal.mock.calls[0][0]).toMatchObject({ amount: 85_000, category: "Cá nhân" });
-    expect(retry).toMatchObject({ kind: "saved", ids: ["p2"], done: 2 });
+    expect(h.createPersonal.mock.calls[0][0]).toMatchObject({requestKey:ID,payload:{action:'transaction.batch',rows:[{amount:20000,category_id:ID},{amount:85000,category_id:ID}]}});
+    expect(out).toMatchObject({kind:'saved',ids:['p1','p2'],done:2});
   });
-
-  it("báo tiến độ ngay sau TỪNG khoản — tải lại trang giữa vòng vẫn biết khoản nào đã ghi", async () => {
-    const seen: number[] = [];
-    h.createPersonal.mockResolvedValueOnce({ id: "p1" }).mockImplementationOnce(async () => {
-      expect(seen).toEqual([1]);
-      return { id: "p2" };
-    });
-    await save().savePersonal(personal, 0, (done) => seen.push(done));
-    expect(seen).toEqual([1, 2]);
+  it("batch rớt mạng không nhận một phần hay báo thành công",async()=>{
+    h.createPersonal.mockRejectedValue(new TypeError('Failed to fetch'));
+    expect(await save().savePersonal(personal)).toMatchObject({kind:'unknown',ids:[],done:0});
   });
-
-  it("đã ghi một phần rồi khoản kế bị từ chối ⇒ KHOÁ thẻ (chỉ gửi tiếp y nguyên), không về nháp để sửa", async () => {
-    h.createPersonal
-      .mockResolvedValueOnce({ id: "p1" })
-      .mockRejectedValueOnce(Object.assign(new Error("permission denied"), { code: "42501" }));
-    const out = await save().savePersonal(personal);
-    expect(out).toMatchObject({ kind: "unknown", ids: ["p1"], done: 1 });
-    expect(out.message).toContain("1/2");
+  it("lời báo yêu cầu gửi lại y nguyên với khóa máy chủ và trỏ về Ví cá nhân",async()=>{
+    h.createPersonal.mockRejectedValue(new TypeError('Failed to fetch'));
+    const out=await save().savePersonal(personal);expect(out.message).toContain('máy chủ');expect(out.message).toContain('Ví cá nhân');expect(out.message).not.toContain('Thu chi');
   });
-
-  it("máy chủ từ chối khoản đầu ⇒ 'rejected', done = 0", async () => {
-    h.createPersonal.mockRejectedValueOnce(Object.assign(new Error("permission denied"), { code: "42501" }));
-    const out = await save().savePersonal(personal);
-    expect(out).toMatchObject({ kind: "rejected", ids: [], done: 0 });
-    expect(h.createPersonal).toHaveBeenCalledTimes(1);
+  it("retry giữ nguyên UUID và payload của batch",async()=>{
+    h.createPersonal.mockRejectedValueOnce(new TypeError('Failed to fetch')).mockResolvedValueOnce({entities:[{id:'p1'},{id:'p2'}]});
+    await save().savePersonal(personal);const retry=await save().savePersonal(personal);
+    expect(h.createPersonal.mock.calls[1][0]).toEqual(h.createPersonal.mock.calls[0][0]);expect(retry).toMatchObject({kind:'saved',done:2});
+  });
+  it("tiến độ chỉ báo một lần sau biên nhận atomic",async()=>{
+    const seen:number[]=[];h.createPersonal.mockImplementation(async()=>{expect(seen).toEqual([]);return{entities:[{id:'p1'},{id:'p2'}]};});
+    await save().savePersonal(personal,0,n=>seen.push(n));expect(seen).toEqual([2]);
+  });
+  it("nháp cũ đã ghi một phần khóa đối chiếu, không replay bất kỳ dòng nào",async()=>{
+    const out=await save().savePersonal({...personal,personalProtocol:undefined},1);
+    expect(out).toMatchObject({kind:'maybe_saved',ids:[],done:1});expect(out.message).toContain('Đối chiếu');expect(h.createPersonal).not.toHaveBeenCalled();
+  });
+  it("máy chủ từ chối batch thì không có dòng thành công",async()=>{
+    h.createPersonal.mockRejectedValue(Object.assign(new Error('permission denied'),{code:'42501'}));
+    expect(await save().savePersonal(personal)).toMatchObject({kind:'rejected',ids:[],done:0});expect(h.createPersonal).toHaveBeenCalledTimes(1);
   });
 });
-
 describe("useQuickEntrySave — ảnh chứng từ", () => {
   it("tải vào kho chứng từ phiếu, đường dẫn trong thư mục của chính người dùng, gắn id thẻ", async () => {
     h.upload.mockResolvedValueOnce({ url: "https://cdn.test/u1/x.jpg", path: "u1/x.jpg", type: "image/jpeg", size: 1 });

@@ -1,7 +1,7 @@
 // Lưu thẻ nháp của trang "Báo chi nhanh".
 //   Công ty  ⇒ useCreateIncomeExpense → create_income_expense_v1 (bộ máy chi quyết Đã duyệt /
 //              Chờ duyệt y như phiếu lập tay) với khoá chống trùng cố định `qe-<id thẻ>`.
-//   Cá nhân  ⇒ useCreatePersonalTransaction, mỗi danh mục một khoản.
+//   Cá nhân ⇒ transaction.batch atomic, một UUID cố định cho mỗi thẻ.
 // Kết quả chia bốn loại để thẻ xử lý đúng: saved · unknown (rớt mạng, hoặc ví đã ghi được một phần —
 // khoá thẻ, chỉ cho gửi lại Y NGUYÊN) · maybe_saved (23505: cùng khoá khác nội dung — lần trước có thể
 // đã lưu) · rejected.
@@ -9,18 +9,18 @@
 
 import { useCreateIncomeExpense } from "@/hooks/income-expenses/mutations";
 import type { CreateIncomeExpenseInput } from "@/hooks/income-expenses/types";
-import { useCreatePersonalTransaction } from "@/hooks/usePersonalTransactions";
+import { usePersonalFinanceMutation } from '@/hooks/personal-finance/usePersonalFinance';
+import { PersonalFinanceError } from '@/lib/personalFinance/service';
 import { getSessionUser } from "@/lib/authSession";
 import { uploadFileDetailed } from "@/lib/storage";
 import { hasUnconfirmedResponse } from "@/lib/operationOutcome";
 import { createdVoucherFeedback, voucherFailureMessage } from "@/lib/voucherFeedback";
-import { recordWriteMessage } from "@/lib/recordWriteOutcome";
-import { toCreateIncomeExpenseInput, toPersonalTransactionValues } from "@/lib/quickEntry/convert";
+import { toCreateIncomeExpenseInput, toPersonalBatch } from "@/lib/quickEntry/convert";
 import type { QuickDraft } from "@/lib/quickEntry/draft";
 
 export const ATTACHMENT_BUCKET = "income-expense-attachments";
 
-/** `done` = số khoản đã chắc chắn ghi (cộng dồn qua các lần gửi) — gửi lại thì bỏ qua chừng đó khoản. */
+/** `done` counts confirmed rows only; legacy partial counts are retained for reconciliation. */
 export type SaveOutcome =
   | { kind: "saved"; code: string | null; approvalStatus: string | null; ids: string[]; done: number; message: string }
   | { kind: "unknown"; ids: string[]; done: number; message: string }
@@ -29,15 +29,10 @@ export type SaveOutcome =
 
 const UNKNOWN_MESSAGE =
   "Chưa rõ đã lưu chưa (mất kết nối). Bấm “Gửi lại y nguyên” — máy chủ tự chống trùng — hoặc kiểm tra trong Thu chi.";
-/** Ví không có khoá phía máy chủ: chống trùng là bước đối chiếu của hook ví trước khi ghi lại. */
-const UNKNOWN_PERSONAL_MESSAGE =
-  "Chưa rõ đã ghi chưa (mất kết nối). Bấm “Gửi lại y nguyên” — máy đối chiếu với ví trước khi ghi — hoặc xem Ví cá nhân.";
 const MAYBE_SAVED_MESSAGE =
   "Thẻ này có thể đã được lưu ở lần trước. Kiểm tra trong Thu chi trước khi tạo thẻ mới.";
 const COMPAT_UNKNOWN_MESSAGE =
   "Mất kết nối lúc lưu qua đường dự phòng (không chống trùng được) — phiếu có thể đã được tạo. Kiểm tra trong Thu chi trước khi lập lại.";
-const partialMessage = (done: number, total: number, why: string) =>
-  `Đã ghi ${done}/${total} khoản vào ví; khoản kế chưa ghi được: ${why} Bấm “Gửi lại y nguyên” để ghi tiếp phần còn lại.`;
 
 const codeOf = (e: unknown) => String((e as { code?: unknown } | null)?.code ?? "");
 
@@ -47,7 +42,7 @@ const EXT: Record<string, string> = { "image/png": ".png", "image/webp": ".webp"
 
 export function useQuickEntrySave() {
   const createIE = useCreateIncomeExpense();
-  const createPersonal = useCreatePersonalTransaction();
+  const personal = usePersonalFinanceMutation();
 
   const uploadPhoto = async (file: File, draftId: string): Promise<string> => {
     const user = await getSessionUser();
@@ -83,36 +78,20 @@ export function useQuickEntrySave() {
     }
   };
 
-  /**
-   * Ví cá nhân KHÔNG có khoá chống trùng; `reconcile` của hook ví chỉ cứu khoản đang treo. Nên khi gửi
-   * lại, bỏ qua `alreadyDone` khoản đầu đã chắc chắn ghi — nếu không, khoản đầu bị ghi hai lần.
-   * `onProgress` báo ngay sau TỪNG khoản để thẻ lưu tiến độ trước khi khoản kế chạy (tải lại trang giữa
-   * vòng không làm mất số khoản đã ghi). Đã ghi được ít nhất một khoản mà khoản kế bị từ chối ⇒ trả
-   * 'unknown' để thẻ KHOÁ: sửa thẻ lúc này làm đổi cách chia khoản và `slice(done)` sẽ bỏ sót/ghi lặp.
-   */
-  const savePersonal = async (
-    draft: QuickDraft,
-    alreadyDone = 0,
-    onProgress?: (done: number) => void,
-  ): Promise<SaveOutcome> => {
-    const all = toPersonalTransactionValues(draft);
-    const ids: string[] = [];
-    let done = alreadyDone;
-    for (const values of all.slice(alreadyDone)) {
-      try {
-        const row = (await createPersonal.mutateAsync(values)) as { id?: string } | null;
-        if (row?.id) ids.push(row.id);
-        done += 1;
-        onProgress?.(done);
-      } catch (e) {
-        if (hasUnconfirmedResponse(e)) return { kind: "unknown", ids, done, message: UNKNOWN_PERSONAL_MESSAGE };
-        const why = recordWriteMessage(e, "thêm khoản vào ví cá nhân");
-        if (done > 0) return { kind: "unknown", ids, done, message: partialMessage(done, all.length, why) };
-        return { kind: "rejected", ids, done, message: why };
-      }
+  /** One card = one atomic request. Historic partial/unknown writes need explicit reconciliation. */
+  const savePersonal = async (draft: QuickDraft, alreadyDone = 0, onProgress?: (done:number)=>void): Promise<SaveOutcome> => {
+    if(!draft.personalProtocol)return {kind:'maybe_saved',ids:[],done:alreadyDone,message:'Nháp cũ có khoản đã ghi hoặc chưa rõ kết quả. Đối chiếu Ví cá nhân trước khi tạo phần còn thiếu; không tự gửi lại.'};
+    try {
+      const key=draft.personalRequestKey??draft.id;
+      const prior=personal.pending.find(p=>p.requestKey===key);
+      const request=prior??personal.prepare(toPersonalBatch(draft),key);
+      const receipt=await personal.mutateAsync(request);
+      const ids=receipt.entities.map(r=>r.id);onProgress?.(ids.length);
+      return {kind:'saved',code:null,approvalStatus:null,ids,done:ids.length,message:'Đã ghi vào Ví cá nhân.'};
+    }catch(error){
+      const unknown=error instanceof PersonalFinanceError ? error.outcomeUnknown||['network','internal'].includes(error.kind) : hasUnconfirmedResponse(error);
+      return {kind:unknown?'unknown':'rejected',ids:[],done:0,message:unknown?'Chưa xác nhận kết quả. Gửi lại y nguyên; máy chủ chống trùng theo mã yêu cầu của Ví cá nhân.':error instanceof Error?error.message:'Không lưu được khoản vào Ví cá nhân.'};
     }
-    return { kind: "saved", code: null, approvalStatus: null, ids, done, message: "Đã ghi vào Ví cá nhân." };
   };
-
-  return { uploadPhoto, saveCompany, savePersonal };
+  return { uploadPhoto, saveCompany, savePersonal, pendingPersonalRequests:personal.pending };
 }

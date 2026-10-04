@@ -18,7 +18,9 @@ import {
   useUpdatePersonalTransaction,
   type PersonalTransaction,
 } from "@/hooks/usePersonalTransactions";
-import { PERSONAL_CATEGORIES } from "@/lib/personalCategories";
+import { usePersonalFinance } from '@/hooks/personal-finance/usePersonalFinance';
+import { transactionChanges } from '@/lib/personalFinance/transactionInput';
+import { PersonalFinanceError } from '@/lib/personalFinance/service';
 
 interface Props {
   open: boolean;
@@ -36,6 +38,7 @@ export default function PersonalTxnDialog({ open, onOpenChange, txn }: Props) {
   const [blocked,setBlocked]=useState(false);
   const createMut = useCreatePersonalTransaction();
   const updateMut = useUpdatePersonalTransaction();
+  const finance = usePersonalFinance();
 
   const [type, setType] = useState<"INCOME" | "EXPENSE">("EXPENSE");
   const [amount, setAmount] = useState(0);
@@ -66,7 +69,7 @@ export default function PersonalTxnDialog({ open, onOpenChange, txn }: Props) {
     if (isPending || submitting.current || blocked) return;
     if(!validateInputDrafts(root.current))return;
     const errors: Record<string, string> = {};
-    if (!Number.isFinite(amount) || amount <= 0) errors.amount = 'Số tiền phải lớn hơn 0.';
+    if ((!txn || amount !== txn.amount) && (!Number.isSafeInteger(amount) || amount <= 0 || amount > 1e12)) errors.amount = 'Số tiền phải là số đồng nguyên dương, tối đa 1.000 tỷ.';
     if (!/^\d{4}-\d{2}-\d{2}$/.test(txnDate) || Number.isNaN(Date.parse(txnDate))) errors.txn_date = 'Chọn ngày giao dịch hợp lệ.';
     setFieldErrors(errors);
     if (Object.keys(errors).length) { void focusFirstError(errors); return; }
@@ -74,17 +77,20 @@ export default function PersonalTxnDialog({ open, onOpenChange, txn }: Props) {
     submitting.current=true;setSaving(true);
     const values = {
       type, amount, txn_date: txnDate,
-      category: category.trim() || null,
-      description: description.trim() || null,
+      category: category || null,
+      description: description || null,
     };
     try {
-      if (isEdit && txn) await updateMut.mutateAsync({ id: txn.id, values });
+      if (isEdit && txn) {
+        const changes = transactionChanges(txn, values);
+        if (Object.keys(changes).length) await updateMut.mutateAsync({ id: txn.id, expected_version: txn.version, original: txn, values: changes });
+      }
       else await createMut.mutateAsync(values);
       draftKey.current=null;dirty.current=false;
       onOpenChange(false);
     } catch (error) {
-      setBlocked(recordWriteBlocked(error));
-      setServerError(recordWriteMessage(error,'lưu khoản trong ví cá nhân'));
+      setBlocked(error instanceof PersonalFinanceError ? error.outcomeUnknown : recordWriteBlocked(error));
+      setServerError(error instanceof PersonalFinanceError ? error.message + (error.outcomeUnknown ? ' Mở mục yêu cầu đang chờ trong Ví cá nhân để gửi lại y nguyên.' : '') : recordWriteMessage(error,'lưu khoản trong ví cá nhân'));
     } finally {
       submitting.current=false;setSaving(false);
     }
@@ -138,7 +144,7 @@ export default function PersonalTxnDialog({ open, onOpenChange, txn }: Props) {
               placeholder="VD: Ăn uống, Nhà cửa..."
             />
             <datalist id="personal-categories">
-              {PERSONAL_CATEGORIES.map((c) => <option key={c} value={c} />)}
+              {(finance.data?.categories ?? []).filter(c => c.type === type && (!c.hidden || c.id === txn?.resolved_category_id)).map((c) => <option key={c.id} value={c.name} />)}
             </datalist>
           </div>
 

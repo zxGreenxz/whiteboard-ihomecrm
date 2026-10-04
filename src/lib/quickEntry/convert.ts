@@ -10,6 +10,7 @@
 // Kiểu đầu ra khai cục bộ cho thư viện thuần; hook nhận nó sẽ được TypeScript so khớp.
 
 import { MAX_DESCRIPTION, MAX_NAME, MAX_PAYER_NAME, type DraftLine, type QuickDraft } from "./draft";
+import { normalizeMutation, type Mutation } from '@/lib/personalFinance/contract';
 
 export interface CompanyVoucherItem {
   income_expense_type_id: string;
@@ -21,7 +22,7 @@ export interface CompanyVoucherItem {
 }
 
 export interface CompanyVoucherInput {
-  type: "EXPENSE";
+  type: "INCOME" | "EXPENSE";
   name: string;
   building_id: string;
   room_id: string | null;
@@ -43,7 +44,7 @@ export interface CompanyVoucherInput {
 }
 
 export interface PersonalEntryValues {
-  type: "EXPENSE";
+  type: "INCOME" | "EXPENSE";
   amount: number;
   txn_date: string;
   category: string | null;
@@ -79,7 +80,7 @@ export function toCreateIncomeExpenseInput(d: QuickDraft): CompanyVoucherInput {
     };
   });
   return {
-    type: "EXPENSE",
+    type: d.transactionType ?? "EXPENSE",
     name: clean(d.name, MAX_NAME) ?? clean(d.lines[0]?.description, MAX_NAME) ?? "Chi nhanh",
     building_id: d.buildingId,
     room_id: d.roomId,
@@ -119,7 +120,7 @@ export function toPersonalTransactionValues(d: QuickDraft): PersonalEntryValues[
     const joined = g.parts.join("; ");
     const description = joined ? (base ? `${base}: ${joined}` : joined) : base;
     return {
-      type: "EXPENSE",
+      type: d.transactionType ?? "EXPENSE",
       amount: g.amount,
       txn_date: d.date,
       category: g.category,
@@ -132,6 +133,12 @@ export interface PlacedLine {
   buildingId: string | null;
   roomId: string | null;
   line: DraftLine;
+}
+
+/** Atomic rows preserve two independent identical entries; never group by amount/content/category. */
+export function toPersonalBatch(d:QuickDraft):Mutation {
+ if(d.mode!=='personal')throw new Error('Khoản công ty không ghi vào ví cá nhân.');
+ return normalizeMutation({action:'transaction.batch',rows:d.lines.map(l=>({type:l.transactionType??d.transactionType??'EXPENSE',amount:l.amount,txn_date:d.date,wallet_id:d.personalWalletId,category_id:l.personalCategoryId,description:clean(l.description,500)}))});
 }
 
 /** Một tin nhiều khoản: khác toà hoặc khác phòng ⇒ phiếu riêng (room_id ở cấp phiếu). */

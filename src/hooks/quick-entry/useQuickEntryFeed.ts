@@ -14,13 +14,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { makeCopilotFetch, newTaskId } from "@/copilot/copilotConfig";
 import { compressImage } from "@/lib/imageCompress";
-import { PERSONAL_CATEGORIES } from "@/lib/personalCategories";
+import { resolvePersonalDraft } from '@/lib/quickEntry/personalRefs';
 import type { AiResult } from "@/lib/quickEntry/aiSchema";
 import { encodeWithinBudget } from "@/lib/quickEntry/billImage";
 import type { CardStatus } from "@/lib/quickEntry/cardStatus";
 import {
   applyAiCategories,
-  draftFromBill,
+  draftsFromBill,
+  splitDraftTypes,
   draftsFromText,
   enrichFromAi,
   LINES_EDITED,
@@ -115,7 +116,7 @@ export function needsAi(s: DraftState): boolean {
     const settled = (i: number) => s.locked.includes(`lines.${i}.categoryId`) || s.touched.includes(`lines.${i}.categoryId`);
     return !d.buildingId || d.lines.some((l, i) => !l.categoryId || !settled(i));
   }
-  return d.lines.some((l) => !l.personalCategory);
+  return d.lines.some((l) => !l.personalCategoryId);
 }
 
 /**
@@ -177,7 +178,8 @@ export function useQuickEntryFeed(opts: {
 }) {
   const { refs, userId, today } = opts;
   const orgId = refs.orgId;
-  const scope = userId && orgId ? draftsKey(userId, orgId) : null;
+  const scope = userId ? draftsKey(userId, orgId??'personal') : null;
+  const scopeRef=useRef(scope);scopeRef.current=scope;
   const save = useQuickEntrySave();
   // Đọc lựa chọn MỚI NHẤT lúc gọi (đổi ô chọn giữa chừng thì lần gọi kế dùng ngay, không dựng lại hàm).
   const modelsRef = useRef(opts.models);
@@ -195,7 +197,7 @@ export function useQuickEntryFeed(opts: {
 
   // Mở trang / đổi công ty: dọn nháp của người khác trên máy, nạp nháp của chính mình.
   useEffect(() => {
-    if (!scope || !userId) return;
+    if (!scope || !userId) {setFeed({scope:null,messages:[],cards:{}});return;}
     let restored: ReturnType<typeof deserializeCards> = [];
     try {
       for (const k of otherUsersKeys(Object.keys(localStorage), userId)) localStorage.removeItem(k);
@@ -232,6 +234,40 @@ export function useQuickEntryFeed(opts: {
     setFeed({ scope, messages, cards });
   }, [scope, userId]);
 
+  useEffect(()=>{
+    if(!refs.personalReady)return;
+    setFeed(f=>{
+      if(f.scope!==scope)return f;
+      let changed=false;const cards={...f.cards};
+      for(const [id,c] of Object.entries(cards)){
+        if(!editable(c))continue;
+        const draft=resolvePersonalDraft(c.state.draft,refs.personalWallets,refs.personalCategories);
+        if(JSON.stringify(draft)===JSON.stringify(c.state.draft))continue;
+        changed=true;cards[id]={...c,state:{...c.state,draft}};
+      }
+      return changed?{...f,cards}:f;
+    });
+  },[scope,refs.personalReady,refs.personalWallets,refs.personalCategories]);
+
+  // Storage of the request precedes the network call. A reload may happen before React persists
+  // the card's saving status: recover the exact pending rows and lock that card as well.
+  const pendingPersonal=save.pendingPersonalRequests;
+  useEffect(()=>{
+    if(!pendingPersonal?.length)return;
+    setFeed(f=>{
+      if(f.scope!==scope)return f;
+      let changed=false;const cards={...f.cards};
+      for(const [id,c] of Object.entries(cards)){
+        if(c.state.draft.mode!=='personal'||!editable(c))continue;
+        const request=pendingPersonal.find(p=>p.ownerId===userId&&p.requestKey===(c.state.draft.personalRequestKey??id));
+        const rows=request?.payload.action==='transaction.batch'?request.payload.rows:undefined;
+        if(!rows?.length)continue;
+        changed=true;cards[id]={...c,status:{kind:'unknown',message:'Yêu cầu đang chờ xác nhận. Chỉ gửi lại nguyên nội dung đã gửi.'},state:{...c.state,draft:{...c.state.draft,personalProtocol:1,personalRequestKey:request!.requestKey,date:rows[0].txn_date,personalWalletId:rows[0].wallet_id,transactionType:rows[0].type,lines:rows.map(row=>({description:row.description??'',amount:row.amount,transactionType:row.type,personalCategoryId:row.category_id,personalCategory:null,categoryId:null,periodStart:null,periodEnd:null}))}}};
+      }
+      return changed?{...f,cards}:f;
+    });
+  },[scope,userId,pendingPersonal]);
+
   // Ghi nháp sau mỗi thay đổi (chỉ khi nháp đang hiện đúng là của người + công ty hiện tại).
   useEffect(() => {
     if (!feed.scope || feed.scope !== scope) return;
@@ -253,18 +289,18 @@ export function useQuickEntryFeed(opts: {
   }, []);
 
   const patchCard = useCallback((id: string, fn: (c: FeedCard) => FeedCard) => {
-    setFeed((f) => (f.cards[id] ? { ...f, cards: { ...f.cards, [id]: fn(f.cards[id]) } } : f));
-  }, []);
+    setFeed((f) => (f.scope===scope && f.cards[id] ? { ...f, cards: { ...f.cards, [id]: fn(f.cards[id]) } } : f));
+  }, [scope]);
   const patchMessage = useCallback((id: string, fn: (m: FeedMessage) => FeedMessage) => {
-    setFeed((f) => ({ ...f, messages: f.messages.map((m) => (m.id === id ? fn(m) : m)) }));
-  }, []);
+    setFeed((f) => f.scope!==scope?f:({ ...f, messages: f.messages.map((m) => (m.id === id ? fn(m) : m)) }));
+  }, [scope]);
   const addEntry = useCallback((message: FeedMessage, cards: FeedCard[]) => {
-    setFeed((f) => ({
+    setFeed((f) => f.scope!==scope?f:({
       ...f,
       messages: [...f.messages, message],
       cards: { ...f.cards, ...Object.fromEntries(cards.map((c) => [c.id, c])) },
     }));
-  }, []);
+  }, [scope]);
 
   // Hai đường AI chạy trên hai nhà cung cấp (đọc: 9router; giọng: OpenRouter) nên tắt RIÊNG: một bên
   // hỏng không kéo bên kia. Chỉ "không có quyền" và "hết lượt" tắt cả hai — máy chủ xét chung.
@@ -301,17 +337,18 @@ export function useQuickEntryFeed(opts: {
     mode,
     refs: refs.resolveRefs,
     categories: refs.categories,
-    personalCategories: [...PERSONAL_CATEGORIES],
+    personalCategoryRefs:(refs.personalCategories??[]).filter(c=>!c.hidden),
+    personalWalletId:(refs.personalWallets??[]).find(w=>w.is_default&&!w.hidden)?.id??null,
     newId: () => crypto.randomUUID(),
     defaultAccountFor: refs.defaultAccountFor,
   });
 
   const promptCategories = (ctx: ComposeContext): PromptCategory[] =>
-    ctx.categories.map((c) => ({ name: c.name, group: c.category, note: c.description, keywords: c.keywords }));
+    ctx.categories.map((c) => ({ name: c.name, type:c.type==='income'?'INCOME':'EXPENSE', group: c.category, note: c.description, keywords: c.keywords }));
 
   const askAi = async (ctx: ComposeContext, input: { text?: string; imageDataUrl?: string }): Promise<AiRead> => {
     const company = ctx.mode === "company";
-    const categories = company ? promptCategories(ctx) : (ctx.personalCategories ?? []).map((name) => ({ name }));
+    const categories = company ? promptCategories(ctx) : (ctx.personalCategoryRefs ?? []).map(c => ({name:c.name,type:c.type}));
     const messages = buildQuickEntryMessages({
       today: ctx.today,
       mode: ctx.mode,
@@ -362,6 +399,7 @@ export function useQuickEntryFeed(opts: {
   };
 
   const submitText = async (text: string, mode: DraftMode): Promise<void> => {
+    if(!userId||scopeRef.current!==scope||mode==='company'&&!refs.canCompany||mode==='personal'&&!refs.canPersonal)return;
     const ctx = ctxFor(mode);
     const states = draftsFromText(text, ctx);
     const messageId = crypto.randomUUID();
@@ -428,6 +466,13 @@ export function useQuickEntryFeed(opts: {
       }),
     );
     const error = outcome.error;
+    setFeed(f=>{
+      if(f.scope!==scope)return f;
+      const cards={...f.cards};const replacements=new Map<string,string[]>();
+      for(const target of targets){const card=cards[target.draft.id];if(!card||!editable(card))continue;const states=splitDraftTypes(card.state,()=>crypto.randomUUID());if(states.length===1)continue;
+       replacements.set(card.id,states.map(s=>s.draft.id));for(const state of states)cards[state.draft.id]={...card,id:state.draft.id,state};}
+      return {...f,cards,messages:f.messages.map(m=>m.id===messageId?{...m,cardIds:m.cardIds.flatMap(id=>replacements.get(id)??[id])}:m)};
+    });
     patchMessage(messageId, (m) => ({
       ...m,
       reading: false,
@@ -450,6 +495,7 @@ export function useQuickEntryFeed(opts: {
   };
 
   const submitPhoto = async (file: File, mode: DraftMode, text = ""): Promise<void> => {
+    if(!userId||scopeRef.current!==scope||mode==='company'&&!refs.canCompany||mode==='personal'&&!refs.canPersonal)return;
     const ctx = ctxFor(mode);
     const caption = text.trim();
     const messageId = crypto.randomUUID();
@@ -483,8 +529,7 @@ export function useQuickEntryFeed(opts: {
       }
     }
 
-    const state = draftFromBill(result, ctx);
-    const card: FeedCard = {
+    const newCards: FeedCard[] = draftsFromBill(result, ctx).map(state=>({
       id: state.draft.id,
       state,
       status: { kind: "draft" },
@@ -492,18 +537,24 @@ export function useQuickEntryFeed(opts: {
       photo: mode === "company" ? file : null,
       previewUrl,
       personalDone: 0,
-    };
-    setFeed((f) => ({
+    }));
+    setFeed((f) => f.scope!==scope?f:({
       ...f,
-      cards: { ...f.cards, [card.id]: card },
-      messages: f.messages.map((m) => (m.id === messageId ? { ...m, reading: false, note, cardIds: [card.id] } : m)),
+      cards: { ...f.cards, ...Object.fromEntries(newCards.map(c=>[c.id,c])) },
+      messages: f.messages.map((m) => (m.id === messageId ? { ...m, reading: false, note, cardIds: newCards.map(c=>c.id) } : m)),
     }));
   };
 
   const saveCard = async (id: string): Promise<void> => {
+    if(scopeRef.current!==scope||feedRef.current.scope!==scope)return;
     if (inflight.current.has(id)) return;
     const card = feedRef.current.cards[id];
     if (!card) return;
+    const personal=card.state.draft.mode==='personal';
+    if(personal&&!refs.canPersonal||!personal&&!refs.canCompany)return;
+    if(personal&&(!refs.personalReady||refs.personalError)||!personal&&(!refs.companyReady||refs.companyError)){
+      if(editable(card))patchCard(id,c=>({...c,status:{kind:'rejected',message:'Chưa tải được dữ liệu để xác nhận khoản này. Thử lại khi kết nối sẵn sàng.'}}));return;
+    }
     const kind = card.status.kind;
     if (kind !== "draft" && kind !== "rejected" && kind !== "unknown") return;
     if (kind !== "unknown" && !validateDraft(card.state.draft).ok) return;
@@ -522,8 +573,7 @@ export function useQuickEntryFeed(opts: {
           return;
         }
       }
-      // Cá nhân: ghi tiến độ vào thẻ (và nháp lưu máy) sau TỪNG khoản — tải lại trang giữa vòng thì lần
-      // gửi lại bỏ qua đúng số khoản đã ghi, không ghi lặp.
+      // Atomic personal batch: progress is published only after the complete receipt is confirmed.
       const progress = (done: number) => patchCard(id, (c) => ({ ...c, personalDone: done }));
       const out =
         draft.mode === "company" ? await save.saveCompany(draft) : await save.savePersonal(draft, card.personalDone, progress);
@@ -561,8 +611,8 @@ export function useQuickEntryFeed(opts: {
   };
 
   return {
-    messages: feed.messages,
-    cards: feed.cards,
+    messages: feed.scope===scope?feed.messages:[],
+    cards: feed.scope===scope?feed.cards:{},
     /** AI ĐỌC (9router) đã tắt cho phiên — thẻ chỉ còn bộ đọc máy + nhập tay. */
     aiOff,
     voiceOff,

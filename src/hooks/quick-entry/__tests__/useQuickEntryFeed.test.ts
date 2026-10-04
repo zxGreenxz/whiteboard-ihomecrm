@@ -12,6 +12,7 @@ const h = vi.hoisted(() => ({
   uploadPhoto: vi.fn(),
   saveCompany: vi.fn(),
   savePersonal: vi.fn(),
+  pending: [] as Array<{ownerId:string;requestKey:string;payload:{action:string;rows:Array<{type:'EXPENSE';amount:number;txn_date:string;wallet_id:string;category_id:string;description:string}>}}>,
 }));
 vi.mock("@/integrations/supabase/client", () => ({ supabase: {} }));
 vi.mock("@/copilot/copilotConfig", () => ({ makeCopilotFetch: () => vi.fn(), newTaskId: () => "qe-test", QUICK_ENTRY_BASE: "https://proxy.test" }));
@@ -22,7 +23,7 @@ vi.mock("../quickEntryAi", () => ({
   transcribeAudio: h.transcribeAudio,
 }));
 vi.mock("../useQuickEntrySave", () => ({
-  useQuickEntrySave: () => ({ uploadPhoto: h.uploadPhoto, saveCompany: h.saveCompany, savePersonal: h.savePersonal }),
+  useQuickEntrySave: () => ({ uploadPhoto: h.uploadPhoto, saveCompany: h.saveCompany, savePersonal: h.savePersonal, pendingPersonalRequests:h.pending }),
 }));
 
 import { needsAi, onlyCategoriesMissing, useQuickEntryFeed } from "../useQuickEntryFeed";
@@ -34,6 +35,10 @@ const USER = "user-1";
 const refs = (over: Partial<QuickEntryRefs> = {}): QuickEntryRefs => ({
   orgId: ORG,
   loading: false,
+  permissionsLoading:false, permissionsError:null, personalLoading:false, personalError:null, personalReady:true,
+  personalWallets:[{id:'11111111-1111-4111-8111-111111111111',user_id:'user-1',version:1,name:'Tiền mặt',kind:'cash',icon:'wallet',hidden:false,is_default:true,opening_balance:0,balance:0}],
+  personalCategories:[{id:'22222222-2222-4222-8222-222222222222',user_id:'user-1',version:1,name:'Ăn uống',type:'EXPENSE',hidden:false,icon:'utensils',color:'#123456',seed_key:null,legacy_name:null}],
+  companyLoading:false,companyError:null,companyReady:true,
   canCompany: true,
   canPersonal: true,
   buildings: [{ id: "b102", name: "Toà 102", code: "102LVT", is_virtual: false, user_id: "u", managed: true }],
@@ -70,7 +75,8 @@ const cardsOf = (result: { current: ReturnType<typeof useQuickEntryFeed> }) => O
 
 beforeEach(() => {
   localStorage.clear();
-  for (const f of Object.values(h)) f.mockReset();
+  for (const f of Object.values(h)) if(typeof f==='function')f.mockReset();
+  h.pending=[];
   // Câu lệnh rút gọn (thẻ đủ tiền + toà, chỉ thiếu hạng mục) đi qua CÙNG bản giả readWithAi: các bài dưới
   // đặt kết quả/lỗi một chỗ, đếm lượt gọi một chỗ. Bài riêng của đường rút gọn tự đặt lại.
   h.readCategoriesWithAi.mockImplementation(async (opts: { lineCount: number }) => {
@@ -474,12 +480,12 @@ describe("useQuickEntryFeed — lưu", () => {
     expect(localStorage.getItem(`ihome:quick-entry:last-account:${ORG}`)).toBe("acc1");
   });
 
-  it("cá nhân: khoản thứ hai rớt mạng ⇒ gửi lại chỉ từ khoản chưa ghi", async () => {
+  it("cá nhân: batch chưa xác nhận ⇒ retry nguyên thẻ, không có tiến độ lẻ", async () => {
     h.readWithAi.mockResolvedValue(
-      ok(ai({ items: [{ desc: "bún", amount_vnd: 50_000, category: "c1", confidence: 0.9 }, { desc: "xăng", amount_vnd: 100_000, category: "c5", confidence: 0.9 }] })),
+      ok(ai({ items: [{ desc: "bún", amount_vnd: 50_000, category: "c1", confidence: 0.9 }, { desc: "xăng", amount_vnd: 100_000, category: "c1", confidence: 0.9 }] })),
     );
     h.savePersonal
-      .mockResolvedValueOnce({ kind: "unknown", ids: ["p1"], done: 1, message: "Chưa rõ" })
+      .mockResolvedValueOnce({ kind: "unknown", ids: [], done: 0, message: "Chưa rõ" })
       .mockResolvedValueOnce({ kind: "saved", code: null, approvalStatus: null, ids: ["p2"], done: 2, message: "" });
     const { result } = mount();
     await act(async () => result.current.submitText("bún 50k, xăng 100k", "personal"));
@@ -487,16 +493,16 @@ describe("useQuickEntryFeed — lưu", () => {
     await act(async () => result.current.saveCard(id));
     await act(async () => result.current.saveCard(id));
     expect(h.savePersonal.mock.calls[0][1]).toBe(0);
-    expect(h.savePersonal.mock.calls[1][1]).toBe(1);
+    expect(h.savePersonal.mock.calls[1][1]).toBe(0);
   });
 
-  it("cá nhân: tiến độ ghi vào thẻ (và nháp đã lưu) ngay sau TỪNG khoản, trước khi lưu xong", async () => {
+  it("cá nhân: nháp đang gửi được lưu máy; chỉ cập nhật done sau biên nhận atomic", async () => {
     h.readWithAi.mockResolvedValue(
-      ok(ai({ items: [{ desc: "bún", amount_vnd: 50_000, category: "c1", confidence: 0.9 }, { desc: "xăng", amount_vnd: 100_000, category: "c5", confidence: 0.9 }] })),
+      ok(ai({ items: [{ desc: "bún", amount_vnd: 50_000, category: "c1", confidence: 0.9 }, { desc: "xăng", amount_vnd: 100_000, category: "c1", confidence: 0.9 }] })),
     );
     let release: (v: unknown) => void = () => {};
     h.savePersonal.mockImplementationOnce(async (_draft: unknown, _done: number, onProgress?: (n: number) => void) => {
-      onProgress?.(1);
+
       return new Promise((r) => {
         release = r;
       });
@@ -508,9 +514,9 @@ describe("useQuickEntryFeed — lưu", () => {
     act(() => {
       pending = result.current.saveCard(id);
     });
-    await waitFor(() => expect(result.current.cards[id].personalDone).toBe(1));
+    await waitFor(() => expect(result.current.cards[id].personalDone).toBe(0));
     expect(result.current.cards[id].status.kind).toBe("saving");
-    await waitFor(() => expect(localStorage.getItem(draftsKey(USER, ORG)) ?? "").toContain('"personalDone":1'));
+    await waitFor(() => expect(localStorage.getItem(draftsKey(USER, ORG)) ?? "").toContain('"personalDone":0'));
     await act(async () => {
       release({ kind: "saved", code: null, approvalStatus: null, ids: ["p1", "p2"], done: 2, message: "" });
       await pending;
@@ -578,4 +584,14 @@ describe("useQuickEntryFeed — giữ thẻ qua lần tải lại", () => {
     rerender({ r: refs({ orgId: "org-2" }) });
     await waitFor(() => expect(cardsOf(result)).toHaveLength(0));
   });
+});
+
+it('reload locks editable-looking card from persisted pending payload instead of changed draft',async()=>{
+ const r=refs();h.readWithAi.mockResolvedValue(ok(ai({items:[{desc:'bún',amount_vnd:50000,category:'c1',confidence:1}]})));
+ const first=mount(r);await act(async()=>first.result.current.submitText('bún 50k','personal'));
+ const card=cardsOf(first.result)[0];
+ h.pending=[{ownerId:USER,requestKey:card.id,payload:{action:'transaction.batch',rows:[{type:'EXPENSE',amount:70000,txn_date:'2026-09-01',wallet_id:r.personalWallets[0].id,category_id:r.personalCategories[0].id,description:'Đã gửi'}]}}];
+ first.unmount();const restored=mount(r);
+ await waitFor(()=>expect(restored.result.current.cards[card.id]?.status.kind).toBe('unknown'));
+ expect(restored.result.current.cards[card.id].state.draft.lines[0]).toMatchObject({amount:70000,description:'Đã gửi'});
 });

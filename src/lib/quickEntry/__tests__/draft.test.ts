@@ -17,10 +17,10 @@ const company = (over: Partial<QuickDraft> = {}): QuickDraft => ({
 
 const personal = (over: Partial<QuickDraft> = {}): QuickDraft => ({
   ...company(),
-  mode: "personal",
+  mode: "personal", personalWalletId:"wallet",
   buildingId: null,
   accountId: null,
-  lines: [{ description: "Bún bò", amount: 50_000, categoryId: null, personalCategory: "Ăn uống", periodStart: null, periodEnd: null }],
+  lines: [{ description: "Bún bò", amount: 50_000, categoryId: null, personalCategoryId:"food", personalCategory: "Ăn uống", periodStart: null, periodEnd: null }],
   ...over,
 });
 

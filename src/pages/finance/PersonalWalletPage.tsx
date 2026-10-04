@@ -34,12 +34,13 @@ import {
 import { usePersistedState } from "@/hooks/usePersistedState";
 import { QueryRegion } from "@/components/errors/QueryRegion";
 import { LoadingState } from "@/components/loading/LoadingState";
+import { PersonalPendingRequests } from '@/components/quick-entry/EmbeddedQuickEntry';
 
 export default function PersonalWalletPage() {
   const [year, setYear] = usePersistedState("flt:personal-wallet:year", currentYear());
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<PersonalTransaction | null>(null);
-  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deleteId, setDeleteId] = useState<PersonalTransaction | null>(null);
 
   const txnsQuery = usePersonalTransactions();
   const { data: txns = [] } = txnsQuery;
@@ -64,8 +65,8 @@ export default function PersonalWalletPage() {
       if (t.type === "INCOME") income += t.amount;
       else expense += t.amount;
     }
-    return { income, expense, balance: income - expense };
-  }, [txns]);
+    return { income, expense, balance: txnsQuery.balance ?? 0 };
+  }, [txns,txnsQuery.balance]);
 
   const txnsYear = useMemo(() => txns.filter((t) => t.txn_date.startsWith(String(year))), [txns, year]);
 
@@ -118,6 +119,7 @@ export default function PersonalWalletPage() {
 
   return (
     <MainLayout title="Ví thu chi cá nhân" subtitle="Tài chính → Cá nhân" icon={Wallet}>
+      <PersonalPendingRequests/>
       <QueryRegion label="giao dịch ví cá nhân" queries={[txnsQuery]} loading={choGiaoDich}>
       <div className="space-y-4">
         {/* Thẻ "Từ công ty" chỉ có với cổ đông ⇒ chờ thì không dựng khối xám để rồi biến mất. */}
@@ -216,7 +218,7 @@ export default function PersonalWalletPage() {
                           <Button variant="ghost" size="icon" onClick={() => { setEditing(t); setDialogOpen(true); }}>
                             <Pencil className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" onClick={() => setDeleteId(t.id)}>
+                          <Button variant="ghost" size="icon" onClick={() => setDeleteId(t)}>
                             <Trash2 className="h-4 w-4 text-red-600" />
                           </Button>
                         </div>
@@ -240,7 +242,7 @@ export default function PersonalWalletPage() {
             <AlertDialogCancel>Huỷ</AlertDialogCancel>
             <Button variant="destructive" disabled={deleteMut.isPending} onClick={async () => {
               if (!deleteId) return;
-              try { await deleteMut.mutateAsync(deleteId); setDeleteId(null); } catch { /* hook báo lỗi; giữ hộp thoại để đối chiếu */ }
+              try { await deleteMut.mutateAsync({ id: deleteId.id, expected_version: deleteId.version }); setDeleteId(null); } catch { /* hook báo lỗi; giữ hộp thoại để đối chiếu */ }
             }}>{deleteMut.isPending ? 'Đang xóa...' : 'Xóa'}</Button>
           </AlertDialogFooter>
         </AlertDialogContent>

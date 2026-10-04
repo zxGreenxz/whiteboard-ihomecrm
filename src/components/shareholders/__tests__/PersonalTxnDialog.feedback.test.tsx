@@ -3,6 +3,7 @@ import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {afterEach,expect,it,vi} from 'vitest';
 const io=vi.hoisted(()=>({create:vi.fn(),update:vi.fn()}));
 vi.mock('@/hooks/usePersonalTransactions',()=>({useCreatePersonalTransaction:()=>({mutateAsync:io.create,isPending:false}),useUpdatePersonalTransaction:()=>({mutateAsync:io.update,isPending:false})}));
+vi.mock('@/hooks/personal-finance/usePersonalFinance',()=>({usePersonalFinance:()=>({data:{categories:[]}})}));
 import PersonalTxnDialog from '../PersonalTxnDialog';
 import {FinancialWorkflowError} from '@/lib/financialWorkflow';
 afterEach(()=>{cleanup();vi.resetAllMocks();});

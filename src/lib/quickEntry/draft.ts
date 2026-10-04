@@ -6,10 +6,14 @@
 // để thẻ tô đúng ô.
 
 import { MAX_AMOUNT_VND } from "./amount";
+import { z } from 'zod';
 
 export type DraftMode = "company" | "personal";
+export type TransactionType = 'INCOME' | 'EXPENSE';
 
 export interface DraftLine {
+  transactionType?: TransactionType;
+  personalCategoryId?: string | null;
   description: string;
   /** Số đồng, nguyên dương. */
   amount: number;
@@ -23,6 +27,11 @@ export interface DraftLine {
 }
 
 export interface QuickDraft {
+  transactionType?: TransactionType;
+  personalWalletId?: string | null;
+  /** New drafts use the atomic RPC; missing on historic pending cards means manual reconciliation. */
+  personalRequestKey?: string;
+  personalProtocol?: 1;
   /** Id thẻ (uuid) — sinh khoá chống trùng cố định `qe-<id>`. */
   id: string;
   mode: DraftMode;
@@ -38,6 +47,14 @@ export interface QuickDraft {
   attachmentUrls: string[];
   lines: DraftLine[];
 }
+
+/** Persisted drafts may be incomplete, but field types and transaction directions must be trustworthy. */
+export const quickDraftSchema=z.object({
+ id:z.string().min(1),mode:z.enum(['company','personal']),date:z.string(),name:z.string(),vendor:z.string().nullable(),
+ buildingId:z.string().nullable(),roomId:z.string().nullable(),accountId:z.string().nullable(),attachmentUrls:z.array(z.string()),
+ transactionType:z.enum(['INCOME','EXPENSE']).optional(),personalWalletId:z.string().nullable().optional(),personalRequestKey:z.string().uuid().optional(),personalProtocol:z.literal(1).optional(),
+ lines:z.array(z.object({description:z.string(),amount:z.number().finite(),categoryId:z.string().nullable(),personalCategory:z.string().nullable(),periodStart:z.string().nullable(),periodEnd:z.string().nullable(),transactionType:z.enum(['INCOME','EXPENSE']).optional(),personalCategoryId:z.string().nullable().optional()})).max(200),
+});
 
 export const MAX_NAME = 500;
 export const MAX_DESCRIPTION = 1000;
@@ -73,6 +90,8 @@ export function validateDraft(d: QuickDraft): DraftValidation {
       add(`lines.${i}.amount`, "Số tiền phải là số đồng nguyên dương.");
     }
     if (d.mode === "company" && !l.categoryId) add(`lines.${i}.categoryId`, "Chọn hạng mục chi.");
+    if (d.mode === 'personal' && !l.personalCategoryId) add(`lines.${i}.personalCategoryId`, 'Chọn danh mục thu hoặc chi.');
+    if (d.mode === 'company' && (l.transactionType ?? d.transactionType ?? 'EXPENSE') !== (d.transactionType ?? 'EXPENSE')) add(`lines.${i}.transactionType`, 'Tách khoản thu và chi thành các phiếu riêng.');
     if (l.periodStart !== null || l.periodEnd !== null) {
       if (!isRealDate(l.periodStart)) add(`lines.${i}.periodStart`, "Chọn đầu kỳ hợp lệ.");
       else if (!isRealDate(l.periodEnd)) add(`lines.${i}.periodEnd`, "Chọn cuối kỳ hợp lệ.");
@@ -92,6 +111,7 @@ export function validateDraft(d: QuickDraft): DraftValidation {
   } else if (d.attachmentUrls.length > 0) {
     add("attachmentUrls", "Khoản cá nhân không lưu ảnh.");
   }
+  if (d.mode === 'personal' && !d.personalWalletId) add('personalWalletId', 'Chọn ví cá nhân.');
 
   return Object.keys(issues).length ? { ok: false, issues } : { ok: true };
 }

@@ -20,6 +20,8 @@ import type { IeFormBuilding, IeFormRoom } from "@/hooks/useIncomeExpenseFormSco
 import type { PickerOption } from "@/hooks/quick-entry/useQuickEntryRefs";
 import { isLocked, type CardStatus } from "@/lib/quickEntry/cardStatus";
 import { primaryCode } from "@/lib/quickEntry/spokenBuilding";
+import type { PersonalCategoryRef } from '@/lib/quickEntry/personalRefs';
+import type { Wallet } from '@/lib/personalFinance/contract';
 
 const WHOLE_BUILDING = "__ca_toa__";
 const AMOUNT_PATH = /^lines\.(\d+)\.amount$/;
@@ -45,7 +47,8 @@ export interface DraftCardProps {
   rooms: IeFormRoom[];
   categories: CategoryRef[];
   cashbooks: PickerOption[];
-  personalCategories: readonly string[];
+  personalCategories: readonly PersonalCategoryRef[];
+  personalWallets?: readonly Wallet[];
   photoUrl?: string | null;
   /** Có giá trị khi AI đã đọc thẻ này — hiện nhãn "AI đọc" để người dùng soát kỹ. */
   aiModel?: string | null;
@@ -130,7 +133,7 @@ export function DraftCard(props: DraftCardProps) {
     emit(
       {
         ...d,
-        lines: [...d.lines, { description: "", amount: 0, categoryId: null, personalCategory: null, periodStart: null, periodEnd: null }],
+        lines: [...d.lines, { transactionType:d.transactionType??'EXPENSE',personalCategoryId:null,description: "", amount: 0, categoryId: null, personalCategory: null, periodStart: null, periodEnd: null }],
       },
       // Đổi số dòng ⇒ câu gốc AI đọc không còn khớp các dòng; AI không ghép vào thẻ nữa.
       LINES_EDITED,
@@ -153,7 +156,7 @@ export function DraftCard(props: DraftCardProps) {
     typeIds: d.lines.map((l) => l.categoryId ?? ""),
     start: starts[0] ?? d.date,
     end: ends[ends.length - 1] ?? d.date,
-    type: "EXPENSE",
+    type: d.transactionType??"EXPENSE",
     enabled: company && status.kind === "draft",
   });
   const slotHits = company && status.kind === "draft" ? slot.data ?? [] : [];
@@ -167,14 +170,15 @@ export function DraftCard(props: DraftCardProps) {
     { value: WHOLE_BUILDING, label: "Cả toà (không gắn phòng)" },
     ...props.rooms.filter((r) => r.building_id === d.buildingId).map((r) => ({ value: r.id, label: r.name })),
   ];
-  const categoryOptions: SearchableSelectOption[] = props.categories.map((c) => ({
+  const categoryOptions: SearchableSelectOption[] = props.categories.filter(c=>c.type===(d.transactionType??'EXPENSE').toLowerCase()).map((c) => ({
     value: c.id,
     label: c.name,
     group: c.category ?? "Khác",
     keywords: [c.name, c.category ?? ""],
   }));
   const cashbookOptions: SearchableSelectOption[] = props.cashbooks.map((c) => ({ value: c.id, label: c.label }));
-  const personalOptions: SearchableSelectOption[] = props.personalCategories.map((c) => ({ value: c, label: c }));
+  const personalOptions=(selected:string|null|undefined):SearchableSelectOption[]=>props.personalCategories.filter(c=>c.type===(d.transactionType??'EXPENSE')&&(!c.hidden||c.id===selected)).map(c=>({value:c.id,label:c.name}));
+  const walletOptions=(props.personalWallets??[]).filter(w=>!w.hidden||w.id===d.personalWalletId).map(w=>({value:w.id,label:w.name}));
   const reviewHref = company ? "/income-expense" : "/finance/personal-wallet";
 
   return (
@@ -203,8 +207,12 @@ export function DraftCard(props: DraftCardProps) {
         </p>
       ) : (
         <fieldset disabled={locked} className="min-w-0 space-y-2">
+          <div className="flex gap-2" role="group" aria-label="Loại giao dịch">
+            {(['INCOME','EXPENSE'] as const).map(type=><Button key={type} type="button" variant={(d.transactionType??'EXPENSE')===type?'default':'outline'} aria-pressed={(d.transactionType??'EXPENSE')===type} onClick={()=>update('transactionType',{transactionType:type,lines:d.lines.map(l=>({...l,transactionType:type,categoryId:null,personalCategoryId:null,personalCategory:null}))})}>{type==='INCOME'?'Thu':'Chi'}</Button>)}
+          </div>
+          {!company&&<Field label="Ví cá nhân"><SearchableSelect aria-label="Ví cá nhân" value={d.personalWalletId??undefined} options={walletOptions} placeholder="Chọn ví" onValueChange={value=>update('personalWalletId',{personalWalletId:value})}/></Field>}
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <Field label="Ngày chi">
+            <Field label="Ngày giao dịch">
               <DateInput value={d.date} aria-label="Ngày chi" onChange={(iso) => update("date", { date: iso })} />
               <span className="mt-1 flex gap-1">
                 <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => update("date", { date: today })}>
@@ -319,10 +327,10 @@ export function DraftCard(props: DraftCardProps) {
                   ) : (
                     <SearchableSelect
                       className="min-w-[10rem] flex-1"
-                      value={l.personalCategory ?? undefined}
-                      onValueChange={(v) => updateLine(i, "personalCategory", v)}
-                      options={personalOptions}
-                      placeholder="Danh mục (không bắt buộc)"
+                      value={l.personalCategoryId ?? undefined}
+                      onValueChange={(v) => updateLine(i, "personalCategoryId", v)}
+                      options={personalOptions(l.personalCategoryId)}
+                      placeholder="Chọn danh mục"
                       searchable={false}
                       aria-label={`Danh mục dòng ${i + 1}`}
                     />
@@ -379,7 +387,7 @@ export function DraftCard(props: DraftCardProps) {
           {issues.length > 0 && <p className="text-xs text-muted-foreground">{issues.slice(0, 3).join(" ")}</p>}
           <footer className="flex gap-2">
             <Button type="button" className="flex-1" disabled={!canSave} onClick={props.onSave}>
-              {company ? "Lưu phiếu chi" : "Lưu vào ví"}
+              {company ? (d.transactionType==='INCOME'?'Lưu phiếu thu':"Lưu phiếu chi") : "Lưu vào ví"}
             </Button>
             <Button type="button" variant="outline" aria-label="Bỏ thẻ" onClick={props.onDiscard}>
               <Trash2 className="h-4 w-4" />

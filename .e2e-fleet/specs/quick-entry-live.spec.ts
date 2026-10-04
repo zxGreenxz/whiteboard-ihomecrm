@@ -21,7 +21,7 @@ for (const role of ['chunha', 'quanly'] as const) {
       const request = route.request();
       const url = new URL(request.url());
       const mutating = !['GET', 'HEAD', 'OPTIONS'].includes(request.method());
-      const moneyWrite = /\/rest\/v1\/(?:income_expenses|income_expense_items|personal_transactions|rpc\/(?:create|update|delete|cancel|approve|record|posting)[^/]*)(?:\?|$)/.test(url.pathname);
+      const moneyWrite = /\/rest\/v1\/(?:income_expenses|income_expense_items|personal_transactions|rpc\/(?:personal_finance_mutate|(?:create|update|delete|cancel|approve|record|posting)[^/]*))(?:\?|$)/.test(url.pathname);
       const upload = /\/storage\/v1\/object\/(?!sign\/)/.test(url.pathname) || /\/(?:upload|presign|multipart)(?:\/|$)/.test(url.pathname);
       if (mutating && (moneyWrite || upload)) {
         writes.push(url.pathname);
