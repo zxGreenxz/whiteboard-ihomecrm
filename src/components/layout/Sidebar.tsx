@@ -184,7 +184,7 @@ export const navigationGroups: NavGroup[] = [
           // Cam kết chi — một bộ máy duyệt chi; chỉ chủ công ty đọc/sửa được (server chặn người khác).
           { title: 'Cam kết chi', href: '/settings/finance/cam-ket-chi', icon: BadgeCheck, module: 'thu_tien', action: 'collect' },
           ...navFieldsFor('salary').map((x) => ({ ...x, icon: HandCoins, selfHref: '/finance/my-salary' }) satisfies NavItem),
-          { title: 'Ví cá nhân', href: '/finance/personal-wallet', icon: Coins, module: 'personal_finance' },
+          ...navFieldsFor('personal-wallet').map((x) => ({ ...x, icon: Coins }) satisfies NavItem),
         ],
       },
       ...navFieldsFor('network-center').map((f) => ({ ...f, icon: Network }) satisfies NavItem),
