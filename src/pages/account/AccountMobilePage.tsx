@@ -16,6 +16,7 @@ import { canUse } from "@/lib/permissionPages";
 import { isPushSupported, isSubscribed, enablePush, disablePush } from "@/lib/push";
 import NotificationPreferencesCard from "@/components/notifications/NotificationPreferencesCard";
 import AccountOrganizationCard from "@/components/account/AccountOrganizationCard";
+import { BankEmailConnectionManager } from "@/components/bank-email/BankEmailConnectionManager";
 import { toast } from "sonner";
 
 const APP_VERSION = "5.2.0";
@@ -323,6 +324,7 @@ export default function AccountMobilePage() {
             </button>
             <div className="acc-ver">iHomeCRM · phiên bản {APP_VERSION}</div>
             </QueryRegion>
+            <div className="my-4"><BankEmailConnectionManager /></div>
           </div>
         </div>
       </div>

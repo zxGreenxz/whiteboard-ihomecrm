@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, type ReactNode } from "react";
 import { useForm } from 'react-hook-form';
 import { friendlyError, type OperationErrorRule } from '@/lib/friendlyError';
 import { applyFeedbackToForm, focusFirstError } from '@/lib/formErrors';
@@ -54,6 +54,7 @@ export interface FieldDef {
 }
 
 interface CategoryCrudPageProps<T> {
+  beforeContent?: ReactNode;
   title: string;
   subtitle: string;
   icon: LucideIcon;
@@ -75,6 +76,7 @@ interface CategoryCrudPageProps<T> {
 }
 
 export default function CategoryCrudPage<T>({
+  beforeContent,
   title,
   subtitle,
   icon,
@@ -165,6 +167,7 @@ export default function CategoryCrudPage<T>({
   return (
     <MainLayout title={title} subtitle={subtitle} icon={icon}>
       <div className="space-y-4">
+        {beforeContent}
         <div className="flex items-center justify-between">
           <Link
             to="/settings/categories"

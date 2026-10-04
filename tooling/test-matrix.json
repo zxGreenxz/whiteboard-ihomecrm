@@ -7,6 +7,20 @@
   ],
   "suites": [
     {
+      "id": "acb-bank-email-worker",
+      "runner": "node --test",
+      "ciJob": "quality-gates",
+      "command": "npm ci --prefix services/bank-email-worker\nnpm test --prefix services/bank-email-worker",
+      "runtime": "node 24.18.0 (CI)",
+      "risk": "high",
+      "includes": ["services/bank-email-worker/test/*.test.mjs"],
+      "ciJobs": [{"workflow": ".github/workflows/ci-gates.yml", "job": "quality-gates"}],
+      "ciCommandStep": "ACB Gmail worker regressions (synthetic email only)",
+      "environment": "ci",
+      "timeoutMinutes": 10,
+      "note": "npm ci package con trước khi chạy; fixtures email/chữ ký tổng hợp và giao vận giả lập, không đọc Gmail hoặc ghi tiền thật."
+    },
+    {
       "id": "organization-backup-envelope",
       "runner": "node --test",
       "ciJob": "quality-gates",

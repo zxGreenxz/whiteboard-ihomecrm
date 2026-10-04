@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-04T02:28:08.784Z",
+  "generatedAt": "2026-10-04T21:37:20.678Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 651,
-    "unknown": 80,
+    "unknown": 81,
     "catalog-proven": 205,
     "superseded": 15
   },
@@ -11021,6 +11021,22 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-04T02:27:12.019Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261004205216_acb_email_realtime.sql",
+      "version": "20261004205216",
+      "name": "acb_email_realtime",
+      "scheme": "timestamp14",
+      "sha256": "f84dc526a9f0018a74bc5c1c00bd9c87ff0253697af60d27268986e948b211ca",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "table:public.bank_email_connections",
+        "table:public.bank_email_transactions",
+        "table:app_private.bank_email_sources",
+        "table:app_private.bank_email_credentials",
+        "table:app_private.bank_email_page_messages"
       ]
     },
     {

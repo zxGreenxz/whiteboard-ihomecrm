@@ -98,6 +98,7 @@ export const NOTIFICATION_URL_ALLOWLIST: readonly NotificationRoute[] = [
   { path: "/my-day", module: null },
   // App.tsx:316
   { path: "/notifications", module: "notifications" },
+  { path: "/settings/categories/auto-debt", module: "auto_debt" },
   // App.tsx:367. E1 cần CẢ HAI param: chỉ `approval_status=UNAPPROVED` mà thiếu
   // `layer=PENDING` thì lớp CASH mặc định ép thêm `.eq(approval_status,APPROVED)`
   // và postgrest-js dùng append (AND) ⇒ danh sách RA 0 DÒNG. Nếu `layer` bị loại

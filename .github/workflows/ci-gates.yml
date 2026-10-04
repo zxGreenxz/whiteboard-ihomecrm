@@ -83,6 +83,7 @@ jobs:
               - 'src/**'
               - 'scripts/**'
               - 'worker/**'
+              - 'services/**'
               - 'api/**'
               - 'supabase/**'
               - 'contracts/**'
@@ -163,6 +164,12 @@ jobs:
       - name: Organization backup envelope regressions (no credentials)
         if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
         run: node --test scripts/org-context-repair/sealed-artifact.test.mjs
+
+      - name: ACB Gmail worker regressions (synthetic email only)
+        if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
+        run: |
+          npm ci --prefix services/bank-email-worker
+          npm test --prefix services/bank-email-worker
 
       - name: contract-gates (luật agent · bề mặt sản phẩm · runtime pin · known-gap hết hạn)
         if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
