@@ -69,13 +69,37 @@ describe.each(['personal','company'] as const)('review regressions: %s',mode=>{
   expect(expense.draft.lines[0]).toMatchObject({amount:50_000,transactionType:'EXPENSE'});expect(result.every(r=>r.draft.date==='2026-09-15')).toBe(true);
   expect(income.touched).toContain('lines.0.amount');expect(expense.touched).not.toContain('lines.0.amount');
  });
- it('an ambiguous edited original remains a same-direction aggregate without dropping the other direction',()=>{
+ it.each(['touched','locked'] as const)('an ambiguous %s original remains a same-direction aggregate without dropping the other direction',editKind=>{
   const ctx=typedContext(mode);const [s]=draftsFromText('nhận lương và ăn sáng',ctx);
-  s.draft.lines[0].amount=9_000_000;s.touched=['lines.0.amount'];
+  s.draft.lines[0].amount=9_000_000;s[editKind]=['lines.0.amount'];
   const ai={...mixedAi,items:[...mixedAi.items,{...mixedAi.items[0],desc:'Quà',amount_vnd:100_000,category:'c3'}]};
   const result=splitDraftTypes(enrichFromAi(s,ai,ctx),ctx.newId);
   expect(result.map(r=>r.draft.lines.map(l=>[l.transactionType,l.amount]))).toEqual([[['INCOME',9_000_000]],[['EXPENSE',50_000]]]);
   expect(result[0].draft.lines[0].description).toContain('Quà');
+ });
+ it.each([
+  ['none','c1'],['date','c1'],['personalWalletId','c1'],
+  ['none','c3'],['date','c3'],['personalWalletId','c3'],
+ ] as const)('keeps independent AI rows with top-level edit %s and second category %s', (edit,secondCategory)=>{
+  const ctx=typedContext(mode);const [s]=draftsFromText('nhận lương và ăn sáng',ctx);
+  s.draft.lines[0].amount=0;s.touched=[];s.locked=[];
+  if(edit!=='none'){
+   s.touched=[edit];s.draft.date='2026-09-15';s.draft.personalWalletId=giftCategory;
+  }
+  const ai=aiResult({date:'2026-09-30',items:[
+   {desc:'Khoản nhận thứ nhất',transactionType:'INCOME',amount_vnd:100_000,category:'c1'},
+   {desc:'Khoản nhận thứ hai',transactionType:'INCOME',amount_vnd:100_000,category:secondCategory},
+   {desc:'Ăn trưa',transactionType:'EXPENSE',amount_vnd:50_000,category:'c2'},
+  ]});
+  const result=splitDraftTypes(enrichFromAi(s,ai,ctx),ctx.newId);
+  const lines=result.flatMap(r=>r.draft.lines);
+  expect(lines.map(l=>[l.transactionType,l.amount])).toEqual([['INCOME',100_000],['INCOME',100_000],['EXPENSE',50_000]]);
+  expect(lines.map(l=>mode==='personal'?l.personalCategoryId:l.categoryId)).toEqual([incomeCategory,secondCategory==='c1'?incomeCategory:giftCategory,expenseCategory]);
+  expect(lines.map(l=>l.description)).toEqual(['Khoản nhận thứ nhất','Khoản nhận thứ hai','Ăn trưa']);
+  if(edit==='date')expect(result.every(r=>r.draft.date==='2026-09-15')).toBe(true);
+  if(edit==='personalWalletId')expect(result.every(r=>r.draft.personalWalletId===giftCategory)).toBe(true);
+  const rowCounts=result.map(({draft})=>mode==='personal'?toPersonalBatch(draft).rows!.length:toCreateIncomeExpenseInput({...draft,buildingId:id,accountId:id}).items.length);
+  expect(rowCounts).toEqual([2,1]);
  });
  it.each(['total','discount'] as const)('income photo %s reconciliation does not derive direction from category consensus',kind=>{
   const value=aiResult({items:[{desc:'Lương',transactionType:'INCOME',amount_vnd:10_000_000,category:'c1'},{desc:'Quà',transactionType:'INCOME',amount_vnd:100_000,category:'c3'},...(kind==='discount'?[{desc:'Giảm trừ',transactionType:'INCOME',amount_vnd:-10_000,category:null}]:[])],...(kind==='total'?{total_vnd:10_090_000}:{})});

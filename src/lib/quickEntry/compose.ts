@@ -436,11 +436,13 @@ function expandMixedLine(state: DraftState, ai: AiResult, ctx: ComposeContext): 
   const groups = draftsFromBill(ai, { ...ctx, newId: () => state.draft.id });
   let lines = groups.flatMap(group => group.draft.lines);
   const candidates = lines.filter(line => line.transactionType === type);
+  const changedPaths = [...state.touched, ...state.locked];
+  const hasLineEdit = changedPaths.some(path => path.startsWith('lines.0.'));
   // If several AI items could be the edited original, preserve it as that type's aggregate;
   // do not arbitrarily assign the user's changed amount/category to the first AI item.
   const exact = candidates.filter(line => line.amount === original.amount);
   let anchor = exact.length === 1 ? exact[0] : candidates.length === 1 ? candidates[0] : undefined;
-  if (!anchor && candidates.length > 1) {
+  if (hasLineEdit && !anchor && candidates.length > 1) {
     const common = <K extends 'categoryId' | 'personalCategoryId' | 'personalCategory'>(key: K) =>
       unique(candidates.map(line => line[key])).length === 1 ? candidates[0][key] : null;
     anchor = { ...candidates[0], amount: candidates.reduce((sum, line) => sum + line.amount, 0),
@@ -454,7 +456,6 @@ function expandMixedLine(state: DraftState, ai: AiResult, ctx: ComposeContext): 
     });
   }
   const anchorIndex = Math.max(0, lines.indexOf(anchor ?? lines[0]));
-  const changedPaths = [...state.touched, ...state.locked];
   const edited = { ...lines[anchorIndex] };
   for (const key of Object.keys(original) as Array<keyof DraftLine>) {
     const path = key === 'periodStart' || key === 'periodEnd' ? 'period' : key;
