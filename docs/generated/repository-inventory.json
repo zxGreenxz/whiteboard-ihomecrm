@@ -1,10 +1,10 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1228,
-  "soFileDocBangFs": 276,
-  "tongLoiGoi": 598,
-  "khongPhanLoaiDuoc": 272,
+  "tongSoFileTest": 1229,
+  "soFileDocBangFs": 277,
+  "tongLoiGoi": 599,
+  "khongPhanLoaiDuoc": 273,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 50,
@@ -1012,6 +1012,12 @@
         "tai-lieu": 1
       },
       "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": ".e2e-fleet/specs/personal-finance-demo.spec.ts",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
     },
     {
       "file": ".e2e-fleet/specs/phong-trong-export-image.spec.ts",
