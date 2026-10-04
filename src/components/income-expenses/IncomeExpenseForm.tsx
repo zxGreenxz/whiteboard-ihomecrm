@@ -1,4 +1,6 @@
 import {runFinancialPending} from '@/lib/financialPendingAction';
+import type { EmailBillSource } from '@/lib/emailBills/types';
+import { EmailBillImportError } from '@/lib/emailBills/importRpc';
 import {useOrganization} from '@/contexts/OrganizationContext';
 import {VoucherPartialError} from '@/lib/voucherFeedback';
 import {QueryRegion} from '@/components/errors/QueryRegion';
@@ -116,6 +118,7 @@ interface IncomeExpenseFormProps {
    */
   copyFrom?: IncomeExpenseWithRelations | null;
   defaultType?: 'INCOME' | 'EXPENSE';
+  emailBillSource?: EmailBillSource;
   /**
    * Khi mở dialog ở chế độ "tạo mới" (không có voucher), prefill các field
    * này để rút ngắn thao tác cho user. Vẫn cho phép user sửa lại trước khi
@@ -125,6 +128,7 @@ interface IncomeExpenseFormProps {
     building_id?: string;
     room_id?: string | null;
     name?: string;
+    voucher_date?: string;
     items?: Array<{
       income_expense_type_id: string;
       type_name: string;
@@ -214,9 +218,11 @@ const IncomeExpenseFormInner = ({
   copyFrom: initialCopyFrom,
   defaultType,
   defaultPrefill,
+  emailBillSource,
   onSaved,
 }: IncomeExpenseFormProps) => {
   const isEditing = !!initialVoucher;
+  const emailSaving = useRef(false);
   // Nguồn dữ liệu đổ vào form: phiếu đang SỬA, hoặc phiếu gốc khi TẠO BẢN SAO.
   // isEditing vẫn chỉ theo `voucher` → copy mode submit qua đường TẠO MỚI.
   const sourceId = initialVoucher?.id ?? initialCopyFrom?.id;
@@ -531,7 +537,7 @@ const IncomeExpenseFormInner = ({
         receive_bank_account: '',
         receive_bank_name: '',
         account_id: '',
-        voucher_date: today,
+        voucher_date: defaultPrefill?.voucher_date ?? today,
         business_result_accounting: null,
         repeat_cycle: 'NONE',
         repeat_infinity: false,
@@ -575,6 +581,7 @@ const IncomeExpenseFormInner = ({
   );
   const showQl =
     !isEditing &&
+    !emailBillSource &&
     voucherType === 'EXPENSE' &&
     itemRows.some((r) => commissionTypeIds.has(r.income_expense_type_id));
   useEffect(() => {
@@ -727,6 +734,7 @@ const IncomeExpenseFormInner = ({
   };
 
   const onSubmit = async (data: IncomeExpenseFormValues) => {
+    if (emailSaving.current) return;
     if (detailBlocked || detailConflict || reconcileRequired || cashbookAccessError || sourceUnavailable) return;
     setSubmitError(null);
     if ((revisionNeedsReason && !revisionReasonOk) || (forfeitKqkdMode && forfeitKqkdChanged && !forfeitReasonOk)) {
@@ -777,7 +785,14 @@ const IncomeExpenseFormInner = ({
           void focusFirstError({qlManagerId:'Chọn quản lý nhận hoa hồng.'},{root:formRef.current});
           return;
         }
-        await runFinancialPending({namespace:"voucher-form-create",userId:authUser?.id??"",organizationId:selectedOrganizationId??"",businessKey:[data.type,data.building_id,data.room_id??""].join(":")},async progress=>{
+        if (emailBillSource) {
+          // The server claims this bill and writes atomically. Retrying the same source is safe,
+          // including after a lost response; no email payload is persisted in browser storage.
+          emailSaving.current = true;
+          try {
+            await createMutation.mutateAsync({ ...data, email_bill_source: emailBillSource, email_bill_organization_id: selectedOrganizationId ?? '' });
+          } finally { emailSaving.current = false; }
+        } else await runFinancialPending({namespace:"voucher-form-create",userId:authUser?.id??"",organizationId:selectedOrganizationId??"",businessKey:[data.type,data.building_id,data.room_id??""].join(":")},async progress=>{
         // Cả hai đường ghi (create_income_expense_v1 / ie_compat_insert_v2) trả về phiếu có id.
         const created = (await createMutation.mutateAsync(data)) as { id?: string } | null | undefined;
         if(!created?.id)throw new TypeError("Chưa xác nhận mã phiếu vừa tạo");
@@ -807,9 +822,9 @@ const IncomeExpenseFormInner = ({
       // Lỗi đã được hook báo (toast). Riêng lệch phiên bản: phiếu vừa bị người
       // khác sửa/duyệt — khoá nút Lưu, bảo người dùng mở lại phiếu.
       if (isStaleVersionError(error)) setStaleVersion(true);
-      setSubmitError(voucherFailureMessage(error, isEditing ? "lưu thay đổi phiếu" : "tạo phiếu"));
+      setSubmitError(error instanceof EmailBillImportError ? error.message : voucherFailureMessage(error, isEditing ? "lưu thay đổi phiếu" : "tạo phiếu"));
       await applyFeedbackToForm(form,friendlyError(error,"Chưa lưu được phiếu",{operation:"lưu phiếu",financial:true,rules:VOUCHER_ERROR_RULES}),{root:formRef.current});
-      if (voucherOutcomeUnknown(error)) setReconcileRequired(true);
+      if (voucherOutcomeUnknown(error) && !emailBillSource) setReconcileRequired(true);
     }
   };
 
@@ -990,7 +1005,7 @@ const IncomeExpenseFormInner = ({
                 <TabsList className="grid w-full grid-cols-2">
                   <TabsTrigger
                     value="INCOME"
-                    disabled={!canEditFrame}
+                    disabled={!canEditFrame || !!emailBillSource}
                     className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
                   >
                     <ArrowUp className="h-4 w-4 mr-1" />
@@ -1593,7 +1608,7 @@ const IncomeExpenseFormInner = ({
               </div>
 
               {/* Cài đặt lặp lại — mirror Resident */}
-              <div className="rounded-lg border border-zinc-200 p-3 space-y-3">
+              {!emailBillSource && <div className="rounded-lg border border-zinc-200 p-3 space-y-3">
                 <div className="flex items-center justify-between">
                   <FormLabel className="text-sm font-semibold">
                     Cài đặt lặp lại
@@ -1737,7 +1752,7 @@ const IncomeExpenseFormInner = ({
                   phiếu sinh thêm ngoài phiếu này. Bấm{' '}
                   <b>Sinh phiếu lặp lại</b> trên thanh công cụ để chạy ngay.
                 </p>
-              </div>
+              </div>}
 
               {/* Đính kèm */}
               <FormField

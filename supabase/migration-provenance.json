@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-04T02:28:08.784Z",
+  "generatedAt": "2026-10-04T07:07:36.470Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 651,
-    "unknown": 80,
+    "unknown": 81,
     "catalog-proven": 205,
     "superseded": 15
   },
@@ -11021,6 +11021,22 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-04T02:27:12.019Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261004062237_gmail_bill_income_expense.sql",
+      "version": "20261004062237",
+      "name": "gmail_bill_income_expense",
+      "scheme": "timestamp14",
+      "sha256": "f44c09587c2a08c50d8d4b7b02d58269ffacf53985f1991b0b8e0fdcafab7b77",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "table:public.email_bill_imports",
+        "function:app_private.normalize_email_bill_source_v1",
+        "function:app_private.assert_email_bill_scope_v1",
+        "function:app_private.can_replay_email_bill_v1",
+        "function:public.create_income_expense_from_email_v1"
       ]
     },
     {

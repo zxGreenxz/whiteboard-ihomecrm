@@ -48,6 +48,7 @@ import IncomeExpenseDetailDialog from "@/components/income-expenses/IncomeExpens
 import IncomeExpenseQuickEditDialog from "@/components/income-expenses/IncomeExpenseQuickEditDialog";
 import IncomeExpenseVerifyDialog from "@/components/income-expenses/IncomeExpenseVerifyDialog";
 import IncomeExpenseImportDialog from "@/components/income-expenses/IncomeExpenseImportDialog";
+import { EmailBillImportButton } from '@/components/income-expenses/EmailBillImportButton';
 import IncomeExpenseBatchForm from "@/components/income-expenses/IncomeExpenseBatchForm";
 import IncomeExpenseBatchList from "@/components/income-expenses/IncomeExpenseBatchList";
 import IncomeExpenseBatchDetailDialog from "@/components/income-expenses/IncomeExpenseBatchDetailDialog";
@@ -744,6 +745,7 @@ const IncomeExpenseDesktopPage = () => {
             <Upload className="h-4 w-4 mr-2" />
             Import
           </Button>
+          <EmailBillImportButton />
           <Button
             variant="outline"
             onClick={() => generateRecurringMutation.mutate()}

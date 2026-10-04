@@ -186,6 +186,8 @@ export interface IncomeExpenseWithRelations {
 // --- Mutation Input Types ---
 
 export interface CreateIncomeExpenseInput extends IncomeExpenseFormValues {
+  email_bill_source?: import('@/lib/emailBills/types').EmailBillSource;
+  email_bill_organization_id?: string;
   /**
    * Khoá chống trùng do NGƯỜI GỌI giữ cố định (vd trang Báo chi nhanh: `qe-<id thẻ>`), để gửi lại
    * y nguyên sau khi rớt mạng không sinh phiếu đôi. Vắng ⇒ sinh ngẫu nhiên mỗi lần như cũ.
