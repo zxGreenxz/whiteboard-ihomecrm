@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { LoadingState } from "@/components/loading/LoadingState";
 import { DraftCard } from "@/components/quick-entry/DraftCard";
 import { QuickEntryComposer } from "@/components/quick-entry/QuickEntryComposer";
+import { QuickEntryOrganizationPicker } from "@/components/quick-entry/QuickEntryOrganizationPicker";
 import { useAuth } from "@/hooks/useAuth";
 import { usePhoneViewport } from "@/hooks/use-mobile";
 import { useQuickEntryFeed, type FeedMessage } from "@/hooks/quick-entry/useQuickEntryFeed";
@@ -188,9 +189,12 @@ export default function QuickEntryPage() {
   const composer: ReactNode = noAccess ? null : <>
     {activeLoading&&<LoadingState label="dữ liệu nhập khoản" variant="lines" rows={2}/>}
     {activeError&&<p role="alert" className="p-3 text-sm text-destructive">Không tải được dữ liệu {mode==='personal'?'ví cá nhân':'thu chi công ty'}. Thử tải lại trang.</p>}
+    <QuickEntryOrganizationPicker />
     <QuickEntryComposer
       disabled={activeLoading||!!activeError}
-      key={`${userId}:${refs.orgId}`}
+      key={userId}
+      contextKey={`${userId}:${refs.orgId}`}
+      aiContextRequired={!refs.orgId}
       mode={mode}
       modes={modes}
       onModeChange={chooseMode}

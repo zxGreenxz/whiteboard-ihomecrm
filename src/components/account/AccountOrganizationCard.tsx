@@ -7,13 +7,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { InlineSkeleton } from '@/components/loading/LoadingState';
 
-/** Cùng lựa chọn với Copilot; đổi tại Tài khoản là lưu ngay trên trình duyệt. */
+/** Cùng lựa chọn với Copilot; đổi tại Tài khoản lưu theo tài khoản và giữ cache trên thiết bị. */
 export default function AccountOrganizationCard({ variant = 'desktop' }: { variant?: 'desktop' | 'mobile' }) {
   const id = useId();
   const mobile = variant === 'mobile';
   const {
     organizations, selectedOrganizationId, selectOrganization,
-    isLoading, isError, isOrphan, refetchOrganizations,
+    isLoading, isError, isOrphan, refetchOrganizations, preferenceError,
   } = useOrganization();
   const placeholder = isError ? 'Chưa tải được công ty' : isOrphan ? 'Chưa có công ty' : 'Chọn công ty';
   // Đang nạp danh sách công ty: ô chọn để trống kèm vạch xám trong ô, không chữ
@@ -52,14 +52,16 @@ export default function AccountOrganizationCard({ variant = 'desktop' }: { varia
           </SelectContent>
         </Select>
       )}
-      <p id={helpId} className="mt-2 text-sm text-muted-foreground" role={isError ? 'alert' : undefined}>
+      <p id={helpId} className="mt-2 text-sm text-muted-foreground" role={isError || preferenceError ? 'alert' : undefined}>
         {isError
           ? 'Chưa tải được danh sách công ty. Lựa chọn đã lưu vẫn được giữ lại.'
-          : isOrphan
-            ? 'Tài khoản chưa có công ty khả dụng. Liên hệ quản trị viên để được cấp quyền.'
-            : 'Copilot dùng công ty đang chọn. Lựa chọn tự lưu trên trình duyệt này và được giữ khi chuyển trang hoặc mở lại web, cho đến khi bạn đổi công ty.'}
+          : preferenceError
+            ? preferenceError
+            : isOrphan
+              ? 'Tài khoản chưa có công ty khả dụng. Liên hệ quản trị viên để được cấp quyền.'
+            : 'Copilot dùng công ty đang chọn. Lựa chọn tự lưu theo tài khoản và được giữ khi đăng xuất, mở lại web hoặc đăng nhập trên thiết bị khác, cho đến khi bạn đổi công ty.'}
       </p>
-      {isError && <Button type="button" variant="outline" size="sm" onClick={() => void refetchOrganizations()}>Thử lại</Button>}
+      {(isError || preferenceError) && <Button type="button" variant="outline" size="sm" onClick={() => void refetchOrganizations()}>Thử lại</Button>}
     </div>
   );
 

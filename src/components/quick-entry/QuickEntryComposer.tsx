@@ -36,6 +36,9 @@ const PLACEHOLDER: Record<DraftMode, string> = {
 };
 
 export interface QuickEntryComposerProps {
+  /** Hold AI submissions until company context is ready without discarding input or attachments. */
+  aiContextRequired?: boolean;
+  contextKey?: string;
   launchAction?: { id: number; action: 'attachment' | 'camera' | 'gallery' | 'voice' };
 
   appearance?: 'personal';
@@ -71,6 +74,12 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
   const attachment = useRef<HTMLInputElement>(null);
   const mounted = useRef(true);
   const voicePending = useRef(false);
+  const context = useRef({ key: p.contextKey, epoch: 0 });
+  if (context.current.key !== p.contextKey) context.current = { key: p.contextKey, epoch: context.current.epoch + 1 };
+  const contextEpoch = context.current.epoch;
+  const recordingEpoch = useRef(contextEpoch);
+  const companyHint = "Chọn công ty để dùng AI. Khoản cá nhân vẫn lưu vào ví cá nhân.";
+  useEffect(() => { setNote(null); setHeardBy(null); }, [p.contextKey]);
 
   useEffect(() => {
     mounted.current = true;
@@ -96,6 +105,7 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
 
   const submit = (content: string) => {
     if(p.disabled)return;
+    if (p.aiContextRequired) { setNote(companyHint); return; }
     const t = content.trim();
     if (!t && !pendingPhoto) return;
     if (pendingPhoto) p.onPhoto(pendingPhoto, t);
@@ -108,13 +118,13 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
 
   const recorder = useVoiceRecorder((audio) => {
     const transcribe = p.transcribe;
-    if (!transcribe || voicePending.current || !mounted.current) return;
+    if (!transcribe || voicePending.current || !mounted.current || recordingEpoch.current !== context.current.epoch) return;
     voicePending.current = true;
     setTranscribing(true);
     setNote(null);
     transcribe(audio)
       .then((r) => {
-        if (!mounted.current) return;
+        if (!mounted.current || context.current.epoch !== contextEpoch) return;
         // Thu hẹp bằng `in`: tsconfig.app.json không bật strictNullChecks nên `r.ok` không thu hẹp được.
         if ("text" in r) {
           if (!r.text.trim()) {
@@ -128,13 +138,19 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
         setNote(`${r.error.message} ${KEYBOARD_MIC_HINT}`);
       })
       .catch(() => {
-        if (mounted.current) setNote(`Chưa chuyển được giọng nói thành chữ. ${KEYBOARD_MIC_HINT}`);
+        if (mounted.current && context.current.epoch === contextEpoch) setNote(`Chưa chuyển được giọng nói thành chữ. ${KEYBOARD_MIC_HINT}`);
       })
       .finally(() => {
         voicePending.current = false;
         if (mounted.current) setTranscribing(false);
       });
   });
+
+  const previousContextEpoch = useRef(contextEpoch);
+  useEffect(() => {
+    if (previousContextEpoch.current !== contextEpoch) recorder.cancel();
+    previousContextEpoch.current = contextEpoch;
+  }, [contextEpoch, recorder.cancel]);
 
   const serverVoice = p.transcribe !== null && recorder.supported;
   const recording = recorder.state === "recording" || recorder.state === "requesting";
@@ -154,7 +170,8 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
 
   const onMic = () => {
     setNote(null);
-    if (serverVoice) recorder.start();
+    if (p.aiContextRequired) { setNote(companyHint); return; }
+    if (serverVoice) { recordingEpoch.current = context.current.epoch; recorder.start(); }
     else setNote(KEYBOARD_MIC_HINT);
   };
 
@@ -163,7 +180,7 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
     const launch = p.launchAction;
     if (!launch || lastLaunch.current === launch.id || p.disabled) return;
     lastLaunch.current = launch.id;
-    if (launch.action === "voice") { setNote(null); if(serverVoice)recorder.start();else setNote(KEYBOARD_MIC_HINT); }
+    if (launch.action === "voice") { setNote(null); if(p.aiContextRequired)setNote(companyHint);else if(serverVoice){recordingEpoch.current = context.current.epoch;recorder.start();}else setNote(KEYBOARD_MIC_HINT); }
     else
       (launch.action === "camera"
         ? camera
@@ -171,7 +188,7 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
           ? gallery
           : attachment
       ).current?.click();
-  }, [p.launchAction, p.disabled, serverVoice, recorder.start]);
+  }, [p.launchAction, p.disabled, p.aiContextRequired, serverVoice, recorder.start]);
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     // Bộ gõ tiếng Việt trên Mac/điện thoại dùng composition: Enter lúc đang ghép dấu không phải "gửi".
@@ -185,7 +202,7 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
     const image = Array.from(e.clipboardData?.files ?? []).find((f) => f.type.startsWith("image/"));
     if (!image) return;
     e.preventDefault();
-    if (pendingPhoto) setPendingPhoto(image);
+    if (pendingPhoto || p.aiContextRequired || p.appearance === 'personal') setPendingPhoto(image);
     else p.onPhoto(image);
   };
 
@@ -193,7 +210,7 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
     const file = input?.files?.[0];
     if (input) input.value = "";
     if (!file || busy || voicePending.current) return;
-    if (withContent || pendingPhoto) {
+    if (withContent || pendingPhoto || p.aiContextRequired) {
       setPendingPhoto(file);
       setNote(null);
       box.current?.focus();

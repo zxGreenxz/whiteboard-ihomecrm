@@ -6,7 +6,12 @@ import { OrganizationProvider } from '@/contexts/OrganizationContext';
 import { useQuickEntryController } from '../useQuickEntryController';
 
 const h = vi.hoisted(() => ({ rpc: vi.fn(), personal: { personal_finance: { view: true, create: true } } as unknown }));
-vi.mock('@/integrations/supabase/client', () => ({ supabase: { rpc: h.rpc, auth: { getSession: async () => ({ data: { session: { user: { id: 'actor-a' }, access_token: 'fixture-a' } }, error: null }) } } }));
+vi.mock('@/integrations/supabase/client', () => ({ supabase: { rpc: h.rpc,
+  from: () => ({ select: () => ({ eq: () => ({ single: () => ({ setHeader: async () => ({ data: { ui_preferences: {} }, error: null }) }) }) }) }),
+  auth: {
+    onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => undefined } } }),
+    getSession: async () => ({ data: { session: { user: { id: 'actor-a' }, access_token: `header.${btoa(JSON.stringify({sub:'actor-a'}))}.signature` } }, error: null })
+  } } }));
 // Data/side-effect boundaries are fixtures; auth, organization, permission hooks,
 // quick refs and controller are the shipped implementation.
 vi.mock('@/hooks/personal-finance/usePersonalFinance', () => ({ usePersonalFinance: () => ({ data: { wallets: [], categories: [] }, isLoading: false, error: null }) }));

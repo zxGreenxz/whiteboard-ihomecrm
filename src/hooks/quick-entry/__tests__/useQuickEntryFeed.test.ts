@@ -74,6 +74,43 @@ const mount = (r: QuickEntryRefs = refs()) =>
   });
 const cardsOf = (result: { current: ReturnType<typeof useQuickEntryFeed> }) => Object.values(result.current.cards);
 
+describe("AI organization recovery", () => {
+  it("missing company remains retryable after repeated attempts", async () => {
+    h.readWithAi.mockResolvedValue({ ok: false, error: classifyAiError({ status: 400, code: "organization_required" }) });
+    const { result } = mount();
+    for (let i = 0; i < 4; i++) await act(async () => result.current.submitText("102LVT sơn 300k", "company"));
+    expect(h.readWithAi).toHaveBeenCalledTimes(4);
+    expect(result.current.aiOff).toBeNull();
+    expect(result.current.transcribe).not.toBeNull();
+  });
+
+  it("restores AI when switching to another authorized company", async () => {
+    h.readWithAi.mockResolvedValue({ ok: false, error: classifyAiError({ status: 403, code: "not_permitted" }) });
+    const { result, rerender } = mount();
+    await act(async () => result.current.submitText("102LVT sơn 300k", "company"));
+    expect(result.current.transcribe).toBeNull();
+    rerender({ r: refs({ orgId: "org-2" }) });
+    expect(result.current.aiOff).toBeNull();
+    expect(result.current.transcribe).not.toBeNull();
+    h.readWithAi.mockResolvedValue(ok(ai()));
+    await act(async () => result.current.submitText("102LVT sơn 300k", "company"));
+    expect(h.readWithAi).toHaveBeenCalledTimes(2);
+  });
+
+  it("ignores an old company denial arriving after a switch", async () => {
+    let finish!: (r: AiRead) => void;
+    h.readWithAi.mockReturnValue(new Promise<AiRead>(r => { finish = r; }));
+    const { result, rerender } = mount();
+    let pending!: Promise<void>;
+    act(() => { pending = result.current.submitText("102LVT sơn 300k", "company"); });
+    rerender({ r: refs({ orgId: "org-2" }) });
+    await act(async () => { finish({ ok: false, error: classifyAiError({ status: 403, code: "not_permitted" }) }); await pending; });
+    expect(result.current.aiOff).toBeNull();
+    expect(result.current.transcribe).not.toBeNull();
+    expect(result.current.messages).toEqual([]);
+  });
+});
+
 beforeEach(() => {
   localStorage.clear();
   for (const f of Object.values(h)) if(typeof f==='function')f.mockReset();

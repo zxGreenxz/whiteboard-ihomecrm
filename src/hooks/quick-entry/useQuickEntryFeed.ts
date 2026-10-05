@@ -180,6 +180,9 @@ export function useQuickEntryFeed(opts: {
   const orgId = refs.orgId;
   const scope = userId ? draftsKey(userId, orgId??'personal') : null;
   const scopeRef=useRef(scope);scopeRef.current=scope;
+  const aiScope = useRef({ scope, epoch: 0 });
+  if (aiScope.current.scope !== scope) aiScope.current = { scope, epoch: aiScope.current.epoch + 1 };
+  const aiEpoch = aiScope.current.epoch;
   const save = useQuickEntrySave();
   // Đọc lựa chọn MỚI NHẤT lúc gọi (đổi ô chọn giữa chừng thì lần gọi kế dùng ngay, không dựng lại hàm).
   const modelsRef = useRef(opts.models);
@@ -197,6 +200,10 @@ export function useQuickEntryFeed(opts: {
 
   // Mở trang / đổi công ty: dọn nháp của người khác trên máy, nạp nháp của chính mình.
   useEffect(() => {
+    aiOffRef.current = null;
+    setAiOff(null);
+    setVoiceOff(null);
+    failures.current = { read: 0, voice: 0 };
     if (!scope || !userId) {setFeed({scope:null,messages:[],cards:{}});return;}
     let restored: ReturnType<typeof deserializeCards> = [];
     try {
@@ -388,6 +395,8 @@ export function useQuickEntryFeed(opts: {
   const offVoice = useCallback((e: AiErrorView) => setVoiceOff(e), []);
   const noteAiError = useCallback(
     (e: AiErrorView, channel: "read" | "voice") => {
+      // Missing context is recoverable; a response from an earlier login/company cannot disable this one.
+      if (aiScope.current.epoch !== aiEpoch || e.kind === "organization_required") return;
       const both = e.kind === "not_permitted" || e.kind === "daily_cap";
       if (both || e.kind === "disabled") {
         if (both || channel === "read") offRead(e);
@@ -401,7 +410,7 @@ export function useQuickEntryFeed(opts: {
         else offVoice(off);
       }
     },
-    [offRead, offVoice],
+    [offRead, offVoice, aiEpoch],
   );
 
   const fetchImpl = useCallback(
@@ -444,7 +453,7 @@ export function useQuickEntryFeed(opts: {
       });
       // Thu hẹp bằng `in`: tsconfig.app.json không bật strictNullChecks nên `r.ok` không thu hẹp được.
       if ("error" in r) noteAiError(r.error, "read");
-      else failures.current.read = 0;
+      else if (aiScope.current.epoch === aiEpoch) failures.current.read = 0;
       return r;
     } catch {
       const error = classifyAiError({ status: 0, code: null });
@@ -466,7 +475,7 @@ export function useQuickEntryFeed(opts: {
         model: modelsRef.current?.read,
       });
       if ("error" in r) noteAiError(r.error, "read");
-      else failures.current.read = 0;
+      else if (aiScope.current.epoch === aiEpoch) failures.current.read = 0;
       return r;
     } catch {
       const error = classifyAiError({ status: 0, code: null });
@@ -683,7 +692,7 @@ export function useQuickEntryFeed(opts: {
   const transcribe = async (audio: RecordedAudio): Promise<TranscribeResult> => {
     const r = await transcribeAudio({ audio, fetchImpl, signal: timeout(STT_TIMEOUT_MS), model: modelsRef.current?.stt });
     if ("error" in r) noteAiError(r.error, "voice");
-    else failures.current.voice = 0;
+    else if (aiScope.current.epoch === aiEpoch) failures.current.voice = 0;
     return r;
   };
 

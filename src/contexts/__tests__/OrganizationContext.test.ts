@@ -93,7 +93,7 @@ describe('parseOrganizations', () => {
 
 describe('OrganizationProvider RPC contract', () => {
   it('uses the Copilot organization directory RPC instead of the membership-only legacy RPC', () => {
-    const source = readFileSync('src/contexts/OrganizationContext.tsx', 'utf8');
+    const source = readFileSync('src/contexts/OrganizationProvider.tsx', 'utf8');
     expect(source).toContain("supabase.rpc('list_my_copilot_organizations_v1')");
     expect(source).not.toContain("supabase.rpc('get_my_organizations')");
   });
@@ -168,7 +168,7 @@ describe('resetOrgScopedQueries', () => {
   });
 
   it('selectOrganization gọi hàm dọn này', () => {
-    const source = readFileSync('src/contexts/OrganizationContext.tsx', 'utf8');
+    const source = readFileSync('src/contexts/OrganizationProvider.tsx', 'utf8');
     expect(source).toContain('resetOrgScopedQueries(queryClient)');
   });
 });

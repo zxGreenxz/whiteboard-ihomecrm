@@ -60,6 +60,44 @@ afterEach(() => {
 });
 
 describe("QuickEntryComposer — gõ chữ", () => {
+  it.each(["requesting", "recording"] as const)("cancels %s audio on company change and preserves the unsent draft", async (state) => {
+    const h = setup({ contextKey: "org-a" });
+    fireEvent.change(h.box, { target: { value: "Giữ nội dung" } });
+    fireEvent.change(screen.getByLabelText("Chọn ảnh kèm nội dung"), { target: { files: [new File(["img"], "bill.png", { type: "image/png" })] } });
+    fireEvent.click(screen.getByRole("button", { name: "Nói" }));
+    rec.state = state;
+    h.rerender(<QuickEntryComposer {...h.props} contextKey="org-b" />);
+    expect(rec.cancel).toHaveBeenCalledOnce();
+    await act(async () => rec.onDone?.(audio));
+    expect(h.props.transcribe).not.toHaveBeenCalled();
+    rec.state = "idle";
+    h.rerender(<QuickEntryComposer {...h.props} contextKey="org-b" />);
+    expect(h.box.value).toBe("Giữ nội dung");
+    expect(screen.getByText("bill.png")).toBeTruthy();
+  });
+  it("keeps the photo and text until a company is chosen, then sends together", () => {
+    const h = setup({ appearance: "personal", aiContextRequired: true, contextKey: "personal" });
+    fireEvent.change(h.box, { target: { value: "Nội dung giữ lại" } });
+    const file = new File(["img"], "bill.png", { type: "image/png" });
+    fireEvent.change(screen.getByLabelText("Chọn ảnh bill"), { target: { files: [file] } });
+    fireEvent.click(screen.getByRole("button", { name: "Gửi" }));
+    fireEvent.click(screen.getByRole("button", { name: "Nói" }));
+    expect(rec.start).not.toHaveBeenCalled();
+    expect(h.props.onPhoto).not.toHaveBeenCalled();
+    expect(h.box.value).toBe("Nội dung giữ lại");
+    h.rerender(<QuickEntryComposer {...h.props} aiContextRequired={false} contextKey="org-1" />);
+    expect(screen.queryByText(/Chọn công ty/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Gửi" }));
+    expect(h.props.onPhoto).toHaveBeenCalledExactlyOnceWith(file, "Nội dung giữ lại");
+  });
+  it("does not submit old voice results into the newly selected company", async () => {
+    let finish!: (r: TranscribeResult) => void;
+    const h = setup({ contextKey: "org-1", transcribe: vi.fn(() => new Promise<TranscribeResult>(r => { finish = r; })) });
+    act(() => { rec.onDone?.(audio); });
+    h.rerender(<QuickEntryComposer {...h.props} contextKey="org-2" />);
+    await act(async () => finish({ ok: true, text: "chi 200k", model: null }));
+    expect(h.props.onSubmitText).not.toHaveBeenCalled();
+  });
   it("personal home voice launcher opens the real voice flow while retaining typed content", () => {
     const h = setup({ appearance: "personal", transcribe: null });
     fireEvent.change(h.box, { target: { value: "Nội dung giữ lại" } });

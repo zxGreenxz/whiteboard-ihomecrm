@@ -10,6 +10,7 @@ import {
 import { usePersonalFinanceMutation } from "@/hooks/personal-finance/usePersonalFinance";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
+import { QuickEntryOrganizationPicker } from "./QuickEntryOrganizationPicker";
 
 export function QuickEntryInput({
   controller: c,
@@ -34,7 +35,11 @@ export function QuickEntryInput({
       {!c.loading && !c.error && !c.modes.length && (
         <p role="status">Bạn chưa có quyền nhập khoản tại đây.</p>
       )}
+      <QuickEntryOrganizationPicker />
       <QuickEntryComposer
+        key={c.userId}
+        contextKey={`${c.userId}:${c.refs.orgId}`}
+        aiContextRequired={!c.refs.orgId}
         launchAction={launchAction}
         appearance={appearance}
         disabled={!c.ready}

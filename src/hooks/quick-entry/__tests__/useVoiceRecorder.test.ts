@@ -59,6 +59,21 @@ afterEach(() => {
 });
 
 describe("useVoiceRecorder", () => {
+  it.each(["cancel", "unmount"] as const)("%s while awaiting microphone releases a late stream without recording", async (action) => {
+    let resolve!: (stream: { getTracks: () => typeof track[] }) => void;
+    getUserMedia.mockReturnValueOnce(new Promise(r => { resolve = r; }));
+    const onDone = vi.fn();
+    const { result, unmount } = renderHook(() => useVoiceRecorder(onDone));
+    let pending!: Promise<void>;
+    act(() => { pending = result.current.start(); });
+    expect(result.current.state).toBe("requesting");
+    act(() => { if (action === "cancel") result.current.cancel(); else unmount(); });
+    await act(async () => { resolve({ getTracks: () => [track] }); await pending; });
+    expect(track.stop).toHaveBeenCalledOnce();
+    expect(FakeRecorder.instances).toHaveLength(0);
+    expect(onDone).not.toHaveBeenCalled();
+    if (action === "cancel") expect(result.current.state).toBe("idle");
+  });
   it("chạm để nói rồi dừng ⇒ trả âm thanh đúng định dạng và tắt micro", async () => {
     const onDone = vi.fn();
     const { result } = renderHook(() => useVoiceRecorder(onDone));

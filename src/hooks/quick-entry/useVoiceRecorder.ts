@@ -63,6 +63,8 @@ export function useVoiceRecorder(onDone: (audio: RecordedAudio) => void) {
   const current = useRef<Recording | null>(null);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
   const onDoneRef = useRef(onDone);
+  const requestEpoch = useRef(0);
+  const requesting = useRef(false);
   onDoneRef.current = onDone;
 
   const supported =
@@ -81,12 +83,15 @@ export function useVoiceRecorder(onDone: (audio: RecordedAudio) => void) {
   }, []);
 
   const cancel = useCallback(() => {
+    requestEpoch.current += 1;
+    requesting.current = false;
     if (current.current) current.current.cancelled = true;
     stop();
+    setState("idle");
   }, [stop]);
 
   const start = useCallback(async () => {
-    if (current.current) return;
+    if (current.current || requesting.current) return;
     setError(null);
     if (!supported) {
       setState("error");
@@ -105,14 +110,23 @@ export function useVoiceRecorder(onDone: (audio: RecordedAudio) => void) {
       return;
     }
     setState("requesting");
+    requesting.current = true;
+    const epoch = ++requestEpoch.current;
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
     } catch (e) {
+      if (epoch !== requestEpoch.current) return;
+      requesting.current = false;
       setState("error");
       setError(friendlyError(e));
       return;
     }
+    if (epoch !== requestEpoch.current) {
+      stream.getTracks().forEach(t => t.stop());
+      return;
+    }
+    requesting.current = false;
     const recorder = new MediaRecorder(stream, { mimeType, audioBitsPerSecond: AUDIO_BITS_PER_SECOND });
     const rec: Recording = { recorder, stream, chunks: [], mimeType, startedAt: Date.now(), cancelled: false };
     current.current = rec;
@@ -145,6 +159,8 @@ export function useVoiceRecorder(onDone: (audio: RecordedAudio) => void) {
   // Rời trang khi đang ghi ⇒ huỷ và tắt micro.
   useEffect(
     () => () => {
+      requestEpoch.current += 1;
+      requesting.current = false;
       clearTimer();
       const rec = current.current;
       if (rec) {

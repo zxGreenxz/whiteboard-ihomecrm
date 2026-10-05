@@ -1,14 +1,9 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createContext, lazy, Suspense, useContext, type ReactNode } from 'react';
 import {
   notifyManager,
-  useQuery,
-  useQueryClient,
   type QueryClient,
   type QueryKey,
 } from '@tanstack/react-query';
-
-import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/hooks/useAuth';
 
 /**
  * Khái niệm "tổ chức hiện tại" cho frontend — GĐ9 của kế hoạch tách dữ liệu.
@@ -77,9 +72,9 @@ export interface OrganizationState {
    * chọn, còn đây là có nhiều thứ để chọn mà chưa chọn.
    */
   canChonToChuc: boolean;
+  preferenceError?: string | null;
 }
 
-const KHOA_LUU = 'ihomecrm.selectedOrganizationId';
 
 /**
  * Tổ chức nào đang được chọn, từ danh bạ và lựa chọn đã lưu.
@@ -109,7 +104,7 @@ export function resolveSelectedOrganizationId(
   return null;
 }
 
-const OrganizationContext = createContext<OrganizationState | null>(null);
+export const OrganizationContext = createContext<OrganizationState | null>(null);
 
 /**
  * Key SỐNG SÓT qua một lần đổi công ty: phiên đăng nhập và danh bạ tổ chức.
@@ -189,105 +184,10 @@ export function useOrganization(): OrganizationState {
   return ctx;
 }
 
+const LazyOrganizationProvider = lazy(() => import('./OrganizationProvider'));
+/** Keep the public context synchronous while account restoration loads after app entry. */
 export function OrganizationProvider({ children }: { children: ReactNode }) {
-  const queryClient = useQueryClient();
-  const { data: user, isLoading: authLoading, isError: authError } = useAuth();
-  const { data, isLoading: directoryLoading, isSuccess, isError: directoryError, refetch } = useQuery({
-    queryKey: ['my-organizations', user?.id ?? null],
-    enabled: !!user,
-    queryFn: async (): Promise<Organization[]> => {
-      const { data: rpc, error } = await supabase.rpc('list_my_copilot_organizations_v1');
-      if (error) throw error;
-      return parseOrganizations(rpc);
-    },
-    // Membership đổi rất hiếm; hỏi lại mỗi 5 phút là đủ. Cùng mốc với
-    // useMyContext để hai nguồn không lệch nhau giữa chừng.
-    staleTime: 5 * 60 * 1000,
-  });
-  const isLoading = authLoading || (!!user && directoryLoading);
-  const isError = authError || directoryError;
-  const refetchOrganizations = useCallback(async () => { await refetch(); }, [refetch]);
-
-  // Chỉ lưu ID, không lưu cả bản ghi tổ chức: một bản chép trong localStorage sẽ
-  // cũ đi (đổi tên, bị gỡ quyền) mà không có gì làm nó mới lại, và giao diện sẽ
-  // hiện tên cũ của một công ty người dùng không còn vào được.
-  const [luuId, datLuuId] = useState<string | null>(() => {
-    try {
-      return localStorage.getItem(KHOA_LUU);
-    } catch {
-      return null; // Safari chế độ riêng tư ném ở đây; mất lựa chọn còn hơn vỡ app.
-    }
-  });
-
-  const organizations = useMemo(() => data ?? [], [data]);
-  const selectedOrganizationId = resolveSelectedOrganizationId(organizations, luuId);
-  // Query đang hiển thị đã bị dọn khi đổi công ty, chờ nạp lại sau commit.
-  const choNapLai = useRef<Set<string> | null>(null);
-
-  // Chỉ lưu/dọn sau khi tải THÀNH CÔNG. Mất mạng hoặc đăng xuất không có
-  // nghĩa công ty đã lưu bị gỡ khỏi danh bạ. Lưu cả lựa chọn tự động khi chỉ
-  // có một công ty, để sau này thêm công ty mới vẫn giữ công ty đang dùng.
-  useEffect(() => {
-    if (!isSuccess || selectedOrganizationId === luuId) return;
-    try {
-      if (selectedOrganizationId) localStorage.setItem(KHOA_LUU, selectedOrganizationId);
-      else localStorage.removeItem(KHOA_LUU);
-    } catch { /* xem chú thích khởi tạo */ }
-    datLuuId(selectedOrganizationId);
-  }, [isSuccess, luuId, selectedOrganizationId]);
-
-  const selectOrganization = useCallback(
-    (id: string) => {
-      // Bỏ qua ID ngoài danh bạ: nhận bừa sẽ tạo ra một lựa chọn không tương ứng
-      // với thứ gì, và `resolveSelectedOrganizationId` chỉ việc trả null sau đó.
-      if (!organizations.some((o) => o.id === id)) return;
-      // Chọn lại đúng công ty đang xem thì không dọn gì — dọn sẽ làm cả app nạp
-      // lại vì một cú bấm không đổi gì.
-      if (id === selectedOrganizationId) return;
-      try {
-        localStorage.setItem(KHOA_LUU, id);
-      } catch { /* xem chú thích khởi tạo */ }
-      // Dọn TRƯỚC khi đổi state: sau `datLuuId` là render ngay, và render đó
-      // phải không còn đọc được dữ liệu công ty cũ. Xem resetOrgScopedQueries.
-      choNapLai.current = resetOrgScopedQueries(queryClient);
-      datLuuId(id);
-    },
-    [organizations, selectedOrganizationId, queryClient],
-  );
-
-  // Nạp lại SAU commit chứ không ngay trong selectOrganization: effect của màn con
-  // chạy trước effect này và đã gắn queryFn mới vào observer, nên lượt nạp đọc
-  // công ty mới. Nạp ngay lúc dọn thì queryFn còn giữ công ty cũ và ghi dữ liệu
-  // công ty A vào đúng khoá vừa dọn.
-  useEffect(() => {
-    const hashes = choNapLai.current;
-    if (!hashes) return;
-    choNapLai.current = null;
-    if (hashes.size === 0) return;
-    void queryClient.refetchQueries({
-      type: 'active',
-      predicate: (query) => hashes.has(query.queryHash),
-    });
-  }, [queryClient, selectedOrganizationId]);
-
-  const value = useMemo<OrganizationState>(() => {
-    return {
-      organizations,
-      organization: organizations.find((o) => o.id === selectedOrganizationId) ?? null,
-      selectedOrganizationId,
-      selectOrganization,
-      isMultiOrg: organizations.length > 1,
-      isLoading,
-      isError,
-      refetchOrganizations,
-      isOrphan: isSuccess && organizations.length === 0,
-      canChonToChuc: !isLoading && organizations.length > 1 && selectedOrganizationId === null,
-    };
-  }, [organizations, selectedOrganizationId, selectOrganization, isLoading, isError, refetchOrganizations, isSuccess]);
-
-  return (
-    <OrganizationContext.Provider value={value}>
-      {children}
-    </OrganizationContext.Provider>
-  );
+  return <Suspense fallback={<div role="status" aria-label="Đang tải công ty" className="p-4"><div className="h-4 w-36 animate-pulse rounded bg-muted" /></div>}>
+    <LazyOrganizationProvider>{children}</LazyOrganizationProvider>
+  </Suspense>;
 }

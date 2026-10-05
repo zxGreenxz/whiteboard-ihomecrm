@@ -25,6 +25,7 @@ test.describe.configure({ mode: "default" });
 test.use({ storageState: { cookies: [], origins: [] } });
 test.beforeAll(async () => {
   const virtual = new Map([
+    ["virtual:pf-org", "export const useOrganization=()=>({selectedOrganizationId:'demo',preferenceError:null});"],
     [
       "virtual:pf-auth",
       `export const useAuth=()=>({data:{id:'${owner}'},isLoading:false});`,
@@ -105,6 +106,7 @@ test.beforeAll(async () => {
     resolve: {
       alias: [
         { find: "@/hooks/useAuth", replacement: "virtual:pf-auth" },
+        { find: "@/contexts/OrganizationContext", replacement: "virtual:pf-org" },
         { find: "@/lib/authSession", replacement: "virtual:pf-session" },
         { find: "@/hooks/personal-finance/usePersonalFinancePermissions", replacement: "virtual:pf-perms" },
         {

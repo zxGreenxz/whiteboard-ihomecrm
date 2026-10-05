@@ -11,7 +11,11 @@ const fixture = vi.hoisted(() => ({
   user: { id: 'demo-user' } as { id: string } | null,
   rpc: vi.fn(),
 }));
-vi.mock('@/integrations/supabase/client', () => ({ supabase: { rpc: fixture.rpc } }));
+vi.mock('@/integrations/supabase/client', () => ({ supabase: {
+ auth: { onAuthStateChange:()=>({data:{subscription:{unsubscribe:()=>undefined}}}), getSession:async()=>({data:{session:fixture.user?{user:fixture.user,access_token:`header.${btoa(JSON.stringify({sub:fixture.user.id}))}.signature`}:null},error:null}) },
+ rpc:(...args:unknown[])=>{ const result=args[0]==='set_my_ui_preference'?Promise.resolve({data:{selectedOrganizationId:(args[1] as {p_value:string}).p_value},error:null}):fixture.rpc(...args);return {setHeader:()=>result,then:result.then.bind(result)}; },
+ from:()=>({select:()=>({eq:()=>({single:()=>({setHeader:async()=>({data:{ui_preferences:{}},error:null})})})})})
+} }));
 vi.mock('@/hooks/useAuth', () => ({
   useAuth: () => ({ data: fixture.user, isLoading: false, isError: false }),
 }));
@@ -38,9 +42,8 @@ function mountAccount() {
   );
 }
 async function chooseCompany(company: typeof companyA) {
-  const dropdown = await screen.findByTestId('account-organization-select');
-  await waitFor(() => expect(dropdown.hasAttribute('disabled')).toBe(false));
-  fireEvent.change(dropdown, { target: { value: company.id } });
+  await waitFor(() => expect(screen.getByTestId('account-organization-select').hasAttribute('disabled')).toBe(false));
+  fireEvent.change(screen.getByTestId('account-organization-select'), { target: { value: company.id } });
 }
 
 beforeEach(() => {
@@ -67,7 +70,7 @@ describe('Lưu lựa chọn công ty', () => {
     await chooseCompany(companyB);
     expect(localStorage.getItem(storageKey)).toBe(companyB.id);
     expect(screen.getByTestId('selected-scope').textContent).toBe(companyB.id);
-    // Chọn công ty không cần ghi hồ sơ lên máy chủ.
+    // Chọn công ty dùng RPC atomic; mock directory chỉ nhận request đọc.
     expect(fixture.rpc.mock.calls.every(([name]) => name === 'list_my_copilot_organizations_v1')).toBe(true);
 
     first.unmount();
@@ -86,18 +89,20 @@ it('giữ lựa chọn khi tải lỗi, rồi khôi phục sau khi thử lại',
   fixture.rpc.mockResolvedValueOnce({ data: null, error: new Error('offline') });
   mountAccount();
   expect((await screen.findByRole('alert')).textContent).toContain('Lựa chọn đã lưu vẫn được giữ lại');
-  expect(localStorage.getItem(storageKey)).toBe(companyB.id);
+  expect(JSON.parse(localStorage.getItem(`${storageKey}:demo-user`)!).id).toBe(companyB.id);
+  expect(localStorage.getItem(storageKey)).toBeNull();
   expect(screen.getByTestId('selected-scope').textContent).toBe('none');
   fireEvent.click(screen.getByRole('button', { name: 'Thử lại' }));
   await waitFor(() => expect(screen.getByTestId('selected-scope').textContent).toBe(companyB.id));
 });
 
-it('đăng xuất không xoá lựa chọn và không gọi danh bạ chưa đăng nhập', async () => {
-  localStorage.setItem(storageKey, companyB.id);
+it('đăng xuất không xoá lựa chọn tài khoản và không gọi danh bạ chưa đăng nhập', async () => {
+  localStorage.setItem(`${storageKey}:demo-user`, JSON.stringify({id:companyB.id,pending:false}));
   fixture.user = null;
   mountAccount();
   await screen.findByTestId('account-organization-card');
-  expect(localStorage.getItem(storageKey)).toBe(companyB.id);
+  expect(JSON.parse(localStorage.getItem(`${storageKey}:demo-user`)!).id).toBe(companyB.id);
+  expect(localStorage.getItem(storageKey)).toBeNull();
   expect(fixture.rpc).not.toHaveBeenCalled();
 });
 
@@ -113,7 +118,8 @@ it('lưu công ty duy nhất để sau khi có thêm công ty vẫn giữ lựa 
 it('không dùng công ty đã mất quyền và không tự chọn công ty đầu khi có nhiều công ty', async () => {
   localStorage.setItem(storageKey, 'company-removed');
   mountAccount();
-  await waitFor(() => expect(localStorage.getItem(storageKey)).toBeNull());
+  await waitFor(() => expect(screen.getByRole('combobox').hasAttribute('disabled')).toBe(false));
+  expect(localStorage.getItem(storageKey)).toBeNull();
   expect(screen.getByTestId('selected-scope').textContent).toBe('none');
   expect(screen.getByRole('combobox', { name: 'Công ty đang chọn' }).textContent).toContain('Chọn công ty');
 });

@@ -4,6 +4,7 @@
 export type AiErrorKind =
   | "disabled"
   | "not_permitted"
+  | "organization_required"
   | "daily_cap"
   | "rate_limited"
   | "all_failed"
@@ -22,6 +23,7 @@ export interface AiErrorView {
 const MESSAGES: Record<AiErrorKind, string> = {
   disabled: "AI đọc chi tiêu đang tắt. Bạn vẫn nhập tay được.",
   not_permitted: "Tài khoản chưa được dùng AI ở trang này. Bạn vẫn nhập tay được.",
+  organization_required: "Chọn công ty để dùng AI. Khoản cá nhân vẫn lưu vào ví cá nhân.",
   daily_cap: "Hôm nay bạn đã dùng hết lượt AI. Bạn vẫn nhập tay được.",
   rate_limited: "AI đang bận vì gọi dồn dập. Đợi vài giây rồi thử lại, hoặc nhập tay.",
   all_failed: "Các mô hình AI đều đang lỗi. Thử lại sau ít phút, hoặc nhập tay.",
@@ -33,6 +35,7 @@ const MESSAGES: Record<AiErrorKind, string> = {
 const RETRYABLE: Record<AiErrorKind, boolean> = {
   disabled: false,
   not_permitted: false,
+  organization_required: true,
   daily_cap: false,
   rate_limited: true,
   all_failed: true,
@@ -49,8 +52,9 @@ function kindOf(status: number, code: string | null): AiErrorKind {
     case "not_permitted":
     case "not_entitled":
     case "organization_forbidden":
-    case "organization_required":
       return "not_permitted";
+    case "organization_required":
+      return "organization_required";
     case "quick_entry_daily_cap":
     case "daily_quota":
     case "daily_token_quota":

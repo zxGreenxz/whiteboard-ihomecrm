@@ -10,7 +10,7 @@ import { RequirePermission } from '../RequirePermission';
 import type { ActionKey } from '@/lib/permissions';
 
 const h = vi.hoisted(() => ({ rpc: vi.fn(), getSession: vi.fn(), permissions: {} as unknown, error: null as unknown }));
-vi.mock('@/integrations/supabase/client', () => ({ supabase: { rpc: h.rpc, auth: { getSession: h.getSession } } }));
+vi.mock('@/integrations/supabase/client', () => ({ supabase: { rpc: h.rpc, auth: { getSession: h.getSession, onAuthStateChange:()=>({data:{subscription:{unsubscribe:()=>undefined}}}) }, from:()=>({select:()=>({eq:()=>({single:()=>({setHeader:async()=>({data:{ui_preferences:{}},error:null})})})})}) } }));
 // Only lazy page contents are fixtures; the shipped route and both guards run.
 vi.mock('@/app/lazyPages', async original => ({ ...await original<object>(), PersonalWalletPage: () => <h1>Ví cá nhân đã mở</h1> }));
 
@@ -31,7 +31,7 @@ beforeEach(() => {
   localStorage.clear();
   h.error = null;
   h.permissions = { personal_finance: { view: true, create: true } };
-  h.getSession.mockResolvedValue({ data: { session: { user: { id: 'actor-a' }, access_token: 'fixture-a' } }, error: null });
+  h.getSession.mockResolvedValue({ data: { session: { user: { id: 'actor-a' }, access_token: `header.${btoa(JSON.stringify({sub:'actor-a'}))}.signature` } }, error: null });
   h.rpc.mockImplementation((name: string) => {
     const result = Promise.resolve(name === 'list_my_copilot_organizations_v1'
       ? { data: { organizations: [{ id: 'org-a', name: 'A' }, { id: 'org-b', name: 'B' }] }, error: null }
