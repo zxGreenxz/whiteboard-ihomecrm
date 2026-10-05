@@ -1,32 +1,29 @@
 ---
-title: "Báo chi nhanh — ghi chi bằng tin nhắn, giọng nói, ảnh bill"
-description: "Gõ, nói hoặc chụp bill là có thẻ nháp phiếu chi (hoặc khoản chi cá nhân); soát lại rồi bấm Lưu. AI chỉ giúp điền, không tự lưu."
+title: "Báo chi nhanh — ghi thu chi bằng chữ, giọng nói, ảnh bill"
+description: "Gõ, nói hoặc chụp bill để tạo thẻ nháp thu chi công ty hoặc cá nhân; soát lại rồi bấm Lưu."
 routes: ["/chi-tieu"]
 permissions: [{module: income_expenses, action: create}, {module: personal_finance, action: create}]
 viewport: mobile
 audience: [quan-ly-toa, ke-toan, chu-nha]
-captured:
-  date: "2026-10-01"
-  account: nguyentam
 status: published
 ---
 
 # Báo chi nhanh
 
-Màn **Báo chi nhanh** cho bạn ghi một khoản chi trong vài giây: **gõ một câu**, **nói**, hoặc **chụp bill**. Mỗi khoản thành một **thẻ nháp** hiện ngay trên màn — bạn soát, sửa ô nào chưa đúng, rồi bấm **Lưu**. Không có gì được ghi khi bạn chưa bấm Lưu.
+Màn **Báo chi nhanh** cho bạn ghi thu hoặc chi bằng cách **gõ một câu**, **nói**, hoặc **chụp bill**. Mỗi khoản thành một **thẻ nháp** — bạn soát, sửa ô nào chưa đúng, rồi bấm **Lưu**. Chưa có khoản nào vào sổ khi bạn chưa bấm Lưu.
 
-- Khoản **công ty** thành **phiếu chi** y như lập ở màn [Thu chi](/03-quan-ly-van-hanh/thu-chi/): cùng sổ quỹ, cùng hạng mục, cùng luật duyệt.
+- Khoản **công ty** thành **phiếu thu hoặc chi** y như lập ở màn [Thu chi](/03-quan-ly-van-hanh/thu-chi/): cùng sổ quỹ, cùng hạng mục, cùng luật duyệt.
 - Khoản **cá nhân** ghi vào [Ví thu chi cá nhân](/03-quan-ly-van-hanh/vi-ca-nhan/) — không chạm sổ sách công ty.
 
 ::: info Mở màn ở đâu
 - **Điện thoại**: màn hình chính, nhóm **Tài chính**, ô **Báo chi nhanh**.
 - **Máy tính**: menu **Tài chính → Báo chi nhanh**.
-- Ô và mục menu hiện với người có quyền **Thu chi ⇒ Tạo**. Người chỉ có quyền Ví cá nhân mở bằng đường dẫn `/chi-tieu`.
+- Ô và mục menu Báo chi nhanh hiện với người có quyền **Thu chi ⇒ Tạo**. Người chỉ có quyền Ví cá nhân cũng có ô ghi nhanh ngay tại **Cá nhân → Ví cá nhân**, hoặc mở đường dẫn `/chi-tieu`.
 :::
 
 ## Chọn ghi vào Công ty hay Cá nhân
 
-Có cả hai quyền thì ngay trên ô nhập có hai nút **Công ty** | **Cá nhân**. Màn nhớ lựa chọn lần trước của bạn. Chỉ có một quyền thì không có hai nút này.
+Có cả hai quyền thì dùng hai nút **Cá nhân** | **Công ty** dưới ô nhập để chọn nơi gửi. Đổi nơi gửi vẫn giữ chữ và ảnh đang điền; thẻ đã gửi giữ nguyên nơi nhận ban đầu. Chỉ có một quyền thì chỉ nhập được vào nơi đó.
 
 ## Cách 1 — Gõ một câu
 
@@ -44,9 +41,9 @@ Gõ thêm một dòng tổng riêng (`sơn 300k, keo 20k, tổng 320k`) thì dò
 
 ## Cách 2 — Nói
 
-1. Ô nhập đang trống thì nút bên phải là **micro** — chạm vào và cho phép trình duyệt dùng micro (lần đầu).
+1. Chạm nút **micro** ở bên phải ô nhập và cho phép trình duyệt dùng micro (lần đầu).
 2. Nói câu như khi gõ (tối đa 30 giây), rồi chạm **Xong**. Chạm **✕** để huỷ.
-3. Chữ hiện vào ô nhập — **soát lại số tiền và tên toà**, sửa nếu nghe nhầm, rồi bấm **Gửi**.
+3. Khi bấm **Xong**, nội dung tự gửi để tạo thẻ nháp, kèm ảnh/chữ đang chờ nếu có. **Soát lại số tiền, loại Thu/Chi và nơi nhận trên thẻ**, rồi bấm Lưu. Không cần bấm Gửi thêm lần nữa.
 
 Nói tên toà theo cách quen gọi, ví dụ `nhà một lẻ hai Lê Văn Thọ, phòng ba lẻ một, sơn ba trăm nghìn`. Máy nhận cả `một trăm lẻ hai LVT`, `102 Lê Văn Thọ` và các chữ máy hay nghe lệch (`một lá hai`, `1 L 2`, `lọ VT`); mô tả phiếu ghi mã toà như khi gõ (`102LVT sơn`). Máy chỉ nghe ra số nhà (vd `một lá hai sơn`) hoặc chỉ tên đường thì thẻ **gợi ý** toà để bạn bấm chọn — không tự điền.
 
@@ -55,6 +52,8 @@ Nói tên toà theo cách quen gọi, ví dụ `nhà một lẻ hai Lê Văn Th�
 ## Cách 3 — Chụp hoặc chọn ảnh bill
 
 Chạm biểu tượng **máy ảnh** để chụp, hoặc **ảnh** để chọn từ thư viện; trên máy tính có thể **dán ảnh** (Ctrl+V) vào ô nhập. AI đọc tổng tiền, cửa hàng, ngày, từng món; bill điện nước thì đọc thêm **mã khách hàng** và **kỳ** để tự tìm toà và hạng mục.
+
+Nút **Ảnh kèm nội dung** ở ngoài cùng bên trái cho phép chọn ảnh rồi bổ sung chữ hoặc ghi âm trước khi gửi chung. Hủy ghi âm giữ ảnh và chữ đã nhập.
 
 - Ảnh khoản **công ty** được lưu làm **chứng từ** của phiếu khi bạn bấm Lưu.
 - Ảnh khoản **cá nhân** chỉ để AI đọc, **không lưu**.
@@ -72,18 +71,18 @@ Một số hạng mục **không có** ở Báo chi nhanh vì chỉ lập ở m�
 
 ## Soát thẻ rồi Lưu
 
-Thẻ công ty có: **Ngày chi**, **Người nhận / cửa hàng**, **Toà**, **Phòng** (hoặc *Cả toà (không gắn phòng)*), **Sổ quỹ chi tiền**, các dòng (mô tả, hạng mục, số tiền). Thẻ có dấu **AI đọc — soát lại** là thẻ AI đã điền giúp — xem kỹ trước khi lưu. Ô bạn đã tự sửa thì AI không bao giờ ghi đè.
+Thẻ công ty có: loại **Thu/Chi**, ngày giao dịch, người nhận/cửa hàng, toà, phòng (hoặc *Cả toà*), sổ quỹ và các dòng mô tả, hạng mục, số tiền. Thẻ có dấu **AI đọc — soát lại** cần được kiểm tra trước khi lưu. Ô bạn đã tự sửa được giữ nguyên khi AI trả lời sau đó.
 
 - Sổ quỹ chọn sẵn trong các sổ **bạn được chi**. Chưa được giao sổ nào thì thẻ báo rõ và không lưu được phiếu công ty — nhờ quản trị giao sổ.
 - Kỳ này toà đã có phiếu cùng hạng mục thì thẻ nhắc mã phiếu đó để bạn khỏi chi trùng (chỉ nhắc, không chặn).
 
-Bấm **Lưu phiếu chi** (công ty) hoặc **Lưu vào ví** (cá nhân). Kết quả:
+Bấm **Lưu phiếu thu/chi** (theo loại khoản công ty) hoặc **Lưu vào ví** (cá nhân). Thẻ cá nhân có ví, loại Thu/Chi và danh mục tương ứng; nhiều dòng được lưu cùng một lần. Kết quả:
 
 | Thẻ hiện | Nghĩa là |
 | --- | --- |
 | **Đã lưu PC… · Đã duyệt** / **Chờ duyệt** | Phiếu đã tạo; trạng thái duyệt do luật chi của công ty quyết, y như phiếu lập tay. Bấm **Xem trong Thu chi** để mở. |
 | **Đã ghi vào Ví cá nhân** | Khoản cá nhân đã ghi. |
-| Thẻ khoá + **Gửi lại y nguyên** | Mất mạng giữa chừng, chưa biết đã lưu chưa. Bấm **Gửi lại y nguyên** — với phiếu công ty, hệ thống nhận ra lần gửi trước nên **không tạo phiếu thứ hai**. Hoặc **Kiểm tra trong Thu chi**. |
+| Thẻ khoá + **Gửi lại y nguyên** | Mất mạng giữa chừng, chưa biết đã lưu chưa. Gửi lại đúng yêu cầu cũ để tránh tạo thêm khoản; áp dụng cả cá nhân và phiếu công ty có khóa chống trùng. Thẻ cũ chưa xác minh được có thể yêu cầu kiểm tra sổ trước. |
 | Lỗi đỏ | Bị từ chối (vd thiếu quyền ở toà đó) — sửa rồi lưu lại. |
 
 Thẻ chưa lưu được giữ lại khi bạn tải lại trang (trong 48 giờ, trên chính máy đó). Riêng thẻ từ ảnh bill công ty mà chưa lưu thì không giữ được ảnh — chụp lại.

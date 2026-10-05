@@ -40,6 +40,7 @@ export const USER_DOC_MODULES = import.meta.glob(
     '/docs/huong-dan-su-dung/03-quan-ly-van-hanh/thu-tien-hoa-don/index.md',
     '/docs/huong-dan-su-dung/03-quan-ly-van-hanh/tien-thua/index.md',
     '/docs/huong-dan-su-dung/03-quan-ly-van-hanh/toa-nha/index.md',
+    '/docs/huong-dan-su-dung/03-quan-ly-van-hanh/vi-ca-nhan/index.md',
     '/docs/huong-dan-su-dung/04-bao-cao/hub-bds/index.md',
     '/docs/huong-dan-su-dung/05-cai-dat/cai-dat-chung/index.md',
     '/docs/huong-dan-su-dung/05-cai-dat/mau-bieu/index.md',

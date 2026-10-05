@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-04T02:28:08.784Z",
+  "generatedAt": "2026-10-04T22:30:26.834Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 651,
-    "unknown": 80,
+    "unknown": 82,
     "catalog-proven": 205,
     "superseded": 15
   },
@@ -11021,6 +11021,34 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-04T02:27:12.019Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261004212309_personal_finance_wallets.sql",
+      "version": "20261004212309",
+      "name": "personal_finance_wallets",
+      "scheme": "timestamp14",
+      "sha256": "85790956f1f5d6780b9cb11fa2cb66da7fbd09232b4ba323eea961da74bae6c2",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "table:public.personal_wallets",
+        "table:public.personal_categories",
+        "table:public.personal_legacy_category_map",
+        "table:public.personal_budget_limits",
+        "table:public.personal_goals"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261004212701_personal_finance_rpc_only.sql",
+      "version": "20261004212701",
+      "name": "personal_finance_rpc_only",
+      "scheme": "timestamp14",
+      "sha256": "e5c4330b93ab327d22c2e1cd4e9b7e42d27bee138be5f75f566970a52610eb1c",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "(file không CREATE object nào — chỉ ALTER/DML)"
       ]
     },
     {

@@ -15,7 +15,7 @@ risk: normal
 
 ## Capability khai trong registry
 
-Registry hiện phủ **27** capability. Toàn app có ~146 route —
+Registry hiện phủ **28** capability. Toàn app có ~146 route —
 phần còn lại vẫn khai tay ở từng nơi. Đây là trạng thái CÓ CHỦ Ý: registry bắt
 đầu từ hai capability đã drift thật, mở rộng là việc riêng.
 
@@ -25,6 +25,7 @@ phần còn lại vẫn khai tay ở từng nơi. Đây là trạng thái CÓ CH
 | Hoá đơn | `/invoices` | `invoices.view` | tiền | docs/he-thong/07-hoa-don-thanh-toan.md |
 | Thu chi | `/income-expense` | `income_expenses.view` | tiền | docs/he-thong/08-thu-chi-so-quy.md |
 | Báo chi nhanh | `/chi-tieu` | `income_expenses.create` | tiền | docs/he-thong/08-thu-chi-so-quy.md |
+| Ví cá nhân | `/finance/personal-wallet` | `personal_finance.view` | tiền | docs/he-thong/23-vi-ca-nhan.md |
 | Sổ quỹ | `/finance/cashbooks` | `cashbooks.view` | tiền | docs/he-thong/08-thu-chi-so-quy.md |
 | Bảng lương | `/finance/salary` | `salary.view` | tiền | docs/he-thong/17-luong-thuong.md |
 | Toà nhà | `/buildings` | `buildings.view` | thường | docs/he-thong/02-co-cau-toa-nha-phong-dich-vu.md |

@@ -22,6 +22,16 @@
   },
   "entries": [
     {
+      "file": "23-vi-ca-nhan.md",
+      "copilotIngest": true,
+      "reviewed": "2026-10-05",
+      "requiredPermission": {
+        "module": "personal_finance",
+        "action": "view"
+      },
+      "why": "Hướng dẫn ví riêng theo tài khoản; chỉ cung cấp tài liệu cho người có quyền xem ví, không cấp quyền đọc dữ liệu ví của người khác."
+    },
+    {
       "file": "00-tong-quan.md",
       "copilotIngest": true,
       "reviewed": "2026-07-20"
@@ -66,12 +76,12 @@
     {
       "file": "08-thu-chi-so-quy.md",
       "copilotIngest": true,
-      "reviewed": "2026-10-03",
+      "reviewed": "2026-10-05",
       "requiredPermission": {
         "module": "income_expenses",
         "action": "view"
       },
-      "why": "mô tả quy trình sổ quỹ và writer tiền"
+      "why": "Giữ nội dung sổ quỹ đã review; rà phần thay đổi Báo chi nhanh theo source: dừng ghi âm tự gửi nháp, batch cá nhân RPC và retry UUID."
     },
     {
       "file": "09-kho-vat-tu.md",

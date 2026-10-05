@@ -1,100 +1,98 @@
 ---
 title: "Ví thu chi cá nhân"
-description: "Sổ tay thu chi riêng của mỗi người, tách bạch hoàn toàn với sổ quỹ và báo cáo công ty: xem giao dịch, thống kê theo năm, thêm/sửa/xoá khoản cá nhân."
+description: "Quản lý ví, thu chi, danh mục, ngân sách và mục tiêu riêng trên điện thoại."
 routes: ["/finance/personal-wallet"]
 permissions: [{module: personal_finance, action: view}]
-viewport: desktop
+viewport: mobile
 audience: [tat-ca]
-captured:
-  date: "2026-08-13"
-  commit: "ca1104137123942e27c1aa6b41147b256be59e82"
-  account: demo.chunha
 status: published
 ---
 
 # Ví thu chi cá nhân
 
-Màn **Ví cá nhân** là cuốn sổ tay thu chi **riêng của chính bạn** — nơi bạn tự ghi lại tiền vào/ra của cá nhân (thưởng, ăn uống, xăng xe, tiền ứng công ty…). Đây là công cụ ghi chép cá nhân, **tách bạch hoàn toàn** với sổ quỹ, hoá đơn và các báo cáo của công ty: mỗi giao dịch bạn nhập ở đây **chỉ mình bạn thấy**, **không** cộng vào tồn quỹ, **không** vào Kết quả kinh doanh và **không** hiện trong bất kỳ báo cáo chung nào. Trang này giúp bạn xem lại các khoản đã ghi, thống kê thu/chi theo năm, và thêm/sửa/xoá khoản cá nhân.
+Mở **Cá nhân → Ví cá nhân** trên màn hình chính điện thoại, hoặc **Tài chính → Ví cá nhân** ở menu máy tính. Đường dẫn trong ứng dụng là `/finance/personal-wallet`.
 
-::: info Điều kiện tiên quyết
-- Quyền **Ví cá nhân => Xem** (module `personal_finance`, action `view`) để mở màn.
-- Không cần sổ quỹ hay hạng mục thu chi của công ty — ví cá nhân là dữ liệu **của riêng từng người**, mỗi tài khoản có ví riêng và không thấy ví của người khác.
-- Nếu bạn là **cổ đông**, đầu trang có thêm dải "Từ công ty" tóm tắt phần lợi nhuận được phân bổ/đã chi — xem [Chia lợi nhuận cổ đông](/03-quan-ly-van-hanh/chia-loi-nhuan/). Con số được chia hoặc request đã duyệt không tự chứng minh bạn đã nhận tiền; chỉ khoản chi `POSTED` mới là biến động sổ quỹ thật.
-:::
+Mỗi tài khoản chỉ xem ví của chính mình, kể cả khi chuyển công ty đang làm việc. Cần quyền **Ví cá nhân → Xem** để mở; các nút thêm, sửa và xóa xuất hiện theo quyền tương ứng.
 
-::: danger Đừng ghi tiền của công ty vào ví cá nhân
-Ví cá nhân **không** phải sổ quỹ công ty. Khoản bạn nhập ở đây **không** làm thay đổi số dư sổ quỹ, **không** vào hoá đơn, bàn giao hay báo cáo lợi nhuận. Vì vậy **tuyệt đối không** dùng màn này để ghi tiền phòng đã thu hay chi phí vận hành của công ty — những khoản đó phải ghi bằng phiếu thu/chi ở màn [Thu chi](/03-quan-ly-van-hanh/thu-chi/). Ghi nhầm vào đây thì tiền công ty sẽ **biến mất khỏi mọi sổ sách chung**.
-:::
+## Bốn màn hình
 
-## Hướng dẫn từng bước
-
-**Bước 1**: Vào menu **Tài chính => Ví cá nhân**. Màn mở ra gồm **3 thẻ thống kê** (Tổng thu / Tổng chi / Số dư), một ô chọn **Năm**, nút **Thêm khoản**, hai biểu đồ (Thu/Chi theo tháng và Cơ cấu chi theo danh mục) và bảng **Giao dịch** liệt kê từng khoản. Snapshot production ngày 13/08/2026 của `demo.chunha` đang rỗng; các thẻ và biểu đồ chỉ có số khi chính tài khoản đó ghi giao dịch cá nhân.
-
-![Màn Ví cá nhân với ba thẻ thống kê, biểu đồ và bảng giao dịch](./images/buoc-01-man-hinh.webp)
-
-**Bước 2**: Đọc 3 thẻ và bảng **Giao dịch**. Ba thẻ **Tổng thu**, **Tổng chi**, **Số dư** cộng gộp **toàn bộ** giao dịch của bạn (mọi năm) — **Số dư** = Tổng thu − Tổng chi. Bảng **Giao dịch** ở dưới mỗi dòng có: **Ngày**, **Loại** (Thu tô xanh / Chi tô đỏ), **Danh mục**, **Mô tả** và **Số tiền** (Thu có dấu **+**, Chi có dấu **−**). Bảng và hai biểu đồ chỉ hiển thị các khoản của **năm đang chọn** ở ô Năm.
-
-**Bước 3**: Chọn năm để lọc. Bấm ô **Năm** (ví dụ **Năm 2026**) để đổi năm — bảng **Giao dịch**, biểu đồ **Thu / Chi theo tháng** và **Cơ cấu chi theo danh mục** cập nhật theo năm bạn chọn. Lựa chọn năm được **giữ lại khi bạn tải lại trang (F5)**.
-
-**Bước 4**: Thêm một khoản cá nhân. Bấm **Thêm khoản** để mở hộp thoại **Thêm khoản**, rồi điền:
-- **Thu** hoặc **Chi**: bấm chọn một trong hai ô ở đầu hộp thoại (mặc định là **Chi**).
-- **Số tiền** (bắt buộc): gõ số tiền của khoản này. Phải **lớn hơn 0** thì nút **Lưu** mới bật.
-- **Ngày** (bắt buộc): ngày phát sinh (mặc định là hôm nay).
-- **Danh mục**: gõ tự do hoặc chọn gợi ý có sẵn (**Ăn uống**, **Nhà cửa**, **Cá nhân**, **Ứng công ty**, **Khác**). Danh mục dùng để nhóm biểu đồ **Cơ cấu chi theo danh mục** — để trống thì biểu đồ gom vào nhóm "Khác".
-- **Mô tả**: ghi chú thêm (không bắt buộc).
-
-Bấm **Lưu** để ghi khoản vào ví của bạn.
-
-**Bước 5**: Sửa hoặc xoá một khoản. Ở mỗi dòng trong bảng **Giao dịch** có hai nút:
-- Nút **bút chì** mở hộp thoại **Sửa khoản** với các trường giống lúc thêm — chỉnh xong bấm **Lưu**.
-- Nút **thùng rác** (màu đỏ) mở hộp xác nhận **Xoá khoản này?** — bấm **Xoá** để bỏ khoản khỏi ví.
-
-::: warning Xoá khoản khó lấy lại
-Khi bấm **Xoá**, khoản bị **ẩn khỏi ví cá nhân của bạn** và không còn hiện trong danh sách, thống kê hay biểu đồ. Màn này **không có nút khôi phục** khoản đã xoá, nên hãy chắc chắn trước khi xoá — nếu chỉ nhập sai vài trường, hãy dùng nút **bút chì** để **Sửa** thay vì xoá đi ghi lại.
-:::
-
-## Các tính năng khác trên màn hình
-
-| Nút / Vùng | Công dụng |
+| Màn | Nội dung |
 | --- | --- |
-| Thẻ **Tổng thu** / **Tổng chi** / **Số dư** | Cộng gộp **toàn bộ** giao dịch của bạn (mọi năm); **Số dư** = Tổng thu − Tổng chi, tô xanh khi ≥ 0, tô đỏ khi âm. |
-| Ô **Năm** | Lọc bảng và hai biểu đồ theo năm; lựa chọn được giữ qua F5. |
-| Biểu đồ **Thu / Chi theo tháng** | Cột xanh (Thu) và cột đỏ (Chi) theo 12 tháng của năm đang chọn. |
-| Biểu đồ **Cơ cấu chi theo danh mục** | Tỉ trọng các khoản **Chi** theo danh mục trong năm; chưa có khoản chi nào thì hiện "Chưa có dữ liệu". |
-| **Thêm khoản** | Mở hộp thoại nhập một khoản Thu/Chi mới. |
-| Nút **bút chì** trên mỗi dòng | Sửa lại khoản đó. |
-| Nút **thùng rác** trên mỗi dòng | Xoá (ẩn) khoản đó khỏi ví. |
-| Dải **Từ công ty** (chỉ cổ đông) | Tóm tắt **Được chia** / **Đã ứng** / **Còn lại được nhận** từ lợi nhuận cổ đông — chỉ hiện nếu tài khoản của bạn là cổ đông. |
+| **Tổng quan** | Tổng số dư hiện tại, thu/chi trong tháng, ô ghi nhanh và các ví. Chạm mắt để ẩn/hiện số tiền. |
+| **Giao dịch** | Tìm nội dung, lọc Thu/Chi/Chuyển tiền, ví và danh mục; sửa/xóa khoản hoặc xuất CSV. |
+| **Ngân sách** | Hạn mức tổng tháng, từng danh mục và mục tiêu tiết kiệm. |
+| **Báo cáo** | Tổng thu/chi, tỷ trọng danh mục, xu hướng sáu tháng; chạm danh mục để xem giao dịch. |
 
-## Tình huống & lỗi thường gặp
+Tháng hiển thị ngắn như **9.2026**. Đổi tháng để xem thu/chi và báo cáo của tháng khác. **Tổng số dư các ví luôn là số dư hiện tại**, gồm số dư ban đầu và toàn bộ lịch sử; không chỉ là Thu trừ Chi trong tháng đang xem.
+
+## Ghi thu hoặc chi
+
+1. Tại Tổng quan, chọn **Cá nhân** ở dưới ô nhập. Nút **Công ty** chỉ xuất hiện khi bạn có quyền lập phiếu công ty.
+2. Gõ nội dung hoặc dùng một trong bốn nút: **Ảnh kèm nội dung**, **Chụp bill**, **Chọn ảnh**, **Nói**. Ảnh kèm nội dung cho phép bổ sung chữ hoặc giọng nói rồi gửi chung.
+3. Khi ghi âm, bấm **Xong** để tự gửi vào xử lý; bấm hủy để giữ phần chữ/ảnh trước đó. Chưa có khoản nào vào sổ ở bước này.
+4. Soát thẻ: Thu hay Chi, số tiền, ngày, ví và danh mục. Bấm **Lưu vào ví** khi đúng. Một câu có cả nhận lương và chi ăn uống có thể tạo các thẻ riêng đúng loại.
+
+Có thể dùng nút **+** và **Thêm giao dịch** để điền trực tiếp. Số tiền mới phải là số nguyên VND dương; số dư ban đầu của ví có thể bằng 0 hoặc âm.
+
+```mermaid
+flowchart TD
+  A[Chọn Cá nhân hoặc Công ty] --> B[Nhập chữ, ảnh hoặc ghi âm]
+  B --> C[Soát thẻ nháp]
+  C --> D[Bấm Lưu]
+  D --> E{Máy chủ xác nhận?}
+  E -->|Có| F[Cập nhật giao dịch và số dư]
+  E -->|Chưa rõ| G[Giữ yêu cầu đang chờ]
+  G --> H[Gửi lại y nguyên]
+  H --> E
+```
+
+Chọn **Công ty** thì khoản đi vào luồng phiếu thu/chi công ty theo quyền và luật duyệt hiện có. Số liệu công ty không cộng vào Ví cá nhân. Ảnh cá nhân chỉ dùng để đọc, không lưu thành chứng từ; ảnh công ty được lưu cùng phiếu theo luồng hiện có.
+
+## Thêm và cấu hình ví
+
+Mở **Quản lý ví** từ dải ví hoặc bộ lọc ví. Bạn có thể thêm ví tiền mặt, ngân hàng, ví điện tử, tiết kiệm hoặc loại khác; đổi tên, biểu tượng, số dư ban đầu và ẩn/hiện ví.
+
+Số dư ban đầu không được tính là Thu. Ẩn ví chỉ bỏ thẻ khỏi Tổng quan; ví vẫn được tính vào tổng số dư, còn trong bộ lọc và vẫn chọn được khi nhập khoản hoặc chuyển tiền. Ví chính, ví đã có giao dịch hoặc gắn mục tiêu không thể xóa; dùng Ẩn nếu không còn muốn thấy thẻ ví.
+
+Mở **+ → Chuyển ví** để chuyển tiền giữa hai ví. Thao tác làm giảm ví nguồn và tăng ví đích cùng số tiền, không tạo Thu/Chi và không đổi tổng tiền của bạn. Có thể sửa/xóa lần chuyển thông thường theo quyền.
+
+## Danh mục
+
+Mở **Quản lý danh mục**, chọn **Chi** hoặc **Thu**, rồi thêm tên và biểu tượng. Khi đang nhập giao dịch hoặc ngân sách, có thể thêm danh mục ngay trong form mà vẫn giữ các ô đang điền.
+
+Ẩn danh mục để ngừng gợi ý cho khoản mới; giao dịch cũ vẫn giữ danh mục đó. Danh mục chuẩn, đã sử dụng hoặc gắn ngân sách có thể không xóa được. Mỗi loại Thu/Chi cần còn ít nhất một danh mục hiện.
+
+## Ngân sách tính theo danh mục hay ví?
+
+**Ngân sách tính trên tất cả ví cá nhân**, gồm hai kiểu hạn mức độc lập:
+
+- **Tổng tháng**: tổng Chi của tháng so với hạn mức bạn đặt.
+- **Từng danh mục**: Chi của danh mục đó so với hạn mức riêng.
+
+Các hạn mức lặp lại mỗi tháng. Tổng hạn mức danh mục không bắt buộc bằng hạn mức tổng. Thu, chuyển tiền giữa ví và phiếu công ty không tính vào ngân sách. Vượt hạn mức sẽ được báo rõ, không tự chặn việc ghi chi.
+
+Trong tab **Ngân sách → Hạn mức**, bấm **Thêm hạn mức**. Chọn **Tổng chi tiêu** để đặt hạn mức chung, hoặc chọn một danh mục Chi.
+
+## Mục tiêu tiết kiệm
+
+Mở **Ngân sách → Mục tiêu → Thêm mục tiêu**, điền số tiền cần đạt, ví tích lũy và ngày dự kiến. Khi góp, chọn ví nguồn và số tiền để chuyển thật sang ví đích.
+
+**Đã góp** là tổng các lần góp đã ghi, không phải cam kết số tiền ấy vẫn còn nguyên trong ví đích nếu bạn đã chi từ ví đó. Lần góp đã xác nhận không sửa/xóa; mục tiêu có lần góp không thể xóa hoặc đổi ví đích.
+
+## Khi có lỗi hoặc chưa rõ đã lưu chưa
 
 | Tình huống | Cách xử lý |
 | --- | --- |
-| Nút **Lưu** trong hộp thoại bị mờ, không bấm được | **Số tiền** phải **lớn hơn 0** và phải có **Ngày**. Nhập đủ hai trường bắt buộc này. |
-| Bảng báo **Chưa có giao dịch năm …** dù có dữ liệu | Bạn đang xem **năm khác**. Đổi ô **Năm** về đúng năm của khoản cần xem. |
-| Biểu đồ **Cơ cấu chi theo danh mục** trống ("Chưa có dữ liệu") | Năm đó chưa có khoản **Chi** nào (biểu đồ chỉ vẽ phần chi). Thêm khoản chi hoặc đổi năm. |
-| Số tiền ở khoản cá nhân **không** thấy trong sổ quỹ / báo cáo công ty | Đúng thiết kế: ví cá nhân **tách bạch hoàn toàn**, không cộng vào tồn quỹ, KQKD hay báo cáo chung. |
-| Đồng nghiệp **không thấy** khoản bạn ghi | Đúng: ví cá nhân là **của riêng từng người** — mỗi tài khoản chỉ thấy ví của chính mình. |
-| Lỡ **xoá** một khoản | Màn không có nút khôi phục — bạn cần **thêm lại** khoản đó thủ công. Lần sau nên **Sửa** thay vì xoá. |
-| Không thấy dải **Từ công ty** ở đầu trang | Dải này chỉ hiện khi tài khoản của bạn là **cổ đông**; người không phải cổ đông sẽ không thấy. |
+| Mất mạng sau khi bấm Lưu | Giữ yêu cầu đang chờ và bấm **Gửi lại y nguyên**. Hệ thống dùng lại yêu cầu cũ để tránh ghi hai lần. |
+| Tải lại trang khi còn yêu cầu chờ | Mở Ví cá nhân trên cùng tài khoản và thiết bị để tiếp tục xác minh. Không nhập lại như một khoản mới. |
+| Khoản đã được sửa ở nơi khác | Nội dung bạn đang nhập được giữ; tải bản mới và đối chiếu trước khi sửa tiếp. |
+| Không tải được dữ liệu | Dùng Thử lại. Trạng thái lỗi không có nghĩa ví đã hết tiền. |
+| Không thấy khoản trong tháng | Kiểm tra tháng và các bộ lọc; số dư hiện tại vẫn bao gồm lịch sử đầy đủ. |
 
-## Thử trực tiếp trên sandbox
-
-<SandboxTry account="demo.chunha" app-path="/finance/personal-wallet" app-label="Mở màn Ví cá nhân" fixtures="Snapshot 13/08/2026: ví đang rỗng." view-only>
-
-Quan sát ví mà không tạo giao dịch:
-
-1. Đọc ba thẻ, hai biểu đồ và empty state của bảng **Giao dịch**.
-2. Đổi ô **Năm** để hiểu bộ lọc; không bấm **Thêm khoản**.
-3. Ghi nhớ dữ liệu ví là riêng tư theo tài khoản và tách khỏi [Sổ quỹ](/03-quan-ly-van-hanh/so-quy/) / [Thu chi](/03-quan-ly-van-hanh/thu-chi/) của công ty.
-
-Kết quả mong đợi: bạn hiểu rằng ví cá nhân là sổ tay thu chi **của riêng bạn**, hoàn toàn **tách bạch** với sổ quỹ và báo cáo của công ty — ghi ở đây không đụng tới tiền chung.
-
-</SandboxTry>
+Thông tin lợi nhuận cổ đông là phần xem riêng. Khoản được phân bổ từ công ty không tự trở thành Thu trong ví; chỉ ghi khoản thực nhận khi bạn muốn theo dõi nó trong sổ cá nhân.
 
 ## Quy trình liên quan
 
-- [Thu chi](/03-quan-ly-van-hanh/thu-chi/) — ghi tiền vào/ra **của công ty** bằng phiếu thu/chi gắn sổ quỹ (khác hẳn ví cá nhân).
-- [Sổ quỹ](/03-quan-ly-van-hanh/so-quy/) — xem tồn quỹ các sổ tiền chung của công ty.
-- [Chia lợi nhuận cổ đông](/03-quan-ly-van-hanh/chia-loi-nhuan/) — nguồn của dải "Từ công ty" (phần lợi nhuận bạn được chia và đã ứng).
-- [Lương của tôi](/03-quan-ly-van-hanh/luong-cua-toi/) — xem bảng lương cá nhân của bạn từ công việc/hợp đồng thực tế.
+- [Báo chi nhanh](/03-quan-ly-van-hanh/bao-chi-nhanh/)
+- [Thu chi công ty](/03-quan-ly-van-hanh/thu-chi/)
+- [Chia lợi nhuận cổ đông](/03-quan-ly-van-hanh/chia-loi-nhuan/)
