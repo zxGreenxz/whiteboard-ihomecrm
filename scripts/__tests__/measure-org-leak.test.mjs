@@ -4,6 +4,8 @@ import {
   kiemChotChongAoGiac,
   phanLoaiBangKhongCotOrg,
   phanLoaiDongNull,
+  kiemDoOwnerPersonal,
+  sqlDoOwnerPersonal,
   xepNhomTheoSoDo,
   MA_THOAT_CHOT_HONG,
 } from "../measure-org-leak.mjs";
@@ -275,8 +277,56 @@ describe("phanLoaiDongNull — NULL phải được khai, không phải bị c�
     expect(r.daKhai).toHaveLength(1);
   });
 
-  it("danh sách rỗng hay thiếu không làm nổ", () => {
+  it("danh sách rỗng hợp lệ; thiếu kết quả phải fail closed", () => {
     expect(phanLoaiDongNull([]).tongChuaKhai).toBe(0);
-    expect(phanLoaiDongNull(undefined).tongChuaKhai).toBe(0);
+    expect(phanLoaiDongNull(undefined).chuaDo).not.toHaveLength(0);
   });
+});
+
+const a = '00000000-0000-4000-8000-000000000001';
+const b = '00000000-0000-4000-8000-000000000002';
+const orphan = '11111111-2222-4333-8444-555555555555';
+const actor = (uid, own_total, own_null) => ({ uid, auth_uid: uid, current_user: 'authenticated', rolbypassrls: false, rolsuper: false, table_owner_member: false, row_security: 'on', read_only: 'on', visible_total: own_total, own_total, own_null, foreign_total: 0, foreign_null: 0 });
+const proof = () => ({ truth: { table_name: 'personal_transactions', exemption_valid: true, owner_column: true, owner_policy: true, rls_enabled: true, not_global: true, orphan_absent: true, total: 3, null_total: 2, owners: [{ uid: a, own_total: 2, own_null: 1 }, { uid: b, own_total: 1, own_null: 1 }] }, actors: [actor(a, 2, 1), actor(b, 1, 1), actor(orphan, 0, 0)], elapsed_ms: 3 });
+describe('personal NULL owner proof — data measurement, never a global exemption', () => {
+ it('accepts measured own NULL rows while unrelated undeclared NULL stays red', () => {
+  expect(kiemDoOwnerPersonal(proof()).dat).toBe(true);
+  const result = phanLoaiDongNull([{ bang: 'personal_transactions', so_dong_null: 2, da_khai: false }, { bang: 'unrelated', so_dong_null: 1, da_khai: false }], proof());
+  expect(result.actorOwned).toHaveLength(1); expect(result.daKhai).toHaveLength(0); expect(result.tongChuaKhai).toBe(1);
+ });
+ it('catches foreign rows including NULL for an ordinary actor and orphan/admin-like bypass', () => {
+  for (const index of [0, 2]) {
+   const p = proof(); p.actors[index].foreign_total = 1; p.actors[index].foreign_null = 1; p.actors[index].visible_total++;
+   expect(kiemDoOwnerPersonal(p).ro).toBe(true);
+   expect(phanLoaiDongNull([{ bang: 'personal_transactions', so_dong_null: 2, da_khai: false }], p).roOwner).toHaveLength(1);
+  }
+ });
+ it.each(['exemption_valid','owner_column','owner_policy','rls_enabled','not_global','orphan_absent'])('fails closed on missing/expired metadata %s', key => {
+  const p = proof(); p.truth[key] = false; expect(kiemDoOwnerPersonal(p).dat).toBe(false);
+ });
+ it.each(['current_user','auth_uid','rolbypassrls','rolsuper','table_owner_member','row_security','read_only'])('fails closed on absent runtime guard %s', key => {
+  const p = proof(); delete p.actors[0][key]; expect(kiemDoOwnerPersonal(p).dat).toBe(false);
+ });
+ it.each([null,undefined,'oops',{},[],NaN,-1,1.1,Number.MAX_SAFE_INTEGER + 1])('rejects invalid count %s instead of coalescing to zero', count => {
+  const p = proof(); p.actors[0].foreign_total = count; expect(kiemDoOwnerPersonal(p).dat).toBe(false);
+  expect(phanLoaiDongNull([{bang:'personal_transactions',so_dong_null:count,da_khai:false}],p).chuaDo.length).toBeGreaterThan(0);
+ });
+ it('rejects missing/empty/duplicate actor coverage and a zeroed positive control', () => {
+  for (const actors of [[],proof().actors.slice(1),[...proof().actors,proof().actors[0]]]) expect(kiemDoOwnerPersonal({...proof(),actors}).dat).toBe(false);
+  const p=proof(); p.actors[0]=actor(a,0,0); expect(kiemDoOwnerPersonal(p).dat).toBe(false);
+ });
+ it('never accepts a declared personal global NULL or a missing/stale proof', () => {
+  const rows=[{bang:'personal_transactions',so_dong_null:2,da_khai:true}];
+  expect(phanLoaiDongNull(rows).chuaDo.length).toBeGreaterThan(0);
+  expect(phanLoaiDongNull(rows,proof()).chuaDo.length).toBeGreaterThan(0);
+  expect(phanLoaiDongNull([],proof()).chuaDo.length).toBeGreaterThan(0);
+  expect(phanLoaiDongNull([{...rows[0],da_khai:false,so_dong_null:3}],proof()).chuaDo.length).toBeGreaterThan(0);
+ });
+ it('uses read-only invoker SQL, validates UUIDs and bounds actor count', () => {
+  const sql=sqlDoOwnerPersonal([a,b]);
+  expect(sql).toContain('REPEATABLE READ READ ONLY'); expect(sql).toContain('SET LOCAL ROLE authenticated');
+  expect(sql).toContain('user_id IS DISTINCT FROM auth.uid()'); expect(sql).not.toMatch(/CREATE |INSERT |UPDATE |DELETE |COMMIT;/);
+  expect(() => sqlDoOwnerPersonal(["x';--"])).toThrow(); expect(() => sqlDoOwnerPersonal([])).toThrow();
+  expect(() => sqlDoOwnerPersonal(Array(201).fill(a))).toThrow();
+ });
 });

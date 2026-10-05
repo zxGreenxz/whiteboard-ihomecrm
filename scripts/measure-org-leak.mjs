@@ -268,20 +268,121 @@ ROLLBACK;`;
  *
  * NULL không phải lúc nào cũng sai: với dữ liệu TOÀN HỆ (danh mục nhà cung cấp
  * LLM, cấu hình singleton, nhật ký cron) thì NULL là nhãn ĐÚNG. Nên luật không
- * phải "cấm NULL" mà là "NULL phải được KHAI": bảng nào có dòng NULL mà không có
- * dòng trong app_private.org_null_is_global thì đỏ.
+ * phải "cấm NULL" mà là "NULL phải có hợp đồng đã kiểm chứng". Dữ liệu toàn hệ
+ * khai trong org_null_is_global. Riêng personal_transactions giữ quyền theo owner:
+ * exemption còn hạn + metadata đúng CHƯA đủ; phải đo RLS thật ở dưới.
  */
-export function phanLoaiDongNull(rows) {
+const PERSONAL_TABLE = 'personal_transactions';
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const demHopLe = (value) => {
+  if (typeof value !== 'number' && !(typeof value === 'string' && /^(0|[1-9]\d*)$/.test(value))) return null;
+  const n = Number(value);
+  return Number.isSafeInteger(n) && n >= 0 ? n : null;
+};
+
+/** Only this known actor-owned table has a separate contract. Metadata alone never proves RLS. */
+export function kiemDoOwnerPersonal(proof) {
+  const loi = [], truth = proof?.truth;
+  let ro = false;
+  if (!truth || truth.table_name !== PERSONAL_TABLE) loi.push('Missing personal owner ground truth');
+  for (const key of ['exemption_valid','owner_column','owner_policy','rls_enabled','not_global','orphan_absent']) {
+    if (truth?.[key] !== true) loi.push(`Invalid personal owner metadata: ${key}`);
+  }
+  const total = demHopLe(truth?.total), nullTotal = demHopLe(truth?.null_total);
+  if (total === null || nullTotal === null || nullTotal > total) loi.push('Invalid owner ground counts');
+  if (typeof proof?.elapsed_ms !== 'number' || !Number.isFinite(proof.elapsed_ms) || proof.elapsed_ms < 0 || proof.elapsed_ms > 30000) loi.push('Owner probe missing/over time budget (30s)');
+  const owners = new Map();
+  if (!Array.isArray(truth?.owners) || !truth.owners.length || truth.owners.length > 200) loi.push('Missing/bounded owner population');
+  else for (const row of truth.owners) {
+    if (!UUID.test(row?.uid ?? '') || row.uid === UID_MO_COI || owners.has(row.uid) || demHopLe(row.own_total) === null || demHopLe(row.own_null) === null || Number(row.own_null) > Number(row.own_total)) loi.push('Invalid/duplicate owner truth');
+    else owners.set(row.uid, { total: Number(row.own_total), null: Number(row.own_null) });
+  }
+  if ([...owners.values()].reduce((n,o) => n + o.total,0) !== total || [...owners.values()].reduce((n,o) => n + o.null,0) !== nullTotal) loi.push('Owner truth does not cover all rows');
+  const expected = new Map([...owners, [UID_MO_COI, { total: 0, null: 0 }]]), seen = new Set();
+  if (!Array.isArray(proof?.actors)) loi.push('Missing measured owner actors');
+  else for (const actor of proof.actors) {
+    const ownTruth = expected.get(actor?.uid);
+    if (!ownTruth || seen.has(actor.uid)) { loi.push('Unknown/duplicate measured actor'); continue; }
+    seen.add(actor.uid);
+    if (actor.current_user !== 'authenticated' || actor.auth_uid !== actor.uid || actor.rolbypassrls !== false || actor.rolsuper !== false || actor.table_owner_member !== false || actor.row_security !== 'on' || actor.read_only !== 'on') loi.push('Owner runtime guard failed');
+    const keys = ['visible_total','own_total','own_null','foreign_total','foreign_null'];
+    if (keys.some(k => demHopLe(actor[k]) === null)) { loi.push('Invalid measured owner counts'); continue; }
+    const n = Object.fromEntries(keys.map(k => [k, Number(actor[k])]));
+    if (n.own_null !== ownTruth.null || n.own_total > ownTruth.total || n.own_null > n.own_total || n.visible_total !== n.own_total + n.foreign_total || n.foreign_null > n.foreign_total) loi.push('Owner positive control/count reconciliation failed');
+    if (n.foreign_total > 0 || n.foreign_null > 0) ro = true;
+  }
+  if (seen.size !== expected.size) loi.push('Incomplete owner/orphan actor coverage');
+  return { dat: loi.length === 0 && !ro, ro, loi, actors: seen.size, nullTotal, total };
+}
+
+/** No DDL/DML, even temporary: local GUCs retain aggregate proof within one read-only snapshot. */
+export function sqlDoOwnerPersonal(uids) {
+  if (!Array.isArray(uids) || !uids.length || uids.length > 200 || uids.some(u => !UUID.test(u) || u === UID_MO_COI) || new Set(uids).size !== uids.length) throw new Error('Invalid/bounded personal owner actor list (1..200 UUIDs)');
+  return `BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;
+SET LOCAL statement_timeout = '10s';
+SELECT set_config('app.personal_owner_started',clock_timestamp()::text,true);
+SELECT set_config('app.personal_owner_truth',jsonb_build_object(
+ 'table_name','personal_transactions',
+ 'exemption_valid',EXISTS(SELECT 1 FROM app_private.org_boundary_exemptions WHERE table_name='personal_transactions' AND expires_at>=current_date AND length(btrim(reason))>0 AND length(btrim(decided_by))>0 AND replacement_policy LIKE '%personal_txn_own%'),
+ 'owner_column',EXISTS(SELECT 1 FROM pg_attribute WHERE attrelid='public.personal_transactions'::regclass AND attname='user_id' AND attnum>0 AND NOT attisdropped AND attnotnull AND atttypid='uuid'::regtype),
+ 'owner_policy',EXISTS(SELECT 1 FROM pg_policy WHERE polrelid='public.personal_transactions'::regclass AND polname='personal_txn_own' AND polcmd IN ('r','*') AND ('authenticated'::regrole::oid=ANY(polroles) OR 0::oid=ANY(polroles))),
+ 'rls_enabled',(SELECT relrowsecurity FROM pg_class WHERE oid='public.personal_transactions'::regclass),
+ 'not_global',NOT EXISTS(SELECT 1 FROM app_private.org_null_is_global WHERE table_name='personal_transactions'),
+ 'orphan_absent',NOT EXISTS(SELECT 1 FROM auth.users WHERE id='${UID_MO_COI}'),
+ 'total',(SELECT count(*) FROM public.personal_transactions),
+ 'null_total',(SELECT count(*) FROM public.personal_transactions WHERE organization_id IS NULL),
+ 'owners',(SELECT jsonb_agg(jsonb_build_object('uid',u.id,'own_total',(SELECT count(*) FROM public.personal_transactions t WHERE t.user_id=u.id),'own_null',(SELECT count(*) FROM public.personal_transactions t WHERE t.user_id=u.id AND organization_id IS NULL)) ORDER BY u.id) FROM auth.users u)
+)::text,true);
+SELECT set_config('app.personal_owner_probe','[]',true);
+SET LOCAL ROLE authenticated;
+${[...uids,UID_MO_COI].map(uid => `SET LOCAL request.jwt.claims = '{"sub":"${uid}","role":"authenticated"}';
+SET LOCAL request.jwt.claim.sub = '${uid}';
+SELECT set_config('app.personal_owner_probe', (current_setting('app.personal_owner_probe')::jsonb || jsonb_build_array(
+ jsonb_build_object('uid','${uid}','auth_uid',auth.uid(),'current_user',current_user,
+ 'rolbypassrls',(SELECT rolbypassrls FROM pg_roles WHERE rolname=current_user),
+ 'rolsuper',(SELECT rolsuper FROM pg_roles WHERE rolname=current_user),
+ 'table_owner_member',(SELECT pg_has_role(current_user,relowner,'USAGE') FROM pg_class WHERE oid='public.personal_transactions'::regclass),
+ 'row_security',current_setting('row_security'),'read_only',current_setting('transaction_read_only')) ||
+ (SELECT jsonb_build_object('visible_total',count(*),
+   'own_total',count(*) FILTER (WHERE user_id=auth.uid()),
+   'own_null',count(*) FILTER (WHERE user_id=auth.uid() AND organization_id IS NULL),
+   'foreign_total',count(*) FILTER (WHERE user_id IS DISTINCT FROM auth.uid()),
+   'foreign_null',count(*) FILTER (WHERE user_id IS DISTINCT FROM auth.uid() AND organization_id IS NULL))
+  FROM public.personal_transactions)))::text,true);`).join('\n')}
+RESET ROLE;
+SELECT jsonb_build_object('truth',current_setting('app.personal_owner_truth')::jsonb,'actors',current_setting('app.personal_owner_probe')::jsonb,
+ 'elapsed_ms',extract(epoch FROM clock_timestamp()-current_setting('app.personal_owner_started')::timestamptz)*1000) AS personal_owner_probe;
+ROLLBACK;`;
+}
+
+export function phanLoaiDongNull(rows, ownerProof) {
   const chuaKhai = [];
   const daKhai = [];
-  for (const r of rows ?? []) {
-    const n = Number(r?.so_dong_null ?? 0);
-    if (!(n > 0)) continue;
+  const actorOwned = [], chuaDo = [], roOwner = [], seen = new Set();
+  if (!Array.isArray(rows)) chuaDo.push({ bang: '(NULL scan)', loi: 'Missing/malformed NULL scan' });
+  for (const r of Array.isArray(rows) ? rows : []) {
+    const n = demHopLe(r?.so_dong_null);
+    if (typeof r?.bang !== 'string' || !r.bang || seen.has(r.bang) || n === null || typeof r.da_khai !== 'boolean') { chuaDo.push({ bang: r?.bang, loi: 'Invalid NULL count/declaration' }); continue; }
+    seen.add(r.bang);
+    if (r.bang === PERSONAL_TABLE) {
+      const proof = kiemDoOwnerPersonal(ownerProof);
+      if (r.da_khai || proof.loi.length || proof.nullTotal !== n) chuaDo.push({ bang: r.bang, loi: proof.loi.length ? proof.loi.join('; ') : 'Personal owner proof mismatch/global mislabel' });
+      else if (proof.ro) roOwner.push({ bang: r.bang, so_dong_null: n });
+      else actorOwned.push({ bang: r.bang, so_dong_null: n });
+      continue;
+    }
+    if (n === 0) continue;
     (r?.da_khai ? daKhai : chuaKhai).push({ bang: r.bang, so_dong_null: n });
+  }
+  if (ownerProof !== undefined && !seen.has(PERSONAL_TABLE)) {
+    const proof = kiemDoOwnerPersonal(ownerProof);
+    if (proof.loi.length || proof.nullTotal !== 0) chuaDo.push({ bang: PERSONAL_TABLE, loi: 'Owner proof missing from NULL scan or invalid' });
+    else if (proof.ro) roOwner.push({ bang: PERSONAL_TABLE, so_dong_null: 0 });
   }
   return {
     chuaKhai,
     daKhai,
+    actorOwned, chuaDo, roOwner,
     tongChuaKhai: chuaKhai.reduce((t, b) => t + b.so_dong_null, 0),
   };
 }
@@ -289,10 +390,8 @@ export function phanLoaiDongNull(rows) {
 /**
  * Đếm dòng NULL bằng quyền quản trị, KHÔNG giả lập vai.
  *
- * Cố ý khác mọi phép đo khác trong file này. Dòng NULL lộ cho mọi tổ chức theo
- * ĐỊNH NGHĨA của công thức biên giới, nên không cần hỏi "vai X có thấy không" —
- * câu trả lời luôn là có. Thứ cần biết là sự thật nền: có bao nhiêu dòng như vậy
- * và ở bảng nào.
+ * Đây chỉ là ground truth, KHÔNG suy rằng NULL tự nó chứng minh lộ dữ liệu.
+ * Dữ liệu toàn hệ phải khai; personal_transactions phải qua owner probe thật.
  */
 const SQL_DEM_DONG_NULL = `
 DO $$
@@ -495,18 +594,29 @@ async function main(argv) {
     return 1;
   }
 
-  // ─── Điểm mù thứ hai: dòng organization_id NULL lộ cho MỌI tổ chức ────────
-  const nullRows = (await runSql(SQL_DEM_DONG_NULL, { pat, ref })).at(-1)?.bang ?? [];
-  const kqNull = phanLoaiDongNull(nullRows);
+  // Owner privacy is independent of organization/global-NULL declarations. Never exempt a live leak.
+  let ownerProof;
+  if (tatCaBang.includes(PERSONAL_TABLE)) {
+    const users = await runSql('BEGIN READ ONLY; SELECT id::text AS uid FROM auth.users ORDER BY id; ROLLBACK;', { pat, ref });
+    ownerProof = (await runSql(sqlDoOwnerPersonal(users.map(u => u.uid)), { pat, ref })).at(-1)?.personal_owner_probe;
+    const check = kiemDoOwnerPersonal(ownerProof);
+    if (check.loi.length) { console.error(`❌ Owner probe chưa đo được: ${check.loi.join('; ')}`); return MA_THOAT_CHOT_HONG; }
+    if (check.ro) { console.error('❌ personal_transactions OWNER LEAK: actor thấy dòng của owner khác (kể cả NULL-org).'); return 1; }
+    console.log(`✔ personal owner probe: ${check.actors} actors (gồm admins/orphan), ${check.total} rows/${check.nullTotal} NULL, foreign=0, ${Math.round(ownerProof.elapsed_ms)}ms`);
+  }
+  const nullRows = (await runSql(SQL_DEM_DONG_NULL, { pat, ref })).at(-1)?.bang;
+  const kqNull = phanLoaiDongNull(nullRows, ownerProof);
+  if (kqNull.chuaDo.length) { console.error(`❌ NULL/owner proof chưa đầy đủ: ${kqNull.chuaDo.map(b => `${b.bang}: ${b.loi}`).join('; ')}`); return MA_THOAT_CHOT_HONG; }
+  if (kqNull.roOwner.length) { console.error('❌ personal_transactions OWNER LEAK trong NULL scan'); return 1; }
   console.log(
     `✔ dòng organization_id NULL: ${kqNull.daKhai.length} bảng đã khai là toàn hệ`
     + `${kqNull.daKhai.length ? ' (' + kqNull.daKhai.map((b) => `${b.bang}:${b.so_dong_null}`).join(', ') + ')' : ''}`
-    + `, ${kqNull.chuaKhai.length} bảng CHƯA khai`,
+    + `, ${kqNull.actorOwned.length} bảng owner-only đã đo thực, ${kqNull.chuaKhai.length} bảng CHƯA khai`,
   );
   if (kqNull.chuaKhai.length > 0) {
     console.error(`\n❌ ${kqNull.tongChuaKhai} dòng organization_id NULL ở bảng CHƯA KHAI.`);
-    console.error('   Công thức biên giới có nhánh `organization_id IS NULL` — những dòng này');
-    console.error('   hiển thị cho MỌI tổ chức. Hoặc điền nhãn đúng cho chúng, hoặc khai vào');
+    console.error('   Chưa có hợp đồng và bằng chứng owner isolation cho những dòng này.');
+    console.error('   Hoặc điền nhãn tổ chức đúng, hoặc khai vào');
     console.error('   app_private.org_null_is_global nếu đó thật sự là dữ liệu toàn hệ:');
     for (const b of kqNull.chuaKhai) console.error(`   ✗ ${b.bang} — ${b.so_dong_null} dòng`);
     return 1;
