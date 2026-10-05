@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-05T00:34:19.538Z",
+  "generatedAt": "2026-10-05T02:04:36.769Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 652,
-    "unknown": 81,
+    "ledger-applied": 653,
+    "unknown": 80,
     "catalog-proven": 205,
     "superseded": 15
   },
@@ -11040,10 +11040,9 @@
       "name": "personal_finance_rpc_only",
       "scheme": "timestamp14",
       "sha256": "e5c4330b93ab327d22c2e1cd4e9b7e42d27bee138be5f75f566970a52610eb1c",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "(file không CREATE object nào — chỉ ALTER/DML)"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-05T02:02:15.923Z|bien-nhan-backup"
       ]
     },
     {
