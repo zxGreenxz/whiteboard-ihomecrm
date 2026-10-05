@@ -13,10 +13,11 @@ const ChatPanel = lazy(() => import('./ChatPanel'));
 
 // '/chi-tieu' (Báo chi nhanh): trang có AI riêng và ô nhập dính đáy — nút nổi ở góc trái dưới sẽ đè
 // lên nút chụp bill trên điện thoại.
+// Ví cá nhân cũng có AI riêng và thanh điều hướng đáy; launcher đè nút Tổng quan.
 const HIDDEN_PREFIXES = [
   '/login', '/register', '/forgot-password', '/reset-password',
   '/c/', '/r/', '/phongtrong', '/network-center', '/chi-tieu',
-  '/viec-cua-toi',
+  '/viec-cua-toi', '/finance/personal-wallet',
 ];
 
 export default function CopilotLauncher() {

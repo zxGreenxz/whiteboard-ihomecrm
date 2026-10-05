@@ -21,6 +21,15 @@ describe('mounted CopilotLauncher G0', () => {
     if (state === 'denied-permission') io.perms = { ai_copilot: { view: false } };
     await mount(<CopilotLauncher />); expect(launcher()).toBeNull();
   });
+  it.each(['/finance/personal-wallet', '/finance/personal-wallet/history'])('keeps personal finance navigation clear without gated queries on %s', async path => {
+    expect(io.user).toBeTruthy(); expect(io.entitlement?.chat_enabled).toBe(true);
+    await mount(<CopilotLauncher />, path);
+    expect(launcher()).toBeNull(); expect(io.entitlementQuery).not.toHaveBeenCalled(); expect(io.permissionQuery).not.toHaveBeenCalled();
+  });
+  it('keeps the launcher available on other finance pages with entitlement and permission', async () => {
+    await mount(<CopilotLauncher />, '/finance');
+    expect(launcher()).not.toBeNull(); expect(io.entitlementQuery).toHaveBeenCalled(); expect(io.permissionQuery).toHaveBeenCalled();
+  });
   it('opens the real panel only when session, entitlement and permission allow it', async () => {
     await mount(<CopilotLauncher />);
     await import('../ChatPanel');
