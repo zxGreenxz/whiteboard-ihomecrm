@@ -20,8 +20,8 @@ import {createElement,type ReactNode} from 'react';
 import {renderHook,act,waitFor,cleanup} from '@testing-library/react';
 import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
 import {beforeEach,afterEach} from 'vitest';
-const io=vi.hoisted(()=>({owner:'11111111-1111-4111-8111-111111111111',rpc:vi.fn()}));
-vi.mock('@/integrations/supabase/client',()=>({supabase:{auth:{getSession:async()=>({data:{session:{user:{id:io.owner},access_token:'test-token'}},error:null})},rpc:(...args:unknown[])=>Object.assign(io.rpc(...args),{setHeader(){return this;}})}}));
+const io=vi.hoisted(()=>({owner:'11111111-1111-4111-8111-111111111111',transport:vi.fn()}));
+vi.mock('@/integrations/supabase/client',()=>({supabase:{auth:{getSession:async()=>({data:{session:{user:{id:io.owner},access_token:'test-token'}},error:null})},rpc:(...args:unknown[])=>Object.assign(io.transport(...args),{setHeader(){return this;}})}}));
 vi.mock('@/hooks/useAuth',()=>({useAuth:()=>({data:{id:io.owner},isLoading:false,error:null})}));
 vi.mock('@/lib/authSession',()=>({getSessionUser:async()=>({id:io.owner})}));
 vi.mock('sonner',()=>({toast:{success:vi.fn(),error:vi.fn()}}));
@@ -38,7 +38,7 @@ function actualHooks(){
 }
 function server(){
  let writes=0;
- io.rpc.mockImplementation(async(name:string,args?:{p_request_key:string;p_payload:Mutation})=>{
+ io.transport.mockImplementation(async(name:string,args?:{p_request_key:string;p_payload:Mutation})=>{
   if(name!=='personal_finance_mutate')return {data:name==='personal_finance_snapshot'?{...snapshot,owner_id:io.owner,wallets:snapshot.wallets.map(w=>({...w,user_id:io.owner})),categories:snapshot.categories.map(c=>({...c,user_id:io.owner}))}:null,error:null};
   if(++writes===1)throw new TypeError('Failed to fetch');
   const p=args!.p_payload;
@@ -46,8 +46,8 @@ function server(){
   return {data:{owner_id:owner,request_key:args!.p_request_key,action:p.action,entities:[entity]},error:null};
  });
 }
-const writes=()=>io.rpc.mock.calls.filter(c=>c[0]==='personal_finance_mutate').map(c=>c[1] as {p_request_key:string;p_payload:Mutation});
-beforeEach(()=>{localStorage.clear();io.rpc.mockReset();io.owner=owner;});afterEach(cleanup);
+const writes=()=>io.transport.mock.calls.filter(c=>c[0]==='personal_finance_mutate').map(c=>c[1] as {p_request_key:string;p_payload:Mutation});
+beforeEach(()=>{localStorage.clear();io.transport.mockReset();io.owner=owner;});afterEach(cleanup);
 it('actual delete hook: unknown A does not block B; explicit retry A keeps its key and payload',async()=>{
  server();const h=actualHooks();await waitFor(()=>expect(h.result.current.read.isSuccess).toBe(true));
  await act(async()=>{await expect(h.result.current.remove.mutateAsync({id:a,expected_version:3,request_key:keyA})).rejects.toMatchObject({outcomeUnknown:true});});
