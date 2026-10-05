@@ -17,6 +17,9 @@ vi.mock("@/integrations/supabase/client", () => ({ supabase: {} }));
 vi.mock("@/copilot/copilotConfig", () => ({ makeCopilotFetch: () => vi.fn(), newTaskId: () => "qe-t", QUICK_ENTRY_BASE: "https://p.test" }));
 vi.mock("@/hooks/use-mobile", () => ({ usePhoneViewport: () => h.phone }));
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ data: { id: "u1" } }) }));
+vi.mock("@/contexts/OrganizationContext", () => ({
+  useOrganization: () => ({ selectedOrganizationId: h.refs.orgId, preferenceError: null }),
+}));
 vi.mock("@/hooks/useVoucherSlotWarning", () => ({ useVoucherSlotWarning: () => ({ data: [] }) }));
 vi.mock("@/components/layout/MainLayout", () => ({
   default: ({ title, children }: { title?: string; children: ReactNode }) => (
