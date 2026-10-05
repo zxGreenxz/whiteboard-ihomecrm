@@ -5,7 +5,7 @@
 // có). Dừng ghi âm ⇒ chép lời rồi gửi cùng chữ/ảnh đang soạn; người dùng soát ở thẻ nháp trước khi lưu.
 
 import { useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
-import { Camera, ImagePlus, Loader2, Mic, Paperclip, Send, SlidersHorizontal, Square, X } from "lucide-react";
+import { Camera, ImagePlus, Loader2, Mic, Paperclip, Send, SlidersHorizontal, Square, X, Wallet, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
@@ -36,6 +36,8 @@ const PLACEHOLDER: Record<DraftMode, string> = {
 };
 
 export interface QuickEntryComposerProps {
+  launchAction?: { id: number; action: 'attachment' | 'camera' | 'gallery' | 'voice' };
+
   appearance?: 'personal';
   disabled?: boolean;
   placeholder?: string;
@@ -156,6 +158,21 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
     else setNote(KEYBOARD_MIC_HINT);
   };
 
+  const lastLaunch = useRef<number | null>(null);
+  useEffect(() => {
+    const launch = p.launchAction;
+    if (!launch || lastLaunch.current === launch.id || p.disabled) return;
+    lastLaunch.current = launch.id;
+    if (launch.action === "voice") { setNote(null); if(serverVoice)recorder.start();else setNote(KEYBOARD_MIC_HINT); }
+    else
+      (launch.action === "camera"
+        ? camera
+        : launch.action === "gallery"
+          ? gallery
+          : attachment
+      ).current?.click();
+  }, [p.launchAction, p.disabled, serverVoice, recorder.start]);
+
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     // Bộ gõ tiếng Việt trên Mac/điện thoại dùng composition: Enter lúc đang ghép dấu không phải "gửi".
     if (e.key !== "Enter" || e.shiftKey || e.nativeEvent.isComposing) return;
@@ -180,6 +197,10 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
       setPendingPhoto(file);
       setNote(null);
       box.current?.focus();
+    } else if (p.appearance === 'personal') {
+      setPendingPhoto(file);
+      setNote(null);
+      box.current?.focus();
     } else p.onPhoto(file);
   };
 
@@ -187,6 +208,7 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
     <div className={p.appearance==='personal'?'pf-composer':'space-y-2 border-t bg-background p-2'} data-testid="quick-entry-composer">
       {(p.modes.length > 1 || p.appearance==='personal') && (
         <div className="flex gap-1" role="group" aria-label="Ghi vào">
+          {p.appearance==='personal'&&<span className="pf-destination-caption">Gửi thu chi vào</span>}
           {p.modes.map((m) => (
             <Button
               key={m}
@@ -198,7 +220,7 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
               className="h-7 px-3 text-xs"
               onClick={() => p.onModeChange(m)}
             >
-              {MODE_LABEL[m]}
+              {p.appearance==='personal'&&(m==='personal'?<Wallet size={18}/>:<Building2 size={18}/>)} {MODE_LABEL[m]}
             </Button>
           ))}
         </div>
@@ -376,9 +398,10 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
             >
               {transcribing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Mic className="h-5 w-5" />}
             </Button>
-            {(text.trim() || pendingPhoto) && (
-              <Button type="button" size="icon" className="shrink-0" aria-label="Gửi" disabled={busy || p.disabled} onClick={send}>
+            {(text.trim() || pendingPhoto || p.appearance==='personal') && (
+              <Button type="button" size={p.appearance==='personal'?'default':'icon'} className="shrink-0" aria-label="Gửi" disabled={busy || p.disabled || (!text.trim()&&!pendingPhoto)} onClick={send}>
                 <Send className="h-5 w-5" />
+                {p.appearance==='personal' && 'Gửi'}
               </Button>
             )}
           </div>

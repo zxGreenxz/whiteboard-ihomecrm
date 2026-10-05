@@ -93,6 +93,7 @@ async function openAs(page: Page, actor: Actor, canWrite: boolean) {
   await page.getByRole('textbox', { name: 'Mật khẩu' }).fill(actor.password);
   await page.getByRole('button', { name: 'Đăng nhập', exact: true }).click();
   await page.waitForURL(url => !url.pathname.startsWith('/login'));
+  await page.waitForLoadState('networkidle');
   await page.goto('/finance/personal-wallet');
   await expect(page.getByTestId('personal-finance-app')).toBeVisible();
   return { errors, blocked, writes, network };
@@ -105,23 +106,31 @@ async function navigate(page: Page, name: string) {
 async function closeSheets(page: Page) {
   for (let n = 0; n < 4 && await page.getByRole('dialog').count(); n += 1) {
     const sheet = page.getByRole('dialog').last();
-    const id = await sheet.getAttribute('id');
-    await sheet.getByRole('button', { name: 'Close', exact: true }).click();
-    if (id) await expect(page.locator(`[id="${id}"]`)).toHaveCount(0);
+    const titleId = await sheet.getAttribute('aria-labelledby');
+    await sheet.getByRole('button', { name: /^(Close|Đóng)$/ }).last().click();
+    await expect(page.locator(`[aria-labelledby="${titleId}"]`)).not.toBeVisible();
   }
   await expect(page.getByRole('dialog')).toHaveCount(0);
+}
+async function manageCategories(page: Page) {
+  await navigate(page, 'Giao dịch');
+  await page.getByRole('button', { name: 'Cài đặt ví cá nhân', exact: true }).click();
+  await page.getByRole('button', { name: 'Danh mục thu chi', exact: true }).click();
 }
 
 async function addTransaction(page: Page, options: { type: 'INCOME' | 'EXPENSE'; amount: number; description: string; category?: string }) {
   await navigate(page, 'Ghi thu chi');
-  await page.getByRole('button', { name: 'Thêm giao dịch', exact: true }).click();
-  const editor = page.getByRole('dialog', { name: 'Thêm giao dịch', exact: true });
-  await editor.getByRole('combobox', { name: 'Loại', exact: true }).selectOption(options.type);
+  await page.getByRole("button", { name: "Nhập tay", exact: true }).click();
+  const editor = page.getByRole("dialog", { name: "Ghi thu chi", exact: true });
+  await editor.getByRole('button', { name: options.type === 'INCOME' ? '+ Thu nhập' : '− Chi tiêu', exact: true }).click();
   await editor.getByLabel('Số tiền', { exact: true }).fill(String(options.amount));
-  await editor.getByRole('combobox', { name: 'Ví', exact: true }).selectOption({ label: 'Ví chính' });
-  if (options.category) await editor.getByRole('combobox', { name: 'Danh mục', exact: true }).selectOption({ label: options.category });
+  await editor.getByRole('combobox', { name: "Ví thanh toán", exact: true }).selectOption({ label: 'Ví chính' });
+  if (options.category) {
+    await editor.getByRole('button', { name: 'Chọn danh mục', exact: true }).click();
+    await page.getByRole('dialog').last().getByRole('button', { name: new RegExp(options.category) }).click();
+  }
   await editor.getByLabel('Ghi chú', { exact: true }).fill(options.description);
-  await editor.getByRole('button', { name: 'Lưu', exact: true }).click();
+  await editor.getByRole('button', { name: /^(?:Lưu(?: giao dịch| thay đổi)?|Chuyển tiền)$/ }).click();
   return editor;
 }
 
@@ -144,7 +153,7 @@ test('real TEST writer: wallet, category, money CRUD, exact retry, transfers, bu
   await editor.getByLabel('Tên ví', { exact: true }).fill('TEST Ngân hàng');
   await editor.getByRole('combobox', { name: 'Loại ví', exact: true }).selectOption('bank');
   await editor.getByLabel('Số dư ban đầu', { exact: true }).fill('1000000');
-  await editor.getByRole('button', { name: 'Lưu', exact: true }).click();
+  await editor.getByRole('button', { name: /^(?:Lưu(?: giao dịch| thay đổi)?|Chuyển tiền)$/ }).click();
   await expect(editor).toHaveCount(0);
   await closeSheets(page);
   await expect.poll(() => total(network)).toBe(1_000_000);
@@ -156,18 +165,18 @@ test('real TEST writer: wallet, category, money CRUD, exact retry, transfers, bu
   await page.getByRole('button', { name: 'Sửa ví TEST Ngân hàng', exact: true }).click();
   editor = page.getByRole('dialog', { name: 'Sửa ví', exact: true });
   await editor.getByLabel('Ẩn khỏi tổng quan', { exact: true }).check();
-  await editor.getByRole('button', { name: 'Lưu', exact: true }).click();
+  await editor.getByRole('button', { name: /^(?:Lưu(?: giao dịch| thay đổi)?|Chuyển tiền)$/ }).click();
   await expect(editor).toHaveCount(0);
   await closeSheets(page);
   await expect.poll(() => network.snapshot?.wallets.find(wallet => wallet.id === bankId)?.hidden).toBe(true);
   await expect(page.getByRole('button').filter({ hasText: 'TEST Ngân hàng' })).toHaveCount(0);
   await expect(page.getByTestId('total-balance')).toContainText('1.000.000');
 
-  await page.getByRole('button', { name: 'Quản lý danh mục', exact: true }).click();
+  await manageCategories(page);
   await page.getByRole('button', { name: 'Thêm danh mục', exact: true }).click();
   editor = page.getByRole('dialog', { name: 'Thêm danh mục', exact: true });
   await editor.getByLabel('Tên danh mục', { exact: true }).fill('TEST Chi riêng');
-  await editor.getByRole('button', { name: 'Lưu', exact: true }).click();
+  await editor.getByRole('button', { name: /^(?:Lưu(?: giao dịch| thay đổi)?|Chuyển tiền)$/ }).click();
   await expect(editor).toHaveCount(0);
   await closeSheets(page);
   await expect.poll(() => network.snapshot?.categories.some(category => category.name === 'TEST Chi riêng')).toBe(true);
@@ -191,16 +200,21 @@ test('real TEST writer: wallet, category, money CRUD, exact retry, transfers, bu
   await expect.poll(() => network.snapshot?.transactions.filter(transaction => transaction.description === 'TEST Mất phản hồi').length).toBe(1);
   await expect.poll(() => total(network)).toBe(1_150_000);
 
+  // Leave the transient error toast after the intentional lost receipt; hovering pauses its timer.
+  await page.mouse.move(5, 5);
+  await expect(page.locator('[data-sonner-toast]')).toHaveCount(0);
+
   // Row actions follow the visible, accessible record labels in the product.
   await navigate(page, 'Giao dịch');
-  await page.getByRole('button', { name: 'Sửa giao dịch TEST Mất phản hồi', exact: true }).click();
-  editor = page.getByRole('dialog', { name: 'Sửa giao dịch', exact: true });
+  await page.getByRole('button', { name: "Xem TEST Mất phản hồi", exact: true }).click();
+  editor = page.getByRole('dialog', { name: "Chi tiết giao dịch", exact: true });
   await editor.getByLabel('Số tiền', { exact: true }).fill('60000');
   await editor.getByLabel('Ghi chú', { exact: true }).fill('TEST Đã sửa');
-  await editor.getByRole('button', { name: 'Lưu', exact: true }).click();
+  await editor.getByRole('button', { name: /^(?:Lưu(?: giao dịch| thay đổi)?|Chuyển tiền)$/ }).click();
   await expect(editor).toHaveCount(0);
   await expect.poll(() => total(network)).toBe(1_140_000);
-  await page.getByRole('button', { name: 'Xóa giao dịch TEST Đã sửa', exact: true }).click();
+  await page.getByRole('button', { name: 'Xem TEST Đã sửa', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Xóa giao dịch', exact: true }).click();
   editor = page.getByRole('dialog', { name: 'Xóa giao dịch', exact: true });
   await editor.getByRole('button', { name: 'Xác nhận xóa', exact: true }).click();
   await expect(editor).toHaveCount(0);
@@ -209,13 +223,13 @@ test('real TEST writer: wallet, category, money CRUD, exact retry, transfers, bu
   editor = await addTransaction(page, { type: 'EXPENSE', amount: 75_000, description: 'TEST Chi trong tháng', category: 'TEST Chi riêng' });
   await expect(editor).toHaveCount(0);
   await closeSheets(page);
-  await navigate(page, 'Ghi thu chi');
-  await page.getByRole('button', { name: 'Chuyển ví', exact: true }).click();
-  editor = page.getByRole('dialog', { name: 'Thêm chuyển ví', exact: true });
-  await editor.getByRole('combobox', { name: 'Ví gửi', exact: true }).selectOption(bankId);
+  await navigate(page, 'Giao dịch');
+  await page.getByRole('button', { name: 'Chuyển tiền giữa ví', exact: true }).click();
+  editor = page.getByRole('dialog', { name: "Chuyển tiền giữa ví", exact: true });
+  await editor.getByRole('combobox', { name: "Ví chuyển", exact: true }).selectOption(bankId);
   await editor.getByRole('combobox', { name: 'Ví nhận', exact: true }).selectOption({ label: 'Ví chính' });
   await editor.getByLabel('Số tiền', { exact: true }).fill('50000');
-  await editor.getByRole('button', { name: 'Lưu', exact: true }).click();
+  await editor.getByRole('button', { name: /^(?:Lưu(?: giao dịch| thay đổi)?|Chuyển tiền)$/ }).click();
   await expect(editor).toHaveCount(0);
   await closeSheets(page);
   await expect.poll(() => total(network)).toBe(1_125_000);
@@ -224,25 +238,26 @@ test('real TEST writer: wallet, category, money CRUD, exact retry, transfers, bu
   await navigate(page, 'Ngân sách');
   await page.getByRole('button', { name: 'Thêm hạn mức', exact: true }).click();
   editor = page.getByRole('dialog', { name: 'Thêm hạn mức', exact: true });
-  await editor.getByRole('combobox', { name: 'Danh mục', exact: true }).selectOption({ label: 'TEST Chi riêng' });
+  await editor.getByRole('button', { name: 'Chọn danh mục', exact: true }).click();
+  await page.getByRole('dialog').last().getByRole('button', { name: /TEST Chi riêng/ }).click();
   await editor.getByLabel('Hạn mức mỗi tháng', { exact: true }).fill('100000');
-  await editor.getByRole('button', { name: 'Lưu', exact: true }).click();
+  await editor.getByRole('button', { name: /^(?:Lưu(?: giao dịch| thay đổi)?|Chuyển tiền)$/ }).click();
   await expect(editor).toHaveCount(0);
   await expect.poll(() => network.snapshot?.budgets.some(budget => budget.amount === 100_000)).toBe(true);
 
-  await page.getByRole('button', { name: 'Mục tiêu', exact: true }).click();
+  await page.getByRole('button', { name: "Mục tiêu tiết kiệm", exact: true }).click();
   await page.getByRole('button', { name: 'Thêm mục tiêu', exact: true }).click();
   editor = page.getByRole('dialog', { name: 'Thêm mục tiêu', exact: true });
   await editor.getByLabel('Tên mục tiêu', { exact: true }).fill('TEST Quỹ dự phòng');
   await editor.getByLabel('Số tiền mục tiêu', { exact: true }).fill('500000');
   await editor.getByRole('combobox', { name: 'Ví tích lũy', exact: true }).selectOption(bankId);
-  await editor.getByRole('button', { name: 'Lưu', exact: true }).click();
+  await editor.getByRole('button', { name: /^(?:Lưu(?: giao dịch| thay đổi)?|Chuyển tiền)$/ }).click();
   await expect(editor).toHaveCount(0);
   await page.getByRole('button', { name: 'Góp tiền TEST Quỹ dự phòng', exact: true }).click();
-  editor = page.getByRole('dialog', { name: 'Thêm chuyển ví', exact: true });
-  await editor.getByRole('combobox', { name: 'Ví gửi', exact: true }).selectOption({ label: 'Ví chính' });
+  editor = page.getByRole('dialog', { name: "Chuyển tiền giữa ví", exact: true });
+  await editor.getByRole('combobox', { name: "Ví chuyển", exact: true }).selectOption({ label: 'Ví chính' });
   await editor.getByLabel('Số tiền', { exact: true }).fill('100000');
-  await editor.getByRole('button', { name: 'Lưu', exact: true }).click();
+  await editor.getByRole('button', { name: /^(?:Lưu(?: giao dịch| thay đổi)?|Chuyển tiền)$/ }).click();
   await expect(editor).toHaveCount(0);
   await expect.poll(() => network.snapshot?.goals.find(goal => goal.name === 'TEST Quỹ dự phòng')?.saved).toBe(100_000);
   await expect.poll(() => total(network)).toBe(1_125_000);
@@ -250,7 +265,7 @@ test('real TEST writer: wallet, category, money CRUD, exact retry, transfers, bu
   await navigate(page, 'Tổng quan');
   await expect(page.getByTestId('month-income')).toContainText('200.000');
   await expect(page.getByTestId('month-expense')).toContainText('75.000');
-  await page.getByRole('button', { name: 'Nói', exact: true }).click();
+  await page.getByRole('button', { name: 'Ghi âm', exact: true }).click();
   await expect(page.getByText(/Đang nghe… 0:01/)).toBeVisible();
   await page.getByRole('button', { name: 'Xong', exact: true }).click();
   const draftSheet = page.getByRole('dialog', { name: 'Ghi thu chi', exact: true });
@@ -286,14 +301,15 @@ test('real TEST viewer: own data is visible and write actions are absent', async
     await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0);
   }
   for (const name of ['Quản lý ví', 'Quản lý danh mục']) {
-    await page.getByRole('button', { name, exact: true }).click();
+    if (name === 'Quản lý danh mục') await manageCategories(page);
+    else await page.getByRole('button', { name, exact: true }).click();
     const manager = page.getByRole('dialog', { name, exact: true });
     await expect(manager.getByRole('button', { name: /^(?:Thêm |Sửa |Xóa )/ })).toHaveCount(0);
     await closeSheets(page);
   }
   for (const name of ['Giao dịch', 'Ngân sách', 'Báo cáo']) {
     await navigate(page, name);
-    if (name === 'Ngân sách') await page.getByRole('button', { name: 'Mục tiêu', exact: true }).click();
+    if (name === 'Ngân sách') await page.getByRole('button', { name: "Mục tiêu tiết kiệm", exact: true }).click();
     // “Chuyển ví” in the ledger is a read-only filter, not the entry action.
     await expect(page.getByRole('button', { name: /^(?:Thêm hạn mức|Thêm mục tiêu|Ghi thu chi)$/ })).toHaveCount(0);
   }

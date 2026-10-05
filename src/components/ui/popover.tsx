@@ -6,12 +6,18 @@ import { cn } from "@/lib/utils";
 const Popover = PopoverPrimitive.Root;
 
 const PopoverTrigger = PopoverPrimitive.Trigger;
+/** Native modal sheets need popovers inside their top-layer element. Default app portals stay unchanged. */
+export const PopoverContainerContext = React.createContext<
+  HTMLElement | undefined
+>(undefined);
 
 const PopoverContent = React.forwardRef<
   React.ElementRef<typeof PopoverPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof PopoverPrimitive.Content>
 >(({ className, align = "center", sideOffset = 4, ...props }, ref) => (
-  <PopoverPrimitive.Portal>
+  <PopoverPrimitive.Portal
+    container={React.useContext(PopoverContainerContext)}
+  >
     <PopoverPrimitive.Content
       ref={ref}
       align={align}

@@ -302,6 +302,83 @@ export function useQuickEntryFeed(opts: {
     }));
   }, [scope]);
 
+  /** An empty company form uses the same permission guard, persistence and writer as reviewed drafts. */
+  const addManual = (mode: DraftMode): string | null => {
+    if (
+      !userId ||
+      scopeRef.current !== scope ||
+      (mode === "company"
+        ? !refs.canCompany || !refs.companyReady
+        : !refs.canPersonal || !refs.personalReady)
+    )
+      return null;
+    const id = crypto.randomUUID();
+    const state: DraftState = {
+      draft: {
+        id,
+        mode,
+        date: today,
+        name: "",
+        vendor: null,
+        buildingId: null,
+        roomId: null,
+        accountId: null,
+        attachmentUrls: [],
+        transactionType: "EXPENSE",
+        ...(mode === "personal"
+          ? {
+              personalWalletId:
+                refs.personalWallets.find((w) => w.is_default)?.id ??
+                refs.personalWallets[0]?.id ??
+                null,
+              personalProtocol: 1 as const,
+              personalRequestKey: crypto.randomUUID(),
+            }
+          : {}),
+        lines: [
+          {
+            description: "",
+            amount: 0,
+            categoryId: null,
+            personalCategory: null,
+            periodStart: null,
+            periodEnd: null,
+          },
+        ],
+      },
+      touched: [],
+      locked: [],
+      flags: [],
+      buildingCandidates: [],
+      source: "text",
+      sourceText: "",
+    };
+    addEntry(
+      {
+        id: crypto.randomUUID(),
+        kind: "restored",
+        text: null,
+        previewUrl: null,
+        cardIds: [id],
+        reading: false,
+        note: null,
+        aiRetry: false,
+      },
+      [
+        {
+          id,
+          state,
+          status: { kind: "draft" },
+          aiModel: null,
+          photo: null,
+          previewUrl: null,
+          personalDone: 0,
+        },
+      ],
+    );
+    return id;
+  };
+
   // Hai đường AI chạy trên hai nhà cung cấp (đọc: 9router; giọng: OpenRouter) nên tắt RIÊNG: một bên
   // hỏng không kéo bên kia. Chỉ "không có quyền" và "hết lượt" tắt cả hai — máy chủ xét chung.
   const offRead = useCallback((e: AiErrorView) => {
@@ -617,6 +694,7 @@ export function useQuickEntryFeed(opts: {
     aiOff,
     voiceOff,
     submitText,
+    addManual,
     submitPhoto,
     saveCard,
     changeCard,

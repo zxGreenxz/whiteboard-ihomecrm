@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef, useId, type ReactNode } from "react";
 import {
   ArrowLeftRight,
   ChevronLeft,
@@ -7,8 +7,16 @@ import {
   Pencil,
   Plus,
   Trash2,
+  Wallet,
+  Tags,
+  Settings,
+  ChevronDown,
+  Check,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { PopoverContainerContext } from "@/components/ui/popover";
+import { sumMoney } from "@/lib/personalFinance/money";
 import type { Entity, Snapshot } from "@/lib/personalFinance/contract";
 import {
   selectMonth,
@@ -32,6 +40,74 @@ import {
   type Permissions,
 } from "./presentation";
 
+/** Kept mounted so the recorder and attachment composer survive closing the sheet. */
+export function FinanceSheet({
+  open,
+  title,
+  onClose,
+  children,
+}: {
+  open: boolean;
+  title: string;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const [container, setContainer] = useState<HTMLDialogElement | null>(null);
+  useEffect(() => setContainer(dialog.current), []);
+  const titleId = useId();
+  useEffect(() => {
+    const node = dialog.current;
+    if (!node) return;
+    if (open && !node.open) {
+      if (node.showModal) node.showModal();
+      else node.setAttribute("open", "");
+    } else if (!open && node.open) {
+      if (node.close) node.close();
+      else node.removeAttribute("open");
+    }
+  }, [open]);
+  return (
+    <dialog
+      ref={dialog}
+      className="pf-dialog pf-sheet"
+      aria-labelledby={titleId}
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+      onClick={(event) => {
+        if (event.target !== event.currentTarget) return;
+        const rect = event.currentTarget.getBoundingClientRect();
+        if (
+          event.clientX < rect.left ||
+          event.clientX > rect.right ||
+          event.clientY < rect.top ||
+          event.clientY > rect.bottom
+        )
+          onClose();
+      }}
+    >
+      <div className="pf-sheet-handle" />
+      <header className="pf-sheet-header">
+        <h2 id={titleId}>{title}</h2>
+        <button aria-label="Đóng" onClick={onClose}>
+          <X size={21} />
+        </button>
+      </header>
+      <PopoverContainerContext.Provider value={container ?? undefined}>
+        <div className="pf-sheet-body">{children}</div>
+      </PopoverContainerContext.Provider>
+    </dialog>
+  );
+}
+
+const shortMoney = (value: number) =>
+  Math.abs(value) >= 1e6
+    ? new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 1 }).format(
+        value / 1e6,
+      ) + "tr"
+    : new Intl.NumberFormat("vi-VN").format(value / 1000) + "k";
 export function MonthPicker({
   month,
   onChange,
@@ -106,8 +182,9 @@ export function RowActions({
 }
 export function Management({
   kind,
+  onWallet,
   ...p
-}: Props & { kind: "wallet" | "category" }) {
+}: Props & { kind: "wallet" | "category"; onWallet?: (id: string) => void }) {
   const [type, setType] = useState("EXPENSE");
   const rows =
     kind === "wallet"
@@ -131,6 +208,52 @@ export function Management({
           </button>
         </div>
       )}
+      <div
+        className={
+          kind === "category" ? "pf-category-grid" : "pf-wallet-settings"
+        }
+      >
+        {rows.map((r) => (
+          <div
+            className={kind === "category" ? "pf-category-cell" : "pf-row"}
+            key={r.id}
+          >
+            <button
+              className={
+                kind === "category" ? "pf-category-detail" : "pf-wallet-detail"
+              }
+              aria-label={
+                kind === "category"
+                  ? `${p.permissions.edit ? "Sửa" : "Xem"} danh mục ${r.name}`
+                  : `Xem ví ${r.name}`
+              }
+              onClick={() =>
+                kind === "wallet" && onWallet
+                  ? onWallet(r.id)
+                  : p.edit({ entity: kind, record: r })
+              }
+            >
+              <span className="pf-emoji">{r.icon}</span>
+              <span className="pf-grow">
+                <strong>{r.name}</strong>
+                <small>
+                  {kind === "wallet" && "balance" in r ? money(r.balance) : ""}
+                  {r.hidden ? " · Đang ẩn" : ""}
+                </small>
+              </span>
+            </button>
+            {kind === "wallet" &&
+              (p.permissions.edit || p.permissions.delete) && (
+                <button
+                  aria-label={`${p.permissions.edit ? "Sửa ví" : "Chi tiết ví"} ${r.name}`}
+                  onClick={() => p.edit({ entity: kind, record: r })}
+                >
+                  <Pencil size={18} />
+                </button>
+              )}
+          </div>
+        ))}
+      </div>
       {p.permissions.create && (
         <Button
           onClick={() =>
@@ -144,24 +267,6 @@ export function Management({
           Thêm {entityLabel[kind]}
         </Button>
       )}
-      {rows.map((r) => (
-        <article className="pf-row" key={r.id}>
-          <span className="pf-emoji">{r.icon}</span>
-          <div className="pf-grow">
-            <strong>{r.name}</strong>
-            <small>
-              {kind === "wallet" && "balance" in r
-                ? money(r.balance)
-                : type === "EXPENSE"
-                  ? "Chi tiêu"
-                  : "Thu nhập"}
-              {r.hidden ? " · Đã ẩn" : ""}
-              {"is_default" in r && r.is_default ? " · Mặc định" : ""}
-            </small>
-          </div>
-          <RowActions {...p} entity={kind} row={r} />
-        </article>
-      ))}
       <p className="pf-muted">
         {kind === "wallet"
           ? "Ví ẩn vẫn được tính vào tổng số dư và vẫn có thể chọn khi ghi giao dịch."
@@ -177,9 +282,14 @@ export function Ledger(
     onFilters: (f: Filters) => void;
     manage: () => void;
     categories: () => void;
+    recent?: boolean;
+    entry?: () => void;
   },
 ) {
   const { snapshot: s, filters: f } = p;
+  const [picker, setPicker] = useState<
+    "wallet" | "category" | "settings" | null
+  >(null);
   const all = selectMonth(s, p.month);
   const categoryOptions = [
     ...s.categories.map((c) => ({
@@ -212,7 +322,7 @@ export function Ledger(
       (f.type === "all" || t.type === f.type) &&
       (!f.wallet || t.resolved_wallet_id === f.wallet) &&
       matchesCategoryFilter(t, f.category) &&
-      `${t.description ?? ""} ${s.categories.find((c) => c.id === t.resolved_category_id)?.name ?? t.category ?? ""}`
+      `${t.description ?? ""} ${s.categories.find((c) => c.id === t.resolved_category_id)?.name ?? t.category ?? ""} ${t.amount}`
         .toLocaleLowerCase("vi")
         .includes(f.search.toLocaleLowerCase("vi")),
   );
@@ -231,8 +341,16 @@ export function Ledger(
   const rows = [
     ...txns.map((t) => ({ date: t.txn_date, key: t.id, txn: t })),
     ...transfers.map((t) => ({ date: t.txn_date, key: t.id, transfer: t })),
-  ].sort((a, b) => b.date.localeCompare(a.date));
+  ]
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .slice(0, p.recent ? 5 : undefined);
   const days = [...new Set(rows.map((r) => r.date))];
+  const income = sumMoney(
+    txns.filter((t) => t.type === "INCOME").map((t) => t.amount),
+  );
+  const expense = sumMoney(
+    txns.filter((t) => t.type === "EXPENSE").map((t) => t.amount),
+  );
   const exportCsv = () => {
     let csv = transactionsCsv(s, txns);
     if (transfers.length)
@@ -256,69 +374,195 @@ export function Ledger(
   };
   return (
     <>
-      <div className="pf-pills">
-        {[
-          ["all", "Tất cả"],
-          ["EXPENSE", "Chi tiêu"],
-          ["INCOME", "Thu nhập"],
-          ["transfer", "Chuyển ví"],
-        ].map(([value, label]) => (
-          <button
-            key={value}
-            className={f.type === value ? "active" : ""}
-            onClick={() => p.onFilters({ ...f, type: value })}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-      <div className="pf-filter-row">
-        <select
-          aria-label="Lọc ví"
-          value={f.wallet}
-          onChange={(e) => p.onFilters({ ...f, wallet: e.target.value })}
-        >
-          <option value="">Mọi ví</option>
-          {s.wallets.map((w) => (
-            <option key={w.id} value={w.id}>
-              {w.name}
-            </option>
-          ))}
-        </select>
-        <select
-          aria-label="Lọc danh mục"
-          value={categoryFilterValue(f.category)}
-          onChange={(e) =>
-            p.onFilters({
-              ...f,
-              category: categoryOptions.find((c) => c.value === e.target.value)
-                ?.filter ?? { kind: "all" },
-            })
-          }
-        >
-          <option value="">Mọi danh mục</option>
-          {categoryOptions.map((c) => (
-            <option key={c.value} value={c.value}>
-              {c.label}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className="pf-tools">
-        <button onClick={p.manage}>Quản lý ví</button>
-        <button onClick={p.categories}>Quản lý danh mục</button>
-        <button aria-label="Xuất CSV" onClick={exportCsv}>
-          <Download size={16} /> CSV
-        </button>
-      </div>
+      {!p.recent && (
+        <>
+          <div className="pf-pills pf-type-chips">
+            {[
+              ["all", "Tất cả"],
+              ["EXPENSE", "Chi tiêu"],
+              ["INCOME", "Thu nhập"],
+              ["transfer", "Chuyển ví"],
+            ].map(([value, label]) => (
+              <button
+                key={value}
+                className={f.type === value ? "active" : ""}
+                onClick={() => p.onFilters({ ...f, type: value })}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="pf-tools pf-filter-triggers">
+            <button aria-label="Lọc ví" onClick={() => setPicker("wallet")}>
+              <Wallet size={18} />
+              {s.wallets.find((w) => w.id === f.wallet)?.name ?? "Mọi ví"}
+              <ChevronDown size={16} />
+            </button>
+            <button
+              aria-label="Lọc danh mục"
+              onClick={() => setPicker("category")}
+            >
+              <Tags size={18} />
+              {categoryOptions.find(
+                (c) => c.value === categoryFilterValue(f.category),
+              )?.label ?? "Mọi danh mục"}
+              <ChevronDown size={16} />
+            </button>
+            <button
+              aria-label="Cài đặt ví cá nhân"
+              onClick={() => setPicker("settings")}
+            >
+              <Settings size={20} />
+            </button>
+            <button aria-label="Xuất CSV" onClick={exportCsv}>
+              <Download size={16} /> CSV
+            </button>
+          </div>
+        </>
+      )}
+      <FinanceSheet
+        open={picker !== null}
+        title={
+          picker === "wallet"
+            ? "Lọc theo ví"
+            : picker === "category"
+              ? "Lọc theo danh mục"
+              : "Quản lý ví cá nhân"
+        }
+        onClose={() => setPicker(null)}
+      >
+        {picker === "settings" ? (
+          <div className="pf-stack">
+            <button
+              className="pf-list-item"
+              onClick={() => {
+                setPicker(null);
+                p.manage();
+              }}
+            >
+              <Wallet />
+              Ví & tài khoản
+              <ChevronRight />
+            </button>
+            <button
+              className="pf-list-item"
+              onClick={() => {
+                setPicker(null);
+                p.categories();
+              }}
+            >
+              <Tags />
+              Danh mục thu chi
+              <ChevronRight />
+            </button>
+          </div>
+        ) : (
+          <>
+            {(picker === "wallet"
+              ? [
+                  { value: "", label: "Tất cả các ví", icon: "👛" },
+                  ...s.wallets.map((w) => ({
+                    value: w.id,
+                    label: w.name,
+                    icon: w.icon,
+                  })),
+                ]
+              : [
+                  { value: "", label: "Mọi danh mục", icon: "🏷️" },
+                  ...categoryOptions.map((c) => ({
+                    ...c,
+                    icon:
+                      s.categories.find((x) => x.id === c.value)?.icon ?? "🏷️",
+                  })),
+                ]
+            ).map((option) => (
+              <button
+                className="pf-filter-option"
+                key={option.value}
+                aria-pressed={
+                  option.value ===
+                  (picker === "wallet"
+                    ? f.wallet
+                    : categoryFilterValue(f.category))
+                }
+                onClick={() => {
+                  p.onFilters(
+                    picker === "wallet"
+                      ? { ...f, wallet: option.value }
+                      : {
+                          ...f,
+                          category: categoryOptions.find(
+                            (c) => c.value === option.value,
+                          )?.filter ?? { kind: "all" },
+                        },
+                  );
+                  setPicker(null);
+                }}
+              >
+                <span className="pf-emoji">{option.icon}</span>
+                <span className="pf-grow">{option.label}</span>
+                {option.value ===
+                  (picker === "wallet"
+                    ? f.wallet
+                    : categoryFilterValue(f.category)) && <Check size={20} />}
+              </button>
+            ))}
+            <footer className="pf-form-actions pf-filter-footer">
+              {p.permissions.create && (
+                <Button
+                  onClick={() => {
+                    setPicker(null);
+                    p.edit({
+                      entity: picker === "wallet" ? "wallet" : "category",
+                    });
+                  }}
+                >
+                  <Plus size={16} />
+                  Thêm {picker === "wallet" ? "ví" : "danh mục"}
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setPicker(null);
+                  if (picker === "wallet") p.manage();
+                  else p.categories();
+                }}
+              >
+                <Settings size={18} />
+                Quản lý {picker === "wallet" ? "ví" : "danh mục"}
+              </Button>
+            </footer>
+          </>
+        )}
+      </FinanceSheet>
       <section className="pf-card">
-        <div className="pf-between pf-muted">
-          <span>{rows.length} giao dịch</span>
-          <span>
-            Thu {money(all.income)} · Chi {money(all.expense)}
-          </span>
-        </div>
-        {!rows.length && (
+        {!p.recent && (
+          <div className="pf-between pf-muted">
+            <span>{rows.length} giao dịch</span>
+            <span>
+              Thu {money(income)} · Chi {money(expense)}
+            </span>
+          </div>
+        )}
+        {!rows.length && p.recent && (
+          <div className="pf-empty">
+            <span className="pf-empty-emoji">🌱</span>
+            <h3>Tháng này còn trống</h3>
+            <p>Ghi lại khoản đầu tiên của bạn.</p>
+            {p.permissions.create && (
+              <Button
+                variant="outline"
+                onClick={() =>
+                  p.entry ? p.entry() : p.edit({ entity: "transaction" })
+                }
+              >
+                Ghi khoản đầu tiên
+              </Button>
+            )}
+          </div>
+        )}
+        {!rows.length && !p.recent && (
           <p className="pf-empty">
             Chưa có giao dịch phù hợp. Thay bộ lọc hoặc ghi khoản đầu tiên.
           </p>
@@ -330,7 +574,14 @@ export function Ledger(
               .filter((r) => r.date === day)
               .map((row) => {
                 return "txn" in row ? (
-                  <article className="pf-row" key={row.key}>
+                  <button
+                    className="pf-row pf-transaction"
+                    key={row.key}
+                    aria-label={`Xem ${row.txn.description || row.txn.category || "Giao dịch"}`}
+                    onClick={() =>
+                      p.edit({ entity: "transaction", record: row.txn })
+                    }
+                  >
                     <span className="pf-emoji">
                       {s.categories.find(
                         (c) => c.id === row.txn.resolved_category_id,
@@ -356,7 +607,6 @@ export function Ledger(
                           )?.name
                         }
                       </small>
-                      <RowActions {...p} entity="transaction" row={row.txn} />
                     </div>
                     <div
                       className={
@@ -369,9 +619,16 @@ export function Ledger(
                       </b>
                       <small>{row.txn.type === "INCOME" ? "Thu" : "Chi"}</small>
                     </div>
-                  </article>
+                  </button>
                 ) : (
-                  <article className="pf-row" key={row.key}>
+                  <button
+                    className="pf-row pf-transaction"
+                    key={row.key}
+                    aria-label={`Xem ${row.transfer.note || "Chuyển ví"}`}
+                    onClick={() =>
+                      p.edit({ entity: "transfer", record: row.transfer })
+                    }
+                  >
                     <span className="pf-emoji">
                       <ArrowLeftRight size={20} />
                     </span>
@@ -391,67 +648,210 @@ export function Ledger(
                         }
                         {row.transfer.goal_id ? " · Góp mục tiêu" : ""}
                       </small>
-                      <RowActions {...p} entity="transfer" row={row.transfer} />
                     </div>
                     <b>{money(row.transfer.amount)}</b>
-                  </article>
+                  </button>
                 );
               })}
           </section>
         ))}
       </section>
+      {!p.recent && p.permissions.create && (
+        <Button
+          className="pf-transfer-cta"
+          variant="outline"
+          onClick={() => p.edit({ entity: "transfer" })}
+        >
+          <ArrowLeftRight size={18} />
+          Chuyển tiền giữa ví
+        </Button>
+      )}
     </>
   );
 }
-export function Budgets(p: Props & { month: string; compact?: boolean }) {
-  const budgets = selectMonth(p.snapshot, p.month).budgets;
+export function Budgets(
+  p: Props & {
+    month: string;
+    compact?: boolean;
+    onMonth?: (month: string) => void;
+    categories?: () => void;
+  },
+) {
+  const selected = selectMonth(p.snapshot, p.month),
+    budgets = selected.budgets,
+    overall = budgets.find((b) => !b.category_id),
+    categories = budgets.filter((b) => b.category_id);
+  const item = (b: (typeof budgets)[number]) => {
+    const c = p.snapshot.categories.find((c) => c.id === b.category_id);
+    return (
+      <article
+        className={`pf-budget-item ${b.ratio > 1 ? "over" : b.ratio >= 0.8 ? "warn" : ""}`}
+        key={b.id}
+      >
+        <div className="pf-between">
+          <div className="pf-budget-label">
+            <span>{c?.icon ?? "🏷️"}</span>
+            <strong>{c?.name ?? "Danh mục"}</strong>
+          </div>
+          {p.compact ? (
+            <span className="pf-muted">
+              {shortMoney(b.spent)} / {shortMoney(b.amount)}
+            </span>
+          ) : (
+            <button
+              aria-label={`${p.permissions.edit ? "Sửa" : "Xem"} hạn mức ${c?.name ?? ""}`}
+              onClick={() => p.edit({ entity: "budget", record: b })}
+              disabled={!p.permissions.edit && !p.permissions.delete}
+            >
+              <Pencil size={18} />
+            </button>
+          )}
+        </div>
+        {!p.compact && (
+          <div className="pf-between pf-muted">
+            <span>{money(b.spent)}</span>
+            <span>/ {money(b.amount)}</span>
+          </div>
+        )}
+        <progress
+          aria-label={`Đã chi ${c?.name ?? "danh mục"}`}
+          max={Math.max(b.amount, b.spent)}
+          value={b.spent}
+        />
+        <p className="pf-budget-note">
+          {b.remaining < 0 ? "Vượt" : "Còn"} {money(Math.abs(b.remaining))} ·{" "}
+          {Math.round(b.ratio * 100)}% đã dùng
+        </p>
+      </article>
+    );
+  };
+  const summary = overall ? (
+    <div className="pf-budget-total">
+      <div className="pf-between">
+        <span className="pf-muted">
+          {overall.remaining < 0 ? "Vượt ngân sách tháng" : "Còn có thể chi"}
+        </span>
+        <strong>{money(Math.abs(overall.remaining))}</strong>
+      </div>
+      <progress
+        aria-label="Ngân sách tổng"
+        max={Math.max(overall.amount, overall.spent)}
+        value={overall.spent}
+      />
+      <p className="pf-budget-note">
+        Đã chi {money(overall.spent)} / ngân sách {money(overall.amount)}
+      </p>
+    </div>
+  ) : (
+    <p className="pf-empty">Chưa đặt ngân sách tổng.</p>
+  );
+  if (p.compact)
+    return (
+      <div>
+        {summary}
+        {categories.slice(0, 3).map(item)}
+        <p className="pf-budget-advice">
+          {categories.some((b) => b.ratio >= 0.8)
+            ? "Có danh mục đã dùng hơn 80% ngân sách. Xem Ngân sách để điều chỉnh."
+            : "Mỗi khoản ghi lại giúp bạn nhìn rõ hơn."}
+        </p>
+      </div>
+    );
   return (
     <div className="pf-stack">
-      {!p.compact && (
+      <section className="pf-card">
+        <div className="pf-between">
+          <div>
+            <h2>Ngân sách</h2>
+            <p className="pf-muted">Tất cả ví cá nhân</p>
+          </div>
+          {p.onMonth && <MonthPicker month={p.month} onChange={p.onMonth} />}
+        </div>
+        <div className="pf-between pf-monthly-amount">
+          <strong>{overall ? money(overall.amount) : "Chưa đặt"}</strong>
+          {(overall
+            ? p.permissions.edit || p.permissions.delete
+            : p.permissions.create) && (
+            <button
+              aria-label="Sửa ngân sách tháng"
+              onClick={() =>
+                p.edit({
+                  entity: "budget",
+                  ...(overall
+                    ? { record: overall }
+                    : { defaults: { category_id: "" } }),
+                })
+              }
+            >
+              <Pencil size={20} />
+            </button>
+          )}
+        </div>
+        {overall && (
+          <>
+            <progress
+              aria-label="Ngân sách tháng"
+              max={Math.max(overall.amount, overall.spent)}
+              value={overall.spent}
+            />
+            <p className="pf-muted">
+              Đã chi {money(selected.expense)} ·{" "}
+              {overall.remaining < 0 ? "Vượt" : "Còn"}{" "}
+              {money(Math.abs(overall.remaining))}
+            </p>
+          </>
+        )}
+      </section>
+      <section className="pf-card">
+        <div className="pf-between">
+          <h2>Theo danh mục</h2>
+          <div className="pf-tools">
+            {p.categories && (
+              <button aria-label="Quản lý danh mục" onClick={p.categories}>
+                <Tags size={20} />
+              </button>
+            )}
+            {p.permissions.create && (
+              <button
+                aria-label="Thêm hạn mức"
+                onClick={() =>
+                  p.edit({
+                    entity: "budget",
+                    defaults: {
+                      category_id:
+                        p.snapshot.categories.find(
+                          (c) =>
+                            c.type === "EXPENSE" &&
+                            !c.hidden &&
+                            !budgets.some((b) => b.category_id === c.id),
+                        )?.id ??
+                        p.snapshot.categories.find(
+                          (c) => c.type === "EXPENSE" && !c.hidden,
+                        )?.id ??
+                        "",
+                    },
+                  })
+                }
+              >
+                <Plus size={18} /> Thêm
+              </button>
+            )}
+          </div>
+        </div>
         <p className="pf-muted">
-          Hạn mức tổng và từng danh mục độc lập, lặp lại mỗi tháng trên mọi ví
-          cá nhân.
+          Hạn mức riêng cho từng danh mục, tính chi tiêu từ tất cả ví cá nhân.
         </p>
-      )}
-      {!budgets.length && (
-        <p className="pf-empty">
-          Chưa đặt ngân sách. Đặt hạn mức để theo dõi chi tiêu mỗi tháng.
+        {categories.map(item)}
+        {!categories.length && (
+          <p className="pf-empty">
+            Chưa có ngân sách. Đặt giới hạn cho danh mục bạn quan tâm.
+          </p>
+        )}
+        <p className="pf-muted">
+          Các hạn mức lặp lại hằng tháng. Chuyển ví và khoản công ty không tính
+          vào ngân sách cá nhân.
         </p>
-      )}
-      {budgets.map((b) => (
-        <article
-          className={`pf-budget ${b.ratio > 1 ? "over" : ""}`}
-          key={b.id}
-        >
-          <div className="pf-between">
-            <strong>
-              {b.category_id
-                ? p.snapshot.categories.find((c) => c.id === b.category_id)
-                    ?.name
-                : "Tổng chi tiêu"}
-            </strong>
-            {!p.compact && <RowActions {...p} entity="budget" row={b} />}
-          </div>
-          <div className="pf-between">
-            <span>{b.remaining >= 0 ? "Còn có thể chi" : "Đã vượt"}</span>
-            <b>{money(Math.abs(b.remaining))}</b>
-          </div>
-          <progress
-            aria-label={`Đã chi ${b.category_id ? p.snapshot.categories.find((c) => c.id === b.category_id)?.name : "tổng"}`}
-            max={Math.max(b.amount, b.spent)}
-            value={b.spent}
-          />
-          <small>
-            Đã chi {money(b.spent)} / {money(b.amount)}
-          </small>
-        </article>
-      ))}
-      {!p.compact && p.permissions.create && (
-        <Button onClick={() => p.edit({ entity: "budget" })}>
-          <Plus size={16} />
-          Thêm hạn mức
-        </Button>
-      )}
+      </section>
     </div>
   );
 }
@@ -463,10 +863,10 @@ export function Goals(p: Props) {
         phải số dư còn lại của ví.
       </p>
       {selectGoals(p.snapshot).map((g) => (
-        <article className="pf-card" key={g.id}>
+        <article className="pf-card pf-goal-card" key={g.id}>
           <div className="pf-between">
             <h3>
-              {g.icon} {g.name}
+              <span className="pf-goal-icon">{g.icon}</span> {g.name}
             </h3>
             <RowActions {...p} entity="goal" row={g} />
           </div>
@@ -540,32 +940,40 @@ export function Reports({
 }) {
   const [type, setType] = useState("EXPENSE");
   const selected = selectMonth(s, month);
-  const groups = selected.categories.filter((c) => c.type === type);
-  const total = type === 'EXPENSE' ? selected.expense : selected.income;
+  const groups = selected.categories
+    .filter((c) => c.type === type)
+    .sort((a, b) => b.amount - a.amount);
+  const total = type === "EXPENSE" ? selected.expense : selected.income;
   let offset = 0;
+  const groupColor = (c: (typeof groups)[number], i: number) =>
+    s.categories.find((category) => category.id === c.categoryId)?.color ??
+    colors[i % colors.length];
   const stops = groups.map((c, i) => {
     const begin = offset;
     offset += total ? (c.amount / total) * 100 : 0;
-    return `${colors[i % colors.length]} ${begin}% ${offset}%`;
+    return `${groupColor(c, i)} ${begin}% ${offset}%`;
   });
   const months = Array.from({ length: 6 }, (_, i) =>
     selectMonth(s, shiftMonth(month, i - 5)),
   );
   const max = Math.max(1, ...months.flatMap((m) => [m.income, m.expense]));
+  const largestExpense = selected.categories
+    .filter((c) => c.type === "EXPENSE")
+    .sort((a, b) => b.amount - a.amount)[0];
   return (
     <>
       <div className="pf-stats">
         <div>
-          Thu nhập<strong>{money(selected.income)}</strong>
+          Thu nhập trong tháng<strong>{money(selected.income)}</strong>
         </div>
         <div>
-          Chi tiêu<strong>{money(selected.expense)}</strong>
+          Chi tiêu trong tháng<strong>{money(selected.expense)}</strong>
         </div>
       </div>
       <section className="pf-card">
         <div className="pf-report-controls">
           <MonthPicker month={month} onChange={onMonth} />
-          <div className="pf-pills">
+          <div className="pf-pills pf-report-tabs">
             {[
               ["EXPENSE", "Chi"],
               ["INCOME", "Thu"],
@@ -582,39 +990,75 @@ export function Reports({
         </div>
         {total ? (
           <>
-            <div
-              className="pf-donut"
-              role="img"
-              aria-label={`${type === "EXPENSE" ? "Chi" : "Thu"} ${money(total)}`}
-              style={{ background: `conic-gradient(${stops.join(",")})` }}
-            >
-              <div>
-                <small>{type === "EXPENSE" ? "Tổng chi" : "Tổng thu"}</small>
-                <b>{money(total)}</b>
+            <div className="pf-ring-layout">
+              <div
+                className="pf-donut"
+                role="img"
+                aria-label={`${type === "EXPENSE" ? "Chi" : "Thu"} ${money(total)}`}
+                style={{ background: `conic-gradient(${stops.join(",")})` }}
+              >
+                <div>
+                  <small>{type === "EXPENSE" ? "Tổng chi" : "Tổng thu"}</small>
+                  <b>{shortMoney(total)}</b>
+                  <small>{groups.length} danh mục</small>
+                </div>
               </div>
-            </div>
-            <ul className="pf-legend">
-              {groups.map((c, i) => (
-                <li
-                  key={categoryFilterValue(
-                    categoryFilterFor(c.categoryId, c.legacyName),
-                  )}
-                >
-                  <button
-                    onClick={() =>
-                      onDrill(
-                        categoryFilterFor(c.categoryId, c.legacyName),
-                        type,
-                      )
-                    }
+              <ul className="pf-legend">
+                {groups.slice(0, 4).map((c, i) => (
+                  <li
+                    key={categoryFilterValue(
+                      categoryFilterFor(c.categoryId, c.legacyName),
+                    )}
                   >
-                    <span style={{ background: colors[i % colors.length] }} />
-                    {c.name}
-                    <b>{money(c.amount)}</b>
-                  </button>
-                </li>
-              ))}
-            </ul>
+                    <button
+                      onClick={() =>
+                        onDrill(
+                          categoryFilterFor(c.categoryId, c.legacyName),
+                          type,
+                        )
+                      }
+                    >
+                      <span style={{ background: groupColor(c, i) }} />
+                      {c.name}
+                      <b>{Math.round((c.amount / total) * 100)}%</b>
+                    </button>
+                  </li>
+                ))}
+                {groups.length > 4 && (
+                  <li className="pf-muted">
+                    + {groups.length - 4} danh mục khác
+                  </li>
+                )}
+              </ul>
+            </div>
+            <p className="pf-muted">Chạm vào danh mục để xem từng khoản.</p>
+            {groups.map((c, i) => (
+              <button
+                className="pf-category-report"
+                key={categoryFilterValue(
+                  categoryFilterFor(c.categoryId, c.legacyName),
+                )}
+                onClick={() =>
+                  onDrill(categoryFilterFor(c.categoryId, c.legacyName), type)
+                }
+              >
+                <span className="pf-emoji">
+                  {s.categories.find((category) => category.id === c.categoryId)
+                    ?.icon ?? "🏷️"}
+                </span>
+                <span className="pf-grow">{c.name}</span>
+                <span>{money(c.amount)}</span>
+                <ChevronRight size={18} />
+                <span className="pf-category-progress">
+                  <i
+                    style={{
+                      width: `${(c.amount / total) * 100}%`,
+                      background: groupColor(c, i),
+                    }}
+                  />
+                </span>
+              </button>
+            ))}
           </>
         ) : (
           <p className="pf-empty">
@@ -623,7 +1067,7 @@ export function Reports({
         )}
       </section>
       <section className="pf-card">
-        <h3>Sáu tháng gần đây</h3>
+        <h2>Dòng tiền 6 tháng</h2>
         <div className="pf-bars" role="img" aria-label="Thu chi sáu tháng">
           {months.map((m) => (
             <div key={m.month}>
@@ -661,15 +1105,38 @@ export function Reports({
         <p className="pf-muted">
           Xanh: Thu nhập · Nâu: Chi tiêu. Tháng trống: 0 ₫.
         </p>
-        <Button
-          variant="outline"
-          onClick={() =>
-            downloadCsv(transactionsCsv(s, selected.transactions), month)
-          }
-        >
-          <Download size={16} /> Xuất CSV báo cáo
-        </Button>
       </section>
+      <section
+        className="pf-card pf-monthly-insight"
+        data-testid="monthly-insight"
+      >
+        <h2>Nhìn lại tháng này</h2>
+        <p>
+          {selected.income || selected.expense ? (
+            <>
+              Thu trừ chi {selected.net >= 0 ? "còn" : "âm"}{" "}
+              <strong>{money(Math.abs(selected.net))}</strong>.{" "}
+              {largestExpense && (
+                <>
+                  Khoản chi lớn nhất thuộc{" "}
+                  <strong>{largestExpense.name}</strong>.
+                </>
+              )}
+            </>
+          ) : (
+            "Chưa đủ giao dịch để đưa ra nhận xét."
+          )}
+        </p>
+      </section>
+      <Button
+        className="pf-export-report"
+        variant="outline"
+        onClick={() =>
+          downloadCsv(transactionsCsv(s, selected.transactions), month)
+        }
+      >
+        <Download size={16} /> Xuất giao dịch tháng này
+      </Button>
     </>
   );
 }

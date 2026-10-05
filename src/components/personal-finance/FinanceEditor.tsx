@@ -1,13 +1,7 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import { FinanceSheet } from "./FinanceViews";
 import { useForm } from "react-hook-form";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import {
   mutationSchema,
   type Snapshot,
@@ -90,32 +84,50 @@ const fields = {
 } as const;
 
 export function FinanceEditor({
-  editor,
+  editor: incomingEditor,
   snapshot: s,
   permissions,
   onClose,
   onSaved,
+  embedded = false,
+  footerAddon,
 }: {
   editor: Editor;
   snapshot: Snapshot;
   permissions: Permissions;
   onClose: () => void;
   onSaved?: (r: Receipt) => void;
+  embedded?: boolean;
+  footerAddon?: ReactNode;
 }) {
+  const [removing, setRemoving] = useState(false);
+  const editor = {
+    ...incomingEditor,
+    remove: incomingEditor.remove || removing,
+  };
   const writer = usePersonalFinanceMutation();
   const [held, setHeld] = useState<PendingRequest | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [inline, setInline] = useState(false);
+  const [categoryPicker, setCategoryPicker] = useState(false);
   const [defaults] = useState(() => initial(editor, s));
   const form = useForm<Values>({ defaultValues: defaults });
   const type = String(form.watch("type"));
   const hasField = (key: string) =>
     fields[editor.entity].some((field) => field === key);
-  const title = `${editor.remove ? "Xóa" : editor.record ? "Sửa" : "Thêm"} ${entityLabel[editor.entity]}`;
+  const title = editor.remove
+    ? `Xóa ${entityLabel[editor.entity]}`
+    : editor.record &&
+        (editor.entity === "transaction" || editor.entity === "transfer")
+      ? "Chi tiết giao dịch"
+      : editor.entity === "transfer"
+        ? "Chuyển tiền giữa ví"
+        : `${editor.record ? (permissions.edit ? "Sửa" : "Chi tiết") : "Thêm"} ${entityLabel[editor.entity]}`;
   const allowed = editor.remove
     ? permissions.delete
     : editor.record
-      ? permissions.edit
+      ? permissions.edit &&
+        !(editor.entity === "transfer" && editor.record.goal_id)
       : permissions.create;
   const blocked =
     editor.remove && editor.record
@@ -195,8 +207,15 @@ export function FinanceEditor({
   const input = (key: string, label: string, type = "text") => (
     <label className="pf-field" key={key}>
       {label}
+      {key === "amount" && (
+        <span className="pf-amount-currency" aria-hidden="true">
+          ₫
+        </span>
+      )}
       <input
         aria-label={label}
+        placeholder={key === "amount" ? "0" : undefined}
+        inputMode={key === "amount" ? "decimal" : undefined}
         type={type}
         step="any"
         {...form.register(key)}
@@ -212,7 +231,7 @@ export function FinanceEditor({
       {label}
       <select
         aria-label={label}
-        disabled={key === 'target_wallet_id' && !!editor.defaults?.goal_id}
+        disabled={key === "target_wallet_id" && !!editor.defaults?.goal_id}
         {...form.register(key)}
         value={String(form.watch(key) ?? "")}
         onChange={(e) => {
@@ -250,164 +269,311 @@ export function FinanceEditor({
       (c) =>
         [c.id, `${c.name}${c.hidden ? " (đã ẩn)" : ""}`] as [string, string],
     );
-  return (
-    <>
-      <Dialog
-        open
-        onOpenChange={(open) => {
-          if (!open && !busy) onClose();
-        }}
-      >
-        <DialogContent className="pf-dialog">
-          <DialogHeader>
-            <DialogTitle>{title}</DialogTitle>
-            <DialogDescription>
-              {editor.remove
-                ? "Xác nhận thay đổi. Lịch sử liên kết được bảo vệ."
-                : "Thông tin chỉ thuộc ví cá nhân của bạn."}
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={form.handleSubmit(submit)} className="pf-form">
-            <fieldset disabled={locked || !allowed}>
-              {editor.remove ? (
-                <p>
-                  {blocked ??
-                    `Bạn muốn xóa ${String(editor.record?.name ?? entityLabel[editor.entity])}?`}
-                </p>
-              ) : (
-                <>
-                  {hasField("type") &&
-                    select("type", "Loại", [
-                      ["EXPENSE", "Chi tiêu"],
-                      ["INCOME", "Thu nhập"],
-                    ])}
-                  {hasField("name") &&
-                    input("name", `Tên ${entityLabel[editor.entity]}`)}
-                  {editor.entity === "wallet" &&
-                    select("kind", "Loại ví", [
-                      ["cash", "Tiền mặt"],
-                      ["bank", "Ngân hàng"],
-                      ["ewallet", "Ví điện tử"],
-                      ["saving", "Tiết kiệm"],
-                      ["other", "Khác"],
-                    ])}
-                  {hasField("icon") && input("icon", "Biểu tượng")}
-                  {editor.entity === "wallet" && (
-                    <>
-                      {input("opening_balance", "Số dư ban đầu", "number")}
-                      <p className="pf-muted">
-                        Số dư ban đầu không tính vào thu nhập.
-                      </p>
-                    </>
-                  )}
-                  {hasField("amount") &&
-                    input(
-                      "amount",
-                      editor.entity === "budget"
-                        ? "Hạn mức mỗi tháng"
-                        : "Số tiền",
-                      "number",
-                    )}
-                  {editor.entity === "goal" && (
-                    <>
-                      {input("target", "Số tiền mục tiêu", "number")}
-                      {input("target_date", "Ngày mục tiêu", "date")}
-                    </>
-                  )}
-                  {hasField("txn_date") && input("txn_date", "Ngày", "date")}
-                  {hasField("wallet_id") &&
-                    select(
-                      "wallet_id",
-                      editor.entity === "goal" ? "Ví tích lũy" : "Ví",
-                      wallets,
-                    )}
-                  {editor.entity === "transfer" && (
-                    <>
-                      {select("source_wallet_id", "Ví gửi", wallets)}
-                      {select("target_wallet_id", "Ví nhận", wallets)}
-                      {editor.defaults?.goal_id && (
-                        <p className="pf-muted">
-                          Khoản góp chuyển tiền thực giữa hai ví và được giữ
-                          nguyên trong lịch sử.
-                        </p>
-                      )}
-                    </>
-                  )}
-                  {hasField("category_id") && (
-                    <>
-                      {select(
+  const content = (
+    <form onSubmit={form.handleSubmit(submit)} className="pf-form">
+      <fieldset disabled={locked || !allowed}>
+        {editor.remove ? (
+          <p>
+            {blocked ??
+              `Bạn muốn xóa ${String(editor.record?.name ?? entityLabel[editor.entity])}?`}
+          </p>
+        ) : (
+          <>
+            {hasField("type") && (
+              <div className="pf-pills pf-editor-types">
+                {[
+                  ["EXPENSE", "− Chi tiêu"],
+                  ["INCOME", "+ Thu nhập"],
+                ].map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    className={type === value ? "active" : ""}
+                    aria-pressed={type === value}
+                    onClick={() => {
+                      form.setValue("type", value);
+                      form.setValue(
                         "category_id",
-                        "Danh mục",
-                        editor.entity === "budget"
-                          ? [["", "Tổng chi tiêu"], ...categories]
-                          : categories,
-                      )}
-                      {permissions.create && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => setInline(true)}
-                        >
-                          Thêm danh mục ngay
-                        </Button>
-                      )}
-                    </>
-                  )}
-                  {hasField("description") && input("description", "Ghi chú")}
-                  {editor.entity === "transfer" && input("note", "Ghi chú")}
-                  {hasField("hidden") && (
-                    <label className="pf-check">
-                      <input type="checkbox" {...form.register("hidden")} />{" "}
-                      {editor.entity === "wallet"
-                        ? "Ẩn khỏi tổng quan"
-                        : "Ẩn khỏi lựa chọn mới"}
-                    </label>
-                  )}
-                </>
-              )}
-            </fieldset>
-            {error && (
-              <p role="alert" className="pf-error">
-                {error}
-                {held && " Yêu cầu đã khóa. Gửi lại y nguyên để xác nhận."}
-              </p>
+                        s.categories.find((c) => c.type === value && !c.hidden)
+                          ?.id ?? "",
+                      );
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             )}
-            <div className="pf-form-actions">
-              <Button
-                type="button"
-                variant="outline"
-                disabled={busy}
-                onClick={onClose}
-              >
-                Đóng
-              </Button>
-              {allowed && !blocked && (
-                <Button type="submit" disabled={busy}>
-                  {busy
-                    ? "Đang lưu…"
-                    : held
-                      ? "Gửi lại y nguyên"
-                      : editor.remove
-                        ? "Xác nhận xóa"
-                        : "Lưu"}
-                </Button>
+            {hasField("name") &&
+              input("name", `Tên ${entityLabel[editor.entity]}`)}
+            {editor.entity === "wallet" &&
+              select("kind", "Loại ví", [
+                ["cash", "Tiền mặt"],
+                ["bank", "Ngân hàng"],
+                ["ewallet", "Ví điện tử"],
+                ["saving", "Tiết kiệm"],
+                ["other", "Khác"],
+              ])}
+            {hasField("icon") && (
+              <div className="pf-field">
+                <span>Chọn biểu tượng</span>
+                <div className="pf-emoji-options">
+                  {[
+                    ...new Set([
+                      String(form.watch("icon")),
+                      ...(editor.entity === "wallet"
+                        ? ["🏦", "👛", "🌱", "📱", "💳", "💵", "🪙", "🎯"]
+                        : [
+                            "🏷️",
+                            "🍜",
+                            "☕",
+                            "🏠",
+                            "🐾",
+                            "🎁",
+                            "🌱",
+                            "💼",
+                            "🧘",
+                            "🚗",
+                            "💻",
+                          ]),
+                    ]),
+                  ].map((icon) => (
+                    <button
+                      key={icon}
+                      type="button"
+                      aria-label={`Biểu tượng ${icon}`}
+                      aria-pressed={form.watch("icon") === icon}
+                      onClick={() => form.setValue("icon", icon)}
+                    >
+                      {icon}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {editor.entity === "wallet" && (
+              <>
+                {input("opening_balance", "Số dư ban đầu", "number")}
+                <p className="pf-muted">
+                  Số dư ban đầu không tính vào thu nhập.
+                </p>
+              </>
+            )}
+            {hasField("amount") &&
+              input(
+                "amount",
+                editor.entity === "budget" ? "Hạn mức mỗi tháng" : "Số tiền",
+                "number",
               )}
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
+            {editor.entity === "goal" && (
+              <>
+                {input("target", "Số tiền mục tiêu", "number")}
+                {input("target_date", "Ngày mục tiêu", "date")}
+              </>
+            )}
+            {hasField("txn_date") &&
+              editor.entity !== "transaction" &&
+              input(
+                "txn_date",
+                editor.entity === "transfer" ? "Ngày chuyển" : "Ngày giao dịch",
+                "date",
+              )}
+            {hasField("wallet_id") &&
+              editor.entity !== "transaction" &&
+              select(
+                "wallet_id",
+                editor.entity === "goal" ? "Ví tích lũy" : "Ví thanh toán",
+                wallets,
+              )}
+            {editor.entity === "transfer" && (
+              <>
+                {select("source_wallet_id", "Ví chuyển", wallets)}
+                {select("target_wallet_id", "Ví nhận", wallets)}
+                {editor.defaults?.goal_id && (
+                  <p className="pf-muted">
+                    Khoản góp chuyển tiền thực giữa hai ví và được giữ nguyên
+                    trong lịch sử.
+                  </p>
+                )}
+              </>
+            )}
+            {hasField("category_id") && (
+              <>
+                <div className="pf-field">
+                  <span>Danh mục</span>
+                  <button
+                    className="pf-select-category"
+                    type="button"
+                    aria-label="Chọn danh mục"
+                    onClick={() => setCategoryPicker(true)}
+                  >
+                    <span>
+                      {
+                        s.categories.find(
+                          (c) => c.id === form.watch("category_id"),
+                        )?.icon
+                      }{" "}
+                      {s.categories.find(
+                        (c) => c.id === form.watch("category_id"),
+                      )?.name ??
+                        (editor.entity === "budget"
+                          ? "Tổng chi tiêu"
+                          : "Chọn danh mục")}
+                    </span>
+                    <span>⌄</span>
+                  </button>
+                </div>
+              </>
+            )}
+            {editor.entity === "transaction" && (
+              <div className="pf-two-cols">
+                {select("wallet_id", "Ví thanh toán", wallets)}
+                {input("txn_date", "Ngày giao dịch", "date")}
+              </div>
+            )}
+            {hasField("description") && input("description", "Ghi chú")}
+            {editor.entity === "transfer" && input("note", "Ghi chú")}
+            {hasField("hidden") && (
+              <label className="pf-check">
+                <input type="checkbox" {...form.register("hidden")} />{" "}
+                {editor.entity === "wallet"
+                  ? "Ẩn khỏi tổng quan"
+                  : "Ẩn khỏi lựa chọn mới"}
+              </label>
+            )}
+          </>
+        )}
+      </fieldset>
+      {editor.record &&
+        !editor.remove &&
+        deleteReason(editor.entity, editor.record, s) && (
+          <p className="pf-muted pf-delete-reason">
+            {deleteReason(editor.entity, editor.record, s)}
+          </p>
+        )}
+      {error && (
+        <p role="alert" className="pf-error">
+          {error}
+          {held && " Yêu cầu đã khóa. Gửi lại y nguyên để xác nhận."}
+        </p>
+      )}
+      {footerAddon}
+      <div className="pf-form-actions">
+        {editor.record && !editor.remove && permissions.delete && (
+          <Button
+            type="button"
+            variant="destructive"
+            disabled={locked || !!deleteReason(editor.entity, editor.record, s)}
+            title={deleteReason(editor.entity, editor.record, s) ?? undefined}
+            onClick={() => {
+              if (!locked) setRemoving(true);
+            }}
+          >
+            Xóa {entityLabel[editor.entity]}
+          </Button>
+        )}
+        <Button
+          type="button"
+          variant="outline"
+          disabled={busy}
+          onClick={onClose}
+        >
+          Hủy
+        </Button>
+        {allowed && !blocked && (
+          <Button type="submit" disabled={busy}>
+            {busy
+              ? "Đang lưu…"
+              : held
+                ? "Gửi lại y nguyên"
+                : editor.remove
+                  ? "Xác nhận xóa"
+                  : editor.record
+                    ? "Lưu thay đổi"
+                    : editor.entity === "transfer"
+                      ? "Chuyển tiền"
+                      : editor.entity === "transaction"
+                        ? "Lưu giao dịch"
+                        : "Lưu"}
+          </Button>
+        )}
+      </div>
+    </form>
+  );
+  const pickerContent = categoryPicker && !inline && (
+    <>
+      <h3>{embedded ? "Chọn danh mục" : ""}</h3>
+      <div className="pf-category-grid">
+        {(editor.entity === "budget"
+          ? [["", "Tổng chi tiêu"], ...categories]
+          : categories
+        ).map(([id, name]) => (
+          <button
+            type="button"
+            key={id}
+            className="pf-category-detail"
+            aria-pressed={form.watch("category_id") === id}
+            onClick={() => {
+              form.setValue("category_id", id);
+              setCategoryPicker(false);
+            }}
+          >
+            <span className="pf-emoji">
+              {s.categories.find((c) => c.id === id)?.icon ?? "🏷️"}
+            </span>
+            <span>{name}</span>
+          </button>
+        ))}
+      </div>
+      <div className="pf-form-actions">
+        <Button variant="outline" onClick={() => setCategoryPicker(false)}>
+          Quay lại
+        </Button>
+        {permissions.create && (
+          <Button onClick={() => setInline(true)}>Thêm danh mục</Button>
+        )}
+      </div>
+    </>
+  );
+  const editorContent = (
+    <>
+      <div hidden={categoryPicker || inline}>{content}</div>
+      {pickerContent}
       {inline && (
         <FinanceEditor
+          embedded
           editor={{ entity: "category", defaults: { type: categoryType } }}
           snapshot={s}
           permissions={permissions}
           onClose={() => setInline(false)}
           onSaved={(r) => {
             const id = r.entities[0]?.id;
-            if (id) form.setValue("category_id", id);
+            if (id) {
+              form.setValue("category_id", id);
+              setCategoryPicker(false);
+            }
           }}
         />
       )}
     </>
+  );
+  return embedded ? (
+    editorContent
+  ) : (
+    <FinanceSheet
+      open
+      title={
+        inline ? "Thêm danh mục" : categoryPicker ? "Chọn danh mục" : title
+      }
+      onClose={() => {
+        if (!busy) {
+          if (inline) setInline(false);
+          else if (categoryPicker) setCategoryPicker(false);
+          else onClose();
+        }
+      }}
+    >
+      {editorContent}
+    </FinanceSheet>
   );
 }

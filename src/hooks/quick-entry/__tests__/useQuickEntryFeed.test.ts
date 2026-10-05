@@ -88,6 +88,51 @@ beforeEach(() => {
 });
 afterEach(() => vi.useRealTimers());
 
+it("manual company draft stays in company review and does not save on creation", async () => {
+  const { result } = mount();
+  let id: string | null = null;
+  act(() => {
+    id = result.current.addManual("company");
+  });
+  const card = cardsOf(result)[0];
+  expect(card.id).toBe(id);
+  expect(card.state.draft.mode).toBe("company");
+  expect(card.state.draft.lines).toHaveLength(1);
+  expect(h.saveCompany).not.toHaveBeenCalled();
+  expect(h.savePersonal).not.toHaveBeenCalled();
+  act(() =>
+    result.current.changeCard(card.id, {
+      ...card.state,
+      draft: {
+        ...card.state.draft,
+        buildingId: "b102",
+        accountId: "acc1",
+        lines: [
+          {
+            ...card.state.draft.lines[0],
+            amount: 300000,
+            categoryId: "t-vt",
+            description: "Vật tư",
+          },
+        ],
+      },
+    }),
+  );
+  h.saveCompany.mockResolvedValue({ kind: "saved", message: "Đã lưu" });
+  await act(async () => {
+    await result.current.saveCard(card.id);
+  });
+  expect(h.saveCompany).toHaveBeenCalled();
+  expect(h.savePersonal).not.toHaveBeenCalled();
+});
+it("rejects manual company drafts when company create permission is unavailable", () => {
+  const { result } = mount(refs({ canCompany: false }));
+  act(() => {
+    expect(result.current.addManual("company")).toBeNull();
+  });
+  expect(cardsOf(result)).toHaveLength(0);
+});
+
 it('new personal cards keep the default wallet even when hidden on home',async()=>{
  const r=refs();r.personalWallets[0].hidden=true;
  h.readWithAi.mockResolvedValue(ok(ai()));

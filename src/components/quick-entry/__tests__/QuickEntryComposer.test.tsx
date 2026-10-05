@@ -60,6 +60,21 @@ afterEach(() => {
 });
 
 describe("QuickEntryComposer — gõ chữ", () => {
+  it("personal home voice launcher opens the real voice flow while retaining typed content", () => {
+    const h = setup({ appearance: "personal", transcribe: null });
+    fireEvent.change(h.box, { target: { value: "Nội dung giữ lại" } });
+    h.rerender(
+      <QuickEntryComposer
+        {...h.props}
+        launchAction={{ id: 1, action: "voice" }}
+      />,
+    );
+    expect(screen.getByRole("status").textContent).toContain(
+      "micro trên bàn phím",
+    );
+    expect(h.box.value).toBe("Nội dung giữ lại");
+  });
+
   it('đổi chế độ đang lỗi dữ liệu vẫn giữ ảnh và chữ; chỉ chốt nơi gửi khi gửi',()=>{
     const h=setup({mode:'personal'});
     fireEvent.change(h.box,{target:{value:'Nội dung giữ lại'}});
