@@ -2,10 +2,10 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-const h = vi.hoisted(() => ({ rpc: vi.fn(), server: null as string | null }));
+const h = vi.hoisted(() => ({ invokeRpc: vi.fn(), server: null as string | null }));
 vi.mock('@/integrations/supabase/client', () => ({ supabase: {
  auth: { onAuthStateChange: () => ({data:{subscription:{unsubscribe:()=>undefined}}}), getSession: async()=>({data:{session:{user:{id:'user-demo'},access_token:`header.${btoa(JSON.stringify({sub:'user-demo'}))}.signature`}},error:null}) },
- rpc: (...args: unknown[]) => { const result = args[0]==='set_my_ui_preference' ? Promise.resolve({data:{selectedOrganizationId:(args[1] as {p_value:string}).p_value},error:null}) : h.rpc(...args); return {setHeader:()=>result,then:result.then.bind(result)}; },
+ rpc: (...args: unknown[]) => { const result = args[0]==='set_my_ui_preference' ? Promise.resolve({data:{selectedOrganizationId:(args[1] as {p_value:string}).p_value},error:null}) : h.invokeRpc(...args); return {setHeader:()=>result,then:result.then.bind(result)}; },
  from:()=>({select:()=>({eq:()=>({single:()=>({setHeader:async()=>({data:{ui_preferences:{selectedOrganizationId:h.server}},error:null})})})})})
 } }));
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ data: { id: 'user-demo' }, isLoading: false, isError: false }) }));
@@ -36,8 +36,8 @@ beforeEach(() => {
   localStorage.clear();
   localStorage.setItem('ihomecrm.selectedOrganizationId', 'org-a');
   h.server = null;
-  h.rpc.mockReset();
-  h.rpc.mockResolvedValue({ data: { organizations: [
+  h.invokeRpc.mockReset();
+  h.invokeRpc.mockResolvedValue({ data: { organizations: [
     { id: 'org-a', name: 'Công ty A', slug: null, member_type: 'OWNER' },
     { id: 'org-b', name: 'Công ty B', slug: null, member_type: 'OWNER' },
   ] }, error: null });

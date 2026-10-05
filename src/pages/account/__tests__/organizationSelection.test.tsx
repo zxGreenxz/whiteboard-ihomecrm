@@ -9,11 +9,11 @@ import { OrganizationProvider, useOrganization } from '@/contexts/OrganizationCo
 const fixture = vi.hoisted(() => ({
   phone: false,
   user: { id: 'demo-user' } as { id: string } | null,
-  rpc: vi.fn(),
+  invokeRpc: vi.fn(),
 }));
 vi.mock('@/integrations/supabase/client', () => ({ supabase: {
  auth: { onAuthStateChange:()=>({data:{subscription:{unsubscribe:()=>undefined}}}), getSession:async()=>({data:{session:fixture.user?{user:fixture.user,access_token:`header.${btoa(JSON.stringify({sub:fixture.user.id}))}.signature`}:null},error:null}) },
- rpc:(...args:unknown[])=>{ const result=args[0]==='set_my_ui_preference'?Promise.resolve({data:{selectedOrganizationId:(args[1] as {p_value:string}).p_value},error:null}):fixture.rpc(...args);return {setHeader:()=>result,then:result.then.bind(result)}; },
+ rpc:(...args:unknown[])=>{ const result=args[0]==='set_my_ui_preference'?Promise.resolve({data:{selectedOrganizationId:(args[1] as {p_value:string}).p_value},error:null}):fixture.invokeRpc(...args);return {setHeader:()=>result,then:result.then.bind(result)}; },
  from:()=>({select:()=>({eq:()=>({single:()=>({setHeader:async()=>({data:{ui_preferences:{}},error:null})})})})})
 } }));
 vi.mock('@/hooks/useAuth', () => ({
@@ -50,7 +50,7 @@ beforeEach(() => {
   localStorage.clear();
   fixture.phone = false;
   fixture.user = { id: 'demo-user' };
-  fixture.rpc.mockReset().mockResolvedValue(response());
+  fixture.invokeRpc.mockReset().mockResolvedValue(response());
   vi.stubGlobal('PointerEvent', MouseEvent);
   HTMLElement.prototype.scrollIntoView = vi.fn();
   HTMLElement.prototype.hasPointerCapture = vi.fn(() => false);
@@ -71,7 +71,7 @@ describe('Lưu lựa chọn công ty', () => {
     expect(localStorage.getItem(storageKey)).toBe(companyB.id);
     expect(screen.getByTestId('selected-scope').textContent).toBe(companyB.id);
     // Chọn công ty dùng RPC atomic; mock directory chỉ nhận request đọc.
-    expect(fixture.rpc.mock.calls.every(([name]) => name === 'list_my_copilot_organizations_v1')).toBe(true);
+    expect(fixture.invokeRpc.mock.calls.every(([name]) => name === 'list_my_copilot_organizations_v1')).toBe(true);
 
     first.unmount();
     mountAccount(); // QueryClient mới: đọc lại lựa chọn từ trình duyệt
@@ -86,7 +86,7 @@ describe('Lưu lựa chọn công ty', () => {
 
 it('giữ lựa chọn khi tải lỗi, rồi khôi phục sau khi thử lại', async () => {
   localStorage.setItem(storageKey, companyB.id);
-  fixture.rpc.mockResolvedValueOnce({ data: null, error: new Error('offline') });
+  fixture.invokeRpc.mockResolvedValueOnce({ data: null, error: new Error('offline') });
   mountAccount();
   expect((await screen.findByRole('alert')).textContent).toContain('Lựa chọn đã lưu vẫn được giữ lại');
   expect(JSON.parse(localStorage.getItem(`${storageKey}:demo-user`)!).id).toBe(companyB.id);
@@ -103,11 +103,11 @@ it('đăng xuất không xoá lựa chọn tài khoản và không gọi danh b�
   await screen.findByTestId('account-organization-card');
   expect(JSON.parse(localStorage.getItem(`${storageKey}:demo-user`)!).id).toBe(companyB.id);
   expect(localStorage.getItem(storageKey)).toBeNull();
-  expect(fixture.rpc).not.toHaveBeenCalled();
+  expect(fixture.invokeRpc).not.toHaveBeenCalled();
 });
 
 it('lưu công ty duy nhất để sau khi có thêm công ty vẫn giữ lựa chọn', async () => {
-  fixture.rpc.mockResolvedValueOnce(response([companyB]));
+  fixture.invokeRpc.mockResolvedValueOnce(response([companyB]));
   const first = mountAccount();
   await waitFor(() => expect(localStorage.getItem(storageKey)).toBe(companyB.id));
   first.unmount();
@@ -125,7 +125,7 @@ it('không dùng công ty đã mất quyền và không tự chọn công ty đ�
 });
 
 it('danh bạ rỗng hiện hướng dẫn cấp quyền, không giả làm lỗi mạng', async () => {
-  fixture.rpc.mockResolvedValue(response([]));
+  fixture.invokeRpc.mockResolvedValue(response([]));
   mountAccount();
   await screen.findByText(/Tài khoản chưa có công ty khả dụng/);
   expect(screen.queryByRole('button', { name: 'Thử lại' })).toBeNull();
