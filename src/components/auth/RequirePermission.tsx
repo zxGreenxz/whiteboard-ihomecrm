@@ -28,13 +28,17 @@
 // hỏi đúng toà đó — xem `canUse`. Không truyền = câu hỏi yếu hơn, đúng cho
 // route không gắn toà.
 
+import { lazy, Suspense } from 'react';
 import { Navigate } from "react-router-dom";
 import { useMyPermissions } from "@/hooks/useMyPermissions";
 import { canUse } from "@/lib/permissionPages";
 import type { ActionKey } from "@/lib/permissions";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { RequirePersonalFinancePermission } from './RequirePersonalFinancePermission';
+
+// Personal-only permissions are not part of the login/company bootstrap.
+const RequirePersonalFinancePermission = lazy(() => import('./RequirePersonalFinancePermission')
+  .then(module => ({ default: module.RequirePersonalFinancePermission })));
 
 interface RequirePermissionProps {
   module: string;
@@ -54,7 +58,9 @@ interface RequirePermissionProps {
 
 export function RequirePermission(props: RequirePermissionProps) {
   if (props.module === 'personal_finance' && !props.buildingId) {
-    return <RequirePersonalFinancePermission action={props.action} fallbackPath={props.fallbackPath}>{props.children}</RequirePersonalFinancePermission>;
+    return <Suspense fallback={<div className="p-6 space-y-3"><Skeleton className="h-8 w-1/3" /><Skeleton className="h-32 w-full" /></div>}>
+      <RequirePersonalFinancePermission action={props.action} fallbackPath={props.fallbackPath}>{props.children}</RequirePersonalFinancePermission>
+    </Suspense>;
   }
   return <RequireOrganizationPermission {...props} />;
 }
