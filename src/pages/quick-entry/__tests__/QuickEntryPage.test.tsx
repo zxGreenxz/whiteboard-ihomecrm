@@ -51,6 +51,7 @@ const baseRefs = (over: Partial<QuickEntryRefs> = {}): QuickEntryRefs => ({
   orgId: "org-1",
   loading: false,
   permissionsLoading:false, permissionsError:null, personalLoading:false, personalError:null, personalReady:true,
+  personalPermissionsLoading:false,personalPermissionsError:null,companyPermissionsLoading:false,companyPermissionsError:null,
   personalWallets:[{id:'11111111-1111-4111-8111-111111111111',user_id:'user-1',version:1,name:'Tiền mặt',kind:'cash',icon:'wallet',hidden:false,is_default:true,opening_balance:0,balance:0}],
   personalCategories:[{id:'22222222-2222-4222-8222-222222222222',user_id:'user-1',version:1,name:'Ăn uống',type:'EXPENSE',hidden:false,icon:'utensils',color:'#123456',seed_key:null,legacy_name:null}],
   companyLoading:false,companyError:null,companyReady:true,

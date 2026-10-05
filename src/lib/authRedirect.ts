@@ -3,7 +3,11 @@ export function safeAuthRedirect(value: unknown): string | null {
   if (typeof value !== 'string' || !value.startsWith('/') || value.startsWith('//')) return null;
   // Refuse URL-parser tricks and encoded separators/controls, including nested
   // percent encodings, while preserving ordinary query values such as 10%25.
-  if (/[\\\u0000-\u0020\u007f]|%(?:25)*(?:2f|5c|0[0-9a-f]|1[0-9a-f]|7f)/i.test(value)) return null;
+  for (let index = 0; index < value.length; index++) {
+    const code = value.charCodeAt(index);
+    if (code <= 0x20 || code === 0x7f || code === 0x5c) return null;
+  }
+  if (/%(?:25)*(?:2f|5c|0[0-9a-f]|1[0-9a-f]|7f)/i.test(value)) return null;
   try {
     const url = new URL(value, 'https://internal.invalid');
     if (url.origin !== 'https://internal.invalid') return null;
@@ -11,6 +15,8 @@ export function safeAuthRedirect(value: unknown): string | null {
     if (/^\/(?:login|register|forgot-password|reset-password)(?:\/|$)/i.test(pathname)) return null;
     return url.pathname + url.search + url.hash;
   } catch {
+    // URL/percent decoding can reject malformed user input: deliberately deny
+    // this redirect, rather than treating a failed data request as empty data.
     return null;
   }
 }
