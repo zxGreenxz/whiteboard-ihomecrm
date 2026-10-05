@@ -17,10 +17,10 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 
 | Chỉ số | Giá trị |
 |---|---|
-| RPC được gọi từ mã nguồn | 360 |
+| RPC được gọi từ mã nguồn | 363 |
 | Hàm trong catalog (public + api) | 1256 |
 | File mã nguồn đã quét | 2422 |
-| SECURITY DEFINER | 344 |
+| SECURITY DEFINER | 346 |
 | **Gọi mà server KHÔNG CÓ** | **0** |
 
 ## Theo mức rủi ro
@@ -28,9 +28,9 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 | Mức | Số RPC | Nghĩa là |
 |---|---|---|
 | thường | 262 | còn lại |
-| tiền | 98 | có nơi gọi nằm trong màn tiền — sai là sai sổ sách |
+| tiền | 101 | có nơi gọi nằm trong màn tiền — sai là sai sổ sách |
 
-## 98 RPC chạm TIỀN
+## 101 RPC chạm TIỀN
 
 Đây là danh sách đáng đọc nhất trong trang này: mỗi dòng là một đường ghi hoặc
 đọc có thể làm lệch số trên sổ.
@@ -94,6 +94,9 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 | `mark_overdue_invoices_v1` | ✔ | hooks/useInvoices.ts |
 | `notify_claim_push_batch_v1` | ✔ | supabase/functions/salary-v5-jobs/index.ts |
 | `notify_settle_push_batch_v1` | ✔ | supabase/functions/salary-v5-jobs/index.ts |
+| `personal_finance_bootstrap` | ✔ | hooks/personal-finance/usePersonalFinance.ts |
+| `personal_finance_mutate` | ✔ | hooks/personal-finance/usePersonalFinance.ts |
+| `personal_finance_snapshot` |  | hooks/personal-finance/usePersonalFinance.ts |
 | `prepare_commission_requests_v1` | ✔ | lib/contractCommissionFollowup.ts |
 | `propose_cashbook_closing_v1` | ✔ | hooks/useCashbookClosing.ts |
 | `quote_contract_rent_support_v1` | ✔ | lib/invoiceRentSupport.ts, lib/rentSupportApi.ts |

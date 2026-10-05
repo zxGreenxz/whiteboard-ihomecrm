@@ -9,12 +9,12 @@
     ]
   },
   "counts": {
-    "calledRpcs": 360,
+    "calledRpcs": 363,
     "byRisk": {
       "normal": 262,
-      "financial": 98
+      "financial": 101
     },
-    "securityDefiner": 344
+    "securityDefiner": 346
   },
   "missingOnServer": [],
   "rpcs": {
@@ -4277,6 +4277,66 @@
         "src/hooks/useUtilityBills.ts"
       ],
       "risk": "normal"
+    },
+    "personal_finance_bootstrap": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "",
+          "returns": "void",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/personal-finance/usePersonalFinance.ts"
+      ],
+      "risk": "financial"
+    },
+    "personal_finance_mutate": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_request_key uuid, p_payload jsonb",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/personal-finance/usePersonalFinance.ts"
+      ],
+      "risk": "financial"
+    },
+    "personal_finance_snapshot": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": false,
+          "searchPath": "search_path=pg_catalog, public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/personal-finance/usePersonalFinance.ts"
+      ],
+      "risk": "financial"
     },
     "pra_by_token": {
       "definitions": [
