@@ -20,6 +20,7 @@
     "src/lib/personalFinance/service.ts",
     "src/lib/personalFinance/pendingRequests.ts",
     "src/lib/personalFinance/selectors.ts",
+    "src/lib/personalFinance/money.ts",
     "src/lib/personalFinance/transactionInput.ts",
     "src/lib/quickEntry/personalRefs.ts",
     "src/hooks/personal-finance/usePersonalFinance.ts",

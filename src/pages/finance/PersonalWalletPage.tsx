@@ -33,7 +33,9 @@ import {
   localMonth,
   selectBalance,
   selectMonth,
+  selectGoals,
 } from "@/lib/personalFinance/selectors";
+import { MoneyRangeError } from "@/lib/personalFinance/money";
 import { useMyShareholder } from "@/hooks/useShareholders";
 import {
   useProfitAllocations,
@@ -51,6 +53,7 @@ import {
 } from "@/components/personal-finance/FinanceViews";
 import {
   money,
+  shiftMonth,
   emptyFilters,
   type Editor,
 } from "@/components/personal-finance/presentation";
@@ -115,7 +118,21 @@ export default function PersonalWalletPage() {
   const [filters, setFilters] = useState(emptyFilters);
   const [budgetTab, setBudgetTab] = useState("budget");
   const s = query.data;
-  const m = s ? selectMonth(s, month) : null;
+  let m: ReturnType<typeof selectMonth> | null = null;
+  let balance = 0;
+  let moneyError: string | null = null;
+  try {
+    if (s) {
+      balance = selectBalance(s);
+      m = selectMonth(s, month);
+      // Preflight every aggregate used by the mounted tabs, including older report months.
+      selectGoals(s);
+      for (let i = 1; i < 6; i++) selectMonth(s, shiftMonth(month, -i));
+    }
+  } catch (error) {
+    if (!(error instanceof MoneyRangeError)) throw error;
+    moneyError = error.message;
+  }
   const props = s ? { snapshot: s, permissions, edit: setEditor } : null;
   return (
     <MainLayout hideMobileHeader>
@@ -128,6 +145,11 @@ export default function PersonalWalletPage() {
           <div className="pf-card" role="alert">
             Không tải được ví cá nhân.
             <Button onClick={() => void query.refetch()}>Thử lại</Button>
+          </div>
+        ) : moneyError ? (
+          <div className="pf-card" role="alert">
+            {moneyError}
+            <Button onClick={() => void query.refetch()}>Tải lại</Button>
           </div>
         ) : s && m && props ? (
           <>
@@ -164,7 +186,7 @@ export default function PersonalWalletPage() {
                   </div>
                 </div>
                 <strong data-testid="total-balance">
-                  {hidden ? "••••••" : money(selectBalance(s))}
+                  {hidden ? "••••••" : money(balance)}
                 </strong>
                 <small>Số dư hiện tại · {s.wallets.length} ví cá nhân</small>
                 <div className="pf-balance-stats">
@@ -394,7 +416,7 @@ export default function PersonalWalletPage() {
                 className={`${tab === id ? "active" : ""} ${id === "entry" ? "pf-add" : ""}`}
                 aria-label={label}
                 aria-current={tab === id ? "page" : undefined}
-                disabled={!s}
+                disabled={!s || !!moneyError}
                 onClick={() =>
                   id === "entry" ? setSheet("entry") : setTab(id)
                 }

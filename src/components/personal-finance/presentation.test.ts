@@ -8,6 +8,10 @@ import type { Snapshot } from "@/lib/personalFinance/contract";
 import { describe, expect, it } from "vitest";
 import { money, changedFields, deleteReason, shiftMonth } from "./presentation";
 describe("personal finance presentation boundaries", () => {
+  it('explains seeded category protection and suggests hiding', () => {
+    const s={categories:[{id:'seed',type:'EXPENSE',hidden:false},{id:'other',type:'EXPENSE',hidden:false}],transactions:[],budgets:[]} as unknown as Snapshot;
+    expect(deleteReason('category',{id:'seed',seed_key:'food',type:'EXPENSE',hidden:false},s)).toEqual(expect.stringMatching(/mặc định.*ẩn/));
+  });
   it("preserves legacy fractions and unchanged historical fields", () => {
     expect(money(12.125)).toContain("12,125");
     expect(

@@ -27,6 +27,7 @@ const WHOLE_BUILDING = "__ca_toa__";
 const AMOUNT_PATH = /^lines\.(\d+)\.amount$/;
 
 const FLAG_TEXT: Record<DraftFlag, string> = {
+  ai_direction_conflict: "AI tìm thấy cả Thu và Chi khác lựa chọn bạn đã chốt. Đã giữ nguyên nháp; các khoản AI bổ sung chưa được thêm. Hãy kiểm lại nội dung và thêm riêng khoản còn thiếu.",
   missing_amount: "Chưa có số tiền — nhập vào ô tiền.",
   small_amount: "Số tiền dưới 10.000đ — có phải thiếu chữ “k”?",
   ambiguous_amount: "Câu có nhiều con số — kiểm lại số tiền.",

@@ -97,6 +97,8 @@ export function deleteReason(
       return "Ví đã có lịch sử giao dịch. Bạn có thể ẩn ví khỏi tổng quan.";
   }
   if (entity === "category") {
+    if (row.seed_key != null)
+      return "Danh mục mặc định cần được giữ lại. Bạn có thể ẩn danh mục thay vì xóa.";
     if (
       !row.hidden &&
       s.categories.filter((c) => c.type === row.type && !c.hidden).length <= 1

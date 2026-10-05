@@ -1,10 +1,16 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
-import { RowActions } from './FinanceViews';
+import { RowActions, Reports } from './FinanceViews';
 import { LAUNCHER_SECTIONS } from '@/pages/home/launcherTiles';
 import type { Snapshot } from '@/lib/personalFinance/contract';
 afterEach(cleanup);
+it('reports a precise decimal total across independent category buckets',()=>{
+ const s={owner_id:'owner',schema_version:1,wallets:[],categories:[],transfers:[],budgets:[],goals:[],transactions:[0.1,0.2].map((amount,i)=>({id:String(i),user_id:'owner',type:'EXPENSE',amount,txn_date:'2026-10-01',created_at:'2026-10-01T00:00:00Z',deleted_at:null,resolved_category_id:null,category:`legacy-${i}`}))} as unknown as Snapshot;
+ render(<Reports snapshot={s} month="2026-10" onMonth={vi.fn()} onDrill={vi.fn()}/>);
+ expect(screen.getByRole('img',{name:'Chi 0,3 ₫'})).toBeTruthy();
+ expect(screen.queryByText(/0,30000000000000004/)).toBeNull();
+});
 const snapshot={transactions:[],transfers:[],goals:[],wallets:[],categories:[],budgets:[]} as unknown as Snapshot;
 it.each([
  [{create:false,edit:false,delete:false},0,0],

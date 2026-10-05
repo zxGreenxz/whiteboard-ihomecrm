@@ -51,6 +51,29 @@ const typedContext=(mode:'personal'|'company'):ComposeContext=>({
  categories:[{id:incomeCategory,name:'Lương',type:'income',category:null},{id:expenseCategory,name:'Ăn uống',type:'expense',category:null},{id:giftCategory,name:'Quà',type:'income',category:null}],
 });
 describe.each(['personal','company'] as const)('review regressions: %s',mode=>{
+ it.each(['touched','locked'] as const)('late mixed AI respects explicit %s direction through conversion',editKind=>{
+  for (const direction of ['INCOME','EXPENSE'] as const) for (const reverse of [false,true]) for (const lineEdited of [false,true]) {
+   const ctx=typedContext(mode);const [s]=draftsFromText('nhận lương và ăn sáng',ctx);
+   // Same path and line reset as DraftCard's Thu/Chi button, plus existing line edits.
+   s.draft.transactionType=direction;
+   s.draft.lines=s.draft.lines.map(l=>({...l,transactionType:direction,categoryId:null,personalCategoryId:null,personalCategory:null,amount:123_000,description:'Đã kiểm'}));
+   s[editKind]=['transactionType',...(lineEdited?['lines.0.amount','lines.0.description']:[])];
+   const result=splitDraftTypes(enrichFromAi(s,{...mixedAi,items:reverse?[...mixedAi.items].reverse():mixedAi.items},ctx),ctx.newId);
+   expect(result).toHaveLength(1);
+   expect(result[0].draft.transactionType).toBe(direction);
+   expect(result[0].draft.lines).toHaveLength(1);
+   expect(result[0].draft.lines[0]).toMatchObject({transactionType:direction,amount:123_000,description:'Đã kiểm'});
+   expect(result[0].flags).toContain('ai_direction_conflict');
+   const [restored]=deserializeCards(serializeCards([{state:result[0],status:{kind:'draft'},personalDone:0}],100),101);
+   expect(restored.state.flags).toContain('ai_direction_conflict');
+   expect(restored.state.draft.lines).toEqual(result[0].draft.lines);
+   expect(restored.state[editKind]).toContain('transactionType');
+   const category=direction==='INCOME'?incomeCategory:expenseCategory;
+   const ready={...result[0].draft,buildingId:id,accountId:id,lines:result[0].draft.lines.map(l=>({...l,categoryId:category,personalCategoryId:category}))};
+   if(mode==='personal')expect(toPersonalBatch(ready).rows).toMatchObject([{type:direction,amount:123_000,description:'Đã kiểm'}]);
+   else expect(toCreateIncomeExpenseInput(ready)).toMatchObject({type:direction,items:[{unit_price:123_000,description:'Đã kiểm'}]});
+  }
+ });
  it.each([0,10_000_000])('one parsed line amount %i retains all mixed AI items before splitting',amount=>{
   const ctx=typedContext(mode);
   const [s]=draftsFromText('vừa nhận lương mười triệu rồi ăn sáng năm mươi nghìn',ctx);

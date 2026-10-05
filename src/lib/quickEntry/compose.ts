@@ -25,6 +25,7 @@ import type { AiItem, AiResult } from "./aiSchema";
 import { inferTransactionType, type PersonalCategoryRef } from './personalRefs';
 
 export type DraftFlag =
+  | "ai_direction_conflict"
   | "missing_amount"
   | "small_amount"
   | "ambiguous_amount"
@@ -473,6 +474,10 @@ export function enrichFromAi(state: DraftState, ai: AiResult, ctx: ComposeContex
   if (state.touched.includes(LINES_EDITED)) return state;
   const mixedExpansion = state.draft.lines.length === 1 &&
     new Set(ai.items.filter(item => (item.amount_vnd ?? 0) > 0).map(item => item.transactionType ?? 'EXPENSE')).size > 1;
+  // The card's explicit direction binds every line. Mixed AI cannot be mapped to this
+  // edited aggregate safely: keep it intact and ask for review rather than cloning edits.
+  const directionEdited = state.touched.includes('transactionType') || state.locked.includes('transactionType');
+  if (mixedExpansion && directionEdited) return { ...state, flags: unique([...state.flags, 'ai_direction_conflict']) };
   if (mixedExpansion) state = expandMixedLine(state, ai, ctx);
   const company = state.draft.mode === "company";
   const free = (path: string) => !state.touched.includes(path) && !state.locked.includes(path);

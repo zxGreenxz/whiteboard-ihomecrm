@@ -541,7 +541,7 @@ export function Reports({
   const [type, setType] = useState("EXPENSE");
   const selected = selectMonth(s, month);
   const groups = selected.categories.filter((c) => c.type === type);
-  const total = groups.reduce((a, c) => a + c.amount, 0);
+  const total = type === 'EXPENSE' ? selected.expense : selected.income;
   let offset = 0;
   const stops = groups.map((c, i) => {
     const begin = offset;
