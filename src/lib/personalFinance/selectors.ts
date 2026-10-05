@@ -8,8 +8,8 @@ export function selectMonth(s:Snapshot,month:string) {
  const transactions=selectTransactions(s).filter(t=>t.txn_date.slice(0,7)===month);
  const sum=(type:PersonalTransaction['type'])=>transactions.filter(t=>t.type===type).reduce((total,t)=>total+t.amount,0);
  const income=sum('INCOME'),expense=sum('EXPENSE');
- const categories=new Map<string|null,{categoryId:string|null;name:string;amount:number;type:PersonalTransaction['type']}>();
- for(const t of transactions){const id=t.resolved_category_id;const key=`${t.type}:${id??t.category??''}`;const group=categories.get(key)??{categoryId:id,name:s.categories.find(c=>c.id===id)?.name??t.category??'Chưa phân loại',amount:0,type:t.type};group.amount+=t.amount;categories.set(key,group);}
+ const categories=new Map<string,{categoryId:string|null;legacyName:string|null;name:string;amount:number;type:PersonalTransaction['type']}>();
+ for(const t of transactions){const id=t.resolved_category_id;const legacyName=id===null?t.category:null;const key=JSON.stringify([t.type,id,legacyName]);const group=categories.get(key)??{categoryId:id,legacyName,name:s.categories.find(c=>c.id===id)?.name??t.category??'Chưa phân loại',amount:0,type:t.type};group.amount+=t.amount;categories.set(key,group);}
  const budgets=s.budgets.map(b=>{const spent=b.category_id===null?expense:transactions.filter(t=>t.type==='EXPENSE'&&t.resolved_category_id===b.category_id).reduce((sum,t)=>sum+t.amount,0);return{...b,spent,remaining:b.amount-spent,ratio:spent/b.amount};});
  return {month,transactions,income,expense,net:income-expense,categories:[...categories.values()],budgets};
 }

@@ -60,7 +60,13 @@ function ShareholderNotice() {
   const me = useMyShareholder();
   const allocations = useProfitAllocations();
   const distributions = useShareholderDistributions();
-  if (me.error) return <p role="alert">Chưa tải được thông tin cổ đông. <button onClick={()=>void me.refetch()}>Thử lại</button></p>;
+  if (me.error)
+    return (
+      <p role="alert">
+        Chưa tải được thông tin cổ đông.{" "}
+        <button onClick={() => void me.refetch()}>Thử lại</button>
+      </p>
+    );
   if (!me.data) return null;
   if (allocations.error || distributions.error)
     return (
@@ -125,6 +131,24 @@ export default function PersonalWalletPage() {
           </div>
         ) : s && m && props ? (
           <>
+            {query.error && (
+              <div
+                role="alert"
+                className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900"
+              >
+                <span>
+                  Chưa cập nhật được ví. Đang hiển thị số liệu lần tải trước.
+                </span>
+                <Button
+                  variant="outline"
+                  disabled={query.isFetching}
+                  aria-busy={query.isFetching}
+                  onClick={() => void query.refetch()}
+                >
+                  {query.isFetching ? "Đang tải lại…" : "Tải lại"}
+                </Button>
+              </div>
+            )}
             {tab === "home" && (
               <section className="pf-balance">
                 <div className="pf-between">
@@ -145,13 +169,19 @@ export default function PersonalWalletPage() {
                 <small>Số dư hiện tại · {s.wallets.length} ví cá nhân</small>
                 <div className="pf-balance-stats">
                   <div>
-                    <span><ArrowDownLeft size={13} className="inline-block"/> Thu trong tháng</span>
+                    <span>
+                      <ArrowDownLeft size={13} className="inline-block" /> Thu
+                      trong tháng
+                    </span>
                     <b data-testid="month-income">
                       {hidden ? "••••" : money(m.income)}
                     </b>
                   </div>
                   <div>
-                    <span><ArrowUpLeft size={13} className="inline-block"/> Chi trong tháng</span>
+                    <span>
+                      <ArrowUpLeft size={13} className="inline-block" /> Chi
+                      trong tháng
+                    </span>
                     <b data-testid="month-expense">
                       {hidden ? "••••" : money(m.expense)}
                     </b>

@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import type { Entity, Snapshot } from "@/lib/personalFinance/contract";
 import {
   selectMonth,
+  selectTransactions,
   selectGoals,
   transactionsCsv,
   csvCell,
@@ -21,6 +22,11 @@ import {
   shiftMonth,
   deleteReason,
   entityLabel,
+  categoryFilterFor,
+  categoryFilterValue,
+  matchesCategoryFilter,
+  type CategoryFilter,
+  type Filters,
   type Editor,
   type RecordData,
   type Permissions,
@@ -164,13 +170,6 @@ export function Management({
     </div>
   );
 }
-export type Filters = {
-  search: string;
-  type: string;
-  wallet: string;
-  category: string;
-};
-
 export function Ledger(
   p: Props & {
     month: string;
@@ -182,11 +181,37 @@ export function Ledger(
 ) {
   const { snapshot: s, filters: f } = p;
   const all = selectMonth(s, p.month);
+  const categoryOptions = [
+    ...s.categories.map((c) => ({
+      value: c.id,
+      label: c.name,
+      filter: categoryFilterFor(c.id, null),
+    })),
+    ...new Map(
+      selectTransactions(s)
+        .filter((t) => t.resolved_category_id === null)
+        .map((t) => {
+          const filter = categoryFilterFor(null, t.category);
+          const value = categoryFilterValue(filter);
+          return [
+            value,
+            {
+              value,
+              label:
+                t.category === null
+                  ? "Chưa phân loại"
+                  : `${t.category || "(Tên trống)"} · Lịch sử`,
+              filter,
+            },
+          ];
+        }),
+    ).values(),
+  ];
   const txns = all.transactions.filter(
     (t) =>
       (f.type === "all" || t.type === f.type) &&
       (!f.wallet || t.resolved_wallet_id === f.wallet) &&
-      (!f.category || t.resolved_category_id === f.category) &&
+      matchesCategoryFilter(t, f.category) &&
       `${t.description ?? ""} ${s.categories.find((c) => c.id === t.resolved_category_id)?.name ?? t.category ?? ""}`
         .toLocaleLowerCase("vi")
         .includes(f.search.toLocaleLowerCase("vi")),
@@ -196,7 +221,7 @@ export function Ledger(
       !t.deleted_at &&
       t.txn_date.startsWith(p.month) &&
       (f.type === "all" || f.type === "transfer") &&
-      !f.category &&
+      f.category.kind === "all" &&
       (!f.wallet ||
         [t.source_wallet_id, t.target_wallet_id].includes(f.wallet)) &&
       (t.note ?? "Chuyển ví")
@@ -262,13 +287,19 @@ export function Ledger(
         </select>
         <select
           aria-label="Lọc danh mục"
-          value={f.category}
-          onChange={(e) => p.onFilters({ ...f, category: e.target.value })}
+          value={categoryFilterValue(f.category)}
+          onChange={(e) =>
+            p.onFilters({
+              ...f,
+              category: categoryOptions.find((c) => c.value === e.target.value)
+                ?.filter ?? { kind: "all" },
+            })
+          }
         >
           <option value="">Mọi danh mục</option>
-          {s.categories.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
+          {categoryOptions.map((c) => (
+            <option key={c.value} value={c.value}>
+              {c.label}
             </option>
           ))}
         </select>
@@ -505,7 +536,7 @@ export function Reports({
   snapshot: Snapshot;
   month: string;
   onMonth: (m: string) => void;
-  onDrill: (category: string, type: string) => void;
+  onDrill: (category: CategoryFilter, type: string) => void;
 }) {
   const [type, setType] = useState("EXPENSE");
   const selected = selectMonth(s, month);
@@ -564,8 +595,19 @@ export function Reports({
             </div>
             <ul className="pf-legend">
               {groups.map((c, i) => (
-                <li key={`${c.categoryId}-${c.name}`}>
-                  <button onClick={() => onDrill(c.categoryId ?? "", type)}>
+                <li
+                  key={categoryFilterValue(
+                    categoryFilterFor(c.categoryId, c.legacyName),
+                  )}
+                >
+                  <button
+                    onClick={() =>
+                      onDrill(
+                        categoryFilterFor(c.categoryId, c.legacyName),
+                        type,
+                      )
+                    }
+                  >
                     <span style={{ background: colors[i % colors.length] }} />
                     {c.name}
                     <b>{money(c.amount)}</b>

@@ -1,4 +1,8 @@
-import type { Entity, Snapshot } from "@/lib/personalFinance/contract";
+import type {
+  Entity,
+  Snapshot,
+  PersonalTransaction,
+} from "@/lib/personalFinance/contract";
 export const money = (n: number) =>
   `${new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 20 }).format(n)} ₫`;
 export const shiftMonth = (month: string, offset: number) => {
@@ -22,11 +26,50 @@ export type Editor = {
   remove?: boolean;
 };
 export type Permissions = { create: boolean; edit: boolean; delete: boolean };
-export const emptyFilters = {
+export type CategoryFilter =
+  | { kind: "all" }
+  | { kind: "id"; id: string }
+  | { kind: "legacy"; name: string }
+  | { kind: "unclassified" };
+export type Filters = {
+  search: string;
+  type: string;
+  wallet: string;
+  category: CategoryFilter;
+};
+export function categoryFilterFor(
+  categoryId: string | null,
+  legacyName: string | null,
+): CategoryFilter {
+  if (categoryId !== null) return { kind: "id", id: categoryId };
+  return legacyName === null
+    ? { kind: "unclassified" }
+    : { kind: "legacy", name: legacyName };
+}
+/** ID values remain UUIDs for native filters; legacy labels cannot collide with them or with all. */
+export function categoryFilterValue(filter: CategoryFilter): string {
+  if (filter.kind === "all") return "";
+  if (filter.kind === "id") return filter.id;
+  return filter.kind === "unclassified"
+    ? "unclassified"
+    : `legacy:${JSON.stringify(filter.name)}`;
+}
+export function matchesCategoryFilter(
+  row: Pick<PersonalTransaction, "resolved_category_id" | "category">,
+  filter: CategoryFilter,
+): boolean {
+  if (filter.kind === "all") return true;
+  if (filter.kind === "id") return row.resolved_category_id === filter.id;
+  if (row.resolved_category_id !== null) return false;
+  return filter.kind === "unclassified"
+    ? row.category === null
+    : row.category === filter.name;
+}
+export const emptyFilters: Filters = {
   search: "",
   type: "all",
   wallet: "",
-  category: "",
+  category: { kind: "all" },
 };
 export const entityLabel: Record<Entity, string> = {
   wallet: "ví",

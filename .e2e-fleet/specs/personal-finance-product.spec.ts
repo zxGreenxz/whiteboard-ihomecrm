@@ -397,8 +397,10 @@ async function open(page: Page, mode = "") {
             });
           } else {
             if (entity === "transaction") {
-              if (!('wallet_id' in row) || !('category_id' in row)) {
-                throw new Error('Fixture transaction is missing wallet/category links');
+              if (!("wallet_id" in row) || !("category_id" in row)) {
+                throw new Error(
+                  "Fixture transaction is missing wallet/category links",
+                );
               }
               Object.assign(row, {
                 resolved_wallet_id: row.wallet_id,
@@ -465,8 +467,8 @@ for (const width of [320, 390, 430, 452, 768, 1280])
   test(`four screens and mobile geometry ${width}`, async ({ page }, info) => {
     await page.setViewportSize({ width, height: 900 });
     const o = await open(page, "company");
-    await expect(page.getByTestId('month-expense')).toHaveText('50.000 ₫');
-    await expect(page.getByTestId('month-expense')).toBeVisible();
+    await expect(page.getByTestId("month-expense")).toHaveText("50.000 ₫");
+    await expect(page.getByTestId("month-expense")).toBeVisible();
     for (const screen of ["Tổng quan", "Giao dịch", "Ngân sách", "Báo cáo"]) {
       await nav(page, screen);
       expect(
@@ -838,6 +840,93 @@ test("loading shows no invented balance", async ({ page }) => {
   await expect(page.getByText("Đang tải ví cá nhân…")).toBeVisible();
   await expect(page.getByTestId("total-balance")).toHaveCount(0);
   await expect(page.getByTestId("total-balance")).toContainText("950.000");
+  expect(o.errors).toEqual([]);
+  expect(o.blocked).toEqual([]);
+});
+
+test("stale snapshot after confirmed mutation stays visible with explicit retry", async ({
+  page,
+}, info) => {
+  await page.setViewportSize({ width: 320, height: 800 });
+  const o = await open(page);
+  const dialog = await manual(page);
+  await dialog.getByLabel("Số tiền", { exact: true }).fill("25000");
+  await dialog.getByLabel("Ghi chú").fill("Khoản đã xác nhận");
+  o.state.readError = true;
+  await dialog.getByRole("button", { name: "Lưu", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await close(page);
+  await expect(page.getByTestId("total-balance")).toContainText("950.000");
+  await expect(
+    page.getByRole("alert").filter({ hasText: "Chưa cập nhật được ví" }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: info.outputPath("stale-snapshot-320.png"),
+    fullPage: true,
+  });
+  expect(o.writes).toHaveLength(1);
+  o.state.snapshot.wallets[0].balance = 925000;
+  o.state.readError = false;
+  await page.getByRole("button", { name: "Tải lại", exact: true }).click();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(page.getByTestId("total-balance")).toContainText("925.000");
+  await expect(page.getByTestId("month-expense")).toContainText("75.000");
+  await nav(page, "Giao dịch");
+  await expect(
+    page.getByText("Khoản đã xác nhận", { exact: true }),
+  ).toBeVisible();
+  expect(o.writes).toHaveLength(1);
+  expect(o.errors).toEqual([]);
+  expect(o.blocked).toEqual([]);
+});
+test("report drilldown distinguishes ID, each legacy label and unclassified buckets", async ({
+  page,
+}) => {
+  const o = await open(page);
+  const original = o.state.snapshot.transactions[0];
+  for (const [label, description] of [
+    ["Nhóm cũ A", "Khoản legacy A"],
+    ["Nhóm cũ B", "Khoản legacy B"],
+    [null, "Khoản chưa phân loại"],
+  ] as const) {
+    o.state.snapshot.transactions.push({
+      ...original,
+      id: crypto.randomUUID(),
+      category_id: null,
+      resolved_category_id: null,
+      category: label,
+      description,
+    });
+  }
+  await page.reload();
+  await expect(page.getByTestId("total-balance")).toBeVisible();
+  for (const [label, description] of [
+    ["Ăn uống", "Cà phê"],
+    ["Nhóm cũ A", "Khoản legacy A"],
+    ["Nhóm cũ B", "Khoản legacy B"],
+    ["Chưa phân loại", "Khoản chưa phân loại"],
+  ]) {
+    await nav(page, "Báo cáo");
+    await page.getByRole("button", { name: new RegExp(label) }).click();
+    await expect(page.getByText("1 giao dịch", { exact: true })).toBeVisible();
+    await expect(page.getByText(description, { exact: true })).toBeVisible();
+    await expect(page.getByLabel("Lọc danh mục")).not.toHaveValue("");
+    const selectedCategory = await page.getByLabel("Lọc danh mục").inputValue();
+    await page
+      .getByRole("button", { name: "Tháng trước", exact: true })
+      .click();
+    await expect(page.getByLabel("Lọc danh mục")).toHaveValue(selectedCategory);
+    await expect(page.getByText("0 giao dịch", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Tháng sau", exact: true }).click();
+    await expect(page.getByText("1 giao dịch", { exact: true })).toBeVisible();
+  }
+  await page.getByLabel("Lọc danh mục").selectOption("");
+  await expect(page.getByText("4 giao dịch", { exact: true })).toBeVisible();
   expect(o.errors).toEqual([]);
   expect(o.blocked).toEqual([]);
 });
