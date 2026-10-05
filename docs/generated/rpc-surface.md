@@ -19,7 +19,7 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 |---|---|
 | RPC được gọi từ mã nguồn | 363 |
 | Hàm trong catalog (public + api) | 1256 |
-| File mã nguồn đã quét | 2422 |
+| File mã nguồn đã quét | 2430 |
 | SECURITY DEFINER | 346 |
 | **Gọi mà server KHÔNG CÓ** | **0** |
 
@@ -27,10 +27,10 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 
 | Mức | Số RPC | Nghĩa là |
 |---|---|---|
-| thường | 262 | còn lại |
-| tiền | 101 | có nơi gọi nằm trong màn tiền — sai là sai sổ sách |
+| thường | 261 | còn lại |
+| tiền | 102 | có nơi gọi nằm trong màn tiền — sai là sai sổ sách |
 
-## 101 RPC chạm TIỀN
+## 102 RPC chạm TIỀN
 
 Đây là danh sách đáng đọc nhất trong trang này: mỗi dòng là một đường ghi hoặc
 đọc có thể làm lệch số trên sổ.
@@ -74,6 +74,7 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 | `get_income_expense_history` |  | hooks/income-expenses/queries.ts |
 | `get_income_expense_layer_stats` |  | hooks/income-expenses/queries.ts, hooks/useProfitVerification.ts |
 | `get_invoice_statistics_v2` | ✔ | hooks/useInvoices.ts, hooks/useProfitVerification.ts, hooks/useUtilityBills.ts |
+| `get_my_permissions` | ✔ | hooks/personal-finance/usePersonalFinancePermissions.ts, hooks/useMyPermissions.ts |
 | `get_overpayment_summary` |  | hooks/reports/financeReports.ts |
 | `get_receiving_cashbooks_v1` | ✔ | hooks/useReceivingCashbooks.ts |
 | `get_salary_v5_config` | ✔ | hooks/salary-v5/useSalaryV5Admin.ts, hooks/useSalaryV5Config.ts |

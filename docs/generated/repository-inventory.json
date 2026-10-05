@@ -1,10 +1,10 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1240,
-  "soFileDocBangFs": 277,
-  "tongLoiGoi": 599,
-  "khongPhanLoaiDuoc": 273,
+  "tongSoFileTest": 1247,
+  "soFileDocBangFs": 278,
+  "tongLoiGoi": 603,
+  "khongPhanLoaiDuoc": 276,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 50,
@@ -15,7 +15,7 @@
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
-      "soFile": 12,
+      "soFile": 13,
       "moTa": "Đọc tài liệu/asset."
     },
     "powershell": {
@@ -329,6 +329,14 @@
         "sql": 2
       },
       "khongPhanLoaiDuoc": 2
+    },
+    {
+      "file": "scripts/__tests__/pwa-manifest.test.ts",
+      "soGoi": 4,
+      "loai": {
+        "tai-lieu": 1
+      },
+      "khongPhanLoaiDuoc": 3
     },
     {
       "file": "src/copilot/__tests__/pageAgentCompatibility.test.ts",
