@@ -20,8 +20,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { useMyPermissions } from "@/hooks/useMyPermissions";
-import { canUse } from "@/lib/permissionPages";
+import { usePersonalFinancePermissions } from "@/hooks/personal-finance/usePersonalFinancePermissions";
 import { usePersonalFinance } from "@/hooks/personal-finance/usePersonalFinance";
 import { useQuickEntryController } from "@/hooks/quick-entry/useQuickEntryController";
 import {
@@ -101,11 +100,11 @@ function ShareholderNotice() {
 }
 export default function PersonalWalletPage() {
   const query = usePersonalFinance();
-  const permissionQuery = useMyPermissions();
+  const permissionQuery = usePersonalFinancePermissions();
   const permissions = {
-    create: canUse(permissionQuery.data, "personal_finance", "create"),
-    edit: canUse(permissionQuery.data, "personal_finance", "edit"),
-    delete: canUse(permissionQuery.data, "personal_finance", "delete"),
+    create: permissionQuery.data?.create === true,
+    edit: permissionQuery.data?.edit === true,
+    delete: permissionQuery.data?.delete === true,
   };
   const controller = useQuickEntryController("personal");
   const [tab, setTab] = useState("home");

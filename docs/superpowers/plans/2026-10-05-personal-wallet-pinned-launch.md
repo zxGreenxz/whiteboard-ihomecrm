@@ -24,7 +24,7 @@
 - public/manifest.webmanifest has id `/`, start_url `/` for all routes.
 - ProtectedRoute saves `state.from`, but useLogin.onSuccess unconditionally navigates `/`.
 - PublicRoute when authenticated unconditionally Navigate `/`; must fix both to avoid auth-event race.
-- Organization chooser is on the resulting homepage, not a mandatory personal-route guard. MainLayout hides the mobile header on personal screen. Preserve module permission checks.
+- Additional cause: useMyPermissions waits for selectedOrganizationId, so a fresh install with multiple organizations can leave RequirePermission pending forever. The personal backend already isolates by auth.uid, independent of organizations. Add a dedicated actor-keyed personal permission hook projecting ONLY personal_finance actions from the existing permission RPC, with a personal guard and personal action consumers. Keep generic company permissions org-scoped and unchanged; never export a union company map or superadmin sentinel from the personal hook. Preserve explicit denies, error/retry and account isolation.
 - index.html static manifest link; strict CSP permits same-origin external scripts, forbids inline. AppRoutes RouteTreeCommit is suitable place to signal route change after commit.
 - Browser standards: https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Manifest/Reference/start_url and /id; https://developer.apple.com/videos/play/wwdc2023/10120/.
 
@@ -41,6 +41,7 @@
 - src/pages/auth/Login.tsx and src/hooks/useAuth.ts: login mutation gets same validated destination and replace navigation, avoiding race with PublicRoute.
 - Focused new tests under src/lib/__tests__, src/components/auth/__tests__, scripts/__tests__ or equivalent existing runner. Update useAuthMutationKeys mocks only if interface requires it.
 - Focused headless spec under .e2e-fleet/specs for manifest selection/login refresh/relaunch; controller may own separate actual production DEMO harness.
+- Dedicated usePersonalFinancePermissions and RequirePersonalFinancePermission, personal route/page/quick-entry consumers: no company auto-selection; test missing organization, denial, error, actor changes, personal loading independent of company and no company permission spill.
 
 **Interfaces:** A pure safe internal URL resolver shared by both login redirect paths; author chooses exact signatures and documents them. Route-change event `pwa-route-change` carries no secrets/state and script reads current URL only.
 

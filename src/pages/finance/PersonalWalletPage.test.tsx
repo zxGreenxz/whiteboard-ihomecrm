@@ -8,7 +8,7 @@ import { shiftMonth } from '@/components/personal-finance/presentation';
 
 const data=vi.hoisted(()=>({snapshot:{owner_id:'owner',schema_version:1,wallets:[],categories:[],transactions:[],transfers:[],budgets:[],goals:[]} as unknown as Snapshot}));
 vi.mock('@/hooks/personal-finance/usePersonalFinance',()=>({usePersonalFinance:()=>({data:data.snapshot,refetch:vi.fn()}),usePersonalFinanceMutation:()=>({pending:[]})}));
-vi.mock('@/hooks/useMyPermissions',()=>({useMyPermissions:()=>({data:[]})}));
+vi.mock('@/hooks/personal-finance/usePersonalFinancePermissions',()=>({usePersonalFinancePermissions:()=>({data:undefined})}));
 vi.mock('@/hooks/quick-entry/useQuickEntryController',()=>({useQuickEntryController:()=>({})}));
 vi.mock('@/components/quick-entry/EmbeddedQuickEntry',()=>({QuickEntryInput:()=>null,QuickEntryDraftFeed:()=>null,PersonalPendingRequests:()=>null}));
 vi.mock('@/components/layout/MainLayout',()=>({default:({children}:{children:React.ReactNode})=><>{children}</>}));

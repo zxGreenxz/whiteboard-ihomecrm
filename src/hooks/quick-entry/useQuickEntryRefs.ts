@@ -17,6 +17,7 @@ import { usableExpenseCategories, type CategoryRef } from "@/lib/quickEntry/cate
 import { expenseCashbooksForOrg, pickDefaultAccount } from "@/lib/quickEntry/cashbook";
 import type { FeeAccountRef, ResolveRefs } from "@/lib/quickEntry/resolve";
 import { usePersonalFinance } from '@/hooks/personal-finance/usePersonalFinance';
+import { usePersonalFinancePermissions } from '@/hooks/personal-finance/usePersonalFinancePermissions';
 
 const lastAccountKey = (orgId: string) => `ihome:quick-entry:last-account:${orgId}`;
 
@@ -50,9 +51,10 @@ export interface PickerOption {
 export function useQuickEntryRefs() {
   const { selectedOrganizationId: orgId } = useOrganization();
   const permsQ = useMyPermissions();
+  const personalPermsQ = usePersonalFinancePermissions();
   const perms = permsQ.data;
-  const canCompany = canUse(perms, "income_expenses", "create");
-  const canPersonal = canUse(perms, "personal_finance", "create");
+  const canCompany = !!orgId && !permsQ.error && canUse(perms, "income_expenses", "create");
+  const canPersonal = personalPermsQ.data?.create === true;
   const canRestricted = canUse(perms, "income_expenses", "restricted_create");
   const personalQ=usePersonalFinance();
   const personalWallets=useMemo(()=>personalQ.data?.wallets??[],[personalQ.data]);
@@ -138,14 +140,18 @@ export function useQuickEntryRefs() {
   );
 
   const loading =
-    permsQ.isLoading ||
+    personalPermsQ.isPending || (!!orgId && permsQ.isPending) ||
     (canCompany && (buildingsQ.isLoading || typesQ.isLoading || cashbooksQ.isLoading || accountsQ.isLoading));
 
   return {
     orgId,
     loading,
-    permissionsLoading:permsQ.isLoading,
-    permissionsError:permsQ.error,
+    permissionsLoading:personalPermsQ.isPending || (!!orgId && permsQ.isPending),
+    permissionsError:personalPermsQ.error ?? (orgId ? permsQ.error : null),
+    personalPermissionsLoading:personalPermsQ.isPending,
+    personalPermissionsError:personalPermsQ.error,
+    companyPermissionsLoading:!!orgId && permsQ.isPending,
+    companyPermissionsError:orgId ? permsQ.error : null,
     personalLoading:personalQ.isLoading,
     personalError:personalQ.error,
     personalReady:!!personalQ.data&&!personalQ.error,

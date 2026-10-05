@@ -34,6 +34,7 @@ import { canUse } from "@/lib/permissionPages";
 import type { ActionKey } from "@/lib/permissions";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { RequirePersonalFinancePermission } from './RequirePersonalFinancePermission';
 
 interface RequirePermissionProps {
   module: string;
@@ -51,7 +52,14 @@ interface RequirePermissionProps {
   children: React.ReactNode;
 }
 
-export function RequirePermission({
+export function RequirePermission(props: RequirePermissionProps) {
+  if (props.module === 'personal_finance' && !props.buildingId) {
+    return <RequirePersonalFinancePermission action={props.action} fallbackPath={props.fallbackPath}>{props.children}</RequirePersonalFinancePermission>;
+  }
+  return <RequireOrganizationPermission {...props} />;
+}
+
+function RequireOrganizationPermission({
   module,
   action = "view",
   buildingId,

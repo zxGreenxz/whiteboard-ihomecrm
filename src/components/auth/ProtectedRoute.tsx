@@ -2,6 +2,7 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { LoadingState } from '@/components/loading/LoadingState';
 import { isAuthBootstrapTimeoutError } from '@/lib/authBootstrap';
+import { safeAuthRedirect } from '@/lib/authRedirect';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -66,8 +67,9 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
     );
   }
 
-  // Save the attempted location for redirecting after login.
-  return <Navigate to="/login" state={{ from: location }} replace />;
+  // Keep the destination through a document reload as well as SPA navigation.
+  const next = safeAuthRedirect(location.pathname + location.search + location.hash) ?? '/';
+  return <Navigate to={`/login?next=${encodeURIComponent(next)}`} state={{ from: location }} replace />;
 };
 
 export default ProtectedRoute;

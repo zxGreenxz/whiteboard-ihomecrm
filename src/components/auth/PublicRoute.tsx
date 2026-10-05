@@ -1,7 +1,8 @@
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { LoadingState } from '@/components/loading/LoadingState';
 import { isAuthBootstrapTimeoutError } from '@/lib/authBootstrap';
+import { resolveLoginRedirect } from '@/lib/authRedirect';
 
 interface PublicRouteProps {
   children: React.ReactNode;
@@ -16,9 +17,13 @@ interface PublicRouteProps {
  */
 const PublicRoute = ({ children }: PublicRouteProps) => {
   const { data: user, isLoading, isFetching, error, refetch } = useAuth();
+  const location = useLocation();
 
   if (user) {
-    return <Navigate to="/" replace />;
+    const next = /^\/login\/?$/i.test(location.pathname)
+      ? resolveLoginRedirect(location.search, location.state)
+      : '/';
+    return <Navigate to={next} replace />;
   }
 
   if (isLoading) {

@@ -12,8 +12,8 @@ export function useQuickEntryController(initialMode:DraftMode='personal'){
  const [chosen,setMode]=useState<DraftMode>(initialMode);
  const modes:DraftMode[]=[...(refs.canPersonal?['personal' as const]:[]),...(refs.canCompany?['company' as const]:[])];
  const mode=modes.includes(chosen)?chosen:modes[0]??'personal';
- const loading=refs.permissionsLoading||(mode==='personal'?refs.personalLoading:refs.companyLoading);
- const error=refs.permissionsError||(mode==='personal'?refs.personalError:refs.companyError);
+ const loading=mode==='personal'?refs.personalPermissionsLoading||refs.personalLoading:refs.companyPermissionsLoading||refs.companyLoading;
+ const error=mode==='personal'?refs.personalPermissionsError||refs.personalError:refs.companyPermissionsError||refs.companyError;
  const ready=!loading&&!error&&modes.length>0&&(mode==='personal'?refs.personalReady:refs.companyReady);
  return {refs,feed,today,mode,modes,setMode,loading,error,ready,userId:user?.id??null};
 }

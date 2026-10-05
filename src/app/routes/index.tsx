@@ -5,7 +5,7 @@
 // vẫn phải nằm dưới một guard đã biết hoặc được khai TƯỜNG MINH là công khai —
 // y như khi chúng còn ở App.tsx.
 import { useLayoutEffect } from "react";
-import { Route, Routes, Navigate } from "react-router-dom";
+import { Route, Routes, Navigate, useLocation } from "react-router-dom";
 import { hideAppSplash } from "@/lib/appSplash";
 import ProtectedRoute from "../../components/auth/ProtectedRoute";
 import { RequirePermission } from "../../components/auth/RequirePermission";
@@ -28,7 +28,11 @@ import { adminAccountRoutes } from "./adminAccountRoutes";
  * nào splash và nội dung cùng xuất hiện.
  */
 const RouteTreeCommit = (): null => {
+  const { pathname, search } = useLocation();
   useLayoutEffect(() => hideAppSplash(), []);
+  useLayoutEffect(() => {
+    window.dispatchEvent(new Event('pwa-route-change'));
+  }, [pathname, search]);
   return null;
 };
 

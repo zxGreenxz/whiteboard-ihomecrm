@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { User, Session } from '@supabase/supabase-js';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
+import { safeAuthRedirect } from '@/lib/authRedirect';
 import {
   isAuthBootstrapTimeoutError,
   withAuthBootstrapTimeout,
@@ -17,6 +18,7 @@ export interface LoginData {
   identifier: string; // Can be phone or email
   password: string;
   rememberMe?: boolean;
+  redirectTo?: string;
 }
 
 export interface ForgotPasswordData {
@@ -151,7 +153,7 @@ export const useLogin = () => {
       if (error) throw error;
       return authData;
     },
-    onSuccess: () => {
+    onSuccess: (_authData, variables) => {
       // Invalidate and refetch user data
       queryClient.invalidateQueries({ queryKey: ['auth'] });
 
@@ -160,7 +162,9 @@ export const useLogin = () => {
         description: 'Chào mừng bạn trở lại.',
       });
 
-      navigate('/');
+      // Variables retain the submitted destination even if SIGNED_IN already
+      // unmounted Login via PublicRoute before this request resolves.
+      navigate(safeAuthRedirect(variables.redirectTo) ?? '/', { replace: true });
     },
     onError: (error: Error) => {
       if (error.message === 'Invalid login credentials') {

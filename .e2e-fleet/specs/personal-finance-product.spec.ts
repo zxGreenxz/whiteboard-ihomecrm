@@ -34,7 +34,7 @@ test.beforeAll(async () => {
     ],
     [
       "virtual:pf-perms",
-      `export const useMyPermissions=()=>({data:{personal_finance:{view:true,create:!location.search.includes('readonly')&&!location.search.includes('edit-only'),edit:!location.search.includes('readonly')&&!location.search.includes('create-only'),delete:!location.search.includes('readonly')&&!location.search.includes('create-only')&&!location.search.includes('edit-only')}},isLoading:false});`,
+      `export const usePersonalFinancePermissions=()=>({data:{view:true,create:!location.search.includes('readonly')&&!location.search.includes('edit-only'),edit:!location.search.includes('readonly')&&!location.search.includes('create-only'),delete:!location.search.includes('readonly')&&!location.search.includes('create-only')&&!location.search.includes('edit-only')},isPending:false});`,
     ],
     [
       "virtual:pf-layout",
@@ -105,7 +105,7 @@ test.beforeAll(async () => {
       alias: [
         { find: "@/hooks/useAuth", replacement: "virtual:pf-auth" },
         { find: "@/lib/authSession", replacement: "virtual:pf-session" },
-        { find: "@/hooks/useMyPermissions", replacement: "virtual:pf-perms" },
+        { find: "@/hooks/personal-finance/usePersonalFinancePermissions", replacement: "virtual:pf-perms" },
         {
           find: "@/components/layout/MainLayout",
           replacement: "virtual:pf-layout",

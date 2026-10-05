@@ -1,8 +1,9 @@
 import { focusFirstError } from '@/lib/asyncFormErrors';
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useLogin } from '@/hooks/useAuth';
 import { hideAppSplash } from '@/lib/appSplash';
+import { resolveLoginRedirect } from '@/lib/authRedirect';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -11,6 +12,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Eye, EyeOff, Building2 } from 'lucide-react';
 
 const Login = () => {
+  const location = useLocation();
   const [formData, setFormData] = useState({
     identifier: '', // Can be phone or email
     password: '',
@@ -51,6 +53,7 @@ const Login = () => {
       identifier: formData.identifier, // Can be phone or email
       password: formData.password,
       rememberMe: formData.rememberMe,
+      redirectTo: resolveLoginRedirect(location.search, location.state),
     }, { onError: (error: Error & { code?: string }) => {
       if (error.code === 'invalid_credentials' || error.message === 'Invalid login credentials') {
         const invalid = { identifier: 'Email/số điện thoại hoặc mật khẩu không đúng.', password: 'Kiểm tra lại thông tin đăng nhập.' };

@@ -16,12 +16,14 @@
     <script src="/pwa-entry-watchdog.js"></script>
     <link rel="stylesheet" href="/pwa-splash.css" />
 
-    <link rel="manifest" href="/manifest.webmanifest" />
+    <!-- The boot selector supplies the first href, avoiding an early CRM install identity on personal entry. -->
+    <link rel="manifest" />
     <meta name="theme-color" content="#ffffff" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="CRM" />
+    <script src="/pwa-manifest.js"></script>
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="icon" type="image/png" sizes="192x192" href="/pwa-192.png" />
 
