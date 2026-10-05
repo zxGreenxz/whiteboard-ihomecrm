@@ -14198,10 +14198,179 @@ export type Database = {
         }
         Relationships: []
       }
+      personal_budget_limits: {
+        Row: {
+          amount: number
+          category_id: string | null
+          id: string
+          type: string
+          user_id: string
+          version: number
+        }
+        Insert: {
+          amount: number
+          category_id?: string | null
+          id?: string
+          type?: string
+          user_id: string
+          version?: number
+        }
+        Update: {
+          amount?: number
+          category_id?: string | null
+          id?: string
+          type?: string
+          user_id?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "personal_budget_limits_category_id_user_id_type_fkey"
+            columns: ["category_id", "user_id", "type"]
+            isOneToOne: false
+            referencedRelation: "personal_categories"
+            referencedColumns: ["id", "user_id", "type"]
+          },
+        ]
+      }
+      personal_categories: {
+        Row: {
+          color: string
+          hidden: boolean
+          icon: string
+          id: string
+          legacy_name: string | null
+          name: string
+          seed_key: string | null
+          type: string
+          user_id: string
+          version: number
+        }
+        Insert: {
+          color?: string
+          hidden?: boolean
+          icon?: string
+          id?: string
+          legacy_name?: string | null
+          name: string
+          seed_key?: string | null
+          type: string
+          user_id: string
+          version?: number
+        }
+        Update: {
+          color?: string
+          hidden?: boolean
+          icon?: string
+          id?: string
+          legacy_name?: string | null
+          name?: string
+          seed_key?: string | null
+          type?: string
+          user_id?: string
+          version?: number
+        }
+        Relationships: []
+      }
+      personal_finance_requests: {
+        Row: {
+          created_at: string
+          payload: Json
+          request_key: string
+          result: Json
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          payload: Json
+          request_key: string
+          result: Json
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          payload?: Json
+          request_key?: string
+          result?: Json
+          user_id?: string
+        }
+        Relationships: []
+      }
+      personal_goals: {
+        Row: {
+          icon: string
+          id: string
+          name: string
+          target: number
+          target_date: string | null
+          user_id: string
+          version: number
+          wallet_id: string
+        }
+        Insert: {
+          icon?: string
+          id?: string
+          name: string
+          target: number
+          target_date?: string | null
+          user_id: string
+          version?: number
+          wallet_id: string
+        }
+        Update: {
+          icon?: string
+          id?: string
+          name?: string
+          target?: number
+          target_date?: string | null
+          user_id?: string
+          version?: number
+          wallet_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "personal_goals_wallet_id_user_id_fkey"
+            columns: ["wallet_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "personal_wallets"
+            referencedColumns: ["id", "user_id"]
+          },
+        ]
+      }
+      personal_legacy_category_map: {
+        Row: {
+          category_id: string
+          legacy_name: string
+          type: string
+          user_id: string
+        }
+        Insert: {
+          category_id: string
+          legacy_name: string
+          type: string
+          user_id: string
+        }
+        Update: {
+          category_id?: string
+          legacy_name?: string
+          type?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "personal_legacy_category_map_category_id_user_id_type_fkey"
+            columns: ["category_id", "user_id", "type"]
+            isOneToOne: false
+            referencedRelation: "personal_categories"
+            referencedColumns: ["id", "user_id", "type"]
+          },
+        ]
+      }
       personal_transactions: {
         Row: {
           amount: number
           category: string | null
+          category_id: string | null
           created_at: string
           deleted_at: string | null
           description: string | null
@@ -14211,10 +14380,13 @@ export type Database = {
           type: string
           updated_at: string
           user_id: string
+          version: number
+          wallet_id: string | null
         }
         Insert: {
           amount?: number
           category?: string | null
+          category_id?: string | null
           created_at?: string
           deleted_at?: string | null
           description?: string | null
@@ -14224,10 +14396,13 @@ export type Database = {
           type: string
           updated_at?: string
           user_id: string
+          version?: number
+          wallet_id?: string | null
         }
         Update: {
           amount?: number
           category?: string | null
+          category_id?: string | null
           created_at?: string
           deleted_at?: string | null
           description?: string | null
@@ -14237,6 +14412,8 @@ export type Database = {
           type?: string
           updated_at?: string
           user_id?: string
+          version?: number
+          wallet_id?: string | null
         }
         Relationships: [
           {
@@ -14246,7 +14423,118 @@ export type Database = {
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "personal_txn_category_owner_type"
+            columns: ["category_id", "user_id", "type"]
+            isOneToOne: false
+            referencedRelation: "personal_categories"
+            referencedColumns: ["id", "user_id", "type"]
+          },
+          {
+            foreignKeyName: "personal_txn_wallet_owner"
+            columns: ["wallet_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "personal_wallets"
+            referencedColumns: ["id", "user_id"]
+          },
         ]
+      }
+      personal_wallet_transfers: {
+        Row: {
+          amount: number
+          deleted_at: string | null
+          goal_id: string | null
+          id: string
+          note: string | null
+          source_wallet_id: string
+          target_wallet_id: string
+          txn_date: string
+          user_id: string
+          version: number
+        }
+        Insert: {
+          amount: number
+          deleted_at?: string | null
+          goal_id?: string | null
+          id?: string
+          note?: string | null
+          source_wallet_id: string
+          target_wallet_id: string
+          txn_date: string
+          user_id: string
+          version?: number
+        }
+        Update: {
+          amount?: number
+          deleted_at?: string | null
+          goal_id?: string | null
+          id?: string
+          note?: string | null
+          source_wallet_id?: string
+          target_wallet_id?: string
+          txn_date?: string
+          user_id?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "personal_wallet_transfers_goal_id_user_id_target_wallet_id_fkey"
+            columns: ["goal_id", "user_id", "target_wallet_id"]
+            isOneToOne: false
+            referencedRelation: "personal_goals"
+            referencedColumns: ["id", "user_id", "wallet_id"]
+          },
+          {
+            foreignKeyName: "personal_wallet_transfers_source_wallet_id_user_id_fkey"
+            columns: ["source_wallet_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "personal_wallets"
+            referencedColumns: ["id", "user_id"]
+          },
+          {
+            foreignKeyName: "personal_wallet_transfers_target_wallet_id_user_id_fkey"
+            columns: ["target_wallet_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "personal_wallets"
+            referencedColumns: ["id", "user_id"]
+          },
+        ]
+      }
+      personal_wallets: {
+        Row: {
+          hidden: boolean
+          icon: string
+          id: string
+          is_default: boolean
+          kind: string
+          name: string
+          opening_balance: number
+          user_id: string
+          version: number
+        }
+        Insert: {
+          hidden?: boolean
+          icon?: string
+          id?: string
+          is_default?: boolean
+          kind?: string
+          name: string
+          opening_balance?: number
+          user_id: string
+          version?: number
+        }
+        Update: {
+          hidden?: boolean
+          icon?: string
+          id?: string
+          is_default?: boolean
+          kind?: string
+          name?: string
+          opening_balance?: number
+          user_id?: string
+          version?: number
+        }
+        Relationships: []
       }
       phase_transitions: {
         Row: {
@@ -24640,6 +24928,21 @@ export type Database = {
         Args: { _action: string; _table: string }
         Returns: string[]
       }
+      personal_finance_apply: {
+        Args: {
+          p_action: string
+          p_data: Json
+          p_id?: string
+          p_version?: number
+        }
+        Returns: Json
+      }
+      personal_finance_bootstrap: { Args: never; Returns: undefined }
+      personal_finance_mutate: {
+        Args: { p_payload: Json; p_request_key: string }
+        Returns: Json
+      }
+      personal_finance_snapshot: { Args: never; Returns: Json }
       phone_digits: { Args: { p: string }; Returns: string }
       post_approved_income_expense_v2: { Args: { input: Json }; Returns: Json }
       pra_by_token: {

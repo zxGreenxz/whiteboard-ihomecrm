@@ -4,32 +4,6 @@
   "reviewedAt": "2026-09-02",
   "method": "10 điều tra độc lập song song, mỗi file một agent, bắt buộc trích dẫn file+SQL cho kết luận (A); kết luận \"chưa từng chạy\" sẽ bị một agent phản biện riêng cố bác bỏ. Kết quả: 10/10 giải thích được, 0 file chưa-từng-chạy. Ba trích dẫn được người kiểm lại thủ công (DROP ở 20260528000003:158, CREATE ở 20260527000009:372, và frontend gọi clone_org_request_sync_v1 chứ không phải clone_org_sync_v1). | Bổ sung 12/08/2026: 1 file (20260729150000_notification_config_tables_rpc.sql) — đối chiếu catalog production thật với migration ALTER POLICY ... RENAME, kết luận đổi tên chứ không phải chưa chạy. | Bổ sung 12/08/2026: thêm 1 file (20260729150000_notification_config_tables_rpc.sql). Phương pháp: đối chiếu catalog production THẬT với migration `ALTER POLICY ... RENAME` thay vì suy từ tên file; kết luận là ĐỔI TÊN, không phải chưa-từng-chạy. | Bổ sung 28/08/2026: 1 file (20260731100000_termination_refund_writer.sql) — index ux_tro_voucher bị 20260828090000 DROP có chủ ý vì là ràng buộc giả trên PK; đối chiếu pg_indexes production trước/sau apply.",
   "files": {
-    "supabase/migrations/20261004212309_personal_finance_wallets.sql": {
-      "sha256": "85790956f1f5d6780b9cb11fa2cb66da7fbd09232b4ba323eea961da74bae6c2",
-      "missingObjects": [
-        "table:public.personal_wallets",
-        "table:public.personal_categories",
-        "table:public.personal_legacy_category_map",
-        "table:public.personal_budget_limits",
-        "table:public.personal_goals"
-      ],
-      "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "Migration mới cho ví cá nhân, chưa áp dụng production. Catalog ngày 05/10/2026 xác nhận các object này vắng mặt; đây là trạng thái chờ phát hành, không phải bằng chứng đã chạy. Foundation đã được thử rollback và apply idempotent hai lượt trên TEST, 15 nhóm real-JWT qua typed boundary, 4 đột biến và review độc lập (b9d07ace..9c17bdc1). Kế hoạch phát hành bắt buộc foundation qua forward lane có backup, ứng dụng mới hoạt động rồi mới chạy migration RPC-only. Không được coi hồ sơ này là quyền bỏ qua backup, review, gate hoặc promotion đúng SHA. Sau khi apply phải sinh lại provenance từ biên nhận/catalog và bỏ riêng hồ sơ chờ này.",
-      "bangChung": [
-        {
-          "duong_dan": "supabase/migrations/20261004212309_personal_finance_wallets.sql",
-          "trich_doan": "CREATE TABLE IF NOT EXISTS public.personal_wallets (\nCREATE TABLE IF NOT EXISTS public.personal_categories (\nCREATE TABLE IF NOT EXISTS public.personal_legacy_category_map (\nCREATE TABLE IF NOT EXISTS public.personal_budget_limits (\nCREATE TABLE IF NOT EXISTS public.personal_goals ("
-        },
-        {
-          "duong_dan": "docs/superpowers/plans/2026-10-05-personal-finance-product.md",
-          "trich_doan": "Foundation migration lane dry-run, committed reviewed SHA/provenance/clean tree, backup verified, apply forward; refresh typed/catalog/surface/generated evidence via allowed tools, run final staged gate."
-        },
-        {
-          "duong_dan": "scripts/test-personal-finance.mjs",
-          "trich_doan": "Real JWT/PostgREST assertions. Administrative APIs are used only for disposable TEST fixtures."
-        }
-      ]
-    },
     "supabase/migrations/016_document_templates.sql": {
       "sha256": "29878ad3f80b3abdc839a61fa9dac7a470ec2d53d049bcab9fddae4cc50cc005",
       "missingObjects": [

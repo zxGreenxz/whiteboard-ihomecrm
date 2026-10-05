@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-04T22:30:26.834Z",
+  "generatedAt": "2026-10-05T00:34:19.538Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 651,
-    "unknown": 82,
+    "ledger-applied": 652,
+    "unknown": 81,
     "catalog-proven": 205,
     "superseded": 15
   },
@@ -11029,14 +11029,9 @@
       "name": "personal_finance_wallets",
       "scheme": "timestamp14",
       "sha256": "85790956f1f5d6780b9cb11fa2cb66da7fbd09232b4ba323eea961da74bae6c2",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "table:public.personal_wallets",
-        "table:public.personal_categories",
-        "table:public.personal_legacy_category_map",
-        "table:public.personal_budget_limits",
-        "table:public.personal_goals"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-05T00:33:51.719Z|bien-nhan-backup"
       ]
     },
     {
