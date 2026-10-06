@@ -18,6 +18,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 
 import { APP_SCHEMAS, congCu, ghiLog, ident, lit, psql, psqlJson } from "./lib.mjs";
+import { kiemOwnersSnapshot, sqlKhoiPhucOwners, sqlKhoiPhucVai, sqlOwners } from "./owners.mjs";
 
 const S = APP_SCHEMAS.map(lit).join(",");
 
@@ -87,7 +88,10 @@ export function xoaVaNapAuth(test, fileAuth) {
   if (r.status !== 0) throw new Error(`Nạp auth lỗi: ${String(r.stderr).slice(0, 1500)}`);
 }
 
-export function chuanBi(test) {
+export function chuanBi(test, meta) {
+  // Vai tùy chỉnh phải tồn tại trước pg_restore: ACL/policy trong dump tham chiếu chúng.
+  psql(test, sqlKhoiPhucVai(meta?.owners));
+  kiemOwnersSnapshot(meta.owners, psqlJson(test, sqlOwners())[0], ['roles', 'memberships']);
   psql(test, `
 CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public;
 CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public;
@@ -95,12 +99,6 @@ CREATE EXTENSION IF NOT EXISTS btree_gist WITH SCHEMA public;
 CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA extensions;
 CREATE EXTENSION IF NOT EXISTS pg_cron WITH SCHEMA pg_catalog;
-DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ie_canonical_writer') THEN
-    CREATE ROLE ie_canonical_writer NOLOGIN NOINHERIT;
-  END IF;
-END $$;
-GRANT ie_canonical_writer TO postgres;
 DO $$ DECLARE r record; g text; BEGIN
   FOR r IN SELECT d.defaclnamespace, n.nspname, d.defaclobjtype, d.defaclacl
              FROM pg_default_acl d LEFT JOIN pg_namespace n ON n.oid = d.defaclnamespace
@@ -255,6 +253,9 @@ export function sqlDefaultAcl(daclRows) {
 }
 
 export function taiLapNenTang(test, meta) {
+  // ALTER OWNER/ACL trước fingerprint: SECURITY DEFINER không được chạy dưới postgres.
+  psql(test, sqlKhoiPhucOwners(meta.owners));
+  kiemOwnersSnapshot(meta.owners, psqlJson(test, sqlOwners())[0]);
   const cau = [];
   for (const { vai, cfg } of meta.roleCfg) {
     for (const kv of cfg) {

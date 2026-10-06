@@ -6,6 +6,8 @@ import { isR2Bucket, isR2PublicBucket, parseR2Ref } from "./storage/r2Config";
 import { uploadToR2, signR2 } from "./storage/r2Client";
 import { uploadResilient, type ResilientUploadOptions } from "./storage/resilientUpload";
 import { isAbortError, uploadAbortError, uploadDeadlineMs, UploadRejectedError, UploadTimeoutError, UploadTooLargeError } from "./uploadDeadline";
+import { isUnavailableTestMedia, TEST_MEDIA_DETAIL, TEST_MEDIA_MESSAGE, testMediaSource } from './storage/testMedia';
+import { toast } from 'sonner';
 
 export { sanitizeStorageFileName } from "./storageKey";
 
@@ -266,6 +268,10 @@ export async function createSignedUrlFromStored(
   value: string,
   expiresIn: number = SIGNED_URL_TTL
 ): Promise<string> {
+  // TEST chỉ sao chép metadata: không ký cùng path trên TEST rồi quay lại URL
+  // production khi lỗi. File mới có origin TEST vẫn đi qua luồng ký bên dưới.
+  const displayValue = testMediaSource(value);
+  if (displayValue !== value) return displayValue;
   // R2: công khai → dùng thẳng (custom domain có cache); riêng tư → presigned GET
   // qua Worker (Phase 2). Egress $0 ở cả hai.
   const r2 = parseR2Ref(value);
@@ -288,6 +294,10 @@ export async function createSignedUrlFromStored(
  */
 export async function openStoredFile(value: string): Promise<void> {
   if (!value) return;
+  if (isUnavailableTestMedia(value)) {
+    toast.info(TEST_MEDIA_MESSAGE, { description: TEST_MEDIA_DETAIL });
+    return;
+  }
   const w = window.open('', '_blank', 'noopener,noreferrer');
   const url = await createSignedUrlFromStored(value);
   if (w) w.location.href = url;

@@ -1,4 +1,5 @@
 import {hasUnconfirmedResponse} from '@/lib/operationOutcome';
+import { testMediaSource } from '@/lib/storage/testMedia';
 import {validateInputDrafts} from '@/lib/inputDraftValidation';
 import { QueryRegion, refetchStartedSources } from '@/components/errors/QueryRegion';
 import { InlineSkeleton, LoadingState } from '@/components/loading/LoadingState';
@@ -658,7 +659,7 @@ const GeneralSettingsPage = () => {
                     <div className="h-24 w-24 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center overflow-hidden bg-gray-50">
                       {(uploadedLogo || companyInfo?.company_logo_url) ? (
                         <img
-                          src={uploadedLogo ?? companyInfo?.company_logo_url ?? undefined}
+                          src={testMediaSource(uploadedLogo ?? companyInfo?.company_logo_url ?? undefined)}
                           alt="Logo"
                           className="h-full w-full object-contain"
                         />

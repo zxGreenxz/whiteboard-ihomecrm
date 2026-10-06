@@ -28,11 +28,16 @@ riêng mang bản sao dữ liệu thật — bảo vệ như dữ liệu thật;
 
 ## Đồng bộ và xác minh
 
-Môi trường TEST đồng bộ bằng `npm run test-env:sync` (tự đối chiếu vân tay catalog và từng bảng);
-fixture E2E ghi dữ liệu trên production dùng org DEMO. E2E bằng tài khoản thật chỉ chạy trên web TEST:
-khoá `testchu`/`testquanly` trong [auth.ts](../../.e2e-fleet/specs/auth.ts) từ chối mọi
-`FLEET_BASE_URL` khác web nhánh `test-env`; kiểm khói ở
-[moi-truong-test.spec.ts](../../.e2e-fleet/specs/moi-truong-test.spec.ts).
+Ưu tiên thử tính năng trên project TEST. `npm run test-env:check -- --sync` tạo bản sao mới rồi
+kiểm JWT/RLS và thao tác Chrome; `npm run test-env:check` dùng lại snapshot đạt còn mới, không
+xoá dữ liệu mỗi lần sửa UI. Xem [quy trình và cleanup](../../scripts/test-env/README.md).
+Runner build mã nguồn của worktree bằng public config TEST, mở loopback, ghi SHA + digest nguồn,
+kiểm build thực và chặn request production. Vault được đọc từ checkout chính, không sao chép.
+
+Các spec fleet cũ dùng web Preview vẫn giữ giới hạn URL riêng: khoá `testchu`/`testquanly` trong
+[auth.ts](../../.e2e-fleet/specs/auth.ts) chỉ chấp nhận nhánh `test-env`. Không chạy bộ fleet viết dữ
+liệu song song với đồng bộ/runner TEST. DEMO dành cho fixture nhỏ hoặc kiểm tích hợp production
+được chỉ định rõ; nó vẫn chung database với công ty thật.
 Không đổi tài khoản/owner email để lách giới hạn org.
 
 Cơ chế org TEST cũ (org sao chép `cccc…` trong chính database production, script `scripts/clone-org/`,

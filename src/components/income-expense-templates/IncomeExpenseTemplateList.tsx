@@ -12,6 +12,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import EmptyState from '@/components/ui/EmptyState';
 import { Pencil, Trash2, FileText, ExternalLink } from 'lucide-react';
 import type { IncomeExpenseTemplate } from '@/hooks/useIncomeExpenseTemplates';
+import { isUnavailableTestMedia, TEST_MEDIA_MESSAGE } from '@/lib/storage/testMedia';
 
 interface IncomeExpenseTemplateListProps {
   templates: IncomeExpenseTemplate[];
@@ -68,7 +69,7 @@ const IncomeExpenseTemplateList = ({
               <TableCell className="font-medium">{template.code}</TableCell>
               <TableCell>{template.name}</TableCell>
               <TableCell>
-                {template.template_file_url ? (
+                {isUnavailableTestMedia(template.template_file_url) ? <span className="text-muted-foreground">{TEST_MEDIA_MESSAGE}</span> : template.template_file_url ? (
                   <a
                     href={template.template_file_url}
                     target="_blank"

@@ -13,6 +13,8 @@
 // Lần đồng bộ sau sẽ ghi đè TEST bằng production, nên thay đổi đã --ghi ở đây mất đi
 // nếu chưa lên production.
 
+import { withTestLock } from "./lock.mjs";
+
 import { readFileSync } from "node:fs";
 
 import { batBuocDichTest, credential, ghiLog, ketNoi, kiemCongCu, psql } from "./lib.mjs";
@@ -33,11 +35,13 @@ async function main(argv) {
   const cred = credential();
   const { test } = await ketNoi(cred);
   await batBuocDichTest(cred, test);
+  return withTestLock({ cred, test }, async () => {
   const t0 = Date.now();
   const r = psql(test, `BEGIN;\n${sql}\n;${ghi ? "COMMIT" : "ROLLBACK"};\n`, { dungKhiLoi: true });
   ghiLog("thu-sql", `${ghi ? "ĐÃ GHI vào TEST" : "chạy trong ROLLBACK (không ghi)"} · ${file} · ${Math.round((Date.now() - t0) / 1000)}s`);
   if (r.stderr.trim()) console.log(r.stderr.trim().split(/\r?\n/).slice(0, 40).join("\n"));
   return 0;
+  });
 }
 
 main(process.argv).then((c) => process.exit(c), (e) => {

@@ -17,6 +17,7 @@ import { isPushSupported, isSubscribed, enablePush, disablePush } from "@/lib/pu
 import NotificationPreferencesCard from "@/components/notifications/NotificationPreferencesCard";
 import AccountOrganizationCard from "@/components/account/AccountOrganizationCard";
 import { toast } from "sonner";
+import { testMediaSource } from '@/lib/storage/testMedia';
 
 const APP_VERSION = "5.2.0";
 
@@ -197,7 +198,7 @@ export default function AccountMobilePage() {
             <div className="acc-hero">
               <div className="acc-av" role="button" tabIndex={0} data-field-name="avatar" aria-invalid={!!avatarError} onKeyDown={e => { if(e.key === "Enter" || e.key === " ") fileRef.current?.click(); }} onClick={() => fileRef.current?.click()} style={{ cursor: "pointer", overflow: "hidden" }}>
                 {profile?.avatar_url ? (
-                  <img src={profile.avatar_url} alt={profile.full_name || "Avatar"} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  <img src={testMediaSource(profile.avatar_url)} alt={profile.full_name || "Avatar"} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                 ) : (
                   initials
                 )}

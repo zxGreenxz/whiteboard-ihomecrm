@@ -14,6 +14,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useSignedUrl } from "@/hooks/useSignedUrl";
+import { isUnavailableTestMedia } from '@/lib/storage/testMedia';
+import { TestMediaPlaceholder } from '@/components/ui/test-media-placeholder';
 import { StorageImage } from "@/components/ui/storage-image";
 import type { JobWithRelations } from "@/types/jobs";
 import { getStatusColor, getStatusLabel } from "@/lib/jobValidation";
@@ -601,7 +603,7 @@ export default function TaskDetailDialog({
               </div>
             </>
           )}
-          {isPdf(lightboxUrl) ? (
+          {isUnavailableTestMedia(lightboxUrl) ? <TestMediaPlaceholder className="max-w-sm rounded-md p-6" /> : isPdf(lightboxUrl) ? (
             <iframe
               src={lightboxSignedUrl}
               className="w-full h-full max-w-5xl max-h-[90vh] bg-white rounded-md"

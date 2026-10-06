@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { assertTestLease, withTestLock } from './test-env/lock.mjs';
 // JWT/PostgREST authorization regression. Fixtures live ONLY in guarded TEST.
 // Fixture setup bypasses business triggers locally; assertions never bypass RLS.
 import assert from 'node:assert/strict';
@@ -58,8 +59,10 @@ const idsOf = rows => rows.map(r => r.id).sort();
 const sqlIds = ids => ids.map(lit).join(',');
 const replicaTransaction = (ctx, sql) => psql(ctx.test, `BEGIN; SET LOCAL session_replication_role=replica; ${sql} COMMIT;`);
 
-export async function runHarness({ baseline = false } = {}) {
-  const ctx = await testConnection();
+export async function runHarness({ baseline = false, context, lease, reportPath = REPORT } = {}) {
+  const ctx = context ?? await testConnection();
+  if (!lease) return withTestLock(ctx, held => runHarness({ baseline, context: ctx, lease: held, reportPath }));
+  await assertTestLease(lease, ctx.test);
   const cases = [], measures = [], coverage = {};
   const check = async (name, fn) => {
     try { await fn(); cases.push({ name, status: 'PASS' }); console.log(`PASS ${name}`); }
@@ -336,11 +339,11 @@ export async function runHarness({ baseline = false } = {}) {
       `Coverage: ${JSON.stringify(coverage)}.\n\n` +
       `RED baseline before schema: original header=1, direct items=0 (expected item 6c3035b2-7f98-49a8-b5fb-216a43423461), direct building=0; reader HTTP404/PGRST202.\n\n` +
       `Not verified here: approval/cancellation and legacy writer RPC matrix, financial writer CAS/concurrent revision, shareholder/profit-manager recipients, storage download. Concurrent snapshot test only changes isolated fixture header/items atomically; it does not certify financial writer concurrency. ACTIVE membership with expired timestamps intentionally follows current header semantics and remains a separate hardening gap.\n`;
-    const path = resolve(REPORT); mkdirSync(dirname(path), { recursive: true }); appendFileSync(path, `\n\n---\n\n${report}`);
+    const path = resolve(reportPath); mkdirSync(dirname(path), { recursive: true }); appendFileSync(path, `\n\n---\n\n${report}`);
   }
   const failed = cases.filter(c => c.status === 'FAIL');
   assert.equal(failed.length, 0, `${failed.length}/${cases.length} authorization cases failed; see ${REPORT}`);
-  return { passed: cases.length, report: REPORT };
+  return { passed: cases.length, report: reportPath };
 }
 
 if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {

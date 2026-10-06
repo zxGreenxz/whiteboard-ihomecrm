@@ -324,12 +324,18 @@ export class PhienPsql {
     this.err = "";
     this.cho = null;
     this.dem = 0;
+    this.closed = false;
     this.p.stdout.setEncoding("utf8");
     this.p.stderr.setEncoding("utf8");
     this.p.stdout.on("data", (d) => { this.buf += d; this._thu(); });
     this.p.stderr.on("data", (d) => { this.err += d; });
     this.p.on("exit", (code) => {
+      this.closed = true;
       if (this.cho) this.cho.reject(new Error(`psql thoát (${code}): ${this.err.slice(-800)}`));
+    });
+    this.p.on("error", () => {
+      this.closed = true;
+      if (this.cho) this.cho.reject(new Error('Không khởi chạy được psql.'));
     });
   }
 
@@ -354,6 +360,8 @@ export class PhienPsql {
   }
 
   chay(sql) {
+    if (this.closed || this.p.exitCode !== null) return Promise.reject(new Error('Phiên psql đã đóng.'));
+    if (this.cho) return Promise.reject(new Error('Phiên psql đang xử lý câu lệnh khác.'));
     this.dem += 1;
     const dau = `__XONG_${this.dem}_${process.pid}__`;
     return new Promise((ok, hong) => {
@@ -368,9 +376,12 @@ export class PhienPsql {
   }
 
   async dong() {
+    if (this.closed) return;
     try { await this.chay("ROLLBACK;"); } catch { /* đã đóng */ }
+    if (this.closed) return;
+    const closed = new Promise((r) => this.p.once("close", r));
     this.p.stdin.end();
-    await new Promise((r) => this.p.on("close", r));
+    await closed;
   }
 }
 

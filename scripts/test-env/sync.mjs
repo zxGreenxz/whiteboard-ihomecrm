@@ -14,35 +14,28 @@
 
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import { assertTestLease, withTestLock } from "./lock.mjs";
+import { catalogDigest } from "./receipt.mjs";
 
 import { cauHinhProjectTest } from "./cau-hinh.mjs";
 import { capNhatThongKe, choApiSanSang, dungCronTest, datMatKhauTest, ghiLichSu, thayRefTrongHam, xoaPush } from "./hau-ky.mjs";
 import { chuanBi, dungCron, khoiPhucApp, taiLapNenTang, xoaSach, xoaVaNapAuth } from "./khoi-phuc.mjs";
-import { PROD_REF, PhienPsql, batBuocDichTest, credential, ghiLog, ketNoi, khiThoat, kiemCongCu, psqlJson } from "./lib.mjs";
+import { PROD_REF, credential, ghiLog, ketNoi, khiThoat, kiemCongCu, psqlJson } from "./lib.mjs";
 import { dungBucket, guongDongObject } from "./tep.mjs";
 import { soBam, soVanTay, sqlBamLo, sqlDanhSachBang, sqlVanTay } from "./van-tay.mjs";
 import { xuatProduction } from "./xuat.mjs";
 
-async function main(argv) {
+export async function syncTest({ argv = [], context, lease } = {}) {
   const batDau = new Date().toISOString();
   const giuDump = argv.includes("--giu-dump");
   kiemCongCu();
-  const cred = credential();
-  const { prod, test } = await ketNoi(cred);
+  const cred = context?.cred ?? credential();
+  const { prod, test } = context ?? await ketNoi(cred);
+  if (!lease) return withTestLock({ cred, test }, held => syncTest({ argv, context: { cred, prod, test }, lease: held }));
+  await assertTestLease(lease, test);
   const testUrl = `https://${cred.testRef}.supabase.co`;
-
-  await batBuocDichTest(cred, test);
-
-  // KHOÁ: đúng một lượt đồng bộ tại một thời điểm. Hai lượt chạy chồng nhau sẽ xoá/nạp
-  // đè lên nhau (đã suýt xảy ra 23/09/2026 khi một lệnh shell vô tình khởi chạy lượt
-  // thứ hai). Advisory lock mức PHIÊN, giữ suốt lượt chạy qua một phiên psql riêng.
-  const khoa = new PhienPsql(test);
-  const duocKhoa = (await khoa.chay("SELECT pg_try_advisory_lock(hashtext('test-env-sync'));")).trim();
-  if (duocKhoa !== "t") {
-    await khoa.dong();
-    throw new Error("Đang có một lượt đồng bộ TEST khác chạy — dừng, không đụng vào gì.");
-  }
   ghiLog("bat-dau", `production ${PROD_REF} → TEST ${cred.testRef}`);
 
   const thuMuc = join(process.env.TEST_ENV_WORKDIR || join(homedir(), "ihomecrm-backups", "test-env"), batDau.replace(/[:.]/g, "-"));
@@ -59,14 +52,16 @@ async function main(argv) {
   const buoc = async (ten, fn) => {
     const t0 = Date.now();
     ghiLog(ten, "…");
+    await assertTestLease(lease, test);
     const r = await fn();
     moc[ten] = Math.round((Date.now() - t0) / 1000);
     return r;
   };
 
   try {
+    ghiLichSu(test, { batDau, snapshotLuc: batDau, ketQua: "RUNNING", chiTiet: {} });
     const x = await buoc("xuat", () => xuatProduction({ prod, thuMuc }));
-    const snapshotLuc = new Date().toISOString();
+    const snapshotLuc = x.snapshotLuc;
 
     await buoc("dung-cron", () => dungCron(test));
     await buoc("xoa-sach", () => xoaSach(test));
@@ -83,7 +78,7 @@ async function main(argv) {
       await dungBucket(testUrl, cred.testSecretKey, x.meta.bucket);
       guongDongObject(test, x.meta.object);
     });
-    await buoc("chuan-bi", () => chuanBi(test));
+    await buoc("chuan-bi", () => chuanBi(test, x.meta));
     const kp = await buoc("pg-restore", () => khoiPhucApp(test, x.fileApp, thuMuc));
     await buoc("nen-tang", () => taiLapNenTang(test, x.meta));
 
@@ -119,23 +114,30 @@ async function main(argv) {
     });
     await buoc("thong-ke", () => capNhatThongKe(test));
     await buoc("cau-hinh", () => cauHinhProjectTest(cred));
-    await buoc("cho-api", () => choApiSanSang(testUrl, cred.testSecretKey));
+    const apiReady = await buoc("cho-api", () => choApiSanSang(testUrl, cred.testSecretKey));
+    if (!apiReady) throw new Error("Data API TEST chưa sẵn sàng; không cấp biên nhận DAT.");
+    const schemaDigest = catalogDigest(psqlJson(test, sqlVanTay()));
+    writeFileSync(join(thuMuc, "snapshot.json"), JSON.stringify({ snapshotLuc,
+      sourceCatalogDigest: catalogDigest(x.vanTay), schemaDigest, tableHashes: x.bam, stages: moc }, null, 2));
 
     const ketQua = dat ? "DAT" : "LECH";
     ghiLichSu(test, {
       batDau, snapshotLuc, ketQua,
-      chiTiet: { moc, lechVanTay: kiem.lechVt.length, lechDuLieu: kiem.lechBam.length, pgRestoreLoi: kp.loi.length, fkNotValid: kp.fkNotValid.map((f) => `${f.bang}.${f.ten}`), soFile: x.meta.object.length, soTaiKhoan: x.meta.user.length },
+      chiTiet: { schemaDigest, moc, lechVanTay: kiem.lechVt.length, lechDuLieu: kiem.lechBam.length, pgRestoreLoi: kp.loi.length, fkNotValid: kp.fkNotValid.map((f) => `${f.bang}.${f.ten}`), soFile: x.meta.object.length, soTaiKhoan: x.meta.user.length },
     });
     ghiLog("xong", `${dat ? "✅ TEST khớp production tuyệt đối" : "❌ TEST LỆCH production — xem kiem.json"} · ${JSON.stringify(moc)}`);
     return dat ? 0 : 1;
+  } catch (error) {
+    try { ghiLichSu(test, { batDau, snapshotLuc: batDau, ketQua: "FAILED", chiTiet: { moc } }); } catch { /* original error retained */ }
+    throw error;
   } finally {
-    try { await khoa.chay("SELECT pg_advisory_unlock(hashtext('test-env-sync'));"); } catch { /* đóng phiên cũng nhả */ }
-    await khoa.dong();
     xoaDump();
   }
 }
 
-main(process.argv).then((code) => process.exit(code), (e) => {
-  console.error(`❌ ${e.message}`);
-  process.exit(1);
-});
+if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
+  syncTest({ argv: process.argv.slice(2) }).then((code) => { process.exitCode = code; }, (e) => {
+    console.error(`❌ ${e.message}`);
+    process.exitCode = 1;
+  });
+}

@@ -19,7 +19,8 @@
   "notes": [
     "deferredModules loại test được tạm hoãn khỏi mọi suite đang hoạt động. status=deferred giữ metadata để khôi phục, không khai test đã chạy hay pass.",
     "Runner gán theo includes/command/ciJobs của từng suite, không suy từ thư mục supabase/functions/.",
-    "Suite nào đòi runtime khác Node mặc định thì ghi ở trường `runtime` — tra chi tiết ở tooling/runtime-matrix.json."
+    "Suite nào đòi runtime khác Node mặc định thì ghi ở trường `runtime` — tra chi tiết ở tooling/runtime-matrix.json.",
+    "Lane local npm run test-env:check (thêm -- --sync để làm mới TEST) điều phối JWT harness + scripts/test-env/chrome.mjs dưới cùng khoá, build đúng worktree và ghi biên nhận ngoài Git. Chưa có job CI cho lane live này; các unit test scripts/__tests__/test-env*.test.mjs thuộc app-unit."
   ],
   "suites": [
     {

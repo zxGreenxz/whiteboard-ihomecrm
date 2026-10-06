@@ -13,6 +13,7 @@ import { dungDongLichSu } from './contractHistoryLines';
 import { dichVuHieuLuc, type DichVuToaLite } from './effectiveServices';
 import { DauThe, DongKV, NhanMuc, The } from './ui';
 import { LoadingState } from '@/components/loading/LoadingState';
+import { isUnavailableTestMedia, TEST_MEDIA_MESSAGE } from '@/lib/storage/testMedia';
 
 const CHU_KY: Record<string, string> = {
   MONTHLY: 'Hàng tháng',
@@ -80,7 +81,7 @@ export function ContractTermsCard({
           <DongKV nhan="Tiền cọc">{formatAmount(contract.total_deposit ?? 0)}</DongKV>
           {contract.contract_file_url && (
             <DongKV nhan="File hợp đồng">
-              <a
+              {isUnavailableTestMedia(contract.contract_file_url) ? <span className="text-muted-foreground">{TEST_MEDIA_MESSAGE}</span> : <a
                 href={contract.contract_file_url}
                 target="_blank"
                 rel="noopener noreferrer"
@@ -88,7 +89,7 @@ export function ContractTermsCard({
               >
                 Xem bản scan
                 <ExternalLink className="h-3 w-3" strokeWidth={2} />
-              </a>
+              </a>}
             </DongKV>
           )}
         </div>

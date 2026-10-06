@@ -79,6 +79,7 @@
     "backup:check": "node scripts/check-backup-freshness.mjs",
     "backup:lap-lich": "node scripts/dang-ky-backup-dinh-ky.mjs",
     "backup:xem-lich": "node scripts/dang-ky-backup-dinh-ky.mjs --xem",
+    "test-env:check": "node scripts/test-env/check.mjs",
     "test-env:sync": "node scripts/test-env/sync.mjs",
     "test-env:thu-sql": "node scripts/test-env/thu-sql.mjs",
     "test-env:edge": "node scripts/test-env/edge.mjs",

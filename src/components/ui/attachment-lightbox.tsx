@@ -14,6 +14,8 @@ import { createPortal } from 'react-dom';
 import { X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { StorageImage } from '@/components/ui/storage-image';
 import { useSignedUrl } from '@/hooks/useSignedUrl';
+import { isUnavailableTestMedia } from '@/lib/storage/testMedia';
+import { TestMediaPlaceholder } from './test-media-placeholder';
 
 const isPdf = (url: string) =>
   url.toLowerCase().endsWith('.pdf') || url.includes('.pdf');
@@ -125,7 +127,7 @@ export function AttachmentLightbox({
           </div>
         </>
       )}
-      {isPdf(url) ? (
+      {isUnavailableTestMedia(url) ? <TestMediaPlaceholder className="max-w-sm rounded-md p-6" /> : isPdf(url) ? (
         <iframe
           src={signedUrl}
           className="w-full h-full max-w-5xl max-h-[90vh] bg-white rounded-md"

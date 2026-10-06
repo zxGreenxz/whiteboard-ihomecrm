@@ -8,6 +8,8 @@
 import { ImageIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSignedUrl } from '@/hooks/useSignedUrl';
+import { isUnavailableTestMedia } from '@/lib/storage/testMedia';
+import { TestMediaPlaceholder } from './test-media-placeholder';
 
 type StorageImageProps = Omit<
   React.ImgHTMLAttributes<HTMLImageElement>,
@@ -30,6 +32,8 @@ export function StorageImage({
   ...imgProps
 }: StorageImageProps) {
   const src = useSignedUrl(value, ttl);
+
+  if (isUnavailableTestMedia(value)) return <TestMediaPlaceholder className={className} />;
 
   if (!src) {
     if (fallback !== undefined) return <>{fallback}</>;

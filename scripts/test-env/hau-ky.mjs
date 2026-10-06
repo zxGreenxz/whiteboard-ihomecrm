@@ -126,12 +126,12 @@ export async function choApiSanSang(testUrl, key, { toiDaGiay = 180 } = {}) {
   for (;;) {
     const r = await fetch(`${testUrl}/rest/v1/organizations?select=id&limit=1`, { headers: { ...h, "Accept-Profile": "public" } })
       .catch(() => null);
-    if (r && r.status !== 503) {
+    if (r?.status === 200 && Array.isArray(await r.json().catch(() => null))) {
       ghiLog("hau-ky", `Data API sẵn sàng sau ${Math.round((Date.now() - t0) / 1000)}s (HTTP ${r.status})`);
       return true;
     }
-    if (Date.now() - t0 > toiDaGiay * 1000) {
-      ghiLog("hau-ky", `⚠ Data API vẫn 503 sau ${toiDaGiay}s — schema cache chưa nạp xong, web có thể chậm vài phút`);
+    if (Date.now() - t0 >= toiDaGiay * 1000) {
+      ghiLog("hau-ky", `⚠ Data API chưa trả dữ liệu hợp lệ sau ${toiDaGiay}s (HTTP ${r?.status ?? 'network error'})`);
       return false;
     }
     await new Promise((ok) => setTimeout(ok, 5000));

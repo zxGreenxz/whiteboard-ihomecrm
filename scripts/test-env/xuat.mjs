@@ -14,6 +14,7 @@ import { join } from "node:path";
 
 import { APP_SCHEMAS, PhienPsql, SET_CHUAN, congCu, ghiLog } from "./lib.mjs";
 import { sqlBamLo, sqlDanhSachBang, sqlVanTay } from "./van-tay.mjs";
+import { kiemMetadataOwners, sqlOwners } from "./owners.mjs";
 
 function chayPgDump(args, nhan) {
   return new Promise((ok, hong) => {
@@ -84,12 +85,13 @@ export async function xuatProduction({ prod, thuMuc }) {
     await phien.chay("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;");
     await phien.chay(SET_CHUAN); // SET LOCAL — phải sau BEGIN
     const snap = (await phien.chay("SELECT pg_export_snapshot();")).trim();
+    const snapshotLuc = new Date().toISOString();
     if (!/^[0-9A-F-]+$/i.test(snap)) throw new Error(`Không export được snapshot: "${snap}"`);
     ghiLog("xuat", `snapshot ${snap}`);
 
     // pg_dump GIỮ ACL (không --no-acl): TEST phải mang đúng quyền production, kể cả
-    // những REVOKE khỏi anon. --no-owner: mọi object ứng dụng trên prod đều thuộc
-    // postgres, restore dưới postgres cho đúng chủ sở hữu đó.
+    // những REVOKE khỏi anon. --no-owner: dựng dưới postgres, rồi tái lập owner/ACL
+    // của routine dùng vai hạn chế từ metadata chụp CÙNG snapshot ở dưới.
     const appArgs = ["-d", prod, `--snapshot=${snap}`, "--format=custom", "--no-owner",
       "--no-publications", "--no-subscriptions", "-f", fileApp];
     for (const s of APP_SCHEMAS) appArgs.push("-n", s);
@@ -109,6 +111,7 @@ export async function xuatProduction({ prod, thuMuc }) {
       Object.assign(bam, r.j);
     }
     const meta = {
+      owners: (await phien.json(sqlOwners()))[0],
       policyNenTang: await phien.json(SQL_POLICY_NEN_TANG),
       triggerNenTang: await phien.json(SQL_TRIGGER_NEN_TANG),
       eventTrigger: await phien.json(SQL_EVENT_TRIGGER),
@@ -120,11 +123,12 @@ export async function xuatProduction({ prod, thuMuc }) {
       object: await phien.json(SQL_OBJECT),
       user: await phien.json(SQL_USER),
     };
+    kiemMetadataOwners(meta.owners);
     ghiLog("xuat", `đo xong trong snapshot: ${vanTay.length} object, ${Object.keys(bam).length} bảng, ${meta.object.length} file — ${Math.round((Date.now() - t0) / 1000)}s`);
 
     const [sApp, sAuth] = await Promise.all([dumpApp, dumpAuth]);
     ghiLog("xuat", `pg_dump app ${sApp}s (${(statSync(fileApp).size / 1048576).toFixed(1)} MB), auth ${sAuth}s`);
-    return { fileApp, fileAuth, vanTay, bam, meta };
+    return { fileApp, fileAuth, vanTay, bam, meta, snapshotLuc };
   } finally {
     await phien.dong();
   }

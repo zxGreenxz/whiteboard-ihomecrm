@@ -3,6 +3,7 @@ import { Icon, amenIcon } from "./icons";
 import { STATUS_META, fmtPrice, genInfoLines, type Room, type Building } from "./sampleData";
 import { useTrack } from "./useTracking";
 import { corsFetchUrl } from "@/lib/storage/r2Config";
+import { isUnavailableTestMedia, TEST_MEDIA_MESSAGE, testMediaSource } from '@/lib/storage/testMedia';
 
 const SM = STATUS_META;
 const stColor = (s: string) => `var(--st-${s})`;
@@ -37,7 +38,7 @@ function Gallery({ images, onZoom }: { images: string[]; onZoom: (i: number) => 
       {images.map((src, i) => (
         <div className="gimg" key={i} onClick={() => onZoom(i)}>
           {/* Chỉ ảnh đầu tải ngay; còn lại lazy để không kéo 14 ảnh cùng lúc trên mobile. */}
-          <img src={src} alt={"Anh " + (i + 1)} draggable={false}
+          <img src={testMediaSource(src)} alt={"Anh " + (i + 1)} draggable={false}
                loading={i === 0 ? "eager" : "lazy"} decoding="async" />
         </div>
       ))}
@@ -66,7 +67,7 @@ function Lightbox({ images, index, onClose, onSaveAll }: {
         {/* Chỉ render ảnh KHI mở lightbox (opacity:0 vẫn tải) — tránh preload trùng cả bộ ảnh. */}
         {index != null && images.map((src, i) => (
           <div className="lb-slide" key={i}>
-            <img src={src} alt={"Anh " + (i + 1)} loading={i === index ? "eager" : "lazy"} decoding="async" />
+            <img src={testMediaSource(src)} alt={"Anh " + (i + 1)} loading={i === index ? "eager" : "lazy"} decoding="async" />
           </div>
         ))}
       </div>
@@ -123,6 +124,7 @@ function roomImages(r: Room): string[] {
 // allSettled: 1 ảnh lỗi không làm hỏng cả batch.
 async function fetchImageFiles(r: Room): Promise<File[]> {
   const results = await Promise.allSettled(roomImages(r).map(async (src, i) => {
+    if (isUnavailableTestMedia(src)) throw new Error(TEST_MEDIA_MESSAGE);
     // Ảnh R2 công khai: fetch qua Worker /file (có CORS) để tải/chia sẻ được.
     const res = await fetch(corsFetchUrl(src));
     const blob = await res.blob();

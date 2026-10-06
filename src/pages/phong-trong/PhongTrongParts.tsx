@@ -1,4 +1,5 @@
 import React, { useLayoutEffect, useRef, useState } from "react";
+import { testMediaSource } from '@/lib/storage/testMedia';
 import { Icon, amenIcon } from "./icons";
 import {
   STATUS_META, fmtPrice, GENERAL_POLICY,
@@ -62,7 +63,7 @@ export function RoomCard({ r, onOpen }: { r: Room; onOpen: (r: Room) => void }) 
   return (
     <div className="room-card" ref={impRef} onClick={() => onOpen(r)}>
       <div className="rc-photo">
-        {r.images?.[0] ? <img className="rc-img" src={r.images[0]} alt={r.type} loading="lazy" decoding="async" /> : <div className="rc-img" aria-label="Chưa có ảnh phòng" />}
+        {r.images?.[0] ? <img className="rc-img" src={testMediaSource(r.images[0])} alt={r.type} loading="lazy" decoding="async" /> : <div className="rc-img" aria-label="Chưa có ảnh phòng" />}
         <span className="rc-badge">
           <i className="bd" style={{ background: stColor(r.status) }} />{r.saleFact?.label || SM[r.status].label}
         </span>
@@ -149,7 +150,7 @@ export function OverviewView({
           <div className="ov-bld" key={b.id}>
             {b.images && b.images.length > 0 && (
               <img
-                src={b.images[0]}
+                src={testMediaSource(b.images[0])}
                 alt={b.name}
                 loading="lazy"
                 style={{ width: "100%", height: 116, objectFit: "cover", display: "block" }}
