@@ -213,7 +213,10 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
     if (withContent || pendingPhoto || p.aiContextRequired) {
       setPendingPhoto(file);
       setNote(null);
-      box.current?.focus();
+      // The paperclip combines an image with voice; start from the file picker
+      // event so mobile browsers can request microphone access immediately.
+      if (withContent) onMic();
+      else box.current?.focus();
     } else if (p.appearance === 'personal') {
       setPendingPhoto(file);
       setNote(null);
@@ -329,7 +332,7 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
           {previewUrl && <img src={previewUrl} alt="Ảnh chờ gửi" className="h-16 w-16 shrink-0 rounded-md object-cover" />}
           <div className="min-w-0 flex-1 text-xs">
             <p className="truncate font-medium">{pendingPhoto.name}</p>
-            <p className="text-muted-foreground">Nhập thêm nội dung hoặc bấm mic để nói và gửi cùng ảnh.</p>
+            <p className="text-muted-foreground">{recording ? 'Nói nội dung bổ sung, bấm Xong để gửi cùng ảnh.' : 'Nhập thêm nội dung hoặc bấm mic để nói và gửi cùng ảnh.'}</p>
           </div>
           <Button type="button" size="icon" variant="ghost" aria-label="Bỏ ảnh đính kèm" disabled={busy || p.disabled} onClick={() => setPendingPhoto(null)}>
             <X className="h-4 w-4" />

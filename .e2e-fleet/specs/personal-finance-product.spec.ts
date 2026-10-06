@@ -22,7 +22,7 @@ const saving = "55555555-5555-4555-8555-555555555555";
 let server: ViteDevServer, base: string;
 const entry = `import React from 'react';import {createRoot} from 'react-dom/client';import {MemoryRouter} from 'react-router-dom';import {QueryClient,QueryClientProvider} from '@tanstack/react-query';import Page from '@/pages/finance/PersonalWalletPage';import '@/index.css';createRoot(document.getElementById('root')).render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false},mutations:{retry:false}}})}><MemoryRouter future={{v7_startTransition:true,v7_relativeSplatPath:true}}><Page/></MemoryRouter></QueryClientProvider>);`;
 test.describe.configure({ mode: "default" });
-test.use({ storageState: { cookies: [], origins: [] } });
+test.use({ storageState: { cookies: [], origins: [] }, launchOptions: { args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"] } });
 test.beforeAll(async () => {
   const virtual = new Map([
     ["virtual:pf-org", "export const useOrganization=()=>({selectedOrganizationId:'demo',preferenceError:null});"],
@@ -175,6 +175,87 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   await server?.close();
 });
+
+test.describe("attachment voice", () => {
+  test.use({ permissions: ["microphone"], viewport: { width: 390, height: 844 } });
+  for (const entryPoint of ["home", "sheet"]) test(`paperclip ${entryPoint}: select photo, record automatically, send together`, async ({ page }, info) => {
+    const o = await open(page);
+    const aiRequests: string[] = [], audioRequests: string[] = [];
+    await page.route("**/__ai/audio/transcriptions", route => {
+      audioRequests.push(route.request().postData() || "");
+      return route.fulfill({ json: { text: "cà phê 25k" } });
+    });
+    page.on("request", request => { if (request.url().endsWith("/__ai/chat/completions")) aiRequests.push(request.postData() || ""); });
+    if (entryPoint === "sheet") await nav(page, "Ghi thu chi");
+    const trigger = entryPoint === "sheet" ? page.getByRole("dialog", { name: "Ghi thu chi", exact: true }) : page.locator(".pf-launcher-actions");
+    const picker = page.waitForEvent("filechooser");
+    await trigger.getByRole("button", { name: "Ảnh kèm nội dung", exact: true }).click();
+    await (await picker).setFiles({ name: "bill.png", mimeType: "image/png", buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a4V8AAAAASUVORK5CYII=", "base64") });
+    const sheet = page.getByRole("dialog", { name: "Ghi thu chi", exact: true });
+    await expect(sheet.getByText(/Đang nghe/)).toBeVisible();
+    await expect(sheet.getByText(/0:01/)).toBeVisible();
+    expect(aiRequests).toHaveLength(0);
+    await page.screenshot({ path: info.outputPath(`attachment-${entryPoint}.png`) });
+    await sheet.getByRole("button", { name: "Xong", exact: true }).click();
+    await expect.poll(() => aiRequests.length).toBe(1);
+    expect(audioRequests).toHaveLength(1);
+    expect(JSON.parse(audioRequests[0]).data.length).toBeGreaterThan(0);
+    expect(aiRequests[0]).toContain("cà phê 25k");
+    expect(aiRequests[0]).toContain("data:image/");
+    expect(o.writes).toHaveLength(0);
+    expect(o.errors).toEqual([]);
+    expect(o.blocked).toEqual([]);
+  });
+
+  for (const outcome of ["cancel", "denied"]) test(`paperclip ${outcome} keeps the photo without sending`, async ({ page }) => {
+    if (outcome === "denied") await page.addInitScript(() => {
+      navigator.mediaDevices.getUserMedia = () => Promise.reject(new DOMException("Permission denied", "NotAllowedError"));
+    });
+    const o = await open(page), requests: string[] = [];
+    page.on("request", request => { if (request.url().includes("/__ai/")) requests.push(request.url()); });
+    await nav(page, "Ghi thu chi");
+    const sheet = page.getByRole("dialog", { name: "Ghi thu chi", exact: true });
+    await sheet.getByLabel("Nội dung khoản chi").fill("Nội dung giữ lại");
+    await sheet.getByLabel("Chọn ảnh kèm nội dung").setInputFiles({ name: "bill.png", mimeType: "image/png", buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a4V8AAAAASUVORK5CYII=", "base64") });
+    if (outcome === "cancel") {
+      await expect(sheet.getByText(/Đang nghe/)).toBeVisible();
+      await sheet.getByRole("button", { name: "Huỷ ghi âm" }).click();
+    } else await expect(sheet.getByRole("status")).toContainText("Bạn chưa cho phép dùng micro");
+    await expect(sheet.getByAltText("Ảnh chờ gửi")).toBeVisible();
+    await expect(sheet.getByLabel("Nội dung khoản chi")).toHaveValue("Nội dung giữ lại");
+    expect(requests).toEqual([]);
+    expect(o.writes).toEqual([]);
+    expect(o.errors).toEqual([]);
+  });
+});
+
+for (const width of [320, 390]) test(`compact finance toolbar ${width}`, async ({ page }, info) => {
+  await page.setViewportSize({ width, height: 844 });
+  const o = await open(page);
+  await nav(page, "Giao dịch");
+  await expect(page.getByRole("button", { name: "Xuất CSV" })).toHaveCount(0);
+  const transfer = await page.getByRole("button", { name: "Chuyển ví", exact: true }).boundingBox();
+  const settings = page.getByRole("button", { name: "Cài đặt ví cá nhân", exact: true });
+  const rect = await settings.boundingBox();
+  expect(Math.abs(rect!.y - transfer!.y)).toBeLessThan(2);
+  expect(rect!.x).toBeGreaterThan(transfer!.x + transfer!.width);
+  expect(rect!.x + rect!.width).toBeLessThanOrEqual(width);
+  const toolbar = await page.locator(".pf-type-chips").boundingBox();
+  expect(rect!.x + rect!.width).toBeLessThanOrEqual(toolbar!.x + toolbar!.width);
+  await page.screenshot({ path: info.outputPath(`toolbar-${width}.png`) });
+  await settings.click();
+  await expect(page.getByRole("button", { name: "Danh mục thu chi", exact: true })).toBeVisible();
+  await close(page);
+  await nav(page, "Ngân sách");
+  await expect(page.getByText(/Hạn mức riêng cho từng danh mục|Các hạn mức lặp lại hằng tháng/)).toHaveCount(0);
+  const cards = page.locator(".pf-stack > .pf-card");
+  const first = await cards.nth(0).boundingBox(), second = await cards.nth(1).boundingBox();
+  expect(second!.y - first!.y - first!.height).toBeLessThanOrEqual(12);
+  await page.screenshot({ path: info.outputPath(`budget-${width}.png`) });
+  expect(o.errors).toEqual([]);
+  expect(o.blocked).toEqual([]);
+});
+
 function fixture(): Snapshot {
   const date = new Date();
   const day = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-04`;
@@ -310,7 +391,7 @@ async function open(page: Page, mode = "") {
                     {
                       desc: "cà phê",
                       amount_vnd: 25000,
-                      category,
+                      category: "c1",
                       confidence: 1,
                     },
                   ],

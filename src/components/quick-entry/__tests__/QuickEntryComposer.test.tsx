@@ -216,6 +216,41 @@ describe("QuickEntryComposer — ảnh và chế độ", () => {
     return file;
   };
 
+  it.each([undefined, "personal"] as const)("kẹp ảnh (%s) tự thu âm rồi gửi ảnh cùng chữ và lời nói", async (appearance) => {
+    const h = setup({ appearance });
+    fireEvent.change(h.box, { target: { value: "102LVT" } });
+    const file = pickAttachment();
+    expect(rec.start).toHaveBeenCalledOnce();
+    expect(h.props.onPhoto).not.toHaveBeenCalled();
+    expect(h.box).not.toBe(document.activeElement);
+    await act(async () => rec.onDone?.(audio));
+    expect(h.props.onPhoto).toHaveBeenCalledExactlyOnceWith(file, "102LVT sơn ba trăm nghìn");
+    expect(h.props.onSubmitText).not.toHaveBeenCalled();
+  });
+
+  it("hủy chọn ảnh không bật micro", () => {
+    setup();
+    fireEvent.change(screen.getByLabelText("Chọn ảnh kèm nội dung"), { target: { files: [] } });
+    expect(rec.start).not.toHaveBeenCalled();
+  });
+
+  it.each(["unavailable", "missing-company"])("kẹp ảnh khi %s giữ ảnh để bổ sung thủ công", (reason) => {
+    const h = setup({ transcribe: reason === "unavailable" ? null : vi.fn(), aiContextRequired: reason === "missing-company" });
+    pickAttachment();
+    expect(rec.start).not.toHaveBeenCalled();
+    expect(h.props.onPhoto).not.toHaveBeenCalled();
+    expect(screen.getByAltText("Ảnh chờ gửi")).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toMatch(reason === "unavailable" ? /micro trên bàn phím/ : /Chọn công ty/);
+  });
+
+  it("camera và thư viện ảnh không tự bật micro", () => {
+    const h = setup({ appearance: "personal" });
+    const file = new File(["img"], "bill.jpg", { type: "image/jpeg" });
+    for (const name of ["Chụp ảnh bill", "Chọn ảnh bill"]) fireEvent.change(screen.getByLabelText(name), { target: { files: [file] } });
+    expect(rec.start).not.toHaveBeenCalled();
+    expect(h.props.onPhoto).not.toHaveBeenCalled();
+  });
+
   it("nút mới đứng trước camera; ảnh chờ tới khi gửi cả caption", () => {
     const { props, box } = setup();
     const buttons = screen.getAllByRole("button");

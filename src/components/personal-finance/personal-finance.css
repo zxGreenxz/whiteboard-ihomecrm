@@ -154,6 +154,9 @@
   display: grid;
   gap: 12px;
 }
+.pf-stack > .pf-card {
+  margin: 0;
+}
 .pf-quick {
   padding: 14px;
   background: #edf1df;
@@ -956,9 +959,22 @@
   overflow: auto;
 }
 .pf-type-chips button {
-  padding: 8px 13px;
+  padding: 8px 11px;
   white-space: nowrap;
   min-height: 40px;
+}
+.pf-type-chips .pf-ledger-settings {
+  width: 40px;
+  padding: 0;
+  flex: 0 0 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+@media (max-width: 360px) {
+  .pf-type-chips { gap: 4px; }
+  .pf-type-chips button { padding: 8px; font-size: 11px; }
+  .pf-type-chips .pf-ledger-settings { padding: 0; }
 }
 .pf-filter-triggers {
   margin: 0 0 16px;
@@ -967,15 +983,6 @@
 .pf-filter-triggers > button {
   font-size: 12px;
   gap: 5px;
-}
-.pf-filter-triggers > button:last-child {
-  margin-left: auto;
-  font-size: 10px;
-}
-.pf-filter-triggers > button:nth-child(3) {
-  margin-left: auto;
-  width: 44px;
-  justify-content: center;
 }
 .pf-transfer-cta {
   width: 100%;
@@ -1390,7 +1397,7 @@ dialog.pf-dialog::backdrop {
   background: #edf1e6;
 }
 .pf-plan-tabs {
-  margin-bottom: 20px;
+  margin-bottom: 12px;
 }
 .pf-plan-tabs > button {
   flex: 1;

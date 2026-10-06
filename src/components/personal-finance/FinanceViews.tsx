@@ -23,7 +23,6 @@ import {
   selectTransactions,
   selectGoals,
   transactionsCsv,
-  csvCell,
 } from "@/lib/personalFinance/selectors";
 import {
   money,
@@ -351,27 +350,6 @@ export function Ledger(
   const expense = sumMoney(
     txns.filter((t) => t.type === "EXPENSE").map((t) => t.amount),
   );
-  const exportCsv = () => {
-    let csv = transactionsCsv(s, txns);
-    if (transfers.length)
-      csv +=
-        "\r\n" +
-        transfers
-          .map((t) =>
-            [
-              t.txn_date,
-              "TRANSFER",
-              t.amount,
-              `${s.wallets.find((w) => w.id === t.source_wallet_id)?.name} → ${s.wallets.find((w) => w.id === t.target_wallet_id)?.name}`,
-              "",
-              t.note,
-            ]
-              .map(csvCell)
-              .join(","),
-          )
-          .join("\r\n");
-    downloadCsv(csv, p.month);
-  };
   return (
     <>
       {!p.recent && (
@@ -391,6 +369,14 @@ export function Ledger(
                 {label}
               </button>
             ))}
+            <button
+              className="pf-ledger-settings"
+              aria-label="Cài đặt ví cá nhân"
+              title="Cài đặt ví và danh mục"
+              onClick={() => setPicker("settings")}
+            >
+              <Settings size={18} />
+            </button>
           </div>
           <div className="pf-tools pf-filter-triggers">
             <button aria-label="Lọc ví" onClick={() => setPicker("wallet")}>
@@ -407,15 +393,6 @@ export function Ledger(
                 (c) => c.value === categoryFilterValue(f.category),
               )?.label ?? "Mọi danh mục"}
               <ChevronDown size={16} />
-            </button>
-            <button
-              aria-label="Cài đặt ví cá nhân"
-              onClick={() => setPicker("settings")}
-            >
-              <Settings size={20} />
-            </button>
-            <button aria-label="Xuất CSV" onClick={exportCsv}>
-              <Download size={16} /> CSV
             </button>
           </div>
         </>
@@ -838,19 +815,12 @@ export function Budgets(
             )}
           </div>
         </div>
-        <p className="pf-muted">
-          Hạn mức riêng cho từng danh mục, tính chi tiêu từ tất cả ví cá nhân.
-        </p>
         {categories.map(item)}
         {!categories.length && (
           <p className="pf-empty">
             Chưa có ngân sách. Đặt giới hạn cho danh mục bạn quan tâm.
           </p>
         )}
-        <p className="pf-muted">
-          Các hạn mức lặp lại hằng tháng. Chuyển ví và khoản công ty không tính
-          vào ngân sách cá nhân.
-        </p>
       </section>
     </div>
   );
